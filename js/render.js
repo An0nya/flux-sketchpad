@@ -13,7 +13,7 @@
       const forward=V.axis(v.yaw,v.pitch),right=[Math.cos(v.yaw),0,-Math.sin(v.yaw)],up=V.cross(forward,right);
       let scale=Math.min(w,h)*1.45/extent*v.zoom,shift=[0,0];
       if(id==='scene'){
-        const tf=V.frame(s.target.normal),points=[...this.envelopeLines(s.envelope).flat(),s.source.position,...[-1,1].flatMap(x=>[-1,1].map(y=>V.add(s.target.center,V.world([x*s.target.width/2,y*s.target.height/2,0],tf))))];
+        const tf=V.planeFrame(s.target.normal),points=[...this.envelopeLines(s.envelope).flat(),s.source.position,...[-1,1].flatMap(x=>[-1,1].map(y=>V.add(s.target.center,V.world([x*s.target.width/2,y*s.target.height/2,0],tf))))];
         const xx=points.map(p=>V.dot(V.sub(p,center),right)),yy=points.map(p=>V.dot(V.sub(p,center),up)),xmin=Math.min(...xx),xmax=Math.max(...xx),ymin=Math.min(...yy),ymax=Math.max(...yy);
         scale=Math.min((w-65)/Math.max(1,xmax-xmin),(h-85)/Math.max(1,ymax-ymin))*v.zoom;shift=[(xmin+xmax)/2,(ymin+ymax)/2];
       }
@@ -48,7 +48,7 @@
         const step=5,z=s.envelope.center[2]-s.envelope.size[2]/2;
         for(let i=-30;i<=30;i+=step){this.path(c,[[i,-30,z],[i,30,z]].map(project),'#56708015');this.path(c,[[-30,i,z],[30,i,z]].map(project),'#56708015');}
         for(const line of this.envelopeLines(s.envelope))this.path(c,line.map(project),'#69889f55');
-        const f=V.frame(s.target.normal),p=V.add(s.target.center,V.world([-s.target.width/2,-s.target.height/2,0],f)),a=project(p),b=project(V.add(p,V.mul(f.u,s.target.width))),d=project(V.add(p,V.mul(f.v,s.target.height)));
+        const f=V.planeFrame(s.target.normal),p=V.add(s.target.center,V.world([-s.target.width/2,-s.target.height/2,0],f)),a=project(p),b=project(V.add(p,V.mul(f.u,s.target.width))),d=project(V.add(p,V.mul(f.v,s.target.height)));
         c.save();c.globalAlpha=.72;c.transform((b[0]-a[0])/this.heat.width,(b[1]-a[1])/this.heat.width,(d[0]-a[0])/this.heat.height,(d[1]-a[1])/this.heat.height,a[0],a[1]);c.imageSmoothingEnabled=s.view.smooth;c.drawImage(this.heat,0,0);c.restore();
         this.path(c,[a,b,[b[0]+d[0]-a[0],b[1]+d[1]-a[1]],d,a],'#b7a6ef88');
       }

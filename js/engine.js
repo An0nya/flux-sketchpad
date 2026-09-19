@@ -38,7 +38,7 @@
   }
   class Simulation {
     constructor(state,options={}) {
-      this.state=state;this.surfaces=state.surfaces.map(Geo.surface);this.root=Geo.tree([...this.surfaces]);this.target={...state.target,frame:V.frame(state.target.normal)};
+      this.state=state;this.surfaces=state.surfaces.map(Geo.surface);this.root=Geo.tree([...this.surfaces]);this.target={...state.target,frame:V.planeFrame(state.target.normal)};
       this.n=state.target.resolution;this.grid=new Float64Array(this.n*this.n);this.directGrid=new Float64Array(this.grid.length);this.viaGrid=new Float64Array(this.grid.length);
       this.rng=new RNG(state.simulation.seed);this.emitter=new Emitter(state.source);this.total=options.rays||state.simulation.rays;this.done=0;
       this.eps=Math.max(...state.envelope.size,state.target.width,state.target.height,V.distance(state.source.position,state.target.center))*1e-9;

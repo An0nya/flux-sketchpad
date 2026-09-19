@@ -54,7 +54,7 @@
   function inside(e,p,margin=0) {const q=V.sub(p,e.center),r=e.size.map(x=>Math.max(1e-9,x/2-margin));if(e.kind==='box')return q.every((x,k)=>Math.abs(x)<=r[k]+1e-9);if(e.kind==='cylinder')return Math.hypot(q[0]/r[0],q[2]/r[2])<=1&&Math.abs(q[1])<=r[1];return q.reduce((a,x,k)=>a+(x/r[k])**2,0)<=1;}
   function fits(e,s) {return inside(e,s.center)&&corners(s,4).every(p=>inside(e,p));}
   function targetHit(target,o,d,eps) {
-    const f=target.frame||V.frame(target.normal),den=V.dot(d,f.n);if(Math.abs(den)<1e-14)return null;
+    const f=target.frame||V.planeFrame(target.normal),den=V.dot(d,f.n);if(Math.abs(den)<1e-14)return null;
     const t=V.dot(V.sub(target.center,o),f.n)/den;if(t<=eps)return null;const p=V.add(o,V.mul(d,t)),q=V.local(V.sub(p,target.center),f);
     if(Math.abs(q[0])>=target.width/2||Math.abs(q[1])>=target.height/2)return null;
     return {t,p,u:q[0]/target.width+.5,v:q[1]/target.height+.5};

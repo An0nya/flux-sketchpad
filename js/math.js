@@ -12,12 +12,25 @@
     reflect(d,n) { return this.sub(d,this.mul(n,2*this.dot(d,n))); },
     clamp: (x,a,b)=>Math.max(a,Math.min(b,x)),
     frame(n) { n=this.unit(n); const u=this.unit(this.cross(Math.abs(n[1])<.9?[0,1,0]:[1,0,0],n)); return {u,v:this.cross(n,u),n}; },
+    // Frame for the TARGET plane, which only ever rotates about world X, so its
+    // horizontal axis is always world horizontal. frame() derives one instead and
+    // switches reference axis at |n_y| = 0.9 — a visible discontinuity at 64.2
+    // degrees of tilt, which is why the target used to break near the slider end.
+    // This reproduces frame() EXACTLY while |n_y| < 0.9 (u = [-1,0,0] and
+    // v = [0,cos,sin]) and stays continuous past it, including a horizontal plane.
+    planeFrame(n) {
+      n=this.unit(n);
+      const a=this.add([-1,0,0],this.mul(n,n[0]));  // [-1,0,0] with its component along n removed
+      if(this.len(a)<1e-6) return this.frame(n);    // normal is world X: no horizontal axis to preserve
+      const u=this.unit(a); return {u,v:this.cross(n,u),n};
+    },
     // NOTE: frame() returns u=[-1,0,0] for a -Z normal, which is why the target
     // map renders mirrored in the 3D scene. Negating u alone was tried and made
     // it WORSE — mirrored and inverted, i.e. a 180 degree rotation — so the
     // vertical convention is entangled with it and the two must be fixed
     // together, against a measurement rather than a derivation. See the
     // Known issues section of README.md before attempting this.
+    // planeFrame() deliberately PRESERVES that same u, so it does not touch this.
 
     local(p,f) { return [this.dot(p,f.u),this.dot(p,f.v),this.dot(p,f.n)]; },
     world(p,f) { return this.add(this.add(this.mul(f.u,p[0]),this.mul(f.v,p[1])),this.mul(f.n,p[2])); },

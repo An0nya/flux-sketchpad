@@ -311,15 +311,25 @@ they want doing together and with intent.
    pattern — a symmetric preset like `bar` cannot show handedness, which is exactly how
    the wrong fix got as far as it did.
 
-3. **Target breaks at extreme tilt.** `V.frame` picks its reference axis as
-   `Math.abs(n[1]) < 0.9 ? [0,1,0] : [1,0,0]`. That switch is discontinuous: at
-   |n_y| = 0.9, i.e. **tilt ≈ ±64°**, the reference flips and the target's local u/v
-   rotate roughly 90° in one step, so width and height swap. The tilt slider allows ±80°,
-   so the last ~16° at each end is past the discontinuity.
+3. ~~**Target breaks at extreme tilt.**~~ **Fixed.** `V.frame` picked its reference axis as
+   `Math.abs(n[1]) < 0.9 ? [0,1,0] : [1,0,0]`, and that switch is discontinuous: at
+   |n_y| = 0.9, i.e. **tilt ≈ ±64°**, the reference flipped and the target's local u/v
+   rotated 90° in one step, so width and height swapped. Everything past 64° was wrong.
 
-Fixing 1 and 2 is a row-order flip and a `u` sign flip. Fixing 3 properly means giving the
-target a stored roll (or slerping the reference) rather than deriving its basis from the
-normal alone — any fixed-reference scheme has a singularity somewhere.
+   The target plane only ever rotates about world X, so its horizontal axis is always world
+   horizontal and there is no basis to derive. `V.planeFrame` (`js/math.js`) projects
+   `[-1,0,0]` onto the plane instead, and the four target call sites use it. `V.frame` is
+   deliberately untouched — it also builds every facet's basis, and changing it would move
+   solver output.
+
+   Verified: identical to `V.frame` to **1.1e-16** wherever |n_y| < 0.9, so no behaviour
+   changed below the old threshold; largest step in `u` per 0.25° of tilt went
+   **1.414 → 0.000000**; a ray traced through `targetHit` is smooth across 64°; the basis
+   stays orthonormal at a fully horizontal plane. Tilt slider is now ±89°, which reaches
+   the road-plane case it previously could not express.
+
+Fixing 1 and 2 is a row-order flip and a `u` sign flip — but see the warning in issue 2
+before attempting either.
 
 ## Auto-tune and intent-relative metrics
 
