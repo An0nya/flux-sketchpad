@@ -249,3 +249,4 @@ button.mini { min-height: 24px; padding: 1px 8px; font-size: 11px; color: var(--
 .bind.ok { color: var(--ink) !important; } .bind.ok .mk { color: var(--ok); } .bind.bad .mk { color: var(--bad); }
 .panel-head .modes button { min-height: 26px; padding: 2px 10px; }
 .side-top { padding-top: 6px; }
+#pattern-box .pat-name { flex: 1 1 90px; min-width: 70px; }

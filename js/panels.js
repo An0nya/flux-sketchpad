@@ -56,7 +56,10 @@
     return wrap;
   }
   function section(title, opts, ...kids) {
-    const d = el('details', { class: (opts.cls || '') + (opts.adv ? ' adv' : ''), open: opts.open ? true : null, 'data-section': opts.key || null });
+    let open = !!opts.open;
+    if (opts.key) { try { const v = localStorage.getItem('flux/sec/' + opts.key); if (v !== null) open = v === '1'; } catch (e) { /* ignore */ } }
+    const d = el('details', { class: (opts.cls || '') + (opts.adv ? ' adv' : ''), open: open ? true : null, 'data-section': opts.key || null });
+    if (opts.key) d.addEventListener('toggle', (e) => { if (e.target !== d) return; try { localStorage.setItem('flux/sec/' + opts.key, d.open ? '1' : '0'); } catch (err) { /* ignore */ } });
     d.append(el('summary', {}, title, opts.tag ? el('span', { class: 'tag' }, opts.tag) : null), ...kids);
     return d;
   }
@@ -66,72 +69,67 @@
   function buildSide(ui) {
     const side = document.getElementById('side');
     side.innerHTML = '';
-    side.append(section('View', { open: true, key: 'view' },
-      el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit'),
-      el('div', { class: 'row' }, el('label', { title: 'How many ray paths to draw in the scene (display only)' }, 'Rays drawn'), el('input', { type: 'range', id: 'ray-paths', min: 0, max: 2000, step: 20, value: 240 }), el('output', { id: 'ray-paths-out' }, '240'))));
-    // Mode A
+    // ---- 1. Design: the current mode's controls
     const genBtn = el('button', { type: 'button', class: 'primary', id: 'btn-generate' }, 'Generate reflector');
     genBtn.addEventListener('click', () => ui.generateA());
     const auto = el('input', { type: 'checkbox', id: 'auto-a', checked: true });
     auto.addEventListener('change', () => { ui.store.autoA = auto.checked; });
-    const paintPresets = el('div', { class: 'btnrow' }, ...['beam', 'spot', 'band', 'ring', 'wall', 'checker'].map((k) => el('button', { type: 'button', onclick: () => ui.paintPreset(k) }, k)),
-      confirmButton('Clear paint', 'Clear the painting?', () => ui.clearPaint()));
-    side.append(section('Mode A — paint & generate', { open: true, cls: 'only-A', key: 'A', tag: 'tile the painted pattern' },
-      el('div', { class: 'note' }, 'Paint on the left target map (brush settings are under it). Generate places facets so their source images tile the painting, with flux per zone from solid-angle accounting.'),
+    side.append(section('Paint & generate', { open: true, cls: 'only-A', key: 'A', tag: 'tile the painted pattern' },
+      el('div', { class: 'note' }, 'Paint on the left target map. Generate places facets so their source images tile the painting, with flux per zone from solid-angle accounting.'),
       el('div', { class: 'btnrow' }, genBtn, el('label', { class: 'tog' }, auto, ' auto after edits')),
-      ...rowsFor(ui, ['A.budget', 'A.type', 'A.refl']),
-      el('div', { class: 'note' }, 'Quick patterns:'), paintPresets,
-      section('Advanced', { adv: true }, ...rowsFor(ui, ['A.req'])),
+      ...rowsFor(ui, ['A.budget']),
+      el('div', { id: 'pattern-box' }),
+      section('Advanced', { adv: true, key: 'A-adv' }, ...rowsFor(ui, ['A.type', 'A.refl', 'A.req'])),
       el('div', { id: 'modeA-report', class: 'note' })));
-    // Mode B
-    side.append(section('Mode B — inverse stamping', { open: true, cls: 'only-B', key: 'B', tag: 'solve facet per tile' },
+    side.append(section('Stamp tiles', { open: true, cls: 'only-B', key: 'B', tag: 'solve facet per tile' },
       el('div', { class: 'note' }, 'Tap the simulated target (right) to stamp a tile; drag stamps to move them. The left panel is the second picker: direction from the source (drag a marker to choose it by hand).'),
       el('div', { id: 'stamp-list', class: 'stamp-list' }),
       el('div', { id: 'stamp-edit' }),
       el('div', { class: 'btnrow' }, confirmButton('Clear all stamps', 'Delete every stamp?', () => ui.clearStamps()))));
-    // Mode C
     const applyBtn = el('button', { type: 'button', onclick: () => ui.applyPreset() }, 'Apply preset to profile');
-    side.append(section('Mode C — profile revolve / extrude', { open: true, cls: 'only-C', key: 'C', tag: 'draw, then sweep' },
+    side.append(section('Profile · revolve / extrude', { open: true, cls: 'only-C', key: 'C', tag: 'draw, then sweep' },
       el('div', { class: 'note' }, 'Left panel: tap to append a point, drag points to move, tap a point to select it. The profile is drawn around the source (the dot); ticks show the front (reflecting / air) side.'),
-      ...rowsFor(ui, ['C.preset', 'C.f', 'C.rim', 'C.depth', 'C.theta', 'C.a1', 'C.n']),
-      el('div', { class: 'btnrow' }, applyBtn),
-      ...rowsFor(ui, ['C.sweep', 'C.len', 'C.az', 'C.axis', 'C.mirror', 'C.flip', 'C.rev', 'C.inter', 'C.refl', 'C.ior', 'C.T']),
+      section('Shape', { open: true, key: 'C-shape' }, ...rowsFor(ui, ['C.preset', 'C.f', 'C.rim', 'C.depth', 'C.theta', 'C.a1', 'C.n']), el('div', { class: 'btnrow' }, applyBtn)),
+      section('Sweep', { open: true, key: 'C-sweep' }, ...rowsFor(ui, ['C.sweep', 'C.len', 'C.az', 'C.axis', 'C.mirror', 'C.flip', 'C.rev'])),
+      section('Material', { open: false, key: 'C-mat' }, ...rowsFor(ui, ['C.inter', 'C.refl', 'C.ior', 'C.T'])),
       el('div', { class: 'btnrow' },
         el('button', { type: 'button', id: 'btn-del-point', onclick: () => ui.deleteProfilePoint() }, 'Delete selected point'),
         confirmButton('Clear profile', 'Clear the profile?', () => ui.clearProfile())),
       el('div', { id: 'modeC-report', class: 'note' })));
-    // Source / target / envelope
-    side.append(section('Light source', { open: true, key: 'source' },
-      ...rowsFor(ui, ['src.kind', 'src.shape', 'src.w', 'src.h', 'src.radius', 'src.length', 'src.dist', 'src.sigma', 'src.half', 'src.az', 'src.el']),
-      section('Advanced', { adv: true }, ...rowsFor(ui, ['src.roll', 'src.x', 'src.y', 'src.z', 'src.power']))));
-    side.append(section('Target plane & aim point', { open: false, key: 'target' },
-      ...rowsFor(ui, ['tgt.dist', 'tgt.size', 'tgt.tiltX', 'tgt.tiltY', 'tgt.linked', 'aim.x', 'aim.y', 'aim.z'])));
-    side.append(section('Constraint envelope', { open: false, key: 'envelope' },
-      el('div', { class: 'note' }, 'Drag the grey face handles in the scene to resize.'),
-      ...rowsFor(ui, ['env.shape', 'env.axis', 'env.keep']),
-      section('Advanced', { adv: true }, ...rowsFor(ui, ['env.hx', 'env.hy', 'env.hz', 'env.cx', 'env.cy', 'env.cz']))));
-    // Lenses
+    // ---- 2. Problem: what the design is for
     const lensKind = el('select', { id: 'lens-kind', 'aria-label': 'Lens preset' },
       el('option', { value: 'planoconvex' }, 'Plano-convex'), el('option', { value: 'biconvex' }, 'Biconvex'),
       el('option', { value: 'tir' }, 'TIR collimator'), el('option', { value: 'fresnel' }, 'Fresnel lens (N rings)'));
-    side.append(section('Lenses', { open: false, key: 'lenses', tag: 'refractive presets' },
-      el('div', { class: 'btnrow' }, lensKind, el('button', { type: 'button', onclick: () => ui.addLens(lensKind.value) }, 'Add lens')),
-      el('div', { id: 'lens-list', class: 'lens-list' })));
-    // Simulation (advanced)
+    side.append(section('Problem', { open: true, key: 'problem', tag: 'source · target · envelope' },
+      section('Light source', { open: true, key: 'source' },
+        ...rowsFor(ui, ['src.kind', 'src.shape', 'src.w', 'src.h', 'src.radius', 'src.length', 'src.dist', 'src.sigma', 'src.half']),
+        section('Advanced', { adv: true, key: 'source-adv' }, el('div', { class: 'note' }, 'Direction and position are also draggable in the scene (source dot, arrow tip).'), ...rowsFor(ui, ['src.az', 'src.el', 'src.roll', 'src.x', 'src.y', 'src.z', 'src.power']))),
+      section('Target plane & aim point', { open: true, key: 'target' },
+        ...rowsFor(ui, ['tgt.dist', 'tgt.size', 'tgt.tiltX', 'tgt.tiltY', 'tgt.linked', 'aim.x', 'aim.y', 'aim.z'])),
+      section('Constraint envelope', { open: true, key: 'envelope' },
+        el('div', { class: 'note' }, 'Drag the grey face handles in the scene to resize.'),
+        ...rowsFor(ui, ['env.keep', 'env.shape', 'env.axis']),
+        section('Advanced', { adv: true, key: 'envelope-adv' }, ...rowsFor(ui, ['env.hx', 'env.hy', 'env.hz', 'env.cx', 'env.cy', 'env.cz']))),
+      section('Lenses', { open: false, key: 'lenses', tag: 'refractive presets' },
+        el('div', { class: 'btnrow' }, lensKind, el('button', { type: 'button', onclick: () => ui.addLens(lensKind.value) }, 'Add lens')),
+        el('div', { id: 'lens-list', class: 'lens-list' }))));
+    // ---- 3. Simulation
     side.append(section('Simulation', { open: true, key: 'sim', tag: 'rays & grids' }, ...rowsFor(ui, ['rays', 'tgt.res', 'sim.res', 'sim.autoRes']),
       section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']))));
-    // Scene contents
-    side.append(section('Scene contents', { open: false, key: 'groups' }, el('div', { id: 'group-list', class: 'group-list' })));
-    // Definitions
-    side.append(section('What the numbers mean', { open: false, key: 'defs' }, definitions()));
-    // Checks
+    // ---- 4. View (display only, remembered per browser)
+    side.append(section('View', { open: false, key: 'view', tag: 'display only' },
+      el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit'),
+      el('div', { class: 'row' }, el('label', { title: 'How many ray paths to draw in the scene (0 = none; display only)' }, 'Rays drawn'), el('input', { type: 'range', id: 'ray-paths', min: 0, max: 2000, step: 20, value: 240 }), el('output', { id: 'ray-paths-out' }, '240'))));
+    // ---- 5. Reference & debug
     const runBtn = el('button', { type: 'button', id: 'btn-checks' }, 'Run all checks');
     runBtn.addEventListener('click', () => ui.runChecks());
-    side.append(section('Verification', { open: false, key: 'checks', tag: 'in-page, pass/fail' },
-      el('div', { class: 'note' }, 'Same checks as `node tests/headless.js`. They build their own scenes; your scene is not touched. #14 additionally drives the real DOM inputs here.'),
-      el('div', { class: 'btnrow' }, runBtn), el('div', { id: 'checks-out', class: 'checks' })));
-    // Diagnostics
-    side.append(section('Diagnostics (solver internals)', { open: false, key: 'diag', adv: true, tag: 'read-only' }, el('div', { id: 'diag', class: 'note' })));
+    side.append(section('Reference & debug', { open: false, key: 'ref' },
+      section('What the numbers mean', { open: false, key: 'defs' }, definitions()),
+      section('Verification', { open: false, key: 'checks', tag: 'in-page, pass/fail' },
+        el('div', { class: 'note' }, 'Same checks as `node tests/headless.js`. They build their own scenes; your scene is not touched. #14 additionally drives the real DOM inputs here.'),
+        el('div', { class: 'btnrow' }, runBtn), el('div', { id: 'checks-out', class: 'checks' })),
+      section('Diagnostics (solver internals)', { open: false, key: 'diag', tag: 'read-only' }, el('div', { id: 'diag', class: 'note' })),
+      section('Scene contents', { open: false, key: 'groups', tag: 'visibility override' }, el('div', { id: 'group-list', class: 'group-list' }))));
   }
 
   function definitions() {

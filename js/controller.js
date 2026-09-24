@@ -101,8 +101,8 @@
     // ---- target
     num('tgt.dist', 'Target distance (mm)', (s) => TG(s).distance, (s, v) => { TG(s).distance = Math.max(1e-6, v); }, { section: 'target', groups: ['A', 'B', 'C', 'L'], min: 1, step: 10, help: 'Also draggable in the scene (the handle at the target centre).' }),
     num('tgt.size', 'Target width (mm)', (s) => TG(s).size, (s, v) => { TG(s).size = Math.max(1e-6, v); }, { section: 'target', groups: ['A', 'B'], min: 1, step: 10 }),
-    num('tgt.tiltX', 'Tilt about u (°)', (s) => TG(s).tiltX, (s, v) => { TG(s).tiltX = RF.U.clamp(v, -80, 80); }, { section: 'target', groups: ['A', 'B'], min: -80, max: 80, step: 1 }),
-    num('tgt.tiltY', 'Tilt about v (°)', (s) => TG(s).tiltY, (s, v) => { TG(s).tiltY = RF.U.clamp(v, -80, 80); }, { section: 'target', groups: ['A', 'B'], min: -80, max: 80, step: 1 }),
+    num('tgt.tiltX', 'Tilt about u (°)', (s) => TG(s).tiltX, (s, v) => { TG(s).tiltX = RF.U.clamp(v, -89, 89); }, { section: 'target', groups: ['A', 'B'], min: -89, max: 89, step: 1 }),
+    num('tgt.tiltY', 'Tilt about v (°)', (s) => TG(s).tiltY, (s, v) => { TG(s).tiltY = RF.U.clamp(v, -89, 89); }, { section: 'target', groups: ['A', 'B'], min: -89, max: 89, step: 1 }),
     chk('tgt.linked', 'Aim point moves with target', (s) => TG(s).linked !== false, (s, v) => { const t = TG(s); if (!v && t.linked !== false) t.aim = [t.distance, 0, 0]; t.linked = !!v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], help: 'Unlink to move the target plane without moving the optical target point the facets aim at (the design stays focused at the aim point).' }),
     num('aim.x', 'Aim x', (s) => RF.Engine.aimPoint(TG(s))[0], (s, v) => { TG(s).aim[0] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], step: 10, show: (s) => TG(s).linked === false }),
     num('aim.y', 'Aim y', (s) => RF.Engine.aimPoint(TG(s))[1], (s, v) => { TG(s).aim[1] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], step: 10, show: (s) => TG(s).linked === false }),
@@ -195,6 +195,12 @@
       return changed;
     },
     clearPaint(store) { store.scene.modeA.paint.fill(0); store.invalidate(['A']); },
+    // a saved pattern (any resolution) → current paint grid, nearest-cell resample
+    setPaint(store, src, srcRes) {
+      const sc = store.scene, res = sc.target.res, p = sc.modeA.paint;
+      for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) p[j * res + i] = src[Math.min(srcRes - 1, Math.floor((j + 0.5) * srcRes / res)) * srcRes + Math.min(srcRes - 1, Math.floor((i + 0.5) * srcRes / res))] || 0;
+      store.invalidate(['A']);
+    },
     paintPreset(store, kind) {
       const sc = store.scene, res = sc.target.res, p = sc.modeA.paint, c = (res - 1) / 2;
       for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
@@ -206,6 +212,16 @@
         else if (kind === 'band') v = Math.abs(y) < 0.06 && Math.abs(x) < 0.35 ? 1 : 0;
         else if (kind === 'checker') v = Math.abs(x) < 0.2 && Math.abs(y) < 0.2 && ((i + j) % 2 === 0) ? 1 : 0;
         else if (kind === 'wall') v = y > -0.1 && y < 0.3 && Math.abs(x) < 0.3 ? 0.4 + 0.6 * (0.3 - y) / 0.4 : 0;
+        else if (kind === 'lowbeam') {            // asymmetric cutoff: flat left, 15° step up on the right; hotspot under the kink
+          const cut = x < 0 ? 0 : Math.min(x * Math.tan(15 * Math.PI / 180), 0.05);
+          v = y <= cut && y > -0.22 && Math.abs(x) < 0.42 ? ((x / 0.1) ** 2 + ((y + 0.035) / 0.04) ** 2 <= 1 ? 1 : 0.4) : 0;
+        }
+        else if (kind === 'twospot') v = Math.hypot(x - 0.18, y) < 0.06 || Math.hypot(x + 0.18, y) < 0.06 ? 1 : 0;
+        else if (kind === 'cross') v = (Math.abs(x) < 0.035 && Math.abs(y) < 0.28) || (Math.abs(y) < 0.035 && Math.abs(x) < 0.28) ? 1 : 0;
+        else if (kind === 'frame') { const m = Math.max(Math.abs(x), Math.abs(y)); v = m > 0.2 && m < 0.26 ? 1 : 0; }
+        else if (kind === 'gradient') v = Math.abs(x) < 0.3 && Math.abs(y) < 0.14 ? 0.15 + 0.85 * (x + 0.3) / 0.6 : 0;
+        else if (kind === 'stripes') v = Math.abs(y) < 0.22 && Math.abs(x) < 0.3 && Math.floor((x + 0.3) / 0.12) % 2 === 0 ? 1 : 0;
+        else if (kind === 'thinring') v = r > 0.18 && r < 0.205 ? 1 : 0;
         p[j * res + i] = v;
       }
       store.invalidate(['A']);

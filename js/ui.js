@@ -579,6 +579,39 @@
   ui.deleteStamp = function (id) { C.actions.deleteStamp(ui.store, id); ui.afterChange(); };
   ui.clearStamps = function () { C.actions.clearStamps(ui.store); ui.afterChange(); };
   ui.paintPreset = function (k) { C.actions.paintPreset(ui.store, k); ui.afterChange(); };
+  // paint patterns: built-ins + saved in this browser (resampled to the current paint grid on load)
+  const BUILTIN_PATTERNS = [['beam', 'Beam (two-level)'], ['lowbeam', 'Low beam (15° cutoff)'], ['spot', 'Spot'], ['twospot', 'Two spots'], ['ring', 'Ring'], ['thinring', 'Thin ring'],
+    ['band', 'Band'], ['stripes', 'Stripes'], ['cross', 'Cross'], ['frame', 'Frame'], ['gradient', 'Gradient'], ['wall', 'Wall wash'], ['checker', 'Checker (1-cell)']];
+  const loadPatterns = () => { try { return JSON.parse(localStorage.getItem('flux/patterns') || '{}'); } catch (e) { return {}; } };
+  const savePatterns = (o) => { try { localStorage.setItem('flux/patterns', JSON.stringify(o)); return true; } catch (e) { return false; } };
+  function renderPatterns() {
+    const box = document.getElementById('pattern-box'); if (!box) return;
+    box.innerHTML = '';
+    const saved = loadPatterns(), sel = P.el('select', { 'aria-label': 'Paint pattern' }, P.el('option', { value: '' }, 'Pattern…'),
+      P.el('optgroup', { label: 'Built-in' }, ...BUILTIN_PATTERNS.map(([k, n]) => P.el('option', { value: 'b:' + k }, n))),
+      ...(Object.keys(saved).length ? [P.el('optgroup', { label: 'Saved' }, ...Object.keys(saved).sort().map((n) => P.el('option', { value: 's:' + n }, n)))] : []));
+    sel.addEventListener('change', () => {
+      const v = sel.value; if (!v) return;
+      if (v.startsWith('b:')) ui.paintPreset(v.slice(2));
+      else { const s = loadPatterns()[v.slice(2)]; if (s) { C.actions.setPaint(ui.store, s.paint, s.res); ui.afterChange(); } }
+      del.disabled = !v.startsWith('s:'); ui._patSel = v;
+    });
+    const name = P.el('input', { type: 'text', placeholder: 'name', 'aria-label': 'Pattern name', class: 'pat-name' });
+    const saveBtn = P.el('button', { type: 'button', title: 'Save the current painting as a pattern in this browser' }, 'Save');
+    saveBtn.addEventListener('click', () => {
+      const n = name.value.trim() || ('Pattern ' + new Date().toLocaleString());
+      const o = loadPatterns(); o[n] = { res: ui.store.scene.target.res, paint: ui.store.scene.modeA.paint.slice() };
+      ui.store.notice(savePatterns(o) ? 'Saved pattern “' + n + '”.' : 'Could not save the pattern (browser storage full or unavailable).');
+      ui._patSel = 's:' + n; renderPatterns(); ui.refreshPanels();
+    });
+    const del = confirmDel(() => { const o = loadPatterns(); delete o[(ui._patSel || '').slice(2)]; savePatterns(o); ui._patSel = ''; renderPatterns(); });
+    del.disabled = !(ui._patSel || '').startsWith('s:');
+    if (ui._patSel && [...sel.options].some((o) => o.value === ui._patSel)) sel.value = ui._patSel;
+    box.append(P.el('div', { class: 'row' }, P.el('label', {}, 'Pattern'), sel),
+      P.el('div', { class: 'btnrow' }, name, saveBtn, del, P.confirmButton('Clear paint', 'Clear the painting?', () => ui.clearPaint())));
+  }
+  const confirmDel = (fn) => { const b = P.confirmButton('Delete', 'Delete this saved pattern?', fn); b.title = 'Delete the selected saved pattern'; return b; };
+  ui.renderPatterns = renderPatterns;
   ui.clearPaint = function () { C.actions.clearPaint(ui.store); ui.afterChange(); };
   ui.applyPreset = function (quiet) { C.actions.applyPreset(ui.store); ui.profSel = -1; ui.vProf.fitted = false; ui.store.commit({ deferA: true }); if (!quiet) ui.afterChange(); };
   ui.deleteProfilePoint = function () {
@@ -669,7 +702,6 @@
     const poke = () => { clearTimeout(ui._idleT); ui._idleT = setTimeout(() => showHint(8000), 60000); };
     for (const ev of ['pointerdown', 'keydown', 'wheel']) document.addEventListener(ev, () => { if (!ui.activeHandle) hint.classList.remove('show'); poke(); }, { passive: true });
     showHint(6000); poke();
-    document.getElementById('show-rays').addEventListener('change', (e) => { ui.showRays = e.target.checked; ui.sceneDirty = true; schedule(); });
     for (const b of document.querySelectorAll('[data-fit]')) b.addEventListener('click', () => ui.fit(b.dataset.fit));
     document.getElementById('btn-download').addEventListener('click', () => P.download(ui));
     document.getElementById('btn-generate-top').addEventListener('click', () => ui.generateA());
@@ -768,7 +800,7 @@
     try { scene = RF.State.loadLocal(); restored = !!scene; } catch (e) { scene = null; }
     if (!scene) scene = RF.State.defaultScene();
     ui.store = C.createStore(scene);
-    P.buildSide(ui);
+    P.buildSide(ui); renderPatterns();
     wireTopbar(); wireScene(); wireHeat(); wireLeft();
     ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : null, true);
     if (!scene.groups.A.surfaces.length && scene.mode === 'A') { C.regenerateA(ui.store); }
