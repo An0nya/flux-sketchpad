@@ -1,46 +1,168 @@
-(function (O) {
+/* state.js — the serialisable scene: defaults, surface groups, JSON save/load, localStorage,
+ * and whole-scene transforms used by the verification suite (scale, mirror, reorder).
+ *
+ * Everything the tracer needs is in `scene`; generated surfaces are stored too, so loading a file
+ * reproduces the exact grid without re-running any solver.                                     */
+(function (root) {
   'use strict';
-  const clone=x=>JSON.parse(JSON.stringify(x));
-  function defaults() {
+  const RF = root.RF;
+  const { V } = RF;
+  const VERSION = 1;
+  const LS_KEY = 'faceted-reflector-demo/scene/v1';
+
+  function defaultPaint(res) {
+    // A wide beam with a brighter core: the kind of pattern a headlamp designer paints first.
+    const p = new Array(res * res).fill(0), c = (res - 1) / 2;
+    for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
+      const x = (i - c) / res, y = (j - c) / res;
+      const outer = (x / 0.28) ** 2 + (y / 0.12) ** 2 <= 1;
+      const inner = (x / 0.11) ** 2 + (y / 0.06) ** 2 <= 1;
+      p[j * res + i] = inner ? 1 : outer ? 0.45 : 0;
+    }
+    return p;
+  }
+
+  function defaultScene() {
     return {
-      version:1,mode:'paint',source:{kind:'planar',shape:'disc',position:[0,0,0],axis:[0,0,-1],size:0.6,aspect:1,height:1,intensity:1,distribution:'lambertian',angle:65},
-      envelope:{kind:'box',center:[0,0,-9],size:[30,26,22]},
-      target:{center:[0,0,55],normal:[0,0,-1],width:32,height:24,linked:true,aim:[0,0,55],resolution:50},
-      simulation:{rays:2000,bounces:1,floor:.01,seed:73129},
-      design:{budget:64,curved:true,fill:1,edgeBias:0,designEmitter:1,stampSize:6,brush:3,paintLevel:1,profileSweep:'revolve',profileType:'reflect',profileFlip:false,profileSymmetry:true,extrusion:18,lens:'plano',lensRadius:7,lensThickness:3,lensFocal:20,lensRings:8,ior:1.5},
-      view:{yaw:.62,pitch:.28,zoom:1,pan:[0,0],rays:true,normals:false,smooth:false,surfacePairs:false},
-      paint:[],stamps:[],profile:[],surfaces:[],selection:null,notes:[],designCache:null
+      version: VERSION, units: 'mm', name: 'Headlamp sketch',
+      source: {
+        kind: 'planar', shape: 'rect', pos: [0, 0, 0], axis: [0, 0, 1], roll: 0,
+        w: 2, h: 2, radius: 1, length: 4, power: 1000,
+        dist: 'lambertian', sigma: 30, halfAngle: 60,
+      },
+      envelope: { shape: 'box', center: [-20, 0, 27.5], half: [40, 45, 32.5], axis: 2, keepOut: 12 },
+      target: { distance: 1000, size: 1000, tiltX: 0, tiltY: 0, res: 50, linked: true, aim: [1000, 0, 0] },
+      sim: { rays: 2000, bounces: 1, floor: 0.01, seed: 1, smoothing: false, view: 'total', surfaceView: 'shaded' },
+      mode: 'A',
+      modeA: { paint: defaultPaint(50), brush: { size: 3, strength: 1, erase: false }, budget: 48, facetType: 'curved', reflectivity: 0.9, requiredFlux: 0 },
+      modeB: { stamps: [], selected: null, facetType: 'curved', defaultScale: 160 },
+      modeC: {
+        profile: [], sweep: 'revolve', axisMode: 'aim', azSegments: 0, mirror: false, flipFacing: false, reverseAxis: false,
+        interaction: 'reflect', reflectivity: 0.9, ior: 1.49, fresnelT: 0.96, extrudeLength: 60,
+        preset: { kind: 'parabola', f: 12, rim: 45, n: 40, theta: 20, depth: 30 },
+      },
+      lenses: [],
+      groups: {
+        A: { label: 'Mode A reflector', enabled: true, surfaces: [] },
+        B: { label: 'Mode B stamps', enabled: true, surfaces: [] },
+        C: { label: 'Mode C profile', enabled: true, surfaces: [] },
+        L: { label: 'Lenses', enabled: true, surfaces: [] },
+        M: { label: 'Test / manual', enabled: true, surfaces: [] },
+      },
+      notices: [],
     };
   }
-  function paintPreset(s,name='bar') {
-    const n=s.target.resolution;s.paint=Array(n*n).fill(0);
-    for(let y=0;y<n;y++)for(let x=0;x<n;x++) {
-      const u=(x+.5)/n*2-1,v=(y+.5)/n*2-1;
-      s.paint[y*n+x]=name==='ring'?(Math.hypot(u,v)>.32&&Math.hypot(u,v)<.65?1:0):name==='split'?(Math.abs(u)>.18&&Math.abs(u)<.7&&Math.abs(v)<.25?1:0):name==='spot'?(Math.hypot(u,v)<.32?1:0):(Math.abs(u)<.75&&Math.abs(v)<.22?1:0);
+
+  function allSurfaces(scene) {
+    const out = [];
+    for (const key of Object.keys(scene.groups)) {
+      const g = scene.groups[key];
+      if (!g.enabled) continue;
+      for (const s of g.surfaces) out.push(s);
     }
+    return out;
   }
-  function validate(raw) {
-    if(!raw||raw.version!==1) throw Error('Unsupported scene file. Expected version 1.');
-    const s=defaults();for(const k of Object.keys(s))if(raw[k]!==undefined)s[k]=typeof s[k]==='object'&&!Array.isArray(s[k])&&s[k]!==null?{...s[k],...raw[k]}:raw[k];
-    const num=(x,a,b,label)=>{if(!Number.isFinite(x)||x<a||x>b)throw Error('Invalid '+label);};
-    const vec=(x,label)=>{if(!Array.isArray(x)||x.length!==3)throw Error('Invalid '+label);x.forEach(v=>num(v,-1e8,1e8,label));};
-    num(s.simulation.rays,100,1e6,'ray count');num(s.simulation.bounces,1,8,'bounces');num(s.simulation.floor,0,1,'energy floor');num(s.target.resolution,10,100,'grid');
-    if(!Number.isInteger(s.target.resolution)||!Number.isInteger(s.simulation.rays))throw Error('Grid and ray count must be integers.');
-    vec(s.source.position,'source');vec(s.source.axis,'source axis');vec(s.envelope.center,'envelope');vec(s.envelope.size,'envelope dimensions');vec(s.target.center,'target');vec(s.target.normal,'target normal');vec(s.target.aim,'aim');
-    for(const v of s.envelope.size)num(v,.001,1e6,'envelope dimension');
-    num(s.source.size,0,1e6,'source size');num(s.source.intensity,0,1e6,'intensity');num(s.target.width,.001,1e6,'target width');num(s.target.height,.001,1e6,'target height');
-    if(O.V.len(s.source.axis)<.1||O.V.len(s.target.normal)<.1)throw Error('Direction cannot be zero.');
-    if(!Array.isArray(s.surfaces)||s.surfaces.length>20000)throw Error('Invalid surface list.');
-    for(const f of s.surfaces) {if(!['reflect','refract','absorb'].includes(f.type))throw Error('Unknown surface interaction.');if(f.vertices){if(f.vertices.length!==3)throw Error('Expected triangle.');f.vertices.forEach(p=>vec(p,'vertex'));}else{vec(f.center,'surface');vec(f.normal,'normal');num(f.width,.000001,1e6,'facet width');num(f.height,.000001,1e6,'facet height');}if(f.type==='reflect')num(f.reflectivity,0,1,'reflectivity');if(f.type==='refract')num(f.ior,1,4,'index');}
-    if(s.paint.length!==s.target.resolution**2)paintPreset(s); else s.paint.forEach(v=>num(v,0,100,'paint'));
-    return clone(s);
+
+  // Merge a loaded object onto defaults (tolerates older / partial files).
+  function mergeDefaults(obj, def) {
+    if (Array.isArray(def) || def === null || typeof def !== 'object') return obj === undefined ? def : obj;
+    const out = {};
+    for (const k of Object.keys(def)) out[k] = mergeDefaults(obj ? obj[k] : undefined, def[k]);
+    if (obj && typeof obj === 'object') for (const k of Object.keys(obj)) if (!(k in out)) out[k] = obj[k];
+    return out;
   }
-  // Every UI edit and the wiring tests enter through this same reducer.
-  function edit(s,path,value) {
-    const keys=path.split('.');let obj=s;for(const k of keys.slice(0,-1))obj=obj[k];obj[keys.at(-1)]=value;
-    if(path==='target.center'&&s.target.linked)s.target.aim=[...value];
-    if(path==='target.linked'&&value)s.target.aim=[...s.target.center];
-    if(path==='target.resolution') { const old=Math.round(Math.sqrt(s.paint.length)),a=s.paint;s.paint=Array.from({length:value*value},(_,i)=>a[Math.min(old-1,Math.floor(Math.floor(i/value)*old/value))*old+Math.min(old-1,Math.floor(i%value*old/value))]||0); }
+  function serialize(scene) { return JSON.stringify(scene); }
+  function deserialize(str) {
+    const obj = typeof str === 'string' ? JSON.parse(str) : str;
+    if (!obj || typeof obj !== 'object') throw new Error('not a scene object');
+    const sc = mergeDefaults(obj, defaultScene());
+    // groups: keep loaded surfaces verbatim
+    if (obj.groups) for (const k of Object.keys(obj.groups)) sc.groups[k] = Object.assign({ label: k, enabled: true, surfaces: [] }, obj.groups[k]);
+    if (!Array.isArray(sc.modeA.paint) || sc.modeA.paint.length !== sc.target.res * sc.target.res) sc.modeA.paint = defaultPaint(sc.target.res);
+    return sc;
   }
-  O.State={defaults,clone,validate,edit,paintPreset};
-})(Optics);
+  function saveLocal(scene) {
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem(LS_KEY, serialize(scene)); return true; } catch (e) { return false; }
+  }
+  function loadLocal() {
+    try {
+      if (typeof localStorage === 'undefined') return null;
+      const s = localStorage.getItem(LS_KEY);
+      return s ? deserialize(s) : null;
+    } catch (e) { return null; }
+  }
+  function clearLocal() { try { localStorage.removeItem(LS_KEY); } catch (e) { /* ignore */ } }
+
+  // ---------------------------------------------------------------- whole-scene transforms
+  // Apply fp (point map) and fv (direction map) and fl (length scale) to every geometric field.
+  function mapSurface(s, fp, fv, fl) {
+    const o = RF.U.deepCopy(s);
+    if (o.type === 'facet') {
+      o.P = fp(o.P); o.S0 = fp(o.S0); o.Z = fp(o.Z);
+      if (o.di !== null && o.di !== undefined && isFinite(o.di)) o.di = fl(o.di);
+    }
+    if (o.type === 'plane') { o.P = fp(o.P); o.n = fv(o.n); }
+    if (o.clip) {
+      if (o.clip.pts3) o.clip.pts3 = o.clip.pts3.map(fp);
+      if (o.clip.ref) o.clip.ref = fv(o.clip.ref);
+      if (o.clip.hx !== undefined) { o.clip.hx = fl(o.clip.hx); o.clip.hy = fl(o.clip.hy); }
+      if (o.clip.r !== undefined) o.clip.r = fl(o.clip.r);
+    }
+    if (o.type === 'rev') {
+      o.O = fp(o.O); o.W = fv(o.W); if (o.ref) o.ref = fv(o.ref);
+      const g = o.seg;
+      for (const k of ['z0', 'z1', 'r0', 'r1', 'zc', 'R', 'rmax']) if (g[k] !== undefined) g[k] = fl(g[k]);
+    }
+    return o;
+  }
+  function mapScene(scene, fp, fv, fl) {
+    const sc = RF.U.deepCopy(scene);
+    const s = sc.source;
+    s.pos = fp(s.pos); s.axis = fv(s.axis);
+    s.w = fl(s.w); s.h = fl(s.h); s.radius = fl(s.radius); s.length = fl(s.length);
+    sc.envelope.center = fp(sc.envelope.center);
+    sc.envelope.half = sc.envelope.half.map((h) => Math.abs(fl(h)));
+    sc.envelope.keepOut = Math.abs(fl(sc.envelope.keepOut || 0));
+    sc.target.distance = fl(sc.target.distance); sc.target.size = fl(sc.target.size);
+    sc.target.aim = fp(sc.target.aim);
+    for (const k of Object.keys(sc.groups)) sc.groups[k].surfaces = sc.groups[k].surfaces.map((x) => mapSurface(x, fp, fv, fl));
+    // design intent is geometry too: lens parameters, profile, stamps (u,v,scale), paint in u
+    const LEN = ['f', 'a', 'edge', 'tb', 'A', 'rc', 'hc', 'd'];
+    for (const L of sc.lenses) for (const k of LEN) if (typeof L.params[k] === 'number') L.params[k] = Math.abs(fl(L.params[k]));
+    const mc = sc.modeC;
+    mc.profile = mc.profile.map(([r, z]) => [Math.abs(fl(r)), fl(z)]);
+    for (const k of ['f', 'rim', 'depth', 'a1']) if (typeof mc.preset[k] === 'number') mc.preset[k] = Math.abs(fl(mc.preset[k]));
+    mc.extrudeLength = Math.abs(fl(mc.extrudeLength));
+    const fu = mapScene.fu || ((u) => fl(u));
+    for (const st of sc.modeB.stamps) { st.u = fu(st.u); st.v = fl(st.v); st.scale = Math.abs(fl(st.scale)); }
+    sc.modeB.defaultScale = Math.abs(fl(sc.modeB.defaultScale));
+    return sc;
+  }
+  // Scale every length about the world origin (the target stays on the +x throw axis).
+  function scaleScene(scene, k) { return mapScene(scene, (p) => V.mul(p, k), (v) => v.slice(), (l) => l * k); }
+  // Mirror across the world plane y = 0 (the target's u axis is −y, so the grid mirrors in u).
+  function mirrorSceneY(scene) {
+    const m = (p) => [p[0], -p[1], p[2]];
+    mapScene.fu = (u) => -u;                        // target u axis is −y: mirror flips u
+    let sc;
+    try { sc = mapScene(scene, m, m, (l) => l); } finally { mapScene.fu = null; }
+    sc.source.roll = -(sc.source.roll || 0);
+    const res = sc.target.res, p = sc.modeA.paint, q = p.slice();
+    for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) q[j * res + i] = p[j * res + (res - 1 - i)];
+    sc.modeA.paint = q;
+    return sc;
+  }
+  // Reverse the order of every surface list (order must not matter).
+  function reorderScene(scene) {
+    const sc = RF.U.deepCopy(scene);
+    const keys = Object.keys(sc.groups).reverse(), g = {};
+    for (const k of keys) { g[k] = sc.groups[k]; g[k].surfaces = g[k].surfaces.slice().reverse(); }
+    sc.groups = g;
+    return sc;
+  }
+
+  RF.State = {
+    VERSION, LS_KEY, defaultScene, defaultPaint, allSurfaces, serialize, deserialize,
+    saveLocal, loadLocal, clearLocal, mapSurface, scaleScene, mirrorSceneY, reorderScene,
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);

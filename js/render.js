@@ -1,103 +1,323 @@
-(function(O) {
+/* render.js — Canvas 2D rendering: orthographic ("isometric") 3D camera with an unrestricted
+ * trackball, the scene view (envelope, source as its real geometry, surfaces, target plane with
+ * the heatmap texture, ray paths, handles), the surface view, and shared colour helpers.
+ * The target heatmap is mapped onto the plane with an exact affine transform (orthographic
+ * projection of a planar rectangle is affine), so the picture is not an approximation.        */
+(function (root) {
   'use strict';
-  const {V,Geometry:Geo}=O;
-  const palette=t=>{const stops=[[8,15,24],[27,66,92],[50,128,145],[130,220,197],[255,242,182]],z=V.clamp(t,0,1)*4,i=Math.min(3,Math.floor(z)),f=z-i;return stops[i].map((v,k)=>Math.round(v+(stops[i+1][k]-v)*f));};
-  class Renderer {
-    constructor(app) {this.app=app;this.canvases={};this.views={};this.handles=[];this.surfacePolygons=[];this.mapViews={intent:{zoom:1,pan:[0,0]},heatmap:{zoom:1,pan:[0,0]}};this.smallView={yaw:.6,pitch:.45,zoom:1,pan:[0,0]};for(const id of ['scene','surfaces','intent','heatmap'])this.canvases[id]=document.getElementById(id);this.heat=document.createElement('canvas');}
-    context(id) {const canvas=this.canvases[id],r=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}const c=canvas.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,r.width,r.height);return {c,w:r.width,h:r.height};}
-    camera(id,w,h) {
-      const s=this.app.state,v=id==='scene'?s.view:this.smallView;
-      let center,extent;
-      if(id==='scene'){center=V.mul(V.add(s.envelope.center,s.target.center),.5);extent=Math.max(V.distance(s.envelope.center,s.target.center)+Math.max(...s.envelope.size)*.7,s.target.width*1.4);}
-      else {const pts=s.surfaces.flatMap(f=>f.vertices||[f.center]);if(pts.length){const b=Geo.bounds(pts);center=V.mul(V.add(b.min,b.max),.5);extent=Math.max(8,V.len(V.sub(b.max,b.min))*1.15);}else{center=s.envelope.center;extent=Math.max(...s.envelope.size);}}
-      const forward=V.axis(v.yaw,v.pitch),right=[Math.cos(v.yaw),0,-Math.sin(v.yaw)],up=V.cross(forward,right);
-      let scale=Math.min(w,h)*1.45/extent*v.zoom,shift=[0,0];
-      if(id==='scene'){
-        const tf=V.planeFrame(s.target.normal),points=[...this.envelopeLines(s.envelope).flat(),s.source.position,...[-1,1].flatMap(x=>[-1,1].map(y=>V.add(s.target.center,V.world([x*s.target.width/2,y*s.target.height/2,0],tf))))];
-        const xx=points.map(p=>V.dot(V.sub(p,center),right)),yy=points.map(p=>V.dot(V.sub(p,center),up)),xmin=Math.min(...xx),xmax=Math.max(...xx),ymin=Math.min(...yy),ymax=Math.max(...yy);
-        scale=Math.min((w-65)/Math.max(1,xmax-xmin),(h-85)/Math.max(1,ymax-ymin))*v.zoom;shift=[(xmin+xmax)/2,(ymin+ymax)/2];
-      }
-      const project=p=>{const q=V.sub(p,center);return [w/2+(V.dot(q,right)-shift[0])*scale+v.pan[0],h/2-(V.dot(q,up)-shift[1])*scale+v.pan[1],V.dot(q,forward)];};
-      return this.views[id]={project,right,up,forward,scale,center,w,h};
-    }
-    path(c,points,stroke,fill,width=1) {if(!points.length)return;c.beginPath();c.moveTo(points[0][0],points[0][1]);for(const p of points.slice(1))c.lineTo(p[0],p[1]);if(fill){c.closePath();c.fillStyle=fill;c.fill();}if(stroke){c.strokeStyle=stroke;c.lineWidth=width;c.stroke();}}
-    text(c,x,y,t,color='#a8bcc8',size=10){c.font=`${size}px -apple-system, sans-serif`;c.fillStyle=color;c.fillText(t,x,y);}
-    heatImage() {
-      const s=this.app.state,n=s.target.resolution,g=this.app.result?.grid;if(this.heat.width!==n){this.heat.width=n;this.heat.height=n;}const c=this.heat.getContext('2d'),img=c.createImageData(n,n);let max=0;if(g)for(const x of g)max=Math.max(max,x);
-      for(let i=0;i<n*n;i++){const rgb=palette(max&&g?Math.sqrt(g[i]/max):0);img.data.set([...rgb,255],i*4);}c.putImageData(img,0,0);
-    }
-    envelopeLines(e) {
-      const out=[],C=e.center,R=e.size.map(x=>x/2),p=q=>V.add(C,q);
-      if(e.kind==='box') {const vertices=[];for(const x of [-1,1])for(const y of [-1,1])for(const z of [-1,1])vertices.push(p([x*R[0],y*R[1],z*R[2]]));for(let i=0;i<8;i++)for(let j=i+1;j<8;j++)if([0,1,2].filter(k=>vertices[i][k]!==vertices[j][k]).length===1)out.push([vertices[i],vertices[j]]);}
-      else if(e.kind==='cylinder'){for(const y of [-1,1])out.push(Array.from({length:65},(_,i)=>{const a=i/64*Math.PI*2;return p([Math.cos(a)*R[0],y*R[1],Math.sin(a)*R[2]]);}));for(let i=0;i<8;i++){const a=i/8*Math.PI*2;out.push([-1,1].map(y=>p([Math.cos(a)*R[0],y*R[1],Math.sin(a)*R[2]])));}}
-      else for(let k=0;k<3;k++)out.push(Array.from({length:65},(_,i)=>{const a=i/64*Math.PI*2,q=[0,0,0];q[(k+1)%3]=Math.cos(a)*R[(k+1)%3];q[(k+2)%3]=Math.sin(a)*R[(k+2)%3];return p(q);}));return out;
-    }
-    handle(c,p,label,color,id) {c.beginPath();c.arc(p[0],p[1],5,0,Math.PI*2);c.fillStyle='#101c26';c.fill();c.strokeStyle=color;c.lineWidth=1.5;c.stroke();this.text(c,p[0]+10,p[1]-8,label,color,9);this.handles.push({p,id});}
-    drawSource(c,project,s) {
-      const frame=V.frame(s.axis),center=s.position,R=s.size/2,point=q=>project(V.add(center,V.world(q,frame)));
-      if(s.kind==='point') {const p=project(center);c.beginPath();c.arc(p[0],p[1],4,0,Math.PI*2);c.fillStyle='#ffe0a5';c.fill();}
-      else if(s.kind==='planar'){const q=s.shape==='rectangle'?[[-R,-R*s.aspect,0],[R,-R*s.aspect,0],[R,R*s.aspect,0],[-R,R*s.aspect,0]]:Array.from({length:33},(_,i)=>[R*Math.cos(i/32*Math.PI*2),R*Math.sin(i/32*Math.PI*2),0]);this.path(c,q.map(point),'#ffe3a2','#f4c17caa',2);}
-      else if(s.shape==='cylinder') {for(const z of [-s.height/2,s.height/2])this.path(c,Array.from({length:33},(_,i)=>point([R*Math.cos(i/32*Math.PI*2),R*Math.sin(i/32*Math.PI*2),z])),'#f4c17c','#f4c17c33');for(let i=0;i<6;i++){const a=i/6*Math.PI*2;this.path(c,[-1,1].map(z=>point([R*Math.cos(a),R*Math.sin(a),z*s.height/2])),'#f4c17c66');}}
-      else for(let k=0;k<3;k++)this.path(c,Array.from({length:33},(_,i)=>{const a=i/32*Math.PI*2,p=[0,0,0];p[(k+1)%3]=R*Math.cos(a);p[(k+2)%3]=R*Math.sin(a);return point(p);}),'#f4c17c','#f4c17c10');
-      const a=project(center),b=project(V.add(center,V.mul(s.axis,5)));this.path(c,[a,b],'#f4c17c',null,2);const angle=Math.atan2(b[1]-a[1],b[0]-a[0]);this.path(c,[[b[0]-7*Math.cos(angle-.4),b[1]-7*Math.sin(angle-.4)],b,[b[0]-7*Math.cos(angle+.4),b[1]-7*Math.sin(angle+.4)]],'#f4c17c',null,2);
-    }
-    drawScene(id='scene') {
-      const {c,w,h}=this.context(id),s=this.app.state,cam=this.camera(id,w,h),project=cam.project,isMain=id==='scene';
-      if(isMain) {
-        this.handles=[];
-        const step=5,z=s.envelope.center[2]-s.envelope.size[2]/2;
-        for(let i=-30;i<=30;i+=step){this.path(c,[[i,-30,z],[i,30,z]].map(project),'#56708015');this.path(c,[[-30,i,z],[30,i,z]].map(project),'#56708015');}
-        for(const line of this.envelopeLines(s.envelope))this.path(c,line.map(project),'#69889f55');
-        const f=V.planeFrame(s.target.normal),p=V.add(s.target.center,V.world([-s.target.width/2,-s.target.height/2,0],f)),a=project(p),b=project(V.add(p,V.mul(f.u,s.target.width))),d=project(V.add(p,V.mul(f.v,s.target.height)));
-        c.save();c.globalAlpha=.72;c.transform((b[0]-a[0])/this.heat.width,(b[1]-a[1])/this.heat.width,(d[0]-a[0])/this.heat.height,(d[1]-a[1])/this.heat.height,a[0],a[1]);c.imageSmoothingEnabled=s.view.smooth;c.drawImage(this.heat,0,0);c.restore();
-        this.path(c,[a,b,[b[0]+d[0]-a[0],b[1]+d[1]-a[1]],d,a],'#b7a6ef88');
-      }
-      const faces=s.surfaces.map((f,i)=>({f,i,pts:Geo.corners(f,f.focal?4:1).map(project)})).sort((a,b)=>a.pts.reduce((s,p)=>s+p[2],0)/a.pts.length-b.pts.reduce((s,p)=>s+p[2],0)/b.pts.length);
-      if(!isMain)this.surfacePolygons=[];
-      for(const {f,i,pts}of faces) {
-        const selected=s.selection===f.id,col=f.type==='refract'?'#b9afff':f.type==='absorb'?'#74818c':'#88d7d4';
-        this.path(c,pts,selected?'#fff0b3':col+(isMain?'88':'bb'),selected?'#e9bb6b66':col+(isMain?'1c':'22'),selected?2:.7);
-        if(!isMain){this.surfacePolygons.push({pts,id:f.id});const center=f.center||V.mul(f.vertices.reduce((a,p)=>V.add(a,p),[0,0,0]),1/3),normal=f.normal||V.unit(V.cross(V.sub(f.vertices[1],f.vertices[0]),V.sub(f.vertices[2],f.vertices[0])));
-          if(s.view.normals)this.path(c,[center,V.add(center,V.mul(normal,1.5))].map(project),'#f4c17caa');
-          if(s.view.surfacePairs&&i%Math.max(1,Math.ceil(faces.length/80))===0){
-            const incoming=V.unit(V.sub(center,s.source.position)),front=V.dot(incoming,normal)<0,points=[V.sub(center,V.mul(incoming,3)),center];
-            if(f.type==='reflect'&&(front||f.twoSided))points.push(V.add(center,V.mul(V.reflect(incoming,normal),3)));
-            if(f.type==='refract'){const refracted=O.snell(incoming,normal,front?1:f.ior,front?f.ior:1);points.push(V.add(center,V.mul(refracted.d,3)));}
-            this.path(c,points.map(project),'#f4c17c99');
-          }
-        }
-      }
-      if(isMain) {
-        if(s.view.rays&&this.app.result?.paths)for(const path of this.app.result.paths)this.path(c,path.points.map(project),path.via?'#f4c17c26':'#b8a6ee30',null,.65);
-        this.drawSource(c,project,s.source);
-        this.handle(c,project(s.source.position),'SOURCE','#f4c17c','source');
-        this.handle(c,project(V.add(s.source.position,[0,0,5])),'SOURCE Z','#d7ad77','sourceZ');
-        this.handle(c,project(s.target.center),'TARGET · drag distance','#b7a6ef','target');
-        const corner=V.add(s.envelope.center,V.mul(s.envelope.size,.5));this.handle(c,project(corner),'ENVELOPE','#8eacbf','envelope');
-        if(!s.target.linked){const p=project(s.target.aim);this.text(c,p[0],p[1],'⊕ AIM','#cbb4ef',14);}
-        if(this.app.preview){this.path(c,this.app.preview.map(project),'#ffe3a0',null,2);}
-        const axisOrigin=[35,h-37],axisScale=18;
-        for(const [vec,label,col]of [[[1,0,0],'X','#83ccde'],[[0,1,0],'Y','#f4c17c'],[[0,0,1],'Z','#b7a6ef']]){const q=[axisOrigin[0]+V.dot(vec,cam.right)*axisScale,axisOrigin[1]-V.dot(vec,cam.up)*axisScale];this.path(c,[axisOrigin,q],col);this.text(c,q[0]+3,q[1],label,col,9);}
-      } else if(!s.surfaces.length)this.text(c,20,h/2,'Your optical surfaces will appear here.');
-    }
-    mapGeometry(id,w,h) {const v=this.mapViews[id],size=Math.min(w-12,h-12)*v.zoom;return {x:(w-size)/2+v.pan[0],y:(h-size)/2+v.pan[1],size};}
-    mapUV(id,x,y) {const r=this.canvases[id].getBoundingClientRect(),m=this.mapGeometry(id,r.width,r.height);return {u:(x-m.x)/m.size,v:(y-m.y)/m.size};}
-    drawMap(id) {
-      const {c,w,h}=this.context(id),s=this.app.state,m=this.mapGeometry(id,w,h),n=s.target.resolution;
-      if(id==='heatmap'){c.imageSmoothingEnabled=s.view.smooth;c.drawImage(this.heat,m.x,m.y,m.size,m.size);return;}
-      if(s.mode==='profile') {
-        const range=Math.max(...s.envelope.size)*.65,to=q=>[m.x+q[0]/range*m.size,m.y+m.size/2-q[1]/range*m.size];
-        for(let j=-4;j<=4;j++){this.path(c,[[m.x,m.y+m.size/2+j*m.size/8],[m.x+m.size,m.y+m.size/2+j*m.size/8]],'#263b4a');}
-        this.path(c,[[m.x,m.y],[m.x,m.y+m.size]],'#88d7d4aa');this.path(c,[[m.x,m.y+m.size/2],[m.x+m.size,m.y+m.size/2]],'#f4c17c66');
-        this.path(c,s.profile.map(to),'#88d7d4',null,2);for(const p of s.profile){const q=to(p);c.beginPath();c.arc(q[0],q[1],3,0,Math.PI*2);c.fillStyle='#b7f1e5';c.fill();}
-        this.text(c,m.x+5,m.y+12,'z ↑',undefined,9);this.text(c,m.x+m.size-22,m.y+m.size/2-5,'r →',undefined,9);this.text(c,m.x+3,m.y+m.size-5,`width ${range.toFixed(1)} units`,undefined,8);return;
-      }
-      c.fillStyle='#080f18';c.fillRect(m.x,m.y,m.size,m.size);
-      if(s.mode==='paint') {for(let i=0;i<s.paint.length;i++)if(s.paint[i]>0){c.fillStyle=`rgba(136,215,212,${.2+.7*s.paint[i]})`;c.fillRect(m.x+i%n*m.size/n,m.y+Math.floor(i/n)*m.size/n,m.size/n+.15,m.size/n+.15);}}
-      else {for(const stamp of s.stamps){const ww=stamp.size/s.target.width*m.size,hh=stamp.size/s.target.height*m.size,x=m.x+stamp.u*m.size,y=m.y+stamp.v*m.size;c.fillStyle=stamp.id===this.app.selectedStamp?'#f4c17c44':'#88d7d433';c.strokeStyle=stamp.id===this.app.selectedStamp?'#f4c17c':'#88d7d4';c.lineWidth=1.5;c.fillRect(x-ww/2,y-hh/2,ww,hh);c.strokeRect(x-ww/2,y-hh/2,ww,hh);this.text(c,x-3,y+3,String(s.stamps.indexOf(stamp)+1),'#dff4ec',9);}}
-      if(m.size/n>=4){c.strokeStyle='#719dbb11';c.lineWidth=.5;for(let i=0;i<=n;i++){c.beginPath();c.moveTo(m.x+i*m.size/n,m.y);c.lineTo(m.x+i*m.size/n,m.y+m.size);c.moveTo(m.x,m.y+i*m.size/n);c.lineTo(m.x+m.size,m.y+i*m.size/n);c.stroke();}}
-    }
-    draw() {this.heatImage();this.drawScene();this.drawScene('surfaces');this.drawMap('intent');this.drawMap('heatmap');}
+  const RF = root.RF;
+  const { V } = RF;
+
+  // ---------------------------------------------------------------- colour
+  // Inferno-like anchors: luminance rises monotonically (readable without hue discrimination).
+  const CMAP = [[0, 0, 0, 4], [0.25, 66, 10, 104], [0.5, 147, 38, 103], [0.7, 221, 81, 58], [0.85, 252, 165, 10], [1, 252, 255, 164]];
+  const LUT = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255; let k = 0; while (k < CMAP.length - 2 && t > CMAP[k + 1][0]) k++;
+    const a = CMAP[k], b = CMAP[k + 1], f = (t - a[0]) / (b[0] - a[0]);
+    for (let c = 0; c < 3; c++) LUT[3 * i + c] = a[c + 1] + (b[c + 1] - a[c + 1]) * f;
   }
-  O.Renderer=Renderer;
-})(Optics);
+  const GROUP_COL = { A: [242, 180, 65], B: [76, 195, 217], C: [180, 140, 240], L: [143, 184, 255], M: [200, 200, 200] };
+  const rgba = (c, a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
+
+  // ---------------------------------------------------------------- camera
+  function Camera(az, el) {
+    this.R = null; this.scale = 4; this.pan = [0, 0]; this.center = [0, 0, 0]; this.w = 300; this.h = 300;
+    this.setAngles(az === undefined ? -50 : az, el === undefined ? 30 : el);
+  }
+  Camera.prototype.setAngles = function (azDeg, elDeg) {
+    const a = azDeg * Math.PI / 180, b = elDeg * Math.PI / 180;
+    const e = [Math.cos(b) * Math.cos(a), Math.cos(b) * Math.sin(a), Math.sin(b)];
+    const f = V.neg(e);
+    let right = V.cross(f, [0, 0, 1]); if (V.len(right) < 1e-9) right = [1, 0, 0];
+    right = V.norm(right);
+    const up = V.cross(right, f);
+    this.R = [right, up, e];
+  };
+  Camera.prototype.lookAlong = function (dirToEye, upHint) {       // view with the eye along dirToEye
+    const e = V.norm(dirToEye), f = V.neg(e);
+    let right = V.cross(f, upHint || [0, 0, 1]); if (V.len(right) < 1e-9) right = V.cross(f, [0, 1, 0]);
+    right = V.norm(right);
+    this.R = [right, V.cross(right, f), e];
+  };
+  Camera.prototype.view = function (p) {
+    const d = [p[0] - this.center[0], p[1] - this.center[1], p[2] - this.center[2]], R = this.R;
+    return [V.dot(R[0], d), V.dot(R[1], d), V.dot(R[2], d)];
+  };
+  Camera.prototype.project = function (p) {
+    const v = this.view(p);
+    return [this.w / 2 + this.pan[0] + this.scale * v[0], this.h / 2 + this.pan[1] - this.scale * v[1], v[2]];
+  };
+  // screen delta → world delta in the view plane
+  Camera.prototype.screenToWorldDelta = function (dx, dy) {
+    const R = this.R;
+    return V.add(V.mul(R[0], dx / this.scale), V.mul(R[1], -dy / this.scale));
+  };
+  // Free trackball: rotate about the screen axes; no clamp, so the camera can go over the poles
+  Camera.prototype.orbit = function (dx, dy) {
+    const k = 0.008, R = this.R;
+    const rot = (vecs, axis, ang) => vecs.map((v) => V.rotate(v, axis, ang));
+    let rows = rot(R, R[1], -dx * k);           // about screen-vertical
+    rows = rot(rows, rows[0], -dy * k);         // about screen-horizontal
+    // re-orthonormalise
+    const e = V.norm(rows[2]), right = V.norm(V.sub(rows[0], V.mul(e, V.dot(rows[0], e))));
+    this.R = [right, V.cross(e, right), e];
+  };
+  Camera.prototype.zoomAt = function (factor, sx, sy) {
+    const ox = sx - this.w / 2 - this.pan[0], oy = sy - this.h / 2 - this.pan[1];
+    this.scale *= factor;
+    this.pan[0] -= ox * (factor - 1); this.pan[1] -= oy * (factor - 1);
+  };
+  Camera.prototype.fit = function (pts, margin) {
+    if (!pts.length) return;
+    const R = this.R;
+    let lo = [Infinity, Infinity], hi = [-Infinity, -Infinity], c = [0, 0, 0];
+    for (const p of pts) c = V.add(c, p);
+    c = V.mul(c, 1 / pts.length);
+    this.center = c;
+    for (const p of pts) { const d = V.sub(p, c), x = V.dot(R[0], d), y = V.dot(R[1], d); lo = [Math.min(lo[0], x), Math.min(lo[1], y)]; hi = [Math.max(hi[0], x), Math.max(hi[1], y)]; }
+    const m = margin || 0.12;
+    this.scale = Math.min(this.w / Math.max(1e-9, (hi[0] - lo[0]) * (1 + 2 * m)), this.h / Math.max(1e-9, (hi[1] - lo[1]) * (1 + 2 * m)));
+    this.pan = [-this.scale * (lo[0] + hi[0]) / 2, this.scale * (lo[1] + hi[1]) / 2];
+  };
+
+  function fitCanvas(cv) {
+    const r = cv.getBoundingClientRect(), dpr = Math.min(2, root.devicePixelRatio || 1);
+    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    return { w: r.width, h: r.height, dpr };
+  }
+
+  // ---------------------------------------------------------------- scene model for drawing
+  // Built once per compile: surface outlines (world polygons), group, normals.
+  function buildDrawModel(scene, P) {
+    const polys = [];
+    const G = P.G;
+    for (let k = 0; k < G.n; k++) {
+      const meta = G.metas[k];
+      const g = (meta.group || 'M').charAt(0);
+      const inter = RF.Geo.INTER_NAMES[G.D[k * RF.Geo.STRIDE + 28]];
+      for (const poly of RF.Geo.outline(G, k)) {
+        const c = V.mul(poly.reduce((s, q) => V.add(s, q), [0, 0, 0]), 1 / poly.length);
+        let n = V.cross(V.sub(poly[1], poly[0]), V.sub(poly[poly.length - 1], poly[0]));
+        if (V.len(n) < 1e-12 && poly.length > 2) n = V.cross(V.sub(poly[1], poly[0]), V.sub(poly[2], poly[0]));
+        polys.push({ k, g, inter, pts: poly, c, n: V.norm(n), id: meta.id });
+      }
+    }
+    return { polys, P };
+  }
+
+  function drawArrow(ctx, a, b, col, w) {
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w || 1.5;
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]), L = 8;
+    ctx.beginPath(); ctx.moveTo(b[0], b[1]);
+    ctx.lineTo(b[0] - L * Math.cos(ang - 0.4), b[1] - L * Math.sin(ang - 0.4));
+    ctx.lineTo(b[0] - L * Math.cos(ang + 0.4), b[1] - L * Math.sin(ang + 0.4));
+    ctx.closePath(); ctx.fill();
+  }
+
+  /* drawScene: opts = { scene, model, paths, heatCanvas, fit:'fixture'|'all', showRays,
+   *   handles (out: list of {id, x, y, r, ...}), highlight, preview (single-ray path) }       */
+  function drawScene(cv, cam, opts) {
+    const box = fitCanvas(cv), ctx = cv.getContext('2d');
+    cam.w = box.w; cam.h = box.h;
+    ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0);
+    ctx.clearRect(0, 0, box.w, box.h);
+    const sc = opts.scene, T = RF.Engine.targetFrame(sc.target), handles = [];
+    const L = cam.scale;
+    // ---- envelope wireframe (behind everything)
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(160,170,190,0.35)'; ctx.setLineDash([4, 3]);
+    for (const line of RF.Geo.envWire(sc.envelope)) {
+      ctx.beginPath(); line.forEach((p, i) => { const s = cam.project(p); if (i) ctx.lineTo(s[0], s[1]); else ctx.moveTo(s[0], s[1]); }); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // ---- polygons: surfaces + target plane, painter-sorted
+    const items = [];
+    for (const p of opts.model.polys) {
+      const pr = p.pts.map((q) => cam.project(q));
+      items.push({ type: 'surf', p, pr, z: pr.reduce((s, q) => s + q[2], 0) / pr.length });
+    }
+    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => RF.Engine.targetUVtoWorld(T, a * T.half, b * T.half));
+    const tpr = corners.map((q) => cam.project(q));
+    items.push({ type: 'target', pr: tpr, z: tpr.reduce((s, q) => s + q[2], 0) / 4 });
+    items.sort((a, b) => a.z - b.z);
+    const light = V.norm(V.add(V.add(cam.R[2], V.mul(cam.R[1], 0.6)), V.mul(cam.R[0], -0.3)));
+    for (const it of items) {
+      if (it.type === 'target') { drawTargetPlane(ctx, cam, T, it.pr, opts.heatCanvas); continue; }
+      const p = it.p, col = GROUP_COL[p.g] || GROUP_COL.M;
+      const lam = 0.35 + 0.65 * Math.abs(V.dot(p.n, light));
+      const a = p.inter === 'refract' ? 0.22 : p.inter === 'absorb' ? 0.55 : 0.42;
+      const c = p.inter === 'absorb' ? [70, 70, 76] : col.map((x) => Math.round(x * lam));
+      ctx.fillStyle = rgba(c, opts.highlight === p.id ? 0.85 : a);
+      ctx.strokeStyle = rgba(col, 0.55); ctx.lineWidth = 0.7;
+      ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    // ---- rays
+    if (opts.showRays && opts.paths) {
+      ctx.lineWidth = 1;
+      for (const path of opts.paths) {
+        const col = path.end === 'target' ? 'rgba(255,214,120,0.55)' : path.end === 'direct' ? 'rgba(143,184,255,0.35)' : path.end === 'escape' ? 'rgba(170,170,180,0.16)' : 'rgba(255,154,61,0.35)';
+        ctx.strokeStyle = col; ctx.beginPath();
+        for (let i = 0; i < path.length; i += 3) { const s = cam.project([path[i], path[i + 1], path[i + 2]]); if (i) ctx.lineTo(s[0], s[1]); else ctx.moveTo(s[0], s[1]); }
+        ctx.stroke();
+      }
+    }
+    if (opts.preview) {                                   // single-ray preview (stamp placement)
+      ctx.lineWidth = 2.5; ctx.strokeStyle = '#4cc3d9'; ctx.beginPath();
+      opts.preview.forEach((p, i) => { const s = cam.project(p); if (i) ctx.lineTo(s[0], s[1]); else ctx.moveTo(s[0], s[1]); });
+      ctx.stroke();
+    }
+    // ---- source (its real geometry) + emission axis
+    drawSource(ctx, cam, sc.source);
+    const src = sc.source, sp = cam.project(src.pos);
+    const axLen = Math.max(12, RF.Source.boundingRadius(src) * 4, 60 / L);
+    const tip = V.madd(src.pos, V.norm(src.axis), axLen), tp = cam.project(tip);
+    drawArrow(ctx, [sp[0], sp[1]], [tp[0], tp[1]], '#ffd678', 2);
+    handles.push({ id: 'src', x: sp[0], y: sp[1], r: 14, label: 'source' }, { id: 'axis', x: tp[0], y: tp[1], r: 14, tip, label: 'emission axis' });
+    // ---- envelope face handles
+    const e = sc.envelope;
+    for (let a = 0; a < 3; a++) for (const s of [-1, 1]) {
+      const p = e.center.slice(); p[a] += s * e.half[a];
+      const q = cam.project(p);
+      handles.push({ id: 'env', axis: a, sign: s, x: q[0], y: q[1], r: 12, p, label: 'envelope ' + 'xyz'[a] + (s > 0 ? '+' : '−') });
+    }
+    // ---- target distance handle
+    const tc = cam.project(T.C);
+    handles.push({ id: 'tgt', x: tc[0], y: tc[1], r: 14, label: 'target distance' });
+    // draw handles
+    for (const h of handles) {
+      const on = opts.activeHandle === h;
+      ctx.beginPath(); ctx.arc(h.x, h.y, on ? 9 : 7, 0, 2 * Math.PI);
+      ctx.fillStyle = h.id === 'env' ? 'rgba(170,180,200,0.75)' : h.id === 'tgt' ? 'rgba(143,184,255,0.9)' : h.id === 'axis' ? '#ffd678' : '#f2b441';
+      ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#111'; ctx.stroke();
+    }
+    // off-screen target indicator
+    if (tc[0] < 0 || tc[0] > box.w || tc[1] < 0 || tc[1] > box.h) {
+      const cx = box.w / 2, cy = box.h / 2, ang = Math.atan2(tc[1] - cy, tc[0] - cx);
+      const ex = cx + Math.cos(ang) * (box.w / 2 - 28), ey = cy + Math.sin(ang) * (box.h / 2 - 28);
+      drawArrow(ctx, [ex - Math.cos(ang) * 30, ey - Math.sin(ang) * 30], [ex, ey], 'rgba(143,184,255,0.8)', 2);
+      ctx.fillStyle = 'rgba(143,184,255,0.9)'; ctx.font = '11px system-ui';
+      ctx.fillText('target plane ' + Math.round(sc.target.distance) + ' mm', Math.min(box.w - 150, Math.max(4, ex - 60)), Math.min(box.h - 6, Math.max(12, ey + (Math.sin(ang) > 0 ? -14 : 18))));
+    }
+    // axes gizmo
+    const gz = [36, box.h - 36];
+    [['x', [1, 0, 0], '#e0a060'], ['y', [0, 1, 0], '#80c0e0'], ['z', [0, 0, 1], '#c0a0f0']].forEach(([n, d, c]) => {
+      const v = [V.dot(cam.R[0], d), -V.dot(cam.R[1], d)];
+      drawArrow(ctx, gz, [gz[0] + v[0] * 22, gz[1] + v[1] * 22], c, 1.5);
+      ctx.fillStyle = c; ctx.font = '10px system-ui'; ctx.fillText(n, gz[0] + v[0] * 30 - 3, gz[1] + v[1] * 30 + 3);
+    });
+    return handles;
+  }
+
+  function drawTargetPlane(ctx, cam, T, pr, heat) {
+    const facing = V.dot(T.n, cam.R[2]) > 0;                    // lit side toward the viewer
+    ctx.save();
+    ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath();
+    if (facing && heat && heat.width) {
+      ctx.clip();
+      const N = heat.width, p00 = pr[0], p10 = pr[1], p01 = pr[3];
+      // image x → +u, image y (down) → −v ; origin at (u=−h, v=+h) = p01
+      const dpr = ctx.getTransform().a;
+      ctx.setTransform(dpr * (p10[0] - p00[0]) / N, dpr * (p10[1] - p00[1]) / N, -dpr * (p01[0] - p00[0]) / N, -dpr * (p01[1] - p00[1]) / N, dpr * p01[0], dpr * p01[1]);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(heat, 0, 0);
+      ctx.restore(); ctx.save();
+      ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath();
+      ctx.strokeStyle = 'rgba(143,184,255,0.9)'; ctx.lineWidth = 1.2; ctx.stroke();
+    } else {
+      ctx.fillStyle = 'rgba(60,66,78,0.55)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(143,184,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+      const c = pr.reduce((s, q) => [s[0] + q[0] / 4, s[1] + q[1] / 4], [0, 0]);
+      ctx.fillStyle = 'rgba(200,210,230,0.7)'; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(facing ? 'target' : 'target (back) — orbit round to see the lit side', c[0], c[1]);
+    }
+    ctx.restore();
+  }
+
+  function drawSource(ctx, cam, src) {
+    const o = RF.Source.outline(src);
+    ctx.fillStyle = 'rgba(255,214,120,0.85)'; ctx.strokeStyle = '#ffe9b0'; ctx.lineWidth = 1.2;
+    if (src.kind === 'point') { const s = cam.project(src.pos); ctx.beginPath(); ctx.arc(s[0], s[1], 4, 0, 2 * Math.PI); ctx.fill(); return; }
+    for (const c of o.circles) {                                   // sphere: a shaded disc
+      const s = cam.project(c.c), r = Math.max(2, c.r * cam.scale);
+      const g = ctx.createRadialGradient(s[0] - r / 3, s[1] - r / 3, r / 6, s[0], s[1], r);
+      g.addColorStop(0, '#fff3cf'); g.addColorStop(1, '#c9892a');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s[0], s[1], r, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    }
+    if (o.cyl) {                                                   // cylinder: two end rings + silhouette
+      const a = o.cyl.a.map((p) => cam.project(p)), b = o.cyl.b.map((p) => cam.project(p));
+      ctx.fillStyle = 'rgba(255,214,120,0.55)';
+      ctx.beginPath(); a.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); b.slice().reverse().forEach((q) => ctx.lineTo(q[0], q[1])); ctx.closePath(); ctx.fill();
+      for (const ring of [a, b]) { ctx.beginPath(); ring.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.stroke(); }
+      for (let i = 0; i < a.length; i += 3) { ctx.beginPath(); ctx.moveTo(a[i][0], a[i][1]); ctx.lineTo(b[i][0], b[i][1]); ctx.stroke(); }
+      return;
+    }
+    for (const poly of o.polys) {                                  // planar: the actual rect/disc
+      const q = poly.map((p) => cam.project(p));
+      ctx.beginPath(); q.forEach((s, i) => (i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    // tiny sources: always visible marker
+    const s = cam.project(src.pos); ctx.beginPath(); ctx.arc(s[0], s[1], 2.5, 0, 2 * Math.PI); ctx.fillStyle = '#fff'; ctx.fill();
+  }
+
+  // ---------------------------------------------------------------- surface view
+  function drawSurfaceView(cv, cam, opts) {
+    const box = fitCanvas(cv), ctx = cv.getContext('2d');
+    cam.w = box.w; cam.h = box.h;
+    ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0);
+    ctx.clearRect(0, 0, box.w, box.h);
+    const model = opts.model, sc = opts.scene, S = sc.source.pos;
+    if (!model.polys.length) {
+      ctx.fillStyle = '#6c7380'; ctx.font = '12px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText('No optical surfaces yet', box.w / 2, box.h / 2); ctx.textAlign = 'left';
+      return;
+    }
+    const light = V.norm(V.add(cam.R[2], V.mul(cam.R[1], 0.6)));
+    const items = model.polys.map((p) => { const pr = p.pts.map((q) => cam.project(q)); return { p, pr, z: pr.reduce((s, q) => s + q[2], 0) / pr.length }; });
+    items.sort((a, b) => a.z - b.z);
+    const G = model.P.G;
+    for (const it of items) {
+      const col = GROUP_COL[it.p.g] || GROUP_COL.M;
+      if (opts.style === 'pairs') {
+        ctx.strokeStyle = rgba(col, 0.35); ctx.lineWidth = 0.8;
+        ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.stroke();
+      } else {
+        const lam = 0.35 + 0.65 * Math.abs(V.dot(it.p.n, light));
+        ctx.fillStyle = rgba(col.map((x) => Math.round(x * lam)), it.p.inter === 'refract' ? 0.3 : 0.5);
+        ctx.strokeStyle = rgba(col, 0.7); ctx.lineWidth = 0.7;
+        ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+    }
+    // per-surface annotation: normals (shaded) or source→surface→out ray pairs
+    const seen = new Set(), sizeRef = 40 / cam.scale;
+    for (let k = 0; k < G.n; k++) {
+      const m = G.metas[k]; if (seen.has(k)) continue; seen.add(k);
+      if (!m.frame) continue;
+      const o = k * RF.Geo.STRIDE, D = G.D;
+      let c = m.frame.P, n;
+      if (m.kind === 'rev') {                          // mid-profile point on the +e1 side
+        const seg = m.seg; if (!seg) continue;
+        const r = 0.5 * (seg.r0 + seg.r1), z = 0.5 * (seg.z0 + seg.z1);
+        c = V.add(m.frame.P, V.add(V.mul(m.frame.ex, r), V.mul(m.frame.ez, z)));
+        const nn = new Float64Array(3); RF.Geo.frontNormal(D, k, r, 0, z, nn); n = [nn[0], nn[1], nn[2]];
+      } else { const nn = new Float64Array(3); RF.Geo.frontNormal(D, k, 0, 0, 0, nn); n = [nn[0], nn[1], nn[2]]; }
+      const col = rgba(GROUP_COL[(m.group || 'M').charAt(0)] || GROUP_COL.M, 0.95);
+      const a = cam.project(c);
+      if (opts.style === 'pairs') {
+        const d = V.norm(V.sub(c, S));
+        const inter = D[o + 28];
+        let out = inter === 0 ? V.reflect(d, n) : d;
+        const s0 = cam.project(V.madd(c, d, -sizeRef * 0.9)), s1 = cam.project(V.madd(c, out, sizeRef * 0.9));
+        drawArrow(ctx, [s0[0], s0[1]], [a[0], a[1]], 'rgba(255,214,120,0.8)', 1.2);
+        drawArrow(ctx, [a[0], a[1]], [s1[0], s1[1]], col, 1.2);
+      } else {
+        const b = cam.project(V.madd(c, n, sizeRef * 0.5));
+        drawArrow(ctx, [a[0], a[1]], [b[0], b[1]], col, 1);
+      }
+    }
+    const s = cam.project(S); ctx.beginPath(); ctx.arc(s[0], s[1], 3.5, 0, 2 * Math.PI); ctx.fillStyle = '#ffd678'; ctx.fill();
+  }
+
+  RF.Render = { Camera, fitCanvas, buildDrawModel, drawScene, drawSurfaceView, drawArrow, LUT, GROUP_COL, rgba };
+})(typeof globalThis !== 'undefined' ? globalThis : this);

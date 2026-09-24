@@ -1,66 +1,128 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flux — reflector sketchpad</title><link rel="icon" href="data:,"><link rel="stylesheet" href="style.css"></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Faceted Reflector Design Demo</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
 <body>
-<header><button id="sidebar-toggle" title="Show or hide the controls">☰</button><a class="brand" href="#">◈ <strong>FLUX</strong><span>an optical sketchpad</span></a><div class="header-right"><span id="run-state" class="status">READY</span><button id="generate-top" class="primary-top">Generate reflector ↗</button><button id="save">Save</button><button id="restore">Restore</button><button id="load">Open</button><button id="download">Export ↗</button><input id="file" type="file" accept=".json" hidden></div></header>
-<main>
-<aside>
-<div class="eyebrow">01 / LIGHT & SPACE</div><h1>Shape the light.</h1><p class="intro">Arrange images of a source.<br>See what the optics really do.</p>
-<label>Start with a scene<select id="scene-preset"><option value="default">LED / a ribbon of light</option><option value="dish">Point / parabolic dish</option><option value="side">LED / asymmetric enclosure</option><option value="lens">Glass / on-axis lens</option></select></label>
-<div class="source-summary"><span class="source-dot"></span><span id="source-summary">Finite LED source</span><small>↗ drag it in the scene</small></div>
-<details open><summary>Source</summary>
-<label>Emitter<select data-path="source.kind"><option value="point">Point</option><option value="planar">Planar LED</option><option value="volume">Volume / filament</option></select></label>
-<label id="source-shape-label">Shape<select data-path="source.shape" id="source-shape"></select></label>
-<label id="source-size-label">Emitter width <output data-output="source.size"></output><input data-path="source.size" type="range" min="0.05" max="5" step="0.05"></label>
-<label id="source-aspect-label">Rectangle aspect<input data-path="source.aspect" type="number" min="0.1" max="10" step="0.1"></label>
-<label id="source-height-label">Cylinder height<input data-path="source.height" type="number" min="0.05" max="10" step="0.1"></label>
-<label>Emission<select data-path="source.distribution"><option value="lambertian">Lambertian · cosine falloff</option><option value="gaussian">Gaussian · angular beam</option><option value="cone">Uniform within a cone</option></select></label>
-<label id="angle-label">Angular width / half-angle °<input data-path="source.angle" type="range" min="1" max="180" step="1"><output data-output="source.angle"></output></label>
-<div class="two"><label>Axis yaw °<input id="axis-yaw" type="number" value="180" step="5"></label><label>Axis elevation °<input id="axis-pitch" type="number" value="0" step="5"></label></div>
-<div class="triple" id="source-position"></div><label>Emitted power<input data-path="source.intensity" type="number" min="0.01" max="100" step="0.1"></label>
-</details>
-<details><summary>Target & enclosure</summary>
-<label>Envelope<select data-path="envelope.kind"><option value="box">Box</option><option value="cylinder">Cylinder · Y axis</option><option value="ellipsoid">Ellipsoid</option></select></label><div class="triple" id="envelope-size"></div><div class="triple" id="envelope-position"></div>
-<div class="divider-sm"></div>
-<div class="two"><label>Target width<input data-path="target.width" type="number" min="1" max="200"></label><label>Target height<input data-path="target.height" type="number" min="1" max="200"></label></div>
-<label>Target tilt ° <output id="tilt-out"></output><input id="target-tilt" type="range" min="-89" max="89" value="0"></label>
-<label class="check"><input data-path="target.linked" type="checkbox"> Target follows optical aim</label>
-<div class="triple" id="target-aim"></div>
-</details>
-<div class="divider"></div><div class="eyebrow">02 / DESIGN METHOD</div>
-<nav class="mode-tabs"><button data-mode="paint" class="active">Paint</button><button data-mode="stamp">Stamp</button><button data-mode="profile">Profile</button></nav>
-<section id="paint-controls" class="mode-controls"><h2>Paint a destination.</h2><p>The solver assigns complete source images to your painted regions.</p><div class="pattern-buttons"><button data-pattern="bar">Ribbon</button><button data-pattern="ring">Ring</button><button data-pattern="split">Split</button><button data-pattern="spot">Spot</button></div><label>Brush radius <output data-output="design.brush"></output><input data-path="design.brush" type="range" min="1" max="10" step="1"></label><div class="two"><label>Paint level<select data-path="design.paintLevel"><option value="1">100%</option><option value="0.5">50%</option><option value="0.2">20%</option></select></label><button id="eraser">Eraser off</button></div><button id="clear-paint" class="subtle">Clear painting</button></section>
-<section id="stamp-controls" class="mode-controls" hidden><h2>Place a source image.</h2><p>Tap the intended map to place a tile. Drag a tile to move it. Its surface is solved backward.</p><label>Tile width <output data-output="design.stampSize"></output><input data-path="design.stampSize" id="stamp-size" type="range" min="1" max="20" step="0.1"></label><small id="stamp-limit"></small><div class="two"><button id="duplicate-stamp">Duplicate</button><button id="delete-stamp">Delete</button></div></section>
-<section id="profile-controls" class="mode-controls" hidden><h2>Draw the cross-section.</h2><p>Tap points in the profile editor. Coordinates are relative to the current source.</p><label>Sweep<select data-path="design.profileSweep"><option value="revolve">Revolve around Z</option><option value="extrude">Extrude along Y</option></select></label><label>Interaction<select data-path="design.profileType"><option value="reflect">Reflective</option><option value="refract">Refractive</option><option value="absorb">Absorbing</option></select></label><label class="check"><input data-path="design.profileFlip" type="checkbox"> Flip surface orientation</label><label class="check" id="symmetry-label"><input data-path="design.profileSymmetry" type="checkbox"> Mirror cross-section</label><label id="extrusion-label">Extrusion length<input data-path="design.extrusion" type="number" min="1" max="80"></label><div class="two"><button id="parabola">Parabola</button><button id="undo-profile">Undo point</button></div><button id="clear-profile" class="subtle">Clear profile</button></section>
-<label>Facet budget <output data-output="design.budget"></output><input data-path="design.budget" type="range" min="8" max="2000" step="4"></label>
-<details id="solver-advanced"><summary>Advanced · solver</summary>
-<label class="check" id="curved-label"><input data-path="design.curved" type="checkbox"> Curved segments <span title="A curved segment can change tile size independently of intercepted aperture.">&#9432;</span></label>
-<label>Capture fill <output data-output="design.fill"></output><input data-path="design.fill" type="range" min="0.05" max="1" step="0.05"> <span title="Fraction of the forward hemisphere the facets are sized to tile. Higher catches more light with bigger facets, which throw bigger source images and spill further past a painted edge. Trades capture against spill — it is NOT the precision control.">&#9432;</span></label>
-<label>Cutoff bias <output data-output="design.edgeBias"></output><input data-path="design.edgeBias" type="range" min="0" max="3" step="0.5"> <span title="0 spends facets in proportion to painted flux, which rounds edges. Above 0 the painted boundary is weighted up and its tiles shrunk. Inert when every requested tile already sits under the source-image floor.">&#9432;</span></label>
-<label>Design emitter <output data-output="design.designEmitter"></output><input data-path="design.designEmitter" type="range" min="0.05" max="1" step="0.05"> <span title="Solves the geometry as if the emitter were this fraction of its real size, then traces the real one. Keeps each facet its own focal length instead of all collapsing to the same conjugate rule. Buys differentiation, costs contrast.">&#9432;</span></label>
-</details>
-<details id="tune-panel"><summary>Auto-tune</summary>
-<p class="tiny">Searches facet budget, capture fill and design emitter by tracing each combination. Scored inside the painted region only — whole-plane coverage and uniformity are maximised by a thin wash over everything, so they are diagnostics here, not objectives.</p>
-<label>Objective<select id="tune-objective"><option value="fill">Fill the intent</option><option value="contain">Contain the beam</option><option value="even">Even interior</option></select></label>
-<small id="tune-hint"></small>
-<label class="check"><input id="tune-wide" type="checkbox"> Search past 500 facets <span title="Off, the search stops at 500 facets. On, it also tries 1000 and 2000, which can take several minutes per step.">&#9432;</span></label>
-<button id="tune-run">Run auto-tune</button><small id="tune-status"></small>
-</details>
-<button id="generate" class="primary">Generate reflector <span>↗</span></button>
-<details><summary>Add a lens</summary><p>Closed glass boundaries. Uses the current source axis and envelope.</p><label>Preset<select data-path="design.lens"><option value="plano">Plano-convex</option><option value="biconvex">Biconvex</option><option value="tir">TIR cup · experimental</option><option value="fresnel">Fresnel annular prisms</option></select></label><div class="two"><label>Radius<input data-path="design.lensRadius" type="number" min="1" max="30"></label><label>Thickness<input data-path="design.lensThickness" type="number" min="0.2" max="20" step="0.2"></label><label>Focal length<input data-path="design.lensFocal" type="number" min="3" max="100"></label><label>Glass index<input data-path="design.ior" type="number" min="1.1" max="2.5" step="0.01"></label></div><label id="rings-label">Fresnel rings<input data-path="design.lensRings" type="number" min="2" max="40"></label><button id="add-lens">Build lens</button></details>
-<details><summary>Advanced · tracing</summary><label>Rays per run<input data-path="simulation.rays" type="number" min="100" max="1000000" step="100"></label><label>Maximum bounces <output data-output="simulation.bounces"></output><input data-path="simulation.bounces" type="range" min="1" max="8" step="1"></label><label>Energy floor (fraction)<input data-path="simulation.floor" type="number" min="0" max="0.5" step="0.005"></label><label>Seed<input data-path="simulation.seed" type="number" min="0" step="1"></label><button id="run">Trace again</button></details>
-<details id="surface-inspector"><summary>Selected surface</summary><p id="surface-id">Tap a facet in the surface view.</p><div id="surface-fields" hidden><label>Interaction<select id="surface-type"><option value="reflect">Reflect</option><option value="refract">Refract</option><option value="absorb">Absorb</option></select></label><label id="reflectivity-label">Mirror reflectivity<input id="surface-reflectivity" type="number" min="0" max="1" step="0.05" value="0.9"></label><label id="ior-label">Refractive index<input id="surface-ior" type="number" min="1" max="3" step="0.01" value="1.5"></label><label id="two-sided-label" class="check"><input id="surface-two-sided" type="checkbox"> Two-sided mirror</label><label id="focal-label">Focal length (0 = flat)<input id="surface-focal" type="number" step="0.5"></label></div></details>
-<button id="tests" class="test-button">◇ Run physics checks</button><a class="readme" href="README.md" target="_blank">Read the physics & limitations ↗</a>
-</aside>
-<div class="workspace">
-<div class="scroll-area">
-<section class="scene-panel panel"><div class="panel-head"><div><span class="eyebrow">LIVE GEOMETRY</span><h2>The light, in space</h2></div><div class="tools"><label class="check"><input data-path="view.rays" type="checkbox"> Rays</label><button id="reset-view">Reset view</button></div></div><canvas id="scene" aria-label="Isometric scene. Drag to orbit, drag emitter, target and envelope handles to adjust."></canvas><div class="scene-footer"><span><i class="legend amber"></i>source & rays <i class="legend cyan"></i>reflector <i class="legend purple"></i>target</span><span>drag to orbit · wheel to zoom · two fingers to pan</span></div><div id="toast" role="status"></div></section>
-<div class="lower-panels"><section class="panel surface-panel"><div class="panel-head"><div><span class="eyebrow">OPTICAL SURFACES</span><h2 id="surface-title">The reflector</h2></div><button id="surface-style">Normals</button></div><canvas id="surfaces" aria-label="Optical surfaces, orbit and select facets"></canvas><div class="small-footer" id="surface-caption">Tap a surface to inspect its optical properties.</div></section><section class="panel map-panel"><div class="panel-head"><div><span class="eyebrow">TARGET PLANE</span><h2>Intent → result</h2></div><label class="grid-control">Grid <select data-path="target.resolution"><option>25</option><option>50</option><option>75</option><option>100</option></select></label></div><div class="maps"><div><div class="map-label" id="intent-label">INTENDED <span>paint here</span></div><canvas id="intent" aria-label="Paint or stamp the intended target; profile editor in profile mode"></canvas></div><div><div class="map-label">SIMULATED <span id="map-progress">raw energy</span></div><canvas id="heatmap" aria-label="Ray traced target intensity"></canvas></div></div><div class="map-footer"><label class="check"><input data-path="view.smooth" type="checkbox"> Smooth display only</label><div class="color-scale"></div><span>0 → peak</span></div></section></div>
-</div>
-<section class="panel metrics-panel"><div id="stats" class="stats"></div><div class="constraint-head"><span class="eyebrow">WHAT THE OPTICS ALLOW</span><span>raw grid · no smoothing in statistics</span></div><div id="constraints" aria-live="polite"></div></section>
-<section id="test-panel" class="panel" hidden><div class="panel-head"><h2>Physics check notebook</h2><button id="close-tests">Close</button></div><div id="test-results"></div></section>
-<footer>Canvas 2D · geometric optics · seeded sampling <span>Every lit pixel began as a ray.</span></footer>
-</div></main>
-<script src="js/math.js"></script><script src="js/state.js"></script><script src="js/geometry.js"></script><script src="js/engine.js"></script><script src="js/design.js"></script><script src="js/tune.js"></script><script src="js/render.js"></script><script src="js/input.js"></script><script src="js/checks.js"></script><script src="js/app.js"></script>
-<dialog id="confirm-dialog"><h2>Replace this work?</h2><p id="confirm-message"></p><div class="two"><button id="confirm-cancel">Keep current</button><button id="confirm-accept">Confirm</button></div></dialog>
-</body></html>
+<noscript><div class="boot-error">This tool needs JavaScript.</div></noscript>
+<div id="boot-error" class="boot-error" hidden></div>
+
+<header class="topbar">
+  <div class="brand">Faceted Reflector <span>sketchpad</span></div>
+  <nav class="modes" role="tablist" aria-label="Input mode">
+    <button role="tab" data-mode="A" title="Paint a target; tile it with source images">A · Paint</button>
+    <button role="tab" data-mode="B" title="Stamp tiles on the target; solve the facet for each">B · Stamp</button>
+    <button role="tab" data-mode="C" title="Draw a cross-section; revolve or extrude it">C · Profile</button>
+  </nav>
+  <div class="runbar">
+    <label class="rays">Rays <input id="rays-input" data-control="rays" type="number" min="100" max="1000000" step="100"></label>
+    <div class="progress" aria-live="polite"><div id="progress-bar"></div><span id="progress-text">—</span></div>
+  </div>
+  <div class="filebar">
+    <select id="preset-select" aria-label="Scene preset">
+      <option value="">Presets…</option>
+      <option value="headlamp">Headlamp beam (Mode A)</option>
+      <option value="deepbox">Tall deep box, source on side wall (Mode A)</option>
+      <option value="stamps">Three stamped tiles (Mode B)</option>
+      <option value="parabola">Parabolic reflector (Mode C)</option>
+      <option value="cpc">CPC collimator (Mode C)</option>
+      <option value="lenscup">Freeform lens profile (Mode C, refract)</option>
+      <option value="tir">TIR collimator (lens)</option>
+      <option value="fresnel">Fresnel spotlight (lens)</option>
+    </select>
+    <button id="btn-download" title="Download the whole scene as one JSON file">Save file</button>
+    <label class="filebtn" title="Load a scene JSON file">Open file<input id="file-input" type="file" accept=".json,application/json" hidden></label>
+    <button id="btn-reset" class="danger" data-confirm="Reset the whole scene?">Reset</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="panel scene-panel">
+    <div class="panel-head">
+      <h2>Scene <small>isometric · drag to orbit, handles to edit</small></h2>
+      <div class="seg" role="group" aria-label="Scene view extent">
+        <button data-fit="fixture" class="on">Fixture</button><button data-fit="all">Whole scene</button>
+      </div>
+      <label class="tog"><input type="checkbox" id="show-rays" checked> rays</label>
+    </div>
+    <div class="canvas-wrap"><canvas id="scene-canvas" aria-label="3D scene view"></canvas>
+      <div class="hint" id="scene-hint"></div></div>
+  </section>
+
+  <section class="panel target-panel">
+    <div class="panel-head">
+      <h2 id="target-title">Target</h2>
+      <label>Grid <input data-control="tgt.res" type="number" min="10" max="100" step="1" class="w4"></label>
+      <select data-control-view="view" aria-label="Heatmap component">
+        <option value="total">total</option><option value="direct">direct only</option><option value="reflected">via surfaces</option>
+      </select>
+      <label class="tog" title="Blurs the PICTURE only. Every statistic uses the raw accumulator."><input type="checkbox" id="smooth"> display smoothing</label>
+    </div>
+    <div class="twin">
+      <figure class="twin-a">
+        <figcaption id="left-caption">Intended</figcaption>
+        <div class="canvas-wrap sq"><canvas id="left-canvas"></canvas></div>
+        <div class="toolrow" id="left-tools"></div>
+      </figure>
+      <figure class="twin-b">
+        <figcaption id="right-caption">Simulated</figcaption>
+        <div class="canvas-wrap sq"><canvas id="heat-canvas"></canvas></div>
+        <div class="toolrow" id="right-tools"><span id="colorbar"></span></div>
+      </figure>
+    </div>
+  </section>
+
+  <section class="panel surface-panel">
+    <div class="panel-head">
+      <h2>Surfaces <small>optics only</small></h2>
+      <select data-control-view="surfaceView" aria-label="Surface view style">
+        <option value="shaded">shaded + normals</option><option value="pairs">ray pairs</option>
+      </select>
+    </div>
+    <div class="canvas-wrap"><canvas id="surface-canvas" aria-label="Surface view"></canvas></div>
+  </section>
+
+  <section class="panel stats-panel">
+    <div class="stats-grid">
+      <div class="stats" id="stats"></div>
+      <div class="feas" id="feasibility" aria-live="polite"></div>
+    </div>
+    <div class="notices" id="notices"></div>
+  </section>
+
+  <aside class="panel side" id="side"></aside>
+</main>
+
+<script src="js/core.js"></script>
+<script src="js/geometry.js"></script>
+<script src="js/source.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/state.js"></script>
+<script src="js/solver.js"></script>
+<script src="js/modeA.js"></script>
+<script src="js/modeB.js"></script>
+<script src="js/feasibility.js"></script>
+<script src="js/profile.js"></script>
+<script src="js/lenses.js"></script>
+<script src="js/controller.js"></script>
+<script src="js/checks1.js"></script>
+<script src="js/checks2.js"></script>
+<script src="js/checks3.js"></script>
+<script src="js/render.js"></script>
+<script src="js/render2d.js"></script>
+<script src="js/input.js"></script>
+<script src="js/panels.js"></script>
+<script src="js/ui.js"></script>
+<script>
+  // If any script failed to load (e.g. a missing file), say so instead of showing a dead page.
+  if (!window.RF || !RF.UI) {
+    var el = document.getElementById('boot-error');
+    el.hidden = false;
+    el.textContent = 'The app failed to start: a script did not load (RF.UI missing). Open the browser console for the file name. No HTTP server is needed — index.html runs from file://.';
+  }
+</script>
+</body>
+</html>

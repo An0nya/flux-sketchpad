@@ -1,50 +1,85 @@
-(function(O) {
+/* input.js — Pointer Events for every canvas (mouse, touch and stylus through one path).
+ *   one pointer on a handle/target → drag it     one pointer elsewhere → primary gesture
+ *   (orbit in 3D, paint in Mode A, pan in 2D)    two pointers → pinch-zoom + two-finger pan
+ *   wheel → zoom                                  shift+drag → pan (mouse users; no right-click)
+ *   short press without movement → tap
+ * Handlers report interaction start/end so the UI can drop to a coarse preview while dragging. */
+(function (root) {
   'use strict';
-  const {V}=O;
-  class Input {
-    constructor(app,renderer) {this.app=app;this.r=renderer;this.active=new Map();for(const [id,canvas]of Object.entries(renderer.canvases)){
-      canvas.addEventListener('pointerdown',e=>this.down(id,e));canvas.addEventListener('pointermove',e=>this.move(id,e));canvas.addEventListener('pointerup',e=>this.up(id,e));canvas.addEventListener('pointercancel',e=>this.up(id,e));
-      canvas.addEventListener('wheel',e=>{e.preventDefault();const v=this.view(id);v.zoom=V.clamp(v.zoom*Math.exp(-e.deltaY*.0015),.2,8);this.r.draw();},{passive:false});
-    }}
-    point(id,e){const b=this.r.canvases[id].getBoundingClientRect();return [e.clientX-b.left,e.clientY-b.top];}
-    view(id){return id==='scene'?this.app.state.view:id==='surfaces'?this.r.smallView:this.r.mapViews[id];}
-    down(id,e) {
-      e.preventDefault();const p=this.point(id,e);if(e.isTrusted)this.r.canvases[id].setPointerCapture(e.pointerId);this.active.set(e.pointerId,{id,p,start:p});
-      const same=[...this.active.values()].filter(a=>a.id===id);if(same.length===2){this.gesture={distance:Math.hypot(same[0].p[0]-same[1].p[0],same[0].p[1]-same[1].p[1]),center:[(same[0].p[0]+same[1].p[0])/2,(same[0].p[1]+same[1].p[1])/2]};this.drag=null;return;}
-      this.drag={id,last:p,start:p,moved:false};
-      if(id==='scene'){const h=this.r.handles.find(h=>Math.hypot(h.p[0]-p[0],h.p[1]-p[1])<15);if(h)this.drag.handle=h.id;}
-      if(id==='intent')this.paint(p,true);
-    }
-    move(id,e) {
-      const a=this.active.get(e.pointerId);if(!a)return;const p=this.point(id,e);a.p=p;
-      const same=[...this.active.values()].filter(a=>a.id===id);
-      if(same.length===2&&this.gesture){const q=same.map(a=>a.p),distance=Math.hypot(q[0][0]-q[1][0],q[0][1]-q[1][1]),center=[(q[0][0]+q[1][0])/2,(q[0][1]+q[1][1])/2],v=this.view(id);v.zoom=V.clamp(v.zoom*distance/Math.max(1,this.gesture.distance),.2,8);v.pan[0]+=center[0]-this.gesture.center[0];v.pan[1]+=center[1]-this.gesture.center[1];this.gesture={distance,center};this.r.draw();return;}
-      const d=this.drag;if(!d||d.id!==id)return;const dx=p[0]-d.last[0],dy=p[1]-d.last[1];if(Math.hypot(p[0]-d.start[0],p[1]-d.start[1])>3)d.moved=true;
-      if(id==='scene'&&d.handle) {
-        const s=this.app.state,cam=this.r.views.scene;
-        if(d.handle==='source'){const delta=V.add(V.mul(cam.right,dx/cam.scale),V.mul(cam.up,-dy/cam.scale));this.app.edit('source.position',V.add(s.source.position,delta),true);}
-        else if(d.handle==='sourceZ'||d.handle==='target'){const dz=(dx*V.dot([0,0,1],cam.right)-dy*V.dot([0,0,1],cam.up))/cam.scale;const path=d.handle==='sourceZ'?'source.position':'target.center',old=d.handle==='sourceZ'?s.source.position:s.target.center;this.app.edit(path,V.add(old,[0,0,dz]),true);}
-        else {const f=Math.exp((dx-dy)*.004);this.app.edit('envelope.size',s.envelope.size.map(x=>V.clamp(x*f,1,150)),true);}
-      }else if(id==='scene'||id==='surfaces') {const v=this.view(id);if(e.shiftKey){v.pan[0]+=dx;v.pan[1]+=dy;}else{v.yaw+=dx*.009;v.pitch+=dy*.009;}this.r.draw();}
-      else if(id==='intent'&&this.app.state.mode!=='profile')this.paint(p,false);
-      d.last=p;
-    }
-    paint(p,first) {
-      const app=this.app,s=app.state,{u,v}=this.r.mapUV('intent',...p);if(u<0||v<0||u>1||v>1)return;
-      if(s.mode==='paint') {const n=s.target.resolution,x=Math.floor(u*n),y=Math.floor(v*n),r=s.design.brush;for(let yy=Math.max(0,y-r);yy<=Math.min(n-1,y+r);yy++)for(let xx=Math.max(0,x-r);xx<=Math.min(n-1,x+r);xx++)if((xx-x)**2+(yy-y)**2<=r*r)s.paint[yy*n+xx]=app.erasing?0:s.design.paintLevel;this.r.drawMap('intent');}
-      else if(s.mode==='stamp') {
-        if(first){const old=[...s.stamps].reverse().find(t=>Math.abs(t.u-u)<t.size/s.target.width/2&&Math.abs(t.v-v)<t.size/s.target.height/2);if(old){app.selectedStamp=old.id;s.design.stampSize=old.size;}else{const id='stamp-'+(++app.serial);s.stamps.push({id,u,v,size:s.design.stampSize});app.selectedStamp=id;}app.sync();}
-        const selected=s.stamps.find(t=>t.id===app.selectedStamp);if(selected){selected.u=u;selected.v=v;}app.generate(true);
-      } else if(first) {const range=Math.max(...s.envelope.size)*.65;s.profile.push([u*range,(.5-v)*range]);O.Design.profileMesh(s);app.run(true);}
-    }
-    up(id,e) {
-      const d=this.drag;this.active.delete(e.pointerId);if(this.active.size<2)this.gesture=null;
-      if(d&&d.id===id){if(id==='surfaces'&&!d.moved){const p=this.point(id,e);const hit=[...this.r.surfacePolygons].reverse().find(x=>this.inPolygon(p,x.pts));if(hit){this.app.state.selection=hit.id;this.app.syncInspector();document.getElementById('surface-inspector').open=true;this.r.draw();}}
-        if(id==='intent'&&this.app.state.mode==='stamp')this.app.generate();
-        else if(id==='scene'&&d.handle||id==='intent'&&this.app.state.mode==='profile')this.app.run();this.app.persist();}
-      this.drag=null;
-    }
-    inPolygon(p,pts){let b=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){const a=pts[i],c=pts[j];if((a[1]>p[1])!==(c[1]>p[1])&&p[0]<(c[0]-a[0])*(p[1]-a[1])/(c[1]-a[1])+a[0])b=!b;}return b;}
+  const RF = root.RF;
+
+  function attach(cv, h) {
+    const pts = new Map();
+    let mode = null, target = null, last = null, downAt = null, moved = 0, pinch = null;
+    const pos = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    const start = () => h.onInteract && h.onInteract(true);
+    const end = () => h.onInteract && h.onInteract(false);
+
+    cv.addEventListener('pointerdown', (e) => {
+      try { cv.setPointerCapture(e.pointerId); } catch (err) { /* synthetic / already-released pointer */ }
+      const p = pos(e);
+      pts.set(e.pointerId, p);
+      if (pts.size === 1) {
+        downAt = { p, t: performance.now() }; moved = 0; last = p;
+        target = h.hitTest ? h.hitTest(p[0], p[1]) : null;
+        if (target) { mode = 'drag'; h.onDragStart && h.onDragStart(target, p[0], p[1]); }
+        else if (e.shiftKey && h.onPan) mode = 'pan';
+        else mode = 'primary';
+        if (mode === 'primary' && h.onPrimaryStart) h.onPrimaryStart(p[0], p[1]);
+        start();
+      } else if (pts.size === 2) {
+        if (mode === 'drag' && h.onDragEnd) h.onDragEnd(target, true);
+        if (mode === 'primary' && h.onPrimaryEnd) h.onPrimaryEnd(true);
+        mode = 'pinch'; target = null;
+        const [a, b] = [...pts.values()];
+        pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+      }
+      e.preventDefault();
+    });
+    cv.addEventListener('pointermove', (e) => {
+      const p = pos(e);
+      if (!pts.has(e.pointerId)) { if (h.onHover) h.onHover(p[0], p[1]); return; }
+      pts.set(e.pointerId, p);
+      if (mode === 'pinch' && pts.size >= 2) {
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a[0] - b[0], a[1] - b[1]), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        if (h.onZoom && pinch.d > 0) h.onZoom(d / pinch.d, c[0], c[1]);
+        if (h.onPan) h.onPan(c[0] - pinch.c[0], c[1] - pinch.c[1]);
+        pinch = { d, c };
+        return;
+      }
+      if (!last) return;
+      const dx = p[0] - last[0], dy = p[1] - last[1];
+      moved += Math.abs(dx) + Math.abs(dy);
+      last = p;
+      if (mode === 'drag' && h.onDrag) h.onDrag(target, p[0], p[1], dx, dy);
+      else if (mode === 'pan' && h.onPan) h.onPan(dx, dy);
+      else if (mode === 'primary' && h.onPrimary) h.onPrimary(p[0], p[1], dx, dy);
+    });
+    const up = (e) => {
+      if (!pts.has(e.pointerId)) return;
+      const p = pos(e);
+      pts.delete(e.pointerId);
+      if (pts.size === 0) {
+        const isTap = downAt && moved < 6 && performance.now() - downAt.t < 450;
+        if (mode === 'drag' && h.onDragEnd) h.onDragEnd(target, false);
+        if (mode === 'primary' && h.onPrimaryEnd) h.onPrimaryEnd(false);
+        if (isTap && h.onTap && mode !== 'pinch') h.onTap(p[0], p[1], target);
+        mode = null; target = null; last = null; pinch = null;
+        end();
+      } else if (mode === 'pinch' && pts.size === 1) {
+        last = [...pts.values()][0]; mode = 'pan-rest';          // lifting one finger: stop zooming
+      }
+    };
+    cv.addEventListener('pointerup', up);
+    cv.addEventListener('pointercancel', up);
+    cv.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const p = pos(e);
+      if (h.onZoom) { start(); h.onZoom(Math.exp(-e.deltaY * 0.0015), p[0], p[1]); clearTimeout(cv._wheelT); cv._wheelT = setTimeout(end, 180); }
+    }, { passive: false });
+    cv.addEventListener('contextmenu', (e) => e.preventDefault());
   }
-  O.Input=Input;
-})(Optics);
+
+  RF.Input = { attach };
+})(typeof globalThis !== 'undefined' ? globalThis : this);

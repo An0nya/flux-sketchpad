@@ -2,3 +2,6 @@
 server.log
 server.pid
 tests/results.json
+astra/tests/results.json
+tests/last-run.json
+tests/shots/

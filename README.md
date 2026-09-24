@@ -1,377 +1,349 @@
-# FLUX · an optical sketchpad
+# Faceted Reflector Design Demo
 
-A dependency-free Canvas 2D reflector designer. Paint a destination, stamp source
-images onto it, or draw a cross-section and revolve/extrude it. The simulation
-samples a finite emitter and intersects real finite surfaces; every heatmap is
-computed from those rays at runtime.
+A browser sketchpad for designing segmented reflectors (and simple lenses) around one idea:
+**every optical segment forms an image of the light source on the target.** You arrange those
+source images so they tile the pattern you want, and a Monte-Carlo ray tracer shows what you
+actually get.
 
-## Open it
+## Running it
 
-**No build, install, network connection, or HTTP server is required.** Open
-`index.html` directly. Classic scripts work on `file://`; a visible message explains
-that direct-file mode performs the design search on the main thread. Ray tracing
-still runs in small progressive batches.
+**No server needed.** Open `index.html` directly (`file://`). Every script is a classic
+`<script>`, not an ES module, and the app never uses fetch, XHR, workers or dynamic imports. If a
+script fails to load anyway, the page shows a banner that names the missing module instead of
+going blank.
 
-**Recommended for a responsive design search:** serve this directory locally:
+> Verified in this session only over `http://localhost`. The in-app preview pane I tested with
+> renders `file://` pages as a static snapshot without their relative assets. See
+> *Honest gaps*.
 
-```sh
-python3 -m http.server 8765 --bind 127.0.0.1
+The verification suite runs headless in Node (v18+; this session used v25.8.1):
+
+```bash
+node tests/headless.js
 ```
 
-Open `http://127.0.0.1:8765`. HTTP enables the dedicated worker. This server serves
-only this directory; no external resources, fonts, libraries, or services are used.
-Stop it with Ctrl+C if you started it in a terminal. The demo session's detached
-server is recorded in `server.pid` and writes to `server.log`.
+Options: `--only 1,2,14` runs a subset, `--json out.json` writes results. Exit code 1 means a
+check failed. The same checks run in the page under **Verification → Run all checks**.
 
-## Try it
+`tests/serve.py` is a tiny no-cache static server that I used for browser testing only (port
+8743). The app doesn't need it.
 
-1. The initial ribbon scene has a finite disc emitter. **Generate reflector** builds
-   its source-image tiles. Select Ring, Split, or Spot for another target.
-2. Orbit by dragging empty scene space. Orbit has no pole clamp. Wheel zooms;
-   Shift-drag pans. Drag the labelled SOURCE, SOURCE Z, TARGET, and ENVELOPE handles.
-   Source moves in the viewing plane; Source Z and Target move along world Z;
-   Envelope scales the packaging volume. Individual dimensions are in the disclosure.
-3. **Stamp:** tap the intended target, drag a tile, adjust its width, duplicate it,
-   or delete it. A highlighted centre-ray preview accompanies the solved surface.
-   Width is clamped above the selected candidate's estimated finite-source floor.
-4. **Profile:** tap radius/axial-height points. Revolve makes a dish; Extrude makes
-   a trough. Parabola gives an editable starting profile with its focus at the
-   current source. Flip changes winding; Mirror is available for extrusion.
-5. For lenses, start with **Glass / on-axis lens**, then open **Add a lens**.
-   Plano-convex, biconvex, annular Fresnel, and experimental TIR cup are available.
-   This scene preset visibly chooses six bounces; simply building a lens never
-   changes the user's bounce setting. A single interaction cannot traverse a lens.
-6. Tap a surface in the secondary view to change reflect/absorb/refract, mirror
-   reflectivity, glass index, two-sidedness, or focal length (analytic patches only).
+## A two-minute tour
 
-Scene presets replace the scene after confirmation. Ordinary mode changes do not
-relocate the source, reset the envelope, or change simulation settings. Paint and
-profile editors preserve their contents when switching modes. Generation replaces
-the currently generated optical surfaces. Existing geometry does not automatically
-follow a moved source: regenerate to design for its new position.
+| Panel | What it is |
+|---|---|
+| **Scene** (big, left) | Isometric (orthographic) 3D view with an unrestricted trackball: drag to orbit, pinch/wheel to zoom, two-finger or shift-drag to pan. Handles: amber = source (drag to move), yellow tip = emission axis (drag to aim in any 3D direction), grey = envelope faces (drag to resize), blue = target (drag its distance). *Fixture* / *Whole scene* re-frame the view; orbit round to see the target's lit side with the heatmap on it. Up to 240 traced ray paths are drawn. |
+| **Target** (top middle) | Left is the mode's editor: A = painted intent, B = direction-from-source picker, C = profile cross-section. Right is the simulated accumulator grid. The grid resolution, the component shown (total / direct / via surfaces) and the *display smoothing* toggle sit here. Smoothing blurs the picture only; every statistic uses the raw grid. |
+| **Surfaces** (bottom middle) | The optics alone, either as shaded translucent polygons with normal arrows or as per-surface source→surface→out ray pairs. |
+| **Stats + Physical limits** (bottom) | Stats with their definitions (coverage and uniformity always shown together), an energy bar whose bins sum to the emitted power, and a persistent physical-limits report naming the binding constraint quantitatively. |
+| **Side panel** | Mode controls first, then source, target, envelope, lenses, simulation (Advanced), scene contents (toggle/clear groups), definitions, verification, and read-only solver diagnostics. |
 
-The viewport is designed down to 768 px. All canvases accept two-finger pan and
-pinch zoom. Numerical entries and standard buttons retain their native keyboard
-behaviour; canvas authoring uses Pointer Events. Map zoom/pan and secondary-camera
-position are view-only conveniences and are not included in scene JSON.
+Presets (top bar) replace the scene after an inline confirmation: headlamp beam (A), tall deep
+box with the LED on a side wall (A), three stamped tiles (B), parabolic reflector (C), CPC
+collimator (C), freeform lens profile (C, refract), TIR collimator, and Fresnel spotlight. Any
+setting a preset changes (e.g. *bounces raised to 4 for the CPC*) is announced in the notices
+under the stats.
 
-## Reading the output
+**Modes**
 
-- **Coverage:** fraction of all cells with nonzero energy.
-- **Uniformity:** `1 − σ/μ` over lit cells only. It can be negative. A single bright
-  cell gives 1.000, which is why coverage sits immediately beside it.
-- **Intercepted:** primary emitted power encountering any optical surface,
-  including absorbing back faces. A primary ray is counted only once.
-- **Via surfaces / direct:** fractions of emitted power arriving after an optical
-  interaction / with none. Refracted paths are included in "via surfaces".
-- **Energy ledger:** target + absorbed + escaped + unresolved = emitted.
-  "Unresolved" means the bounce cap or energy floor ended tracking; it is not
-  silently called absorption. Reflected and refracted target subtotals can overlap
-  for mixed paths and are explicitly labelled accordingly.
-- **Trace time:** accumulated measured simulation CPU time, excluding design,
-  worker messages, rendering, and scene compilation. The performance test also
-  measures end-to-end simulation construction and tracing.
+- **A · Paint.** Paint the left grid (brush size and level under it; quick patterns in the side
+  panel). *Generate* places facets whose source images tile the painting. With *auto* on, it
+  re-generates when you pause.
+- **B · Stamp.** Tap the simulated map to stamp a tile, drag it to move it, and set its scale in
+  the side panel. The scale slider's range is clamped to what that facet can physically paint,
+  and the reason is stated. The left panel is the second 2D picker: direction from the source
+  (drag a marker to choose it by hand, or leave *Auto*). Placing or moving a stamp fires a
+  single-ray preview through the engine (cyan path in the scene).
+- **C · Profile.** Tap to add points, drag to move them. Revolve (default) or extrude; mirror,
+  flip facing, reverse axis; tag the profile reflect / refract / absorb. A closed profile tagged
+  *refract* is a solid lens.
 
-The heatmap uses a square-root *colour transfer* normalized to the current peak,
-so faint paths remain visible. Colours are relative, not an absolute photometer.
-"Smooth display only" interpolates image pixels; it never changes the accumulator
-or any statistic. Coarse preview uses up to 600 rays, then refines to the chosen
-count after interaction stops. Large runs publish repeated partial accumulators.
+Lenses (any mode): plano-convex, biconvex, TIR collimator and an N-ring Fresnel lens, all
+parametrised and placed on an axis through the source.
 
-Scene state saves automatically to `localStorage`. Save makes this explicit;
-Export JSON produces the complete optical scene, design input, seed, and settings.
-Open validates and restores that file. Traced grids are recomputed, not persisted.
+## How it works
 
-## Physics and design decisions
+### One exact primitive
 
-See **[PHYSICS.md](PHYSICS.md)** for derivations and implementation pointers. Briefly:
+Every optical surface is a **quadric** `XᵀQX + L·X + K = 0`, written in the surface's own local
+frame and clipped by an aperture (rectangle, disc, convex polygon, or axial ring). Planes, spheres,
+cones, cylinders, ellipsoids and paraboloids are all quadrics, so **ray/surface intersection is an
+exact, numerically stable quadratic root everywhere**. Nothing is paraxial or tessellated in the
+tracer. Revolved profiles are exact cone frusta (smooth in azimuth, faceted only along the
+profile) unless you ask for azimuthal facets.
 
-- Exact ray/plane, ray/triangle, and ray/paraboloid intersections, accelerated with
-  a bounding-volume hierarchy (a tree that excludes surfaces a ray cannot reach).
-- Reflective paraboloids use the exact local normal. **Their intersections are not
-  paraxial.** The inverse tile-size estimate is paraxial; large angles, deep patches,
-  and off-axis astigmatism visibly depart from that estimate.
-- Mirrors have absorbing backs unless two-sidedness is explicitly enabled.
-  Default reflectivity is 0.9. Refraction uses Snell, unpolarized Fresnel power
-  splitting, and total internal reflection. Reflected and transmitted energy
-  branches both continue through the same occlusion engine.
-- Lens meshes have outward normals and finite thickness. The current medium rule
-  assumes separated glass bodies in air, not nested or intersecting materials.
-- Placement searches equal-optical-path ellipsoids/paraboloids at varying radii,
-  uses source angular density and projected solid angle for flux ranking, and
-  allocates weighted painted zones. It does not place facets on a spherical shell.
+**Curved facets are exact conics.** A facet is stored as design intent: centre `P`, design
+source point `S0`, aim `Z`, and an image distance `di`.
 
-## Honest limitations
+- **Flat facet:** the plane through `P` whose normal is the bisector of `P→S0` and `P→Z`. The
+  derivation is commented at `facetQuadric` in `js/geometry.js`: from `r = d − 2(d·n)n` with
+  `d = −ŝ` and `r = â`, you get `n ∥ ŝ + â`.
+- **Curved facet:** the ellipsoid of revolution with foci `S0` and `I = P + di·â`. It is a
+  paraboloid when `di = ∞`. Its normal at `P` is the same bisector, so the aim is unchanged, and
+  it images the design source point stigmatically onto `I`. The coefficients are computed
+  relative to `P` with a cancellation-free eccentricity term, so `di → ∞` passes smoothly into
+  the paraboloid.
 
-This is a working exploratory tool, **not a globally convergent optical optimizer**.
-These are substantive limitations, not just cosmetic TODOs:
+The **tile-size model** the solvers use to choose `di` and facet sizes is first-order:
+`Σ_tile = J_A Σ_A J_Aᵀ + J_S Σ_S J_Sᵀ`, with Jacobians taken by central differences on the exact
+geometry. It is only a model; the tracer produces the picture. It stops being accurate when:
 
-1. Painted patterns use a greedy, source-image-aware construction. Tile allocation
-   is weighted by the requested brightness; actual intercepted flux varies between
-   facets. There is no final nonlinear optimization of the whole traced pattern.
-   Detailed targets can remain uneven or blurry. The ray trace shows that error.
-2. Envelope growth retains a feasible previous design when a new search has lower
-   interception on 10,000 identical samples. This protects *measured* interception
-   during an unchanged design's growth sequence. It does not prove a global optimum,
-   guarantee all unseen sampling seeds, or compare unrelated source/target settings.
-3. Minimum-feature and étendue notices are geometric/paraxial estimates. They are
-   useful warnings, **not rigorous general impossibility proofs** for arbitrary
-   off-axis optics. The tool has no absolute target-brightness demand input or exact
-   phase-space feasibility solver. A source-image floor constrains stamps, but
-   their requested size still need not equal the traced off-axis footprint.
-4. The TIR preset is a closed expanding dielectric cup with a recessed entrance,
-   **not an optimized TIR collimator**. Its real boundary physics is implemented;
-   the ideal freeform collimating construction is unfinished.
-5. Revolved/extruded profiles and lenses are faceted meshes. Refinement derives
-   from the budget; their triangle count can exceed the reflector's tile budget.
-   A freeform refractive profile must close around its material and have outward
-   winding. The editor warns about this but does not infer or repair topology.
-6. A profile is source-relative and aligned to world Z, not automatically to an
-   arbitrary source axis. Source-axis changes affect emission, not existing geometry.
-   Geometry outside an envelope is omitted on profile generation; a partly clipped
-   refractive profile can consequently be open. Check that warning before treating
-   it as a lens. Lens presets instead reject the entire construction if it cannot fit.
-7. Shrinking/moving an envelope can leave previously authored surfaces outside it;
-   the trace continues to represent those real surfaces until regeneration. No
-   surface is invisibly clipped by the tracer.
-8. Stamping uses automatic position selection. There is no optional angular picker.
-   Surface ray-pair display illustrates local reflection/refraction directions;
-   full branched and occluded paths are shown in the main scene trace.
-9. Two-finger gestures are implemented but were not tested with physical touch
-   hardware. Canvas controls lack a full screen-reader editing alternative.
+- the facet aperture or the source is not small relative to its distance from the facet (the
+  second-order terms grow like `(a/d)²` and `(s/d)²`), or
+- the source point sits far from the design point `S0` (off-design aberrations).
 
-No diffraction, interference, polarization state, spectrum/dispersion, material
-roughness, bulk glass absorption, or thermal emitter model is included.
+Check #9 measures it against the tracer.
+
+**Faces.** Every surface has a front.
+
+- *Reflect:* the front reflects with reflectivity R (default 0.9). A ray arriving at the back
+  face is absorbed (counted as *back faces*) unless the surface is flagged two-sided. The engine
+  and the checks support that flag, but the UI doesn't expose it.
+- *Refract:* front = air side, back = glass. It carries an index *and* a separate Fresnel
+  transmission coefficient. TIR is the no-real-solution branch of Snell and is lossless.
+- *Absorb:* both faces absorb.
+
+### Engine
+
+A BVH is used for nearest-hit search, so occlusion is always "the nearest surface wins". The
+target plane is also an occluder. Bounces default to 1 with a hard cap of 8. A ray that meets a
+surface after its budget is spent stops there (it is never allowed to pass through). The energy
+floor defaults to 1%.
+
+**Direct and via-surface light go to separate accumulators.** Every ray's energy ends in exactly
+one bin: on target (direct), on target (via surfaces), absorbed, back faces, Fresnel loss
+(untraced interface reflection), escaped, target back, or cut (bounce cap / energy floor). The UI
+shows `Σ − emitted` live.
+
+**Determinism.** Ray *i* draws from a counter-based stream seeded by `(seed, i)` only
+(murmur3-mixed mulberry32), and rays always accumulate in index order. So a progressive,
+time-sliced run is byte-identical to a one-shot run of the same length (check #8). The platform's
+unseeded RNG appears nowhere in the project (check #23 scans for it).
+
+**Progressive accumulation.** The page traces in ~12 ms slices per animation frame. While you
+drag, runs restart as a ≤1,500-ray preview; when you let go they refine to the full count. A timer
+fallback keeps runs going in hidden tabs, where `requestAnimationFrame` is paused.
+
+**Length scale.** Every epsilon is relative to the scene's own size (`1e-9 × optics extent`).
+The origin is never nudged along the normal; a relative `tmin` skips the self-intersection root
+instead. That is why the bisector aim is exact to ~1e-15 (check #2).
+
+### Mode A: accounting and geometry are separate
+
+**Flux accounting happens in solid angle from the source**, using its actual distribution:
+
+1. Directions are organised around a reflector axis pointing away from the painted pattern.
+2. The azimuth range that carries any flux is split into spokes.
+3. Within each spoke, θ is split into micro-cells of equal flux, capped at 2.5° wide.
+4. Every facet owns an exact direction cell. Its outline is that cell's pyramid cut by the facet
+   surface, so facets never overlap and intercept exactly their own flux.
+
+**Geometry is an optimisation, not a prescription.**
+
+- Along each spoke the reflector is a *tailored curve*: each micro-facet's plane starts where the
+  previous one ended, with the bisector normal toward the pattern. For a distant target that
+  curve is a parabola section. The family has one parameter, the starting radius `r0`.
+- For every spoke and every `r0` in a geometric series, the solver keeps the longest contiguous
+  run of micro-cells inside the envelope. It chooses the `r0` capturing the most flux; ties go to
+  the larger `r0`, which means sharper source images.
+- Spokes choose independently, so an asymmetric envelope produces a stretched, asymmetric
+  reflector rather than a spherical cap. Check #13 verifies this on the tall-deep-box case: facet
+  distances span ×10.5, and a paraboloid fits 10× better than a sphere.
+- **Monotone by construction.** The `r0` series is anchored on source and target scale, never
+  on the envelope, and a curve's inside-cells can only grow as the envelope grows. So the
+  captured flux cannot fall when the envelope grows (check #12).
+
+Facets are then carved from the captured range with equal flux, re-aimed at their own zone, and,
+if *curved*, given the ellipsoidal curvature whose tile matches the zone size.
+
+**Zones.** A sequential equal-flux partition (a semi-discrete transport map) matches facets to
+target zones while preserving orientation. The painted cells are split into columns carrying the
+same flux fractions as the facet columns, then into rows. A cell that straddles a cut is shared
+fractionally, so each zone gets exactly its facet's share of the painted flux.
+
+**Source keep-out** (envelope section) is a packaging clearance around the emitter. Pure
+interception-maximisation always hugs the source, and a facet 4 mm from a 2 mm die paints a
+24-cell blur. The keep-out is how you trade flux for sharpness. It is independent of the
+envelope, so it doesn't break monotonicity.
+
+### Mode B: inverse stamping
+
+1. **Direction:** auto, or chosen in the picker. Auto ranks directions by the source's actual
+   intensity × incidence obliquity, and skips directions another enabled surface already
+   intercepts, or where the reflected chief ray would be blocked.
+2. **Distance:** as far out as the envelope allows (a farther facet paints a smaller source
+   image).
+3. **Normal:** the bisector toward the stamp.
+4. **Size:** the requested tile size fixes either the facet **size** (flat facet) or the facet
+   **curvature** (curved facet at fixed aperture).
+
+The slider range is the union of what's achievable over all positions along the chosen
+direction, so every value in range changes the simulation. Anything outside it is clamped, with
+the physical reason given ("the image of the 2 mm source through a facet 62 mm away, m ≈ 16").
+Each stamp also reports the fraction of lamp flux its facet intercepts, integrated from the
+actual angular distribution.
+
+### Mode C: profile revolve / extrude
+
+Profile points are `(r, z)` in a frame whose origin is the source. The axis is source→aim (the
+default), the emission axis, or a world axis. The front side is the **left normal** of the drawn
+direction; ticks in the editor show it. A closed refracting profile (both ends on the axis, or
+first point = last) is treated as a solid: glass goes inside, air faces out, orientation is
+detected automatically, and *Flip facing* still overrides it.
+
+### Lenses
+
+- **Plano-convex:** `R = (n−1)f`, exact for a flat first face. Placed at the front focal point
+  `f − t/n`.
+- **Biconvex:** thick-lens equation solved iteratively.
+- **Fresnel:** N annular prisms. Each prism slope is solved by vector Snell for the ray through
+  its ring centre, and the prisms are built from the same revolved line-segment primitive tagged
+  `refract`.
+- **TIR collimator:** a Cartesian collimating dome, a cylindrical cavity wall, and an outer
+  surface integrated (RK4) so its normal ∝ `d_glass − ẑ`. It reports the fraction of the outer
+  profile where the TIR condition holds.
+
+Every lens raises the bounce cap *visibly* to what it needs (2, or 3 for TIR).
+
+### When the request is impossible
+
+The report next to the stats reduces each limit to a ratio, `needed / allowed`, and names the
+largest as the binding constraint.
+
+- **Minimum feature size:** the best facet's source image (tile model) against the finest painted
+  feature, found by chamfer distance transform at the "lit" and "bright" levels, including
+  enclosed dark gaps.
+- **Étendue:** emitter area × projected emission solid angle of the captured light, against
+  envelope exit aperture × pattern solid angle.
+- **Interceptable flux:** the design's captured fraction × R, against an optional required
+  delivered flux.
+- **Facet budget & self-shadowing:** `√(painted cells / N)` against the finest feature, plus the
+  measured fraction of intercepted light re-hitting other surfaces.
+
+Check #15 builds one scene that violates each limit, plus an achievable control.
 
 ## Verification
 
-```sh
-node tests/run.cjs
-```
+`node tests/headless.js` result from this session (`tests/last-run.json`): **24 passed, 0 failed,
+5.8 s.** The in-page run (same code) gave **23 passed, 0 failed, 1 skipped**. The skip is #23,
+which needs file access. It also passed **#14b**, which drives the real `<input>` elements with
+change events.
 
-This executes the common numerical suite without a browser or dependencies and
-writes `tests/results.json`. **Run physics checks** in the app runs that same suite
-plus browser-only regressions which exercise DOM input and pointer handlers for
-each design mode. The user's scene is restored afterwards. See
-**[VERIFICATION.md](VERIFICATION.md)** for measured results, failures found during
-development, and the distinction between what was run and what remains unverified.
+| # | Check | How |
+|---|---|---|
+| 1 | Tilt doubling | Mirror rotated by 0.5–20°; beam rotates 2θ to 4e-16 rad. |
+| 2 | Bisector aim | 60 random flat and curved facets with tilted targets; centre ray misses by ≤1.0e-15 × path. |
+| 3 | Law of reflection | Flat and spherical; angle-in minus angle-out ≤3e-16, coplanarity ≤1e-16. |
+| 4 | Snell and TIR | Both directions ≤1.1e-16. Critical angle ±1e-6 rad flips refract↔TIR. TIR is lossless. |
+| 5 | Occlusion | Rear mirror gets exactly 0; control (front removed) gets full flux. |
+| 6 | Back face | Back-facing mirror: 0 reflected. Control and two-sided variant reflect. |
+| 7 | Energy conservation | 113 surfaces, R = 0.9/0.7, absorber, TIR lens, 6 bounces: bins sum to emitted within 7.9e-13. |
+| 8 | Determinism | Hash of repeat, progressive (39 slices) and re-solved runs all identical. Another seed differs. |
+| 9 | Source-image scaling | Δσ² between extended and point source vs (m·s)²/12 at two magnifications: 12/12 within 4 SE + 1%. Unbinned tile width halves as the facet halves; smallest facet puts 100% in one 2×2 block. |
+| 10 | Collimation | 64-ring revolved parabola: max divergence 0.88°, under the first-principles chord bound Δψ = 1.76°. Spot 21 mm vs 393 mm for a 12-facet flat array of the same aperture. |
+| 11 | Scale invariance | ×10, ×0.1, ×8: normalised grids identical (0 cells differ), for the scaled geometry *and* for re-solving the scaled intent. |
+| 12 | Monotonicity | Two nested envelope sequences: exact interception non-decreasing (52→86% and 77→88%); traced value never falls by more than 4 SE. |
+| 13 | Asymmetric envelope | Facets span 83% of the box depth and 71% of its height; distances ×10.5; paraboloid parameter CV 0.067 vs sphere-radius CV 0.70. |
+| 14 | Controls wired | All 67 controls, two values each, through the same setter the DOM uses. Primary per-mode controls must change the grid hash; the others must change grid, tallies or report. Only *Required delivered flux* is report-only (by design). |
+| 15 | Infeasibility | Checkerboard → feature (×2.29). 5 mm die in a 20 mm box → étendue (×2.75). 95% flux request → interceptable flux (×1.94). Control → none. |
+| 16–22 | Extra relations | Reorder = identical hash; save→load = identical hash; mirror symmetry within 1.9σ; ray-doubling distribution within 2.7σ; R = 0 → nothing reflected; one facet → one tile; the same disc built two ways (revolve vs plane) gives an identical hash. |
+| 23 | No unseeded RNG | Source scan, headless. |
+| 24 | Performance | See below. |
+
+**Tolerances were fixed from first principles before looking at results, and none was loosened.**
+Five checks failed on their first run.
+
+Two failures had a wrong *test setup*. I recomputed from first principles, fixed the setup, and
+left the tolerance alone:
+
+- **#9:** the 3° emission cone didn't illuminate the facet from the corners of the 4 mm die,
+  which needed 3.8°. The cone became 6°. The binned width also floors at one cell, so the
+  collapse test now measures unbinned landing points.
+- **#11:** the re-solve test scaled the lens focal length but not its base thickness. The
+  scene-scale transform now scales all design intent.
+
+Three failures were **real app bugs**, fixed in the app:
+
+- **#14 caught dead or confused controls.**
+  - Unlinking the aim point did nothing in Modes A and B. It now moves a separate design plane.
+  - Mode B auto-direction put stamps in the shadow of the Mode A reflector. It is now
+    occlusion-aware.
+  - Some harness contexts were also wrong: the rays setting was ignored, azimuth is degenerate
+    at 90° elevation, and one envelope move was too small to bind.
+- **#21:** a facet budget of 1 produced a facet spanning 180° of azimuth. There is now a 40°
+  per-facet cap, and a binding budget keeps the brightest window.
+- **#23** flagged a design note that quoted the forbidden call; the note is now excluded.
+
+Browser testing then found more bugs that the checks can't see:
+- Nearest-vs-first handle picking.
+- A layout overflow.
+- Boot silently failing when a script didn't load.
+- A Mode C preset auto-applied on entering the mode, which was a silent scene change.
+- The optics view fitting to a revolved surface's origin instead of its outline.
+
+All are fixed.
+
+## Performance (measured, this machine)
+
+| Case | Headless (Node 25) | In page |
+|---|---|---|
+| 10,000 rays × 211 surfaces × 3 bounces, occlusion on (check #24) | ~10 ms median | 9.3 ms median |
+| same scene, 100,000 rays | ~100 ms | 93 ms |
+| default headlamp (44 facets, 1 bounce), 1,000,000 rays | 665 ms | 1.5 s of tracing over 2.3 s wall, progressive, 124 frames, p95 frame ≈ 15 ms |
+| Mode A solve, budget 48 / 200 | 38 / 42 ms | |
+| Mode B solve, 3 stamps | 7 ms | |
+
+In one early in-page run a single 600 ms frame appeared during a 1M-ray run. Re-measuring with
+per-frame logging showed no frame over 21 ms, and I couldn't reproduce it. It is probably JIT
+warm-up or throttling (the tab was hidden), but I haven't proven that.
+
+## Honest gaps and deviations
+
+- **`file://` not verified by me.** The code has no `file://` hazards (classic scripts only; no
+  fetch or modules), but my testing browser couldn't load a `file://` page with its assets. All
+  browser testing was done over `http://localhost:8743`.
+- **Touch** was exercised with synthetic PointerEvents (touch type, including a two-pointer pinch)
+  and wheel events, not on a physical touchscreen.
+- **No convex (diverging) facets.** Curved facets are ellipsoids or paraboloids. Tiles larger
+  than a paraboloid can make use the *crossed* branch (focus in front of the target), which
+  reaches any larger size.
+- **Fresnel reflection at refracting interfaces is a loss coefficient**, not a traced reflected
+  ray. It is modelled as a coefficient and reported as *Fresnel loss*.
+- **The emitter is not an occluder:** light reflected back into the source passes through it.
+  Lens edges and the TIR mounting flange are `absorb`.
+- **Mode A's objective is maximum interception** with the keep-out as the explicit
+  sharpness trade. Pattern fidelity is limited by the source images, and the limits report says so.
+  The zone map is a heuristic (orientation-preserving), not an optimiser.
+- **The monotonicity guarantee assumes the facet budget is not binding.** When it is, the
+  allocator keeps the brightest window of ≤40°-wide facets. Check #12 verifies the default
+  budget.
+- **Mode C and lens surfaces are not constrained by the envelope.** Only Modes A and B place
+  surfaces against it.
+- **Target plane placement:** it sits on the +x throw axis with distance and two tilts, and has
+  no lateral offset. Unlinking the aim point keeps the design focused on the aim point while
+  the observation plane moves.
+- **The heatmap colour map** is luminance-monotone (inferno-like), readable without relying on
+  hue.
 
 ## Files
 
-| File | Responsibility |
-| --- | --- |
-| `js/math.js` | Vectors, seeded random stream, Snell and Fresnel |
-| `js/state.js` | Serializable state, validation, shared edit reducer |
-| `js/geometry.js` | Finite surfaces, intersection, acceleration, enclosure tests |
-| `js/engine.js` | Emitter sampling, nearest-hit propagation, energy accounting |
-| `js/design.js` | Inverse tiles, placement, profile sweeps, lens geometry |
-| `js/render.js` | Orthographic 3D projection and Canvas 2D drawing |
-| `js/input.js` | Pointer authoring, direct manipulation, pan/zoom/orbit |
-| `js/worker.js` | Background design and progressive tracing |
-| `js/app.js` | UI binding, persistence, lifecycle and browser regressions |
-| `js/checks.js` | Shared executable numerical checks |
-
-All lengths use one arbitrary but consistent unit. Choosing millimetres is fine;
-uniformly scaling the scene changes no geometric-optics pattern.
-
----
-
-## Solver changes (post-Astra, 2026-09-18)
-
-The original build is preserved verbatim in `../work-codex-astra-reflector-v3-ASTRA-BASELINE/`.
-Physics, tracer and UI are unchanged; only the facet allocator in `js/design.js` was
-reworked. All 22 checks in `tests/run.cjs` pass before and after.
-
-### 1. Facet solid angle decoupled from the candidate lattice
-
-`candidatePositions` generated `angular = max(192, count*8)` sampling directions and
-tagged each candidate with `omega = 4π/angular`, which `makeFacet` then used to *size*
-the facet. Those are two different quantities: a lattice sampling weight and the solid
-angle a facet should cover. Welding them made total captured angle `count · 4π/(8·count)`
-— a constant. Measured interception was flat at 36.5–37.3% from 25 facets to 800:
-
-| facets | 25 | 100 | 200 | 400 | 800 |
-|---|---|---|---|---|---|
-| intercepted | 36.8% | 37.1% | 37.4% | 37.2% | 37.3% |
-| solve time | 71 ms | 1.1 s | 5.9 s | 37.8 s | 247.7 s |
-
-Candidates now carry `share = 2π · design.fill / count`, so N facets split `fill` of the
-forward hemisphere and capture is independent of lattice density. At `fill = 1`
-interception is 76–81% across the same range. `fill = 0.25` reproduces the old sizing
-exactly, and does reproduce the old numbers — that is the parity check.
-
-`fill` trades capture against spill, **not** against precision. Edge sharpness is set by
-the source-image floor `blur = (dt/ds) · source_size`, which contains no width term;
-shrinking facets below it only discards aperture. The floor moves with geometry — a
-larger envelope, a source further from the reflector, or a smaller emitter.
-
-### 2. Global-greedy assignment instead of request-order greedy
-
-`solve` walked requests in `zones()` order and gave each one first pick of the whole
-candidate set. That order comes from a weighted-quantile sweep and therefore correlates
-with position on the target, so first-come-first-served on the angular exclusion
-systematically handed one edge of the painted region the best solid angle.
-
-Now scoring and placement are separate passes: every (request, candidate) pair is scored
-in closed form, each request keeps its `KEEP` best, and the best pair *anywhere* takes a
-facet. A fallback pass rescans the full candidate list for any request whose kept set was
-exhausted, so placement count never regresses below the original.
-
-### 3. Cost
-
-`Geo.fits` (a 16-step shrink loop) and `tileEstimate` (which allocates two objects per
-call) no longer run during scoring. The two `.some()` scans that made placement O(N³) —
-measured exponent rising 1.73 → 2.71 across 25→800 facets — are replaced by a lattice
-bitmask for the angular exclusion and a spatial hash for the separation test. Both are
-exact, not approximate: every candidate sits on a lattice direction, and marking every
-cell an exclusion ball touches means two overlapping balls always share a cell.
-
-| facets | before | after | |
-|---|---|---|---|
-| 100 | 1.09 s | 0.11 s | 10× |
-| 200 | 5.88 s | 0.44 s | 13× |
-| 500 | 69.1 s | 2.4 s | 29× |
-
-The facet budget slider now reaches 500. Whether quality saturates before that is
-**scene-dependent, and an earlier claim here that it always does was wrong.** On the
-coarse default `bar` preset (round 0.6 emitter, 32x24 target at 55 units) coverage and
-uniformity do plateau near 100 facets. On a real low-beam scene (0.1-aspect emitter,
-100x50 target at 128 units, grid 100) they do not: unlit cells inside the painted region
-fall 20.3% -> 7.5% -> 0.2% from 100 to 200 to 500 facets. A narrow die and a finer target
-grid both push the saturation point up. Count buys pattern resolution, not capture.
-
-### 4. `design.edgeBias` — contrast-weighted zone allocation (optional, default 0)
-
-Plain quantile allocation spends facets in proportion to painted flux, which is a
-uniformity objective: it has no opinion about *where* error lands, so it smooths
-interiors and rounds edges. Above 0, `edgeBias` weights the painted boundary up and
-shrinks the tiles landing on it. On a `bar` preset at 100 facets with a 0.15-unit
-emitter, `edgeBias = 1` raised the measured cutoff gradient from 0.473 to 0.870, with
-uniformity falling from −0.10 to −0.29. That trade is the point.
-
-It is **inert** whenever every requested tile already sits under the source-image floor,
-since tile size enters only through `max(0, size − blur)`. `feasibility()` now says so
-explicitly rather than leaving a slider that silently does nothing.
-
-### 5. Two regressions this restructure introduced, and what fixed them
-
-Worth recording because neither showed up in the 22 checks, and only one showed up on
-the default preset.
-
-**Pre-shrink scoring.** Stage 1 ranked candidates on the closed-form facet width, but
-`makeFacet`'s envelope loop can take `0.85^16` off it and recomputes `focal` as it goes.
-Ranking on the asked-for geometry rather than the achieved geometry quietly preferred
-candidates that were about to be cut down. Invisible on the roomy default envelope;
-on a 12.5-deep one it cost 12% of total facet solid angle and pushed median facet radius
-from 16.8 to 18.3, which is a ~14% interception loss (solid angle goes as w^2/r^2).
-Fixed by re-scoring each request's shortlist with the real post-shrink score before
-placement — the original's criterion, paid for `PREFILTER` candidates per request rather
-than for every candidate.
-
-**Prefilter too narrow.** With the cheap prefilter at 24 the re-scoring had too small a
-pool to recover from, leaving a 1-3 point gap. 64 restores parity; 192 measures identical,
-so 64 is sufficient.
-
-Measured parity after both fixes, on the exported low-beam scene (`fill = 0.25`, which
-reproduces the original facet sizing exactly):
-
-| facets | 100 | 200 | 500 |
-|---|---|---|---|
-| baseline intercepted | 33.26% | 32.80% | 33.64% |
-| current intercepted | 33.21% | 32.83% | 33.64% |
-
-**Method note.** Both regressions were found by comparing chosen facet sets — total solid
-angle, median width, median radius — not by comparing the headline efficiency number.
-The efficiency number said "worse"; the radius distribution said *why*.
-
-## Known issues (reported 2026-09-18, not yet fixed)
-
-Anya's list, logged so it is not lost. None are addressed by the solver work above.
-
-All three are sign/convention bugs in one basis construction, not structural. Root causes
-traced but deliberately NOT fixed — each one changes how every existing scene looks, so
-they want doing together and with intent.
-
-1. **Target map is vertically inverted.** `targetHit` returns `v = q[1]/height + 0.5`, so
-   v increases with world +Y (up). `drawMap` paints cell index `i` at canvas row
-   `floor(i/n)`, which increases downward. World up therefore lands at the bottom of both
-   the INTENDED and SIMULATED maps. Self-consistent between paint and trace, which is why
-   the solver is unaffected, but wrong against the 3D view.
-2. **Target map appears mirrored — but this is probably a viewpoint issue, not a
-   coordinate bug.** The default camera (`view.yaw = 0.62`) sits *behind* the target
-   plane, looking back at the source. Any image on a plane reads mirrored from the far
-   side, so the map may be entirely correct and simply viewed from the back. The likely
-   fix is moving the default camera to the source side — a `view.yaw` default, not a
-   basis change.
-   ⚠️ An earlier attempt negated `u` for the target only (`V.frame` returns
-   `u = [-1,0,0]` for a −Z normal, which looked like the culprit). It made things
-   **worse**: mirrored *and* inverted, i.e. a 180° rotation, because the vertical
-   convention in issue 1 is entangled with it. Reverted. Do not repeat it. Whatever is
-   done here must be driven by an on-screen measurement with an **asymmetric** test
-   pattern — a symmetric preset like `bar` cannot show handedness, which is exactly how
-   the wrong fix got as far as it did.
-
-3. ~~**Target breaks at extreme tilt.**~~ **Fixed.** `V.frame` picked its reference axis as
-   `Math.abs(n[1]) < 0.9 ? [0,1,0] : [1,0,0]`, and that switch is discontinuous: at
-   |n_y| = 0.9, i.e. **tilt ≈ ±64°**, the reference flipped and the target's local u/v
-   rotated 90° in one step, so width and height swapped. Everything past 64° was wrong.
-
-   The target plane only ever rotates about world X, so its horizontal axis is always world
-   horizontal and there is no basis to derive. `V.planeFrame` (`js/math.js`) projects
-   `[-1,0,0]` onto the plane instead, and the four target call sites use it. `V.frame` is
-   deliberately untouched — it also builds every facet's basis, and changing it would move
-   solver output.
-
-   Verified: identical to `V.frame` to **1.1e-16** wherever |n_y| < 0.9, so no behaviour
-   changed below the old threshold; largest step in `u` per 0.25° of tilt went
-   **1.414 → 0.000000**; a ray traced through `targetHit` is smooth across 64°; the basis
-   stays orthonormal at a fully horizontal plane. Tilt slider is now ±89°, which reaches
-   the road-plane case it previously could not express.
-
-Fixing 1 and 2 is a row-order flip and a `u` sign flip — but see the warning in issue 2
-before attempting either.
-
-## Auto-tune and intent-relative metrics
-
-`stats()` gained `intentFilled`, `intentOnTarget`, `intentUniformity` and `intentCells`,
-all computed inside the painted region. The pre-existing `coverage` and `uniformity` are
-whole-target-plane measures that do not know where the painting is, so **both are
-maximised by a thin even wash across everything** — fine as diagnostics, actively
-misleading as objectives. They are now labelled as such in the stats panel.
-
-`js/tune.js` does coordinate descent over facet budget, capture fill and design emitter,
-tracing 20,000 rays per combination and scoring with one of three intent-relative
-objectives. Each carries a small guard term so it cannot win by putting no light on the
-target. Measured on the exported low-beam scene, 12 evaluations, ~17 s:
-
-| objective | result | filled | on-target | intent unif. | captured |
-|---|---|---|---|---|---|
-| Fill the intent | 500 facets, fill 0.5, emitter 0.5 | 0.887 | 0.970 | 0.171 | 59.3% |
-| Contain the beam | 500 facets, fill 0.5, emitter 0.25 | 0.863 | 0.973 | 0.132 | 59.1% |
-| Even interior | 350 facets, fill 0.15, emitter 0.5 | 0.639 | 0.966 | **0.330** | 21.5% |
-
-The third row is the honest shape of the trade: evenness costs two thirds of the captured
-light. The search runs in the existing web worker and reports progress per evaluation.
-
-## Layout
-
-Header and the metrics bar are pinned and compact (46 px header); sidebar and workspace
-scroll independently; ☰ collapses the sidebar. The scene canvas **flexes to fill whatever
-height is left** rather than being a fixed or draggable size — on a short screen a divider
-only ever traded one cramped view for another, so the surfaces panel, the target-plane
-panel and the constraint notes are each collapsible instead, and the scene absorbs the
-space. Notes are collapsed by default.
-
-Above 1280 px wide the surfaces and target-plane panels move into a side column beside the
-scene rather than stacking under it, which hands their whole vertical budget back to the
-render. Measured at a 1512x800 viewport, the scene canvas went 79 px -> 248 px (compact
-chrome) -> 529 px (side column), i.e. 792x529 with a 408 px side column.
-
-⚠️ The sidebar collapse originally set `grid-template-columns:0 minmax(0,1fr)` with
-`aside{display:none}`. With the aside removed from the grid, auto-placement put the
-workspace in the **0-width first track**, so the page appeared to slide off to the left.
-Collapsing now switches `main` to a single track.
-
-⚠️ This stylesheet appends overrides after the original media queries, so the responsive
-canvas heights at narrow widths are superseded. Fine at desktop widths; revisit if the
-narrow breakpoints start mattering.
+```
+index.html            layout; loads classic scripts in dependency order
+css/app.css           theme + responsive layout (≥ 768 px)
+js/core.js            vectors, 3×3 helpers, counter-based PRNG, hashing
+js/geometry.js        quadric surfaces, exact intersection, clips, BVH, envelope   (surface geometry)
+js/source.js          sources: sampling, distributions, extents, outlines
+js/engine.js          tracer, energy bookkeeping, progressive stepping, stats       (simulation engine)
+js/state.js           serialisable scene, save/load, localStorage, scene transforms (state)
+js/solver.js          tile model, vergence solve, direction frames, zone partition
+js/modeA.js modeB.js  paint→facets allocator; inverse stamping
+js/profile.js lenses.js   Mode C sweep + presets; lens presets
+js/feasibility.js     physical limits and binding constraint
+js/controller.js      control table + actions shared by the DOM and the checks
+js/render.js render2d.js  canvas renderers                                        (rendering)
+js/input.js           Pointer Events: drag, orbit, pinch, pan, wheel, tap          (input handling)
+js/panels.js ui.js    DOM panels, run loop, interactions
+js/checks1-3.js       the verification suite (in-page and headless)
+tests/headless.js load.js serve.py   headless runner, loader, test server
+tests/shots/          canvas snapshots taken during browser verification
+```
