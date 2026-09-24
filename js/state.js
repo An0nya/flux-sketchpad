@@ -32,7 +32,7 @@
       },
       envelope: { shape: 'box', center: [-20, 0, 27.5], half: [40, 45, 32.5], axis: 2, keepOut: 12 },
       target: { distance: 1000, size: 1000, tiltX: 0, tiltY: 0, res: 50, linked: true, aim: [1000, 0, 0] },
-      sim: { rays: 2000, res: 50, autoRes: false, bounces: 1, floor: 0.01, seed: 1, smoothing: false, view: 'total', surfaceView: 'shaded' },
+      sim: { rays: 10000, res: 50, autoRes: false, bounces: 1, floor: 0.01, seed: 1, smoothing: false, view: 'total', surfaceView: 'shaded' },
       mode: 'A',
       modeA: { paint: defaultPaint(50), brush: { size: 3, strength: 1, erase: false }, budget: 48, facetType: 'curved', reflectivity: 0.9, requiredFlux: 0 },
       modeB: { stamps: [], selected: null, facetType: 'curved', defaultScale: 160 },

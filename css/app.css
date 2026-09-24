@@ -145,3 +145,7 @@ h2 small { color: var(--faint); font-weight: 400; margin-left: 6px; }
 }
 .tog.lens input[type=range] { width: 90px; }
 .tog.lens output { min-width: 44px; font-variant-numeric: tabular-nums; }
+.side-top { position: sticky; top: 0; z-index: 2; background: var(--panel); display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.side-top select { flex: 1 1 100%; }
+.side-top #preset-confirm { flex: 1 1 100%; }
+.w6 { width: 6.5em; }

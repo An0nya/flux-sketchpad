@@ -576,7 +576,7 @@
       ok.addEventListener('click', () => { const p = P.presetScene(name); bar.remove(); sel.value = ''; if (p) ui.loadScene(p.scene, 'Preset: ' + p.notes.join('; ') + '.'); });
       no.addEventListener('click', () => { bar.remove(); sel.value = ''; });
       bar.append(ok, no);
-      document.querySelector('.filebar').append(bar);
+      document.querySelector('.side-top').append(bar);
     });
     root.addEventListener('resize', () => { ui.sceneDirty = true; drawHeat(); schedule(); });
   }

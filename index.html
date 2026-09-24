@@ -12,28 +12,11 @@
 
 <header class="topbar">
   <div class="brand">Flux <span>reflector sketchpad</span></div>
-  <nav class="modes" role="tablist" aria-label="Input mode">
-    <button role="tab" data-mode="A" title="Paint a target; tile it with source images">A · Paint</button>
-    <button role="tab" data-mode="B" title="Stamp tiles on the target; solve the facet for each">B · Stamp</button>
-    <button role="tab" data-mode="C" title="Draw a cross-section; revolve or extrude it">C · Profile</button>
-  </nav>
   <div class="runbar">
-    <label class="rays">Rays <input id="rays-input" data-control="rays" type="number" min="100" max="1000000" step="100"></label>
     <div class="progress" aria-live="polite"><div id="progress-bar"></div><span id="progress-text">—</span></div>
   </div>
   <div class="filebar">
     <button id="btn-generate-top" class="on" title="Solve the reflector for the painted target (Mode A)">Generate reflector</button>
-    <select id="preset-select" aria-label="Scene preset">
-      <option value="">Presets…</option>
-      <option value="headlamp">Headlamp beam (Mode A)</option>
-      <option value="deepbox">Tall deep box, source on side wall (Mode A)</option>
-      <option value="stamps">Three stamped tiles (Mode B)</option>
-      <option value="parabola">Parabolic reflector (Mode C)</option>
-      <option value="cpc">CPC collimator (Mode C)</option>
-      <option value="lenscup">Freeform lens profile (Mode C, refract)</option>
-      <option value="tir">TIR collimator (lens)</option>
-      <option value="fresnel">Fresnel spotlight (lens)</option>
-    </select>
     <button id="btn-snapshot" title="Save a snapshot in this browser (separate from autosave)">Save</button>
     <button id="btn-restore">Restore</button>
     <button id="btn-download" title="Download the whole scene as one JSON file">Save file</button>
@@ -60,6 +43,7 @@
   <section class="panel target-panel">
     <div class="panel-head">
       <h2 id="target-title">Target</h2>
+      <label class="rays" title="Rays per run (drags use a 1,500-ray preview)">Rays <input id="rays-input" data-control="rays" type="number" min="100" max="1000000" step="100" class="w6"></label>
       <label title="Paint / design grid">Paint <input data-control="tgt.res" type="number" min="10" max="100" step="1" class="w4"></label>
       <label title="Simulation grid — every statistic is computed on it">Sim <input data-control="sim.res" type="number" min="10" max="1000" step="10" class="w4"></label>
       <label class="tog" title="Pick the sim grid for ~50 rays per lit cell"><input type="checkbox" data-control="sim.autoRes"> auto</label>
@@ -99,7 +83,27 @@
     <div class="notices" id="notices"></div>
   </section>
 
-  <aside class="panel side" id="side"></aside>
+  <aside class="panel side">
+    <div class="side-top">
+    <nav class="modes" role="tablist" aria-label="Input mode">
+      <button role="tab" data-mode="A" title="Paint a target; tile it with source images">A · Paint</button>
+      <button role="tab" data-mode="B" title="Stamp tiles on the target; solve the facet for each">B · Stamp</button>
+      <button role="tab" data-mode="C" title="Draw a cross-section; revolve or extrude it">C · Profile</button>
+    </nav>
+    <select id="preset-select" aria-label="Scene preset">
+      <option value="">Presets…</option>
+      <option value="headlamp">Headlamp beam (Mode A)</option>
+      <option value="deepbox">Tall deep box, source on side wall (Mode A)</option>
+      <option value="stamps">Three stamped tiles (Mode B)</option>
+      <option value="parabola">Parabolic reflector (Mode C)</option>
+      <option value="cpc">CPC collimator (Mode C)</option>
+      <option value="lenscup">Freeform lens profile (Mode C, refract)</option>
+      <option value="tir">TIR collimator (lens)</option>
+      <option value="fresnel">Fresnel spotlight (lens)</option>
+    </select>
+    </div>
+    <div id="side"></div>
+  </aside>
 </main>
 
 <script src="js/core.js"></script>
