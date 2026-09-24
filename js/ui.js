@@ -146,6 +146,9 @@
         inp.addEventListener('change', () => { ui.setControl(id, c.type === 'check' ? inp.checked : parseFloat(inp.value)); if (out) out.textContent = String(c.get(ui.store)); });
         box.append(P.el('label', { 'data-wrap': id, class: c.type === 'check' ? 'tog' : 'slider' }, c.label.replace(' (cells)', '') + ' ', inp, out));
       }
+      const inv = P.el('button', { type: 'button', title: 'Invert the painting (level → 1 − level)' }, 'Invert');
+      inv.addEventListener('click', () => { ui._histHint = 'Invert paint'; C.actions.invertPaint(ui.store); ui.afterChange(); });
+      box.append(inv);
     } else if (m === 'B') {
       box.append(P.el('span', {}, 'centre = emission axis, rings = 30° steps · bright = source intensity · dim = no room in the envelope'));
     } else {

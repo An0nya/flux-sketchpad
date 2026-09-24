@@ -36,7 +36,7 @@
     const info = Solver.paintInfo(scene);
     const T = info.T;
     if (!info.n) { report.error = 'Nothing painted — paint the target first.'; return { surfaces: [], report }; }
-    const budget = Math.max(1, Math.min(400, scene.modeA.budget | 0));
+    const budget = Math.max(1, Math.min(2000, scene.modeA.budget | 0));
     const Zc = RF.Engine.targetUVtoWorld(T, info.cu, info.cv);
     const w0 = V.norm(V.sub(S, Zc));             // vertex direction: away from the pattern
     const F = Solver.polarFrame(w0, T);
