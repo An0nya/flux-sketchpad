@@ -186,3 +186,7 @@ body.side-hidden .layout > .side { display: none; }
   body.side-hidden .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "scene" "target" "surface" "stats"; }
 }
 @media (max-width: 820px) { .layout { grid-template-areas: "scene" "target" "surface" "stats"; } }
+#toast { position: fixed; left: 50%; bottom: 22px; z-index: 50; transform: translate(-50%, 12px); opacity: 0; pointer-events: none;
+  padding: 7px 14px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); color: var(--ink); font-size: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.45); transition: opacity .18s, transform .18s; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }

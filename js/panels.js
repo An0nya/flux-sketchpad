@@ -352,7 +352,7 @@
   function upload(ui, file) {
     const r = new FileReader();
     r.onload = () => {
-      try { ui.loadScene(RF.State.deserialize(String(r.result)), 'Loaded ' + file.name); }
+      try { ui._histHint = 'Open ' + file.name; ui._histMode = ui.store.scene.mode; ui.loadScene(RF.State.deserialize(String(r.result)), 'Loaded ' + file.name); }
       catch (e) { ui.store.notice('Could not load ' + file.name + ': ' + e.message); ui.refreshPanels(); }
     };
     r.readAsText(file);

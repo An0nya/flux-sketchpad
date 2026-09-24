@@ -53,7 +53,52 @@
       ui.refreshPanels(); ui.requestRun(false); ui.autosave();
     }, 20);
   };
-  ui.autosave = function () { clearTimeout(ui._saveT); ui._saveT = setTimeout(() => RF.State.saveLocal(ui.store.scene), 800); };
+  ui.autosave = function () { histCheckpoint(); saveSoon(); };
+  function saveSoon() { clearTimeout(ui._saveT); ui._saveT = setTimeout(() => RF.State.saveLocal(ui.store.scene), 800); }
+
+  // ---------------------------------------------------------------- undo / redo (see history.js)
+  // Checkpoint wherever the app autosaves; ui._histHint labels whole-scene loads.
+  function histCheckpoint() {
+    if (!ui.hist || ui.restoring) return;
+    ui.hist.checkpoint(RF.History.intent(ui.store.scene), performance.now(), ui._histHint || null, ui._histMode);
+    ui._histHint = null; ui._histMode = undefined; updateUndoButtons();
+  }
+  function restoreIntent(it, mode) {
+    ui.restoring = true;
+    try {
+      RF.History.apply(ui.store.scene, it);
+      if (mode) ui.store.scene.mode = mode;
+      ui.store.invalidate(['A', 'B', 'C', 'L']); ui.store.commit({ forceA: true });
+      ui.setMode(ui.store.scene.mode, true);
+      ui.vLeft.fitted = ui.vHeat.fitted = ui.vPick.fitted = ui.vProf.fitted = false;
+      ui.refreshPanels(); ui.requestRun(false); saveSoon();
+    } finally { ui.restoring = false; }
+  }
+  ui.undo = function () {
+    histCheckpoint();                                  // flush an edit that hasn't checkpointed yet
+    const e = ui.hist.undo(RF.History.intent(ui.store.scene), ui.store.scene.mode);
+    if (!e) { toast('Nothing to undo'); return; }
+    restoreIntent(e.it, e.mode); toast('Undid: ' + e.label); updateUndoButtons();
+  };
+  ui.redo = function () {
+    histCheckpoint();
+    const e = ui.hist.redo(RF.History.intent(ui.store.scene), ui.store.scene.mode);
+    if (!e) { toast('Nothing to redo'); return; }
+    restoreIntent(e.it, e.mode); toast('Redid: ' + e.label); updateUndoButtons();
+  };
+  function updateUndoButtons() {
+    const u = document.getElementById('btn-undo'), r = document.getElementById('btn-redo'), h = ui.hist;
+    if (!u || !h) return;
+    const p = h.past[h.past.length - 1], f = h.future[h.future.length - 1];
+    u.disabled = !p; u.title = p ? 'Undo: ' + p.label + ' (⌘Z)' : 'Nothing to undo';
+    r.disabled = !f; r.title = f ? 'Redo: ' + f.label + ' (⇧⌘Z)' : 'Nothing to redo';
+  }
+  function toast(msg) {
+    let el = document.getElementById('toast');
+    if (!el) { el = P.el('div', { id: 'toast', role: 'status', 'aria-live': 'polite' }); document.body.append(el); }
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(ui._toastT); ui._toastT = setTimeout(() => el.classList.remove('show'), 1800);
+  }
   ui.loadScene = function (scene, notice, silent) {
     ui.store = C.createStore(scene);
     ui.store.autoA = document.getElementById('auto-a') ? document.getElementById('auto-a').checked : true;
@@ -563,6 +608,16 @@
     try { const v = localStorage.getItem('flux/lens'); if (v !== null) lens.value = v; } catch (e) { /* ignore */ }
     lens.addEventListener('input', applyLens); applyLens();
     // ⋯ menu: toggle, close on outside click / Escape / after picking an item (confirm buttons keep it open)
+    document.getElementById('btn-undo').addEventListener('click', () => ui.undo());
+    document.getElementById('btn-redo').addEventListener('click', () => ui.redo());
+    document.addEventListener('keydown', (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const t = e.target;   // typing in a field keeps the browser's own text undo
+      if (t && t.matches && t.matches('input:not([type=checkbox]):not([type=range]):not([type=file]), select, textarea, [contenteditable]')) return;
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); ui.undo(); }
+      else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); ui.redo(); }
+    });
     const more = document.getElementById('btn-more'), pop = document.querySelector('.menu-pop');
     const closeMenu = () => { pop.hidden = true; more.setAttribute('aria-expanded', 'false'); };
     more.addEventListener('click', (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; more.setAttribute('aria-expanded', String(!pop.hidden)); });
@@ -590,7 +645,7 @@
     const snapTitle = () => { const t = RF.State.snapshotTime(); return t ? 'Restore the snapshot saved ' + new Date(t).toLocaleString() : 'No snapshot saved in this browser yet'; };
     const rs = P.confirmButton('Restore', 'Replace current scene?', () => {
       const s = RF.State.loadSnapshot(); if (!s) { ui.store.notice('No snapshot saved in this browser yet.'); ui.refreshPanels(); return; }
-      ui.loadScene(s, 'Restored the snapshot from ' + new Date(RF.State.snapshotTime()).toLocaleString() + '.');
+      ui._histHint = 'Restore snapshot'; ui._histMode = ui.store.scene.mode; ui.loadScene(s, 'Restored the snapshot from ' + new Date(RF.State.snapshotTime()).toLocaleString() + '.');
     });
     rs.id = 'btn-restore'; rs.classList.remove('danger'); rs.title = snapTitle();
     document.getElementById('btn-restore').replaceWith(rs);
@@ -601,16 +656,17 @@
     });
     document.getElementById('file-input').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) P.upload(ui, f); e.target.value = ''; });
     const reset = document.getElementById('btn-reset');
-    const rb = P.confirmButton('Reset', 'Reset everything?', () => { RF.State.clearLocal(); ui.loadScene(RF.State.defaultScene(), 'Scene reset to defaults.'); });
+    const rb = P.confirmButton('Reset', 'Reset everything?', () => { RF.State.clearLocal(); ui._histHint = 'Reset'; ui._histMode = ui.store.scene.mode; ui.loadScene(RF.State.defaultScene(), 'Scene reset to defaults.'); });
     rb.id = 'btn-reset'; reset.replaceWith(rb);
     const sel = document.getElementById('preset-select');
     sel.addEventListener('change', () => {
       const name = sel.value; if (!name) return;
       const bar = document.getElementById('preset-confirm') || P.el('div', { id: 'preset-confirm', class: 'btnrow' });
       bar.innerHTML = '';
-      const ok = P.el('button', { type: 'button', class: 'primary' }, 'Replace scene with “' + sel.options[sel.selectedIndex].text + '”');
+      const presetLabel = sel.options[sel.selectedIndex].text;
+      const ok = P.el('button', { type: 'button', class: 'primary' }, 'Replace scene with “' + presetLabel + '”');
       const no = P.el('button', { type: 'button' }, 'Cancel');
-      ok.addEventListener('click', () => { const p = P.presetScene(name); bar.remove(); sel.value = ''; if (p) ui.loadScene(p.scene, 'Preset: ' + p.notes.join('; ') + '.'); });
+      ok.addEventListener('click', () => { const p = P.presetScene(name); bar.remove(); sel.value = ''; if (p) { ui._histHint = 'Preset: ' + presetLabel; ui._histMode = ui.store.scene.mode; } if (p) ui.loadScene(p.scene, 'Preset: ' + p.notes.join('; ') + '.'); });
       no.addEventListener('click', () => { bar.remove(); sel.value = ''; });
       bar.append(ok, no);
       document.querySelector('.side-top').append(bar);
@@ -627,6 +683,7 @@
     wireTopbar(); wireScene(); wireHeat(); wireLeft();
     ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : null, true);
     if (!scene.groups.A.surfaces.length && scene.mode === 'A') { C.regenerateA(ui.store); }
+    ui.hist = RF.History.create(100); ui.hist.reset(RF.History.intent(ui.store.scene)); updateUndoButtons();   // history doesn't survive a reload
     ui.setMode(scene.mode, true);
     setTimeout(() => { ui.fit('fixture'); ui.refreshPanels(); ui.requestRun(false); }, 0);
   }
