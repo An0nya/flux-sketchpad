@@ -204,23 +204,43 @@
     const g = RF.Engine.gridTotal(c);
     return ui.display === 'smooth' ? R2.smoothCopy(g, ui.run.P.res) : g;
   }
-  // Ray-hits picture: bin every recorded hit at (about) the panel's own pixel resolution, brightness
-  // clipped at the 99.5th percentile of lit pixels so one hot pixel doesn't flatten the rest.
-  function hitsImage(pres) {
-    const c = ui.run.ctx, T = ui.run.P.T, cv = document.getElementById('heat-canvas');
-    const dpr = Math.min(2, root.devicePixelRatio || 1), a = ui.vHeat.toScreen(0, pres), b = ui.vHeat.toScreen(pres, 0);
-    const M = Math.max(16, Math.min(2048, Math.round(Math.abs(b[0] - a[0]) * dpr) || cv.width));
+  // Ray-hits picture: bin every recorded hit into an M×M image, brightness clipped at the 99.5th
+  // percentile of lit pixels so one hot pixel doesn't flatten the rest.  M snaps to a power of two
+  // (64…2048) and each slot ('panel', 'scene') is cached until M or the hit count changes, so orbiting
+  // doesn't re-bin every frame.  Percentile from an evenly strided sample of ≤20k lit pixels.
+  const HIT_SIZES = [64, 128, 256, 512, 1024, 2048];
+  function hitsCanvas(slot, px) {
+    const c = ui.run.ctx, T = ui.run.P.T;
+    const M = HIT_SIZES.find((s) => s >= px) || 2048;
+    const key = M + ':' + c.nHits, cache = ui.hitsCache || (ui.hitsCache = {});
+    const hit = cache[slot];
+    if (hit && hit.ctx === c && hit.key === key) return hit.img;
     const buf = new Float64Array(M * M), k = M / (2 * T.half), h = c.hits;
     for (let q = 0; q < 3 * c.nHits; q += 3) {
       let i = Math.floor((h[q] + T.half) * k), j = Math.floor((h[q + 1] + T.half) * k);
       if (i >= M) i = M - 1; if (j >= M) j = M - 1; if (i < 0 || j < 0) continue;
       buf[j * M + i] += h[q + 2];
     }
-    const lit = []; for (let i = 0; i < buf.length; i++) if (buf[i] > 0) lit.push(buf[i]);
-    lit.sort((x, y) => x - y);
-    const clip = lit.length ? lit[Math.min(lit.length - 1, Math.floor(0.995 * lit.length))] : 0;
-    ui.hitsImg = R2.gridCanvas(buf, M, ui.hitsImg, clip);
-    return ui.hitsImg;
+    let nLit = 0; for (let i = 0; i < buf.length; i++) if (buf[i] > 0) nLit++;
+    const stride = Math.max(1, Math.floor(nLit / 20000)), sample = [];
+    for (let i = 0, n = 0; i < buf.length; i++) if (buf[i] > 0 && (n++ % stride === 0)) sample.push(buf[i]);
+    sample.sort((x, y) => x - y);
+    const clip = sample.length ? sample[Math.min(sample.length - 1, Math.floor(0.995 * sample.length))] : 0;
+    const img = R2.gridCanvas(buf, M, hit ? hit.img : null, clip);
+    cache[slot] = { ctx: c, key, img };
+    return img;
+  }
+  function hitsImage(pres) {
+    const dpr = Math.min(2, root.devicePixelRatio || 1), a = ui.vHeat.toScreen(0, pres), b = ui.vHeat.toScreen(pres, 0);
+    return hitsCanvas('panel', Math.abs(b[0] - a[0]) * dpr);
+  }
+  // Scene texture: same picture setting as the panel, sized to the target's on-screen footprint.
+  function sceneHeatTexture() {
+    if (!ui.run || ui.display !== 'hits' || !ui.run.ctx.hits) return ui.heatImg;
+    const T = RF.Engine.targetFrame(ui.store.scene.target), dpr = Math.min(2, root.devicePixelRatio || 1);
+    const q = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => ui.cam.project(RF.Engine.targetUVtoWorld(T, a * T.half, b * T.half)));
+    let edge = 0; for (let i = 0; i < 4; i++) edge = Math.max(edge, Math.hypot(q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][1] - q[i][1]));
+    return hitsCanvas('scene', edge * dpr);
   }
   function drawHeat() {
     if (!ui.run) return;
@@ -261,7 +281,7 @@
     if (!ui.model) return;
     const sc = ui.store.scene;
     ui.handles = RF.Render.drawScene(document.getElementById('scene-canvas'), ui.cam, {
-      scene: sc, model: ui.model, paths: ui.run ? ui.run.ctx.paths : null, heatCanvas: ui.heatImg, showRays: ui.showRays,
+      scene: sc, model: ui.model, paths: ui.run ? ui.run.ctx.paths : null, heatCanvas: sceneHeatTexture(), showRays: ui.showRays,
       activeHandle: ui.activeHandle, preview: ui.preview && performance.now() < ui.preview.until ? ui.preview.pts : null, highlight: ui.highlight,
     });
     const hint = document.getElementById('scene-hint');
