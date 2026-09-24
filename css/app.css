@@ -87,8 +87,7 @@ h2 small { color: var(--faint); font-weight: 400; margin-left: 6px; }
 .feas h3 { margin: 0 0 4px; font-size: 12px; }
 .feas .bind { margin-bottom: 4px; }
 .feas .bind.ok { color: var(--ok); }
-.feas ul { margin: 0; padding-left: 16px; } .feas li { margin: 2px 0; color: var(--dim); }
-.feas li.bad { color: var(--ink); } .feas li.bad::marker { content: '✗ '; color: var(--bad); } .feas li.ok::marker { content: '✓ '; color: var(--ok); }
+.feas ul { margin: 0; } .feas li { margin: 2px 0; color: var(--dim); }
 .notices { margin-top: 6px; font-size: 12px; color: var(--warn); }
 .notices div { margin: 2px 0; }
 
@@ -248,3 +247,5 @@ button.mini { min-height: 24px; padding: 1px 8px; font-size: 11px; color: var(--
 .feas > .reason { padding-left: 18px; }
 /* "no limit binds": plain text, only the mark coloured */
 .bind.ok { color: var(--ink) !important; } .bind.ok .mk { color: var(--ok); } .bind.bad .mk { color: var(--bad); }
+.panel-head .modes button { min-height: 26px; padding: 2px 10px; }
+.side-top { padding-top: 6px; }

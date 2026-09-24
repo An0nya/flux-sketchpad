@@ -130,7 +130,6 @@
     const cap = { A: ['Intended — paint here', 'Simulated'], B: ['Direction from the source (2nd picker)', 'Simulated · tap to stamp'], C: ['Profile cross-section — tap to add points', 'Simulated'] }[m];
     document.getElementById('left-caption').textContent = cap[0];
     document.getElementById('right-caption').textContent = cap[1];
-    document.getElementById('target-title').textContent = { A: 'Target — Mode A', B: 'Target — Mode B', C: 'Target — Mode C' }[m];
     buildLeftTools();
     ui.refreshPanels();
     ui.requestRun(false);
@@ -230,7 +229,7 @@
       }
       const N = ui.previewRun ? Math.min(sc.sim.rays, PREVIEW_RAYS) : sc.sim.rays;
       Pc.recordHits = true;
-      ui.run = { P: Pc, ctx: RF.Engine.newCtx(Pc, N, 240), preview: ui.previewRun, started: now };
+      ui.run = { P: Pc, ctx: RF.Engine.newCtx(Pc, N, ui.rayPaths === undefined ? 240 : ui.rayPaths), preview: ui.previewRun, started: now };
       ui.lastHeat = 0; ui.sceneDirty = true;
     }
     const run = ui.run;
@@ -719,6 +718,11 @@
     let sidePref = null; try { sidePref = localStorage.getItem('flux/side'); } catch (e) { /* ignore */ }
     setSide(narrow() ? false : sidePref !== '0');
     sideBtn.addEventListener('click', () => setSide(document.body.classList.contains('side-hidden')));
+    // drawn ray paths in the scene (display only — the trace itself is unaffected)
+    const rp = document.getElementById('ray-paths'), rpOut = document.getElementById('ray-paths-out');
+    try { const v = localStorage.getItem('flux/rayPaths'); if (v !== null) rp.value = v; } catch (e) { /* ignore */ }
+    const applyRP = (rerun) => { ui.rayPaths = +rp.value; rpOut.textContent = rp.value; try { localStorage.setItem('flux/rayPaths', rp.value); } catch (e) { /* ignore */ } if (rerun) ui.requestRun(false); };
+    rp.addEventListener('input', () => { rpOut.textContent = rp.value; }); rp.addEventListener('change', () => applyRP(true)); applyRP(false);
     const tt = document.getElementById('turntable');
     try { ui.turntable = localStorage.getItem('flux/turntable') !== '0'; } catch (e) { ui.turntable = true; }
     tt.checked = ui.turntable;

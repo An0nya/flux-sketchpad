@@ -67,7 +67,8 @@
     const side = document.getElementById('side');
     side.innerHTML = '';
     side.append(section('View', { open: true, key: 'view' },
-      el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit')));
+      el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit'),
+      el('div', { class: 'row' }, el('label', { title: 'How many ray paths to draw in the scene (display only)' }, 'Rays drawn'), el('input', { type: 'range', id: 'ray-paths', min: 0, max: 2000, step: 20, value: 240 }), el('output', { id: 'ray-paths-out' }, '240'))));
     // Mode A
     const genBtn = el('button', { type: 'button', class: 'primary', id: 'btn-generate' }, 'Generate reflector');
     genBtn.addEventListener('click', () => ui.generateA());

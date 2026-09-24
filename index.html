@@ -51,6 +51,9 @@
   <section class="panel target-panel">
     <div class="panel-head">
       <h2 id="target-title" class="collapser" data-panel="target" title="Collapse / expand">Target</h2>
+      <nav class="modes seg" role="tablist" aria-label="Input mode">
+        <button role="tab" data-mode="A" title="Paint a target; tile it with source images">Paint</button><button role="tab" data-mode="B" title="Stamp tiles on the target; solve the facet for each">Stamp</button><button role="tab" data-mode="C" title="Draw a cross-section; revolve or extrude it">Profile</button>
+      </nav>
       <div class="seg" id="heat-display" role="radiogroup" aria-label="Simulated view" title="Changes the PICTURE only. Every statistic uses the raw sim grid.">
         <button data-disp="hits">Ray hits</button><button data-disp="grid" class="on">Grid</button><button data-disp="smooth">Smoothed</button>
       </div>
@@ -94,11 +97,6 @@
 
   <aside class="panel side">
     <div class="side-top">
-    <nav class="modes" role="tablist" aria-label="Input mode">
-      <button role="tab" data-mode="A" title="Paint a target; tile it with source images">A · Paint</button>
-      <button role="tab" data-mode="B" title="Stamp tiles on the target; solve the facet for each">B · Stamp</button>
-      <button role="tab" data-mode="C" title="Draw a cross-section; revolve or extrude it">C · Profile</button>
-    </nav>
     <select id="preset-select" aria-label="Scene preset">
       <option value="">Presets…</option>
       <option value="headlamp">Headlamp beam (Mode A)</option>
