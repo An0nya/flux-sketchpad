@@ -37,7 +37,7 @@
     } else if (c.type === 'check') {
       input = el('input', { type: 'checkbox', 'data-control': c.id, 'aria-label': c.label });
     } else {
-      input = el('input', { type: 'number', 'data-control': c.id, 'aria-label': c.label, step: c.step, min: isFinite(c.min) ? c.min : null, max: isFinite(c.max) ? c.max : null });
+      return numberControl(ui, c);
     }
     const commit = () => {
       const v = c.type === 'check' ? input.checked : c.type === 'select' ? input.value : parseFloat(input.value);
@@ -47,6 +47,60 @@
     input.addEventListener('change', commit);
     if (c.type === 'number') input.addEventListener('keydown', (e) => { if (e.key === 'Enter') commit(); });
     return input;
+  }
+  // ---------------------------------------------------------------- number controls
+  // Bounded (finite min & max, not log) → slider + scrub field; otherwise → scrub field only.
+  // Scrub field: press-drag sideways > 3 px scrubs (one step per px; Shift ×10, Alt ×0.1) with a live
+  // preview and ONE undo entry on release; press-release without moving = ordinary text entry.
+  function scrubStep(c, v) {
+    if (typeof c.step === 'number' && c.step > 0) return c.step;
+    const m = Math.max(Math.abs(v), 1e-3);
+    return Math.pow(10, Math.floor(Math.log10(m))) / 20;          // ~1/20 of the order of magnitude
+  }
+  function decimals(x) { const s = String(x); return s.includes('.') ? s.split('.')[1].length : 0; }
+  function numberControl(ui, c) {
+    const clamp = (v) => Math.min(isFinite(c.max) ? c.max : Infinity, Math.max(isFinite(c.min) ? c.min : -Infinity, v));
+    const field = el('input', { type: 'text', inputmode: 'decimal', class: 'scrub', 'data-control': c.id, 'aria-label': c.label, autocomplete: 'off', spellcheck: 'false' });
+    const commitTyped = () => { const v = parseFloat(field.value); if (isFinite(v)) ui.setControl(c.id, clamp(v)); };
+    field.addEventListener('change', commitTyped);
+    field.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { commitTyped(); field.blur(); }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {          // arrow keys still nudge, reliably
+        e.preventDefault(); const v0 = parseFloat(field.value) || 0, s = scrubStep(c, v0) * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1);
+        const v = clamp(v0 + (e.key === 'ArrowUp' ? s : -s)); field.value = +v.toFixed(Math.max(decimals(s), 0) + 2); ui.setControl(c.id, v);
+      }
+    });
+    let drag = null;
+    field.addEventListener('pointerdown', (e) => {
+      if (document.activeElement === field) return;                 // already typing: let the caret move
+      e.preventDefault();
+      drag = { x0: e.clientX, v0: parseFloat(field.value) || 0, moved: false, id: e.pointerId };
+      try { field.setPointerCapture(e.pointerId); } catch (err) { /* synthetic / inactive pointer: scrub still works while over the field */ }
+    });
+    field.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dx = e.clientX - drag.x0;
+      if (!drag.moved && Math.abs(dx) < 3) return;
+      drag.moved = true; field.classList.add('scrubbing');
+      const s = scrubStep(c, drag.v0) * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1);
+      const v = clamp(drag.v0 + Math.round(dx) * s);
+      field.value = String(+v.toFixed(decimals(s) + (e.altKey ? 1 : 0)));
+      drag.v = v; ui.previewControl(c.id, v);
+    });
+    const end = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const d = drag; drag = null; field.classList.remove('scrubbing');
+      try { field.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      if (d.moved) { if (d.v !== undefined) ui.setControl(c.id, d.v); }
+      else { field.focus(); field.select(); }                        // a tap = type a value
+    };
+    field.addEventListener('pointerup', end); field.addEventListener('pointercancel', end);
+    const bounded = isFinite(c.min) && isFinite(c.max) && !c.log;
+    if (!bounded) return field;
+    const slider = el('input', { type: 'range', 'data-control': c.id, 'aria-label': c.label, min: c.min, max: c.max, step: typeof c.step === 'number' ? c.step : 'any' });
+    slider.addEventListener('input', () => { field.value = slider.value; ui.previewControl(c.id, parseFloat(slider.value)); });
+    slider.addEventListener('change', () => ui.setControl(c.id, parseFloat(slider.value)));
+    return el('span', { class: 'numctl' }, slider, field);
   }
   function controlRow(ui, c) {
     const input = controlInput(ui, c);
