@@ -609,11 +609,39 @@
     const del = confirmDel(() => { const o = loadPatterns(); delete o[(ui._patSel || '').slice(2)]; savePatterns(o); ui._patSel = ''; renderPatterns(); });
     del.disabled = !(ui._patSel || '').startsWith('s:');
     if (ui._patSel && [...sel.options].some((o) => o.value === ui._patSel)) sel.value = ui._patSel;
+    // image → paint: read locally (never uploaded), fit (contain) into the paint grid, sRGB → linear
+    // luminance (paint = intended light, and image values are gamma-encoded), alpha → dark, < 2% → 0
+    const file = P.el('input', { type: 'file', accept: 'image/*', hidden: true });
+    const imgBtn = P.el('button', { type: 'button', title: 'Convert a picture to a paint pattern (stays in this browser)' }, 'From image…');
+    imgBtn.addEventListener('click', () => file.click());
+    file.addEventListener('change', () => { const f = file.files[0]; if (f) imageToPaint(f); file.value = ''; });
     box.append(P.el('div', { class: 'row' }, P.el('label', {}, 'Pattern'), sel),
+      P.el('div', { class: 'btnrow' }, imgBtn, file),
       P.el('div', { class: 'btnrow' }, name, saveBtn, del, P.confirmButton('Clear paint', 'Clear the painting?', () => ui.clearPaint())));
   }
+  function imageToPaint(fileObj) {
+    const url = URL.createObjectURL(fileObj), img = new Image();
+    img.onload = () => {
+      const res = ui.store.scene.target.res, cv = document.createElement('canvas'); cv.width = cv.height = res;
+      const g = cv.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      const s = Math.min(res / img.width, res / img.height), w = img.width * s, h = img.height * s;
+      g.drawImage(img, (res - w) / 2, (res - h) / 2, w, h);
+      const d = g.getImageData(0, 0, res, res).data, lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+      const out = new Array(res * res).fill(0); let mx = 0;
+      for (let y = 0; y < res; y++) for (let x = 0; x < res; x++) {
+        const o = 4 * (y * res + x), Y = (0.2126 * lin(d[o]) + 0.7152 * lin(d[o + 1]) + 0.0722 * lin(d[o + 2])) * d[o + 3] / 255;
+        const k = (res - 1 - y) * res + x; out[k] = Y; if (Y > mx) mx = Y;          // image row 0 = top; paint row 0 = bottom
+      }
+      for (let k = 0; k < out.length; k++) { const v = mx > 0 ? out[k] / mx : 0; out[k] = v < 0.02 ? 0 : +v.toFixed(3); }
+      URL.revokeObjectURL(url);
+      ui._histHint = 'Image: ' + fileObj.name; C.actions.setPaint(ui.store, out, res); ui.afterChange();
+      ui.store.notice('Painted from “' + fileObj.name + '” (' + img.width + '×' + img.height + ' → ' + res + '², linear light).'); ui.refreshPanels();
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); ui.store.notice('Could not read that image.'); ui.refreshPanels(); };
+    img.src = url;
+  }
   const confirmDel = (fn) => { const b = P.confirmButton('Delete', 'Delete this saved pattern?', fn); b.title = 'Delete the selected saved pattern'; return b; };
-  ui.renderPatterns = renderPatterns;
+  ui.renderPatterns = renderPatterns; ui.imageToPaint = imageToPaint;
   ui.clearPaint = function () { C.actions.clearPaint(ui.store); ui.afterChange(); };
   ui.applyPreset = function (quiet) { C.actions.applyPreset(ui.store); ui.profSel = -1; ui.vProf.fitted = false; ui.store.commit({ deferA: true }); if (!quiet) ui.afterChange(); };
   ui.deleteProfilePoint = function () {
