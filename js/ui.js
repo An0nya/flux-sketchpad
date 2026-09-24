@@ -224,11 +224,9 @@
       ui.model = RF.Render.buildDrawModel(sc, Pc); ui.model.scene = sc;
       // the optics-only view follows the optics: refit when their bounding box changes
       const key = Pc.G.n + ':' + Pc.G.lo.concat(Pc.G.hi).map((v) => Math.round(v * 10)).join(',');
-      if (key !== ui.surfKey && !ui.interacting) {
+      if ((key !== ui.surfKey || !ui.camS.fitted) && !ui.interacting) {   // also: never fitted yet (load order)
         ui.surfKey = key;
-        const pts = [sc.source.pos]; for (const p of ui.model.polys) for (const q of p.pts) pts.push(q);
-        const cs = document.getElementById('surface-canvas').getBoundingClientRect();
-        ui.camS.w = cs.width; ui.camS.h = cs.height; ui.camS.fit(pts, 0.12);
+        refitSurfaces();
       }
       const N = ui.previewRun ? Math.min(sc.sim.rays, PREVIEW_RAYS) : sc.sim.rays;
       Pc.recordHits = true;
@@ -328,6 +326,7 @@
     // The panel's content frame is always the PAINT grid (so taps/stamps map the same at any sim res);
     // the sim image is stretched into it.
     R2.drawGridPanel(document.getElementById('heat-canvas'), ui.vHeat, ui.display === 'hits' ? hitsImage(pres) : ui.heatImg, pres, overlay);
+    alignFigure('heat-canvas', ui.vHeat);
     const T = ui.run.P.T, cellArea = (2 * T.half / res) ** 2 * 1e-6;       // m²
     const peak = ui.heatImg.clipValue / Math.max(1e-300, ui.run.ctx.next / ui.run.ctx.N);
     const cb = document.getElementById('colorbar');
@@ -335,6 +334,11 @@
     const lux = peak / cellArea, luxTxt = lux >= 100 ? Math.round(lux).toLocaleString() : lux.toPrecision(3);
     cb.append(P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('div', { class: 'cb-labels' }, P.el('span', {}, '0'), P.el('span', {}, 'peak ≈ ' + luxTxt + ' lx')));
     ui.peakInfo = { lux: luxTxt, res };
+  }
+  // captions / tools line up with the drawn square (the canvas letterboxes it), using the view's own fit
+  function alignFigure(id, view) {
+    const f = document.getElementById(id).closest('figure');
+    if (f && view.fitSq) { const v = Math.floor(view.fitSq) + 'px'; if (f.style.getPropertyValue('--sq') !== v) f.style.setProperty('--sq', v); }
   }
   function drawLeft() {
     const sc = ui.store.scene, cv = document.getElementById('left-canvas');
@@ -352,6 +356,7 @@
       const info = document.getElementById('prof-info');
       if (info) info.textContent = sc.modeC.profile.length < 2 ? 'Empty profile — tap to add points, or use “Apply preset to profile” in the side panel.' : sc.modeC.profile.length + ' points · ' + (ui.profSel >= 0 ? 'point ' + (ui.profSel + 1) + ' selected' : 'tap empty space to add a point');
     }
+    alignFigure('left-canvas', sc.mode === 'A' ? ui.vLeft : sc.mode === 'B' ? ui.vPick : ui.vProf);
   }
   function drawSceneView() {
     if (!ui.model) return;
@@ -602,11 +607,15 @@
     if (w > 1180) {
       cols = 'minmax(0, 1.3fr) minmax(0, 1fr)' + (side ? ' 340px' : '');
       if (!c.scene) {
+        // min-content, not auto: auto rows get stretched by the scene panel spanning both rows
+        const MC = 'min-content';
         areas = ['scene target' + S, 'scene surface' + S, 'stats stats' + S];
-        rows = [c.target ? 'auto' : 'minmax(0, 1.2fr)', c.surface ? (c.target ? 'minmax(0, 1fr)' : 'auto') : 'minmax(0, .8fr)', 'auto'];
+        // a lone flexible row must be 1fr: fr factors summing to < 1 claim only that fraction of the space
+        rows = [c.target ? MC : (c.surface ? 'minmax(0, 1fr)' : 'minmax(0, 1.2fr)'), c.surface ? (c.target ? 'minmax(0, 1fr)' : MC) : (c.target ? 'minmax(0, 1fr)' : 'minmax(0, .8fr)'), MC];
       } else {
+        const MC = 'min-content';
         areas = ['scene scene' + S, 'target surface' + S, 'stats stats' + S];
-        rows = ['auto', c.target && c.surface ? 'auto' : 'minmax(0, 1fr)', 'auto'];
+        rows = [MC, c.target && c.surface ? MC : 'minmax(0, 1fr)', MC];
       }
     } else {
       // stacked: scene ≥ square, ~60% of the screen, capped; phones get paint/sim stacked (CSS)
@@ -616,9 +625,21 @@
       rows = [c.scene ? 'auto' : 'min(max(60vh, calc(100vw - 16px)), 85vh)', 'auto', c.surface ? 'auto' : (w > 820 ? '320px' : '280px'), 'auto'].concat(side ? ['auto'] : []);
     }
     L.style.gridTemplateColumns = cols; L.style.gridTemplateAreas = areas.map((a) => '"' + a + '"').join(' '); L.style.gridTemplateRows = rows.join(' ');
-    requestAnimationFrame(() => { ui.sceneDirty = true; drawHeat(); schedule(); });
+    requestAnimationFrame(() => { healCameras(); ui.sceneDirty = true; drawHeat(); schedule(); });
+    setTimeout(() => { healCameras(); ui.sceneDirty = true; schedule(); }, 120);   // hidden tabs skip rAF
   }
   ui.layoutGrid = layoutGrid;
+  function refitSurfaces() {
+    if (!ui.model) return;
+    const pts = [ui.store.scene.source.pos]; for (const p of ui.model.polys) for (const q of p.pts) pts.push(q);
+    const cs = document.getElementById('surface-canvas').getBoundingClientRect();
+    ui.camS.w = cs.width; ui.camS.h = cs.height; ui.camS.fit(pts, 0.12);
+  }
+  // after a layout change: a camera whose canvas was 0×0 (collapsed) has no valid scale — refit it
+  function healCameras() {
+    if (!ui.camS.fitted || !(ui.camS.scale > 0)) refitSurfaces();
+    if (!ui.cam.fitted || !(ui.cam.scale > 0)) ui.fit(ui.fitMode || 'fixture');
+  }
 
   // ---------------------------------------------------------------- boot
   function wireTopbar() {

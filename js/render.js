@@ -22,7 +22,8 @@
 
   // ---------------------------------------------------------------- camera
   function Camera(az, el) {
-    this.R = null; this.focal = Infinity; this.scale = 4;   // focal: 35 mm-equivalent lens, Infinity = orthographic this.pan = [0, 0]; this.center = [0, 0, 0]; this.w = 300; this.h = 300;
+    // focal: 35 mm-equivalent lens, Infinity = orthographic; fitted: false until fit() has sized it to a real canvas
+    this.R = null; this.focal = Infinity; this.scale = 4; this.fitted = false; this.pan = [0, 0]; this.center = [0, 0, 0]; this.w = 300; this.h = 300;
     this.setAngles(az === undefined ? -50 : az, el === undefined ? 30 : el);
   }
   Camera.prototype.setAngles = function (azDeg, elDeg) {
@@ -81,12 +82,12 @@
     this.pan[0] -= ox * (factor - 1); this.pan[1] -= oy * (factor - 1);
   };
   Camera.prototype.fit = function (pts, margin) {
-    if (!pts.length) return;
+    if (!pts.length || !(this.w > 0) || !(this.h > 0)) return;   // a collapsed (0×0) canvas would fit scale 0
     const R = this.R;
     let lo = [Infinity, Infinity], hi = [-Infinity, -Infinity], c = [0, 0, 0];
     for (const p of pts) c = V.add(c, p);
     c = V.mul(c, 1 / pts.length);
-    this.center = c;
+    this.center = c; this.fitted = true;
     for (const p of pts) { const d = V.sub(p, c), x = V.dot(R[0], d), y = V.dot(R[1], d); lo = [Math.min(lo[0], x), Math.min(lo[1], y)]; hi = [Math.max(hi[0], x), Math.max(hi[1], y)]; }
     const m = margin || 0.12;
     this.scale = Math.min(this.w / Math.max(1e-9, (hi[0] - lo[0]) * (1 + 2 * m)), this.h / Math.max(1e-9, (hi[1] - lo[1]) * (1 + 2 * m)));

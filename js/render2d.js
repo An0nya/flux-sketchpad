@@ -16,6 +16,7 @@
     this.s = Math.min(w / (bw * (1 + 2 * m)), h / (bh * (1 + 2 * m)));
     this.ox = w / 2 - this.s * (b[0] + b[2]) / 2; this.oy = h / 2 + this.s * (b[1] + b[3]) / 2;
     this.fitted = true; this.bounds = b.slice(); this.w = w; this.h = h;
+    this.fitSq = this.s * Math.max(bw, bh);   // on-screen size of the content at the default fit (UI aligns captions to it)
   };
   View2D.prototype.toScreen = function (x, y) { return [this.ox + this.s * x, this.oy - this.s * y]; };
   View2D.prototype.toContent = function (sx, sy) { return [(sx - this.ox) / this.s, (this.oy - sy) / this.s]; };

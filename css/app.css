@@ -207,8 +207,8 @@ button.mini { min-height: 24px; padding: 1px 8px; font-size: 11px; color: var(--
 
 /* ---- collapsible panels */
 .collapser { cursor: pointer; user-select: none; }
-.collapser::before { content: '▾'; display: inline-block; width: 1em; color: var(--faint); transition: transform .12s; }
-.panel.collapsed .collapser::before { transform: rotate(-90deg); }
+.collapser::before { content: '▾'; display: inline-block; width: 1em; color: var(--faint); }   /* glyph swap, not rotation: rotating a 1em box pivots off-centre */
+.panel.collapsed .collapser::before { content: '▸'; }
 .panel.collapsed > :not(.panel-head) { display: none !important; }
 .panel.collapsed { align-self: start; }
 .panel.collapsed > .panel-head { border-bottom: 0; }
@@ -229,3 +229,5 @@ button.mini { min-height: 24px; padding: 1px 8px; font-size: 11px; color: var(--
   .twin { grid-template-columns: 1fr !important; }
   .twin .canvas-wrap.sq { aspect-ratio: 1 / 1; flex: none; width: 100%; }
 }
+/* caption + tools line up with the drawn square, not the letterboxed canvas box (--sq set by JS) */
+.twin figure > figcaption, .twin figure > .toolrow, .twin figure > .colorbar { width: var(--sq, 100%); max-width: 100%; margin-left: auto; margin-right: auto; }
