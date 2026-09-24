@@ -1,4 +1,4 @@
-# Faceted Reflector Design Demo
+# Flux — reflector sketchpad
 
 A browser sketchpad for designing segmented reflectors (and simple lenses) around one idea:
 **every optical segment forms an image of the light source on the target.** You arrange those
