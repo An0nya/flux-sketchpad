@@ -85,7 +85,12 @@
   </section>
 
   <section class="panel stats-panel">
-    <div class="stats-grid">
+    <div class="stats-min">
+      <div class="min-head"><div class="min-row" id="min-row"></div><button id="btn-details" class="mini" aria-expanded="false" aria-controls="stats-full">Details ▾</button></div>
+      <div class="energy" id="min-bar" title="where the rays went"></div>
+      <div class="min-limits" id="min-limits"></div>
+    </div>
+    <div class="stats-grid" id="stats-full" hidden>
       <div class="stats" id="stats"></div>
       <div class="feas" id="feasibility" aria-live="polite"></div>
     </div>

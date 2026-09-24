@@ -279,6 +279,17 @@
     }
     leg.append(el('span', {}, 'Σ − emitted = ' + st.conservationError.toExponential(1)));
     box.append(bar, leg);
+    // minimal readout: rays · surfaces · coverage · shape match, and the same energy bar (legend on hover)
+    const row = document.getElementById('min-row'), mb = document.getElementById('min-bar');
+    if (row) {
+      const k = (v, l) => el('span', { class: 'kv', title: l }, el('b', {}, v), ' ', el('small', {}, l));
+      row.innerHTML = '';
+      row.append(k(st.rays.toLocaleString() + (extra.running ? ' …' : ''), 'rays · ' + st.timeMs.toFixed(0) + ' ms' + (extra.preview ? ' (preview)' : '')),
+        k(String(st.surfaces), 'surfaces'),
+        k('beam ' + pct(st.coverage) + ' · field ' + pct(st.coverageField) + ' · U₀ ' + st.uniformity.toFixed(2), 'coverage'));
+      if (extra.match) row.append(k('r ' + extra.match.r.toFixed(2) + ' · ' + pct(extra.match.onPaint), 'shape match'));
+      mb.innerHTML = ''; for (const n of bar.children) mb.append(n.cloneNode(true));
+    }
   }
   function renderFeasibility(ui, f, extra) {
     const box = document.getElementById('feasibility');
@@ -290,11 +301,27 @@
     for (const it of f.items) ul.append(el('li', { class: it.violated ? 'bad' : 'ok' }, el('b', {}, it.title + (it.ratio > 0 ? ' (×' + it.ratio.toFixed(2) + ')' : '') + ': '), it.text));
     box.append(ul);
     if (extra && extra.warnings && extra.warnings.length) for (const w of extra.warnings) box.append(el('div', { class: 'reason' }, w));
+    // minimal: the headline, plus whichever constraint sits closest to its limit
+    const ml = document.getElementById('min-limits');
+    if (ml) {
+      ml.innerHTML = '';
+      ml.append(el('div', { class: 'bind ' + (f.binding ? 'bad' : 'ok') }, (f.binding ? '✗ ' : '✓ ') + f.summary));
+      const rest = f.items.filter((it) => !it.violated && it.ratio > 0).sort((a, b) => b.ratio - a.ratio);
+      if (rest.length) ml.append(el('div', { class: 'note' }, 'closest: ' + rest[0].title + ' ×' + rest[0].ratio.toFixed(2) + (rest[1] ? ' · then ' + rest[1].title + ' ×' + rest[1].ratio.toFixed(2) : '')));
+    }
   }
   function renderNotices(ui) {
     const box = document.getElementById('notices');
     box.innerHTML = '';
-    for (const n of ui.store.notices.slice(0, 4)) box.append(el('div', {}, '• ' + n.msg));
+    // notices live NOTICE_TTL ms (fading over the last second); the same warnings stay in the limits report
+    const NOTICE_TTL = 8000, now = Date.now();
+    const live = ui.store.notices.filter((n) => now - n.t < NOTICE_TTL).slice(0, 4);
+    for (const n of live) {
+      const left = NOTICE_TTL - (now - n.t);
+      box.append(el('div', { class: 'notice', style: 'animation-delay:' + Math.max(0, left - 1000) + 'ms' }, '• ' + n.msg));
+    }
+    clearTimeout(ui._noticeT);
+    if (live.length) ui._noticeT = setTimeout(() => renderNotices(ui), Math.min(...live.map((n) => NOTICE_TTL - (now - n.t))) + 20);
   }
 
   // ---------------------------------------------------------------- presets

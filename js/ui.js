@@ -626,6 +626,12 @@
       if (k === 'z' && !e.shiftKey) { e.preventDefault(); ui.undo(); }
       else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); ui.redo(); }
     });
+    // stats footer: minimal by default, Details expands to the full readout (remembered)
+    const det = document.getElementById('btn-details'), full = document.getElementById('stats-full');
+    const setDetails = (open) => { full.hidden = !open; det.setAttribute('aria-expanded', String(open)); det.textContent = open ? 'Details ▴' : 'Details ▾';
+      try { localStorage.setItem('flux/details', open ? '1' : '0'); } catch (e) { /* ignore */ } requestAnimationFrame(() => root.dispatchEvent(new Event('resize'))); };
+    let detPref = null; try { detPref = localStorage.getItem('flux/details'); } catch (e) { /* ignore */ }
+    setDetails(detPref === '1'); det.addEventListener('click', () => setDetails(full.hidden));
     const more = document.getElementById('btn-more'), pop = document.querySelector('.menu-pop');
     const closeMenu = () => { pop.hidden = true; more.setAttribute('aria-expanded', 'false'); };
     more.addEventListener('click', (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; more.setAttribute('aria-expanded', String(!pop.hidden)); });
