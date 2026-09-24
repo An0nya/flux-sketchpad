@@ -480,6 +480,17 @@
     for (const b of document.querySelectorAll('[data-fit]')) b.addEventListener('click', () => ui.fit(b.dataset.fit));
     document.getElementById('btn-download').addEventListener('click', () => P.download(ui));
     document.getElementById('btn-generate-top').addEventListener('click', () => ui.generateA());
+    // Lens slider: 0–99 → 12–400 mm on a log scale; 100 → ∞ (orthographic).
+    const lens = document.getElementById('lens'), lensOut = document.getElementById('lens-out');
+    const focalOf = (t) => t >= 100 ? Infinity : 12 * Math.pow(400 / 12, t / 99);
+    const applyLens = () => {
+      const f = focalOf(+lens.value); ui.cam.focal = ui.camS.focal = f;
+      lensOut.textContent = isFinite(f) ? Math.round(f) + ' mm' : '∞';
+      try { localStorage.setItem('flux/lens', lens.value); } catch (e) { /* ignore */ }
+      ui.sceneDirty = true; schedule();
+    };
+    try { const v = localStorage.getItem('flux/lens'); if (v !== null) lens.value = v; } catch (e) { /* ignore */ }
+    lens.addEventListener('input', applyLens); applyLens();
     const tt = document.getElementById('turntable');
     try { ui.turntable = localStorage.getItem('flux/turntable') !== '0'; } catch (e) { ui.turntable = true; }
     tt.checked = ui.turntable;

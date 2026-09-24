@@ -22,7 +22,7 @@
 
   // ---------------------------------------------------------------- camera
   function Camera(az, el) {
-    this.R = null; this.scale = 4; this.pan = [0, 0]; this.center = [0, 0, 0]; this.w = 300; this.h = 300;
+    this.R = null; this.focal = Infinity; this.scale = 4;   // focal: 35 mm-equivalent lens, Infinity = orthographic this.pan = [0, 0]; this.center = [0, 0, 0]; this.w = 300; this.h = 300;
     this.setAngles(az === undefined ? -50 : az, el === undefined ? 30 : el);
   }
   Camera.prototype.setAngles = function (azDeg, elDeg) {
@@ -44,9 +44,14 @@
     const d = [p[0] - this.center[0], p[1] - this.center[1], p[2] - this.center[2]], R = this.R;
     return [V.dot(R[0], d), V.dot(R[1], d), V.dot(R[2], d)];
   };
+  // Eye distance from the orbit centre for the current lens: frame width × focal / 36 mm (35 mm film).
+  Camera.prototype.eyeDist = function () { return isFinite(this.focal) ? (this.w / this.scale) * this.focal / 36 : Infinity; };
   Camera.prototype.project = function (p) {
     const v = this.view(p);
-    return [this.w / 2 + this.pan[0] + this.scale * v[0], this.h / 2 + this.pan[1] - this.scale * v[1], v[2]];
+    // Perspective: scale by D/(D − depth), so the orbit centre keeps its size. Depth is clamped for points
+    // at or behind the eye (squashed, not clipped) — good enough for a viewing aid.
+    let k = 1; if (isFinite(this.focal)) { const D = this.eyeDist(); k = D / Math.max(D - v[2], 0.05 * D); }
+    return [this.w / 2 + this.pan[0] + this.scale * v[0] * k, this.h / 2 + this.pan[1] - this.scale * v[1] * k, v[2]];
   };
   // screen delta → world delta in the view plane
   Camera.prototype.screenToWorldDelta = function (dx, dy) {
@@ -221,7 +226,26 @@
     const facing = V.dot(T.n, cam.R[2]) > 0;                    // lit side toward the viewer
     ctx.save();
     ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath();
-    if (facing && heat && heat.width) {
+    if (facing && heat && heat.width && isFinite(cam.focal)) {
+      // Perspective: the plane's image isn't affine, so map the texture piecewise — each tile of a
+      // G×G grid gets its own affine transform (exact at its corners, error shrinks as 1/G²).
+      ctx.restore(); ctx.save();
+      const G = 16, N = heat.width, dpr = ctx.getTransform().a, s = N / G;
+      const P = (a, b) => cam.project(RF.Engine.targetUVtoWorld(T, (-1 + 2 * a / G) * T.half, (1 - 2 * b / G) * T.half));
+      ctx.imageSmoothingEnabled = false;
+      for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
+        const q00 = P(i, j), q10 = P(i + 1, j), q01 = P(i, j + 1), q11 = P(i + 1, j + 1);
+        ctx.save();
+        ctx.beginPath(); ctx.moveTo(q00[0], q00[1]); ctx.lineTo(q10[0], q10[1]); ctx.lineTo(q11[0], q11[1]); ctx.lineTo(q01[0], q01[1]); ctx.closePath();
+        ctx.lineWidth = 0.6; ctx.strokeStyle = 'rgba(0,0,0,0)'; ctx.clip();
+        // texture (i·s, j·s) → q00, +x → q10, +y → q01 ; overdraw by one texel to hide seams
+        ctx.setTransform(dpr * (q10[0] - q00[0]) / s, dpr * (q10[1] - q00[1]) / s, dpr * (q01[0] - q00[0]) / s, dpr * (q01[1] - q00[1]) / s, dpr * q00[0], dpr * q00[1]);
+        ctx.drawImage(heat, i * s - 0.5, j * s - 0.5, s + 1, s + 1, -0.5, -0.5, s + 1, s + 1);
+        ctx.restore();
+      }
+      ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath();
+      ctx.strokeStyle = 'rgba(143,184,255,0.9)'; ctx.lineWidth = 1.2; ctx.stroke();
+    } else if (facing && heat && heat.width) {
       ctx.clip();
       const N = heat.width, p00 = pr[0], p10 = pr[1], p01 = pr[3];
       // image x → +u, image y (down) → −v ; origin at (u=−h, v=+h) = p01
