@@ -157,7 +157,8 @@
     return [x0 - pad * 0.3, y0 - pad, x1 + pad, y1 + pad];
   }
   function niceStep(span) { const r = span / 6, p = Math.pow(10, Math.floor(Math.log10(r))), m = r / p; return (m < 2 ? 1 : m < 5 ? 2 : 5) * p; }
-  function drawProfile(cv, view, scene, sel, refit) {
+  function drawProfile(cv, view, scene, sel, refit, opts) {
+    opts = opts || {};
     const b = profileBounds(scene);
     const { ctx } = prepare2d(cv, view, view.lockBounds || b, refit);
     const mc = scene.modeC, pts = mc.profile;
@@ -170,8 +171,41 @@
     const a0 = view.toScreen(0, br[1]), a1 = view.toScreen(0, tl[1]);
     ctx.strokeStyle = 'rgba(180,140,240,0.7)'; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(a0[0], a0[1]); ctx.lineTo(a1[0], a1[1]); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = 'rgba(180,140,240,0.9)'; ctx.fillText(mc.sweep === 'revolve' ? 'revolve axis (z) →' : 'profile plane: x across, z along axis', a1[0] + 4, a1[1] + 12);
+    // emission in this plane: polar fan, radius ∝ intensity toward each in-plane direction (real distribution)
+    const fr = RF.Profile.axisFrame(scene, mc.axisMode), W = mc.reverseAxis ? RF.V.neg(fr.W) : fr.W, e1 = fr.e1;
+    const src = scene.source, A = RF.V.norm(src.axis), Lfan = 0.45 * Math.min(br[0] - tl[0], tl[1] - br[1]);
+    { let mx = 0; const I = [];
+      for (let k = 0; k <= 180; k++) { const ph = k / 180 * 2 * Math.PI, d = RF.V.add(RF.V.mul(W, Math.cos(ph)), RF.V.mul(e1, Math.sin(ph)));
+        const th = Math.acos(Math.max(-1, Math.min(1, RF.V.dot(d, A)))), v = RF.Source.intensity(src, th) || 0; I.push([ph, v]); if (v > mx) mx = v; }
+      if (mx > 0) {
+        ctx.beginPath();
+        I.forEach(([ph, v], k) => { const rr = Lfan * v / mx, q = view.toScreen(rr * Math.sin(ph), rr * Math.cos(ph)); if (k) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); });
+        ctx.closePath(); ctx.fillStyle = 'rgba(244,193,124,0.10)'; ctx.fill(); ctx.strokeStyle = 'rgba(244,193,124,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+        const az = [RF.V.dot(A, e1), RF.V.dot(A, W)], an = Math.hypot(az[0], az[1]);
+        if (an > 1e-6) { const q = view.toScreen(az[0] / an * Lfan, az[1] / an * Lfan), o = view.toScreen(0, 0); ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(244,193,124,0.6)'; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); ctx.setLineDash([]); }
+      } }
+    // ray pairs: source → segment midpoint → reflected / refracted chief ray (normals lie in this plane)
+    if (opts.pairs && pts.length > 1) {
+      const nSeg = pts.length - 1, every = Math.max(1, Math.ceil(nSeg / 24)), Lr = 0.9 * Math.max(br[0] - tl[0], tl[1] - br[1]);
+      for (let i = 0; i < nSeg; i += every) {
+        const [r0, z0] = pts[i], [r1, z1] = pts[i + 1], L = Math.hypot(r1 - r0, z1 - z0); if (!L) continue;
+        const M = [(r0 + r1) / 2, (z0 + z1) / 2], dm = Math.hypot(M[0], M[1]); if (!dm) continue;
+        const d = [M[0] / dm, M[1] / dm];
+        let n = [-(z1 - z0) / L, (r1 - r0) / L]; if (mc.flipFacing) n = [-n[0], -n[1]];
+        const dn = d[0] * n[0] + d[1] * n[1];
+        let out = null;
+        if (mc.interaction === 'reflect') out = [d[0] - 2 * dn * n[0], d[1] - 2 * dn * n[1]];
+        else if (mc.interaction === 'refract') {                       // Snell, air → glass on the front side
+          const into = dn < 0, eta = into ? 1 / (mc.ior || 1.49) : (mc.ior || 1.49), nn = into ? n : [-n[0], -n[1]], c1 = -(d[0] * nn[0] + d[1] * nn[1]);
+          const k = 1 - eta * eta * (1 - c1 * c1); if (k >= 0) { const c2 = Math.sqrt(k); out = [eta * d[0] + (eta * c1 - c2) * nn[0], eta * d[1] + (eta * c1 - c2) * nn[1]]; }
+        }
+        const o = view.toScreen(0, 0), m = view.toScreen(M[0], M[1]);
+        ctx.strokeStyle = 'rgba(244,193,124,0.22)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(m[0], m[1]); ctx.stroke();
+        if (out) { const e = view.toScreen(M[0] + out[0] * Lr, M[1] + out[1] * Lr); ctx.strokeStyle = 'rgba(244,193,124,0.55)'; ctx.beginPath(); ctx.moveTo(m[0], m[1]); ctx.lineTo(e[0], e[1]); ctx.stroke(); }
+      }
+    }
     const s0 = view.toScreen(0, 0);
-    ctx.beginPath(); ctx.arc(s0[0], s0[1], 5, 0, 2 * Math.PI); ctx.fillStyle = '#ffd678'; ctx.fill();
+    ctx.beginPath(); ctx.arc(s0[0], s0[1], 5, 0, 2 * Math.PI); ctx.fillStyle = '#efcf8e'; ctx.fill();
     ctx.fillText('source', s0[0] + 7, s0[1] + 14);
     const drawLine = (P, dash, col) => { if (P.length < 2) return; ctx.setLineDash(dash); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); P.forEach((p, i) => { const q = view.toScreen(p[0], p[1]); if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }); ctx.stroke(); ctx.setLineDash([]); };
     if (mc.mirror) drawLine(mc.sweep === 'revolve' ? pts.map(([r, z]) => [r, -z]) : pts.map(([r, z]) => [-r, z]), [4, 4], 'rgba(180,140,240,0.5)');

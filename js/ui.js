@@ -149,7 +149,9 @@
     } else if (m === 'B') {
       box.append(P.el('span', {}, 'centre = emission axis, rings = 30° steps · bright = source intensity · dim = no room in the envelope'));
     } else {
-      box.append(P.el('span', { id: 'prof-info' }, ''));
+      const pc = P.el('input', { type: 'checkbox', id: 'prof-pairs' }); pc.checked = ui.profPairs !== false;
+      pc.addEventListener('change', () => { ui.profPairs = pc.checked; ui.sceneDirty = true; schedule(); });
+      box.append(P.el('label', { class: 'tog', title: 'Source → segment → reflected / refracted chief ray, in this plane' }, pc, ' ray pairs'), P.el('span', { id: 'prof-info' }, ''));
     }
   }
 
@@ -350,7 +352,7 @@
       const r = R2.drawPicker(cv, ui.vPick, sc, ui.store.reports.B, sc.modeB.selected);
       ui.pickMarks = r.marks; ui.pickTmax = r.tmax;
     } else {
-      const r = R2.drawProfile(cv, ui.vProf, sc, ui.profSel, false);
+      const r = R2.drawProfile(cv, ui.vProf, sc, ui.profSel, false, { pairs: ui.profPairs !== false });
       ui.profHandles = r.handles;
       const info = document.getElementById('prof-info');
       if (info) info.textContent = sc.modeC.profile.length < 2 ? 'Empty profile — tap to add points, or use “Apply preset to profile” in the side panel.' : sc.modeC.profile.length + ' points · ' + (ui.profSel >= 0 ? 'point ' + (ui.profSel + 1) + ' selected' : 'tap empty space to add a point');
