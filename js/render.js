@@ -17,7 +17,9 @@
     const a = CMAP[k], b = CMAP[k + 1], f = (t - a[0]) / (b[0] - a[0]);
     for (let c = 0; c < 3; c++) LUT[3 * i + c] = a[c + 1] + (b[c + 1] - a[c + 1]) * f;
   }
-  const GROUP_COL = { A: [242, 180, 65], B: [76, 195, 217], C: [180, 140, 240], L: [143, 184, 255], M: [200, 200, 200] };
+  // Astra draws the reflector in translucent teal with thin light edges (its amber is for source + rays).
+  // A = teal, B = pale sand (not the ray amber), C = violet — differ in hue and lightness (protan-safe).
+  const GROUP_COL = { A: [136, 215, 212], B: [214, 196, 160], C: [183, 166, 239], L: [143, 184, 255], M: [170, 180, 190] };
   const rgba = (c, a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
 
   // ---------------------------------------------------------------- camera
@@ -160,17 +162,17 @@
       if (it.type === 'target') { drawTargetPlane(ctx, cam, T, it.pr, opts.heatCanvas); continue; }
       const p = it.p, col = GROUP_COL[p.g] || GROUP_COL.M;
       const lam = 0.35 + 0.65 * Math.abs(V.dot(p.n, light));
-      const a = p.inter === 'refract' ? 0.22 : p.inter === 'absorb' ? 0.55 : 0.42;
+      const a = p.inter === 'refract' ? 0.18 : p.inter === 'absorb' ? 0.5 : 0.26;   // softer fills (Astra)
       const c = p.inter === 'absorb' ? [70, 70, 76] : col.map((x) => Math.round(x * lam));
       ctx.fillStyle = rgba(c, opts.highlight === p.id ? 0.85 : a);
-      ctx.strokeStyle = rgba(col, 0.55); ctx.lineWidth = 0.7;
+      ctx.strokeStyle = rgba(col.map((x) => Math.min(255, x + 40)), 0.55); ctx.lineWidth = 0.7;   // lighter edge, Astra-style
       ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
     }
     // ---- rays
     if (opts.showRays && opts.paths) {
       ctx.lineWidth = 1;
       for (const path of opts.paths) {
-        const col = path.end === 'target' ? 'rgba(255,214,120,0.55)' : path.end === 'direct' ? 'rgba(143,184,255,0.35)' : path.end === 'escape' ? 'rgba(170,170,180,0.16)' : 'rgba(255,154,61,0.35)';
+        const col = path.end === 'target' ? 'rgba(244,193,124,0.38)' : path.end === 'direct' ? 'rgba(143,184,255,0.35)' : path.end === 'escape' ? 'rgba(170,170,180,0.16)' : 'rgba(255,154,61,0.35)';
         ctx.strokeStyle = col; ctx.beginPath();
         for (let i = 0; i < path.length; i += 3) { const s = cam.project([path[i], path[i + 1], path[i + 2]]); if (i) ctx.lineTo(s[0], s[1]); else ctx.moveTo(s[0], s[1]); }
         ctx.stroke();
@@ -186,7 +188,7 @@
     const src = sc.source, sp = cam.project(src.pos);
     const axLen = Math.max(12, RF.Source.boundingRadius(src) * 4, 60 / L);
     const tip = V.madd(src.pos, V.norm(src.axis), axLen), tp = cam.project(tip);
-    drawArrow(ctx, [sp[0], sp[1]], [tp[0], tp[1]], '#ffd678', 2);
+    drawArrow(ctx, [sp[0], sp[1]], [tp[0], tp[1]], '#efcf8e', 2);
     handles.push({ id: 'src', x: sp[0], y: sp[1], r: 14, label: 'source' }, { id: 'axis', x: tp[0], y: tp[1], r: 14, tip, label: 'emission axis' });
     // ---- envelope face handles
     const e = sc.envelope;
@@ -202,7 +204,7 @@
     for (const h of handles) {
       const on = opts.activeHandle === h;
       ctx.beginPath(); ctx.arc(h.x, h.y, on ? 9 : 7, 0, 2 * Math.PI);
-      ctx.fillStyle = h.id === 'env' ? 'rgba(170,180,200,0.75)' : h.id === 'tgt' ? 'rgba(143,184,255,0.9)' : h.id === 'axis' ? '#ffd678' : '#f2b441';
+      ctx.fillStyle = h.id === 'env' ? 'rgba(170,180,200,0.75)' : h.id === 'tgt' ? 'rgba(143,184,255,0.9)' : h.id === 'axis' ? '#efcf8e' : '#e2b36c';
       ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#111'; ctx.stroke();
     }
     // off-screen target indicator

@@ -256,7 +256,8 @@
   }
 
   // ---------------------------------------------------------------- stats + feasibility
-  const EN_COLS = [['direct', '#8fb8ff', 'direct on target'], ['reflected', '#f2b441', 'via surfaces on target'], ['absorbed', '#6c7380', 'absorbed'], ['backface', '#4b515c', 'back faces'], ['interfaceLoss', '#b48cf0', 'Fresnel loss'], ['escaped', '#2b3038', 'escaped'], ['targetBack', '#3a3f48', 'hit target back'], ['truncated', '#ff9a3d', 'cut (cap/floor)']];
+  // muted to sit in the Astra palette; warm segments differ by lightness too (reflected light, cut dark) for protan readers
+  const EN_COLS = [['direct', '#6f8fb8', 'direct on target'], ['reflected', '#c9a46e', 'via surfaces on target'], ['absorbed', '#56606b', 'absorbed'], ['backface', '#434b55', 'back faces'], ['interfaceLoss', '#8b7fb8', 'Fresnel loss'], ['escaped', '#1c2630', 'escaped'], ['targetBack', '#333c46', 'hit target back'], ['truncated', '#8e6440', 'cut (cap/floor)']];
   function renderStats(ui, st, extra) {
     const box = document.getElementById('stats');
     if (!st) { box.innerHTML = '<div class="stat"><b>—</b><span>no run yet</span></div>'; return; }
