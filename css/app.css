@@ -10,14 +10,15 @@
   --glass: #8fb8ff;    /* lenses */
   --ok: #5aa7ff; --bad: #ff9a3d; --warn: #f2b441;
   --r: 6px;
-  /* spacing scale: every padding / gap / margin goes through --density (1 = original layout) */
+  /* spacing scale: every padding / gap / margin goes through --density (1 = original layout).
+     Set --density on ANY element (html, .side, …) to rescale that subtree — tokens are computed per element below. */
   --density: 1;
-  --s-2: calc(2px * var(--density)); --s-4: calc(4px * var(--density)); --s-6: calc(6px * var(--density));
-  --s-8: calc(8px * var(--density)); --s-10: calc(10px * var(--density)); --s-14: calc(14px * var(--density));
   font: 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: dark;
 }
-* { box-sizing: border-box; }
+* { box-sizing: border-box;
+  --s-2: calc(2px * var(--density)); --s-4: calc(4px * var(--density)); --s-6: calc(6px * var(--density));
+  --s-8: calc(8px * var(--density)); --s-10: calc(10px * var(--density)); --s-14: calc(14px * var(--density)); }
 html, body { margin: 0; background: var(--bg); color: var(--ink); }
 body { height: 100vh; display: flex; flex-direction: column; }
 button, select, input { font: inherit; color: inherit; }
@@ -199,7 +200,7 @@ body.side-hidden .layout > .side { display: none; }
 .min-row .kv b { font-size: 14px; font-variant-numeric: tabular-nums; }
 .min-row .kv small { color: var(--faint); font-size: 11px; }
 button.mini { min-height: 24px; padding: 1px var(--s-8); font-size: 11px; color: var(--dim); background: transparent; }
-.stats-min .energy { margin: var(--s-6) 0 var(--s-4); height: 4px; border: 0; opacity: .8; }
+.stats-min .energy { margin: var(--s-6) 0 var(--s-8); height: 4px; border: 0; opacity: .8; }
 .min-limits { font-size: 12px; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-14); }
 .min-limits .bind.ok { color: var(--ok); }
 .min-limits .note { color: var(--faint); }
@@ -261,3 +262,9 @@ button.mini { min-height: 24px; padding: 1px var(--s-8); font-size: 11px; color:
 input.scrub { width: 72px; text-align: right; cursor: ew-resize; touch-action: none; font-variant-numeric: tabular-nums; }
 input.scrub:focus { cursor: text; }
 input.scrub.scrubbing { border-color: var(--b); color: var(--b); }
+
+.modes.seg { gap: 0; }
+/* sidebar copy of the mode tabs: only while the Target pane (their usual home) is collapsed */
+.side-top .modes { display: none; flex: 1 1 100%; }
+.side-top .modes button { flex: 1; }
+body.target-collapsed .side-top .modes { display: flex; }

@@ -634,6 +634,7 @@
     const L = document.querySelector('.layout'), c = ui.collapsed || {}, w = root.innerWidth;
     const side = !document.body.classList.contains('side-hidden') && w > 820;
     for (const [k, sel] of [['scene', '.scene-panel'], ['target', '.target-panel'], ['surface', '.surface-panel']]) document.querySelector(sel).classList.toggle('collapsed', !!c[k]);
+    document.body.classList.toggle('target-collapsed', !!c.target);
     const S = side ? ' side' : '';
     let cols, areas, rows;
     if (w > 1180) {
