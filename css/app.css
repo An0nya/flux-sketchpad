@@ -233,8 +233,18 @@ button.mini { min-height: 24px; padding: 1px 8px; font-size: 11px; color: var(--
 .twin figure > figcaption, .twin figure > .toolrow, .twin figure > .colorbar { width: var(--sq, 100%); max-width: 100%; margin-left: auto; margin-right: auto; }
 
 /* ---- warnings: normal-weight text with a coloured indent, not bold orange text */
-.reason, .bind.bad, .feas li.bad, .notice { border-left: 2px solid var(--bad); padding-left: 8px; color: var(--ink); font-weight: 400; }
-.feas li.bad { list-style: none; margin-left: -16px; }
-.feas li.bad::marker { content: ''; }
+.reason, .bind.bad, .notice { border-left: 2px solid var(--bad); padding-left: 8px; color: var(--ink); font-weight: 400; }
 .notice { border-left-color: var(--warn); color: var(--dim); }
 .notices { color: var(--dim); }
+
+/* limits list: one column of marks, every row indented the same; ✗ rows add the warning bar */
+.feas ul { list-style: none; padding-left: 0; }
+.feas li { position: relative; padding-left: 20px; border-left: 2px solid transparent; }
+.feas li::before { position: absolute; left: 6px; top: 0; }
+.feas li.ok::before { content: '✓'; color: var(--ok); }
+.feas li.bad::before { content: '✗'; color: var(--bad); }
+.feas li.bad { border-left-color: var(--bad); color: var(--ink); }
+.feas li::marker { content: none; }
+.feas > .reason { padding-left: 18px; }
+/* "no limit binds": plain text, only the mark coloured */
+.bind.ok { color: var(--ink) !important; } .bind.ok .mk { color: var(--ok); } .bind.bad .mk { color: var(--bad); }

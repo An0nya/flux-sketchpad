@@ -301,7 +301,7 @@
     box.innerHTML = '';
     box.append(el('h3', {}, 'Physical limits — first-order check'));
     if (!f) { box.append(el('div', { class: 'note' }, '—')); return; }
-    box.append(el('div', { class: 'bind ' + (f.binding ? 'bad' : 'ok') }, (f.binding ? '✗ ' : '✓ ') + f.summary));
+    box.append(el('div', { class: 'bind ' + (f.binding ? 'bad' : 'ok') }, el('span', { class: 'mk' }, f.binding ? '✗' : '✓'), ' ' + f.summary));
     const ul = el('ul');
     for (const it of f.items) ul.append(el('li', { class: it.violated ? 'bad' : 'ok' }, el('b', {}, it.title + (it.ratio > 0 ? ' (×' + it.ratio.toFixed(2) + ')' : '') + ': '), it.text));
     box.append(ul);
@@ -310,7 +310,7 @@
     const ml = document.getElementById('min-limits');
     if (ml) {
       ml.innerHTML = '';
-      ml.append(el('div', { class: 'bind ' + (f.binding ? 'bad' : 'ok') }, (f.binding ? '✗ ' : '✓ ') + f.summary));
+      ml.append(el('div', { class: 'bind ' + (f.binding ? 'bad' : 'ok') }, el('span', { class: 'mk' }, f.binding ? '✗' : '✓'), ' ' + f.summary));
       const rest = f.items.filter((it) => !it.violated && it.ratio > 0).sort((a, b) => b.ratio - a.ratio);
       if (rest.length) ml.append(el('div', { class: 'note' }, 'closest: ' + rest[0].title + ' ×' + rest[0].ratio.toFixed(2) + (rest[1] ? ' · then ' + rest[1].title + ' ×' + rest[1].ratio.toFixed(2) : '')));
     }

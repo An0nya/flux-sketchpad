@@ -21,6 +21,8 @@
     }
     if (s.sim) { delete s.sim.view; delete s.sim.surfaceView; delete s.sim.smoothing; }
     for (const g of DERIVED) if (s.groups && s.groups[g]) delete s.groups[g].surfaces;
+    // A/B/C visibility follows the mode tab (view state), so it isn't an edit either
+    for (const g of ['A', 'B', 'C']) if (s.groups && s.groups[g]) delete s.groups[g].enabled;
     return s;
   }
   // Canonical key: object keys sorted, so the same data built in a different order compares equal
@@ -33,7 +35,7 @@
 
   // Write an intent snapshot into a live scene, keeping its view/tool state; caller re-derives groups.
   function apply(scene, it) {
-    const keep = { mode: scene.mode, notices: scene.notices, brush: scene.modeA.brush, selected: scene.modeB.selected,
+    const keep = { en: ['A', 'B', 'C'].map((g) => scene.groups[g].enabled), mode: scene.mode, notices: scene.notices, brush: scene.modeA.brush, selected: scene.modeB.selected,
       view: scene.sim.view, surfaceView: scene.sim.surfaceView, smoothing: scene.sim.smoothing };
     const c = JSON.parse(JSON.stringify(it));
     for (const k of Object.keys(scene)) if (!(k in c) && k !== 'mode' && k !== 'notices' && k !== 'groups') delete scene[k];
@@ -42,6 +44,7 @@
       scene[k] = v;
     }
     for (const [g, v] of Object.entries(c.groups || {})) scene.groups[g] = Object.assign({ surfaces: [] }, v, DERIVED.includes(g) ? { surfaces: [] } : {});
+    ['A', 'B', 'C'].forEach((g, i) => { scene.groups[g].enabled = keep.en[i]; });
     scene.mode = keep.mode; scene.notices = keep.notices; scene.modeA.brush = keep.brush;
     for (const st of scene.modeB.stamps) if (st.th === undefined) { st.th = 45; st.ph = 0; }   // newStamp defaults; the build re-aims
     if (scene.modeB) scene.modeB.selected = scene.modeB.stamps.some((t) => t.id === keep.selected) ? keep.selected : null;

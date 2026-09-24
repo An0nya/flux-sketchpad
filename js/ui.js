@@ -119,6 +119,9 @@
   ui.setMode = function (m, quiet) {
     const sc = ui.store.scene;
     C.actions.setMode(ui.store, m);
+    // each mode shows only its own optics (lenses / manual surfaces stay); B re-aims around what's left
+    for (const g of ['A', 'B', 'C']) sc.groups[g].enabled = g === m;
+    ui.store.invalidate(['B']); ui.store.commit({ deferA: true });
     document.body.classList.remove('mode-A', 'mode-B', 'mode-C');
     document.body.classList.add('mode-' + m);
     const gt = document.getElementById('btn-generate-top');
@@ -128,9 +131,6 @@
     document.getElementById('left-caption').textContent = cap[0];
     document.getElementById('right-caption').textContent = cap[1];
     document.getElementById('target-title').textContent = { A: 'Target — Mode A', B: 'Target — Mode B', C: 'Target — Mode C' }[m];
-    if (!quiet && m !== 'A' && sc.groups.A.enabled && sc.groups.A.surfaces.length) {
-      ui.store.notice('The Mode A reflector is still in the scene and can shadow Mode ' + m + ' optics — toggle it under “Scene contents”.');
-    }
     buildLeftTools();
     ui.refreshPanels();
     ui.requestRun(false);
