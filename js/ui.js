@@ -249,7 +249,8 @@
   }
   function renderStats(running) {
     const run = ui.run; if (!run) return;
-    const st = RF.Engine.stats(run.ctx), sc = ui.store.scene;
+    const sc = ui.store.scene;
+    const st = RF.Engine.stats(run.ctx, sc.mode === 'A' ? { paint: sc.modeA.paint, paintRes: sc.target.res } : null);
     let match = null;
     if (sc.mode === 'A' && run.ctx.next > 0) {
       // intent only exists at paint resolution: sum sim cells into paint cells first
@@ -317,18 +318,21 @@
     const res = ui.run.P.res, vals = heatValues();
     const si = document.querySelector('[data-control="sim.res"]');           // auto: show the grid actually used
     if (si) { si.disabled = !!ui.store.scene.sim.autoRes; if (si.disabled) si.value = res; }
-    ui.heatImg = R2.gridCanvas(vals, res, ui.heatImg);                        // also the 3D scene texture
+    // same brightness scale as the ray-hits view: white = 99.5th percentile, not the single max cell
+    const litV = []; for (let i = 0; i < vals.length; i++) if (vals[i] > 0) litV.push(vals[i]);
+    litV.sort((a, b) => a - b); const clip = RF.Engine.pctl(litV, 0.995);
+    ui.heatImg = R2.gridCanvas(vals, res, ui.heatImg, clip); ui.heatImg.clipValue = clip;   // also the 3D scene texture
     const sc = ui.store.scene, pres = sc.target.res;
     const overlay = sc.mode === 'B' ? R2.stampOverlay(sc, ui.store.reports.B, sc.modeB.selected) : null;
     // The panel's content frame is always the PAINT grid (so taps/stamps map the same at any sim res);
     // the sim image is stretched into it.
     R2.drawGridPanel(document.getElementById('heat-canvas'), ui.vHeat, ui.display === 'hits' ? hitsImage(pres) : ui.heatImg, pres, overlay);
     const T = ui.run.P.T, cellArea = (2 * T.half / res) ** 2 * 1e-6;       // m²
-    const peak = ui.heatImg.maxValue / Math.max(1e-300, ui.run.ctx.next / ui.run.ctx.N);
+    const peak = ui.heatImg.clipValue / Math.max(1e-300, ui.run.ctx.next / ui.run.ctx.N);
     const cb = document.getElementById('colorbar');
     cb.innerHTML = '';
     const lux = peak / cellArea, luxTxt = lux >= 100 ? Math.round(lux).toLocaleString() : lux.toPrecision(3);
-    cb.append(P.el('span', {}, '0'), P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('span', {}, 'peak ≈ ' + luxTxt + ' lx (' + res + '² sim-cell average, raw grid)' + (ui.display === 'smooth' ? '; picture smoothed' : ui.display === 'hits' ? '; picture = ray hits' : '')));
+    cb.append(P.el('span', {}, '0'), P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('span', {}, 'peak ≈ ' + luxTxt + ' lx (99.5th pct of ' + res + '² sim cells)' + (ui.display === 'smooth' ? '; picture smoothed' : ui.display === 'hits' ? '; picture = ray hits' : '')));
   }
   function drawLeft() {
     const sc = ui.store.scene, cv = document.getElementById('left-canvas');

@@ -278,7 +278,60 @@
   }
 
   // ---------------------------------------------------------------- statistics (raw grid only)
-  function stats(ctx) {
+  // Evaluation follows lighting practice: U₀ = E_min / E_avg over the TASK AREA (EN 12464-1), with
+  // E_min taken as the 5th percentile (the strict minimum of many noisy cells is a noise spike).
+  //   Mode A (paint given): task area = painted cells; E = sim ÷ paint per paint cell (sim cells are
+  //     summed into paint cells first), so a multi-level painting delivered exactly scores 1.
+  //   otherwise: task area = sim cells ≥ BEAM_EDGE × robust peak (the beam footprint).
+  // Both task areas lose a one-cell border zone (erode) before U₀.  Robust peak = 99.5th pct of lit cells.  Noise ceiling = 1 − 1.645/√(rays per task cell):
+  // what perfectly even light would score at this sampling.  Coverage = task-area fraction lit
+  // (Mode A: delivered ≥ BEAM_EDGE × mean; otherwise the footprint's share of the target).
+  const BEAM_EDGE = 0.10;
+  // Border zone (as EN 12464 excludes one along walls): drop task cells with a 4-neighbour outside the
+  // task area — partially-covered edge cells otherwise dominate the 5th percentile and U₀ measures
+  // edge sharpness, not evenness.  Falls back to the full area if erosion would empty it.
+  function erode(mask, r) {
+    const out = new Uint8Array(mask.length); let n = 0;
+    for (let j = 0; j < r; j++) for (let i = 0; i < r; i++) {
+      const k = j * r + i; if (!mask[k]) continue;
+      if (i > 0 && i < r - 1 && j > 0 && j < r - 1 && mask[k - 1] && mask[k + 1] && mask[k - r] && mask[k + r]) { out[k] = 1; n++; }
+    }
+    return n ? out : mask;
+  }
+  const pctl = (sorted, p) => sorted.length ? sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(p * (sorted.length - 1))))] : 0;
+  function evaluate(ctx, paint, paintRes) {
+    const P = ctx.P, rs = P.res, n = rs * rs, g = new Float64Array(n);
+    for (let i = 0; i < n; i++) g[i] = ctx.gridD[i] + ctx.gridR[i];
+    const e0 = (P.power / (ctx.N || 1)) || 1;                    // energy one ray carries at emission
+    const litS = []; for (let i = 0; i < n; i++) if (g[i] > 0) litS.push(g[i]); litS.sort((a, b) => a - b);
+    const peakRobust = pctl(litS, 0.995), peakMax = litS.length ? litS[litS.length - 1] : 0;
+    let vals, cellsE, basis, coverage, areaCells;
+    if (paint && paintRes && paint.some((w) => w > 0)) {
+      const rp = paintRes, G = new Float64Array(rp * rp);
+      for (let j = 0; j < rs; j++) for (let i = 0; i < rs; i++) G[Math.min(rp - 1, Math.floor((j + 0.5) * rp / rs)) * rp + Math.min(rp - 1, Math.floor((i + 0.5) * rp / rs))] += g[j * rs + i];
+      vals = []; cellsE = [];
+      const inner = erode(Uint8Array.from(paint, (w) => (w > 0 ? 1 : 0)), rp);
+      for (let k = 0; k < rp * rp; k++) if (inner[k]) { vals.push(G[k] / paint[k]); cellsE.push(G[k]); }
+      basis = 'paint'; areaCells = vals.length;
+      const m = vals.reduce((s, x) => s + x, 0) / vals.length;
+      coverage = m > 0 ? vals.filter((x) => x >= BEAM_EDGE * m).length / vals.length : 0;
+    } else {
+      const edge = BEAM_EDGE * peakRobust;
+      const beam = Uint8Array.from(g, (x) => (x > 0 && x >= edge ? 1 : 0)); let nb = 0; for (let i = 0; i < n; i++) nb += beam[i];
+      const inner = erode(beam, rs);
+      vals = []; for (let i = 0; i < n; i++) if (inner[i]) vals.push(g[i]);
+      cellsE = vals; basis = 'beam'; areaCells = vals.length; coverage = nb / n;
+    }
+    const sv = vals.slice().sort((a, b) => a - b), mean = sv.length ? sv.reduce((s, x) => s + x, 0) / sv.length : 0;
+    const raysPerCell = cellsE.length ? cellsE.reduce((s, x) => s + x, 0) / cellsE.length / e0 : 0;
+    return {
+      basis, areaCells, coverage,
+      uniformity: mean > 0 ? pctl(sv, 0.05) / mean : 0,
+      noiseCeiling: raysPerCell > 0 ? Math.max(0, 1 - 1.645 / Math.sqrt(raysPerCell)) : 0,
+      raysPerCell, peakRobust, peakMax,
+    };
+  }
+  function stats(ctx, opts) {
     const P = ctx.P, n = P.res * P.res, g = ctx.gridD, h = ctx.gridR;
     let lit = 0, sum = 0, sum2 = 0;
     for (let i = 0; i < n; i++) { const e = g[i] + h[i]; if (e > 0) { lit++; sum += e; sum2 += e * e; } }
@@ -288,8 +341,8 @@
     const accounted = E.direct + E.reflected + E.absorbed + E.backface + E.interfaceLoss + E.escaped + E.targetBack + E.truncated;
     return {
       rays: ctx.next, surfaces: P.G.n,
-      coverage: lit / n, litCells: lit, cells: n,
-      uniformity: lit ? 1 - sd / mu : 0,
+      litCells: lit, cells: n,
+      uniformityOld: lit ? 1 - sd / mu : 0,                   // 1 − σ/μ over lit cells (kept for reference; ray-count dependent)
       effIntercepted: E.intercepted / em,
       effViaSurface: E.reflected / em,
       effDirect: E.direct / em,
@@ -297,6 +350,7 @@
       energy: Object.assign({}, E),
       conservationError: (accounted - E.emitted) / em,
       selfShadow: E.intercepted > 0 ? E.reHit / E.intercepted : 0,
+      ...evaluate(ctx, opts && opts.paint, opts && opts.paintRes),
     };
   }
   function gridTotal(ctx) {
@@ -308,6 +362,6 @@
 
   RF.Engine = {
     targetFrame, designFrame, aimPoint, targetUVtoWorld, worldToTargetUV, cellCenter,
-    prepare, newCtx, traceRange, step, runSync, probeRay, stats, gridTotal, gridHash,
+    prepare, newCtx, traceRange, step, runSync, probeRay, stats, evaluate, gridTotal, gridHash, BEAM_EDGE, pctl,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
