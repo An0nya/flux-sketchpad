@@ -15,4 +15,10 @@ const u = (N) => E.stats(E.runSync(P, N), { paint: sc.modeA.paint, paintRes: sc.
 { const rp = 20, paint = new Array(rp * rp).fill(0); for (let j = 5; j < 15; j++) for (let i = 5; i < 15; i++) paint[j * rp + i] = i < 10 ? 1 : 0.3;
   const g = new Float64Array(1600); for (let j = 0; j < 40; j++) for (let i = 0; i < 40; i++) g[j * 40 + i] = paint[(j >> 1) * rp + (i >> 1)] * 5;
   const s = E.evaluate({ P: { res: 40, power: 1000 }, N: 1e6, gridD: g, gridR: new Float64Array(1600) }, paint, rp); ok('exact two-level delivery scores U₀ = 1', Math.abs(s.uniformity - 1) < 1e-12); }
+// grid transfer conserves energy and leaves no holes, whether sim is finer or coarser than paint
+for (const [rs, rp] of [[50, 100], [500, 100], [30, 100], [100, 100], [70, 30]]) {
+  const g = new Float64Array(rs * rs).fill(1), G = E.toPaintGrid(g, rs, rp);
+  const tot = G.reduce((s, x) => s + x, 0), mn = Math.min(...G), mx = Math.max(...G);
+  ok('uniform sim ' + rs + '² → paint ' + rp + '²: conserved, no holes', Math.abs(tot - rs * rs) < 1e-6 * rs * rs && mn > 0 && mx / mn < 1 + 1e-9, 'min/max ' + (mn / mx).toFixed(6));
+}
 process.exit(fails ? 1 : 0);

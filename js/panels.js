@@ -133,7 +133,7 @@
   function definitions() {
     const d = el('dl', { class: 'defs' });
     const add = (t, s) => d.append(el('dt', {}, t), el('dd', {}, s));
-    add('Coverage', 'Mode A: fraction of painted cells receiving ≥10% of the mean delivered/painted ratio. Other modes: fraction of the target inside the beam (cells ≥10% of the robust peak).');
+    add('Coverage', 'IES beam / field convention. Mode A: share of painted cells receiving ≥50% (beam) and ≥10% (field) of the mean delivered÷painted ratio — beam is the "did the light actually arrive" number. Other modes: share of the target at ≥50% / ≥10% of the robust peak. Measured on the paint grid, so gaps narrower than one paint cell are averaged away.');
     add('Uniformity (U₀)', 'Lighting-practice uniformity E_min/E_avg over the task area, with E_min = 5th percentile (the strict min of many noisy cells is a noise spike). Mode A scores sim ÷ paint on painted cells, so multi-level paintings delivered exactly score 1. The noise ceiling (1 − 1.645/√rays-per-cell) is what perfectly even light would read at this sampling — a U₀ near it is noise-limited.');
     add('Peak', '99.5th percentile of lit sim cells, not the single brightest cell (a noise spike at fine grids). Both heat views map white to this value.');
     add('Intercepted', 'Share of emitted flux whose first hit is an optical surface.');
@@ -264,7 +264,7 @@
     s(st.rays.toLocaleString() + (extra.running ? ' …' : ''), 'rays traced' + (extra.preview ? ' (coarse preview while dragging)' : ''));
     s(String(st.surfaces), 'surfaces placed');
     const area = st.basis === 'paint' ? 'painted cells' : 'beam (≥10% of peak)';
-    s(pct(st.coverage) + ' · U₀ ' + st.uniformity.toFixed(2), 'coverage · uniformity over ' + area + ' — U₀ = 5th pct ÷ mean' + (st.basis === 'paint' ? ' of sim ÷ paint' : '') + '; noise ceiling ' + st.noiseCeiling.toFixed(2) + ' (' + Math.round(st.raysPerCell) + ' rays/cell)' + (st.uniformity >= st.noiseCeiling - 0.02 ? ' — noise-limited: more rays or a coarser sim grid' : ''), 'pair');
+    s('beam ' + pct(st.coverage) + ' · field ' + pct(st.coverageField) + ' · U₀ ' + st.uniformity.toFixed(2), 'coverage (≥50% · ≥10% of ' + (st.basis === 'paint' ? 'intended' : 'peak') + ') · uniformity over ' + area + ' — U₀ = 5th pct ÷ mean' + (st.basis === 'paint' ? ' of sim ÷ paint' : '') + '; noise ceiling ' + st.noiseCeiling.toFixed(2) + ' (' + Math.round(st.raysPerCell) + ' rays/cell)' + (st.uniformity >= st.noiseCeiling - 0.02 ? ' — noise-limited: more rays or a coarser sim grid' : ''), 'pair');
     s(pct(st.effIntercepted), 'intercepted by any surface');
     s(pct(st.effViaSurface), 'reach target via a surface');
     s(pct(st.effDirect), 'reach target directly');

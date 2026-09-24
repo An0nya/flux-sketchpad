@@ -255,8 +255,7 @@
     if (sc.mode === 'A' && run.ctx.next > 0) {
       // intent only exists at paint resolution: sum sim cells into paint cells first
       const gs = RF.Engine.gridTotal(run.ctx), rs = run.P.res, rp = sc.target.res, p = sc.modeA.paint, n = rp * rp;
-      const g = new Float64Array(n);
-      for (let j = 0; j < rs; j++) for (let i = 0; i < rs; i++) g[Math.min(rp - 1, Math.floor((j + 0.5) * rp / rs)) * rp + Math.min(rp - 1, Math.floor((i + 0.5) * rp / rs))] += gs[j * rs + i];
+      const g = RF.Engine.toPaintGrid(gs, rs, rp);
       let sg = 0, sp = 0; for (let i = 0; i < n; i++) { sg += g[i]; sp += p[i]; }
       const mg = sg / n, mp = sp / n; let cov = 0, vg = 0, vp = 0, on = 0;
       for (let i = 0; i < n; i++) { cov += (g[i] - mg) * (p[i] - mp); vg += (g[i] - mg) ** 2; vp += (p[i] - mp) ** 2; if (p[i] > 0) on += g[i]; }

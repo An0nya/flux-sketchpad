@@ -283,10 +283,11 @@
   //   Mode A (paint given): task area = painted cells; E = sim ÷ paint per paint cell (sim cells are
   //     summed into paint cells first), so a multi-level painting delivered exactly scores 1.
   //   otherwise: task area = sim cells ≥ BEAM_EDGE × robust peak (the beam footprint).
-  // Both task areas lose a one-cell border zone (erode) before U₀.  Robust peak = 99.5th pct of lit cells.  Noise ceiling = 1 − 1.645/√(rays per task cell):
-  // what perfectly even light would score at this sampling.  Coverage = task-area fraction lit
-  // (Mode A: delivered ≥ BEAM_EDGE × mean; otherwise the footprint's share of the target).
-  const BEAM_EDGE = 0.10;
+  // The beam task area (not the painted one) loses a one-cell border zone (erode) before U₀.  Robust peak = 99.5th pct of lit cells.  Noise ceiling = 1 − 1.645/√(rays per task cell):
+  // what perfectly even light would score at this sampling.  Coverage (IES beam/field): Mode A = share of
+  // painted cells delivering ≥50% / ≥10% of the mean sim÷paint; otherwise the target share ≥50% / ≥10% of peak.
+  const BEAM_EDGE = 0.10;               // field edge (IES: field = 10% of peak) — also bounds the U₀ task area in B/C
+  const BEAM_HALF = 0.50;               // beam edge (IES: beam = 50% of peak)
   // Border zone (as EN 12464 excludes one along walls): drop task cells with a 4-neighbour outside the
   // task area — partially-covered edge cells otherwise dominate the 5th percentile and U₀ measures
   // edge sharpness, not evenness.  Falls back to the full area if erosion would empty it.
@@ -298,6 +299,19 @@
     }
     return n ? out : mask;
   }
+  // Move a sim grid (rs²) onto the paint grid (rp²), conserving energy: each sim cell's energy is split
+  // over the paint cells it overlaps, by overlap area.  Works both ways (sim finer OR coarser than paint);
+  // a nearest-centre mapping leaves paint cells empty whenever sim is coarser.
+  function toPaintGrid(g, rs, rp) {
+    const G = new Float64Array(rp * rp), f = rp / rs;          // paint cells per sim cell (1-D)
+    const span = (i) => { const a = i * f, b = (i + 1) * f, out = []; for (let k = Math.floor(a); k < Math.min(rp, Math.ceil(b - 1e-12)); k++) out.push([k, (Math.min(b, k + 1) - Math.max(a, k)) / f]); return out; };
+    const S = []; for (let i = 0; i < rs; i++) S.push(span(i));
+    for (let j = 0; j < rs; j++) for (let i = 0; i < rs; i++) {
+      const e = g[j * rs + i]; if (!e) continue;
+      for (const [pj, wj] of S[j]) for (const [pi, wi] of S[i]) G[pj * rp + pi] += e * wj * wi;
+    }
+    return G;
+  }
   const pctl = (sorted, p) => sorted.length ? sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(p * (sorted.length - 1))))] : 0;
   function evaluate(ctx, paint, paintRes) {
     const P = ctx.P, rs = P.res, n = rs * rs, g = new Float64Array(n);
@@ -305,27 +319,32 @@
     const e0 = (P.power / (ctx.N || 1)) || 1;                    // energy one ray carries at emission
     const litS = []; for (let i = 0; i < n; i++) if (g[i] > 0) litS.push(g[i]); litS.sort((a, b) => a - b);
     const peakRobust = pctl(litS, 0.995), peakMax = litS.length ? litS[litS.length - 1] : 0;
-    let vals, cellsE, basis, coverage, areaCells;
+    let vals, cellsE, basis, coverage, coverageField, areaCells;
     if (paint && paintRes && paint.some((w) => w > 0)) {
-      const rp = paintRes, G = new Float64Array(rp * rp);
-      for (let j = 0; j < rs; j++) for (let i = 0; i < rs; i++) G[Math.min(rp - 1, Math.floor((j + 0.5) * rp / rs)) * rp + Math.min(rp - 1, Math.floor((i + 0.5) * rp / rs))] += g[j * rs + i];
+      const rp = paintRes, G = toPaintGrid(g, rs, rp);
       vals = []; cellsE = [];
-      const inner = erode(Uint8Array.from(paint, (w) => (w > 0 ? 1 : 0)), rp);
-      for (let k = 0; k < rp * rp; k++) if (inner[k]) { vals.push(G[k] / paint[k]); cellsE.push(G[k]); }
+      // no border zone here: the painted edge is part of the job (a dim edge cell is real under-delivery),
+      // and eroding a 1–2-cell-wide painting would leave almost nothing to score
+      for (let k = 0; k < rp * rp; k++) if (paint[k] > 0) { vals.push(G[k] / paint[k]); cellsE.push(G[k]); }
       basis = 'paint'; areaCells = vals.length;
       const m = vals.reduce((s, x) => s + x, 0) / vals.length;
-      coverage = m > 0 ? vals.filter((x) => x >= BEAM_EDGE * m).length / vals.length : 0;
+      // coverage on ALL painted cells (not the eroded U₀ area): share delivering ≥50% (beam) / ≥10% (field) of the mean ratio
+      const all = []; for (let k = 0; k < rp * rp; k++) if (paint[k] > 0) all.push(G[k] / paint[k]);
+      const ma = all.reduce((s, x) => s + x, 0) / all.length;
+      coverage = ma > 0 ? all.filter((x) => x >= BEAM_HALF * ma).length / all.length : 0;
+      coverageField = ma > 0 ? all.filter((x) => x >= BEAM_EDGE * ma).length / all.length : 0;
     } else {
       const edge = BEAM_EDGE * peakRobust;
       const beam = Uint8Array.from(g, (x) => (x > 0 && x >= edge ? 1 : 0)); let nb = 0; for (let i = 0; i < n; i++) nb += beam[i];
       const inner = erode(beam, rs);
       vals = []; for (let i = 0; i < n; i++) if (inner[i]) vals.push(g[i]);
-      cellsE = vals; basis = 'beam'; areaCells = vals.length; coverage = nb / n;
+      let nh = 0; for (let i = 0; i < n; i++) if (g[i] >= BEAM_HALF * peakRobust && g[i] > 0) nh++;
+      cellsE = vals; basis = 'beam'; areaCells = vals.length; coverage = nh / n; coverageField = nb / n;
     }
     const sv = vals.slice().sort((a, b) => a - b), mean = sv.length ? sv.reduce((s, x) => s + x, 0) / sv.length : 0;
     const raysPerCell = cellsE.length ? cellsE.reduce((s, x) => s + x, 0) / cellsE.length / e0 : 0;
     return {
-      basis, areaCells, coverage,
+      basis, areaCells, coverage, coverageField,
       uniformity: mean > 0 ? pctl(sv, 0.05) / mean : 0,
       noiseCeiling: raysPerCell > 0 ? Math.max(0, 1 - 1.645 / Math.sqrt(raysPerCell)) : 0,
       raysPerCell, peakRobust, peakMax,
@@ -362,6 +381,6 @@
 
   RF.Engine = {
     targetFrame, designFrame, aimPoint, targetUVtoWorld, worldToTargetUV, cellCenter,
-    prepare, newCtx, traceRange, step, runSync, probeRay, stats, evaluate, gridTotal, gridHash, BEAM_EDGE, pctl,
+    prepare, newCtx, traceRange, step, runSync, probeRay, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
