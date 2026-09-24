@@ -34,6 +34,8 @@
       <option value="tir">TIR collimator (lens)</option>
       <option value="fresnel">Fresnel spotlight (lens)</option>
     </select>
+    <button id="btn-snapshot" title="Save a snapshot in this browser (separate from autosave)">Save</button>
+    <button id="btn-restore">Restore</button>
     <button id="btn-download" title="Download the whole scene as one JSON file">Save file</button>
     <label class="filebtn" title="Load a scene JSON file">Open file<input id="file-input" type="file" accept=".json,application/json" hidden></label>
     <button id="btn-reset" class="danger" data-confirm="Reset the whole scene?">Reset</button>
@@ -47,6 +49,7 @@
       <div class="seg" role="group" aria-label="Scene view extent">
         <button data-fit="fixture" class="on">Fixture</button><button data-fit="all">Whole scene</button>
       </div>
+      <label class="tog" title="On: orbit keeps the horizon level. Off: free trackball rotation."><input type="checkbox" id="turntable" checked> turntable</label>
       <label class="tog"><input type="checkbox" id="show-rays" checked> rays</label>
     </div>
     <div class="canvas-wrap"><canvas id="scene-canvas" aria-label="3D scene view"></canvas>

@@ -57,9 +57,10 @@
   ui.loadScene = function (scene, notice, silent) {
     ui.store = C.createStore(scene);
     ui.store.autoA = document.getElementById('auto-a') ? document.getElementById('auto-a').checked : true;
-    // rebuild derived groups from intent; keep a stored Mode A design if present
+    // rebuild derived groups from intent. Mode A is re-solved too (~50 ms): the solver report isn't
+    // saved with the scene, so otherwise the limits panel is empty after any load.
     ui.store.invalidate(['B', 'C', 'L']);
-    if (!scene.groups.A.surfaces.length && scene.modeA.paint.some((x) => x > 0) && scene.mode === 'A') ui.store.invalidate(['A']);
+    if ((scene.groups.A.surfaces.length || scene.mode === 'A') && scene.modeA.paint.some((x) => x > 0)) ui.store.invalidate(['A']);
     ui.store.commit({ forceA: ui.store.dirty.has('A') });
     if (notice) ui.store.notice(notice);
     if (silent) return;
@@ -238,7 +239,7 @@
       activeHandle: ui.activeHandle, preview: ui.preview && performance.now() < ui.preview.until ? ui.preview.pts : null, highlight: ui.highlight,
     });
     const hint = document.getElementById('scene-hint');
-    hint.textContent = ui.activeHandle ? 'dragging ' + ui.activeHandle.label : 'drag: orbit (no limits) · pinch/wheel: zoom · two fingers/shift-drag: pan · handles: source, axis tip, envelope faces, target';
+    hint.textContent = ui.activeHandle ? 'dragging ' + ui.activeHandle.label : (ui.turntable ? 'drag: orbit (level)' : 'drag: orbit (free)') + ' · pinch/wheel: zoom · two fingers/shift-drag: pan · handles: source, axis tip, envelope faces, target';
   }
   function drawSurfaceView() {
     if (!ui.model) return;
@@ -322,13 +323,13 @@
         ui.requestRun(true);
       },
       onDragEnd() {},
-      onPrimary(x, y, dx, dy) { ui.cam.orbit(dx, dy); ui.sceneDirty = true; schedule(); },
+      onPrimary(x, y, dx, dy) { ui.cam[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.sceneDirty = true; schedule(); },
       onPan(dx, dy) { ui.cam.pan[0] += dx; ui.cam.pan[1] += dy; ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { ui.cam.zoomAt(f, x, y); ui.sceneDirty = true; schedule(); },
     });
     const cs = document.getElementById('surface-canvas');
     RF.Input.attach(cs, {
-      onPrimary(x, y, dx, dy) { ui.camS.orbit(dx, dy); ui.sceneDirty = true; schedule(); },
+      onPrimary(x, y, dx, dy) { ui.camS[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.sceneDirty = true; schedule(); },
       onPan(dx, dy) { ui.camS.pan[0] += dx; ui.camS.pan[1] += dy; ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { ui.camS.zoomAt(f, x, y); ui.sceneDirty = true; schedule(); },
     });
@@ -479,6 +480,26 @@
     for (const b of document.querySelectorAll('[data-fit]')) b.addEventListener('click', () => ui.fit(b.dataset.fit));
     document.getElementById('btn-download').addEventListener('click', () => P.download(ui));
     document.getElementById('btn-generate-top').addEventListener('click', () => ui.generateA());
+    const tt = document.getElementById('turntable');
+    try { ui.turntable = localStorage.getItem('flux/turntable') !== '0'; } catch (e) { ui.turntable = true; }
+    tt.checked = ui.turntable;
+    tt.addEventListener('change', () => {
+      ui.turntable = tt.checked; try { localStorage.setItem('flux/turntable', tt.checked ? '1' : '0'); } catch (e) { /* ignore */ }
+      if (ui.turntable) { ui.cam.turntable(0, 0); ui.camS.turntable(0, 0); ui.fit(ui.fitMode); }   // level it now
+      ui.sceneDirty = true; schedule();
+    });
+    const snapTitle = () => { const t = RF.State.snapshotTime(); return t ? 'Restore the snapshot saved ' + new Date(t).toLocaleString() : 'No snapshot saved in this browser yet'; };
+    const rs = P.confirmButton('Restore', 'Replace current scene?', () => {
+      const s = RF.State.loadSnapshot(); if (!s) { ui.store.notice('No snapshot saved in this browser yet.'); ui.refreshPanels(); return; }
+      ui.loadScene(s, 'Restored the snapshot from ' + new Date(RF.State.snapshotTime()).toLocaleString() + '.');
+    });
+    rs.id = 'btn-restore'; rs.classList.remove('danger'); rs.title = snapTitle();
+    document.getElementById('btn-restore').replaceWith(rs);
+    document.getElementById('btn-snapshot').addEventListener('click', () => {
+      const ok = RF.State.saveSnapshot(ui.store.scene); rs.title = snapTitle();
+      ui.store.notice(ok ? 'Snapshot saved in this browser. Restore brings it back; autosave never overwrites it.' : 'Could not save: browser storage unavailable or full.');
+      ui.setStatus(ok ? 'snapshot saved' : 'snapshot failed'); ui.refreshPanels();
+    });
     document.getElementById('file-input').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) P.upload(ui, f); e.target.value = ''; });
     const reset = document.getElementById('btn-reset');
     const rb = P.confirmButton('Reset', 'Reset everything?', () => { RF.State.clearLocal(); ui.loadScene(RF.State.defaultScene(), 'Scene reset to defaults.'); });
@@ -506,9 +527,7 @@
     P.buildSide(ui);
     wireTopbar(); wireScene(); wireHeat(); wireLeft();
     ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : null, true);
-    // Always re-solve Mode A on load (~50 ms): the solver report isn't saved with the scene, so
-    // otherwise the limits panel is empty after a reload.
-    if (scene.groups.A.surfaces.length || scene.mode === 'A') { C.regenerateA(ui.store); }
+    if (!scene.groups.A.surfaces.length && scene.mode === 'A') { C.regenerateA(ui.store); }
     ui.setMode(scene.mode, true);
     setTimeout(() => { ui.fit('fixture'); ui.refreshPanels(); ui.requestRun(false); }, 0);
   }

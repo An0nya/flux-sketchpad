@@ -63,6 +63,13 @@
     const e = V.norm(rows[2]), right = V.norm(V.sub(rows[0], V.mul(e, V.dot(rows[0], e))));
     this.R = [right, V.cross(e, right), e];
   };
+  // Turntable: drag x spins about world up (z), drag y tilts; up stays vertical so the view never
+  // settles crooked. Elevation is clamped short of the poles, where azimuth is undefined.
+  Camera.prototype.turntable = function (dx, dy) {
+    const e = this.R[2], k = 0.008 * 180 / Math.PI;           // same drag speed as orbit()
+    const el = Math.asin(Math.max(-1, Math.min(1, e[2]))) * 180 / Math.PI, az = Math.atan2(e[1], e[0]) * 180 / Math.PI;
+    this.setAngles(az - dx * k, Math.max(-89, Math.min(89, el + dy * k)));
+  };
   Camera.prototype.zoomAt = function (factor, sx, sy) {
     const ox = sx - this.w / 2 - this.pan[0], oy = sy - this.h / 2 - this.pan[1];
     this.scale *= factor;

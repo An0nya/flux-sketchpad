@@ -91,6 +91,13 @@
       return s ? deserialize(s) : null;
     } catch (e) { return null; }
   }
+  // Manual snapshot: its own key, so autosave (crash recovery) never overwrites it.
+  const SNAP_KEY = LS_KEY + '/snapshot';
+  function saveSnapshot(scene) {
+    try { localStorage.setItem(SNAP_KEY, serialize(scene)); localStorage.setItem(SNAP_KEY + '/t', String(Date.now())); return true; } catch (e) { return false; }
+  }
+  function loadSnapshot() { try { const s = localStorage.getItem(SNAP_KEY); return s ? deserialize(s) : null; } catch (e) { return null; } }
+  function snapshotTime() { try { const t = +localStorage.getItem(SNAP_KEY + '/t'); return t || null; } catch (e) { return null; } }
   function clearLocal() { try { localStorage.removeItem(LS_KEY); } catch (e) { /* ignore */ } }
 
   // ---------------------------------------------------------------- whole-scene transforms
@@ -163,6 +170,6 @@
 
   RF.State = {
     VERSION, LS_KEY, defaultScene, defaultPaint, allSurfaces, serialize, deserialize,
-    saveLocal, loadLocal, clearLocal, mapSurface, scaleScene, mirrorSceneY, reorderScene,
+    saveLocal, loadLocal, clearLocal, saveSnapshot, loadSnapshot, snapshotTime, mapSurface, scaleScene, mirrorSceneY, reorderScene,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
