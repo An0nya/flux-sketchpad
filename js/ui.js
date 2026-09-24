@@ -75,6 +75,8 @@
     C.actions.setMode(ui.store, m);
     document.body.classList.remove('mode-A', 'mode-B', 'mode-C');
     document.body.classList.add('mode-' + m);
+    const gt = document.getElementById('btn-generate-top');
+    if (gt) { gt.disabled = m !== 'A'; gt.title = m === 'A' ? 'Solve the reflector for the painted target' : 'Stamp and Profile modes rebuild live; Generate is for Paint mode'; }
     for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-selected', b.dataset.mode === m ? 'true' : 'false');
     const cap = { A: ['Intended — paint here', 'Simulated'], B: ['Direction from the source (2nd picker)', 'Simulated · tap to stamp'], C: ['Profile cross-section — tap to add points', 'Simulated'] }[m];
     document.getElementById('left-caption').textContent = cap[0];
@@ -476,6 +478,7 @@
     document.getElementById('show-rays').addEventListener('change', (e) => { ui.showRays = e.target.checked; ui.sceneDirty = true; schedule(); });
     for (const b of document.querySelectorAll('[data-fit]')) b.addEventListener('click', () => ui.fit(b.dataset.fit));
     document.getElementById('btn-download').addEventListener('click', () => P.download(ui));
+    document.getElementById('btn-generate-top').addEventListener('click', () => ui.generateA());
     document.getElementById('file-input').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) P.upload(ui, f); e.target.value = ''; });
     const reset = document.getElementById('btn-reset');
     const rb = P.confirmButton('Reset', 'Reset everything?', () => { RF.State.clearLocal(); ui.loadScene(RF.State.defaultScene(), 'Scene reset to defaults.'); });
@@ -503,7 +506,9 @@
     P.buildSide(ui);
     wireTopbar(); wireScene(); wireHeat(); wireLeft();
     ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : null, true);
-    if (!scene.groups.A.surfaces.length && scene.mode === 'A') { C.regenerateA(ui.store); }
+    // Always re-solve Mode A on load (~50 ms): the solver report isn't saved with the scene, so
+    // otherwise the limits panel is empty after a reload.
+    if (scene.groups.A.surfaces.length || scene.mode === 'A') { C.regenerateA(ui.store); }
     ui.setMode(scene.mode, true);
     setTimeout(() => { ui.fit('fixture'); ui.refreshPanels(); ui.requestRun(false); }, 0);
   }
