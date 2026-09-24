@@ -14,7 +14,7 @@
 
   const ui = {
     store: null,
-    cam: new RF.Render.Camera(-50, 28), camS: new RF.Render.Camera(-50, 28),
+    cam: new RF.Render.Camera(-130, 28), camS: new RF.Render.Camera(-130, 28),   // eye on the lamp's side of the target (lit face)
     vLeft: new R2.View2D(), vHeat: new R2.View2D(), vPick: new R2.View2D(), vProf: new R2.View2D(),
     fitMode: 'fixture', showRays: true, smooth: false, view: 'total', surfaceView: 'shaded',
     interacting: false, run: null, model: null, handles: [], activeHandle: null, preview: null,
@@ -246,7 +246,7 @@
   // camera fitting
   ui.fit = function (mode) {
     ui.fitMode = mode;
-    if (!ui.model || ui.model.scene !== ui.store.scene) {
+    {   // always rebuild: surfaces can be regenerated into the same scene object (stale model ⇒ bad fit on load)
       const Pc = RF.Engine.prepare(ui.store.scene, RF.State.allSurfaces(ui.store.scene));
       ui.model = RF.Render.buildDrawModel(ui.store.scene, Pc); ui.model.scene = ui.store.scene;
     }
