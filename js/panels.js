@@ -67,7 +67,7 @@
     const side = document.getElementById('side');
     side.innerHTML = '';
     // Mode A
-    const genBtn = el('button', { type: 'button', class: 'on', id: 'btn-generate' }, 'Generate reflector');
+    const genBtn = el('button', { type: 'button', class: 'primary', id: 'btn-generate' }, 'Generate reflector');
     genBtn.addEventListener('click', () => ui.generateA());
     const auto = el('input', { type: 'checkbox', id: 'auto-a', checked: true });
     auto.addEventListener('change', () => { ui.store.autoA = auto.checked; });

@@ -347,3 +347,7 @@ js/checks1-3.js       the verification suite (in-page and headless)
 tests/headless.js load.js serve.py   headless runner, loader, test server
 tests/shots/          canvas snapshots taken during browser verification
 ```
+
+## Credits
+
+Icons: [Lucide](https://lucide.dev) (ISC License), inlined as SVG.

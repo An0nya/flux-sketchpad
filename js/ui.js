@@ -42,7 +42,7 @@
     ui.autosave();
   };
   ui.generateA = function () {
-    ui.setStatus('Generating reflector…');
+    ui.setStatus('Generating reflector…'); ui.progress('solve');
     setTimeout(() => {                               // let the status paint first
       const t0 = performance.now();
       C.regenerateA(ui.store);
@@ -122,7 +122,25 @@
     if (diag && rA && rA.search) diag.textContent = 'Derived from budget/envelope, not user controls — spokes: ' + rA.search.spokes + ', r0 candidates: ' + rA.search.r0Candidates + '. Per spoke r0 / captured θ-range / flux: ' + rA.spokes.map((s) => s.r0 ? s.r0.toFixed(1) + ' mm [' + s.span[0].toFixed(0) + '°–' + s.span[1].toFixed(0) + '°] ' + (s.flux * 100).toFixed(1) + '%' : '—').join('; ');
     ui.sceneDirty = true;
   };
-  ui.setStatus = function (t) { document.getElementById('progress-text').textContent = t; };
+  ui.setStatus = function (t) {
+    document.getElementById('progress-text').textContent = t;
+    const s = document.getElementById('run-state'); s.textContent = t; s.title = t;
+  };
+  // Progress: one line for the whole job (solve → trace).  'solve' = indeterminate shimmer (a
+  // compositor animation, so it keeps moving while a blocking solve holds the main thread);
+  // 'trace' = determinate.  The strip under the header opens only for jobs that outlast 400 ms
+  // (never for drag previews), overlays the panels instead of pushing them, and tucks away 0.8 s
+  // after the job ends.
+  ui.progress = function (phase, frac) {
+    const line = document.querySelector('.progress-line'), bar = document.getElementById('progress-bar');
+    const strip = document.getElementById('progress-strip'), now = performance.now();
+    if (phase !== 'done' && !ui.jobT0) ui.jobT0 = now;
+    line.classList.toggle('solving', phase === 'solve');
+    line.classList.toggle('done', phase === 'done');
+    if (phase === 'trace') bar.style.width = (frac * 100).toFixed(1) + '%';
+    if (phase === 'done') { bar.style.width = '100%'; ui.jobT0 = 0; clearTimeout(ui._stripT); ui._stripT = setTimeout(() => strip.classList.remove('open'), 800); return; }
+    if (!ui.previewRun && now - ui.jobT0 > 400) { clearTimeout(ui._stripT); strip.classList.add('open'); }
+  };
 
   // ---------------------------------------------------------------- run loop
   ui.requestRun = function (interactive) {
@@ -140,8 +158,10 @@
     cancelAnimationFrame(ui.raf); clearTimeout(ui.tmo);
     ui.raf = 0;
     const now = performance.now(), store = ui.store;
-    if (ui.pendingA && !ui.interacting && now >= ui.pendingA && store.dirty.has('A')) {
-      ui.pendingA = 0; ui.setStatus('Generating reflector…');
+    if (ui.pendingA && !ui.interacting && now >= ui.pendingA && store.dirty.has('A') && !ui.solveArmed) {
+      ui.solveArmed = true; ui.setStatus('Generating reflector…'); ui.progress('solve');   // let this frame paint first
+    } else if (ui.solveArmed) {
+      ui.solveArmed = false; ui.pendingA = 0;
       const t0 = performance.now(); C.regenerateA(store); ui.lastGenMs = performance.now() - t0;
       ui.refreshPanels(); ui.needCompile = true; ui.autosave();
     }
@@ -169,13 +189,13 @@
     if (run && (justDone || now - ui.lastHeat > 90)) { drawHeat(); ui.lastHeat = now; ui.sceneDirty = true; }
     if (run) {
       const c = run.ctx, pct = c.N ? c.next / c.N : 1;
-      document.getElementById('progress-bar').style.width = (pct * 100).toFixed(1) + '%';
+      if (!ui.solveArmed) ui.progress(c.done ? 'done' : 'trace', pct);
       if (!ui.pendingA || !store.dirty.has('A')) ui.setStatus((c.done ? 'done · ' : 'tracing · ') + c.next.toLocaleString() + ' / ' + c.N.toLocaleString() + ' rays' + (run.preview ? ' (preview)' : '') + ' · ' + c.elapsed.toFixed(0) + ' ms');
       else ui.setStatus('design changed — regenerating when you pause…');
     }
     if (run && (justDone || now - ui.lastStats > 300)) { renderStats(!run.ctx.done); ui.lastStats = now; }
     if (ui.sceneDirty) { drawSceneView(); drawSurfaceView(); drawLeft(); ui.sceneDirty = false; }
-    if ((run && !run.ctx.done) || (ui.pendingA && store.dirty.has('A'))) schedule();
+    if ((run && !run.ctx.done) || (ui.pendingA && store.dirty.has('A')) || ui.solveArmed) schedule();
   }
   function renderStats(running) {
     const run = ui.run; if (!run) return;
@@ -542,6 +562,23 @@
     };
     try { const v = localStorage.getItem('flux/lens'); if (v !== null) lens.value = v; } catch (e) { /* ignore */ }
     lens.addEventListener('input', applyLens); applyLens();
+    // ⋯ menu: toggle, close on outside click / Escape / after picking an item (confirm buttons keep it open)
+    const more = document.getElementById('btn-more'), pop = document.querySelector('.menu-pop');
+    const closeMenu = () => { pop.hidden = true; more.setAttribute('aria-expanded', 'false'); };
+    more.addEventListener('click', (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; more.setAttribute('aria-expanded', String(!pop.hidden)); });
+    document.addEventListener('click', (e) => { if (!pop.hidden && !pop.contains(e.target)) closeMenu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+    pop.addEventListener('click', (e) => { const b = e.target.closest('button,label'); if (b && !b.classList.contains('danger') && b.id !== 'btn-restore') setTimeout(closeMenu, 0); });
+    // settings sidebar: collapsible (desktop) / drawer (phone); remembered per browser
+    const sideBtn = document.getElementById('btn-side'), narrow = () => root.matchMedia('(max-width: 820px)').matches;
+    const setSide = (show) => {
+      document.body.classList.toggle('side-hidden', !show); sideBtn.setAttribute('aria-pressed', String(show));
+      if (!narrow()) try { localStorage.setItem('flux/side', show ? '1' : '0'); } catch (e) { /* ignore */ }   // phones: drawer state isn't remembered
+      requestAnimationFrame(() => root.dispatchEvent(new Event('resize')));
+    };
+    let sidePref = null; try { sidePref = localStorage.getItem('flux/side'); } catch (e) { /* ignore */ }
+    setSide(narrow() ? false : sidePref !== '0');
+    sideBtn.addEventListener('click', () => setSide(document.body.classList.contains('side-hidden')));
     const tt = document.getElementById('turntable');
     try { ui.turntable = localStorage.getItem('flux/turntable') !== '0'; } catch (e) { ui.turntable = true; }
     tt.checked = ui.turntable;
@@ -571,7 +608,7 @@
       const name = sel.value; if (!name) return;
       const bar = document.getElementById('preset-confirm') || P.el('div', { id: 'preset-confirm', class: 'btnrow' });
       bar.innerHTML = '';
-      const ok = P.el('button', { type: 'button', class: 'on' }, 'Replace scene with “' + sel.options[sel.selectedIndex].text + '”');
+      const ok = P.el('button', { type: 'button', class: 'primary' }, 'Replace scene with “' + sel.options[sel.selectedIndex].text + '”');
       const no = P.el('button', { type: 'button' }, 'Cancel');
       ok.addEventListener('click', () => { const p = P.presetScene(name); bar.remove(); sel.value = ''; if (p) ui.loadScene(p.scene, 'Preset: ' + p.notes.join('; ') + '.'); });
       no.addEventListener('click', () => { bar.remove(); sel.value = ''; });
