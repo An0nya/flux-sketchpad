@@ -18,7 +18,7 @@
     vLeft: new R2.View2D(), vHeat: new R2.View2D(), vPick: new R2.View2D(), vProf: new R2.View2D(),
     fitMode: 'fixture', showRays: true, smooth: false, view: 'total', surfaceView: 'shaded',
     interacting: false, run: null, model: null, handles: [], activeHandle: null, preview: null,
-    raf: 0, pendingA: 0, lastHeat: 0, lastStats: 0, pickMarks: [], profHandles: [], profSel: -1, heatImg: null, sceneDirty: true,
+    raf: 0, display: 'grid', pendingA: 0, lastHeat: 0, lastStats: 0, pickMarks: [], profHandles: [], profSel: -1, heatImg: null, sceneDirty: true,
   };
   RF.UI = ui;
 
@@ -159,6 +159,7 @@
         ui.camS.w = cs.width; ui.camS.h = cs.height; ui.camS.fit(pts, 0.12);
       }
       const N = ui.previewRun ? Math.min(sc.sim.rays, PREVIEW_RAYS) : sc.sim.rays;
+      Pc.recordHits = true;
       ui.run = { P: Pc, ctx: RF.Engine.newCtx(Pc, N, 240), preview: ui.previewRun, started: now };
       ui.lastHeat = 0; ui.sceneDirty = true;
     }
@@ -181,7 +182,10 @@
     const st = RF.Engine.stats(run.ctx), sc = ui.store.scene;
     let match = null;
     if (sc.mode === 'A' && run.ctx.next > 0) {
-      const g = RF.Engine.gridTotal(run.ctx), p = sc.modeA.paint, n = g.length;
+      // intent only exists at paint resolution: sum sim cells into paint cells first
+      const gs = RF.Engine.gridTotal(run.ctx), rs = run.P.res, rp = sc.target.res, p = sc.modeA.paint, n = rp * rp;
+      const g = new Float64Array(n);
+      for (let j = 0; j < rs; j++) for (let i = 0; i < rs; i++) g[Math.min(rp - 1, Math.floor((j + 0.5) * rp / rs)) * rp + Math.min(rp - 1, Math.floor((i + 0.5) * rp / rs))] += gs[j * rs + i];
       let sg = 0, sp = 0; for (let i = 0; i < n; i++) { sg += g[i]; sp += p[i]; }
       const mg = sg / n, mp = sp / n; let cov = 0, vg = 0, vp = 0, on = 0;
       for (let i = 0; i < n; i++) { cov += (g[i] - mg) * (p[i] - mp); vg += (g[i] - mg) ** 2; vp += (p[i] - mp) ** 2; if (p[i] > 0) on += g[i]; }
@@ -197,22 +201,44 @@
   // ---------------------------------------------------------------- drawing
   function heatValues() {
     const c = ui.run.ctx, n = c.gridD.length;
-    const g = ui.view === 'direct' ? c.gridD : ui.view === 'reflected' ? c.gridR : RF.Engine.gridTotal(c);
-    return ui.smooth ? R2.smoothCopy(g, ui.run.P.res) : (g === c.gridD || g === c.gridR ? Float64Array.from(g) : g);
+    const g = RF.Engine.gridTotal(c);
+    return ui.display === 'smooth' ? R2.smoothCopy(g, ui.run.P.res) : g;
+  }
+  // Ray-hits picture: bin every recorded hit at (about) the panel's own pixel resolution, brightness
+  // clipped at the 99.5th percentile of lit pixels so one hot pixel doesn't flatten the rest.
+  function hitsImage(pres) {
+    const c = ui.run.ctx, T = ui.run.P.T, cv = document.getElementById('heat-canvas');
+    const dpr = Math.min(2, root.devicePixelRatio || 1), a = ui.vHeat.toScreen(0, pres), b = ui.vHeat.toScreen(pres, 0);
+    const M = Math.max(16, Math.min(2048, Math.round(Math.abs(b[0] - a[0]) * dpr) || cv.width));
+    const buf = new Float64Array(M * M), k = M / (2 * T.half), h = c.hits;
+    for (let q = 0; q < 3 * c.nHits; q += 3) {
+      let i = Math.floor((h[q] + T.half) * k), j = Math.floor((h[q + 1] + T.half) * k);
+      if (i >= M) i = M - 1; if (j >= M) j = M - 1; if (i < 0 || j < 0) continue;
+      buf[j * M + i] += h[q + 2];
+    }
+    const lit = []; for (let i = 0; i < buf.length; i++) if (buf[i] > 0) lit.push(buf[i]);
+    lit.sort((x, y) => x - y);
+    const clip = lit.length ? lit[Math.min(lit.length - 1, Math.floor(0.995 * lit.length))] : 0;
+    ui.hitsImg = R2.gridCanvas(buf, M, ui.hitsImg, clip);
+    return ui.hitsImg;
   }
   function drawHeat() {
     if (!ui.run) return;
     const res = ui.run.P.res, vals = heatValues();
-    ui.heatImg = R2.gridCanvas(vals, res, ui.heatImg);
-    const sc = ui.store.scene;
+    const si = document.querySelector('[data-control="sim.res"]');           // auto: show the grid actually used
+    if (si) { si.disabled = !!ui.store.scene.sim.autoRes; if (si.disabled) si.value = res; }
+    ui.heatImg = R2.gridCanvas(vals, res, ui.heatImg);                        // also the 3D scene texture
+    const sc = ui.store.scene, pres = sc.target.res;
     const overlay = sc.mode === 'B' ? R2.stampOverlay(sc, ui.store.reports.B, sc.modeB.selected) : null;
-    R2.drawGridPanel(document.getElementById('heat-canvas'), ui.vHeat, ui.heatImg, res, overlay);
+    // The panel's content frame is always the PAINT grid (so taps/stamps map the same at any sim res);
+    // the sim image is stretched into it.
+    R2.drawGridPanel(document.getElementById('heat-canvas'), ui.vHeat, ui.display === 'hits' ? hitsImage(pres) : ui.heatImg, pres, overlay);
     const T = ui.run.P.T, cellArea = (2 * T.half / res) ** 2 * 1e-6;       // m²
     const peak = ui.heatImg.maxValue / Math.max(1e-300, ui.run.ctx.next / ui.run.ctx.N);
     const cb = document.getElementById('colorbar');
     cb.innerHTML = '';
     const lux = peak / cellArea, luxTxt = lux >= 100 ? Math.round(lux).toLocaleString() : lux.toPrecision(3);
-    cb.append(P.el('span', {}, '0'), P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('span', {}, 'peak ≈ ' + luxTxt + ' lx (cell average, raw grid)' + (ui.smooth ? '; picture smoothed' : '')));
+    cb.append(P.el('span', {}, '0'), P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('span', {}, 'peak ≈ ' + luxTxt + ' lx (' + res + '² sim-cell average, raw grid)' + (ui.display === 'smooth' ? '; picture smoothed' : ui.display === 'hits' ? '; picture = ray hits' : '')));
   }
   function drawLeft() {
     const sc = ui.store.scene, cv = document.getElementById('left-canvas');
@@ -473,9 +499,14 @@
     const rays = document.getElementById('rays-input');
     rays.addEventListener('change', () => ui.setControl('rays', parseFloat(rays.value)));
     document.querySelector('[data-control="tgt.res"]').addEventListener('change', (e) => { ui.setControl('tgt.res', parseFloat(e.target.value)); ui.vLeft.fitted = ui.vHeat.fitted = false; });
-    document.querySelector('[data-control-view="view"]').addEventListener('change', (e) => { ui.view = e.target.value; drawHeat(); ui.sceneDirty = true; schedule(); });
     document.querySelector('[data-control-view="surfaceView"]').addEventListener('change', (e) => { ui.surfaceView = e.target.value; ui.sceneDirty = true; schedule(); });
-    document.getElementById('smooth').addEventListener('change', (e) => { ui.smooth = e.target.checked; drawHeat(); ui.sceneDirty = true; schedule(); });
+    for (const b of document.querySelectorAll('#heat-display button')) b.addEventListener('click', () => {
+      ui.display = b.dataset.disp;
+      for (const o of document.querySelectorAll('#heat-display button')) o.classList.toggle('on', o === b);
+      drawHeat(); ui.sceneDirty = true; schedule();
+    });
+    document.querySelector('[data-control="sim.res"]').addEventListener('change', (e) => ui.setControl('sim.res', parseFloat(e.target.value)));
+    document.querySelector('[data-control="sim.autoRes"]').addEventListener('change', (e) => ui.setControl('sim.autoRes', e.target.checked));
     document.getElementById('show-rays').addEventListener('change', (e) => { ui.showRays = e.target.checked; ui.sceneDirty = true; schedule(); });
     for (const b of document.querySelectorAll('[data-fit]')) b.addEventListener('click', () => ui.fit(b.dataset.fit));
     document.getElementById('btn-download').addEventListener('click', () => P.download(ui));

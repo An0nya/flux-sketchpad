@@ -60,11 +60,12 @@
   <section class="panel target-panel">
     <div class="panel-head">
       <h2 id="target-title">Target</h2>
-      <label>Grid <input data-control="tgt.res" type="number" min="10" max="100" step="1" class="w4"></label>
-      <select data-control-view="view" aria-label="Heatmap component">
-        <option value="total">total</option><option value="direct">direct only</option><option value="reflected">via surfaces</option>
-      </select>
-      <label class="tog" title="Blurs the PICTURE only. Every statistic uses the raw accumulator."><input type="checkbox" id="smooth"> display smoothing</label>
+      <label title="Paint / design grid">Paint <input data-control="tgt.res" type="number" min="10" max="100" step="1" class="w4"></label>
+      <label title="Simulation grid — every statistic is computed on it">Sim <input data-control="sim.res" type="number" min="10" max="1000" step="10" class="w4"></label>
+      <label class="tog" title="Pick the sim grid for ~50 rays per lit cell"><input type="checkbox" data-control="sim.autoRes"> auto</label>
+      <div class="seg" id="heat-display" role="radiogroup" aria-label="Simulated view" title="Changes the PICTURE only. Every statistic uses the raw sim grid.">
+        <button data-disp="hits">Ray hits</button><button data-disp="grid" class="on">Grid</button><button data-disp="smooth">Smoothed</button>
+      </div>
     </div>
     <div class="twin">
       <figure class="twin-a">

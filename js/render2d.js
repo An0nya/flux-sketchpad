@@ -41,19 +41,20 @@
     return out;
   }
   // res×res canvas, row 0 at the top (v max), normalised to its own max
-  function gridCanvas(vals, res, canvas) {
+  function gridCanvas(vals, res, canvas, maxOverride) {
     const c = canvas || (typeof document !== 'undefined' ? document.createElement('canvas') : null);
     if (!c) return null;
     if (c.width !== res) { c.width = res; c.height = res; }
     const g = c.getContext('2d'), img = g.createImageData(res, res);
     let mx = 0; for (let i = 0; i < vals.length; i++) if (vals[i] > mx) mx = vals[i];
+    const peak = mx; if (maxOverride > 0) mx = maxOverride;
     for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
       const v = vals[j * res + i], t = mx > 0 ? Math.min(255, Math.round(v / mx * 255)) : 0;
       const o = 4 * ((res - 1 - j) * res + i);
       img.data[o] = LUT[3 * t]; img.data[o + 1] = LUT[3 * t + 1]; img.data[o + 2] = LUT[3 * t + 2]; img.data[o + 3] = 255;
     }
     g.putImageData(img, 0, 0);
-    c.maxValue = mx;
+    c.maxValue = peak;
     return c;
   }
 

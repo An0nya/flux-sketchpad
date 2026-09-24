@@ -33,6 +33,7 @@
     const run = (s, ds, a, N, halfAngle, tgt) => {
       const sc = bare();
       Object.assign(sc.target, tgt || { size: 300, res: 100 });
+      sc.sim.res = sc.target.res;            // this check measures on the grid it paints/aims with
       if (s > 0) Object.assign(sc.source, { kind: 'planar', shape: 'rect', w: s, h: s }); else sc.source.kind = 'point';
       sc.source.dist = 'cone'; sc.source.halfAngle = halfAngle;
       const P0 = [0, 0, ds], Z = [1000, 0, 0];

@@ -50,7 +50,7 @@
     scale = Math.max(scale, RF.Source.boundingRadius(scene.source) * 2, Math.max(...env.half) * 2);
     for (let i = 0; i < 3; i++) scale = Math.max(scale, Math.abs(scene.source.pos[i]));
     const sim = scene.sim;
-    return {
+    const P = {
       G, T, S, scale, eps: 1e-9 * scale,
       cap: Math.max(1, Math.min(8, sim.bounces | 0)),
       floor: Math.max(0, sim.floor),
@@ -59,6 +59,22 @@
       res: T.res,
       surfaces,
     };
+    P.res = simRes(scene, P);
+    return P;
+  }
+  // Simulation grid N×N — independent of the paint grid (target.res).  Auto: a 4,000-ray pilot on a
+  // coarse 24×24 grid measures the on-target fraction and the lit-area fraction, then picks N for
+  // ~50 rays per lit cell (±14% shot noise).  Deterministic (same seed), and never uses a previous run.
+  const AUTO_RAYS_PER_CELL = 50;
+  function simRes(scene, P) {
+    const sim = scene.sim, clamp = (n) => Math.max(10, Math.min(1000, Math.round(n)));
+    if (!sim.autoRes) return clamp(sim.res || P.T.res);
+    const Pp = Object.assign({}, P, { res: 24 }), c = runSync(Pp, 4000);
+    const on = (c.E.direct + c.E.reflected) / (c.E.emitted || 1);
+    let lit = 0; for (let i = 0; i < 576; i++) if (c.gridD[i] + c.gridR[i] > 0) lit++;
+    if (!(on > 0) || !lit) return clamp(P.T.res);
+    const n = Math.sqrt((sim.rays * on) / (AUTO_RAYS_PER_CELL * (lit / 576)));
+    return clamp(Math.round(n / 10) * 10);
   }
 
   function newCtx(P, N, pathLimit) {
@@ -66,6 +82,8 @@
     return {
       P, N, next: 0,
       gridD: new Float64Array(cells), gridR: new Float64Array(cells),
+      // raw lit-side hits (u, v, energy) for the ray-hits view; only when the caller asks (P.recordHits)
+      hits: P.recordHits ? new Float32Array(3 * Math.min(N, 2e6)) : null, nHits: 0, hitCap: Math.min(N, 2e6),
       E: { emitted: 0, direct: 0, reflected: 0, absorbed: 0, backface: 0, interfaceLoss: 0, escaped: 0, targetBack: 0, truncated: 0, intercepted: 0, reHit: 0, tir: 0 },
       surfIn: new Float64Array(Math.max(1, P.G.n)),
       paths: [], pathLimit: pathLimit === undefined ? 240 : pathLimit,
@@ -121,10 +139,11 @@
           if (Math.abs(u) <= T.half && Math.abs(v) <= T.half) {
             if (rec) rec.push(ox + t * dx, oy + t * dy, oz + t * dz);
             if (den < 0) {                         // lit side
-              const r = T.res;
+              const r = P.res;
               let iu = Math.floor((u + T.half) / (2 * T.half) * r), iv = Math.floor((v + T.half) / (2 * T.half) * r);
               if (iu >= r) iu = r - 1; if (iv >= r) iv = r - 1;
               const cell = iv * r + iu;
+              if (ctx.hits && ctx.nHits < ctx.hitCap) { const q = 3 * ctx.nHits++; ctx.hits[q] = u; ctx.hits[q + 1] = v; ctx.hits[q + 2] = E; }
               if (bounces === 0) { ctx.gridD[cell] += E; ctx.E.direct += E; } else { ctx.gridR[cell] += E; ctx.E.reflected += E; }
               if (probe) probe.push({ type: 'target', t, u, v, cell, point: [ox + t * dx, oy + t * dy, oz + t * dz], E });
               if (rec) rec.end = bounces === 0 ? 'direct' : 'target';

@@ -32,7 +32,7 @@
       },
       envelope: { shape: 'box', center: [-20, 0, 27.5], half: [40, 45, 32.5], axis: 2, keepOut: 12 },
       target: { distance: 1000, size: 1000, tiltX: 0, tiltY: 0, res: 50, linked: true, aim: [1000, 0, 0] },
-      sim: { rays: 2000, bounces: 1, floor: 0.01, seed: 1, smoothing: false, view: 'total', surfaceView: 'shaded' },
+      sim: { rays: 2000, res: 50, autoRes: false, bounces: 1, floor: 0.01, seed: 1, smoothing: false, view: 'total', surfaceView: 'shaded' },
       mode: 'A',
       modeA: { paint: defaultPaint(50), brush: { size: 3, strength: 1, erase: false }, budget: 48, facetType: 'curved', reflectivity: 0.9, requiredFlux: 0 },
       modeB: { stamps: [], selected: null, facetType: 'curved', defaultScale: 160 },
@@ -76,6 +76,7 @@
     const obj = typeof str === 'string' ? JSON.parse(str) : str;
     if (!obj || typeof obj !== 'object') throw new Error('not a scene object');
     const sc = mergeDefaults(obj, defaultScene());
+    if (!obj.sim || obj.sim.res === undefined) sc.sim.res = sc.target.res;   // older files: sim grid = paint grid
     // groups: keep loaded surfaces verbatim
     if (obj.groups) for (const k of Object.keys(obj.groups)) sc.groups[k] = Object.assign({ label: k, enabled: true, surfaces: [] }, obj.groups[k]);
     if (!Array.isArray(sc.modeA.paint) || sc.modeA.paint.length !== sc.target.res * sc.target.res) sc.modeA.paint = defaultPaint(sc.target.res);

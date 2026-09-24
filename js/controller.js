@@ -107,7 +107,9 @@
     num('aim.x', 'Aim x', (s) => RF.Engine.aimPoint(TG(s))[0], (s, v) => { TG(s).aim[0] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], step: 10, show: (s) => TG(s).linked === false }),
     num('aim.y', 'Aim y', (s) => RF.Engine.aimPoint(TG(s))[1], (s, v) => { TG(s).aim[1] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], step: 10, show: (s) => TG(s).linked === false }),
     num('aim.z', 'Aim z', (s) => RF.Engine.aimPoint(TG(s))[2], (s, v) => { TG(s).aim[2] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], step: 10, show: (s) => TG(s).linked === false }),
-    num('tgt.res', 'Grid', (s) => TG(s).res, (s, v) => setResolution(s, Math.round(RF.U.clamp(v, 10, 100))), { section: 'heatmap', min: 10, max: 100, step: 1, help: 'Accumulator / paint grid N×N (default 50, up to 100).' }),
+    num('tgt.res', 'Paint grid', (s) => TG(s).res, (s, v) => setResolution(s, Math.round(RF.U.clamp(v, 10, 100))), { section: 'heatmap', min: 10, max: 100, step: 1, help: 'Paint / design grid N×N (default 50, up to 100). The simulation has its own grid.' }),
+    num('sim.res', 'Sim grid', (s) => SIM(s).res, (s, v) => { SIM(s).res = Math.round(RF.U.clamp(v, 10, 1000)); }, { section: 'heatmap', min: 10, max: 1000, step: 10, help: 'Simulation accumulator N×N (10–1000). Every statistic is computed on this grid.' }),
+    chk('sim.autoRes', 'Auto sim grid', (s) => !!SIM(s).autoRes, (s, v) => { SIM(s).autoRes = !!v; }, { section: 'heatmap', help: 'Pick the sim grid for ~50 rays per lit cell, from a 4,000-ray pilot.' }),
     // ---- Mode A
     num('A.budget', 'Facet budget', (s) => s.scene.modeA.budget, (s, v) => { s.scene.modeA.budget = Math.round(RF.U.clamp(v, 1, 400)); }, { primary: true, section: 'modeA', modes: ['A'], groups: ['A'], min: 1, max: 400, step: 1, help: 'How many segments you are willing to make. Everything else (search resolution etc.) is derived.' }),
     sel('A.type', 'Facets', [['curved', 'Curved (tile size solved)'], ['flat', 'Flat (tile locked to footprint)']], (s) => s.scene.modeA.facetType, (s, v) => { s.scene.modeA.facetType = v; }, { primary: true, section: 'modeA', modes: ['A'], groups: ['A'] }),
