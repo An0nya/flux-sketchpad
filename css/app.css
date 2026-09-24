@@ -156,8 +156,8 @@ button.icon { padding: 0; width: 32px; min-height: 30px; justify-content: center
 button.icon:hover:not(:disabled) { color: var(--ink); border-color: var(--line); background: var(--panel2); }
 button.icon[aria-pressed="true"], button.icon[aria-expanded="true"] { color: var(--b); }
 .progress-line { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; overflow: hidden; pointer-events: none; }
-#progress-bar { height: 100%; width: 0; background: var(--b); transition: width .12s linear, opacity .6s; }
-.progress-line.done #progress-bar { opacity: 0; transition-delay: 0s, .5s; }
+#progress-bar { height: 100%; width: 0; background: var(--b); transition: opacity .6s; }   /* no width transition: it updates every frame, and a restarting transition lags */
+.progress-line.done #progress-bar { opacity: 0; transition-delay: .5s; }
 /* solving: indeterminate shimmer — transform-only, so the compositor keeps it moving during a blocking solve */
 .progress-line.solving #progress-bar { width: 35% !important; opacity: 1; animation: flux-shimmer 1.1s ease-in-out infinite; }
 @keyframes flux-shimmer { from { transform: translateX(-100%); } to { transform: translateX(290%); } }

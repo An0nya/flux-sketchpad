@@ -179,7 +179,12 @@
   ui.progress = function (phase, frac) {
     const line = document.querySelector('.progress-line'), bar = document.getElementById('progress-bar');
     const strip = document.getElementById('progress-strip'), now = performance.now();
-    if (phase !== 'done' && !ui.jobT0) ui.jobT0 = now;
+    if (phase !== 'done' && !ui.jobT0) {
+      // new job: snap the bar to its real width with the transition off, or it animates down from
+      // the previous run's 100% while fading in (read as "spawns at 50%, bounces to 20%")
+      ui.jobT0 = now; bar.style.transition = 'none'; bar.style.width = phase === 'trace' ? (frac * 100).toFixed(1) + '%' : '0%';
+      void bar.offsetWidth; bar.style.transition = '';
+    }
     line.classList.toggle('solving', phase === 'solve');
     line.classList.toggle('done', phase === 'done');
     if (phase === 'trace') bar.style.width = (frac * 100).toFixed(1) + '%';
