@@ -141,9 +141,11 @@
     if (m === 'A') {
       for (const id of ['A.brush', 'A.strength', 'A.erase']) {
         const c = C.BY_ID[id];
-        const inp = c.type === 'check' ? P.el('input', { type: 'checkbox', 'data-control': id }) : P.el('input', { type: 'number', 'data-control': id, min: c.min, max: c.max, step: c.step });
-        inp.addEventListener('change', () => ui.setControl(id, c.type === 'check' ? inp.checked : parseFloat(inp.value)));
-        box.append(P.el('label', { 'data-wrap': id }, c.label.replace(' (cells)', '') + ' ', inp));
+        const inp = c.type === 'check' ? P.el('input', { type: 'checkbox', 'data-control': id }) : P.el('input', { type: 'range', 'data-control': id, min: c.min, max: c.max, step: c.step });
+        const out = c.type === 'check' ? null : P.el('output', {}, String(c.get(ui.store)));
+        if (out) inp.addEventListener('input', () => { out.textContent = inp.value; });
+        inp.addEventListener('change', () => { ui.setControl(id, c.type === 'check' ? inp.checked : parseFloat(inp.value)); if (out) out.textContent = String(c.get(ui.store)); });
+        box.append(P.el('label', { 'data-wrap': id, class: c.type === 'check' ? 'tog' : 'slider' }, c.label.replace(' (cells)', '') + ' ', inp, out));
       }
     } else if (m === 'B') {
       box.append(P.el('span', {}, 'centre = emission axis, rings = 30° steps · bright = source intensity · dim = no room in the envelope'));
@@ -331,7 +333,8 @@
     const cb = document.getElementById('colorbar');
     cb.innerHTML = '';
     const lux = peak / cellArea, luxTxt = lux >= 100 ? Math.round(lux).toLocaleString() : lux.toPrecision(3);
-    cb.append(P.el('span', {}, '0'), P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('span', {}, 'peak ≈ ' + luxTxt + ' lx (99.5th pct of ' + res + '² sim cells)' + (ui.display === 'smooth' ? '; picture smoothed' : ui.display === 'hits' ? '; picture = ray hits' : '')));
+    cb.append(P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('div', { class: 'cb-labels' }, P.el('span', {}, '0'), P.el('span', {}, 'peak ≈ ' + luxTxt + ' lx')));
+    ui.peakInfo = { lux: luxTxt, res };
   }
   function drawLeft() {
     const sc = ui.store.scene, cv = document.getElementById('left-canvas');
@@ -358,6 +361,7 @@
       activeHandle: ui.activeHandle, preview: ui.preview && performance.now() < ui.preview.until ? ui.preview.pts : null, highlight: ui.highlight,
     });
     const hint = document.getElementById('scene-hint');
+    hint.classList.toggle('dragging', !!ui.activeHandle);
     hint.textContent = ui.activeHandle ? 'dragging ' + ui.activeHandle.label : (ui.turntable ? 'drag: orbit (level)' : 'drag: orbit (free)') + ' · pinch/wheel: zoom · two fingers/shift-drag: pan · handles: source, axis tip, envelope faces, target';
   }
   function drawSurfaceView() {
@@ -586,20 +590,65 @@
   ui.clearGroup = function (g) { C.actions.clearGroup(ui.store, g); ui.afterChange(); };
   ui.runChecks = function () { P.runChecks(ui); };
 
+  // ---------------------------------------------------------------- layout grid
+  // Computes the main grid from the sidebar and collapsed-panel state (a static CSS grid can't express
+  // every combination).  Collapsed panels keep only their title bar; the others take the space.
+  function layoutGrid() {
+    const L = document.querySelector('.layout'), c = ui.collapsed || {}, w = root.innerWidth;
+    const side = !document.body.classList.contains('side-hidden') && w > 820;
+    for (const [k, sel] of [['scene', '.scene-panel'], ['target', '.target-panel'], ['surface', '.surface-panel']]) document.querySelector(sel).classList.toggle('collapsed', !!c[k]);
+    const S = side ? ' side' : '';
+    let cols, areas, rows;
+    if (w > 1180) {
+      cols = 'minmax(0, 1.3fr) minmax(0, 1fr)' + (side ? ' 340px' : '');
+      if (!c.scene) {
+        areas = ['scene target' + S, 'scene surface' + S, 'stats stats' + S];
+        rows = [c.target ? 'auto' : 'minmax(0, 1.2fr)', c.surface ? (c.target ? 'minmax(0, 1fr)' : 'auto') : 'minmax(0, .8fr)', 'auto'];
+      } else {
+        areas = ['scene scene' + S, 'target surface' + S, 'stats stats' + S];
+        rows = ['auto', c.target && c.surface ? 'auto' : 'minmax(0, 1fr)', 'auto'];
+      }
+    } else {
+      // stacked: scene ≥ square, ~60% of the screen, capped; phones get paint/sim stacked (CSS)
+      cols = w > 820 ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)';
+      const one = (a) => (w > 820 ? a + ' ' + a : a);
+      areas = [one('scene'), one('target'), one('surface'), one('stats')].concat(side ? [one('side')] : []);
+      rows = [c.scene ? 'auto' : 'min(max(60vh, calc(100vw - 16px)), 85vh)', 'auto', c.surface ? 'auto' : (w > 820 ? '320px' : '280px'), 'auto'].concat(side ? ['auto'] : []);
+    }
+    L.style.gridTemplateColumns = cols; L.style.gridTemplateAreas = areas.map((a) => '"' + a + '"').join(' '); L.style.gridTemplateRows = rows.join(' ');
+    requestAnimationFrame(() => { ui.sceneDirty = true; drawHeat(); schedule(); });
+  }
+  ui.layoutGrid = layoutGrid;
+
   // ---------------------------------------------------------------- boot
   function wireTopbar() {
     for (const b of document.querySelectorAll('.modes button')) b.addEventListener('click', () => ui.setMode(b.dataset.mode));
-    const rays = document.getElementById('rays-input');
-    rays.addEventListener('change', () => ui.setControl('rays', parseFloat(rays.value)));
-    document.querySelector('[data-control="tgt.res"]').addEventListener('change', (e) => { ui.setControl('tgt.res', parseFloat(e.target.value)); ui.vLeft.fitted = ui.vHeat.fitted = false; });
+    document.querySelector('[data-control="tgt.res"]').addEventListener('change', () => { ui.vLeft.fitted = ui.vHeat.fitted = false; });
     document.querySelector('[data-control-view="surfaceView"]').addEventListener('change', (e) => { ui.surfaceView = e.target.value; ui.sceneDirty = true; schedule(); });
     for (const b of document.querySelectorAll('#heat-display button')) b.addEventListener('click', () => {
       ui.display = b.dataset.disp;
       for (const o of document.querySelectorAll('#heat-display button')) o.classList.toggle('on', o === b);
       drawHeat(); ui.sceneDirty = true; schedule();
     });
-    document.querySelector('[data-control="sim.res"]').addEventListener('change', (e) => ui.setControl('sim.res', parseFloat(e.target.value)));
-    document.querySelector('[data-control="sim.autoRes"]').addEventListener('change', (e) => ui.setControl('sim.autoRes', e.target.checked));
+    // reset zoom on the target canvases (button or double-click)
+    const resetView = (w) => { if (w === 'heat') ui.vHeat.fitted = false; else ui.vLeft.fitted = ui.vPick.fitted = ui.vProf.fitted = false; drawHeat(); ui.sceneDirty = true; schedule(); };
+    for (const b of document.querySelectorAll('[data-reset]')) b.addEventListener('click', () => resetView(b.dataset.reset));
+    document.getElementById('left-canvas').addEventListener('dblclick', () => resetView('left'));
+    document.getElementById('heat-canvas').addEventListener('dblclick', () => resetView('heat'));
+    // collapsible panels: click the title; the grid is recomputed so the others take the space
+    ui.collapsed = {}; try { ui.collapsed = JSON.parse(localStorage.getItem('flux/collapsed') || '{}'); } catch (e) { /* ignore */ }
+    for (const h of document.querySelectorAll('.collapser')) h.addEventListener('click', () => {
+      const k = h.dataset.panel; ui.collapsed[k] = !ui.collapsed[k];
+      try { localStorage.setItem('flux/collapsed', JSON.stringify(ui.collapsed)); } catch (e) { /* ignore */ }
+      layoutGrid();
+    });
+    layoutGrid();
+    // scene hint: on load, and again after a long idle; any interaction hides it
+    const hint = document.getElementById('scene-hint');
+    const showHint = (ms) => { hint.classList.add('show'); clearTimeout(ui._hintT); ui._hintT = setTimeout(() => { if (!ui.activeHandle) hint.classList.remove('show'); }, ms); };
+    const poke = () => { clearTimeout(ui._idleT); ui._idleT = setTimeout(() => showHint(8000), 60000); };
+    for (const ev of ['pointerdown', 'keydown', 'wheel']) document.addEventListener(ev, () => { if (!ui.activeHandle) hint.classList.remove('show'); poke(); }, { passive: true });
+    showHint(6000); poke();
     document.getElementById('show-rays').addEventListener('change', (e) => { ui.showRays = e.target.checked; ui.sceneDirty = true; schedule(); });
     for (const b of document.querySelectorAll('[data-fit]')) b.addEventListener('click', () => ui.fit(b.dataset.fit));
     document.getElementById('btn-download').addEventListener('click', () => P.download(ui));
@@ -643,6 +692,7 @@
     const setSide = (show) => {
       document.body.classList.toggle('side-hidden', !show); sideBtn.setAttribute('aria-pressed', String(show));
       if (!narrow()) try { localStorage.setItem('flux/side', show ? '1' : '0'); } catch (e) { /* ignore */ }   // phones: drawer state isn't remembered
+      if (ui.collapsed) layoutGrid();
       requestAnimationFrame(() => root.dispatchEvent(new Event('resize')));
     };
     let sidePref = null; try { sidePref = localStorage.getItem('flux/side'); } catch (e) { /* ignore */ }
@@ -685,7 +735,7 @@
       bar.append(ok, no);
       document.querySelector('.side-top').append(bar);
     });
-    root.addEventListener('resize', () => { ui.sceneDirty = true; drawHeat(); schedule(); });
+    root.addEventListener('resize', () => { clearTimeout(ui._layT); ui._layT = setTimeout(layoutGrid, 60); ui.sceneDirty = true; drawHeat(); schedule(); });
   }
 
   function boot() {

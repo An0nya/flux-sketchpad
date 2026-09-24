@@ -66,6 +66,8 @@
   function buildSide(ui) {
     const side = document.getElementById('side');
     side.innerHTML = '';
+    side.append(section('View', { open: true, key: 'view' },
+      el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit')));
     // Mode A
     const genBtn = el('button', { type: 'button', class: 'primary', id: 'btn-generate' }, 'Generate reflector');
     genBtn.addEventListener('click', () => ui.generateA());
@@ -115,7 +117,8 @@
       el('div', { class: 'btnrow' }, lensKind, el('button', { type: 'button', onclick: () => ui.addLens(lensKind.value) }, 'Add lens')),
       el('div', { id: 'lens-list', class: 'lens-list' })));
     // Simulation (advanced)
-    side.append(section('Simulation', { open: false, key: 'sim', adv: true, tag: 'Advanced' }, ...rowsFor(ui, ['bounces', 'floor', 'seed'])));
+    side.append(section('Simulation', { open: true, key: 'sim', tag: 'rays & grids' }, ...rowsFor(ui, ['rays', 'tgt.res', 'sim.res', 'sim.autoRes']),
+      section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']))));
     // Scene contents
     side.append(section('Scene contents', { open: false, key: 'groups' }, el('div', { id: 'group-list', class: 'group-list' })));
     // Definitions
@@ -270,6 +273,7 @@
     s(pct(st.effDirect), 'reach target directly');
     s(st.timeMs.toFixed(0) + ' ms', 'measured trace time');
     if (extra.match) s('r = ' + extra.match.r.toFixed(3) + ' · ' + pct(extra.match.onPaint), 'shape match: correlation intended↔simulated · energy on painted cells', 'pair');
+    if (ui.peakInfo) s('≈ ' + ui.peakInfo.lux + ' lx', 'peak — 99.5th pct of ' + ui.peakInfo.res + '² sim cells (not the single max: a noise spike); white point of both heat views');
     const bar = el('div', { class: 'energy', title: 'energy accounting' });
     const leg = el('div', { class: 'legend' });
     for (const [k, col, lab] of EN_COLS) {

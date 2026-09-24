@@ -37,12 +37,11 @@
 <main class="layout">
   <section class="panel scene-panel">
     <div class="panel-head">
-      <h2>Scene <small>isometric · drag to orbit, handles to edit</small></h2>
+      <h2 class="collapser" data-panel="scene" title="Collapse / expand">Scene</h2>
       <div class="seg" role="group" aria-label="Scene view extent">
         <button data-fit="fixture" class="on">Fixture</button><button data-fit="all">Whole scene</button>
       </div>
       <label class="tog lens" title="Lens focal length, 35 mm-equivalent. ∞ = orthographic (no perspective).">lens <input type="range" id="lens" min="0" max="100" step="1" value="100"> <output id="lens-out">∞</output></label>
-      <label class="tog" title="On: orbit keeps the horizon level. Off: free trackball rotation."><input type="checkbox" id="turntable" checked> turntable</label>
       <label class="tog"><input type="checkbox" id="show-rays" checked> rays</label>
     </div>
     <div class="canvas-wrap"><canvas id="scene-canvas" aria-label="3D scene view"></canvas>
@@ -51,11 +50,7 @@
 
   <section class="panel target-panel">
     <div class="panel-head">
-      <h2 id="target-title">Target</h2>
-      <label class="rays" title="Rays per run (drags use a 1,500-ray preview)">Rays <input id="rays-input" data-control="rays" type="number" min="100" max="1000000" step="100" class="w6"></label>
-      <label title="Paint / design grid">Paint <input data-control="tgt.res" type="number" min="10" max="100" step="1" class="w4"></label>
-      <label title="Simulation grid — every statistic is computed on it">Sim <input data-control="sim.res" type="number" min="10" max="1000" step="10" class="w4"></label>
-      <label class="tog" title="Pick the sim grid for ~50 rays per lit cell"><input type="checkbox" data-control="sim.autoRes"> auto</label>
+      <h2 id="target-title" class="collapser" data-panel="target" title="Collapse / expand">Target</h2>
       <div class="seg" id="heat-display" role="radiogroup" aria-label="Simulated view" title="Changes the PICTURE only. Every statistic uses the raw sim grid.">
         <button data-disp="hits">Ray hits</button><button data-disp="grid" class="on">Grid</button><button data-disp="smooth">Smoothed</button>
       </div>
@@ -63,20 +58,20 @@
     <div class="twin">
       <figure class="twin-a">
         <figcaption id="left-caption">Intended</figcaption>
-        <div class="canvas-wrap sq"><canvas id="left-canvas"></canvas></div>
+        <div class="canvas-wrap sq"><canvas id="left-canvas"></canvas><button class="icon reset-view" data-reset="left" title="Reset zoom (or double-click)" aria-label="Reset zoom">⤢</button></div>
         <div class="toolrow" id="left-tools"></div>
       </figure>
       <figure class="twin-b">
         <figcaption id="right-caption">Simulated</figcaption>
-        <div class="canvas-wrap sq"><canvas id="heat-canvas"></canvas></div>
-        <div class="toolrow" id="right-tools"><span id="colorbar"></span></div>
+        <div class="canvas-wrap sq"><canvas id="heat-canvas"></canvas><button class="icon reset-view" data-reset="heat" title="Reset zoom (or double-click)" aria-label="Reset zoom">⤢</button></div>
+        <div class="colorbar" id="colorbar"></div>
       </figure>
     </div>
   </section>
 
   <section class="panel surface-panel">
     <div class="panel-head">
-      <h2>Surfaces <small>optics only</small></h2>
+      <h2 class="collapser" data-panel="surface" title="Collapse / expand">Surfaces <small>optics only</small></h2>
       <select data-control-view="surfaceView" aria-label="Surface view style">
         <option value="shaded">shaded + normals</option><option value="pairs">ray pairs</option>
       </select>
