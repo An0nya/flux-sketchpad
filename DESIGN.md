@@ -123,7 +123,14 @@ Lead with actionable design issues, with successful checks underneath.
 - Step 2: shared facet/zone selection. Observations (one scene, `127.0.0.1:8746`, not validated further):
   test-scene facet A1 delivers 10.0 of the 15.2 units it sends when traced alone; zone 70 of Anya's
   default gets light from its facet **plus 28 others** (tiles far larger than zones: 13-cell zone).
-- Known gap: a zone that holds no cell's majority share (4 of 100 here) can't be clicked on the map.
+- The 4 "unclickable" zones are a SOLVER issue: their facets (A0, A1, A98, A99) carry 1e-4–1e-2 × the
+  median flux. Suspect (unchecked): `Math.max(1, floor(quota))` in modeA's spoke allocation gives dim
+  edge spokes a facet each. ~4% of the budget.
+- Zone selection replaced by **spot selection** (Anya 09-25): zones are this solver's intent, other
+  solvers may have none, and zone clicks can't reach spill or gaps. Spot = ~10 px disc, zoom for finer.
+- Observation (Anya's default scene, 50k rays, one run): at the pattern centre **36 facets** land light,
+  top share 6%, and the 4 facets meant for that spot aren't in the top 4. The hot centre is made of
+  spill. 10 o'clock of centre: intended facets lead at 11–21% each.
 - Planned: per-facet loss accounting. Design flux vs actually intercepted = **shadowed by other
   facets**; intercepted vs landed = **re-hit / cut / escaped**. Neither shows today: shadowing isn't a
   loss (the shadowing facet redirects that light), and re-hits sit inside the footer's "cut" bucket.
