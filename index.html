@@ -64,15 +64,15 @@
   </div>
 </main>
 
-  <footer class="panel stats-panel">
-    <div class="stats-min">
-      <div class="min-head"><div class="min-row" id="min-row"></div><button id="btn-details" class="mini" aria-expanded="false" aria-controls="stats-full">Details ▾</button></div>
-      <div class="energy" id="min-bar" title="where the rays went"></div>
-      <div class="min-limits" id="min-limits"></div>
+  <footer class="stats-panel" id="footer">
+    <div class="foot">
+      <div class="heads" id="min-row"></div>
+      <div class="foot-mid"><div class="min-limits" id="min-limits"></div><div class="energy" id="min-bar" title="Where the light went (fractions of emitted energy)"></div></div>
+      <button id="btn-details" class="mini" aria-expanded="false" aria-controls="stats-full">Details ▴</button>
     </div>
-    <div class="stats-grid" id="stats-full" hidden>
-      <div class="stats" id="stats"></div>
-      <div class="feas" id="feasibility" aria-live="polite"></div>
+    <div class="drawer" id="stats-full" hidden>
+      <div class="drawer-head"><h3>Results &amp; limits</h3><button id="btn-details-close" class="icon" aria-label="Close details">×</button></div>
+      <div class="stats-grid"><div class="stats" id="stats"></div><div class="feas" id="feasibility" aria-live="polite"></div></div>
     </div>
     <div class="notices" id="notices"></div>
   </footer>

@@ -145,16 +145,10 @@ button.icon[aria-pressed="true"], button.icon[aria-expanded="true"] { color: var
 
 /* ---- stats footer: minimal readout + expandable details */
 
-.min-head { display: flex; align-items: flex-start; gap: var(--s-10); }
-.min-row { flex: 1; display: flex; flex-wrap: wrap; gap: var(--s-4) calc(18px * var(--density)); align-items: baseline; }
-.min-row .kv b { font-size: 14px; font-variant-numeric: tabular-nums; }
-.min-row .kv small { color: var(--faint); font-size: 11px; }
 button.mini { min-height: 24px; padding: 1px var(--s-8); font-size: 11px; color: var(--dim); background: transparent; }
-.stats-min .energy { margin: var(--s-6) 0 var(--s-8); height: 4px; border: 0; opacity: .8; }
 .min-limits { font-size: 12px; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-14); }
 .min-limits .bind.ok { color: var(--ok); }
 .min-limits .note { color: var(--faint); }
-#stats-full { margin-top: var(--s-8); padding-top: var(--s-8); border-top: 1px solid var(--line); }
 #stats-full[hidden] { display: none; }
 .notice { animation: flux-fade 1s ease forwards; animation-play-state: running; }
 @keyframes flux-fade { to { opacity: 0; } }
@@ -268,7 +262,33 @@ figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: 
 .pair.both-bars > .divider.pd { pointer-events: none; }
 
 /* footer: under the panes only */
-.stats-panel { flex: none; padding: var(--s-8) var(--s-10); overflow-y: auto; max-height: 45vh; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.stats-panel { flex: none; position: relative; padding: var(--s-6) var(--s-10); background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  container-type: inline-size; }
+.foot { display: flex; align-items: center; gap: var(--s-6) calc(18px * var(--density)); flex-wrap: wrap; }
+.heads { display: flex; align-items: center; gap: calc(16px * var(--density)); flex-wrap: wrap; }
+.tile { display: flex; flex-direction: column; gap: 1px; cursor: help; }
+.tile b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.tile span { color: var(--faint); font-size: 10px; letter-spacing: .03em; }
+.tile.capped b::after { content: '≈'; color: var(--faint); font-weight: 400; margin-left: 2px; }   /* at the noise ceiling */
+.tile-sep { width: 1px; align-self: stretch; background: var(--line); }
+.tile.rays b { font-size: 13px; color: var(--dim); font-weight: 500; }
+.tile .ms { color: #46545f; font-size: 9px; margin-left: 3px; }   /* a teensy fun detail */
+.foot-mid { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: var(--s-4); }
+.foot-mid .energy { height: 7px; border: 0; border-radius: 2px; opacity: .85; }
+.min-limits { font-size: 12px; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-6); }
+.min-limits .issue { border-left: 2px solid var(--warn); padding-left: var(--s-6); color: var(--ink); }
+.min-limits .issue .mk { color: var(--warn); font-weight: 700; }
+/* the energy bar only when the footer has room for it */
+@container (max-width: 900px) { .foot-mid .energy { display: none; } }
+/* Details: opens upward over the panes, bounded, scrolls itself */
+.drawer { position: absolute; left: -1px; right: -1px; bottom: calc(100% + var(--s-6)); z-index: 20; max-height: min(62vh, 560px); overflow-y: auto;
+  background: var(--panel); border: 1px solid #3a4b57; border-radius: 10px; padding: var(--s-8) var(--s-14) var(--s-14); box-shadow: 0 -10px 40px rgba(0,0,0,.5); }
+.drawer[hidden] { display: none; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-6); }
+.drawer-head h3 { margin: 0; font-size: 13px; }
+/* transient notices float above the footer instead of growing it */
+.stats-panel > .notices { position: absolute; left: var(--s-10); bottom: calc(100% + var(--s-6)); z-index: 19; margin: 0; pointer-events: none; max-width: 70%; }
+.stats-panel > .notices .notice { background: rgba(17,27,37,.94); padding: var(--s-4) var(--s-8); border-radius: 0 6px 6px 0; margin-top: var(--s-4); }
 
 /* ---- phone: one pane at a time (tab strip), sidebar overlays */
 @media (max-width: 760px) {

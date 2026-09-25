@@ -88,6 +88,7 @@
       if (h.onZoom) { start(); h.onZoom(Math.exp(-e.deltaY * 0.0015), p[0], p[1]); clearTimeout(cv._wheelT); cv._wheelT = setTimeout(end, 180); }
     }, { passive: false });
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
+    cv.addEventListener('pointerleave', (e) => { if (!pts.has(e.pointerId) && h.onLeave) h.onLeave(); });
   }
 
   RF.Input = { attach };

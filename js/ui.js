@@ -244,7 +244,7 @@
     if (run) {
       const c = run.ctx, pct = c.N ? c.next / c.N : 1;
       if (!ui.solveArmed) ui.progress(c.done ? 'done' : 'trace', pct);
-      if (!ui.pendingA || !store.dirty.has('A')) ui.setStatus((c.done ? 'done · ' : 'tracing · ') + c.next.toLocaleString() + ' / ' + c.N.toLocaleString() + ' rays' + (run.preview ? ' (preview)' : '') + ' · ' + c.elapsed.toFixed(0) + ' ms');
+      if (!ui.pendingA || !store.dirty.has('A')) ui.setStatus(c.done ? (run.preview ? 'preview' : 'up to date') : 'tracing ' + Math.floor(100 * c.next / c.N) + '%' + (run.preview ? ' (preview)' : ''));   // counts + ms live in the footer
       else ui.setStatus('design changed — regenerating when you pause…');
     }
     if (run && (justDone || now - ui.lastStats > 300)) { renderStats(!run.ctx.done); ui.lastStats = now; }
@@ -553,7 +553,8 @@
         else { view().panBy(dx, dy); ui.sceneDirty = true; schedule(); }
       },
       onPrimaryEnd() { if (ui.store.scene.mode === 'A' && ui.painted) { ui.painted = false; ui.afterChange(); } },
-      onHover(x, y) { if (ui.store.scene.mode === 'A') { ui.brushAt = ui.vLeft.toContent(x, y); ui.sceneDirty = true; schedule(); } },
+      onHover(x, y) { if (ui.store.scene.mode === 'A' && liveFor(cv)(false)) { ui.brushAt = ui.vLeft.toContent(x, y); ui.sceneDirty = true; schedule(); } },
+      onLeave() { if (ui.brushAt) { ui.brushAt = null; ui.sceneDirty = true; schedule(); } },
       onPan(dx, dy) { view().panBy(dx, dy); ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { const v = view(); v.zoomAt(f, x, y); if (v === ui.vProf) v.lockBounds = v.bounds.slice(); ui.sceneDirty = true; schedule(); },
     });
@@ -817,10 +818,11 @@
     });
     // stats footer: minimal by default, Details expands to the full readout (remembered)
     const det = document.getElementById('btn-details'), full = document.getElementById('stats-full');
-    const setDetails = (open) => { full.hidden = !open; det.setAttribute('aria-expanded', String(open)); det.textContent = open ? 'Details ▴' : 'Details ▾';
-      try { localStorage.setItem('flux/details', open ? '1' : '0'); } catch (e) { /* ignore */ } requestAnimationFrame(() => root.dispatchEvent(new Event('resize'))); };
-    let detPref = null; try { detPref = localStorage.getItem('flux/details'); } catch (e) { /* ignore */ }
-    setDetails(detPref === '1'); det.addEventListener('click', () => setDetails(full.hidden));
+    // Details: a drawer that opens upward OVER the panes (they never resize); starts closed
+    const setDetails = (open) => { full.hidden = !open; det.setAttribute('aria-expanded', String(open)); det.textContent = open ? 'Details ▾' : 'Details ▴'; };
+    setDetails(false); det.addEventListener('click', () => setDetails(full.hidden));
+    document.getElementById('btn-details-close').addEventListener('click', () => setDetails(false));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !full.hidden) setDetails(false); });
     // settings sidebar: collapsible (desktop) / drawer (phone); remembered per browser
     const sideBtn = document.getElementById('btn-side'), narrow = phone;
     const setSide = (show) => {

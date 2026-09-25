@@ -337,15 +337,24 @@
     }
     leg.append(el('span', {}, 'Σ − emitted = ' + st.conservationError.toExponential(1)));
     box.append(bar, leg);
-    // minimal readout: rays · surfaces · coverage · shape match, and the same energy bar (legend on hover)
+    // footer: headline tiles (value over label; full definitions on hover and in Details), counts, energy bar
     const row = document.getElementById('min-row'), mb = document.getElementById('min-bar');
     if (row) {
-      const k = (v, l) => el('span', { class: 'kv', title: l }, el('b', {}, v), ' ', el('small', {}, l));
+      const t = (v, l, tip, cls) => el('div', { class: 'tile ' + (cls || ''), title: tip }, el('b', {}, v), el('span', {}, l));
+      const delivered = ((E.direct || 0) + (E.reflected || 0)) / em;
+      const rA = ui.store.reports.A, sc = ui.store.scene;
       row.innerHTML = '';
-      row.append(k(st.rays.toLocaleString() + (extra.running ? ' …' : ''), 'rays · ' + st.timeMs.toFixed(0) + ' ms' + (extra.preview ? ' (preview)' : '')),
-        k(String(st.surfaces), 'surfaces'),
-        k('beam ' + pct(st.coverage) + ' · field ' + pct(st.coverageField) + ' · U₀ ' + st.uniformity.toFixed(2), 'coverage'));
-      if (extra.match) row.append(k('r ' + extra.match.r.toFixed(2) + ' · ' + pct(extra.match.onPaint), 'shape match'));
+      row.append(
+        t(pct(delivered), 'delivered', 'Fraction of emitted light that reaches the target (direct + via optics).'),
+        t(pct(st.coverage), 'beam', 'Beam coverage: share of the ' + (st.basis === 'paint' ? 'painted cells' : 'beam area') + ' at ≥50% of ' + (st.basis === 'paint' ? 'intended' : 'peak') + '. Field (≥10%): ' + pct(st.coverageField) + '.'),
+        t(st.uniformity.toFixed(2), 'U₀', 'Uniformity U₀ = 5th percentile ÷ mean over ' + (st.basis === 'paint' ? 'painted cells (sim ÷ paint)' : 'the beam area') + '. Noise ceiling ' + st.noiseCeiling.toFixed(2) + ' at ' + Math.round(st.raysPerCell) + ' rays/cell.' + (st.uniformity >= st.noiseCeiling - 0.02 ? ' Noise-limited: more rays or a coarser sim grid.' : ''), st.uniformity >= st.noiseCeiling - 0.02 ? 'capped' : ''));
+      if (extra.match) row.append(t(extra.match.r.toFixed(2), 'shape', 'Shape match: correlation between intended and simulated (raw grid). ' + pct(extra.match.onPaint) + ' of target energy lands on painted cells.'));
+      row.append(el('span', { class: 'tile-sep' }));
+      row.append(sc.mode === 'A' && rA && !rA.error
+        ? t(rA.placed + ' / ' + sc.modeA.budget, 'facets', 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : ''))
+        : t(String(st.surfaces), 'surfaces', 'Surfaces in the scene.'));
+      row.append(el('div', { class: 'tile rays', title: 'Rays traced · trace time (tracing work only, not total wait)' + (extra.preview ? ' · coarse preview while dragging' : '') },
+        el('b', {}, st.rays.toLocaleString() + (extra.running ? ' …' : '')), el('span', {}, 'rays ', el('small', { class: 'ms' }, st.timeMs.toFixed(0) + ' ms'))));
       mb.innerHTML = ''; for (const n of bar.children) mb.append(n.cloneNode(true));
     }
   }
@@ -359,13 +368,23 @@
     for (const it of f.items) ul.append(el('li', { class: it.violated ? 'bad' : 'ok' }, el('b', {}, it.title + (it.ratio > 0 ? ' (×' + it.ratio.toFixed(2) + ')' : '') + ': '), it.text));
     box.append(ul);
     if (extra && extra.warnings && extra.warnings.length) for (const w of extra.warnings) box.append(el('div', { class: 'reason' }, w));
-    // minimal: the headline, plus whichever constraint sits closest to its limit
+    // footer issue line: this design's own problems first (they're actionable), then the global limits
     const ml = document.getElementById('min-limits');
     if (ml) {
       ml.innerHTML = '';
-      ml.append(el('div', { class: 'bind ' + (f.binding ? 'bad' : 'ok') }, el('span', { class: 'mk' }, f.binding ? '✗' : '✓'), ' ' + f.summary));
-      const rest = f.items.filter((it) => !it.violated && it.ratio > 0).sort((a, b) => b.ratio - a.ratio);
-      if (rest.length) ml.append(el('div', { class: 'note' }, 'closest: ' + rest[0].title + ' ×' + rest[0].ratio.toFixed(2) + (rest[1] ? ' · then ' + rest[1].title + ' ×' + rest[1].ratio.toFixed(2) : '')));
+      const rA = ui.store.scene.mode === 'A' ? ui.store.reports.A : null, issues = [];
+      if (rA && !rA.error) {
+        if (rA.dropped) issues.push(rA.dropped + ' facet' + (rA.dropped > 1 ? 's' : '') + ' dropped (no room in the envelope)');
+        if (rA.clamped) issues.push(rA.clamped + ' zone' + (rA.clamped > 1 ? 's' : '') + ' blurrier than their tile');
+        if (rA.warnings.some((w) => /budget too small/i.test(w))) issues.push('budget too small: azimuth trimmed');
+      }
+      if (f.binding) issues.push(f.summary);
+      if (issues.length) ml.append(el('div', { class: 'issue' }, el('span', { class: 'mk' }, '!'), ' ' + issues.join(' · ')));
+      else {
+        const rest = f.items.filter((it) => !it.violated && it.ratio > 0).sort((a, b) => b.ratio - a.ratio);
+        ml.append(el('div', { class: 'bind ok' }, el('span', { class: 'mk' }, '✓'), ' No design issues',
+          rest.length ? el('span', { class: 'note' }, ' · closest limit: ' + rest[0].title + ' ×' + rest[0].ratio.toFixed(2)) : null));
+      }
     }
   }
   function renderNotices(ui) {
