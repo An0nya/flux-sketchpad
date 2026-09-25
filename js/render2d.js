@@ -17,17 +17,25 @@
     if (this.cap > 0) this.s = Math.min(this.s, this.cap / (Math.max(bw, bh) * (1 + 2 * m)));   // shared size with a paired map
     this.capAt = this.cap;
     this.ox = w / 2 - this.s * (b[0] + b[2]) / 2; this.oy = h / 2 + this.s * (b[1] + b[3]) / 2;
-    this.fitted = true; this.bounds = b.slice(); this.w = w; this.h = h;
+    this.fitted = true; this.bounds = b.slice(); this.w = w; this.h = h; this.fitS = this.s; this.zoomed = false;
     this.fitSq = this.s * Math.max(bw, bh);   // on-screen size of the content at the default fit (UI aligns captions to it)
   };
   View2D.prototype.toScreen = function (x, y) { return [this.ox + this.s * x, this.oy - this.s * y]; };
   View2D.prototype.toContent = function (sx, sy) { return [(sx - this.ox) / this.s, (this.oy - sy) / this.s]; };
-  View2D.prototype.zoomAt = function (f, sx, sy) { this.ox = sx - (sx - this.ox) * f; this.oy = sy - (sy - this.oy) * f; this.s *= f; };
-  View2D.prototype.panBy = function (dx, dy) { this.ox += dx; this.oy += dy; };
+  View2D.prototype.zoomAt = function (f, sx, sy) { this.ox = sx - (sx - this.ox) * f; this.oy = sy - (sy - this.oy) * f; this.s *= f; this.zoomed = true; };
+  View2D.prototype.panBy = function (dx, dy) { this.ox += dx; this.oy += dy; this.zoomed = true; };
+  // the canvas changed size under a view the user zoomed or panned: keep the same zoom factor and centre
+  View2D.prototype.refitKeep = function (b, w, h) {
+    const f = this.s / this.fitS, c = this.toContent(this.w / 2, this.h / 2);
+    this.fit(b, w, h);
+    this.s = this.fitS * f; this.ox = w / 2 - this.s * c[0]; this.oy = h / 2 + this.s * c[1]; this.zoomed = true;
+  };
 
   function prepare2d(cv, view, bounds, refit) {
     const box = fitCanvas(cv), ctx = cv.getContext('2d');
-    if (!view.fitted || refit || view.w !== box.w || view.h !== box.h || view.capAt !== view.cap || view.bounds.join() !== bounds.join()) view.fit(bounds, box.w, box.h);
+    const sameBounds = view.bounds.join() === bounds.join();
+    if (!view.fitted || refit || !sameBounds) view.fit(bounds, box.w, box.h);
+    else if (view.w !== box.w || view.h !== box.h || view.capAt !== view.cap) { if (view.zoomed) view.refitKeep(bounds, box.w, box.h); else view.fit(bounds, box.w, box.h); }
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0);
     ctx.clearRect(0, 0, box.w, box.h);
     return { ctx, box };

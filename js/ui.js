@@ -614,6 +614,7 @@
   // not undoable.  Facet ids are slots ('A12' = zone 12's facet), so a selection survives a rebuild.
   // A spot is solver-agnostic (any light, anywhere); zones are only drawn as the solver's intent there.
   ui.sel = null;
+  const SEL_RAY_BOOST = 5;                              // a selection draws its rays this much denser than the full view
   ui.select = function (s) {
     const same = s && ui.sel && s.kind === ui.sel.kind && (s.kind === 'facet' ? s.id === ui.sel.id : Math.hypot(s.u - ui.sel.u, s.v - ui.sel.v) < ui.sel.r);
     ui.sel = same ? null : s;                           // clicking the selection again clears it
@@ -666,9 +667,9 @@
       for (const id of info.primaries) if (!info.emph.has(id)) info.emph.set(id, 0.25);   // meant to light it, lands nothing: faint
     } else return null;
     info.vals = vals;
-    // same density as the unselected view (it draws the first rayPaths of N rays), at least a few to read
-    const rate = (ui.rayPaths === undefined ? 240 : ui.rayPaths) / Math.max(1, c.N);
-    const MAXR = Math.min(rays.length, Math.max(6, Math.round(rays.length * rate))), step = Math.max(1, rays.length / MAXR);   // an even sample, retraced exactly
+    // drawn rays = (rays drawn with nothing selected) × (the selection's share of the traced light) × SEL_RAY_BOOST
+    const share = rays.length / Math.max(1, c.next), total = ui.rayPaths === undefined ? 240 : ui.rayPaths;
+    const MAXR = Math.min(rays.length, Math.max(rays.length ? 1 : 0, Math.round(total * share * SEL_RAY_BOOST))), step = Math.max(1, rays.length / MAXR);   // an even sample, retraced exactly
     for (let t = 0; t < rays.length && info.paths.length < MAXR; t += step) { const p = RF.Engine.retrace(run.P, rays[Math.floor(t)]); p.sel = true; info.paths.push(p); }
     ui.selCache = { sel: s, key, info };
     return info;

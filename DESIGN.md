@@ -128,7 +128,8 @@ Lead with actionable design issues, with successful checks underneath.
   edge spokes a facet each. ~4% of the budget.
 - Zone selection replaced by **spot selection** (Anya 09-25): zones are this solver's intent, other
   solvers may have none, and zone clicks can't reach spill or gaps. Spot = ~10 px disc, zoom for finer.
-- **Zone overlap is a solver-interface requirement** (Anya 09-25): our solver partitions the paint, so
+- **Zone overlap is a solver-interface NECESSITY** (Anya 09-25: a solver that doesn't overlap is likely
+  heavily under-optimised): our solver partitions the paint, so
   `report.zoneOf` stores ONE owner per cell. Other solvers (and benchmarked models) may deliberately
   overlap intents. The solver interface must report intent **per facet** (its own weighted cell list or
   footprint), not an owner map; the inspector's spot view then lists every intent under the spot.
@@ -137,6 +138,16 @@ Lead with actionable design issues, with successful checks underneath.
   brightness-theorem ceiling L·R·A_aperture and % of it reached, ANSI FL1 throw (2·√cd m), lm on target.
   Facet: area / projected area, its cd ceiling vs measured, distance from LED, flux share,
   shadowed / blocked losses. Fixture-level → Details drawer; facet/spot-level → expanded Optics.
+  **% of ceiling** (Anya): fixture → from emitter + envelope; facet → from emitter + facet projected area
+  (cd ceiling) AND from the source cone it captures (lm ceiling), both. Spot → the ceiling exists per
+  direction (L·R·aperture projected toward it) but a spot below it is usually intentional (the paint
+  isn't a white box), so show it as information, never as a score.
+  **Delivered ÷ intended**: already inside Mode A's U₀ (sim ÷ paint per paint cell) but never shown;
+  surface it as a Result display option + the spot readout. Core solver-validation metric.
+  **Editor in real units (idea):** paint is relative today; the solver scales to what it captures. Two
+  limits apply: brightness (cd ceiling per direction, reachable only over ~an emitter-image-sized spot)
+  and flux (Σ paint ≤ lm captured). A lux scale on the Editor from the captured flux + a ceiling marker
+  would show infeasible paint at paint time.
 - Baseline idea: a single smooth paraboloid (Mode C) as the benchmark's floor. Anya's pattern (hot core
   + spill) is roughly what a parabola does; whether it matches the delivered map is untested.
 - Brightness-theorem sanity (A28, default scene): bound I ≤ L·R·A_proj = 318 cd/mm² × 0.9 × 115 mm²
