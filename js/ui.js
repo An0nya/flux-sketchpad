@@ -416,9 +416,13 @@
       ui.activeHandle = null; ui.sceneDirty = true; schedule();
     }
   }
+  // click-to-focus: was this canvas's pane active when the press began (press) / is it now (wheel)?
+  // Phones show one pane at a time, and that pane is always the active one.
+  const liveFor = (cv) => (press) => { const el = cv.closest('.pane'); return !el || phone() || (press ? !!el._wasActive : el.classList.contains('active')); };
   function wireScene() {
     const cv = document.getElementById('scene-canvas');
     RF.Input.attach(cv, {
+      isLive: liveFor(cv), cold: 'view',
       onInteract: interact,
       hitTest(x, y) {
         let best = null, bd = Infinity;
@@ -461,6 +465,7 @@
     });
     const cs = document.getElementById('surface-canvas');
     RF.Input.attach(cs, {
+      isLive: liveFor(cs), cold: 'view',
       onPrimary(x, y, dx, dy) { ui.camS[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.sceneDirty = true; schedule(); },
       onPan(dx, dy) { ui.camS.pan[0] += dx; ui.camS.pan[1] += dy; ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { ui.camS.zoomAt(f, x, y); ui.sceneDirty = true; schedule(); },
@@ -471,6 +476,7 @@
     const T = () => RF.Engine.targetFrame(ui.store.scene.target);
     const toUV = (x, y) => { const c = ui.vHeat.toContent(x, y); return R2.cellToUV(T(), c[0], c[1]); };
     RF.Input.attach(cv, {
+      isLive: liveFor(cv), cold: 'view',
       onInteract: interact,
       hitTest(x, y) {
         const sc = ui.store.scene; if (sc.mode !== 'B') return null;
@@ -502,6 +508,7 @@
     const cv = document.getElementById('left-canvas');
     const view = () => ({ A: ui.vLeft, B: ui.vPick, C: ui.vProf }[ui.store.scene.mode]);
     RF.Input.attach(cv, {
+      isLive: liveFor(cv), cold: 'swallow',
       onInteract: interact,
       hitTest(x, y) {
         const m = ui.store.scene.mode;
@@ -764,7 +771,7 @@
     for (const b of document.querySelectorAll('[data-expand]')) b.addEventListener('click', (e) => { e.stopPropagation(); ui.setPane(b.dataset.expand, 'expand'); });
     for (const el of document.querySelectorAll('.pane')) {
       el.addEventListener('click', () => { if (el.classList.contains('collapsed')) ui.setPane(el.dataset.pane, 'collapse'); });
-      el.addEventListener('pointerdown', () => { if (!el.classList.contains('collapsed')) ui.setPane(el.dataset.pane, 'activate'); }, true);
+      el.addEventListener('pointerdown', () => { el._wasActive = el.classList.contains('active'); if (!el.classList.contains('collapsed')) ui.setPane(el.dataset.pane, 'activate'); }, true);
     }
     for (const b of document.querySelectorAll('[data-tab]')) b.addEventListener('click', () => ui.setPane(b.dataset.tab, 'activate'));
     wireDividers();
