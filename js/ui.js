@@ -125,7 +125,7 @@
     document.body.classList.remove('mode-A', 'mode-B', 'mode-C');
     document.body.classList.add('mode-' + m);
     const gt = document.getElementById('btn-generate-top');
-    if (gt) { gt.disabled = m !== 'A'; gt.title = m === 'A' ? 'Solve the reflector for the painted target' : 'Stamp and Profile modes rebuild live; Generate is for Paint mode'; }
+    if (gt) { gt.disabled = m !== 'A'; gt.title = m === 'A' ? 'Solve the reflector for the painted target' : 'Stamp and Profile modes rebuild live; Rebuild is for Paint mode'; }
     for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-selected', b.dataset.mode === m ? 'true' : 'false');
     const cap = { A: ['Intended — paint here', 'Simulated'], B: ['Direction from the source (2nd picker)', 'Simulated · tap to stamp'], C: ['Profile cross-section — tap to add points', 'Simulated'] }[m];
     document.getElementById('left-caption').textContent = cap[0];
@@ -166,7 +166,7 @@
     const rA = ui.store.reports.A, box = document.getElementById('modeA-report');
     const nA = ui.store.scene.groups.A.surfaces.length;
     if (box) box.textContent = rA ? (rA.error ? rA.error : rA.placed + ' facets placed, intercepting ' + (rA.capturedFraction * 100).toFixed(1) + '% of the lamp (solid-angle accounting).' + (rA.warnings.length ? ' ' + rA.warnings.join(' ') : '') + (ui.lastGenMs ? ' Solve took ' + ui.lastGenMs.toFixed(0) + ' ms.' : ''))
-      : nA ? nA + ' facets loaded with the scene (the solver report is not stored — press Generate to recompute it).' : 'No design yet.';
+      : nA ? nA + ' facets loaded with the scene (the solver report is not stored — press Rebuild to recompute it).' : 'No design yet.';
     const rC = ui.store.reports.C, bc = document.getElementById('modeC-report');
     if (bc) bc.textContent = rC ? (rC.error || rC.segments + ' surfaces from ' + ui.store.scene.modeC.profile.length + ' profile points.') : '';
     const diag = document.getElementById('diag');
@@ -663,36 +663,71 @@
   // ---------------------------------------------------------------- layout grid
   // Computes the main grid from the sidebar and collapsed-panel state (a static CSS grid can't express
   // every combination).  Collapsed panels keep only their title bar; the others take the space.
+  // Workspace layout: state in ui.layout (view state — saved per browser, never an undo entry);
+  // all sizing arithmetic is RF.Layout.compute.  Phones show one pane at a time via the tab strip.
+  const phone = () => root.matchMedia('(max-width: 760px)').matches;
+  const px = (v) => v + 'px';
+  function saveLayout() { try { localStorage.setItem('flux/layout', JSON.stringify(ui.layout)); } catch (e) { /* ignore */ } }
   function layoutGrid() {
-    const L = document.querySelector('.layout'), c = ui.collapsed || {}, w = root.innerWidth;
-    const side = !document.body.classList.contains('side-hidden') && w > 820;
-    for (const [k, sel] of [['scene', '.scene-panel'], ['target', '.target-panel'], ['surface', '.surface-panel']]) document.querySelector(sel).classList.toggle('collapsed', !!c[k]);
-    document.body.classList.toggle('target-collapsed', !!c.target);
-    const S = side ? ' side' : '';
-    let cols, areas, rows;
-    if (w > 1180) {
-      cols = 'minmax(0, 1.3fr) minmax(0, 1fr)' + (side ? ' 340px' : '');
-      if (!c.scene) {
-        // min-content, not auto: auto rows get stretched by the scene panel spanning both rows
-        const MC = 'min-content';
-        areas = ['scene target' + S, 'scene surface' + S, 'stats stats' + S];
-        // a lone flexible row must be 1fr: fr factors summing to < 1 claim only that fraction of the space
-        rows = [c.target ? MC : (c.surface ? 'minmax(0, 1fr)' : 'minmax(0, 1.2fr)'), c.surface ? (c.target ? 'minmax(0, 1fr)' : MC) : (c.target ? 'minmax(0, 1fr)' : 'minmax(0, .8fr)'), MC];
-      } else {
-        const MC = 'min-content';
-        areas = ['scene scene' + S, 'target surface' + S, 'stats stats' + S];
-        rows = [MC, c.target && c.surface ? MC : 'minmax(0, 1fr)', MC];
-      }
-    } else {
-      // stacked: scene ≥ square, ~60% of the screen, capped; phones get paint/sim stacked (CSS)
-      cols = w > 820 ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)';
-      const one = (a) => (w > 820 ? a + ' ' + a : a);
-      areas = [one('scene'), one('target'), one('surface'), one('stats')].concat(side ? [one('side')] : []);
-      rows = [c.scene ? 'auto' : 'min(max(60vh, calc(100vw - 16px)), 85vh)', 'auto', c.surface ? 'auto' : (w > 820 ? '320px' : '280px'), 'auto'].concat(side ? ['auto'] : []);
+    const st = ui.layout = RF.Layout.sanitize(ui.layout);
+    const W = document.getElementById('workspace'), R = document.getElementById('right'), PR = document.getElementById('pair');
+    const panes = {}; for (const el of document.querySelectorAll('.pane')) panes[el.dataset.pane] = el;
+    document.body.classList.toggle('target-collapsed', !!st.collapsed.editor);
+    for (const [k, el] of Object.entries(panes)) { el.classList.toggle('active', st.active === k); el.classList.toggle('expanded', st.expanded === k); }
+    for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === st.active);
+    for (const b of document.querySelectorAll('[data-expand]')) { const on = st.expanded === b.dataset.expand; b.textContent = on ? '↙' : '⤢'; b.title = on ? 'Restore size' : 'Expand'; }
+    if (phone()) {
+      for (const el of [W, R, PR]) el.removeAttribute('style');
+      PR.classList.remove('stacked', 'both-bars');
+      for (const [k, el] of Object.entries(panes)) { el.classList.remove('rail', 'bar', 'collapsed'); el.classList.toggle('phone-hidden', k !== st.active); }
+      return;
     }
-    L.style.gridTemplateColumns = cols; L.style.gridTemplateAreas = areas.map((a) => '"' + a + '"').join(' '); L.style.gridTemplateRows = rows.join(' ');
-    requestAnimationFrame(() => { healCameras(); ui.sceneDirty = true; drawHeat(); schedule(); });
-    setTimeout(() => { healCameras(); ui.sceneDirty = true; schedule(); }, 120);   // hidden tabs skip rAF
+    const r = RF.Layout.compute(st, W.clientWidth, W.clientHeight);
+    W.style.gridTemplateColumns = r.cols.map(px).join(' ');
+    R.style.gridTemplateRows = r.rows.map(px).join(' ');
+    PR.classList.toggle('stacked', r.pair.stacked); PR.classList.toggle('both-bars', r.pair.both);
+    if (r.pair.both) { PR.style.gridTemplateColumns = 'minmax(0, 1fr) 10px minmax(0, 1fr)'; PR.style.gridTemplateRows = 'minmax(0, 1fr)'; }
+    else if (r.pair.stacked) { PR.style.gridTemplateColumns = 'minmax(0, 1fr)'; PR.style.gridTemplateRows = r.pair.sizes.map(px).join(' '); }
+    else { PR.style.gridTemplateColumns = r.pair.sizes.map(px).join(' '); PR.style.gridTemplateRows = 'minmax(0, 1fr)'; }
+    for (const [k, el] of Object.entries(panes)) {
+      el.classList.remove('phone-hidden');
+      el.classList.toggle('rail', r.cls[k] === 'rail'); el.classList.toggle('bar', r.cls[k] === 'bar'); el.classList.toggle('collapsed', !!r.cls[k]);
+    }
+    for (const d of document.querySelectorAll('.divider')) d.classList.toggle('off', !r.dividers[{ split: 'main', rowSplit: 'row', pairSplit: 'pair' }[d.dataset.split]]);
+  }
+  ui.setPane = function (k, change) {           // change: 'collapse' | 'expand' | 'activate'
+    const st = ui.layout, was = JSON.stringify(st);
+    if (change === 'collapse') {
+      st.collapsed[k] = !st.collapsed[k];
+      if (st.collapsed[k] && st.expanded === k) st.expanded = null;
+    } else if (change === 'expand') {
+      st.expanded = st.expanded === k ? null : k; st.collapsed[k] = false; st.active = k;
+    } else { st.active = k; st.collapsed[k] = phone() ? false : st.collapsed[k]; }
+    if (JSON.stringify(st) === was) return;
+    saveLayout(); layoutGrid();
+  };
+  // Dividers: drag writes the stored share (and ends an expand, so the pane follows the pointer);
+  // arrow keys nudge; double-click resets.
+  function wireDividers() {
+    for (const d of document.querySelectorAll('.divider')) {
+      const key = d.dataset.split;
+      const share = (e) => {
+        const box = (key === 'split' ? document.getElementById('workspace') : key === 'rowSplit' ? document.getElementById('right') : document.getElementById('pair')).getBoundingClientRect();
+        const vert = key === 'rowSplit' || (key === 'pairSplit' && document.getElementById('pair').classList.contains('stacked'));
+        return vert ? (e.clientY - box.top) / box.height : (e.clientX - box.left) / box.width;
+      };
+      const set = (v) => { ui.layout[key] = Math.min(0.9, Math.max(0.1, v)); ui.layout.expanded = null; layoutGrid(); };
+      let id = null;
+      d.addEventListener('pointerdown', (e) => { id = e.pointerId; try { d.setPointerCapture(id); } catch (err) { /* ignore */ } d.classList.add('dragging'); e.preventDefault(); });
+      d.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(share(e)); });
+      const stop = (e) => { if (e.pointerId !== id) return; id = null; d.classList.remove('dragging'); saveLayout(); };
+      d.addEventListener('pointerup', stop); d.addEventListener('pointercancel', stop);
+      d.addEventListener('keydown', (e) => {
+        const k = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (!k) return;
+        e.preventDefault(); set(ui.layout[key] + k * 0.02); saveLayout();
+      });
+      d.addEventListener('dblclick', () => { set(RF.Layout.defaults()[key]); saveLayout(); });
+    }
   }
   ui.layoutGrid = layoutGrid;
   function refitSurfaces() {
@@ -722,14 +757,26 @@
     for (const b of document.querySelectorAll('[data-reset]')) b.addEventListener('click', () => resetView(b.dataset.reset));
     document.getElementById('left-canvas').addEventListener('dblclick', () => resetView('left'));
     document.getElementById('heat-canvas').addEventListener('dblclick', () => resetView('heat'));
-    // collapsible panels: click the title; the grid is recomputed so the others take the space
-    ui.collapsed = {}; try { ui.collapsed = JSON.parse(localStorage.getItem('flux/collapsed') || '{}'); } catch (e) { /* ignore */ }
-    for (const h of document.querySelectorAll('.collapser')) h.addEventListener('click', () => {
-      const k = h.dataset.panel; ui.collapsed[k] = !ui.collapsed[k];
-      try { localStorage.setItem('flux/collapsed', JSON.stringify(ui.collapsed)); } catch (e) { /* ignore */ }
-      layoutGrid();
-    });
+    // panes: chevron / title collapses; a collapsed rail or bar restores on click; ⤢ expands
+    try { ui.layout = JSON.parse(localStorage.getItem('flux/layout') || 'null'); } catch (e) { ui.layout = null; }
+    ui.layout = RF.Layout.sanitize(ui.layout);
+    for (const b of document.querySelectorAll('[data-collapse]')) b.addEventListener('click', (e) => { e.stopPropagation(); ui.setPane(b.dataset.collapse, 'collapse'); });
+    for (const b of document.querySelectorAll('[data-expand]')) b.addEventListener('click', (e) => { e.stopPropagation(); ui.setPane(b.dataset.expand, 'expand'); });
+    for (const el of document.querySelectorAll('.pane')) {
+      el.addEventListener('click', () => { if (el.classList.contains('collapsed')) ui.setPane(el.dataset.pane, 'collapse'); });
+      el.addEventListener('pointerdown', () => { if (!el.classList.contains('collapsed')) ui.setPane(el.dataset.pane, 'activate'); }, true);
+    }
+    for (const b of document.querySelectorAll('[data-tab]')) b.addEventListener('click', () => ui.setPane(b.dataset.tab, 'activate'));
+    wireDividers();
     layoutGrid();
+    // canvases size themselves on draw; a ResizeObserver says when (replaces rAF/timeout guesswork after layout changes)
+    let roT = 0;
+    const onResize = () => { if (roT) return; roT = requestAnimationFrame(() => { roT = 0; healCameras(); ui.sceneDirty = true; drawHeat(); schedule(); }); };
+    if (root.ResizeObserver) {
+      const ro = new ResizeObserver(onResize);
+      for (const w of document.querySelectorAll('.canvas-wrap')) ro.observe(w);
+      new ResizeObserver(() => layoutGrid()).observe(document.getElementById('workspace'));
+    }
     // scene hint: on load, and again after a long idle; any interaction hides it
     const hint = document.getElementById('scene-hint');
     const showHint = (ms) => { hint.classList.add('show'); clearTimeout(ui._hintT); ui._hintT = setTimeout(() => { if (!ui.activeHandle) hint.classList.remove('show'); }, ms); };
@@ -767,19 +814,12 @@
       try { localStorage.setItem('flux/details', open ? '1' : '0'); } catch (e) { /* ignore */ } requestAnimationFrame(() => root.dispatchEvent(new Event('resize'))); };
     let detPref = null; try { detPref = localStorage.getItem('flux/details'); } catch (e) { /* ignore */ }
     setDetails(detPref === '1'); det.addEventListener('click', () => setDetails(full.hidden));
-    const more = document.getElementById('btn-more'), pop = document.querySelector('.menu-pop');
-    const closeMenu = () => { pop.hidden = true; more.setAttribute('aria-expanded', 'false'); };
-    more.addEventListener('click', (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; more.setAttribute('aria-expanded', String(!pop.hidden)); });
-    document.addEventListener('click', (e) => { if (!pop.hidden && !pop.contains(e.target)) closeMenu(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
-    pop.addEventListener('click', (e) => { const b = e.target.closest('button,label'); if (b && !b.classList.contains('danger') && b.id !== 'btn-restore') setTimeout(closeMenu, 0); });
     // settings sidebar: collapsible (desktop) / drawer (phone); remembered per browser
-    const sideBtn = document.getElementById('btn-side'), narrow = () => root.matchMedia('(max-width: 820px)').matches;
+    const sideBtn = document.getElementById('btn-side'), narrow = phone;
     const setSide = (show) => {
       document.body.classList.toggle('side-hidden', !show); sideBtn.setAttribute('aria-pressed', String(show));
       if (!narrow()) try { localStorage.setItem('flux/side', show ? '1' : '0'); } catch (e) { /* ignore */ }   // phones: drawer state isn't remembered
-      if (ui.collapsed) layoutGrid();
-      requestAnimationFrame(() => root.dispatchEvent(new Event('resize')));
+      if (ui.layout) layoutGrid();
     };
     let sidePref = null; try { sidePref = localStorage.getItem('flux/side'); } catch (e) { /* ignore */ }
     setSide(narrow() ? false : sidePref !== '0');
@@ -802,7 +842,7 @@
       const s = RF.State.loadSnapshot(); if (!s) { ui.store.notice('No snapshot saved in this browser yet.'); ui.refreshPanels(); return; }
       ui._histHint = 'Restore snapshot'; ui._histMode = ui.store.scene.mode; ui.loadScene(s, 'Restored the snapshot from ' + new Date(RF.State.snapshotTime()).toLocaleString() + '.');
     });
-    rs.id = 'btn-restore'; rs.classList.remove('danger'); rs.title = snapTitle();
+    rs.id = 'btn-restore'; rs.classList.remove('danger'); rs.classList.add('text'); rs.title = snapTitle();
     document.getElementById('btn-restore').replaceWith(rs);
     document.getElementById('btn-snapshot').addEventListener('click', () => {
       const ok = RF.State.saveSnapshot(ui.store.scene); rs.title = snapTitle();
@@ -826,7 +866,7 @@
       bar.append(ok, no);
       document.querySelector('.side-top').append(bar);
     });
-    root.addEventListener('resize', () => { clearTimeout(ui._layT); ui._layT = setTimeout(layoutGrid, 60); ui.sceneDirty = true; drawHeat(); schedule(); });
+    root.addEventListener('resize', () => { layoutGrid(); ui.sceneDirty = true; drawHeat(); schedule(); });   // phone ↔ desktop switch (ResizeObserver does the rest)
   }
 
   function boot() {
@@ -844,7 +884,7 @@
   }
   function safeBoot() {
     try {
-      const need = ['V', 'Geo', 'Source', 'Engine', 'State', 'Solver', 'ModeA', 'ModeB', 'Feasibility', 'Profile', 'Lenses', 'Controller', 'Render', 'Render2D', 'Input', 'Panels'];
+      const need = ['V', 'Geo', 'Source', 'Engine', 'State', 'Solver', 'ModeA', 'ModeB', 'Feasibility', 'Profile', 'Lenses', 'Controller', 'Render', 'Render2D', 'Input', 'Layout', 'Panels'];
       const missing = need.filter((k) => !RF[k]);
       if (missing.length) throw new Error('module(s) did not load: ' + missing.join(', ') + ' — check the js/ folder is complete.');
       boot();

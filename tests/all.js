@@ -11,5 +11,6 @@ for (const d of ['js', 'tests']) for (const f of fs.readdirSync(path.join(root, 
 run('checks (tests/headless.js)', ['tests/headless.js']);
 run('undo/redo (tests/history.js)', ['tests/history.js']);
 run('metrics (tests/metrics.js)', ['tests/metrics.js']);
+run('layout (tests/layout.js)', ['tests/layout.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
