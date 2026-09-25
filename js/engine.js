@@ -88,6 +88,9 @@
       hits: P.recordHits ? new Float32Array(3 * Math.min(N, 2e6)) : null, nHits: 0, hitCap: Math.min(N, 2e6),
       hitK: P.recordHits ? new (P.G.n < 65535 ? Uint16Array : Uint32Array)(Math.min(N, 2e6)) : null,
       hitB: P.recordHits ? new Uint8Array(Math.min(N, 2e6)) : null,
+      // per hit: which ray it was (so it can be retraced); per ray: 1 + first surface met (0 = none)
+      hitI: P.recordHits ? new Uint32Array(Math.min(N, 2e6)) : null,
+      rayK: P.recordHits ? new (P.G.n < 65535 ? Uint16Array : Uint32Array)(N) : null, curI: 0,
       E: { emitted: 0, direct: 0, reflected: 0, absorbed: 0, backface: 0, interfaceLoss: 0, escaped: 0, targetBack: 0, truncated: 0, intercepted: 0, reHit: 0, tir: 0 },
       surfIn: new Float64Array(Math.max(1, P.G.n)),
       paths: [], pathLimit: pathLimit === undefined ? 240 : pathLimit,
@@ -147,7 +150,7 @@
               let iu = Math.floor((u + T.half) / (2 * T.half) * r), iv = Math.floor((v + T.half) / (2 * T.half) * r);
               if (iu >= r) iu = r - 1; if (iv >= r) iv = r - 1;
               const cell = iv * r + iu;
-              if (ctx.hits && ctx.nHits < ctx.hitCap) { const h = ctx.nHits++, q = 3 * h; ctx.hits[q] = u; ctx.hits[q + 1] = v; ctx.hits[q + 2] = E; ctx.hitK[h] = firstK + 1; ctx.hitB[h] = bounces; }
+              if (ctx.hits && ctx.nHits < ctx.hitCap) { const h = ctx.nHits++, q = 3 * h; ctx.hits[q] = u; ctx.hits[q + 1] = v; ctx.hits[q + 2] = E; ctx.hitK[h] = firstK + 1; ctx.hitB[h] = bounces; ctx.hitI[h] = ctx.curI; }
               if (bounces === 0) { ctx.gridD[cell] += E; ctx.E.direct += E; } else { ctx.gridR[cell] += E; ctx.E.reflected += E; }
               if (probe) probe.push({ type: 'target', t, u, v, cell, point: [ox + t * dx, oy + t * dy, oz + t * dz], E });
               if (rec) rec.end = bounces === 0 ? 'direct' : 'target';
@@ -169,7 +172,7 @@
       // ---- surface interaction
       const wx = ox + tBest * dx, wy = oy + tBest * dy, wz = oz + tBest * dz;
       if (rec) rec.push(wx, wy, wz);
-      if (bounces === 0) { ctx.E.intercepted += e0; firstK = kBest; } else ctx.E.reHit += E;
+      if (bounces === 0) { ctx.E.intercepted += e0; firstK = kBest; if (ctx.rayK) ctx.rayK[ctx.curI] = kBest + 1; } else ctx.E.reHit += E;
       ctx.surfIn[kBest] += E;
       if (bounces >= P.cap) {                      // blocked here: bounce budget exhausted
         ctx.E.truncated += E;
@@ -226,19 +229,23 @@
 
   // ---------------------------------------------------------------- batches
   const O = new Float64Array(3), Dd = new Float64Array(3), XR = new Float64Array(5);
+  // ray i's origin and direction: mulberry32 over the counter-based stream for (seed, i)
+  function sampleRayI(P, i, o, d) {
+    let s = RF.rng.streamSeed(P.seed, i);
+    const x = XR;
+    for (let j = 0; j < 5; j++) {
+      s = (s + 0x6D2B79F5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      x[j] = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    RF.Source.sampleRay(P.S, x[0], x[1], x[2], x[3], x[4], o, d);
+  }
   function traceRange(ctx, i0, i1) {
-    const P = ctx.P, S = P.S, e0 = P.power / ctx.N;
+    const P = ctx.P, e0 = P.power / ctx.N;
     for (let i = i0; i < i1; i++) {
-      // inline mulberry32 over the counter-based stream for ray i
-      let s = RF.rng.streamSeed(P.seed, i);
-      const x = XR;
-      for (let j = 0; j < 5; j++) {
-        s = (s + 0x6D2B79F5) | 0;
-        let t = Math.imul(s ^ (s >>> 15), 1 | s);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        x[j] = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-      }
-      RF.Source.sampleRay(S, x[0], x[1], x[2], x[3], x[4], O, Dd);
+      sampleRayI(P, i, O, Dd);
+      ctx.curI = i;
       ctx.E.emitted += e0;
       let rec = null;
       if (i < ctx.pathLimit) { rec = [O[0], O[1], O[2]]; rec.end = ''; }
@@ -270,6 +277,17 @@
     ctx.next = N; ctx.done = true;
     ctx.elapsed = RF.U.now() - t0;
     return ctx;
+  }
+
+  // Re-run ray i of a trace exactly (same stream, same code path) for drawing: its polyline, how it
+  // ended, and the surfaces it touched in order.
+  function retrace(P, i) {
+    const ctx = newCtx(Object.assign({}, P, { recordHits: false }), 1, 0), o = new Float64Array(3), d = new Float64Array(3);
+    sampleRayI(P, i, o, d);
+    const rec = [o[0], o[1], o[2]]; rec.end = ''; const ev = [];
+    traceOne(P, ctx, o[0], o[1], o[2], d[0], d[1], d[2], 1, rec, ev);
+    rec.ks = ev.filter((e) => e.k !== undefined).map((e) => e.k);
+    return rec;
   }
 
   // Single ray through the same code path; returns the event list.
@@ -385,6 +403,6 @@
 
   RF.Engine = {
     targetFrame, designFrame, aimPoint, targetUVtoWorld, worldToTargetUV, cellCenter,
-    prepare, newCtx, traceRange, step, runSync, probeRay, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
+    prepare, newCtx, traceRange, step, runSync, probeRay, retrace, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

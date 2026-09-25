@@ -37,6 +37,19 @@ for (const k of pick) {
 { const k = pick[1], wrong = pick[0] + 1, r = subset(k, wrong);
   ok('negative control: wrong facet\'s credit is NOT inside facet ' + surfs[k].id + '\'s solo footprint', r.over > 0.5 * r.tot, 'overshoot ' + (100 * r.over / r.tot).toFixed(1) + '% of credited energy'); }
 
+// retrace: replaying a hit's ray lands on the same point via the same first surface; rayK agrees
+{ const T = P.T; let bad = 0, badK = 0, wrong = 0, n = 0;
+  const land = (h) => E.targetUVtoWorld(T, c.hits[3 * h], c.hits[3 * h + 1]);
+  for (let h = 0; h < c.nHits; h += Math.max(1, Math.floor(c.nHits / 300))) {
+    n++; const r = E.retrace(P, c.hitI[h]), L = r.length, end = [r[L - 3], r[L - 2], r[L - 1]], p = land(h);
+    if (Math.hypot(end[0] - p[0], end[1] - p[1], end[2] - p[2]) > 1e-3 * T.half) bad++;
+    if ((r.ks.length ? r.ks[0] + 1 : 0) !== c.hitK[h] || c.rayK[c.hitI[h]] !== c.hitK[h]) badK++;
+    const r2 = E.retrace(P, c.hitI[h] + 1), e2 = [r2[r2.length - 3], r2[r2.length - 2], r2[r2.length - 1]];
+    if (Math.hypot(e2[0] - p[0], e2[1] - p[1], e2[2] - p[2]) > 1e-3 * T.half) wrong++;
+  }
+  ok('retrace reproduces ' + n + ' sampled hits (point + first surface + rayK)', bad === 0 && badK === 0, bad + ' off, ' + badK + ' label mismatches');
+  ok('negative control: retracing the NEXT ray index lands elsewhere', wrong > 0.95 * n, wrong + ' of ' + n + ' differ'); }
+
 // multi-bounce: the test scene has none, so use a light pipe (two facing mirrors along the throw axis)
 { const f = RF.State.testScene(); for (const k of Object.keys(f.groups)) f.groups[k].surfaces = [];
   f.source.pos = [0, 0, 0]; f.source.axis = [1, 0, 0]; f.source.dist = 'cone'; f.source.halfAngle = 40; f.sim.bounces = 4;

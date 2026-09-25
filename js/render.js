@@ -39,6 +39,24 @@
   // Inspector selection: opts.sel = Map(surface id → emphasis 0..1), or null.  Emphasised surfaces
   // turn amber (stronger = larger share); everything else fades back.  Returns null when nothing is selected.
   const SEL_COL = [242, 180, 65];
+  // the selection's own facet: white outline + its name
+  function markPrimary(ctx, cam, model, id) {
+    if (!id) return;
+    let sx = 0, sy = 0, n = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1.8;
+    for (const p of model.polys) {
+      if (p.id !== id) continue;
+      const pr = p.pts.map((q) => cam.project(q));
+      ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.stroke();
+      for (const q of pr) { sx += q[0]; sy += q[1]; n++; }
+    }
+    if (!n) return;
+    const x = sx / n + 12, y = sy / n - 10;
+    ctx.font = '600 11px system-ui'; const w = ctx.measureText(id).width + 10;
+    ctx.fillStyle = 'rgba(12,13,16,0.85)'; ctx.fillRect(x, y - 11, w, 16);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y - 10.5, w - 1, 15);
+    ctx.fillStyle = '#fff'; ctx.fillText(id, x + 5, y + 1);
+  }
   function selEmph(opts, id) { return opts.sel ? (opts.sel.get(id) || 0) : null; }
   function surfStyle(ctx, e, col, lam, a, aDim) {
     if (e === null) return false;
@@ -201,10 +219,19 @@
       }
       ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
     }
+    markPrimary(ctx, cam, opts.model, opts.selPrimary);
     // ---- rays
     if (opts.showRays && opts.paths) {
       ctx.lineWidth = 1;
       for (const path of opts.paths) {
+        if (path.sel) {                                  // inspector bundle: landed solid, the rest dashed
+          const landed = path.end === 'target';
+          ctx.setLineDash(landed ? [] : [4, 3]); ctx.lineWidth = landed ? 1 : 0.9;
+          ctx.strokeStyle = landed ? 'rgba(242,180,65,0.55)' : 'rgba(242,180,65,0.3)'; ctx.beginPath();
+          for (let i = 0; i < path.length; i += 3) { const s = cam.project([path[i], path[i + 1], path[i + 2]]); if (i) ctx.lineTo(s[0], s[1]); else ctx.moveTo(s[0], s[1]); }
+          ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+          continue;
+        }
         const col = path.end === 'target' ? 'rgba(244,193,124,0.38)' : path.end === 'direct' ? 'rgba(143,184,255,0.35)' : path.end === 'escape' ? 'rgba(170,170,180,0.16)' : 'rgba(255,154,61,0.35)';
         ctx.strokeStyle = col; ctx.beginPath();
         for (let i = 0; i < path.length; i += 3) { const s = cam.project([path[i], path[i + 1], path[i + 2]]); if (i) ctx.lineTo(s[0], s[1]); else ctx.moveTo(s[0], s[1]); }
@@ -409,6 +436,7 @@
       }
       ctx.globalAlpha = 1;
     }
+    markPrimary(ctx, cam, model, opts.selPrimary);
     return finish();
   }
 

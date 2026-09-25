@@ -314,6 +314,7 @@
   }
   // Scene texture: same picture setting as the panel, sized to the target's on-screen footprint.
   function sceneHeatTexture() {
+    if (ui.selImgs && selScene()) return ui.selImgs.tex;      // selection: only its light on the target
     if (!ui.run || ui.display !== 'hits' || !ui.run.ctx.hits) return ui.heatImg;
     const T = RF.Engine.targetFrame(ui.store.scene.target), dpr = Math.min(2, root.devicePixelRatio || 1);
     const q = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => ui.cam.project(RF.Engine.targetUVtoWorld(T, a * T.half, b * T.half)));
@@ -329,11 +330,13 @@
     const litV = []; for (let i = 0; i < vals.length; i++) if (vals[i] > 0) litV.push(vals[i]);
     litV.sort((a, b) => a - b); const clip = RF.Engine.pctl(litV, 0.995);
     ui.heatImg = R2.gridCanvas(vals, res, ui.heatImg, clip); ui.heatImg.clipValue = clip;   // also the 3D scene texture
+    ui.selImgs = selImages();
     const sc = ui.store.scene, pres = sc.target.res;
     const overlay = sc.mode === 'B' ? R2.stampOverlay(sc, ui.store.reports.B, sc.modeB.selected) : sc.mode === 'A' ? zoneOverlay() : null;
     // The panel's content frame is always the PAINT grid (so taps/stamps map the same at any sim res);
     // the sim image is stretched into it.
-    R2.drawGridPanel(document.getElementById('heat-canvas'), ui.vHeat, ui.display === 'hits' ? hitsImage(pres) : ui.heatImg, pres, overlay);
+    const base = ui.display === 'hits' ? hitsImage(pres) : ui.heatImg;
+    R2.drawGridPanel(document.getElementById('heat-canvas'), ui.vHeat, ui.selImgs ? dimUnder(base, ui.selImgs.over) : base, pres, overlay);
     alignFigure('heat-canvas', ui.vHeat);
     const T = ui.run.P.T, cellArea = (2 * T.half / res) ** 2 * 1e-6;       // m²
     const peak = ui.heatImg.clipValue / Math.max(1e-300, ui.run.ctx.next / ui.run.ctx.N);
@@ -353,6 +356,7 @@
     if (sc.mode === 'A') {
       ui.paintImg = R2.gridCanvas(sc.modeA.paint, sc.target.res, ui.paintImg);
       R2.drawGridPanel(cv, ui.vLeft, ui.paintImg, sc.target.res, (ctx, view) => {
+        const zo = zoneOverlay(true); if (zo) zo(ctx, view);
         if (ui.brushAt) { const b = sc.modeA.brush, p = view.toScreen(ui.brushAt[0], ui.brushAt[1]); ctx.beginPath(); ctx.arc(p[0], p[1], b.size / 2 * view.s, 0, 2 * Math.PI); ctx.strokeStyle = b.erase ? '#ff9a3d' : '#f2b441'; ctx.lineWidth = 1.5; ctx.stroke(); }
       });
     } else if (sc.mode === 'B') {
@@ -370,7 +374,8 @@
     if (!ui.model) return;
     const sc = ui.store.scene;
     ui.handles = RF.Render.drawScene(document.getElementById('scene-canvas'), ui.cam, {
-      scene: sc, model: ui.model, paths: ui.run ? ui.run.ctx.paths : null, heatCanvas: sceneHeatTexture(), showRays: ui.showRays, setup: !!ui.setup,
+      scene: sc, model: ui.model, paths: selScene() ? selScene().paths : ui.run ? ui.run.ctx.paths : null, heatCanvas: sceneHeatTexture(), showRays: ui.showRays || !!selScene(), setup: !!ui.setup,
+      selPrimary: selScene() ? selScene().assigned : null,
       activeHandle: ui.activeHandle, preview: ui.preview && performance.now() < ui.preview.until ? ui.preview.pts : null, highlight: ui.highlight, sel: selEmph(true),
     });
     const hint = document.getElementById('scene-hint');
@@ -379,7 +384,7 @@
   }
   function drawSurfaceView() {
     if (!ui.model) return;
-    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, sel: selEmph(false) });
+    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, sel: selEmph(false), selPrimary: selInfo() ? selInfo().assigned : null });
     renderSelChips();
   }
 
@@ -607,7 +612,7 @@
   ui.select = function (s) {
     const same = s && ui.sel && s.kind === ui.sel.kind && (s.kind === 'facet' ? s.id === ui.sel.id : s.z === ui.sel.z);
     ui.sel = same ? null : s;                           // clicking the selection again clears it
-    ui.selCache = null; ui.sceneDirty = true; drawHeat(); renderSelChips(); schedule();
+    ui.selCache = null; ui.sceneDirty = true; drawHeat(); renderSelChips(); schedule();   // sceneDirty also redraws the Editor
   };
   // What the selection lights up.  Contributors come from the per-hit first-surface tags: every facet
   // whose light lands in the zone, not only the one the solver assigned to it.
@@ -616,15 +621,22 @@
     const c = run.ctx, key = c.nHits + ':' + run.started;
     if (ui.selCache && ui.selCache.sel === s && ui.selCache.key === key) return ui.selCache.info;
     const sc = ui.store.scene, rep = sc.mode === 'A' ? ui.store.reports.A : null, surfs = RF.State.allSurfaces(sc);
-    const info = { emph: new Map(), zone: null, assigned: null, contrib: [], landed: 0 };
+    const info = { emph: new Map(), zone: null, assigned: null, contrib: [], landed: 0, vals: null, paths: [] };
+    const T = run.P.T, sr = run.P.res, metas = run.P.G.metas;
+    const simCell = (h) => { let i = Math.floor((c.hits[3 * h] + T.half) / (2 * T.half) * sr), j = Math.floor((c.hits[3 * h + 1] + T.half) / (2 * T.half) * sr); if (i >= sr) i = sr - 1; if (j >= sr) j = sr - 1; return j * sr + i; };
+    const vals = new Float64Array(sr * sr), rays = [];
     if (s.kind === 'facet') {
-      const f = surfs.find((x) => x.id === s.id);
-      if (!f) return null;
+      const f = surfs.find((x) => x.id === s.id), k = metas.findIndex((m) => m.id === s.id);
+      if (!f || k < 0) return null;
       info.emph.set(s.id, 1); info.assigned = s.id;
       if (rep && rep.zones && f.info && f.info.zone !== undefined) info.zone = f.info.zone;
+      // as if it were the only reflector: its own landed light, and its rays whatever became of them
+      for (let h = 0; h < c.nHits; h++) if (c.hitK[h] === k + 1) vals[simCell(h)] += c.hits[3 * h + 2];
+      for (let i = 0; i < c.next; i++) if (c.rayK[i] === k + 1) rays.push(i);
     } else if (rep && rep.zones && rep.zones[s.z]) {
       info.zone = s.z; info.assigned = rep.zones[s.z].facet;
-      const T = run.P.T, pr = rep.zoneRes, zo = rep.zoneOf, metas = run.P.G.metas, byK = new Map();
+      const pr = rep.zoneRes, zo = rep.zoneOf, byK = new Map();
+      // only the light that landed in the zone, and where it came from
       for (let h = 0; h < c.nHits; h++) {
         const u = c.hits[3 * h], v = c.hits[3 * h + 1];
         let i = Math.floor((u + T.half) / (2 * T.half) * pr), j = Math.floor((v + T.half) / (2 * T.half) * pr);
@@ -632,6 +644,7 @@
         if (zo[j * pr + i] !== s.z) continue;
         const e = c.hits[3 * h + 2], k = c.hitK[h]; info.landed += e;
         byK.set(k, (byK.get(k) || 0) + e);
+        vals[simCell(h)] += e; rays.push(c.hitI[h]);
       }
       for (const [k, e] of byK) info.contrib.push({ id: k ? metas[k - 1].id : null, share: info.landed ? e / info.landed : 0 });
       info.contrib.sort((a, b) => b.share - a.share);
@@ -639,10 +652,34 @@
       for (const x of info.contrib) if (x.id && x.share >= 0.005) info.emph.set(x.id, 0.25 + 0.75 * x.share / top);
       if (info.assigned) info.emph.set(info.assigned, 1);
     } else return null;
+    info.vals = vals;
+    const MAXR = 150, step = Math.max(1, rays.length / MAXR);      // an even sample of the bundle, retraced exactly
+    for (let t = 0; t < rays.length && info.paths.length < MAXR; t += step) { const p = RF.Engine.retrace(run.P, rays[Math.floor(t)]); p.sel = true; info.paths.push(p); }
     ui.selCache = { sel: s, key, info };
     return info;
   }
   const selEmph = (scene) => { const i = selInfo(); return i && (!scene || ui.selScene !== false) ? i.emph : null; };
+  const selScene = () => { const i = selInfo(); return i && ui.selScene !== false ? i : null; };
+  // selection light, alone (scene texture) or over a dimmed full map (Result).  Its OWN brightness scale:
+  // one facet is ~1/N of the pattern and would be invisible on the full map's scale.
+  function selImages() {
+    const i = selInfo(); if (!i || !ui.heatImg) return null;
+    const res = ui.run.P.res, lit = [];
+    for (let k = 0; k < i.vals.length; k++) if (i.vals[k] > 0) lit.push(i.vals[k]);
+    lit.sort((a, b) => a - b); const clip = RF.Engine.pctl(lit, 0.995) || 1;
+    ui.selTex = R2.gridCanvas(i.vals, res, ui.selTex, clip);
+    ui.selOver = R2.gridCanvas(i.vals, res, ui.selOver, clip, true);
+    return { tex: ui.selTex, over: ui.selOver };
+  }
+  function dimUnder(base, over) {
+    const c = ui.selComp || (ui.selComp = document.createElement('canvas'));
+    if (c.width !== base.width || c.height !== base.height) { c.width = base.width; c.height = base.height; }
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    g.globalAlpha = 1; g.fillStyle = '#0c0d10'; g.fillRect(0, 0, c.width, c.height);
+    g.globalAlpha = 0.22; g.drawImage(base, 0, 0);
+    g.globalAlpha = 1; g.drawImage(over, 0, 0, c.width, c.height);
+    return c;
+  }
   // nearest facet under a screen point: the front-most projected outline containing it
   function pickFacet(cam, x, y) {
     if (!ui.model) return null;
@@ -660,7 +697,7 @@
   }
   function tapPick(cam, x, y) { const id = pickFacet(cam, x, y); ui.select(id ? { kind: 'facet', id } : null); }
   // Result overlay: outline of the selected zone (cells it holds the larger part of)
-  function zoneOverlay() {
+  function zoneOverlay(outlineOnly) {
     const i = selInfo(), rep = ui.store.reports.A;
     if (!i || i.zone === null || !rep || !rep.zoneOf) return null;
     const zo = rep.zoneOf, r = rep.zoneRes, z = i.zone, at = (a, b) => a >= 0 && b >= 0 && a < r && b < r && zo[b * r + a] === z;
@@ -670,7 +707,7 @@
       ctx.fillStyle = 'rgba(242,180,65,0.28)';
       for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) if (at(a, b)) {
         const p = view.toScreen(a, b + 1), q = view.toScreen(a + 1, b);
-        ctx.fillRect(p[0], p[1], q[0] - p[0], q[1] - p[1]);
+        if (!outlineOnly) ctx.fillRect(p[0], p[1], q[0] - p[0], q[1] - p[1]);
         x0 = Math.min(x0, p[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, q[1]);
       }
       if (isFinite(x0) && Math.max(x1 - x0, y1 - y0) < 14) {    // too small to spot: a locator ring around it
@@ -697,7 +734,7 @@
       if (s.kind === 'facet') txt = 'Facet ' + s.id + (i.zone !== null ? ' → zone ' + i.zone : '');
       else {
         const others = i.contrib.filter((x) => x.id && x.id !== i.assigned && x.share >= 0.005).length;
-        txt = 'Zone ' + s.z + ' · ' + (i.assigned ? 'facet ' + i.assigned : 'no facet (dropped)') + (others ? ' · +' + others + ' stray' : '');
+        txt = 'Zone ' + s.z + ' · ' + (i.assigned ? 'own facet ' + i.assigned + ' (outlined)' : 'no facet (dropped)') + (others ? ' · +' + others + ' others land here' : '');
       }
     }
     for (const el of document.querySelectorAll('.sel-chip')) {
