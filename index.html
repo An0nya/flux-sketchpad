@@ -31,7 +31,7 @@
 <nav class="pane-tabs" id="pane-tabs" aria-label="Panes"><button data-tab="scene">Scene</button><button data-tab="editor">Editor</button><button data-tab="result">Result</button><button data-tab="optics">Optics</button></nav>
 <main class="workspace" id="workspace">
   <section class="pane scene-pane" data-pane="scene">
-    <div class="pane-head"><button class="collapse" data-collapse="scene" aria-label="Collapse Scene" title="Collapse / restore">▾</button><h2 data-collapse="scene">Scene</h2><div class="seg" role="group" aria-label="Scene view extent"><button data-fit="fixture" class="on">Fixture</button><button data-fit="all">Whole scene</button></div><label class="tog lens" title="Lens focal length, 35 mm-equivalent. ∞ = orthographic (no perspective).">lens <input type="range" id="lens" min="0" max="100" step="1" value="100"> <output id="lens-out">∞</output></label><button class="expand icon" data-expand="scene" aria-label="Expand Scene" title="Expand">⤢</button></div>
+    <div class="pane-head"><button class="collapse" data-collapse="scene" aria-label="Collapse Scene" title="Collapse / restore">▾</button><h2 data-collapse="scene">Scene</h2><div class="head-tools"><div class="seg" role="group" aria-label="Scene view extent"><button data-fit="fixture" class="on">Fixture</button><button data-fit="all">Whole scene</button></div><label class="tog lens" title="Lens focal length, 35 mm-equivalent. ∞ = orthographic (no perspective).">lens <input type="range" id="lens" min="0" max="100" step="1" value="100"> <output id="lens-out">∞</output></label></div><button class="expand icon" data-expand="scene" aria-label="Expand Scene" title="Expand">⤢</button></div>
     <div class="canvas-wrap"><canvas id="scene-canvas" aria-label="3D scene view"></canvas>
       <div class="hint" id="scene-hint"></div></div>
   </section>
@@ -39,7 +39,7 @@
   <div class="right" id="right">
     <div class="pair" id="pair">
       <section class="pane editor-pane" data-pane="editor">
-        <div class="pane-head"><button class="collapse" data-collapse="editor" aria-label="Collapse Editor" title="Collapse / restore">▾</button><h2 data-collapse="editor">Editor</h2><nav class="modes seg" role="tablist" aria-label="Input mode"><button role="tab" data-mode="A" title="Paint a target; tile it with source images">Paint</button><button role="tab" data-mode="B" title="Stamp tiles on the target; solve the facet for each">Stamp</button><button role="tab" data-mode="C" title="Draw a cross-section; revolve or extrude it">Profile</button></nav><button class="expand icon" data-expand="editor" aria-label="Expand Editor" title="Expand">⤢</button></div>
+        <div class="pane-head"><button class="collapse" data-collapse="editor" aria-label="Collapse Editor" title="Collapse / restore">▾</button><h2 data-collapse="editor">Editor</h2><div class="head-tools"><nav class="modes seg" role="tablist" aria-label="Input mode"><button role="tab" data-mode="A" title="Paint a target; tile it with source images">Paint</button><button role="tab" data-mode="B" title="Stamp tiles on the target; solve the facet for each">Stamp</button><button role="tab" data-mode="C" title="Draw a cross-section; revolve or extrude it">Profile</button></nav></div><button class="expand icon" data-expand="editor" aria-label="Expand Editor" title="Expand">⤢</button></div>
         <figure class="map">
           <figcaption id="left-caption">Intended</figcaption>
           <div class="canvas-wrap sq"><canvas id="left-canvas"></canvas><button class="icon reset-view" data-reset="left" title="Reset zoom (or double-click)" aria-label="Reset zoom">⌖</button></div>
@@ -48,7 +48,7 @@
       </section>
       <div class="divider pd" data-split="pairSplit" role="separator" tabindex="0" aria-label="Resize Editor and Result"></div>
       <section class="pane result-pane" data-pane="result">
-        <div class="pane-head"><button class="collapse" data-collapse="result" aria-label="Collapse Result" title="Collapse / restore">▾</button><h2 data-collapse="result">Result</h2><div class="seg" id="heat-display" role="radiogroup" aria-label="Simulated view" title="Changes the PICTURE only. Every statistic uses the raw sim grid."><button data-disp="hits">Ray hits</button><button data-disp="grid" class="on">Grid</button><button data-disp="smooth">Smoothed</button></div><button class="expand icon" data-expand="result" aria-label="Expand Result" title="Expand">⤢</button></div>
+        <div class="pane-head"><button class="collapse" data-collapse="result" aria-label="Collapse Result" title="Collapse / restore">▾</button><h2 data-collapse="result">Result</h2><div class="head-tools"><div class="seg" id="heat-display" role="radiogroup" aria-label="Simulated view" title="Changes the PICTURE only. Every statistic uses the raw sim grid."><button data-disp="hits">Ray hits</button><button data-disp="grid" class="on">Grid</button><button data-disp="smooth">Smoothed</button></div></div><button class="expand icon" data-expand="result" aria-label="Expand Result" title="Expand">⤢</button></div>
         <figure class="map">
           <figcaption id="right-caption">Simulated</figcaption>
           <div class="canvas-wrap sq"><canvas id="heat-canvas"></canvas><button class="icon reset-view" data-reset="heat" title="Reset zoom (or double-click)" aria-label="Reset zoom">⌖</button></div>
@@ -58,7 +58,7 @@
     </div>
     <div class="divider h" data-split="rowSplit" role="separator" tabindex="0" aria-orientation="horizontal" aria-label="Resize maps and Optics"></div>
     <section class="pane optics-pane" data-pane="optics">
-      <div class="pane-head"><button class="collapse" data-collapse="optics" aria-label="Collapse Optics" title="Collapse / restore">▾</button><h2 data-collapse="optics">Optics</h2><select data-control-view="surfaceView" aria-label="Surface view style"><option value="shaded">shaded + normals</option><option value="pairs">ray pairs</option></select><button class="expand icon" data-expand="optics" aria-label="Expand Optics" title="Expand">⤢</button></div>
+      <div class="pane-head"><button class="collapse" data-collapse="optics" aria-label="Collapse Optics" title="Collapse / restore">▾</button><h2 data-collapse="optics">Optics</h2><div class="head-tools"><select data-control-view="surfaceView" aria-label="Surface view style"><option value="shaded">shaded + normals</option><option value="pairs">ray pairs</option></select></div><button class="expand icon" data-expand="optics" aria-label="Expand Optics" title="Expand">⤢</button></div>
       <div class="canvas-wrap"><canvas id="surface-canvas" aria-label="Optics view"></canvas></div>
     </section>
   </div>

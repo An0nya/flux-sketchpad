@@ -187,3 +187,6 @@ Recorded by Claude from Anya's message. These are her calls unless marked otherw
 - **Solvers:** the `/astra/` build's solver (tag `astra-final`) is more advanced than the current one. Anya iterated on it before the swap. The solver migration should port it, not just the current spoke solver. SQM (supporting quadrics) is wanted as an alternate solver: its surface is continuous, so it's closer to buildable.
 - **Click-to-focus gates scroll-to-zoom too**, so a stray scroll can't zoom a random pane. **Exception:** drag-to-orbit works immediately, with no activating click.
 - **Main button = "Rebuild"** (Anya, agreed).
+- **Pane headers:** title plus collapse/expand pinned to the top corners. Only the tools wrap. When a pane is under 380px wide, the tools drop to their own line (a container query on the pane's width). Done in step 1.
+- **Brush controls → one slim row** (Anya): step 4.
+- **Inactive panes, quieter tools** (Anya's idea, open): proposal is to *dim* them rather than hide or slide them. See the reply in the session. Mode tabs (Paint/Stamp/Profile) would live in both the Editor header and the top of the sidebar, always visible.

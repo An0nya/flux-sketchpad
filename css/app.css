@@ -228,9 +228,14 @@ button.text:hover { color: var(--ink); border-color: var(--line); }
 /* panes */
 .pane { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .pane.active { border-color: #3d5a60; }
-.pane-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-6) var(--s-10); padding: var(--s-4) var(--s-6) var(--s-4) var(--s-4); min-height: 40px; }
+.pane-head { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: start; column-gap: var(--s-6); padding: var(--s-4) var(--s-6) var(--s-4) var(--s-4); min-height: 40px; }
+/* title + collapse/expand pinned to the top corners (first line box = 32px); only the tools wrap, left-aligned */
+.pane-head > .collapse, .pane-head > h2, .pane-head > .expand { height: 32px; min-height: 32px; display: inline-flex; align-items: center; }
+.pane-head > h2 { padding-right: var(--s-6); }
+.pane-head > .collapse { grid-area: 1 / 1; } .pane-head > h2 { grid-area: 1 / 2; } .pane-head > .expand { grid-area: 1 / 4; }
+.head-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-4) var(--s-8); min-width: 0; min-height: 32px; }
 .pane-head h2 { cursor: pointer; user-select: none; }
-.pane-head .expand { margin-left: auto; font-size: 14px; width: 28px; min-height: 26px; }
+.pane-head .expand { font-size: 14px; width: 28px; justify-content: center; }
 .pane-head .collapse { background: transparent; border-color: transparent; color: var(--faint); padding: 0; width: 22px; min-height: 26px; justify-content: center; }
 .pane-head .collapse:hover { color: var(--ink); }
 .pane .canvas-wrap { flex: 1 1 0; min-height: 0; }
@@ -244,6 +249,7 @@ figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: 
 .pane.collapsed { cursor: pointer; }
 .pane.collapsed > :not(.pane-head) { display: none !important; }
 .pane.collapsed .pane-head > :not(h2):not(.collapse) { display: none; }
+.pane.rail .pane-head { display: flex; }
 .pane.collapsed .collapse { transform: rotate(-90deg); }
 .pane.bar { align-self: start; }
 .pair.both-bars { align-items: start; }
@@ -289,3 +295,7 @@ figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: 
     box-shadow: -8px 0 24px rgba(0,0,0,.5); transition: transform .2s ease; }
   body.side-hidden .side { display: block; transform: translateX(103%); }
 }
+.head-tools button, .head-tools label { white-space: nowrap; flex: none; }
+/* narrow pane: the tools drop to their own full-width line under the title (reacts to the pane's width, not the window's) */
+.pane { container-type: inline-size; }
+@container (max-width: 380px) { .head-tools { grid-column: 1 / -1; grid-row: 2; padding-left: var(--s-4); } }
