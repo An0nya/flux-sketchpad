@@ -36,6 +36,17 @@
   const rgba = (c, a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
 
   // ---------------------------------------------------------------- camera
+  // Inspector selection: opts.sel = Map(surface id → emphasis 0..1), or null.  Emphasised surfaces
+  // turn amber (stronger = larger share); everything else fades back.  Returns null when nothing is selected.
+  const SEL_COL = [242, 180, 65];
+  function selEmph(opts, id) { return opts.sel ? (opts.sel.get(id) || 0) : null; }
+  function surfStyle(ctx, e, col, lam, a, aDim) {
+    if (e === null) return false;
+    if (e > 0) { ctx.fillStyle = rgba(SEL_COL.map((x) => Math.round(x * (0.6 + 0.4 * lam))), 0.35 + 0.55 * e); ctx.strokeStyle = rgba([255, 236, 200], 0.5 + 0.45 * e); ctx.lineWidth = 1.1; }
+    else { ctx.fillStyle = rgba(col.map((x) => Math.round(x * lam)), aDim); ctx.strokeStyle = rgba(col, 0.12); ctx.lineWidth = 0.6; }
+    return true;
+  }
+
   function Camera(az, el) {
     // focal: 35 mm-equivalent lens, Infinity = orthographic; fitted: false until fit() has sized it to a real canvas
     this.R = null; this.focal = Infinity; this.scale = 4; this.fitted = false; this.pan = [0, 0]; this.center = [0, 0, 0]; this.w = 300; this.h = 300;
@@ -184,8 +195,10 @@
       const lam = 0.35 + 0.65 * Math.abs(V.dot(p.n, light));
       const a = p.inter === 'refract' ? 0.18 : p.inter === 'absorb' ? 0.5 : 0.26;   // softer fills (Astra)
       const c = p.inter === 'absorb' ? [70, 70, 76] : col.map((x) => Math.round(x * lam));
-      ctx.fillStyle = rgba(c, opts.highlight === p.id ? 0.85 : a);
-      ctx.strokeStyle = rgba(col.map((x) => Math.min(255, x + 40)), 0.55); ctx.lineWidth = 0.7;   // lighter edge, Astra-style
+      if (!surfStyle(ctx, selEmph(opts, p.id), col, lam, a, a * 0.3)) {
+        ctx.fillStyle = rgba(c, opts.highlight === p.id ? 0.85 : a);
+        ctx.strokeStyle = rgba(col.map((x) => Math.min(255, x + 40)), 0.55); ctx.lineWidth = 0.7;   // lighter edge, Astra-style
+      }
       ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
     }
     // ---- rays
@@ -354,12 +367,15 @@
     for (const it of items) {
       const col = GROUP_COL[it.p.g] || GROUP_COL.M;
       if (opts.style === 'pairs') {
-        ctx.strokeStyle = rgba(col, 0.35); ctx.lineWidth = 0.8;
+        const e = selEmph(opts, it.p.id);
+        ctx.strokeStyle = e === null ? rgba(col, 0.35) : e > 0 ? rgba(SEL_COL, 0.5 + 0.5 * e) : rgba(col, 0.1); ctx.lineWidth = e > 0 ? 1.2 : 0.8;
         ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.stroke();
       } else {
         const lam = 0.35 + 0.65 * Math.abs(V.dot(it.p.n, light));
-        ctx.fillStyle = rgba(col.map((x) => Math.round(x * lam)), it.p.inter === 'refract' ? 0.3 : 0.5);
-        ctx.strokeStyle = rgba(col, 0.7); ctx.lineWidth = 0.7;
+        if (!surfStyle(ctx, selEmph(opts, it.p.id), col, lam, 0.5, 0.12)) {
+          ctx.fillStyle = rgba(col.map((x) => Math.round(x * lam)), it.p.inter === 'refract' ? 0.3 : 0.5);
+          ctx.strokeStyle = rgba(col, 0.7); ctx.lineWidth = 0.7;
+        }
         ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
       }
     }
@@ -376,6 +392,8 @@
         c = V.add(m.frame.P, V.add(V.mul(m.frame.ex, r), V.mul(m.frame.ez, z)));
         const nn = new Float64Array(3); RF.Geo.frontNormal(D, k, r, 0, z, nn); n = [nn[0], nn[1], nn[2]];
       } else { const nn = new Float64Array(3); RF.Geo.frontNormal(D, k, 0, 0, 0, nn); n = [nn[0], nn[1], nn[2]]; }
+      const e = selEmph(opts, m.id);
+      if (e === 0) ctx.globalAlpha = 0.15;
       const col = rgba(GROUP_COL[(m.group || 'M').charAt(0)] || GROUP_COL.M, 0.95);
       const a = cam.project(c);
       if (opts.style === 'pairs') {
@@ -389,6 +407,7 @@
         const b = cam.project(V.madd(c, n, sizeRef * 0.5));
         drawArrow(ctx, [a[0], a[1]], [b[0], b[1]], col, 1);
       }
+      ctx.globalAlpha = 1;
     }
     return finish();
   }

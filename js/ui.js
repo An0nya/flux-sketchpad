@@ -330,7 +330,7 @@
     litV.sort((a, b) => a - b); const clip = RF.Engine.pctl(litV, 0.995);
     ui.heatImg = R2.gridCanvas(vals, res, ui.heatImg, clip); ui.heatImg.clipValue = clip;   // also the 3D scene texture
     const sc = ui.store.scene, pres = sc.target.res;
-    const overlay = sc.mode === 'B' ? R2.stampOverlay(sc, ui.store.reports.B, sc.modeB.selected) : null;
+    const overlay = sc.mode === 'B' ? R2.stampOverlay(sc, ui.store.reports.B, sc.modeB.selected) : sc.mode === 'A' ? zoneOverlay() : null;
     // The panel's content frame is always the PAINT grid (so taps/stamps map the same at any sim res);
     // the sim image is stretched into it.
     R2.drawGridPanel(document.getElementById('heat-canvas'), ui.vHeat, ui.display === 'hits' ? hitsImage(pres) : ui.heatImg, pres, overlay);
@@ -371,7 +371,7 @@
     const sc = ui.store.scene;
     ui.handles = RF.Render.drawScene(document.getElementById('scene-canvas'), ui.cam, {
       scene: sc, model: ui.model, paths: ui.run ? ui.run.ctx.paths : null, heatCanvas: sceneHeatTexture(), showRays: ui.showRays, setup: !!ui.setup,
-      activeHandle: ui.activeHandle, preview: ui.preview && performance.now() < ui.preview.until ? ui.preview.pts : null, highlight: ui.highlight,
+      activeHandle: ui.activeHandle, preview: ui.preview && performance.now() < ui.preview.until ? ui.preview.pts : null, highlight: ui.highlight, sel: selEmph(true),
     });
     const hint = document.getElementById('scene-hint');
     hint.classList.toggle('dragging', !!ui.activeHandle);
@@ -379,7 +379,8 @@
   }
   function drawSurfaceView() {
     if (!ui.model) return;
-    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle });
+    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, sel: selEmph(false) });
+    renderSelChips();
   }
 
   // camera fitting
@@ -437,6 +438,7 @@
       onDragStart(h) { ui.activeHandle = h; },
       onDrag(h, x, y, dx, dy) { dragHandle(h, ui.cam, dx, dy); },
       onDragEnd() {},
+      onTap(x, y, h) { if (!h && ui.selScene !== false) tapPick(ui.cam, x, y); },
       onPrimary(x, y, dx, dy) { ui.cam[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
       onPan(dx, dy) { ui.cam.pan[0] += dx; ui.cam.pan[1] += dy; ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { ui.cam.zoomAt(f, x, y); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
@@ -478,6 +480,7 @@
       hitTest(x, y) { return nearestHandle(ui.handlesS, x, y); },
       onDragStart(h) { ui.activeHandle = h; ui.camS.holdFit = true; },   // don't re-frame the view you're editing in
       onDrag(h, x, y, dx, dy) { dragHandle(h, ui.camS, dx, dy); },
+      onTap(x, y, h) { if (!h) tapPick(ui.camS, x, y); },
       onPrimary(x, y, dx, dy) { ui.camS[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
       onPan(dx, dy) { ui.camS.pan[0] += dx; ui.camS.pan[1] += dy; ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { ui.camS.zoomAt(f, x, y); ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
@@ -505,6 +508,11 @@
       onDrag(st, x, y) { const uv = toUV(x, y); C.actions.moveStamp(ui.store, st.id, uv[0], uv[1]); ui.movedSomething = true; ui.store.commit({ deferA: true }); firePreview(st.id); ui.requestRun(true); },
       onTap(x, y, st) {
         const sc = ui.store.scene;
+        if (sc.mode === 'A') {                          // select the zone under the pointer (empty → clear)
+          const rep = ui.store.reports.A, c = ui.vHeat.toContent(x, y), i = Math.floor(c[0]), j = Math.floor(c[1]);
+          const r = rep && rep.zoneRes, z = r && i >= 0 && j >= 0 && i < r && j < r ? rep.zoneOf[j * r + i] : -1;
+          ui.select(z >= 0 ? { kind: 'zone', z } : null); return;
+        }
         if (sc.mode !== 'B') return;
         if (st) { ui.selectStamp(st.id); return; }
         const uv = toUV(x, y), t = T();
@@ -590,6 +598,112 @@
     ui.preview = { pts, until: performance.now() + 4000 };
     ui.highlight = f.id; ui.sceneDirty = true; schedule();
     setTimeout(() => { ui.sceneDirty = true; ui.highlight = null; schedule(); }, 4100);
+  }
+
+  // ---------------------------------------------------------------- inspector selection
+  // ui.sel: null | { kind: 'facet', id } | { kind: 'zone', z }.  View state only: not saved, not undoable.
+  // Facet ids and zone numbers are slots ('A12' = zone 12's facet), so a selection survives a rebuild.
+  ui.sel = null;
+  ui.select = function (s) {
+    const same = s && ui.sel && s.kind === ui.sel.kind && (s.kind === 'facet' ? s.id === ui.sel.id : s.z === ui.sel.z);
+    ui.sel = same ? null : s;                           // clicking the selection again clears it
+    ui.selCache = null; ui.sceneDirty = true; drawHeat(); renderSelChips(); schedule();
+  };
+  // What the selection lights up.  Contributors come from the per-hit first-surface tags: every facet
+  // whose light lands in the zone, not only the one the solver assigned to it.
+  function selInfo() {
+    const s = ui.sel, run = ui.run; if (!s || !run) return null;
+    const c = run.ctx, key = c.nHits + ':' + run.started;
+    if (ui.selCache && ui.selCache.sel === s && ui.selCache.key === key) return ui.selCache.info;
+    const sc = ui.store.scene, rep = sc.mode === 'A' ? ui.store.reports.A : null, surfs = RF.State.allSurfaces(sc);
+    const info = { emph: new Map(), zone: null, assigned: null, contrib: [], landed: 0 };
+    if (s.kind === 'facet') {
+      const f = surfs.find((x) => x.id === s.id);
+      if (!f) return null;
+      info.emph.set(s.id, 1); info.assigned = s.id;
+      if (rep && rep.zones && f.info && f.info.zone !== undefined) info.zone = f.info.zone;
+    } else if (rep && rep.zones && rep.zones[s.z]) {
+      info.zone = s.z; info.assigned = rep.zones[s.z].facet;
+      const T = run.P.T, pr = rep.zoneRes, zo = rep.zoneOf, metas = run.P.G.metas, byK = new Map();
+      for (let h = 0; h < c.nHits; h++) {
+        const u = c.hits[3 * h], v = c.hits[3 * h + 1];
+        let i = Math.floor((u + T.half) / (2 * T.half) * pr), j = Math.floor((v + T.half) / (2 * T.half) * pr);
+        if (i >= pr) i = pr - 1; if (j >= pr) j = pr - 1;
+        if (zo[j * pr + i] !== s.z) continue;
+        const e = c.hits[3 * h + 2], k = c.hitK[h]; info.landed += e;
+        byK.set(k, (byK.get(k) || 0) + e);
+      }
+      for (const [k, e] of byK) info.contrib.push({ id: k ? metas[k - 1].id : null, share: info.landed ? e / info.landed : 0 });
+      info.contrib.sort((a, b) => b.share - a.share);
+      const top = info.contrib.reduce((m, x) => (x.id ? Math.max(m, x.share) : m), 0);
+      for (const x of info.contrib) if (x.id && x.share >= 0.005) info.emph.set(x.id, 0.25 + 0.75 * x.share / top);
+      if (info.assigned) info.emph.set(info.assigned, 1);
+    } else return null;
+    ui.selCache = { sel: s, key, info };
+    return info;
+  }
+  const selEmph = (scene) => { const i = selInfo(); return i && (!scene || ui.selScene !== false) ? i.emph : null; };
+  // nearest facet under a screen point: the front-most projected outline containing it
+  function pickFacet(cam, x, y) {
+    if (!ui.model) return null;
+    let best = null, bz = -Infinity;
+    for (const p of ui.model.polys) {
+      const pr = p.pts.map((q) => cam.project(q));
+      let inside = false;
+      for (let i = 0, j = pr.length - 1; i < pr.length; j = i++) {
+        if ((pr[i][1] > y) !== (pr[j][1] > y) && x < (pr[j][0] - pr[i][0]) * (y - pr[i][1]) / (pr[j][1] - pr[i][1]) + pr[i][0]) inside = !inside;
+      }
+      const z = pr.reduce((a, q) => a + q[2], 0) / pr.length;
+      if (inside && z > bz) { bz = z; best = p.id; }
+    }
+    return best;
+  }
+  function tapPick(cam, x, y) { const id = pickFacet(cam, x, y); ui.select(id ? { kind: 'facet', id } : null); }
+  // Result overlay: outline of the selected zone (cells it holds the larger part of)
+  function zoneOverlay() {
+    const i = selInfo(), rep = ui.store.reports.A;
+    if (!i || i.zone === null || !rep || !rep.zoneOf) return null;
+    const zo = rep.zoneOf, r = rep.zoneRes, z = i.zone, at = (a, b) => a >= 0 && b >= 0 && a < r && b < r && zo[b * r + a] === z;
+    return (ctx, view) => {
+      ctx.save();
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      ctx.fillStyle = 'rgba(242,180,65,0.28)';
+      for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) if (at(a, b)) {
+        const p = view.toScreen(a, b + 1), q = view.toScreen(a + 1, b);
+        ctx.fillRect(p[0], p[1], q[0] - p[0], q[1] - p[1]);
+        x0 = Math.min(x0, p[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, q[1]);
+      }
+      if (isFinite(x0) && Math.max(x1 - x0, y1 - y0) < 14) {    // too small to spot: a locator ring around it
+        ctx.strokeStyle = 'rgba(242,180,65,0.9)'; ctx.lineWidth = 1.2; ctx.beginPath();
+        ctx.arc((x0 + x1) / 2, (y0 + y1) / 2, 11, 0, 2 * Math.PI); ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgb(242,180,65)'; ctx.lineWidth = 1.6; ctx.beginPath();
+      for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) {
+        if (!at(a, b)) continue;
+        const seg = (x0, y0, x1, y1) => { const p = view.toScreen(x0, y0), q = view.toScreen(x1, y1); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); };
+        if (!at(a - 1, b)) seg(a, b, a, b + 1);
+        if (!at(a + 1, b)) seg(a + 1, b, a + 1, b + 1);
+        if (!at(a, b - 1)) seg(a, b, a + 1, b);
+        if (!at(a, b + 1)) seg(a, b + 1, a + 1, b + 1);
+      }
+      ctx.stroke(); ctx.restore();
+    };
+  }
+  // one-line summary + ✕ on the Optics and Result panes
+  function renderSelChips() {
+    const i = selInfo(), s = ui.sel;
+    let txt = '';
+    if (s && i) {
+      if (s.kind === 'facet') txt = 'Facet ' + s.id + (i.zone !== null ? ' → zone ' + i.zone : '');
+      else {
+        const others = i.contrib.filter((x) => x.id && x.id !== i.assigned && x.share >= 0.005).length;
+        txt = 'Zone ' + s.z + ' · ' + (i.assigned ? 'facet ' + i.assigned : 'no facet (dropped)') + (others ? ' · +' + others + ' stray' : '');
+      }
+    }
+    for (const el of document.querySelectorAll('.sel-chip')) {
+      el.hidden = !txt; if (!txt) continue;
+      el.firstChild.textContent = txt;
+    }
   }
 
   // ---------------------------------------------------------------- actions used by panels
@@ -867,7 +981,16 @@
     const setDetails = (open) => { full.hidden = !open; document.getElementById('footer').classList.toggle('open', open); det.setAttribute('aria-expanded', String(open)); det.textContent = open ? 'Details ▾' : 'Details ▴'; };
     setDetails(false); det.addEventListener('click', () => setDetails(full.hidden));
     document.getElementById('btn-details-close').addEventListener('click', () => setDetails(false));
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !full.hidden) setDetails(false); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (!full.hidden) setDetails(false); else if (ui.sel) ui.select(null);
+    });
+    for (const el of document.querySelectorAll('.sel-chip button')) el.addEventListener('click', () => ui.select(null));
+    // Scene highlight follows the selection (Optics and Result always do); per browser
+    const ss = document.getElementById('sel-scene');
+    try { ui.selScene = localStorage.getItem('flux/selScene') !== '0'; } catch (e) { ui.selScene = true; }
+    ss.checked = ui.selScene;
+    ss.addEventListener('change', () => { ui.selScene = ss.checked; try { localStorage.setItem('flux/selScene', ss.checked ? '1' : '0'); } catch (e) { /* ignore */ } ui.sceneDirty = true; schedule(); });
     // settings sidebar: collapsible (desktop) / drawer (phone); remembered per browser
     const sideBtn = document.getElementById('btn-side'), narrow = () => root.matchMedia('(max-width: 1024px)').matches;   // ≤1024: sidebar overlays
     const setSide = (show) => {
