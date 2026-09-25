@@ -190,3 +190,7 @@ Recorded by Claude from Anya's message. These are her calls unless marked otherw
 - **Pane headers:** title plus collapse/expand pinned to the top corners. Only the tools wrap. When a pane is under 380px wide, the tools drop to their own line (a container query on the pane's width). Done in step 1.
 - **Brush controls → one slim row** (Anya): step 4.
 - **Inactive panes, quieter tools** (Anya's idea, open): proposal is to *dim* them rather than hide or slide them. See the reply in the session. Mode tabs (Paint/Stamp/Profile) would live in both the Editor header and the top of the sidebar, always visible.
+- **Sidebar breakpoint:** pushes above 1024px, overlays at ≤1024px (Anya). Panes keep their split layout down to phone width.
+- **Heat colours:** default is Astra's single-hue teal ramp with a faint washed-out hue drift, slightly less range than inferno, linear mapping. View → "false-colour heat maps" switches to inferno (Anya). "More range" was a note for the study, not for this build.
+- **Default camera:** whole scene, 35 mm, eye behind the lamp at az 200° / el 32°: reflector bottom-left, target up and right. With the current default scene (1 m target at 1 m), the fixture is still small. That's a default-scene question.
+- **Motion:** collapse/expand animate, gated on prefers-reduced-motion. The Details drawer grows out of the footer as one shape.
