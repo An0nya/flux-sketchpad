@@ -165,12 +165,8 @@
     ctx.clearRect(0, 0, box.w, box.h);
     const sc = opts.scene, T = RF.Engine.targetFrame(sc.target), handles = [];
     const L = cam.scale;
-    // ---- envelope wireframe (behind everything)
-    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(160,170,190,0.35)'; ctx.setLineDash([4, 3]);
-    for (const line of RF.Geo.envWire(sc.envelope)) {
-      ctx.beginPath(); line.forEach((p, i) => { const s = cam.project(p); if (i) ctx.lineTo(s[0], s[1]); else ctx.moveTo(s[0], s[1]); }); ctx.stroke();
-    }
-    ctx.setLineDash([]);
+    // ---- envelope wireframe (behind everything) — Scene shows it only in Setup mode
+    if (opts.setup) drawEnvelope(ctx, cam, sc.envelope);
     // ---- polygons: surfaces + target plane, painter-sorted
     const items = [];
     for (const p of opts.model.polys) {
@@ -207,30 +203,12 @@
       opts.preview.forEach((p, i) => { const s = cam.project(p); if (i) ctx.lineTo(s[0], s[1]); else ctx.moveTo(s[0], s[1]); });
       ctx.stroke();
     }
-    // ---- source (its real geometry) + emission axis
+    // ---- source (its real geometry, always); edit handles only in Setup mode
     drawSource(ctx, cam, sc.source);
-    const src = sc.source, sp = cam.project(src.pos);
-    const axLen = Math.max(12, RF.Source.boundingRadius(src) * 4, 60 / L);
-    const tip = V.madd(src.pos, V.norm(src.axis), axLen), tp = cam.project(tip);
-    drawArrow(ctx, [sp[0], sp[1]], [tp[0], tp[1]], '#efcf8e', 2);
-    handles.push({ id: 'src', x: sp[0], y: sp[1], r: 14, label: 'source' }, { id: 'axis', x: tp[0], y: tp[1], r: 14, tip, label: 'emission axis' });
-    // ---- envelope face handles
-    const e = sc.envelope;
-    for (let a = 0; a < 3; a++) for (const s of [-1, 1]) {
-      const p = e.center.slice(); p[a] += s * e.half[a];
-      const q = cam.project(p);
-      handles.push({ id: 'env', axis: a, sign: s, x: q[0], y: q[1], r: 12, p, label: 'envelope ' + 'xyz'[a] + (s > 0 ? '+' : '−') });
+    if (opts.setup) {
+      handles.push(...setupHandles(ctx, cam, sc, { envelope: true, activeHandle: opts.activeHandle, extra: [(() => { const tc = cam.project(T.C); return { id: 'tgt', x: tc[0], y: tc[1], r: 14, label: 'target distance' }; })()] }));
     }
-    // ---- target distance handle
     const tc = cam.project(T.C);
-    handles.push({ id: 'tgt', x: tc[0], y: tc[1], r: 14, label: 'target distance' });
-    // draw handles
-    for (const h of handles) {
-      const on = opts.activeHandle === h;
-      ctx.beginPath(); ctx.arc(h.x, h.y, on ? 9 : 7, 0, 2 * Math.PI);
-      ctx.fillStyle = h.id === 'env' ? 'rgba(170,180,200,0.75)' : h.id === 'tgt' ? 'rgba(143,184,255,0.9)' : h.id === 'axis' ? '#efcf8e' : '#e2b36c';
-      ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#111'; ctx.stroke();
-    }
     // off-screen target indicator
     if (tc[0] < 0 || tc[0] > box.w || tc[1] < 0 || tc[1] > box.h) {
       const cx = box.w / 2, cy = box.h / 2, ang = Math.atan2(tc[1] - cy, tc[0] - cx);
@@ -246,6 +224,39 @@
       drawArrow(ctx, gz, [gz[0] + v[0] * 22, gz[1] + v[1] * 22], c, 1.5);
       ctx.fillStyle = c; ctx.font = '10px system-ui'; ctx.fillText(n, gz[0] + v[0] * 30 - 3, gz[1] + v[1] * 30 + 3);
     });
+    return handles;
+  }
+
+  function drawEnvelope(ctx, cam, env) {
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(160,170,190,0.35)'; ctx.setLineDash([4, 3]);
+    for (const line of RF.Geo.envWire(env)) {
+      ctx.beginPath(); line.forEach((p, i) => { const s = cam.project(p); if (i) ctx.lineTo(s[0], s[1]); else ctx.moveTo(s[0], s[1]); }); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+  // Emission-axis arrow + the edit handles (source, axis tip, envelope faces, any extra), drawn and returned
+  // in this camera's screen space.  Shared by the Scene (Setup mode) and the Optics view.
+  function setupHandles(ctx, cam, sc, o) {
+    const handles = [], src = sc.source, sp = cam.project(src.pos);
+    const axLen = Math.max(12, RF.Source.boundingRadius(src) * 4, 60 / cam.scale);
+    const tip = V.madd(src.pos, V.norm(src.axis), axLen), tp = cam.project(tip);
+    drawArrow(ctx, [sp[0], sp[1]], [tp[0], tp[1]], '#efcf8e', 2);
+    handles.push({ id: 'src', x: sp[0], y: sp[1], r: 14, label: 'source' }, { id: 'axis', x: tp[0], y: tp[1], r: 14, tip, label: 'emission axis' });
+    if (o.envelope) {
+      const e = sc.envelope;
+      for (let a = 0; a < 3; a++) for (const s of [-1, 1]) {
+        const p = e.center.slice(); p[a] += s * e.half[a];
+        const q = cam.project(p);
+        handles.push({ id: 'env', axis: a, sign: s, x: q[0], y: q[1], r: 12, p, label: 'envelope ' + 'xyz'[a] + (s > 0 ? '+' : '−') });
+      }
+    }
+    if (o.extra) handles.push(...o.extra);
+    for (const h of handles) {
+      const on = o.activeHandle && o.activeHandle.id === h.id && o.activeHandle.axis === h.axis && o.activeHandle.sign === h.sign;
+      ctx.beginPath(); ctx.arc(h.x, h.y, on ? 9 : 7, 0, 2 * Math.PI);
+      ctx.fillStyle = h.id === 'env' ? 'rgba(170,180,200,0.75)' : h.id === 'tgt' ? 'rgba(143,184,255,0.9)' : h.id === 'axis' ? '#efcf8e' : '#e2b36c';
+      ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#111'; ctx.stroke();
+    }
     return handles;
   }
 
@@ -326,10 +337,15 @@
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0);
     ctx.clearRect(0, 0, box.w, box.h);
     const model = opts.model, sc = opts.scene, S = sc.source.pos;
+    if (opts.envelope) drawEnvelope(ctx, cam, sc.envelope);
+    const finish = () => {                              // the fixture's setup lives here: source + its handles on top
+      drawSource(ctx, cam, sc.source);
+      return setupHandles(ctx, cam, sc, { envelope: opts.envelope, activeHandle: opts.activeHandle });
+    };
     if (!model.polys.length) {
       ctx.fillStyle = '#6c7380'; ctx.font = '12px system-ui'; ctx.textAlign = 'center';
       ctx.fillText('No optical surfaces yet', box.w / 2, box.h / 2); ctx.textAlign = 'left';
-      return;
+      return finish();
     }
     const light = V.norm(V.add(cam.R[2], V.mul(cam.R[1], 0.6)));
     const items = model.polys.map((p) => { const pr = p.pts.map((q) => cam.project(q)); return { p, pr, z: pr.reduce((s, q) => s + q[2], 0) / pr.length }; });
@@ -374,7 +390,7 @@
         drawArrow(ctx, [a[0], a[1]], [b[0], b[1]], col, 1);
       }
     }
-    const s = cam.project(S); ctx.beginPath(); ctx.arc(s[0], s[1], 3.5, 0, 2 * Math.PI); ctx.fillStyle = '#ffd678'; ctx.fill();
+    return finish();
   }
 
   RF.Render = { Camera, fitCanvas, buildDrawModel, drawScene, drawSurfaceView, drawArrow, LUT, setRamp, GROUP_COL, rgba };

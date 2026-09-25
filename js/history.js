@@ -70,6 +70,7 @@
     if (only(['src.x', 'src.y', 'src.z'])) return { id: null, text: 'Source moved' };
     if (only(['src.az', 'src.el'])) return { id: null, text: 'Source aimed' };
     if (ch.length === 1) return { id: ch[0].c.id, text: ch[0].c.label + ' ' + fmt(ch[0].va) + ' → ' + fmt(ch[0].vb) };
+    if (ch.length > 1 && ch.every((x) => x.c.id.startsWith('env.'))) return { id: null, text: 'Envelope resized' };   // a face drag moves centre + size
     const J = (x) => JSON.stringify(x);
     const parts = [];
     if (J(a.modeA.paint) !== J(b.modeA.paint) && a.target.res === b.target.res) parts.push('paint');

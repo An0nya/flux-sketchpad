@@ -232,7 +232,7 @@
       ui.model = RF.Render.buildDrawModel(sc, Pc); ui.model.scene = sc;
       // the optics-only view follows the optics: refit when their bounding box changes
       const key = Pc.G.n + ':' + Pc.G.lo.concat(Pc.G.hi).map((v) => Math.round(v * 10)).join(',');
-      if ((key !== ui.surfKey || !ui.camS.fitted) && !ui.interacting) {   // also: never fitted yet (load order)
+      if ((key !== ui.surfKey || !ui.camS.fitted) && !ui.interacting && !(ui.camS.fitted && (ui.camS.userMoved || ui.camS.holdFit))) {   // also: never fitted yet (load order); a view you moved or are editing in stays put
         ui.surfKey = key;
         refitSurfaces();
       }
@@ -370,16 +370,16 @@
     if (!ui.model) return;
     const sc = ui.store.scene;
     ui.handles = RF.Render.drawScene(document.getElementById('scene-canvas'), ui.cam, {
-      scene: sc, model: ui.model, paths: ui.run ? ui.run.ctx.paths : null, heatCanvas: sceneHeatTexture(), showRays: ui.showRays,
+      scene: sc, model: ui.model, paths: ui.run ? ui.run.ctx.paths : null, heatCanvas: sceneHeatTexture(), showRays: ui.showRays, setup: !!ui.setup,
       activeHandle: ui.activeHandle, preview: ui.preview && performance.now() < ui.preview.until ? ui.preview.pts : null, highlight: ui.highlight,
     });
     const hint = document.getElementById('scene-hint');
     hint.classList.toggle('dragging', !!ui.activeHandle);
-    hint.textContent = ui.activeHandle ? 'dragging ' + ui.activeHandle.label : (ui.turntable ? 'drag: orbit (level)' : 'drag: orbit (free)') + ' · pinch/wheel: zoom · two fingers/shift-drag: pan · handles: source, axis tip, envelope faces, target';
+    hint.textContent = ui.activeHandle ? 'dragging ' + ui.activeHandle.label : (ui.turntable ? 'drag: orbit (level)' : 'drag: orbit (free)') + ' · pinch/wheel: zoom · two fingers/shift-drag: pan' + (ui.setup ? ' · handles: source, axis tip, envelope faces, target' : ' · Setup shows the edit handles (also in Optics)');
   }
   function drawSurfaceView() {
     if (!ui.model) return;
-    RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView });
+    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle });
   }
 
   // camera fitting
@@ -405,7 +405,7 @@
     ui.cam.fit(pts, 0.1);
     const cs = document.getElementById('surface-canvas').getBoundingClientRect();
     ui.camS.w = cs.width; ui.camS.h = cs.height; ui.camS.R = ui.cam.R.map((r) => r.slice());
-    ui.camS.fit([sc.source.pos].concat(outlinePts), 0.12);
+    ui.camS.fit(opticsFitPoints(), 0.12); ui.camS.holdFit = false;
     for (const b of document.querySelectorAll('[data-fit]')) b.classList.toggle('on', b.dataset.fit === mode);
     ui.sceneDirty = true; schedule();
   };
@@ -425,17 +425,25 @@
   const liveFor = (cv) => (press) => { const el = cv.closest('.pane'); return !el || phone() || (press ? !!el._wasActive : el.classList.contains('active')); };
   function wireScene() {
     const cv = document.getElementById('scene-canvas');
+    const nearestHandle = (list, x, y) => {
+      let best = null, bd = Infinity;
+      for (const h of list || []) { const d = Math.hypot(h.x - x, h.y - y); if (d <= Math.max(h.r, 14) && d < bd) { best = h; bd = d; } }
+      return best;
+    };
     RF.Input.attach(cv, {
       isLive: liveFor(cv), cold: 'view',
       onInteract: interact,
-      hitTest(x, y) {
-        let best = null, bd = Infinity;
-        for (const h of ui.handles) { const d = Math.hypot(h.x - x, h.y - y); if (d <= Math.max(h.r, 14) && d < bd) { best = h; bd = d; } }
-        return best;
-      },
+      hitTest(x, y) { return ui.setup ? nearestHandle(ui.handles, x, y) : null; },   // Scene handles only in Setup mode
       onDragStart(h) { ui.activeHandle = h; },
-      onDrag(h, x, y, dx, dy) {
-        const sc = ui.store.scene, cam = ui.cam;
+      onDrag(h, x, y, dx, dy) { dragHandle(h, ui.cam, dx, dy); },
+      onDragEnd() {},
+      onPrimary(x, y, dx, dy) { ui.cam[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
+      onPan(dx, dy) { ui.cam.pan[0] += dx; ui.cam.pan[1] += dy; ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
+      onZoom(f, x, y) { ui.cam.zoomAt(f, x, y); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
+    });
+    // Drag a setup handle in whichever view it was grabbed (screen deltas → world through that view's camera)
+    function dragHandle(h, cam, dx, dy) {
+        const sc = ui.store.scene;
         const along = (axis) => {                        // world distance moved along a unit axis
           const sv = [V.dot(cam.R[0], axis) * cam.scale, -V.dot(cam.R[1], axis) * cam.scale];
           const l2 = sv[0] * sv[0] + sv[1] * sv[1];
@@ -461,15 +469,15 @@
         if (ui.store.dirty.has('A') && ui.store.autoA) ui.pendingA = performance.now() + 600;
         P.syncControls(ui);
         ui.requestRun(true);
-      },
-      onDragEnd() {},
-      onPrimary(x, y, dx, dy) { ui.cam[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
-      onPan(dx, dy) { ui.cam.pan[0] += dx; ui.cam.pan[1] += dy; ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
-      onZoom(f, x, y) { ui.cam.zoomAt(f, x, y); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
-    });
+    }
+    // Optics: the fixture's own view — source, emission axis and envelope faces are edited here
     const cs = document.getElementById('surface-canvas');
     RF.Input.attach(cs, {
       isLive: liveFor(cs), cold: 'view',
+      onInteract: interact,
+      hitTest(x, y) { return nearestHandle(ui.handlesS, x, y); },
+      onDragStart(h) { ui.activeHandle = h; ui.camS.holdFit = true; },   // don't re-frame the view you're editing in
+      onDrag(h, x, y, dx, dy) { dragHandle(h, ui.camS, dx, dy); },
       onPrimary(x, y, dx, dy) { ui.camS[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
       onPan(dx, dy) { ui.camS.pan[0] += dx; ui.camS.pan[1] += dy; ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { ui.camS.zoomAt(f, x, y); ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
@@ -757,9 +765,16 @@
   ui.layoutGrid = layoutGrid;
   function refitSurfaces() {
     if (!ui.model) return;
-    const pts = [ui.store.scene.source.pos]; for (const p of ui.model.polys) for (const q of p.pts) pts.push(q);
+    const pts = opticsFitPoints();
     const cs = document.getElementById('surface-canvas').getBoundingClientRect();
     ui.camS.w = cs.width; ui.camS.h = cs.height; ui.camS.fit(pts, 0.12); ui.camS.userMoved = false;
+  }
+  // Optics frames the fixture: source + surfaces, plus the envelope box while it's shown (its handles live there)
+  function opticsFitPoints() {
+    const sc = ui.store.scene, pts = [sc.source.pos];
+    if (ui.model) for (const p of ui.model.polys) for (const q of p.pts) pts.push(q);
+    if (ui.opticsEnv !== false) { const e = sc.envelope; for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) pts.push([e.center[0] + sx * e.half[0], e.center[1] + sy * e.half[1], e.center[2] + sz * e.half[2]]); }
+    return pts;
   }
   // after a layout change: a camera whose canvas was 0×0 (collapsed) has no valid scale — refit it
   // Also refit a camera the user hasn't moved when its canvas changes size: a perspective fit only holds
@@ -814,7 +829,14 @@
     const poke = () => { clearTimeout(ui._idleT); ui._idleT = setTimeout(() => showHint(8000), 60000); };
     for (const ev of ['pointerdown', 'keydown', 'wheel']) document.addEventListener(ev, () => { if (!ui.activeHandle) hint.classList.remove('show'); poke(); }, { passive: true });
     showHint(6000); poke();
-    for (const b of document.querySelectorAll('[data-fit]')) b.addEventListener('click', () => ui.fit(b.dataset.fit));
+    // Scene: Reset view = the view the app opens with; Setup = show the edit handles here too
+    document.getElementById('btn-reset-view').addEventListener('click', () => { ui.cam.setAngles(193.8, 19.3); ui.fit('all'); });
+    const setupBtn = document.getElementById('btn-setup');
+    setupBtn.addEventListener('click', () => { ui.setup = !ui.setup; setupBtn.setAttribute('aria-pressed', String(ui.setup)); ui.sceneDirty = true; schedule(); });
+    const envT = document.getElementById('optics-env');
+    try { ui.opticsEnv = localStorage.getItem('flux/opticsEnv') !== '0'; } catch (e) { ui.opticsEnv = true; }
+    envT.checked = ui.opticsEnv;
+    envT.addEventListener('change', () => { ui.opticsEnv = envT.checked; try { localStorage.setItem('flux/opticsEnv', envT.checked ? '1' : '0'); } catch (e) { /* ignore */ } refitSurfaces(); ui.sceneDirty = true; schedule(); });
     document.getElementById('btn-download').addEventListener('click', () => P.download(ui));
     document.getElementById('btn-generate-top').addEventListener('click', () => ui.generateA());
     // Lens slider: 0–99 → 12–400 mm on a log scale; 100 → ∞ (orthographic).
