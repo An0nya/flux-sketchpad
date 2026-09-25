@@ -72,7 +72,7 @@
         const isTap = downAt && moved < 6 && performance.now() - downAt.t < 450;
         if (mode === 'drag' && h.onDragEnd) h.onDragEnd(target, false);
         if (mode === 'primary' && h.onPrimaryEnd) h.onPrimaryEnd(false);
-        if (isTap && h.onTap && mode !== 'pinch' && mode !== 'swallowed' && !cold) h.onTap(p[0], p[1], target);
+        if (isTap && h.onTap && mode !== 'pinch' && mode !== 'swallowed' && !cold) h.onTap(p[0], p[1], target, e);
         const was = mode; mode = null; target = null; last = null; pinch = null; cold = false;
         if (was !== 'swallowed') end();
       } else if (mode === 'pinch' && pts.size === 1) {

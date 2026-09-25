@@ -40,9 +40,9 @@
   // turn amber (stronger = larger share); everything else fades back.  Returns null when nothing is selected.
   const SEL_COL = [242, 180, 65];
   // the selection's own facet: white outline + its name
-  function markPrimary(ctx, cam, model, ids) {
+  function markPrimary(ctx, cam, model, ids, noLabel) {
     if (!ids) return;
-    if (Array.isArray(ids)) { for (const id of ids) markPrimary(ctx, cam, model, id); return; }
+    if (Array.isArray(ids)) { for (const id of ids) markPrimary(ctx, cam, model, id, ids.length > 6); return; }   // many: outlines only
     const id = ids;
     let sx = 0, sy = 0, n = 0;
     ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1.8;
@@ -52,28 +52,21 @@
       ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.stroke();
       for (const q of pr) { sx += q[0]; sy += q[1]; n++; }
     }
-    if (!n) return;
+    if (!n || noLabel) return;
     const x = sx / n + 12, y = sy / n - 10;
     ctx.font = '600 11px system-ui'; const w = ctx.measureText(id).width + 10;
     ctx.fillStyle = 'rgba(12,13,16,0.85)'; ctx.fillRect(x, y - 11, w, 16);
     ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y - 10.5, w - 1, 15);
     ctx.fillStyle = '#fff'; ctx.fillText(id, x + 5, y + 1);
   }
-  // facets that shadow or block the selection: dashed white outline, their fill stays dimmed
-  function markSecondary(ctx, cam, model, ids) {
-    if (!ids || !ids.length) return;
-    const set = new Set(ids);
-    ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.2;
-    for (const p of model.polys) {
-      if (!set.has(p.id)) continue;
-      const pr = p.pts.map((q) => cam.project(q));
-      ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.stroke();
-    }
-    ctx.restore();
-  }
   function selEmph(opts, id) { return opts.sel ? (opts.sel.get(id) || 0) : null; }
-  function surfStyle(ctx, e, col, lam, a, aDim) {
+  // facets that shadow or block the selection (opts.selSecondary): a darker, near-opaque body with a dashed
+  // white edge, drawn in depth order so orbiting shows where they cut into the selected facet's light
+  function isSecondary(opts, id) { return !!(opts.selSecondary && opts.selSecondary.includes(id)); }
+  function surfStyle(ctx, e, col, lam, a, aDim, secondary) {
     if (e === null) return false;
+    ctx.setLineDash(secondary ? [4, 3] : []);
+    if (secondary) { ctx.fillStyle = 'rgba(34,38,46,0.8)'; ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.2; return true; }
     if (e > 0) { ctx.fillStyle = rgba(SEL_COL.map((x) => Math.round(x * (0.6 + 0.4 * lam))), 0.35 + 0.55 * e); ctx.strokeStyle = rgba([255, 236, 200], 0.5 + 0.45 * e); ctx.lineWidth = 1.1; }
     else { ctx.fillStyle = rgba(col.map((x) => Math.round(x * lam)), aDim); ctx.strokeStyle = rgba(col, 0.12); ctx.lineWidth = 0.6; }
     return true;
@@ -227,13 +220,13 @@
       const lam = 0.35 + 0.65 * Math.abs(V.dot(p.n, light));
       const a = p.inter === 'refract' ? 0.18 : p.inter === 'absorb' ? 0.5 : 0.26;   // softer fills (Astra)
       const c = p.inter === 'absorb' ? [70, 70, 76] : col.map((x) => Math.round(x * lam));
-      if (!surfStyle(ctx, selEmph(opts, p.id), col, lam, a, a * 0.3)) {
+      if (!surfStyle(ctx, selEmph(opts, p.id), col, lam, a, a * 0.3, isSecondary(opts, p.id))) {
         ctx.fillStyle = rgba(c, opts.highlight === p.id ? 0.85 : a);
         ctx.strokeStyle = rgba(col.map((x) => Math.min(255, x + 40)), 0.55); ctx.lineWidth = 0.7;   // lighter edge, Astra-style
       }
       ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
     }
-    markSecondary(ctx, cam, opts.model, opts.selSecondary);
+    ctx.setLineDash([]);
     markPrimary(ctx, cam, opts.model, opts.selPrimary);
     // ---- rays
     if (opts.showRays && opts.paths) {
@@ -420,13 +413,14 @@
         ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.stroke();
       } else {
         const lam = 0.35 + 0.65 * Math.abs(V.dot(it.p.n, light));
-        if (!surfStyle(ctx, selEmph(opts, it.p.id), col, lam, 0.5, 0.12)) {
+        if (!surfStyle(ctx, selEmph(opts, it.p.id), col, lam, 0.5, 0.12, isSecondary(opts, it.p.id))) {
           ctx.fillStyle = rgba(col.map((x) => Math.round(x * lam)), it.p.inter === 'refract' ? 0.3 : 0.5);
           ctx.strokeStyle = rgba(col, 0.7); ctx.lineWidth = 0.7;
         }
         ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
       }
     }
+    ctx.setLineDash([]);
     // per-surface annotation: normals (shaded) or source→surface→out ray pairs
     const seen = new Set(), sizeRef = 40 / cam.scale;
     for (let k = 0; k < G.n; k++) {
@@ -457,7 +451,6 @@
       }
       ctx.globalAlpha = 1;
     }
-    markSecondary(ctx, cam, model, opts.selSecondary);
     markPrimary(ctx, cam, model, opts.selPrimary);
     return finish();
   }

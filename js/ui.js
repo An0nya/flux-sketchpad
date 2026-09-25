@@ -447,7 +447,7 @@
       onDragStart(h) { ui.activeHandle = h; },
       onDrag(h, x, y, dx, dy) { dragHandle(h, ui.cam, dx, dy); },
       onDragEnd() {},
-      onTap(x, y, h) { if (!h && ui.selScene !== false) tapPick(ui.cam, x, y); },
+      onTap(x, y, h, e) { if (!h && ui.selScene !== false) tapPick(ui.cam, x, y, e); },
       onPrimary(x, y, dx, dy) { ui.cam[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
       onPan(dx, dy) { ui.cam.pan[0] += dx; ui.cam.pan[1] += dy; ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { ui.cam.zoomAt(f, x, y); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
@@ -489,7 +489,7 @@
       hitTest(x, y) { return nearestHandle(ui.handlesS, x, y); },
       onDragStart(h) { ui.activeHandle = h; ui.camS.holdFit = true; },   // don't re-frame the view you're editing in
       onDrag(h, x, y, dx, dy) { dragHandle(h, ui.camS, dx, dy); },
-      onTap(x, y, h) { if (!h) tapPick(ui.camS, x, y); },
+      onTap(x, y, h, e) { if (!h) tapPick(ui.camS, x, y, e); },
       onPrimary(x, y, dx, dy) { ui.camS[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
       onPan(dx, dy) { ui.camS.pan[0] += dx; ui.camS.pan[1] += dy; ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { ui.camS.zoomAt(f, x, y); ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
@@ -515,12 +515,12 @@
       },
       onDragStart(st) { ui.store.scene.modeB.selected = st.id; },
       onDrag(st, x, y) { const uv = toUV(x, y); C.actions.moveStamp(ui.store, st.id, uv[0], uv[1]); ui.movedSomething = true; ui.store.commit({ deferA: true }); firePreview(st.id); ui.requestRun(true); },
-      onTap(x, y, st) {
-        const sc = ui.store.scene;
+      onTap(x, y, st, e) {
+        const sc = ui.store.scene, add = !!(e && e.shiftKey);
         if (sc.mode !== 'B') {                          // select a spot ~30 px across (finer when zoomed in); off the map → clear
           const uv = toUV(x, y), t = T();
-          if (Math.abs(uv[0]) > t.half || Math.abs(uv[1]) > t.half) { ui.select(null); return; }
-          ui.select({ kind: 'spot', u: uv[0], v: uv[1], r: 15 / ui.vHeat.s * (2 * t.half / t.res) }); return;
+          if (Math.abs(uv[0]) > t.half || Math.abs(uv[1]) > t.half) { if (!add) ui.select(null); return; }
+          ui.select({ kind: 'spot', u: uv[0], v: uv[1], r: 15 / ui.vHeat.s * (2 * t.half / t.res) }, add); return;
         }
         if (sc.mode !== 'B') return;
         if (st) { ui.selectStamp(st.id); return; }
@@ -610,14 +610,26 @@
   }
 
   // ---------------------------------------------------------------- inspector selection
-  // ui.sel: null | { kind: 'facet', id } | { kind: 'spot', u, v, r } (target mm).  View state only: not saved,
-  // not undoable.  Facet ids are slots ('A12' = zone 12's facet), so a selection survives a rebuild.
-  // A spot is solver-agnostic (any light, anywhere); zones are only drawn as the solver's intent there.
+  // ui.sel: null | { kind: 'facet', items: [id…] } | { kind: 'spot', items: [{ u, v, r }…] } (target mm).
+  // One kind at a time.  View state only: not saved, not undoable.  Facet ids are slots ('A12' = zone
+  // 12's facet), so a selection survives a rebuild.  A spot is solver-agnostic (any light, anywhere);
+  // zones are only drawn as the solver's intent there.
   ui.sel = null;
   const SEL_RAY_BOOST = 5;                              // a selection draws its rays this much denser than the full view
-  ui.select = function (s) {
-    const same = s && ui.sel && s.kind === ui.sel.kind && (s.kind === 'facet' ? s.id === ui.sel.id : Math.hypot(s.u - ui.sel.u, s.v - ui.sel.v) < ui.sel.r);
-    ui.sel = same ? null : s;                           // clicking the selection again clears it
+  // select(one, add): one = { kind: 'facet', id } | { kind: 'spot', u, v, r } | null.
+  //   click: select just that (clicking the only selection again clears it) · shift (add): toggle it in the
+  //   list of the same kind (a different kind starts over)
+  ui.select = function (one, add) {
+    if (!one) ui.sel = null;
+    else {
+      const item = one.kind === 'facet' ? one.id : { u: one.u, v: one.v, r: one.r };
+      const list = ui.sel && ui.sel.kind === one.kind ? ui.sel.items.slice() : [];
+      const at = list.findIndex((x) => (one.kind === 'facet' ? x === item : Math.hypot(x.u - item.u, x.v - item.v) < x.r));
+      if (add) { if (at >= 0) list.splice(at, 1); else list.push(item); }
+      else if (at >= 0 && list.length === 1) list.length = 0;
+      else { list.length = 0; list.push(item); }
+      ui.sel = list.length ? { kind: one.kind, items: list } : null;
+    }
     ui.selCache = null; ui.sceneDirty = true; drawHeat(); renderSelChips(); schedule();   // sceneDirty also redraws the Editor
   };
   // What the selection lights up.  Contributors come from the per-hit first-surface tags: every facet
@@ -632,32 +644,37 @@
     const simCell = (h) => { let i = Math.floor((c.hits[3 * h] + T.half) / (2 * T.half) * sr), j = Math.floor((c.hits[3 * h + 1] + T.half) / (2 * T.half) * sr); if (i >= sr) i = sr - 1; if (j >= sr) j = sr - 1; return j * sr + i; };
     const vals = new Float64Array(sr * sr), rays = [];
     if (s.kind === 'facet') {
-      const f = surfs.find((x) => x.id === s.id), k = metas.findIndex((m) => m.id === s.id);
-      if (!f || k < 0) return null;
-      info.emph.set(s.id, 1); info.primaries = [s.id];
-      if (rep && rep.zones && f.info && f.info.zone !== undefined) info.zones = [f.info.zone];
-      // as if it were the only reflector: its own landed light, and its rays whatever became of them
-      for (let h = 0; h < c.nHits; h++) if (c.hitK[h] === k + 1) vals[simCell(h)] += c.hits[3 * h + 2];
-      for (let i = 0; i < c.next; i++) if (c.rayK[i] === k + 1) rays.push(i);
-      info.loss = facetLosses(run, k, rays);
-      info.secondary = [...new Set(info.loss.shadowers.concat(info.loss.blockers))];
+      const ids = s.items.filter((id) => metas.some((m) => m.id === id)); if (!ids.length) return null;
+      const labels = new Set(ids.map((id) => metas.findIndex((m) => m.id === id) + 1));
+      for (const id of ids) {
+        info.emph.set(id, 1); info.primaries.push(id);
+        const f = surfs.find((x) => x.id === id);
+        if (rep && rep.zones && f && f.info && f.info.zone !== undefined) info.zones.push(f.info.zone);
+      }
+      // as if they were the only reflectors: their own landed light, and their rays whatever became of them
+      for (let h = 0; h < c.nHits; h++) if (labels.has(c.hitK[h])) vals[simCell(h)] += c.hits[3 * h + 2];
+      for (let i = 0; i < c.next; i++) if (labels.has(c.rayK[i])) rays.push(i);
+      if (ids.length === 1) {                           // loss view: one facet at a time
+        info.loss = facetLosses(run, [...labels][0] - 1, rays);
+        info.secondary = [...new Set(info.loss.shadowers.concat(info.loss.blockers))];
+      }
     } else if (s.kind === 'spot') {
+      const spots = s.items, inSpot = (u, v) => spots.some((q) => (u - q.u) ** 2 + (v - q.v) ** 2 <= q.r * q.r);
       // the solver's intent here: every zone owning a painted cell under the spot, and its own facet
       if (rep && rep.zoneOf) {
         const pr = rep.zoneRes, cw = 2 * T.half / pr, zs = new Set();
         for (let j = 0; j < pr; j++) for (let i = 0; i < pr; i++) {
           const z = rep.zoneOf[j * pr + i]; if (z < 0) continue;
-          const du = Math.max(0, Math.abs(-T.half + (i + 0.5) * cw - s.u) - cw / 2), dv = Math.max(0, Math.abs(-T.half + (j + 0.5) * cw - s.v) - cw / 2);
-          if (du * du + dv * dv < s.r * s.r) zs.add(z);
+          const cu = -T.half + (i + 0.5) * cw, cv = -T.half + (j + 0.5) * cw;
+          if (spots.some((q) => { const du = Math.max(0, Math.abs(cu - q.u) - cw / 2), dv = Math.max(0, Math.abs(cv - q.v) - cw / 2); return du * du + dv * dv < q.r * q.r; })) zs.add(z);
         }
         info.zones = [...zs].sort((a, b) => a - b);
         info.primaries = info.zones.map((z) => rep.zones[z] && rep.zones[z].facet).filter(Boolean);
       }
-      const byK = new Map(), r2 = s.r * s.r;
-      // only the light that landed in the spot, and where it came from
+      const byK = new Map();
+      // only the light that landed in the spot(s), and where it came from
       for (let h = 0; h < c.nHits; h++) {
-        const du = c.hits[3 * h] - s.u, dv = c.hits[3 * h + 1] - s.v;
-        if (du * du + dv * dv > r2) continue;
+        if (!inSpot(c.hits[3 * h], c.hits[3 * h + 1])) continue;
         const e = c.hits[3 * h + 2], k = c.hitK[h]; info.landed += e;
         byK.set(k, (byK.get(k) || 0) + e);
         vals[simCell(h)] += e; rays.push(c.hitI[h]);
@@ -722,7 +739,7 @@
     }
     return best;
   }
-  function tapPick(cam, x, y) { const id = pickFacet(cam, x, y); ui.select(id ? { kind: 'facet', id } : null); }
+  function tapPick(cam, x, y, e) { const id = pickFacet(cam, x, y), add = !!(e && e.shiftKey); if (id) ui.select({ kind: 'facet', id }, add); else if (!add) ui.select(null); }
   // Result overlay: outline of the selected zone (cells it holds the larger part of)
   function zoneOverlay(outlineOnly) {
     const i = selInfo(), rep = ui.store.reports.A, s = ui.sel;
@@ -730,9 +747,12 @@
     const T = RF.Engine.targetFrame(ui.store.scene.target);
     const spotRing = (ctx, view) => {                   // the spot itself: a dashed ring
       if (s.kind !== 'spot') return;
-      const c = R2.uvToCell(T, s.u, s.v), p = view.toScreen(c[0], c[1]), rad = s.r / (2 * T.half / T.res) * view.s;
       ctx.save(); ctx.setLineDash([3, 2]); ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(3, rad), 0, 2 * Math.PI); ctx.stroke(); ctx.restore();
+      for (const q of s.items) {
+        const c = R2.uvToCell(T, q.u, q.v), p = view.toScreen(c[0], c[1]), rad = q.r / (2 * T.half / T.res) * view.s;
+        ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(3, rad), 0, 2 * Math.PI); ctx.stroke();
+      }
+      ctx.restore();
     };
     if (!i.zones.length || !rep || !rep.zoneOf) return spotRing;
     const zo = rep.zoneOf, r = rep.zoneRes, zset = new Set(i.zones), at = (a, b) => a >= 0 && b >= 0 && a < r && b < r && zset.has(zo[b * r + a]);
@@ -771,15 +791,16 @@
     if (s && i) {
       if (s.kind === 'facet') {
         const L = i.loss, pc = (x, of) => Math.round(100 * x / Math.max(1, of)) + '%', names = (a) => a.length ? ' (' + a.slice(0, 2).join(', ') + (a.length > 2 ? '…' : '') + ')' : '';
-        txt = 'Facet ' + s.id + (i.zones.length ? ' → zone ' + i.zones[0] : '');
+        const n = s.items.length, zl = !i.zones.length ? '' : i.zones.length > 6 ? ' → ' + i.zones.length + ' zones' : ' → zone' + (i.zones.length > 1 ? 's ' : ' ') + i.zones.join(', ');
+        txt = (n > 1 ? n + ' facets (' + s.items.slice(0, 3).join(', ') + (n > 3 ? '…' : '') + ')' : 'Facet ' + s.items[0]) + zl;
         if (L && L.shadowed) txt += ' · ' + pc(L.shadowed, L.caught + L.shadowed) + ' shadowed' + names(L.shadowers);
         if (L && L.fate.blocked) txt += ' · ' + pc(L.fate.blocked, L.caught) + ' blocked' + names(L.blockers);
       }
       else {
         const n = i.contrib.filter((x) => x.id && x.share >= 0.005).length, strays = i.contrib.filter((x) => x.id && x.share >= 0.005 && !i.primaries.includes(x.id)).length;
         const direct = i.contrib.some((x) => !x.id && x.share >= 0.005);
-        txt = 'Spot · ' + (n ? n + ' facet' + (n > 1 ? 's' : '') + ' land here' : 'no facet light') + (direct ? ' + direct' : '') + ' · ' +
-          (i.zones.length ? 'meant for zone' + (i.zones.length > 1 ? 's ' : ' ') + i.zones.join(', ') + (strays ? ' · ' + strays + ' stray' : '') : 'outside the paint');
+        txt = (s.items.length > 1 ? s.items.length + ' spots · ' : 'Spot · ') + (n ? n + ' facet' + (n > 1 ? 's' : '') + ' land here' : 'no facet light') + (direct ? ' + direct' : '') + ' · ' +
+          (i.zones.length ? 'meant for ' + (i.zones.length > 6 ? i.zones.length + ' zones' : 'zone' + (i.zones.length > 1 ? 's ' : ' ') + i.zones.join(', ')) + (strays ? ' · ' + strays + ' stray' : '') : 'outside the paint');
       }
     }
     for (const el of document.querySelectorAll('.sel-chip')) {
