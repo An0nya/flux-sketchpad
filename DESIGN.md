@@ -116,6 +116,20 @@ Lead with actionable design issues, with successful checks underneath.
   orientation objective, not merely rotating a decorative rectangle.
 - Optional idle rotation; stable orientation by default for comparison.
 
+### Inspector build log (2026-09-25, branch `inspector`)
+
+- Step 1: every recorded hit carries its first surface + bounce count (`tests/attribution.js`,
+  solo-trace oracle + negative control). Recording cost is within noise (116 vs 115 ms / 200k rays).
+- Step 2: shared facet/zone selection. Observations (one scene, `127.0.0.1:8746`, not validated further):
+  test-scene facet A1 delivers 10.0 of the 15.2 units it sends when traced alone; zone 70 of Anya's
+  default gets light from its facet **plus 28 others** (tiles far larger than zones: 13-cell zone).
+- Known gap: a zone that holds no cell's majority share (4 of 100 here) can't be clicked on the map.
+- Planned: per-facet loss accounting. Design flux vs actually intercepted = **shadowed by other
+  facets**; intercepted vs landed = **re-hit / cut / escaped**. Neither shows today: shadowing isn't a
+  loss (the shadowing facet redirects that light), and re-hits sit inside the footer's "cut" bucket.
+- Multi-hop optics (lenses): first-surface ownership stays; the selected facet's retraced bundle
+  shows every hop, and surfaces on that path get a secondary highlight.
+
 ## Deferred: algorithms, acceleration, rendering
 
 The base Opus build has not received solver optimizations. The nominal “Astra” build
