@@ -14,9 +14,9 @@
 
   const ui = {
     store: null,
-    cam: new RF.Render.Camera(-130, 28), camS: new RF.Render.Camera(-130, 28),   // eye on the lamp's side of the target (lit face)
+    cam: new RF.Render.Camera(200, 32), camS: new RF.Render.Camera(200, 32),   // eye behind the lamp (lit face of the target), a little to one side: reflector bottom-left, target up and right
     vLeft: new R2.View2D(), vHeat: new R2.View2D(), vPick: new R2.View2D(), vProf: new R2.View2D(),
-    fitMode: 'fixture', showRays: true, smooth: false, view: 'total', surfaceView: 'shaded',
+    fitMode: 'all', showRays: true, smooth: false, view: 'total', surfaceView: 'shaded',
     interacting: false, run: null, model: null, handles: [], activeHandle: null, preview: null,
     raf: 0, display: 'grid', pendingA: 0, lastHeat: 0, lastStats: 0, pickMarks: [], profHandles: [], profSel: -1, heatImg: null, sceneDirty: true,
   };
@@ -110,7 +110,7 @@
     if (notice) ui.store.notice(notice);
     if (silent) return;
     ui.setMode(scene.mode, true);
-    ui.fit(ui.fitMode);
+    ui.fit(ui.fitMode || 'all');
     ui.vLeft.fitted = ui.vHeat.fitted = ui.vPick.fitted = ui.vProf.fitted = false;
     ui.refreshPanels(); ui.requestRun(false); ui.autosave();
   };
@@ -138,14 +138,14 @@
     const box = document.getElementById('left-tools'); box.innerHTML = '';
     const m = ui.store.scene.mode;
     if (m === 'A') {
-      for (const id of ['A.brush', 'A.strength', 'A.erase']) {
+      // one slim row: size · level (slider + scrub field each) · Erase toggle · Invert
+      for (const [id, short] of [['A.brush', 'size'], ['A.strength', 'level']]) {
         const c = C.BY_ID[id];
-        const inp = c.type === 'check' ? P.el('input', { type: 'checkbox', 'data-control': id }) : P.el('input', { type: 'range', 'data-control': id, min: c.min, max: c.max, step: c.step });
-        const out = c.type === 'check' ? null : P.el('output', {}, String(c.get(ui.store)));
-        if (out) inp.addEventListener('input', () => { out.textContent = inp.value; });
-        inp.addEventListener('change', () => { ui.setControl(id, c.type === 'check' ? inp.checked : parseFloat(inp.value)); if (out) out.textContent = String(c.get(ui.store)); });
-        box.append(P.el('label', { 'data-wrap': id, class: c.type === 'check' ? 'tog' : 'slider' }, c.label.replace(' (cells)', '') + ' ', inp, out));
+        box.append(P.el('label', { 'data-wrap': id, class: 'brushctl', title: c.label }, P.el('span', {}, short), P.numberControl(ui, c)));
       }
+      const er = P.el('button', { type: 'button', id: 'erase-btn', class: 'toggle', 'aria-pressed': String(!!C.BY_ID['A.erase'].get(ui.store)), title: 'Erase (paint level 0)' }, 'Erase');
+      er.addEventListener('click', () => { const v = !C.BY_ID['A.erase'].get(ui.store); ui.setControl('A.erase', v); er.setAttribute('aria-pressed', String(v)); });
+      box.append(er);
       const inv = P.el('button', { type: 'button', title: 'Invert the painting (level → 1 − level)' }, 'Invert');
       inv.addEventListener('click', () => { ui._histHint = 'Invert paint'; C.actions.invertPaint(ui.store); ui.afterChange(); });
       box.append(inv);
@@ -161,6 +161,7 @@
   // ---------------------------------------------------------------- panels
   ui.refreshPanels = function () {
     P.syncControls(ui);
+    const eb = document.getElementById('erase-btn'); if (eb) eb.setAttribute('aria-pressed', String(!!C.BY_ID['A.erase'].get(ui.store)));
     P.renderStampList(ui); P.renderLensList(ui); P.renderGroups(ui); P.renderNotices(ui);
     P.syncControls(ui);
     const rA = ui.store.reports.A, box = document.getElementById('modeA-report');
@@ -380,7 +381,7 @@
 
   // camera fitting
   ui.fit = function (mode) {
-    ui.fitMode = mode;
+    ui.fitMode = mode; ui.cam.userMoved = ui.camS.userMoved = false;
     {   // always rebuild: surfaces can be regenerated into the same scene object (stale model ⇒ bad fit on load)
       const Pc = RF.Engine.prepare(ui.store.scene, RF.State.allSurfaces(ui.store.scene));
       ui.model = RF.Render.buildDrawModel(ui.store.scene, Pc); ui.model.scene = ui.store.scene;
@@ -459,16 +460,16 @@
         ui.requestRun(true);
       },
       onDragEnd() {},
-      onPrimary(x, y, dx, dy) { ui.cam[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.sceneDirty = true; schedule(); },
-      onPan(dx, dy) { ui.cam.pan[0] += dx; ui.cam.pan[1] += dy; ui.sceneDirty = true; schedule(); },
-      onZoom(f, x, y) { ui.cam.zoomAt(f, x, y); ui.sceneDirty = true; schedule(); },
+      onPrimary(x, y, dx, dy) { ui.cam[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
+      onPan(dx, dy) { ui.cam.pan[0] += dx; ui.cam.pan[1] += dy; ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
+      onZoom(f, x, y) { ui.cam.zoomAt(f, x, y); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
     });
     const cs = document.getElementById('surface-canvas');
     RF.Input.attach(cs, {
       isLive: liveFor(cs), cold: 'view',
-      onPrimary(x, y, dx, dy) { ui.camS[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.sceneDirty = true; schedule(); },
-      onPan(dx, dy) { ui.camS.pan[0] += dx; ui.camS.pan[1] += dy; ui.sceneDirty = true; schedule(); },
-      onZoom(f, x, y) { ui.camS.zoomAt(f, x, y); ui.sceneDirty = true; schedule(); },
+      onPrimary(x, y, dx, dy) { ui.camS[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
+      onPan(dx, dy) { ui.camS.pan[0] += dx; ui.camS.pan[1] += dy; ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
+      onZoom(f, x, y) { ui.camS.zoomAt(f, x, y); ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
     });
   }
   function wireHeat() {
@@ -703,6 +704,19 @@
     }
     for (const d of document.querySelectorAll('.divider')) d.classList.toggle('off', !r.dividers[{ split: 'main', rowSplit: 'row', pairSplit: 'pair' }[d.dataset.split]]);
   }
+  // Collapse / expand / restore animate the grid tracks (px → px interpolates); resizes and divider drags don't.
+  function animateLayout() {
+    const W = document.getElementById('workspace');
+    W.classList.add('animating'); clearTimeout(ui._animT); ui._animT = setTimeout(() => W.classList.remove('animating'), 320);
+    layoutGrid();
+  }
+  // Editor (paint) and Result share one on-screen size, so the two maps compare cell for cell
+  // even when the Editor | Result divider isn't centred.  Picker / profile views are not target maps.
+  function syncMapCap() {
+    const a = document.getElementById('left-canvas').getBoundingClientRect(), b = document.getElementById('heat-canvas').getBoundingClientRect();
+    const cap = a.width > 0 && b.width > 0 && a.height > 0 && b.height > 0 ? Math.floor(Math.min(a.width, a.height, b.width, b.height)) : 0;
+    ui.vLeft.cap = ui.vHeat.cap = cap;
+  }
   ui.setPane = function (k, change) {           // change: 'collapse' | 'expand' | 'activate'
     const st = ui.layout, was = JSON.stringify(st);
     if (change === 'collapse') {
@@ -712,7 +726,7 @@
       st.expanded = st.expanded === k ? null : k; st.collapsed[k] = false; st.active = k;
     } else { st.active = k; st.collapsed[k] = phone() ? false : st.collapsed[k]; }
     if (JSON.stringify(st) === was) return;
-    saveLayout(); layoutGrid();
+    saveLayout(); animateLayout();
   };
   // Dividers: drag writes the stored share (and ends an expand, so the pane follows the pointer);
   // arrow keys nudge; double-click resets.
@@ -742,12 +756,18 @@
     if (!ui.model) return;
     const pts = [ui.store.scene.source.pos]; for (const p of ui.model.polys) for (const q of p.pts) pts.push(q);
     const cs = document.getElementById('surface-canvas').getBoundingClientRect();
-    ui.camS.w = cs.width; ui.camS.h = cs.height; ui.camS.fit(pts, 0.12);
+    ui.camS.w = cs.width; ui.camS.h = cs.height; ui.camS.fit(pts, 0.12); ui.camS.userMoved = false;
   }
   // after a layout change: a camera whose canvas was 0×0 (collapsed) has no valid scale — refit it
+  // Also refit a camera the user hasn't moved when its canvas changes size: a perspective fit only holds
+  // at the size it was made for (the eye distance scales with the frame), and the first fit can run
+  // before the layout settles.  A camera the user has orbited / panned / zoomed keeps its view.
   function healCameras() {
-    if (!ui.camS.fitted || !(ui.camS.scale > 0)) refitSurfaces();
-    if (!ui.cam.fitted || !(ui.cam.scale > 0)) ui.fit(ui.fitMode || 'fixture');
+    const sz = (id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; };
+    const s1 = sz('scene-canvas'), s2 = sz('surface-canvas');
+    const moved = (cam, s) => cam.w !== s[0] || cam.h !== s[1];
+    if (!ui.cam.fitted || !(ui.cam.scale > 0) || (!ui.cam.userMoved && s1[0] > 0 && moved(ui.cam, s1))) ui.fit(ui.fitMode || 'all');
+    else if (!ui.camS.fitted || !(ui.camS.scale > 0) || (!ui.camS.userMoved && s2[0] > 0 && moved(ui.camS, s2))) refitSurfaces();
   }
 
   // ---------------------------------------------------------------- boot
@@ -779,7 +799,7 @@
     layoutGrid();
     // canvases size themselves on draw; a ResizeObserver says when (replaces rAF/timeout guesswork after layout changes)
     let roT = 0;
-    const onResize = () => { if (roT) return; roT = requestAnimationFrame(() => { roT = 0; healCameras(); ui.sceneDirty = true; drawHeat(); schedule(); }); };
+    const onResize = () => { if (roT) return; roT = requestAnimationFrame(() => { roT = 0; syncMapCap(); healCameras(); ui.sceneDirty = true; drawHeat(); schedule(); }); };
     if (root.ResizeObserver) {
       const ro = new ResizeObserver(onResize);
       for (const w of document.querySelectorAll('.canvas-wrap')) ro.observe(w);
@@ -819,12 +839,12 @@
     // stats footer: minimal by default, Details expands to the full readout (remembered)
     const det = document.getElementById('btn-details'), full = document.getElementById('stats-full');
     // Details: a drawer that opens upward OVER the panes (they never resize); starts closed
-    const setDetails = (open) => { full.hidden = !open; det.setAttribute('aria-expanded', String(open)); det.textContent = open ? 'Details ▾' : 'Details ▴'; };
+    const setDetails = (open) => { full.hidden = !open; document.getElementById('footer').classList.toggle('open', open); det.setAttribute('aria-expanded', String(open)); det.textContent = open ? 'Details ▾' : 'Details ▴'; };
     setDetails(false); det.addEventListener('click', () => setDetails(full.hidden));
     document.getElementById('btn-details-close').addEventListener('click', () => setDetails(false));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !full.hidden) setDetails(false); });
     // settings sidebar: collapsible (desktop) / drawer (phone); remembered per browser
-    const sideBtn = document.getElementById('btn-side'), narrow = phone;
+    const sideBtn = document.getElementById('btn-side'), narrow = () => root.matchMedia('(max-width: 1024px)').matches;   // ≤1024: sidebar overlays
     const setSide = (show) => {
       document.body.classList.toggle('side-hidden', !show); sideBtn.setAttribute('aria-pressed', String(show));
       if (!narrow()) try { localStorage.setItem('flux/side', show ? '1' : '0'); } catch (e) { /* ignore */ }   // phones: drawer state isn't remembered
@@ -833,6 +853,14 @@
     let sidePref = null; try { sidePref = localStorage.getItem('flux/side'); } catch (e) { /* ignore */ }
     setSide(narrow() ? false : sidePref !== '0');
     sideBtn.addEventListener('click', () => setSide(document.body.classList.contains('side-hidden')));
+    // overlay mode: a press outside the sidebar closes it
+    document.addEventListener('pointerdown', (e) => { if (narrow() && !document.body.classList.contains('side-hidden') && !e.target.closest('#sidebar, #btn-side')) setSide(false); }, true);
+    // heat-map colours (view state, per browser)
+    const fc = document.getElementById('falsecolor');
+    const applyRamp = () => { RF.Render.setRamp(fc.checked ? 'inferno' : 'teal'); try { localStorage.setItem('flux/ramp', fc.checked ? 'inferno' : 'teal'); } catch (e) { /* ignore */ }
+      ui.hitsCache = null; ui.sceneDirty = true; drawHeat(); schedule(); };
+    try { fc.checked = localStorage.getItem('flux/ramp') === 'inferno'; } catch (e) { /* ignore */ }
+    fc.addEventListener('change', applyRamp); applyRamp();
     // drawn ray paths in the scene (display only — the trace itself is unaffected)
     const rp = document.getElementById('ray-paths'), rpOut = document.getElementById('ray-paths-out');
     try { const v = localStorage.getItem('flux/rayPaths'); if (v !== null) rp.value = v; } catch (e) { /* ignore */ }
@@ -889,7 +917,7 @@
     if (!scene.groups.A.surfaces.length && scene.mode === 'A') { C.regenerateA(ui.store); }
     ui.hist = RF.History.create(100); ui.hist.reset(RF.History.intent(ui.store.scene)); updateUndoButtons();   // history doesn't survive a reload
     ui.setMode(scene.mode, true);
-    setTimeout(() => { ui.fit('fixture'); ui.refreshPanels(); ui.requestRun(false); }, 0);
+    setTimeout(() => { ui.fit(ui.fitMode || 'all'); ui.refreshPanels(); ui.requestRun(false); }, 0);
   }
   function safeBoot() {
     try {

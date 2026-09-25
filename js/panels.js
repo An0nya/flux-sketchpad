@@ -173,6 +173,7 @@
     // ---- 4. View (display only, remembered per browser)
     side.append(section('View', { open: false, key: 'view', tag: 'display only' },
       el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit'),
+      el('label', { class: 'tog', title: 'Heat maps in false colour (inferno-like: dark → violet → orange → pale yellow). Off: a single-hue teal ramp. Picture only; statistics are unchanged.' }, el('input', { type: 'checkbox', id: 'falsecolor' }), ' false-colour heat maps'),
       el('div', { class: 'row' }, el('label', { title: 'How many ray paths to draw in the scene (0 = none; display only)' }, 'Rays drawn'), el('input', { type: 'range', id: 'ray-paths', min: 0, max: 2000, step: 20, value: 240 }), el('output', { id: 'ray-paths-out' }, '240'))));
     // ---- 5. Reference & debug
     const runBtn = el('button', { type: 'button', id: 'btn-checks' }, 'Run all checks');
@@ -347,7 +348,7 @@
       row.append(
         t(pct(delivered), 'delivered', 'Fraction of emitted light that reaches the target (direct + via optics).'),
         t(pct(st.coverage), 'beam', 'Beam coverage: share of the ' + (st.basis === 'paint' ? 'painted cells' : 'beam area') + ' at ≥50% of ' + (st.basis === 'paint' ? 'intended' : 'peak') + '. Field (≥10%): ' + pct(st.coverageField) + '.'),
-        t(st.uniformity.toFixed(2), 'U₀', 'Uniformity U₀ = 5th percentile ÷ mean over ' + (st.basis === 'paint' ? 'painted cells (sim ÷ paint)' : 'the beam area') + '. Noise ceiling ' + st.noiseCeiling.toFixed(2) + ' at ' + Math.round(st.raysPerCell) + ' rays/cell.' + (st.uniformity >= st.noiseCeiling - 0.02 ? ' Noise-limited: more rays or a coarser sim grid.' : ''), st.uniformity >= st.noiseCeiling - 0.02 ? 'capped' : ''));
+        t(st.uniformity.toFixed(2), 'uniformity', 'Uniformity U₀ = 5th percentile ÷ mean over ' + (st.basis === 'paint' ? 'painted cells (sim ÷ paint)' : 'the beam area') + '. Noise ceiling ' + st.noiseCeiling.toFixed(2) + ' at ' + Math.round(st.raysPerCell) + ' rays/cell.' + (st.uniformity >= st.noiseCeiling - 0.02 ? ' Noise-limited: more rays or a coarser sim grid.' : ''), st.uniformity >= st.noiseCeiling - 0.02 ? 'capped' : ''));
       if (extra.match) row.append(t(extra.match.r.toFixed(2), 'shape', 'Shape match: correlation between intended and simulated (raw grid). ' + pct(extra.match.onPaint) + ' of target energy lands on painted cells.'));
       row.append(el('span', { class: 'tile-sep' }));
       row.append(sc.mode === 'A' && rA && !rA.error
@@ -523,5 +524,5 @@
     return results;
   }
 
-  RF.Panels = { el, buildSide, syncControls, renderStampList, renderLensList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
+  RF.Panels = { el, numberControl, buildSide, syncControls, renderStampList, renderLensList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

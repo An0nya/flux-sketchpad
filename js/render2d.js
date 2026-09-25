@@ -14,6 +14,8 @@
   View2D.prototype.fit = function (b, w, h, margin) {
     const m = margin === undefined ? 0.04 : margin, bw = b[2] - b[0], bh = b[3] - b[1];
     this.s = Math.min(w / (bw * (1 + 2 * m)), h / (bh * (1 + 2 * m)));
+    if (this.cap > 0) this.s = Math.min(this.s, this.cap / (Math.max(bw, bh) * (1 + 2 * m)));   // shared size with a paired map
+    this.capAt = this.cap;
     this.ox = w / 2 - this.s * (b[0] + b[2]) / 2; this.oy = h / 2 + this.s * (b[1] + b[3]) / 2;
     this.fitted = true; this.bounds = b.slice(); this.w = w; this.h = h;
     this.fitSq = this.s * Math.max(bw, bh);   // on-screen size of the content at the default fit (UI aligns captions to it)
@@ -25,7 +27,7 @@
 
   function prepare2d(cv, view, bounds, refit) {
     const box = fitCanvas(cv), ctx = cv.getContext('2d');
-    if (!view.fitted || refit || view.w !== box.w || view.h !== box.h || view.bounds.join() !== bounds.join()) view.fit(bounds, box.w, box.h);
+    if (!view.fitted || refit || view.w !== box.w || view.h !== box.h || view.capAt !== view.cap || view.bounds.join() !== bounds.join()) view.fit(bounds, box.w, box.h);
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0);
     ctx.clearRect(0, 0, box.w, box.h);
     return { ctx, box };

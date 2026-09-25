@@ -244,8 +244,8 @@ figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: 
 .pane.collapsed .pane-head > :not(h2):not(.collapse) { display: none; }
 .pane.rail .pane-head { display: flex; }
 .pane.collapsed .collapse { transform: rotate(-90deg); }
-.pane.bar { align-self: start; }
-.pair.both-bars { align-items: start; }
+
+
 .pane.rail .pane-head { flex-direction: column; flex-wrap: nowrap; height: 100%; padding: var(--s-6) 0; gap: var(--s-8); }
 .pane.rail h2 { writing-mode: vertical-rl; white-space: nowrap; }
 .pane.collapsed:hover { border-color: var(--dim); }
@@ -310,9 +310,6 @@ figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: 
   .pane.phone-hidden { display: none; }
   .pane-head .collapse, .pane-head .expand { display: none; }
   .stats-panel { max-height: none; }
-  .side { position: fixed; top: 48px; right: 0; bottom: 0; width: min(340px, 88vw); z-index: 25; border-left: 1px solid var(--line);
-    box-shadow: -8px 0 24px rgba(0,0,0,.5); transition: transform .2s ease; }
-  body.side-hidden .side { display: block; transform: translateX(103%); }
 }
 .head-tools button, .head-tools label { white-space: nowrap; flex: none; }
 /* narrow pane: the tools drop to their own full-width line under the title (reacts to the pane's width, not the window's) */
@@ -323,3 +320,40 @@ figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: 
 .pane .head-tools, .pane .toolrow, .pane .reset-view { transition: opacity .15s; }
 .pane:not(.active):not(:hover):not(:focus-within) :is(.head-tools, .toolrow) { opacity: .45; }
 .pane:not(.active):not(:hover):not(:focus-within) .reset-view { opacity: .25; }
+
+/* ---- ≤1024px: the sidebar overlays (panes keep their split layout); a press outside closes it */
+@media (max-width: 1024px) {
+  .app { grid-template-columns: minmax(0, 1fr) !important; }
+  .side { position: fixed; top: 48px; right: 0; bottom: 0; width: min(var(--side-w), 88vw); z-index: 25; border-left: 1px solid var(--line);
+    box-shadow: -8px 0 24px rgba(0,0,0,.5); }
+  body.side-hidden .side { display: block; transform: translateX(103%); visibility: hidden; }
+}
+
+/* ---- footer + Details = one shape: the drawer grows out of the footer's top edge */
+.drawer { bottom: calc(100% - 1px); left: -1px; right: -1px; border-color: var(--line); border-bottom: 0; border-radius: 10px 10px 0 0;
+  box-shadow: 0 -12px 32px rgba(0,0,0,.45); }
+.stats-panel.open { border-top-left-radius: 0; border-top-right-radius: 0; border-top-color: transparent; }
+.stats-panel.open .foot { border-top: 1px solid var(--line); margin-top: calc(-1 * var(--s-6)); padding-top: var(--s-6); }
+.drawer { background: var(--panel); }
+
+/* ---- Editor / Result: identical chrome under both maps, so the two squares come out the same size */
+figure.map > figcaption { min-height: 17px; }
+figure.map > .toolrow, figure.map > .colorbar { min-height: 34px; box-sizing: border-box; }
+figure.map > .colorbar { justify-content: center; }
+.toolrow { flex-wrap: wrap; }
+.brushctl { display: inline-flex; align-items: center; gap: var(--s-4); color: var(--dim); font-size: 11px; }
+.brushctl .numctl { gap: var(--s-4); }
+.brushctl .numctl input[type=range] { width: 64px; }
+.brushctl input.scrub { width: 42px; min-height: 24px; padding: 0 var(--s-4); }
+.toolrow button { min-height: 24px; padding: 0 var(--s-8); font-size: 12px; }
+button.toggle[aria-pressed="true"] { background: #3a2f1f; color: var(--warn); border-color: #6b5530; }
+
+/* ---- motion (only when the user hasn't asked for less) */
+@media (prefers-reduced-motion: no-preference) {
+  .workspace.animating, .workspace.animating .right, .workspace.animating .pair { transition: grid-template-columns .26s cubic-bezier(.2,.7,.2,1), grid-template-rows .26s cubic-bezier(.2,.7,.2,1); }
+  .drawer:not([hidden]) { animation: flux-drawer .2s cubic-bezier(.2,.7,.2,1); }
+  @keyframes flux-drawer { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .side { transition: transform .2s ease, visibility .2s; }
+  .pane.collapsed .collapse, .pane .collapse { transition: transform .2s; }
+}
+@container (max-width: 440px) { .brushctl input[type=range] { display: none; } }   /* narrow: scrub fields only */

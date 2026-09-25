@@ -9,14 +9,25 @@
   const { V } = RF;
 
   // ---------------------------------------------------------------- colour
-  // Inferno-like anchors: luminance rises monotonically (readable without hue discrimination).
-  const CMAP = [[0, 0, 0, 4], [0.25, 66, 10, 104], [0.5, 147, 38, 103], [0.7, 221, 81, 58], [0.85, 252, 165, 10], [1, 252, 255, 164]];
+  // Both ramps: luminance rises monotonically (readable without hue discrimination), mapping stays linear.
+  //   teal (default): Astra's single-hue ramp, with a faint washed-out hue drift (blue → teal → sage → sand)
+  //     so mid-levels separate; floor lifted and top short of white — a touch less range than inferno
+  //   inferno: the false-colour option (View → false-colour heat maps)
+  const RAMPS = {
+    teal: [[0, 9, 15, 23], [0.2, 30, 48, 78], [0.45, 52, 108, 128], [0.7, 128, 186, 170], [0.88, 214, 218, 172], [1, 246, 238, 200]],
+    inferno: [[0, 0, 0, 4], [0.25, 66, 10, 104], [0.5, 147, 38, 103], [0.7, 221, 81, 58], [0.85, 252, 165, 10], [1, 252, 255, 164]],
+  };
   const LUT = new Uint8ClampedArray(256 * 3);
-  for (let i = 0; i < 256; i++) {
-    const t = i / 255; let k = 0; while (k < CMAP.length - 2 && t > CMAP[k + 1][0]) k++;
-    const a = CMAP[k], b = CMAP[k + 1], f = (t - a[0]) / (b[0] - a[0]);
-    for (let c = 0; c < 3; c++) LUT[3 * i + c] = a[c + 1] + (b[c + 1] - a[c + 1]) * f;
+  function setRamp(name) {
+    const CMAP = RAMPS[name] || RAMPS.teal;
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255; let k = 0; while (k < CMAP.length - 2 && t > CMAP[k + 1][0]) k++;
+      const a = CMAP[k], b = CMAP[k + 1], f = (t - a[0]) / (b[0] - a[0]);
+      for (let c = 0; c < 3; c++) LUT[3 * i + c] = a[c + 1] + (b[c + 1] - a[c + 1]) * f;
+    }
+    LUT.name = RAMPS[name] ? name : 'teal';
   }
+  setRamp('teal');
   // Astra draws the reflector in translucent teal with thin light edges (its amber is for source + rays).
   // A = teal, B = pale sand (not the ray amber), C = violet — differ in hue and lightness (protan-safe).
   const GROUP_COL = { A: [136, 215, 212], B: [214, 196, 160], C: [183, 166, 239], L: [143, 184, 255], M: [170, 180, 190] };
@@ -94,6 +105,17 @@
     const m = margin || 0.12;
     this.scale = Math.min(this.w / Math.max(1e-9, (hi[0] - lo[0]) * (1 + 2 * m)), this.h / Math.max(1e-9, (hi[1] - lo[1]) * (1 + 2 * m)));
     this.pan = [-this.scale * (lo[0] + hi[0]) / 2, this.scale * (lo[1] + hi[1]) / 2];
+    // Perspective: the fit above is orthographic, and the lens then shrinks far points (a 1 m target
+    // ends up a corner of the frame).  Refit on the projected picture.  The lens strength depends on
+    // the zoom (eye distance ∝ 1/scale), so iterate: centre the projected box, then zoom it to fill.
+    if (isFinite(this.focal)) for (let it = 0; it < 8; it++) {
+      let a = [Infinity, Infinity], b = [-Infinity, -Infinity];
+      for (const p of pts) { const q = this.project(p); a = [Math.min(a[0], q[0]), Math.min(a[1], q[1])]; b = [Math.max(b[0], q[0]), Math.max(b[1], q[1])]; }
+      this.pan[0] -= (a[0] + b[0]) / 2 - this.w / 2; this.pan[1] -= (a[1] + b[1]) / 2 - this.h / 2;
+      const f = Math.min(this.w / Math.max(1e-9, (b[0] - a[0]) * (1 + 2 * m)), this.h / Math.max(1e-9, (b[1] - a[1]) * (1 + 2 * m)));
+      if (Math.abs(f - 1) < 0.01) break;
+      this.zoomAt(f, this.w / 2, this.h / 2);
+    }
   };
 
   function fitCanvas(cv) {
@@ -353,5 +375,5 @@
     const s = cam.project(S); ctx.beginPath(); ctx.arc(s[0], s[1], 3.5, 0, 2 * Math.PI); ctx.fillStyle = '#ffd678'; ctx.fill();
   }
 
-  RF.Render = { Camera, fitCanvas, buildDrawModel, drawScene, drawSurfaceView, drawArrow, LUT, GROUP_COL, rgba };
+  RF.Render = { Camera, fitCanvas, buildDrawModel, drawScene, drawSurfaceView, drawArrow, LUT, setRamp, GROUP_COL, rgba };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
