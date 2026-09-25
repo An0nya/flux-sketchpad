@@ -653,7 +653,9 @@
       if (info.assigned) info.emph.set(info.assigned, 1);
     } else return null;
     info.vals = vals;
-    const MAXR = 150, step = Math.max(1, rays.length / MAXR);      // an even sample of the bundle, retraced exactly
+    // same density as the unselected view (it draws the first rayPaths of N rays), at least a few to read
+    const rate = (ui.rayPaths === undefined ? 240 : ui.rayPaths) / Math.max(1, c.N);
+    const MAXR = Math.min(rays.length, Math.max(6, Math.round(rays.length * rate))), step = Math.max(1, rays.length / MAXR);   // an even sample, retraced exactly
     for (let t = 0; t < rays.length && info.paths.length < MAXR; t += step) { const p = RF.Engine.retrace(run.P, rays[Math.floor(t)]); p.sel = true; info.paths.push(p); }
     ui.selCache = { sel: s, key, info };
     return info;
@@ -676,7 +678,7 @@
     if (c.width !== base.width || c.height !== base.height) { c.width = base.width; c.height = base.height; }
     const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
     g.globalAlpha = 1; g.fillStyle = '#0c0d10'; g.fillRect(0, 0, c.width, c.height);
-    g.globalAlpha = 0.22; g.drawImage(base, 0, 0);
+    g.globalAlpha = 0.35; g.drawImage(base, 0, 0);
     g.globalAlpha = 1; g.drawImage(over, 0, 0, c.width, c.height);
     return c;
   }
