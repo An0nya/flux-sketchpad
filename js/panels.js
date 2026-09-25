@@ -314,6 +314,13 @@
   // muted to sit in the Astra palette; 'via surfaces on target' = the heat ramp's bright end (the light you designed for);
   // segments differ by lightness, not just hue, for protan readers
   const EN_COLS = [['direct', '#6f8fb8', 'direct on target'], ['reflected', '#b9dcdc', 'via surfaces on target'], ['absorbed', '#56606b', 'absorbed'], ['backface', '#434b55', 'back faces'], ['interfaceLoss', '#8b7fb8', 'Fresnel loss'], ['escaped', '#1c2630', 'escaped'], ['targetBack', '#333c46', 'hit target back'], ['truncated', '#8e6440', 'cut (cap/floor)']];
+  // photometry formatting: candela with its shot-noise error (1/√rays in the peak cell) and, when that's
+  // over 3%, the ray count that would bring it to ±3% (error ∝ 1/√rays ⇒ rays needed ∝ 1/tolerance²)
+  const fmtCd = (cd) => (cd >= 1e6 ? (cd / 1e6).toFixed(2) + ' Mcd' : cd >= 1e3 ? (cd / 1e3).toFixed(cd >= 1e5 ? 0 : 1) + ' kcd' : Math.round(cd) + ' cd');
+  const noiseOf = (peakRays) => (peakRays > 0 ? 1 / Math.sqrt(peakRays) : 1);
+  function raysFor3pc(peakRays, traced) { const need = traced * (1 / 0.03) ** 2 / Math.max(1e-9, peakRays); return need >= 1e6 ? (need / 1e6).toFixed(need >= 1e7 ? 0 : 1) + 'M' : Math.round(need / 1e3) + 'k'; }
+  const fmtLm = (lm) => (lm >= 100 ? Math.round(lm) : lm >= 10 ? lm.toFixed(1) : lm.toPrecision(2)) + ' lm';
+  const fmtMm2 = (a) => (a >= 100 ? Math.round(a).toLocaleString() : a.toFixed(1)) + ' mm²';
   function renderStats(ui, st, extra) {
     const box = document.getElementById('stats');
     if (!st) { box.innerHTML = '<div class="stat"><b>—</b><span>no run yet</span></div>'; return; }
@@ -331,6 +338,20 @@
     s(st.timeMs.toFixed(0) + ' ms', 'measured trace time');
     if (extra.match) s('r = ' + extra.match.r.toFixed(3) + ' · ' + pct(extra.match.onPaint), 'shape match: correlation intended↔simulated · energy on painted cells', 'pair');
     if (ui.peakInfo) s('≈ ' + ui.peakInfo.lux + ' lx', 'peak — 99.5th pct of ' + ui.peakInfo.res + '² sim cells (not the single max: a noise spike); white point of both heat views');
+    const ph = extra.photo, pct0 = (x) => (x === null || x === undefined ? '—' : Math.round(100 * x) + '%');
+    if (ph) {
+      const nz = noiseOf(ph.peakRays);
+      box.append(el('h4', { class: 'stats-sub' }, 'Photometry'));
+      s(fmtCd(ph.peakCd) + ' ±' + Math.round(100 * nz) + '%', 'peak intensity (99.5th pct cell × distance²)' + (nz > 0.03 ? ' — noise-limited: ~' + raysFor3pc(ph.peakRays, st.rays) + ' rays for ±3%' : ''));
+      s(Math.round(ph.throwM).toLocaleString() + ' m', 'throw (ANSI FL1: distance to 0.25 lx = 2·√cd)');
+      s(pct0(ph.ofDesign) + ' · ' + pct0(ph.ofEnvelope), 'of the brightness ceiling: this design (' + fmtCd(ph.designCeiling) + ') · any design in this envelope (' + fmtCd(ph.envelopeCeiling) + ') — ceiling = LED luminance × reflectivity × area facing the target', 'pair');
+      s(isFinite(ph.luminance) ? ph.luminance.toFixed(ph.luminance >= 100 ? 0 : 1) + ' cd/mm²' : '∞ (point)', 'LED luminance (on axis)');
+      s(fmtMm2(ph.reflectorArea) + ' · ' + fmtMm2(ph.apertureProj), 'reflector area · its area facing the target');
+      s(fmtLm(ph.lmOnTarget), 'on target');
+      if (ph.ratio) s(ph.ratio.p5.toFixed(2) + ' · ' + ph.ratio.p50.toFixed(2) + ' · ' + ph.ratio.p95.toFixed(2), 'delivered ÷ intended per painted cell (5th · median · 95th pct; 1 = as painted, scaled to the mean)', 'pair');
+    }
+    const oc = st.occlusion;
+    if (oc) s((100 * oc.blocked).toFixed(1) + '% · ' + (oc.shadowed === null ? '…' : (100 * oc.shadowed).toFixed(1) + '%'), 'occlusion: blocked (reflected light that runs into another surface' + (oc.blockedWorst.length ? '; worst ' + oc.blockedWorst.slice(0, 2).map((w) => w.id + ' ' + Math.round(100 * w.lost) + '%').join(', ') : '') + ') · shadowed (source light a facet lost to one in front of it' + (oc.shadowedWorst && oc.shadowedWorst.length ? '; worst ' + oc.shadowedWorst.slice(0, 2).map((w) => w.id + ' ' + Math.round(100 * w.lost) + '%').join(', ') : '') + ')', 'pair');
     const bar = el('div', { class: 'energy', title: 'energy accounting' });
     const leg = el('div', { class: 'legend' });
     for (const [k, col, lab] of EN_COLS) {
@@ -352,6 +373,7 @@
         t(pct(st.coverage), 'beam', 'Beam coverage: share of the ' + (st.basis === 'paint' ? 'painted cells' : 'beam area') + ' at ≥50% of ' + (st.basis === 'paint' ? 'intended' : 'peak') + '. Field (≥10%): ' + pct(st.coverageField) + '.'),
         t(st.uniformity.toFixed(2), 'uniformity', 'Uniformity U₀ = 5th percentile ÷ mean over ' + (st.basis === 'paint' ? 'painted cells (sim ÷ paint)' : 'the beam area') + '. Noise ceiling ' + st.noiseCeiling.toFixed(2) + ' at ' + Math.round(st.raysPerCell) + ' rays/cell.' + (st.uniformity >= st.noiseCeiling - 0.02 ? ' Noise-limited: more rays or a coarser sim grid.' : ''), st.uniformity >= st.noiseCeiling - 0.02 ? 'capped' : ''));
       if (extra.match) row.append(t(extra.match.r.toFixed(2), 'shape', 'Shape match: correlation between intended and simulated (raw grid). ' + pct(extra.match.onPaint) + ' of target energy lands on painted cells.'));
+      if (ph) row.append(t(fmtCd(ph.peakCd), 'peak', 'Peak intensity ±' + Math.round(100 * noiseOf(ph.peakRays)) + '% (shot noise). Throw ' + Math.round(ph.throwM) + ' m. ' + pct0(ph.ofDesign) + ' of this design\u2019s brightness ceiling, ' + pct0(ph.ofEnvelope) + ' of the envelope\u2019s. More in Details.'));
       row.append(el('span', { class: 'tile-sep' }));
       row.append(sc.mode === 'A' && rA && !rA.error
         ? t(rA.placed + ' / ' + sc.modeA.budget, 'facets', 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : ''))
@@ -526,5 +548,5 @@
     return results;
   }
 
-  RF.Panels = { el, numberControl, buildSide, syncControls, renderStampList, renderLensList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
+  RF.Panels = { el, numberControl, fmtCd, noiseOf, raysFor3pc, fmtLm, fmtMm2, buildSide, syncControls, renderStampList, renderLensList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

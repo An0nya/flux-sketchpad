@@ -269,7 +269,9 @@
       for (let i = 0; i < n; i++) { cov += (g[i] - mg) * (p[i] - mp); vg += (g[i] - mg) ** 2; vp += (p[i] - mp) ** 2; if (p[i] > 0) on += g[i]; }
       match = { r: vg > 0 && vp > 0 ? cov / Math.sqrt(vg * vp) : 0, onPaint: sg > 0 ? on / sg : 0 };
     }
-    P.renderStats(ui, st, { running, preview: run.preview, match });
+    // photometry once per finished run (it walks every surface outline); selection panels reuse it
+    if (!running && (!ui.photo || ui.photo.ctx !== run.ctx)) { ui.photo = RF.Photometry.fixture(sc, run.P, run.ctx); ui.photo.ctx = run.ctx; ui.inspCache = null; renderInspector(); }
+    P.renderStats(ui, st, { running, preview: run.preview, match, photo: !running && ui.photo && ui.photo.ctx === run.ctx ? ui.photo : null });
     if (!running) {
       const f = RF.Feasibility.analyze(sc, { designReport: sc.mode === 'A' ? ui.store.reports.A : null, stats: st, stampReports: ui.store.reports.B });
       P.renderFeasibility(ui, f, { warnings: sc.mode === 'A' && ui.store.reports.A ? ui.store.reports.A.warnings : [] });
@@ -784,6 +786,59 @@
       spotRing(ctx, view);
     };
   }
+  // Expanded Optics: the selection's numbers (collapsed/normal size: the chip only)
+  function renderInspector() {
+    const box = document.getElementById('insp-panel'); if (!box) return;
+    const pane = box.closest('.pane'), i = selInfo(), s = ui.sel, run = ui.run;
+    const show = !!(i && run && pane && pane.classList.contains('expanded'));
+    if (pane && pane.classList.contains('insp-open') !== show) {   // canvas narrows/widens: reframe beside the panel
+      pane.classList.toggle('insp-open', show);
+      if (!ui.camS.userMoved) refitSurfaces();          // a view you moved keeps its angle and zoom (it stays centred)
+      ui.sceneDirty = true; schedule();
+    }
+    box.hidden = !show; if (!show) return;
+    const key = ui.selCache && ui.selCache.info;
+    if (ui.inspCache === key && box.childElementCount) return;
+    ui.inspCache = key;
+    const sc = ui.store.scene, c = run.ctx, el = P.el, rows = [], pct = (x) => (x === null || x === undefined ? '—' : (100 * x).toFixed(x < 0.1 ? 1 : 0) + '%');
+    const row = (k, v, tip) => rows.push(el('div', { class: 'ir', title: tip || '' }, el('span', {}, k), el('b', {}, v)));
+    const cdRow = (k, cd, rays, tip) => row(k, P.fmtCd(cd) + ' ±' + Math.round(100 * P.noiseOf(rays)) + '%', (tip || '') + (P.noiseOf(rays) > 0.03 ? ' Noise-limited: ~' + P.raysFor3pc(rays, c.next) + ' rays for ±3%.' : ''));
+    let title = '';
+    if (s.kind === 'facet' && s.items.length === 1) {
+      const m = RF.Photometry.facet(sc, run.P, c, s.items[0], i.vals, i.loss);
+      title = 'Facet ' + s.items[0];
+      if (m) {
+        cdRow('peak', m.peakCd, m.peakRays, 'Brightest cell of its own footprint (99.5th pct) × distance².');
+        row('ceiling', P.fmtCd(m.ceilingCd), 'Brightness theorem: LED luminance ' + m.luminance.toFixed(0) + ' cd/mm² × reflectivity ' + m.R + ' × its area facing its aim (' + P.fmtMm2(m.proj) + '). A mirror can make the LED look bigger, never brighter.');
+        const nz = P.noiseOf(m.peakRays), over = m.ofCeiling > 1;
+        row('% of ceiling', pct(m.ofCeiling) + (over && m.ofCeiling - 1 <= 3 * nz * m.ofCeiling ? ' · noise' : over ? ' ⚠' : ''),
+          'Near 100% = fully flashed: the whole facet shows the LED at full luminance.' + (over ? (m.ofCeiling - 1 <= 3 * nz * m.ofCeiling ? ' Over 100% here is shot noise (±' + Math.round(100 * nz) + '%): physically it can\u2019t exceed 100%. The brightest of many noisy cells reads high.' : ' Over 100% beyond noise: that shouldn\u2019t be physically possible — worth reporting.') : ''));
+        row('area · facing aim', P.fmtMm2(m.area) + ' · ' + P.fmtMm2(m.proj));
+        row('from LED', m.distance.toFixed(1) + ' mm');
+        if (m.lmCone !== undefined) {
+          row('its cone holds', P.fmtLm(m.lmCone), 'LED light inside the cone this facet spans (what it would catch alone).');
+          row('caught · landed', P.fmtLm(m.lmCaught) + ' · ' + P.fmtLm(m.lmLanded), 'Caught first by this facet · of that, what lands on the target (after reflectivity and losses).');
+          row('share of LED', pct(m.fluxShare));
+          row('shadowed', pct(m.shadowed) + (i.loss.shadowers.length ? ' (' + i.loss.shadowers.slice(0, 3).join(', ') + ')' : ''), 'Light in its cone that another surface caught first.');
+          row('blocked', pct(m.blocked) + (i.loss.blockers.length ? ' (' + i.loss.blockers.slice(0, 3).join(', ') + ')' : ''), 'Light it reflected that ran into another surface instead of the target.');
+        }
+      }
+    } else if (s.kind === 'facet') {
+      title = s.items.length + ' facets';
+      let e = 0; for (let k = 0; k < i.vals.length; k++) e += i.vals[k];
+      row('landed', P.fmtLm(e / Math.max(1e-300, RF.Engine.hitCoverage(c) / c.N)));
+      rows.push(el('div', { class: 'note' }, 'Ceilings and losses are per facet: select one.'));
+    } else {
+      const m = RF.Photometry.spots(sc, run.P, c, s.items, i.landed, ui.photo);
+      title = s.items.length > 1 ? s.items.length + ' spots' : 'Spot';
+      row('landing here', P.fmtLm(m.lm));
+      row('mean', Math.round(m.lux).toLocaleString() + ' lx', 'Over the spot area.');
+      if (m.ratio !== undefined) row('delivered ÷ intended', m.ratio === null ? 'unpainted' : m.ratio.toFixed(2), '1 = as painted, relative to the whole design (it can only deliver what it catches, so the paint is scaled to the mean).');
+      row('facets landing', String(i.contrib.filter((x) => x.id && x.share >= 0.005).length));
+      row('direction ceiling', P.fmtCd(m.ceilingCd), 'The most this reflector could send toward here if every facet aimed here. A spot far below it is usually intended — the paint isn\u2019t a white box.');
+    }
+    box.innerHTML = ''; box.append(el('h4', {}, title), ...rows);
+  }
   // one-line summary + ✕ on the Optics and Result panes
   function renderSelChips() {
     const i = selInfo(), s = ui.sel;
@@ -803,6 +858,7 @@
           (i.zones.length ? 'meant for ' + (i.zones.length > 6 ? i.zones.length + ' zones' : 'zone' + (i.zones.length > 1 ? 's ' : ' ') + i.zones.join(', ')) + (strays ? ' · ' + strays + ' stray' : '') : 'outside the paint');
       }
     }
+    renderInspector();
     for (const el of document.querySelectorAll('.sel-chip')) {
       el.hidden = !txt; if (!txt) continue;
       el.firstChild.textContent = txt; el.title = txt;
@@ -911,6 +967,7 @@
     const panes = {}; for (const el of document.querySelectorAll('.pane')) panes[el.dataset.pane] = el;
     document.body.classList.toggle('target-collapsed', !!st.collapsed.editor);
     for (const [k, el] of Object.entries(panes)) { el.classList.toggle('active', st.active === k); el.classList.toggle('expanded', st.expanded === k); }
+    ui.inspCache = null; renderInspector();             // the numbers panel exists only while Optics is expanded
     for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === st.active);
     for (const b of document.querySelectorAll('[data-expand]')) { const on = st.expanded === b.dataset.expand; b.textContent = on ? '↙' : '⤢'; b.title = on ? 'Restore size' : 'Expand'; }
     if (phone()) {
