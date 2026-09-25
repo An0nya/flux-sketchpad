@@ -132,6 +132,11 @@ Lead with actionable design issues, with successful checks underneath.
   `report.zoneOf` stores ONE owner per cell. Other solvers (and benchmarked models) may deliberately
   overlap intents. The solver interface must report intent **per facet** (its own weighted cell list or
   footprint), not an owner map; the inspector's spot view then lists every intent under the spot.
+- **Step 4 metrics wishlist (Anya 09-25: "super fun, meaningful to me")**, photometry in flashlight terms:
+  fixture: source luminance (cd/mm²), reflector area + projected aperture, peak cd (noise-flagged),
+  brightness-theorem ceiling L·R·A_aperture and % of it reached, ANSI FL1 throw (2·√cd m), lm on target.
+  Facet: area / projected area, its cd ceiling vs measured, distance from LED, flux share,
+  shadowed / blocked losses. Fixture-level → Details drawer; facet/spot-level → expanded Optics.
 - Baseline idea: a single smooth paraboloid (Mode C) as the benchmark's floor. Anya's pattern (hot core
   + spill) is roughly what a parabola does; whether it matches the delivered map is untested.
 - Brightness-theorem sanity (A28, default scene): bound I ≤ L·R·A_proj = 318 cd/mm² × 0.9 × 115 mm²
