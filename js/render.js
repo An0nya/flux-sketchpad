@@ -40,8 +40,10 @@
   // turn amber (stronger = larger share); everything else fades back.  Returns null when nothing is selected.
   const SEL_COL = [242, 180, 65];
   // the selection's own facet: white outline + its name
-  function markPrimary(ctx, cam, model, id) {
-    if (!id) return;
+  function markPrimary(ctx, cam, model, ids) {
+    if (!ids) return;
+    if (Array.isArray(ids)) { for (const id of ids) markPrimary(ctx, cam, model, id); return; }
+    const id = ids;
     let sx = 0, sy = 0, n = 0;
     ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1.8;
     for (const p of model.polys) {

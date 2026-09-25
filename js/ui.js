@@ -332,7 +332,7 @@
     ui.heatImg = R2.gridCanvas(vals, res, ui.heatImg, clip); ui.heatImg.clipValue = clip;   // also the 3D scene texture
     ui.selImgs = selImages();
     const sc = ui.store.scene, pres = sc.target.res;
-    const overlay = sc.mode === 'B' ? R2.stampOverlay(sc, ui.store.reports.B, sc.modeB.selected) : sc.mode === 'A' ? zoneOverlay() : null;
+    const overlay = sc.mode === 'B' ? R2.stampOverlay(sc, ui.store.reports.B, sc.modeB.selected) : zoneOverlay();
     // The panel's content frame is always the PAINT grid (so taps/stamps map the same at any sim res);
     // the sim image is stretched into it.
     const base = ui.display === 'hits' ? hitsImage(pres) : ui.heatImg;
@@ -375,7 +375,7 @@
     const sc = ui.store.scene;
     ui.handles = RF.Render.drawScene(document.getElementById('scene-canvas'), ui.cam, {
       scene: sc, model: ui.model, paths: selScene() ? selScene().paths : ui.run ? ui.run.ctx.paths : null, heatCanvas: sceneHeatTexture(), showRays: ui.showRays || !!selScene(), setup: !!ui.setup,
-      selPrimary: selScene() ? selScene().assigned : null,
+      selPrimary: selScene() ? selScene().primaries : null,
       activeHandle: ui.activeHandle, preview: ui.preview && performance.now() < ui.preview.until ? ui.preview.pts : null, highlight: ui.highlight, sel: selEmph(true),
     });
     const hint = document.getElementById('scene-hint');
@@ -384,7 +384,7 @@
   }
   function drawSurfaceView() {
     if (!ui.model) return;
-    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, sel: selEmph(false), selPrimary: selInfo() ? selInfo().assigned : null });
+    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, sel: selEmph(false), selPrimary: selInfo() ? selInfo().primaries : null });
     renderSelChips();
   }
 
@@ -513,10 +513,10 @@
       onDrag(st, x, y) { const uv = toUV(x, y); C.actions.moveStamp(ui.store, st.id, uv[0], uv[1]); ui.movedSomething = true; ui.store.commit({ deferA: true }); firePreview(st.id); ui.requestRun(true); },
       onTap(x, y, st) {
         const sc = ui.store.scene;
-        if (sc.mode === 'A') {                          // select the zone under the pointer (empty → clear)
-          const rep = ui.store.reports.A, c = ui.vHeat.toContent(x, y), i = Math.floor(c[0]), j = Math.floor(c[1]);
-          const r = rep && rep.zoneRes, z = r && i >= 0 && j >= 0 && i < r && j < r ? rep.zoneOf[j * r + i] : -1;
-          ui.select(z >= 0 ? { kind: 'zone', z } : null); return;
+        if (sc.mode !== 'B') {                          // select a spot ~10 px across (finer when zoomed in); off the map → clear
+          const uv = toUV(x, y), t = T();
+          if (Math.abs(uv[0]) > t.half || Math.abs(uv[1]) > t.half) { ui.select(null); return; }
+          ui.select({ kind: 'spot', u: uv[0], v: uv[1], r: 5 / ui.vHeat.s * (2 * t.half / t.res) }); return;
         }
         if (sc.mode !== 'B') return;
         if (st) { ui.selectStamp(st.id); return; }
@@ -606,42 +606,51 @@
   }
 
   // ---------------------------------------------------------------- inspector selection
-  // ui.sel: null | { kind: 'facet', id } | { kind: 'zone', z }.  View state only: not saved, not undoable.
-  // Facet ids and zone numbers are slots ('A12' = zone 12's facet), so a selection survives a rebuild.
+  // ui.sel: null | { kind: 'facet', id } | { kind: 'spot', u, v, r } (target mm).  View state only: not saved,
+  // not undoable.  Facet ids are slots ('A12' = zone 12's facet), so a selection survives a rebuild.
+  // A spot is solver-agnostic (any light, anywhere); zones are only drawn as the solver's intent there.
   ui.sel = null;
   ui.select = function (s) {
-    const same = s && ui.sel && s.kind === ui.sel.kind && (s.kind === 'facet' ? s.id === ui.sel.id : s.z === ui.sel.z);
+    const same = s && ui.sel && s.kind === ui.sel.kind && (s.kind === 'facet' ? s.id === ui.sel.id : Math.hypot(s.u - ui.sel.u, s.v - ui.sel.v) < ui.sel.r);
     ui.sel = same ? null : s;                           // clicking the selection again clears it
     ui.selCache = null; ui.sceneDirty = true; drawHeat(); renderSelChips(); schedule();   // sceneDirty also redraws the Editor
   };
   // What the selection lights up.  Contributors come from the per-hit first-surface tags: every facet
-  // whose light lands in the zone, not only the one the solver assigned to it.
+  // whose light lands in the spot, not only the ones the solver meant to light it.
   function selInfo() {
     const s = ui.sel, run = ui.run; if (!s || !run) return null;
     const c = run.ctx, key = c.nHits + ':' + run.started;
     if (ui.selCache && ui.selCache.sel === s && ui.selCache.key === key) return ui.selCache.info;
     const sc = ui.store.scene, rep = sc.mode === 'A' ? ui.store.reports.A : null, surfs = RF.State.allSurfaces(sc);
-    const info = { emph: new Map(), zone: null, assigned: null, contrib: [], landed: 0, vals: null, paths: [] };
+    const info = { emph: new Map(), zones: [], primaries: [], contrib: [], landed: 0, vals: null, paths: [] };
     const T = run.P.T, sr = run.P.res, metas = run.P.G.metas;
     const simCell = (h) => { let i = Math.floor((c.hits[3 * h] + T.half) / (2 * T.half) * sr), j = Math.floor((c.hits[3 * h + 1] + T.half) / (2 * T.half) * sr); if (i >= sr) i = sr - 1; if (j >= sr) j = sr - 1; return j * sr + i; };
     const vals = new Float64Array(sr * sr), rays = [];
     if (s.kind === 'facet') {
       const f = surfs.find((x) => x.id === s.id), k = metas.findIndex((m) => m.id === s.id);
       if (!f || k < 0) return null;
-      info.emph.set(s.id, 1); info.assigned = s.id;
-      if (rep && rep.zones && f.info && f.info.zone !== undefined) info.zone = f.info.zone;
+      info.emph.set(s.id, 1); info.primaries = [s.id];
+      if (rep && rep.zones && f.info && f.info.zone !== undefined) info.zones = [f.info.zone];
       // as if it were the only reflector: its own landed light, and its rays whatever became of them
       for (let h = 0; h < c.nHits; h++) if (c.hitK[h] === k + 1) vals[simCell(h)] += c.hits[3 * h + 2];
       for (let i = 0; i < c.next; i++) if (c.rayK[i] === k + 1) rays.push(i);
-    } else if (rep && rep.zones && rep.zones[s.z]) {
-      info.zone = s.z; info.assigned = rep.zones[s.z].facet;
-      const pr = rep.zoneRes, zo = rep.zoneOf, byK = new Map();
-      // only the light that landed in the zone, and where it came from
+    } else if (s.kind === 'spot') {
+      // the solver's intent here: every zone owning a painted cell under the spot, and its own facet
+      if (rep && rep.zoneOf) {
+        const pr = rep.zoneRes, cw = 2 * T.half / pr, zs = new Set();
+        for (let j = 0; j < pr; j++) for (let i = 0; i < pr; i++) {
+          const z = rep.zoneOf[j * pr + i]; if (z < 0) continue;
+          const du = Math.max(0, Math.abs(-T.half + (i + 0.5) * cw - s.u) - cw / 2), dv = Math.max(0, Math.abs(-T.half + (j + 0.5) * cw - s.v) - cw / 2);
+          if (du * du + dv * dv < s.r * s.r) zs.add(z);
+        }
+        info.zones = [...zs].sort((a, b) => a - b);
+        info.primaries = info.zones.map((z) => rep.zones[z] && rep.zones[z].facet).filter(Boolean);
+      }
+      const byK = new Map(), r2 = s.r * s.r;
+      // only the light that landed in the spot, and where it came from
       for (let h = 0; h < c.nHits; h++) {
-        const u = c.hits[3 * h], v = c.hits[3 * h + 1];
-        let i = Math.floor((u + T.half) / (2 * T.half) * pr), j = Math.floor((v + T.half) / (2 * T.half) * pr);
-        if (i >= pr) i = pr - 1; if (j >= pr) j = pr - 1;
-        if (zo[j * pr + i] !== s.z) continue;
+        const du = c.hits[3 * h] - s.u, dv = c.hits[3 * h + 1] - s.v;
+        if (du * du + dv * dv > r2) continue;
         const e = c.hits[3 * h + 2], k = c.hitK[h]; info.landed += e;
         byK.set(k, (byK.get(k) || 0) + e);
         vals[simCell(h)] += e; rays.push(c.hitI[h]);
@@ -650,7 +659,7 @@
       info.contrib.sort((a, b) => b.share - a.share);
       const top = info.contrib.reduce((m, x) => (x.id ? Math.max(m, x.share) : m), 0);
       for (const x of info.contrib) if (x.id && x.share >= 0.005) info.emph.set(x.id, 0.25 + 0.75 * x.share / top);
-      if (info.assigned) info.emph.set(info.assigned, 1);
+      for (const id of info.primaries) if (!info.emph.has(id)) info.emph.set(id, 0.25);   // meant to light it, lands nothing: faint
     } else return null;
     info.vals = vals;
     // same density as the unselected view (it draws the first rayPaths of N rays), at least a few to read
@@ -700,9 +709,19 @@
   function tapPick(cam, x, y) { const id = pickFacet(cam, x, y); ui.select(id ? { kind: 'facet', id } : null); }
   // Result overlay: outline of the selected zone (cells it holds the larger part of)
   function zoneOverlay(outlineOnly) {
-    const i = selInfo(), rep = ui.store.reports.A;
-    if (!i || i.zone === null || !rep || !rep.zoneOf) return null;
-    const zo = rep.zoneOf, r = rep.zoneRes, z = i.zone, at = (a, b) => a >= 0 && b >= 0 && a < r && b < r && zo[b * r + a] === z;
+    const i = selInfo(), rep = ui.store.reports.A, s = ui.sel;
+    if (!i) return null;
+    const T = RF.Engine.targetFrame(ui.store.scene.target);
+    const spotRing = (ctx, view) => {                   // the spot itself: a dashed ring
+      if (s.kind !== 'spot') return;
+      const c = R2.uvToCell(T, s.u, s.v), p = view.toScreen(c[0], c[1]), rad = s.r / (2 * T.half / T.res) * view.s;
+      ctx.save(); ctx.setLineDash([3, 2]); ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(3, rad), 0, 2 * Math.PI); ctx.stroke(); ctx.restore();
+    };
+    if (!i.zones.length || !rep || !rep.zoneOf) return spotRing;
+    const zo = rep.zoneOf, r = rep.zoneRes, zset = new Set(i.zones), at = (a, b) => a >= 0 && b >= 0 && a < r && b < r && zset.has(zo[b * r + a]);
+    // outline each zone on its own (a shared edge between two selected zones still shows)
+    const same = (a, b, a2, b2) => at(a2, b2) && zo[b2 * r + a2] === zo[b * r + a];
     return (ctx, view) => {
       ctx.save();
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
@@ -712,7 +731,7 @@
         if (!outlineOnly) ctx.fillRect(p[0], p[1], q[0] - p[0], q[1] - p[1]);
         x0 = Math.min(x0, p[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, q[1]);
       }
-      if (isFinite(x0) && Math.max(x1 - x0, y1 - y0) < 14) {    // too small to spot: a locator ring around it
+      if (s.kind === 'facet' && isFinite(x0) && Math.max(x1 - x0, y1 - y0) < 14) {    // too small to spot: a locator ring around it
         ctx.strokeStyle = 'rgba(242,180,65,0.9)'; ctx.lineWidth = 1.2; ctx.beginPath();
         ctx.arc((x0 + x1) / 2, (y0 + y1) / 2, 11, 0, 2 * Math.PI); ctx.stroke();
       }
@@ -720,12 +739,13 @@
       for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) {
         if (!at(a, b)) continue;
         const seg = (x0, y0, x1, y1) => { const p = view.toScreen(x0, y0), q = view.toScreen(x1, y1); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); };
-        if (!at(a - 1, b)) seg(a, b, a, b + 1);
-        if (!at(a + 1, b)) seg(a + 1, b, a + 1, b + 1);
-        if (!at(a, b - 1)) seg(a, b, a + 1, b);
-        if (!at(a, b + 1)) seg(a, b + 1, a + 1, b + 1);
+        if (!same(a, b, a - 1, b)) seg(a, b, a, b + 1);
+        if (!same(a, b, a + 1, b)) seg(a + 1, b, a + 1, b + 1);
+        if (!same(a, b, a, b - 1)) seg(a, b, a + 1, b);
+        if (!same(a, b, a, b + 1)) seg(a, b + 1, a + 1, b + 1);
       }
       ctx.stroke(); ctx.restore();
+      spotRing(ctx, view);
     };
   }
   // one-line summary + ✕ on the Optics and Result panes
@@ -733,10 +753,12 @@
     const i = selInfo(), s = ui.sel;
     let txt = '';
     if (s && i) {
-      if (s.kind === 'facet') txt = 'Facet ' + s.id + (i.zone !== null ? ' → zone ' + i.zone : '');
+      if (s.kind === 'facet') txt = 'Facet ' + s.id + (i.zones.length ? ' → zone ' + i.zones[0] : '');
       else {
-        const others = i.contrib.filter((x) => x.id && x.id !== i.assigned && x.share >= 0.005).length;
-        txt = 'Zone ' + s.z + ' · ' + (i.assigned ? 'own facet ' + i.assigned + ' (outlined)' : 'no facet (dropped)') + (others ? ' · +' + others + ' others land here' : '');
+        const n = i.contrib.filter((x) => x.id && x.share >= 0.005).length, strays = i.contrib.filter((x) => x.id && x.share >= 0.005 && !i.primaries.includes(x.id)).length;
+        const direct = i.contrib.some((x) => !x.id && x.share >= 0.005);
+        txt = 'Spot · ' + (n ? n + ' facet' + (n > 1 ? 's' : '') + ' land here' : 'no facet light') + (direct ? ' + direct' : '') + ' · ' +
+          (i.zones.length ? 'meant for zone' + (i.zones.length > 1 ? 's ' : ' ') + i.zones.join(', ') + (strays ? ' · ' + strays + ' stray' : '') : 'outside the paint');
       }
     }
     for (const el of document.querySelectorAll('.sel-chip')) {
