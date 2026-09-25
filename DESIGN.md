@@ -128,6 +128,16 @@ Lead with actionable design issues, with successful checks underneath.
   edge spokes a facet each. ~4% of the budget.
 - Zone selection replaced by **spot selection** (Anya 09-25): zones are this solver's intent, other
   solvers may have none, and zone clicks can't reach spill or gaps. Spot = ~10 px disc, zoom for finer.
+- **Zone overlap is a solver-interface requirement** (Anya 09-25): our solver partitions the paint, so
+  `report.zoneOf` stores ONE owner per cell. Other solvers (and benchmarked models) may deliberately
+  overlap intents. The solver interface must report intent **per facet** (its own weighted cell list or
+  footprint), not an owner map; the inspector's spot view then lists every intent under the spot.
+- Baseline idea: a single smooth paraboloid (Mode C) as the benchmark's floor. Anya's pattern (hot core
+  + spill) is roughly what a parabola does; whether it matches the delivered map is untested.
+- Brightness-theorem sanity (A28, default scene): bound I ≤ L·R·A_proj = 318 cd/mm² × 0.9 × 115 mm²
+  ≈ 33 kcd. Map peak cell: 46 kcd at 50k rays (p99.5), 38 kcd at 1M (p90 33.7k). Consistent with
+  shot noise on a max over ~60 cells (2.3σ at 1M), not proof of correctness. ⇒ small-selection peaks
+  read high at default ray counts. Candidate gate: per-facet p90 ≤ bound at high N.
 - Observation (Anya's default scene, 50k rays, one run): at the pattern centre **36 facets** land light,
   top share 6%, and the 4 facets meant for that spot aren't in the top 4. The hot centre is made of
   spill. 10 o'clock of centre: intended facets lead at 11–21% each.

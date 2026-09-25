@@ -342,8 +342,12 @@
     const peak = ui.heatImg.clipValue / Math.max(1e-300, ui.run.ctx.next / ui.run.ctx.N);
     const cb = document.getElementById('colorbar');
     cb.innerHTML = '';
-    const lux = peak / cellArea, luxTxt = lux >= 100 ? Math.round(lux).toLocaleString() : lux.toPrecision(3);
-    cb.append(P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('div', { class: 'cb-labels' }, P.el('span', {}, '0'), P.el('span', {}, 'peak ≈ ' + luxTxt + ' lx')));
+    const fmt = (lx) => (lx >= 100 ? Math.round(lx).toLocaleString() : lx.toPrecision(3));
+    const lux = peak / cellArea, luxTxt = fmt(lux);
+    // with a selection the bar follows ITS scale (its own peak), and names the full map's peak for comparison
+    const selLux = ui.selImgs ? ui.selImgs.clip / Math.max(1e-300, ui.run.ctx.next / ui.run.ctx.N) / cellArea : null;
+    cb.append(P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('div', { class: 'cb-labels' }, P.el('span', {}, '0'),
+      P.el('span', {}, selLux !== null ? 'selection peak ≈ ' + fmt(selLux) + ' lx (full map ' + luxTxt + ')' : 'peak ≈ ' + luxTxt + ' lx')));
     ui.peakInfo = { lux: luxTxt, res };
   }
   // captions / tools line up with the drawn square (the canvas letterboxes it), using the view's own fit
@@ -513,10 +517,10 @@
       onDrag(st, x, y) { const uv = toUV(x, y); C.actions.moveStamp(ui.store, st.id, uv[0], uv[1]); ui.movedSomething = true; ui.store.commit({ deferA: true }); firePreview(st.id); ui.requestRun(true); },
       onTap(x, y, st) {
         const sc = ui.store.scene;
-        if (sc.mode !== 'B') {                          // select a spot ~10 px across (finer when zoomed in); off the map → clear
+        if (sc.mode !== 'B') {                          // select a spot ~30 px across (finer when zoomed in); off the map → clear
           const uv = toUV(x, y), t = T();
           if (Math.abs(uv[0]) > t.half || Math.abs(uv[1]) > t.half) { ui.select(null); return; }
-          ui.select({ kind: 'spot', u: uv[0], v: uv[1], r: 5 / ui.vHeat.s * (2 * t.half / t.res) }); return;
+          ui.select({ kind: 'spot', u: uv[0], v: uv[1], r: 15 / ui.vHeat.s * (2 * t.half / t.res) }); return;
         }
         if (sc.mode !== 'B') return;
         if (st) { ui.selectStamp(st.id); return; }
@@ -680,7 +684,7 @@
     lit.sort((a, b) => a - b); const clip = RF.Engine.pctl(lit, 0.995) || 1;
     ui.selTex = R2.gridCanvas(i.vals, res, ui.selTex, clip);
     ui.selOver = R2.gridCanvas(i.vals, res, ui.selOver, clip, true);
-    return { tex: ui.selTex, over: ui.selOver };
+    return { tex: ui.selTex, over: ui.selOver, clip };
   }
   function dimUnder(base, over) {
     const c = ui.selComp || (ui.selComp = document.createElement('canvas'));
