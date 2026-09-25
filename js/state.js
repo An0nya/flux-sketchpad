@@ -22,7 +22,19 @@
     return p;
   }
 
+  // The app's starting scene = the verification baseline with Anya's settings on top (2026-09-25;
+  // design/anya-default-scene-2026-09-25.json).  The checks and tests use testScene(): their expected
+  // values are derived for it, so changing what the app opens with must not move them.
   function defaultScene() {
+    const s = testScene();
+    Object.assign(s.source, { pos: [-36.58, -3.53, 13.58], axis: [-0.0086, 0.0052, 0.99995], w: 1, h: 1 });   // 1 mm LED on the back wall
+    Object.assign(s.envelope, { center: [-32.05, -6.92, 40.47], half: [27.95, 52.59, 27.46], keepOut: 15 });
+    Object.assign(s.target, { distance: 2000, size: 500, res: 100 });
+    Object.assign(s.sim, { rays: 50000, res: 100 });
+    Object.assign(s.modeA, { paint: defaultPaint(100), budget: 100 });
+    return s;
+  }
+  function testScene() {
     return {
       version: VERSION, units: 'mm', name: 'Headlamp sketch',
       source: {
@@ -170,7 +182,7 @@
   }
 
   RF.State = {
-    VERSION, LS_KEY, defaultScene, defaultPaint, allSurfaces, serialize, deserialize,
+    VERSION, LS_KEY, defaultScene, testScene, defaultPaint, allSurfaces, serialize, deserialize,
     saveLocal, loadLocal, clearLocal, saveSnapshot, loadSnapshot, snapshotTime, mapSurface, scaleScene, mirrorSceneY, reorderScene,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

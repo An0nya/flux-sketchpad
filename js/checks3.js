@@ -73,7 +73,7 @@
   function baseStore(mode) {
     // each mode is tested with its own optics in view: for B and C the Mode A reflector is
     // switched off (it would otherwise shadow the directions they use)
-    const sc = RF.State.defaultScene(); sc.mode = mode; sc.modeA.budget = 24;
+    const sc = RF.State.testScene(); sc.mode = mode; sc.modeA.budget = 24;
     const st = C.createStore(sc); C.regenerateA(st);
     if (mode !== 'A') st.scene.groups.A.enabled = false;
     return st;
@@ -116,7 +116,7 @@
   }, { slow: true });
 
   // ---------------------------------------------------------------- extras
-  function designedStore() { const st = C.createStore(RF.State.defaultScene()); C.regenerateA(st); return st; }
+  function designedStore() { const st = C.createStore(RF.State.testScene()); C.regenerateA(st); return st; }
   add(16, 'Invariance: reordering the surface list gives a byte-identical grid', () => {
     const st = designedStore(); const sc = st.scene;
     sc.lenses = [{ id: 'l1', kind: 'biconvex', params: Object.assign(RF.Lenses.defaults('biconvex'), { axisMode: 'z', f: 30, a: 8 }) }];
@@ -169,14 +169,14 @@
     return { pass: worst < 4.5, detail: 'Normalised 5×5-block distributions of 40k rays vs the other 40k of an 80k run: worst block differs by ' + worst.toFixed(2) + ' σ (tol 4.5 σ over 100 blocks). Note the first 40k rays of the 80k run are identical to the 40k run (counter-based streams).', metrics: { worst } };
   });
   add(20, 'Limit: reflectivity 0 ⇒ no reflected light', () => {
-    const st = C.createStore(RF.State.defaultScene());
+    const st = C.createStore(RF.State.testScene());
     C.setControl(st, 'A.refl', 0); st.commit({ forceA: true });
     const r = C.simulate(st, 20000);
     const g = r.ctx.gridR.reduce((a, b) => a + b, 0);
     return { pass: r.ctx.E.reflected === 0 && g === 0 && r.ctx.E.intercepted > 0, detail: 'Intercepted ' + RF.U.fmt(r.ctx.E.intercepted) + ', reflected onto target ' + r.ctx.E.reflected + ', reflected grid sum ' + g + '.', metrics: {} };
   });
   add(21, 'Limit: one facet ⇒ one tile', () => {
-    const st = C.createStore(RF.State.defaultScene());
+    const st = C.createStore(RF.State.testScene());
     st.scene.source.kind = 'point';
     C.setControl(st, 'A.budget', 1); st.commit({ forceA: true });
     const r = C.simulate(st, 50000);
@@ -209,7 +209,7 @@
     return { pass: hits.length === 0, detail: hits.length ? 'Found in: ' + hits.join(', ') : 'Scanned every .js/.html/.css/.md/.json file: 0 occurrences.', metrics: {} };
   }, { headlessOnly: true });
   add(24, 'Performance: 10,000 rays × ≥200 surfaces × 3 bounces with occlusion (< 500 ms, target 200 ms)', () => {
-    const st = C.createStore(RF.State.defaultScene());
+    const st = C.createStore(RF.State.testScene());
     st.scene.modeA.budget = 190; C.regenerateA(st);
     st.scene.lenses = [{ id: 'l1', kind: 'fresnel', params: Object.assign(RF.Lenses.defaults('fresnel'), { axisMode: 'z', f: 25, a: 12, rings: 12 }) }];
     st.scene.groups.L.surfaces = RF.Lenses.buildAll(st.scene).surfaces;

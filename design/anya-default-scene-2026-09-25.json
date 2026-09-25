@@ -1,0 +1,6 @@
+{"note":"Anya's preloaded scene (port 8746 tab), captured 2026-09-25 as the new default. Paint = RF.State.defaultPaint(100). Camera: az -166.22, el 19.27, focal 51.27 mm (lens slider 41), turntable on, fitMode all, scale 3.5308, pan [-71,183.7], center [-23.58,-16.84,20.75] at canvas 759x712.",
+"source":{"kind":"planar","shape":"rect","pos":[-36.57828701741581,-3.5267330904944765,13.57724687828004],"axis":[-0.008608343771110673,0.005169931995906558,0.9999495828393931],"roll":0,"w":1,"h":1,"radius":1,"length":4,"power":1000,"dist":"lambertian","sigma":30,"halfAngle":60},
+"envelope":{"shape":"box","center":[-32.05273008878369,-6.915328443360995,40.467084498993124],"half":[27.947269911216306,52.58972650891991,27.459406908051854],"axis":2,"keepOut":15},
+"target":{"distance":2000,"size":500,"tiltX":0,"tiltY":0,"res":100,"linked":true,"aim":[1000,0,0]},
+"sim":{"rays":50000,"res":100,"autoRes":false,"bounces":1,"floor":0.01,"seed":1},
+"modeA":{"budget":100,"facetType":"curved","reflectivity":0.9,"requiredFlux":0}}

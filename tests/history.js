@@ -2,7 +2,7 @@
 // Metamorphic: undo-all returns to the start state, redo-all to the end state (canonical key);
 // derived data (re-solve, auto-aimed stamps) and view state (mode tab) never create entries.
 const { load } = require('./load.js'); const RF = load(); const C = RF.Controller, H = RF.History;
-const st = C.createStore(RF.State.defaultScene()); C.regenerateA(st);
+const st = C.createStore(RF.State.testScene()); C.regenerateA(st);
 const h = H.create(100); h.reset(H.intent(st.scene));
 const K = () => H.key(H.intent(st.scene)), k0 = K();
 let t = 0, fails = 0; const cp = () => { t += 2000; return h.checkpoint(H.intent(st.scene), t); };

@@ -12,7 +12,7 @@
 
   // ---------------------------------------------------------------- helpers
   function bare(o) {
-    const sc = RF.State.defaultScene();
+    const sc = RF.State.testScene();
     sc.source = Object.assign(sc.source, { kind: 'point', pos: [0, 0, 0], axis: [0, 0, 1], dist: 'isotropic' });
     sc.envelope = { shape: 'box', center: [0, 0, 0], half: [500, 500, 500], axis: 2, keepOut: 0 };
     sc.modeA.paint.fill(0);
@@ -161,7 +161,7 @@
 
   // ---------------------------------------------------------------- 7. energy conservation
   add(7, 'Energy conservation: accumulated + absorbed + escaped (+ cut) = emitted, R < 1, multiple bounces', () => {
-    const store = RF.Controller.createStore(RF.State.defaultScene());
+    const store = RF.Controller.createStore(RF.State.testScene());
     RF.Controller.regenerateA(store);
     const sc = store.scene;
     sc.sim.bounces = 6; sc.sim.floor = 0.01;
@@ -183,7 +183,7 @@
 
   // ---------------------------------------------------------------- 8. determinism
   add(8, 'Determinism: identical runs give byte-identical grids (hash); progressive = one-shot', () => {
-    const store = RF.Controller.createStore(RF.State.defaultScene());
+    const store = RF.Controller.createStore(RF.State.testScene());
     RF.Controller.regenerateA(store);
     const sc = store.scene;
     const P = prep(sc), N = 20000;
@@ -194,7 +194,7 @@
     let guard = 0; while (!RF.Engine.step(ctx, 0.05) && guard++ < 1e6);
     const h3 = RF.Engine.gridHash(ctx);
     // regenerate the design from scratch: solver determinism too
-    const store2 = RF.Controller.createStore(RF.State.defaultScene());
+    const store2 = RF.Controller.createStore(RF.State.testScene());
     RF.Controller.regenerateA(store2);
     const h4 = RF.Engine.gridHash(RF.Engine.runSync(prep(store2.scene), N));
     const sc5 = RF.U.deepCopy(sc); sc5.sim.seed = 2;

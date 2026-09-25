@@ -14,7 +14,7 @@
 
   const ui = {
     store: null,
-    cam: new RF.Render.Camera(200, 32), camS: new RF.Render.Camera(200, 32),   // eye behind the lamp (lit face of the target), a little to one side: reflector bottom-left, target up and right
+    cam: new RF.Render.Camera(193.8, 19.3), camS: new RF.Render.Camera(193.8, 19.3),   // Anya's preset: eye behind the lamp (lit face of the target), a little to one side: reflector bottom-left, target up and right
     vLeft: new R2.View2D(), vHeat: new R2.View2D(), vPick: new R2.View2D(), vProf: new R2.View2D(),
     fitMode: 'all', showRays: true, smooth: false, view: 'total', surfaceView: 'shaded',
     interacting: false, run: null, model: null, handles: [], activeHandle: null, preview: null,
@@ -139,16 +139,19 @@
     const m = ui.store.scene.mode;
     if (m === 'A') {
       // one slim row: size · level (slider + scrub field each) · Erase toggle · Invert
+      // one slim row: size · level (short sliders; value on hover) · [Erase Invert] kept together
       for (const [id, short] of [['A.brush', 'size'], ['A.strength', 'level']]) {
         const c = C.BY_ID[id];
-        box.append(P.el('label', { 'data-wrap': id, class: 'brushctl', title: c.label }, P.el('span', {}, short), P.numberControl(ui, c)));
+        const sl = P.el('input', { type: 'range', 'data-control': id, 'aria-label': c.label, min: c.min, max: c.max, step: c.step });
+        const tip = () => { sl.title = c.label + ': ' + c.get(ui.store); };
+        sl.addEventListener('input', () => { ui.setControl(id, parseFloat(sl.value)); tip(); });
+        box.append(P.el('label', { 'data-wrap': id, class: 'brushctl' }, P.el('span', {}, short), sl)); tip();
       }
       const er = P.el('button', { type: 'button', id: 'erase-btn', class: 'toggle', 'aria-pressed': String(!!C.BY_ID['A.erase'].get(ui.store)), title: 'Erase (paint level 0)' }, 'Erase');
       er.addEventListener('click', () => { const v = !C.BY_ID['A.erase'].get(ui.store); ui.setControl('A.erase', v); er.setAttribute('aria-pressed', String(v)); });
-      box.append(er);
       const inv = P.el('button', { type: 'button', title: 'Invert the painting (level → 1 − level)' }, 'Invert');
       inv.addEventListener('click', () => { ui._histHint = 'Invert paint'; C.actions.invertPaint(ui.store); ui.afterChange(); });
-      box.append(inv);
+      box.append(P.el('span', { class: 'btn-pair' }, er, inv));
     } else if (m === 'B') {
       box.append(P.el('span', {}, 'centre = emission axis, rings = 30° steps · bright = source intensity · dim = no room in the envelope'));
     } else {

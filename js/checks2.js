@@ -137,7 +137,7 @@
 
   // ---------------------------------------------------------------- 11. scale invariance
   add(11, 'Scale invariance: every distance × k ⇒ identical normalised pattern (engine and solver)', () => {
-    const store = RF.Controller.createStore(RF.State.defaultScene());
+    const store = RF.Controller.createStore(RF.State.testScene());
     RF.Controller.regenerateA(store);
     const sc = store.scene;
     sc.lenses = [{ id: 'l1', kind: 'fresnel', params: Object.assign(RF.Lenses.defaults('fresnel'), { axisMode: 'z', f: 25, a: 12 }) }];
@@ -177,7 +177,7 @@
     for (const [name, fn, ks] of seqs) {
       let prevE = -1, prevT = -1, prevN = 0; const vals = [];
       for (const k of ks) {
-        const store = RF.Controller.createStore(RF.State.defaultScene());
+        const store = RF.Controller.createStore(RF.State.testScene());
         fn(store.scene, k);
         const rep = RF.Controller.regenerateA(store);
         const st = RF.Controller.simulate(store, N).stats;
@@ -196,7 +196,7 @@
 
   // ---------------------------------------------------------------- 13. asymmetric envelope
   function asymScene() {
-    const sc = RF.State.defaultScene();
+    const sc = RF.State.testScene();
     // tall deep box opening toward the target (+x); the source sits low on the z = 0 side wall,
     // deep in the box, facing across it (+z).
     sc.envelope = { shape: 'box', center: [-80, 0, 40], half: [80, 25, 40], axis: 2, keepOut: 6 };
@@ -242,18 +242,18 @@
       rows.push(name + ' → ' + (f.binding ? f.summary : 'no binding') + (it ? ' [' + it.text + ']' : '') + (ok ? ' ✓' : ' ✗ expected ' + key));
     };
     // (a) 1-cell checkerboard with a 2 mm die ⇒ minimum feature size
-    const a = RF.State.defaultScene(); { const st = RF.Controller.createStore(a); RF.Controller.actions.paintPreset(st, 'checker'); }
+    const a = RF.State.testScene(); { const st = RF.Controller.createStore(a); RF.Controller.actions.paintPreset(st, 'checker'); }
     expect('1-cell checkerboard', a, 'feature');
     // (b) 5 mm die in a 20 mm box, 10×10-cell spot ⇒ étendue
-    const b = RF.State.defaultScene();
+    const b = RF.State.testScene();
     b.source.w = b.source.h = 5; b.envelope = { shape: 'box', center: [-5, 0, 10], half: [10, 10, 10], axis: 2, keepOut: 5 };
     { const res = b.target.res, c = res / 2; b.modeA.paint = new Array(res * res).fill(0); for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) if (Math.abs(i - c + 0.5) < 5 && Math.abs(j - c + 0.5) < 5) b.modeA.paint[j * res + i] = 1; }
     expect('5 mm die, 20 mm envelope, 10×10 spot', b, 'etendue');
     // (c) ask for 95% of lamp flux from a shallow envelope ⇒ interceptable flux
-    const c = RF.State.defaultScene(); c.modeA.requiredFlux = 95; c.envelope.half = [40, 45, 12]; c.envelope.center = [-20, 0, 12];
+    const c = RF.State.testScene(); c.modeA.requiredFlux = 95; c.envelope.half = [40, 45, 12]; c.envelope.center = [-20, 0, 12];
     expect('95% of lamp flux requested, shallow envelope', c, 'flux');
     // (d) control: the default design is achievable
-    expect('control: default scene', RF.State.defaultScene(), null);
+    expect('control: baseline scene', RF.State.testScene(), null);
     return { pass, detail: rows.join(' · '), metrics: {} };
   });
 

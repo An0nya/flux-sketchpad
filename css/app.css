@@ -221,15 +221,17 @@ button.text:hover { color: var(--ink); border-color: var(--line); }
 /* panes */
 .pane { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .pane.active { border-color: #3d5a60; }
-.pane-head { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: start; column-gap: var(--s-6); padding: var(--s-4) var(--s-6) var(--s-4) var(--s-4); min-height: 40px; }
-/* title + collapse/expand pinned to the top corners (first line box = 32px); only the tools wrap, left-aligned */
-.pane-head > .collapse, .pane-head > h2, .pane-head > .expand { height: 32px; min-height: 32px; display: inline-flex; align-items: center; }
+.pane-head { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-4) var(--s-6);
+  padding: var(--s-4) 40px var(--s-4) var(--s-8); min-height: 40px; }
+/* chevron + title stay top-left, ⤢ is pinned top-right; the tools follow the title and move to their own
+   line (as a group) only when they don't fit, starting at the same x as the chevron and the map caption */
+.pane-head > .collapse, .pane-head > h2 { height: 32px; min-height: 32px; display: inline-flex; align-items: center; }
 .pane-head > h2 { padding-right: var(--s-6); }
-.pane-head > .collapse { grid-area: 1 / 1; } .pane-head > h2 { grid-area: 1 / 2; } .pane-head > .expand { grid-area: 1 / 4; }
-.head-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-4) var(--s-8); min-width: 0; min-height: 32px; }
+.pane-head > .expand { position: absolute; top: var(--s-4); right: var(--s-6); height: 32px; min-height: 32px; }
+.head-tools { flex: 0 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-4) var(--s-8); min-width: 0; min-height: 32px; }
 .pane-head h2 { cursor: pointer; user-select: none; }
 .pane-head .expand { font-size: 14px; width: 28px; justify-content: center; }
-.pane-head .collapse { background: transparent; border-color: transparent; color: var(--faint); padding: 0; width: 22px; min-height: 26px; justify-content: center; }
+.pane-head .collapse { background: transparent; border-color: transparent; color: var(--faint); padding: 0; width: auto; min-width: 12px; justify-content: flex-start; }
 .pane-head .collapse:hover { color: var(--ink); }
 .pane .canvas-wrap { flex: 1 1 0; min-height: 0; }
 figure.map { margin: 0; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--s-4); padding: 0 var(--s-8) var(--s-8); }
@@ -242,11 +244,10 @@ figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: 
 .pane.collapsed { cursor: pointer; }
 .pane.collapsed > :not(.pane-head) { display: none !important; }
 .pane.collapsed .pane-head > :not(h2):not(.collapse) { display: none; }
-.pane.rail .pane-head { display: flex; }
 .pane.collapsed .collapse { transform: rotate(-90deg); }
 
 
-.pane.rail .pane-head { flex-direction: column; flex-wrap: nowrap; height: 100%; padding: var(--s-6) 0; gap: var(--s-8); }
+.pane.rail .pane-head { flex-direction: column; flex-wrap: nowrap; height: 100%; padding: var(--s-6) 0; gap: var(--s-8); align-items: center; }
 .pane.rail h2 { writing-mode: vertical-rl; white-space: nowrap; }
 .pane.collapsed:hover { border-color: var(--dim); }
 
@@ -276,7 +277,7 @@ figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: 
 .foot-mid { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: var(--s-4); }
 .foot-mid .energy { height: 7px; border: 0; border-radius: 2px; opacity: .85; }
 .min-limits { font-size: 12px; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-6); }
-.min-limits .issue { border-left: 2px solid var(--warn); padding-left: var(--s-6); color: var(--ink); }
+.min-limits .issue { color: var(--ink); }
 .min-limits .issue .mk { color: var(--warn); font-weight: 700; }
 /* the energy bar only when the footer has room for it */
 @container (max-width: 900px) { .foot-mid .energy { display: none; } }
@@ -314,7 +315,6 @@ figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: 
 .head-tools button, .head-tools label { white-space: nowrap; flex: none; }
 /* narrow pane: the tools drop to their own full-width line under the title (reacts to the pane's width, not the window's) */
 .pane { container-type: inline-size; }
-@container (max-width: 380px) { .head-tools { grid-column: 1 / -1; grid-row: 2; padding-left: var(--s-4); } }
 
 /* inactive panes: tools dim (not hidden — no layout shift, and touch has no hover); full on hover / focus / active */
 .pane .head-tools, .pane .toolrow, .pane .reset-view { transition: opacity .15s; }
@@ -342,9 +342,8 @@ figure.map > .toolrow, figure.map > .colorbar { min-height: 34px; box-sizing: bo
 figure.map > .colorbar { justify-content: center; }
 .toolrow { flex-wrap: wrap; }
 .brushctl { display: inline-flex; align-items: center; gap: var(--s-4); color: var(--dim); font-size: 11px; }
-.brushctl .numctl { gap: var(--s-4); }
-.brushctl .numctl input[type=range] { width: 64px; }
-.brushctl input.scrub { width: 42px; min-height: 24px; padding: 0 var(--s-4); }
+.brushctl input[type=range] { width: 60px; min-height: 20px; }
+.btn-pair { display: inline-flex; gap: var(--s-4); white-space: nowrap; }
 .toolrow button { min-height: 24px; padding: 0 var(--s-8); font-size: 12px; }
 button.toggle[aria-pressed="true"] { background: #3a2f1f; color: var(--warn); border-color: #6b5530; }
 
@@ -356,4 +355,3 @@ button.toggle[aria-pressed="true"] { background: #3a2f1f; color: var(--warn); bo
   .side { transition: transform .2s ease, visibility .2s; }
   .pane.collapsed .collapse, .pane .collapse { transition: transform .2s; }
 }
-@container (max-width: 440px) { .brushctl input[type=range] { display: none; } }   /* narrow: scrub fields only */

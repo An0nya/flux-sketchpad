@@ -310,8 +310,9 @@
   }
 
   // ---------------------------------------------------------------- stats + feasibility
-  // muted to sit in the Astra palette; warm segments differ by lightness too (reflected light, cut dark) for protan readers
-  const EN_COLS = [['direct', '#6f8fb8', 'direct on target'], ['reflected', '#c9a46e', 'via surfaces on target'], ['absorbed', '#56606b', 'absorbed'], ['backface', '#434b55', 'back faces'], ['interfaceLoss', '#8b7fb8', 'Fresnel loss'], ['escaped', '#1c2630', 'escaped'], ['targetBack', '#333c46', 'hit target back'], ['truncated', '#8e6440', 'cut (cap/floor)']];
+  // muted to sit in the Astra palette; 'via surfaces on target' = the heat ramp's bright end (the light you designed for);
+  // segments differ by lightness, not just hue, for protan readers
+  const EN_COLS = [['direct', '#6f8fb8', 'direct on target'], ['reflected', '#b9dcdc', 'via surfaces on target'], ['absorbed', '#56606b', 'absorbed'], ['backface', '#434b55', 'back faces'], ['interfaceLoss', '#8b7fb8', 'Fresnel loss'], ['escaped', '#1c2630', 'escaped'], ['targetBack', '#333c46', 'hit target back'], ['truncated', '#8e6440', 'cut (cap/floor)']];
   function renderStats(ui, st, extra) {
     const box = document.getElementById('stats');
     if (!st) { box.innerHTML = '<div class="stat"><b>—</b><span>no run yet</span></div>'; return; }

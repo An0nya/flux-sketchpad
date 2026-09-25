@@ -10,11 +10,13 @@
 
   // ---------------------------------------------------------------- colour
   // Both ramps: luminance rises monotonically (readable without hue discrimination), mapping stays linear.
-  //   teal (default): Astra's single-hue ramp, with a faint washed-out hue drift (blue → teal → sage → sand)
-  //     so mid-levels separate; floor lifted and top short of white — a touch less range than inferno
+  //   teal (default): single hue family, navy → blue → teal → pale cyan → near-white.  Ends near white, NOT
+  //     yellow: a mint → yellow top is a hue change more than a brightness step, and reads "sideways" rather
+  //     than "hotter" to a protan eye (Astra's ramp).  Checked monotone in luminance for normal vision and
+  //     Machado protan at 60% and 100%; the largest step is the top quarter (0.69 → 0.91 at protan 60%).
   //   inferno: the false-colour option (View → false-colour heat maps)
   const RAMPS = {
-    teal: [[0, 9, 15, 23], [0.2, 30, 48, 78], [0.45, 52, 108, 128], [0.7, 128, 186, 170], [0.88, 214, 218, 172], [1, 246, 238, 200]],
+    teal: [[0, 8, 14, 22], [0.22, 24, 46, 80], [0.48, 40, 104, 128], [0.74, 108, 178, 186], [1, 236, 246, 246]],
     inferno: [[0, 0, 0, 4], [0.25, 66, 10, 104], [0.5, 147, 38, 103], [0.7, 221, 81, 58], [0.85, 252, 165, 10], [1, 252, 255, 164]],
   };
   const LUT = new Uint8ClampedArray(256 * 3);
