@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flux — layout study</title><link rel="stylesheet" href="study.css">
+</head>
+<body>
+<header class="app-head">
+  <a class="brand" href="../" title="Open the existing Flux app">◈ <b>FLUX</b></a><span class="study-label">layout study</span>
+  <div class="head-actions"><span class="status" role="status"><i id="status-icon">✓</i><span id="status-text">Reference ready</span></span><button id="progress-demo">Preview activity</button><button id="settings-toggle" aria-expanded="false" aria-controls="settings">Settings <span>☷</span></button></div>
+</header>
+<div class="progress-drop" id="progress-drop" hidden><span id="progress-label">Generating · demonstration</span><button id="cancel-progress">Cancel</button><div class="track"><i id="progress-fill"></i></div></div>
+<nav class="pane-strip" aria-label="Workspace panes"><div id="pane-tabs"></div><button id="restore-layout" hidden>Restore layout ↙</button></nav>
+<div class="app-body">
+ <main class="workspace" id="workspace">
+  <section class="pane scene" data-pane="scene" aria-label="Scene pane">
+   <div class="pane-head"><button class="collapse" data-collapse="scene" aria-label="Collapse Scene">⌄</button><h2>Scene</h2><span class="pane-caption">the complete path</span><button class="expand" data-expand="scene" aria-label="Expand Scene">⤢</button></div>
+   <div class="canvas-zone"><canvas id="scene-canvas" aria-label="Reference optical scene; drag to orbit"></canvas><div class="scene-key"><span><i class="source-dot"></i>source</span><span><i class="facet-line"></i>reflector</span></div></div>
+   <div class="local-tools"><button data-fit="scene">Fit scene</button><label><input type="checkbox" id="rays-on" checked> Rays</label><span class="gesture-hint">drag to orbit</span></div>
+  </section>
+  <div class="divider" id="main-divider" role="separator" tabindex="0" aria-label="Resize Scene and workspace" aria-orientation="vertical" aria-valuemin="30" aria-valuemax="65" aria-valuenow="48"></div>
+  <div class="right-workspace" id="right-workspace">
+   <div class="map-pair" id="map-pair">
+    <section class="pane editor" data-pane="editor" aria-label="Editor pane">
+     <div class="pane-head"><button class="collapse" data-collapse="editor" aria-label="Collapse Editor">⌄</button><h2>Editor</h2><span class="pane-caption" id="draft-label">intended</span><button class="expand" data-expand="editor" aria-label="Expand Editor">⤢</button></div>
+     <div class="canvas-zone map"><canvas id="editor-canvas" aria-label="Paint a draft target; reference simulation does not change"></canvas></div>
+     <div class="local-tools"><label>Brush <input id="brush" type="range" min="1" max="6" value="2"><output id="brush-out">2</output></label><button id="erase" aria-pressed="false">Erase</button><button id="reset-paint">Reset</button></div>
+    </section>
+    <section class="pane result" data-pane="result" aria-label="Result pane">
+     <div class="pane-head"><button class="collapse" data-collapse="result" aria-label="Collapse Result">⌄</button><h2>Result</h2><span class="pane-caption">reference trace</span><button class="expand" data-expand="result" aria-label="Expand Result">⤢</button></div>
+     <div class="canvas-zone map"><canvas id="result-canvas" aria-label="Simulated heatmap from the unchanged engine"></canvas></div>
+     <div class="local-tools"><label><input type="checkbox" id="smooth"> Smooth</label><div class="heat-key"><span>0</span><i></i><span>peak</span></div></div>
+    </section>
+   </div>
+   <section class="pane optics" data-pane="optics" aria-label="Optics pane">
+    <div class="pane-head"><button class="collapse" data-collapse="optics" aria-label="Collapse Optics">⌄</button><h2>Optics</h2><span class="pane-caption">source & enclosure</span><button class="expand" data-expand="optics" aria-label="Expand Optics">⤢</button></div>
+    <div class="canvas-zone"><canvas id="optics-canvas" aria-label="Reference reflector; drag to orbit"></canvas></div>
+    <div class="local-tools"><button data-fit="optics">Fit optics</button><label><input type="checkbox" id="envelope-on" checked> Envelope</label><button id="source-controls">Source & space…</button></div>
+   </section>
+  </div>
+ </main>
+ <aside id="settings" class="settings" hidden aria-label="Settings">
+  <div class="settings-head"><h2>Settings</h2><button id="close-settings" aria-label="Close settings">×</button></div>
+  <details open><summary>Workspace <small>view & layout</small></summary>
+   <label class="field">Map arrangement<select id="map-layout"><option value="auto">Automatic</option><option value="side">Side by side</option><option value="stack">Stacked</option></select></label>
+   <label class="field">Scene width<input id="split-range" type="range" min="30" max="65" value="48"></label>
+   <button id="reset-layout">Reset layout</button>
+  </details>
+  <details open><summary>Paint <small>draft tools</small></summary><label class="field">Brush size<input id="side-brush" type="range" min="1" max="6" value="2"></label><p>Draw here to try the space. The reference result and metrics stay fixed.</p></details>
+  <details id="source-section"><summary>Source & space <small>reference scene</small></summary><dl><dt>Emitter</dt><dd>0.6 × 0.6 mm</dd><dt>Target distance</dt><dd>200 mm</dd><dt>Target width</dt><dd>160 mm</dd></dl><p>Read-only in this layout study. In the app, setup controls will live here and in Optics.</p></details>
+  <details><summary>About this study</summary><p>Real reference geometry and ray trace; draft painting and pane interactions only. Preview activity demonstrates the progress treatment without running a solve.</p><a href="../DESIGN.md">Working design notes ↗</a></details>
+ </aside>
+</div>
+<footer class="results-strip"><div class="headlines"><div><b id="metric-delivered">—</b><span>Delivered</span></div><div><b id="metric-coverage">—</b><span>Coverage</span></div><div><b id="metric-uniformity">—</b><span>Uniformity</span></div></div><button class="issue-summary" id="issue-summary">Reference design</button><button id="details-toggle" aria-expanded="false" aria-controls="metrics-dialog">Details ⌃</button></footer>
+<dialog id="metrics-dialog" aria-labelledby="metrics-title"><div class="drawer-head"><div><span class="eyebrow">REFERENCE RUN</span><h2 id="metrics-title">Where the light went</h2></div><button id="close-metrics" aria-label="Close results details">×</button></div><div class="energy-bar" id="energy-bar"></div><div class="energy-rows" id="energy-rows"></div><div class="drawer-grid"><section><h3>Result measures</h3><dl id="detail-metrics"></dl></section><section><h3>Design & sampling</h3><div id="design-issues"></div></section></div><p class="footnote">Fractions of emitted energy. Stopped tracing is unresolved, not absorbed. This reference does not update when you paint in the study.</p></dialog>
+<script src="../js/core.js"></script><script src="../js/render.js"></script><script src="fixture.js"></script><script src="study.js"></script>
+</body></html>
