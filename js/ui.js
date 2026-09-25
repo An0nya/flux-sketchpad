@@ -390,7 +390,7 @@
   }
   function drawSurfaceView() {
     if (!ui.model) return;
-    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, sel: selEmph(false), selPrimary: selInfo() ? selInfo().primaries : null, selSecondary: selInfo() ? selInfo().secondary : null });
+    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, handles: ui.opticsSetup !== false, sel: selEmph(false), selPrimary: selInfo() ? selInfo().primaries : null, selSecondary: selInfo() ? selInfo().secondary : null });
     renderSelChips();
   }
 
@@ -488,13 +488,13 @@
     RF.Input.attach(cs, {
       isLive: liveFor(cs), cold: 'view',
       onInteract: interact,
-      hitTest(x, y) { return nearestHandle(ui.handlesS, x, y); },
-      onDragStart(h) { ui.activeHandle = h; ui.camS.holdFit = true; },   // don't re-frame the view you're editing in
+      hitTest(x, y) { return ui.opticsSetup !== false ? nearestHandle(ui.handlesS, x, y) : null; },
+      onDragStart(h) { ui.activeHandle = h; ui.camS.holdFit = true; orbitTouched(); },   // don't re-frame the view you're editing in
       onDrag(h, x, y, dx, dy) { dragHandle(h, ui.camS, dx, dy); },
       onTap(x, y, h, e) { if (!h) tapPick(ui.camS, x, y, e); },
-      onPrimary(x, y, dx, dy) { ui.camS[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
-      onPan(dx, dy) { ui.camS.pan[0] += dx; ui.camS.pan[1] += dy; ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
-      onZoom(f, x, y) { ui.camS.zoomAt(f, x, y); ui.camS.userMoved = true; ui.sceneDirty = true; schedule(); },
+      onPrimary(x, y, dx, dy) { ui.camS[ui.turntable ? 'turntable' : 'orbit'](dx, dy); ui.camS.userMoved = true; orbitTouched(); ui.sceneDirty = true; schedule(); },
+      onPan(dx, dy) { ui.camS.pan[0] += dx; ui.camS.pan[1] += dy; ui.camS.userMoved = true; orbitTouched(); ui.sceneDirty = true; schedule(); },
+      onZoom(f, x, y) { ui.camS.zoomAt(f, x, y); ui.camS.userMoved = true; orbitTouched(); ui.sceneDirty = true; schedule(); },
     });
   }
   function wireHeat() {
@@ -865,6 +865,33 @@
     }
   }
 
+  // ---------------------------------------------------------------- Optics slow orbit
+  // First load: Optics turns until you move it by hand (then never again this load).  Idle orbit (sidebar,
+  // default never): it resumes after that many seconds untouched.  Off under reduced motion, while the tab
+  // is hidden, while Optics is collapsed, and while you're dragging anything.  A turn doesn't count as
+  // "moved by you", so an untouched view still refits.
+  const ORBIT_DEG_S = 4, IDLE_STEPS = [0, 5, 10, 20, 30, 60, Infinity];
+  ui.orbitFirst = true; ui.orbitIdle = Infinity; ui.orbitLast = performance.now();
+  function orbitTouched() { ui.orbitFirst = false; ui.orbitLast = performance.now(); }
+  function orbitWanted() {
+    const pane = document.querySelector('.optics-pane');
+    if (!ui.model || document.hidden || ui.interacting || ui.activeHandle || !pane || pane.classList.contains('bar') || pane.classList.contains('rail')) return false;
+    if (root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    return ui.orbitFirst || performance.now() - ui.orbitLast > ui.orbitIdle * 1000;
+  }
+  let orbitRaf = 0, orbitT = 0;
+  function orbitFrame(t) {
+    orbitRaf = 0;
+    if (!orbitWanted()) { orbitT = 0; return; }
+    const dt = orbitT ? Math.min(100, t - orbitT) : 16; orbitT = t;
+    const moved = ui.camS.userMoved;
+    ui.camS.turntable(ORBIT_DEG_S * dt / 1000 / (0.008 * 180 / Math.PI), 0);   // turntable() takes drag pixels
+    ui.camS.userMoved = moved;
+    drawSurfaceView();
+    orbitRaf = requestAnimationFrame(orbitFrame);
+  }
+  setInterval(() => { if (!orbitRaf && orbitWanted()) orbitRaf = requestAnimationFrame(orbitFrame); }, 250);
+
   // ---------------------------------------------------------------- actions used by panels
   ui.addStampAt = function (u, v, quiet) {
     const st = C.actions.addStamp(ui.store, u, v);
@@ -1107,6 +1134,14 @@
     document.getElementById('btn-reset-view').addEventListener('click', () => { ui.cam.setAngles(193.8, 19.3); ui.fit('all'); });
     const setupBtn = document.getElementById('btn-setup');
     setupBtn.addEventListener('click', () => { ui.setup = !ui.setup; setupBtn.setAttribute('aria-pressed', String(ui.setup)); ui.sceneDirty = true; schedule(); });
+    const oSetup = document.getElementById('btn-optics-setup');
+    try { ui.opticsSetup = localStorage.getItem('flux/opticsSetup') !== '0'; } catch (e) { ui.opticsSetup = true; }
+    oSetup.setAttribute('aria-pressed', String(ui.opticsSetup));
+    oSetup.addEventListener('click', () => { ui.opticsSetup = !ui.opticsSetup; oSetup.setAttribute('aria-pressed', String(ui.opticsSetup)); try { localStorage.setItem('flux/opticsSetup', ui.opticsSetup ? '1' : '0'); } catch (e) { /* ignore */ } ui.sceneDirty = true; schedule(); });
+    const io = document.getElementById('idle-orbit'), ioOut = document.getElementById('idle-orbit-out');
+    const applyIO = () => { const v = IDLE_STEPS[+io.value]; ui.orbitIdle = v; ioOut.textContent = isFinite(v) ? v + ' s' : 'never'; try { localStorage.setItem('flux/idleOrbit', io.value); } catch (e) { /* ignore */ } };
+    try { const v = localStorage.getItem('flux/idleOrbit'); if (v !== null) io.value = v; } catch (e) { /* ignore */ }
+    io.addEventListener('input', applyIO); applyIO();
     const envT = document.getElementById('optics-env');
     try { ui.opticsEnv = localStorage.getItem('flux/opticsEnv') !== '0'; } catch (e) { ui.opticsEnv = true; }
     envT.checked = ui.opticsEnv;

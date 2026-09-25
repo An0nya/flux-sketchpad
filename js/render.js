@@ -392,9 +392,9 @@
     ctx.clearRect(0, 0, box.w, box.h);
     const model = opts.model, sc = opts.scene, S = sc.source.pos;
     if (opts.envelope) drawEnvelope(ctx, cam, sc.envelope);
-    const finish = () => {                              // the fixture's setup lives here: source + its handles on top
+    const finish = () => {                              // the fixture's setup lives here: source + its handles on top (Setup)
       drawSource(ctx, cam, sc.source);
-      return setupHandles(ctx, cam, sc, { envelope: opts.envelope, activeHandle: opts.activeHandle });
+      return opts.handles === false ? [] : setupHandles(ctx, cam, sc, { envelope: opts.envelope, activeHandle: opts.activeHandle });
     };
     if (!model.polys.length) {
       ctx.fillStyle = '#6c7380'; ctx.font = '12px system-ui'; ctx.textAlign = 'center';

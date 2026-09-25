@@ -142,6 +142,12 @@ Lead with actionable design issues, with successful checks underneath.
   facet aims at one point). Expected for a flood-ish paint; % of ceiling is a spot-beam score.
 - **Bug found + fixed:** past the 2M hit cap (≈2.8M rays here) selection numbers silently read low (A28
   at 64%). `Engine.hitCoverage` gives the rays the hit list covers; hit-derived numbers scale by it.
+- **Step 5 done:** Optics Setup toggle (handles off ⇒ clicks only select); first-load orbit at 4°/s
+  until the first drag/pan/zoom in Optics; sidebar "Optics idle orbit" slider 0/5/10/20/30/60 s/never
+  (default never). Paused under reduced motion, hidden tab, collapsed Optics, any drag.
+- **Open after step 5 (need Anya):** (1) delivered ÷ intended as a Result *map* view (numbers exist:
+  Details percentiles + spot readout) — diverging ramp around 1.0, protan-safe; (2) real-units Editor +
+  unit selection; (3) inspector label overlap when neighbours are both labelled.
 - **Zone overlap is a solver-interface NECESSITY** (Anya 09-25: a solver that doesn't overlap is likely
   heavily under-optimised): our solver partitions the paint, so
   `report.zoneOf` stores ONE owner per cell. Other solvers (and benchmarked models) may deliberately

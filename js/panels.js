@@ -175,6 +175,7 @@
       el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit'),
       el('label', { class: 'tog', title: 'Heat maps in false colour (inferno-like: dark → violet → orange → pale yellow). Off: a single-hue teal ramp. Picture only; statistics are unchanged.' }, el('input', { type: 'checkbox', id: 'falsecolor' }), ' false-colour heat maps'),
       el('label', { class: 'tog', title: 'Clicking a facet (Optics, Scene) or a zone (Result) highlights it in every view. Off: the Scene ignores the selection, and taps there do nothing.' }, el('input', { type: 'checkbox', id: 'sel-scene' }), ' show selection in Scene'),
+      el('div', { class: 'row', title: 'Optics turns slowly on its own after this long untouched (it always does on first load, until you move it)' }, el('label', {}, 'Optics idle orbit'), el('input', { type: 'range', id: 'idle-orbit', min: 0, max: 6, step: 1, value: 6 }), el('output', { id: 'idle-orbit-out' }, 'never')),
       el('div', { class: 'row' }, el('label', { title: 'How many ray paths to draw in the scene (0 = none; display only)' }, 'Rays drawn'), el('input', { type: 'range', id: 'ray-paths', min: 0, max: 2000, step: 20, value: 240 }), el('output', { id: 'ray-paths-out' }, '240'))));
     // ---- 5. Reference & debug
     const runBtn = el('button', { type: 'button', id: 'btn-checks' }, 'Run all checks');
