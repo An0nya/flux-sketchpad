@@ -82,8 +82,12 @@
     return {
       P, N, next: 0,
       gridD: new Float64Array(cells), gridR: new Float64Array(cells),
-      // raw lit-side hits (u, v, energy) for the ray-hits view; only when the caller asks (P.recordHits)
+      // raw lit-side hits (u, v, energy) for the ray-hits view; only when the caller asks (P.recordHits).
+      // Per hit, also: hitK = 1 + the surface the ray met FIRST (0 = direct from the source), hitB = bounces.
+      // First, not last: a facet's flux share is what it takes from the source, so that is whose light it is.
       hits: P.recordHits ? new Float32Array(3 * Math.min(N, 2e6)) : null, nHits: 0, hitCap: Math.min(N, 2e6),
+      hitK: P.recordHits ? new (P.G.n < 65535 ? Uint16Array : Uint32Array)(Math.min(N, 2e6)) : null,
+      hitB: P.recordHits ? new Uint8Array(Math.min(N, 2e6)) : null,
       E: { emitted: 0, direct: 0, reflected: 0, absorbed: 0, backface: 0, interfaceLoss: 0, escaped: 0, targetBack: 0, truncated: 0, intercepted: 0, reHit: 0, tir: 0 },
       surfIn: new Float64Array(Math.max(1, P.G.n)),
       paths: [], pathLimit: pathLimit === undefined ? 240 : pathLimit,
@@ -101,7 +105,7 @@
     const bmin = bvh.bmin, bmax = bvh.bmax, left = bvh.left, right = bvh.right, bstart = bvh.start, bcount = bvh.count, items = bvh.items;
     const e0 = E, floorE = E * P.floor;
     const tn0 = T.n[0], tn1 = T.n[1], tn2 = T.n[2];
-    let bounces = 0, tmin = eps;
+    let bounces = 0, tmin = eps, firstK = -1;
     for (;;) {
       // ---- nearest surface (occlusion: only the nearest hit along the ray counts)
       let tBest = Infinity, kBest = -1, hx = 0, hy = 0, hz = 0;
@@ -143,7 +147,7 @@
               let iu = Math.floor((u + T.half) / (2 * T.half) * r), iv = Math.floor((v + T.half) / (2 * T.half) * r);
               if (iu >= r) iu = r - 1; if (iv >= r) iv = r - 1;
               const cell = iv * r + iu;
-              if (ctx.hits && ctx.nHits < ctx.hitCap) { const q = 3 * ctx.nHits++; ctx.hits[q] = u; ctx.hits[q + 1] = v; ctx.hits[q + 2] = E; }
+              if (ctx.hits && ctx.nHits < ctx.hitCap) { const h = ctx.nHits++, q = 3 * h; ctx.hits[q] = u; ctx.hits[q + 1] = v; ctx.hits[q + 2] = E; ctx.hitK[h] = firstK + 1; ctx.hitB[h] = bounces; }
               if (bounces === 0) { ctx.gridD[cell] += E; ctx.E.direct += E; } else { ctx.gridR[cell] += E; ctx.E.reflected += E; }
               if (probe) probe.push({ type: 'target', t, u, v, cell, point: [ox + t * dx, oy + t * dy, oz + t * dz], E });
               if (rec) rec.end = bounces === 0 ? 'direct' : 'target';
@@ -165,7 +169,7 @@
       // ---- surface interaction
       const wx = ox + tBest * dx, wy = oy + tBest * dy, wz = oz + tBest * dz;
       if (rec) rec.push(wx, wy, wz);
-      if (bounces === 0) ctx.E.intercepted += e0; else ctx.E.reHit += E;
+      if (bounces === 0) { ctx.E.intercepted += e0; firstK = kBest; } else ctx.E.reHit += E;
       ctx.surfIn[kBest] += E;
       if (bounces >= P.cap) {                      // blocked here: bounce budget exhausted
         ctx.E.truncated += E;

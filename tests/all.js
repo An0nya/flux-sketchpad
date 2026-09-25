@@ -1,6 +1,6 @@
 // Run every gate: node tests/all.js — exits 1 if any fails.
 // 1. syntax of every browser script (the headless suite never loads ui.js / panels.js / render*.js)
-// 2. the 24-check suite  3. undo/redo  4. evaluation metrics
+// 2. the 24-check suite  3. undo/redo  4. evaluation metrics  5. layout  6. per-hit facet attribution
 const { execFileSync } = require('child_process'), fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..'); let failed = 0;
 const run = (label, args) => {
@@ -12,5 +12,6 @@ run('checks (tests/headless.js)', ['tests/headless.js']);
 run('undo/redo (tests/history.js)', ['tests/history.js']);
 run('metrics (tests/metrics.js)', ['tests/metrics.js']);
 run('layout (tests/layout.js)', ['tests/layout.js']);
+run('attribution (tests/attribution.js)', ['tests/attribution.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
