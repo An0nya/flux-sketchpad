@@ -85,11 +85,11 @@
       // raw lit-side hits (u, v, energy) for the ray-hits view; only when the caller asks (P.recordHits).
       // Per hit, also: hitK = 1 + the surface the ray met FIRST (0 = direct from the source), hitB = bounces.
       // First, not last: a facet's flux share is what it takes from the source, so that is whose light it is.
-      hits: P.recordHits ? new Float32Array(3 * Math.min(N, 2e6)) : null, nHits: 0, hitCap: Math.min(N, 2e6),
-      hitK: P.recordHits ? new (P.G.n < 65535 ? Uint16Array : Uint32Array)(Math.min(N, 2e6)) : null,
-      hitB: P.recordHits ? new Uint8Array(Math.min(N, 2e6)) : null,
+      hits: P.recordHits ? new Float32Array(3 * Math.min(N, P.hitCap || 2e6)) : null, nHits: 0, hitCap: Math.min(N, P.hitCap || 2e6),   // P.hitCap: tests only
+      hitK: P.recordHits ? new (P.G.n < 65535 ? Uint16Array : Uint32Array)(Math.min(N, P.hitCap || 2e6)) : null,
+      hitB: P.recordHits ? new Uint8Array(Math.min(N, P.hitCap || 2e6)) : null,
       // per hit: which ray it was (so it can be retraced); per ray: 1 + first surface met (0 = none)
-      hitI: P.recordHits ? new Uint32Array(Math.min(N, 2e6)) : null,
+      hitI: P.recordHits ? new Uint32Array(Math.min(N, P.hitCap || 2e6)) : null,
       rayK: P.recordHits ? new (P.G.n < 65535 ? Uint16Array : Uint32Array)(N) : null, curI: 0,
       E: { emitted: 0, direct: 0, reflected: 0, absorbed: 0, backface: 0, interfaceLoss: 0, escaped: 0, targetBack: 0, truncated: 0, intercepted: 0, reHit: 0, tir: 0 },
       surfIn: new Float64Array(Math.max(1, P.G.n)),
@@ -482,6 +482,12 @@
       shadowed: sh ? sh.shadowed : null, overlap: sh ? sh.overlap : null, shadowedWorst: sh ? sh.worst : [],
     };
   }
+  // Rays whose hits are all in the hit list.  Hits are recorded in ray order up to hitCap, so past the cap
+  // only the first rays are covered: anything summed from hits must scale by THIS, not by ctx.next.
+  function hitCoverage(ctx) {
+    if (!ctx.hits) return 0;
+    return ctx.nHits < ctx.hitCap ? ctx.next : ctx.hitI[ctx.nHits - 1];   // the last ray may be partly recorded: drop it
+  }
   function gridTotal(ctx) {
     const n = ctx.gridD.length, out = new Float64Array(n);
     for (let i = 0; i < n; i++) out[i] = ctx.gridD[i] + ctx.gridR[i];
@@ -491,6 +497,6 @@
 
   RF.Engine = {
     targetFrame, designFrame, aimPoint, targetUVtoWorld, worldToTargetUV, cellCenter,
-    prepare, newCtx, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, occlusion, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
+    prepare, newCtx, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, occlusion, hitCoverage, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

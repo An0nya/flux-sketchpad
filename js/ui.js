@@ -345,7 +345,7 @@
     const fmt = (lx) => (lx >= 100 ? Math.round(lx).toLocaleString() : lx.toPrecision(3));
     const lux = peak / cellArea, luxTxt = fmt(lux);
     // with a selection the bar follows ITS scale (its own peak), and names the full map's peak for comparison
-    const selLux = ui.selImgs ? ui.selImgs.clip / Math.max(1e-300, ui.run.ctx.next / ui.run.ctx.N) / cellArea : null;
+    const selLux = ui.selImgs ? ui.selImgs.clip / Math.max(1e-300, RF.Engine.hitCoverage(ui.run.ctx) / ui.run.ctx.N) / cellArea : null;   // selection light comes from the hit list
     cb.append(P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('div', { class: 'cb-labels' }, P.el('span', {}, '0'),
       P.el('span', {}, selLux !== null ? 'selection peak ≈ ' + fmt(selLux) + ' lx (full map ' + luxTxt + ')' : 'peak ≈ ' + luxTxt + ' lx')));
     ui.peakInfo = { lux: luxTxt, res };

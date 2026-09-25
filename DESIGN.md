@@ -134,6 +134,14 @@ Lead with actionable design issues, with successful checks underneath.
   into A2** on the way out. Anya's default scene: zero shadowing, 1.0% blocked overall (worst A84, 6%
   into A85). Its loss budget closes: delivered 69.3% ≈ intercepted 78.2% × R 0.9 − 1% blocked; so ~22%
   never reaches the reflector, ~8% is mirror absorption, ~1% facet-on-facet.
+- **Photometry (step 4, `js/photometry.js`, gated in `tests/photometry.js`).** Anya's default at 1M rays:
+  peak 164 kcd = **16% of its design ceiling** (1.01 Mcd: Σ R·L·A⊥ over its facets) and **10% of the
+  envelope ceiling** (1.67 Mcd); throw 811 m; 692 lm on target; reflector 5,396 mm², aperture 3,537 mm².
+  Individual facets DO reach their own ceilings (A28 102%, A33 109% pooled 4M) — so the gap is not
+  brightness per facet, it's that facets point at different spots (the design ceiling assumes every
+  facet aims at one point). Expected for a flood-ish paint; % of ceiling is a spot-beam score.
+- **Bug found + fixed:** past the 2M hit cap (≈2.8M rays here) selection numbers silently read low (A28
+  at 64%). `Engine.hitCoverage` gives the rays the hit list covers; hit-derived numbers scale by it.
 - **Zone overlap is a solver-interface NECESSITY** (Anya 09-25: a solver that doesn't overlap is likely
   heavily under-optimised): our solver partitions the paint, so
   `report.zoneOf` stores ONE owner per cell. Other solvers (and benchmarked models) may deliberately

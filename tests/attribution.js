@@ -60,6 +60,13 @@ for (const k of pick) {
   ok('occlusion totals match per-facet counts (' + P.G.n + ' facets)', shBad === 0 && blBad === 0,
     shBad + ' shadow / ' + blBad + ' blocked mismatches; shadowed ' + (100 * O.shadowed).toFixed(2) + '%, overlap ' + (100 * O.overlap).toFixed(2) + '%, blocked ' + (100 * st.blocked).toFixed(2) + '% (worst ' + st.blockedWorst.slice(0, 2).map((w) => w.id + ' ' + (100 * w.lost).toFixed(0) + '%').join(', ') + '); pass ' + ms + ' ms at ' + N + ' rays'); }
 
+// hit cap: past it, only the first rays' hits are kept; hitCoverage says how many rays, and those hits
+// are exactly the uncapped run's hits for those rays
+{ const Pc = prep(surfs); Pc.hitCap = 10000; const cc = E.runSync(Pc, N), cov = E.hitCoverage(cc);
+  let m = 0; while (m < c.nHits && c.hitI[m] < cov) m++;
+  let same = cc.nHits >= m; for (let h = 0; h < m && same; h++) same = cc.hitI[h] === c.hitI[h] && cc.hitK[h] === c.hitK[h] && cc.hits[3 * h] === c.hits[3 * h];
+  ok('hit cap: coverage ' + cov + ' of ' + N + ' rays; covered hits identical to the uncapped run', cov > 0 && cov < N && same && E.hitCoverage(c) === N, m + ' hits compared'); }
+
 // retrace: replaying a hit's ray lands on the same point via the same first surface; rayK agrees
 { const T = P.T; let bad = 0, badK = 0, wrong = 0, n = 0;
   const land = (h) => E.targetUVtoWorld(T, c.hits[3 * h], c.hits[3 * h + 1]);
