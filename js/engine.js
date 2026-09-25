@@ -282,12 +282,42 @@
   // Re-run ray i of a trace exactly (same stream, same code path) for drawing: its polyline, how it
   // ended, and the surfaces it touched in order.
   function retrace(P, i) {
-    const ctx = newCtx(Object.assign({}, P, { recordHits: false }), 1, 0), o = new Float64Array(3), d = new Float64Array(3);
+    // one scratch context per prepared scene: retracing thousands of rays must not allocate grids each time
+    const ctx = P._rctx || (P._rctx = newCtx(Object.assign({}, P, { recordHits: false }), 1, 0)), o = new Float64Array(3), d = new Float64Array(3);
     sampleRayI(P, i, o, d);
     const rec = [o[0], o[1], o[2]]; rec.end = ''; const ev = [];
     traceOne(P, ctx, o[0], o[1], o[2], d[0], d[1], d[2], 1, rec, ev);
     rec.ks = ev.filter((e) => e.k !== undefined).map((e) => e.k);
     return rec;
+  }
+
+  // Where facet k's light went, measured from a finished trace (needs P.recordHits).  Solver-agnostic.
+  //   caught : rays whose first surface is k (rays = their indices)
+  //   fate   : each caught ray retraced exactly → landed / blocked (by the last surface it met) / escaped / other
+  //   shadowed: rays another surface caught first whose straight line from the LED also crosses k
+  // Identity (tests/attribution.js): k traced ALONE catches exactly caught + shadowed rays.
+  function facetLosses(P, ctx, k, rays) {
+    const G = P.G, metas = G.metas;
+    const out = { caught: rays.length, shadowed: 0, fate: { landed: 0, blocked: 0, escaped: 0, other: 0 }, block: new Map(), shadow: new Map(), shadowSegs: [] };
+    for (const i of rays) {
+      const p = retrace(P, i), ks = p.ks;
+      if (p.end === 'target') out.fate.landed++;
+      else if ((p.end === 'cap' || p.end === 'absorb') && ks.length > 1) { out.fate.blocked++; const id = metas[ks[ks.length - 1]].id; out.block.set(id, (out.block.get(id) || 0) + 1); }
+      else if (p.end === 'escape') out.fate.escaped++;
+      else out.fate.other++;
+    }
+    const o = new Float64Array(3), d = new Float64Array(3);
+    for (let i = 0; i < ctx.next; i++) {
+      const fk = ctx.rayK[i]; if (fk === 0 || fk === k + 1) continue;
+      sampleRayI(P, i, o, d);
+      const t = Geo.intersect(G.D, G.poly, k, o[0], o[1], o[2], d[0], d[1], d[2], P.eps, Infinity);
+      if (!(t >= 0)) continue;
+      out.shadowed++; const id = metas[fk - 1].id; out.shadow.set(id, (out.shadow.get(id) || 0) + 1);
+      out.shadowSegs.push([o[0], o[1], o[2], o[0] + t * d[0], o[1] + t * d[1], o[2] + t * d[2]]);
+    }
+    const top = (m, of) => [...m].filter(([, v]) => v >= Math.max(2, 0.01 * of)).sort((a, b) => b[1] - a[1]).map(([id]) => id);
+    out.shadowers = top(out.shadow, out.caught + out.shadowed); out.blockers = top(out.block, out.caught);
+    return out;
   }
 
   // Single ray through the same code path; returns the event list.
@@ -403,6 +433,6 @@
 
   RF.Engine = {
     targetFrame, designFrame, aimPoint, targetUVtoWorld, worldToTargetUV, cellCenter,
-    prepare, newCtx, traceRange, step, runSync, probeRay, retrace, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
+    prepare, newCtx, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -37,6 +37,15 @@ for (const k of pick) {
 { const k = pick[1], wrong = pick[0] + 1, r = subset(k, wrong);
   ok('negative control: wrong facet\'s credit is NOT inside facet ' + surfs[k].id + '\'s solo footprint', r.over > 0.5 * r.tot, 'overshoot ' + (100 * r.over / r.tot).toFixed(1) + '% of credited energy'); }
 
+// loss accounting: k alone catches exactly (caught + shadowed) rays; fates partition the caught rays
+for (const k of pick) {
+  const rays = []; for (let i = 0; i < c.next; i++) if (c.rayK[i] === k + 1) rays.push(i);
+  const L = E.facetLosses(P, c, k, rays), f = L.fate;
+  const Ps = prep([surfs[k]]), cs = E.runSync(Ps, N); let solo = 0; for (let i = 0; i < N; i++) if (cs.rayK[i] === 1) solo++;
+  ok('facet ' + surfs[k].id + ': solo catch = caught + shadowed; fates add up', solo === L.caught + L.shadowed && f.landed + f.blocked + f.escaped + f.other === L.caught,
+    'solo ' + solo + ' = ' + L.caught + ' + ' + L.shadowed + ' shadowed (by ' + (L.shadowers.join(', ') || '—') + '); landed ' + f.landed + ', blocked ' + f.blocked + ' (by ' + (L.blockers.join(', ') || '—') + '), escaped ' + f.escaped + ', other ' + f.other);
+}
+
 // retrace: replaying a hit's ray lands on the same point via the same first surface; rayK agrees
 { const T = P.T; let bad = 0, badK = 0, wrong = 0, n = 0;
   const land = (h) => E.targetUVtoWorld(T, c.hits[3 * h], c.hits[3 * h + 1]);

@@ -59,6 +59,18 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y - 10.5, w - 1, 15);
     ctx.fillStyle = '#fff'; ctx.fillText(id, x + 5, y + 1);
   }
+  // facets that shadow or block the selection: dashed white outline, their fill stays dimmed
+  function markSecondary(ctx, cam, model, ids) {
+    if (!ids || !ids.length) return;
+    const set = new Set(ids);
+    ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.2;
+    for (const p of model.polys) {
+      if (!set.has(p.id)) continue;
+      const pr = p.pts.map((q) => cam.project(q));
+      ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.stroke();
+    }
+    ctx.restore();
+  }
   function selEmph(opts, id) { return opts.sel ? (opts.sel.get(id) || 0) : null; }
   function surfStyle(ctx, e, col, lam, a, aDim) {
     if (e === null) return false;
@@ -221,11 +233,18 @@
       }
       ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
     }
+    markSecondary(ctx, cam, opts.model, opts.selSecondary);
     markPrimary(ctx, cam, opts.model, opts.selPrimary);
     // ---- rays
     if (opts.showRays && opts.paths) {
       ctx.lineWidth = 1;
       for (const path of opts.paths) {
+        if (path.ghost) {                                // light another facet caught first (LED → where it would have hit)
+          ctx.setLineDash([1.5, 3]); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath();
+          const a0 = cam.project([path[0], path[1], path[2]]), a1 = cam.project([path[3], path[4], path[5]]);
+          ctx.moveTo(a0[0], a0[1]); ctx.lineTo(a1[0], a1[1]); ctx.stroke(); ctx.setLineDash([]);
+          continue;
+        }
         if (path.sel) {                                  // inspector bundle: landed solid, the rest dashed
           const landed = path.end === 'target';
           ctx.setLineDash(landed ? [] : [4, 3]); ctx.lineWidth = landed ? 1 : 0.9;
@@ -438,6 +457,7 @@
       }
       ctx.globalAlpha = 1;
     }
+    markSecondary(ctx, cam, model, opts.selSecondary);
     markPrimary(ctx, cam, model, opts.selPrimary);
     return finish();
   }

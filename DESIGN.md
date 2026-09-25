@@ -128,6 +128,12 @@ Lead with actionable design issues, with successful checks underneath.
   edge spokes a facet each. ~4% of the budget.
 - Zone selection replaced by **spot selection** (Anya 09-25): zones are this solver's intent, other
   solvers may have none, and zone clicks can't reach spill or gaps. Spot = ~10 px disc, zoom for finer.
+- **Loss view (step 3) done.** `Engine.facetLosses`: shadowed / blocked-by-whom / escaped, measured by
+  exact retrace; gated by the identity "k alone catches exactly caught + shadowed" (exact, not
+  statistical). **Test-scene A1 mystery solved:** not shadowed (0.3%); **34% of what it catches runs
+  into A2** on the way out. Anya's default scene: zero shadowing, 1.0% blocked overall (worst A84, 6%
+  into A85). Its loss budget closes: delivered 69.3% ≈ intercepted 78.2% × R 0.9 − 1% blocked; so ~22%
+  never reaches the reflector, ~8% is mirror absorption, ~1% facet-on-facet.
 - **Zone overlap is a solver-interface NECESSITY** (Anya 09-25: a solver that doesn't overlap is likely
   heavily under-optimised): our solver partitions the paint, so
   `report.zoneOf` stores ONE owner per cell. Other solvers (and benchmarked models) may deliberately

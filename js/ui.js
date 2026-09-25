@@ -379,7 +379,7 @@
     const sc = ui.store.scene;
     ui.handles = RF.Render.drawScene(document.getElementById('scene-canvas'), ui.cam, {
       scene: sc, model: ui.model, paths: selScene() ? selScene().paths : ui.run ? ui.run.ctx.paths : null, heatCanvas: sceneHeatTexture(), showRays: ui.showRays || !!selScene(), setup: !!ui.setup,
-      selPrimary: selScene() ? selScene().primaries : null,
+      selPrimary: selScene() ? selScene().primaries : null, selSecondary: selScene() ? selScene().secondary : null,
       activeHandle: ui.activeHandle, preview: ui.preview && performance.now() < ui.preview.until ? ui.preview.pts : null, highlight: ui.highlight, sel: selEmph(true),
     });
     const hint = document.getElementById('scene-hint');
@@ -388,7 +388,7 @@
   }
   function drawSurfaceView() {
     if (!ui.model) return;
-    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, sel: selEmph(false), selPrimary: selInfo() ? selInfo().primaries : null });
+    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: ui.model, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, sel: selEmph(false), selPrimary: selInfo() ? selInfo().primaries : null, selSecondary: selInfo() ? selInfo().secondary : null });
     renderSelChips();
   }
 
@@ -627,7 +627,7 @@
     const c = run.ctx, key = c.nHits + ':' + run.started;
     if (ui.selCache && ui.selCache.sel === s && ui.selCache.key === key) return ui.selCache.info;
     const sc = ui.store.scene, rep = sc.mode === 'A' ? ui.store.reports.A : null, surfs = RF.State.allSurfaces(sc);
-    const info = { emph: new Map(), zones: [], primaries: [], contrib: [], landed: 0, vals: null, paths: [] };
+    const info = { emph: new Map(), zones: [], primaries: [], secondary: [], contrib: [], landed: 0, vals: null, paths: [], loss: null };
     const T = run.P.T, sr = run.P.res, metas = run.P.G.metas;
     const simCell = (h) => { let i = Math.floor((c.hits[3 * h] + T.half) / (2 * T.half) * sr), j = Math.floor((c.hits[3 * h + 1] + T.half) / (2 * T.half) * sr); if (i >= sr) i = sr - 1; if (j >= sr) j = sr - 1; return j * sr + i; };
     const vals = new Float64Array(sr * sr), rays = [];
@@ -639,6 +639,8 @@
       // as if it were the only reflector: its own landed light, and its rays whatever became of them
       for (let h = 0; h < c.nHits; h++) if (c.hitK[h] === k + 1) vals[simCell(h)] += c.hits[3 * h + 2];
       for (let i = 0; i < c.next; i++) if (c.rayK[i] === k + 1) rays.push(i);
+      info.loss = facetLosses(run, k, rays);
+      info.secondary = [...new Set(info.loss.shadowers.concat(info.loss.blockers))];
     } else if (s.kind === 'spot') {
       // the solver's intent here: every zone owning a painted cell under the spot, and its own facet
       if (rep && rep.zoneOf) {
@@ -671,8 +673,17 @@
     const share = rays.length / Math.max(1, c.next), total = ui.rayPaths === undefined ? 240 : ui.rayPaths;
     const MAXR = Math.min(rays.length, Math.max(rays.length ? 1 : 0, Math.round(total * share * SEL_RAY_BOOST))), step = Math.max(1, rays.length / MAXR);   // an even sample, retraced exactly
     for (let t = 0; t < rays.length && info.paths.length < MAXR; t += step) { const p = RF.Engine.retrace(run.P, rays[Math.floor(t)]); p.sel = true; info.paths.push(p); }
+    if (info.loss) info.paths.push(...info.loss.ghosts);
     ui.selCache = { sel: s, key, info };
     return info;
+  }
+  // where a facet's light went (Engine.facetLosses), plus ghost rays sampled like the bundle
+  function facetLosses(run, k, rays) {
+    const c = run.ctx, out = RF.Engine.facetLosses(run.P, c, k, rays);
+    const total = ui.rayPaths === undefined ? 240 : ui.rayPaths, hk = out.shadowSegs, n = Math.min(hk.length, Math.round(total * hk.length / Math.max(1, c.next) * SEL_RAY_BOOST));
+    out.ghosts = [];
+    for (let t = 0, st = hk.length / Math.max(1, n); out.ghosts.length < n; t += st) { const g = hk[Math.floor(t)].slice(); g.ghost = true; out.ghosts.push(g); }
+    return out;
   }
   const selEmph = (scene) => { const i = selInfo(); return i && (!scene || ui.selScene !== false) ? i.emph : null; };
   const selScene = () => { const i = selInfo(); return i && ui.selScene !== false ? i : null; };
@@ -758,7 +769,12 @@
     const i = selInfo(), s = ui.sel;
     let txt = '';
     if (s && i) {
-      if (s.kind === 'facet') txt = 'Facet ' + s.id + (i.zones.length ? ' → zone ' + i.zones[0] : '');
+      if (s.kind === 'facet') {
+        const L = i.loss, pc = (x, of) => Math.round(100 * x / Math.max(1, of)) + '%', names = (a) => a.length ? ' (' + a.slice(0, 2).join(', ') + (a.length > 2 ? '…' : '') + ')' : '';
+        txt = 'Facet ' + s.id + (i.zones.length ? ' → zone ' + i.zones[0] : '');
+        if (L && L.shadowed) txt += ' · ' + pc(L.shadowed, L.caught + L.shadowed) + ' shadowed' + names(L.shadowers);
+        if (L && L.fate.blocked) txt += ' · ' + pc(L.fate.blocked, L.caught) + ' blocked' + names(L.blockers);
+      }
       else {
         const n = i.contrib.filter((x) => x.id && x.share >= 0.005).length, strays = i.contrib.filter((x) => x.id && x.share >= 0.005 && !i.primaries.includes(x.id)).length;
         const direct = i.contrib.some((x) => !x.id && x.share >= 0.005);
@@ -768,7 +784,7 @@
     }
     for (const el of document.querySelectorAll('.sel-chip')) {
       el.hidden = !txt; if (!txt) continue;
-      el.firstChild.textContent = txt;
+      el.firstChild.textContent = txt; el.title = txt;
     }
   }
 
