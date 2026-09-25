@@ -195,3 +195,12 @@ Recorded by Claude from Anya's message. These are her calls unless marked otherw
 - **Default camera:** whole scene, 35 mm, eye behind the lamp at az 200° / el 32°: reflector bottom-left, target up and right. With the current default scene (1 m target at 1 m), the fixture is still small. That's a default-scene question.
 - **Motion:** collapse/expand animate, gated on prefers-reduced-motion. The Details drawer grows out of the footer as one shape.
 - **Setup handles live in Optics** (step 4b, Anya): the Scene shows the source marker only. The Scene header is "Reset view" (back to the load view) plus "Setup" (brings the handles, envelope and target-distance handle back into the Scene). Optics has an Envelope toggle, on by default.
+
+## Stamp mode rethink (Anya, 2026-09-25, for later)
+
+Currently: stamps are placed on the **Result** map, and the **Editor** is a direction picker (which emitted angle the facet captures). Anya: that's backwards.
+
+Wanted: **place, size and rotate the stamp on the target map in the Editor** (intent), and let the **solver** find where the facet must sit to deliver that size and rotation, within the constraints. The Result shows what was achieved. The direction picker becomes an optional manual override.
+
+- **Solver half (the bigger one):** tile size + rotation become objectives of the Mode B placement search. Image rotation is set by the facet's azimuth around the source; image size by its distance and curvature. This supersedes the 09-24 "stamp ROTATE = orientation objective" note and absorbs the planned stamp resize handles.
+- **UI half:** stamp handles (move / corner-resize / rotate) in the Editor; the Result becomes read-only for stamps; show achieved vs requested size/rotation when constraints prevent a match.
