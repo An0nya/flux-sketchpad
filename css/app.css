@@ -196,7 +196,7 @@ input.scrub.scrubbing { border-color: var(--b); color: var(--b); }
 .modes.seg { gap: 0; }
 /* sidebar copy of the mode tabs: always shown (the Editor's copy dims when that pane is inactive) */
 .side-top .modes { display: flex; flex: 1 1 100%; }
-.side-top .modes button { flex: 1; }
+.side-top .modes button { flex: 1; justify-content: center; }
 @media (max-width: 760px) { :root { --density: 1.1; } }   /* phones: tighter */
 
 /* ================================================================ workspace (sizes set inline by ui.layoutGrid ← layout.js) */

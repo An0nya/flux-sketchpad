@@ -124,25 +124,25 @@
     const side = document.getElementById('side');
     side.innerHTML = '';
     // ---- 1. Design: the current mode's controls
-    const genBtn = el('button', { type: 'button', class: 'primary', id: 'btn-generate' }, 'Generate reflector');
+    const genBtn = el('button', { type: 'button', class: 'primary', id: 'btn-generate' }, 'Rebuild reflector');
     genBtn.addEventListener('click', () => ui.generateA());
     const auto = el('input', { type: 'checkbox', id: 'auto-a', checked: true });
     auto.addEventListener('change', () => { ui.store.autoA = auto.checked; });
-    side.append(section('Paint & generate', { open: true, cls: 'only-A', key: 'A', tag: 'tile the painted pattern' },
-      el('div', { class: 'note' }, 'Paint on the left target map. Generate places facets so their source images tile the painting, with flux per zone from solid-angle accounting.'),
+    side.append(section('Paint', { open: true, cls: 'only-A', key: 'A', tag: 'tile the painted pattern' },
+      el('div', { class: 'note' }, 'Paint in the Editor. Rebuild places facets so their source images tile the painting, with flux per zone from solid-angle accounting.'),
       el('div', { class: 'btnrow' }, genBtn, el('label', { class: 'tog' }, auto, ' auto after edits')),
       ...rowsFor(ui, ['A.budget']),
       el('div', { id: 'pattern-box' }),
       section('Advanced', { adv: true, key: 'A-adv' }, ...rowsFor(ui, ['A.type', 'A.refl', 'A.req'])),
       el('div', { id: 'modeA-report', class: 'note' })));
     side.append(section('Stamp tiles', { open: true, cls: 'only-B', key: 'B', tag: 'solve facet per tile' },
-      el('div', { class: 'note' }, 'Tap the simulated target (right) to stamp a tile; drag stamps to move them. The left panel is the second picker: direction from the source (drag a marker to choose it by hand).'),
+      el('div', { class: 'note' }, 'Tap the Result map to stamp a tile; drag stamps to move them. The Editor is the second picker: direction from the source (drag a marker to set it by hand).'),
       el('div', { id: 'stamp-list', class: 'stamp-list' }),
       el('div', { id: 'stamp-edit' }),
       el('div', { class: 'btnrow' }, confirmButton('Clear all stamps', 'Delete every stamp?', () => ui.clearStamps()))));
     const applyBtn = el('button', { type: 'button', onclick: () => ui.applyPreset() }, 'Apply preset to profile');
     side.append(section('Profile · revolve / extrude', { open: true, cls: 'only-C', key: 'C', tag: 'draw, then sweep' },
-      el('div', { class: 'note' }, 'Left panel: tap to append a point, drag points to move, tap a point to select it. The profile is drawn around the source (the dot); ticks show the front (reflecting / air) side.'),
+      el('div', { class: 'note' }, 'In the Editor: tap to append a point, drag points to move, tap a point to select it. The profile is drawn around the source (the dot); ticks show the front (reflecting / air) side.'),
       section('Shape', { open: true, key: 'C-shape' }, ...rowsFor(ui, ['C.preset', 'C.f', 'C.rim', 'C.depth', 'C.theta', 'C.a1', 'C.n']), el('div', { class: 'btnrow' }, applyBtn)),
       section('Sweep', { open: true, key: 'C-sweep' }, ...rowsFor(ui, ['C.sweep', 'C.len', 'C.az', 'C.axis', 'C.mirror', 'C.flip', 'C.rev'])),
       section('Material', { open: false, key: 'C-mat' }, ...rowsFor(ui, ['C.inter', 'C.refl', 'C.ior', 'C.T'])),
@@ -157,11 +157,11 @@
     side.append(section('Problem', { open: true, key: 'problem', tag: 'source · target · envelope' },
       section('Light source', { open: true, key: 'source' },
         ...rowsFor(ui, ['src.kind', 'src.shape', 'src.w', 'src.h', 'src.radius', 'src.length', 'src.dist', 'src.sigma', 'src.half']),
-        section('Advanced', { adv: true, key: 'source-adv' }, el('div', { class: 'note' }, 'Direction and position are also draggable in the scene (source dot, arrow tip).'), ...rowsFor(ui, ['src.az', 'src.el', 'src.roll', 'src.x', 'src.y', 'src.z', 'src.power']))),
+        section('Advanced', { adv: true, key: 'source-adv' }, el('div', { class: 'note' }, 'Direction and position are also draggable in Optics (source dot, arrow tip), or in the Scene with Setup on.'), ...rowsFor(ui, ['src.az', 'src.el', 'src.roll', 'src.x', 'src.y', 'src.z', 'src.power']))),
       section('Target plane & aim point', { open: true, key: 'target' },
         ...rowsFor(ui, ['tgt.dist', 'tgt.size', 'tgt.tiltX', 'tgt.tiltY', 'tgt.linked', 'aim.x', 'aim.y', 'aim.z'])),
       section('Constraint envelope', { open: true, key: 'envelope' },
-        el('div', { class: 'note' }, 'Drag the grey face handles in the scene to resize.'),
+        el('div', { class: 'note' }, 'Drag the grey face handles in Optics to resize (or in the Scene with Setup on).'),
         ...rowsFor(ui, ['env.keep', 'env.shape', 'env.axis']),
         section('Advanced', { adv: true, key: 'envelope-adv' }, ...rowsFor(ui, ['env.hx', 'env.hy', 'env.hz', 'env.cx', 'env.cy', 'env.cz']))),
       section('Lenses', { open: false, key: 'lenses', tag: 'refractive presets' },
@@ -239,7 +239,7 @@
         confirmButton('del', 'delete?', () => ui.deleteStamp(st.id)));
       list.append(item);
     });
-    if (!sc.modeB.stamps.length) list.append(el('div', { class: 'note' }, 'No stamps yet — tap the simulated target map.'));
+    if (!sc.modeB.stamps.length) list.append(el('div', { class: 'note' }, 'No stamps yet — tap the Result map.'));
     // selected stamp editor
     edit.innerHTML = '';
     const st = C.selStamp(store);

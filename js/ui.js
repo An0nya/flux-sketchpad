@@ -42,7 +42,7 @@
     ui.autosave();
   };
   ui.generateA = function () {
-    ui.setStatus('Generating reflector…'); ui.progress('solve');
+    ui.setStatus('Rebuilding reflector…'); ui.progress('solve');
     setTimeout(() => {                               // let the status paint first
       const t0 = performance.now();
       C.regenerateA(ui.store);
@@ -127,7 +127,7 @@
     const gt = document.getElementById('btn-generate-top');
     if (gt) { gt.disabled = m !== 'A'; gt.title = m === 'A' ? 'Solve the reflector for the painted target' : 'Stamp and Profile modes rebuild live; Rebuild is for Paint mode'; }
     for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-selected', b.dataset.mode === m ? 'true' : 'false');
-    const cap = { A: ['Intended — paint here', 'Simulated'], B: ['Direction from the source (2nd picker)', 'Simulated · tap to stamp'], C: ['Profile cross-section — tap to add points', 'Simulated'] }[m];
+    const cap = { A: ['Intended — paint here', 'Simulated'], B: ['Direction from the source', 'Simulated · tap to stamp'], C: ['Profile cross-section — tap to add points', 'Simulated'] }[m];
     document.getElementById('left-caption').textContent = cap[0];
     document.getElementById('right-caption').textContent = cap[1];
     buildLeftTools();
@@ -219,7 +219,7 @@
     ui.raf = 0;
     const now = performance.now(), store = ui.store;
     if (ui.pendingA && !ui.interacting && now >= ui.pendingA && store.dirty.has('A') && !ui.solveArmed) {
-      ui.solveArmed = true; ui.setStatus('Generating reflector…'); ui.progress('solve');   // let this frame paint first
+      ui.solveArmed = true; ui.setStatus('Rebuilding reflector…'); ui.progress('solve');   // let this frame paint first
     } else if (ui.solveArmed) {
       ui.solveArmed = false; ui.pendingA = 0;
       const t0 = performance.now(); C.regenerateA(store); ui.lastGenMs = performance.now() - t0;
@@ -362,7 +362,7 @@
       const r = R2.drawProfile(cv, ui.vProf, sc, ui.profSel, false, { pairs: ui.profPairs !== false });
       ui.profHandles = r.handles;
       const info = document.getElementById('prof-info');
-      if (info) info.textContent = sc.modeC.profile.length < 2 ? 'Empty profile — tap to add points, or use “Apply preset to profile” in the side panel.' : sc.modeC.profile.length + ' points · ' + (ui.profSel >= 0 ? 'point ' + (ui.profSel + 1) + ' selected' : 'tap empty space to add a point');
+      if (info) info.textContent = sc.modeC.profile.length < 2 ? 'Empty profile — tap to add points, or use “Apply preset to profile” in the sidebar.' : sc.modeC.profile.length + ' points · ' + (ui.profSel >= 0 ? 'point ' + (ui.profSel + 1) + ' selected' : 'tap empty space to add a point');
     }
     alignFigure('left-canvas', sc.mode === 'A' ? ui.vLeft : sc.mode === 'B' ? ui.vPick : ui.vProf);
   }
