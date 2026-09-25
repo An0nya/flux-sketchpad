@@ -93,6 +93,8 @@
       rayK: P.recordHits ? new (P.G.n < 65535 ? Uint16Array : Uint32Array)(N) : null, curI: 0,
       E: { emitted: 0, direct: 0, reflected: 0, absorbed: 0, backface: 0, interfaceLoss: 0, escaped: 0, targetBack: 0, truncated: 0, intercepted: 0, reHit: 0, tir: 0 },
       surfIn: new Float64Array(Math.max(1, P.G.n)),
+      // occlusion: light that left one surface and then ended on another without landing (blocked), per first surface
+      occ: { blocked: 0, blockedK: new Float64Array(Math.max(1, P.G.n)), out1: 0, out1K: new Float64Array(Math.max(1, P.G.n)), shadow: null },   // out1 = light leaving the first surface
       paths: [], pathLimit: pathLimit === undefined ? 240 : pathLimit,
       elapsed: 0, done: N === 0,
     };
@@ -176,6 +178,7 @@
       ctx.surfIn[kBest] += E;
       if (bounces >= P.cap) {                      // blocked here: bounce budget exhausted
         ctx.E.truncated += E;
+        if (bounces >= 1) { ctx.occ.blocked += E; ctx.occ.blockedK[firstK] += E; }
         if (probe) probe.push({ type: 'cap', k: kBest, point: [wx, wy, wz] });
         if (rec) rec.end = 'cap';
         return;
@@ -187,12 +190,12 @@
       const ko = kBest * STRIDE, inter = D[ko + 28];
       const ev = probe ? { type: '', k: kBest, point: [wx, wy, wz], normal: [nx, ny, nz], front: cosI < 0, dIn: [dx, dy, dz] } : null;
       if (inter === 2) {                           // absorb
-        ctx.E.absorbed += E; if (ev) { ev.type = 'absorb'; probe.push(ev); } if (rec) rec.end = 'absorb';
+        ctx.E.absorbed += E; if (bounces >= 1) { ctx.occ.blocked += E; ctx.occ.blockedK[firstK] += E; } if (ev) { ev.type = 'absorb'; probe.push(ev); } if (rec) rec.end = 'absorb';
         return;
       }
       if (inter === 0) {                           // reflect
         if (cosI > 0 && D[ko + 32] === 0) {        // back face of a one-sided mirror absorbs
-          ctx.E.backface += E; if (ev) { ev.type = 'backface'; probe.push(ev); } if (rec) rec.end = 'absorb';
+          ctx.E.backface += E; if (bounces >= 1) { ctx.occ.blocked += E; ctx.occ.blockedK[firstK] += E; } if (ev) { ev.type = 'backface'; probe.push(ev); } if (rec) rec.end = 'absorb';
           return;
         }
         const R = D[ko + 29];
@@ -217,6 +220,7 @@
           if (ev) ev.type = 'refract';
         }
       }
+      if (bounces === 1) { ctx.occ.out1 += E; ctx.occ.out1K[kBest] += E; }
       const dl = Math.hypot(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
       if (ev) { ev.dOut = [dx, dy, dz]; ev.E = E; probe.push(ev); }
       if (E < floorE) { ctx.E.truncated += E; if (rec) rec.end = 'floor'; return; }
@@ -320,6 +324,46 @@
     return out;
   }
 
+  // Fixture-wide shadowing (one extra pass over a finished trace, needs P.recordHits): for every ray
+  // whose first surface reflects or absorbs, every OTHER surface its straight line from the LED also
+  // crosses has lost that ray to the first one.  Refracting first surfaces are skipped (light goes on
+  // through a lens; that's a multi-hop path, not a shadow).  Cached on the context.
+  //   shadowK[k] = rays surface k lost · shadowed = Σ lost ÷ Σ (caught + lost) · overlap = share of caught
+  //   rays whose line crosses ≥ 1 more surface
+  function occlusion(P, ctx) {
+    if (ctx.occ.shadow && ctx.occ.shadow.n === ctx.next) return ctx.occ.shadow;
+    const G = P.G, D = G.D, bvh = G.bvh, n = Math.max(1, G.n), shadowK = new Uint32Array(n), caughtK = new Uint32Array(n);
+    const { bmin, bmax, left, right, start, count, items } = bvh, st = new Int32Array(128), o = new Float64Array(3), d = new Float64Array(3);
+    let lost = 0, overl = 0, caught = 0;
+    for (let i = 0; i < ctx.next; i++) {
+      const fk = ctx.rayK[i] - 1; if (fk < 0) continue;
+      caughtK[fk]++; caught++;
+      if (D[fk * STRIDE + 28] === 1) continue;
+      sampleRayI(P, i, o, d);
+      const ox = o[0], oy = o[1], oz = o[2], dx = d[0], dy = d[1], dz = d[2], ix = 1 / dx, iy = 1 / dy, iz = 1 / dz;
+      let sp = 0, any = false; st[sp++] = 0;
+      while (sp > 0) {
+        const nd = st[--sp], b3 = 3 * nd;
+        let t1 = (bmin[b3] - ox) * ix, t2 = (bmax[b3] - ox) * ix, tn = Math.min(t1, t2), tf = Math.max(t1, t2);
+        t1 = (bmin[b3 + 1] - oy) * iy; t2 = (bmax[b3 + 1] - oy) * iy; tn = Math.max(tn, Math.min(t1, t2)); tf = Math.min(tf, Math.max(t1, t2));
+        t1 = (bmin[b3 + 2] - oz) * iz; t2 = (bmax[b3 + 2] - oz) * iz; tn = Math.max(tn, Math.min(t1, t2)); tf = Math.min(tf, Math.max(t1, t2));
+        if (!(tf >= tn) || tf < P.eps) continue;
+        if (left[nd] < 0) {
+          for (let q = start[nd], q1 = q + count[nd]; q < q1; q++) {
+            const k = items[q]; if (k === fk) continue;
+            if (Geo.intersect(D, G.poly, k, ox, oy, oz, dx, dy, dz, P.eps, Infinity) >= 0) { shadowK[k]++; lost++; any = true; }
+          }
+        } else { st[sp++] = left[nd]; st[sp++] = right[nd]; }
+      }
+      if (any) overl++;
+    }
+    const metas = G.metas, worst = [];
+    for (let k = 0; k < G.n; k++) if (shadowK[k]) worst.push({ id: metas[k].id, lost: shadowK[k] / (shadowK[k] + caughtK[k]) });
+    worst.sort((a, b) => b.lost - a.lost);
+    ctx.occ.shadow = { n: ctx.next, shadowK, caughtK, shadowed: lost / Math.max(1, caught + lost), overlap: overl / Math.max(1, caught), worst: worst.slice(0, 5) };
+    return ctx.occ.shadow;
+  }
+
   // Single ray through the same code path; returns the event list.
   function probeRay(P, o, d, E) {
     const ctx = newCtx(P, 1, 0);
@@ -420,8 +464,22 @@
       timeMs: ctx.elapsed,
       energy: Object.assign({}, E),
       conservationError: (accounted - E.emitted) / em,
-      selfShadow: E.intercepted > 0 ? E.reHit / E.intercepted : 0,
+      selfShadow: E.intercepted > 0 ? E.reHit / E.intercepted : 0,   // (legacy name) share of intercepted light that re-hits a surface
+      // occlusion, solver-readable: blocked = left one surface, ended on another without landing (share of
+      // the light surfaces caught); shadowed = light a surface's cone lost to another surface in front of it
+      // (only after the trace finishes and only with recorded hits — null otherwise)
+      occlusion: occlusionStats(ctx),
       ...evaluate(ctx, opts && opts.paint, opts && opts.paintRes),
+    };
+  }
+  function occlusionStats(ctx) {
+    const P = ctx.P, E = ctx.E, metas = P.G.metas, o = ctx.occ;
+    const worstB = []; for (let k = 0; k < P.G.n; k++) if (o.blockedK[k] > 0) worstB.push({ id: metas[k].id, lost: o.blockedK[k] / o.out1K[k] });
+    worstB.sort((a, b) => b.lost - a.lost);
+    const sh = ctx.done && ctx.rayK ? occlusion(P, ctx) : null;
+    return {
+      blocked: o.out1 > 0 ? o.blocked / o.out1 : 0, blockedWorst: worstB.slice(0, 5),
+      shadowed: sh ? sh.shadowed : null, overlap: sh ? sh.overlap : null, shadowedWorst: sh ? sh.worst : [],
     };
   }
   function gridTotal(ctx) {
@@ -433,6 +491,6 @@
 
   RF.Engine = {
     targetFrame, designFrame, aimPoint, targetUVtoWorld, worldToTargetUV, cellCenter,
-    prepare, newCtx, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
+    prepare, newCtx, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, occlusion, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

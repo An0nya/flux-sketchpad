@@ -46,6 +46,20 @@ for (const k of pick) {
     'solo ' + solo + ' = ' + L.caught + ' + ' + L.shadowed + ' shadowed (by ' + (L.shadowers.join(', ') || '—') + '); landed ' + f.landed + ', blocked ' + f.blocked + ' (by ' + (L.blockers.join(', ') || '—') + '), escaped ' + f.escaped + ', other ' + f.other);
 }
 
+// fixture totals (Engine.occlusion + occ.blockedK) = the per-facet counts summed over every facet
+{ const t0 = Date.now(), O = E.occlusion(P, c), ms = Date.now() - t0, e0R = (P.power / N) * sc.modeA.reflectivity;
+  let shSum = 0, shBad = 0, blBad = 0;
+  for (let k = 0; k < P.G.n; k++) {
+    const rays = []; for (let i = 0; i < c.next; i++) if (c.rayK[i] === k + 1) rays.push(i);
+    const L = E.facetLosses(P, c, k, rays); shSum += L.shadowed;
+    if (L.shadowed !== O.shadowK[k]) shBad++;
+    if (Math.abs(c.occ.blockedK[k] / e0R - L.fate.blocked) > 1e-6) blBad++;
+    if (L.caught && Math.abs(c.occ.blockedK[k] / c.occ.out1K[k] - L.fate.blocked / L.caught) > 1e-9) blBad++;   // same share, energy vs count
+  }
+  const st = E.stats(c).occlusion;
+  ok('occlusion totals match per-facet counts (' + P.G.n + ' facets)', shBad === 0 && blBad === 0,
+    shBad + ' shadow / ' + blBad + ' blocked mismatches; shadowed ' + (100 * O.shadowed).toFixed(2) + '%, overlap ' + (100 * O.overlap).toFixed(2) + '%, blocked ' + (100 * st.blocked).toFixed(2) + '% (worst ' + st.blockedWorst.slice(0, 2).map((w) => w.id + ' ' + (100 * w.lost).toFixed(0) + '%').join(', ') + '); pass ' + ms + ' ms at ' + N + ' rays'); }
+
 // retrace: replaying a hit's ray lands on the same point via the same first surface; rayK agrees
 { const T = P.T; let bad = 0, badK = 0, wrong = 0, n = 0;
   const land = (h) => E.targetUVtoWorld(T, c.hits[3 * h], c.hits[3 * h + 1]);

@@ -180,11 +180,12 @@
       const q = Math.sqrt(info.n / N);
       const mask = scene.modeA.paint.map((w) => (w > 0 ? 1 : 0));
       const fine = finestFeature(mask, res).width;
-      const shadow = ctx.stats ? ctx.stats.selfShadow : null;
+      const occ = ctx.stats ? ctx.stats.occlusion : null, pc = (x) => (x * 100).toFixed(1) + '%';
       items.push({
-        key: 'budget', title: 'Facet budget & self-shadowing', ratio: q / fine,
+        key: 'budget', title: 'Facet budget & occlusion', ratio: q / fine,
         text: N + ' tiles over ' + info.n + ' painted cells quantise the pattern at ≈ ' + q.toFixed(1) + ' cells per tile (finest lit feature ' + fine.toFixed(0) + ' cells).' +
-          (shadow !== null ? ' Self-shadowing: ' + (shadow * 100).toFixed(1) + '% of intercepted light is blocked by other surfaces.' : ''),
+          (occ ? ' Blocked: ' + pc(occ.blocked) + ' of reflected light runs into another surface' + (occ.blockedWorst.length ? ' (worst ' + occ.blockedWorst.slice(0, 2).map((w) => w.id + ' ' + pc(w.lost)).join(', ') + ')' : '') + '.' +
+            (occ.shadowed !== null ? ' Shadowed: ' + pc(occ.shadowed) + ' of facets\u2019 source cones is caught by another surface first.' : '') : ''),
       });
     }
 
