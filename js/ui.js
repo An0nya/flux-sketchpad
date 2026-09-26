@@ -185,7 +185,10 @@
     const fields = [];
     if (cur !== RF.Solvers.DEFAULT_ID) {                // the default's settings are the Paint controls above
       sc.solverSettings = sc.solverSettings || {}; const vals = RF.Solvers.settingsOf(sc, cur);
+      const shared = def.settings.filter((f) => RF.Solvers.SHARED.includes(f.key)).map((f) => f.label || f.key);
+      if (shared.length) fields.push(el('div', { class: 'note' }, shared.join(', ') + ': from the Paint settings above (shared by every solver).'));
       for (const f of def.settings) {
+        if (RF.Solvers.SHARED.includes(f.key)) continue;
         const set = (v) => { sc.solverSettings[cur] = Object.assign({}, vals, sc.solverSettings[cur], { [f.key]: v }); ui.store.invalidate(['A']); ui.pendingA = performance.now() + 400; schedule(); };
         let inp;
         if (f.type === 'select') { inp = el('select', {}, ...(f.options || []).map((o) => el('option', { value: o.value !== undefined ? o.value : o }, o.label || o.value || o))); inp.value = vals[f.key]; inp.addEventListener('change', () => set(inp.value)); }

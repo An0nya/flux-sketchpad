@@ -49,10 +49,14 @@
   // Which solver a scene uses, and its settings.  The default solver's settings live in scene.modeA
   // (its sidebar controls predate the registry); any other solver's in scene.solverSettings[id].
   function current(scene) { const id = (scene.solve && scene.solve.id) || DEFAULT_ID; return get(id) ? id : DEFAULT_ID; }
+  // The required settings are SHARED: every solver reads them from the scene's Paint controls, so switching
+  // solvers compares like with like.  A solver's other settings live in scene.solverSettings[id].
+  const SHARED = ['budget', 'minDistance', 'reflectivity', 'facetType'];
+  const sharedOf = (scene) => ({ budget: scene.modeA.budget, minDistance: scene.modeA.minDistance || 0, reflectivity: scene.modeA.reflectivity, facetType: scene.modeA.facetType });
   function settingsOf(scene, id) {
-    const def = get(id);
-    if (id === DEFAULT_ID) return sanitize(def, { budget: scene.modeA.budget, facetType: scene.modeA.facetType, reflectivity: scene.modeA.reflectivity, minDistance: scene.modeA.minDistance || 0 });
-    return sanitize(def, scene.solverSettings && scene.solverSettings[id]);
+    const def = get(id), own = (scene.solverSettings && scene.solverSettings[id]) || {}, sh = sharedOf(scene), o = Object.assign({}, own);
+    for (const k of SHARED) if (def.settings.some((f) => f.key === k)) o[k] = sh[k];
+    return sanitize(def, o);
   }
   // the problem half of the scene: all a solver may see
   function inputOf(scene) {
@@ -172,5 +176,5 @@
     return res;
   }
 
-  RF.Solvers = { register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID };
+  RF.Solvers = { register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID, SHARED };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

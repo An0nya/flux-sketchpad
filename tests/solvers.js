@@ -65,6 +65,12 @@ for (const k of [15, 3]) {
   const e = RF.ModeA.build(p), f = S.verify(sc, { surfaces: e.surfaces, intent: e.intent });
   ok('an edited plan builds into valid geometry', !f.errors.length && !f.violations.envelope.length && !f.violations.keepOut.length && JSON.stringify(e.surfaces) !== JSON.stringify(g.surfaces), f.placed + ' placed from the edited plan'); }
 
+// shared settings: a non-default solver reads budget / minDistance / reflectivity from the Paint controls
+{ S.register({ id: 'probe-shared', name: 'p', version: '0', modes: ['paint'], settings: [{ key: 'budget', type: 'number', default: 100 }, { key: 'minDistance', type: 'number', default: 0 }, { key: 'reflectivity', type: 'number', default: 0.9 }, { key: 'own', type: 'number', default: 7 }], solve: () => ({ surfaces: [] }) });
+  const sc = RF.State.defaultScene(); sc.modeA.budget = 400; sc.modeA.minDistance = 12; sc.modeA.reflectivity = 0.8; sc.solverSettings = { 'probe-shared': { budget: 100, own: 9 } };
+  const st = S.settingsOf(sc, 'probe-shared'); S.unregister('probe-shared');
+  ok('a loaded solver\'s required settings come from the Paint controls (like-for-like); its own settings stay its own', st.budget === 400 && st.minDistance === 12 && st.reflectivity === 0.8 && st.own === 9, JSON.stringify(st)); }
+
 // negative controls: a lying / sloppy solver
 { const sc = RF.State.testScene(), good = RF.ModeA.generate(RF.U.deepCopy(sc)), f0 = good.surfaces[0];
   const far = RF.U.deepCopy(f0); far.id = 'far'; far.P = [far.P[0] + 5 * sc.envelope.half[0], far.P[1], far.P[2]]; far.clip.pts3 = far.clip.pts3.map((p) => [p[0] + 5 * sc.envelope.half[0], p[1], p[2]]);
