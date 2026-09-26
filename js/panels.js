@@ -185,6 +185,7 @@
       section('Verification', { open: false, key: 'checks', tag: 'in-page, pass/fail' },
         el('div', { class: 'note' }, 'Same checks as `node tests/headless.js`. They build their own scenes; your scene is not touched. #14 additionally drives the real DOM inputs here.'),
         el('div', { class: 'btnrow' }, runBtn), el('div', { id: 'checks-out', class: 'checks' })),
+      section('Solver', { open: false, key: 'solver', tag: 'default: Spoke' }, el('div', { id: 'solver-box' })),
       section('Diagnostics (solver internals)', { open: false, key: 'diag', tag: 'read-only' }, el('div', { id: 'diag', class: 'note' })),
       section('Scene contents', { open: false, key: 'groups', tag: 'visibility override' }, el('div', { id: 'group-list', class: 'group-list' }))));
   }

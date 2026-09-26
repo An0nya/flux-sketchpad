@@ -30,6 +30,7 @@
     return def.id;
   }
   const get = (id) => reg.get(id) || null;
+  const unregister = (id) => { if (id !== DEFAULT_ID) reg.delete(id); };
   const list = () => [...reg.values()];
   function defaults(def) { const o = {}; for (const f of def.settings) o[f.key] = f.default; return o; }
   // clamp / coerce a settings object to the schema (unknown keys dropped, missing → default)
@@ -125,15 +126,27 @@
 
   // Synchronous run (headless tests, and solvers cheap enough for the main thread).  The UI's worker host
   // calls the same pieces.  Returns the scene-ready result; never mutates the scene.
-  function runSync(scene, id) {
+  // the problem scene a solver's trace() runs against (plain data: crosses into a worker)
+  const problemOf = (scene) => RF.U.deepCopy({ source: scene.source, target: scene.target, envelope: scene.envelope, sim: scene.sim });
+  function prepareRun(scene, id) {
     id = id || current(scene);
     const def = get(id); if (!def) throw new Error('no solver ' + id);
-    const settings = settingsOf(scene, id), input = inputOf(scene), t0 = RF.U.now();
-    const tools = { progress() {}, budget: { rays: Infinity, ms: Infinity }, trace: (surfaces, o) => trace(scene, surfaces, o) };
-    const out = def.solve(input, settings, tools);
-    if (out && typeof out.then === 'function') throw new Error(id + ' is asynchronous: use the worker host');
-    const facts = verify(scene, out);
-    return { output: out, facts, meta: { id, version: def.version, settings, seed: input.seed }, ms: RF.U.now() - t0 };
+    const settings = settingsOf(scene, id), input = inputOf(scene), problem = problemOf(scene);
+    const tools = { progress() {}, budget: { rays: Infinity, ms: Infinity }, scene: problem, trace: (surfaces, o) => trace(problem, surfaces, o) };
+    return { def, id, settings, input, tools, meta: { id, version: def.version, settings, seed: input.seed } };
+  }
+  // Synchronous run (built-in solvers, headless tests).  Never mutates the scene.
+  function runSync(scene, id) {
+    const r = prepareRun(scene, id), t0 = RF.U.now(), out = r.def.solve(r.input, r.settings, r.tools);
+    if (out && typeof out.then === 'function') throw new Error(r.id + ' is asynchronous: use runAsync');
+    return { output: out, facts: verify(scene, out), meta: r.meta, ms: RF.U.now() - t0 };
+  }
+  // Asynchronous run (loaded solvers: their solve() goes to the worker).  onProgress(pct) optional.
+  async function runAsync(scene, id, onProgress) {
+    const r = prepareRun(scene, id), t0 = RF.U.now();
+    if (onProgress) r.tools.progress = onProgress;
+    const out = await r.def.solve(r.input, r.settings, r.tools);
+    return { output: out, facts: verify(scene, out), meta: r.meta, ms: RF.U.now() - t0 };
   }
 
   // tools.trace for solvers: the real engine at a chosen ray count, no paths; same seed ⇒ common random numbers
@@ -151,5 +164,5 @@
     return res;
   }
 
-  RF.Solvers = { register, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, trace, DEFAULT_ID };
+  RF.Solvers = { register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

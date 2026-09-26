@@ -30,7 +30,7 @@
       if (store.dirty.has('B')) { const b = RF.ModeB.build(sc); sc.groups.B.surfaces = b.surfaces; store.reports.B = b.reports; store.dirty.delete('B'); }
       if (store.dirty.has('C')) { const c = RF.Profile.build(sc); sc.groups.C.surfaces = c.surfaces; store.reports.C = c.report; store.dirty.delete('C'); }
       if (store.dirty.has('L')) { const l = RF.Lenses.buildAll(sc); sc.groups.L.surfaces = l.surfaces; store.reports.L = l.infos; store.dirty.delete('L'); }
-      if (store.dirty.has('A') && (opts.forceA || (store.autoA && !opts.deferA))) regenerateA(store);
+      if (store.dirty.has('A') && (opts.forceA || (store.autoA && !opts.deferA)) && !RF.Solvers.get(RF.Solvers.current(sc)).loaded) regenerateA(store);   // loaded solvers: the UI runs them async
       return store;
     };
     return store;
@@ -38,9 +38,14 @@
   // Paint mode goes through the solver interface (js/solvers.js): the registered solver makes the
   // geometry, the host verifies it.  reports.A keeps its old shape for the panels: the solver's own
   // extras, overridden by host-verified facts, plus the standard intent and what was solved.
-  function regenerateA(store) {
-    const sc = store.scene, r = RF.Solvers.runSync(sc);
-    const out = r.output || {}, f = r.facts, extras = out.extras || {};
+  function regenerateA(store) { return applySolve(store, RF.Solvers.runSync(store.scene)); }
+  // loaded solvers run in a worker: resolve to the same report (null if the scene changed meanwhile)
+  async function regenerateAAsync(store, onProgress) {
+    const v = store.version, r = await RF.Solvers.runAsync(store.scene, null, onProgress);
+    return store.version === v ? applySolve(store, r) : null;
+  }
+  function applySolve(store, r) {
+    const sc = store.scene, out = r.output || {}, f = r.facts, extras = out.extras || {};
     sc.groups.A.surfaces = f.errors.length ? [] : out.surfaces;
     sc.solve = r.meta;
     const rep = Object.assign({}, extras, {
@@ -294,5 +299,5 @@
     return { P, ctx, hash: RF.Engine.gridHash(ctx), stats: RF.Engine.stats(ctx) };
   }
 
-  RF.Controller = { createStore, regenerateA, CONTROLS, BY_ID, setControl, controlVisible, actions, simulate, ensureBounces, selStamp };
+  RF.Controller = { createStore, regenerateA, regenerateAAsync, CONTROLS, BY_ID, setControl, controlVisible, actions, simulate, ensureBounces, selStamp };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

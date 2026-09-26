@@ -42,6 +42,8 @@
     ui.autosave();
   };
   ui.generateA = function () {
+    const def = RF.Solvers.get(RF.Solvers.current(ui.store.scene));
+    if (def.loaded) { ui.store.invalidate(['A']); ui.solveArmed = true; schedule(); return; }   // worker path lives in tick()
     ui.setStatus('Rebuilding reflector…'); ui.progress('solve');
     setTimeout(() => {                               // let the status paint first
       const t0 = performance.now();
@@ -162,7 +164,45 @@
   }
 
   // ---------------------------------------------------------------- panels
+  // Reference & debug → Solver: which solver, its schema-rendered settings (non-default solvers), loading
+  // solver files, and the host-verified facts of the last solve.  Hidden by default: not the main purpose.
+  function renderSolverBox() {
+    const box = document.getElementById('solver-box'); if (!box) return;
+    const sc = ui.store.scene, el = P.el, cur = RF.Solvers.current(sc), def = RF.Solvers.get(cur), rep = ui.store.reports.A;
+    const pick = el('select', { 'aria-label': 'Solver' }, ...RF.Solvers.list().filter((d) => d.modes.includes('paint')).map((d) => el('option', { value: d.id }, d.name + ' v' + d.version + (d.loaded ? ' (loaded)' : ''))));
+    pick.value = cur;
+    pick.addEventListener('change', () => { sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.generateA(); renderSolverBox(); });
+    const file = el('input', { type: 'file', accept: '.js,text/javascript', hidden: '' });
+    file.addEventListener('change', async () => {
+      const f = file.files && file.files[0]; if (!f) return;
+      try { const defs = await RF.SolverHost.load(await f.text()); sc.solve = { id: defs[0].id }; try { localStorage.setItem('flux/solverChoice', defs[0].id); } catch (e) { /* ignore */ } ui.store.notice('Loaded solver ' + defs.map((d) => d.name).join(', ') + ' (runs isolated in a worker).'); ui.generateA(); }
+      catch (err) { ui.store.notice('Could not load ' + f.name + ': ' + err.message); }
+      renderSolverBox(); P.renderNotices(ui);
+    });
+    const loadBtn = el('label', { class: 'filebtn', title: 'A self-contained .js file that calls RF.Solvers.register({...}). It runs in a worker, never on this page.' }, 'Load solver file…', file);
+    const forget = el('button', { type: 'button', title: 'Unload every loaded solver and go back to the default' }, 'Forget loaded');
+    forget.addEventListener('click', () => { RF.SolverHost.forget(); try { localStorage.removeItem('flux/solverChoice'); } catch (e) { /* ignore */ } sc.solve = { id: RF.Solvers.DEFAULT_ID }; ui.generateA(); renderSolverBox(); });
+    const fields = [];
+    if (cur !== RF.Solvers.DEFAULT_ID) {                // the default's settings are the Paint controls above
+      sc.solverSettings = sc.solverSettings || {}; const vals = RF.Solvers.settingsOf(sc, cur);
+      for (const f of def.settings) {
+        const set = (v) => { sc.solverSettings[cur] = Object.assign({}, vals, sc.solverSettings[cur], { [f.key]: v }); ui.store.invalidate(['A']); ui.pendingA = performance.now() + 400; schedule(); };
+        let inp;
+        if (f.type === 'select') { inp = el('select', {}, ...(f.options || []).map((o) => el('option', { value: o.value !== undefined ? o.value : o }, o.label || o.value || o))); inp.value = vals[f.key]; inp.addEventListener('change', () => set(inp.value)); }
+        else if (f.type === 'checkbox') { inp = el('input', { type: 'checkbox' }); inp.checked = !!vals[f.key]; inp.addEventListener('change', () => set(inp.checked)); }
+        else { inp = el('input', { type: f.type === 'range' ? 'range' : 'number', min: f.min, max: f.max, step: f.step || 'any', value: vals[f.key] }); inp.addEventListener('change', () => set(+inp.value)); }
+        fields.push(el('div', { class: 'row', title: f.help || '' }, el('label', {}, f.label || f.key), inp));
+      }
+    }
+    const fx = rep && rep.facts, facts = !fx ? '—' : fx.errors.length ? 'unusable output: ' + fx.errors[0] :
+      fx.placed + ' placed' + (fx.dropped !== null ? ' · ' + fx.dropped + ' unplaced intents' : '') + ' · envelope ' + (fx.violations.envelope.length ? fx.violations.envelope.length + ' outside' : 'ok') + ' · keep-out ' + (fx.violations.keepOut.length ? fx.violations.keepOut.length + ' inside' : 'ok') + (fx.intentErrors.length ? ' · intent malformed' : '') + (rep.solveMs !== undefined ? ' · ' + Math.round(rep.solveMs) + ' ms' : '');
+    box.innerHTML = '';
+    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), ...fields,
+      el('div', { class: 'btnrow' }, loadBtn, forget),
+      el('div', { class: 'note' }, 'Verified by the app, not the solver: ' + facts + '. Saved with the scene: ' + (sc.solve ? sc.solve.id + ' v' + (sc.solve.version || '?') : '—') + '.'));
+  }
   ui.refreshPanels = function () {
+    renderSolverBox();
     P.syncControls(ui);
     const eb = document.getElementById('erase-btn'); if (eb) eb.setAttribute('aria-pressed', String(!!C.BY_ID['A.erase'].get(ui.store)));
     P.renderStampList(ui); P.renderLensList(ui); P.renderGroups(ui); P.renderNotices(ui);
@@ -222,7 +262,22 @@
       ui.solveArmed = true; ui.setStatus('Rebuilding reflector…'); ui.progress('solve');   // let this frame paint first
     } else if (ui.solveArmed) {
       ui.solveArmed = false; ui.pendingA = 0;
-      const t0 = performance.now(); C.regenerateA(store); ui.lastGenMs = performance.now() - t0;
+      const t0 = performance.now(), def = RF.Solvers.get(RF.Solvers.current(store.scene));
+      if (def.loaded) {                                  // a loaded solver runs in the worker: stay responsive
+        if (ui.solving) return schedule();
+        ui.solving = true; ui.setStatus('Rebuilding reflector (' + def.name + ')…');
+        C.regenerateAAsync(store, (pct) => ui.progress('solve', pct)).then((rep) => {
+          ui.solving = false; ui.lastGenMs = performance.now() - t0;
+          if (!rep) { ui.pendingA = performance.now(); schedule(); return; }   // scene changed meanwhile: solve again
+          ui.refreshPanels(); ui.needCompile = true; ui.autosave(); schedule();
+        }, (err) => {
+          ui.solving = false; store.dirty.delete('A');
+          store.reports.A = { error: 'Solver ' + def.name + ': ' + err.message, warnings: [], placed: 0 };
+          store.notice('Solver ' + def.name + ' failed: ' + err.message); ui.refreshPanels(); schedule();
+        });
+        return;
+      }
+      C.regenerateA(store); ui.lastGenMs = performance.now() - t0;
       ui.refreshPanels(); ui.needCompile = true; ui.autosave();
     }
     if (ui.needCompile) {
@@ -1129,6 +1184,12 @@
     const poke = () => { clearTimeout(ui._idleT); ui._idleT = setTimeout(() => showHint(8000), 60000); };
     for (const ev of ['pointerdown', 'keydown', 'wheel']) document.addEventListener(ev, () => { if (!ui.activeHandle) hint.classList.remove('show'); poke(); }, { passive: true });
     showHint(6000); poke();
+    // loaded solvers persist per browser; once they're back, honour a saved choice
+    if (RF.SolverHost) RF.SolverHost.restore().then(() => {
+      let want = null; try { want = localStorage.getItem('flux/solverChoice'); } catch (e) { /* ignore */ }
+      if (want && want !== RF.Solvers.current(ui.store.scene) && RF.Solvers.get(want)) { ui.store.scene.solve = { id: want }; ui.generateA(); }
+      renderSolverBox();
+    });
     // Scene: Reset view = the view the app opens with; Setup = show the edit handles here too
     document.getElementById('btn-reset-view').addEventListener('click', () => { ui.cam.setAngles(193.8, 19.3); ui.fit('all'); });
     const setupBtn = document.getElementById('btn-setup');
