@@ -3,7 +3,7 @@
  *   → { type: 'load', src }                         ← { type: 'loaded', defs: [{ id, name, version, modes, settings }] } | { type: 'error' }
  *   → { type: 'solve', id, input, settings, scene, budget }  ← { type: 'progress', pct } … { type: 'done', output } | { type: 'error' } */
 'use strict';
-importScripts('core.js', 'geometry.js', 'source.js', 'engine.js', 'solver.js', 'modeA.js', 'solvers.js');
+importScripts('solver-env.js'); importScripts(...self.RF_SOLVER_ENV.map((f) => f + '.js'));   // the same list the runner and scorer use
 const RF = self.RF;
 const meta = (d) => ({ id: d.id, name: d.name, version: d.version, modes: d.modes, settings: d.settings });
 self.onmessage = async (e) => {

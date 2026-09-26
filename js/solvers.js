@@ -149,14 +149,22 @@
     return { output: out, facts: verify(scene, out), meta: r.meta, ms: RF.U.now() - t0 };
   }
 
-  // tools.trace for solvers: the real engine at a chosen ray count, no paths; same seed ⇒ common random numbers
+  // tools.trace for solvers: the real engine at a chosen ray count, no paths; same seed ⇒ common random numbers.
+  //   → { grid, res, energy, raysPerCell, noise, blocked, peakCd, peakNoise, ofCeiling, ofEnvelope, throwM, lmOnTarget,
+  //       perFacet? (attribution), shadowed? (occlusion: one extra pass) }   — the same definitions the app scores with
   function trace(scene, surfaces, o) {
     o = o || {};
     const sc = Object.assign({}, scene, { sim: Object.assign({}, scene.sim, { seed: o.seed !== undefined ? o.seed : scene.sim.seed }) });
-    const P = RF.Engine.prepare(sc, surfaces); P.recordHits = !!o.attribution;
+    const P = RF.Engine.prepare(sc, surfaces); P.recordHits = !!(o.attribution || o.occlusion);
     const N = Math.max(1, Math.min(2e6, o.rays | 0 || 20000)), c = RF.Engine.runSync(P, N, 0);
     const grid = RF.Engine.gridTotal(c), st = RF.Engine.evaluate(c);
-    const res = { grid: Array.from(grid), res: P.res, energy: Object.assign({}, c.E), raysPerCell: st.raysPerCell, noise: st.raysPerCell > 0 ? 1 / Math.sqrt(st.raysPerCell) : 1 };
+    const res = { grid: Array.from(grid), res: P.res, energy: Object.assign({}, c.E), raysPerCell: st.raysPerCell, noise: st.raysPerCell > 0 ? 1 / Math.sqrt(st.raysPerCell) : 1,
+      blocked: c.occ.out1 > 0 ? c.occ.blocked / c.occ.out1 : 0 };
+    if (RF.Photometry) {
+      const ph = RF.Photometry.fixture(sc, P, c);
+      Object.assign(res, { peakCd: ph.peakCd, peakNoise: ph.peakNoise, ofCeiling: ph.ofDesign, ofEnvelope: ph.ofEnvelope, throwM: ph.throwM, lmOnTarget: ph.lmOnTarget });
+    }
+    if (o.occlusion) res.shadowed = RF.Engine.occlusion(P, c).shadowed;
     if (o.attribution) {
       const per = {}; for (let h = 0; h < c.nHits; h++) { const k = c.hitK[h]; if (!k) continue; const id = P.G.metas[k - 1].id; per[id] = (per[id] || 0) + c.hits[3 * h + 2]; }
       res.perFacet = per;

@@ -41,6 +41,30 @@ for (const k of [15, 3]) {
   ok('old keep-out ' + k + ' mm → clearance ' + loaded.envelope.keepOut + ' + min distance ' + loaded.modeA.minDistance + ': identical geometry', JSON.stringify(a) === JSON.stringify(b) && loaded.envelope.keepOut <= RF.State.CLEAR_MAX, a.length + ' facets');
 }
 
+// one solver environment: a fresh context loading ONLY js/solver-env.js's list (what the browser worker loads)
+// has everything SOLVER_API.md promises; and the browser worker really does load that list
+{ const vm = require('vm'), fs = require('fs'), path = require('path'), root = path.join(__dirname, '..'), ctx = vm.createContext({ console });
+  const js = (f) => vm.runInContext(fs.readFileSync(path.join(root, 'js', f + '.js'), 'utf8'), ctx, { filename: f });
+  js('solver-env'); for (const f of ctx.RF_SOLVER_ENV) js(f);
+  const R = ctx.RF, need = ['V', 'Geo', 'Source', 'Engine', 'Solver', 'ModeA', 'Photometry', 'Solvers'];
+  const missing = need.filter((k) => !R[k]), worker = fs.readFileSync(path.join(root, 'js/solve-worker.js'), 'utf8');
+  ok('solver environment has everything the API lists (incl. Photometry, the default solver, ModeA.plan/build)', !missing.length && !!R.Solvers.get('spoke') && typeof R.ModeA.plan === 'function' && typeof R.ModeA.build === 'function', missing.length ? 'missing ' + missing.join(', ') : ctx.RF_SOLVER_ENV.join(' → '));
+  ok('the browser worker loads exactly that list', /importScripts\('solver-env\.js'\)/.test(worker) && /RF_SOLVER_ENV/.test(worker) && !/importScripts\('core\.js'/.test(worker)); }
+
+// trace() reports the app's own definitions: blocked = stats.occlusion.blocked, shadowed = the occlusion pass, peak = photometry
+{ const st = C.createStore(RF.State.testScene()); C.regenerateA(st); const sc = st.scene, surfs = sc.groups.A.surfaces;
+  const problem = { source: sc.source, target: sc.target, envelope: sc.envelope, sim: sc.sim }, t = S.trace(problem, surfs, { rays: 50000, occlusion: true });
+  const P = E.prepare(problem, surfs); P.recordHits = true; const c = E.runSync(P, 50000, 0), o = E.stats(c).occlusion, ph = RF.Photometry.fixture(problem, P, c);
+  ok('trace(): blocked, shadowed, peak cd and % of ceiling match the app\'s scoring', t.blocked === o.blocked && t.shadowed === o.shadowed && t.peakCd === ph.peakCd && t.ofCeiling === ph.ofDesign,
+    'blocked ' + (100 * t.blocked).toFixed(2) + '%, shadowed ' + (100 * t.shadowed).toFixed(2) + '%, peak ' + Math.round(t.peakCd) + ' cd, ' + (100 * t.ofCeiling).toFixed(1) + '% of ceiling'); }
+
+// RF.ModeA unsealed: build(plan(scene)) = generate(scene); and a solver may edit the plan before building
+{ const sc = RF.State.defaultScene(), g = RF.ModeA.generate(RF.U.deepCopy(sc)), b = RF.ModeA.build(RF.ModeA.plan(RF.U.deepCopy(sc)));
+  ok('ModeA.build(ModeA.plan(scene)) is identical to ModeA.generate(scene)', JSON.stringify([g.surfaces, g.intent, g.report]) === JSON.stringify([b.surfaces, b.intent, b.report]));
+  const p = RF.ModeA.plan(RF.U.deepCopy(sc)); for (const z of p.zones) if (z && !z.empty) z.aim = [z.aim[0] * 0.8, z.aim[1] * 0.8];   // pull every aim 20% toward the centre
+  const e = RF.ModeA.build(p), f = S.verify(sc, { surfaces: e.surfaces, intent: e.intent });
+  ok('an edited plan builds into valid geometry', !f.errors.length && !f.violations.envelope.length && !f.violations.keepOut.length && JSON.stringify(e.surfaces) !== JSON.stringify(g.surfaces), f.placed + ' placed from the edited plan'); }
+
 // negative controls: a lying / sloppy solver
 { const sc = RF.State.testScene(), good = RF.ModeA.generate(RF.U.deepCopy(sc)), f0 = good.surfaces[0];
   const far = RF.U.deepCopy(f0); far.id = 'far'; far.P = [far.P[0] + 5 * sc.envelope.half[0], far.P[1], far.P[2]]; far.clip.pts3 = far.clip.pts3.map((p) => [p[0] + 5 * sc.envelope.half[0], p[1], p[2]]);

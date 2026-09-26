@@ -1,35 +1,61 @@
 #!/usr/bin/env node
 // Headless solver runner: load a solver file, solve the built-in scenes through the SAME host path as the
-// app (verify → apply → trace → score), print the numbers.  For developing / smoke-testing solvers.
+// app (isolated solve → verify → apply → trace → score), print the numbers.  For developing solvers.
 //   node tools/run-solver.js examples/solver-example.js [--rays 200000] [--scenes default,test]
 //        [--settings '{"budget":80}'] [--scaling] [--json]
+// The solver runs in a worker thread that loads exactly js/solver-env.js's list (the same RF the app's
+// browser worker gives it); verification and scoring run here, in a separate heap.
 // --scaling times solve() at facet budgets 50/100/200/400 (if the solver has a 'budget' setting) and fits
 // the log-log slope: < 2 ⇒ sub-quadratic.
-// NOTE: this runs the solver in-process (no isolation) — fine for your own development; a scored benchmark
-// run must isolate it (the app uses a Web Worker).
-const fs = require('fs'), path = require('path'), vm = require('vm');
-const { load } = require('../tests/load.js'); const RF = load(); const E = RF.Engine, C = RF.Controller, S = RF.Solvers;
+'use strict';
+const fs = require('fs'), path = require('path');
+const { Worker } = require('worker_threads');
+const ROOT = path.join(__dirname, '..');
+const { load } = require('../tests/load.js'); const RF = load(); const E = RF.Engine, S = RF.Solvers;
 const args = process.argv.slice(2), opt = (k, d) => { const i = args.indexOf('--' + k); return i < 0 ? d : args[i + 1]; };
-const file = args.find((a) => !a.startsWith('--') && !['rays', 'scenes', 'settings'].some((k) => args[args.indexOf(a) - 1] === '--' + k));
-if (!file) { console.error('usage: node tools/run-solver.js <solver.js> [--rays N] [--scenes default,test] [--settings JSON] [--scaling] [--json]'); process.exit(2); }
-const before = new Set(S.list().map((d) => d.id));
-vm.runInThisContext(fs.readFileSync(path.resolve(file), 'utf8'), { filename: file });
-const def = S.list().find((d) => !before.has(d.id));
-if (!def) { console.error(file + ' did not call RF.Solvers.register(...)'); process.exit(2); }
-const N = +opt('rays', 200000), names = opt('scenes', 'default,test').split(','), extra = JSON.parse(opt('settings', '{}')), asJson = args.includes('--json');
+const VALUED = ['--rays', '--scenes', '--settings', '--ms'];
+const file = args.find((a, i) => !a.startsWith('--') && !VALUED.includes(args[i - 1]));
+if (!file) { console.error('usage: node tools/run-solver.js <solver.js> [--rays N] [--scenes default,test] [--settings JSON] [--ms N] [--scaling] [--json]'); process.exit(2); }
+const N = +opt('rays', 200000), names = opt('scenes', 'default,test').split(','), extra = JSON.parse(opt('settings', '{}')), MS = +opt('ms', 60000), asJson = args.includes('--json');
 const SCENES = { default: () => RF.State.defaultScene(), test: () => RF.State.testScene() };
 const pct = (x) => (x === null || x === undefined ? '—' : (100 * x).toFixed(1) + '%');
 
+// ---- the isolated solver
+const WORKER = `
+const { parentPort, workerData } = require('worker_threads'), fs = require('fs'), path = require('path'), vm = require('vm');
+const js = (f) => { const p = path.join(workerData.root, 'js', f + '.js'); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename: p }); };
+js('solver-env'); for (const f of globalThis.RF_SOLVER_ENV) js(f);
+const RF = globalThis.RF, before = new Set(RF.Solvers.list().map((d) => d.id));
+parentPort.on('message', async (m) => {
+  try {
+    if (m.type === 'load') { vm.runInThisContext(m.src, { filename: m.name }); const d = RF.Solvers.list().filter((x) => !before.has(x.id)); parentPort.postMessage({ type: 'loaded', defs: d.map((x) => ({ id: x.id, name: x.name, version: x.version, modes: x.modes, settings: x.settings })) }); return; }
+    const def = RF.Solvers.get(m.id); let rays = 0;
+    const tools = { progress() {}, budget: m.budget, scene: m.problem, trace: (s, o) => { rays += Math.max(1, (o && o.rays) | 0 || 20000); if (rays > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays + ')'); return RF.Solvers.trace(m.problem, s, o); } };
+    const t0 = process.hrtime.bigint(), out = await def.solve(m.input, m.settings, tools);
+    parentPort.postMessage({ type: 'done', output: out, ms: Number(process.hrtime.bigint() - t0) / 1e6, rays });
+  } catch (e) { parentPort.postMessage({ type: 'error', message: String(e && e.stack || e) }); }
+});`;
+const w = new Worker(WORKER, { eval: true, workerData: { root: ROOT } });
+const ask = (msg, ms) => new Promise((res) => {
+  const t = setTimeout(() => { w.terminate(); res({ type: 'error', message: 'solver ran over ' + ms + ' ms and was stopped' }); }, ms);
+  w.once('message', (d) => { clearTimeout(t); res(d); }); w.postMessage(msg);
+});
+const problemOf = (sc) => ({ source: sc.source, target: sc.target, envelope: sc.envelope, sim: sc.sim });
+
 (async () => {
+  const d0 = await ask({ type: 'load', src: fs.readFileSync(path.resolve(file), 'utf8'), name: file }, 20000);
+  if (d0.type !== 'loaded' || !d0.defs.length) { console.error(file + ': ' + (d0.message || 'did not call RF.Solvers.register(...)')); w.terminate(); process.exit(2); }
+  const def = d0.defs.find((x) => x.modes.includes('paint')) || d0.defs[0];
+  const settingsFor = (more) => S.sanitize(def, Object.assign(S.defaults(def), extra, more || {}));
   const rows = [];
   for (const name of names) {
     if (!SCENES[name]) { console.error('unknown scene ' + name + ' (have ' + Object.keys(SCENES).join(', ') + ')'); process.exit(2); }
-    const st = C.createStore(SCENES[name]()), sc = st.scene;
-    sc.solve = { id: def.id }; sc.solverSettings = { [def.id]: Object.assign(S.defaults(def), extra) };
-    let rays = 0; const t0 = Date.now();
-    const r = await S.runAsync(sc, def.id);
-    const f = r.facts, out = r.output || {};
-    const row = { scene: name, solver: def.id + ' v' + def.version, settings: r.meta.settings, solveMs: Date.now() - t0, facts: { errors: f.errors, placed: f.placed, dropped: f.dropped, outsideEnvelope: f.violations.envelope.length, insideClearance: f.violations.keepOut.length, intentErrors: f.intentErrors.length }, notes: out.notes || [] };
+    const sc = SCENES[name](); sc.solve = { id: def.id };
+    const settings = settingsFor(), d = await ask({ type: 'solve', id: def.id, input: S.inputOf(sc), settings, problem: problemOf(sc), budget: { ms: MS, rays: 2e7 } }, MS);
+    const row = { scene: name, solver: def.id + ' v' + def.version, settings };
+    if (d.type !== 'done') { row.error = d.message; rows.push(row); if (!asJson) console.log('\n' + name + ' · ' + row.solver + '\n  ERROR ' + d.message); continue; }
+    const out = d.output || {}, f = S.verify(sc, out);
+    Object.assign(row, { solveMs: Math.round(d.ms), traceRays: d.rays, facts: { errors: f.errors, placed: f.placed, dropped: f.dropped, outsideEnvelope: f.violations.envelope.length, insideClearance: f.violations.keepOut.length, intentErrors: f.intentErrors.length }, notes: out.notes || [] });
     if (!f.errors.length) {
       sc.groups.A.surfaces = out.surfaces;
       const P = E.prepare(sc, RF.State.allSurfaces(sc)); P.recordHits = true; const c = E.runSync(P, N);
@@ -40,7 +66,7 @@ const pct = (x) => (x === null || x === undefined ? '—' : (100 * x).toFixed(1)
     }
     rows.push(row);
     if (!asJson) {
-      console.log('\n' + name + ' · ' + row.solver + ' · solve ' + row.solveMs + ' ms · ' + JSON.stringify(row.settings));
+      console.log('\n' + name + ' · ' + row.solver + ' · solve ' + row.solveMs + ' ms' + (row.traceRays ? ' (' + row.traceRays.toLocaleString() + ' rays of tracing)' : '') + ' · ' + JSON.stringify(settings));
       console.log('  verified: ' + (f.errors.length ? 'UNUSABLE — ' + f.errors[0] : f.placed + ' placed' + (f.dropped !== null ? ', ' + f.dropped + ' unplaced intents' : '') + ', outside envelope ' + row.facts.outsideEnvelope + ', inside LED clearance ' + row.facts.insideClearance + (row.facts.intentErrors ? ', intent errors ' + row.facts.intentErrors : '')));
       if (row.score) { const q = row.score;
         console.log('  delivered ' + pct(q.delivered) + ' · beam ' + pct(q.beamCoverage) + ' · U₀ ' + q.uniformityU0.toFixed(3) + ' (noise ceiling ' + q.noiseCeiling.toFixed(2) + ')' + (q.deliveredOverIntended ? ' · delivered÷intended p5/p50/p95 ' + [q.deliveredOverIntended.p5, q.deliveredOverIntended.p50, q.deliveredOverIntended.p95].map((x) => x.toFixed(2)).join('/') : ''));
@@ -50,14 +76,14 @@ const pct = (x) => (x === null || x === undefined ? '—' : (100 * x).toFixed(1)
   }
   if (args.includes('--scaling') && def.settings.some((f) => f.key === 'budget')) {
     const pts = [];
-    for (const b of [50, 100, 200, 400]) {
-      const sc = RF.State.defaultScene(); sc.solve = { id: def.id }; sc.solverSettings = { [def.id]: Object.assign(S.defaults(def), extra, { budget: b }) };
-      const t0 = process.hrtime.bigint(); await S.runAsync(sc, def.id); pts.push([b, Number(process.hrtime.bigint() - t0) / 1e6]);
+    for (const b of [50, 100, 200, 400]) { const sc = RF.State.defaultScene(), d = await ask({ type: 'solve', id: def.id, input: S.inputOf(sc), settings: settingsFor({ budget: b }), problem: problemOf(sc), budget: { ms: MS, rays: 2e7 } }, MS); if (d.type === 'done') pts.push([b, Math.max(0.5, d.ms)]); }
+    if (pts.length === 4) {
+      const lx = pts.map((p) => Math.log(p[0])), ly = pts.map((p) => Math.log(p[1])), mx = lx.reduce((a, b) => a + b) / 4, my = ly.reduce((a, b) => a + b) / 4;
+      const slope = lx.reduce((a, x, i) => a + (x - mx) * (ly[i] - my), 0) / lx.reduce((a, x) => a + (x - mx) ** 2, 0);
+      rows.push({ scaling: pts, slope });
+      if (!asJson) console.log('\nscaling (default scene): ' + pts.map((p) => p[0] + ' facets ' + p[1].toFixed(0) + ' ms').join(' · ') + ' → time ∝ budget^' + slope.toFixed(2) + (slope < 2 ? ' (sub-quadratic)' : ''));
     }
-    const lx = pts.map((p) => Math.log(p[0])), ly = pts.map((p) => Math.log(p[1])), mx = lx.reduce((a, b) => a + b) / 4, my = ly.reduce((a, b) => a + b) / 4;
-    const slope = lx.reduce((a, x, i) => a + (x - mx) * (ly[i] - my), 0) / lx.reduce((a, x) => a + (x - mx) ** 2, 0);
-    rows.push({ scaling: pts, slope });
-    if (!asJson) console.log('\nscaling (default scene): ' + pts.map((p) => p[0] + ' facets ' + p[1].toFixed(0) + ' ms').join(' · ') + ' → time ∝ budget^' + slope.toFixed(2) + (slope < 2 ? ' (sub-quadratic)' : ''));
   }
   if (asJson) console.log(JSON.stringify(rows));
-})().catch((e) => { console.error(e.stack || e); process.exit(1); });
+  w.terminate();
+})().catch((e) => { console.error(e.stack || e); w.terminate(); process.exit(1); });

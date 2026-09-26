@@ -29,13 +29,17 @@
   const { V, Geo, Solver } = RF;
   const D2R = Math.PI / 180;
 
-  function generate(scene, opts) {
+  // ---- plan: everything up to the zone partition (spokes, equal-flux direction cells = items, zones,
+  // intent).  Exposed so a solver can take this partition and change what it likes before build().
+  //   RF.ModeA.plan(scene) → { items[k]: { spoke, ta, tb, pa, pb, w, dir, rc, pq }, zones[k], intent, spokes, … }
+  //   RF.ModeA.build(plan) → { surfaces, report, intent }     (generate = build(plan(scene)))
+  function plan(scene, opts) {
     opts = opts || {};
     const report = { ok: false, warnings: [], facets: [] };
     const src = scene.source, S = src.pos.slice(), fr = RF.Source.frame(src);
     const info = Solver.paintInfo(scene);
     const T = info.T;
-    if (!info.n) { report.error = 'Nothing painted — paint the target first.'; return { surfaces: [], report }; }
+    if (!info.n) { report.error = 'Nothing painted — paint the target first.'; return { error: report.error, report }; }
     const budget = Math.max(1, Math.min(2000, scene.modeA.budget | 0));
     const Zc = RF.Engine.targetUVtoWorld(T, info.cu, info.cv);
     const w0 = V.norm(V.sub(S, Zc));             // vertex direction: away from the pattern
@@ -53,7 +57,7 @@
       marg[a] = m;
     }
     const mmax = Math.max(...marg);
-    if (!(mmax > 0)) { report.error = 'The source emits no flux toward any usable direction.'; return { surfaces: [], report }; }
+    if (!(mmax > 0)) { report.error = 'The source emits no flux toward any usable direction.'; return { error: report.error, report }; }
     // largest cyclic gap of (near) zero flux → support is its complement
     let bestGap = 0, gapEnd = -1;
     for (let a = 0; a < NPH; a++) {
@@ -152,7 +156,7 @@
 
     // ---- allocate facets to spokes by captured flux (largest remainder)
     const Fcap = spokes.reduce((s, sp) => s + sp.flux, 0);
-    if (!(Fcap > 0)) { report.error = 'No facet fits inside the envelope with a line of sight to the source.'; return { surfaces: [], report }; }
+    if (!(Fcap > 0)) { report.error = 'No facet fits inside the envelope with a line of sight to the source.'; return { error: report.error, report }; }
     const act = spokes.filter((sp) => sp.flux > 0);
     const quota = act.map((sp) => budget * sp.flux / Fcap);
     const nAlloc = quota.map((q) => Math.max(1, Math.floor(q)));
@@ -190,6 +194,10 @@
     // standard per-facet intent (solver interface): each zone's own cells, shared cells split by weight
     const intent = zones.map((z) => ({ facet: null, cells: z && !z.empty ? z.cells.map((c) => [c.idx, c.w]) : [] }));
 
+    return { scene, src, S, fr, info, T, F, env, keep, Itot, Zc, spokes, items, zones, intent, report };
+  }
+  function build(p) {
+    const { scene, src, S, fr, info, T, F, env, keep, Itot, Zc, spokes, items, zones, intent, report } = p;
     // ---- build facets
     const surfaces = [];
     const refl = scene.modeA.reflectivity;
@@ -251,5 +259,10 @@
     return { surfaces, report, intent };
   }
 
-  RF.ModeA = { generate };
+  function generate(scene, opts) {
+    const p = plan(scene, opts);
+    return p.error ? { surfaces: [], report: p.report } : build(p);
+  }
+
+  RF.ModeA = { generate, plan, build };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
