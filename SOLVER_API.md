@@ -5,7 +5,12 @@ It is **one self-contained JavaScript file** that calls `RF.Solvers.register({..
 needs to change. The app runs loaded solvers in a Web Worker (no page access); everything that could be
 gamed — what was placed, whether it fits, how good the light is — is computed by the app, not the solver.
 
+<!-- builtin -->
 Start from `examples/solver-example.js`. Develop and score headless:
+<!-- /builtin -->
+<!-- workspace-only:
+Start from `examples/solver-starter.js` (a sealed box of mirrors: valid output that scores 0). Develop and score headless:
+-->
 
 ```bash
 node tools/run-solver.js path/to/my-solver.js --scaling          # --budget N sets the facet cap (default 100)
@@ -61,6 +66,7 @@ paint.res)`. `progress(0…1)`. `budget: { rays, ms }` — exceeding either stop
   meant to light. **Overlap is allowed.** `facet: null` = an intent you couldn't place.
 - `notes` (optional): free-text diagnostics.
 
+<!-- builtin -->
 **What your solver can use** — exactly the files in `js/solver-env.js`, loaded the same way in the app's
 worker, the runner and the scorer: `RF.V` (vectors), `RF.Geo`, `RF.Source`, `RF.Engine`, `RF.Solver`
 (tile model, flux helpers), `RF.Photometry` (peak, ceilings, throw), `RF.Solvers` (incl. the default
@@ -74,6 +80,15 @@ const { surfaces, intent, report } = RF.ModeA.build(plan);   // build(plan(scene
 ```
 
 `scene` here is `{ source, target, envelope, modeA: { paint, budget: input.limits.maxFacets, facetType, reflectivity: input.limits.reflectivity, minDistance } }`.
+<!-- /builtin -->
+<!-- workspace-only:
+**What your solver can use**: exactly the files in `js/solver-env.js`, loaded the same way in the app's worker,
+the runner and the scorer: `RF.V` (vectors), `RF.Geo` (surfaces, envelope tests: `envInside`, `envInterval`),
+`RF.Source` (the LED: `frame`, sampling), `RF.Engine` (target frame and cells: `targetFrame`, `designFrame`,
+`cellCenter`, `toPaintGrid`), `RF.Photometry` (fidelity, peak, ceilings) and `RF.Solvers`. In this task
+**`solve()` may not trace rays**: `tools.trace` and the engine's tracing functions throw inside `solve()` (a
+solver id ending in `-auto`, the optional tuner, is exempt). Trace from the runner while you develop.
+-->
 Anything else in `js/` is the app and is not available to a solver.
 
 ## What the app checks and scores (not you)

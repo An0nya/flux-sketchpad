@@ -102,6 +102,7 @@
   function analyze(scene, ctx) {
     ctx = ctx || {};
     const items = [];
+    if (!RF.Solver) return { items, binding: false, summary: 'Physical-limits check unavailable in this build (it uses the built-in solver\u2019s tile model).' };   // e.g. a benchmark workspace
     const info = RF.Solver.paintInfo(scene), T = info.T, res = T.res, cell = 2 * T.half / res;
     const src = scene.source, S = src.pos;
     const srcSize = RF.Source.extentSize(src);

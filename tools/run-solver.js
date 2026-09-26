@@ -2,7 +2,7 @@
 // Headless solver runner: load a solver file, solve the built-in scenes through the SAME host path as the
 // app (isolated solve → verify → apply → trace → score), print the numbers.  For developing solvers.
 //   node tools/run-solver.js examples/solver-example.js [--rays 1000000] [--scenes default,test]
-//        [--budget 100] [--settings '{"minDistance":10}'] [--scaling] [--json]
+//        [--budget 100] [--settings '{"minDistance":10}'] [--scaling] [--json] [--static]
 // The solver runs in a worker thread that loads exactly js/solver-env.js's list (the same RF the app's
 // browser worker gives it); verification and scoring run here, in a separate heap.
 // --budget sets the user's facet cap (input.limits.maxFacets, default 100 on every scene).
@@ -27,17 +27,26 @@ const { parentPort, workerData } = require('worker_threads'), fs = require('fs')
 const js = (f) => { const p = path.join(workerData.root, 'js', f + '.js'); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename: p }); };
 js('solver-env'); for (const f of globalThis.RF_SOLVER_ENV) js(f);
 const RF = globalThis.RF, before = new Set(RF.Solvers.list().map((d) => d.id));
+// --static: a static algorithm may not trace inside solve().  Wrap every tracing entry point BEFORE the solver loads
+// (a reference it saves at load time is the wrapper); a solver id ending in -auto (a tuner) is exempt.
+let inStatic = false;
+if (workerData.static) for (const [obj, names] of [[RF.Engine, ['runSync', 'step', 'traceRange', 'probeRay', 'retrace', 'occlusion', 'facetLosses']], [RF.Solvers, ['trace', 'runSync', 'runAsync']]])
+  for (const k of names) { const f = obj[k]; if (typeof f === 'function') obj[k] = function () { if (inStatic) throw new Error('tracing is not allowed inside solve() in this task: write a static algorithm. Trace from the runner while you develop; only a solver whose id ends in -auto may trace.'); return f.apply(this, arguments); }; }
 parentPort.on('message', async (m) => {
   try {
     if (m.type === 'load') { const ids = [], reg = RF.Solvers.register; RF.Solvers.register = (def) => { const id = reg(def); ids.push(id); return id; };   // what THIS file registers, even an id already loaded (e.g. a copy of spoke)
       try { vm.runInThisContext(m.src, { filename: m.name }); } finally { RF.Solvers.register = reg; } const d = [...new Set(ids)].map((id) => RF.Solvers.get(id)); parentPort.postMessage({ type: 'loaded', defs: d.map((x) => ({ id: x.id, name: x.name, version: x.version, modes: x.modes, settings: x.settings, declaresLimits: x.declaresLimits })) }); return; }
     const def = RF.Solvers.get(m.id); let rays = 0;
     const tools = { progress() {}, budget: m.budget, scene: m.problem, trace: (s, o) => { rays += Math.max(1, (o && o.rays) | 0 || 20000); if (rays > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays + ')'); return RF.Solvers.trace(m.problem, s, o); } };
-    const t0 = process.hrtime.bigint(), out = await def.solve(m.input, m.settings, tools);
+    inStatic = !!workerData.static && !/-auto$/.test(m.id);
+    let out; const t0 = process.hrtime.bigint();
+    try { out = await def.solve(m.input, m.settings, tools); } finally { inStatic = false; }
     parentPort.postMessage({ type: 'done', output: out, ms: Number(process.hrtime.bigint() - t0) / 1e6, rays });
   } catch (e) { parentPort.postMessage({ type: 'error', message: String(e && e.stack || e) }); }
 });`;
-const w = new Worker(WORKER, { eval: true, workerData: { root: ROOT } });
+const STATIC_DEFAULT = false;   // benchmark workspaces set this to true
+const STATIC = args.includes('--static') || (STATIC_DEFAULT && !args.includes('--no-static'));
+const w = new Worker(WORKER, { eval: true, workerData: { root: ROOT, static: STATIC } });
 const ask = (msg, ms) => new Promise((res) => {
   const t = setTimeout(() => { w.terminate(); res({ type: 'error', message: 'solver ran over ' + ms + ' ms and was stopped' }); }, ms);
   w.once('message', (d) => { clearTimeout(t); res(d); }); w.postMessage(msg);
@@ -73,6 +82,7 @@ const problemOf = (sc) => ({ source: sc.source, target: sc.target, envelope: sc.
     }
     rows.push(row);
     if (!asJson) {
+      if (STATIC && !/-auto$/.test(def.id) && row.solveMs > 1000 * Math.max(1, BUDGET / 100)) console.log('\n⚠️  ' + name + ': solve took ' + row.solveMs + ' ms. A static algorithm is normally milliseconds; the scorer flags solves over ~1 s per 100 facets for review.');
       console.log('\n' + name + ' · ' + row.solver + ' · solve ' + row.solveMs + ' ms' + (row.traceRays ? ' (' + row.traceRays.toLocaleString() + ' rays of tracing)' : '') + ' · ' + JSON.stringify(settings));
       console.log('  verified: ' + (f.errors.length ? 'UNUSABLE — ' + f.errors[0] : f.placed + ' placed' + (f.dropped !== null ? ', ' + f.dropped + ' unplaced intents' : '') + ', outside envelope ' + row.facts.outsideEnvelope + ', inside LED clearance ' + row.facts.insideClearance + (row.facts.intentErrors ? ', intent errors ' + row.facts.intentErrors : '')));
       if (row.score) { const q = row.score;

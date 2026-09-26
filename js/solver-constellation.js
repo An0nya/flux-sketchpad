@@ -4,6 +4,9 @@
  * the envelope wall, `fill` of their grid spacing wide.  The target looks like a constellation of stamps: it catches
  * little of the LED's light, the facets block each other, and it can only light as many cells as it has facets.
  */
+(function (root) {
+  'use strict';
+  const RF = root.RF;   // wrapped like the other environment files: workers load these before their own `const RF`
 RF.Solvers.register({
   id: 'constellation', name: 'Constellation (demo: a poor solution)', version: '1.0', modes: ['paint'],
   settings: [
@@ -38,3 +41,4 @@ RF.Solvers.register({
     return { surfaces, intent, notes: [surfaces.length + ' tiny facets, one LED image per painted cell'] };
   },
 });
+})(typeof globalThis !== 'undefined' ? globalThis : this);

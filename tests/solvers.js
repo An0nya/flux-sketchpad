@@ -58,6 +58,13 @@ for (const k of [15, 3]) {
   ok('trace(): blocked, shadowed, peak cd and % of ceiling match the app\'s scoring', t.blocked === o.blocked && t.shadowed === o.shadowed && t.peakCd === ph.peakCd && t.ofCeiling === ph.ofDesign,
     'blocked ' + (100 * t.blocked).toFixed(2) + '%, shadowed ' + (100 * t.shadowed).toFixed(2) + '%, peak ' + Math.round(t.peakCd) + ' cd, ' + (100 * t.ofCeiling).toFixed(1) + '% of ceiling'); }
 
+// the solver environment loads the way the WORKERS load it (files first, their own `const RF` after): an environment file
+// using a bare `RF` global crashed every worker, which the in-process loader never showed (2026-09-26 regression)
+{ const cp = require('child_process'), path = require('path'), root = path.join(__dirname, '..'); let ok1 = true, msg = '';
+  try { const out = cp.execFileSync(process.execPath, [path.join(root, 'tools/run-solver.js'), path.join(root, 'examples/solver-example.js'), '--scenes', 'test', '--rays', '2000'], { encoding: 'utf8', stdio: 'pipe', timeout: 120000 }); msg = (out.split('\n').find((l) => /verified/.test(l)) || '').trim(); }
+  catch (e) { ok1 = false; msg = String(e.stderr || e.message).split('\n').find((l) => /Error/.test(l)) || 'crashed'; }
+  ok('the runner\'s worker loads the whole solver environment and solves (as the app\'s worker does)', ok1, msg); }
+
 // trace() returns the headline score (paint fidelity) exactly as the app and scorer compute it; o.paint overrides
 { const st = C.createStore(RF.State.testScene()); C.regenerateA(st); const sc = st.scene, surfs = sc.groups.A.surfaces;
   const problem = { source: sc.source, target: sc.target, envelope: sc.envelope, sim: sc.sim, modeA: { paint: sc.modeA.paint } }, t = S.trace(problem, surfs, { rays: 50000 });

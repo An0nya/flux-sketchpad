@@ -11,6 +11,8 @@
   function spawn() {
     worker = new Worker('js/solve-worker.js');
     worker.onmessage = (e) => { if (pending) pending(e.data); };
+    // a worker that crashes (e.g. an environment file throwing on load) must fail the request, not hang it
+    worker.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); const why = 'solver worker crashed: ' + ((e && e.message) || 'unknown error'); worker = null; if (cancel) cancel(why); };
   }
   function ask(msg, onProgress, ms) {
     if (!worker) spawn();
