@@ -82,6 +82,17 @@ for (const k of [15, 3]) {
   const v5 = S.verify(sc, { surfaces: 'lots' });
   ok('verifier flags a surface outside the envelope', v1.violations.envelope.includes('far'));
   ok('verifier flags a surface inside the keep-out', v2.violations.keepOut.includes('near'));
+  // bracket: clearance just under the closest REAL surface point must pass, just over it must flag
+  { const sd = RF.State.defaultScene(); sd.modeA.minDistance = 0; const gd = RF.ModeA.generate(RF.U.deepCopy(sd)), G = RF.Geo.compile(gd.surfaces), Sp = sd.source.pos;
+    let dmin = Infinity;
+    for (let k = 0; k < G.n; k++) for (const poly of RF.Geo.outline(G, k)) {
+      for (const q of poly) dmin = Math.min(dmin, RF.V.dist(q, Sp));
+      const c = RF.V.mul(poly.reduce((a, q) => RF.V.add(a, q), [0, 0, 0]), 1 / poly.length);
+      for (let i = 0; i < poly.length; i++) for (let a = 0; a <= 8; a++) for (let b = 0; a + b <= 8; b++) {
+        const q = RF.V.add(c, RF.V.add(RF.V.mul(RF.V.sub(poly[i], c), a / 8), RF.V.mul(RF.V.sub(poly[(i + 1) % poly.length], c), b / 8))), d = RF.V.norm(RF.V.sub(q, Sp));
+        const t = RF.Geo.intersect(G.D, G.poly, k, Sp[0], Sp[1], Sp[2], d[0], d[1], d[2], 1e-9, Infinity); if (t >= 0) dmin = Math.min(dmin, t); } }
+    const at = (f) => { const x = RF.U.deepCopy(sd); x.envelope.keepOut = dmin * f; return S.verify(x, { surfaces: gd.surfaces }).violations.keepOut.length; };
+    ok('keep-out bracket: no false alarm just under the closest real surface point, a flag just over it', at(1 - 1e-4) === 0 && at(1.002) > 0, 'closest real surface ' + dmin.toFixed(4) + ' mm: at −0.01% ' + at(1 - 1e-4) + ' flagged, at +0.2% ' + at(1.002) + ' flagged'); }
   { const sb = RF.U.deepCopy(sc); sb.modeA.budget = 3; const vb = S.verify(sb, { surfaces: good.surfaces.slice(0, 5) }), vok = S.verify(sb, { surfaces: good.surfaces.slice(0, 3) });
     ok('verifier flags more facets than the budget (and not exactly the budget)', vb.violations.budget && vb.violations.budget.placed === 5 && !vok.violations.budget); }
   ok('verifier rejects repeated ids and non-array surfaces', v3.errors.length > 0 && v5.errors.length > 0);

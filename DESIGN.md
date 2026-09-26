@@ -348,3 +348,11 @@ Interface gaps surfaced by the model (fix for the next run, keep the pinned comm
 3. **`RF.ModeA` is sealed** (returns only finished facets), so reusing its partition means re-implementing it.
    Consider exposing its intermediate items / zones.
 The model's early "no change" stall was its own bug (fitting model→paint instead of measurement→paint).
+- ⚠️ **Retraction (09-25):** I reported trial 1's low-beam scene as a real clearance failure ("its re-aiming
+  moves facets too close"). **Wrong** — both flags were verifier false alarms: real surfaces at 5.0037 / 5.0005
+  mm vs 5 mm; only flat chord points whose LED ray MISSES the mirror dipped to ~4.99. The model found this
+  itself and added a 0.3% margin to pass. Verifier now measures only real surface points (outline points +
+  ray hits); a bracket test (just under / just over the closest real point) fails on the old verifier (it
+  false-flags 2 of spoke's own facets) and passes now. The trial is still scored at its pinned commit, whose
+  verifier has the false alarm — read its clearance flags with that in mind.
+- Loaded solvers hid the shared settings only after `e69fdeb`; budget-over is now verified in the app too.

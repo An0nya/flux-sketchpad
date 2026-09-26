@@ -90,16 +90,19 @@
         for (const p of poly) if (!RF.Geo.envInside(env, p, 1e-6 * Math.max(...env.half))) outE = true;   // box is convex: corners suffice for flat patches
         // the keep-out sphere is NOT convex from outside: a patch can dip into it between its edges, so test
         // interior points too.  Sample a fan of triangles from the centroid, then measure on the REAL surface:
-        // a ray from the LED through the sample hits the patch at exactly the distance that matters (the
-        // chord alone would sit closer than a concave mirror and raise false alarms).
+        // a ray from the LED through the sample hits the patch at exactly the distance that matters.  A ray
+        // that MISSES has no mirror in that direction, so it is not a violation — the flat chord point itself
+        // is not part of the mirror (counting it raised false alarms by ~0.01 mm on curved facets; found by
+        // benchmark trial 1).  The outline points lie on the surface and are tested directly.
         if (keep > 0) {
+          for (const p of poly) if (V.dist(p, S) < keep * (1 - 1e-6)) outK = true;
           const c = V.mul(poly.reduce((a, q) => V.add(a, q), [0, 0, 0]), 1 / poly.length), M = 4;
           for (let i = 0; i < poly.length && !outK; i++) {
             const p1 = poly[i], p2 = poly[(i + 1) % poly.length];
             for (let a = 0; a <= M && !outK; a++) for (let b = 0; a + b <= M; b++) {
               const q = V.add(c, V.add(V.mul(V.sub(p1, c), a / M), V.mul(V.sub(p2, c), b / M))), dq = V.norm(V.sub(q, S));
               const t = RF.Geo.intersect(G.D, G.poly, k, S[0], S[1], S[2], dq[0], dq[1], dq[2], 1e-9, Infinity);
-              if ((t >= 0 ? t : V.dist(q, S)) < keep * (1 - 1e-6)) { outK = true; break; }
+              if (t >= 0 && t < keep * (1 - 1e-6)) { outK = true; break; }
             }
           }
         }
