@@ -14,5 +14,6 @@ run('metrics (tests/metrics.js)', ['tests/metrics.js']);
 run('layout (tests/layout.js)', ['tests/layout.js']);
 run('attribution (tests/attribution.js)', ['tests/attribution.js']);
 run('photometry (tests/photometry.js)', ['tests/photometry.js']);
+run('solvers (tests/solvers.js)', ['tests/solvers.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

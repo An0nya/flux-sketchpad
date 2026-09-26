@@ -192,6 +192,8 @@
     zones.forEach((z, zi) => { if (z && !z.empty) for (const c of z.cells) if (c.w > share[c.idx]) { share[c.idx] = c.w; zoneOf[c.idx] = zi; } });
     report.zones = zones.map((z) => ({ facet: null, flux: z && !z.empty ? z.W / info.sum : 0, aim: z && !z.empty ? z.aim : null }));
     report.zoneOf = zoneOf; report.zoneRes = info.res;
+    // standard per-facet intent (solver interface): each zone's own cells, shared cells split by weight
+    const intent = zones.map((z) => ({ facet: null, cells: z && !z.empty ? z.cells.map((c) => [c.idx, c.w]) : [] }));
 
     // ---- build facets
     const surfaces = [];
@@ -236,7 +238,7 @@
       if (!built) { dropped++; return; }
       if (built.tile && built.tile.clamped) clamped++;
       const id = 'A' + idx;
-      report.zones[idx].facet = id;
+      report.zones[idx].facet = id; intent[idx].facet = id;
       surfaces.push({
         type: 'facet', id, group: 'A', P: built.P, S0: S.slice(), Z, flat: !curved, di: curved ? built.di : null,
         clip: { kind: 'poly', pts3: built.pts3 }, optics: { interaction: 'reflect', reflectivity: refl, twoSided: false },
@@ -251,7 +253,7 @@
     report.frame = { w0: F.w0, e1: F.e1, e2: F.e2, Zc };
     if (dropped) report.warnings.push(dropped + ' facet(s) could not be placed inside the envelope and were dropped.');
     if (clamped) report.warnings.push(clamped + ' zone(s) are smaller than the source image through their facet (minimum-feature limit).');
-    return { surfaces, report };
+    return { surfaces, report, intent };
   }
 
   RF.ModeA = { generate };

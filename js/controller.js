@@ -35,12 +35,27 @@
     };
     return store;
   }
+  // Paint mode goes through the solver interface (js/solvers.js): the registered solver makes the
+  // geometry, the host verifies it.  reports.A keeps its old shape for the panels: the solver's own
+  // extras, overridden by host-verified facts, plus the standard intent and what was solved.
   function regenerateA(store) {
-    const g = RF.ModeA.generate(store.scene);
-    store.scene.groups.A.surfaces = g.surfaces;
-    store.reports.A = g.report;
+    const sc = store.scene, r = RF.Solvers.runSync(sc);
+    const out = r.output || {}, f = r.facts, extras = out.extras || {};
+    sc.groups.A.surfaces = f.errors.length ? [] : out.surfaces;
+    sc.solve = r.meta;
+    const rep = Object.assign({}, extras, {
+      placed: f.placed, facts: f, intent: out.intent || null, intentIndex: out.intent ? RF.Solvers.intentIndex(out.intent, sc.target.res) : null,
+      solver: r.meta, solveMs: r.ms, warnings: (out.notes || []).slice(),
+    });
+    if (f.dropped !== null) rep.dropped = f.dropped;
+    if (f.errors.length) { rep.error = 'Solver ' + r.meta.id + ' returned unusable output: ' + f.errors[0]; rep.ok = false; }
+    const v = f.violations;
+    if (v.envelope.length) rep.warnings.push(v.envelope.length + ' surface(s) reach outside the envelope (' + v.envelope.slice(0, 3).join(', ') + (v.envelope.length > 3 ? '…' : '') + ').');
+    if (v.keepOut.length) rep.warnings.push(v.keepOut.length + ' surface(s) enter the keep-out around the LED (' + v.keepOut.slice(0, 3).join(', ') + (v.keepOut.length > 3 ? '…' : '') + ').');
+    if (f.intentErrors.length) rep.warnings.push('Solver intent is malformed: ' + f.intentErrors[0]);
+    store.reports.A = rep;
     store.dirty.delete('A');
-    return g.report;
+    return rep;
   }
 
   // Raise bounce cap visibly when a preset needs it (never silently)
