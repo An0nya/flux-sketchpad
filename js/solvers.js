@@ -7,7 +7,8 @@
  *
  *   register({ id, name, version, modes: ['paint'|'stamps'], settings: [field…], solve(input, settings, tools) })
  *     field  = { key, label, type: 'number'|'range'|'select'|'checkbox', min, max, step, options, default, help }
- *     input  = { source, envelope, target, paint: { res, cells }, stamps, seed }   (deep copy; mutate freely)
+ *     input  = { source, envelope, target, paint: { res, cells }, stamps, seed, limits: { maxFacets, reflectivity } }
+ *              (deep copy; mutate freely).  limits are the USER's: a solver reads them, never declares them.
  *     tools  = { trace(surfaces, { rays, seed, attribution }), progress(pct), budget: { rays, ms } }
  *     output = { surfaces, intent?: [{ facet: id|null, cells: [[paintCell, weight]…] }], notes?: [..], extras? }
  *   intent is optional, per facet, overlap allowed; facet: null = an intent the solver couldn't place.
@@ -26,7 +27,10 @@
     if (typeof def.solve !== 'function') bad('needs solve(input, settings, tools)');
     if (!Array.isArray(def.modes) || !def.modes.length || def.modes.some((m) => m !== 'paint' && m !== 'stamps')) bad("modes must list 'paint' and/or 'stamps'");
     for (const f of def.settings || []) if (!f.key || !TYPES.includes(f.type) || f.default === undefined) bad('setting ' + (f.key || '?') + ' needs key, a type in ' + TYPES.join('/') + ' and a default');
-    reg.set(def.id, Object.assign({ name: def.id, version: '0', settings: [] }, def));
+    // declaring a limit as a setting is recorded, not refused (older solvers did it): the app never shows those
+    // keys and always fills them from input.limits; the runner and the scorer report it
+    const declaresLimits = LIMIT_KEYS.filter((k) => (def.settings || []).some((f) => f.key === k));
+    reg.set(def.id, Object.assign({ name: def.id, version: '0', settings: [] }, def, { declaresLimits }));
     return def.id;
   }
   const get = (id) => reg.get(id) || null;
@@ -49,13 +53,19 @@
   // Which solver a scene uses, and its settings.  The default solver's settings live in scene.modeA
   // (its sidebar controls predate the registry); any other solver's in scene.solverSettings[id].
   function current(scene) { const id = (scene.solve && scene.solve.id) || DEFAULT_ID; return get(id) ? id : DEFAULT_ID; }
-  // The required settings are SHARED: every solver reads them from the scene's Paint controls, so switching
-  // solvers compares like with like.  A solver's other settings live in scene.solverSettings[id].
+  // LIMITS are the user's, not the solver's: the facet budget and the mirror's reflectivity arrive in
+  // input.limits and the host verifies the budget.  A solver can't declare them as settings (register
+  // refuses), so no solver can grow its own facet-count control.  Legacy solvers (before 09-25 late) that
+  // declared 'budget' / 'reflectivity' still load: those keys are filled from the limits and never shown.
+  // SHARED settings are solver settings that default from the Paint controls, so switching solvers compares
+  // like with like (minDistance: a preference a tuner may vary).  Other settings: scene.solverSettings[id].
+  const LIMIT_KEYS = ['budget', 'reflectivity'];
   const SHARED = ['budget', 'minDistance', 'reflectivity', 'facetType'];
+  const REQUIRED = ['minDistance'];
   const sharedOf = (scene) => ({ budget: scene.modeA.budget, minDistance: scene.modeA.minDistance || 0, reflectivity: scene.modeA.reflectivity, facetType: scene.modeA.facetType });
   function settingsOf(scene, id) {
     const def = get(id), own = (scene.solverSettings && scene.solverSettings[id]) || {}, sh = sharedOf(scene), o = Object.assign({}, own);
-    for (const k of SHARED) if (def.settings.some((f) => f.key === k)) o[k] = sh[k];
+    for (const k of SHARED) if (def.settings.some((f) => f.key === k)) o[k] = sh[k];   // limits too, for solvers that (wrongly) declare them
     return sanitize(def, o);
   }
   // the problem half of the scene: all a solver may see
@@ -63,6 +73,7 @@
     return RF.U.deepCopy({
       source: scene.source, envelope: scene.envelope, target: scene.target,
       paint: { res: scene.target.res, cells: scene.modeA.paint }, stamps: (scene.modeB && scene.modeB.stamps) || [], seed: scene.sim.seed | 0,
+      limits: { maxFacets: Math.max(1, scene.modeA.budget | 0), reflectivity: scene.modeA.reflectivity },
     });
   }
 
@@ -181,5 +192,5 @@
     return res;
   }
 
-  RF.Solvers = { register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID, SHARED };
+  RF.Solvers = { register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

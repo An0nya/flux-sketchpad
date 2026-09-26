@@ -8,7 +8,7 @@ gamed — what was placed, whether it fits, how good the light is — is compute
 Start from `examples/solver-example.js`. Develop and score headless:
 
 ```bash
-node tools/run-solver.js path/to/my-solver.js --scaling
+node tools/run-solver.js path/to/my-solver.js --scaling          # --budget N sets the facet cap (default 100)
 ```
 
 In the app: sidebar → Reference & debug → Solver → **Load solver file…**
@@ -19,8 +19,9 @@ In the app: sidebar → Reference & debug → Solver → **Load solver file…**
 RF.Solvers.register({
   id: 'my-solver', name: 'My solver', version: '0.1',
   modes: ['paint'],                 // 'paint' (a painted target) and/or 'stamps' (explicit per-facet requests)
-  settings: [                       // rendered in the sidebar; types: number | range | select | checkbox
-    { key: 'budget', label: 'Facet budget', type: 'range', min: 1, max: 2000, step: 1, default: 100, help: '…' },
+  settings: [                       // YOUR knobs, rendered in the sidebar; types: number | range | select | checkbox
+    { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },  // required
+    { key: 'passes', label: 'Refinement passes', type: 'range', min: 0, max: 8, step: 1, default: 3 },       // e.g.
   ],
   solve(input, settings, tools) {   // may be async; deterministic for (input, settings, seed)
     return { surfaces, intent, notes };
@@ -28,7 +29,11 @@ RF.Solvers.register({
 });
 ```
 
-**input** (a deep copy — mutate freely): `source` (pos, axis, kind, shape, w/h/radius, dist, power in lm),
+**limits are the user's, not yours:** `input.limits = { maxFacets, reflectivity }` — never place more than
+`maxFacets` (fewer is fine), apply `reflectivity` to every facet. Do **not** declare `budget` or
+`reflectivity` as settings: the app ignores such settings, fills them from the limits, and the runner warns.
+
+**input** (a deep copy — mutate freely): `limits`, `source` (pos, axis, kind, shape, w/h/radius, dist, power in lm),
 `envelope` (box `center`, `half`; `keepOut` = the **LED clearance**, a hard limit), `target` (distance,
 size, res, tilt; see `RF.Engine.targetFrame`), `paint: { res, cells }` (res² relative weights, row-major,
 v up), `stamps`, `seed`.
@@ -61,7 +66,7 @@ const plan = RF.ModeA.plan(scene);   // spokes, equal-flux direction cells (plan
 const { surfaces, intent, report } = RF.ModeA.build(plan);   // build(plan(scene)) ≡ generate(scene)
 ```
 
-`scene` here is `{ source, target, envelope, modeA: { paint, budget, facetType, reflectivity, minDistance } }`.
+`scene` here is `{ source, target, envelope, modeA: { paint, budget: input.limits.maxFacets, facetType, reflectivity: input.limits.reflectivity, minDistance } }`.
 Anything else in `js/` is the app and is not available to a solver.
 
 ## What the app checks and scores (not you)

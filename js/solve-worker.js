@@ -5,7 +5,7 @@
 'use strict';
 importScripts('solver-env.js'); importScripts(...self.RF_SOLVER_ENV.map((f) => f + '.js'));   // the same list the runner and scorer use
 const RF = self.RF;
-const meta = (d) => ({ id: d.id, name: d.name, version: d.version, modes: d.modes, settings: d.settings });
+const meta = (d) => ({ id: d.id, name: d.name, version: d.version, modes: d.modes, settings: d.settings, declaresLimits: d.declaresLimits });
 self.onmessage = async (e) => {
   const m = e.data;
   try {

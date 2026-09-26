@@ -7,15 +7,13 @@
 RF.Solvers.register({
   id: 'example-feedback', name: 'Example: spoke + 1 feedback pass', version: '0.1', modes: ['paint'],
   settings: [
-    { key: 'budget', label: 'Facet budget', type: 'range', min: 1, max: 500, step: 1, default: 100 },
     { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0, help: 'keep facets at least this far from the LED (0 = whole envelope)' },
-    { key: 'reflectivity', label: 'Reflectivity', type: 'number', min: 0, max: 1, step: 0.01, default: 0.9 },
     { key: 'minOnTarget', label: 'Drop facets landing under', type: 'number', min: 0, max: 1, step: 0.05, default: 0.3, help: 'share of a facet’s caught light that must land' },
     { key: 'feedback', label: 'Feedback pass', type: 'checkbox', default: true },
   ],
   solve(input, s, tools) {
     const scene = { source: input.source, target: input.target, envelope: input.envelope,
-      modeA: { paint: input.paint.cells, budget: s.budget, facetType: 'curved', reflectivity: s.reflectivity, minDistance: s.minDistance } };
+      modeA: { paint: input.paint.cells, budget: input.limits.maxFacets, facetType: 'curved', reflectivity: input.limits.reflectivity, minDistance: s.minDistance } };   // limits: the user's, read-only
     const g = RF.ModeA.generate(scene);
     tools.progress(0.5);
     let surfaces = g.surfaces, intent = g.intent, notes = [];
@@ -23,7 +21,7 @@ RF.Solvers.register({
       const t = tools.trace(surfaces, { rays: 20000, attribution: true });   // same seed every call: common random numbers
       const perRay = input.source.power / 20000, caught = {};
       // expected light per facet ≈ its flux share; landed = what attribution says reached the target
-      for (const f of surfaces) caught[f.id] = (f.info && f.info.flux || 0) * input.source.power * s.reflectivity;
+      for (const f of surfaces) caught[f.id] = (f.info && f.info.flux || 0) * input.source.power * input.limits.reflectivity;
       const keep = new Set(surfaces.filter((f) => !(caught[f.id] > 5 * perRay) || (t.perFacet[f.id] || 0) >= s.minOnTarget * caught[f.id]).map((f) => f.id));
       notes.push('feedback: dropped ' + (surfaces.length - keep.size) + ' facet(s) landing under ' + Math.round(100 * s.minOnTarget) + '% (trace noise ±' + Math.round(100 * t.noise) + '%/cell)');
       surfaces = surfaces.filter((f) => keep.has(f.id));

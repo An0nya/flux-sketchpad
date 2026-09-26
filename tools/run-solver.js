@@ -2,10 +2,11 @@
 // Headless solver runner: load a solver file, solve the built-in scenes through the SAME host path as the
 // app (isolated solve → verify → apply → trace → score), print the numbers.  For developing solvers.
 //   node tools/run-solver.js examples/solver-example.js [--rays 200000] [--scenes default,test]
-//        [--settings '{"budget":80}'] [--scaling] [--json]
+//        [--budget 100] [--settings '{"minDistance":10}'] [--scaling] [--json]
 // The solver runs in a worker thread that loads exactly js/solver-env.js's list (the same RF the app's
 // browser worker gives it); verification and scoring run here, in a separate heap.
-// --scaling times solve() at facet budgets 50/100/200/400 (if the solver has a 'budget' setting) and fits
+// --budget sets the user's facet cap (input.limits.maxFacets, default 100 on every scene).
+// --scaling times solve() at facet budgets 50/100/200/400 and fits
 // the log-log slope: < 2 ⇒ sub-quadratic.
 'use strict';
 const fs = require('fs'), path = require('path');
@@ -13,10 +14,10 @@ const { Worker } = require('worker_threads');
 const ROOT = path.join(__dirname, '..');
 const { load } = require('../tests/load.js'); const RF = load(); const E = RF.Engine, S = RF.Solvers;
 const args = process.argv.slice(2), opt = (k, d) => { const i = args.indexOf('--' + k); return i < 0 ? d : args[i + 1]; };
-const VALUED = ['--rays', '--scenes', '--settings', '--ms'];
+const VALUED = ['--rays', '--scenes', '--settings', '--ms', '--budget'];
 const file = args.find((a, i) => !a.startsWith('--') && !VALUED.includes(args[i - 1]));
 if (!file) { console.error('usage: node tools/run-solver.js <solver.js> [--rays N] [--scenes default,test] [--settings JSON] [--ms N] [--scaling] [--json]'); process.exit(2); }
-const N = +opt('rays', 200000), names = opt('scenes', 'default,test').split(','), extra = JSON.parse(opt('settings', '{}')), MS = +opt('ms', 60000), asJson = args.includes('--json');
+const BUDGET = +opt('budget', 100), N = +opt('rays', 200000), names = opt('scenes', 'default,test').split(','), extra = JSON.parse(opt('settings', '{}')), MS = +opt('ms', 60000), asJson = args.includes('--json');
 const SCENES = { default: () => RF.State.defaultScene(), test: () => RF.State.testScene() };
 const pct = (x) => (x === null || x === undefined ? '—' : (100 * x).toFixed(1) + '%');
 
@@ -28,7 +29,7 @@ js('solver-env'); for (const f of globalThis.RF_SOLVER_ENV) js(f);
 const RF = globalThis.RF, before = new Set(RF.Solvers.list().map((d) => d.id));
 parentPort.on('message', async (m) => {
   try {
-    if (m.type === 'load') { vm.runInThisContext(m.src, { filename: m.name }); const d = RF.Solvers.list().filter((x) => !before.has(x.id)); parentPort.postMessage({ type: 'loaded', defs: d.map((x) => ({ id: x.id, name: x.name, version: x.version, modes: x.modes, settings: x.settings })) }); return; }
+    if (m.type === 'load') { vm.runInThisContext(m.src, { filename: m.name }); const d = RF.Solvers.list().filter((x) => !before.has(x.id)); parentPort.postMessage({ type: 'loaded', defs: d.map((x) => ({ id: x.id, name: x.name, version: x.version, modes: x.modes, settings: x.settings, declaresLimits: x.declaresLimits })) }); return; }
     const def = RF.Solvers.get(m.id); let rays = 0;
     const tools = { progress() {}, budget: m.budget, scene: m.problem, trace: (s, o) => { rays += Math.max(1, (o && o.rays) | 0 || 20000); if (rays > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays + ')'); return RF.Solvers.trace(m.problem, s, o); } };
     const t0 = process.hrtime.bigint(), out = await def.solve(m.input, m.settings, tools);
@@ -46,12 +47,17 @@ const problemOf = (sc) => ({ source: sc.source, target: sc.target, envelope: sc.
   const d0 = await ask({ type: 'load', src: fs.readFileSync(path.resolve(file), 'utf8'), name: file }, 20000);
   if (d0.type !== 'loaded' || !d0.defs.length) { console.error(file + ': ' + (d0.message || 'did not call RF.Solvers.register(...)')); w.terminate(); process.exit(2); }
   const def = d0.defs.find((x) => x.modes.includes('paint')) || d0.defs[0];
-  const settingsFor = (more) => S.sanitize(def, Object.assign(S.defaults(def), extra, more || {}));
+  if (def.declaresLimits && def.declaresLimits.length && !asJson) console.log('⚠️  ' + def.id + " declares " + def.declaresLimits.map((k) => "'" + k + "'").join(' and ') + ' as settings. Those are the USER\'s limits: they are ignored as settings and filled from input.limits — read input.limits.maxFacets / input.limits.reflectivity instead.');
+  const missing = S.REQUIRED.filter((k) => !def.settings.some((f) => f.key === k));
+  if (missing.length && !asJson) console.log('⚠️  missing required setting(s): ' + missing.join(', '));
+  const sceneFor = (mk, budget) => { const sc = mk(); sc.modeA.budget = budget; sc.solve = { id: def.id }; return sc; };
+  // the solver's own defaults + --settings; a limit an older solver declares as a setting is forced to the cap
+  const settingsFor = (sc) => { const o = Object.assign(S.defaults(def), extra); if (def.settings.some((f) => f.key === 'budget')) o.budget = sc.modeA.budget; if (def.settings.some((f) => f.key === 'reflectivity')) o.reflectivity = sc.modeA.reflectivity; return S.sanitize(def, o); };
   const rows = [];
   for (const name of names) {
     if (!SCENES[name]) { console.error('unknown scene ' + name + ' (have ' + Object.keys(SCENES).join(', ') + ')'); process.exit(2); }
-    const sc = SCENES[name](); sc.solve = { id: def.id };
-    const settings = settingsFor(), d = await ask({ type: 'solve', id: def.id, input: S.inputOf(sc), settings, problem: problemOf(sc), budget: { ms: MS, rays: 2e7 } }, MS);
+    const sc = sceneFor(SCENES[name], BUDGET);
+    const settings = settingsFor(sc), d = await ask({ type: 'solve', id: def.id, input: S.inputOf(sc), settings, problem: problemOf(sc), budget: { ms: MS, rays: 2e7 } }, MS);
     const row = { scene: name, solver: def.id + ' v' + def.version, settings };
     if (d.type !== 'done') { row.error = d.message; rows.push(row); if (!asJson) console.log('\n' + name + ' · ' + row.solver + '\n  ERROR ' + d.message); continue; }
     const out = d.output || {}, f = S.verify(sc, out);
@@ -74,9 +80,9 @@ const problemOf = (sc) => ({ source: sc.source, target: sc.target, envelope: sc.
       for (const n of row.notes.slice(0, 3)) console.log('  note: ' + n);
     }
   }
-  if (args.includes('--scaling') && def.settings.some((f) => f.key === 'budget')) {
+  if (args.includes('--scaling')) {
     const pts = [];
-    for (const b of [50, 100, 200, 400]) { const sc = RF.State.defaultScene(), d = await ask({ type: 'solve', id: def.id, input: S.inputOf(sc), settings: settingsFor({ budget: b }), problem: problemOf(sc), budget: { ms: MS, rays: 2e7 } }, MS); if (d.type === 'done') pts.push([b, Math.max(0.5, d.ms)]); }
+    for (const b of [50, 100, 200, 400]) { const sc = sceneFor(SCENES.default, b), d = await ask({ type: 'solve', id: def.id, input: S.inputOf(sc), settings: settingsFor(sc), problem: problemOf(sc), budget: { ms: MS, rays: 2e7 } }, MS); if (d.type === 'done') pts.push([b, Math.max(0.5, d.ms)]); }
     if (pts.length === 4) {
       const lx = pts.map((p) => Math.log(p[0])), ly = pts.map((p) => Math.log(p[1])), mx = lx.reduce((a, b) => a + b) / 4, my = ly.reduce((a, b) => a + b) / 4;
       const slope = lx.reduce((a, x, i) => a + (x - mx) * (ly[i] - my), 0) / lx.reduce((a, x) => a + (x - mx) ** 2, 0);

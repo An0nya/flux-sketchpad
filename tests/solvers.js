@@ -65,6 +65,13 @@ for (const k of [15, 3]) {
   const e = RF.ModeA.build(p), f = S.verify(sc, { surfaces: e.surfaces, intent: e.intent });
   ok('an edited plan builds into valid geometry', !f.errors.length && !f.violations.envelope.length && !f.violations.keepOut.length && JSON.stringify(e.surfaces) !== JSON.stringify(g.surfaces), f.placed + ' placed from the edited plan'); }
 
+// limits are the user's: input.limits carries them; the default solver doesn't declare them; a solver that does
+// is recorded (declaresLimits) and its value forced to the limit
+{ const sc = RF.State.defaultScene(); sc.modeA.budget = 37; sc.modeA.reflectivity = 0.8; const inp = S.inputOf(sc);
+  S.register({ id: 'probe-legacy', name: 'p', version: '0', modes: ['paint'], settings: [{ key: 'budget', type: 'number', default: 5 }, { key: 'minDistance', type: 'number', default: 0 }], solve: () => ({ surfaces: [] }) });
+  const lg = S.get('probe-legacy'), st = S.settingsOf(sc, 'probe-legacy'); S.unregister('probe-legacy');
+  ok('input.limits = the user\'s cap + reflectivity; spoke declares neither; a declared limit is recorded and forced', inp.limits.maxFacets === 37 && inp.limits.reflectivity === 0.8 && !S.get('spoke').settings.some((f) => S.LIMIT_KEYS.includes(f.key)) && lg.declaresLimits.join() === 'budget' && st.budget === 37, JSON.stringify(inp.limits)); }
+
 // shared settings: a non-default solver reads budget / minDistance / reflectivity from the Paint controls
 { S.register({ id: 'probe-shared', name: 'p', version: '0', modes: ['paint'], settings: [{ key: 'budget', type: 'number', default: 100 }, { key: 'minDistance', type: 'number', default: 0 }, { key: 'reflectivity', type: 'number', default: 0.9 }, { key: 'own', type: 'number', default: 7 }], solve: () => ({ surfaces: [] }) });
   const sc = RF.State.defaultScene(); sc.modeA.budget = 400; sc.modeA.minDistance = 12; sc.modeA.reflectivity = 0.8; sc.solverSettings = { 'probe-shared': { budget: 100, own: 9 } };
