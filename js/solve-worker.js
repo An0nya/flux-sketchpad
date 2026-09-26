@@ -6,13 +6,17 @@
 importScripts('solver-env.js'); importScripts(...self.RF_SOLVER_ENV.map((f) => f + '.js'));   // the same list the runner and scorer use
 const RF = self.RF;
 const meta = (d) => ({ id: d.id, name: d.name, version: d.version, modes: d.modes, settings: d.settings, declaresLimits: d.declaresLimits });
+const BUILTIN = new Set(RF.Solvers.list().map((d) => d.id));
 self.onmessage = async (e) => {
   const m = e.data;
   try {
     if (m.type === 'load') {
-      const before = new Set(RF.Solvers.list().map((d) => d.id));
-      importScripts(URL.createObjectURL(new Blob([m.src], { type: 'text/javascript' })));
-      const defs = RF.Solvers.list().filter((d) => !before.has(d.id)).map(meta);
+      // record what THIS file registers (loading a new version of an already-loaded id replaces it);
+      // the built-in solvers can't be replaced
+      const ids = [], reg = RF.Solvers.register;
+      RF.Solvers.register = (def) => { if (def && BUILTIN.has(def.id)) throw new Error("'" + def.id + "' is a built-in solver id: pick another"); const id = reg(def); ids.push(id); return id; };
+      try { importScripts(URL.createObjectURL(new Blob([m.src], { type: 'text/javascript' }))); } finally { RF.Solvers.register = reg; }
+      const defs = [...new Set(ids)].map((id) => meta(RF.Solvers.get(id)));
       if (!defs.length) throw new Error('the file did not call RF.Solvers.register(...)');
       self.postMessage({ type: 'loaded', defs });
     } else if (m.type === 'solve') {

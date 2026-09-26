@@ -7,7 +7,7 @@
   'use strict';
   const RF = root.RF;
   const KEY = 'flux/solvers', BUDGET = { ms: 60000, rays: 2e7 };
-  let worker = null, sources = [], pending = null;
+  let worker = null, sources = [], srcIds = [], pending = null, cancel = null;   // srcIds[i] = the solver ids sources[i] registered
   function spawn() {
     worker = new Worker('js/solve-worker.js');
     worker.onmessage = (e) => { if (pending) pending(e.data); };
@@ -15,10 +15,11 @@
   function ask(msg, onProgress, ms) {
     if (!worker) spawn();
     return new Promise((resolve, reject) => {
-      const timer = ms ? setTimeout(() => { pending = null; worker.terminate(); worker = null; reload(); reject(new Error('solver ran over its ' + Math.round(ms / 1000) + ' s budget and was stopped')); }, ms) : 0;
+      const timer = ms ? setTimeout(() => { pending = null; cancel = null; if (worker) worker.terminate(); worker = null; reload(); reject(new Error('solver ran over its ' + Math.round(ms / 1000) + ' s budget and was stopped')); }, ms) : 0;
+      cancel = (why) => { clearTimeout(timer); pending = null; cancel = null; reject(new Error(why)); };   // forget() mid-solve
       pending = (d) => {
         if (d.type === 'progress') { if (onProgress) onProgress(d.pct); return; }
-        clearTimeout(timer); pending = null;
+        clearTimeout(timer); pending = null; cancel = null;
         if (d.type === 'error') reject(new Error(d.message)); else resolve(d);
       };
       worker.postMessage(msg);
@@ -36,15 +37,18 @@
   async function load(src) {
     const d = await ask({ type: 'load', src });
     for (const def of d.defs) proxy(def);
-    sources.push(src); save();
+    // a new version replaces the old one: drop earlier sources that registered any of the same ids
+    const mine = new Set(d.defs.map((x) => x.id)), keep = [], keepIds = [];
+    sources.forEach((s, i) => { if (!(srcIds[i] || []).some((id) => mine.has(id))) { keep.push(s); keepIds.push(srcIds[i]); } });
+    sources = keep.concat(src); srcIds = keepIds.concat([[...mine]]); save();
     return d.defs;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(sources)); } catch (e) { /* ignore */ } }
   async function reload() {                        // after a restart: reload every saved source quietly
-    const all = sources; sources = [];
+    const all = sources; sources = []; srcIds = [];
     for (const src of all) { try { await load(src); } catch (e) { /* a source that no longer loads is dropped */ } }
   }
   async function restore() { try { sources = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { sources = []; } await reload(); }
-  function forget() { sources = []; save(); if (worker) { worker.terminate(); worker = null; } for (const d of RF.Solvers.list()) if (d.loaded) RF.Solvers.unregister(d.id); }
+  function forget() { if (cancel) cancel('the loaded solvers were forgotten'); sources = []; srcIds = []; save(); if (worker) { worker.terminate(); worker = null; } for (const d of RF.Solvers.list()) if (d.loaded) RF.Solvers.unregister(d.id); }
   RF.SolverHost = { load, restore, forget, BUDGET };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

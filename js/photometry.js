@@ -129,5 +129,121 @@
     return out;
   }
 
-  RF.Photometry = { luminance, fixture, facet, spots, boxProj };
+
+  // ---------------------------------------------------------------- paint fidelity
+  // The smallest LED image any facet in this envelope can paint on the target, in paint cells (square
+  // kernel).  Étendue: a mirror at distance r from the LED sends a beam at least (LED size / r) wide,
+  // whatever its curvature.  Conservative on purpose (a smaller kernel only makes scoring stricter):
+  // the LED's SMALLER side, foreshortened (× cos θ) for a planar LED, over envelope points within
+  // CONE_DEG of the LED axis (a Lambertian LED puts ~75% of its light inside 60°).
+  const CONE_DEG = 60;
+  function envelopeSamples(env) {
+    const c = env.center, h = env.half, out = [], n = 24;
+    if (env.shape === 'box') {
+      for (let ax = 0; ax < 3; ax++) for (const sd of [-1, 1]) for (let a = 0; a <= n; a++) for (let b = 0; b <= n; b++) {
+        const d = [0, 0, 0], i = (ax + 1) % 3, j = (ax + 2) % 3; d[ax] = sd * h[ax]; d[i] = (2 * a / n - 1) * h[i]; d[j] = (2 * b / n - 1) * h[j];
+        out.push([c[0] + d[0], c[1] + d[1], c[2] + d[2]]);
+      }
+    } else if (env.shape === 'ellipsoid') {
+      const N = 2000, g = Math.PI * (3 - Math.sqrt(5));
+      for (let k = 0; k < N; k++) { const z = 1 - 2 * (k + 0.5) / N, r = Math.sqrt(1 - z * z), t = g * k; out.push([c[0] + h[0] * r * Math.cos(t), c[1] + h[1] * r * Math.sin(t), c[2] + h[2] * z]); }
+    } else {                                                    // cylinder along env.axis
+      const ax = env.axis === undefined ? 2 : env.axis, i = (ax + 1) % 3, j = (ax + 2) % 3;
+      for (let a = 0; a <= n; a++) for (let k = 0; k < 72; k++) {
+        const t = 2 * Math.PI * k / 72, d = [0, 0, 0]; d[ax] = (2 * a / n - 1) * h[ax]; d[i] = h[i] * Math.cos(t); d[j] = h[j] * Math.sin(t);
+        out.push([c[0] + d[0], c[1] + d[1], c[2] + d[2]]);
+      }
+    }
+    return out;
+  }
+  function ledMinSize(src) {
+    if (src.kind === 'planar') return src.shape === 'disc' ? 2 * src.radius : Math.min(src.w, src.h);
+    if (src.shape === 'cylinder') return Math.min(2 * src.radius, src.length);
+    return 2 * src.radius;
+  }
+  function achievableKernel(scene) {
+    const src = scene.source, p = src.pos, a = RF.Source.frame(src).a, planar = src.kind === 'planar', s0 = ledMinSize(src);
+    const cosMax = Math.cos(CONE_DEG * Math.PI / 180), cell = scene.target.size / scene.target.res;
+    let best = Infinity, rAt = 0;
+    for (const q of envelopeSamples(scene.envelope)) {
+      const d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]], r = Math.hypot(d[0], d[1], d[2]); if (!(r > 1e-9)) continue;
+      const ct = (d[0] * a[0] + d[1] * a[1] + d[2] * a[2]) / r; if (ct < cosMax) continue;
+      const img = scene.target.distance * s0 * (planar ? ct : 1) / r;
+      if (img < best) { best = img; rAt = r; }
+    }
+    if (!isFinite(best)) return { cells: 0, mm: 0, r: 0 };      // no envelope inside the cone: no concession
+    return { cells: best / cell, mm: best, r: rAt };
+  }
+  // separable box blur with a fractional width (w cells, centred); energy leaving the grid is lost
+  function boxBlur(src, R, w) {
+    if (!(w > 1e-6)) return Float64Array.from(src);
+    const h = w / 2, pass = (g, alongX) => {
+      const out = new Float64Array(R * R);
+      for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
+        const c = alongX ? i : j, a0 = c + 0.5 - h, b0 = c + 0.5 + h; let s = 0;
+        for (let q = Math.floor(a0); q < Math.ceil(b0); q++) { if (q < 0 || q >= R) continue; s += (Math.min(b0, q + 1) - Math.max(a0, q)) * (alongX ? g[j * R + q] : g[q * R + i]); }
+        out[j * R + i] = s / w;
+      }
+      return out;
+    };
+    return pass(pass(src, true), false);
+  }
+
+  // Paint fidelity (Mode A).  Scale: the design's light on the paint, spread as painted ("same total").
+  // A painted cell PASSES if what it got is within TOL of the raw paint OR of the paint blurred by the
+  // smallest LED image (blur can only lower the bar, and only on painted cells: unpainted light is spill,
+  // always counted raw).  Ratio percentiles are against the raw paint.  noiseCeiling: the pass share a
+  // perfect design would show at this ray count (shot noise alone), to read `within` against.
+  const TOL = [0.8, 1.25], GAP_PAD = 2, DARK = 0.1;   // ×/÷1.25 (symmetric in log) · gap band = blur kernel + 2 cells · 'dark' = under 10% of a typical painted cell
+  const Phi = (x) => { const t = 1 / (1 + 0.3275911 * Math.abs(x) / Math.SQRT2), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x / 2); return x >= 0 ? 0.5 * (1 + y) : 0.5 * (1 - y); };
+  function fidelity(scene, P, ctx) {
+    const paint = scene.modeA && scene.modeA.paint; if (!paint || !paint.some((w) => w > 0)) return null;
+    const R = scene.target.res, G = RF.Engine.toPaintGrid(RF.Engine.gridTotal(ctx), P.res, R), n = R * R;
+    let sG = 0, sGp = 0, sp = 0; for (let k = 0; k < n; k++) { sG += G[k]; if (paint[k] > 0) { sGp += G[k]; sp += paint[k]; } }
+    const ker = achievableKernel(scene), B = boxBlur(paint, R, ker.cells), band = boxBlur(paint, R, Math.max(2, ker.cells));
+    // the scale ("exposure") that passes the most cells: cell k passes for sc in [g/(TOL1·max ref), g/(TOL0·min ref)]
+    // (refs per unit scale: paint, blurred paint).  Absolute level is efficiency's job, so fidelity takes the best one.
+    const ev = [];
+    for (let k = 0; k < n; k++) if (paint[k] > 0 && G[k] > 0) { const lo = Math.min(paint[k], B[k]), hi = Math.max(paint[k], B[k]); ev.push([G[k] / (TOL[1] * hi), 1], [G[k] / (TOL[0] * Math.max(1e-300, lo)), -1]); }
+    ev.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+    let run = 0, bestN = -1, sc = sGp / sp;
+    for (let e = 0; e < ev.length; e++) { run += ev[e][1]; if (ev[e][1] > 0 && run > bestN) { bestN = run; sc = ev[e + 1] ? Math.sqrt(ev[e][0] * ev[e + 1][0]) : ev[e][0]; } }   // geometric midpoint of the best range
+    const e0 = (P.power / (ctx.N || 1)) || 1, pp = (i, j) => i >= 0 && j >= 0 && i < R && j < R && paint[j * R + i] > 0;
+    const cnt = { all: [0, 0, 0, 0], interior: [0, 0, 0, 0], edge: [0, 0, 0, 0] };   // [pass, under, over, cells]
+    let rawPass = 0, noise = 0, near = 0; const ratios = [];
+    const verdict = new Int8Array(n).fill(-1), ratioAt = new Float32Array(n);   // per cell: -1 unpainted (or a dark gap) · 0 within · 1 under · 2 over · 3 lit gap
+    for (let k = 0; k < n; k++) {
+      if (!(paint[k] > 0)) { if (band[k] > 0) near += G[k]; continue; }
+      const i = k % R, j = (k / R) | 0; let edge = false;
+      for (let a = -1; a <= 1 && !edge; a++) for (let b = -1; b <= 1; b++) if (!pp(i + a, j + b)) { edge = true; break; }
+      const rr = sc * paint[k], rb = sc * B[k], lo = TOL[0] * Math.min(rr, rb), hi = TOL[1] * Math.max(rr, rb), g = G[k];
+      const cls = g < lo ? 1 : g > hi ? 2 : 0; verdict[k] = cls; ratioAt[k] = rr > 0 ? g / rr : 0;
+      for (const c of [cnt.all, edge ? cnt.edge : cnt.interior]) { c[cls]++; c[3]++; }
+      if (g >= TOL[0] * rr && g <= TOL[1] * rr) rawPass++;
+      ratios.push(sc > 0 ? g / rr : 0);
+      const m = rr / e0; noise += m > 0 ? Phi((TOL[1] - 1) * Math.sqrt(m)) - Phi((TOL[0] - 1) * Math.sqrt(m)) : 0;
+    }
+    ratios.sort((a, b) => a - b);
+    // "the dark stays dark": unpainted cells within (blur kernel + GAP_PAD) cells of the paint (the gaps between strokes,
+    // the zone above a cutoff) must stay under max(1.25 × the blurred paint there, DARK × a typical painted cell), at the
+    // same fitted scale.  A flood passes every painted cell and fails every gap, so it can no longer rank first.
+    const rb = Math.ceil(ker.cells) + GAP_PAD, dil = (src, alongX) => { const out = new Uint8Array(n);
+      for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) { if (!src[j * R + i]) continue; const c = alongX ? i : j;
+        for (let q = Math.max(0, c - rb); q <= Math.min(R - 1, c + rb); q++) out[alongX ? j * R + q : q * R + i] = 1; } return out; };
+    const near2 = dil(dil(paint.map((w) => (w > 0 ? 1 : 0)), true), false);
+    let gapN = 0, gapDark = 0; const typ = sp / cnt.all[3];
+    for (let k = 0; k < n; k++) if (near2[k] && !(paint[k] > 0)) { gapN++; if (G[k] <= sc * Math.max(TOL[1] * B[k], DARK * typ)) gapDark++; else verdict[k] = 3; }
+    const withinPainted = cnt.all[0] / cnt.all[3], dark = gapN ? gapDark / gapN : 1;
+    const share = (c) => c[3] ? { within: c[0] / c[3], under: c[1] / c[3], over: c[2] / c[3], cells: c[3] } : null, em = ctx.E.emitted || 1;
+    return {
+      fidelity: gapN ? 0.5 * withinPainted + 0.5 * dark : withinPainted,   // THE headline: painted right (50%) + gaps dark (50%)
+      gapsDark: dark, gapCells: gapN, gapBand: rb,
+      tol: TOL, kernel: ker, ...share(cnt.all), withinRaw: rawPass / cnt.all[3], interior: share(cnt.interior), edge: share(cnt.edge),
+      ratio: { p5: RF.Engine.pctl(ratios, 0.05), p25: RF.Engine.pctl(ratios, 0.25), p50: RF.Engine.pctl(ratios, 0.5), p75: RF.Engine.pctl(ratios, 0.75), p95: RF.Engine.pctl(ratios, 0.95) },
+      onPaint: sGp / em, onTarget: sG / em, spill: sG > 0 ? 1 - sGp / sG : 0, spillNear: sG > 0 ? near / sG : 0,
+      verdict, ratioAt, G, scale: sc, raysPerCell: sc / e0 * (sp / cnt.all[3]), noiseCeiling: noise / cnt.all[3], fidelityNoiseCeiling: gapN ? 0.5 * noise / cnt.all[3] + 0.5 : noise / cnt.all[3],
+    };
+  }
+
+  RF.Photometry = { luminance, fixture, facet, spots, boxProj, fidelity, achievableKernel, boxBlur, FID_TOL: TOL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

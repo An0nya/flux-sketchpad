@@ -329,7 +329,12 @@
     }
     // photometry once per finished run (it walks every surface outline); selection panels reuse it
     if (!running && (!ui.photo || ui.photo.ctx !== run.ctx)) { ui.photo = RF.Photometry.fixture(sc, run.P, run.ctx); ui.photo.ctx = run.ctx; ui.inspCache = null; renderInspector(); }
-    P.renderStats(ui, st, { running, preview: run.preview, match, photo: !running && ui.photo && ui.photo.ctx === run.ctx ? ui.photo : null });
+    // paint fidelity (Mode A): cheap (one pass over paint cells), so it follows the progressive trace; the spot
+    // inspector and the fidelity map view read ui.fid
+    ui.fid = sc.mode === 'A' && run.ctx.next > 0 ? RF.Photometry.fidelity(sc, run.P, run.ctx) : null;
+    if (ui.fid) ui.fid.ctx = run.ctx;
+    if (ui.display === 'fid') drawHeat();
+    P.renderStats(ui, st, { running, preview: run.preview, match, fid: ui.fid, photo: !running && ui.photo && ui.photo.ctx === run.ctx ? ui.photo : null });
     if (!running) {
       const f = RF.Feasibility.analyze(sc, { designReport: sc.mode === 'A' ? ui.store.reports.A : null, stats: st, stampReports: ui.store.reports.B });
       P.renderFeasibility(ui, f, { warnings: sc.mode === 'A' && ui.store.reports.A ? ui.store.reports.A.warnings : [] });
@@ -381,6 +386,26 @@
     let edge = 0; for (let i = 0; i < 4; i++) edge = Math.max(edge, Math.hypot(q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][1] - q[i][1]));
     return hitsCanvas('scene', edge * dpr);
   }
+  // Fidelity view: each paint cell by its verdict.  Blue = too dim, orange = too bright (deeper = further off, full at
+  // ×/÷2), neutral = within ×/÷1.25; unpainted cells show their light (spill) in faint grey.  Protan-safe.
+  function fidImage(R) {
+    const f = ui.fid; if (!f) return null;
+    const cv = ui.fidImg || (ui.fidImg = document.createElement('canvas')); cv.width = cv.height = R;
+    const x = cv.getContext('2d'), im = x.createImageData(R, R), bg = [14, 20, 24], ok = [150, 160, 166], lo = [70, 140, 235], hi = [245, 150, 50];
+    let gmax = 0; for (let k = 0; k < R * R; k++) if (f.verdict[k] < 0 && f.G[k] > gmax) gmax = f.G[k];
+    const inPaint = []; for (let k = 0; k < R * R; k++) if (f.verdict[k] >= 0) inPaint.push(f.G[k]); inPaint.sort((a, b) => a - b);
+    const ref = RF.Engine.pctl(inPaint, 0.95) || 1;             // spill brightness relative to the painted area's
+    const mix = (a, b, t) => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t));
+    for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
+      const k = j * R + i, v = f.verdict[k], o = 4 * ((R - 1 - j) * R + i); let c;
+      if (v < 0) c = mix(bg, [120, 124, 128], Math.min(1, Math.sqrt(f.G[k] / ref)));
+      else if (v === 3) c = mix(bg, hi, 0.35 + 0.65 * Math.min(1, Math.sqrt(f.G[k] / ref)));   // a gap that should be dark
+      else if (v === 0) c = ok;
+      else { const d = Math.min(1, Math.abs(Math.log2(Math.max(1e-6, f.ratioAt[k])))); c = mix(ok, v === 1 ? lo : hi, 0.45 + 0.55 * d); }
+      im.data[o] = c[0]; im.data[o + 1] = c[1]; im.data[o + 2] = c[2]; im.data[o + 3] = 255;
+    }
+    x.putImageData(im, 0, 0); return cv;
+  }
   function drawHeat() {
     if (!ui.run) return;
     const res = ui.run.P.res, vals = heatValues();
@@ -395,7 +420,8 @@
     const overlay = sc.mode === 'B' ? R2.stampOverlay(sc, ui.store.reports.B, sc.modeB.selected) : zoneOverlay();
     // The panel's content frame is always the PAINT grid (so taps/stamps map the same at any sim res);
     // the sim image is stretched into it.
-    const base = ui.display === 'hits' ? hitsImage(pres) : ui.heatImg;
+    const fidC = ui.display === 'fid' ? fidImage(pres) : null;
+    const base = ui.display === 'hits' ? hitsImage(pres) : fidC || ui.heatImg;
     R2.drawGridPanel(document.getElementById('heat-canvas'), ui.vHeat, ui.selImgs ? dimUnder(base, ui.selImgs.over) : base, pres, overlay);
     alignFigure('heat-canvas', ui.vHeat);
     const T = ui.run.P.T, cellArea = (2 * T.half / res) ** 2 * 1e-6;       // m²
@@ -406,6 +432,12 @@
     const lux = peak / cellArea, luxTxt = fmt(lux);
     // with a selection the bar follows ITS scale (its own peak), and names the full map's peak for comparison
     const selLux = ui.selImgs ? ui.selImgs.clip / Math.max(1e-300, RF.Engine.hitCoverage(ui.run.ctx) / ui.run.ctx.N) / cellArea : null;   // selection light comes from the hit list
+    if (fidC) {
+      const f = ui.fid, pc = (x) => Math.round(100 * x) + '%';
+      cb.append(P.el('i', { style: 'background:linear-gradient(90deg,rgb(70,140,235),rgb(150,160,166) 40%,rgb(150,160,166) 60%,rgb(245,150,50))' }), P.el('div', { class: 'cb-labels' },
+        P.el('span', {}, 'dim ' + pc(f.under)), P.el('span', { title: 'Fidelity ' + pc(f.fidelity) + ' = painted cells within ×/÷1.25 (' + pc(f.within) + ') and gaps dark (' + pc(f.gapsDark) + '). Orange outside the paint = a gap that should be dark; grey = other spill (' + pc(f.spill) + ' of target light).' }, 'fidelity ' + pc(f.fidelity)), P.el('span', {}, 'bright / lit gap')));
+      ui.peakInfo = { lux: fmt(lux), res }; return;
+    }
     cb.append(P.el('i', { style: 'background:' + R2.colorbarCSS() }), P.el('div', { class: 'cb-labels' }, P.el('span', {}, '0'),
       P.el('span', {}, selLux !== null ? 'selection peak ≈ ' + fmt(selLux) + ' lx (full map ' + luxTxt + ')' : 'peak ≈ ' + luxTxt + ' lx')));
     ui.peakInfo = { lux: luxTxt, res };
@@ -730,6 +762,14 @@
         info.zones = [...zs].sort((a, b) => a - b);
         info.primaries = [...new Set(info.zones.map((z) => rep.intent[z].facet).filter(Boolean))];
       }
+      // is there paint under the spot at all?  (a painted spot no intent claims is a solver gap, not "unpainted")
+      const paint = sc.modeA && sc.modeA.paint, pr2 = sc.target.res;
+      if (paint) { const cw2 = 2 * T.half / pr2;
+        for (let k = 0; k < paint.length && !info.painted; k++) if (paint[k] > 0) {
+          const cu = -T.half + (k % pr2 + 0.5) * cw2, cv = -T.half + (Math.floor(k / pr2) + 0.5) * cw2;
+          info.painted = spots.some((q) => { const du = Math.max(0, Math.abs(cu - q.u) - cw2 / 2), dv = Math.max(0, Math.abs(cv - q.v) - cw2 / 2); return du * du + dv * dv < q.r * q.r; });
+        }
+      }
       const byK = new Map();
       // only the light that landed in the spot(s), and where it came from
       for (let h = 0; h < c.nHits; h++) {
@@ -844,6 +884,24 @@
     };
   }
   // Expanded Optics: the selection's numbers (collapsed/normal size: the chip only)
+  // the fidelity verdicts of the paint cells a spot touches (same cell-overlap test as the intent lookup), judged
+  // at the WHOLE design's brightness: a spot that is uniformly half as bright as its share reads 'under', not 'fine'
+  function spotFid(items) {
+    const f = ui.fid, sc = ui.store.scene; if (!f || !ui.run || f.ctx !== ui.run.ctx) return null;
+    const R = sc.target.res, half = ui.run.P.T.half, cw = 2 * half / R, out = { within: 0, under: 0, over: 0, cells: 0, spillG: 0, allG: 0, litGaps: 0, ratios: [] };
+    for (let k = 0; k < R * R; k++) {
+      const cu = -half + (k % R + 0.5) * cw, cv = -half + (Math.floor(k / R) + 0.5) * cw;
+      if (!items.some((q) => { const du = Math.max(0, Math.abs(cu - q.u) - cw / 2), dv = Math.max(0, Math.abs(cv - q.v) - cw / 2); return du * du + dv * dv < q.r * q.r; })) continue;
+      out.allG += f.G[k]; const v = f.verdict[k];
+      if (v < 0 || v === 3) { out.spillG += f.G[k]; if (v === 3) out.litGaps++; continue; }
+      out.cells++; out[v === 0 ? 'within' : v === 1 ? 'under' : 'over']++; out.ratios.push(f.ratioAt[k]);
+    }
+    out.ratios.sort((a, b) => a - b);
+    return out;
+  }
+  // one line: "2 of 3 cells within · 1 under" (counts below 20 cells, shares above)
+  const fidLine = (q) => { if (!q || !q.cells) return null; const big = q.cells >= 20, f = (x) => big ? Math.round(100 * x / q.cells) + '%' : String(x);
+    return (big ? f(q.within) + ' of ' + q.cells + ' cells within' : q.within + ' of ' + q.cells + ' cell' + (q.cells > 1 ? 's' : '') + ' within') + (q.under ? ' · ' + f(q.under) + ' too dim' : '') + (q.over ? ' · ' + f(q.over) + ' too bright' : ''); };
   function renderInspector() {
     const box = document.getElementById('insp-panel'); if (!box) return;
     const pane = box.closest('.pane'), i = selInfo(), s = ui.sel, run = ui.run;
@@ -890,7 +948,14 @@
       title = s.items.length > 1 ? s.items.length + ' spots' : 'Spot';
       row('landing here', P.fmtLm(m.lm));
       row('mean', Math.round(m.lux).toLocaleString() + ' lx', 'Over the spot area.');
-      if (m.ratio !== undefined) row('delivered ÷ intended', m.ratio === null ? 'unpainted' : m.ratio.toFixed(2), '1 = as painted, relative to the whole design (it can only deliver what it catches, so the paint is scaled to the mean).');
+      const q = spotFid(s.items);
+      if (q && q.cells) {
+        row('fidelity here', fidLine(q), 'Painted cells under the spot within ×/÷1.25 of the paint, judged at the whole design\u2019s brightness.');
+        const r = q.ratios, at = (p) => r[Math.min(r.length - 1, Math.floor(p * (r.length - 1)))].toFixed(2);
+        row('delivered ÷ intended', r.length > 1 ? at(0) + ' – ' + at(0.5) + ' – ' + at(1) : at(0), 'Per painted cell under the spot: lowest · median · highest (1 = as painted).');
+      }
+      if (q && q.litGaps) row('lit gaps', q.litGaps + ' cell' + (q.litGaps > 1 ? 's' : ''), 'Unpainted cells near the paint that should be dark but are lit (they count against fidelity).');
+      if (q && q.allG > 0 && q.spillG > 0) row('spill here', Math.round(100 * q.spillG / q.allG) + '% of the light in the spot', 'Light landing on unpainted cells inside the spot.');
       row('facets landing', String(i.contrib.filter((x) => x.id && x.share >= 0.005).length));
       row('direction ceiling', P.fmtCd(m.ceilingCd), 'The most this reflector could send toward here if every facet aimed here. A spot far below it is usually intended — the paint isn\u2019t a white box.');
     }
@@ -912,7 +977,7 @@
         const n = i.contrib.filter((x) => x.id && x.share >= 0.005).length, strays = i.contrib.filter((x) => x.id && x.share >= 0.005 && !i.primaries.includes(x.id)).length;
         const direct = i.contrib.some((x) => !x.id && x.share >= 0.005);
         txt = (s.items.length > 1 ? s.items.length + ' spots · ' : 'Spot · ') + (n ? n + ' facet' + (n > 1 ? 's' : '') + ' land here' : 'no facet light') + (direct ? ' + direct' : '') + ' · ' +
-          (i.zones.length ? 'meant for ' + (i.zones.length > 6 ? i.zones.length + ' zones' : 'zone' + (i.zones.length > 1 ? 's ' : ' ') + i.zones.join(', ')) + (strays ? ' · ' + strays + ' stray' : '') : 'outside the paint');
+          (i.zones.length ? 'meant for ' + (i.zones.length > 6 ? i.zones.length + ' zones' : 'zone' + (i.zones.length > 1 ? 's ' : ' ') + i.zones.join(', ')) + (strays ? ' · ' + strays + ' stray' : '') : i.painted ? 'painted, but no facet is meant for it' : 'outside the paint');
       }
     }
     renderInspector();

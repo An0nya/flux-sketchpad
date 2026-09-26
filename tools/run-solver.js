@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Headless solver runner: load a solver file, solve the built-in scenes through the SAME host path as the
 // app (isolated solve → verify → apply → trace → score), print the numbers.  For developing solvers.
-//   node tools/run-solver.js examples/solver-example.js [--rays 200000] [--scenes default,test]
+//   node tools/run-solver.js examples/solver-example.js [--rays 1000000] [--scenes default,test]
 //        [--budget 100] [--settings '{"minDistance":10}'] [--scaling] [--json]
 // The solver runs in a worker thread that loads exactly js/solver-env.js's list (the same RF the app's
 // browser worker gives it); verification and scoring run here, in a separate heap.
@@ -17,7 +17,7 @@ const args = process.argv.slice(2), opt = (k, d) => { const i = args.indexOf('--
 const VALUED = ['--rays', '--scenes', '--settings', '--ms', '--budget'];
 const file = args.find((a, i) => !a.startsWith('--') && !VALUED.includes(args[i - 1]));
 if (!file) { console.error('usage: node tools/run-solver.js <solver.js> [--rays N] [--scenes default,test] [--settings JSON] [--ms N] [--scaling] [--json]'); process.exit(2); }
-const BUDGET = +opt('budget', 100), N = +opt('rays', 200000), names = opt('scenes', 'default,test').split(','), extra = JSON.parse(opt('settings', '{}')), MS = +opt('ms', 60000), asJson = args.includes('--json');
+const BUDGET = +opt('budget', 100), N = +opt('rays', 1000000), names = opt('scenes', 'default,test').split(','), extra = JSON.parse(opt('settings', '{}')), MS = +opt('ms', 60000), asJson = args.includes('--json');
 const SCENES = { default: () => RF.State.defaultScene(), test: () => RF.State.testScene() };
 const pct = (x) => (x === null || x === undefined ? '—' : (100 * x).toFixed(1) + '%');
 
@@ -29,7 +29,8 @@ js('solver-env'); for (const f of globalThis.RF_SOLVER_ENV) js(f);
 const RF = globalThis.RF, before = new Set(RF.Solvers.list().map((d) => d.id));
 parentPort.on('message', async (m) => {
   try {
-    if (m.type === 'load') { vm.runInThisContext(m.src, { filename: m.name }); const d = RF.Solvers.list().filter((x) => !before.has(x.id)); parentPort.postMessage({ type: 'loaded', defs: d.map((x) => ({ id: x.id, name: x.name, version: x.version, modes: x.modes, settings: x.settings, declaresLimits: x.declaresLimits })) }); return; }
+    if (m.type === 'load') { const ids = [], reg = RF.Solvers.register; RF.Solvers.register = (def) => { const id = reg(def); ids.push(id); return id; };   // what THIS file registers, even an id already loaded (e.g. a copy of spoke)
+      try { vm.runInThisContext(m.src, { filename: m.name }); } finally { RF.Solvers.register = reg; } const d = [...new Set(ids)].map((id) => RF.Solvers.get(id)); parentPort.postMessage({ type: 'loaded', defs: d.map((x) => ({ id: x.id, name: x.name, version: x.version, modes: x.modes, settings: x.settings, declaresLimits: x.declaresLimits })) }); return; }
     const def = RF.Solvers.get(m.id); let rays = 0;
     const tools = { progress() {}, budget: m.budget, scene: m.problem, trace: (s, o) => { rays += Math.max(1, (o && o.rays) | 0 || 20000); if (rays > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays + ')'); return RF.Solvers.trace(m.problem, s, o); } };
     const t0 = process.hrtime.bigint(), out = await def.solve(m.input, m.settings, tools);
@@ -41,7 +42,7 @@ const ask = (msg, ms) => new Promise((res) => {
   const t = setTimeout(() => { w.terminate(); res({ type: 'error', message: 'solver ran over ' + ms + ' ms and was stopped' }); }, ms);
   w.once('message', (d) => { clearTimeout(t); res(d); }); w.postMessage(msg);
 });
-const problemOf = (sc) => ({ source: sc.source, target: sc.target, envelope: sc.envelope, sim: sc.sim });
+const problemOf = (sc) => ({ source: sc.source, target: sc.target, envelope: sc.envelope, sim: sc.sim, modeA: { paint: sc.modeA.paint } });
 
 (async () => {
   const d0 = await ask({ type: 'load', src: fs.readFileSync(path.resolve(file), 'utf8'), name: file }, 20000);
@@ -65,8 +66,8 @@ const problemOf = (sc) => ({ source: sc.source, target: sc.target, envelope: sc.
     if (!f.errors.length) {
       sc.groups.A.surfaces = out.surfaces;
       const P = E.prepare(sc, RF.State.allSurfaces(sc)); P.recordHits = true; const c = E.runSync(P, N);
-      const s = E.stats(c, { paint: sc.modeA.paint, paintRes: sc.target.res }), ph = RF.Photometry.fixture(sc, P, c), em = c.E.emitted;
-      row.score = { rays: N, delivered: (c.E.direct + c.E.reflected) / em, beamCoverage: s.coverage, uniformityU0: s.uniformity, noiseCeiling: s.noiseCeiling,
+      const s = E.stats(c, { paint: sc.modeA.paint, paintRes: sc.target.res }), ph = RF.Photometry.fixture(sc, P, c), em = c.E.emitted, fd = RF.Photometry.fidelity(sc, P, c);
+      row.score = { rays: N, fidelity: fd.fidelity, paintedWithin: fd.within, gapsDark: fd.gapsDark, fidelityRaw: fd.withinRaw, under: fd.under, over: fd.over, fidelityNoiseCeiling: fd.fidelityNoiseCeiling, fidRatio: fd.ratio, onPaint: fd.onPaint, spill: fd.spill, spillNear: fd.spillNear, delivered: (c.E.direct + c.E.reflected) / em, beamCoverage: s.coverage, uniformityU0: s.uniformity, noiseCeiling: s.noiseCeiling,
         deliveredOverIntended: ph.ratio, peakCd: ph.peakCd, peakNoise: ph.peakNoise, ofDesignCeiling: ph.ofDesign, ofEnvelopeCeiling: ph.ofEnvelope, throwM: ph.throwM,
         blocked: s.occlusion.blocked, shadowed: s.occlusion.shadowed };
     }
@@ -75,6 +76,7 @@ const problemOf = (sc) => ({ source: sc.source, target: sc.target, envelope: sc.
       console.log('\n' + name + ' · ' + row.solver + ' · solve ' + row.solveMs + ' ms' + (row.traceRays ? ' (' + row.traceRays.toLocaleString() + ' rays of tracing)' : '') + ' · ' + JSON.stringify(settings));
       console.log('  verified: ' + (f.errors.length ? 'UNUSABLE — ' + f.errors[0] : f.placed + ' placed' + (f.dropped !== null ? ', ' + f.dropped + ' unplaced intents' : '') + ', outside envelope ' + row.facts.outsideEnvelope + ', inside LED clearance ' + row.facts.insideClearance + (row.facts.intentErrors ? ', intent errors ' + row.facts.intentErrors : '')));
       if (row.score) { const q = row.score;
+        console.log('  FIDELITY ' + pct(q.fidelity) + ' = ½ painted cells within ×/÷1.25 (' + pct(q.paintedWithin) + '; too dim ' + pct(q.under) + ', too bright ' + pct(q.over) + ') + ½ gaps dark (' + pct(q.gapsDark) + '); a perfect design would show ' + pct(q.fidelityNoiseCeiling) + ' at ' + N.toLocaleString() + ' rays · on paint ' + pct(q.onPaint) + ' · spill ' + pct(q.spill) + ' (' + pct(q.spillNear) + ' just outside the edge)');
         console.log('  delivered ' + pct(q.delivered) + ' · beam ' + pct(q.beamCoverage) + ' · U₀ ' + q.uniformityU0.toFixed(3) + ' (noise ceiling ' + q.noiseCeiling.toFixed(2) + ')' + (q.deliveredOverIntended ? ' · delivered÷intended p5/p50/p95 ' + [q.deliveredOverIntended.p5, q.deliveredOverIntended.p50, q.deliveredOverIntended.p95].map((x) => x.toFixed(2)).join('/') : ''));
         console.log('  peak ' + Math.round(q.peakCd).toLocaleString() + ' cd ±' + Math.round(100 * q.peakNoise) + '% · ' + pct(q.ofDesignCeiling) + ' of its ceiling, ' + pct(q.ofEnvelopeCeiling) + ' of the envelope\'s · throw ' + Math.round(q.throwM) + ' m · blocked ' + pct(q.blocked) + ', shadowed ' + pct(q.shadowed)); }
       for (const n of row.notes.slice(0, 3)) console.log('  note: ' + n);

@@ -147,7 +147,7 @@
   // Synchronous run (headless tests, and solvers cheap enough for the main thread).  The UI's worker host
   // calls the same pieces.  Returns the scene-ready result; never mutates the scene.
   // the problem scene a solver's trace() runs against (plain data: crosses into a worker)
-  const problemOf = (scene) => RF.U.deepCopy({ source: scene.source, target: scene.target, envelope: scene.envelope, sim: scene.sim });
+  const problemOf = (scene) => RF.U.deepCopy({ source: scene.source, target: scene.target, envelope: scene.envelope, sim: scene.sim, modeA: { paint: scene.modeA.paint } });
   function prepareRun(scene, id) {
     id = id || current(scene);
     const def = get(id); if (!def) throw new Error('no solver ' + id);
@@ -183,6 +183,13 @@
     if (RF.Photometry) {
       const ph = RF.Photometry.fixture(sc, P, c);
       Object.assign(res, { peakCd: ph.peakCd, peakNoise: ph.peakNoise, ofCeiling: ph.ofDesign, ofEnvelope: ph.ofEnvelope, throwM: ph.throwM, lmOnTarget: ph.lmOnTarget });
+    }
+    // paint fidelity (the headline score): against the problem's paint, or o.paint (e.g. a solver's own working target)
+    const paint = o.paint || (scene.modeA && scene.modeA.paint);
+    if (paint && RF.Photometry && RF.Photometry.fidelity) {
+      const f = RF.Photometry.fidelity(Object.assign({}, sc, { modeA: { paint } }), P, c);
+      if (f) res.fidelity = { fidelity: f.fidelity, gapsDark: f.gapsDark, gapCells: f.gapCells, fidelityNoiseCeiling: f.fidelityNoiseCeiling, within: f.within, withinRaw: f.withinRaw, under: f.under, over: f.over, noiseCeiling: f.noiseCeiling, ratio: f.ratio, kernelCells: f.kernel.cells,
+        onPaint: f.onPaint, spill: f.spill, spillNear: f.spillNear, verdict: Array.from(f.verdict), ratioAt: Array.from(f.ratioAt) };
     }
     if (o.occlusion) res.shadowed = RF.Engine.occlusion(P, c).shadowed;
     if (o.attribution) {

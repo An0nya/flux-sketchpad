@@ -26,4 +26,37 @@ for (let k = 0; k < P.G.n; k++) {
   if (!worst || x > worst.x) worst = { id, x, lim };
 }
 ok('brightness theorem: no facet\'s p90 intensity exceeds its ceiling beyond noise (' + n + ' facets, 1M rays)', viol === 0, 'worst ' + worst.id + ' at ' + (100 * worst.x).toFixed(0) + '% of ceiling (limit ' + (100 * worst.lim).toFixed(0) + '%)');
+// ---- paint fidelity: synthetic grids with known answers (no tracing: a fake ctx whose grid IS the design)
+{
+  const fsc = RF.U.deepCopy(sc), R = fsc.target.res, paint = fsc.modeA.paint, n = R * R;
+  const fake = (G, rays) => ({ ctx: { gridD: Float64Array.from(G), gridR: new Float64Array(n), N: rays || 1e9, E: { emitted: 1 } }, P: { res: R, power: 1 } });
+  const F = (G, rays) => { const f = fake(G, rays); return Ph.fidelity(fsc, f.P, f.ctx); };
+  const perfect = paint.map((w) => w * 1e-3), fp = F(perfect);
+  ok('fidelity: a perfect copy of the paint passes every cell, no spill', fp.within === 1 && fp.withinRaw === 1 && fp.spill === 0 && Math.abs(fp.ratio.p50 - 1) < 0.25, 'within ' + fp.within + ', p50 ' + fp.ratio.p50.toFixed(3));
+  const f3 = F(perfect.map((x) => 3 * x));
+  ok('fidelity: brightness scale does not change it (efficiency is a separate number)', f3.within === fp.within && f3.withinRaw === fp.withinRaw);
+  const spillG = Float64Array.from(perfect); let far = -1;
+  for (let k = 0; k < n && far < 0; k++) { const i = k % R, j = (k / R) | 0; let clear = true; for (let a = -6; a <= 6 && clear; a++) for (let b = -6; b <= 6; b++) { const q = (j + b) * R + i + a; if (i + a >= 0 && j + b >= 0 && i + a < R && j + b < R && paint[q] > 0) { clear = false; break; } } if (clear) far = k; }
+  const tot = perfect.reduce((a, b) => a + b, 0); spillG[far] = tot / 3; const fs = F(spillG);
+  ok('fidelity: light off the paint is spill, not a fidelity failure', fs.within === 1 && Math.abs(fs.spill - 0.25) < 1e-9 && fs.spillNear === 0, 'spill ' + fs.spill.toFixed(3));
+  const hot = Float64Array.from(perfect); let hk = paint.findIndex((w) => w > 0); hot[hk] *= 2; const fh = F(hot);
+  ok('fidelity: a ×2 hotspot counts as over (two-sided)', fh.over > 0 && fh.within === 1 - 1 / fp.cells, 'over ' + (fh.over * fp.cells).toFixed(0) + ' cell');
+  // blur concession: deliver the BLURRED paint.  With the real kernel the edge dims pass; at kernel 0 they would not.
+  const k = Ph.achievableKernel(fsc), Bl = Ph.boxBlur(paint, R, Math.max(k.cells, 1.5)), save = fsc.source.w;
+  const big = RF.U.deepCopy(fsc); big.source.w = big.source.h = save * Math.max(1, 1.5 / Math.max(1e-9, k.cells)) * 1.01; const kb = Ph.achievableKernel(big);
+  const fb = (() => { const f = fake(Bl.map((x, q) => paint[q] > 0 ? x * 1e-3 : 0)); return Ph.fidelity(big, f.P, f.ctx); })();
+  ok('fidelity: an achievable (blurred) edge passes via the blur, fails on raw alone', kb.cells >= 1.5 && fb.within > fb.withinRaw && fb.within > 0.99, 'kernel ' + kb.cells.toFixed(2) + ' cells · within ' + (100 * fb.within).toFixed(1) + '% vs raw-only ' + (100 * fb.withinRaw).toFixed(1) + '%');
+  ok('fidelity: a perfect copy keeps the gaps dark too (headline = 100%)', fp.gapsDark === 1 && fp.fidelity === 1 && fp.gapCells > 0, fp.gapCells + ' gap cells, band ' + fp.gapBand);
+  // a flood: every painted cell gets its share AND every cell around it is lit as brightly → gaps fail, headline ≤ ½
+  const flood = Float64Array.from(perfect); { const mx = Math.max(...perfect); for (let q = 0; q < n; q++) if (!(paint[q] > 0)) flood[q] = mx; }
+  const ff = F(flood);
+  ok('fidelity: a flood passes the painted cells but fails the gaps (it can no longer rank first)', ff.within === 1 && ff.gapsDark === 0 && ff.fidelity === 0.5, 'painted ' + ff.within + ', gaps dark ' + ff.gapsDark + ', headline ' + ff.fidelity);
+  // a faint halo (5% of a typical painted cell) around the paint is 'dark'; light far outside the band is spill only
+  const halo = Float64Array.from(perfect); { const typ = perfect.reduce((a, b) => a + b, 0) / fp.cells; for (let q = 0; q < n; q++) if (!(paint[q] > 0)) halo[q] = 0.05 * typ; }
+  const fhal = F(halo);
+  ok('fidelity: a faint halo (5% of a painted cell) stays dark', fhal.gapsDark === 1 && fhal.fidelity === 1, 'gaps dark ' + fhal.gapsDark);
+  ok('fidelity: far spill is spill, not a lit gap', fs.gapsDark === 1 && fs.fidelity === 1, 'gaps dark ' + fs.gapsDark + ', spill ' + fs.spill.toFixed(3));
+  const fn = F(perfect, 1e3);
+  ok('fidelity: noise ceiling falls when rays are scarce', fp.noiseCeiling > 0.999 && fn.noiseCeiling < 0.9, 'ceiling ' + fp.noiseCeiling.toFixed(3) + ' → ' + fn.noiseCeiling.toFixed(3) + ' at ' + fn.raysPerCell.toFixed(1) + ' rays/cell');
+}
 process.exit(fails ? 1 : 0);

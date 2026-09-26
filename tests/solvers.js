@@ -58,6 +58,14 @@ for (const k of [15, 3]) {
   ok('trace(): blocked, shadowed, peak cd and % of ceiling match the app\'s scoring', t.blocked === o.blocked && t.shadowed === o.shadowed && t.peakCd === ph.peakCd && t.ofCeiling === ph.ofDesign,
     'blocked ' + (100 * t.blocked).toFixed(2) + '%, shadowed ' + (100 * t.shadowed).toFixed(2) + '%, peak ' + Math.round(t.peakCd) + ' cd, ' + (100 * t.ofCeiling).toFixed(1) + '% of ceiling'); }
 
+// trace() returns the headline score (paint fidelity) exactly as the app and scorer compute it; o.paint overrides
+{ const st = C.createStore(RF.State.testScene()); C.regenerateA(st); const sc = st.scene, surfs = sc.groups.A.surfaces;
+  const problem = { source: sc.source, target: sc.target, envelope: sc.envelope, sim: sc.sim, modeA: { paint: sc.modeA.paint } }, t = S.trace(problem, surfs, { rays: 50000 });
+  const P = E.prepare(problem, surfs), c = E.runSync(P, 50000, 0), f = RF.Photometry.fidelity(problem, P, c);
+  const flat = sc.modeA.paint.map((w) => (w > 0 ? 1 : 0)), t2 = S.trace(problem, surfs, { rays: 50000, paint: flat });
+  ok('trace(): fidelity matches the app\'s metric; o.paint scores against another target', t.fidelity && t.fidelity.within === f.within && t.fidelity.spill === f.spill && t.fidelity.verdict.length === sc.target.res ** 2 && t2.fidelity.within !== t.fidelity.within,
+    'within ' + (100 * t.fidelity.within).toFixed(1) + '% (vs a flat target ' + (100 * t2.fidelity.within).toFixed(1) + '%), spill ' + (100 * t.fidelity.spill).toFixed(1) + '%'); }
+
 // RF.ModeA unsealed: build(plan(scene)) = generate(scene); and a solver may edit the plan before building
 { const sc = RF.State.defaultScene(), g = RF.ModeA.generate(RF.U.deepCopy(sc)), b = RF.ModeA.build(RF.ModeA.plan(RF.U.deepCopy(sc)));
   ok('ModeA.build(ModeA.plan(scene)) is identical to ModeA.generate(scene)', JSON.stringify([g.surfaces, g.intent, g.report]) === JSON.stringify([b.surfaces, b.intent, b.report]));

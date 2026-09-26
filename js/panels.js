@@ -331,6 +331,18 @@
     box.innerHTML = '';
     const s = (val, lab, cls) => box.append(el('div', { class: 'stat ' + (cls || '') }, el('b', {}, val), el('span', {}, lab)));
     s(st.rays.toLocaleString() + (extra.running ? ' …' : ''), 'rays traced' + (extra.preview ? ' (coarse preview while dragging)' : ''));
+    const fd = extra.fid;
+    if (fd) {
+      const q = fd.ratio, cnt = (x) => x ? pct(x.within) + ' of ' + x.cells : '—';
+      box.append(el('h4', { class: 'stats-sub' }, 'Fidelity to the paint'));
+      s(pct(fd.within) + (fd.within < fd.noiseCeiling - 0.02 ? '' : ' (noise-limited)'), 'painted right: painted cells within ×/÷1.25 of the paint (or of the paint blurred by the smallest LED image, ' + fd.kernel.cells.toFixed(1) + ' cells) — at the best overall brightness; raw paint only: ' + pct(fd.withinRaw) + '; a perfect design would score ' + pct(fd.noiseCeiling) + ' at ' + Math.round(fd.raysPerCell) + ' rays/cell');
+      s(pct(fd.fidelity), 'FIDELITY = ½ painted cells right + ½ gaps dark (the headline)');
+      s(pct(fd.gapsDark) + ' of ' + fd.gapCells, 'gaps dark: unpainted cells within ' + fd.gapBand + ' cells of the paint that stay under 10% of a painted cell (or the blurred paint\u2019s halo)');
+      s(pct(fd.under) + ' · ' + pct(fd.over), 'failing painted cells: too dim · too bright');
+      s(cnt(fd.interior) + ' · ' + cnt(fd.edge), 'within, interior cells · edge cells (a painted cell next to an unpainted one)', 'pair');
+      s([q.p5, q.p25, q.p50, q.p75, q.p95].map((x) => x.toFixed(2)).join(' · '), 'delivered ÷ intended per painted cell: 5th · 25th · median · 75th · 95th pct (1 = as painted)', 'pair');
+      s(pct(fd.onPaint) + ' · ' + pct(fd.spill) + ' (' + pct(fd.spillNear) + ' just outside the edge)', 'light on the paint (of emitted) · spill: target light on unpainted cells', 'pair');
+    }
     s(String(st.surfaces), 'surfaces placed');
     const area = st.basis === 'paint' ? 'painted cells' : 'beam (≥10% of peak)';
     s('beam ' + pct(st.coverage) + ' · field ' + pct(st.coverageField) + ' · U₀ ' + st.uniformity.toFixed(2), 'coverage (≥50% · ≥10% of ' + (st.basis === 'paint' ? 'intended' : 'peak') + ') · uniformity over ' + area + ' — U₀ = 5th pct ÷ mean' + (st.basis === 'paint' ? ' of sim ÷ paint' : '') + '; noise ceiling ' + st.noiseCeiling.toFixed(2) + ' (' + Math.round(st.raysPerCell) + ' rays/cell)' + (st.uniformity >= st.noiseCeiling - 0.02 ? ' — noise-limited: more rays or a coarser sim grid' : ''), 'pair');
@@ -370,12 +382,18 @@
       const delivered = ((E.direct || 0) + (E.reflected || 0)) / em;
       const rA = ui.store.reports.A, sc = ui.store.scene;
       row.innerHTML = '';
-      row.append(
+      const fd = extra.fid;
+      if (fd) row.append(
+        t(pct(fd.fidelity), 'fidelity', 'Half: painted cells within ×/÷1.25 of the paint (' + pct(fd.within) + '; too dim ' + pct(fd.under) + ', too bright ' + pct(fd.over) + '). Half: the gaps around the paint stay dark (' + pct(fd.gapsDark) + ' of ' + fd.gapCells + ' cells). A perfect design would score ' + pct(fd.fidelityNoiseCeiling) + ' at this ray count.', fd.fidelity >= fd.fidelityNoiseCeiling - 0.02 ? 'capped' : ''),
+        t(pct(fd.onPaint), 'on paint', 'Share of the LED\u2019s light landing on painted cells (efficiency that counts only light where you asked). ' + pct(delivered) + ' reaches the target in all.'),
+        t(pct(fd.spill), 'spill', 'Share of the target light landing on unpainted cells. ' + pct(fd.spillNear) + ' lands just outside the painted edge (a cutoff leak shows here).'));
+      else row.append(
         t(pct(delivered), 'delivered', 'Fraction of emitted light that reaches the target (direct + via optics).'),
         t(pct(st.coverage), 'beam', 'Beam coverage: share of the ' + (st.basis === 'paint' ? 'painted cells' : 'beam area') + ' at ≥50% of ' + (st.basis === 'paint' ? 'intended' : 'peak') + '. Field (≥10%): ' + pct(st.coverageField) + '.'),
         t(st.uniformity.toFixed(2), 'uniformity', 'Uniformity U₀ = 5th percentile ÷ mean over ' + (st.basis === 'paint' ? 'painted cells (sim ÷ paint)' : 'the beam area') + '. Noise ceiling ' + st.noiseCeiling.toFixed(2) + ' at ' + Math.round(st.raysPerCell) + ' rays/cell.' + (st.uniformity >= st.noiseCeiling - 0.02 ? ' Noise-limited: more rays or a coarser sim grid.' : ''), st.uniformity >= st.noiseCeiling - 0.02 ? 'capped' : ''));
-      if (extra.match) row.append(t(extra.match.r.toFixed(2), 'shape', 'Shape match: correlation between intended and simulated (raw grid). ' + pct(extra.match.onPaint) + ' of target energy lands on painted cells.'));
+      if (extra.match && !fd) row.append(t(extra.match.r.toFixed(2), 'shape', 'Shape match: correlation between intended and simulated (raw grid). ' + pct(extra.match.onPaint) + ' of target energy lands on painted cells.'));
       if (ph) row.append(t(fmtCd(ph.peakCd), 'peak', 'Peak intensity ±' + Math.round(100 * noiseOf(ph.peakRays)) + '% (shot noise). Throw ' + Math.round(ph.throwM) + ' m. ' + pct0(ph.ofDesign) + ' of this design\u2019s brightness ceiling, ' + pct0(ph.ofEnvelope) + ' of the envelope\u2019s. More in Details.'));
+      if (fd) row.append(t(st.uniformity.toFixed(2), 'uniformity', 'U₀ = 5th percentile ÷ mean of delivered ÷ painted. Sees only the dim end (holes), not hotspots. Noise ceiling ' + st.noiseCeiling.toFixed(2) + '.'));
       row.append(el('span', { class: 'tile-sep' }));
       row.append(sc.mode === 'A' && rA && !rA.error
         ? t(rA.placed + ' / ' + sc.modeA.budget, 'facets', 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : ''))

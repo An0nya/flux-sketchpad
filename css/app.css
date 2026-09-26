@@ -375,3 +375,8 @@ button.toggle[aria-pressed="true"] { background: #3a2f1f; color: var(--warn); bo
 .insp-panel .ir b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
 .stats-sub { grid-column: 1 / -1; margin: 6px 0 0; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
 .pane.insp-open #surface-canvas { width: calc(100% - min(260px, 45%) - 16px) !important; }
+
+#heat-display button { padding-left: 8px; padding-right: 8px; }   /* four views fit where three did */
+/* Result: the view buttons keep their size and drop below the title when the header is narrow (never overflow) */
+.head-tools:has(#heat-display) { flex: 0 0 auto; max-width: calc(100% - 40px); }
+#heat-display { flex-wrap: wrap; }   /* a very narrow pane: the buttons wrap rather than spill past the edge */

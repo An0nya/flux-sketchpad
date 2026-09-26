@@ -177,6 +177,23 @@
       meta.frame = { P, ex, ey, ez }; meta.radius = rad; meta.n = n; meta.flat = flat;
       return meta;
     }
+    // Axis-symmetric paraboloid cap (the /astra/ build's facet): z = (x² + y²) / (4·focal) in the frame (ex, ey, n)
+    // about P, clipped to a rectangle ±hx × ±hy (clip.ref orients ex); focal 0/absent = flat.  Front = +n.
+    if (s.type === 'parab') {
+      const n = V.norm(s.n), clip = s.clip || { kind: 'rect', hx: 1, hy: 1 };
+      const ex = V.inPlane(n, clip.ref), ey = V.cross(n, ex), ez = n, P = s.P, f = s.focal;
+      writeFrame(D, o, P, ex, ey, ez);
+      const flat = !(f && isFinite(f));
+      if (flat) writeQuadric(D, o, [0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1], 0);
+      else writeQuadric(D, o, [1 / (4 * f), 0, 0, 0, 1 / (4 * f), 0, 0, 0, 0], [0, 0, -1], 0);
+      D[o + 33] = flat ? 1 : -1;                  // front normal = +n (the -1 undoes the gradient's −z)
+      D[o + 22] = CLIP.rect; D[o + 23] = clip.hx; D[o + 24] = clip.hy;
+      const rad = Math.hypot(clip.hx, clip.hy); let slab = 0;
+      if (!flat) for (const sx of [-1, 1]) for (const sy of [-1, 1]) slab = Math.max(slab, Math.abs(localSag(D, o, sx * clip.hx, sy * clip.hy)) || 0);
+      D[o + 27] = slab * 2 + rad * 1e-6;
+      meta.frame = { P, ex, ey, ez }; meta.radius = rad; meta.n = n; meta.flat = flat;
+      return meta;
+    }
     if (s.type === 'rev') {
       const W = V.norm(s.W), ex = V.inPlane(W, s.ref || null), ey = V.cross(W, ex);
       writeFrame(D, o, s.O, ex, ey, W);

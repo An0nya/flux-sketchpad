@@ -31,7 +31,7 @@
     Object.assign(s.envelope, { center: [-32.05, -6.92, 40.47], half: [27.95, 52.59, 27.46], keepOut: 5 });
     s.modeA.minDistance = s.modeB.minDistance = 15;   // was a 15 mm keep-out: same geometry (clearance ≤ 5 + a solver preference)
     Object.assign(s.target, { distance: 2000, size: 500, res: 100 });
-    Object.assign(s.sim, { rays: 50000, res: 100 });
+    Object.assign(s.sim, { rays: 500000, res: 100 });   // 50k was too few to see the beam resolve (~20 rays per painted cell)
     Object.assign(s.modeA, { paint: defaultPaint(100), budget: 100 });
     return s;
   }

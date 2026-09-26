@@ -338,27 +338,16 @@ switcher + schema-rendered settings; (d, post-compaction) generic tuner, Astra p
 - Next (post-compaction): generic tuner; port Astra/Opus-5 solver (`astra-final`: fill, cutoff bias, design
   emitter); SQM; benchmark harness (headless runner using the same worker contract).
 
-### Benchmark trial 1 observations (space-bunny-alpha, 2026-09-25, workspace @ 5a767f9 — do not change mid-run)
-Interface gaps surfaced by the model (fix for the next run, keep the pinned commit for this one):
-1. **Browser worker ≠ Node runner/scorer `RF`.** `solve-worker.js` imports core/geometry/source/engine/solver/
-   modeA/solvers only; the runner and scorer load every file (incl. `photometry.js`). A solver using
-   `RF.Photometry` passes scoring and breaks in the app. Make both load one shared list; document it.
-2. **`trace()` lacks occlusion/peak/ceiling** though the spec promised occlusion; the model proxied "blocked"
-   with `energy.reHit / intercepted` (not our definition). Return `occlusion` + `peakCd` + `ofCeiling`.
-3. **`RF.ModeA` is sealed** (returns only finished facets), so reusing its partition means re-implementing it.
-   Consider exposing its intermediate items / zones.
-The model's early "no change" stall was its own bug (fitting model→paint instead of measurement→paint).
-- ⚠️ **Retraction (09-25):** I reported trial 1's low-beam scene as a real clearance failure ("its re-aiming
-  moves facets too close"). **Wrong** — both flags were verifier false alarms: real surfaces at 5.0037 / 5.0005
-  mm vs 5 mm; only flat chord points whose LED ray MISSES the mirror dipped to ~4.99. The model found this
-  itself and added a 0.3% margin to pass. Verifier now measures only real surface points (outline points +
-  ray hits); a bracket test (just under / just over the closest real point) fails on the old verifier (it
-  false-flags 2 of spoke's own facets) and passes now. The trial is still scored at its pinned commit, whose
-  verifier has the false alarm — read its clearance flags with that in mind.
-- Loaded solvers hid the shared settings only after `e69fdeb`; budget-over is now verified in the app too.
-- **Limits change (09-25, Anya):** facet budget + reflectivity are the USER's limits → `input.limits`; declaring
-  them as settings is recorded/ignored/warned (legacy solvers still load). Scorer reports absolute solve times
-  per budget next to the slope (trial 1's solver: 10.8→15.4 s at 50→400 facets, "slope 0.19" alone flattered it).
-- **Task tiers (proposed, for local models):** T1 edit `ModeA.plan` analytically, trace budget 0 (~50 ms per test);
-  T2 analytic solver from scratch, trace budget 0; T3 closed loop with a CAPPED trace budget (1–2M rays/solve —
-  trial 1 spent ~11M on 142 candidates; a cap makes algorithms, not brute search, the lever).
+### Paint fidelity (2026-09-26)
+
+The headline measure of how well a design reproduces the painting (`RF.Photometry.fidelity`, shown in the footer,
+Details, the Result map's Fidelity view and the spot inspector; returned by `trace()`):
+- **½ painted right:** painted cells within ×/÷1.25 of their painted level, at the design's best overall brightness.
+  Near an edge a cell may instead match the paint blurred by the smallest LED image (a conservative kernel: the LED's
+  short side, foreshortened, over the envelope within 60° of the LED axis).
+- **½ gaps dark:** unpainted cells within (kernel + 2) cells of the paint must stay under max(1.25 × the blurred
+  paint, 10% of a typical painted cell).  Without this half, flooding the area scored best.
+- Also reported: ratio percentiles, interior/edge split, light on the paint, spill (and spill just outside the edge),
+  and a noise ceiling (what a perfect design would score at the current ray count).
+- Known-answer controls and mutation checks: tests/photometry.js.
+- Benchmark notes (trial results, scoring decisions) are kept privately, outside this repo.
