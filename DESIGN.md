@@ -356,3 +356,9 @@ The model's early "no change" stall was its own bug (fitting model→paint inste
   false-flags 2 of spoke's own facets) and passes now. The trial is still scored at its pinned commit, whose
   verifier has the false alarm — read its clearance flags with that in mind.
 - Loaded solvers hid the shared settings only after `e69fdeb`; budget-over is now verified in the app too.
+- **Limits change (09-25, Anya):** facet budget + reflectivity are the USER's limits → `input.limits`; declaring
+  them as settings is recorded/ignored/warned (legacy solvers still load). Scorer reports absolute solve times
+  per budget next to the slope (trial 1's solver: 10.8→15.4 s at 50→400 facets, "slope 0.19" alone flattered it).
+- **Task tiers (proposed, for local models):** T1 edit `ModeA.plan` analytically, trace budget 0 (~50 ms per test);
+  T2 analytic solver from scratch, trace budget 0; T3 closed loop with a CAPPED trace budget (1–2M rays/solve —
+  trial 1 spent ~11M on 142 candidates; a cap makes algorithms, not brute search, the lever).
