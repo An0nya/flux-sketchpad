@@ -337,3 +337,14 @@ switcher + schema-rendered settings; (d, post-compaction) generic tuner, Astra p
   packaging clearance (problem, verified) vs a minimum-distance preference (solver setting).
 - Next (post-compaction): generic tuner; port Astra/Opus-5 solver (`astra-final`: fill, cutoff bias, design
   emitter); SQM; benchmark harness (headless runner using the same worker contract).
+
+### Benchmark trial 1 observations (space-bunny-alpha, 2026-09-25, workspace @ 5a767f9 — do not change mid-run)
+Interface gaps surfaced by the model (fix for the next run, keep the pinned commit for this one):
+1. **Browser worker ≠ Node runner/scorer `RF`.** `solve-worker.js` imports core/geometry/source/engine/solver/
+   modeA/solvers only; the runner and scorer load every file (incl. `photometry.js`). A solver using
+   `RF.Photometry` passes scoring and breaks in the app. Make both load one shared list; document it.
+2. **`trace()` lacks occlusion/peak/ceiling** though the spec promised occlusion; the model proxied "blocked"
+   with `energy.reHit / intercepted` (not our definition). Return `occlusion` + `peakCd` + `ofCeiling`.
+3. **`RF.ModeA` is sealed** (returns only finished facets), so reusing its partition means re-implementing it.
+   Consider exposing its intermediate items / zones.
+The model's early "no change" stall was its own bug (fitting model→paint instead of measurement→paint).
