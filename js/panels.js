@@ -185,7 +185,7 @@
       section('Verification', { open: false, key: 'checks', tag: 'in-page, pass/fail' },
         el('div', { class: 'note' }, 'Same checks as `node tests/headless.js`. They build their own scenes; your scene is not touched. #14 additionally drives the real DOM inputs here.'),
         el('div', { class: 'btnrow' }, runBtn), el('div', { id: 'checks-out', class: 'checks' })),
-      section('Solver', { open: false, key: 'solver', tag: 'default: Spoke' }, el('div', { id: 'solver-box' })),
+      section('Solver', { open: false, key: 'solver', tag: 'default: ' + ((RF.Solvers.get(RF.Solvers.DEFAULT_ID) || {}).name || RF.Solvers.DEFAULT_ID).replace(/ \(.*\)$/, '') }, el('div', { id: 'solver-box' })),
       section('Diagnostics (solver internals)', { open: false, key: 'diag', tag: 'read-only' }, el('div', { id: 'diag', class: 'note' })),
       section('Scene contents', { open: false, key: 'groups', tag: 'visibility override' }, el('div', { id: 'group-list', class: 'group-list' }))));
   }
@@ -454,7 +454,7 @@
     for (const k of Object.keys(sc.groups)) sc.groups[k].surfaces = [];
     switch (name) {
       case 'headlamp': noteList.push('default headlamp: 2 mm LED facing up, half-parabola envelope above it'); break;
-      case 'deepbox': { const a = RF.Checks.helpers.asymScene(); Object.assign(sc, a); noteList.push('tall deep box 160×80×50 mm, LED on its side wall; spot pattern'); break; }
+      case 'deepbox': { if (!RF.Checks) return null; const a = RF.Checks.helpers.asymScene(); Object.assign(sc, a); noteList.push('tall deep box 160×80×50 mm, LED on its side wall; spot pattern'); break; }
       case 'stamps':
         sc.mode = 'B'; sc.groups.A.enabled = true;
         sc.modeB.stamps = [
@@ -512,7 +512,9 @@
   // ---------------------------------------------------------------- in-page checks
   function runChecks(ui) {
     const out = document.getElementById('checks-out'), btn = document.getElementById('btn-checks');
-    out.innerHTML = ''; btn.disabled = true;
+    out.innerHTML = '';
+    if (!RF.Checks) { out.textContent = 'The verification checks are not included in this build.'; return; }
+    btn.disabled = true;
     const list = RF.Checks.list.slice().sort((a, b) => a.id - b.id);
     let i = 0, pass = 0, fail = 0, skip = 0;
     const t00 = performance.now();

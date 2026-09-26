@@ -1392,7 +1392,7 @@
   }
   function safeBoot() {
     try {
-      const need = ['V', 'Geo', 'Source', 'Engine', 'State', 'Solver', 'ModeA', 'ModeB', 'Feasibility', 'Profile', 'Lenses', 'Controller', 'Render', 'Render2D', 'Input', 'Layout', 'Panels'];
+      const need = ['V', 'Geo', 'Source', 'Engine', 'State', 'Solvers', 'ModeB', 'Feasibility', 'Profile', 'Lenses', 'Controller', 'Render', 'Render2D', 'Input', 'Layout', 'Panels'];
       const missing = need.filter((k) => !RF[k]);
       if (missing.length) throw new Error('module(s) did not load: ' + missing.join(', ') + ' — check the js/ folder is complete.');
       boot();
