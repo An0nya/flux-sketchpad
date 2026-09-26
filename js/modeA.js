@@ -186,12 +186,7 @@
       }
     });
     const zones = Solver.partitionZones(items.map((it) => ({ w: it.w, p: it.pq[0], q: it.pq[1] })), info);
-    // for the inspector: each zone's assigned facet (null = dropped), and each paint cell's main zone
-    // (a cell straddling a cut is shared; it belongs to whichever zone holds the larger part of it)
-    const zoneOf = new Int32Array(info.res * info.res).fill(-1), share = new Float64Array(info.res * info.res);
-    zones.forEach((z, zi) => { if (z && !z.empty) for (const c of z.cells) if (c.w > share[c.idx]) { share[c.idx] = c.w; zoneOf[c.idx] = zi; } });
     report.zones = zones.map((z) => ({ facet: null, flux: z && !z.empty ? z.W / info.sum : 0, aim: z && !z.empty ? z.aim : null }));
-    report.zoneOf = zoneOf; report.zoneRes = info.res;
     // standard per-facet intent (solver interface): each zone's own cells, shared cells split by weight
     const intent = zones.map((z) => ({ facet: null, cells: z && !z.empty ? z.cells.map((c) => [c.idx, c.w]) : [] }));
 

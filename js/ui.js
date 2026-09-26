@@ -651,7 +651,7 @@
       for (const id of ids) {
         info.emph.set(id, 1); info.primaries.push(id);
         const f = surfs.find((x) => x.id === id);
-        if (rep && rep.zones && f && f.info && f.info.zone !== undefined) info.zones.push(f.info.zone);
+        if (rep && rep.intent) rep.intent.forEach((it, zi) => { if (it.facet === id) info.zones.push(zi); });   // its intent(s), from the standard output
       }
       // as if they were the only reflectors: their own landed light, and their rays whatever became of them
       for (let h = 0; h < c.nHits; h++) if (labels.has(c.hitK[h])) vals[simCell(h)] += c.hits[3 * h + 2];
@@ -662,16 +662,15 @@
       }
     } else if (s.kind === 'spot') {
       const spots = s.items, inSpot = (u, v) => spots.some((q) => (u - q.u) ** 2 + (v - q.v) ** 2 <= q.r * q.r);
-      // the solver's intent here: every zone owning a painted cell under the spot, and its own facet
-      if (rep && rep.zoneOf) {
-        const pr = rep.zoneRes, cw = 2 * T.half / pr, zs = new Set();
-        for (let j = 0; j < pr; j++) for (let i = 0; i < pr; i++) {
-          const z = rep.zoneOf[j * pr + i]; if (z < 0) continue;
-          const cu = -T.half + (i + 0.5) * cw, cv = -T.half + (j + 0.5) * cw;
-          if (spots.some((q) => { const du = Math.max(0, Math.abs(cu - q.u) - cw / 2), dv = Math.max(0, Math.abs(cv - q.v) - cw / 2); return du * du + dv * dv < q.r * q.r; })) zs.add(z);
+      // the solver's intent here: every intent holding a cell under the spot (intents may overlap), and its facet
+      if (rep && rep.intentIndex) {
+        const pr = rep.intentIndex.res, cw = 2 * T.half / pr, zs = new Set();
+        for (const [cell, list] of rep.intentIndex.byCell) {
+          const cu = -T.half + (cell % pr + 0.5) * cw, cv = -T.half + (Math.floor(cell / pr) + 0.5) * cw;
+          if (spots.some((q) => { const du = Math.max(0, Math.abs(cu - q.u) - cw / 2), dv = Math.max(0, Math.abs(cv - q.v) - cw / 2); return du * du + dv * dv < q.r * q.r; })) for (const z of list) zs.add(z);
         }
         info.zones = [...zs].sort((a, b) => a - b);
-        info.primaries = info.zones.map((z) => rep.zones[z] && rep.zones[z].facet).filter(Boolean);
+        info.primaries = [...new Set(info.zones.map((z) => rep.intent[z].facet).filter(Boolean))];
       }
       const byK = new Map();
       // only the light that landed in the spot(s), and where it came from
@@ -756,16 +755,16 @@
       }
       ctx.restore();
     };
-    if (!i.zones.length || !rep || !rep.zoneOf) return spotRing;
-    const zo = rep.zoneOf, r = rep.zoneRes, zset = new Set(i.zones), at = (a, b) => a >= 0 && b >= 0 && a < r && b < r && zset.has(zo[b * r + a]);
-    // outline each zone on its own (a shared edge between two selected zones still shows)
-    const same = (a, b, a2, b2) => at(a2, b2) && zo[b2 * r + a2] === zo[b * r + a];
+    if (!i.zones.length || !rep || !rep.intent) return spotRing;
+    // each selected intent's own cell set; outlined separately (intents may overlap or share edges)
+    const r = rep.intentIndex.res, sets = i.zones.map((z) => new Set(rep.intent[z].cells.filter((c) => c[1] > 0).map((c) => c[0])));
+    const union = new Set(); for (const st of sets) for (const c of st) union.add(c);
     return (ctx, view) => {
       ctx.save();
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
       ctx.fillStyle = 'rgba(242,180,65,0.28)';
-      for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) if (at(a, b)) {
-        const p = view.toScreen(a, b + 1), q = view.toScreen(a + 1, b);
+      for (const cell of union) {
+        const a = cell % r, b = Math.floor(cell / r), p = view.toScreen(a, b + 1), q = view.toScreen(a + 1, b);
         if (!outlineOnly) ctx.fillRect(p[0], p[1], q[0] - p[0], q[1] - p[1]);
         x0 = Math.min(x0, p[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, q[1]);
       }
@@ -774,13 +773,13 @@
         ctx.arc((x0 + x1) / 2, (y0 + y1) / 2, 11, 0, 2 * Math.PI); ctx.stroke();
       }
       ctx.strokeStyle = 'rgb(242,180,65)'; ctx.lineWidth = 1.6; ctx.beginPath();
-      for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) {
-        if (!at(a, b)) continue;
-        const seg = (x0, y0, x1, y1) => { const p = view.toScreen(x0, y0), q = view.toScreen(x1, y1); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); };
-        if (!same(a, b, a - 1, b)) seg(a, b, a, b + 1);
-        if (!same(a, b, a + 1, b)) seg(a + 1, b, a + 1, b + 1);
-        if (!same(a, b, a, b - 1)) seg(a, b, a + 1, b);
-        if (!same(a, b, a, b + 1)) seg(a, b + 1, a + 1, b + 1);
+      const seg = (x0, y0, x1, y1) => { const p = view.toScreen(x0, y0), q = view.toScreen(x1, y1); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); };
+      for (const st of sets) for (const cell of st) {
+        const a = cell % r, b = Math.floor(cell / r), has = (a2, b2) => a2 >= 0 && b2 >= 0 && a2 < r && b2 < r && st.has(b2 * r + a2);
+        if (!has(a - 1, b)) seg(a, b, a, b + 1);
+        if (!has(a + 1, b)) seg(a + 1, b, a + 1, b + 1);
+        if (!has(a, b - 1)) seg(a, b, a + 1, b);
+        if (!has(a, b + 1)) seg(a, b + 1, a + 1, b + 1);
       }
       ctx.stroke(); ctx.restore();
       spotRing(ctx, view);
