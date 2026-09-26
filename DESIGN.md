@@ -322,3 +322,18 @@ output, intent well-formed, metadata round-trips, never mutates its input.
 **Build order:** (a) registry + spoke v1 adapter (byte-identical output) + verify + `scene.solve` +
 inspector reads standard intent; (b) worker host + budget kill; (c) load-solver-from-file + hidden
 switcher + schema-rendered settings; (d, post-compaction) generic tuner, Astra port, SQM.
+
+### Solver interface — build log (2026-09-25, branch `solver-interface`)
+- (a) `js/solvers.js` registry + `verify` + `runSync/runAsync`; `js/solver-spoke.js` = spoke v1, byte-identical
+  to modeA (gated). Inspector reads the standard per-facet intent. **Verifier gap found by its own negative
+  control:** the keep-out sphere can be entered *between* a patch's edges; interior samples are now measured on
+  the real surface (a chord-only test raised false alarms on concave facets). Default scene: closest facet
+  15.07 mm vs 15 mm keep-out — clean.
+- (b)+(c) loaded solvers run ONLY in `js/solve-worker.js` (page holds a proxy); budget 60 s / 2e7 rays, overrun ⇒
+  worker terminated + sources reloaded. Built-in spoke stays inline (trusted, ~40 ms) — Anya may overrule.
+  `examples/solver-example.js` = template (settings, progress, intent, trace + attribution feedback).
+  Hostile tests passed live: DOM access fails, infinite loop stopped, Forget restores the default.
+- **Open (Anya 09-25): keep-out** is arguably a solver parameter; see discussion — split proposed into a hard
+  packaging clearance (problem, verified) vs a minimum-distance preference (solver setting).
+- Next (post-compaction): generic tuner; port Astra/Opus-5 solver (`astra-final`: fill, cutoff bias, design
+  emitter); SQM; benchmark harness (headless runner using the same worker contract).
