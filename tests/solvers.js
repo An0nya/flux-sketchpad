@@ -82,6 +82,8 @@ for (const k of [15, 3]) {
   const v5 = S.verify(sc, { surfaces: 'lots' });
   ok('verifier flags a surface outside the envelope', v1.violations.envelope.includes('far'));
   ok('verifier flags a surface inside the keep-out', v2.violations.keepOut.includes('near'));
+  { const sb = RF.U.deepCopy(sc); sb.modeA.budget = 3; const vb = S.verify(sb, { surfaces: good.surfaces.slice(0, 5) }), vok = S.verify(sb, { surfaces: good.surfaces.slice(0, 3) });
+    ok('verifier flags more facets than the budget (and not exactly the budget)', vb.violations.budget && vb.violations.budget.placed === 5 && !vok.violations.budget); }
   ok('verifier rejects repeated ids and non-array surfaces', v3.errors.length > 0 && v5.errors.length > 0);
   ok('verifier rejects intent naming an unplaced facet or a bad cell; counts null-facet intents', v4.intentErrors.length === 2 && v4.dropped === 1, v4.intentErrors.join(' | '));
   // a solver that lies in its extras: the host's facts win

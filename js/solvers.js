@@ -69,7 +69,7 @@
   // Host-owned facts about a solver's output.  errors = the output is unusable; violations = usable but
   // breaks a constraint (reported, never hidden).
   function verify(scene, out) {
-    const facts = { errors: [], violations: { envelope: [], keepOut: [] }, intentErrors: [], placed: 0, dropped: null };
+    const facts = { errors: [], violations: { envelope: [], keepOut: [], budget: null }, intentErrors: [], placed: 0, dropped: null };
     if (!out || !Array.isArray(out.surfaces)) { facts.errors.push('output.surfaces is not an array'); return facts; }
     const ids = new Set();
     for (const s of out.surfaces) {
@@ -81,6 +81,8 @@
     let G;
     try { G = RF.Geo.compile(out.surfaces); } catch (e) { facts.errors.push('surfaces do not compile: ' + e.message); return facts; }
     facts.placed = out.surfaces.length;
+    const budget = scene.modeA && scene.modeA.budget;          // the user's facet budget: a limit, never the solver's to change
+    if (budget > 0 && facts.placed > budget) facts.violations.budget = { placed: facts.placed, budget };
     const env = scene.envelope, S = scene.source.pos, keep = env.keepOut || 0;
     for (let k = 0; k < G.n; k++) {
       let outE = false, outK = false;

@@ -56,6 +56,7 @@
     if (f.errors.length) { rep.error = 'Solver ' + r.meta.id + ' returned unusable output: ' + f.errors[0]; rep.ok = false; }
     const v = f.violations;
     if (v.envelope.length) rep.warnings.push(v.envelope.length + ' surface(s) reach outside the envelope (' + v.envelope.slice(0, 3).join(', ') + (v.envelope.length > 3 ? '…' : '') + ').');
+    if (v.budget) rep.warnings.push('The solver placed ' + v.budget.placed + ' facets — over your budget of ' + v.budget.budget + '.');
     if (v.keepOut.length) rep.warnings.push(v.keepOut.length + ' surface(s) enter the keep-out around the LED (' + v.keepOut.slice(0, 3).join(', ') + (v.keepOut.length > 3 ? '…' : '') + ').');
     if (f.intentErrors.length) rep.warnings.push('Solver intent is malformed: ' + f.intentErrors[0]);
     store.reports.A = rep;
