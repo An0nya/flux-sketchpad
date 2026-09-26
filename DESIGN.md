@@ -273,3 +273,52 @@ Wanted: **place, size and rotate the stamp on the target map in the Editor** (in
 - **UI half:** stamp handles (move / corner-resize / rotate) in the Editor; the Result becomes read-only for stamps; show achieved vs requested size/rotation when constraints prevent a match.
 - **Why it's distinct from Paint (Anya):** each stamp must become **one facet, or fail with a stated reason**, not a grid of tiny tiles. That's closer to how real reflectors are designed.
 - **Physics it implies (checked, first-order):** tile size ≈ source size × (facet→target ÷ source→facet), so small, sharp stamps force facets **farther from the source**. The facet's width doesn't lower this blur floor. A small stamp that must also be *bright* needs that far facet to be large too (étendue: less solid angle per mm² of facet farther out). Failure reports should name the binding limit, e.g. "needs a facet ~70 mm out; the envelope allows 45".
+
+## Solver interface — spec (2026-09-25, agreed with Anya)
+
+**Provenance.** Astra's untouched baseline (`agent-qa/work-codex-astra-reflector-v3-ASTRA-BASELINE`)
+solves by (1) equal-flux quantiles of painted cells in *raster order*, (2) candidate positions on
+constant-optical-path ellipsoids (foci = LED, aim point), (3) greedy per-request placement with
+solid-angle + spatial exclusion (~O(requests × candidates)). It has no fill / cutoff-bias /
+design-emitter knobs and no tuner: those (and `tune.js`) came later in interactive work, Opus 5
+per Anya. `tune.js` = one-pass coordinate descent over budget × fill × design emitter (~16 evals),
+each a full rebuild + real 20k-ray trace (no paths), 3 objectives measured inside the paint with
+guard terms; starts from the user's settings. No per-facet feedback; compares noisy scores blind.
+
+**Two layers.**
+1. **Solver** — settings in, geometry out, deterministic for a given (input, settings, seed). May
+   iterate internally (analytic, or a few cheap traces) but never changes its own settings.
+2. **Tuner** — given a goal, picks a solver's settings by trying them. Generic: reads the solver's
+   declared settings schema, so one tuner drives any solver. Benchmark: prescribed parameters +
+   prescribed tuner goals are required; models may add their own settings, modes and tuners.
+
+**Registry.** A solver file calls `RF.Solvers.register({ id, name, version, modes: ['paint'|'stamps'],
+settings: [schema…], solve(input, settings, tools) })` and needs no other edits. Schema fields:
+`{ key, label, type: 'number'|'range'|'select'|'checkbox', min, max, step, options, default, help }`,
+rendered into the sidebar. Default solver = spoke v1; the switcher, settings of non-default solvers
+and the grader live under Reference & debug (not the project's main purpose).
+
+**Input** (plain data, no DOM): `{ source, envelope, target, paint: { res, cells }, stamps, seed }` —
+the problem half of the scene, deep-copied. **Tools:** `trace(surfaces, { rays, seed, attribution })`
+→ `{ grid, perFacet?, occlusion, noise }` (common random numbers: same seed for every candidate so
+differences are geometry, not dice; returns its own noise estimate), `progress(pct)`, `budget { rays, ms }`.
+
+**Output:** `{ surfaces, intent?: [{ facet: id|null, cells: [[paintCell, weight]…] }], notes?, extras? }`.
+Intent is optional, per facet, **overlap allowed**; `facet: null` = an intent the solver couldn't place.
+
+**Host-owned facts** (never trusted from the solver): `verify(output)` → placed, dropped (null-facet
+intents), envelope + keep-out compliance per surface, intent well-formedness, surface validity.
+Scoring (delivered map, U₀, % of ceiling, occlusion, delivered÷intended) is also host code.
+**Saved with the geometry:** `scene.solve = { id, version, settings, seed }`; reopening shows what
+was solved, Rebuild re-solves with the same solver.
+
+**Isolation.** UI runs solvers in a Web Worker: responsive, and a solver has no access to the page,
+so it can't patch the grader or tracer; the host terminates a solver that overruns its budget.
+Headless tests call the same registry synchronously.
+
+**Conformance suite** (every registered solver): stays inside envelope + keep-out, same seed ⇒ same
+output, intent well-formed, metadata round-trips, never mutates its input.
+
+**Build order:** (a) registry + spoke v1 adapter (byte-identical output) + verify + `scene.solve` +
+inspector reads standard intent; (b) worker host + budget kill; (c) load-solver-from-file + hidden
+switcher + schema-rendered settings; (d, post-compaction) generic tuner, Astra port, SQM.
