@@ -83,7 +83,7 @@
     const dT = V.dist(S, Zc);
     // keep-out: packaging clearance around the emitter (LED dome / package) — a user constraint,
     // independent of the envelope, so it cannot break monotonicity.
-    const keep = Math.max(env.keepOut || 0, 1.5 * srcR);
+    const keep = Math.max(env.keepOut || 0, scene.modeA.minDistance || 0, 1.5 * srcR);   // LED clearance (hard) · min facet distance (preference)
     const rMin = Math.max(keep, 2e-3 * dT);
     let rEnv = 0;
     for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) rEnv = Math.max(rEnv, V.dist(S, [env.center[0] + sx * env.half[0], env.center[1] + sy * env.half[1], env.center[2] + sz * env.half[2]]));

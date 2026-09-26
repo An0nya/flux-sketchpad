@@ -200,6 +200,7 @@
     // tall deep box opening toward the target (+x); the source sits low on the z = 0 side wall,
     // deep in the box, facing across it (+z).
     sc.envelope = { shape: 'box', center: [-80, 0, 40], half: [80, 25, 40], axis: 2, keepOut: 6 };
+    sc.modeA.minDistance = sc.modeB.minDistance = 0;   // this scene sets its own keep-out (pre-split meaning): no extra min distance
     sc.source.pos = [-140, 0, 0.5]; sc.source.axis = [0, 0, 1];
     const res = sc.target.res; sc.modeA.paint = new Array(res * res).fill(0);
     const c = (res - 1) / 2;
@@ -247,6 +248,7 @@
     // (b) 5 mm die in a 20 mm box, 10×10-cell spot ⇒ étendue
     const b = RF.State.testScene();
     b.source.w = b.source.h = 5; b.envelope = { shape: 'box', center: [-5, 0, 10], half: [10, 10, 10], axis: 2, keepOut: 5 };
+    b.modeA.minDistance = b.modeB.minDistance = 0;   // this scene sets its own keep-out (pre-split meaning): no extra min distance
     { const res = b.target.res, c = res / 2; b.modeA.paint = new Array(res * res).fill(0); for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) if (Math.abs(i - c + 0.5) < 5 && Math.abs(j - c + 0.5) < 5) b.modeA.paint[j * res + i] = 1; }
     expect('5 mm die, 20 mm envelope, 10×10 spot', b, 'etendue');
     // (c) ask for 95% of lamp flux from a shallow envelope ⇒ interceptable flux

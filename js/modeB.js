@@ -22,7 +22,7 @@
                    Math.cos(t) * fr.a[1] + s * (Math.cos(p) * fr.u[1] + Math.sin(p) * fr.v[1]),
                    Math.cos(t) * fr.a[2] + s * (Math.cos(p) * fr.u[2] + Math.sin(p) * fr.v[2])]);
   }
-  function keepOut(scene) { return Math.max(scene.envelope.keepOut || 0, 1.5 * RF.Source.boundingRadius(scene.source)); }
+  function keepOut(scene) { return Math.max(scene.envelope.keepOut || 0, (scene.modeB && scene.modeB.minDistance) || 0, 1.5 * RF.Source.boundingRadius(scene.source)); }
 
   // Room along a direction: [rLo, rHi] distances inside the envelope and outside the keep-out.
   function room(scene, dir) {

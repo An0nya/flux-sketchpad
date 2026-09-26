@@ -34,6 +34,13 @@ for (const def of S.list()) {
   const saved = JSON.parse(JSON.stringify(st.scene)), st2 = C.createStore(saved); C.regenerateA(st2);
   ok('scene.solve round-trips and re-solving reproduces the geometry', JSON.stringify(saved.solve) === JSON.stringify(st2.scene.solve) && JSON.stringify(st.scene.groups.A.surfaces) === JSON.stringify(st2.scene.groups.A.surfaces), JSON.stringify(saved.solve)); }
 
+// keep-out split: an old file (keep-out only) loads into the same geometry — clearance ≤ CLEAR_MAX + min distance
+for (const k of [15, 3]) {
+  const old = RF.State.defaultScene(); old.envelope.keepOut = k; delete old.modeA.minDistance; delete old.modeB.minDistance;
+  const loaded = RF.State.deserialize(JSON.stringify(old)), a = RF.ModeA.generate(RF.U.deepCopy(old)).surfaces, b = RF.ModeA.generate(RF.U.deepCopy(loaded)).surfaces;
+  ok('old keep-out ' + k + ' mm → clearance ' + loaded.envelope.keepOut + ' + min distance ' + loaded.modeA.minDistance + ': identical geometry', JSON.stringify(a) === JSON.stringify(b) && loaded.envelope.keepOut <= RF.State.CLEAR_MAX, a.length + ' facets');
+}
+
 // negative controls: a lying / sloppy solver
 { const sc = RF.State.testScene(), good = RF.ModeA.generate(RF.U.deepCopy(sc)), f0 = good.surfaces[0];
   const far = RF.U.deepCopy(f0); far.id = 'far'; far.P = [far.P[0] + 5 * sc.envelope.half[0], far.P[1], far.P[2]]; far.clip.pts3 = far.clip.pts3.map((p) => [p[0] + 5 * sc.envelope.half[0], p[1], p[2]]);

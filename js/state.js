@@ -28,7 +28,8 @@
   function defaultScene() {
     const s = testScene();
     Object.assign(s.source, { pos: [-36.58, -3.53, 13.58], axis: [-0.0086, 0.0052, 0.99995], w: 1, h: 1 });   // 1 mm LED on the back wall
-    Object.assign(s.envelope, { center: [-32.05, -6.92, 40.47], half: [27.95, 52.59, 27.46], keepOut: 15 });
+    Object.assign(s.envelope, { center: [-32.05, -6.92, 40.47], half: [27.95, 52.59, 27.46], keepOut: 5 });
+    s.modeA.minDistance = s.modeB.minDistance = 15;   // was a 15 mm keep-out: same geometry (clearance ≤ 5 + a solver preference)
     Object.assign(s.target, { distance: 2000, size: 500, res: 100 });
     Object.assign(s.sim, { rays: 50000, res: 100 });
     Object.assign(s.modeA, { paint: defaultPaint(100), budget: 100 });
@@ -42,12 +43,12 @@
         w: 2, h: 2, radius: 1, length: 4, power: 1000,
         dist: 'lambertian', sigma: 30, halfAngle: 60,
       },
-      envelope: { shape: 'box', center: [-20, 0, 27.5], half: [40, 45, 32.5], axis: 2, keepOut: 12 },
+      envelope: { shape: 'box', center: [-20, 0, 27.5], half: [40, 45, 32.5], axis: 2, keepOut: 5 },   // LED clearance (hard, ≤ CLEAR_MAX)
       target: { distance: 1000, size: 1000, tiltX: 0, tiltY: 0, res: 50, linked: true, aim: [1000, 0, 0] },
       sim: { rays: 10000, res: 50, autoRes: false, bounces: 1, floor: 0.01, seed: 1, smoothing: false, view: 'total', surfaceView: 'shaded' },
       mode: 'A',
-      modeA: { paint: defaultPaint(50), brush: { size: 3, strength: 1, erase: false }, budget: 48, facetType: 'curved', reflectivity: 0.9, requiredFlux: 0 },
-      modeB: { stamps: [], selected: null, facetType: 'curved', defaultScale: 160 },
+      modeA: { paint: defaultPaint(50), brush: { size: 3, strength: 1, erase: false }, budget: 48, facetType: 'curved', reflectivity: 0.9, requiredFlux: 0, minDistance: 12 },   // minDistance: solver preference (was part of a 12 mm keep-out)
+      modeB: { stamps: [], selected: null, facetType: 'curved', defaultScale: 160, minDistance: 12 },
       modeC: {
         profile: [], sweep: 'revolve', axisMode: 'aim', azSegments: 0, mirror: false, flipFacing: false, reverseAxis: false,
         interaction: 'reflect', reflectivity: 0.9, ior: 1.49, fresnelT: 0.96, extrudeLength: 60,
@@ -84,10 +85,17 @@
     return out;
   }
   function serialize(scene) { return JSON.stringify(scene); }
+  const CLEAR_MAX = 5;                                  // mm: the LED clearance control's range (package / dome)
   function deserialize(str) {
     const obj = typeof str === 'string' ? JSON.parse(str) : str;
     if (!obj || typeof obj !== 'object') throw new Error('not a scene object');
     const sc = mergeDefaults(obj, defaultScene());
+    // 09-25: the old keep-out split into a hard LED clearance (≤ CLEAR_MAX, verified) + a per-solver minimum
+    // facet distance.  Older files keep their exact geometry: clearance = min(old, max), distance = the rest.
+    if (!obj.modeA || obj.modeA.minDistance === undefined) {
+      const k = Math.abs(+((obj.envelope && obj.envelope.keepOut) || 0)) || 0;
+      sc.envelope.keepOut = Math.min(k, CLEAR_MAX); sc.modeA.minDistance = sc.modeB.minDistance = k > CLEAR_MAX ? k : 0;
+    }
     if (!obj.sim || obj.sim.res === undefined) sc.sim.res = sc.target.res;   // older files: sim grid = paint grid
     // groups: keep loaded surfaces verbatim
     if (obj.groups) for (const k of Object.keys(obj.groups)) sc.groups[k] = Object.assign({ label: k, enabled: true, surfaces: [] }, obj.groups[k]);
@@ -143,6 +151,7 @@
     sc.envelope.center = fp(sc.envelope.center);
     sc.envelope.half = sc.envelope.half.map((h) => Math.abs(fl(h)));
     sc.envelope.keepOut = Math.abs(fl(sc.envelope.keepOut || 0));
+    sc.modeA.minDistance = Math.abs(fl(sc.modeA.minDistance || 0)); if (sc.modeB) sc.modeB.minDistance = Math.abs(fl(sc.modeB.minDistance || 0));   // lengths too
     sc.target.distance = fl(sc.target.distance); sc.target.size = fl(sc.target.size);
     sc.target.aim = fp(sc.target.aim);
     for (const k of Object.keys(sc.groups)) sc.groups[k].surfaces = sc.groups[k].surfaces.map((x) => mapSurface(x, fp, fv, fl));
@@ -181,7 +190,7 @@
     return sc;
   }
 
-  RF.State = {
+  RF.State = { CLEAR_MAX,
     VERSION, LS_KEY, defaultScene, testScene, defaultPaint, allSurfaces, serialize, deserialize,
     saveLocal, loadLocal, clearLocal, saveSnapshot, loadSnapshot, snapshotTime, mapSurface, scaleScene, mirrorSceneY, reorderScene,
   };

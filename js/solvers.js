@@ -51,7 +51,7 @@
   function current(scene) { const id = (scene.solve && scene.solve.id) || DEFAULT_ID; return get(id) ? id : DEFAULT_ID; }
   function settingsOf(scene, id) {
     const def = get(id);
-    if (id === DEFAULT_ID) return sanitize(def, { budget: scene.modeA.budget, facetType: scene.modeA.facetType, reflectivity: scene.modeA.reflectivity });
+    if (id === DEFAULT_ID) return sanitize(def, { budget: scene.modeA.budget, facetType: scene.modeA.facetType, reflectivity: scene.modeA.reflectivity, minDistance: scene.modeA.minDistance || 0 });
     return sanitize(def, scene.solverSettings && scene.solverSettings[id]);
   }
   // the problem half of the scene: all a solver may see

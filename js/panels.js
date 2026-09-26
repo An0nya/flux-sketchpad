@@ -133,7 +133,7 @@
       el('div', { class: 'btnrow' }, genBtn, el('label', { class: 'tog' }, auto, ' auto after edits')),
       ...rowsFor(ui, ['A.budget']),
       el('div', { id: 'pattern-box' }),
-      section('Advanced', { adv: true, key: 'A-adv' }, ...rowsFor(ui, ['A.type', 'A.refl', 'A.req'])),
+      section('Advanced', { adv: true, key: 'A-adv' }, ...rowsFor(ui, ['A.type', 'A.refl', 'A.minDist', 'A.req'])),
       el('div', { id: 'modeA-report', class: 'note' })));
     side.append(section('Stamp tiles', { open: true, cls: 'only-B', key: 'B', tag: 'solve facet per tile' },
       el('div', { class: 'note' }, 'Tap the Result map to stamp a tile; drag stamps to move them. The Editor is the second picker: direction from the source (drag a marker to set it by hand).'),

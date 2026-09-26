@@ -15,6 +15,7 @@
     const sc = RF.State.testScene();
     sc.source = Object.assign(sc.source, { kind: 'point', pos: [0, 0, 0], axis: [0, 0, 1], dist: 'isotropic' });
     sc.envelope = { shape: 'box', center: [0, 0, 0], half: [500, 500, 500], axis: 2, keepOut: 0 };
+    sc.modeA.minDistance = sc.modeB.minDistance = 0;   // this scene sets its own keep-out (pre-split meaning): no extra min distance
     sc.modeA.paint.fill(0);
     for (const k of Object.keys(sc.groups)) sc.groups[k].surfaces = [];
     return Object.assign(sc, o || {});
