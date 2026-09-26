@@ -342,12 +342,17 @@ switcher + schema-rendered settings; (d, post-compaction) generic tuner, Astra p
 
 The headline measure of how well a design reproduces the painting (`RF.Photometry.fidelity`, shown in the footer,
 Details, the Result map's Fidelity view and the spot inspector; returned by `trace()`):
-- **½ painted right:** painted cells within ×/÷1.25 of their painted level, at the design's best overall brightness.
+- **painted right:** painted cells within ×/÷1.25 of their painted level, at the design's best overall brightness.
   Near an edge a cell may instead match the paint blurred by the smallest LED image (a conservative kernel: the LED's
   short side, foreshortened, over the envelope within 60° of the LED axis).
-- **½ gaps dark:** unpainted cells within (kernel + 2) cells of the paint must stay under max(1.25 × the blurred
-  paint, 10% of a typical painted cell).  Without this half, flooding the area scored best.
+- **gaps dark:** unpainted cells within (kernel + 2) cells of the paint should stay under max(1.25 × the blurred
+  paint, 10% of a typical painted cell); each earns credit on a ramp that reaches 0 at 0.3 × a typical painted cell
+  above that allowance (so a smear gets partial credit and a flood none).  Without this half, flooding scored best.
+- **Headline = F1** (harmonic mean) of the two, so it is near 0 if either half is: a flood and a pitch-black
+  design both score 0.  (A 50/50 average gave both 50%.)
 - Also reported: ratio percentiles, interior/edge split, light on the paint, spill (and spill just outside the edge),
   and a noise ceiling (what a perfect design would score at the current ray count).
 - Known-answer controls and mutation checks: tests/photometry.js.
+- Built-in solvers: Spoke (default) and Constellation (a demonstration of a poor solution: tiny facets, one LED
+  image per painted cell).
 - Benchmark notes (trial results, scoring decisions) are kept privately, outside this repo.

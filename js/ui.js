@@ -212,7 +212,7 @@
     P.syncControls(ui);
     const rA = ui.store.reports.A, box = document.getElementById('modeA-report');
     const nA = ui.store.scene.groups.A.surfaces.length;
-    if (box) box.textContent = rA ? (rA.error ? rA.error : rA.placed + ' facets placed, intercepting ' + (rA.capturedFraction * 100).toFixed(1) + '% of the lamp (solid-angle accounting).' + (rA.warnings.length ? ' ' + rA.warnings.join(' ') : '') + (ui.lastGenMs ? ' Solve took ' + ui.lastGenMs.toFixed(0) + ' ms.' : ''))
+    if (box) box.textContent = rA ? (rA.error ? rA.error : rA.placed + ' facets placed' + (isFinite(rA.capturedFraction) ? ', intercepting ' + (rA.capturedFraction * 100).toFixed(1) + '% of the lamp (solid-angle accounting)' : '') + '.' + (rA.warnings.length ? ' ' + rA.warnings.join(' ') : '') + (ui.lastGenMs ? ' Solve took ' + ui.lastGenMs.toFixed(0) + ' ms.' : ''))
       : nA ? nA + ' facets loaded with the scene (the solver report is not stored — press Rebuild to recompute it).' : 'No design yet.';
     const rC = ui.store.reports.C, bc = document.getElementById('modeC-report');
     if (bc) bc.textContent = rC ? (rC.error || rC.segments + ' surfaces from ' + ui.store.scene.modeC.profile.length + ' profile points.') : '';

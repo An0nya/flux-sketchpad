@@ -50,12 +50,17 @@ ok('brightness theorem: no facet\'s p90 intensity exceeds its ceiling beyond noi
   // a flood: every painted cell gets its share AND every cell around it is lit as brightly → gaps fail, headline ≤ ½
   const flood = Float64Array.from(perfect); { const mx = Math.max(...perfect); for (let q = 0; q < n; q++) if (!(paint[q] > 0)) flood[q] = mx; }
   const ff = F(flood);
-  ok('fidelity: a flood passes the painted cells but fails the gaps (it can no longer rank first)', ff.within === 1 && ff.gapsDark === 0 && ff.fidelity === 0.5, 'painted ' + ff.within + ', gaps dark ' + ff.gapsDark + ', headline ' + ff.fidelity);
+  ok('fidelity: a flood passes the painted cells but fails the gaps → headline 0 (F1)', ff.within === 1 && ff.gapsDark === 0 && ff.fidelity === 0, 'painted ' + ff.within + ', gaps dark ' + ff.gapsDark + ', headline ' + ff.fidelity);
   // a faint halo (5% of a typical painted cell) around the paint is 'dark'; light far outside the band is spill only
   const halo = Float64Array.from(perfect); { const typ = perfect.reduce((a, b) => a + b, 0) / fp.cells; for (let q = 0; q < n; q++) if (!(paint[q] > 0)) halo[q] = 0.05 * typ; }
   const fhal = F(halo);
   ok('fidelity: a faint halo (5% of a painted cell) stays dark', fhal.gapsDark === 1 && fhal.fidelity === 1, 'gaps dark ' + fhal.gapsDark);
+  const smear = Float64Array.from(perfect); { const typ = perfect.reduce((a, b) => a + b, 0) / fp.cells; for (let q = 0; q < n; q++) if (!(paint[q] > 0)) smear[q] = 0.2 * typ; }
+  const fsm = F(smear);   // expected gaps dark ≈ 1 − (0.2 − 0.1) / 0.3 ≈ 0.67; the halo allowance passes a few edge cells outright
+  ok('fidelity: a smear (gaps at 20% of a painted cell) gets partial gap credit, strictly between a halo and a flood', fsm.gapsDark > 0.55 && fsm.gapsDark < 0.8 && fsm.gapsDarkStrict < 0.25, 'gaps dark ' + fsm.gapsDark.toFixed(3) + ' (strict pass/fail: ' + fsm.gapsDarkStrict + ')');
   ok('fidelity: far spill is spill, not a lit gap', fs.gapsDark === 1 && fs.fidelity === 1, 'gaps dark ' + fs.gapsDark + ', spill ' + fs.spill.toFixed(3));
+  const fblk = F(new Float64Array(n));
+  ok('fidelity: a pitch-black design has no painted cell within and headline 0 (it once scored 100%: scale 0 made the band [0, 0])', fblk.within === 0 && fblk.under === 1 && fblk.withinRaw === 0 && fblk.fidelity === 0, 'within ' + fblk.within + ', gaps dark ' + fblk.gapsDark + ', headline ' + fblk.fidelity);
   const fn = F(perfect, 1e3);
   ok('fidelity: noise ceiling falls when rays are scarce', fp.noiseCeiling > 0.999 && fn.noiseCeiling < 0.9, 'ceiling ' + fp.noiseCeiling.toFixed(3) + ' → ' + fn.noiseCeiling.toFixed(3) + ' at ' + fn.raysPerCell.toFixed(1) + ' rays/cell');
 }

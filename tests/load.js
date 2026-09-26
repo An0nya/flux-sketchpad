@@ -3,7 +3,7 @@
 // through interceptors and run ~10x slower, which would make every timing meaningless.
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const ROOT = path.join(__dirname, '..');
-const FILES = ['core', 'geometry', 'source', 'engine', 'state', 'solver', 'solver-env', 'modeA', 'solvers', 'solver-spoke', 'modeB', 'feasibility', 'photometry', 'profile', 'lenses', 'controller', 'history', 'checks1', 'checks2', 'checks3'];
+const FILES = ['core', 'geometry', 'source', 'engine', 'state', 'solver', 'solver-env', 'modeA', 'solvers', 'solver-spoke', 'solver-constellation', 'modeB', 'feasibility', 'photometry', 'profile', 'lenses', 'controller', 'history', 'checks1', 'checks2', 'checks3'];
 function load(extra) {
   if (globalThis.RF) return globalThis.RF;
   for (const f of FILES.concat(extra || [])) {

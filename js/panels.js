@@ -326,7 +326,7 @@
   function renderStats(ui, st, extra) {
     const box = document.getElementById('stats');
     if (!st) { box.innerHTML = '<div class="stat"><b>—</b><span>no run yet</span></div>'; return; }
-    const pct = (x) => (x * 100).toFixed(1) + '%';
+    const pct = (x) => (x === null || x === undefined ? '—' : (x * 100).toFixed(1) + '%');
     const E = st.energy, em = E.emitted || 1;
     box.innerHTML = '';
     const s = (val, lab, cls) => box.append(el('div', { class: 'stat ' + (cls || '') }, el('b', {}, val), el('span', {}, lab)));
@@ -335,8 +335,8 @@
     if (fd) {
       const q = fd.ratio, cnt = (x) => x ? pct(x.within) + ' of ' + x.cells : '—';
       box.append(el('h4', { class: 'stats-sub' }, 'Fidelity to the paint'));
-      s(pct(fd.within) + (fd.within < fd.noiseCeiling - 0.02 ? '' : ' (noise-limited)'), 'painted right: painted cells within ×/÷1.25 of the paint (or of the paint blurred by the smallest LED image, ' + fd.kernel.cells.toFixed(1) + ' cells) — at the best overall brightness; raw paint only: ' + pct(fd.withinRaw) + '; a perfect design would score ' + pct(fd.noiseCeiling) + ' at ' + Math.round(fd.raysPerCell) + ' rays/cell');
-      s(pct(fd.fidelity), 'FIDELITY = ½ painted cells right + ½ gaps dark (the headline)');
+      s(pct(fd.within) + (fd.noiseCeiling === null || fd.within < fd.noiseCeiling - 0.02 ? '' : ' (noise-limited)'), 'painted right: painted cells within ×/÷1.25 of the paint (or of the paint blurred by the smallest LED image, ' + fd.kernel.cells.toFixed(1) + ' cells) — at the best overall brightness; raw paint only: ' + pct(fd.withinRaw) + '; a perfect design would score ' + pct(fd.noiseCeiling) + ' at ' + Math.round(fd.raysPerCell) + ' rays/cell');
+      s(pct(fd.fidelity), 'FIDELITY = F1 of painted-right and gaps-dark (the headline: near 0 if either half is)');
       s(pct(fd.gapsDark) + ' of ' + fd.gapCells, 'gaps dark: unpainted cells within ' + fd.gapBand + ' cells of the paint that stay under 10% of a painted cell (or the blurred paint\u2019s halo)');
       s(pct(fd.under) + ' · ' + pct(fd.over), 'failing painted cells: too dim · too bright');
       s(cnt(fd.interior) + ' · ' + cnt(fd.edge), 'within, interior cells · edge cells (a painted cell next to an unpainted one)', 'pair');
@@ -384,7 +384,7 @@
       row.innerHTML = '';
       const fd = extra.fid;
       if (fd) row.append(
-        t(pct(fd.fidelity), 'fidelity', 'Half: painted cells within ×/÷1.25 of the paint (' + pct(fd.within) + '; too dim ' + pct(fd.under) + ', too bright ' + pct(fd.over) + '). Half: the gaps around the paint stay dark (' + pct(fd.gapsDark) + ' of ' + fd.gapCells + ' cells). A perfect design would score ' + pct(fd.fidelityNoiseCeiling) + ' at this ray count.', fd.fidelity >= fd.fidelityNoiseCeiling - 0.02 ? 'capped' : ''),
+        t(pct(fd.fidelity), 'fidelity', 'Both must hold (F1 score of the two): painted cells within ×/÷1.25 of the paint (' + pct(fd.within) + '; too dim ' + pct(fd.under) + ', too bright ' + pct(fd.over) + ') and the gaps around the paint stay dark (' + pct(fd.gapsDark) + ' of ' + fd.gapCells + ' cells). A perfect design would score ' + pct(fd.fidelityNoiseCeiling) + ' at this ray count.', fd.fidelityNoiseCeiling !== null && fd.fidelity >= fd.fidelityNoiseCeiling - 0.02 ? 'capped' : ''),
         t(pct(fd.onPaint), 'on paint', 'Share of the LED\u2019s light landing on painted cells (efficiency that counts only light where you asked). ' + pct(delivered) + ' reaches the target in all.'),
         t(pct(fd.spill), 'spill', 'Share of the target light landing on unpainted cells. ' + pct(fd.spillNear) + ' lands just outside the painted edge (a cutoff leak shows here).'));
       else row.append(

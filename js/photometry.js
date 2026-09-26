@@ -194,7 +194,9 @@
   // smallest LED image (blur can only lower the bar, and only on painted cells: unpainted light is spill,
   // always counted raw).  Ratio percentiles are against the raw paint.  noiseCeiling: the pass share a
   // perfect design would show at this ray count (shot noise alone), to read `within` against.
-  const TOL = [0.8, 1.25], GAP_PAD = 2, DARK = 0.1;   // ×/÷1.25 (symmetric in log) · gap band = blur kernel + 2 cells · 'dark' = under 10% of a typical painted cell
+  // GAP_RAMP: a gap cell's credit reaches 0 at 0.3 × a typical painted cell ABOVE its allowance.  Calibrated 2026-09-26
+  // against eye rankings of 7 designs on 2 scenes (1.0 ranked a smear over Astra; 0.3 is the gentlest that agrees).
+  const TOL = [0.8, 1.25], GAP_PAD = 2, DARK = 0.1, GAP_RAMP = 0.3;   // ×/÷1.25 (symmetric in log) · gap band = blur kernel + 2 cells · 'dark' = under 10% of a typical painted cell
   const Phi = (x) => { const t = 1 / (1 + 0.3275911 * Math.abs(x) / Math.SQRT2), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x / 2); return x >= 0 ? 0.5 * (1 + y) : 0.5 * (1 - y); };
   function fidelity(scene, P, ctx) {
     const paint = scene.modeA && scene.modeA.paint; if (!paint || !paint.some((w) => w > 0)) return null;
@@ -208,6 +210,7 @@
     ev.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
     let run = 0, bestN = -1, sc = sGp / sp;
     for (let e = 0; e < ev.length; e++) { run += ev[e][1]; if (ev[e][1] > 0 && run > bestN) { bestN = run; sc = ev[e + 1] ? Math.sqrt(ev[e][0] * ev[e + 1][0]) : ev[e][0]; } }   // geometric midpoint of the best range
+    const dark0 = !(sGp > 0) || !(sc > 0);                    // no light on the paint at all: nothing is 'within'
     const e0 = (P.power / (ctx.N || 1)) || 1, pp = (i, j) => i >= 0 && j >= 0 && i < R && j < R && paint[j * R + i] > 0;
     const cnt = { all: [0, 0, 0, 0], interior: [0, 0, 0, 0], edge: [0, 0, 0, 0] };   // [pass, under, over, cells]
     let rawPass = 0, noise = 0, near = 0; const ratios = [];
@@ -217,9 +220,9 @@
       const i = k % R, j = (k / R) | 0; let edge = false;
       for (let a = -1; a <= 1 && !edge; a++) for (let b = -1; b <= 1; b++) if (!pp(i + a, j + b)) { edge = true; break; }
       const rr = sc * paint[k], rb = sc * B[k], lo = TOL[0] * Math.min(rr, rb), hi = TOL[1] * Math.max(rr, rb), g = G[k];
-      const cls = g < lo ? 1 : g > hi ? 2 : 0; verdict[k] = cls; ratioAt[k] = rr > 0 ? g / rr : 0;
+      const cls = dark0 ? 1 : g < lo ? 1 : g > hi ? 2 : 0; verdict[k] = cls; ratioAt[k] = rr > 0 ? g / rr : 0;
       for (const c of [cnt.all, edge ? cnt.edge : cnt.interior]) { c[cls]++; c[3]++; }
-      if (g >= TOL[0] * rr && g <= TOL[1] * rr) rawPass++;
+      if (!dark0 && g >= TOL[0] * rr && g <= TOL[1] * rr) rawPass++;
       ratios.push(sc > 0 ? g / rr : 0);
       const m = rr / e0; noise += m > 0 ? Phi((TOL[1] - 1) * Math.sqrt(m)) - Phi((TOL[0] - 1) * Math.sqrt(m)) : 0;
     }
@@ -231,17 +234,24 @@
       for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) { if (!src[j * R + i]) continue; const c = alongX ? i : j;
         for (let q = Math.max(0, c - rb); q <= Math.min(R - 1, c + rb); q++) out[alongX ? j * R + q : q * R + i] = 1; } return out; };
     const near2 = dil(dil(paint.map((w) => (w > 0 ? 1 : 0)), true), false);
-    let gapN = 0, gapDark = 0; const typ = sp / cnt.all[3];
-    for (let k = 0; k < n; k++) if (near2[k] && !(paint[k] > 0)) { gapN++; if (G[k] <= sc * Math.max(TOL[1] * B[k], DARK * typ)) gapDark++; else verdict[k] = 3; }
-    const withinPainted = cnt.all[0] / cnt.all[3], dark = gapN ? gapDark / gapN : 1;
+    // Each gap cell earns credit on a ramp: 1 at or under its allowance, falling linearly to 0 when it carries a full
+    // 0.3 × a typical painted cell ABOVE the allowance (GAP_RAMP).  A flood scores 0, a faint halo 1, a smear partial.
+    let gapN = 0, gapCredit = 0, gapStrict = 0; const typ = sp / cnt.all[3];
+    for (let k = 0; k < n; k++) if (near2[k] && !(paint[k] > 0)) {
+      gapN++; const allow = sc * Math.max(TOL[1] * B[k], DARK * typ), over = G[k] - allow;
+      if (over <= 0) { gapCredit++; gapStrict++; } else { gapCredit += Math.max(0, 1 - over / (GAP_RAMP * sc * typ)); verdict[k] = 3; }
+    }
+    const withinPainted = cnt.all[0] / cnt.all[3], dark = gapN ? gapCredit / gapN : 1;
     const share = (c) => c[3] ? { within: c[0] / c[3], under: c[1] / c[3], over: c[2] / c[3], cells: c[3] } : null, em = ctx.E.emitted || 1;
     return {
-      fidelity: gapN ? 0.5 * withinPainted + 0.5 * dark : withinPainted,   // THE headline: painted right (50%) + gaps dark (50%)
-      gapsDark: dark, gapCells: gapN, gapBand: rb,
+      // THE headline: the F1 score (harmonic mean) of painted-right and gaps-dark, so it is near 0 if EITHER half is.
+      // (A 50/50 average gave a flood and a pitch-black design 50% each.)
+      fidelity: gapN ? (withinPainted + dark > 0 ? 2 * withinPainted * dark / (withinPainted + dark) : 0) : withinPainted,
+      gapsDark: dark, gapsDarkStrict: gapN ? gapStrict / gapN : 1, gapCells: gapN, gapBand: rb,
       tol: TOL, kernel: ker, ...share(cnt.all), withinRaw: rawPass / cnt.all[3], interior: share(cnt.interior), edge: share(cnt.edge),
       ratio: { p5: RF.Engine.pctl(ratios, 0.05), p25: RF.Engine.pctl(ratios, 0.25), p50: RF.Engine.pctl(ratios, 0.5), p75: RF.Engine.pctl(ratios, 0.75), p95: RF.Engine.pctl(ratios, 0.95) },
       onPaint: sGp / em, onTarget: sG / em, spill: sG > 0 ? 1 - sGp / sG : 0, spillNear: sG > 0 ? near / sG : 0,
-      verdict, ratioAt, G, scale: sc, raysPerCell: sc / e0 * (sp / cnt.all[3]), noiseCeiling: noise / cnt.all[3], fidelityNoiseCeiling: gapN ? 0.5 * noise / cnt.all[3] + 0.5 : noise / cnt.all[3],
+      verdict, ratioAt, G, scale: sc, raysPerCell: sc / e0 * (sp / cnt.all[3]), noiseCeiling: dark0 ? null : noise / cnt.all[3], fidelityNoiseCeiling: dark0 ? null : gapN ? 2 * (noise / cnt.all[3]) / (noise / cnt.all[3] + 1) : noise / cnt.all[3],   // null: nothing lit, no ceiling to state
     };
   }
 

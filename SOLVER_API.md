@@ -43,11 +43,11 @@ app's own definitions**:
 `{ fidelity, grid, res, energy, raysPerCell, noise, blocked, peakCd, peakNoise, ofCeiling, ofEnvelope, throwM,
 lmOnTarget, perFacet?, shadowed? }`. **`fidelity`** is the headline score: `{ fidelity, within, gapsDark, gapCells,
 under, over, noiseCeiling, fidelityNoiseCeiling, ratio: {p5, p25, p50, p75, p95}, onPaint, spill, spillNear,
-kernelCells, verdict, ratioAt }`.  **`fidelity` = ½ `within` + ½ `gapsDark`.**  `within` = share of painted cells
+kernelCells, verdict, ratioAt }`.  **`fidelity` = F1 of `within` and `gapsDark`** (their harmonic mean, 2ab/(a+b): near 0 if either is).  `within` = share of painted cells
 within ×/÷1.25 of the paint at the best overall brightness (edge cells may match the paint blurred by the smallest
 LED image, `kernelCells` wide).  `gapsDark` = share of the unpainted cells near the paint (the gaps between strokes;
-within kernel + 2 cells) that stay under 10% of a typical painted cell (or the blurred paint's halo): a flood
-fails it.  `verdict[cell]` 0 within · 1 too dim · 2 too bright · 3 lit gap · −1 other, at paint resolution; `noiseCeiling` = what a perfect design would score at this ray
+within kernel + 2 cells) that stay under 10% of a typical painted cell (or the blurred paint's halo), with partial credit that
+reaches 0 at 30% of a painted cell above that: a flood fails it, and a dark design fails `within`.  `verdict[cell]` 0 within · 1 too dim · 2 too bright · 3 lit gap · −1 other, at paint resolution; `noiseCeiling` = what a perfect design would score at this ray
 count. It uses the user's paint, or `paint` if you pass one (e.g. your own working target). Same seed ⇒ common random numbers (candidates differ by geometry, not
 dice); `noise` ≈ relative error per cell, `peakNoise` the error on `peakCd`. `perFacet` (landed energy per
 facet id) needs `attribution: true`; `shadowed` needs `occlusion: true` (one extra pass). `grid` is at the
