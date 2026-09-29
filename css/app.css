@@ -123,6 +123,8 @@ h2 small { color: var(--faint); font-weight: 400; margin-left: var(--s-6); }
 .status { font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .8px; color: var(--b); text-transform: uppercase;
   margin-right: var(--s-8); min-width: 0; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: calc(7px * var(--density)); vertical-align: 1px; }
+button.stop { color: var(--warn); border-color: var(--line); }
+button.stop[hidden] { display: none; }
 button.icon { padding: 0; width: 32px; min-height: 30px; justify-content: center; background: transparent; border-color: transparent; color: var(--dim); }
 button.icon:hover:not(:disabled) { color: var(--ink); border-color: var(--line); background: var(--panel2); }
 button.icon[aria-pressed="true"], button.icon[aria-expanded="true"] { color: var(--b); }

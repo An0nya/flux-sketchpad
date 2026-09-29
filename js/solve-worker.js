@@ -23,7 +23,7 @@ self.onmessage = async (e) => {
       const def = RF.Solvers.get(m.id); if (!def) throw new Error('solver ' + m.id + ' is not loaded in the worker');
       let raysUsed = 0;
       const tools = {
-        progress: (pct) => self.postMessage({ type: 'progress', pct: +pct || 0 }),
+        progress: (pct, stage) => self.postMessage({ type: 'progress', pct: +pct || 0, stage: stage ? String(stage).slice(0, 80) : undefined }),
         budget: m.budget,
         trace: (surfaces, o) => { const n = Math.max(1, (o && o.rays) | 0 || 20000); raysUsed += n; if (raysUsed > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays.toLocaleString() + ')'); return RF.Solvers.trace(m.scene, surfaces, o); },
       };

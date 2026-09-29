@@ -1,0 +1,68 @@
+[
+ {
+  "file": "sonnet55-2026-09-28-dish-fit.js",
+  "model": "Sonnet 5.5",
+  "run": "2026-09-28",
+  "workspace": "work-sonnet55-flux-solver-20260928-2145"
+ },
+ {
+  "file": "opus55-2026-09-27-mosaic.js",
+  "model": "Opus 5.5",
+  "run": "2026-09-27",
+  "workspace": "work-opus55-flux-solver-20260927-0154"
+ },
+ {
+  "file": "sol6-2026-09-26-finite-image.js",
+  "model": "GPT-6 Sol (Codex)",
+  "run": "2026-09-26",
+  "workspace": "work-sol6-codex-flux-solver-20260926-0446"
+ },
+ {
+  "file": "astra6-2026-09-27-patch-array.js",
+  "model": "GPT-6 Astra (Codex)",
+  "run": "2026-09-27",
+  "workspace": "work-codex-astra6-flux-solver-20260927-0207"
+ },
+ {
+  "file": "luna6-2026-09-26-cap-paint.js",
+  "model": "GPT-6 Luna (Codex)",
+  "run": "2026-09-26",
+  "workspace": "work-luna6-codex-flux-solver-20260926-0446"
+ },
+ {
+  "file": "luna6-2026-09-25-flux-explorer.js",
+  "model": "GPT-6 Luna (Codex)",
+  "run": "2026-09-25",
+  "workspace": "work-luna6-codex-flux-solver-20260925-2235"
+ },
+ {
+  "file": "bunny-2026-09-26b-flux-painter.js",
+  "model": "space-bunny-alpha",
+  "run": "2026-09-26",
+  "workspace": "work-space-bunny-alpha-flux-solver-20260926-0546"
+ },
+ {
+  "file": "bunny-2026-09-26a-paint-mosaic.js",
+  "model": "space-bunny-alpha",
+  "run": "2026-09-26",
+  "workspace": "work-space-bunny-alpha-flux-solver-20260926-0433"
+ },
+ {
+  "file": "bunny-2026-09-25-flux-corrected.js",
+  "model": "space-bunny-alpha",
+  "run": "2026-09-25",
+  "workspace": "work-space-bunny-alpha-flux-solver-20260925-2110"
+ },
+ {
+  "file": "nemotron-2026-09-26b-paint-solver.js",
+  "model": "Nemotron Ultra",
+  "run": "2026-09-26",
+  "workspace": "work-nemotron-ultra-flux-solver-20260926-0547"
+ },
+ {
+  "file": "nemotron-2026-09-26a-paint-solver-2.js",
+  "model": "Nemotron Ultra",
+  "run": "2026-09-26",
+  "workspace": "work-nemotron-ultra-flux-solver-20260926-0436"
+ }
+]

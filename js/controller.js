@@ -30,7 +30,7 @@
       if (store.dirty.has('B')) { const b = RF.ModeB.build(sc); sc.groups.B.surfaces = b.surfaces; store.reports.B = b.reports; store.dirty.delete('B'); }
       if (store.dirty.has('C')) { const c = RF.Profile.build(sc); sc.groups.C.surfaces = c.surfaces; store.reports.C = c.report; store.dirty.delete('C'); }
       if (store.dirty.has('L')) { const l = RF.Lenses.buildAll(sc); sc.groups.L.surfaces = l.surfaces; store.reports.L = l.infos; store.dirty.delete('L'); }
-      if (store.dirty.has('A') && (opts.forceA || (store.autoA && !opts.deferA)) && !RF.Solvers.get(RF.Solvers.current(sc)).loaded) regenerateA(store);   // loaded solvers: the UI runs them async
+      if (store.dirty.has('A') && (opts.forceA || (store.autoA && !opts.deferA)) && !RF.Solvers.get(RF.Solvers.current(sc)).worker) regenerateA(store);   // worker solvers: the UI runs them async
       return store;
     };
     return store;
@@ -40,9 +40,11 @@
   // extras, overridden by host-verified facts, plus the standard intent and what was solved.
   function regenerateA(store) { return applySolve(store, RF.Solvers.runSync(store.scene)); }
   // loaded solvers run in a worker: resolve to the same report (null if the scene changed meanwhile)
-  async function regenerateAAsync(store, onProgress) {
-    const v = store.version, r = await RF.Solvers.runAsync(store.scene, null, onProgress);
-    return store.version === v ? applySolve(store, r) : null;
+  // isCurrent(): false once a newer solve was requested, so a late result can't overwrite it (or its solver choice)
+  async function regenerateAAsync(store, onProgress, isCurrent) {
+    const v = store.version, id = RF.Solvers.current(store.scene), r = await RF.Solvers.runAsync(store.scene, null, onProgress);
+    if (isCurrent && !isCurrent()) return null;
+    return store.version === v && RF.Solvers.current(store.scene) === id ? applySolve(store, r) : null;
   }
   function applySolve(store, r) {
     const sc = store.scene, out = r.output || {}, f = r.facts, extras = out.extras || {};
@@ -202,15 +204,15 @@
   // ---------------------------------------------------------------- non-table actions
   const actions = {
     setMode(store, m) { store.scene.mode = m; },
-    // Paint a disc of cells at target (u, v) mm with the current brush (UI path for painting)
-    paintAt(store, u, v) {
+    // Paint a disc of cells at target (u, v) mm with the current brush (UI path for painting); erase overrides the brush's mode
+    paintAt(store, u, v, erase) {
       const sc = store.scene, T = RF.Engine.targetFrame(sc.target), res = T.res, cell = 2 * T.half / res, b = sc.modeA.brush;
       const ci = (u + T.half) / cell - 0.5, cj = (v + T.half) / cell - 0.5, rad = b.size / 2;
       let changed = false;
       for (let j = Math.floor(cj - rad - 1); j <= Math.ceil(cj + rad + 1); j++) for (let i = Math.floor(ci - rad - 1); i <= Math.ceil(ci + rad + 1); i++) {
         if (i < 0 || j < 0 || i >= res || j >= res) continue;
         if ((i - ci) ** 2 + (j - cj) ** 2 > rad * rad + 0.25) continue;
-        const k = j * res + i, nv = b.erase ? 0 : Math.max(sc.modeA.paint[k], b.strength);
+        const k = j * res + i, nv = (erase === undefined ? b.erase : erase) ? 0 : Math.max(sc.modeA.paint[k], b.strength);
         if (nv !== sc.modeA.paint[k]) { sc.modeA.paint[k] = nv; changed = true; }
       }
       if (changed) store.invalidate(['A']);

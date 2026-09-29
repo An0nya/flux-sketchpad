@@ -421,9 +421,9 @@
       }
     }
     ctx.setLineDash([]);
-    // per-surface annotation: normals (shaded) or source→surface→out ray pairs
+    // per-surface annotation: normals (shaded) or source→surface→out ray pairs; none for plain 'solid'
     const seen = new Set(), sizeRef = 40 / cam.scale;
-    for (let k = 0; k < G.n; k++) {
+    for (let k = 0; k < (opts.style === 'solid' ? 0 : G.n); k++) {
       const m = G.metas[k]; if (seen.has(k)) continue; seen.add(k);
       if (!m.frame) continue;
       const o = k * RF.Geo.STRIDE, D = G.D;

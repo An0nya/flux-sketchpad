@@ -43,7 +43,8 @@
   };
   ui.generateA = function () {
     const def = RF.Solvers.get(RF.Solvers.current(ui.store.scene));
-    if (def.loaded) { ui.store.invalidate(['A']); ui.solveArmed = true; schedule(); return; }   // worker path lives in tick()
+    if (def.worker) { ui.store.invalidate(['A']); ui.solveArmed = true; schedule(); return; }   // worker path lives in tick()
+    stopWorkerSolve('replaced by ' + def.name);        // a page solver wins over a worker solve still running
     ui.setStatus('Rebuilding reflector…'); ui.progress('solve');
     setTimeout(() => {                               // let the status paint first
       const t0 = performance.now();
@@ -68,11 +69,16 @@
   function restoreIntent(it, mode) {
     ui.restoring = true;
     try {
+      const tk = (t) => [t.res, t.size, t.distance].join(':'), before = tk(ui.store.scene.target);
       RF.History.apply(ui.store.scene, it);
       if (mode) ui.store.scene.mode = mode;
       ui.store.invalidate(['A', 'B', 'C', 'L']); ui.store.commit({ forceA: true });
+      // history holds intent, not solved geometry: a worker solver re-solves through the normal (async) path
+      if (ui.store.dirty.has('A') && RF.Solvers.get(RF.Solvers.current(ui.store.scene)).worker) ui.pendingA = performance.now();
       ui.setMode(ui.store.scene.mode, true);
-      ui.vLeft.fitted = ui.vHeat.fitted = ui.vPick.fitted = ui.vProf.fitted = false;
+      // keep the maps' zoom unless the undo changed what they show (target size or resolution)
+      if (tk(ui.store.scene.target) !== before) ui.vLeft.fitted = ui.vHeat.fitted = false;
+      ui.vPick.fitted = ui.vProf.fitted = false;
       ui.refreshPanels(); ui.requestRun(false); saveSoon();
     } finally { ui.restoring = false; }
   }
@@ -169,7 +175,10 @@
   function renderSolverBox() {
     const box = document.getElementById('solver-box'); if (!box) return;
     const sc = ui.store.scene, el = P.el, cur = RF.Solvers.current(sc), def = RF.Solvers.get(cur), rep = ui.store.reports.A;
-    const pick = el('select', { 'aria-label': 'Solver' }, ...RF.Solvers.list().filter((d) => d.modes.includes('paint')).map((d) => el('option', { value: d.id }, d.name + ' v' + d.version + (d.loaded ? ' (loaded)' : ''))));
+    // grouped: the app's own, the bundled model solvers (who wrote them, which benchmark run), your loaded files
+    const paintDefs = RF.Solvers.list().filter((d) => d.modes.includes('paint')), opt = (d, label) => el('option', { value: d.id }, label);
+    const groups = [['Built in', paintDefs.filter((d) => !d.worker)], ['Model solvers (benchmark runs)', paintDefs.filter((d) => d.bundled)], ['Loaded by you', paintDefs.filter((d) => d.loaded)]];
+    const pick = el('select', { 'aria-label': 'Solver' }, ...groups.filter(([, ds]) => ds.length).map(([g, ds]) => el('optgroup', { label: g }, ...ds.map((d) => opt(d, d.name + ' v' + d.version + (d.bundled ? ' — ' + d.bundled.model.replace(/ \(.*\)$/, '') + ', ' + d.bundled.run.slice(5) : ''))))));
     pick.value = cur;
     pick.addEventListener('change', () => { sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.generateA(); renderSolverBox(); });
     const file = el('input', { type: 'file', accept: '.js,text/javascript', hidden: '' });
@@ -200,7 +209,9 @@
     const fx = rep && rep.facts, facts = !fx ? '—' : fx.errors.length ? 'unusable output: ' + fx.errors[0] :
       fx.placed + ' placed' + (fx.dropped !== null ? ' · ' + fx.dropped + ' unplaced intents' : '') + ' · envelope ' + (fx.violations.envelope.length ? fx.violations.envelope.length + ' outside' : 'ok') + ' · keep-out ' + (fx.violations.keepOut.length ? fx.violations.keepOut.length + ' inside' : 'ok') + ' · budget ' + (fx.violations.budget ? 'EXCEEDED (' + fx.violations.budget.placed + ' > ' + fx.violations.budget.budget + ')' : 'ok') + (fx.intentErrors.length ? ' · intent malformed' : '') + (rep.solveMs !== undefined ? ' · ' + Math.round(rep.solveMs) + ' ms' : '');
     box.innerHTML = '';
-    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), ...fields,
+    const who = def.bundled ? 'Written by ' + def.bundled.model + ' in the Flux solver benchmark run of ' + def.bundled.run + ' (solvers/' + def.bundled.file + ').' + (/-auto$/.test(def.id) ? ' A tuner: it traces candidates, so it takes longer.' : '')
+      : def.loaded ? 'Loaded from a file in this browser.' : cur === RF.Solvers.DEFAULT_ID ? 'The app\'s default solver.' : 'Built into the app.';
+    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), el('div', { class: 'note' }, who), ...fields,
       el('div', { class: 'btnrow' }, loadBtn, forget),
       el('div', { class: 'note' }, 'Verified by the app, not the solver: ' + facts + '. Saved with the scene: ' + (sc.solve ? sc.solve.id + ' v' + (sc.solve.version || '?') : '—') + '.'));
   }
@@ -245,6 +256,29 @@
     if (!ui.previewRun && now - ui.jobT0 > 400) { clearTimeout(ui._stripT); strip.classList.add('open'); }
   };
 
+  // ---------------------------------------------------------------- worker solves: status, stop
+  // One worker solve at a time (ui.solving = { seq, name, t0, pct, stage }).  Its status line shows the solver, the
+  // stage it reports (tools.progress(pct, stage)), % and elapsed time; the bar is determinate once it reports a %.
+  ui.solveSeq = 0; ui.solving = null;
+  function solveStatus() {
+    const j = ui.solving; if (!j) return;
+    const secs = (performance.now() - j.t0) / 1000;
+    ui.setStatus('Solving · ' + j.name + (j.stage ? ' · ' + j.stage : '') + (j.pct > 0 ? ' · ' + Math.round(100 * Math.min(1, j.pct)) + '%' : '') + ' · ' + secs.toFixed(secs < 10 ? 1 : 0) + ' s');
+    if (j.pct > 0) ui.progress('trace', Math.min(1, j.pct)); else ui.progress('solve');
+  }
+  function showStop(on) {
+    const b = document.getElementById('btn-stop'); if (b) b.hidden = !on;
+    clearInterval(ui._solveTick); if (on) ui._solveTick = setInterval(solveStatus, 250);
+  }
+  function stopWorkerSolve(why) {                    // stop the running worker solve; its promise then rejects (and is ignored if superseded)
+    if (!ui.solving) return false;
+    const name = ui.solving.name, secs = (performance.now() - ui.solving.t0) / 1000; ui.solving = null; ui.solveSeq++; showStop(false);
+    if (RF.SolverHost) RF.SolverHost.abort(why);
+    if (secs > 1.5) ui.store.notice('Stopped the running solve (' + name + ', after ' + secs.toFixed(0) + ' s): ' + why + '.');   // quick re-solves while you drag a slider stay quiet
+    return true;
+  }
+  ui.stopSolve = () => { const j = ui.solving; if (!j) return; const seq = j.seq; RF.SolverHost.abort('stopped by you'); if (ui.solving && ui.solving.seq === seq) { ui.solving = null; showStop(false); ui.solveSeq++; ui.store.dirty.delete('A'); ui.setStatus('stopped — previous design kept'); ui.progress('done'); ui.store.notice('Solve stopped (' + j.name + '). The previous design is kept.'); P.renderNotices(ui); } };
+
   // ---------------------------------------------------------------- run loop
   ui.requestRun = function (interactive) {
     ui.needCompile = true; ui.previewRun = !!interactive;
@@ -266,15 +300,20 @@
     } else if (ui.solveArmed) {
       ui.solveArmed = false; ui.pendingA = 0;
       const t0 = performance.now(), def = RF.Solvers.get(RF.Solvers.current(store.scene));
-      if (def.loaded) {                                  // a loaded solver runs in the worker: stay responsive
-        if (ui.solving) return schedule();
-        ui.solving = true; ui.setStatus('Rebuilding reflector (' + def.name + ')…');
-        C.regenerateAAsync(store, (pct) => ui.progress('solve', pct)).then((rep) => {
-          ui.solving = false; ui.lastGenMs = performance.now() - t0;
+      if (def.worker) {                                  // a worker solver (bundled or loaded): stay responsive
+        // a newer request replaces a running solve: stop it (its result would describe old settings)
+        if (ui.solving) stopWorkerSolve('replaced by a newer request');
+        const seq = ++ui.solveSeq, job = ui.solving = { seq, name: def.name, t0, pct: null, stage: '' };
+        solveStatus(); showStop(true);
+        C.regenerateAAsync(store, (pct, stage) => { if (ui.solving === job) { job.pct = pct; job.stage = stage || job.stage; solveStatus(); } }, () => seq === ui.solveSeq).then((rep) => {
+          if (seq !== ui.solveSeq) return;                // superseded: a newer solve owns the UI
+          ui.solving = null; showStop(false); ui.lastGenMs = performance.now() - t0;
           if (!rep) { ui.pendingA = performance.now(); schedule(); return; }   // scene changed meanwhile: solve again
           ui.refreshPanels(); ui.needCompile = true; ui.autosave(); schedule();
         }, (err) => {
-          ui.solving = false; store.dirty.delete('A');
+          if (seq !== ui.solveSeq) return;
+          ui.solving = null; showStop(false); store.dirty.delete('A');
+          if (err && err.aborted) { store.notice('Solve stopped (' + def.name + ', ' + err.message + '). The previous design is kept.'); ui.setStatus('stopped — previous design kept'); ui.progress('done'); ui.refreshPanels(); schedule(); return; }
           store.reports.A = { error: 'Solver ' + def.name + ': ' + err.message, warnings: [], placed: 0 };
           store.notice('Solver ' + def.name + ' failed: ' + err.message); ui.refreshPanels(); schedule();
         });
@@ -305,8 +344,10 @@
     if (run && (justDone || now - ui.lastHeat > 90)) { drawHeat(); ui.lastHeat = now; ui.sceneDirty = true; }
     if (run) {
       const c = run.ctx, pct = c.N ? c.next / c.N : 1;
-      if (!ui.solveArmed) ui.progress(c.done ? 'done' : 'trace', pct);
-      if (!ui.pendingA || !store.dirty.has('A')) ui.setStatus(c.done ? (run.preview ? 'preview' : 'up to date') : 'tracing ' + Math.floor(100 * c.next / c.N) + '%' + (run.preview ? ' (preview)' : ''));   // counts + ms live in the footer
+      if (ui.solving) { /* the solve owns the status line and the bar until it ends */ }
+      else if (!ui.solveArmed) ui.progress(c.done ? 'done' : 'trace', pct);
+      if (ui.solving) { /* see solveStatus() */ }
+      else if (!ui.pendingA || !store.dirty.has('A')) ui.setStatus(c.done ? (run.preview ? 'preview' : 'up to date') : 'tracing ' + Math.floor(100 * c.next / c.N) + '%' + (run.preview ? ' (preview)' : ''));   // counts + ms live in the footer
       else ui.setStatus('design changed — regenerating when you pause…');
     }
     if (run && (justDone || now - ui.lastStats > 300)) { renderStats(!run.ctx.done); ui.lastStats = now; }
@@ -453,7 +494,7 @@
       ui.paintImg = R2.gridCanvas(sc.modeA.paint, sc.target.res, ui.paintImg);
       R2.drawGridPanel(cv, ui.vLeft, ui.paintImg, sc.target.res, (ctx, view) => {
         const zo = zoneOverlay(true); if (zo) zo(ctx, view);
-        if (ui.brushAt) { const b = sc.modeA.brush, p = view.toScreen(ui.brushAt[0], ui.brushAt[1]); ctx.beginPath(); ctx.arc(p[0], p[1], b.size / 2 * view.s, 0, 2 * Math.PI); ctx.strokeStyle = b.erase ? '#ff9a3d' : '#f2b441'; ctx.lineWidth = 1.5; ctx.stroke(); }
+        if (ui.brushAt) { const b = sc.modeA.brush, p = view.toScreen(ui.brushAt[0], ui.brushAt[1]); ctx.beginPath(); ctx.arc(p[0], p[1], b.size / 2 * view.s, 0, 2 * Math.PI); ctx.strokeStyle = b.erase || ui.modErase ? '#ff9a3d' : '#f2b441'; ctx.lineWidth = 1.5; ctx.stroke(); }
       });
     } else if (sc.mode === 'B') {
       const r = R2.drawPicker(cv, ui.vPick, sc, ui.store.reports.B, sc.modeB.selected);
@@ -682,7 +723,7 @@
     function paintAt(x, y, commit) {
       const c = ui.vLeft.toContent(x, y), uv = R2.cellToUV(RF.Engine.targetFrame(ui.store.scene.target), c[0], c[1]);
       ui.brushAt = c;
-      if (C.actions.paintAt(ui.store, uv[0], uv[1])) ui.painted = true;
+      if (C.actions.paintAt(ui.store, uv[0], uv[1], ui.modErase ? true : undefined)) ui.painted = true;   // ⌘/Ctrl held = erase
       ui.sceneDirty = true; schedule();
       if (commit && ui.painted) { ui.painted = false; ui.afterChange(); }
     }
@@ -1225,6 +1266,12 @@
     const resetView = (w) => { if (w === 'heat') ui.vHeat.fitted = false; else ui.vLeft.fitted = ui.vPick.fitted = ui.vProf.fitted = false; drawHeat(); ui.sceneDirty = true; schedule(); };
     for (const b of document.querySelectorAll('[data-reset]')) b.addEventListener('click', () => resetView(b.dataset.reset));
     document.getElementById('left-canvas').addEventListener('dblclick', () => resetView('left'));
+    // ⌘-click / Ctrl-click (and drag) on the paint grid erases.  Captured on window so it is set before the canvas
+    // handlers read it; key events keep the brush ring's colour honest while hovering.
+    const setMod = (e) => { const on = !!(e.metaKey || e.ctrlKey); if (on !== !!ui.modErase) { ui.modErase = on; if (ui.brushAt) { ui.sceneDirty = true; schedule(); } } };
+    for (const ev of ['pointerdown', 'pointermove', 'keydown', 'keyup']) window.addEventListener(ev, setMod, true);
+    window.addEventListener('blur', () => { ui.modErase = false; });
+    document.getElementById('left-canvas').addEventListener('contextmenu', (e) => { if (e.ctrlKey && ui.store.scene.mode === 'A') e.preventDefault(); });   // macOS: Ctrl-click is a right-click
     document.getElementById('heat-canvas').addEventListener('dblclick', () => resetView('heat'));
     // panes: chevron / title collapses; a collapsed rail or bar restores on click; ⤢ expands
     try { ui.layout = JSON.parse(localStorage.getItem('flux/layout') || 'null'); } catch (e) { ui.layout = null; }
@@ -1276,6 +1323,7 @@
     envT.addEventListener('change', () => { ui.opticsEnv = envT.checked; try { localStorage.setItem('flux/opticsEnv', envT.checked ? '1' : '0'); } catch (e) { /* ignore */ } refitSurfaces(); ui.sceneDirty = true; schedule(); });
     document.getElementById('btn-download').addEventListener('click', () => P.download(ui));
     document.getElementById('btn-generate-top').addEventListener('click', () => ui.generateA());
+    document.getElementById('btn-stop').addEventListener('click', () => ui.stopSolve());
     // Lens slider: 0–99 → 12–400 mm on a log scale; 100 → ∞ (orthographic).
     const lens = document.getElementById('lens'), lensOut = document.getElementById('lens-out');
     const focalOf = (t) => t >= 100 ? Infinity : 12 * Math.pow(400 / 12, t / 99);
