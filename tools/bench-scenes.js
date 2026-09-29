@@ -46,6 +46,8 @@ function suite(RF) {
     'die-2x0.5': () => { const s = D(); s.source.w = 2; s.source.h = 0.5; return s; },
     'die-disc': () => { const s = D(); s.source.shape = 'disc'; s.source.radius = 0.6; return s; },
     'filament': () => { const s = D(); Object.assign(s.source, { kind: 'volume', shape: 'cylinder', radius: 0.2, length: 1.5, dist: 'isotropic', axis: [0, 1, 0] }); return s; },
+    'coil-axial': () => { const s = D(); Object.assign(s.source, { kind: 'volume', shape: 'cylinder', emission: 'surface', radius: 0.4, length: 2, axis: [1, 0, 0] }); return s; },        // opaque coil along the beam (H1/H7-style)
+    'coil-transverse': () => { const s = D(); Object.assign(s.source, { kind: 'volume', shape: 'cylinder', emission: 'surface', radius: 0.4, length: 2, axis: [0, 1, 0] }); return s; },  // across the beam
     // throw
     'throw-0.5m': () => { const s = D(); s.target.distance = 500; s.target.size = 125; return s; },
     'throw-20m': () => { const s = D(); s.target.distance = 20000; s.target.size = 5000; return s; },
@@ -67,7 +69,7 @@ function suite(RF) {
 const GROUPS = {
   core: ['default', 'test', 'led-back', 'led-side', 'die-3', 'die-2x0.5', 'p-wash', 'p-halfplane', 'p-text', 'p-hotwash'],
   orient: ['default', 'led-back', 'led-side', 'led-down', 'led-fwd'],
-  die: ['default', 'die-0.4', 'die-3', 'die-2x0.5', 'die-disc', 'filament'],
+  die: ['default', 'die-0.4', 'die-3', 'die-2x0.5', 'die-disc', 'filament', 'coil-axial', 'coil-transverse'],
   paint: ['default', 'p-wash', 'p-halfplane', 'p-bars', 'p-text', 'p-gradient', 'p-spots', 'p-hotwash'],
   anya: ['anya-lowbeam-212', 'anya-beamshot-400'],
 };

@@ -5,7 +5,15 @@
  *         (volume), pos:[3], axis:[3] (any direction, normalised on use), roll (deg, rotates the
  *         rectangle about the axis), w, h (rect), radius (disc/sphere/cylinder), length
  *         (cylinder, along the axis), power, dist: 'lambertian'|'gaussian'|'cone'|'isotropic',
- *         sigma (deg, gaussian), halfAngle (deg, cone) }
+ *         sigma (deg, gaussian), halfAngle (deg, cone),
+ *         emission: 'volume' | 'surface' (volume sources only) }
+ *
+ * A volume source emits one of two ways.  'volume' (the default): from points spread through the body, in
+ * directions set by `dist` about the axis, independent of the point — an optically thin glow (a gas discharge,
+ * a fluorescent tube, an arc).  'surface': an OPAQUE body whose skin is Lambertian (a tightly wound filament
+ * coil): points on the surface, directions cosine-weighted about the local outward normal, `dist` unused.  Its
+ * intensity is then ∝ the body's projected area — a long coil is dark end-on (I ∝ sinθ off the axis) — and
+ * its luminance is the same from every direction.
  *
  * Planar emitters radiate into the front hemisphere only (a die cannot emit through its own
  * substrate), so every distribution is truncated at 90° for them.  Point and volume sources may
@@ -26,7 +34,11 @@
     return { a, u, v };
   }
 
+  const opaque = (src) => src.kind === 'volume' && src.emission === 'surface';
+  // surface area of an opaque volume source, and the share of it on a cylinder's side (vs its two end caps)
+  function skinArea(src) { return src.shape === 'cylinder' ? 2 * Math.PI * src.radius * (src.length + src.radius) : 4 * Math.PI * src.radius * src.radius; }
   function thetaMax(src) {
+    if (opaque(src)) return Math.PI;
     const cap = src.kind === 'planar' ? 90 : 180;
     if (src.dist === 'lambertian') return 90 * D2R;
     if (src.dist === 'cone') return Math.min(cap, Math.max(0.01, src.halfAngle)) * D2R;
@@ -37,6 +49,8 @@
   function intensity(src, theta) {
     const tm = thetaMax(src);
     if (theta > tm + 1e-12) return 0;
+    if (opaque(src)) return src.shape === 'cylinder'           // projected area (mm²): side + end caps
+      ? 2 * src.radius * src.length * Math.sin(theta) + Math.PI * src.radius * src.radius * Math.abs(Math.cos(theta)) : Math.PI * src.radius * src.radius;
     switch (src.dist) {
       case 'lambertian': return Math.max(0, Math.cos(theta));
       case 'gaussian': { const s = Math.max(0.1, src.sigma) * D2R; return Math.exp(-theta * theta / (2 * s * s)); }
@@ -47,6 +61,7 @@
   // ∫ I dΩ over the sphere
   function totalIntegral(src) {
     const tm = thetaMax(src);
+    if (opaque(src)) return Math.PI * skinArea(src);              // ∫ projected area dΩ = π × surface area (Cauchy), matching intensity()
     if (src.dist === 'lambertian') return Math.PI;
     if (src.dist === 'cone' || src.dist === 'isotropic') return 2 * Math.PI * (1 - Math.cos(tm));
     const N = 4096; let s = 0;
@@ -69,6 +84,8 @@
       for (let i = 0; i <= N; i++) cdf[i] /= acc;
       S.table = cdf; S.N = N;
     }
+    S.opaque = opaque(src);
+    if (S.opaque && src.shape === 'cylinder') S.pSide = src.length / (src.length + src.radius);   // side area ÷ total
     S.pos = src.pos.slice();
     S.w = src.w; S.h = src.h; S.R = src.radius; S.L = src.length;
     return S;
@@ -89,6 +106,27 @@
   // Writes origin (o) and direction (d) for uniforms x0..x4.
   function sampleRay(S, x0, x1, x2, x3, x4, o, d) {
     const fr = S.fr, p = S.pos;
+    if (S.opaque) {                                    // a point on the skin, a cosine-weighted direction about its normal
+      let n, t1, t2, q;
+      if (S.shape === 'cylinder') {
+        if (x0 < S.pSide) {
+          const a = 2 * Math.PI * x1, c = Math.cos(a), s = Math.sin(a), h = (x2 - 0.5) * S.L;
+          n = [c * fr.u[0] + s * fr.v[0], c * fr.u[1] + s * fr.v[1], c * fr.u[2] + s * fr.v[2]];
+          t1 = fr.a; t2 = [-s * fr.u[0] + c * fr.v[0], -s * fr.u[1] + c * fr.v[1], -s * fr.u[2] + c * fr.v[2]];
+          q = [S.R * n[0] + h * fr.a[0], S.R * n[1] + h * fr.a[1], S.R * n[2] + h * fr.a[2]];
+        } else {
+          const top = (x0 - S.pSide) / (1 - S.pSide) < 0.5, sg = top ? 1 : -1, r = S.R * Math.sqrt(x2), a = 2 * Math.PI * x1, cu = r * Math.cos(a), cv = r * Math.sin(a);
+          n = [sg * fr.a[0], sg * fr.a[1], sg * fr.a[2]]; t1 = fr.u; t2 = fr.v;
+          q = [cu * fr.u[0] + cv * fr.v[0] + sg * S.L / 2 * fr.a[0], cu * fr.u[1] + cv * fr.v[1] + sg * S.L / 2 * fr.a[1], cu * fr.u[2] + cv * fr.v[2] + sg * S.L / 2 * fr.a[2]];
+        }
+      } else {
+        const ct = 1 - 2 * x1, st = Math.sqrt(Math.max(0, 1 - ct * ct)), a = 2 * Math.PI * x2;
+        n = [st * Math.cos(a), st * Math.sin(a), ct]; [t1, t2] = V.basis(n); q = [S.R * n[0], S.R * n[1], S.R * n[2]];
+      }
+      const c = Math.sqrt(1 - x3), s = Math.sqrt(x3), ph = 2 * Math.PI * x4, cu = s * Math.cos(ph), cv = s * Math.sin(ph);
+      for (let i = 0; i < 3; i++) { d[i] = c * n[i] + cu * t1[i] + cv * t2[i]; o[i] = p[i] + q[i]; }
+      return;
+    }
     let px = p[0], py = p[1], pz = p[2];
     if (S.kind === 'planar') {
       if (S.shape === 'disc') {

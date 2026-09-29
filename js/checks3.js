@@ -31,7 +31,7 @@
     if (id === 'bounces') sc.modeC.preset.kind = 'cpc';         // multiple bounces matter in a CPC
     if (id === 'src.half') set('src.dist', 'cone');
     if (id === 'src.radius') { set('src.kind', 'planar'); set('src.shape', 'disc'); }
-    if (id === 'src.length') { set('src.kind', 'volume'); set('src.shape', 'cylinder'); }
+    if (id === 'src.length' || id === 'src.emission') { set('src.kind', 'volume'); set('src.shape', 'cylinder'); }
     if (id === 'env.axis') set('env.shape', 'cylinder');
     if (id === 'env.keep') sc.modeA.minDistance = sc.modeB.minDistance = 0;   // clearance only binds when the solver's own min distance doesn't
     if (id.startsWith('aim.')) set('tgt.linked', false);

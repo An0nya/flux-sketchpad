@@ -21,6 +21,7 @@
   function luminance(src, d) {
     const A = RF.Source.emittingArea(src);
     if (!(A > 0)) return Infinity;                                  // point source: unbounded
+    if (src.kind === 'volume' && src.emission === 'surface') return src.power / RF.Source.totalIntegral(src);   // Lambertian skin: I/A⊥ is the same every way
     const fr = RF.Source.frame(src), c = Math.max(-1, Math.min(1, V.dot(d, fr.a)));
     const I = src.power * RF.Source.intensity(src, Math.acos(c)) / RF.Source.totalIntegral(src);
     return I / (src.kind === 'planar' ? A * Math.max(1e-9, c) : A);
