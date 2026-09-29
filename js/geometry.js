@@ -12,6 +12,12 @@
  *           the bisector.  curved → the exact ellipsoid of revolution with foci S0 and the
  *           image point I = P + di·â (paraboloid when di = ∞).  Its normal at P is the same
  *           bisector, so the aim is identical and only the tile size changes.
+ *           Two-curvature variant: give `vg: [v1, v2]` (vergences, 1/mm: 1/image distance, 0 = collimated,
+ *           negative = diverging) and `ax` (a world direction): the reflected beam then focuses at 1/v1 along
+ *           ax (projected square to the beam) and at 1/v2 across it.  Compiled to the osculating elliptic /
+ *           hyperbolic paraboloid whose curvatures come from the generalised Coddington equations for oblique
+ *           reflection, so the aim (normal at P) is unchanged.  vg is stored instead of distances so a
+ *           collimated axis survives JSON (Infinity would become null).  Without vg: today's exact ellipsoid.
  *   plane — flat patch with an explicit normal (extrusions, azimuthally faceted revolves).
  *   rev   — a segment of a surface of revolution about an axis: line segment in (r,z)
  *           → cone frustum / cylinder / annulus;  arc → spherical zone (lens caps).
@@ -74,6 +80,37 @@
     }
     const s = 1 / V.len(b);
     return { n, A: M3.scale(A, s), b: V.mul(b, s), flat: false };
+  }
+
+  /* Two-curvature facet.  Local frame at P: n (bisector, toward the source), e_s = sagittal (square to the plane of
+   * incidence), e_t = e_s × n (tangential, in that plane).  The reflected beam's transverse frame is b_t = e_s × â,
+   * b_s = e_s.  Wanted: output vergence tensor W (beam frame) = v1·b1b1ᵀ + v2·b2b2ᵀ.  A mirror adds the incident
+   * vergence back (point source at r: 1/r, isotropic) and bends by 2cosθ × its height: with J = diag(e_t·b_t, 1)
+   * mapping surface to beam coordinates (a surface step x along e_t is a beam step x·cosθ), the added vergence is
+   * 2cosθ·J⁻ᵀKJ⁻¹, so  K = Jᵀ(W + I/r)J / (2cosθ)  — Coddington: K_tt = cosθ(1/r+1/s′)/2, K_ss = (1/r+1/s′)/(2cosθ).
+   * Surface: n·(X−P) = ½(X−P)ᵀ(Σ K_ij e_i e_jᵀ)(X−P), i.e. A = ½ΣK_ij e_i e_jᵀ, b = −n.                        */
+  function facetQuadric2(P, S0, Z, vg, axv) {
+    const sv = V.sub(S0, P), r = V.len(sv), sh = V.mul(sv, 1 / r), ah = V.norm(V.sub(Z, P)), n = V.norm(V.add(sh, ah));
+    const c = Math.max(1e-6, V.dot(n, sh));
+    let es = V.cross(sh, ah); if (V.len(es) < 1e-9) es = V.basis(n)[0]; es = V.norm(es);
+    const et = V.cross(es, n), bt = V.norm(V.cross(es, ah)), bs = es;
+    let b1 = axv ? V.sub(axv, V.mul(ah, V.dot(axv, ah))) : bt; if (V.len(b1) < 1e-9) b1 = bt; b1 = V.norm(b1);
+    const b2 = V.cross(ah, b1);
+    const p1 = [V.dot(b1, bt), V.dot(b1, bs)], p2 = [V.dot(b2, bt), V.dot(b2, bs)], v1 = +vg[0] || 0, v2 = +vg[1] || 0;
+    const Wtt = v1 * p1[0] * p1[0] + v2 * p2[0] * p2[0] + 1 / r, Wss = v1 * p1[1] * p1[1] + v2 * p2[1] * p2[1] + 1 / r, Wts = v1 * p1[0] * p1[1] + v2 * p2[0] * p2[1];
+    const j = V.dot(et, bt);                                    // ±cosθ
+    const Ktt = j * j * Wtt / (2 * c), Kss = Wss / (2 * c), Kts = j * Wts / (2 * c);
+    // Start from the exact ellipsoid of revolution at the mean vergence (a paraboloid if that is ≤ 0): its terms along
+    // the normal carry the oblique-incidence cubic sag that a symmetric osculating paraboloid lacks (measured: coma
+    // blurred a 6 mm facet's focus to 2 mm at 600 mm without them).  Then set the tangent-plane curvature to K.
+    const vm = (v1 + v2) / 2, base = facetQuadric(P, S0, Z, vm > 1e-12 ? 1 / vm : Infinity);
+    const A = base.A.slice(), sgn = -V.dot(base.b, n);          // base: b·x + xᵀAx = 0 with b = ∓n; our sag convention n·x = ½xᵀKx
+    const q = (e, f) => { let t = 0; for (let i = 0; i < 3; i++) for (let m = 0; m < 3; m++) t += e[i] * A[3 * i + m] * f[m]; return t; };
+    const cur = [q(et, et), q(et, es), q(es, es)].map((x) => 2 * x * sgn), dK = [Ktt - cur[0], Kts - cur[1], Kss - cur[2]];
+    const add = (e, f, k) => { for (let i = 0; i < 3; i++) for (let m = 0; m < 3; m++) A[3 * i + m] += 0.5 * k * sgn * e[i] * f[m]; };
+    add(et, et, dK[0]); add(es, es, dK[2]); add(et, es, dK[1]); add(es, et, dK[1]);
+    const flat = A.every((x) => Math.abs(x) < 1e-15);
+    return { n, A, b: base.b, flat, K: [Ktt, Kts, Kss], cosTheta: c };
   }
 
   // Roots of a world-aligned quadric (relative to origin P) along ray o + t d.
@@ -141,7 +178,7 @@
     if (s.type === 'facet' || s.type === 'plane') {
       let P = s.P, n, A, b, flat;
       if (s.type === 'facet') {
-        const fq = facetQuadric(s.P, s.S0, s.Z, s.flat ? null : s.di);
+        const fq = !s.flat && Array.isArray(s.vg) ? facetQuadric2(s.P, s.S0, s.Z, s.vg, s.ax) : facetQuadric(s.P, s.S0, s.Z, s.flat ? null : s.di);
         n = fq.n; A = fq.A; b = fq.b; flat = fq.flat;
       } else {
         n = V.norm(s.n); A = [0, 0, 0, 0, 0, 0, 0, 0, 0]; b = n.slice(); flat = true;
@@ -525,7 +562,7 @@
 
   RF.Geo = {
     STRIDE, CLIP, INTER, INTER_NAMES, DEFAULT_OPTICS, HIT,
-    facetQuadric, quadricRay, compile, compileSurface, intersect, frontNormal, localSag,
+    facetQuadric, facetQuadric2, quadricRay, compile, compileSurface, intersect, frontNormal, localSag,
     envInside, envInterval, envVolume, envWire, outline, buildBVH,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

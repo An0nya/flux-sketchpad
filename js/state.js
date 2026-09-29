@@ -128,6 +128,8 @@
     if (o.type === 'facet') {
       o.P = fp(o.P); o.S0 = fp(o.S0); o.Z = fp(o.Z);
       if (o.di !== null && o.di !== undefined && isFinite(o.di)) o.di = fl(o.di);
+      if (Array.isArray(o.vg)) o.vg = o.vg.map((v) => v / fl(1));   // vergence = 1/length
+      if (o.ax) o.ax = fv(o.ax);
     }
     if (o.type === 'plane') { o.P = fp(o.P); o.n = fv(o.n); }
     if (o.clip) {
