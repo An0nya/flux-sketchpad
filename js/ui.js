@@ -25,7 +25,7 @@
   // ---------------------------------------------------------------- state changes
   ui.setControl = function (id, v) {
     C.setControl(ui.store, id, v);
-    ui.afterChange();
+    ui.afterChange({ settings: true });
   };
   ui.previewControl = function (id, v) {           // live slider drags: coarse preview
     C.setControl(ui.store, id, v);
@@ -36,8 +36,10 @@
     const store = ui.store;
     const aDirty = store.dirty.has('A');
     store.commit({ deferA: true });                 // B, C, L rebuild immediately (cheap)
-    if (aDirty && store.autoA) ui.pendingA = performance.now() + (ui.interacting ? 600 : 250);
-    ui.refreshPanels();
+    // Painting, an image, a pattern or a drag in the 3D views re-solves by itself (the 'auto' box); a sidebar setting only
+    // marks the design stale: with solves taking seconds, every nudge of a number shouldn't restart one (Anya, 09-30).
+    if (aDirty && store.autoA && !(opts && opts.settings)) ui.pendingA = performance.now() + (ui.interacting ? 600 : 250);
+    ui.refreshPanels(); markStale();
     ui.requestRun(ui.interacting);
     ui.autosave();
   };
@@ -180,11 +182,11 @@
     const groups = [['Built in', paintDefs.filter((d) => !d.worker)], ['Model solvers (benchmark runs)', paintDefs.filter((d) => d.bundled)], ['Loaded by you', paintDefs.filter((d) => d.loaded)]];
     const pick = el('select', { 'aria-label': 'Solver' }, ...groups.filter(([, ds]) => ds.length).map(([g, ds]) => el('optgroup', { label: g }, ...ds.map((d) => opt(d, d.name + ' v' + d.version + (d.bundled ? ' — ' + d.bundled.model.replace(/ \(.*\)$/, '') + ', ' + d.bundled.run.slice(5) : ''))))));
     pick.value = cur;
-    pick.addEventListener('change', () => { sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.generateA(); renderSolverBox(); });
+    pick.addEventListener('change', () => { sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.store.invalidate(['A']); markStale(); schedule(); renderSolverBox(); });
     const file = el('input', { type: 'file', accept: '.js,text/javascript', hidden: '' });
     file.addEventListener('change', async () => {
       const f = file.files && file.files[0]; if (!f) return;
-      try { const defs = await RF.SolverHost.load(await f.text()); sc.solve = { id: defs[0].id }; try { localStorage.setItem('flux/solverChoice', defs[0].id); } catch (e) { /* ignore */ } ui.store.notice('Loaded solver ' + defs.map((d) => d.name).join(', ') + ' (runs isolated in a worker).'); ui.generateA(); }
+      try { const defs = await RF.SolverHost.load(await f.text()); sc.solve = { id: defs[0].id }; try { localStorage.setItem('flux/solverChoice', defs[0].id); } catch (e) { /* ignore */ } ui.store.notice('Loaded solver ' + defs.map((d) => d.name).join(', ') + ' (runs isolated in a worker). Press Rebuild to run it.'); ui.store.invalidate(['A']); markStale(); schedule(); }
       catch (err) { ui.store.notice('Could not load ' + f.name + ': ' + err.message); }
       renderSolverBox(); P.renderNotices(ui);
     });
@@ -198,7 +200,7 @@
       if (shared.length) fields.push(el('div', { class: 'note' }, shared.join(', ') + ': from the Paint settings above (shared by every solver).'));
       for (const f of def.settings) {
         if (RF.Solvers.SHARED.includes(f.key)) continue;
-        const set = (v) => { sc.solverSettings[cur] = Object.assign({}, vals, sc.solverSettings[cur], { [f.key]: v }); ui.store.invalidate(['A']); ui.pendingA = performance.now() + 400; schedule(); };
+        const set = (v) => { sc.solverSettings[cur] = Object.assign({}, vals, sc.solverSettings[cur], { [f.key]: v }); ui.store.invalidate(['A']); markStale(); schedule(); };
         let inp;
         if (f.type === 'select') { inp = el('select', {}, ...(f.options || []).map((o) => el('option', { value: o.value !== undefined ? o.value : o }, o.label || o.value || o))); inp.value = vals[f.key]; inp.addEventListener('change', () => set(inp.value)); }
         else if (f.type === 'checkbox') { inp = el('input', { type: 'checkbox' }); inp.checked = !!vals[f.key]; inp.addEventListener('change', () => set(inp.checked)); }
@@ -293,6 +295,12 @@
   };
   // rAF drives the loop; a timer fallback keeps it alive in hidden tabs (rAF is paused there),
   // where bigger slices are fine because there is no UI to keep responsive.
+  // stale = paint mode, the design no longer matches the settings, and no solve is queued or running
+  const stale = () => ui.store.scene.mode === 'A' && ui.store.dirty.has('A') && !ui.pendingA && !ui.solveArmed && !ui.solving;
+  function markStale() {
+    const on = stale();
+    for (const id of ['btn-generate', 'btn-generate-top']) { const b = document.getElementById(id); if (b) { b.classList.toggle('stale', on); b.title = on ? 'Settings changed since the last solve: rebuild to see them' : 'Re-solve the reflector for the painted target and re-trace'; } }
+  }
   function schedule() {
     if (ui.raf) return;
     ui.raf = requestAnimationFrame(tick);
@@ -354,10 +362,12 @@
       if (ui.solving) { /* the solve owns the status line and the bar until it ends */ }
       else if (!ui.solveArmed) ui.progress(c.done ? 'done' : 'trace', pct);
       if (ui.solving) { /* see solveStatus() */ }
+      else if (stale()) ui.setStatus('settings changed — press Rebuild');
       else if (!ui.pendingA || !store.dirty.has('A')) ui.setStatus(c.done ? (run.preview ? 'preview' : 'up to date') : 'tracing ' + Math.floor(100 * c.next / c.N) + '%' + (run.preview ? ' (preview)' : ''));   // counts + ms live in the footer
       else ui.setStatus('design changed — regenerating when you pause…');
     }
     if (run && (justDone || now - ui.lastStats > 300)) { renderStats(!run.ctx.done); ui.lastStats = now; }
+    markStale();
     if (ui.sceneDirty) { drawSceneView(); drawSurfaceView(); drawLeft(); ui.sceneDirty = false; }
     if ((run && !run.ctx.done) || (ui.pendingA && store.dirty.has('A')) || ui.solveArmed) schedule();
   }

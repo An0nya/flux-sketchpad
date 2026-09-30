@@ -130,7 +130,7 @@
     auto.addEventListener('change', () => { ui.store.autoA = auto.checked; });
     side.append(section('Paint', { open: true, cls: 'only-A', key: 'A', tag: 'tile the painted pattern' },
       el('div', { class: 'note' }, 'Paint in the Editor. Rebuild runs the solver chosen here to place facets that reproduce the painting.'),
-      el('div', { class: 'btnrow' }, genBtn, el('label', { class: 'tog' }, auto, ' auto after edits')),
+      el('div', { class: 'btnrow' }, genBtn, el('label', { class: 'tog', title: 'Re-solve by itself after you paint, load an image or pattern, or drag in the 3D views. Sidebar settings never re-solve by themselves: they mark the design stale until you press Rebuild.' }, auto, ' auto after painting')),
       ...rowsFor(ui, ['A.budget', 'A.minDist']),
       el('div', { id: 'solver-box', class: 'solver-box' }),
       el('div', { id: 'pattern-box' }),
