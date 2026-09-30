@@ -1,5 +1,12 @@
 [
  {
+  "file": "lab-auto.js",
+  "model": "Flux solver lab (Sonnet 5.5, briefed by Opus 5.5)",
+  "run": "2026-09-30",
+  "workspace": "this repo",
+  "note": "lab"
+ },
+ {
   "file": "lab-fill-fix.js",
   "model": "Flux solver lab (Claude Opus 5.5)",
   "run": "2026-09-29",
