@@ -86,6 +86,18 @@ function suite(RF) {
     'sparse-ring-24': () => sparse(D(), 24, (u, v) => { const r = Math.hypot(u, v); return r > 0.45 && r < 0.6 ? 1 : 0; }),
     'sparse-bar-16': () => sparse(D(), 16, (u, v) => (Math.abs(u) < 0.7 && Math.abs(v + 0.2) < 0.12 ? 1 : 0)),
     'sparse-hot-16': () => sparse(D(), 16, (u, v) => (Math.hypot(u / 0.8, v / 0.4) < 1 ? (Math.hypot(u / 0.2, v / 0.12) < 1 ? 1 : 0.2) : 0)),
+    // added for the autotune-mode study (2026-09-29): a flat disc (a wash that has an edge) and a synthetic lithophane-like picture
+    // (smooth tones between 0.08 and 1 inside a dark frame: a lit oval "face" with two dark eyes, a nose highlight, a dark mouth band, light from the left).  Not a real photo.
+    'p-disc': withPaint((u, v) => (Math.hypot(u, v) < 0.6 ? 1 : 0)),
+    'p-photo': withPaint((u, v) => {
+      if (Math.abs(u) > 0.9 || Math.abs(v) > 0.9) return 0;
+      const g = (a, b, sa, sb) => Math.exp(-(((u - a) / sa) ** 2 + ((v - b) / sb) ** 2));
+      const face = Math.exp(-Math.pow((u / 0.6) ** 2 + (v / 0.8) ** 2, 1.5));
+      return Math.min(1, Math.max(0.08, 0.12 + 0.6 * face + 0.15 * (0.9 - u) / 1.8 - 0.4 * (g(-0.25, 0.2, 0.09, 0.06) + g(0.25, 0.2, 0.09, 0.06)) + 0.25 * g(0, -0.05, 0.07, 0.18) - 0.35 * g(0, -0.42, 0.25, 0.05)));
+    }),
+    // cursive "hello" in easier optics (2026-09-30, Anya: "more space or a smaller LED to make it doable"): one change each
+    'hello-die0.4': () => { const s = D(); s.modeA.paint = cursivePaint(s.target.res, 0.8, 3); s.source.w = s.source.h = 0.4; return s; },
+    'hello-bigenv': () => { const s = D(); s.modeA.paint = cursivePaint(s.target.res, 0.8, 3); s.envelope.half = s.envelope.half.map((x) => x * 1.5); return s; },
     'p-hotwash': withPaint((u, v) => (Math.hypot(u / 0.9, v / 0.5) < 1 ? (Math.hypot(u / 0.15, v / 0.1) < 1 ? 1 : 0.12) : 0)),   // a small hotspot 8× the wash
   };
   return S;
@@ -107,6 +119,12 @@ function privateScenes(RF) {
   try { const SC = require(path.join(AQ, 'tools/flux-scoring.js')); for (const [k, f] of Object.entries(SC.heldScenes(RF))) out['held-' + k] = f; } catch (e) { /* not on this machine */ }
   const files = { 'anya-shot-245': 'anya-screenshot-245-2026-09-29.json', 'anya-lowbeam-212': 'anya-lowbeam-212-2026-09-27.json', 'anya-lowbeam-1001': 'anya-lowbeam-1001-2026-09-29.json', 'anya-beamshot-400': 'anya-beamshot-400-2026-09-29.json' };
   for (const [k, f] of Object.entries(files)) { const p = path.join(AQ, 'scenes', f); if (fs.existsSync(p)) { const txt = fs.readFileSync(p, 'utf8'); out[k] = () => RF.State.deserialize(txt); } }
+  // Anya's photos, made into paint maps by tools/photo-paint.js (bench-out/ is gitignored): photo-<name> on the default optics
+  const PH = path.join(__dirname, '..', 'bench-out', 'photos');
+  if (fs.existsSync(PH)) for (const f of fs.readdirSync(PH).filter((x) => /-\d+\.json$/.test(x))) {
+    const d = JSON.parse(fs.readFileSync(path.join(PH, f), 'utf8'));
+    out['photo-' + d.name] = () => { const s = RF.State.defaultScene(); if (s.target.res !== d.res) throw new Error('photo ' + d.name + ' is ' + d.res + '², target is ' + s.target.res + '²'); s.modeA.paint = d.paint.slice(); return s; };
+  }
   return out;
 }
 
