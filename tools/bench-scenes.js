@@ -86,6 +86,15 @@ function suite(RF) {
     'sparse-ring-24': () => sparse(D(), 24, (u, v) => { const r = Math.hypot(u, v); return r > 0.45 && r < 0.6 ? 1 : 0; }),
     'sparse-bar-16': () => sparse(D(), 16, (u, v) => (Math.abs(u) < 0.7 && Math.abs(v + 0.2) < 0.12 ? 1 : 0)),
     'sparse-hot-16': () => sparse(D(), 16, (u, v) => (Math.hypot(u / 0.8, v / 0.4) < 1 ? (Math.hypot(u / 0.2, v / 0.12) < 1 ? 1 : 0.2) : 0)),
+    // added for the autotune-mode study (2026-09-29): a flat disc (a wash that has an edge) and a synthetic lithophane-like picture
+    // (smooth tones between 0.08 and 1 inside a dark frame: a lit oval "face" with two dark eyes, a nose highlight, a dark mouth band, light from the left).  Not a real photo.
+    'p-disc': withPaint((u, v) => (Math.hypot(u, v) < 0.6 ? 1 : 0)),
+    'p-photo': withPaint((u, v) => {
+      if (Math.abs(u) > 0.9 || Math.abs(v) > 0.9) return 0;
+      const g = (a, b, sa, sb) => Math.exp(-(((u - a) / sa) ** 2 + ((v - b) / sb) ** 2));
+      const face = Math.exp(-Math.pow((u / 0.6) ** 2 + (v / 0.8) ** 2, 1.5));
+      return Math.min(1, Math.max(0.08, 0.12 + 0.6 * face + 0.15 * (0.9 - u) / 1.8 - 0.4 * (g(-0.25, 0.2, 0.09, 0.06) + g(0.25, 0.2, 0.09, 0.06)) + 0.25 * g(0, -0.05, 0.07, 0.18) - 0.35 * g(0, -0.42, 0.25, 0.05)));
+    }),
     'p-hotwash': withPaint((u, v) => (Math.hypot(u / 0.9, v / 0.5) < 1 ? (Math.hypot(u / 0.15, v / 0.1) < 1 ? 1 : 0.12) : 0)),   // a small hotspot 8× the wash
   };
   return S;
