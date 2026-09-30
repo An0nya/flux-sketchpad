@@ -356,3 +356,53 @@ Details, the Result map's Fidelity view and the spot inspector; returned by `tra
 - Built-in solvers: Spoke (default) and Constellation (a demonstration of a poor solution: tiny facets, one LED
   image per painted cell).
 - Benchmark notes (trial results, scoring decisions) are kept privately, outside this repo.
+
+## Solver lab (2026-09-29, branch `solver-lab`, not pushed)
+
+Goal (Anya): a flexible solver that *can* reach ~95% fidelity on the test scenes while capturing and delivering most of
+the light, with peak intensity closer to the possible maximum than to 0; efficient with facets; ~5 s static, a minute
+is fine for a tuner.  Everything below is exploring-mode; numbers are 1M rays on a trace seed the solvers never see.
+
+**Tools.** `tools/bench.js` (solvers × scenes → table + `bench-out/bench.jsonl`), `tools/bench-scenes.js` (one factor
+changed per scene: LED orientation, die, coil, throw, envelope, paintings, sparse 8–24 facets, cursive hello; held-out
+and Anya's scene files are read from the private agent-qa repo, never copied here).  Metrics beyond fidelity:
+`ofPoss` = peak ÷ (capturable light × reflectivity spread exactly like the paint, capped by the envelope ceiling);
+`ofIdeal` = mean painted cell's delivered ÷ that ideal.
+
+**Bundled model solvers** (`solvers/`, verbatim + a scope wrapper, credited in the picker via `solvers/index.json`).
+Baseline on 28 scenes: dish-fit (Sonnet 5.5) 89.4% fidelity / 47% on paint; Mosaic (Opus 5.5) 84.4 / 39;
+finite-image (Sol 6) 80.7 / 20; bowl-image (Sol 6.1) 84.2 / 11.
+
+**Engine additions.**
+- Two-curvature facets: `facet` + `vg: [v1, v2]` (vergences 1/mm) + `ax`.  Built on the exact ellipsoid at the mean
+  vergence with the tangent-plane curvature set by the generalised Coddington equations.  ⚠️ A symmetric osculating
+  paraboloid FAILED the tracer check (coma: 6 mm facet blurred to 2 mm at 600 mm) — oblique facets need the cubic sag.
+  `tests/facet2.js` checks through the engine's own rays.
+- Opaque-coil emission (`source.emission: 'surface'`): Lambertian skin, intensity ∝ projected area, dark end-on.
+
+**Fill & fix (`solvers/lab-fill-fix.js`, v0.3).**  Shell of stacked paraboloids (LED at the focus, axis to the target;
+focal length may only shrink going backward, so nothing blocks) → equal-weight tiles (flux × (r/r_med)^κ, κ from the
+paint's fine detail) → exact geometric footprints (real quadric, real normals, every LED sample reflected; no Monte
+Carlo) → greedy pursuit, blurriest facets first, then lift-and-replace sweeps with boosting of failing cells; the shell
+is picked by predicted fidelity (the app's own metric on the model's field).  Settings: Priority / Facet shapes /
+Quality; the rest under Advanced.
+- Suite (36 scenes, normal quality): mean fidelity **88.8%**, 41% on paint (dish-fit 87.3 / 42).  Wins big where
+  spreading matters: full wash +29, Anya's 400-facet beamshot +30 (defaults; 87.7% with 71% of the light on paint),
+  half-plane +9, test +7.  Anya's 245-facet scene at min distance 0: **95.1% fidelity, 74% on paint, 76% of possible
+  peak**.  Still behind on the long 2×0.5 die, few-facet rings/bars and text.
+- What found the bugs (each silent): measuring footprints against the TOTAL grid (direct LED light inflated σ 3×);
+  a wall-hugging shell whose tilted facets built a sawtooth (42% blocked); flat-plane outlines (0.45–1.7× the planned
+  light per facet); planning before pulling facets into the envelope (16-facet designs moved 43% after planning).
+- Tried and falsified: per-facet dimming (no suite gain); a self-balancing gap weight (neutral, kept).  Below ~5
+  points per scene, single-scene changes are greedy-placement chaos: judge on the suite mean.
+- ⚠️ Min facet distance interacts with the no-blocking rule: rear directions must sit on small paraboloids, so a
+  15 mm minimum cut Anya's scene from 92% to 49% of the light reachable.  The footer now warns (app-wide floor + the
+  solver's own number).
+
+**UI fixes on the branch.** Solver stop/stage/elapsed status; a newer solve request stops the running one (fixes the
+silent revert); undo re-solves worker solvers and keeps map zoom; ⌘/Ctrl-click erases; plain shaded Optics view;
+Min facet distance next to the budget; model solvers' knobs under Advanced.  Dev servers now send `no-store`
+(`tests/serve.py`): the plain Python server let browsers keep a 3-day-old geometry.js.
+
+**Next.** Supporting quadrics (continuous reflector) with Fournier-style virtual-target compensation; edge-aware
+image orientation (long dies, cutoffs); a lithophane-style import curve for photos.
