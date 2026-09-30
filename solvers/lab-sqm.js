@@ -292,7 +292,7 @@
     // `fitShare` of the light fits, and let the directions that still stick out (or fall inside the clearance) go
     // uncovered; rebalance and repeat.
     let err = 0;
-    const sizeList = S.size > 0 ? [S.size] : S.sizes; let sizeNow = sizeList[0];
+    const sizeList = S.size > 0 ? [S.size] : S.sizes; let sizeNow = sizeList[0], growNow = S.size > 0;   // growNow: fit() may scale UP to the envelope
     function fit() {
       const rat = []; for (const d of dirs) if (d.on && d.j >= 0) rat.push([d.r / d.rEnv, d.flux]);
       rat.sort((a, b) => a[0] - b[0]); let tot = 0; for (const x of rat) tot += x[1];
@@ -302,7 +302,7 @@
       // 78.8 mean fidelity on 11 scenes, and size 1 on Anya's low beam collapsed it (17.8% fidelity, peak 343% of possible:
       // everything piled into one spot); why is not understood yet (a v0.4 question, with segmenting the surface).
       // A size you set is taken literally — grown or shrunk to that fraction — so it can be explored (Anya's request).
-      if (q > 1 || (S.size > 0 && Math.abs(q - 1) > 0.002)) keepSizes(() => {}, -Math.log(q * 1.002));   // scale every patch's radius, not β (β + 2c is not homogeneous)
+      if (q > 1 || (growNow && Math.abs(q - 1) > 0.002)) keepSizes(() => {}, -Math.log(q * 1.002));   // scale every patch's radius, not β (β + 2c is not homogeneous)
       assign(); let dropped = 0; for (const d of dirs) if (d.on && (d.j < 0 || d.r > d.rEnv || d.r < rmin)) { d.on = false; dropped++; }
       return { q, dropped };
     }
@@ -311,7 +311,7 @@
     for (let round = 0; round < 8; round++) {
       err = balance(round > 0);
       if (globalThis.SQMDBG) { let on = 0, rr = []; for (const d of dirs) if (d.on) { on++; rr.push(d.r / d.rEnv); } rr.sort((a, b) => a - b); console.log('round', round, 'on', on, 'err', err.toFixed(3), 'ratio p10/50/90', [0.1, 0.5, 0.9].map((q) => rr[Math.floor(q * rr.length)]).map((x) => x && x.toFixed(2)).join('/'), 'beta0', aims[0].beta.toFixed(2)); }
-      const f = fit(); if ((S.size > 0 ? Math.abs(f.q - 1) <= 0.003 : f.q <= 1.0001) && !f.dropped) break;
+      const f = fit(); if ((growNow ? Math.abs(f.q - 1) <= 0.003 : f.q <= 1.0001) && !f.dropped) break;
       prog(0.1 + 0.1 * round / 8, 'fit envelope');
     }
     err = balance(true); for (let k = 0; k < 4; k++) { const f = fit(); if (!f.dropped) break; err = balance(true); }
@@ -382,8 +382,8 @@
     // bigger images.  Sharp edges want small images, a wash wants big ones, and the fit that fills the envelope is
     // not the best choice for either.  Try a few sizes (warm re-balance + a couple of compensation passes each, since
     // compensation moves the optimum) and keep the best predicted score.
-    const snap = () => ({ st: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target })), on: dirs.map((d) => d.on), size: sizeNow, open: openNow });
-    const load = (o) => { aims.forEach((z, j) => { Object.assign(z, o.st[j]); setFocus(z); }); dirs.forEach((d, i) => { d.on = o.on[i]; }); sizeNow = o.size; openNow = o.open; assign(); };
+    const snap = () => ({ st: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target })), on: dirs.map((d) => d.on), size: sizeNow, open: openNow, grow: growNow });
+    const load = (o) => { aims.forEach((z, j) => { Object.assign(z, o.st[j]); setFocus(z); }); dirs.forEach((d, i) => { d.on = o.on[i]; }); sizeNow = o.size; openNow = o.open; growNow = o.grow; assign(); };
     const onPaintOf = () => { let t = 0; for (const k of pcells) t += Fg[k]; return t / src.power; };
     let fd = predict();
     function compPass() {                                       // one compensation pass: new shares from the predicted field, re-balance, predict
@@ -404,10 +404,11 @@
       load(bestC.o); fd = predict(); return bestC;
     }
     let passesLeft = S.compensate;
-    const settleAt = (open, size, base) => {                     // move the current design to another opening / size: re-scale, re-balance, re-fit
-      openNow = open; sizeNow = size; for (const d of dirs) d.on = d.ang >= openNow;
-      keepSizes(() => {}, Math.log(size / base.size));
-      err = balance(true); for (let k = 0; k < 4; k++) { const f = fit(); if (f.q <= 1.0001 && !f.dropped) break; err = balance(true); }
+    const settleAt = (open, size, base, fill) => {               // move the current design to another opening / size: re-scale, re-balance, re-fit
+      // fill: size is a fraction of what the ENVELOPE allows (the mirror may grow); otherwise of the balanced mirror (shrink only)
+      openNow = open; sizeNow = size; growNow = !!fill; for (const d of dirs) d.on = d.ang >= openNow;
+      if (!fill) keepSizes(() => {}, Math.log(size / base.size));
+      err = balance(true); for (let k = 0; k < 4; k++) { const f = fit(); if ((growNow ? Math.abs(f.q - 1) <= 0.003 : f.q <= 1.0001) && !f.dropped) break; err = balance(true); }
       fd = predict();
     };
     const score = (c) => c.fd.fidelity + S.lightWeight * onPaintOf();
@@ -422,14 +423,17 @@
         const base = snap(); let best = null;
         for (const c of cands) {
           prog(0.2 + 0.05 * report.length / 8, label + ' ' + c);
-          load(base); if (mk(c) !== false) settleAt.apply(null, mk(c).concat([base]));
+          load(base); const m = mk(c); if (m !== false) settleAt(m[0], m[1], base, m[3]);
           const r = compensate(sp, label + ' ' + c + ' · compensate'), v = score(r); report.push(label + ' ' + c + ': ' + (100 * r.fd.fidelity).toFixed(0) + '% / ' + (100 * onPaintOf()).toFixed(0) + '%');
           if (!best || v > best.v) best = { v, o: snap(), c };
         }
         load(best.o); fd = predict(); return best.c;
       };
       const o0 = openNow, z0 = sizeNow;
-      const sizePick = sizeList.length > 1 ? pick(sizeList, 'size', (z) => z === sizeNow ? false : [openNow, z]) : z0;
+      // (09-30) plus mirrors GROWN to a share of the envelope: on Anya's 50 m low beam the search now finds 91.5 (was 72.3), on
+      // an older copy the same growth collapsed the beam (18%) — the prediction sees both, so let it choose.
+      const FILLS = S.fills || [1, 0.85, 0.7], sizeCands = sizeList.length > 1 ? sizeList.concat(FILLS.map((z) => 'fill ' + z)) : sizeList;
+      const sizePick = sizeList.length > 1 ? pick(sizeCands, 'size', (z) => typeof z === 'string' ? [openNow, +z.slice(5), undefined, true] : z === sizeNow && !growNow ? false : [openNow, z]) : z0;
       const openPick = openList.length > 1 ? pick(openList, 'opening', (o) => o === openNow ? false : [o, sizeNow]) : o0;
       passesLeft = Math.max(0, S.compensate - sp);
       notes.push('design search (score = predicted fidelity / light on paint): ' + report.join(' · ') + ' → opening ' + openPick + '°, size ' + sizePick);
