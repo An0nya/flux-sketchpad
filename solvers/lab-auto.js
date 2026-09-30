@@ -182,6 +182,21 @@
         notes.push('finalists at full quality and 1M rays: ' + res.finals.map(line).join(' | '));
         notes.push('winner: ' + win.label + (win.solved.fell ? ' (fell back: the picked solver is not loaded)' : '') + '; ' + (win.veto ? 'every finalist failed a gate, this failed the least' : 'passed every gate') + '.');
         out = win.solved.out; out.extras = Object.assign({}, out.extras, { auto: { kind: goal, winner: win.label, solver: win.solved.id, finalists: res.finals.map((f) => ({ label: f.label, score: f.score, veto: f.veto, fid: f.ev.fid, onPaint: f.ev.onPaint })) } });
+      } else if (S.goal === 'auto' && (goal === 'photo' || goal === 'hotspot') && feat.levels >= 6 && feat.peakStands >= 3) {
+        // Photo or beam?  In linear light a photo's bright subject stands over a dim rest just like a hotspot over its fill, and
+        // no feature separated them (an imported beamshot looks like a dark photo).  They want different solvers (dish-fit won
+        // every photo, Fill & fix the beamshot 87 vs 53), so measure instead of guessing: both, quickly, at 250k rays.
+        A.prog(0.03, 'photo or beam? trying dish-fit');
+        const d = await A.solve(PICKS.photo, PICKS.photo.over, 0, 0.03, 0.2);
+        A.prog(0.25, 'photo or beam? trying Fill & fix (fast)');
+        const f = await A.solve(PICKS.hotspot, { quality: 'fast' }, 0, 0.25, 0.2);
+        const cand = [{ label: 'dish-fit', solved: d }, { label: 'Fill & fix (fast)', solved: f }].filter((c) => c.solved.out.surfaces && c.solved.out.surfaces.length);
+        for (const c of cand) c.ev = A.look('general', c.solved.out, 250000, opt).ev;
+        const ranked = M.rank('general', cand), win = ranked[0];
+        notes.push('photo or beam? not clear from the painting (' + feat.levels + ' levels, brightest ' + feat.peakStands.toFixed(1) + '× the typical level), so both were tried at 250k rays: ' + ranked.map((c) => c.label + ' ' + pc(c.ev.fid) + '% fidelity, ' + pc(c.ev.onPaint) + '% on paint').join(' vs '));
+        if (win && win.label === 'dish-fit') { out = d.out; goal = 'photo'; notes.push('picked dish-fit (' + (d.ms / 1000).toFixed(1) + ' s)'); }
+        else { A.prog(0.5, 'solving with Fill & fix (defaults)'); const r = await A.solve(PICKS.hotspot, PICKS.hotspot.over, 0, 0.5, 0.48); out = r.out; goal = 'hotspot'; notes.push('picked Fill & fix (defaults), re-solved at full quality (' + (r.ms / 1000).toFixed(1) + ' s)'); }
+        out.extras = Object.assign({}, out.extras, { auto: { kind: goal, tiebreak: ranked.map((c) => ({ label: c.label, fid: c.ev.fid, onPaint: c.ev.onPaint })) } });
       } else {
         let pick = PICKS[goal] || PICKS.general;
         if (goal === 'cutoff' && A.ctx.kernelCells > CUTOFF_MAX_KERNEL) { pick = PICKS.general; notes.push('the LED image is ' + A.ctx.kernelCells.toFixed(1) + ' cells wide (over ' + CUTOFF_MAX_KERNEL + '): "most light" would spill, using the defaults'); }
