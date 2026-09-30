@@ -298,10 +298,11 @@
       rat.sort((a, b) => a[0] - b[0]); let tot = 0; for (const x of rat) tot += x[1];
       let acc = 0, q = rat.length ? rat[rat.length - 1][0] : 1; for (const x of rat) { acc += x[1]; if (acc >= S.fitShare * tot) { q = x[0]; break; } }
       q /= sizeNow;                                            // size < 1: keep the reflector that much smaller than the envelope allows (bigger LED images: image size ∝ 1 / distance)
-      // Only ever shrinks.  Tried 09-30: growing a smaller surface to fill the envelope cost 83.1 → 78.8 mean fidelity on 11
-      // scenes, and forcing size 1 on Anya's low beam collapsed it (17.8% fidelity, peak 343% of possible: everything
-      // piled into one spot).  Why is not understood yet — a v0.4 question, with segmenting the surface.
-      if (q > 1) keepSizes(() => {}, -Math.log(q * 1.002));   // scale every patch's radius, not β (β + 2c is not homogeneous)
+      // By default (size −1) it only SHRINKS to fit.  Tried 09-30: growing a smaller surface to fill the envelope cost 83.1 →
+      // 78.8 mean fidelity on 11 scenes, and size 1 on Anya's low beam collapsed it (17.8% fidelity, peak 343% of possible:
+      // everything piled into one spot); why is not understood yet (a v0.4 question, with segmenting the surface).
+      // A size you set is taken literally — grown or shrunk to that fraction — so it can be explored (Anya's request).
+      if (q > 1 || (S.size > 0 && Math.abs(q - 1) > 0.002)) keepSizes(() => {}, -Math.log(q * 1.002));   // scale every patch's radius, not β (β + 2c is not homogeneous)
       assign(); let dropped = 0; for (const d of dirs) if (d.on && (d.j < 0 || d.r > d.rEnv || d.r < rmin)) { d.on = false; dropped++; }
       return { q, dropped };
     }
@@ -310,7 +311,7 @@
     for (let round = 0; round < 8; round++) {
       err = balance(round > 0);
       if (globalThis.SQMDBG) { let on = 0, rr = []; for (const d of dirs) if (d.on) { on++; rr.push(d.r / d.rEnv); } rr.sort((a, b) => a - b); console.log('round', round, 'on', on, 'err', err.toFixed(3), 'ratio p10/50/90', [0.1, 0.5, 0.9].map((q) => rr[Math.floor(q * rr.length)]).map((x) => x && x.toFixed(2)).join('/'), 'beta0', aims[0].beta.toFixed(2)); }
-      const f = fit(); if (f.q <= 1.0001 && !f.dropped) break;
+      const f = fit(); if ((S.size > 0 ? Math.abs(f.q - 1) <= 0.003 : f.q <= 1.0001) && !f.dropped) break;
       prog(0.1 + 0.1 * round / 8, 'fit envelope');
     }
     err = balance(true); for (let k = 0; k < 4; k++) { const f = fit(); if (!f.dropped) break; err = balance(true); }
@@ -524,7 +525,7 @@
       { key: 'quality', label: 'Quality', type: 'select', default: 'fast', options: [{ value: 'fast', label: 'fast (a few seconds)' }, { value: 'normal', label: 'normal (tries more shapes)' }, { value: 'best', label: 'best (slow)' }] },
       { key: 'lightWeight', label: 'Light on paint, vs fidelity', type: 'number', min: 0, max: 3, step: 0.05, default: 0.25 },
       { key: 'open', adv: true, label: 'Front opening, degrees from the beam (−1 = try several)', type: 'number', min: -1, max: 150, step: 5, default: -1 },
-      { key: 'size', adv: true, label: 'Reflector size: at most this fraction of what the envelope allows (−1 = try several). It only shrinks: the mirror\u2019s scale comes from the light balance', type: 'number', min: -1, max: 1, step: 0.05, default: -1 },
+      { key: 'size', adv: true, label: 'Reflector size, fraction of what the envelope allows (−1 = try several, never grows). Experimental: a set value grows or shrinks the mirror to it, and big mirrors can collapse the beam', type: 'number', min: -1, max: 1, step: 0.05, default: -1 },
       { key: 'compensate', adv: true, label: 'Blur-compensation passes (−1 = by quality)', type: 'number', min: -1, max: 30, step: 1, default: -1 },
       { key: 'searchPasses', adv: true, label: 'Compensation passes spent on each size / opening tried', type: 'number', min: 0, max: 10, step: 1, default: 2 },
       { key: 'gain', adv: true, label: 'How far each compensation pass moves the shares (0 none … 1 fully)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.7 },
