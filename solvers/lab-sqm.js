@@ -405,6 +405,7 @@
     // (B_j = patch j's light per cell per unit flux, from predict).  Choose the patch fluxes g ≥ 0 that make F match the paint
     // in RELATIVE terms (a dim cell counts as much as a bright one, as in the score) while keeping the gaps near the paint dark;
     // multiplicative updates (Lee–Seung) converge monotonically.  Returns the new shares.
+    let gwNow = S.gapWeight;
     const isGap = new Uint8Array(R * R); { const rg = 3; for (let y = 0; y < R; y++) for (let x = 0; x < R; x++) { const k = y * R + x; if (paint[k] > 0) continue; let near = false; for (let dy = -rg; dy <= rg && !near; dy++) for (let dx = -rg; dx <= rg; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < R && yy < R && paint[yy * R + xx] > 0) { near = true; break; } } if (near) isGap[k] = 1; } }
     const gapCells = []; for (let k = 0; k < R * R; k++) if (isGap[k]) gapCells.push(k);
     function nnlsShares(iters) {
@@ -413,7 +414,7 @@
       let typ = 0; for (const k of pcells) typ += sc * paint[k]; typ /= pcells.length;
       const a = new Float64Array(R * R), t = new Float64Array(R * R);
       for (const k of pcells) { t[k] = sc * paint[k]; a[k] = 1 / (0.25 * t[k]) ** 2; }
-      for (const k of gapCells) a[k] = S.gapWeight / (0.15 * typ) ** 2;
+      for (const k of gapCells) a[k] = gwNow * (pcells.length / Math.max(1, gapCells.length)) / (0.15 * typ) ** 2;   // the score averages painted cells and gap cells separately: give each group the same total say
       const g = aims.map((z) => (cols[aims.indexOf(z)] ? z.W : 0)), F = new Float64Array(R * R), nu = new Float64Array(J), de = new Float64Array(J);
       for (let it = 0; it < iters; it++) {
         F.fill(0); for (let j = 0; j < J; j++) { const c = cols[j]; if (!c || !(g[j] > 0)) continue; for (let q = 0; q < c.idx.length; q++) F[c.idx[q]] += c.val[q] * g[j]; }
@@ -425,29 +426,13 @@
     }
     // ---- reflector size: the LED's image on the target is (LED size) × (patch→target ÷ patch→LED), so a SMALLER reflector paints
     // bigger images.  Sharp edges want small images, a wash wants big ones, and the fit that fills the envelope is
-    // not the best choice for either.  Try a few sizes (warm re-balance each) and keep the best predicted score.
+    // not the best choice for either.  Try a few sizes (warm re-balance + a couple of compensation passes each, since
+    // compensation moves the optimum) and keep the best predicted score.
     const snap = () => ({ st: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target, m: z.m, Pb: z.Pb })), on: dirs.map((d) => d.on), size: sizeNow });
     const load = (o) => { aims.forEach((z, j) => { Object.assign(z, o.st[j]); setFocus(z); }); dirs.forEach((d, i) => { d.on = o.on[i]; }); sizeNow = o.size; assign(); };
     const onPaintOf = () => { let t = 0; for (const k of pcells) t += Fg[k]; return t / src.power; };
     let fd = predict();
-    if (!(S.size > 0) && S.sizes.length > 1) {
-      let bestS = { v: fd.fidelity + S.lightWeight * onPaintOf(), o: snap(), size: sizeNow, fid: fd.fidelity }; const base = snap(), tried = [[sizeNow, fd.fidelity, onPaintOf()]];
-      for (const sz of S.sizes) {
-        if (sz === base.size) continue;
-        prog(0.2 + 0.05 * tried.length / S.sizes.length, 'reflector size ' + sz);
-        load(base); for (const d of dirs) d.on = true; sizeNow = sz;
-        keepSizes(() => {}, Math.log(sz / base.size));
-        err = balance(S.iters, true);
-        for (let k = 0; k < 4; k++) { const f = fit(); if (f.q <= 1.0001 && !f.dropped) break; err = balance(S.iters, true); }
-        const f2 = predict(), on2 = onPaintOf(), v = f2.fidelity + S.lightWeight * on2; tried.push([sz, f2.fidelity, on2]);
-        if (v > bestS.v) bestS = { v, o: snap(), size: sz, fid: f2.fidelity };
-      }
-      load(bestS.o); fd = predict(); notes.push('reflector size search (size: predicted fidelity / light on paint): ' + tried.map((t) => t[0] + ': ' + (100 * t[1]).toFixed(0) + '% / ' + (100 * t[2]).toFixed(0) + '%').join(' · ') + ' → ' + bestS.size);
-    }
-    let best = { fd, state: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target, m: z.m, Pb: z.Pb })) };
-    for (let pass = 0; pass < S.compensate; pass++) {
-      prog(0.25 + 0.65 * pass / Math.max(1, S.compensate), 'compensate ' + (pass + 1) + '/' + S.compensate + (best.fd ? ' · predicted ' + Math.round(100 * best.fd.fidelity) + '%' : ''));
-      // each aim's region on the target: paint wanted vs light predicted there (at the fitted overall scale)
+    function compPass() {                                       // one compensation pass: new shares (and aim nudges) from the predicted field, re-balance, predict
       let a = 0, b = 0; for (const k of pcells) { a += Fg[k] * paint[k]; b += paint[k] * paint[k]; } const sc = a / Math.max(1e-30, b);
       const want = new Float64Array(aims.length), got = new Float64Array(aims.length), mu = new Float64Array(aims.length), mv = new Float64Array(aims.length), mw = new Float64Array(aims.length);
       for (const k of pcells) { const j = owner[k]; if (j < 0 || j >= aims.length) continue; want[j] += paint[k] * sc; got[j] += Fg[k]; const [u, v] = uvOf(k), def = Math.max(0, paint[k] * sc - Fg[k]); mu[j] += u * def; mv[j] += v * def; mw[j] += def; }
@@ -463,10 +448,44 @@
       });
       err = balance(S.iters, true); for (let k = 0; k < 3; k++) { const f = fit(); if (!f.dropped) break; err = balance(S.iters, true); }
       fd = predict();
-      if (fd && (!best.fd || fd.fidelity > best.fd.fidelity)) best = { fd, state: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target, m: z.m, Pb: z.Pb })) };
     }
-    best.state.forEach((s, j) => { const z = aims[j]; Object.assign(z, s); setFocus(z); });
-    assign(); fd = predict();
+    function compensate(passes, label) {                        // from the current state; ends in the best state seen
+      let bestC = { fd, o: snap() };
+      for (let pass = 0; pass < passes; pass++) {
+        prog(0.25 + 0.65 * pass / Math.max(1, passes), label + ' ' + (pass + 1) + '/' + passes + ' · predicted ' + Math.round(100 * bestC.fd.fidelity) + '%');
+        compPass(); if (fd && fd.fidelity > bestC.fd.fidelity) bestC = { fd, o: snap() };
+      }
+      load(bestC.o); fd = predict(); return bestC;
+    }
+    let passesLeft = S.compensate;
+    if (!(S.size > 0) && S.sizes.length > 1) {
+      const base = snap(), tried = []; let bestS = null; const sp = Math.min(S.searchPasses, S.compensate);
+      for (const sz of S.sizes) {
+        prog(0.2 + 0.05 * tried.length / S.sizes.length, 'reflector size ' + sz);
+        load(base);
+        if (sz !== base.size) {
+          for (const d of dirs) d.on = true; sizeNow = sz;
+          keepSizes(() => {}, Math.log(sz / base.size));
+          err = balance(S.iters, true);
+          for (let k = 0; k < 4; k++) { const f = fit(); if (f.q <= 1.0001 && !f.dropped) break; err = balance(S.iters, true); }
+          fd = predict();
+        }
+        const c = compensate(sp, 'size ' + sz + ' · compensate'), on2 = onPaintOf(), v = c.fd.fidelity + S.lightWeight * on2; tried.push([sz, c.fd.fidelity, on2]);
+        if (!bestS || v > bestS.v) bestS = { v, o: snap(), size: sz };
+      }
+      load(bestS.o); fd = predict(); passesLeft = Math.max(0, S.compensate - sp);
+      notes.push('reflector size search (size: predicted fidelity / light on paint): ' + tried.map((t) => t[0] + ': ' + (100 * t[1]).toFixed(0) + '% / ' + (100 * t[2]).toFixed(0) + '%').join(' · ') + ' → ' + bestS.size);
+    }
+    if (S.comp === 1 && S.gapWeight > 0 && passesLeft > 0) {
+      // how much to care about the gaps while fitting the paint depends on the paint: thin strokes cannot be lit without lighting
+      // their surroundings, a wash or a blob can.  Run the remaining passes both ways from the same state; keep the better predicted.
+      const base0 = snap(); let bestG = null; const res = [];
+      for (const gw of [S.gapWeight, 0]) {
+        load(base0); gwNow = gw; const c = compensate(passesLeft, 'compensate (gaps ' + gw + ')'), v = c.fd.fidelity + S.lightWeight * onPaintOf(); res.push(gw + ': ' + (100 * c.fd.fidelity).toFixed(0) + '%');
+        if (!bestG || v > bestG.v) bestG = { v, gw, o: snap() };
+      }
+      gwNow = bestG.gw; load(bestG.o); fd = predict(); notes.push('gap weight in the compensation (' + res.join(' · ') + ') → ' + gwNow);
+    } else compensate(passesLeft, 'compensate');
 
     // ---- emit: one facet per patch = the exact ellipsoid (foci LED and z_j), clipped to the hull of its directions
     prog(0.92, 'emit + verify');
@@ -524,7 +543,7 @@
     return { surfaces: out, intent: intent.filter((it) => ids.has(it.facet)), notes, pred: { fid: fd ? fd.fidelity : 0, onPaint: onP / src.power }, debug: S.debug ? { F: Array.from(Fg), R, truth, blobEnergy: blobs.map((B) => B[0]), blobs: blobs.map((B, j) => { const w = B[0] || 1, mx = B[1] / w, my = B[2] / w, sxx = B[3] / w - mx * mx, syy = B[4] / w - my * my, sxy = B[5] / w - mx * my; return { j, u: aims[j].u, v: aims[j].v, m: aims[j].m, share: aims[j].target, cx: mx, cy: my, sx: Math.sqrt(Math.max(0, sxx)), sy: Math.sqrt(Math.max(0, syy)), rho: sxy / Math.sqrt(Math.max(1e-12, sxx * syy)) }; }) } : undefined };
   }
 
-  const QUALITY = { fast: { sizes: [1, 0.6, 0.36], compensate: 3, iters: 150, apCells: 24, imgSpacing: 1, cellsPerFacet: 40 }, normal: { sizes: [1, 0.75, 0.55, 0.4, 0.3, 0.22], compensate: 6, iters: 250, apCells: 40, imgSpacing: 0.8, cellsPerFacet: 60 }, best: { sizes: [1, 0.85, 0.7, 0.55, 0.45, 0.36, 0.28, 0.2], compensate: 10, iters: 400, apCells: 64, imgSpacing: 0.6, cellsPerFacet: 100 } };
+  const QUALITY = { fast: { sizes: [1, 0.6, 0.36], compensate: 4, iters: 150, apCells: 24, imgSpacing: 1, cellsPerFacet: 40 }, normal: { sizes: [1, 0.75, 0.55, 0.4, 0.3, 0.22], compensate: 6, iters: 250, apCells: 40, imgSpacing: 0.8, cellsPerFacet: 60 }, best: { sizes: [1, 0.85, 0.7, 0.55, 0.45, 0.36, 0.28, 0.2], compensate: 10, iters: 400, apCells: 64, imgSpacing: 0.6, cellsPerFacet: 100 } };
   function solve(input, S0, tools) {
     const Q = QUALITY[S0.quality] || QUALITY.normal, S = Object.assign({}, S0);
     for (const k of Object.keys(Q)) if (S[k] === -1 || S[k] === undefined) S[k] = Q[k];
@@ -552,9 +571,10 @@
       { key: 'defocus', adv: true, label: 'Spread each patch over its region (0 sharp … 1 full; −1 auto)', type: 'number', min: -1, max: 2, step: 0.05, default: -1 },
       { key: 'lightWeight', adv: true, label: 'Light on paint worth, vs fidelity', type: 'number', min: 0, max: 3, step: 0.05, default: 0.25 },
       { key: 'compensate', adv: true, label: 'Blur-compensation passes (−1 auto)', type: 'number', min: -1, max: 30, step: 1, default: -1 },
+      { key: 'searchPasses', adv: true, label: 'dev: compensation passes per size tried', type: 'number', min: 0, max: 10, step: 1, default: 2 },
       { key: 'comp', adv: true, label: 'dev: compensation (0 ratio, 1 least squares)', type: 'number', min: 0, max: 1, step: 1, default: 1 },
       { key: 'nnlsIters', adv: true, label: 'dev: least-squares iterations', type: 'number', min: 1, max: 1000, step: 1, default: 80 },
-      { key: 'gapWeight', adv: true, label: 'dev: gap weight in the least squares', type: 'number', min: 0, max: 10, step: 0.1, default: 1 },
+      { key: 'gapWeight', adv: true, label: 'dev: gap weight in the least squares', type: 'number', min: 0, max: 10, step: 0.05, default: 0.5 },
       { key: 'gain', adv: true, label: 'Compensation gain (shares)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.7 },
       { key: 'nudge', adv: true, label: 'Compensation gain (aim positions)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.3 },
       { key: 'lloyd', adv: true, label: 'Aim clustering iterations', type: 'number', min: 0, max: 50, step: 1, default: 12 },
