@@ -111,19 +111,33 @@
     if (!covered.length) return { surfaces: [], intent: [], notes: ['no direction from the LED can hold a mirror inside the envelope'] };
     notes.push('shell covers ' + (100 * fluxCov / Math.max(1e-12, fluxAll)).toFixed(0) + '% of the LED\'s light; radii ' + Math.min(...covered.map((x) => x.r)).toFixed(1) + '–' + Math.max(...covered.map((x) => x.r)).toFixed(1) + ' mm (sharp at ≥ ' + rNeed.toFixed(0) + ' mm)');
 
-    // ---- 2. tiles: k-d split of covered cells in (φ, cosα) into N equal-flux groups
+    // ---- 2. tiles: k-d split of covered cells in (φ, cosα) into N groups of equal WEIGHT = flux × (r / r_med)^κ.
+    // κ = 0 splits by light alone.  Fine paint wants many small sharp (far) facets and few big blurry (near) ones, so
+    // κ grows with the share of paint that is narrower than a typical LED image (auto), up to 2.
     prog(0.08, 'tiles');
     const N = Math.min(N0, Math.max(1, Math.floor(covered.length / 2)));
+    const rMed = (() => { const s = covered.slice().sort((a, b) => a.r - b.r); let acc = 0; for (const c of s) { acc += c.flux; if (acc >= fluxCov / 2) return c.r; } return s[s.length - 1].r; })();
+    const imgMed = ledSize * Dist / rMed / cell;              // LED image of a median facet, in cells
+    let kappa = S.detail;
+    { // local stroke width of each painted cell = 2 × (Chebyshev distance to the nearest unpainted cell) − 1
+      const dIn = new Int32Array(R * R); for (let k = 0; k < R * R; k++) dIn[k] = paint[k] > 0 ? 1 << 20 : 0;
+      for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) { const k = j * R + i; if (!dIn[k]) continue; let m = Math.min(i, j, R - 1 - i, R - 1 - j) + 1; if (i > 0) m = Math.min(m, dIn[k - 1] + 1); if (j > 0) m = Math.min(m, dIn[k - R] + 1, i > 0 ? dIn[k - R - 1] + 1 : m, i < R - 1 ? dIn[k - R + 1] + 1 : m); dIn[k] = m; }
+      for (let j = R - 1; j >= 0; j--) for (let i = R - 1; i >= 0; i--) { const k = j * R + i; if (!dIn[k]) continue; let m = dIn[k]; if (i < R - 1) m = Math.min(m, dIn[k + 1] + 1); if (j < R - 1) m = Math.min(m, dIn[k + R] + 1, i < R - 1 ? dIn[k + R + 1] + 1 : m, i > 0 ? dIn[k + R - 1] + 1 : m); dIn[k] = m; }
+      let fine = 0; for (let k = 0; k < R * R; k++) if (paint[k] > 0 && 2 * dIn[k] - 1 < imgMed) fine += paint[k];
+      if (kappa < 0) kappa = 2 * fine / psum;
+      notes.push('fine detail: ' + Math.round(100 * fine / psum) + '% of the paint is narrower than a median LED image (' + imgMed.toFixed(1) + ' cells) → κ ' + kappa.toFixed(2));
+    }
+    for (const c of covered) c.wt = c.flux * Math.pow(c.r / rMed, kappa);
     const tiles = [];
     (function split(cells, n) {
       if (n <= 1 || cells.length <= 1) { tiles.push(cells); return; }
       let q0 = Infinity, q1 = -Infinity, a0 = Infinity, a1 = -Infinity, sa = 0, fw = 0;
-      for (const c of cells) { q0 = Math.min(q0, c.q); q1 = Math.max(q1, c.q); a0 = Math.min(a0, c.a); a1 = Math.max(a1, c.a); sa += c.c.sa * c.flux; fw += c.flux; }
+      for (const c of cells) { q0 = Math.min(q0, c.q); q1 = Math.max(q1, c.q); a0 = Math.min(a0, c.a); a1 = Math.max(a1, c.a); sa += c.c.sa * c.wt; fw += c.wt; }
       // angular extents: along φ ≈ Δφ·sinα, along α ≈ Δα (cosα cells are ~2/(NA·sinα) rad tall)
       const msa = Math.max(0.05, sa / fw), extP = (q1 - q0 + 1) * (2 * Math.PI / NP) * msa, extA = (a1 - a0 + 1) * 2 / (NA * msa);
       const key = extP >= extA ? (c) => c.q : (c) => c.a;
       const s = cells.slice().sort((x, y) => key(x) - key(y) || x.q - y.q || x.a - y.a), nL = Math.floor(n / 2), want = fw * nL / n;
-      let acc = 0, k = 0; while (k < s.length - 1 && acc + s[k].flux <= want) { acc += s[k].flux; k++; }
+      let acc = 0, k = 0; while (k < s.length - 1 && acc + s[k].wt <= want) { acc += s[k].wt; k++; }
       k = clamp(k, 1, s.length - 1);
       split(s.slice(0, k), nL); split(s.slice(k), n - nL);
     })(covered, N);
@@ -210,6 +224,39 @@
       for (let t = 0; t < nt; t++) { const k = touched[t]; idx[t] = k; val[t] = acc[k]; acc[k] = 0; mark[k] = 0; }
       return { idx, val, ns };
     }
+    // EXACT geometric footprint (no Monte Carlo): the facet's real quadric for this aim and these magnifications; each
+    // aperture sample is one of the tile's own direction cells (weighted by its flux), hit on the real surface; each
+    // LED sample is reflected there with the real normal and carried to the target plane.  The first-order model
+    // above misses aberration, which dominates big facets (16-facet scenes: predicted 73%, traced 53%).
+    function footprintExact(f, au, av, m1, m2) {
+      const Z = world(au, av), D = V.dist(Z, f.P), q = RF.Geo.facetQuadric2(f.P, Lp, Z, [(1 - m1) / D, (1 - m2) / D], T.tu), A = q.A, bq = q.b;
+      let nt = 0; const w0 = 1 / f.fluxRaw;
+      for (const ac of f.apDirs) {
+        const roots = RF.Geo.quadricRay(A, bq, f.P, Lp, ac.u); let t = -1;
+        for (const x of roots) if (x > 0 && (t < 0 || Math.abs(x - f.r) < Math.abs(t - f.r))) t = x;
+        if (t < 0) continue;
+        const p = V.add(Lp, V.mul(ac.u, t)), x = V.sub(p, f.P);
+        const gx = 2 * (A[0] * x[0] + A[1] * x[1] + A[2] * x[2]) + bq[0], gy = 2 * (A[3] * x[0] + A[4] * x[1] + A[5] * x[2]) + bq[1], gz = 2 * (A[6] * x[0] + A[7] * x[1] + A[8] * x[2]) + bq[2];
+        const gl = Math.hypot(gx, gy, gz), nx = gx / gl, ny = gy / gl, nz = gz / gl;
+        for (const s of f.leds) {
+          let dx = p[0] - s.x[0], dy = p[1] - s.x[1], dz = p[2] - s.x[2]; const dl = Math.hypot(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
+          const dn = 2 * (dx * nx + dy * ny + dz * nz), rx = dx - dn * nx, ry = dy - dn * ny, rz = dz - dn * nz;
+          const den = rx * T.n[0] + ry * T.n[1] + rz * T.n[2]; if (Math.abs(den) < 1e-12) continue;
+          const tt = ((T.C[0] - p[0]) * T.n[0] + (T.C[1] - p[1]) * T.n[1] + (T.C[2] - p[2]) * T.n[2]) / den; if (!(tt > 0)) continue;
+          const X0 = p[0] + rx * tt - T.C[0], X1 = p[1] + ry * tt - T.C[1], X2 = p[2] + rz * tt - T.C[2];
+          const uu = X0 * T.tu[0] + X1 * T.tu[1] + X2 * T.tu[2], vv = X0 * T.tv[0] + X1 * T.tv[1] + X2 * T.tv[2];
+          const gxx = (uu + T.half) / cell - 0.5, gyy = (vv + T.half) / cell - 0.5, ix = Math.floor(gxx), iy = Math.floor(gyy), fx = gxx - ix, fy = gyy - iy, w = ac.flux * s.w * w0 * f.flux;
+          if (ix < -1 || iy < -1 || ix >= R || iy >= R) continue;
+          if (ix >= 0 && iy >= 0) { const k = iy * R + ix; if (!mark[k]) { mark[k] = 1; touched[nt++] = k; } acc[k] += w * (1 - fx) * (1 - fy); }
+          if (ix + 1 < R && iy >= 0) { const k = iy * R + ix + 1; if (!mark[k]) { mark[k] = 1; touched[nt++] = k; } acc[k] += w * fx * (1 - fy); }
+          if (ix >= 0 && iy + 1 < R) { const k = (iy + 1) * R + ix; if (!mark[k]) { mark[k] = 1; touched[nt++] = k; } acc[k] += w * (1 - fx) * fy; }
+          if (ix + 1 < R && iy + 1 < R) { const k = (iy + 1) * R + ix + 1; if (!mark[k]) { mark[k] = 1; touched[nt++] = k; } acc[k] += w * fx * fy; }
+        }
+      }
+      const idx = new Int32Array(nt), val = new Float64Array(nt);
+      for (let t2 = 0; t2 < nt; t2++) { const k = touched[t2]; idx[t2] = k; val[t2] = acc[k]; acc[k] = 0; mark[k] = 0; }
+      return { idx, val };
+    }
     // second moments (target mm²) of the LED image and of the aperture term at m = 1, per axis — for the box model
     function moments(o) {
       let su = 0, sv = 0, suu = 0, svv = 0, W = 0;
@@ -246,12 +293,32 @@
     // per-facet optics at the paint's centre (for ordering and the box model); LED samples per facet
     for (const f of facets) {
       f.leds = ledSamples(src, f.P, NS);
+      { const st = Math.max(1, Math.floor(f.cells.length / S.apCells)); f.apDirs = []; let tot = 0;   // every st-th cell, carrying the flux of the ones it stands for
+        for (let i = 0; i < f.cells.length; i += st) { let fl = 0; for (let j = i; j < Math.min(f.cells.length, i + st); j++) fl += f.cells[j].flux; f.apDirs.push({ u: f.cells[i].c.u, flux: fl }); tot += fl; }
+        f.fluxRaw = tot; }
       if (f.dead) continue;
       const o = optics(f, -T.half + cu * cell, -T.half + cv * cell); f.o0 = o;
       if (!o) { f.dead = true; continue; }
       f.mom = moments(o);
       f.ledArea = Math.sqrt((f.mom.lu2 + 1e-9) * (f.mom.lv2 + 1e-9));
     }
+    // fit each facet to the envelope BEFORE planning (aimed at the paint's centre, focused): pull it toward the LED
+    // along its own direction until the host's verify accepts it, so the plan is made with the geometry that ships
+    // (planning first and pulling at the end moved 16-facet designs by up to 43% after the fact).
+    { const sceneV = { source: src, envelope: env, target: input.target, modeA: { budget: N0 } }, au0 = -T.half + cu * cell, av0 = -T.half + cv * cell;
+      for (const f of facets) {
+        if (f.dead) continue;
+        for (let it = 0; it < 14; it++) {
+          const Z = world(au0, av0), D = V.dist(Z, f.P), n = V.norm(V.add(V.norm(V.sub(Lp, f.P)), V.norm(V.sub(Z, f.P)))), hull = outline(f, n);
+          const q = hull && RF.Geo.facetQuadric2(f.P, Lp, Z, [1 / D, 1 / D], T.tu), pts = [];
+          if (hull) for (const h of hull) { const d = V.norm(V.sub(h, Lp)), ro = RF.Geo.quadricRay(q.A, q.b, f.P, Lp, d).filter((t) => t > 0); if (ro.length) pts.push(V.add(Lp, V.mul(d, ro.reduce((m, x) => (Math.abs(x - f.r) < Math.abs(m - f.r) ? x : m), ro[0])))); }
+          const ok = pts.length >= 3 && (() => { const v = RF.Solvers.verify(sceneV, { surfaces: [{ type: 'facet', id: 'x', P: f.P, S0: Lp, Z, flat: false, vg: [1 / D, 1 / D], ax: T.tu, clip: { kind: 'poly', pts3: pts } }] }); return !v.errors.length && !v.violations.envelope.length && !v.violations.keepOut.length; })();
+          if (ok) break;
+          f.r *= 0.94; f.P = V.add(Lp, V.mul(f.u, f.r));
+          if (f.r < rmin) { f.dead = true; break; }
+        }
+        if (!f.dead) { f.leds = ledSamples(src, f.P, NS); const o = optics(f, au0, av0); if (!o) f.dead = true; else { f.o0 = o; f.mom = moments(o); f.ledArea = Math.sqrt((f.mom.lu2 + 1e-9) * (f.mom.lv2 + 1e-9)); } }
+      } }
     const live = facets.filter((f) => !f.dead);
     // shape menu: aperture-term widths per axis (in cells), from 0 (focused) up to the painting's size
     const span = Math.max(bb[2] - bb[0] + 1, bb[3] - bb[1] + 1);
@@ -270,37 +337,48 @@
 
     // candidate search for one facet: box model over every aim × shape, then exact evaluation of the best few
     const twoCurv = S.shapes === 'two';
-    function place(f, shapeWin) {
+    let polishLevels = S.polish;                           // full polish on the last sweep only (see below)
+    function place(f, shapeWin, near) {
       integrals();
       const lw = Math.sqrt(12 * f.mom.lu2) / cell, lh = Math.sqrt(12 * f.mom.lv2) / cell, cand = [];
-      const K = S.topK | 0, stride = Math.max(1, Math.round(span / S.aimGrid));
+      const K = S.topK | 0, stride = near ? 1 : Math.max(1, Math.round(span / S.aimGrid));
+      // a sweep re-places a facet near where it was (window grows with its footprint); the first pass searches everywhere
+      let ib = bb; if (near) { const w = Math.ceil(4 + 1.5 * Math.max(lw, lh, WID[near.a], WID[near.b])), ci = Math.round((near.au + T.half) / cell - 0.5), cj = Math.round((near.av + T.half) / cell - 0.5); ib = [Math.max(bb[0], ci - w), Math.max(bb[1], cj - w), Math.min(bb[2], ci + w), Math.min(bb[3], cj + w)]; }
       for (let a = 0; a < WID.length; a++) for (let b = 0; b < WID.length; b++) {
         if (!twoCurv && a !== b) continue;
         if (shapeWin && (Math.abs(a - shapeWin[0]) > 2 || Math.abs(b - shapeWin[1]) > 2)) continue;
         const bw = Math.max(1, Math.round(Math.hypot(WID[a], lw))), bh = Math.max(1, Math.round(Math.hypot(WID[b], lh))), fb = f.flux / (bw * bh);
-        for (let j = bb[1]; j <= bb[3]; j += stride) for (let i = bb[0]; i <= bb[2]; i += stride) {
-          const x0 = clamp(i - (bw >> 1), 0, R), y0 = clamp(j - (bh >> 1), 0, R), x1 = clamp(x0 + bw, 0, R), y1 = clamp(y0 + bh, 0, R);
-          const area = (x1 - x0) * (y1 - y0), lost = bw * bh - area;      // light off the grid counts as spill
-          const d = 2 * fb * box(IA, x0, y0, x1, y1) + fb * fb * box(IC, x0, y0, x1, y1) + lost * fb * fb * S.farWeight / ((typical * scale) ** 2);
-          if (cand.length < K || d < cand[cand.length - 1].d) { cand.push({ d, i, j, a, b }); cand.sort((p, q) => p.d - q.d); if (cand.length > K) cand.pop(); }
+        const hw = bw >> 1, hh = bh >> 1, R1 = R + 1, farC = fb * fb * S.farWeight / ((typical * scale) ** 2), f2 = 2 * fb, fsq = fb * fb;
+        let worst = cand.length < K ? Infinity : cand[cand.length - 1].d;
+        for (let j = ib[1]; j <= ib[3]; j += stride) {
+          let y0 = j - hh; if (y0 < 0) y0 = 0; else if (y0 > R) y0 = R; let y1 = y0 + bh; if (y1 > R) y1 = R;
+          const r0 = y0 * R1, r1 = y1 * R1;
+          for (let i = ib[0]; i <= ib[2]; i += stride) {
+            let x0 = i - hw; if (x0 < 0) x0 = 0; else if (x0 > R) x0 = R; let x1 = x0 + bw; if (x1 > R) x1 = R;
+            const sa = IA[r1 + x1] - IA[r0 + x1] - IA[r1 + x0] + IA[r0 + x0], sc = IC[r1 + x1] - IC[r0 + x1] - IC[r1 + x0] + IC[r0 + x0];
+            const d = f2 * sa + fsq * sc + (bw * bh - (x1 - x0) * (y1 - y0)) * farC;      // light off the grid counts as spill
+            if (d < worst) { cand.push({ d, i, j, a, b }); cand.sort((p, q) => p.d - q.d); if (cand.length > K) cand.pop(); worst = cand.length < K ? Infinity : cand[cand.length - 1].d; }
+          }
         }
       }
       let best = null;
-      for (const c of cand) for (const [oi, oj] of S.subcell ? [[0, 0], [0.5, 0], [0, 0.5], [0.5, 0.5], [-0.5, 0], [0, -0.5]] : [[0, 0]]) {
+      const SUB = [[0, 0], [0.5, 0], [0, 0.5], [0.5, 0.5], [-0.5, 0], [0, -0.5]];
+      for (let ci = 0; ci < cand.length; ci++) for (const [oi, oj] of S.subcell && ci < 2 ? SUB : [[0, 0]]) {   // half-cell phases for the top two only
+        const c = cand[ci];
         const [au, av] = uvOf(c.i + oi, c.j + oj), o = optics(f, au, av); if (!o) continue;
         const mm = moments(o), m1 = WID[c.a] ? WID[c.a] * cell / (2 * Math.sqrt(3) * Math.max(1e-9, Math.sqrt(mm.au2))) : 0, m2 = WID[c.b] ? WID[c.b] * cell / (2 * Math.sqrt(3) * Math.max(1e-9, Math.sqrt(mm.av2))) : 0;
         // box axes are target u/v; the aperture axes are b1 ≈ u, b2 ≈ v, so m1 widens u and m2 widens v
-        const fp = footprint(f, o, au, av, m1, m2), d = dE(fp);
+        const fp = S.exact ? footprintExact(f, au, av, m1, m2) : footprint(f, o, au, av, m1, m2), d = dE(fp);
         if (!best || d < best.d) best = { d, fp, au, av, m1, m2, a: c.a, b: c.b, o };
       }
-      if (best && S.polish > 0) polish(f, best);
+      if (best && polishLevels > 0) polish(f, best, polishLevels);
       return best;
     }
     // continuous refinement of the winner: pattern search on aim (u, v) and the two magnifications, halving steps
-    function polish(f, best) {
-      const tryAt = (au, av, m1, m2) => { const o = optics(f, au, av); if (!o) return null; const fp = footprint(f, o, au, av, m1, m2); return { d: dE(fp), fp, au, av, m1, m2, a: best.a, b: best.b, o }; };
+    function polish(f, best, levels) {
+      const tryAt = (au, av, m1, m2) => { const o = optics(f, au, av); if (!o) return null; const fp = S.exact ? footprintExact(f, au, av, m1, m2) : footprint(f, o, au, av, m1, m2); return { d: dE(fp), fp, au, av, m1, m2, a: best.a, b: best.b, o }; };
       let st = 0.5 * cell, sm = 0.3;
-      for (let lvl = 0; lvl < S.polish; lvl++, st /= 2, sm /= 2) {
+      for (let lvl = 0; lvl < levels; lvl++, st /= 2, sm /= 2) {
         let moved = true;
         for (let it = 0; it < 6 && moved; it++) {
           moved = false;
@@ -317,6 +395,7 @@
 
     // ---- 4. fill then fix
     const order = live.slice().sort((a, b) => b.ledArea - a.ledArea || a.idx - b.idx);
+    polishLevels = Math.min(1, S.polish);
     let done = 0;
     for (const f of order) {
       const p = place(f, null); if (p && (p.d < 0 || S.useAll)) { f.pl = p; add(p.fp, 1); }
@@ -334,10 +413,11 @@
     for (let sw = 0; sw < S.sweeps; sw++) {
       // boosting: cells the metric fails weigh more next sweep, cells it passes relax (iteratively reweighted fit)
       if (S.boost > 0 && best.fd) { const vd = predScore().verdict; for (let k = 0; k < R * R; k++) { if (vd[k] > 0) boost[k] = Math.min(8, boost[k] * (1 + S.boost)); else if (vd[k] === 0) boost[k] = Math.max(0.35, boost[k] * 0.9); } }
-      refit();
+      refit(); let nDone = 0; polishLevels = sw === S.sweeps - 1 ? S.polish : Math.min(1, S.polish);
       for (const f of order) {                             // lift each facet out and re-place it (or leave it out, if it only hurts)
         if (f.pl) add(f.pl.fp, -1);
-        const p = place(f, sw < S.sweeps - 1 || !f.pl ? null : [f.pl.a, f.pl.b]);
+        const p = place(f, sw < S.sweeps - 1 || !f.pl ? null : [f.pl.a, f.pl.b], sw > 0 && f.pl ? f.pl : null);
+        if (++nDone % 8 === 0) prog(0.5 + 0.4 * (sw + nDone / order.length) / Math.max(1, S.sweeps), 'fix sweep ' + (sw + 1) + '/' + S.sweeps + ' · ' + nDone + '/' + order.length);
         f.pl = p && (p.d < 0 || S.useAll) ? p : null;
         if (f.pl) add(f.pl.fp, 1);
       }
@@ -399,6 +479,7 @@
       { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },
       { key: 'shapes', label: 'Facet shapes', type: 'select', options: [{ value: 'two', label: 'two-curvature (wide/short patches)' }, { value: 'round', label: 'one curvature' }], default: 'two' },
       { key: 'sharp', label: 'Sharpness vs light (shell)', type: 'range', min: 0, max: 3, step: 0.1, default: 1, help: '0: cover as much of the LED as possible; higher: keep facets far from the LED (smaller images), letting more light go' },
+      { key: 'detail', label: 'Facets toward sharp directions (κ; −1 = from the paint)', type: 'number', min: -1, max: 4, step: 0.1, default: -1, help: 'Tiles hold equal flux × (r / r_median)^κ: higher κ gives far (sharp) directions more, smaller facets and near ones fewer, bigger ones' },
       { key: 'feature', label: 'Finest detail (cells)', type: 'number', min: 1, max: 20, step: 0.5, default: 3, help: 'A facet counts as sharp when its LED image is this many cells or less' },
       { key: 'sweeps', label: 'Fix sweeps', type: 'range', min: 0, max: 12, step: 1, default: 4 },
       { key: 'boost', label: 'Boost failing cells (per sweep)', type: 'number', min: 0, max: 2, step: 0.1, default: 0.6 },
@@ -411,9 +492,11 @@
       { key: 'gridP', label: 'Shell grid (azimuth)', type: 'number', min: 12, max: 360, step: 6, default: 96 },
       { key: 'ledSamples', label: 'LED samples per side', type: 'number', min: 1, max: 16, step: 1, default: 6 },
       { key: 'apSamples', label: 'Aperture samples per side', type: 'number', min: 2, max: 16, step: 1, default: 6 },
-      { key: 'aimGrid', label: 'Aim search grid (per side)', type: 'number', min: 10, max: 400, step: 10, default: 80 },
+      { key: 'aimGrid', label: 'Aim search grid (per side)', type: 'number', min: 10, max: 400, step: 10, default: 40 },
       { key: 'topK', label: 'Exact checks per facet', type: 'number', min: 1, max: 40, step: 1, default: 6 },
       { key: 'subcell', label: 'Half-cell aims', type: 'checkbox', default: true },
+      { key: 'exact', label: 'Exact footprints (real surface, slower)', type: 'checkbox', default: true },
+      { key: 'apCells', label: 'Aperture samples per facet (exact)', type: 'number', min: 8, max: 400, step: 4, default: 64 },
       { key: 'polish', label: 'Continuous refinement levels', type: 'number', min: 0, max: 5, step: 1, default: 3 },
       { key: 'useAll', label: 'Use every facet even where it only hurts', type: 'checkbox', default: false },
     ],
