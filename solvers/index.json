@@ -7,6 +7,13 @@
   "note": "lab"
  },
  {
+  "file": "lab-sqm.js",
+  "model": "Flux solver lab (Claude Opus 5.5)",
+  "run": "2026-09-29",
+  "workspace": "this repo",
+  "note": "lab"
+ },
+ {
   "file": "sonnet55-2026-09-28-dish-fit.js",
   "model": "Sonnet 5.5",
   "run": "2026-09-28",
