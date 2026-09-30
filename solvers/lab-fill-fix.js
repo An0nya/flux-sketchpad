@@ -236,10 +236,14 @@
     // aperture sample is one of the tile's own direction cells (weighted by its flux), hit on the real surface; each
     // LED sample is reflected there with the real normal and carried to the target plane.  The first-order model
     // above misses aberration, which dominates big facets (16-facet scenes: predicted 73%, traced 53%).
-    function footprintExact(f, au, av, m1, m2) {
+    // fill < 1 = a DIMMED facet: its outline shrunk about the tile's centre direction by √fill (it catches `fill` of
+    // its light; the rest passes it by).  Only offered when the Dim knob allows it.
+    function footprintExact(f, au, av, m1, m2, fill) {
       const Z = world(au, av), D = V.dist(Z, f.P), q = RF.Geo.facetQuadric2(f.P, Lp, Z, [(1 - m1) / D, (1 - m2) / D], T.tu), A = q.A, bq = q.b;
-      let nt = 0; const w0 = 1 / f.fluxRaw;
-      for (const ac of f.apDirs) {
+      fill = fill === undefined ? 1 : fill; const sq = Math.sqrt(fill);
+      let nt = 0; const w0 = fill / f.fluxRaw;
+      for (const ac0 of f.apDirs) {
+        const ac = fill < 1 ? { u: V.norm(V.add(f.u, V.mul(V.sub(ac0.u, f.u), sq))), flux: ac0.flux } : ac0;
         const roots = RF.Geo.quadricRay(A, bq, f.P, Lp, ac.u); let t = -1;
         for (const x of roots) if (x > 0 && (t < 0 || Math.abs(x - f.r) < Math.abs(t - f.r))) t = x;
         if (t < 0) continue;
@@ -289,7 +293,7 @@
     const mass = facets.reduce((s, f) => s + f.flux, 0), typical = psum / pc;
     let scale = mass * S.util / psum;                       // target light per unit paint
     const W = new Float64Array(R * R), C = new Float64Array(R * R), F = new Float64Array(R * R), boost = new Float64Array(R * R).fill(1);
-    const gw = S.gapWeight * pc / Math.max(1, gapN);          // both halves of the F1 count about equally
+    let gw = S.gapWeight * pc / Math.max(1, gapN);            // both halves of the F1 count about equally (rebalanced per sweep)
     function setTarget() {
       for (let k = 0; k < R * R; k++) {
         const w = paint[k] * scale; W[k] = w;
@@ -377,24 +381,28 @@
         const mm = moments(o), m1 = WID[c.a] ? WID[c.a] * cell / (2 * Math.sqrt(3) * Math.max(1e-9, Math.sqrt(mm.au2))) : 0, m2 = WID[c.b] ? WID[c.b] * cell / (2 * Math.sqrt(3) * Math.max(1e-9, Math.sqrt(mm.av2))) : 0;
         // box axes are target u/v; the aperture axes are b1 ≈ u, b2 ≈ v, so m1 widens u and m2 widens v
         const fp = S.exact ? footprintExact(f, au, av, m1, m2) : footprint(f, o, au, av, m1, m2), d = dE(fp);
-        if (!best || d < best.d) best = { d, fp, au, av, m1, m2, a: c.a, b: c.b, o };
+        if (!best || d < best.d) best = { d, fp, au, av, m1, m2, a: c.a, b: c.b, o, fill: 1 };
       }
       if (best && polishLevels > 0) polish(f, best, polishLevels);
       return best;
     }
     // continuous refinement of the winner: pattern search on aim (u, v) and the two magnifications, halving steps
     function polish(f, best, levels) {
-      const tryAt = (au, av, m1, m2) => { const o = optics(f, au, av); if (!o) return null; const fp = S.exact ? footprintExact(f, au, av, m1, m2) : footprint(f, o, au, av, m1, m2); return { d: dE(fp), fp, au, av, m1, m2, a: best.a, b: best.b, o }; };
+      const tryAt = (au, av, m1, m2, fill) => { const o = optics(f, au, av); if (!o) return null; const fp = S.exact ? footprintExact(f, au, av, m1, m2, fill) : footprint(f, o, au, av, m1, m2); return { d: dE(fp), fp, au, av, m1, m2, a: best.a, b: best.b, o, fill }; };
       let st = 0.5 * cell, sm = 0.3;
       for (let lvl = 0; lvl < levels; lvl++, st /= 2, sm /= 2) {
         let moved = true;
         for (let it = 0; it < 6 && moved; it++) {
           moved = false;
           const opts = [[st, 0, 1, 1], [-st, 0, 1, 1], [0, st, 1, 1], [0, -st, 1, 1], [0, 0, 1 + sm, 1], [0, 0, 1 / (1 + sm), 1], [0, 0, 1, 1 + sm], [0, 0, 1, 1 / (1 + sm)]];
+          if (S.dim > 0 && S.exact) for (const kf of [1 - sm, 1 / (1 - sm)]) {       // dimming, within the allowed range
+            const fl = clamp(best.fill * kf, 1 - S.dim, 1); if (Math.abs(fl - best.fill) < 1e-6) continue;
+            const c = tryAt(best.au, best.av, best.m1, best.m2, fl); if (c && c.d < best.d - 1e-12) { Object.assign(best, c); moved = true; }
+          }
           for (const [du, dv, k1, k2] of opts) {
             const m1 = best.m1 > 1e-6 ? best.m1 * k1 : k1 > 1 ? 0.2 : 0, m2 = best.m2 > 1e-6 ? best.m2 * k2 : k2 > 1 ? 0.2 : 0;
             if ((k1 !== 1 || k2 !== 1) && !twoCurv && Math.abs(m1 - m2) > 1e-9 && !(k1 !== 1 && k2 !== 1)) continue;
-            const c = tryAt(best.au + du, best.av + dv, m1, twoCurv ? m2 : m1);
+            const c = tryAt(best.au + du, best.av + dv, m1, twoCurv ? m2 : m1, best.fill);
             if (c && c.d < best.d - 1e-12) { Object.assign(best, c); moved = true; }
           }
         }
@@ -420,6 +428,9 @@
     let best = { fd: predScore(), pl: snap() };
     for (let sw = 0; sw < S.sweeps; sw++) {
       // boosting: cells the metric fails weigh more next sweep, cells it passes relax (iteratively reweighted fit)
+      // the headline is an F1 (harmonic mean) of painted-right and gaps-dark: it pays to keep them level, so the gap
+      // weight follows whichever half lags in the predicted field (a fixed weight left the ring at 79 / 97)
+      { const fd0 = predScore(); if (fd0) { const lag = fd0.gapsDark - fd0.within; if (lag > 0.02) gw *= 0.6; else if (lag < -0.02) gw *= 1.5; } }
       if (S.boost > 0 && best.fd) { const vd = predScore().verdict; for (let k = 0; k < R * R; k++) { if (vd[k] > 0) boost[k] = Math.min(8, boost[k] * (1 + S.boost)); else if (vd[k] === 0) boost[k] = Math.max(0.35, boost[k] * 0.9); } }
       refit(); let nDone = 0; polishLevels = sw === S.sweeps - 1 ? S.polish : Math.min(1, S.polish);
       for (const f of order) {                             // lift each facet out and re-place it (or leave it out, if it only hurts)
@@ -445,8 +456,9 @@
       const sh = V.norm(V.sub(Lp, P)), n = V.norm(V.add(sh, V.norm(V.sub(Z, P))));
       const g = Object.assign({}, f, { P }), hull = outline(g, n); if (!hull) return null;
       const q = RF.Geo.facetQuadric2(P, Lp, Z, [v1, v2], T.tu), pts = [];
+      const sq = Math.sqrt(pl.fill === undefined ? 1 : pl.fill);
       for (const h of hull) {
-        const d = V.norm(V.sub(h, Lp)), roots = RF.Geo.quadricRay(q.A, q.b, P, Lp, d).filter((t) => t > 0);
+        const d = V.norm(V.add(f.u, V.mul(V.sub(V.norm(V.sub(h, Lp)), f.u), sq))), roots = RF.Geo.quadricRay(q.A, q.b, P, Lp, d).filter((t) => t > 0);
         if (!roots.length) return null;
         const t = roots.reduce((m, x) => (Math.abs(x - V.dist(h, Lp)) < Math.abs(m - V.dist(h, Lp)) ? x : m), roots[0]);   // the sheet near the flat estimate
         pts.push(V.add(Lp, V.mul(d, t)));
@@ -486,12 +498,12 @@
   // predicted field, scored with the app's fidelity, is a good enough judge.  Quick solves (1 sweep, light polish) for
   // a few shell settings; the winner (predicted fidelity + light × lightWeight) gets the full solve.
   // Priority × Quality → the expert knobs they stand for (an expert knob set by hand wins)
-  const PRIORITY = { sharp: { lightWeight: 0, useAll: false, shells: [1, 2, 3.5, 5] }, balanced: { lightWeight: 0.25, useAll: false, shells: [0, 0.5, 1, 2, 3.5] }, light: { lightWeight: 1, useAll: true, shells: [0, 0.3, 0.7, 1.2] } };
+  const PRIORITY = { sharp: { lightWeight: 0, useAll: false, dim: 0, shells: [1, 2, 3.5, 5] }, balanced: { lightWeight: 0.25, useAll: false, dim: 0, shells: [0, 0.5, 1, 2, 3.5] }, light: { lightWeight: 1, useAll: true, dim: 0, shells: [0, 0.3, 0.7, 1.2] } };
   const QUALITY = { fast: { search: false, sweeps: 2, polish: 1, apCells: 32, ledSamples: 5, topK: 4, exact: true }, normal: { search: true, sweeps: 3, polish: 2, apCells: 48, ledSamples: 6, topK: 6, exact: true }, best: { search: true, sweeps: 5, polish: 3, apCells: 64, ledSamples: 7, topK: 8, exact: true } };
   function resolve(S0) {
     const S = Object.assign({}, S0), P = PRIORITY[S.priority] || PRIORITY.balanced, Q = QUALITY[S.quality] || QUALITY.normal;
     const pick = (k, auto) => { if (S[k] === -1 || S[k] === 'auto' || S[k] === undefined) S[k] = auto; else if (S[k] === 'on') S[k] = true; else if (S[k] === 'off') S[k] = false; };
-    pick('lightWeight', P.lightWeight); pick('useAll', P.useAll); pick('search', Q.search); pick('sweeps', Q.sweeps); pick('polish', Q.polish);
+    pick('lightWeight', P.lightWeight); pick('useAll', P.useAll); pick('dim', P.dim); pick('search', Q.search); pick('sweeps', Q.sweeps); pick('polish', Q.polish);
     pick('apCells', Q.apCells); pick('ledSamples', Q.ledSamples); pick('topK', Q.topK); pick('exact', Q.exact);
     S.shells = S.sharp >= 0 ? [S.sharp] : P.shells; if (S.sharp < 0) S.sharp = P.shells[Math.floor(P.shells.length / 2)];
     return S;
@@ -513,7 +525,7 @@
   }
 
   RF.Solvers.register({
-    id: 'fill-fix', name: 'Fill & fix', version: '0.2', modes: ['paint'],
+    id: 'fill-fix', name: 'Fill & fix', version: '0.3', modes: ['paint'],
     settings: [
       { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },
       { key: 'priority', label: 'Priority', type: 'select', default: 'balanced', options: [{ value: 'sharp', label: 'sharpest' }, { value: 'balanced', label: 'balanced' }, { value: 'light', label: 'most light' }],
@@ -533,6 +545,7 @@
       { key: 'gapWeight', adv: true, label: 'Keep gaps dark (weight)', type: 'number', min: 0, max: 10, step: 0.1, default: 1 },
       { key: 'farWeight', adv: true, label: 'Stray light elsewhere (weight)', type: 'number', min: 0, max: 10, step: 0.01, default: 0.05 },
       { key: 'util', adv: true, label: 'Target level (share of captured light)', type: 'number', min: 0.3, max: 1.5, step: 0.05, default: 0.9 },
+      { key: 'dim', adv: true, label: 'May dim facets by up to (share; −1 auto)', type: 'number', min: -1, max: 0.9, step: 0.05, default: -1, help: 'A dimmed facet is shrunk and lets part of its light go. Gives fine brightness control at edges, at a cost in light.' },
       { key: 'useAll', adv: true, label: 'Place facets that only hurt', type: 'select', default: 'auto', options: ['auto', 'on', 'off'] },
       { key: 'step', adv: true, label: 'Focal step between rows (share)', type: 'number', min: 0, max: 0.2, step: 0.005, default: 0.01 },
       { key: 'margin', adv: true, label: 'Wall / gap margin (mm)', type: 'number', min: 0, max: 5, step: 0.05, default: 0.3 },
