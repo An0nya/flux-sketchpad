@@ -52,7 +52,7 @@
   }
 
   // ------------------------------------------------------------------ the solve
-  function solve(input, S, tools) {
+  function solveOnce(input, S, tools) {
     const prog = (f, stage) => { if (tools && tools.progress) tools.progress(f, stage); };
     const src = input.source, env = input.envelope, Lp = src.pos, R = input.paint.res, paint = input.paint.cells;
     const T = RF.Engine.designFrame(input.target), cell = 2 * T.half / R, N0 = Math.max(1, input.limits.maxFacets | 0), refl = input.limits.reflectivity;
@@ -468,16 +468,37 @@
     const ids = new Set(surfaces.map((s) => s.id));
     notes.push(surfaces.length + ' facets; two-curvature ' + (twoCurv ? 'on' : 'off') + '; LED image ' + (Math.sqrt(12 * order[order.length - 1].mom.lu2) / cell).toFixed(1) + '–' + (Math.sqrt(12 * order[0].mom.lu2) / cell).toFixed(1) + ' cells wide (far–near)');
     prog(1, 'done');
-    const out = { surfaces, intent: intent.filter((it) => ids.has(it.facet)), notes };
+    let onP = 0; for (let k = 0; k < R * R; k++) if (paint[k] > 0) onP += F[k];
+    const out = { surfaces, intent: intent.filter((it) => ids.has(it.facet)), notes, pred: { fid: best.fd ? best.fd.fidelity : 0, onPaint: onP / src.power } };
     if (S.debug) out.debug = { R, cell, scale, F: Array.from(F), W: Array.from(W), facets: order.filter((f) => f.pl && ids.has('F' + f.idx)).map((f) => ({ id: 'F' + f.idx, r: f.r, flux: f.flux, m: [f.pl.m1, f.pl.m2], aim: [f.pl.au, f.pl.av], idx: Array.from(f.pl.fp.idx), val: Array.from(f.pl.fp.val) })) };
     return out;
   }
 
+  // Shell search (no rays): dish-fit's lesson — the best reflector size depends on the painting, and the model's own
+  // predicted field, scored with the app's fidelity, is a good enough judge.  Quick solves (1 sweep, light polish) for
+  // a few shell settings; the winner (predicted fidelity + light × lightWeight) gets the full solve.
+  function solve(input, S, tools) {
+    if (!S.search) return solveOnce(input, S, tools);
+    const prog = (f, st) => { if (tools && tools.progress) tools.progress(f, st); };
+    const opts = [S.sharp, 0, 0.5, 2, 3.5].filter((x, i, a) => a.indexOf(x) === i), res = [];
+    opts.forEach((sh, i) => {
+      const quick = Object.assign({}, S, { sharp: sh, sweeps: 1, polish: 1, search: false });
+      const out = solveOnce(input, quick, { progress: (f, st) => prog(0.5 * (i + f) / opts.length, 'shell ' + (i + 1) + '/' + opts.length + ' · ' + (st || '')) });
+      res.push({ sh, v: out.pred.fid + S.lightWeight * out.pred.onPaint, pred: out.pred });
+    });
+    res.sort((a, b) => b.v - a.v || a.sh - b.sh);
+    const out = solveOnce(input, Object.assign({}, S, { sharp: res[0].sh, search: false }), { progress: (f, st) => prog(0.5 + 0.5 * f, 'final · ' + (st || '')) });
+    out.notes.unshift('shell search (predicted fidelity / light on paint): ' + res.map((r) => 'sharp ' + r.sh + ': ' + (100 * r.pred.fid).toFixed(1) + '% / ' + (100 * r.pred.onPaint).toFixed(0) + '%').join(' · ') + ' → sharp ' + res[0].sh);
+    return out;
+  }
+
   RF.Solvers.register({
-    id: 'fill-fix', name: 'Fill & fix', version: '0.1', modes: ['paint'],
+    id: 'fill-fix', name: 'Fill & fix', version: '0.2', modes: ['paint'],
     settings: [
       { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },
       { key: 'shapes', label: 'Facet shapes', type: 'select', options: [{ value: 'two', label: 'two-curvature (wide/short patches)' }, { value: 'round', label: 'one curvature' }], default: 'two' },
+      { key: 'search', label: 'Pick the shell by predicted score', type: 'checkbox', default: true },
+      { key: 'lightWeight', label: 'Light on paint worth (vs fidelity)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.25 },
       { key: 'sharp', label: 'Sharpness vs light (shell)', type: 'range', min: 0, max: 3, step: 0.1, default: 1, help: '0: cover as much of the LED as possible; higher: keep facets far from the LED (smaller images), letting more light go' },
       { key: 'detail', label: 'Facets toward sharp directions (κ; −1 = from the paint)', type: 'number', min: -1, max: 4, step: 0.1, default: -1, help: 'Tiles hold equal flux × (r / r_median)^κ: higher κ gives far (sharp) directions more, smaller facets and near ones fewer, bigger ones' },
       { key: 'feature', label: 'Finest detail (cells)', type: 'number', min: 1, max: 20, step: 0.5, default: 3, help: 'A facet counts as sharp when its LED image is this many cells or less' },
