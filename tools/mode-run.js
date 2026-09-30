@@ -27,11 +27,13 @@ if (!isMainThread) {
       let traced = 0; const tools = { progress() {}, budget: { ms: 120000, rays: 5e7 }, scene: problem, trace: (s, o) => { traced += (o && o.rays) || 20000; return S.trace(problem, s, o); } };
       const t0 = process.hrtime.bigint(); let out = await def.solve(input, settings, tools); r.solveMs = Math.round(Number(process.hrtime.bigint() - t0) / 1e6); r.solverRays = traced;
       if (job.keep) { const q = rng(job.keepSeed || 1); out = Object.assign({}, out, { surfaces: out.surfaces.filter(() => q() < job.keep), pred: undefined, debug: undefined }); }
-      const f = S.verify(sc, out); r.placed = f.placed; r.outside = f.violations.envelope.length; r.inClear = f.violations.keepOut.length; r.errors = f.errors;
+      const ms = (t) => Math.round(Number(process.hrtime.bigint() - t) / 1e5) / 10;   // timing split (2026-09-30): solve · verify · trace · score, in ms
+      let t1 = process.hrtime.bigint(); const f = S.verify(sc, out); r.verifyMs = ms(t1); r.placed = f.placed; r.outside = f.violations.envelope.length; r.inClear = f.violations.keepOut.length; r.errors = f.errors;
       if (f.errors.length || !out.surfaces.length) { r.error = f.errors.join('; ') || 'no facets'; parentPort.postMessage({ r }); return; }
       sc.groups.A.surfaces = out.surfaces; sc.sim.seed = W.seed;
-      const P = E.prepare(sc, RF.State.allSurfaces(sc)); P.recordHits = true; const c = E.runSync(P, W.rays);
-      const fd = RF.Photometry.fidelity(sc, P, c), ph = RF.Photometry.fixture(sc, P, c), R = sc.target.res, em = c.E.emitted, paint = sc.modeA.paint;
+      t1 = process.hrtime.bigint(); const P = E.prepare(sc, RF.State.allSurfaces(sc)); P.recordHits = true; r.prepareMs = ms(t1);
+      t1 = process.hrtime.bigint(); const c = E.runSync(P, W.rays); r.traceMs = ms(t1);
+      t1 = process.hrtime.bigint(); const fd = RF.Photometry.fidelity(sc, P, c), ph = RF.Photometry.fixture(sc, P, c), R = sc.target.res, em = c.E.emitted, paint = sc.modeA.paint; r.scoreMs = ms(t1);
       const G = fd.G, D = Array.from(G, (x) => x / em);
       const cellM2 = (2 * P.T.half / P.res) ** 2 * 1e-6 * (P.res / R) ** 2, dm = V.dist(P.T.C, sc.source.pos) / 1000, refl = sc.modeA.reflectivity;
       // capturable share of the LED's light (as bench.js: 40k samples of the real source through the envelope)
@@ -51,7 +53,7 @@ if (!isMainThread) {
   parentPort.postMessage({ ready: true });
 } else (async () => {
   const a = process.argv.slice(2), opt = (k, d) => { const i = a.indexOf('--' + k); return i < 0 ? d : a[i + 1]; };
-  const plan = JSON.parse(fs.readFileSync(a[0], 'utf8')), jobsN = Math.min(4, +opt('jobs', 4)), rays = +opt('rays', 1000000), seed = +opt('seed', 90210), out = path.resolve(opt('out', path.join(ROOT, 'bench-out/modes')));
+  const plan = JSON.parse(fs.readFileSync(a[0], 'utf8')), jobsN = Math.min(8, +opt('jobs', 4)), rays = +opt('rays', 1000000), seed = +opt('seed', 90210), out = path.resolve(opt('out', path.join(ROOT, 'bench-out/modes')));
   fs.mkdirSync(path.join(out, 'runs'), { recursive: true });
   const todo = plan.filter((j) => !fs.existsSync(path.join(out, 'runs', j.label + '.json')) || j.force);
   console.error(plan.length + ' jobs, ' + (plan.length - todo.length) + ' already done, ' + todo.length + ' to run on ' + jobsN + ' workers');
