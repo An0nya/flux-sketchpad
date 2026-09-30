@@ -254,7 +254,15 @@
     // above misses aberration, which dominates big facets (16-facet scenes: predicted 73%, traced 53%).
     // fill < 1 = a DIMMED facet: its outline shrunk about the tile's centre direction by √fill (it catches `fill` of
     // its light; the rest passes it by).  Only offered when the Dim knob allows it.
+    // Memoised per facet: about a fifth of the calls repeat an earlier one exactly (the pattern search steps back onto
+    // points it has tried; sweeps re-place a facet where it already sits).  Keyed on everything the result depends on;
+    // dropped when the facet moves (a new P) and kept small.
     function footprintExact(f, au, av, m1, m2, fill) {
+      if (f.fxP !== f.P || f.fx.size > 400) { f.fx = new Map(); f.fxP = f.P; }
+      const key = au + ',' + av + ',' + m1 + ',' + m2 + ',' + fill + ',' + f.flux, hit = f.fx.get(key); if (hit) return hit;
+      const r = footprintExact0(f, au, av, m1, m2, fill); f.fx.set(key, r); return r;
+    }
+    function footprintExact0(f, au, av, m1, m2, fill) {
       const Z = world(au, av), D = V.dist(Z, f.P), q = RF.Geo.facetQuadric2(f.P, Lp, Z, [(1 - m1) / D, (1 - m2) / D], T.tu), A = q.A, bq = q.b;
       fill = fill === undefined ? 1 : fill; const sq = Math.sqrt(fill);
       let nt = 0; const w0 = fill / f.fluxRaw;
