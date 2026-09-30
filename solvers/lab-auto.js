@@ -121,7 +121,7 @@
   }
 
   // ------------------------------------------------------------------ Fewest facets: a ladder of budgets, quality slider 0…100
-  // Q = the app's fidelity.  q = 100 asks for the best Q the ladder reached; q = 0 for 25% of it.  Answer: the fewest PLACED facets whose Q
+  // Q = the app's fidelity.  q = 100 asks for the best Q the ladder reached; q = 0 for HALF of it (Anya, 09-30: below that it stops being recognisable).  Answer: the fewest PLACED facets whose Q
   // meets the level AND whose next rung up also does (a dip can't fool it); the goal's own gates are then checked on a full trace.
   async function fewest(kind, A, input, S, opt) {
     const pick = PICKS[kind], cap = input.limits.maxFacets, rungs = LADDER.filter((b) => b < cap).concat(cap), rows = [];
@@ -134,7 +134,7 @@
       const l = A.look('general', r.out, 250000, opt);
       rows.push({ b: rungs[i], placed: r.out.surfaces.length, q: l.ev.fid || 0, onPaint: l.ev.onPaint });
     }
-    const best = Math.max(...rows.map((r) => r.q)), level = best * (0.25 + 0.75 * S.quality / 100);
+    const best = Math.max(...rows.map((r) => r.q)), level = best * (0.5 + 0.5 * S.quality / 100);
     let at = rows.findIndex((r, i) => r.q >= level && (i === rows.length - 1 || rows[i + 1].q >= level));
     if (at < 0) at = rows.length - 1;
     return { rows, best, level, at, pick, kind };
@@ -149,7 +149,7 @@
         help: 'Auto-detect reads the painting. The other goals steer the search (Effort: search) toward what that kind of painting needs.' },
       { key: 'effort', label: 'Effort', type: 'select', default: 'quick', options: [{ value: 'quick', label: 'quick (classify, one solve)' }, { value: 'search', label: 'search (tries several, ~1 min)' }],
         help: 'Quick: pick the best-known solver for this kind of painting and run it once. Search: try a short menu of solvers and settings and keep the best for the goal.' },
-      { key: 'quality', label: 'Quality (Fewest facets only)', type: 'number', min: 0, max: 100, step: 5, default: 80, help: '100 = the best quality any budget reached, 0 = a quarter of it. Auto finds the fewest facets that reach the level.' },
+      { key: 'quality', label: 'Quality (Fewest facets only)', type: 'number', min: 0, max: 100, step: 5, default: 80, help: '100 = the best quality any budget reached, 0 = half of it. Auto finds the fewest facets that reach the level.' },
       { key: 'limit', adv: true, label: 'Search time limit (s)', type: 'number', min: 10, max: 110, step: 5, default: 55, help: 'Search effort stops trying new candidates after about this long (the app aborts a solve at 120 s).' },
       { key: 'tol', label: 'Edge tolerance, cells (Cutoff only)', type: 'number', min: 0, max: 8, step: 0.5, default: 1, help: 'How far the light-dark edge may be from the painted line before a design is rejected.' },
     ],

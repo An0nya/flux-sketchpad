@@ -253,8 +253,9 @@ const textScore = (m) => m.f1 * (1 - Math.min(1, m.farGlare / 0.3)) * (m.paintHo
 const photoScore = (m) => 0.5 * m.rho * (1 - Math.min(1, 2 * m.lightnessErr)) + 0.5 * Math.max(0, m.detail);
 // Rank evaluated candidates ({ ev } each, from evaluate) for a goal, RELATIVE to each other; sets .score (0..1, higher better) and .veto (reasons, or '').
 //   cutoff  : edge sharpness × fidelity × peak (÷ the best peak among candidates)          gates: glare, edge within tol, lit holes
-//   hotspot : peak (÷ the best peak among candidates) × fidelity                           gates: fill level, fill coverage, spill
-//   text    : legibility score (F1, far glare, loops)                                       gates as above + light on paint ≥ 50% of the best candidate's
+//   hotspot : peak (÷ the best peak among candidates) × fidelity²  (Anya, 09-30: a fidelity point shows more than a peak point)
+//   text    : legibility score (F1, far glare, loops) × fidelity (the score alone preferred a ragged 'hello' a person wouldn't)
+//             gates as above + light on paint ≥ 50% of the best candidate's
 //   photo   : rank + tone + detail                                                          gates + light floor
 //   wash    : noise-free evenness                                                           gates + light floor
 // Returns the candidates sorted best first (vetoed last).
@@ -267,8 +268,8 @@ function rank(goal, cands) {
     const light = GATES[goal] && GATES[goal].light;
     if (light && e.onPaint < light * lightRef) why.push('light on paint ' + (100 * e.onPaint).toFixed(0) + '% < ' + Math.round(100 * light) + '% of the best (' + (100 * lightRef).toFixed(0) + '%)');
     if (goal === 'cutoff') s = m.sharpness * (e.fid || 0) * (e.peak / peakRef);
-    else if (goal === 'hotspot') s = (e.peak / peakRef) * (e.fid || 0);
-    else if (goal === 'text') s = textScore(m) * (0.85 + 0.15 * e.onPaint / lightRef);
+    else if (goal === 'hotspot') s = (e.peak / peakRef) * (e.fid || 0) ** 2;
+    else if (goal === 'text') s = textScore(m) * (e.fid || 0) * (0.85 + 0.15 * e.onPaint / lightRef);
     else if (goal === 'photo') s = photoScore(m);
     else if (goal === 'general') s = (e.fid || 0) * (0.8 + 0.2 * e.onPaint / lightRef);
     else s = m.score;
@@ -297,16 +298,23 @@ function paintFeatures(paint, R, kernelCells) {
   let modal = -1, mc = 0; for (const [t, c] of tops) if (c > mc) { mc = c; modal = t; }
   let near = 0; for (const [t, c] of tops) if (Math.abs(t - modal) <= 1) near += c;
   const aboveClear = modal < R - 3;                                            // the flat edge isn't just the top of the target
-  return { painted: np, coverage: np / n, levels, strokeCells, kernelCells, flatTop: cols ? near / cols : 0, flatCols: cols / R, aboveClear, peakStands: pmax / Math.max(1e-9, med), hotShare: vals.filter((v) => v >= 0.75 * pmax).length / np };
+  // (09-30, run on Anya's Downloads) two things that also have a straight top edge but aren't a cutoff:
+  //   framed  : a letterboxed picture — its BOTTOM edge is just as straight, and off the target's edge too (with ≥ 4 levels:
+  //             a band beam, like held-low-beam, is framed too but has 1–2 levels)
+  //   solidity: big block letters — the columns under the edge are mostly empty (a low beam's are filled)
+  const bots = new Map(); let span = 0; for (let i = 0; i < R; i++) { let t = -1, b = -1; for (let j = R - 1; j >= 0; j--) if (paint[j * R + i] > 0) { t = j; break; } if (t < 0) continue; for (let j = 0; j <= t; j++) if (paint[j * R + i] > 0) { b = j; break; } bots.set(b, (bots.get(b) || 0) + 1); span += t - b + 1; }
+  let modalB = -1, mb = 0; for (const [b, c] of bots) if (c > mb) { mb = c; modalB = b; } let nearB = 0; for (const [b, c] of bots) if (Math.abs(b - modalB) <= 1) nearB += c;
+  const flatBottom = cols ? nearB / cols : 0, framed = flatBottom >= 0.9 && modalB > 2 && near / Math.max(1, cols) >= 0.9, solidity = span ? np / span : 0;
+  return { painted: np, coverage: np / n, levels, strokeCells, kernelCells, flatTop: cols ? near / cols : 0, flatCols: cols / R, aboveClear, flatBottom, framed, solidity, peakStands: pmax / Math.max(1e-9, med), hotShare: vals.filter((v) => v >= 0.75 * pmax).length / np };
 }
 // → { kind: 'text'|'cutoff'|'hotspot'|'photo'|'wash'|'general', why, features }
 function classify(paint, R, kernelCells) {
   const f = paintFeatures(paint, R, kernelCells), pc = (x) => Math.round(100 * x) + '%', c1 = (x) => (Math.round(10 * x) / 10);
   if (!f.painted) return { kind: 'general', why: 'nothing is painted', features: f };
   const uniform = f.peakStands < 2;                                              // no level stands out from the rest
-  const thin = f.strokeCells <= Math.max(4 * kernelCells, 8) && f.strokeCells <= 10 && f.coverage < 0.25 && f.levels <= 3 && uniform;
+  const thin = f.strokeCells <= Math.max(4 * kernelCells, 8) && f.strokeCells <= 12 && f.coverage < 0.3 && f.levels <= 3 && uniform;
   if (thin) return { kind: 'text', why: 'thin strokes (about ' + c1(f.strokeCells) + ' cells wide, the LED image is ' + c1(kernelCells) + ' cells) at one brightness → text / line art', features: f };
-  if (f.flatTop >= 0.5 && f.flatCols > 0.75 && f.aboveClear && f.levels <= 8) return { kind: 'cutoff', why: 'a straight top edge on ' + pc(f.flatTop) + ' of the painted width, spanning ' + pc(f.flatCols) + ' of the target, nothing above it, ' + f.levels + ' brightness levels → cutoff', features: f };
+  if (f.flatTop >= 0.5 && f.flatCols > 0.75 && f.aboveClear && f.levels <= 8 && !(f.framed && f.levels >= 4) && f.solidity >= 0.7) return { kind: 'cutoff', why: 'a straight top edge on ' + pc(f.flatTop) + ' of the painted width, spanning ' + pc(f.flatCols) + ' of the target, nothing above it, ' + f.levels + ' brightness levels → cutoff', features: f };
   if (f.levels >= 6 && (f.coverage >= 0.5 || f.peakStands < 3)) return { kind: 'photo', why: 'many brightness levels (' + f.levels + ') with ' + (f.coverage >= 0.5 ? pc(f.coverage) + ' of the target painted' : 'no bright core (peak only ' + c1(f.peakStands) + '× the typical level)') + ' → photo', features: f };
   if (f.peakStands >= 2 && f.hotShare <= 0.35 && f.levels >= 2) return { kind: 'hotspot', why: 'a bright core (' + c1(f.peakStands) + '× the typical level, ' + pc(f.hotShare) + ' of the painted cells) on a wider fill → hotspot', features: f };
   if (f.levels <= 2) return { kind: 'wash', why: 'one brightness level over ' + pc(f.coverage) + ' of the target, shapes wider than a stroke → even wash', features: f };
