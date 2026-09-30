@@ -55,7 +55,7 @@
   // PREFERRED_ID = the app's default choice (a worker solver, loaded at boot); DEFAULT_ID = the built-in fallback that
   // is always there (tests, a failed load, the moment before the bundled solvers arrive).  A scene saved with a
   // solver keeps it.
-  const PREFERRED_ID = 'fill-fix';
+  const PREFERRED_ID = 'auto';                    // Auto picks the solver for the painting (Anya, 09-30); it was Fill & fix
   const wanted = (scene) => (scene.solve && scene.solve.id) || PREFERRED_ID;
   function current(scene) { const id = wanted(scene); return get(id) ? id : DEFAULT_ID; }
   // LIMITS are the user's, not the solver's: the facet budget and the mirror's reflectivity arrive in
