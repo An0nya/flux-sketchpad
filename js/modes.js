@@ -302,6 +302,7 @@ function paintFeatures(paint, R, kernelCells) {
   //   framed  : a letterboxed picture — its BOTTOM edge is just as straight, and off the target's edge too (with ≥ 4 levels:
   //             a band beam, like held-low-beam, is framed too but has 1–2 levels)
   //   solidity: big block letters — the columns under the edge are mostly empty (a low beam's are filled)
+  //   and a photo with a dark background: its brightest part stands 8×+ above the typical level (a low beam's hotspot ~3–5×)
   const bots = new Map(); let span = 0; for (let i = 0; i < R; i++) { let t = -1, b = -1; for (let j = R - 1; j >= 0; j--) if (paint[j * R + i] > 0) { t = j; break; } if (t < 0) continue; for (let j = 0; j <= t; j++) if (paint[j * R + i] > 0) { b = j; break; } bots.set(b, (bots.get(b) || 0) + 1); span += t - b + 1; }
   let modalB = -1, mb = 0; for (const [b, c] of bots) if (c > mb) { mb = c; modalB = b; } let nearB = 0; for (const [b, c] of bots) if (Math.abs(b - modalB) <= 1) nearB += c;
   const flatBottom = cols ? nearB / cols : 0, framed = flatBottom >= 0.9 && modalB > 2 && near / Math.max(1, cols) >= 0.9, solidity = span ? np / span : 0;
@@ -314,7 +315,7 @@ function classify(paint, R, kernelCells) {
   const uniform = f.peakStands < 2;                                              // no level stands out from the rest
   const thin = f.strokeCells <= Math.max(4 * kernelCells, 8) && f.strokeCells <= 12 && f.coverage < 0.3 && f.levels <= 3 && uniform;
   if (thin) return { kind: 'text', why: 'thin strokes (about ' + c1(f.strokeCells) + ' cells wide, the LED image is ' + c1(kernelCells) + ' cells) at one brightness → text / line art', features: f };
-  if (f.flatTop >= 0.5 && f.flatCols > 0.75 && f.aboveClear && f.levels <= 8 && !(f.framed && f.levels >= 4) && f.solidity >= 0.7) return { kind: 'cutoff', why: 'a straight top edge on ' + pc(f.flatTop) + ' of the painted width, spanning ' + pc(f.flatCols) + ' of the target, nothing above it, ' + f.levels + ' brightness levels → cutoff', features: f };
+  if (f.flatTop >= 0.5 && f.flatCols > 0.75 && f.aboveClear && f.levels <= 8 && !(f.framed && (f.levels >= 4 || f.coverage >= 0.6)) && f.solidity >= 0.7 && f.peakStands < 8) return { kind: 'cutoff', why: 'a straight top edge on ' + pc(f.flatTop) + ' of the painted width, spanning ' + pc(f.flatCols) + ' of the target, nothing above it, ' + f.levels + ' brightness levels → cutoff', features: f };
   if (f.levels >= 6 && (f.coverage >= 0.5 || f.peakStands < 3)) return { kind: 'photo', why: 'many brightness levels (' + f.levels + ') with ' + (f.coverage >= 0.5 ? pc(f.coverage) + ' of the target painted' : 'no bright core (peak only ' + c1(f.peakStands) + '× the typical level)') + ' → photo', features: f };
   if (f.peakStands >= 2 && f.hotShare <= 0.35 && f.levels >= 2) return { kind: 'hotspot', why: 'a bright core (' + c1(f.peakStands) + '× the typical level, ' + pc(f.hotShare) + ' of the painted cells) on a wider fill → hotspot', features: f };
   if (f.levels <= 2) return { kind: 'wash', why: 'one brightness level over ' + pc(f.coverage) + ' of the target, shapes wider than a stroke → even wash', features: f };
