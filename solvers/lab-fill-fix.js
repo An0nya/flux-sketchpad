@@ -180,9 +180,25 @@
     const NS = S.ledSamples | 0, NAp = Math.max(S.apSamples | 0, N < 40 ? 10 : 0);   // big facets (few of them) need a finer aperture
     function planeHit(P, d) { const den = V.dot(d, T.n); if (Math.abs(den) < 1e-12) return null; const t = V.dot(V.sub(T.C, P), T.n) / den; return t > 0 ? V.add(P, V.mul(d, t)) : null; }
     const uvW = (X) => { const d = V.sub(X, T.C); return [V.dot(d, T.tu), V.dot(d, T.tv)]; };
+    // A tile's border directions, found once: seen from the LED, every plane slice of the tile's cone is a central
+    // projection of the same directions, which keeps the hull's corners the hull's corners (as long as every one lands
+    // in front of the plane).  So outline() can slice these few instead of all of the tile's cells' corners (with few
+    // facets that was thousands of points on every aim tried: 60% of a 5-facet solve).  Hull taken in the gnomonic
+    // plane around the tile's centre; a tile reaching near 90° off its centre keeps every direction.
+    function hullDirs(f) {
+      if (f.hd) return f.hd;
+      const [e1, e2] = V.basis(f.u), q = [];
+      for (const d of f.dirs) { const c = V.dot(d, f.u); if (c < 0.05) return (f.hd = f.dirs); q.push([V.dot(d, e1) / c, V.dot(d, e2) / c]); }
+      const idx = q.map((_, i) => i).sort((a, b) => q[a][0] - q[b][0] || q[a][1] - q[b][1]), cr = (o, a, b) => (q[a][0] - q[o][0]) * (q[b][1] - q[o][1]) - (q[a][1] - q[o][1]) * (q[b][0] - q[o][0]);
+      const lo = [], hi = [];
+      for (const i of idx) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], i) <= 0) lo.pop(); lo.push(i); }
+      for (let k = idx.length - 1; k >= 0; k--) { const i = idx[k]; while (hi.length >= 2 && cr(hi[hi.length - 2], hi[hi.length - 1], i) <= 0) hi.pop(); hi.push(i); }
+      const h = lo.slice(0, -1).concat(hi.slice(0, -1));
+      return (f.hd = h.length >= 3 ? h.map((i) => f.dirs[i]) : f.dirs);
+    }
     function outline(f, n) {                               // tile cone ∩ plane through P with normal n → convex hull (world pts)
-      const pts = [];
-      for (const d of f.dirs) { const den = V.dot(d, n); if (Math.abs(den) <= 1e-9) continue; const t = V.dot(V.sub(f.P, Lp), n) / den; if (t > 0 && t < 3 * f.r) pts.push(V.add(Lp, V.mul(d, t))); }
+      const pts = [], slice = (dirs) => { for (const d of dirs) { const den = V.dot(d, n); if (Math.abs(den) <= 1e-9) return false; const t = V.dot(V.sub(f.P, Lp), n) / den; if (!(t > 0 && t < 3 * f.r)) return false; pts.push(V.add(Lp, V.mul(d, t))); } return true; };
+      if (!slice(hullDirs(f))) { pts.length = 0; for (const d of f.dirs) { const den = V.dot(d, n); if (Math.abs(den) <= 1e-9) continue; const t = V.dot(V.sub(f.P, Lp), n) / den; if (t > 0 && t < 3 * f.r) pts.push(V.add(Lp, V.mul(d, t))); } }
       if (pts.length < 3) return null;
       const [x, y] = V.basis(n), p2 = pts.map((p) => [V.dot(V.sub(p, f.P), x), V.dot(V.sub(p, f.P), y)]);
       const idx = p2.map((_, i) => i).sort((a, b) => p2[a][0] - p2[b][0] || p2[a][1] - p2[b][1]), cross = (o, a, b) => (p2[a][0] - p2[o][0]) * (p2[b][1] - p2[o][1]) - (p2[a][1] - p2[o][1]) * (p2[b][0] - p2[o][0]);
