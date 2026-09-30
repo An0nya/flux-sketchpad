@@ -1077,6 +1077,8 @@
   // paint patterns: built-ins + saved in this browser (resampled to the current paint grid on load)
   const BUILTIN_PATTERNS = [['beam', 'Beam (two-level)'], ['lowbeam', 'Low beam (15° cutoff)'], ['spot', 'Spot'], ['twospot', 'Two spots'], ['ring', 'Ring'], ['thinring', 'Thin ring'],
     ['band', 'Band'], ['stripes', 'Stripes'], ['cross', 'Cross'], ['frame', 'Frame'], ['gradient', 'Gradient'], ['wall', 'Wall wash'], ['checker', 'Checker (1-cell)']];
+  // sample photos (Anya's own, shared for this; small, metadata stripped) — loaded through "From image…" so Levels apply
+  const SAMPLE_PHOTOS = [['moon', 'Moon'], ['monstera', 'Monstera leaf'], ['cat', 'Cat'], ['flowers', 'Flowers (hard)']];
   const loadPatterns = () => { try { return JSON.parse(localStorage.getItem('flux/patterns') || '{}'); } catch (e) { return {}; } };
   const savePatterns = (o) => { try { localStorage.setItem('flux/patterns', JSON.stringify(o)); return true; } catch (e) { return false; } };
   function renderPatterns() {
@@ -1084,11 +1086,17 @@
     box.innerHTML = '';
     const saved = loadPatterns(), sel = P.el('select', { 'aria-label': 'Paint pattern' }, P.el('option', { value: '' }, 'Pattern…'),
       P.el('optgroup', { label: 'Built-in' }, ...BUILTIN_PATTERNS.map(([k, n]) => P.el('option', { value: 'b:' + k }, n))),
+      P.el('optgroup', { label: 'Sample photos' }, ...SAMPLE_PHOTOS.map(([k, n]) => P.el('option', { value: 'p:' + k }, n))),
       ...(Object.keys(saved).length ? [P.el('optgroup', { label: 'Saved' }, ...Object.keys(saved).sort().map((n) => P.el('option', { value: 's:' + n }, n)))] : []));
     sel.addEventListener('change', () => {
       const v = sel.value; if (!v) return;
       if (v.startsWith('b:')) ui.paintPreset(v.slice(2));
-      else { const s = loadPatterns()[v.slice(2)]; if (s) { C.actions.setPaint(ui.store, s.paint, s.res); ui.afterChange(); } }
+      else if (v.startsWith('p:')) {
+        const k = v.slice(2);
+        fetch('samples/' + k + '.jpg').then((r) => { if (!r.ok) throw new Error(r.status); return r.blob(); })
+          .then((b) => imageToPaint(new File([b], k + '.jpg', { type: 'image/jpeg' })))
+          .catch((e) => ui.store.notice('Could not load the sample photo (' + e.message + ').'));
+      } else { const s = loadPatterns()[v.slice(2)]; if (s) { C.actions.setPaint(ui.store, s.paint, s.res); ui.afterChange(); } }
       del.disabled = !v.startsWith('s:'); ui._patSel = v;
     });
     const name = P.el('input', { type: 'text', placeholder: 'name', 'aria-label': 'Pattern name', class: 'pat-name' });

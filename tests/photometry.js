@@ -55,9 +55,16 @@ ok('brightness theorem: no facet\'s p90 intensity exceeds its ceiling beyond noi
   const halo = Float64Array.from(perfect); { const typ = perfect.reduce((a, b) => a + b, 0) / fp.cells; for (let q = 0; q < n; q++) if (!(paint[q] > 0)) halo[q] = 0.05 * typ; }
   const fhal = F(halo);
   ok('fidelity: a faint halo (5% of a painted cell) stays dark', fhal.gapsDark === 1 && fhal.fidelity === 1, 'gaps dark ' + fhal.gapsDark);
-  const smear = Float64Array.from(perfect); { const typ = perfect.reduce((a, b) => a + b, 0) / fp.cells; for (let q = 0; q < n; q++) if (!(paint[q] > 0)) smear[q] = 0.2 * typ; }
+  // (v2: the smear stays inside the gap band — beyond it the far-field rule takes over, tested below)
+  const inBand = (q) => { const i = q % R, j = (q / R) | 0, b = fp.gapBand; for (let a = -b; a <= b; a++) for (let c = -b; c <= b; c++) { const x = i + a, y = j + c; if (x >= 0 && y >= 0 && x < R && y < R && paint[y * R + x] > 0) return true; } return false; };
+  const smear = Float64Array.from(perfect); { const typ = perfect.reduce((a, b) => a + b, 0) / fp.cells; for (let q = 0; q < n; q++) if (!(paint[q] > 0) && inBand(q)) smear[q] = 0.2 * typ; }
   const fsm = F(smear);   // expected gaps dark ≈ 1 − (0.2 − 0.1) / 0.3 ≈ 0.67; the halo allowance passes a few edge cells outright
   ok('fidelity: a smear (gaps at 20% of a painted cell) gets partial gap credit, strictly between a halo and a flood', fsm.gapsDark > 0.55 && fsm.gapsDark < 0.8 && fsm.gapsDarkStrict < 0.25, 'gaps dark ' + fsm.gapsDark.toFixed(3) + ' (strict pass/fail: ' + fsm.gapsDarkStrict + ')');
+  // far field (v2): a haze beyond the band at 5% of a painted cell is free; at 25% it costs (credit ≈ 1 − (0.25 − 0.1)/0.3 = 0.5)
+  const haze = (lvl) => { const g = Float64Array.from(perfect), typ = perfect.reduce((a, b) => a + b, 0) / fp.cells; for (let q = 0; q < n; q++) if (!(paint[q] > 0) && !inBand(q)) g[q] = lvl * typ; return F(g); };
+  const h5 = haze(0.05), h25 = haze(0.25);
+  ok('fidelity v2: a faint far haze (5%) is free; a visible one (25%) halves the gaps credit', h5.farCredit === 1 && h5.fidelity === 1 && Math.abs(h25.farCredit - 0.5) < 0.02 && h25.gapsNear === 1 && h25.fidelity < 0.7,
+    'far glare ' + h5.farGlare.toFixed(3) + ' → credit ' + h5.farCredit + '; ' + h25.farGlare.toFixed(3) + ' → credit ' + h25.farCredit.toFixed(3) + ', headline ' + h25.fidelity.toFixed(3));
   ok('fidelity: far spill is spill, not a lit gap', fs.gapsDark === 1 && fs.fidelity === 1, 'gaps dark ' + fs.gapsDark + ', spill ' + fs.spill.toFixed(3));
   const fblk = F(new Float64Array(n));
   ok('fidelity: a pitch-black design has no painted cell within and headline 0 (it once scored 100%: scale 0 made the band [0, 0])', fblk.within === 0 && fblk.under === 1 && fblk.withinRaw === 0 && fblk.fidelity === 0, 'within ' + fblk.within + ', gaps dark ' + fblk.gapsDark + ', headline ' + fblk.fidelity);
