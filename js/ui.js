@@ -596,7 +596,9 @@
     const was = ui.interacting;
     ui.interacting = on;
     if (was && !on) {                                   // gesture ended: refine to full quality
-      if (ui.store.dirty.has('A') && ui.store.autoA) ui.pendingA = performance.now() + 250;
+      // only a gesture that moved something (a handle) may start a solve: orbiting a view with the design already out of
+      // date (a sidebar setting, 'settings' switch off) re-solved on every spin (Anya, 09-30)
+      if (ui.movedSomething && ui.store.dirty.has('A') && ui.store.autoA) ui.pendingA = performance.now() + 250;
       if (ui.movedSomething) { ui.movedSomething = false; ui.requestRun(false); ui.autosave(); ui.refreshPanels(); }
       ui.activeHandle = null; ui.sceneDirty = true; schedule();
     }
