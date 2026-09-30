@@ -421,3 +421,90 @@ focus on the line to the aim), the nearest ellipsoid wins each direction.  Findi
 - 8 scenes: mean fidelity 70.7%, **65% of the light on paint** (Fill & fix 41%).  Default scene in the app: 78.3% /
   64%, a visibly smooth dish.  Fails on photo-like paints with many patches (Anya's 245-facet scene: the balance
   diverges).  Default quality fast (~2 s): the opening × spread search bought nothing on the default scene.
+
+### Supporting quadrics v0.3 (2026-09-30): what fixed the photo paints and the wash
+Same method, six changes; every number is 1M rays on the bench's trace seed.  Numbers in the table and per-scene lists are
+bench rows (`bench-out/bench.jsonl`, tags `sonnet-*`); numbers marked (dev) are single-scene runs of `tools/dev/sqm-dev.js`
+at the same rays and seed, not in the jsonl.  9-scene suite (default, test, led-back, p-wash, p-halfplane, p-hotwash, sparse-spot-16, held-ring,
+anya-shot-245), mean fidelity / light on paint, one change added at a time:
+
+| step (tag) | fidelity | on paint |
+|---|---|---|
+| v0.2 baseline (`sonnet-baseline`) | 58.7 | 57.4 |
+| + damped-Newton balance (`sonnet-newton1`) | 64.9 | 60.0 |
+| + predictor fixed (`sonnet-truepred`; defocus focus fixed in `sonnet-focusfix`) | 64.9 | 64.0 |
+| + reflector-size search (`sonnet-size1`) | 72.1 | 63.9 |
+| + least-squares compensation, aim bias 0.3 (`sonnet-nnls1`) | 78.7 | 64.8 |
+| + size search after compensation (`sonnet-sizecomp`) | 79.9 | 65.6 |
+| + gap weight picked by predicted score (`sonnet-gwpick2`) | 81.2 | 65.6 |
+| + aim nudge off (`sonnet-nudge0`) | 82.1 | 66.7 |
+| + front-opening search, clean-up (`sonnet-clean2`, final code `sonnet-final2`) | **83.5** | **65.8** |
+
+Per scene, baseline → final: default 78.6 → 87.6, test 55.7 → 77.6, led-back 74.4 → 91.3, p-wash 35.7 → 81.9,
+p-halfplane 70.9 → 90.1, p-hotwash 51.1 → 83.7, sparse-spot-16 76.8 → 77.5, held-ring 65.9 → 79.5, anya-shot-245
+**19.2 → 82.1**.  26 more scenes (`sonnet-baseline-extra` → `sonnet-final-extra`): 63.0 → 73.8 fidelity, 44.2 → 48.0 on
+paint.  Anya's 400- and 1001-facet scenes (`sonnet-baseline-big` → `sonnet-final2-big`): 30.1 → 69.2 and 24.5 → 93.1.
+
+**1. The balance divergence was a shortlist problem, not a step-size problem.**  Seen from the LED's backward half-space
+every aim looks the same (the cost is linear in p = cot(θ/2)·(aim offset), and p → 0 at the back), so the 245 patches
+compete in a crowd: measured at 245 patches, the 32nd-nearest patch is only 0.1–0.3% farther (in log radius) than the
+nearest.  A fixed-length shortlist therefore silently truncates the soft partition, patches outside every list lose
+their gradient, and the old annealed Sinkhorn walked to fluxes 2000× off.  Fix: damped Newton on the entropic problem
+(dense Cholesky, Levenberg damping, accept only steps that lower the flux error), exact over ALL patches (a per-direction
+window that is rebuilt when any size moves more than 0.003 in log units keeps the cost down; results identical to the
+plain O(directions × patches) loop), a coarse-to-fine cold start (aims merged 4:1, split again with local sub-problems
+and a mean-cost shift), a "revive" step for patches that lost all flux, and a cold restart if a warm solve fails.
+Re-scaling a design must go through radius, not β: r = β(β+2c)/(2β+2c(1−cosθ)) is not homogeneous in β.
+**2. The predictor lied about thin LED images.**  It smeared the sum of LED-image samples with a box sized by the LED's
+LONGER side, in both axes: a 0.8 × 0.2 mm LED (Anya's scene) is a thin bar on the target, so predicted 74% vs traced 48%
+for the same design (dev).  Found by tracing single patches (`tools/dev/patchcheck.js`: per-patch blob centre / spread agreed
+within 2%, per-patch landed energy within ±4%, so the error had to be in how blobs were summed).  Now: per-patch LED
+lattice (n_u × n_v) chosen so neighbouring samples land ≤ 1 cell apart on the target, no blur; predicted 59.2 vs traced
+57.5 on the same scene (dev).  Everything downstream (compensation, the searches) needs this.
+**3. Reflector size is the blur control.**  The LED's image is (LED size) × (patch→target ÷ patch→LED): a smaller reflector
+paints bigger images and loses no light (the partition is scale-free).  The old fit made the reflector as big as the
+envelope allows, i.e. the sharpest possible images, which is right for edges and wrong for a wash: p-wash 35.1 → 80.1 at
+size 0.35 with 65% on paint (dev, no compensation).  The design search tries sizes {1, 0.6, 0.36}, re-balances warm, runs 2 compensation passes
+on each and keeps the best predicted fidelity + 0.25 × light on paint (the predictor is now good enough to rank designs).
+Ranking before compensation picked the wrong size (compensation moves the optimum: with it, fixed sizes gave test 70.6 at 1
+vs 77.6 at 0.6, half-plane 74.5 at 1 vs 88.2 at 0.45 (dev)).
+**4. Compensation by non-negative least squares.**  The prediction is a sum of per-patch blobs F = Σ g_j B_j; the
+columns B_j are kept from the predictor.  Choosing the fluxes g ≥ 0 that make F match the paint in RELATIVE error (a dim
+cell counts as much as a bright one, as in the score) is a Lee–Seung multiplicative fit; new shares are the fit's, damped
+0.7 and clamped to 0.2–5× the old.  Thin strokes (text, bars) cannot be lit without lighting their surroundings, so the
+gap term must be 0 there but ≈ 0.5 for blobs and washes: both are tried from the same state and the better predicted
+one kept.  p-hotwash 70.7 → 82.3 from this step alone (dev, ratio rule vs least squares).
+**5. Aims should follow area more than light.**  The score counts cells, not lumens.  k-means weighted by paint gives dim
+regions few aims (anya-shot-245: the dimmest third of the cells were 5–20% within).  Weights paint^0.3 (0 = pure
+area) took the 245-facet scene 57.5 → 66.1 (dev); pure area starves the bright core of resolution (50% within in
+the brightest quartile) unless the direction lattice is 3× finer.  **6. Front opening** (directions within θ of the beam
+get no mirror): searched {60°, 75°}; on the 245-facet scene 60 → 75 was 72.4 → 82.1 fidelity for 81.4 → 73.0 light
+(`sonnet-nudge0` vs `sonnet-open75`), and the search takes it only when the score gains.
+
+Tried and did not help (all measured): (a) per-patch defocus — the old one was mis-aimed (second focus on the LED→aim
+line moved blobs by up to 16 cells; on the patch→aim line it is right) but even fixed it added nothing once the size
+search exists (mean 80.3 vs 82.1, `sweep-defocus0.5` vs `sonnet-nudge0`) and it moves each patch's aim direction as seen from the LED, so it re-partitions
+everything (warm solves fail); removed.  (b) Moving aims towards residual centroids (`nudge` 0 / 0.3 / 0.7): default 86.6 / 84.0
+/ 80.0 (dev; bench mean 82.1 at 0 vs 81.2 before turning it off) — harmful, off.  (c) A Gauss–Newton step on each blob's own
+shift, using the columns' gradients: worse on every scene tried (default 86.6 → 81.6, hot-wash 83.7 → 76.5, dev).
+(d) Stretching the k-means metric along the LED image's long axis: 57.5 → 55.6 (dev).
+(e) Finer direction lattice (cells per patch 40 → 70, 120, 160): fidelity unchanged, several times the cost; coarser (20)
+hurts the 245-patch scene (82.1 → 77.0, dev).  (f) Envelope-fit share 0.8 / 0.95 (vs 0.9): 81.7 / 80.9 vs 82.1;
+compensation gain 0.5 / 1: 81.8 / 82.0; 6 instead of 4 passes: 82.2 (`sweep-*` tags): a plateau.  (g) Smaller final entropic width improves per-patch flux
+error (continuum rms 24% at τ = 1.2e-4 → 3.3% at 1.5e-5, measured on a 4× finer direction lattice) but not fidelity
+(48.3 both, dev, measured before the predictor fix), so τ = 3e-5 is a compromise.
+Tools: `tools/dev/sqm-dev.js` (solve + trace one scene; `SHOW`, `SHOWPRED`, `BINS`, `COVER`, `CMP`, `NOTES`),
+`patchcheck.js` (one patch traced alone vs its prediction; per-facet landed vs predicted energy), `robust.js` (budgets
+1–30, min distance, determinism), `tagsummary.js` (bench tags side by side), `profsum.js`.
+
+Remaining failures.  Thin strokes (p-text 59, p-bars 58, p-hello 59): the LED's image is wider than the stroke, so the
+gaps stay lit (gaps score 44%) — the same limit as before, only within improved (86–89%).  Big LEDs and small
+envelopes (die-3 70, held-big-led 60, env-small 31): images are big and the envelope cannot shrink them.  Opaque coils
+and filaments give only 27–31% on paint (most of the light never reaches a mirror).  The least-squares fit shrinks
+some patches to fewer than 2 direction cells, and those are not emitted (placed 81–97 of 100 on most scenes, 48 on
+p-spots, 65 on coil-transverse; still ≤ the budget, and their light is small).  On the 245-facet scene the dim tail is still 32–40% within and the
+brightest quartile 74% (the peak comes out a little flat).  Large budgets are the slowest case: the balance is dense
+(N³ per step), so budgets above 300 search less, above 600 search nothing, and at most 1000 patches are used
+(decided by the budget alone, never a clock).  Timing was NOT re-measured for the final code (the machine was shared
+during the last runs): the numbers in `bench.jsonl` for `sonnet-final*` are inflated; the untested speed claims are the
+windowed evaluation (same results, fewer radii) and the reduced search above 300 facets.
