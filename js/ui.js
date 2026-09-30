@@ -400,7 +400,20 @@
     ui.fid = sc.mode === 'A' && run.ctx.next > 0 ? RF.Photometry.fidelity(sc, run.P, run.ctx) : null;
     if (ui.fid) ui.fid.ctx = run.ctx;
     if (ui.display === 'fid') drawHeat();
-    P.renderStats(ui, st, { running, preview: run.preview, match, fid: ui.fid, photo: !running && ui.photo && ui.photo.ctx === run.ctx ? ui.photo : null });
+    // goal check (Details): what kind of painting this is, and the goal's own measures + guardrails on the finished trace
+    // (RF.Modes, the same code Auto judges with).  Once per finished run; ~10–100 ms.
+    if (!running && sc.mode === 'A' && RF.Modes && ui.fid && ui.photo && ui.photo.ctx === run.ctx && (!ui.goal || ui.goal.ctx !== run.ctx)) {
+      try {
+        const input = RF.Solvers.inputOf(sc), mctx = RF.Modes.context(input, run.ctx.N), cls = RF.Modes.classify(sc.modeA.paint, sc.target.res, mctx.kernelCells);
+        const rA = ui.store.reports.A, autoKind = rA && rA.auto && rA.auto.kind, kind = autoKind || cls.kind;
+        const tr = { grid: RF.Engine.gridTotal(run.ctx), res: run.P.res, energy: run.ctx.E, fidelity: ui.fid, peakCd: ui.photo.peakCd };
+        const tol = rA && rA.solver && rA.solver.settings && rA.solver.settings.tol;
+        const ev = RF.Modes.evaluate(kind, RF.Modes.runFromTrace(input, tr, mctx), { tol: tol === undefined ? undefined : tol });
+        let recs = []; try { recs = RF.Modes.recommend(kind, cls.features, mctx, input); } catch (e) { /* none */ }
+        ui.goal = { ctx: run.ctx, kind, cls, auto: !!autoKind, ev, recs };
+      } catch (e) { ui.goal = { ctx: run.ctx, error: e.message }; }
+    }
+    P.renderStats(ui, st, { running, preview: run.preview, match, fid: ui.fid, photo: !running && ui.photo && ui.photo.ctx === run.ctx ? ui.photo : null, goal: !running && ui.goal && ui.goal.ctx === run.ctx ? ui.goal : null });
     if (!running) {
       const f = RF.Feasibility.analyze(sc, { designReport: sc.mode === 'A' ? ui.store.reports.A : null, stats: st, stampReports: ui.store.reports.B });
       P.renderFeasibility(ui, f, { warnings: sc.mode === 'A' && ui.store.reports.A ? ui.store.reports.A.warnings : [] });

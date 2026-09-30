@@ -343,6 +343,43 @@
       s(cnt(fd.interior) + ' · ' + cnt(fd.edge), 'within, interior cells · edge cells (a painted cell next to an unpainted one)', 'pair');
       s([q.p5, q.p25, q.p50, q.p75, q.p95].map((x) => x.toFixed(2)).join(' · '), 'delivered ÷ intended per painted cell: 5th · 25th · median · 75th · 95th pct (1 = as painted)', 'pair');
       s(pct(fd.onPaint) + ' · ' + pct(fd.spill) + ' (' + pct(fd.spillNear) + ' just outside the edge)', 'light on the paint (of emitted) · spill: target light on unpainted cells', 'pair');
+      if (fd.farGlare !== undefined) s(pct(fd.farGlare) + ' → ×' + fd.farCredit.toFixed(2), 'far haze: the haziest 5×5-cell patches beyond the gap band (99th pct), as a share of a painted cell; free up to 10%, then it scales the gaps-dark half down (×0 at 40%)', 'pair');
+    }
+    const gc = extra.goal;
+    if (gc) {
+      box.append(el('h4', { class: 'stats-sub' }, 'Goal check'));
+      if (gc.error) s('—', 'goal check failed: ' + gc.error);
+      else {
+        const K = { cutoff: 'cutoff', hotspot: 'hotspot', text: 'text / line art', photo: 'photo', wash: 'even wash', general: 'general' }, m = gc.ev.m, f2 = (x, d) => (x === null || x === undefined || !isFinite(x) ? '—' : x.toFixed(d === undefined ? 2 : d));
+        s(K[gc.kind] || gc.kind, 'painting type' + (gc.auto ? ' (as Auto judged it)' : '') + ': ' + gc.cls.why);
+        if (gc.kind === 'cutoff') {
+          s(f2(m.width, 1) + ' cells (floor ' + f2(m.floorWidth, 1) + ')', 'edge width: how far the light takes to fall from bright to dark across the painted line; the floor is the sharpest this LED allows');
+          s(f2(m.sharpness), 'edge sharpness (1 = at the floor)');
+          s(f2(m.offset, 1) + ' cells', 'edge position: how far the light-dark edge sits from the painted line (+ = above)');
+          s(pct(m.glare), 'glare above the line: the brightest 1% of 5×5-cell patches in the dark zone above it, as a share of a lit cell');
+          s(pct(m.litHoles), 'holes: lit-zone cells well under their painted level');
+        } else if (gc.kind === 'hotspot') {
+          s(fmtCd(m.hotCd) + ' · ' + pct(m.ofPossible), 'hot zone: mean intensity · of the most this light could give it');
+          s('×' + f2(m.fillRel) + ' · ' + pct(m.fillCover), 'fill: its level vs the paint (1 = as painted) · share of the fill that is lit');
+          s(pct(m.spill), 'spill');
+        } else if (gc.kind === 'text') {
+          s(pct(m.recall) + ' · ' + pct(m.leak), 'strokes lit · gaps leaking');
+          s(f2(m.f1) + ' · ' + f2(m.contrast), 'legibility (F1 of strokes vs gaps) · contrast');
+          s(m.litHoles + ' of ' + m.paintHoles + ' · ' + m.litComponents + ' of ' + m.paintComponents, 'loops kept open (e, o) · separate strokes kept apart');
+          s(f2(m.farGlare), 'far glare (0 = none; 0.3 = fails)');
+        } else if (gc.kind === 'photo') {
+          s(f2(m.rho) + ' · ' + f2(m.pearson), 'brightness order kept (rank correlation) · linear correlation');
+          s(pct(m.lightnessErr) + ' · ' + f2(m.detail), 'tone error on a lightness scale (≈ how the eye compares) · fine detail kept (correlation of the small-scale contrast, e.g. eyes and mouth)');
+          s(pct(m.rangeKept), 'tonal range kept: the picture\u2019s 10→90% span of tones vs this design\u2019s (a flat grey scores 0)');
+        } else if (gc.kind === 'wash') {
+          s(f2(m.cv, 3) + ' (noise ' + f2(m.noiseCV, 3) + ')', 'unevenness: variation across 5×5 patches, and how much of it is just ray noise');
+          s(f2(m.p10OverMean) + ' · ' + f2(m.minOverMean), 'dim patches: 10th pct ÷ mean · min ÷ mean');
+          s(pct(m.spill), 'spill');
+        } else s('—', 'no goal-specific measure: fidelity is the score');
+        const g = gc.ev.gates;
+        s(g.pass ? '✓ all pass' : '✗ ' + g.why.join(' · '), 'guardrails for this goal (the floors Auto holds a design to)');
+        for (const r of gc.recs || []) s('→', r, 'pair');
+      }
     }
     s(String(st.surfaces), 'surfaces placed');
     const area = st.basis === 'paint' ? 'painted cells' : 'beam (≥10% of peak)';
