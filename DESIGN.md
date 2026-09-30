@@ -406,3 +406,18 @@ Min facet distance next to the budget; model solvers' knobs under Advanced.  Dev
 
 **Next.** Supporting quadrics (continuous reflector) with Fournier-style virtual-target compensation; edge-aware
 image orientation (long dies, cutoffs); a lithophane-style import curve for photos.
+
+### Supporting quadrics (`solvers/lab-sqm.js`, v0.2, 2026-09-29)
+One continuous reflector: N aims (weighted k-means of the paint), one ellipsoid per aim (foci: the LED and a second
+focus on the line to the aim), the nearest ellipsoid wins each direction.  Findings, each measured:
+- Plain multiplicative flux balancing fails: seen from the LED every aim sits within ~2°, so neighbouring patches
+  differ by ~0.3% in radius; 86/100 patches stayed empty.  Annealed entropic (Sinkhorn) balancing down to τ = 6e-5
+  (log-radius units) converges; a per-direction shortlist of 16 patches makes it ~4× faster.
+- Fitting the envelope to its worst direction squashes the surface onto the LED; fit 90% of the light instead and
+  leave the rest uncovered.
+- The exact-geometry prediction must be smoothed at the sample spacing (unsmoothed: 18% predicted vs 41% traced).
+- Per-patch defocus (second focus in front of the target so each patch fans over its own region) did not help the
+  wash (42.5 → 34.9 at full strength); kept as a searched option.
+- 8 scenes: mean fidelity 70.7%, **65% of the light on paint** (Fill & fix 41%).  Default scene in the app: 78.3% /
+  64%, a visibly smooth dish.  Fails on photo-like paints with many patches (Anya's 245-facet scene: the balance
+  diverges).  Default quality fast (~2 s): the opening × spread search bought nothing on the default scene.
