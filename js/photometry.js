@@ -197,7 +197,7 @@
   // perfect design would show at this ray count (shot noise alone), to read `within` against.
   // GAP_RAMP: a gap cell's credit reaches 0 at 0.3 × a typical painted cell ABOVE its allowance.  Calibrated 2026-09-26
   // against eye rankings of 7 designs on 2 scenes (1.0 ranked a smear over Astra; 0.3 is the gentlest that agrees).
-  const TOL = [0.8, 1.25], GAP_PAD = 2, DARK = 0.1, GAP_RAMP = 0.3;   // ×/÷1.25 (symmetric in log) · gap band = blur kernel + 2 cells · 'dark' = under 10% of a typical painted cell
+  const TOL = [0.8, 1.25], GAP_PAD = 2, DARK = 0.1, GAP_RAMP = 0.3, FAR_BLOCK = 5;   // ×/÷1.25 (symmetric in log) · gap band = blur kernel + 2 cells · 'dark' = under 10% of a typical painted cell
   const Phi = (x) => { const t = 1 / (1 + 0.3275911 * Math.abs(x) / Math.SQRT2), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x / 2); return x >= 0 ? 0.5 * (1 + y) : 0.5 * (1 - y); };
   function fidelity(scene, P, ctx) {
     const paint = scene.modeA && scene.modeA.paint; if (!paint || !paint.some((w) => w > 0)) return null;
@@ -242,13 +242,31 @@
       gapN++; const allow = sc * Math.max(TOL[1] * B[k], DARK * typ), over = G[k] - allow;
       if (over <= 0) { gapCredit++; gapStrict++; } else { gapCredit += Math.max(0, 1 - over / (GAP_RAMP * sc * typ)); verdict[k] = 3; }
     }
-    const withinPainted = cnt.all[0] / cnt.all[3], dark = gapN ? gapCredit / gapN : 1;
+    // Far field (fidelity v2, 2026-09-30): stray light BEYOND the gap band used to count for nothing, so a haze or a smear
+    // a few cells out from the paint was free (an unreadable smear over text outscored legible designs).  Averaged over
+    // FAR_BLOCK×FAR_BLOCK blocks (a single stray ray in a cell must not read as haze); farGlare = the 99th-percentile block
+    // ÷ a typical painted cell, at the same fitted scale.  Its credit follows the gaps' rule: 1 up to DARK, falling to 0
+    // at DARK + GAP_RAMP; it multiplies the gaps' half of the F1.  Faint spill (a defocused facet's soft edge) stays free.
+    const FB = FAR_BLOCK, blocks = [], blockAt = [];
+    for (let bj = 0; bj < R; bj += FB) for (let bi = 0; bi < R; bi += FB) {
+      let s = 0, c = 0;
+      for (let j = bj; j < Math.min(R, bj + FB); j++) for (let i = bi; i < Math.min(R, bi + FB); i++) { const k = j * R + i; if (near2[k] || paint[k] > 0) continue; s += G[k]; c++; }
+      if (c >= FB * FB / 2) { blocks.push(s / c); blockAt.push([bi, bj]); }
+    }
+    const lit = sc > 0 && typ > 0 ? sc * typ : 0, farSorted = blocks.slice().sort((a, b) => a - b);
+    const farGlare = lit && farSorted.length ? RF.Engine.pctl(farSorted, 0.99) / lit : 0;
+    const farCredit = Math.max(0, Math.min(1, 1 - (farGlare - DARK) / GAP_RAMP));
+    if (lit) blocks.forEach((m, b) => { if (m > DARK * lit) { const [bi, bj] = blockAt[b];   // show the hazy blocks in the Fidelity view (as lit gaps)
+      for (let j = bj; j < Math.min(R, bj + FB); j++) for (let i = bi; i < Math.min(R, bi + FB); i++) { const k = j * R + i; if (!near2[k] && !(paint[k] > 0)) verdict[k] = 3; } } });
+    const hasDark = gapN > 0 || blocks.length > 0;
+    const withinPainted = cnt.all[0] / cnt.all[3], dark = (gapN ? gapCredit / gapN : 1) * farCredit;
     const share = (c) => c[3] ? { within: c[0] / c[3], under: c[1] / c[3], over: c[2] / c[3], cells: c[3] } : null, em = ctx.E.emitted || 1;
     return {
       // THE headline: the F1 score (harmonic mean) of painted-right and gaps-dark, so it is near 0 if EITHER half is.
       // (A 50/50 average gave a flood and a pitch-black design 50% each.)
-      fidelity: gapN ? (withinPainted + dark > 0 ? 2 * withinPainted * dark / (withinPainted + dark) : 0) : withinPainted,
-      gapsDark: dark, gapsDarkStrict: gapN ? gapStrict / gapN : 1, gapCells: gapN, gapBand: rb,
+      fidelity: hasDark ? (withinPainted + dark > 0 ? 2 * withinPainted * dark / (withinPainted + dark) : 0) : withinPainted,
+      fidelityVersion: 2, gapsDark: dark, gapsNear: gapN ? gapCredit / gapN : 1, farGlare, farCredit,
+      gapsDarkStrict: gapN ? gapStrict / gapN : 1, gapCells: gapN, gapBand: rb,
       tol: TOL, kernel: ker, ...share(cnt.all), withinRaw: rawPass / cnt.all[3], interior: share(cnt.interior), edge: share(cnt.edge),
       ratio: { p5: RF.Engine.pctl(ratios, 0.05), p25: RF.Engine.pctl(ratios, 0.25), p50: RF.Engine.pctl(ratios, 0.5), p75: RF.Engine.pctl(ratios, 0.75), p95: RF.Engine.pctl(ratios, 0.95) },
       onPaint: sGp / em, onTarget: sG / em, spill: sG > 0 ? 1 - sGp / sG : 0, spillNear: sG > 0 ? near / sG : 0,
