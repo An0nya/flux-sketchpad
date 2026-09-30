@@ -8,10 +8,16 @@
  * aim point (exactly, for a point source).  Growing β_j shrinks patch j (others win more directions), so the sizes are
  * iterated until each patch catches its share (a semi-discrete optimal transport problem).
  *
- * The LED is not a point: each patch paints an image of the LED around its aim point.  Fournier's compensation
- * (dissertation, UCF): predict the blurred result, compare it with the paint, and adjust the VIRTUAL target (the
- * shares, and nudge the aims) until the blurred prediction matches.  Predictions use exact geometry (the real
- * ellipsoid, real normals, LED samples reflected), no ray tracing.
+ * The LED is not a point: each patch paints an image of the LED around its aim point, of size (LED size) × (patch→target ÷
+ * patch→LED).  Predictions use exact geometry (the real ellipsoid, real normals, LED samples reflected on a lattice fine
+ * enough that neighbouring samples land within a cell of each other), no ray tracing; per-patch results are kept as the
+ * columns of a blur matrix.  Fournier's compensation (dissertation, UCF) then adjusts the VIRTUAL target: a non-negative
+ * least-squares fit picks the flux each patch should carry so that the blurred sum matches the paint cell for cell (relative
+ * error, gaps near the paint kept dark), and the patches are re-sized to those shares.
+ *
+ * What v0.3 changed (numbers in DESIGN.md): damped-Newton balance instead of annealed Sinkhorn (which diverged on photo-like
+ * paints); a predictor that agrees with the trace (the old one blurred a thin LED image isotropically); least-squares
+ * compensation; a search over reflector size (bigger images for washes, sharper for edges) and front opening.
  *
  * Buildability is the point: neighbouring facets share their edges (up to the direction-grid resolution), unlike the
  * stepped facet solvers.  Fidelity at low facet counts is the price: N aims = N LED images.                       */
@@ -42,6 +48,7 @@
     return out;
   }
 
+  const MAX_AIMS = 1000;          // the balance is dense linear algebra (≈ N³ per Newton step): budgets above this use only this many patches
   function solveOnce(input, S, tools) {
     const prog = (f, st) => { if (tools && tools.progress) tools.progress(f, st); };
     const src = input.source, env = input.envelope, Lp = src.pos, R = input.paint.res, paint = input.paint.cells;
@@ -57,7 +64,7 @@
 
     // ---- directions: equal-area grid (cosα uniform) about the beam axis; flux and room per direction
     prog(0.02, 'directions');
-    const N = Math.min(N0, pcells.length), NA = Math.max(60, Math.round(Math.sqrt(S.cellsPerFacet * N * 2))), NP = 2 * NA;
+    const N = Math.min(N0, pcells.length, MAX_AIMS), NA = Math.max(60, Math.round(Math.sqrt(S.cellsPerFacet * N * 2))), NP = 2 * NA;
     const fr = RF.Source.frame(src), Itot = RF.Source.totalIntegral(src), dOm = 4 * Math.PI / (NA * NP);
     const rmin = Math.max(env.keepOut || 0, S.minDistance || 0) + RF.Source.boundingRadius(src) * 0.5 + S.margin;
     const openList = S.open >= 0 ? [S.open] : S.opens, minOpen = Math.min(...openList); let openNow = openList[0];
@@ -501,14 +508,14 @@
     // Cost grows like (patches × directions) ≈ N², and every candidate the design search tries is a re-balance.  Large budgets
     // therefore search less (decided by the budget alone, never by a clock, so the result stays deterministic).
     let painted = 0; for (const v of input.paint.cells) if (v > 0) painted++;
-    const N = Math.min(Math.max(1, input.limits.maxFacets | 0), painted);
+    const N = Math.min(Math.max(1, input.limits.maxFacets | 0), painted, MAX_AIMS);
     if (N > 300) { S.sizes = S.sizes.slice(0, 2); S.opens = S.opens.slice(0, 2); S.searchPasses = Math.min(S.searchPasses, 1); S.compensate = Math.min(S.compensate, 3); S.gapTrial = false; }
     if (N > 600) { S.sizes = S.sizes.slice(0, 1); S.opens = S.opens.slice(0, 1); S.compensate = Math.min(S.compensate, 2); S.cellsPerFacet = Math.min(S.cellsPerFacet, 25); S.apCells = Math.min(S.apCells, 16); }
     return solveOnce(input, S, tools);
   }
 
   RF.Solvers.register({
-    id: 'sqm', name: 'Supporting quadrics (continuous)', version: '0.2', modes: ['paint'],
+    id: 'sqm', name: 'Supporting quadrics (continuous)', version: '0.3', modes: ['paint'],
     settings: [
       { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },
       { key: 'quality', label: 'Quality', type: 'select', default: 'fast', options: [{ value: 'fast', label: 'fast (a few seconds)' }, { value: 'normal', label: 'normal (tries more shapes)' }, { value: 'best', label: 'best (slow)' }] },
@@ -516,15 +523,15 @@
       { key: 'open', adv: true, label: 'Front opening, degrees from the beam (−1 = try several)', type: 'number', min: -1, max: 150, step: 5, default: -1 },
       { key: 'size', adv: true, label: 'Reflector size, fraction of the envelope (−1 = try several)', type: 'number', min: -1, max: 1, step: 0.05, default: -1 },
       { key: 'compensate', adv: true, label: 'Blur-compensation passes (−1 = by quality)', type: 'number', min: -1, max: 30, step: 1, default: -1 },
-      { key: 'searchPasses', adv: true, label: 'Compensation passes spent on each shape tried', type: 'number', min: 0, max: 10, step: 1, default: 2 },
-      { key: 'gain', adv: true, label: 'Compensation step (0 none … 1 full)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.7 },
+      { key: 'searchPasses', adv: true, label: 'Compensation passes spent on each size / opening tried', type: 'number', min: 0, max: 10, step: 1, default: 2 },
+      { key: 'gain', adv: true, label: 'How far each compensation pass moves the shares (0 none … 1 fully)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.7 },
       { key: 'gapWeight', adv: true, label: 'How much the compensation cares about lit gaps', type: 'number', min: 0, max: 10, step: 0.05, default: 0.5 },
       { key: 'aimBias', adv: true, label: 'Aims follow the light (1) or the painted area (0)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.3 },
-      { key: 'fitShare', adv: true, label: 'Share of the light the reflector must fit the envelope for', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.9 },
-      { key: 'window', adv: true, label: 'Flux-balance: how far sizes may move before candidate lists are rebuilt (log units)', type: 'number', min: 0.0002, max: 0.05, step: 0.0002, default: 0.003 },
-      { key: 'tol', adv: true, label: 'Flux-balance tolerance', type: 'number', min: 0.001, max: 0.5, step: 0.005, default: 0.03 },
-      { key: 'finalTau', adv: true, label: 'Flux-balance sharpness (smaller = sharper, slower)', type: 'number', min: 0.000005, max: 0.01, step: 0.000005, default: 0.00003 },
-      { key: 'nnlsIters', adv: true, label: 'Least-squares iterations per compensation pass', type: 'number', min: 1, max: 1000, step: 1, default: 80 },
+      { key: 'fitShare', adv: true, label: 'Share of the LED light that must fit inside the envelope (the rest is given up)', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.9 },
+      { key: 'window', adv: true, label: 'Sizing speed-up: how far the patch sizes may move before the neighbour lists are rebuilt', type: 'number', min: 0.0002, max: 0.05, step: 0.0002, default: 0.003 },
+      { key: 'tol', adv: true, label: 'How close each patch\'s share of the light must be to its target (0.03 = 3%)', type: 'number', min: 0.001, max: 0.5, step: 0.005, default: 0.03 },
+      { key: 'finalTau', adv: true, label: 'Patch-edge sharpness while sizing the patches (smaller = sharper, slower)', type: 'number', min: 0.000005, max: 0.01, step: 0.000005, default: 0.00003 },
+      { key: 'nnlsIters', adv: true, label: 'Iterations of the light-matching fit per compensation pass', type: 'number', min: 1, max: 1000, step: 1, default: 80 },
       { key: 'lloyd', adv: true, label: 'Aim clustering iterations', type: 'number', min: 0, max: 50, step: 1, default: 12 },
       { key: 'startR', adv: true, label: 'Starting focal length (mm)', type: 'number', min: 1, max: 500, step: 1, default: 20 },
       { key: 'margin', adv: true, label: 'Wall margin (mm)', type: 'number', min: 0, max: 5, step: 0.05, default: 0.3 },
