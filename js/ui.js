@@ -1107,9 +1107,32 @@
     const imgBtn = P.el('button', { type: 'button', title: 'Convert a picture to a paint pattern (stays in this browser)' }, 'From image…');
     imgBtn.addEventListener('click', () => file.click());
     file.addEventListener('change', () => { const f = file.files[0]; if (f) imageToPaint(f); file.value = ''; });
+    // image levels (after an import, this browser session only): black point = drop the darkest part of the picture;
+    // curve = gamma on the kept range (1 = the photo's linear light, as a physically faithful beam; < 1 lifts the
+    // shadows toward how the picture LOOKS; > 1 deepens them).  Photos have a long dim tail that a reflector's blur
+    // can't hold next to bright areas, so trimming it is often the difference between legible and mush.
+    const lv = [];
+    if (ui.imgSrc && ui.imgSrc.res === ui.store.scene.target.res) {
+      const I = ui.imgSrc, mk = (label, key, min, max, step, fmt, help) => {
+        const out = P.el('span', { class: 'note' }, fmt(I[key])), r = P.el('input', { type: 'range', min, max, step, value: I[key], 'aria-label': label });
+        r.addEventListener('input', () => { out.textContent = fmt(+r.value); });
+        r.addEventListener('change', () => { I[key] = +r.value; applyImageCurve(); });
+        return P.el('div', { class: 'row', title: help }, P.el('label', {}, label + ' ', out), r);
+      };
+      lv.push(P.el('div', { class: 'note' }, 'Levels for “' + I.name + '”:'),
+        mk('Black point', 'black', 0, 0.6, 0.01, (x) => Math.round(100 * x) + '%', 'Everything darker than this share of the brightest part becomes unpainted; the rest is stretched to fill 0–100%.'),
+        mk('Curve', 'gamma', 0.3, 3, 0.05, (x) => (Math.abs(x - 1) < 1e-9 ? 'linear' : (x < 1 ? 'lifted ' : 'deepened ') + x.toFixed(2)), '1 = the photo\'s real (linear) light. Below 1 lifts shadows and midtones (closer to how the picture looks on screen); above 1 deepens them.'));
+    }
     box.append(P.el('div', { class: 'row' }, P.el('label', {}, 'Pattern'), sel),
-      P.el('div', { class: 'btnrow' }, imgBtn, file),
+      P.el('div', { class: 'btnrow' }, imgBtn, file), ...lv,
       P.el('div', { class: 'btnrow' }, name, saveBtn, del, P.confirmButton('Clear paint', 'Clear the painting?', () => ui.clearPaint())));
+  }
+  function applyImageCurve(first) {
+    const I = ui.imgSrc; if (!I) return;
+    const b = I.black, g = I.gamma, out = new Array(I.Y.length);
+    for (let k = 0; k < out.length; k++) { const v = I.Y[k] <= b ? 0 : Math.pow((I.Y[k] - b) / (1 - b), g); out[k] = v < 0.02 ? 0 : +v.toFixed(3); }
+    ui._histHint = first ? 'Image: ' + I.name : 'Image levels: black ' + Math.round(100 * b) + '%, curve ' + g.toFixed(2);
+    C.actions.setPaint(ui.store, out, I.res); ui.afterChange(); renderPatterns();
   }
   function imageToPaint(fileObj) {
     const url = URL.createObjectURL(fileObj), img = new Image();
@@ -1119,15 +1142,16 @@
       const s = Math.min(res / img.width, res / img.height), w = img.width * s, h = img.height * s;
       g.drawImage(img, (res - w) / 2, (res - h) / 2, w, h);
       const d = g.getImageData(0, 0, res, res).data, lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-      const out = new Array(res * res).fill(0); let mx = 0;
+      const Y = new Float64Array(res * res); let mx = 0;
       for (let y = 0; y < res; y++) for (let x = 0; x < res; x++) {
-        const o = 4 * (y * res + x), Y = (0.2126 * lin(d[o]) + 0.7152 * lin(d[o + 1]) + 0.0722 * lin(d[o + 2])) * d[o + 3] / 255;
-        const k = (res - 1 - y) * res + x; out[k] = Y; if (Y > mx) mx = Y;          // image row 0 = top; paint row 0 = bottom
+        const o = 4 * (y * res + x), v = (0.2126 * lin(d[o]) + 0.7152 * lin(d[o + 1]) + 0.0722 * lin(d[o + 2])) * d[o + 3] / 255;
+        const k = (res - 1 - y) * res + x; Y[k] = v; if (v > mx) mx = v;          // image row 0 = top; paint row 0 = bottom
       }
-      for (let k = 0; k < out.length; k++) { const v = mx > 0 ? out[k] / mx : 0; out[k] = v < 0.02 ? 0 : +v.toFixed(3); }
+      for (let k = 0; k < Y.length; k++) Y[k] = mx > 0 ? Y[k] / mx : 0;
       URL.revokeObjectURL(url);
-      ui._histHint = 'Image: ' + fileObj.name; C.actions.setPaint(ui.store, out, res); ui.afterChange();
-      ui.store.notice('Painted from “' + fileObj.name + '” (' + img.width + '×' + img.height + ' → ' + res + '², linear light).'); ui.refreshPanels();
+      ui.imgSrc = { res, Y, name: fileObj.name, black: 0, gamma: 1 };             // kept for the Levels controls (not saved)
+      applyImageCurve(true);
+      ui.store.notice('Painted from “' + fileObj.name + '” (' + img.width + '×' + img.height + ' → ' + res + '², linear light). Levels controls are under Pattern.'); ui.refreshPanels();
     };
     img.onerror = () => { URL.revokeObjectURL(url); ui.store.notice('Could not read that image.'); ui.refreshPanels(); };
     img.src = url;
