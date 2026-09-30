@@ -122,7 +122,167 @@
     // regularisation fixes it: each direction is shared softly among patches, p_j ∝ exp(−log r_j / τ), so fluxes are
     // smooth in log β, and the Sinkhorn update log β_j += τ·log(got_j / want_j) converges.  τ is lowered in stages
     // until the soft partition is as sharp as the hard one (the surface itself always uses the hard minimum).
+    // Damped Newton on the same entropic problem (Kitagawa–Mérigot–Thibert style): the Jacobian of the soft fluxes is
+    // a graph Laplacian over neighbouring patches, solved densely (Cholesky) with Levenberg damping; a step is accepted
+    // only if the flux error falls.  Seen from the backward directions every aim looks almost the same, so a cold start
+    // strands patches outside every shortlist; the cold start therefore goes coarse to fine (aims merged 4:1 into
+    // super-aims, solved, then split with the parent's size as the children's start).
+    function dSolve(A, b, n) {                                   // A (n×n, row-major, destroyed) SPD → x, or null
+      for (let j = 0; j < n; j++) {
+        let s = A[j * n + j]; for (let k = 0; k < j; k++) s -= A[j * n + k] * A[j * n + k];
+        if (!(s > 1e-300)) return null; const dj = Math.sqrt(s); A[j * n + j] = dj;
+        for (let i = j + 1; i < n; i++) { let t = A[i * n + j]; for (let k = 0; k < j; k++) t -= A[i * n + k] * A[j * n + k]; A[i * n + j] = t / dj; }
+      }
+      const y = new Float64Array(n);
+      for (let i = 0; i < n; i++) { let t = b[i]; for (let k = 0; k < i; k++) t -= A[i * n + k] * y[k]; y[i] = t / A[i * n + i]; }
+      for (let i = n - 1; i >= 0; i--) { let t = y[i]; for (let k = i + 1; k < n; k++) t -= A[k * n + i] * y[k]; y[i] = t / A[i * n + i]; }
+      return y;
+    }
+    // A[j] = { c, ah, target } (target shares sum to 1); ds = the directions in play; x = log β (in/out); returns soft max relative error.
+    // Exact over ALL patches (no shortlist: in the fine problem the 32nd-nearest patch is only 0.1–0.3% farther than the
+    // nearest, so a shortlist silently truncates the soft partition).  A table of direction·aim dot products makes a
+    // radius one multiply-add and one division; only near-ties (within ~18τ of the smallest radius) get an exponential.
+    function newtonCore(A, ds, x, taus, tolLast, maxIt) {
+      const J = A.length, nd = ds.length; let tot = 0; for (const d of ds) tot += d.flux;
+      const want = A.map((z) => z.target * tot), dots = new Float64Array(nd * J), cc = new Float64Array(J);
+      for (let j = 0; j < J; j++) { cc[j] = 2 * A[j].c; const a = A[j].ah; for (let di = 0; di < nd; di++) { const u = ds[di].u; dots[di * J + j] = u[0] * a[0] + u[1] * a[1] + u[2] * a[2]; } }
+      const b = new Float64Array(J), q = new Float64Array(J), e2 = new Float64Array(J), gb = new Float64Array(J), R = new Float64Array(J);
+      const cj = new Int32Array(J), pp = new Float64Array(J), gg = new Float64Array(J);
+      const Fs = new Float64Array(J), M = new Float64Array(J * J);
+      const setB = () => { for (let j = 0; j < J; j++) { const bj = Math.exp(x[j]); b[j] = bj; q[j] = bj * (bj + cc[j]); e2[j] = 2 * bj; gb[j] = 1 + bj / (bj + cc[j]); } };
+      const evalF = (tau, wantM) => {                            // soft fluxes at x; if wantM also M = −∂F/∂x
+        setB(); Fs.fill(0); if (wantM) M.fill(0); const cut = Math.exp(18 * tau);
+        for (let di = 0, o = 0; di < nd; di++, o += J) {
+          let rmin = Infinity; for (let j = 0; j < J; j++) { const r = q[j] / (e2[j] + cc[j] * (1 - dots[o + j])); R[j] = r; if (r < rmin) rmin = r; }
+          const thr = rmin * cut; let nc = 0, zs = 0;
+          for (let j = 0; j < J; j++) if (R[j] <= thr) { cj[nc] = j; const p = Math.exp(-Math.log(R[j] / rmin) / tau); pp[nc] = p; zs += p; nc++; }
+          const fl = ds[di].flux;
+          for (let t = 0; t < nc; t++) { pp[t] /= zs; Fs[cj[t]] += fl * pp[t]; }
+          if (wantM) { const f = fl / tau;
+            for (let t = 0; t < nc; t++) { const j = cj[t]; gg[t] = gb[j] - 2 * b[j] / (e2[j] + cc[j] * (1 - dots[o + j])); }
+            for (let t = 0; t < nc; t++) { const pt = pp[t]; if (pt < 1e-7) continue; const it = cj[t] * J;
+              M[it + cj[t]] += f * gg[t] * pt * (1 - pt);
+              for (let u = 0; u < nc; u++) if (u !== t && pp[u] >= 1e-7) M[it + cj[u]] -= f * gg[u] * pt * pp[u]; } }
+        }
+      };
+      const norm = (res) => { let s = 0; for (let j = 0; j < J; j++) s += res[j] * res[j] / (want[j] * want[j]); return Math.sqrt(s / J); };
+      const res = new Float64Array(J), res2 = new Float64Array(J), Asym = new Float64Array(J * J), xo = new Float64Array(J);
+      let soft = 0;
+      for (let si = 0; si < taus.length; si++) {
+        const tau = taus[si], last = si === taus.length - 1; let mu = 1e-3, revived = 0;
+        for (let it = 0; it < maxIt; it++) {
+          evalF(tau, true); for (let j = 0; j < J; j++) res[j] = Fs[j] - want[j];
+          let worst = 0; for (let j = 0; j < J; j++) worst = Math.max(worst, Math.abs(res[j]) / want[j]);
+          soft = worst; if (worst < (last ? tolLast : Math.max(0.05, tolLast))) break;
+          // a patch with (almost) no flux has no gradient either (its weight underflows at small τ): bring it back to the edge of
+          // the partition, i.e. shrink it until it is within ~3τ of winning its best direction
+          let dead = 0; for (let j = 0; j < J; j++) if (Fs[j] < 1e-3 * want[j]) dead++;
+          if (dead && revived < 6) {
+            revived++; const mr = new Float64Array(J).fill(Infinity), isd = new Uint8Array(J); for (let j = 0; j < J; j++) if (Fs[j] < 1e-3 * want[j]) isd[j] = 1;
+            for (let di = 0, o = 0; di < nd; di++, o += J) {
+              let rmin = Infinity; for (let j = 0; j < J; j++) { const r = q[j] / (e2[j] + cc[j] * (1 - dots[o + j])); R[j] = r; if (r < rmin) rmin = r; }
+              for (let j = 0; j < J; j++) if (isd[j]) { const t = R[j] / rmin; if (t < mr[j]) mr[j] = t; }
+            }
+            for (let j = 0; j < J; j++) if (isd[j] && mr[j] < Infinity) x[j] -= Math.max(0, Math.log(mr[j]) / gb[j]) + 3 * tau;
+            it--; continue;
+          }
+          const n0 = norm(res); let dm = 0; for (let j = 0; j < J; j++) dm += M[j * J + j]; dm = dm / J + 1e-300;
+          if (globalThis.SQMDBG > 1) console.log('     J', J, 'it', it, 'tau', tau, 'norm', n0.toFixed(4), 'worst', worst.toFixed(3), 'mu', mu.toExponential(1), 'x range', Math.min(...x).toFixed(4), Math.max(...x).toFixed(4));
+          let ok = false;
+          for (let tries = 0; tries < 8 && !ok; tries++, mu *= 10) {
+            for (let i = 0; i < J; i++) { for (let j = 0; j < J; j++) Asym[i * J + j] = 0.5 * (M[i * J + j] + M[j * J + i]); Asym[i * J + i] += mu * (M[i * J + i] + 1e-3 * dm); }
+            const dl = dSolve(Asym, res, J); if (!dl) continue;
+            let mean = 0; for (let j = 0; j < J; j++) mean += dl[j]; mean /= J; for (let j = 0; j < J; j++) dl[j] = clamp(dl[j] - mean, -0.3, 0.3);
+            for (let s = 1; s > 0.05 && !ok; s *= 0.5) {
+              xo.set(x); for (let j = 0; j < J; j++) x[j] += s * dl[j];
+              evalF(tau, false); for (let j = 0; j < J; j++) res2[j] = Fs[j] - want[j];
+              if (norm(res2) < n0 * (1 - 1e-3 * s)) { ok = true; mu = Math.max(1e-6, mu * 0.05 / 10); } else x.set(xo);
+            }
+          }
+          if (!ok) break;
+        }
+        if (globalThis.SQMDBG) console.log('   newton J', J, 'τ', tau, 'soft max rel err', soft.toFixed(4));
+      }
+      return soft;
+    }
+    // super-aims: merge nearby aims 4:1 (weighted k-means on the target positions) until few remain
+    function levelsOf() {
+      const lv = [{ A: aims, par: null }]; let cur = aims.map((z) => ({ u: z.u, v: z.v, w: z.target }));
+      while (cur.length > 24) {
+        const K = Math.ceil(cur.length / 4), ordr = cur.map((_, i) => i).sort((a, b) => hil(cellOf(cur[a])) - hil(cellOf(cur[b])) || a - b);
+        let tw = 0; for (const c of cur) tw += c.w; let cs = [], acc = 0, nxt = tw / K / 2;
+        for (const i of ordr) { acc += cur[i].w; if (acc >= nxt && cs.length < K) { cs.push({ u: cur[i].u, v: cur[i].v }); nxt += tw / K; } }
+        let par = new Int32Array(cur.length);
+        for (let it = 0; it < 6; it++) {
+          const su = new Float64Array(cs.length), sv = new Float64Array(cs.length), sw = new Float64Array(cs.length);
+          cur.forEach((c, i) => { let bj = 0, bd = Infinity; for (let j = 0; j < cs.length; j++) { const d = (c.u - cs[j].u) ** 2 + (c.v - cs[j].v) ** 2; if (d < bd) { bd = d; bj = j; } } par[i] = bj; su[bj] += c.u * c.w; sv[bj] += c.v * c.w; sw[bj] += c.w; });
+          cs = cs.map((c, j) => sw[j] > 0 ? { u: su[j] / sw[j], v: sv[j] / sw[j] } : c);
+        }
+        const used = new Map(); let nn = 0; for (let i = 0; i < cur.length; i++) if (!used.has(par[i])) used.set(par[i], nn++);
+        const next = []; for (let i = 0; i < nn; i++) next.push({ u: 0, v: 0, w: 0 });
+        cur.forEach((c, i) => { const q = next[used.get(par[i])]; q.u += c.u * c.w; q.v += c.v * c.w; q.w += c.w; });
+        for (const q of next) { q.u /= q.w; q.v /= q.w; }
+        const pidx = Int32Array.from(cur.map((_, i) => used.get(par[i])));
+        lv[lv.length - 1].par = pidx;
+        const A = next.map((q) => { const Z = world(q.u, q.v), d = V.sub(Z, Lp), c = V.len(d); return { c, ah: V.mul(d, 1 / c), target: q.w }; });
+        lv.push({ A, par: null }); cur = next;
+      }
+      return lv.reverse();                                       // coarsest first; each level's `par` maps its members to the next-coarser one
+    }
+    function cellOf(q) { const half = T.half; return clamp(Math.floor((q.v / (2 * half) + 0.5) * R), 0, R - 1) * R + clamp(Math.floor((q.u / (2 * half) + 0.5) * R), 0, R - 1); }
+    const TM = { bal: 0, cold: 0, pred: 0, fit: 0 };
+    function balanceNewton(warm) { const t0 = Date.now(); try { return balanceNewton0(warm); } finally { TM.bal += Date.now() - t0; if (!warm) TM.cold += Date.now() - t0; } }
+    function balanceNewton0(warm) {
+      const on = dirs.filter((d) => d.on), J = aims.length, x = new Float64Array(J);
+      let gm = 0; for (const z of aims) gm += Math.log(z.beta); gm /= J;
+      const tolL = S.tol * 0.3, mi = 10;
+      if (warm) { aims.forEach((z, j) => { x[j] = Math.log(z.beta); }); newtonCore(aims, on, x, [S.warmTau], tolL, mi); }
+      else {
+        const lv = levelsOf(); let xp = null;
+        lv.forEach((L, li) => {
+          const last = li === lv.length - 1, xl = new Float64Array(L.A.length), nJ = L.A.length;
+          if (!xp) { xl.fill(gm); newtonCore(L.A, on, xl, [0.03, 0.01, 0.003, 0.001, 0.0004], 0.1, mi); }
+          else {
+            // split each parent's region among its children (small local problems), centred on the parent's size
+            const PA = lv[li - 1].A, win = new Int32Array(on.length), kids = PA.map(() => []), dg = PA.map(() => []);
+            on.forEach((d, di) => { let bj = -1, br = Infinity; for (let j = 0; j < PA.length; j++) { const b = Math.exp(xp[j]), z = PA[j], r = b * (b + 2 * z.c) / (2 * b + 2 * z.c * (1 - V.dot(d.u, z.ah))); if (r < br) { br = r; bj = j; } } dg[bj].push(d); });
+            for (let j = 0; j < nJ; j++) kids[L.par[j]].push(j);
+            for (let g = 0; g < PA.length; g++) {
+              const C = kids[g]; let tw = 0; for (const j of C) tw += L.A[j].target;
+              if (C.length === 1 || dg[g].length < 2 || !(tw > 0)) { for (const j of C) xl[j] = xp[g]; continue; }
+              const sub = C.map((j) => ({ c: L.A[j].c, ah: L.A[j].ah, target: L.A[j].target / tw })), xg = new Float64Array(C.length).fill(xp[g]);
+              newtonCore(sub, dg[g], xg, [0.02, 0.006, 0.002, 0.0006, 0.0002], 0.03, mi);
+              let mean = 0; C.forEach((j, q) => { mean += sub[q].target * xg[q]; });
+              C.forEach((j, q) => { xl[j] = xp[g] + xg[q] - mean; });
+              // the children's lower envelope sits below their parent's own size; lift them so, on average over the region, they cost what the parent did
+              const lc = (z, b, u) => Math.log(b * (b + 2 * z.c) / (2 * b + 2 * z.c * (1 - V.dot(u, z.ah)))); let sh = 0, sf = 0;
+              for (const d of dg[g]) { let env = Infinity; C.forEach((j) => { env = Math.min(env, lc(L.A[j], Math.exp(xl[j]), d.u)); }); sh += d.flux * (lc(PA[g], Math.exp(xp[g]), d.u) - env); sf += d.flux; }
+              sh /= sf; for (const j of C) xl[j] += sh;
+            }
+            newtonCore(L.A, on, xl, last ? [0.0006, 0.00015, 0.00006] : [0.002, 0.0006, 0.0002], last ? tolL : 0.1, mi);
+          }
+          xp = xl;
+        });
+        x.set(xp);
+      }
+      aims.forEach((z, j) => { z.beta = Math.exp(x[j]); });
+      assign(); let err = 0, tot = 0; for (const d of on) tot += d.flux; for (const z of aims) { const w = z.target * tot; err = Math.max(err, Math.abs(z.flux - w) / Math.max(1e-12, w)); }
+      if (globalThis.SQMDBG) { const es = aims.map((z) => Math.abs(z.flux - z.target * tot) / (z.target * tot)).sort((a, b) => a - b); console.log('  balance(newton): hard-partition rel error max', err.toFixed(3), 'p50', es[es.length >> 1].toFixed(3), 'p90', es[Math.floor(es.length * 0.9)].toFixed(3), 'rms', Math.sqrt(es.reduce((a, e) => a + e * e, 0) / es.length).toFixed(3), 'empty', aims.filter((z) => z.flux === 0).length); }
+      return err;
+    }
+    // changing a patch's foci changes its ellipsoid a lot (a defocus moves the second focus by a large factor) while the
+    // patch itself should stay where it is: re-size it so its mean log-radius over its own directions is unchanged.
+    function keepSizes(mutate, shift) {
+      const byJ = aims.map(() => []); for (const d of dirs) if (d.on && d.j >= 0) byJ[d.j].push(d);
+      const tgt = aims.map((z, j) => { let s = 0, w = 0; for (const d of byJ[j]) { s += Math.log(d.r) * d.flux; w += d.flux; } return w > 0 ? s / w + (shift || 0) : NaN; });
+      mutate();
+      aims.forEach((z, j) => {
+        if (!(tgt[j] === tgt[j])) return; const w = byJ[j].reduce((a, d) => a + d.flux, 0);
+        for (let it = 0; it < 6; it++) { let s = 0; for (const d of byJ[j]) s += Math.log(rOf(z, d.u)) * d.flux; z.beta *= Math.exp(clamp(tgt[j] - s / w, -1, 1)); }
+      });
+    }
     function balance(iters, warm) {
+      if (S.newton) return balanceNewton(warm);
       let tot = 0; for (const d of dirs) if (d.on) tot += d.flux;
       const J = aims.length, on = dirs.filter((d) => d.on), KK = Math.min(J, S.shortlist > 0 ? S.shortlist : J), lr = new Float64Array(KK), Fs = new Float64Array(J);
       const taus = warm ? [0.001, 0.0004, 0.00015, 0.00006] : [0.03, 0.01, 0.003, 0.001, 0.0004, 0.00015, 0.00006], per = Math.max(5, Math.floor(iters / taus.length));
@@ -167,7 +327,7 @@
       const rat = []; for (const d of dirs) if (d.on && d.j >= 0) rat.push([d.r / d.rEnv, d.flux]);
       rat.sort((a, b) => a[0] - b[0]); let tot = 0; for (const x of rat) tot += x[1];
       let acc = 0, q = rat.length ? rat[rat.length - 1][0] : 1; for (const x of rat) { acc += x[1]; if (acc >= S.fitShare * tot) { q = x[0]; break; } }
-      if (q > 1) for (const z of aims) z.beta /= q * 1.002;
+      if (q > 1) keepSizes(() => {}, -Math.log(q * 1.002));   // scale every patch's radius, not β (β + 2c is not homogeneous)
       assign(); let dropped = 0; for (const d of dirs) if (d.on && (d.j < 0 || d.r > d.rEnv || d.r < rmin)) { d.on = false; dropped++; }
       return { q, dropped };
     }
@@ -188,7 +348,7 @@
     }
     for (let round = 0; round < 8; round++) {
       err = balance(S.iters, round > 0);
-      if (round === 0 && S.defocus > 0) { setDefocus(); err = balance(S.iters, true); }
+      if (round === 0 && S.defocus > 0) { keepSizes(setDefocus); err = balance(S.iters, true); }
       if (globalThis.SQMDBG) { let on = 0, rr = []; for (const d of dirs) if (d.on) { on++; rr.push(d.r / d.rEnv); } rr.sort((a, b) => a - b); console.log('round', round, 'on', on, 'err', err.toFixed(3), 'ratio p10/50/90', [0.1, 0.5, 0.9].map((q) => rr[Math.floor(q * rr.length)]).map((x) => x && x.toFixed(2)).join('/'), 'beta0', aims[0].beta.toFixed(2)); }
       const f = fit(); if (f.q <= 1.0001 && !f.dropped) break;
       prog(0.1 + 0.1 * round / 8, 'fit envelope');
@@ -198,7 +358,8 @@
     // ---- prediction (exact geometry) + Fournier compensation of the virtual target
     const NS = S.ledSamples | 0, fake = { source: src, envelope: env, target: input.target, modeA: { paint } };
     const Fg = new Float64Array(R * R), ledCache = new Map();
-    function predict() {
+    function predict() { const t0 = Date.now(); try { return predict0(); } finally { TM.pred += Date.now() - t0; } }
+    function predict0() {
       Fg.fill(0);
       const byJ = aims.map(() => []); for (const d of dirs) if (d.on && d.j >= 0) byJ[d.j].push(d);
       aims.forEach((z, j) => {
@@ -247,12 +408,14 @@
       let a = 0, b = 0; for (const k of pcells) { a += Fg[k] * paint[k]; b += paint[k] * paint[k]; } const sc = a / Math.max(1e-30, b);
       const want = new Float64Array(aims.length), got = new Float64Array(aims.length), mu = new Float64Array(aims.length), mv = new Float64Array(aims.length), mw = new Float64Array(aims.length);
       for (const k of pcells) { const j = owner[k]; if (j < 0 || j >= aims.length) continue; want[j] += paint[k] * sc; got[j] += Fg[k]; const [u, v] = uvOf(k), def = Math.max(0, paint[k] * sc - Fg[k]); mu[j] += u * def; mv[j] += v * def; mw[j] += def; }
-      aims.forEach((z, j) => {
-        if (got[j] > 0 && want[j] > 0) z.target *= Math.pow(want[j] / got[j], S.gain);
-        if (mw[j] > 0) { z.u += S.nudge * (mu[j] / mw[j] - z.u); z.v += S.nudge * (mv[j] / mw[j] - z.v); setFocus(z); }
+      keepSizes(() => {
+        aims.forEach((z, j) => {
+          if (got[j] > 0 && want[j] > 0) z.target *= Math.pow(want[j] / got[j], S.gain);
+          if (mw[j] > 0) { z.u += S.nudge * (mu[j] / mw[j] - z.u); z.v += S.nudge * (mv[j] / mw[j] - z.v); setFocus(z); }
+        });
+        const tt = aims.reduce((s, z) => s + z.target, 0); for (const z of aims) z.target /= tt;
+        setDefocus();
       });
-      const tt = aims.reduce((s, z) => s + z.target, 0); for (const z of aims) z.target /= tt;
-      setDefocus();
       err = balance(S.iters, true); for (let k = 0; k < 3; k++) { const f = fit(); if (!f.dropped) break; err = balance(S.iters, true); }
       fd = predict();
       if (fd && (!best.fd || fd.fidelity > best.fd.fidelity)) best = { fd, state: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target, m: z.m })) };
@@ -292,9 +455,26 @@
     let covered = 0; for (const d of dirs) if (d.on) covered += d.flux;
     let onP = 0; for (const k of pcells) onP += Fg[k];
     notes.push(out.length + ' patches of one continuous surface; they catch ' + Math.round(100 * covered / src.power) + '% of the LED\'s light (front opening ' + S.open + '°); flux balance within ' + Math.round(100 * err) + '%');
+    if (globalThis.SQMDBG) console.log('timing ms', JSON.stringify(TM));
     if (fd) notes.push('predicted fidelity ' + (100 * fd.fidelity).toFixed(1) + '% (the model\'s own field, scored by the app)');
+    let truth;
+    if (S.debug) {                                                  // dev: per-patch flux on a lattice 4× finer each way, hard partition, vs the targets
+      const f = 4, NA2 = NA * f, NP2 = NP * f, dOm2 = 4 * Math.PI / (NA2 * NP2), fl = new Float64Array(aims.length); let tt = 0;
+      for (let q = 0; q < NP2; q++) for (let a = 0; a < NA2; a++) {
+        const ca = 1 - 2 * (a + 0.5) / NA2, sa = Math.sqrt(Math.max(0, 1 - ca * ca)), phi = (q + 0.5) / NP2 * 2 * Math.PI;
+        if (Math.acos(ca) * 180 / Math.PI < S.open) continue;
+        const u = V.add(V.mul(B, ca), V.mul(V.add(V.mul(e1, Math.cos(phi)), V.mul(e2, Math.sin(phi))), sa));
+        const I = RF.Source.intensity(src, Math.acos(clamp(V.dot(u, fr.a), -1, 1))); if (!(I > 0)) continue;
+        let bj = -1, br = Infinity; for (let j = 0; j < aims.length; j++) { const r = rOf(aims[j], u); if (r > 0 && r < br) { br = r; bj = j; } }
+        const iv = RF.Geo.envInterval(env, Lp, u), rEnv = iv && iv[1] > Math.max(0, iv[0]) ? iv[1] - S.margin : -1;
+        if (bj < 0 || br > rEnv || br < rmin) continue;
+        const w = src.power * I / Itot * dOm2; fl[bj] += w; tt += w;
+      }
+      const es = aims.map((z, j) => Math.abs(fl[j] - z.target * tt) / (z.target * tt)).sort((x, y) => x - y);
+      truth = { max: es[es.length - 1], p50: es[es.length >> 1], p90: es[Math.floor(es.length * 0.9)], rms: Math.sqrt(es.reduce((x, y) => x + y * y, 0) / es.length) };
+    }
     prog(1, 'done');
-    return { surfaces: out, intent: intent.filter((it) => ids.has(it.facet)), notes, pred: { fid: fd ? fd.fidelity : 0, onPaint: onP / src.power }, debug: S.debug ? { F: Array.from(Fg), R } : undefined };
+    return { surfaces: out, intent: intent.filter((it) => ids.has(it.facet)), notes, pred: { fid: fd ? fd.fidelity : 0, onPaint: onP / src.power }, debug: S.debug ? { F: Array.from(Fg), R, truth } : undefined };
   }
 
   const QUALITY = { fast: { compensate: 3, iters: 150, apCells: 24, ledSamples: 5, cellsPerFacet: 40 }, normal: { compensate: 6, iters: 250, apCells: 40, ledSamples: 6, cellsPerFacet: 60 }, best: { compensate: 10, iters: 400, apCells: 64, ledSamples: 7, cellsPerFacet: 100 } };
@@ -329,8 +509,11 @@
       { key: 'nudge', adv: true, label: 'Compensation gain (aim positions)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.3 },
       { key: 'lloyd', adv: true, label: 'Aim clustering iterations', type: 'number', min: 0, max: 50, step: 1, default: 12 },
       { key: 'iters', adv: true, label: 'Flux-balance iterations (−1 auto)', type: 'number', min: -1, max: 1000, step: 10, default: -1 },
-      { key: 'step', adv: true, label: 'Flux-balance step', type: 'number', min: 0.01, max: 2, step: 0.01, default: 0.3 },
-      { key: 'shortlist', adv: true, label: 'Candidate patches per direction (0 = all)', type: 'number', min: 0, max: 64, step: 1, default: 16 },
+      { key: 'newton', adv: true, label: 'Newton flux balance (off: older annealed updates)', type: 'checkbox', default: true },
+      { key: 'shortlist', adv: true, label: 'Candidate patches per direction (0 = all)', type: 'number', min: 0, max: 64, step: 1, default: 32 },
+      { key: 'warmTau', adv: true, label: 'dev: final entropic width', type: 'number', min: 0.00001, max: 0.01, step: 0.00001, default: 0.00012 },
+      { key: 'trust', adv: true, label: 'dev: newton trust', type: 'number', min: 0.0001, max: 1, step: 0.0001, default: 0.01 },
+      { key: 'drift', adv: true, label: 'dev: shortlist refresh drift', type: 'number', min: 0, max: 1, step: 0.001, default: 0.004 },
       { key: 'tol', adv: true, label: 'Flux-balance tolerance', type: 'number', min: 0.001, max: 0.5, step: 0.005, default: 0.03 },
       { key: 'fitShare', adv: true, label: 'Share of the light the envelope fit keeps', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.9 },
       { key: 'startR', adv: true, label: 'Starting focal length (mm)', type: 'number', min: 1, max: 500, step: 1, default: 20 },
