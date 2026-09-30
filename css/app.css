@@ -382,3 +382,5 @@ button.toggle[aria-pressed="true"] { background: #3a2f1f; color: var(--warn); bo
 /* Result: the view buttons keep their size and drop below the title when the header is narrow (never overflow) */
 .head-tools:has(#heat-display) { flex: 0 0 auto; max-width: calc(100% - 40px); }
 #heat-display { flex-wrap: wrap; }   /* a very narrow pane: the buttons wrap rather than spill past the edge */
+.side details.solver-adv { border-bottom: 0; padding: var(--s-4, 6px) 0 0; }
+.side details.solver-adv > summary { font-size: 12px; color: var(--dim); }

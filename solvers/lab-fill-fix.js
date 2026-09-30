@@ -90,7 +90,7 @@
     // lie flush with it (no sawtooth; hugging a flat wall with tilted facets blocked 42% of the light, measured).
     // Along a meridian f may only shrink going backward: then ρ = 2f·cot(α/2) shrinks too and nothing blocks.
     const fEnv = (c) => c.rEnv * (1 - c.ca) / 2, rOf = (f, c) => 2 * f / Math.max(1e-9, 1 - c.ca);
-    function chain(row, a0) {                              // focal lengths along one meridian with the front cutoff at a0
+    function chain(row, a0, rmin) {                        // focal lengths along one meridian with the front cutoff at a0
       const fs = new Float64Array(NA).fill(-1); let fP = Infinity, util = 0;
       for (let a = a0; a < NA; a++) {
         const c = row[a]; if (!(c.flux > 0) || c.rEnv < rmin || c.sa < 1e-6) continue;
@@ -100,13 +100,21 @@
       }
       return { fs, util };
     }
-    let covered = [], fluxAll = 0, fluxCov = 0;
-    for (let q = 0; q < NP; q++) {
-      const row = G[q]; let best = null;
-      for (let a0 = 0; a0 < NA; a0++) { if (!(row[a0].flux > 0) || row[a0].rEnv < rmin) continue; const c = chain(row, a0); if (!best || c.util > best.util + 1e-12) best = Object.assign(c, { a0 }); }
-      for (let a = 0; a < NA; a++) fluxAll += row[a].flux;
-      if (!best) continue;
-      for (let a = 0; a < NA; a++) if (best.fs[a] > 0) { covered.push({ q, a, f: best.fs[a], r: rOf(best.fs[a], row[a]), flux: row[a].flux, c: row[a] }); fluxCov += row[a].flux; }
+    function shell(rmin) {
+      const covered = []; let fluxAll = 0, fluxCov = 0;
+      for (let q = 0; q < NP; q++) {
+        const row = G[q]; let best = null;
+        for (let a0 = 0; a0 < NA; a0++) { if (!(row[a0].flux > 0) || row[a0].rEnv < rmin) continue; const c = chain(row, a0, rmin); if (!best || c.util > best.util + 1e-12) best = Object.assign(c, { a0 }); }
+        for (let a = 0; a < NA; a++) fluxAll += row[a].flux;
+        if (!best) continue;
+        for (let a = 0; a < NA; a++) if (best.fs[a] > 0) { covered.push({ q, a, f: best.fs[a], r: rOf(best.fs[a], row[a]), flux: row[a].flux, c: row[a] }); fluxCov += row[a].flux; }
+      }
+      return { covered, fluxAll, fluxCov };
+    }
+    const { covered, fluxAll, fluxCov } = shell(rmin);
+    if (S.minDistance > 0 && S.minDistance > (env.keepOut || 0)) {      // what the Min facet distance costs THIS solver
+      const free = shell(Math.max(env.keepOut || 0, 0) + RF.Source.boundingRadius(src) * 0.5 + S.margin), a = fluxCov / fluxAll, b = free.fluxCov / free.fluxAll;
+      if (b - a >= 0.05) notes.push('⚠ Min facet distance ' + S.minDistance + ' mm: mirrors reach ' + Math.round(100 * a) + '% of the LED\'s light (' + Math.round(100 * b) + '% at 0)');
     }
     if (!covered.length) return { surfaces: [], intent: [], notes: ['no direction from the LED can hold a mirror inside the envelope'] };
     notes.push('shell covers ' + (100 * fluxCov / Math.max(1e-12, fluxAll)).toFixed(0) + '% of the LED\'s light; radii ' + Math.min(...covered.map((x) => x.r)).toFixed(1) + '–' + Math.max(...covered.map((x) => x.r)).toFixed(1) + ' mm (sharp at ≥ ' + rNeed.toFixed(0) + ' mm)');
@@ -477,10 +485,22 @@
   // Shell search (no rays): dish-fit's lesson — the best reflector size depends on the painting, and the model's own
   // predicted field, scored with the app's fidelity, is a good enough judge.  Quick solves (1 sweep, light polish) for
   // a few shell settings; the winner (predicted fidelity + light × lightWeight) gets the full solve.
-  function solve(input, S, tools) {
-    if (!S.search) return solveOnce(input, S, tools);
+  // Priority × Quality → the expert knobs they stand for (an expert knob set by hand wins)
+  const PRIORITY = { sharp: { lightWeight: 0, useAll: false, shells: [1, 2, 3.5, 5] }, balanced: { lightWeight: 0.25, useAll: false, shells: [0, 0.5, 1, 2, 3.5] }, light: { lightWeight: 1, useAll: true, shells: [0, 0.3, 0.7, 1.2] } };
+  const QUALITY = { fast: { search: false, sweeps: 2, polish: 1, apCells: 32, ledSamples: 5, topK: 4, exact: true }, normal: { search: true, sweeps: 3, polish: 2, apCells: 48, ledSamples: 6, topK: 6, exact: true }, best: { search: true, sweeps: 5, polish: 3, apCells: 64, ledSamples: 7, topK: 8, exact: true } };
+  function resolve(S0) {
+    const S = Object.assign({}, S0), P = PRIORITY[S.priority] || PRIORITY.balanced, Q = QUALITY[S.quality] || QUALITY.normal;
+    const pick = (k, auto) => { if (S[k] === -1 || S[k] === 'auto' || S[k] === undefined) S[k] = auto; else if (S[k] === 'on') S[k] = true; else if (S[k] === 'off') S[k] = false; };
+    pick('lightWeight', P.lightWeight); pick('useAll', P.useAll); pick('search', Q.search); pick('sweeps', Q.sweeps); pick('polish', Q.polish);
+    pick('apCells', Q.apCells); pick('ledSamples', Q.ledSamples); pick('topK', Q.topK); pick('exact', Q.exact);
+    S.shells = S.sharp >= 0 ? [S.sharp] : P.shells; if (S.sharp < 0) S.sharp = P.shells[Math.floor(P.shells.length / 2)];
+    return S;
+  }
+  function solve(input, S0, tools) {
+    const S = S0.__resolved ? S0 : Object.assign(resolve(S0), { __resolved: true });
+    if (!S.search || S.shells.length < 2) return solveOnce(input, S, tools);
     const prog = (f, st) => { if (tools && tools.progress) tools.progress(f, st); };
-    const opts = [S.sharp, 0, 0.5, 2, 3.5].filter((x, i, a) => a.indexOf(x) === i), res = [];
+    const opts = S.shells, res = [];
     opts.forEach((sh, i) => {
       const quick = Object.assign({}, S, { sharp: sh, sweeps: 1, polish: 1, search: false });
       const out = solveOnce(input, quick, { progress: (f, st) => prog(0.5 * (i + f) / opts.length, 'shell ' + (i + 1) + '/' + opts.length + ' · ' + (st || '')) });
@@ -496,30 +516,35 @@
     id: 'fill-fix', name: 'Fill & fix', version: '0.2', modes: ['paint'],
     settings: [
       { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },
-      { key: 'shapes', label: 'Facet shapes', type: 'select', options: [{ value: 'two', label: 'two-curvature (wide/short patches)' }, { value: 'round', label: 'one curvature' }], default: 'two' },
-      { key: 'search', label: 'Pick the shell by predicted score', type: 'checkbox', default: true },
-      { key: 'lightWeight', label: 'Light on paint worth (vs fidelity)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.25 },
-      { key: 'sharp', label: 'Sharpness vs light (shell)', type: 'range', min: 0, max: 3, step: 0.1, default: 1, help: '0: cover as much of the LED as possible; higher: keep facets far from the LED (smaller images), letting more light go' },
-      { key: 'detail', label: 'Facets toward sharp directions (κ; −1 = from the paint)', type: 'number', min: -1, max: 4, step: 0.1, default: -1, help: 'Tiles hold equal flux × (r / r_median)^κ: higher κ gives far (sharp) directions more, smaller facets and near ones fewer, bigger ones' },
-      { key: 'feature', label: 'Finest detail (cells)', type: 'number', min: 1, max: 20, step: 0.5, default: 3, help: 'A facet counts as sharp when its LED image is this many cells or less' },
-      { key: 'sweeps', label: 'Fix sweeps', type: 'range', min: 0, max: 12, step: 1, default: 4 },
-      { key: 'boost', label: 'Boost failing cells (per sweep)', type: 'number', min: 0, max: 2, step: 0.1, default: 0.6 },
-      { key: 'gapWeight', label: 'Keep gaps dark (weight)', type: 'number', min: 0, max: 10, step: 0.1, default: 1 },
-      { key: 'farWeight', label: 'Stray light elsewhere (weight)', type: 'number', min: 0, max: 10, step: 0.01, default: 0.05 },
-      { key: 'util', label: 'Target level (share of captured light)', type: 'number', min: 0.3, max: 1.5, step: 0.05, default: 0.9 },
-      { key: 'step', label: 'Focal step between rows (share)', type: 'number', min: 0, max: 0.2, step: 0.005, default: 0.01 },
-      { key: 'margin', label: 'Wall / gap margin (mm)', type: 'number', min: 0, max: 5, step: 0.05, default: 0.3 },
-      { key: 'gridA', label: 'Shell grid (polar)', type: 'number', min: 20, max: 400, step: 10, default: 120 },
-      { key: 'gridP', label: 'Shell grid (azimuth)', type: 'number', min: 12, max: 360, step: 6, default: 96 },
-      { key: 'ledSamples', label: 'LED samples per side', type: 'number', min: 1, max: 16, step: 1, default: 6 },
-      { key: 'apSamples', label: 'Aperture samples per side', type: 'number', min: 2, max: 16, step: 1, default: 6 },
-      { key: 'aimGrid', label: 'Aim search grid (per side)', type: 'number', min: 10, max: 400, step: 10, default: 40 },
-      { key: 'topK', label: 'Exact checks per facet', type: 'number', min: 1, max: 40, step: 1, default: 6 },
-      { key: 'subcell', label: 'Half-cell aims', type: 'checkbox', default: true },
-      { key: 'exact', label: 'Exact footprints (real surface, slower)', type: 'checkbox', default: true },
-      { key: 'apCells', label: 'Aperture samples per facet (exact)', type: 'number', min: 8, max: 400, step: 4, default: 64 },
-      { key: 'polish', label: 'Continuous refinement levels', type: 'number', min: 0, max: 5, step: 1, default: 3 },
-      { key: 'useAll', label: 'Use every facet even where it only hurts', type: 'checkbox', default: false },
+      { key: 'priority', label: 'Priority', type: 'select', default: 'balanced', options: [{ value: 'sharp', label: 'sharpest' }, { value: 'balanced', label: 'balanced' }, { value: 'light', label: 'most light' }],
+        help: 'Sharpest: the best match to the paint, even if some light is let go. Most light: capture and use as much of the LED as possible, at some cost in sharpness.' },
+      { key: 'shapes', label: 'Facet shapes', type: 'select', default: 'two', options: [{ value: 'two', label: 'two-curvature (wide/short patches)' }, { value: 'round', label: 'one curvature' }],
+        help: 'Two-curvature facets focus differently across and along: wide, short patches for washes and cutoffs.' },
+      { key: 'quality', label: 'Quality', type: 'select', default: 'normal', options: [{ value: 'fast', label: 'fast (~3 s)' }, { value: 'normal', label: 'normal' }, { value: 'best', label: 'best (~20 s)' }] },
+      // expert knobs: −1 / 'auto' = set by Priority and Quality
+      { key: 'sharp', adv: true, label: 'Shell: sharpness vs light (−1 auto)', type: 'number', min: -1, max: 5, step: 0.1, default: -1 },
+      { key: 'search', adv: true, label: 'Shell search by predicted score', type: 'select', default: 'auto', options: ['auto', 'on', 'off'] },
+      { key: 'lightWeight', adv: true, label: 'Light on paint worth, vs fidelity (−1 auto)', type: 'number', min: -1, max: 3, step: 0.05, default: -1 },
+      { key: 'detail', adv: true, label: 'Facets toward sharp directions κ (−1 from the paint)', type: 'number', min: -1, max: 4, step: 0.1, default: -1 },
+      { key: 'feature', adv: true, label: 'Finest detail (cells)', type: 'number', min: 1, max: 20, step: 0.5, default: 3 },
+      { key: 'sweeps', adv: true, label: 'Fix sweeps (−1 auto)', type: 'number', min: -1, max: 12, step: 1, default: -1 },
+      { key: 'polish', adv: true, label: 'Continuous refinement levels (−1 auto)', type: 'number', min: -1, max: 5, step: 1, default: -1 },
+      { key: 'boost', adv: true, label: 'Boost failing cells per sweep', type: 'number', min: 0, max: 2, step: 0.1, default: 0.6 },
+      { key: 'gapWeight', adv: true, label: 'Keep gaps dark (weight)', type: 'number', min: 0, max: 10, step: 0.1, default: 1 },
+      { key: 'farWeight', adv: true, label: 'Stray light elsewhere (weight)', type: 'number', min: 0, max: 10, step: 0.01, default: 0.05 },
+      { key: 'util', adv: true, label: 'Target level (share of captured light)', type: 'number', min: 0.3, max: 1.5, step: 0.05, default: 0.9 },
+      { key: 'useAll', adv: true, label: 'Place facets that only hurt', type: 'select', default: 'auto', options: ['auto', 'on', 'off'] },
+      { key: 'step', adv: true, label: 'Focal step between rows (share)', type: 'number', min: 0, max: 0.2, step: 0.005, default: 0.01 },
+      { key: 'margin', adv: true, label: 'Wall / gap margin (mm)', type: 'number', min: 0, max: 5, step: 0.05, default: 0.3 },
+      { key: 'exact', adv: true, label: 'Exact footprints', type: 'select', default: 'auto', options: ['auto', 'on', 'off'] },
+      { key: 'apCells', adv: true, label: 'Aperture samples per facet (−1 auto)', type: 'number', min: -1, max: 400, step: 4, default: -1 },
+      { key: 'ledSamples', adv: true, label: 'LED samples per side (−1 auto)', type: 'number', min: -1, max: 16, step: 1, default: -1 },
+      { key: 'apSamples', adv: true, label: 'Aperture samples per side (fast model)', type: 'number', min: 2, max: 16, step: 1, default: 6 },
+      { key: 'topK', adv: true, label: 'Exact checks per facet (−1 auto)', type: 'number', min: -1, max: 40, step: 1, default: -1 },
+      { key: 'aimGrid', adv: true, label: 'Aim search grid (per side)', type: 'number', min: 10, max: 400, step: 10, default: 40 },
+      { key: 'subcell', adv: true, label: 'Half-cell aims', type: 'checkbox', default: true },
+      { key: 'gridA', adv: true, label: 'Shell grid (polar)', type: 'number', min: 20, max: 400, step: 10, default: 120 },
+      { key: 'gridP', adv: true, label: 'Shell grid (azimuth)', type: 'number', min: 12, max: 360, step: 6, default: 96 },
     ],
     solve,
   });

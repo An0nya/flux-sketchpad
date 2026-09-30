@@ -98,6 +98,25 @@
     return A * omegaProj * Math.min(1, Math.max(0, frac));
   }
 
+  /* minDistanceLoss(scene) → share of the LED's light whose direction has room for a mirror inside the envelope
+   * (beyond the LED clearance) ONLY closer than the Min facet distance — light that setting leaves without a mirror.
+   * 20k deterministic samples of the real source; cached on the inputs that matter.                             */
+  let mdlKey = '', mdlVal = 0;
+  function minDistanceLoss(scene) {
+    const md = (scene.modeA && scene.modeA.minDistance) || 0; if (!(md > 0)) return 0;
+    const key = JSON.stringify([scene.source, scene.envelope, md]); if (key === mdlKey) return mdlVal;
+    const S = RF.Source.makeSampler(scene.source), o = [0, 0, 0], d = [0, 0, 0], keep = scene.envelope.keepOut || 0;
+    let seed = 7, room = 0, lost = 0; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let n = 0; n < 20000; n++) {
+      RF.Source.sampleRay(S, rnd(), rnd(), rnd(), rnd(), rnd(), o, d);   // directions as emitted (an opaque coil needs its surface points too)
+      const iv = Geo.envInterval(scene.envelope, scene.source.pos, d), lo = Math.max(0, iv[0], keep), hi = iv[1];
+      if (hi <= lo) continue;
+      room++; if (hi <= Math.max(lo, md)) lost++;
+    }
+    mdlKey = key; mdlVal = lost / 20000;
+    return mdlVal;
+  }
+
   /* analyze(scene, {designReport, stats}) → { items, binding, summary } */
   function analyze(scene, ctx) {
     ctx = ctx || {};
@@ -197,5 +216,5 @@
     return { items, binding, summary };
   }
 
-  RF.Feasibility = { analyze, finestFeature, distanceInside, reachableFlux, sourceEtendue, projectedArea };
+  RF.Feasibility = { minDistanceLoss, analyze, finestFeature, distanceInside, reachableFlux, sourceEtendue, projectedArea };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -191,7 +191,7 @@
     const loadBtn = el('label', { class: 'filebtn', title: 'A self-contained .js file that calls RF.Solvers.register({...}). It runs in a worker, never on this page.' }, 'Load solver file…', file);
     const forget = el('button', { type: 'button', title: 'Unload every loaded solver and go back to the default' }, 'Forget loaded');
     forget.addEventListener('click', () => { RF.SolverHost.forget(); try { localStorage.removeItem('flux/solverChoice'); } catch (e) { /* ignore */ } sc.solve = { id: RF.Solvers.DEFAULT_ID }; ui.generateA(); renderSolverBox(); });
-    const fields = [];
+    const fields = [], advFields = [];
     if (cur !== RF.Solvers.DEFAULT_ID) {                // the default's settings are the Paint controls above
       sc.solverSettings = sc.solverSettings || {}; const vals = RF.Solvers.settingsOf(sc, cur);
       const shared = def.settings.filter((f) => RF.Solvers.SHARED.includes(f.key)).map((f) => f.label || f.key);
@@ -203,13 +203,19 @@
         if (f.type === 'select') { inp = el('select', {}, ...(f.options || []).map((o) => el('option', { value: o.value !== undefined ? o.value : o }, o.label || o.value || o))); inp.value = vals[f.key]; inp.addEventListener('change', () => set(inp.value)); }
         else if (f.type === 'checkbox') { inp = el('input', { type: 'checkbox' }); inp.checked = !!vals[f.key]; inp.addEventListener('change', () => set(inp.checked)); }
         else { inp = el('input', { type: f.type === 'range' ? 'range' : 'number', min: f.min, max: f.max, step: f.step || 'any', value: vals[f.key] }); inp.addEventListener('change', () => set(+inp.value)); }
-        fields.push(el('div', { class: 'row', title: f.help || '' }, el('label', {}, f.label || f.key), inp));
+        // a solver that marks its expert knobs (adv) gets its own split; a bundled model solver that doesn't has them all tucked away
+        (f.adv || (def.bundled && !def.settings.some((x) => x.adv)) ? advFields : fields).push(el('div', { class: 'row', title: f.help || '' }, el('label', {}, f.label || f.key), inp));
+      }
+      if (advFields.length) {
+        const det = el('details', { class: 'solver-adv' }, el('summary', {}, 'Advanced (' + advFields.length + ')'), ...advFields);
+        det.open = !!ui.solverAdvOpen; det.addEventListener('toggle', () => { ui.solverAdvOpen = det.open; });
+        fields.push(det);
       }
     }
     const fx = rep && rep.facts, facts = !fx ? '—' : fx.errors.length ? 'unusable output: ' + fx.errors[0] :
       fx.placed + ' placed' + (fx.dropped !== null ? ' · ' + fx.dropped + ' unplaced intents' : '') + ' · envelope ' + (fx.violations.envelope.length ? fx.violations.envelope.length + ' outside' : 'ok') + ' · keep-out ' + (fx.violations.keepOut.length ? fx.violations.keepOut.length + ' inside' : 'ok') + ' · budget ' + (fx.violations.budget ? 'EXCEEDED (' + fx.violations.budget.placed + ' > ' + fx.violations.budget.budget + ')' : 'ok') + (fx.intentErrors.length ? ' · intent malformed' : '') + (rep.solveMs !== undefined ? ' · ' + Math.round(rep.solveMs) + ' ms' : '');
     box.innerHTML = '';
-    const who = def.bundled ? 'Written by ' + def.bundled.model + ' in the Flux solver benchmark run of ' + def.bundled.run + ' (solvers/' + def.bundled.file + ').' + (/-auto$/.test(def.id) ? ' A tuner: it traces candidates, so it takes longer.' : '')
+    const who = def.bundled ? (def.bundled.note === 'lab' ? 'Built in the Flux solver lab (' + def.bundled.model.replace(/^.*\((.*)\)$/, '$1') + ', ' + def.bundled.run + '; solvers/' + def.bundled.file + ').' : 'Written by ' + def.bundled.model + ' in the Flux solver benchmark run of ' + def.bundled.run + ' (solvers/' + def.bundled.file + ').') + (/-auto$/.test(def.id) ? ' A tuner: it traces candidates, so it takes longer.' : '')
       : def.loaded ? 'Loaded from a file in this browser.' : cur === RF.Solvers.DEFAULT_ID ? 'The app\'s default solver.' : 'Built into the app.';
     box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), el('div', { class: 'note' }, who), ...fields,
       el('div', { class: 'btnrow' }, loadBtn, forget),

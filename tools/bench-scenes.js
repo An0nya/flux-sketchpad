@@ -105,7 +105,7 @@ const GROUPS = {
 function privateScenes(RF) {
   const out = {}, AQ = path.join(os.homedir(), 'Projects/agent-qa');
   try { const SC = require(path.join(AQ, 'tools/flux-scoring.js')); for (const [k, f] of Object.entries(SC.heldScenes(RF))) out['held-' + k] = f; } catch (e) { /* not on this machine */ }
-  const files = { 'anya-lowbeam-212': 'anya-lowbeam-212-2026-09-27.json', 'anya-lowbeam-1001': 'anya-lowbeam-1001-2026-09-29.json', 'anya-beamshot-400': 'anya-beamshot-400-2026-09-29.json' };
+  const files = { 'anya-shot-245': 'anya-screenshot-245-2026-09-29.json', 'anya-lowbeam-212': 'anya-lowbeam-212-2026-09-27.json', 'anya-lowbeam-1001': 'anya-lowbeam-1001-2026-09-29.json', 'anya-beamshot-400': 'anya-beamshot-400-2026-09-29.json' };
   for (const [k, f] of Object.entries(files)) { const p = path.join(AQ, 'scenes', f); if (fs.existsSync(p)) { const txt = fs.readFileSync(p, 'utf8'); out[k] = () => RF.State.deserialize(txt); } }
   return out;
 }

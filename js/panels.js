@@ -422,6 +422,11 @@
         if (rA.dropped) issues.push(rA.dropped + ' facet' + (rA.dropped > 1 ? 's' : '') + ' dropped (no room in the envelope)');
         if (rA.clamped) issues.push(rA.clamped + ' zone' + (rA.clamped > 1 ? 's' : '') + ' blurrier than their tile');
         if (rA.warnings.some((w) => /budget too small/i.test(w))) issues.push('budget too small: azimuth trimmed');
+        for (const w of rA.warnings) if (/^⚠/.test(w)) issues.push(w.replace(/^⚠\s*/, ''));   // a solver's own headline warnings
+      }
+      if (ui.store.scene.mode === 'A' && RF.Feasibility.minDistanceLoss) {
+        const md = ui.store.scene.modeA.minDistance || 0, lossMD = RF.Feasibility.minDistanceLoss(ui.store.scene);
+        if (lossMD >= 0.05) issues.push('Min facet distance ' + md + ' mm: at least ' + Math.round(100 * lossMD) + '% of the LED\'s light has room for a mirror only closer than that');
       }
       if (f.binding) issues.push(f.summary);
       if (issues.length) ml.append(el('div', { class: 'issue' }, el('span', { class: 'mk' }, '!'), ' ' + issues.join(' · ')));
