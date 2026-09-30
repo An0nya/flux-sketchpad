@@ -41,7 +41,7 @@ if (!isMainThread) {
       for (let n = 0; n < 40000; n++) { RF.Source.sampleRay(smp, rn(), rn(), rn(), rn(), rn(), o, d); const iv = RF.Geo.envInterval(sc.envelope, o, d); if (iv && iv[1] > Math.max(0, iv[0]) + 1e-6) inBox++; }
       const capt = inBox / 40000;
       Object.assign(r, { R, rays: W.rays, seed: W.seed, power: sc.source.power, cdPerD: sc.source.power * dm * dm / cellM2, capturable: capt, reflectivity: refl, envelopeCeiling: ph.envelopeCeiling,
-        achievableKernelCells: fd.kernel.cells, fidelity: fd.fidelity, within: fd.within, gapsDark: fd.gapsDark, onPaint: fd.onPaint, spill: fd.spill, peakCd: ph.peakCd, notes: (out.notes || []).slice(0, 3),
+        achievableKernelCells: fd.kernel.cells, fidelity: fd.fidelity, within: fd.within, gapsDark: fd.gapsDark, onPaint: fd.onPaint, spill: fd.spill, peakCd: ph.peakCd, notes: (out.notes || []).slice(0, 14),
         pred: out.pred || null, outside: r.outside, inClear: r.inClear });
       const dump = { label: job.label, R, paint, D, row: r };
       if (out.debug && out.debug.F) dump.Fpred = Array.from(out.debug.F, (x) => x / sc.source.power);

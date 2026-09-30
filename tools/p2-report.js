@@ -7,7 +7,7 @@
 const fs = require('fs'), path = require('path');
 const M = require('./mode-scores.js'), H = require('./heatmap-png.js');
 const dir = path.resolve((process.argv.includes('--dir') ? process.argv[process.argv.indexOf('--dir') + 1] : path.join(__dirname, '..', 'bench-out/p2'))), runs = path.join(dir, 'runs');
-const { SCENES } = require('./p2-plans.js');
+const P2 = require('./p2-plans.js'), SCENES = process.argv.includes('--holdout') ? P2.HOLDOUT : P2.SCENES;
 const load = (label) => { const f = path.join(runs, label + '.json'); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null; };
 const f0 = (x) => (x === null || x === undefined || !isFinite(x) ? '—' : Math.round(100 * x)), f2 = (x) => (x === null || x === undefined || !isFinite(x) ? '—' : x.toFixed(2));
 const REFS = ['ff-default', 'ff-bal-round-fast', 'ff-light-normal', 'ff-sharp-normal', 'dish-fit', 'opus-mosaic'];

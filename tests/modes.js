@@ -50,5 +50,8 @@ const run = async (name, budget, settings) => {
     ok('auto (quick) on a ring: says what it decided, places facets, verify is clean', /Auto: .*text/.test(n) && /picked Fill & fix/.test(n) && r.facts.placed > 0 && !r.facts.errors.length && !r.facts.violations.envelope.length, r.facts.placed + ' facets; ' + r.out.notes[0]); }
   { const r = await run('sparse-spot-16', 16, { goal: 'fewest', quality: 50 }); const n = r.out.notes.join('\n');
     ok('auto (fewest facets, quality 50) reports the ladder and returns no more facets than the budget', /Fewest facets/.test(n) && r.facts.placed > 0 && r.facts.placed <= 16 && !r.facts.errors.length, r.facts.placed + ' facets'); }
+  { RF.Solvers.unregister('dish-fit'); const r = await run('p-gradient', 8); const n = r.out.notes.join('\n');
+    ok('auto falls back to Fill & fix when the picked solver is not loaded, and says so', /photo/.test(n) && /fell back/.test(n) && r.facts.placed > 0, r.out.notes[1]); }
+  { const r = await run('p-wash', 8, { goal: 'fewest', quality: 100 }); ok('auto (fewest, quality 100) on a wash works', /Fewest facets/.test(r.out.notes.join('\n')) && r.facts.placed > 0); }
   console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed'); process.exit(fails ? 1 : 0);
 })().catch((e) => { console.log('[FAIL] ' + (e && e.stack || e)); process.exit(1); });

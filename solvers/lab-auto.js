@@ -13,22 +13,24 @@
  *
  * How a search ranks (all relative to the candidates in THIS search, never to an absolute target):
  *   cheap pass : every candidate is solved (Fill & fix at quality fast) and traced at 250k rays, scored by RF.Modes.rank(goal)
- *   finalists  : the top two, plus the quick pick as the baseline, are re-solved at full quality and traced at 1M rays
+ *   finalists  : the best cheap result, the quick pick, Fill & fix defaults and the runner-up (as many as the time allows) are re-solved at
+ *                full quality and traced at 1M rays; the winner is chosen among these
  *   guardrails : each goal's gates (glare, fill, legibility, light floors …) veto candidates; see RF.Modes.GATES
- * Cost control: a soft time limit (55 s or half the host's budget) shrinks the menu and the number of finalists.               */
+ * Cost control: a soft time limit (the 'Search time limit' setting, 55 s by default) shrinks the menu and the number of finalists.               */
 (function () {
   'use strict';
   const M = RF.Modes;
   const now = () => Date.now();
 
   // ------------------------------------------------------------------ what to run for each kind (the quick picks)
-  // Chosen from measured runs on the lab's scenes at fidelity v2 (AUTOTUNE-PHASE2.md): photos → dish-fit won all four (and takes ~2 s,
-  // Fill & fix ~12 s); beam shots and cutoffs → Fill & fix with Priority "most light" (a higher peak at the same fidelity, and no more
-  // glare than the balanced default); text and washes → Fill & fix's own defaults (the round-facet advice from the earlier trial did not
-  // hold up at v2: on the 0.4 mm LED the default draws the cleanest "hello" by eye).  Picks were made AFTER looking at those scenes.
+  // Chosen from measured runs on the lab's scenes at fidelity v2 (AUTOTUNE-PHASE2.md).  photo: dish-fit won all four photos and takes ~2 s
+  // (Fill & fix ~12 s).  cutoff: Fill & fix "most light" (equal or better on all four cutoff scenes; but see CUTOFF_MAX_KERNEL).  hotspot, text,
+  // wash, general: Fill & fix's own defaults: "most light" looked better on the first scenes and then lost on scenes it hadn't been chosen on
+  // (one with a big LED fell from 98 to 59 fidelity), and the round-facet advice from the earlier trial did not hold at v2.
+  // The first picks were made after looking at those scenes; a hold-out set is reported separately.
   const PICKS = {
     photo: { solver: 'dish-fit', over: {}, name: 'dish-fit' },
-    hotspot: { solver: 'fill-fix', over: { priority: 'light', quality: 'normal' }, name: 'Fill & fix (most light)' },
+    hotspot: { solver: 'fill-fix', over: { quality: 'normal' }, name: 'Fill & fix (defaults)' },
     cutoff: { solver: 'fill-fix', over: { priority: 'light', quality: 'normal' }, name: 'Fill & fix (most light)' },
     text: { solver: 'fill-fix', over: { quality: 'normal' }, name: 'Fill & fix (defaults)' },
     wash: { solver: 'fill-fix', over: { quality: 'normal' }, name: 'Fill & fix (defaults)' },
@@ -39,23 +41,24 @@
   const ff = (label, over) => ({ label, solver: 'fill-fix', over });
   const oth = (label, solver, over) => ({ label, solver, over: over || {} });
   const MENUS = {
-    cutoff: [ff('ff light', { priority: 'light' }), ff('ff bal gap4', { priority: 'balanced', gapWeight: 4 }), ff('ff sharp gap4', { priority: 'sharp', gapWeight: 4 }), ff('ff bal gap1', { priority: 'balanced', gapWeight: 1 }), ff('ff bal gap8', { priority: 'balanced', gapWeight: 8 }),
+    cutoff: [ff('ff default', {}), ff('ff light', { priority: 'light' }), ff('ff bal gap4', { priority: 'balanced', gapWeight: 4 }), ff('ff sharp gap4', { priority: 'sharp', gapWeight: 4 }), ff('ff bal gap1', { priority: 'balanced', gapWeight: 1 }), ff('ff bal gap8', { priority: 'balanced', gapWeight: 8 }),
       ff('ff bal gap4 round', { priority: 'balanced', gapWeight: 4, shapes: 'round' }), ff('ff sharp gap8 shell4', { priority: 'sharp', gapWeight: 8, sharp: 4 }), oth('opus-mosaic', 'opus-mosaic'), oth('dish-fit', 'dish-fit')],
-    hotspot: [ff('ff light', { priority: 'light' }), ff('ff bal', {}), ff('ff light util1.2', { priority: 'light', util: 1.2 }), ff('ff bal util1.2', { priority: 'balanced', util: 1.2 }), ff('ff bal round', { priority: 'balanced', shapes: 'round' }),
+    hotspot: [ff('ff default', {}), ff('ff light', { priority: 'light' }), ff('ff light util1.2', { priority: 'light', util: 1.2 }), ff('ff bal util1.2', { priority: 'balanced', util: 1.2 }), ff('ff bal round', { priority: 'balanced', shapes: 'round' }),
       ff('ff light useAll', { priority: 'light', useAll: 'on' }), oth('dish-fit', 'dish-fit'), oth('opus-mosaic', 'opus-mosaic')],
     text: [ff('ff default', {}), ff('ff bal two gap2', { priority: 'balanced', gapWeight: 2 }), ff('ff bal round gap2', { priority: 'balanced', shapes: 'round', gapWeight: 2 }), ff('ff sharp round gap2', { priority: 'sharp', shapes: 'round', gapWeight: 2 }), ff('ff bal round gap4', { priority: 'balanced', shapes: 'round', gapWeight: 4 }),
       ff('ff bal round feat1', { priority: 'balanced', shapes: 'round', gapWeight: 2, feature: 1 }), ff('ff bal two gap4', { priority: 'balanced', gapWeight: 4 }), oth('opus-mosaic', 'opus-mosaic'), oth('dish-fit', 'dish-fit'), oth('bowl-image', 'bowl-image')],
-    photo: [oth('dish-fit', 'dish-fit'), oth('dish-fit util1.15', 'dish-fit', { util: 1.15 }), oth('dish-fit flux-first', 'dish-fit', { order: 'flux-first' }), ff('ff bal', {}), ff('ff light', { priority: 'light' }), ff('ff sharp', { priority: 'sharp' }), oth('opus-mosaic', 'opus-mosaic')],
-    wash: [ff('ff bal', {}), ff('ff bal round', { shapes: 'round' }), ff('ff light', { priority: 'light' }), ff('ff bal shell0', { sharp: 0 }), ff('ff bal shell2', { sharp: 2 }), oth('dish-fit', 'dish-fit')],
-    general: [ff('ff bal', {}), ff('ff light', { priority: 'light' }), ff('ff sharp', { priority: 'sharp' }), oth('dish-fit', 'dish-fit'), ff('ff bal round', { shapes: 'round' })],
+    photo: [oth('dish-fit', 'dish-fit'), oth('dish-fit util1.15', 'dish-fit', { util: 1.15 }), oth('dish-fit flux-first', 'dish-fit', { order: 'flux-first' }), ff('ff default', {}), ff('ff light', { priority: 'light' }), ff('ff sharp', { priority: 'sharp' }), oth('opus-mosaic', 'opus-mosaic')],
+    wash: [ff('ff default', {}), ff('ff bal round', { shapes: 'round' }), ff('ff light', { priority: 'light' }), ff('ff bal shell0', { sharp: 0 }), ff('ff bal shell2', { sharp: 2 }), oth('dish-fit', 'dish-fit')],
+    general: [ff('ff default', {}), ff('ff light', { priority: 'light' }), ff('ff sharp', { priority: 'sharp' }), oth('dish-fit', 'dish-fit'), ff('ff bal round', { shapes: 'round' })],
   };
+  const CUTOFF_MAX_KERNEL = 5;                 // a smeared LED image (cells) makes "most light" spill: fall back to the defaults
   const LADDER = [8, 12, 16, 24, 32, 48, 64, 100, 150, 200, 300, 400, 600, 800, 1000, 1500, 2000];
 
   // ------------------------------------------------------------------ helpers
   function make(input, S, tools, T) {
     const cp = () => RF.U.deepCopy(input);
     const ctx = M.context(input, 1e6), seed = input.seed | 0, notes = [], t0 = now();
-    const softMs = Math.min(55000, 0.5 * ((tools.budget && tools.budget.ms) || 120000));
+    const softMs = Math.min(1000 * (S.limit || 55), 0.9 * ((tools.budget && tools.budget.ms) || 120000));
     let raysLeft = (tools.budget && tools.budget.rays) || 5e7;
     const prog = (f, stage) => { if (tools.progress) tools.progress(Math.max(0, Math.min(0.999, f)), stage); };
     // solve with a registered solver; falls back to Fill & fix if the picked solver isn't loaded
@@ -83,7 +86,7 @@
 
   // ------------------------------------------------------------------ the search shared by every goal tuner
   async function tune(goal, menu, A, opt) {
-    const tried = [];
+    const tried = [], tStart = now();
     // 1. cheap pass: solve (Fill & fix at fast) and trace at 250k rays
     let lastFast = 0;
     for (let i = 0; i < menu.length; i++) {
@@ -97,12 +100,14 @@
       tried.push({ label: c.label, cand: c, fast, solved: r, ev: l.ev, ms: r.ms + l.ms });
     }
     const ranked = M.rank(goal, tried.filter((t) => t.solved).map((t) => t)).concat(tried.filter((t) => !t.solved));
+    const tCheap = now() - tStart;
     // 2. finalists: the top two and the quick pick (the first candidate); how many depends on the time left
+    // finalists, in priority order: the best cheap result, the quick pick, Fill & fix defaults, the runner-up; as many as the time allows (at least one)
+    const good = ranked.filter((x) => x.solved), qp = PICKS[opt.kind] || PICKS.general, isQuick = (t) => t.cand.solver === qp.solver && Object.keys(qp.over).every((k) => k === 'quality' || t.cand.over[k] === qp.over[k]) && Object.keys(t.cand.over).every((k) => k === 'quality' || qp.over[k] === t.cand.over[k]);
+    const want = []; for (const t of [good[0], tried.find((x) => x.solved && isQuick(x)), tried.find((x) => x.solved && x.label === 'ff default'), good[1]]) if (t && !want.includes(t)) want.push(t);
     const finalCost = (t) => (t.fast ? Math.max(1500, 5.5 * lastFast) : t.solved.ms) + 1500;
-    const want = []; for (const t of ranked.filter((x) => x.solved)) if (want.length < 2) want.push(t);
-    const base = tried[0]; if (base && base.solved && !want.includes(base)) want.push(base);
     const fin = []; let plan = 0;
-    for (const t of want) { const c = finalCost(t); if (fin.length && plan + c > A.left()) break; fin.push(t); plan += c; }
+    for (const t of want) { const c = finalCost(t); if (fin.length && plan + c > A.left()) continue; fin.push(t); plan += c; }
     const finals = [];
     for (let i = 0; i < fin.length; i++) {
       const t = fin[i]; A.prog(0.6 + 0.35 * i / fin.length, 'checking ' + t.label + ' at full quality');
@@ -112,7 +117,7 @@
       finals.push({ label: t.label, cand: t.cand, solved: r, ev: l.ev, run: l.run, ms: t.ms + (t.fast ? r.ms : 0) + l.ms });
     }
     const order = M.rank(goal, finals);
-    return { tried, ranked, finals: order, all: tried };
+    return { tried, ranked, finals: order, all: tried, tCheap, tFinal: now() - tStart - tCheap };
   }
 
   // ------------------------------------------------------------------ Fewest facets: a ladder of budgets, quality slider 0…100
@@ -145,15 +150,17 @@
       { key: 'effort', label: 'Effort', type: 'select', default: 'quick', options: [{ value: 'quick', label: 'quick (classify, one solve)' }, { value: 'search', label: 'search (tries several, ~1 min)' }],
         help: 'Quick: pick the best-known solver for this kind of painting and run it once. Search: try a short menu of solvers and settings and keep the best for the goal.' },
       { key: 'quality', label: 'Quality (Fewest facets only)', type: 'number', min: 0, max: 100, step: 5, default: 80, help: '100 = the best quality any budget reached, 0 = a quarter of it. Auto finds the fewest facets that reach the level.' },
+      { key: 'limit', adv: true, label: 'Search time limit (s)', type: 'number', min: 10, max: 110, step: 5, default: 55, help: 'Search effort stops trying new candidates after about this long (the app aborts a solve at 120 s).' },
       { key: 'tol', label: 'Edge tolerance, cells (Cutoff only)', type: 'number', min: 0, max: 8, step: 0.5, default: 1, help: 'How far the light-dark edge may be from the painted line before a design is rejected.' },
     ],
     async solve(input, S, tools) {
       tools = tools || {}; const A = make(input, S, tools), notes = A.notes, R = input.paint.res;
+      if (!input.paint.cells.some((w) => w > 0)) return { surfaces: [], intent: [], notes: ['Auto: nothing is painted'] };
       const cls = M.classify(input.paint.cells, R, A.ctx.kernelCells), feat = cls.features;
       let goal = S.goal === 'auto' || S.goal === 'fewest' ? cls.kind : S.goal;
       const asked = S.goal !== 'auto' && S.goal !== 'fewest' && S.goal !== cls.kind;
       notes.push('Auto: ' + cls.why + (asked ? '; you asked for ' + S.goal + ', so it is judged as ' + S.goal : ''));
-      const opt = { tol: S.tol };
+      const opt = { tol: S.tol, kind: goal };
       const recs = () => { try { return M.recommend(goal, feat, A.ctx, input); } catch (e) { return []; } };
       let out;
 
@@ -169,12 +176,15 @@
       } else if (S.effort === 'search') {
         const menu = (MENUS[goal] || MENUS.general).slice();
         const res = await tune(goal, menu, A, opt), win = res.finals[0];
+        if (!win) throw new Error('Auto: no candidate produced facets');
         notes.push('search (' + goal + '): cheap pass on ' + res.tried.length + ' candidates (250k rays each) → ' + res.ranked.filter((c) => c.solved).slice(0, 4).map(line).join(' | '));
+        notes.push('time: cheap pass ' + (res.tCheap / 1000).toFixed(1) + ' s, finalists ' + (res.tFinal / 1000).toFixed(1) + ' s');
         notes.push('finalists at full quality and 1M rays: ' + res.finals.map(line).join(' | '));
         notes.push('winner: ' + win.label + (win.solved.fell ? ' (fell back: the picked solver is not loaded)' : '') + '; ' + (win.veto ? 'every finalist failed a gate, this failed the least' : 'passed every gate') + '.');
         out = win.solved.out; out.extras = Object.assign({}, out.extras, { auto: { kind: goal, winner: win.label, solver: win.solved.id, finalists: res.finals.map((f) => ({ label: f.label, score: f.score, veto: f.veto, fid: f.ev.fid, onPaint: f.ev.onPaint })) } });
       } else {
-        const pick = PICKS[goal] || PICKS.general;
+        let pick = PICKS[goal] || PICKS.general;
+        if (goal === 'cutoff' && A.ctx.kernelCells > CUTOFF_MAX_KERNEL) { pick = PICKS.general; notes.push('the LED image is ' + A.ctx.kernelCells.toFixed(1) + ' cells wide (over ' + CUTOFF_MAX_KERNEL + '): "most light" would spill, using the defaults'); }
         A.prog(0.05, 'solving with ' + pick.name);
         const r = await A.solve(pick, pick.over, 0, 0.05, 0.9);
         notes.push('picked ' + pick.name + (r.fell ? ' (not loaded here: fell back to Fill & fix)' : '') + '; effort quick: one solve, ' + (r.ms / 1000).toFixed(1) + ' s');

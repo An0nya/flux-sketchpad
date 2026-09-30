@@ -3,16 +3,18 @@
 //   quick   : Auto (quick), Fill & fix at its defaults
 //   refs    : fixed reference designs (the trial's contenders) for "best single design"
 //   search  : Auto (search) with the goal auto-detected
+//   <set>-holdout : the same for scenes that did NOT decide the quick picks
 //   fewest  : Auto, goal Fewest facets, quality 100 / 80 / 50
 'use strict';
 const fs = require('fs');
 const SCENES = [['photo-moon', 400], ['photo-leaf', 400], ['photo-cat', 400], ['photo-flowers', 400], ['anya-beamshot-400'], ['anya-lowbeam-212'], ['held-low-beam'], ['p-hello'], ['hello-die0.4'], ['p-text'], ['p-wash'], ['p-disc'], ['default']];
+const HOLDOUT = [['p-halfplane'], ['p-hotwash'], ['sparse-hot-16'], ['held-ring'], ['p-gradient'], ['anya-lowbeam-1001'], ['anya-shot-245'], ['sparse-ring-24'], ['sparse-spot-16'], ['held-big-led']];   // not used to choose the quick picks
 const REFS = { 'ff-default': { solver: 'fill-fix' }, 'ff-bal-round-fast': { solver: 'fill-fix', settings: { priority: 'balanced', shapes: 'round', quality: 'fast' } }, 'ff-light-normal': { solver: 'fill-fix', settings: { priority: 'light' } },
   'ff-sharp-normal': { solver: 'fill-fix', settings: { priority: 'sharp' } }, 'dish-fit': { solver: 'dish-fit' }, 'opus-mosaic': { solver: 'opus-mosaic' } };
 const job = (scene, budget, tag, o) => Object.assign({ label: 'p2__' + scene + '__' + tag, scene, budget }, o);
 function plan(set) {
-  const out = [];
-  for (const [scene, budget] of SCENES) {
+  const out = [], list = set.endsWith('-holdout') ? HOLDOUT : SCENES; set = set.replace('-holdout', '');
+  for (const [scene, budget] of list) {
     if (set === 'quick') { out.push(job(scene, budget, 'auto-quick', { solver: 'auto', settings: { effort: 'quick' } })); out.push(job(scene, budget, 'ff-default', REFS['ff-default'])); }
     if (set === 'refs') for (const [k, v] of Object.entries(REFS)) if (k !== 'ff-default') out.push(job(scene, budget, k, v));
     if (set === 'search') out.push(job(scene, budget, 'auto-search', { solver: 'auto', settings: { effort: 'search' } }));
@@ -21,4 +23,4 @@ function plan(set) {
   return out;
 }
 if (require.main === module) { const [set, file] = process.argv.slice(2); const p = plan(set); fs.writeFileSync(file, JSON.stringify(p)); console.log(file + ': ' + p.length + ' jobs'); }
-module.exports = { plan, SCENES };
+module.exports = { plan, SCENES, HOLDOUT };
