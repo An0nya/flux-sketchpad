@@ -305,7 +305,9 @@
     // front opening: pick by predicted fidelity (+ a little credit for light), like the dish size in dish-fit
     // front opening × defocus: picked by predicted fidelity (+ a little credit for light), quick solves first
     const opts = [];
-    for (const o of S.open >= 0 ? [S.open] : [45, 70, 95]) for (const m of S.defocus >= 0 ? [S.defocus] : [0, 0.5, 1]) opts.push({ o, m });
+    const grid = { fast: [[60], [0.5]], normal: [[50, 80], [0, 0.7]], best: [[45, 70, 95], [0, 0.5, 1]] }[S.quality] || [[50, 80], [0, 0.7]];
+    for (const o of S.open >= 0 ? [S.open] : grid[0]) for (const m of S.defocus >= 0 ? [S.defocus] : grid[1]) opts.push({ o, m });
+    if (opts.length === 1) return solveOnce(input, Object.assign({}, S, { open: opts[0].o, defocus: opts[0].m }), tools);
     const res = [], prog = (f, st) => { if (tools && tools.progress) tools.progress(f, st); };
     opts.forEach((c, i) => { const out = solveOnce(input, Object.assign({}, S, { open: c.o, defocus: c.m, compensate: Math.min(2, S.compensate) }), { progress: (f, st) => prog(0.5 * (i + f) / opts.length, 'try ' + (i + 1) + '/' + opts.length + ' · ' + (st || '')) }); res.push(Object.assign({ v: out.pred.fid + S.lightWeight * out.pred.onPaint, pred: out.pred }, c)); });
     res.sort((a, b) => b.v - a.v || a.o - b.o || a.m - b.m);
@@ -318,7 +320,7 @@
     id: 'sqm', name: 'Supporting quadrics (continuous)', version: '0.2', modes: ['paint'],
     settings: [
       { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },
-      { key: 'quality', label: 'Quality', type: 'select', default: 'normal', options: [{ value: 'fast', label: 'fast' }, { value: 'normal', label: 'normal' }, { value: 'best', label: 'best' }] },
+      { key: 'quality', label: 'Quality', type: 'select', default: 'fast', options: [{ value: 'fast', label: 'fast (~2 s)' }, { value: 'normal', label: 'normal (searches opening × spread)' }, { value: 'best', label: 'best (slow)' }] },
       { key: 'open', adv: true, label: 'Front opening, degrees from the beam (−1 auto)', type: 'number', min: -1, max: 150, step: 5, default: -1 },
       { key: 'defocus', adv: true, label: 'Spread each patch over its region (0 sharp … 1 full; −1 auto)', type: 'number', min: -1, max: 2, step: 0.05, default: -1 },
       { key: 'lightWeight', adv: true, label: 'Light on paint worth, vs fidelity', type: 'number', min: 0, max: 3, step: 0.05, default: 0.25 },
