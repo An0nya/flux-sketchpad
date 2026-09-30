@@ -576,7 +576,7 @@
       { key: 'nnlsIters', adv: true, label: 'dev: least-squares iterations', type: 'number', min: 1, max: 1000, step: 1, default: 80 },
       { key: 'gapWeight', adv: true, label: 'dev: gap weight in the least squares', type: 'number', min: 0, max: 10, step: 0.05, default: 0.5 },
       { key: 'gain', adv: true, label: 'Compensation gain (shares)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.7 },
-      { key: 'nudge', adv: true, label: 'Compensation gain (aim positions)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.3 },
+      { key: 'nudge', adv: true, label: 'Compensation gain (aim positions)', type: 'number', min: 0, max: 1, step: 0.05, default: 0 },
       { key: 'lloyd', adv: true, label: 'Aim clustering iterations', type: 'number', min: 0, max: 50, step: 1, default: 12 },
       { key: 'iters', adv: true, label: 'Flux-balance iterations (−1 auto)', type: 'number', min: -1, max: 1000, step: 10, default: -1 },
       { key: 'newton', adv: true, label: 'Newton flux balance (off: older annealed updates)', type: 'checkbox', default: true },
