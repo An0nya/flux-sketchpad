@@ -20,25 +20,23 @@
   const V = RF.V;
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-  function ledSamples(src, P, n) {                       // points on / in the source that shine toward P, weighted
+  function ledSamples(src, P, n, nv) {                   // points on / in the source that shine toward P, weighted (rect: n × nv lattice)
     const fr = RF.Source.frame(src), out = [], p = src.pos;
     const at = (cu, cv, ca) => [p[0] + cu * fr.u[0] + cv * fr.v[0] + ca * fr.a[0], p[1] + cu * fr.u[1] + cv * fr.v[1] + ca * fr.a[1], p[2] + cu * fr.u[2] + cv * fr.v[2] + ca * fr.a[2]];
-    const g = (i) => (i + 0.5) / n - 0.5;
+    const g = (i, m) => (i + 0.5) / m - 0.5;
     if (src.kind === 'point') return [{ x: p.slice(), w: 1 }];
     if (src.kind === 'planar') {
-      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
-        if (src.shape === 'disc') { const x = g(i) * 2, y = g(j) * 2; if (x * x + y * y > 1) continue; out.push({ x: at(x * src.radius, y * src.radius, 0), w: 1 }); }
-        else out.push({ x: at(g(i) * src.w, g(j) * src.h, 0), w: 1 });
-      }
+      if (src.shape === 'disc') { for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const x = g(i, n) * 2, y = g(j, n) * 2; if (x * x + y * y > 1) continue; out.push({ x: at(x * src.radius, y * src.radius, 0), w: 1 }); } }
+      else { const m = nv || n; for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) out.push({ x: at(g(i, n) * src.w, g(j, m) * src.h, 0), w: 1 }); }
     } else if (src.shape === 'cylinder') {
       const d = V.norm(V.sub(P, p)), surf = src.emission === 'surface';
       for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
-        const a = (i + 0.5) / n * 2 * Math.PI, h = g(j) * src.length, nr = V.add(V.mul(fr.u, Math.cos(a)), V.mul(fr.v, Math.sin(a)));
+        const a = (i + 0.5) / n * 2 * Math.PI, h = g(j, n) * src.length, nr = V.add(V.mul(fr.u, Math.cos(a)), V.mul(fr.v, Math.sin(a)));
         if (surf) { const c = V.dot(nr, d); if (c <= 0) continue; out.push({ x: V.add(at(0, 0, h), V.mul(nr, src.radius)), w: c }); }
         else { const rr = src.radius * Math.sqrt((j * 7 % n + 0.5) / n); out.push({ x: V.add(at(0, 0, h), V.mul(nr, rr)), w: 1 }); }
       }
     } else {
-      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const x = g(i) * 2, y = g(j) * 2; if (x * x + y * y > 1) continue; out.push({ x: V.add(p, V.add(V.mul(fr.u, x * src.radius), V.mul(fr.v, y * src.radius))), w: 1 }); }
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const x = g(i, n) * 2, y = g(j, n) * 2; if (x * x + y * y > 1) continue; out.push({ x: V.add(p, V.add(V.mul(fr.u, x * src.radius), V.mul(fr.v, y * src.radius))), w: 1 }); }
     }
     const W = out.reduce((s, q) => s + q.w, 0); for (const q of out) q.w /= W;
     return out;
@@ -78,18 +76,20 @@
     prog(0.05, 'aims');
     const ord = pcells.slice().sort((x, y) => { const hx = hil(x), hy = hil(y); return hx - hy || x - y; });
     function hil(k) { let x = k % R, y = (k / R) | 0, d = 0; for (let s = 1 << 10; s > 0; s >>= 1) { const rx = (x & s) > 0 ? 1 : 0, ry = (y & s) > 0 ? 1 : 0; d += s * s * ((3 * rx) ^ ry); if (!ry) { if (rx) { x = s - 1 - x; y = s - 1 - y; } const t = x; x = y; y = t; } } return d; }
-    let aims = []; { let acc = 0, next = psum / N / 2; for (const k of ord) { acc += paint[k]; if (acc >= next && aims.length < N) { const [u, v] = uvOf(k); aims.push({ u, v, w: 0 }); next += psum / N; } } }
+    const cw = new Float64Array(R * R); let csum = 0; for (const k of pcells) { cw[k] = Math.pow(paint[k], S.aimBias); csum += cw[k]; }     // clustering weight: paint^bias (1 = by light, 0 = by painted area)
+    let aims = []; { let acc = 0, next = csum / N / 2; for (const k of ord) { acc += cw[k]; if (acc >= next && aims.length < N) { const [u, v] = uvOf(k); aims.push({ u, v, w: 0 }); next += csum / N; } } }
     const owner = new Int32Array(R * R).fill(-1);
     for (let it = 0; it < S.lloyd; it++) {
-      const su = new Float64Array(aims.length), sv = new Float64Array(aims.length), sw = new Float64Array(aims.length);
-      for (const k of pcells) { const [u, v] = uvOf(k); let bj = 0, bd = Infinity; for (let j = 0; j < aims.length; j++) { const d = (u - aims[j].u) ** 2 + (v - aims[j].v) ** 2; if (d < bd) { bd = d; bj = j; } } owner[k] = bj; su[bj] += u * paint[k]; sv[bj] += v * paint[k]; sw[bj] += paint[k]; }
-      for (let j = 0; j < aims.length; j++) if (sw[j] > 0) { aims[j].u = su[j] / sw[j]; aims[j].v = sv[j] / sw[j]; aims[j].w = sw[j] / psum; }
+      const su = new Float64Array(aims.length), sv = new Float64Array(aims.length), sw = new Float64Array(aims.length), sp = new Float64Array(aims.length);
+      for (const k of pcells) { const [u, v] = uvOf(k); let bj = 0, bd = Infinity; for (let j = 0; j < aims.length; j++) { const d = (u - aims[j].u) ** 2 + ((v - aims[j].v) * S.aspect) ** 2; if (d < bd) { bd = d; bj = j; } } owner[k] = bj; su[bj] += u * cw[k]; sv[bj] += v * cw[k]; sw[bj] += cw[k]; sp[bj] += paint[k]; }
+      for (let j = 0; j < aims.length; j++) if (sw[j] > 0) { aims[j].u = su[j] / sw[j]; aims[j].v = sv[j] / sw[j]; aims[j].w = sp[j] / psum; }
     }
     aims = aims.filter((z) => z.w > 0);
     // each ellipsoid's second focus: the aim itself (sharp), or past it along the same line (defocus m: a patch then
     // spreads its light over ~m × its own outline around the aim, so neighbouring images blend; the surface stays one
     // continuous envelope of ellipsoids either way)
-    const setFocus = (z) => { z.Z = world(z.u, z.v); z.F = V.add(Lp, V.mul(V.sub(z.Z, Lp), 1 / (1 - (z.m || 0)))); z.d = V.sub(z.F, Lp); z.c = V.len(z.d); z.ah = V.mul(z.d, 1 / z.c); };
+    // defocused: the second focus lies on the line from the PATCH (not the LED) to the aim, so its chief ray still lands on the aim
+    const setFocus = (z) => { z.Z = world(z.u, z.v); const q0 = z.m && z.Pb ? z.Pb : Lp; z.F = V.add(q0, V.mul(V.sub(z.Z, q0), 1 / (1 - (z.m || 0)))); z.d = V.sub(z.F, Lp); z.c = V.len(z.d); z.ah = V.mul(z.d, 1 / z.c); };
     for (const z of aims) { setFocus(z); z.target = z.w; }
 
     // ---- supporting ellipsoids: r_j(u) = β(β+2c) / (2β + 2c(1 − u·â_j)); nearest wins
@@ -207,7 +207,7 @@
     }
     // super-aims: merge nearby aims 4:1 (weighted k-means on the target positions) until few remain
     function levelsOf() {
-      const lv = [{ A: aims, par: null }]; let cur = aims.map((z) => ({ u: z.u, v: z.v, w: z.target }));
+      const lv = [{ A: aims, par: null }]; let cur = aims.map((z) => ({ u: z.u, v: z.v, w: z.target, ah: z.ah, c: z.c }));
       while (cur.length > 24) {
         const K = Math.ceil(cur.length / 4), ordr = cur.map((_, i) => i).sort((a, b) => hil(cellOf(cur[a])) - hil(cellOf(cur[b])) || a - b);
         let tw = 0; for (const c of cur) tw += c.w; let cs = [], acc = 0, nxt = tw / K / 2;
@@ -219,12 +219,12 @@
           cs = cs.map((c, j) => sw[j] > 0 ? { u: su[j] / sw[j], v: sv[j] / sw[j] } : c);
         }
         const used = new Map(); let nn = 0; for (let i = 0; i < cur.length; i++) if (!used.has(par[i])) used.set(par[i], nn++);
-        const next = []; for (let i = 0; i < nn; i++) next.push({ u: 0, v: 0, w: 0 });
-        cur.forEach((c, i) => { const q = next[used.get(par[i])]; q.u += c.u * c.w; q.v += c.v * c.w; q.w += c.w; });
-        for (const q of next) { q.u /= q.w; q.v /= q.w; }
+        const next = []; for (let i = 0; i < nn; i++) next.push({ u: 0, v: 0, w: 0, ah: [0, 0, 0], c: 0 });
+        cur.forEach((c, i) => { const q = next[used.get(par[i])]; q.u += c.u * c.w; q.v += c.v * c.w; q.w += c.w; q.c += c.c * c.w; q.ah = V.add(q.ah, V.mul(c.ah, c.w)); });
+        for (const q of next) { q.u /= q.w; q.v /= q.w; q.c /= q.w; q.ah = V.norm(q.ah); }         // a super-aim looks where its members look (they may be defocused: their foci are not on the LED→aim line)
         const pidx = Int32Array.from(cur.map((_, i) => used.get(par[i])));
         lv[lv.length - 1].par = pidx;
-        const A = next.map((q) => { const Z = world(q.u, q.v), d = V.sub(Z, Lp), c = V.len(d); return { c, ah: V.mul(d, 1 / c), target: q.w }; });
+        const A = next.map((q) => ({ c: q.c, ah: q.ah, target: q.w }));
         lv.push({ A, par: null }); cur = next;
       }
       return lv.reverse();                                       // coarsest first; each level's `par` maps its members to the next-coarser one
@@ -234,10 +234,9 @@
     function balanceNewton(warm) { const t0 = Date.now(); try { return balanceNewton0(warm); } finally { TM.bal += Date.now() - t0; if (!warm) TM.cold += Date.now() - t0; } }
     function balanceNewton0(warm) {
       const on = dirs.filter((d) => d.on), J = aims.length, x = new Float64Array(J);
-      let gm = 0; for (const z of aims) gm += Math.log(z.beta); gm /= J;
+      const beta0 = aims.map((z) => z.beta); let gm = 0; for (const z of aims) gm += Math.log(z.beta); gm /= J;
       const tolL = S.tol * 0.3, mi = 10;
-      if (warm) { aims.forEach((z, j) => { x[j] = Math.log(z.beta); }); newtonCore(aims, on, x, [S.warmTau], tolL, mi); }
-      else {
+      const coldSolve = () => {
         const lv = levelsOf(); let xp = null;
         lv.forEach((L, li) => {
           const last = li === lv.length - 1, xl = new Float64Array(L.A.length), nJ = L.A.length;
@@ -259,12 +258,15 @@
               for (const d of dg[g]) { let env = Infinity; C.forEach((j) => { env = Math.min(env, lc(L.A[j], Math.exp(xl[j]), d.u)); }); sh += d.flux * (lc(PA[g], Math.exp(xp[g]), d.u) - env); sf += d.flux; }
               sh /= sf; for (const j of C) xl[j] += sh;
             }
-            newtonCore(L.A, on, xl, last ? [0.0006, 0.00015, 0.00006] : [0.002, 0.0006, 0.0002], last ? tolL : 0.1, mi);
+            newtonCore(L.A, on, xl, last ? [0.0006, 0.00015, 0.00006].concat(S.finalTau < 0.00006 ? [S.finalTau] : []) : [0.002, 0.0006, 0.0002], last ? tolL : 0.1, mi);
           }
           xp = xl;
         });
         x.set(xp);
-      }
+      };
+      let ok = false;
+      if (warm) { aims.forEach((z, j) => { x[j] = Math.log(z.beta); }); const soft = newtonCore(aims, on, x, [S.finalTau], tolL, mi); ok = soft < 0.25; if (!ok) aims.forEach((z, j) => { z.beta = beta0[j]; }); if (globalThis.SQMDBG && !ok) { console.log('  warm balance failed (soft error ' + soft.toFixed(2) + '): cold restart'); const cnt = new Float64Array(J); for (const d of on) if (d.j >= 0) cnt[d.j] += d.flux; const rows = aims.map((z, j) => ({ j, m: z.m, c: z.c, t: z.target, x: x[j], beta0: beta0[j] })); console.log('   sample of patches:', rows.filter((r, i) => i % 40 === 0).map((r) => JSON.stringify(r, (k, v) => typeof v === 'number' ? +v.toPrecision(3) : v)).join(' ')); } }
+      if (!ok) coldSolve();
       aims.forEach((z, j) => { z.beta = Math.exp(x[j]); });
       assign(); let err = 0, tot = 0; for (const d of on) tot += d.flux; for (const z of aims) { const w = z.target * tot; err = Math.max(err, Math.abs(z.flux - w) / Math.max(1e-12, w)); }
       if (globalThis.SQMDBG) { const es = aims.map((z) => Math.abs(z.flux - z.target * tot) / (z.target * tot)).sort((a, b) => a - b); console.log('  balance(newton): hard-partition rel error max', err.toFixed(3), 'p50', es[es.length >> 1].toFixed(3), 'p90', es[Math.floor(es.length * 0.9)].toFixed(3), 'rms', Math.sqrt(es.reduce((a, e) => a + e * e, 0) / es.length).toFixed(3), 'empty', aims.filter((z) => z.flux === 0).length); }
@@ -323,10 +325,12 @@
     // `fitShare` of the light fits, and let the directions that still stick out (or fall inside the clearance) go
     // uncovered; rebalance and repeat.
     let err = 0;
+    let sizeNow = S.size > 0 ? S.size : 1;
     function fit() {
       const rat = []; for (const d of dirs) if (d.on && d.j >= 0) rat.push([d.r / d.rEnv, d.flux]);
       rat.sort((a, b) => a[0] - b[0]); let tot = 0; for (const x of rat) tot += x[1];
       let acc = 0, q = rat.length ? rat[rat.length - 1][0] : 1; for (const x of rat) { acc += x[1]; if (acc >= S.fitShare * tot) { q = x[0]; break; } }
+      q /= sizeNow;                                            // size < 1: keep the reflector that much smaller than the envelope allows (bigger LED images: image size ∝ 1 / distance)
       if (q > 1) keepSizes(() => {}, -Math.log(q * 1.002));   // scale every patch's radius, not β (β + 2c is not homogeneous)
       assign(); let dropped = 0; for (const d of dirs) if (d.on && (d.j < 0 || d.r > d.rEnv || d.r < rmin)) { d.on = false; dropped++; }
       return { q, dropped };
@@ -339,16 +343,18 @@
     function setDefocus() {
       if (!(S.defocus > 0)) { for (const z of aims) { z.m = 0; setFocus(z); } return; }
       const area = new Float64Array(aims.length); for (const k of pcells) if (owner[k] >= 0 && owner[k] < aims.length) area[owner[k]] += cell * cell;
-      const rs = new Float64Array(aims.length), om = new Float64Array(aims.length); for (const d of dirs) if (d.on && d.j >= 0) { rs[d.j] += d.r; om[d.j] += 1; }
+      const rs = new Float64Array(aims.length), om = new Float64Array(aims.length), pw = new Float64Array(aims.length), pb = aims.map(() => [0, 0, 0]);
+      for (const d of dirs) if (d.on && d.j >= 0) { rs[d.j] += d.r; om[d.j] += 1; pw[d.j] += d.flux; pb[d.j] = V.add(pb[d.j], V.mul(V.add(Lp, V.mul(d.u, d.r)), d.flux)); }
+      aims.forEach((z, j) => { if (pw[j] > 0) z.Pb = V.mul(pb[j], 1 / pw[j]); });
       aims.forEach((z, j) => {
         if (!om[j]) { z.m = 0; setFocus(z); return; }
         const r = rs[j] / om[j], a = r * Math.sqrt(om[j] * dOm) / 2, img = ledSz * z.c / r / 2, rho = Math.sqrt(area[j] / Math.PI);
-        z.m = -clamp(S.defocus * Math.max(0, rho - img) / Math.max(1e-6, a), 0, 60); setFocus(z);
+        z.m = -clamp(S.defocus * Math.max(0, rho - img) / Math.max(1e-6, a), 0, S.maxDefocus); setFocus(z);
       });
     }
     for (let round = 0; round < 8; round++) {
       err = balance(S.iters, round > 0);
-      if (round === 0 && S.defocus > 0) { keepSizes(setDefocus); err = balance(S.iters, true); }
+      if (round === 0 && S.defocus > 0) { keepSizes(setDefocus); err = balance(S.iters, false); keepSizes(setDefocus); err = balance(S.iters, false); }
       if (globalThis.SQMDBG) { let on = 0, rr = []; for (const d of dirs) if (d.on) { on++; rr.push(d.r / d.rEnv); } rr.sort((a, b) => a - b); console.log('round', round, 'on', on, 'err', err.toFixed(3), 'ratio p10/50/90', [0.1, 0.5, 0.9].map((q) => rr[Math.floor(q * rr.length)]).map((x) => x && x.toFixed(2)).join('/'), 'beta0', aims[0].beta.toFixed(2)); }
       const f = fit(); if (f.q <= 1.0001 && !f.dropped) break;
       prog(0.1 + 0.1 * round / 8, 'fit envelope');
@@ -356,17 +362,21 @@
     err = balance(S.iters, true); for (let k = 0; k < 4; k++) { const f = fit(); if (!f.dropped) break; err = balance(S.iters, true); }
 
     // ---- prediction (exact geometry) + Fournier compensation of the virtual target
-    const NS = S.ledSamples | 0, fake = { source: src, envelope: env, target: input.target, modeA: { paint } };
+    const fake = { source: src, envelope: env, target: input.target, modeA: { paint } };
     const Fg = new Float64Array(R * R), ledCache = new Map();
     function predict() { const t0 = Date.now(); try { return predict0(); } finally { TM.pred += Date.now() - t0; } }
+    let blobs = null;
     function predict0() {
-      Fg.fill(0);
+      Fg.fill(0); if (S.debug) blobs = aims.map(() => new Float64Array(6));
       const byJ = aims.map(() => []); for (const d of dirs) if (d.on && d.j >= 0) byJ[d.j].push(d);
       aims.forEach((z, j) => {
         const cellsJ = byJ[j]; if (!cellsJ.length) return;
         const st = Math.max(1, Math.floor(cellsJ.length / S.apCells));
         let Pc = [0, 0, 0], W = 0; for (const d of cellsJ) { Pc = V.add(Pc, V.mul(V.add(Lp, V.mul(d.u, d.r)), d.flux)); W += d.flux; } Pc = V.mul(Pc, 1 / W);
-        const key = j + ':' + Pc.map((x) => x.toFixed(1)).join(','); let leds = ledCache.get(key); if (!leds) { leds = ledSamples(src, Pc, NS); ledCache.set(key, leds); }
+        // the LED lattice is chosen so that neighbouring samples land at most `imgSpacing` cells apart on the target (per axis)
+        const mag = V.dist(Pc, z.Z) / Math.max(1e-6, V.dist(Pc, Lp)) / cell, cap = S.maxLedSide, sp = S.imgSpacing;
+        const nU = src.kind === 'planar' && src.shape !== 'disc' ? clamp(Math.ceil(src.w * mag / sp), 1, cap) : clamp(Math.ceil(ledSz * mag / sp), 1, cap), nV = src.kind === 'planar' && src.shape !== 'disc' ? clamp(Math.ceil(src.h * mag / sp), 1, cap) : nU;
+        const key = j + ':' + nU + 'x' + nV + ':' + Pc.map((x) => x.toFixed(1)).join(','); let leds = ledCache.get(key); if (!leds) { leds = ledSamples(src, Pc, nU, nV); ledCache.set(key, leds); }
         for (let i = 0; i < cellsJ.length; i += st) {
           let fl = 0; for (let k = i; k < Math.min(cellsJ.length, i + st); k++) fl += cellsJ[k].flux;
           const d = cellsJ[i], p = V.add(Lp, V.mul(d.u, d.r)), n = V.norm(V.add(V.norm(V.sub(Lp, p)), V.norm(V.sub(z.F, p))));   // ellipsoid normal = bisector of its foci
@@ -375,6 +385,7 @@
             const t = V.dot(V.sub(T.C, p), T.n) / den; if (!(t > 0)) continue;
             const X = V.sub(V.add(p, V.mul(dr, t)), T.C), gx = V.dot(X, T.tu) / cell + R / 2 - 0.5, gy = V.dot(X, T.tv) / cell + R / 2 - 0.5;
             const ix = Math.floor(gx), iy = Math.floor(gy), fx = gx - ix, fy = gy - iy, w = fl * s.w * refl;
+            if (blobs) { const B = blobs[j]; B[0] += w; B[1] += w * gx; B[2] += w * gy; B[3] += w * gx * gx; B[4] += w * gy * gy; B[5] += w * gx * gy; }
             if (ix >= 0 && iy >= 0 && ix < R && iy < R) Fg[iy * R + ix] += w * (1 - fx) * (1 - fy);
             if (ix + 1 < R && iy >= 0 && ix + 1 >= 0 && iy < R) Fg[iy * R + ix + 1] += w * fx * (1 - fy);
             if (ix >= 0 && iy + 1 < R && ix < R && iy + 1 >= 0) Fg[(iy + 1) * R + ix] += w * (1 - fx) * fy;
@@ -382,26 +393,30 @@
           }
         }
       });
-      // the samples are discrete; smooth at their spacing (LED image ÷ samples per side) so the fit doesn't chase
-      // sampling speckle (unsmoothed, a wash predicted 18% while the trace measured 41%, same design)
-      let rbar = 0, fw = 0; for (const d of dirs) if (d.on) { rbar += d.r * d.flux; fw += d.flux; } rbar /= Math.max(1e-12, fw);
-      const ledSize = src.kind === 'point' ? 0 : src.kind === 'planar' ? (src.shape === 'disc' ? 2 * src.radius : Math.max(src.w, src.h)) : Math.max(2 * src.radius, src.length || 0);
-      const w = Math.max(1, ledSize * V.dist(T.C, Lp) / Math.max(1e-6, rbar) / cell / Math.max(1, NS));
-      if (w > 1.05) boxBlur(Fg, R, w);
       return RF.Photometry.fidelity(fake, { res: R, power: 1 }, { gridD: Fg, gridR: new Float64Array(R * R), E: { emitted: 1 }, N: 1e12, next: 1e12 });
     }
-    function boxBlur(g, R, w) {                           // in place, separable, energy-conserving inside the grid
-      const h = w / 2, tmp = new Float64Array(R * R);
-      for (const along of [0, 1]) {
-        const src2 = along ? tmp : Float64Array.from(g), dst = along ? g : tmp;
-        for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
-          const c = along ? j : i, a0 = c + 0.5 - h, b0 = c + 0.5 + h; let sum = 0;
-          for (let q = Math.floor(a0); q < Math.ceil(b0); q++) { if (q < 0 || q >= R) continue; sum += (Math.min(b0, q + 1) - Math.max(a0, q)) * (along ? src2[q * R + i] : src2[j * R + q]); }
-          dst[j * R + i] = sum / w;
-        }
+    // ---- reflector size: the LED's image on the target is (LED size) × (patch→target ÷ patch→LED), so a SMALLER reflector paints
+    // bigger images.  Sharp edges want small images, a wash wants big ones, and the fit that fills the envelope is
+    // not the best choice for either.  Try a few sizes (warm re-balance each) and keep the best predicted score.
+    const snap = () => ({ st: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target, m: z.m, Pb: z.Pb })), on: dirs.map((d) => d.on), size: sizeNow });
+    const load = (o) => { aims.forEach((z, j) => { Object.assign(z, o.st[j]); setFocus(z); }); dirs.forEach((d, i) => { d.on = o.on[i]; }); sizeNow = o.size; assign(); };
+    const onPaintOf = () => { let t = 0; for (const k of pcells) t += Fg[k]; return t / src.power; };
+    let fd = predict();
+    if (!(S.size > 0) && S.sizes.length > 1) {
+      let bestS = { v: fd.fidelity + S.lightWeight * onPaintOf(), o: snap(), size: sizeNow, fid: fd.fidelity }; const base = snap(), tried = [[sizeNow, fd.fidelity, onPaintOf()]];
+      for (const sz of S.sizes) {
+        if (sz === base.size) continue;
+        prog(0.2 + 0.05 * tried.length / S.sizes.length, 'reflector size ' + sz);
+        load(base); for (const d of dirs) d.on = true; sizeNow = sz;
+        keepSizes(() => {}, Math.log(sz / base.size));
+        err = balance(S.iters, true);
+        for (let k = 0; k < 4; k++) { const f = fit(); if (f.q <= 1.0001 && !f.dropped) break; err = balance(S.iters, true); }
+        const f2 = predict(), on2 = onPaintOf(), v = f2.fidelity + S.lightWeight * on2; tried.push([sz, f2.fidelity, on2]);
+        if (v > bestS.v) bestS = { v, o: snap(), size: sz, fid: f2.fidelity };
       }
+      load(bestS.o); fd = predict(); notes.push('reflector size search (size: predicted fidelity / light on paint): ' + tried.map((t) => t[0] + ': ' + (100 * t[1]).toFixed(0) + '% / ' + (100 * t[2]).toFixed(0) + '%').join(' · ') + ' → ' + bestS.size);
     }
-    let fd = predict(), best = { fd, state: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target, m: z.m })) };
+    let best = { fd, state: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target, m: z.m, Pb: z.Pb })) };
     for (let pass = 0; pass < S.compensate; pass++) {
       prog(0.25 + 0.65 * pass / Math.max(1, S.compensate), 'compensate ' + (pass + 1) + '/' + S.compensate + (best.fd ? ' · predicted ' + Math.round(100 * best.fd.fidelity) + '%' : ''));
       // each aim's region on the target: paint wanted vs light predicted there (at the fitted overall scale)
@@ -418,7 +433,7 @@
       });
       err = balance(S.iters, true); for (let k = 0; k < 3; k++) { const f = fit(); if (!f.dropped) break; err = balance(S.iters, true); }
       fd = predict();
-      if (fd && (!best.fd || fd.fidelity > best.fd.fidelity)) best = { fd, state: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target, m: z.m })) };
+      if (fd && (!best.fd || fd.fidelity > best.fd.fidelity)) best = { fd, state: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target, m: z.m, Pb: z.Pb })) };
     }
     best.state.forEach((s, j) => { const z = aims[j]; Object.assign(z, s); setFocus(z); });
     assign(); fd = predict();
@@ -474,10 +489,10 @@
       truth = { max: es[es.length - 1], p50: es[es.length >> 1], p90: es[Math.floor(es.length * 0.9)], rms: Math.sqrt(es.reduce((x, y) => x + y * y, 0) / es.length) };
     }
     prog(1, 'done');
-    return { surfaces: out, intent: intent.filter((it) => ids.has(it.facet)), notes, pred: { fid: fd ? fd.fidelity : 0, onPaint: onP / src.power }, debug: S.debug ? { F: Array.from(Fg), R, truth } : undefined };
+    return { surfaces: out, intent: intent.filter((it) => ids.has(it.facet)), notes, pred: { fid: fd ? fd.fidelity : 0, onPaint: onP / src.power }, debug: S.debug ? { F: Array.from(Fg), R, truth, blobEnergy: blobs.map((B) => B[0]), blobs: blobs.map((B, j) => { const w = B[0] || 1, mx = B[1] / w, my = B[2] / w, sxx = B[3] / w - mx * mx, syy = B[4] / w - my * my, sxy = B[5] / w - mx * my; return { j, u: aims[j].u, v: aims[j].v, m: aims[j].m, share: aims[j].target, cx: mx, cy: my, sx: Math.sqrt(Math.max(0, sxx)), sy: Math.sqrt(Math.max(0, syy)), rho: sxy / Math.sqrt(Math.max(1e-12, sxx * syy)) }; }) } : undefined };
   }
 
-  const QUALITY = { fast: { compensate: 3, iters: 150, apCells: 24, ledSamples: 5, cellsPerFacet: 40 }, normal: { compensate: 6, iters: 250, apCells: 40, ledSamples: 6, cellsPerFacet: 60 }, best: { compensate: 10, iters: 400, apCells: 64, ledSamples: 7, cellsPerFacet: 100 } };
+  const QUALITY = { fast: { sizes: [1, 0.6, 0.36], compensate: 3, iters: 150, apCells: 24, imgSpacing: 1, cellsPerFacet: 40 }, normal: { sizes: [1, 0.75, 0.55, 0.4, 0.3, 0.22], compensate: 6, iters: 250, apCells: 40, imgSpacing: 0.8, cellsPerFacet: 60 }, best: { sizes: [1, 0.85, 0.7, 0.55, 0.45, 0.36, 0.28, 0.2], compensate: 10, iters: 400, apCells: 64, imgSpacing: 0.6, cellsPerFacet: 100 } };
   function solve(input, S0, tools) {
     const Q = QUALITY[S0.quality] || QUALITY.normal, S = Object.assign({}, S0);
     for (const k of Object.keys(Q)) if (S[k] === -1 || S[k] === undefined) S[k] = Q[k];
@@ -485,7 +500,7 @@
     // front opening: pick by predicted fidelity (+ a little credit for light), like the dish size in dish-fit
     // front opening × defocus: picked by predicted fidelity (+ a little credit for light), quick solves first
     const opts = [];
-    const grid = { fast: [[60], [0.5]], normal: [[50, 80], [0, 0.7]], best: [[45, 70, 95], [0, 0.5, 1]] }[S.quality] || [[50, 80], [0, 0.7]];
+    const grid = { fast: [[60], [0]], normal: [[50, 80], [0, 0.7]], best: [[45, 70, 95], [0, 0.5, 1]] }[S.quality] || [[50, 80], [0, 0.7]];
     for (const o of S.open >= 0 ? [S.open] : grid[0]) for (const m of S.defocus >= 0 ? [S.defocus] : grid[1]) opts.push({ o, m });
     if (opts.length === 1) return solveOnce(input, Object.assign({}, S, { open: opts[0].o, defocus: opts[0].m }), tools);
     const res = [], prog = (f, st) => { if (tools && tools.progress) tools.progress(f, st); };
@@ -511,7 +526,7 @@
       { key: 'iters', adv: true, label: 'Flux-balance iterations (−1 auto)', type: 'number', min: -1, max: 1000, step: 10, default: -1 },
       { key: 'newton', adv: true, label: 'Newton flux balance (off: older annealed updates)', type: 'checkbox', default: true },
       { key: 'shortlist', adv: true, label: 'Candidate patches per direction (0 = all)', type: 'number', min: 0, max: 64, step: 1, default: 32 },
-      { key: 'warmTau', adv: true, label: 'dev: final entropic width', type: 'number', min: 0.00001, max: 0.01, step: 0.00001, default: 0.00012 },
+      { key: 'finalTau', adv: true, label: 'dev: final entropic width', type: 'number', min: 0.000005, max: 0.01, step: 0.000005, default: 0.00003 },
       { key: 'trust', adv: true, label: 'dev: newton trust', type: 'number', min: 0.0001, max: 1, step: 0.0001, default: 0.01 },
       { key: 'drift', adv: true, label: 'dev: shortlist refresh drift', type: 'number', min: 0, max: 1, step: 0.001, default: 0.004 },
       { key: 'tol', adv: true, label: 'Flux-balance tolerance', type: 'number', min: 0.001, max: 0.5, step: 0.005, default: 0.03 },
@@ -520,7 +535,12 @@
       { key: 'margin', adv: true, label: 'Wall margin (mm)', type: 'number', min: 0, max: 5, step: 0.05, default: 0.3 },
       { key: 'cellsPerFacet', adv: true, label: 'Direction samples per patch (−1 auto)', type: 'number', min: -1, max: 400, step: 10, default: -1 },
       { key: 'apCells', adv: true, label: 'Aperture samples per patch (−1 auto)', type: 'number', min: -1, max: 400, step: 4, default: -1 },
-      { key: 'ledSamples', adv: true, label: 'LED samples per side (−1 auto)', type: 'number', min: -1, max: 16, step: 1, default: -1 },
+      { key: 'size', adv: true, label: 'Reflector size, fraction of the envelope (−1 auto)', type: 'number', min: -1, max: 1, step: 0.05, default: -1 },
+      { key: 'maxDefocus', adv: true, label: 'dev: largest defocus factor', type: 'number', min: 0, max: 60, step: 0.5, default: 6 },
+      { key: 'aimBias', adv: true, label: 'Aims follow light (1) or painted area (0)', type: 'number', min: 0, max: 1, step: 0.05, default: 1 },
+      { key: 'aspect', adv: true, label: 'dev: aim clustering stretch (vertical)', type: 'number', min: 0.1, max: 10, step: 0.1, default: 1 },
+      { key: 'imgSpacing', adv: true, label: 'Prediction: LED-image sample spacing, target cells (−1 auto)', type: 'number', min: -1, max: 4, step: 0.05, default: -1 },
+      { key: 'maxLedSide', adv: true, label: 'Prediction: most LED samples per side', type: 'number', min: 1, max: 40, step: 1, default: 16 },
     ],
     solve,
   });
