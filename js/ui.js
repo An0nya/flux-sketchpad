@@ -36,9 +36,10 @@
     const store = ui.store;
     const aDirty = store.dirty.has('A');
     store.commit({ deferA: true });                 // B, C, L rebuild immediately (cheap)
-    // Painting, an image, a pattern or a drag in the 3D views re-solves by itself (the 'auto' box); a sidebar setting only
-    // marks the design stale: with solves taking seconds, every nudge of a number shouldn't restart one (Anya, 09-30).
-    if (aDirty && store.autoA && !(opts && opts.settings)) ui.pendingA = performance.now() + (ui.interacting ? 600 : 250);
+    // Two switches (Anya, 09-30): 'painting' = paint, an image, a pattern, a solver swap, a drag in the 3D views (on by
+    // default); 'settings' = any sidebar number or solver setting (off by default: with solves taking seconds, every nudge
+    // shouldn't restart one).  Off → the design is marked stale until Rebuild.
+    if (aDirty && (opts && opts.settings ? store.autoSet : store.autoA)) ui.pendingA = performance.now() + (ui.interacting ? 600 : 250);
     ui.refreshPanels(); markStale();
     ui.requestRun(ui.interacting);
     ui.autosave();
@@ -109,9 +110,13 @@
     el.textContent = msg; el.classList.add('show');
     clearTimeout(ui._toastT); ui._toastT = setTimeout(() => el.classList.remove('show'), 1800);
   }
+  // the two auto-solve switches, kept per browser
+  function autoPrefs() { try { return Object.assign({ paint: true, settings: false }, JSON.parse(localStorage.getItem('flux/autoSolve') || '{}')); } catch (e) { return { paint: true, settings: false }; } }
+  ui.setAuto = function (k, on) { const a = autoPrefs(); a[k] = on; try { localStorage.setItem('flux/autoSolve', JSON.stringify(a)); } catch (e) { /* ignore */ } if (ui.store) { ui.store.autoA = a.paint; ui.store.autoSet = a.settings; } };
+  ui.autoPrefs = autoPrefs;
   ui.loadScene = function (scene, notice, silent) {
     ui.store = C.createStore(scene);
-    ui.store.autoA = document.getElementById('auto-a') ? document.getElementById('auto-a').checked : true;
+    const au = autoPrefs(); ui.store.autoA = au.paint; ui.store.autoSet = au.settings;
     // rebuild derived groups from intent. Mode A is re-solved too (~50 ms): the solver report isn't
     // saved with the scene, so otherwise the limits panel is empty after any load.
     ui.store.invalidate(['B', 'C', 'L']);
@@ -182,11 +187,11 @@
     const groups = [['Built in', paintDefs.filter((d) => !d.worker)], ['Model solvers (benchmark runs)', paintDefs.filter((d) => d.bundled)], ['Loaded by you', paintDefs.filter((d) => d.loaded)]];
     const pick = el('select', { 'aria-label': 'Solver' }, ...groups.filter(([, ds]) => ds.length).map(([g, ds]) => el('optgroup', { label: g }, ...ds.map((d) => opt(d, d.name + ' v' + d.version + (d.bundled ? ' — ' + d.bundled.model.replace(/ \(.*\)$/, '') + ', ' + d.bundled.run.slice(5) : ''))))));
     pick.value = cur;
-    pick.addEventListener('change', () => { sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.store.invalidate(['A']); markStale(); schedule(); renderSolverBox(); });
+    pick.addEventListener('change', () => { sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.store.invalidate(['A']); if (ui.store.autoA) ui.pendingA = performance.now() + 100; markStale(); schedule(); renderSolverBox(); });
     const file = el('input', { type: 'file', accept: '.js,text/javascript', hidden: '' });
     file.addEventListener('change', async () => {
       const f = file.files && file.files[0]; if (!f) return;
-      try { const defs = await RF.SolverHost.load(await f.text()); sc.solve = { id: defs[0].id }; try { localStorage.setItem('flux/solverChoice', defs[0].id); } catch (e) { /* ignore */ } ui.store.notice('Loaded solver ' + defs.map((d) => d.name).join(', ') + ' (runs isolated in a worker). Press Rebuild to run it.'); ui.store.invalidate(['A']); markStale(); schedule(); }
+      try { const defs = await RF.SolverHost.load(await f.text()); sc.solve = { id: defs[0].id }; try { localStorage.setItem('flux/solverChoice', defs[0].id); } catch (e) { /* ignore */ } ui.store.notice('Loaded solver ' + defs.map((d) => d.name).join(', ') + ' (runs isolated in a worker).'); ui.store.invalidate(['A']); if (ui.store.autoA) ui.pendingA = performance.now() + 100; markStale(); schedule(); }
       catch (err) { ui.store.notice('Could not load ' + f.name + ': ' + err.message); }
       renderSolverBox(); P.renderNotices(ui);
     });
@@ -200,7 +205,7 @@
       if (shared.length) fields.push(el('div', { class: 'note' }, shared.join(', ') + ': from the Paint settings above (shared by every solver).'));
       for (const f of def.settings) {
         if (RF.Solvers.SHARED.includes(f.key)) continue;
-        const set = (v) => { sc.solverSettings[cur] = Object.assign({}, vals, sc.solverSettings[cur], { [f.key]: v }); ui.store.invalidate(['A']); markStale(); schedule(); };
+        const set = (v) => { sc.solverSettings[cur] = Object.assign({}, vals, sc.solverSettings[cur], { [f.key]: v }); ui.store.invalidate(['A']); if (ui.store.autoSet) ui.pendingA = performance.now() + 400; markStale(); schedule(); };
         let inp;
         if (f.type === 'select') { inp = el('select', {}, ...(f.options || []).map((o) => el('option', { value: o.value !== undefined ? o.value : o }, o.label || o.value || o))); inp.value = vals[f.key]; inp.addEventListener('change', () => set(inp.value)); }
         else if (f.type === 'checkbox') { inp = el('input', { type: 'checkbox' }); inp.checked = !!vals[f.key]; inp.addEventListener('change', () => set(inp.checked)); }
@@ -259,6 +264,7 @@
       void bar.offsetWidth; bar.style.transition = '';
     }
     line.classList.toggle('solving', phase === 'solve');
+    document.body.classList.toggle('solving', phase !== 'done' && (phase === 'solve' || !!ui.solving));
     line.classList.toggle('done', phase === 'done');
     if (phase === 'trace') bar.style.width = (frac * 100).toFixed(1) + '%';
     if (phase === 'done') { bar.style.width = '100%'; ui.jobT0 = 0; clearTimeout(ui._stripT); ui._stripT = setTimeout(() => strip.classList.remove('open'), 800); return; }
@@ -277,6 +283,8 @@
   }
   function showStop(on) {
     const b = document.getElementById('btn-stop'); if (b) b.hidden = !on;
+    if (!on) document.body.classList.remove('solving');
+    markStale();                                      // a solve that starts or ends changes whether the design is out of date
     clearInterval(ui._solveTick); if (on) ui._solveTick = setInterval(solveStatus, 250);
   }
   function stopWorkerSolve(why) {                    // stop the running worker solve; its promise then rejects (and is ignored if superseded)
@@ -299,7 +307,7 @@
   const stale = () => ui.store.scene.mode === 'A' && ui.store.dirty.has('A') && !ui.pendingA && !ui.solveArmed && !ui.solving;
   function markStale() {
     const on = stale();
-    for (const id of ['btn-generate', 'btn-generate-top']) { const b = document.getElementById(id); if (b) { b.classList.toggle('stale', on); b.title = on ? 'Settings changed since the last solve: rebuild to see them' : 'Re-solve the reflector for the painted target and re-trace'; } }
+    for (const id of ['btn-generate', 'btn-generate-top']) { const b = document.getElementById(id); if (b) { b.classList.toggle('stale', on); b.title = on ? 'Changed since the last solve: rebuild to see it' : 'Re-solve the reflector for the painted target and re-trace'; } }
   }
   function schedule() {
     if (ui.raf) return;
@@ -362,7 +370,7 @@
       if (ui.solving) { /* the solve owns the status line and the bar until it ends */ }
       else if (!ui.solveArmed) ui.progress(c.done ? 'done' : 'trace', pct);
       if (ui.solving) { /* see solveStatus() */ }
-      else if (stale()) ui.setStatus('settings changed — press Rebuild');
+      else if (stale()) ui.setStatus('out of date — press Rebuild');
       else if (!ui.pendingA || !store.dirty.has('A')) ui.setStatus(c.done ? (run.preview ? 'preview' : 'up to date') : 'tracing ' + Math.floor(100 * c.next / c.N) + '%' + (run.preview ? ' (preview)' : ''));   // counts + ms live in the footer
       else ui.setStatus('design changed — regenerating when you pause…');
     }

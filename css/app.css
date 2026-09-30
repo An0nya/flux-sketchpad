@@ -387,3 +387,21 @@ button.toggle[aria-pressed="true"] { background: #3a2f1f; color: var(--warn); bo
 /* the design is out of date with the sidebar settings: Rebuild asks for a press (a ring + a dot, not colour alone) */
 button.primary.stale { box-shadow: 0 0 0 2px var(--warn); }
 button.primary.stale::after { content: ' •'; }
+
+/* ---- a solve is running (body.solving): make it obvious, esp. on a phone where the header status is hidden.
+   The Rebuild buttons carry a spinner, the strip's text and the Result map carry a slow light sweep.  Transform /
+   background-position only, so the compositor keeps them moving; still indicators when motion is reduced. */
+body.solving #btn-generate-top::before, body.solving #btn-generate::before { content: ''; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent; display: inline-block; vertical-align: -1px; box-sizing: border-box; }
+body.solving .canvas-wrap:has(> #heat-canvas) { position: relative; overflow: hidden; }
+body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; position: absolute; inset: 0; pointer-events: none; display: flex; align-items: flex-end; justify-content: flex-end;
+  padding: 6px 8px; font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .8px; text-transform: uppercase; color: var(--b);
+  background: linear-gradient(100deg, transparent 30%, rgba(90,167,255,.10) 50%, transparent 70%) no-repeat; background-size: 250% 100%; background-position: 100% 0; }
+@media (prefers-reduced-motion: no-preference) {
+  body.solving #btn-generate-top::before, body.solving #btn-generate::before { animation: flux-spin .8s linear infinite; }
+  @keyframes flux-spin { to { transform: rotate(360deg); } }
+  body.solving .canvas-wrap:has(> #heat-canvas)::after { animation: flux-sweep 1.6s ease-in-out infinite; }
+  @keyframes flux-sweep { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+  body.solving #progress-text { background: linear-gradient(90deg, var(--dim) 40%, var(--ink) 50%, var(--dim) 60%) no-repeat; background-size: 300% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; animation: flux-sweep 1.8s linear infinite; }
+}

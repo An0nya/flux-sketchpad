@@ -126,11 +126,11 @@
     // ---- 1. Design: the current mode's controls
     const genBtn = el('button', { type: 'button', class: 'primary', id: 'btn-generate' }, 'Rebuild reflector');
     genBtn.addEventListener('click', () => ui.generateA());
-    const auto = el('input', { type: 'checkbox', id: 'auto-a', checked: true });
-    auto.addEventListener('change', () => { ui.store.autoA = auto.checked; });
+    const ap = ui.autoPrefs(), auto = el('input', { type: 'checkbox', id: 'auto-a', checked: ap.paint }), autoS = el('input', { type: 'checkbox', id: 'auto-set', checked: ap.settings });
+    auto.addEventListener('change', () => ui.setAuto('paint', auto.checked)); autoS.addEventListener('change', () => ui.setAuto('settings', autoS.checked));
     side.append(section('Paint', { open: true, cls: 'only-A', key: 'A', tag: 'tile the painted pattern' },
       el('div', { class: 'note' }, 'Paint in the Editor. Rebuild runs the solver chosen here to place facets that reproduce the painting.'),
-      el('div', { class: 'btnrow' }, genBtn, el('label', { class: 'tog', title: 'Re-solve by itself after you paint, load an image or pattern, or drag in the 3D views. Sidebar settings never re-solve by themselves: they mark the design stale until you press Rebuild.' }, auto, ' auto after painting')),
+      el('div', { class: 'btnrow' }, genBtn, el('span', { class: 'note' }, 'Re-solve after'), el('label', { class: 'tog', title: 'Painting, an image or pattern, a new solver, or a drag in the 3D views' }, auto, ' painting'), el('label', { class: 'tog', title: 'Any number or solver setting in this sidebar. Off: the design is marked out of date until you press Rebuild.' }, autoS, ' settings')),
       ...rowsFor(ui, ['A.budget', 'A.minDist']),
       el('div', { id: 'solver-box', class: 'solver-box' }),
       el('div', { id: 'pattern-box' }),
