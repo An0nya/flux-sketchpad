@@ -30,7 +30,8 @@
       if (store.dirty.has('B')) { const b = RF.ModeB.build(sc); sc.groups.B.surfaces = b.surfaces; store.reports.B = b.reports; store.dirty.delete('B'); }
       if (store.dirty.has('C')) { const c = RF.Profile.build(sc); sc.groups.C.surfaces = c.surfaces; store.reports.C = c.report; store.dirty.delete('C'); }
       if (store.dirty.has('L')) { const l = RF.Lenses.buildAll(sc); sc.groups.L.surfaces = l.surfaces; store.reports.L = l.infos; store.dirty.delete('L'); }
-      if (store.dirty.has('A') && (opts.forceA || (store.autoA && !opts.deferA)) && !RF.Solvers.get(RF.Solvers.current(sc)).worker) regenerateA(store);   // worker solvers: the UI runs them async
+      const waiting = RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(sc));   // boot: the chosen solver is still loading
+      if (store.dirty.has('A') && (opts.forceA || (store.autoA && !opts.deferA)) && !waiting && !RF.Solvers.get(RF.Solvers.current(sc)).worker) regenerateA(store);   // worker solvers: the UI runs them async
       return store;
     };
     return store;

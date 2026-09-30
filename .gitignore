@@ -6,3 +6,4 @@ astra/tests/results.json
 tests/last-run.json
 tests/shots/
 bench-out/
+.claude/

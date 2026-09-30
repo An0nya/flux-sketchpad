@@ -52,7 +52,12 @@
 
   // Which solver a scene uses, and its settings.  The default solver's settings live in scene.modeA
   // (its sidebar controls predate the registry); any other solver's in scene.solverSettings[id].
-  function current(scene) { const id = (scene.solve && scene.solve.id) || DEFAULT_ID; return get(id) ? id : DEFAULT_ID; }
+  // PREFERRED_ID = the app's default choice (a worker solver, loaded at boot); DEFAULT_ID = the built-in fallback that
+  // is always there (tests, a failed load, the moment before the bundled solvers arrive).  A scene saved with a
+  // solver keeps it.
+  const PREFERRED_ID = 'fill-fix';
+  const wanted = (scene) => (scene.solve && scene.solve.id) || PREFERRED_ID;
+  function current(scene) { const id = wanted(scene); return get(id) ? id : DEFAULT_ID; }
   // LIMITS are the user's, not the solver's: the facet budget and the mirror's reflectivity arrive in
   // input.limits and the host verifies the budget.  A solver can't declare them as settings (register
   // refuses), so no solver can grow its own facet-count control.  Legacy solvers (before 09-25 late) that
@@ -199,5 +204,5 @@
     return res;
   }
 
-  RF.Solvers = { register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
+  RF.Solvers = { PREFERRED_ID, wanted, register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

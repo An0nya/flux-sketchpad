@@ -9,7 +9,7 @@
   'use strict';
   const RF = root.RF;
   const KEY = 'flux/solvers', BUDGET = { ms: 120000, rays: 5e7 };
-  let worker = null, sources = [], srcIds = [], bundled = [], pending = null, cancel = null, ready = Promise.resolve(), live = null;
+  let worker = null, sources = [], srcIds = [], bundled = [], pending = null, cancel = null, ready = Promise.resolve(), live = null, loading = typeof Worker !== "undefined";   // true from page load until restore() has the bundled solvers in
   // sources[i] = a loaded file's text, srcIds[i] = the ids it registered;  bundled = [{ src, meta }] from solvers/
   function spawn() {
     worker = new Worker('js/solve-worker.js');
@@ -86,8 +86,9 @@
   }
   async function restore() {
     let saved = []; try { saved = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { saved = []; }
+    loading = true;
     ready = (async () => { await bundle(); for (const src of saved) { try { const defs = await loadInto(src, null); sources.push(src); srcIds.push(defs.map((x) => x.id)); } catch (e) { /* dropped */ } } save(); })();
-    await ready;
+    try { await ready; } finally { loading = false; }
   }
   function forget() {                              // unload the user's files; the bundled solvers stay
     abort('the loaded solvers were forgotten');
@@ -96,5 +97,5 @@
     if (worker) { worker.terminate(); worker = null; }
     ready = reload();
   }
-  RF.SolverHost = { load, restore, forget, abort, busy, BUDGET };
+  RF.SolverHost = { load, restore, forget, abort, busy, loading: () => loading, BUDGET };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

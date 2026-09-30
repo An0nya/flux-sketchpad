@@ -129,11 +129,12 @@
     const auto = el('input', { type: 'checkbox', id: 'auto-a', checked: true });
     auto.addEventListener('change', () => { ui.store.autoA = auto.checked; });
     side.append(section('Paint', { open: true, cls: 'only-A', key: 'A', tag: 'tile the painted pattern' },
-      el('div', { class: 'note' }, 'Paint in the Editor. Rebuild places facets so their source images tile the painting, with flux per zone from solid-angle accounting.'),
+      el('div', { class: 'note' }, 'Paint in the Editor. Rebuild runs the solver chosen here to place facets that reproduce the painting.'),
       el('div', { class: 'btnrow' }, genBtn, el('label', { class: 'tog' }, auto, ' auto after edits')),
-      ...rowsFor(ui, ['A.budget']),
+      ...rowsFor(ui, ['A.budget', 'A.minDist']),
+      el('div', { id: 'solver-box', class: 'solver-box' }),
       el('div', { id: 'pattern-box' }),
-      section('Advanced', { adv: true, key: 'A-adv' }, ...rowsFor(ui, ['A.type', 'A.refl', 'A.minDist', 'A.req'])),
+      section('Advanced', { adv: true, key: 'A-adv' }, ...rowsFor(ui, ['A.type', 'A.refl', 'A.req'])),
       el('div', { id: 'modeA-report', class: 'note' })));
     side.append(section('Stamp tiles', { open: true, cls: 'only-B', key: 'B', tag: 'solve facet per tile' },
       el('div', { class: 'note' }, 'Tap the Result map to stamp a tile; drag stamps to move them. The Editor is the second picker: direction from the source (drag a marker to set it by hand).'),
@@ -185,7 +186,7 @@
       section('Verification', { open: false, key: 'checks', tag: 'in-page, pass/fail' },
         el('div', { class: 'note' }, 'Same checks as `node tests/headless.js`. They build their own scenes; your scene is not touched. #14 additionally drives the real DOM inputs here.'),
         el('div', { class: 'btnrow' }, runBtn), el('div', { id: 'checks-out', class: 'checks' })),
-      section('Solver', { open: false, key: 'solver', tag: 'default: ' + ((RF.Solvers.get(RF.Solvers.DEFAULT_ID) || {}).name || RF.Solvers.DEFAULT_ID).replace(/ \(.*\)$/, '') }, el('div', { id: 'solver-box' })),
+      section('Solver files', { open: false, key: 'solver', tag: 'load your own' }, el('div', { id: 'solver-files' })),
       section('Diagnostics (solver internals)', { open: false, key: 'diag', tag: 'read-only' }, el('div', { id: 'diag', class: 'note' })),
       section('Scene contents', { open: false, key: 'groups', tag: 'visibility override' }, el('div', { id: 'group-list', class: 'group-list' }))));
   }

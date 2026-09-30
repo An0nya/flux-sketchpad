@@ -190,7 +190,7 @@
     });
     const loadBtn = el('label', { class: 'filebtn', title: 'A self-contained .js file that calls RF.Solvers.register({...}). It runs in a worker, never on this page.' }, 'Load solver file…', file);
     const forget = el('button', { type: 'button', title: 'Unload every loaded solver and go back to the default' }, 'Forget loaded');
-    forget.addEventListener('click', () => { RF.SolverHost.forget(); try { localStorage.removeItem('flux/solverChoice'); } catch (e) { /* ignore */ } sc.solve = { id: RF.Solvers.DEFAULT_ID }; ui.generateA(); renderSolverBox(); });
+    forget.addEventListener('click', () => { RF.SolverHost.forget(); try { localStorage.removeItem('flux/solverChoice'); } catch (e) { /* ignore */ } sc.solve = { id: RF.Solvers.PREFERRED_ID }; ui.generateA(); renderSolverBox(); });
     const fields = [], advFields = [];
     if (cur !== RF.Solvers.DEFAULT_ID) {                // the default's settings are the Paint controls above
       sc.solverSettings = sc.solverSettings || {}; const vals = RF.Solvers.settingsOf(sc, cur);
@@ -215,11 +215,12 @@
     const fx = rep && rep.facts, facts = !fx ? '—' : fx.errors.length ? 'unusable output: ' + fx.errors[0] :
       fx.placed + ' placed' + (fx.dropped !== null ? ' · ' + fx.dropped + ' unplaced intents' : '') + ' · envelope ' + (fx.violations.envelope.length ? fx.violations.envelope.length + ' outside' : 'ok') + ' · keep-out ' + (fx.violations.keepOut.length ? fx.violations.keepOut.length + ' inside' : 'ok') + ' · budget ' + (fx.violations.budget ? 'EXCEEDED (' + fx.violations.budget.placed + ' > ' + fx.violations.budget.budget + ')' : 'ok') + (fx.intentErrors.length ? ' · intent malformed' : '') + (rep.solveMs !== undefined ? ' · ' + Math.round(rep.solveMs) + ' ms' : '');
     box.innerHTML = '';
-    const who = def.bundled ? (def.bundled.note === 'lab' ? 'Built in the Flux solver lab (' + def.bundled.model.replace(/^.*\((.*)\)$/, '$1') + ', ' + def.bundled.run + '; solvers/' + def.bundled.file + ').' : 'Written by ' + def.bundled.model + ' in the Flux solver benchmark run of ' + def.bundled.run + ' (solvers/' + def.bundled.file + ').') + (/-auto$/.test(def.id) ? ' A tuner: it traces candidates, so it takes longer.' : '')
-      : def.loaded ? 'Loaded from a file in this browser.' : cur === RF.Solvers.DEFAULT_ID ? 'The app\'s default solver.' : 'Built into the app.';
-    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), el('div', { class: 'note' }, who), ...fields,
-      el('div', { class: 'btnrow' }, loadBtn, forget),
-      el('div', { class: 'note' }, 'Verified by the app, not the solver: ' + facts + '. Saved with the scene: ' + (sc.solve ? sc.solve.id + ' v' + (sc.solve.version || '?') : '—') + '.'));
+    const who = (cur === RF.Solvers.PREFERRED_ID ? 'The app\'s default. ' : '') + (def.bundled ? (def.bundled.note === 'lab' ? 'Built in the Flux solver lab (' + def.bundled.model.replace(/^.*\((.*)\)$/, '$1') + ', ' + def.bundled.run + '; solvers/' + def.bundled.file + ').' : 'Written by ' + def.bundled.model + ' in the Flux solver benchmark run of ' + def.bundled.run + ' (solvers/' + def.bundled.file + ').') + (/-auto$/.test(def.id) ? ' A tuner: it traces candidates, so it takes longer.' : '')
+      : def.loaded ? 'Loaded from a file in this browser.' : cur === RF.Solvers.DEFAULT_ID ? 'The built-in fallback solver; its settings are the Paint controls.' : 'Built into the app.');
+    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), el('div', { class: 'note' }, who), ...fields);
+    const files = document.getElementById('solver-files');
+    if (files) { files.innerHTML = ''; files.append(el('div', { class: 'btnrow' }, loadBtn, forget),
+      el('div', { class: 'note' }, 'Verified by the app, not the solver: ' + facts + '. Saved with the scene: ' + (sc.solve ? sc.solve.id + ' v' + (sc.solve.version || '?') : '—') + '.')); }
   }
   ui.refreshPanels = function () {
     renderSolverBox();
@@ -1333,6 +1334,7 @@
     if (RF.SolverHost) RF.SolverHost.restore().then(() => {
       let want = null; try { want = localStorage.getItem('flux/solverChoice'); } catch (e) { /* ignore */ }
       if (want && want !== RF.Solvers.current(ui.store.scene) && RF.Solvers.get(want)) { ui.store.scene.solve = { id: want }; ui.generateA(); }
+      else if (ui.store.dirty.has('A')) ui.generateA();                        // the first solve waited for the chosen solver to load
       renderSolverBox();
     });
     // Scene: Reset view = the view the app opens with; Setup = show the edit handles here too
@@ -1463,7 +1465,11 @@
     P.buildSide(ui); renderPatterns();
     wireTopbar(); wireScene(); wireHeat(); wireLeft();
     ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : null, true);
-    if (!scene.groups.A.surfaces.length && scene.mode === 'A') { C.regenerateA(ui.store); }
+    if (!scene.groups.A.surfaces.length && scene.mode === 'A') {
+      // the default solver is a worker solver that arrives with the bundle: wait for it (restore() solves after)
+      const waiting = RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(ui.store.scene));
+      if (waiting) ui.store.invalidate(['A']); else C.regenerateA(ui.store);
+    }
     ui.hist = RF.History.create(100); ui.hist.reset(RF.History.intent(ui.store.scene)); updateUndoButtons();   // history doesn't survive a reload
     ui.setMode(scene.mode, true);
     setTimeout(() => { ui.fit(ui.fitMode || 'all'); ui.refreshPanels(); ui.requestRun(false); }, 0);
