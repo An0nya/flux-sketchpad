@@ -121,27 +121,44 @@
       return y;
     }
     // A[j] = { c, ah, target } (target shares sum to 1); ds = the directions in play; x = log β (in/out); returns soft max relative error.
-    // Exact over ALL patches (no shortlist: in the fine problem the 32nd-nearest patch is only 0.1–0.3% farther than the
-    // nearest, so a shortlist silently truncates the soft partition).  A table of direction·aim dot products makes a
-    // radius one multiply-add and one division; only near-ties (within ~18τ of the smallest radius) get an exponential.
+    // Exact over ALL patches, no shortlist: in the fine problem the 32nd-nearest patch is only 0.1–0.3% farther than the nearest, so
+    // a fixed-length shortlist silently truncates the soft partition.  Instead each direction keeps a WINDOW: every patch whose
+    // log-radius, at a reference x, is within (2·1.3·window + 18τ) of the smallest.  While no x_j has moved more than `window`
+    // from the reference (log r moves at most 1.3× as fast as x), nothing outside a direction's window can matter, and the
+    // window is rebuilt when that stops holding.  Only patches inside a window pay for a radius; only near-ties (within 18τ) an exp.
     function newtonCore(A, ds, x, taus, tolLast, maxIt) {
       const J = A.length, nd = ds.length; let tot = 0; for (const d of ds) tot += d.flux;
-      const want = A.map((z) => z.target * tot), dots = new Float64Array(nd * J), cc = new Float64Array(J);
-      for (let j = 0; j < J; j++) { cc[j] = 2 * A[j].c; const a = A[j].ah; for (let di = 0; di < nd; di++) { const u = ds[di].u; dots[di * J + j] = u[0] * a[0] + u[1] * a[1] + u[2] * a[2]; } }
+      const want = A.map((z) => z.target * tot), cc = new Float64Array(J), ax = new Float64Array(J), ay = new Float64Array(J), az = new Float64Array(J);
+      const ux = new Float64Array(nd), uy = new Float64Array(nd), uz = new Float64Array(nd), fx = new Float64Array(nd);
+      for (let j = 0; j < J; j++) { cc[j] = 2 * A[j].c; ax[j] = A[j].ah[0]; ay[j] = A[j].ah[1]; az[j] = A[j].ah[2]; }
+      for (let di = 0; di < nd; di++) { const u = ds[di].u; ux[di] = u[0]; uy[di] = u[1]; uz[di] = u[2]; fx[di] = ds[di].flux; }
       const b = new Float64Array(J), q = new Float64Array(J), e2 = new Float64Array(J), gb = new Float64Array(J), R = new Float64Array(J);
-      const cj = new Int32Array(J), pp = new Float64Array(J), gg = new Float64Array(J);
-      const Fs = new Float64Array(J), M = new Float64Array(J * J);
+      const cj = new Int32Array(J), pp = new Float64Array(J), gg = new Float64Array(J), Fs = new Float64Array(J), M = new Float64Array(J * J);
       const setB = () => { for (let j = 0; j < J; j++) { const bj = Math.exp(x[j]); b[j] = bj; q[j] = bj * (bj + cc[j]); e2[j] = 2 * bj; gb[j] = 1 + bj / (bj + cc[j]); } };
+      const WIN = S.window, xr = new Float64Array(J).fill(NaN); let tauBuilt = 0, coff = new Int32Array(nd + 1), cidx = new Int32Array(nd * 8 + 64);
+      const drift = () => { let m = 0; for (let j = 0; j < J; j++) { const d = Math.abs(x[j] - xr[j]); if (!(d <= m)) m = d; } return m; };   // NaN counts as infinite
+      const rebuild = (tau) => {                                 // windows at the current x
+        xr.set(x); tauBuilt = tau; const w = Math.exp(2 * 1.3 * WIN + 18 * tau); let n = 0;
+        for (let di = 0; di < nd; di++) {
+          let rmin = Infinity; for (let j = 0; j < J; j++) { const r = q[j] / (e2[j] + cc[j] * (1 - (ux[di] * ax[j] + uy[di] * ay[j] + uz[di] * az[j]))); R[j] = r; if (r < rmin) rmin = r; }
+          const thr = rmin * w; coff[di] = n;
+          if (n + J > cidx.length) { const g = new Int32Array(Math.max(cidx.length * 2, n + J)); g.set(cidx.subarray(0, n)); cidx = g; }
+          for (let j = 0; j < J; j++) if (R[j] <= thr) cidx[n++] = j;
+        }
+        coff[nd] = n;
+      };
       const evalF = (tau, wantM) => {                            // soft fluxes at x; if wantM also M = −∂F/∂x
-        setB(); Fs.fill(0); if (wantM) M.fill(0); const cut = Math.exp(18 * tau);
-        for (let di = 0, o = 0; di < nd; di++, o += J) {
-          let rmin = Infinity; for (let j = 0; j < J; j++) { const r = q[j] / (e2[j] + cc[j] * (1 - dots[o + j])); R[j] = r; if (r < rmin) rmin = r; }
+        setB(); if (drift() > WIN || tau > tauBuilt) rebuild(tau);
+        Fs.fill(0); if (wantM) M.fill(0); const cut = Math.exp(18 * tau);
+        for (let di = 0; di < nd; di++) {
+          const o0 = coff[di], o1 = coff[di + 1]; let rmin = Infinity;
+          for (let t = o0; t < o1; t++) { const j = cidx[t], r = q[j] / (e2[j] + cc[j] * (1 - (ux[di] * ax[j] + uy[di] * ay[j] + uz[di] * az[j]))); R[t - o0] = r; if (r < rmin) rmin = r; }
           const thr = rmin * cut; let nc = 0, zs = 0;
-          for (let j = 0; j < J; j++) if (R[j] <= thr) { cj[nc] = j; const p = Math.exp(-Math.log(R[j] / rmin) / tau); pp[nc] = p; zs += p; nc++; }
-          const fl = ds[di].flux;
+          for (let t = 0; t < o1 - o0; t++) if (R[t] <= thr) { cj[nc] = cidx[o0 + t]; const p = Math.exp(-Math.log(R[t] / rmin) / tau); pp[nc] = p; zs += p; nc++; }
+          const fl = fx[di];
           for (let t = 0; t < nc; t++) { pp[t] /= zs; Fs[cj[t]] += fl * pp[t]; }
           if (wantM) { const f = fl / tau;
-            for (let t = 0; t < nc; t++) { const j = cj[t]; gg[t] = gb[j] - 2 * b[j] / (e2[j] + cc[j] * (1 - dots[o + j])); }
+            for (let t = 0; t < nc; t++) { const j = cj[t]; gg[t] = gb[j] - 2 * b[j] / (e2[j] + cc[j] * (1 - (ux[di] * ax[j] + uy[di] * ay[j] + uz[di] * az[j]))); }
             for (let t = 0; t < nc; t++) { const pt = pp[t]; if (pt < 1e-7) continue; const it = cj[t] * J;
               M[it + cj[t]] += f * gg[t] * pt * (1 - pt);
               for (let u = 0; u < nc; u++) if (u !== t && pp[u] >= 1e-7) M[it + cj[u]] -= f * gg[u] * pt * pp[u]; } }
@@ -161,8 +178,8 @@
           let dead = 0; for (let j = 0; j < J; j++) if (Fs[j] < 1e-3 * want[j]) dead++;
           if (dead && revived < 6) {
             revived++; const mr = new Float64Array(J).fill(Infinity), isd = new Uint8Array(J); for (let j = 0; j < J; j++) if (Fs[j] < 1e-3 * want[j]) isd[j] = 1;
-            for (let di = 0, o = 0; di < nd; di++, o += J) {
-              let rmin = Infinity; for (let j = 0; j < J; j++) { const r = q[j] / (e2[j] + cc[j] * (1 - dots[o + j])); R[j] = r; if (r < rmin) rmin = r; }
+            for (let di = 0; di < nd; di++) {
+              let rmin = Infinity; for (let j = 0; j < J; j++) { const r = q[j] / (e2[j] + cc[j] * (1 - (ux[di] * ax[j] + uy[di] * ay[j] + uz[di] * az[j]))); R[j] = r; if (r < rmin) rmin = r; }
               for (let j = 0; j < J; j++) if (isd[j]) { const t = R[j] / rmin; if (t < mr[j]) mr[j] = t; }
             }
             for (let j = 0; j < J; j++) if (isd[j] && mr[j] < Infinity) x[j] -= Math.max(0, Math.log(mr[j]) / gb[j]) + 3 * tau;
@@ -406,7 +423,7 @@
       passesLeft = Math.max(0, S.compensate - sp);
       notes.push('design search (score = predicted fidelity / light on paint): ' + report.join(' · ') + ' → opening ' + openPick + '°, size ' + sizePick);
     }
-    if (S.gapWeight > 0 && passesLeft > 0) {
+    if (S.gapWeight > 0 && passesLeft > 0 && S.gapTrial !== false) {
       // how much to care about the gaps while fitting the paint depends on the paint: thin strokes cannot be lit without lighting
       // their surroundings, a wash or a blob can.  Run the remaining passes both ways from the same state; keep the better predicted.
       const base0 = snap(); let bestG = null; const res = [];
@@ -481,6 +498,12 @@
   function solve(input, S0, tools) {
     const Q = QUALITY[S0.quality] || QUALITY.fast, S = Object.assign({}, S0);
     for (const k of Object.keys(Q)) if (S[k] === -1 || S[k] === undefined) S[k] = Q[k];
+    // Cost grows like (patches × directions) ≈ N², and every candidate the design search tries is a re-balance.  Large budgets
+    // therefore search less (decided by the budget alone, never by a clock, so the result stays deterministic).
+    let painted = 0; for (const v of input.paint.cells) if (v > 0) painted++;
+    const N = Math.min(Math.max(1, input.limits.maxFacets | 0), painted);
+    if (N > 300) { S.sizes = S.sizes.slice(0, 2); S.opens = S.opens.slice(0, 2); S.searchPasses = Math.min(S.searchPasses, 1); S.compensate = Math.min(S.compensate, 3); S.gapTrial = false; }
+    if (N > 600) { S.sizes = S.sizes.slice(0, 1); S.opens = S.opens.slice(0, 1); S.compensate = Math.min(S.compensate, 2); S.cellsPerFacet = Math.min(S.cellsPerFacet, 25); S.apCells = Math.min(S.apCells, 16); }
     return solveOnce(input, S, tools);
   }
 
@@ -498,6 +521,7 @@
       { key: 'gapWeight', adv: true, label: 'How much the compensation cares about lit gaps', type: 'number', min: 0, max: 10, step: 0.05, default: 0.5 },
       { key: 'aimBias', adv: true, label: 'Aims follow the light (1) or the painted area (0)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.3 },
       { key: 'fitShare', adv: true, label: 'Share of the light the reflector must fit the envelope for', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.9 },
+      { key: 'window', adv: true, label: 'Flux-balance: how far sizes may move before candidate lists are rebuilt (log units)', type: 'number', min: 0.0002, max: 0.05, step: 0.0002, default: 0.003 },
       { key: 'tol', adv: true, label: 'Flux-balance tolerance', type: 'number', min: 0.001, max: 0.5, step: 0.005, default: 0.03 },
       { key: 'finalTau', adv: true, label: 'Flux-balance sharpness (smaller = sharper, slower)', type: 'number', min: 0.000005, max: 0.01, step: 0.000005, default: 0.00003 },
       { key: 'nnlsIters', adv: true, label: 'Least-squares iterations per compensation pass', type: 'number', min: 1, max: 1000, step: 1, default: 80 },
