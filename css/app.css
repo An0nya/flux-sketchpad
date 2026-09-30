@@ -402,6 +402,8 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
   @keyframes flux-spin { to { transform: rotate(360deg); } }
   body.solving .canvas-wrap:has(> #heat-canvas)::after { animation: flux-sweep 1.6s ease-in-out infinite; }
   @keyframes flux-sweep { from { background-position: 100% 0; } to { background-position: -150% 0; } }
-  body.solving #progress-text { background: linear-gradient(90deg, var(--dim) 40%, var(--ink) 50%, var(--dim) 60%) no-repeat; background-size: 300% 100%;
-    -webkit-background-clip: text; background-clip: text; color: transparent; animation: flux-sweep 1.8s linear infinite; }
+  /* the gradient must cover the text at every frame (a no-repeat image slid past the edge left the text blank) */
+  body.solving #progress-text { background: linear-gradient(90deg, var(--dim) 0 40%, var(--ink) 50%, var(--dim) 60% 100%); background-size: 200% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; animation: flux-textsweep 1.8s linear infinite; }
+  @keyframes flux-textsweep { from { background-position: 100% 0; } to { background-position: 0% 0; } }
 }
