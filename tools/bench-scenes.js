@@ -20,6 +20,20 @@ function textPaint(res, word, height) {       // letters `height` of the target 
   return p;
 }
 
+// Cursive "hello": one stroke through hand-placed points (Catmull-Rom), rasterised `thick` cells wide.  Span 0..6.8 × 0..4.
+const HELLO = [[0, 1], [0.3, 1.3], [0.8, 3.5], [0.6, 4], [0.35, 3.5], [0.45, 1.5], [0.45, 0], [0.6, 0.8], [1.05, 1.35], [1.45, 0.95], [1.5, 0.1],
+  [1.8, 0.3], [2.25, 0.75], [2.55, 1.2], [2.25, 1.45], [1.95, 1.05], [2.1, 0.2], [2.7, 0.15], [3.15, 1.0], [3.6, 3.4], [3.45, 4], [3.15, 3.5], [3.25, 1.0],
+  [3.55, 0.1], [4.05, 0.4], [4.55, 1.2], [4.95, 3.4], [4.8, 4], [4.5, 3.5], [4.6, 1.0], [4.9, 0.1], [5.4, 0.45], [5.75, 1.05], [5.45, 1.25], [5.3, 0.55],
+  [5.7, 0.0], [6.15, 0.5], [5.95, 1.2], [5.6, 1.1], [6.35, 1.2], [6.8, 1.35]];
+function cursivePaint(res, width, thick) {
+  const p = new Array(res * res).fill(0), sc = res * width / 6.8, x0 = (res - 6.8 * sc) / 2, y0 = (res - 4 * sc) / 2, pts = [];
+  const P = HELLO.map(([x, y]) => [x0 + x * sc, y0 + y * sc]);
+  for (let i = 0; i + 1 < P.length; i++) { const a = P[Math.max(0, i - 1)], b = P[i], c = P[i + 1], d = P[Math.min(P.length - 1, i + 2)];
+    for (let t = 0; t < 1; t += 0.02) { const t2 = t * t, t3 = t2 * t, f = (k) => 0.5 * (2 * b[k] + (-a[k] + c[k]) * t + (2 * a[k] - 5 * b[k] + 4 * c[k] - d[k]) * t2 + (-a[k] + 3 * b[k] - 3 * c[k] + d[k]) * t3); pts.push([f(0), f(1)]); } }
+  for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) { const x = i + 0.5, y = j + 0.5; for (const q of pts) if ((q[0] - x) ** 2 + (q[1] - y) ** 2 <= (thick / 2) ** 2) { p[j * res + i] = 1; break; } }
+  return p;
+}
+
 // Put the LED at a point inside the default envelope, facing `axis`.  The envelope stays where it is.
 function placeLed(s, where, axis) {
   const c = s.envelope.center, h = s.envelope.half;
@@ -28,6 +42,11 @@ function placeLed(s, where, axis) {
   return s;
 }
 
+function sparse(s, budget, f) {
+  s.modeA.budget = budget; s.modeA.paint = paintFrom(s.target.res, f);
+  s.source.pos = [s.source.pos[0] + 6, s.source.pos[1] + 9, s.source.pos[2]]; s.source.axis = [0.34, -0.42, 0.84]; s.source.roll = 20;   // tilted, off-centre
+  return s;
+}
 function suite(RF) {
   const D = () => RF.State.defaultScene();
   const withPaint = (f) => () => { const s = D(); s.modeA.paint = paintFrom(s.target.res, f); return s; };
@@ -60,6 +79,13 @@ function suite(RF) {
     'p-text': () => { const s = D(); s.modeA.paint = textPaint(s.target.res, 'FLUX', 0.35); return s; },
     'p-gradient': withPaint((u, v) => (Math.abs(u) < 0.8 && Math.abs(v) < 0.4 ? 0.15 + 0.85 * (u + 0.8) / 1.6 : 0)),
     'p-spots': withPaint((u, v) => [[-0.5, 0.4], [0.5, 0.4], [-0.5, -0.4], [0.5, -0.4]].some(([a, b]) => Math.hypot(u - a, v - b) < 0.12) ? 1 : 0),
+    'p-hello': () => { const s = D(); s.modeA.paint = cursivePaint(s.target.res, 0.8, 3); return s; },          // cursive, 3-cell strokes
+    // sparse: easy paintings, very few facets, an asymmetric setup (LED tilted and off-centre) — can a solver do the basics?
+    'sparse-spot-8': () => sparse(D(), 8, (u, v) => (Math.hypot(u + 0.2, v - 0.1) < 0.3 ? 1 : 0)),
+    'sparse-spot-16': () => sparse(D(), 16, (u, v) => (Math.hypot(u + 0.2, v - 0.1) < 0.3 ? 1 : 0)),
+    'sparse-ring-24': () => sparse(D(), 24, (u, v) => { const r = Math.hypot(u, v); return r > 0.45 && r < 0.6 ? 1 : 0; }),
+    'sparse-bar-16': () => sparse(D(), 16, (u, v) => (Math.abs(u) < 0.7 && Math.abs(v + 0.2) < 0.12 ? 1 : 0)),
+    'sparse-hot-16': () => sparse(D(), 16, (u, v) => (Math.hypot(u / 0.8, v / 0.4) < 1 ? (Math.hypot(u / 0.2, v / 0.12) < 1 ? 1 : 0.2) : 0)),
     'p-hotwash': withPaint((u, v) => (Math.hypot(u / 0.9, v / 0.5) < 1 ? (Math.hypot(u / 0.15, v / 0.1) < 1 ? 1 : 0.12) : 0)),   // a small hotspot 8× the wash
   };
   return S;
@@ -67,11 +93,12 @@ function suite(RF) {
 
 // Named groups.  'core' is the everyday check; 'all' is everything incl. held-out and Anya's files.
 const GROUPS = {
-  core: ['default', 'test', 'led-back', 'led-side', 'die-3', 'die-2x0.5', 'p-wash', 'p-halfplane', 'p-text', 'p-hotwash'],
+  core: ['default', 'test', 'led-back', 'led-side', 'die-2x0.5', 'coil-axial', 'p-wash', 'p-halfplane', 'p-hello', 'p-hotwash', 'sparse-spot-16', 'sparse-hot-16'],
   orient: ['default', 'led-back', 'led-side', 'led-down', 'led-fwd'],
   die: ['default', 'die-0.4', 'die-3', 'die-2x0.5', 'die-disc', 'filament', 'coil-axial', 'coil-transverse'],
-  paint: ['default', 'p-wash', 'p-halfplane', 'p-bars', 'p-text', 'p-gradient', 'p-spots', 'p-hotwash'],
+  paint: ['default', 'p-wash', 'p-halfplane', 'p-bars', 'p-text', 'p-hello', 'p-gradient', 'p-spots', 'p-hotwash'],
   anya: ['anya-lowbeam-212', 'anya-beamshot-400'],
+  sparse: ['sparse-spot-8', 'sparse-spot-16', 'sparse-ring-24', 'sparse-bar-16', 'sparse-hot-16'],
 };
 
 // Private scenes: the benchmark's held-out set (agent-qa's scorer) and Anya's saved scene files.
@@ -96,4 +123,4 @@ function resolve(RF, spec) {
   if (bad.length) throw new Error('unknown scene(s): ' + bad.join(', ') + '\nhave: ' + Object.keys(A).join(' ') + '\ngroups: ' + Object.keys(GROUPS).join(' ') + ' held all');
   return uniq;
 }
-module.exports = { suite, all, resolve, GROUPS, paintFrom, textPaint };
+module.exports = { suite, all, resolve, GROUPS, paintFrom, textPaint, cursivePaint };
