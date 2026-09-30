@@ -60,15 +60,16 @@
     const N = Math.min(N0, pcells.length), NA = Math.max(60, Math.round(Math.sqrt(S.cellsPerFacet * N * 2))), NP = 2 * NA;
     const fr = RF.Source.frame(src), Itot = RF.Source.totalIntegral(src), dOm = 4 * Math.PI / (NA * NP);
     const rmin = Math.max(env.keepOut || 0, S.minDistance || 0) + RF.Source.boundingRadius(src) * 0.5 + S.margin;
+    const openList = S.open >= 0 ? [S.open] : S.opens, minOpen = Math.min(...openList); let openNow = openList[0];
     const dirs = [];
     for (let q = 0; q < NP; q++) for (let a = 0; a < NA; a++) {
       const ca = 1 - 2 * (a + 0.5) / NA, sa = Math.sqrt(Math.max(0, 1 - ca * ca)), phi = (q + 0.5) / NP * 2 * Math.PI;
-      if (Math.acos(ca) * 180 / Math.PI < S.open) continue;                       // the front opening (toward the target) stays open
+      const ang = Math.acos(ca) * 180 / Math.PI; if (ang < minOpen) continue;    // the front opening (toward the target) stays open
       const u = V.add(V.mul(B, ca), V.mul(V.add(V.mul(e1, Math.cos(phi)), V.mul(e2, Math.sin(phi))), sa));
       const I = RF.Source.intensity(src, Math.acos(clamp(V.dot(u, fr.a), -1, 1))); if (!(I > 0)) continue;
       const iv = RF.Geo.envInterval(env, Lp, u), rEnv = iv && iv[1] > Math.max(0, iv[0]) ? iv[1] - S.margin : -1;
       if (rEnv < rmin) continue;
-      dirs.push({ u, q, a, flux: src.power * I / Itot * dOm, rEnv, on: true });
+      dirs.push({ u, q, a, ang, flux: src.power * I / Itot * dOm, rEnv, on: ang >= openNow });
     }
     if (!dirs.length) return { surfaces: [], intent: [], notes: ['no direction from the LED can hold a mirror inside the envelope'], pred: { fid: 0, onPaint: 0 } };
 
@@ -78,55 +79,36 @@
     function hil(k) { let x = k % R, y = (k / R) | 0, d = 0; for (let s = 1 << 10; s > 0; s >>= 1) { const rx = (x & s) > 0 ? 1 : 0, ry = (y & s) > 0 ? 1 : 0; d += s * s * ((3 * rx) ^ ry); if (!ry) { if (rx) { x = s - 1 - x; y = s - 1 - y; } const t = x; x = y; y = t; } } return d; }
     const cw = new Float64Array(R * R); let csum = 0; for (const k of pcells) { cw[k] = Math.pow(paint[k], S.aimBias); csum += cw[k]; }     // clustering weight: paint^bias (1 = by light, 0 = by painted area)
     let aims = []; { let acc = 0, next = csum / N / 2; for (const k of ord) { acc += cw[k]; if (acc >= next && aims.length < N) { const [u, v] = uvOf(k); aims.push({ u, v, w: 0 }); next += csum / N; } } }
-    const owner = new Int32Array(R * R).fill(-1);
+    const owner = new Int32Array(R * R).fill(-1);      // which aim's region each painted cell belongs to (intent output)
     for (let it = 0; it < S.lloyd; it++) {
       const su = new Float64Array(aims.length), sv = new Float64Array(aims.length), sw = new Float64Array(aims.length), sp = new Float64Array(aims.length);
-      for (const k of pcells) { const [u, v] = uvOf(k); let bj = 0, bd = Infinity; for (let j = 0; j < aims.length; j++) { const d = (u - aims[j].u) ** 2 + ((v - aims[j].v) * S.aspect) ** 2; if (d < bd) { bd = d; bj = j; } } owner[k] = bj; su[bj] += u * cw[k]; sv[bj] += v * cw[k]; sw[bj] += cw[k]; sp[bj] += paint[k]; }
+      for (const k of pcells) { const [u, v] = uvOf(k); let bj = 0, bd = Infinity; for (let j = 0; j < aims.length; j++) { const d = (u - aims[j].u) ** 2 + (v - aims[j].v) ** 2; if (d < bd) { bd = d; bj = j; } } owner[k] = bj; su[bj] += u * cw[k]; sv[bj] += v * cw[k]; sw[bj] += cw[k]; sp[bj] += paint[k]; }
       for (let j = 0; j < aims.length; j++) if (sw[j] > 0) { aims[j].u = su[j] / sw[j]; aims[j].v = sv[j] / sw[j]; aims[j].w = sp[j] / psum; }
     }
     aims = aims.filter((z) => z.w > 0);
-    // each ellipsoid's second focus: the aim itself (sharp), or past it along the same line (defocus m: a patch then
-    // spreads its light over ~m × its own outline around the aim, so neighbouring images blend; the surface stays one
-    // continuous envelope of ellipsoids either way)
-    // defocused: the second focus lies on the line from the PATCH (not the LED) to the aim, so its chief ray still lands on the aim
-    const setFocus = (z) => { z.Z = world(z.u, z.v); const q0 = z.m && z.Pb ? z.Pb : Lp; z.F = V.add(q0, V.mul(V.sub(z.Z, q0), 1 / (1 - (z.m || 0)))); z.d = V.sub(z.F, Lp); z.c = V.len(z.d); z.ah = V.mul(z.d, 1 / z.c); };
+    // each ellipsoid's second focus is its aim point z_j
+    const setFocus = (z) => { z.Z = world(z.u, z.v); z.F = z.Z; z.d = V.sub(z.F, Lp); z.c = V.len(z.d); z.ah = V.mul(z.d, 1 / z.c); };
     for (const z of aims) { setFocus(z); z.target = z.w; }
 
     // ---- supporting ellipsoids: r_j(u) = β(β+2c) / (2β + 2c(1 − u·â_j)); nearest wins
     const rOf = (z, u) => { const b = z.beta; return b * (b + 2 * z.c) / (2 * b + 2 * z.c * (1 - V.dot(u, z.ah))); };
-    let totalFlux = 0; for (const d of dirs) totalFlux += d.flux;
     for (const z of aims) z.beta = 2 * S.startR;                                   // ≈ a paraboloid with f = startR
-    // Who wins a direction: the smallest r_j = β_j(β_j+2c_j)/(2β_j+2c_j(1−u·â_j)).  β differences of a few percent
-    // decide it, so each direction keeps a SHORTLIST of the aims nearest to it in angle (refreshed as β spreads) and
-    // the balance takes small multiplicative steps that shrink when the error starts oscillating.
-    const K = Math.min(aims.length, Math.max(1, S.shortlist)), ALL = Int32Array.from(aims.map((_, j) => j));
-    function shortlist() {
-      let lo = Infinity, hi = -Infinity; for (const z of aims) { lo = Math.min(lo, z.beta); hi = Math.max(hi, z.beta); }
-      for (const d of dirs) {
-        if (!d.on) continue;
-        const sc = aims.map((z, j) => [rOf(z, d.u), j]); sc.sort((a, b) => a[0] - b[0]);
-        d.cand = Int32Array.from(sc.slice(0, K).map((x) => x[1]));
-      }
-    }
     function assign() {
       for (const z of aims) { z.flux = 0; z.n = 0; }
       for (const d of dirs) {
         if (!d.on) { d.j = -1; continue; }
-        let bj = -1, br = Infinity; const cl = ALL;
-        for (let t = 0; t < cl.length; t++) { const j = cl[t], r = rOf(aims[j], d.u); if (r > 0 && r < br) { br = r; bj = j; } }
+        let bj = -1, br = Infinity;
+        for (let j = 0; j < aims.length; j++) { const r = rOf(aims[j], d.u); if (r > 0 && r < br) { br = r; bj = j; } }
         d.j = bj; d.r = br; if (bj >= 0) { aims[bj].flux += d.flux; aims[bj].n++; }
       }
     }
-    // Balancing = semi-discrete optimal transport.  Winner-take-all makes each patch's flux a step function of the
-    // sizes, and simple multiplicative updates thrash (measured: 86 of 100 patches empty after 250 steps).  Entropic
-    // regularisation fixes it: each direction is shared softly among patches, p_j ∝ exp(−log r_j / τ), so fluxes are
-    // smooth in log β, and the Sinkhorn update log β_j += τ·log(got_j / want_j) converges.  τ is lowered in stages
-    // until the soft partition is as sharp as the hard one (the surface itself always uses the hard minimum).
-    // Damped Newton on the same entropic problem (Kitagawa–Mérigot–Thibert style): the Jacobian of the soft fluxes is
-    // a graph Laplacian over neighbouring patches, solved densely (Cholesky) with Levenberg damping; a step is accepted
-    // only if the flux error falls.  Seen from the backward directions every aim looks almost the same, so a cold start
-    // strands patches outside every shortlist; the cold start therefore goes coarse to fine (aims merged 4:1 into
-    // super-aims, solved, then split with the parent's size as the children's start).
+    // Balancing = semi-discrete optimal transport: choose the sizes β so that every patch catches its share of the light.
+    // Winner-take-all makes a patch's flux a step function of the sizes, so plain multiplicative updates thrash (measured:
+    // 86 of 100 patches empty after 250 steps) and annealed Sinkhorn updates diverge on photo-like paints (fluxes 2000× off).
+    // Instead: share each direction softly among the patches, p_j ∝ exp(−log r_j / τ), which makes the fluxes smooth in
+    // log β, and take damped Newton steps on that (Kitagawa–Mérigot–Thibert): the Jacobian is a graph Laplacian over
+    // neighbouring patches, solved densely (Cholesky) with Levenberg damping; a step is accepted only if the flux error falls.
+    // τ is lowered in stages until the soft partition is as sharp as the hard one (the surface itself is the hard minimum).
     function dSolve(A, b, n) {                                   // A (n×n, row-major, destroyed) SPD → x, or null
       for (let j = 0; j < n; j++) {
         let s = A[j * n + j]; for (let k = 0; k < j; k++) s -= A[j * n + k] * A[j * n + k];
@@ -230,9 +212,8 @@
       return lv.reverse();                                       // coarsest first; each level's `par` maps its members to the next-coarser one
     }
     function cellOf(q) { const half = T.half; return clamp(Math.floor((q.v / (2 * half) + 0.5) * R), 0, R - 1) * R + clamp(Math.floor((q.u / (2 * half) + 0.5) * R), 0, R - 1); }
-    const TM = { bal: 0, cold: 0, pred: 0, fit: 0 };
-    function balanceNewton(warm) { const t0 = Date.now(); try { return balanceNewton0(warm); } finally { TM.bal += Date.now() - t0; if (!warm) TM.cold += Date.now() - t0; } }
-    function balanceNewton0(warm) {
+    // Cold start (coarse to fine, see levelsOf) or warm start from the current sizes; a warm solve that fails falls back to cold.
+    function balance(warm) {
       const on = dirs.filter((d) => d.on), J = aims.length, x = new Float64Array(J);
       const beta0 = aims.map((z) => z.beta); let gm = 0; for (const z of aims) gm += Math.log(z.beta); gm /= J;
       const tolL = S.tol * 0.3, mi = 10;
@@ -265,15 +246,15 @@
         x.set(xp);
       };
       let ok = false;
-      if (warm) { aims.forEach((z, j) => { x[j] = Math.log(z.beta); }); const soft = newtonCore(aims, on, x, [S.finalTau], tolL, mi); ok = soft < 0.25; if (!ok) aims.forEach((z, j) => { z.beta = beta0[j]; }); if (globalThis.SQMDBG && !ok) { console.log('  warm balance failed (soft error ' + soft.toFixed(2) + '): cold restart'); const cnt = new Float64Array(J); for (const d of on) if (d.j >= 0) cnt[d.j] += d.flux; const rows = aims.map((z, j) => ({ j, m: z.m, c: z.c, t: z.target, x: x[j], beta0: beta0[j] })); console.log('   sample of patches:', rows.filter((r, i) => i % 40 === 0).map((r) => JSON.stringify(r, (k, v) => typeof v === 'number' ? +v.toPrecision(3) : v)).join(' ')); } }
+      if (warm) { aims.forEach((z, j) => { x[j] = Math.log(z.beta); }); const soft = newtonCore(aims, on, x, [S.finalTau], tolL, mi); ok = soft < 0.25; if (!ok) aims.forEach((z, j) => { z.beta = beta0[j]; }); if (globalThis.SQMDBG && !ok) console.log('  warm balance failed (soft error ' + soft.toFixed(2) + '): cold restart'); }
       if (!ok) coldSolve();
       aims.forEach((z, j) => { z.beta = Math.exp(x[j]); });
       assign(); let err = 0, tot = 0; for (const d of on) tot += d.flux; for (const z of aims) { const w = z.target * tot; err = Math.max(err, Math.abs(z.flux - w) / Math.max(1e-12, w)); }
       if (globalThis.SQMDBG) { const es = aims.map((z) => Math.abs(z.flux - z.target * tot) / (z.target * tot)).sort((a, b) => a - b); console.log('  balance(newton): hard-partition rel error max', err.toFixed(3), 'p50', es[es.length >> 1].toFixed(3), 'p90', es[Math.floor(es.length * 0.9)].toFixed(3), 'rms', Math.sqrt(es.reduce((a, e) => a + e * e, 0) / es.length).toFixed(3), 'empty', aims.filter((z) => z.flux === 0).length); }
       return err;
     }
-    // changing a patch's foci changes its ellipsoid a lot (a defocus moves the second focus by a large factor) while the
-    // patch itself should stay where it is: re-size it so its mean log-radius over its own directions is unchanged.
+    // Scaling or re-aiming patches: β and the radius are not proportional (r = β(β+2c)/(2β+2c(1−cosθ))), so to move a patch's
+    // size by a factor, re-solve its β so its mean log-radius over its own directions moves by exactly that (shift, in log units).
     function keepSizes(mutate, shift) {
       const byJ = aims.map(() => []); for (const d of dirs) if (d.on && d.j >= 0) byJ[d.j].push(d);
       const tgt = aims.map((z, j) => { let s = 0, w = 0; for (const d of byJ[j]) { s += Math.log(d.r) * d.flux; w += d.flux; } return w > 0 ? s / w + (shift || 0) : NaN; });
@@ -283,49 +264,11 @@
         for (let it = 0; it < 6; it++) { let s = 0; for (const d of byJ[j]) s += Math.log(rOf(z, d.u)) * d.flux; z.beta *= Math.exp(clamp(tgt[j] - s / w, -1, 1)); }
       });
     }
-    function balance(iters, warm) {
-      if (S.newton) return balanceNewton(warm);
-      let tot = 0; for (const d of dirs) if (d.on) tot += d.flux;
-      const J = aims.length, on = dirs.filter((d) => d.on), KK = Math.min(J, S.shortlist > 0 ? S.shortlist : J), lr = new Float64Array(KK), Fs = new Float64Array(J);
-      const taus = warm ? [0.001, 0.0004, 0.00015, 0.00006] : [0.03, 0.01, 0.003, 0.001, 0.0004, 0.00015, 0.00006], per = Math.max(5, Math.floor(iters / taus.length));
-      const all = new Float64Array(J), idx = new Int32Array(J);
-      let gm = 0; for (const z of aims) gm += Math.log(z.beta); gm /= J;       // the overall size is the envelope fit's: keep it
-      const bv = new Float64Array(KK), bi = new Int32Array(KK);
-      const refresh = () => { for (const d of on) {                          // shortlist: the KK smallest radii now (insertion, no sort)
-        let n = 0;
-        for (let j = 0; j < J; j++) {
-          const r = rOf(aims[j], d.u); if (n === KK && r >= bv[KK - 1]) continue;
-          let p = n < KK ? n++ : KK - 1; while (p > 0 && bv[p - 1] > r) { bv[p] = bv[p - 1]; bi[p] = bi[p - 1]; p--; } bv[p] = r; bi[p] = j;
-        }
-        d.cand = (d.cand && d.cand.length === n) ? d.cand : new Int32Array(n); d.cand.set(bi.subarray(0, n));
-      } };
-      for (const tau of taus) {
-        for (let it = 0; it < per; it++) {
-          if (it % 10 === 0) refresh();
-          Fs.fill(0);
-          for (const d of on) {
-            const c = d.cand; let m = Infinity;
-            for (let t = 0; t < KK; t++) { lr[t] = Math.log(rOf(aims[c[t]], d.u)); if (lr[t] < m) m = lr[t]; }
-            let z = 0; for (let t = 0; t < KK; t++) { lr[t] = Math.exp(-(lr[t] - m) / tau); z += lr[t]; }
-            for (let t = 0; t < KK; t++) Fs[c[t]] += d.flux * lr[t] / z;
-          }
-          let worst = 0;
-          for (let j = 0; j < J; j++) { const want = aims[j].target * tot, r = Fs[j] / want; worst = Math.max(worst, Math.abs(r - 1)); aims[j].beta *= Math.exp(clamp(tau * Math.log(Math.max(1e-9, r)), -0.5, 0.5)); }
-          let g2 = 0; for (const z of aims) g2 += Math.log(z.beta); g2 /= J; const k = Math.exp(gm - g2); for (const z of aims) z.beta *= k;
-          if (worst < S.tol * 0.5) break;
-        }
-      }
-      // keep the overall size where the envelope fit put it (only ratios matter for the partition)
-      assign(); let err = 0; for (const z of aims) { const want = z.target * tot; err = Math.max(err, Math.abs(z.flux - want) / Math.max(1e-12, want)); }
-      if (globalThis.SQMDBG) { const bs = aims.map((z) => z.beta).sort((a, b) => a - b); console.log('  β min/med/max', bs[0].toFixed(3), bs[bs.length >> 1].toFixed(3), bs[bs.length - 1].toFixed(3), 'targets min/max', Math.min(...aims.map((z) => z.target)).toFixed(4), Math.max(...aims.map((z) => z.target)).toFixed(4)); }
-      if (globalThis.SQMDBG) console.log('  balance: hard-partition max rel error', err.toFixed(3), 'empty', aims.filter((z) => z.flux === 0).length);
-      return err;
-    }
     // Scaling to fit the WORST direction squashes everything (forward directions want huge radii), so scale until
     // `fitShare` of the light fits, and let the directions that still stick out (or fall inside the clearance) go
     // uncovered; rebalance and repeat.
     let err = 0;
-    let sizeNow = S.size > 0 ? S.size : 1;
+    const sizeList = S.size > 0 ? [S.size] : S.sizes; let sizeNow = sizeList[0];
     function fit() {
       const rat = []; for (const d of dirs) if (d.on && d.j >= 0) rat.push([d.r / d.rEnv, d.flux]);
       rat.sort((a, b) => a[0] - b[0]); let tot = 0; for (const x of rat) tot += x[1];
@@ -336,39 +279,22 @@
       return { q, dropped };
     }
     if (globalThis.SQMDBG) console.log('dirs', dirs.length, 'aims', aims.length, 'rmin', rmin.toFixed(2));
-    // per-patch defocus: each patch should cover its own region of the paint, not dot its centre.  Needed spread
-    // s_j = region radius − LED image radius; a patch of aperture half-width a_j spreads by a_j·|m| at the target, and
-    // m < 0 (focus in front of the target, then fanning out) reaches any size.  m_j = −defocus × s_j / a_j.
     const ledSz = src.kind === 'point' ? 0 : src.kind === 'planar' ? (src.shape === 'disc' ? 2 * src.radius : Math.sqrt(src.w * src.h)) : 2 * src.radius;
-    function setDefocus() {
-      if (!(S.defocus > 0)) { for (const z of aims) { z.m = 0; setFocus(z); } return; }
-      const area = new Float64Array(aims.length); for (const k of pcells) if (owner[k] >= 0 && owner[k] < aims.length) area[owner[k]] += cell * cell;
-      const rs = new Float64Array(aims.length), om = new Float64Array(aims.length), pw = new Float64Array(aims.length), pb = aims.map(() => [0, 0, 0]);
-      for (const d of dirs) if (d.on && d.j >= 0) { rs[d.j] += d.r; om[d.j] += 1; pw[d.j] += d.flux; pb[d.j] = V.add(pb[d.j], V.mul(V.add(Lp, V.mul(d.u, d.r)), d.flux)); }
-      aims.forEach((z, j) => { if (pw[j] > 0) z.Pb = V.mul(pb[j], 1 / pw[j]); });
-      aims.forEach((z, j) => {
-        if (!om[j]) { z.m = 0; setFocus(z); return; }
-        const r = rs[j] / om[j], a = r * Math.sqrt(om[j] * dOm) / 2, img = ledSz * z.c / r / 2, rho = Math.sqrt(area[j] / Math.PI);
-        z.m = -clamp(S.defocus * Math.max(0, rho - img) / Math.max(1e-6, a), 0, S.maxDefocus); setFocus(z);
-      });
-    }
     for (let round = 0; round < 8; round++) {
-      err = balance(S.iters, round > 0);
-      if (round === 0 && S.defocus > 0) { keepSizes(setDefocus); err = balance(S.iters, false); keepSizes(setDefocus); err = balance(S.iters, false); }
+      err = balance(round > 0);
       if (globalThis.SQMDBG) { let on = 0, rr = []; for (const d of dirs) if (d.on) { on++; rr.push(d.r / d.rEnv); } rr.sort((a, b) => a - b); console.log('round', round, 'on', on, 'err', err.toFixed(3), 'ratio p10/50/90', [0.1, 0.5, 0.9].map((q) => rr[Math.floor(q * rr.length)]).map((x) => x && x.toFixed(2)).join('/'), 'beta0', aims[0].beta.toFixed(2)); }
       const f = fit(); if (f.q <= 1.0001 && !f.dropped) break;
       prog(0.1 + 0.1 * round / 8, 'fit envelope');
     }
-    err = balance(S.iters, true); for (let k = 0; k < 4; k++) { const f = fit(); if (!f.dropped) break; err = balance(S.iters, true); }
+    err = balance(true); for (let k = 0; k < 4; k++) { const f = fit(); if (!f.dropped) break; err = balance(true); }
 
     // ---- prediction (exact geometry) + Fournier compensation of the virtual target
     const fake = { source: src, envelope: env, target: input.target, modeA: { paint } };
     const Fg = new Float64Array(R * R), ledCache = new Map();
-    function predict() { const t0 = Date.now(); try { return predict0(); } finally { TM.pred += Date.now() - t0; } }
     let blobs = null, cols = [];
     const acc = new Float64Array(R * R), seen = new Uint8Array(R * R), touched = [];
     const put = (k, w) => { if (!seen[k]) { seen[k] = 1; touched.push(k); } acc[k] += w; };
-    function predict0() {
+    function predict() {
       Fg.fill(0); cols = aims.map(() => null); if (S.debug) blobs = aims.map(() => new Float64Array(6));
       const byJ = aims.map(() => []); for (const d of dirs) if (d.on && d.j >= 0) byJ[d.j].push(d);
       aims.forEach((z, j) => {
@@ -428,25 +354,17 @@
     // bigger images.  Sharp edges want small images, a wash wants big ones, and the fit that fills the envelope is
     // not the best choice for either.  Try a few sizes (warm re-balance + a couple of compensation passes each, since
     // compensation moves the optimum) and keep the best predicted score.
-    const snap = () => ({ st: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target, m: z.m, Pb: z.Pb })), on: dirs.map((d) => d.on), size: sizeNow });
-    const load = (o) => { aims.forEach((z, j) => { Object.assign(z, o.st[j]); setFocus(z); }); dirs.forEach((d, i) => { d.on = o.on[i]; }); sizeNow = o.size; assign(); };
+    const snap = () => ({ st: aims.map((z) => ({ u: z.u, v: z.v, beta: z.beta, target: z.target })), on: dirs.map((d) => d.on), size: sizeNow, open: openNow });
+    const load = (o) => { aims.forEach((z, j) => { Object.assign(z, o.st[j]); setFocus(z); }); dirs.forEach((d, i) => { d.on = o.on[i]; }); sizeNow = o.size; openNow = o.open; assign(); };
     const onPaintOf = () => { let t = 0; for (const k of pcells) t += Fg[k]; return t / src.power; };
     let fd = predict();
-    function compPass() {                                       // one compensation pass: new shares (and aim nudges) from the predicted field, re-balance, predict
-      let a = 0, b = 0; for (const k of pcells) { a += Fg[k] * paint[k]; b += paint[k] * paint[k]; } const sc = a / Math.max(1e-30, b);
-      const want = new Float64Array(aims.length), got = new Float64Array(aims.length), mu = new Float64Array(aims.length), mv = new Float64Array(aims.length), mw = new Float64Array(aims.length);
-      for (const k of pcells) { const j = owner[k]; if (j < 0 || j >= aims.length) continue; want[j] += paint[k] * sc; got[j] += Fg[k]; const [u, v] = uvOf(k), def = Math.max(0, paint[k] * sc - Fg[k]); mu[j] += u * def; mv[j] += v * def; mw[j] += def; }
-      const nn = S.comp === 1 ? nnlsShares(S.nnlsIters) : null;
+    function compPass() {                                       // one compensation pass: new shares from the predicted field, re-balance, predict
+      const nn = nnlsShares(S.nnlsIters);
       keepSizes(() => {
-        aims.forEach((z, j) => {
-          if (nn) { if (cols[j]) z.target = Math.pow(z.target, 1 - S.gain) * Math.pow(clamp(nn[j], 0.2 * z.target, 5 * z.target), S.gain); }
-          else if (got[j] > 0 && want[j] > 0) z.target *= Math.pow(want[j] / got[j], S.gain);
-          if (mw[j] > 0) { z.u += S.nudge * (mu[j] / mw[j] - z.u); z.v += S.nudge * (mv[j] / mw[j] - z.v); setFocus(z); }
-        });
+        aims.forEach((z, j) => { if (cols[j]) z.target = Math.pow(z.target, 1 - S.gain) * Math.pow(clamp(nn[j], 0.2 * z.target, 5 * z.target), S.gain); });
         const tt = aims.reduce((s, z) => s + z.target, 0); for (const z of aims) z.target /= tt;
-        setDefocus();
       });
-      err = balance(S.iters, true); for (let k = 0; k < 3; k++) { const f = fit(); if (!f.dropped) break; err = balance(S.iters, true); }
+      err = balance(true); for (let k = 0; k < 3; k++) { const f = fit(); if (!f.dropped) break; err = balance(true); }
       fd = predict();
     }
     function compensate(passes, label) {                        // from the current state; ends in the best state seen
@@ -458,25 +376,37 @@
       load(bestC.o); fd = predict(); return bestC;
     }
     let passesLeft = S.compensate;
-    if (!(S.size > 0) && S.sizes.length > 1) {
-      const base = snap(), tried = []; let bestS = null; const sp = Math.min(S.searchPasses, S.compensate);
-      for (const sz of S.sizes) {
-        prog(0.2 + 0.05 * tried.length / S.sizes.length, 'reflector size ' + sz);
-        load(base);
-        if (sz !== base.size) {
-          for (const d of dirs) d.on = true; sizeNow = sz;
-          keepSizes(() => {}, Math.log(sz / base.size));
-          err = balance(S.iters, true);
-          for (let k = 0; k < 4; k++) { const f = fit(); if (f.q <= 1.0001 && !f.dropped) break; err = balance(S.iters, true); }
-          fd = predict();
+    const settleAt = (open, size, base) => {                     // move the current design to another opening / size: re-scale, re-balance, re-fit
+      openNow = open; sizeNow = size; for (const d of dirs) d.on = d.ang >= openNow;
+      keepSizes(() => {}, Math.log(size / base.size));
+      err = balance(true); for (let k = 0; k < 4; k++) { const f = fit(); if (f.q <= 1.0001 && !f.dropped) break; err = balance(true); }
+      fd = predict();
+    };
+    const score = (c) => c.fd.fidelity + S.lightWeight * onPaintOf();
+    if (openList.length > 1 || sizeList.length > 1) {
+      // Two design choices the paint decides.  (1) The reflector size: the LED's image on the target is (LED size) × (patch→target ÷
+      // patch→LED), so a SMALLER reflector paints bigger images; sharp edges want small images, a wash wants big ones.  (2) The front
+      // opening: directions within this angle of the beam get no mirror (their light is given up), which keeps the reflector's far
+      // rim, and its small images, out of the design.  Each candidate: re-balance and a compensation pass or two (compensation moves
+      // the optimum), keep the best predicted score (fidelity + lightWeight × light on paint).  Sizes first, then openings (at the chosen size).
+      const sp = Math.min(S.searchPasses, S.compensate), report = [];
+      const pick = (cands, label, mk) => {
+        const base = snap(); let best = null;
+        for (const c of cands) {
+          prog(0.2 + 0.05 * report.length / 8, label + ' ' + c);
+          load(base); if (mk(c) !== false) settleAt.apply(null, mk(c).concat([base]));
+          const r = compensate(sp, label + ' ' + c + ' · compensate'), v = score(r); report.push(label + ' ' + c + ': ' + (100 * r.fd.fidelity).toFixed(0) + '% / ' + (100 * onPaintOf()).toFixed(0) + '%');
+          if (!best || v > best.v) best = { v, o: snap(), c };
         }
-        const c = compensate(sp, 'size ' + sz + ' · compensate'), on2 = onPaintOf(), v = c.fd.fidelity + S.lightWeight * on2; tried.push([sz, c.fd.fidelity, on2]);
-        if (!bestS || v > bestS.v) bestS = { v, o: snap(), size: sz };
-      }
-      load(bestS.o); fd = predict(); passesLeft = Math.max(0, S.compensate - sp);
-      notes.push('reflector size search (size: predicted fidelity / light on paint): ' + tried.map((t) => t[0] + ': ' + (100 * t[1]).toFixed(0) + '% / ' + (100 * t[2]).toFixed(0) + '%').join(' · ') + ' → ' + bestS.size);
+        load(best.o); fd = predict(); return best.c;
+      };
+      const o0 = openNow, z0 = sizeNow;
+      const sizePick = sizeList.length > 1 ? pick(sizeList, 'size', (z) => z === sizeNow ? false : [openNow, z]) : z0;
+      const openPick = openList.length > 1 ? pick(openList, 'opening', (o) => o === openNow ? false : [o, sizeNow]) : o0;
+      passesLeft = Math.max(0, S.compensate - sp);
+      notes.push('design search (score = predicted fidelity / light on paint): ' + report.join(' · ') + ' → opening ' + openPick + '°, size ' + sizePick);
     }
-    if (S.comp === 1 && S.gapWeight > 0 && passesLeft > 0) {
+    if (S.gapWeight > 0 && passesLeft > 0) {
       // how much to care about the gaps while fitting the paint depends on the paint: thin strokes cannot be lit without lighting
       // their surroundings, a wash or a blob can.  Run the remaining passes both ways from the same state; keep the better predicted.
       const base0 = snap(); let bestG = null; const res = [];
@@ -520,15 +450,14 @@
     const ids = new Set(out.map((s) => s.id));
     let covered = 0; for (const d of dirs) if (d.on) covered += d.flux;
     let onP = 0; for (const k of pcells) onP += Fg[k];
-    notes.push(out.length + ' patches of one continuous surface; they catch ' + Math.round(100 * covered / src.power) + '% of the LED\'s light (front opening ' + S.open + '°); flux balance within ' + Math.round(100 * err) + '%');
-    if (globalThis.SQMDBG) console.log('timing ms', JSON.stringify(TM));
+    notes.push(out.length + ' patches of one continuous surface; they catch ' + Math.round(100 * covered / src.power) + '% of the LED\'s light (front opening ' + openNow + '°); flux balance within ' + Math.round(100 * err) + '%');
     if (fd) notes.push('predicted fidelity ' + (100 * fd.fidelity).toFixed(1) + '% (the model\'s own field, scored by the app)');
     let truth;
     if (S.debug) {                                                  // dev: per-patch flux on a lattice 4× finer each way, hard partition, vs the targets
       const f = 4, NA2 = NA * f, NP2 = NP * f, dOm2 = 4 * Math.PI / (NA2 * NP2), fl = new Float64Array(aims.length); let tt = 0;
       for (let q = 0; q < NP2; q++) for (let a = 0; a < NA2; a++) {
         const ca = 1 - 2 * (a + 0.5) / NA2, sa = Math.sqrt(Math.max(0, 1 - ca * ca)), phi = (q + 0.5) / NP2 * 2 * Math.PI;
-        if (Math.acos(ca) * 180 / Math.PI < S.open) continue;
+        if (Math.acos(ca) * 180 / Math.PI < openNow) continue;
         const u = V.add(V.mul(B, ca), V.mul(V.add(V.mul(e1, Math.cos(phi)), V.mul(e2, Math.sin(phi))), sa));
         const I = RF.Source.intensity(src, Math.acos(clamp(V.dot(u, fr.a), -1, 1))); if (!(I > 0)) continue;
         let bj = -1, br = Infinity; for (let j = 0; j < aims.length; j++) { const r = rOf(aims[j], u); if (r > 0 && r < br) { br = r; bj = j; } }
@@ -540,61 +469,44 @@
       truth = { max: es[es.length - 1], p50: es[es.length >> 1], p90: es[Math.floor(es.length * 0.9)], rms: Math.sqrt(es.reduce((x, y) => x + y * y, 0) / es.length) };
     }
     prog(1, 'done');
-    return { surfaces: out, intent: intent.filter((it) => ids.has(it.facet)), notes, pred: { fid: fd ? fd.fidelity : 0, onPaint: onP / src.power }, debug: S.debug ? { F: Array.from(Fg), R, truth, blobEnergy: blobs.map((B) => B[0]), blobs: blobs.map((B, j) => { const w = B[0] || 1, mx = B[1] / w, my = B[2] / w, sxx = B[3] / w - mx * mx, syy = B[4] / w - my * my, sxy = B[5] / w - mx * my; return { j, u: aims[j].u, v: aims[j].v, m: aims[j].m, share: aims[j].target, cx: mx, cy: my, sx: Math.sqrt(Math.max(0, sxx)), sy: Math.sqrt(Math.max(0, syy)), rho: sxy / Math.sqrt(Math.max(1e-12, sxx * syy)) }; }) } : undefined };
+    return { surfaces: out, intent: intent.filter((it) => ids.has(it.facet)), notes, pred: { fid: fd ? fd.fidelity : 0, onPaint: onP / src.power }, debug: S.debug ? { F: Array.from(Fg), R, truth, blobEnergy: blobs.map((B) => B[0]), blobs: blobs.map((B, j) => { const w = B[0] || 1, mx = B[1] / w, my = B[2] / w, sxx = B[3] / w - mx * mx, syy = B[4] / w - my * my, sxy = B[5] / w - mx * my; return { j, u: aims[j].u, v: aims[j].v, share: aims[j].target, cx: mx, cy: my, sx: Math.sqrt(Math.max(0, sxx)), sy: Math.sqrt(Math.max(0, syy)), rho: sxy / Math.sqrt(Math.max(1e-12, sxx * syy)) }; }) } : undefined };
   }
 
-  const QUALITY = { fast: { sizes: [1, 0.6, 0.36], compensate: 4, iters: 150, apCells: 24, imgSpacing: 1, cellsPerFacet: 40 }, normal: { sizes: [1, 0.75, 0.55, 0.4, 0.3, 0.22], compensate: 6, iters: 250, apCells: 40, imgSpacing: 0.8, cellsPerFacet: 60 }, best: { sizes: [1, 0.85, 0.7, 0.55, 0.45, 0.36, 0.28, 0.2], compensate: 10, iters: 400, apCells: 64, imgSpacing: 0.6, cellsPerFacet: 100 } };
+  // Quality tiers: which openings and reflector sizes the design search tries, and how hard the compensation works.
+  const QUALITY = {
+    fast: { opens: [60, 75], sizes: [1, 0.6, 0.36], compensate: 4, apCells: 24, imgSpacing: 1, cellsPerFacet: 40 },
+    normal: { opens: [55, 65, 75, 90], sizes: [1, 0.8, 0.6, 0.45, 0.33], compensate: 6, apCells: 40, imgSpacing: 0.8, cellsPerFacet: 60 },
+    best: { opens: [50, 60, 70, 80, 90], sizes: [1, 0.85, 0.7, 0.55, 0.45, 0.36, 0.28], compensate: 8, apCells: 64, imgSpacing: 0.6, cellsPerFacet: 80 },
+  };
   function solve(input, S0, tools) {
-    const Q = QUALITY[S0.quality] || QUALITY.normal, S = Object.assign({}, S0);
+    const Q = QUALITY[S0.quality] || QUALITY.fast, S = Object.assign({}, S0);
     for (const k of Object.keys(Q)) if (S[k] === -1 || S[k] === undefined) S[k] = Q[k];
-    if (S.open >= 0 && S.defocus >= 0) return solveOnce(input, S, tools);
-    // front opening: pick by predicted fidelity (+ a little credit for light), like the dish size in dish-fit
-    // front opening × defocus: picked by predicted fidelity (+ a little credit for light), quick solves first
-    const opts = [];
-    const grid = { fast: [[60], [0]], normal: [[50, 80], [0, 0.7]], best: [[45, 70, 95], [0, 0.5, 1]] }[S.quality] || [[50, 80], [0, 0.7]];
-    for (const o of S.open >= 0 ? [S.open] : grid[0]) for (const m of S.defocus >= 0 ? [S.defocus] : grid[1]) opts.push({ o, m });
-    if (opts.length === 1) return solveOnce(input, Object.assign({}, S, { open: opts[0].o, defocus: opts[0].m }), tools);
-    const res = [], prog = (f, st) => { if (tools && tools.progress) tools.progress(f, st); };
-    opts.forEach((c, i) => { const out = solveOnce(input, Object.assign({}, S, { open: c.o, defocus: c.m, compensate: Math.min(2, S.compensate) }), { progress: (f, st) => prog(0.5 * (i + f) / opts.length, 'try ' + (i + 1) + '/' + opts.length + ' · ' + (st || '')) }); res.push(Object.assign({ v: out.pred.fid + S.lightWeight * out.pred.onPaint, pred: out.pred }, c)); });
-    res.sort((a, b) => b.v - a.v || a.o - b.o || a.m - b.m);
-    const out = solveOnce(input, Object.assign({}, S, { open: res[0].o, defocus: res[0].m }), { progress: (f, st) => prog(0.5 + 0.5 * f, 'final · ' + (st || '')) });
-    out.notes.unshift('opening / defocus search (predicted fidelity / light on paint): ' + res.slice(0, 5).map((r) => r.o + '° m' + r.m + ': ' + (100 * r.pred.fid).toFixed(1) + '% / ' + (100 * r.pred.onPaint).toFixed(0) + '%').join(' · ') + ' → ' + res[0].o + '°, m ' + res[0].m);
-    return out;
+    return solveOnce(input, S, tools);
   }
 
   RF.Solvers.register({
     id: 'sqm', name: 'Supporting quadrics (continuous)', version: '0.2', modes: ['paint'],
     settings: [
       { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },
-      { key: 'quality', label: 'Quality', type: 'select', default: 'fast', options: [{ value: 'fast', label: 'fast (~2 s)' }, { value: 'normal', label: 'normal (searches opening × spread)' }, { value: 'best', label: 'best (slow)' }] },
-      { key: 'open', adv: true, label: 'Front opening, degrees from the beam (−1 auto)', type: 'number', min: -1, max: 150, step: 5, default: -1 },
-      { key: 'defocus', adv: true, label: 'Spread each patch over its region (0 sharp … 1 full; −1 auto)', type: 'number', min: -1, max: 2, step: 0.05, default: -1 },
-      { key: 'lightWeight', adv: true, label: 'Light on paint worth, vs fidelity', type: 'number', min: 0, max: 3, step: 0.05, default: 0.25 },
-      { key: 'compensate', adv: true, label: 'Blur-compensation passes (−1 auto)', type: 'number', min: -1, max: 30, step: 1, default: -1 },
-      { key: 'searchPasses', adv: true, label: 'dev: compensation passes per size tried', type: 'number', min: 0, max: 10, step: 1, default: 2 },
-      { key: 'comp', adv: true, label: 'dev: compensation (0 ratio, 1 least squares)', type: 'number', min: 0, max: 1, step: 1, default: 1 },
-      { key: 'nnlsIters', adv: true, label: 'dev: least-squares iterations', type: 'number', min: 1, max: 1000, step: 1, default: 80 },
-      { key: 'gapWeight', adv: true, label: 'dev: gap weight in the least squares', type: 'number', min: 0, max: 10, step: 0.05, default: 0.5 },
-      { key: 'gain', adv: true, label: 'Compensation gain (shares)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.7 },
-      { key: 'nudge', adv: true, label: 'Compensation gain (aim positions)', type: 'number', min: 0, max: 1, step: 0.05, default: 0 },
-      { key: 'lloyd', adv: true, label: 'Aim clustering iterations', type: 'number', min: 0, max: 50, step: 1, default: 12 },
-      { key: 'iters', adv: true, label: 'Flux-balance iterations (−1 auto)', type: 'number', min: -1, max: 1000, step: 10, default: -1 },
-      { key: 'newton', adv: true, label: 'Newton flux balance (off: older annealed updates)', type: 'checkbox', default: true },
-      { key: 'shortlist', adv: true, label: 'Candidate patches per direction (0 = all)', type: 'number', min: 0, max: 64, step: 1, default: 32 },
-      { key: 'finalTau', adv: true, label: 'dev: final entropic width', type: 'number', min: 0.000005, max: 0.01, step: 0.000005, default: 0.00003 },
-      { key: 'trust', adv: true, label: 'dev: newton trust', type: 'number', min: 0.0001, max: 1, step: 0.0001, default: 0.01 },
-      { key: 'drift', adv: true, label: 'dev: shortlist refresh drift', type: 'number', min: 0, max: 1, step: 0.001, default: 0.004 },
+      { key: 'quality', label: 'Quality', type: 'select', default: 'fast', options: [{ value: 'fast', label: 'fast (a few seconds)' }, { value: 'normal', label: 'normal (tries more shapes)' }, { value: 'best', label: 'best (slow)' }] },
+      { key: 'lightWeight', label: 'Light on paint, vs fidelity', type: 'number', min: 0, max: 3, step: 0.05, default: 0.25 },
+      { key: 'open', adv: true, label: 'Front opening, degrees from the beam (−1 = try several)', type: 'number', min: -1, max: 150, step: 5, default: -1 },
+      { key: 'size', adv: true, label: 'Reflector size, fraction of the envelope (−1 = try several)', type: 'number', min: -1, max: 1, step: 0.05, default: -1 },
+      { key: 'compensate', adv: true, label: 'Blur-compensation passes (−1 = by quality)', type: 'number', min: -1, max: 30, step: 1, default: -1 },
+      { key: 'searchPasses', adv: true, label: 'Compensation passes spent on each shape tried', type: 'number', min: 0, max: 10, step: 1, default: 2 },
+      { key: 'gain', adv: true, label: 'Compensation step (0 none … 1 full)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.7 },
+      { key: 'gapWeight', adv: true, label: 'How much the compensation cares about lit gaps', type: 'number', min: 0, max: 10, step: 0.05, default: 0.5 },
+      { key: 'aimBias', adv: true, label: 'Aims follow the light (1) or the painted area (0)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.3 },
+      { key: 'fitShare', adv: true, label: 'Share of the light the reflector must fit the envelope for', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.9 },
       { key: 'tol', adv: true, label: 'Flux-balance tolerance', type: 'number', min: 0.001, max: 0.5, step: 0.005, default: 0.03 },
-      { key: 'fitShare', adv: true, label: 'Share of the light the envelope fit keeps', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.9 },
+      { key: 'finalTau', adv: true, label: 'Flux-balance sharpness (smaller = sharper, slower)', type: 'number', min: 0.000005, max: 0.01, step: 0.000005, default: 0.00003 },
+      { key: 'nnlsIters', adv: true, label: 'Least-squares iterations per compensation pass', type: 'number', min: 1, max: 1000, step: 1, default: 80 },
+      { key: 'lloyd', adv: true, label: 'Aim clustering iterations', type: 'number', min: 0, max: 50, step: 1, default: 12 },
       { key: 'startR', adv: true, label: 'Starting focal length (mm)', type: 'number', min: 1, max: 500, step: 1, default: 20 },
       { key: 'margin', adv: true, label: 'Wall margin (mm)', type: 'number', min: 0, max: 5, step: 0.05, default: 0.3 },
-      { key: 'cellsPerFacet', adv: true, label: 'Direction samples per patch (−1 auto)', type: 'number', min: -1, max: 400, step: 10, default: -1 },
-      { key: 'apCells', adv: true, label: 'Aperture samples per patch (−1 auto)', type: 'number', min: -1, max: 400, step: 4, default: -1 },
-      { key: 'size', adv: true, label: 'Reflector size, fraction of the envelope (−1 auto)', type: 'number', min: -1, max: 1, step: 0.05, default: -1 },
-      { key: 'maxDefocus', adv: true, label: 'dev: largest defocus factor', type: 'number', min: 0, max: 60, step: 0.5, default: 6 },
-      { key: 'aimBias', adv: true, label: 'Aims follow light (1) or painted area (0)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.3 },
-      { key: 'aspect', adv: true, label: 'dev: aim clustering stretch (vertical)', type: 'number', min: 0.1, max: 10, step: 0.1, default: 1 },
-      { key: 'imgSpacing', adv: true, label: 'Prediction: LED-image sample spacing, target cells (−1 auto)', type: 'number', min: -1, max: 4, step: 0.05, default: -1 },
+      { key: 'cellsPerFacet', adv: true, label: 'Direction samples per patch (−1 = by quality)', type: 'number', min: -1, max: 400, step: 10, default: -1 },
+      { key: 'apCells', adv: true, label: 'Prediction: aperture samples per patch (−1 = by quality)', type: 'number', min: -1, max: 400, step: 4, default: -1 },
+      { key: 'imgSpacing', adv: true, label: 'Prediction: LED-image sample spacing, target cells (−1 = by quality)', type: 'number', min: -1, max: 4, step: 0.05, default: -1 },
       { key: 'maxLedSide', adv: true, label: 'Prediction: most LED samples per side', type: 'number', min: 1, max: 40, step: 1, default: 16 },
     ],
     solve,
