@@ -365,14 +365,16 @@
     const fake = { source: src, envelope: env, target: input.target, modeA: { paint } };
     const Fg = new Float64Array(R * R), ledCache = new Map();
     function predict() { const t0 = Date.now(); try { return predict0(); } finally { TM.pred += Date.now() - t0; } }
-    let blobs = null;
+    let blobs = null, cols = [];
+    const acc = new Float64Array(R * R), seen = new Uint8Array(R * R), touched = [];
+    const put = (k, w) => { if (!seen[k]) { seen[k] = 1; touched.push(k); } acc[k] += w; };
     function predict0() {
-      Fg.fill(0); if (S.debug) blobs = aims.map(() => new Float64Array(6));
+      Fg.fill(0); cols = aims.map(() => null); if (S.debug) blobs = aims.map(() => new Float64Array(6));
       const byJ = aims.map(() => []); for (const d of dirs) if (d.on && d.j >= 0) byJ[d.j].push(d);
       aims.forEach((z, j) => {
         const cellsJ = byJ[j]; if (!cellsJ.length) return;
         const st = Math.max(1, Math.floor(cellsJ.length / S.apCells));
-        let Pc = [0, 0, 0], W = 0; for (const d of cellsJ) { Pc = V.add(Pc, V.mul(V.add(Lp, V.mul(d.u, d.r)), d.flux)); W += d.flux; } Pc = V.mul(Pc, 1 / W);
+        let Pc = [0, 0, 0], W = 0; for (const d of cellsJ) { Pc = V.add(Pc, V.mul(V.add(Lp, V.mul(d.u, d.r)), d.flux)); W += d.flux; } Pc = V.mul(Pc, 1 / W); z.W = W;
         // the LED lattice is chosen so that neighbouring samples land at most `imgSpacing` cells apart on the target (per axis)
         const mag = V.dist(Pc, z.Z) / Math.max(1e-6, V.dist(Pc, Lp)) / cell, cap = S.maxLedSide, sp = S.imgSpacing;
         const nU = src.kind === 'planar' && src.shape !== 'disc' ? clamp(Math.ceil(src.w * mag / sp), 1, cap) : clamp(Math.ceil(ledSz * mag / sp), 1, cap), nV = src.kind === 'planar' && src.shape !== 'disc' ? clamp(Math.ceil(src.h * mag / sp), 1, cap) : nU;
@@ -386,14 +388,40 @@
             const X = V.sub(V.add(p, V.mul(dr, t)), T.C), gx = V.dot(X, T.tu) / cell + R / 2 - 0.5, gy = V.dot(X, T.tv) / cell + R / 2 - 0.5;
             const ix = Math.floor(gx), iy = Math.floor(gy), fx = gx - ix, fy = gy - iy, w = fl * s.w * refl;
             if (blobs) { const B = blobs[j]; B[0] += w; B[1] += w * gx; B[2] += w * gy; B[3] += w * gx * gx; B[4] += w * gy * gy; B[5] += w * gx * gy; }
-            if (ix >= 0 && iy >= 0 && ix < R && iy < R) Fg[iy * R + ix] += w * (1 - fx) * (1 - fy);
-            if (ix + 1 < R && iy >= 0 && ix + 1 >= 0 && iy < R) Fg[iy * R + ix + 1] += w * fx * (1 - fy);
-            if (ix >= 0 && iy + 1 < R && ix < R && iy + 1 >= 0) Fg[(iy + 1) * R + ix] += w * (1 - fx) * fy;
-            if (ix + 1 < R && iy + 1 < R && ix + 1 >= 0 && iy + 1 >= 0) Fg[(iy + 1) * R + ix + 1] += w * fx * fy;
+            if (ix >= 0 && iy >= 0 && ix < R && iy < R) put(iy * R + ix, w * (1 - fx) * (1 - fy));
+            if (ix + 1 < R && iy >= 0 && ix + 1 >= 0 && iy < R) put(iy * R + ix + 1, w * fx * (1 - fy));
+            if (ix >= 0 && iy + 1 < R && ix < R && iy + 1 >= 0) put((iy + 1) * R + ix, w * (1 - fx) * fy);
+            if (ix + 1 < R && iy + 1 < R && ix + 1 >= 0 && iy + 1 >= 0) put((iy + 1) * R + ix + 1, w * fx * fy);
           }
         }
+        // this patch's light per cell, per unit of its own flux (columns of the blur matrix the compensation solves against)
+        const nt = touched.length, ci = new Int32Array(nt), cv = new Float64Array(nt);
+        for (let q = 0; q < nt; q++) { const k = touched[q]; ci[q] = k; cv[q] = acc[k] / W; Fg[k] += acc[k]; acc[k] = 0; seen[k] = 0; }
+        touched.length = 0; cols[j] = { idx: ci, val: cv };
       });
       return RF.Photometry.fidelity(fake, { res: R, power: 1 }, { gridD: Fg, gridR: new Float64Array(R * R), E: { emitted: 1 }, N: 1e12, next: 1e12 });
+    }
+    // ---- compensation by non-negative least squares: the predicted field is a sum of per-patch blobs, F = Σ_j g_j B_j
+    // (B_j = patch j's light per cell per unit flux, from predict).  Choose the patch fluxes g ≥ 0 that make F match the paint
+    // in RELATIVE terms (a dim cell counts as much as a bright one, as in the score) while keeping the gaps near the paint dark;
+    // multiplicative updates (Lee–Seung) converge monotonically.  Returns the new shares.
+    const isGap = new Uint8Array(R * R); { const rg = 3; for (let y = 0; y < R; y++) for (let x = 0; x < R; x++) { const k = y * R + x; if (paint[k] > 0) continue; let near = false; for (let dy = -rg; dy <= rg && !near; dy++) for (let dx = -rg; dx <= rg; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < R && yy < R && paint[yy * R + xx] > 0) { near = true; break; } } if (near) isGap[k] = 1; } }
+    const gapCells = []; for (let k = 0; k < R * R; k++) if (isGap[k]) gapCells.push(k);
+    function nnlsShares(iters) {
+      const J = aims.length; let num = 0, den = 0;
+      for (const k of pcells) { num += Fg[k] / paint[k]; den += 1; } const sc = num / den;         // relative-error least-squares scale of paint to field
+      let typ = 0; for (const k of pcells) typ += sc * paint[k]; typ /= pcells.length;
+      const a = new Float64Array(R * R), t = new Float64Array(R * R);
+      for (const k of pcells) { t[k] = sc * paint[k]; a[k] = 1 / (0.25 * t[k]) ** 2; }
+      for (const k of gapCells) a[k] = S.gapWeight / (0.15 * typ) ** 2;
+      const g = aims.map((z) => (cols[aims.indexOf(z)] ? z.W : 0)), F = new Float64Array(R * R), nu = new Float64Array(J), de = new Float64Array(J);
+      for (let it = 0; it < iters; it++) {
+        F.fill(0); for (let j = 0; j < J; j++) { const c = cols[j]; if (!c || !(g[j] > 0)) continue; for (let q = 0; q < c.idx.length; q++) F[c.idx[q]] += c.val[q] * g[j]; }
+        for (let j = 0; j < J; j++) { const c = cols[j]; if (!c) continue; let n2 = 0, d2 = 0; for (let q = 0; q < c.idx.length; q++) { const k = c.idx[q], w = a[k] * c.val[q]; if (w === 0) continue; n2 += w * t[k]; d2 += w * F[k]; } nu[j] = n2; de[j] = d2; }
+        for (let j = 0; j < J; j++) if (cols[j] && de[j] > 0) g[j] *= nu[j] / de[j];
+      }
+      let gt = 0; for (let j = 0; j < J; j++) gt += g[j];
+      return g.map((v) => v / gt);
     }
     // ---- reflector size: the LED's image on the target is (LED size) × (patch→target ÷ patch→LED), so a SMALLER reflector paints
     // bigger images.  Sharp edges want small images, a wash wants big ones, and the fit that fills the envelope is
@@ -423,9 +451,11 @@
       let a = 0, b = 0; for (const k of pcells) { a += Fg[k] * paint[k]; b += paint[k] * paint[k]; } const sc = a / Math.max(1e-30, b);
       const want = new Float64Array(aims.length), got = new Float64Array(aims.length), mu = new Float64Array(aims.length), mv = new Float64Array(aims.length), mw = new Float64Array(aims.length);
       for (const k of pcells) { const j = owner[k]; if (j < 0 || j >= aims.length) continue; want[j] += paint[k] * sc; got[j] += Fg[k]; const [u, v] = uvOf(k), def = Math.max(0, paint[k] * sc - Fg[k]); mu[j] += u * def; mv[j] += v * def; mw[j] += def; }
+      const nn = S.comp === 1 ? nnlsShares(S.nnlsIters) : null;
       keepSizes(() => {
         aims.forEach((z, j) => {
-          if (got[j] > 0 && want[j] > 0) z.target *= Math.pow(want[j] / got[j], S.gain);
+          if (nn) { if (cols[j]) z.target = Math.pow(z.target, 1 - S.gain) * Math.pow(clamp(nn[j], 0.2 * z.target, 5 * z.target), S.gain); }
+          else if (got[j] > 0 && want[j] > 0) z.target *= Math.pow(want[j] / got[j], S.gain);
           if (mw[j] > 0) { z.u += S.nudge * (mu[j] / mw[j] - z.u); z.v += S.nudge * (mv[j] / mw[j] - z.v); setFocus(z); }
         });
         const tt = aims.reduce((s, z) => s + z.target, 0); for (const z of aims) z.target /= tt;
@@ -461,9 +491,11 @@
       intent.push({ facet: id, cells });
     });
     let v = RF.Solvers.verify(sceneV, { surfaces }), bad = new Set(v.violations.envelope.concat(v.violations.keepOut));
+    if (globalThis.SQMDBG) console.log('verify: patches poking out of the envelope/keep-out', bad.size, 'of', surfaces.length);
     for (let pass = 0; pass < 4 && bad.size; pass++) {            // a hull corner can poke out: shrink that patch a little
       for (const s of surfaces) if (bad.has(s.id)) s.clip.pts3 = s.clip.pts3.map((p) => V.add(s.P, V.mul(V.sub(p, s.P), 0.9)));
       v = RF.Solvers.verify(sceneV, { surfaces }); bad = new Set(v.violations.envelope.concat(v.violations.keepOut));
+      if (globalThis.SQMDBG) console.log('  after shrink pass', pass, ':', bad.size);
     }
     const out = surfaces.filter((s) => !bad.has(s.id)); if (bad.size) notes.push('dropped ' + bad.size + ' patch(es) that would not fit');
     const ids = new Set(out.map((s) => s.id));
@@ -520,6 +552,9 @@
       { key: 'defocus', adv: true, label: 'Spread each patch over its region (0 sharp … 1 full; −1 auto)', type: 'number', min: -1, max: 2, step: 0.05, default: -1 },
       { key: 'lightWeight', adv: true, label: 'Light on paint worth, vs fidelity', type: 'number', min: 0, max: 3, step: 0.05, default: 0.25 },
       { key: 'compensate', adv: true, label: 'Blur-compensation passes (−1 auto)', type: 'number', min: -1, max: 30, step: 1, default: -1 },
+      { key: 'comp', adv: true, label: 'dev: compensation (0 ratio, 1 least squares)', type: 'number', min: 0, max: 1, step: 1, default: 1 },
+      { key: 'nnlsIters', adv: true, label: 'dev: least-squares iterations', type: 'number', min: 1, max: 1000, step: 1, default: 80 },
+      { key: 'gapWeight', adv: true, label: 'dev: gap weight in the least squares', type: 'number', min: 0, max: 10, step: 0.1, default: 1 },
       { key: 'gain', adv: true, label: 'Compensation gain (shares)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.7 },
       { key: 'nudge', adv: true, label: 'Compensation gain (aim positions)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.3 },
       { key: 'lloyd', adv: true, label: 'Aim clustering iterations', type: 'number', min: 0, max: 50, step: 1, default: 12 },
@@ -537,7 +572,7 @@
       { key: 'apCells', adv: true, label: 'Aperture samples per patch (−1 auto)', type: 'number', min: -1, max: 400, step: 4, default: -1 },
       { key: 'size', adv: true, label: 'Reflector size, fraction of the envelope (−1 auto)', type: 'number', min: -1, max: 1, step: 0.05, default: -1 },
       { key: 'maxDefocus', adv: true, label: 'dev: largest defocus factor', type: 'number', min: 0, max: 60, step: 0.5, default: 6 },
-      { key: 'aimBias', adv: true, label: 'Aims follow light (1) or painted area (0)', type: 'number', min: 0, max: 1, step: 0.05, default: 1 },
+      { key: 'aimBias', adv: true, label: 'Aims follow light (1) or painted area (0)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.3 },
       { key: 'aspect', adv: true, label: 'dev: aim clustering stretch (vertical)', type: 'number', min: 0.1, max: 10, step: 0.1, default: 1 },
       { key: 'imgSpacing', adv: true, label: 'Prediction: LED-image sample spacing, target cells (−1 auto)', type: 'number', min: -1, max: 4, step: 0.05, default: -1 },
       { key: 'maxLedSide', adv: true, label: 'Prediction: most LED samples per side', type: 'number', min: 1, max: 40, step: 1, default: 16 },
