@@ -28,6 +28,12 @@
   // values calculated by Luminus); Vf = 2.8 V typ at 1.5 A plus the ΔVf-vs-current curve (p. 7, read off the plot).
   const CW_VF = [[0.1, 2.57], [1, 2.72], [1.5, 2.80], [2, 2.88], [3, 3.02], [4, 3.16], [5, 3.28], [6, 3.40], [7, 3.50], [8, 3.60]];
   const cwBin = (a07, a15, a2, a3, a5, a6, a8) => [[0, 0], [0.7, a07], [1.5, a15], [2, a2], [3, a3], [5, a5], [6, a6], [8, a8]];
+  // Luminus SFT-25R-WG CRI > 90 (PDS-003551 Rev 03): ROUND flat-window emitter, Ø 1.70 mm (p. 12; "25" = 2.5 mm² chip),
+  // 116° / 115° FWHM (≈ Lambertian; I(60°) ≈ 0.5 on pp. 10–11), DC max 5 A, Pd max 18 W (p. 7).  Flux = the bin's correlated
+  // minimum at Tj 85 °C (p. 3: 1 / 1.5 / 3 / 4 / 5 A); Vf = 2.9 V typ at 1.5 A plus the ΔVf curves (pp. 8–9, read off the plots).
+  const R25_VF_WARM = [[0.1, 2.61], [0.5, 2.71], [1, 2.80], [1.5, 2.90], [2, 2.98], [3, 3.13], [4, 3.27], [5, 3.40]];
+  const R25_VF_COOL = [[0.1, 2.56], [0.5, 2.69], [1, 2.79], [1.5, 2.90], [2, 2.99], [3, 3.17], [4, 3.34], [5, 3.52]];
+  const r25Bin = (a1, a15, a3, a4, a5) => [[0, 0], [1, a1], [1.5, a15], [3, a3], [4, a4], [5, a5]];
   const PRESETS = {
     sketch: {
       label: 'Sketch LED · 1 × 1 mm, 1,000 lm',
@@ -49,6 +55,17 @@
         n5: { label: '6500 K · bin N5 min', curve: cwBin(323, 634, 812, 1129, 1655, 1877, 2272), vf: CW_VF, maxA: 8 },
         p3: { label: 'Top bin P3 min (any CCT, if you get one)', curve: cwBin(364, 713, 913, 1269, 1861, 2110, 2555), vf: CW_VF, maxA: 8 },
       }, model: 'n5', ratedA: 8, maxW: 29, defaultA: 6 },
+    },
+    'sft25r': {
+      label: 'Luminus SFT-25R-WG · CRI > 90 · Ø 1.70 mm round',
+      note: 'Luminus SFT-25R-WG datasheet (PDS-003551 Rev 03): round flat-window emitter Ø 1.70 mm, ≈ Lambertian (116° FWHM), 5 A and 18 W maximum, 2700–5700 K. Flux = the chosen bin\u2019s minimum at Tj 85 °C (Luminus\u2019 calculated values away from 1.5 A).',
+      set: { kind: 'planar', shape: 'disc', radius: 0.85, dist: 'lambertian' },
+      drive: { models: {
+        f1: { label: '3000 K · bin F1 min', curve: r25Bin(295, 415, 718, 884, 1021), vf: R25_VF_WARM, maxA: 5 },
+        d9: { label: '2700 / 3000 K · bin D9 min', curve: r25Bin(280, 395, 683, 841, 972), vf: R25_VF_WARM, maxA: 5 },
+        f3: { label: '4000–5700 K · bin F3 min', curve: r25Bin(330, 465, 804, 990, 1144), vf: R25_VF_COOL, maxA: 5 },
+        f5: { label: 'Top bin F5 min', curve: r25Bin(369, 520, 900, 1108, 1279), vf: R25_VF_COOL, maxA: 5 },
+      }, model: 'f1', ratedA: 5, maxW: 18, defaultA: 4 },
     },
     hb3: {
       label: 'HB3 / 9005 halogen · axial filament 5.1 mm',
@@ -89,5 +106,7 @@
     return true;
   }
 
-  RF.SourcePresets = { PRESETS, apply, electrical, matches, lumensAt: (id, a, model) => { const d = PRESETS[id] && PRESETS[id].drive; return d ? lerp((d.models[model] || d.models[d.model]).curve, a) : NaN; } };
+  // surface luminance (cd/mm²) of a Lambertian planar source: L = Φ / (π A)
+  const luminanceOf = (src) => (src.kind === 'planar' && src.dist === 'lambertian' ? src.power / (Math.PI * (src.shape === 'disc' ? Math.PI * src.radius * src.radius : src.w * src.h)) : null);
+  RF.SourcePresets = { luminanceOf, PRESETS, apply, electrical, matches, lumensAt: (id, a, model) => { const d = PRESETS[id] && PRESETS[id].drive; return d ? lerp((d.models[model] || d.models[d.model]).curve, a) : NaN; } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

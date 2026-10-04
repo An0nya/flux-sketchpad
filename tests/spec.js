@@ -183,6 +183,9 @@ function fakeG(fn, win, step) {
   check('SFT-40 cool white: 8 A = 2,272 lm (6500 K bin N5 min), Vf 3.60 V ≈ 28.8 W, within the 8 A / 29 W rating', s.w === 1.97 && s.power === 2272 && Math.abs(ec.vf - 3.6) < 1e-9 && !ec.overRated && !ec.overPower);
   SP.apply(s, 'sft40-cw', { model: 'n4', amps: 5 });
   check('SFT-40 cool white: bin N4 at 5 A = 1,550 lm', s.power === 1550);
+  SP.apply(s, 'sft25r', { amps: 5 });
+  const er = SP.electrical(s);
+  check('SFT-25R: Ø 1.70 mm disc, 3000 K bin F1 = 1,021 lm at 5 A, Vf 3.40 V (17 W < 18 W), ≈ 143 cd/mm²', s.shape === 'disc' && s.radius === 0.85 && s.power === 1021 && Math.abs(er.vf - 3.4) < 1e-9 && !er.overPower && Math.abs(SP.luminanceOf(s) - 1021 / (Math.PI * Math.PI * 0.85 * 0.85)) < 1e-9);
   SP.apply(s, 'hb3', { volts: 12 });
   check('HB3: axial 5.1 mm opaque coil, 1,300 lm at 12 V / 1,860 at 13.2 V', s.kind === 'volume' && s.shape === 'cylinder' && s.length === 5.1 && s.emission === 'surface' && s.axis.join() === '1,0,0' && s.power === 1300 && SP.apply(s, 'hb3', { volts: 13.2 }) && s.power === 1860);
   s.radius = 0.8; check('an edited preset is flagged', !SP.matches(s));

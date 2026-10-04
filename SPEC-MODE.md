@@ -140,6 +140,12 @@ Light source → **Emitter** presets (`js/source-presets.js`):
 - **Luminus SFT-40-W cool white** (WxS/WxE datasheet PDS-003134 Rev 05): the same 1.97 mm die,
   5000/5700/6500 K at CRI ~70, rated **8 A / 29 W**. Flux comes from each bin's minimum at
   Tj 85 °C (N4, N5, P3); 2,272 lm at 8 A for 6500 K bin N5.
+- **Luminus SFT-25R-WG CRI > 90** (PDS-003551 Rev 03): a round flat-window emitter, Ø 1.70 mm,
+  ≈ Lambertian, rated **5 A / 18 W**. Bins D9, F1, F3, F5; 1,021 lm at 5 A for 3000 K F1
+  (~143 cd/mm²).
+- **Sketch LED vs real parts:** 318 cd/mm², against 71 (SFT-40 3000 K at 4 A), 143–179
+  (SFT-25R at 5 A) and 186–210 (SFT-40 cool white at 8 A). Spec mode's report now says so
+  whenever the sketch or a custom emitter is in use, because absolute cd depend on it.
 - **HB3/9005:** UN R37 sheets HB3/1–4. An axial 5.1 mm opaque coil, 1,860 lm at 13.2 V or
   1,300 at 12 V. The filament diameter of 1.4 mm is **assumed**, because the sheets don't
   give it.
@@ -151,6 +157,8 @@ by the cut-off. **None of them passes:**
 |---|---|---|---|
 | Sketch LED | 318 cd/mm² | 10 pass / 5 fail / 4 unsure | Zone IV, Zone I (> 2 × 50R), 25L-side spread, sign points, G too sharp / not linear |
 | SFT-40 @ 4 A, datasheet (861 lm) | 71 cd/mm² | 8 / 7 / 4 | 75R / 50R right at 10.1k (unsure), Zone IV dark, Zone I, cut-off found 0.6° *above* H, so the aim drops everything |
+| SFT-25R 3000 K (bin F1) @ 5 A, rated (1,021 lm) | 143 cd/mm² | 11 / 5 / 3 | Best score so far; the smaller round die puts the solved cut-off at 0.3° (vs 0.6° for the 2 mm dies). Still Zone IV dark, Zone I > 2 × 50R |
+| SFT-25R top bin F5 @ 5 A (1,279 lm) | 179 cd/mm² | 11 / 5 / 3 | same, more light (75R 16.2k, 50R 20.7k) |
 | SFT-40 cool white (6500 K, bin N5) @ 8 A, rated (2,272 lm) | 186 cd/mm² | 10 / 4 / 5 | Strongest so far (75R 17.6k, 50R 22.9k, peak 79k); still Zone IV dark, Zone I > 2 × 50R, the same cut-off placement |
 | SFT-40 @ 6 A, koef3, over the rating (1,170 lm) | 93 cd/mm² | 10 / 6 / 3 | same pattern |
 | SFT-40 @ 10 A, koef3, over the rating (1,555 lm) | 124 cd/mm² | 10 / 6 / 3 | same pattern, more light |

@@ -141,6 +141,9 @@
     const win = RF.Spec.windowOf(m), T = RF.Engine.targetFrame(sc.target), seen = Math.atan(T.half / sc.target.distance) * 180 / Math.PI;
     const ext = Math.max(Math.abs(win[0]), Math.abs(win[1]));
     if (seen < ext - 3) box.append(el('div', { class: 'reason' }, 'The target plane shows ±' + seen.toFixed(1) + '°, the spec spans ±' + ext + '° in H: the solver can’t aim outside the plane. “Fit target to spec” resizes it.'));
+    // the spec is absolute: the emitter's luminance and lumens matter here, unlike in Paint mode
+    const src = sc.source, Lsrc = RF.SourcePresets ? RF.SourcePresets.luminanceOf(src) : null;
+    if (!src.preset || src.preset === 'sketch') box.append(el('div', { class: 'note' }, 'Emitter: ' + (src.preset === 'sketch' ? 'the sketch LED' : 'custom') + (Lsrc ? ' (' + Math.round(Lsrc) + ' cd/mm²)' : '') + '. Spec mode reads absolute cd, so the emitter decides the numbers; the sketch LED is brighter per mm² than any real LED in the presets (Light source → Emitter).'));
     if (!s || !s.ev) { box.append(el('div', { class: 'note' }, s && s.error ? 'Report failed: ' + s.error : 'The report appears when the trace runs.')); return; }
     const ev = s.ev, pc = (x) => Math.round(100 * x) + '%';
     const head = { pass: '✓ PASS', fail: '✗ FAIL', unsure: '? UNSURE', empty: '— no constraints' }[ev.verdict];
