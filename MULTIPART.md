@@ -87,3 +87,32 @@ Bench at 2 M rays (guided), sure fails / unsure · peak:
   - Click an emitter and its card opens. It shows a local rendering of the LED with its axis / emission cone (where it points), plus its share of flux on target.
   - The card holds inline copies of the emitter controls (position, aim, power, on/off, match source), so you don't need the sidebar.
   - Pairs with dragging emitters in 3D. Not started.
+
+## Backlog: light guides and FDM-printed optics (Anya, 10-04; not started)
+
+Light guides are TIR bodies with extraction features. The engine can already guide light. It **cannot** extract or
+diffuse it, so this needs engine work first:
+1. **Scattering interactions:** a Lambertian reflector (white paint, printed dots) and rough refraction (the refracted
+   direction jittered by a slope distribution: etched or textured faces).
+2. **Bodies and volume scattering:** know which body a ray is inside (closed bodies, not just per-surface indices),
+   then a free-path draw inside it: a scatter length, a Henyey–Greenstein phase function, absorption per mm.
+3. **Bounce cap per scene:** guides take tens to hundreds of bounces (16 now; the per-hit counter saturates at 255).
+4. **A lit-appearance metric:** luminance uniformity across the emitting face, and efficiency (out the face vs
+   leaked / absorbed). Guides aren't judged by a beam pattern.
+5. **The fidelity blur allowance is reflector-only** (`Photometry.achievableKernel`: the smallest LED image from any
+   envelope point). With lens parts or several emitters it measures the envelope, not the optic (tir-array-v2
+   root cause). Needs an allowance based on the actual optic, like the "% of ceiling" gap.
+
+**FDM idea (clear high-flow PETG/PLA):** model the print as an **anisotropic medium** rather than explicit geometry
+(hundreds of layer interfaces would blow the bounce cap):
+- **Layer and road boundaries:** per mm of path, a ray crosses |d·z_print| / layer height layer boundaries, plus
+  road boundaries across the road direction. Each crossing scatters or reflects with a probability that depends on
+  the angle (thin voids: grazing rays TIR inside one layer, so a layer can act as a slab waveguide).
+- **Outer-wall layer lines:** periodic ridges along print z, i.e. a one-axis lenticular diffuser (rough refraction
+  with an anisotropic slope distribution).
+- **Uses:**
+  - Rank print orientations: re-trace with z_print rotated and compare loss and diffusion.
+  - Design for FDM: use road direction and wall ridges as deliberate extraction or spread features.
+- **Calibration:** without measurements this only ranks orientations qualitatively. Absolute predictions need test
+  bars printed in 2–3 orientations, measured with an LED and a lux meter or phone, then a fit of the scatter per
+  crossing and the attenuation per mm.
