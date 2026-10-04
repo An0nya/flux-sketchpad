@@ -443,14 +443,14 @@
   //   rays whose line crosses ≥ 1 more surface
   function occlusion(P, ctx) {
     if (ctx.occ.shadow && ctx.occ.shadow.n === ctx.next) return ctx.occ.shadow;
-    const G = P.G, D = G.D, bvh = G.bvh, n = Math.max(1, G.n), shadowK = new Uint32Array(n), caughtK = new Uint32Array(n);
+    const G = P.G, D = G.D, bvh = G.bvh, n = Math.max(1, G.n), shadowK = new Float64Array(n), caughtK = new Float64Array(n);   // ray WEIGHTS (1 each unless a guided Refine drew them)
     const { bmin, bmax, left, right, start, count, items } = bvh, st = new Int32Array(128), o = new Float64Array(3), d = new Float64Array(3);
     let lost = 0, overl = 0, caught = 0;
     for (let i = 0; i < ctx.next; i++) {
       const fk = ctx.rayK[i] - 1; if (fk < 0) continue;
-      caughtK[fk]++; caught++;
+      const w = sampleRayI(P, i, o, d);
+      caughtK[fk] += w; caught += w;
       if (D[fk * STRIDE + 28] === 1) continue;
-      sampleRayI(P, i, o, d);
       const ox = o[0], oy = o[1], oz = o[2], dx = d[0], dy = d[1], dz = d[2], ix = 1 / dx, iy = 1 / dy, iz = 1 / dz;
       let sp = 0, any = false; st[sp++] = 0;
       while (sp > 0) {
@@ -462,16 +462,16 @@
         if (left[nd] < 0) {
           for (let q = start[nd], q1 = q + count[nd]; q < q1; q++) {
             const k = items[q]; if (k === fk) continue;
-            if (Geo.intersect(D, G.poly, k, ox, oy, oz, dx, dy, dz, P.eps, Infinity) >= 0) { shadowK[k]++; lost++; any = true; }
+            if (Geo.intersect(D, G.poly, k, ox, oy, oz, dx, dy, dz, P.eps, Infinity) >= 0) { shadowK[k] += w; lost += w; any = true; }
           }
         } else { st[sp++] = left[nd]; st[sp++] = right[nd]; }
       }
-      if (any) overl++;
+      if (any) overl += w;
     }
     const metas = G.metas, worst = [];
     for (let k = 0; k < G.n; k++) if (shadowK[k]) worst.push({ id: metas[k].id, lost: shadowK[k] / (shadowK[k] + caughtK[k]) });
     worst.sort((a, b) => b.lost - a.lost);
-    ctx.occ.shadow = { n: ctx.next, shadowK, caughtK, shadowed: lost / Math.max(1, caught + lost), overlap: overl / Math.max(1, caught), worst: worst.slice(0, 5) };
+    ctx.occ.shadow = { n: ctx.next, shadowK, caughtK, shadowed: caught + lost > 0 ? lost / (caught + lost) : 0, overlap: caught > 0 ? overl / caught : 0, worst: worst.slice(0, 5) };
     return ctx.occ.shadow;
   }
 
