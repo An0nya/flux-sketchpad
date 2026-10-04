@@ -68,11 +68,52 @@
       { kind: 'point', name: 'H-5R', h: 5, v: 0, min: B ? 5100 : 3400, ref: T },
     ];
   }
+  // FMVSS No. 108 (49 CFR 571.108, 10-1-23 edition, read from the govinfo PDF): Table XIX-a lower beam, Table XVIII upper
+  // beam; photometry at ≥ 18.3 m (S14.2.5.3) with a sensor inside a circle 0.009 × the distance across (S14.2.5.7.2.1:
+  // ±0.258°, as a square of the same area ±0.229°); a 1/4° reaim at any test point (S14.2.5.5).  Goniometer horizontal
+  // rotation over elevation (S14.2.5.6) = convention 'A'.  Visually aimed lower beams (VOL, S10.18.9 / S14.2.5.5.3.1): the
+  // cut-off's maximum gradient, scanned at 2.5° L from 1.5° U to 1.5° D, on 0.4° D; G ≥ 0.13 (no maximum); the
+  // gradient 1° either side within ±0.2° of it (S10.18.9.1.4).  Mechanically aimed lamps: as designed (aiming pads).
+  // "1R to R" / "1.5L to L": a line from that point outward — taken to 20° here (assumption).  The 10U–90U × 90L–90R
+  // 125 cd boundary is checked only over 10–12° U × ±20° (the grid window).  LB2 = a 2-lamp system (Table II-b/c/d).
+  const FM = '49 CFR 571.108 (FMVSS 108, 10-1-23 ed.)', FM_MEAS = { kernel: 0.229, distance: 18300, step: 0.05, conv: 'A', itemReaim: 0.25 };
+  const line = (name, v, h0, h1, b, ref) => Object.assign({ kind: 'zone', name, poly: [[h0, v - 0.05], [h1, v - 0.05], [h1, v + 0.05], [h0, v + 0.05]], ref }, b);
+  const pt = (name, h, v, b, ref) => Object.assign({ kind: 'point', name, h, v, ref }, b);
+  function fmvssLower(v) {      // v: 'LB2V' | 'LB2M'
+    const T = 'Table XIX-a, ' + v, V = v.endsWith('V');
+    const rows = [
+      { kind: 'zone', name: '10U–90U boundary', poly: [[-20, 10], [20, 10], [20, 12], [-20, 12]], max: 125, ref: T, note: 'regulation: 10° U–90° U, 90° L–90° R; checked 10–12° U × ±20° here' },
+      pt('4U 8L', -8, 4, { min: 64 }, T), pt('4U 8R', 8, 4, { min: 64 }, T), pt('2U 4L', -4, 2, { min: 135 }, T),
+      line('1.5U 1R–3R', 1.5, 1, 3, { min: 200 }, T), line('1.5U 1R to R', 1.5, 1, 20, { max: 1400 }, T + ' (to 20R assumed)'),
+      line('1U 1.5L to L', 1, -20, -1.5, { max: 700 }, T + ' (to 20L assumed)'), line('0.5U 1.5L to L', 0.5, -20, -1.5, { max: 1000 }, T + ' (to 20L assumed)'),
+      line('0.5U 1R–3R', 0.5, 1, 3, { min: 500, max: 2700 }, T), pt('H 4L', -4, 0, { min: 135 }, T), pt('H 8L', -8, 0, { min: 64 }, T),
+    ];
+    if (V) rows.push(pt('0.6D 1.3R', 1.3, -0.6, { min: 10000 }, T), pt('0.86D V', 0, -0.86, { min: 4500 }, T), pt('0.86D 3.5L', -3.5, -0.86, { min: 1800, max: 12000 }, T),
+      pt('1.5D 2R', 2, -1.5, { min: 15000 }, T), pt('2D 9L', -9, -2, { min: 1250 }, T), pt('2D 9R', 9, -2, { min: 1250 }, T), pt('2D 15L', -15, -2, { min: 1000 }, T), pt('2D 15R', 15, -2, { min: 1000 }, T),
+      pt('4D 4R', 4, -4, { max: 12500 }, T), pt('4D 20L', -20, -4, { min: 300 }, T), pt('4D 20R', 20, -4, { min: 300 }, T),
+      { kind: 'gradient', name: 'Cut-off gradient', h: -2.5, v0: -1.9, v1: 1.1, scan: 0.05, dv: 0.1, min: 0.13, ref: 'S10.18.9.1.2, S10.18.9.1.5', note: 'G = log E(a) − log E(a + 0.1°) at 2.5° L, scanned 1.5° U–1.5° D of the preliminary aim; G ≥ 0.13' },
+      { kind: 'linearity', name: 'Cut-off inclination', hs: [-1.5, -2.5, -3.5], ref: 'centre', v0: -1.9, v1: 1.1, scan: 0.05, dv: 0.1, max: 0.2, note: 'S10.18.9.1.4: the maximum gradient 1° either side within ±0.2° of the one at 2.5° L' });
+    else rows.push(line('0.5D 1.5L to L', -0.5, -20, -1.5, { max: 3000 }, T + ' (to 20L assumed)'), pt('0.5D 1.5R', 1.5, -0.5, { min: 10000, max: 20000 }, T),
+      pt('1D 6L', -6, -1, { min: 1000 }, T), pt('1.5D 2R', 2, -1.5, { min: 15000 }, T), pt('1.5D 9L', -9, -1.5, { min: 1000 }, T), pt('1.5D 9R', 9, -1.5, { min: 1000 }, T),
+      pt('2D 15L', -15, -2, { min: 850 }, T), pt('2D 15R', 15, -2, { min: 850 }, T), pt('4D 4R', 4, -4, { max: 12500 }, T));
+    return rows;
+  }
+  function fmvssUB2() {
+    const T = 'Table XVIII, UB2';
+    return [pt('2U V', 0, 2, { min: 1500 }, T), pt('1U 3L', -3, 1, { min: 5000 }, T), pt('1U 3R', 3, 1, { min: 5000 }, T), pt('H V', 0, 0, { min: 40000, max: 75000 }, T),
+      pt('H 3L', -3, 0, { min: 15000 }, T), pt('H 3R', 3, 0, { min: 15000 }, T), pt('H 6L', -6, 0, { min: 5000 }, T), pt('H 6R', 6, 0, { min: 5000 }, T),
+      pt('H 9L', -9, 0, { min: 3000 }, T), pt('H 9R', 9, 0, { min: 3000 }, T), pt('H 12L', -12, 0, { min: 1500 }, T), pt('H 12R', 12, 0, { min: 1500 }, T),
+      pt('1.5D V', 0, -1.5, { min: 5000 }, T), pt('1.5D 9L', -9, -1.5, { min: 2000 }, T), pt('1.5D 9R', 9, -1.5, { min: 2000 }, T), pt('2.5D V', 0, -2.5, { min: 2500 }, T),
+      pt('2.5D 12L', -12, -2.5, { min: 1000 }, T), pt('2.5D 12R', 12, -2.5, { min: 1000 }, T), pt('4D V', 0, -4, { max: 12000 }, T)];
+  }
   const PRESETS = {
     'ece-r112-b': Object.assign({ label: 'ECE R112 class B passing beam', source: R112 + ': §6.2.4 tables, Annex 3, Annex 9. Measured at 25 m with a 65 mm photocell (§6.1.2); aimed by the cut-off (Annex 9 §3.1) and re-aimed within 0.5° L / 0.75° R / ±0.25° (§6.2.2.3).', verified: true, items: passing('B') }, R112_MEAS, R112_AIM),
     'ece-r112-a': Object.assign({ label: 'ECE R112 class A passing beam', source: R112 + ': §6.2.4 tables (class A columns), Annex 3, Annex 9.', verified: true, items: passing('A') }, R112_MEAS, R112_AIM),
     'ece-r112-b-drive': Object.assign({ label: 'ECE R112 class B driving beam', source: R112 + ': §6.3.3. A driving-beam-only lamp is aimed with its maximum on HV (§6.3.1).', verified: true, items: driving('B') }, R112_MEAS, { aimMode: 'peak', aimBox: null }),
     'ece-r112-a-drive': Object.assign({ label: 'ECE R112 class A driving beam', source: R112 + ': §6.3.3 (class A). Aimed with its maximum on HV (§6.3.1).', verified: true, items: driving('A') }, R112_MEAS, { aimMode: 'peak', aimBox: null }),
+    'fmvss-lb2v': Object.assign({ label: 'FMVSS 108 lower beam LB2V (2-lamp, visual aim VOL)', source: FM + ': Table XIX-a LB2V (min/max columns), S10.18.9 (VOL cut-off at 0.4° D, gradient ≥ 0.13, inclination ±0.2°), S14.2.5.3 (≥ 18.3 m), S14.2.5.7.2.1 (sensor), S14.2.5.5 (¼° reaim at any test point). Lines "to L / to R" taken to 20°; the 10U–90U boundary checked over 10–12° U × ±20°.', verified: true, items: fmvssLower('LB2V') }, FM_MEAS, { aimMode: 'cutoff', aimLine: -0.4, aimScan: 1.5, aimBox: null }),
+    'fmvss-lb2m': Object.assign({ label: 'FMVSS 108 lower beam LB2M (2-lamp, mechanical aim)', source: FM + ': Table XIX-a LB2M; mechanically aimed (S14.2.5.5.1: aiming plane at the design angles, so judged as designed); S14.2.5.3, S14.2.5.7.2.1, S14.2.5.5 (¼° reaim at any test point).', verified: true, items: fmvssLower('LB2M') }, FM_MEAS, { aimMode: 'design', aimBox: null }),
+    'fmvss-ub2': Object.assign({ label: 'FMVSS 108 upper beam UB2 (2-lamp)', source: FM + ': Table XVIII UB2. Aimed as designed (mechanical, or the lower beam’s aim when combined: S10.18.9.3.1); a stand-alone visually aimed upper beam puts its maximum on H-V (S14.2.5.5.5.2) — set Aim to "peak" for that.', verified: true, items: fmvssUB2() }, FM_MEAS, { aimMode: 'design', aimBox: null }),
     'hotspot': {
       label: 'Spot beam (not a regulation)', source: 'A made-up flashlight-style spec to experiment with.', verified: true,
       kernel: 0.25, distance: 0, step: 0.1, aimMode: 'design', aimBox: null,
@@ -91,13 +132,14 @@
   function defaults() {
     return Object.assign({ traffic: 'RHT', conv: 'A', paintCd: 0, paintWeight: 1, usePaint: true, selected: null }, presetState('ece-r112-b'));
   }
-  const PRESET_KEYS = ['kernel', 'distance', 'step', 'conv', 'aimMode', 'aimLine', 'aimBox'];
+  const PRESET_KEYS = ['kernel', 'distance', 'step', 'conv', 'aimMode', 'aimLine', 'aimBox', 'aimScan', 'itemReaim'];
   function presetState(id) {
     const p = PRESETS[id] || PRESETS.blank, items = [];
     for (const it of p.items) items.push(Object.assign({ id: newId(items), on: true, w: 1 }, JSON.parse(JSON.stringify(it))));
     const o = { preset: id, label: p.label, source: p.source, verified: p.verified, items, aimTol: 0 };
     for (const k of PRESET_KEYS) if (p[k] !== undefined) o[k] = p[k] && typeof p[k] === 'object' ? Object.assign({}, p[k]) : p[k];
     if (o.aimLine === undefined) o.aimLine = -0.57;
+    for (const [k, d] of [['aimScan', 0], ['itemReaim', 0], ['aimBox', null]]) if (o[k] === undefined) o[k] = d;   // never inherit them from the previous preset
     return o;
   }
   function applyPreset(md, id) { Object.assign(md, presetState(id)); md.selected = null; return md; }
@@ -249,7 +291,9 @@
     } else if (it.kind === 'linearity') {
       const vs = it.hs.map((h) => scanCut(G, h, it.v0, it.v1, it.scan || 0.05, it.dv || 0.1, it.kh || 0.25, dh, dv));
       const ok = vs.every(Boolean), vv = ok ? vs.map((b) => b.v) : [];
-      const spread = ok ? Math.max(...vv) - Math.min(...vv) : NaN, sd = (it.scan || 0.05) / 2;   // the scan step limits it, not shot noise
+      // R112: the spread of all inflections.  FMVSS 108 S10.18.9.1.4 (it.ref = 'centre'): each end within ± max of the middle scan
+      const mid = vv[Math.floor(vv.length / 2)];
+      const spread = !ok ? NaN : it.ref === 'centre' ? Math.max(...vv.map((v) => Math.abs(v - mid))) : Math.max(...vv) - Math.min(...vv), sd = (it.scan || 0.05) / 2;   // the scan step limits it, not shot noise
       // margin for a spread allowed to be 0: linear, in units of the limit (1 decade ≈ the whole limit)
       const r = judge(spread, sd, ok ? [it.hs[1] !== undefined ? it.hs[1] : it.hs[0], vv[1] !== undefined ? vv[1] : vv[0]] : null, it.max, false, { unit: 'deg' });
       r.margin = ok ? (it.max - spread) / Math.max(1e-9, it.max) : -1; r.soft = softOf(r.margin);
@@ -262,7 +306,8 @@
     }
     return res;
   }
-  function evalAt(G, items, k, dh, dv, cache) {
+  const REAIM_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7071, 0.7071], [0.7071, -0.7071], [-0.7071, 0.7071], [-0.7071, -0.7071], [0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5]];
+  function evalAt(G, items, k, dh, dv, cache, itemReaim) {
     // references for relative bounds: a point item by name (read at this aim), or 'Imax' (the map's maximum)
     const refOf = (name) => {
       if (name === 'Imax') {
@@ -274,7 +319,20 @@
       return RF.FarField.intensityAt(G, it.h + dh, it.v + dv, k);
     };
     const rows = [];
-    for (const it of items) for (const r of evalItem(G, it, k, dh, dv, cache, refOf)) rows.push(Object.assign(r, { id: it.id, name: it.name, kind: it.kind, w: it.w > 0 ? it.w : 1 }));
+    for (const it of items) {
+      let rs = evalItem(G, it, k, dh, dv, cache, refOf), off = null;
+      // per-test-point re-aim (FMVSS 108 S14.2.5.5: "a 1/4° reaim is permitted in any direction at any test point"): each
+      // point / zone / sum may be read up to itemReaim away, whichever reading does best (fewest fails, then unsure, then margin)
+      if (itemReaim > 0 && (it.kind === 'point' || it.kind === 'zone' || it.kind === 'sum')) {
+        const key = (r) => { let f = 0, u = 0, m = Infinity; for (const x of r) { if (x.verdict === 'fail') f++; else if (x.verdict === 'unsure') u++; if (x.margin < m) m = x.margin; } return [f, u, -m]; };
+        let kb = key(rs);
+        for (const [ox, oy] of REAIM_DIRS) {
+          const alt = evalItem(G, it, k, dh + ox * itemReaim, dv + oy * itemReaim, cache, refOf), ka = key(alt);
+          if (ka[0] < kb[0] || (ka[0] === kb[0] && (ka[1] < kb[1] || (ka[1] === kb[1] && ka[2] < kb[2] - 1e-12)))) { rs = alt; kb = ka; off = [+(-ox * itemReaim).toFixed(3), +(-oy * itemReaim).toFixed(3)]; }
+        }
+      }
+      for (const r of rs) rows.push(Object.assign(r, { id: it.id, name: it.name, kind: it.kind, w: it.w > 0 ? it.w : 1 }, off ? { pointReaim: off } : {}));
+    }
     let sw = 0, ss = 0, worst = Infinity; const n = { pass: 0, fail: 0, unsure: 0 };
     for (const r of rows) { sw += r.w; ss += r.w * r.soft; n[r.verdict]++; if (r.margin < worst) worst = r.margin; }
     return { rows, score: sw > 0 ? ss / sw : 1, worst: rows.length ? worst : 0, n, shift: [dh, dv] };
@@ -294,8 +352,10 @@
     }
     if (mode === 'cutoff') {
       const g = items.find((x) => x.kind === 'gradient'), h = g ? g.h : -2.5 * mirrorH(md), line = md.aimLine === undefined ? -0.57 : md.aimLine;
-      // search the beam as built, widely: the lamp may be far off the line before aiming
-      const b = scanCut(G, h, Math.max(G.v0 + 0.2, -6), Math.min(G.v1 - 0.2, 4), 0.05, 0.1, (g && g.kh) || 0.25, 0, 0);
+      // search near the line first (the lab finds THE cut-off, not a stray streak at 4° U: SQM in the 7" bucket), then widely
+      // (a lamp built far off its line still gets aimed)
+      const S = md.aimScan > 0 ? md.aimScan : 3, kh = (g && g.kh) || 0.25;
+      const b = scanCut(G, h, Math.max(G.v0 + 0.2, line - S), Math.min(G.v1 - 0.2, line + S), 0.05, 0.1, kh, 0, 0) || scanCut(G, h, Math.max(G.v0 + 0.2, -6), Math.min(G.v1 - 0.2, 4), 0.05, 0.1, kh, 0, 0);
       if (!b) return { base: [0, 0], note: 'no cut-off found at ' + Math.abs(h) + '° to aim by: judged as designed' };
       return { base: [0, +(b.v - line).toFixed(4)], note: 'cut-off inflection at ' + b.v.toFixed(2) + '° put on ' + Math.abs(line) + '° D', cutV: b.v };
     }
@@ -310,7 +370,7 @@
   function evaluate(G, md) {
     const items = itemsOf(md), k = md.kernel > 0 ? md.kernel : 0.15, cache = new Map();
     const aim = aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
-    const atAim = evalAt(G, items, k, bh, bv, cache);
+    const ir = md.itemReaim > 0 ? md.itemReaim : 0, atAim = evalAt(G, items, k, bh, bv, cache, ir);
     let best = atAim, reaim = [0, 0];
     let box = md.aimBox ? Object.assign({}, md.aimBox) : md.aimTol > 0 ? { left: md.aimTol, right: md.aimTol, up: md.aimTol, down: md.aimTol } : null;
     if (box && md.traffic === 'LHT') box = { left: box.right, right: box.left, up: box.up, down: box.down };
@@ -319,7 +379,7 @@
       // beam moved right by x ⇔ sampling offset −x: dh ∈ [−right, +left], dv ∈ [−up, +down]
       for (let dv = -(box.up || 0); dv <= (box.down || 0) + 1e-9; dv += st) for (let dh = -(box.right || 0); dh <= (box.left || 0) + 1e-9; dh += st) {
         const ddh = +dh.toFixed(6) || 0, ddv = +dv.toFixed(6) || 0; if (!ddh && !ddv) continue;
-        const r = evalAt(G, items, k, bh + ddh, bv + ddv, cache);
+        const r = evalAt(G, items, k, bh + ddh, bv + ddv, cache, ir);
         // the lab re-aims only to make the lamp PASS: fewest sure fails, then fewest undecided rows, then the smallest move.  A move
         // that changes no verdict is not taken.  (Ranking by worst margin or soft score let rows no aim can fix — a sign point with
         // no light at all — drag the beam half a degree and sink 75R.)
@@ -409,11 +469,12 @@
   function seedPaint(scene) {
     const md = scene.modeD, res = scene.target.res, T = RF.Engine.designFrame(scene.target), s = mirrorH(md), out = new Array(res * res).fill(0);
     const t15 = Math.tan(15 * Math.PI / 180);
+    const line = md.aimLine < 0 ? md.aimLine : -0.57;                // the cut-off where the spec aims it (R112 0.57° D, FMVSS VOL 0.4° D)
     const glowCd = md.seedGlow > 0 ? md.seedGlow : 0, pcd = paintCdOf(md), above = new Array(res * res).fill(0);
     let mx = 0;
     for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
       const [u, v] = RF.Engine.cellCenter(T, i, j), [h0, vv] = hvAtUV(scene, u, v), h = s * h0;
-      const cut = h <= 0 ? -0.57 : Math.min(-0.57 + h * t15, 1.0);
+      const cut = h <= 0 ? line : Math.min(line + h * t15, 1.0);
       if (!(vv <= cut)) {                                // above the cut-off: only the glow, if any
         // (a notch at B50L, 3.43° L 0.57° U, max 350 cd: the glow there would be half the budget, and Point 8 (≥ 125 cd) is 0.8° away)
         if (glowCd > 0 && vv <= 6) above[j * res + i] = Math.min(1, Math.exp(-(((Math.max(0, Math.abs(h) - 9)) / 2) ** 2)) * Math.exp(-(((Math.max(0, vv - 4.5)) / 0.8) ** 2))) * (1 - 0.65 * Math.exp(-((h + 3.43) ** 2 + (vv - 0.57) ** 2) / 0.5));
@@ -433,6 +494,61 @@
     let auto = 0; for (const it of itemsOf(md)) if (it.min > 0 && it.kind !== 'gradient' && it.kind !== 'linearity' && it.kind !== 'imax' && it.kind !== 'sum') auto = Math.max(auto, it.min);
     return md.paintCd > 0 ? md.paintCd : auto || 10000;
   }
+  /* The scene a paint solver is handed in Spec mode: the same, but with the target plane moved to md.solveAt (default 25 m;
+   * 0 = the user's plane), square, untilted, centred on the axis and sized to the spec window — the solvers aim at points on a
+   * flat plane, and at 10 m a facet 40 mm off-axis aims 0.2° wrong.  The painting (the secondary goal, drawn on the user's
+   * plane) is carried over by direction.  The user's scene is not touched.                                              */
+  function solveScene(scene) {
+    const md = scene.modeD || {}, D = md.solveAt === undefined ? 25000 : +md.solveAt, t0 = scene.target;
+    if (scene.mode !== 'D' || !(D > 0) || (D === t0.distance && !t0.tiltX && !t0.tiltY && t0.linked !== false)) return scene;
+    const t = Object.assign({}, t0, { distance: D, tiltX: 0, tiltY: 0, linked: true, aim: [D, 0, 0] });
+    const out = Object.assign({}, scene, { target: t });
+    t.size = Math.round(fitTargetSize(out));
+    const res = t0.res, T = RF.Engine.designFrame(t), To = RF.Engine.designFrame(t0), p = scene.modeA.paint, np = new Array(res * res).fill(0);
+    for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
+      const [u, v] = RF.Engine.cellCenter(T, i, j), [h, vv] = hvAtUV(out, u, v), uv = planeUV(scene, h, vv);
+      if (!uv) continue;
+      const io = Math.floor((uv[0] + To.half) / (2 * To.half) * res), jo = Math.floor((uv[1] + To.half) / (2 * To.half) * res);
+      if (io >= 0 && io < res && jo >= 0 && jo < res) np[j * res + i] = p[jo * res + io] || 0;
+    }
+    out.modeA = Object.assign({}, scene.modeA, { paint: np });
+    return out;
+  }
+  /* Fixtures: envelopes to compare solvers and emitters in (the spec bench, tests/bench-spec.js, and the scene presets).
+   * Box-type: the LED on the envelope's floor facing up, placed as in the default scene (just above the floor, near the back);
+   * half = [depth/2, width/2, height/2] (x = throw).  sealed7: a 7-inch round sealed-beam bucket with the LED at the front
+   * firing back into it — an H6024 is Ø178 × 127 mm overall (retail listings); Ø165 × 100 mm usable is an estimate — and a
+   * Ø30 mm mount in front of the LED that absorbs.                                                                   */
+  const FIXTURES = {
+    box: { label: 'Reflector box 105 × 55 × 56 mm (the default)', half: [27.95, 52.59, 27.46] },
+    slim: { label: 'Slim reflector 120 × 35 × 50 mm', half: [25, 60, 17.5] },
+    module: { label: 'Small module 60 × 40 × 45 mm', half: [22.5, 30, 20] },
+    sealed7: { label: '7-inch sealed-beam bucket Ø165 × 100 mm, LED at the front firing back', bucket: { r: 82.5, depth: 100, mount: 15 } },
+  };
+  const BOX0 = { pos: [-36.58, -3.53, 13.58], axis: [-0.0086, 0.0052, 0.99995], d: [4.53, -3.39, 26.89], half: [27.95, 52.59, 27.46] };
+  function applyFixture(scene, id) {
+    const f = FIXTURES[id]; if (!f) return null;
+    scene.groups.M.surfaces = (scene.groups.M.surfaces || []).filter((x) => x.id !== 'Mmount');
+    if (f.bucket) {
+      const b = f.bucket;
+      Object.assign(scene.source, { pos: [0, 0, 0], axis: [-1, 0, 0], roll: 0 });
+      Object.assign(scene.envelope, { shape: 'cylinder', axis: 0, center: [-b.depth / 2, 0, 0], half: [b.depth / 2, b.r, b.r], keepOut: 5 });
+      scene.groups.M.surfaces.push({ type: 'plane', id: 'Mmount', P: [0.6, 0, 0], n: [-1, 0, 0], clip: { kind: 'disc', r: b.mount }, optics: { interaction: 'absorb' } });
+    } else {
+      const h = f.half, k = h.map((x, i) => x / BOX0.half[i]);
+      Object.assign(scene.source, { pos: BOX0.pos.slice(), axis: BOX0.axis.slice(), roll: 0 });
+      Object.assign(scene.envelope, { shape: 'box', axis: 2, center: [BOX0.pos[0] + BOX0.d[0] * k[0], BOX0.pos[1] + BOX0.d[1] * k[1], BOX0.pos[2] + h[2] - (BOX0.half[2] - BOX0.d[2])], half: h.slice(), keepOut: 5 });
+    }
+    scene.groups.A.surfaces = [];
+    return f;
+  }
+  // what a spec-aware solver reads (input.spec): the constraints with traffic resolved, in (H, V) degrees, plus how they're measured
+  function solverSpec(scene) {
+    const md = scene.modeD;
+    return { preset: md.preset, items: itemsOf(md), conv: md.conv || 'A', kernel: md.kernel, step: md.step, window: windowOf(md), traffic: md.traffic,
+      measure: { distance: md.distance > 0 ? md.distance : Infinity }, aim: { mode: md.aimMode || 'design', line: md.aimLine === undefined ? -0.57 : md.aimLine, scan: md.aimScan || 3, box: md.aimBox || null, itemReaim: md.itemReaim || 0 },
+      centre: scene.source.pos.slice() };
+  }
   // target size that shows the whole spec window at the current distance (square plane, centred on the axis)
   function fitTargetSize(scene) {
     const win = windowOf(scene.modeD), D = scene.target.distance;
@@ -440,5 +556,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, fitTargetSize };
+  RF.Spec = { FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

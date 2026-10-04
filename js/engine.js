@@ -118,7 +118,10 @@
   const GA = 32, GB = 32, NB = GA * GB, GCELL = 0.5;
   let LASTB = 0;
   function newLearn(o) {
-    const S = RF.FarField.newStream(o), kc = Math.max(1, Math.round(GCELL / S.step)), nci = Math.ceil(S.nh / kc), ncj = Math.ceil(S.nv / kc);
+    const S = RF.FarField.newStream(o);
+    let kc = Math.max(1, Math.round(GCELL / S.step));
+    while (Math.ceil(S.nh / kc) * Math.ceil(S.nv / kc) > 2400) kc++;      // ≤ 2,400 coarse cells × 1,024 bins (≤ 10 MB) for wide windows
+    const nci = Math.ceil(S.nh / kc), ncj = Math.ceil(S.nv / kc);
     return { kc, nci, ncj, NC: nci * ncj, nh: S.nh, H: new Float32Array(NB * nci * ncj), Hn: new Float32Array(NB) };
   }
   function learnAdd(gl, b, m) { const i = m % gl.nh, j = (m - i) / gl.nh; gl.H[b * gl.NC + Math.floor(j / gl.kc) * gl.nci + Math.floor(i / gl.kc)] += 1; }

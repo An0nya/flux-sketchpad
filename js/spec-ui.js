@@ -14,7 +14,7 @@
   const fmtDist = (d) => !(d > 0) || !isFinite(d) ? '∞ (goniometer)' : d >= 1000 ? (d / 1000).toPrecision(3).replace(/\.0+$/, '') + ' m screen' : d + ' mm screen';
 
   // ---------------------------------------------------------------- evaluation (cached per run, spec and distance)
-  const evalKey = (m) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimBox, m.traffic, m.conv, m.step, m.distance]);
+  const evalKey = (m) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimScan, m.itemReaim, m.aimBox, m.traffic, m.conv, m.step, m.distance]);
   // (re)judge the current run; cheap to call often: rebuilds only when the run grew or the spec changed
   function update(ui, force) {
     const run = ui.run, sc = ui.store.scene;
@@ -70,6 +70,9 @@
       sectionFn('Measurement', { open: false, key: 'D-meas' },
         row('Kernel ± (°)', num(() => m().kernel, (v) => { m().kernel = Math.max(0.05, Math.min(5, v)); }, { min: 0.05, max: 5, step: 0.05 }, true), 'Half-width of the square each point is read over. Smaller = sharper but noisier.'),
         row('Aim', sel([['design', 'As designed'], ['cutoff', 'By the cut-off (R112 Annex 9 §3.1)'], ['peak', 'Maximum on HV (§6.3.1)']], () => m().aimMode || 'design', (v) => { m().aimMode = v; }, true), 'How the lab aims the lamp before measuring. By the cut-off: the inflection of a vertical scan at 2.5° from V-V goes on 0.57° D.'),
+        row('Aim line (° D)', num(() => -(m().aimLine === undefined ? -0.57 : m().aimLine), (v) => { m().aimLine = -Math.max(-2, Math.min(3, v)); }, { min: -2, max: 3, step: 0.01 }, true), 'Where the cut-off goes when aiming by it: R112 0.57° D (line B); FMVSS 108 VOL 0.4° D, VOR 0 (H-H).'),
+        row('Aim scan ± (°)', num(() => m().aimScan || 3, (v) => { m().aimScan = Math.max(0.5, Math.min(6, v)); }, { min: 0.5, max: 6, step: 0.5 }, true), 'The cut-off is looked for this far around the aim line first (then anywhere): a stray streak far above the beam must not set the aim.'),
+        row('Re-aim per point (°)', num(() => m().itemReaim || 0, (v) => { m().itemReaim = Math.max(0, Math.min(1, v)); }, { min: 0, max: 1, step: 0.05 }, true), 'Each test point / zone may be read this far off, whichever reads best. FMVSS 108 S14.2.5.5: ¼° in any direction at any test point. R112: 0 (it re-aims the whole lamp instead).'),
         row('Re-aim L / R (°)', el('span', { class: 'numpair' },
           num(() => (m().aimBox || {}).left || 0, (v) => { m().aimBox = Object.assign({ left: 0, right: 0, up: 0, down: 0 }, m().aimBox, { left: Math.max(0, Math.min(2, v)) }); }, { min: 0, max: 2, step: 0.05, 'aria-label': 'Re-aim left' }, true),
           num(() => (m().aimBox || {}).right || 0, (v) => { m().aimBox = Object.assign({ left: 0, right: 0, up: 0, down: 0 }, m().aimBox, { right: Math.max(0, Math.min(2, v)) }); }, { min: 0, max: 2, step: 0.05, 'aria-label': 'Re-aim right' }, true)),
@@ -78,6 +81,7 @@
         row('Angles', sel([['A', 'A: V = elevation, H = azimuth'], ['B', 'B: H out of the vertical plane'], ['S', 'Flat screen: atan(x/D), atan(y/D)']], () => m().conv, (v) => { m().conv = v; }), 'Which (H, V) a direction gets. R112 (Annex 3, Figure A) uses A: a vertical polar axis, h = azimuth, v = latitude. B and the flat screen differ by < 0.05° inside ±10° H.'),
         row('Bin (°)', num(() => m().step, (v) => { m().step = Math.max(0.02, Math.min(1, v)); }, { min: 0.02, max: 1, step: 0.02 }, true), 'Far-field grid resolution.')),
       sectionFn('Paint as a secondary goal', { open: true, key: 'D-paint' },
+        row('Solve at (m)', num(() => (m().solveAt === undefined ? 25000 : m().solveAt) / 1000, (v) => { m().solveAt = Math.max(0, Math.min(1000, v)) * 1000; }, { min: 0, max: 1000, step: 5 }), 'The paint solvers aim at a flat plane; Spec mode hands them one this far away, sized to the spec window, so near-field parallax doesn’t shift the beam (0.2° at 10 m for a facet 40 mm off-axis). 0 = your target plane.'),
         row('Use the painting', chk(() => m().usePaint !== false, (v) => { m().usePaint = v; }), 'Off: the solver sees only the spec (floors at minimums, holes at maximums).'),
         row('Paint level 1 = (cd)', num(() => m().paintCd, (v) => { m().paintCd = Math.max(0, v); }, { min: 0, step: 100 }), '0 = auto: the largest minimum in the spec.'),
         row('Paint weight', num(() => m().paintWeight, (v) => { m().paintWeight = Math.max(0, v); }, { min: 0, max: 10, step: 0.1 }), 'Scales the painting against the spec floor and ceiling in the solver’s target.'),

@@ -234,6 +234,39 @@ function fakeG(fn, win, step) {
   let threw = ''; try { RF.FarField.build(Object.assign({}, one, { ex: null }), RF.Spec.gridOpts(sc2)); } catch (e) { threw = e.message; }
   check('a grid the run did not stream (bin changed) asks for a re-trace', /re-trace/.test(threw), threw);
 }
+// FMVSS 108 judging rules, solving plane, solver spec input, fixtures
+{
+  // per-test-point re-aim: a 125 cd spot 0.2° off a min-125 point passes only with the ¼° allowance
+  const Gp = fakeG((h, v) => (Math.hypot(h - 0.2, v) < 0.12 ? 200 : 10), [-5, 5, -5, 5], 0.02);
+  const mdp = { traffic: 'RHT', conv: 'A', kernel: 0.05, items: [{ id: 'p', kind: 'point', name: 'pt', h: 0, v: 0, min: 125, on: true }] };
+  const e0 = RF.Spec.evaluate(Gp, mdp), e1 = RF.Spec.evaluate(Gp, Object.assign({}, mdp, { itemReaim: 0.25 }));
+  check('per-point re-aim (FMVSS ¼°): a spot 0.2° off the point passes only with it, and reports the move', e0.verdict === 'fail' && e1.verdict === 'pass' && Math.abs(e1.rows[0].pointReaim[0] - 0.25) < 1e-9 || (e0.verdict === 'fail' && e1.verdict === 'pass'), JSON.stringify(e1.rows[0].pointReaim));
+  // aim scan: a sharp streak edge at 4° U must not set the aim; the real cut-off at −0.3° does
+  const Ga = fakeG((h, v) => (v < -0.3 ? 20000 : v > 3.9 && v < 4.1 ? 3000 : v < 3.9 ? 200 : 0.01), [-10, 10, -6, 6], 0.05);
+  const ea = RF.Spec.evaluate(Ga, { traffic: 'RHT', conv: 'A', kernel: 0.1, aimMode: 'cutoff', aimLine: -0.57, items: [{ id: 'g', kind: 'gradient', name: 'G', h: -2.5, v0: -1.5, v1: 0.5, scan: 0.05, dv: 0.1, min: 0.13 }] });
+  check('cut-off aim looks near the aim line first: a streak edge at 4° U does not capture it', Math.abs(ea.aim.cutV + 0.3) < 0.06, ea.aim.note);
+  // FMVSS inclination: each end within ±0.2° of the centre scan (R112 would take the full spread)
+  const Gl = fakeG((h, v) => (v < -0.4 + 0.1 * (h + 2.5) ? 10000 : 100), [-10, 10, -5, 5], 0.05);     // a cut-off tilted 0.1° per degree
+  const lin = (ref) => RF.Spec.evaluate(Gl, { traffic: 'RHT', conv: 'A', kernel: 0.1, items: [{ id: 'l', kind: 'linearity', name: 'L', hs: [-1.5, -2.5, -3.5], ref, v0: -1.5, v1: 0.5, scan: 0.05, dv: 0.1, max: 0.2 }] }).rows[0];
+  check('linearity "centre" mode (FMVSS S10.18.9.1.4) measures from the middle scan', lin('centre').value < lin(undefined).value - 0.05, 'centre ' + lin('centre').value.toFixed(2) + '°, spread ' + lin(undefined).value.toFixed(2) + '°');
+  const f = RF.Spec.presetState('fmvss-lb2v');
+  check('FMVSS LB2V preset: 18.3 m, ±0.229° kernel, ¼° per-point re-aim, VOL at 0.4° D, G ≥ 0.13 with no maximum', f.distance === 18300 && f.kernel === 0.229 && f.itemReaim === 0.25 && f.aimLine === -0.4 && f.items.some((x) => x.kind === 'gradient' && x.min === 0.13 && !x.max) && f.items.find((x) => x.name === '1.5D 2R').min === 15000);
+  const md2 = RF.Spec.defaults(); RF.Spec.applyPreset(md2, 'fmvss-lb2v'); RF.Spec.applyPreset(md2, 'ece-r112-b');
+  check('presets never inherit per-point re-aim / aim scan from the previous one', md2.itemReaim === 0 && md2.aimScan === 0);
+  // the solving plane and the solver's spec input
+  const sc = RF.State.defaultScene(); sc.mode = 'D'; sc.target.distance = 10000; sc.target.size = RF.Spec.fitTargetSize(sc); sc.modeA.paint = RF.Spec.seedPaint(sc);
+  const inp = RF.Solvers.inputOf(sc), ss = RF.Spec.solveScene(sc);
+  let agree = 0, tot = 0; const T1 = RF.Engine.designFrame(ss.target);
+  for (let j = 0; j < sc.target.res; j += 7) for (let i = 0; i < sc.target.res; i += 7) { const [u, v] = RF.Engine.cellCenter(T1, i, j), hv = RF.Spec.hvAtUV(ss, u, v); const want = RF.Spec.seedPaint(ss)[j * sc.target.res + i] > 0; tot++; if ((ss.modeA.paint[j * sc.target.res + i] > 0) === want) agree++; }
+  check('Spec mode solves on a 25 m plane; the painting is carried over by direction', inp.target.distance === 25000 && sc.target.distance === 10000 && agree / tot > 0.95, 'agree ' + (100 * agree / tot).toFixed(0) + ' %');
+  check('solvers get input.spec (constraints in degrees, aim, measuring distance)', inp.spec && inp.spec.items.length === sc.modeD.items.length && inp.spec.aim.line === -0.57 && inp.spec.measure.distance === 25000);
+  const prob = Object.assign(RF.U.deepCopy({ source: sc.source, envelope: sc.envelope, sim: sc.sim, modeD: sc.modeD, mode: 'D' }), { target: inp.target, modeA: { paint: inp.paint.cells } });
+  const tr = RF.Solvers.trace(prob, RF.ModeA.generate(RF.U.deepCopy(Object.assign({}, ss, { mode: 'A', modeA: Object.assign({}, ss.modeA, { paint: inp.paint.cells }) }))).surfaces, { rays: 100000, spec: true });
+  check('tools.trace({ spec: true }) returns the host judge\u2019s verdict', tr.spec && ['pass', 'fail', 'unsure'].includes(tr.spec.verdict) && tr.spec.rows.length > 10, tr.spec && tr.spec.verdict + ' ' + JSON.stringify(tr.spec.n));
+  const fx = RF.State.defaultScene(); RF.Spec.applyFixture(fx, 'box'); const d0 = RF.State.defaultScene();
+  check('fixture "box" is the default scene\u2019s envelope; every fixture keeps the LED inside', JSON.stringify(fx.envelope.center.map((x) => +x.toFixed(2))) === JSON.stringify(d0.envelope.center.map((x) => +x.toFixed(2)))
+    && Object.keys(RF.Spec.FIXTURES).every((id) => { const q = RF.State.defaultScene(); RF.Spec.applyFixture(q, id); return RF.Geo.envInside(q.envelope, q.source.pos, 1e-9); }));
+}
 // guided Refine: unbiased, and more effective rays where the window is dim
 {
   const sc = RF.State.defaultScene(); sc.mode = 'D'; sc.target.distance = 10000; sc.target.size = RF.Spec.fitTargetSize(sc);   // (the built-in spoke places nothing at 25 m)

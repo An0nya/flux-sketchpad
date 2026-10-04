@@ -1532,7 +1532,7 @@
       const presetLabel = sel.options[sel.selectedIndex].text;
       const ok = P.el('button', { type: 'button', class: 'primary' }, 'Replace scene with “' + presetLabel + '”');
       const no = P.el('button', { type: 'button' }, 'Cancel');
-      ok.addEventListener('click', () => { const p = P.presetScene(name); bar.remove(); sel.value = ''; if (p) { ui._histHint = 'Preset: ' + presetLabel; ui._histMode = ui.store.scene.mode; } if (p) ui.loadScene(p.scene, 'Preset: ' + p.notes.join('; ') + '.'); });
+      ok.addEventListener('click', () => { const p = P.presetScene(name); bar.remove(); sel.value = ''; if (p) { ui._histHint = 'Preset: ' + presetLabel; ui._histMode = ui.store.scene.mode; } if (p) { ui.loadScene(p.scene, 'Preset: ' + p.notes.join('; ') + '.'); if (ui.store.dirty.has('A') && ui.store.autoA) ui.generateA(); } });   // a worker solver (Auto) isn't run by the load itself: start it
       no.addEventListener('click', () => { bar.remove(); sel.value = ''; });
       bar.append(ok, no);
       document.querySelector('.side-top').append(bar);

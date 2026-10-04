@@ -74,15 +74,20 @@
     return sanitize(def, o);
   }
   // the painting a solver is asked for: the paint itself, or in Spec mode the spec's working target (js/spec.js)
-  const paintOf = (scene) => (scene.mode === 'D' && RF.Spec && scene.modeD ? RF.Spec.workingPaint(scene) : scene.modeA.paint);
+  const specOn = (scene) => scene.mode === 'D' && RF.Spec && scene.modeD;
+  // Spec mode solves on its own plane (RF.Spec.solveScene: md.solveAt, default 25 m), not the user's target plane
+  const solveSceneOf = (scene) => (specOn(scene) ? RF.Spec.solveScene(scene) : scene);
+  const paintOf = (scene) => (specOn(scene) ? RF.Spec.workingPaint(solveSceneOf(scene)) : scene.modeA.paint);
   // the problem half of the scene: all a solver may see
   // a domed LED is handed over as the flat emitter it looks like from outside (RF.Source.apparent); traces keep the dome
+  // Spec mode adds input.spec (RF.Spec.solverSpec): the constraints in degrees, for solvers that can use them.
   function inputOf(scene) {
-    return RF.U.deepCopy({
-      source: RF.Source.apparent(scene.source), envelope: scene.envelope, target: scene.target,
+    const ss = solveSceneOf(scene);
+    return RF.U.deepCopy(Object.assign({
+      source: RF.Source.apparent(scene.source), envelope: scene.envelope, target: ss.target,
       paint: { res: scene.target.res, cells: paintOf(scene) }, stamps: (scene.modeB && scene.modeB.stamps) || [], seed: scene.sim.seed | 0,
       limits: { maxFacets: Math.max(1, scene.modeA.budget | 0), reflectivity: scene.modeA.reflectivity },
-    });
+    }, specOn(scene) ? { spec: RF.Spec.solverSpec(scene) } : {}));
   }
 
   // Host-owned facts about a solver's output.  errors = the output is unusable; violations = usable but
@@ -155,7 +160,7 @@
   // Synchronous run (headless tests, and solvers cheap enough for the main thread).  The UI's worker host
   // calls the same pieces.  Returns the scene-ready result; never mutates the scene.
   // the problem scene a solver's trace() runs against (plain data: crosses into a worker)
-  const problemOf = (scene) => RF.U.deepCopy({ source: scene.source, target: scene.target, envelope: scene.envelope, sim: scene.sim, modeA: { paint: paintOf(scene) } });
+  const problemOf = (scene) => RF.U.deepCopy(Object.assign({ source: scene.source, target: solveSceneOf(scene).target, envelope: scene.envelope, sim: scene.sim, modeA: { paint: paintOf(scene) } }, specOn(scene) ? { modeD: scene.modeD, mode: 'D' } : {}));
   function prepareRun(scene, id) {
     id = id || current(scene);
     const def = get(id); if (!def) throw new Error('no solver ' + id);
@@ -184,6 +189,8 @@
     o = o || {};
     const sc = Object.assign({}, scene, { sim: Object.assign({}, scene.sim, { seed: o.seed !== undefined ? o.seed : scene.sim.seed }) });
     const P = RF.Engine.prepare(sc, surfaces); P.recordHits = !!(o.attribution || o.occlusion);
+    const wantSpec = !!(o.spec && scene.modeD && RF.Spec && RF.FarField);
+    if (wantSpec) P.ffStreams = [RF.Spec.gridOpts(scene)];        // the far field the host judges, at the spec's measuring distance
     const N = Math.max(1, Math.min(2e6, o.rays | 0 || 20000)), c = RF.Engine.runSync(P, N, 0);
     const grid = RF.Engine.gridTotal(c), st = RF.Engine.evaluate(c);
     const res = { grid: Array.from(grid), res: P.res, energy: Object.assign({}, c.E), raysPerCell: st.raysPerCell, noise: st.raysPerCell > 0 ? 1 / Math.sqrt(st.raysPerCell) : 1,
@@ -203,6 +210,11 @@
     if (o.attribution) {
       const per = {}; for (let h = 0; h < c.nHits; h++) { const k = c.hitK[h]; if (!k) continue; const id = P.G.metas[k - 1].id; per[id] = (per[id] || 0) + c.hits[3 * h + 2]; }
       res.perFacet = per;
+    }
+    if (wantSpec) {                                            // the host's own judge, so a solver can score itself exactly as the report will
+      const ev = RF.Spec.evaluate(RF.FarField.build(c, P.ffStreams[0]), scene.modeD);
+      res.spec = { verdict: ev.verdict, n: ev.n, score: ev.score, worst: ev.worst, aim: ev.aim.note, shift: ev.shift,
+        rows: ev.rows.map((r) => ({ name: r.name, kind: r.kind, value: r.value, sd: r.sd, bound: r.bound, isMin: r.isMin, verdict: r.verdict, margin: r.margin, at: r.at })) };
     }
     return res;
   }

@@ -557,6 +557,12 @@
     for (const k of Object.keys(sc.groups)) sc.groups[k].surfaces = [];
     switch (name) {
       case 'headlamp': noteList.push('default headlamp: 2 mm LED facing up, half-parabola envelope above it'); break;
+      case 'spec-box': case 'spec-slim': case 'spec-module': case 'spec-sealed7': {      // Spec mode on a bench fixture (js/spec.js FIXTURES)
+        const f = RF.Spec.applyFixture(sc, name.slice(5)); sc.mode = 'D';
+        sc.target.distance = 25000; sc.target.size = Math.round(RF.Spec.fitTargetSize(sc)); sc.modeA.paint = RF.Spec.seedPaint(sc); sc.sim.rays = 2000000;
+        noteList.push('Spec mode, ' + f.label + '; R112 class B; target at 25 m; seeded low-beam painting; 2 M rays');
+        break;
+      }
       case 'deepbox': { if (!RF.Checks) return null; const a = RF.Checks.helpers.asymScene(); Object.assign(sc, a); noteList.push('tall deep box 160×80×50 mm, LED on its side wall; spot pattern'); break; }
       case 'stamps':
         sc.mode = 'B'; sc.groups.A.enabled = true;
