@@ -127,6 +127,47 @@ about 220 cd. The small minimums (point 7 ≥ 65 cd, the 1+2+3 sum ≥ 190) and 
 cap can't be decided below roughly 5–10 M rays. The report says "unsure" and how many more rays
 it needs, or you can widen the kernel (less faithful).
 
+### Emitters, and how far the current solvers get (2026-10-04, later)
+
+Light source → **Emitter** presets (`js/source-presets.js`):
+- **Sketch LED:** the default, 1 × 1 mm at 1,000 lm, ≈ 318 cd/mm².
+- **Luminus SFT-40-W 3000 K 95 CRI:** a 2 × 2 mm flat-window die. Flux follows koef3's
+  current-vs-flux chart (25 °C solder point), with Vf, watts and lm/W shown.
+- **HB3/9005:** UN R37 sheets HB3/1–4. An axial 5.1 mm opaque coil, 1,860 lm at 13.2 V or
+  1,300 at 12 V. The filament diameter of 1.4 mm is **assumed**, because the sheets don't
+  give it.
+
+R112 class B, default fixture, seeded paint, spoke solver, 1.5–2 M rays, kernel ±0.15°, aimed
+by the cut-off. **None of them passes:**
+
+| Emitter | Luminance | Verdict | What fails |
+|---|---|---|---|
+| Sketch LED | 318 cd/mm² | 10 pass / 5 fail / 4 unsure | Zone IV, Zone I (> 2 × 50R), 25L-side spread, sign points, G too sharp / not linear |
+| SFT-40 @ 6 A (1,170 lm) | 93 cd/mm² | 10 / 6 / 3 | Zone IV dark, Zone I, cut-off found 0.6° *above* H, so the aim drops everything |
+| SFT-40 @ 10 A (1,555 lm) | 124 cd/mm² | 10 / 6 / 3 | same pattern, more light |
+| HB3 (1,860 lm) | 23 cd/mm² | 5 / 8 / 6 | No usable cut-off (inflection found at 3.9°). An axial filament in this up-facing half-envelope throws half its light away. It needs a reflector that wraps the bulb. |
+
+Retuning the seed painting (hot zone tighter under the cut-off, weaker foreground, a faint
+glow above the cut-off for the sign points) didn't converge. The solved cut-off is blurred,
+so any light above it moves the measured inflection up (to 1.2–1.6°). That is phase 2's
+problem (edge anchoring), not a painting problem.
+
+### Ray budget (proposal, not built)
+
+The cap is 1 M rays per run. Spec mode stores 29 bytes per exit ray, and the hit list stores
+more. The low limits need ~5–10 M rays at regulation resolution.
+1. **Stream the far field instead of storing exit rays.** Bin straight into grids for ∞, 25 m,
+   10 m and the target distance during the trace. Add a "Refine" that keeps adding rays (ray
+   *i*'s stream depends only on (seed, i), so runs extend exactly). Memory stays flat, and
+   10–20 M rays is a ~30–60 s job in the browser.
+2. **Guided emission, unbiased.** Dropping rays that miss the optics saves little here (~78% of
+   the default LED's light already hits the reflector). The waste is elsewhere: most rays land
+   in the 30–60 kcd hot zone, while the 65–625 cd points get almost none, a 500× density gap.
+   From a pilot trace, the first-surface attribution says which facets light the dim regions.
+   Emit more rays into those facets' cones and fewer into the hot-zone facets and empty space,
+   with weight = true ÷ proposal density (a defensive mixture, so nothing gets zero
+   probability). Expect ~10–100× effective rays at the dim points.
+
 ## Phase 2: a solver that targets the spec (next)
 
 Phase 1 only *asks* paint solvers through a rasterised working target. They don't know that a

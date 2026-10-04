@@ -239,6 +239,7 @@
     const eb = document.getElementById('erase-btn'); if (eb) eb.setAttribute('aria-pressed', String(!!C.BY_ID['A.erase'].get(ui.store)));
     P.renderStampList(ui); P.renderLensList(ui); P.renderGroups(ui); P.renderNotices(ui);
     if (RF.SpecUI) RF.SpecUI.render(ui);
+    P.renderSourcePreset(ui);
     P.syncControls(ui);
     const rA = ui.store.reports.A, box = document.getElementById('modeA-report');
     const nA = ui.store.scene.groups.A.surfaces.length;

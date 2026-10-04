@@ -165,5 +165,19 @@ function fakeG(fn, win, step) {
   ev = RF.Spec.evaluate(beam, Object.assign({}, base, { aimMode: 'peak', items: [{ id: 'm', kind: 'imax', name: 'Imax', min: 30000, max: 215000, on: true }, { id: 'hv', kind: 'point', name: 'HV', h: 0, v: 0, minRel: { ref: 'Imax', factor: 0.8 }, on: true }] }));
   check('peak aim: maximum put on HV; HV ≥ 0.8 × Imax', Math.abs(ev.shift[0] - 1) < 0.06 && Math.abs(ev.shift[1] + 0.5) < 0.06 && ev.verdict === 'pass', ev.aim.note);
 }
+// 10. emitter presets (js/source-presets.js)
+{
+  const SP = RF.SourcePresets, s = RF.State.testScene().source, pos = s.pos.slice();
+  SP.apply(s, 'sft40-3000k', { amps: 10 });
+  const e = SP.electrical(s);
+  check('SFT-40: 2 × 2 mm Lambertian die, 1,555 lm at 10 A (chart), Vf 3.72 V', s.kind === 'planar' && s.w === 2 && s.h === 2 && s.power === 1555 && Math.abs(e.vf - 3.72) < 1e-9 && SP.matches(s) && s.pos.join() === pos.join());
+  SP.apply(s, 'sft40-3000k', { amps: 6.5 });
+  check('SFT-40: flux interpolates the curve (6.5 A → 1,228 lm)', s.power === Math.round(1170 + 0.5 * 115));
+  SP.apply(s, 'hb3', { volts: 12 });
+  check('HB3: axial 5.1 mm opaque coil, 1,300 lm at 12 V / 1,860 at 13.2 V', s.kind === 'volume' && s.shape === 'cylinder' && s.length === 5.1 && s.emission === 'surface' && s.axis.join() === '1,0,0' && s.power === 1300 && SP.apply(s, 'hb3', { volts: 13.2 }) && s.power === 1860);
+  s.radius = 0.8; check('an edited preset is flagged', !SP.matches(s));
+  const P = RF.Engine.prepare(Object.assign(RF.State.testScene(), { source: s }), []); const c = RF.Engine.runSync(P, 2000);
+  check('the HB3 source traces (energy closes)', Math.abs(RF.Engine.stats(c).conservationError) < 1e-9);
+}
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

@@ -159,6 +159,7 @@
       el('option', { value: 'tir' }, 'TIR collimator'), el('option', { value: 'fresnel' }, 'Fresnel lens (N rings)'));
     side.append(section('Problem', { open: true, key: 'problem', tag: 'source · target · envelope' },
       section('Light source', { open: true, key: 'source' },
+        el('div', { id: 'source-preset' }),
         ...rowsFor(ui, ['src.kind', 'src.shape', 'src.w', 'src.h', 'src.radius', 'src.length', 'src.dist', 'src.sigma', 'src.half']),
         section('Advanced', { adv: true, key: 'source-adv' }, el('div', { class: 'note' }, 'Direction and position are also draggable in Optics (source dot, arrow tip), or in the Scene with Setup on.'), ...rowsFor(ui, ['src.az', 'src.el', 'src.roll', 'src.x', 'src.y', 'src.z', 'src.power']))),
       section('Target plane & aim point', { open: true, key: 'target' },
@@ -227,6 +228,32 @@
       }
     }
     // mode-specific sections follow body class (CSS hides them)
+  }
+
+  // ---------------------------------------------------------------- real emitters (js/source-presets.js)
+  function renderSourcePreset(ui) {
+    const box = document.getElementById('source-preset'); if (!box || !RF.SourcePresets) return;
+    const SP = RF.SourcePresets, src = ui.store.scene.source, p = SP.PRESETS[src.preset];
+    const sel = el('select', { 'aria-label': 'Emitter preset' }, el('option', { value: '' }, 'Custom (the fields below)'), ...Object.entries(SP.PRESETS).map(([id, q]) => el('option', { value: id }, q.label)));
+    sel.value = p ? src.preset : '';
+    sel.addEventListener('change', () => { if (!sel.value) { delete src.preset; renderSourcePreset(ui); return; } ui._histHint = 'Emitter: ' + SP.PRESETS[sel.value].label; C.actions.applySourcePreset(ui.store, sel.value); ui.afterChange(); renderSourcePreset(ui); });
+    box.innerHTML = '';
+    box.append(el('div', { class: 'row' }, el('label', {}, 'Emitter'), sel));
+    if (!p) return;
+    if (p.drive) {
+      const a = el('input', { type: 'number', min: 0.1, max: p.drive.maxA, step: 0.1, value: src.driveA, 'aria-label': 'Drive current (A)' });
+      a.addEventListener('change', () => { const v = parseFloat(a.value); if (v > 0) { C.actions.setDriveCurrent(ui.store, v); ui.afterChange(); renderSourcePreset(ui); } });
+      const e = SP.electrical(src);
+      box.append(el('div', { class: 'row', title: 'Flux follows the measured curve; power goes to Problem → Light source → Advanced → Power.' }, el('label', {}, 'Drive current (A)'), a),
+        el('div', { class: 'row help' }, Math.round(src.power).toLocaleString() + ' lm at ' + src.driveA + ' A' + (e ? ' · Vf ' + e.vf.toFixed(2) + ' V · ' + e.watts.toFixed(1) + ' W · ' + e.lmPerW.toFixed(0) + ' lm/W' : '')));
+    }
+    if (p.volts) {
+      const v = el('select', { 'aria-label': 'Lamp voltage' }, ...Object.keys(p.volts).map((k) => el('option', { value: k }, k + ' V · ' + p.volts[k].toLocaleString() + ' lm')));
+      v.value = String(src.volts);
+      v.addEventListener('change', () => { C.actions.setLampVolts(ui.store, +v.value); ui.afterChange(); renderSourcePreset(ui); });
+      box.append(el('div', { class: 'row' }, el('label', {}, 'Voltage'), v));
+    }
+    box.append(el('div', { class: 'note' }, (SP.matches(src) ? '' : '⚠ Edited since the preset was applied. ') + p.note));
   }
 
   // ---------------------------------------------------------------- lists: stamps, lenses, groups
@@ -615,5 +642,5 @@
     return results;
   }
 
-  RF.Panels = { el, numberControl, fmtCd, noiseOf, raysFor3pc, fmtLm, fmtMm2, buildSide, syncControls, renderStampList, renderLensList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
+  RF.Panels = { renderSourcePreset, el, numberControl, fmtCd, noiseOf, raysFor3pc, fmtLm, fmtMm2, buildSide, syncControls, renderStampList, renderLensList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
