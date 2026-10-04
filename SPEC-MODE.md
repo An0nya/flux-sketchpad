@@ -212,7 +212,9 @@ no aim can fix (a sign point with zero light) dragged the beam 0.5° and dropped
 75R from 21.6k to 8.4k. It now ranks by fewest sure fails, then fewest undecided rows, then
 the smallest move. A move that changes no verdict isn't taken, as a lab would do it.
 
-### Solvers compared (2026-10-04, night)
+### Solvers compared (2026-10-04, night; superseded below)
+
+*Judged at 4 M plain rays with the old cut-off aim. Several "75R 0" cells were the aim locking onto a dim edge. See "Settings × distance" (10-05) for the re-run.*
 
 Six solvers × three LEDs × two fixtures. Each design was solved headless, re-traced at 4 M rays,
 and judged against R112 class B (25 m, lab-style aim). Cells give **sure fails** and 75R in kcd.
@@ -307,6 +309,100 @@ The default source is now a 2 × 2 mm Lambertian die at 150 cd/mm² (1,885 lm), 
 The built-in solver's smallest curve radius was 0.2 % of the throw. At a 25 m target that is
 50 mm: nothing fit the default envelope, and spoke placed 0 facets. It is now capped at a
 quarter of the envelope's reach.
+
+### Settings × distance, re-judged (2026-10-05)
+
+Generic 150 cd/mm² LED, seeded paint, R112 class B. Each design traced at 8 M rays (2 M + guided
+Refine) with the fixed aim. Cells give **sure fails**/unsure · 75R.
+
+| Solver · setting | default 10 m | default 25 m | 7" 10 m | 7" 25 m |
+|---|---|---|---|---|
+| spoke | **5**/3 · 16k | **4**/4 · 13k | **5**/3 · 16k | **5**/3 · 23k |
+| ff balanced | **6**/3 · 0.8k | **0**/2 · 16k | **1**/2 · 35k | **0**/3 · 71k |
+| ff sharp | **4**/5 · 2.2k | **2**/4 · 10k | **6**/6 · 1.1k | **7**/4 · 0.7k |
+| ff light | **7**/1 · 5.4k | **7**/2 · 2.5k | **0**/2 · 39k | **0**/2 · 32k |
+| sqm fast | **9**/4 · 0 | **9**/4 · 0.1k | **6**/0 · 78k | **12**/1 · 0 |
+| sqm normal | **4**/3 · 41k | **8**/4 · 0 | **11**/2 · 0 | **6**/0 · 72k |
+| sqm fast lw1 | **9**/3 · 0 | **4**/2 · 22k | **6**/0 · 78k | **12**/1 · 0 |
+| mosaic | **0**/5 · 60k | **0**/3 · 40k | **3**/2 · 53k | **3**/2 · 78k |
+| mosaic auto | **0**/3 · 29k | **0**/3 · 40k | **2**/2 · 72k | **3**/2 · 109k |
+| dish-fit | **3**/2 · 42k | **3**/2 · 24k | **5**/4 · 15k | **4**/2 · 13k |
+| dish auto faithful | **4**/2 · 48k | **3**/2 · 47k | **6**/0 · 60k | **5**/0 · 67k |
+| dish auto throw | **3**/2 · 31k | **3**/2 · 42k | **5**/4 · 15k | **4**/4 · 69k |
+| dish auto efficient | **3**/2 · 31k | **3**/5 · 66k | **5**/4 · 15k | **4**/5 · 36k |
+| auto, goal cutoff, search | **1**/3 · 26k | **3**/2 · 24k | **1**/2 · 35k | **0**/2 · 32k |
+| auto, goal hotspot, search | **0**/5 · 60k | **0**/3 · 40k | **1**/2 · 35k | **0**/3 · 71k |
+
+- **Settings matter as much as the solver, and they don't transfer.** Fill & fix "sharp"
+  collapses everywhere. "Light" is the best choice in the bucket and the worst in the box.
+  SQM's quality and light-weight settings flip a design between 0 and 12 fails; its "75R 0"
+  cells are beams aimed off the test points.
+- **No goal is cut-off-aware in R112's sense.** dish-fit's faithful / throw / efficient move
+  75R by 2× but leave the same failures: sign points dark and G > 0.40, too sharp. Auto's
+  *hotspot* goal does better than its *cutoff* goal here: it lands on mosaic or Fill & fix.
+- **10 m vs 25 m:** parallax is real (0.1–0.2°), but solver chaos is bigger. Small input
+  changes (even a paint rounded to 5 decimals instead of 4) reshuffle Fill & fix and SQM
+  designs.
+- **Mosaic and Fill & fix (balanced) reach 0 sure fails;** the unsure rows are mostly the
+  sign points and the G maximum. **Nothing passes outright.**
+
+### Glow above the cut-off (`seedGlow`, 2026-10-05)
+
+A seeded dim glow (150 cd, notched at B50L) up to 4.5° U, at 16 M rays:
+
+| Fixture · solver | Without glow | With glow 150 |
+|---|---|---|
+| default · dish-fit | Points 4–6, 7, 8, G | B50L, Zone III |
+| default · mosaic auto | Zone III | B50L, Zone III |
+| default · Auto cut-off | Points 4–6, 7, 8, G | B50L, Zone III |
+| 7" · Fill & fix light | G | Points 1–3, 4–6, 8, G |
+| 7" · Auto cut-off | G | Point 8, G |
+
+The window the regulation leaves is narrow: points 4–8 need 65–125 cd, B50L ≤ 350, Zone III
+≤ 625, and B50L sits 0.8° from Point 8. The glow lights the points but over-delivers next to
+them. Paint solvers can't hold a dim region between a floor and a ceiling 2.8× apart. That is
+what the phase-2 constrained flux fit is for. `seedGlow` stays off by default (opt-in in the
+seed).
+
+### Warm LEDs: luminance vs aperture (2026-10-05)
+
+A 2 × 2 mm die at 100 / 150 / 200 cd/mm² (flux = π L A). The default box scaled about the LED.
+Best of dish-fit / mosaic auto / Auto cut-off, 8 M rays, judged at R112 class B:
+
+| Envelope (aperture × depth) | 100 cd/mm² (1,257 lm) | 150 (1,885 lm) | 200 (2,513 lm) |
+|---|---|---|---|
+| 53 × 27 × 28 | **3** fail · 75R 7k · peak 24k | **1** fail · 75R 9k · peak 35k | **1** fail · 75R 13k · peak 47k |
+| 74 × 38 × 39 | **0** fail · 75R 17k · peak 38k | **0** fail · 75R 23k · peak 57k | **0** fail · 75R 32k · peak 81k |
+| 105 × 55 × 56 | **0** fail · 75R 41k · peak 59k | **0** fail · 75R 40k · peak 89k | **1** fail · 75R 48k · peak 119k |
+
+- **Peak scales with L** at every size, as R·L·A says.
+- **The solvers reach only ~15–20 % of the brightness-theorem ceiling.** At 53 × 27 that
+  ceiling is 133k cd at 100 cd/mm², and the best design peaks at 24k.
+- **At 74 × 38 every luminance meets the photometry;** the margin on 75R (min 10.1k) goes
+  1.7× → 2.3× → 3.2×. A 100 cd/mm² warm die therefore needs roughly 1.4× the linear aperture
+  of a 200 cd/mm² one for the same margin.
+
+### Dome vs flat vs dedomed (2026-10-05)
+
+25 m, 8 M rays. Generic: bare 2 × 2 mm die at 150 cd/mm² (1,885 lm) vs the same die under an
+r = 2 mm, n = 1.41 dome with +20 % flux (2,262 lm, ~90 cd/mm² apparent) vs its flat equivalent
+(2.82 mm square, 2,262 lm). 519A: koef3's dedomed and domed samples at 5 A; the domed one as
+an effective flat and as die + dome. Peak / light in the spec window, best solver:
+
+| | default box: peak · window lm | 7" bucket: peak · window lm |
+|---|---|---|
+| bare 150 | 89k · 818–985 | 153k · 1,066–1,247 |
+| die + dome | 68k · 924–1,093 | 167k · 1,162–1,516 |
+| flat equivalent | 68k · 842–1,109 | 162k · 1,189–1,518 |
+| 519A dedomed (1,020 lm) | 41k · 396–528 | 74k · 481–670 |
+| 519A domed, flat effective (1,265 lm) | 39k · 462–640 | 104k · 669–812 |
+| 519A domed, die + dome | 34k · 456–671 | 76k · 641–838 |
+
+- **In a small optic the dome costs peak:** ~20 % here, despite +20 % flux, because luminance
+  drops ~2×. It adds light to the spread.
+- **In a big optic it costs nothing** at the peak, and the extra flux shows up in the window.
+- **The flat equivalent tracks the real dome within solver noise** (±10–15 %). A real dome is
+  cheap, so the preset offers it, but a flat effective area is not misleading.
 
 ### Before dedicated spec solvers: what's still missing
 
