@@ -457,15 +457,17 @@
     const omK = 4 * k * k * D2R * D2R, Pw = P.src.power;
     const nEff = (v) => S.designRays * (1 + S.guideGain * clamp((4000 - v) / 4000, 0, 1));
     const sigRel = (v) => Math.min(0.9, Math.sqrt(Pw / (nEff(v) * Math.max(v, 1) * omK)));
+    // a secondary row: weight below softBelow, or a name that starts with "~" / "soft:" / "wish:" / "secondary:" (the Spec tab's table edits names, not weights)
+    const softNameRe = /^\s*(~|soft\b|wish\b|secondary\b|extra\b)/i, wOf = (it) => (it.w > 0 ? it.w : 1) * (softNameRe.test(it.name || '') && !(it.w > 0 && it.w < 1) ? 0.3 : 1), isSoft = (it) => wOf(it) < S.softBelow;
     const mFor = (it, bound, nInd) => {
       if (!(bound > 0)) return 1;
       const z = 2 + (nInd > 1 ? Math.sqrt(2 * Math.log(nInd)) : 0), isMin = bound === it.min && it.min > 0 && !(bound === it.max);
       let v = bound; for (let q = 0; q < 12; q++) { const sg = z * sigRel(v); v = isMin ? bound / Math.max(0.3, 1 - sg) : bound / (1 + sg); }
       const m = (isMin ? v / bound : bound / v) * S.margin;
-      return (it.w > 0 ? it.w : 1) < S.softBelow ? 1 + (m - 1) * 0.35 : Math.min(m, S.maxMargin);
+      return isSoft(it) ? 1 + (m - 1) * 0.35 : Math.min(m, S.maxMargin);
     };
     const apply = (px, it, mn, mx) => {
-      const w = (it.w > 0 ? it.w : 1) * (S.softBelow > (it.w > 0 ? it.w : 1) ? S.softWeight : 1), wp = w * Math.pow(Math.max(1, px.length), -0.75);
+      const w = wOf(it) * (isSoft(it) ? S.softWeight : 1), wp = w * Math.pow(Math.max(1, px.length), -0.75);
       const nInd = it.kind === 'zone' ? Math.max(1, px.length * Math.min(1, (G.gs / (2 * k)) ** 2)) : 1;
       const mLo = mn > 0 ? mFor(Object.assign({}, it, { min: mn, max: 0 }), mn, nInd) : 1, mHi = mx > 0 ? mFor(Object.assign({}, it, { min: 0, max: mx }), mx, nInd) : 1;
       for (const p of px) {
@@ -692,6 +694,8 @@
       const L = V.dist(X, Lp), x = E * L * L / Math.abs(den); tg[j * G.nh + i] = x; if (x > mx) mx = x;
     }
     if (!(mx > 0)) return { tg, ws, n: 0 };
+    { let beyond = 0, any = 0; for (let p = 0; p < G.n; p++) if (tg[p] >= 0.03 * mx) { any++; if (!(bands.flo[p] > 0)) beyond++; }
+      if (beyond < 50 || beyond < 0.02 * any) return { tg: new Float32Array(G.n), ws: new Float32Array(G.n), n: 0, none: true }; }   // nothing painted beyond what the spec's floors already ask
     let c = 0;                                                       // absolute scale from pinned floors
     for (let p = 0; p < G.n; p++) if (tg[p] > 0 && bands.flo[p] > 0) c = Math.max(c, bands.flo[p] / tg[p]);
     if (!(c > 0)) c = 1;
@@ -1068,7 +1072,7 @@
     if (S.minDistance === undefined) S.minDistance = 0;
     return S;
   }
-  const BASE = { guideGain: 1, gateSigma: 0.15, kneeGate: 3, ceilFrac: 0, ceilLevel: 2500, dump: false, useOff: false, maxMargin: 4, offCost: 1, calLns: 0, anchorFrac: 0.4, kneeFrac: 0.20, plateau: 0.6, tailG: 0.55, knFinal: 0, anchorPx: 3, polishSweeps: 8, polishStep: 0.25, skirt: 0.7, skirtFrom: 0.45, grid: 0.1, gridA: 120, gridP: 96, wall: 0.3, finest: 1.5, sharp: 1.5, detail: 0.75, step: 0.01, softBelow: 1, softWeight: 0.15, edgePad: 1.0, tol: 0.15, edgeWeight: 3, gHi: 0.58, gLo: 1.2, designRays: 8e6, kneeBias: 0, maxAimH: 25, maxAimV: 12, glare: -1, glareWeight: 0.3, boost: 0.5, temp: 0.01, step0: 1.0 };
+  const BASE = { guideGain: 1, gateSigma: 0.15, kneeGate: 3, ceilFrac: 0, ceilLevel: 2500, dump: false, useOff: false, maxMargin: 4, offCost: 1, calLns: 0, anchorFrac: 0.4, kneeFrac: 0.20, plateau: 0.6, tailG: 0.55, knFinal: 0, anchorPx: 3, polishSweeps: 8, polishStep: 0.25, skirt: 0.7, skirtFrom: 0.45, grid: 0.1, gridA: 120, gridP: 96, wall: 0.3, finest: 1.5, sharp: 1.5, detail: 0.75, step: 0.01, softBelow: 1, softWeight: 0.4, edgePad: 1.0, tol: 0.15, edgeWeight: 3, gHi: 0.58, gLo: 1.2, designRays: 8e6, kneeBias: 0, maxAimH: 25, maxAimV: 12, glare: -1, glareWeight: 0.3, boost: 0.5, temp: 0.01, step0: 1.0 };
   // facets for the units' current aims and shapes, pulled toward the LED where the host's verify flags them
   function buildSurfaces(P, S, R, notes) {
     const G = P.G, out = [], byId = new Map();
