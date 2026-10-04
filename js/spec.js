@@ -415,7 +415,8 @@
       const [u, v] = RF.Engine.cellCenter(T, i, j), [h0, vv] = hvAtUV(scene, u, v), h = s * h0;
       const cut = h <= 0 ? -0.57 : Math.min(-0.57 + h * t15, 1.0);
       if (!(vv <= cut)) {                                // above the cut-off: only the glow, if any
-        if (glowCd > 0 && vv <= 6) above[j * res + i] = Math.min(1, Math.exp(-(((Math.max(0, Math.abs(h) - 9)) / 2) ** 2)) * Math.exp(-(((Math.max(0, vv - 4.5)) / 0.8) ** 2)));
+        // (a notch at B50L, 3.43° L 0.57° U, max 350 cd: the glow there would be half the budget, and Point 8 (≥ 125 cd) is 0.8° away)
+        if (glowCd > 0 && vv <= 6) above[j * res + i] = Math.min(1, Math.exp(-(((Math.max(0, Math.abs(h) - 9)) / 2) ** 2)) * Math.exp(-(((Math.max(0, vv - 4.5)) / 0.8) ** 2))) * (1 - 0.65 * Math.exp(-((h + 3.43) ** 2 + (vv - 0.57) ** 2) / 0.5));
         continue;
       }
       if (vv < -10 || Math.abs(h) > 40) continue;
