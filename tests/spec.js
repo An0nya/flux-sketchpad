@@ -195,6 +195,9 @@ function fakeG(fn, win, step) {
     if (Math.max(...areas) / Math.min(...areas) > 1.15) okK = false;
   }
   check('koef3 LEDs: luminance reproduced at his rows; effective area constant within 15 %', okK, spread.join(' · '));
+  const w = { pos: [0, 0, 0], axis: [0, 0, 1] }; SP.apply(w, 'lmp-w5050sq3', { amps: 2.8 });
+  const wEff = Math.PI * w.radius * w.radius; SP.apply(w, 'lmp-w5050sq3', { model: 'die', amps: 2.8 });
+  check('LMP W5050SQ3: round die; effective ≈ 2.47 mm² from his luminance vs the 2.3 mm² die model', Math.abs(wEff - 2.47) < 0.05 && w.shape === 'disc' && Math.abs(Math.PI * w.radius * w.radius - 2.3) < 1e-3 && !w.effArea && SP.matches(w), 'effective ' + wEff.toFixed(2) + ' mm²');
   const rows = SP.parseRows('Current\tlm\tcd/mm2\n700\t250\t56.2\n2,800 760 160.6\n5.6, 1031, 211.7');
   check('pasted rows: mA → A, thousands separators, mixed delimiters, header skipped', JSON.stringify(rows) === JSON.stringify([[0.7, 250, 56.2], [2.8, 760, 160.6], [5.6, 1031, 211.7]]));
   const u = { pos: [0, 0, 0], axis: [0, 0, 1] }; SP.apply(u, 'measured', { measured: { name: 'test', shape: 'disc', rows }, amps: 2.8 });

@@ -63,6 +63,11 @@
     'nichia519a-v1-domed': { label: 'Nichia 519A-V1 5700 K R9080 sm573 (domed)', flux: [[0, 0], [1, 400], [2, 730], [3, 1000], [4, 1230], [5, 1425], [6, 1595], [7, 1730], [8, 1825], [8.6, 1850], [9, 1840], [10, 1800]],
       vf: [[0.2, 2.67], [1, 2.88], [2, 3.03], [3, 3.15], [4, 3.25], [5, 3.34], [6, 3.41], [7, 3.48], [8, 3.54], [8.6, 3.57], [10, 3.64]], lum: [[0.7, 14.4], [2.8, 46.6], [8.6, 91.0]], defaultA: 6,
       note: 'Domed: the effective area is the dome\u2019s head-on apparent size (~6.5 mm²).' },
+    // chart "LED comparison – LMP W5050SQ3 3000 K 70 CRI"; round die, 2.3 mm² per the user (Ø 1.71 mm).  koef3's luminance gives
+    // ≈ 2.47 mm² effective (+7 %), the same direction as the SFT-40 (+10 %): his cd/mm² reads a little under Φ / (π A_die).
+    'lmp-w5050sq3': { label: 'LMP W5050SQ3 3000 K 70 CRI (round, domeless)', shape: 'disc', geomArea: 2.3, flux: [[0, 0], [1, 360], [2, 640], [3, 880], [4, 1080], [5, 1245], [6, 1385], [7, 1480], [7.6, 1525], [8, 1555], [8.6, 1568], [9, 1560], [9.4, 1525]],
+      vf: [[0.2, 2.70], [1, 2.93], [2, 3.05], [3, 3.18], [4, 3.29], [5, 3.40], [6, 3.50], [7, 3.59], [8, 3.68], [9, 3.75], [9.4, 3.79]], lum: [[0.7, 34.0], [2.8, 107.7], [8.6, 199.2]], defaultA: 6,
+      note: 'Round die, 2.3 mm² (Ø 1.71 mm). koef3\u2019s luminance implies ≈ 2.47 mm² effective; the "die size" model uses the 2.3 mm² disc instead.' },
     'samsung-lh351d-5700': { label: 'Samsung LH351D 5700 K 90 CRI (domed)', flux: [[0, 0], [1, 430], [2, 780], [3, 1050], [4, 1270], [5, 1440], [5.6, 1520], [6, 1555], [6.4, 1578], [7, 1585], [7.2, 1580]],
       vf: [[0.2, 2.70], [1, 2.97], [2, 3.25], [3, 3.46], [4, 3.66], [5, 3.85], [6, 4.02], [7, 4.18], [7.2, 4.21]], lum: [[0.7, 9.4], [2.8, 30.1], [6.8, 49.3]], defaultA: 5,
       note: 'Domed: the effective area is the dome\u2019s head-on apparent size (~10.5 mm²).' },
@@ -120,8 +125,10 @@
     ...Object.fromEntries(Object.entries(KOEF3).map(([id, k]) => [id, {
       label: k.label + ' · koef3', measured: true,
       note: 'koef3\u2019s measurements (BLF/TLF, Cu board, fan-cooled, 25 °C solder point): flux and Vf read off his chart, luminance from his tables. The die is a square of the EFFECTIVE area Φ / (π L) at the drive current (no die size given). Max current = where his test stopped, not a rating.' + (k.note ? ' ' + k.note : ''),
-      set: { kind: 'planar', shape: 'rect', dist: 'lambertian' },
-      drive: { models: { koef3: { label: 'koef3 test (25 °C solder point)', curve: k.flux, vf: k.vf, lum: k.lum, maxA: k.flux[k.flux.length - 1][0] } }, model: 'koef3', ratedA: Infinity, defaultA: k.defaultA },
+      set: { kind: 'planar', shape: k.shape || 'rect', dist: 'lambertian' },
+      drive: { models: Object.assign({ koef3: { label: 'koef3 test · effective area from his luminance', curve: k.flux, vf: k.vf, lum: k.lum, maxA: k.flux[k.flux.length - 1][0], shape: k.shape } },
+        k.geomArea ? { die: { label: 'koef3 flux · die size ' + k.geomArea + ' mm²', curve: k.flux, vf: k.vf, maxA: k.flux[k.flux.length - 1][0], set: k.shape === 'disc' ? { shape: 'disc', radius: +Math.sqrt(k.geomArea / Math.PI).toFixed(4) } : { shape: 'rect', w: +Math.sqrt(k.geomArea).toFixed(4), h: +Math.sqrt(k.geomArea).toFixed(4) } } } : {}),
+        model: 'koef3', ratedA: Infinity, defaultA: k.defaultA },
     }])),
     measured: {
       label: 'Measured LED (paste flux + luminance rows)', measured: true, custom: true,
@@ -159,10 +166,11 @@
       if (!m) return p;                                   // the measured emitter before any rows: geometry left as is
       src.driveA = opts && opts.amps > 0 ? Math.min(m.maxA, opts.amps) : (src.driveA > 0 ? Math.min(m.maxA, src.driveA) : Math.min(m.maxA, p.drive.defaultA));
       src.power = Math.round(lerp(m.curve, src.driveA));
+      if (m.set) Object.assign(src, m.set);               // a model with a fixed die (e.g. the datasheet die size)
       if (m.lum && m.lum.length) {                        // measured: the die is the effective area at this current
         const A = areaAt(m, src.driveA);
         if (A > 0) {
-          if (p.custom && src.measured && src.measured.shape === 'disc') { src.shape = 'disc'; src.radius = +Math.sqrt(A / Math.PI).toFixed(4); }
+          if ((p.custom && src.measured && src.measured.shape === 'disc') || m.shape === 'disc') { src.shape = 'disc'; src.radius = +Math.sqrt(A / Math.PI).toFixed(4); }
           else { src.shape = 'rect'; src.w = src.h = +Math.sqrt(A).toFixed(4); }
           src.effArea = +A.toFixed(4);
         }
@@ -182,7 +190,9 @@
   // does the source still match its preset's geometry and emission (or has it been edited since)?
   function matches(src) {
     const p = PRESETS[src.preset]; if (!p) return false;
-    const geo = ['w', 'h', 'radius', 'shape'];               // a measured die follows the drive current: compare its area instead
+    const m = p.drive && !p.custom ? p.drive.models[src.fluxModel] : null;
+    if (m && m.set) for (const [k, v] of Object.entries(m.set)) if (src[k] !== v) return false;
+    const geo = ['w', 'h', 'radius', 'shape'].concat(m && m.set ? Object.keys(m.set) : []);               // a measured die follows the drive current: compare its area instead
     for (const [k, v] of Object.entries(p.set)) if (k !== 'power' && !(src.effArea > 0 && geo.includes(k)) && src[k] !== v) return false;
     if (src.effArea > 0) {                // the die follows the drive current: check it still has the effective area
       const A = src.shape === 'disc' ? Math.PI * src.radius * src.radius : src.w * src.h;

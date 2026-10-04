@@ -156,6 +156,10 @@ Light source → **Emitter** presets (`js/source-presets.js`):
   519A-V1 sm573 (domed), Samsung LH351D 5700 K 90 CRI (domed, ≈ 10.5 mm² effective), and SFT-70 3000 K 95 CRI / SFT-70-X 6500 K 70 CRI (6 V). For domed parts
   the effective area is the dome's head-on apparent size (519A domed ≈ 9 mm², dedomed ≈ 4.6),
   which a flat Lambertian disc only approximates off-axis.
+- **LMP W5050SQ3 3000 K 70 CRI** (koef3's chart and table): a round die of 2.3 mm² (Ø 1.71 mm,
+  per Anya). It reaches 1,568 lm and 199 cd/mm² at 8.6 A. His luminance implies ≈ 2.47 mm²
+  effective (+7 %), the same direction as the SFT-40 (+10 %): his cd/mm² reads a little under
+  flux ÷ (π × die area). Both models are offered: effective area, or the 2.3 mm² die.
 - **SFT-40 3000 K, koef3's own luminance** (15.2 / 49.9 / 127.6 cd/mm²) gives an effective area
   of ≈ 4.27 mm², about 10 % more than the 1.97 mm die square. His sample measured about 10 %
   less bright per mm² than the datasheet geometry implies. The "koef3" flux model now uses that
