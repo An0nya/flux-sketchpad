@@ -16,8 +16,8 @@
  *   'B'  H = angle out of the vertical plane, V = rotation about the right axis:  d = (cos H cos V, sin H, cos H sin V).
  *        dΩ = cos H dH dV.
  *   'S'  flat screen: H = atan(x / D), V = atan(y / D) for screen coordinates (x, y) at distance D.
- * Automotive photometry uses a "Type A" goniometer (CIE 121).  Mapping that to 'A' or 'B' here is NOT verified against
- * CIE 121 or a regulation text (see SPEC-MODE.md); the three agree to ~V·(1 − cos H), i.e. < 0.05° inside ±10° H.   */
+ * UN R112 (Rev.4, Annex 3 Figure A) defines its angles with a vertical polar axis, h = longitudinal planes around it and
+ * v = latitude: that is 'A'.  The three agree to ~V·(1 − cos H), i.e. < 0.05° inside ±10° H.                          */
 (function (root) {
   'use strict';
   const RF = root.RF;

@@ -108,6 +108,8 @@
     // groups: keep loaded surfaces verbatim
     if (obj.groups) for (const k of Object.keys(obj.groups)) sc.groups[k] = Object.assign({ label: k, enabled: true, surfaces: [] }, obj.groups[k]);
     if (!Array.isArray(sc.modeA.paint) || sc.modeA.paint.length !== sc.target.res * sc.target.res) sc.modeA.paint = defaultPaint(sc.target.res);
+    // spec-mode branch, first day: the R112 preset was written from memory (verified: false) and had wrong rows; swap in the regulation's
+    if (sc.modeD && sc.modeD.verified === false && RF.Spec) RF.Spec.applyPreset(sc.modeD, RF.Spec.PRESETS[sc.modeD.preset] ? sc.modeD.preset : 'ece-r112-b');
     return sc;
   }
   function saveLocal(scene) {

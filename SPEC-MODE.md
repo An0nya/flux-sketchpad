@@ -1,7 +1,7 @@
 # Spec mode: regulation-style beam targets
 
-Branch `spec-mode` (2026-10-04). Status: phase 1 is built and tested. Phases 2–4 are a plan.
-This file covers what exists, what is unverified, what comes next, which new optics and solvers
+Branch `spec-mode` (2026-10-04). Status: phase 1 is built and tested; R112 presets checked against Rev.4. Phases 2–4 are a plan.
+This file covers what exists, what was checked against the regulation and what still isn't modelled, what comes next, which new optics and solvers
 are worth building, and how the existing backlog maps onto all of it.
 
 ## The idea in one paragraph
@@ -20,11 +20,11 @@ alongside. The verdict respects Monte-Carlo noise.
 |---|---|---|
 | Exit-ray recording | `js/engine.js` (`P.recordExit`, `ctx.ex`, `exitCoverage`) | Stores every ray's last straight leg (origin, direction, energy, bounces) once it is past the optics. Zero cost when off. Progressive runs record byte-identical to one-shot runs. |
 | Far field | `js/farfield.js` (`RF.FarField`) | Bins exit legs by direction into an H/V grid. Exact solid angle per bin. Summed-area tables give O(1) kernel reads with shot-noise σ. The same code bins by **where legs cross a screen at distance D** (seen from the source): that is the apparent intensity a screen photometer at D reads. One switch moves between near field and far field. |
-| Judge | `js/spec.js` (`RF.Spec.evaluate`) | Constraint kinds: points (min and/or max), polygon zones (min/max), cut-off gradient scan, global intensity cap. Each verdict is `pass` / `fail` / `unsure` at ±2σ, with a margin in decades and a soft score (1 when met, 0 at a factor of 2 off). Includes an aim-tolerance search (re-aim within ±tol and keep the best result) and a "×N more rays would settle it" hint. LHT mirrors H. |
+| Judge | `js/spec.js` (`RF.Spec.evaluate`) | Constraint kinds: points (min and/or max), polygon zones (min/max), **sums of points** (R112 points 1+2+3), **limits relative to another reading** (Zone I < 2 × measured 50R; HV ≥ 0.8 × Imax), the cut-off gradient scan (min **and max** sharpness), **cut-off linearity** (inflection points within 0.2°), and a global intensity cap. Each verdict is `pass` / `fail` / `unsure` at ±2σ. A zone's fail must also clear the extreme-value noise (√(2 ln n) σ). **Aiming as the lab does it**: by the cut-off (the inflection at 2.5° goes on 0.57° D, Annex 9 §3.1) or the maximum on HV (driving beam), then re-aimed within an asymmetric box (R112: 0.5° L / 0.75° R / ±0.25°), keeping the best. Shows a "×N more rays would settle it" hint. LHT mirrors H and the box. |
 | Feasibility | `RF.Spec.feasibility` | No trace needed. Brightness-theorem ceiling per min-point: R·L·A⊥(envelope) plus the LED's own direct intensity. Flux lower bound for the min-zones. |
 | Asking a solver | `RF.Spec.workingPaint` | Turns spec + painting into the relative target that the existing paint solvers accept: floor = mins, ceiling = maxes, shape = paint × paintCd × weight, converted to plane illuminance (E = I cos θ / r²). **No solver changes.** `RF.Solvers.paintOf(scene)` routes it to every solver in mode D. |
 | Seed paint | `RF.Spec.seedPaint` | A plausible low-beam painting in H/V: flat cut-off at 0.57°D on the oncoming side, a 15° rise on the own side, a hot zone under the elbow, and a wide foreground. |
-| UI | `js/spec-ui.js`, small hooks in `ui.js`, `panels.js`, `controller.js`, `index.html`, `css/app.css` | **Spec** tab (extends Paint: same brush, solver and budget). Sidebar: preset, traffic, **Measure at ∞ / 25 m / 10 m / target**, measurement settings (kernel, aim tolerance, angle convention, bin), paint-as-secondary-goal settings, an editable constraint table, the report, and **Compare distances** (re-judges the same trace at several distances, no re-trace). Result → **Far field**: log-cd map by direction with the spec drawn on it, coloured by verdict; tap it to read cd ± σ. The Editor overlays the spec projected onto the plane, and a **Solver target** toggle shows what the solver is actually asked for. |
+| UI | `js/spec-ui.js`, small hooks in `ui.js`, `panels.js`, `controller.js`, `index.html`, `css/app.css` | **Spec** tab (extends Paint: same brush, solver and budget). Sidebar: preset, traffic, **Measure at ∞ / 25 m / 10 m / target**, measurement settings (kernel, aim method, re-aim box, angle convention, bin), paint-as-secondary-goal settings, an editable constraint table, the report, and **Compare distances** (re-judges the same trace at several distances, no re-trace). Result → **Far field**: log-cd map by direction with the spec drawn on it, coloured by verdict; tap it to read cd ± σ. The Editor overlays the spec projected onto the plane, and a **Solver target** toggle shows what the solver is actually asked for. |
 | Tests | `tests/spec.js` (in `tests/all.js`) | Isotropic source reads P/4π in all three conventions. Lambertian source reads (P/π)·cos θ. Conv-A bins tile 4π. hv∘dir = identity. Progressive = one-shot. Exit energy = target + target back + escaped. A screen at 10⁹ m = far field. A point source at the centre reads the same at any screen distance. Judge verdicts on synthetic fields (cut-off found at the right V, G exact, re-aim clears a glare point, LHT mirrors, unsure inside 2σ). Working target carves holes and lifts floors. Seed paint stays under the cut-off. Old scenes load with the default spec. |
 
 How to try it: open the app, click **Spec**, then **Fit target to spec**, then **Seed low-beam
@@ -32,24 +32,35 @@ paint**, then **Rebuild**. Read the report, then switch **Measure at** between �
 
 ### Your 10 m question, measured
 
-Setup: the default scene's fixture (envelope 56 × 105 × 55 mm), ECE preset, seeded paint,
-built-in spoke solver, 100 facets, 1 M rays. The same trace, judged at different distances:
+Setup: the default scene's fixture (envelope 56 × 105 × 55 mm), the R112 class B preset, seeded
+paint, built-in spoke solver, 100 facets, 1 M rays, kernel ±0.15° (wider than the regulation's
+±0.075° photocell, to keep the noise down). The same trace, judged at different distances.
 
-| Measured at | Verdict | 50L (≤ 13.2k) | Zone III max (≤ 625) | Cut-off G | Cut-off found at |
-|---|---|---|---|---|---|
-| ∞ (goniometer) | 8 pass / 3 fail | 17.6k | 1.41k | 1.09 | V −0.15° |
-| 50 m | 8 / 3 | 20.2k | 1.58k | 1.18 | −0.15° |
-| 25 m | 8 / 2 / 1 unsure | 23.1k | 1.77k | 0.98 | −0.15° |
-| **10 m** | 8 / 3 | **27.1k (+54%)** | **2.17k (+53%)** | 0.64 | **+0.05°** |
-| 5 m | 8 / 3 | 32.8k | 5.42k | 1.25 | +0.35° |
+**As designed** (no aiming), which isolates the raw near-field error:
 
-At 10 m, this fixture's near field inflates the points just under the cut-off by about half
-and lifts the measured cut-off by about 0.2°. That is about the size of the parallax estimate
-(aperture ÷ distance ≈ 0.3–0.6°). The 0.57° offsets between test points are the same order,
-so a 10 m target plane is not a goniometric measurement for a lamp this size. The regulations
-use 25 m for this reason, and 25 m still differs visibly from ∞ here. The far-field view is
-the honest default. Use **Compare distances** on your own scenes. Your current low beam is a
+| Measured at | 75R (≥ 10.1k) | 50L (≤ 13.2k) | Zone III max (≤ 625) | Cut-off found at |
+|---|---|---|---|---|
+| ∞ (goniometer) | 33.9k | 16.9k | 3.3k | V −0.10° |
+| 50 m | 35.4k | 18.9k | 4.6k | −0.05° |
+| 25 m (the regulation's distance, §6.1.2) | 35.5k | 20.4k | 6.0k | +0.05° |
+| **10 m** | 36.7k | **25.5k (+51%)** | **11.9k (×3.6)** | **+0.20°** |
+| 5 m | 36.9k | 29.4k | 18.0k | +0.40° |
+
+**Aimed by the cut-off at each distance** (what the lab does, so the vertical part of the
+error gets absorbed into the aim): 75R falls from 16.9k at ∞ to 13.3k at 25 m and 11.4k at
+10 m, a third lower. The re-aim moves the hot zone down along with the cut-off.
+
+At 10 m, this fixture's near field lifts the measured cut-off by about 0.3° and inflates
+everything just above it. That matches the parallax estimate (aperture ÷ distance ≈ 0.3–0.6°).
+The 0.57° offsets between test points are the same order, so a 10 m target plane is not a
+goniometric measurement for a lamp this size. Even the regulation's own 25 m differs visibly
+from ∞ here. Use **Compare distances** on your own scenes. Your current low beam is a
 different fixture, so these numbers don't transfer to it.
+
+Side finding for phase 2: the seed paint puts the cut-off at 0.57° D, but the solved design's
+cut-off lands near 0.1° D. The paint solvers blur the edge upward by about half a degree. The
+lab's aim then pulls the whole beam down to compensate, which costs 75R about half its value
+(33.9k as designed → 16.9k aimed, at ∞). Edge anchoring is aimed squarely at this.
 
 ### While we were in there (backlog items folded in)
 
@@ -64,35 +75,57 @@ different fixture, so these numbers don't transfer to it.
   drops the pin, and #14b pins it for its DOM pass. The page now reports 23 pass / 0 fail /
   1 skip, the same as Node.
 
-## ⚠ Unverified, check before trusting a pass
+## Checked against UN R112 Rev.4
 
-This session could not reach UNECE, EUR-Lex or any mirror (the egress policy blocks them).
-Everything below is **from memory** and is flagged in the UI (`verified: false`, a ⚠ line in
-the report).
+The R112 presets are transcribed from **E/ECE/324/Rev.2/Add.111/Rev.4** (18 September 2023;
+text up to Supplement 1 to the 02 series), which you supplied. Every row carries its paragraph
+reference (hover a row in the constraint table). `tests/spec.js` pins the values. Presets:
+class B passing, class A passing, class B driving, class A driving.
 
-1. **ECE R112 class B values.** B50L ≤ 350 · 75R ≥ 10,100 · 75L ≤ 10,600 · 50L ≤ 13,200 ·
-   50R ≥ 10,100 · 50V ≥ 5,100 · 25L/25R ≥ 1,700 · Zone III ≤ 625 · Zone IV ≥ 2,500. Check
-   each value, its position (e.g. 0.57U 3.43L), and the amendment it comes from. One search
-   summary claimed B50L has a 50 cd minimum as well. Unconfirmed.
-2. **The Zone III polygon** is approximate.
-3. **Missing rows:** points 1–8 (overhead-sign / segment minimums, with their sums), Zone I
-   (a relative cap, ≤ 2× the 50R value, which needs a new `ratio` constraint kind), and the
-   class-specific notes.
-4. **Cut-off sharpness:** G ≥ 0.13, scanned at 2.5° on the oncoming side. Check the value,
-   the scan positions, the step (0.05° or 0.1°), and whether G uses illuminance at 25 m or
-   intensity. Also check the cut-off *position* requirement (the horizontal part at 0.57°D
-   after aiming) and the kink definition.
-5. **Goniometer convention.** Automotive photometry uses CIE "Type A" (confirmed by vendor
-   pages: Instrument Systems AMS series, GL Optic). Whether Type A maps to this app's `A`
-   (V = elevation, H = azimuth) or `B` is **not** verified against CIE 121 or LM-75. Inside
-   ±10° H they differ by < 0.05°. At ±45° they differ by up to ~3°.
-6. **Photometer acceptance / measuring distance.** The default kernel is ±0.15°. The real
-   receptor size limits (in minutes of arc) should set it.
-7. **R149** (which supersedes R112/R98 for new approvals) and **FMVSS 108 / SAE J1383** are
-   not in yet. Add them as presets once the tables are transcribed.
+What the document settled:
+- **Coordinates:** Annex 3 Figure A uses a vertical polar axis, h = longitudinal planes around
+  it, v = latitude. That is this app's convention `A`. Answered.
+- **Measurement (§6.1.2):** 25 m, photocell within a 65 mm square, so the kernel is
+  ±0.0745°. The preset's "Measure at" defaults to 25 m.
+- **Aiming:** visual or instrumental aim by the cut-off, with the horizontal part at 0.57° D
+  (§6.2.2.1; Annex 9 §3.1 for the inflection method). The preset aims by the cut-off. Re-aim
+  limits (§6.2.2.3): 0.5° left / 0.75° right / ±0.25° vertical for RHT, mirrored for LHT.
+- **Cut-off (Annex 9 §2):** vertical scan at 2.5° in 0.05° steps, G = log E(β) − log
+  E(β + 0.1°), 0.13 ≤ G ≤ 0.40 (the maximum is measured at 25 m only). Linearity: the
+  inflection points at 1.5°, 2.5° and 3.5° within 0.2°.
 
-How to fix all of this: paste the regulation table (or the PDF) into a session, and a preset
-can be transcribed with page citations and `verified: true` per row.
+Where the from-memory version (the first commit on this branch) was **wrong**:
+
+| Row | From memory | R112 Rev.4 |
+|---|---|---|
+| Zone III polygon | ended at (1.5R, 1U), (0, 0.57U), (3.43L, 0.57U) | 8L1U · 8L4U · 8R4U · 8R2U · 6R1.5U · **1.5R1.5U · V-V/H-H · 4L/H-H**, so it reaches down to the horizon |
+| BR (1.0U, 2.5R) ≤ 1,750 | missing | present |
+| Zone I (1.72D–4D, 9L–9R) | missing | < 2 × measured 50R (class B); ≤ 17,600 (class A) |
+| Points 1–8 (overhead signs) | missing | 1+2+3 ≥ 190, 4+5+6 ≥ 375, 7 ≥ 65, 8 ≥ 125 |
+| Max sharpness | missing | G ≤ 0.40 |
+| Re-aim tolerance | symmetric, off | 0.5° L / 0.75° R / ±0.25° |
+| Kernel | ±0.15° | ±0.0745° (65 mm at 25 m) |
+
+Saved scenes that still carry the from-memory preset (`verified: false`) get the regulation
+rows when they load.
+
+Still **not** modelled:
+- The horizontal instrumental aim (Annex 9 §3.2, "0.2 D line" or "3 line" method). The horizontal
+  position is taken as designed, then the re-aim box applies.
+- The visual elbow/shoulder placement rules (§6.2.2.2) and "only one cut-off visible" (Annex 9 §2.1).
+- Footnote ***: 50L ≤ 18,500 cd for LED modules with an electronic light-source control gear.
+  It's noted on the row; edit the max if it applies.
+- Bend lighting, adjustable-reflector mounting positions (§6.4), a combined passing + driving lamp's
+  shared alignment (§6.3.1), and Annex 4 (stability).
+- The goniometer measures on a sphere at 25 m, while this app's finite-distance mode uses a flat
+  screen at 25 m (Annex 3 shows the screen). Negligible near the axis; it grows toward ±45°.
+- **R149** (supersedes R112 for new approvals; §5.12 lets an R112 lamp meet R149 instead) and
+  **FMVSS 108 / SAE J1383**: not in yet.
+
+**Noise at regulation resolution.** One ray in a ±0.0745° square at 1 M rays and 1,000 lm is
+about 220 cd. The small minimums (point 7 ≥ 65 cd, the 1+2+3 sum ≥ 190) and the 350 cd glare
+cap can't be decided below roughly 5–10 M rays. The report says "unsure" and how many more rays
+it needs, or you can widen the kernel (less faithful).
 
 ## Phase 2: a solver that targets the spec (next)
 

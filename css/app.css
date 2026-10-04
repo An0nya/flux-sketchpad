@@ -118,6 +118,7 @@ h2 small { color: var(--faint); font-weight: 400; margin-left: var(--s-6); }
 .sr .mk { font-weight: 700; } .sr.v-pass .mk { color: var(--ok); } .sr.v-fail .mk { color: var(--bad); } .sr.v-unsure .mk { color: var(--warn); }
 .sr .need, .sr .off { color: var(--dim); } .sr.v-fail .off { color: var(--bad); }
 .spec-dist button { min-height: 24px; padding: 1px var(--s-6); }
+.numpair { display: inline-flex; gap: var(--s-4); } .numpair input[type=number] { width: 50px; }
 .side .note { color: var(--faint); font-size: 11px; margin: var(--s-4) 0; }
 .side .reason { font-size: 12px; margin: var(--s-4) 0; }
 .stamp-list, .lens-list, .group-list { display: flex; flex-direction: column; gap: var(--s-4); margin: var(--s-4) 0; }

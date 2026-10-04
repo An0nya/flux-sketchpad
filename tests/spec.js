@@ -114,5 +114,56 @@ function fakeG(fn, win, step) {
   const qa = RF.Geo.facetQuadric(f.P, f.S0, f.Z, f.di), qb = RF.Geo.facetQuadric(g.P, g.S0, g.Z, g.di);
   check('a di = ∞ facet reloads as the same paraboloid, not flat', !qb.flat && qa.A.every((x, i) => Math.abs(x - qb.A[i]) < 1e-12) && qa.b.every((x, i) => Math.abs(x - qb.b[i]) < 1e-12), 'saved di = ' + g.di);
 }
+// 8. the R112 presets carry the regulation's rows (Rev.4, §6.2.4 / §6.3.3 tables, Annex 9)
+{
+  const P = RF.Spec.PRESETS, B = P['ece-r112-b'], A = P['ece-r112-a'], D = P['ece-r112-b-drive'];
+  const it = (p, n) => p.items.find((x) => x.name === n);
+  const ok = it(B, 'B50L').max === 350 && it(B, 'B50L').h === -3.43 && it(B, 'B50L').v === 0.57 && it(B, 'BR').max === 1750 && it(B, '75R').min === 10100 && it(B, '75L').max === 10600
+    && it(B, '50L').max === 13200 && it(B, '50R').min === 10100 && it(B, '50V').min === 5100 && it(B, '25L').min === 1700 && it(B, 'Zone III').max === 625
+    && JSON.stringify(it(B, 'Zone III').poly) === JSON.stringify([[-8, 1], [-8, 4], [8, 4], [8, 2], [6, 1.5], [1.5, 1.5], [0, 0], [-4, 0]]) && it(B, 'Zone IV').min === 2500
+    && it(B, 'Zone I').maxRel.ref === '50R' && it(B, 'Zone I').maxRel.factor === 2 && it(B, 'Points 1+2+3').min === 190 && it(B, 'Points 4+5+6').min === 375
+    && it(B, 'Point 7').min === 65 && it(B, 'Point 8').min === 125 && it(B, 'Cut-off sharpness').min === 0.13 && it(B, 'Cut-off sharpness').max === 0.40 && it(B, 'Cut-off linearity').max === 0.2
+    && it(A, '75R').min === 5100 && !it(A, '50V') && it(A, '25R').min === 1250 && it(A, 'Zone IV').min === 1700 && it(A, 'Zone I').max === 17600
+    && it(D, 'Imax').min === 40500 && it(D, 'Imax').max === 215000 && it(D, 'H-2.5L').min === 20300 && it(D, 'H-5R').min === 5100 && it(D, 'HV').minRel.factor === 0.8
+    && B.kernel === 0.0745 && B.distance === 25000 && B.aimMode === 'cutoff' && B.aimLine === -0.57 && B.aimBox.left === 0.5 && B.aimBox.right === 0.75 && B.aimBox.up === 0.25 && B.verified === true;
+  check('R112 presets: rows, measuring and aiming as in Rev.4', ok);
+  const old = JSON.parse(RF.State.serialize(RF.State.defaultScene())); old.modeD.verified = false; old.modeD.items = [{ id: 'x', kind: 'point', name: 'B50L', h: -3.43, v: 0.57, max: 999, on: true }];
+  const mig = RF.State.deserialize(old);
+  check('scenes saved with the from-memory preset get the regulation rows', mig.modeD.verified === true && mig.modeD.items.length === B.items.length && mig.modeD.items[0].max === 350);
+}
+// 9. the new kinds and the aiming procedure, on synthetic fields
+{
+  const mk = (fn) => fakeG(fn, [-12, 12, -6, 6], 0.05);
+  const base = { traffic: 'RHT', conv: 'A', kernel: 0.1 };
+  // sums
+  let ev = RF.Spec.evaluate(mk(() => 100), Object.assign({}, base, { items: [{ id: 's1', kind: 'sum', name: 'S190', pts: [[-8, 4], [0, 4], [8, 4]], min: 190, on: true }, { id: 's2', kind: 'sum', name: 'S375', pts: [[-4, 2], [0, 2], [4, 2]], min: 375, on: true }] }));
+  check('sum: 3 × 100 cd meets 190, misses 375', ev.rows[0].verdict === 'pass' && Math.abs(ev.rows[0].value - 300) < 1e-6 && ev.rows[1].verdict === 'fail');
+  // relative bound: Zone I < 2 × 50R
+  const rel = (zcd) => RF.Spec.evaluate(mk((h, v) => (v < -1.72 ? zcd : 1000)), Object.assign({}, base, { items: [{ id: 'r', kind: 'point', name: '50R', h: 1.72, v: -0.86, on: true }, { id: 'z', kind: 'zone', name: 'Zone I', poly: [[-9, -1.8], [9, -1.8], [9, -4], [-9, -4]], maxRel: { ref: '50R', factor: 2 }, on: true }] }));
+  check('relative bound: zone at 1.5k / 2.5k vs 2 × 1k at 50R', rel(1500).rows[0].verdict === 'pass' && rel(2500).rows[0].verdict === 'fail' && Math.abs(rel(2500).rows[0].bound - 2000) < 1e-6);
+  // aim by the cut-off: built with its cut-off at V = +0.3°; the lab puts the inflection on 0.57° D (sampling offset +0.87)
+  const cutAt = (h) => 0.3 + 0.15 * (h + 2.5) * 0;                                     // flat cut-off
+  const lamp = mk((h, v) => (v < cutAt(h) ? 10000 : 100));
+  const md = Object.assign({}, base, { aimMode: 'cutoff', aimLine: -0.57, aimBox: null, items: [
+    { id: 'g', kind: 'gradient', name: 'G', h: -2.5, v0: -1.5, v1: 0.5, scan: 0.05, dv: 0.1, min: 0.13, max: 0.40, on: true },
+    { id: 'b', kind: 'point', name: 'B50L', h: -3.43, v: 0.57, max: 350, on: true }, { id: 'p', kind: 'point', name: 'below', h: -3.43, v: -0.86, min: 5000, on: true }] });
+  ev = RF.Spec.evaluate(lamp, md);
+  check('aim by cut-off: inflection found and put on 0.57° D', Math.abs(ev.aim.cutV - 0.3) <= 0.05 && Math.abs(ev.shift[1] - 0.87) <= 0.05, ev.aim.note);
+  check('a step cut-off is too sharp for G ≤ 0.40 but sharp enough for ≥ 0.13', ev.rows.find((r) => r.name === 'G' && r.isMin).verdict === 'pass' && ev.rows.find((r) => r.name === 'G' && !r.isMin).verdict === 'fail');
+  check('after aiming, B50L sits above the cut-off (dark) and 50L-level point below it (lit)', ev.rows.find((r) => r.name === 'B50L').verdict === 'pass' && ev.rows.find((r) => r.name === 'below').verdict === 'pass');
+  // linearity: a cut-off tilted 0.15° per degree spreads the inflections at 1.5 / 2.5 / 3.5° by 0.3° (> 0.2°)
+  const lin = (tilt) => RF.Spec.evaluate(mk((h, v) => (v < -0.57 + tilt * (h + 2.5) ? 10000 : 100)), Object.assign({}, base, { items: [{ id: 'l', kind: 'linearity', name: 'L', hs: [-1.5, -2.5, -3.5], v0: -1.5, v1: 0.5, scan: 0.05, dv: 0.1, max: 0.2, on: true }] })).rows[0];
+  check('linearity: flat passes, 0.15°/° tilt fails', lin(0).verdict === 'pass' && lin(0.15).verdict === 'fail', 'spread ' + lin(0).value.toFixed(2) + '° / ' + lin(0.15).value.toFixed(2) + '°');
+  // asymmetric re-aim box (beam right ≤ 0.75 for RHT, mirrored for LHT): a glare point that needs the beam 0.7° right
+  const glare = mk((h, v) => (h > -3.0 && h < 3 && Math.abs(v) < 1 ? 10000 : 50));       // bright block |h| < 3, B at h −3.43 + reads it once the beam moves left
+  const box = (traffic, h) => RF.Spec.evaluate(glare, Object.assign({}, base, { traffic, aimMode: 'design', aimBox: { left: 0.5, right: 0.75, up: 0.25, down: 0.25 }, items: [{ id: 'q', kind: 'point', name: 'Q', h, v: 0, min: 5000, on: true }] }));
+  const r1 = box('RHT', 3.6), r2 = box('RHT', -3.6), r3 = box('LHT', 3.6);
+  check('re-aim box: RHT moves the beam ≤ 0.75° right but ≤ 0.5° left; LHT mirrors both', r1.verdict === 'pass' && r2.verdict === 'fail' && r3.verdict === 'pass',
+    'needs 0.7°: right ' + r1.verdict + ', left ' + r2.verdict + ', LHT mirrored ' + r3.verdict);
+  // peak aim (driving beam): maximum moved onto HV, then HV ≥ 0.8 Imax holds
+  const beam = mk((h, v) => 40000 * Math.exp(-((h - 1) ** 2 + (v + 0.5) ** 2) / 2));
+  ev = RF.Spec.evaluate(beam, Object.assign({}, base, { aimMode: 'peak', items: [{ id: 'm', kind: 'imax', name: 'Imax', min: 30000, max: 215000, on: true }, { id: 'hv', kind: 'point', name: 'HV', h: 0, v: 0, minRel: { ref: 'Imax', factor: 0.8 }, on: true }] }));
+  check('peak aim: maximum put on HV; HV ≥ 0.8 × Imax', Math.abs(ev.shift[0] - 1) < 0.06 && Math.abs(ev.shift[1] + 0.5) < 0.06 && ev.verdict === 'pass', ev.aim.note);
+}
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

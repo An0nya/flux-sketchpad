@@ -9,10 +9,12 @@
   const COL = { pass: '#5aa7ff', fail: '#ff9a3d', unsure: '#f2b441', min: '#88d7d4', max: '#f4c17c', sel: '#ffffff' };
   const md = (ui) => ui.store.scene.modeD;
   const fmtCd = (x) => !isFinite(x) ? '—' : x >= 1e5 ? (x / 1000).toFixed(0) + 'k' : x >= 1e3 ? (x / 1000).toFixed(x >= 1e4 ? 1 : 2).replace(/\.?0+$/, '') + 'k' : Math.round(x).toString();
+  // a sampling offset → the beam move it stands for, in words (beam right = offset −x)
+  const fmtMove = (o, traffic) => { const h = -o[0], v = -o[1], p = []; if (Math.abs(h) > 1e-9) p.push(Math.abs(h).toFixed(2) + '° ' + (h > 0 ? 'right' : 'left')); if (Math.abs(v) > 1e-9) p.push(Math.abs(v).toFixed(2) + '° ' + (v > 0 ? 'up' : 'down')); return p.join(', ') || 'none'; };
   const fmtDist = (d) => !(d > 0) || !isFinite(d) ? '∞ (goniometer)' : d >= 1000 ? (d / 1000).toPrecision(3).replace(/\.0+$/, '') + ' m screen' : d + ' mm screen';
 
   // ---------------------------------------------------------------- evaluation (cached per run, spec and distance)
-  const evalKey = (m) => JSON.stringify([m.items, m.kernel, m.aimTol, m.traffic, m.conv, m.step, m.distance]);
+  const evalKey = (m) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimBox, m.traffic, m.conv, m.step, m.distance]);
   // (re)judge the current run; cheap to call often: rebuilds only when the run grew or the spec changed
   function update(ui, force) {
     const run = ui.run, sc = ui.store.scene;
@@ -58,8 +60,13 @@
       row('Measure at', distSel, 'Where the report reads intensity. ∞ = far field (goniometer). A finite screen shows the near-field error: how a test at that distance would read this lamp.'),
       sectionFn('Measurement', { open: false, key: 'D-meas' },
         row('Kernel ± (°)', num(() => m().kernel, (v) => { m().kernel = Math.max(0.05, Math.min(5, v)); }, { min: 0.05, max: 5, step: 0.05 }, true), 'Half-width of the square each point is read over. Smaller = sharper but noisier.'),
-        row('Aim tolerance ± (°)', num(() => m().aimTol, (v) => { m().aimTol = Math.max(0, Math.min(2, v)); }, { min: 0, max: 2, step: 0.1 }, true), 'Re-aim the lamp within this box (0.1° steps) and keep the best result, as type approval allows a re-aim. 0 = as designed.'),
-        row('Angles', sel([['A', 'A: V = elevation, H = azimuth'], ['B', 'B: H out of the vertical plane'], ['S', 'Flat screen: atan(x/D), atan(y/D)']], () => m().conv, (v) => { m().conv = v; }), 'Which (H, V) a direction gets. Automotive uses a "Type A" goniometer; which of these matches it is unverified (see SPEC-MODE.md). They differ by < 0.05° inside ±10° H.'),
+        row('Aim', sel([['design', 'As designed'], ['cutoff', 'By the cut-off (R112 Annex 9 §3.1)'], ['peak', 'Maximum on HV (§6.3.1)']], () => m().aimMode || 'design', (v) => { m().aimMode = v; }, true), 'How the lab aims the lamp before measuring. By the cut-off: the inflection of a vertical scan at 2.5° from V-V goes on 0.57° D.'),
+        row('Re-aim L / R (°)', el('span', { class: 'numpair' },
+          num(() => (m().aimBox || {}).left || 0, (v) => { m().aimBox = Object.assign({ left: 0, right: 0, up: 0, down: 0 }, m().aimBox, { left: Math.max(0, Math.min(2, v)) }); }, { min: 0, max: 2, step: 0.05, 'aria-label': 'Re-aim left' }, true),
+          num(() => (m().aimBox || {}).right || 0, (v) => { m().aimBox = Object.assign({ left: 0, right: 0, up: 0, down: 0 }, m().aimBox, { right: Math.max(0, Math.min(2, v)) }); }, { min: 0, max: 2, step: 0.05, 'aria-label': 'Re-aim right' }, true)),
+          'After aiming, the lamp may be moved this far (beam axis, right-hand traffic; mirrored for left-hand) and the best result kept. R112 §6.2.2.3: 0.5° left, 0.75° right.'),
+        row('Re-aim ± V (°)', num(() => (m().aimBox || {}).up || 0, (v) => { const x = Math.max(0, Math.min(2, v)); m().aimBox = Object.assign({ left: 0, right: 0, up: 0, down: 0 }, m().aimBox, { up: x, down: x }); }, { min: 0, max: 2, step: 0.05 }, true), 'R112 §6.2.2.3: 0.25° up or down.'),
+        row('Angles', sel([['A', 'A: V = elevation, H = azimuth'], ['B', 'B: H out of the vertical plane'], ['S', 'Flat screen: atan(x/D), atan(y/D)']], () => m().conv, (v) => { m().conv = v; }), 'Which (H, V) a direction gets. R112 (Annex 3, Figure A) uses A: a vertical polar axis, h = azimuth, v = latitude. B and the flat screen differ by < 0.05° inside ±10° H.'),
         row('Bin (°)', num(() => m().step, (v) => { m().step = Math.max(0.02, Math.min(1, v)); }, { min: 0.02, max: 1, step: 0.02 }, true), 'Far-field grid resolution.')),
       sectionFn('Paint as a secondary goal', { open: true, key: 'D-paint' },
         row('Use the painting', chk(() => m().usePaint !== false, (v) => { m().usePaint = v; }), 'Off: the solver sees only the spec (floors at minimums, holes at maximums).'),
@@ -109,11 +116,16 @@
       del.addEventListener('click', () => { m.items = m.items.filter((x) => x !== it); ui._histHint = 'Delete ' + it.name; changed(ui, true); });
       let hCell, vCell;
       if (it.kind === 'point') { hCell = inp('h'); vCell = inp('v'); }
+      else if (it.kind === 'sum') { hCell = el('span', { class: 'st-note', title: it.pts.map((p) => '(' + p.join(', ') + ')').join(' ') }, 'sum'); vCell = el('span', { class: 'st-note' }, it.pts.length + ' pts'); }
+      else if (it.kind === 'linearity') { hCell = el('span', { class: 'st-note', title: 'Inflection points at H = ' + it.hs.join('°, ') + '°' }, it.hs.map(Math.abs).join('/')); vCell = el('span', { class: 'st-note' }, 'spread°'); }
       else if (it.kind === 'gradient') { hCell = inp('h'); vCell = el('span', { class: 'st-note', title: 'Scanned from V = ' + it.v0 + '° to ' + it.v1 + '° in ' + (it.dv || 0.1) + '° steps' }, it.v0 + '…' + it.v1); }
       else if (it.kind === 'zone') { hCell = el('span', { class: 'st-note', title: it.poly.map((p) => '(' + p.join(', ') + ')').join(' ') }, 'polygon'); vCell = el('span', { class: 'st-note' }, it.poly.length + ' pts'); }
       else { hCell = el('span', { class: 'st-note' }, 'whole'); vCell = el('span', { class: 'st-note' }, 'map'); }
       const r = el('div', { class: 'st-row' + (ui.specSel === it.id ? ' sel' : '') + (verdict ? ' v-' + verdict : ''), title: (it.note || '') + (it.kind === 'gradient' ? ' (min = log₁₀ step)' : '') },
-        on, inp('name'), hCell, vCell, inp('min', { min: 0, placeholder: '—' }), it.kind === 'gradient' ? el('span', {}) : inp('max', { min: 0, placeholder: '—' }), del);
+        on, inp('name'), hCell, vCell,
+        it.minRel ? el('span', { class: 'st-note', title: 'Relative: ' + it.minRel.factor + ' × ' + it.minRel.ref }, '≥' + it.minRel.factor + '×' + it.minRel.ref) : it.kind === 'linearity' ? el('span', {}) : inp('min', { min: 0, placeholder: '—' }),
+        it.maxRel ? el('span', { class: 'st-note', title: 'Relative: ' + it.maxRel.factor + ' × the value measured at ' + it.maxRel.ref }, '≤' + it.maxRel.factor + '×' + it.maxRel.ref) : inp('max', { min: 0, placeholder: '—' }), del);
+      if (it.ref) r.title = (r.title ? r.title + ' · ' : '') + it.ref;
       r.addEventListener('click', (e) => { if (e.target.closest('input,button')) return; ui.specSel = ui.specSel === it.id ? null : it.id; render(ui); ui.redrawSpec(); });
       box.append(r);
     }
@@ -136,13 +148,16 @@
       el('b', {}, head), ' ', el('span', {}, ev.n.pass + ' pass · ' + ev.n.fail + ' fail · ' + ev.n.unsure + ' unsure'), ' ',
       el('span', { class: 'note', title: 'Soft score: each constraint scores 1 when met, falling linearly (in log) to 0 at a factor of 2 off; weighted mean.' }, 'score ' + pc(ev.score))));
     box.append(el('div', { class: 'note' }, 'Measured at ' + fmtDist(s.G.distance) + ' · kernel ±' + ev.kernel + '° · ' + (s.done ? '' : 'partial: ') + s.G.coverage.toLocaleString() + ' rays' +
-      (Math.hypot(ev.shift[0], ev.shift[1]) > 1e-9 ? ' · re-aimed ΔH ' + ev.shift[0].toFixed(1) + '°, ΔV ' + ev.shift[1].toFixed(1) + '° (as designed: ' + ev.atZero.n.fail + ' fail)' : m.aimTol > 0 ? ' · no re-aim helps' : '') +
+      ' · aimed: ' + ev.aim.note +
+      (Math.hypot(ev.reaim[0], ev.reaim[1]) > 1e-9 ? ' · then re-aimed (beam) ' + fmtMove(ev.reaim, m.traffic) + ' (before: ' + ev.atAim.n.fail + ' fail)' : m.aimBox ? ' · no re-aim helps' : '') +
       (m.verified === false ? ' · ⚠ preset values unverified' : '')));
     const tbl = el('div', { class: 'spec-rows' });
     for (const r of ev.rows) {
-      const isLog = r.unit === 'log', need = (r.isMin ? '≥ ' : '≤ ') + (isLog ? r.bound : fmtCd(r.bound));
-      const got = isFinite(r.value) ? (isLog ? r.value.toFixed(2) : fmtCd(r.value)) + ' ± ' + (isLog ? r.sd.toFixed(2) : fmtCd(r.sd)) : '—';
-      const fac = isFinite(r.margin) ? Math.pow(10, Math.abs(r.margin)) : NaN, off = r.margin < 0 ? '×' + fac.toFixed(2) + (r.isMin ? ' short' : ' over') : '';
+      const raw = r.unit === 'log' || r.unit === 'deg', f = (x) => (raw ? (+x).toFixed(2) + (r.unit === 'deg' ? '°' : '') : fmtCd(x));
+      const need = (r.isMin ? '≥ ' : '≤ ') + (r.rel ? r.rel.factor + '×' + r.rel.ref + (isFinite(r.bound) ? ' (' + fmtCd(r.bound) + ')' : '') : f(r.bound));
+      const got = isFinite(r.value) ? f(r.value) + ' ± ' + f(r.sd) : '—';
+      const fac = isFinite(r.margin) ? Math.pow(10, Math.abs(r.margin)) : NaN;
+      const off = !(r.margin < 0) ? '' : r.unit === 'deg' ? (r.value - r.bound).toFixed(2) + '° over' : r.isMin && !(r.value > 0) ? 'no light read here' : '×' + fac.toFixed(2) + (r.isMin ? ' short' : ' over');
       const mk = { pass: '✓', fail: '✗', unsure: '?' }[r.verdict];
       const line = el('div', { class: 'sr v-' + r.verdict + (ui.specSel === r.id ? ' sel' : ''), title: r.at ? 'read at H ' + r.at[0].toFixed(2) + '°, V ' + r.at[1].toFixed(2) + '°' : '' },
         el('span', { class: 'mk' }, mk), el('span', { class: 'nm' }, r.name), el('span', { class: 'need' }, need), el('span', { class: 'got' }, got), el('span', { class: 'off' }, off));
@@ -150,6 +165,7 @@
       tbl.append(line);
     }
     box.append(tbl);
+    if (ev.rows.some((r) => r.extreme > 0)) box.append(el('div', { class: 'note' }, 'Zones: the brightest (or dimmest) of many noisy spot readings strays by chance, so a zone fails only if it clears the limit by 2σ plus that expected stray (√(2 ln n) σ over n independent spots).'));
     if (ev.n.unsure) box.append(el('div', { class: 'note' }, 'Unsure = the shot noise (±2σ) straddles the limit. ≈ ×' + (ev.moreRays >= 100 ? '100+' : ev.moreRays.toFixed(1)) + ' the rays would settle ' + (ev.n.unsure > 1 ? 'them' : 'it') + ' (or widen the kernel).'));
     // brightness-theorem feasibility: no design can beat these, whatever the solver
     const fz = RF.Spec.feasibility(sc), bad = fz.filter((f) => !f.ok);
@@ -209,6 +225,10 @@
         ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
         const top = pts.reduce((a, p) => (p[1] < a[1] || (p[1] === a[1] && p[0] < a[0]) ? p : a), pts[0]);
         label(it.name, top[0] + 3, top[1] + 12);
+      } else if (it.kind === 'sum') {
+        it.pts.forEach(([h, vv], i) => { const p = S(h, vv); if (!p) return; ctx.strokeRect(p[0] - 3.5, p[1] - 3.5, 7, 7); if (i === 0) label(it.name, p[0] + 6, p[1] - 5); });
+      } else if (it.kind === 'linearity') {
+        for (const h of it.hs) { const a = S(h, it.v0), b = S(h, it.v1); if (!a || !b) continue; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]); }
       } else if (it.kind === 'gradient') {
         const a = S(it.h, it.v0), b = S(it.h, it.v1); if (!a || !b) continue;
         ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
@@ -226,9 +246,12 @@
     };
   }
   // log-scale intensity image of a far-field grid (3 decades under the robust peak)
+  // the picture is smoothed over at least ±0.15° (a regulation photocell, ±0.075°, leaves single rays as speckle); the
+  // judge and the tap readout use the real kernel
+  const dispK = (ui) => Math.max(md(ui).kernel || 0.15, 0.15);
   function ffImage(ui, s) {
-    if (s.img && s.imgK === md(ui).kernel) return s.img;
-    const G = s.G, M = RF.FarField.map(G, md(ui).kernel), cd = M.cd, n = cd.length;
+    if (s.img && s.imgK === dispK(ui)) return s.img;
+    const G = s.G, M = RF.FarField.map(G, dispK(ui)), cd = M.cd, n = cd.length;
     const lit = []; for (let q = 0; q < n; q++) if (cd[q] > 0) lit.push(cd[q]); lit.sort((a, b) => a - b);
     const top = lit.length ? lit[Math.min(lit.length - 1, Math.floor(0.999 * lit.length))] : 1, lo = top / 1000;
     const cv = s.img || document.createElement('canvas'); cv.width = G.nh; cv.height = G.nv;
@@ -238,7 +261,7 @@
       im.data[o] = LUT[3 * t]; im.data[o + 1] = LUT[3 * t + 1]; im.data[o + 2] = LUT[3 * t + 2]; im.data[o + 3] = 255;
     }
     g.putImageData(im, 0, 0);
-    s.img = cv; s.imgK = md(ui).kernel; s.top = top; s.lo = lo; s.M = M;
+    s.img = cv; s.imgK = dispK(ui); s.top = top; s.lo = lo; s.M = M;
     return cv;
   }
   // the Result pane in Spec mode, "Far field" view: content = degrees (H right, V up)
@@ -262,7 +285,7 @@
     const cb = document.getElementById('colorbar'); cb.innerHTML = '';
     if (s && s.top) {
       cb.append(el('i', { style: 'background:' + RF.Render2D.colorbarCSS() }), el('div', { class: 'cb-labels' }, el('span', {}, fmtCd(s.lo) + ' cd'),
-        el('span', { title: 'Log scale, 3 decades. ' + (isFinite(s.G.distance) ? 'Apparent intensity on a screen at ' + fmtDist(s.G.distance) : 'Far field: intensity by direction') + '. Kernel ±' + md(ui).kernel + '°.' }, (isFinite(s.G.distance) ? fmtDist(s.G.distance) : 'far field') + ' · log'),
+        el('span', { title: 'Log scale, 3 decades. ' + (isFinite(s.G.distance) ? 'Apparent intensity on a screen at ' + fmtDist(s.G.distance) : 'Far field: intensity by direction') + '. Picture smoothed over ±' + dispK(ui) + '°; the report reads ±' + md(ui).kernel + '°.' }, (isFinite(s.G.distance) ? fmtDist(s.G.distance) : 'far field') + ' · log'),
         el('span', {}, fmtCd(s.top) + ' cd')));
     }
   }
