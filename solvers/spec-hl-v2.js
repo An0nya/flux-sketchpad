@@ -545,6 +545,21 @@
       let F = 500; for (let q = 0; q < 12; q++) F = n0 * Pw2 / (S.designRays * (1 + S.guideGain * clamp((4000 - F) / 4000, 0, 1)) * omG);
       edge.gateMin = F; edge.topMin = F / 0.02; edge.kneeMin = S.kneeGate * F; }
     Object.assign(edge, { Gmin, Gmax, linMax, linRef, gradH });
+    // SHIFT ROBUSTNESS.  The host aims the lamp from a noisy inflection (±0.1° and more in a plain trace), so every row is read on the beam
+    // shifted by that much: a band that holds only at the nominal aim fails by a few % when the aim jitters (FMVSS 0.5U / 1.5U zones just above the step).
+    // Require each pixel's bounds to hold for the rows' bounds within ±jitter vertically (a max-filter on lo, a min-filter on hi); where that makes lo > hi, keep the nominal bound.
+    if (S.jitter > 0) {
+      const nj = Math.max(1, Math.round(S.jitter / G.gs)), lo2 = Float32Array.from(lo), hi2 = Float32Array.from(hi), wc2 = Float32Array.from(wc);
+      for (let i = 0; i < G.nh; i++) for (let j = 0; j < G.nv; j++) {
+        const p = j * G.nh + i;
+        for (let d = -nj; d <= nj; d++) {
+          const jj = j + d; if (d === 0 || jj < 0 || jj >= G.nv) continue; const q = jj * G.nh + i;
+          if (lo[q] > lo2[p]) { lo2[p] = lo[q]; wc2[p] = Math.max(wc2[p], 0.7 * wc[q]); }
+          if (hi[q] < hi2[p]) { hi2[p] = hi[q]; wc2[p] = Math.max(wc2[p], 0.7 * wc[q]); }
+        }
+      }
+      for (let p = 0; p < n; p++) { if (lo2[p] > hi2[p] * 0.95) continue; lo[p] = lo2[p]; hi[p] = hi2[p]; wc[p] = wc2[p]; }
+    }
     return { lo, hi, wc, flo, rows, rel, edge };
   }
 
@@ -1090,7 +1105,7 @@
     if (S.minDistance === undefined) S.minDistance = 0;
     return S;
   }
-  const BASE = { aimSkirt: true, skirtGuard: false, fitShare: 0.45, polishShare: 0.6, calShare: 0.72, paintCap: 0.15, restarts: 2, restartBelow: -0.2, restartCost: 1e9, guideGain: 1, gateSigma: 0.15, kneeGate: 3, ceilFrac: 0, ceilLevel: 2500, dump: false, useOff: false, maxMargin: 4, offCost: 1, calLns: 0, anchorFrac: 0.4, kneeFrac: 0.20, plateau: 0.6, tailG: 0.55, knFinal: 0, anchorPx: 3, polishSweeps: 8, polishStep: 0.25, skirt: 0.7, skirtFrom: 0.45, grid: 0.1, gridA: 120, gridP: 96, wall: 0.3, finest: 1.5, sharp: 1.5, detail: 0.75, step: 0.01, softBelow: 1, softWeight: 0.4, edgePad: 1.0, tol: 0.15, edgeWeight: 3, gHi: 0.58, gLo: 1.2, designRays: 8e6, kneeBias: 0, maxAimH: 25, maxAimV: 12, glare: -1, glareWeight: 0.3, boost: 0.5, temp: 0.01, step0: 1.0 };
+  const BASE = { jitter: 0, aimSkirt: true, skirtGuard: false, fitShare: 0.45, polishShare: 0.6, calShare: 0.72, paintCap: 0.15, restarts: 2, restartBelow: -0.2, restartCost: 1e9, guideGain: 1, gateSigma: 0.15, kneeGate: 3, ceilFrac: 0, ceilLevel: 2500, dump: false, useOff: false, maxMargin: 4, offCost: 1, calLns: 0, anchorFrac: 0.4, kneeFrac: 0.20, plateau: 0.6, tailG: 0.55, knFinal: 0, anchorPx: 3, polishSweeps: 8, polishStep: 0.25, skirt: 0.7, skirtFrom: 0.45, grid: 0.1, gridA: 120, gridP: 96, wall: 0.3, finest: 1.5, sharp: 1.5, detail: 0.75, step: 0.01, softBelow: 1, softWeight: 0.4, edgePad: 1.0, tol: 0.15, edgeWeight: 3, gHi: 0.58, gLo: 1.2, designRays: 8e6, kneeBias: 0, maxAimH: 25, maxAimV: 12, glare: -1, glareWeight: 0.3, boost: 0.5, temp: 0.01, step0: 1.0 };
   // facets for the units' current aims and shapes, pulled toward the LED where the host's verify flags them
   function buildSurfaces(P, S, R, notes) {
     const G = P.G, out = [], byId = new Map();
