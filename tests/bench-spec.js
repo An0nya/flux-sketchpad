@@ -53,6 +53,7 @@ const k = (x) => (!(x > 0) ? '0' : x >= 1e4 ? Math.round(x / 1000) + 'k' : (x / 
     const row = { fixture: fix, solver: sv, preset, led: args.led || 'generic', solveMs: Date.now() - t0 };
     if (err || !out) { row.error = err || 'no output'; rows.push(row); console.log(fix, sv, 'ERROR', row.error); continue; }
     const facts = RF.Solvers.verify(sc, out); sc.groups.A.surfaces = facts.errors.length ? [] : out.surfaces; row.facets = facts.placed;
+    if (!facts.errors.length && facts.needsBounces > sc.sim.bounces) sc.sim.bounces = facts.needsBounces;   // as the app does (controller.js ensureBounces)
     const { ev, peak, lmWindow } = judge(sc), v = (n) => { const r = ev.rows.find((x) => x.name === n); return r ? r.value : null; };
     Object.assign(row, { verdict: ev.verdict, n: ev.n, score: +ev.score.toFixed(3), peak: Math.round(peak), lmWindow: Math.round(lmWindow), aim: ev.aim.note,
       fails: ev.rows.filter((r) => r.verdict === 'fail').map((r) => r.name), unsure: ev.rows.filter((r) => r.verdict === 'unsure').map((r) => r.name),
