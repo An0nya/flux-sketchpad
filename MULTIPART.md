@@ -23,7 +23,7 @@ I = F + (0, f·tanH, −f·tanV). The lens inverts the image, so focal-plane pos
 edge is the spec's cut-off line mapped through that inversion (R112: flat + 15° rise; FMVSS: step). Solves in 0.1 s.
 It doesn't trace yet.
 
-Bench at 2 M rays (guided), sure fails / unsure · peak:
+Bench at 2 M rays (guided), sure fails / unsure · peak. **At the default 8 M rays many unsure rows become sure fails** (R112 box 1/9 → 4/3); see the v2 section for the 8 M re-run:
 
 | preset | box | slim | module | sealed7 |
 |---|---|---|---|---|
@@ -140,3 +140,5 @@ diffuse it, so this needs engine work first:
 - **Calibration:** without measurements this only ranks orientations qualitatively. Absolute predictions need test
   bars printed in 2–3 orientations, measured with an LED and a lux meter or phone, then a fit of the scatter per
   crossing and the attenuation per mm.
+- **Convex-only polygon clips** (old engine trap, now documented in SOLVER_API.md): shield windows / notches need
+  non-convex clips or holes. Splitting into convex pieces works today.

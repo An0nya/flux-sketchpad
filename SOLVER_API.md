@@ -162,6 +162,10 @@ Optics fields (every surface):
   rest at full energy. More bounces needed; ghost and stray light become visible.
 - Bounce cap: **16** (was 8).
 
+**Polygon clips must be convex.** `clip: { kind: 'poly' }` tests a hit against every edge's inner side, so a
+non-convex outline (an L-shaped shield, a notch, a window) silently lets light through its concave parts. Split
+non-convex shapes into convex pieces (projector-v2 builds its shield as one strip per edge segment).
+
 Rules for parts:
 - **The facet budget counts reflecting surfaces only.** Lens and shield parts are free, but are checked against the
   envelope and the LED clearance like everything else.
