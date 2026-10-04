@@ -50,9 +50,10 @@
   function applySolve(store, r) {
     const sc = store.scene, out = r.output || {}, f = r.facts, extras = out.extras || {};
     sc.groups.A.surfaces = f.errors.length ? [] : out.surfaces;
+    if (!f.errors.length && f.needsBounces) ensureBounces(store, f.needsBounces, 'the ' + r.meta.id + ' optic needs ' + f.needsBounces + ' interactions per ray (' + (f.parts ? 'reflector + lens / shield parts' : 'several reflections') + ')');
     sc.solve = r.meta;
     const rep = Object.assign({}, extras, {
-      placed: f.placed, facts: f, intent: out.intent || null, intentIndex: out.intent ? RF.Solvers.intentIndex(out.intent, sc.target.res) : null,
+      placed: f.placed, parts: f.parts, facts: f, intent: out.intent || null, intentIndex: out.intent ? RF.Solvers.intentIndex(out.intent, sc.target.res) : null,
       solver: r.meta, solveMs: r.ms, warnings: (out.notes || []).slice(),
     });
     if (f.dropped !== null) rep.dropped = f.dropped;

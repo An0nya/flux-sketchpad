@@ -41,21 +41,21 @@
   function prepare(scene, surfaces) {
     const G = Geo.compile(surfaces);
     const T = targetFrame(scene.target);
-    const S = RF.Source.makeSampler(scene.source);
+    const srcs = RF.Source.all(scene), S = RF.Source.makeMixture(srcs);   // one emitter: the plain sampler (byte-identical runs)
     const env = scene.envelope;
     // Length scale for relative epsilons: size of the optics + source + envelope.  Never an
     // absolute constant — geometric optics has no intrinsic length scale.
     let scale = 0;
     if (G.n) scale = Math.max(G.hi[0] - G.lo[0], G.hi[1] - G.lo[1], G.hi[2] - G.lo[2]);
-    scale = Math.max(scale, RF.Source.boundingRadius(scene.source) * 2, Math.max(...env.half) * 2);
-    for (let i = 0; i < 3; i++) scale = Math.max(scale, Math.abs(scene.source.pos[i]));
+    scale = Math.max(scale, Math.max(...env.half) * 2);
+    for (const src of srcs) { scale = Math.max(scale, RF.Source.boundingRadius(src) * 2); for (let i = 0; i < 3; i++) scale = Math.max(scale, Math.abs(src.pos[i])); }
     const sim = scene.sim;
     const P = {
       G, T, S, scale, eps: 1e-9 * scale,
       cap: Math.max(1, Math.min(8, sim.bounces | 0)),
       floor: Math.max(0, sim.floor),
       seed: sim.seed | 0,
-      power: scene.source.power,
+      power: RF.Source.totalPower(scene),
       res: T.res,
       surfaces,
     };
@@ -300,12 +300,13 @@
   }
 
   // ---------------------------------------------------------------- batches
-  const O = new Float64Array(3), Dd = new Float64Array(3), XR = new Float64Array(5);
+  const O = new Float64Array(3), Dd = new Float64Array(3), XR = new Float64Array(6);
   // ray i's origin and direction: mulberry32 over the counter-based stream for (seed, i)
   function sampleRayI(P, i, o, d) {
     let s = RF.rng.streamSeed(P.seed, i);
     const x = XR;
-    for (let j = 0; j < 5; j++) {
+    const nx = P.S.mix ? 6 : 5;                       // x5 picks the emitter (multi-emitter scenes only)
+    for (let j = 0; j < nx; j++) {
       s = (s + 0x6D2B79F5) | 0;
       let t = Math.imul(s ^ (s >>> 15), 1 | s);
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
@@ -322,7 +323,7 @@
       break;
     }
     LASTB = Math.min(GA - 1, Math.floor(x[3] * GA)) * GB + Math.min(GB - 1, Math.floor(x[4] * GB));
-    RF.Source.sampleRay(P.S, x[0], x[1], x[2], x[3], x[4], o, d);
+    RF.Source.sampleRay(P.S.mix ? RF.Source.pickPart(P.S, x[5]) : P.S, x[0], x[1], x[2], x[3], x[4], o, d);
     return w;                                         // the ray's weight (1 unless a guide drew it)
   }
   function traceRange(ctx, i0, i1) {

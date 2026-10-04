@@ -258,7 +258,7 @@
       ctx.stroke();
     }
     // ---- source (its real geometry, always); edit handles only in Setup mode
-    drawSource(ctx, cam, sc.source);
+    for (const s of RF.Source.all(sc)) drawSource(ctx, cam, s);
     if (opts.setup) {
       handles.push(...setupHandles(ctx, cam, sc, { envelope: true, activeHandle: opts.activeHandle, extra: [(() => { const tc = cam.project(T.C); return { id: 'tgt', x: tc[0], y: tc[1], r: 14, label: 'target distance' }; })()] }));
     }
@@ -393,7 +393,7 @@
     const model = opts.model, sc = opts.scene, S = sc.source.pos;
     if (opts.envelope) drawEnvelope(ctx, cam, sc.envelope);
     const finish = () => {                              // the fixture's setup lives here: source + its handles on top (Setup)
-      drawSource(ctx, cam, sc.source);
+      for (const s of RF.Source.all(sc)) drawSource(ctx, cam, s);
       return opts.handles === false ? [] : setupHandles(ctx, cam, sc, { envelope: opts.envelope, activeHandle: opts.activeHandle });
     };
     if (!model.polys.length) {

@@ -60,6 +60,7 @@
         preset: { kind: 'parabola', f: 12, rim: 45, n: 40, theta: 20, depth: 30 },
       },
       lenses: [],
+      emitters: [],                                 // more emitters beyond `source` (multi-LED optics): full source objects + id, enabled
       groups: {
         A: { label: 'Mode A reflector', enabled: true, surfaces: [] },
         B: { label: 'Mode B stamps', enabled: true, surfaces: [] },

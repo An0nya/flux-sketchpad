@@ -70,7 +70,7 @@
     const Lmax = tab.length ? tab.reduce((m, t) => Math.max(m, t.L), 0) : luminance(src, RF.Source.frame(src).a);
     const envProj = boxProj(scene.envelope.half, u), envelope = Rmax * Lmax * envProj;
     const g = RF.Engine.gridTotal(ctx), pk = peakCd(P, ctx, g, 0.995, src.pos);
-    const E = ctx.E, lm = (E.direct + E.reflected) / Math.max(1e-300, E.emitted) * src.power;
+    const E = ctx.E, lm = (E.direct + E.reflected) / Math.max(1e-300, E.emitted) * P.power;   // P.power = every emitter's
     const out = {
       luminance: luminance(src, RF.Source.frame(src).a), reflectorArea: area, apertureProj: proj,
       peakCd: pk.cd, peakRays: pk.rays, peakNoise: pk.rays > 0 ? 1 / Math.sqrt(pk.rays) : 1,
@@ -93,7 +93,7 @@
     const surf = P.surfaces.find((s) => s.id === id), src = scene.source;
     const tab = surfaceTable(P, src, (k, cen) => (surf && surf.Z ? V.norm(V.sub(surf.Z, surf.P)) : V.norm(V.sub(P.T.C, cen))));
     const t = tab.find((x) => x.id === id); if (!t) return null;
-    const pk = peakCd(P, ctx, vals, 0.995, src.pos, true), p90 = peakCd(P, ctx, vals, 0.9, src.pos, true), e0 = src.power / Math.max(1, ctx.N);
+    const pk = peakCd(P, ctx, vals, 0.995, src.pos, true), p90 = peakCd(P, ctx, vals, 0.9, src.pos, true), e0 = P.power / Math.max(1, ctx.N);
     let landed = 0; for (let i = 0; i < vals.length; i++) landed += vals[i];
     const out = {
       id, area: t.area, proj: t.proj, luminance: t.L, R: t.R, ceilingCd: t.ceil, peakCd: pk.cd, p90Cd: p90.cd, peakRays: pk.rays,

@@ -10,8 +10,14 @@
  *     input  = { source, envelope, target, paint: { res, cells }, stamps, seed, limits: { maxFacets, reflectivity } }
  *              (deep copy; mutate freely).  limits are the USER's: a solver reads them, never declares them.
  *     tools  = { trace(surfaces, { rays, seed, attribution }), progress(pct), budget: { rays, ms } }
- *     output = { surfaces, intent?: [{ facet: id|null, cells: [[paintCell, weight]…] }], notes?: [..], extras? }
+ *     output = { surfaces, intent?: [{ facet: id|null, cells: [[paintCell, weight]…] }], notes?: [..], extras?,
+ *                needs?: { bounces } }
  *   intent is optional, per facet, overlap allowed; facet: null = an intent the solver couldn't place.
+ *   Multi-part optics: surfaces may refract (lenses, TIR bodies) or absorb (shields) as well as reflect.  The facet
+ *   budget counts REFLECTING surfaces only (the units a reflector solver places); lens and shield parts are free but
+ *   still verified against the envelope and the LED clearance.  needs.bounces = the interactions a ray needs to get
+ *   through the optic (reflector + 2 lens faces = 3); the app raises its bounce cap to it, visibly.
+ *   Multi-emitter scenes: input.sources = every emitter (input.source = the first, unchanged for older solvers).
  */
 (function (root) {
   'use strict';
@@ -84,16 +90,16 @@
   function inputOf(scene) {
     const ss = solveSceneOf(scene);
     return RF.U.deepCopy(Object.assign({
-      source: RF.Source.apparent(scene.source), envelope: scene.envelope, target: ss.target,
+      source: RF.Source.apparent(scene.source), sources: RF.Source.all(scene).map(RF.Source.apparent), envelope: scene.envelope, target: ss.target,
       paint: { res: scene.target.res, cells: paintOf(scene) }, stamps: (scene.modeB && scene.modeB.stamps) || [], seed: scene.sim.seed | 0,
-      limits: { maxFacets: Math.max(1, scene.modeA.budget | 0), reflectivity: scene.modeA.reflectivity },
+      limits: { maxFacets: Math.max(1, scene.modeA.budget | 0), reflectivity: scene.modeA.reflectivity, bounces: scene.sim.bounces | 0 },
     }, specOn(scene) ? { spec: RF.Spec.solverSpec(scene) } : {}));
   }
 
   // Host-owned facts about a solver's output.  errors = the output is unusable; violations = usable but
   // breaks a constraint (reported, never hidden).
   function verify(scene, out) {
-    const facts = { errors: [], violations: { envelope: [], keepOut: [], budget: null }, intentErrors: [], placed: 0, dropped: null };
+    const facts = { errors: [], violations: { envelope: [], keepOut: [], budget: null }, intentErrors: [], placed: 0, parts: 0, dropped: null, needsBounces: 0 };
     if (!out || !Array.isArray(out.surfaces)) { facts.errors.push('output.surfaces is not an array'); return facts; }
     const ids = new Set();
     for (const s of out.surfaces) {
@@ -104,10 +110,12 @@
     if (facts.errors.length) return facts;
     let G;
     try { G = RF.Geo.compile(out.surfaces); } catch (e) { facts.errors.push('surfaces do not compile: ' + e.message); return facts; }
-    facts.placed = out.surfaces.length;
+    // the budget counts reflecting surfaces (facets / patches); refracting and absorbing parts (lenses, shields) are free
+    for (const s of out.surfaces) if (((s.optics && s.optics.interaction) || 'reflect') === 'reflect') facts.placed++; else facts.parts++;
+    if (out.needs && out.needs.bounces > 0) facts.needsBounces = Math.min(8, Math.round(out.needs.bounces));
     const budget = scene.modeA && scene.modeA.budget;          // the user's facet budget: a limit, never the solver's to change
     if (budget > 0 && facts.placed > budget) facts.violations.budget = { placed: facts.placed, budget };
-    const env = scene.envelope, S = scene.source.pos, keep = env.keepOut || 0;
+    const env = scene.envelope, SS = RF.Source.all(scene).map((x) => x.pos), keep = env.keepOut || 0;
     for (let k = 0; k < G.n; k++) {
       let outE = false, outK = false;
       for (const poly of RF.Geo.outline(G, k)) {
@@ -118,7 +126,7 @@
         // that MISSES has no mirror in that direction, so it is not a violation — the flat chord point itself
         // is not part of the mirror (counting it raised false alarms by ~0.01 mm on curved facets; found by
         // benchmark trial 1).  The outline points lie on the surface and are tested directly.
-        if (keep > 0) {
+        if (keep > 0) for (const S of SS) {               // every emitter has its clearance
           for (const p of poly) if (V.dist(p, S) < keep * (1 - 1e-6)) outK = true;
           const c = V.mul(poly.reduce((a, q) => V.add(a, q), [0, 0, 0]), 1 / poly.length), M = 4;
           for (let i = 0; i < poly.length && !outK; i++) {
@@ -160,7 +168,7 @@
   // Synchronous run (headless tests, and solvers cheap enough for the main thread).  The UI's worker host
   // calls the same pieces.  Returns the scene-ready result; never mutates the scene.
   // the problem scene a solver's trace() runs against (plain data: crosses into a worker)
-  const problemOf = (scene) => RF.U.deepCopy(Object.assign({ source: scene.source, target: solveSceneOf(scene).target, envelope: scene.envelope, sim: scene.sim, modeA: { paint: paintOf(scene) } }, specOn(scene) ? { modeD: scene.modeD, mode: 'D' } : {}));
+  const problemOf = (scene) => RF.U.deepCopy(Object.assign({ source: scene.source, emitters: scene.emitters || [], target: solveSceneOf(scene).target, envelope: scene.envelope, sim: scene.sim, modeA: { paint: paintOf(scene) } }, specOn(scene) ? { modeD: scene.modeD, mode: 'D' } : {}));
   function prepareRun(scene, id) {
     id = id || current(scene);
     const def = get(id); if (!def) throw new Error('no solver ' + id);
@@ -187,7 +195,8 @@
   //       perFacet? (attribution), shadowed? (occlusion: one extra pass) }   — the same definitions the app scores with
   function trace(scene, surfaces, o) {
     o = o || {};
-    const sc = Object.assign({}, scene, { sim: Object.assign({}, scene.sim, { seed: o.seed !== undefined ? o.seed : scene.sim.seed }) });
+    // o.bounces: a multi-part optic traces with the cap it needs (reflector + lens = 3), as the app will once it declares needs.bounces
+    const sc = Object.assign({}, scene, { sim: Object.assign({}, scene.sim, { seed: o.seed !== undefined ? o.seed : scene.sim.seed }, o.bounces > 0 ? { bounces: Math.max(scene.sim.bounces | 0, Math.min(8, Math.round(o.bounces))) } : {}) });
     const P = RF.Engine.prepare(sc, surfaces); P.recordHits = !!(o.attribution || o.occlusion);
     const wantSpec = !!(o.spec && scene.modeD && RF.Spec && RF.FarField);
     if (wantSpec) P.ffStreams = [RF.Spec.gridOpts(scene)];        // the far field the host judges, at the spec's measuring distance

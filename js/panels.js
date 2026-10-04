@@ -155,7 +155,7 @@
       el('div', { id: 'modeC-report', class: 'note' })));
     // ---- 2. Problem: what the design is for
     const lensKind = el('select', { id: 'lens-kind', 'aria-label': 'Lens preset' },
-      el('option', { value: 'planoconvex' }, 'Plano-convex'), el('option', { value: 'biconvex' }, 'Biconvex'),
+      el('option', { value: 'planoconvex' }, 'Plano-convex'), el('option', { value: 'biconvex' }, 'Biconvex'), el('option', { value: 'asphere' }, 'Aspheric (projector)'),
       el('option', { value: 'tir' }, 'TIR collimator'), el('option', { value: 'fresnel' }, 'Fresnel lens (N rings)'));
     side.append(section('Problem', { open: true, key: 'problem', tag: 'source · target · envelope' },
       section('Light source', { open: true, key: 'source' },

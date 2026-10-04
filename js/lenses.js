@@ -1,6 +1,7 @@
 /* lenses.js — refractive presets, fully parametrised, built from the same exact quadric primitives:
- *   plano-convex, biconvex (spherical caps), TIR collimator (numerically tailored profile), and a
- *   Fresnel lens with N rings (annular prism facets = revolved line segments tagged `refract`).
+ *   plano-convex, biconvex (spherical caps), aspheric plano-convex (a conic face, stigmatic on axis: the projector
+ *   lens), TIR collimator (numerically tailored profile), and a Fresnel lens with N rings (annular prism facets =
+ *   revolved line segments tagged `refract`).
  * Glass is on the BACK side of every refracting surface (front = air side).  Edges and mounting
  * flanges are `absorb` (a ground edge / holder; not traced as glass — stated in the README).
  * Lenses sit on an axis through the source (toward the aim point by default) at distance d.   */
@@ -17,6 +18,7 @@
     const base = { ior: 1.49, fresnelT: 0.96, axisMode: 'aim', auto: true };
     if (kind === 'planoconvex') return Object.assign(base, { f: 40, a: 15, edge: 1 });
     if (kind === 'biconvex') return Object.assign(base, { f: 40, a: 15, edge: 1 });
+    if (kind === 'asphere') return Object.assign(base, { f: 40, a: 20, edge: 1.5 });
     if (kind === 'tir') return Object.assign(base, { A: 20, rc: 4, hc: 5, thMax: 88 });
     if (kind === 'fresnel') return Object.assign(base, { f: 40, a: 30, rings: 12, tb: 1.5 });
     return base;
@@ -28,6 +30,7 @@
     return {
       out,
       line(r0, z0, r1, z1, front, optics) { out.push({ type: 'rev', id: gid + '_' + (k++), group: 'L', O, W, ref, seg: { kind: 'line', z0, r0: Math.max(0, r0), z1, r1: Math.max(0, r1) }, front, optics }); },
+      conic(zv, R, kc, r0, r1, front, optics) { out.push({ type: 'rev', id: gid + '_' + (k++), group: 'L', O, W, ref, seg: { kind: 'conic', zv, R, k: kc, r0, r1 }, front, optics }); },
       arc(zc, R, za, zb, rmax, front, optics) { out.push({ type: 'rev', id: gid + '_' + (k++), group: 'L', O, W, ref, seg: { kind: 'arc', zc, R, z0: za, z1: zb, rmax }, front, optics }); },
       poly(pts, front, optics) { for (let i = 0; i + 1 < pts.length; i++) this.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], front, optics); },
     };
@@ -46,6 +49,18 @@
       B.arc(d + t - R, R, d + t - s, d + t, a, 1, glass(p)); // convex cap (front = outward)
       B.line(a, d, a, d + t - s, 1, ABSORB);                 // ground edge
       Object.assign(info, { R, t, d, sag: s });
+    } else if (L.kind === 'asphere') {
+      // Hyperbolic face toward the source, flat face out.  A conic of eccentricity n (k = −n²) refracts every ray
+      // from its outer focus into a beam parallel to the axis inside the glass (exact on axis, no spherical
+      // aberration); the flat back face lets it out undeviated.  Vertex radius R = (n − 1) f puts that focus at f.
+      // In a projector the shield edge sits at this focus and the lens images it onto the road (inverted).
+      const R = (n - 1) * p.f, k = -n * n, a = p.a;
+      const s = RF.Geo.conicSag(R, k, a), t = s + p.edge;
+      const d = p.auto ? p.f : p.d;                          // vertex at the focal distance from the source
+      B.conic(d, R, k, 0, a, 1, glass(p));                   // aspheric face (front = toward the source)
+      B.line(a, d + s, a, d + t, 1, ABSORB);                 // ground edge
+      B.line(0, d + t, a, d + t, 1, glass(p));               // flat exit face (front = +z, air outside)
+      Object.assign(info, { R, k, t, d, sag: s });
     } else if (L.kind === 'biconvex') {
       // symmetric R1 = −R2 = R; thick lens: 1/f = (n−1)(2/R − (n−1)t/(nR²)); iterate t(R)
       let R = 2 * (n - 1) * p.f, t = 0;

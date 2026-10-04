@@ -276,5 +276,24 @@
     return out;
   }
 
-  RF.Source = { frame, thetaMax, intensity, totalIntegral, makeSampler, sampleRay, extentCov, boundingRadius, extentSize, emittingArea, outline, apparent, hasDome };
+  /* Multi-emitter scenes.  scene.source is the first emitter (every existing control edits it); scene.emitters lists
+   * more, each a full source object (+ id, enabled).  The trace draws each ray's emitter by power (one extra uniform,
+   * drawn only when there is more than one, so single-emitter runs are byte-identical to before), so every ray still
+   * carries the same energy: total power ÷ rays.                                                                     */
+  function all(scene) {
+    const out = [scene.source];
+    for (const e of scene.emitters || []) if (e && e.enabled !== false && e.power > 0) out.push(e);
+    return out;
+  }
+  const totalPower = (scene) => all(scene).reduce((a, s) => a + (s.power || 0), 0);
+  function makeMixture(list) {
+    if (list.length === 1) return makeSampler(list[0]);
+    const parts = list.map(makeSampler), cdf = new Float64Array(list.length + 1);
+    for (let i = 0; i < list.length; i++) cdf[i + 1] = cdf[i] + Math.max(0, list[i].power || 0);
+    for (let i = 0; i <= list.length; i++) cdf[i] /= cdf[list.length] || 1;
+    return { mix: true, parts, cdf, src: list[0], pos: list[0].pos.slice(), fr: parts[0].fr };
+  }
+  function pickPart(M, x) { const c = M.cdf; let k = 0; while (k < M.parts.length - 1 && c[k + 1] <= x) k++; return M.parts[k]; }
+
+  RF.Source = { all, totalPower, makeMixture, pickPart, frame, thetaMax, intensity, totalIntegral, makeSampler, sampleRay, extentCov, boundingRadius, extentSize, emittingArea, outline, apparent, hasDome };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

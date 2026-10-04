@@ -170,6 +170,12 @@
   }
 
   /* compileSurface: writes surface s at slot k.  Returns meta (for rendering & diagnostics). */
+  // sag z(r) of a conic of revolution from its vertex (NaN past the edge of a closed conic)
+  function conicSag(R, k, r) {
+    if (!isFinite(R) || R === 0) return 0;
+    const c = 1 / R, q = 1 - (1 + k) * c * c * r * r;
+    return q < 0 ? NaN : c * r * r / (1 + Math.sqrt(q));
+  }
   function compileSurface(s, D, k, polyOut) {
     const o = k * STRIDE;
     const meta = { id: s.id, group: s.group || '', kind: s.type };
@@ -236,7 +242,18 @@
       writeFrame(D, o, s.O, ex, ey, W);
       const g = s.seg, front = s.front === -1 ? -1 : 1;
       let Q, L, K, zlo = -Infinity, zhi = Infinity, rlo = 0, rhi = Infinity, fs;
-      if (g.kind === 'arc') {
+      if (g.kind === 'conic') {
+        // x² + y² + (1+k)(z − zv)² − 2R(z − zv) = 0, expanded about the frame origin
+        const k1 = 1 + (g.k || 0), R = g.R, zv = g.zv, r0 = Math.max(0, Math.min(g.r0 || 0, g.r1)), r1 = Math.max(g.r0 || 0, g.r1);
+        Q = [1, 0, 0, 0, 1, 0, 0, 0, k1]; L = [0, 0, -2 * k1 * zv - 2 * R]; K = k1 * zv * zv + 2 * R * zv;
+        const sz0 = conicSag(R, g.k || 0, r0), sz1 = conicSag(R, g.k || 0, r1);
+        if (!isFinite(sz1)) throw new Error('conic zone ' + s.id + ' reaches past the conic (r1 too large for R, k)');
+        zlo = zv + Math.min(sz0, sz1); zhi = zv + Math.max(sz0, sz1); rlo = r0; rhi = r1;
+        fs = front;                          // +1: front = away from the centre of curvature (as arc)
+        meta.rmaxSeg = r1;
+        const zs = [], rs = []; for (let i = 0; i <= 8; i++) { const r = r0 + (r1 - r0) * i / 8; rs.push(r); zs.push(zv + conicSag(R, g.k || 0, r)); }
+        meta.prof = { zs, rs };
+      } else if (g.kind === 'arc') {
         Q = M3.identity(); L = [0, 0, -2 * g.zc]; K = g.zc * g.zc - g.R * g.R;
         zlo = Math.min(g.z0, g.z1); zhi = Math.max(g.z0, g.z1);
         rhi = g.rmax !== undefined ? g.rmax : Infinity;
@@ -531,7 +548,8 @@
     if (ct === CLIP.ring) {
       const polys = [], N = 32;
       let zs, rs;
-      if (meta.seg) { zs = [meta.seg.z0, meta.seg.z1]; rs = [meta.seg.r0, meta.seg.r1]; }
+      if (meta.prof) { zs = meta.prof.zs; rs = meta.prof.rs; }
+      else if (meta.seg) { zs = [meta.seg.z0, meta.seg.z1]; rs = [meta.seg.r0, meta.seg.r1]; }
       else {                                   // arc: sample 4 steps between zlo..zhi
         zs = []; rs = [];
         const R = Math.sqrt(Math.max(0, D[o + 21] * -1 + (D[o + 20] / 2) ** 2)), zc = -D[o + 20] / 2;
@@ -562,7 +580,7 @@
 
   RF.Geo = {
     STRIDE, CLIP, INTER, INTER_NAMES, DEFAULT_OPTICS, HIT,
-    facetQuadric, facetQuadric2, quadricRay, compile, compileSurface, intersect, frontNormal, localSag,
+    facetQuadric, facetQuadric2, quadricRay, conicSag, compile, compileSurface, intersect, frontNormal, localSag,
     envInside, envInterval, envVolume, envWire, outline, buildBVH,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
