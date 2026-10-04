@@ -849,6 +849,7 @@
     const c0 = model.total();
     notes.push('greedy: cost ' + c0.toFixed(2) + ', ' + traced + ' patterns traced, ' + (Date.now() - tStart) + ' ms');
     // ---- annealing
+    const late = (soft) => { const d = soft ? S.softDeadline : S.hardDeadline; return d > 0 && Date.now() > d; };   // the host stops a solver after its time budget and keeps the previous design: stop searching instead
     const sweeps = S.sweeps, mv = S.moves, snapshot = () => st.map((s) => ({ on: s.on, ai: s.ai, aj: s.aj, sh: s.sh }));
     let best = { cost: model.total(), snap: snapshot() }, cur = best.cost;
     const T0 = S.temp * Math.max(1e-3, c0 / Math.max(1, N)), rate = (sweeps > 1 ? 1 / (sweeps - 1) : 1);
@@ -883,6 +884,7 @@
     function runSweeps(nSw, tempFac, sigMax, shapeMoves, label, p0, p1, anchor) {
       const rate2 = nSw > 1 ? 1 / (nSw - 1) : 1, T0b = tempFac * Math.max(1e-3, c0 / Math.max(1, N));
       for (let sw = 0; sw < nSw; sw++) {
+        if (late(label === 'annealing')) break;
         const frac = sw * rate2, T = T0b * Math.pow(1 - frac, 2), sig = 0.08 + sigMax * Math.pow(1 - frac, 1.5);
         const ord = order.slice(); for (let q = ord.length - 1; q > 0; q--) { const j = Math.floor(rand() * (q + 1)); [ord[q], ord[j]] = [ord[j], ord[q]]; }
         const tot = setNeed();
@@ -940,6 +942,7 @@
     let lnsAcc = 0, lnsTry = 0;
     const lns = (rounds) => {
       for (let r = 0; r < rounds; r++) {
+        if (late(true)) break;
         let pw = -1, cw = 1e-9; for (let p = 0; p < G.n; p++) if (model.cp[p] > cw) { cw = model.cp[p]; pw = p; }
         // when the cut-off terms outweigh the pixel violations, work on the worst edge column (the pixel at its knee) instead
         const ecs = model.ec; let qw = -1, ew = 0; for (let q = 0; q < ecs.length; q++) if (ecs[q].cost > ew) { ew = ecs[q].cost; qw = q; }
@@ -1081,7 +1084,7 @@
     if (S.minDistance === undefined) S.minDistance = 0;
     return S;
   }
-  const BASE = { paintCap: 0.15, restarts: 2, restartBelow: -0.2, restartCost: 1e9, guideGain: 1, gateSigma: 0.15, kneeGate: 3, ceilFrac: 0, ceilLevel: 2500, dump: false, useOff: false, maxMargin: 4, offCost: 1, calLns: 0, anchorFrac: 0.4, kneeFrac: 0.20, plateau: 0.6, tailG: 0.55, knFinal: 0, anchorPx: 3, polishSweeps: 8, polishStep: 0.25, skirt: 0.7, skirtFrom: 0.45, grid: 0.1, gridA: 120, gridP: 96, wall: 0.3, finest: 1.5, sharp: 1.5, detail: 0.75, step: 0.01, softBelow: 1, softWeight: 0.4, edgePad: 1.0, tol: 0.15, edgeWeight: 3, gHi: 0.58, gLo: 1.2, designRays: 8e6, kneeBias: 0, maxAimH: 25, maxAimV: 12, glare: -1, glareWeight: 0.3, boost: 0.5, temp: 0.01, step0: 1.0 };
+  const BASE = { fitShare: 0.45, polishShare: 0.6, calShare: 0.72, paintCap: 0.15, restarts: 2, restartBelow: -0.2, restartCost: 1e9, guideGain: 1, gateSigma: 0.15, kneeGate: 3, ceilFrac: 0, ceilLevel: 2500, dump: false, useOff: false, maxMargin: 4, offCost: 1, calLns: 0, anchorFrac: 0.4, kneeFrac: 0.20, plateau: 0.6, tailG: 0.55, knFinal: 0, anchorPx: 3, polishSweeps: 8, polishStep: 0.25, skirt: 0.7, skirtFrom: 0.45, grid: 0.1, gridA: 120, gridP: 96, wall: 0.3, finest: 1.5, sharp: 1.5, detail: 0.75, step: 0.01, softBelow: 1, softWeight: 0.4, edgePad: 1.0, tol: 0.15, edgeWeight: 3, gHi: 0.58, gLo: 1.2, designRays: 8e6, kneeBias: 0, maxAimH: 25, maxAimV: 12, glare: -1, glareWeight: 0.3, boost: 0.5, temp: 0.01, step0: 1.0 };
   // facets for the units' current aims and shapes, pulled toward the LED where the host's verify flags them
   function buildSurfaces(P, S, R, notes) {
     const G = P.G, out = [], byId = new Map();
@@ -1108,7 +1111,8 @@
   function solveOnce(input, S0, tools) {
     const S = resolve(Object.assign({}, BASE, S0, globalThis.__SPEC_HL_OVERRIDE || {})), prog = (f, st) => { if (tools && tools.progress) tools.progress(f, st); };
     S.seed = (input.seed | 0) + (S0.seedOffset | 0) * 1009; S.debug = !!globalThis.__SPEC_HL_DEBUG;
-    const notes = [], t0 = Date.now();
+    const notes = [], t0 = Date.now(), budgetMs = tools && tools.budget && isFinite(tools.budget.ms) ? tools.budget.ms : 0;
+    if (budgetMs > 0) { S.softDeadline = t0 + S.fitShare * budgetMs; S.hardDeadline = t0 + S.polishShare * budgetMs; }   // search (anneal, repair) ends at fitShare, polish at polishShare, calibration rounds start only before calShare
     const P = readProblem(input, S); P.B = beamAxis(P);
     prog(0.02, 'shell');
     const sh = buildShell(P, S, notes);
@@ -1128,7 +1132,7 @@
     for (let k = 1; k <= S.restarts; k++) {
       const e = hardVerdict(P, S, judgeModel(P, R.model.F)), c = R.model.total();
       if (!(c > S.restartCost || (e && e.fail && e.worst < S.restartBelow))) break;
-      if (tools && tools.budget && Date.now() - t0 > 0.5 * (tools.budget.ms || Infinity)) break;
+      if (budgetMs > 0 && Date.now() - t0 + 1.6 * (Date.now() - tFit) > S.calShare * budgetMs) break;     // another fit + the calibration must still fit
       const S2 = Object.assign({}, S, { seed: S.seed + 7919 * k }), R2 = fit(P, S2, B, sec, sh.units, [], tools);
       notes.push('restart ' + k + ': cost ' + c.toFixed(1) + (e ? ' (margin ' + e.worst.toFixed(2) + ')' : '') + ' → seed ' + S2.seed + ' gives ' + R2.model.total().toFixed(1) + (score(R2) > score(R) ? ', kept' : ', dropped'));
       if (score(R2) > score(R)) R = R2;
@@ -1137,6 +1141,7 @@
     // ---- calibration: patterns from real traces of the built design, then a polish of the aims on them
     let built = buildSurfaces(P, S, R, null), cal = [];
     for (let round = 0; round < S.calRounds; round++) {
+      if (budgetMs > 0 && round > 0 && Date.now() - t0 > S.calShare * budgetMs) { notes.push('calibration stopped after ' + round + ' round(s): the host\'s ' + Math.round(budgetMs / 1000) + ' s budget'); break; }
       prog(0.88 + 0.08 * round / Math.max(1, S.calRounds), 'calibrating ' + (round + 1) + '/' + S.calRounds);
       const tc = Date.now();
       const T = patternsFromTrace(P, S, built.surfaces, built.items, S.calRays), msTrace = Date.now() - tc;
