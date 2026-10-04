@@ -18,15 +18,24 @@
   // (re)judge the current run; cheap to call often: rebuilds only when the run grew or the spec changed
   function update(ui, force) {
     const run = ui.run, sc = ui.store.scene;
-    if (!run || sc.mode !== 'D' || !run.ctx.ex || !(run.ctx.next > 0)) return ui.spec || null;
+    if (!run || sc.mode !== 'D' || !(run.ctx.ex || run.ctx.ff) || !(run.ctx.next > 0)) return ui.spec || null;
     const key = evalKey(sc.modeD), now = performance.now(), c = run.ctx;
     const s = ui.spec;
     if (!force && s && s.ctx === c && s.key === key && (s.next === c.next || (!c.done && now - s.t < 700))) return s;
     try {
       const G = RF.FarField.build(c, RF.Spec.gridOpts(sc)), ev = RF.Spec.evaluate(G, sc.modeD);
       ui.spec = { ctx: c, key, next: c.next, done: c.done, t: now, G, ev, map: null };
-    } catch (e) { ui.spec = { ctx: c, key, next: c.next, t: now, error: e.message }; }
+    } catch (e) {
+      ui.spec = { ctx: c, key, next: c.next, t: now, error: e.message };
+      // the grid settings (window, bin, angles) changed since this run started: its streams don't cover them — re-trace once
+      if (c.ff && !RF.FarField.streamOf(c, RF.Spec.gridOpts(sc)) && ui._specRetrace !== c) { ui._specRetrace = c; ui.requestRun(false); }
+    }
     return ui.spec;
+  }
+  // the far-field grids a Spec run streams: the report's distance plus the comparison set (∞, 25 m, 10 m, the target)
+  function streams(sc) {
+    const md0 = sc.modeD || {}, ds = [md0.distance > 0 ? md0.distance : 0, 0, 25000, 10000, sc.target.distance];
+    return ds.filter((d, i) => ds.indexOf(d) === i).map((d) => RF.Spec.gridOpts(sc, d));
   }
   // a different measuring distance on the same run (no re-trace) — for the comparison table
   function evalAt(ui, distance) {
@@ -169,7 +178,11 @@
     }
     box.append(tbl);
     if (ev.rows.some((r) => r.extreme > 0)) box.append(el('div', { class: 'note' }, 'Zones: the brightest (or dimmest) of many noisy spot readings strays by chance, so a zone fails only if it clears the limit by 2σ plus that expected stray (√(2 ln n) σ over n independent spots).'));
-    if (ev.n.unsure) box.append(el('div', { class: 'note' }, 'Unsure = the shot noise (±2σ) straddles the limit. ≈ ×' + (ev.moreRays >= 100 ? '100+' : ev.moreRays.toFixed(1)) + ' the rays would settle ' + (ev.n.unsure > 1 ? 'them' : 'it') + ' (or widen the kernel).'));
+    if (ev.n.unsure) {
+      const note = el('div', { class: 'note' }, 'Unsure = the shot noise (±2σ) straddles the limit. ≈ ×' + (ev.moreRays >= 100 ? '100+' : ev.moreRays.toFixed(1)) + ' the rays would settle ' + (ev.n.unsure > 1 ? 'them' : 'it') + ' (or widen the kernel). ');
+      if (ui.canRefine && ui.canRefine()) note.append(refineButton(ui));
+      box.append(note);
+    }
     // brightness-theorem feasibility: no design can beat these, whatever the solver
     const fz = RF.Spec.feasibility(sc), bad = fz.filter((f) => !f.ok);
     if (fz.length) box.append(el('div', { class: bad.length ? 'reason' : 'note' }, bad.length ? 'Out of reach for ANY design in this envelope: ' + bad.map((f) => f.kind === 'flux' ? 'the min-zones need ≥ ' + Math.round(f.need) + ' lm (LED: ' + Math.round(f.ceiling) + ')' : f.name + ' needs ' + fmtCd(f.need) + ' cd, ceiling ' + fmtCd(f.ceiling)).join('; ') + '.'
@@ -187,6 +200,12 @@
       }
     });
     if (ui.run && ui.run.ctx.done) box.append(el('div', { class: 'btnrow' }, cmp), out);
+  }
+  // keep tracing the finished run to ×2 the rays (no restart)
+  function refineButton(ui) {
+    const N = ui.run ? ui.run.ctx.N : 0, b = el('button', { type: 'button', class: 'text', title: 'Keep tracing this run up to twice the rays: the result is exactly what that ray count would give from scratch' }, 'Refine → ' + RF.U.fmtInt(2 * N) + ' rays');
+    b.addEventListener('click', () => ui.refine(2));
+    return b;
   }
   function render(ui) {
     if (ui.store.scene.mode !== 'D') return;
@@ -305,5 +324,5 @@
     box.append(el('span', { class: 'btn-pair' }, wt));
   }
 
-  RF.SpecUI = { section, render, update, evalAt, drawFarField, editorOverlay, readout, leftTools, COL };
+  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, editorOverlay, readout, leftTools, COL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

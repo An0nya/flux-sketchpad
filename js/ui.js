@@ -364,7 +364,7 @@
       }
       const N = ui.previewRun ? Math.min(sc.sim.rays, PREVIEW_RAYS) : sc.sim.rays;
       Pc.recordHits = true;
-      Pc.recordExit = sc.mode === 'D';                 // Spec mode judges the far field: keep every ray's last leg
+      if (sc.mode === 'D' && RF.SpecUI) Pc.ffStreams = RF.SpecUI.streams(sc);   // Spec mode judges the far field: bin every ray's last leg as it goes (∞, 25 m, 10 m, target)
       ui.run = { P: Pc, ctx: RF.Engine.newCtx(Pc, N, ui.rayPaths === undefined ? 240 : ui.rayPaths), preview: ui.previewRun, started: now };
       ui.lastHeat = 0; ui.sceneDirty = true;
     }
@@ -382,10 +382,21 @@
       else ui.setStatus('design changed — regenerating when you pause…');
     }
     if (run && (justDone || now - ui.lastStats > 300)) { renderStats(!run.ctx.done); ui.lastStats = now; }
+    if (run && (justDone || ui._refineN !== run.ctx.N)) { const b = document.getElementById('btn-refine'); if (b) { b.disabled = !ui.canRefine(); b.textContent = run.ctx.N < REFINE_MAX ? 'Refine → ' + RF.U.fmtInt(Math.min(REFINE_MAX, 2 * run.ctx.N)) + ' rays' : 'Refine (at 50M)'; } ui._refineN = run.ctx.N; }
     markStale();
     if (ui.sceneDirty) { drawSceneView(); drawSurfaceView(); drawLeft(); ui.sceneDirty = false; }
     if ((run && !run.ctx.done) || (ui.pendingA && store.dirty.has('A')) || ui.solveArmed) schedule();
   }
+  // Refine: keep tracing the finished run up to ×2 the rays (exactly the run a bigger ray count would have made: see Engine.extend)
+  const REFINE_MAX = 5e7;
+  ui.canRefine = () => !!(ui.run && ui.run.ctx.done && !ui.run.preview && ui.run.ctx.N < REFINE_MAX && !ui.solving && !ui.store.dirty.has('A'));
+  ui.refine = function (factor) {
+    if (!ui.canRefine()) return false;
+    const run = ui.run, N2 = Math.min(REFINE_MAX, Math.round(run.ctx.N * (factor || 2)));
+    run.ctx = RF.Engine.extend(run.ctx, N2); run.refined = true;
+    ui.setStatus('refining to ' + RF.U.fmtInt(N2) + ' rays'); ui.lastHeat = 0; schedule();
+    return true;
+  };
   // Spec mode measures paint fidelity against the solver's working target (spec floors / ceilings + the painting)
   const paintScene = (s) => (s.mode === 'D' && RF.Spec ? Object.assign({}, s, { mode: 'A', modeA: Object.assign({}, s.modeA, { paint: RF.Spec.workingPaint(s) }) }) : s);
   function renderStats(running) {

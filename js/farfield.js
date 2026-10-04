@@ -55,38 +55,74 @@
    *   opts.win = [h0, h1, v0, v1] degrees (default ±45 × ±15) · opts.step = bin size in degrees (default 0.1)
    *   opts.conv = 'A' | 'B' | 'S' · opts.distance = Infinity (far field, default) or a screen distance in mm from the
    *   photometric centre (the screen is normal to the throw axis) · opts.centre = photometric centre (default [0,0,0])
+   * Two sources, same result: a STREAM the trace binned into as it ran (P.ffStreams, one per opts — memory stays flat
+   * however many rays), or the stored exit rays (P.recordExit, capped at ~2M).  A stream wins when one matches opts.
    * Returns { E, E2, Om (per bin), sat: summed-area tables, nh, nv, h0, v0, step, conv, distance, lmWindow, lmExit, rays }.
    * E is in lm (already scaled for a partial / capped trace), Om in sr, so E/Om is cd.                                 */
-  function build(ctx, opts) {
+  function norm(opts) {
     opts = opts || {};
-    const x = ctx.ex; if (!x) throw new Error('trace did not record exit rays (set P.recordExit before newCtx)');
     const win = opts.win || [-45, 45, -15, 15], step = opts.step || 0.1, conv = opts.conv || 'A';
     const dist = opts.distance === undefined || opts.distance === null ? Infinity : +opts.distance;
     const c = opts.centre || [0, 0, 0];
-    const h0 = win[0], v0 = win[2], nh = Math.max(1, Math.round((win[1] - win[0]) / step)), nv = Math.max(1, Math.round((win[3] - win[2]) / step));
-    const cov = RF.Engine.exitCoverage(ctx), scale = ctx.N / Math.max(1, cov);
-    const E = new Float64Array(nh * nv), E2 = new Float64Array(nh * nv);
-    let lmWindow = 0, lmExit = 0, rays = 0;
-    const X = c[0] + dist, finite = isFinite(dist);
-    for (let k = 0; k < x.n; k++) {
-      if (x.i[k] >= cov) break;
-      const e = x.e[k] * scale, q = 3 * k;
-      lmExit += e;
-      let a = x.d[q], b = -x.d[q + 1], cc = x.d[q + 2];
-      if (finite) {                                    // where it crosses the screen, as seen from the centre
-        if (!(a > 0)) continue;
-        const t = (X - x.o[q]) / a; if (!(t > 0)) continue;
-        const px = x.o[q] + t * x.d[q] - c[0], py = x.o[q + 1] + t * x.d[q + 1] - c[1], pz = x.o[q + 2] + t * x.d[q + 2] - c[2], L = Math.hypot(px, py, pz);
-        a = px / L; b = -py / L; cc = pz / L;
+    const nh = Math.max(1, Math.round((win[1] - win[0]) / step)), nv = Math.max(1, Math.round((win[3] - win[2]) / step));
+    const key = JSON.stringify([win, step, conv, isFinite(dist) ? dist : 'inf', c.map((x) => +(+x).toFixed(4))]);
+    return { win, step, conv, dist, c, h0: win[0], v0: win[2], nh, nv, key };
+  }
+  // a grid the engine bins exit legs into while it traces (engine.js calls binExit for every exit leg)
+  function newStream(opts) {
+    const o = norm(opts);
+    return Object.assign(o, { E: new Float64Array(o.nh * o.nv), E2: new Float64Array(o.nh * o.nv), lm: 0, lmExit: 0, rays: 0, finite: isFinite(o.dist), X: o.c[0] + o.dist });
+  }
+  function binExit(S, ox, oy, oz, dx, dy, dz, e) {
+    S.lmExit += e;
+    let a = dx, b = -dy, cc = dz;
+    if (S.finite) {                                    // where it crosses the screen, as seen from the centre
+      if (!(a > 0)) return;
+      const t = (S.X - ox) / a; if (!(t > 0)) return;
+      const c = S.c, px = ox + t * dx - c[0], py = oy + t * dy - c[1], pz = oz + t * dz - c[2], L = Math.hypot(px, py, pz);
+      a = px / L; b = -py / L; cc = pz / L;
+    }
+    const hv = hvOfABC(a, b, cc, S.conv);
+    const i = Math.floor((hv[0] - S.h0) / S.step), j = Math.floor((hv[1] - S.v0) / S.step);
+    if (!(i >= 0 && i < S.nh && j >= 0 && j < S.nv)) return;
+    const m = j * S.nh + i; S.E[m] += e; S.E2[m] += e * e; S.lm += e; S.rays++;
+  }
+  // rescale a stream when its run is extended to more rays (every ray's energy shrinks by f)
+  function scaleStream(S, f) { for (let i = 0; i < S.E.length; i++) { S.E[i] *= f; S.E2[i] *= f * f; } S.lm *= f; S.lmExit *= f; }
+  const streamOf = (ctx, opts) => (ctx.ff ? ctx.ff.find((s) => s.key === norm(opts).key) || null : null);
+  function build(ctx, opts) {
+    const o = norm(opts), { win, step, conv, dist, c, h0, v0, nh, nv } = o;
+    let E, E2, lmWindow = 0, lmExit = 0, rays = 0, cov, scale;
+    const S = ctx.ff ? ctx.ff.find((s) => s.key === o.key) : null;
+    if (S) {
+      cov = ctx.next; scale = ctx.N / Math.max(1, cov);
+      if (scale === 1) { E = S.E; E2 = S.E2; } else { E = S.E.map((x) => x * scale); E2 = S.E2.map((x) => x * scale * scale); }
+      lmWindow = S.lm * scale; lmExit = S.lmExit * scale; rays = S.rays;
+    } else {
+      const x = ctx.ex; if (!x) throw new Error(ctx.ff ? 'the far field was not streamed for these settings: re-trace' : 'trace did not record exit rays (set P.recordExit or P.ffStreams before newCtx)');
+      cov = RF.Engine.exitCoverage(ctx); scale = ctx.N / Math.max(1, cov);
+      E = new Float64Array(nh * nv); E2 = new Float64Array(nh * nv);
+      const X = c[0] + dist, finite = isFinite(dist);
+      for (let k = 0; k < x.n; k++) {
+        if (x.i[k] >= cov) break;
+        const e = x.e[k] * scale, q = 3 * k;
+        lmExit += e;
+        let a = x.d[q], b = -x.d[q + 1], cc = x.d[q + 2];
+        if (finite) {
+          if (!(a > 0)) continue;
+          const t = (X - x.o[q]) / a; if (!(t > 0)) continue;
+          const px = x.o[q] + t * x.d[q] - c[0], py = x.o[q + 1] + t * x.d[q + 1] - c[1], pz = x.o[q + 2] + t * x.d[q + 2] - c[2], L = Math.hypot(px, py, pz);
+          a = px / L; b = -py / L; cc = pz / L;
+        }
+        const hv = hvOfABC(a, b, cc, conv);
+        const i = Math.floor((hv[0] - h0) / step), j = Math.floor((hv[1] - v0) / step);
+        if (!(i >= 0 && i < nh && j >= 0 && j < nv)) continue;
+        const m = j * nh + i; E[m] += e; E2[m] += e * e; lmWindow += e; rays++;
       }
-      const hv = hvOfABC(a, b, cc, conv);
-      const i = Math.floor((hv[0] - h0) / step), j = Math.floor((hv[1] - v0) / step);
-      if (!(i >= 0 && i < nh && j >= 0 && j < nv)) continue;
-      const m = j * nh + i; E[m] += e; E2[m] += e * e; lmWindow += e; rays++;
     }
     const Om = new Float64Array(nh * nv);
     for (let j = 0; j < nv; j++) for (let i = 0; i < nh; i++) Om[j * nh + i] = binOmega(h0 + i * step, h0 + (i + 1) * step, v0 + j * step, v0 + (j + 1) * step, conv);
-    const G = { E, E2, Om, nh, nv, h0, v0, step, h1: h0 + nh * step, v1: v0 + nv * step, conv, distance: dist, centre: c.slice(), lmWindow, lmExit, rays, coverage: cov, N: ctx.N,
+    const G = { E, E2, Om, nh, nv, h0, v0, step, h1: h0 + nh * step, v1: v0 + nv * step, conv, distance: dist, centre: c.slice(), lmWindow, lmExit, rays, coverage: cov, N: ctx.N, streamed: !!S,
       eRay: ctx.P.power / Math.max(1, ctx.N) * scale };   // one emitted ray's energy (lm), for the noise floor of an empty kernel
     G.sat = { E: sat(E, nh, nv), E2: sat(E2, nh, nv), Om: sat(Om, nh, nv) };
     return G;
@@ -128,5 +164,5 @@
   // bin centre (h, v) of bin index
   const binCentre = (G, i, j) => [G.h0 + (i + 0.5) * G.step, G.v0 + (j + 0.5) * G.step];
 
-  RF.FarField = { CONVS, hvOf, dirOf, binOmega, build, intensityAt, map, binCentre };
+  RF.FarField = { CONVS, hvOf, dirOf, binOmega, build, intensityAt, map, binCentre, newStream, binExit, scaleStream, streamOf };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -208,5 +208,31 @@ function fakeG(fn, win, step) {
   const P = RF.Engine.prepare(Object.assign(RF.State.testScene(), { source: s }), []); const c = RF.Engine.runSync(P, 2000);
   check('the HB3 source traces (energy closes)', Math.abs(RF.Engine.stats(c).conservationError) < 1e-9);
 }
+// streamed far field and Refine (Engine.extend)
+{
+  const sc = RF.State.defaultScene(); sc.mode = 'D'; sc.target.distance = 10000; sc.target.size = RF.Spec.fitTargetSize(sc);
+  sc.groups.A.surfaces = RF.ModeA.generate(RF.U.deepCopy(sc)).surfaces;
+  const opts = [0, 25000].map((d) => RF.Spec.gridOpts(sc, d)), surfs = RF.State.allSurfaces(sc);
+  const P1 = RF.Engine.prepare(sc, surfs); P1.recordExit = true; P1.exitCap = 60000; P1.ffStreams = opts; P1.recordHits = true;
+  const one = RF.Engine.runSync(P1, 60000);
+  let okS = true, det = [];
+  for (const o of opts) {
+    const Gs = RF.FarField.build(one, o), Gx = RF.FarField.build(Object.assign({}, one, { ff: null }), o);
+    const a = RF.FarField.intensityAt(Gs, 1.15, -0.57, 1), b = RF.FarField.intensityAt(Gx, 1.15, -0.57, 1);
+    if (!Gs.streamed || Math.abs(Gs.lmWindow / Gx.lmWindow - 1) > 1e-6 || Math.abs(a.cd / b.cd - 1) > 0.01) okS = false;
+    det.push((isFinite(o.distance) ? o.distance / 1000 + ' m' : '∞') + ' ' + Math.round(a.cd) + ' / ' + Math.round(b.cd) + ' cd');
+  }
+  check('streamed far field = the one built from stored exit rays (window lumens exact; a 2° kernel within 1 %, float32 storage)', okS, det.join(' · '));
+  const P2 = RF.Engine.prepare(sc, surfs); P2.recordExit = true; P2.exitCap = 60000; P2.ffStreams = opts; P2.recordHits = true;
+  let c = RF.Engine.newCtx(P2, 20000, 0); while (!RF.Engine.step(c, 5)) { /* slices */ }
+  const c0 = c; c = RF.Engine.extend(c, 60000); while (!RF.Engine.step(c, 5)) { /* slices */ }
+  const near = (a, b) => a.every((x, i) => Math.abs(x - b[i]) <= 1e-9 * Math.abs(b[i]) + 1e-15);   // equal up to rounding (rescaled sums)
+  const same = c !== c0 && near(c.gridD, one.gridD) && near(c.gridR, one.gridR) && near(c.ff[0].E, one.ff[0].E) && near(c.ff[1].E2, one.ff[1].E2)
+    && c.nHits === one.nHits && c.ex.n === one.ex.n && c.rayK.every((x, i) => x === one.rayK[i]) && Math.abs(c.E.emitted / one.E.emitted - 1) < 1e-12;
+  check('Refine: a 20k run extended to 60k = a 60k run from scratch (grids, streams, hits, exits, attribution)', same, 'conservation ' + RF.Engine.stats(c).conservationError.toExponential(1));
+  const sc2 = RF.U.deepCopy(sc); sc2.modeD.step = 0.1;
+  let threw = ''; try { RF.FarField.build(Object.assign({}, one, { ex: null }), RF.Spec.gridOpts(sc2)); } catch (e) { threw = e.message; }
+  check('a grid the run did not stream (bin changed) asks for a re-trace', /re-trace/.test(threw), threw);
+}
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

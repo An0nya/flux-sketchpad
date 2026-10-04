@@ -173,6 +173,7 @@
         el('div', { id: 'lens-list', class: 'lens-list' }))));
     // ---- 3. Simulation
     side.append(section('Simulation', { open: true, key: 'sim', tag: 'rays & grids' }, ...rowsFor(ui, ['rays', 'tgt.res', 'sim.res', 'sim.autoRes']),
+      el('div', { class: 'btnrow' }, el('button', { type: 'button', id: 'btn-refine', disabled: true, title: 'Keep tracing the finished run up to twice the rays (up to 50M). Exactly what that ray count would give from scratch, without starting over.', onclick: () => ui.refine(2) }, 'Refine ×2')),
       section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']))));
     // ---- 4. View (display only, remembered per browser)
     side.append(section('View', { open: false, key: 'view', tag: 'display only' },

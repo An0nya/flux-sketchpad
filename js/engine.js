@@ -100,6 +100,9 @@
       // (far field, js/farfield.js) and what a plane at ANY distance would catch, without retracing.  One per ray at
       // most, in ray order; capped like hits (exitCoverage says which rays are covered).
       ex: P.recordExit ? newExit(Math.min(N, P.exitCap || 2e6)) : null,
+      // far-field streams (P.ffStreams = [grid opts]): exit legs binned by direction / screen position as they happen — the
+      // same grids FarField.build makes from stored exits, without storing them, so a run can have any number of rays
+      ff: P.ffStreams && P.ffStreams.length ? P.ffStreams.map((o) => RF.FarField.newStream(o)) : null,
       paths: [], pathLimit: pathLimit === undefined ? 240 : pathLimit,
       elapsed: 0, done: N === 0,
     };
@@ -165,6 +168,7 @@
           if (Math.abs(u) <= T.half && Math.abs(v) <= T.half) {
             if (rec) rec.push(ox + t * dx, oy + t * dy, oz + t * dz);
             if (ctx.ex) recExit(ctx, ox, oy, oz, dx, dy, dz, E, bounces);
+            if (ctx.ff) for (const S of ctx.ff) RF.FarField.binExit(S, ox, oy, oz, dx, dy, dz, E);
             if (den < 0) {                         // lit side
               const r = P.res;
               let iu = Math.floor((u + T.half) / (2 * T.half) * r), iv = Math.floor((v + T.half) / (2 * T.half) * r);
@@ -186,6 +190,7 @@
       if (kBest < 0) {
         ctx.E.escaped += E;
         if (ctx.ex) recExit(ctx, ox, oy, oz, dx, dy, dz, E, bounces);
+        if (ctx.ff) for (const S of ctx.ff) RF.FarField.binExit(S, ox, oy, oz, dx, dy, dz, E);
         if (rec) { const L = P.scale * 1.5; rec.push(ox + L * dx, oy + L * dy, oz + L * dz); rec.end = 'escape'; }
         if (probe) probe.push({ type: 'escape', dir: [dx, dy, dz] });
         return;
@@ -300,6 +305,38 @@
     ctx.next = N; ctx.done = true;
     ctx.elapsed = RF.U.now() - t0;
     return ctx;
+  }
+
+  /* Extend a run to N2 rays (Refine).  Ray i's stream depends only on (seed, i), so tracing rays N … N2 − 1 on top gives
+   * exactly the N2-ray run — once everything already accumulated is rescaled to the smaller per-ray energy (P.power / N2).
+   * Returns a NEW context (so caches keyed by the context see a new run) that takes over the old one's buffers; the old
+   * one must not be used afterwards.  Lists recorded per hit / exit grow to their caps.                          */
+  function extend(ctx, N2) {
+    N2 = Math.floor(N2);
+    if (!(N2 > ctx.N)) return ctx;
+    const P = ctx.P, f = ctx.N / N2, c = Object.assign({}, ctx, { N: N2, done: false });
+    const mul = (a, n) => { for (let i = 0; i < (n === undefined ? a.length : n); i++) a[i] *= f; };
+    mul(c.gridD); mul(c.gridR); mul(c.surfIn);
+    c.E = {}; for (const k of Object.keys(ctx.E)) c.E[k] = ctx.E[k] * f;
+    c.occ = Object.assign({}, ctx.occ, { blocked: ctx.occ.blocked * f, out1: ctx.occ.out1 * f, shadow: null }); mul(c.occ.blockedK); mul(c.occ.out1K);
+    if (c.hits) {
+      for (let h = 0; h < c.nHits; h++) c.hits[3 * h + 2] *= f;
+      const cap = Math.min(N2, P.hitCap || 2e6);
+      if (cap > c.hitCap) {
+        const grow = (a, k) => { const b = new a.constructor(k * cap); b.set(a.subarray(0, k * c.nHits)); return b; };
+        c.hits = grow(c.hits, 3); c.hitK = grow(c.hitK, 1); c.hitB = grow(c.hitB, 1); c.hitI = grow(c.hitI, 1); c.hitCap = cap;
+      }
+    }
+    if (c.rayK) { const r = new c.rayK.constructor(N2); r.set(c.rayK); c.rayK = r; }
+    if (c.ex) {
+      const x = c.ex; mul(x.e, x.n);
+      const cap = Math.min(N2, P.exitCap || 2e6);
+      if (cap > x.cap && x.n < x.cap) {    // a list that already overflowed stays as it is (its coverage stops at its last ray)
+        const y = newExit(cap); y.o.set(x.o.subarray(0, 3 * x.n)); y.d.set(x.d.subarray(0, 3 * x.n)); y.e.set(x.e.subarray(0, x.n)); y.b.set(x.b.subarray(0, x.n)); y.i.set(x.i.subarray(0, x.n)); y.n = x.n; c.ex = y;
+      }
+    }
+    if (c.ff) for (const S of c.ff) RF.FarField.scaleStream(S, f);
+    return c;
   }
 
   // Re-run ray i of a trace exactly (same stream, same code path) for drawing: its polyline, how it
@@ -516,6 +553,6 @@
 
   RF.Engine = {
     targetFrame, designFrame, aimPoint, targetUVtoWorld, worldToTargetUV, cellCenter,
-    prepare, newCtx, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, occlusion, hitCoverage, exitCoverage, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
+    prepare, newCtx, extend, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, occlusion, hitCoverage, exitCoverage, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

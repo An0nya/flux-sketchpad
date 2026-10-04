@@ -175,6 +175,7 @@
       if (ax !== 0 && (ax < 1e-3 || ax >= 1e6)) return x.toExponential(2);
       return x.toFixed(d);
     },
+    fmtInt: (n) => (n >= 1e6 ? +(n / 1e6).toPrecision(3) + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : String(Math.round(n))),   // ray counts: 12.8M, 400k, 950
     now: () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
     uid: (() => { let n = 1; return (p) => (p || 's') + (n++).toString(36) + '_' + ((fmix32(n * 7919) >>> 0) % 46656).toString(36); })(),
     deepCopy: (o) => JSON.parse(JSON.stringify(o)),
