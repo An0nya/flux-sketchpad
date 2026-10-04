@@ -250,21 +250,80 @@ shadow; the depth is a guess):
 - The rear-firing LED in a 7" bucket clearly has the optical headroom: peaks of 75–168 kcd.
   The thermal side (28 W on a front-mounted LED) is out of scope.
 
-### Ray budget (proposal, not built)
+### Ray budget (built 2026-10-05)
 
-The cap is 1 M rays per run. Spec mode stores 29 bytes per exit ray, and the hit list stores
-more. The low limits need ~5–10 M rays at regulation resolution.
-1. **Stream the far field instead of storing exit rays.** Bin straight into grids for ∞, 25 m,
-   10 m and the target distance during the trace. Add a "Refine" that keeps adding rays (ray
-   *i*'s stream depends only on (seed, i), so runs extend exactly). Memory stays flat, and
-   10–20 M rays is a ~30–60 s job in the browser.
-2. **Guided emission, unbiased.** Dropping rays that miss the optics saves little here (~78% of
-   the default LED's light already hits the reflector). The waste is elsewhere: most rays land
-   in the 30–60 kcd hot zone, while the 65–625 cd points get almost none, a 500× density gap.
-   From a pilot trace, the first-surface attribution says which facets light the dim regions.
-   Emit more rays into those facets' cones and fewer into the hot-zone facets and empty space,
-   with weight = true ÷ proposal density (a defensive mixture, so nothing gets zero
-   probability). Expect ~10–100× effective rays at the dim points.
+1. **The far field streams.** In Spec mode the trace bins every exit leg as it happens into four
+   grids: the report's distance, ∞, 25 m, and 10 m (plus the target distance). Nothing is stored
+   per ray, so memory stays flat: ~4 MB per grid at R112's 0.05° bins. The per-run ray cap went
+   from 1 M to 20 M. Changing the window, bin or angle convention re-traces once by itself.
+   `FarField.build` still accepts stored exit rays (tests, scripts).
+2. **Refine** (Simulation section, and next to the "unsure" note in the report) keeps tracing a
+   finished run up to ×2 the rays, up to 50 M. `Engine.extend` rescales everything already
+   accumulated to the smaller per-ray energy, then traces rays N … 2N − 1. A run extended this way
+   matches a from-scratch run of 2N rays to rounding (tests/spec.js).
+3. **Guided emission (Spec mode's Refine).** The trace learns which emission directions (32 × 32
+   equal-probability bins of the LED's direction uniforms) land where in the window, on a coarse
+   0.5° grid. Refine then draws its new rays from q(bin) = 0.3/1024 + 0.7 × (bin's mean
+   1/max(I, 5e-4·peak)), weighted 1/(1024·q), so each estimate stays unbiased and no weight
+   exceeds 3.3. Dim places get more rays, the hot spot fewer.
+   - Measured on a dish-fit design (2 M pilot + guided to 4 M vs plain 4 M, ±0.25° kernel):
+     effective rays at (−6°, 3°U) 193 vs 4; at (0, 4U) 25 vs 4; at (−4, 2U) 21 vs 4; at 75R
+     5,400 vs 7,300. Over the window's sub-1 %-of-peak spots, the median gain is ×3.2
+     (quartiles ×1.8–×18).
+   - It exposed an aim bug: the cut-off finder took the steepest log step anywhere in the scan,
+     and a dim glow's top edge (80 → 1 cd) is steeper in log terms than the real cut-off. Now
+     only steps whose bright side holds ≥ 2 % of the scan line's maximum count.
+   - The empty-kernel noise floor uses the lightest guided ray's energy.
+   - What it doesn't fix: R112's own photocell (±0.0745°) is ~7 µsr. Even 50 M guided rays put
+     only tens of rays into a 125 cd point. The verdicts for the sign points stay statistical.
+
+### Dome model (built 2026-10-05)
+
+`src.dome = { r, n, z }` on a planar die: each ray leaves the die into the silicone and refracts
+out through the sphere. It reflects back on TIR, or on the Fresnel share (drawn per ray,
+unpolarised). Light returning to the base is re-emitted diffusely from where it lands (the
+phosphor and white package recycle it). `power` stays the measured domed flux. The dome is
+analytic, not a surface, so it costs nothing in the BVH.
+
+Solvers plan with `RF.Source.apparent(src)`, the paraxial image of the die through the dome
+(× n for a die at the centre; a centre above the die gives a bigger image and a narrower beam).
+Traces use the real dome.
+
+- **Check against koef3's 519A pair.** The dedomed sample's die (4.4–4.7 mm² effective) under
+  an n = 1.41 hemisphere predicts the domed sample's measured apparent area to +0–10 % (0.7–7.6 A).
+- **Traced near-axis image width:** 2.73 mm for a 2 mm die under an r = 2.5 mm dome. Paraxial
+  says 2.82.
+- **Assumptions:** the 519A dome radius (2.0 mm) is assumed. A die whose half-diagonal exceeds
+  r/n gets TIR at its corners, and that is traced.
+
+### Default emitter (2026-10-05)
+
+The default source is now a 2 × 2 mm Lambertian die at 150 cd/mm² (1,885 lm), preset
+`generic`. A warm sibling, `generic-warm`, is the same die at 100 cd/mm² (1,257 lm). The old
+1 mm², 318 cd/mm² sketch LED stays as a preset.
+
+### Spoke at long throws (fixed 2026-10-05)
+
+The built-in solver's smallest curve radius was 0.2 % of the throw. At a 25 m target that is
+50 mm: nothing fit the default envelope, and spoke placed 0 facets. It is now capped at a
+quarter of the envelope's reach.
+
+### Before dedicated spec solvers: what's still missing
+
+1. **`input.spec` + angle-space targets.** Solvers still aim at points on a flat plane. The
+   25 m target is a workaround for parallax (0.23° at 10 m for a facet 40 mm off-axis, 0.09° at
+   25 m). It is not a fix: the cell grid is still uniform in plane mm, not degrees. A dedicated
+   solver should read the items in (H, V) and aim directions.
+2. **A spec bench in the repo.** `compare3.js` (solver × settings × fixture, 2 M + guided
+   judging) should become `tests/bench-spec.js`, with fixed fixtures. Every future solver gets
+   scored against the same table.
+3. **Fixture library with real dimensions.** Default box, the 7" bucket (true depth and
+   focal length needed), a modern slim reflector (~120 × 35), and a projector module envelope.
+4. **A more robust cut-off aim.** A design with a bright stray streak at 4–5° U can still
+   capture the aim (SQM in the 7" bucket). The lab's eye ignores that. Candidates: restrict the
+   aim scan to near the expected line, or take the edge with the largest absolute drop.
+5. **FMVSS 108 preset.** Needs the full table rows and the VOL/VOR aim rules.
+6. **Edge-aware facet orientation** (parked). Phase 2's edge anchoring depends on it.
 
 ## Phase 2: a solver that targets the spec (next)
 
