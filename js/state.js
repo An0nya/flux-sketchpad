@@ -49,6 +49,7 @@
       mode: 'A',
       modeA: { paint: defaultPaint(50), brush: { size: 3, strength: 1, erase: false }, budget: 48, facetType: 'curved', reflectivity: 0.9, requiredFlux: 0, minDistance: 12 },   // minDistance: solver preference (was part of a 12 mm keep-out)
       modeB: { stamps: [], selected: null, facetType: 'curved', defaultScale: 160, minDistance: 12 },
+      modeD: RF.Spec ? RF.Spec.defaults() : {},     // Spec mode: beam spec (points / zones / cut-off) + the paint as a secondary goal (js/spec.js)
       modeC: {
         profile: [], sweep: 'revolve', axisMode: 'aim', azSegments: 0, mirror: false, flipFacing: false, reverseAxis: false,
         interaction: 'reflect', reflectivity: 0.9, ior: 1.49, fresnelT: 0.96, extrudeLength: 60,

@@ -95,9 +95,26 @@
       surfIn: new Float64Array(Math.max(1, P.G.n)),
       // occlusion: light that left one surface and then ended on another without landing (blocked), per first surface
       occ: { blocked: 0, blockedK: new Float64Array(Math.max(1, P.G.n)), out1: 0, out1K: new Float64Array(Math.max(1, P.G.n)), shadow: null },   // out1 = light leaving the first surface
+      // exit rays (P.recordExit): every ray's LAST straight leg (origin, unit direction, energy, bounces) once it is
+      // past the optics — it ended on the target plane (either face) or escaped.  That leg is what a goniometer sees
+      // (far field, js/farfield.js) and what a plane at ANY distance would catch, without retracing.  One per ray at
+      // most, in ray order; capped like hits (exitCoverage says which rays are covered).
+      ex: P.recordExit ? newExit(Math.min(N, P.exitCap || 2e6)) : null,
       paths: [], pathLimit: pathLimit === undefined ? 240 : pathLimit,
       elapsed: 0, done: N === 0,
     };
+  }
+
+  function newExit(cap) { return { o: new Float32Array(3 * cap), d: new Float32Array(3 * cap), e: new Float32Array(cap), b: new Uint8Array(cap), i: new Uint32Array(cap), n: 0, cap }; }
+  function recExit(ctx, ox, oy, oz, dx, dy, dz, E, bounces) {
+    const x = ctx.ex; if (x.n >= x.cap) return;
+    const n = x.n++, q = 3 * n;
+    x.o[q] = ox; x.o[q + 1] = oy; x.o[q + 2] = oz; x.d[q] = dx; x.d[q + 1] = dy; x.d[q + 2] = dz; x.e[n] = E; x.b[n] = bounces > 255 ? 255 : bounces; x.i[n] = ctx.curI;
+  }
+  // rays whose exit legs are all recorded (as hitCoverage): scale exit sums by THIS, not ctx.next
+  function exitCoverage(ctx) {
+    const x = ctx.ex; if (!x) return 0;
+    return x.n < x.cap ? ctx.next : x.i[x.n - 1] + 1;   // each ray records at most once, so every ray up to the last recorded one is complete
   }
 
   /* ---------------------------------------------------------------- one ray, all bounces
@@ -147,6 +164,7 @@
           const u = px * T.tu[0] + py * T.tu[1] + pz * T.tu[2], v = px * T.tv[0] + py * T.tv[1] + pz * T.tv[2];
           if (Math.abs(u) <= T.half && Math.abs(v) <= T.half) {
             if (rec) rec.push(ox + t * dx, oy + t * dy, oz + t * dz);
+            if (ctx.ex) recExit(ctx, ox, oy, oz, dx, dy, dz, E, bounces);
             if (den < 0) {                         // lit side
               const r = P.res;
               let iu = Math.floor((u + T.half) / (2 * T.half) * r), iv = Math.floor((v + T.half) / (2 * T.half) * r);
@@ -167,6 +185,7 @@
       }
       if (kBest < 0) {
         ctx.E.escaped += E;
+        if (ctx.ex) recExit(ctx, ox, oy, oz, dx, dy, dz, E, bounces);
         if (rec) { const L = P.scale * 1.5; rec.push(ox + L * dx, oy + L * dy, oz + L * dz); rec.end = 'escape'; }
         if (probe) probe.push({ type: 'escape', dir: [dx, dy, dz] });
         return;
@@ -287,7 +306,7 @@
   // ended, and the surfaces it touched in order.
   function retrace(P, i) {
     // one scratch context per prepared scene: retracing thousands of rays must not allocate grids each time
-    const ctx = P._rctx || (P._rctx = newCtx(Object.assign({}, P, { recordHits: false }), 1, 0)), o = new Float64Array(3), d = new Float64Array(3);
+    const ctx = P._rctx || (P._rctx = newCtx(Object.assign({}, P, { recordHits: false, recordExit: false }), 1, 0)), o = new Float64Array(3), d = new Float64Array(3);
     sampleRayI(P, i, o, d);
     const rec = [o[0], o[1], o[2]]; rec.end = ''; const ev = [];
     traceOne(P, ctx, o[0], o[1], o[2], d[0], d[1], d[2], 1, rec, ev);
@@ -366,7 +385,7 @@
 
   // Single ray through the same code path; returns the event list.
   function probeRay(P, o, d, E) {
-    const ctx = newCtx(P, 1, 0);
+    const ctx = newCtx(Object.assign({}, P, { recordExit: false }), 1, 0);
     const ev = [];
     const dn = V.norm(d);
     traceOne(P, ctx, o[0], o[1], o[2], dn[0], dn[1], dn[2], E || 1, null, ev);
@@ -497,6 +516,6 @@
 
   RF.Engine = {
     targetFrame, designFrame, aimPoint, targetUVtoWorld, worldToTargetUV, cellCenter,
-    prepare, newCtx, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, occlusion, hitCoverage, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
+    prepare, newCtx, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, occlusion, hitCoverage, exitCoverage, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

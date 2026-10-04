@@ -73,11 +73,13 @@
     for (const k of SHARED) if (def.settings.some((f) => f.key === k)) o[k] = sh[k];   // limits too, for solvers that (wrongly) declare them
     return sanitize(def, o);
   }
+  // the painting a solver is asked for: the paint itself, or in Spec mode the spec's working target (js/spec.js)
+  const paintOf = (scene) => (scene.mode === 'D' && RF.Spec && scene.modeD ? RF.Spec.workingPaint(scene) : scene.modeA.paint);
   // the problem half of the scene: all a solver may see
   function inputOf(scene) {
     return RF.U.deepCopy({
       source: scene.source, envelope: scene.envelope, target: scene.target,
-      paint: { res: scene.target.res, cells: scene.modeA.paint }, stamps: (scene.modeB && scene.modeB.stamps) || [], seed: scene.sim.seed | 0,
+      paint: { res: scene.target.res, cells: paintOf(scene) }, stamps: (scene.modeB && scene.modeB.stamps) || [], seed: scene.sim.seed | 0,
       limits: { maxFacets: Math.max(1, scene.modeA.budget | 0), reflectivity: scene.modeA.reflectivity },
     });
   }
@@ -152,7 +154,7 @@
   // Synchronous run (headless tests, and solvers cheap enough for the main thread).  The UI's worker host
   // calls the same pieces.  Returns the scene-ready result; never mutates the scene.
   // the problem scene a solver's trace() runs against (plain data: crosses into a worker)
-  const problemOf = (scene) => RF.U.deepCopy({ source: scene.source, target: scene.target, envelope: scene.envelope, sim: scene.sim, modeA: { paint: scene.modeA.paint } });
+  const problemOf = (scene) => RF.U.deepCopy({ source: scene.source, target: scene.target, envelope: scene.envelope, sim: scene.sim, modeA: { paint: paintOf(scene) } });
   function prepareRun(scene, id) {
     id = id || current(scene);
     const def = get(id); if (!def) throw new Error('no solver ' + id);
@@ -204,5 +206,5 @@
     return res;
   }
 
-  RF.Solvers = { PREFERRED_ID, wanted, register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
+  RF.Solvers = { paintOf, PREFERRED_ID, wanted, register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
