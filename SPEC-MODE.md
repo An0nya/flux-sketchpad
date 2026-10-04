@@ -151,6 +151,15 @@ Light source → **Emitter** presets (`js/source-presets.js`):
   luminance comes from his cd/mm² tables. No die sizes are given, so the die is a square of
   the **effective area Φ / (π L)**: 2.04, 1.5, 1.3 and 2.07 mm². That holds within a few %
   across current, which supports the readings.
+- **More koef3 LEDs** (from his FFL505A, Nichia 519A / 519A-V1 and SFT-70 comparison charts):
+  FFL505A 3500 K rosy, Yinding 5050 6500 K 95 CRI, Nichia 519A sm503 (domed and dedomed),
+  519A-V1 sm573 (domed), and SFT-70 3000 K 95 CRI / SFT-70-X 6500 K 70 CRI (6 V). For domed parts
+  the effective area is the dome's head-on apparent size (519A domed ≈ 9 mm², dedomed ≈ 4.6),
+  which a flat Lambertian disc only approximates off-axis.
+- **SFT-40 3000 K, koef3's own luminance** (15.2 / 49.9 / 127.6 cd/mm²) gives an effective area
+  of ≈ 4.27 mm², about 10 % more than the 1.97 mm die square. His sample measured about 10 %
+  less bright per mm² than the datasheet geometry implies. The "koef3" flux model now uses that
+  area; the "datasheet" model keeps the 1.97 mm die.
 - **Measured LED:** paste rows of A, lm and cd/mm² (any koef3 test), pick a square or round
   die, and the effective area follows the drive current.
 - **HB3/9005:** UN R37 sheets HB3/1–4. An axial 5.1 mm opaque coil, 1,860 lm at 13.2 V or

@@ -48,6 +48,25 @@
     'osram-hwqp': { label: 'Osram Black Flat HWQP (domeless)', flux: [[0, 0], [1, 317], [2, 548], [3, 719], [4, 848], [5, 926], [5.4, 937], [5.8, 933]],
       vf: [[0.2, 2.80], [1, 3.01], [2, 3.19], [3, 3.36], [4, 3.56], [5, 3.77], [5.8, 4.00]], lum: [[0.7, 61.0], [2.8, 166.5], [5.4, 225.4]], defaultA: 4,
       note: 'koef3 has two luminance tables for this LED (61.0 / 166.5 / 225.4 and 66.1 / 181.2 / 245.9 cd/mm²); the first, repeated in three of his tables, is used.' },
+    // charts "LED comparison – FFL505A (3500 K 95 CRI rosy type)", "– Nichia 519A / 519A-V1", "– Luminus SFT-70 3000K 95CRI";
+    // luminance from his cd/mm² tables.  DOMED emitters: the dome magnifies the die, so the effective area is the dome's apparent
+    // size seen head-on; it shrinks off-axis, which a flat Lambertian disc doesn't capture.
+    'ffl505a': { label: 'FFL505A 3500 K 95 CRI rosy (domeless)', flux: [[0, 0], [1, 230], [2, 440], [3, 590], [4, 715], [5, 805], [6, 880], [7, 935], [8, 975], [8.8, 985]],
+      vf: [[0.2, 2.72], [1, 2.86], [2, 3.01], [3, 3.11], [4, 3.20], [5, 3.28], [6, 3.37], [7, 3.45], [8, 3.52]], lum: [[0.7, 19.3], [2.8, 60.9], [8.8, 106.5]], defaultA: 5 },
+    'yinding5050-6500': { label: 'Yinding 5050 6500 K 95 CRI (domeless)', flux: [[0, 0], [1, 370], [2, 670], [3, 905], [4, 1105], [5, 1255], [6, 1370], [7, 1455], [8, 1505], [8.8, 1517]],
+      vf: [[0.2, 2.72], [1, 2.91], [2, 3.12], [3, 3.28], [4, 3.43], [5, 3.57], [6, 3.69], [7, 3.80], [8, 3.95], [8.8, 4.05]], lum: [[0.7, 30.1], [2.8, 98.5], [8.4, 164.2]], defaultA: 6 },
+    'nichia519a-domed': { label: 'Nichia 519A 5000 K R9080 sm503 (domed)', flux: [[0, 0], [1, 360], [2, 640], [3, 885], [4, 1090], [5, 1265], [6, 1400], [7, 1500], [7.6, 1523], [8, 1520], [8.6, 1500]],
+      vf: [[0.2, 2.70], [1, 2.90], [2, 3.06], [3, 3.17], [4, 3.25], [5, 3.32], [6, 3.39], [7, 3.44], [8, 3.49], [8.6, 3.52]], lum: [[0.7, 9.1], [2.8, 30.1], [7.6, 58.3]], defaultA: 5,
+      note: 'Domed: the effective area is the dome\u2019s head-on apparent size (~9 mm²).' },
+    'nichia519a-dedomed': { label: 'Nichia 519A 5000 K 90 CRI sm503 (dedomed)', flux: [[0, 0], [1, 285], [2, 530], [3, 725], [4, 880], [5, 1020], [6, 1130], [7, 1200], [7.6, 1213], [8, 1200]],
+      vf: [[0.2, 2.68], [1, 2.89], [2, 3.03], [3, 3.14], [4, 3.23], [5, 3.30], [6, 3.37], [7, 3.42], [8, 3.47]], lum: [[0.7, 14.3], [2.8, 46.6], [7.6, 83.8]], defaultA: 5 },
+    'nichia519a-v1-domed': { label: 'Nichia 519A-V1 5700 K R9080 sm573 (domed)', flux: [[0, 0], [1, 400], [2, 730], [3, 1000], [4, 1230], [5, 1425], [6, 1595], [7, 1730], [8, 1825], [8.6, 1850], [9, 1840], [10, 1800]],
+      vf: [[0.2, 2.67], [1, 2.88], [2, 3.03], [3, 3.15], [4, 3.25], [5, 3.34], [6, 3.41], [7, 3.48], [8, 3.54], [8.6, 3.57], [10, 3.64]], lum: [[0.7, 14.4], [2.8, 46.6], [8.6, 91.0]], defaultA: 6,
+      note: 'Domed: the effective area is the dome\u2019s head-on apparent size (~6.5 mm²).' },
+    'sft70-3000': { label: 'Luminus SFT-70 3000 K 95 CRI (6 V, domeless)', flux: [[0, 0], [1, 520], [2, 945], [3, 1290], [4, 1580], [5, 1830], [6, 2030], [7, 2185], [8, 2300], [9, 2370], [9.6, 2390], [10, 2385]],
+      vf: [[0.2, 5.30], [1, 5.62], [2, 5.91], [3, 6.17], [4, 6.40], [5, 6.61], [6, 6.80], [7, 6.99], [8, 7.18], [9, 7.37], [10, 7.55]], lum: [[0.7, 17.1], [2.8, 54.9], [9.6, 117.8]], defaultA: 6 },
+    'sft70x-6500': { label: 'Luminus SFT-70-X 6500 K 70 CRI (6 V, domeless)', flux: [[0, 0], [1, 830], [2, 1530], [3, 2100], [4, 2580], [5, 3000], [6, 3330], [7, 3600], [8, 3790], [9, 3890], [9.6, 3925]],
+      vf: [[0.2, 5.32], [1, 5.70], [2, 5.99], [3, 6.23], [4, 6.48], [5, 6.69], [6, 6.89], [7, 7.10], [8, 7.29], [9, 7.48], [9.6, 7.58]], lum: [[0.7, 27.8], [2.8, 89.3], [9.6, 191.5]], defaultA: 6 },
     'osram-q8wp': { label: 'Osram OSTAR LE UW Q8WP (domeless)', flux: [[0, 0], [1, 340], [2, 607], [3, 839], [4, 1028], [5, 1189], [6, 1330], [7, 1448], [8, 1546], [9, 1602], [9.6, 1607], [10, 1604]],
       vf: [[0.2, 2.76], [1, 2.84], [2, 2.95], [3, 3.03], [4, 3.12], [5, 3.20], [6, 3.28], [7, 3.36], [8, 3.43], [9, 3.51], [10, 3.57]], lum: [[2.8, 121.8], [6, 205.9], [9.6, 244.6]], defaultA: 6 },
   };
@@ -72,7 +91,7 @@
       label: 'Luminus SFT-40-W · 3000 K 95 CRI · 1.97 mm',
       note: 'Luminus SFT-40-WxH datasheet (PDS-003302 Rev 01): flat window, 1.97 × 1.97 mm emitting area, Lambertian (120° FWHM), 4 A absolute maximum. "Datasheet" flux = bin D9 minimum at Tj 85 °C; "koef3" = one sample on a fan-cooled copper board at a 25 °C solder point.',
       set: { kind: 'planar', shape: 'rect', w: 1.97, h: 1.97, dist: 'lambertian' },
-      drive: { models: { datasheet: { label: 'Datasheet (bin D9 min, Tj 85 °C; > 4 A estimated)', curve: SFT40_DS, vf: SFT40_DS_VF, maxA: 14.8 }, koef3: { label: 'koef3 test (25 °C solder point, overdriven)', curve: SFT40_CURVE, vf: SFT40_VF, maxA: 14.8 } }, model: 'datasheet', ratedA: 4, maxW: 13, defaultA: 3 },
+      drive: { models: { datasheet: { label: 'Datasheet (bin D9 min, Tj 85 °C; > 4 A estimated)', curve: SFT40_DS, vf: SFT40_DS_VF, maxA: 14.8 }, koef3: { label: 'koef3 test (25 °C solder point, overdriven; his luminance)', curve: SFT40_CURVE, vf: SFT40_VF, maxA: 14.8, lum: [[0.7, 15.2], [2.8, 49.9], [14.8, 127.6]] } }, model: 'datasheet', ratedA: 4, maxW: 13, defaultA: 3 },
     },
     'sft40-cw': {
       label: 'Luminus SFT-40-W (cool white, CRI ~70) · 1.97 mm',
@@ -127,6 +146,7 @@
     Object.assign(src, JSON.parse(JSON.stringify(p.set)));
     if (p.axis) { src.axis = p.axis.slice(); src.roll = 0; }
     src.preset = id;
+    delete src.effArea;
     if (p.custom && opts && opts.measured) src.measured = JSON.parse(JSON.stringify(opts.measured));
     if (p.custom && !src.shape) src.shape = (src.measured && src.measured.shape) || 'rect';
     if (p.drive) {
@@ -159,8 +179,9 @@
   // does the source still match its preset's geometry and emission (or has it been edited since)?
   function matches(src) {
     const p = PRESETS[src.preset]; if (!p) return false;
-    for (const [k, v] of Object.entries(p.set)) if (k !== 'power' && src[k] !== v) return false;
-    if (p.measured && src.effArea > 0) {                // the die follows the drive current: check it still has the effective area
+    const geo = ['w', 'h', 'radius', 'shape'];               // a measured die follows the drive current: compare its area instead
+    for (const [k, v] of Object.entries(p.set)) if (k !== 'power' && !(src.effArea > 0 && geo.includes(k)) && src[k] !== v) return false;
+    if (src.effArea > 0) {                // the die follows the drive current: check it still has the effective area
       const A = src.shape === 'disc' ? Math.PI * src.radius * src.radius : src.w * src.h;
       if (Math.abs(A / src.effArea - 1) > 0.01) return false;
     }
