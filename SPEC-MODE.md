@@ -133,8 +133,9 @@ Light source → **Emitter** presets (`js/source-presets.js`):
 - **Sketch LED:** the default, 1 × 1 mm at 1,000 lm, ≈ 318 cd/mm².
 - **Luminus SFT-40-W 3000 K 95 CRI** (datasheet PDS-003302 Rev 01): a 1.97 × 1.97 mm
   flat-window die, Lambertian (120° FWHM), with a **4 A absolute maximum**. There are two flux
-  models. *Datasheet* uses the bin D9 minimum at Tj 85 °C (861 lm at 4 A), clamped to the
-  rating. *koef3* uses one sample's chart (fan-cooled copper board, 25 °C solder point, driven
+  models. *Datasheet* uses the bin D9 minimum at Tj 85 °C (861 lm at 4 A). Past 4 A it follows
+  koef3's curve shape, scaled to match at 4 A; that part is an estimate, and the panel warns
+  above 4 A and 13 W rather than clamping. *koef3* uses one sample's chart (fan-cooled copper board, 25 °C solder point, driven
   to 14.8 A) and is flagged above 4 A. Vf, watts and lm/W are shown for both.
 - **HB3/9005:** UN R37 sheets HB3/1–4. An axial 5.1 mm opaque coil, 1,860 lm at 13.2 V or
   1,300 at 12 V. The filament diameter of 1.4 mm is **assumed**, because the sheets don't

@@ -250,7 +250,7 @@
       box.append(el('div', { class: 'row' }, el('label', {}, 'Flux model'), mdl),
         el('div', { class: 'row', title: 'Flux follows the chosen curve; it sets Problem → Light source → Advanced → Power.' }, el('label', {}, 'Drive current (A)'), a),
         el('div', { class: 'row help' }, Math.round(src.power).toLocaleString() + ' lm at ' + src.driveA + ' A' + (e ? ' · Vf ' + e.vf.toFixed(2) + ' V · ' + e.watts.toFixed(1) + ' W · ' + e.lmPerW.toFixed(0) + ' lm/W' : '')));
-      if (e && e.overRated) box.append(el('div', { class: 'reason' }, 'Above the datasheet\u2019s ' + e.ratedA + ' A absolute maximum. koef3\u2019s sample survived 14.8 A on a fan-cooled copper board; a sealed headlamp will not.'));
+      if (e && e.overRated) box.append(el('div', { class: 'note' }, '⚠ Over the high-CRI datasheet\u2019s ' + e.ratedA + ' A' + (e.overPower ? ' and ' + e.maxW + ' W dissipation' : '') + ' rating (' + e.watts.toFixed(0) + ' W into a 2 mm die; Rth j–sp 0.7 °C/W, so the heatsink decides).' + (e.extrapolated ? ' Flux past 4 A is estimated from koef3\u2019s curve shape.' : '')));
     }
     if (p.volts) {
       const v = el('select', { 'aria-label': 'Lamp voltage' }, ...Object.keys(p.volts).map((k) => el('option', { value: k }, k + ' V · ' + p.volts[k].toLocaleString() + ' lm')));

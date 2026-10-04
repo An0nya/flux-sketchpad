@@ -11,10 +11,12 @@
   //               values are Luminus' calculated ones), Vf = 2.8 V typ at 1.5 A plus the ΔVf curve (p. 7)
   //   koef3     — one sample measured by koef3 (BLF/TLF, 22.10.2023): Cu DTP board, fan-cooled, 25 °C solder point, driven to
   //               14.8 A (3.7× the rating).  Brighter (cooler junction) and beyond the datasheet past 4 A.
-  const SFT40_DS = [[0, 0], [0.7, 198], [1.5, 395], [2, 502], [3, 695], [4, 861]];
-  const SFT40_DS_VF = [[0.1, 2.56], [0.5, 2.66], [1, 2.73], [1.5, 2.80], [2, 2.87], [2.5, 2.94], [3, 3.00], [3.5, 3.06], [4, 3.11]];
   const SFT40_CURVE = [[0, 0], [1, 280], [2, 510], [3, 710], [4, 880], [5, 1030], [6, 1170], [7, 1285], [8, 1385], [9, 1475], [10, 1555], [11, 1615], [12, 1665], [13, 1700], [14, 1715], [14.8, 1715]];
   const SFT40_VF = [[0.2, 2.65], [1, 2.80], [2, 2.93], [3, 3.05], [4, 3.16], [5, 3.26], [6, 3.36], [7, 3.46], [8, 3.55], [9, 3.63], [10, 3.72], [11, 3.82], [12, 3.91], [13, 4.00], [14, 4.10], [14.8, 4.18]];
+  // Past 4 A the datasheet says nothing: continue with koef3's curve SHAPE, scaled to meet the datasheet at 4 A (flux × 861/880,
+  // Vf − 0.05 V) — an estimate for a hot junction, not a measurement.
+  const SFT40_DS = [[0, 0], [0.7, 198], [1.5, 395], [2, 502], [3, 695], [4, 861]].concat(SFT40_CURVE.filter(([a]) => a > 4).map(([a, lm]) => [a, Math.round(lm * 861 / 880)]));
+  const SFT40_DS_VF = [[0.1, 2.56], [0.5, 2.66], [1, 2.73], [1.5, 2.80], [2, 2.87], [2.5, 2.94], [3, 3.00], [3.5, 3.06], [4, 3.11]].concat(SFT40_VF.filter(([a]) => a > 4).map(([a, v]) => [a, +(v - 0.05).toFixed(2)]));
   const lerp = (tab, x) => {
     if (x <= tab[0][0]) return tab[0][1];
     for (let i = 1; i < tab.length; i++) if (x <= tab[i][0]) { const [x0, y0] = tab[i - 1], [x1, y1] = tab[i]; return y0 + (y1 - y0) * (x - x0) / (x1 - x0); }
@@ -31,7 +33,7 @@
       label: 'Luminus SFT-40-W · 3000 K 95 CRI · 1.97 mm',
       note: 'Luminus SFT-40-WxH datasheet (PDS-003302 Rev 01): flat window, 1.97 × 1.97 mm emitting area, Lambertian (120° FWHM), 4 A absolute maximum. "Datasheet" flux = bin D9 minimum at Tj 85 °C; "koef3" = one sample on a fan-cooled copper board at a 25 °C solder point.',
       set: { kind: 'planar', shape: 'rect', w: 1.97, h: 1.97, dist: 'lambertian' },
-      drive: { models: { datasheet: { label: 'Datasheet (bin D9 min, Tj 85 °C)', curve: SFT40_DS, vf: SFT40_DS_VF, maxA: 4 }, koef3: { label: 'koef3 test (25 °C solder point, overdriven)', curve: SFT40_CURVE, vf: SFT40_VF, maxA: 14.8 } }, model: 'datasheet', ratedA: 4, defaultA: 3 },
+      drive: { models: { datasheet: { label: 'Datasheet (bin D9 min, Tj 85 °C; > 4 A estimated)', curve: SFT40_DS, vf: SFT40_DS_VF, maxA: 14.8 }, koef3: { label: 'koef3 test (25 °C solder point, overdriven)', curve: SFT40_CURVE, vf: SFT40_VF, maxA: 14.8 } }, model: 'datasheet', ratedA: 4, maxW: 13, defaultA: 3 },
     },
     hb3: {
       label: 'HB3 / 9005 halogen · axial filament 5.1 mm',
@@ -63,7 +65,7 @@
     const p = PRESETS[src.preset]; if (!p || !p.drive || !(src.driveA > 0)) return null;
     const m = p.drive.models[src.fluxModel] || p.drive.models[p.drive.model];
     const vf = lerp(m.vf, src.driveA), w = vf * src.driveA;
-    return { amps: src.driveA, vf, watts: w, lmPerW: src.power / w, overRated: src.driveA > p.drive.ratedA + 1e-9, ratedA: p.drive.ratedA, maxA: m.maxA };
+    return { amps: src.driveA, vf, watts: w, lmPerW: src.power / w, overRated: src.driveA > p.drive.ratedA + 1e-9, ratedA: p.drive.ratedA, maxA: m.maxA, overPower: p.drive.maxW > 0 && w > p.drive.maxW, maxW: p.drive.maxW, extrapolated: src.fluxModel === 'datasheet' && src.driveA > p.drive.ratedA };
   }
   // does the source still match its preset's geometry and emission (or has it been edited since)?
   function matches(src) {
