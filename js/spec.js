@@ -301,8 +301,8 @@
    * verdict: 'pass'|'fail'|'unsure'|'empty', aim (how it was aimed), shift: total sampling offset, reaim: the part from
    * the re-aim box, atAim (before re-aiming), moreRays (what would settle the unsure rows) }.
    * Re-aim box (aimBox, beam displacement for right-hand traffic: left / right / up / down degrees; §6.2.2.3 gives
-   * 0.5 / 0.75 / 0.25 / 0.25) or, for older scenes, a symmetric aimTol.  Best = worst margin, then score, then the
-   * smallest move.                                                                                                     */
+   * 0.5 / 0.75 / 0.25 / 0.25) or, for older scenes, a symmetric aimTol.  Best = fewest sure fails, then fewest undecided rows,
+   * then the smallest move (no move unless it changes a verdict).                                                                                                     */
   function evaluate(G, md) {
     const items = itemsOf(md), k = md.kernel > 0 ? md.kernel : 0.15, cache = new Map();
     const aim = aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
@@ -316,8 +316,11 @@
       for (let dv = -(box.up || 0); dv <= (box.down || 0) + 1e-9; dv += st) for (let dh = -(box.right || 0); dh <= (box.left || 0) + 1e-9; dh += st) {
         const ddh = +dh.toFixed(6) || 0, ddv = +dv.toFixed(6) || 0; if (!ddh && !ddv) continue;
         const r = evalAt(G, items, k, bh + ddh, bv + ddv, cache);
-        const tieW = Math.abs(r.worst - best.worst) <= 1e-12, tieS = Math.abs(r.score - best.score) <= 1e-12;
-        if (r.worst > best.worst + 1e-12 || (tieW && r.score > best.score + 1e-12) || (tieW && tieS && Math.hypot(ddh, ddv) < Math.hypot(reaim[0], reaim[1]) - 1e-9)) { best = r; reaim = [ddh, ddv]; }
+        // the lab re-aims only to make the lamp PASS: fewest sure fails, then fewest undecided rows, then the smallest move.  A move
+        // that changes no verdict is not taken.  (Ranking by worst margin or soft score let rows no aim can fix — a sign point with
+        // no light at all — drag the beam half a degree and sink 75R.)
+        const dF = r.n.fail - best.n.fail, dU = r.n.unsure - best.n.unsure;
+        if (dF < 0 || (dF === 0 && dU < 0) || (dF === 0 && dU === 0 && Math.hypot(ddh, ddv) < Math.hypot(reaim[0], reaim[1]) - 1e-9)) { best = r; reaim = [ddh, ddv]; }
       }
     }
     const out = Object.assign({}, best, { aim, reaim, atAim, atZero: atAim, kernel: k, distance: G.distance, conv: G.conv, rays: G.rays });

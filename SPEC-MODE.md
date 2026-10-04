@@ -192,6 +192,26 @@ glow above the cut-off for the sign points) didn't converge. The solved cut-off 
 so any light above it moves the measured inflection up (to 1.2–1.6°). That is phase 2's
 problem (edge anchoring), not a painting problem.
 
+### With the app's Auto solver, at 8 M rays (2026-10-04, evening)
+
+The R112 table above used the spoke solver. Here the app's default Auto solver is used: the
+same fixture and seeded painting, solved in the browser, with the geometry re-traced at
+8 M rays in Node. Every real LED passes nearly all of the **main photometry** (75R, 50R, 50L,
+25L/R and Zones I, III, IV): 8/8 for the SFT-40s, SFT-25R, Q8WP, CSLPM1 and HWQP; 7/8 with one
+row undecided for the W5050SQ3 (Zone IV) and the LH351D (Zone III). **All of them still fail
+R112**, and for the same two reasons:
+1. **No light above the cut-off for the overhead-sign points.** Points 7–8 read 0 cd. The seed
+   painting has nothing above the cut-off, so the solver puts nothing there.
+2. **The cut-off is too sharp:** G ≈ 0.7–1.6 against the 0.40 maximum (often still undecided
+   at 8 M rays).
+Best: SFT-40 cool white @ 8 A and CSLPM1 @ 8.6 A (1 fail: point 8). The HB3 doesn't produce a
+beam in this half-envelope. Sheets: `emitters-1.png`, `emitters-2.png` (not committed).
+
+**Re-aim fix found doing this.** The re-aim search ranked aims by the *worst* margin, so a row
+no aim can fix (a sign point with zero light) dragged the beam 0.5° and dropped the SFT-40's
+75R from 21.6k to 8.4k. It now ranks by fewest sure fails, then fewest undecided rows, then
+the smallest move. A move that changes no verdict isn't taken, as a lab would do it.
+
 ### Ray budget (proposal, not built)
 
 The cap is 1 M rays per run. Spec mode stores 29 bytes per exit ray, and the hit list stores
