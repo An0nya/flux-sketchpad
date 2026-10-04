@@ -235,9 +235,9 @@
     const box = document.getElementById('source-preset'); if (!box || !RF.SourcePresets) return;
     const SP = RF.SourcePresets, src = ui.store.scene.source, p = SP.PRESETS[src.preset];
     // grouped: datasheet parts, koef3's bench measurements, everything else
-    const grp = (q, id) => (q.custom || id === 'sketch' || id === 'hb3' ? 'Other' : q.measured ? 'Measured by koef3 (BLF/TLF)' : 'From datasheets');
+    const grp = (q, id) => (q.custom || id === 'sketch' || id === 'hb3' ? 'Other' : id.startsWith('generic') ? 'Generic' : q.measured ? 'Measured by koef3 (BLF/TLF)' : 'From datasheets');
     const groups = {}; for (const [id, q] of Object.entries(SP.PRESETS)) (groups[grp(q, id)] = groups[grp(q, id)] || []).push(el('option', { value: id }, q.label.replace(/ · koef3$/, '')));
-    const sel = el('select', { 'aria-label': 'Emitter preset' }, el('option', { value: '' }, 'Custom (the fields below)'), ...['From datasheets', 'Measured by koef3 (BLF/TLF)', 'Other'].filter((g) => groups[g]).map((g) => el('optgroup', { label: g }, ...groups[g])));
+    const sel = el('select', { 'aria-label': 'Emitter preset' }, el('option', { value: '' }, 'Custom (the fields below)'), ...['Generic', 'From datasheets', 'Measured by koef3 (BLF/TLF)', 'Other'].filter((g) => groups[g]).map((g) => el('optgroup', { label: g }, ...groups[g])));
     sel.value = p ? src.preset : '';
     sel.addEventListener('change', () => { if (!sel.value) { delete src.preset; renderSourcePreset(ui); return; } ui._histHint = 'Emitter: ' + SP.PRESETS[sel.value].label; C.actions.applySourcePreset(ui.store, sel.value); ui.afterChange(); renderSourcePreset(ui); });
     box.innerHTML = '';

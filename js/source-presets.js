@@ -95,6 +95,16 @@
       note: 'The app’s default emitter: a 1 mm² Lambertian die at 1,000 lm (≈ 318 cd/mm², brighter than most real LEDs).',
       set: { kind: 'planar', shape: 'rect', w: 1, h: 1, dist: 'lambertian', power: 1000 },
     },
+    generic: {
+      label: 'Generic automotive LED · 2 × 2 mm, 150 cd/mm² (1,885 lm)',
+      note: 'The default emitter: a 2 × 2 mm Lambertian die at 150 cd/mm² (Φ = π L A = 1,885 lm). About where a well-cooled production automotive or flashlight LED sits under 4500 K without cooking it (Anya, 10-04: ~200 is hot, 300 sustained is a pipe dream).',
+      set: { kind: 'planar', shape: 'rect', w: 2, h: 2, dist: 'lambertian', power: 1885 },
+    },
+    'generic-warm': {
+      label: 'Generic warm LED · 3000 K high CRI · 2 × 2 mm, 100 cd/mm² (1,257 lm)',
+      note: 'A 3000 K, R9 ≥ 50 class die at what such phosphors reach without heat death, ~100 cd/mm² (Anya, 10-04). Same 2 × 2 mm die as the generic LED.',
+      set: { kind: 'planar', shape: 'rect', w: 2, h: 2, dist: 'lambertian', power: 1257 },
+    },
     'sft40-3000k': {
       label: 'Luminus SFT-40-W · 3000 K 95 CRI · 1.97 mm',
       note: 'Luminus SFT-40-WxH datasheet (PDS-003302 Rev 01): flat window, 1.97 × 1.97 mm emitting area, Lambertian (120° FWHM), 4 A absolute maximum. "Datasheet" flux = bin D9 minimum at Tj 85 °C; "koef3" = one sample on a fan-cooled copper board at a 25 °C solder point.',

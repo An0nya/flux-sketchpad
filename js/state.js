@@ -28,7 +28,7 @@
   function defaultScene() {
     const s = testScene();
     delete s.solve;                                      // the app opens with the preferred solver (Auto), not the checks' pin
-    Object.assign(s.source, { pos: [-36.58, -3.53, 13.58], axis: [-0.0086, 0.0052, 0.99995], w: 1, h: 1 });   // 1 mm LED on the back wall
+    Object.assign(s.source, { pos: [-36.58, -3.53, 13.58], axis: [-0.0086, 0.0052, 0.99995], w: 2, h: 2, power: 1885, preset: 'generic' });   // 2 × 2 mm, 150 cd/mm² LED on the back wall (was a 1 mm², 318 cd/mm² sketch LED until 10-04)
     Object.assign(s.envelope, { center: [-32.05, -6.92, 40.47], half: [27.95, 52.59, 27.46], keepOut: 5 });
     s.modeA.minDistance = 0; s.modeB.minDistance = 15;   // paint: let the solver use the whole envelope (Anya 09-30; 15 mm cost ~20% of the light); stamps keep the old 15 mm
     Object.assign(s.target, { distance: 2000, size: 500, res: 100 });
