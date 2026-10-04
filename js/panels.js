@@ -241,11 +241,16 @@
     box.append(el('div', { class: 'row' }, el('label', {}, 'Emitter'), sel));
     if (!p) return;
     if (p.drive) {
-      const a = el('input', { type: 'number', min: 0.1, max: p.drive.maxA, step: 0.1, value: src.driveA, 'aria-label': 'Drive current (A)' });
-      a.addEventListener('change', () => { const v = parseFloat(a.value); if (v > 0) { C.actions.setDriveCurrent(ui.store, v); ui.afterChange(); renderSourcePreset(ui); } });
       const e = SP.electrical(src);
-      box.append(el('div', { class: 'row', title: 'Flux follows the measured curve; power goes to Problem → Light source → Advanced → Power.' }, el('label', {}, 'Drive current (A)'), a),
+      const mdl = el('select', { 'aria-label': 'Flux model' }, ...Object.entries(p.drive.models).map(([k, m]) => el('option', { value: k }, m.label)));
+      mdl.value = src.fluxModel;
+      mdl.addEventListener('change', () => { C.actions.applySourcePreset(ui.store, src.preset, { model: mdl.value, amps: src.driveA }); ui.afterChange(); renderSourcePreset(ui); });
+      const a = el('input', { type: 'number', min: 0.1, max: e ? e.maxA : 4, step: 0.1, value: src.driveA, 'aria-label': 'Drive current (A)' });
+      a.addEventListener('change', () => { const v = parseFloat(a.value); if (v > 0) { C.actions.setDriveCurrent(ui.store, v); ui.afterChange(); renderSourcePreset(ui); } });
+      box.append(el('div', { class: 'row' }, el('label', {}, 'Flux model'), mdl),
+        el('div', { class: 'row', title: 'Flux follows the chosen curve; it sets Problem → Light source → Advanced → Power.' }, el('label', {}, 'Drive current (A)'), a),
         el('div', { class: 'row help' }, Math.round(src.power).toLocaleString() + ' lm at ' + src.driveA + ' A' + (e ? ' · Vf ' + e.vf.toFixed(2) + ' V · ' + e.watts.toFixed(1) + ' W · ' + e.lmPerW.toFixed(0) + ' lm/W' : '')));
+      if (e && e.overRated) box.append(el('div', { class: 'reason' }, 'Above the datasheet\u2019s ' + e.ratedA + ' A absolute maximum. koef3\u2019s sample survived 14.8 A on a fan-cooled copper board; a sealed headlamp will not.'));
     }
     if (p.volts) {
       const v = el('select', { 'aria-label': 'Lamp voltage' }, ...Object.keys(p.volts).map((k) => el('option', { value: k }, k + ' V · ' + p.volts[k].toLocaleString() + ' lm')));

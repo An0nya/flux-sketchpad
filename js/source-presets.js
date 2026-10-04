@@ -5,8 +5,14 @@
   'use strict';
   const RF = root.RF;
 
-  // Luminus SFT-40-W 3000 K 95 CRI, flux vs current: read off koef3's test chart (BLF/TLF, 22.10.2023; Cu DTP board,
-  // fan-cooled heatsink, 25 °C solder point).  A hot lamp delivers less: plan on roughly 10–15 % lower in a real housing.
+  // Luminus SFT-40-WxH (PDS-003302 Rev 01): 3000 K > 95 CRI, emitting area 1.97 × 1.97 mm (p. 10), Lambertian (120° FWHM,
+  // p. 6; I(60°) = 0.5 on p. 8), absolute max DC current 4 A (p. 6).  Two flux models:
+  //   datasheet — bin D9 minimum flux at Tj = 85 °C (p. 3: 198 / 395 / 502 / 695 / 861 lm at 0.7 / 1.5 / 2 / 3 / 4 A; the off-1.5 A
+  //               values are Luminus' calculated ones), Vf = 2.8 V typ at 1.5 A plus the ΔVf curve (p. 7)
+  //   koef3     — one sample measured by koef3 (BLF/TLF, 22.10.2023): Cu DTP board, fan-cooled, 25 °C solder point, driven to
+  //               14.8 A (3.7× the rating).  Brighter (cooler junction) and beyond the datasheet past 4 A.
+  const SFT40_DS = [[0, 0], [0.7, 198], [1.5, 395], [2, 502], [3, 695], [4, 861]];
+  const SFT40_DS_VF = [[0.1, 2.56], [0.5, 2.66], [1, 2.73], [1.5, 2.80], [2, 2.87], [2.5, 2.94], [3, 3.00], [3.5, 3.06], [4, 3.11]];
   const SFT40_CURVE = [[0, 0], [1, 280], [2, 510], [3, 710], [4, 880], [5, 1030], [6, 1170], [7, 1285], [8, 1385], [9, 1475], [10, 1555], [11, 1615], [12, 1665], [13, 1700], [14, 1715], [14.8, 1715]];
   const SFT40_VF = [[0.2, 2.65], [1, 2.80], [2, 2.93], [3, 3.05], [4, 3.16], [5, 3.26], [6, 3.36], [7, 3.46], [8, 3.55], [9, 3.63], [10, 3.72], [11, 3.82], [12, 3.91], [13, 4.00], [14, 4.10], [14.8, 4.18]];
   const lerp = (tab, x) => {
@@ -22,10 +28,10 @@
       set: { kind: 'planar', shape: 'rect', w: 1, h: 1, dist: 'lambertian', power: 1000 },
     },
     'sft40-3000k': {
-      label: 'Luminus SFT-40-W · 3000 K 95 CRI · 2 × 2 mm',
-      note: 'Flat-window LED, 4.0 mm² chip modelled as a 2 × 2 mm Lambertian die (Luminus: "flat window … much smaller light emitting surface than a dome"). Flux from koef3’s chart at a 25 °C solder point; a hot housing gives ~10–15 % less.',
-      set: { kind: 'planar', shape: 'rect', w: 2, h: 2, dist: 'lambertian' },
-      drive: { curve: SFT40_CURVE, vf: SFT40_VF, maxA: 14.8, defaultA: 6 },
+      label: 'Luminus SFT-40-W · 3000 K 95 CRI · 1.97 mm',
+      note: 'Luminus SFT-40-WxH datasheet (PDS-003302 Rev 01): flat window, 1.97 × 1.97 mm emitting area, Lambertian (120° FWHM), 4 A absolute maximum. "Datasheet" flux = bin D9 minimum at Tj 85 °C; "koef3" = one sample on a fan-cooled copper board at a 25 °C solder point.',
+      set: { kind: 'planar', shape: 'rect', w: 1.97, h: 1.97, dist: 'lambertian' },
+      drive: { models: { datasheet: { label: 'Datasheet (bin D9 min, Tj 85 °C)', curve: SFT40_DS, vf: SFT40_DS_VF, maxA: 4 }, koef3: { label: 'koef3 test (25 °C solder point, overdriven)', curve: SFT40_CURVE, vf: SFT40_VF, maxA: 14.8 } }, model: 'datasheet', ratedA: 4, defaultA: 3 },
     },
     hb3: {
       label: 'HB3 / 9005 halogen · axial filament 5.1 mm',
@@ -42,8 +48,12 @@
     Object.assign(src, JSON.parse(JSON.stringify(p.set)));
     if (p.axis) { src.axis = p.axis.slice(); src.roll = 0; }
     src.preset = id;
-    if (p.drive) { src.driveA = opts && opts.amps > 0 ? Math.min(p.drive.maxA, opts.amps) : (src.driveA > 0 ? Math.min(p.drive.maxA, src.driveA) : p.drive.defaultA); src.power = Math.round(lerp(p.drive.curve, src.driveA)); }
-    else delete src.driveA;
+    if (p.drive) {
+      src.fluxModel = opts && p.drive.models[opts.model] ? opts.model : (p.drive.models[src.fluxModel] ? src.fluxModel : p.drive.model);
+      const m = p.drive.models[src.fluxModel];
+      src.driveA = opts && opts.amps > 0 ? Math.min(m.maxA, opts.amps) : (src.driveA > 0 ? Math.min(m.maxA, src.driveA) : p.drive.defaultA);
+      src.power = Math.round(lerp(m.curve, src.driveA));
+    } else { delete src.driveA; delete src.fluxModel; }
     if (p.volts) { src.volts = opts && p.volts[opts.volts] ? opts.volts : (p.volts[src.volts] ? src.volts : 13.2); src.power = p.volts[src.volts]; }
     else delete src.volts;
     return p;
@@ -51,8 +61,9 @@
   // the preset's electrical side at the source's current drive: { amps, vf, watts, lmPerW } (LEDs) or null
   function electrical(src) {
     const p = PRESETS[src.preset]; if (!p || !p.drive || !(src.driveA > 0)) return null;
-    const vf = lerp(p.drive.vf, src.driveA), w = vf * src.driveA;
-    return { amps: src.driveA, vf, watts: w, lmPerW: src.power / w };
+    const m = p.drive.models[src.fluxModel] || p.drive.models[p.drive.model];
+    const vf = lerp(m.vf, src.driveA), w = vf * src.driveA;
+    return { amps: src.driveA, vf, watts: w, lmPerW: src.power / w, overRated: src.driveA > p.drive.ratedA + 1e-9, ratedA: p.drive.ratedA, maxA: m.maxA };
   }
   // does the source still match its preset's geometry and emission (or has it been edited since)?
   function matches(src) {
@@ -61,5 +72,5 @@
     return true;
   }
 
-  RF.SourcePresets = { PRESETS, apply, electrical, matches, lumensAt: (id, a) => (PRESETS[id] && PRESETS[id].drive ? lerp(PRESETS[id].drive.curve, a) : NaN) };
+  RF.SourcePresets = { PRESETS, apply, electrical, matches, lumensAt: (id, a, model) => { const d = PRESETS[id] && PRESETS[id].drive; return d ? lerp((d.models[model] || d.models[d.model]).curve, a) : NaN; } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
