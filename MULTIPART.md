@@ -68,3 +68,7 @@ Bench at 2 M rays (guided), sure fails / unsure · peak:
 - **No curved off-axis refracting patch.** There is no toric/cylindrical lenslet primitive (the TIR exit uses flat prisms), and no angle-limited rev segment.
 - **Reflector solvers ignore the extra emitters.** They design for `input.source` and ignore any lens the user adds; that is expected.
 - **Emitter editing:** emitters can't be dragged in the 3D view yet (sidebar only).
+- **Backlog (Anya, 10-04): a per-emitter popup in the Optics pane**, like the facet report you get when the pane is expanded:
+  - Click an emitter and its card opens. It shows a local rendering of the LED with its axis / emission cone (where it points), plus its share of flux on target.
+  - The card holds inline copies of the emitter controls (position, aim, power, on/off, match source), so you don't need the sidebar.
+  - Pairs with dragging emitters in 3D. Not started.
