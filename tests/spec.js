@@ -178,6 +178,11 @@ function fakeG(fn, win, step) {
   check('SFT-40 (koef3): 1,555 lm at 10 A, flagged over the 4 A rating', s.power === 1555 && SP.electrical(s).overRated && Math.abs(SP.electrical(s).vf - 3.72) < 1e-9);
   SP.apply(s, 'sft40-3000k', { amps: 6.5 });
   check('SFT-40 (koef3): flux interpolates the curve (6.5 A → 1,228 lm)', s.fluxModel === 'koef3' && s.power === Math.round(1170 + 0.5 * 115));
+  SP.apply(s, 'sft40-cw', { amps: 8 });
+  const ec = SP.electrical(s);
+  check('SFT-40 cool white: 8 A = 2,272 lm (6500 K bin N5 min), Vf 3.60 V ≈ 28.8 W, within the 8 A / 29 W rating', s.w === 1.97 && s.power === 2272 && Math.abs(ec.vf - 3.6) < 1e-9 && !ec.overRated && !ec.overPower);
+  SP.apply(s, 'sft40-cw', { model: 'n4', amps: 5 });
+  check('SFT-40 cool white: bin N4 at 5 A = 1,550 lm', s.power === 1550);
   SP.apply(s, 'hb3', { volts: 12 });
   check('HB3: axial 5.1 mm opaque coil, 1,300 lm at 12 V / 1,860 at 13.2 V', s.kind === 'volume' && s.shape === 'cylinder' && s.length === 5.1 && s.emission === 'surface' && s.axis.join() === '1,0,0' && s.power === 1300 && SP.apply(s, 'hb3', { volts: 13.2 }) && s.power === 1860);
   s.radius = 0.8; check('an edited preset is flagged', !SP.matches(s));

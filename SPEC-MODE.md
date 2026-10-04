@@ -137,6 +137,9 @@ Light source → **Emitter** presets (`js/source-presets.js`):
   koef3's curve shape, scaled to match at 4 A; that part is an estimate, and the panel warns
   above 4 A and 13 W rather than clamping. *koef3* uses one sample's chart (fan-cooled copper board, 25 °C solder point, driven
   to 14.8 A) and is flagged above 4 A. Vf, watts and lm/W are shown for both.
+- **Luminus SFT-40-W cool white** (WxS/WxE datasheet PDS-003134 Rev 05): the same 1.97 mm die,
+  5000/5700/6500 K at CRI ~70, rated **8 A / 29 W**. Flux comes from each bin's minimum at
+  Tj 85 °C (N4, N5, P3); 2,272 lm at 8 A for 6500 K bin N5.
 - **HB3/9005:** UN R37 sheets HB3/1–4. An axial 5.1 mm opaque coil, 1,860 lm at 13.2 V or
   1,300 at 12 V. The filament diameter of 1.4 mm is **assumed**, because the sheets don't
   give it.
@@ -148,6 +151,7 @@ by the cut-off. **None of them passes:**
 |---|---|---|---|
 | Sketch LED | 318 cd/mm² | 10 pass / 5 fail / 4 unsure | Zone IV, Zone I (> 2 × 50R), 25L-side spread, sign points, G too sharp / not linear |
 | SFT-40 @ 4 A, datasheet (861 lm) | 71 cd/mm² | 8 / 7 / 4 | 75R / 50R right at 10.1k (unsure), Zone IV dark, Zone I, cut-off found 0.6° *above* H, so the aim drops everything |
+| SFT-40 cool white (6500 K, bin N5) @ 8 A, rated (2,272 lm) | 186 cd/mm² | 10 / 4 / 5 | Strongest so far (75R 17.6k, 50R 22.9k, peak 79k); still Zone IV dark, Zone I > 2 × 50R, the same cut-off placement |
 | SFT-40 @ 6 A, koef3, over the rating (1,170 lm) | 93 cd/mm² | 10 / 6 / 3 | same pattern |
 | SFT-40 @ 10 A, koef3, over the rating (1,555 lm) | 124 cd/mm² | 10 / 6 / 3 | same pattern, more light |
 | HB3 (1,860 lm) | 23 cd/mm² | 5 / 8 / 6 | No usable cut-off (inflection found at 3.9°). An axial filament in this up-facing half-envelope throws half its light away. It needs a reflector that wraps the bulb. |

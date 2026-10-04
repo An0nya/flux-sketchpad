@@ -23,6 +23,11 @@
     return tab[tab.length - 1][1];
   };
 
+  // Luminus SFT-40-WxS / WxE (PDS-003134 Rev 05): cool white 5000 / 5700 / 6500 K, CRI ~70, same 1.97 mm flat-window die
+  // (p. 11), 120° FWHM, DC max 8 A, Pd max 29 W (p. 6).  Flux = each bin's correlated minimum at Tj 85 °C (p. 3; off-1.5 A
+  // values calculated by Luminus); Vf = 2.8 V typ at 1.5 A plus the ΔVf-vs-current curve (p. 7, read off the plot).
+  const CW_VF = [[0.1, 2.57], [1, 2.72], [1.5, 2.80], [2, 2.88], [3, 3.02], [4, 3.16], [5, 3.28], [6, 3.40], [7, 3.50], [8, 3.60]];
+  const cwBin = (a07, a15, a2, a3, a5, a6, a8) => [[0, 0], [0.7, a07], [1.5, a15], [2, a2], [3, a3], [5, a5], [6, a6], [8, a8]];
   const PRESETS = {
     sketch: {
       label: 'Sketch LED · 1 × 1 mm, 1,000 lm',
@@ -34,6 +39,16 @@
       note: 'Luminus SFT-40-WxH datasheet (PDS-003302 Rev 01): flat window, 1.97 × 1.97 mm emitting area, Lambertian (120° FWHM), 4 A absolute maximum. "Datasheet" flux = bin D9 minimum at Tj 85 °C; "koef3" = one sample on a fan-cooled copper board at a 25 °C solder point.',
       set: { kind: 'planar', shape: 'rect', w: 1.97, h: 1.97, dist: 'lambertian' },
       drive: { models: { datasheet: { label: 'Datasheet (bin D9 min, Tj 85 °C; > 4 A estimated)', curve: SFT40_DS, vf: SFT40_DS_VF, maxA: 14.8 }, koef3: { label: 'koef3 test (25 °C solder point, overdriven)', curve: SFT40_CURVE, vf: SFT40_VF, maxA: 14.8 } }, model: 'datasheet', ratedA: 4, maxW: 13, defaultA: 3 },
+    },
+    'sft40-cw': {
+      label: 'Luminus SFT-40-W (cool white, CRI ~70) · 1.97 mm',
+      note: 'Luminus SFT-40-WxS/WxE datasheet (PDS-003134 Rev 05): 5000/5700/6500 K, CRI ~70, flat window, 1.97 × 1.97 mm, Lambertian (120° FWHM), 8 A and 29 W maximum. Flux = the chosen bin\u2019s minimum at Tj 85 °C (Luminus\u2019 calculated values away from 1.5 A).',
+      set: { kind: 'planar', shape: 'rect', w: 1.97, h: 1.97, dist: 'lambertian' },
+      drive: { models: {
+        n4: { label: '5000 / 5700 K · bin N4 min', curve: cwBin(303, 594, 760, 1057, 1550, 1758, 2128), vf: CW_VF, maxA: 8 },
+        n5: { label: '6500 K · bin N5 min', curve: cwBin(323, 634, 812, 1129, 1655, 1877, 2272), vf: CW_VF, maxA: 8 },
+        p3: { label: 'Top bin P3 min (any CCT, if you get one)', curve: cwBin(364, 713, 913, 1269, 1861, 2110, 2555), vf: CW_VF, maxA: 8 },
+      }, model: 'n5', ratedA: 8, maxW: 29, defaultA: 6 },
     },
     hb3: {
       label: 'HB3 / 9005 halogen · axial filament 5.1 mm',
