@@ -659,8 +659,8 @@ unchanged across architectures. Only the geometry generator differs.
 
 ## Phase 4: infrastructure this will lean on
 
-- **Multi-source engine.** Needed for TIR arrays, ADB and dual-LED low/high beams. Today
-  `scene.source` is a single object.
+- **Multi-source engine.** Needed for TIR arrays, ADB and dual-LED low/high beams. **Built**
+  (`scene.emitters`, `input.sources`; MULTIPART.md).
 - **Pinned comparison** (backlog: "comparison against a pinned previous result with a shared
   brightness scale"). In Spec mode, pin a run's far field and show both reports side by side.
   This is the natural A/B for design iterations. `Compare distances` already uses the same
@@ -688,7 +688,7 @@ unchanged across architectures. Only the geometry generator differs.
 | Auto: built-in low-beam pattern fails its own glare guardrail in quick mode | The spec gives that guardrail a real definition; Auto's `cutoff` goal should read the spec in D | Planned (phase 2, the Auto goal) |
 | Replicate Chu et al. 2020 (memory) | A phase-3 solver; the spec is its yardstick | Planned (phase 3) |
 | SQM v0.4 shallow profile (memory) | Phase-3 solver; edge anchoring for the rim | Planned (phase 3) |
-| Projector ideas: shield facet + lens, paraboloid + fluted lens, TIR array / coarse ADB, retro-sphere (memory) | Phase-3 architectures table | Planned (phase 3; multi-source engine first for arrays) |
+| Projector ideas: shield facet + lens, paraboloid + fluted lens, TIR array / coarse ADB, retro-sphere (memory) | Phase-3 architectures table | **Engine done** (branch `claude/multipart-optics-solvers-vn7kzd`: conic surfaces, aspheric lens, multi-emitter, solver parts + `needs.bounces`); projector and TIR-array solvers: see MULTIPART.md |
 | Old engine traps: `di: Infinity` → null on save | Breaks reloading spec designs | **Fixed here** |
 | Old engine traps: parab not in verify whitelist; negative `di` silently flat; convex-only polygon clips; spoke 0.03 mm envelope overshoot | Not on the spec path | Open (unchanged) |
 | Comparison against a pinned result with a shared scale (DESIGN.md) | The natural A/B in Spec mode | Planned (phase 4) |

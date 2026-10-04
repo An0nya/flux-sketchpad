@@ -237,7 +237,7 @@
     renderSolverBox();
     P.syncControls(ui);
     const eb = document.getElementById('erase-btn'); if (eb) eb.setAttribute('aria-pressed', String(!!C.BY_ID['A.erase'].get(ui.store)));
-    P.renderStampList(ui); P.renderLensList(ui); P.renderGroups(ui); P.renderNotices(ui);
+    P.renderStampList(ui); P.renderLensList(ui); P.renderEmitterList(ui); P.renderGroups(ui); P.renderNotices(ui);
     if (RF.SpecUI) RF.SpecUI.render(ui);
     P.renderSourcePreset(ui);
     P.syncControls(ui);
@@ -1248,6 +1248,9 @@
   ui.addLens = function (kind) { C.actions.addLens(ui.store, kind); ui.afterChange(); };
   ui.updateLens = function (id, k, v) { C.actions.updateLens(ui.store, id, k, v); ui.afterChange(); };
   ui.removeLens = function (id) { C.actions.removeLens(ui.store, id); ui.afterChange(); };
+  ui.addEmitter = function () { C.actions.addEmitter(ui.store); ui.afterChange(); };
+  ui.updateEmitter = function (id, k, v) { C.actions.updateEmitter(ui.store, id, k, v); ui.afterChange(); };
+  ui.removeEmitter = function (id) { C.actions.removeEmitter(ui.store, id); ui.afterChange(); };
   ui.setGroupEnabled = function (g, on) { C.actions.setGroupEnabled(ui.store, g, on); ui.store.invalidate(g === 'B' ? [] : ['B']); ui.afterChange(); };
   ui.clearGroup = function (g) { C.actions.clearGroup(ui.store, g); ui.afterChange(); };
   ui.runChecks = function () { P.runChecks(ui); };

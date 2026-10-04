@@ -285,6 +285,26 @@
     },
     updateLens(store, id, key, value) { const L = store.scene.lenses.find((l) => l.id === id); if (L) { L.params[key] = value; store.invalidate(['L']); } },
     removeLens(store, id) { store.scene.lenses = store.scene.lenses.filter((l) => l.id !== id); store.invalidate(['L']); },
+    // extra emitters (multi-LED optics): a copy of the main source, offset sideways; the solve and the trace see them all
+    addEmitter(store) {
+      const sc = store.scene; sc.emitters = sc.emitters || [];
+      const ids = new Set(sc.emitters.map((e) => e.id)); let k = 2; while (ids.has('e' + k)) k++;
+      const last = sc.emitters.length ? sc.emitters[sc.emitters.length - 1] : sc.source, fr = RF.Source.frame(sc.source), pitch = Math.max(5, 3 * RF.Source.boundingRadius(sc.source));
+      const e = Object.assign(RF.U.deepCopy(sc.source), { id: 'e' + k, enabled: true, pos: V.add(last.pos, V.mul(fr.u, pitch)) });
+      delete e.preset;
+      sc.emitters.push(e); store.invalidate(srcGroups);
+      return e;
+    },
+    updateEmitter(store, id, key, value) {
+      const e = (store.scene.emitters || []).find((x) => x.id === id); if (!e) return;
+      if (key === 'x' || key === 'y' || key === 'z') e.pos['xyz'.indexOf(key)] = value;
+      else if (key === 'az' || key === 'el') { const ae = V.toAzEl(e.axis); e.axis = key === 'az' ? V.fromAzEl(value, ae[1]) : V.fromAzEl(ae[0], RF.U.clamp(value, -90, 90)); }
+      else if (key === 'power') e.power = Math.max(0, value);
+      else if (key === 'enabled') e.enabled = !!value;
+      else if (key === 'matchMain') { const keep = { id: e.id, enabled: e.enabled, pos: e.pos, axis: e.axis, power: e.power }; Object.assign(e, RF.U.deepCopy(store.scene.source), keep); delete e.preset; }
+      store.invalidate(srcGroups);
+    },
+    removeEmitter(store, id) { store.scene.emitters = (store.scene.emitters || []).filter((e) => e.id !== id); store.invalidate(srcGroups); },
     setGroupEnabled(store, g, on) { store.scene.groups[g].enabled = !!on; },
     clearGroup(store, g) {
       store.scene.groups[g].surfaces = [];

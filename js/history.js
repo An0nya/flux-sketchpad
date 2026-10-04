@@ -80,6 +80,7 @@
     }
     if (J(a.modeC.profile) !== J(b.modeC.profile)) parts.push('profile edit');
     if (J(a.lenses) !== J(b.lenses)) parts.push('lens change');
+    if (J(a.emitters || []) !== J(b.emitters || [])) parts.push('emitter change');
     if (J(a.source.pos) !== J(b.source.pos) || J(a.source.axis) !== J(b.source.axis)) { parts.push('source moved'); ch = ch.filter((x) => !/^src\.(x|y|z|az|el)$/.test(x.c.id)); }
     if (J(a.envelope) !== J(b.envelope) && !ch.some((x) => x.c.id.startsWith('env.'))) parts.push('envelope resized');
     if (ch.length > 1) parts.push(ch.length + ' settings');

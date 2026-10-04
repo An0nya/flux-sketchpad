@@ -39,6 +39,7 @@ RF.Solvers.register({
 `reflectivity` as settings: the app ignores such settings, fills them from the limits, and the runner warns.
 
 **input** (a deep copy — mutate freely): `limits`, `source` (pos, axis, kind, shape, w/h/radius, dist, power in lm),
+`sources` (every emitter, `source` first; see *Multi-part optics and multiple emitters*),
 `envelope` (box `center`, `half`; `keepOut` = the **LED clearance**, a hard limit), `target` (distance,
 size, res, tilt; see `RF.Engine.targetFrame`), `paint: { res, cells }` (res² relative weights, row-major,
 v up), `stamps`, `seed`.
@@ -130,6 +131,32 @@ maximums, the user's painting in between). A solver that reads the spec directly
   (`evaluate`, `itemsOf`, `windowOf`, `FIXTURES`, …).
 - **Bench:** `node tests/bench-spec.js --load path/to/solver.js --solvers my-id --fixtures box,slim,module,sealed7
   --preset ece-r112-b|fmvss-lb2v [--rays 8e6]` (minutes per row; prints a table, `--json` keeps every row).
+
+## Multi-part optics and multiple emitters
+
+A solver isn't limited to reflector facets. Its `surfaces` may also **refract** (lenses, TIR bodies:
+`optics: { interaction: 'refract', ior, fresnelT }`, front = the air side) or **absorb** (shields, flanges:
+`interaction: 'absorb'`). The pieces you can build from (all exact quadrics, see `js/geometry.js`):
+
+- `facet`: an ellipsoid with foci `S0` and `P + di·unit(Z − P)`: images the LED onto any 3D point (a projector
+  reflector segment aims its image into a lens's focal plane this way).
+- `rev` with `seg.kind`: `line` (cone / cylinder / annulus), `arc` (sphere zone), and **`conic`**:
+  `{ kind: 'conic', zv, R, k, r0, r1 }`, a zone of a conic of revolution (`k` = 0 sphere, −1 paraboloid,
+  (−1, 0) ellipsoid, < −1 hyperboloid). A hyperbolic face with `k = −n²`, `R = (n − 1) f` collimates a point at
+  distance `f` exactly (the app's **Aspheric** lens preset; `RF.Geo.conicSag(R, k, r)` gives the sag).
+- `plane`: a flat patch with a polygon clip (a shield edge).
+
+Rules for parts:
+- **The facet budget counts reflecting surfaces only.** Lens and shield parts are free, but are checked against the
+  envelope and the LED clearance like everything else.
+- **Declare the interactions a ray needs**: `output.needs = { bounces: 3 }` (reflector + lens entry + exit). The app
+  raises its bounce cap to that (with a notice; max 8). `input.limits.bounces` is the current cap. Trace your own
+  candidates with `tools.trace(surfaces, { bounces: 3, … })`, or the lens light is cut off at the first interaction.
+
+**Multiple emitters.** A scene can hold several LEDs (`scene.emitters`: extra full source objects with `id`,
+`enabled`; the sidebar's *More emitters*). **`input.sources`** lists them all (apparent, domes flattened), first =
+`input.source`, which older solvers keep reading. Every emitter has its own LED clearance (the host checks each).
+Traces draw each ray's emitter in proportion to power, so every ray carries the same energy.
 
 ## What the app checks and scores (not you)
 

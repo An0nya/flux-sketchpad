@@ -161,7 +161,11 @@
       section('Light source', { open: true, key: 'source' },
         el('div', { id: 'source-preset' }),
         ...rowsFor(ui, ['src.kind', 'src.shape', 'src.w', 'src.h', 'src.radius', 'src.length', 'src.dist', 'src.sigma', 'src.half', 'src.domeR', 'src.domeN', 'src.domeZ']),
-        section('Advanced', { adv: true, key: 'source-adv' }, el('div', { class: 'note' }, 'Direction and position are also draggable in Optics (source dot, arrow tip), or in the Scene with Setup on.'), ...rowsFor(ui, ['src.az', 'src.el', 'src.roll', 'src.x', 'src.y', 'src.z', 'src.power']))),
+        section('Advanced', { adv: true, key: 'source-adv' }, el('div', { class: 'note' }, 'Direction and position are also draggable in Optics (source dot, arrow tip), or in the Scene with Setup on.'), ...rowsFor(ui, ['src.az', 'src.el', 'src.roll', 'src.x', 'src.y', 'src.z', 'src.power'])),
+        section('More emitters', { open: false, key: 'emitters', tag: 'multi-LED' },
+          el('div', { class: 'note' }, 'Extra LEDs, each a copy of the source above (same die and dome) with its own position, aim and power. Rays are shared out by power. Solvers that design per emitter (TIR array) read them all; reflector solvers design for the first one.'),
+          el('div', { class: 'btnrow' }, el('button', { type: 'button', onclick: () => ui.addEmitter() }, 'Add emitter')),
+          el('div', { id: 'emitter-list', class: 'lens-list' }))),
       section('Target plane & aim point', { open: true, key: 'target' },
         ...rowsFor(ui, ['tgt.dist', 'tgt.size', 'tgt.tiltX', 'tgt.tiltY', 'tgt.linked', 'aim.x', 'aim.y', 'aim.z'])),
       section('Constraint envelope', { open: true, key: 'envelope' },
@@ -327,10 +331,11 @@
     const store = ui.store, list = document.getElementById('lens-list');
     if (!list) return;
     list.innerHTML = '';
-    const names = { planoconvex: 'Plano-convex', biconvex: 'Biconvex', tir: 'TIR collimator', fresnel: 'Fresnel' };
+    const names = { planoconvex: 'Plano-convex', biconvex: 'Biconvex', asphere: 'Aspheric', tir: 'TIR collimator', fresnel: 'Fresnel' };
     const PARAMS = {
       planoconvex: [['f', 'Focal length'], ['a', 'Aperture radius'], ['edge', 'Edge thickness']],
       biconvex: [['f', 'Focal length'], ['a', 'Aperture radius'], ['edge', 'Edge thickness']],
+      asphere: [['f', 'Focal length'], ['a', 'Aperture radius'], ['edge', 'Edge thickness']],
       tir: [['A', 'Exit radius'], ['rc', 'Cavity radius'], ['hc', 'Dome height'], ['thMax', 'Max side angle (°)']],
       fresnel: [['f', 'Focal length'], ['a', 'Aperture radius'], ['rings', 'Rings N'], ['tb', 'Base thickness']],
     };
@@ -360,6 +365,29 @@
       list.append(box);
     }
     if (!store.scene.lenses.length) list.append(el('div', { class: 'note' }, 'No lenses. Lenses sit on an axis through the source.'));
+  }
+  function renderEmitterList(ui) {
+    const store = ui.store, list = document.getElementById('emitter-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const ems = store.scene.emitters || [];
+    for (const e of ems) {
+      const box = el('div', { class: 'item', style: 'flex-direction:column;align-items:stretch' });
+      const on = el('input', { type: 'checkbox', checked: e.enabled !== false ? true : null, 'aria-label': 'Emitter ' + e.id + ' on' });
+      on.addEventListener('change', () => ui.updateEmitter(e.id, 'enabled', on.checked));
+      box.append(el('div', { style: 'display:flex;gap:6px;align-items:center' }, on, el('b', { class: 'grow' }, 'Emitter ' + e.id),
+        el('button', { type: 'button', title: 'Copy the main source’s die, dome and distribution (keeps position, aim and power)', onclick: () => ui.updateEmitter(e.id, 'matchMain', true) }, 'match source'),
+        confirmButton('remove', 'remove?', () => ui.removeEmitter(e.id))));
+      const ae = V.toAzEl(e.axis);
+      for (const [k, label, v] of [['x', 'Position x', e.pos[0]], ['y', 'Position y', e.pos[1]], ['z', 'Position z', e.pos[2]], ['az', 'Axis azimuth (°)', ae[0]], ['el', 'Axis elevation (°)', ae[1]], ['power', 'Power (lm)', e.power]]) {
+        const inp = el('input', { type: 'number', step: 'any', value: +(+v).toFixed(3), 'data-emitter': e.id + '.' + k, 'aria-label': label });
+        inp.addEventListener('change', () => { const x = parseFloat(inp.value); if (isFinite(x)) ui.updateEmitter(e.id, k, x); });
+        box.append(el('div', { class: 'row' }, el('label', {}, label), inp));
+      }
+      list.append(box);
+    }
+    if (!ems.length) list.append(el('div', { class: 'note' }, 'One emitter (the source above).'));
+    else list.append(el('div', { class: 'note' }, (ems.filter((e) => e.enabled !== false).length + 1) + ' emitters on · ' + Math.round(RF.Source.totalPower(store.scene)).toLocaleString() + ' lm in all'));
   }
   function renderGroups(ui) {
     const store = ui.store, list = document.getElementById('group-list');
@@ -679,5 +707,5 @@
     return results;
   }
 
-  RF.Panels = { renderSourcePreset, el, numberControl, fmtCd, noiseOf, raysFor3pc, fmtLm, fmtMm2, buildSide, syncControls, renderStampList, renderLensList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
+  RF.Panels = { renderSourcePreset, el, numberControl, fmtCd, noiseOf, raysFor3pc, fmtLm, fmtMm2, buildSide, syncControls, renderStampList, renderLensList, renderEmitterList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
