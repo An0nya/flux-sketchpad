@@ -433,3 +433,5 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
     -webkit-background-clip: text; background-clip: text; color: transparent; animation: flux-textsweep 1.8s linear infinite; }
   @keyframes flux-textsweep { from { background-position: 100% 0; } to { background-position: 0% 0; } }
 }
+
+.rows-in { width: 100%; min-height: 72px; background: #0d151e; border: 1px solid var(--line); border-radius: var(--r); color: inherit; font: 12px/1.4 ui-monospace, monospace; padding: var(--s-4); }

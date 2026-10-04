@@ -186,6 +186,19 @@ function fakeG(fn, win, step) {
   SP.apply(s, 'sft25r', { amps: 5 });
   const er = SP.electrical(s);
   check('SFT-25R: Ø 1.70 mm disc, 3000 K bin F1 = 1,021 lm at 5 A, Vf 3.40 V (17 W < 18 W), ≈ 143 cd/mm²', s.shape === 'disc' && s.radius === 0.85 && s.power === 1021 && Math.abs(er.vf - 3.4) < 1e-9 && !er.overPower && Math.abs(SP.luminanceOf(s) - 1021 / (Math.PI * Math.PI * 0.85 * 0.85)) < 1e-9);
+  // koef3-measured LEDs: the effective area reproduces his luminance at his rows, and stays near-constant with current
+  let okK = true, spread = [];
+  for (const [id, k] of Object.entries(SP.KOEF3)) {
+    const areas = [];
+    for (const [a, L] of k.lum) { const t = { pos: [0, 0, 0], axis: [0, 0, 1] }; SP.apply(t, id, { amps: a }); areas.push(t.effArea); if (Math.abs(SP.luminanceOf(t) / L - 1) > 0.01) okK = false; }
+    spread.push(id + ' ' + Math.min(...areas).toFixed(2) + '–' + Math.max(...areas).toFixed(2) + ' mm²');
+    if (Math.max(...areas) / Math.min(...areas) > 1.15) okK = false;
+  }
+  check('koef3 LEDs: luminance reproduced at his rows; effective area constant within 15 %', okK, spread.join(' · '));
+  const rows = SP.parseRows('Current\tlm\tcd/mm2\n700\t250\t56.2\n2,800 760 160.6\n5.6, 1031, 211.7');
+  check('pasted rows: mA → A, thousands separators, mixed delimiters, header skipped', JSON.stringify(rows) === JSON.stringify([[0.7, 250, 56.2], [2.8, 760, 160.6], [5.6, 1031, 211.7]]));
+  const u = { pos: [0, 0, 0], axis: [0, 0, 1] }; SP.apply(u, 'measured', { measured: { name: 'test', shape: 'disc', rows }, amps: 2.8 });
+  check('measured emitter: round die of area Φ/(πL), flux from the rows', u.shape === 'disc' && u.power === 760 && Math.abs(Math.PI * u.radius * u.radius - 760 / (Math.PI * 160.6)) < 1e-3 && SP.matches(u));
   SP.apply(s, 'hb3', { volts: 12 });
   check('HB3: axial 5.1 mm opaque coil, 1,300 lm at 12 V / 1,860 at 13.2 V', s.kind === 'volume' && s.shape === 'cylinder' && s.length === 5.1 && s.emission === 'surface' && s.axis.join() === '1,0,0' && s.power === 1300 && SP.apply(s, 'hb3', { volts: 13.2 }) && s.power === 1860);
   s.radius = 0.8; check('an edited preset is flagged', !SP.matches(s));

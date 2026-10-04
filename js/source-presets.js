@@ -34,6 +34,34 @@
   const R25_VF_WARM = [[0.1, 2.61], [0.5, 2.71], [1, 2.80], [1.5, 2.90], [2, 2.98], [3, 3.13], [4, 3.27], [5, 3.40]];
   const R25_VF_COOL = [[0.1, 2.56], [0.5, 2.69], [1, 2.79], [1.5, 2.90], [2, 2.99], [3, 3.17], [4, 3.34], [5, 3.52]];
   const r25Bin = (a1, a15, a3, a4, a5) => [[0, 0], [1, a1], [1.5, a15], [3, a3], [4, a4], [5, a5]];
+  // koef3's measurements (BLF/TLF): flux and Vf read off his comparison chart "LED comparison – Osram CSLNM1.TG, CSLPM1.TG,
+  // Black Flat HWQP, LE UW Q8WP" (Cu DTP boards, integrating sphere, fan-cooled, 25 °C solder point; ±3 % / ±0.05 V reading
+  // error), luminance from his cd/mm² tables.  These LEDs carry no die size here: the EFFECTIVE emitting area comes from
+  // A = Φ / (π L) at each luminance row — what a Lambertian die of that luminance and flux must measure, which is what the
+  // optics see.  It stays within a few % across current for all four (a sanity check on the readings).
+  // Rows: flux [A, lm], vf [A, V], lum [A, cd/mm²].  Max current = where koef3 stopped, not a rating.
+  const KOEF3 = {
+    'osram-cslpm1': { label: 'Osram CSLPM1.TG (domeless)', flux: [[0, 0], [1, 345], [2, 622], [3, 852], [4, 1046], [5, 1211], [6, 1346], [7, 1441], [8, 1493], [8.6, 1500]],
+      vf: [[0.2, 2.75], [1, 2.89], [2, 3.01], [3, 3.12], [4, 3.22], [5, 3.31], [6, 3.40], [7, 3.49], [8, 3.57], [8.6, 3.62]], lum: [[2.8, 126.9], [6, 209.6], [8.6, 232.4]], defaultA: 6 },
+    'osram-cslnm1': { label: 'Osram CSLNM1.TG (domeless)', flux: [[0, 0], [0.5, 190], [1, 350], [2, 598], [3, 796], [4, 931], [5, 1015], [5.6, 1031]],
+      vf: [[0.2, 2.85], [1, 3.04], [2, 3.23], [3, 3.35], [4, 3.51], [5, 3.62], [5.6, 3.70]], lum: [[0.7, 56.2], [2.8, 160.6], [5.6, 211.7]], defaultA: 4 },
+    'osram-hwqp': { label: 'Osram Black Flat HWQP (domeless)', flux: [[0, 0], [1, 317], [2, 548], [3, 719], [4, 848], [5, 926], [5.4, 937], [5.8, 933]],
+      vf: [[0.2, 2.80], [1, 3.01], [2, 3.19], [3, 3.36], [4, 3.56], [5, 3.77], [5.8, 4.00]], lum: [[0.7, 61.0], [2.8, 166.5], [5.4, 225.4]], defaultA: 4,
+      note: 'koef3 has two luminance tables for this LED (61.0 / 166.5 / 225.4 and 66.1 / 181.2 / 245.9 cd/mm²); the first, repeated in three of his tables, is used.' },
+    'osram-q8wp': { label: 'Osram OSTAR LE UW Q8WP (domeless)', flux: [[0, 0], [1, 340], [2, 607], [3, 839], [4, 1028], [5, 1189], [6, 1330], [7, 1448], [8, 1546], [9, 1602], [9.6, 1607], [10, 1604]],
+      vf: [[0.2, 2.76], [1, 2.84], [2, 2.95], [3, 3.03], [4, 3.12], [5, 3.20], [6, 3.28], [7, 3.36], [8, 3.43], [9, 3.51], [10, 3.57]], lum: [[2.8, 121.8], [6, 205.9], [9.6, 244.6]], defaultA: 6 },
+  };
+  // effective area (mm²) at current a, from the luminance rows: Φ(a_i) / (π L_i), interpolated (clamped at the ends)
+  function areaAt(m, a) {
+    const tab = m.lum.map(([ai, L]) => [ai, lerp(m.curve, ai) / (Math.PI * L)]).filter(([, A]) => A > 0);
+    return tab.length ? lerp(tab, a) : NaN;
+  }
+  // a model built from pasted rows (the "measured" emitter): rows = [[A, lm, cd/mm²], …], optional vf rows [[A, V]]
+  function measuredModel(meas) {
+    const rows = (meas && meas.rows || []).filter((r) => r[0] > 0 && r[1] > 0).sort((a, b) => a[0] - b[0]);
+    if (!rows.length) return null;
+    return { label: meas.name || 'Measured', curve: [[0, 0]].concat(rows.map((r) => [r[0], r[1]])), lum: rows.filter((r) => r[2] > 0).map((r) => [r[0], r[2]]), vf: meas.vf && meas.vf.length ? meas.vf : null, maxA: rows[rows.length - 1][0] };
+  }
   const PRESETS = {
     sketch: {
       label: 'Sketch LED · 1 × 1 mm, 1,000 lm',
@@ -67,6 +95,18 @@
         f5: { label: 'Top bin F5 min', curve: r25Bin(369, 520, 900, 1108, 1279), vf: R25_VF_COOL, maxA: 5 },
       }, model: 'f1', ratedA: 5, maxW: 18, defaultA: 4 },
     },
+    ...Object.fromEntries(Object.entries(KOEF3).map(([id, k]) => [id, {
+      label: k.label + ' · koef3', measured: true,
+      note: 'koef3\u2019s measurements (BLF/TLF, Cu board, fan-cooled, 25 °C solder point): flux and Vf read off his chart, luminance from his tables. The die is a square of the EFFECTIVE area Φ / (π L) at the drive current (no die size given). Max current = where his test stopped, not a rating.' + (k.note ? ' ' + k.note : ''),
+      set: { kind: 'planar', shape: 'rect', dist: 'lambertian' },
+      drive: { models: { koef3: { label: 'koef3 test (25 °C solder point)', curve: k.flux, vf: k.vf, lum: k.lum, maxA: k.flux[k.flux.length - 1][0] } }, model: 'koef3', ratedA: Infinity, defaultA: k.defaultA },
+    }])),
+    measured: {
+      label: 'Measured LED (paste flux + luminance rows)', measured: true, custom: true,
+      note: 'Your own rows: current (A), flux (lm), luminance (cd/mm²), e.g. from a koef3 test. Flux follows the rows; the die is a square (or disc) of the effective area Φ / (π L), interpolated at the drive current. Lambertian.',
+      set: { kind: 'planar', dist: 'lambertian' },
+      drive: { models: {}, model: 'rows', ratedA: Infinity, defaultA: 1 },
+    },
     hb3: {
       label: 'HB3 / 9005 halogen · axial filament 5.1 mm',
       note: 'UN R37 sheets HB3/1–4 (E/ECE/324/Rev.1/Add.36/Rev.7): filament length f = 5.1 mm on the reference axis, centre e = 31.5 mm from the reference plane; 1,860 lm ± 12 % at 13.2 V (1,300 lm at 12 V). Filament DIAMETER is not on those sheets: 1.4 mm assumed (edit Radius). Opaque coil (Lambertian skin). Not modelled: the glass bulb, the cap and holder shadowing light behind it.',
@@ -77,16 +117,33 @@
   };
 
   // set src to preset id (position kept).  opts.amps / opts.volts for the drive.  Returns the applied preset.
+  // the flux model a source uses under preset p (the pasted rows for the measured emitter)
+  function modelOf(src, p) {
+    if (p.custom) return measuredModel(src.measured);
+    return p.drive.models[src.fluxModel] || p.drive.models[p.drive.model];
+  }
   function apply(src, id, opts) {
     const p = PRESETS[id]; if (!p) return null;
     Object.assign(src, JSON.parse(JSON.stringify(p.set)));
     if (p.axis) { src.axis = p.axis.slice(); src.roll = 0; }
     src.preset = id;
+    if (p.custom && opts && opts.measured) src.measured = JSON.parse(JSON.stringify(opts.measured));
+    if (p.custom && !src.shape) src.shape = (src.measured && src.measured.shape) || 'rect';
     if (p.drive) {
-      src.fluxModel = opts && p.drive.models[opts.model] ? opts.model : (p.drive.models[src.fluxModel] ? src.fluxModel : p.drive.model);
-      const m = p.drive.models[src.fluxModel];
-      src.driveA = opts && opts.amps > 0 ? Math.min(m.maxA, opts.amps) : (src.driveA > 0 ? Math.min(m.maxA, src.driveA) : p.drive.defaultA);
+      if (!p.custom) src.fluxModel = opts && p.drive.models[opts.model] ? opts.model : (p.drive.models[src.fluxModel] ? src.fluxModel : p.drive.model);
+      else src.fluxModel = 'rows';
+      const m = modelOf(src, p);
+      if (!m) return p;                                   // the measured emitter before any rows: geometry left as is
+      src.driveA = opts && opts.amps > 0 ? Math.min(m.maxA, opts.amps) : (src.driveA > 0 ? Math.min(m.maxA, src.driveA) : Math.min(m.maxA, p.drive.defaultA));
       src.power = Math.round(lerp(m.curve, src.driveA));
+      if (m.lum && m.lum.length) {                        // measured: the die is the effective area at this current
+        const A = areaAt(m, src.driveA);
+        if (A > 0) {
+          if (p.custom && src.measured && src.measured.shape === 'disc') { src.shape = 'disc'; src.radius = +Math.sqrt(A / Math.PI).toFixed(4); }
+          else { src.shape = 'rect'; src.w = src.h = +Math.sqrt(A).toFixed(4); }
+          src.effArea = +A.toFixed(4);
+        }
+      }
     } else { delete src.driveA; delete src.fluxModel; }
     if (p.volts) { src.volts = opts && p.volts[opts.volts] ? opts.volts : (p.volts[src.volts] ? src.volts : 13.2); src.power = p.volts[src.volts]; }
     else delete src.volts;
@@ -95,18 +152,34 @@
   // the preset's electrical side at the source's current drive: { amps, vf, watts, lmPerW } (LEDs) or null
   function electrical(src) {
     const p = PRESETS[src.preset]; if (!p || !p.drive || !(src.driveA > 0)) return null;
-    const m = p.drive.models[src.fluxModel] || p.drive.models[p.drive.model];
-    const vf = lerp(m.vf, src.driveA), w = vf * src.driveA;
+    const m = modelOf(src, p); if (!m) return null;
+    const vf = m.vf ? lerp(m.vf, src.driveA) : NaN, w = vf * src.driveA;
     return { amps: src.driveA, vf, watts: w, lmPerW: src.power / w, overRated: src.driveA > p.drive.ratedA + 1e-9, ratedA: p.drive.ratedA, maxA: m.maxA, overPower: p.drive.maxW > 0 && w > p.drive.maxW, maxW: p.drive.maxW, extrapolated: src.fluxModel === 'datasheet' && src.driveA > p.drive.ratedA };
   }
   // does the source still match its preset's geometry and emission (or has it been edited since)?
   function matches(src) {
     const p = PRESETS[src.preset]; if (!p) return false;
     for (const [k, v] of Object.entries(p.set)) if (k !== 'power' && src[k] !== v) return false;
+    if (p.measured && src.effArea > 0) {                // the die follows the drive current: check it still has the effective area
+      const A = src.shape === 'disc' ? Math.PI * src.radius * src.radius : src.w * src.h;
+      if (Math.abs(A / src.effArea - 1) > 0.01) return false;
+    }
     return true;
   }
 
   // surface luminance (cd/mm²) of a Lambertian planar source: L = Φ / (π A)
   const luminanceOf = (src) => (src.kind === 'planar' && src.dist === 'lambertian' ? src.power / (Math.PI * (src.shape === 'disc' ? Math.PI * src.radius * src.radius : src.w * src.h)) : null);
-  RF.SourcePresets = { luminanceOf, PRESETS, apply, electrical, matches, lumensAt: (id, a, model) => { const d = PRESETS[id] && PRESETS[id].drive; return d ? lerp((d.models[model] || d.models[d.model]).curve, a) : NaN; } };
+  // parse pasted rows: one per line, "A lm cd/mm²" (commas, tabs, spaces; thousands separators like 1,500 allowed when the
+  // numbers are tab/space separated).  Lines that don't hold three numbers are skipped.
+  function parseRows(text) {
+    const rows = [];
+    for (const line of String(text || '').split(/\n/)) {
+      let parts = line.trim().split(/[\t ;]+/).filter(Boolean);
+      if (parts.length < 3) parts = line.trim().split(/,\s*/).filter(Boolean);
+      const nums = parts.map((x) => parseFloat(x.replace(/,(?=\d{3}\b)/g, ''))).filter((x) => isFinite(x));
+      if (nums.length >= 3) { let [a, lm, L] = nums; if (a > 50) a /= 1000; rows.push([a, lm, L]); }   // mA → A
+    }
+    return rows;
+  }
+  RF.SourcePresets = { luminanceOf, areaAt, measuredModel, parseRows, KOEF3, PRESETS, apply, electrical, matches, lumensAt: (id, a, model) => { const d = PRESETS[id] && PRESETS[id].drive; return d ? lerp((d.models[model] || d.models[d.model]).curve, a) : NaN; } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

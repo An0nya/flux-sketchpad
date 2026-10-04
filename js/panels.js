@@ -240,16 +240,38 @@
     box.innerHTML = '';
     box.append(el('div', { class: 'row' }, el('label', {}, 'Emitter'), sel));
     if (!p) return;
-    if (p.drive) {
-      const e = SP.electrical(src);
-      const mdl = el('select', { 'aria-label': 'Flux model' }, ...Object.entries(p.drive.models).map(([k, m]) => el('option', { value: k }, m.label)));
-      mdl.value = src.fluxModel;
-      mdl.addEventListener('change', () => { C.actions.applySourcePreset(ui.store, src.preset, { model: mdl.value, amps: src.driveA }); ui.afterChange(); renderSourcePreset(ui); });
+    if (p.custom) {                                   // the measured emitter: pasted rows
+      const m = src.measured || {}, ta = el('textarea', { rows: 4, class: 'rows-in', placeholder: 'A  lm  cd/mm²  (one row per line, e.g. 2.8  760  160.6)', 'aria-label': 'Measured rows' });
+      ta.value = (m.rows || []).map((r) => r.join('  ')).join('\n');
+      const nm = el('input', { type: 'text', value: m.name || '', placeholder: 'name', 'aria-label': 'LED name' });
+      const sh = el('select', { 'aria-label': 'Die shape' }, el('option', { value: 'rect' }, 'square die'), el('option', { value: 'disc' }, 'round die'));
+      sh.value = m.shape || 'rect';
+      const use = el('button', { type: 'button' }, 'Use these rows');
+      use.addEventListener('click', () => {
+        const rows = SP.parseRows(ta.value);
+        if (!rows.length) { ta.focus(); return; }
+        ui._histHint = 'Measured emitter rows';
+        C.actions.applySourcePreset(ui.store, 'measured', { measured: { name: nm.value.trim(), shape: sh.value, rows }, amps: src.driveA || rows[rows.length - 1][0] });
+        ui.afterChange(); renderSourcePreset(ui);
+      });
+      box.append(el('div', { class: 'row' }, el('label', {}, 'LED'), nm), el('div', { class: 'row' }, el('label', {}, 'Die'), sh), ta, el('div', { class: 'btnrow' }, use));
+      const mm = SP.measuredModel(m);
+      if (mm && mm.lum.length) box.append(el('div', { class: 'row help' }, 'Effective area Φ / (π L): ' + mm.lum.map(([a]) => a + ' A → ' + SP.areaAt(mm, a).toFixed(2) + ' mm²').join(' · ')));
+      else if (mm) box.append(el('div', { class: 'reason' }, 'No luminance column: the die size can\u2019t be derived. Add cd/mm² as the third number.'));
+    }
+    if (p.drive && (!p.custom || SP.measuredModel(src.measured))) {
+      const e = SP.electrical(src), models = Object.entries(p.drive.models);
       const a = el('input', { type: 'number', min: 0.1, max: e ? e.maxA : 4, step: 0.1, value: src.driveA, 'aria-label': 'Drive current (A)' });
       a.addEventListener('change', () => { const v = parseFloat(a.value); if (v > 0) { C.actions.setDriveCurrent(ui.store, v); ui.afterChange(); renderSourcePreset(ui); } });
-      box.append(el('div', { class: 'row' }, el('label', {}, 'Flux model'), mdl),
-        el('div', { class: 'row', title: 'Flux follows the chosen curve; it sets Problem → Light source → Advanced → Power.' }, el('label', {}, 'Drive current (A)'), a),
-        el('div', { class: 'row help' }, Math.round(src.power).toLocaleString() + ' lm at ' + src.driveA + ' A' + (e ? ' · Vf ' + e.vf.toFixed(2) + ' V · ' + e.watts.toFixed(1) + ' W · ' + e.lmPerW.toFixed(0) + ' lm/W' : '')));
+      if (models.length > 1) {
+        const mdl = el('select', { 'aria-label': 'Flux model' }, ...models.map(([k, m]) => el('option', { value: k }, m.label)));
+        mdl.value = src.fluxModel;
+        mdl.addEventListener('change', () => { C.actions.applySourcePreset(ui.store, src.preset, { model: mdl.value, amps: src.driveA }); ui.afterChange(); renderSourcePreset(ui); });
+        box.append(el('div', { class: 'row' }, el('label', {}, 'Flux model'), mdl));
+      }
+      const L = SP.luminanceOf(src);
+      box.append(el('div', { class: 'row', title: 'Flux follows the chosen curve; it sets Problem → Light source → Advanced → Power.' }, el('label', {}, 'Drive current (A)'), a),
+        el('div', { class: 'row help' }, Math.round(src.power).toLocaleString() + ' lm at ' + src.driveA + ' A' + (L ? ' · ' + Math.round(L) + ' cd/mm²' : '') + (src.effArea > 0 ? ' · ' + src.effArea.toFixed(2) + ' mm² effective' : '') + (e && isFinite(e.vf) ? ' · Vf ' + e.vf.toFixed(2) + ' V · ' + e.watts.toFixed(1) + ' W · ' + e.lmPerW.toFixed(0) + ' lm/W' : '')));
       if (e && e.overRated) box.append(el('div', { class: 'note' }, '⚠ Over the datasheet\u2019s ' + e.ratedA + ' A' + (e.overPower ? ' and ' + e.maxW + ' W dissipation' : '') + ' rating (' + e.watts.toFixed(0) + ' W into a 2 mm die; Rth j–sp 0.7 °C/W, so the heatsink decides).' + (e.extrapolated ? ' Flux past 4 A is estimated from koef3\u2019s curve shape.' : '')));
     }
     if (p.volts) {

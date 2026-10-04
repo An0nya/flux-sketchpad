@@ -146,6 +146,13 @@ Light source → **Emitter** presets (`js/source-presets.js`):
 - **Sketch LED vs real parts:** 318 cd/mm², against 71 (SFT-40 3000 K at 4 A), 143–179
   (SFT-25R at 5 A) and 186–210 (SFT-40 cool white at 8 A). Spec mode's report now says so
   whenever the sketch or a custom emitter is in use, because absolute cd depend on it.
+- **koef3-measured Osram LEDs** (CSLPM1.TG, CSLNM1.TG, Black Flat HWQP, OSTAR LE UW Q8WP).
+  Flux and Vf are read off his comparison chart (25 °C solder point, fan-cooled), and
+  luminance comes from his cd/mm² tables. No die sizes are given, so the die is a square of
+  the **effective area Φ / (π L)**: 2.04, 1.5, 1.3 and 2.07 mm². That holds within a few %
+  across current, which supports the readings.
+- **Measured LED:** paste rows of A, lm and cd/mm² (any koef3 test), pick a square or round
+  die, and the effective area follows the drive current.
 - **HB3/9005:** UN R37 sheets HB3/1–4. An axial 5.1 mm opaque coil, 1,860 lm at 13.2 V or
   1,300 at 12 V. The filament diameter of 1.4 mm is **assumed**, because the sheets don't
   give it.
@@ -157,6 +164,9 @@ by the cut-off. **None of them passes:**
 |---|---|---|---|
 | Sketch LED | 318 cd/mm² | 10 pass / 5 fail / 4 unsure | Zone IV, Zone I (> 2 × 50R), 25L-side spread, sign points, G too sharp / not linear |
 | SFT-40 @ 4 A, datasheet (861 lm) | 71 cd/mm² | 8 / 7 / 4 | 75R / 50R right at 10.1k (unsure), Zone IV dark, Zone I, cut-off found 0.6° *above* H, so the aim drops everything |
+| Osram OSTAR LE UW Q8WP @ 9.6 A, koef3 (1,607 lm) | 245 cd/mm² | 10 / 5 / 4 | Strongest real emitter tested: 75R 20.0k, 50R 24.0k, 25L 10.2k; the same Zone IV / Zone I failures |
+| Osram CSLPM1.TG @ 8.6 A, koef3 (1,500 lm) | 232 cd/mm² | 10 / 5 / 4 | close behind (75R 19.9k, 50R 25.6k) |
+| Osram Black Flat HWQP @ 5.4 A, koef3 (937 lm) | 225 cd/mm² | 9 / 5 / 5 | the smallest die (1.3 mm²) gives the lowest solved cut-off (0.1°) but too little light for 25L |
 | SFT-25R 3000 K (bin F1) @ 5 A, rated (1,021 lm) | 143 cd/mm² | 11 / 5 / 3 | Best score so far; the smaller round die puts the solved cut-off at 0.3° (vs 0.6° for the 2 mm dies). Still Zone IV dark, Zone I > 2 × 50R |
 | SFT-25R top bin F5 @ 5 A (1,279 lm) | 179 cd/mm² | 11 / 5 / 3 | same, more light (75R 16.2k, 50R 20.7k) |
 | SFT-40 cool white (6500 K, bin N5) @ 8 A, rated (2,272 lm) | 186 cd/mm² | 10 / 4 / 5 | Strongest so far (75R 17.6k, 50R 22.9k, peak 79k); still Zone IV dark, Zone I > 2 × 50R, the same cut-off placement |
