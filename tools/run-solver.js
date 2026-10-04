@@ -71,7 +71,8 @@ const problemOf = (sc) => ({ source: sc.source, target: sc.target, envelope: sc.
     const row = { scene: name, solver: def.id + ' v' + def.version, settings };
     if (d.type !== 'done') { row.error = d.message; rows.push(row); if (!asJson) console.log('\n' + name + ' · ' + row.solver + '\n  ERROR ' + d.message); continue; }
     const out = d.output || {}, f = S.verify(sc, out);
-    Object.assign(row, { solveMs: Math.round(d.ms), traceRays: d.rays, facts: { errors: f.errors, placed: f.placed, dropped: f.dropped, outsideEnvelope: f.violations.envelope.length, insideClearance: f.violations.keepOut.length, intentErrors: f.intentErrors.length }, notes: out.notes || [] });
+    if (!f.errors.length && f.needsBounces > sc.sim.bounces) sc.sim.bounces = f.needsBounces;   // as the app does (controller.js ensureBounces)
+    Object.assign(row, { solveMs: Math.round(d.ms), traceRays: d.rays, facts: { errors: f.errors, placed: f.placed, parts: f.parts, bounces: sc.sim.bounces, dropped: f.dropped, outsideEnvelope: f.violations.envelope.length, insideClearance: f.violations.keepOut.length, intentErrors: f.intentErrors.length }, notes: out.notes || [] });
     if (!f.errors.length) {
       sc.groups.A.surfaces = out.surfaces;
       const P = E.prepare(sc, RF.State.allSurfaces(sc)); P.recordHits = true; const c = E.runSync(P, N);
