@@ -38,6 +38,30 @@ Bench at 2 M rays (guided), sure fails / unsure · peak:
 - **Space limit:** the box fixtures leave ~26–32 mm in front of an up-facing LED, so f ≈ 10–14 mm and the lens is Ø17–20 mm. Only ~18–37 % of the flux gets through.
 - **Paint scenes:** default = 0 % fidelity (16 % delivered); test = 20 %. One facet sits inside the test scene's LED clearance (the margin is too thin).
 
+### `projector-v2` (2026-10-04, experimental): first draft, does not beat v1 yet
+Depth-map reflector (each cell picks its own confocal-ellipsoid depth; shell test against the other facets), lens
+picked by a meridional traced field map (free k, biconvex; the map also places image points on the real focal
+surface), shield auto/on/off with defocus, curved `quad` strips clipped to the envelope, 6 flat upper-band facets
+(intensity = refl × luminance × patch area), traced spec calibration (≤ 4 rounds × 1 M rays, ~10–16 s).
+
+Bench at 8 M rays, sure fails / unsure · peak (v1 re-run at 8 M alongside):
+
+| preset | solver | box | slim | module | sealed7 |
+|---|---|---|---|---|---|
+| R112 B | v1 | **4**/3 · 23k | **8**/1 · 28k | **7**/4 · 17k | **6**/6 · 31k |
+| R112 B | v2 | **7**/4 · 8.8k | **8**/5 · 7.6k | **6**/6 · 10k | **6**/4 · 22k |
+| FMVSS LB2V | v1 | **11**/0 · 19k | **12**/2 · 21k | **10**/3 · 15k | **10**/1 · 26k |
+| FMVSS LB2V | v2 | **9**/1 · 12k | **14**/1 · 6.5k | **10**/3 · 6.6k | **10**/3 · 19k |
+
+- **Upper band works in principle:** the FMVSS 0.5U–4U rows and the R112 sign points now pass on box (v1 fails
+  them all), but the blobs (≈ 9–11° tall: the LED seen from 6–13 mm) leak into FMVSS 10U–90U.
+- **The hot spot is flux-starved** (75R / 50R / Zone IV, FMVSS 1.5D 2R and 2D–4D wide points): on the box fixtures the
+  lens acceptance cone at the focus (tan ≈ 0.4–0.5), not the envelope, bounds the reflector to 6–13 mm from the LED.
+  The depth-map freedom can't use the envelope there; a faster lens (biconvex / higher NA) is the lever.
+- **Engine gotcha found:** a polygon clip is convex-only (`geometry.js` intersect). A non-convex shield polygon silently
+  passes light (v1's R112 / FMVSS shapes happen to be convex). v2 builds the shield as convex strips.
+- Biconvex candidates that are ball-like (t > 0.75 a) are skipped: the meridional model and the 3D trace disagree there.
+
 ### `tir-array-v1`: one TIR collimator per emitter, prism-cell exit faces
 - **Body:** the `lenses.js` TIR body (dome, cavity, RK4 TIR wall), tilted toward its unit's share of the paint (≤ 12°).
 - **Exit face:** a grid of refracting `plane` prism cells, each aimed by vector Snell at the weighted centre of an equal-flux sub-region of the paint.
