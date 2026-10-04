@@ -103,9 +103,50 @@
       // far-field streams (P.ffStreams = [grid opts]): exit legs binned by direction / screen position as they happen — the
       // same grids FarField.build makes from stored exits, without storing them, so a run can have any number of rays
       ff: P.ffStreams && P.ffStreams.length ? P.ffStreams.map((o) => RF.FarField.newStream(o)) : null,
+      // guided emission (P.guideLearn): which emission directions land where in the first stream, coarsely — what a guided
+      // Refine needs to send more rays toward the dim parts of the window (buildGuide)
+      gl: P.guideLearn && P.ffStreams && P.ffStreams.length ? newLearn(P.ffStreams[0]) : null, curB: 0,
       paths: [], pathLimit: pathLimit === undefined ? 240 : pathLimit,
       elapsed: 0, done: N === 0,
     };
+  }
+
+  // ---- guided emission
+  // Emission bins: GA × GB cells of the two direction uniforms (x3, x4) — equal probability under the source's own
+  // distribution.  A guide is a probability per bin; ray i of a guided segment draws its bin from it and carries the
+  // weight (1 / NB) / q (unbiased: every expectation is unchanged, only where the rays go changes).
+  const GA = 32, GB = 32, NB = GA * GB, GCELL = 0.5;
+  let LASTB = 0;
+  function newLearn(o) {
+    const S = RF.FarField.newStream(o), kc = Math.max(1, Math.round(GCELL / S.step)), nci = Math.ceil(S.nh / kc), ncj = Math.ceil(S.nv / kc);
+    return { kc, nci, ncj, NC: nci * ncj, nh: S.nh, H: new Float32Array(NB * nci * ncj), Hn: new Float32Array(NB) };
+  }
+  function learnAdd(gl, b, m) { const i = m % gl.nh, j = (m - i) / gl.nh; gl.H[b * gl.NC + Math.floor(j / gl.kc) * gl.nci + Math.floor(i / gl.kc)] += 1; }
+  /* A guide from a run so far: emission bins whose rays land where the window is DIM get more rays.  Importance of a
+   * coarse cell = 1 / max(I, floor) (rays per solid angle evened out, so the relative noise is too); a bin's value = the
+   * mean importance of its rays (0 for rays that left the window); q = α / NB + (1 − α) × value share — the α part keeps
+   * every bin possible and caps the weight at 1 / α.  null when the run learned nothing.                              */
+  function buildGuide(ctx, alpha) {
+    const gl = ctx.gl, S = ctx.ff && ctx.ff[0]; if (!gl || !S) return null;
+    alpha = alpha === undefined ? 0.3 : alpha;
+    const Ec = new Float64Array(gl.NC), Oc = new Float64Array(gl.NC);
+    for (let j = 0; j < S.nv; j++) for (let i = 0; i < S.nh; i++) {
+      const c = Math.floor(j / gl.kc) * gl.nci + Math.floor(i / gl.kc);
+      Ec[c] += S.E[j * S.nh + i]; Oc[c] += RF.FarField.binOmega(S.h0 + i * S.step, S.h0 + (i + 1) * S.step, S.v0 + j * S.step, S.v0 + (j + 1) * S.step, S.conv);
+    }
+    let pk = 0; const I = new Float64Array(gl.NC); for (let c = 0; c < gl.NC; c++) { I[c] = Oc[c] > 0 ? Ec[c] / Oc[c] : 0; if (I[c] > pk) pk = I[c]; }
+    if (!(pk > 0)) return null;
+    const floor = 5e-4 * pk, imp = I.map((x) => 1 / Math.max(x, floor));
+    const v = new Float64Array(NB); let sv = 0, seen = 0;
+    for (let b = 0; b < NB; b++) { if (!(gl.Hn[b] > 0)) continue; let a = 0; const o = b * gl.NC; for (let c = 0; c < gl.NC; c++) if (gl.H[o + c]) a += gl.H[o + c] * imp[c]; v[b] = a / gl.Hn[b]; sv += v[b]; seen++; }
+    if (!(sv > 0)) return null;
+    const mean = sv / seen; for (let b = 0; b < NB; b++) if (!(gl.Hn[b] > 0)) { v[b] = mean; sv += mean; }
+    const q = new Float64Array(NB), cdf = new Float64Array(NB + 1);
+    for (let b = 0; b < NB; b++) { q[b] = alpha / NB + (1 - alpha) * v[b] / sv; cdf[b + 1] = cdf[b] + q[b]; }
+    for (let b = 0; b <= NB; b++) cdf[b] /= cdf[NB];
+    for (let b = 0; b < NB; b++) q[b] = cdf[b + 1] - cdf[b];
+    let wMax = 0; for (let b = 0; b < NB; b++) wMax = Math.max(wMax, 1 / (NB * q[b]));
+    return { q, cdf, wMax, alpha };
   }
 
   function newExit(cap) { return { o: new Float32Array(3 * cap), d: new Float32Array(3 * cap), e: new Float32Array(cap), b: new Uint8Array(cap), i: new Uint32Array(cap), n: 0, cap }; }
@@ -168,7 +209,7 @@
           if (Math.abs(u) <= T.half && Math.abs(v) <= T.half) {
             if (rec) rec.push(ox + t * dx, oy + t * dy, oz + t * dz);
             if (ctx.ex) recExit(ctx, ox, oy, oz, dx, dy, dz, E, bounces);
-            if (ctx.ff) for (const S of ctx.ff) RF.FarField.binExit(S, ox, oy, oz, dx, dy, dz, E);
+            if (ctx.ff) { const m0 = RF.FarField.binExit(ctx.ff[0], ox, oy, oz, dx, dy, dz, E); for (let k = 1; k < ctx.ff.length; k++) RF.FarField.binExit(ctx.ff[k], ox, oy, oz, dx, dy, dz, E); if (ctx.gl && m0 >= 0) learnAdd(ctx.gl, ctx.curB, m0); }
             if (den < 0) {                         // lit side
               const r = P.res;
               let iu = Math.floor((u + T.half) / (2 * T.half) * r), iv = Math.floor((v + T.half) / (2 * T.half) * r);
@@ -190,7 +231,7 @@
       if (kBest < 0) {
         ctx.E.escaped += E;
         if (ctx.ex) recExit(ctx, ox, oy, oz, dx, dy, dz, E, bounces);
-        if (ctx.ff) for (const S of ctx.ff) RF.FarField.binExit(S, ox, oy, oz, dx, dy, dz, E);
+        if (ctx.ff) { const m0 = RF.FarField.binExit(ctx.ff[0], ox, oy, oz, dx, dy, dz, E); for (let k = 1; k < ctx.ff.length; k++) RF.FarField.binExit(ctx.ff[k], ox, oy, oz, dx, dy, dz, E); if (ctx.gl && m0 >= 0) learnAdd(ctx.gl, ctx.curB, m0); }
         if (rec) { const L = P.scale * 1.5; rec.push(ox + L * dx, oy + L * dy, oz + L * dz); rec.end = 'escape'; }
         if (probe) probe.push({ type: 'escape', dir: [dx, dy, dz] });
         return;
@@ -267,17 +308,30 @@
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
       x[j] = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     }
+    let w = 1;
+    const gs = P.guides;
+    if (gs) for (let k = gs.length - 1; k >= 0; k--) {
+      const g = gs[k]; if (i < g.from || i >= g.to) continue;
+      const c = g.cdf, u = x[3]; let lo = 0, hi = NB;            // the bin from the guide's cdf, the rest of x3 within it
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (c[m] <= u) lo = m; else hi = m; }
+      const f = Math.min(1 - 1e-12, Math.max(0, (u - c[lo]) / Math.max(1e-300, c[lo + 1] - c[lo]))), a = Math.floor(lo / GB), bb = lo - a * GB;
+      x[3] = (a + f) / GA; x[4] = (bb + x[4]) / GB; w = 1 / (NB * g.q[lo]);
+      break;
+    }
+    LASTB = Math.min(GA - 1, Math.floor(x[3] * GA)) * GB + Math.min(GB - 1, Math.floor(x[4] * GB));
     RF.Source.sampleRay(P.S, x[0], x[1], x[2], x[3], x[4], o, d);
+    return w;                                         // the ray's weight (1 unless a guide drew it)
   }
   function traceRange(ctx, i0, i1) {
     const P = ctx.P, e0 = P.power / ctx.N;
     for (let i = i0; i < i1; i++) {
-      sampleRayI(P, i, O, Dd);
-      ctx.curI = i;
-      ctx.E.emitted += e0;
+      const w = sampleRayI(P, i, O, Dd), e = e0 * w;
+      ctx.curI = i; ctx.curB = LASTB;
+      if (ctx.gl) ctx.gl.Hn[LASTB]++;
+      ctx.E.emitted += e;
       let rec = null;
       if (i < ctx.pathLimit) { rec = [O[0], O[1], O[2]]; rec.end = ''; }
-      traceOne(P, ctx, O[0], O[1], O[2], Dd[0], Dd[1], Dd[2], e0, rec, null);
+      traceOne(P, ctx, O[0], O[1], O[2], Dd[0], Dd[1], Dd[2], e, rec, null);
       if (rec) ctx.paths.push(rec);
     }
   }
@@ -311,9 +365,10 @@
    * exactly the N2-ray run — once everything already accumulated is rescaled to the smaller per-ray energy (P.power / N2).
    * Returns a NEW context (so caches keyed by the context see a new run) that takes over the old one's buffers; the old
    * one must not be used afterwards.  Lists recorded per hit / exit grow to their caps.                          */
-  function extend(ctx, N2) {
+  function extend(ctx, N2, guide) {
     N2 = Math.floor(N2);
     if (!(N2 > ctx.N)) return ctx;
+    if (guide) ctx.P.guides = (ctx.P.guides || []).concat([{ from: ctx.N, to: N2, q: guide.q, cdf: guide.cdf, wMin: 1 / (NB * Math.max(...guide.q)) }]);   // rays N … N2 − 1 follow it (retrace too: it reads P)
     const P = ctx.P, f = ctx.N / N2, c = Object.assign({}, ctx, { N: N2, done: false });
     const mul = (a, n) => { for (let i = 0; i < (n === undefined ? a.length : n); i++) a[i] *= f; };
     mul(c.gridD); mul(c.gridR); mul(c.surfIn);
@@ -553,6 +608,6 @@
 
   RF.Engine = {
     targetFrame, designFrame, aimPoint, targetUVtoWorld, worldToTargetUV, cellCenter,
-    prepare, newCtx, extend, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, occlusion, hitCoverage, exitCoverage, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
+    prepare, newCtx, extend, buildGuide, traceRange, step, runSync, probeRay, retrace, rayAt: sampleRayI, facetLosses, occlusion, hitCoverage, exitCoverage, stats, evaluate, toPaintGrid, gridTotal, gridHash, BEAM_EDGE, pctl,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

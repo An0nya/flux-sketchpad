@@ -364,7 +364,7 @@
       }
       const N = ui.previewRun ? Math.min(sc.sim.rays, PREVIEW_RAYS) : sc.sim.rays;
       Pc.recordHits = true;
-      if (sc.mode === 'D' && RF.SpecUI) Pc.ffStreams = RF.SpecUI.streams(sc);   // Spec mode judges the far field: bin every ray's last leg as it goes (∞, 25 m, 10 m, target)
+      if (sc.mode === 'D' && RF.SpecUI) { Pc.ffStreams = RF.SpecUI.streams(sc); Pc.guideLearn = true; }   // Spec mode judges the far field: bin every ray's last leg as it goes (∞, 25 m, 10 m, target)
       ui.run = { P: Pc, ctx: RF.Engine.newCtx(Pc, N, ui.rayPaths === undefined ? 240 : ui.rayPaths), preview: ui.previewRun, started: now };
       ui.lastHeat = 0; ui.sceneDirty = true;
     }
@@ -393,7 +393,9 @@
   ui.refine = function (factor) {
     if (!ui.canRefine()) return false;
     const run = ui.run, N2 = Math.min(REFINE_MAX, Math.round(run.ctx.N * (factor || 2)));
-    run.ctx = RF.Engine.extend(run.ctx, N2); run.refined = true;
+    // Spec mode: the new rays go preferentially where the window is dim (test points, zone III), weighted so nothing is biased
+    const guide = run.ctx.gl ? RF.Engine.buildGuide(run.ctx) : null;
+    run.ctx = RF.Engine.extend(run.ctx, N2, guide); run.refined = true; run.guided = !!guide || run.guided;
     ui.setStatus('refining to ' + RF.U.fmtInt(N2) + ' rays'); ui.lastHeat = 0; schedule();
     return true;
   };

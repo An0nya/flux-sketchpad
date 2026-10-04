@@ -77,15 +77,16 @@
     S.lmExit += e;
     let a = dx, b = -dy, cc = dz;
     if (S.finite) {                                    // where it crosses the screen, as seen from the centre
-      if (!(a > 0)) return;
-      const t = (S.X - ox) / a; if (!(t > 0)) return;
+      if (!(a > 0)) return -1;
+      const t = (S.X - ox) / a; if (!(t > 0)) return -1;
       const c = S.c, px = ox + t * dx - c[0], py = oy + t * dy - c[1], pz = oz + t * dz - c[2], L = Math.hypot(px, py, pz);
       a = px / L; b = -py / L; cc = pz / L;
     }
     const hv = hvOfABC(a, b, cc, S.conv);
     const i = Math.floor((hv[0] - S.h0) / S.step), j = Math.floor((hv[1] - S.v0) / S.step);
-    if (!(i >= 0 && i < S.nh && j >= 0 && j < S.nv)) return;
+    if (!(i >= 0 && i < S.nh && j >= 0 && j < S.nv)) return -1;
     const m = j * S.nh + i; S.E[m] += e; S.E2[m] += e * e; S.lm += e; S.rays++;
+    return m;                                          // the bin it landed in (−1: outside the window)
   }
   // rescale a stream when its run is extended to more rays (every ray's energy shrinks by f)
   function scaleStream(S, f) { for (let i = 0; i < S.E.length; i++) { S.E[i] *= f; S.E2[i] *= f * f; } S.lm *= f; S.lmExit *= f; }
@@ -123,7 +124,8 @@
     const Om = new Float64Array(nh * nv);
     for (let j = 0; j < nv; j++) for (let i = 0; i < nh; i++) Om[j * nh + i] = binOmega(h0 + i * step, h0 + (i + 1) * step, v0 + j * step, v0 + (j + 1) * step, conv);
     const G = { E, E2, Om, nh, nv, h0, v0, step, h1: h0 + nh * step, v1: v0 + nv * step, conv, distance: dist, centre: c.slice(), lmWindow, lmExit, rays, coverage: cov, N: ctx.N, streamed: !!S,
-      eRay: ctx.P.power / Math.max(1, ctx.N) * scale };   // one emitted ray's energy (lm), for the noise floor of an empty kernel
+      // one emitted ray's energy (lm), for the noise floor of an empty kernel — a guided run's lightest rays are the ones sent to dim places
+      eRay: ctx.P.power / Math.max(1, ctx.N) * scale * (ctx.P.guides ? Math.min(1, ...ctx.P.guides.map((g) => g.wMin)) : 1) };
     G.sat = { E: sat(E, nh, nv), E2: sat(E2, nh, nv), Om: sat(Om, nh, nv) };
     return G;
   }

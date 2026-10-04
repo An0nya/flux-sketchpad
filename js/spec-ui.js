@@ -203,7 +203,7 @@
   }
   // keep tracing the finished run to ×2 the rays (no restart)
   function refineButton(ui) {
-    const N = ui.run ? ui.run.ctx.N : 0, b = el('button', { type: 'button', class: 'text', title: 'Keep tracing this run up to twice the rays: the result is exactly what that ray count would give from scratch' }, 'Refine → ' + RF.U.fmtInt(2 * N) + ' rays');
+    const N = ui.run ? ui.run.ctx.N : 0, b = el('button', { type: 'button', class: 'text', title: 'Keep tracing this run up to twice the rays. The new rays are GUIDED: emission directions whose light lands in the dim parts of the spec window (sign points, zone III, B50L) get more of them, each weighted so every intensity stays unbiased — ~3–50× the effective rays at the dim points for ~30 % fewer in the hot spot.' }, 'Refine → ' + RF.U.fmtInt(2 * N) + ' rays (guided)');
     b.addEventListener('click', () => ui.refine(2));
     return b;
   }

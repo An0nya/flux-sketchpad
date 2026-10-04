@@ -182,12 +182,16 @@
   // steepest descent of log I on a vertical scan at h (sampling offset dh, dv): the inflection of the cut-off
   // (Annex 9: G = log E(β) − log E(β + dv), the inflection where d²(log E)/dβ² = 0 — taken as where G peaks).
   // A wide horizontal kernel (kh, default ±0.25°) against noise: the horizontal part is flat by definition (§2.3).
+  // The cut-off is the beam's own light–dark edge, not any steep step in the dark above it (a dim glow's top edge, 80 → 1 cd,
+  // is steeper in log terms): only steps whose bright side holds ≥ CUT_FLOOR of the scan line's maximum count.
+  const CUT_FLOOR = 0.02;
   function scanCut(G, h, v0, v1, scan, dvd, kh, dh, dv) {
     const kv = Math.max(G.step / 2, 0.035) * 0.99;            // Annex 9: ~30 mm detector at 25 m ≈ 0.07° across
-    let best = null;
+    let best = null, top = 0;
+    for (let v = v0; v <= v1 + 1e-9; v += scan) { const a = RF.FarField.intensityAt(G, h + dh, v + dv, kh, kv); if (a.cd > top) top = a.cd; }
     for (let v = v0; v + dvd <= v1 + 1e-9; v += scan) {
       const a = RF.FarField.intensityAt(G, h + dh, v + dv, kh, kv), b = RF.FarField.intensityAt(G, h + dh, v + dvd + dv, kh, kv);
-      if (!(a.cd > 0 && b.cd > 0)) continue;
+      if (!(a.cd > 0 && b.cd > 0) || a.cd < CUT_FLOOR * top) continue;
       const g = Math.log10(a.cd / b.cd), sg = Math.hypot(a.sd / a.cd, b.sd / b.cd) / Math.LN10;
       if (!best || g > best.g) best = { g, sg, v: v + dvd / 2 };
     }

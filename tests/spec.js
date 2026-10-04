@@ -234,6 +234,30 @@ function fakeG(fn, win, step) {
   let threw = ''; try { RF.FarField.build(Object.assign({}, one, { ex: null }), RF.Spec.gridOpts(sc2)); } catch (e) { threw = e.message; }
   check('a grid the run did not stream (bin changed) asks for a re-trace', /re-trace/.test(threw), threw);
 }
+// guided Refine: unbiased, and more effective rays where the window is dim
+{
+  const sc = RF.State.defaultScene(); sc.mode = 'D'; sc.target.distance = 10000; sc.target.size = RF.Spec.fitTargetSize(sc);   // (the built-in spoke places nothing at 25 m)
+  sc.modeA.paint = RF.Spec.seedPaint(sc); sc.groups.A.surfaces = RF.ModeA.generate(RF.U.deepCopy(Object.assign({}, sc, { mode: 'A', modeA: Object.assign({}, sc.modeA, { paint: RF.Spec.workingPaint(sc) }) }))).surfaces;
+  const o = RF.Spec.gridOpts(sc), surfs = RF.State.allSurfaces(sc), N0 = 150000, N1 = 600000;
+  const P1 = RF.Engine.prepare(sc, surfs); P1.ffStreams = [o]; P1.guideLearn = true;
+  let c = RF.Engine.newCtx(P1, N0, 0); RF.Engine.traceRange(c, 0, N0); c.next = N0; c.done = true;
+  const g = RF.Engine.buildGuide(c); c = RF.Engine.extend(c, N1, g); RF.Engine.traceRange(c, N0, N1); c.next = N1; c.done = true;
+  const P2 = RF.Engine.prepare(sc, surfs); P2.ffStreams = [o]; const p = RF.Engine.runSync(P2, N1);
+  const Gg = RF.FarField.build(c, o), Gp = RF.FarField.build(p, o);
+  let okU = true, gain = [], det = [];
+  for (const [h, v, k] of [[1.15, -0.57, 0.5], [-9, -1.72, 0.5], [-4, 0, 0.5], [0, 2, 1], [-6, 3, 1]]) {
+    const a = RF.FarField.intensityAt(Gg, h, v, k), b = RF.FarField.intensityAt(Gp, h, v, k), z = (a.cd - b.cd) / Math.hypot(a.sd, b.sd);
+    if (!(Math.abs(z) < 4) || (v < -0.5 && !(b.cd > 1000))) okU = false; det.push(h + ',' + v + ' ' + Math.round(a.cd) + '/' + Math.round(b.cd) + ' cd z ' + z.toFixed(1)); if (v > -0.5) gain.push(a.neff / Math.max(1, b.neff));
+  }
+  check('guided Refine is unbiased: intensities agree with a plain run of the same size (|z| < 4 at hot and dim points)', okU && Math.abs(c.E.emitted / p.E.emitted - 1) < 0.02, det.join(' · '));
+  gain = []; let pk = 0; const Mp = RF.FarField.map(Gp, 0.5); for (const x of Mp.cd) if (x > pk) pk = x;
+  for (let v = -4; v <= 6; v += 1) for (let h = -12; h <= 12; h += 1) {         // the dim parts of the window: lit, under 1 % of the peak
+    const a = RF.FarField.intensityAt(Gg, h, v, 0.5), b = RF.FarField.intensityAt(Gp, h, v, 0.5);
+    if (b.cd > 0 && b.cd < 0.01 * pk && b.neff >= 1) gain.push(a.neff / b.neff);
+  }
+  gain.sort((a, b) => a - b);
+  check('guided Refine puts more rays where the window is dim (median effective-ray gain ≥ 1.5× where I < 1 % of the peak)', gain.length > 10 && gain[gain.length >> 1] >= 1.5, gain.length + ' spots, median ×' + (gain[gain.length >> 1] || 0).toFixed(1) + ', quartiles ×' + (gain[gain.length >> 2] || 0).toFixed(1) + '–×' + (gain[(3 * gain.length) >> 2] || 0).toFixed(1));
+}
 // dome: a real refractive hemisphere over the die
 {
   const sc = RF.State.testScene(); Object.assign(sc.source, { kind: 'planar', shape: 'rect', w: 2, h: 2, pos: [0, 0, 0], axis: [1, 0, 0], dist: 'lambertian', power: 1000, dome: { r: 2.5, n: 1.41, z: 0 } });
