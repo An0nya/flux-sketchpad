@@ -6,7 +6,7 @@
  *
  *   node tests/bench-spec.js [--fixtures box,slim,module,sealed7] [--solvers spoke,dish-fit,...] [--preset ece-r112-b]
  *                            [--led generic] [--amps 6] [--rays 8e6] [--pilot 2e6] [--md '{"seedGlow":150}'] [--json out.json]
- *   A solver may carry settings: --solvers 'fill-fix:{"priority":"light"}'.
+ *   A solver may carry settings: --solvers 'fill-fix:{"priority":"light"}'.  --load path/to/solver.js[,…] registers extra solver files.
  * Prints one line per row and a table; --json writes the rows (with every constraint's value).                       */
 const { load } = require('./load.js');
 const fs = require('fs'), vm = require('vm'), path = require('path');
@@ -16,6 +16,7 @@ for (const f of ['lab-fill-fix', 'lab-sqm', 'sonnet55-2026-09-28-dish-fit', 'opu
 }
 const args = {}; for (let i = 2; i < process.argv.length; i++) { const a = process.argv[i]; if (a.startsWith('--')) args[a.slice(2)] = process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[++i] : true; }
 const list = (x, d) => (x ? String(x).split(/,(?![^{]*})/) : d);
+for (const f of list(args.load, [])) vm.runInThisContext(fs.readFileSync(path.resolve(f), 'utf8'), { filename: path.resolve(f) });   // --load my-solver.js[,…]
 const fixtures = list(args.fixtures, ['box', 'sealed7']), solvers = list(args.solvers, ['spoke', 'dish-fit', 'opus-mosaic-auto', 'fill-fix']);
 const N = +(args.rays || 8e6), N0 = Math.min(N, +(args.pilot || 2e6)), preset = args.preset || 'ece-r112-b';
 

@@ -261,8 +261,10 @@ function fakeG(fn, win, step) {
   check('Spec mode solves on a 25 m plane; the painting is carried over by direction', inp.target.distance === 25000 && sc.target.distance === 10000 && agree / tot > 0.95, 'agree ' + (100 * agree / tot).toFixed(0) + ' %');
   check('solvers get input.spec (constraints in degrees, aim, measuring distance)', inp.spec && inp.spec.items.length === sc.modeD.items.length && inp.spec.aim.line === -0.57 && inp.spec.measure.distance === 25000);
   const prob = Object.assign(RF.U.deepCopy({ source: sc.source, envelope: sc.envelope, sim: sc.sim, modeD: sc.modeD, mode: 'D' }), { target: inp.target, modeA: { paint: inp.paint.cells } });
-  const tr = RF.Solvers.trace(prob, RF.ModeA.generate(RF.U.deepCopy(Object.assign({}, ss, { mode: 'A', modeA: Object.assign({}, ss.modeA, { paint: inp.paint.cells }) }))).surfaces, { rays: 100000, spec: true });
-  check('tools.trace({ spec: true }) returns the host judge\u2019s verdict', tr.spec && ['pass', 'fail', 'unsure'].includes(tr.spec.verdict) && tr.spec.rows.length > 10, tr.spec && tr.spec.verdict + ' ' + JSON.stringify(tr.spec.n));
+  const tr = RF.Solvers.trace(prob, RF.ModeA.generate(RF.U.deepCopy(Object.assign({}, ss, { mode: 'A', modeA: Object.assign({}, ss.modeA, { paint: inp.paint.cells }) }))).surfaces, { rays: 400000, spec: true });
+  const trG = RF.Solvers.trace(prob, tr._surf || [], { rays: 10000, spec: true });
+  check('tools.trace spec traces are guided at ≥ 200k rays, plain below', trG.spec && trG.spec.guided === false);
+  check('tools.trace({ spec: true }) returns the host judge\u2019s verdict (guided)', tr.spec && tr.spec.guided === true && ['pass', 'fail', 'unsure'].includes(tr.spec.verdict) && tr.spec.rows.length > 10, tr.spec && tr.spec.verdict + ' ' + JSON.stringify(tr.spec.n));
   const fx = RF.State.defaultScene(); RF.Spec.applyFixture(fx, 'box'); const d0 = RF.State.defaultScene();
   check('fixture "box" is the default scene\u2019s envelope; every fixture keeps the LED inside', JSON.stringify(fx.envelope.center.map((x) => +x.toFixed(2))) === JSON.stringify(d0.envelope.center.map((x) => +x.toFixed(2)))
     && Object.keys(RF.Spec.FIXTURES).every((id) => { const q = RF.State.defaultScene(); RF.Spec.applyFixture(q, id); return RF.Geo.envInside(q.envelope, q.source.pos, 1e-9); }));

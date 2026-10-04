@@ -191,7 +191,17 @@
     const P = RF.Engine.prepare(sc, surfaces); P.recordHits = !!(o.attribution || o.occlusion);
     const wantSpec = !!(o.spec && scene.modeD && RF.Spec && RF.FarField);
     if (wantSpec) P.ffStreams = [RF.Spec.gridOpts(scene)];        // the far field the host judges, at the spec's measuring distance
-    const N = Math.max(1, Math.min(2e6, o.rays | 0 || 20000)), c = RF.Engine.runSync(P, N, 0);
+    const N = Math.max(1, Math.min(2e6, o.rays | 0 || 20000));
+    // spec traces are guided by default (as the app's Refine): a quarter of the rays as a pilot, then rounds that send more
+    // rays where the window is dim (sign points, zone III), weighted so nothing is biased.  o.guided: false = plain.
+    const guided = wantSpec && o.guided !== false && N >= 200000;
+    if (guided) P.guideLearn = true;
+    let c;
+    if (!guided) c = RF.Engine.runSync(P, N, 0);
+    else {
+      const n0 = Math.max(100000, Math.floor(N / 4)); c = RF.Engine.newCtx(P, n0, 0); RF.Engine.traceRange(c, 0, n0); c.next = n0; c.done = true;
+      while (c.N < N) { const n1 = c.N, g = RF.Engine.buildGuide(c); c = RF.Engine.extend(c, Math.min(N, 2 * n1), g); RF.Engine.traceRange(c, n1, c.N); c.next = c.N; c.done = true; }
+    }
     const grid = RF.Engine.gridTotal(c), st = RF.Engine.evaluate(c);
     const res = { grid: Array.from(grid), res: P.res, energy: Object.assign({}, c.E), raysPerCell: st.raysPerCell, noise: st.raysPerCell > 0 ? 1 / Math.sqrt(st.raysPerCell) : 1,
       blocked: c.occ.out1 > 0 ? c.occ.blocked / c.occ.out1 : 0 };
@@ -213,7 +223,7 @@
     }
     if (wantSpec) {                                            // the host's own judge, so a solver can score itself exactly as the report will
       const ev = RF.Spec.evaluate(RF.FarField.build(c, P.ffStreams[0]), scene.modeD);
-      res.spec = { verdict: ev.verdict, n: ev.n, score: ev.score, worst: ev.worst, aim: ev.aim.note, shift: ev.shift,
+      res.spec = { guided, verdict: ev.verdict, n: ev.n, score: ev.score, worst: ev.worst, aim: ev.aim.note, shift: ev.shift,
         rows: ev.rows.map((r) => ({ name: r.name, kind: r.kind, value: r.value, sd: r.sd, bound: r.bound, isMin: r.isMin, verdict: r.verdict, margin: r.margin, at: r.at })) };
     }
     return res;

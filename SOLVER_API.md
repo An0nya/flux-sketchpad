@@ -91,6 +91,46 @@ solver id ending in `-auto`, the optional tuner, is exempt). Trace from the runn
 -->
 Anything else in `js/` is the app and is not available to a solver.
 
+## Spec mode (beam specifications)
+
+In Spec mode (mode D: SPEC-MODE.md), the user's goal is a regulation-style beam spec (UN R112, FMVSS 108, or their own),
+judged on the traced **far field**: intensity by direction in cd, at points, zones and cut-off scans in (H, V)
+degrees. Paint solvers still work there; they get a rasterised **working paint** (floors at minimums, holes at
+maximums, the user's painting in between). A solver that reads the spec directly gets more:
+
+- **`input.spec`** (only in Spec mode; absent otherwise): `{ preset, items, conv, kernel, step, window: [h0, h1, v0, v1],
+  traffic, measure: { distance }, aim: { mode, line, scan, box, itemReaim }, centre }`.
+  - `items`: the enabled constraints, traffic side resolved (H > 0 = right, V > 0 = up, degrees), each
+    `{ kind, name, min?, max?, minRel?, maxRel?, w }`. Kinds:
+    - `point`: `h, v`.
+    - `zone`: `poly` [[h, v], …]; the dimmest point must meet `min`, the brightest `max`.
+    - `sum`: `pts`; the sum of the points.
+    - `gradient`: a cut-off scan at `h` over `v0…v1`, G = log E(v) − log E(v + `dv`), its maximum within
+      [`min`, `max`].
+    - `linearity`: the inflection height at each of `hs` within `max` degrees; `ref: 'centre'` measures each against
+      the middle one.
+    - `imax`: the beam maximum.
+  - `minRel` / `maxRel`: `{ ref, factor }`, a bound relative to another item's measured value.
+  - `aim`: how the report aims the lamp before judging. `'cutoff'`: the steepest step of a scan at the
+    gradient item's `h` is moved onto `line` (vertical only). `'peak'`: the maximum onto HV. `'design'`: as built.
+    Then `box` (whole-lamp re-aim limits, R112) or `itemReaim` (every point / zone read up to that far off, FMVSS ¼°).
+    The vertical position of your cut-off is therefore normalised by the judge; its shape, sharpness and the
+    horizontal placement are yours.
+- **`input.target`** in Spec mode is a far plane at the user's "Solve at" distance (default 25 m), square, untilted,
+  sized to the spec window. Aim facets in **degrees**: `d = RF.FarField.dirOf(h, v, spec.conv)` is a world
+  direction (x = throw, y = left, z = up), and a facet's aim point is `Z = P + d × L` for any large L (use
+  `input.target.distance` or more). `input.paint` is the working paint on that plane.
+- **`tools.trace(surfaces, { rays, spec: true })`** adds `spec: { verdict, n: { pass, fail, unsure }, score, worst, aim,
+  shift, guided, rows: [{ name, kind, value, sd, bound, isMin, verdict, margin, at }] }`. This is the report's own
+  judge (`RF.Spec.evaluate`) on the far field at the spec's measuring distance. `rays` ≤ 2 M per call (~2–4 s in
+  Node). Spec traces are **guided** by default: a quarter of the rays as a pilot, then rounds that send more rays where
+  the window is dim, each weighted so nothing is biased. That cuts the error on dim rows (sign points, B50L, zone III)
+  2–8×. `guided: false` = plain. `verdict` per row: `'pass'` / `'fail'` = decided at ±2σ, `'unsure'` = noise decides.
+- Available in the solver environment as well: `RF.FarField` (directions, solid angles, grids) and `RF.Spec`
+  (`evaluate`, `itemsOf`, `windowOf`, `FIXTURES`, …).
+- **Bench:** `node tests/bench-spec.js --load path/to/solver.js --solvers my-id --fixtures box,slim,module,sealed7
+  --preset ece-r112-b|fmvss-lb2v [--rays 8e6]` (minutes per row; prints a table, `--json` keeps every row).
+
 ## What the app checks and scores (not you)
 
 Placed / unplaced counts, every surface inside the envelope and outside the LED clearance (measured on

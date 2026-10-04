@@ -8,7 +8,8 @@ scenes are private: see `~/Projects/agent-qa/FLUX-BENCH-NOTES.md` (the "Benchmar
 ## What Anya decided (2026-09-27)
 
 - **Goal:** a solid, multipurpose default solver for the app. Not a research or portfolio piece. Automotive
-  (cutoff, FMVSS-style limits) is a separate, specialised solver for later.
+  (cutoff, FMVSS-style limits) is a separate, specialised solver for later. *(2026-10-05: that solver is now being
+  built: see SPEC-SOLVER-BRIEF.md and SPEC-MODE.md.)*
 - **Priority:** fidelity, then uniformity, then light output. Steer away from the "constellation": as many tiny
   facets as possible painting the target like a pixel grid. It's valid, but boring.
 - **Facet count is a ceiling,** not a budget to use up.
