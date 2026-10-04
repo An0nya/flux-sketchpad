@@ -7,6 +7,9 @@ discussion from separate harness memories. Updated 2026-09-25.
 Status: **layout exploration**. The production app and solvers have not been
 changed. [Interactive layout study](design/index.html) is a separate prototype.
 
+> **Spec mode (2026-10-04, branch `spec-mode`):** regulation-style beam targets, the far field, and the plan
+> for spec-aware solvers and new optics: see `SPEC-MODE.md`.
+
 ## Direction
 
 Anya wants a snappy, minimalist optical sketchpad with full control available on

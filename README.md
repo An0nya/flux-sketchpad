@@ -54,6 +54,11 @@ under the stats.
   and the reason is stated. The left panel is the second 2D picker: direction from the source
   (drag a marker to choose it by hand, or leave *Auto*). Placing or moving a stamp fires a
   single-ray preview through the engine (cyan path in the scene).
+- **D · Spec.** Paint mode plus a beam spec in the headlamp regulations' terms: test points and zones in
+  degrees with min / max intensity (cd), a cut-off sharpness scan, an intensity cap. The painting stays as a
+  secondary goal. Result → *Far field* shows intensity by direction (what a goniometer measures) with the spec
+  and its pass / fail / unsure verdicts; *Measure at* re-reads the same trace on a screen at 25 m, 10 m or the
+  target distance. The ECE preset's values are unverified. See `SPEC-MODE.md`.
 - **C · Profile.** Tap to add points, drag to move them. Revolve (default) or extrude; mirror,
   flip facing, reverse axis; tag the profile reflect / refract / absorb. A closed profile tagged
   *refract* is a solid lens.
