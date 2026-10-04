@@ -1,0 +1,1446 @@
+[
+ {
+  "fixture": "module",
+  "solver": "spoke",
+  "preset": "fmvss-lb2v",
+  "led": "generic",
+  "solveMs": 214,
+  "facets": 100,
+  "verdict": "fail",
+  "n": {
+   "pass": 16,
+   "fail": 6,
+   "unsure": 4
+  },
+  "score": 0.765,
+  "peak": 31664,
+  "lmWindow": 965,
+  "aim": "cut-off inflection at 0.80° put on 0.4° D",
+  "fails": [
+   "2U 4L",
+   "1.5U 1R to R",
+   "0.5U 1.5L to L",
+   "0.5U 1R–3R",
+   "4D 4R",
+   "Cut-off inclination"
+  ],
+  "unsure": [
+   "10U–90U boundary",
+   "4U 8L",
+   "4U 8R",
+   "1U 1.5L to L"
+  ],
+  "rows": [
+   {
+    "name": "10U–90U boundary",
+    "value": 166.2490777233788,
+    "sd": 15.388313120672175,
+    "bound": 125,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "4U 8L",
+    "value": 68.23932880935321,
+    "sd": 11.603152311797304,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "4U 8R",
+    "value": 49.6315335850821,
+    "sd": 7.829497262343869,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "2U 4L",
+    "value": 33.05767342539589,
+    "sd": 5.489435986154056,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "1.5U 1R–3R",
+    "value": 2308.602599235872,
+    "sd": 94.96005214989053,
+    "bound": 200,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5U 1R to R",
+    "value": 2072.9903887625746,
+    "sd": 81.66666262642572,
+    "bound": 1400,
+    "isMin": false,
+    "verdict": "fail"
+   },
+   {
+    "name": "1U 1.5L to L",
+    "value": 659.7118854658768,
+    "sd": 43.77030714485222,
+    "bound": 700,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "0.5U 1.5L to L",
+    "value": 1761.5830356425947,
+    "sd": 80.27686359584037,
+    "bound": 1000,
+    "isMin": false,
+    "verdict": "fail"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 4876.077878769334,
+    "sd": 148.5045621935727,
+    "bound": 500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 7809.368082157964,
+    "sd": 194.12849320371777,
+    "bound": 2700,
+    "isMin": false,
+    "verdict": "fail"
+   },
+   {
+    "name": "H 4L",
+    "value": 2574.5128250388807,
+    "sd": 110.23793468258522,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "H 8L",
+    "value": 1314.7334003899025,
+    "sd": 64.49682155110924,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.6D 1.3R",
+    "value": 17898.089227972014,
+    "sd": 317.5314745819826,
+    "bound": 10000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D V",
+    "value": 22920.731281436594,
+    "sd": 360.01773105914253,
+    "bound": 4500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 10017.50569471427,
+    "sd": 241.480592786473,
+    "bound": 1800,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 10017.50569471427,
+    "sd": 241.480592786473,
+    "bound": 12000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5D 2R",
+    "value": 24553.263366185623,
+    "sd": 382.35806583817737,
+    "bound": 15000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 9L",
+    "value": 9588.900599869983,
+    "sd": 196.5843751871564,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 9R",
+    "value": 21716.810776623843,
+    "sd": 314.699129670624,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15L",
+    "value": 4753.909702959194,
+    "sd": 129.47700693374483,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15R",
+    "value": 6488.187930564556,
+    "sd": 171.48488190867326,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 4R",
+    "value": 24239.211374200666,
+    "sd": 377.0650568845078,
+    "bound": 12500,
+    "isMin": false,
+    "verdict": "fail"
+   },
+   {
+    "name": "4D 20L",
+    "value": 4973.3152188640215,
+    "sd": 124.67085309788267,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 20R",
+    "value": 6037.884670921434,
+    "sd": 134.73999158004804,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off gradient",
+    "value": 0.27247901904383026,
+    "sd": 0.061702850327200576,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off inclination",
+    "value": 0.40000000000000024,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "fail"
+   }
+  ],
+  "r75": null
+ },
+ {
+  "fixture": "module",
+  "solver": "dish-fit",
+  "preset": "fmvss-lb2v",
+  "led": "generic",
+  "solveMs": 1559,
+  "facets": 100,
+  "verdict": "fail",
+  "n": {
+   "pass": 16,
+   "fail": 7,
+   "unsure": 3
+  },
+  "score": 0.775,
+  "peak": 41390,
+  "lmWindow": 912,
+  "aim": "cut-off inflection at 0.55° put on 0.4° D",
+  "fails": [
+   "4U 8R",
+   "2U 4L",
+   "1.5U 1R–3R",
+   "H 4L",
+   "H 8L",
+   "4D 4R",
+   "Cut-off inclination"
+  ],
+  "unsure": [
+   "10U–90U boundary",
+   "4U 8L",
+   "0.5U 1R–3R"
+  ],
+  "rows": [
+   {
+    "name": "10U–90U boundary",
+    "value": 159.76570349493517,
+    "sd": 13.842341273716842,
+    "bound": 125,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "4U 8L",
+    "value": 66.74844816634109,
+    "sd": 9.908901297461416,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "4U 8R",
+    "value": 48.56778033520994,
+    "sd": 7.064289203534689,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "2U 4L",
+    "value": 27.421776099794254,
+    "sd": 5.518512479622297,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "1.5U 1R–3R",
+    "value": 18.353094390534885,
+    "sd": 3.219609990614966,
+    "bound": 200,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "1.5U 1R to R",
+    "value": 37.2094865957505,
+    "sd": 8.242318525279813,
+    "bound": 1400,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "1U 1.5L to L",
+    "value": 25.80761790958127,
+    "sd": 6.9575239075184685,
+    "bound": 700,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1.5L to L",
+    "value": 20.418900078329663,
+    "sd": 6.002473006962887,
+    "bound": 1000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 488.4016853958749,
+    "sd": 51.00361146651038,
+    "bound": 500,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 2403.9929809546006,
+    "sd": 103.74890102879037,
+    "bound": 2700,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "H 4L",
+    "value": 24.925863594099713,
+    "sd": 10.574475499026523,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "H 8L",
+    "value": 6.500850627032434,
+    "sd": 0.5637456520506183,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "0.6D 1.3R",
+    "value": 27676.46880681241,
+    "sd": 409.6680742510641,
+    "bound": 10000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D V",
+    "value": 24340.54569706646,
+    "sd": 378.28147861451004,
+    "bound": 4500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 4603.343004301767,
+    "sd": 161.43281018491425,
+    "bound": 1800,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 4603.343004301767,
+    "sd": 161.43281018491425,
+    "bound": 12000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5D 2R",
+    "value": 39671.66642805613,
+    "sd": 443.13063321336807,
+    "bound": 15000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 9L",
+    "value": 13961.984295888667,
+    "sd": 259.1338751239013,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 9R",
+    "value": 17485.26769218644,
+    "sd": 298.391816581381,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15L",
+    "value": 8370.146636460391,
+    "sd": 182.76859834579696,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15R",
+    "value": 14920.704442379036,
+    "sd": 232.67874838989678,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 4R",
+    "value": 12979.118648994,
+    "sd": 231.48671059463047,
+    "bound": 12500,
+    "isMin": false,
+    "verdict": "fail"
+   },
+   {
+    "name": "4D 20L",
+    "value": 5098.4189205984685,
+    "sd": 132.00313720834512,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 20R",
+    "value": 5515.887600849256,
+    "sd": 124.47652132037804,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off gradient",
+    "value": 0.48227087341632796,
+    "sd": 0.15451633201581802,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off inclination",
+    "value": 0.3000000000000001,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "fail"
+   }
+  ],
+  "r75": null
+ },
+ {
+  "fixture": "module",
+  "solver": "opus-mosaic-auto",
+  "preset": "fmvss-lb2v",
+  "led": "generic",
+  "solveMs": 63936,
+  "facets": 99,
+  "verdict": "fail",
+  "n": {
+   "pass": 21,
+   "fail": 2,
+   "unsure": 3
+  },
+  "score": 0.929,
+  "peak": 52473,
+  "lmWindow": 870,
+  "aim": "cut-off inflection at 0.05° put on 0.4° D",
+  "fails": [
+   "1.5U 1R–3R",
+   "0.5U 1R–3R"
+  ],
+  "unsure": [
+   "10U–90U boundary",
+   "4U 8L",
+   "1U 1.5L to L"
+  ],
+  "rows": [
+   {
+    "name": "10U–90U boundary",
+    "value": 162.56676563479826,
+    "sd": 15.178405293920791,
+    "bound": 125,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "4U 8L",
+    "value": 67.66586622834768,
+    "sd": 8.305232129188095,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "4U 8R",
+    "value": 157.60976666304418,
+    "sd": 13.7565793926724,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2U 4L",
+    "value": 205.54434458170385,
+    "sd": 17.382423388603943,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5U 1R–3R",
+    "value": 49.112686484455885,
+    "sd": 10.343455935054289,
+    "bound": 200,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "1.5U 1R to R",
+    "value": 742.2889731623424,
+    "sd": 37.53669156018282,
+    "bound": 1400,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "1U 1.5L to L",
+    "value": 743.6525073543811,
+    "sd": 34.694964305734075,
+    "bound": 700,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "0.5U 1.5L to L",
+    "value": 853.939772531976,
+    "sd": 36.48567616582904,
+    "bound": 1000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 1765.8957653059472,
+    "sd": 99.62639755075529,
+    "bound": 500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 3542.6365460256734,
+    "sd": 138.8177131441834,
+    "bound": 2700,
+    "isMin": false,
+    "verdict": "fail"
+   },
+   {
+    "name": "H 4L",
+    "value": 944.22570029795,
+    "sd": 50.72503104145495,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "H 8L",
+    "value": 467.8449258513734,
+    "sd": 24.615072361567382,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.6D 1.3R",
+    "value": 42219.5974536233,
+    "sd": 478.9005508205701,
+    "bound": 10000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D V",
+    "value": 33583.56538331881,
+    "sd": 442.66440118896196,
+    "bound": 4500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 5135.825428516712,
+    "sd": 146.2083380246987,
+    "bound": 1800,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 5135.825428516712,
+    "sd": 146.2083380246987,
+    "bound": 12000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5D 2R",
+    "value": 52573.50423518989,
+    "sd": 555.6332917762012,
+    "bound": 15000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 9L",
+    "value": 16267.799178525749,
+    "sd": 296.98625687331594,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 9R",
+    "value": 17529.543013537408,
+    "sd": 293.82305358268087,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15L",
+    "value": 12743.46202139228,
+    "sd": 209.43203890999914,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15R",
+    "value": 11814.103314238384,
+    "sd": 197.3456792001907,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 4R",
+    "value": 8502.434269520056,
+    "sd": 181.9576726323268,
+    "bound": 12500,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 20L",
+    "value": 4254.039423637042,
+    "sd": 115.83793576777032,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 20R",
+    "value": 4262.8895041867,
+    "sd": 100.94616737713692,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off gradient",
+    "value": 0.2999756844502583,
+    "sd": 0.06307148472746515,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off inclination",
+    "value": 0.04999999999999999,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "pass"
+   }
+  ],
+  "r75": null
+ },
+ {
+  "fixture": "module",
+  "solver": "fill-fix",
+  "preset": "fmvss-lb2v",
+  "led": "generic",
+  "solveMs": 15224,
+  "facets": 60,
+  "verdict": "fail",
+  "n": {
+   "pass": 18,
+   "fail": 5,
+   "unsure": 3
+  },
+  "score": 0.829,
+  "peak": 10389,
+  "lmWindow": 509,
+  "aim": "cut-off inflection at -0.40° put on 0.4° D",
+  "fails": [
+   "10U–90U boundary",
+   "0.5U 1R–3R",
+   "0.6D 1.3R",
+   "1.5D 2R",
+   "Cut-off inclination"
+  ],
+  "unsure": [
+   "1.5U 1R to R",
+   "1U 1.5L to L",
+   "Cut-off gradient"
+  ],
+  "rows": [
+   {
+    "name": "10U–90U boundary",
+    "value": 522.2221655240792,
+    "sd": 26.597137647898855,
+    "bound": 125,
+    "isMin": false,
+    "verdict": "fail"
+   },
+   {
+    "name": "4U 8L",
+    "value": 626.1454480920754,
+    "sd": 29.60197201391469,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4U 8R",
+    "value": 641.7328435738392,
+    "sd": 32.864987558790226,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2U 4L",
+    "value": 773.639269917885,
+    "sd": 38.929113086955866,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5U 1R–3R",
+    "value": 1436.6734312209169,
+    "sd": 64.8656732584709,
+    "bound": 200,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5U 1R to R",
+    "value": 1688.5980922095373,
+    "sd": 76.31510953381735,
+    "bound": 1400,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "1U 1.5L to L",
+    "value": 782.8686995543541,
+    "sd": 37.467470070724026,
+    "bound": 700,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "0.5U 1.5L to L",
+    "value": 891.8668659316456,
+    "sd": 48.85463838202226,
+    "bound": 1000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 3176.915466507049,
+    "sd": 103.29643923005546,
+    "bound": 500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 5305.7046948623565,
+    "sd": 141.35114485426163,
+    "bound": 2700,
+    "isMin": false,
+    "verdict": "fail"
+   },
+   {
+    "name": "H 4L",
+    "value": 991.5437813908068,
+    "sd": 47.23417619797923,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "H 8L",
+    "value": 638.4085382863786,
+    "sd": 36.95619610883881,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.6D 1.3R",
+    "value": 7880.518750983312,
+    "sd": 154.98546227938192,
+    "bound": 10000,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "0.86D V",
+    "value": 5056.352365638414,
+    "sd": 135.4938991412615,
+    "bound": 4500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 4244.852817909494,
+    "sd": 112.98163252551005,
+    "bound": 1800,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 4244.852817909494,
+    "sd": 112.98163252551005,
+    "bound": 12000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5D 2R",
+    "value": 9298.800288441182,
+    "sd": 171.70000236035708,
+    "bound": 15000,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "2D 9L",
+    "value": 9466.487696659111,
+    "sd": 169.43805565784652,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 9R",
+    "value": 8439.355429551293,
+    "sd": 160.0270085422114,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15L",
+    "value": 8574.383121444684,
+    "sd": 168.652243223633,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15R",
+    "value": 5747.193340508707,
+    "sd": 132.12844968573168,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 4R",
+    "value": 5621.477148014282,
+    "sd": 136.67001773592511,
+    "bound": 12500,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 20L",
+    "value": 1982.0935822260278,
+    "sd": 65.53875584285217,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 20R",
+    "value": 2549.247902526356,
+    "sd": 81.56048214291366,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off gradient",
+    "value": 0.20925231112720719,
+    "sd": 0.06263928780616157,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Cut-off inclination",
+    "value": 1.2500000000000002,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "fail"
+   }
+  ],
+  "r75": null
+ },
+ {
+  "fixture": "module",
+  "solver": "spec-hl-v1",
+  "preset": "fmvss-lb2v",
+  "led": "generic",
+  "solveMs": 46987,
+  "facets": 99,
+  "verdict": "fail",
+  "n": {
+   "pass": 17,
+   "fail": 5,
+   "unsure": 4
+  },
+  "score": 0.86,
+  "peak": 21674,
+  "lmWindow": 1149,
+  "aim": "cut-off inflection at 0.15° put on 0.4° D",
+  "fails": [
+   "2U 4L",
+   "H 4L",
+   "0.6D 1.3R",
+   "1.5D 2R",
+   "Cut-off inclination"
+  ],
+  "unsure": [
+   "10U–90U boundary",
+   "1.5U 1R to R",
+   "0.86D 3.5L",
+   "Cut-off gradient"
+  ],
+  "rows": [
+   {
+    "name": "10U–90U boundary",
+    "value": 161.9976618974006,
+    "sd": 15.206421764847882,
+    "bound": 125,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "4U 8L",
+    "value": 127.89777747867501,
+    "sd": 12.754363611623674,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4U 8R",
+    "value": 548.4721590913754,
+    "sd": 30.418673471270868,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2U 4L",
+    "value": 70.18541649774009,
+    "sd": 10.69969069044167,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "1.5U 1R–3R",
+    "value": 321.4454166266952,
+    "sd": 25.481133780455643,
+    "bound": 200,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5U 1R to R",
+    "value": 1615.536553128764,
+    "sd": 59.53355423935427,
+    "bound": 1400,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "1U 1.5L to L",
+    "value": 443.0777773235582,
+    "sd": 26.24072492906031,
+    "bound": 700,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1.5L to L",
+    "value": 539.6893931704429,
+    "sd": 36.234761600529865,
+    "bound": 1000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 959.9163752894341,
+    "sd": 55.780718505744176,
+    "bound": 500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 1285.4638470230982,
+    "sd": 69.18474145443388,
+    "bound": 2700,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "H 4L",
+    "value": 76.37285546832189,
+    "sd": 10.325984041628052,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "H 8L",
+    "value": 2130.7790321580087,
+    "sd": 91.64845148523563,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.6D 1.3R",
+    "value": 8490.223502683935,
+    "sd": 177.32668649141746,
+    "bound": 10000,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "0.86D V",
+    "value": 5303.165217470535,
+    "sd": 161.19819963772207,
+    "bound": 4500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 1972.9990274760298,
+    "sd": 88.53881697248494,
+    "bound": 1800,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 1972.9990274760298,
+    "sd": 88.53881697248494,
+    "bound": 12000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5D 2R",
+    "value": 14340.943333897238,
+    "sd": 259.22725157321946,
+    "bound": 15000,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "2D 9L",
+    "value": 15775.976625628358,
+    "sd": 282.2326150514793,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 9R",
+    "value": 10707.187555693186,
+    "sd": 220.79783686763338,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15L",
+    "value": 4889.384189460029,
+    "sd": 129.00374492411453,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15R",
+    "value": 9514.028673312676,
+    "sd": 180.19378837943506,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 4R",
+    "value": 8326.103608999112,
+    "sd": 199.57894477594016,
+    "bound": 12500,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 20L",
+    "value": 6148.564092995123,
+    "sd": 153.15430465290584,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 20R",
+    "value": 3678.9370420018026,
+    "sd": 100.37712311823785,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off gradient",
+    "value": 0.40960355372056534,
+    "sd": 0.20969135313003154,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Cut-off inclination",
+    "value": 0.6499999999999999,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "fail"
+   }
+  ],
+  "r75": null
+ },
+ {
+  "fixture": "module",
+  "solver": "spec-hl-v2",
+  "preset": "fmvss-lb2v",
+  "led": "generic",
+  "solveMs": 38253,
+  "facets": 99,
+  "verdict": "fail",
+  "n": {
+   "pass": 22,
+   "fail": 1,
+   "unsure": 3
+  },
+  "score": 0.939,
+  "peak": 35034,
+  "lmWindow": 1137,
+  "aim": "cut-off inflection at 0.00° put on 0.4° D",
+  "fails": [
+   "Cut-off inclination"
+  ],
+  "unsure": [
+   "10U–90U boundary",
+   "1.5U 1R–3R",
+   "Cut-off gradient"
+  ],
+  "rows": [
+   {
+    "name": "10U–90U boundary",
+    "value": 163.5909778502366,
+    "sd": 15.217167289433574,
+    "bound": 125,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "4U 8L",
+    "value": 406.1518270428699,
+    "sd": 22.148106510199764,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4U 8R",
+    "value": 114.37539496197572,
+    "sd": 12.86201380224197,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2U 4L",
+    "value": 374.28356831413635,
+    "sd": 24.25857292745561,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5U 1R–3R",
+    "value": 174.8745353781229,
+    "sd": 20.08350962046252,
+    "bound": 200,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "1.5U 1R to R",
+    "value": 729.7231147478253,
+    "sd": 39.31720053076751,
+    "bound": 1400,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "1U 1.5L to L",
+    "value": 589.9355697397939,
+    "sd": 33.589748979481996,
+    "bound": 700,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1.5L to L",
+    "value": 604.631778002821,
+    "sd": 29.937237367619186,
+    "bound": 1000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 778.6970714142678,
+    "sd": 51.25214332130977,
+    "bound": 500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.5U 1R–3R",
+    "value": 1427.921088179905,
+    "sd": 71.88749295421215,
+    "bound": 2700,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "H 4L",
+    "value": 314.24049001099786,
+    "sd": 25.363710520640694,
+    "bound": 135,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "H 8L",
+    "value": 2032.957179927713,
+    "sd": 89.45818751883556,
+    "bound": 64,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.6D 1.3R",
+    "value": 13333.647887420959,
+    "sd": 245.33194491677602,
+    "bound": 10000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D V",
+    "value": 17131.261196442956,
+    "sd": 300.03076148444717,
+    "bound": 4500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 4586.217793822843,
+    "sd": 153.3249837154056,
+    "bound": 1800,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "0.86D 3.5L",
+    "value": 4586.217793822843,
+    "sd": 153.3249837154056,
+    "bound": 12000,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "1.5D 2R",
+    "value": 19196.684830151116,
+    "sd": 324.5742539844203,
+    "bound": 15000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 9L",
+    "value": 14673.882320808198,
+    "sd": 278.69658791961484,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 9R",
+    "value": 8179.974765159068,
+    "sd": 172.28150082623543,
+    "bound": 1250,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15L",
+    "value": 3309.478130438176,
+    "sd": 107.7409002666085,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "2D 15R",
+    "value": 3934.090738912517,
+    "sd": 108.15328380061992,
+    "bound": 1000,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 4R",
+    "value": 9439.765092313339,
+    "sd": 213.75557639662796,
+    "bound": 12500,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 20L",
+    "value": 2432.0039098038633,
+    "sd": 88.46988938280431,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "4D 20R",
+    "value": 2935.060013515677,
+    "sd": 86.45852634952706,
+    "bound": 300,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off gradient",
+    "value": 0.3505240000166545,
+    "sd": 0.11122911933575112,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Cut-off inclination",
+    "value": 0.35000000000000014,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "fail"
+   }
+  ],
+  "r75": null
+ }
+]

@@ -1,0 +1,1086 @@
+[
+ {
+  "fixture": "box",
+  "solver": "spoke",
+  "preset": "ece-r112-b",
+  "led": "generic",
+  "solveMs": 272,
+  "facets": 100,
+  "verdict": "fail",
+  "n": {
+   "pass": 11,
+   "fail": 4,
+   "unsure": 4
+  },
+  "score": 0.698,
+  "peak": 61298,
+  "lmWindow": 1024,
+  "aim": "cut-off inflection at 0.83° put on 0.57° D",
+  "fails": [
+   "Zone IV",
+   "Points 4+5+6",
+   "Point 8",
+   "Cut-off linearity"
+  ],
+  "unsure": [
+   "Zone III",
+   "Zone I",
+   "Points 1+2+3",
+   "Cut-off sharpness"
+  ],
+  "rows": [
+   {
+    "name": "B50L",
+    "value": 10.966013132592108,
+    "sd": 1.778167451857696,
+    "bound": 350,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "BR",
+    "value": 14.768305213286506,
+    "sd": 3.1440437568861856,
+    "bound": 1750,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "75R",
+    "value": 14136.895658698986,
+    "sd": 951.3635498701763,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "75L",
+    "value": 1577.307106143717,
+    "sd": 268.44449186004414,
+    "bound": 10600,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50L",
+    "value": 6909.099015014454,
+    "sd": 548.3292292316827,
+    "bound": 13200,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50R",
+    "value": 29615.47659434056,
+    "sd": 1159.0472656692687,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "50V",
+    "value": 23710.26927549926,
+    "sd": 1265.5785797599865,
+    "bound": 5100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25L",
+    "value": 10352.480349209865,
+    "sd": 729.0637502959217,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25R",
+    "value": 23262.87015905026,
+    "sd": 1160.7107929579968,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone III",
+    "value": 3614.707542669818,
+    "sd": 533.6084536291851,
+    "bound": 625,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Zone IV",
+    "value": 839.0115644683409,
+    "sd": 182.74049867713197,
+    "bound": 2500,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "Zone I",
+    "value": 65062.42447051895,
+    "sd": 3550.716737513993,
+    "bound": 59230.95318868112,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Points 1+2+3",
+    "value": 178.78740284562105,
+    "sd": 78.10040444408767,
+    "bound": 190,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Points 4+5+6",
+    "value": 56.92321623290832,
+    "sd": 6.133398563304833,
+    "bound": 375,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "Point 7",
+    "value": 952.8369891881088,
+    "sd": 217.96822197321416,
+    "bound": 65,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Point 8",
+    "value": 8.33120033102373,
+    "sd": 2.3936239544327327,
+    "bound": 125,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.5694293330935005,
+    "sd": 0.13603000390558423,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.5694293330935005,
+    "sd": 0.13603000390558423,
+    "bound": 0.4,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Cut-off linearity",
+    "value": 0.5999999999999999,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "fail"
+   }
+  ],
+  "r75": 14136.895658698986
+ },
+ {
+  "fixture": "box",
+  "solver": "dish-fit",
+  "preset": "ece-r112-b",
+  "led": "generic",
+  "solveMs": 1473,
+  "facets": 100,
+  "verdict": "fail",
+  "n": {
+   "pass": 12,
+   "fail": 3,
+   "unsure": 4
+  },
+  "score": 0.797,
+  "peak": 81868,
+  "lmWindow": 985,
+  "aim": "cut-off inflection at -0.37° put on 0.57° D",
+  "fails": [
+   "Points 4+5+6",
+   "Point 7",
+   "Point 8"
+  ],
+  "unsure": [
+   "50L",
+   "Zone IV",
+   "Points 1+2+3",
+   "Cut-off sharpness"
+  ],
+  "rows": [
+   {
+    "name": "B50L",
+    "value": 4.052237746752632,
+    "sd": 1.078873559613232,
+    "bound": 350,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "BR",
+    "value": 4.822602377009514,
+    "sd": 1.8053066949384184,
+    "bound": 1750,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "75R",
+    "value": 55625.329693493295,
+    "sd": 2144.2408639295836,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "75L",
+    "value": 1389.2578960510373,
+    "sd": 193.08018797169947,
+    "bound": 10600,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50L",
+    "value": 14302.572825066432,
+    "sd": 761.2044341895864,
+    "bound": 13200,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "50R",
+    "value": 55182.244296082295,
+    "sd": 1683.6991649969325,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "50V",
+    "value": 46002.28730683344,
+    "sd": 1892.2865901868574,
+    "bound": 5100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25L",
+    "value": 27611.831684643417,
+    "sd": 1255.4847199684098,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25R",
+    "value": 25415.528114169807,
+    "sd": 1200.5265224372142,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone III",
+    "value": 255.8191830241795,
+    "sd": 134.40790706029284,
+    "bound": 625,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone IV",
+    "value": 3115.175907206388,
+    "sd": 348.0608563550591,
+    "bound": 2500,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Zone I",
+    "value": 77961.05028279831,
+    "sd": 4504.552241900867,
+    "bound": 110364.48859216459,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "Points 1+2+3",
+    "value": 187.90380847538864,
+    "sd": 78.01921748301547,
+    "bound": 190,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Points 4+5+6",
+    "value": 45.03964768587857,
+    "sd": 5.3378633208413815,
+    "bound": 375,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "Point 7",
+    "value": 0,
+    "sd": 0.5896559439934335,
+    "bound": 65,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "Point 8",
+    "value": 0,
+    "sd": 0.5896559439927618,
+    "bound": 125,
+    "isMin": true,
+    "verdict": "fail"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.6579959767134426,
+    "sd": 0.15404414579660053,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.6579959767134426,
+    "sd": 0.15404414579660053,
+    "bound": 0.4,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Cut-off linearity",
+    "value": 0.10000000000000003,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "pass"
+   }
+  ],
+  "r75": 55625.329693493295
+ },
+ {
+  "fixture": "box",
+  "solver": "opus-mosaic-auto",
+  "preset": "ece-r112-b",
+  "led": "generic",
+  "solveMs": 83728,
+  "facets": 97,
+  "verdict": "unsure",
+  "n": {
+   "pass": 16,
+   "fail": 0,
+   "unsure": 3
+  },
+  "score": 0.935,
+  "peak": 89020,
+  "lmWindow": 818,
+  "aim": "cut-off inflection at -0.37° put on 0.57° D",
+  "fails": [],
+  "unsure": [
+   "Zone III",
+   "Cut-off sharpness",
+   "Cut-off linearity"
+  ],
+  "rows": [
+   {
+    "name": "B50L",
+    "value": 154.4742638241751,
+    "sd": 21.42011774154122,
+    "bound": 350,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "BR",
+    "value": 1069.0960359439325,
+    "sd": 205.96957547881706,
+    "bound": 1750,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "75R",
+    "value": 39687.269646581146,
+    "sd": 1844.8338851152075,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "75L",
+    "value": 1557.8116714050216,
+    "sd": 224.63322941379317,
+    "bound": 10600,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50L",
+    "value": 10378.521364246839,
+    "sd": 647.6708838572906,
+    "bound": 13200,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50R",
+    "value": 76089.38645702793,
+    "sd": 2097.3809256268364,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "50V",
+    "value": 19787.601118326766,
+    "sd": 1209.6509377330524,
+    "bound": 5100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25L",
+    "value": 12624.73689003494,
+    "sd": 807.3979500296022,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25R",
+    "value": 23770.39818911358,
+    "sd": 1128.2358510295812,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone III",
+    "value": 2006.7151153117738,
+    "sd": 281.42995804553857,
+    "bound": 625,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Zone IV",
+    "value": 4715.747260412812,
+    "sd": 388.7565979113634,
+    "bound": 2500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone I",
+    "value": 70010.79334832264,
+    "sd": 5131.393364577584,
+    "bound": 152178.77291405585,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "Points 1+2+3",
+    "value": 460.7965540240594,
+    "sd": 113.3480088490066,
+    "bound": 190,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Points 4+5+6",
+    "value": 1986.597620707195,
+    "sd": 239.4356233365139,
+    "bound": 375,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Point 7",
+    "value": 268.52882091426494,
+    "sd": 83.966128792748,
+    "bound": 65,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Point 8",
+    "value": 355.09945875753436,
+    "sd": 108.55270606181199,
+    "bound": 125,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.4711248012257981,
+    "sd": 0.048208999921712646,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.4711248012257981,
+    "sd": 0.048208999921712646,
+    "bound": 0.4,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Cut-off linearity",
+    "value": 0.20000000000000018,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "unsure"
+   }
+  ],
+  "r75": 39687.269646581146
+ },
+ {
+  "fixture": "box",
+  "solver": "fill-fix",
+  "preset": "ece-r112-b",
+  "led": "generic",
+  "solveMs": 17829,
+  "facets": 40,
+  "verdict": "unsure",
+  "n": {
+   "pass": 17,
+   "fail": 0,
+   "unsure": 2
+  },
+  "score": 0.958,
+  "peak": 25055,
+  "lmWindow": 317,
+  "aim": "cut-off inflection at -0.42° put on 0.57° D",
+  "fails": [],
+  "unsure": [
+   "Zone III",
+   "Cut-off linearity"
+  ],
+  "rows": [
+   {
+    "name": "B50L",
+    "value": 249.0609398201066,
+    "sd": 43.92464411390751,
+    "bound": 350,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "BR",
+    "value": 772.8920743908207,
+    "sd": 175.13953773012622,
+    "bound": 1750,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "75R",
+    "value": 20276.50018116555,
+    "sd": 971.3326301669455,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "75L",
+    "value": 5226.29661117908,
+    "sd": 367.1057514174414,
+    "bound": 10600,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50L",
+    "value": 10046.121316976853,
+    "sd": 525.9421784729337,
+    "bound": 13200,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50R",
+    "value": 23458.863093091855,
+    "sd": 857.4775584515795,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "50V",
+    "value": 16232.03120805239,
+    "sd": 877.4989131550468,
+    "bound": 5100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25L",
+    "value": 7378.888180120629,
+    "sd": 504.0700321913689,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25R",
+    "value": 7064.457803367929,
+    "sd": 486.0964572721109,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone III",
+    "value": 1085.3001157963693,
+    "sd": 243.0927338054965,
+    "bound": 625,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Zone IV",
+    "value": 6746.126020046698,
+    "sd": 405.373735991769,
+    "bound": 2500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone I",
+    "value": 23178.77814645974,
+    "sd": 2163.672731811769,
+    "bound": 46917.72618618371,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "Points 1+2+3",
+    "value": 1451.6548292279363,
+    "sd": 208.97015886414962,
+    "bound": 190,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Points 4+5+6",
+    "value": 1162.4117807671194,
+    "sd": 149.19572975198608,
+    "bound": 375,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Point 7",
+    "value": 306.14380789745263,
+    "sd": 83.19180902011527,
+    "bound": 65,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Point 8",
+    "value": 305.9023649423881,
+    "sd": 78.24344862082097,
+    "bound": 125,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.23561241603250074,
+    "sd": 0.04369441399023999,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.23561241603250074,
+    "sd": 0.04369441399023999,
+    "bound": 0.4,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off linearity",
+    "value": 0.19999999999999996,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "unsure"
+   }
+  ],
+  "r75": 20276.50018116555
+ },
+ {
+  "fixture": "box",
+  "solver": "spec-hl-v1",
+  "preset": "ece-r112-b",
+  "led": "generic",
+  "solveMs": 39582,
+  "facets": 99,
+  "verdict": "unsure",
+  "n": {
+   "pass": 16,
+   "fail": 0,
+   "unsure": 3
+  },
+  "score": 0.951,
+  "peak": 48509,
+  "lmWindow": 1226,
+  "aim": "cut-off inflection at -0.37° put on 0.57° D",
+  "fails": [],
+  "unsure": [
+   "Zone III",
+   "Points 4+5+6",
+   "Cut-off sharpness"
+  ],
+  "rows": [
+   {
+    "name": "B50L",
+    "value": 171.78280261884214,
+    "sd": 42.119493832001694,
+    "bound": 350,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "BR",
+    "value": 431.1350506960156,
+    "sd": 144.42955610476298,
+    "bound": 1750,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "75R",
+    "value": 17026.607900824714,
+    "sd": 1069.3352717610944,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "75L",
+    "value": 1557.0154726190299,
+    "sd": 231.30059732305017,
+    "bound": 10600,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50L",
+    "value": 3785.869219817884,
+    "sd": 370.74698657558326,
+    "bound": 13200,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50R",
+    "value": 20374.339151486038,
+    "sd": 911.9806737219035,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "50V",
+    "value": 10023.964119649827,
+    "sd": 748.8764537383121,
+    "bound": 5100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25L",
+    "value": 20377.51792239497,
+    "sd": 1070.6137328407667,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25R",
+    "value": 11155.64739467492,
+    "sd": 761.3409770394381,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone III",
+    "value": 895.454411709269,
+    "sd": 207.5045939322908,
+    "bound": 625,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Zone IV",
+    "value": 3353.129994111525,
+    "sd": 346.4077907087022,
+    "bound": 2500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone I",
+    "value": 35305.46447581927,
+    "sd": 2594.2562759659277,
+    "bound": 40748.678302972075,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "Points 1+2+3",
+    "value": 442.4003693639534,
+    "sd": 86.9266749468149,
+    "bound": 190,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Points 4+5+6",
+    "value": 281.1994669126875,
+    "sd": 80.09116785378754,
+    "bound": 375,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Point 7",
+    "value": 1790.3992855848549,
+    "sd": 347.28014900717966,
+    "bound": 65,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Point 8",
+    "value": 529.3087393197609,
+    "sd": 159.08593943736545,
+    "bound": 125,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.3742470132685282,
+    "sd": 0.08479820414688755,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.3742470132685282,
+    "sd": 0.08479820414688755,
+    "bound": 0.4,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Cut-off linearity",
+    "value": 0.09999999999999998,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "pass"
+   }
+  ],
+  "r75": 17026.607900824714
+ },
+ {
+  "fixture": "box",
+  "solver": "spec-hl-v2",
+  "preset": "ece-r112-b",
+  "led": "generic",
+  "solveMs": 32590,
+  "facets": 99,
+  "verdict": "unsure",
+  "n": {
+   "pass": 16,
+   "fail": 0,
+   "unsure": 3
+  },
+  "score": 0.951,
+  "peak": 47830,
+  "lmWindow": 1153,
+  "aim": "cut-off inflection at -0.47° put on 0.57° D",
+  "fails": [],
+  "unsure": [
+   "Zone III",
+   "Points 1+2+3",
+   "Cut-off sharpness"
+  ],
+  "rows": [
+   {
+    "name": "B50L",
+    "value": 254.1927013857474,
+    "sd": 42.323475493591744,
+    "bound": 350,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "BR",
+    "value": 379.7229444861363,
+    "sd": 109.2676723467343,
+    "bound": 1750,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "75R",
+    "value": 13470.713242781474,
+    "sd": 846.1202994125041,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "75L",
+    "value": 3053.0446391920823,
+    "sd": 327.65619566194295,
+    "bound": 10600,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50L",
+    "value": 7075.192233973644,
+    "sd": 506.0630262586499,
+    "bound": 13200,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "50R",
+    "value": 17201.942273398527,
+    "sd": 781.2103851946644,
+    "bound": 10100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "50V",
+    "value": 18804.46744081316,
+    "sd": 1008.3106520733909,
+    "bound": 5100,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25L",
+    "value": 21669.40563499491,
+    "sd": 1129.3475397584564,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "25R",
+    "value": 7318.599495053173,
+    "sd": 634.7063432302389,
+    "bound": 1700,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone III",
+    "value": 1067.2801313782495,
+    "sd": 228.88162027194758,
+    "bound": 625,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Zone IV",
+    "value": 5308.44040575319,
+    "sd": 430.3096247179389,
+    "bound": 2500,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Zone I",
+    "value": 27944.391921345697,
+    "sd": 2206.966513540283,
+    "bound": 34403.88454679705,
+    "isMin": false,
+    "verdict": "pass"
+   },
+   {
+    "name": "Points 1+2+3",
+    "value": 277.0739673133488,
+    "sd": 76.21052977046946,
+    "bound": 190,
+    "isMin": true,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Points 4+5+6",
+    "value": 938.8515212050945,
+    "sd": 165.62795362993262,
+    "bound": 375,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Point 7",
+    "value": 7652.297607361661,
+    "sd": 825.75541150624,
+    "bound": 65,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Point 8",
+    "value": 458.81240167947766,
+    "sd": 98.35222773091324,
+    "bound": 125,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.4445656335599624,
+    "sd": 0.0493731124791171,
+    "bound": 0.13,
+    "isMin": true,
+    "verdict": "pass"
+   },
+   {
+    "name": "Cut-off sharpness",
+    "value": 0.4445656335599624,
+    "sd": 0.0493731124791171,
+    "bound": 0.4,
+    "isMin": false,
+    "verdict": "unsure"
+   },
+   {
+    "name": "Cut-off linearity",
+    "value": 0.09999999999999998,
+    "sd": 0.025,
+    "bound": 0.2,
+    "isMin": false,
+    "verdict": "pass"
+   }
+  ],
+  "r75": 13470.713242781474
+ }
+]
