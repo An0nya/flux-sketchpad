@@ -56,8 +56,8 @@
     'yinding5050-6500': { label: 'Yinding 5050 6500 K 95 CRI (domeless)', flux: [[0, 0], [1, 370], [2, 670], [3, 905], [4, 1105], [5, 1255], [6, 1370], [7, 1455], [8, 1505], [8.8, 1517]],
       vf: [[0.2, 2.72], [1, 2.91], [2, 3.12], [3, 3.28], [4, 3.43], [5, 3.57], [6, 3.69], [7, 3.80], [8, 3.95], [8.8, 4.05]], lum: [[0.7, 30.1], [2.8, 98.5], [8.4, 164.2]], defaultA: 6 },
     'nichia519a-domed': { label: 'Nichia 519A 5000 K R9080 sm503 (domed)', flux: [[0, 0], [1, 360], [2, 640], [3, 885], [4, 1090], [5, 1265], [6, 1400], [7, 1500], [7.6, 1523], [8, 1520], [8.6, 1500]],
-      vf: [[0.2, 2.70], [1, 2.90], [2, 3.06], [3, 3.17], [4, 3.25], [5, 3.32], [6, 3.39], [7, 3.44], [8, 3.49], [8.6, 3.52]], lum: [[0.7, 9.1], [2.8, 30.1], [7.6, 58.3]], defaultA: 5,
-      note: 'Domed: the effective area is the dome\u2019s head-on apparent size (~9 mm²).' },
+      vf: [[0.2, 2.70], [1, 2.90], [2, 3.06], [3, 3.17], [4, 3.25], [5, 3.32], [6, 3.39], [7, 3.44], [8, 3.49], [8.6, 3.52]], lum: [[0.7, 9.1], [2.8, 30.1], [7.6, 58.3]], defaultA: 5, domeOf: 'nichia519a-dedomed', domeR: 2.0,
+      note: 'Domed: the effective area is the dome\u2019s head-on apparent size (~9 mm²). "Die + dome" traces the DEDOMED sample\u2019s die (its effective area from his luminance) under a real n = 1.41 hemisphere, radius 2.0 mm assumed (not measured), at this sample\u2019s domed flux.' },
     'nichia519a-dedomed': { label: 'Nichia 519A 5000 K 90 CRI sm503 (dedomed)', flux: [[0, 0], [1, 285], [2, 530], [3, 725], [4, 880], [5, 1020], [6, 1130], [7, 1200], [7.6, 1213], [8, 1200]],
       vf: [[0.2, 2.68], [1, 2.89], [2, 3.03], [3, 3.14], [4, 3.23], [5, 3.30], [6, 3.37], [7, 3.42], [8, 3.47]], lum: [[0.7, 14.3], [2.8, 46.6], [7.6, 83.8]], defaultA: 5 },
     'nichia519a-v1-domed': { label: 'Nichia 519A-V1 5700 K R9080 sm573 (domed)', flux: [[0, 0], [1, 400], [2, 730], [3, 1000], [4, 1230], [5, 1425], [6, 1595], [7, 1730], [8, 1825], [8.6, 1850], [9, 1840], [10, 1800]],
@@ -137,6 +137,7 @@
       note: 'koef3\u2019s measurements (BLF/TLF, Cu board, fan-cooled, 25 °C solder point): flux and Vf read off his chart, luminance from his tables. The die is a square of the EFFECTIVE area Φ / (π L) at the drive current (no die size given). Max current = where his test stopped, not a rating.' + (k.note ? ' ' + k.note : ''),
       set: { kind: 'planar', shape: k.shape || 'rect', dist: 'lambertian' },
       drive: { models: Object.assign({ koef3: { label: 'koef3 test · effective area from his luminance', curve: k.flux, vf: k.vf, lum: k.lum, maxA: k.flux[k.flux.length - 1][0], shape: k.shape } },
+        k.domeOf ? { dome: { label: 'koef3 flux · dedomed die + real dome (n 1.41, r ' + k.domeR + ' mm)', curve: k.flux, vf: k.vf, maxA: k.flux[k.flux.length - 1][0], areaFrom: { curve: KOEF3[k.domeOf].flux, lum: KOEF3[k.domeOf].lum }, set: { dome: { r: k.domeR, n: 1.41, z: 0 } } } } : {},
         k.geomArea ? { die: { label: 'koef3 flux · die size ' + k.geomArea + ' mm²', curve: k.flux, vf: k.vf, maxA: k.flux[k.flux.length - 1][0], set: k.shape === 'disc' ? { shape: 'disc', radius: +Math.sqrt(k.geomArea / Math.PI).toFixed(4) } : { shape: 'rect', w: +Math.sqrt(k.geomArea).toFixed(4), h: +Math.sqrt(k.geomArea).toFixed(4) } } } : {}),
         model: 'koef3', ratedA: Infinity, defaultA: k.defaultA },
     }])),
@@ -166,7 +167,7 @@
     Object.assign(src, JSON.parse(JSON.stringify(p.set)));
     if (p.axis) { src.axis = p.axis.slice(); src.roll = 0; }
     src.preset = id;
-    delete src.effArea;
+    delete src.effArea; delete src.dome;                  // a dome comes only with a model that has one
     if (p.custom && opts && opts.measured) src.measured = JSON.parse(JSON.stringify(opts.measured));
     if (p.custom && !src.shape) src.shape = (src.measured && src.measured.shape) || 'rect';
     if (p.drive) {
@@ -176,9 +177,10 @@
       if (!m) return p;                                   // the measured emitter before any rows: geometry left as is
       src.driveA = opts && opts.amps > 0 ? Math.min(m.maxA, opts.amps) : (src.driveA > 0 ? Math.min(m.maxA, src.driveA) : Math.min(m.maxA, p.drive.defaultA));
       src.power = Math.round(lerp(m.curve, src.driveA));
-      if (m.set) Object.assign(src, m.set);               // a model with a fixed die (e.g. the datasheet die size)
-      if (m.lum && m.lum.length) {                        // measured: the die is the effective area at this current
-        const A = areaAt(m, src.driveA);
+      if (m.set) Object.assign(src, JSON.parse(JSON.stringify(m.set)));   // a model with a fixed die (e.g. the datasheet die size) or a dome
+      const am = m.areaFrom || m;                         // the die's own effective area (a domed model: the dedomed sample's)
+      if (am.lum && am.lum.length) {                      // measured: the die is the effective area at this current
+        const A = areaAt(am, src.driveA);
         if (A > 0) {
           if ((p.custom && src.measured && src.measured.shape === 'disc') || m.shape === 'disc') { src.shape = 'disc'; src.radius = +Math.sqrt(A / Math.PI).toFixed(4); }
           else { src.shape = 'rect'; src.w = src.h = +Math.sqrt(A).toFixed(4); }
@@ -201,7 +203,8 @@
   function matches(src) {
     const p = PRESETS[src.preset]; if (!p) return false;
     const m = p.drive && !p.custom ? p.drive.models[src.fluxModel] : null;
-    if (m && m.set) for (const [k, v] of Object.entries(m.set)) if (src[k] !== v) return false;
+    if (m && m.set) for (const [k, v] of Object.entries(m.set)) if (typeof v === 'object' ? JSON.stringify(src[k]) !== JSON.stringify(v) : src[k] !== v) return false;
+    if (src.dome && !(m && m.set && m.set.dome)) return false;          // a dome added by hand
     const geo = ['w', 'h', 'radius', 'shape'].concat(m && m.set ? Object.keys(m.set) : []);               // a measured die follows the drive current: compare its area instead
     for (const [k, v] of Object.entries(p.set)) if (k !== 'power' && !(src.effArea > 0 && geo.includes(k)) && src[k] !== v) return false;
     if (src.effArea > 0) {                // the die follows the drive current: check it still has the effective area
@@ -212,7 +215,8 @@
   }
 
   // surface luminance (cd/mm²) of a Lambertian planar source: L = Φ / (π A)
-  const luminanceOf = (src) => (src.kind === 'planar' && src.dist === 'lambertian' ? src.power / (Math.PI * (src.shape === 'disc' ? Math.PI * src.radius * src.radius : src.w * src.h)) : null);
+  // (domed: of the apparent emitter, the die magnified by the dome — what a luminance meter sees from outside)
+  const luminanceOf = (src) => { if (src.kind === 'planar' && src.dist === 'lambertian') { const s = RF.Source.apparent(src); return s.power / (Math.PI * (s.shape === 'disc' ? Math.PI * s.radius * s.radius : s.w * s.h)); } return null; };
   // parse pasted rows: one per line, "A lm cd/mm²" (commas, tabs, spaces; thousands separators like 1,500 allowed when the
   // numbers are tab/space separated).  Lines that don't hold three numbers are skipped.
   function parseRows(text) {

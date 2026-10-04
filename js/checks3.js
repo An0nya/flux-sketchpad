@@ -30,6 +30,7 @@
     if (id === 'src.az') set('src.el', 60);                    // azimuth is degenerate at el = 90°
     if (id === 'bounces') sc.modeC.preset.kind = 'cpc';         // multiple bounces matter in a CPC
     if (id === 'src.half') set('src.dist', 'cone');
+    if (id === 'src.domeN' || id === 'src.domeZ') set('src.domeR', 2.5);   // dome settings act only on a dome
     if (id === 'src.radius') { set('src.kind', 'planar'); set('src.shape', 'disc'); }
     if (id === 'src.length' || id === 'src.emission') { set('src.kind', 'volume'); set('src.shape', 'cylinder'); }
     if (id === 'env.axis') set('env.shape', 'cylinder');

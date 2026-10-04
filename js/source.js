@@ -18,6 +18,14 @@
  * Planar emitters radiate into the front hemisphere only (a die cannot emit through its own
  * substrate), so every distribution is truncated at 90° for them.  Point and volume sources may
  * emit into the full sphere.  The emitter itself is NOT an occluder in the trace.
+ *
+ * Dome (planar sources): src.dome = { r: radius mm (0 = none), n: index (silicone ≈ 1.41), z: centre height above the die
+ * plane (0 = a hemisphere centred on the die) }.  Each ray leaves the die into the silicone (same distribution), meets the
+ * sphere and refracts out (Snell), or reflects back — by total internal reflection, or by the Fresnel share (unpolarised,
+ * drawn per ray).  Light that comes back down to the base is re-emitted diffusely from where it lands (phosphor and white
+ * package recycle it; no loss — `power` is the measured domed flux, so the recycling only moves light around).  The
+ * dome is analytic (not a surface in the trace) and, like the die, not an occluder.  What the optics then see is the die
+ * magnified: × n for a die at the centre (apparent(src) gives the flat equivalent the solvers plan with).
  */
 (function (root) {
   'use strict';
@@ -87,6 +95,7 @@
     S.opaque = opaque(src);
     if (S.opaque && src.shape === 'cylinder') S.pSide = src.length / (src.length + src.radius);   // side area ÷ total
     S.pos = src.pos.slice();
+    S.dome = hasDome(src) ? { r: src.dome.r, n: src.dome.n > 1 ? src.dome.n : 1.41, z: src.dome.z || 0 } : null;
     S.w = src.w; S.h = src.h; S.R = src.radius; S.L = src.length;
     return S;
   }
@@ -151,10 +160,65 @@
     d[1] = cu * fr.u[1] + cv * fr.v[1] + ct * fr.a[1];
     d[2] = cu * fr.u[2] + cv * fr.v[2] + ct * fr.a[2];
     o[0] = px; o[1] = py; o[2] = pz;
+    if (S.dome) domeOut(S, o, d, x0, x3, x4);
+  }
+
+  // ---- the dome: walk a ray from the die out through the sphere (in place on o, d)
+  const hasDome = (src) => src.kind === 'planar' && !!src.dome && src.dome.r > 0;
+  function domeOut(S, o, d, x0, x3, x4) {
+    const a = S.fr.a, p = S.pos, R = S.dome.r, n = S.dome.n, cx = p[0] + S.dome.z * a[0], cy = p[1] + S.dome.z * a[1], cz = p[2] + S.dome.z * a[2];
+    // the ray's own extra random numbers: a small generator seeded from its uniforms (deterministic per ray)
+    let st = (Math.floor(x0 * 4294967296) ^ Math.imul(Math.floor(x3 * 4294967296) | 0, 0x9E3779B1) ^ Math.floor(x4 * 2147483648)) | 0;
+    const rnd = () => { st = (st + 0x6D2B79F5) | 0; let t = Math.imul(st ^ (st >>> 15), 1 | st); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const R0 = ((n - 1) / (n + 1)) ** 2;
+    let ox = o[0], oy = o[1], oz = o[2], dx = d[0], dy = d[1], dz = d[2];
+    for (let k = 0; k < 64; k++) {
+      const qx = ox - cx, qy = oy - cy, qz = oz - cz, b = qx * dx + qy * dy + qz * dz, cc = qx * qx + qy * qy + qz * qz - R * R;
+      const ts = -b + Math.sqrt(Math.max(0, b * b - cc));                       // inside the sphere: the far root
+      const da = dx * a[0] + dy * a[1] + dz * a[2], ha = (ox - p[0]) * a[0] + (oy - p[1]) * a[1] + (oz - p[2]) * a[2];
+      const tp = da < -1e-12 ? -ha / da : Infinity;                             // the base plane, if heading down
+      if (tp < ts) {                                                            // back on the base: re-emitted diffusely from there
+        ox += tp * dx; oy += tp * dy; oz += tp * dz;
+        const c = Math.sqrt(1 - rnd()), sn = Math.sqrt(Math.max(0, 1 - c * c)), ph = 2 * Math.PI * rnd(), u = S.fr.u, v = S.fr.v, cu = sn * Math.cos(ph), cv = sn * Math.sin(ph);
+        dx = cu * u[0] + cv * v[0] + c * a[0]; dy = cu * u[1] + cv * v[1] + c * a[1]; dz = cu * u[2] + cv * v[2] + c * a[2];
+        continue;
+      }
+      ox += ts * dx; oy += ts * dy; oz += ts * dz;
+      const mx = (ox - cx) / R, my = (oy - cy) / R, mz = (oz - cz) / R, ci = Math.min(1, Math.max(0, dx * mx + dy * my + dz * mz));
+      const s2 = n * n * (1 - ci * ci);
+      let refl = s2 >= 1;
+      if (!refl) {                                                              // Fresnel (unpolarised): reflect that share of the rays
+        const ct = Math.sqrt(1 - s2), rs = (n * ci - ct) / (n * ci + ct), rp = (n * ct - ci) / (n * ct + ci);
+        refl = rnd() < (R0 > 0 ? 0.5 * (rs * rs + rp * rp) : 0);
+        if (!refl) {
+          const f = ct - n * ci; dx = n * dx + f * mx; dy = n * dy + f * my; dz = n * dz + f * mz;
+          const L = Math.hypot(dx, dy, dz); d[0] = dx / L; d[1] = dy / L; d[2] = dz / L; o[0] = ox; o[1] = oy; o[2] = oz;
+          return;
+        }
+      }
+      dx -= 2 * ci * mx; dy -= 2 * ci * my; dz -= 2 * ci * mz;                 // TIR or Fresnel reflection: back inside
+    }
+    const L = Math.hypot(ox - cx, oy - cy, oz - cz) || 1;                      // (never in practice) leave along the normal
+    d[0] = (ox - cx) / L; d[1] = (oy - cy) / L; d[2] = (oz - cz) / L; o[0] = ox; o[1] = oy; o[2] = oz;
+  }
+  /* The flat emitter that looks like the domed one from outside (paraxial, single spherical surface): the image of the
+   * die through the dome is magnified m and sits at height zi above the die plane.  For the die at the centre (z = 0),
+   * m = n and zi = 0.  Solvers plan with this; the trace uses the real dome.  Non-domed sources come back unchanged.   */
+  function apparent(src) {
+    if (!hasDome(src)) return src;
+    const n = src.dome.n > 1 ? src.dome.n : 1.41, R = src.dome.r, z = src.dome.z || 0, so = R + z;   // object distance from the dome top
+    const inv = (n - 1) / R - n / so, si = Math.abs(inv) > 1e-12 ? 1 / inv : -1e12, m = Math.abs(-n * si / so);
+    const out = Object.assign({}, src); delete out.dome;
+    if (src.shape === 'disc') out.radius = src.radius * m; else { out.w = src.w * m; out.h = src.h * m; }
+    const fr = frame(src), zi = R + z + si;
+    out.pos = [src.pos[0] + zi * fr.a[0], src.pos[1] + zi * fr.a[1], src.pos[2] + zi * fr.a[2]];
+    out.domeMag = m;
+    return out;
   }
 
   // Covariance (world 3×3, row-major) of the emitting points — used by the first-order tile model.
   function extentCov(src) {
+    src = apparent(src);
     const fr = frame(src), C = new Array(9).fill(0);
     const addOuter = (e, s) => { for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) C[3 * i + j] += s * e[i] * e[j]; };
     if (src.kind === 'planar') {
@@ -169,18 +233,20 @@
   }
 
   function boundingRadius(src) {
-    if (src.kind === 'planar') return src.shape === 'disc' ? src.radius : Math.hypot(src.w, src.h) / 2;
+    if (src.kind === 'planar') return Math.max(src.shape === 'disc' ? src.radius : Math.hypot(src.w, src.h) / 2, hasDome(src) ? src.dome.r + Math.max(0, src.dome.z || 0) : 0);
     if (src.kind === 'volume') return src.shape === 'cylinder' ? Math.hypot(src.radius, src.length / 2) : src.radius;
     return 0;
   }
   // Characteristic linear size of the emitter (for reports): max projected width
   function extentSize(src) {
+    src = apparent(src);
     if (src.kind === 'planar') return src.shape === 'disc' ? 2 * src.radius : Math.max(src.w, src.h);
     if (src.kind === 'volume') return src.shape === 'cylinder' ? Math.max(2 * src.radius, src.length) : 2 * src.radius;
     return 0;
   }
   // Emitting area (planar) or projected cross-section (volume) — for the étendue estimate
   function emittingArea(src) {
+    src = apparent(src);
     if (src.kind === 'planar') return src.shape === 'disc' ? Math.PI * src.radius * src.radius : src.w * src.h;
     if (src.kind === 'volume') return src.shape === 'cylinder' ? 2 * src.radius * src.length : Math.PI * src.radius * src.radius;
     return 0;
@@ -194,6 +260,10 @@
     if (src.kind === 'planar') {
       if (src.shape === 'disc') out.polys.push(ring(src.radius, 0));
       else out.polys.push([at(-src.w / 2, -src.h / 2, 0), at(src.w / 2, -src.h / 2, 0), at(src.w / 2, src.h / 2, 0), at(-src.w / 2, src.h / 2, 0)]);
+      if (hasDome(src)) {                                // the dome: its base circle and two latitude rings
+        const R = src.dome.r, z = src.dome.z || 0;
+        for (const f of [0, 0.5, 0.85]) { const h = f * (R + z), rr = Math.sqrt(Math.max(0, R * R - (h - z) ** 2)); if (rr > 1e-6) out.polys.push(ring(rr, h)); }
+      }
     } else if (src.kind === 'volume') {
       if (src.shape === 'cylinder') {
         const a = ring(src.radius, -src.length / 2), b = ring(src.radius, src.length / 2);
@@ -206,5 +276,5 @@
     return out;
   }
 
-  RF.Source = { frame, thetaMax, intensity, totalIntegral, makeSampler, sampleRay, extentCov, boundingRadius, extentSize, emittingArea, outline };
+  RF.Source = { frame, thetaMax, intensity, totalIntegral, makeSampler, sampleRay, extentCov, boundingRadius, extentSize, emittingArea, outline, apparent, hasDome };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -160,7 +160,7 @@
     side.append(section('Problem', { open: true, key: 'problem', tag: 'source · target · envelope' },
       section('Light source', { open: true, key: 'source' },
         el('div', { id: 'source-preset' }),
-        ...rowsFor(ui, ['src.kind', 'src.shape', 'src.w', 'src.h', 'src.radius', 'src.length', 'src.dist', 'src.sigma', 'src.half']),
+        ...rowsFor(ui, ['src.kind', 'src.shape', 'src.w', 'src.h', 'src.radius', 'src.length', 'src.dist', 'src.sigma', 'src.half', 'src.domeR', 'src.domeN', 'src.domeZ']),
         section('Advanced', { adv: true, key: 'source-adv' }, el('div', { class: 'note' }, 'Direction and position are also draggable in Optics (source dot, arrow tip), or in the Scene with Setup on.'), ...rowsFor(ui, ['src.az', 'src.el', 'src.roll', 'src.x', 'src.y', 'src.z', 'src.power']))),
       section('Target plane & aim point', { open: true, key: 'target' },
         ...rowsFor(ui, ['tgt.dist', 'tgt.size', 'tgt.tiltX', 'tgt.tiltY', 'tgt.linked', 'aim.x', 'aim.y', 'aim.z'])),

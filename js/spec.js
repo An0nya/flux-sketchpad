@@ -373,8 +373,7 @@
   function workingPaint(scene) {
     const md = scene.modeD, res = scene.target.res, T = RF.Engine.designFrame(scene.target), c = scene.source.pos;
     const items = itemsOf(md), paint = scene.modeA.paint, out = new Array(res * res).fill(0);
-    let auto = 0; for (const it of items) if (it.min > 0 && it.kind !== 'gradient' && it.kind !== 'linearity' && it.kind !== 'imax' && it.kind !== 'sum') auto = Math.max(auto, it.min);
-    const pcd = md.paintCd > 0 ? md.paintCd : auto || 10000, w = md.usePaint === false ? 0 : (md.paintWeight === undefined ? 1 : md.paintWeight);
+    const pcd = paintCdOf(md), w = md.usePaint === false ? 0 : (md.paintWeight === undefined ? 1 : md.paintWeight);
     const cellDeg = Math.atan(2 * T.half / res / Math.max(1e-9, V.dist(T.C, c))) * 180 / Math.PI, rad = Math.max(0.5, 1.5 * cellDeg);
     let mx = 0;
     for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
@@ -401,21 +400,33 @@
   }
   // A plausible low-beam painting in (H, V), drawn onto the paint grid: a flat cut-off at 0.57° down on the oncoming
   // side, a 15° rise on the own side, a hot zone under the elbow, a wide foreground spread.  A starting shape to edit.
+  // md.seedGlow (cd, 0 = none): a dim even glow ABOVE the cut-off, up to 4.5° U across ±9° — the overhead-sign light
+  // (points 1–8 need 65–125 cd each) that a pure low-beam painting never asks for.  Kept under B50L's 350 cd.
   function seedPaint(scene) {
     const md = scene.modeD, res = scene.target.res, T = RF.Engine.designFrame(scene.target), s = mirrorH(md), out = new Array(res * res).fill(0);
     const t15 = Math.tan(15 * Math.PI / 180);
+    const glowCd = md.seedGlow > 0 ? md.seedGlow : 0, pcd = paintCdOf(md), above = new Array(res * res).fill(0);
     let mx = 0;
     for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
       const [u, v] = RF.Engine.cellCenter(T, i, j), [h0, vv] = hvAtUV(scene, u, v), h = s * h0;
       const cut = h <= 0 ? -0.57 : Math.min(-0.57 + h * t15, 1.0);
-      if (!(vv <= cut) || vv < -10 || Math.abs(h) > 40) continue;
+      if (!(vv <= cut)) {                                // above the cut-off: only the glow, if any
+        if (glowCd > 0 && vv <= 6) above[j * res + i] = Math.min(1, Math.exp(-(((Math.max(0, Math.abs(h) - 9)) / 2) ** 2)) * Math.exp(-(((Math.max(0, vv - 4.5)) / 0.8) ** 2)));
+        continue;
+      }
+      if (vv < -10 || Math.abs(h) > 40) continue;
       const hot = Math.exp(-(((h - 1.5) / 4) ** 2) - (((vv + 1.2) / 0.9) ** 2));
       const wide = Math.exp(-((h / 20) ** 2)) * Math.exp(-(((vv + 1.5) / 2.5) ** 2));
       const I = 0.8 * hot + 0.35 * wide;
       out[j * res + i] = I; if (I > mx) mx = I;
     }
-    if (mx > 0) for (let k = 0; k < out.length; k++) out[k] = +(Math.min(1, out[k] / mx)).toFixed(4);
+    if (mx > 0) for (let k = 0; k < out.length; k++) out[k] = +(Math.min(1, out[k] / mx + above[k] * glowCd / pcd)).toFixed(5);
     return out;
+  }
+  // the intensity a painted 1.0 stands for: md.paintCd, or (0 = auto) the largest single-point / zone minimum, or 10,000 cd
+  function paintCdOf(md) {
+    let auto = 0; for (const it of itemsOf(md)) if (it.min > 0 && it.kind !== 'gradient' && it.kind !== 'linearity' && it.kind !== 'imax' && it.kind !== 'sum') auto = Math.max(auto, it.min);
+    return md.paintCd > 0 ? md.paintCd : auto || 10000;
   }
   // target size that shows the whole spec window at the current distance (square plane, centred on the axis)
   function fitTargetSize(scene) {

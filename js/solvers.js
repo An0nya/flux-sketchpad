@@ -76,9 +76,10 @@
   // the painting a solver is asked for: the paint itself, or in Spec mode the spec's working target (js/spec.js)
   const paintOf = (scene) => (scene.mode === 'D' && RF.Spec && scene.modeD ? RF.Spec.workingPaint(scene) : scene.modeA.paint);
   // the problem half of the scene: all a solver may see
+  // a domed LED is handed over as the flat emitter it looks like from outside (RF.Source.apparent); traces keep the dome
   function inputOf(scene) {
     return RF.U.deepCopy({
-      source: scene.source, envelope: scene.envelope, target: scene.target,
+      source: RF.Source.apparent(scene.source), envelope: scene.envelope, target: scene.target,
       paint: { res: scene.target.res, cells: paintOf(scene) }, stamps: (scene.modeB && scene.modeB.stamps) || [], seed: scene.sim.seed | 0,
       limits: { maxFacets: Math.max(1, scene.modeA.budget | 0), reflectivity: scene.modeA.reflectivity },
     });

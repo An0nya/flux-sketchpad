@@ -234,5 +234,21 @@ function fakeG(fn, win, step) {
   let threw = ''; try { RF.FarField.build(Object.assign({}, one, { ex: null }), RF.Spec.gridOpts(sc2)); } catch (e) { threw = e.message; }
   check('a grid the run did not stream (bin changed) asks for a re-trace', /re-trace/.test(threw), threw);
 }
+// dome: a real refractive hemisphere over the die
+{
+  const sc = RF.State.testScene(); Object.assign(sc.source, { kind: 'planar', shape: 'rect', w: 2, h: 2, pos: [0, 0, 0], axis: [1, 0, 0], dist: 'lambertian', power: 1000, dome: { r: 2.5, n: 1.41, z: 0 } });
+  sc.target.distance = 1e5; sc.target.size = 10;
+  const P = RF.Engine.prepare(sc, []); P.recordExit = true; P.exitCap = 400000; const c = RF.Engine.runSync(P, 400000), x = c.ex;
+  let tot = 0, ys = []; for (let k = 0; k < x.n; k++) { tot += x.e[k]; const dx = x.d[3 * k]; if (dx > Math.cos(5 * Math.PI / 180)) { const t = -x.o[3 * k] / dx; ys.push(x.o[3 * k + 1] + t * x.d[3 * k + 1]); } }
+  const m = ys.reduce((a, v) => a + v, 0) / ys.length, w = Math.sqrt(12 * ys.reduce((a, v) => a + (v - m) ** 2, 0) / ys.length), ap = RF.Source.apparent(sc.source);
+  check('dome: every ray leaves (energy closes), every exit on the dome surface', Math.abs(tot / 1000 - 1) < 1e-6 && x.n === 400000);
+  check('dome: the die seen near the axis is magnified ≈ n (paraxial apparent size, within 6 %)', Math.abs(w / ap.w - 1) < 0.06 && Math.abs(ap.domeMag - 1.41) < 1e-9, 'traced ' + w.toFixed(2) + ' mm vs ' + ap.w.toFixed(2) + ' mm');
+  check('dome: solvers plan with the apparent emitter; traces keep the dome', RF.Solvers.inputOf(sc).source.w === ap.w && !RF.Solvers.inputOf(sc).source.dome && !!sc.source.dome);
+  const d = { pos: [0, 0, 0], axis: [1, 0, 0] }, f = { pos: [0, 0, 0], axis: [1, 0, 0] };
+  RF.SourcePresets.apply(f, 'nichia519a-domed', { amps: 2.8 }); RF.SourcePresets.apply(d, 'nichia519a-domed', { model: 'dome', amps: 2.8 });
+  const Ap = RF.Source.apparent(d), r = Ap.w * Ap.h / (f.w * f.h);
+  check('519A: the dedomed die under an n = 1.41 dome predicts the domed sample\u2019s measured apparent area within 15 %', Math.abs(r - 1) < 0.15 && RF.SourcePresets.matches(d), 'predicted / measured ' + r.toFixed(3));
+  RF.SourcePresets.apply(d, 'generic'); check('applying a preset without a dome removes it', !d.dome);
+}
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);
