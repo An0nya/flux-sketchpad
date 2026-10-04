@@ -1,5 +1,12 @@
 [
  {
+  "file": "spec-hl-v2.js",
+  "model": "Spec headlamp solver v2 (Claude Sonnet 5.5, briefed by Opus 5.5)",
+  "run": "2026-10-05",
+  "workspace": "this repo",
+  "note": "lab"
+ },
+ {
   "file": "spec-hl-v1.js",
   "model": "Spec headlamp solver (Claude Sonnet 5.5, briefed by Opus 5.5)",
   "run": "2026-10-05",
