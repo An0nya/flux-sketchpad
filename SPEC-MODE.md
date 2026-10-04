@@ -153,7 +153,7 @@ Light source → **Emitter** presets (`js/source-presets.js`):
   across current, which supports the readings.
 - **More koef3 LEDs** (from his FFL505A, Nichia 519A / 519A-V1 and SFT-70 comparison charts):
   FFL505A 3500 K rosy, Yinding 5050 6500 K 95 CRI, Nichia 519A sm503 (domed and dedomed),
-  519A-V1 sm573 (domed), and SFT-70 3000 K 95 CRI / SFT-70-X 6500 K 70 CRI (6 V). For domed parts
+  519A-V1 sm573 (domed), Samsung LH351D 5700 K 90 CRI (domed, ≈ 10.5 mm² effective), and SFT-70 3000 K 95 CRI / SFT-70-X 6500 K 70 CRI (6 V). For domed parts
   the effective area is the dome's head-on apparent size (519A domed ≈ 9 mm², dedomed ≈ 4.6),
   which a flat Lambertian disc only approximates off-axis.
 - **SFT-40 3000 K, koef3's own luminance** (15.2 / 49.9 / 127.6 cd/mm²) gives an effective area
