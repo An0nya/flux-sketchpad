@@ -59,6 +59,19 @@ Bench at 2 M rays (guided), sure fails / unsure · peak:
   - Shrink the target regions by the predicted blur.
   - Traced rebalance.
 
+### `tir-array-v2`: exact conic dome, toric `quad` exit lenslets, blur-aware aims, partitioned option, traced calibration
+- **Why v1 fell from 42.7 % to 3–7 % at K ≥ 3:** it's the scoring scene, not the allocation. The paint-fidelity blur
+  allowance (`achievableKernel` in `js/photometry.js`) comes from the envelope and `scene.source`, assuming a reflector
+  could sit at the far side of the box. The bench widens the envelope with K, so the kernel shrinks from 2.44 to 0.82
+  cells. The identical K=1 design scores 39.5 % (envelope half-y 22), 25.0 % (62) and 2.2 % (102). Three copies of the K=1 design
+  (`split: shared`) score 2.4 % at K=3. The gap band then catches the TIR's ±5–9° LED image.
+- **Bench:** `tools/tir-array-bench-v2.js` (1 M paint rays, 2 M guided spec rays). Paint fidelity v1 → v2:
+  K=1 42.7 → 65.4 %, K=3 3.0 → 30.9 %, K=5 6.7 → 31.9 %. R112 B fails / unsure v1 → v2: 1/6 → 4/5, 2/5 → 1/7, 4/4 → 2/4.
+  FMVSS LB2V: 7/1 → 6/3, 7/1 → 7/1, 7/2 → 6/3. 0 violations, 12–19 s.
+- **Most of the gain is blur-aware aiming.** The predicted LED image is 15 paint cells, which is bigger than every
+  region, so every lenslet ends up flat (fan 0). Paint calibration rounds don't help and are kept only when better.
+  Spec calibration at 3e5 rays is too noisy: K=1 R112 picked a "1 fail" round that shows 4 fails at 2 M rays.
+
 ## Known gaps
 
 - **Report metrics assume reflector-only optics.**
