@@ -103,7 +103,7 @@
     if (!out || !Array.isArray(out.surfaces)) { facts.errors.push('output.surfaces is not an array'); return facts; }
     const ids = new Set();
     for (const s of out.surfaces) {
-      if (!s || !['facet', 'plane', 'rev'].includes(s.type)) { facts.errors.push('surface of unknown type ' + (s && s.type)); continue; }
+      if (!s || !['facet', 'plane', 'rev', 'quad', 'parab'].includes(s.type)) { facts.errors.push('surface of unknown type ' + (s && s.type)); continue; }
       if (typeof s.id !== 'string' || ids.has(s.id)) facts.errors.push('surface id missing or repeated: ' + (s && s.id));
       ids.add(s.id);
     }
@@ -112,7 +112,7 @@
     try { G = RF.Geo.compile(out.surfaces); } catch (e) { facts.errors.push('surfaces do not compile: ' + e.message); return facts; }
     // the budget counts reflecting surfaces (facets / patches); refracting and absorbing parts (lenses, shields) are free
     for (const s of out.surfaces) if (((s.optics && s.optics.interaction) || 'reflect') === 'reflect') facts.placed++; else facts.parts++;
-    if (out.needs && out.needs.bounces > 0) facts.needsBounces = Math.min(8, Math.round(out.needs.bounces));
+    if (out.needs && out.needs.bounces > 0) facts.needsBounces = Math.min(16, Math.round(out.needs.bounces));
     const budget = scene.modeA && scene.modeA.budget;          // the user's facet budget: a limit, never the solver's to change
     if (budget > 0 && facts.placed > budget) facts.violations.budget = { placed: facts.placed, budget };
     const env = scene.envelope, SS = RF.Source.all(scene).map((x) => x.pos), keep = env.keepOut || 0;
@@ -196,7 +196,7 @@
   function trace(scene, surfaces, o) {
     o = o || {};
     // o.bounces: a multi-part optic traces with the cap it needs (reflector + lens = 3), as the app will once it declares needs.bounces
-    const sc = Object.assign({}, scene, { sim: Object.assign({}, scene.sim, { seed: o.seed !== undefined ? o.seed : scene.sim.seed }, o.bounces > 0 ? { bounces: Math.max(scene.sim.bounces | 0, Math.min(8, Math.round(o.bounces))) } : {}) });
+    const sc = Object.assign({}, scene, { sim: Object.assign({}, scene.sim, { seed: o.seed !== undefined ? o.seed : scene.sim.seed }, o.bounces > 0 ? { bounces: Math.max(scene.sim.bounces | 0, Math.min(16, Math.round(o.bounces))) } : {}) });
     const P = RF.Engine.prepare(sc, surfaces); P.recordHits = !!(o.attribution || o.occlusion);
     const wantSpec = !!(o.spec && scene.modeD && RF.Spec && RF.FarField);
     if (wantSpec) P.ffStreams = [RF.Spec.gridOpts(scene)];        // the far field the host judges, at the spec's measuring distance

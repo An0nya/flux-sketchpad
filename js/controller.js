@@ -92,7 +92,7 @@
   const CONTROLS = [
     // ---- simulation
     num('rays', 'Rays', (s) => SIM(s).rays, (s, v) => { SIM(s).rays = Math.round(RF.U.clamp(v, 100, 2e7)); }, { section: 'run', min: 100, max: 2e7, step: 100, log: true, help: 'Rays per run (100 – 20,000,000). Big runs render progressively; Refine adds more to a finished run without starting over.' }),
-    num('bounces', 'Max bounces', (s) => SIM(s).bounces, (s, v) => { SIM(s).bounces = Math.round(RF.U.clamp(v, 1, 8)); }, { section: 'sim', adv: true, min: 1, max: 8, step: 1, help: 'Surface interactions per ray (default 1, hard cap 8). A ray that meets a surface after its budget is spent is stopped there (occlusion still applies).' }),
+    num('bounces', 'Max bounces', (s) => SIM(s).bounces, (s, v) => { SIM(s).bounces = Math.round(RF.U.clamp(v, 1, 16)); }, { section: 'sim', adv: true, min: 1, max: 16, step: 1, help: 'Surface interactions per ray (default 1, hard cap 16). A ray that meets a surface after its budget is spent is stopped there (occlusion still applies).' }),
     num('floor', 'Energy floor %', (s) => SIM(s).floor * 100, (s, v) => { SIM(s).floor = RF.U.clamp(v, 0, 100) / 100; }, { section: 'sim', adv: true, min: 0, max: 100, step: 0.1, help: 'Rays whose remaining energy drops below this fraction of their initial energy are terminated (counted as "cut").' }),
     num('seed', 'Seed', (s) => SIM(s).seed, (s, v) => { SIM(s).seed = Math.round(v) | 0; }, { section: 'sim', adv: true, step: 1, help: 'PRNG seed. Same inputs + same seed ⇒ byte-identical grid.' }),
     // ---- source

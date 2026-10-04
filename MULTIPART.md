@@ -65,7 +65,9 @@ Bench at 2 M rays (guided), sure fails / unsure · peak:
   - "% of ceiling" uses the facet brightness-theorem table: the projector reads 173–200 % because lens parts aren't in it.
   - "blocked" counts light that ends on a shield and can exceed 100 % (it is normalised by first-surface outflow).
   - Needed: a parts-aware ceiling (aperture silhouette) and a blocked metric that knows shields are meant to absorb.
-- **No curved off-axis refracting patch.** There is no toric/cylindrical lenslet primitive (the TIR exit uses flat prisms), and no angle-limited rev segment.
+- ~~No curved refracting patch~~ **Built (round 2):** `quad` general quadric patch (any interaction), `iorFront`
+  (glass | glass interfaces), `fresnel: 'exact'` (angle-dependent Fresnel splitting, traced), bounce cap 16.
+  True freeform (polynomial / NURBS sag) deliberately skipped (Anya, 10-04).
 - **Reflector solvers ignore the extra emitters.** They design for `input.source` and ignore any lens the user adds; that is expected.
 - **Emitter editing:** emitters can't be dragged in the 3D view yet (sidebar only).
 - **Backlog (Anya, 10-04): a per-emitter popup in the Optics pane**, like the facet report you get when the pane is expanded:

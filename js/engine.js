@@ -52,7 +52,7 @@
     const sim = scene.sim;
     const P = {
       G, T, S, scale, eps: 1e-9 * scale,
-      cap: Math.max(1, Math.min(8, sim.bounces | 0)),
+      cap: Math.max(1, Math.min(16, sim.bounces | 0)),   // 16: multi-element optics with Fresnel reflections (was 8)
       floor: Math.max(0, sim.floor),
       seed: sim.seed | 0,
       power: RF.Source.totalPower(scene),
@@ -91,7 +91,7 @@
       // per hit: which ray it was (so it can be retraced); per ray: 1 + first surface met (0 = none)
       hitI: P.recordHits ? new Uint32Array(Math.min(N, P.hitCap || 2e6)) : null,
       rayK: P.recordHits ? new (P.G.n < 65535 ? Uint16Array : Uint32Array)(N) : null, curI: 0,
-      E: { emitted: 0, direct: 0, reflected: 0, absorbed: 0, backface: 0, interfaceLoss: 0, escaped: 0, targetBack: 0, truncated: 0, intercepted: 0, reHit: 0, tir: 0 },
+      E: { emitted: 0, direct: 0, reflected: 0, absorbed: 0, backface: 0, interfaceLoss: 0, escaped: 0, targetBack: 0, truncated: 0, intercepted: 0, reHit: 0, tir: 0, fresnelR: 0 },
       surfIn: new Float64Array(Math.max(1, P.G.n)),
       // occlusion: light that left one surface and then ended on another without landing (blocked), per first surface
       occ: { blocked: 0, blockedK: new Float64Array(Math.max(1, P.G.n)), out1: 0, out1K: new Float64Array(Math.max(1, P.G.n)), shadow: null },   // out1 = light leaving the first surface
@@ -272,17 +272,24 @@
         dx -= k2 * nx; dy -= k2 * ny; dz -= k2 * nz;
         if (ev) ev.type = 'reflect';
       } else {                                     // refract (Snell) or TIR
+        // front = the iorFront side (air unless two media touch), back = the ior side
         let n1, n2, mx, my, mz, ci;
-        if (cosI < 0) { n1 = 1; n2 = D[ko + 30]; mx = nx; my = ny; mz = nz; ci = -cosI; }
-        else { n1 = D[ko + 30]; n2 = 1; mx = -nx; my = -ny; mz = -nz; ci = cosI; }
+        const nF = 1 + D[ko + 36], nB = D[ko + 30];
+        if (cosI < 0) { n1 = nF; n2 = nB; mx = nx; my = ny; mz = nz; ci = -cosI; }
+        else { n1 = nB; n2 = nF; mx = -nx; my = -ny; mz = -nz; ci = cosI; }
         const eta = n1 / n2, k = 1 - eta * eta * (1 - ci * ci);
-        if (k < 0) {                               // no real solution: total internal reflection
+        let reflectIt = k < 0;                     // no real solution: total internal reflection
+        if (!reflectIt && D[ko + 37] === 1) {      // exact Fresnel: reflect the unpolarised share R(θ) of the rays (per-ray draw, deterministic)
+          const ct = Math.sqrt(k), rs = (n1 * ci - n2 * ct) / (n1 * ci + n2 * ct), rp = (n2 * ci - n1 * ct) / (n2 * ci + n1 * ct);
+          const u = (RF.rng.fmix32(RF.rng.streamSeed(P.seed ^ 0x6f9e5d3, ctx.curI) + Math.imul(bounces, 0x9E3779B1)) >>> 0) / 4294967296;
+          if (u < 0.5 * (rs * rs + rp * rp)) { reflectIt = true; ctx.E.fresnelR += E; }
+        }
+        if (reflectIt) {
           dx += 2 * ci * mx; dy += 2 * ci * my; dz += 2 * ci * mz;
-          ctx.E.tir += E;
-          if (ev) ev.type = 'tir';
+          if (k < 0) ctx.E.tir += E;
+          if (ev) ev.type = k < 0 ? 'tir' : 'fresnel';
         } else {
-          const Tf = D[ko + 31];
-          ctx.E.interfaceLoss += E * (1 - Tf); E *= Tf;
+          if (D[ko + 37] !== 1) { const Tf = D[ko + 31]; ctx.E.interfaceLoss += E * (1 - Tf); E *= Tf; }
           const ct = Math.sqrt(k), f = eta * ci - ct;
           dx = eta * dx + f * mx; dy = eta * dy + f * my; dz = eta * dz + f * mz;
           if (ev) ev.type = 'refract';
@@ -403,7 +410,7 @@
   function retrace(P, i) {
     // one scratch context per prepared scene: retracing thousands of rays must not allocate grids each time
     const ctx = P._rctx || (P._rctx = newCtx(Object.assign({}, P, { recordHits: false, recordExit: false }), 1, 0)), o = new Float64Array(3), d = new Float64Array(3);
-    sampleRayI(P, i, o, d);
+    sampleRayI(P, i, o, d); ctx.curI = i;            // curI: exact-Fresnel draws are per ray
     const rec = [o[0], o[1], o[2]]; rec.end = ''; const ev = [];
     traceOne(P, ctx, o[0], o[1], o[2], d[0], d[1], d[2], 1, rec, ev);
     rec.ks = ev.filter((e) => e.k !== undefined).map((e) => e.k);

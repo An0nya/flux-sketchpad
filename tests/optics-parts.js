@@ -88,5 +88,77 @@ const base = () => { const s = RF.State.testScene(); s.sim.bounces = 4; s.lenses
   const f = RF.Solvers.verify(sc, { surfaces: L.map((s, i) => Object.assign({}, s, { id: 'L' + i })), needs: { bounces: 3 } });
   ok(f.placed === 0 && f.parts === L.length && !f.violations.budget && f.needsBounces === 3, 'lens parts are free of the facet budget; needs.bounces reported', f.placed + ' facets, ' + f.parts + ' parts');
 }
+// 7. quad: a general quadric patch for any interaction
+{
+  const sc = base(), R = 25;
+  // a sphere written as a quad (cx = cy = cz = 1/R) matches the rev arc of the same sphere, hit for hit
+  const q = { type: 'quad', id: 'q', P: [0, 0, 0], n: [0, 0, 1], curv: [1 / R, 1 / R, 0, 1 / R], front: -1, clip: { kind: 'disc', r: 15 }, optics: { interaction: 'reflect', reflectivity: 1 } };
+  const a = { type: 'rev', id: 'a', O: [0, 0, 0], W: [0, 0, 1], seg: { kind: 'arc', zc: R, R, z0: 0, z1: R - Math.sqrt(R * R - 225), rmax: 15 }, front: 1, optics: { interaction: 'reflect', reflectivity: 1 } };
+  const Pq = RF.Engine.prepare(sc, [q]), Pa = RF.Engine.prepare(sc, [a]);
+  let worst = 0, n = 0;
+  for (let i = 0; i < 100; i++) {
+    const o = [(i % 10 - 4.5) * 2.5, (Math.floor(i / 10) - 4.5) * 2.5, -30], d = V.norm([0.05 * Math.sin(i), 0.04 * Math.cos(i), 1]);
+    const e1 = RF.Engine.probeRay(Pq, o, d).events[0], e2 = RF.Engine.probeRay(Pa, o, d).events[0];
+    if (!e1 || !e2 || e1.type !== 'reflect') continue; n++;
+    worst = Math.max(worst, V.dist(e1.point, e2.point), V.len(V.sub(e1.dOut, e2.dOut)));
+  }
+  ok(n > 60 && worst < 1e-9, 'quad sphere (curv) = rev arc sphere, hit for hit', n + ' rays, worst ' + worst.toExponential(2));
+  // the explicit quadric form compiles to the same surface as the curvature form
+  const q2 = Object.assign({}, q, { curv: undefined, quadric: { A: [0.5 / R, 0.5 / R, 0.5 / R, 0, 0, 0], b: [0, 0, -1] } });
+  ok(RF.hash.f64([RF.Geo.compile([q]).D]) === RF.hash.f64([RF.Geo.compile([q2]).D]), 'quad: quadric form = curvature form');
+  // a cylindrical lenslet (curved in x only, glass behind, flat back) focuses a collimated beam to a LINE: x converges, y doesn't
+  const f = 40, n0 = 1.5, c = 1 / ((n0 - 1) * f);       // plano-convex thin lens: 1/f = (n − 1) c
+  const lens = [
+    { type: 'quad', id: 'c1', P: [0, 0, 0], n: [0, 0, -1], ref: [1, 0, 0], curv: [-c, 0, 0, 0], clip: { kind: 'rect', hx: 6, hy: 6 }, optics: { interaction: 'refract', ior: n0, fresnelT: 1 } },
+    { type: 'plane', id: 'c2', P: [0, 0, 2], n: [0, 0, 1], clip: { kind: 'rect', hx: 8, hy: 8 }, optics: { interaction: 'refract', ior: n0, fresnelT: 1 } },
+  ];
+  const Pl = RF.Engine.prepare(sc, lens);
+  let ax = 0, ay = 0, m = 0;
+  for (let i = 0; i < 25; i++) {
+    const o = [(i % 5 - 2) * 0.8, (Math.floor(i / 5) - 2) * 2, -10], ev = RF.Engine.probeRay(Pl, o, [0, 0, 1]).events.filter((e) => e.type === 'refract');
+    if (ev.length < 2) continue; m++;
+    const p = ev[1].point, d = ev[1].dOut, t = (f - p[2]) / d[2];
+    ax = Math.max(ax, Math.abs(p[0] + t * d[0])); ay = Math.max(ay, Math.abs(Math.atan2(d[1], d[2])));
+  }
+  ok(m === 25 && ax < 0.05 && ay < 1e-12, 'quad toric: a cylindrical lenslet focuses x to a line at f, leaves y collimated', 'x spread at f ' + ax.toFixed(4) + ' mm, y angle ' + ay.toExponential(1));
+}
+// 8. material-aware refraction (iorFront): index-matched contact is invisible; Snell between two glasses; TIR at their critical angle
+{
+  const sc = base(), slab = (z, nF, nB, id) => ({ type: 'plane', id, P: [0, 0, z], n: [0, 0, -1], clip: { kind: 'rect', hx: 50, hy: 50 }, optics: { interaction: 'refract', ior: nB, iorFront: nF, fresnelT: 1 } });
+  const th = 30 * Math.PI / 180, d = [Math.sin(th), 0, Math.cos(th)];
+  // air → 1.5 at z = 0, then a 1.5 | 1.5 contact at z = 5 (cemented, same glass), then 1.5 → air out the back at z = 10
+  const back = { type: 'plane', id: 'b', P: [0, 0, 10], n: [0, 0, 1], clip: { kind: 'rect', hx: 50, hy: 50 }, optics: { interaction: 'refract', ior: 1.5, fresnelT: 1 } };
+  const Pm = RF.Engine.prepare(sc, [slab(0, 1, 1.5, 'a'), slab(5, 1.5, 1.5, 'm'), back]);
+  const evm = RF.Engine.probeRay(Pm, [0, 0, -5], d).events.filter((e) => e.type === 'refract');
+  const mid = evm[1], out = evm[evm.length - 1];
+  ok(evm.length === 3 && V.len(V.sub(mid.dIn, mid.dOut)) < 1e-12 && V.len(V.sub(out.dOut, d)) < 1e-12, 'index-matched contact (1.5 | 1.5) is invisible; the slab exits parallel');
+  // 1.5 → 1.7 inside glass: n1 sinθ1 = n2 sinθ2
+  const Pg = RF.Engine.prepare(sc, [slab(0, 1, 1.5, 'a'), slab(5, 1.5, 1.7, 'g')]);
+  const e2 = RF.Engine.probeRay(Pg, [0, 0, -5], d).events[1], s1 = Math.hypot(e2.dIn[0], e2.dIn[1]), s2 = Math.hypot(e2.dOut[0], e2.dOut[1]);
+  ok(Math.abs(1.5 * s1 - 1.7 * s2) < 1e-12, 'glass | glass Snell (1.5 → 1.7)', (1.5 * s1).toFixed(12) + ' = ' + (1.7 * s2).toFixed(12));
+  // 1.5 → 1.4 beyond asin(1.4/1.5) = 69.0°: TIR; below it: refracts
+  const Pt = RF.Engine.prepare(sc, [{ type: 'plane', id: 't', P: [0, 0, 0], n: [0, 0, 1], clip: { kind: 'rect', hx: 50, hy: 50 }, optics: { interaction: 'refract', ior: 1.5, iorFront: 1.4, fresnelT: 1 } }]);
+  const at = (deg) => RF.Engine.probeRay(Pt, [0, 0, -5], [Math.sin(deg * Math.PI / 180), 0, Math.cos(deg * Math.PI / 180)]).events[0].type;
+  ok(at(68.5) === 'refract' && at(69.5) === 'tir', 'TIR between two glasses at their own critical angle', '68.5° ' + at(68.5) + ', 69.5° ' + at(69.5));
+}
+// 9. exact Fresnel: 4 % reflected at normal incidence on n = 1.5, energy kept, deterministic, retrace = trace
+{
+  const sc = base(); sc.source = Object.assign(sc.source, { kind: 'point', pos: [0, 0, 0], axis: [1, 0, 0], dist: 'cone', halfAngle: 0.5 });
+  sc.target = Object.assign(sc.target, { distance: 1000, size: 400 });
+  const glass = { type: 'plane', id: 'g', P: [50, 0, 0], n: [-1, 0, 0], clip: { kind: 'rect', hx: 30, hy: 30 }, optics: { interaction: 'refract', ior: 1.5, fresnel: 'exact' } };
+  const P = RF.Engine.prepare(sc, [glass]), N = 200000, c = RF.Engine.runSync(P, N);
+  const R = c.E.fresnelR / c.E.emitted, R0 = 0.04, sd = Math.sqrt(R0 * (1 - R0) / N);
+  ok(Math.abs(R - R0) < 4 * sd && c.E.interfaceLoss === 0, 'exact Fresnel reflects R(0°) = 4 % of the rays, no fixed loss', (100 * R).toFixed(3) + ' % ± ' + (100 * sd).toFixed(3));
+  ok(RF.Engine.gridHash(RF.Engine.runSync(P, N)) === RF.Engine.gridHash(c), 'exact Fresnel is deterministic (same seed ⇒ same grid)');
+  // progressive = one shot
+  const P2 = RF.Engine.prepare(sc, [glass]), c2 = RF.Engine.newCtx(P2, N, 0); while (!RF.Engine.step(c2, 5));
+  ok(RF.Engine.gridHash(c2) === RF.Engine.gridHash(c), 'exact Fresnel: progressive run = one-shot run');
+  let same = 0; const ends = []; for (let i = 0; i < 2000; i++) { const p = RF.Engine.retrace(P, i); ends.push(p.end); }
+  const reflected = ends.filter((e) => e === 'escape').length;   // a reflected ray goes back past the source and escapes
+  ok(Math.abs(reflected / 2000 - R0) < 0.02, 'retrace replays the same Fresnel draws', reflected + ' of 2000 reflected');
+  // default optics still compile with the new slots at 0 (old designs byte-identical)
+  const G = RF.Geo.compile([{ type: 'plane', id: 'x', P: [0, 0, 0], n: [0, 0, 1], optics: { interaction: 'refract', ior: 1.5 } }]);
+  ok(G.D[36] === 0 && G.D[37] === 0, 'default optics leave the new slots at 0');
+}
 module.exports = { fails: () => fails };
 if (require.main === module) { console.log(fails ? fails + ' failed' : 'all passed'); process.exit(fails ? 1 : 0); }

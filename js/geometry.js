@@ -19,6 +19,17 @@
  *           reflection, so the aim (normal at P) is unchanged.  vg is stored instead of distances so a
  *           collimated axis survives JSON (Infinity would become null).  Without vg: today's exact ellipsoid.
  *   plane — flat patch with an explicit normal (extrusions, azimuthally faceted revolves).
+ *   quad  — a GENERAL quadric patch for any interaction (curved lenslets, toric exit faces, curved shields, free
+ *           reflector patches): frame P, n (local z), ref (local x hint), clip (poly pts3 | rect | disc) and either
+ *             curv: [cx, cy, cxy, cz?]  sag form ½(cx x² + 2 cxy xy + cy y² + cz z²) − z = 0 (curvatures 1/mm at P;
+ *                                       cz = 0 → osculating paraboloid; cx = cy = cz = 1/R → sphere of radius R)
+ *             quadric: { A: [xx, yy, zz, xy, xz, yz], b: [bx, by, bz] }   x·Ax + b·x = 0 in the local frame (through P,
+ *                                       normal along local z there: bz ≠ 0)
+ *           front: +1 (default) = the +n side is the front (reflecting / air / iorFront side), −1 = the −n side.
+ * Optics: interaction, reflectivity, ior (the BACK side's index), iorFront (the FRONT side's index, default 1 = air:
+ *   two glasses in contact, cemented or partitioned bodies), fresnelT (fixed transmission, the default) or
+ *   fresnel: 'exact' (each refraction reflects the unpolarised Fresnel share R(θ) of the rays and transmits the rest:
+ *   no fixed loss, the reflected light is traced).  Defaults compile byte-identically to before.
  *   rev   — a segment of a surface of revolution about an axis: line segment in (r,z)
  *           → cone frustum / cylinder / annulus;  arc → spherical zone (lens caps).
  *
@@ -141,6 +152,8 @@
     D[o + 28] = INTER[op.interaction] !== undefined ? INTER[op.interaction] : 0;
     D[o + 29] = op.reflectivity; D[o + 30] = op.ior; D[o + 31] = op.fresnelT;
     D[o + 32] = op.twoSided ? 1 : 0;
+    D[o + 36] = op.iorFront > 0 ? op.iorFront - 1 : 0;   // stored as n − 1 so the default (air) leaves the slot 0
+    D[o + 37] = op.fresnel === 'exact' ? 1 : 0;
   }
   function tieKey(id) {           // numeric key from the stable surface id, for exact-tie breaking
     let h = 0x9e3779b9 | 0;
@@ -181,21 +194,32 @@
     const meta = { id: s.id, group: s.group || '', kind: s.type };
     writeOptics(D, o, s.optics);
     D[o + 35] = tieKey(s.id);
-    if (s.type === 'facet' || s.type === 'plane') {
-      let P = s.P, n, A, b, flat;
-      if (s.type === 'facet') {
+    if (s.type === 'facet' || s.type === 'plane' || s.type === 'quad') {
+      let P = s.P, n, A, b, flat, local = null;
+      if (s.type === 'quad') {
+        n = V.norm(s.n); A = [0, 0, 0, 0, 0, 0, 0, 0, 0]; b = n.slice();
+        if (s.quadric) {
+          const q = s.quadric.A, l = s.quadric.b;
+          if (!(Math.abs(l[2]) > 0)) throw new Error('quad ' + s.id + ': quadric.b[2] must be non-zero (normal along local z at P)');
+          local = { Q: [q[0], q[3], q[4], q[3], q[1], q[5], q[4], q[5], q[2]], L: l.slice() };
+        } else {
+          const c = s.curv || [0, 0, 0, 0], cx = c[0] || 0, cy = c[1] || 0, cxy = c[2] || 0, cz = c[3] || 0;
+          local = { Q: [cx / 2, cxy / 2, 0, cxy / 2, cy / 2, 0, 0, 0, cz / 2], L: [0, 0, -1] };
+        }
+        flat = local.Q.every((x) => x === 0);
+      } else if (s.type === 'facet') {
         const fq = !s.flat && Array.isArray(s.vg) ? facetQuadric2(s.P, s.S0, s.Z, s.vg, s.ax) : facetQuadric(s.P, s.S0, s.Z, s.flat ? null : s.di);
         n = fq.n; A = fq.A; b = fq.b; flat = fq.flat;
       } else {
         n = V.norm(s.n); A = [0, 0, 0, 0, 0, 0, 0, 0, 0]; b = n.slice(); flat = true;
       }
       const clip = s.clip || { kind: 'disc', r: 1 };
-      const ex = V.inPlane(n, clip.ref), ey = V.cross(n, ex), ez = n;
+      const ex = V.inPlane(n, s.type === 'quad' && s.ref ? s.ref : clip.ref), ey = V.cross(n, ex), ez = n;
       writeFrame(D, o, P, ex, ey, ez);
-      const Q = M3.congruent(A, ex, ey, ez);
-      const L = [V.dot(b, ex), V.dot(b, ey), V.dot(b, ez)];
+      const Q = local ? local.Q : M3.congruent(A, ex, ey, ez);
+      const L = local ? local.L : [V.dot(b, ex), V.dot(b, ey), V.dot(b, ez)];
       writeQuadric(D, o, Q, L, 0);
-      D[o + 33] = L[2] >= 0 ? 1 : -1;          // front normal = +n (toward the source side)
+      D[o + 33] = (L[2] >= 0 ? 1 : -1) * (s.type === 'quad' && s.front === -1 ? -1 : 1);   // front normal = +n (toward the source side); quad: front picks the side
       let rad, slab = 0;
       if (clip.kind === 'poly') {
         const pp = projectPoly(clip.pts3, P, ex, ey, ez);

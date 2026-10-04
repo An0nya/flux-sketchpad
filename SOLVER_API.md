@@ -145,12 +145,28 @@ A solver isn't limited to reflector facets. Its `surfaces` may also **refract** 
   (−1, 0) ellipsoid, < −1 hyperboloid). A hyperbolic face with `k = −n²`, `R = (n − 1) f` collimates a point at
   distance `f` exactly (the app's **Aspheric** lens preset; `RF.Geo.conicSag(R, k, r)` gives the sag).
 - `plane`: a flat patch with a polygon clip (a shield edge).
+- **`quad`**: a general quadric patch for ANY interaction: curved lenslets, toric / cylindrical exit faces, curved
+  shields, free reflector patches. `{ type: 'quad', id, P, n, ref?, clip: { kind: 'poly', pts3 } | rect | disc, front?,
+  optics }` plus either `curv: [cx, cy, cxy, cz?]` (curvatures at P in 1/mm along local x = `ref` projected, local y;
+  sag form ½(cx x² + 2cxy xy + cy y² + cz z²) − z = 0; cz = 0 is the osculating paraboloid, cx = cy = cz = 1/R a sphere)
+  or `quadric: { A: [xx, yy, zz, xy, xz, yz], b: [bx, by, bz] }` (x·Ax + b·x = 0 in the local frame, bz ≠ 0).
+  `front: 1` (default) = the +n side is the front, −1 = the −n side. A cylindrical lenslet of focal length f in glass
+  n: `curv: [1/((n−1)f), 0]` facing the light (`tests/optics-parts.js` #7).
+
+Optics fields (every surface):
+- `ior` = the index on the **back** side; **`iorFront`** = the index on the front side (default 1, air). Two glasses in
+  contact (a cemented doublet, a TIR body partitioned into pieces of different material, an index-matched seam)
+  are one surface with both indices. Same glass on both sides = an invisible seam (no surface needed at all).
+- `fresnelT` (default 0.96): a fixed transmitted share, the rest is lost. **`fresnel: 'exact'`**: each refraction
+  reflects the unpolarised Fresnel share R(θ) of the rays (traced on, deterministic per ray) and transmits the
+  rest at full energy. More bounces needed; ghost and stray light become visible.
+- Bounce cap: **16** (was 8).
 
 Rules for parts:
 - **The facet budget counts reflecting surfaces only.** Lens and shield parts are free, but are checked against the
   envelope and the LED clearance like everything else.
 - **Declare the interactions a ray needs**: `output.needs = { bounces: 3 }` (reflector + lens entry + exit). The app
-  raises its bounce cap to that (with a notice; max 8). `input.limits.bounces` is the current cap. Trace your own
+  raises its bounce cap to that (with a notice; max 16). `input.limits.bounces` is the current cap. Trace your own
   candidates with `tools.trace(surfaces, { bounces: 3, … })`, or the lens light is cut off at the first interaction.
 
 **Multiple emitters.** A scene can hold several LEDs (`scene.emitters`: extra full source objects with `id`,
