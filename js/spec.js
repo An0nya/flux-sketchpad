@@ -470,11 +470,14 @@
     const md = scene.modeD, res = scene.target.res, T = RF.Engine.designFrame(scene.target), s = mirrorH(md), out = new Array(res * res).fill(0);
     const t15 = Math.tan(15 * Math.PI / 180);
     const line = md.aimLine < 0 ? md.aimLine : -0.57;                // the cut-off where the spec aims it (R112 0.57° D, FMVSS VOL 0.4° D)
+    const us = /^fmvss/.test(md.preset || '');
     const glowCd = md.seedGlow > 0 ? md.seedGlow : 0, pcd = paintCdOf(md), above = new Array(res * res).fill(0);
     let mx = 0;
     for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
       const [u, v] = RF.Engine.cellCenter(T, i, j), [h0, vv] = hvAtUV(scene, u, v), h = s * h0;
-      const cut = h <= 0 ? line : Math.min(line + h * t15, 1.0);
+      // ECE: a 15° rise on the own side.  US (FMVSS VOL): the own side steps up within ~1° to ~1° U — Table XIX wants
+      // 500–2,700 cd at 0.5° U and ≥ 200 cd at 1.5° U, 1°–3° R.
+      const cut = h <= 0 ? line : us ? Math.min(line + 1.4 * h, 1.0) : Math.min(line + h * t15, 1.0);
       if (!(vv <= cut)) {                                // above the cut-off: only the glow, if any
         // (a notch at B50L, 3.43° L 0.57° U, max 350 cd: the glow there would be half the budget, and Point 8 (≥ 125 cd) is 0.8° away)
         if (glowCd > 0 && vv <= 6) above[j * res + i] = Math.min(1, Math.exp(-(((Math.max(0, Math.abs(h) - 9)) / 2) ** 2)) * Math.exp(-(((Math.max(0, vv - 4.5)) / 0.8) ** 2))) * (1 - 0.65 * Math.exp(-((h + 3.43) ** 2 + (vv - 0.57) ** 2) / 0.5));

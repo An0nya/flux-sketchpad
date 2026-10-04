@@ -310,6 +310,36 @@ The built-in solver's smallest curve radius was 0.2 % of the throw. At a 25 m ta
 50 mm: nothing fit the default envelope, and spoke placed 0 facets. It is now capped at a
 quarter of the envelope's reach.
 
+### Bench: R112 vs FMVSS LB2V across the fixtures (2026-10-05)
+
+`tests/bench-spec.js`, generic 150 cd/mm² LED, 8 M rays (2 M + guided). Cells give **sure
+fails**/unsure · peak:
+
+| Solver | box | slim 120×35 | module 60×40 | 7" Ø165×100 |
+|---|---|---|---|---|
+| **R112 class B** | | | | |
+| spoke | **4**/4 · 61k | **4**/5 · 40k | **5**/5 · 46k | **5**/3 · 83k |
+| dish-fit | **3**/4 · 82k | **3**/3 · 63k | **3**/2 · 47k | **4**/2 · 78k |
+| mosaic auto | **0**/3 · 89k | **0**/2 · 72k | **6**/2 · 51k | **2**/3 · 135k |
+| Fill & fix | **0**/2 · 25k | **4**/5 · 14k | **3**/4 · 11k | **4**/2 · 151k |
+| Fill & fix light | **6**/4 · 27k | **4**/2 · 25k | **6**/2 · 22k | **1**/4 · 157k |
+| **FMVSS LB2V** | | | | |
+| spoke | **5**/5 · 54k | **5**/2 · 36k | **6**/3 · 32k | **11**/0 · 60k |
+| dish-fit | **6**/2 · 48k | **5**/2 · 51k | **8**/2 · 40k | **8**/1 · 42k |
+| mosaic auto | **4**/2 · 72k | **1**/2 · 61k | **3**/2 · 47k | **5**/2 · 102k |
+| Fill & fix | **8**/1 · 63k | **2**/4 · 23k | **3**/3 · 19k | **4**/0 · 109k |
+| Fill & fix light | **7**/1 · 27k | **7**/2 · 19k | **7**/2 · 26k | **4**/1 · 121k |
+
+- **FMVSS is harder for these solvers.** The usual misses are 0.5U 1R–3R (500–2,700 cd) and
+  1.5U 1R–3R (≥ 200 cd), 16 and 12 of 20 designs. These ask for light above the horizon just
+  right of centre, which an ECE-shaped seed doesn't paint. The next most common misses are the
+  inclination (12), 2U 4L and 4U 8R.
+- **US-shaped seed** (own side stepping up to ~1° U within 1°, used for `fmvss-*` presets): on
+  box + slim × 3 solvers the total of 26 fails is unchanged. It moves which rows fail; it does
+  not reduce them. Again, the painting can't express "this much, no more".
+- **Best results:** mosaic auto on the slim reflector: 1 fail under FMVSS, 0 under R112 (2
+  unsure). On the box, mosaic auto and Fill & fix reach 0 fails under R112.
+
 ### Settings × distance, re-judged (2026-10-05)
 
 Generic 150 cd/mm² LED, seeded paint, R112 class B. Each design traced at 8 M rays (2 M + guided
