@@ -79,7 +79,7 @@
   }
 
   // ---------------------------------------------------------------- the control table
-  const all = ['A', 'B', 'C'];
+  const all = ['A', 'B', 'C', 'D'];
   const srcGroups = ['A', 'B', 'C', 'L'];
   function num(id, label, get, set, o) {
     return Object.assign({ id, label, type: 'number', get, set, modes: all, adv: false, groups: [], min: -Infinity, max: Infinity, step: 'any' }, o || {});
@@ -136,14 +136,14 @@
     num('sim.res', 'Sim grid', (s) => SIM(s).res, (s, v) => { SIM(s).res = Math.round(RF.U.clamp(v, 10, 1000)); }, { section: 'heatmap', min: 10, max: 1000, step: 10, help: 'Simulation accumulator N×N (10–1000). Every statistic is computed on this grid.' }),
     chk('sim.autoRes', 'Auto sim grid', (s) => !!SIM(s).autoRes, (s, v) => { SIM(s).autoRes = !!v; }, { section: 'heatmap', help: 'Pick the sim grid for ~50 rays per lit cell, from a 4,000-ray pilot.' }),
     // ---- Mode A
-    num('A.budget', 'Facet budget', (s) => s.scene.modeA.budget, (s, v) => { s.scene.modeA.budget = Math.round(RF.U.clamp(v, 1, 2000)); }, { primary: true, section: 'modeA', modes: ['A'], groups: ['A'], min: 1, max: 2000, step: 1, help: 'How many segments you are willing to make. Everything else (search resolution etc.) is derived.' }),
-    num('A.minDist', 'Min facet distance (mm)', (s) => s.scene.modeA.minDistance || 0, (s, v) => { s.scene.modeA.minDistance = Math.max(0, v); }, { section: 'modeA', modes: ['A'], groups: ['A'], min: 0, step: 0.5, help: 'Solver preference: facets at least this far from the LED. Farther ⇒ sharper images; nearer ⇒ more light caught in tight corners. 0 = let the solver use the whole envelope.' }),
-    sel('A.type', 'Facets', [['curved', 'Curved (tile size solved)'], ['flat', 'Flat (tile locked to footprint)']], (s) => s.scene.modeA.facetType, (s, v) => { s.scene.modeA.facetType = v; }, { primary: true, section: 'modeA', modes: ['A'], groups: ['A'] }),
-    num('A.refl', 'Mirror reflectivity', (s) => s.scene.modeA.reflectivity, (s, v) => { s.scene.modeA.reflectivity = RF.U.clamp(v, 0, 1); }, { section: 'modeA', modes: ['A'], groups: ['A'], min: 0, max: 1, step: 0.01 }),
-    num('A.req', 'Required delivered flux %', (s) => s.scene.modeA.requiredFlux, (s, v) => { s.scene.modeA.requiredFlux = RF.U.clamp(v, 0, 100); }, { section: 'modeA', modes: ['A'], adv: true, min: 0, max: 100, step: 1, help: '0 = shape only. Otherwise the feasibility report checks this absolute level against what the envelope can intercept.' }),
-    num('A.brush', 'Brush size (cells)', (s) => s.scene.modeA.brush.size, (s, v) => { s.scene.modeA.brush.size = RF.U.clamp(v, 0.5, 20); }, { section: 'heatmap', modes: ['A'], min: 0.5, max: 20, step: 0.5 }),
-    num('A.strength', 'Brush level', (s) => s.scene.modeA.brush.strength, (s, v) => { s.scene.modeA.brush.strength = RF.U.clamp(v, 0.05, 1); }, { section: 'heatmap', modes: ['A'], min: 0.05, max: 1, step: 0.05 }),
-    chk('A.erase', 'Erase', (s) => !!s.scene.modeA.brush.erase, (s, v) => { s.scene.modeA.brush.erase = !!v; }, { section: 'heatmap', modes: ['A'] }),
+    num('A.budget', 'Facet budget', (s) => s.scene.modeA.budget, (s, v) => { s.scene.modeA.budget = Math.round(RF.U.clamp(v, 1, 2000)); }, { primary: true, section: 'modeA', modes: ['A', 'D'], groups: ['A'], min: 1, max: 2000, step: 1, help: 'How many segments you are willing to make. Everything else (search resolution etc.) is derived.' }),
+    num('A.minDist', 'Min facet distance (mm)', (s) => s.scene.modeA.minDistance || 0, (s, v) => { s.scene.modeA.minDistance = Math.max(0, v); }, { section: 'modeA', modes: ['A', 'D'], groups: ['A'], min: 0, step: 0.5, help: 'Solver preference: facets at least this far from the LED. Farther ⇒ sharper images; nearer ⇒ more light caught in tight corners. 0 = let the solver use the whole envelope.' }),
+    sel('A.type', 'Facets', [['curved', 'Curved (tile size solved)'], ['flat', 'Flat (tile locked to footprint)']], (s) => s.scene.modeA.facetType, (s, v) => { s.scene.modeA.facetType = v; }, { primary: true, section: 'modeA', modes: ['A', 'D'], groups: ['A'] }),
+    num('A.refl', 'Mirror reflectivity', (s) => s.scene.modeA.reflectivity, (s, v) => { s.scene.modeA.reflectivity = RF.U.clamp(v, 0, 1); }, { section: 'modeA', modes: ['A', 'D'], groups: ['A'], min: 0, max: 1, step: 0.01 }),
+    num('A.req', 'Required delivered flux %', (s) => s.scene.modeA.requiredFlux, (s, v) => { s.scene.modeA.requiredFlux = RF.U.clamp(v, 0, 100); }, { section: 'modeA', modes: ['A', 'D'], adv: true, min: 0, max: 100, step: 1, help: '0 = shape only. Otherwise the feasibility report checks this absolute level against what the envelope can intercept.' }),
+    num('A.brush', 'Brush size (cells)', (s) => s.scene.modeA.brush.size, (s, v) => { s.scene.modeA.brush.size = RF.U.clamp(v, 0.5, 20); }, { section: 'heatmap', modes: ['A', 'D'], min: 0.5, max: 20, step: 0.5 }),
+    num('A.strength', 'Brush level', (s) => s.scene.modeA.brush.strength, (s, v) => { s.scene.modeA.brush.strength = RF.U.clamp(v, 0.05, 1); }, { section: 'heatmap', modes: ['A', 'D'], min: 0.05, max: 1, step: 0.05 }),
+    chk('A.erase', 'Erase', (s) => !!s.scene.modeA.brush.erase, (s, v) => { s.scene.modeA.brush.erase = !!v; }, { section: 'heatmap', modes: ['A', 'D'] }),
     // ---- Mode B (selected stamp)
     num('B.scale', 'Tile scale (mm)', (s) => selStamp(s) ? selStamp(s).scale : s.scene.modeB.defaultScale, (s, v) => { const st = selStamp(s); if (st) st.scale = Math.max(1e-6, v); else s.scene.modeB.defaultScale = Math.max(1e-6, v); }, { primary: true, section: 'modeB', modes: ['B'], groups: ['B'], step: 1, help: 'Range clamps to what this facet can physically paint (reason shown below).' }),
     sel('B.type', 'Facet', [['curved', 'Curved (curvature sets size)'], ['flat', 'Flat (size sets size)']], (s) => (selStamp(s) ? selStamp(s).facetType : s.scene.modeB.facetType), (s, v) => { const st = selStamp(s); if (st) st.facetType = v; else s.scene.modeB.facetType = v; }, { primary: true, section: 'modeB', modes: ['B'], groups: ['B'] }),

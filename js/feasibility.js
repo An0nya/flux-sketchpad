@@ -126,7 +126,7 @@
     const src = scene.source, S = src.pos;
     const srcSize = RF.Source.extentSize(src);
     const mode = scene.mode;
-    const hasPaint = info.n > 0 && mode === 'A';
+    const hasPaint = info.n > 0 && (mode === 'A' || mode === 'D');
     const Zc = hasPaint ? RF.Engine.targetUVtoWorld(T, info.cu, info.cv) : RF.Engine.aimPoint(scene.target);
     const dT = V.dist(S, Zc);
     const facets = (scene.groups.A.surfaces || []).concat(scene.groups.B.surfaces || []).filter((f) => f.type === 'facet');

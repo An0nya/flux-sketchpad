@@ -40,7 +40,7 @@
   <div class="right" id="right">
     <div class="pair" id="pair">
       <section class="pane editor-pane" data-pane="editor">
-        <div class="pane-head"><button class="collapse" data-collapse="editor" aria-label="Collapse Editor" title="Collapse / restore">▾</button><h2 data-collapse="editor">Editor</h2><div class="head-tools"><nav class="modes seg" role="tablist" aria-label="Input mode"><button role="tab" data-mode="A" title="Paint a target; tile it with source images">Paint</button><button role="tab" data-mode="B" title="Stamp tiles on the target; solve the facet for each">Stamp</button><button role="tab" data-mode="C" title="Draw a cross-section; revolve or extrude it">Profile</button></nav></div><button class="expand icon" data-expand="editor" aria-label="Expand Editor" title="Expand">⤢</button></div>
+        <div class="pane-head"><button class="collapse" data-collapse="editor" aria-label="Collapse Editor" title="Collapse / restore">▾</button><h2 data-collapse="editor">Editor</h2><div class="head-tools"><nav class="modes seg" role="tablist" aria-label="Input mode"><button role="tab" data-mode="A" title="Paint a target; tile it with source images">Paint</button><button role="tab" data-mode="B" title="Stamp tiles on the target; solve the facet for each">Stamp</button><button role="tab" data-mode="C" title="Draw a cross-section; revolve or extrude it">Profile</button><button role="tab" data-mode="D" title="A beam spec: test points, zones and a cut-off in degrees and cd, with the painting as a secondary goal">Spec</button></nav></div><button class="expand icon" data-expand="editor" aria-label="Expand Editor" title="Expand">⤢</button></div>
         <figure class="map">
           <figcaption id="left-caption">Intended</figcaption>
           <div class="canvas-wrap sq"><canvas id="left-canvas"></canvas><button class="icon reset-view" data-reset="left" title="Reset zoom (or double-click)" aria-label="Reset zoom">⌖</button></div>
@@ -49,7 +49,7 @@
       </section>
       <div class="divider pd" data-split="pairSplit" role="separator" tabindex="0" aria-label="Resize Editor and Result"></div>
       <section class="pane result-pane" data-pane="result">
-        <div class="pane-head"><button class="collapse" data-collapse="result" aria-label="Collapse Result" title="Collapse / restore">▾</button><h2 data-collapse="result">Result</h2><div class="head-tools"><div class="seg" id="heat-display" role="radiogroup" aria-label="Simulated view" title="Changes the PICTURE only. Every statistic uses the raw sim grid."><button data-disp="hits" title="Every ray hit as a dot">Hits</button><button data-disp="grid" class="on">Grid</button><button data-disp="smooth">Smooth</button><button data-disp="fid" title="Each painted cell: within ×/÷1.25 of the paint (neutral), too dim (blue) or too bright (orange). Outside the paint: orange = a gap that should be dark, grey = other spill. Mode A.">Fidelity</button></div></div><button class="expand icon" data-expand="result" aria-label="Expand Result" title="Expand">⤢</button></div>
+        <div class="pane-head"><button class="collapse" data-collapse="result" aria-label="Collapse Result" title="Collapse / restore">▾</button><h2 data-collapse="result">Result</h2><div class="head-tools"><div class="seg" id="heat-display" role="radiogroup" aria-label="Simulated view" title="Changes the PICTURE only. Every statistic uses the raw sim grid."><button data-disp="hits" title="Every ray hit as a dot">Hits</button><button data-disp="grid" class="on">Grid</button><button data-disp="smooth">Smooth</button><button data-disp="fid" title="Each painted cell: within ×/÷1.25 of the paint (neutral), too dim (blue) or too bright (orange). Outside the paint: orange = a gap that should be dark, grey = other spill. Mode A.">Fidelity</button><button data-disp="ff" class="only-D" title="Spec mode: intensity by direction (H right, V up from the source), log scale, with the spec and its verdicts. Tap to read a value.">Far field</button></div></div><button class="expand icon" data-expand="result" aria-label="Expand Result" title="Expand">⤢</button></div>
         <figure class="map">
           <figcaption id="right-caption">Simulated</figcaption>
           <div class="canvas-wrap sq"><canvas id="heat-canvas"></canvas><div class="sel-chip" hidden><span></span><button class="icon" aria-label="Clear selection" title="Clear selection (Esc)">✕</button></div><button class="icon reset-view" data-reset="heat" title="Reset zoom (or double-click)" aria-label="Reset zoom">⌖</button></div>
@@ -87,7 +87,7 @@
       <button id="btn-reset" class="danger" data-confirm="Reset the whole scene?">Reset</button>
     </div>
     <nav class="modes seg" role="tablist" aria-label="Input mode">
-      <button role="tab" data-mode="A">Paint</button><button role="tab" data-mode="B">Stamp</button><button role="tab" data-mode="C">Profile</button>
+      <button role="tab" data-mode="A">Paint</button><button role="tab" data-mode="B">Stamp</button><button role="tab" data-mode="C">Profile</button><button role="tab" data-mode="D">Spec</button>
     </nav>
     <select id="preset-select" aria-label="Scene preset">
       <option value="">Presets…</option>
@@ -134,6 +134,7 @@
 <script src="js/input.js"></script>
 <script src="js/layout.js"></script>
 <script src="js/panels.js"></script>
+<script src="js/spec-ui.js"></script>
 <script src="js/history.js"></script>
 <script src="js/ui.js"></script>
 <script>

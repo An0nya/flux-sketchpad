@@ -7,6 +7,7 @@
   const { V } = RF;
   const C = RF.Controller;
   const fmt = RF.U.fmt;
+  const isPaint = (m) => m === 'A' || m === 'D';
   const el = (tag, attrs, ...kids) => {
     const e = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs || {})) {
@@ -128,6 +129,7 @@
     genBtn.addEventListener('click', () => ui.generateA());
     const ap = ui.autoPrefs(), auto = el('input', { type: 'checkbox', id: 'auto-a', checked: ap.paint }), autoS = el('input', { type: 'checkbox', id: 'auto-set', checked: ap.settings });
     auto.addEventListener('change', () => ui.setAuto('paint', auto.checked)); autoS.addEventListener('change', () => ui.setAuto('settings', autoS.checked));
+    if (RF.SpecUI) side.append(section('Spec', { open: true, cls: 'only-D', key: 'D', tag: 'beam spec in cd' }, RF.SpecUI.section(ui, section)));
     side.append(section('Paint', { open: true, cls: 'only-A', key: 'A', tag: 'tile the painted pattern' },
       el('div', { class: 'note' }, 'Paint in the Editor. Rebuild runs the solver chosen here to place facets that reproduce the painting.'),
       el('div', { class: 'btnrow' }, genBtn, el('span', { class: 'note' }, 'Re-solve after'), el('label', { class: 'tog', title: 'Painting, an image or pattern, a new solver, or a drag in the 3D views' }, auto, ' painting'), el('label', { class: 'tog', title: 'Any number or solver setting in this sidebar. Off: the design is marked out of date until you press Rebuild.' }, autoS, ' settings')),
@@ -433,7 +435,7 @@
       if (ph) row.append(t(fmtCd(ph.peakCd), 'peak', 'Peak intensity ±' + Math.round(100 * noiseOf(ph.peakRays)) + '% (shot noise). Throw ' + Math.round(ph.throwM) + ' m. ' + pct0(ph.ofDesign) + ' of this design\u2019s brightness ceiling, ' + pct0(ph.ofEnvelope) + ' of the envelope\u2019s. More in Details.'));
       if (fd) row.append(t(st.uniformity.toFixed(2), 'uniformity', 'U₀ = 5th percentile ÷ mean of delivered ÷ painted. Sees only the dim end (holes), not hotspots. Noise ceiling ' + st.noiseCeiling.toFixed(2) + '.'));
       row.append(el('span', { class: 'tile-sep' }));
-      row.append(sc.mode === 'A' && rA && !rA.error
+      row.append(isPaint(sc.mode) && rA && !rA.error
         ? t(rA.placed + ' / ' + sc.modeA.budget, 'facets', 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : ''))
         : t(String(st.surfaces), 'surfaces', 'Surfaces in the scene.'));
       row.append(el('div', { class: 'tile rays', title: 'Rays traced · trace time (tracing work only, not total wait)' + (extra.preview ? ' · coarse preview while dragging' : '') },
@@ -455,14 +457,14 @@
     const ml = document.getElementById('min-limits');
     if (ml) {
       ml.innerHTML = '';
-      const rA = ui.store.scene.mode === 'A' ? ui.store.reports.A : null, issues = [];
+      const rA = isPaint(ui.store.scene.mode) ? ui.store.reports.A : null, issues = [];
       if (rA && !rA.error) {
         if (rA.dropped) issues.push(rA.dropped + ' facet' + (rA.dropped > 1 ? 's' : '') + ' dropped (no room in the envelope)');
         if (rA.clamped) issues.push(rA.clamped + ' zone' + (rA.clamped > 1 ? 's' : '') + ' blurrier than their tile');
         if (rA.warnings.some((w) => /budget too small/i.test(w))) issues.push('budget too small: azimuth trimmed');
         for (const w of rA.warnings) if (/^⚠/.test(w)) issues.push(w.replace(/^⚠\s*/, ''));   // a solver's own headline warnings
       }
-      if (ui.store.scene.mode === 'A' && RF.Feasibility.minDistanceLoss) {
+      if (isPaint(ui.store.scene.mode) && RF.Feasibility.minDistanceLoss) {
         const md = ui.store.scene.modeA.minDistance || 0, lossMD = RF.Feasibility.minDistanceLoss(ui.store.scene);
         if (lossMD >= 0.05) issues.push('Min facet distance ' + md + ' mm: at least ' + Math.round(100 * lossMD) + '% of the LED\'s light has room for a mirror only closer than that');
       }
@@ -595,7 +597,7 @@
       const hashes = [];
       let why = '';
       for (const v of vals) {
-        ui.loadScene(RF.State.deserialize(snapshot), null, true);
+        ui.loadScene(Object.assign(RF.State.deserialize(snapshot), { solve: { id: RF.Solvers.DEFAULT_ID } }), null, true);   // a synchronous solver: commit() skips worker solvers
         ui.setMode(mode, true);
         if (mode === 'B' && !ui.store.scene.modeB.stamps.length) { ui.addStampAt(100, 50, true); }
         if (mode === 'C' && ui.store.scene.modeC.profile.length < 2) { ui.applyPreset(true); }

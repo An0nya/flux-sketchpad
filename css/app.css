@@ -93,6 +93,31 @@ h2 small { color: var(--faint); font-weight: 400; margin-left: var(--s-6); }
 .row.full { grid-template-columns: 1fr; }
 .btnrow { display: flex; flex-wrap: wrap; gap: var(--s-6); margin: var(--s-6) 0; }
 .mode-A .only-B, .mode-A .only-C, .mode-B .only-A, .mode-B .only-C, .mode-C .only-A, .mode-C .only-B { display: none !important; }
+/* Spec mode (D) extends Paint: Paint's sections stay, Stamp's and Profile's go, and its own appear only there */
+.mode-D .only-B, .mode-D .only-C, .mode-A .only-D, .mode-B .only-D, .mode-C .only-D { display: none !important; }
+.spec-table { display: grid; gap: 2px; font-size: 11px; }
+.spec-table .st-row > * { min-width: 0; }
+.spec-table input[type=checkbox] { margin: 0; }
+.spec-table .st-row { display: grid; grid-template-columns: 15px minmax(34px, 1fr) 36px 36px 46px 46px 18px; gap: 3px; align-items: center; padding: 1px 2px; border-radius: 4px; border-left: 2px solid transparent; }
+.spec-table .st-row input[type=number], .spec-table .st-row input[type=text] { width: 100%; min-width: 0; min-height: 22px; padding: 0 3px; font-size: 11px; -moz-appearance: textfield; }
+.spec-table .st-row input[type=number]::-webkit-inner-spin-button, .spec-table .st-row input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.spec-table .st-row .icon { min-height: 20px; padding: 0 2px; font-size: 10px; justify-content: center; }
+.spec-table .st-head { color: var(--faint); font-size: 11px; }
+.spec-table .st-note { color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spec-table .st-row.sel { background: var(--panel2); }
+.st-row.v-pass { border-left-color: var(--ok); } .st-row.v-fail { border-left-color: var(--bad); } .st-row.v-unsure { border-left-color: var(--warn); }
+.spec-report { margin-top: var(--s-8); }
+.spec-verdict { padding: var(--s-4) var(--s-8); border-radius: var(--r); background: var(--panel2); border-left: 3px solid var(--line); }
+.spec-verdict.v-pass { border-left-color: var(--ok); } .spec-verdict.v-fail { border-left-color: var(--bad); } .spec-verdict.v-unsure { border-left-color: var(--warn); }
+.spec-rows, .spec-cmp { display: grid; gap: 1px; margin: var(--s-4) 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.spec-rows .sr, .spec-cmp .sr { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: var(--s-4) var(--s-6); align-items: baseline; padding: 1px 2px; cursor: pointer; border-radius: 3px; }
+.sr > span { white-space: nowrap; } .sr .nm { overflow: hidden; text-overflow: ellipsis; }
+.sr .off { grid-column: 2 / -1; font-size: 11px; } .sr .off:empty { display: none; }
+.spec-cmp .sr { cursor: default; }
+.sr.sel { background: var(--panel2); }
+.sr .mk { font-weight: 700; } .sr.v-pass .mk { color: var(--ok); } .sr.v-fail .mk { color: var(--bad); } .sr.v-unsure .mk { color: var(--warn); }
+.sr .need, .sr .off { color: var(--dim); } .sr.v-fail .off { color: var(--bad); }
+.spec-dist button { min-height: 24px; padding: 1px var(--s-6); }
 .side .note { color: var(--faint); font-size: 11px; margin: var(--s-4) 0; }
 .side .reason { font-size: 12px; margin: var(--s-4) 0; }
 .stamp-list, .lens-list, .group-list { display: flex; flex-direction: column; gap: var(--s-4); margin: var(--s-4) 0; }

@@ -11,6 +11,7 @@
   const { V } = RF;
   const C = RF.Controller, P = RF.Panels, R2 = RF.Render2D;
   const PREVIEW_RAYS = 1500;
+  const isPaint = (m) => m === 'A' || m === 'D';     // Spec mode (D) extends Paint: same painting, same solver, plus a beam spec
 
   const ui = {
     store: null,
@@ -120,7 +121,7 @@
     // rebuild derived groups from intent. Mode A is re-solved too (~50 ms): the solver report isn't
     // saved with the scene, so otherwise the limits panel is empty after any load.
     ui.store.invalidate(['B', 'C', 'L']);
-    if ((scene.groups.A.surfaces.length || scene.mode === 'A') && scene.modeA.paint.some((x) => x > 0)) ui.store.invalidate(['A']);
+    if ((scene.groups.A.surfaces.length || isPaint(scene.mode)) && (scene.modeA.paint.some((x) => x > 0) || scene.mode === 'D')) ui.store.invalidate(['A']);
     ui.store.commit({ forceA: ui.store.dirty.has('A') });
     if (notice) ui.store.notice(notice);
     if (silent) return;
@@ -135,14 +136,16 @@
     const sc = ui.store.scene;
     C.actions.setMode(ui.store, m);
     // each mode shows only its own optics (lenses / manual surfaces stay); B re-aims around what's left
-    for (const g of ['A', 'B', 'C']) sc.groups[g].enabled = g === m;
+    for (const g of ['A', 'B', 'C']) sc.groups[g].enabled = g === (m === 'D' ? 'A' : m);
     ui.store.invalidate(['B']); ui.store.commit({ deferA: true });
-    document.body.classList.remove('mode-A', 'mode-B', 'mode-C');
+    document.body.classList.remove('mode-A', 'mode-B', 'mode-C', 'mode-D');
     document.body.classList.add('mode-' + m);
     const gt = document.getElementById('btn-generate-top');
-    if (gt) { gt.disabled = m !== 'A'; gt.title = m === 'A' ? 'Solve the reflector for the painted target' : 'Stamp and Profile modes rebuild live; Rebuild is for Paint mode'; }
+    if (gt) { gt.disabled = !isPaint(m); gt.title = isPaint(m) ? 'Solve the reflector for the painted target' : 'Stamp and Profile modes rebuild live; Rebuild is for Paint and Spec modes'; }
+    // Spec mode opens on its far-field view; leaving it, a far-field view falls back to the grid
+    if (m === 'D' && !ui.specSeen) { ui.specSeen = true; setDisplay('ff'); } else if (m !== 'D' && ui.display === 'ff') setDisplay('grid');
     for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-selected', b.dataset.mode === m ? 'true' : 'false');
-    const cap = { A: ['Intended — paint here', 'Simulated'], B: ['Direction from the source', 'Simulated · tap to stamp'], C: ['Profile cross-section — tap to add points', 'Simulated'] }[m];
+    const cap = { A: ['Intended — paint here', 'Simulated'], B: ['Direction from the source', 'Simulated · tap to stamp'], C: ['Profile cross-section — tap to add points', 'Simulated'], D: ['Intended — paint here · spec overlaid (from the source)', 'Simulated'] }[m];
     document.getElementById('left-caption').textContent = cap[0];
     document.getElementById('right-caption').textContent = cap[1];
     buildLeftTools();
@@ -152,7 +155,7 @@
   function buildLeftTools() {
     const box = document.getElementById('left-tools'); box.innerHTML = '';
     const m = ui.store.scene.mode;
-    if (m === 'A') {
+    if (isPaint(m)) {
       // one slim row: size · level (slider + scrub field each) · Erase toggle · Invert
       // one slim row: size · level (short sliders; value on hover) · [Erase Invert] kept together
       for (const [id, short] of [['A.brush', 'size'], ['A.strength', 'level']]) {
@@ -167,6 +170,7 @@
       const inv = P.el('button', { type: 'button', title: 'Invert the painting (level → 1 − level)' }, 'Invert');
       inv.addEventListener('click', () => { ui._histHint = 'Invert paint'; C.actions.invertPaint(ui.store); ui.afterChange(); });
       box.append(P.el('span', { class: 'btn-pair' }, er, inv));
+      if (m === 'D' && RF.SpecUI) RF.SpecUI.leftTools(ui, box);
     } else if (m === 'B') {
       box.append(P.el('span', {}, 'centre = emission axis, rings = 30° steps · bright = source intensity · dim = no room in the envelope'));
     } else {
@@ -234,6 +238,7 @@
     P.syncControls(ui);
     const eb = document.getElementById('erase-btn'); if (eb) eb.setAttribute('aria-pressed', String(!!C.BY_ID['A.erase'].get(ui.store)));
     P.renderStampList(ui); P.renderLensList(ui); P.renderGroups(ui); P.renderNotices(ui);
+    if (RF.SpecUI) RF.SpecUI.render(ui);
     P.syncControls(ui);
     const rA = ui.store.reports.A, box = document.getElementById('modeA-report');
     const nA = ui.store.scene.groups.A.surfaces.length;
@@ -304,7 +309,7 @@
   // rAF drives the loop; a timer fallback keeps it alive in hidden tabs (rAF is paused there),
   // where bigger slices are fine because there is no UI to keep responsive.
   // stale = paint mode, the design no longer matches the settings, and no solve is queued or running
-  const stale = () => ui.store.scene.mode === 'A' && ui.store.dirty.has('A') && !ui.pendingA && !ui.solveArmed && !ui.solving;
+  const stale = () => isPaint(ui.store.scene.mode) && ui.store.dirty.has('A') && !ui.pendingA && !ui.solveArmed && !ui.solving;
   function markStale() {
     const on = stale();
     for (const id of ['btn-generate', 'btn-generate-top']) { const b = document.getElementById(id); if (b) { b.classList.toggle('stale', on); b.title = on ? 'Changed since the last solve: rebuild to see it' : 'Re-solve the reflector for the painted target and re-trace'; } }
@@ -358,6 +363,7 @@
       }
       const N = ui.previewRun ? Math.min(sc.sim.rays, PREVIEW_RAYS) : sc.sim.rays;
       Pc.recordHits = true;
+      Pc.recordExit = sc.mode === 'D';                 // Spec mode judges the far field: keep every ray's last leg
       ui.run = { P: Pc, ctx: RF.Engine.newCtx(Pc, N, ui.rayPaths === undefined ? 240 : ui.rayPaths), preview: ui.previewRun, started: now };
       ui.lastHeat = 0; ui.sceneDirty = true;
     }
@@ -379,9 +385,11 @@
     if (ui.sceneDirty) { drawSceneView(); drawSurfaceView(); drawLeft(); ui.sceneDirty = false; }
     if ((run && !run.ctx.done) || (ui.pendingA && store.dirty.has('A')) || ui.solveArmed) schedule();
   }
+  // Spec mode measures paint fidelity against the solver's working target (spec floors / ceilings + the painting)
+  const paintScene = (s) => (s.mode === 'D' && RF.Spec ? Object.assign({}, s, { mode: 'A', modeA: Object.assign({}, s.modeA, { paint: RF.Spec.workingPaint(s) }) }) : s);
   function renderStats(running) {
     const run = ui.run; if (!run) return;
-    const sc = ui.store.scene;
+    const sc0 = ui.store.scene, sc = paintScene(sc0);
     const st = RF.Engine.stats(run.ctx, sc.mode === 'A' ? { paint: sc.modeA.paint, paintRes: sc.target.res } : null);
     let match = null;
     if (sc.mode === 'A' && run.ctx.next > 0) {
@@ -402,7 +410,7 @@
     if (ui.display === 'fid') drawHeat();
     // goal check (Details): what kind of painting this is, and the goal's own measures + guardrails on the finished trace
     // (RF.Modes, the same code Auto judges with).  Once per finished run; ~10–100 ms.
-    if (!running && sc.mode === 'A' && RF.Modes && ui.fid && ui.photo && ui.photo.ctx === run.ctx && (!ui.goal || ui.goal.ctx !== run.ctx)) {
+    if (!running && sc0.mode === 'A' && RF.Modes && ui.fid && ui.photo && ui.photo.ctx === run.ctx && (!ui.goal || ui.goal.ctx !== run.ctx)) {
       try {
         const input = RF.Solvers.inputOf(sc), mctx = RF.Modes.context(input, run.ctx.N), cls = RF.Modes.classify(sc.modeA.paint, sc.target.res, mctx.kernelCells);
         const rA = ui.store.reports.A, autoKind = rA && rA.auto && rA.auto.kind, kind = autoKind || cls.kind;
@@ -412,6 +420,10 @@
         let recs = []; try { recs = RF.Modes.recommend(kind, cls.features, mctx, input); } catch (e) { /* none */ }
         ui.goal = { ctx: run.ctx, kind, cls, auto: !!autoKind, ev, recs };
       } catch (e) { ui.goal = { ctx: run.ctx, error: e.message }; }
+    }
+    if (sc0.mode === 'D' && RF.SpecUI) {               // the spec report follows the trace (re-judged at most every 0.7 s, and at the end)
+      const s = RF.SpecUI.update(ui, !running);
+      if (s && s !== ui._specShown) { ui._specShown = s; RF.SpecUI.render(ui); if (ui.display === 'ff') drawHeat(); }
     }
     P.renderStats(ui, st, { running, preview: run.preview, match, fid: ui.fid, photo: !running && ui.photo && ui.photo.ctx === run.ctx ? ui.photo : null, goal: !running && ui.goal && ui.goal.ctx === run.ctx ? ui.goal : null });
     if (!running) {
@@ -496,6 +508,10 @@
     ui.heatImg = R2.gridCanvas(vals, res, ui.heatImg, clip); ui.heatImg.clipValue = clip;   // also the 3D scene texture
     ui.selImgs = selImages();
     const sc = ui.store.scene, pres = sc.target.res;
+    if (sc.mode === 'D' && ui.display === 'ff' && RF.SpecUI) {   // Spec mode's far-field view: content = degrees, not the paint grid
+      RF.SpecUI.update(ui); RF.SpecUI.drawFarField(ui, document.getElementById('heat-canvas'), ui.vHeat); alignFigure('heat-canvas', ui.vHeat);
+      ui.peakInfo = { lux: ui.peakInfo ? ui.peakInfo.lux : '—', res }; return;
+    }
     const overlay = sc.mode === 'B' ? R2.stampOverlay(sc, ui.store.reports.B, sc.modeB.selected) : zoneOverlay();
     // The panel's content frame is always the PAINT grid (so taps/stamps map the same at any sim res);
     // the sim image is stretched into it.
@@ -528,10 +544,12 @@
   }
   function drawLeft() {
     const sc = ui.store.scene, cv = document.getElementById('left-canvas');
-    if (sc.mode === 'A') {
-      ui.paintImg = R2.gridCanvas(sc.modeA.paint, sc.target.res, ui.paintImg);
+    if (isPaint(sc.mode)) {
+      const spec = sc.mode === 'D' && RF.SpecUI;
+      ui.paintImg = R2.gridCanvas(spec && ui.specWorking ? RF.Spec.workingPaint(sc) : sc.modeA.paint, sc.target.res, ui.paintImg);
       R2.drawGridPanel(cv, ui.vLeft, ui.paintImg, sc.target.res, (ctx, view) => {
         const zo = zoneOverlay(true); if (zo) zo(ctx, view);
+        if (spec) RF.SpecUI.editorOverlay(ui)(ctx, view);
         if (ui.brushAt) { const b = sc.modeA.brush, p = view.toScreen(ui.brushAt[0], ui.brushAt[1]); ctx.beginPath(); ctx.arc(p[0], p[1], b.size / 2 * view.s, 0, 2 * Math.PI); ctx.strokeStyle = b.erase || ui.modErase ? '#ff9a3d' : '#f2b441'; ctx.lineWidth = 1.5; ctx.stroke(); }
       });
     } else if (sc.mode === 'B') {
@@ -543,7 +561,7 @@
       const info = document.getElementById('prof-info');
       if (info) info.textContent = sc.modeC.profile.length < 2 ? 'Empty profile — tap to add points, or use “Apply preset to profile” in the sidebar.' : sc.modeC.profile.length + ' points · ' + (ui.profSel >= 0 ? 'point ' + (ui.profSel + 1) + ' selected' : 'tap empty space to add a point');
     }
-    alignFigure('left-canvas', sc.mode === 'A' ? ui.vLeft : sc.mode === 'B' ? ui.vPick : ui.vProf);
+    alignFigure('left-canvas', isPaint(sc.mode) ? ui.vLeft : sc.mode === 'B' ? ui.vPick : ui.vProf);
   }
   function drawSceneView() {
     if (!ui.model) return;
@@ -690,6 +708,11 @@
       onDrag(st, x, y) { const uv = toUV(x, y); C.actions.moveStamp(ui.store, st.id, uv[0], uv[1]); ui.movedSomething = true; ui.store.commit({ deferA: true }); firePreview(st.id); ui.requestRun(true); },
       onTap(x, y, st, e) {
         const sc = ui.store.scene, add = !!(e && e.shiftKey);
+        if (sc.mode === 'D' && ui.display === 'ff' && RF.SpecUI) {   // far-field view: read the intensity under the tap
+          const r = RF.SpecUI.readout(ui, ui.vHeat, x, y);
+          if (r && isFinite(r.cd)) toast('H ' + r.h.toFixed(2) + '°, V ' + r.v.toFixed(2) + '°: ' + Math.round(r.cd).toLocaleString() + ' ± ' + Math.round(r.sd).toLocaleString() + ' cd');
+          return;
+        }
         if (sc.mode !== 'B') {                          // select a spot ~30 px across (finer when zoomed in); off the map → clear
           const uv = toUV(x, y), t = T();
           if (Math.abs(uv[0]) > t.half || Math.abs(uv[1]) > t.half) { if (!add) ui.select(null); return; }
@@ -708,7 +731,7 @@
   }
   function wireLeft() {
     const cv = document.getElementById('left-canvas');
-    const view = () => ({ A: ui.vLeft, B: ui.vPick, C: ui.vProf }[ui.store.scene.mode]);
+    const view = () => ({ A: ui.vLeft, B: ui.vPick, C: ui.vProf, D: ui.vLeft }[ui.store.scene.mode]);
     RF.Input.attach(cv, {
       isLive: liveFor(cv), cold: 'swallow',
       onInteract: interact,
@@ -746,16 +769,16 @@
           C.actions.setProfile(ui.store, pts); ui.afterChange();
           setTimeout(() => { ui.vProf.lockBounds = null; }, 0);
         }
-        if (m === 'A') paintAt(x, y, true);
+        if (isPaint(m)) paintAt(x, y, true);
       },
-      onPrimaryStart(x, y) { if (ui.store.scene.mode === 'A') paintAt(x, y, false); },
+      onPrimaryStart(x, y) { if (isPaint(ui.store.scene.mode)) paintAt(x, y, false); },
       onPrimary(x, y, dx, dy) {
         const m = ui.store.scene.mode;
-        if (m === 'A') paintAt(x, y, false);
+        if (isPaint(m)) paintAt(x, y, false);
         else { view().panBy(dx, dy); ui.sceneDirty = true; schedule(); }
       },
-      onPrimaryEnd() { if (ui.store.scene.mode === 'A' && ui.painted) { ui.painted = false; ui.afterChange(); } },
-      onHover(x, y) { if (ui.store.scene.mode === 'A' && liveFor(cv)(false)) { ui.brushAt = ui.vLeft.toContent(x, y); ui.sceneDirty = true; schedule(); } },
+      onPrimaryEnd() { if (isPaint(ui.store.scene.mode) && ui.painted) { ui.painted = false; ui.afterChange(); } },
+      onHover(x, y) { if (isPaint(ui.store.scene.mode) && liveFor(cv)(false)) { ui.brushAt = ui.vLeft.toContent(x, y); ui.sceneDirty = true; schedule(); } },
       onLeave() { if (ui.brushAt) { ui.brushAt = null; ui.sceneDirty = true; schedule(); } },
       onPan(dx, dy) { view().panBy(dx, dy); ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { const v = view(); v.zoomAt(f, x, y); if (v === ui.vProf) v.lockBounds = v.bounds.slice(); ui.sceneDirty = true; schedule(); },
@@ -811,7 +834,7 @@
     const s = ui.sel, run = ui.run; if (!s || !run) return null;
     const c = run.ctx, key = c.nHits + ':' + run.started;
     if (ui.selCache && ui.selCache.sel === s && ui.selCache.key === key) return ui.selCache.info;
-    const sc = ui.store.scene, rep = sc.mode === 'A' ? ui.store.reports.A : null, surfs = RF.State.allSurfaces(sc);
+    const sc = ui.store.scene, rep = isPaint(sc.mode) ? ui.store.reports.A : null, surfs = RF.State.allSurfaces(sc);
     const info = { emph: new Map(), zones: [], primaries: [], secondary: [], contrib: [], landed: 0, vals: null, paths: [], loss: null };
     const T = run.P.T, sr = run.P.res, metas = run.P.G.metas;
     const simCell = (h) => { let i = Math.floor((c.hits[3 * h] + T.half) / (2 * T.half) * sr), j = Math.floor((c.hits[3 * h + 1] + T.half) / (2 * T.half) * sr); if (i >= sr) i = sr - 1; if (j >= sr) j = sr - 1; return j * sr + i; };
@@ -1324,16 +1347,21 @@
     else if (!ui.camS.fitted || !(ui.camS.scale > 0) || (!ui.camS.userMoved && s2[0] > 0 && moved(ui.camS, s2))) refitSurfaces();
   }
 
+  function setDisplay(d) {
+    ui.display = d;
+    for (const o of document.querySelectorAll('#heat-display button')) o.classList.toggle('on', o.dataset.disp === d);
+    if (ui.run) drawHeat();
+    ui.sceneDirty = true; schedule();
+  }
+  ui.setDisplay = setDisplay;
+  ui.redrawSpec = function () { if (ui.run) drawHeat(); ui.sceneDirty = true; schedule(); };
+
   // ---------------------------------------------------------------- boot
   function wireTopbar() {
     for (const b of document.querySelectorAll('.modes button')) b.addEventListener('click', () => ui.setMode(b.dataset.mode));
     document.querySelector('[data-control="tgt.res"]').addEventListener('change', () => { ui.vLeft.fitted = ui.vHeat.fitted = false; });
     document.querySelector('[data-control-view="surfaceView"]').addEventListener('change', (e) => { ui.surfaceView = e.target.value; ui.sceneDirty = true; schedule(); });
-    for (const b of document.querySelectorAll('#heat-display button')) b.addEventListener('click', () => {
-      ui.display = b.dataset.disp;
-      for (const o of document.querySelectorAll('#heat-display button')) o.classList.toggle('on', o === b);
-      drawHeat(); ui.sceneDirty = true; schedule();
-    });
+    for (const b of document.querySelectorAll('#heat-display button')) b.addEventListener('click', () => setDisplay(b.dataset.disp));
     // reset zoom on the target canvases (button or double-click)
     const resetView = (w) => { if (w === 'heat') ui.vHeat.fitted = false; else ui.vLeft.fitted = ui.vPick.fitted = ui.vProf.fitted = false; drawHeat(); ui.sceneDirty = true; schedule(); };
     for (const b of document.querySelectorAll('[data-reset]')) b.addEventListener('click', () => resetView(b.dataset.reset));
@@ -1343,7 +1371,7 @@
     const setMod = (e) => { const on = !!(e.metaKey || e.ctrlKey); if (on !== !!ui.modErase) { ui.modErase = on; if (ui.brushAt) { ui.sceneDirty = true; schedule(); } } };
     for (const ev of ['pointerdown', 'pointermove', 'keydown', 'keyup']) window.addEventListener(ev, setMod, true);
     window.addEventListener('blur', () => { ui.modErase = false; });
-    document.getElementById('left-canvas').addEventListener('contextmenu', (e) => { if (e.ctrlKey && ui.store.scene.mode === 'A') e.preventDefault(); });   // macOS: Ctrl-click is a right-click
+    document.getElementById('left-canvas').addEventListener('contextmenu', (e) => { if (e.ctrlKey && isPaint(ui.store.scene.mode)) e.preventDefault(); });   // macOS: Ctrl-click is a right-click
     document.getElementById('heat-canvas').addEventListener('dblclick', () => resetView('heat'));
     // panes: chevron / title collapses; a collapsed rail or bar restores on click; ⤢ expands
     try { ui.layout = JSON.parse(localStorage.getItem('flux/layout') || 'null'); } catch (e) { ui.layout = null; }
@@ -1506,7 +1534,7 @@
     P.buildSide(ui); renderPatterns();
     wireTopbar(); wireScene(); wireHeat(); wireLeft();
     ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : null, true);
-    if (!scene.groups.A.surfaces.length && scene.mode === 'A') {
+    if (!scene.groups.A.surfaces.length && isPaint(scene.mode)) {
       // the default solver is a worker solver that arrives with the bundle: wait for it (restore() solves after)
       const waiting = RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(ui.store.scene));
       if (waiting) ui.store.invalidate(['A']); else C.regenerateA(ui.store);

@@ -105,5 +105,14 @@ function fakeG(fn, win, step) {
   const old = JSON.parse(RF.State.serialize(sc)); delete old.modeD; const back = RF.State.deserialize(old);
   check('older scenes load with the default spec', back.modeD && back.modeD.items.length > 0 && back.modeD.preset === 'ece-r112-b');
 }
+// 7. (backlog trap) a collimating facet (di = ∞) survives save / load — it used to reload flat (JSON null)
+{
+  const sc = RF.State.testScene();
+  const f = { type: 'facet', id: 'Mpar', P: [-10, 0, 20], S0: [0, 0, 0], Z: [1000, 0, 0], di: Infinity, clip: { kind: 'rect', hx: 5, hy: 5 } };
+  sc.groups.M.surfaces = [f];
+  const back = RF.State.deserialize(RF.State.serialize(sc)), g = back.groups.M.surfaces[0];
+  const qa = RF.Geo.facetQuadric(f.P, f.S0, f.Z, f.di), qb = RF.Geo.facetQuadric(g.P, g.S0, g.Z, g.di);
+  check('a di = ∞ facet reloads as the same paraboloid, not flat', !qb.flat && qa.A.every((x, i) => Math.abs(x - qb.A[i]) < 1e-12) && qa.b.every((x, i) => Math.abs(x - qb.b[i]) < 1e-12), 'saved di = ' + g.di);
+}
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

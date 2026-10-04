@@ -27,6 +27,7 @@
   // values are derived for it, so changing what the app opens with must not move them.
   function defaultScene() {
     const s = testScene();
+    delete s.solve;                                      // the app opens with the preferred solver (Auto), not the checks' pin
     Object.assign(s.source, { pos: [-36.58, -3.53, 13.58], axis: [-0.0086, 0.0052, 0.99995], w: 1, h: 1 });   // 1 mm LED on the back wall
     Object.assign(s.envelope, { center: [-32.05, -6.92, 40.47], half: [27.95, 52.59, 27.46], keepOut: 5 });
     s.modeA.minDistance = 0; s.modeB.minDistance = 15;   // paint: let the solver use the whole envelope (Anya 09-30; 15 mm cost ~20% of the light); stamps keep the old 15 mm
@@ -38,6 +39,9 @@
   function testScene() {
     return {
       version: VERSION, units: 'mm', name: 'Headlamp sketch',
+      // the checks' expected values are the built-in solver's; pinned so the in-page suite runs the same solver as Node
+      // (since Auto became the default, a page with the worker bundle loaded threw "auto is asynchronous" in 14 checks)
+      solve: { id: 'spoke' },
       source: {
         kind: 'planar', shape: 'rect', pos: [0, 0, 0], axis: [0, 0, 1], roll: 0,
         w: 2, h: 2, radius: 1, length: 4, power: 1000,
@@ -85,7 +89,10 @@
     if (obj && typeof obj === 'object') for (const k of Object.keys(obj)) if (!(k in out)) out[k] = obj[k];
     return out;
   }
-  function serialize(scene) { return JSON.stringify(scene); }
+  // JSON has no Infinity: JSON.stringify writes null, and a facet's di = null means FLAT, so a collimating facet
+  // (di = ∞, a paraboloid) used to reload flat.  Write ±Infinity as ±1e308; geometry reads |di| ≥ 1e300 as ∞.
+  const INF_SAFE = (k, v) => (v === Infinity ? 1e308 : v === -Infinity ? -1e308 : v);
+  function serialize(scene) { return JSON.stringify(scene, INF_SAFE); }
   const CLEAR_MAX = 5;                                  // mm: the LED clearance control's range (package / dome)
   function deserialize(str) {
     const obj = typeof str === 'string' ? JSON.parse(str) : str;
@@ -128,7 +135,7 @@
     const o = RF.U.deepCopy(s);
     if (o.type === 'facet') {
       o.P = fp(o.P); o.S0 = fp(o.S0); o.Z = fp(o.Z);
-      if (o.di !== null && o.di !== undefined && isFinite(o.di)) o.di = fl(o.di);
+      if (o.di !== null && o.di !== undefined && isFinite(o.di) && Math.abs(o.di) < 1e300) o.di = fl(o.di);
       if (Array.isArray(o.vg)) o.vg = o.vg.map((v) => v / fl(1));   // vergence = 1/length
       if (o.ax) o.ax = fv(o.ax);
     }

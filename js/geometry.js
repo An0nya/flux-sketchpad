@@ -62,7 +62,7 @@
     const as = V.dot(ah, sh);
     const F1 = sv;
     let A, b;
-    if (!isFinite(di)) {
+    if (!isFinite(di) || di >= 1e300) {             // ≥ 1e300: ∞ as saved to JSON (state.js serialize)
       const u = ah;
       const F1p = V.sub(F1, V.mul(u, V.dot(F1, u)));
       A = M3.addScaled(M3.identity(), M3.outer(u, u), -1);

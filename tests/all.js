@@ -17,5 +17,6 @@ run('photometry (tests/photometry.js)', ['tests/photometry.js']);
 run('two-curvature facet (tests/facet2.js)', ['tests/facet2.js']);
 run('solvers (tests/solvers.js)', ['tests/solvers.js']);
 run('modes + auto (tests/modes.js)', ['tests/modes.js']);
+run('spec mode + far field (tests/spec.js)', ['tests/spec.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
