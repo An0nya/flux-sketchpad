@@ -212,6 +212,44 @@ no aim can fix (a sign point with zero light) dragged the beam 0.5° and dropped
 75R from 21.6k to 8.4k. It now ranks by fewest sure fails, then fewest undecided rows, then
 the smallest move. A move that changes no verdict isn't taken, as a lab would do it.
 
+### Solvers compared (2026-10-04, night)
+
+Six solvers × three LEDs × two fixtures. Each design was solved headless, re-traced at 4 M rays,
+and judged against R112 class B (25 m, lab-style aim). Cells give **sure fails** and 75R in kcd.
+No design *passes*: every "0 fails" still has 4–6 undecided rows, mostly the sign points with
+no light and the maximum sharpness, which became fails at 8 M rays in the run above.
+
+**Default fixture** (half-envelope, LED on the back wall facing up):
+
+| Solver | SFT-40 CW @ 8 A | Q8WP @ 9.6 A | W5050SQ3 @ 8.6 A |
+|---|---|---|---|
+| spoke | 2 (Zone IV, linearity) · 16k | 2 · 25k | 1 (Zone IV) · 21k |
+| Fill & fix | 5 · 0.7k (beam misplaced) | 5 · 0.4k | 5 · 0.6k |
+| SQM v0.3 | 6 · 0 | 6 · 0 | **0** · 30k |
+| Opus mosaic | **0** · 62k | **0** · 25k | 1 (G too sharp) · 60k |
+| dish-fit (= Auto's pick here) | **0** · 25k | **0** · 40k | **0** · 16k |
+
+**7" sealed beam** (Ø 168 × 75 mm bucket, LED at the front firing back, Ø 30 mm mount
+shadow; the depth is a guess):
+
+| Solver | SFT-40 CW @ 8 A | Q8WP @ 9.6 A | W5050SQ3 @ 8.6 A |
+|---|---|---|---|
+| spoke | 1 · 11k | 6 · 0 | 6 · 0 |
+| Fill & fix | **0** · 33k (peak 142k) | **0** · 31k (= Auto's pick) | 7 · 0.1k |
+| SQM v0.3 | 3 · 2k | 1 · 13k | 2 · 13k |
+| Opus mosaic | 1 (linearity) · **111k, peak 168k** | 1 (points 4–6) · 61k | 2 · 40k |
+| dish-fit | 3 · 18k | 4 · 0 | 4 · 69k |
+
+- **dish-fit** is the steadiest in the default fixture, and it's what Auto picks there. In the bucket it falls apart.
+- **Opus mosaic** makes the hottest beams (75R up to 111k, peak 168k in the bucket). Its cut-off
+  is sometimes too sharp or not straight.
+- **Fill & fix** collapses in the default fixture, in the app as well as headless. Its shell search
+  predicts 49 % fidelity, places only 50 facets, and the beam misses the test points. In the
+  bucket it is one of the best.
+- **SQM** is throw-sensitive at a 10 m target, as noted on 09-30. Re-test at 25–50 m.
+- The rear-firing LED in a 7" bucket clearly has the optical headroom: peaks of 75–168 kcd.
+  The thermal side (28 W on a front-mounted LED) is out of scope.
+
 ### Ray budget (proposal, not built)
 
 The cap is 1 M rays per run. Spec mode stores 29 bytes per exit ray, and the hit list stores
