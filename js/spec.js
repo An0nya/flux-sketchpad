@@ -404,14 +404,17 @@
   function feasibility(scene) {
     const md = scene.modeD, src = scene.source, out = [];
     if (!(src.power > 0)) return out;
-    const fr = RF.Source.frame(src), L = RF.Photometry.luminance(src, fr.a), R = scene.modeA.reflectivity || 0.9;
+    // several emitters: the envelope's ceiling is still R × the BRIGHTEST luminance × its silhouette (étendue doesn't add
+    // up past the aperture), the direct light sums, and so does the flux
+    const srcs = RF.Source.all(scene), R = scene.modeA.reflectivity || 0.9, P = RF.Source.totalPower(scene);
+    const L = srcs.reduce((m, x) => Math.max(m, RF.Photometry.luminance(x, RF.Source.frame(x).a)), 0);
     const items = itemsOf(md);
     for (const it of items) {
       if (it.kind !== 'point' || !(it.min > 0)) continue;
       const u = RF.FarField.dirOf(it.h, it.v, md.conv);
       const env = isFinite(L) ? R * L * RF.Photometry.boxProj(scene.envelope.half, u) : Infinity;
-      const c = Math.max(-1, Math.min(1, V.dot(u, fr.a)));
-      const direct = src.power * RF.Source.intensity(src, Math.acos(c)) / RF.Source.totalIntegral(src);
+      let direct = 0;
+      for (const x of srcs) { const c = Math.max(-1, Math.min(1, V.dot(u, RF.Source.frame(x).a))); direct += x.power * RF.Source.intensity(x, Math.acos(c)) / RF.Source.totalIntegral(x); }
       const ceil = env + (isFinite(direct) ? direct : 0);
       out.push({ id: it.id, name: it.name, need: it.min, ceiling: ceil, ok: it.min <= ceil });
     }
@@ -424,7 +427,7 @@
       for (let v = vs; v < ve; v += st) for (let h = hs; h < he; h += st) if (inPoly(it.poly, h + st / 2, v + st / 2)) om += RF.FarField.binOmega(h, h + st, v, v + st, md.conv);
       lm += it.min * om; parts.push(it.name);
     }
-    if (parts.length) out.push({ kind: 'flux', names: parts, need: lm, ceiling: src.power, ok: lm <= src.power });
+    if (parts.length) out.push({ kind: 'flux', names: parts, need: lm, ceiling: P, ok: lm <= P });
     return out;
   }
 
