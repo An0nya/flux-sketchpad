@@ -1,5 +1,12 @@
 [
  {
+  "file": "projector-v2.js",
+  "model": "Projector module v2, experimental (Claude Opus 5.5)",
+  "run": "2026-10-04",
+  "workspace": "this repo",
+  "note": "lab"
+ },
+ {
   "file": "projector-v1.js",
   "model": "Projector module, experimental (Claude Opus 5.5)",
   "run": "2026-10-04",
