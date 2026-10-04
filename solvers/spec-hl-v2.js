@@ -532,7 +532,9 @@
       const jLo = Math.max(0, G.jOf(v0g)), jHi = Math.min(G.nv - 1, G.jOf(v1g));
       for (const h of [...hs].sort((a, b) => a - b)) {
         const ic = G.iOf(h); if (ic - 2 < 0 || ic + 2 >= G.nh) continue;
-        const above = []; for (let j = Math.max(jLo, G.jOf(edge.line + S.skirtFrom)); j <= jHi; j++) for (let di = -2; di <= 2; di++) above.push(j * G.nh + ic + di);
+        // the skirt: the aim column is scanned as far up as the judge's aim window (R112 ±3°, FMVSS ±1.5° round the line), the others up to their own scan
+        const isG = gradH !== null && Math.abs(h - gradH) < 1e-6, jTop = isG && S.aimSkirt ? Math.min(G.nv - 1, Math.max(jHi, G.jOf(edge.line + (P.spec.aim && P.spec.aim.scan > 0 ? P.spec.aim.scan : 3) - 0.2))) : jHi;
+        const above = []; for (let j = Math.max(jLo, G.jOf(edge.line + S.skirtFrom)); j <= jTop; j++) for (let di = -2; di <= 2; di++) above.push(j * G.nh + ic + di);
         edge.cols.push({ h, ic, jLo, jHi, jW0: Math.max(0, G.jOf(edge.line - (P.spec.aim && P.spec.aim.scan > 0 ? P.spec.aim.scan : 3))), above, isGrad: gradH !== null && Math.abs(h - gradH) < 1e-6, isLin: hsAll.some((x) => Math.abs(x - h) < 1e-6) });
       }
     }
@@ -719,6 +721,7 @@
 
 
   // ---------------------------------------------------------------- 5. the judge, on the model field (noise-free)
+  function satOf(a, nh, nv) { const W = nh + 1, S2 = new Float64Array(W * (nv + 1)); for (let j = 0; j < nv; j++) { let row = 0; for (let i = 0; i < nh; i++) { row += a[j * nh + i]; S2[(j + 1) * W + i + 1] = S2[j * W + i + 1] + row; } } return S2; }
   function modelGrid(P, F, step) {
     const G = P.G, gs = G.gs, nh = Math.max(1, Math.round((G.nh * gs) / step)), nv = Math.max(1, Math.round((G.nv * gs) / step));
     const E = new Float64Array(nh * nv), Om = new Float64Array(nh * nv);
@@ -732,15 +735,18 @@
       const h0 = G.h0 + i * step, v0 = G.v0 + j * step, om = RF.FarField.binOmega(h0, h0 + step, v0, v0 + step, G.conv);
       Om[j * nh + i] = om; E[j * nh + i] = (step === gs ? F[j * G.nh + i] : at(h0 + step / 2, v0 + step / 2)) * om; lm += E[j * nh + i];
     }
-    const sat = (a) => { const W = nh + 1, S2 = new Float64Array(W * (nv + 1)); for (let j = 0; j < nv; j++) { let row = 0; for (let i = 0; i < nh; i++) { row += a[j * nh + i]; S2[(j + 1) * W + i + 1] = S2[j * W + i + 1] + row; } } return S2; };
+    const sat = (a) => satOf(a, nh, nv);
     const E2 = new Float64Array(nh * nv);
     return { E, E2, Om, nh, nv, h0: G.h0, v0: G.v0, step, h1: G.h0 + nh * step, v1: G.v0 + nv * step, conv: G.conv, distance: P.spec.measure && isFinite(P.spec.measure.distance) ? P.spec.measure.distance : Infinity, centre: P.Lp.slice(),
       lmWindow: lm, lmExit: lm, rays: 1e9, coverage: 1, N: 1e9, streamed: true, eRay: 0, sat: { E: sat(E), E2: sat(E2), Om: sat(Om) } };
   }
+  function mdOf(P) {
+    const a = P.spec.aim || {}, box = a.box ? Object.assign({}, a.box) : null;
+    return { items: P.spec.items, traffic: 'RHT', conv: P.conv, kernel: P.spec.kernel, step: P.spec.step || 0.1, aimMode: a.mode || 'design', aimLine: a.line, aimScan: a.scan, aimBox: box && P.spec.traffic === 'LHT' ? { left: box.right, right: box.left, up: box.up, down: box.down } : box, itemReaim: a.itemReaim || 0, aimTol: 0 };
+  }
   function judgeModel(P, F) {
     if (!P.spec.items.length) return null;
-    const a = P.spec.aim || {}, box = a.box ? Object.assign({}, a.box) : null;
-    const md = { items: P.spec.items, traffic: 'RHT', conv: P.conv, kernel: P.spec.kernel, step: P.spec.step || 0.1, aimMode: a.mode || 'design', aimLine: a.line, aimScan: a.scan, aimBox: box && P.spec.traffic === 'LHT' ? { left: box.right, right: box.left, up: box.up, down: box.down } : box, itemReaim: a.itemReaim || 0, aimTol: 0 };
+    const md = mdOf(P);
     return RF.Spec.evaluate(modelGrid(P, F, Math.max(0.05, md.step)), md);
   }
 
@@ -870,7 +876,7 @@
       if (S.skirt > 0) for (let q = 0; q < B.edge.cols.length; q++) {
         const c = B.edge.cols[q], top = model.ec[q] && model.ec[q].top; if (!(top > 0)) continue;
         const cap = S.skirt * 0.02 * top;
-        for (const p of c.above) { if (cap < B.hi[p]) B.hi[p] = cap; if (B.wc[p] < 0.3) B.wc[p] = 0.3; }
+        for (const p of c.above) { if (S.skirtGuard && (B.flo[p] > 0 || B.lo[p] > 0.6 * cap)) continue; if (cap < B.hi[p]) B.hi[p] = cap; if (B.wc[p] < 0.3) B.wc[p] = 0.3; }
       }
     };
     const refitScale = () => {                                     // secondary level: the log-domain least-squares fit of F to the painting
@@ -1084,7 +1090,7 @@
     if (S.minDistance === undefined) S.minDistance = 0;
     return S;
   }
-  const BASE = { fitShare: 0.45, polishShare: 0.6, calShare: 0.72, paintCap: 0.15, restarts: 2, restartBelow: -0.2, restartCost: 1e9, guideGain: 1, gateSigma: 0.15, kneeGate: 3, ceilFrac: 0, ceilLevel: 2500, dump: false, useOff: false, maxMargin: 4, offCost: 1, calLns: 0, anchorFrac: 0.4, kneeFrac: 0.20, plateau: 0.6, tailG: 0.55, knFinal: 0, anchorPx: 3, polishSweeps: 8, polishStep: 0.25, skirt: 0.7, skirtFrom: 0.45, grid: 0.1, gridA: 120, gridP: 96, wall: 0.3, finest: 1.5, sharp: 1.5, detail: 0.75, step: 0.01, softBelow: 1, softWeight: 0.4, edgePad: 1.0, tol: 0.15, edgeWeight: 3, gHi: 0.58, gLo: 1.2, designRays: 8e6, kneeBias: 0, maxAimH: 25, maxAimV: 12, glare: -1, glareWeight: 0.3, boost: 0.5, temp: 0.01, step0: 1.0 };
+  const BASE = { aimSkirt: true, skirtGuard: false, fitShare: 0.45, polishShare: 0.6, calShare: 0.72, paintCap: 0.15, restarts: 2, restartBelow: -0.2, restartCost: 1e9, guideGain: 1, gateSigma: 0.15, kneeGate: 3, ceilFrac: 0, ceilLevel: 2500, dump: false, useOff: false, maxMargin: 4, offCost: 1, calLns: 0, anchorFrac: 0.4, kneeFrac: 0.20, plateau: 0.6, tailG: 0.55, knFinal: 0, anchorPx: 3, polishSweeps: 8, polishStep: 0.25, skirt: 0.7, skirtFrom: 0.45, grid: 0.1, gridA: 120, gridP: 96, wall: 0.3, finest: 1.5, sharp: 1.5, detail: 0.75, step: 0.01, softBelow: 1, softWeight: 0.4, edgePad: 1.0, tol: 0.15, edgeWeight: 3, gHi: 0.58, gLo: 1.2, designRays: 8e6, kneeBias: 0, maxAimH: 25, maxAimV: 12, glare: -1, glareWeight: 0.3, boost: 0.5, temp: 0.01, step0: 1.0 };
   // facets for the units' current aims and shapes, pulled toward the LED where the host's verify flags them
   function buildSurfaces(P, S, R, notes) {
     const G = P.G, out = [], byId = new Map();
@@ -1183,7 +1189,7 @@
     solve(input, settings, tools) { return solveOnce(input, Object.assign({}, settings, { seed: undefined }), tools); },
   });
 
-  RF.__specHL2 = { fit, judgeModel, modelGrid, directField, secondaryTarget, buildBands, makeModel, emitFacet, traceUnit, facetOf, readProblem, buildShell, ledPoints, beamAxis, outline, apertureRms, aimFrame, dirHV, hvDir, rng, halton };
+  RF.__specHL2 = { hardVerdict, fit, judgeModel, modelGrid, directField, secondaryTarget, buildBands, makeModel, emitFacet, traceUnit, facetOf, readProblem, buildShell, ledPoints, beamAxis, outline, apertureRms, aimFrame, dirHV, hvDir, rng, halton };
   Object.assign(RF.__specHL2, { resolve, BASE, solveOnce, patternsFromTrace, buildSurfaces });
   // (the rest of the file is added below)
 })();
