@@ -433,6 +433,15 @@
   // ---------------------------------------------------------------- 3. the spec as bands on the far-field grid
   // lo / hi (cd) per pixel, tightened by the safety margin; wc = weight of the hard band at the pixel.  Rows that depend on
   // another reading (Zone I < 2 × 50R, HV ≥ 0.8 Imax) are kept in `rel` and refreshed from the model field as it moves.
+  // a secondary row: weight below softBelow, or a name that starts with "~" / "soft" / "wish" / "secondary" / "extra" (the Spec tab's table edits names, not weights)
+  const SOFT_NAME = /^\s*(~|soft\b|wish\b|secondary\b|extra\b)/i;
+  const itemW = (it) => (it.w > 0 ? it.w : 1) * (SOFT_NAME.test(it.name || '') && !(it.w > 0 && it.w < 1) ? 0.3 : 1), itemSoft = (S, it) => itemW(it) < S.softBelow;
+  // the model's verdict on the compliance rows only (secondary rows are best effort and never trigger a restart)
+  function hardVerdict(P, S, e) {
+    if (!e) return null;
+    const soft = new Set(P.spec.items.filter((it) => itemSoft(S, it)).map((it) => it.name)), rows = e.rows.filter((r) => !soft.has(r.name));
+    return { fail: rows.some((r) => r.verdict === 'fail'), worst: rows.length ? Math.min(...rows.map((r) => r.margin)) : 1, rows };
+  }
   function buildBands(P, S) {
     const G = P.G, n = G.n, items = P.spec.items, k = P.spec.kernel > 0 ? P.spec.kernel : 0.15;
     const lo = new Float32Array(n), hi = new Float32Array(n).fill(1e30), wc = new Float32Array(n), flo = new Float32Array(n);   // flo: the plain minimum (no margin)
@@ -458,7 +467,7 @@
     const nEff = (v) => S.designRays * (1 + S.guideGain * clamp((4000 - v) / 4000, 0, 1));
     const sigRel = (v) => Math.min(0.9, Math.sqrt(Pw / (nEff(v) * Math.max(v, 1) * omK)));
     // a secondary row: weight below softBelow, or a name that starts with "~" / "soft:" / "wish:" / "secondary:" (the Spec tab's table edits names, not weights)
-    const softNameRe = /^\s*(~|soft\b|wish\b|secondary\b|extra\b)/i, wOf = (it) => (it.w > 0 ? it.w : 1) * (softNameRe.test(it.name || '') && !(it.w > 0 && it.w < 1) ? 0.3 : 1), isSoft = (it) => wOf(it) < S.softBelow;
+    const wOf = itemW, isSoft = (it) => itemSoft(S, it);
     const mFor = (it, bound, nInd) => {
       if (!(bound > 0)) return 1;
       const z = 2 + (nInd > 1 ? Math.sqrt(2 * Math.log(nInd)) : 0), isMin = bound === it.min && it.min > 0 && !(bound === it.max);
@@ -703,7 +712,7 @@
     for (let p = 0; p < G.n; p++) { if (tg[p] < 0.03 * mx) { tg[p] = 0; continue; } tg[p] *= c; n++; }
     const tmax = mx * c;
     for (let p = 0; p < G.n; p++) if (tg[p] > 0) { ws[p] = 0.25 + 0.75 * Math.sqrt(tg[p] / tmax); wsum += ws[p]; }
-    for (let p = 0; p < G.n; p++) if (ws[p] > 0) ws[p] *= S.paintWeight / wsum;
+    for (let p = 0; p < G.n; p++) if (ws[p] > 0) ws[p] *= Math.min(S.paintWeight, S.paintCap) / wsum;      // capped: above ~0.2 the painting starts to buy its shape with spec margin (hot spot at 0.3: 1 sure fail)
     return { tg, ws, n, tmax };
   }
 
@@ -1072,7 +1081,7 @@
     if (S.minDistance === undefined) S.minDistance = 0;
     return S;
   }
-  const BASE = { guideGain: 1, gateSigma: 0.15, kneeGate: 3, ceilFrac: 0, ceilLevel: 2500, dump: false, useOff: false, maxMargin: 4, offCost: 1, calLns: 0, anchorFrac: 0.4, kneeFrac: 0.20, plateau: 0.6, tailG: 0.55, knFinal: 0, anchorPx: 3, polishSweeps: 8, polishStep: 0.25, skirt: 0.7, skirtFrom: 0.45, grid: 0.1, gridA: 120, gridP: 96, wall: 0.3, finest: 1.5, sharp: 1.5, detail: 0.75, step: 0.01, softBelow: 1, softWeight: 0.4, edgePad: 1.0, tol: 0.15, edgeWeight: 3, gHi: 0.58, gLo: 1.2, designRays: 8e6, kneeBias: 0, maxAimH: 25, maxAimV: 12, glare: -1, glareWeight: 0.3, boost: 0.5, temp: 0.01, step0: 1.0 };
+  const BASE = { paintCap: 0.15, restarts: 2, restartBelow: -0.2, restartCost: 1e9, guideGain: 1, gateSigma: 0.15, kneeGate: 3, ceilFrac: 0, ceilLevel: 2500, dump: false, useOff: false, maxMargin: 4, offCost: 1, calLns: 0, anchorFrac: 0.4, kneeFrac: 0.20, plateau: 0.6, tailG: 0.55, knFinal: 0, anchorPx: 3, polishSweeps: 8, polishStep: 0.25, skirt: 0.7, skirtFrom: 0.45, grid: 0.1, gridA: 120, gridP: 96, wall: 0.3, finest: 1.5, sharp: 1.5, detail: 0.75, step: 0.01, softBelow: 1, softWeight: 0.4, edgePad: 1.0, tol: 0.15, edgeWeight: 3, gHi: 0.58, gLo: 1.2, designRays: 8e6, kneeBias: 0, maxAimH: 25, maxAimV: 12, glare: -1, glareWeight: 0.3, boost: 0.5, temp: 0.01, step0: 1.0 };
   // facets for the units' current aims and shapes, pulled toward the LED where the host's verify flags them
   function buildSurfaces(P, S, R, notes) {
     const G = P.G, out = [], byId = new Map();
@@ -1105,11 +1114,25 @@
     const sh = buildShell(P, S, notes);
     if (!sh) return { surfaces: [], notes: ['no direction from the LED can hold a mirror inside the envelope'] };
     P.shell = sh.shell;
+    const cover = sh.fluxCov / Math.max(1e-12, sh.fluxAll);
+    if (cover < 0.35) notes.push((cover < 0.05 ? 'WARNING: the mirrors can catch almost none of the LED\'s light (' : 'warning: the mirrors can catch only ' + (100 * cover).toFixed(0) + '% (') + (100 * cover).toFixed(1) + '%) — the rest leaves unshaped; turn the LED toward the envelope or move it, otherwise the spec is out of reach');
+    if (cover < 0.05) S.restarts = 0;
     if (!P.spec.items.length) notes.push('no spec rows (not Spec mode): following the painting alone');
     const B = buildBands(P, S), sec = secondaryTarget(P, S, B);
     notes.push('bands: ' + B.rows.length + ' rows' + (B.edge.glare ? ', glare ceiling ' + Math.round(B.edge.glare.cap) + ' cd above the cut-off' : '') + '; ' + (sec.n ? 'painting: ' + sec.n + ' cells as the secondary goal' : 'no painting'));
     const tFit = Date.now();
-    const R = fit(P, S, B, sec, sh.units, notes, tools);
+    let R = fit(P, S, B, sec, sh.units, notes, tools);
+    // hard instance (the model itself fails clearly, or the anneal stalled at a high cost): the anneal is seed-sensitive
+    // (same scene, cost 22…74 across seeds), so restart from a fresh seed and keep the better fit
+    const score = (r) => { const e = hardVerdict(P, S, judgeModel(P, r.model.F)); return -r.model.total() - (e ? 200 * Math.max(0, -e.worst) : 0); };
+    for (let k = 1; k <= S.restarts; k++) {
+      const e = hardVerdict(P, S, judgeModel(P, R.model.F)), c = R.model.total();
+      if (!(c > S.restartCost || (e && e.fail && e.worst < S.restartBelow))) break;
+      if (tools && tools.budget && Date.now() - t0 > 0.5 * (tools.budget.ms || Infinity)) break;
+      const S2 = Object.assign({}, S, { seed: S.seed + 7919 * k }), R2 = fit(P, S2, B, sec, sh.units, [], tools);
+      notes.push('restart ' + k + ': cost ' + c.toFixed(1) + (e ? ' (margin ' + e.worst.toFixed(2) + ')' : '') + ' → seed ' + S2.seed + ' gives ' + R2.model.total().toFixed(1) + (score(R2) > score(R) ? ', kept' : ', dropped'));
+      if (score(R2) > score(R)) R = R2;
+    }
     const msFit = Date.now() - tFit;
     // ---- calibration: patterns from real traces of the built design, then a polish of the aims on them
     let built = buildSurfaces(P, S, R, null), cal = [];
@@ -1148,7 +1171,7 @@
       { key: 'designRays', label: 'Design for a trace of (rays)', type: 'number', min: 5e5, max: 5e7, step: 5e5, default: 8e6,
         help: 'How many rays the judge will trace (guided). More rays = narrower noise = less margin to build in.' },
       { key: 'paintWeight', label: 'Painting as secondary goal (weight)', type: 'number', min: 0, max: 5, step: 0.01, default: 0.05,
-        help: 'How hard to pull toward the painted shape once the spec passes. 0 = ignore the painting. The spec always wins.' },
+        help: 'How hard to pull toward the painted shape once the spec passes. 0 = ignore the painting. Capped at 0.15 inside the solver: the spec always wins.' },
       { key: 'softBelow', adv: true, label: 'Rows below this weight are secondary', type: 'number', min: 0, max: 10, step: 0.1, default: 1, help: 'Spec rows (yours or the preset’s) with weight under this are best effort.' },
       { key: 'seedOffset', adv: true, label: 'Seed offset', type: 'number', min: 0, max: 99, step: 1, default: 0 },
     ],
