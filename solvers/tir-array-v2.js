@@ -225,13 +225,25 @@
       const frame = (un) => { const ex = perp(un.W), ey = cross(un.W, ex); return { ex, ey }; };
       const toW = (un, r, z, ph) => { const f = frame(un); return add(un.pos, add(add(mul(f.ex, r * Math.cos(ph)), mul(f.ey, r * Math.sin(ph))), mul(un.W, z))); };
       const prof = (A) => { const pf = profile(n, rc, hc, A, 88); pf.zTop += 0.6; return pf; };       // +0.6: room for tilted / curved lenslets
+      // the host checks every surface's real outline, so test what it tests: the rim AND the cavity base / dome rings
+      // (a tilted body dips its base through a floor the LED sits just above), 64 azimuths (16 left the circle bulging
+      // ~0.35 mm out between samples at an 18 mm rim), against the envelope shrunk by a 0.05 mm margin
+      const envIn = Object.assign({}, env, { half: env.half.map((h) => Math.max(0, h - 0.05)) });
       const fits = (un) => {
-        const pf = un.pf, pr = [[pf.rTop, pf.zTop + 0.6], [pf.outer[0][0], pf.outer[0][1]], [pf.rTop, pf.zLast]];
-        for (let q = 0; q < pf.outer.length; q += 40) pr.push([pf.outer[q][0], pf.outer[q][1]]);
-        for (const [r, z] of pr) for (let m = 0; m < 16; m++) if (!RF.Geo.envInside(env, toW(un, r, z, m * Math.PI / 8), 1e-6)) return false;
+        const pf = un.pf, pr = [[pf.rTop, pf.zTop + 0.6], [pf.outer[0][0], pf.outer[0][1]], [pf.rTop, pf.zLast], [rc, 0], [rc, hc], [rc * 0.5, hc]];
+        for (let q = 0; q < pf.outer.length; q += 8) pr.push([pf.outer[q][0], pf.outer[q][1]]);
+        for (const [r, z] of pr) for (let m = 0; m < 64; m++) if (!RF.Geo.envInside(envIn, toW(un, r, z, m * Math.PI / 32), 0)) return false;
         return true;
       };
-      for (const un of units) for (let it = 0; it < 40; it++) { un.pf = prof(un.A); if (fits(un) || un.A <= rc + 1.5) break; un.A *= 0.93; }
+      for (const un of units) {
+        const A0 = un.A, ax = norm(un.src.axis || [1, 0, 0]), W0 = un.W;
+        for (let t = 0; t <= 6; t++) {                     // shrink first; if even the smallest body pokes out, tilt less and retry
+          if (t) { const f = 1 - t / 6; un.W = norm(add(mul(ax, 1 - f), mul(W0, f))); un.tilt = Math.acos(Math.max(-1, Math.min(1, dot(un.W, ax)))) / D2R; un.A = A0; }
+          let ok = false;
+          for (let it = 0; it < 40; it++) { un.pf = prof(un.A); if ((ok = fits(un)) || un.A <= rc + 1.5) break; un.A *= 0.93; }
+          if (ok) break;
+        }
+      }
       const segDist = (a, b) => { let m = Infinity; for (let i = 0; i <= 12; i++) for (let j = 0; j <= 12; j++) m = Math.min(m, len(sub(add(a.pos, mul(a.W, (a.pf.zTop + 0.6) * i / 12)), add(b.pos, mul(b.W, (b.pf.zTop + 0.6) * j / 12))))); return m; };
       for (let it = 0; it < 40; it++) {
         let bad = false;
