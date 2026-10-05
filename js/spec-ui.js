@@ -24,7 +24,8 @@
     if (!force && s && s.ctx === c && s.key === key && (s.next === c.next || (!c.done && now - s.t < 700))) return s;
     try {
       const G = RF.FarField.build(c, RF.Spec.gridOpts(sc)), ev = RF.Spec.evaluate(G, sc.modeD);
-      ui.spec = { ctx: c, key, next: c.next, done: c.done, t: now, G, ev, map: null };
+      let Gw = null; try { const wo = RF.Spec.wideOpts(sc); if (c.ff && RF.FarField.streamOf(c, wo)) Gw = RF.FarField.build(c, wo); } catch (e) { /* the picture just stays narrow */ }
+      ui.spec = { ctx: c, key, next: c.next, done: c.done, t: now, G, Gw, ev, map: null };
     } catch (e) {
       ui.spec = { ctx: c, key, next: c.next, t: now, error: e.message };
       // the grid settings (window, bin, angles) changed since this run started: its streams don't cover them — re-trace once
@@ -35,7 +36,7 @@
   // the far-field grids a Spec run streams: the report's distance plus the comparison set (∞, 25 m, 10 m, the target)
   function streams(sc) {
     const md0 = sc.modeD || {}, ds = [md0.distance > 0 ? md0.distance : 0, 0, 25000, 10000, sc.target.distance];
-    return ds.filter((d, i) => ds.indexOf(d) === i).map((d) => RF.Spec.gridOpts(sc, d));
+    return ds.filter((d, i) => ds.indexOf(d) === i).map((d) => RF.Spec.gridOpts(sc, d)).concat([RF.Spec.wideOpts(sc)]);
   }
   // a different measuring distance on the same run (no re-trace) — for the comparison table
   function evalAt(ui, distance) {
@@ -308,6 +309,23 @@
     s.img = cv; s.imgK = k; s.imgScale = scale;
     return cv;
   }
+  // the wide context grid, coloured on the fine grid's scale (call after ffImage)
+  function ffImageWide(ui, s) {
+    if (!s.Gw) return null;
+    const k = dispK(ui), scale = ffOpts(ui).scale;
+    if (s.imgW && s.imgWK === k && s.imgWScale === scale && s.imgWTop === s.top) return s.imgW;
+    const G = s.Gw, cd = RF.FarField.map(G, k).cd, top = s.top, lo = s.lo, log = scale !== 'lin';
+    const cv = s.imgW || document.createElement('canvas'); cv.width = G.nh; cv.height = G.nv;
+    const g = cv.getContext('2d'), im = g.createImageData(G.nh, G.nv), LUT = RF.Render.LUT;
+    for (let j = 0; j < G.nv; j++) for (let i = 0; i < G.nh; i++) {
+      const x = cd[j * G.nh + i], o = 4 * ((G.nv - 1 - j) * G.nh + i);
+      const t = log ? (x > lo ? Math.min(255, Math.round(255 * Math.log10(x / lo) / 3)) : 0) : Math.max(0, Math.min(255, Math.round(255 * x / top)));
+      im.data[o] = LUT[3 * t]; im.data[o + 1] = LUT[3 * t + 1]; im.data[o + 2] = LUT[3 * t + 2]; im.data[o + 3] = 255;
+    }
+    g.putImageData(im, 0, 0);
+    s.imgW = cv; s.imgWK = k; s.imgWScale = scale; s.imgWTop = top;
+    return cv;
+  }
   // isocandela levels: the 1–3 half-decade series inside the picture's range (≤ 6 lines)
   function contourLevels(lo, top) {
     const out = [];
@@ -343,17 +361,29 @@
   function drawFarField(ui, cv, view) {
     const s = ui.spec, box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d');
     const win = s && s.G ? [s.G.h0, s.G.v0, s.G.h1, s.G.v1] : (() => { const w = RF.Spec.windowOf(md(ui)); return [w[0], w[2], w[1], w[3]]; })();
+    // the far field is in degrees, not the paint grid: no size pairing with the Editor (that cap shrank it to the
+    // smaller pane). Default fit = the spec window; zoom out to see the wide context grid around it.
+    const cap = view.cap; view.cap = 0;
     if (!view.fitted || view.bounds.join() !== win.join()) view.fit(win, box.w, box.h);
     else if (view.w !== box.w || view.h !== box.h) { if (view.zoomed) view.refitKeep(win, box.w, box.h); else view.fit(win, box.w, box.h); }
+    view.cap = cap; view.capAt = cap;
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.clearRect(0, 0, box.w, box.h);
     const a = view.toScreen(win[0], win[3]), b = view.toScreen(win[2], win[1]);
-    ctx.fillStyle = '#0c0d10'; ctx.fillRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
-    if (s && s.G) { ctx.imageSmoothingEnabled = false; ctx.drawImage(ffImage(ui, s), a[0], a[1], b[0] - a[0], b[1] - a[1]); }
-    // degree grid: H / V axes and 5° ticks
+    const Gw = s && s.G && s.Gw, ext = Gw ? [Gw.h0, Gw.v0, Gw.h1, Gw.v1] : win;            // what is drawn (wide when there is a context grid)
+    const A = view.toScreen(ext[0], ext[3]), B = view.toScreen(ext[2], ext[1]);
+    ctx.fillStyle = '#0c0d10'; ctx.fillRect(A[0], A[1], B[0] - A[0], B[1] - A[1]);
+    if (s && s.G) {
+      ctx.imageSmoothingEnabled = false;
+      const fine = ffImage(ui, s), wide = ffImageWide(ui, s);
+      if (wide) ctx.drawImage(wide, A[0], A[1], B[0] - A[0], B[1] - A[1]);
+      ctx.drawImage(fine, a[0], a[1], b[0] - a[0], b[1] - a[1]);
+    }
+    // degree grid: H / V axes and 5° ticks (10° when zoomed far out), labels pinned to the visible edge
+    const stepDeg = view.s * 5 < 22 ? 10 : 5, L = Math.max(A[0], 0), Bo = Math.min(B[1], box.h);
     ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1; ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '10px system-ui, sans-serif';
-    for (let h = Math.ceil(win[0] / 5) * 5; h <= win[2]; h += 5) { const p = view.toScreen(h, 0); ctx.beginPath(); ctx.moveTo(p[0], a[1]); ctx.lineTo(p[0], b[1]); ctx.stroke(); ctx.fillText((h > 0 ? h + 'R' : h < 0 ? -h + 'L' : '0'), p[0] + 2, b[1] - 3); }
-    for (let v = Math.ceil(win[1] / 5) * 5; v <= win[3]; v += 5) { const p = view.toScreen(0, v); ctx.beginPath(); ctx.moveTo(a[0], p[1]); ctx.lineTo(b[0], p[1]); ctx.stroke(); ctx.fillText((v > 0 ? v + 'U' : v < 0 ? -v + 'D' : 'H'), a[0] + 3, p[1] - 2); }
-    ctx.strokeStyle = 'rgba(255,255,255,0.28)'; const o = view.toScreen(0, 0); ctx.beginPath(); ctx.moveTo(o[0], a[1]); ctx.lineTo(o[0], b[1]); ctx.moveTo(a[0], o[1]); ctx.lineTo(b[0], o[1]); ctx.stroke();
+    for (let h = Math.ceil(ext[0] / stepDeg) * stepDeg; h <= ext[2]; h += stepDeg) { const p = view.toScreen(h, 0); ctx.beginPath(); ctx.moveTo(p[0], A[1]); ctx.lineTo(p[0], B[1]); ctx.stroke(); ctx.fillText((h > 0 ? h + 'R' : h < 0 ? -h + 'L' : '0'), p[0] + 2, Bo - 3); }
+    for (let v = Math.ceil(ext[1] / stepDeg) * stepDeg; v <= ext[3]; v += stepDeg) { const p = view.toScreen(0, v); ctx.beginPath(); ctx.moveTo(A[0], p[1]); ctx.lineTo(B[0], p[1]); ctx.stroke(); ctx.fillText((v > 0 ? v + 'U' : v < 0 ? -v + 'D' : 'H'), L + 3, p[1] - 2); }
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)'; const o = view.toScreen(0, 0); ctx.beginPath(); ctx.moveTo(o[0], A[1]); ctx.lineTo(o[0], B[1]); ctx.moveTo(A[0], o[1]); ctx.lineTo(B[0], o[1]); ctx.stroke();
     ctx.strokeStyle = 'rgba(143,184,255,0.35)'; ctx.strokeRect(a[0] + 0.5, a[1] + 0.5, b[0] - a[0] - 1, b[1] - a[1] - 1);
     const fo = ffOpts(ui), ev = s && s.ev;
     if (fo.contours && s && s.G && s.M) drawContours(ctx, s, view, a, b);
@@ -369,7 +399,7 @@
       const ticks = [];
       if (log) { for (let e = Math.ceil(Math.log10(lo)); 10 ** e < top; e++) ticks.push(10 ** e); }
       else { const raw = top / 4, p = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 5, 10].map((m) => m * p).find((x) => x >= raw); for (let x = step; x < top; x += step) ticks.push(x); }
-      const inner = ticks.filter((x) => pos(x) > 14 && pos(x) < 86);
+      const inner = ticks.filter((x) => pos(x) > 14 && pos(x) < 80);   // clear of the end labels (the right one is wider)
       const bar = el('i', { style: 'background:' + RF.Render2D.colorbarCSS() });
       for (const x of ticks) bar.append(el('b', { style: 'left:' + pos(x).toFixed(1) + '%' }));
       const labels = el('div', { class: 'cb-labels ticks', title: (log ? 'Log scale, 3 decades under the robust peak. ' : 'Linear scale, 0 to the robust peak (99.9th percentile). ') + (s.G && isFinite(s.G.distance) ? 'Apparent intensity on a screen at ' + fmtDist(s.G.distance) : 'Far field: intensity by direction') + '. Picture smoothed over ±' + dispK(ui) + '°; the report reads ±' + md(ui).kernel + '°.' },

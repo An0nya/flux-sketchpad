@@ -181,6 +181,13 @@
     const md = scene.modeD, d = distanceOverride !== undefined ? distanceOverride : md.distance;
     return { win: windowOf(md), step: md.step || 0.1, conv: md.conv || 'A', distance: d > 0 ? d : Infinity, centre: scene.source.pos.slice() };
   }
+  // the far-field picture's context grid: the spec window widened to ±45° H × 30° D–15° U at 0.25° bins (a road a few
+  // metres ahead sits 7–17° down). Display only: the judge reads gridOpts.
+  const WIDE = [-45, 45, -30, 15];
+  function wideOpts(scene, distanceOverride) {
+    const o = gridOpts(scene, distanceOverride), w = o.win;
+    return Object.assign(o, { win: [Math.min(w[0], WIDE[0]), Math.max(w[1], WIDE[1]), Math.min(w[2], WIDE[2]), Math.max(w[3], WIDE[3])], step: 0.25 });
+  }
   // (H, V) → design-plane (u, v) mm, as seen from the photometric centre (the source).  null if the plane is behind.
   function planeUV(scene, h, v) {
     const T = RF.Engine.designFrame(scene.target), c = scene.source.pos, d = RF.FarField.dirOf(h, v, scene.modeD.conv);
@@ -562,5 +569,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, fitTargetSize };
+  RF.Spec = { FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
