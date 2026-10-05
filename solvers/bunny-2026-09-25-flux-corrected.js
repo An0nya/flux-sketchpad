@@ -1,7 +1,8 @@
 /* Bundled model solver: space-bunny-alpha, Flux solver benchmark run 2026-09-25 (workspace work-space-bunny-alpha-flux-solver-20260925-2110).
  * Copied verbatim from that run's solvers/solver.js (sha256 5e65fcbe5fd0…), wrapped in a function scope so several
  * bundled files can share one worker.
- * Not edited otherwise: bugs and all, it is the record of what the model wrote. */
+ * Not edited otherwise: bugs and all, it is the record of what the model wrote.
+ * Exception (2026-10-05): display-only tools.preview calls added for Watch solve (show() in measure). */
 (function () {
 /* solvers/solver.js — "measure-and-correct" reflector solver (paint mode).
  *
@@ -359,6 +360,14 @@
        * halves that, and the seeds are fixed, so it stays deterministic. */
       var vote = Math.max(1, Math.min(4, s.vote | 0 || 2));
       var perTrace = Math.max(2000, Math.round(searchRays / vote));
+      // Watch solve (display only): each measured design, with the trace it already has, at most once a second.
+      // Reads `facets` through surfacesOf (which copies nothing it changes), so the result is the same either way.
+      var lastShow = 0, showLabel = 'seed';
+      function show(tr) {
+        if (!tools || !tools.preview || tools.preview.none) return;
+        var t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
+        try { tools.preview(surfacesOf(facets, refl), { label: showLabel, trace: tr, note: 'candidate measured on the real engine' }); } catch (e) { /* display only */ }
+      }
       function measure(rayCount, votes) {
         var nv = votes || vote;
         var n = Math.max(2000, Math.round((rayCount || searchRays) / nv));
@@ -371,6 +380,7 @@
           if (!G) { G = Gv; continue; }
           for (k2 = 0; k2 < rp * rp; k2++) G[k2] += Gv[k2];
         }
+        show(tr);
         // light one facet caught that then landed on another (the tracer's re-hit share is the
         // solver-visible form of the app's "blocked")
         var e = tr.energy || {};
@@ -483,6 +493,7 @@
         if (!facets.length) continue;
         if (!fallback) fallback = snapshot();               // in case nothing can be measured
         if (gam === 1 && !seedFacets) seedFacets = snapshot();   // the as-painted reference design
+        showLabel = 'structure γ ' + (gi + 1) + '/' + gammas.length;
         var m0 = measure(searchRays);
         if (!m0) continue;
         nTrace++;
@@ -554,6 +565,7 @@
         var gl = [0.7, 0.85, 1, 1.15, 1.35], gv = [-0.3, -0.15, 0, 0.15, 0.3], gridBest = null;
         for (var a1 = 0; a1 < gl.length; a1++) for (var b1 = 0; b1 < gv.length; b1++) {
           if (!left()) break;
+          showLabel = 'aim grid ' + (a1 * gv.length + b1 + 1) + '/' + (gl.length * gv.length);
           var mg = tryAffineBatch(gl[a1], 0, gv[b1] * T.half, Math.round(searchRays / 2));
           if (mg && (!gridBest || mg.score > gridBest.score)) { gridBest = { p: [gl[a1], 0, gv[b1] * T.half], m: mg }; }
         }
@@ -572,6 +584,7 @@
             var p = cur.slice();
             if (mode === 0) p[0] = Math.max(0.2, Math.min(2.5, cur[0] * (1 + FR[fj] * step)));
             else p[mode] = cur[mode] + FR[fj] * step;
+            showLabel = 'round ' + (round + 1) + '/' + rounds;
             var m = trial(p);
             if (m && (!pick || m.score > pick.m.score)) pick = { p: p, m: m };
           }
@@ -589,6 +602,7 @@
         restore(shortlist[q9].snap);
         // one trace on the scene's own seed at the full ray count: the same estimator the app
         // scores with, so the last choice is made on the scored quantity itself
+        showLabel = 'final ' + (q9 + 1) + '/' + shortlist.length;
         var mf2 = measure(finalRays, 1);
         nTrace++;
         if (mf2 && mf2.score > fbs) { fbs = mf2.score; fb = shortlist[q9].snap; best = mf2; }
@@ -599,6 +613,7 @@
       if (seedFacets && spent + finalRays <= rayCap && now() - t0 <= deadline + 8000) {
         var keepBest = bestFacets;
         restore(seedFacets);
+        showLabel = 'as-painted reference';
         seedScore = measure(finalRays, 1);
         restore(keepBest);
         nTrace++;
