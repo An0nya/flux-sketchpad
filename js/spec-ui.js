@@ -50,7 +50,12 @@
     const presetSel = el('select', { 'aria-label': 'Spec preset' }, ...Object.entries(RF.Spec.PRESETS).map(([id, p]) => el('option', { value: id }, p.label)));
     const apply = P.confirmButton('Load preset', 'Replace every constraint?', () => { RF.Spec.applyPreset(m(), presetSel.value); changed(ui, true); });
     const fit = el('button', { type: 'button', title: 'Resize the target plane so the Editor and Result show the whole spec window at the current distance' }, 'Fit target to spec');
-    fit.addEventListener('click', () => { const sc = ui.store.scene; sc.target.size = Math.round(RF.Spec.fitTargetSize(sc)); ui._histHint = 'Fit target to spec'; ui.vLeft.fitted = ui.vHeat.fitted = false; ui.store.invalidate(['A', 'B']); ui.afterChange(); });
+    fit.addEventListener('click', () => {
+      const sc = ui.store.scene, before = sc.target.size, after = Math.round(RF.Spec.fitTargetSize(sc)), w = RF.Spec.windowOf(sc.modeD), ext = Math.max(...w.map(Math.abs));
+      sc.target.size = after; ui._histHint = 'Fit target to spec'; ui.vLeft.fitted = ui.vHeat.fitted = false; ui.store.invalidate(['A', 'B']); ui.afterChange();
+      // say what changed: the plane is what you paint on and see; the solver already works on its own plane (Solve at)
+      ui.store.notice('Fit target to spec: the target plane went from ' + (before / 1000).toFixed(1) + ' m to ' + (after / 1000).toFixed(1) + ' m wide at ' + (sc.target.distance / 1000).toFixed(1) + ' m, so it shows ±' + ext + '° (the spec window). It sets what you can paint and see; the solver ' + ((sc.modeD.solveAt === undefined ? 25000 : sc.modeD.solveAt) > 0 ? 'already uses its own plane at Solve at, sized to the spec.' : 'aims at this plane (Solve at = 0).'));
+    });
     const seed = P.confirmButton('Seed low-beam paint', 'Replace the painting?', () => { const sc = ui.store.scene; sc.modeA.paint = RF.Spec.seedPaint(sc); ui._histHint = 'Seed low-beam paint'; changed(ui, true); });
     // the painting from the road: each direction gets what it needs for 5 lx on the road out to 100 m right / 60 m left
     const roadSeed = P.confirmButton('Seed from road reach', 'Replace the painting with the road-reach goal?', () => {
@@ -161,7 +166,7 @@
     if (!(sc.source.power > 0)) { box.append(el('div', { class: 'reason' }, 'Set the source power (lm) to read intensities in cd.')); return; }
     const win = RF.Spec.windowOf(m), T = RF.Engine.targetFrame(sc.target), seen = Math.atan(T.half / sc.target.distance) * 180 / Math.PI;
     const ext = Math.max(Math.abs(win[0]), Math.abs(win[1]));
-    if (seen < ext - 3) box.append(el('div', { class: 'reason' }, 'The target plane shows ±' + seen.toFixed(1) + '°, the spec spans ±' + ext + '° in H: the solver can’t aim outside the plane. “Fit target to spec” resizes it.'));
+    if (seen < ext - 3) box.append(el('div', { class: 'reason' }, 'The target plane shows ±' + seen.toFixed(1) + '°, the spec spans ±' + ext + '° in H: ' + ((m.solveAt === undefined ? 25000 : m.solveAt) > 0 ? 'you can’t paint or see outside it (the solver uses its own plane at Solve at, sized to the spec, so it isn’t limited). “Fit target to spec” resizes yours.' : 'with Solve at = 0 the solver aims at this plane and can’t reach outside it. “Fit target to spec” resizes it.')));
     // the spec is absolute: the emitter's luminance and lumens matter here, unlike in Paint mode
     const src = sc.source, Lsrc = RF.SourcePresets ? RF.SourcePresets.luminanceOf(src) : null;
     if (!src.preset || src.preset === 'sketch') box.append(el('div', { class: 'note' }, 'Emitter: ' + (src.preset === 'sketch' ? 'the sketch LED' : 'custom') + (Lsrc ? ' (' + Math.round(Lsrc) + ' cd/mm²)' : '') + '. Spec mode reads absolute cd, so the emitter decides the numbers; the sketch LED is brighter per mm² than any real LED in the presets (Light source → Emitter).'));
