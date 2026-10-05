@@ -314,29 +314,59 @@
     return handles;
   }
 
+  // Near-plane clip of a world polygon (Sutherland–Hodgman in view depth) → screen points. Without it, corners at or
+  // behind the eye land at nonsense positions (project() squashes them), e.g. a grazing target plane that runs under the
+  // camera. Orthographic views have no eye: nothing to clip.
+  function clipNear(cam, pts) {
+    if (!isFinite(cam.focal)) return pts.map((p) => cam.project(p));
+    const zN = 0.95 * cam.eyeDist(), out = [], z = pts.map((p) => cam.view(p)[2]);
+    for (let i = 0; i < pts.length; i++) {
+      const j = (i + 1) % pts.length, a = pts[i], b = pts[j], ina = z[i] < zN, inb = z[j] < zN;
+      if (ina) out.push(a);
+      if (ina !== inb) { const t = (zN - z[i]) / (z[j] - z[i]); out.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])]); }
+    }
+    return out.map((p) => cam.project(p));
+  }
   function drawTargetPlane(ctx, cam, T, pr, heat) {
     const facing = V.dot(T.n, cam.R[2]) > 0;                    // lit side toward the viewer
+    const W = (u, v) => RF.Engine.targetUVtoWorld(T, (-1 + 2 * u) * T.half, (1 - 2 * v) * T.half);
+    const po = clipNear(cam, [W(0, 1), W(1, 1), W(1, 0), W(0, 0)]);   // the outline, clipped (u right, v down in the image)
+    const outline = () => { ctx.beginPath(); po.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); };
+    if (po.length < 3) return;                                  // all of it behind the eye
     ctx.save();
-    ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath();
+    outline();
     if (facing && heat && heat.width && isFinite(cam.focal)) {
-      // Perspective: the plane's image isn't affine, so map the texture piecewise — each tile of a
-      // G×G grid gets its own affine transform (exact at its corners, error shrinks as 1/G²).
+      // Perspective: the plane's image isn't affine, so map the texture piecewise. Start from a 16×16 grid and split a
+      // tile in four while its corners' perspective scales differ by > 12 % (affine error) or it crosses the near
+      // plane; tiles behind the eye are skipped. Splitting is budget-capped so a pathological view can't stall the frame.
       ctx.restore(); ctx.save();
-      const G = 16, N = heat.width, dpr = ctx.getTransform().a, s = N / G;
-      const P = (a, b) => cam.project(RF.Engine.targetUVtoWorld(T, (-1 + 2 * a / G) * T.half, (1 - 2 * b / G) * T.half));
+      const N = heat.width, dpr = ctx.getTransform().a, D = cam.eyeDist(), zN = 0.95 * D;
+      let budget = 6000;
       ctx.imageSmoothingEnabled = false;
-      for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
-        const q00 = P(i, j), q10 = P(i + 1, j), q01 = P(i, j + 1), q11 = P(i + 1, j + 1);
+      const tile = (u0, v0, u1, v1, depth) => {
+        const c = [W(u0, v0), W(u1, v0), W(u0, v1), W(u1, v1)], z = c.map((p) => cam.view(p)[2]);
+        const behind = z.filter((x) => x >= zN).length;
+        if (behind === 4) return;
+        const k = z.map((x) => D / (D - x)), ratio = Math.max(...k) / Math.min(...k);
+        if ((behind || ratio > 1.12) && depth < 5 && budget >= 3) {
+          budget -= 3;                                          // a split adds three tiles; the budget only limits splitting
+          const um = (u0 + u1) / 2, vm = (v0 + v1) / 2;
+          tile(u0, v0, um, vm, depth + 1); tile(um, v0, u1, vm, depth + 1); tile(u0, vm, um, v1, depth + 1); tile(um, vm, u1, v1, depth + 1);
+          return;
+        }
+        if (behind) return;                                      // a sliver at the eye: dropped (every tile in front is drawn)
+        const [q00, q10, q01, q11] = c.map((p) => cam.project(p)), sw = (u1 - u0) * N, sh = (v1 - v0) * N;
         ctx.save();
         ctx.beginPath(); ctx.moveTo(q00[0], q00[1]); ctx.lineTo(q10[0], q10[1]); ctx.lineTo(q11[0], q11[1]); ctx.lineTo(q01[0], q01[1]); ctx.closePath();
-        ctx.lineWidth = 0.6; ctx.strokeStyle = 'rgba(0,0,0,0)'; ctx.clip();
-        // texture (i·s, j·s) → q00, +x → q10, +y → q01 ; overdraw by one texel to hide seams
-        ctx.setTransform(dpr * (q10[0] - q00[0]) / s, dpr * (q10[1] - q00[1]) / s, dpr * (q01[0] - q00[0]) / s, dpr * (q01[1] - q00[1]) / s, dpr * q00[0], dpr * q00[1]);
-        ctx.drawImage(heat, i * s - 0.5, j * s - 0.5, s + 1, s + 1, -0.5, -0.5, s + 1, s + 1);
+        ctx.clip();
+        // texture (u0·N, v0·N) → q00, +x → q10, +y → q01 ; overdraw by half a texel to hide seams
+        ctx.setTransform(dpr * (q10[0] - q00[0]) / sw, dpr * (q10[1] - q00[1]) / sw, dpr * (q01[0] - q00[0]) / sh, dpr * (q01[1] - q00[1]) / sh, dpr * q00[0], dpr * q00[1]);
+        const ox = Math.min(0.5, sw / 2), oy = Math.min(0.5, sh / 2);
+        ctx.drawImage(heat, u0 * N - ox, v0 * N - oy, sw + 2 * ox, sh + 2 * oy, -ox, -oy, sw + 2 * ox, sh + 2 * oy);
         ctx.restore();
-      }
-      ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath();
-      ctx.strokeStyle = 'rgba(143,184,255,0.9)'; ctx.lineWidth = 1.2; ctx.stroke();
+      };
+      for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) tile(i / 16, j / 16, (i + 1) / 16, (j + 1) / 16, 0);
+      outline(); ctx.strokeStyle = 'rgba(143,184,255,0.9)'; ctx.lineWidth = 1.2; ctx.stroke();
     } else if (facing && heat && heat.width) {
       ctx.clip();
       const N = heat.width, p00 = pr[0], p10 = pr[1], p01 = pr[3];
@@ -346,12 +376,11 @@
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(heat, 0, 0);
       ctx.restore(); ctx.save();
-      ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath();
-      ctx.strokeStyle = 'rgba(143,184,255,0.9)'; ctx.lineWidth = 1.2; ctx.stroke();
+      outline(); ctx.strokeStyle = 'rgba(143,184,255,0.9)'; ctx.lineWidth = 1.2; ctx.stroke();
     } else {
       ctx.fillStyle = 'rgba(60,66,78,0.55)'; ctx.fill();
       ctx.strokeStyle = 'rgba(143,184,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
-      const c = pr.reduce((s, q) => [s[0] + q[0] / 4, s[1] + q[1] / 4], [0, 0]);
+      const c = po.reduce((s, q) => [s[0] + q[0] / po.length, s[1] + q[1] / po.length], [0, 0]);
       ctx.fillStyle = 'rgba(200,210,230,0.7)'; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
       ctx.fillText(facing ? 'target' : 'target (back) — orbit round to see the lit side', c[0], c[1]);
     }
