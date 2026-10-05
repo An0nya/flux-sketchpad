@@ -234,7 +234,10 @@
     const ptog = el('input', { type: 'checkbox', id: 'trace-previews' }); ptog.checked = ui.previewTrace !== false;
     ptog.addEventListener('change', () => ui.setPreviewTrace(ptog.checked));
     const ptRow = el('label', { class: 'tog', title: 'A candidate sent without a picture (most solvers send geometry only) is traced at 200k rays in a separate worker, so the Result map (and the far field in Spec mode) shows it too. Display only: it never changes the result. Costs a CPU core while a solve runs; off for raw speed.' }, ptog, ' Trace previews (200k rays)');
-    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), el('div', { class: 'note' }, who), el('div', { class: 'btnrow' }, watchRow, ptRow), ...fields);
+    const stog = el('input', { type: 'checkbox', id: 'preview-stats' }); stog.checked = ui.previewStats !== false;
+    stog.addEventListener('change', () => ui.setPreviewStats(stog.checked));
+    const stRow = el('label', { class: 'tog', title: 'While a solve runs, the footer and Details show the newest traced candidate\u2019s numbers (200k rays: coarse), marked PREVIEW. The real numbers return with the result.' }, stog, ' Live numbers from previews');
+    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), el('div', { class: 'note' }, who), el('div', { class: 'btnrow' }, watchRow, ptRow, stRow), ...fields);
     const files = document.getElementById('solver-files');
     if (files) { files.innerHTML = ''; files.append(el('div', { class: 'btnrow' }, loadBtn, forget),
       el('div', { class: 'note' }, 'Verified by the app, not the solver: ' + facts + '. Saved with the scene: ' + (sc.solve ? sc.solve.id + ' v' + (sc.solve.version || '?') : '—') + '.')); }
@@ -354,8 +357,20 @@
     if (ptr.next) { const n = ptr.next; ptr.next = null; if (ui.solving === n.job) sendPreview(n); }
     if (!req || d.id !== req.id || d.type !== 'traced') return;
     const w = ui.watch; if (!w || w.seq !== req.job.seq) return;
-    w.traced = { label: req.msg.label, grid: d.grid, res: d.res, rays: d.rays, ms: d.ms, fidelity: d.fidelity, ff: d.ff };
+    w.traced = { label: req.msg.label, grid: d.grid, res: d.res, rays: d.rays, ms: d.ms, fidelity: d.fidelity, ff: d.ff, st: d.st, fid: d.fid, ph: d.ph };
+    renderPreviewStats();
     ui.watchDirty = true; schedule();
+  }
+  // the footer follows the newest traced candidate while a solve runs (Solver → "Live numbers"); the real run's
+  // numbers come back when the result is traced. Coarse (200k rays) and marked as a preview.
+  try { ui.previewStats = localStorage.getItem('flux/previewStats') !== '0'; } catch (e) { ui.previewStats = true; }
+  ui.setPreviewStats = (on) => { ui.previewStats = !!on; try { localStorage.setItem('flux/previewStats', on ? '1' : '0'); } catch (e) { /* ignore */ } if (!on && ui.run) renderStats(!ui.run.ctx.done); else renderPreviewStats(); };
+  function previewStatsOn() { const w = ui.watch; return !!(ui.previewStats && ui.solving && w && w.seq === ui.solving.seq && !w.failed && w.traced && w.traced.st); }
+  function renderPreviewStats() {
+    if (!previewStatsOn()) return false;
+    const t = ui.watch.traced;
+    P.renderStats(ui, t.st, { running: false, fid: t.fid || null, photo: t.ph || null, previewOf: (t.label || 'candidate') + ' · ' + Math.round(t.rays / 1000) + 'k rays' });
+    return true;
   }
   function dropWatch() { if (!ui.watch) return; ui.watch = null; ui.watchDirty = true; P.renderNotices(ui); schedule(); }
   function prepWatch() {                             // the preview's draw model: its own compiled surfaces, tinted ('P')
@@ -552,6 +567,7 @@
   const paintScene = (s) => (s.mode === 'D' && RF.Spec ? Object.assign({}, s, { mode: 'A', modeA: Object.assign({}, s.modeA, { paint: RF.Spec.workingPaint(s) }) }) : s);
   function renderStats(running) {
     const run = ui.run; if (!run) return;
+    if (renderPreviewStats()) return;                 // a solve's traced candidate owns the footer until its result arrives
     const sc0 = ui.store.scene, sc = paintScene(sc0);
     const st = RF.Engine.stats(run.ctx, sc.mode === 'A' ? { paint: sc.modeA.paint, paintRes: sc.target.res } : null);
     let match = null;
