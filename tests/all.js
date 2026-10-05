@@ -34,5 +34,6 @@ run('modes + auto (tests/modes.js)', ['tests/modes.js']);
 run('spec mode + far field (tests/spec.js)', ['tests/spec.js']);
 run('multi-part optics + multi-emitter (tests/optics-parts.js)', ['tests/optics-parts.js']);
 run('watching a solve: worker previews (tests/preview.js)', ['tests/preview.js']);
+run('road model + IIHS metrics (tests/road.js)', ['tests/road.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

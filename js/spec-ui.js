@@ -81,6 +81,7 @@
         row('Re-aim ± V (°)', num(() => (m().aimBox || {}).up || 0, (v) => { const x = Math.max(0, Math.min(2, v)); m().aimBox = Object.assign({ left: 0, right: 0, up: 0, down: 0 }, m().aimBox, { up: x, down: x }); }, { min: 0, max: 2, step: 0.05 }, true), 'R112 §6.2.2.3: 0.25° up or down.'),
         row('Angles', sel([['A', 'A: V = elevation, H = azimuth'], ['B', 'B: H out of the vertical plane'], ['S', 'Flat screen: atan(x/D), atan(y/D)']], () => m().conv, (v) => { m().conv = v; }), 'Which (H, V) a direction gets. R112 (Annex 3, Figure A) uses A: a vertical polar axis, h = azimuth, v = latitude. B and the flat screen differ by < 0.05° inside ±10° H.'),
         row('Bin (°)', num(() => m().step, (v) => { m().step = Math.max(0.02, Math.min(1, v)); }, { min: 0.02, max: 1, step: 0.02 }, true), 'Far-field grid resolution.')),
+      sectionFn('Road', { open: false, key: 'D-road', tag: 'IIHS-style view' }, ...roadRows(ui, row)),
       sectionFn('Paint as a secondary goal', { open: true, key: 'D-paint' },
         row('Solve at (m)', num(() => (m().solveAt === undefined ? 25000 : m().solveAt) / 1000, (v) => { m().solveAt = Math.max(0, Math.min(1000, v)) * 1000; }, { min: 0, max: 1000, step: 5 }), 'The paint solvers aim at a flat plane; Spec mode hands them one this far away, sized to the spec window, so near-field parallax doesn’t shift the beam (0.2° at 10 m for a facet 40 mm off-axis). 0 = your target plane.'),
         row('Use the painting', chk(() => m().usePaint !== false, (v) => { m().usePaint = v; }), 'Off: the solver sees only the spec (floors at minimums, holes at maximums).'),
@@ -282,7 +283,7 @@
   // judge and the tap readout use the real kernel
   const dispK = (ui) => Math.max(md(ui).kernel || 0.15, 0.15);
   // far-field view options (per viewer, remembered): colour scale, isocandela contours, spec overlay, aim marker
-  const FF_DEF = { scale: 'log', contours: true, overlay: true, aim: true };
+  const FF_DEF = { scale: 'log', contours: true, overlay: true, aim: true, road: false };
   function ffOpts(ui) {
     if (!ui.ffOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/ffView') || '{}'); } catch (e) { /* ignore */ } ui.ffOpts = Object.assign({}, FF_DEF, o); }
     return ui.ffOpts;
@@ -393,6 +394,7 @@
     ctx.strokeStyle = 'rgba(143,184,255,0.35)'; ctx.strokeRect(a[0] + 0.5, a[1] + 0.5, b[0] - a[0] - 1, b[1] - a[1] - 1);
     const fo = ffOpts(ui), ev = s && s.ev;
     if (fo.contours && s && s.G && s.M && !s.preview && s.done) drawContours(ctx, s, view, a, b);   // a finished trace only: partial runs and 200k previews draw noise loops
+    if (fo.road && s && !s.preview) drawRoadOverlay(ctx, ui, view, a, b);
     if (fo.aim && ev) drawAim(ctx, ui, ev, view, a, b);
     if (fo.overlay) drawItems(ctx, ui, (h, v) => view.toScreen(h, v), undefined, s && s.preview ? null : undefined);
     ffTools(ui, cv);
@@ -472,7 +474,8 @@
         return b;
       };
       bar.append(mk('scale', 'log', 'Colour scale: log (3 decades) or linear (like Hits / Grid)'), mk('contours', 'isocd', 'Isocandela lines at 1–3 steps per decade, labelled in cd'),
-        mk('overlay', 'spec', 'The spec’s points and zones with their verdicts'), mk('aim', 'aim', 'Where the judge aimed: the spec’s H-V on the beam (dashed cross) and the line the cut-off was put on (dotted)'));
+        mk('overlay', 'spec', 'The spec’s points and zones with their verdicts'), mk('aim', 'aim', 'Where the judge aimed: the spec’s H-V on the beam (dashed cross) and the line the cut-off was put on (dotted)'),
+        mk('road', 'road', 'The road’s lane lines and the horizon as the right-hand lamp sees them on the car (Spec → Road sets lanes, height, aim)'));
       wrap.append(bar);
     }
     const o = ffOpts(ui);
@@ -481,6 +484,112 @@
       if (k === 'scale') { b.textContent = o.scale === 'lin' ? 'lin' : 'log'; b.setAttribute('aria-pressed', 'true'); }
       else b.setAttribute('aria-pressed', String(!!o[k]));
     }
+  }
+  // ---------------------------------------------------------------- road (Road view, far-field road overlay, IIHS reach)
+  const roadOf = (ui) => { const m0 = md(ui); if (!m0.road) m0.road = RF.Road.defaults(); return m0.road; };
+  // road settings only redraw: no new trace, no re-judging
+  function roadChanged(ui) { ui.autosave(); if (ui.spec) ui.spec.road = null; ui.redrawSpec(); if (ui.rerenderStats) ui.rerenderStats(); render(ui); }
+  function roadRows(ui, row) {
+    const r = () => roadOf(ui);
+    const rsel = (opts, get, set) => { const x = el('select', {}, ...opts.map(([v, t]) => el('option', { value: v }, t))); x.dataset.spec = '1'; x._get = get; x.addEventListener('change', () => { set(x.value); roadChanged(ui); }); return x; };
+    const rnum = (get, set, o) => { const x = el('input', Object.assign({ type: 'number', step: 'any' }, o)); x.dataset.spec = '1'; x._get = get; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) set(v); roadChanged(ui); }); return x; };
+    const rchk = (get, set) => { const x = el('input', { type: 'checkbox' }); x.dataset.spec = '1'; x._get = get; x._chk = true; x.addEventListener('change', () => { set(x.checked); roadChanged(ui); }); return x; };
+    return [
+      el('div', { class: 'note' }, 'A straight two-lane road lit by this beam: Result → Road (bird’s-eye), Far field → road, and the 5 lx reach in the footer. The reach follows IIHS (5 lx, 25 cm up, edges of a 6.6 m road); the lanes drawn follow the width below. Right-hand traffic (mirrored for left-hand).'),
+      row('Lane width', rsel([['auto', 'By preset (FMVSS → US, ECE → EU)'], ['us', 'US 3.6 m (12 ft)'], ['eu', 'EU 3.5 m'], ['iihs', 'IIHS 3.3 m']], () => r().lane, (v) => { r().lane = v; })),
+      row('Mounting height (m)', rnum(() => r().mountH, (v) => { r().mountH = Math.max(0.2, Math.min(2, v)); }, { min: 0.2, max: 2, step: 0.05 }), 'Height of the lamp above the road. R48 §6.2.6.1.2 sets the dipped-beam aim by it: under 0.8 m, −1.0 to −1.5 %; over 1.0 m, −1.5 to −2.0 %.'),
+      row('Lamp spacing (m)', rnum(() => r().spacing, (v) => { r().spacing = Math.max(0, Math.min(2.5, v)); }, { min: 0, max: 2.5, step: 0.05 }), 'Between the two lamps’ centres. Both lamps are this same design (a real pair has the same beam, not mirror images), so two lamps cost no extra rays.'),
+      row('Two lamps', rchk(() => r().two !== false, (v) => { r().two = v; }), 'Off: only the right-hand lamp.'),
+      row('Aim on the car', rsel([['spec', 'As the spec’s lab aims it'], ['manual', 'Manual inclination (%)']], () => r().aim, (v) => { r().aim = v; }), 'As the lab aims it: the same aim the report uses. Manual: the cut-off (where the judge found it) is set at this downward slope; 1 % = 1 cm per metre ≈ 0.57°.'),
+      row('Inclination (%)', rnum(() => r().aimPct, (v) => { r().aimPct = Math.max(-5, Math.min(1, v)); }, { min: -5, max: 1, step: 0.1 }), 'Used with "Manual". R48 initial aim: −1.0 to −1.5 % below 0.8 m mounting height; FMVSS VOL ≈ −0.7 % (0.4° D).'),
+    ];
+  }
+  // the road model on the judged far field (the fine grid where it covers the direction, else the wide one); cached
+  function roadModel(ui) {
+    const s = ui.spec; if (!s || !s.G || !s.ev || !RF.Road) return null;
+    const road = roadOf(ui), key = JSON.stringify(road);
+    if (s.road && s.roadKey === key) return s.road;
+    const sh = RF.Road.aimShift(road, s.ev), G = s.G, W = s.Gw, k = 0.2, mir = md(ui).traffic === 'LHT' ? -1 : 1;
+    const I = (h, v) => {
+      const H = mir * h + sh[0], V = v + sh[1];
+      const g = H >= G.h0 && H <= G.h1 && V >= G.v0 && V <= G.v1 ? G : W; if (!g) return 0;
+      const r = RF.FarField.intensityAt(g, H, V, g === G ? k : Math.max(k, g.step)); return r.cd > 0 ? r.cd : 0;
+    };
+    const mdl = RF.Road.model({ road, conv: G.conv || md(ui).conv || 'A', I });
+    s.road = { mdl, sh, mir, iihs: mdl.iihs(), lane: RF.Road.laneWidth(road, md(ui).preset), map: null }; s.roadKey = key;
+    return s.road;
+  }
+  // a tiny marching squares for one level on a grid E[j·ny + i] (j along x, i along y) → segment end points in (x, y)
+  function iso(Mp, L) {
+    const { E, nx, ny, x0, x1, y0, y1 } = Mp, dx = (x1 - x0) / nx, dy = (y1 - y0) / ny, X = (j) => x0 + (j + 0.5) * dx, Y = (i) => y0 + (i + 0.5) * dy, seg = [];
+    for (let j = 0; j + 1 < nx; j++) for (let i = 0; i + 1 < ny; i++) {
+      const a = E[j * ny + i], b = E[(j + 1) * ny + i], c = E[(j + 1) * ny + i + 1], d = E[j * ny + i + 1], pts = [];
+      if ((a >= L) !== (b >= L)) pts.push([X(j) + (L - a) / (b - a) * dx, Y(i)]);
+      if ((b >= L) !== (c >= L)) pts.push([X(j + 1), Y(i) + (L - b) / (c - b) * dy]);
+      if ((d >= L) !== (c >= L)) pts.push([X(j) + (L - d) / (c - d) * dx, Y(i + 1)]);
+      if ((a >= L) !== (d >= L)) pts.push([X(j), Y(i) + (L - a) / (d - a) * dy]);
+      if (pts.length >= 2) seg.push(pts[0], pts[1]);
+      if (pts.length === 4) seg.push(pts[2], pts[3]);
+    }
+    return seg;
+  }
+  // Result → Road: bird's-eye, x ahead to the right, y (left) up; lux on a vertical sensor 25 cm up facing the car
+  const ROAD_LUX = [0.3, 30];                          // colour scale: 2 decades of lux
+  function drawRoad(ui, cv, view) {
+    const box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d'), rd = roadModel(ui);
+    const B = [0, -15, 120, 15];                      // content: x 0–120 m ahead, y −15…15 m
+    const cap = view.cap; view.cap = 0;
+    if (!view.fitted || view.bounds.join() !== B.join()) view.fit(B, box.w, box.h);
+    else if (view.w !== box.w || view.h !== box.h) { if (view.zoomed) view.refitKeep(B, box.w, box.h); else view.fit(B, box.w, box.h); }
+    view.cap = cap; view.capAt = cap;
+    ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.clearRect(0, 0, box.w, box.h);
+    const S = (x, y) => view.toScreen(x, y), a = S(B[0], B[3]), b = S(B[2], B[1]);
+    ctx.fillStyle = '#0c0d10'; ctx.fillRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
+    document.getElementById('right-caption').textContent = 'Road · bird’s-eye · lux on a vertical sensor 25 cm up, facing the car (IIHS)';
+    const cb = document.getElementById('colorbar'); cb.innerHTML = '';
+    if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The road appears when the trace has been judged.', a[0] + 10, a[1] + 20); return; }
+    if (!rd.map) {
+      const Mp = rd.mdl.map({ nx: 240, ny: 60, x0: B[0], x1: B[2], y0: B[1], y1: B[3], z: RF.Road.IIHS.sensorZ, facing: 'car' });
+      const cvs = document.createElement('canvas'); cvs.width = Mp.nx; cvs.height = Mp.ny;
+      const g = cvs.getContext('2d'), im = g.createImageData(Mp.nx, Mp.ny), LUT = RF.Render.LUT, lo = ROAD_LUX[0], dec = Math.log10(ROAD_LUX[1] / lo);
+      for (let j = 0; j < Mp.nx; j++) for (let i = 0; i < Mp.ny; i++) {
+        const e = Mp.E[j * Mp.ny + i], t = e > lo ? Math.min(255, Math.round(255 * Math.log10(e / lo) / dec)) : 0, o = 4 * ((Mp.ny - 1 - i) * Mp.nx + j);
+        im.data[o] = LUT[3 * t]; im.data[o + 1] = LUT[3 * t + 1]; im.data[o + 2] = LUT[3 * t + 2]; im.data[o + 3] = 255;
+      }
+      g.putImageData(im, 0, 0); rd.map = { Mp, img: cvs, iso5: iso(Mp, RF.Road.IIHS.lux) };
+    }
+    ctx.imageSmoothingEnabled = true; ctx.drawImage(rd.map.img, a[0], a[1], b[0] - a[0], b[1] - a[1]);
+    ctx.save(); ctx.beginPath(); ctx.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]); ctx.clip();
+    // lanes (the chosen width): own lane's right edge, the centre line (dashed), the left road edge; car centred in its lane
+    const Lw = rd.lane, line = (y, dash, col) => { ctx.setLineDash(dash); ctx.strokeStyle = col; ctx.lineWidth = 1.5; const p = S(0, y), q = S(120, y); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); ctx.setLineDash([]); };
+    line(-Lw / 2, [], 'rgba(255,255,255,0.75)'); line(Lw / 2, [10, 8], 'rgba(242,180,65,0.8)'); line(1.5 * Lw, [], 'rgba(255,255,255,0.75)');
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '10px system-ui, sans-serif'; ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+    const lab = view.s * 10 < 34 ? 20 : 10;            // label every 20 m when 10 m is too narrow for its text
+    for (let x = 10; x < 120; x += 10) { const p = S(x, B[1]), q = S(x, B[3]); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); if (x % lab === 0) ctx.fillText(x + ' m', p[0] + 2, p[1] - 3); }
+    const sg = rd.map.iso5; ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let q = 0; q + 1 < sg.length; q += 2) { const p0 = S(sg[q][0], sg[q][1]), p1 = S(sg[q + 1][0], sg[q + 1][1]); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); }
+    ctx.stroke();
+    for (const L of rd.mdl.lamps) { const p = S(0.4, L[1]); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, 2 * Math.PI); ctx.fill(); }
+    const I3 = RF.Road.IIHS, R = rd.iihs, mark = (x, y, txt) => { const p = S(Math.max(x, 0.5), y); ctx.fillStyle = '#5aa7ff'; ctx.beginPath(); ctx.moveTo(p[0], p[1] - 6); ctx.lineTo(p[0] + 5, p[1]); ctx.lineTo(p[0], p[1] + 6); ctx.closePath(); ctx.fill(); ctx.fillStyle = 'rgba(12,13,16,0.8)'; const w = ctx.measureText(txt).width; ctx.fillRect(p[0] + 7, p[1] - 7, w + 4, 13); ctx.fillStyle = '#ffffff'; ctx.fillText(txt, p[0] + 9, p[1] + 3); };
+    mark(R.right, -I3.lane / 2, 'R edge 5 lx: ' + R.right + ' m'); mark(R.left, 1.5 * I3.lane, 'L edge 5 lx: ' + R.left + ' m');
+    ctx.restore();
+    const pos = (x) => (100 * Math.log10(x / ROAD_LUX[0]) / Math.log10(ROAD_LUX[1] / ROAD_LUX[0])).toFixed(1) + '%';
+    const bar = el('i', { style: 'background:' + RF.Render2D.colorbarCSS() }); for (const x of [1, 3, 5, 10]) bar.append(el('b', { style: 'left:' + pos(x) }));
+    const labels = el('div', { class: 'cb-labels ticks', title: 'Log scale, 2 decades. White line: 5 lx (the IIHS visibility level).' }, el('span', { class: 'end-l' }, ROAD_LUX[0] + ' lx'));
+    for (const x of [1, 5]) labels.append(el('span', { style: 'left:' + pos(x) }, x + (x === 5 ? ' lx' : '')));
+    labels.append(el('span', { class: 'end-r' }, ROAD_LUX[1] + ' lx')); cb.append(bar, labels);
+  }
+  // Far field → road: the lane lines and the horizon in degrees, as the right-hand lamp sees them on the car
+  function drawRoadOverlay(ctx, ui, view, a, b) {
+    const rd = roadModel(ui); if (!rd) return;
+    const L = rd.mdl.lamps[rd.mdl.lamps.length - 1], conv = (ui.spec.G && ui.spec.G.conv) || 'A', sh = rd.sh, mir = rd.mir;
+    const P = (x, y) => { const hv = RF.FarField.hvOf([x, y - L[1], -L[2]], conv); return view.toScreen(mir * hv[0] + sh[0], hv[1] + sh[1]); };
+    ctx.save(); ctx.beginPath(); ctx.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]); ctx.clip();
+    const Lw = rd.lane, poly = (y, dash, col) => { ctx.setLineDash(dash); ctx.strokeStyle = col; ctx.lineWidth = 1.3; ctx.beginPath(); let first = true; for (let x = 4; x <= 400; x *= 1.08) { const p = P(x, y); if (first) { ctx.moveTo(p[0], p[1]); first = false; } else ctx.lineTo(p[0], p[1]); } ctx.stroke(); ctx.setLineDash([]); };
+    poly(-Lw / 2, [], 'rgba(255,255,255,0.7)'); poly(Lw / 2, [8, 6], 'rgba(200,205,215,0.6)'); poly(1.5 * Lw, [], 'rgba(255,255,255,0.7)');   // grey centre line: amber dashes are the spec's
+    const hz = view.toScreen(0, sh[1])[1]; ctx.setLineDash([2, 4]); ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.moveTo(a[0], hz); ctx.lineTo(b[0], hz); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '10px system-ui, sans-serif'; ctx.fillText('horizon (lamp ' + L[2].toFixed(2) + ' m up)', a[0] + 4, hz - 3);
+    ctx.restore();
   }
   // ---------------------------------------------------------------- hover cards
   const KIND = { point: 'test point', zone: 'zone', sum: 'sum of points', gradient: 'cut-off sharpness scan', linearity: 'cut-off straightness' };
@@ -544,5 +653,5 @@
     box.append(el('span', { class: 'btn-pair' }, wt));
   }
 
-  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, editorOverlay, readout, leftTools, COL };
+  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, editorOverlay, readout, leftTools, COL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

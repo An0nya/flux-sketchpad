@@ -143,7 +143,7 @@
     const gt = document.getElementById('btn-generate-top');
     if (gt) { gt.disabled = !isPaint(m); gt.title = isPaint(m) ? 'Solve the reflector for the painted target' : 'Stamp and Profile modes rebuild live; Rebuild is for Paint and Spec modes'; }
     // Spec mode opens on its far-field view; leaving it, a far-field view falls back to the grid
-    if (m === 'D' && !ui.specSeen) { ui.specSeen = true; setDisplay('ff'); } else if (m !== 'D' && ui.display === 'ff') setDisplay('grid');
+    if (m === 'D' && !ui.specSeen) { ui.specSeen = true; setDisplay('ff'); } else if (m !== 'D' && (ui.display === 'ff' || ui.display === 'road')) setDisplay('grid');
     for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-selected', b.dataset.mode === m ? 'true' : 'false');
     const cap = { A: ['Intended — paint here', 'Simulated'], B: ['Direction from the source', 'Simulated · tap to stamp'], C: ['Profile cross-section — tap to add points', 'Simulated'], D: ['Intended — paint here · spec overlaid (from the source)', 'Simulated'] }[m];
     document.getElementById('left-caption').textContent = cap[0];
@@ -691,6 +691,10 @@
     ui.heatImg = R2.gridCanvas(vals, res, ui.heatImg, clip); ui.heatImg.clipValue = clip;   // also the 3D scene texture
     ui.selImgs = selImages();
     const sc = ui.store.scene, pres = sc.target.res;
+    if (sc.mode === 'D' && ui.display === 'road' && RF.SpecUI) {  // Spec mode's road view: content = metres on the road
+      RF.SpecUI.update(ui); RF.SpecUI.drawRoad(ui, document.getElementById('heat-canvas'), ui.vHeat); alignFigure('heat-canvas', ui.vHeat);
+      return;
+    }
     if (sc.mode === 'D' && ui.display === 'ff' && RF.SpecUI) {   // Spec mode's far-field view: content = degrees, not the paint grid
       RF.SpecUI.update(ui); RF.SpecUI.drawFarField(ui, document.getElementById('heat-canvas'), ui.vHeat); alignFigure('heat-canvas', ui.vHeat);
       ui.peakInfo = { lux: ui.peakInfo ? ui.peakInfo.lux : '—', res }; return;
@@ -892,6 +896,11 @@
       onDrag(st, x, y) { const uv = toUV(x, y); C.actions.moveStamp(ui.store, st.id, uv[0], uv[1]); ui.movedSomething = true; ui.store.commit({ deferA: true }); firePreview(st.id); ui.requestRun(true); },
       onTap(x, y, st, e) {
         const sc = ui.store.scene, add = !!(e && e.shiftKey);
+        if (sc.mode === 'D' && ui.display === 'road' && RF.SpecUI) {  // road view: lux at the tapped spot (25 cm up, facing the car)
+          const rd = RF.SpecUI.roadModel(ui), c = ui.vHeat.toContent(x, y);
+          if (rd && c[0] > 0) toast(c[0].toFixed(1) + ' m ahead, ' + Math.abs(c[1]).toFixed(1) + ' m ' + (c[1] >= 0 ? 'left' : 'right') + ' of lane centre: ' + rd.mdl.lux([c[0], c[1], RF.Road.IIHS.sensorZ]).toFixed(1) + ' lx');
+          return;
+        }
         if (sc.mode === 'D' && ui.display === 'ff' && RF.SpecUI) {   // far-field view: a spec item's card, else the intensity under the tap
           const it = RF.SpecUI.itemAt(ui, ui.vHeat, x, y);
           if (it) { ui.specPinned = it.id; ui.specSel = it.id; RF.SpecUI.render(ui); drawHeat(); RF.SpecUI.showCard(ui, cv, it, x, y); return; }
@@ -1557,6 +1566,7 @@
   }
   ui.setDisplay = setDisplay;
   ui.redrawSpec = function () { if (ui.run) drawHeat(); ui.sceneDirty = true; schedule(); };
+  ui.rerenderStats = function () { if (ui.run) renderStats(!ui.run.ctx.done); };
 
   // ---------------------------------------------------------------- boot
   function wireTopbar() {
