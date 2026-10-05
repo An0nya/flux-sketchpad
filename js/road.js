@@ -35,7 +35,9 @@
       let E = 0;
       for (const L of ls) {
         const d = [p[0] - L[0], p[1] - L[1], p[2] - L[2]], r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2], r = Math.sqrt(r2);
-        const cos = facing === 'up' ? -d[2] / r : d[0] / r;           // ground faces up; the IIHS sensor faces the car
+        // ground faces up; the IIHS sensor faces back along the road (straight road: −x); an array = the direction the
+        // light must travel to hit the sensor face-on (unit, away from the car)
+        const cos = facing === 'up' ? -d[2] / r : Array.isArray(facing) ? (d[0] * facing[0] + d[1] * facing[1] + d[2] * facing[2]) / r : d[0] / r;
         if (!(cos > 0)) continue;
         const hv = RF.FarField.hvOf(d, conv), c = I(hv[0], hv[1]);
         if (c > 0) E += c * cos / r2;
@@ -57,6 +59,26 @@
       const dem = { right: Math.max(0, 30 - 0.3 * right), left: Math.max(0, 27 - 0.45 * left) };
       return { right, left, glareMax, glareOver: glareMax > IIHS.glareMax, glare, demerits: dem };
     }
+    // IIHS curves: radius R (m), dir 'right' | 'left'. The car is on its lane centre heading +x; the lane centre bends
+    // with radius R; distance = travel along the arc (the protocol's). Sensors at the edges of the 3.3 m travel lane,
+    // 25 cm up, facing back along the road at their own spot; the shorter edge counts.
+    function curve(R, dir) {
+      const sg = dir === 'left' ? 1 : -1, hw = IIHS.lane / 2, z = IIHS.sensorZ, step = 0.5, far = 120;
+      const at = (s, side) => {                       // side: −1 right edge, +1 left edge
+        const a = s / R, c = [R * Math.sin(a), sg * R * (1 - Math.cos(a))], t = [Math.cos(a), sg * Math.sin(a)], nL = [-t[1], t[0]];
+        return { p: [c[0] + side * hw * nL[0], c[1] + side * hw * nL[1], z], n: [t[0], t[1], 0] };
+      };
+      const reachSide = (side) => {
+        const ok = (s) => { const q = at(s, side); return lux(q.p, q.n) >= IIHS.lux; };
+        if (!ok(IIHS.near)) return 0;
+        let s = IIHS.near; while (s + step <= far && ok(s + step)) s += step;
+        return s;
+      };
+      const right = reachSide(-1), left = reachSide(1), d = Math.min(right, left);
+      const dem = R >= 200 ? Math.max(0, 10.5 - 0.15 * d) : Math.max(0, 9 - 0.15 * d);   // Table 4: 250 m / 150 m radius
+      return { R, dir, right, left, d, demerits: dem };
+    }
+    function curves() { return [curve(250, 'right'), curve(250, 'left'), curve(150, 'right'), curve(150, 'left')]; }
     // illuminance map over the road for the bird's-eye view: x ahead × y left, at height z, sensor facing
     function map(m) {
       const nx = m.nx, ny = m.ny, E = new Float32Array(nx * ny);
@@ -66,7 +88,7 @@
       }
       return { E, nx, ny, x0: m.x0, x1: m.x1, y0: m.y0, y1: m.y1 };
     }
-    return { road, lamps: ls, lux, reach, iihs, map };
+    return { road, lamps: ls, lux, reach, iihs, curve, curves, map };
   }
   // the lookup's aim offset [dh, dv] (reading the beam at (H + dh, V + dv)): the spec judge's own (ev.shift), or a
   // manual R48-style inclination in % that puts the lamp's cut-off (cutV, where the judge found it) at that slope

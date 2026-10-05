@@ -564,7 +564,7 @@
       const r = RF.FarField.intensityAt(g, H, V, g === G ? k : Math.max(k, g.step)); return r.cd > 0 ? r.cd : 0;
     };
     const mdl = RF.Road.model({ road, conv: G.conv || md(ui).conv || 'A', I });
-    s.road = { mdl, sh, mir, iihs: mdl.iihs(), lane: RF.Road.laneWidth(road, md(ui).preset), map: null }; s.roadKey = key;
+    s.road = { mdl, sh, mir, iihs: mdl.iihs(), curves: mdl.curves(), lane: RF.Road.laneWidth(road, md(ui).preset), map: null }; s.roadKey = key;
     return s.road;
   }
   // a tiny marching squares for one level on a grid E[j·ny + i] (j along x, i along y) → segment end points in (x, y)
@@ -621,6 +621,9 @@
     const I3 = RF.Road.IIHS, R = rd.iihs, mark = (x, y, txt) => { const p = S(Math.max(x, 0.5), y); ctx.fillStyle = '#5aa7ff'; ctx.beginPath(); ctx.moveTo(p[0], p[1] - 6); ctx.lineTo(p[0] + 5, p[1]); ctx.lineTo(p[0], p[1] + 6); ctx.closePath(); ctx.fill(); ctx.fillStyle = 'rgba(12,13,16,0.8)'; const w = ctx.measureText(txt).width; ctx.fillRect(p[0] + 7, p[1] - 7, w + 4, 13); ctx.fillStyle = '#ffffff'; ctx.fillText(txt, p[0] + 9, p[1] + 3); };
     mark(R.right, -I3.lane / 2, 'R edge 5 lx: ' + R.right + ' m'); mark(R.left, 1.5 * I3.lane, 'L edge 5 lx: ' + R.left + ' m');
     ctx.restore();
+    // IIHS curves (not drawn: the view is the straightaway): 5 lx reach on the shorter travel-lane edge
+    const cl = rd.curves.map((c) => c.R + (c.dir === 'right' ? 'R' : 'L') + ' ' + c.d + ' m').join(' · ');
+    ctx.font = '10px system-ui, sans-serif'; const tw = ctx.measureText('curves: ' + cl).width; ctx.fillStyle = 'rgba(12,13,16,0.8)'; ctx.fillRect(a[0] + 2, a[1] + 2, tw + 8, 14); ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillText('curves: ' + cl, a[0] + 6, a[1] + 12);
     const pos = (x) => (100 * Math.log10(x / ROAD_LUX[0]) / Math.log10(ROAD_LUX[1] / ROAD_LUX[0])).toFixed(1) + '%';
     const bar = el('i', { style: 'background:' + RF.Render2D.colorbarCSS() }); for (const x of [1, 3, 5, 10]) bar.append(el('b', { style: 'left:' + pos(x) }));
     const labels = el('div', { class: 'cb-labels ticks', title: 'Log scale, 2 decades. White line: 5 lx (the IIHS visibility level).' }, el('span', { class: 'end-l' }, ROAD_LUX[0] + ' lx'));

@@ -30,5 +30,14 @@ const road1 = { two: false, mountH: 0.65, spacing: 1.4 };
   ok('aim: spec = the judge’s shift', s1[0] === 0.2 && s1[1] === 0.05, JSON.stringify(s1));
   ok('aim: manual −1 % puts the cut-off at 0.573° D', Math.abs((-0.52 - s2[1]) + R.PCT) < 1e-12, 'cut-off on the road at ' + (-0.52 - s2[1]).toFixed(4) + '° (want −' + R.PCT.toFixed(4) + '°)'); }
 
+
+// 6. curves: a huge radius reproduces the straight right edge (same line, same facing); a uniform beam from a
+//    symmetric lamp pair mirrors (right curve's right edge = left curve's left edge)
+{ const m = R.model({ road: { two: true, mountH: 0.65, spacing: 1.4 }, I: uniform(30000) });
+  const big = m.curve(1e7, 'right'), straight = m.reach(-R.IIHS.lane / 2, R.IIHS.sensorZ, R.IIHS.near, 120, 0.5);
+  ok('curve with R = 10,000 km = the straight edge', big.right === straight, 'curve ' + big.right + ' m, straight ' + straight + ' m');
+  const cr = m.curve(150, 'right'), cl = m.curve(150, 'left');
+  ok('uniform pair mirrors: right curve R edge = left curve L edge', cr.right === cl.left && cr.left === cl.right, '150R: R ' + cr.right + ' / L ' + cr.left + ' m; 150L: R ' + cl.right + ' / L ' + cl.left + ' m');
+  ok('a curve reaches less than the straight edge', cr.d < straight, '150R min ' + cr.d + ' m < straight ' + straight + ' m'); }
 console.log(fails ? fails + ' FAILED' : 'all road checks passed');
-process.exit(fails ? 1 : 0);
+process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown
