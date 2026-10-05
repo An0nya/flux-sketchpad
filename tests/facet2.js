@@ -63,4 +63,4 @@ const base = { type: 'facet', id: 'f', P: [0, 0, 30], S0, Z: [800, 0, 400], flat
   const a = RF.Geo.compile([f]).D, b = RF.Geo.compile([g]).D;
   ok('JSON round trip compiles byte-identically (a collimated axis included)', a.every((x, i) => x === b[i]));
 }
-process.exit(fails ? 1 : 0);
+process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown

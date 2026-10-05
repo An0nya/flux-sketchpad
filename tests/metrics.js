@@ -21,4 +21,4 @@ for (const [rs, rp] of [[50, 100], [500, 100], [30, 100], [100, 100], [70, 30]])
   const tot = G.reduce((s, x) => s + x, 0), mn = Math.min(...G), mx = Math.max(...G);
   ok('uniform sim ' + rs + '² → paint ' + rp + '²: conserved, no holes', Math.abs(tot - rs * rs) < 1e-6 * rs * rs && mn > 0 && mx / mn < 1 + 1e-9, 'min/max ' + (mn / mx).toFixed(6));
 }
-process.exit(fails ? 1 : 0);
+process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown

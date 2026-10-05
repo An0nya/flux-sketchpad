@@ -25,4 +25,4 @@ for (const c of list) {
 }
 console.log(`\n${list.length - fails - skipped} passed, ${fails} failed, ${skipped} skipped — ${((Date.now() - t00) / 1000).toFixed(1)} s total, node ${process.version}`);
 if (jsonOut) fs.writeFileSync(jsonOut, JSON.stringify({ when: new Date().toISOString(), node: process.version, results: out }, null, 1));
-process.exit(fails ? 1 : 0);
+process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown

@@ -24,4 +24,4 @@ if (JSON.stringify(a) !== JSON.stringify(c) || b.rows[2] <= a.rows[2]) bad('expa
 const g = L.compute({ split: 'x', rowSplit: 7, collapsed: null, expanded: 'nope' }, 1200, 700);
 if (g.cols.some((v) => !isFinite(v))) bad('sanitize');
 console.log((fails ? '[FAIL] ' + fails + ' of ' : '[PASS] all ') + n + ' layouts fill the space; collapsed panes stay reachable; expand dominates and restores');
-process.exit(fails ? 1 : 0);
+process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown

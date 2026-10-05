@@ -71,4 +71,4 @@ ok('brightness theorem: no facet\'s p90 intensity exceeds its ceiling beyond noi
   const fn = F(perfect, 1e3);
   ok('fidelity: noise ceiling falls when rays are scarce', fp.noiseCeiling > 0.999 && fn.noiseCeiling < 0.9, 'ceiling ' + fp.noiseCeiling.toFixed(3) + ' → ' + fn.noiseCeiling.toFixed(3) + ' at ' + fn.raysPerCell.toFixed(1) + ' rays/cell');
 }
-process.exit(fails ? 1 : 0);
+process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown

@@ -92,4 +92,4 @@ for (const k of pick) {
 // cost of recording (informational; the view already records u, v, E)
 { const t = (rec) => { const Q = E.prepare(sc, surfs); Q.recordHits = rec; E.runSync(Q, 20000); const a = []; for (let i = 0; i < 3; i++) a.push(E.runSync(Q, N).elapsed); return a.sort((x, y) => x - y)[1]; };
   const off = t(false), on = t(true); console.log('[INFO] ' + N + ' rays: recording off ' + off.toFixed(0) + ' ms, on ' + on.toFixed(0) + ' ms'); }
-process.exit(fails ? 1 : 0);
+process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown

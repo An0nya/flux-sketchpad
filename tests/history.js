@@ -26,4 +26,4 @@ const n0 = h.past.length; C.setControl(st, 'A.budget', 200); t += 2000; h.checkp
 ok('rapid edits of one control coalesce', h.past.length - n0 === 1 && /→ 250$/.test(h.past[h.past.length - 1].label));
 h.undo(H.intent(st.scene)); C.setControl(st, 'A.refl', 0.5); t += 2000; h.checkpoint(H.intent(st.scene), t);
 ok('new edit after undo clears redo', h.future.length === 0);
-process.exit(fails ? 1 : 0);
+process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown

@@ -310,4 +310,4 @@ function fakeG(fn, win, step) {
   RF.SourcePresets.apply(d, 'generic'); check('applying a preset without a dome removes it', !d.dome);
 }
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
-process.exit(fails ? 1 : 0);
+process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown

@@ -125,4 +125,4 @@ for (const k of [15, 3]) {
   ok('host facts override a solver\'s own claims', rep.placed === 1 && rep.warnings.some((w) => /outside the envelope/.test(w)), 'placed ' + rep.placed + ' (claimed 999); warns: ' + rep.warnings.join(' | ').slice(0, 80));
   let threw = false; try { S.register({ id: 'x', modes: ['paint'], settings: [{ key: 'k', type: 'slider', default: 1 }], solve() {} }); } catch (e) { threw = true; }
   ok('register rejects a malformed settings schema', threw); }
-process.exit(fails ? 1 : 0);
+process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown
