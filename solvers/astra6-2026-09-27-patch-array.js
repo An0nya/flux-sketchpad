@@ -1,7 +1,8 @@
 /* Bundled model solver: GPT-6 Astra (Codex), Flux solver benchmark run 2026-09-27 (workspace work-codex-astra6-flux-solver-20260927-0207).
  * Copied verbatim from that run's solvers/solver.js (sha256 c64fd4cd48ce…), wrapped in a function scope so several
  * bundled files can share one worker.
- * Not edited otherwise: bugs and all, it is the record of what the model wrote. */
+ * Not edited otherwise: bugs and all, it is the record of what the model wrote.
+ * Exception (2026-10-05): display-only tools.preview calls added for Watch solve (patch-array-auto's measure). */
 (function () {
 /* Static finite-source reflector design. No tracing or sampled rays in solve(). */
 (function () {
@@ -233,10 +234,19 @@
         onPaint:report.fidelity ? report.fidelity.onPaint : 0,
         peakCd:report.peakCd || 0, peakNoise:report.peakNoise || 0
       });
-      const measure = async (out, rays) => {
+      // Watch solve (display only): show each measured candidate with the trace it already has, at most once a
+      // second.  Reads out/r only, so the result is the same with or without previews.
+      let lastShow = 0;
+      const show = (out, r, label) => {
+        if (!tools || !tools.preview || tools.preview.none) return;
+        const t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
+        try { tools.preview(out.surfaces, { label, trace: r, note: 'auto-tuner candidate (static settings), traced' }); } catch (e) { /* display only */ }
+      };
+      const measure = async (out, rays, label) => {
         raysUsed += rays;
         const r = await tools.trace(out.surfaces,{rays,seed});
         if(tools.progress)tools.progress(Math.min(0.98,raysUsed/(12*screenRays+5*finalRays)));
+        show(out, r, label);
         return compact(r);
       };
       const add = async (change, output) => {
@@ -245,7 +255,7 @@
         if(seen.has(key)) return; seen.add(key);
         const out = output || base.solve(input,chosen);
         if(!out.surfaces.length || !valid(out)){rejected++;return;}
-        const report = await measure(out,screenRays);
+        const report = await measure(out,screenRays,'screen '+(trials.length+1));
         trials.push({index:trials.length,settings:chosen,output:out,screen:report});
       };
       await add({},baseline);
@@ -274,7 +284,7 @@
         const best = [...trials].sort((a,b)=>b.screen[key]-a.screen[key]||a.index-b.index)[0];
         finalists.add(best);
       }
-      for(const t of finalists)t.final=await measure(t.output,finalRays);
+      { let fi = 0; for(const t of finalists)t.final=await measure(t.output,finalRays,'finalist '+(++fi)+'/'+finalists.size); }
       const list = [...finalists], reference = trials[0].final;
       const credible = list.filter(t=>t.final.onPaint>=0.25*reference.onPaint);
       const bestF = Math.max(...credible.map(t=>t.final.fidelity));
