@@ -505,6 +505,11 @@
     const row = document.getElementById('min-row'), mb = document.getElementById('min-bar');
     if (row) {
       const t = (v, l, tip, cls) => el('div', { class: 'tile ' + (cls || ''), title: tip }, el('b', {}, v), el('span', {}, l));
+      // which solver made this design (Auto: the one it picked) — transparency, not a setting
+      const solverName = (sc) => { const id = sc.solve && sc.solve.id, d = id && RF.Solvers.get(id); return d ? d.name : (id || 'solver'); };
+      const solverLabel = (sc, rA) => rA.auto && rA.auto.picked ? 'Auto → ' + rA.auto.picked : solverName(sc);
+      const solverTip = (sc, rA) => rA.auto ? 'Made by Auto, which judged the painting "' + rA.auto.kind + '" and picked ' + (rA.auto.picked || 'a solver') + ' (Details has why).' : 'Made by ' + solverName(sc) + '.';
+
       const delivered = ((E.direct || 0) + (E.reflected || 0)) / em;
       const rA = ui.store.reports.A, sc = ui.store.scene;
       row.innerHTML = '';
@@ -522,7 +527,7 @@
       if (fd) row.append(t(st.uniformity.toFixed(2), 'uniformity', 'U₀ = 5th percentile ÷ mean of delivered ÷ painted. Sees only the dim end (holes), not hotspots. Noise ceiling ' + st.noiseCeiling.toFixed(2) + '.'));
       row.append(el('span', { class: 'tile-sep' }));
       row.append(isPaint(sc.mode) && rA && !rA.error
-        ? t(rA.placed + ' / ' + sc.modeA.budget, 'facets', 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : ''))
+        ? t(rA.placed + ' / ' + sc.modeA.budget, 'facets · ' + solverLabel(sc, rA), 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : '') + ' ' + solverTip(sc, rA), 'facets')
         : t(String(st.surfaces), 'surfaces', 'Surfaces in the scene.'));
       row.append(el('div', { class: 'tile rays', title: 'Rays traced · trace time (tracing work only, not total wait)' + (extra.preview ? ' · coarse preview while dragging' : '') },
         el('b', {}, st.rays.toLocaleString() + (extra.running ? ' …' : '')), el('span', {}, 'rays ', el('small', { class: 'ms' }, st.timeMs.toFixed(0) + ' ms'))));

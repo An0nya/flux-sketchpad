@@ -457,3 +457,5 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .notices .solve-fail button { font-size: 12px; min-height: 24px; padding: 0 var(--s-8); }
 /* a solve's PREVIEW badge takes the corner: the far-field toggles step below it */
 .canvas-wrap:has(> .watch-badge:not([hidden])) > .ff-tools { top: 30px; }
+/* the facets tile names the solver: keep it to one short line */
+.tile.facets span { max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -174,7 +174,7 @@
         const r = await A.solve(pick, pick.solver === 'fill-fix' ? Object.assign({}, pick.over) : pick.over, row.b, 0.7, 0.25);
         const l = A.look(goal, r.out, 1000000, opt);
         notes.push('final design (' + pick.name + ', full quality): ' + r.out.surfaces.length + ' facets, fidelity ' + pc(l.ev.fid) + '%, ' + pc(l.ev.onPaint) + '% on paint' + (l.ev.gates.pass ? '' : '; ' + goal + ' gates: ' + l.ev.gates.why.join(', ')));
-        out = r.out; out.extras = Object.assign({}, out.extras, { auto: { kind: goal, ladder: f.rows, level: f.level, final: { fid: l.ev.fid, onPaint: l.ev.onPaint } } });
+        out = r.out; out.extras = Object.assign({}, out.extras, { auto: { kind: goal, picked: pick.name, ladder: f.rows, level: f.level, final: { fid: l.ev.fid, onPaint: l.ev.onPaint } } });
       } else if (S.effort === 'search') {
         const menu = (MENUS[goal] || MENUS.general).slice();
         const res = await tune(goal, menu, A, opt), win = res.finals[0];
@@ -183,7 +183,7 @@
         notes.push('time: cheap pass ' + (res.tCheap / 1000).toFixed(1) + ' s, finalists ' + (res.tFinal / 1000).toFixed(1) + ' s');
         notes.push('finalists at full quality and 1M rays: ' + res.finals.map(line).join(' | '));
         notes.push('winner: ' + win.label + (win.solved.fell ? ' (fell back: the picked solver is not loaded)' : '') + '; ' + (win.veto ? 'every finalist failed a gate, this failed the least' : 'passed every gate') + '.');
-        out = win.solved.out; out.extras = Object.assign({}, out.extras, { auto: { kind: goal, winner: win.label, solver: win.solved.id, finalists: res.finals.map((f) => ({ label: f.label, score: f.score, veto: f.veto, fid: f.ev.fid, onPaint: f.ev.onPaint })) } });
+        out = win.solved.out; out.extras = Object.assign({}, out.extras, { auto: { kind: goal, picked: win.label, winner: win.label, solver: win.solved.id, finalists: res.finals.map((f) => ({ label: f.label, score: f.score, veto: f.veto, fid: f.ev.fid, onPaint: f.ev.onPaint })) } });
       } else if (S.goal === 'auto' && (goal === 'photo' || goal === 'hotspot') && feat.levels >= 6 && feat.peakStands >= 3) {
         // Photo or beam?  In linear light a photo's bright subject stands over a dim rest just like a hotspot over its fill, and
         // no feature separated them (an imported beamshot looks like a dark photo).  They want different solvers (dish-fit won
@@ -198,14 +198,14 @@
         notes.push('photo or beam? not clear from the painting (' + feat.levels + ' levels, brightest ' + feat.peakStands.toFixed(1) + '× the typical level), so both were tried at 250k rays: ' + ranked.map((c) => c.label + ' ' + pc(c.ev.fid) + '% fidelity, ' + pc(c.ev.onPaint) + '% on paint').join(' vs '));
         if (win && win.label === 'dish-fit') { out = d.out; goal = 'photo'; notes.push('picked dish-fit (' + (d.ms / 1000).toFixed(1) + ' s)'); }
         else { A.prog(0.5, 'solving with Fill & fix (defaults)'); const r = await A.solve(PICKS.hotspot, PICKS.hotspot.over, 0, 0.5, 0.48); out = r.out; goal = 'hotspot'; notes.push('picked Fill & fix (defaults), re-solved at full quality (' + (r.ms / 1000).toFixed(1) + ' s)'); }
-        out.extras = Object.assign({}, out.extras, { auto: { kind: goal, tiebreak: ranked.map((c) => ({ label: c.label, fid: c.ev.fid, onPaint: c.ev.onPaint })) } });
+        out.extras = Object.assign({}, out.extras, { auto: { kind: goal, picked: goal === 'photo' ? 'dish-fit' : 'Fill & fix', tiebreak: ranked.map((c) => ({ label: c.label, fid: c.ev.fid, onPaint: c.ev.onPaint })) } });
       } else {
         let pick = PICKS[goal] || PICKS.general;
         if (goal === 'cutoff' && A.ctx.kernelCells > CUTOFF_MAX_KERNEL) { pick = PICKS.general; notes.push('the LED image is ' + A.ctx.kernelCells.toFixed(1) + ' cells wide (over ' + CUTOFF_MAX_KERNEL + '): "most light" would spill, using the defaults'); }
         A.prog(0.05, 'solving with ' + pick.name);
         const r = await A.solve(pick, pick.over, 0, 0.05, 0.9);
         notes.push('picked ' + pick.name + (r.fell ? ' (not loaded here: fell back to Fill & fix)' : '') + '; effort quick: one solve, ' + (r.ms / 1000).toFixed(1) + ' s');
-        out = r.out; out.extras = Object.assign({}, out.extras, { auto: { kind: goal, solver: r.id, ms: r.ms } });
+        out = r.out; out.extras = Object.assign({}, out.extras, { auto: { kind: goal, picked: r.fell ? 'Fill & fix (fallback)' : pick.name, solver: r.id, ms: r.ms } });
       }
       for (const r of recs()) notes.push('Recommendation: ' + r);
       out.notes = notes.concat((out.notes || []).map((x) => '· ' + x));
