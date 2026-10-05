@@ -541,6 +541,7 @@
       const quick = Object.assign({}, S, { sharp: sh, sweeps: 1, polish: 1, search: false });
       const out = solveOnce(input, quick, { progress: (f, st) => prog(0.5 * (i + f) / opts.length, 'shell ' + (i + 1) + '/' + opts.length + ' · ' + (st || '')) });
       res.push({ sh, v: out.pred.fid + S.lightWeight * out.pred.onPaint, pred: out.pred });
+      if (tools && tools.preview) tools.preview(out.surfaces, { label: 'shell ' + (i + 1) + '/' + opts.length, note: 'sharp ' + sh + ': predicted fidelity ' + (100 * out.pred.fid).toFixed(1) + '% (model, untraced)' });   // display only
     });
     res.sort((a, b) => b.v - a.v || a.sh - b.sh);
     const out = solveOnce(input, Object.assign({}, S, { sharp: res[0].sh, search: false }), { progress: (f, st) => prog(0.5 + 0.5 * f, 'final · ' + (st || '')) });

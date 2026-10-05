@@ -178,6 +178,28 @@ Rules for parts:
 `input.source`, which older solvers keep reading. Every emitter has its own LED clearance (the host checks each).
 Traces draw each ray's emitter in proportion to power, so every ray carries the same energy.
 
+## Watching a solve (`tools.preview`, optional)
+
+An iterating solver can let the user watch it work: call **`tools.preview(surfaces, info)`** whenever it has a
+candidate worth seeing (each candidate a tuner tries, each calibration / balance round, the result of a search phase).
+The app draws it in the Scene and Optics views (tinted, badged `PREVIEW · <label>`) and, if you pass a grid, on the
+Result map, until your real result arrives and replaces it. If the solve never finishes (the 120 s budget, a crash,
+an error, the user's Stop), the last preview stays on screen marked *not applied*, with a **Use last candidate**
+button that runs it through the same checks as a result (envelope, LED clearance, facet budget, `needs.bounces`).
+
+- `surfaces`: the candidate's geometry, as you would return it. It is copied when sent, not at the call (a dropped
+  call costs nothing), so if you mutate those same objects in place afterwards the preview may show the newer state.
+- `info` (all optional): `label` ('round 3/4', 'candidate 5/12'; ≤ 60 chars), `note` (one line), `needs: { bounces }`
+  (as in the output: honoured if the candidate is applied), and either `trace` (a `tools.trace` result: the app takes
+  its `grid`/`res` and a summary of `fidelity` / `spec` counts, e.g. "2 fails · 5 unsure") or `grid` + `res` yourself.
+- **Display only.** It returns nothing, never throws, and must not change what you compute: a solver that calls it
+  and one that doesn't return identical output. Don't trace *for* a preview: pass what you already have (geometry
+  alone is fine).
+- **Throttled by the host** (≤ 4 per second; intermediate calls are dropped, the latest is always delivered before your
+  result), so calling it per iteration is fine. The cost: one structured copy of the surfaces (+ one grid) per preview actually sent.
+- Headless hosts (`tools/run-solver.js`, the benches) and the built-in synchronous path make it a no-op. Older
+  hosts may lack it: call it as `if (tools.preview) tools.preview(…)`.
+
 ## What the app checks and scores (not you)
 
 Placed / unplaced counts, every surface inside the envelope and outside the LED clearance (measured on

@@ -176,6 +176,8 @@
       const t0 = nowMs(), n = settings.ior, nC = settings.coreIor, env = input.envelope, keep = env.keepOut || 0;
       const srcs = (input.sources && input.sources.length ? input.sources : [input.source]);
       const notes = [], spec = !!input.spec, canTrace = tools && typeof tools.trace === 'function';
+      // display only (SOLVER_API.md § "Watching a solve"): what was just built and traced; never changes the result
+      const show = (b, structure, label, tr) => { if (tools && tools.preview) tools.preview(b.surfaces, { label, trace: tr || undefined, needs: { bounces: bounces(structure) } }); };
       // ---- paint → target points (u = right, v = up)
       const T = RF.Engine.targetFrame(Object.assign({}, input.target, { res: input.paint.res }));
       const res = input.paint.res, paint = input.paint.cells, cellMm = input.target.size / res, pts0 = [];
@@ -346,7 +348,7 @@
       if (structure === 'auto') {
         if (!canTrace) { structure = 'single'; notes.push('structure auto: no tracer available, single body'); }
         else {
-          const cand = ['single', 'partitioned'].map((s) => { const b = build(w1, s, settings.blur), tr = traceOf(b, s); return { s, b, tr, sc: score(tr), w: w1, blur: settings.blur }; });
+          const cand = ['single', 'partitioned'].map((s) => { const b = build(w1, s, settings.blur), tr = traceOf(b, s); show(b, s, 'structure: ' + s, tr); return { s, b, tr, sc: score(tr), w: w1, blur: settings.blur }; });
           cand.sort((a, b) => b.sc - a.sc || (a.s < b.s ? -1 : 1));
           structure = cand[0].s; best = cand[0];
           notes.push('structure auto: traced single (' + cand.find((c) => c.s === 'single').sc.toFixed(3) + ') vs partitioned (' + cand.find((c) => c.s === 'partitioned').sc.toFixed(3) + ') → ' + structure);
@@ -366,6 +368,7 @@
         // blur awareness follows the traced balance: lit gaps → shrink the regions more; too dim inside → less
         const fd = cur.tr.fidelity, blur = Math.min(2, Math.max(0.3, cur.blur * (fd && fd.gapsDark < fd.within ? 1.2 : 0.88)));
         const b = build(w, structure, blur), tr = traceOf(b, structure), cand = { s: structure, b, tr, sc: score(tr), w, blur };
+        show(b, structure, 'calibration ' + (r + 1) + '/' + settings.calib, tr);
         log.push(cand.sc);
         if (cand.sc > best.sc) best = cand;
         cur = cand;

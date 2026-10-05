@@ -435,3 +435,12 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 }
 
 .rows-in { width: 100%; min-height: 72px; background: #0d151e; border: 1px solid var(--line); border-radius: var(--r); color: inherit; font: 12px/1.4 ui-monospace, monospace; padding: var(--s-4); }
+/* watching a solve (tools.preview): the badge over each view while a preview is drawn, and the notice a solve that
+   stopped without a result leaves (it stays until dismissed, unlike the fading notices) */
+.watch-badge { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); z-index: 3; pointer-events: auto; max-width: calc(100% - 80px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 600 10.5px/1.6 system-ui; letter-spacing: .04em; color: #f3d7f6; background: rgba(60,22,70,.82); border: 1px solid rgba(226,120,236,.7); border-radius: 4px; padding: 0 8px; }
+.watch-badge.failed { color: #ffd9b0; background: rgba(70,40,14,.86); border-color: rgba(255,154,61,.8); }
+.watch-badge[hidden] { display: none; }
+.notices .solve-fail { pointer-events: auto; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-4) var(--s-8); background: rgba(40,26,14,.96); color: var(--ink);
+  border-left: 3px solid var(--warn); padding: var(--s-4) var(--s-8); border-radius: 0 6px 6px 0; margin-top: var(--s-4); font-size: 12px; }
+.notices .solve-fail button { font-size: 12px; min-height: 24px; padding: 0 var(--s-8); }

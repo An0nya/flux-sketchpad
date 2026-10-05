@@ -566,6 +566,7 @@
   function renderNotices(ui) {
     const box = document.getElementById('notices');
     box.innerHTML = '';
+    if (ui.renderSolveFail) ui.renderSolveFail(box);   // a solve that stopped without a result: stays until dismissed (ui.js)
     // notices live NOTICE_TTL ms (fading over the last second); the same warnings stay in the limits report
     const NOTICE_TTL = 8000, now = Date.now();
     const live = ui.store.notices.filter((n) => now - n.t < NOTICE_TTL).slice(0, 4);

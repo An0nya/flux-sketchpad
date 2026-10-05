@@ -42,10 +42,18 @@
   function regenerateA(store) { return applySolve(store, RF.Solvers.runSync(store.scene)); }
   // loaded solvers run in a worker: resolve to the same report (null if the scene changed meanwhile)
   // isCurrent(): false once a newer solve was requested, so a late result can't overwrite it (or its solver choice)
-  async function regenerateAAsync(store, onProgress, isCurrent) {
-    const v = store.version, id = RF.Solvers.current(store.scene), r = await RF.Solvers.runAsync(store.scene, null, onProgress);
+  // onPreview(msg): the solver's display-only previews (tools.preview), throttled by the worker
+  async function regenerateAAsync(store, onProgress, isCurrent, onPreview) {
+    const v = store.version, id = RF.Solvers.current(store.scene), r = await RF.Solvers.runAsync(store.scene, null, onProgress, onPreview);
     if (isCurrent && !isCurrent()) return null;
     return store.version === v && RF.Solvers.current(store.scene) === id ? applySolve(store, r) : null;
+  }
+  // "Use last candidate": a stopped solve's last preview, through the SAME path as a result (the host's verify, then
+  // applySolve: envelope / clearance / budget facts and needs.bounces apply).  meta = RF.Solvers.metaOf at solve start.
+  function applyCandidate(store, p, meta, note) {
+    const out = { surfaces: p.surfaces || [], notes: [note || ('Last preview candidate of ' + meta.id + (p.label ? ' (' + p.label + ')' : '') + ', applied after the solve stopped: not the solver\'s final answer.')] };
+    if (p.needs && p.needs.bounces > 0) out.needs = { bounces: p.needs.bounces };
+    return applySolve(store, { output: out, facts: RF.Solvers.verify(store.scene, out), meta: Object.assign({}, meta, { candidate: p.label || true }), ms: 0 });
   }
   function applySolve(store, r) {
     const sc = store.scene, out = r.output || {}, f = r.facts, extras = out.extras || {};
@@ -333,5 +341,5 @@
     return { P, ctx, hash: RF.Engine.gridHash(ctx), stats: RF.Engine.stats(ctx) };
   }
 
-  RF.Controller = { createStore, regenerateA, regenerateAAsync, CONTROLS, BY_ID, setControl, controlVisible, actions, simulate, ensureBounces, selStamp };
+  RF.Controller = { createStore, regenerateA, regenerateAAsync, applyCandidate, CONTROLS, BY_ID, setControl, controlVisible, actions, simulate, ensureBounces, selStamp };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

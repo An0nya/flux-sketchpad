@@ -601,6 +601,7 @@
         const out = design(over), tr = await tools.trace(out.surfaces, { rays, seed }), f = tr.fidelity || {};
         const r = { over, out, rays, F: f.fidelity || 0, op: f.onPaint || 0, pk: tr.peakCd || 0 };
         cache.set(key, r); done++; if (tools.progress) tools.progress(Math.min(0.99, done / total));
+        if (tools.preview) tools.preview(out.surfaces, { label: 'candidate ' + done + '/' + total, trace: tr, note: JSON.stringify(over) });   // display only: the trace it already made
         return r;
       };
       const J = (r) => {

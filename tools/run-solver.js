@@ -37,7 +37,7 @@ parentPort.on('message', async (m) => {
     if (m.type === 'load') { const ids = [], reg = RF.Solvers.register; RF.Solvers.register = (def) => { const id = reg(def); ids.push(id); return id; };   // what THIS file registers, even an id already loaded (e.g. a copy of spoke)
       try { vm.runInThisContext(m.src, { filename: m.name }); } finally { RF.Solvers.register = reg; } const d = [...new Set(ids)].map((id) => RF.Solvers.get(id)); parentPort.postMessage({ type: 'loaded', defs: d.map((x) => ({ id: x.id, name: x.name, version: x.version, modes: x.modes, settings: x.settings, declaresLimits: x.declaresLimits })) }); return; }
     const def = RF.Solvers.get(m.id); let rays = 0;
-    const tools = { progress() {}, budget: m.budget, scene: m.problem, trace: (s, o) => { rays += Math.max(1, (o && o.rays) | 0 || 20000); if (rays > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays + ')'); return RF.Solvers.trace(m.problem, s, o); } };
+    const tools = { progress() {}, preview() {}, budget: m.budget, scene: m.problem, trace: (s, o) => { rays += Math.max(1, (o && o.rays) | 0 || 20000); if (rays > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays + ')'); return RF.Solvers.trace(m.problem, s, o); } };
     inStatic = !!workerData.static && !/-auto$/.test(m.id);
     let out; const t0 = process.hrtime.bigint();
     try { out = await def.solve(m.input, m.settings, tools); } finally { inStatic = false; }

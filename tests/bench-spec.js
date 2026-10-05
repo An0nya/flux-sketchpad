@@ -47,7 +47,7 @@ const k = (x) => (!(x > 0) ? '0' : x >= 1e4 ? Math.round(x / 1000) + 'k' : (x / 
     const sc = scene(fix); sc.solve = { id }; sc.solverSettings = { [id]: over };
     const def = RF.Solvers.get(id); if (!def) { console.log('no solver', id); continue; }
     const input = RF.Solvers.inputOf(sc), problem = Object.assign(RF.U.deepCopy({ source: sc.source, envelope: sc.envelope, sim: sc.sim, modeD: sc.modeD, mode: 'D' }), { target: input.target, modeA: { paint: input.paint.cells } });
-    const tools = { progress() {}, budget: { rays: Infinity, ms: Infinity }, scene: problem, trace: (s, o) => RF.Solvers.trace(problem, s, o) };
+    const tools = { progress() {}, preview() {}, budget: { rays: Infinity, ms: Infinity }, scene: problem, trace: (s, o) => RF.Solvers.trace(problem, s, o) };
     const t0 = Date.now(); let out, err = null;
     try { out = await def.solve(input, RF.Solvers.settingsOf(sc, id), tools); } catch (e) { err = String(e.message || e); }
     const row = { fixture: fix, solver: sv, preset, led: args.led || 'generic', solveMs: Date.now() - t0 };

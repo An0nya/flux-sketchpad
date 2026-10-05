@@ -32,7 +32,7 @@
   setRamp('teal');
   // Astra draws the reflector in translucent teal with thin light edges (its amber is for source + rays).
   // A = teal, B = pale sand (not the ray amber), C = violet — differ in hue and lightness (protan-safe).
-  const GROUP_COL = { A: [136, 215, 212], B: [214, 196, 160], C: [183, 166, 239], L: [143, 184, 255], M: [170, 180, 190] };
+  const GROUP_COL = { A: [136, 215, 212], B: [214, 196, 160], C: [183, 166, 239], L: [143, 184, 255], M: [170, 180, 190], P: [226, 120, 236] };   // P = a running solve's preview (tools.preview), never a scene group
   const rgba = (c, a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
 
   // ---------------------------------------------------------------- camera

@@ -1162,6 +1162,8 @@
     const msFit = Date.now() - tFit;
     // ---- calibration: patterns from real traces of the built design, then a polish of the aims on them
     let built = buildSurfaces(P, S, R, null), cal = [];
+    const show = (label, note) => { if (tools && tools.preview) tools.preview(built.surfaces, { label, note }); };   // display only (SOLVER_API.md)
+    show('fit', 'search done: cost ' + R.model.total().toFixed(2) + ' (model)');
     for (let round = 0; round < S.calRounds; round++) {
       if (budgetMs > 0 && round > 0 && Date.now() - t0 > S.calShare * budgetMs) { notes.push('calibration stopped after ' + round + ' round(s): the host\'s ' + Math.round(budgetMs / 1000) + ' s budget'); break; }
       prog(0.88 + 0.08 * round / Math.max(1, S.calRounds), 'calibrating ' + (round + 1) + '/' + S.calRounds);
@@ -1174,6 +1176,7 @@
       if (S.calLns > 0 && round < S.calRounds - 1) { const rp = R.repair(S.calLns); pol = { before: pol.before, after: rp.after }; }
       cal.push('round ' + (round + 1) + ': measured patterns → cost ' + pol.before.toFixed(2) + ' → ' + pol.after.toFixed(2) + ' (blocked ' + (100 * T.blocked).toFixed(1) + '%; trace ' + msTrace + ' ms, polish ' + (Date.now() - tc - msTrace) + ' ms)');
       built = buildSurfaces(P, S, R, round === S.calRounds - 1 ? notes : null);
+      show('calibration ' + (round + 1) + '/' + S.calRounds, 'cost ' + pol.before.toFixed(2) + ' → ' + pol.after.toFixed(2) + ' (model on measured patterns)');
     }
     for (const c of cal) notes.push('calibration ' + c);
     prog(0.97, 'emit');

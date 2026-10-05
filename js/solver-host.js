@@ -4,26 +4,30 @@
  * whose solve() posts to the worker, so the rest of the app — sidebar, verify, reports — can't tell a worker
  * solver from a built-in one, while that code never runs on the page.
  * One solve at a time.  abort() stops it by terminating the worker (the only way to stop running JS); the worker
- * is then rebuilt from the same sources, and the next solve waits for that (`ready`).  Budget overrun = abort.  */
+ * is then rebuilt from the same sources, and the next solve waits for that (`ready`).  Budget overrun = abort.
+ * A stopped solve rejects with { aborted: true, kind }: kind 'timeout' (over BUDGET.ms), 'crash' (the worker died),
+ * 'user' / 'replaced' / 'forgotten' (whatever the caller passed to abort()).  tools.preview (when the page passes one)
+ * receives the worker's throttled preview messages (SOLVER_API.md § "Watching a solve").  */
 (function (root) {
   'use strict';
   const RF = root.RF;
   const KEY = 'flux/solvers', BUDGET = { ms: 120000, rays: 5e7 };
-  let worker = null, sources = [], srcIds = [], bundled = [], pending = null, cancel = null, ready = Promise.resolve(), live = null, loading = typeof Worker !== "undefined";   // true from page load until restore() has the bundled solvers in
+  let worker = null, sources = [], srcIds = [], bundled = [], pending = null, cancel = null, ready = Promise.resolve(), live = null, testMs = 0, loading = typeof Worker !== "undefined";   // true from page load until restore() has the bundled solvers in
   // sources[i] = a loaded file's text, srcIds[i] = the ids it registered;  bundled = [{ src, meta }] from solvers/
   function spawn() {
     worker = new Worker('js/solve-worker.js');
     worker.onmessage = (e) => { if (pending) pending(e.data); };
     // a worker that crashes (e.g. an environment file throwing on load) must fail the request, not hang it
-    worker.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); const why = 'solver worker crashed: ' + ((e && e.message) || 'unknown error'); worker = null; if (cancel) cancel(why); };
+    worker.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); const why = 'solver worker crashed: ' + ((e && e.message) || 'unknown error'); worker = null; if (cancel) cancel(why, 'crash'); };
   }
-  function ask(msg, onProgress, ms) {
+  function ask(msg, onProgress, ms, onPreview) {
     if (!worker) spawn();
     return new Promise((resolve, reject) => {
-      const timer = ms ? setTimeout(() => abort('ran over its ' + Math.round(ms / 1000) + ' s budget and was stopped'), ms) : 0;
-      cancel = (why) => { clearTimeout(timer); pending = null; cancel = null; live = null; reject(Object.assign(new Error(why), { aborted: true })); };
+      const timer = ms ? setTimeout(() => abort('ran over its ' + Math.round(ms / 1000) + ' s budget and was stopped', 'timeout'), ms) : 0;
+      cancel = (why, kind) => { clearTimeout(timer); pending = null; cancel = null; live = null; reject(Object.assign(new Error(why), { aborted: true, kind: kind || 'stopped', budgetMs: ms })); };
       pending = (d) => {
         if (d.type === 'progress') { if (onProgress) onProgress(d.pct, d.stage); return; }
+        if (d.type === 'preview') { if (onPreview) { try { onPreview(d); } catch (e) { /* display only */ } } return; }
         clearTimeout(timer); pending = null; cancel = null; live = null;
         if (d.type === 'error') reject(new Error(d.message)); else resolve(d);
       };
@@ -31,11 +35,12 @@
     });
   }
   // Stop the running solve (if any).  Returns true if one was running.
-  function abort(why) {
+  // kind: 'user' | 'replaced' | 'forgotten' | 'timeout' (the error carries it, so the page can tell a nag from a notice)
+  function abort(why, kind) {
     if (!cancel) return false;
     const c = cancel;
     if (worker) worker.terminate(); worker = null;
-    c(why || 'stopped');
+    c(why || 'stopped', kind);
     ready = reload();
     return true;
   }
@@ -47,7 +52,8 @@
         const scene = tools.scene;                  // the host passes the problem scene for trace()
         return ready.then(() => {
           live = { id: def.id, name: def.name, t0: performance.now() };
-          return ask({ type: 'solve', id: def.id, input, settings, scene, budget: BUDGET }, tools.progress, BUDGET.ms);
+          const ms = testMs || BUDGET.ms, onPreview = typeof tools.preview === 'function' && !tools.preview.none ? tools.preview : null;   // no preview callback ⇒ the worker sends none
+          return ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview }, tools.progress, ms, onPreview);
         }).then((d) => d.output);
       },
     }));
@@ -91,11 +97,13 @@
     try { await ready; } finally { loading = false; }
   }
   function forget() {                              // unload the user's files; the bundled solvers stay
-    abort('the loaded solvers were forgotten');
+    abort('the loaded solvers were forgotten', 'forgotten');
     sources = []; srcIds = []; save();
     for (const d of RF.Solvers.list()) if (d.loaded) RF.Solvers.unregister(d.id);
     if (worker) { worker.terminate(); worker = null; }
     ready = reload();
   }
-  RF.SolverHost = { load, restore, forget, abort, busy, loading: () => loading, BUDGET };
+  // test hook: run the next solves with a shorter time budget (ms; 0 = back to BUDGET.ms).  BUDGET itself never changes.
+  const testBudget = (ms) => { testMs = Math.max(0, +ms || 0); };
+  RF.SolverHost = { load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

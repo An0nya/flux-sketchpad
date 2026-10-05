@@ -481,6 +481,7 @@
           let res;
           try { res = await tools.trace(surfaces, { rays: 1e6, spec: true, bounces, seed: 7 + round }); } catch (e) { notes.push('calibration: trace unavailable (' + String(e.message || e).slice(0, 60) + ')'); break; }
           const sp = res && res.spec; if (!sp) break;
+          if (tools.preview) tools.preview(surfaces, { label: 'calibration ' + round + '/' + s.calRounds, trace: res, needs: { bounces } });   // display only
           const key = [sp.n.fail, -sp.score];
           log.push(`${sp.n.fail}/${sp.n.unsure}`);
           if (!bestKey || key[0] < bestKey[0] || (key[0] === bestKey[0] && key[1] < bestKey[1])) { bestKey = key; bestSurf = surfaces; }

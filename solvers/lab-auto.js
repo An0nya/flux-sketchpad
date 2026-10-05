@@ -68,14 +68,16 @@
       if (!def) throw new Error('Auto needs Fill & fix (or the picked solver) to be loaded');
       const st = RF.Solvers.sanitize(def, Object.assign(RF.Solvers.defaults(def), { minDistance: S.minDistance }, over || {}));
       const inp = cp(); if (budget) inp.limits.maxFacets = budget;
-      const sub = { progress: (f, stage) => prog(base + span * f, stage), budget: tools.budget, trace: tools.trace, scene: tools.scene };
+      const sub = { progress: (f, stage) => prog(base + span * f, stage), budget: tools.budget, trace: tools.trace, scene: tools.scene,
+        preview: tools.preview ? (s, info) => tools.preview(s, Object.assign({}, info, { label: (cand.label || cand.name || id) + (info && info.label ? ' · ' + info.label : '') })) : undefined };
       const t = now(), out = await def.solve(inp, st, sub);
       return { out, id, ms: now() - t, fell };
     }
     // trace a design and score it for the goal
-    function look(goal, out, rays, opt) {
+    function look(goal, out, rays, opt, label) {
       const n = Math.min(rays, raysLeft); raysLeft -= n;
       const t = now(), tr = tools.trace(out.surfaces, { rays: n, seed }), c = Object.assign({}, ctx, { rays: n });
+      if (tools.preview) tools.preview(out.surfaces, { label: label || 'candidate', trace: tr, needs: out.needs });   // display only: the trace it already made
       const run = M.runFromTrace(input, tr, c), ev = M.evaluate(goal, run, opt);
       return { ev, run, tr, ms: now() - t };
     }
@@ -96,7 +98,7 @@
       const r = await A.solve(c, fast ? Object.assign({}, c.over, { quality: 'fast' }) : c.over, 0, 0.05 + 0.5 * i / menu.length, 0.5 / menu.length);
       if (!r.out.surfaces || !r.out.surfaces.length) { tried.push({ label: c.label, cand: c, ev: { fid: 0, onPaint: 0, peak: 0, gates: { pass: false, why: ['no facets'] }, m: {} }, veto: 'no facets', score: 0 }); continue; }
       if (fast) lastFast = r.ms;
-      const l = A.look(goal, r.out, 250000, opt);
+      const l = A.look(goal, r.out, 250000, opt, c.label + ' (' + (i + 1) + '/' + menu.length + ')');
       tried.push({ label: c.label, cand: c, fast, solved: r, ev: l.ev, ms: r.ms + l.ms });
     }
     const ranked = M.rank(goal, tried.filter((t) => t.solved).map((t) => t)).concat(tried.filter((t) => !t.solved));
@@ -113,7 +115,7 @@
       const t = fin[i]; A.prog(0.6 + 0.35 * i / fin.length, 'checking ' + t.label + ' at full quality');
       let r = t.solved;
       if (t.fast) r = await A.solve(t.cand, t.cand.over && t.cand.over.quality ? t.cand.over : Object.assign({}, t.cand.over, { quality: 'normal' }), 0, 0.6 + 0.35 * i / fin.length, 0.35 / fin.length);
-      const l = A.look(goal, r.out, 1000000, opt);
+      const l = A.look(goal, r.out, 1000000, opt, 'finalist ' + t.label);
       finals.push({ label: t.label, cand: t.cand, solved: r, ev: l.ev, run: l.run, ms: t.ms + (t.fast ? r.ms : 0) + l.ms });
     }
     const order = M.rank(goal, finals);
@@ -131,7 +133,7 @@
       const over = pick.solver === 'fill-fix' ? Object.assign({}, pick.over, { quality: 'fast' }) : pick.over;
       const r = await A.solve(pick, over, rungs[i], 0.05 + 0.6 * i / rungs.length, 0.6 / rungs.length);
       if (!r.out.surfaces || !r.out.surfaces.length) { rows.push({ b: rungs[i], placed: 0, q: 0 }); continue; }
-      const l = A.look('general', r.out, 250000, opt);
+      const l = A.look('general', r.out, 250000, opt, 'budget ' + rungs[i]);
       rows.push({ b: rungs[i], placed: r.out.surfaces.length, q: l.ev.fid || 0, onPaint: l.ev.onPaint });
     }
     const best = Math.max(...rows.map((r) => r.q)), level = best * (0.5 + 0.5 * S.quality / 100);
@@ -191,7 +193,7 @@
         A.prog(0.25, 'photo or beam? trying Fill & fix (fast)');
         const f = await A.solve(PICKS.hotspot, { quality: 'fast' }, 0, 0.25, 0.2);
         const cand = [{ label: 'dish-fit', solved: d }, { label: 'Fill & fix (fast)', solved: f }].filter((c) => c.solved.out.surfaces && c.solved.out.surfaces.length);
-        for (const c of cand) c.ev = A.look('general', c.solved.out, 250000, opt).ev;
+        for (const c of cand) c.ev = A.look('general', c.solved.out, 250000, opt, c.label).ev;
         const ranked = M.rank('general', cand), win = ranked[0];
         notes.push('photo or beam? not clear from the painting (' + feat.levels + ' levels, brightest ' + feat.peakStands.toFixed(1) + '× the typical level), so both were tried at 250k rays: ' + ranked.map((c) => c.label + ' ' + pc(c.ev.fid) + '% fidelity, ' + pc(c.ev.onPaint) + '% on paint').join(' vs '));
         if (win && win.label === 'dish-fit') { out = d.out; goal = 'photo'; notes.push('picked dish-fit (' + (d.ms / 1000).toFixed(1) + ' s)'); }

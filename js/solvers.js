@@ -9,7 +9,9 @@
  *     field  = { key, label, type: 'number'|'range'|'select'|'checkbox', min, max, step, options, default, help }
  *     input  = { source, envelope, target, paint: { res, cells }, stamps, seed, limits: { maxFacets, reflectivity } }
  *              (deep copy; mutate freely).  limits are the USER's: a solver reads them, never declares them.
- *     tools  = { trace(surfaces, { rays, seed, attribution }), progress(pct), budget: { rays, ms } }
+ *     tools  = { trace(surfaces, { rays, seed, attribution }), progress(pct), budget: { rays, ms }, preview(surfaces, info?) }
+ *              preview = display only (the page draws what the solver is trying; SOLVER_API.md § "Watching a solve"): a no-op
+ *              here and in the headless hosts, throttled in the worker; it never changes the result.
  *     output = { surfaces, intent?: [{ facet: id|null, cells: [[paintCell, weight]…] }], notes?: [..], extras?,
  *                needs?: { bounces } }
  *   intent is optional, per facet, overlap allowed; facet: null = an intent the solver couldn't place.
@@ -173,19 +175,23 @@
     id = id || current(scene);
     const def = get(id); if (!def) throw new Error('no solver ' + id);
     const settings = settingsOf(scene, id), input = inputOf(scene), problem = problemOf(scene);
-    const tools = { progress() {}, budget: { rays: Infinity, ms: Infinity }, scene: problem, trace: (surfaces, o) => trace(problem, surfaces, o) };
-    return { def, id, settings, input, tools, meta: { id, version: def.version, settings, seed: input.seed } };
+    const tools = { progress() {}, preview: NO_PREVIEW, budget: { rays: Infinity, ms: Infinity }, scene: problem, trace: (surfaces, o) => trace(problem, surfaces, o) };
+    return { def, id, settings, input, tools, meta: metaOf(scene, id) };
   }
+  // what a result records about its solve (scene.solve): also used for a candidate applied from a stopped solve's preview
+  function metaOf(scene, id) { id = id || current(scene); const def = get(id); return { id, version: def.version, settings: settingsOf(scene, id), seed: scene.sim.seed | 0 }; }
+  const NO_PREVIEW = Object.assign(() => {}, { none: true });   // built-in / headless: previews go nowhere (the worker proxy sends none for it)
   // Synchronous run (built-in solvers, headless tests).  Never mutates the scene.
   function runSync(scene, id) {
     const r = prepareRun(scene, id), t0 = RF.U.now(), out = r.def.solve(r.input, r.settings, r.tools);
     if (out && typeof out.then === 'function') throw new Error(r.id + ' is asynchronous: use runAsync');
     return { output: out, facts: verify(scene, out), meta: r.meta, ms: RF.U.now() - t0 };
   }
-  // Asynchronous run (loaded solvers: their solve() goes to the worker).  onProgress(pct) optional.
-  async function runAsync(scene, id, onProgress) {
+  // Asynchronous run (loaded solvers: their solve() goes to the worker).  onProgress(pct), onPreview(msg) optional.
+  async function runAsync(scene, id, onProgress, onPreview) {
     const r = prepareRun(scene, id), t0 = RF.U.now();
     if (onProgress) r.tools.progress = onProgress;
+    if (onPreview) r.tools.preview = onPreview;
     const out = await r.def.solve(r.input, r.settings, r.tools);
     return { output: out, facts: verify(scene, out), meta: r.meta, ms: RF.U.now() - t0 };
   }
@@ -238,5 +244,5 @@
     return res;
   }
 
-  RF.Solvers = { paintOf, PREFERRED_ID, wanted, register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
+  RF.Solvers = { paintOf, metaOf, NO_PREVIEW, PREFERRED_ID, wanted, register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
