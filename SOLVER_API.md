@@ -183,7 +183,7 @@ Traces draw each ray's emitter in proportion to power, so every ray carries the 
 An iterating solver can let the user watch it work: call **`tools.preview(surfaces, info)`** whenever it has a
 candidate worth seeing (each candidate a tuner tries, each calibration / balance round, the result of a search phase).
 The app draws it in the Scene and Optics views (tinted, badged `PREVIEW · <label>`) and, if you pass a grid, on the
-Result map, until your real result arrives and replaces it. If the solve never finishes (the 120 s budget, a crash,
+Result map, until your real result arrives and replaces it. If the solve never finishes (the time limit — 2 min by default, the user can raise it — a crash,
 an error, the user's Stop), the last preview stays on screen marked *not applied*, with a **Use last candidate**
 button that runs it through the same checks as a result (envelope, LED clearance, facet budget, `needs.bounces`).
 

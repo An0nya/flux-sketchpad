@@ -12,6 +12,10 @@
   'use strict';
   const RF = root.RF;
   const KEY = 'flux/solvers', BUDGET = { ms: 120000, rays: 5e7 };
+  // the user's time limit (Simulation → Solve time limit, remembered per browser): a property of the machine, not the scene
+  let userMs = 0; try { userMs = +localStorage.getItem('flux/solveLimitMs') || 0; } catch (e) { /* default */ }
+  const limitMs = () => testMs || userMs || BUDGET.ms;
+  const setLimit = (ms) => { userMs = Math.max(0, +ms || 0); try { localStorage.setItem('flux/solveLimitMs', String(userMs)); } catch (e) { /* ignore */ } };
   let worker = null, sources = [], srcIds = [], bundled = [], pending = null, cancel = null, ready = Promise.resolve(), live = null, testMs = 0, loading = typeof Worker !== "undefined";   // true from page load until restore() has the bundled solvers in
   // sources[i] = a loaded file's text, srcIds[i] = the ids it registered;  bundled = [{ src, meta }] from solvers/
   function spawn() {
@@ -52,7 +56,7 @@
         const scene = tools.scene;                  // the host passes the problem scene for trace()
         return ready.then(() => {
           live = { id: def.id, name: def.name, t0: performance.now() };
-          const ms = testMs || BUDGET.ms, onPreview = typeof tools.preview === 'function' && !tools.preview.none ? tools.preview : null;   // no preview callback ⇒ the worker sends none
+          const ms = limitMs(), onPreview = typeof tools.preview === 'function' && !tools.preview.none ? tools.preview : null;   // no preview callback ⇒ the worker sends none
           return ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview }, tools.progress, ms, onPreview);
         }).then((d) => d.output);
       },
@@ -105,5 +109,5 @@
   }
   // test hook: run the next solves with a shorter time budget (ms; 0 = back to BUDGET.ms).  BUDGET itself never changes.
   const testBudget = (ms) => { testMs = Math.max(0, +ms || 0); };
-  RF.SolverHost = { load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget };
+  RF.SolverHost = { load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

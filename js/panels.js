@@ -103,6 +103,15 @@
     slider.addEventListener('change', () => ui.setControl(c.id, parseFloat(slider.value)));
     return el('span', { class: 'numctl' }, slider, field);
   }
+  // Simulation → Solve time limit: how long a solver may run before the app stops it (per browser; the solver sees it as
+  // tools.budget.ms, so time-governed solvers use the extra time). Default 2 min.
+  function solveLimitRow() {
+    const H = RF.SolverHost; if (!H || !H.setLimit) return el('span');
+    const opts = [[60000, '1 min'], [120000, '2 min (default)'], [300000, '5 min'], [600000, '10 min'], [1800000, '30 min']];
+    const cur = H.limitMs(), s = el('select', { 'aria-label': 'Solve time limit' }, ...opts.map(([v, t]) => el('option', { value: String(v), selected: v === cur ? true : null }, t)));
+    s.addEventListener('change', () => H.setLimit(+s.value));
+    return el('div', { class: 'row', title: 'How long a solver may run before the app stops it and keeps the previous design (its last preview stays on offer). Remembered in this browser. Solvers that pace themselves to the limit (e.g. Spec headlamp v2) use the extra time.' }, el('label', {}, 'Solve time limit'), s);
+  }
   function controlRow(ui, c) {
     const input = controlInput(ui, c);
     const row = el('div', { class: 'row', 'data-row': c.id }, el('label', {}, c.label), input);
@@ -176,7 +185,7 @@
         el('div', { class: 'btnrow' }, lensKind, el('button', { type: 'button', onclick: () => ui.addLens(lensKind.value) }, 'Add lens')),
         el('div', { id: 'lens-list', class: 'lens-list' }))));
     // ---- 3. Simulation
-    side.append(section('Simulation', { open: true, key: 'sim', tag: 'rays & grids' }, ...rowsFor(ui, ['rays', 'tgt.res', 'sim.res', 'sim.autoRes']),
+    side.append(section('Simulation', { open: true, key: 'sim', tag: 'rays & grids' }, ...rowsFor(ui, ['rays', 'tgt.res', 'sim.res', 'sim.autoRes']), solveLimitRow(),
       el('div', { class: 'btnrow' }, el('button', { type: 'button', id: 'btn-refine', disabled: true, title: 'Keep tracing the finished run up to twice the rays (up to 50M). Exactly what that ray count would give from scratch, without starting over.', onclick: () => ui.refine(2) }, 'Refine ×2')),
       section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']))));
     // ---- 4. View (display only, remembered per browser)
