@@ -1,7 +1,8 @@
 /* Bundled model solver: GPT-6 Luna (Codex), Flux solver benchmark run 2026-09-25 (workspace work-luna6-codex-flux-solver-20260925-2235).
  * Copied verbatim from that run's solvers/solver.js (sha256 66c068a7cfb3…), wrapped in a function scope so several
  * bundled files can share one worker.
- * Not edited otherwise: bugs and all, it is the record of what the model wrote. */
+ * Not edited otherwise: bugs and all, it is the record of what the model wrote.
+ * Exception (2026-10-05): display-only tools.preview calls added for Watch solve (showCand in solve). */
 (function () {
 /* Rework ModeA's direction-cell plan into unequal facets, staggered radii, and overlapping tiles. */
 function makePlan(input, s, facetType, radiusBias) {
@@ -386,6 +387,13 @@ RF.Solvers.register({
     }
     const candidates = specs.map((spec) => Object.assign(spec, { output: null, metrics: null }));
     const metricRays = 200000;
+    // Watch solve (display only): each traced candidate with its own trace, at most once a second.  Reads c only.
+    let lastShow = 0;
+    const showCand = (c, traced, label) => {
+      if (!tools || !tools.preview || tools.preview.none) return;
+      const t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
+      try { tools.preview(c.output.surfaces, { label, trace: traced, note: c.label }); } catch (e) { /* display only */ }
+    };
     for (let i = 0; i < candidates.length; i++) {
       tools.progress(0.05 + 0.15 * i);
       const c = candidates[i];
@@ -396,6 +404,7 @@ RF.Solvers.register({
         try {
           const traced = tools.trace(c.output.surfaces, { rays: metricRays, attribution: true });
           c.metrics = patternMetrics(input, c.output, traced);
+          showCand(c, traced, 'candidate ' + (i + 1) + '/' + candidates.length);
         } catch (e) {
           c.traceError = String(e && e.message || e);
         }
