@@ -1479,6 +1479,8 @@
   function setDisplay(d) {
     ui.display = d;
     for (const o of document.querySelectorAll('#heat-display button')) o.classList.toggle('on', o.dataset.disp === d);
+    document.getElementById('heat-canvas').parentElement.classList.toggle('ff', d === 'ff');   // shows the far-field toggles
+    if (d !== 'ff' && ui.store && ui.store.scene.mode === 'D') document.getElementById('right-caption').textContent = 'Simulated';
     if (ui.run) drawHeat();
     ui.sceneDirty = true; schedule();
   }

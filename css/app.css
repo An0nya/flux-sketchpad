@@ -191,6 +191,17 @@ button.mini { min-height: 24px; padding: 1px var(--s-8); font-size: 11px; color:
 .colorbar > i { display: block; height: 8px; border-radius: 2px; border: 1px solid var(--line); }
 .colorbar .cb-labels { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .colorbar .cb-labels span { overflow: hidden; text-overflow: ellipsis; }   /* one line: a taller bar would resize (and refit) the map */
+/* far-field colour bar with ticks: labels placed at their value, ends pinned */
+.colorbar > i { position: relative; }
+.colorbar > i > b { position: absolute; top: -2px; bottom: -2px; width: 1px; background: rgba(255,255,255,.55); }
+.colorbar .cb-labels.ticks { display: block; position: relative; height: 1.25em; }
+.colorbar .cb-labels.ticks span { position: absolute; top: 0; transform: translateX(-50%); }
+.colorbar .cb-labels.ticks .end-l { left: 0; transform: none; }
+.colorbar .cb-labels.ticks .end-r { right: 0; transform: none; }
+/* far-field view toggles, floating in the canvas corner (Spec mode, Far field view only) */
+.ff-tools { display: none; position: absolute; left: 4px; top: 4px; z-index: 2; gap: 2px; }
+body.mode-D .canvas-wrap.ff .ff-tools { display: flex; }
+.ff-tools button { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); }
 .toolrow label.slider { display: inline-flex; align-items: center; gap: var(--s-6); }
 .toolrow label.slider input[type=range] { width: 90px; }
 .toolrow label.slider output { min-width: 2.5em; font-variant-numeric: tabular-nums; color: var(--dim); }

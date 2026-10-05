@@ -275,20 +275,69 @@
   // the picture is smoothed over at least ±0.15° (a regulation photocell, ±0.075°, leaves single rays as speckle); the
   // judge and the tap readout use the real kernel
   const dispK = (ui) => Math.max(md(ui).kernel || 0.15, 0.15);
+  // far-field view options (per viewer, remembered): colour scale, isocandela contours, spec overlay, aim marker
+  const FF_DEF = { scale: 'log', contours: true, overlay: true, aim: true };
+  function ffOpts(ui) {
+    if (!ui.ffOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/ffView') || '{}'); } catch (e) { /* ignore */ } ui.ffOpts = Object.assign({}, FF_DEF, o); }
+    return ui.ffOpts;
+  }
+  function setFF(ui, k, v) {
+    ffOpts(ui)[k] = v;
+    try { localStorage.setItem('flux/ffView', JSON.stringify(ui.ffOpts)); } catch (e) { /* ignore */ }
+    ui.redrawSpec();
+  }
+  // intensity image of a far-field grid: log = 3 decades under the robust peak, lin = 0 … robust peak
   function ffImage(ui, s) {
-    if (s.img && s.imgK === dispK(ui)) return s.img;
-    const G = s.G, M = RF.FarField.map(G, dispK(ui)), cd = M.cd, n = cd.length;
-    const lit = []; for (let q = 0; q < n; q++) if (cd[q] > 0) lit.push(cd[q]); lit.sort((a, b) => a - b);
-    const top = lit.length ? lit[Math.min(lit.length - 1, Math.floor(0.999 * lit.length))] : 1, lo = top / 1000;
+    const k = dispK(ui), scale = ffOpts(ui).scale;
+    if (s.img && s.imgK === k && s.imgScale === scale) return s.img;
+    const G = s.G;
+    if (!s.M || s.imgK !== k) {
+      s.M = RF.FarField.map(G, k); s.cont = null;
+      const cd = s.M.cd, lit = []; for (let q = 0; q < cd.length; q++) if (cd[q] > 0) lit.push(cd[q]); lit.sort((a, b) => a - b);
+      s.top = lit.length ? lit[Math.min(lit.length - 1, Math.floor(0.999 * lit.length))] : 1; s.lo = s.top / 1000;
+    }
+    const cd = s.M.cd, top = s.top, lo = s.lo, log = scale !== 'lin';
     const cv = s.img || document.createElement('canvas'); cv.width = G.nh; cv.height = G.nv;
     const g = cv.getContext('2d'), im = g.createImageData(G.nh, G.nv), LUT = RF.Render.LUT;
     for (let j = 0; j < G.nv; j++) for (let i = 0; i < G.nh; i++) {
-      const x = cd[j * G.nh + i], t = x > lo ? Math.min(255, Math.round(255 * Math.log10(x / lo) / 3)) : 0, o = 4 * ((G.nv - 1 - j) * G.nh + i);
+      const x = cd[j * G.nh + i], o = 4 * ((G.nv - 1 - j) * G.nh + i);
+      const t = log ? (x > lo ? Math.min(255, Math.round(255 * Math.log10(x / lo) / 3)) : 0) : Math.max(0, Math.min(255, Math.round(255 * x / top)));
       im.data[o] = LUT[3 * t]; im.data[o + 1] = LUT[3 * t + 1]; im.data[o + 2] = LUT[3 * t + 2]; im.data[o + 3] = 255;
     }
     g.putImageData(im, 0, 0);
-    s.img = cv; s.imgK = dispK(ui); s.top = top; s.lo = lo; s.M = M;
+    s.img = cv; s.imgK = k; s.imgScale = scale;
     return cv;
+  }
+  // isocandela levels: the 1–3 half-decade series inside the picture's range (≤ 6 lines)
+  function contourLevels(lo, top) {
+    const out = [];
+    for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(top)); e++) for (const m of [1, 3]) { const L = m * 10 ** e; if (L > lo * 2 && L < top * 0.95) out.push(L); }
+    return out.slice(-6);
+  }
+  // marching squares on the smoothed map (corners = bin centres) → per level, segments as [h0, v0, h1, v1, …] in degrees
+  function contours(s) {
+    if (s.cont) return s.cont;
+    const G = s.G, cd = s.M.cd, nh = G.nh, nv = G.nv, st = G.step, H = (i) => G.h0 + (i + 0.5) * st, V = (j) => G.v0 + (j + 0.5) * st;
+    s.cont = contourLevels(s.lo, s.top).map((L) => {
+      const seg = [], f = (a, b) => (L - a) / (b - a);
+      for (let j = 0; j + 1 < nv; j++) for (let i = 0; i + 1 < nh; i++) {
+        const a = cd[j * nh + i], b = cd[j * nh + i + 1], c = cd[(j + 1) * nh + i + 1], d = cd[(j + 1) * nh + i];
+        const idx = (a > L ? 1 : 0) | (b > L ? 2 : 0) | (c > L ? 4 : 0) | (d > L ? 8 : 0);
+        if (idx === 0 || idx === 15) continue;
+        // edge crossings: bottom (a–b), right (b–c), top (d–c), left (a–d)
+        const E = [
+          (a > L) !== (b > L) ? [H(i) + f(a, b) * st, V(j)] : null,
+          (b > L) !== (c > L) ? [H(i + 1), V(j) + f(b, c) * st] : null,
+          (d > L) !== (c > L) ? [H(i) + f(d, c) * st, V(j + 1)] : null,
+          (a > L) !== (d > L) ? [H(i), V(j) + f(a, d) * st] : null,
+        ].filter(Boolean);
+        // 2 crossings: one segment; 4 (saddle): pair them by the cell's mean
+        if (E.length === 2) seg.push(E[0][0], E[0][1], E[1][0], E[1][1]);
+        else if (E.length === 4) { const hi = (a + b + c + d) / 4 > L; const [p0, p1, p2, p3] = E; if (hi === (a > L)) seg.push(p0[0], p0[1], p1[0], p1[1], p2[0], p2[1], p3[0], p3[1]); else seg.push(p0[0], p0[1], p3[0], p3[1], p1[0], p1[1], p2[0], p2[1]); }
+      }
+      return { L, seg };
+    });
+    return s.cont;
   }
   // the Result pane in Spec mode, "Far field" view: content = degrees (H right, V up)
   function drawFarField(ui, cv, view) {
@@ -306,13 +355,85 @@
     for (let v = Math.ceil(win[1] / 5) * 5; v <= win[3]; v += 5) { const p = view.toScreen(0, v); ctx.beginPath(); ctx.moveTo(a[0], p[1]); ctx.lineTo(b[0], p[1]); ctx.stroke(); ctx.fillText((v > 0 ? v + 'U' : v < 0 ? -v + 'D' : 'H'), a[0] + 3, p[1] - 2); }
     ctx.strokeStyle = 'rgba(255,255,255,0.28)'; const o = view.toScreen(0, 0); ctx.beginPath(); ctx.moveTo(o[0], a[1]); ctx.lineTo(o[0], b[1]); ctx.moveTo(a[0], o[1]); ctx.lineTo(b[0], o[1]); ctx.stroke();
     ctx.strokeStyle = 'rgba(143,184,255,0.35)'; ctx.strokeRect(a[0] + 0.5, a[1] + 0.5, b[0] - a[0] - 1, b[1] - a[1] - 1);
-    drawItems(ctx, ui, (h, v) => view.toScreen(h, v));
-    // colour bar: log cd
+    const fo = ffOpts(ui), ev = s && s.ev;
+    if (fo.contours && s && s.G && s.M) drawContours(ctx, s, view, a, b);
+    if (fo.aim && ev) drawAim(ctx, ui, ev, view, a, b);
+    if (fo.overlay) drawItems(ctx, ui, (h, v) => view.toScreen(h, v));
+    ffTools(ui, cv);
+    document.getElementById('right-caption').textContent = 'Far field · ' + (s && s.G ? fmtDist(s.G.distance) : '') + ' · ' + (fo.scale === 'lin' ? 'linear' : 'log') + ' scale';
+    // colour bar with ticks at real cd values
     const cb = document.getElementById('colorbar'); cb.innerHTML = '';
     if (s && s.top) {
-      cb.append(el('i', { style: 'background:' + RF.Render2D.colorbarCSS() }), el('div', { class: 'cb-labels' }, el('span', {}, fmtCd(s.lo) + ' cd'),
-        el('span', { title: 'Log scale, 3 decades. ' + (isFinite(s.G.distance) ? 'Apparent intensity on a screen at ' + fmtDist(s.G.distance) : 'Far field: intensity by direction') + '. Picture smoothed over ±' + dispK(ui) + '°; the report reads ±' + md(ui).kernel + '°.' }, (isFinite(s.G.distance) ? fmtDist(s.G.distance) : 'far field') + ' · log'),
-        el('span', {}, fmtCd(s.top) + ' cd')));
+      const log = fo.scale !== 'lin', lo = log ? s.lo : 0, top = s.top;
+      const pos = (x) => 100 * (log ? Math.log10(x / lo) / 3 : x / top);
+      const ticks = [];
+      if (log) { for (let e = Math.ceil(Math.log10(lo)); 10 ** e < top; e++) ticks.push(10 ** e); }
+      else { const raw = top / 4, p = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 5, 10].map((m) => m * p).find((x) => x >= raw); for (let x = step; x < top; x += step) ticks.push(x); }
+      const inner = ticks.filter((x) => pos(x) > 14 && pos(x) < 86);
+      const bar = el('i', { style: 'background:' + RF.Render2D.colorbarCSS() });
+      for (const x of ticks) bar.append(el('b', { style: 'left:' + pos(x).toFixed(1) + '%' }));
+      const labels = el('div', { class: 'cb-labels ticks', title: (log ? 'Log scale, 3 decades under the robust peak. ' : 'Linear scale, 0 to the robust peak (99.9th percentile). ') + (s.G && isFinite(s.G.distance) ? 'Apparent intensity on a screen at ' + fmtDist(s.G.distance) : 'Far field: intensity by direction') + '. Picture smoothed over ±' + dispK(ui) + '°; the report reads ±' + md(ui).kernel + '°.' },
+        el('span', { class: 'end-l' }, fmtCd(lo) + ' cd'));
+      for (const x of inner) labels.append(el('span', { style: 'left:' + pos(x).toFixed(1) + '%' }, fmtCd(x)));
+      labels.append(el('span', { class: 'end-r' }, fmtCd(top) + ' cd'));
+      cb.append(bar, labels);
+    }
+  }
+  // isocandela lines (unshifted: they belong to the beam, like the picture)
+  function drawContours(ctx, s, view, a, b) {
+    ctx.save(); ctx.beginPath(); ctx.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]); ctx.clip();
+    ctx.lineWidth = 1; ctx.font = '10px system-ui, sans-serif';
+    for (const { L, seg } of contours(s)) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.beginPath();
+      let lab = null;
+      for (let q = 0; q < seg.length; q += 4) {
+        const p = view.toScreen(seg[q], seg[q + 1]), r = view.toScreen(seg[q + 2], seg[q + 3]);
+        ctx.moveTo(p[0], p[1]); ctx.lineTo(r[0], r[1]);
+        if (!lab || p[1] < lab[1]) lab = p;                              // label at the line's top
+      }
+      ctx.stroke();
+      if (lab) { const t = fmtCd(L); ctx.fillStyle = 'rgba(12,13,16,0.75)'; ctx.fillRect(lab[0] - 1, lab[1] - 10, ctx.measureText(t).width + 2, 11); ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillText(t, lab[0], lab[1] - 1); }
+    }
+    ctx.restore();
+  }
+  // where the judge aimed: the spec's H-V on the beam (the overlay sits on it) and the line the cut-off was put on
+  function drawAim(ctx, ui, ev, view, a, b) {
+    const m = md(ui), sh = ev.shift || [0, 0], c = view.toScreen(sh[0], sh[1]);
+    ctx.save(); ctx.beginPath(); ctx.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]); ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1; ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.moveTo(a[0], c[1]); ctx.lineTo(b[0], c[1]); ctx.moveTo(c[0], a[1]); ctx.lineTo(c[0], b[1]); ctx.stroke();
+    if ((m.aimMode || 'design') === 'cutoff') {
+      const line = m.aimLine === undefined ? -0.57 : m.aimLine, y = view.toScreen(0, line + sh[1])[1];
+      ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(a[0], y); ctx.lineTo(b[0], y); ctx.stroke();
+    }
+    ctx.setLineDash([]); ctx.beginPath(); ctx.arc(c[0], c[1], 5, 0, 2 * Math.PI); ctx.stroke();
+    ctx.font = '10px system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    // summary in the plot's top-right corner (away from the beam): how far the judge moved the beam
+    const mv = fmtMove(sh, m.traffic).replace(/ right/g, ' R').replace(/ left/g, ' L').replace(/ up/g, ' U').replace(/ down/g, ' D');
+    const t = 'aim: beam ' + (mv === 'none' ? 'as designed' : mv) + ((m.aimMode || 'design') === 'cutoff' ? ' · cut-off on ' + Math.abs(m.aimLine === undefined ? -0.57 : m.aimLine) + '° D' : '');
+    const w = ctx.measureText(t).width, x = Math.max(a[0] + 3, b[0] - w - 5), y = a[1] + 13;
+    ctx.fillStyle = 'rgba(12,13,16,0.75)'; ctx.fillRect(x - 2, y - 10, w + 4, 13); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillText(t, x, y);
+    ctx.restore();
+  }
+  // the far-field view's toggles, floating in the canvas corner (no layout change)
+  function ffTools(ui, cv) {
+    const wrap = cv.parentElement; let bar = wrap.querySelector('.ff-tools');
+    if (!bar) {
+      bar = el('div', { class: 'ff-tools' });
+      const mk = (k, label, title, val) => {
+        const b = el('button', { type: 'button', class: 'toggle', 'data-ff': k, title }, label);
+        b.addEventListener('click', () => { const o = ffOpts(ui); setFF(ui, k, k === 'scale' ? (o.scale === 'lin' ? 'log' : 'lin') : !o[k]); });
+        return b;
+      };
+      bar.append(mk('scale', 'log', 'Colour scale: log (3 decades) or linear (like Hits / Grid)'), mk('contours', 'isocd', 'Isocandela lines at 1–3 steps per decade, labelled in cd'),
+        mk('overlay', 'spec', 'The spec’s points and zones with their verdicts'), mk('aim', 'aim', 'Where the judge aimed: the spec’s H-V on the beam (dashed cross) and the line the cut-off was put on (dotted)'));
+      wrap.append(bar);
+    }
+    const o = ffOpts(ui);
+    for (const b of bar.querySelectorAll('[data-ff]')) {
+      const k = b.dataset.ff;
+      if (k === 'scale') { b.textContent = o.scale === 'lin' ? 'lin' : 'log'; b.setAttribute('aria-pressed', 'true'); }
+      else b.setAttribute('aria-pressed', String(!!o[k]));
     }
   }
   // H/V under a screen point of the far-field view (spot readout)
