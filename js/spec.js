@@ -438,6 +438,24 @@
     return out;
   }
 
+  // The limits at one direction: floor = the largest min of any point (within `rad` degrees) / sum point / min-zone
+  // covering it; ceiling = the smallest max (relative caps like "Zone I < 2 × 50R" resolved against the referenced
+  // point's min). { lo: 0 = no floor, hi: Infinity = no ceiling }. Shared by the solver's working target and the
+  // far-field limits / margin map, so the two can't disagree.
+  function limitsAt(items, h, vv, rad) {
+    let lo = 0, hi = Infinity;
+    for (const it of items) {
+      let covers = false, mn = it.min, mx = it.max;
+      if (it.kind === 'point') covers = Math.hypot(h - it.h, vv - it.v) <= rad;
+      else if (it.kind === 'zone') covers = inPoly(it.poly, h, vv);
+      else if (it.kind === 'sum') { covers = it.pts.some(([ph, pv]) => Math.hypot(h - ph, vv - pv) <= rad); mn = it.min > 0 ? it.min / it.pts.length : 0; }
+      if (!covers) continue;
+      if (it.maxRel) { const r = items.find((x) => x.name === it.maxRel.ref); if (r && r.min > 0) mx = Math.min(mx > 0 ? mx : Infinity, it.maxRel.factor * r.min); }
+      if (mn > 0) lo = Math.max(lo, mn);
+      if (mx > 0) hi = Math.min(hi, mx);
+    }
+    return { lo, hi };
+  }
   // ---------------------------------------------------------------- asking a solver
   // The relative illuminance target on the design plane (paint grid) for this spec + painting.
   //   floor(H, V)   = the largest min of any point (within `rad` of it) or min-zone covering the cell
@@ -452,18 +470,7 @@
     let mx = 0;
     for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
       const [u, v] = RF.Engine.cellCenter(T, i, j), wpt = RF.Engine.targetUVtoWorld(T, u, v), d = V.sub(wpt, c), [h, vv] = RF.FarField.hvOf(d, md.conv);
-      let lo = 0, hi = Infinity;
-      for (const it of items) {
-        let covers = false;
-        let mn = it.min, mx = it.max;
-        if (it.kind === 'point') covers = Math.hypot(h - it.h, vv - it.v) <= rad;
-        else if (it.kind === 'zone') covers = inPoly(it.poly, h, vv);
-        else if (it.kind === 'sum') { covers = it.pts.some(([ph, pv]) => Math.hypot(h - ph, vv - pv) <= rad); mn = it.min > 0 ? it.min / it.pts.length : 0; }
-        if (!covers) continue;
-        if (it.maxRel) { const r = items.find((x) => x.name === it.maxRel.ref); if (r && r.min > 0) mx = Math.min(mx > 0 ? mx : Infinity, it.maxRel.factor * r.min); }   // e.g. Zone I < 2 × 50R: cap at 2 × 50R's minimum
-        if (mn > 0) lo = Math.max(lo, mn);
-        if (mx > 0) hi = Math.min(hi, mx);
-      }
+      const { lo, hi } = limitsAt(items, h, vv, rad);
       const k = j * res + i, I = Math.min(hi, Math.max(lo, w * (paint[k] || 0) * pcd));
       const cosT = Math.abs(V.dot(V.norm(d), T.n)), L = V.len(d);
       const E = I * cosT / (L * L);                       // E = I cos θ / r²
@@ -569,5 +576,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, fitTargetSize };
+  RF.Spec = { FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

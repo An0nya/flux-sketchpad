@@ -283,7 +283,7 @@
   // judge and the tap readout use the real kernel
   const dispK = (ui) => Math.max(md(ui).kernel || 0.15, 0.15);
   // far-field view options (per viewer, remembered): colour scale, isocandela contours, spec overlay, aim marker
-  const FF_DEF = { scale: 'log', contours: true, overlay: true, aim: true, road: false };
+  const FF_DEF = { scale: 'log', contours: true, overlay: true, aim: true, road: false, heat: 'beam' };
   function ffOpts(ui) {
     if (!ui.ffOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/ffView') || '{}'); } catch (e) { /* ignore */ } ui.ffOpts = Object.assign({}, FF_DEF, o); }
     return ui.ffOpts;
@@ -381,9 +381,9 @@
     ctx.fillStyle = '#0c0d10'; ctx.fillRect(A[0], A[1], B[0] - A[0], B[1] - A[1]);
     if (s && s.G) {
       ctx.imageSmoothingEnabled = false;
-      const fine = ffImage(ui, s), wide = ffImageWide(ui, s);
-      if (wide) ctx.drawImage(wide, A[0], A[1], B[0] - A[0], B[1] - A[1]);
-      ctx.drawImage(fine, a[0], a[1], b[0] - a[0], b[1] - a[1]);
+      const fine = ffImage(ui, s), heat = ffOpts(ui).heat;
+      if (heat === 'limits' || heat === 'margin') ctx.drawImage(heatImage(ui, s, heat), a[0], a[1], b[0] - a[0], b[1] - a[1]);   // the regulation over the spec window
+      else { const wide = ffImageWide(ui, s); if (wide) ctx.drawImage(wide, A[0], A[1], B[0] - A[0], B[1] - A[1]); ctx.drawImage(fine, a[0], a[1], b[0] - a[0], b[1] - a[1]); }
     }
     // degree grid: H / V axes and 5° ticks (10° when zoomed far out), labels pinned to the visible edge
     const stepDeg = view.s * 5 < 22 ? 10 : 5, L = Math.max(A[0], 0), Bo = Math.min(B[1], box.h);
@@ -393,15 +393,20 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.28)'; const o = view.toScreen(0, 0); ctx.beginPath(); ctx.moveTo(o[0], A[1]); ctx.lineTo(o[0], B[1]); ctx.moveTo(A[0], o[1]); ctx.lineTo(B[0], o[1]); ctx.stroke();
     ctx.strokeStyle = 'rgba(143,184,255,0.35)'; ctx.strokeRect(a[0] + 0.5, a[1] + 0.5, b[0] - a[0] - 1, b[1] - a[1] - 1);
     const fo = ffOpts(ui), ev = s && s.ev;
-    if (fo.contours && s && s.G && s.M && !s.preview && s.done) drawContours(ctx, s, view, a, b);   // a finished trace only: partial runs and 200k previews draw noise loops
+    if (fo.contours && fo.heat === 'beam' && s && s.G && s.M && !s.preview && s.done) drawContours(ctx, s, view, a, b);   // a finished trace only: partial runs and 200k previews draw noise loops
     if (fo.road && s && !s.preview) drawRoadOverlay(ctx, ui, view, a, b);
     if (fo.aim && ev) drawAim(ctx, ui, ev, view, a, b);
     if (fo.overlay) drawItems(ctx, ui, (h, v) => view.toScreen(h, v), undefined, s && s.preview ? null : undefined);
     ffTools(ui, cv);
     document.getElementById('right-caption').textContent = 'Far field · ' + (s && s.G ? fmtDist(s.G.distance) : '') + ' · ' + (fo.scale === 'lin' ? 'linear' : 'log') + ' scale';
-    // colour bar with ticks at real cd values
+    // colour bar with ticks at real cd values (heat modes: their own legend)
     const cb = document.getElementById('colorbar'); cb.innerHTML = '';
-    if (s && s.top) {
+    if (s && s.top && (fo.heat === 'limits' || fo.heat === 'margin')) {
+      const grad = fo.heat === 'margin' ? 'linear-gradient(90deg, rgb(255,154,61), rgb(70,70,70) 50%, rgb(90,167,255))' : 'linear-gradient(90deg, rgb(27,50,77), rgb(90,167,255) 45%, rgb(77,46,18) 55%, rgb(255,154,61))';
+      cb.append(el('i', { style: 'background:' + grad }), fo.heat === 'margin'
+        ? el('div', { class: 'cb-labels', title: 'Each bin’s light against the limit that covers it (log ratio). Grey picture: no limit there. Per bin, not the verdict: zones are judged on their extreme spot with noise allowances (hover a zone for its verdict).' }, el('span', {}, '×2 short / over'), el('span', {}, 'at the limit'), el('span', {}, '×2 headroom'))
+        : el('div', { class: 'cb-labels', title: 'Blue: a floor (minimum) applies, brighter = higher. Orange: a ceiling (maximum), brighter = looser. Stripes: both. Points are drawn ±' + Math.max(0.25, 2 * (md(ui).kernel || 0.15)).toFixed(2) + '° wide so they show.' }, el('span', {}, 'floors (min)'), el('span', {}, 'stripes = both'), el('span', {}, 'ceilings (max)')));
+    } else if (s && s.top) {
       const log = fo.scale !== 'lin', lo = log ? s.lo : 0, top = s.top;
       const pos = (x) => 100 * (log ? Math.log10(x / lo) / 3 : x / top);
       const ticks = [];
@@ -473,6 +478,9 @@
         b.addEventListener('click', () => { const o = ffOpts(ui); setFF(ui, k, k === 'scale' ? (o.scale === 'lin' ? 'log' : 'lin') : !o[k]); });
         return b;
       };
+      const hb = el('button', { type: 'button', class: 'toggle', 'data-ff': 'heat', title: 'What the picture shows: the beam, the regulation’s limits (floors blue, ceilings orange), or the margin (the beam against its local limit: blue headroom, orange short / over)' }, 'beam');
+      hb.addEventListener('click', () => { const o = ffOpts(ui), nx = { beam: 'limits', limits: 'margin', margin: 'beam' }; setFF(ui, 'heat', nx[o.heat] || 'beam'); });
+      bar.append(hb);
       bar.append(mk('scale', 'log', 'Colour scale: log (3 decades) or linear (like Hits / Grid)'), mk('contours', 'isocd', 'Isocandela lines at 1–3 steps per decade, labelled in cd'),
         mk('overlay', 'spec', 'The spec’s points and zones with their verdicts'), mk('aim', 'aim', 'Where the judge aimed: the spec’s H-V on the beam (dashed cross) and the line the cut-off was put on (dotted)'),
         mk('road', 'road', 'The road’s lane lines and the horizon as the right-hand lamp sees them on the car (Spec → Road sets lanes, height, aim)'));
@@ -482,8 +490,48 @@
     for (const b of bar.querySelectorAll('[data-ff]')) {
       const k = b.dataset.ff;
       if (k === 'scale') { b.textContent = o.scale === 'lin' ? 'lin' : 'log'; b.setAttribute('aria-pressed', 'true'); }
+      else if (k === 'heat') { b.textContent = o.heat || 'beam'; b.setAttribute('aria-pressed', String((o.heat || 'beam') !== 'beam')); }
       else b.setAttribute('aria-pressed', String(!!o[k]));
     }
+  }
+  // ---------------------------------------------------------------- regulation heat map (Far field → beam / limits / margin)
+  // floor / ceiling per fine-grid bin, in the beam's frame (the judge's aim shift applied, like the overlay); cached
+  function limitsGrid(ui, s) {
+    const m0 = md(ui), sh = s.ev ? s.ev.shift : [0, 0], key = JSON.stringify([m0.items, m0.preset, sh, m0.kernel, s.G.nh, s.G.nv, s.G.h0, s.G.v0]);
+    if (s.lim && s.limKey === key) return s.lim;
+    const G = s.G, items = RF.Spec.itemsOf(m0), rad = Math.max(0.25, 2 * (m0.kernel || 0.15)), n = G.nh * G.nv, lo = new Float32Array(n), hi = new Float32Array(n);
+    for (let j = 0; j < G.nv; j++) for (let i = 0; i < G.nh; i++) {
+      const L = RF.Spec.limitsAt(items, G.h0 + (i + 0.5) * G.step - sh[0], G.v0 + (j + 0.5) * G.step - sh[1], rad);
+      lo[j * G.nh + i] = L.lo; hi[j * G.nh + i] = isFinite(L.hi) ? L.hi : 0;
+    }
+    s.lim = { lo, hi }; s.limKey = key; s.heatImg = null;
+    return s.lim;
+  }
+  const BLUE = [90, 167, 255], ORANGE = [255, 154, 61];
+  // limits: blue = a floor (darker = lower), orange = a ceiling (darker = stricter), stripes = both.
+  // margin: the beam against its local limit (log ratio; ×2 = full colour): blue = headroom, orange = short / over; the
+  // unconstrained beam stays as a grey picture for context. Per bin, not the judge (zones judge their extreme spot).
+  function heatImage(ui, s, mode) {
+    const lim = limitsGrid(ui, s), key = mode + '|' + s.limKey + '|' + (s.imgK || '') + '|' + (s.next || 0);
+    if (s.heatImg && s.heatKey === key) return s.heatImg;
+    const G = s.G, cd = s.M.cd, top = s.top || 1, cv = document.createElement('canvas'); cv.width = G.nh; cv.height = G.nv;
+    const g = cv.getContext('2d'), im = g.createImageData(G.nh, G.nv);
+    const shade = (x) => Math.max(0.3, Math.min(1, 0.3 + 0.7 * Math.log10(Math.max(10, x) / 10) / 4));   // 10 cd … 100k cd
+    for (let j = 0; j < G.nv; j++) for (let i = 0; i < G.nh; i++) {
+      const k = j * G.nh + i, lo = lim.lo[k], hi = lim.hi[k], o = 4 * ((G.nv - 1 - j) * G.nh + i);
+      let r = 12, gg = 13, b = 16;
+      if (mode === 'limits') {
+        const pick = lo > 0 && hi > 0 ? (((i + j) >> 1) & 1 ? 'lo' : 'hi') : lo > 0 ? 'lo' : hi > 0 ? 'hi' : null;
+        if (pick) { const c = pick === 'lo' ? BLUE : ORANGE, t = shade(pick === 'lo' ? lo : hi); r = c[0] * t; gg = c[1] * t; b = c[2] * t; }
+      } else {
+        const x = cd[k], mF = lo > 0 ? Math.log10(Math.max(x, 1e-9) / lo) : Infinity, mC = hi > 0 ? Math.log10(hi / Math.max(x, 1e-9)) : Infinity, m = Math.min(mF, mC);
+        if (isFinite(m)) { const a = Math.min(1, Math.abs(m) / Math.log10(2)), c = m >= 0 ? BLUE : ORANGE, base = 70; r = base + (c[0] - base) * a; gg = base + (c[1] - base) * a; b = base + (c[2] - base) * a; }
+        else { const t = x > 0 ? Math.min(1, Math.log10(Math.max(1, x * 1000 / top)) / 3) : 0; r = gg = b = 16 + 90 * t; }
+      }
+      im.data[o] = r; im.data[o + 1] = gg; im.data[o + 2] = b; im.data[o + 3] = 255;
+    }
+    g.putImageData(im, 0, 0); s.heatImg = cv; s.heatKey = key;
+    return cv;
   }
   // ---------------------------------------------------------------- road (Road view, far-field road overlay, IIHS reach)
   const roadOf = (ui) => { const m0 = md(ui); if (!m0.road) m0.road = RF.Road.defaults(); return m0.road; };
