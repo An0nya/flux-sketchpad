@@ -546,7 +546,10 @@
       } catch (e) { ui.goal = { ctx: run.ctx, error: e.message }; }
     }
     if (sc0.mode === 'D' && RF.SpecUI) {               // the spec report follows the trace (re-judged at most every 0.7 s, and at the end)
-      const s = RF.SpecUI.update(ui, !running);
+      // force one final judgement when the run ends; after that the cache holds (it rebuilds itself when the run grows
+      // or the spec changes). Forcing on every idle redraw re-judged the spec per orbit/zoom frame (~3 s each on FMVSS).
+      const judged = ui.spec && ui.spec.ctx === run.ctx && ui.spec.done && ui.spec.next === run.ctx.next;
+      const s = RF.SpecUI.update(ui, !running && !judged);
       if (s && s !== ui._specShown) { ui._specShown = s; RF.SpecUI.render(ui); if (ui.display === 'ff') drawHeat(); }
     }
     P.renderStats(ui, st, { running, preview: run.preview, match, fid: ui.fid, photo: !running && ui.photo && ui.photo.ctx === run.ctx ? ui.photo : null, goal: !running && ui.goal && ui.goal.ctx === run.ctx ? ui.goal : null });
