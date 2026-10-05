@@ -309,7 +309,14 @@
     for (const o of S.open >= 0 ? [S.open] : grid[0]) for (const m of S.defocus >= 0 ? [S.defocus] : grid[1]) opts.push({ o, m });
     if (opts.length === 1) return solveOnce(input, Object.assign({}, S, { open: opts[0].o, defocus: opts[0].m }), tools);
     const res = [], prog = (f, st) => { if (tools && tools.progress) tools.progress(f, st); };
-    opts.forEach((c, i) => { const out = solveOnce(input, Object.assign({}, S, { open: c.o, defocus: c.m, compensate: Math.min(2, S.compensate) }), { progress: (f, st) => prog(0.5 * (i + f) / opts.length, 'try ' + (i + 1) + '/' + opts.length + ' · ' + (st || '')) }); res.push(Object.assign({ v: out.pred.fid + S.lightWeight * out.pred.onPaint, pred: out.pred }, c)); });
+    // Watch solve (display only): each quick try is a complete design; show it, at most once a second.  Reads `out` only.
+    let lastShow = 0;
+    const showTry = (out, label) => {
+      if (!tools || !tools.preview || tools.preview.none) return;
+      const t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
+      try { tools.preview(out.surfaces, { label, note: 'quick try (predicted ' + (100 * out.pred.fid).toFixed(0) + '%), before the final solve' }); } catch (e) { /* display only */ }
+    };
+    opts.forEach((c, i) => { const out = solveOnce(input, Object.assign({}, S, { open: c.o, defocus: c.m, compensate: Math.min(2, S.compensate) }), { progress: (f, st) => prog(0.5 * (i + f) / opts.length, 'try ' + (i + 1) + '/' + opts.length + ' · ' + (st || '')) }); res.push(Object.assign({ v: out.pred.fid + S.lightWeight * out.pred.onPaint, pred: out.pred }, c)); showTry(out, 'try ' + (i + 1) + '/' + opts.length + ' · ' + c.o + '° m' + c.m); });
     res.sort((a, b) => b.v - a.v || a.o - b.o || a.m - b.m);
     const out = solveOnce(input, Object.assign({}, S, { open: res[0].o, defocus: res[0].m }), { progress: (f, st) => prog(0.5 + 0.5 * f, 'final · ' + (st || '')) });
     out.notes.unshift('opening / defocus search (predicted fidelity / light on paint): ' + res.slice(0, 5).map((r) => r.o + '° m' + r.m + ': ' + (100 * r.pred.fid).toFixed(1) + '% / ' + (100 * r.pred.onPaint).toFixed(0) + '%').join(' · ') + ' → ' + res[0].o + '°, m ' + res[0].m);

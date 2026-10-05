@@ -386,6 +386,30 @@
     const load = (o) => { aims.forEach((z, j) => { Object.assign(z, o.st[j]); setFocus(z); }); dirs.forEach((d, i) => { d.on = o.on[i]; }); sizeNow = o.size; openNow = o.open; growNow = o.grow; assign(); };
     const onPaintOf = () => { let t = 0; for (const k of pcells) t += Fg[k]; return t / src.power; };
     let fd = predict();
+    // ---- the facets of the current state (read-only: the emit below uses the same code, and Watch solve shows it mid-search)
+    const byJOf = () => { const byJ = aims.map(() => []); for (const d of dirs) if (d.on && d.j >= 0) byJ[d.j].push(d); return byJ; };
+    const cornerDir = (q, a) => { const ca = 1 - 2 * a / NA, sa = Math.sqrt(Math.max(0, 1 - ca * ca)), phi = q / NP * 2 * Math.PI; return V.add(V.mul(B, ca), V.mul(V.add(V.mul(e1, Math.cos(phi)), V.mul(e2, Math.sin(phi))), sa)); };
+    function facetOf(z, j, cs) {
+      if (cs.length < 2) return null;
+      let u = [0, 0, 0], W = 0; for (const d of cs) { u = V.add(u, V.mul(d.u, d.flux)); W += d.flux; } u = V.norm(u);
+      const P = V.add(Lp, V.mul(u, rOf(z, u))), di = V.dist(P, z.F), n = V.norm(V.add(V.norm(V.sub(Lp, P)), V.norm(V.sub(z.F, P))));
+      // hull of the patch's direction corners, intersected with ITS ellipsoid (same surface, so neighbours meet)
+      const pts = [], [x, y] = V.basis(n);
+      for (const d of cs) for (const [dq, da] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const w = cornerDir(d.q + dq, d.a + da); pts.push(V.add(Lp, V.mul(w, rOf(z, w)))); }
+      const p2 = pts.map((p) => [V.dot(V.sub(p, P), x), V.dot(V.sub(p, P), y)]), idx = p2.map((_, i) => i).sort((a, b) => p2[a][0] - p2[b][0] || p2[a][1] - p2[b][1]);
+      const cr = (o, a, b) => (p2[a][0] - p2[o][0]) * (p2[b][1] - p2[o][1]) - (p2[a][1] - p2[o][1]) * (p2[b][0] - p2[o][0]), lo = [], hi = [];
+      for (const i of idx) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], i) <= 0) lo.pop(); lo.push(i); }
+      for (let k = idx.length - 1; k >= 0; k--) { const i = idx[k]; while (hi.length >= 2 && cr(hi[hi.length - 2], hi[hi.length - 1], i) <= 0) hi.pop(); hi.push(i); }
+      const hull = lo.slice(0, -1).concat(hi.slice(0, -1)).map((i) => pts[i]); if (hull.length < 3) return null;
+      return { type: 'facet', id: 'Q' + j, P, S0: Lp.slice(), Z: z.F, flat: false, di, clip: { kind: 'poly', pts3: hull }, optics: { interaction: 'reflect', reflectivity: refl } };
+    }
+    // Watch solve (display only): the design after each compensation pass, at most once a second (unverified: before emit's shrink pass)
+    let lastShow = 0;
+    const showNow = (label) => {
+      if (!tools || !tools.preview || tools.preview.none) return;
+      const t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
+      try { const byJ = byJOf(); tools.preview(aims.map((z, j) => facetOf(z, j, byJ[j])).filter(Boolean), { label, note: fd ? 'predicted ' + (100 * fd.fidelity).toFixed(0) + '% (model)' : undefined }); } catch (e) { /* display only */ }
+    };
     function compPass() {                                       // one compensation pass: new shares from the predicted field, re-balance, predict
       const nn = nnlsShares(S.nnlsIters);
       keepSizes(() => {
@@ -400,6 +424,7 @@
       for (let pass = 0; pass < passes; pass++) {
         prog(0.25 + 0.65 * pass / Math.max(1, passes), label + ' ' + (pass + 1) + '/' + passes + ' · predicted ' + Math.round(100 * bestC.fd.fidelity) + '%');
         compPass(); if (fd && fd.fidelity > bestC.fd.fidelity) bestC = { fd, o: snap() };
+        showNow(label + ' ' + (pass + 1) + '/' + passes);
       }
       load(bestC.o); fd = predict(); return bestC;
     }
@@ -452,22 +477,11 @@
     // ---- emit: one facet per patch = the exact ellipsoid (foci LED and z_j), clipped to the hull of its directions
     prog(0.92, 'emit + verify');
     const surfaces = [], intent = [], sceneV = { source: src, envelope: env, target: input.target, modeA: { budget: N0 } };
-    const byJ = aims.map(() => []); for (const d of dirs) if (d.on && d.j >= 0) byJ[d.j].push(d);
-    const cornerDir = (q, a) => { const ca = 1 - 2 * a / NA, sa = Math.sqrt(Math.max(0, 1 - ca * ca)), phi = q / NP * 2 * Math.PI; return V.add(V.mul(B, ca), V.mul(V.add(V.mul(e1, Math.cos(phi)), V.mul(e2, Math.sin(phi))), sa)); };
+    const byJ = byJOf();
     aims.forEach((z, j) => {
-      const cs = byJ[j]; if (cs.length < 2) return;
-      let u = [0, 0, 0], W = 0; for (const d of cs) { u = V.add(u, V.mul(d.u, d.flux)); W += d.flux; } u = V.norm(u);
-      const P = V.add(Lp, V.mul(u, rOf(z, u))), di = V.dist(P, z.F), n = V.norm(V.add(V.norm(V.sub(Lp, P)), V.norm(V.sub(z.F, P))));
-      // hull of the patch's direction corners, intersected with ITS ellipsoid (same surface, so neighbours meet)
-      const pts = [], [x, y] = V.basis(n);
-      for (const d of cs) for (const [dq, da] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const w = cornerDir(d.q + dq, d.a + da); pts.push(V.add(Lp, V.mul(w, rOf(z, w)))); }
-      const p2 = pts.map((p) => [V.dot(V.sub(p, P), x), V.dot(V.sub(p, P), y)]), idx = p2.map((_, i) => i).sort((a, b) => p2[a][0] - p2[b][0] || p2[a][1] - p2[b][1]);
-      const cr = (o, a, b) => (p2[a][0] - p2[o][0]) * (p2[b][1] - p2[o][1]) - (p2[a][1] - p2[o][1]) * (p2[b][0] - p2[o][0]), lo = [], hi = [];
-      for (const i of idx) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], i) <= 0) lo.pop(); lo.push(i); }
-      for (let k = idx.length - 1; k >= 0; k--) { const i = idx[k]; while (hi.length >= 2 && cr(hi[hi.length - 2], hi[hi.length - 1], i) <= 0) hi.pop(); hi.push(i); }
-      const hull = lo.slice(0, -1).concat(hi.slice(0, -1)).map((i) => pts[i]); if (hull.length < 3) return;
-      const id = 'Q' + j;
-      surfaces.push({ type: 'facet', id, P, S0: Lp.slice(), Z: z.F, flat: false, di, clip: { kind: 'poly', pts3: hull }, optics: { interaction: 'reflect', reflectivity: refl } });
+      const sf = facetOf(z, j, byJ[j]); if (!sf) return;
+      const id = sf.id;
+      surfaces.push(sf);
       const cells = []; for (let k = 0; k < R * R; k++) if (owner[k] === j) cells.push([k, 1]);
       intent.push({ facet: id, cells });
     });

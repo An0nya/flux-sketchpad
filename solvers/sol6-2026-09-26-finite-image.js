@@ -1,7 +1,8 @@
 /* Bundled model solver: GPT-6 Sol (Codex), Flux solver benchmark run 2026-09-26 (workspace work-sol6-codex-flux-solver-20260926-0446).
  * Copied verbatim from that run's solvers/solver.js (sha256 ea81cb9027bc…), wrapped in a function scope so several
  * bundled files can share one worker.
- * Not edited otherwise: bugs and all, it is the record of what the model wrote. */
+ * Not edited otherwise: bugs and all, it is the record of what the model wrote.
+ * Exception (2026-10-05): display-only tools.preview calls added for Watch solve (finite-image-auto's measure). */
 (function () {
 /* Flux: static, finite-source reflector design. No ray tracing is used here.
  * A common forward-opening paraboloid supplies non-overlapping placement cells.
@@ -446,13 +447,21 @@
       envelope: { ...input.envelope, keepOut: Math.max(input.envelope.keepOut || 0, settings.minDistance || 0) },
       modeA: { budget: input.limits.maxFacets, paint: input.paint.cells, reflectivity: input.limits.reflectivity } };
     const rows = []; let used = 0;
-    const measure = async (row, rays) => {
+    // Watch solve (display only): each measured candidate with its own trace, at most once a second.  Reads row/raw only.
+    let lastShow = 0;
+    const show = (row, raw, label) => {
+      if (!tools || !tools.preview || tools.preview.none) return;
+      const t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
+      try { tools.preview(row.output.surfaces, { label, trace: raw, note: 'static settings: ' + row.name }); } catch (e) { /* display only */ }
+    };
+    const measure = async (row, rays, label) => {
       // Count the attempt before calling the host: an exception can occur after
       // it has consumed the rays. Never overspend by retrying a failed trace.
       used += rays; row.rays = rays;
       try {
         const raw = await tools.trace(row.output.surfaces, { rays, seed: input.seed });
         const m = metrics(raw);
+        show(row, raw, label);
         if (!m) { row.failure = 'trace returned missing/nonfinite fidelity data'; row.metrics = null; }
         else { row.metrics = m; row.failure = null; }
       } catch (e) { row.failure = 'trace failed: ' + String(e && e.message || e); row.metrics = null; }
@@ -465,7 +474,7 @@
         const v = RF.Solvers.verify(verifyScene, row.output);
         if (v.errors.length || v.intentErrors.length || v.violations.envelope.length || v.violations.keepOut.length || v.violations.budget) row.failure = 'candidate failed geometry verification';
         else if (!row.output.surfaces.length) row.failure = 'candidate has no geometry';
-        else await measure(row, pilotRays);
+        else await measure(row, pilotRays, 'pilot ' + (i + 1) + '/' + definitions.length);
       } catch (e) { row.failure = 'candidate failed: ' + String(e && e.message || e); }
       row.pilotRays = row.rays || 0; row.pilotMetrics = row.metrics || null;
       rows.push(row);
@@ -479,7 +488,7 @@
     const challenger = ordered[0].index === 0 ? ordered.find((r) => r.index !== 0) : rows.find((r) => r.index === 0 && r.metrics);
     if (challenger) finalists.push(challenger);
     for (let i = 0; i < finalists.length; i++) {
-      if (used + finalRays <= budget && finalRays > pilotRays) await measure(finalists[i], finalRays);
+      if (used + finalRays <= budget && finalRays > pilotRays) await measure(finalists[i], finalRays, 'finalist ' + (i + 1) + '/' + finalists.length);
       if (typeof tools.progress === 'function') tools.progress((5 + i) / 6);
     }
     // Rank only equal-resolution finalists. A failed final measurement cannot

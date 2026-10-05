@@ -735,6 +735,14 @@
     model.F0.set(directField(P, P.shell, units)); model.tg.set(sec.tg); model.ws.set(sec.ws);
     model.setEps(Math.max(5, 0.01 * (sec.tmax || 1000)));
     const st = model.st;
+    // watching the search (display only, SOLVER_API.md "Watching a solve"): the current state as surfaces, at most once a
+    // second. buildSurfaces only reads live/st, so the result is the same with or without previews (pattern of spec-hl-v2).
+    let lastShow = 0;
+    const showFit = (label) => {
+      if (!tools || !tools.preview || tools.preview.none) return;
+      const t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
+      try { tools.preview(buildSurfaces(P, S, { live, st, shapeOf }, null).surfaces, { label, note: 'search state (model): cost ' + model.total().toFixed(2) }); } catch (e) { /* display only */ }
+    };
     // where aims may go
     const aH0 = G.h0 + 1, aH1 = G.h0 + nh * gs - 1, aV0 = G.v0 + 1, aV1 = G.v0 + nv * gs - 1;
     const lim = (h, v) => [clamp(h, Math.max(aH0, P.B.h - S.maxAimH), Math.min(aH1, P.B.h + S.maxAimH)), clamp(v, Math.max(aV0, P.B.v - S.maxAimV), Math.min(aV1, P.B.v + S.maxAimV))];
@@ -795,7 +803,7 @@
       }
       if (top.length) { best = pickWithEdge(top); }
       if (best) { st[u].on = true; st[u].ai = best.ai; st[u].aj = best.aj; st[u].sh = best.sh; st[u].K = best.K; model.begin(); model.addMut(best.K, best.ai, best.aj, 1); model.commit(); }
-      if (++done % 10 === 0) prog(0.12 + 0.3 * done / N, 'placing ' + done + '/' + N);
+      if (++done % 10 === 0) { prog(0.12 + 0.3 * done / N, 'placing ' + done + '/' + N); showFit('placing ' + done + '/' + N); }
     }
     model.recomputeAll();
     const c0 = model.total();
@@ -865,6 +873,7 @@
         if (S.boost > 0) { model.recomputeAll(); cur = model.total(); }
         if (cur < best.cost * 0.9999 || sw === 0) best = { cost: cur, snap: snapshot() };
         if (sw % 3 === 0) prog(p0 + (p1 - p0) * (sw + 1) / nSw, label + ' ' + (sw + 1) + '/' + nSw + ' · cost ' + cur.toFixed(2));
+        showFit(label + ' ' + (sw + 1) + '/' + nSw);
       }
     }
     const tAn = Date.now();
@@ -1052,6 +1061,14 @@
     const msFit = Date.now() - tFit;
     // ---- calibration: patterns from real traces of the built design, then a polish of the aims on them
     let built = buildSurfaces(P, S, R, null), cal = [];
+    // display only: the design the calibration starts from / ends each round with (already built; nothing extra computed)
+    let lastCal = 0;
+    const showBuilt = (label, note) => {
+      if (!tools || !tools.preview || tools.preview.none) return;
+      const t = Date.now(); if (t - lastCal < 1000) return; lastCal = t;
+      try { tools.preview(built.surfaces, { label, note }); } catch (e) { /* display only */ }
+    };
+    showBuilt('fit', 'search done: cost ' + R.model.total().toFixed(2) + ' (model)');
     for (let round = 0; round < S.calRounds; round++) {
       prog(0.88 + 0.08 * round / Math.max(1, S.calRounds), 'calibrating ' + (round + 1) + '/' + S.calRounds);
       const tc = Date.now();
@@ -1062,6 +1079,7 @@
       const pol = R.polish(S.polishSweeps, S.polishStep, S.anchorPx, 'polishing');
       cal.push('round ' + (round + 1) + ': measured patterns → cost ' + pol.before.toFixed(2) + ' → ' + pol.after.toFixed(2) + ' (blocked ' + (100 * T.blocked).toFixed(1) + '%; trace ' + msTrace + ' ms, polish ' + (Date.now() - tc - msTrace) + ' ms)');
       built = buildSurfaces(P, S, R, round === S.calRounds - 1 ? notes : null);
+      showBuilt('calibration ' + (round + 1) + '/' + S.calRounds, 'cost ' + pol.before.toFixed(2) + ' → ' + pol.after.toFixed(2) + ' (model on measured patterns)');
     }
     for (const c of cal) notes.push('calibration ' + c);
     prog(0.97, 'emit');
