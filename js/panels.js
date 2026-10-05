@@ -428,7 +428,7 @@
     const E = st.energy, em = E.emitted || 1;
     box.innerHTML = '';
     const s = (val, lab, cls) => box.append(el('div', { class: 'stat ' + (cls || '') }, el('b', {}, val), el('span', {}, lab)));
-    s(st.rays.toLocaleString() + (extra.running ? ' …' : ''), 'rays traced' + (extra.preview ? ' (coarse preview while dragging)' : ''));
+    s(st.rays.toLocaleString() + (extra.running ? ' …' : ''), 'rays traced' + (extra.preview ? ' (coarse preview while dragging)' : '') + (extra.previewOf ? ' — PREVIEW: the solver\u2019s candidate ' + extra.previewOf + ', not the design' : ''));
     const fd = extra.fid;
     if (fd) {
       const q = fd.ratio, cnt = (x) => x ? pct(x.within) + ' of ' + x.cells : '—';
@@ -487,7 +487,8 @@
     s(st.timeMs.toFixed(0) + ' ms', 'measured trace time');
     if (extra.match) s('r = ' + extra.match.r.toFixed(3) + ' · ' + pct(extra.match.onPaint), 'shape match: correlation intended↔simulated · energy on painted cells', 'pair');
     if (ui.peakInfo) s('≈ ' + ui.peakInfo.lux + ' lx', 'peak — 99.5th pct of ' + ui.peakInfo.res + '² sim cells (not the single max: a noise spike); white point of both heat views');
-    const ph = extra.photo, pct0 = (x) => (x === null || x === undefined ? '—' : Math.round(100 * x) + '%');
+    // a preview carries only the footer's photometry (phF); the drawer's Photometry section needs a real run (ph)
+    const phF = extra.photo, ph = extra.previewOf ? null : phF, pct0 = (x) => (x === null || x === undefined ? '—' : Math.round(100 * x) + '%');
     if (ph) {
       const nz = noiseOf(ph.peakRays);
       box.append(el('h4', { class: 'stats-sub' }, 'Photometry'));
@@ -522,8 +523,20 @@
       const delivered = ((E.direct || 0) + (E.reflected || 0)) / em;
       const rA = ui.store.reports.A, sc = ui.store.scene;
       row.innerHTML = '';
-      const fd = extra.fid;
-      if (fd) row.append(
+      row.classList.toggle('pv', !!extra.previewOf);
+      if (extra.previewOf) row.append(el('div', { class: 'tile pv-tag', title: 'Numbers from the solver\u2019s newest traced candidate (' + extra.previewOf + '): coarse, display only. The real numbers return with the result. Solver settings → Live numbers from previews.' }, el('b', {}, 'PREVIEW'), el('span', {}, extra.previewOf)));
+      const fd = extra.fid, specOn = sc.mode === 'D' && RF.SpecUI;
+      if (specOn) {
+        // Spec mode: the regulation's numbers, not the paint's (the painting is only the secondary goal here)
+        const s = !extra.previewOf ? ui.spec : null, ev = s && s.ev;
+        if (ev) {
+          const worst = ev.rows.slice().sort((a, b) => a.margin - b.margin)[0], wt = worst ? RF.SpecUI.rowText(worst) : null;
+          row.append(el('div', { class: 'tile spec-v', title: 'Constraints that pass / fail / are unsure (the ±2σ noise band crosses the limit; more rays would settle them). Measured at ' + (s.G && isFinite(s.G.distance) ? Math.round(s.G.distance / 1000) + ' m' : '∞') + '.' },
+            el('b', {}, el('span', { class: 'v-pass' }, ev.n.pass + '✓'), ' ', el('span', { class: 'v-fail' }, ev.n.fail + '✗'), ' ', el('span', { class: 'v-unsure' }, ev.n.unsure + '?')), el('span', {}, 'pass · fail · unsure')));
+          if (worst) row.append(t(worst.name, (worst.margin < 0 ? wt.off : wt.off || 'met') , 'Tightest constraint: ' + worst.name + ' needs ' + wt.need + ', read ' + wt.got + ' (' + worst.verdict + ').', 'spec-worst v-' + worst.verdict));
+        } else row.append(t('—', extra.previewOf ? 'not judged (preview)' : 'not judged yet', extra.previewOf ? 'Preview candidates are traced for the picture, not judged (the judge takes seconds).' : 'The report appears when the trace runs.'));
+        if (s && s.G && isFinite(s.G.lmWindow)) row.append(t(fmtLm(s.G.lmWindow), 'in spec window', 'Lumens inside the spec\u2019s measuring window (of ' + fmtLm(st.energy.emitted) + ' emitted).'));
+      } else if (fd) row.append(
         t(pct(fd.fidelity), 'fidelity', 'Both must hold (F1 score of the two): painted cells within ×/÷1.25 of the paint (' + pct(fd.within) + '; too dim ' + pct(fd.under) + ', too bright ' + pct(fd.over) + ') and the gaps around the paint stay dark (' + pct(fd.gapsDark) + ' of ' + fd.gapCells + ' cells). A perfect design would score ' + pct(fd.fidelityNoiseCeiling) + ' at this ray count.', fd.fidelityNoiseCeiling !== null && fd.fidelity >= fd.fidelityNoiseCeiling - 0.02 ? 'capped' : ''),
         t(pct(fd.onPaint), 'on paint', 'Share of the LED\u2019s light landing on painted cells (efficiency that counts only light where you asked). ' + pct(delivered) + ' reaches the target in all.'),
         t(pct(fd.spill), 'spill', 'Share of the target light landing on unpainted cells. ' + pct(fd.spillNear) + ' lands just outside the painted edge (a cutoff leak shows here).'));
@@ -531,9 +544,9 @@
         t(pct(delivered), 'delivered', 'Fraction of emitted light that reaches the target (direct + via optics).'),
         t(pct(st.coverage), 'beam', 'Beam coverage: share of the ' + (st.basis === 'paint' ? 'painted cells' : 'beam area') + ' at ≥50% of ' + (st.basis === 'paint' ? 'intended' : 'peak') + '. Field (≥10%): ' + pct(st.coverageField) + '.'),
         t(st.uniformity.toFixed(2), 'uniformity', 'Uniformity U₀ = 5th percentile ÷ mean over ' + (st.basis === 'paint' ? 'painted cells (sim ÷ paint)' : 'the beam area') + '. Noise ceiling ' + st.noiseCeiling.toFixed(2) + ' at ' + Math.round(st.raysPerCell) + ' rays/cell.' + (st.uniformity >= st.noiseCeiling - 0.02 ? ' Noise-limited: more rays or a coarser sim grid.' : ''), st.uniformity >= st.noiseCeiling - 0.02 ? 'capped' : ''));
-      if (extra.match && !fd) row.append(t(extra.match.r.toFixed(2), 'shape', 'Shape match: correlation between intended and simulated (raw grid). ' + pct(extra.match.onPaint) + ' of target energy lands on painted cells.'));
-      if (ph) row.append(t(fmtCd(ph.peakCd), 'peak', 'Peak intensity ±' + Math.round(100 * noiseOf(ph.peakRays)) + '% (shot noise). Throw ' + Math.round(ph.throwM) + ' m. ' + pct0(ph.ofDesign) + ' of this design\u2019s brightness ceiling, ' + pct0(ph.ofEnvelope) + ' of the envelope\u2019s. More in Details.'));
-      if (fd) row.append(t(st.uniformity.toFixed(2), 'uniformity', 'U₀ = 5th percentile ÷ mean of delivered ÷ painted. Sees only the dim end (holes), not hotspots. Noise ceiling ' + st.noiseCeiling.toFixed(2) + '.'));
+      if (extra.match && !fd && !specOn) row.append(t(extra.match.r.toFixed(2), 'shape', 'Shape match: correlation between intended and simulated (raw grid). ' + pct(extra.match.onPaint) + ' of target energy lands on painted cells.'));
+      if (phF) row.append(t(fmtCd(phF.peakCd), 'peak', 'Peak intensity ±' + Math.round(100 * noiseOf(phF.peakRays)) + '% (shot noise). Throw ' + Math.round(phF.throwM) + ' m. ' + pct0(phF.ofDesign) + ' of this design\u2019s brightness ceiling, ' + pct0(phF.ofEnvelope) + ' of the envelope\u2019s. More in Details.'));
+      if (fd && !specOn) row.append(t(st.uniformity.toFixed(2), 'uniformity', 'U₀ = 5th percentile ÷ mean of delivered ÷ painted. Sees only the dim end (holes), not hotspots. Noise ceiling ' + st.noiseCeiling.toFixed(2) + '.'));
       row.append(el('span', { class: 'tile-sep' }));
       row.append(isPaint(sc.mode) && rA && !rA.error
         ? t(rA.placed + ' / ' + sc.modeA.budget, 'facets · ' + solverLabel(sc, rA), 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : '') + ' ' + solverTip(sc, rA), 'facets')

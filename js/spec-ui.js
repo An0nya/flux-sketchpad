@@ -544,5 +544,5 @@
     box.append(el('span', { class: 'btn-pair' }, wt));
   }
 
-  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, editorOverlay, readout, leftTools, COL };
+  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, editorOverlay, readout, leftTools, COL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

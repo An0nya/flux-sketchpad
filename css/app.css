@@ -490,3 +490,13 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 }
 .spec-table .st-row .icon { width: 100%; }   /* a global .icon is 32px wide: it spilled past its 16–18px column */
 .side input[type=range] { max-width: 100%; min-width: 0; }
+/* footer showing a solve's traced candidate (Live numbers from previews): tagged, values dimmed */
+#min-row.pv .tile:not(.pv-tag) b { opacity: .7; font-style: italic; }
+#min-row .pv-tag b { color: #f3d7f6; font-size: 11px; letter-spacing: .06em; }
+#min-row .pv-tag { padding: 0 6px; border-left: 2px solid rgba(226,120,236,.7); max-width: 160px; }
+#min-row .pv-tag span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Spec-mode footer: verdict counts in the overlay's colours (blue / orange / amber — no red-green) */
+#min-row .spec-v b span.v-pass, #min-row .spec-worst.v-pass b { color: #5aa7ff; }
+#min-row .spec-v b span.v-fail, #min-row .spec-worst.v-fail b { color: #ff9a3d; }
+#min-row .spec-v b span.v-unsure, #min-row .spec-worst.v-unsure b { color: #f2b441; }
+#min-row .spec-worst b { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
