@@ -459,3 +459,10 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .canvas-wrap:has(> .watch-badge:not([hidden])) > .ff-tools { top: 30px; }
 /* the facets tile names the solver: keep it to one short line */
 .tile.facets span { max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* far-field hover / tap card for one spec item */
+.spec-card { position: absolute; z-index: 3; max-width: 270px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: rgba(11,17,24,.95); font-size: 11px; line-height: 1.35; pointer-events: none; }
+.spec-card .sc-h b { font-size: 12px; }
+.spec-card .sc-h span, .spec-card .sc-l, .spec-card .sc-n { color: var(--dim); }
+.spec-card .sc-n { margin-top: 3px; font-size: 10px; }
+.spec-card .mk { display: inline-block; width: 1em; }
+.spec-card .v-fail { color: #ff9a3d; } .spec-card .v-pass { color: #5aa7ff; } .spec-card .v-unsure { color: #f2b441; }

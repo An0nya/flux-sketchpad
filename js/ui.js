@@ -876,7 +876,10 @@
       onDrag(st, x, y) { const uv = toUV(x, y); C.actions.moveStamp(ui.store, st.id, uv[0], uv[1]); ui.movedSomething = true; ui.store.commit({ deferA: true }); firePreview(st.id); ui.requestRun(true); },
       onTap(x, y, st, e) {
         const sc = ui.store.scene, add = !!(e && e.shiftKey);
-        if (sc.mode === 'D' && ui.display === 'ff' && RF.SpecUI) {   // far-field view: read the intensity under the tap
+        if (sc.mode === 'D' && ui.display === 'ff' && RF.SpecUI) {   // far-field view: a spec item's card, else the intensity under the tap
+          const it = RF.SpecUI.itemAt(ui, ui.vHeat, x, y);
+          if (it) { ui.specPinned = it.id; ui.specSel = it.id; RF.SpecUI.render(ui); drawHeat(); RF.SpecUI.showCard(ui, cv, it, x, y); return; }
+          ui.specPinned = null; RF.SpecUI.hideCard(cv);
           const r = RF.SpecUI.readout(ui, ui.vHeat, x, y);
           if (r && isFinite(r.cd)) toast('H ' + r.h.toFixed(2) + '°, V ' + r.v.toFixed(2) + '°: ' + Math.round(r.cd).toLocaleString() + ' ± ' + Math.round(r.sd).toLocaleString() + ' cd');
           return;
@@ -896,6 +899,15 @@
       onPan(dx, dy) { ui.vHeat.panBy(dx, dy); drawHeat(); },
       onZoom(f, x, y) { ui.vHeat.zoomAt(f, x, y); drawHeat(); },
     });
+    // hover cards on the far field's spec overlay (mouse / pen; a touch tap pins one instead, in onTap)
+    cv.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' || e.buttons || !RF.SpecUI) return;
+      if (ui.store.scene.mode !== 'D' || ui.display !== 'ff') return;
+      const b = cv.getBoundingClientRect(), x = e.clientX - b.left, y = e.clientY - b.top, it = RF.SpecUI.itemAt(ui, ui.vHeat, x, y);
+      if (it) { cv.style.cursor = 'help'; RF.SpecUI.showCard(ui, cv, it, x, y); }
+      else { cv.style.cursor = ''; if (!ui.specPinned) RF.SpecUI.hideCard(cv); }
+    });
+    cv.addEventListener('pointerleave', () => { cv.style.cursor = ''; if (!ui.specPinned && RF.SpecUI) RF.SpecUI.hideCard(cv); });
   }
   function wireLeft() {
     const cv = document.getElementById('left-canvas');
@@ -1522,6 +1534,7 @@
     ui.display = d;
     for (const o of document.querySelectorAll('#heat-display button')) o.classList.toggle('on', o.dataset.disp === d);
     document.getElementById('heat-canvas').parentElement.classList.toggle('ff', d === 'ff');   // shows the far-field toggles
+    if (RF.SpecUI) { ui.specPinned = null; RF.SpecUI.hideCard(document.getElementById('heat-canvas')); }
     if (d !== 'ff' && ui.store && ui.store.scene.mode === 'D') document.getElementById('right-caption').textContent = 'Simulated';
     if (ui.run) drawHeat();
     ui.sceneDirty = true; schedule();

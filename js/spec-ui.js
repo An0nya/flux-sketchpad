@@ -170,12 +170,7 @@
       (m.verified === false ? ' · ⚠ preset values unverified' : '')));
     const tbl = el('div', { class: 'spec-rows' });
     for (const r of ev.rows) {
-      const raw = r.unit === 'log' || r.unit === 'deg', f = (x) => (raw ? (+x).toFixed(2) + (r.unit === 'deg' ? '°' : '') : fmtCd(x));
-      const need = (r.isMin ? '≥ ' : '≤ ') + (r.rel ? r.rel.factor + '×' + r.rel.ref + (isFinite(r.bound) ? ' (' + fmtCd(r.bound) + ')' : '') : f(r.bound));
-      const got = isFinite(r.value) ? f(r.value) + ' ± ' + f(r.sd) : '—';
-      const fac = isFinite(r.margin) ? Math.pow(10, Math.abs(r.margin)) : NaN;
-      const off = !(r.margin < 0) ? '' : r.unit === 'deg' ? (r.value - r.bound).toFixed(2) + '° over' : r.isMin && !(r.value > 0) ? 'no light read here' : '×' + fac.toFixed(2) + (r.isMin ? ' short' : ' over');
-      const mk = { pass: '✓', fail: '✗', unsure: '?' }[r.verdict];
+      const t = rowText(r), need = t.need, got = t.got, mk = t.mk, off = r.margin < 0 ? t.off : '';
       const line = el('div', { class: 'sr v-' + r.verdict + (ui.specSel === r.id ? ' sel' : ''), title: r.at ? 'read at H ' + r.at[0].toFixed(2) + '°, V ' + r.at[1].toFixed(2) + '°' : '' },
         el('span', { class: 'mk' }, mk), el('span', { class: 'nm' }, r.name), el('span', { class: 'need' }, need), el('span', { class: 'got' }, got), el('span', { class: 'off' }, off));
       line.addEventListener('click', () => { ui.specSel = ui.specSel === r.id ? null : r.id; render(ui); ui.redrawSpec(); });
@@ -205,6 +200,16 @@
       }
     });
     if (ui.run && ui.run.ctx.done) box.append(el('div', { class: 'btnrow' }, cmp), out);
+  }
+  // one judged row in words — the report table and the hover card say the same thing
+  function rowText(r) {
+    const raw = r.unit === 'log' || r.unit === 'deg', f = (x) => (raw ? (+x).toFixed(2) + (r.unit === 'deg' ? '°' : '') : fmtCd(x));
+    const need = (r.isMin ? '≥ ' : '≤ ') + (r.rel ? r.rel.factor + '×' + r.rel.ref + (isFinite(r.bound) ? ' (' + fmtCd(r.bound) + ')' : '') : f(r.bound));
+    const got = isFinite(r.value) ? f(r.value) + ' ± ' + f(r.sd) : '—';
+    const fac = isFinite(r.margin) ? Math.pow(10, Math.abs(r.margin)) : NaN;
+    const off = !(r.margin < 0) ? (isFinite(fac) && r.unit !== 'deg' && r.unit !== 'log' ? '×' + fac.toFixed(2) + ' headroom' : '') : r.unit === 'deg' ? (r.value - r.bound).toFixed(2) + '° over' : r.isMin && !(r.value > 0) ? 'no light read here' : '×' + fac.toFixed(2) + (r.isMin ? ' short' : ' over');
+    const mk = { pass: '✓', fail: '✗', unsure: '?' }[r.verdict];
+    return { need, got, off, mk };
   }
   // keep tracing the finished run to ×2 the rays (no restart)
   function refineButton(ui) {
@@ -360,7 +365,7 @@
   }
   // the Result pane in Spec mode, "Far field" view: content = degrees (H right, V up)
   function drawFarField(ui, cv, view, sArg) {
-    const s = sArg || ui.spec, box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d');
+    const s = sArg || ui.spec; ui.ffShown = s; const box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d');
     const win = s && s.G ? [s.G.h0, s.G.v0, s.G.h1, s.G.v1] : (() => { const w = RF.Spec.windowOf(md(ui)); return [w[0], w[2], w[1], w[3]]; })();
     // the far field is in degrees, not the paint grid: no size pairing with the Editor (that cap shrank it to the
     // smaller pane). Default fit = the spec window; zoom out to see the wide context grid around it.
@@ -477,6 +482,55 @@
       else b.setAttribute('aria-pressed', String(!!o[k]));
     }
   }
+  // ---------------------------------------------------------------- hover cards
+  const KIND = { point: 'test point', zone: 'zone', sum: 'sum of points', gradient: 'cut-off sharpness scan', linearity: 'cut-off straightness' };
+  // the spec item under a screen point of the far-field view, matched where the overlay draws it (shifted by the judge's
+  // aim). Points and lines beat zones; of overlapping zones the smallest wins.
+  function itemAt(ui, view, x, y) {
+    if (!ffOpts(ui).overlay) return null;
+    const s = ui.ffShown || ui.spec, ev = s && s.ev, sh = ev ? ev.shift : [0, 0];
+    const S = (h, v) => view.toScreen(h + sh[0], v + sh[1]), c = view.toContent(x, y), H = c[0] - sh[0], Vv = c[1] - sh[1];
+    const dist = (p) => Math.hypot(p[0] - x, p[1] - y);
+    const seg = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L)) : 0; return Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y); };
+    const area = (P) => { let A = 0; for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; A += p[0] * q[1] - q[0] * p[1]; } return Math.abs(A) / 2; };
+    let best = null, bs = Infinity;
+    for (const it of RF.Spec.itemsOf(md(ui))) {
+      let sc = Infinity;
+      if (it.kind === 'point') { const d = dist(S(it.h, it.v)); if (d <= 9) sc = d; }
+      else if (it.kind === 'sum') { for (const q of it.pts) { const d = dist(S(q[0], q[1])); if (d <= 9) sc = Math.min(sc, d); } }
+      else if (it.kind === 'gradient') { const d = seg(S(it.h, it.v0), S(it.h, it.v1)); if (d <= 6) sc = 10 + d; }
+      else if (it.kind === 'linearity') { for (const hh of it.hs) { const d = seg(S(hh, it.v0), S(hh, it.v1)); if (d <= 6) sc = Math.min(sc, 10 + d); } }
+      else if (it.kind === 'zone' && it.poly && RF.Spec.inPoly(it.poly, H, Vv)) sc = 100 + area(it.poly);
+      if (sc < bs) { bs = sc; best = it; }
+    }
+    return best;
+  }
+  function hideCard(cv) { const c = cv && cv.parentElement && cv.parentElement.querySelector('.spec-card'); if (c) c.hidden = true; }
+  // a card for one spec item at screen (x, y): what the rule asks, what was measured, the verdict in words
+  function showCard(ui, cv, it, x, y) {
+    const wrap = cv.parentElement; let card = wrap.querySelector('.spec-card');
+    if (!card) { card = el('div', { class: 'spec-card' }); wrap.append(card); }
+    const s = ui.ffShown || ui.spec, ev = s && !s.preview ? s.ev : null, rows = ev ? ev.rows.filter((r) => r.id === it.id) : [];
+    const words = { pass: 'passes', fail: 'fails', unsure: 'unsure: the ±2σ noise band crosses the limit (more rays would settle it)' };
+    card.innerHTML = '';
+    card.append(el('div', { class: 'sc-h' }, el('b', {}, it.name), ' ', el('span', {}, KIND[it.kind] || it.kind)));
+    if (it.kind === 'point') card.append(el('div', { class: 'sc-l' }, 'at H ' + (+it.h).toFixed(2) + '°, V ' + (+it.v).toFixed(2) + '°'));
+    if (rows.length) for (const r of rows) {
+      const t = rowText(r);
+      card.append(el('div', { class: 'sc-r v-' + r.verdict }, el('span', { class: 'mk' }, t.mk || ''), ' needs ' + t.need + (r.unit === 'deg' || r.unit === 'log' ? '' : ' cd') + ', read ' + t.got + (r.unit === 'deg' || r.unit === 'log' ? '' : ' cd')));
+      card.append(el('div', { class: 'sc-l v-' + r.verdict }, words[r.verdict] || r.verdict, t.off ? ' · ' + t.off : ''));
+      if (r.at && it.kind === 'zone') card.append(el('div', { class: 'sc-l' }, (r.isMin ? 'dimmest' : 'brightest') + ' spot at H ' + r.at[0].toFixed(2) + '°, V ' + r.at[1].toFixed(2) + '°'));
+      if (r.pointReaim) card.append(el('div', { class: 'sc-l' }, 'read ' + Math.hypot(r.pointReaim[0], r.pointReaim[1]).toFixed(2) + '° off the point (re-aim allowed per test point)'));
+    } else {
+      const lim = [it.min > 0 ? '≥ ' + fmtCd(it.min) + ' cd' : '', it.max > 0 ? '≤ ' + fmtCd(it.max) + ' cd' : ''].filter(Boolean).join(' and ');
+      if (lim) card.append(el('div', { class: 'sc-r' }, 'needs ' + lim));
+      card.append(el('div', { class: 'sc-l' }, s && s.preview ? 'preview candidate: not judged' : 'not judged yet'));
+    }
+    if (it.note || it.ref) card.append(el('div', { class: 'sc-n' }, [it.note, it.ref].filter(Boolean).join(' · ')));
+    card.hidden = false;
+    const W = wrap.clientWidth, Hh = wrap.clientHeight, cw = card.offsetWidth, ch = card.offsetHeight;
+    card.style.left = Math.max(2, Math.min(W - cw - 2, x + 14)) + 'px'; card.style.top = Math.max(2, Math.min(Hh - ch - 2, y + 14)) + 'px';
+  }
   // H/V under a screen point of the far-field view (spot readout)
   function readout(ui, view, x, y) {
     const s = ui.spec; if (!s || !s.G) return null;
@@ -490,5 +544,5 @@
     box.append(el('span', { class: 'btn-pair' }, wt));
   }
 
-  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, editorOverlay, readout, leftTools, COL };
+  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, editorOverlay, readout, leftTools, COL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
