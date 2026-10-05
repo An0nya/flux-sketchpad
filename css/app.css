@@ -466,3 +466,27 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .spec-card .sc-n { margin-top: 3px; font-size: 10px; }
 .spec-card .mk { display: inline-block; width: 1em; }
 .spec-card .v-fail { color: #ff9a3d; } .spec-card .v-pass { color: #5aa7ff; } .spec-card .v-unsure { color: #f2b441; }
+
+/* ---- overflow trims (sidebar + phones), 2026-10-05 */
+/* a <select> sizes itself to its longest option (solver and preset names): let it shrink to the space it has */
+.side select, .side-top select { max-width: 100%; min-width: 0; }
+.row { grid-template-columns: minmax(min(40%, 7em), 1fr) minmax(0, auto); }   /* the label keeps ~7em; the control gets the rest */
+.row > select { max-width: 100%; }
+.side-top { flex-wrap: wrap; }
+.side-top > * { min-width: 0; }
+.side-top > select { flex: 1 1 100%; }
+@media (max-width: 760px) {
+  /* Details: one column (two squeezed into a phone wrapped the labels a word per line) */
+  .stats-grid { grid-template-columns: 1fr; }
+  .feas { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: var(--s-8); }
+  .stats { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  /* the solving status line floats under the top bar: make room for it instead of covering the pane tabs */
+  body:has(.progress-strip.open) .work-col { padding-top: calc(var(--s-6) + 22px); }
+  /* constraint table: a little tighter so its delete buttons stay inside the sidebar */
+  .spec-table .st-row { grid-template-columns: 14px minmax(30px, 1fr) 32px 32px 42px 42px 16px; gap: 2px; }
+}
+@media (max-width: 420px) {
+  .brand strong { display: none; }   /* the top bar's buttons need the room more than the wordmark */
+}
+.spec-table .st-row .icon { width: 100%; }   /* a global .icon is 32px wide: it spilled past its 16–18px column */
+.side input[type=range] { max-width: 100%; min-width: 0; }

@@ -392,7 +392,7 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.28)'; const o = view.toScreen(0, 0); ctx.beginPath(); ctx.moveTo(o[0], A[1]); ctx.lineTo(o[0], B[1]); ctx.moveTo(A[0], o[1]); ctx.lineTo(B[0], o[1]); ctx.stroke();
     ctx.strokeStyle = 'rgba(143,184,255,0.35)'; ctx.strokeRect(a[0] + 0.5, a[1] + 0.5, b[0] - a[0] - 1, b[1] - a[1] - 1);
     const fo = ffOpts(ui), ev = s && s.ev;
-    if (fo.contours && s && s.G && s.M && !s.preview) drawContours(ctx, s, view, a, b);   // a 200k-ray preview is too noisy for clean lines
+    if (fo.contours && s && s.G && s.M && !s.preview && s.done) drawContours(ctx, s, view, a, b);   // a finished trace only: partial runs and 200k previews draw noise loops
     if (fo.aim && ev) drawAim(ctx, ui, ev, view, a, b);
     if (fo.overlay) drawItems(ctx, ui, (h, v) => view.toScreen(h, v), undefined, s && s.preview ? null : undefined);
     ffTools(ui, cv);
