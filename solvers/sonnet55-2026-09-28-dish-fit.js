@@ -1,7 +1,8 @@
 /* Bundled model solver: Sonnet 5.5, Flux solver benchmark run 2026-09-28 (workspace work-sonnet55-flux-solver-20260928-2145).
  * Copied verbatim from that run's solvers/solver.js (sha256 224bc87b4559…), wrapped in a function scope so several
  * bundled files can share one worker.
- * Not edited otherwise: bugs and all, it is the record of what the model wrote. */
+ * Not edited otherwise: bugs and all, it is the record of what the model wrote.
+ * Exception (2026-10-05): display-only tools.preview calls added for Watch solve (dish-fit-auto's evaluate). */
 (function () {
 /* Flux solver — "dish + kernel fit".
  *
@@ -317,10 +318,18 @@
         const floor = (st.goal === 'efficient' ? 0.96 : 0.9) * baseFid, gate = Math.min(0, r.fid - Math.max(0.7, floor));
         return (st.goal === 'efficient' ? r.onPaint : r.peak / (trials[0] ? Math.max(1, trials[0].peak) : 1)) + 10 * gate;
       };
+      // Watch solve (display only): each trial design with its own trace, at most once a second.  Reads out/tr only.
+      let lastShow = 0;
+      const show = (out, tr, label) => {
+        if (!tools || !tools.preview || tools.preview.none) return;
+        const t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
+        try { tools.preview(out.surfaces, { label, trace: tr, note: 'trial design (static dish-fit, tuned settings)' }); } catch (e) { /* display only */ }
+      };
       const evaluate = (over) => {
         const key = JSON.stringify(over); if (seen.has(key) || trials.length >= maxT) return null; seen.add(key);
         const out = STATIC.solve(input, Object.assign({}, base, over)); if (!out.surfaces.length) return null;
         let tr; try { tr = tools.trace(out.surfaces, { rays: st.rays, seed: input.seed }); } catch (e) { return null; }
+        show(out, tr, 'trial ' + (trials.length + 1) + '/' + maxT);
         const r = { out, over, fid: tr.fidelity ? tr.fidelity.fidelity : 0, onPaint: tr.fidelity ? tr.fidelity.onPaint : 0, peak: tr.peakCd || 0, f: out.extras.f, gw: out.extras.gw };
         if (!trials.length) baseFid = r.fid;
         trials.push(r); tools.progress(trials.length / maxT); return r;
