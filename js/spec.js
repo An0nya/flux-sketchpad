@@ -509,6 +509,30 @@
     if (mx > 0) for (let k = 0; k < out.length; k++) out[k] = +(Math.min(1, out[k] / mx + above[k] * glowCd / pcd)).toFixed(5);
     return out;
   }
+  // A painting from the road instead of a shape: each direction gets the intensity it needs to put 5 lx (IIHS, 25 cm up,
+  // sensor facing the car) on the road where it lands, out to 100 m along the right edge and 60 m along the left road
+  // edge (the IIHS no-demerit distances), interpolated across the lanes; nothing above the horizon or past the goal.
+  // I = 5 lx · r² / cosθ, split over the lamps (Spec → Road: height, spacing, one / two). → { paint (0–1), cd: the
+  // intensity a painted 1.0 stands for }. The secondary goal "light the road", not a beam shape someone drew.
+  function roadGoalPaint(scene) {
+    const md = scene.modeD, res = scene.target.res, T = RF.Engine.designFrame(scene.target), s = mirrorH(md), out = new Array(res * res).fill(0);
+    const road = Object.assign(RF.Road ? RF.Road.defaults() : { mountH: 0.65, two: true }, md.road || {}), I3 = RF.Road ? RF.Road.IIHS : { lane: 3.3, sensorZ: 0.25, lux: 5 };
+    const drop = road.mountH - I3.sensorZ, nl = road.two === false ? 1 : 2, yR = -I3.lane / 2, yL = 1.5 * I3.lane;
+    let mx = 0;
+    if (!(drop > 0)) return { paint: out, cd: 0 };
+    for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
+      const [u, v] = RF.Engine.cellCenter(T, i, j), [h0, vv] = hvAtUV(scene, u, v), h = s * h0;
+      if (!(vv < -0.05)) continue;                       // at or above the horizon: never reaches the sensor height
+      const dist = drop / Math.tan(-vv * Math.PI / 180), x = dist * Math.cos(h * Math.PI / 180), y = -dist * Math.sin(h * Math.PI / 180);
+      if (x < 5 || y < yR || y > yL) continue;          // off the road (or under the bumper)
+      const goal = 100 + (60 - 100) * (y - yR) / (yL - yR);
+      if (x > goal) continue;
+      const r = Math.hypot(x, y, drop), I = I3.lux * r * r / (x / r) / nl;
+      out[j * res + i] = I; if (I > mx) mx = I;
+    }
+    if (mx > 0) for (let k = 0; k < out.length; k++) out[k] = +(out[k] / mx).toFixed(5);
+    return { paint: out, cd: Math.round(mx) };
+  }
   // the intensity a painted 1.0 stands for: md.paintCd, or (0 = auto) the largest single-point / zone minimum, or 10,000 cd
   function paintCdOf(md) {
     let auto = 0; for (const it of itemsOf(md)) if (it.min > 0 && it.kind !== 'gradient' && it.kind !== 'linearity' && it.kind !== 'imax' && it.kind !== 'sum') auto = Math.max(auto, it.min);
@@ -576,5 +600,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, fitTargetSize };
+  RF.Spec = { FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -52,6 +52,12 @@
     const fit = el('button', { type: 'button', title: 'Resize the target plane so the Editor and Result show the whole spec window at the current distance' }, 'Fit target to spec');
     fit.addEventListener('click', () => { const sc = ui.store.scene; sc.target.size = Math.round(RF.Spec.fitTargetSize(sc)); ui._histHint = 'Fit target to spec'; ui.vLeft.fitted = ui.vHeat.fitted = false; ui.store.invalidate(['A', 'B']); ui.afterChange(); });
     const seed = P.confirmButton('Seed low-beam paint', 'Replace the painting?', () => { const sc = ui.store.scene; sc.modeA.paint = RF.Spec.seedPaint(sc); ui._histHint = 'Seed low-beam paint'; changed(ui, true); });
+    // the painting from the road: each direction gets what it needs for 5 lx on the road out to 100 m right / 60 m left
+    const roadSeed = P.confirmButton('Seed from road reach', 'Replace the painting with the road-reach goal?', () => {
+      const sc = ui.store.scene, g = RF.Spec.roadGoalPaint(sc); if (!(g.cd > 0)) return;
+      sc.modeA.paint = g.paint; sc.modeD.paintCd = g.cd; sc.modeD.usePaint = true; ui._histHint = 'Seed from road reach'; changed(ui, true);
+    });
+    roadSeed.title = 'Secondary goal = light the road: each direction asks for the intensity that puts 5 lx (IIHS, 25 cm up) where it lands, out to 100 m along the right edge and 60 m along the left road edge. Sets Paint level 1 to that intensity; the spec\u2019s floors and ceilings still win. Uses Spec → Road (height, lamps).';
     const row = (label, input, help) => el('div', {}, el('div', { class: 'row', title: help || '' }, el('label', {}, label), input));
     const sel = (opts, get, set, evalOnly) => { const s = el('select', {}, ...opts.map(([v, t]) => el('option', { value: v }, t))); s.dataset.spec = '1'; s._get = get; s.addEventListener('change', () => { set(s.value); changed(ui, !evalOnly); }); return s; };
     const num = (get, set, o, evalOnly) => { const i = el('input', Object.assign({ type: 'number', step: 'any' }, o || {})); i.dataset.spec = '1'; i._get = get; i.addEventListener('change', () => { const v = parseFloat(i.value); if (isFinite(v)) { set(v); changed(ui, !evalOnly); } }); return i; };
@@ -87,7 +93,7 @@
         row('Use the painting', chk(() => m().usePaint !== false, (v) => { m().usePaint = v; }), 'Off: the solver sees only the spec (floors at minimums, holes at maximums).'),
         row('Paint level 1 = (cd)', num(() => m().paintCd, (v) => { m().paintCd = Math.max(0, v); }, { min: 0, step: 100 }), '0 = auto: the largest minimum in the spec.'),
         row('Paint weight', num(() => m().paintWeight, (v) => { m().paintWeight = Math.max(0, v); }, { min: 0, max: 10, step: 0.1 }), 'Scales the painting against the spec floor and ceiling in the solver’s target.'),
-        el('div', { class: 'btnrow' }, seed, fit)),
+        el('div', { class: 'btnrow' }, seed, roadSeed, fit)),
       sectionFn('Constraints', { open: true, key: 'D-items' },
         el('div', { id: 'spec-table', class: 'spec-table' }),
         el('div', { class: 'btnrow' },
