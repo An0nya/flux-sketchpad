@@ -1,7 +1,8 @@
 /* Bundled model solver: GPT-6.1 Sol (Codex, max), Flux solver benchmark run 2026-09-29 (workspace work-sol61-codex-flux-solver-20260929-1737).
  * Copied verbatim from that run's solvers/solver.js (sha256 25205704a269…), wrapped in a function scope so several
  * bundled files can share one worker.
- * Not edited otherwise: bugs and all, it is the record of what the model wrote. */
+ * Not edited otherwise: bugs and all, it is the record of what the model wrote.
+ * Exception (2026-10-05): display-only tools.preview calls added for Watch solve (bowl-image-auto's candidate loop). */
 (function () {
 /* Bowl image solver. All calculations in solve are geometry and area integrals.
  * A paraboloid supplies a nonblocking scaffold; each patch is an exact ellipsoid
@@ -322,6 +323,13 @@
     if(rays<10000)return base.solve(input,fixed,tools);
     let winner=null,best=-Infinity,reference=null,picked=null;
     const history=[];
+    // Watch solve (display only): each traced candidate with its own trace, at most once a second.  Reads out/result only.
+    let lastShow=0;
+    const show=(out,result,label)=>{
+      if(!tools||!tools.preview||tools.preview.none)return;
+      const t=Date.now();if(t-lastShow<1000)return;lastShow=t;
+      try{tools.preview(out.surfaces,{label,trace:result,note:'static bowl-image settings variant'});}catch(e){/* display only */}
+    };
     for(let i=0;i<count;i++) {
       const candidate=RF.Solvers.sanitize(base,Object.assign({},fixed,variants[i]));
       // A tuner may vary its own knobs; the user's hard clearance preference,
@@ -329,6 +337,7 @@
       candidate.minDistance=fixed.minDistance;
       const out=base.solve(input,candidate,{progress(v){if(tools.progress)tools.progress((i+0.5*v)/count);}});
       const result=tools.trace(out.surfaces,{rays,seed:input.seed,attribution:false,occlusion:false});
+      show(out,result,'candidate '+(i+1)+'/'+count);
       const fd=result.fidelity||{},f=(fd.fidelity||0)*Math.min(1,(fd.onPaint||0)/0.005);
       if(!reference)reference={on:Math.max(1e-9,fd.onPaint||0),peak:Math.max(1e-9,result.peakCd||0)};
       const gate=Math.max(0,Math.min(1,(f-0.5)/0.25));
