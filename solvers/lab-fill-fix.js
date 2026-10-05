@@ -449,6 +449,14 @@
     const fake = { source: src, envelope: env, target: input.target, modeA: { paint } };
     const predScore = () => { const fd = RF.Photometry.fidelity(fake, { res: R, power: 1 }, { gridD: F, gridR: new Float64Array(R * R), E: { emitted: 1 }, N: 1e12, next: 1e12 }); return fd; };
     const snap = () => order.map((f) => f.pl);
+    // watching the fix sweeps (display only, SOLVER_API.md "Watching a solve"): the facets as placed right now, at most once a
+    // second, without the final verify pulls. build() only reads the placements, so previews don't change the result.
+    let lastShow = 0;
+    const showFix = (label) => {
+      if (!tools || !tools.preview || tools.preview.none) return;
+      const t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
+      try { tools.preview(order.filter((f) => f.pl).map((f) => build(f, 1)).filter(Boolean), { label, note: 'fix sweeps: facets as placed now (before emit)' }); } catch (e) { /* display only */ }
+    };
     let best = { fd: predScore(), pl: snap() };
     for (let sw = 0; sw < S.sweeps; sw++) {
       // boosting: cells the metric fails weigh more next sweep, cells it passes relax (iteratively reweighted fit)
@@ -460,7 +468,7 @@
       for (const f of order) {                             // lift each facet out and re-place it (or leave it out, if it only hurts)
         if (f.pl) add(f.pl.fp, -1);
         const p = place(f, sw < S.sweeps - 1 || !f.pl ? null : [f.pl.a, f.pl.b], sw > 0 && f.pl ? f.pl : null);
-        if (++nDone % 8 === 0) prog(0.5 + 0.4 * (sw + nDone / order.length) / Math.max(1, S.sweeps), 'fix sweep ' + (sw + 1) + '/' + S.sweeps + ' · ' + nDone + '/' + order.length);
+        if (++nDone % 8 === 0) { prog(0.5 + 0.4 * (sw + nDone / order.length) / Math.max(1, S.sweeps), 'fix sweep ' + (sw + 1) + '/' + S.sweeps + ' · ' + nDone + '/' + order.length); showFix('fix sweep ' + (sw + 1) + '/' + S.sweeps + ' · ' + nDone + '/' + order.length); }
         f.pl = p && (p.d < 0 || S.useAll) ? p : null;
         if (f.pl) add(f.pl.fp, 1);
       }

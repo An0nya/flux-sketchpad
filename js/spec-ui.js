@@ -225,8 +225,8 @@
 
   // ---------------------------------------------------------------- drawing
   // items with their verdicts, at the positions the judge read them (shifted by any re-aim)
-  function drawItems(ctx, ui, toScreen, scale) {
-    const m = md(ui), ev = ui.spec && ui.spec.ev, sh = ev ? ev.shift : [0, 0];
+  function drawItems(ctx, ui, toScreen, scale, evArg) {
+    const m = md(ui), ev = evArg !== undefined ? evArg : ui.spec && ui.spec.ev, sh = ev ? ev.shift : [0, 0];
     const items = RF.Spec.itemsOf(m);
     const verdictOf = (id) => { if (!ev) return null; const rs = ev.rows.filter((r) => r.id === id); return !rs.length ? null : rs.some((r) => r.verdict === 'fail') ? 'fail' : rs.some((r) => r.verdict === 'unsure') ? 'unsure' : 'pass'; };
     ctx.save(); ctx.font = '11px system-ui, sans-serif'; ctx.lineWidth = 1.5;
@@ -292,7 +292,7 @@
     const k = dispK(ui), scale = ffOpts(ui).scale;
     if (s.img && s.imgK === k && s.imgScale === scale) return s.img;
     const G = s.G;
-    if (!s.M || s.imgK !== k) {
+    if (!s.preview && (!s.M || s.imgK !== k)) {
       s.M = RF.FarField.map(G, k); s.cont = null;
       const cd = s.M.cd, lit = []; for (let q = 0; q < cd.length; q++) if (cd[q] > 0) lit.push(cd[q]); lit.sort((a, b) => a - b);
       s.top = lit.length ? lit[Math.min(lit.length - 1, Math.floor(0.999 * lit.length))] : 1; s.lo = s.top / 1000;
@@ -314,7 +314,7 @@
     if (!s.Gw) return null;
     const k = dispK(ui), scale = ffOpts(ui).scale;
     if (s.imgW && s.imgWK === k && s.imgWScale === scale && s.imgWTop === s.top) return s.imgW;
-    const G = s.Gw, cd = RF.FarField.map(G, k).cd, top = s.top, lo = s.lo, log = scale !== 'lin';
+    const G = s.Gw, cd = s.MW ? s.MW.cd : RF.FarField.map(G, k).cd, top = s.top, lo = s.lo, log = scale !== 'lin';
     const cv = s.imgW || document.createElement('canvas'); cv.width = G.nh; cv.height = G.nv;
     const g = cv.getContext('2d'), im = g.createImageData(G.nh, G.nv), LUT = RF.Render.LUT;
     for (let j = 0; j < G.nv; j++) for (let i = 0; i < G.nh; i++) {
@@ -326,10 +326,11 @@
     s.imgW = cv; s.imgWK = k; s.imgWScale = scale; s.imgWTop = top;
     return cv;
   }
-  // isocandela levels: the 1–3 half-decade series inside the picture's range (≤ 6 lines)
+  // isocandela levels: the 1–3 half-decade series from top/30 to the peak (≤ 6 lines). Dimmer levels sit in shot noise
+  // even at ~2M rays and draw speckle loops, so they're left to the colour scale.
   function contourLevels(lo, top) {
-    const out = [];
-    for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(top)); e++) for (const m of [1, 3]) { const L = m * 10 ** e; if (L > lo * 2 && L < top * 0.95) out.push(L); }
+    const out = [], floor = Math.max(lo * 2, top / 30);
+    for (let e = Math.floor(Math.log10(floor)); e <= Math.ceil(Math.log10(top)); e++) for (const m of [1, 3]) { const L = m * 10 ** e; if (L >= floor && L < top * 0.95) out.push(L); }
     return out.slice(-6);
   }
   // marching squares on the smoothed map (corners = bin centres) → per level, segments as [h0, v0, h1, v1, …] in degrees
@@ -358,8 +359,8 @@
     return s.cont;
   }
   // the Result pane in Spec mode, "Far field" view: content = degrees (H right, V up)
-  function drawFarField(ui, cv, view) {
-    const s = ui.spec, box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d');
+  function drawFarField(ui, cv, view, sArg) {
+    const s = sArg || ui.spec, box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d');
     const win = s && s.G ? [s.G.h0, s.G.v0, s.G.h1, s.G.v1] : (() => { const w = RF.Spec.windowOf(md(ui)); return [w[0], w[2], w[1], w[3]]; })();
     // the far field is in degrees, not the paint grid: no size pairing with the Editor (that cap shrank it to the
     // smaller pane). Default fit = the spec window; zoom out to see the wide context grid around it.
@@ -386,9 +387,9 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.28)'; const o = view.toScreen(0, 0); ctx.beginPath(); ctx.moveTo(o[0], A[1]); ctx.lineTo(o[0], B[1]); ctx.moveTo(A[0], o[1]); ctx.lineTo(B[0], o[1]); ctx.stroke();
     ctx.strokeStyle = 'rgba(143,184,255,0.35)'; ctx.strokeRect(a[0] + 0.5, a[1] + 0.5, b[0] - a[0] - 1, b[1] - a[1] - 1);
     const fo = ffOpts(ui), ev = s && s.ev;
-    if (fo.contours && s && s.G && s.M) drawContours(ctx, s, view, a, b);
+    if (fo.contours && s && s.G && s.M && !s.preview) drawContours(ctx, s, view, a, b);   // a 200k-ray preview is too noisy for clean lines
     if (fo.aim && ev) drawAim(ctx, ui, ev, view, a, b);
-    if (fo.overlay) drawItems(ctx, ui, (h, v) => view.toScreen(h, v));
+    if (fo.overlay) drawItems(ctx, ui, (h, v) => view.toScreen(h, v), undefined, s && s.preview ? null : undefined);
     ffTools(ui, cv);
     document.getElementById('right-caption').textContent = 'Far field · ' + (s && s.G ? fmtDist(s.G.distance) : '') + ' · ' + (fo.scale === 'lin' ? 'linear' : 'log') + ' scale';
     // colour bar with ticks at real cd values
@@ -408,6 +409,16 @@
       labels.append(el('span', { class: 'end-r' }, fmtCd(top) + ' cd'));
       cb.append(bar, labels);
     }
+  }
+  function drawFarFieldPreview(ui, cv, view, t) {
+    if (!t._s) {
+      const f = t.ff[0], wd = t.ff[1], cd = f.cd, lit = [];
+      for (let q = 0; q < cd.length; q++) if (cd[q] > 0) lit.push(cd[q]); lit.sort((a, b) => a - b);
+      const top = lit.length ? lit[Math.min(lit.length - 1, Math.floor(0.999 * lit.length))] : 1;
+      const G = (g) => ({ nh: g.nh, nv: g.nv, h0: g.h0, v0: g.v0, h1: g.h1, v1: g.v1, step: g.step, distance: g.distance });
+      t._s = { preview: true, G: G(f), Gw: wd ? G(wd) : null, M: { cd }, MW: wd ? { cd: wd.cd } : null, top, lo: top / 1000, imgK: dispK(ui), ev: null };
+    }
+    drawFarField(ui, cv, view, t._s);
   }
   // isocandela lines (unshifted: they belong to the beam, like the picture)
   function drawContours(ctx, s, view, a, b) {
@@ -479,5 +490,5 @@
     box.append(el('span', { class: 'btn-pair' }, wt));
   }
 
-  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, editorOverlay, readout, leftTools, COL };
+  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, editorOverlay, readout, leftTools, COL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

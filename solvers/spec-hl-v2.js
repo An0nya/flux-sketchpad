@@ -786,6 +786,14 @@
     model.F0.set(directField(P, P.shell, units)); model.tg.set(sec.tg); model.ws.set(sec.ws);
     model.setEps(Math.max(5, 0.01 * (sec.tmax || 1000)));
     const st = model.st;
+    // watching the search (display only, SOLVER_API.md "Watching a solve"): the current state as surfaces, at most once a
+    // second. buildSurfaces only reads live/st, so the result is the same with or without previews.
+    let lastShow = 0;
+    const showFit = (label) => {
+      if (!tools || !tools.preview || tools.preview.none) return;
+      const t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
+      try { tools.preview(buildSurfaces(P, S, { live, st, shapeOf }, null).surfaces, { label, note: 'search state (model): cost ' + model.total().toFixed(2) }); } catch (e) { /* display only */ }
+    };
     { const fl = live.map((f) => f.flux), mean = fl.reduce((a, b) => a + b, 0) / Math.max(1, fl.length); model.setOffWeights(fl.map((x) => S.offCost * x / Math.max(1e-9, mean))); }
     // where aims may go
     const aH0 = G.h0 + 1, aH1 = G.h0 + nh * gs - 1, aV0 = G.v0 + 1, aV1 = G.v0 + nv * gs - 1;
@@ -865,7 +873,7 @@
       }
       if (top.length) { best = pickWithEdge(top); }
       if (best) { model.setOn(u, true); st[u].ai = best.ai; st[u].aj = best.aj; st[u].sh = best.sh; st[u].K = best.K; model.begin(); model.addMut(best.K, best.ai, best.aj, 1); model.commit(); }
-      if (++done % 10 === 0) prog(0.12 + 0.3 * done / N, 'placing ' + done + '/' + N);
+      if (++done % 10 === 0) { prog(0.12 + 0.3 * done / N, 'placing ' + done + '/' + N); showFit('placing ' + done + '/' + N); }
     }
     model.recomputeAll();
     const c0 = model.total();
@@ -950,6 +958,7 @@
         if (S.boost > 0) { model.recomputeAll(); cur = model.total(); }
         if (cur < best.cost * 0.9999 || sw === 0) best = { cost: cur, snap: snapshot() };
         if (sw % 3 === 0) prog(p0 + (p1 - p0) * (sw + 1) / nSw, label + ' ' + (sw + 1) + '/' + nSw + ' · cost ' + cur.toFixed(2));
+        showFit(label + ' ' + (sw + 1) + '/' + nSw);
       }
     }
     const tAn = Date.now();

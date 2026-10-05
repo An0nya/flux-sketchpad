@@ -455,3 +455,5 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .notices .solve-fail { pointer-events: auto; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-4) var(--s-8); background: rgba(40,26,14,.96); color: var(--ink);
   border-left: 3px solid var(--warn); padding: var(--s-4) var(--s-8); border-radius: 0 6px 6px 0; margin-top: var(--s-4); font-size: 12px; }
 .notices .solve-fail button { font-size: 12px; min-height: 24px; padding: 0 var(--s-8); }
+/* a solve's PREVIEW badge takes the corner: the far-field toggles step below it */
+.canvas-wrap:has(> .watch-badge:not([hidden])) > .ff-tools { top: 30px; }

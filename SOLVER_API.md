@@ -194,7 +194,9 @@ button that runs it through the same checks as a result (envelope, LED clearance
   its `grid`/`res` and a summary of `fidelity` / `spec` counts, e.g. "2 fails · 5 unsure") or `grid` + `res` yourself.
 - **Display only.** It returns nothing, never throws, and must not change what you compute: a solver that calls it
   and one that doesn't return identical output. Don't trace *for* a preview: pass what you already have (geometry
-  alone is fine).
+  alone is fine). **The app traces geometry-only previews itself** (200k rays, in its own worker, outside your budget;
+  the user can turn it off), so the Result map and Spec mode's far field show them too. Pass `trace` when you already
+  have one: the app then uses yours and traces nothing.
 - **Throttled by the host** (≤ 4 per second; intermediate calls are dropped, the latest is always delivered before your
   result), so calling it per iteration is fine. The cost: one structured copy of the surfaces (+ one grid) per preview actually sent.
 - Headless hosts (`tools/run-solver.js`, the benches) and the built-in synchronous path make it a no-op. Older

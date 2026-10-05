@@ -230,8 +230,11 @@
       : def.loaded ? 'Loaded from a file in this browser.' : cur === RF.Solvers.DEFAULT_ID ? 'The built-in fallback solver; its settings are the Paint controls.' : 'Built into the app.');
     const watch = el('input', { type: 'checkbox', id: 'watch-solve' }); watch.checked = ui.watchOn !== false;
     watch.addEventListener('change', () => ui.setWatch(watch.checked));
-    const watchRow = el('label', { class: 'tog', title: 'While a solver runs, draw the candidates it reports (tools.preview) in the Scene, Optics and Result views, marked PREVIEW. Nothing extra is traced. A solve that stops without a result keeps its last candidate on offer either way.' }, watch, ' Watch solve (show candidates while it runs)');
-    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), el('div', { class: 'note' }, who), el('div', { class: 'btnrow' }, watchRow), ...fields);
+    const watchRow = el('label', { class: 'tog', title: 'While a solver runs, draw the candidates it reports (tools.preview) in the Scene, Optics and Result views, marked PREVIEW. A solve that stops without a result keeps its last candidate on offer either way.' }, watch, ' Watch solve (show candidates while it runs)');
+    const ptog = el('input', { type: 'checkbox', id: 'trace-previews' }); ptog.checked = ui.previewTrace !== false;
+    ptog.addEventListener('change', () => ui.setPreviewTrace(ptog.checked));
+    const ptRow = el('label', { class: 'tog', title: 'A candidate sent without a picture (most solvers send geometry only) is traced at 200k rays in a separate worker, so the Result map (and the far field in Spec mode) shows it too. Display only: it never changes the result. Costs a CPU core while a solve runs; off for raw speed.' }, ptog, ' Trace previews (200k rays)');
+    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), el('div', { class: 'note' }, who), el('div', { class: 'btnrow' }, watchRow, ptRow), ...fields);
     const files = document.getElementById('solver-files');
     if (files) { files.innerHTML = ''; files.append(el('div', { class: 'btnrow' }, loadBtn, forget),
       el('div', { class: 'note' }, 'Verified by the app, not the solver: ' + facts + '. Saved with the scene: ' + (sc.solve ? sc.solve.id + ' v' + (sc.solve.version || '?') : '—') + '.')); }
@@ -322,6 +325,36 @@
     if (ui.solving !== job) return;
     const w = ui.watch && ui.watch.seq === job.seq ? ui.watch : (ui.watch = { seq: job.seq, name: job.name, meta: job.meta, version: job.version, t0: job.t0, n: 0 });
     ui.watchStats.previews++; w.msg = msg; w.n++; w.model = null; w.heatFresh = false; w.at = performance.now();
+    if (!msg.grid && ui.previewTrace && ui.watchOn) tracePreview(job, msg);
+    ui.watchDirty = true; schedule();
+  }
+  // ---- traced previews: a candidate sent without a grid is traced by js/preview-worker.js (display only). Latest wins:
+  // while one is tracing, a newer candidate replaces any waiting one. The map shows the newest TRACED candidate, which can
+  // be one behind the geometry in the 3D views; its badge names it.
+  try { ui.previewTrace = localStorage.getItem('flux/previewTrace') !== '0'; } catch (e) { ui.previewTrace = true; }
+  ui.setPreviewTrace = (on) => { ui.previewTrace = !!on; try { localStorage.setItem('flux/previewTrace', on ? '1' : '0'); } catch (e) { /* ignore */ } };
+  const CANDIDATE_RAYS = 200000, ptr = { worker: null, busy: null, next: null, seq: 0 };
+  function previewScene() {                          // the user's own target plane (not the solver's 25 m one): the map you know
+    const sc = ui.store.scene;
+    return RF.U.deepCopy(Object.assign({ source: sc.source, emitters: sc.emitters || [], target: sc.target, envelope: sc.envelope, sim: sc.sim, modeA: { paint: RF.Solvers.paintOf(sc) }, mode: sc.mode }, sc.mode === 'D' ? { modeD: sc.modeD } : {}));
+  }
+  function tracePreview(job, msg) { const req = { job, msg }; if (ptr.busy) ptr.next = req; else sendPreview(req); }
+  function sendPreview(req) {
+    if (!ptr.worker) {
+      try { ptr.worker = new Worker('js/preview-worker.js'); ptr.worker.onmessage = onTraced; ptr.worker.onerror = () => { ptr.busy = null; }; }
+      catch (e) { ui.previewTrace = false; return; }
+    }
+    const sc = ui.store.scene, ff = sc.mode === 'D' && RF.Spec ? { fine: RF.Spec.gridOpts(sc), wide: RF.Spec.wideOpts(sc), k: Math.max(sc.modeD.kernel || 0.15, 0.15) } : null;
+    req.id = ++ptr.seq; ptr.busy = req;
+    try { ptr.worker.postMessage({ id: req.id, scene: previewScene(), surfaces: req.msg.surfaces, rays: CANDIDATE_RAYS, bounces: req.msg.needs && req.msg.needs.bounces, ff }); }
+    catch (e) { ptr.busy = null; }
+  }
+  function onTraced(e) {
+    const d = e.data, req = ptr.busy; ptr.busy = null;
+    if (ptr.next) { const n = ptr.next; ptr.next = null; if (ui.solving === n.job) sendPreview(n); }
+    if (!req || d.id !== req.id || d.type !== 'traced') return;
+    const w = ui.watch; if (!w || w.seq !== req.job.seq) return;
+    w.traced = { label: req.msg.label, grid: d.grid, res: d.res, rays: d.rays, ms: d.ms, fidelity: d.fidelity, ff: d.ff };
     ui.watchDirty = true; schedule();
   }
   function dropWatch() { if (!ui.watch) return; ui.watch = null; ui.watchDirty = true; P.renderNotices(ui); schedule(); }
@@ -338,12 +371,18 @@
     w.view = { base: ui.model, of: w.model, m }; return m;
   }
   function drawWatchHeat() {                         // the preview's own grid on the Result map (false: none given)
-    const w = ui.watch, m = w && w.msg; if (!watchShown() || !m.grid) return false;
-    if (!w.heatFresh) {
-      const lit = []; for (let i = 0; i < m.grid.length; i++) if (m.grid[i] > 0) lit.push(m.grid[i]);
-      lit.sort((a, b) => a - b); w.heat = R2.gridCanvas(m.grid, m.res, w.heat, RF.Engine.pctl(lit, 0.995)); w.heatFresh = true;
+    const w = ui.watch, m = w && w.msg; if (!watchShown()) return false;
+    const src = m.grid ? m : w.traced;
+    if (src && src.grid && w.heatOf !== src) {                       // also the Scene view's texture while the preview shows
+      const g = src.grid, lit = []; for (let i = 0; i < g.length; i++) if (g[i] > 0) lit.push(g[i]);
+      lit.sort((a, b) => a - b); w.heat = R2.gridCanvas(g, src.res, w.heat, RF.Engine.pctl(lit, 0.995)); w.heatOf = src;
     }
-    if (ui.store.scene.mode === 'D' && ui.display === 'ff') return false;   // the far-field view stays the design's
+    if (ui.store.scene.mode === 'D' && ui.display === 'ff') {        // the far field: a traced candidate's, else the design's
+      if (m.grid || !w.traced || !w.traced.ff || !RF.SpecUI) return false;
+      RF.SpecUI.drawFarFieldPreview(ui, document.getElementById('heat-canvas'), ui.vHeat, w.traced); alignFigure('heat-canvas', ui.vHeat);
+      return true;
+    }
+    if (!src || !src.grid) return false;
     R2.drawGridPanel(document.getElementById('heat-canvas'), ui.vHeat, w.heat, ui.store.scene.target.res, null);
     alignFigure('heat-canvas', ui.vHeat);
     return true;
@@ -362,7 +401,7 @@
       if (!b) { if (!on) continue; b = P.el('div', { class: 'watch-badge', 'data-badge': id }); wrap.append(b); }
       b.hidden = !on; if (!on) continue;
       const m = w.msg, sum = watchSummary(m), heat = id === 'heat-canvas';
-      const t = (w.failed ? 'NOT APPLIED' : 'PREVIEW') + (m.label ? ' · ' + m.label : '') + (heat ? (m.grid ? (sum ? ' · ' + sum : '') : ' · map: current design') : (sum && !m.grid ? ' · ' + sum : ''));
+      const t = (w.failed ? 'NOT APPLIED' : 'PREVIEW') + (m.label ? ' · ' + m.label : '') + (heat ? (m.grid ? (sum ? ' · ' + sum : '') : w.traced ? ' · map: traced ' + (w.traced.label || 'candidate') + (w.traced.fidelity ? ' · fidelity ' + pctS(w.traced.fidelity.fidelity) : '') : ' · map: current design') : (sum && !m.grid ? ' · ' + sum : ''));
       if (b.textContent !== t) b.textContent = t;
       b.classList.toggle('failed', !!w.failed); b.title = (w.failed ? 'The last candidate of a solve that did not finish: not applied. ' : 'What ' + w.name + ' is trying now (preview #' + w.n + '): the real result replaces it when the solve finishes. ') + (m.note || '');
     }
