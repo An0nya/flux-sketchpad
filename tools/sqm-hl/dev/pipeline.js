@@ -7,20 +7,47 @@
 
   const DEFAULTS = {
     N: 0, NA: 150, NAcoarse: 60, iters: 6, margin: 1.2, gd: 0.34, peakCap: 80000, washCap: 12000,
-    dimFrac: 0.2, dimTile: 10, dimFill: 1.35, mainFill: 1.5, softAll: 0.22, edgeSoft: 0.2, gTarget: 0.28, slack: 1.0, step: 0.05, cutPasses: 1, sweeps: 5, maxShift: 0.6, wBand: 8, wTrack: 0.03, wEdge: 3, f0: 60,
+    dimFrac: 0.2, dimTile: 10, dimFill: 1.35, mainFill: 1.5, softAll: 0.22, edgeSoft: 0.2, gTarget: 0.28, slack: 1.0, step: 0.05, cutPasses: 1, sweeps: 5, maxShift: 0.6, wBand: 8, wTrack: 0.03, wEdge: 3, f0: 60, wPaint: 1.5,
   };
 
+  // PAINT MODE (no input.spec): the target is the painting on the target plane.  A spec without rows, a window that holds the plane, and the plane's distance along the throw.
+  function paintSpec(input, S) {
+    const T_ = RF.Engine.designFrame(input.target), Lp = input.source.pos, hf = T_.half, conv = 'A';
+    let h0 = Infinity, h1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]) { const X = V.add(T_.C, V.add(V.mul(T_.tu, a * hf), V.mul(T_.tv, b * hf))), hv = RF.FarField.hvOf(V.sub(X, Lp), conv); h0 = Math.min(h0, hv[0]); h1 = Math.max(h1, hv[0]); v0 = Math.min(v0, hv[1]); v1 = Math.max(v1, hv[1]); }
+    const win = [Math.max(-85, Math.floor(h0 - 1)), Math.min(85, Math.ceil(h1 + 1)), Math.max(-85, Math.floor(v0 - 1)), Math.min(85, Math.ceil(v1 + 1))];
+    const step = Math.max(0.05, Math.sqrt((win[1] - win[0]) * (win[3] - win[2]) / 3e5)), dx = V.dot(V.sub(T_.C, Lp), [1, 0, 0]);
+    return { preset: 'paint', items: [], conv, kernel: Math.max(0.15, step * 1.5), step, window: win, traffic: 'RHT', measure: { distance: dx > 0 ? dx : Infinity }, aim: { mode: 'design', line: -0.57, scan: 3, box: null, itemReaim: 0 }, centre: Lp.slice(), paintMode: true };
+  }
+  // the painting as an intensity map T*(h, v) in cd: a painted cell wants E ∝ weight on the plane, so a ray landing there needs I = E r² / cosθ
+  function paintDesign(P, capLm) {
+    const g = P.g, input = P.input, T_ = RF.Engine.designFrame(input.target), res = input.paint.res, cells = input.paint.cells, fake = { target: input.target, source: input.source, modeD: { conv: P.conv } }, Lp = P.Lp;
+    const raw = new Float64Array(g.n); let any = false;
+    for (let j = 0; j < g.nv; j++) for (let i = 0; i < g.nh; i++) {
+      const h = g.hOf(i), v = g.vOf(j), uv = RF.Spec.planeUV(fake, h, v); if (!uv) continue;
+      const ci = Math.floor((uv[0] + T_.half) / (2 * T_.half) * res), cj = Math.floor((uv[1] + T_.half) / (2 * T_.half) * res); if (ci < 0 || cj < 0 || ci >= res || cj >= res) continue;
+      const w = cells[cj * res + ci]; if (!(w > 0)) continue;
+      const d = RF.FarField.dirOf(h, v, P.conv), cs = Math.abs(V.dot(d, T_.n)), t = V.dot(V.sub(T_.C, Lp), T_.n) / V.dot(d, T_.n), r = Math.abs(t); if (!(cs > 1e-6)) continue;
+      raw[j * g.nh + i] = w * r * r / cs; any = true;
+    }
+    if (!any) throw new Error('nothing painted');
+    const flux = (a) => { let s = 0; for (let q = 0; q < g.n; q++) s += a * raw[q] * g.om[q]; return s; }, a = P.refl * capLm * 0.97 / Math.max(1e-30, flux(1)), Tt = Float64Array.from(raw, (x) => x * a);
+    return { T: Tt, alpha: a, W0: 0, flux: flux(a), leftover: 0, edge: { sv: 0, dTop: 0, G: NaN }, ev: null, road: null, glow: null, wash: null };
+  }
   function problem(input, S, tools) {
-    const src = input.source, env = input.envelope, spec = input.spec, refl = input.limits.reflectivity, conv = spec.conv || 'A';
+    const src = input.source, env = input.envelope, refl = input.limits.reflectivity, spec = input.spec || paintSpec(input, S), conv = spec.conv || 'A';
+    if (spec.paintMode) S = Object.assign(S, { step: spec.step });
     const dd = spec.measure && +spec.measure.distance, dist = dd > 0 && isFinite(dd) ? dd : Infinity;      // the host's JSON copy turns the far field (Infinity) into null
-    const P = { S, input, src, env, spec, refl, conv, dist, Lp: src.pos.slice(), N: S.N > 0 ? Math.min(S.N, input.limits.maxFacets) : input.limits.maxFacets, t0: Date.now(), notes: [] };
+    const P = { S, input, src, env, spec, refl, conv, dist, isPaint: !!spec.paintMode, Lp: src.pos.slice(), N: S.N > 0 ? Math.min(S.N, input.limits.maxFacets) : input.limits.maxFacets, t0: Date.now(), notes: [] };
     P.lap = (s) => { if (S.verbose) console.log(`[${((Date.now() - P.t0) / 1000).toFixed(1)}s] ${s}`); };
     P.g = T.grid(spec.window, S.step, conv); P.B = T.bands(spec, P.g, { lo: S.margin, hi: S.margin });
     P.grid = F.gridOf(spec.window, S.step, conv, dist, P.Lp); P.S_ = F.sourceSamples(src, 128);
     P.rmin = Math.max(env.keepOut || 0, S.minDistance || 0) + RF.Source.boundingRadius(src) * 0.5; P.cut0 = T.cutOf(spec); P.cutShift = 0; P.cut = P.cut0;
     // the aim point of a facet at Pf toward direction d: on the measuring screen as seen from the photometric centre (finite distance: no parallax), else far away along d
-    P.zOf = (Pf, d) => (isFinite(dist) && d[0] > 0.05 ? V.add(P.Lp, V.mul(d, dist / d[0])) : V.add(Pf, V.mul(d, 1e6)));
-    P.aimAt = (h, v, share, tier) => { const d = RF.FarField.dirOf(h, v, conv); return { c: isFinite(dist) ? dist : 1e6, ax: d[0], ay: d[1], az: d[2], g: share, h, v, tier, Z(Pf) { return P.zOf(Pf, [this.ax, this.ay, this.az]); } }; };
+    P.plane = spec.paintMode ? RF.Engine.designFrame(input.target) : null;
+    P.zOf = (Pf, d) => { if (P.plane) { const den = V.dot(d, P.plane.n); if (Math.abs(den) > 1e-9) { const t = V.dot(V.sub(P.plane.C, P.Lp), P.plane.n) / den; if (t > 0) return V.add(P.Lp, V.mul(d, t)); } }
+      return isFinite(dist) && d[0] > 0.05 ? V.add(P.Lp, V.mul(d, dist / d[0])) : V.add(Pf, V.mul(d, 1e6)); };
+    P.aimAt = (h, v, share, tier) => { const d = RF.FarField.dirOf(h, v, conv); return { c: isFinite(dist) ? Math.max(1, V.dist(P.zOf(P.Lp, d), P.Lp)) : 1e6, ax: d[0], ay: d[1], az: d[2], g: share, h, v, tier, Z(Pf) { return P.zOf(Pf, [this.ax, this.ay, this.az]); } }; };
     return P;
   }
   const directions = (P, NA) => C.directions(P.src, P.env, { NA, margin: 0.3, rmin: P.rmin, B: RF.FarField.dirOf(0, -1, P.conv) });
@@ -33,7 +60,7 @@
   }
   function design(P, capLm) {
     const S = P.S; if (P.cut0) { const c0 = P.cut0, sh = P.cutShift; P.cut = Object.assign({}, c0, { line: c0.line + sh, top: (h) => c0.top(h) + sh }); }
-    P.des = T.design({ spec: P.spec, g: P.g, B: P.B, fluxTarget: P.refl * capLm * 0.97, peakCap: S.peakCap, washCap: S.washCap, gd: S.gd, cut: P.cut || null, road: S.gamma !== undefined ? { gamma: S.gamma } : undefined });
+    P.des = P.isPaint ? paintDesign(P, capLm) : T.design({ spec: P.spec, g: P.g, B: P.B, fluxTarget: P.refl * capLm * 0.97, peakCap: S.peakCap, washCap: S.washCap, gd: S.gd, cut: P.cut || null, road: S.gamma !== undefined ? { gamma: S.gamma } : undefined });
     const sp = Pl.superpixels(P.g, P.des.T, 0.2), seeds = floorSeeds(P), tt = Pl.twoTier(sp, P.N, { dimFrac: S.dimFrac, dimTile: S.dimTile, reserve: seeds.length });
     P.A = tt.main.map((a) => Object.assign(P.aimAt(a.h, a.v, a.F / P.refl, 'main'), { cov: a.cov }));
     P.Ad = tt.dim.map((a) => Object.assign(P.aimAt(a.h, a.v, a.F / P.refl, 'dim'), { cov: a.cov }));
@@ -64,6 +91,19 @@
     E.clipEnvelope(facets, P.env, P.Lp, P.rmin); return facets.filter((f) => !f._dead);
   }
   const cleanFacet = (f) => { const g = { type: 'facet', id: f.id, P: f.P, S0: f.S0, Z: f.Z, flat: false, di: f.di, clip: f.clip, optics: f.optics }; if (f.vg) { g.vg = f.vg; g.ax = f.ax; } return g; };
+  // the host's own envelope / clearance check (surface edges included) on the finished facets: shrink a violating facet about its centre until it passes, drop it if it never does
+  function enforceEnvelope(P, facets) {
+    const sceneV = { source: P.input.source, emitters: [], envelope: P.env, modeA: { budget: P.input.limits.maxFacets }, target: P.input.target };
+    let fs = facets.map((f) => Object.assign({}, f)), shrunk = 0, dropped = 0;
+    for (let pass = 0; pass < 6; pass++) {
+      const v = RF.Solvers.verify(sceneV, { surfaces: fs.map(cleanFacet) }); if (v.errors && v.errors.length) break;
+      const bad = new Set(v.violations.envelope.concat(v.violations.keepOut)); if (!bad.size) break;
+      fs = fs.map((f) => { if (!bad.has(f.id)) return f; shrunk++; return Object.assign({}, f, { clip: { kind: 'poly', pts3: f.clip.pts3.map((q) => V.add(f.P, V.mul(V.sub(q, f.P), 0.92))) } }); });
+    }
+    const v = RF.Solvers.verify(sceneV, { surfaces: fs.map(cleanFacet) }), bad = new Set(v.violations.envelope.concat(v.violations.keepOut));
+    if (bad.size) { dropped = bad.size; fs = fs.filter((f) => !bad.has(f.id)); }
+    return { facets: fs, shrunk, dropped };
+  }
   const naturalOf = (P, base) => F.field(base, P.S_, P.grid, { na: 24 }).fps.map((fp) => ({ cov: fp.cov, flux: fp.flux }));
   // the parameters on top of the geometry: a tilt of every facet's aim (dh, dv: nearly free, a 0.4° tilt moves a 7 mm facet's edge 0.02 mm) and the image shaping
   function realize(P, base, nat, params) {
@@ -93,7 +133,9 @@
     for (let q = 0; q < Et.length; q++) Et[q] = fld.E[q] + Ed[q];
     const gj = T.judgeGrid(P.g, Et, { distance: P.dist, centre: P.Lp }), ev = RF.Spec.evaluate(gj, T.mdOf(P.spec));
     const hard = ev.rows.filter((r) => r.verdict === 'fail').length, worst = ev.rows.length ? Math.min(...ev.rows.map((r) => r.margin)) : 1;
-    return { fld, Ed, Et, gj, ev, hard, worst, score: -hard * 10 + Math.max(-3, worst) };
+    let score = -hard * 10 + Math.max(-3, worst);
+    if (P.isPaint) { const g = P.g, f0 = P.S.f0; let c = 0, tot = 0; for (let q = 0; q < g.n; q++) { const t = P.des.T[q], f = Et[q] / g.om[q]; tot += g.om[q] * t; if (t > 0) { const a = Math.log(Math.max(f, f0)) - Math.log(Math.max(t, f0)); c += g.om[q] * t * a * a; } else if (f > f0) c += g.om[q] * 0.3 * f; } score = -c / Math.max(1e-9, tot) * 10; }
+    return { fld, Ed, Et, gj, ev, hard, worst, score };
   }
 
   // ---------------------------------------------------------------- the correction: every unit's share moves toward what the ideal beam wants from the pixels its image covers
@@ -162,7 +204,7 @@
     let cov = fitSurface(P, Dc, onC, x, mainNeed(P)); P.lap(`pass 0: coarse cover ${cov.toFixed(0)} lm`);
     let overall = null; P.tPlan = Date.now() - P.t0;
     for (let pass = 0; pass < (P.cut0 ? S.cutPasses : 1); pass++) {
-      design(P, cov); P.lap(`ideal beam (cut-off shift ${P.cutShift.toFixed(2)}°): ${P.des.flux.toFixed(0)} lm, G ${P.des.edge.G.toFixed(2)}, ${P.A.length} main + ${P.Ad.length} dim units`);
+      design(P, cov); P.lap(`ideal beam (cut-off shift ${P.cutShift.toFixed(2)}°): ${P.des.flux.toFixed(0)} lm, G ${isFinite(P.des.edge.G) ? P.des.edge.G.toFixed(2) : '–'}, ${P.A.length} main + ${P.Ad.length} dim units`);
       onC = new Uint8Array(Dc.n).fill(1); x = new Float64Array(P.A.length).fill(Math.log(40)); balance(P, Dc, onC, x, true); fitSurface(P, Dc, onC, x, mainNeed(P));
       const on = new Uint8Array(Df.n).fill(1); cov = fitSurface(P, Df, on, x, mainNeed(P)); P.lap(`surface: covers ${cov.toFixed(0)} lm`);
       const base = buildBase(P, Df, on, x), nat = naturalOf(P, base), params = base.map(() => ({ dh: 0, dv: 0 }));
@@ -175,7 +217,7 @@
         else { bad++; params.forEach((p, k) => { p.dh = best.params[k].dh; p.dv = best.params[k].dv; }); S.edgeSoft = best.edgeSoft; trust *= 0.5; P.lap(`   worse: back to iteration ${best.it}, trust ${trust.toFixed(2)}°`); if (bad >= 3) break; }
         if (it === S.iters || m.hard === 0 && m.worst > 0.1) break;
         const gr = best.m.ev.rows.find((r) => r.unit === 'log'); if (gr && isFinite(gr.value) && gr.value > 0 && bad === 0) { const k = clamp(gr.value / S.gTarget, 0.5, 2.5); S.edgeSoft = clamp(Math.max(0.08, S.edgeSoft) * (k > 1 ? Math.pow(k, 0.8) : Math.pow(k, 0.5)), 0.05, 1.5); }
-        const pol = polish(P, best.facets, best.m, { wBand: S.wBand, wTrack: S.wTrack, wEdge: S.wEdge, f0: S.f0, maxShift: trust, steps: [0.05, 0.1, 0.2].filter((q) => q <= trust + 1e-9), scales: [], sweeps: S.sweeps });
+        const pol = polish(P, best.facets, best.m, { wBand: S.wBand, wTrack: P.isPaint ? S.wPaint : S.wTrack, wEdge: P.isPaint ? S.wPaint : S.wEdge, f0: S.f0, maxShift: trust, steps: [0.05, 0.1, 0.2].filter((q) => q <= trust + 1e-9), scales: [], sweeps: S.sweeps });
         const mv = applyTilt(P, pol, params); P.lap(`   polish (trust ${trust.toFixed(2)}°): cost ${pol.cost0.toFixed(1)} → ${pol.cost1.toFixed(1)}, ${mv} facets tilted`);
       }
       const res = { surfaces: best.facets, best, P, Df, on, pass, cutShift: P.cutShift }; if (!overall || best.m.score > overall.best.m.score) overall = res;
@@ -185,6 +227,7 @@
       P.lap(`model inflection ${infl.toFixed(2)}° (wanted ${(P.spec.aim && P.spec.aim.line < 0 ? P.spec.aim.line : -0.57).toFixed(2)}°)`);
       if (Math.abs(off) < 0.08) break; P.cutShift = clamp(P.cutShift - 0.9 * off, -1.5, 1.5);
     }
+    { const en = enforceEnvelope(P, overall.surfaces); overall.surfaces = en.facets; if (en.shrunk || en.dropped) P.notes.push(`envelope: ${en.shrunk} facet shrinks, ${en.dropped} dropped`); P.lap(`envelope check: ${en.shrunk} shrinks, ${en.dropped} dropped`); }
     overall.cover = cov; overall.Mtot = Mtot; overall.timing = `plan+surface ${((P.tPlan || 0) / 1000).toFixed(1)} s`;
     // verification traces: the real engine on the finished design, scored with the app's judge; the report quotes a loose verdict next to the strict one
     if (S.traces > 0 && tools && tools.trace && S.traceRays > 0) {
@@ -193,5 +236,5 @@
     }
     return overall;
   }
-  RF.SqmPipe = { cleanFacet, solve, DEFAULTS, problem, directions, design, balance, fitSurface, buildBase, naturalOf, realize, evaluate, directField, correct, polish };
+  RF.SqmPipe = { enforceEnvelope, cleanFacet, solve, DEFAULTS, problem, directions, design, balance, fitSurface, buildBase, naturalOf, realize, evaluate, directField, correct, polish };
 })();
