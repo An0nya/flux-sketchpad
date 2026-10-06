@@ -38,13 +38,14 @@
   // ---- the spec as per-pixel floors and ceilings (cd), with a margin on each (factor ≥ 1: floor × m, ceiling ÷ m)
   function bands(spec, g, mg) {
     mg = Object.assign({ lo: 1.25, hi: 1.25 }, mg || {});
-    const lo = new Float64Array(g.n), hi = new Float64Array(g.n).fill(Infinity), k = spec.kernel > 0 ? spec.kernel : 0.15, items = spec.items;
+    const lo = new Float64Array(g.n), hi = new Float64Array(g.n).fill(Infinity), wc = new Float64Array(g.n), k = spec.kernel > 0 ? spec.kernel : 0.15, items = spec.items;
     const rad = Math.max(k, g.step / 2) + 1e-9;
     const pxAt = (h, v) => { const out = [], i0 = g.iOf(h - rad), i1 = g.iOf(h + rad), j0 = g.jOf(v - rad), j1 = g.jOf(v + rad); for (let j = Math.max(0, j0); j <= Math.min(g.nv - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(g.nh - 1, i1); i++) out.push(j * g.nh + i); if (!out.length) { const i = g.iOf(h), j = g.jOf(v); if (i >= 0 && j >= 0 && i < g.nh && j < g.nv) out.push(j * g.nh + i); } return out; };
     const pxIn = (poly) => { let h0 = Infinity, h1 = -Infinity, v0 = Infinity, v1 = -Infinity; for (const [h, v] of poly) { h0 = Math.min(h0, h); h1 = Math.max(h1, h); v0 = Math.min(v0, v); v1 = Math.max(v1, v); } const out = []; for (let j = Math.max(0, g.jOf(v0)); j <= Math.min(g.nv - 1, g.jOf(v1)); j++) for (let i = Math.max(0, g.iOf(h0)); i <= Math.min(g.nh - 1, g.iOf(h1)); i++) if (RF.Spec.inPoly(poly, g.hOf(i), g.vOf(j))) out.push(j * g.nh + i); return out; };
     const refMin = (name) => { const it = items.find((x) => x.name === name && x.kind === 'point'); return it && it.min > 0 ? it.min : 0; };
-    const setLo = (px, v) => { for (const p of px) if (v * mg.lo > lo[p]) lo[p] = v * mg.lo; };
-    const setHi = (px, v) => { for (const p of px) if (v / mg.hi < hi[p]) hi[p] = v / mg.hi; };
+    const wOf = (px) => Math.pow(Math.max(9, px.length) / 9, -0.75);              // a spec point (9 pixels) weighs 1; a zone of 4000 pixels 0.01 each: rows count about alike, not by area
+    const setLo = (px, v) => { const w = wOf(px); for (const p of px) { if (v * mg.lo > lo[p]) lo[p] = v * mg.lo; if (w > wc[p]) wc[p] = w; } };
+    const setHi = (px, v) => { const w = wOf(px); for (const p of px) { if (v / mg.hi < hi[p]) hi[p] = v / mg.hi; if (w > wc[p]) wc[p] = w; } };
     const rows = [];
     for (const it of items) {
       let px = null, mn = it.min || 0, mx = it.max || 0, per = 1;
@@ -56,7 +57,7 @@
       if (mn > 0) setLo(px, mn); if (mx > 0) setHi(px, mx);
       rows.push({ name: it.name, kind: it.kind, px, min: mn, max: mx });
     }
-    return { lo, hi, rows };
+    return { lo, hi, wc, rows };
   }
 
   // ---- log-domain blur along v (and a little along h): a step in intensity becomes a smooth edge with ONE steepest point

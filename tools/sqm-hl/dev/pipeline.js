@@ -6,8 +6,8 @@
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
   const DEFAULTS = {
-    N: 0, NA: 150, NAcoarse: 60, iters: 6, margin: 1.2, gd: 0.34, peakCap: 80000, washCap: 12000,
-    dimFrac: 0.2, dimTile: 10, dimFill: 1.35, mainFill: 1.5, softAll: 0.22, edgeSoft: 0.2, gTarget: 0.28, slack: 1.0, step: 0.05, cutPasses: 1, sweeps: 5, maxShift: 0.6, wBand: 8, wTrack: 0.03, wEdge: 3, f0: 60, wPaint: 1.5,
+    N: 0, NA: 150, NAcoarse: 60, iters: 6, margin: 1.2, floorMargin: 1.2, gd: 0.34, peakCap: 80000, washCap: 12000,
+    dimFrac: 0.2, dimTile: 10, dimFill: 1.35, mainFill: 1.5, softAll: 0.22, edgeSoft: 0.2, gTarget: 0.28, slack: 1.0, step: 0.05, cutPasses: 1, sweeps: 5, search: 4, maxShift: 0.6, wBand: 150, wTrack: 0.03, wEdge: 3, f0: 60, wPaint: 1.5, seedGain: 1.6,
   };
 
   // PAINT MODE (no input.spec): the target is the painting on the target plane.  A spec without rows, a window that holds the plane, and the plane's distance along the throw.
@@ -40,7 +40,7 @@
     const dd = spec.measure && +spec.measure.distance, dist = dd > 0 && isFinite(dd) ? dd : Infinity;      // the host's JSON copy turns the far field (Infinity) into null
     const P = { S, input, src, env, spec, refl, conv, dist, isPaint: !!spec.paintMode, Lp: src.pos.slice(), N: S.N > 0 ? Math.min(S.N, input.limits.maxFacets) : input.limits.maxFacets, t0: Date.now(), notes: [] };
     P.lap = (s) => { if (S.verbose) console.log(`[${((Date.now() - P.t0) / 1000).toFixed(1)}s] ${s}`); };
-    P.g = T.grid(spec.window, S.step, conv); P.B = T.bands(spec, P.g, { lo: S.margin, hi: S.margin });
+    P.g = T.grid(spec.window, S.step, conv); P.B = T.bands(spec, P.g, { lo: S.floorMargin || S.margin, hi: S.margin });
     P.grid = F.gridOf(spec.window, S.step, conv, dist, P.Lp); P.S_ = F.sourceSamples(src, 128);
     P.rmin = Math.max(env.keepOut || 0, S.minDistance || 0) + RF.Source.boundingRadius(src) * 0.5; P.cut0 = T.cutOf(spec); P.cutShift = 0; P.cut = P.cut0;
     // the aim point of a facet at Pf toward direction d: on the measuring screen as seen from the photometric centre (finite distance: no parallax), else far away along d
@@ -66,7 +66,7 @@
     P.Ad = tt.dim.map((a) => Object.assign(P.aimAt(a.h, a.v, a.F / P.refl, 'dim'), { cov: a.cov }));
     const area = 4 * (Math.PI / 180) ** 2 * 1.4 * 1.4;
     for (const sd of seeds) { let near = Infinity; for (const a of P.Ad) near = Math.min(near, Math.hypot(a.h - sd.h, a.v - sd.v)); if (near < 1.2) continue;
-      P.Ad.push(Object.assign(P.aimAt(sd.h, sd.v, Math.max(0.15, sd.lo * S.margin * 3 * area / P.refl), 'dim'), { cov: [1.0, 0, 1.0], seeded: true })); }
+      P.Ad.push(Object.assign(P.aimAt(sd.h, sd.v, Math.max(0.12, sd.lo * S.margin * S.seedGain * area / P.refl), 'dim'), { cov: [1.0, 0, 1.0], seeded: true })); }
     P.Ad.forEach((a, k) => { a.idx = k; });
   }
 
@@ -161,7 +161,7 @@
     // pixel weights for tracking: edge zone heavy, plateau light
     const wt = new Float64Array(n);
     for (let j = 0; j < nv; j++) { const v = g.vOf(j); for (let i = 0; i < nh; i++) { const q = j * nh + i; let w = opt.wTrack; if (cut) { const t = cut.top(g.hOf(i)); if (v > t - 1.4 && v < t + 1.6) w = opt.wEdge; } wt[q] = w; } }
-    const costPx = (q, e) => { const f = e / om[q]; let c = 0; if (lo[q] > 0 && f < lo[q]) { const d = (lo[q] - f) / lo[q]; c += wBand * d * d; } if (hi[q] < Infinity && f > hi[q]) { const d = (f - hi[q]) / hi[q]; c += wBand * d * d; }
+    const wc = P.B.wc, costPx = (q, e) => { const f = e / om[q]; let c = 0; if (lo[q] > 0 && f < lo[q]) { const d = (lo[q] - f) / lo[q]; c += wBand * wc[q] * d * d; } if (hi[q] < Infinity && f > hi[q]) { const d = (f - hi[q]) / hi[q]; c += wBand * wc[q] * d * d; }
       const a = Math.log(Math.max(f, f0)) - Math.log(Math.max(T_[q], f0)); return c + wt[q] * a * a; };
     // each unit: its sparse footprint in (i, j) bins, its current shift in bins, its share multiplier
     const U = facets.map((f, k) => { const fp = fps[k], ii = new Int32Array(fp.idx.length), jj = new Int32Array(fp.idx.length); for (let t = 0; t < fp.idx.length; t++) { jj[t] = (fp.idx[t] / nh) | 0; ii[t] = fp.idx[t] - jj[t] * nh; } return { f, ii, jj, val: fp.val, di: 0, dj: 0, k: 1, aim: f.aimRef }; });
@@ -195,6 +195,37 @@
     return moved;
   }
 
+  // ---------------------------------------------------------------- refine: corrections + aim polish + edge trim on FIXED geometry, for one set of shaping parameters
+  function refine(P, Df, on, base, nat, cand, iters) {
+    const S = P.S, saved = { mainFill: S.mainFill, softAll: S.softAll, edgeSoft: S.edgeSoft };
+    Object.assign(S, cand.set || {}); const params = base.map(() => ({ dh: 0, dv: 0 }));
+    let best = null, trust = S.maxShift, bad = 0;
+    for (let it = 0; it <= iters; it++) {
+      if (it > 0 && Date.now() - P.t0 > 0.55 * S.budgetMs) { P.lap('   time governor: stopping the corrections'); break; }
+      const facets = realize(P, base, nat, params), m = evaluate(P, facets, Df, on);
+      P.lap(`[${cand.label}] iter ${it}: ${facets.length} facets, model ${m.ev.verdict} ${JSON.stringify(m.ev.n)} worst ${m.worst.toFixed(2)} | ${m.ev.rows.filter((r) => r.verdict !== 'pass').map((r) => r.name + ' ' + (+r.value).toPrecision(3) + (r.isMin ? '≥' : '≤') + (+r.bound).toPrecision(3)).join('; ')}`);
+      if (!best || m.score > best.m.score) { best = { facets, m, it, params: params.map((p) => Object.assign({}, p)), edgeSoft: S.edgeSoft }; bad = 0; }
+      else { bad++; params.forEach((p, k) => { p.dh = best.params[k].dh; p.dv = best.params[k].dv; }); S.edgeSoft = best.edgeSoft; trust *= 0.5; P.lap(`   worse: back to iteration ${best.it}, trust ${trust.toFixed(2)}°`); if (bad >= 3) break; }
+      if (it === iters || m.hard === 0 && m.worst > 0.1) break;
+      const gr = best.m.ev.rows.find((r) => r.unit === 'log'); if (gr && isFinite(gr.value) && gr.value > 0 && bad === 0) { const k = clamp(gr.value / S.gTarget, 0.5, 2.5); S.edgeSoft = clamp(Math.max(0.08, S.edgeSoft) * (k > 1 ? Math.pow(k, 0.8) : Math.pow(k, 0.5)), 0.05, 1.5); }
+      const pol = polish(P, best.facets, best.m, { wBand: S.wBand, wTrack: P.isPaint ? S.wPaint : S.wTrack, wEdge: P.isPaint ? S.wPaint : S.wEdge, f0: S.f0, maxShift: trust, steps: [0.05, 0.1, 0.2].filter((q) => q <= trust + 1e-9), scales: [], sweeps: S.sweeps });
+      const mv = applyTilt(P, pol, params); P.lap(`   polish (trust ${trust.toFixed(2)}°): cost ${pol.cost0.toFixed(1)} → ${pol.cost1.toFixed(1)}, ${mv} facets tilted`);
+    }
+    // final trim of the cut-off sharpness: only the vertical blur of the edge facets changes (no geometry), judged by the model
+    { const gRow = (m) => m.ev.rows.find((r) => r.unit === 'log' && isFinite(r.value)); let g0 = gRow(best.m);
+      if (g0 && P.cut) for (let k = 0; k < 4; k++) { const G = g0.value, gi = P.spec.items.find((x) => x.kind === 'gradient') || {}, lo = gi.min || 0.13, hi = gi.max || 0.4;
+        if (G >= lo * 1.15 && G <= hi * 0.92) break; const f = G > hi * 0.92 ? 1.35 : 0.75; S.edgeSoft = clamp(Math.max(0.1, S.edgeSoft) * f, 0.05, 2); params.forEach((q, i) => { q.dh = best.params[i].dh; q.dv = best.params[i].dv; });
+        const facets = realize(P, base, nat, params), m = evaluate(P, facets, Df, on); const g1 = gRow(m); P.lap(`   edge trim: edgeSoft ${S.edgeSoft.toFixed(2)} → G ${g1 ? g1.value.toFixed(2) : '–'}, model ${m.ev.verdict} ${JSON.stringify(m.ev.n)}`);
+        if (m.score >= best.m.score - 0.02) { best = { facets, m, it: best.it, params: best.params, edgeSoft: S.edgeSoft }; g0 = g1 || g0; } else { S.edgeSoft = best.edgeSoft; break; } } }
+    best.cand = cand; best.set = { mainFill: S.mainFill, softAll: S.softAll, edgeSoft: S.edgeSoft };
+    Object.assign(S, saved); return best;
+  }
+  // shaping candidates the search tries (deterministic order; the first is the setting as given)
+  function candidatesFor(S, n) {
+    const mf = S.mainFill, sa = S.softAll, c = [[1, 1, 'base'], [0.8, 1, 'tighter'], [1.25, 1, 'wider'], [1, 0.5, 'crisper'], [1, 1.6, 'softer'], [0.8, 1.6, 'tight+soft'], [1.25, 0.5, 'wide+crisp'], [1.5, 1.6, 'widest'], [0.65, 1, 'tightest'], [0.8, 0.5, 'tight+crisp']];
+    return c.slice(0, Math.max(1, Math.min(n, c.length))).map(([a, b, label]) => ({ label, set: { mainFill: mf * a, softAll: sa * b } }));
+  }
+
   function solve(input, S0, tools) {
     const S = Object.assign({}, DEFAULTS, S0), P = problem(input, S, tools); P.tools = tools;
     const Dc = directions(P, S.NAcoarse), Df = directions(P, S.NA); let Mtot = 0; for (let i = 0; i < Df.n; i++) Mtot += Df.m[i];
@@ -207,19 +238,17 @@
       design(P, cov); P.lap(`ideal beam (cut-off shift ${P.cutShift.toFixed(2)}°): ${P.des.flux.toFixed(0)} lm, G ${isFinite(P.des.edge.G) ? P.des.edge.G.toFixed(2) : '–'}, ${P.A.length} main + ${P.Ad.length} dim units`);
       onC = new Uint8Array(Dc.n).fill(1); x = new Float64Array(P.A.length).fill(Math.log(40)); balance(P, Dc, onC, x, true); fitSurface(P, Dc, onC, x, mainNeed(P));
       const on = new Uint8Array(Df.n).fill(1); cov = fitSurface(P, Df, on, x, mainNeed(P)); P.lap(`surface: covers ${cov.toFixed(0)} lm`);
-      const base = buildBase(P, Df, on, x), nat = naturalOf(P, base), params = base.map(() => ({ dh: 0, dv: 0 }));
-      let best = null, trust = S.maxShift, bad = 0;
-      for (let it = 0; it <= S.iters; it++) {
-        if (it > 0 && Date.now() - P.t0 > 0.55 * S.budgetMs) { P.lap('   time governor: stopping the corrections'); break; }
-        const facets = realize(P, base, nat, params), m = evaluate(P, facets, Df, on);
-        P.lap(`iter ${it}: ${facets.length} facets, model ${m.ev.verdict} ${JSON.stringify(m.ev.n)} worst ${m.worst.toFixed(2)} | ${m.ev.rows.filter((r) => r.verdict !== 'pass').map((r) => r.name + ' ' + (+r.value).toPrecision(3) + (r.isMin ? '≥' : '≤') + (+r.bound).toPrecision(3)).join('; ')}`);
-        if (!best || m.score > best.m.score) { best = { facets, m, it, params: params.map((p) => Object.assign({}, p)), edgeSoft: S.edgeSoft }; bad = 0; if (S.preview) { try { S.preview(facets.map(cleanFacet), { label: `round ${it}`, note: `model ${m.ev.verdict} ${JSON.stringify(m.ev.n)}` }); } catch (e) { /* display only */ } } if (S.progress) S.progress(0.5 + 0.4 * it / Math.max(1, S.iters), `round ${it}/${S.iters}`); }
-        else { bad++; params.forEach((p, k) => { p.dh = best.params[k].dh; p.dv = best.params[k].dv; }); S.edgeSoft = best.edgeSoft; trust *= 0.5; P.lap(`   worse: back to iteration ${best.it}, trust ${trust.toFixed(2)}°`); if (bad >= 3) break; }
-        if (it === S.iters || m.hard === 0 && m.worst > 0.1) break;
-        const gr = best.m.ev.rows.find((r) => r.unit === 'log'); if (gr && isFinite(gr.value) && gr.value > 0 && bad === 0) { const k = clamp(gr.value / S.gTarget, 0.5, 2.5); S.edgeSoft = clamp(Math.max(0.08, S.edgeSoft) * (k > 1 ? Math.pow(k, 0.8) : Math.pow(k, 0.5)), 0.05, 1.5); }
-        const pol = polish(P, best.facets, best.m, { wBand: S.wBand, wTrack: P.isPaint ? S.wPaint : S.wTrack, wEdge: P.isPaint ? S.wPaint : S.wEdge, f0: S.f0, maxShift: trust, steps: [0.05, 0.1, 0.2].filter((q) => q <= trust + 1e-9), scales: [], sweeps: S.sweeps });
-        const mv = applyTilt(P, pol, params); P.lap(`   polish (trust ${trust.toFixed(2)}°): cost ${pol.cost0.toFixed(1)} → ${pol.cost1.toFixed(1)}, ${mv} facets tilted`);
+      const base = buildBase(P, Df, on, x), nat = naturalOf(P, base); P.tBase = Date.now() - P.t0;
+      let best = null; const cands = candidatesFor(S, P.isPaint ? 1 : S.search);
+      for (let ci = 0; ci < cands.length; ci++) {
+        if (ci > 0 && Date.now() - P.t0 > 0.45 * S.budgetMs) { P.lap('   time governor: no more candidates'); break; }
+        const r = refine(P, Df, on, base, nat, cands[ci], ci === 0 ? S.iters : Math.max(2, Math.ceil(S.iters * 0.6)));
+        P.lap(`candidate ${cands[ci].label}: model ${r.m.ev.verdict} ${JSON.stringify(r.m.ev.n)} worst ${r.m.worst.toFixed(2)} score ${r.m.score.toFixed(2)}`);
+        if (!best || r.m.score > best.m.score + 0.25) { best = r; P.chosen = cands[ci].label; if (S.preview) { try { S.preview(r.facets.map(cleanFacet), { label: `candidate ${cands[ci].label}`, note: `model ${r.m.ev.verdict} ${JSON.stringify(r.m.ev.n)}` }); } catch (e) { /* display only */ } } }
+        if (S.progress) S.progress(0.5 + 0.4 * (ci + 1) / cands.length, `candidate ${ci + 1}/${cands.length}`);
+        if (best.m.hard === 0 && best.m.worst > 0.15) break;
       }
+      Object.assign(S, best.set); P.notes.push(`shaping candidate chosen: ${best.cand.label} (of ${cands.length} tried, switching needs a clear model gain)`);
       const res = { surfaces: best.facets, best, P, Df, on, pass, cutShift: P.cutShift }; if (!overall || best.m.score > overall.best.m.score) overall = res;
       // where did the model-judge find the cut-off inflection, against where it should be?  Move the design's line by the difference and go again.
       const gr = best.m.ev.rows.find((r) => r.unit === 'log' && r.at), line = P.cut0 ? P.cut0.line : 0;
@@ -229,10 +258,23 @@
     }
     { const en = enforceEnvelope(P, overall.surfaces); overall.surfaces = en.facets; if (en.shrunk || en.dropped) P.notes.push(`envelope: ${en.shrunk} facet shrinks, ${en.dropped} dropped`); P.lap(`envelope check: ${en.shrunk} shrinks, ${en.dropped} dropped`); }
     overall.cover = cov; overall.Mtot = Mtot; overall.timing = `plan+surface ${((P.tPlan || 0) / 1000).toFixed(1)} s`;
-    // verification traces: the real engine on the finished design, scored with the app's judge; the report quotes a loose verdict next to the strict one
-    if (S.traces > 0 && tools && tools.trace && S.traceRays > 0) {
-      try { const surf = overall.surfaces.map(cleanFacet), tr = tools.trace(surf, { rays: Math.min(2e6, S.traceRays), spec: true });
-        if (tr && tr.spec) { const lo = { pass: 0, near: 0, fail: 0 }; for (const r of tr.spec.rows) lo[RF.SqmSolver ? RF.SqmSolver.loose(r) : 'pass']++; overall.trace = { spec: tr.spec, rays: Math.min(2e6, S.traceRays), loose: lo }; } } catch (e) { P.notes.push('verification trace failed: ' + e.message); }
+    // verification trace: the real engine on the finished design, read at the AIM the model judge chose (the stock judge's cut-off aim is noise-sensitive: at ≤ 4 M rays it can
+    // latch onto the beam's tail and read every row ~1° off).  Guided like the app's Refine; the report quotes a loose verdict (value ± 1σ inside the limit) beside the strict one.
+    if (S.traces > 0 && S.traceRays > 0 && !P.isPaint && RF.Engine && RF.FarField) {
+      try {
+        // the app's worker gives a solver no scene (tools.scene is a harness extra), so the problem is rebuilt from the input
+        const surf = overall.surfaces.map(cleanFacet), N = Math.min(4e6, S.traceRays * Math.max(1, S.traces)), spec = P.spec;
+        const sc0 = { source: input.source, emitters: (input.sources || []).slice(1), target: input.target, envelope: input.envelope, mode: 'D', modeA: { paint: [] },
+          sim: { bounces: input.limits.bounces || 4, floor: 0.01, seed: (input.seed | 0) + 11, res: 100, autoRes: false, rays: N, view: 'total' } };
+        const opts = { win: spec.window, step: spec.step || 0.1, conv: P.conv, distance: P.dist, centre: P.Lp.slice() };
+        const Pp = RF.Engine.prepare(sc0, surf); Pp.ffStreams = [opts]; Pp.guideLearn = true;
+        const n0 = Math.max(100000, Math.floor(N / 4)); let c = RF.Engine.newCtx(Pp, n0, 0); RF.Engine.traceRange(c, 0, n0); c.next = n0; c.done = true;
+        while (c.N < N) { const n1 = c.N, gd = RF.Engine.buildGuide(c); c = RF.Engine.extend(c, Math.min(N, 2 * n1), gd); RF.Engine.traceRange(c, n1, c.N); c.next = c.N; c.done = true; }
+        const G = RF.FarField.build(c, opts), sh = overall.best.m.ev.shift || [0, 0], G2 = Object.assign({}, G, { h0: G.h0 - sh[0], v0: G.v0 - sh[1], h1: G.h1 - sh[0], v1: G.v1 - sh[1] });
+        const md = Object.assign(T.mdOf(spec), { aimMode: 'design', aimBox: null, aimTol: 0 }), ev = RF.Spec.evaluate(G2, md), lo = { pass: 0, near: 0, fail: 0 };
+        for (const r of ev.rows) lo[RF.SqmSolver ? RF.SqmSolver.loose(r) : 'pass']++;
+        overall.trace = { spec: { n: ev.n, verdict: ev.verdict }, rays: N, loose: lo, aim: sh };
+      } catch (e) { P.notes.push('verification trace failed: ' + e.message); }
     }
     return overall;
   }

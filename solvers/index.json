@@ -1,5 +1,12 @@
 [
  {
+  "file": "sqm-hl.js",
+  "model": "SQM headlamp solver (Claude Sonnet 5.5, briefed by Anya)",
+  "run": "2026-10-06",
+  "workspace": "this repo",
+  "note": "lab"
+ },
+ {
   "file": "projector-v2.js",
   "model": "Projector module v2, experimental (Claude Opus 5.5)",
   "run": "2026-10-04",

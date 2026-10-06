@@ -2,7 +2,7 @@
 
 Working notes, started 2026-10-06 with Anya (checkpoint written at ~60 % of the session; read this first when resuming).
 Solver file: `solvers/sqm-hl.js` (GENERATED — edit `tools/sqm-hl/dev/*.js`, then `node tools/sqm-hl/build.js`).
-Not yet in `solvers/index.json` (so not in the live dropdown) and not committed/pushed — see "Status / next steps".
+Registered in `solvers/index.json` (live dropdown: "SQM headlamp (continuous reflector)"), v0.1, pushed 2026-10-06 night. Paint mode works (no `input.spec` → the painting is the target).
 
 ## The ask (Anya's words, condensed — all of it still binding)
 - A NEW standalone solver using SQM for headlamp beams; a SECOND ("bonus", `sqm-hl-dish`) where the base shell/dish is not limited to the ellipsoidal SQM shell: chosen automatically (or by an input), try to FILL the envelope / capture as much flux as possible, fall back to a smaller area if needed; facets should connect edge to edge "for the most part".
@@ -40,28 +40,35 @@ Run: `node tools/sqm-hl/build.js` · `node tools/sqm-hl/bench.js --solvers sqm-h
 9. OT re-solve between polish rounds is unstable (re-realisation changes cells, decals, fit scale). Tilt-only polish on FIXED geometry works (a 0.4° tilt moves a 7 mm facet edge 0.02 mm, so edge-to-edge continuity is essentially kept).
 10. Interface wart: `input.spec.measure.distance` is `null` for the far field (JSON copy turns Infinity into null; `isFinite(null)` is true!). Treat null/0/non-finite as ∞. (Cost me an hour: aims got c = null and one facet owned the whole dish.)
 
+11. `tools.scene` does NOT exist in the app's worker (it is a harness extra of bench-spec / run-solver): a solver gets only progress / budget / trace / preview. The verification trace rebuilds its scene from `input` (source, sources[1:], target, envelope, limits.bounces) and traces privately with `RF.Engine` + `ffStreams`.
+12. In the app (Chromium worker, Mac mini) the solver runs at about Node speed: 100 facets 7.5 s (before the candidate search; ~15–20 s with it), 300 facets 30 s; my old "browser 5–7× slower" note is WRONG for this solver. Verified on a separate origin (preview server `flux-scratch2`, port 8746).
+13. The stock judge at 0.02° resolution sees sharp tile edges that the 0.05° model (bilinear splat of sampled footprints) smooths away: the cut-off aim and the G/linearity rows can disagree between model and stock judge (led-back: model aim (0.5, −0.05)°, stock judge inflection at −0.02° → reads 0.3–0.55° off, 4 sure fails at 8 M AND 24 M rays). Ideas: finer model grid around the cut-off columns; soften every facet whose top lies within the judge's aim window; judge-mimicking edge cost in the polish (hl-v2 does this).
+14. Floor margin 1.5 (to compensate image spreading) made things worse overall (chaotic via the aim); default stays 1.2. Per-row pixel weights (a spec point weighs like a whole zone: hl-v2's n^−0.75) helped; seeding the glow units at 1.6× the floor instead of 3× keeps the skirt nearer the judge's gate.
+15. The shaping-candidate search (`search`: mainFill ×0.8–1.5, softAll ×0.5–1.6, picked by the noise-free model, switching only on a clear gain) costs ~2 s per candidate; it helped box (2→0 sure fails) and hurt led-back (0→4, finding 13): the model's idea of "better" is not the stock judge's.
+
 ## Benchmarks (R112 B, 100-facet budget, 8 M-ray stock judge, Node timings; sure-fail / unsure; loose pass/near/off)
-| scene | spec-hl-v2 (baseline) | sqm-hl 0.1 (this checkpoint) |
+| scene | spec-hl-v2 (baseline) | sqm-hl 0.1 (pushed; candidate search on) |
 |---|---|---|
-| box (up LED + box) | 0 / 3 · 17/2/0 · 11 s | 0 / 5 · 15/4/0 · 9 s |
-| led-back (rear LED) | 0 / 1 · 18/0/1 · 8 s | 0 / 3 · 17/2/0 · 9 s |
-| slim | 0 / 3 (earlier table) | 1 / 3 (75R) · 16/2/1 · 11 s |
-| module | 0 / 5 | 2 / 6 (75R, 50R) · 12/4/3 · 10 s |
-| sealed7 | 2 / 2 | 1 / 5 (B50L) · 15/1/3 · 7 s |
-| her filament scene | 0 / 6 (15 pass) | 1 / 10 (50R) · 14/4/3 · 10 s |
+| box (up LED + box) | 0 / 3 · loose 17/2/0 · 11 s | 2 / 7 · 12/4/3 · ~15–24 s |
+| led-back (rear LED) | 0 / 1 · 18/0/1 · 8 s | 4 / 5 · 11/3/5 (finding 13) |
+| slim | 0 / 3 (earlier table) | 1 / 6 · 16/2/1 |
+| module | 0 / 5 | 2 / 5 · 14/3/2 |
+| sealed7 | 2 / 2 | 0 / 4 · 16/3/0 |
+| her filament scene | 0 / 6 (15 pass) | 1 / 3 (Zone III) · 18/2/1 |
+FMVSS LB2V (26 rows, before the search): led-back 24 pass / 1 fail / 1 unsure, box 22/2/2, hb3-in-bucket 22/3/1. Budgets on box (R112 B): 16 → 12 facets used, 7 pass / 7 fail (a nominal beam); 50 → 10/4/5; 199 → 15/0/4 (18 s). Paint mode (app scoring, 1 M rays): default scene fidelity 77.9 %, test scene 84.5 %.
 Her saved SQM v0.3: 6 fails / 2 unsure; SQM v0.3 on box 9 fails, led-back 4, slim 7, module 6, sealed7 12 (fast default, 28–38 s). FMVSS and other LEDs/budgets NOT benched yet.
 
 ## Known issues / TODO (rough priority)
-1. PAINT-MODE FALLBACK: `solve` throws without `input.spec` ("switch to Spec mode"). The app lists it for paint scenes too → synthesize a spec (window from the target, no rows) and take T* from `input.paint` (convert the plane's cells to (h,v) intensity), scale to the available flux; keep all else.
+1. (DONE) paint-mode fallback. Remaining there: tilted target planes (modelled as an x-normal screen), fidelity tuning (77–85 %: the Fill & fix lab solvers reach 96 % on paint).
 2. Hot spot: 75R/50R come out 10–30 % low on box/slim/module (floors ≥ 10.1 kcd). Try: larger margin on the most demanding floors, wBand up, calibrated model, more facets near the hot spot.
 3. Cut-off: linearity/sharpness unsure or failing; filament scene has a sawtooth edge (vertical-streak facets) → sector/pairing control (edge facets from the dish's sides, crossing or diverging as needed; she allows both) or edge-anchored aims (aim the image TOP edge at the knee, stagger by a few hundredths of a degree).
 4. Calibrate with a private far-field trace (`RF.Engine` + `ffStreams`; `tools.trace` returns only the plane grid and spec rows): residual map for the dim areas (model under-predicts glow: Point 7 76 vs 114 cd, BR 213 vs 152) and noise-free-aim verdict for the notes. The notes' 1 M-ray verification verdict is unreliable (finding 7): evaluate the traced field at the model judge's aim shift instead.
 5. Dim glow units are 3× the floor (seed factor) → glow ≈ 250–450 cd, above the judge's 2 % gate (~150–200 cd): keep the skirt UNDER the gate (hl-v2 does) so noise cannot capture the aim.
-6. Timing in the app: measure the browser worker vs Node (my notes say 5–7× slower — unverified); the governor stops corrections at 55 % of `tools.budget.ms`. Use a separate origin/port for any browser test (never Restore/Open on her live tab; see feedback_agentic_safety).
+6. (DONE) Timing in the app ≈ Node (finding 12). The governor stops corrections at 55 % of `tools.budget.ms`, candidates at 45 %. Use a separate origin/port for browser tests (flux-scratch / flux-scratch2 in ~/.claude/launch.json; never Restore/Open on her live tab).
 7. FMVSS LB2V (18.3 m measuring distance → finite-distance aims through `P.zOf`), other emitters (warm LEDs, domed), budgets 16/50/200/300, filament moved toward the rear, impossible placements (LED outside the envelope → `D.rMin` handles tin > 0; untested).
 8. Stray light shield (absorbing polygon or reflecting facet) for uncovered directions that violate ceilings (FMVSS 10U–90U); recycling to the source.
 9. Bonus solver `sqm-hl-dish`: base shell chosen automatically among families (natural SQM scaled to the needed flux [built], envelope-filling shells with facets tilted onto the aims, smaller fills as fallback), with a continuity measure (max edge step, mm) and a `maxStep` knob; a small search over fills/families using the model judge (cheap). Per-facet radial scale needs a blocking check (finding 3).
-10. Settings text/ranges review; UI check in the app (two tiers render as Settings + "Advanced"); docs; register in `solvers/index.json`; `node tests/all.js`; commit; push.
+10. (DONE) registered, tests green, pushed. Still to do: a UI review of the long setting labels; docs for SOLVER_API (tools.scene note); sector pairing for the filament; judge-mimicking edge cost (finding 13); calibration trace residual.
 
 ## Decisions made without asking (revisit if wrong)
 - Solver id `sqm-hl`, version 0.1, modes ['paint'] (only 'paint'/'stamps' are valid); registered by the file only (index.json untouched so far).
