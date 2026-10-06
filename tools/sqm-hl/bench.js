@@ -14,9 +14,9 @@ function run(job) {
     if (args.load) a.push('--load', args.load); if (args.settings) a.push('--settings', args.settings);
     const p = spawn('node', a, { cwd: __dirname }); let out = ''; p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (out += d));
     p.on('close', () => { fs.writeFileSync(log, out); const g = (re) => { const m = out.match(re); return m ? m[1] : null; };
-      const lo = (out.match(/loose (\d+) pass \/ (\d+) near \/ (\d+) off/) || []).slice(1).join('/'), verdict = g(/verdict (\w+) n/), n = (out.match(/n (\{[^}]*\})/) || [])[1], solve = g(/solve ([\d.]+) s/), facets = g(/, (\d+) surfaces/), lm = g(/lm-in-window (\d+)/);
+      const rc = (out.match(/reach (\d+)\/(\d+) m/) || []).slice(1).join('/'), lo = (out.match(/loose (\d+) pass \/ (\d+) near \/ (\d+) off/) || []).slice(1).join('/'), verdict = g(/verdict (\w+) n/), n = (out.match(/n (\{[^}]*\})/) || [])[1], solve = g(/solve ([\d.]+) s/), facets = g(/, (\d+) surfaces/), lm = g(/lm-in-window (\d+)/);
       const fails = [...out.matchAll(/^fail\s+(.+?)\s{2,}/gm)].map((m) => m[1]).join(', '), uns = [...out.matchAll(/^unsure\s+(.+?)\s{2,}/gm)].map((m) => m[1]);
       const err = /SOLVE ERROR/.test(out) ? (out.match(/SOLVE ERROR ([^\n]*)/) || [])[1] : null;
-      results.push({ ...job, verdict, n, solve, facets, lm, fails, unsure: [...new Set(uns)].join(', '), err, base }); console.log(`${job.sc.padEnd(9)} ${job.sv.padEnd(14)} ${err ? 'ERROR ' + err : `${verdict} ${n} loose ${lo} solve ${solve}s facets ${facets} lm ${lm} | FAIL: ${fails || '-'} | unsure: ${[...new Set(uns)].join(', ') || '-'}`}`); res(); }); });
+      results.push({ ...job, verdict, n, solve, facets, lm, fails, unsure: [...new Set(uns)].join(', '), err, base }); console.log(`${job.sc.padEnd(9)} ${job.sv.padEnd(14)} ${err ? 'ERROR ' + err : `${verdict} ${n} loose ${lo} reach ${rc} solve ${solve}s facets ${facets} lm ${lm} | FAIL: ${fails || '-'} | unsure: ${[...new Set(uns)].join(', ') || '-'}`}`); res(); }); });
 }
 (async () => { const q = jobs.slice(); await Promise.all(Array.from({ length: par }, async () => { while (q.length) await run(q.shift()); })); })();

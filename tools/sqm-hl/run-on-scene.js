@@ -22,7 +22,7 @@ const tools = { progress() {}, preview() {}, budget: { rays: Infinity, ms: +(arg
   for (const n of (out.notes || [])) console.log('  note:', n);
   const facts = RF.Solvers.verify(sc, out); console.log('verify: placed', facts.placed, 'errors', JSON.stringify(facts.errors), 'envelope outside', facts.violations.envelope.length, 'keepOut', facts.violations.keepOut.length, 'budget', JSON.stringify(facts.violations.budget), 'needsBounces', facts.needsBounces);
   sc.groups.A.surfaces = out.surfaces; if (facts.needsBounces > sc.sim.bounces) sc.sim.bounces = facts.needsBounces;
-  const t1 = Date.now(); const { G, ev } = judge(sc, +(args.rays || 8e6)); console.log('judge trace', ((Date.now() - t1) / 1000).toFixed(1) + 's'); console.log(report(ev, G));
+  const t1 = Date.now(); const { G, ev, reach } = judge(sc, +(args.rays || 8e6)); console.log('judge trace', ((Date.now() - t1) / 1000).toFixed(1) + 's'); console.log(report(ev, G, null, reach));
   const name = args.out || id; const dir = args.dir || __dirname;
   const { renderFF } = require('./ffpng.js'); const r = renderFF(RF, G, sc.modeD, { ev, label: name }); fs.writeFileSync(path.join(dir, name + '.png'), r.png); console.log('png', path.join(dir, name + '.png'), 'peak', Math.round(r.peak));
   sc.solve = { id, version: def.version, settings: RF.Solvers.settingsOf(sc, id), seed: sc.sim.seed | 0 };

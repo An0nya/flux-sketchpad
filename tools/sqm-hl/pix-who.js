@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+/* pix-who.js scene settingsJSON h v — who lights this far-field pixel: direct light vs reflected, and the top facets (aim, footprint centre/extent). */
+const fs = require('fs'), vm = require('vm'); const { RF } = require('./lib.js'); const { makeScene } = require('./scenes.js');
+vm.runInThisContext(fs.readFileSync(process.env.SQM_DEBUG || 'build/sqm-hl.debug.js', 'utf8'), { filename: 'sqm-hl.js' }); const RFX = globalThis.__sqm;
+const name = process.argv[2], setIn = JSON.parse(process.argv[3] || '{}'), H = +process.argv[4], Vv = +process.argv[5]; const sc = makeScene(name, { preset: 'ece-r112-b', budget: 100 }); const input = RF.Solvers.inputOf(sc);
+const out = RFX.SqmPipe.solve(input, setIn, { progress() {}, budget: { ms: 1e9 } }), P = out.P, g = P.g, m = out.best.m, fld = RFX.SqmFwd.field(out.best.facets, P.S_, P.grid, { na: 250, occlude: true });
+const k = 0.15, cdOf = (E) => { let s = 0, w = 0; for (let j = g.jOf(Vv - k); j <= g.jOf(Vv + k); j++) for (let i = g.iOf(H - k); i <= g.iOf(H + k); i++) { s += E[j * g.nh + i]; w += g.om[j * g.nh + i]; } return s / w; };
+console.log(`pixel (${H}, ${Vv}) kernel ±${k}°: reflected ${cdOf(fld.E).toFixed(0)} cd, direct ${cdOf(m.Ed).toFixed(0)} cd`);
+const rows = []; out.best.facets.forEach((f, q) => { const fp = fld.fps[q]; let s = 0, sh = 0, sv = 0, tot = 0; for (let t = 0; t < fp.idx.length; t++) { const j = (fp.idx[t] / g.nh) | 0, i = fp.idx[t] - j * g.nh, w = fp.val[t]; tot += w; sh += w * g.hOf(i); sv += w * g.vOf(j); if (Math.abs(g.hOf(i) - H) <= k && Math.abs(g.vOf(j) - Vv) <= k) s += w; } rows.push({ id: f.id, aim: f.aimRef ? `(${f.aimRef.h.toFixed(1)},${f.aimRef.v.toFixed(1)}) ${f.aimRef.tier}` : '?', decal: !!f.decal, cd: s / (4 * k * k * (Math.PI / 180) ** 2), lm: tot, cen: `(${(sh / tot).toFixed(1)},${(sv / tot).toFixed(1)})`, vg: f.vg ? f.vg.map((x) => x.toFixed(2)).join('/') : '-' }); });
+rows.sort((a, b) => b.cd - a.cd); for (const r of rows.slice(0, 6)) console.log(`  ${r.id.padEnd(6)} aim ${r.aim.padEnd(16)} centre ${r.cen.padEnd(11)} ${r.lm.toFixed(1).padStart(5)} lm  contributes ${r.cd.toFixed(0).padStart(6)} cd  vg ${r.vg}`);

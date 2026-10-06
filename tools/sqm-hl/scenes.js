@@ -5,6 +5,8 @@ const { RF, loadScene } = require('./lib.js');
 function placeLed(s, where, axis) { const c = s.envelope.center, h = s.envelope.half; s.source.pos = [c[0] + where[0] * h[0], c[1] + where[1] * h[1], c[2] + where[2] * h[2]]; s.source.axis = axis; return s; }
 function makeScene(name, o) {
   o = Object.assign({ preset: 'ece-r112-b', budget: 100, led: 'generic', rays: 1e6 }, o || {});
+  // 'box@dx,dy,dz[,ax,ay,az]': the named scene with the source moved by (dx, dy, dz) mm (and optionally pointed along a new axis) — off-nominal placements
+  let move = null; if (!name.startsWith('file:') && name.includes('@')) { const [b, m] = name.split('@'); name = b; move = m.split(',').map(Number); }
   let sc;
   if (name.startsWith('file:')) { sc = loadScene(name.slice(5)); sc.groups.A.surfaces = []; if (o.preset !== 'keep') { /* keep the file's own spec */ } }
   else {
@@ -21,6 +23,7 @@ function makeScene(name, o) {
     sc.target.distance = 25000; sc.target.size = Math.round(RF.Spec.fitTargetSize(sc));
     sc.modeA.paint = RF.Spec.seedPaint(sc);
   }
+  if (move) { sc.source.pos = [sc.source.pos[0] + move[0], sc.source.pos[1] + (move[1] || 0), sc.source.pos[2] + (move[2] || 0)]; if (move.length >= 6) { const a = move.slice(3, 6), n = Math.hypot(...a); sc.source.axis = a.map((x) => x / n); } }
   sc.modeA.budget = o.budget;
   if (o.md) Object.assign(sc.modeD, o.md);
   return sc;
