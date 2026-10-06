@@ -2,12 +2,12 @@
  *   RF.SqmPipe.solve(input, S, tools) → { surfaces, best, P, ... }                                                                              */
 (function () {
   'use strict';
-  const RF = globalThis.RF, V = RF.V, T = RF.SqmTarget, Pl = RF.SqmPlan, C = RF.SqmCore, E = RF.SqmEmit, F = RF.SqmFwd;
+  const RF = globalThis.RF, V = RF.V, T = RF.SqmTarget, Pl = RF.SqmPlan, C = RF.SqmCore, E = RF.SqmEmit, F = RF.SqmFwd, Sh = RF.SqmShell;
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
   const DEFAULTS = {
     N: 0, NA: 150, NAcoarse: 60, iters: 6, margin: 1.2, floorMargin: 1.2, gd: 0.34, peakCap: 300000, fluxFrac: 0.7, washCap: 12000,
-    dimFrac: 0.2, dimTile: 10, dimFill: 1.35, mainFill: 1.5, softAll: 0.22, edgeSoft: 0.2, gTarget: 0.28, slack: 1.0, step: 0.05, cutPasses: 1, sweeps: 5, search: 4, maxShift: 0.6, wBand: 150, wTrack: 0.03, wEdge: 3, f0: 60, wPaint: 1.5, seedGain: 1.6, aimGuard: 0.011, rightSlope: 1.0, rightLift: 0, resBoost: 1, resV: -1.75, padH: 0, guardLift: 0, naEval: 100, naFinal: 250, alignGain: 0.8, leftLift: 0, push: 0, guardCarry: 1,
+    dimFrac: 0.2, dimTile: 10, dimFill: 1.35, mainFill: 1.5, softAll: 0.22, edgeSoft: 0.2, gTarget: 0.28, slack: 1.0, step: 0.05, cutPasses: 1, sweeps: 5, search: 4, maxShift: 0.6, wBand: 150, wTrack: 0.03, wEdge: 3, f0: 60, wPaint: 1.5, seedGain: 1.6, aimGuard: 0.011, rightSlope: 1.0, rightLift: 0, resBoost: 1, resV: -1.75, padH: 0, guardLift: 0, naEval: 100, naFinal: 250, alignGain: 0.8, leftLift: 0, push: 0, guardCarry: 1, shell: 'natural', shellMix: 1, shellDecals: 1, shellFill: 0.97, shellE: 1, shellP: 0, shellAxis: 'auto', shellTiltV: 0, shellTiltH: 0, shellTry: 'natural,fit,paraboloid,wall', shellMaxStep: 1, shellRank: 2, shellTol: -0.3,
   };
 
   // PAINT MODE (no input.spec): the target is the painting on the target plane.  A spec without rows, a window that holds the plane, and the plane's distance along the throw.
@@ -94,10 +94,14 @@
   // the geometry: one focused facet per cell set (+ the decals for the dim units), clipped to the envelope.  Fixed once the surface is solved.
   function buildBase(P, D, on, x) {
     // dish fill: every facet is pushed out along its own rays (a homothety about the LED: its aim and its flux are untouched, its LED image shrinks as 1/r) by a share `push` of the room the
-    // envelope leaves it.  The surface is then no longer one continuous piece: neighbours meet with small steps.
-    let rho = null; if (P.S.push > 0) { const rm = E.rhoMax(D, on, P.A, x, C.assign(D, on, P.A, x), 0.97); rho = Array.from(rm.max).map((r) => Math.max(1, 1 + P.S.push * ((isFinite(r) ? r : 1) * 0.97 - 1))); }
+    // envelope leaves it.  The surface is then no longer one continuous piece: neighbours meet with small steps.  A SHELL (shell.js) does the same with a prescribed radius per direction.
+    let rho = null; P.shellInfo = null;
+    if (P.shellSel && P.shellSel.kind !== 'natural') {
+      const as0 = C.assign(D, on, P.A, x), Fr = Sh.frame(D, on, P.A, x, as0), r = Sh.rhoFor(Fr, P.shellSel, P.S.shellMix); rho = Array.from(r.rho);
+      P.shellInfo = Object.assign({}, r.info, { steps: Sh.steps(D, on, P.A, x, as0, r.rho), sh: P.shellSel });
+    } else if (P.S.push > 0) { const rm = E.rhoMax(D, on, P.A, x, C.assign(D, on, P.A, x), 0.97); rho = Array.from(rm.max).map((r) => Math.max(1, 1 + P.S.push * ((isFinite(r) ? r : 1) * 0.97 - 1))); }
     const em = E.emitAll(D, on, P.A, x, { refl: P.refl, rho }), as = em.assign; let facets = em.facets; facets.forEach((f) => { f.aimRef = P.A[f.aimIndex]; });
-    if (P.Ad.length) { const dec = E.placeDecals(D, on, P.A, x, as, P.Ad, {}); for (const dc of dec.decals) { const f = E.decalFacet(D, on, x, P.A, as, dc, {}); if (f) { f.aimRef = dc.aim; facets.push(f); } } }
+    if (P.Ad.length) { const dr = P.S.shellDecals === 0 ? null : rho, dec = E.placeDecals(D, on, P.A, x, as, P.Ad, { rho: dr }); for (const dc of dec.decals) { const f = E.decalFacet(D, on, x, P.A, as, dc, { rho: dr }); if (f) { f.aimRef = dc.aim; facets.push(f); } } }
     E.clipEnvelope(facets, P.env, P.Lp, P.rmin); return facets.filter((f) => !f._dead);
   }
   const cleanFacet = (f) => { const g = { type: 'facet', id: f.id, P: f.P, S0: f.S0, Z: f.Z, flat: false, di: f.di, clip: f.clip, optics: f.optics }; if (f.vg) { g.vg = f.vg; g.ax = f.ax; } return g; };
@@ -263,6 +267,52 @@
     return c.slice(0, Math.max(1, Math.min(n, c.length))).map(([a, b, label]) => ({ label, set: { mainFill: mf * a, softAll: sa * b } }));
   }
 
+  // the base shell: forced (S.shell = a kind) or ranked (S.shell = 'auto': every kind in S.shellTry gets a short refine on the noise-free model).  The natural surface is always run as the
+  // reference; a rival must beat the incumbent clearly (0.3 score) and keep its steps under S.shellMaxStep.  Returns the chosen base and what to tell the user.
+  function pickShell(P, Df, on, x, base0, nat0, slow) {
+    const S = P.S, auto = S.shell === 'auto';
+    let kinds = auto ? String(S.shellTry).split(',').map((k) => k.trim()).filter((k) => Sh.KINDS.includes(k) && k !== 'natural') : (Sh.KINDS.includes(S.shell) && S.shell !== 'natural' ? [S.shell] : []);
+    if (!kinds.length || (auto && slow)) { if (auto && slow) P.notes.push('shell: no time to compare shells (slow run), the natural SQM surface is used'); return { base: base0, nat: nat0 }; }
+    const as0 = C.assign(Df, on, P.A, x), Fr = Sh.frame(Df, on, P.A, x, as0), ax = S.shellAxis === 'manual' ? [S.shellTiltV, S.shellTiltH] : S.shellAxis === 'beam' ? [0, 0] : [null, null];
+    const opts = { e: S.shellE, p: S.shellP, fill: S.shellFill, conv: P.conv, tiltV: ax[0], tiltH: ax[1] };
+    const nI = { kind: 'natural', depth: 0, rhoMin: 1, rhoMax: 1, shareClamped: 0, steps: { edges: 0, median: 0, p95: 0, max: 0, over03: 0 } }; { const r = Sh.rhoFor(Fr, { kind: 'natural' }); nI.depth = r.info.depth; }
+    const rows = [{ kind: 'natural', sel: null, label: 'natural SQM surface', base: base0, nat: nat0, info: nI }];
+    for (const kind of kinds) {
+      const sel = Sh.choose(Fr, kind, opts); if (!sel || !(sel.kind === 'wall' || sel.p > 0)) { rows.push({ kind, label: kind, skipped: 'no size of this shell fits the envelope' }); continue; }
+      P.shellSel = sel; const base = buildBase(P, Df, on, x), nat = naturalOf(P, base); rows.push({ kind, sel, label: Sh.describe(sel), base, nat, info: P.shellInfo });
+    }
+    const t0 = Date.now(); let ran = 0;
+    for (const row of rows) {
+      if (row.skipped) continue; if (row.kind === 'natural' && !auto && S.shellRank < 2) continue;         // a forced shell on the fast tier is not compared with the natural surface
+      if (ran > 0 && Date.now() - P.t0 > 0.4 * S.budgetMs) { row.skipped = 'out of time'; continue; }
+      P.shellSel = row.sel; P.shellInfo = row.info; const r = refine(P, Df, on, row.base, row.nat, { label: 'shell ' + row.kind, set: {} }, Math.max(1, S.shellRank)); row.m = r.m; ran++;
+      P.lap(`shell ${row.label}: model ${r.m.ev.verdict} ${JSON.stringify(r.m.ev.n)} worst ${r.m.worst.toFixed(2)} score ${r.m.score.toFixed(2)}, steps p95 ${row.info.steps ? row.info.steps.p95.toFixed(2) : '–'} mm`);
+    }
+    let pick = rows[0]; const forced = !auto, tol = S.shellTol === undefined ? -0.3 : S.shellTol;
+    if (forced) pick = rows.find((r) => r.kind === kinds[0] && !r.skipped) || rows[0];
+    else {       // a shell is taken when it ranks at least (natural − tol) in the model score; the best of those, ties to the smaller steps
+      let cand = null;
+      for (const row of rows.slice(1)) {
+        if (row.skipped || !row.m) continue;
+        if (S.shellMaxStep > 0 && row.info.steps && row.info.steps.p95 > S.shellMaxStep) { row.skipped = `steps ${row.info.steps.p95.toFixed(2)} mm > ${S.shellMaxStep} mm`; continue; }
+        if (row.m.score >= rows[0].m.score - tol && (!cand || row.m.score > cand.m.score + 0.05 || (Math.abs(row.m.score - cand.m.score) <= 0.05 && row.info.steps.p95 < cand.info.steps.p95))) cand = row;
+      }
+      if (cand) pick = cand;
+    }
+    P.shellSel = pick.sel; P.shellInfo = pick.info;
+    // the report: what was chosen, what it costs, and whether it blew up
+    const st = pick.info.steps, nat = rows[0];
+    P.shellReport = { chosen: pick.label, kind: pick.kind, info: pick.info, rows: rows.map((r) => ({ kind: r.kind, label: r.label, skipped: r.skipped || null, verdict: r.m ? r.m.ev.verdict : null, n: r.m ? r.m.ev.n : null, score: r.m ? +r.m.score.toFixed(2) : null, depth: r.info ? +r.info.depth.toFixed(0) : null, p95: r.info && r.info.steps ? +r.info.steps.p95.toFixed(2) : null })) };
+    P.notes.push(`shell: ${pick.label}${auto ? ' (chosen by the model among ' + rows.filter((r) => r.m).map((r) => r.kind).join(', ') + ')' : ''}; deepest facet ${pick.info.depth.toFixed(0)} mm from the LED; steps between neighbouring facets median ${st.median.toFixed(2)} / 95 % ${st.p95.toFixed(2)} / max ${st.max.toFixed(2)} mm (${(100 * st.over03).toFixed(0)} % of the edges over 0.3 mm)`);
+    const warn = (t) => P.notes.push('⚠ shell: ' + t);
+    if (pick.info.shareClamped > 0.1) warn(`${(100 * pick.info.shareClamped).toFixed(0)} % of the light's facets could not reach the shell (${pick.info.clampedWall} held at the wall, ${pick.info.clampedLed} at the LED clearance, ${pick.info.invalid} with no radius there) — a smaller shell would fit better`);
+    if (st.p95 > 0.6) warn(`large steps between neighbouring facets (95 % under ${st.p95.toFixed(2)} mm, max ${st.max.toFixed(2)} mm): the surface is far from continuous`);
+    if (pick !== nat && nat.m && pick.m && pick.m.score < nat.m.score - 1.0) warn(`this shell costs the beam: model ${pick.m.ev.verdict} ${JSON.stringify(pick.m.ev.n)} (score ${pick.m.score.toFixed(1)}) against the natural surface's ${nat.m.ev.verdict} ${JSON.stringify(nat.m.ev.n)} (${nat.m.score.toFixed(1)}), same short search`);
+    for (const r of rows) if (r.skipped) P.notes.push(`shell ${r.kind}: not used (${r.skipped})`);
+    P.lap(`shell chosen: ${pick.label} (${Date.now() - t0} ms of ranking)`);
+    return { base: pick.base, nat: pick.nat };
+  }
+
   function solve(input, S0, tools) {
     const S = Object.assign({}, DEFAULTS, S0), P = problem(input, S, tools); P.tools = tools;
     const Dc = directions(P, S.NAcoarse), Df = directions(P, S.NA); let Mtot = 0; for (let i = 0; i < Df.n; i++) Mtot += Df.m[i];
@@ -275,9 +325,10 @@
       design(P, cov); P.lap(`ideal beam (cut-off shift ${P.cutShift.toFixed(2)}°): ${P.des.flux.toFixed(0)} lm, G ${isFinite(P.des.edge.G) ? P.des.edge.G.toFixed(2) : '–'}, ${P.A.length} main + ${P.Ad.length} dim units`);
       onC = new Uint8Array(Dc.n).fill(1); x = new Float64Array(P.A.length).fill(Math.log(40)); balance(P, Dc, onC, x, true); fitSurface(P, Dc, onC, x, mainNeed(P));
       const on = new Uint8Array(Df.n).fill(1); cov = fitSurface(P, Df, on, x, mainNeed(P)); P.lap(`surface: covers ${cov.toFixed(0)} lm`);
-      const base = buildBase(P, Df, on, x), nat = naturalOf(P, base); P.tBase = Date.now() - P.t0;
+      P.shellSel = null; let base = buildBase(P, Df, on, x), nat = naturalOf(P, base); P.tBase = Date.now() - P.t0;
       // a slow machine or a big problem (the plan and surface already took a third of the budget): one candidate, fewer corrections, no finer re-judging
       const slow = !P.isPaint && P.tBase > 0.3 * S.budgetMs; if (slow && pass === 0) P.notes.push(`slow run: planning took ${(P.tBase / 1000).toFixed(0)} s of the ${(S.budgetMs / 1000).toFixed(0)} s budget, so one candidate with fewer corrections is used`);
+      if (S.shell && S.shell !== 'natural' && !P.isPaint) { const pk = pickShell(P, Df, on, x, base, nat, slow); base = pk.base; nat = pk.nat; }
       let best = null, tCand = 0; const cands = candidatesFor(S, P.isPaint || slow ? 1 : S.search), itersMain = slow ? Math.min(S.iters, 3) : S.iters;
       for (let ci = 0; ci < cands.length; ci++) {
         const tNow = Date.now() - P.t0;
@@ -324,5 +375,5 @@
     }
     return overall;
   }
-  RF.SqmPipe = { refine, candidatesFor, mainNeed, enforceEnvelope, cleanFacet, solve, DEFAULTS, problem, directions, design, balance, fitSurface, buildBase, naturalOf, realize, evaluate, directField, correct, polish };
+  RF.SqmPipe = { pickShell, refine, candidatesFor, mainNeed, enforceEnvelope, cleanFacet, solve, DEFAULTS, problem, directions, design, balance, fitSurface, buildBase, naturalOf, realize, evaluate, directField, correct, polish };
 })();

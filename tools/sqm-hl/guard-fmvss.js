@@ -7,4 +7,4 @@ const sc = makeScene(name, { preset, budget: +(setIn.budget || 100) }); const in
 const out = RFX.SqmPipe.solve(input, Object.assign({}, setIn), { progress() {}, budget: { ms: 1e9 } }), P = out.P, d = P.des;
 console.log(JSON.stringify({ name, preset, setIn, asked_lm: +d.flux.toFixed(0), W0: Math.round(d.W0), leftover: Math.round(d.leftover), edge: d.edge, tries: d.tries, alpha: +(d.alpha || 0).toPrecision(4), cover_lm: +out.cover.toFixed(0), Mtot: +out.Mtot.toFixed(0), chosen: P.chosen, window: P.win || P.spec.window,
   aim: { mode: P.spec.aim && P.spec.aim.mode, line: P.spec.aim && P.spec.aim.line, scan: P.spec.aim && P.spec.aim.scan },
-  guard: (d.guard || []).map((c) => ({ hc: c.hc, M: Math.round(c.M), cap: Math.round(c.cap), vStart: +c.vStart.toFixed(2), px: c.px.length })), cut: P.cut0 ? { line: P.cut0.line } : null, notes: P.notes.slice(0, 6) }, null, 1));
+  guard: (d.guard || []).map((c) => ({ hc: c.hc, M: Math.round(c.M), cap: Math.round(c.cap), vStart: +c.vStart.toFixed(2), px: c.px.length })), cut: P.cut0 ? { line: P.cut0.line } : null, notes: P.notes.slice(0, 24) }, null, 1));

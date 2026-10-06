@@ -2,16 +2,38 @@
 (function () {
   'use strict';
   const RF = globalThis.RF, V = RF.V;
-  const ID = 'sqm-hl', VERSION = '0.2';
+  const DISH = RF.SqmVariant === 'dish';      // the second solver built from the same sources: the base shell of the reflector is a setting (shell.js)
+  const ID = DISH ? 'sqm-hl-dish' : 'sqm-hl', VERSION = DISH ? '0.1' : '0.2';
 
   // quality presets: what each tier spends (directions, correction rounds, polish sweeps, verification traces)
   const QUALITY = {
-    fast:   { NA: 110, NAcoarse: 50, iters: 4, sweeps: 3, search: 1, naEval: 40, traces: 0, traceRays: 0 },
-    normal: { NA: 150, NAcoarse: 60, iters: 6, sweeps: 5, search: 4, naEval: 100, traces: 1, traceRays: 1000000 },
-    best:   { NA: 220, NAcoarse: 80, iters: 10, sweeps: 8, search: 8, naEval: 150, traces: 2, traceRays: 2000000 },
+    fast:   { NA: 110, NAcoarse: 50, iters: 4, sweeps: 3, search: 1, naEval: 40, shellRank: 1, traces: 0, traceRays: 0 },
+    normal: { NA: 150, NAcoarse: 60, iters: 6, sweeps: 5, search: 4, naEval: 100, shellRank: 2, traces: 1, traceRays: 1000000 },
+    best:   { NA: 220, NAcoarse: 80, iters: 10, sweeps: 8, search: 8, naEval: 150, shellRank: 3, traces: 2, traceRays: 2000000 },
   };
   // [key, label, type, default, extra] — tier 1 first (constraints, quality, the beam's goals), then tier 2 (everything the algorithm decides by itself; adv: true)
-  const SETTINGS = [
+  const SHELL1 = [
+    { key: 'shell', label: 'Base shell the facets sit on: auto = the model compares the shells ticked below and the natural SQM surface (the natural surface wins unless a shell clearly beats it); natural = one continuous surface; fit = the conic closest to the natural surface (fewest steps); paraboloid / sphere / conic / plane = a prescribed shape with its focus at the LED, as big as fits the envelope; wall = hug the envelope', type: 'select', default: 'auto', options: [{ value: 'auto', label: 'auto' }, { value: 'natural', label: 'natural SQM surface' }, { value: 'fit', label: 'conic fitted to the natural surface' }, { value: 'paraboloid', label: 'paraboloid' }, { value: 'sphere', label: 'sphere about the LED' }, { value: 'conic', label: 'conic (eccentricity below)' }, { value: 'plane', label: 'flat plate behind the LED' }, { value: 'wall', label: 'envelope wall' }] },
+    { key: 'shellMix', label: 'How far from the natural surface toward the shell (0 = natural, 1 = the shell; in between the facets sit part of the way, so the steps between neighbours shrink)', type: 'number', min: 0, max: 1, step: 0.05, default: 1 },
+    { key: 'shellMaxStep', label: 'Largest step between neighbouring facets, mm, that auto accepts (95 % of the edges under this; default 1 keeps the surface edge to edge for the most part; 0 = no limit; a forced shell is only reported)', type: 'number', min: 0, step: 0.1, default: 1 },
+  ], SHELL2 = [
+    { key: 'shellP', label: 'Shell size p, mm (0 = the biggest that fits: paraboloid focal length = p / 2, sphere radius = p, plane distance = p)', type: 'number', min: 0, step: 1, default: 0, adv: true },
+    { key: 'shellE', label: 'Eccentricity of the conic shell (0 = sphere, < 1 ellipsoid, 1 = paraboloid, > 1 hyperboloid; the LED is at a focus)', type: 'number', min: 0, max: 5, step: 0.05, default: 1, adv: true },
+    { key: 'shellAxis', label: 'Shell axis: auto = the beam direction tilted by whatever lets the biggest shell fit, beam = the beam direction, manual = the tilts below', type: 'select', default: 'auto', options: [{ value: 'auto', label: 'auto' }, { value: 'beam', label: 'beam direction' }, { value: 'manual', label: 'manual' }], adv: true },
+    { key: 'shellTiltV', label: 'Manual axis tilt up, degrees (shell axis = manual)', type: 'number', min: -90, max: 90, step: 1, default: 0, adv: true },
+    { key: 'shellTiltH', label: 'Manual axis tilt to the right, degrees (shell axis = manual)', type: 'number', min: -90, max: 90, step: 1, default: 0, adv: true },
+    { key: 'shellFill', label: 'Share of the light whose facets must fit inside the envelope when the shell size is chosen (default 0.97; the rest are held at the wall and counted in the report)', type: 'number', min: 0.5, max: 1, step: 0.01, default: 0.97, adv: true },
+    { key: 'shellDecals', label: 'The dim glow units sit on the shell too (1) or stay where the natural surface has them (0)', type: 'number', min: 0, max: 1, step: 1, default: 1, adv: true },
+    { key: 'shellTol', label: 'auto takes a shell when its model score is at least the natural surface\'s minus this (score: one hard fail ≈ 3; default 0.5 = a shell within the noise of the natural surface wins; negative = a shell must beat the natural surface by that much)', type: 'number', min: -5, max: 5, step: 0.1, default: 0.5, adv: true },
+    { key: 'shellRank', label: 'Correction rounds of the short search that compares shells (−1 = by quality: fast 1, normal 2, best 3; with 1 a forced shell is not compared with the natural surface; the comparison is noisy: designs end on the edge of passing, so one row either way is not evidence)', type: 'number', min: -1, step: 1, default: -1, adv: true },
+    { key: 'tryFit', label: 'auto tries the fitted conic', type: 'checkbox', default: true, adv: true },
+    { key: 'tryParaboloid', label: 'auto tries a paraboloid', type: 'checkbox', default: true, adv: true },
+    { key: 'trySphere', label: 'auto tries a sphere about the LED', type: 'checkbox', default: false, adv: true },
+    { key: 'tryConic', label: 'auto tries the conic with the eccentricity above', type: 'checkbox', default: false, adv: true },
+    { key: 'tryPlane', label: 'auto tries a flat plate behind the LED', type: 'checkbox', default: false, adv: true },
+    { key: 'tryWall', label: 'auto tries the envelope wall (the deepest dish the envelope allows)', type: 'checkbox', default: true, adv: true },
+  ];
+  const SETTINGS_ALL = [
     { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },
     { key: 'quality', label: 'Quality (fast ≈ 10 s, normal ≈ 35 s, best ≈ 65 s for 100 facets; measured in Node on a Mac mini M4, the browser worker is about as fast; the solve timer in the scene, default 120 s, cuts a run short)', type: 'select', default: 'normal', options: [{ value: 'fast', label: 'fast' }, { value: 'normal', label: 'normal' }, { value: 'best', label: 'best' }] },
     { key: 'facets', label: 'Facets to use (0 = the whole budget). ~16 gives a nominal beam, 40–50 starts to pass, 100 is the sweet spot, above ~300 is slow', type: 'number', min: 0, step: 1, default: 0 },
@@ -55,6 +77,8 @@
     { key: 'traces', label: 'Verification traces at the end (−1 = by quality; each ≤ 2 M rays; the report quotes a loose verdict: value ± 1σ inside the limit)', type: 'number', min: -1, step: 1, default: -1, adv: true },
     { key: 'traceRays', label: 'Rays per verification trace (−1 = by quality)', type: 'number', min: -1, step: 100000, default: -1, adv: true },
   ];
+  // the dish solver: the shell group right after the facet count (tier 1), its parameters at the end of tier 2
+  const SETTINGS = !DISH ? SETTINGS_ALL : (() => { const i = SETTINGS_ALL.findIndex((f) => f.key === 'facets') + 1, out = SETTINGS_ALL.slice(0, i).concat(SHELL1, SETTINGS_ALL.slice(i)); return out.concat(SHELL2); })();
 
   const loose = (r) => { if (!isFinite(r.value) || !(r.bound > 0 || r.unit === 'deg')) return 'unsure'; const sd = r.sd || 0; const ok = r.isMin ? r.value - sd >= r.bound : r.value + sd <= r.bound, bad = r.isMin ? r.value < r.bound / 10 : r.value > r.bound * 10; return bad ? 'fail' : ok ? 'pass' : 'near'; };
 
@@ -63,6 +87,7 @@
     for (const k of ['NA', 'iters', 'sweeps', 'search', 'naEval', 'traces', 'traceRays']) S[k] = set[k] >= 0 && set[k] !== undefined && !(set[k] === -1) ? set[k] : q[k];
     Object.assign(S, { N: set.facets > 0 ? set.facets : 0, peakCap: set.peakCap, fluxFrac: set.fluxFrac, washCap: set.washCap, margin: set.margin, floorMargin: set.floorMargin, dimFrac: set.dimFrac, dimTile: set.dimTile, dimFill: set.dimFill, mainFill: set.mainFill, softAll: set.softAll, slack: set.slack,
       gd: set.cutG, gTarget: set.gTarget, maxShift: set.trustDeg, wBand: set.wBand, wEdge: set.wEdge, wTrack: set.wTrack, wPaint: set.wPaint, seedGain: set.seedGain, aimGuard: set.aimGuard, guardCarry: set.guardCarry, padH: set.padH, alignGain: set.alignGain, naFinal: set.naFinal, push: set.push, guardLift: set.guardLift, resBoost: set.resBoost, resV: set.resV, rightLift: set.rightLift, leftLift: set.leftLift, rightSlope: set.rightSlope, gamma: set.gamma, NAcoarse: Math.max(40, Math.round(S.NA * 0.4)), minDistance: set.minDistance });
+    if (DISH) { const tries = ['fit', 'paraboloid', 'sphere', 'conic', 'plane', 'wall'].filter((k) => set['try' + k[0].toUpperCase() + k.slice(1)]); Object.assign(S, { shell: set.shell, shellMix: set.shellMix, shellMaxStep: set.shellMaxStep, shellP: set.shellP, shellE: set.shellE, shellAxis: set.shellAxis, shellTiltV: set.shellTiltV, shellTiltH: set.shellTiltH, shellFill: set.shellFill, shellDecals: set.shellDecals, shellRank: set.shellRank >= 1 ? set.shellRank : q.shellRank, shellTol: set.shellTol, shellTry: tries.join(',') }); }
     const prog = (f, s) => { if (tools && tools.progress) tools.progress(f, s); };
     S.progress = prog; S.preview = tools && tools.preview && !tools.preview.none ? tools.preview : null; S.budgetMs = tools && tools.budget && isFinite(tools.budget.ms) ? tools.budget.ms : 120000;
     const t0 = Date.now(), out = RF.SqmPipe.solve(input, S, tools), P = out.P, notes = [];
@@ -72,8 +97,8 @@
     if (out.trace) { const tr = out.trace.spec; notes.push(`traced at ${(out.trace.rays / 1e6).toFixed(1)} M rays, read at the model's aim (${out.trace.aim.map((x) => x.toFixed(2)).join(', ')}°): ${tr.n.pass} pass · ${tr.n.fail} fail · ${tr.n.unsure} unsure by the stock rule; loose bar (value ± 1σ inside the limit): ${out.trace.loose.pass} pass · ${out.trace.loose.near} near · ${out.trace.loose.fail} off`); }
     for (const n of P.notes) notes.push(n);
     notes.push(`time ${((Date.now() - t0) / 1000).toFixed(1)} s` + (out.timing ? ' (' + out.timing + ')' : ''));
-    return { surfaces, notes, extras: { model: { verdict: m.ev.verdict, n: m.ev.n } } };
+    return { surfaces, notes, extras: { model: { verdict: m.ev.verdict, n: m.ev.n }, shell: P.shellReport || null } };
   }
-  RF.Solvers.register({ id: ID, name: 'SQM headlamp (continuous reflector)', version: VERSION, modes: ['paint'], settings: SETTINGS, solve });
+  RF.Solvers.register({ id: ID, name: DISH ? 'SQM headlamp, any base shell (arbitrary dish)' : 'SQM headlamp (continuous reflector)', version: VERSION, modes: ['paint'], settings: SETTINGS, solve });
   RF.SqmSolver = { solve, SETTINGS, QUALITY, loose };
 })();

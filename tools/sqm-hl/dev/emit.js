@@ -105,7 +105,7 @@
     o = o || {}; const taken = new Uint8Array(D.n), out = [], Lp = D.Lp, centres = [];
     // for every covered direction: where the surface is and what its normal is
     const P_ = new Float64Array(3 * D.n), N_ = new Float64Array(3 * D.n), room = new Float64Array(D.n);
-    for (let i = 0; i < D.n; i++) { if (!on[i] || as.asg[i] < 0) continue; const r = as.rr[i], u = [D.ux[i], D.uy[i], D.uz[i]], P = V.add(Lp, V.mul(u, r)), a = A[as.asg[i]], ah = [a.ax, a.ay, a.az], n = V.norm(V.add(V.norm(V.sub(Lp, P)), ah)); P_.set(P, 3 * i); N_.set(n, 3 * i); room[i] = r / D.rEnv[i]; }
+    for (let i = 0; i < D.n; i++) { if (!on[i] || as.asg[i] < 0) continue; const r = (o.rho ? o.rho[as.asg[i]] || 1 : 1) * as.rr[i], u = [D.ux[i], D.uy[i], D.uz[i]], P = V.add(Lp, V.mul(u, r)), a = A[as.asg[i]], ah = [a.ax, a.ay, a.az], n = V.norm(V.add(V.norm(V.sub(Lp, P)), ah)); P_.set(P, 3 * i); N_.set(n, 3 * i); room[i] = r / D.rEnv[i]; }
     for (const d of dims.slice().sort((p, q) => q.g - p.g)) {
       const ah = [d.ax, d.ay, d.az]; let best = -1, bt = Infinity;
       for (let i = 0; i < D.n; i++) {
@@ -126,7 +126,7 @@
   function decalFacet(D, on, x, A, as, dc, o) {
     const a = dc.aim, Lp = D.Lp, i0 = dc.centre, u = [D.ux[i0], D.uy[i0], D.uz[i0]];
     // the surface point at the centre direction, brought a hair toward the LED so the decal (tilted to its own aim) is the mirror over its whole patch
-    const rS = as.rr[i0]; let P = V.add(Lp, V.mul(u, rS));
+    const rS = (o && o.rho ? o.rho[as.asg[i0]] || 1 : 1) * as.rr[i0]; let P = V.add(Lp, V.mul(u, rS));
     const ah = [a.ax, a.ay, a.az], Z = a.Z ? a.Z(P) : V.add(P, V.mul(ah, 1e6)), n = V.norm(V.add(V.norm(V.sub(Lp, P)), V.norm(V.sub(Z, P)))), [ex, ey] = V.basis(n);
     const pts2 = [], rows = [];
     for (const i of dc.cells) { const q = D.q[i], aa = D.a[i]; for (const [dq, da] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const w = C.corner(D, q + dq, aa + da), p = V.add(Lp, V.mul(w, rS)); const d = V.sub(p, P); pts2.push([V.dot(d, ex), V.dot(d, ey)]); } }

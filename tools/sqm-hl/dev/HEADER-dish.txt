@@ -1,0 +1,20 @@
+/* SQM headlamp, any base shell (sqm-hl-dish) — the sqm-hl solver with the base shape of the reflector as a setting (Flux solver lab, 2026-10-06).
+ *
+ * Everything sqm-hl does (the ideal beam for the spec, aims and sizes by the supporting-quadric method, exact-quadric facets, the noise-free model, the aim polish, the report) is the same
+ * code — see solvers/sqm-hl.js for the method.  What this file adds is WHERE along its own ray from the LED every facet sits:
+ *
+ *  A facet's aim and the light it catches depend on directions only, so a scale about the LED changes neither.  A SHELL gives every direction a radius; each facet is moved to the shell
+ *  (clamped to what the envelope and the LED clearance allow), keeping its normal, its cell and its flux.  Its LED image then shrinks as 1/distance, and the surface stops being one
+ *  continuous piece: neighbours meet with small steps ("edge to edge for the most part" — the report gives the step heights and the share of edges over 0.3 mm).
+ *
+ *  Shells (all with a focus at the LED): natural (the SQM surface, no steps) · fit (the conic closest to the natural surface: fewest steps) · paraboloid · sphere · conic (eccentricity
+ *  setting) · plane (a flat plate behind the LED) · wall (hug the envelope: the deepest dish).  Size = the biggest that keeps ≥ 97 % of the light's facets inside the envelope; whatever
+ *  still sticks out is held at the wall and counted ("fall back to a smaller area").  auto = the noise-free model compares the shells you tick (and the natural surface, always) on a
+ *  short search; the natural surface wins unless a rival clearly beats it and keeps its steps under the limit.  Warnings are printed when a shell leaves a lot of light unreached, has
+ *  large steps, or costs rows against the natural surface.
+ *
+ *  Measured so far (notes in tools/sqm-hl/NOTES.md, noise-free bench, 100 facets): the natural SQM surface is the best base for the spec and `auto` lands within the noise of it (ECE R112 B 6 scenes:
+ *  4 sure fails against 3, FMVSS LB2V 5 against 4); forced shells cost a little (fitted conic 6, envelope wall 4, paraboloid 7, sphere 9) and a flat plate behind the LED breaks the beam (18).
+ *  Designs end on the edge of passing, so two shells compared with the same short search are good to about ±2 rows.  For the box scene the natural surface is almost an ellipsoid of
+ *  revolution (the `fit` shell: steps under 0.5 mm), while a paraboloid has steps of several mm between 7 mm facets — the report says so.
+ * Source: tools/sqm-hl/dev/*.js (generated: node tools/sqm-hl/build.js --dish).                                                                                                          */
