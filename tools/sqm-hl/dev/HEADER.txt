@@ -1,0 +1,3 @@
+/* SQM headlamp solver (sqm-hl) — a continuous reflector for a beam SPECIFICATION (Spec mode), built with the supporting-quadric method.
+ *
+ * (header filled in at packaging time)                                                                                                       */
