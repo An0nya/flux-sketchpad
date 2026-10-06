@@ -13,6 +13,12 @@
  *  4. A NOISE-FREE FAR-FIELD MODEL of the finished design (exact geometry, occlusion included: model/trace flux 1.00, bright areas ±5 %), judged by RF.Spec.evaluate,
  *     and an aim POLISH on it: each facet's aim is tilted (a 0.4° tilt moves a 7 mm facet's edge 0.02 mm, so the surface stays edge to edge) to cut floor/ceiling
  *     violations and to follow the ideal cut-off.  Nothing here needs more than a handful of ray-traced verifications.
+ *  5. THE JUDGE'S WEAK SPOTS.  The stock cut-off finder (aim) reads the steepest log-step in one column and ignores steps whose bright side is under 2 % of the column maximum; shot
+ *     noise in a glow near that level makes steps steeper than the real edge and moves the aim by up to a degree.  The ideal beam and the polish therefore keep the glow in the judge's
+ *     columns under ~1 % of the column maximum (aimGuard), and the model that the polish judges against is sampled finely enough (naEval) not to invent a sharper edge than there is.
+ *  6. v0.2 vs v0.1.  A brighter ideal beam (peakCap 300,000: the plateau asks for what the source can give, which is what lifts the far-field rows over the judge's noise), the
+ *     polish judged on a model sampled 100×/facet (finalists re-judged at 250×) with a score that counts how many rows miss and by how much instead of only the worst one, and
+ *     a pull that puts the cut-off at one height in every scan column (alignGain).  Noise-free model bench, 6 scenes, 100 facets, same brightness: rows failing for sure 10 → 3.
  *  Paint mode (no input.spec): the painting is the ideal beam and the polish tracks it.
  *
  * Settings: the first group = constraints, quality and the beam's goals; "Advanced" = every parameter the algorithm otherwise chooses itself.  Ranges are open:

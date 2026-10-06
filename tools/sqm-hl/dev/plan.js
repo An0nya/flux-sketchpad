@@ -17,7 +17,7 @@
   function kmeans(sp, N, iters, bias) {
     bias = bias === undefined ? 1 : bias;                              // 1 = by flux (equal-flux cells); 0 = by area
     const n = sp.length; N = Math.min(N, n);
-    const w = sp.map((s) => Math.pow(s.f, bias) * Math.pow(s.om, 1 - bias)), W = w.reduce((a, b) => a + b, 0);
+    const w = sp.map((s) => Math.pow(s.f, bias) * Math.pow(s.om, 1 - bias) * (s.b > 0 ? s.b : 1)), W = w.reduce((a, b) => a + b, 0);       // s.b: resolution boost (more cells where the beam has structure)
     const ord = sp.map((s, i) => i).sort((a, b) => hil(sp[a].I, sp[a].J, 10) - hil(sp[b].I, sp[b].J, 10) || a - b);
     let cs = [], acc = 0, nxt = W / N / 2; for (const i of ord) { acc += w[i]; if (acc >= nxt && cs.length < N) { cs.push({ h: sp[i].h, v: sp[i].v }); nxt += W / N; } }
     const own = new Int32Array(n);
@@ -36,6 +36,7 @@
     o = Object.assign({ dimCut: 0.04, dimTile: 10, dimFrac: 0.2, iters: 20, reserve: 0 }, o || {});
     let pk = 0; for (const s of sp) { const cd = s.f / s.om; if (cd > pk) pk = cd; }
     const dim = [], main = []; for (const s of sp) (s.f / s.om < Math.max(o.dimAbs || 0, o.dimCut * pk) ? dim : main).push(s);
+    if (o.boost && o.boost.gain > 1) for (const s of main) s.b = s.v >= o.boost.vAbove ? o.boost.gain : 1;                // the foreground wash is smooth: few big cells there, the freed facets go to the road, the hot zone and the edge
     let dimArea = 0; for (const s of dim) dimArea += s.om / (Math.PI / 180) ** 2;
     const nDim = dim.length ? Math.max(1, Math.min(Math.round(N * o.dimFrac) - o.reserve, Math.round(dimArea / o.dimTile))) : 0;
     const aD = nDim > 0 ? kmeans(dim, nDim, o.iters, 0) : [], aM = kmeans(main, Math.max(1, N - aD.length - o.reserve), o.iters, 1);
