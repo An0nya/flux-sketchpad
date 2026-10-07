@@ -202,6 +202,15 @@ button.mini { min-height: 24px; padding: 1px var(--s-8); font-size: 11px; color:
 .ff-tools { display: none; position: absolute; left: 4px; top: 4px; z-index: 2; gap: 2px; }
 body.mode-D .canvas-wrap.ff .ff-tools { display: flex; }
 .ff-tools button { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); }
+/* drive-view controls (Spec mode, Drive view only) + the luminance readout under the pointer */
+.drive-tools { display: none; position: absolute; left: 4px; top: 4px; right: 4px; z-index: 2; gap: 2px; flex-wrap: wrap; pointer-events: none; align-items: center; }
+body.mode-D .canvas-wrap.drive .drive-tools { display: flex; }
+.drive-tools button, .drive-tools select { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); pointer-events: auto; }
+.drive-readout { position: absolute; left: 6px; bottom: 6px; z-index: 2; font-size: 11px; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; font-variant-numeric: tabular-nums; }
+/* road-view toggles (Spec mode, Road view only): a wrapping row, kept off the right-hand notes */
+.road-tools { display: none; position: absolute; left: 4px; top: 4px; right: 4px; z-index: 2; gap: 2px; flex-wrap: wrap; pointer-events: none; }
+body.mode-D .canvas-wrap.road .road-tools { display: flex; }
+.road-tools button { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); pointer-events: auto; }
 .toolrow label.slider { display: inline-flex; align-items: center; gap: var(--s-6); }
 .toolrow label.slider input[type=range] { width: 90px; }
 .toolrow label.slider output { min-width: 2.5em; font-variant-numeric: tabular-nums; color: var(--dim); }

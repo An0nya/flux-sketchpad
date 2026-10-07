@@ -346,12 +346,15 @@ js/solver.js          tile model, vergence solve, direction frames, zone partiti
 js/modeA.js modeB.js  paint→facets allocator; inverse stamping
 js/profile.js lenses.js   Mode C sweep + presets; lens presets
 js/feasibility.js     physical limits and binding constraint
+js/road.js            Spec mode's road: IIHS reach, bends (arc), regulation lamp height + lane by preset (pure)
+js/drive.js drive-scenes.js   Spec mode's driver's-eye view: luminance render, materials, exposure; open road / forest / city (pure)
 js/controller.js      control table + actions shared by the DOM and the checks
 js/render.js render2d.js  canvas renderers                                        (rendering)
 js/input.js           Pointer Events: drag, orbit, pinch, pan, wheel, tap          (input handling)
 js/panels.js ui.js    DOM panels, run loop, interactions
 js/checks1-3.js       the verification suite (in-page and headless)
 tests/headless.js load.js serve.py   headless runner, loader, test server
+tests/road.js drive.js            closed-form checks for the road model and the Drive render (+ tools/drive-sample.js → PNGs)
 tests/shots/          canvas snapshots taken during browser verification
 ```
 

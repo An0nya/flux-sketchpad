@@ -545,7 +545,12 @@
     return cv;
   }
   // ---------------------------------------------------------------- road (Road view, far-field road overlay, IIHS reach)
-  const roadOf = (ui) => { const m0 = md(ui); if (!m0.road) m0.road = RF.Road.defaults(); return m0.road; };
+  const roadOf = (ui) => {
+    const m0 = md(ui); if (!m0.road) m0.road = RF.Road.defaults();
+    // scenes saved before regulation defaults hold the old generic 0.65 m: that was a default, not a choice
+    if (!m0.road.v) { m0.road.v = 2; if (m0.road.mountH === 0.65) m0.road.mountH = null; }
+    return m0.road;
+  };
   // road settings only redraw: no new trace, no re-judging
   function roadChanged(ui) { ui.autosave(); if (ui.spec) ui.spec.road = null; ui.redrawSpec(); if (ui.rerenderStats) ui.rerenderStats(); render(ui); }
   function roadRows(ui, row) {
@@ -555,10 +560,22 @@
     const rchk = (get, set) => { const x = el('input', { type: 'checkbox' }); x.dataset.spec = '1'; x._get = get; x._chk = true; x.addEventListener('change', () => { set(x.checked); roadChanged(ui); }); return x; };
     return [
       el('div', { class: 'note' }, 'A straight two-lane road lit by this beam: Result → Road (bird’s-eye), Far field → road, and the 5 lx reach in the footer. The reach follows IIHS (5 lx, 25 cm up, edges of a 6.6 m road); the lanes drawn follow the width below. Right-hand traffic (mirrored for left-hand).'),
-      row('Lane width', rsel([['auto', 'By preset (FMVSS → US, ECE → EU)'], ['us', 'US 3.6 m (12 ft)'], ['eu', 'EU 3.5 m'], ['iihs', 'IIHS 3.3 m']], () => r().lane, (v) => { r().lane = v; })),
-      row('Mounting height (m)', rnum(() => r().mountH, (v) => { r().mountH = Math.max(0.2, Math.min(2, v)); }, { min: 0.2, max: 2, step: 0.05 }), 'Height of the lamp above the road. R48 §6.2.6.1.2 sets the dipped-beam aim by it: under 0.8 m, −1.0 to −1.5 %; over 1.0 m, −1.5 to −2.0 %.'),
+      row('Lane width', rsel([['auto', 'By preset (ECE → R112 reference, FMVSS → US)'], ['r112', 'R112 reference: right edge 1.5 m from the lamp'], ['us', 'US 3.6 m (12 ft)'], ['eu', 'EU 3.5 m'], ['iihs', 'IIHS 3.3 m']], () => r().lane, (v) => { r().lane = v; }),
+        'R112’s 75R and 50R test points sit 1.5 m right of the lamp axis, so on the reference road its right edge passes through them (Road view and the far-field overlay). The Drive view keeps a real lane (ECE 3.5 m, FMVSS 3.6 m) unless you pick the reference lane here. FMVSS points are plain angles, so it keeps the US 3.6 m.'),
+      row('Mounting height (m)', rnum(() => r().mountH > 0 ? r().mountH : RF.Road.mountDefault(md(ui).preset), (v) => { r().mountH = v > 0 ? Math.max(0.2, Math.min(2, v)) : null; }, { min: 0.2, max: 2, step: 0.05 }), 'Height of the lamp above the road. A regulation spec sets its own until you type one: ECE R112 0.75 m (its V angles are 1 % / 1.5 % / 3 % of 75 / 50 / 25 m at that height), otherwise 0.65 m. R48 §6.2.6.1.2 sets the dipped-beam aim by it: under 0.8 m, −1.0 to −1.5 %; over 1.0 m, −1.5 to −2.0 %.'),
       row('Lamp spacing (m)', rnum(() => r().spacing, (v) => { r().spacing = Math.max(0, Math.min(2.5, v)); }, { min: 0, max: 2.5, step: 0.05 }), 'Between the two lamps’ centres. Both lamps are this same design (a real pair has the same beam, not mirror images), so two lamps cost no extra rays.'),
       row('Two lamps', rchk(() => r().two !== false, (v) => { r().two = v; }), 'Off: only the right-hand lamp.'),
+      row('Road view: scale top (lx)', rnum(() => rvOpts(ui).max || '', (v) => { setRV(ui, 'max', v > 0 ? v : 0); }, { min: 0, step: 'any', placeholder: 'auto' }), 'Top of the Road view’s colour scale. Empty = automatic: 30 lx on the log scale, the 99.5th percentile of the picture on the linear one.'),
+      row('Road view: extra outline (lx)', rnum(() => rvOpts(ui).extra || '', (v) => { setRV(ui, 'extra', v > 0 ? v : 0); }, { min: 0, step: 'any', placeholder: 'none' }), 'One more outline at this level, besides the 1 / 3 / 5 / 10 / 30 lx toggles on the Road view.'),
+      row('Road view: sideways stretch', rsel([['fit', 'Fit the pane (straight road)'], ['1', '×1 (true shape)'], ['2', '×2'], ['4', '×4']], () => String(rvOpts(ui).stretch), (v) => { setRV(ui, 'stretch', v === 'fit' ? 'fit' : +v); }), 'A straight road is a long thin strip; this stretches it sideways to fill the pane (the caption says by how much). A bend is always drawn true.'),
+      row('Drive view: marking reflectivity (mcd/m²/lx)', rnum(() => dvOpts(ui).RL, (v) => { setDV(ui, 'RL', Math.max(0, Math.min(1000, v))); }, { min: 0, max: 1000, step: 10 }), 'Retroreflected luminance coefficient R_L of white road paint, at the standard headlamp-and-driver geometry (EN 1436: classes R2–R5 are 100–300 minimum; worn paint is lower, glass-bead paint when new is higher). Yellow paint uses 0.6 ×.'),
+      row('Drive view: ambient light', rsel([['0', 'None (headlamp only)'], ['0.2', 'Full moon (0.2 lx)'], ['5', 'Dusk (5 lx)']], () => String(dvOpts(ui).ambient), (v) => { setDV(ui, 'ambient', +v); }), 'Light on diffuse surfaces from the sky, besides the lamps. None judges the beam alone.'),
+      row('Drive view: oncoming car distance (m)', rnum(() => dvOpts(ui).onDist, (v) => { setDV(ui, 'onDist', Math.max(10, Math.min(400, v))); }, { min: 10, max: 400, step: 5 }), 'Where the oncoming car is (the “oncoming” toggle on the Drive view). Its headlamps are emitters, seen at the intensity below.'),
+      row('Drive view: oncoming headlamp intensity (kcd)', rnum(() => dvOpts(ui).onKcd, (v) => { setDV(ui, 'onKcd', Math.max(1, Math.min(500, v))); }, { min: 1, max: 500, step: 5 }), 'Both lamps together, toward you. A passing beam seen head-on is roughly 30–60 kcd; a driving beam 100+.'),
+      row('Drive view: preceding car distance (m)', rnum(() => dvOpts(ui).preDist, (v) => { setDV(ui, 'preDist', Math.max(5, Math.min(300, v))); }, { min: 5, max: 300, step: 5 }), 'Where the car ahead of you is (the “preceding” toggle): tail lamps lit, retroreflective plate and reflectors lit by your beam.'),
+      row('Drive view: beam smoothing', rsel([['sharp', 'Sharp (0.2° × 0.2°)'], ['smooth', 'Smooth along H (0.5° × 0.15°)'], ['soft', 'Soft (1° × 0.3°)']], () => dvOpts(ui).smooth, (v) => { setDV(ui, 'smooth', v); }), 'The trace is a few million rays, so the beam has shot noise that the picture shows as mottled asphalt. Smoothing along H leaves the cut-off (a vertical edge) sharp. Raise the ray count (Simulation) for a cleaner picture.'),
+      row('Drive view: picture size', rsel([['480', '480 × 270'], ['640', '640 × 360'], ['960', '960 × 540'], ['1280', '1280 × 720']], () => String(dvOpts(ui).res), (v) => { setDV(ui, 'res', +v); }), 'Render size. 640 takes ~0.3 s in the browser; 1280 about a second in a forest or city.'),
+      row('Drive view: field of view (°)', rsel([['45', '45 (telephoto)'], ['60', '60'], ['75', '75'], ['90', '90 (wide)']], () => String(dvOpts(ui).fov), (v) => { setDV(ui, 'fov', +v); }), 'Horizontal field of view. The eye is 1.2 m up, 2 m behind the lamps, 0.37 m left of the car centre (mirrored for left-hand traffic).'),
       row('Aim on the car', rsel([['spec', 'As the spec’s lab aims it'], ['manual', 'Manual inclination (%)']], () => r().aim, (v) => { r().aim = v; }), 'As the lab aims it: the same aim the report uses. Manual: the cut-off (where the judge found it) is set at this downward slope; 1 % = 1 cm per metre ≈ 0.57°.'),
       row('Inclination (%)', rnum(() => r().aimPct, (v) => { r().aimPct = Math.max(-5, Math.min(1, v)); }, { min: -5, max: 1, step: 0.1 }), 'Used with "Manual". R48 initial aim: −1.0 to −1.5 % below 0.8 m mounting height; FMVSS VOL ≈ −0.7 % (0.4° D).'),
     ];
@@ -566,16 +583,18 @@
   // the road model on the judged far field (the fine grid where it covers the direction, else the wide one); cached
   function roadModel(ui) {
     const s = ui.spec; if (!s || !s.G || !s.ev || !RF.Road) return null;
-    const road = roadOf(ui), key = JSON.stringify(road);
+    const road = roadOf(ui), key = JSON.stringify([road, md(ui).preset]);
     if (s.road && s.roadKey === key) return s.road;
     const sh = RF.Road.aimShift(road, s.ev), G = s.G, W = s.Gw, k = 0.2, mir = md(ui).traffic === 'LHT' ? -1 : 1;
-    const I = (h, v) => {
+    // the beam as the road sees it: the judged fine grid where it covers the direction, else the wide one; kh × kv = the kernel
+    // half-widths (degrees) on the fine grid, kw × the wide grid's bin on the wide one
+    const mkI = (kh, kv, kw) => (h, v) => {
       const H = mir * h + sh[0], V = v + sh[1];
       const g = H >= G.h0 && H <= G.h1 && V >= G.v0 && V <= G.v1 ? G : W; if (!g) return 0;
-      const r = RF.FarField.intensityAt(g, H, V, g === G ? k : Math.max(k, g.step)); return r.cd > 0 ? r.cd : 0;
-    };
-    const mdl = RF.Road.model({ road, conv: G.conv || md(ui).conv || 'A', I });
-    s.road = { mdl, sh, mir, iihs: mdl.iihs(), curves: mdl.curves(), lane: RF.Road.laneWidth(road, md(ui).preset), map: null }; s.roadKey = key;
+      const r = g === G ? RF.FarField.intensityAt(g, H, V, kh, kv) : RF.FarField.intensityAt(g, H, V, Math.max(kh, kw * g.step)); return r.cd > 0 ? r.cd : 0;
+    }, I = mkI(k, k, 1);
+    const mdl = RF.Road.model({ road, preset: md(ui).preset, conv: G.conv || md(ui).conv || 'A', I });
+    s.road = { mdl, sh, mir, mkI, iihs: mdl.iihs(), curves: mdl.curves(), lane: RF.Road.laneWidth(mdl.road, md(ui).preset), laneDrive: RF.Road.laneWidth(mdl.road, md(ui).preset, true), map: null }; s.roadKey = key;
     return s.road;
   }
   // a tiny marching squares for one level on a grid E[j·ny + i] (j along x, i along y) → segment end points in (x, y)
@@ -592,55 +611,250 @@
     }
     return seg;
   }
-  // Result → Road: bird's-eye, x ahead to the right, y (left) up; lux on a vertical sensor 25 cm up facing the car
-  const ROAD_LUX = [0.3, 30];                          // colour scale: 2 decades of lux
+  // ---- Road view options (per viewer, remembered, like the far field's): the bend, how far, the colour scale and its top,
+  // which lux outlines, which sensor. Only the picture changes; the road settings (Spec → Road) are the scene's.
+  const RV_DEF = { shape: 'straight', range: 100, scale: 'log', max: 0, lev: [5], extra: 0, sensor: 'car', stretch: 'fit' };
+  const RV_SHAPES = ['straight', '250R', '250L', '150R', '150L'], RV_RANGES = [50, 100, 200, 300], RV_LEVELS = [1, 3, 5, 10, 30];
+  function rvOpts(ui) {
+    if (!ui.rvOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/roadView') || '{}'); } catch (e) { /* ignore */ } ui.rvOpts = Object.assign({}, RV_DEF, o); }
+    return ui.rvOpts;
+  }
+  function setRV(ui, k, v) {
+    rvOpts(ui)[k] = v;
+    try { localStorage.setItem('flux/roadView', JSON.stringify(ui.rvOpts)); } catch (e) { /* ignore */ }
+    ui.redrawSpec();
+  }
+  const parseShape = (sh) => { const m = /^(\d+)([RL])$/.exec(sh || ''); return m ? { R: +m[1], dir: m[2] === 'R' ? 'right' : 'left' } : null; };
+  // the view's content box in metres (x ahead, y left): ±10 m of a straight road; a bend's lane centre ± 9 m
+  function roadBox(o) {
+    const sp = parseShape(o.shape), range = o.range;
+    if (!sp) return { sp: null, A: null, B: [0, -10, range, 10] };
+    const A = RF.Road.arc(sp.R, sp.dir); let x0 = 0, x1 = 0, y0 = 0, y1 = 0;
+    for (let q = 0; q <= 60; q++) { const p = A.at(range * q / 60, 0).p; x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+    return { sp, A, B: [x0 - 3, y0 - 9, x1 + 9, y1 + 9] };
+  }
+  // the lux map for the current view (cached on the road model; recolouring does not recompute it)
+  function roadMap(ui, rd, o, bx) {
+    const key = JSON.stringify([o.shape, o.range, o.sensor, bx.B]);
+    if (rd.map && rd.map.key === key) return rd.map;
+    const B = bx.B, w = B[2] - B[0], h = B[3] - B[1], dx = Math.max(0.25, Math.sqrt(w * h / 110000)), nx = Math.max(20, Math.ceil(w / dx)), ny = Math.max(10, Math.ceil(h / dx));
+    const up = o.sensor === 'up';
+    const Mp = rd.mdl.map({ nx, ny, x0: B[0], x1: B[2], y0: B[1], y1: B[3], z: up ? 0 : RF.Road.IIHS.sensorZ, facing: up ? 'up' : 'car', arc: up ? null : bx.sp });
+    rd.map = { key, Mp, isos: {}, img: null, imgKey: '' };
+    return rd.map;
+  }
+  // colour scale: log = two decades under the top (30 lx unless overridden), linear = 0 … top (auto: the 99.5th percentile of the map)
+  function roadScale(o, Mp) {
+    if (o.scale === 'lin') {
+      let top = o.max > 0 ? o.max : 0;
+      if (!(top > 0)) { const v = []; for (let q = 0; q < Mp.E.length; q++) if (Mp.E[q] > 0) v.push(Mp.E[q]); v.sort((a, b) => a - b); top = v.length ? v[Math.min(v.length - 1, Math.floor(0.995 * v.length))] : 1; }
+      return { log: false, lo: 0, top };
+    }
+    const top = o.max > 0 ? o.max : 30; return { log: true, lo: top / 100, top };
+  }
+  const niceTicks = (lo, hi) => { const t = []; for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) for (const m of [1, 2, 5]) { const v = m * Math.pow(10, e); if (v > lo * 1.0001 && v < hi * 0.9999) t.push(+v.toPrecision(2)); } return t; };
+  const fmtLx = (x) => x >= 100 ? Math.round(x) + '' : x >= 10 ? x.toFixed(0) : x.toFixed(1).replace(/\.0$/, '');
+  // the floating toggles in the canvas corner (Road view only)
+  function roadTools(ui, cv) {
+    const wrap = cv.parentElement; let bar = wrap.querySelector('.road-tools');
+    if (!bar) {
+      bar = el('div', { class: 'road-tools' });
+      const mk = (k, title, fn) => { const b = el('button', { type: 'button', class: 'toggle', 'data-rv': k, title }); b.addEventListener('click', fn); bar.append(b); return b; };
+      mk('shape', 'The road: straight, or an IIHS bend (250 / 150 m radius, right or left). The beam keeps pointing straight ahead; the lanes bend away.', () => { const o = rvOpts(ui); setRV(ui, 'shape', RV_SHAPES[(RV_SHAPES.indexOf(o.shape) + 1) % RV_SHAPES.length]); });
+      mk('range', 'How far ahead the view starts at (100 m by default; high beams reach 200 m). Along the lane centre on a bend.', () => { const o = rvOpts(ui); setRV(ui, 'range', RV_RANGES[(RV_RANGES.indexOf(o.range) + 1) % RV_RANGES.length]); });
+      mk('scale', 'Colour scale: log (two decades, bright zones clip) or linear (0 to the top; the top is automatic unless Spec → Road sets one)', () => { const o = rvOpts(ui); setRV(ui, 'scale', o.scale === 'lin' ? 'log' : 'lin'); });
+      mk('sensor', 'What measures the light: a vertical sensor 25 cm up facing the car (IIHS), or the road surface itself (a ground-plane sensor: about r / h times dimmer far out)', () => { const o = rvOpts(ui); setRV(ui, 'sensor', o.sensor === 'up' ? 'car' : 'up'); });
+      for (const L of RV_LEVELS) mk('lev' + L, 'Outline where the light reaches ' + L + ' lx' + (L === 5 ? ' (the IIHS visibility level)' : ''), () => { const o = rvOpts(ui), has = o.lev.indexOf(L) >= 0; setRV(ui, 'lev', has ? o.lev.filter((x) => x !== L) : o.lev.concat([L]).sort((a, b) => a - b)); });
+      wrap.append(bar);
+    }
+    const o = rvOpts(ui);
+    for (const b of bar.querySelectorAll('[data-rv]')) {
+      const k = b.dataset.rv;
+      if (k === 'shape') { b.textContent = o.shape === 'straight' ? 'straight' : o.shape.replace(/([RL])$/, ' $1'); b.setAttribute('aria-pressed', String(o.shape !== 'straight')); }
+      else if (k === 'range') { b.textContent = o.range + ' m'; b.setAttribute('aria-pressed', 'false'); }
+      else if (k === 'scale') { b.textContent = o.scale === 'lin' ? 'lin' : 'log'; b.setAttribute('aria-pressed', 'true'); }
+      else if (k === 'sensor') { b.textContent = o.sensor === 'up' ? 'ground' : 'vertical'; b.setAttribute('aria-pressed', String(o.sensor === 'up')); }
+      else { const L = +k.slice(3); b.textContent = L + ' lx'; b.setAttribute('aria-pressed', String(o.lev.indexOf(L) >= 0)); }
+    }
+  }
+  // Result → Road: bird's-eye, x ahead to the right, y (left) up; lux on a vertical sensor 25 cm up facing the car, or on the road
   function drawRoad(ui, cv, view) {
-    const box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d'), rd = roadModel(ui);
-    const B = [0, -15, 120, 15];                      // content: x 0–120 m ahead, y −15…15 m
+    const box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d'), rd = roadModel(ui), o = rvOpts(ui);
+    roadTools(ui, cv);
+    const bx = roadBox(o), B0 = bx.B;
+    // a straight road is a long thin strip: stretch it sideways to fill the pane (the caption says by how much); a bend is drawn true
+    const k = bx.sp ? 1 : o.stretch === 'fit' ? Math.max(1, Math.min(6, Math.round(10 * box.h * (B0[2] - B0[0]) / (box.w * (B0[3] - B0[1]))) / 10)) : +o.stretch || 1;
+    const B = [B0[0], B0[1] * k, B0[2], B0[3] * k]; view.roadK = k;
     const cap = view.cap; view.cap = 0;
     if (!view.fitted || view.bounds.join() !== B.join()) view.fit(B, box.w, box.h);
     else if (view.w !== box.w || view.h !== box.h) { if (view.zoomed) view.refitKeep(B, box.w, box.h); else view.fit(B, box.w, box.h); }
     view.cap = cap; view.capAt = cap;
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.clearRect(0, 0, box.w, box.h);
-    const S = (x, y) => view.toScreen(x, y), a = S(B[0], B[3]), b = S(B[2], B[1]);
+    const S = (x, y) => view.toScreen(x, y * k), a = S(B0[0], B0[3]), b = S(B0[2], B0[1]);
     ctx.fillStyle = '#0c0d10'; ctx.fillRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
-    document.getElementById('right-caption').textContent = 'Road · bird’s-eye · lux on a vertical sensor 25 cm up, facing the car (IIHS)';
+    const up = o.sensor === 'up';
+    document.getElementById('right-caption').textContent = 'Road · bird’s-eye · lux on ' + (up ? 'the road surface' : 'a vertical sensor 25 cm up, facing the car (IIHS)') + ' · ' + (bx.sp ? o.shape.replace(/([RL])$/, ' m $1') + ' bend' : 'straight' + (k > 1.05 ? ', sideways ×' + k.toFixed(1) : ''));
     const cb = document.getElementById('colorbar'); cb.innerHTML = '';
     if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The road appears when the trace has been judged.', a[0] + 10, a[1] + 20); return; }
-    if (!rd.map) {
-      const Mp = rd.mdl.map({ nx: 240, ny: 60, x0: B[0], x1: B[2], y0: B[1], y1: B[3], z: RF.Road.IIHS.sensorZ, facing: 'car' });
-      const cvs = document.createElement('canvas'); cvs.width = Mp.nx; cvs.height = Mp.ny;
-      const g = cvs.getContext('2d'), im = g.createImageData(Mp.nx, Mp.ny), LUT = RF.Render.LUT, lo = ROAD_LUX[0], dec = Math.log10(ROAD_LUX[1] / lo);
+    const M = roadMap(ui, rd, o, bx), Mp = M.Mp, sc = roadScale(o, Mp), imgKey = JSON.stringify([sc.log, sc.lo, sc.top]);
+    if (M.imgKey !== imgKey) {
+      const cvs = M.img || document.createElement('canvas'); cvs.width = Mp.nx; cvs.height = Mp.ny;
+      const g = cvs.getContext('2d'), im = g.createImageData(Mp.nx, Mp.ny), LUT = RF.Render.LUT, dec = Math.log10(sc.top / (sc.lo || 1));
       for (let j = 0; j < Mp.nx; j++) for (let i = 0; i < Mp.ny; i++) {
-        const e = Mp.E[j * Mp.ny + i], t = e > lo ? Math.min(255, Math.round(255 * Math.log10(e / lo) / dec)) : 0, o = 4 * ((Mp.ny - 1 - i) * Mp.nx + j);
-        im.data[o] = LUT[3 * t]; im.data[o + 1] = LUT[3 * t + 1]; im.data[o + 2] = LUT[3 * t + 2]; im.data[o + 3] = 255;
+        const e = Mp.E[j * Mp.ny + i], t = sc.log ? (e > sc.lo ? Math.min(255, Math.round(255 * Math.log10(e / sc.lo) / dec)) : 0) : Math.max(0, Math.min(255, Math.round(255 * e / sc.top))), q = 4 * ((Mp.ny - 1 - i) * Mp.nx + j);
+        im.data[q] = LUT[3 * t]; im.data[q + 1] = LUT[3 * t + 1]; im.data[q + 2] = LUT[3 * t + 2]; im.data[q + 3] = 255;
       }
-      g.putImageData(im, 0, 0); rd.map = { Mp, img: cvs, iso5: iso(Mp, RF.Road.IIHS.lux) };
+      g.putImageData(im, 0, 0); M.img = cvs; M.imgKey = imgKey;
     }
-    ctx.imageSmoothingEnabled = true; ctx.drawImage(rd.map.img, a[0], a[1], b[0] - a[0], b[1] - a[1]);
+    ctx.imageSmoothingEnabled = true; ctx.drawImage(M.img, a[0], a[1], b[0] - a[0], b[1] - a[1]);
     ctx.save(); ctx.beginPath(); ctx.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]); ctx.clip();
     // lanes (the chosen width): own lane's right edge, the centre line (dashed), the left road edge; car centred in its lane
-    const Lw = rd.lane, line = (y, dash, col) => { ctx.setLineDash(dash); ctx.strokeStyle = col; ctx.lineWidth = 1.5; const p = S(0, y), q = S(120, y); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); ctx.setLineDash([]); };
-    line(-Lw / 2, [], 'rgba(255,255,255,0.75)'); line(Lw / 2, [10, 8], 'rgba(242,180,65,0.8)'); line(1.5 * Lw, [], 'rgba(255,255,255,0.75)');
+    const Lw = rd.lane, offLine = (off, dash, col) => {
+      ctx.setLineDash(dash); ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath();
+      if (bx.A) { const sMax = Math.min(o.range * 1.6, Math.PI * bx.sp.R * 1.2); for (let s = 0; s <= sMax; s += 1) { const p = S(...bx.A.at(s, off).p); if (s === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); } }
+      else { const p = S(B0[0], off), q = S(B0[2], off); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); }
+      ctx.stroke(); ctx.setLineDash([]);
+    };
+    offLine(-Lw / 2, [], 'rgba(255,255,255,0.75)'); offLine(Lw / 2, [10, 8], 'rgba(242,180,65,0.8)'); offLine(1.5 * Lw, [], 'rgba(255,255,255,0.75)');
     ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '10px system-ui, sans-serif'; ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
-    const lab = view.s * 10 < 34 ? 20 : 10;            // label every 20 m when 10 m is too narrow for its text
-    for (let x = 10; x < 120; x += 10) { const p = S(x, B[1]), q = S(x, B[3]); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); if (x % lab === 0) ctx.fillText(x + ' m', p[0] + 2, p[1] - 3); }
-    const sg = rd.map.iso5; ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1.2; ctx.beginPath();
-    for (let q = 0; q + 1 < sg.length; q += 2) { const p0 = S(sg[q][0], sg[q][1]), p1 = S(sg[q + 1][0], sg[q + 1][1]); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); }
-    ctx.stroke();
+    const step = o.range > 150 ? 50 : 10, lab = view.s * step < 34 ? step * 2 : step;   // a label every step, every other one when too narrow
+    for (let x = step; x < B0[2]; x += step) { const p = S(x, B0[1]), q = S(x, B0[3]); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); if (x % lab === 0) ctx.fillText(x + ' m', p[0] + 2, p[1] - 3); }
+    // lux outlines: each chosen level, the 5 lx one strongest, each labelled where it reaches farthest
+    const lev = o.lev.concat(o.extra > 0 ? [o.extra] : []), levs = Array.from(new Set(lev)).sort((p, q) => p - q);
+    ctx.font = '10px system-ui, sans-serif';
+    for (const L of levs) {
+      const sg = M.isos[L] || (M.isos[L] = iso(Mp, L)), five = L === RF.Road.IIHS.lux; let far = null;
+      ctx.strokeStyle = five ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.6)'; ctx.lineWidth = five ? 1.4 : 1; ctx.setLineDash(five ? [] : [5, 3]); ctx.beginPath();
+      for (let q = 0; q + 1 < sg.length; q += 2) { const p0 = S(sg[q][0], sg[q][1]), p1 = S(sg[q + 1][0], sg[q + 1][1]); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); if (!far || sg[q][0] > far[0]) far = sg[q]; }
+      ctx.stroke(); ctx.setLineDash([]);
+      if (far) { const p = S(far[0], far[1]), t = fmtLx(L) + ' lx', w = ctx.measureText(t).width; ctx.fillStyle = 'rgba(12,13,16,0.8)'; ctx.fillRect(p[0] + 3, p[1] - 14, w + 4, 12); ctx.fillStyle = '#ffffff'; ctx.fillText(t, p[0] + 5, p[1] - 4); }
+    }
     for (const L of rd.mdl.lamps) { const p = S(0.4, L[1]); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, 2 * Math.PI); ctx.fill(); }
+    // IIHS 5 lx reach on each edge (the vertical sensor's metric: not drawn for the ground sensor)
     const I3 = RF.Road.IIHS, R = rd.iihs, mark = (x, y, txt) => { const p = S(Math.max(x, 0.5), y); ctx.fillStyle = '#5aa7ff'; ctx.beginPath(); ctx.moveTo(p[0], p[1] - 6); ctx.lineTo(p[0] + 5, p[1]); ctx.lineTo(p[0], p[1] + 6); ctx.closePath(); ctx.fill(); ctx.fillStyle = 'rgba(12,13,16,0.8)'; const w = ctx.measureText(txt).width; ctx.fillRect(p[0] + 7, p[1] - 7, w + 4, 13); ctx.fillStyle = '#ffffff'; ctx.fillText(txt, p[0] + 9, p[1] + 3); };
-    mark(R.right, -I3.lane / 2, 'R edge 5 lx: ' + R.right + ' m'); mark(R.left, 1.5 * I3.lane, 'L edge 5 lx: ' + R.left + ' m');
+    if (!up) {
+      if (!bx.sp) { mark(R.right, -I3.lane / 2, 'R edge 5 lx: ' + R.right + ' m'); mark(R.left, 1.5 * I3.lane, 'L edge 5 lx: ' + R.left + ' m'); }
+      else {
+        const c = rd.curves.find((q) => q.R === bx.sp.R && q.dir === bx.sp.dir);
+        if (c) { const pr = bx.A.at(c.right, -I3.lane / 2).p, pl = bx.A.at(c.left, I3.lane / 2).p; mark(pr[0], pr[1], 'R edge 5 lx: ' + c.right + ' m'); mark(pl[0], pl[1], 'L edge 5 lx: ' + c.left + ' m'); }
+      }
+    }
     ctx.restore();
-    // IIHS curves (not drawn: the view is the straightaway): 5 lx reach on the shorter travel-lane edge
-    const cl = rd.curves.map((c) => c.R + (c.dir === 'right' ? 'R' : 'L') + ' ' + c.d + ' m').join(' · ');
-    ctx.font = '10px system-ui, sans-serif'; const tw = ctx.measureText('curves: ' + cl).width; ctx.fillStyle = 'rgba(12,13,16,0.8)'; ctx.fillRect(a[0] + 2, a[1] + 2, tw + 8, 14); ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillText('curves: ' + cl, a[0] + 6, a[1] + 12);
-    const pos = (x) => (100 * Math.log10(x / ROAD_LUX[0]) / Math.log10(ROAD_LUX[1] / ROAD_LUX[0])).toFixed(1) + '%';
-    const bar = el('i', { style: 'background:' + RF.Render2D.colorbarCSS() }); for (const x of [1, 3, 5, 10]) bar.append(el('b', { style: 'left:' + pos(x) }));
-    const labels = el('div', { class: 'cb-labels ticks', title: 'Log scale, 2 decades. White line: 5 lx (the IIHS visibility level).' }, el('span', { class: 'end-l' }, ROAD_LUX[0] + ' lx'));
-    for (const x of [1, 5]) labels.append(el('span', { style: 'left:' + pos(x) }, x + (x === 5 ? ' lx' : '')));
-    labels.append(el('span', { class: 'end-r' }, ROAD_LUX[1] + ' lx')); cb.append(bar, labels);
+    // IIHS curves: 5 lx reach on the shorter travel-lane edge, top-right of the map (the toggles own the top-left)
+    if (!up) {
+      let cl = rd.curves.map((c) => c.R + (c.dir === 'right' ? 'R' : 'L') + ' ' + c.d + ' m').join(' · ');
+      ctx.font = '10px system-ui, sans-serif'; let tw = ctx.measureText('curves: ' + cl).width;
+      if (tw > (b[0] - a[0]) * 0.6) { cl = rd.curves.map((c) => c.R + (c.dir === 'right' ? 'R' : 'L') + ' ' + c.d).join(' · ') + ' m'; tw = ctx.measureText('curves: ' + cl).width; }
+      const tb = cv.parentElement.querySelector('.road-tools'), tbBottom = tb ? tb.getBoundingClientRect().bottom - cv.getBoundingClientRect().top : 0;
+      const x = Math.max(6, Math.min(b[0], box.w) - tw - 12), y = Math.max(a[1] + 2, tbBottom + 2);
+      ctx.fillStyle = 'rgba(12,13,16,0.8)'; ctx.fillRect(x - 4, y, tw + 8, 14); ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillText('curves: ' + cl, x, y + 10);
+    }
+    // colour bar
+    const pos = (v) => (sc.log ? 100 * Math.log10(v / sc.lo) / Math.log10(sc.top / sc.lo) : 100 * v / sc.top).toFixed(1) + '%';
+    const ticks = sc.log ? niceTicks(sc.lo, sc.top) : niceTicks(sc.top / 12, sc.top).filter((v) => v >= sc.top / 8);
+    const bar = el('i', { style: 'background:' + RF.Render2D.colorbarCSS() }); for (const v of ticks) bar.append(el('b', { style: 'left:' + pos(v) }));
+    const labels = el('div', { class: 'cb-labels ticks', title: (sc.log ? 'Log scale, two decades under the top. ' : 'Linear scale, 0 to the top (' + (o.max > 0 ? 'set in Spec → Road' : 'automatic: the 99.5th percentile of this view') + '). ') + 'White outline: 5 lx (the IIHS visibility level).' }, el('span', { class: 'end-l' }, sc.log ? fmtLx(sc.lo) + ' lx' : '0'));
+    for (const v of ticks) labels.append(el('span', { style: 'left:' + pos(v) }, fmtLx(v)));
+    labels.append(el('span', { class: 'end-r' }, fmtLx(sc.top) + ' lx')); cb.append(bar, labels);
   }
+  // the lux under a tap on the Road view (the same sensor and bend as the picture)
+  function roadReadout(ui, x, y) {
+    const rd = roadModel(ui), o = rvOpts(ui), view = ui.vHeat; if (!rd) return '';
+    const c = view.toContent(x, y), px = c[0], py = c[1] / (view.roadK || 1), bx = roadBox(o), up = o.sensor === 'up', z = up ? 0 : RF.Road.IIHS.sensorZ;
+    if (bx.sp) {
+      const f = bx.A.frame(px, py), E = rd.mdl.lux([px, py, z], up ? 'up' : [f.t[0], f.t[1], 0]);
+      return f.s.toFixed(0) + ' m along the lane centre, ' + Math.abs(f.off).toFixed(1) + ' m ' + (f.off >= 0 ? 'left' : 'right') + ' of it: ' + E.toFixed(1) + ' lx';
+    }
+    if (!(px > 0)) return '';
+    return px.toFixed(1) + ' m ahead, ' + Math.abs(py).toFixed(1) + ' m ' + (py >= 0 ? 'left' : 'right') + ' of lane centre: ' + rd.mdl.lux([px, py, z], up ? 'up' : 'car').toFixed(1) + ' lx';
+  }
+  // ---------------------------------------------------------------- Drive: the driver's-eye view (js/drive.js, js/drive-scenes.js)
+  const DV_DEF = { scene: 'road', wet: false, expMode: 'fixed', ev: 1, glare: 0.3, people: true, animals: true, signs: true, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60 };
+  const DV_GLARE = [[0, 'off'], [0.3, 'low'], [1, 'high']];
+  const DV_SMOOTH = { sharp: [0.2, 0.2, 1], smooth: [0.5, 0.15, 2], soft: [1.0, 0.3, 3] };    // kernel half-widths: horizontal, vertical (°), wide-grid bins
+  function dvOpts(ui) {
+    if (!ui.dvOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/driveView') || '{}'); } catch (e) { /* ignore */ } ui.dvOpts = Object.assign({}, DV_DEF, o); if (typeof ui.dvOpts.glare === 'boolean') ui.dvOpts.glare = ui.dvOpts.glare ? DV_DEF.glare : 0; }   // glare used to be on/off
+    return ui.dvOpts;
+  }
+  function setDV(ui, k, v) {
+    dvOpts(ui)[k] = v;
+    try { localStorage.setItem('flux/driveView', JSON.stringify(ui.dvOpts)); } catch (e) { /* ignore */ }
+    ui.redrawSpec();
+  }
+  const fmtL = (x) => x >= 100 ? Math.round(x) + '' : x >= 10 ? x.toFixed(0) : x >= 1 ? x.toFixed(1) : x >= 0.1 ? x.toFixed(2) : x.toPrecision(2);
+  function driveTools(ui, cv) {
+    const wrap = cv.parentElement; let bar = wrap.querySelector('.drive-tools');
+    if (!bar) {
+      bar = el('div', { class: 'drive-tools' });
+      const btn = (k, title, fn) => { const b = el('button', { type: 'button', class: 'toggle', 'data-dv': k, title }); b.addEventListener('click', fn); bar.append(b); return b; };
+      const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road, a city street' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)));
+      sel.addEventListener('change', () => setDV(ui, 'scene', sel.value)); bar.append(sel);
+      btn('shape', 'The road: straight, or an IIHS bend (shared with the Road view)', () => { const o = rvOpts(ui); setRV(ui, 'shape', RV_SHAPES[(RV_SHAPES.indexOf(o.shape) + 1) % RV_SHAPES.length]); });
+      btn('wet', 'Dry or wet asphalt (wet is darker and mirror-like)', () => setDV(ui, 'wet', !dvOpts(ui).wet));
+      btn('expMode', 'Exposure. Fixed: an absolute EV, so two designs at the same EV are comparable (EV 0 puts 10 cd/m² at white). Auto: the average lit pixel goes to mid grey, so every picture looks exposed and brightness differences hide.', () => setDV(ui, 'expMode', dvOpts(ui).expMode === 'auto' ? 'fixed' : 'auto'));
+      btn('evm', 'One stop darker', () => setDV(ui, 'ev', Math.max(-8, dvOpts(ui).ev - 0.5)));
+      btn('ev', 'Exposure value (click to reset)', () => setDV(ui, 'ev', DV_DEF.ev));
+      btn('evp', 'One stop brighter', () => setDV(ui, 'ev', Math.min(10, dvOpts(ui).ev + 0.5)));
+      btn('glare', 'Glare: the part of any pixel above display white is blurred wide and added back, a cheap stand-in for the eye\u2019s light scatter. Not calibrated. Off / low (default) / high (the first version\u2019s strength).', () => { const i = DV_GLARE.findIndex((g) => g[0] === dvOpts(ui).glare); setDV(ui, 'glare', DV_GLARE[(i + 1) % DV_GLARE.length][0]); });
+      btn('people', 'Pedestrians (dark clothes, hi-vis vest with tape, light clothes)', () => setDV(ui, 'people', !dvOpts(ui).people));
+      btn('animals', 'Deer, with retroreflecting eyes', () => setDV(ui, 'animals', !dvOpts(ui).animals));
+      btn('signs', 'Road signs (retroreflective sheeting)', () => setDV(ui, 'signs', !dvOpts(ui).signs));
+      btn('oncoming', 'An oncoming car in the left lane with its headlamps on (distance and intensity: Spec → Road)', () => setDV(ui, 'oncoming', !dvOpts(ui).oncoming));
+      btn('preceding', 'A car ahead in our lane, tail lamps on, with plate and red reflectors (distance: Spec → Road)', () => setDV(ui, 'preceding', !dvOpts(ui).preceding));
+      wrap.append(bar);
+      const ro = el('div', { class: 'drive-readout' }); wrap.append(ro);
+      cv.addEventListener('mousemove', (e) => {
+        if (ui.display !== 'drive' || !ui.driveShown) return;
+        const r = cv.getBoundingClientRect(), d = ui.driveShown, x = (e.clientX - r.left - d.ox) / d.sc, y = (e.clientY - r.top - d.oy) / d.sc;
+        if (x < 0 || y < 0 || x >= d.res.w || y >= d.res.h) { ro.textContent = ''; return; }
+        const p = RF.Drive.probe(d.res, d.flip ? d.res.w - 1 - x : x, y);
+        ro.textContent = fmtL(p.L) + ' cd/m²' + (isFinite(p.depth) ? ' · ' + (p.depth < 100 ? p.depth.toFixed(1) : Math.round(p.depth)) + ' m · ' + p.mat : ' · sky');
+      });
+      cv.addEventListener('mouseleave', () => { ro.textContent = ''; });
+    }
+    const o = dvOpts(ui), rv = rvOpts(ui), tm = ui.driveShown && ui.driveShown.tm;
+    for (const b of bar.querySelectorAll('[data-dv]')) {
+      const k = b.dataset.dv;
+      if (k === 'scene') b.value = o.scene;
+      else if (k === 'shape') { b.textContent = rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' $1'); b.setAttribute('aria-pressed', String(rv.shape !== 'straight')); }
+      else if (k === 'wet') { b.textContent = o.wet ? 'wet' : 'dry'; b.setAttribute('aria-pressed', String(o.wet)); }
+      else if (k === 'expMode') { b.textContent = o.expMode === 'auto' ? 'auto' : 'fixed'; b.setAttribute('aria-pressed', String(o.expMode === 'fixed')); }
+      else if (k === 'evm') b.textContent = '−';
+      else if (k === 'evp') b.textContent = '+';
+      else if (k === 'ev') { b.textContent = 'EV ' + (o.ev >= 0 ? '+' : '−') + Math.abs(o.ev).toFixed(1) + (tm ? ' · white ' + fmtL(tm.white) + ' cd/m²' : ''); b.setAttribute('aria-pressed', 'false'); }
+      else if (k === 'glare') { b.textContent = 'glare ' + (DV_GLARE.find((g) => g[0] === o.glare) || DV_GLARE[1])[1]; b.setAttribute('aria-pressed', String(o.glare > 0)); }
+      else { b.textContent = { people: 'people', animals: 'deer', signs: 'signs', oncoming: 'oncoming', preceding: 'preceding' }[k] || k; b.setAttribute('aria-pressed', String(!!o[k])); }
+    }
+  }
+  // Result → Drive: what the driver sees. The beam lookup, the scene and the render are cached; exposure only redoes the tone map.
+  function drawDrive(ui, cv, view) {
+    const box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d'), rd = roadModel(ui), o = dvOpts(ui), rv = rvOpts(ui);
+    driveTools(ui, cv);
+    ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.fillStyle = '#05060a'; ctx.fillRect(0, 0, box.w, box.h);
+    const cap = document.getElementById('right-caption'), cb = document.getElementById('colorbar'); cb.innerHTML = '';
+    cap.textContent = 'Drive · what the driver sees · ' + RF.Drive.scenes[o.scene].label.toLowerCase() + ' · ' + (rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' m $1') + ' bend') + (o.wet ? ' · wet' : ' · dry');
+    if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The drive view appears when the trace has been judged.', 14, 80); return; }
+    const road = rd.mdl.road, mirrored = md(ui).traffic === 'LHT', key = JSON.stringify([rd.laneDrive, o.scene, o.wet, o.people, o.animals, o.signs, o.oncoming && [o.onDist, o.onKcd], o.preceding && o.preDist, o.RL, o.ambient, o.smooth, o.res, o.fov, rv.shape]);
+    if (!rd.drive || rd.drive.key !== key) {
+      const t0 = performance.now(), sm = DV_SMOOTH[o.smooth] || DV_SMOOTH.smooth, lut = RF.Drive.lutFrom(rd.mkI(sm[0], sm[1], sm[2])), sp = parseShape(rv.shape), A = sp ? RF.Road.arc(sp.R, sp.dir) : null;
+      const scene = RF.Drive.buildScene(o.scene, { Lw: rd.laneDrive, A, us: !/^ece/.test(md(ui).preset || ''), seed: 7 }, { people: o.people, animals: o.animals, signs: o.signs, oncoming: o.oncoming ? { dist: o.onDist, kcd: o.onKcd } : null, preceding: o.preceding ? { dist: o.preDist } : null });
+      const W = o.res, H = Math.round(W * 9 / 16);
+      const res = RF.Drive.render({ w: W, h: H, hfov: o.fov, eye: [-2.0, 0.37, 1.2], lamps: rd.mdl.lamps, lut, conv: (ui.spec.G && ui.spec.G.conv) || md(ui).conv || 'A', arc: A, lane: rd.laneDrive, scene, look: { wet: o.wet, RL: o.RL / 1000, ambient: o.ambient } });
+      rd.drive = { key, res, ms: performance.now() - t0, tmKey: '' };
+    }
+    const D = rd.drive, tmKey = JSON.stringify([o.expMode, o.ev, o.glare]);
+    if (D.tmKey !== tmKey) {
+      D.tm = RF.Drive.tonemap(D.res, { mode: o.expMode, ev: o.ev, glare: o.glare }); D.tmKey = tmKey;
+      const c2 = D.img || document.createElement('canvas'); c2.width = D.res.w; c2.height = D.res.h; c2.getContext('2d').putImageData(new ImageData(D.tm.px, D.res.w, D.res.h), 0, 0); D.img = c2;
+    }
+    const W = D.res.w, H = D.res.h, sc = Math.min(box.w / W, box.h / H), ox = (box.w - W * sc) / 2, oy = (box.h - H * sc) / 2;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    if (mirrored) { ctx.save(); ctx.translate(ox + W * sc, oy); ctx.scale(-sc, sc); ctx.drawImage(D.img, 0, 0); ctx.restore(); } else ctx.drawImage(D.img, ox, oy, W * sc, H * sc);
+    ui.driveShown = { res: D.res, tm: D.tm, ox, oy, sc, flip: mirrored };
+    driveTools(ui, cv);      // the EV button shows the white level of THIS picture
+    cb.append(el('div', { class: 'cb-labels', title: 'Fixed: EV 0 puts 10 cd/m² at display white and each stop doubles it, so two designs at the same EV are comparable. Auto: the geometric mean of the lit pixels goes to mid grey (plus the EV offset). Hover the picture for the luminance under the pointer. Rendered in ' + Math.round(D.ms) + ' ms: ' + road.mountH.toFixed(2) + ' m lamps, ' + (road.two ? 'two' : 'one') + '.' }, el('span', {}, (o.expMode === 'auto' ? 'auto' : 'fixed') + ' exposure · display white = ' + fmtL(D.tm.white) + ' cd/m²')));
+  }
+  const driveReadout = (ui) => ui.driveShown ? 'Hover the picture for the luminance (cd/m²), distance and material under the pointer.' : '';
   // Far field → road: the lane lines and the horizon in degrees, as the right-hand lamp sees them on the car
   function drawRoadOverlay(ctx, ui, view, a, b) {
     const rd = roadModel(ui); if (!rd) return;
@@ -715,5 +929,5 @@
     box.append(el('span', { class: 'btn-pair' }, wt));
   }
 
-  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, editorOverlay, readout, leftTools, COL };
+  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, roadReadout, drawDrive, driveReadout, editorOverlay, readout, leftTools, COL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

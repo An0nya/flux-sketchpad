@@ -516,7 +516,7 @@
   // intensity a painted 1.0 stands for }. The secondary goal "light the road", not a beam shape someone drew.
   function roadGoalPaint(scene) {
     const md = scene.modeD, res = scene.target.res, T = RF.Engine.designFrame(scene.target), s = mirrorH(md), out = new Array(res * res).fill(0);
-    const road = Object.assign(RF.Road ? RF.Road.defaults() : { mountH: 0.65, two: true }, md.road || {}), I3 = RF.Road ? RF.Road.IIHS : { lane: 3.3, sensorZ: 0.25, lux: 5 };
+    const road = RF.Road ? RF.Road.resolve(md.road, md.preset) : Object.assign({ mountH: 0.65, two: true }, md.road || {}), I3 = RF.Road ? RF.Road.IIHS : { lane: 3.3, sensorZ: 0.25, lux: 5 };
     const drop = road.mountH - I3.sensorZ, nl = road.two === false ? 1 : 2, yR = -I3.lane / 2, yL = 1.5 * I3.lane;
     let mx = 0;
     if (!(drop > 0)) return { paint: out, cd: 0 };

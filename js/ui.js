@@ -143,7 +143,7 @@
     const gt = document.getElementById('btn-generate-top');
     if (gt) { gt.disabled = !isPaint(m); gt.title = isPaint(m) ? 'Solve the reflector for the painted target' : 'Stamp and Profile modes rebuild live; Rebuild is for Paint and Spec modes'; }
     // Spec mode opens on its far-field view; leaving it, a far-field view falls back to the grid
-    if (m === 'D' && !ui.specSeen) { ui.specSeen = true; setDisplay('ff'); } else if (m !== 'D' && (ui.display === 'ff' || ui.display === 'road')) setDisplay('grid');
+    if (m === 'D' && !ui.specSeen) { ui.specSeen = true; setDisplay('ff'); } else if (m !== 'D' && (ui.display === 'ff' || ui.display === 'road' || ui.display === 'drive')) setDisplay('grid');
     for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-selected', b.dataset.mode === m ? 'true' : 'false');
     const cap = { A: ['Intended — paint here', 'Simulated'], B: ['Direction from the source', 'Simulated · tap to stamp'], C: ['Profile cross-section — tap to add points', 'Simulated'], D: ['Intended — paint here · spec overlaid (from the source)', 'Simulated'] }[m];
     document.getElementById('left-caption').textContent = cap[0];
@@ -691,6 +691,10 @@
     ui.heatImg = R2.gridCanvas(vals, res, ui.heatImg, clip); ui.heatImg.clipValue = clip;   // also the 3D scene texture
     ui.selImgs = selImages();
     const sc = ui.store.scene, pres = sc.target.res;
+    if (sc.mode === 'D' && ui.display === 'drive' && RF.SpecUI) {  // Spec mode's driver's-eye view: a rendered picture, not a plot
+      RF.SpecUI.update(ui); RF.SpecUI.drawDrive(ui, document.getElementById('heat-canvas'), ui.vHeat);
+      return;
+    }
     if (sc.mode === 'D' && ui.display === 'road' && RF.SpecUI) {  // Spec mode's road view: content = metres on the road
       RF.SpecUI.update(ui); RF.SpecUI.drawRoad(ui, document.getElementById('heat-canvas'), ui.vHeat); alignFigure('heat-canvas', ui.vHeat);
       return;
@@ -896,9 +900,13 @@
       onDrag(st, x, y) { const uv = toUV(x, y); C.actions.moveStamp(ui.store, st.id, uv[0], uv[1]); ui.movedSomething = true; ui.store.commit({ deferA: true }); firePreview(st.id); ui.requestRun(true); },
       onTap(x, y, st, e) {
         const sc = ui.store.scene, add = !!(e && e.shiftKey);
+        if (sc.mode === 'D' && ui.display === 'drive' && ui.driveShown) {   // drive view: the luminance under the tap (hover does the same on a mouse)
+          const d = ui.driveShown, px = (x - d.ox) / d.sc, py = (y - d.oy) / d.sc;
+          if (px >= 0 && py >= 0 && px < d.res.w && py < d.res.h) { const p = RF.Drive.probe(d.res, d.flip ? d.res.w - 1 - px : px, py); toast(p.L.toPrecision(2) + ' cd/m²' + (isFinite(p.depth) ? ' at ' + p.depth.toFixed(0) + ' m (' + p.mat + ')' : ' (sky)')); }
+          return;
+        }
         if (sc.mode === 'D' && ui.display === 'road' && RF.SpecUI) {  // road view: lux at the tapped spot (25 cm up, facing the car)
-          const rd = RF.SpecUI.roadModel(ui), c = ui.vHeat.toContent(x, y);
-          if (rd && c[0] > 0) toast(c[0].toFixed(1) + ' m ahead, ' + Math.abs(c[1]).toFixed(1) + ' m ' + (c[1] >= 0 ? 'left' : 'right') + ' of lane centre: ' + rd.mdl.lux([c[0], c[1], RF.Road.IIHS.sensorZ]).toFixed(1) + ' lx');
+          const t = RF.SpecUI.roadReadout(ui, x, y); if (t) toast(t);
           return;
         }
         if (sc.mode === 'D' && ui.display === 'ff' && RF.SpecUI) {   // far-field view: a spec item's card, else the intensity under the tap
@@ -1559,6 +1567,8 @@
     ui.display = d;
     for (const o of document.querySelectorAll('#heat-display button')) o.classList.toggle('on', o.dataset.disp === d);
     document.getElementById('heat-canvas').parentElement.classList.toggle('ff', d === 'ff');   // shows the far-field toggles
+    document.getElementById('heat-canvas').parentElement.classList.toggle('road', d === 'road');   // shows the road-view toggles
+    document.getElementById('heat-canvas').parentElement.classList.toggle('drive', d === 'drive');   // shows the drive-view toggles
     if (RF.SpecUI) { ui.specPinned = null; RF.SpecUI.hideCard(document.getElementById('heat-canvas')); }
     if (d !== 'ff' && ui.store && ui.store.scene.mode === 'D') document.getElementById('right-caption').textContent = 'Simulated';
     if (ui.run) drawHeat();

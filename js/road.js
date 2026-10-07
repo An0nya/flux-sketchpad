@@ -19,18 +19,52 @@
   const LANES = { us: 3.6, eu: 3.5, iihs: 3.3 };
   const IIHS = { lane: 3.3, sensorZ: 0.25, glareZ: 1.10, glareY: 3.0, near: 10, nearLeft: 15, far: 250, lux: 5, glareMax: 10 };
 
-  function defaults() { return { lane: 'auto', mountH: 0.65, spacing: 1.4, two: true, aim: 'spec', aimPct: -1.0 }; }
-  // lane width (m): the chosen standard, or by preset (FMVSS → US 12 ft, ECE → EU)
-  function laneWidth(road, preset) {
+  // Regulation geometry. UN R112's test points are written for a 0.75 m lamp: 0.57° / 0.86° / 1.72° D are 1 % / 1.5 % / 3 %
+  // of 75 m / 50 m / 25 m, and 75R / 50R sit 1.5 m right of the lamp (1.15° at 75 m, 1.72° at 50 m). FMVSS points are plain
+  // angles with no distance behind them, so the US keeps the generic 0.65 m / 3.6 m.
+  const REF = { mountH: 0.75, rightEdge: 1.5 };
+  const isEce = (preset) => /^ece/.test(preset || '');
+  // mountH null = "by preset": a regulation spec forces its own lamp height until the user types one
+  function defaults() { return { v: 2, lane: 'auto', mountH: null, spacing: 1.4, two: true, aim: 'spec', aimPct: -1.0 }; }
+  function mountDefault(preset) { return isEce(preset) ? REF.mountH : 0.65; }
+  // the settings with the preset's own values filled in where the user left them on auto
+  function resolve(o, preset) {
+    const r = Object.assign(defaults(), o || {});
+    if (!(r.mountH > 0)) r.mountH = mountDefault(preset);
+    return r;
+  }
+  // lane width (m): the chosen standard, or by preset (FMVSS → US 12 ft, ECE → the R112 reference: the right edge 1.5 m from
+  // the right lamp, which is where 50R and 75R land)
+  // real = the lane a driver would see (Drive view): 'auto' gives the region's standard (ECE → EU 3.5 m, FMVSS → US 3.6 m), not the
+  // reference road, which is a geometry for placing test points rather than a lane
+  function laneWidth(road, preset, real) {
+    const sp = road && isFinite(road.spacing) ? road.spacing : 1.4, ref = 2 * REF.rightEdge + sp;
+    if (road && road.lane === 'r112') return ref;
     if (road && LANES[road.lane]) return LANES[road.lane];
-    return /^ece/.test(preset || '') ? LANES.eu : LANES.us;
+    return isEce(preset) ? (real ? LANES.eu : ref) : LANES.us;
   }
   // lamp positions: two identical lamps (a real pair: the same beam, not mirror images) ±spacing/2 from the car's
   // centre, or one (the right-hand lamp)
   function lamps(road) { const h = road.mountH, s = road.spacing / 2; return road.two ? [[0, s, h], [0, -s, h]] : [[0, -s, h]]; }
 
+  // A bend of radius R (m), dir 'left' | 'right', the car heading +x on the lane centre (x ahead, y left). at(s, off): the point
+  // s metres along the centre line, off metres to its left. frame(x, y): the inverse — distance along, signed offset (+ left),
+  // heading (unit tangent). Shared by the IIHS curves, the bird's-eye view and the driver view.
+  function arc(R, dir) {
+    const sg = dir === 'left' ? 1 : -1;
+    const at = (s, off) => {
+      const a = s / R, t = [Math.cos(a), sg * Math.sin(a)], o = off || 0;
+      return { p: [R * Math.sin(a) - o * t[1], sg * R * (1 - Math.cos(a)) + o * t[0]], t, a };
+    };
+    const frame = (x, y) => {
+      const rx = x, ry = y - sg * R, a = Math.atan2(rx, -sg * ry), rr = Math.hypot(rx, ry);
+      return { s: a * R, off: sg > 0 ? R - rr : rr - R, t: [Math.cos(a), sg * Math.sin(a)], a };
+    };
+    return { R, dir, sg, at, frame };
+  }
+
   function model(o) {
-    const road = Object.assign(defaults(), o.road || {}), conv = o.conv || 'A', I = o.I, ls = lamps(road);
+    const road = resolve(o.road, o.preset), conv = o.conv || 'A', I = o.I, ls = lamps(road);
     function lux(p, facing) {
       let E = 0;
       for (const L of ls) {
@@ -79,12 +113,17 @@
       return { R, dir, right, left, d, demerits: dem };
     }
     function curves() { return [curve(250, 'right'), curve(250, 'left'), curve(150, 'right'), curve(150, 'left')]; }
-    // illuminance map over the road for the bird's-eye view: x ahead × y left, at height z, sensor facing
+    // illuminance map over the road for the bird's-eye view: x ahead × y left, at height z, sensor facing. m.arc = { R, dir }:
+    // the road bends, and each spot's sensor faces back along the road there (as IIHS's curve sensors do)
     function map(m) {
-      const nx = m.nx, ny = m.ny, E = new Float32Array(nx * ny);
+      const nx = m.nx, ny = m.ny, E = new Float32Array(nx * ny), A = m.arc ? arc(m.arc.R, m.arc.dir) : null;
       for (let j = 0; j < nx; j++) {
         const x = m.x0 + (j + 0.5) * (m.x1 - m.x0) / nx;
-        for (let i = 0; i < ny; i++) E[j * ny + i] = lux([x, m.y0 + (i + 0.5) * (m.y1 - m.y0) / ny, m.z], m.facing);
+        for (let i = 0; i < ny; i++) {
+          const y = m.y0 + (i + 0.5) * (m.y1 - m.y0) / ny;
+          let face = m.facing; if (A) { const t = A.frame(x, y).t; face = [t[0], t[1], 0]; }
+          E[j * ny + i] = lux([x, y, m.z], face);
+        }
       }
       return { E, nx, ny, x0: m.x0, x1: m.x1, y0: m.y0, y1: m.y1 };
     }
@@ -97,5 +136,5 @@
     const cutV = ev && ev.aim && isFinite(ev.aim.cutV) ? ev.aim.cutV : 0;
     return [0, cutV - (road.aimPct || 0) * PCT];
   }
-  RF.Road = { PCT, LANES, IIHS, defaults, laneWidth, lamps, model, aimShift };
+  RF.Road = { PCT, LANES, IIHS, REF, defaults, resolve, mountDefault, laneWidth, lamps, arc, model, aimShift };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
