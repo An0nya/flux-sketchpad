@@ -1,0 +1,3 @@
+/* Projector module v3 — a lens + shield + faceted-ellipsoid projector headlamp designed from a beam SPECIFICATION (Flux solver lab, 2026-10-07).
+ * Generated from tools/projector-v3/dev/*.js (node tools/projector-v3/build.js); notes and benchmarks: tools/projector-v3/NOTES.md.
+ * Reuses SQM's ideal-beam module (target.js, plan.js) and forward model (fwd.js, extended with a post-reflection optic: shield + lens).              */

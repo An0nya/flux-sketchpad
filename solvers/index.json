@@ -1,5 +1,12 @@
 [
  {
+  "file": "projector-v3.js",
+  "model": "Projector module v3, experimental (Claude Sonnet 5.5, briefed by Anya)",
+  "run": "2026-10-07",
+  "workspace": "this repo",
+  "note": "lab"
+ },
+ {
   "file": "sqm-hl.js",
   "model": "SQM headlamp solver (Claude Sonnet 5.5, briefed by Anya)",
   "run": "2026-10-06",

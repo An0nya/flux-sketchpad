@@ -1,0 +1,2 @@
+# run outputs (logs, pngs, scene.json): scripts write here unless P3_OUT is set
+out/
