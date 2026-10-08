@@ -222,6 +222,12 @@
         det.open = !!ui.solverAdvOpen; det.addEventListener('toggle', () => { ui.solverAdvOpen = det.open; });
         fields.push(det);
       }
+      // back to the solver's own defaults (one undo step): for when the sliders have wandered and the solver no longer behaves
+      const changed = def.settings.filter((f) => !RF.Solvers.SHARED.includes(f.key) && sc.solverSettings[cur] && f.key in sc.solverSettings[cur] && sc.solverSettings[cur][f.key] !== f.default).length;
+      const reset = el('button', { type: 'button', title: 'Put every setting of this solver back to its default (undo brings yours back)' }, changed ? 'Reset to defaults (' + changed + ' changed)' : 'Reset to defaults');
+      reset.disabled = !changed;
+      reset.addEventListener('click', () => { histCheckpoint(); delete sc.solverSettings[cur]; ui._histHint = 'Reset ' + def.name + ' settings'; histCheckpoint(); ui.store.invalidate(['A']); if (ui.store.autoSet) ui.pendingA = performance.now() + 400; markStale(); schedule(); renderSolverBox(); });
+      fields.push(el('div', { class: 'btnrow' }, reset));
     }
     const fx = rep && rep.facts, facts = !fx ? '—' : fx.errors.length ? 'unusable output: ' + fx.errors[0] :
       fx.placed + ' placed' + (fx.dropped !== null ? ' · ' + fx.dropped + ' unplaced intents' : '') + ' · envelope ' + (fx.violations.envelope.length ? fx.violations.envelope.length + ' outside' : 'ok') + ' · keep-out ' + (fx.violations.keepOut.length ? fx.violations.keepOut.length + ' inside' : 'ok') + ' · budget ' + (fx.violations.budget ? 'EXCEEDED (' + fx.violations.budget.placed + ' > ' + fx.violations.budget.budget + ')' : 'ok') + (fx.intentErrors.length ? ' · intent malformed' : '') + (rep.solveMs !== undefined ? ' · ' + Math.round(rep.solveMs) + ' ms' : '');
