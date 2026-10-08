@@ -1,0 +1,2090 @@
+[
+ {
+  "category": "H1",
+  "filament": "single (6 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,5 \u00b1 1,0",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0(20)",
+   "h1": "(20)",
+   "h2": "(20)",
+   "epsilon": "45\u00b0 \u00b1 12\u00b0"
+  },
+  "rated_volts": "6",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 350",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "6,3"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H1/2 (dimensions, electrical); Sheet H1/3 (screen projection)",
+  "quotes": {
+   "filament_length_mm": "f(17),(21) | 4,5 \u00b1 1,0 | 5,0 \u00b1 0,5 | 5,5 \u00b1 1,0 | 5,0 + 0,50/\u2013 0,00",
+   "filament_position": "e(17),(21) | 25,0(20) | 25,0(20) | 25,0(20) | 25,0 \u00b1 0,15; h1 | (20); \u03b5 | 45\u00b0 \u00b1 12\u00b0",
+   "rated_volts": "Rated values | Volts | 6 | 12 | 24 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 55 | 70 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 1 350 | 1 550 | 1 900 | ; tolerance row: 15 | 15 | 15 ; Test Voltage | Volts | 6,3 | 13,2 | 28,0 | 13,2"
+  },
+  "notes": "Reference flux row (12 V 1 150 / 13,2 V 1 550) sits in the standard-lamp column, not assigned here. Orientation not stated in text (drawings are images)."
+ },
+ {
+  "category": "H1",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 5,0 \u00b1 0,5",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0(20)",
+   "h1": "(20)",
+   "h2": "(20)",
+   "epsilon": "45\u00b0 \u00b1 12\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 550",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H1/2",
+  "quotes": {
+   "filament_length_mm": "f(17),(21) | 4,5 \u00b1 1,0 | 5,0 \u00b1 0,5 | 5,5 \u00b1 1,0 | 5,0 + 0,50/\u2013 0,00",
+   "filament_position": "e(17),(21) | 25,0(20) | 25,0(20) | 25,0(20) | 25,0 \u00b1 0,15; \u03b5 | 45\u00b0 \u00b1 12\u00b0",
+   "rated_volts": "Rated values | Volts | 6 | 12 | 24 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 55 | 70 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 1 350 | 1 550 | 1 900 | ; Test Voltage | Volts | 6,3 | 13,2 | 28,0 | 13,2"
+  },
+  "notes": "Column alignment from HTML table cells (not flattened text). Orientation not stated."
+ },
+ {
+  "category": "H1",
+  "filament": "single (24 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 5,5 \u00b1 1,0",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0(20)",
+   "h1": "(20)",
+   "h2": "(20)",
+   "epsilon": "45\u00b0 \u00b1 12\u00b0"
+  },
+  "rated_volts": "24",
+  "rated_watts": "70",
+  "luminous_flux_lm": {
+   "objective": "1 900",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "28,0"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H1/2",
+  "quotes": {
+   "filament_length_mm": "f(17),(21) | 4,5 \u00b1 1,0 | 5,0 \u00b1 0,5 | 5,5 \u00b1 1,0 | 5,0 + 0,50/\u2013 0,00",
+   "filament_position": "e(17),(21) | 25,0(20) | 25,0(20) | 25,0(20) | 25,0 \u00b1 0,15; \u03b5 | 45\u00b0 \u00b1 12\u00b0",
+   "rated_volts": "Rated values | Volts | 6 | 12 | 24 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 55 | 70 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 1 350 | 1 550 | 1 900 | ; Test Voltage | Volts | 6,3 | 13,2 | 28,0 | 13,2"
+  },
+  "notes": "Standard-lamp 12 V column: flux cell blank."
+ },
+ {
+  "category": "H1",
+  "filament": "single (12 V standard filament lamp)",
+  "orientation": null,
+  "filament_length_mm": "f 5,0 + 0,50/\u2013 0,00",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0 \u00b1 0,15",
+   "h1": "0 \u00b1 0,20(16)",
+   "h2": "0 \u00b1 0,25(16)",
+   "epsilon": "45\u00b0 \u00b1 3\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H1/2",
+  "quotes": {
+   "filament_length_mm": "f(17),(21) | ... | 5,0 + 0,50/\u2013 0,00",
+   "filament_position": "e(17),(21) | ... | 25,0 \u00b1 0,15; h1 | (20) | (20) | (20) | 0 \u00b1 0,20(16); h2 ... | 0 \u00b1 0,25(16); \u03b5 | ... | 45\u00b0 \u00b1 3\u00b0",
+   "rated_volts": "Rated values | Volts | ... | 12",
+   "rated_watts": "Rated values | Watts | ... | 55"
+  },
+  "notes": "Reference luminous flux in this column: 'Reference luminous flux at approximately 12 V | 1 150' and '13,2 V | 1 550' (not an objective value)."
+ },
+ {
+  "category": "H3",
+  "filament": "single (6 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 3,0 min.",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "18,0(22)",
+   "k": "0(22)",
+   "h1_h3": "0(22)",
+   "h2_h4": "0(22)"
+  },
+  "rated_volts": "6",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 050",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "6,3"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H3/3",
+  "quotes": {
+   "filament_length_mm": "f(24) | 3,0 min. | 4,0 min. | 4,0 min. | 5,0 \u00b1 0,50",
+   "filament_position": "e | 18,0(22) | 18,0(22) | 18,0(22) | 18,0; k | 0(22) | 0(22) | 0(22) | 0 \u00b1 0,20; h1, h3 | 0(22) ...; h2, h4 | 0(22) ...",
+   "rated_volts": "Rated values | Volts | 6 | 12 | 24 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 55 | 70 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 1 050 | 1 450 | 1 750 | ; Test voltage | Volts | 6,3 | 13,2 | 28,0 | 13,2"
+  },
+  "notes": "Footnotes (22) and (24) text not in the extracted sheet body."
+ },
+ {
+  "category": "H3",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,0 min.",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "18,0(22)",
+   "k": "0(22)",
+   "h1_h3": "0(22)",
+   "h2_h4": "0(22)"
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 450",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H3/3",
+  "quotes": {
+   "filament_length_mm": "f(24) | 3,0 min. | 4,0 min. | 4,0 min. | 5,0 \u00b1 0,50",
+   "filament_position": "e | 18,0(22) | 18,0(22) | 18,0(22) | 18,0",
+   "rated_volts": "Rated values | Volts | 6 | 12 | 24 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 55 | 70 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 1 050 | 1 450 | 1 750 | ; Test voltage | Volts | 6,3 | 13,2 | 28,0 | 13,2"
+  },
+  "notes": "Reference rows (12 V 1 100; 13,2 V 1 450) sit in the standard-lamp column."
+ },
+ {
+  "category": "H3",
+  "filament": "single (24 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,0 min.",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "18,0(22)",
+   "k": "0(22)",
+   "h1_h3": "0(22)",
+   "h2_h4": "0(22)"
+  },
+  "rated_volts": "24",
+  "rated_watts": "70",
+  "luminous_flux_lm": {
+   "objective": "1 750",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "28,0"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H3/3",
+  "quotes": {
+   "filament_length_mm": "f(24) | 3,0 min. | 4,0 min. | 4,0 min. | 5,0 \u00b1 0,50",
+   "filament_position": "e | 18,0(22) | 18,0(22) | 18,0(22) | 18,0",
+   "rated_volts": "Rated values | Volts | 6 | 12 | 24 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 55 | 70 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 1 050 | 1 450 | 1 750 | ; Test voltage | Volts | 6,3 | 13,2 | 28,0 | 13,2"
+  },
+  "notes": ""
+ },
+ {
+  "category": "H3",
+  "filament": "single (12 V standard filament lamp)",
+  "orientation": null,
+  "filament_length_mm": "f 5,0 \u00b1 0,50",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "18,0",
+   "k": "0 \u00b1 0,20",
+   "h1_h3": "0 \u00b1 0,15(23)",
+   "h2_h4": "0 \u00b1 0,25(23)"
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H3/3",
+  "quotes": {
+   "filament_length_mm": "f(24) | ... | 5,0 \u00b1 0,50",
+   "filament_position": "e | ... | 18,0; k | ... | 0 \u00b1 0,20; h1, h3 | ... | 0 \u00b1 0,15(23); h2, h4 | ... | 0 \u00b1 0,25(23)",
+   "rated_volts": "Rated values | Volts | ... | 12",
+   "rated_watts": "Rated values | Watts | ... | 55"
+  },
+  "notes": "Reference: 12 V 1 100; 13,2 V 1 450 (standard column; not an objective value)."
+ },
+ {
+  "category": "H4",
+  "filament": "60 W element (12 V normal production; sheet column order)",
+  "orientation": null,
+  "filament_length_mm": "IR 4,5 \u00b1 0,80 (12 V normal) [see notes]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 + 0,35/\u2013 0,25",
+   "p": "28,95",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "12(25)",
+  "rated_watts": "60",
+  "luminous_flux_lm": {
+   "objective": "1 650",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H4/2 (electrical, e, p); Sheet H4/4 (IR)",
+  "quotes": {
+   "filament_length_mm": "IR (29),(32) | 4,5 | 5,25 | \u00b1 0,80 | \u00b1 0,80 | \u00b1 0,40",
+   "filament_position": "e | 28,5 + 0,35/\u2013 0,25 | 29,0 \u00b1 0,35 | 28,5 + 0,20/\u2013 0,00; p | 28,95 | 29,25 | 28,95; \u03b1 | max. 40\u00b0",
+   "rated_volts": "Rated values | Volts | 12(25) | 24(25) | 12(25)",
+   "rated_watts": "Rated values | Watts | 60 | 55 | 75 | 70 | 60 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 1 650 | 1 000 | 1 900 | 1 200 | ; tolerance row: 15"
+  },
+  "notes": "Sheet gives no filament label. Pairing of 60 W with IR (and 55 W with IC) follows the sheet's column order and the R/C naming convention (inferred, not stated). Reference 12 V 1 250 / 13,2 V 1 650; measuring flux '\u2014' for this element. Obscuration: sheet lists only 'Position of shield' and 'p/33 | Depends on the shape of the shield'; no opaque-coating wording found."
+ },
+ {
+  "category": "H4",
+  "filament": "55 W element (12 V normal production; sheet column order)",
+  "orientation": null,
+  "filament_length_mm": "IC 5,5 \u00b1 0,50 (12 V normal) [see notes]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 + 0,35/\u2013 0,25",
+   "p": "28,95",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "12(25)",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 000",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H4/2; Sheet H4/4 (IC)",
+  "quotes": {
+   "filament_length_mm": "IC (29),(30) | 5,5 | 5,25 | \u00b1 0,50 | \u00b1 0,80 | \u00b1 0,35",
+   "filament_position": "e | 28,5 + 0,35/\u2013 0,25 | 29,0 \u00b1 0,35 | 28,5 + 0,20/\u2013 0,00; p | 28,95 | 29,25 | 28,95",
+   "rated_volts": "Rated values | Volts | 12(25) | 24(25) | 12(25)",
+   "rated_watts": "Rated values | Watts | 60 | 55 | 75 | 70 | 60 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 1 650 | 1 000 | 1 900 | 1 200 | ; tolerance row: 15"
+  },
+  "notes": "Measuring flux 750 lm for this element (row 'Measuring flux(26) lm | \u2014 | 750 | \u2014 | 800'). Reference 12 V 750 / 13,2 V 1 000."
+ },
+ {
+  "category": "H4",
+  "filament": "75 W element (24 V normal production; sheet column order)",
+  "orientation": null,
+  "filament_length_mm": "IR 5,25 \u00b1 0,80 (24 V normal) [see notes]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "29,0 \u00b1 0,35",
+   "p": "29,25",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "24(25)",
+  "rated_watts": "75",
+  "luminous_flux_lm": {
+   "objective": "1 900",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "28,0"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H4/2; Sheet H4/4",
+  "quotes": {
+   "filament_length_mm": "IR (29),(32) | 4,5 | 5,25 | \u00b1 0,80 | \u00b1 0,80 | \u00b1 0,40",
+   "filament_position": "e | 28,5 + 0,35/\u2013 0,25 | 29,0 \u00b1 0,35 | 28,5 + 0,20/\u2013 0,00; p | 28,95 | 29,25 | 28,95",
+   "rated_volts": "Rated values | Volts | 12(25) | 24(25) | 12(25)",
+   "rated_watts": "Rated values | Watts | 60 | 55 | 75 | 70 | 60 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 1 650 | 1 000 | 1 900 | 1 200 | ; test voltage | Volts | ... | 28,0 | ..."
+  },
+  "notes": "Pairing inferred from column order (see 60 W record)."
+ },
+ {
+  "category": "H4",
+  "filament": "70 W element (24 V normal production; sheet column order)",
+  "orientation": null,
+  "filament_length_mm": "IC 5,25 \u00b1 0,80 (24 V normal) [see notes]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "29,0 \u00b1 0,35",
+   "p": "29,25",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "24(25)",
+  "rated_watts": "70",
+  "luminous_flux_lm": {
+   "objective": "1 200",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "28,0"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H4/2; Sheet H4/4",
+  "quotes": {
+   "filament_length_mm": "IC (29),(30) | 5,5 | 5,25 | \u00b1 0,50 | \u00b1 0,80 | \u00b1 0,35",
+   "filament_position": "e | 28,5 + 0,35/\u2013 0,25 | 29,0 \u00b1 0,35 | 28,5 + 0,20/\u2013 0,00; p | 28,95 | 29,25 | 28,95",
+   "rated_volts": "Rated values | Volts | 12(25) | 24(25) | 12(25)",
+   "rated_watts": "Rated values | Watts | 60 | 55 | 75 | 70 | 60 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 1 650 | 1 000 | 1 900 | 1 200 | "
+  },
+  "notes": "Measuring flux 800 lm for this element (row 'Measuring flux(26) lm | \u2014 | 750 | \u2014 | 800')."
+ },
+ {
+  "category": "H4",
+  "filament": "standard filament lamp (12 V; 60 W and 55 W elements)",
+  "orientation": null,
+  "filament_length_mm": "IR 4,5 \u00b1 0,40; IC 5,5 \u00b1 0,35 (standard tolerances) [see notes]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 + 0,20/\u2013 0,00",
+   "p": "28,95",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "12(25)",
+  "rated_watts": "60 / 55",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H4/2; Sheet H4/4",
+  "quotes": {
+   "filament_length_mm": "IR (29),(32) | ... | \u00b1 0,40; IC (29),(30) | ... | \u00b1 0,35",
+   "filament_position": "e | ... | 28,5 + 0,20/\u2013 0,00; p | 28,95 | 29,25 | 28,95",
+   "rated_volts": "Rated values | Volts | 12(25) | 24(25) | 12(25)",
+   "rated_watts": "Rated values | Watts | ... | 60 | 55"
+  },
+  "notes": "Flux row has no standard-lamp value. Test voltage 13,2 V for this column."
+ },
+ {
+  "category": "H7",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,1 (34) [dimension f; nominal only]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0(34)",
+   "g": "0,5 min.",
+   "h1": "0(34)",
+   "h2": "0(34)",
+   "gamma1": "40\u00b0 min.",
+   "gamma2": "50\u00b0 min.",
+   "gamma3": "30\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 500",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "Requirement (footnote 7): 'The obscuration shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall moreover extend at least to a plane parallel to the reference plane where 3 crosses the outer bulb surface (view B as indicated on sheet H7/1).' (the gamma glyph is missing from the extracted text)",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H7/2 (footnote 7), Sheet H7/3 (dimensions, electrical)",
+  "quotes": {
+   "filament_length_mm": "f(33) | 4,1(34) | 4,9(34) | 4,1 \u00b1 0,1",
+   "filament_position": "e(33) | 25,0(34) | 25,0(34) | 25,0 \u00b1 0,1; g(36) | 0,5 min. | 0,5 min. | u.c.; h1(35) | 0(34) | 0(34) | 0 \u00b1 0,10; h2(35) | 0(34) | 0(34) | 0 \u00b1 0,15; \u03b31 | 40\u00b0 min.; \u03b32 | 50\u00b0 min.; \u03b33 | 30\u00b0 min.",
+   "rated_volts": "Rated values | Volts | 12 | 24 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 70 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux | 1 500 \u00b1 10 % | 1 750 \u00b1 10 % |",
+   "obscuration": "(7) The obscuration shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall moreover extend at least to a plane parallel to the reference plane where 3 crosses the outer bulb surface (view B as indicated on sheet H7/1)."
+  },
+  "notes": "Reference 12 V 1 100 / 13,2 V 1 500 is in the table but its column is not clear from the text; not used as objective. Filament-length meaning of 'f' inferred from label (no definition in text)."
+ },
+ {
+  "category": "H7",
+  "filament": "single (24 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,9 (34)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0(34)",
+   "h1": "0(34)",
+   "h2": "0(34)",
+   "gamma1": "40\u00b0 min.",
+   "gamma2": "50\u00b0 min.",
+   "gamma3": "30\u00b0 min."
+  },
+  "rated_volts": "24",
+  "rated_watts": "70",
+  "luminous_flux_lm": {
+   "objective": "1 750",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "28,0"
+  },
+  "obscuration": "As H7 12 V (footnote 7 applies to the category).",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H7/2, Sheet H7/3",
+  "quotes": {
+   "filament_length_mm": "f(33) | 4,1(34) | 4,9(34) | 4,1 \u00b1 0,1",
+   "filament_position": "e(33) | 25,0(34) | 25,0(34) | 25,0 \u00b1 0,1",
+   "rated_volts": "Rated values | Volts | 12 | 24 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 70 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux | 1 500 \u00b1 10 % | 1 750 \u00b1 10 % |",
+   "obscuration": "(7) ... (as in H7 12 V record)"
+  },
+  "notes": ""
+ },
+ {
+  "category": "H7",
+  "filament": "standard filament lamp (12 V)",
+  "orientation": null,
+  "filament_length_mm": "f 4,1 \u00b1 0,1",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0 \u00b1 0,1",
+   "g": "u.c.",
+   "h1": "0 \u00b1 0,10",
+   "h2": "0 \u00b1 0,15",
+   "gamma1": "40\u00b0 min.",
+   "gamma2": "50\u00b0 min.",
+   "gamma3": "30\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H7/3",
+  "quotes": {
+   "filament_length_mm": "f(33) | ... | 4,1 \u00b1 0,1",
+   "filament_position": "e(33) | ... | 25,0 \u00b1 0,1; g(36) | ... | u.c.; h1(35) | ... | 0 \u00b1 0,10; h2(35) | ... | 0 \u00b1 0,15",
+   "rated_volts": "Rated values | Volts | ... | 12",
+   "rated_watts": "Rated values | Watts | ... | 55"
+  },
+  "notes": "Reference as for H7 12 V; standard column flux blank."
+ },
+ {
+  "category": "H8 (also covered by the H8B row of the same sheet)",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 3,7 (38)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0(38)",
+   "h1": "0(38)",
+   "h2": "0(38)",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "40\u00b0 min.",
+   "gamma3": "30\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "35",
+  "luminous_flux_lm": {
+   "objective": "800",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "Requirement (footnote 7): 'The obscuration shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall moreover extend at least to a plane parallel to the reference plane where \u03b33 crosses the outer bulb surface (view B as indicated on sheet H8/1).'",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H8/2 (footnote 7), Sheet H8/3",
+  "quotes": {
+   "filament_length_mm": "f(37) | 3,7(38) | 3,7 \u00b1 0,1",
+   "filament_position": "e(37) | 25,0(38) | 25,0 \u00b1 0,1; h1 | 0(38) | 0 \u00b1 0,1; h2 | 0(38) | 0 \u00b1 0,15; \u03b31 | 50\u00b0 min. | 50\u00b0 min.; \u03b32 | 40\u00b0 min.; \u03b33 | 30\u00b0 min.",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 35 | 35",
+   "luminous_flux_lm": "Objective values | Luminous flux | 800 \u00b1 15 %",
+   "obscuration": "(7) The obscuration shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall moreover extend at least to a plane parallel to the reference plane where \u03b33 crosses the outer bulb surface (view B as indicated on sheet H8/1)."
+  },
+  "notes": "H8 and H8B share one data table in the sheet; no separate H8B values are given. Objective 43 max. W."
+ },
+ {
+  "category": "H8 (also covered by the H8B row of the same sheet)",
+  "filament": "standard filament lamp (12 V)",
+  "orientation": null,
+  "filament_length_mm": "f 3,7 \u00b1 0,1",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0 \u00b1 0,1",
+   "h1": "0 \u00b1 0,1",
+   "h2": "0 \u00b1 0,15",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "40\u00b0 min.",
+   "gamma3": "30\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "35",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H8/3",
+  "quotes": {
+   "filament_length_mm": "f(37) | ... | 3,7 \u00b1 0,1",
+   "filament_position": "e(37) | ... | 25,0 \u00b1 0,1; h1 | ... | 0 \u00b1 0,1; h2 | ... | 0 \u00b1 0,15",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 35 | 35"
+  },
+  "notes": "Objective 43 max. W; flux blank for this column."
+ },
+ {
+  "category": "H9 (column 1 of the H9/H9B normal-production pair; inferred)",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,8 (41)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25 (41)",
+   "g": "0,7 \u00b1 0,5",
+   "h1": "0 (41)",
+   "h2": "0 (41)",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "40\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "65",
+  "luminous_flux_lm": {
+   "objective": "2 100",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H9/3",
+  "quotes": {
+   "filament_length_mm": "f(39),(40) | 4,8 | (41) | (41) | \u00b1 0,10",
+   "filament_position": "e(39),(40) | 25 | (41) | (41) | \u00b1 0,10; g(39) | 0,7 | \u00b1 0,5 | \u00b1 0,5 | \u00b1 0,30; h1 | 0 | (41) | (41) | \u00b1 0,10(42); \u03b31 | 50\u00b0 min.; \u03b32 | 40\u00b0 min.",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 65 | 65",
+   "luminous_flux_lm": "Objective values | Luminous flux | 2 100 \u00b1 10 % | 1 650 \u00b1 10 % | (blank); Test voltage | Volts | 13,2 | 12,2 | 13,2 | 12,2 ; Objective Watts | 73 max. | 65 max. | 73 max. | 65 max."
+  },
+  "notes": "Two normal-production columns are assumed to be H9 (2 100 lm at 13,2 V, 73 max. W) and H9B (1 650 lm at 12,2 V, 65 max. W). The sheet does not label the columns; this assignment is inferred from the category name pair and the column order. Reference: 12 V 1 500; 12,2 V 1 650; 13,2 V 2 100. Standard-lamp records for H9/H9B are not extracted."
+ },
+ {
+  "category": "H9B (column 2 of the H9/H9B normal-production pair; inferred)",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,8 (41)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25 (41)",
+   "g": "0,7 \u00b1 0,5",
+   "h1": "0 (41)",
+   "h2": "0 (41)",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "40\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "65",
+  "luminous_flux_lm": {
+   "objective": "1 650",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "12,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H9/3",
+  "quotes": {
+   "filament_length_mm": "f(39),(40) | 4,8 | (41) | (41) | \u00b1 0,10",
+   "filament_position": "e(39),(40) | 25 | (41) | (41) | \u00b1 0,10",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 65 | 65",
+   "luminous_flux_lm": "Objective values | Luminous flux | 2 100 \u00b1 10 % | 1 650 \u00b1 10 % | (blank); Test voltage | Volts | 13,2 | 12,2 | 13,2 | 12,2 ; Objective Watts | 73 max. | 65 max. | 73 max. | 65 max."
+  },
+  "notes": "Inferred pairing (see H9 record). Test voltage 12,2 V and 65 max. W."
+ },
+ {
+  "category": "H10",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 5,2 (46)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,9 (45)(46)",
+   "h1_h2": "0 (46)",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "52\u00b0 min.",
+   "gamma3": "45 \u00b1 5\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "42",
+  "luminous_flux_lm": {
+   "objective": "850",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H10/2",
+  "quotes": {
+   "filament_length_mm": "f(44),(45) | 5,2 | (46) | \u00b1 0,16",
+   "filament_position": "e(44),(45) | 28,9 | (46) | \u00b1 0,16; h1, h2 | 0 | (46) | \u00b1 0,15(47); \u03b31 | 50\u00b0 min.; \u03b32 | 52\u00b0 min.; \u03b33 | 45\u00b0 | \u00b1 5\u00b0 | \u00b1 5\u00b0",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 42 | 42",
+   "luminous_flux_lm": "Objective values | Luminous flux | 850 \u00b1 15 % | (blank); Test voltage | Volts | 13,2 | 13,2"
+  },
+  "notes": "Objective watts 50 max. Reference 12 V 600 / 13,2 V 850 (standard column). Standard-lamp values also listed under the same sheet."
+ },
+ {
+  "category": "H11 (also covered by H11B row of the same sheet)",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,5 (49)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0(50)",
+   "h1": "0(50)",
+   "h2": "0(50)",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "40\u00b0 min.",
+   "gamma3": "30\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 350",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "Requirement (footnote 7): 'The obscuration shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall, moreover, extend at least to a plane parallel to the reference plane where \u03b33 crosses the outer bulb surface (view B as indicated on sheet H11/1).'",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H11/2 (footnote 7), Sheet H11/3",
+  "quotes": {
+   "filament_length_mm": "f(49) | 4,5 | 5,3(50) | 4,5 \u00b1 0,1",
+   "filament_position": "e(49) | 25,0(50) | 25,0(50) | 25,0 \u00b1 0,1; h1 | 0(50) | 0(50) | 0 \u00b1 0,1; \u03b31 | 50\u00b0 min.; \u03b32 | 40\u00b0 min.; \u03b33 | 30\u00b0 min.",
+   "rated_volts": "Rated values | Volts | 12 | 24 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 70 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux | 1 350 \u00b1 10 % | 1 600 \u00b1 10 % |",
+   "obscuration": "(7) The obscuration shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall, moreover, extend at least to a plane parallel to the reference plane where \u03b33 crosses the outer bulb surface (view B as indicated on sheet H11/1)."
+  },
+  "notes": "Objective 62 max. W. Reference 12 V 1 000 / 13,2 V 1 350 (standard column)."
+ },
+ {
+  "category": "H11 (also covered by H11B row of the same sheet)",
+  "filament": "single (24 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 5,3 (50)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0(50)",
+   "h1": "0(50)",
+   "h2": "0(50)",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "40\u00b0 min.",
+   "gamma3": "30\u00b0 min."
+  },
+  "rated_volts": "24",
+  "rated_watts": "70",
+  "luminous_flux_lm": {
+   "objective": "1 600",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "28,0"
+  },
+  "obscuration": "As H11 12 V (footnote 7 applies to the category).",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H11/2, Sheet H11/3",
+  "quotes": {
+   "filament_length_mm": "f(49) | 4,5 | 5,3(50) | 4,5 \u00b1 0,1",
+   "filament_position": "e(49) | 25,0(50) | 25,0(50)",
+   "rated_volts": "Rated values | Volts | 12 | 24 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 70 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux | 1 350 \u00b1 10 % | 1 600 \u00b1 10 % |"
+  },
+  "notes": "Objective 80 max. W."
+ },
+ {
+  "category": "H11 (also covered by H11B row of the same sheet)",
+  "filament": "standard filament lamp (12 V)",
+  "orientation": null,
+  "filament_length_mm": "f 4,5 \u00b1 0,1",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0 \u00b1 0,1",
+   "g": "u.c.",
+   "h1": "0 \u00b1 0,1",
+   "h2": "0 \u00b1 0,15",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "40\u00b0 min.",
+   "gamma3": "30\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H11/3",
+  "quotes": {
+   "filament_length_mm": "f(49) | ... | 4,5 \u00b1 0,1",
+   "filament_position": "e(49) | ... | 25,0 \u00b1 0,1; h1 | ... | 0 \u00b1 0,1; h2 | ... | 0 \u00b1 0,15",
+   "rated_volts": "Rated values | Volts | ... | 12",
+   "rated_watts": "Rated values | Watts | ... | 55"
+  },
+  "notes": "Objective 62 max. W."
+ },
+ {
+  "category": "H12",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 5,5 (tolerance cell reads '4,8 min')",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "31,5 (54)",
+   "h1_h4": "0 (54)",
+   "k": "0 (54)",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "52\u00b0 min.",
+   "gamma3": "45 \u00b1 5\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "53",
+  "luminous_flux_lm": {
+   "objective": "1 050",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H12/2",
+  "quotes": {
+   "filament_length_mm": "f(52),(53) | 5,5 | 4,8 min | \u00b1 0,16",
+   "filament_position": "e(52),(53) | 31,5 | (54) | \u00b1 0,16; h1, h2, h3, h4 | 0 | (54) | \u00b1 0,15(55); k | 0 | (54) | \u00b1 0,15(56); \u03b31 | 50\u00b0 min.; \u03b32 | 52\u00b0 min.; \u03b33 | 45\u00b0 | \u00b1 5\u00b0 | \u00b1 5\u00b0",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 53 | 53",
+   "luminous_flux_lm": "Objective values | Luminous flux | 1 050 \u00b1 15 % | (blank); Test voltage | Volts | 13,2 | 13,2"
+  },
+  "notes": "Objective 61 max. W. The f normal-column cell '4,8 min' sits in the tolerance column; the sheet's meaning is unclear. Reference 12 V 775 / 13,2 V 1 050 (standard column)."
+ },
+ {
+  "category": "H13 (dual; sheet order)",
+  "filament": "55 W element (sheet column order; 12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 1 4,6 \u00b1 0,50 and f 2 4,6 \u00b1 0,50 (element assignment not stated)",
+  "filament_diameter_mm": "d1, d2 1,8 max. (footnote 13,58; label 'd', meaning inferred)",
+  "filament_position": {
+   "e": "29,45 \u00b1 0,20",
+   "g": "0,5 d1 \u00b1 0,40",
+   "h": "0 \u00b1 0,30",
+   "j": "2,5 \u00b1 0,20",
+   "k": "2,0 \u00b1 0,20",
+   "m": "0 \u00b1 0,20",
+   "n": "0 \u00b1 0,20",
+   "p": "0 \u00b1 0,08",
+   "beta": "42\u00b0 min.",
+   "delta": "52\u00b0 min.",
+   "gamma": "43\u00b0 + 0\u00b0/\u2013 5\u00b0",
+   "theta": "41\u00b0 \u00b1 4\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 100",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "Opaque coating (footnote 7): 'The opaque coating shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall moreover extend at least to a plane parallel to the reference plane where \u03b3 crosses the outer bulb surface (view B as indicated on sheet H13/1).' Also footnote 9: 'Light shall be blocked over the cap end of the bulb extending to angle \u03b8. This requirement applies in all directions around the reference axis.'",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H13/4 (dimensions, electrical); Sheet H13/2 (footnotes 7, 9)",
+  "quotes": {
+   "filament_length_mm": "f 1(57) | 4,6 | \u00b1 0,50 | \u00b1 0,50 | \u00b1 0,25 | \u00b1 0,25 ; f 2(57) | 4,6 | \u00b1 0,50 | \u00b1 0,50 | \u00b1 0,25 | \u00b1 0,25",
+   "filament_position": "e(57) | 29,45 | \u00b1 0,20 | \u00b1 0,20 | \u00b1 0,10 | \u00b1 0,10; g (8),(58) | 0,5 d1 | ...; h (8) | 0 | ...; j (10) | 2,5 | ...; k (10) | 2,0 | ...; m (10) | 0 | ...; n (10) | 0 | ...; p (10) | 0 | \u00b1 0,08 | \u00b1 0,08 | \u00b1 0,08 | \u00b1 0,08; \u03b2 | 42\u00b0 min.; \u03b4 | 52\u00b0 min.; \u03b3 | 43\u00b0 | + 0\u00b0/\u2013 5\u00b0; \u03b8 (9) | 41\u00b0 | \u00b1 4\u00b0",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 60 | 55 | 60",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 15 % | 1 100 \u00b1 15 % | 1 700 \u00b1 15 % | (blank)  [order: 55 W then 60 W]; Test voltage | Volts | 13,2 | 13,2",
+   "obscuration": "(7) The opaque coating shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall moreover extend at least to a plane parallel to the reference plane where \u03b3 crosses the outer bulb surface (view B as indicated on sheet H13/1). (9) Light shall be blocked over the cap end of the bulb extending to angle \u03b8. This requirement applies in all directions around the reference axis."
+  },
+  "notes": "Flux pairing (55 W -> 1 100; 60 W -> 1 700) follows the sheet's cell order; not labelled. Filament 'f 1'/'f 2' not mapped to elements. Cap H13: P26.4t; H13A: PJ26.4t (not in scope fields). Reference 12 V 800/1 200; 13,2 V 1 100/1 700."
+ },
+ {
+  "category": "H13 (dual; sheet order)",
+  "filament": "60 W element (sheet column order; 12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 1 4,6 \u00b1 0,50 and f 2 4,6 \u00b1 0,50 (element assignment not stated)",
+  "filament_diameter_mm": "d1, d2 1,8 max. (footnote 13,58; inferred)",
+  "filament_position": {
+   "e": "29,45 \u00b1 0,20",
+   "g": "0,5 d1 \u00b1 0,40",
+   "h": "0 \u00b1 0,30",
+   "j": "2,5 \u00b1 0,20",
+   "k": "2,0 \u00b1 0,20",
+   "m": "0 \u00b1 0,20",
+   "n": "0 \u00b1 0,20",
+   "p": "0 \u00b1 0,08",
+   "beta": "42\u00b0 min.",
+   "delta": "52\u00b0 min.",
+   "gamma": "43\u00b0 + 0\u00b0/\u2013 5\u00b0",
+   "theta": "41\u00b0 \u00b1 4\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "60",
+  "luminous_flux_lm": {
+   "objective": "1 700",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "As H13 55 W record (footnotes 7 and 9).",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H13/4; Sheet H13/2",
+  "quotes": {
+   "filament_length_mm": "f 1(57) | 4,6 | \u00b1 0,50 ... ; f 2(57) | 4,6 | \u00b1 0,50 ...",
+   "filament_position": "e(57) | 29,45 | \u00b1 0,20 | ...",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 60 | 55 | 60",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 15 % | 1 100 \u00b1 15 % | 1 700 \u00b1 15 %"
+  },
+  "notes": "Same caveats as the 55 W record."
+ },
+ {
+  "category": "H14 (dual)",
+  "filament": "55 W element (sheet column order; normal production)",
+  "orientation": null,
+  "filament_length_mm": "f1 5,3 (62); f2 5,0 (62)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "26,15 (62)",
+   "g": "0,3 min.",
+   "h1": "0 (62)",
+   "h2": "0 (62)",
+   "h3": "0 (62)",
+   "h4": "0 (62)",
+   "i": "2,7",
+   "j": "2,5 (62)",
+   "gamma1": "55\u00b0 min.",
+   "gamma2": "52\u00b0 min.",
+   "gamma3": "43\u00b0 0/\u2013 5\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 150",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "Footnote (5): 'The obscuration shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall, moreover, extend at least to a plane parallel to the reference plane where \u03b33 crosses the outer bulb surface (view B as indicated on sheet H14/1).'",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H14/3 (dimensions, electrical); Sheet H14/2 (footnote 5)",
+  "quotes": {
+   "filament_length_mm": "f1(60),(61) | 5,3 | (62) | (62) | \u00b1 0,1 | \u00b1 0,1; f2(60),(61) | 5,0 | (62) | (62) | \u00b1 0,1 | \u00b1 0,1",
+   "filament_position": "e(60) | 26,15 | (62) | (62) | \u00b1 0,1 | \u00b1 0,1; g | 0,3 min.; h1 | 0 | (62) ...; i | 2,7; j | 2,5 | (62) ...; \u03b31 | 55\u00b0 min.; \u03b32 | 52\u00b0 min.; \u03b33 | 43\u00b0 | 0/\u2013 5\u00b0 ...",
+   "rated_volts": "Rated values | Volts | 12 | 12 | 12 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 60 | 55 | 60",
+   "luminous_flux_lm": "Objective values | Luminous flux | 1 150 \u00b1 15 % | 1 750 \u00b1 15 % |  | ; Test voltage | Volts | 13,2 | 13,2 | 13,2 | 13,2",
+   "obscuration": "(5) The obscuration shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall, moreover, extend at least to a plane parallel to the reference plane where \u03b33 crosses the outer bulb surface (view B as indicated on sheet H14/1)."
+  },
+  "notes": "Flux pairing (55 W -> 1 150; 60 W -> 1 750) follows column order (inferred). Objective 68 max. W. Reference 12 V 860 / 1 300 and 13,2 V 1 150 / 1 750."
+ },
+ {
+  "category": "H14 (dual)",
+  "filament": "60 W element (sheet column order; normal production)",
+  "orientation": null,
+  "filament_length_mm": "f1 5,3 (62); f2 5,0 (62)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "26,15 (62)",
+   "g": "0,3 min.",
+   "h1": "0 (62)",
+   "h2": "0 (62)",
+   "h3": "0 (62)",
+   "h4": "0 (62)",
+   "i": "2,7",
+   "j": "2,5 (62)",
+   "gamma1": "55\u00b0 min.",
+   "gamma2": "52\u00b0 min.",
+   "gamma3": "43\u00b0 0/\u2013 5\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "60",
+  "luminous_flux_lm": {
+   "objective": "1 750",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "Footnote (5), as for the 55 W element.",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H14/3; Sheet H14/2",
+  "quotes": {
+   "filament_length_mm": "f1(60),(61) | 5,3 | (62) | ...; f2(60),(61) | 5,0 | (62) | ...",
+   "filament_position": "e(60) | 26,15 | (62) | ...",
+   "rated_volts": "Rated values | Volts | 12 | 12 | 12 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 60 | 55 | 60",
+   "luminous_flux_lm": "Objective values | Luminous flux | 1 150 \u00b1 15 % | 1 750 \u00b1 15 % |"
+  },
+  "notes": "Objective 75 max. W (normal). Pairing inferred."
+ },
+ {
+  "category": "H15 (four normal-production variants plus standard)",
+  "filament": "15 W element (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "IR 4,2 \u00b1 0,40 (12 V); IC 4,4 \u00b1 0,40 (12 V); f 2,7 \u00b1 0,30 (element assignment not stated)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "30,0 + 0,35/\u2013 0,25",
+   "gamma1": "50\u00b0 min",
+   "gamma2": "50\u00b0 min"
+  },
+  "rated_volts": "12(63)",
+  "rated_watts": "15",
+  "luminous_flux_lm": {
+   "objective": "260",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H15/2 (electrical, e); Sheet H15/4 (IR, IC, f)",
+  "quotes": {
+   "filament_length_mm": "IR (8),(11) | 4,2 | 4,6 | \u00b1 0,40 | \u00b1 0,60 | \u00b1 0,20 | \u00b1 0,30; IC (8),(9) | 4,4 | 5,4 | \u00b1 0,40 | \u00b1 0,60 | \u00b1 0,20 | \u00b1 0,30; f (8),(9),(10) | 2,7 | 2,7 | \u00b1 0,30 | \u00b1 0,40 | + 0,20 \u2013 0,10 | + 0,25 \u2013 0,15",
+   "filament_position": "e | 30,0 + 0,35/\u2013 0,25 | ... | 30,0 + 0,20/\u2013 0,15 ; \u03b31 | 50\u00b0 min | ...; \u03b32 | 50\u00b0 min | ...",
+   "rated_volts": "Rated values | Volts | 12(63) | 12(63) | 24(63) | 24(63) | 12(63) | 12(63)",
+   "rated_watts": "Rated values | Watts | 15 | 55 | 20 | 60 | 15 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux | 260 | 1 350 | 300 | 1 500 |  | ; tolerance row: \u00b1 10 % | \u00b1 10 % | \u00b1 10 % | \u00b1 10 %"
+  },
+  "notes": "Sheet has no label linking 15 W/55 W to IR/IC/f. Lengths shown for both 12 V and 24 V where the sheet gives them. Objective 19 max. W. Reference rows at 12 V/13,2 V/13,5 V exist; not used. No obscuration text found (only 'Position of the shield')."
+ },
+ {
+  "category": "H15 (four normal-production variants plus standard)",
+  "filament": "55 W element (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "IR 4,2 \u00b1 0,40 (12 V); IC 4,4 \u00b1 0,40 (12 V); f 2,7 \u00b1 0,30 (element assignment not stated)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "30,0 + 0,35/\u2013 0,25",
+   "gamma1": "50\u00b0 min",
+   "gamma2": "50\u00b0 min"
+  },
+  "rated_volts": "12(63)",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 350",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H15/2; Sheet H15/4",
+  "quotes": {
+   "filament_length_mm": "IR (8),(11) | 4,2 | 4,6 | \u00b1 0,40 | \u00b1 0,60 | \u00b1 0,20 | \u00b1 0,30",
+   "filament_position": "e | 30,0 + 0,35/\u2013 0,25 | ...; \u03b31 | 50\u00b0 min ...",
+   "rated_volts": "Rated values | Volts | 12(63) | 12(63) | 24(63) | 24(63) | 12(63) | 12(63)",
+   "rated_watts": "Rated values | Watts | 15 | 55 | 20 | 60 | 15 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux | 260 | 1 350 | 300 | 1 500 ; tolerance \u00b1 10 %"
+  },
+  "notes": "Objective 64 max. W (normal). Pairing with IR/IC not stated."
+ },
+ {
+  "category": "H15 (four normal-production variants plus standard)",
+  "filament": "20 W element (24 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "IR 4,6 \u00b1 0,60 (24 V); IC 5,4 \u00b1 0,60 (24 V); f 2,7 \u00b1 0,40 (element assignment not stated)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "30,0 + 0,35/\u2013 0,25",
+   "gamma1": "50\u00b0 min",
+   "gamma2": "50\u00b0 min"
+  },
+  "rated_volts": "24(63)",
+  "rated_watts": "20",
+  "luminous_flux_lm": {
+   "objective": "300",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "28,0"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H15/2; Sheet H15/4",
+  "quotes": {
+   "filament_length_mm": "IR (8),(11) | ... | 4,6 | ... | \u00b1 0,60 | ...; IC (8),(9) | ... | 5,4 | ... | \u00b1 0,60 | ...; f (8),(9),(10) | ... | 2,7 | ... | \u00b1 0,40 | ...",
+   "filament_position": "e | 30,0 + 0,35/\u2013 0,25 | ...",
+   "rated_volts": "Rated values | Volts | ... | 24(63) | 24(63) | ...",
+   "rated_watts": "Rated values | Watts | ... | 20 | 60 | ...",
+   "luminous_flux_lm": "Objective values | Luminous flux | ... | 300 | 1 500 | ...; tolerance \u00b1 10 %"
+  },
+  "notes": "Objective 24 max. W. 24 V dimension columns: IR 4,6; IC 5,4; f 2,7 (H15/4)."
+ },
+ {
+  "category": "H15 (four normal-production variants plus standard)",
+  "filament": "60 W element (24 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "IR 4,6 \u00b1 0,60 (24 V); IC 5,4 \u00b1 0,60 (24 V); f 2,7 \u00b1 0,40 (element assignment not stated)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "30,0 + 0,35/\u2013 0,25",
+   "gamma1": "50\u00b0 min",
+   "gamma2": "50\u00b0 min"
+  },
+  "rated_volts": "24(63)",
+  "rated_watts": "60",
+  "luminous_flux_lm": {
+   "objective": "1 500",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "28,0"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H15/2; Sheet H15/4",
+  "quotes": {
+   "filament_length_mm": "as in the 20 W record (H15/4 24 V columns)",
+   "filament_position": "e | 30,0 + 0,35/\u2013 0,25 | ...",
+   "rated_volts": "Rated values | Volts | ... | 24(63) | ...",
+   "rated_watts": "Rated values | Watts | ... | 60 | ...",
+   "luminous_flux_lm": "Objective values | Luminous flux | ... | 1 500 ; tolerance \u00b1 10 %"
+  },
+  "notes": "Objective 73 max. W."
+ },
+ {
+  "category": "H15 (standard filament lamp, 12 V, 15 W and 55 W)",
+  "filament": "standard filament lamp (12 V; 15 W and 55 W)",
+  "orientation": null,
+  "filament_length_mm": "IR 4,2 \u00b1 0,20; IC 4,4 \u00b1 0,20; f 2,7 + 0,20 \u2013 0,10 (12 V standard tolerances)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "30,0 + 0,20/\u2013 0,15",
+   "gamma1": "50\u00b0 min",
+   "gamma2": "50\u00b0 min"
+  },
+  "rated_volts": "12(63)",
+  "rated_watts": "15 / 55",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H15/2; Sheet H15/4",
+  "quotes": {
+   "filament_length_mm": "IR (8),(11) | 4,2 | ... | \u00b1 0,20 ; IC | 4,4 | ... | \u00b1 0,20",
+   "filament_position": "e | 30,0 + 0,20/\u2013 0,15",
+   "rated_volts": "Rated values | Volts | ... | 12(63) | 12(63)",
+   "rated_watts": "Rated values | Watts | 15 | 55 | ... | 15 | 55"
+  },
+  "notes": "Objective 19 max. W (15 W) and 64 max. W (55 W). No flux given for the standard column."
+ },
+ {
+  "category": "H16 (also covered by H16B row of the same sheet)",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 3,2 (67)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "25,0(67)",
+   "h1": "0(67)",
+   "h2": "0(67)",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "40\u00b0 min.",
+   "gamma3": "30\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "19",
+  "luminous_flux_lm": {
+   "objective": "500",
+   "tolerance": "+10 %/\u2013 15 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "Footnote (7): 'The obscuration shall extend at least to angle \u03b33 and shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference.'",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H16/2 (footnote 7), Sheet H16/3",
+  "quotes": {
+   "filament_length_mm": "f(66) | 3,2(67) | 3,2 \u00b1 0,1",
+   "filament_position": "e(66) | 25,0(67) | 25,0 \u00b1 0,1; h1 | 0(67) | 0 \u00b1 0,1; h2 | 0(67) | 0 \u00b1 0,15; \u03b31 | 50\u00b0 min.; \u03b32 | 40\u00b0 min.; \u03b33 | 30\u00b0 min.",
+   "rated_volts": "Rated values | Volts | 12",
+   "rated_watts": "Rated values | Watts | 19",
+   "luminous_flux_lm": "Luminous flux | 500 + 10 %/\u2013 15 %",
+   "obscuration": "(7) The obscuration shall extend at least to angle \u03b33 and shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference."
+  },
+  "notes": "Objective 26 max. W. Reference 370 lm at 12 V, 500 lm at 13,2 V, 550 lm at 13,5 V. Standard-lamp column e 25,0 \u00b1 0,1, f 3,2 \u00b1 0,1 (dims only)."
+ },
+ {
+  "category": "H17 (dual: driving and passing beam; sheet note 6)",
+  "filament": "driving-beam (left-hand flux column)",
+  "orientation": null,
+  "filament_length_mm": "lR 4,0 \u00b1 0,40 (normal) [see notes]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 + 0,35/\u2013 0,15",
+   "p": "28,95",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "12 (6)",
+  "rated_watts": "35",
+  "luminous_flux_lm": {
+   "objective": "900",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "not stated in table (13,2 V appears only in reference row)"
+  },
+  "obscuration": "Note 5: 'The obscuration shall extend at least as far as the cylindrical part of the bulb. It shall also overlap the internal shield when the latter is viewed in a direction perpendicular to the reference axis.'",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H17/2 (electrical, e, p, \u03b1); Sheet H17/5 (lR); Sheet H17/6 (notes 5, 6)",
+  "quotes": {
+   "filament_length_mm": "lR (9), (12) | 4,0 | \u00b1 0,40 | \u00b1 0,20",
+   "filament_position": "e | 28,5 + 0,35/\u2013 0,15 | 28,5 + 0,20/\u2013 0,0; p | 28,95; \u03b1 | max. 40\u00b0",
+   "rated_volts": "Rated values | Volts | 12 (6) | 12 (6) | 12 (6) | 12 (6)",
+   "rated_watts": "Rated values | Watts | 35 | 35 | 35 | 35",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | 900 \u00b1 10 % | 600 \u00b1 10 % |  ; note 6: 'The value indicated in the left hand column relate to the driving-beam filament. Those indicated in the right-hand column relate to the passing beam filament.'",
+   "obscuration": "5. The obscuration shall extend at least as far as the cylindrical part of the bulb. It shall also overlap the internal shield when the latter is viewed in a direction perpendicular to the reference axis."
+  },
+  "notes": "Note 6 gives the driving/passing split explicitly. lR is assumed to be the driving-beam length (R = driving, inferred). Objective 37 max. W. Reference 12,0 V 700/450; 13,2 V 900/600 (not objective)."
+ },
+ {
+  "category": "H17 (dual: driving and passing beam; sheet note 6)",
+  "filament": "passing-beam (right-hand flux column)",
+  "orientation": null,
+  "filament_length_mm": "lC 4,2 \u00b1 0,40 (normal) [see notes]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 + 0,35/\u2013 0,15",
+   "p": "28,95",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "12 (6)",
+  "rated_watts": "35",
+  "luminous_flux_lm": {
+   "objective": "600",
+   "tolerance": "\u00b110 %",
+   "test_voltage_V": "not stated in table"
+  },
+  "obscuration": "Note 5 (as in the driving-beam record).",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H17/2; Sheet H17/5 (lC); Sheet H17/6",
+  "quotes": {
+   "filament_length_mm": "lC (9),(12) | 4,2 | \u00b1 0,40 | \u00b1 0,20",
+   "filament_position": "e | 28,5 + 0,35/\u2013 0,15 | ...",
+   "rated_volts": "Rated values | Volts | 12 (6) | ...",
+   "rated_watts": "Rated values | Watts | 35 | ...",
+   "luminous_flux_lm": "Objective values | Luminous flux \u00b1 % | ... | 600 \u00b1 10 % |"
+  },
+  "notes": "Passing-beam filament length assumed lC (inferred). Standard-lamp tolerances: e +0,20/-0,0, lR \u00b10,20, lC \u00b10,20."
+ },
+ {
+  "category": "H17 standard filament lamp (12 V)",
+  "filament": "standard filament lamp (12 V)",
+  "orientation": null,
+  "filament_length_mm": "lR 4,0 \u00b1 0,20; lC 4,2 \u00b1 0,20 (standard tolerances)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 + 0,20/\u2013 0,0",
+   "p": "28,95",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "12 (6)",
+  "rated_watts": "35",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H17/2; Sheet H17/5",
+  "quotes": {
+   "filament_length_mm": "lR (9),(12) | 4,0 | \u00b1 0,40 | \u00b1 0,20",
+   "filament_position": "e | 28,5 + 0,35/\u2013 0,15 | 28,5 + 0,20/\u2013 0,0",
+   "rated_volts": "Rated values | Volts | 12 (6) | 12 (6) | 12 (6) | 12 (6)",
+   "rated_watts": "Rated values | Watts | 35 | 35 | 35 | 35"
+  },
+  "notes": "Objective 37 max. W; no flux given for the standard column."
+ },
+ {
+  "category": "HB3 (also covered by HB3A row of the same sheet)",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 5,1 (84)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "31,5 (83)(85)",
+   "h1_h2": "0 (84)",
+   "h3": "0 (84)",
+   "gamma1": "45\u00b0 min.",
+   "gamma2": "52\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "60",
+  "luminous_flux_lm": {
+   "objective": "1 860",
+   "tolerance": "\u00b112 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HB3/3",
+  "quotes": {
+   "filament_length_mm": "f(83),(85) | 5,1 | (84) | \u00b1 0,16",
+   "filament_position": "e(83),(85) | 31,5 | (84) | \u00b1 0,16; h1, h2 | 0 | (84) | \u00b1 0,15(82); h3 | 0 | (84) | \u00b1 0,08(82); \u03b31 | 45\u00b0 min.; \u03b32 | 52\u00b0 min.",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 60 | 60",
+   "luminous_flux_lm": "Objective values | Luminous flux | 1 860 \u00b1 12 % |  ; Test voltage | Volts | 13,2 | 13,2"
+  },
+  "notes": "Objective 73 max. W. Reference 12 V 1 300 / 13,2 V 1 860 (standard column)."
+ },
+ {
+  "category": "HB3 standard filament lamp (12 V)",
+  "filament": "standard filament lamp (12 V)",
+  "orientation": null,
+  "filament_length_mm": "f 5,1 \u00b1 0,16",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "31,5 \u00b1 0,16",
+   "h1_h2": "0 \u00b1 0,15",
+   "h3": "0 \u00b1 0,08"
+  },
+  "rated_volts": "12",
+  "rated_watts": "60",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HB3/3",
+  "quotes": {
+   "filament_length_mm": "f(83),(85) | 5,1 | (84) | \u00b1 0,16",
+   "filament_position": "e(83),(85) | 31,5 | (84) | \u00b1 0,16",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 60 | 60"
+  },
+  "notes": "Objective 73 max. W; no flux."
+ },
+ {
+  "category": "HB4 (also covered by HB4A row of the same sheet)",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 5,1 (91)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "31,5 (91)",
+   "g": "0,75 \u00b1 0,5",
+   "gamma1": "50\u00b0 min.",
+   "gamma3": "45 \u00b1 5\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "51",
+  "luminous_flux_lm": {
+   "objective": "1 095",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HB4/3",
+  "quotes": {
+   "filament_length_mm": "f(90),(92) | 5,1 | (91) | \u00b1 0,16",
+   "filament_position": "e(90),(92) | 31,5 | (91) | \u00b1 0,16; g(90) | 0,75 | \u00b1 0,5 | \u00b1 0,3; \u03b31 | 50\u00b0 min.; \u03b33 | 45\u00b0 | \u00b1 5\u00b0 | \u00b1 5\u00b0",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 51 | 51",
+   "luminous_flux_lm": "Objective values | Luminous flux | 1 095 \u00b1 15 % |  ; Test voltage | Volts | 13,2 | 13,2"
+  },
+  "notes": "Objective 62 max. W. Reference 12 V 825 / 13,2 V 1 095 (standard column)."
+ },
+ {
+  "category": "HB4 standard filament lamp (12 V)",
+  "filament": "standard filament lamp (12 V)",
+  "orientation": null,
+  "filament_length_mm": "f 5,1 \u00b1 0,16",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "31,5 \u00b1 0,16",
+   "g": "0,75 \u00b1 0,3"
+  },
+  "rated_volts": "12",
+  "rated_watts": "51",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HB4/3",
+  "quotes": {
+   "filament_length_mm": "f(90),(92) | 5,1 | (91) | \u00b1 0,16",
+   "filament_position": "e(90),(92) | 31,5 | (91) | \u00b1 0,16; g(90) | 0,75 | \u00b1 0,5 | \u00b1 0,3",
+   "rated_volts": "Rated values | Volts | 12 | 12"
+  },
+  "notes": "Objective 62 max. W; no flux."
+ },
+ {
+  "category": "HIR1",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 5,1 (98)",
+  "filament_diameter_mm": "d 1,6 max. (label 'd' in dimension table; footnote not in text, inferred)",
+  "filament_position": {
+   "e": "29 (98)",
+   "g": "0 (+0,7/\u20130,0)",
+   "h1_h2": "0 (98)",
+   "gamma2": "50\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "65",
+  "luminous_flux_lm": {
+   "objective": "2 500",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HIR1/2",
+  "quotes": {
+   "filament_length_mm": "f(97),(99) | 5,1 | (98) | \u00b1 0,16",
+   "filament_diameter_mm": "d | 1,6 max.",
+   "filament_position": "e(97),(99) | 29 | (98) | \u00b1 0,16; g(97) | 0 | + 0,7/\u2013 0,0 | + 0,4/\u2013 0,0; h1, h2 | 0 | (98) | \u00b1 0,15(96); \u03b32 | 50\u00b0 min.",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 65 | 65",
+   "luminous_flux_lm": "Objective values | Luminous flux | 2 500 \u00b1 15 % |  ; Test voltage | Volts | 13,2 | 13,2"
+  },
+  "notes": "Objective 73 max. W. Reference 12 V 1 840 / 13,2 V 2 500 (standard column). Standard lamp tolerances: e \u00b10,16; f \u00b10,16; g +0,4/\u20130,0; h \u00b10,15."
+ },
+ {
+  "category": "HIR2",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 5,3 (103)",
+  "filament_diameter_mm": "d 1,6 max. (label 'd'; footnote not in text, inferred)",
+  "filament_position": {
+   "e": "28,7 (103)",
+   "g": "0 (+0,7/\u20130,0)",
+   "h1_h2": "0 (103)"
+  },
+  "rated_volts": "12",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 875",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HIR2/2",
+  "quotes": {
+   "filament_length_mm": "f(102),(104) | 5,3 | (103) | \u00b1 0,16",
+   "filament_diameter_mm": "d | 1,6 max. | \u2014 | \u2014",
+   "filament_position": "e(102),(104) | 28,7 | (103) | \u00b1 0,16; g(102) | 0 | + 0,7/\u2013 0,0 | + 0,4/\u2013 0,0; h1, h2 | 0 | (103) | \u00b1 0,15(101)",
+   "rated_volts": "Rated values | Volts | 12 | 12",
+   "rated_watts": "Rated values | Watts | 55 | 55",
+   "luminous_flux_lm": "Objective values | Luminous flux | 1 875 \u00b1 15 % |  ; Test voltage | Volts | 13,2 | 13,2"
+  },
+  "notes": "Objective 63 max. W. Reference 12 V 1 355 / 13,2 V 1 875 (standard column)."
+ },
+ {
+  "category": "HS1 (dual; 6 V and 12 V normal production; sheet column order)",
+  "filament": "element A (sheet first flux column)",
+  "orientation": null,
+  "filament_length_mm": "6 V: lR 3,5 \u00b1 0,80, lC 3,3 \u00b1 0,80; 12 V: lR 4,0 \u00b1 0,80, lC 4,5 \u00b1 0,80 (element assignment not stated); f 1,7",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 + 0,45/\u2013 0,25",
+   "p": "28,95",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "6 / 12",
+  "rated_watts": "35",
+  "luminous_flux_lm": {
+   "objective": "700 (6 V); 825 (12 V)",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "6,3 (6 V); 13,2 (12 V)"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS1/2 (electrical); Sheet HS1/4 (dimensions)",
+  "quotes": {
+   "filament_length_mm": "lR (110),(113) | 3,5 | 4,0 | \u00b1 0,80 | \u00b1 0,80 | \u00b1 0,40; lC (110),(111) | 3,3 | 4,5 | \u00b1 0,80 | \u00b1 0,80 | \u00b1 0,35; f(110),(111),(112) | 1,7 | 1,7 | + 0,50/\u2013 0,30 | + 0,50/\u2013 0,30 | + 0,30/\u2013 0,10",
+   "filament_position": "e(112) | 28,5 | ...| + 0,45/\u2013 0,25 | ... ; p/33 ...; \u03b1 | max. 40\u00b0",
+   "rated_volts": "Rated values | Volts | 6(106) | 6(106) | 12(106) | 12(106) | 12(106) | 12(106)",
+   "rated_watts": "Rated values | Watts | 35 | 35 | 35 | 35 | 35 | 35",
+   "luminous_flux_lm": "Objective values | Luminous flux | 700 | 440 | 825 | 525 |  ; tolerance \u00b1 % | 15 | 15 | 15 | 15 ; Test voltage | Volts | 6,3 | 6,3 | 13,2 | 13,2 | 13,2 | 13,2"
+  },
+  "notes": "Element A/B labels absent. Objective watts 35 \u00b15 %. Element B 6 V: 440 lm; element B 12 V: 525 lm, with measuring flux 450 lm on the 12 V B column."
+ },
+ {
+  "category": "HS1 (dual; 6 V and 12 V normal production)",
+  "filament": "element B (sheet second flux column)",
+  "orientation": null,
+  "filament_length_mm": "6 V: lR 3,5 / lC 3,3 \u00b1 0,80; 12 V: lR 4,0 / lC 4,5 \u00b1 0,80 (element assignment not stated)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 + 0,45/\u2013 0,25",
+   "p": "28,95",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "6 / 12",
+  "rated_watts": "35",
+  "luminous_flux_lm": {
+   "objective": "440 (6 V); 525 (12 V)",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "6,3 (6 V); 13,2 (12 V)"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS1/2",
+  "quotes": {
+   "filament_length_mm": "see HS1 element A",
+   "filament_position": "see HS1 element A",
+   "rated_volts": "Rated values | Volts | 6(106) | 12(106)",
+   "rated_watts": "Rated values | Watts | 35 | 35",
+   "luminous_flux_lm": "Objective values | Luminous flux | 700 | 440 | 825 | 525"
+  },
+  "notes": "Pairing by column order (inferred). Measuring flux 450 lm (12 V)."
+ },
+ {
+  "category": "HS1 standard filament lamp (12 V)",
+  "filament": "standard filament lamp (12 V)",
+  "orientation": null,
+  "filament_length_mm": "lR 4,0 \u00b1 0,40; lC 4,5 \u00b1 0,35; f 1,7 + 0,30/\u2013 0,10 (standard tolerances)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 + 0,20/\u2013 0,00",
+   "p": "28,95",
+   "alpha": "max. 40\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "35",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS1/2; Sheet HS1/4",
+  "quotes": {
+   "filament_length_mm": "lR (110),(113) | 4,0 | \u00b1 0,40; lC (110),(111) | 4,5 | \u00b1 0,35",
+   "filament_position": "e(112) | 28,5 | + 0,20/\u2013 0,00",
+   "rated_volts": "Rated values | Volts | ... | 12(106)",
+   "rated_watts": "Rated values | Watts | 35"
+  },
+  "notes": "Reference rows: 12 V 700/450; 13,2 V 825/525 (two values in the standard column; element assignment unclear). Objective 35 \u00b15 %."
+ },
+ {
+  "category": "HS2",
+  "filament": "single (6 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f min 1,5 / nom 2,5 / max 3,0 (f(115), 6 V)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "11,0 (114)",
+   "h1_h2": "(114)",
+   "alpha": "max. 40\u00b0",
+   "beta": "90\u00b0 nom (75\u00b0\u2013105\u00b0)",
+   "gamma1": "15\u00b0 min",
+   "gamma2": "40\u00b0 min"
+  },
+  "rated_volts": "6",
+  "rated_watts": "15",
+  "luminous_flux_lm": {
+   "objective": "320",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "6,75"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS2/2 (electrical, dims); Sheet HS2/3 (screen projection)",
+  "quotes": {
+   "filament_length_mm": "f(115) | 6 V | 1,5 | 2,5 | 3,0 | 2,5 \u00b1 0,15",
+   "filament_position": "e | | 11,0(114) | | 11,0 \u00b1 0,15; h1, h2 | | (114) | | 0 \u00b1 0,15; \u03b1 (2) | | | 40\u00b0; \u03b2 (3) | 75\u00b0 | 90\u00b0 | 105\u00b0 | 90\u00b0 \u00b1 5\u00b0; \u03b31 (4) | 15\u00b0 | | | 15\u00b0 min.; \u03b32 (4) | 40\u00b0 | | | 40\u00b0 min.",
+   "rated_volts": "Rated values | Volts | 6 | 6 | 12 | 6",
+   "rated_watts": "Rated values | Watts | 15 | 15 | 15 | 15",
+   "luminous_flux_lm": "Objective values | Luminous flux | 320 \u00b1 15 % | 320 \u00b1 15 % | 320 \u00b1 15 % | (blank) ; Test voltage | Volts | 6,75 | 6,75 | 13,5 | 6,75"
+  },
+  "notes": "The flux cell spans three columns (6 V normal, 12 V normal and one more) so its exact column assignment is not clear; test voltage 13,5 V is listed for the 12 V column. Objective 15 \u00b1 6 % W."
+ },
+ {
+  "category": "HS2",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f min 2,0 / nom 3,0 / max 4,0 (f(115), 12 V)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "11,0 (114)",
+   "h1_h2": "(114)",
+   "alpha": "max. 40\u00b0",
+   "beta": "90\u00b0 nom (75\u00b0\u2013105\u00b0)",
+   "gamma1": "15\u00b0 min",
+   "gamma2": "40\u00b0 min"
+  },
+  "rated_volts": "12",
+  "rated_watts": "15",
+  "luminous_flux_lm": {
+   "objective": "320",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,5"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS2/2",
+  "quotes": {
+   "filament_length_mm": "f(115) | 12 V | 2,0 | 3,0 | 4,0",
+   "rated_volts": "Rated values | Volts | 6 | 6 | 12 | 6",
+   "rated_watts": "Rated values | Watts | 15 | 15 | 15 | 15",
+   "luminous_flux_lm": "Objective values | Luminous flux | 320 \u00b1 15 % | 320 \u00b1 15 % | 320 \u00b1 15 % ; Test voltage | Volts | ... | 13,5 | ..."
+  },
+  "notes": "See the 6 V record for the column caveat on the flux cell."
+ },
+ {
+  "category": "HS2 standard filament lamp (6 V)",
+  "filament": "standard filament lamp (6 V)",
+  "orientation": null,
+  "filament_length_mm": "f 2,5 \u00b1 0,15",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "11,0 \u00b1 0,15",
+   "h1_h2": "0 \u00b1 0,15"
+  },
+  "rated_volts": "6",
+  "rated_watts": "15",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS2/2",
+  "quotes": {
+   "filament_length_mm": "f(115) | 6 V | ... | 2,5 \u00b1 0,15",
+   "filament_position": "e | | ... | 11,0 \u00b1 0,15; h1, h2 | ... | 0 \u00b1 0,15",
+   "rated_volts": "Rated values | Volts | ... | 6",
+   "rated_watts": "Rated values | Watts | 15"
+  },
+  "notes": "Standard test voltage 6,75 V."
+ },
+ {
+  "category": "HS5 (motorcycle filament lamp; dual 35 W / 30 W)",
+  "filament": "35 W element (12 V normal production; sheet column order)",
+  "orientation": null,
+  "filament_length_mm": "lC 4,6 (117) ; lR 4,6 (117) [tolerance (116) not visible]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "26 (116)",
+   "k": "0 (116)",
+   "h1_h3": "0 (116)",
+   "h2_h4": "0 (116)",
+   "g1_g3": "0 (116)",
+   "g2_g4": "2,5 (116)",
+   "j": "0 (116)",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "23\u00b0 min.",
+   "gamma3": "50\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "35",
+  "luminous_flux_lm": {
+   "objective": "620",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "Sheet title only: 'Distortion free area and black top' (HS5/1). Requirement wording not present in the extracted text.",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS5/1 (title), Sheet HS5/3 (dimensions, electrical)",
+  "quotes": {
+   "filament_length_mm": "lC (117) | 4,6 | (116) | (116) | \u00b1 0,3 | \u00b1 0,3; lR (117) | 4,6 | (116) | (116) | \u00b1 0,3 | \u00b1 0,3",
+   "filament_position": "e | 26 | (116) | (116) | \u00b1 0,15 | \u00b1 0,15; k | 0 | (116) | ...; g2, g4 | 2,5 | (116) | ...; \u03b31 | 50\u00b0 min.; \u03b32 | 23\u00b0 min.; \u03b33 | 50\u00b0 min.",
+   "rated_volts": "Rated values | Voltage | V | 12 | 12 | 12 | 12",
+   "rated_watts": "Rated values | Wattage | W | 35 | 30 | 35 | 30",
+   "luminous_flux_lm": "Objective Values | Luminous flux | lm | 620 | 515 ; \u00b1 % | 15 | 15"
+  },
+  "notes": "Normal-production tolerances appear only as footnote reference (116); its text is not in the extract, so they are not given. The 30 W variant is the second column (flux 515 lm, objective 37 max. W)."
+ },
+ {
+  "category": "HS5 (motorcycle filament lamp; dual 35 W / 30 W)",
+  "filament": "30 W element (12 V normal production; sheet column order)",
+  "orientation": null,
+  "filament_length_mm": "lC 4,6 ; lR 4,6 (117) [tolerance (116) not visible]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "26 (116)",
+   "k": "0 (116)",
+   "h1_h3": "0 (116)",
+   "h2_h4": "0 (116)",
+   "g1_g3": "0 (116)",
+   "g2_g4": "2,5 (116)",
+   "j": "0 (116)",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "23\u00b0 min.",
+   "gamma3": "50\u00b0 min."
+  },
+  "rated_volts": "12",
+  "rated_watts": "30",
+  "luminous_flux_lm": {
+   "objective": "515",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "As 35 W element (sheet title only).",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS5/3",
+  "quotes": {
+   "rated_volts": "Rated values | Voltage | V | 12 | 12 | 12 | 12",
+   "rated_watts": "Rated values | Wattage | W | 35 | 30 | 35 | 30",
+   "luminous_flux_lm": "Objective Values | Luminous flux | lm | 620 | 515 |"
+  },
+  "notes": "Objective 37 max. W. Reference 12 V 380 lm (standard column 380; normal column 460), 13,2 V 515 lm."
+ },
+ {
+  "category": "HS5 standard filament lamp (12 V, 35 W and 30 W)",
+  "filament": "standard filament lamp (12 V)",
+  "orientation": null,
+  "filament_length_mm": "lC \u00b1 0,3; lR \u00b1 0,3 (standard tolerances; nominal 4,6)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "26 \u00b1 0,15",
+   "k": "0 \u00b1 0,2",
+   "g2_g4": "2,5 \u00b1 0,40"
+  },
+  "rated_volts": "12",
+  "rated_watts": "35 / 30",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS5/3",
+  "quotes": {
+   "filament_length_mm": "lC (117) | 4,6 | (116) | (116) | \u00b1 0,3 | \u00b1 0,3",
+   "filament_position": "e | 26 | ... | \u00b1 0,15 | \u00b1 0,15"
+  },
+  "notes": "Objective 40 max. W (35 W) and 37 max. W (30 W)."
+ },
+ {
+  "category": "HS5A (dual 45 W / 40 W)",
+  "filament": "45 W element (12 V normal production; sheet column order)",
+  "orientation": null,
+  "filament_length_mm": "lC 4,6 \u00b1 0,5; lR 4,6 \u00b1 0,5",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "26",
+   "k": "0 \u00b1 0,4",
+   "h1_h3": "0 \u00b1 0,3",
+   "h2_h4": "0 \u00b1 0,4",
+   "j": "0 \u00b1 0,6",
+   "g1_g3": "0 \u00b1 0,6",
+   "g2_g4": "2,5 \u00b1 0,4",
+   "gamma1": "50\u00b0 min.",
+   "gamma2": "23\u00b0 min.",
+   "gamma3": "50\u00b0 min."
+  },
+  "rated_volts": "12(119)",
+  "rated_watts": "45",
+  "luminous_flux_lm": {
+   "objective": "750",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS5A/3",
+  "quotes": {
+   "filament_length_mm": "lC (118) | 4,6 | \u00b1 0,5 | \u00b1 0,3; lR (118) | 4,6 | \u00b1 0,5 | \u00b1 0,3",
+   "filament_position": "e | 26 | \u2014 | \u2014; k | 0 | \u00b1 0,4 | \u00b1 0,2; g2, g4 | 2,5 | \u00b1 0,4 | \u00b1 0,2; \u03b31 | 50\u00b0 min.; \u03b32 | 23\u00b0 min.; \u03b33 | 50\u00b0 min.",
+   "rated_volts": "Rated values | Voltage | V | 12(119) | 12(119)",
+   "rated_watts": "Rated values | Wattage | W | 45 | 40 | 45 | 40",
+   "luminous_flux_lm": "Objective Values | Luminous flux | lm | 750 | 640 | ; \u00b1 % | 15 | 15 |"
+  },
+  "notes": "Objective 50 max. W. Reference 12 V 550 lm; 13,2 V 750 lm (two-value cells; column unclear). Footnote (119) not in extract."
+ },
+ {
+  "category": "HS5A (dual 45 W / 40 W)",
+  "filament": "40 W element (12 V normal production; sheet column order)",
+  "orientation": null,
+  "filament_length_mm": "lC 4,6 \u00b1 0,5; lR 4,6 \u00b1 0,5",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "26",
+   "k": "0 \u00b1 0,4",
+   "h1_h3": "0 \u00b1 0,3",
+   "h2_h4": "0 \u00b1 0,4",
+   "j": "0 \u00b1 0,6",
+   "g1_g3": "0 \u00b1 0,6",
+   "g2_g4": "2,5 \u00b1 0,4"
+  },
+  "rated_volts": "12(119)",
+  "rated_watts": "40",
+  "luminous_flux_lm": {
+   "objective": "640",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS5A/3",
+  "quotes": {
+   "rated_volts": "Rated values | Voltage | V | 12(119) | 12(119)",
+   "rated_watts": "Rated values | Wattage | W | 45 | 40 | 45 | 40",
+   "luminous_flux_lm": "Objective Values | Luminous flux | lm | 750 | 640"
+  },
+  "notes": "Objective 45 max. W."
+ },
+ {
+  "category": "HS6 (dual 40 W / 35 W)",
+  "filament": "40 W element (12 V normal production; sheet column order)",
+  "orientation": null,
+  "filament_length_mm": "f1 4,4 \u00b1 0,50 (120); f2 4,4 \u00b1 0,50 (120) (element assignment not stated)",
+  "filament_diameter_mm": "d1, d2 1,4 max. (footnote 13,121; label 'd', inferred)",
+  "filament_position": {
+   "e": "29,45 (120) \u00b1 0,20",
+   "g": "0,5 d1 \u00b1 0,50",
+   "h": "0 \u00b1 0,40",
+   "j": "2,5 \u00b1 0,30",
+   "k": "2,0 \u00b1 0,20",
+   "m": "0 \u00b1 0,24",
+   "n": "0 \u00b1 0,24",
+   "p": "0 \u00b1 0,30",
+   "beta": "42\u00b0 min.",
+   "delta": "52\u00b0 min.",
+   "gamma": "43\u00b0 + 0\u00b0/\u2013 5\u00b0",
+   "theta": "41\u00b0 \u00b1 4\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "40",
+  "luminous_flux_lm": {
+   "objective": "900",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "Footnote 7: 'The opaque coating shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall moreover extend at least to a plane parallel to the reference plane where \u03b3 crosses the outer bulb surface as shown in Figure 3 (view in direction B as indicated on sheet HS6/1).' Footnote 9: 'Light shall be blocked over the cap end of the bulb extending to angle \u03b8. This requirement applies in all directions around the reference axis.'",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS6/4 (dimensions, electrical); Sheet HS6/2 (footnotes 7, 9)",
+  "quotes": {
+   "filament_length_mm": "f1(120) | 4,4 | \u00b1 0,50 | \u00b1 0,50 | \u00b1 0,25 | \u00b1 0,25; f2(120) | 4,4 | \u00b1 0,50 | ...",
+   "filament_diameter_mm": "d1 (13),(121) | 1,4 max. | \u2014 | \u2014 | \u2014 | \u2014",
+   "filament_position": "e(120) | 29,45 | \u00b1 0,20 | \u00b1 0,20 | \u00b1 0,10 | \u00b1 0,10; g (8),(121) | 0,5 d1 | \u00b1 0,50 ...; h (8) | 0 | \u00b1 0,40 ...; j (10) | 2,5 | \u00b1 0,30 ...; k (10) | 2,0 | \u00b1 0,20 ...; m (11) | 0 | \u00b1 0,24 ...; n (11) | 0 | \u00b1 0,24 ...; p (10) | 0 | \u00b1 0,30 ...; \u03b2 | 42\u00b0 min.; \u03b4 | 52\u00b0 min.; \u03b3 | 43\u00b0 | + 0\u00b0/\u2013 5\u00b0; \u03b8 (9) | 41\u00b0 | \u00b1 4\u00b0",
+   "rated_volts": "Rated values | Volts | 12 | 12 | 12 | 12",
+   "rated_watts": "Rated values | Watts | 40 | 35 | 40 | 35",
+   "luminous_flux_lm": "Objective values | Luminous flux | 900 \u00b1 15 % | 600 \u00b1 15 % |  ; Test voltage | Volts | 13,2 | 13,2 | 13,2 | 13,2",
+   "obscuration": "(7) The opaque coating shall extend at least to the cylindrical part of the bulb on the whole bulb top circumference. It shall moreover extend at least to a plane parallel to the reference plane where \u03b3 crosses the outer bulb surface as shown in Figure 3 (view in direction B as indicated on sheet HS6/1). (9) Light shall be blocked over the cap end of the bulb extending to angle \u03b8. This requirement applies in all directions around the reference axis."
+  },
+  "notes": "Pairing 40 W -> 900 lm, 35 W -> 600 lm by column order (inferred). Objective 45 max. W. Reference 12 V 630/420, 13,2 V 900/600."
+ },
+ {
+  "category": "HS6 (dual 40 W / 35 W)",
+  "filament": "35 W element (12 V normal production; sheet column order)",
+  "orientation": null,
+  "filament_length_mm": "f1 4,4 \u00b1 0,50 (120); f2 4,4 \u00b1 0,50 (120) (element assignment not stated)",
+  "filament_diameter_mm": "d1, d2 1,4 max. (inferred)",
+  "filament_position": {
+   "e": "29,45 \u00b1 0,20",
+   "theta": "41\u00b0 \u00b1 4\u00b0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "35",
+  "luminous_flux_lm": {
+   "objective": "600",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": "As 40 W element (footnotes 7 and 9).",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet HS6/4",
+  "quotes": {
+   "rated_volts": "Rated values | Volts | 12 | 12 | 12 | 12",
+   "rated_watts": "Rated values | Watts | 40 | 35 | 40 | 35",
+   "luminous_flux_lm": "Objective values | Luminous flux | 900 \u00b1 15 % | 600 \u00b1 15 % |"
+  },
+  "notes": "Objective 40 max. W (column 2 of the 'Objective values | Watts' row)."
+ },
+ {
+  "category": "R2 (headlamp, dual-watt variants; per sheet R2/1)",
+  "filament": "45 W element (6 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 1,8 (6 V/12 V) [see notes]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 (6 V, 12 V)",
+   "a": "0,60",
+   "b1_b2": "0,20",
+   "c": "0,50",
+   "alpha": null,
+   "IC": "5,5 \u00b1 1,50 (normal)"
+  },
+  "rated_volts": "6(183)",
+  "rated_watts": "45",
+  "luminous_flux_lm": {
+   "objective": "720 min.",
+   "tolerance": "min. (no tolerance)",
+   "test_voltage_V": "6,3"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet R2/1 (electrical), Sheet R2/3 (dimensions)",
+  "quotes": {
+   "filament_length_mm": "f | 6, 12 V 24 V | 1,8 2,2 | \u00b1 0,40 | \u00b1 0,20",
+   "filament_position": "e | 6, 12 V 24 V | 28,5 28,8 | \u00b1 0,35 | \u00b1 0,15; a | 0,60 | \u00b1 0,35 | \u00b1 0,15; IC | 5,5 | \u00b1 1,50 | \u00b1 0,50; \u03b3(188) | 15\u00b0 nom.",
+   "rated_volts": "Rated values | Volts | 6(183) | 6(183) | 12(183) | 12(183) | 24(183) | 24(183) | 12(183) | 12(183)",
+   "rated_watts": "Rated values | Watts | 45 | 40 | 45 | 40 | 55 | 50 | 45 | 40",
+   "luminous_flux_lm": "Objective values | Luminous flux | 720 min. | 570 \u00b1 15 % | ..."
+  },
+  "notes": "R2 'f' and 'e' columns are given per voltage (e 28,5 for 6/12 V, 28,8 for 24 V; f 1,8 for 6/12 V, 2,2 for 24 V). Filament-length meaning of IC not defined in text. Cap P45t-41. Objective 53 max. W. Reference 12 V: 700 / 450. Dual-filament mapping for the 40/45 W columns is by column order."
+ },
+ {
+  "category": "R2 (headlamp, dual-watt variants; per sheet R2/1)",
+  "filament": "40 W element (6 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 1,8 (6 V/12 V)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 (6 V, 12 V)"
+  },
+  "rated_volts": "6(183)",
+  "rated_watts": "40",
+  "luminous_flux_lm": {
+   "objective": "570",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "6,3"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet R2/1",
+  "quotes": {
+   "rated_volts": "Rated values | Volts | 6(183) | 6(183) | ...",
+   "rated_watts": "Rated values | Watts | 45 | 40 | ...",
+   "luminous_flux_lm": "Objective values | Luminous flux | 720 min. | 570 \u00b1 15 % | ..."
+  },
+  "notes": "Objective 47 max. W; measuring flux 450 lm (footnote 184)."
+ },
+ {
+  "category": "R2 (headlamp, dual-watt variants; per sheet R2/1)",
+  "filament": "45 W element (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 1,8 (6 V/12 V)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 (6 V, 12 V)"
+  },
+  "rated_volts": "12(183)",
+  "rated_watts": "45",
+  "luminous_flux_lm": {
+   "objective": "860 min.",
+   "tolerance": "min. (no tolerance)",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet R2/1",
+  "quotes": {
+   "rated_volts": "Rated values | Volts | ... | 12(183) | 12(183) | ...",
+   "rated_watts": "Rated values | Watts | ... | 45 | 40 | ...",
+   "luminous_flux_lm": "Objective values | Luminous flux | ... | 860 min. | 675 \u00b1 15 % | ..."
+  },
+  "notes": "Objective 57 max. W. 40 W counterpart: 675 \u00b115 % at 13,2 V."
+ },
+ {
+  "category": "R2 (headlamp, dual-watt variants; per sheet R2/1)",
+  "filament": "55 W element (24 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 2,2 (24 V)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,8 (24 V)"
+  },
+  "rated_volts": "24(183)",
+  "rated_watts": "55",
+  "luminous_flux_lm": {
+   "objective": "1 000 min.",
+   "tolerance": "min. (no tolerance)",
+   "test_voltage_V": "28,0"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet R2/1, Sheet R2/3",
+  "quotes": {
+   "rated_volts": "Rated values | Volts | ... | 24(183) | 24(183) | ...",
+   "rated_watts": "Rated values | Watts | ... | 55 | 50 | ...",
+   "luminous_flux_lm": "Objective values | Luminous flux | ... | 1 000 min. | 860 \u00b1 15 % | ...",
+   "filament_position": "e | 6, 12 V 24 V | 28,5 28,8 | ...; f | 6, 12 V 24 V | 1,8 2,2 | ..."
+  },
+  "notes": "Objective 76 max. W. 50 W counterpart: 860 \u00b115 % at 28,0 V."
+ },
+ {
+  "category": "R2 standard filament lamp (12 V)",
+  "filament": "standard filament lamp (12 V; 45 W and 40 W)",
+  "orientation": null,
+  "filament_length_mm": "f 1,8 \u00b1 0,20 (standard, 6/12 V tolerance) [see notes]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 \u00b1 0,15 (standard tolerance; 6/12 V nominal)",
+   "a": "0,60 \u00b1 0,15",
+   "IC": "5,5 \u00b1 0,50"
+  },
+  "rated_volts": "12(183)",
+  "rated_watts": "45 / 40",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet R2/1, Sheet R2/3",
+  "quotes": {
+   "rated_volts": "Rated values | Volts | ... | 12(183) | 12(183)",
+   "rated_watts": "Rated values | Watts | ... | 45 | 40",
+   "filament_position": "e | 6, 12 V 24 V | 28,5 28,8 | \u00b1 0,35 | \u00b1 0,15 ; IC | 5,5 | \u00b1 1,50 | \u00b1 0,50"
+  },
+  "notes": "Objective 52 +0 %/\u201310 % W (45 W) and 46 \u00b15 % W (40 W). Standard lamp flux not given."
+ },
+ {
+  "category": "PSX24W",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,2 (138),(139) [nominal]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "24,0 (138),(139)",
+   "screen_a1": "1,9",
+   "screen_a2": "1,9",
+   "screen_b1_b2": "0,35",
+   "screen_c1": "5,0",
+   "screen_c2": "4,0",
+   "alpha": "58,0\u00b0 min. (140)"
+  },
+  "rated_volts": "12",
+  "rated_watts": "24",
+  "luminous_flux_lm": {
+   "objective": "500 + 10/\u2013 15 %",
+   "tolerance": "+10/\u201315 % (as printed)",
+   "test_voltage_V": "13,5"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet P24W/2 (electrical, e, f); Sheet P24W/3 (screen projection); group covers P24W ... PSX24W",
+  "quotes": {
+   "filament_length_mm": "f(138),(139) | ... | PX24W, PSX24W | 4,2 | | 4,2",
+   "filament_position": "e(138),(139) | ... | P24W, ... PX24W, PSX24W | | 24,0 | | 24,0; \u03b1(140) | 58,0\u00b0 | ... | 58,0\u00b0 min.; screen: PX24W, PSX24W | a1 | a2 | b1, b2 | c1 | c2 ; Filament lamps of normal production | 1,9 | 1,9 | 0,35 | 5,0 | 4,0",
+   "rated_volts": "Rated values | Volts | 12",
+   "rated_watts": "Rated values | Watts | 24",
+   "luminous_flux_lm": "Luminous Flux | PX24W, PSX24W | 500 + 10/\u2013 15 % ; Test voltage | 13,5 ; Objective values | Watts | 25 max."
+  },
+  "notes": "The sheet's electrical block is a multi-category table, so the PSX24W row is taken from the text lines beside the PX24W/PSX24W labels. Objective 25 max. W. Reference 12 V 345 W / 13,2 V 465 / 13,5 V 500 (white). Filament-length meaning of 'f' inferred."
+ },
+ {
+  "category": "PSX24W standard filament lamp (12 V)",
+  "filament": "standard filament lamp (12 V)",
+  "orientation": null,
+  "filament_length_mm": "f 4,2 (138),(139) [nominal]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "24,0",
+   "screen_a1": "1,5",
+   "screen_a2": "1,5",
+   "screen_b1_b2": "0,25",
+   "screen_c1": "4,7",
+   "screen_c2": "4,0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "24",
+  "luminous_flux_lm": null,
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet P24W/2 (dims, electrical), Sheet P24W/3 (screen projection)",
+  "quotes": {
+   "filament_position": "e(138),(139) | ... | 24,0 | | 24,0 (standard column); screen: Standard filament lamps | 1,5 | 1,5 | 0,25 | 4,7 | 4,0",
+   "rated_volts": "Rated values | Volts | 12",
+   "rated_watts": "Rated values | Watts | 24"
+  },
+  "notes": "Standard tolerance for f not shown in the extracted text for PX24W/PSX24W."
+ },
+ {
+  "category": "PSX26W",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,2(169) [nominal]",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "24,0(169)",
+   "alpha1": "35,0\u00b0 min (171)",
+   "alpha2": "58,0\u00b0 min (171)",
+   "screen_a1": "1,7",
+   "screen_a2": "1,7",
+   "screen_b1_b2": "0,30",
+   "screen_c1": "5,0",
+   "screen_c2": "4,0"
+  },
+  "rated_volts": "12",
+  "rated_watts": "26",
+  "luminous_flux_lm": {
+   "objective": "500",
+   "tolerance": "+10 %/\u2013 10 %",
+   "test_voltage_V": "13,5"
+  },
+  "obscuration": "Only the figure title 'Metal free zone' (Figure 2 on sheet PSX26W/1); the requirement wording is not in the extracted text.",
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet PSX26W/1 (title), PSX26W/2 (dims, electrical), PSX26W/3 (screen projection)",
+  "quotes": {
+   "filament_length_mm": "f(170) | 4,2(169) | 4,2 \u00b1 0,25",
+   "filament_position": "e(170) | 24,0(169) | 24,0 \u00b1 0,25; \u03b11 (171) | 35,0\u00b0 min. | 35,0\u00b0 min.; \u03b12 (171) | 58,0\u00b0 min. | 58,0\u00b0 min.; screen: Filament lamps of normal production | 1,7 | 1,7 | 0,30 | 5,0 | 4,0",
+   "rated_volts": "Rated values | Voltage | V | 12",
+   "rated_watts": "Rated values | Wattage | W | 26",
+   "luminous_flux_lm": "Objective values | Luminous flux | lm | 500 \u00b1 + 10 %/\u2013 10 %; Test voltage | 13,5",
+   "obscuration": "Figure 2 title: 'Metal free zone'"
+  },
+  "notes": "Objective 26 max. W. Reference 12 V 345 / 13,2 V 465 / 13,5 V 500 (white). Standard lamp e 24,0 \u00b10,25, f 4,2 \u00b10,25 (dims table)."
+ },
+ {
+  "category": "H27W/1 and H27W/2 (fog; one shared sheet)",
+  "filament": "single (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 4,8 max. (81)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "31,75 (79)",
+   "k": "0 (79)",
+   "h1_h4": "0 (79)",
+   "gamma1": "38\u00b0 nom. (78)",
+   "gamma2": "44\u00b0 nom. (78)"
+  },
+  "rated_volts": "12",
+  "rated_watts": "27",
+  "luminous_flux_lm": {
+   "objective": "477",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,5"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet H27W/2 (dims, electrical); Sheet H27W/3 (screen projection)",
+  "quotes": {
+   "filament_length_mm": "f(81) | 4,8 max. | 4,2 \u00b1 0,20",
+   "filament_position": "e | 31,75(79) | 31,75 \u00b1 0,25; k | 0(79) | 0,0 \u00b1 0,25; h1, h2, h3, h4(80) | 0(79) | 0,0 \u00b1 0,25; \u03b31(78) | 38\u00b0 nom. | 38\u00b0 nom.; \u03b32(78) | 44\u00b0 nom. | 44\u00b0 nom.",
+   "rated_volts": "Rated values | Volts | 12",
+   "rated_watts": "Rated values | Watts | 27",
+   "luminous_flux_lm": "Objective values | Luminous flux | 477 \u00b1 15 %"
+  },
+  "notes": "Objective 31 max. W. Reference 12 V 350 lm / 13,2 V 450 lm / 13,5 V 477 lm. Standard column: f 4,2 \u00b1 0,20, e 31,75 \u00b1 0,25."
+ },
+ {
+  "category": "R2 (headlamp, dual-watt variants; per sheet R2/1)",
+  "filament": "40 W element (12 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 1,8 (6 V/12 V)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,5 (6 V, 12 V)"
+  },
+  "rated_volts": "12(183)",
+  "rated_watts": "40",
+  "luminous_flux_lm": {
+   "objective": "675",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "13,2"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet R2/1",
+  "quotes": {
+   "rated_volts": "Rated values | Volts | 6(183) | 6(183) | 12(183) | 12(183) | 24(183) | 24(183) | 12(183) | 12(183)",
+   "rated_watts": "Rated values | Watts | 45 | 40 | 45 | 40 | 55 | 50 | 45 | 40",
+   "luminous_flux_lm": "Objective values | Luminous flux | 720 min. | 570 \u00b1 15 % | 860 min. | 675 \u00b1 15 % | 1 000 min. | 860 \u00b1 15 % |"
+  },
+  "notes": "Objective 51 max. W for this column (sheet: 'Objective values | Watts | 53 max. | 47 max. | 57 max. | 51 max. | 76 max. | 69 max.'). Column pairing (40 W in 12 V normal column) by sheet order. Measuring flux 450 lm (footnote 184)."
+ },
+ {
+  "category": "R2 (headlamp, dual-watt variants; per sheet R2/1)",
+  "filament": "50 W element (24 V normal production)",
+  "orientation": null,
+  "filament_length_mm": "f 2,2 (24 V)",
+  "filament_diameter_mm": null,
+  "filament_position": {
+   "e": "28,8 (24 V)"
+  },
+  "rated_volts": "24(183)",
+  "rated_watts": "50",
+  "luminous_flux_lm": {
+   "objective": "860",
+   "tolerance": "\u00b115 %",
+   "test_voltage_V": "28,0"
+  },
+  "obscuration": null,
+  "source_url": "https://lexaris.de/book/version/documentflat/head/2047646",
+  "source_location": "Annex 1, Sheet R2/1",
+  "quotes": {
+   "rated_volts": "Rated values | Volts | 6(183) | 6(183) | 12(183) | 12(183) | 24(183) | 24(183) | 12(183) | 12(183)",
+   "rated_watts": "Rated values | Watts | 45 | 40 | 45 | 40 | 55 | 50 | 45 | 40",
+   "luminous_flux_lm": "Objective values | Luminous flux | 720 min. | 570 \u00b1 15 % | 860 min. | 675 \u00b1 15 % | 1 000 min. | 860 \u00b1 15 % |"
+  },
+  "notes": "Objective 69 max. W for this column. Pairing by column order (the 55 W record above)."
+ }
+]

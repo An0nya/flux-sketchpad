@@ -1,0 +1,229 @@
+LED spec collection, partial but honest. Scratch files are in /private/tmp/claude-501/-Users-anya/e131d530-06e8-45fd-966e-f5141ea2d478/scratchpad/leds (datasheet PDFs and .txt extracts). One deviation: I called the Browser pane tabs_context once (a read-only tab list, no navigation) before the brief said not to use browser tools. Nothing else was browsed.
+
+```json
+[
+{
+ "name": "Nichia 219C (v1)", "manufacturer": "Nichia",
+ "part_number_family": "NVSW219C (datasheet NVSW219CT, STS-DA1-3555G, Cat.190911)",
+ "variants": ["Rnn", "R70", "R8000", "R9050 bins (Ra 70/80/90 rank codes)"],
+ "die": {"shape": null, "size_mm": null, "basis": null, "source_note": "Datasheet gives no chip size. djozz (BLF 34094, 2015-06-15): \"the 1.6x1.6mm for the 219\" (XP-G2 die 1.45x1.45 for comparison). Basis (chip/LES) not stated."},
+ "dome": null,
+ "package_size_mm": [3.5, 3.2], "package_note": "Outline drawing labels 3.5, 3.2, 2.4, 0.45 etc.; axis assignment not clear from text extraction",
+ "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": "3 V (inferred; not stated). Vf ranks M1 3.1-3.3, L2 2.9-3.1, L1 2.7-2.9 V",
+ "max_current_A": 1.8, "pulse_current_A": 2.4, "pd_max_W": 5.94,
+ "flux_datasheet": [[0.7, 283, "R8000 typ, IF=700mA, TS=25C"], [0.35, 152, "R8000 typ, IF=350mA, TS=25C"], [0.7, 280, "D280 rank min 280-300 (IF=700mA)"]],
+ "vf_datasheet": [[0.7, 2.98], [0.35, 2.83]],
+ "measured": [{"who": "djozz", "url": "https://budgetlightforum.com/t/nichia-219c-testing-a-5000k-83cri-emitter-comparing-with-a-xp-g2-s4-2b-and-other-leds/34094", "date": "2015-06-15", "setup": "Noctigon 16mm board, 46cm integrating sphere, 5000K 83CRI sample bought from Lumitronics", "flux": [], "vf": [], "luminance_cd_mm2": [], "intensity_cd": [], "max_tested_A": 10, "note": "Raw numbers are in a graph image (see chart_readings). Post text: \"I really tried, but could not kill the 219C, I stopped at 10A.\" Thread also quotes a supplier table (350/700/1800 mA -> 144/280/586 lm, 2.76/2.98/3.23 V) which the thread itself says is from the Lumintronics listing, NOT a measurement."}],
+ "chart_readings": [{"url": "https://budgetlightforum.com/t/nichia-219c-testing-a-5000k-83cri-emitter-comparing-with-a-xp-g2-s4-2b-and-other-leds/34094", "what": "djozz output and Vf vs current graph", "values": null, "precision_note": "Image only; not read."}],
+ "quotes": {"max_current_A": "Forward Current IF 1800 mA", "pd_max_W": "Power Dissipation PD 5.94 W (TS=25C)", "flux_datasheet": "Luminous Flux Phi-v IF=700mA 283 (R8000); D280 rank 280 ~ 300 lm", "vf_datasheet": "Forward Voltage VF IF=700mA 2.98"}
+},
+{
+ "name": "Nichia 219C V2 (domeless per forum)", "manufacturer": "Nichia",
+ "part_number_family": "NVSW219CT-V2 (STS-DA1-6832F, Cat 251003)",
+ "variants": ["R70", "R8000", "R9050"],
+ "die": {"shape": null, "size_mm": null, "basis": null, "source_note": "Not in datasheet."},
+ "dome": "unknown in datasheet. Forum (YBF650, BLF 223258) calls 219C-V2 a \"domeless LED\" (unverified)",
+ "package_size_mm": [3.5, 3.2], "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": "3 V (inferred). Typ Vf 2.89 V at 700 mA",
+ "max_current_A": 1.8, "pulse_current_A": 2.4, "pd_max_W": 5.58,
+ "flux_datasheet": [[0.7, 335, "R70 typ, TJ=25C (Chrom group 1)"], [0.7, 285, "R8000 typ, same group"], [0.7, 242, "R9050 typ, same group"], [0.7, 340, "R70 typ, second chromaticity group (label unstated)"]],
+ "vf_datasheet": [[0.7, 2.89]],
+ "measured": [],
+ "chart_readings": [],
+ "quotes": {"pd_max_W": "Power Dissipation PD 5.58 W", "flux_datasheet": "Luminous Flux Phi-v IF=700mA 335 (R70), Iv 114 cd", "vf_datasheet": "Forward Voltage VF IF=700mA 2.89"}
+},
+{
+ "name": "Nichia 519A (domed, sm503 R9080)", "manufacturer": "Nichia",
+ "part_number_family": "NVSW519AT (STS-DA1-6102D, Cat 210816)",
+ "variants": ["R70", "R8000", "R9080 (Ra 93)", "sm503 5000K R9080 domed"],
+ "die": {"shape": "square (single flip-chip die per forum)", "size_mm": null, "basis": "LES area 7.2 mm2 (koef3, no side lengths)", "source_note": "koef3: \"The luminous area is 7.2 mm² in size.\""},
+ "dome": "domed (silicone dome, forum); dedoming described by koef3 (not dome diameter)",
+ "package_size_mm": [4.5, 3.5], "package_note": "Outline shows Phi3.5 marked and 4.5 dimension; axes not fully resolved in text",
+ "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": "3 V (rated Vf typ 3.03 V at 1400 mA)",
+ "max_current_A": 2.2, "pulse_current_A": 2.4, "pd_max_W": 7.04,
+ "flux_datasheet": [[1.4, 680, "R9080 chrom 3, TJ=25C, typ"], [1.4, 667, "R70 typ"], [1.4, 581, "R8000 typ"], [1.4, 407, "R9080 typ (chrom 2)"], [1.05, 517, "R70 typ"], [1.05, 449, "R8000 typ"], [1.05, 315, "R9080 typ"]],
+ "vf_datasheet": [[1.4, 3.03], [1.05, 2.97]],
+ "measured": [{"who": "koef3", "url": "https://budgetlightforum.com/t/led-test-review-nichia-nvsw519a-sm503-r9080-519a-v1-test-finally-here-good-tint-and-beam-quality/223258", "date": "2024-03-14", "setup": "Convoy T3 sample (5000K, ordered early 2023); Tj 25C; Tsp basis (85C values ~13% lower per post)", "flux": [[2.2, 698], [7.6, 1524]], "vf": [[2.2, 3.08], [7.6, 3.47]], "luminance_cd_mm2": [], "intensity_cd": [], "max_tested_A": 7.6, "note": "Dedomed: \"the luminous flux drops by around 20 %\"; \"The dedomed 519A offers around 40 % higher luminance than the 519A with dome\" (relative only, no cd/mm2 values in text). Post also reports 'Power at official maximum: 6.78 W'. 70 CRI variant (sm505 R70 domed/dedomed): CCT 4953K domed vs 4078K dedomed at 2A, ~ -0.0005 vs 0.0038 Duv (figures from post text)."}],
+ "chart_readings": [{"url": "https://budgetlightforum.com/t/led-test-review-nichia-nvsw519a-sm503-r9080-519a-v1-test-finally-here-good-tint-and-beam-quality/223258", "what": "dedomed/domed luminance and Vf charts", "values": null, "precision_note": "Not read."}],
+ "quotes": {"die": "The luminous area is 7.2 mm² in size.", "max_current_A": "Max. Forward current: 2,200 mA", "pd_max_W": "Power Dissipation PD 7.04 W", "flux_datasheet": "Luminous Flux IF=1400mA 667 (R70)", "vf_datasheet": "Forward Voltage VF IF=1400mA 3.03"}
+},
+{
+ "name": "Nichia 519A-V1 (domed)", "manufacturer": "Nichia",
+ "part_number_family": "NVSW519AT-V1 (STS-DA1-6597D)",
+ "variants": ["R70", "R8000", "R9080"],
+ "die": {"shape": null, "size_mm": null, "basis": "7.2 mm2 LES quoted for 519A (koef3, same family; not V1-specific)", "source_note": "Not in datasheet"},
+ "dome": "domed (per forum; not stated in datasheet)",
+ "package_size_mm": [3.5, 3.5], "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": "3 V (rated typ 2.94 V at 1400 mA)",
+ "max_current_A": 2.2, "pulse_current_A": 2.4, "pd_max_W": 7.04,
+ "flux_datasheet": [[1.4, 720, "R70 typ (chrom 1)"], [1.05, 555, "R70 typ"], [1.4, 624, "chrom 2 typ"], [1.05, 480, "chrom 2 typ"]],
+ "vf_datasheet": [[1.4, 2.94], [1.05, 2.88]],
+ "measured": [{"who": "koef3", "url": "https://budgetlightforum.com/t/led-test-review-nichia-nvsw519a-sm503-r9080-519a-v1-test-finally-here-good-tint-and-beam-quality/223258", "date": "2024-03-14", "setup": "same post as 519A; V1 numbers not separately itemized in text", "flux": [], "vf": [], "luminance_cd_mm2": [], "intensity_cd": [], "max_tested_A": 8.6, "note": "Post says: \"with a maximum of 8.6 A, the overcurrent capability is somewhat more pronounced\" (V1). Flux 'higher' than 519A, attributed to colder CCT/binning, no numbers quoted."}],
+ "chart_readings": [],
+ "quotes": {"flux_datasheet": "Luminous Flux IF=1400mA 720 (Chromaticity Coordinate1, R70)", "vf_datasheet": "Forward Voltage VF IF=1400mA 2.94", "pd_max_W": "Power Dissipation PD 7.04 W"}
+},
+{
+ "name": "Nichia 719A (stacked die)", "manufacturer": "Nichia",
+ "part_number_family": "NVSW719ACT (STS-DA1-7157C, Cat 250731; smxxx7c R8000, smxxx7d R9050)",
+ "variants": ["R8000", "R9050", "sm405 T550f26 R9050 ~4000K (koef3 sample)"],
+ "die": {"shape": "stacked-die, LES 4.69 mm2 (koef3)", "size_mm": null, "basis": "LES area 4.69 mm2 (koef3)", "source_note": "koef3: \"The luminous area is 4.69 mm² in size.\""},
+ "dome": "unknown (not stated in datasheet)",
+ "package_size_mm": [3.5, 3.5], "package_note": "Datasheet outline shows 3.5 / 3.2 / 0.88; koef3 calls it 'standard XP format (3.5x 3.5 mm)'. Conflict-level ambiguity, not resolved",
+ "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": "6 V (datasheet Vf 6.76 V at 1050 mA; koef3 'rated voltage min. 6.4 V, max. 7.4 V')",
+ "max_current_A": 1.5, "pulse_current_A": 1.8, "pd_max_W": 11.2,
+ "flux_datasheet": [[1.05, 705, "R8000 typ (chrom 1)"], [1.05, 742, "R8000 typ (chrom 3)"], [1.05, 563, "R9050 typ (chrom 2)"], [1.05, 615, "R9050 typ (chrom 4)"]],
+ "vf_datasheet": [[1.05, 6.76]],
+ "measured": [
+  {"who": "koef3", "url": "https://budgetlightforum.com/t/led-test-review-nichia-nvsw719ac-sm405-t550f26-r9050-4000-k-min-90-cri-r9-50-first-led-with-stacked-dies/219346", "date": "2023-07-23", "setup": "Tj 25C; 85C flux 10-13% lower (per post)", "flux": [[1.05, 521], [1.8, 804], [2.2, 925], [3.2, 1104]], "vf": [[1.8, 6.72], [2.2, 6.78], [3.2, 6.89]], "luminance_cd_mm2": [], "intensity_cd": [], "max_tested_A": 4.0, "note": "521 lm at 1050 mA is stated as the measured value; post says 'the specified binning was missed ... but due to ... tolerance ... within the range'. Max output at 3.2 A (quoted). 4.0 A burst survived (no damage claimed)."},
+  {"who": "djozz", "url": "https://budgetlightforum.com/t/nichia-719a-5000k-r9050-tested/218061", "date": "2023-04-26", "setup": "DTP XP-KD 20mm board clamped to copper pillar; integrating sphere II", "flux": [[3.5, 1280]], "vf": [], "luminance_cd_mm2": [], "intensity_cd": [], "max_tested_A": 3.5, "note": "Flux figure is djozz's stated 'maximum' in passing: '1280 lumen max is about consistent'. Output plot is an image. Sharp drop after 3.5 A ('sudden failure ... severe damage of the phosfor'). Vf comments in thread (6.7 V vs 4.5 V at 2.5 A) are contested within the thread; not used."}
+ ],
+ "chart_readings": [{"url": "https://budgetlightforum.com/t/nichia-719a-5000k-r9050-tested/218061", "what": "djozz output and Vf vs current plots", "values": null, "precision_note": "Images; not read."}],
+ "quotes": {"die": "The luminous area is 4.69 mm² in size.", "max_current_A": "Max. Forward current: 1,500 mA", "pd_max_W": "Power Dissipation PD 11.2 W", "flux_datasheet": "Luminous Flux IF=1050mA 705 (R8000)", "vf_datasheet": "Forward Voltage VF IF=1050mA 6.76"}
+},
+{
+ "name": "Nichia B35AM (B35A family, multi-die flat)", "manufacturer": "Nichia",
+ "part_number_family": "NV4WB35AMT (5768F, Cat 241129 R70/R8000/R9050/R9080; flashlight Crxx variant 6236, Cat 210106)",
+ "variants": ["R70", "R8000", "R9050", "R9080", "Rnn (flashlight Crxx spec, 6236)"],
+ "die": {"shape": "multi-die 2S2P flip chip, square", "size_mm": "3.12 x 3.12 illuminated area (quoted by koef3 from Nichia); measured 9.83 mm2 (koef3)", "basis": "LES", "source_note": "koef3: \"the 9.73 mm² specified by Nichia (3.12 x 3.12 mm illuminated area)\"; koef3 measured 9.83 mm2."},
+ "dome": "domeless (flat; koef3: \"The B35AM is a flat LED without a dome.\")",
+ "package_size_mm": [3.65, 3.65],
+ "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": "6 V (Vf typ 5.93 V at 1400 mA)",
+ "max_current_A": 1.8, "pulse_current_A": 2.4, "pd_max_W": 11.3,
+ "flux_datasheet": [[1.4, 1210, "R70 typ, TJ=25C, pulse mode (5768F)"], [1.4, 1040, "R8000 typ"], [1.4, 900, "R9050 typ"], [1.4, 760, "R9080 typ"], [1.4, 1275, "Rnn typ, flashlight spec 6236 (Crxx)"]],
+ "vf_datasheet": [[1.4, 5.93]],
+ "measured": [{"who": "koef3", "url": "https://budgetlightforum.com/t/led-test-review-nichia-nv4wb35amt-sm653-r9080-e900-very-high-light-quality-but-limited-performance/221112", "date": "2023-11-13", "setup": "B35AM board supplied by thefreeman; Tj 25C; 'Values at 25 °C Tsp, at 85 °C Tsp values are 13 % lower'", "flux": [[1.8, 1227], [3.4, 2031], [5.0, 2521]], "vf": [[1.8, 5.86], [3.4, 6.09], [5.0, 6.24]], "luminance_cd_mm2": [], "intensity_cd": [], "max_tested_A": 5.0, "note": "Post calls 1.8 A 'official maximum current' (flux 1227 lm, 116.4 lm/W, 10.6 W). Sample binned E1000 per post. Efficiency at 3.4 A 98.2 lm/W. Post also says luminance is 'low, a 519A with dome is only just surpassed'. No cd/mm2 table in text."},
+  {"who": "thefreeman (secondary, quoted in koef3 thread)", "url": "https://budgetlightforum.com/t/nichia-nv4wb35am/59064", "date": "2023-11-13 (reply in koef3 thread)", "setup": "reading of graphs", "flux": [[1.0, 740], [2.0, 1335], [3.0, 1850], [4.0, 2270]], "vf": [], "luminance_cd_mm2": [], "intensity_cd": [], "max_tested_A": 4.0, "note": "Values are 'reading the exact values on the graphs is hard' (author's own wording); treat as chart-derived, not a clean measurement."}
+ ],
+ "chart_readings": [],
+ "quotes": {"die": "3.12 x 3.12 mm illuminated area", "dome": "The B35AM is a flat LED without a dome.", "package_size_mm": "The B35AM is 3.65 x 3.65 mm in size.", "max_current_A": "Forward Current IF 1800 mA", "pd_max_W": "Power Dissipation PD 11.3 W", "flux_datasheet": "Luminous Flux Phi-v IF=1400mA 1210 (R70)", "vf_datasheet": "Forward Voltage VF IF=1400mA 5.93"}
+},
+{
+ "name": "Nichia E21A (warm white, 2.1 mm)", "manufacturer": "Nichia",
+ "part_number_family": "NVSLE21AT (STS-DA1-3825L, Cat 211020, 'WARM WHITE')",
+ "variants": ["R70", "R8000", "R9050", "R9080 (datasheet title list)"],
+ "die": {"shape": null, "size_mm": null, "basis": null, "source_note": "Datasheet none. djozz (BLF 38359): E21A die 'similar die size as a XP-L Hi' (no mm)"},
+ "dome": "domeless / flat (djozz: \"flat leds no bigger than the die\")",
+ "package_size_mm": [2.1, 2.1],
+ "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": "3 V (Vf 3.0 V at 700 mA)",
+ "max_current_A": 1.4, "pulse_current_A": 2.0, "pd_max_W": 4.62,
+ "flux_datasheet": [[0.7, 314, "R70 typ, TC=25C"], [0.7, 284, "R8000 typ"], [0.7, 229, "R9050 typ"], [0.7, 214, "R9080 typ"]],
+ "vf_datasheet": [[0.7, 3.0]],
+ "measured": [],
+ "chart_readings": [{"url": "https://budgetlightforum.com/t/nichia-e17a-e21a-series-april-19th-updated-with-output-tests-in-the-op/38359", "what": "djozz output and Vf for E21A 5000K 80+CRI (NVSWE21AT, V1-era)", "values": null, "precision_note": "Images. djozz text only: 'the E21A is on par with the 219C and XP-G2' up to 1A; 'Luminous Flux of the E21A @700mA roughly compares to XP-G2 S3 or XM-L2 T6' (comparison, no value)."}],
+ "quotes": {"package_size_mm": "E21A is 2.1x2.1mm", "max_current_A": "Forward Current IF 1400", "pd_max_W": "Power Dissipation PD 4.62 W", "flux_datasheet": "Luminous Flux Phi-v IF=700mA 314 (R70)", "vf_datasheet": "Forward Voltage VF IF=700mA 3.0"}
+},
+{
+ "name": "Nichia E21A V1 (cool white)", "manufacturer": "Nichia",
+ "part_number_family": "NVSWE21AT-V1 (STS-DA1-6547E)",
+ "variants": ["R70", "R8000", "R9050", "R9080"],
+ "die": {"shape": null, "size_mm": null, "basis": null, "source_note": "Not stated."},
+ "dome": "domeless (per datasheet family) / flat",
+ "package_size_mm": [2.1, 2.1],
+ "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": "3 V (Vf 2.95 V at 700 mA)",
+ "max_current_A": 1.4, "pulse_current_A": 2.0, "pd_max_W": 4.75,
+ "flux_datasheet": [[0.7, 323, "R70 typ (chrom 1)"], [0.7, 292, "R8000 typ"], [0.7, 246, "R9050 typ"], [0.7, 216, "R9080 typ"], [0.7, 336, "R70 typ, second chrom group"]],
+ "vf_datasheet": [[0.7, 2.95]],
+ "measured": [],
+ "chart_readings": [],
+ "quotes": {"max_current_A": "Forward Current IF 1400", "pd_max_W": "Power Dissipation PD 4.75 W", "flux_datasheet": "Luminous Flux Phi-v IF=700mA 323 (R70)", "vf_datasheet": "Forward Voltage VF IF=700mA 2.95"}
+},
+{
+ "name": "Nichia E17A (1.7 mm)", "manufacturer": "Nichia",
+ "part_number_family": "NCSWE17AT-V1 (STS-DA1-6544B); family NCSxE17A",
+ "variants": ["R70 (Ra 72)", "R8000", "R9050", "R9080"],
+ "die": {"shape": "approx square", "size_mm": "about 1 x 1 (djozz, after phosphor scraped from a tested LED)", "basis": "chip (observed by djozz)", "source_note": "djozz: \"the actual die is about 1mm x 1mm\" (post, one sample, damaged by test)"},
+ "dome": "flat (djozz: \"flat leds no bigger than the die\")",
+ "package_size_mm": [1.7, 1.7],
+ "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": "3 V (Vf 2.95 V at 350 mA)",
+ "max_current_A": 0.7, "pulse_current_A": 1.0, "pd_max_W": 2.36,
+ "flux_datasheet": [[0.35, 165, "R70 typ (first row; chromaticity label lost)"], [0.35, 147, "R8000 typ (listed row)"], [0.35, 125, "R9050 typ"], [0.35, 110, "R9080 typ"]],
+ "vf_datasheet": [[0.35, 2.95]],
+ "measured": [{"who": "djozz", "url": "https://budgetlightforum.com/t/nichia-e17a-e21a-series-april-19th-updated-with-output-tests-in-the-op/38359", "date": "'April 19th' (year not in captured text)", "setup": "1mm copper-core non-DTP 119 board (Kerui); integrating sphere II, clamp meter", "flux": [], "vf": [], "luminance_cd_mm2": [], "intensity_cd": [], "max_tested_A": 4.6, "note": "Single sample of NCSWE17AT 5000K 80+CRI. Output and voltage are only in plotted graphs. Text: 'the E17A was tested up to where it burned to death (4.6A)'; 'I would use the E17A up to 1A'."}],
+ "chart_readings": [{"url": "https://budgetlightforum.com/t/nichia-e17a-e21a-series-april-19th-updated-with-output-tests-in-the-op/38359", "what": "E17A output and Vf vs current", "values": null, "precision_note": "Images; not read."}],
+ "quotes": {"die": "the actual die is about 1mm x 1mm", "package_size_mm": "E17A is 1.7x1.7mm", "max_current_A": "Forward Current IF 700", "pd_max_W": "Power Dissipation PD 2.36 W", "flux_datasheet": "Luminous Flux Phi-v IF=350mA 165 (R70)", "vf_datasheet": "Forward Voltage VF IF=350mA 2.95"}
+},
+{
+ "name": "Nichia Optisolis (757 family, low-power)", "manufacturer": "Nichia",
+ "part_number_family": "NF2W757GT-F1 (Nichia listing 'NF2W757G-F1 (Optisolis)', datasheet 5056) and NF2L757GT-F1 (datasheet 5053)",
+ "variants": ["Rfa00/Rfc00 (NF2W757G)", "Rfe00/Rff00/Rfg00/Rfh00 (NF2L757G)"],
+ "die": {"shape": null, "size_mm": null, "basis": null, "source_note": "Not in datasheet"},
+ "dome": null,
+ "package_size_mm": [2.6, 2.6], "package_note": "Outline (2.6) dimensions (reference) on drawing",
+ "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": "3 V (Vf 2.9 V at 65 mA NF2W; 2.76 V NF2L)",
+ "max_current_A": 0.1, "pulse_current_A": 0.13, "pd_max_W": 0.33,
+ "flux_datasheet": [[0.065, 23, "NF2W757G typ, IF=65mA, TS=25C"], [0.065, 24.1, "NF2L757G typ, IF=65mA"]],
+ "vf_datasheet": [[0.065, 2.9], [0.065, 2.76]],
+ "measured": [],
+ "chart_readings": [],
+ "quotes": {"max_current_A": "Forward Current IF 100 mA (NF2W), 150 mA (NF2L)", "pd_max_W": "Power Dissipation PD 330 mW (NF2W); 495 mW (NF2L)", "flux_datasheet": "Luminous Flux Phi-v IF=65mA 23 (NF2W)", "vf_datasheet": "Forward Voltage VF IF=65mA 2.9"}
+},
+{
+ "name": "Optisolis (2018 early samples, part unidentified)", "manufacturer": "Nichia",
+ "part_number_family": "unknown (djozz thread does not name the part number)",
+ "variants": ["5000K", "3000K"],
+ "die": null, "dome": null, "package_size_mm": null, "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": null, "max_current_A": null, "pd_max_W": null,
+ "flux_datasheet": [], "vf_datasheet": [], "measured": [{"who": "djozz", "url": "https://budgetlightforum.com/t/output-and-voltage-test-of-5000k-and-3000k-nichia-optisolis-leds/50334", "date": "2018-03-12", "setup": "non-DTP copper board, integrating sphere II", "flux": [], "vf": [], "luminance_cd_mm2": [], "intensity_cd": [], "max_tested_A": null, "note": "Text: 'for the 5000K Optisolis at 60mA I calculate 126 lm/W'; 'the voltage stays low at all currents'. Numbers in plots."}], "chart_readings": [{"url": "https://budgetlightforum.com/t/output-and-voltage-test-of-5000k-and-3000k-nichia-optisolis-leds/50334", "what": "output and Vf plots", "values": null, "precision_note": "Images."}],
+ "quotes": {}
+},
+{
+ "name": "Samsung LH351D", "manufacturer": "Samsung",
+ "part_number_family": "LH351D (datasheet Rev 10.0a, 2022-05-11, 'Product Family Data Sheet', 3535 ceramic hot binning; mirror e-neon.ru; Samsung URL returned 403)",
+ "variants": ["5700K 90 CRI (code G = min 90)", "2700K-6500K 70/80/90 CRI bins"],
+ "die": null, "dome": "dome lens (Lens Type D: \"Dome lens\")",
+ "package_size_mm": [3.5, 3.5], "package_note": "'3535 Ceramic'; 3.5 x 3.5 nominal (name)",
+ "viewing_angle_deg": 128, "viewing_angle_note": "'Beam Angle 128 deg' at 1050 mA, Tj 25C; definition (FWHM?) not stated",
+ "lambertian": null,
+ "voltage_class": "3 V (Vf 2.6-3.2 V at 1050 mA, Tj 85C)",
+ "max_current_A": 3.0, "pulse_current_A": 5.0, "pd_max_W": null,
+ "flux_datasheet": [[1.05, 380, "S6 bin minimum (380-440 lm), Tj 85C, 5700K 90CRI row"], [0.35, 140, "calculated minimum for S6, Tj 85C"], [0.7, 266, "calculated minimum for S6, Tj 85C"], [1.05, 380, "calculated minimum for S6, Tj 85C"], [1.5, 513, "calculated minimum for S6, Tj 85C"], [2.0, 643, "calculated minimum for S6, Tj 85C"], [3.0, 854, "calculated minimum for S6, Tj 85C"]],
+ "vf_datasheet": [[1.05, "2.6-3.2 (min-max, Tj 85C)"]],
+ "measured": [{"who": "koef3", "url": "https://budgetlightforum.com/t/led-test-review-nichia-nvsw519a-sm503-r9080-519a-v1-test-finally-here-good-tint-and-beam-quality/223258", "date": "2024-03-14", "setup": "comparison in 519A post", "flux": [], "vf": [[5.0, 4.2]], "luminance_cd_mm2": [], "intensity_cd": [], "max_tested_A": null, "note": "Post: 'At 4.2 V at maximum operating current' (current not stated, presumed max). Flux 'higher ... with its CCT of 5700 K' (no numbers)."}],
+ "chart_readings": [],
+ "quotes": {"max_current_A": "Operates at a maximum current of up to 3.0 A (features); Forward Current IF 3000 mA", "viewing_angle_deg": "Beam Angle 128 deg (1050 mA, 25C)", "flux_datasheet": "Flux rank S6 380~440 (IF=1050 mA, Tj 85C); calculated minimum flux 380 lm at 1050 mA", "vf_datasheet": "Forward Voltage 2.6~3.2 at 1050 mA, 85C"}
+},
+{
+ "name": "Nichia NV-219B (219B-V1)", "manufacturer": "Nichia",
+ "part_number_family": "NVSW219B-V1 / NVSL219BT: no Nichia-hosted datasheet found",
+ "variants": null,
+ "die": null, "dome": null, "package_size_mm": null, "viewing_angle_deg": null, "lambertian": null,
+ "voltage_class": null, "max_current_A": null, "pd_max_W": null,
+ "flux_datasheet": [], "vf_datasheet": [], "measured": [], "chart_readings": [],
+ "quotes": {},
+ "lead": "Only mirrors found (alldatasheet.com, STS-DA1-3062D). Their values appeared only as search-summary text and were NOT verified against a PDF, so none entered this record."
+}
+]
+```
+
+**Could not find / not flashlight-usable**
+- **219B:** No Nichia datasheet on led-ld.nichia.co.jp (probed NVSW219B, NVSW219B-V1, NVSW219BT, NVSL219B, NVSL219BT: all 404 pages). Leads only: alldatasheet mirror of NVSW219B-V1 (third-party, unverified).
+- **E17A "NVSWE17A":** Not a Nichia part number. The real parts are NCSWE17A(-V1), a 1.7 mm package (above). E17A is not 3.5 mm.
+- **LH351H:** Samsung markets this family as horticulture (grow-light) parts, not white flashlight LEDs. Not collected.
+- **Samsung LH351D official PDF:** download.led.samsung.com returned 403. Used the Rev 10.0a copy on e-neon.ru (third-party mirror) instead. Rev 9.4a from Samsung also not retrieved. Typical flux and typical Vf for the 5700K 90 CRI bin are not printed in this datasheet (only bins and calculated minimums).
+- **Brief mismatches:**
+  - NF2W585AR is not a 519A. Nichia datasheet NF2W585ART (STS-DA1-5324A) is a 1.2 W, 75 mA, 5.73 V part. Not collected as flashlight data.
+  - NF2W757H is not on Nichia's product list. The Optisolis flashlight-named parts on Nichia's Optisolis page are NF2W757G-F1 and NF2L757G-F1 (both low power, above). The NFCW Optisolis parts (NFCWL036B, NFCWJ108B, NFDWJ130B, NFCWS024B, NTCWS024B) are multi-die 34-39 V parts (5-64 W), not flashlight-class.
+  - NF2W757G-F1 / NF2L757G-F1 may or may not be the "Optisolis" the brief means. The 2018 djozz Optisolis test does not name a part.
+- **Fields systematically missing:**
+  - die size is null for most Nichia parts: datasheets never give chip size, and the forum numbers are often in graphs or only qualitative.
+  - viewing angle (FWHM) is null for all Nichia parts; the datasheets give only a directivity chart (±60° axis labels).
+  - Lambertian: not stated anywhere.
+  - Dome diameter: not stated.
+  - Luminance (cd/mm²): no absolute values in any text I could read. koef3 gives relative luminance only ("around 40 % higher" for dedomed 519A).
+  - Nearly all djozz outputs (219C, E17A, E21A, 719A, Optisolis) are in graph images that I did not read.
+- **Ambiguities:**
+  - Package axes for 219C, 719A and 519A: the outline text gives 3.5 / 3.2 / 4.5 without clean axis labels. The 719A datasheet says 3.5 x 3.2 while koef3 says 3.5 x 3.5.
+  - "Dedomed" 519A numbers: koef3's dedomed data appear to be for sm505 R70 with CCT and Duv only, not flux or cd/mm² by bin. I did not find a clean dedomed sm503 R9080 table.
+  - The 519A preset (sm503 R9080 5000K domed/dedomed) and 519A-V1 5700K presets are not confirmed by any table I could read. The 519A-V1 datasheet numbers above are chromaticity-labelled but I could not confirm which chromaticity is 5700K.
+  - djozz's 719A "1280 lumen max" is a statement in the post, not a tabulated measurement.
+  - The E21A and E17A djozz posts are dated "April 19th" with no year in the captured text.
+  - The 219C 350/700/1800 mA figures in the 2015 thread come from a supplier listing, not from djozz's own measurement.
+- **Community sources used:** koef3 (B35AM 2023-11-13; 719AC 2023-07-23; 519A 2024-03-14), djozz (719A 2023-04-26; 219C 2015-06-15; E17A/E21A "April 19th"; Optisolis 2018-03-12), thefreeman (B35AM graph reads, flagged as chart-derived). zeroair and maukka were not collected.
