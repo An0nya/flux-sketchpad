@@ -618,9 +618,9 @@
     let cx = 0, cy = 0; for (const q of pts) { cx += q[0]; cy += q[1]; } cx /= pts.length; cy /= pts.length;
     let rad = 0; for (const q of pts) rad = Math.max(rad, Math.hypot(q[0] - cx, q[1] - cy));
     if (rad < 10) return outline(C, k);
-    if (ct !== CLIP.disc && pts.length <= 12) {            // the same edge subdivision as outline() (so a few-sided facet's rim follows the curvature)
-      const dense = [];
-      for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; for (let s = 0; s < 4; s++) dense.push([p[0] + (q[0] - p[0]) * s / 4, p[1] + (q[1] - p[1]) * s / 4]); }
+    {                                                      // split every long clip edge (a half-bowl's straight cut is ONE edge): a chord between two lifted points would draw flat
+      const seg = Math.max(2.5, rad / 12), dense = [];
+      for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length], m = Math.max(1, Math.min(48, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / seg))); for (let s = 0; s < m; s++) dense.push([p[0] + (q[0] - p[0]) * s / m, p[1] + (q[1] - p[1]) * s / m]); }
       pts = dense;
     }
     const n = pts.length, NR = Math.min(10, Math.max(3, Math.ceil(rad / 6)));
