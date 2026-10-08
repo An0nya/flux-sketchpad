@@ -325,7 +325,7 @@
     // a real emitter (js/source-presets.js): geometry, emission and power; position kept
     applySourcePreset(store, id, opts) { const p = RF.SourcePresets.apply(store.scene.source, id, opts); if (p) store.invalidate(srcGroups); return p; },
     setDriveCurrent(store, amps) { const s = store.scene.source; if (RF.SourcePresets.PRESETS[s.preset] && RF.SourcePresets.PRESETS[s.preset].drive) { RF.SourcePresets.apply(s, s.preset, { amps }); store.invalidate(srcGroups); } },
-    setLampVolts(store, volts) { const s = store.scene.source; if (s.preset === 'hb3') { RF.SourcePresets.apply(s, 'hb3', { volts }); store.invalidate(srcGroups); } },
+    setLampVolts(store, volts) { const s = store.scene.source; const p = RF.SourcePresets.PRESETS[s.preset]; if (p && p.volts) { RF.SourcePresets.apply(s, s.preset, { volts }); store.invalidate(srcGroups); } },
     moveSource(store, p) { store.scene.source.pos = p.slice(); store.invalidate(srcGroups); },
     setSourceAxis(store, a) { store.scene.source.axis = V.norm(a); store.invalidate(srcGroups); },
     setTargetDistance(store, d) { store.scene.target.distance = Math.max(1e-6, d); store.invalidate(['A', 'B', 'C', 'L']); },

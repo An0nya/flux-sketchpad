@@ -7,3 +7,4 @@ tests/last-run.json
 tests/shots/
 bench-out/
 .claude/
+tools/projector-liou/out/

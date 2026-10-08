@@ -153,6 +153,52 @@
       set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 5.1, emission: 'surface', dist: 'isotropic', power: 1860 },
       axis: [1, 0, 0],                                   // axial filament: along the throw axis, as in a reflector headlamp
       volts: { 12: 1300, 13.2: 1860 },
+      halogen: true,
+    },
+    h1: {
+      label: 'H1 halogen · axial filament 5.0 mm', halogen: true,
+      note: 'UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets H1/1–2: axial filament, f = 5.0 ± 0.5 mm, e = 25.0 mm; 1,550 lm ± 15 % at 13.2 V (reference 1,150 lm at 12 V). Diameter NOT on the sheet (g = 0.5 d ± 0.5 d only): 1.4 mm assumed. The lamp has a metal CAP on the tip, obscuration angle ε = 45° ± 12° (not modelled in the source; projector-liou cap mode “bulb” uses it). The bulb Liou 2009 used.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 5.0, emission: 'surface', dist: 'isotropic', power: 1550 },
+      axis: [1, 0, 0],
+      volts: { 12: 1150, 13.2: 1550 },
+      obscuration: { kind: 'cap', angle: 45, sheet: 'H1/1 ε 45° ± 12°' },
+    },
+    h7: {
+      label: 'H7 halogen · axial filament 4.1 mm, black top', halogen: true,
+      note: 'UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets H7/1–3: axial filament on the reference axis (h1 = h2 = 0), f = 4.1 mm, e = 25.0 mm; 1,500 lm ± 10 % at 13.2 V (reference 1,100 lm at 12 V). Diameter: the sheet’s objective d max. 1.3 mm (12 V). BLACK TOP required: covers the bulb tip back at least to where γ3 = 30° (min.) crosses the bulb (not modelled in the source; projector-liou cap mode “bulb” uses it). Glass distortion-free within γ1 40° / γ2 50°.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.65, length: 4.1, emission: 'surface', dist: 'isotropic', power: 1500 },
+      axis: [1, 0, 0],
+      volts: { 12: 1100, 13.2: 1500 },
+      obscuration: { kind: 'black top', angle: 30, sheet: 'H7/2–3 γ3 30° min.' },
+    },
+    h9: {
+      label: 'H9 halogen · axial filament 4.8 mm', halogen: true,
+      note: 'UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets H9/1–3: axial filament, f = 4.8 mm, e = 25.0 mm; 2,100 lm ± 10 % at 13.2 V (reference 1,500 lm at 12 V, 1,650 lm at 12.2 V). Diameter: the sheet’s objective d max. 1.4 mm. No obscuration on the sheet. H9B: same filament, 1,650 lm.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 4.8, emission: 'surface', dist: 'isotropic', power: 2100 },
+      axis: [1, 0, 0],
+      volts: { 12: 1500, 13.2: 2100 },
+    },
+    h11: {
+      label: 'H11 halogen · axial filament 4.5 mm, black top', halogen: true,
+      note: 'UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets H11/1–3: axial filament (h1 = h2 = 0), f = 4.5 mm, e = 25.0 mm; 1,350 lm ± 10 % at 13.2 V (reference 1,000 lm at 12 V). Diameter: the sheet’s objective d max. 1.4 mm. BLACK TOP required: γ3 = 30° min. (not modelled in the source; projector-liou cap mode “bulb” uses it).',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 4.5, emission: 'surface', dist: 'isotropic', power: 1350 },
+      axis: [1, 0, 0],
+      volts: { 12: 1000, 13.2: 1350 },
+      obscuration: { kind: 'black top', angle: 30, sheet: 'H11/2–3 γ3 30° min.' },
+    },
+    hir2: {
+      label: 'HIR2 / 9012 halogen · axial filament 5.3 mm', halogen: true,
+      note: 'UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets HIR2/1–2: axial filament, f = 5.3 mm; 1,875 lm ± 15 % at 13.2 V (reference 1,355 lm at 12 V). Diameter: the sheet’s d 1.6 mm MAX (a real coil may be thinner). No obscuration on the sheet.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.8, length: 5.3, emission: 'surface', dist: 'isotropic', power: 1875 },
+      axis: [1, 0, 0],
+      volts: { 12: 1355, 13.2: 1875 },
+    },
+    hb4: {
+      label: 'HB4 / 9006 halogen · axial filament 5.1 mm, black top', halogen: true,
+      note: 'UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets HB4/1–3: axial filament, f = 5.1 mm, e = 31.5 mm; 1,095 lm ± 15 % at 13.2 V (reference 825 lm at 12 V). Diameter NOT on the sheet: 1.4 mm assumed. The drawing shows a black bulb top (“shall extend to at least angle γ3”); its angle not read yet, so no obscuration data here.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 5.1, emission: 'surface', dist: 'isotropic', power: 1095 },
+      axis: [1, 0, 0],
+      volts: { 12: 825, 13.2: 1095 },
     },
   };
 
@@ -166,6 +212,7 @@
     const p = PRESETS[id]; if (!p) return null;
     Object.assign(src, JSON.parse(JSON.stringify(p.set)));
     if (p.axis) { src.axis = p.axis.slice(); src.roll = 0; }
+    if (p.obscuration) src.obscuration = JSON.parse(JSON.stringify(p.obscuration)); else delete src.obscuration;      // the bulb's cap / black top (R37), carried with the scene so solvers in a worker see it
     src.preset = id;
     delete src.effArea; delete src.dome;                  // a dome comes only with a model that has one
     if (p.custom && opts && opts.measured) src.measured = JSON.parse(JSON.stringify(opts.measured));
