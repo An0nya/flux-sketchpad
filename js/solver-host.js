@@ -89,7 +89,7 @@
     let list = []; try { list = await (await fetch('solvers/index.json')).json(); } catch (e) { return; }
     for (const m of list) {
       try {
-        const src = await (await fetch('solvers/' + m.file)).text(), meta = { model: m.model, run: m.run, file: m.file, note: m.note || '' };
+        const src = await (await fetch('solvers/' + m.file)).text(), meta = { model: m.model, run: m.run, file: m.file, note: m.note || '', group: m.group || null, groups: m.groups || null };      // group: default | benchmark | legacy (the dropdown's sections)
         await loadInto(src, meta); bundled.push({ src, meta });
       } catch (e) { /* a missing file is skipped */ }
     }

@@ -4,182 +4,216 @@
   "model": "Projector, screenless (Liou branch of v3), experimental (Claude Opus 5.5, briefed by Anya)",
   "run": "2026-10-08",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "default"
  },
  {
   "file": "projector-v3.js",
   "model": "Projector module v3, experimental (Claude Sonnet 5.5, briefed by Anya)",
   "run": "2026-10-07",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "legacy"
  },
  {
   "file": "sqm-hl.js",
   "model": "SQM headlamp solver (Claude Sonnet 5.5, briefed by Anya)",
   "run": "2026-10-06",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "default"
  },
  {
   "file": "sqm-hl-dish.js",
   "model": "SQM headlamp solver, any base shell (Claude Sonnet 5.5, briefed by Anya)",
   "run": "2026-10-06",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "default"
  },
  {
   "file": "projector-v2.js",
   "model": "Projector module v2, experimental (Claude Opus 5.5)",
   "run": "2026-10-04",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "legacy"
  },
  {
   "file": "projector-v1.js",
   "model": "Projector module, experimental (Claude Opus 5.5)",
   "run": "2026-10-04",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "legacy"
  },
  {
   "file": "tir-array-v1.js",
   "model": "TIR collimator array, experimental (Claude Opus 5.5)",
   "run": "2026-10-04",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "legacy"
  },
  {
   "file": "tir-array-v2.js",
   "model": "TIR collimator array v2, experimental (Claude Opus 5.5)",
   "run": "2026-10-04",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "legacy"
  },
  {
   "file": "spec-hl-v2.js",
   "model": "Spec headlamp solver v2 (Claude Sonnet 5.5, briefed by Opus 5.5)",
   "run": "2026-10-05",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "default"
  },
  {
   "file": "spec-hl-v1.js",
   "model": "Spec headlamp solver (Claude Sonnet 5.5, briefed by Opus 5.5)",
   "run": "2026-10-05",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "legacy"
  },
  {
   "file": "lab-auto.js",
   "model": "Flux solver lab (Sonnet 5.5, briefed by Opus 5.5)",
   "run": "2026-09-30",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "default"
  },
  {
   "file": "lab-fill-fix.js",
   "model": "Flux solver lab (Claude Opus 5.5)",
   "run": "2026-09-29",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "default"
  },
  {
   "file": "lab-sqm.js",
   "model": "Flux solver lab (Claude Opus 5.5; v0.3 by Sonnet 5.5)",
   "run": "2026-09-29",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "default"
  },
  {
   "file": "lab-sqm-legacy.js",
   "model": "Flux solver lab (Claude Opus 5.5)",
   "run": "2026-09-29",
   "workspace": "this repo",
-  "note": "lab"
+  "note": "lab",
+  "group": "legacy"
  },
  {
   "file": "haiku55-2026-10-07-spots.js",
   "model": "Haiku 5.5",
   "run": "2026-10-07",
-  "workspace": "work-haiku55-flux-solver-20261007-1808"
+  "workspace": "work-haiku55-flux-solver-20261007-1808",
+  "group": "benchmark"
  },
  {
   "file": "haiku55-2026-10-07-kernels-v2.js",
   "model": "Haiku 5.5",
   "run": "2026-10-07",
   "workspace": "work-haiku55-flux-solver-20261007-1808",
-  "note": "second attempt, not a clean benchmark"
+  "note": "second attempt, not a clean benchmark",
+  "group": "benchmark"
  },
  {
   "file": "sonnet55-2026-09-28-dish-fit.js",
   "model": "Sonnet 5.5",
   "run": "2026-09-28",
-  "workspace": "work-sonnet55-flux-solver-20260928-2145"
+  "workspace": "work-sonnet55-flux-solver-20260928-2145",
+  "group": "benchmark",
+  "groups": {
+   "dish-fit-auto": "default"
+  }
  },
  {
   "file": "opus55-2026-09-27-mosaic.js",
   "model": "Opus 5.5",
   "run": "2026-09-27",
-  "workspace": "work-opus55-flux-solver-20260927-0154"
+  "workspace": "work-opus55-flux-solver-20260927-0154",
+  "group": "benchmark",
+  "groups": {
+   "opus-mosaic-auto": "default"
+  }
  },
  {
   "file": "sol61-2026-09-29-bowl-image.js",
   "model": "GPT-6.1 Sol (Codex)",
   "run": "2026-09-29",
-  "workspace": "work-sol61-codex-flux-solver-20260929-1737"
+  "workspace": "work-sol61-codex-flux-solver-20260929-1737",
+  "group": "benchmark"
  },
  {
   "file": "sol6-2026-09-26-finite-image.js",
   "model": "GPT-6 Sol (Codex)",
   "run": "2026-09-26",
-  "workspace": "work-sol6-codex-flux-solver-20260926-0446"
+  "workspace": "work-sol6-codex-flux-solver-20260926-0446",
+  "group": "benchmark"
  },
  {
   "file": "astra6-2026-09-27-patch-array.js",
   "model": "GPT-6 Astra (Codex)",
   "run": "2026-09-27",
-  "workspace": "work-codex-astra6-flux-solver-20260927-0207"
+  "workspace": "work-codex-astra6-flux-solver-20260927-0207",
+  "group": "benchmark"
  },
  {
   "file": "luna6-2026-09-26-cap-paint.js",
   "model": "GPT-6 Luna (Codex)",
   "run": "2026-09-26",
-  "workspace": "work-luna6-codex-flux-solver-20260926-0446"
+  "workspace": "work-luna6-codex-flux-solver-20260926-0446",
+  "group": "benchmark"
  },
  {
   "file": "luna6-2026-09-25-flux-explorer.js",
   "model": "GPT-6 Luna (Codex)",
   "run": "2026-09-25",
-  "workspace": "work-luna6-codex-flux-solver-20260925-2235"
+  "workspace": "work-luna6-codex-flux-solver-20260925-2235",
+  "group": "benchmark"
  },
  {
   "file": "bunny-2026-09-26b-flux-painter.js",
   "model": "space-bunny-alpha",
   "run": "2026-09-26",
-  "workspace": "work-space-bunny-alpha-flux-solver-20260926-0546"
+  "workspace": "work-space-bunny-alpha-flux-solver-20260926-0546",
+  "group": "benchmark"
  },
  {
   "file": "bunny-2026-09-26a-paint-mosaic.js",
   "model": "space-bunny-alpha",
   "run": "2026-09-26",
-  "workspace": "work-space-bunny-alpha-flux-solver-20260926-0433"
+  "workspace": "work-space-bunny-alpha-flux-solver-20260926-0433",
+  "group": "benchmark"
  },
  {
   "file": "bunny-2026-09-25-flux-corrected.js",
   "model": "space-bunny-alpha",
   "run": "2026-09-25",
-  "workspace": "work-space-bunny-alpha-flux-solver-20260925-2110"
+  "workspace": "work-space-bunny-alpha-flux-solver-20260925-2110",
+  "group": "benchmark"
  },
  {
   "file": "nemotron-2026-09-26b-paint-solver.js",
   "model": "Nemotron Ultra",
   "run": "2026-09-26",
-  "workspace": "work-nemotron-ultra-flux-solver-20260926-0547"
+  "workspace": "work-nemotron-ultra-flux-solver-20260926-0547",
+  "group": "benchmark"
  },
  {
   "file": "nemotron-2026-09-26a-paint-solver-2.js",
   "model": "Nemotron Ultra",
   "run": "2026-09-26",
-  "workspace": "work-nemotron-ultra-flux-solver-20260926-0436"
+  "workspace": "work-nemotron-ultra-flux-solver-20260926-0436",
+  "group": "benchmark"
  }
 ]

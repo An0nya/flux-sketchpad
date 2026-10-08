@@ -188,7 +188,9 @@
     const sc = ui.store.scene, el = P.el, cur = RF.Solvers.current(sc), def = RF.Solvers.get(cur), rep = ui.store.reports.A;
     // grouped: the app's own, the bundled model solvers (who wrote them, which benchmark run), your loaded files
     const paintDefs = RF.Solvers.list().filter((d) => d.modes.includes('paint')), opt = (d, label) => el('option', { value: d.id }, label);
-    const groups = [['Built in', paintDefs.filter((d) => !d.worker)], ['Model solvers (benchmark runs)', paintDefs.filter((d) => d.bundled)], ['Loaded by you', paintDefs.filter((d) => d.loaded)]];
+    // solvers/index.json sorts the bundled files: group 'default' | 'benchmark' | 'legacy' per file, and per-id overrides in "groups" (one file can register a static and an auto-tuned id)
+    const grpOf = (d) => (d.bundled.groups && d.bundled.groups[d.id]) || d.bundled.group || (d.bundled.note === 'lab' ? 'default' : 'benchmark');
+    const groups = [['Default', paintDefs.filter((d) => d.bundled && grpOf(d) === 'default')], ['Built in (app)', paintDefs.filter((d) => !d.worker)], ['Benchmark runs', paintDefs.filter((d) => d.bundled && grpOf(d) === 'benchmark')], ['Legacy', paintDefs.filter((d) => d.bundled && grpOf(d) === 'legacy')], ['Loaded by you', paintDefs.filter((d) => d.loaded)]];
     const pick = el('select', { 'aria-label': 'Solver' }, ...groups.filter(([, ds]) => ds.length).map(([g, ds]) => el('optgroup', { label: g }, ...ds.map((d) => opt(d, d.name + ' v' + d.version + (d.bundled ? ' — ' + d.bundled.model.replace(/ \(.*\)$/, '') + ', ' + d.bundled.run.slice(5) : ''))))));
     pick.value = cur;
     pick.addEventListener('change', () => { sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.store.invalidate(['A']); if (ui.store.autoA) ui.pendingA = performance.now() + 100; markStale(); schedule(); renderSolverBox(); });
