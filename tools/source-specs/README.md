@@ -6,3 +6,10 @@ Raw agent output: every number carries a verbatim quote + source; null = not fou
 - `nichia_samsung_0.json`: Nichia 219C, 519A, 719A, B35AM, E17A, E21A, Optisolis (757G-F1), Samsung LH351D (+ koef3 / djozz measurements quoted).
 - `auto_catalog_0.json` (Convoy LED options, partial; Emisar/Noctigon blocked) and `auto_catalog_1.json` (automotive: OSLON Black Flat X/S, OSTAR Headlamp Pro, LUXEON Altilon, Nichia NCSW170H).
 - Pending at writing: Cree group, LEP group.
+
+## koef3 chart traces (2026-10-08)
+- `koef3/traces.json`: 175 records read by a Sonnet subagent from koef3's BLF/TLF charts (images on lychee.lichtundstrom-blog.de): 101 flux/Vf curves (pixel-traced by script), 10 raw tables (exact, from the thread JSON), 64 luminance tables (digits transcribed from table images).
+- Calibration: traces vs koef3's raw tables ~0.3 % mean flux error, ~0.01 V Vf; traces vs his quoted text points within ~1 % for 33/36 presets.
+- Fixed by hand: SST-25 G2 (224789) — frame detector took the image border as the plot top, flux read ~13 % low; re-traced with pinned calibration (noted in the record's `problems`).
+- Not read: 51980 and 49788 charts are dead (abload.de, HTTP 410); 49788 stays a 2-pt preset.
+- `koef3/merge-traces.js [--write]` attaches the best trace + a CCT-matched luminance table to each `KOEF3_2PT` entry in `js/source-presets.js`. Presets with a luminance table size the die by effective area Φ/(πL) (same as the hand-entered koef3 presets) and keep the quoted area and the old quoted points as alternate models.
