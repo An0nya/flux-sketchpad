@@ -97,6 +97,13 @@
   "workspace": "work-haiku55-flux-solver-20261007-1808"
  },
  {
+  "file": "haiku55-2026-10-07-kernels-v2.js",
+  "model": "Haiku 5.5",
+  "run": "2026-10-07",
+  "workspace": "work-haiku55-flux-solver-20261007-1808",
+  "note": "second attempt, not a clean benchmark"
+ },
+ {
   "file": "sonnet55-2026-09-28-dish-fit.js",
   "model": "Sonnet 5.5",
   "run": "2026-09-28",
