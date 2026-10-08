@@ -1,0 +1,11 @@
+const fs = require('fs'); const { RF, judge } = require('/Users/anya/Projects/flux-sketchpad/tools/sqm-hl/lib.js');
+const sc = RF.State.deserialize(fs.readFileSync(process.argv[2], 'utf8')); const { G, ev } = judge(sc, 2e6), md = sc.modeD;
+const T = (f) => { const t = process.hrtime.bigint(); const r = f(); return [r, Number(process.hrtime.bigint() - t) / 1e6]; };
+const [full, tF] = T(() => RF.Spec.evaluate(G, md));
+const [fro, tZ] = T(() => RF.Spec.evaluate(G, md, { frozen: { base: full.aim.base, reaim: full.reaim, note: full.aim.note, cutV: full.aim.cutV } }));
+const [nb, tN] = T(() => RF.Spec.evaluate(G, md, { noBox: true }));
+const row = (e) => e.rows.map((r) => r.verdict[0]).join('');
+console.log('preset', md.label || md.preset, '| itemReaim', md.itemReaim, 'aimBox', JSON.stringify(md.aimBox));
+console.log('full   ', tF.toFixed(0), 'ms  n', JSON.stringify(full.n), 'aim', JSON.stringify(full.aim.base), 'reaim', JSON.stringify(full.reaim), 'shift', JSON.stringify(full.shift));
+console.log('frozen ', tZ.toFixed(1), 'ms  n', JSON.stringify(fro.n), 'aim', JSON.stringify(fro.aim.base), 'reaim', JSON.stringify(fro.reaim), 'shift', JSON.stringify(fro.shift), ' rows identical to full:', row(full) === row(fro));
+console.log('noBox  ', tN.toFixed(1), 'ms  n', JSON.stringify(nb.n), 'aim', JSON.stringify(nb.aim.base), 'reaim', JSON.stringify(nb.reaim));
