@@ -20,12 +20,17 @@
     const run = ui.run, sc = ui.store.scene;
     if (!run || sc.mode !== 'D' || !(run.ctx.ex || run.ctx.ff) || !(run.ctx.next > 0)) return ui.spec || null;
     const key = evalKey(sc.modeD), now = performance.now(), c = run.ctx;
-    const s = ui.spec;
-    if (!force && s && s.ctx === c && s.key === key && (s.next === c.next || (!c.done && now - s.t < 700))) return s;
+    const s = ui.spec, live = !c.done;
+    // a judgement made while the run was still tracing (aim held) is not final: when the run ends it is judged again, fully
+    if (!force && s && s.ctx === c && s.key === key && ((s.next === c.next && (s.full || live)) || (live && now - s.t < 700))) return s;
     try {
-      const G = RF.FarField.build(c, RF.Spec.gridOpts(sc)), ev = RF.Spec.evaluate(G, sc.modeD);
+      const G = RF.FarField.build(c, RF.Spec.gridOpts(sc));
+      // while rays are still being traced, do NOT re-aim (the re-aim box + per-point re-aim cost seconds per judgement, FMVSS worst): hold the aim of the
+      // last judgement of this spec, or find the instrumental aim once without the box; the finished run gets the full judgement
+      const prev = live && s && s.key === key && s.ev && s.ev.aim ? s.ev : null;
+      const ev = RF.Spec.evaluate(G, sc.modeD, live ? (prev ? { frozen: { base: prev.aim.base, reaim: prev.reaim || [0, 0], note: prev.aim.note, cutV: prev.aim.cutV } } : { noBox: true }) : undefined);
       let Gw = null; try { const wo = RF.Spec.wideOpts(sc); if (c.ff && RF.FarField.streamOf(c, wo)) Gw = RF.FarField.build(c, wo); } catch (e) { /* the picture just stays narrow */ }
-      ui.spec = { ctx: c, key, next: c.next, done: c.done, t: now, G, Gw, ev, map: null };
+      ui.spec = { ctx: c, key, next: c.next, done: c.done, full: !live, t: now, G, Gw, ev, map: null };
     } catch (e) {
       ui.spec = { ctx: c, key, next: c.next, t: now, error: e.message };
       // the grid settings (window, bin, angles) changed since this run started: its streams don't cover them — re-trace once

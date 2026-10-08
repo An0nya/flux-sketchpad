@@ -374,14 +374,20 @@
    * Re-aim box (aimBox, beam displacement for right-hand traffic: left / right / up / down degrees; §6.2.2.3 gives
    * 0.5 / 0.75 / 0.25 / 0.25) or, for older scenes, a symmetric aimTol.  Best = fewest sure fails, then fewest undecided rows,
    * then the smallest move (no move unless it changes a verdict).                                                                                                     */
-  function evaluate(G, md) {
-    const items = itemsOf(md), k = md.kernel > 0 ? md.kernel : 0.15, cache = new Map();
-    const aim = aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
-    const ir = md.itemReaim > 0 ? md.itemReaim : 0, atAim = evalAt(G, items, k, bh, bv, cache, ir);
-    let best = atAim, reaim = [0, 0];
+  /* opts (optional, for the live view while rays are still being traced): the aim search is the expensive part — the re-aim box is ~250
+   * full judgements and FMVSS's per-point re-aim multiplies each of them — so a growing run does not redo it:
+   *   frozen: { base: [dh, dv], reaim: [dh, dv], note?, cutV? } — judge at exactly this aim (a previous full judgement's aim): no cut-off scan, no box search;
+   *   noBox: true — find the instrumental aim (cheap) but skip the re-aim box search.
+   * The finished run is judged without opts: that is the number to trust.                                                                                    */
+  function evaluate(G, md, opts) {
+    const items = itemsOf(md), k = md.kernel > 0 ? md.kernel : 0.15, cache = new Map(), fz = opts && opts.frozen, skipBox = !!(fz || (opts && opts.noBox));
+    const aim = fz ? { base: fz.base.slice(), note: (fz.note || 'aim') + ' (held while the trace runs)', cutV: fz.cutV } : aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
+    const ir = md.itemReaim > 0 ? md.itemReaim : 0, held = fz ? fz.reaim : [0, 0];
+    const atAim = evalAt(G, items, k, bh, bv, cache, ir);
+    let best = held[0] || held[1] ? evalAt(G, items, k, bh + held[0], bv + held[1], cache, ir) : atAim, reaim = held.slice();
     let box = md.aimBox ? Object.assign({}, md.aimBox) : md.aimTol > 0 ? { left: md.aimTol, right: md.aimTol, up: md.aimTol, down: md.aimTol } : null;
     if (box && md.traffic === 'LHT') box = { left: box.right, right: box.left, up: box.up, down: box.down };
-    if (box && items.length && (box.left || box.right || box.up || box.down)) {
+    if (!skipBox && box && items.length && (box.left || box.right || box.up || box.down)) {
       const st = Math.max(G.step, md.aimStep || 0.05);
       // beam moved right by x ⇔ sampling offset −x: dh ∈ [−right, +left], dv ∈ [−up, +down]
       for (let dv = -(box.up || 0); dv <= (box.down || 0) + 1e-9; dv += st) for (let dh = -(box.right || 0); dh <= (box.left || 0) + 1e-9; dh += st) {
