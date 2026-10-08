@@ -1,0 +1,62 @@
+(koef3 text, all posts by koef3; from cached t_*.json; each line: thread title stub | post | quote)
+Getian GT-FC40 p1: 'The luminous area is 30.8 mm² in size.'
+Yinding 5050 glass (cool white, 218899) p1: 'The round luminous surface is 2.39 mm² in size.'
+Yinding 5050 glass p6: 'Yes, with 6.5 mm² LES.' (reply, ambiguous - likely a different emitter)
+SST-12-W (219049) p1: 'The round light emitting area is 2.64 mm² in size.'; p19: '1.38 mm² without dome'
+XM-L3 U4 (219338) p1: 'The luminous surface is 7.75 mm² in size.'; p8: 'While fully dedomed, the LES of the new design XM-L2 is 3.9 mm² in size.'
+Nichia 719A (219346) p1: 'The luminous area is 4.69 mm² in size.'
+CLP6B-WKW (219467) p1: 'The luminous area is 3 x 0.26 mm² in size.'
+SFT-70-X (219598) p1: 'The luminous area is 6.51 mm² in size.'
+HL2X (219828) p1: 'The luminous area is 6.1 (1800 K) / 4.90 (5700 K) mm² in size.'
+LML2AW.DC (220770) p1: 'The luminous area is 9.25 mm² in size.'
+SFT-40 3000/6500 (220791) p1: 'The luminous area is 4.02 mm² in size.'
+YLX N3535B (221071) p1: 'The luminous area is 1.40 mm² in size.'
+NV4WB35AMT (221112) p1: 'The luminous area is 9.83 mm² in size. ... 9.73 mm² specified by Nichia (3.12 x 3.12 mm illuminated area).'
+OSCONIQ 3737 PUSTA1.PM (222273) p1: 'The luminous area is 6.9 mm² in size.'
+TN3535 (222345) p1: 'The luminous area is 8.4 mm² in size.'
+CSP2323 (222391) p1: 'The luminous area is 3.2 mm² in size.'
+Moonleds MN-S3535 (222478) p1: 'The luminous area is 2.2 mm² in size.'
+XP-G4 B4 2B dome (222822) p1: 'The luminous area is 4.61 mm² in size.'
+SFT-12 F4 BC (222962) p1: 'The luminous area is 1.27 mm² in size.'
+FFL505A (222974) p1: 'The luminous area is 2.35 mm² in size.'
+LMP W5050SQ3 (223112) p1: 'The luminous area is 2.3 mm² in size.'
+519A sm503 (223258) p1: 'The luminous area is 7.2 mm² in size.'; also 'The dedomed 519A offers around 40 % higher luminance than the 519A with dome.'; '...should achieve a luminance of 110-130 cd/mm2...' (koef3 expectation for 70 CRI, NOT a measurement)
+XHP35.2 HI D4 (223296) p1: 'The luminous area is 4.95 mm² in size.'
+NVSL219AT-H1 (223311) p1: 'The luminous area is 4.8 mm² in size.'
+XHP70.3 HI (223546) p1: 'The luminous area is 14.6 mm² in size.'
+FFL351A 3700 K (224065) p1: 'The luminous area is 4.3 mm² in size.... The LED chip here is probably 2.0 x 2.0 mm'
+XP-G4 HI C1 (224738) p1: 'The illuminated area is 2.0 mm²'
+SFN40 (224752) p1: 'The illuminated area is 12.1 mm² in size.'
+SST-25 G2 BA (224789) p1: 'The illuminated area is 5.8 mm² in size.'
+SFT-25R (225143) p1: 'The LED chip is 2.25 mm² in size.'; p17: luminance measured with optic, LES used to calculate
+SFH43 (225476) p1: 'The LES is 32.3 mm² in size.'
+SFH55 (225575) p1: 'The illuminated area is 31.9 mm² in size.' (real active 38-40 mm² per koef3)
+FFL707A (227594) p1: 'The illuminated area is 25.8 mm2 in size.'
+XFL05K HD (227615) p1: 'The illuminated area is 39.8 mm2.'
+FL5009R (227625) p1: 'The illuminated area is 11.8 mm2 in size.'
+SFT-90 J7 (227882) p1: 'The illuminated area is 9.6 mm^2 in size.'
+Unknown 7070 CBT-90 chip (228167) p1: 'The illuminated area is 9.9 mm2.'
+CBT-140-WCS (228242) p1: 'The LED chip ... 14 mm2 circular illuminated area'
+NBQ86 (228409) p1: 'The LES is 24 mm^2 in size.'
+LHP73B (229512) p1: 'The light-emitting area is 25 mm² in size.'
+TC7070 (229569) p1: 'The illuminated area is 7.2 mm2.'
+LHP531 (229647) p1: 'The light-emitting area is 13.5 mm² (1800K: 14.3 mm²).'
+SFY55 (230885) p1: 'light-emitting area of over 100 mm²' and later 'approximately 152 mm2' (koef3 inconsistent within same post)
+SFT-42R-WES (231022) p1: 'The luminous area is approximately 5 mm2. Despite the 4.3 mm2 specified in the data sheet...'
+SFT-42R-WES p16: 'approx. 188 cd/mm2' (reply)
+Osram SYNIOS DMLQ31.SG (48945) p1: 'The total light emitting surface area (LES) is 0.503 mm²'
+CXA1304 COB (48963) p1: 'a total of 7.86 mm²' (8 dies of 0.65 mm²)
+XHP35 HI (49002) p1: 'The Light emitting surface (LES) of the XHP35 High Intensity is 5.32 mm²'; 'With 171 cd/mm² the luminance of the XHP35 HI in E2 binning is very high.'
+XHP70.2 (49020) p1: 'total LES area of the XHP70.2 is 31.52 mm²'; 'four single dies 7.88 mm² each'; comparison 'SYNIOS DMLN31.SG 297.8 cd/mm², Oslon Black Flat 266.5, XP-G2 S4 2B 197.3 cd/mm²'
+XP-L2 (49237) p1: 'die 10.41 mm² domed, 5.581 mm² dedomed'
+Luxeon MZ (49328) p1: 'The total LES is 7.92 mm²'; 'Every die covers 1.98 mm²'
+Luxeon V CSP (49731) p1: 'With dome on the LES is 9.83 mm²'; 'shaved 6.43 mm²'; 'pure LED chip 6.19 mm²'; p6: koef3 adds side areas, gets 4.01 mm² visible from above; disputes Lumileds 4 mm2 die claim
+OSTAR Projection (49737) p1: 'radiating surface 1.8 mm² (datasheet, top only)'; p3: koef3 divides intensity by total LES incl. sides (value not extracted)
+SST-40-W (49788) p1: 'The LES equals with dome 8.02 mm²'; 'Without dome ... 3.99 mm²'
+NVSW319AT (50303) p1: 'The die is 5.72 mm² (only top view)'
+Oslon Black Flat HWQP (50320) p1: 'The whole LES is 1.12 mm² (XP-E2 0.85 mm², XP-G2 old version: 1.88 mm²)'
+Rebel Display (51153) p1: 'With dome the LES is 2.31 mm²; without dome 1.10 mm²'
+XP-E2 PC Amber (71860) p1: 'The light area with dome is 3.23 mm²'
+XM-L2 U3 (71898) p1: 'The luminous area is 7.90 mm² with dome'; 'luminous area here is 4 mm², just like the old XM-L2' (after dome removal)
+XP-P U5 (72137) p1: 'The square luminous surface is 1.05 mm²'
+CSLNM1.TG (72144) p1: 'The square luminous area is 1.05 mm² (CSLNM1.TG) or 1.93 mm² (CSLPM1.TG)'
