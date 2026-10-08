@@ -208,7 +208,7 @@
       const shared = def.settings.filter((f) => RF.Solvers.SHARED.includes(f.key)).map((f) => f.label || f.key);
       if (shared.length) fields.push(el('div', { class: 'note' }, shared.join(', ') + ': from the Paint settings above (shared by every solver).'));
       for (const f of def.settings) {
-        if (RF.Solvers.SHARED.includes(f.key)) continue;
+        if (RF.Solvers.SHARED.includes(f.key) || f.hidden) continue;      // hidden: a solver's internal constant (still overridable from a bench or a saved scene)
         const set = (v) => { sc.solverSettings[cur] = Object.assign({}, vals, sc.solverSettings[cur], { [f.key]: v }); ui.store.invalidate(['A']); if (ui.store.autoSet) ui.pendingA = performance.now() + 400; markStale(); schedule(); };
         let inp;
         if (f.type === 'select') { inp = el('select', {}, ...(f.options || []).map((o) => el('option', { value: o.value !== undefined ? o.value : o }, o.label || o.value || o))); inp.value = vals[f.key]; inp.addEventListener('change', () => set(inp.value)); }

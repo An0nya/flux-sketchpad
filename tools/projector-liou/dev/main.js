@@ -3,63 +3,64 @@
   'use strict';
   const RF = globalThis.RF, V = RF.V, P3 = RF.P3 = RF.P3 || {}, T = RF.SqmTarget, D2R = Math.PI / 180;
   const SETTINGS = [
+    { key: 'effort', label: 'Effort: quick (one lens, one path length, model only) · normal (lens + path search, engine check of the best three) · thorough (wider search)', type: 'select', options: [{ value: 'quick', label: 'quick' }, { value: 'normal', label: 'normal' }, { value: 'thorough', label: 'thorough' }], default: 'normal' },
     { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0, help: 'unused (the depth map picks distances)' },
-    { key: 'lensShape', label: 'Lens: auto (the best traced design wins) · flat-in (flat face toward the reflector, convex conic out: the production projector lens) · curve-in (conic toward the reflector, exact on axis) · biconvex', type: 'select', options: [{ value: 'auto', label: 'auto' }, { value: 'flat-in', label: 'flat side to the reflector' }, { value: 'curve-in', label: 'curved side to the reflector (stigmatic)' }, { value: 'biconvex', label: 'biconvex' }], default: 'flat-in' },
-    { key: 'ior', label: 'Lens index (1.49 acrylic, 1.59 polycarbonate)', type: 'number', min: 1.3, max: 2, step: 0.01, default: 1.59 },
+    { key: 'lensShape', label: 'Lens: auto (the best traced design wins) · flat-in (flat face toward the reflector, convex conic out: the production projector lens) · curve-in (conic toward the reflector, exact on axis) · biconvex', type: 'select', options: [{ value: 'auto', label: 'auto' }, { value: 'flat-in', label: 'flat side to the reflector' }, { value: 'curve-in', label: 'curved side to the reflector (stigmatic)' }, { value: 'biconvex', label: 'biconvex' }], default: 'flat-in', adv: true },
+    { key: 'ior', label: 'Lens index (1.49 acrylic, 1.59 polycarbonate)', type: 'number', min: 1.3, max: 2, step: 0.01, default: 1.59, adv: true },
     { key: 'facets', label: 'Facets to use (0 = the whole budget, at most 300)', type: 'number', min: 0, step: 1, default: 0 },
     { key: 'surface', label: 'Reflector: stepped facets (each facet its own focus point and aim, on one base cup) · continuous (Liou: smooth fields over a regular mesh, fitted to the stepped design)', type: 'select', options: [{ value: 'stepped', label: 'stepped facets' }, { value: 'continuous', label: 'continuous (Liou)' }], default: 'stepped' },
-    { key: 'contV', label: 'Continuous: vertical aims — snap (Liou: each patch as high as it can go without leaking, smoothed) or fit (follow the stepped design)', type: 'select', options: [{ value: 'snap', label: 'snap (Liou)' }, { value: 'fit', label: 'fit the stepped design' }], default: 'snap' },
+    { key: 'contV', label: 'Continuous: vertical aims — snap (Liou: each patch as high as it can go without leaking, smoothed) or fit (follow the stepped design)', type: 'select', options: [{ value: 'snap', label: 'snap (Liou)' }, { value: 'fit', label: 'fit the stepped design' }], default: 'snap', adv: true },
     { key: 'contRings', label: 'Continuous: rings from rim to vertex', type: 'number', min: 2, max: 20, step: 1, default: 6, adv: true },
     { key: 'contSectors', label: 'Continuous: sectors around the axis', type: 'number', min: 4, max: 64, step: 1, default: 24, adv: true },
     { key: 'contM', label: 'Continuous: Fourier order around the axis (smoothness: lower = smoother)', type: 'number', min: 0, max: 8, step: 1, default: 4, adv: true },
     { key: 'contN', label: 'Continuous: polynomial order rim → vertex (0–2)', type: 'number', min: 0, max: 2, step: 1, default: 2, adv: true },
     { key: 'shield', label: 'Shield: off (screenless: every facet image is placed under the cut-off, Liou 2009) · cleanup (the same placement + a shield on that line that trims the tails and the direct light; raise the leak share to trade shield loss for candela at the line) · auto (v3: images centred under the line, the shield cuts them)', type: 'select', options: [{ value: 'off', label: 'off (screenless)' }, { value: 'cleanup', label: 'cleanup' }, { value: 'auto', label: 'auto (v3)' }], default: 'off' },
-    { key: 'slitDeg', label: 'Shield windows for the sign points: half-size in degrees (0 = none); the beam\'s own tails reach the points through them', type: 'number', min: 0, max: 3, step: 0.1, default: 0.6 },
-    { key: 'wallHug', label: 'Let a cell sit on the envelope wall instead of the base ellipsoid (v3 behaviour; off = one continuous base cup, no shrunken facets)', type: 'checkbox', default: false, adv: true },
+    { key: 'slitDeg', label: 'Shield windows for the sign points: half-size in degrees (0 = none); the beam\'s own tails reach the points through them', type: 'number', min: 0, max: 3, step: 0.1, default: 0.6, adv: true },
+    { key: 'wallHug', label: 'Let a cell sit on the envelope wall instead of the base ellipsoid (v3 behaviour; off = one continuous base cup, no shrunken facets)', type: 'checkbox', default: false, hidden: true },
     { key: 'overlap', label: 'Facet overlap: each lens-path facet grows this much past its cell (1 = exact cells; > 1 closes the slits an extended emitter sees between stepped neighbours)', type: 'number', min: 1, max: 2, step: 0.05, default: 1, adv: true },
-    { key: 'edgeSharp', label: 'Edge pass: facets whose sharpest image is at most this tall (rms °) are placed first, scored on the band under the line (0 = off)', type: 'number', min: 0, max: 5, step: 0.1, default: 1.5 },
+    { key: 'edgeSharp', label: 'Edge pass: facets whose sharpest image is at most this tall (rms °) are placed first, scored on the band under the line (0 = off)', type: 'number', min: 0, max: 5, step: 0.1, default: 1.5, adv: true },
     { key: 'edgeBand', label: 'Edge pass: height of the band under the line (°)', type: 'number', min: 0.3, max: 5, step: 0.1, default: 1.5, adv: true },
     { key: 'leak', label: 'Screenless: share of a facet\'s light that may land above the cut-off line', type: 'number', min: 0, max: 0.5, step: 0.005, default: 0.01 },
-    { key: 'edgeMargin', label: 'Screenless: images sit this far below the cut-off line (°)', type: 'number', min: -1, max: 2, step: 0.05, default: 0 },
+    { key: 'edgeMargin', label: 'Screenless: images sit this far below the cut-off line (°)', type: 'number', min: -1, max: 2, step: 0.05, default: 0, adv: true },
     { key: 'refine', label: 'Screenless: rounds of re-tracing each placed facet at its real aim and sliding it under the line (0 = trust the nominal footprints)', type: 'number', min: 0, max: 6, step: 1, default: 3, adv: true },
     { key: 'cap', label: 'Direct-light cap: a small absorbing disc ahead of the emitter that hides the lens from it (direct light leaves the lens far out of focus, above the cut-off too)', type: 'select', options: [{ value: 'off', label: 'off' }, { value: 'bulb', label: 'the bulb’s own (H1 cap, H7/H11 black top, from the preset)' }, { value: 'on', label: 'on (sized to hide the lens)' }], default: 'bulb' },
     { key: 'capGap', label: 'Cap distance ahead of the emitter front (mm): farther = a bigger disc that hides a narrower cone of the emitter', type: 'number', min: 1, max: 60, step: 1, default: 10, adv: true },
-    { key: 'barrel', label: 'Lens holder: an absorbing tube from the bowl to the lens (light that misses the lens is stopped, as in every real projector module)', type: 'checkbox', default: true },
-    { key: 'along', label: 'First-focus points per side along each emitter axis (Liou\'s moving focus: 1 = the ends only)', type: 'number', min: 1, max: 6, step: 1, default: 3 },
-    { key: 'pathScan', label: 'Base ellipsoid path length, mm beyond the focus distance (Sonnet\'s v4 bench: the lever; a list = try each)', type: 'select', options: ['16,24,32', '8,16,24,32,40', '16', '24', '32', 'proxy'].map((v) => ({ value: v, label: v === 'proxy' ? 'v3 proxy picks' : v })), default: '16,24,32' },
-    { key: 'fillLens', label: 'Lens fills the envelope (the largest aperture that fits)', type: 'checkbox', default: true },
-    { key: 'screenlessEff', label: 'Share of the lens-path flux the ideal beam may count on without a shield', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.9, adv: true },
-    { key: 'shieldCurved', label: 'Curved shield (follows the field curvature)', type: 'checkbox', default: true, adv: true },
+    { key: 'barrel', label: 'Lens holder: an absorbing tube from the bowl to the lens (light that misses the lens is stopped, as in every real projector module)', type: 'checkbox', default: true, adv: true },
+    { key: 'along', label: 'First-focus points per side along each emitter axis (Liou\'s moving focus: 1 = the ends only)', type: 'number', min: 1, max: 6, step: 1, default: 3, adv: true },
+    { key: 'pathScan', label: 'Base ellipsoid path length, mm beyond the focus distance (Sonnet\'s v4 bench: the lever; a list = try each)', type: 'select', options: ['effort', '16,24,32', '8,16,24,32,40', '16', '24', '32', 'proxy'].map((v) => ({ value: v, label: v === 'proxy' ? 'v3 proxy picks' : v === 'effort' ? 'from Effort' : v })), default: 'effort', adv: true },
+    { key: 'fillLens', label: 'Lens fills the envelope (the largest aperture that fits)', type: 'checkbox', default: true, adv: true },
+    { key: 'screenlessEff', label: 'Share of the lens-path flux the ideal beam may count on without a shield', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.9, hidden: true },
+    { key: 'shieldCurved', label: 'Curved shield (follows the field curvature)', type: 'checkbox', default: true, hidden: true },
     { key: 'shieldDefocus', label: 'Shield axial offset (mm, + = toward the lens, −1 = auto)', type: 'number', min: -1, max: 4, step: 0.05, default: -1, adv: true },
     { key: 'spread', label: 'Widest lens-path aim, ± degrees', type: 'number', min: 2, max: 40, step: 1, default: 25, adv: true },
-    { key: 'edgeDrop', label: 'Image centres below the cut-off (°)', type: 'number', min: 0, max: 3, step: 0.05, default: 0.4, adv: true },
-    { key: 'depthPenalty', label: 'Depth-map stiffness (penalty for leaving the base path length)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.35, adv: true },
+    { key: 'edgeDrop', label: 'Image centres below the cut-off (°)', type: 'number', min: 0, max: 3, step: 0.05, default: 0.4, hidden: true },
+    { key: 'depthPenalty', label: 'Depth-map stiffness (penalty for leaving the base path length)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.35, hidden: true },
     { key: 'fluxFrac', label: 'Share of the lens-path flux the ideal beam may ask for', type: 'number', min: 0.2, max: 1.2, step: 0.01, default: 0.85, adv: true },
-    { key: 'focal', label: 'Lens focal length (mm, 0 = search)', type: 'number', min: 0, max: 150, step: 1, default: 0, adv: true },
+    { key: 'focal', label: 'Lens focal length (mm, 0 = search; Effort sets the search)', type: 'number', min: 0, max: 150, step: 1, default: 0, adv: true },
     { key: 'aperture', label: 'Lens aperture radius (mm, 0 = search)', type: 'number', min: 0, max: 100, step: 0.5, default: 0, adv: true },
-    { key: 'bypass', label: 'Lens-bypass facets (auto: facets beside the lens use the light the lens path cannot; off: a sealed projector, all light leaves through the lens)', type: 'select', options: [{ value: 'auto', label: 'auto' }, { value: 'off', label: 'off (sealed)' }], default: 'off' },
-    { key: 'endFocus', label: 'Moving first focus (Liou 2009): a lens-path facet may take a point along the emitter (out to an end) as its first focus, so its image hangs on one side of its aim and can sit right under the cut-off', type: 'checkbox', default: true },
+    { key: 'bypass', label: 'Lens-bypass facets (auto: facets beside the lens use the light the lens path cannot; off: a sealed projector, all light leaves through the lens)', type: 'select', options: [{ value: 'auto', label: 'auto' }, { value: 'off', label: 'off (sealed)' }], default: 'off', adv: true },
+    { key: 'endFocus', label: 'Moving first focus (Liou 2009): a lens-path facet may take a point along the emitter (out to an end) as its first focus, so its image hangs on one side of its aim and can sit right under the cut-off', type: 'checkbox', default: true, adv: true },
     { key: 'bypassReach', label: 'Largest angle from the LED axis (°) at which lens-feasible light may be given to bypass facets instead (60 = only what the lens path cannot use; ~100 = the whole equator band goes to big far mirrors: sharper images, more lumens and peak, less of a projector)', type: 'number', min: 0, max: 180, step: 5, default: 60, adv: true },
-    { key: 'reflector', label: 'Reflector: facets (aimed ellipsoid patches) or one continuous ellipsoid (the classic projector cup; a single facet of the budget)', type: 'select', options: [{ value: 'facets', label: 'facets' }, { value: 'ellipsoid', label: 'one continuous ellipsoid' }], default: 'facets' },
-    { key: 'shieldEff', label: 'Share of the lens-path flux that survives the shield (sizes the ideal beam)', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.8, adv: true },
-    { key: 'lam', label: 'Placement waste penalty (0 = fill anywhere, 1 = never overshoot)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.5, adv: true },
-    { key: 'bypassMinEff', label: 'A bypass cell is dropped when less than this share of its light survives the lens/shield on a nominal aim', type: 'number', min: 0, max: 1, step: 0.05, default: 0.4, adv: true },
-    { key: 'polishRounds', label: 'Aim polish rounds (v3\'s polish; it does not know the screenless rule, so 0 = off by default)', type: 'number', min: 0, max: 10, step: 1, default: 0 },
-    { key: 'polishSweeps', label: 'Sweeps per polish round (each sweep tries four step sizes)', type: 'number', min: 1, max: 6, step: 1, default: 3, adv: true },
-    { key: 'wBand', label: 'Polish weight of floor / ceiling violations', type: 'number', min: 0, step: 10, default: 150, adv: true },
-    { key: 'wTrack', label: 'Polish weight of following the ideal beam', type: 'number', min: 0, step: 0.01, default: 0.03, adv: true },
-    { key: 'decalGain', label: 'Decal flux margin over a sign-point floor', type: 'number', min: 0.5, max: 6, step: 0.1, default: 1.5, adv: true },
-    { key: 'edgeTrust', label: 'How far (pixels of 0.1°) a facet that forms the cut-off edge may move in the polish', type: 'number', min: 0, max: 40, step: 1, default: 3, adv: true },
-    { key: 'edgeSearch', label: 'Search the shield edge height (left / right) against the model', type: 'checkbox', default: true, adv: true },
-    { key: 'finalists', label: 'Layouts that get the full treatment (edge search, polish)', type: 'number', min: 1, max: 6, step: 1, default: 3, adv: true },
-    { key: 'verify', label: 'Let the engine (one 1 M-ray spec trace each) pick between the two best layouts', type: 'checkbox', default: true, adv: true },
-    { key: 'keepTop', label: 'Layouts evaluated in full (the best by the cheap proxy)', type: 'number', min: 1, max: 40, step: 1, default: 6, adv: true },
-    { key: 'verbose', label: 'Log progress to the console', type: 'checkbox', default: false, adv: true },
+    { key: 'reflector', label: 'Reflector: facets (aimed ellipsoid patches) or one continuous ellipsoid (the classic projector cup; a single facet of the budget)', type: 'select', options: [{ value: 'facets', label: 'facets' }, { value: 'ellipsoid', label: 'one continuous ellipsoid' }], default: 'facets', hidden: true },
+    { key: 'shieldEff', label: 'Share of the lens-path flux that survives the shield (sizes the ideal beam)', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.8, hidden: true },
+    { key: 'lam', label: 'Placement waste penalty (0 = fill anywhere, 1 = never overshoot)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.5, hidden: true },
+    { key: 'bypassMinEff', label: 'A bypass cell is dropped when less than this share of its light survives the lens/shield on a nominal aim', type: 'number', min: 0, max: 1, step: 0.05, default: 0.4, hidden: true },
+    { key: 'polishRounds', label: 'Aim polish rounds (v3\'s polish; it does not know the screenless rule, so 0 = off by default)', type: 'number', min: 0, max: 10, step: 1, default: 0, hidden: true },
+    { key: 'polishSweeps', label: 'Sweeps per polish round (each sweep tries four step sizes)', type: 'number', min: 1, max: 6, step: 1, default: 3, hidden: true },
+    { key: 'wBand', label: 'Polish weight of floor / ceiling violations', type: 'number', min: 0, step: 10, default: 150, hidden: true },
+    { key: 'wTrack', label: 'Polish weight of following the ideal beam', type: 'number', min: 0, step: 0.01, default: 0.03, hidden: true },
+    { key: 'decalGain', label: 'Decal flux margin over a sign-point floor', type: 'number', min: 0.5, max: 6, step: 0.1, default: 1.5, hidden: true },
+    { key: 'edgeTrust', label: 'How far (pixels of 0.1°) a facet that forms the cut-off edge may move in the polish', type: 'number', min: 0, max: 40, step: 1, default: 3, hidden: true },
+    { key: 'edgeSearch', label: 'Search the shield edge height (left / right) against the model', type: 'checkbox', default: true, hidden: true },
+    { key: 'finalists', label: 'Layouts that get the full treatment (edge search, polish)', type: 'number', min: 1, max: 6, step: 1, default: 3, hidden: true },
+    { key: 'verify', label: 'Let the engine (one 1 M-ray spec trace each) pick between the two best layouts', type: 'checkbox', default: true, hidden: true },
+    { key: 'keepTop', label: 'Layouts evaluated in full (the best by the cheap proxy)', type: 'number', min: 1, max: 40, step: 1, default: 6, hidden: true },
+    { key: 'verbose', label: 'Log progress to the console', type: 'checkbox', default: false, hidden: true },
   ];
 
   function candidates(P, s) {
     const out = [], E = P.E, S0 = P.Lp, n = s.ior, shapes = s.lensShape === 'auto' ? ['flat-in', 'curve-in', 'biconvex'] : [s.lensShape === 'biconvex' ? 'biconvex' : s.lensShape];
-    const fList = s.focal > 0 ? [s.focal] : [42, 54, 64, 74, 84], hEnv = Math.min((E.ymax - E.ymin) / 2, (E.zmax - E.zmin) / 2) - 0.8;
+    const fList = s.focal > 0 ? [s.focal] : s.focalList || [42, 54, 64, 74, 84], hEnv = Math.min((E.ymax - E.ymin) / 2, (E.zmax - E.zmin) / 2) - 0.8;
     const variants = [];
     for (const sh of shapes) {
       if (sh === 'flat-in') for (const k of [-0.5, -0.8])      // k −1.2 dropped: the model and the engine disagreed badly on it (10-08: model 3 fails, engine 8–14)
@@ -81,6 +82,10 @@
   async function solve(input, s0, tools) {
     if (!input.spec) return { surfaces: [], notes: ['projector-liou designs from a beam specification: switch to Spec mode (paint mode is not built yet; Fill & fix, SQM or Auto handle paint).'] };
     const S = Object.assign({}, P3.DEFAULTS, s0), notes = [], P = P3.problem(input, S, tools); const s = Object.assign({ depthPenalty: 0.35 }, s0);
+    // Effort sets the search size (keepTop, finalists, engine check, path lengths, focal list); the hidden knobs stay overridable from the bench
+    const EFF = { quick: { keepTop: 2, finalists: 1, verify: false, paths: '24', focals: [54] }, normal: { keepTop: 6, finalists: 3, verify: true, paths: '16,24,32' }, thorough: { keepTop: 12, finalists: 4, verify: true, paths: '8,16,24,32,40' } }[s.effort] || null;
+    if (EFF) { s.keepTop = EFF.keepTop; s.finalists = EFF.finalists; s.verify = EFF.verify; if (s.pathScan === 'effort') s.pathScan = EFF.paths; s.focalList = EFF.focals || null; }
+    else if (s.pathScan === 'effort') s.pathScan = '16,24,32';
     const budgetMs = tools && tools.budget && isFinite(tools.budget.ms) && tools.budget.ms > 0 ? tools.budget.ms : 120000, el = () => Date.now() - P.t0;      // the host's solve time limit; what is not finished by then is lost
     const Kmax = Math.min(P.maxF, s.facets > 0 ? s.facets : 300);
     const D = P3.dirs(P, S.nDirs); P.lap(`directions: ${D.n}, ${D.tot.toFixed(0)} lm`);
