@@ -172,7 +172,7 @@
       const meta = G.metas[k];
       const g = (meta.group || 'M').charAt(0);
       const inter = RF.Geo.INTER_NAMES[G.D[k * RF.Geo.STRIDE + 28]];
-      for (const poly of RF.Geo.outline(G, k)) {
+      for (const poly of RF.Geo.mesh(G, k)) {              // display tessellation: big curved facets / quads are meshed, not one filled outline
         const c = V.mul(poly.reduce((s, q) => V.add(s, q), [0, 0, 0]), 1 / poly.length);
         let n = V.cross(V.sub(poly[1], poly[0]), V.sub(poly[poly.length - 1], poly[0]));
         if (V.len(n) < 1e-12 && poly.length > 2) n = V.cross(V.sub(poly[1], poly[0]), V.sub(poly[2], poly[0]));

@@ -602,9 +602,39 @@
     return [pts.map((q) => at(q[0], q[1], sag(q[0], q[1])))];
   }
 
+  // DISPLAY tessellation (js/render.js buildDrawModel only). outline() draws a curved facet / quad as ONE filled polygon (its rim lifted onto the surface),
+  // which flattens a large deep dish into a "pringle". mesh() rings such a surface from the clip polygon's centroid out to the rim (rings crowded toward the rim,
+  // where a deep bowl is steep) so it reads as a bowl. Flat surfaces, surfaces of revolution and small facets keep outline(); verify, photometry and the engine never use mesh().
+  function mesh(C, k) {
+    const D = C.D, o = k * STRIDE, ct = D[o + 22];
+    if (ct === CLIP.ring || D[o + 34] === 1) return outline(C, k);
+    const P = [D[o], D[o + 1], D[o + 2]], ex = [D[o + 3], D[o + 4], D[o + 5]], ey = [D[o + 6], D[o + 7], D[o + 8]], ez = [D[o + 9], D[o + 10], D[o + 11]];
+    const at = (x, y, z) => [P[0] + ex[0] * x + ey[0] * y + ez[0] * z, P[1] + ex[1] * x + ey[1] * y + ez[1] * z, P[2] + ex[2] * x + ey[2] * y + ez[2] * z];
+    const sag = (x, y) => localSag(D, o, x, y) || 0;
+    let pts;
+    if (ct === CLIP.rect) { const hx = D[o + 23], hy = D[o + 24]; pts = [[-hx, -hy], [hx, -hy], [hx, hy], [-hx, hy]]; }
+    else if (ct === CLIP.disc) { const r = D[o + 23]; pts = []; for (let i = 0; i < 20; i++) pts.push([r * Math.cos(i * Math.PI / 10), r * Math.sin(i * Math.PI / 10)]); }
+    else { const off = D[o + 23], cnt = D[o + 24]; pts = []; for (let i = 0; i < cnt; i++) pts.push([C.poly[2 * (off + i)], C.poly[2 * (off + i) + 1]]); }
+    let cx = 0, cy = 0; for (const q of pts) { cx += q[0]; cy += q[1]; } cx /= pts.length; cy /= pts.length;
+    let rad = 0; for (const q of pts) rad = Math.max(rad, Math.hypot(q[0] - cx, q[1] - cy));
+    if (rad < 10) return outline(C, k);
+    if (ct !== CLIP.disc && pts.length <= 12) {            // the same edge subdivision as outline() (so a few-sided facet's rim follows the curvature)
+      const dense = [];
+      for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; for (let s = 0; s < 4; s++) dense.push([p[0] + (q[0] - p[0]) * s / 4, p[1] + (q[1] - p[1]) * s / 4]); }
+      pts = dense;
+    }
+    const n = pts.length, NR = Math.min(10, Math.max(3, Math.ceil(rad / 6)));
+    const ring = (t) => pts.map((q) => { const x = cx + (q[0] - cx) * t, y = cy + (q[1] - cy) * t; return at(x, y, sag(x, y)); });
+    const rings = []; for (let r = 1; r <= NR; r++) rings.push(ring(1 - Math.pow(1 - r / NR, 2)));
+    const mid = at(cx, cy, sag(cx, cy)), polys = [];
+    for (let i = 0; i < n; i++) polys.push([mid, rings[0][i], rings[0][(i + 1) % n]]);
+    for (let r = 0; r + 1 < NR; r++) for (let i = 0; i < n; i++) { const j = (i + 1) % n; polys.push([rings[r][i], rings[r][j], rings[r + 1][j], rings[r + 1][i]]); }
+    return polys;
+  }
+
   RF.Geo = {
     STRIDE, CLIP, INTER, INTER_NAMES, DEFAULT_OPTICS, HIT,
     facetQuadric, facetQuadric2, quadricRay, conicSag, compile, compileSurface, intersect, frontNormal, localSag,
-    envInside, envInterval, envVolume, envWire, outline, buildBVH,
+    envInside, envInterval, envVolume, envWire, outline, mesh, buildBVH,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
