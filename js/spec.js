@@ -236,18 +236,26 @@
   const CUT_FLOOR = 0.02;
   // CUT.minRays: the steepest step of a traced (shot-noisy) scan is a winner's curse — a dark side of 1–3 rays makes huge, fake steps (8 M rays read G 1.75 where
   // 32 M converge on 0.42).  A step counts only when its dark side holds ≥ minRays rays (10: reached the 32 M value at 8 M; 30 pulled the cut-off 0.1° low).
-  const CUT = { minRays: 10 };
+  // CUT.above: the cut-off is the beam's UPPER boundary — an edge with darkness above it.  The steepest step anywhere in the window let the bottom of a hotspot
+  // or of a dim notch win by noise (SQM 7" bucket: 1 trace in 5 aimed 2.8° low).  A step qualifies only if nothing from CUT.gap° above it to the top of the scan is brighter
+  // than CUT.above × its bright side (a soft edge falls ~1.5 decades in 0.5°); the steepest qualifying step wins (none qualifies → the steepest overall, the old rule).  (10-09)
+  const CUT = { minRays: 10, above: 0.25, gap: 0.5 };
   function scanCut(G, h, v0, v1, scan, dvd, kh, dh, dv) {
     const kv = Math.max(G.step / 2, 0.035) * 0.99;            // Annex 9: ~30 mm detector at 25 m ≈ 0.07° across
-    let best = null, top = 0;
-    for (let v = v0; v <= v1 + 1e-9; v += scan) { const a = RF.FarField.intensityAt(G, h + dh, v + dv, kh, kv); if (a.cd > top) top = a.cd; }
-    for (let v = v0; v + dvd <= v1 + 1e-9; v += scan) {
-      const a = RF.FarField.intensityAt(G, h + dh, v + dv, kh, kv), b = RF.FarField.intensityAt(G, h + dh, v + dvd + dv, kh, kv);
+    const I = []; let top = 0;
+    for (let v = v0; v <= v1 + 1e-9; v += scan) { const a = RF.FarField.intensityAt(G, h + dh, v + dv, kh, kv); I.push({ v, a }); if (a.cd > top) top = a.cd; }
+    const supMax = new Array(I.length + 1).fill(0); for (let q = I.length - 1; q >= 0; q--) supMax[q] = Math.max(supMax[q + 1], I[q].a.cd > 0 ? I[q].a.cd : 0);      // brightest at or above each scan point
+    const kd = Math.round((dvd + CUT.gap) / scan);
+    let best = null, bestTop = null;
+    for (let q = 0; q < I.length; q++) {
+      const v = I[q].v; if (!(v + dvd <= v1 + 1e-9)) break;
+      const a = I[q].a, b = RF.FarField.intensityAt(G, h + dh, v + dvd + dv, kh, kv);
       if (!(a.cd > 0 && b.cd > 0) || a.cd < CUT_FLOOR * top || (CUT.minRays > 0 && b.neff < CUT.minRays)) continue;
-      const g = Math.log10(a.cd / b.cd), sg = Math.hypot(a.sd / a.cd, b.sd / b.cd) / Math.LN10;
-      if (!best || g > best.g) best = { g, sg, v: v + dvd / 2 };
+      const g = Math.log10(a.cd / b.cd), sg = Math.hypot(a.sd / a.cd, b.sd / b.cd) / Math.LN10, st = { g, sg, v: v + dvd / 2 };
+      if (!best || g > best.g) best = st;
+      if (CUT.above > 0 && supMax[Math.min(I.length, q + kd)] <= CUT.above * a.cd && (!bestTop || g > bestTop.g)) bestTop = st;
     }
-    return best;
+    return bestTop || best;
   }
   /* evaluate one constraint at sampling offset (dh, dv) — reading the beam at (h + dh, v + dv) is the lamp re-aimed by
    * (−dh, −dv).  Returns rows { value, sd, at: [h, v], bound, isMin, margin, verdict, soft } (zones/min: the dimmest
