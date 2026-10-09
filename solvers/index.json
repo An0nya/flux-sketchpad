@@ -64,6 +64,14 @@
   "group": "legacy"
  },
  {
+  "file": "spec-hl-v3.js",
+  "model": "Spec headlamp v3 (Codex): road goals with traced fallback",
+  "run": "2026-10-09",
+  "workspace": "this repo",
+  "note": "experimental",
+  "group": "default"
+ },
+ {
   "file": "spec-hl-v2.js",
   "model": "Spec headlamp solver v2 (Claude Sonnet 5.5, briefed by Opus 5.5)",
   "run": "2026-10-05",
