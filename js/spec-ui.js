@@ -14,7 +14,7 @@
   const fmtDist = (d) => !(d > 0) || !isFinite(d) ? '∞ (goniometer)' : d >= 1000 ? (d / 1000).toPrecision(3).replace(/\.0+$/, '') + ' m screen' : d + ' mm screen';
 
   // ---------------------------------------------------------------- evaluation (cached per run, spec and distance)
-  const evalKey = (m) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimScan, m.itemReaim, m.aimBox, m.traffic, m.conv, m.step, m.distance]);
+  const evalKey = (m) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimScan, m.itemReaim, m.aimBox, m.aimMoveCost, m.traffic, m.conv, m.step, m.distance]);
   // (re)judge the current run; cheap to call often: rebuilds only when the run grew or the spec changed
   function update(ui, force) {
     const run = ui.run, sc = ui.store.scene;
@@ -95,6 +95,7 @@
           num(() => (m().aimBox || {}).right || 0, (v) => { m().aimBox = Object.assign({ left: 0, right: 0, up: 0, down: 0 }, m().aimBox, { right: Math.max(0, Math.min(2, v)) }); }, { min: 0, max: 2, step: 0.05, 'aria-label': 'Re-aim right' }, true)),
           'After aiming, the lamp may be moved this far (beam axis, right-hand traffic; mirrored for left-hand) and the best result kept. R112 §6.2.2.3: 0.5° left, 0.75° right.'),
         row('Re-aim ± V (°)', num(() => (m().aimBox || {}).up || 0, (v) => { const x = Math.max(0, Math.min(2, v)); m().aimBox = Object.assign({ left: 0, right: 0, up: 0, down: 0 }, m().aimBox, { up: x, down: x }); }, { min: 0, max: 2, step: 0.05 }, true), 'R112 §6.2.2.3: 0.25° up or down.'),
+        row('Re-aim cost (per °)', num(() => (m().aimMoveCost >= 0 ? m().aimMoveCost : 0.5), (v) => { m().aimMoveCost = Math.max(0, Math.min(20, v)); }, { min: 0, max: 20, step: 0.25 }, true), 'How much a re-aim must gain to be taken, in expected failing rows per degree moved (re-aim box and per-point re-aim). 0 = take whatever aim gives the slimmest margins; 0.5 = default (one sure fail can still be re-aimed away anywhere in the R112 box); higher = keep the design aim unless a move clearly fixes rows. ⚠ Above ~0.6 the verdict can be stricter than the regulation: it may report a fail the lab would have re-aimed away.'),
         row('Angles', sel([['A', 'A: V = elevation, H = azimuth'], ['B', 'B: H out of the vertical plane'], ['S', 'Flat screen: atan(x/D), atan(y/D)']], () => m().conv, (v) => { m().conv = v; }), 'Which (H, V) a direction gets. R112 (Annex 3, Figure A) uses A: a vertical polar axis, h = azimuth, v = latitude. B and the flat screen differ by < 0.05° inside ±10° H.'),
         row('Bin (°)', num(() => m().step, (v) => { m().step = Math.max(0.02, Math.min(1, v)); }, { min: 0.02, max: 1, step: 0.02 }, true), 'Far-field grid resolution.')),
       sectionFn('Road', { open: false, key: 'D-road', tag: 'IIHS-style view' }, ...roadRows(ui, row)),

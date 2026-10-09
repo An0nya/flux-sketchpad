@@ -328,8 +328,13 @@
     const z = (r.isMin ? r.bound - r.value : r.value - r.bound) / r.sd + (push || 0); return Phi(z);
   };
   const expFails = (rows, push) => { let e = 0; for (const r of rows) e += pFail(r, push); return e; };
+  // md.aimMoveCost (λ, expected fails per degree moved; default 0.5: with the 0.5 hysteresis a move must gain 0.5 + 0.5·|move|°, so one sure fail can still be fixed anywhere in the R112 box): a re-aim must pay for its size — 0 = seek the slimmest margins anywhere in the box,
+  // large = stay at the instrumental / design aim unless a move clearly fixes rows.  ⚠️ Above the regulation's intent: a large λ can report a fail the
+  // lab's re-aim would have passed.  (Anya 10-09: a dim notch near a test point must not drag the aim by noise.)
+  const moveCostOf = (md) => (md && md.aimMoveCost >= 0 ? md.aimMoveCost : 0.5);
   const REAIM_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7071, 0.7071], [0.7071, -0.7071], [-0.7071, 0.7071], [-0.7071, -0.7071], [0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5]];
-  function evalAt(G, items, k, dh, dv, cache, itemReaim) {
+  function evalAt(G, items, k, dh, dv, cache, itemReaim, lamP) {
+    lamP = lamP || 0;
     // references for relative bounds: a point item by name (read at this aim), or 'Imax' (the map's maximum)
     const refOf = (name) => {
       if (name === 'Imax') {
@@ -346,11 +351,11 @@
       // per-test-point re-aim (FMVSS 108 S14.2.5.5: "a 1/4° reaim is permitted in any direction at any test point"): each
       // point / zone / sum may be read up to itemReaim away, whichever reading does best (fewest fails, then unsure, then margin)
       if (itemReaim > 0 && (it.kind === 'point' || it.kind === 'zone' || it.kind === 'sum')) {
-        const key = AIM.expected ? (r) => { let m = Infinity; for (const x of r) if (x.margin < m) m = x.margin; return [expFails(r, AIM.pointLcb), 0, -m]; }
+        const key = AIM.expected ? (r, off) => { let m = Infinity; for (const x of r) if (x.margin < m) m = x.margin; return [expFails(r, AIM.pointLcb) + lamP * (off || 0), 0, -m]; }
           : (r) => { let f = 0, u = 0, m = Infinity; for (const x of r) { if (x.verdict === 'fail') f++; else if (x.verdict === 'unsure') u++; if (x.margin < m) m = x.margin; } return [f, u, -m]; };
         let kb = key(rs);
         for (const [ox, oy] of REAIM_DIRS) {
-          const alt = evalItem(G, it, k, dh + ox * itemReaim, dv + oy * itemReaim, cache, refOf), ka = key(alt);
+          const alt = evalItem(G, it, k, dh + ox * itemReaim, dv + oy * itemReaim, cache, refOf), ka = key(alt, Math.hypot(ox, oy) * itemReaim);
           if (ka[0] < kb[0] - (AIM.expected ? 1e-6 : 0) || (Math.abs(ka[0] - kb[0]) <= (AIM.expected ? 1e-6 : 0) && (ka[1] < kb[1] || (ka[1] === kb[1] && ka[2] < kb[2] - 1e-12)))) { rs = alt; kb = ka; off = [+(-ox * itemReaim).toFixed(3), +(-oy * itemReaim).toFixed(3)]; }
         }
       }
@@ -399,26 +404,26 @@
     const items = itemsOf(md), k = md.kernel > 0 ? md.kernel : 0.15, cache = new Map(), fz = opts && opts.frozen, skipBox = !!(fz || (opts && opts.noBox));
     const aim = fz ? { base: fz.base.slice(), note: (fz.note || 'aim') + ' (held while the trace runs)', cutV: fz.cutV } : aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
     const ir = md.itemReaim > 0 ? md.itemReaim : 0, held = fz ? fz.reaim : [0, 0];
-    const atAim = evalAt(G, items, k, bh, bv, cache, ir);
-    let best = held[0] || held[1] ? evalAt(G, items, k, bh + held[0], bv + held[1], cache, ir) : atAim, reaim = held.slice();
+    const atAim = evalAt(G, items, k, bh, bv, cache, ir, moveCostOf(md));
+    let best = held[0] || held[1] ? evalAt(G, items, k, bh + held[0], bv + held[1], cache, ir, moveCostOf(md)) : atAim, reaim = held.slice();
     let box = md.aimBox ? Object.assign({}, md.aimBox) : md.aimTol > 0 ? { left: md.aimTol, right: md.aimTol, up: md.aimTol, down: md.aimTol } : null;
     if (box && md.traffic === 'LHT') box = { left: box.right, right: box.left, up: box.up, down: box.down };
     if (!skipBox && box && items.length && (box.left || box.right || box.up || box.down)) {
       const st = Math.max(G.step, md.aimStep || 0.05);
-      const eBase = expFails(best.rows), cands = [];
+      const eBase = expFails(best.rows), cands = [], lam = moveCostOf(md);
       // beam moved right by x ⇔ sampling offset −x: dh ∈ [−right, +left], dv ∈ [−up, +down]
       for (let dv = -(box.up || 0); dv <= (box.down || 0) + 1e-9; dv += st) for (let dh = -(box.right || 0); dh <= (box.left || 0) + 1e-9; dh += st) {
         const ddh = +dh.toFixed(6) || 0, ddv = +dv.toFixed(6) || 0; if (!ddh && !ddv) continue;
-        const r = evalAt(G, items, k, bh + ddh, bv + ddv, cache, ir);
+        const r = evalAt(G, items, k, bh + ddh, bv + ddv, cache, ir, moveCostOf(md));
         // the lab re-aims only to make the lamp PASS: fewest sure fails, then fewest undecided rows, then the smallest move.  A move
         // that changes no verdict is not taken.  (Ranking by worst margin or soft score let rows no aim can fix — a sign point with
         // no light at all — drag the beam half a degree and sink 75R.)
-        if (AIM.expected) { const e = expFails(r.rows); if (e <= eBase - AIM.hyst) cands.push({ r, e, d: [ddh, ddv] }); continue; }
+        if (AIM.expected) { const e = expFails(r.rows) + lam * Math.hypot(ddh, ddv); if (e <= eBase - AIM.hyst) cands.push({ r, e, d: [ddh, ddv] }); continue; }
         const dF = r.n.fail - best.n.fail, dU = r.n.unsure - best.n.unsure;
         if (dF < 0 || (dF === 0 && dU < 0) || (dF === 0 && dU === 0 && Math.hypot(ddh, ddv) < Math.hypot(reaim[0], reaim[1]) - 1e-9)) { best = r; reaim = [ddh, ddv]; }
       }
-      // the aim landscape is flat within noise: of the moves that beat the aim by ≥ hyst, take the SMALLEST whose expected fails is within AIM.tie of the best
-      if (cands.length) { const eMin = Math.min(...cands.map((c) => c.e)); let pick = null; for (const c of cands) if (c.e <= eMin + AIM.tie && (!pick || Math.hypot(c.d[0], c.d[1]) < Math.hypot(pick.d[0], pick.d[1]) - 1e-9 || (Math.abs(Math.hypot(c.d[0], c.d[1]) - Math.hypot(pick.d[0], pick.d[1])) <= 1e-9 && c.e < pick.e))) pick = c; best = pick.r; reaim = pick.d; }
+      // the aim landscape is flat within noise: of the moves that beat the aim by ≥ hyst, take the best (expected fails + λ·move); with λ = 0, the SMALLEST within AIM.tie of the best (λ > 0 already prefers small moves)
+      if (cands.length) { const eMin = Math.min(...cands.map((c) => c.e)), tie = lam > 0 ? 1e-6 : AIM.tie; let pick = null; for (const c of cands) if (c.e <= eMin + tie && (!pick || Math.hypot(c.d[0], c.d[1]) < Math.hypot(pick.d[0], pick.d[1]) - 1e-9 || (Math.abs(Math.hypot(c.d[0], c.d[1]) - Math.hypot(pick.d[0], pick.d[1])) <= 1e-9 && c.e < pick.e))) pick = c; best = pick.r; reaim = pick.d; }
     }
     const out = Object.assign({}, best, { expFails: expFails(best.rows), aim, reaim, atAim, atZero: atAim, kernel: k, distance: G.distance, conv: G.conv, rays: G.rays });
     out.verdict = !best.rows.length ? 'empty' : best.n.fail ? 'fail' : best.n.unsure ? 'unsure' : 'pass';
