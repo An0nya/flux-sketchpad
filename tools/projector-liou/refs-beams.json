@@ -1,0 +1,192 @@
+{
+ "_about": "Reference low beams, digitized BY EYE from isocandela plots Anya shared 10-09 (Hoffman goniometer printouts, a Lextar contour map). Each contour: [left, right, bottom] in degrees (spec frame, + = right / up); the top hugs the cut-off. Error bar ~\u00b12\u00b0. Lextar levels are fractions of its ~58 kcd peak; its flux is ESTIMATED from the contours (~1.7k lm above 1160 cd), not printed.",
+ "lamps": {
+  "hella-7in-ece-h4": {
+   "verdict": "older, mediocre (Anya)",
+   "lm": 463,
+   "peak": 12392,
+   "at": [
+    4.5,
+    -1.2
+   ],
+   "contours": {
+    "10000": [
+     1,
+     5,
+     -2.7
+    ],
+    "1800": [
+     -13.5,
+     17.5,
+     -6.9
+    ],
+    "1250": [
+     -15.8,
+     19,
+     -7.7
+    ],
+    "1000": [
+     -18,
+     20,
+     -9.4
+    ],
+    "500": [
+     -22.8,
+     25,
+     -11.6
+    ],
+    "300": [
+     -26,
+     30,
+     -12.3
+    ],
+    "135": [
+     -32,
+     33,
+     -17
+    ]
+   },
+   "size": "7in round reflector"
+  },
+  "cibie-7in-h4": {
+   "verdict": "older, mediocre (Anya; the non-Z-beam one)",
+   "lm": 695,
+   "peak": 13879,
+   "at": [
+    4.8,
+    -2.0
+   ],
+   "contours": {
+    "10000": [
+     2,
+     7.5,
+     -3.7
+    ],
+    "1800": [
+     -18.6,
+     19,
+     -6.6
+    ],
+    "1250": [
+     -22.6,
+     20.6,
+     -8.2
+    ],
+    "500": [
+     -39,
+     36,
+     -12.4
+    ],
+    "300": [
+     -50,
+     43,
+     -16.6
+    ]
+   },
+   "size": "7in round reflector"
+  },
+  "bosch-de-h1": {
+   "verdict": "early halogen projector; 'we have it beat for the most part' (Anya)",
+   "lm": 399,
+   "peak": 23703,
+   "at": [
+    1.4,
+    -0.6
+   ],
+   "contours": {
+    "10000": [
+     -3,
+     3,
+     -2
+    ],
+    "1800": [
+     -20.5,
+     17,
+     -6.2
+    ],
+    "1250": [
+     -19,
+     21,
+     -8
+    ],
+    "500": [
+     -34,
+     34,
+     -13
+    ]
+   },
+   "size": "projector, lens ~60-66 mm (2.4-2.6in): measured off a photo of the 5.75in housing (lens ~235 px of ~550 px bezel) \u2248 62 mm; Gemini/TheRetrofitSource say 2.6in. Plain ellipsoid reflector (Anya)."
+  },
+  "hella-bifocal-h1": {
+   "verdict": "R112, 30+ years old, still good (Anya)",
+   "lm": 652,
+   "peak": 26853,
+   "at": [
+    0.5,
+    -0.75
+   ],
+   "contours": {
+    "~1800 (outer yellow-green, levels hard to separate)": [
+     -24.8,
+     24.7,
+     -6.9
+    ]
+   },
+   "size": "5.75in round"
+  },
+  "lextar-pes-biled": {
+   "verdict": "LED projector, compliance-first (Anya)",
+   "lm_est": 1900,
+   "peak": 58000,
+   "at": [
+    1.1,
+    -1.1
+   ],
+   "contours": {
+    "46404": [
+     -3,
+     5.7,
+     -2.0
+    ],
+    "29002": [
+     -7,
+     7.6,
+     -3.4
+    ],
+    "23202": [
+     -8.7,
+     9.3,
+     -4.0
+    ],
+    "18561": [
+     -12.6,
+     12,
+     -5.3
+    ],
+    "11601": [
+     -15.3,
+     15.9,
+     -7.2
+    ],
+    "5800": [
+     -18.4,
+     19.2,
+     -9.1
+    ],
+    "2900": [
+     -23.2,
+     24,
+     -12.4
+    ],
+    "1160": [
+     -26.6,
+     27.4,
+     -14.3
+    ]
+   },
+   "size": "90 mm OD projector lens"
+  }
+ },
+ "_shape_only": "Koito BiLED (aced IIHS early; no scale on the shots): flat top on the left, 15\u00b0 step up on the right, hottest part right of centre hugging the line, high-level band about as wide as the image's middle half, wide shallow low-level wings. MLED 2.0 (fails 3.5L 0.86D, no sign uplight; Anya: strong modern design): facet groups T1 hotspot, T2 wide flood, B1/B2 hotspot, B3 hot horizontal strip; flat batwing/trapezoid flood.",
+ "_sizes": "Anya 10-09: Marchal, both Cibies, Hella H4 = 7in round; Hella bifocal = 5.75in; the LED projectors (Lextar, Koito, Jeep JL, MLED 2.0) = 90 mm OD lenses; Bosch DE possibly 2.5in. liou's FMVSS lens is \u00d888 (f 84) \u2014 same aperture class as the LED projectors."
+}

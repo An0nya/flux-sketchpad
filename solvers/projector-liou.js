@@ -528,6 +528,19 @@
     }
     return out;
   }
+  // reference shape (Anya 10-09, from digitized OEM / aftermarket isocandela plots, refs-beams.json): nested half-ellipses hanging from the cut-off,
+  // the level-2^-n contour = half-width W(n) = 3 + 4.5·n·ws (° from the hotspot) and depth D(n) = 1 + 2.4·n·ds (° below the horizon), fitted to Lextar's
+  // contours (each halving of level: ~4.5° wider each side, ~2.4° deeper); the Hoffman plots agree within ±2°.  Peak 1 at the hotspot, hH ° to the own side,
+  // dV ° under the line; flat between the hotspot row and the line (the edge comes from the blur).  ws / ds: the taper / depth knobs.
+  function refShape(g, spec, cut, o) {
+    o = Object.assign({ ws: 1, ds: 1, hH: 1.5, dV: 0.5 }, o || {}); const out = new Float64Array(g.n), own = cut ? cut.own : (spec.traffic === 'LHT' ? -1 : 1);
+    const line = cut ? cut.line : -0.57, hc = own * o.hH, vc = line - o.dV, W = (n) => 3 + 4.5 * n * o.ws, H = (n) => Math.max(0.05, 1 + 2.4 * n * o.ds + vc);
+    const inside = (x, u, n) => (x / W(n)) ** 2 + (u / H(n)) ** 2 <= 1;
+    for (let j = 0; j < g.nv; j++) { const v = g.vOf(j), u = Math.max(0, vc - v); for (let i = 0; i < g.nh; i++) { const x = Math.abs(g.hOf(i) - hc);
+      if (inside(x, u, 0)) { out[j * g.nh + i] = 1; continue; } if (!inside(x, u, 14)) continue;
+      let lo = 0, hi = 14; for (let it = 0; it < 24; it++) { const m = 0.5 * (lo + hi); (inside(x, u, m) ? (hi = m) : (lo = m)); } out[j * g.nh + i] = Math.pow(2, -hi); } }
+    return out;
+  }
   // a soft dilation of the floors that sit above the cut-off (the sign points): a dim glow, not isolated pixels
   function glowField(g, lo, hi, radius) {
     const out = new Float64Array(g.n), r = Math.ceil(radius / g.step);
@@ -596,16 +609,24 @@
   /* design(P): P = { spec, g, B, fluxTarget (lm in the window), peakCap (cd), washCap (cd), gd (design G per 0.1°; the realised edge is softer, so aim a bit sharp), road, glowR }.
    * Searches the edge: for each shift dTop of the plateau below the line, the blur that gives gd; keeps the first that passes the real judge. */
   function design(P) {
-    const { g, spec } = P, gd = P.gd || 0.34, road = roadPlateau(g, spec, P.road); let rmax = 0; for (const x of road) if (x > rmax) rmax = x;
-    const S = { road, wash: washShape(g, spec, P.wash), glow: glowField(g, P.B.lo, P.B.hi, P.glowR || 3.0), cut: P.cut === undefined ? cutOf(spec) : P.cut }; S.guard = guardCols(P, S.cut);
-    const alpha = P.peakCap > 0 ? P.peakCap / Math.max(1e-9, rmax) : (P.alpha || 1);
+    const { g, spec } = P, gd = P.gd || 0.34, cut0 = P.cut === undefined ? cutOf(spec) : P.cut, road = P.shape === 'reference' ? refShape(g, spec, cut0, P.ref) : roadPlateau(g, spec, P.road); let rmax = 0; for (const x of road) if (x > rmax) rmax = x;
+    const S = { road, wash: washShape(g, spec, P.wash), glow: glowField(g, P.B.lo, P.B.hi, P.glowR || 3.0), cut: cut0 }; S.guard = guardCols(P, S.cut);
+    let alpha = P.peakCap > 0 ? P.peakCap / Math.max(1e-9, rmax) : (P.alpha || 1);
+    // P.roadShare (0–1]: the road term may ask for at most this share of the flux target (the wash gets the rest); peakCap stays an upper cap.
+    // Without it a fixed peakCap scales the road term to whatever it sums to — 2× the budget on a small lens path, which the placement then spends on the centre.
+    let alphaCap = alpha;
+    const share = P.shape === 'reference' ? (P.roadShare > 0 ? P.roadShare : 1) : P.roadShare;      // the reference shape has no meaningful absolute scale: always fitted
+    if (share > 0 && P.fluxTarget > 0) {
+      const sv0 = P.sv > 0 ? P.sv : 0.3, want = share * P.fluxTarget, f = (a) => fluxOf(g, build(P, S, a, 0, sv0, 0));
+      if (f(alpha) > want) { let lo = 0, hi = alpha; for (let it = 0; it < 16; it++) { const m = 0.5 * (lo + hi); (f(m) > want ? (hi = m) : (lo = m)); } alpha = lo; }
+    }
     const hasGrad = spec.items.some((x) => x.kind === 'gradient');
     const run = () => {
       const tries = []; let best = null;
       for (const dTop of (hasGrad ? (P.dTops || [0, 0.1, 0.2, 0.3, 0.45, 0.6]) : [0])) {
         let sv = P.sv > 0 ? P.sv : 0.3, Tf = null, W0 = 0, G = NaN;
         for (let it = 0; it < 4; it++) {
-          W0 = P.fluxTarget > 0 ? washFor(P, S, alpha, sv, dTop, P.fluxTarget) : 0; Tf = build(P, S, alpha, W0, sv, dTop);
+          W0 = P.fluxTarget > 0 && P.shape !== 'reference' ? washFor(P, S, alpha, sv, dTop, P.fluxTarget) : 0; Tf = build(P, S, alpha, W0, sv, dTop);
           if (!hasGrad) break;
           const ev = T.judge(g, Tf, spec), gr = ev.rows.find((r) => r.unit === 'log'); if (!gr || !(gr.value > 0)) break;
           G = gr.value; if (Math.abs(G - gd) < 0.02) break; sv = Math.min(1.5, sv * clamp(G / gd, 0.5, 2));          // bounded: a blur of several degrees is no edge at all
@@ -620,7 +641,7 @@
     // the guard's cap makes a cliff of its own; if the edge cannot be brought to the design sharpness with it in place (a spec whose floors sit above the cut-off), build the beam without it
     if (S.guard && hasGrad && isFinite(best.G) && best.G > 1.5 * gd) { S.guard = null; guardDropped = true; if (P.B.hi0) { P.B.hi.set(P.B.hi0); P.B.wc.set(P.B.wc0); } ({ best, tries } = run()); }       // the carried caps go too
     const flux = fluxOf(g, best.T), guard = S.guard ? guardApply(P, P.B, Float64Array.from(best.T), S.cut, best.dTop, S.guard) : null;
-    return { guard, guardDropped, T: best.T, alpha, W0: best.W0, flux, leftover: Math.max(0, (P.fluxTarget || 0) - flux), edge: { sv: best.sv, dTop: best.dTop, G: best.G }, ev: best.ev, tries: tries.map((t) => ({ dTop: t.dTop, sv: +t.sv.toFixed(3), G: +t.G.toFixed(3), fails: t.fails, worst: +t.worst.toFixed(2) })), road, glow: S.glow, wash: S.wash };
+    return { guard, guardDropped, T: best.T, alpha, alphaCap, fluxTarget: P.fluxTarget || 0, W0: best.W0, flux, leftover: Math.max(0, (P.fluxTarget || 0) - flux), edge: { sv: best.sv, dTop: best.dTop, G: best.G }, ev: best.ev, tries: tries.map((t) => ({ dTop: t.dTop, sv: +t.sv.toFixed(3), G: +t.G.toFixed(3), fails: t.fails, worst: +t.worst.toFixed(2) })), road, glow: S.glow, wash: S.wash };
   }
   T.washShape = washShape; T.guardCols = guardCols;
   T.roadPlateau = roadPlateau; T.glowField = glowField; T.cutOf = cutOf; T.design = design; T.fluxOf = fluxOf;
@@ -934,12 +955,13 @@
   const pixOf = (G, h, v) => [Math.round((h - G.h0) / G.step - 0.5), Math.round((v - G.v0) / G.step - 0.5)];
 
   // gain of putting footprint fp with its centroid at pixel (ci, cj): lumens that land where the beam still wants light, minus lam × the rest
-  function gain(fp, G, ci, cj, resid, mask, lam) {
+  // ww (optional): per-pixel weight of waste (e.g. > 1 where the ideal beam asks for almost nothing: a ceiling on spill)
+  function gain(fp, G, ci, cj, resid, mask, lam, ww) {
     let fit = 0, waste = 0; const nh = G.nh, nv = G.nv;
     for (let q = 0; q < fp.n; q++) {
       const i = ci + fp.di[q], j = cj + fp.dj[q], v = fp.val[q];
       if (i < 0 || j < 0 || i >= nh || j >= nv) { waste += v; continue; }
-      const p = j * nh + i, d = v * (mask ? mask[p] : 1), r = resid[p]; const f = d < r ? d : (r > 0 ? r : 0); fit += f; waste += v - f;
+      const p = j * nh + i, d = v * (mask ? mask[p] : 1), r = resid[p]; const f = d < r ? d : (r > 0 ? r : 0); fit += f; waste += (v - f) * (ww ? ww[p] : 1);
     }
     return fit - lam * waste;
   }
@@ -971,9 +993,9 @@
         // o.snap (screenless placement): → the highest row ≤ cj where the footprint may sit in column ci (e.g. its light above the cut-off is within tolerance), or null
         const at = (ci, cj) => { if (o.snap) { const j = o.snap(ci, cj, fp, k); return j === null || j < 0 ? null : j; } return ok(ci, cj) ? cj : null; };
         let b = null;
-        for (const [, ci, cj0] of cand.slice(0, o.top)) { const cj = at(ci, cj0); if (cj === null) continue; const gn = gain(fp, G, ci, cj, resid, mask, o.lam); if (!b || gn > b.gn) b = { gn, ci, cj }; }
+        for (const [, ci, cj0] of cand.slice(0, o.top)) { const cj = at(ci, cj0); if (cj === null) continue; const gn = gain(fp, G, ci, cj, resid, mask, o.lam, o.wasteW); if (!b || gn > b.gn) b = { gn, ci, cj }; }
         if (!b) return;
-        for (let it = 0; it < 6; it++) { let moved = false; for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ci = b.ci + x, cj = at(ci, b.cj + y); if (cj === null || (ci === b.ci && cj === b.cj)) continue; const gn = gain(fp, G, ci, cj, resid, mask, o.lam); if (gn > b.gn + 1e-12) { b = { gn, ci, cj }; moved = true; } } if (!moved) break; }
+        for (let it = 0; it < 6; it++) { let moved = false; for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ci = b.ci + x, cj = at(ci, b.cj + y); if (cj === null || (ci === b.ci && cj === b.cj)) continue; const gn = gain(fp, G, ci, cj, resid, mask, o.lam, o.wasteW); if (gn > b.gn + 1e-12) { b = { gn, ci, cj }; moved = true; } } if (!moved) break; }
         if (!best || b.gn > best.gn) best = Object.assign(b, { a, fp });
       });
       if (!best) { out.push({ k, h: null, v: null, delivered: 0, alt: -1 }); continue; }
@@ -988,7 +1010,7 @@
     for (let j = -nj; j <= nj; j++) for (let i = -ni; i <= ni; i++) { const w = Math.exp(-0.5 * ((i * G.step / sh) ** 2 + (j * G.step / sv) ** 2)); di.push(i); dj.push(j); val.push(w); tot += w; }
     return { flux, di: Int16Array.from(di), dj: Int16Array.from(dj), val: Float64Array.from(val, (w) => w / tot * flux), n: val.length, sh, sv, ri: 0, rj: 0, hc: 0, vc: 0 };
   }
-  P3.coarse = coarse; P3.footOf = footOf; P3.pixOf = pixOf; P3.greedy = greedy; P3.gainAt = gain; P3.gaussFoot = gaussFoot;
+  P3.coarse = coarse; P3.footOf = footOf; P3.pixOf = pixOf; P3.greedy = greedy; P3.gainAt = gain; P3.subtractAt = subtract; P3.gaussFoot = gaussFoot;
 })();
 
 // ============================================================ polish
@@ -1443,6 +1465,12 @@
     { key: 'spread', label: 'Widest lens-path aim, ± degrees', type: 'number', min: 2, max: 40, step: 1, default: 25, adv: true },
     { key: 'edgeDrop', label: 'Image centres below the cut-off (°)', type: 'number', min: 0, max: 3, step: 0.05, default: 0.4, hidden: true },
     { key: 'depthPenalty', label: 'Depth-map stiffness (penalty for leaving the base path length)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.35, hidden: true },
+    { key: 'idealShape', label: 'Ideal beam shape: road = light the IIHS road (lux falling with distance); reference = the nested fan of real low beams (digitized isocandela plots: each halving of intensity ~4.5° wider each side, ~2.4° deeper), scaled to the flux budget', type: 'select', options: [{ value: 'road', label: 'Road (IIHS lux)' }, { value: 'reference', label: 'Reference lamps' }], default: 'road', adv: true },
+    { key: 'refWidth', label: 'Reference shape: width scale (1 = the references; lower = tighter taper)', type: 'number', min: 0.3, max: 2, step: 0.05, default: 1, adv: true },
+    { key: 'refDepth', label: 'Reference shape: depth scale (1 = the references; lower = less foreground)', type: 'number', min: 0.3, max: 2, step: 0.05, default: 1, adv: true },
+    { key: 'refHotH', label: 'Reference shape: hotspot, degrees to the own (kerb) side', type: 'number', min: -3, max: 6, step: 0.25, default: 1.5, hidden: true },
+    { key: 'refHotV', label: 'Reference shape: hotspot, degrees under the cut-off line', type: 'number', min: 0, max: 3, step: 0.1, default: 0.5, hidden: true },
+    { key: 'roadShare', label: 'Share of the ideal beam\'s flux the road term may take (the rest goes to the wide foreground wash); 0 = the old rule (road term scaled to the peak cap, whatever it sums to)', type: 'number', min: 0, max: 1, step: 0.05, default: 1, adv: true },
     { key: 'fluxFrac', label: 'Share of the lens-path flux the ideal beam may ask for', type: 'number', min: 0.2, max: 1.2, step: 0.01, default: 0.85, adv: true },
     { key: 'focal', label: 'Lens focal length (mm, 0 = search; Effort sets the search)', type: 'number', min: 0, max: 150, step: 1, default: 0, adv: true },
     { key: 'aperture', label: 'Lens aperture radius (mm, 0 = search)', type: 'number', min: 0, max: 100, step: 0.5, default: 0, adv: true },
@@ -1451,6 +1479,10 @@
     { key: 'bypassReach', label: 'Largest angle from the LED axis (°) at which lens-feasible light may be given to bypass facets instead (60 = only what the lens path cannot use; ~100 = the whole equator band goes to big far mirrors: sharper images, more lumens and peak, less of a projector)', type: 'number', min: 0, max: 180, step: 5, default: 60, adv: true },
     { key: 'reflector', label: 'Reflector: facets (aimed ellipsoid patches) or one continuous ellipsoid (the classic projector cup; a single facet of the budget)', type: 'select', options: [{ value: 'facets', label: 'facets' }, { value: 'ellipsoid', label: 'one continuous ellipsoid' }], default: 'facets', hidden: true },
     { key: 'shieldEff', label: 'Share of the lens-path flux that survives the shield (sizes the ideal beam)', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.8, hidden: true },
+    { key: 'floorFirst', label: 'Lens path: place the smallest images on the wide spec minimums first', type: 'checkbox', default: false, hidden: true },
+    { key: 'floorMinH', label: 'Floors first: only minimums at least this far from the centre (°)', type: 'number', min: 0, max: 30, step: 1, default: 6, hidden: true },
+    { key: 'fgPen', label: 'Spill ceiling: extra waste weight where the ideal beam asks almost nothing (0 = off)', type: 'number', min: 0, max: 10, step: 0.5, default: 0, hidden: true },
+    { key: 'fgLevel', label: 'Spill ceiling: "almost nothing" = below this share of the ideal beam\'s densest bin', type: 'number', min: 0, max: 0.5, step: 0.01, default: 0.05, hidden: true },
     { key: 'lam', label: 'Placement waste penalty (0 = fill anywhere, 1 = never overshoot)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.5, hidden: true },
     { key: 'bypassMinEff', label: 'A bypass cell is dropped when less than this share of its light survives the lens/shield on a nominal aim', type: 'number', min: 0, max: 1, step: 0.05, default: 0.4, hidden: true },
     { key: 'polishRounds', label: 'Aim polish rounds (v3\'s polish; it does not know the screenless rule, so 0 = off by default)', type: 'number', min: 0, max: 10, step: 1, default: 0, hidden: true },
@@ -1621,7 +1653,7 @@
     if (!cL.length) return null;
     if (s.reflector === 'ellipsoid') return designEllipsoid(P, lay, s, cL, full);
     const availL = fpL.reduce((x, f) => x + f[0].flux, 0), availD = fpD.reduce((x, f) => x + f.flux, 0);
-    const eff = s.shield === 'auto' ? s.shieldEff : s.screenlessEff, des = T.design({ spec: P.spec, g: P.g, B: P.B, fluxTarget: s.fluxFrac * (eff * availL + availD), peakCap: P.S.peakCap, washCap: P.S.washCap, gd: P.S.gd, guard: 0, guardLift: 0, cut: P.cut || null, road: { gamma: 0.8 } });
+    const eff = s.shield === 'auto' ? s.shieldEff : s.screenlessEff, des = T.design({ spec: P.spec, g: P.g, B: P.B, fluxTarget: s.fluxFrac * (eff * availL + availD), roadShare: s.roadShare, shape: s.idealShape, ref: { ws: s.refWidth, ds: s.refDepth, hH: s.refHotH, dV: s.refHotV }, peakCap: P.S.peakCap, washCap: P.S.washCap, gd: P.S.gd, guard: 0, guardLift: 0, cut: P.cut || null, road: { gamma: 0.8 } });
     // the shield edge follows the ideal beam's plateau edge (its cut-off line shifted down by the edge search's dTop), not the bare line
     const dTop = (des.edge && des.edge.dTop) || 0, shield1 = P3.shieldFor(P, lay, s, dTop), postFull = P3.makePost({ cap: lay.cap, barrel: lay.barrel, lens: { L: lay.L, O: lay.O, T: 0.96 * 0.96 }, shield: shield1 });
     // lens-path placement: the shield mask, the lens field, the aperture
@@ -1644,6 +1676,10 @@
     } : null;
     // one placement for a line shifted down by eL (oncoming side) / eR (own side) degrees: the spec's cut-off rule is a generous stand-in on the own side (the FMVSS line rises to
     // +1° by ~1R, yet 0.5U 1R–3R is capped at 2700 cd), so the edge heights are searched against the model below, like v3's shield edge
+    // spill ceiling (s.fgPen > 0): waste counts (1 + fgPen)× where the ideal beam asks < s.fgLevel of its densest bin, below the line (the foreground and far wings)
+    let wasteW = null;
+    if (s.fgPen > 0) { const T0 = P3.coarse(P, des.T, G); let mx = 0; for (const x of T0) if (x > mx) mx = x; wasteW = new Float64Array(G.nh * G.nv).fill(1);
+      for (let j = 0; j < G.nv; j++) for (let i = 0; i < G.nh; i++) { const p = j * G.nh + i; if (vOfJ(j) < top(hOfI(i)) - dTop && T0[p] < s.fgLevel * mx) wasteW[p] = 1 + s.fgPen; } }
     const place = (eL, eR) => {
       for (let i = 0; i < G.nh; i++) { const h = hOfI(i); topJ[i] = top(h) - s.edgeMargin - (h * (P.cut ? P.cut.own : 1) > 0 ? eR : eL); }
       resid = P3.coarse(P, des.T, G);
@@ -1655,8 +1691,23 @@
         first = orderL.filter((k) => svOf(k) <= s.edgeSharp).sort((a, b) => svOf(a) - svOf(b));
         if (first.length) edgePl = P3.greedy(G, fpL, resid, band, { order: first, lam: s.lam, top: 40, allowed: lensOk, snap, subMask: mask });
       }
-      const rest = orderL.filter((k) => !first.includes(k));
-      const plL = (first.length ? edgePl : []).concat(P3.greedy(G, fpL, resid, mask, { order: rest, lam: s.lam, top: 40, allowed: lensOk, snap }));
+      let rest = orderL.filter((k) => !first.includes(k)), floorPl = [];
+      // floors first (s.floorFirst): the wide spec minimums below the line (|h| ≥ s.floorMinH) as 1.5° discs at min × floorMargin; the smallest images
+      // are placed on them one by one (until 85 % is covered, at most a quarter of the facets) and their light comes off the main residual too —
+      // otherwise the greedy, filling the biggest gap first, never finds a 1000 cd floor at 15° more urgent than a brighter centre
+      if (s.floorFirst) {
+        const Ff = new Float64Array(G.nh * G.nv), fm = P.S.floorMargin || 1.2;
+        for (const it of P.spec.items) { if (it.kind !== 'point' || !(it.min > 0) || Math.abs(it.h) < s.floorMinH || !(it.v < top(it.h) - dTop - 0.3)) continue;
+          for (let j = 0; j < G.nv; j++) for (let i = 0; i < G.nh; i++) if (Math.hypot(hOfI(i) - it.h, vOfJ(j) - it.v) <= 1.5) { const p = j * G.nh + i; Ff[p] = Math.max(Ff[p], it.min * fm * G.om[p]); } }
+        const sum = () => { let x = 0; for (const y of Ff) if (y > 0) x += y; return x; }, F0 = sum();
+        if (F0 > 0) { const cand = rest.slice().sort((a, b) => fpL[a][0].sh * fpL[a][0].sv - fpL[b][0].sh * fpL[b][0].sv);
+          for (const k of cand) { if (sum() <= 0.15 * F0 || floorPl.length >= cand.length / 4) break;
+            const r = P3.greedy(G, fpL, Ff, mask, { order: [k], lam: 0.2, top: 40, allowed: lensOk, snap })[0]; if (!r || r.h === null) continue;
+            const [ci, cj] = P3.pixOf(G, r.h, r.v); P3.subtractAt(fpL[k][r.alt], G, ci, cj, resid, mask); floorPl.push(r); }
+          rest = rest.filter((k) => !floorPl.some((r) => r.k === k));
+          if (P.S.verbose) P.lap(`      floors first: ${floorPl.length} facets, ${(100 * (1 - sum() / F0)).toFixed(0)} % of ${F0.toFixed(1)} lm of wide floors covered`); }
+      }
+      const plL = (first.length ? edgePl : []).concat(floorPl, P3.greedy(G, fpL, resid, mask, { order: rest, lam: s.lam, top: 40, allowed: lensOk, snap, wasteW }));
       recL = plL.filter((r) => r.h !== null).map((r) => ({ k: r.k, alt: r.alt, aim: aimOf(fpL[r.k][r.alt], r.h, r.v) }));
       if (snap) refine();
     };

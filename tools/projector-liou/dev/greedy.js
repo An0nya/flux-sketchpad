@@ -25,12 +25,13 @@
   const pixOf = (G, h, v) => [Math.round((h - G.h0) / G.step - 0.5), Math.round((v - G.v0) / G.step - 0.5)];
 
   // gain of putting footprint fp with its centroid at pixel (ci, cj): lumens that land where the beam still wants light, minus lam × the rest
-  function gain(fp, G, ci, cj, resid, mask, lam) {
+  // ww (optional): per-pixel weight of waste (e.g. > 1 where the ideal beam asks for almost nothing: a ceiling on spill)
+  function gain(fp, G, ci, cj, resid, mask, lam, ww) {
     let fit = 0, waste = 0; const nh = G.nh, nv = G.nv;
     for (let q = 0; q < fp.n; q++) {
       const i = ci + fp.di[q], j = cj + fp.dj[q], v = fp.val[q];
       if (i < 0 || j < 0 || i >= nh || j >= nv) { waste += v; continue; }
-      const p = j * nh + i, d = v * (mask ? mask[p] : 1), r = resid[p]; const f = d < r ? d : (r > 0 ? r : 0); fit += f; waste += v - f;
+      const p = j * nh + i, d = v * (mask ? mask[p] : 1), r = resid[p]; const f = d < r ? d : (r > 0 ? r : 0); fit += f; waste += (v - f) * (ww ? ww[p] : 1);
     }
     return fit - lam * waste;
   }
@@ -62,9 +63,9 @@
         // o.snap (screenless placement): → the highest row ≤ cj where the footprint may sit in column ci (e.g. its light above the cut-off is within tolerance), or null
         const at = (ci, cj) => { if (o.snap) { const j = o.snap(ci, cj, fp, k); return j === null || j < 0 ? null : j; } return ok(ci, cj) ? cj : null; };
         let b = null;
-        for (const [, ci, cj0] of cand.slice(0, o.top)) { const cj = at(ci, cj0); if (cj === null) continue; const gn = gain(fp, G, ci, cj, resid, mask, o.lam); if (!b || gn > b.gn) b = { gn, ci, cj }; }
+        for (const [, ci, cj0] of cand.slice(0, o.top)) { const cj = at(ci, cj0); if (cj === null) continue; const gn = gain(fp, G, ci, cj, resid, mask, o.lam, o.wasteW); if (!b || gn > b.gn) b = { gn, ci, cj }; }
         if (!b) return;
-        for (let it = 0; it < 6; it++) { let moved = false; for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ci = b.ci + x, cj = at(ci, b.cj + y); if (cj === null || (ci === b.ci && cj === b.cj)) continue; const gn = gain(fp, G, ci, cj, resid, mask, o.lam); if (gn > b.gn + 1e-12) { b = { gn, ci, cj }; moved = true; } } if (!moved) break; }
+        for (let it = 0; it < 6; it++) { let moved = false; for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ci = b.ci + x, cj = at(ci, b.cj + y); if (cj === null || (ci === b.ci && cj === b.cj)) continue; const gn = gain(fp, G, ci, cj, resid, mask, o.lam, o.wasteW); if (gn > b.gn + 1e-12) { b = { gn, ci, cj }; moved = true; } } if (!moved) break; }
         if (!best || b.gn > best.gn) best = Object.assign(b, { a, fp });
       });
       if (!best) { out.push({ k, h: null, v: null, delivered: 0, alt: -1 }); continue; }
@@ -79,5 +80,5 @@
     for (let j = -nj; j <= nj; j++) for (let i = -ni; i <= ni; i++) { const w = Math.exp(-0.5 * ((i * G.step / sh) ** 2 + (j * G.step / sv) ** 2)); di.push(i); dj.push(j); val.push(w); tot += w; }
     return { flux, di: Int16Array.from(di), dj: Int16Array.from(dj), val: Float64Array.from(val, (w) => w / tot * flux), n: val.length, sh, sv, ri: 0, rj: 0, hc: 0, vc: 0 };
   }
-  P3.coarse = coarse; P3.footOf = footOf; P3.pixOf = pixOf; P3.greedy = greedy; P3.gainAt = gain; P3.gaussFoot = gaussFoot;
+  P3.coarse = coarse; P3.footOf = footOf; P3.pixOf = pixOf; P3.greedy = greedy; P3.gainAt = gain; P3.subtractAt = subtract; P3.gaussFoot = gaussFoot;
 })();

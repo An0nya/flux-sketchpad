@@ -1,4 +1,4 @@
-/* ffpng.js — far-field picture (log cd, cividis: no red/green) with the spec's points/zones/cut-off line drawn on top.
+/* ffpng.js — far-field picture (log cd, or linear with o.linear, cividis: no red/green) with the spec's points/zones/cut-off line drawn on top.
  *   renderFF(RF, G, md, { h:[-12,12], v:[-6,5], ppd: 40, k: 0.1, lo: 10 }) → PNG Buffer
  * Markers: point / zone verdict from `ev.rows` if given: pass = white ring, fail = orange X, unsure = white diamond.        */
 const zlib = require('zlib');
@@ -24,7 +24,7 @@ function renderFF(RF, G, md, o) {
     const h = o.h[0] + (px + 0.5) / ppd, v = o.v[1] - (py + 0.5) / ppd, r = RF.FarField.intensityAt(G, h, v, o.k);
     const x = r.cd > 0 ? r.cd : 0; cd[py * W + px] = x; if (x > pk) pk = x;
   }
-  const hi = o.hi || pk, lo = o.lo, L = (x) => (Math.log10(Math.max(x, 1e-9)) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo));
+  const hi = o.hi || pk, lo = o.lo, L = o.linear ? (x) => (x - lo) / (hi - lo) : (x) => (Math.log10(Math.max(x, 1e-9)) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo));      // o.linear: cd on a linear ramp (lo..hi)
   for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) { const x = cd[py * W + px], c = x > lo ? ramp(CIV, L(x)) : [10, 14, 30], q = (py * WW + px) * 3; img[q] = c[0]; img[q + 1] = c[1]; img[q + 2] = c[2]; }
   const shf = o.ev && o.ev.shift ? o.ev.shift : [0, 0];
   const X0 = (h) => Math.round((h - o.h[0]) * ppd), Y0 = (v) => Math.round((o.v[1] - v) * ppd), X = (h) => X0(h + shf[0]), Y = (v) => Y0(v + shf[1]);

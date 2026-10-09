@@ -101,6 +101,19 @@
     }
     return out;
   }
+  // reference shape (Anya 10-09, from digitized OEM / aftermarket isocandela plots, refs-beams.json): nested half-ellipses hanging from the cut-off,
+  // the level-2^-n contour = half-width W(n) = 3 + 4.5·n·ws (° from the hotspot) and depth D(n) = 1 + 2.4·n·ds (° below the horizon), fitted to Lextar's
+  // contours (each halving of level: ~4.5° wider each side, ~2.4° deeper); the Hoffman plots agree within ±2°.  Peak 1 at the hotspot, hH ° to the own side,
+  // dV ° under the line; flat between the hotspot row and the line (the edge comes from the blur).  ws / ds: the taper / depth knobs.
+  function refShape(g, spec, cut, o) {
+    o = Object.assign({ ws: 1, ds: 1, hH: 1.5, dV: 0.5 }, o || {}); const out = new Float64Array(g.n), own = cut ? cut.own : (spec.traffic === 'LHT' ? -1 : 1);
+    const line = cut ? cut.line : -0.57, hc = own * o.hH, vc = line - o.dV, W = (n) => 3 + 4.5 * n * o.ws, H = (n) => Math.max(0.05, 1 + 2.4 * n * o.ds + vc);
+    const inside = (x, u, n) => (x / W(n)) ** 2 + (u / H(n)) ** 2 <= 1;
+    for (let j = 0; j < g.nv; j++) { const v = g.vOf(j), u = Math.max(0, vc - v); for (let i = 0; i < g.nh; i++) { const x = Math.abs(g.hOf(i) - hc);
+      if (inside(x, u, 0)) { out[j * g.nh + i] = 1; continue; } if (!inside(x, u, 14)) continue;
+      let lo = 0, hi = 14; for (let it = 0; it < 24; it++) { const m = 0.5 * (lo + hi); (inside(x, u, m) ? (hi = m) : (lo = m)); } out[j * g.nh + i] = Math.pow(2, -hi); } }
+    return out;
+  }
   // a soft dilation of the floors that sit above the cut-off (the sign points): a dim glow, not isolated pixels
   function glowField(g, lo, hi, radius) {
     const out = new Float64Array(g.n), r = Math.ceil(radius / g.step);
@@ -169,16 +182,24 @@
   /* design(P): P = { spec, g, B, fluxTarget (lm in the window), peakCap (cd), washCap (cd), gd (design G per 0.1°; the realised edge is softer, so aim a bit sharp), road, glowR }.
    * Searches the edge: for each shift dTop of the plateau below the line, the blur that gives gd; keeps the first that passes the real judge. */
   function design(P) {
-    const { g, spec } = P, gd = P.gd || 0.34, road = roadPlateau(g, spec, P.road); let rmax = 0; for (const x of road) if (x > rmax) rmax = x;
-    const S = { road, wash: washShape(g, spec, P.wash), glow: glowField(g, P.B.lo, P.B.hi, P.glowR || 3.0), cut: P.cut === undefined ? cutOf(spec) : P.cut }; S.guard = guardCols(P, S.cut);
-    const alpha = P.peakCap > 0 ? P.peakCap / Math.max(1e-9, rmax) : (P.alpha || 1);
+    const { g, spec } = P, gd = P.gd || 0.34, cut0 = P.cut === undefined ? cutOf(spec) : P.cut, road = P.shape === 'reference' ? refShape(g, spec, cut0, P.ref) : roadPlateau(g, spec, P.road); let rmax = 0; for (const x of road) if (x > rmax) rmax = x;
+    const S = { road, wash: washShape(g, spec, P.wash), glow: glowField(g, P.B.lo, P.B.hi, P.glowR || 3.0), cut: cut0 }; S.guard = guardCols(P, S.cut);
+    let alpha = P.peakCap > 0 ? P.peakCap / Math.max(1e-9, rmax) : (P.alpha || 1);
+    // P.roadShare (0–1]: the road term may ask for at most this share of the flux target (the wash gets the rest); peakCap stays an upper cap.
+    // Without it a fixed peakCap scales the road term to whatever it sums to — 2× the budget on a small lens path, which the placement then spends on the centre.
+    let alphaCap = alpha;
+    const share = P.shape === 'reference' ? (P.roadShare > 0 ? P.roadShare : 1) : P.roadShare;      // the reference shape has no meaningful absolute scale: always fitted
+    if (share > 0 && P.fluxTarget > 0) {
+      const sv0 = P.sv > 0 ? P.sv : 0.3, want = share * P.fluxTarget, f = (a) => fluxOf(g, build(P, S, a, 0, sv0, 0));
+      if (f(alpha) > want) { let lo = 0, hi = alpha; for (let it = 0; it < 16; it++) { const m = 0.5 * (lo + hi); (f(m) > want ? (hi = m) : (lo = m)); } alpha = lo; }
+    }
     const hasGrad = spec.items.some((x) => x.kind === 'gradient');
     const run = () => {
       const tries = []; let best = null;
       for (const dTop of (hasGrad ? (P.dTops || [0, 0.1, 0.2, 0.3, 0.45, 0.6]) : [0])) {
         let sv = P.sv > 0 ? P.sv : 0.3, Tf = null, W0 = 0, G = NaN;
         for (let it = 0; it < 4; it++) {
-          W0 = P.fluxTarget > 0 ? washFor(P, S, alpha, sv, dTop, P.fluxTarget) : 0; Tf = build(P, S, alpha, W0, sv, dTop);
+          W0 = P.fluxTarget > 0 && P.shape !== 'reference' ? washFor(P, S, alpha, sv, dTop, P.fluxTarget) : 0; Tf = build(P, S, alpha, W0, sv, dTop);
           if (!hasGrad) break;
           const ev = T.judge(g, Tf, spec), gr = ev.rows.find((r) => r.unit === 'log'); if (!gr || !(gr.value > 0)) break;
           G = gr.value; if (Math.abs(G - gd) < 0.02) break; sv = Math.min(1.5, sv * clamp(G / gd, 0.5, 2));          // bounded: a blur of several degrees is no edge at all
@@ -193,7 +214,7 @@
     // the guard's cap makes a cliff of its own; if the edge cannot be brought to the design sharpness with it in place (a spec whose floors sit above the cut-off), build the beam without it
     if (S.guard && hasGrad && isFinite(best.G) && best.G > 1.5 * gd) { S.guard = null; guardDropped = true; if (P.B.hi0) { P.B.hi.set(P.B.hi0); P.B.wc.set(P.B.wc0); } ({ best, tries } = run()); }       // the carried caps go too
     const flux = fluxOf(g, best.T), guard = S.guard ? guardApply(P, P.B, Float64Array.from(best.T), S.cut, best.dTop, S.guard) : null;
-    return { guard, guardDropped, T: best.T, alpha, W0: best.W0, flux, leftover: Math.max(0, (P.fluxTarget || 0) - flux), edge: { sv: best.sv, dTop: best.dTop, G: best.G }, ev: best.ev, tries: tries.map((t) => ({ dTop: t.dTop, sv: +t.sv.toFixed(3), G: +t.G.toFixed(3), fails: t.fails, worst: +t.worst.toFixed(2) })), road, glow: S.glow, wash: S.wash };
+    return { guard, guardDropped, T: best.T, alpha, alphaCap, fluxTarget: P.fluxTarget || 0, W0: best.W0, flux, leftover: Math.max(0, (P.fluxTarget || 0) - flux), edge: { sv: best.sv, dTop: best.dTop, G: best.G }, ev: best.ev, tries: tries.map((t) => ({ dTop: t.dTop, sv: +t.sv.toFixed(3), G: +t.G.toFixed(3), fails: t.fails, worst: +t.worst.toFixed(2) })), road, glow: S.glow, wash: S.wash };
   }
   T.washShape = washShape; T.guardCols = guardCols;
   T.roadPlateau = roadPlateau; T.glowField = glowField; T.cutOf = cutOf; T.design = design; T.fluxOf = fluxOf;

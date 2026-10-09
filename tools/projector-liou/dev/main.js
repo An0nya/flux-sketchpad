@@ -42,6 +42,12 @@
     { key: 'spread', label: 'Widest lens-path aim, ± degrees', type: 'number', min: 2, max: 40, step: 1, default: 25, adv: true },
     { key: 'edgeDrop', label: 'Image centres below the cut-off (°)', type: 'number', min: 0, max: 3, step: 0.05, default: 0.4, hidden: true },
     { key: 'depthPenalty', label: 'Depth-map stiffness (penalty for leaving the base path length)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.35, hidden: true },
+    { key: 'idealShape', label: 'Ideal beam shape: road = light the IIHS road (lux falling with distance); reference = the nested fan of real low beams (digitized isocandela plots: each halving of intensity ~4.5° wider each side, ~2.4° deeper), scaled to the flux budget', type: 'select', options: [{ value: 'road', label: 'Road (IIHS lux)' }, { value: 'reference', label: 'Reference lamps' }], default: 'road', adv: true },
+    { key: 'refWidth', label: 'Reference shape: width scale (1 = the references; lower = tighter taper)', type: 'number', min: 0.3, max: 2, step: 0.05, default: 1, adv: true },
+    { key: 'refDepth', label: 'Reference shape: depth scale (1 = the references; lower = less foreground)', type: 'number', min: 0.3, max: 2, step: 0.05, default: 1, adv: true },
+    { key: 'refHotH', label: 'Reference shape: hotspot, degrees to the own (kerb) side', type: 'number', min: -3, max: 6, step: 0.25, default: 1.5, hidden: true },
+    { key: 'refHotV', label: 'Reference shape: hotspot, degrees under the cut-off line', type: 'number', min: 0, max: 3, step: 0.1, default: 0.5, hidden: true },
+    { key: 'roadShare', label: 'Share of the ideal beam\'s flux the road term may take (the rest goes to the wide foreground wash); 0 = the old rule (road term scaled to the peak cap, whatever it sums to)', type: 'number', min: 0, max: 1, step: 0.05, default: 1, adv: true },
     { key: 'fluxFrac', label: 'Share of the lens-path flux the ideal beam may ask for', type: 'number', min: 0.2, max: 1.2, step: 0.01, default: 0.85, adv: true },
     { key: 'focal', label: 'Lens focal length (mm, 0 = search; Effort sets the search)', type: 'number', min: 0, max: 150, step: 1, default: 0, adv: true },
     { key: 'aperture', label: 'Lens aperture radius (mm, 0 = search)', type: 'number', min: 0, max: 100, step: 0.5, default: 0, adv: true },
@@ -50,6 +56,10 @@
     { key: 'bypassReach', label: 'Largest angle from the LED axis (°) at which lens-feasible light may be given to bypass facets instead (60 = only what the lens path cannot use; ~100 = the whole equator band goes to big far mirrors: sharper images, more lumens and peak, less of a projector)', type: 'number', min: 0, max: 180, step: 5, default: 60, adv: true },
     { key: 'reflector', label: 'Reflector: facets (aimed ellipsoid patches) or one continuous ellipsoid (the classic projector cup; a single facet of the budget)', type: 'select', options: [{ value: 'facets', label: 'facets' }, { value: 'ellipsoid', label: 'one continuous ellipsoid' }], default: 'facets', hidden: true },
     { key: 'shieldEff', label: 'Share of the lens-path flux that survives the shield (sizes the ideal beam)', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.8, hidden: true },
+    { key: 'floorFirst', label: 'Lens path: place the smallest images on the wide spec minimums first', type: 'checkbox', default: false, hidden: true },
+    { key: 'floorMinH', label: 'Floors first: only minimums at least this far from the centre (°)', type: 'number', min: 0, max: 30, step: 1, default: 6, hidden: true },
+    { key: 'fgPen', label: 'Spill ceiling: extra waste weight where the ideal beam asks almost nothing (0 = off)', type: 'number', min: 0, max: 10, step: 0.5, default: 0, hidden: true },
+    { key: 'fgLevel', label: 'Spill ceiling: "almost nothing" = below this share of the ideal beam\'s densest bin', type: 'number', min: 0, max: 0.5, step: 0.01, default: 0.05, hidden: true },
     { key: 'lam', label: 'Placement waste penalty (0 = fill anywhere, 1 = never overshoot)', type: 'number', min: 0, max: 2, step: 0.05, default: 0.5, hidden: true },
     { key: 'bypassMinEff', label: 'A bypass cell is dropped when less than this share of its light survives the lens/shield on a nominal aim', type: 'number', min: 0, max: 1, step: 0.05, default: 0.4, hidden: true },
     { key: 'polishRounds', label: 'Aim polish rounds (v3\'s polish; it does not know the screenless rule, so 0 = off by default)', type: 'number', min: 0, max: 10, step: 1, default: 0, hidden: true },
@@ -220,7 +230,7 @@
     if (!cL.length) return null;
     if (s.reflector === 'ellipsoid') return designEllipsoid(P, lay, s, cL, full);
     const availL = fpL.reduce((x, f) => x + f[0].flux, 0), availD = fpD.reduce((x, f) => x + f.flux, 0);
-    const eff = s.shield === 'auto' ? s.shieldEff : s.screenlessEff, des = T.design({ spec: P.spec, g: P.g, B: P.B, fluxTarget: s.fluxFrac * (eff * availL + availD), peakCap: P.S.peakCap, washCap: P.S.washCap, gd: P.S.gd, guard: 0, guardLift: 0, cut: P.cut || null, road: { gamma: 0.8 } });
+    const eff = s.shield === 'auto' ? s.shieldEff : s.screenlessEff, des = T.design({ spec: P.spec, g: P.g, B: P.B, fluxTarget: s.fluxFrac * (eff * availL + availD), roadShare: s.roadShare, shape: s.idealShape, ref: { ws: s.refWidth, ds: s.refDepth, hH: s.refHotH, dV: s.refHotV }, peakCap: P.S.peakCap, washCap: P.S.washCap, gd: P.S.gd, guard: 0, guardLift: 0, cut: P.cut || null, road: { gamma: 0.8 } });
     // the shield edge follows the ideal beam's plateau edge (its cut-off line shifted down by the edge search's dTop), not the bare line
     const dTop = (des.edge && des.edge.dTop) || 0, shield1 = P3.shieldFor(P, lay, s, dTop), postFull = P3.makePost({ cap: lay.cap, barrel: lay.barrel, lens: { L: lay.L, O: lay.O, T: 0.96 * 0.96 }, shield: shield1 });
     // lens-path placement: the shield mask, the lens field, the aperture
@@ -243,6 +253,10 @@
     } : null;
     // one placement for a line shifted down by eL (oncoming side) / eR (own side) degrees: the spec's cut-off rule is a generous stand-in on the own side (the FMVSS line rises to
     // +1° by ~1R, yet 0.5U 1R–3R is capped at 2700 cd), so the edge heights are searched against the model below, like v3's shield edge
+    // spill ceiling (s.fgPen > 0): waste counts (1 + fgPen)× where the ideal beam asks < s.fgLevel of its densest bin, below the line (the foreground and far wings)
+    let wasteW = null;
+    if (s.fgPen > 0) { const T0 = P3.coarse(P, des.T, G); let mx = 0; for (const x of T0) if (x > mx) mx = x; wasteW = new Float64Array(G.nh * G.nv).fill(1);
+      for (let j = 0; j < G.nv; j++) for (let i = 0; i < G.nh; i++) { const p = j * G.nh + i; if (vOfJ(j) < top(hOfI(i)) - dTop && T0[p] < s.fgLevel * mx) wasteW[p] = 1 + s.fgPen; } }
     const place = (eL, eR) => {
       for (let i = 0; i < G.nh; i++) { const h = hOfI(i); topJ[i] = top(h) - s.edgeMargin - (h * (P.cut ? P.cut.own : 1) > 0 ? eR : eL); }
       resid = P3.coarse(P, des.T, G);
@@ -254,8 +268,23 @@
         first = orderL.filter((k) => svOf(k) <= s.edgeSharp).sort((a, b) => svOf(a) - svOf(b));
         if (first.length) edgePl = P3.greedy(G, fpL, resid, band, { order: first, lam: s.lam, top: 40, allowed: lensOk, snap, subMask: mask });
       }
-      const rest = orderL.filter((k) => !first.includes(k));
-      const plL = (first.length ? edgePl : []).concat(P3.greedy(G, fpL, resid, mask, { order: rest, lam: s.lam, top: 40, allowed: lensOk, snap }));
+      let rest = orderL.filter((k) => !first.includes(k)), floorPl = [];
+      // floors first (s.floorFirst): the wide spec minimums below the line (|h| ≥ s.floorMinH) as 1.5° discs at min × floorMargin; the smallest images
+      // are placed on them one by one (until 85 % is covered, at most a quarter of the facets) and their light comes off the main residual too —
+      // otherwise the greedy, filling the biggest gap first, never finds a 1000 cd floor at 15° more urgent than a brighter centre
+      if (s.floorFirst) {
+        const Ff = new Float64Array(G.nh * G.nv), fm = P.S.floorMargin || 1.2;
+        for (const it of P.spec.items) { if (it.kind !== 'point' || !(it.min > 0) || Math.abs(it.h) < s.floorMinH || !(it.v < top(it.h) - dTop - 0.3)) continue;
+          for (let j = 0; j < G.nv; j++) for (let i = 0; i < G.nh; i++) if (Math.hypot(hOfI(i) - it.h, vOfJ(j) - it.v) <= 1.5) { const p = j * G.nh + i; Ff[p] = Math.max(Ff[p], it.min * fm * G.om[p]); } }
+        const sum = () => { let x = 0; for (const y of Ff) if (y > 0) x += y; return x; }, F0 = sum();
+        if (F0 > 0) { const cand = rest.slice().sort((a, b) => fpL[a][0].sh * fpL[a][0].sv - fpL[b][0].sh * fpL[b][0].sv);
+          for (const k of cand) { if (sum() <= 0.15 * F0 || floorPl.length >= cand.length / 4) break;
+            const r = P3.greedy(G, fpL, Ff, mask, { order: [k], lam: 0.2, top: 40, allowed: lensOk, snap })[0]; if (!r || r.h === null) continue;
+            const [ci, cj] = P3.pixOf(G, r.h, r.v); P3.subtractAt(fpL[k][r.alt], G, ci, cj, resid, mask); floorPl.push(r); }
+          rest = rest.filter((k) => !floorPl.some((r) => r.k === k));
+          if (P.S.verbose) P.lap(`      floors first: ${floorPl.length} facets, ${(100 * (1 - sum() / F0)).toFixed(0)} % of ${F0.toFixed(1)} lm of wide floors covered`); }
+      }
+      const plL = (first.length ? edgePl : []).concat(floorPl, P3.greedy(G, fpL, resid, mask, { order: rest, lam: s.lam, top: 40, allowed: lensOk, snap, wasteW }));
       recL = plL.filter((r) => r.h !== null).map((r) => ({ k: r.k, alt: r.alt, aim: aimOf(fpL[r.k][r.alt], r.h, r.v) }));
       if (snap) refine();
     };
