@@ -366,6 +366,12 @@
 (function () {
   'use strict';
   const RF = globalThis.RF, P3 = RF.P3 = RF.P3 || {};
+  // a sign-point window: a square of half-size r; phi < 1 = a perforated (slotted) window — vertical slits at pitch ≈ h.pitch (mm), open share phi of each pitch
+  function slits(h) { const n = Math.max(1, Math.round(2 * h.r / (h.pitch || 0.1))); return { n, p: 2 * h.r / n }; }
+  function holeOpen(h, y, z) {
+    if (Math.abs(y - h.y) > h.r || Math.abs(z - h.z) > h.r) return false; if (!(h.phi < 1)) return true; if (!(h.phi > 0)) return false;
+    const { p } = slits(h), u = (y - h.y + h.r) / p, fu = u - Math.floor(u); return Math.abs(fu - 0.5) <= h.phi / 2;
+  }
   function edgeZ(edge, y) {
     const n = edge.length; if (y <= edge[0][0]) return edge[0][1]; if (y >= edge[n - 1][0]) return edge[n - 1][1];
     let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (edge[m][0] <= y) lo = m; else hi = m; }
@@ -373,7 +379,19 @@
   }
   function makePost(D) {
     const sh = D.shield, ln = D.lens, cap = D.cap, barrel = !!D.barrel;      // cap: { c, r } an absorbing disc ⟂ x (direct-light cap); barrel: rays that miss the lens are absorbed (the lens holder)
+    const inside = (yy, zz) => Math.abs(yy - sh.yF) <= sh.W && zz <= edgeZ(sh.edge, yy) && zz >= sh.zb && !(sh.holes && sh.holes.some((h) => holeOpen(h, yy, zz)));
+    // folded sheet: g(t) = x(t) − [xOn(y) + δ·clamp((edge(y) − z)/d0)]; bracket over the sheet's x range, bisect (one crossing: the sheet is a graph over (y, z))
+    const xSpan = sh && sh.fold ? (() => { const e = 0.5 * sh.cy * sh.W * sh.W; return [sh.xc + Math.min(0, e) + Math.min(0, sh.fold.d) - 1, sh.xc + Math.max(0, e) + Math.max(0, sh.fold.d) + 1]; })() : null;
+    const foldHit = (x, y, z, dx, dy, dz) => {
+      if (!(Math.abs(dx) > 1e-9)) return false;
+      const F = sh.fold, g = (t) => { const yy = y + t * dy, zz = z + t * dz, q = yy - sh.yF; return x + t * dx - (sh.xc + 0.5 * sh.cy * q * q + F.d * Math.max(0, Math.min(1, (edgeZ(sh.edge, yy) - zz) / F.d0))); };
+      let t0 = (xSpan[0] - x) / dx, t1 = (xSpan[1] - x) / dx; if (t0 > t1) { const w = t0; t0 = t1; t1 = w; } t0 = Math.max(t0, 1e-9); if (!(t1 > t0)) return false;
+      let g0 = g(t0), g1 = g(t1); if (g0 * g1 > 0) return false;
+      for (let it = 0; it < 40; it++) { const tm = 0.5 * (t0 + t1), gm = g(tm); if (gm * g0 > 0) { t0 = tm; g0 = gm; } else t1 = tm; }
+      const t = 0.5 * (t0 + t1); return inside(y + t * dy, z + t * dz);
+    };
     const shieldHit = (x, y, z, dx, dy, dz) => {
+      if (sh.fold) return foldHit(x, y, z, dx, dy, dz);
       // x + t dx = xc + ½ cy (y + t dy − yF)²
       const q = y - sh.yF; let ts;
       if (Math.abs(sh.cy) < 1e-9) { if (Math.abs(dx) < 1e-12) return false; ts = [(sh.xc - x) / dx]; }
@@ -381,7 +399,7 @@
         if (Math.abs(A) < 1e-14) ts = [-C / B]; else { const Dd = B * B - 4 * A * C; if (Dd < 0) return false; const s = Math.sqrt(Dd); ts = [(-B - s) / (2 * A), (-B + s) / (2 * A)]; } }
       for (const t of ts) {
         if (!(t > 1e-9)) continue; const yy = y + t * dy, zz = z + t * dz; if (Math.abs(yy - sh.yF) > sh.W) continue;
-        if (zz <= edgeZ(sh.edge, yy) && zz >= sh.zb && !(sh.holes && sh.holes.some((h) => Math.abs(yy - h.y) <= h.r && Math.abs(zz - h.z) <= h.r))) return true;      // holes: square windows for the sign points
+        if (zz <= edgeZ(sh.edge, yy) && zz >= sh.zb && !(sh.holes && sh.holes.some((h) => holeOpen(h, yy, zz)))) return true;      // holes: square windows for the sign points
       }
       return false;
     };
@@ -403,7 +421,7 @@
       return { p: [r.p[0] + O[0], r.p[1] + O[1], r.p[2] + O[2]], d: r.d, T: ln.T };
     };
   }
-  P3.makePost = makePost; P3.edgeZ = edgeZ;
+  P3.makePost = makePost; P3.edgeZ = edgeZ; P3.holeOpen = holeOpen; P3.slits = slits;
 })();
 
 // ============================================================ target
@@ -724,12 +742,17 @@
     for (const p of pts) for (let it = 0; it < 30 && !E.inside(p, 0.2); it++) { p[1] = ctr[1] + (p[1] - ctr[1]) * 0.93; p[2] = ctr[2] + (p[2] - ctr[2]) * 0.93; p[0] = xOn(p[1]); }      // hard envelope clip
     const ne = edge.length, ed = pts.slice(0, ne).map((p) => [p[1], p[2]]).sort((p, q) => p[0] - q[0]);
     // sign-point windows (s.slitDeg > 0): a square hole at the focal-plane point of every spec point with a MINIMUM above the line, so the beam's own tails reach it
+    // the fold (s.shieldFold mm, + = toward the lens): the sheet leaves the focal surface below its edge — x = xOn(y) + δ·clamp((edge(y) − z) / d0, 0, 1), d0 = |δ| / foldSlope —
+    // so the windows sit off focus and their light spreads (lower peak in Zone III) while the edge stays sharp.  foldSlope ≤ ~1: a band leaning further than the
+    // steepest ray to the lens (≈ 0.87 here) would clip the beam just under the cut-off.
+    const fold = s.shieldFold ? { d: s.shieldFold, d0: Math.abs(s.shieldFold) / Math.max(0.05, s.foldSlope || 1) } : null;
+    const foldOff = (y, z) => fold.d * Math.max(0, Math.min(1, (P3.edgeZ(ed, y) - z) / fold.d0));
     const holes = [];
     if (s.slitDeg > 0) for (const it of P.spec.items) {
       const pts2 = it.kind === 'point' ? [[it.h, it.v]] : it.kind === 'sum' ? it.pts : null; if (!pts2 || !(it.min > 0)) continue;
-      for (const [h, v] of pts2) if (v > top(h) + 0.2) { const p = imgPoint(P, lay, h, v, defocus); holes.push({ y: p[1], z: p[2], r: f * Math.tan(s.slitDeg * D2R) }); }
+      for (const [h, v] of pts2) if (v > top(h) + 0.2) { const p = imgPoint(P, lay, h, v, defocus); if (fold) { const off = foldOff(p[1], p[2]), k = off / (lay.O[0] - p[0]); p[0] += off; p[1] += k * (lay.O[1] - p[1]); p[2] += k * (lay.O[2] - p[2]); } holes.push({ y: p[1], z: p[2], r: f * Math.tan(s.slitDeg * D2R), r0: f * Math.tan(s.slitDeg * D2R), pt: [h, v], it, phi: 1, pitch: s.perfPitch > 0 ? s.perfPitch : 0.1 }); }
     }
-    return { xc, cy, yF: F[1], edge: ed, zb: Math.max(zb, pts[ne][2], pts[ne + 1][2]), W, defocus, pts, ne, zbRaw: zb, holes };
+    return { xc, cy, yF: F[1], edge: ed, zb: Math.max(zb, pts[ne][2], pts[ne + 1][2]), W, defocus, pts, ne, zbRaw: zb, holes, fold };
   }
 
   // ---------------------------------------------------------------- reflector depth along a direction d (unit, from the LED)
@@ -1174,7 +1197,34 @@
       const holes = shield.holes || []; let n = 0;
       const sheet = (q) => out.push(Math.abs(cy) > 1e-5 ? { type: 'quad', id: 'p3_shield' + n++, P: [xc, yF, ctr[2]], n: [-1, 0, 0], ref: [0, 1, 0], curv: [-cy, 0, 0, 0], clip: { kind: 'poly', pts3: q }, optics: ABSORB }
         : { type: 'plane', id: 'p3_shield' + n++, P: ctr, n: [-1, 0, 0], clip: { kind: 'poly', pts3: q }, optics: ABSORB });
-      for (let i = 0; i + 1 < ne; i++) {
+      // generic sheet builder (a fold and/or perforated windows): pieces between z-boundaries that are linear in y within a strip (edge, kink = edge − d0,
+      // window rows, bottom); the y cuts include every slit edge.  Folded pieces lie in ONE region (tilted band or offset panel), so their corners are coplanar → planes;
+      // unfolded pieces keep the curved sheet.
+      const Fd = shield.fold;
+      // ⚠️ 10-09: the per-strip builder below cut ONE window per strip, but sign points stack (4L 0 / 4L 2U, 0 2U / 0 4U): the second window stayed solid in the
+      // engine while the model counted it open.  Any window → this builder.
+      if (Fd || holes.length) for (let i = 0; i + 1 < ne; i++) {
+        const pa = pts[i], pb = pts[i + 1]; if (Math.abs(pb[1] - pa[1]) < 1e-3) continue;
+        const zTop = (y) => pa[2] + (pb[2] - pa[2]) * (y - pa[1]) / (pb[1] - pa[1]), atF = (y, z) => [xOn(y) + (Fd ? Fd.d * Math.max(0, Math.min(1, (zTop(y) - z) / Fd.d0)) : 0), y, z];
+        const y0 = Math.min(pa[1], pb[1]), y1 = Math.max(pa[1], pb[1]), cuts = [y0, y1], addCut = (y) => { if (y > y0 && y < y1) cuts.push(y); };
+        for (const h of holes) { addCut(h.y - h.r); addCut(h.y + h.r); if (h.phi < 1 && h.phi > 0) { const { n, p } = P3.slits(h); for (let k = 0; k < n; k++) { const yc = h.y - h.r + (k + 0.5) * p; addCut(yc - 0.5 * h.phi * p); addCut(yc + 0.5 * h.phi * p); } } }
+        cuts.sort((a, b) => a - b);
+        for (let c = 0; c + 1 < cuts.length; c++) {
+          const ya = cuts[c], yb = cuts[c + 1], ym = (ya + yb) / 2; if (yb - ya < 1e-5) continue;
+          const opens = holes.filter((h) => P3.holeOpen(h, ym, h.z)).map((h) => [h.z - h.r, h.z + h.r]);
+          const bs = [(y) => zTop(y), () => zb]; if (Fd) bs.push((y) => zTop(y) - Fd.d0); for (const [zl, zh] of opens) bs.push(() => zh, () => zl);
+          const lv = bs.map((b, k) => [b(ym), k]).filter(([z]) => z <= zTop(ym) + 1e-9 && z >= zb - 1e-9).sort((p, q) => q[0] - p[0]);
+          for (let k = 0; k + 1 < lv.length; k++) {
+            const b1 = bs[lv[k][1]], b2 = bs[lv[k + 1][1]], zm = (lv[k][0] + lv[k + 1][0]) / 2; if (lv[k][0] - lv[k + 1][0] < 1e-5) continue;
+            if (opens.some(([zl, zh]) => zm > zl && zm < zh)) continue;      // a window (or one slit of it)
+            const q = [atF(ya, b1(ya)), atF(yb, b1(yb)), atF(yb, b2(yb)), atF(ya, b2(ya))]; if (q.some((x) => !P.E.inside(x, 0.1))) continue;
+            if (!Fd) { sheet(q); continue; }
+            let nn = V.cross(V.sub(q[1], q[0]), V.sub(q[3], q[0])); const L = Math.hypot(nn[0], nn[1], nn[2]); if (!(L > 1e-12)) continue; nn = nn.map((x) => x / L); if (nn[0] > 0) nn = nn.map((x) => -x);
+            out.push({ type: 'plane', id: 'p3_shield' + n++, P: q[0], n: nn, clip: { kind: 'poly', pts3: q }, optics: ABSORB });
+          }
+        }
+      }
+      else for (let i = 0; i + 1 < ne; i++) {
         const pa = pts[i], pb = pts[i + 1], q = [pa, pb, bot(pb[1]), bot(pa[1])];
         if (Math.abs(pb[1] - pa[1]) < 1e-3 || q.some((x) => !P.E.inside(x, 0.1))) continue;
         // split the strip at the holes' y edges; inside a hole's y range the strip is two pieces, above and below the window
@@ -1367,6 +1417,11 @@
     { key: 'contN', label: 'Continuous: polynomial order rim → vertex (0–2)', type: 'number', min: 0, max: 2, step: 1, default: 2, adv: true },
     { key: 'shield', label: 'Shield: off (screenless: every facet image is placed under the cut-off, Liou 2009) · cleanup (the same placement + a shield on that line that trims the tails and the direct light; raise the leak share to trade shield loss for candela at the line) · auto (v3: images centred under the line, the shield cuts them)', type: 'select', options: [{ value: 'off', label: 'off (screenless)' }, { value: 'cleanup', label: 'cleanup' }, { value: 'auto', label: 'auto (v3)' }], default: 'off' },
     { key: 'slitDeg', label: 'Shield windows for the sign points: half-size in degrees (0 = none); the beam\'s own tails reach the points through them', type: 'number', min: 0, max: 3, step: 0.1, default: 0.6, adv: true },
+    { key: 'slitSize', label: 'Shield windows: fixed (the half-size above) · model (the model shrinks each window to a candela goal; unreliable) · perforate (the engine sets each window\'s open share: vertical slits, so the patch keeps its size and only dims)', type: 'select', options: [{ value: 'fixed', label: 'fixed' }, { value: 'auto', label: 'model' }, { value: 'perforate', label: 'perforate (engine)' }], default: 'fixed', adv: true },
+    { key: 'perfPitch', label: 'Perforated window slit pitch (mm)', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.1, hidden: true },
+    { key: 'perfForce', label: 'Keep the perforated windows even when the engine verdict does not improve (bench)', type: 'checkbox', default: false, hidden: true },
+    { key: 'perfPhi0', label: 'Perforated windows: starting open share (the engine corrects it in two rounds)', type: 'number', min: 0.02, max: 1, step: 0.01, default: 0.25, hidden: true },
+    { key: 'perfRays', label: 'Rays per engine trace when sizing perforated windows', type: 'number', min: 5e5, max: 2e7, step: 5e5, default: 3e6, hidden: true },
     { key: 'wallHug', label: 'Let a cell sit on the envelope wall instead of the base ellipsoid (v3 behaviour; off = one continuous base cup, no shrunken facets)', type: 'checkbox', default: false, hidden: true },
     { key: 'overlap', label: 'Facet overlap: each lens-path facet grows this much past its cell (1 = exact cells; > 1 closes the slits an extended emitter sees between stepped neighbours)', type: 'number', min: 1, max: 2, step: 0.05, default: 1, adv: true },
     { key: 'edgeSharp', label: 'Edge pass: facets whose sharpest image is at most this tall (rms °) are placed first, scored on the band under the line (0 = off)', type: 'number', min: 0, max: 5, step: 0.1, default: 1.5, adv: true },
@@ -1382,6 +1437,8 @@
     { key: 'fillLens', label: 'Lens fills the envelope (the largest aperture that fits)', type: 'checkbox', default: true, adv: true },
     { key: 'screenlessEff', label: 'Share of the lens-path flux the ideal beam may count on without a shield', type: 'number', min: 0.3, max: 1, step: 0.01, default: 0.9, hidden: true },
     { key: 'shieldCurved', label: 'Curved shield (follows the field curvature)', type: 'checkbox', default: true, hidden: true },
+    { key: 'shieldFold', label: 'Shield fold (mm, + = toward the lens, 0 = flat): below its edge the shield bends off the focal surface, so the sign-point windows sit out of focus and their light spreads; the edge stays sharp', type: 'number', min: -4, max: 4, step: 0.25, default: 0, adv: true },
+    { key: 'foldSlope', label: 'Fold band slope (mm off focus per mm below the edge; above ~1 it clips the beam under the cut-off)', type: 'number', min: 0.1, max: 2, step: 0.05, default: 1, hidden: true },
     { key: 'shieldDefocus', label: 'Shield axial offset (mm, + = toward the lens, −1 = auto)', type: 'number', min: -1, max: 4, step: 0.05, default: -1, adv: true },
     { key: 'spread', label: 'Widest lens-path aim, ± degrees', type: 'number', min: 2, max: 40, step: 1, default: 25, adv: true },
     { key: 'edgeDrop', label: 'Image centres below the cut-off (°)', type: 'number', min: 0, max: 3, step: 0.05, default: 0.4, hidden: true },
@@ -1470,6 +1527,33 @@
       if (top.every((r) => r.tr)) { top.sort((a, b) => (a.tr.n.fail - b.tr.n.fail) || (b.tr.score - a.tr.score)); results.splice(results.indexOf(top[0]), 1); results.unshift(top[0]); notes.push('engine check of the best three (1 M rays): ' + top.map((r) => `f ${r.lay.f} → ${r.tr.n.fail} fail / ${r.tr.n.unsure} unsure, score ${r.tr.score.toFixed(3)}`).join('; ')); }
     }
     const best = results[0], lay = best.lay;
+    // perforated windows sized by the ENGINE (s.slitSize 'perforate'): window light is linear in its open share phi and each window lands on its own sign point,
+    // so two traces (all open / all shut, same rays) give each window's own contribution at its point: phi = min(1, goal / contribution, room under any zone
+    // maximum the point sits in / its patch peak); a third trace checks it, kept only if the engine verdict improves.  goal = 2 × the point's share of its minimum.
+    if (s.slitSize === 'perforate' && best.shield && best.shield.holes && best.shield.holes.length && tools && typeof tools.trace === 'function') {
+      const sh0 = best.shield, zones = P.spec.items.filter((x) => x.kind === 'zone' && x.max > 0), N = s.perfRays > 0 ? s.perfRays : 3e6;
+      const goalOf = (hl) => 2 * hl.it.min / (hl.it.kind === 'sum' ? hl.it.pts.length : 1);
+      const capOf = (hl) => { const w = s.slitDeg; let c = Infinity; for (const z of zones) if ([[0, 0], [-w, -w], [w, -w], [-w, w], [w, w]].some(([a, b]) => RF.Spec.inPoly(z.poly, hl.pt[0] + a, hl.pt[1] + b))) c = Math.min(c, 0.6 * z.max); return c; };      // the window's patch, not only its point
+      const probe = sh0.holes.map((hl) => [hl.pt[0], hl.pt[1], 0.6]);
+      const run = async (phis, frozen) => { const sh = Object.assign({}, sh0, { holes: sh0.holes.map((h, i) => Object.assign({}, h, { phi: phis[i] })) }); let t = null; try { t = await tools.trace(P3.surfacesOf(P, best.lay, sh, best.facets, s), { rays: N, spec: true, bounces: 3, seed: 11, probe, frozen }); } catch (e) { t = null; } return { sh, t: t && t.spec }; };
+      const rank = (t) => [t.n.fail, t.n.unsure, -t.score], better = (a, b) => { const x = rank(a), y = rank(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i]; return false; };
+      // start every window at phi0 (Anya: a default open share, measured near where it will end up — fully open windows move the judge's aim); shut at that
+      // aim; per-unit-phi contribution c; phi1 from c; a second round re-reads each window at phi1 (same aim) and corrects; the free-aim trace of phi2 decides.
+      const phi0 = s.perfPhi0 > 0 ? s.perfPhi0 : 0.25, nH = sh0.holes.length;
+      const open = await run(sh0.holes.map(() => phi0)), F = open.t && open.t.frozen, shut = F ? await run(sh0.holes.map(() => 0), F) : { t: null };
+      if (open.t && shut.t && open.t.probe && shut.t.probe) {
+        const size = (cur, rd) => sh0.holes.map((hl, i) => {
+          const ps = shut.t.probe[i], c = cur[i] > 0.01 ? (rd.probe[i].cd - ps.cd) / cur[i] : 0, nat = Math.max(0, ps.cd), need = goalOf(hl) - nat, room = capOf(hl) - nat;
+          if (!(c > 0)) return cur[i];      // no measurable light through it (shot noise): leave it — opening it blind put 8R 4U's patch into Zone III
+          return Math.max(0, Math.min(1, Math.max(0, need) / c, isFinite(room) ? Math.max(0, room) / c : 1));
+        });
+        const phi1 = size(sh0.holes.map(() => phi0), open.t), r1 = await run(phi1, F), phis = r1.t && r1.t.probe ? size(phi1, r1.t) : phi1;
+        const fin2 = await run(phis), keep = fin2.t && (s.perfForce || better(fin2.t, open.t)), bad = (t) => t ? t.rows.filter((r) => r.verdict !== 'pass').map((r) => `${r.name} ${(+r.value).toPrecision(3)}`).join(', ') : '?';
+        notes.push(`perforated windows (engine, ${(N / 1e6).toFixed(0)} M rays, φ0 ${phi0}, aims ${[open, shut, r1, fin2].map((r) => r.t ? '[' + r.t.shift.map((x) => x.toFixed(2)) + ']' : '?').join(' ')}): ` + sh0.holes.map((hl, i) => `${hl.pt[0]}/${hl.pt[1]} φ ${phi1[i].toFixed(2)}→${phis[i].toFixed(2)}`).join(', ') +
+          ` · φ0 ${open.t.n.fail}f/${open.t.n.unsure}u → sized ${fin2.t ? fin2.t.n.fail + 'f/' + fin2.t.n.unsure + 'u' : '?'}` + (keep ? ' (kept)' : ' (not better: φ0 kept)') + ` | φ0: ${bad(open.t)} | sized: ${bad(fin2.t)}`);
+        const use = keep ? fin2.sh : open.sh; best.shield = use; best.surfaces = P3.surfacesOf(P, best.lay, use, best.facets, s);
+      }
+    }
     for (const r of results.slice(0, 5)) notes.push(`candidate ${r.lay.c.kind} k ${r.lay.c.k.toFixed(2)} f ${r.lay.f} Ø${(2 * r.lay.a).toFixed(0)}: model ${r.m.hard} fail / ${r.m.ev.n.unsure} unsure, ${r.m.lm.toFixed(0)} lm, ${r.facets.length} facets`);
     notes.push(`chosen: lens ${lay.c.kind} k ${lay.c.k.toFixed(2)} f ${lay.f} mm Ø${(2 * lay.a).toFixed(1)} t ${lay.L.t.toFixed(1)}, focus ${lay.D.toFixed(0)} mm ahead of the LED, base path +${(lay.Lb - lay.D).toFixed(0)} mm; ${best.leakNote || ''} ${best.nL} lens-path (${best.nEnd || 0} on an emitter end) + ${best.nD} bypass facets (${best.nDecal} decals) at ${best.depthRange}; ideal beam asks ${best.des.flux.toFixed(0)} lm (lens path can give ${best.availL.toFixed(0)}, bypass ${best.availD.toFixed(0)})`);
     notes.push('model loss ledger (lm leaving the facets): ' + Object.entries(best.stats).map(([k, v]) => k + ' ' + v.toFixed(0)).join(', '));
@@ -1620,6 +1704,22 @@
       let bestR = { v: dTop, ...score(shield1) }; for (const dR of [dTop + 0.15, dTop + 0.3, dTop + 0.5, dTop + 0.75, dTop + 1.0, dTop - 0.15]) { const r = score(P3.shieldFor(P, lay, s, { L: dTop, R: dR })); if (r.sc > bestR.sc) bestR = { v: dR, ...r }; }
       let bestL = { v: dTop, sc: bestR.sc }; for (const dL of [dTop + 0.1, dTop + 0.2, dTop + 0.35, dTop - 0.1]) { const r = score(P3.shieldFor(P, lay, s, { L: dL, R: bestR.v })); if (r.sc > bestL.sc) bestL = { v: dL, sc: r.sc }; }
       shield = P3.shieldFor(P, lay, s, { L: bestL.v, R: bestR.v }); edgeNote = `edge shift L ${bestL.v.toFixed(2)}° R ${bestR.v.toFixed(2)}°`; P.lap('    ' + edgeNote);
+    }
+    // sign-point windows sized by the model (s.slitSize 'auto'): the light through a hole ∝ its area, so r ← r·√(goal / I), 3 rounds; goal = 2 × the point's share of its
+    // minimum, capped at 0.4 × any zone maximum the point sits in (R112: Points 1–6 are INSIDE Zone III, ≤ 625 cd — a full-size window put kcd there).  Kept only if the score improves.
+    if (full && shield && shield.holes && shield.holes.length && s.slitSize === 'auto') {
+      const md = T.mdOf(P.spec), kk = md.kernel > 0 ? md.kernel : 0.15, zones = P.spec.items.filter((x) => x.kind === 'zone' && x.max > 0), rMin = lay.f * Math.tan(0.02 * D2R);
+      const goalOf = (hl) => { const it = hl.it, n = it.kind === 'sum' ? it.pts.length : 1; let g = 2 * it.min / n; for (const z of zones) if (RF.Spec.inPoly(z.poly, hl.pt[0], hl.pt[1])) g = Math.min(g, 0.4 * z.max); return g; };
+      const evalSh = (sh) => { const m = P3.evaluate(P, lay, sh, buildAll(), 16); return { m, sc: m.score + 0.0005 * m.lm }; };
+      const peakNear = (m, h, v) => { const sf = m.ev.shift || [0, 0]; let mx = 0; for (let dh = -0.5; dh <= 0.501; dh += 0.1) for (let dv = -0.5; dv <= 0.501; dv += 0.1) { const r = RF.FarField.intensityAt(m.gj, h + sf[0] + dh, v + sf[1] + dv, kk); if (r.cd > mx) mx = r.cd; } return mx; };
+      let cur = shield, e = evalSh(shield); const e0 = e; let best = { sh: shield, sc: e.sc, m: e.m }; const trail = [];
+      for (let round = 0; round < 3; round++) {
+        const holes = cur.holes.map((hl) => { const I = peakNear(e.m, hl.pt[0], hl.pt[1]), g = goalOf(hl), r = I > 0 ? Math.min(hl.r0, hl.r * Math.sqrt(g / I)) : hl.r0; return Object.assign({}, hl, { r }); }).filter((hl) => hl.r >= rMin);
+        cur = Object.assign({}, cur, { holes }); e = evalSh(cur); trail.push(`${holes.length} holes r ${holes.map((hl) => (Math.atan(hl.r / lay.f) / D2R).toFixed(2)).join('/')}° → ${e.m.hard}f/${e.m.ev.n.unsure}u`);
+        if (e.sc > best.sc) best = { sh: cur, sc: e.sc, m: e.m };
+      }
+      if (P.S.verbose) P.lap(`    window sizing: ${e0.m.hard}f/${e0.m.ev.n.unsure}u → ` + trail.join(' · ') + (best.sh === shield ? ' (kept full size)' : ''));
+      shield = best.sh;
     }
     // polish rounds: refresh every footprint at its current aim, slide the L facets (shield mask) and the bypass facets against the spec's floors and ceilings, rebuild; keep the best by the model
     const wmul = new Float64Array(P.g.n).fill(1); let bandA = P3.aggBands(P, G, des.T, wmul), bandB = P3.aggBands(P, GB, des.T, wmul); let pk = 0; for (const x of des.T) if (x > pk) pk = x;

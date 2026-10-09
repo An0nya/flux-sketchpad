@@ -102,7 +102,34 @@
       const holes = shield.holes || []; let n = 0;
       const sheet = (q) => out.push(Math.abs(cy) > 1e-5 ? { type: 'quad', id: 'p3_shield' + n++, P: [xc, yF, ctr[2]], n: [-1, 0, 0], ref: [0, 1, 0], curv: [-cy, 0, 0, 0], clip: { kind: 'poly', pts3: q }, optics: ABSORB }
         : { type: 'plane', id: 'p3_shield' + n++, P: ctr, n: [-1, 0, 0], clip: { kind: 'poly', pts3: q }, optics: ABSORB });
-      for (let i = 0; i + 1 < ne; i++) {
+      // generic sheet builder (a fold and/or perforated windows): pieces between z-boundaries that are linear in y within a strip (edge, kink = edge − d0,
+      // window rows, bottom); the y cuts include every slit edge.  Folded pieces lie in ONE region (tilted band or offset panel), so their corners are coplanar → planes;
+      // unfolded pieces keep the curved sheet.
+      const Fd = shield.fold;
+      // ⚠️ 10-09: the per-strip builder below cut ONE window per strip, but sign points stack (4L 0 / 4L 2U, 0 2U / 0 4U): the second window stayed solid in the
+      // engine while the model counted it open.  Any window → this builder.
+      if (Fd || holes.length) for (let i = 0; i + 1 < ne; i++) {
+        const pa = pts[i], pb = pts[i + 1]; if (Math.abs(pb[1] - pa[1]) < 1e-3) continue;
+        const zTop = (y) => pa[2] + (pb[2] - pa[2]) * (y - pa[1]) / (pb[1] - pa[1]), atF = (y, z) => [xOn(y) + (Fd ? Fd.d * Math.max(0, Math.min(1, (zTop(y) - z) / Fd.d0)) : 0), y, z];
+        const y0 = Math.min(pa[1], pb[1]), y1 = Math.max(pa[1], pb[1]), cuts = [y0, y1], addCut = (y) => { if (y > y0 && y < y1) cuts.push(y); };
+        for (const h of holes) { addCut(h.y - h.r); addCut(h.y + h.r); if (h.phi < 1 && h.phi > 0) { const { n, p } = P3.slits(h); for (let k = 0; k < n; k++) { const yc = h.y - h.r + (k + 0.5) * p; addCut(yc - 0.5 * h.phi * p); addCut(yc + 0.5 * h.phi * p); } } }
+        cuts.sort((a, b) => a - b);
+        for (let c = 0; c + 1 < cuts.length; c++) {
+          const ya = cuts[c], yb = cuts[c + 1], ym = (ya + yb) / 2; if (yb - ya < 1e-5) continue;
+          const opens = holes.filter((h) => P3.holeOpen(h, ym, h.z)).map((h) => [h.z - h.r, h.z + h.r]);
+          const bs = [(y) => zTop(y), () => zb]; if (Fd) bs.push((y) => zTop(y) - Fd.d0); for (const [zl, zh] of opens) bs.push(() => zh, () => zl);
+          const lv = bs.map((b, k) => [b(ym), k]).filter(([z]) => z <= zTop(ym) + 1e-9 && z >= zb - 1e-9).sort((p, q) => q[0] - p[0]);
+          for (let k = 0; k + 1 < lv.length; k++) {
+            const b1 = bs[lv[k][1]], b2 = bs[lv[k + 1][1]], zm = (lv[k][0] + lv[k + 1][0]) / 2; if (lv[k][0] - lv[k + 1][0] < 1e-5) continue;
+            if (opens.some(([zl, zh]) => zm > zl && zm < zh)) continue;      // a window (or one slit of it)
+            const q = [atF(ya, b1(ya)), atF(yb, b1(yb)), atF(yb, b2(yb)), atF(ya, b2(ya))]; if (q.some((x) => !P.E.inside(x, 0.1))) continue;
+            if (!Fd) { sheet(q); continue; }
+            let nn = V.cross(V.sub(q[1], q[0]), V.sub(q[3], q[0])); const L = Math.hypot(nn[0], nn[1], nn[2]); if (!(L > 1e-12)) continue; nn = nn.map((x) => x / L); if (nn[0] > 0) nn = nn.map((x) => -x);
+            out.push({ type: 'plane', id: 'p3_shield' + n++, P: q[0], n: nn, clip: { kind: 'poly', pts3: q }, optics: ABSORB });
+          }
+        }
+      }
+      else for (let i = 0; i + 1 < ne; i++) {
         const pa = pts[i], pb = pts[i + 1], q = [pa, pb, bot(pb[1]), bot(pa[1])];
         if (Math.abs(pb[1] - pa[1]) < 1e-3 || q.some((x) => !P.E.inside(x, 0.1))) continue;
         // split the strip at the holes' y edges; inside a hole's y range the strip is two pieces, above and below the window

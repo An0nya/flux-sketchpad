@@ -43,12 +43,17 @@
     for (const p of pts) for (let it = 0; it < 30 && !E.inside(p, 0.2); it++) { p[1] = ctr[1] + (p[1] - ctr[1]) * 0.93; p[2] = ctr[2] + (p[2] - ctr[2]) * 0.93; p[0] = xOn(p[1]); }      // hard envelope clip
     const ne = edge.length, ed = pts.slice(0, ne).map((p) => [p[1], p[2]]).sort((p, q) => p[0] - q[0]);
     // sign-point windows (s.slitDeg > 0): a square hole at the focal-plane point of every spec point with a MINIMUM above the line, so the beam's own tails reach it
+    // the fold (s.shieldFold mm, + = toward the lens): the sheet leaves the focal surface below its edge — x = xOn(y) + δ·clamp((edge(y) − z) / d0, 0, 1), d0 = |δ| / foldSlope —
+    // so the windows sit off focus and their light spreads (lower peak in Zone III) while the edge stays sharp.  foldSlope ≤ ~1: a band leaning further than the
+    // steepest ray to the lens (≈ 0.87 here) would clip the beam just under the cut-off.
+    const fold = s.shieldFold ? { d: s.shieldFold, d0: Math.abs(s.shieldFold) / Math.max(0.05, s.foldSlope || 1) } : null;
+    const foldOff = (y, z) => fold.d * Math.max(0, Math.min(1, (P3.edgeZ(ed, y) - z) / fold.d0));
     const holes = [];
     if (s.slitDeg > 0) for (const it of P.spec.items) {
       const pts2 = it.kind === 'point' ? [[it.h, it.v]] : it.kind === 'sum' ? it.pts : null; if (!pts2 || !(it.min > 0)) continue;
-      for (const [h, v] of pts2) if (v > top(h) + 0.2) { const p = imgPoint(P, lay, h, v, defocus); holes.push({ y: p[1], z: p[2], r: f * Math.tan(s.slitDeg * D2R) }); }
+      for (const [h, v] of pts2) if (v > top(h) + 0.2) { const p = imgPoint(P, lay, h, v, defocus); if (fold) { const off = foldOff(p[1], p[2]), k = off / (lay.O[0] - p[0]); p[0] += off; p[1] += k * (lay.O[1] - p[1]); p[2] += k * (lay.O[2] - p[2]); } holes.push({ y: p[1], z: p[2], r: f * Math.tan(s.slitDeg * D2R), r0: f * Math.tan(s.slitDeg * D2R), pt: [h, v], it, phi: 1, pitch: s.perfPitch > 0 ? s.perfPitch : 0.1 }); }
     }
-    return { xc, cy, yF: F[1], edge: ed, zb: Math.max(zb, pts[ne][2], pts[ne + 1][2]), W, defocus, pts, ne, zbRaw: zb, holes };
+    return { xc, cy, yF: F[1], edge: ed, zb: Math.max(zb, pts[ne][2], pts[ne + 1][2]), W, defocus, pts, ne, zbRaw: zb, holes, fold };
   }
 
   // ---------------------------------------------------------------- reflector depth along a direction d (unit, from the LED)

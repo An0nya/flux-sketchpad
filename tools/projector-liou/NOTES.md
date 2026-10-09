@@ -152,3 +152,60 @@ Shorter filament → higher share in window and longer reach (Anya's guess holds
 Cost of continuity: ~90 lm and a few rows without a shield (its ~3.5° normal mismatch spills light over the line: 10U–90U, 1U/0.5U 1.5L–L), ≈ nothing with the cleanup shield.
 
 ## LED / LEP agent data (10-08): scratchpad/leds/agent_json/*.json (+ *_report.md). Luminus 16, automotive 13 + catalog 26, Nichia/Samsung 13; Cree and LEP pending.
+
+## 10-09 — queue item 1 (R112 Zone III + sharpness): diagnosis (exploring; scratch tools in the session scratchpad: zonepath.js, modelpt.js, gap.js, judge.js)
+- OBSERVED: Zone III's excess on nowall_r112 (R112 cleanup 25 %, slitDeg 0.6) is 99.8 % facet → lens light, many facets, a broad ~0.6° glow at 3.1R 1.9U = the
+  **sign-point window for 4R 2U** (all its rays cross the shield plane at y ≈ −5.3 mm, at the edge). Points 1–6 (4L/0/4R at 2U, 8L/0/8R at 4U) all sit INSIDE Zone III
+  (≤ 625 cd), so each window must deliver ~125–600 cd, not kcd. The model KNOWS (its own final fails include Zone III 12 kcd, ~3× the engine's) — nothing trades it off.
+- The cut-off rule itself is not the problem: the own-side line (0.57 D + 15°) sits well below Zone III's 45° lower edge. Item 1's "widen eR" idea dropped.
+- 8 M-ray judge (2 M is too noisy here: the R112 aim scan moves 0.3–0.8° between traces of the same design):
+| design | pass/fail/unsure | Zone III | Points 4+5+6 (≥ 375) | Points 1+2+3 (≥ 190) | sharpness (≤ 0.40) |
+|---|---|---|---|---|---|
+| nowall_r112 (slit 0.6) | 15/1/3 | 3763 ± 410 | 3454 | 133 | 1.74 ± 0.68 |
+| z3_slit0.15 | 15/1/3 | 2213 ± 320 (at the 4R 2U window) | 1903 | 842 | 1.14 ± 0.20 |
+| z3_slit0 (no windows) | 13/3/3 | 885 ± 200 | **44 (fail)** | 44 | **0.25 ± 0.03 (pass)** |
+- Window light ∝ hole area and the image is bright there: 0.15° half-size still gives ~2 kcd. Without windows the natural glow misses Points 4–6.
+- Sharpness: only the windowless design passes (0.25). INFERENCE, not checked: the windows/aim noise drive the high G reads; re-judge after window sizing before touching shield defocus.
+- Proposed fix (not built): size each window by the model to a candela goal (≤ ~250 cd inside Zone III), r ← r·√(goal / I), 2–3 rounds, keep only if the score improves.
+- 10-09 later. Anya's idea: defocus the windows so their light spreads (smaller peak) → test with the whole-shield `shieldDefocus` (crude: the edge moves too). 8 M judge, slit 0.15:
+  0.54 mm (auto): Zone III 2213, P1+2+3 842, P4+5+6 1903, sharpness 1.14 · 1.5 mm: 759, **0**, 177, 0.57, 75R 9.9k · 3 mm: 929, **0**, 354, 0.27 ✓, **75R 6.3k ✗**.
+  Direction confirmed (window light leaves Zone III, the edge softens) but moving the whole shield costs the hotspot and starves the 4U windows → a FOLD (only the window band off focus) is the real version of her idea. Determinism check: −1.5 (= auto) reproduced 0.54 bit for bit.
+- Window sizing BY THE MODEL (`slitSize: 'auto'`, built, default now 'fixed'): FAILED — oscillates 0.1° ↔ 0.6° and every resized set scored worse (kept full size in 8 of 9 designs).
+  Why (inference): the model's window light is ~3× the engine's; and the "peak within ±0.5° of the point" reading includes the natural glow near the line (Point 8 at 4L 0 sits in kcd glow), so it can't isolate a hole's own contribution. Next: size from ENGINE traces, or the fold.
+- 10-09 FOLD (Anya's idea, built: `shieldFold` mm + hidden `foldSlope`; model = bisection on the folded sheet, engine = planar pieces split at the kink/holes; fold 0
+  reproduces the flat design bit for bit). RESULT: NEGATIVE for Zone III. 8 M judge, window 0.6° unless noted:
+  | fold / slope | Zone III | P4+5+6 | 75R | note |
+  |---|---|---|---|---|
+  | 0 | 3763 | 3454 | ok | baseline |
+  | +1.5 / 1 | 3365 | 1505 | 9.4k | |
+  | +3 / 1 | 2479 | 1373 | **2.4k ✗** | band clips the beam |
+  | −2 / 1 | 5044 (2.9L 0.1U) | 4073 | 10.9k | |
+  | +3 / 1, window 0.3 | 1418 | 828 | ok | 0 fails, 5 unsure |
+  | +1…2.5 / 0.4 | 3807 | — | ok | windows barely move |
+  Why (geometry, measured on nowall_r112): the 4R 2U window sits only ~1.2 mm below the edge (window z 38.8–39.9, edge ~40.6). ⚠️ My first slope limit
+  used f = 54 mm; the shield is ~20 mm from the flat lens face, so rays to the lens rim slope up to ~2.2 → any band slope > ~0.4 clips beam light just over the
+  edge, and at ≤ 0.4 the windows move < 0.5 mm. The windows are too close to the edge to defocus them without defocusing the beam. Fold kept as an option (default 0).
+  (gap.js note: its edge reconstruction took hole-split pieces' tops as the edge — wrong edge, right conclusion.)
+- 10-09 PERFORATED WINDOWS (Anya's blocker idea → a slotted window: vertical slits, pitch `perfPitch` 0.1 mm, open share φ; `slitSize: 'perforate'`).
+  Sized by the ENGINE: trace all-open, then all-shut AT THE SAME (frozen) AIM, each window's own contribution at its point → φ = min(1, goal / c, (0.6 × zone max − natural) / c);
+  a third (free-aim) trace decides keep / not. App change: `RF.Solvers.trace` takes `o.probe` [[h, v, box]] (judged-aim intensity per point) and `o.frozen` (judge at a given aim), returns `spec.frozen`.
+  ⭐ BUG FOUND (old, since sign-point windows were added): the per-strip shield builder cut ONE window per strip; stacked sign points (4L 0 / 4L 2U, 0 2U / 0 4U)
+  share a strip, so the second window stayed SOLID in the engine while the model counted it open. All windowed R112 results before this line had ~half the windows.
+  Fixed (the generic builder handles any windows). With ALL windows truly open the fixed 0.6° design is worse (Point 8 5.6k, Point 7 3.9k, Zone III 5.9k at 3.7L 0.1U, 75R fail).
+  | 8 M judge (after the fix) | pass/fail/unsure | Zone III | P1+2+3 | P4+5+6 | P7 | P8 | 75R | sharpness |
+  |---|---|---|---|---|---|---|---|---|
+  | fixed 0.6° | 13/3/3 | 5939 | 355 | 3675 | 3894 | 5580 | **2242 ✗** | 1.63 |
+  | **perforated 0.6°** | **15/1/3** | **1943 ± 300** | 1065 | 2258 | 752 | 531 | 9584 | **1.29 ✗** |
+  | perforated 0.3° | 13/1/5 | 5575 (3.1L 0.1U) | 311 | 1023 | 173 | 221 | ok | 0.47 |
+  | no windows | 13/3/3 | 885 | 44 | **44 ✗** | 973 | 443 | **5339 ✗** | 0.25 ✓ |
+  Perforated 0.6 = best Zone III with every sign point passing. Still over: Zone III at ~3.7L 1.7U (the 4L 2U window, φ 0.65 from a noisy +386 cd read); sharpness
+  fails in every windowed design, passes only without windows (cause NOT established). 0.3° run: Zone III hot spot by the line at 3.1L 0.1U — the aim moved 0.45° L.
+- 10-09 SHARPNESS: mostly REAL, not the window. Scan dump at 2.5L (8 M): perforated 0.6 design drops 1903 → 26 cd in 0.2° (neff 215 → 3): the cleanup
+  shield edge in focus is a razor (~1 decade / 0.1°); the judged step's dark side had 3 rays (noise inflates G a bit, 1.29 vs a solid 1.10 next door). The
+  windowless design "passed" (0.25) only because it leaks a flat 200–400 cd glow over the line at 2.5L (soft ramp) — the same design fails 75R / P4–6.
+  Judge note (app, not changed): scanCut floors only the BRIGHT side at 2 % of the scan max; a few-ray dark side can set G.
+- 10-09 two-round perforation (Anya: start from a default φ0 = 0.25 instead of fully open; `perfPhi0`): open@φ0 → shut at that aim → φ1 → re-read at φ1 → φ2 → free-aim check.
+  Shield defocus sweep with it (8 M): 0.54 auto **13/0/6** (Zone III 1640 at 7.9R 3.3U = 8R 4U window opened blind; sharpness 0.50) · 1.0: 75R 6.9k ✗ · 1.5: 75R 973 ✗ · 2.0: 75R 5.2k ✗
+  → defocus ≥ 1 mm softens the edge (G 0.19–0.30) but kills the hotspot; stay at auto. Fixes: no-signal window keeps its φ (was: doubled); zone cap applies when the
+  window's PATCH (±slitDeg) touches the zone. Then (8 M): **slit 0.6: 12/0/7**, **slit 0.4: 14/0/5** — 0 fails both; sharpness 0.46 / 0.44 (unsure, limit 0.40);
+  Zone III 1770 / 2168 now at 3.3–3.7L 0.1–0.3U (by the oncoming line, near B50L 531/—): NOT yet traced — Point 8's patch (4L 0, on Zone III's boundary) or beam spill.

@@ -8,6 +8,12 @@
 (function () {
   'use strict';
   const RF = globalThis.RF, P3 = RF.P3 = RF.P3 || {};
+  // a sign-point window: a square of half-size r; phi < 1 = a perforated (slotted) window — vertical slits at pitch ≈ h.pitch (mm), open share phi of each pitch
+  function slits(h) { const n = Math.max(1, Math.round(2 * h.r / (h.pitch || 0.1))); return { n, p: 2 * h.r / n }; }
+  function holeOpen(h, y, z) {
+    if (Math.abs(y - h.y) > h.r || Math.abs(z - h.z) > h.r) return false; if (!(h.phi < 1)) return true; if (!(h.phi > 0)) return false;
+    const { p } = slits(h), u = (y - h.y + h.r) / p, fu = u - Math.floor(u); return Math.abs(fu - 0.5) <= h.phi / 2;
+  }
   function edgeZ(edge, y) {
     const n = edge.length; if (y <= edge[0][0]) return edge[0][1]; if (y >= edge[n - 1][0]) return edge[n - 1][1];
     let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (edge[m][0] <= y) lo = m; else hi = m; }
@@ -15,7 +21,19 @@
   }
   function makePost(D) {
     const sh = D.shield, ln = D.lens, cap = D.cap, barrel = !!D.barrel;      // cap: { c, r } an absorbing disc ⟂ x (direct-light cap); barrel: rays that miss the lens are absorbed (the lens holder)
+    const inside = (yy, zz) => Math.abs(yy - sh.yF) <= sh.W && zz <= edgeZ(sh.edge, yy) && zz >= sh.zb && !(sh.holes && sh.holes.some((h) => holeOpen(h, yy, zz)));
+    // folded sheet: g(t) = x(t) − [xOn(y) + δ·clamp((edge(y) − z)/d0)]; bracket over the sheet's x range, bisect (one crossing: the sheet is a graph over (y, z))
+    const xSpan = sh && sh.fold ? (() => { const e = 0.5 * sh.cy * sh.W * sh.W; return [sh.xc + Math.min(0, e) + Math.min(0, sh.fold.d) - 1, sh.xc + Math.max(0, e) + Math.max(0, sh.fold.d) + 1]; })() : null;
+    const foldHit = (x, y, z, dx, dy, dz) => {
+      if (!(Math.abs(dx) > 1e-9)) return false;
+      const F = sh.fold, g = (t) => { const yy = y + t * dy, zz = z + t * dz, q = yy - sh.yF; return x + t * dx - (sh.xc + 0.5 * sh.cy * q * q + F.d * Math.max(0, Math.min(1, (edgeZ(sh.edge, yy) - zz) / F.d0))); };
+      let t0 = (xSpan[0] - x) / dx, t1 = (xSpan[1] - x) / dx; if (t0 > t1) { const w = t0; t0 = t1; t1 = w; } t0 = Math.max(t0, 1e-9); if (!(t1 > t0)) return false;
+      let g0 = g(t0), g1 = g(t1); if (g0 * g1 > 0) return false;
+      for (let it = 0; it < 40; it++) { const tm = 0.5 * (t0 + t1), gm = g(tm); if (gm * g0 > 0) { t0 = tm; g0 = gm; } else t1 = tm; }
+      const t = 0.5 * (t0 + t1); return inside(y + t * dy, z + t * dz);
+    };
     const shieldHit = (x, y, z, dx, dy, dz) => {
+      if (sh.fold) return foldHit(x, y, z, dx, dy, dz);
       // x + t dx = xc + ½ cy (y + t dy − yF)²
       const q = y - sh.yF; let ts;
       if (Math.abs(sh.cy) < 1e-9) { if (Math.abs(dx) < 1e-12) return false; ts = [(sh.xc - x) / dx]; }
@@ -23,7 +41,7 @@
         if (Math.abs(A) < 1e-14) ts = [-C / B]; else { const Dd = B * B - 4 * A * C; if (Dd < 0) return false; const s = Math.sqrt(Dd); ts = [(-B - s) / (2 * A), (-B + s) / (2 * A)]; } }
       for (const t of ts) {
         if (!(t > 1e-9)) continue; const yy = y + t * dy, zz = z + t * dz; if (Math.abs(yy - sh.yF) > sh.W) continue;
-        if (zz <= edgeZ(sh.edge, yy) && zz >= sh.zb && !(sh.holes && sh.holes.some((h) => Math.abs(yy - h.y) <= h.r && Math.abs(zz - h.z) <= h.r))) return true;      // holes: square windows for the sign points
+        if (zz <= edgeZ(sh.edge, yy) && zz >= sh.zb && !(sh.holes && sh.holes.some((h) => holeOpen(h, yy, zz)))) return true;      // holes: square windows for the sign points
       }
       return false;
     };
@@ -45,5 +63,5 @@
       return { p: [r.p[0] + O[0], r.p[1] + O[1], r.p[2] + O[2]], d: r.d, T: ln.T };
     };
   }
-  P3.makePost = makePost; P3.edgeZ = edgeZ;
+  P3.makePost = makePost; P3.edgeZ = edgeZ; P3.holeOpen = holeOpen; P3.slits = slits;
 })();
