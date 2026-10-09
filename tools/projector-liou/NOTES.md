@@ -214,3 +214,7 @@ Cost of continuity: ~90 lm and a few rows without a shield (its ~3.5° normal mi
   FINDING: the aim wobble was the RE-AIM BOX, not the instrumental cut-off find (that moves ≤ 0.05° between batches). Re-aim spread FMVSS 0.35° → 0.08°;
   R112 perforated stays bimodal (re-aim left −0.5 or right +0.3 tie). 2 M fail counts now closer to 32 M (old rule hid fails). Re-aim reads ONE map at
   many offsets (panning, no retrace) — a winner's curse over noise; FMVSS per-point = best of 13 readings per point.
+- 10-09 JUDGE cont.: re-aim cost λ (`modeD.aimMoveCost`, default 0.5, spec-panel control with a stricter-than-regulation warning; d109a0b) — λ 2 holds FMVSS near
+  design aim (more fails, matches 32 M at λ 2); λ barely moves R112/SQM (their h scatter is genuine ties). Cut-off = steepest edge with darkness ≥ 0.5° above it
+  (< 25 % of its bright side): SQM 7" misfire (1 in 5 traces aimed 2.8° low → 7 fails) gone; liou designs unchanged; FMVSS G ~0.1 lower (32 M 0.17 vs min 0.13).
+  ⚠️ Remaining bias: at 2 M the 10-ray floor finds the cut-off 0.1–0.2° LOWER than 32 M does (thin top steps excluded) — consistent, not noisy, but ray-count dependent.
