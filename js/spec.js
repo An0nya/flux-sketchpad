@@ -234,13 +234,16 @@
   // The cut-off is the beam's own light–dark edge, not any steep step in the dark above it (a dim glow's top edge, 80 → 1 cd,
   // is steeper in log terms): only steps whose bright side holds ≥ CUT_FLOOR of the scan line's maximum count.
   const CUT_FLOOR = 0.02;
+  // CUT.minRays: the steepest step of a traced (shot-noisy) scan is a winner's curse — a dark side of 1–3 rays makes huge, fake steps (8 M rays read G 1.75 where
+  // 32 M converge on 0.42).  A step counts only when its dark side holds ≥ minRays rays (10: reached the 32 M value at 8 M; 30 pulled the cut-off 0.1° low).
+  const CUT = { minRays: 10 };
   function scanCut(G, h, v0, v1, scan, dvd, kh, dh, dv) {
     const kv = Math.max(G.step / 2, 0.035) * 0.99;            // Annex 9: ~30 mm detector at 25 m ≈ 0.07° across
     let best = null, top = 0;
     for (let v = v0; v <= v1 + 1e-9; v += scan) { const a = RF.FarField.intensityAt(G, h + dh, v + dv, kh, kv); if (a.cd > top) top = a.cd; }
     for (let v = v0; v + dvd <= v1 + 1e-9; v += scan) {
       const a = RF.FarField.intensityAt(G, h + dh, v + dv, kh, kv), b = RF.FarField.intensityAt(G, h + dh, v + dvd + dv, kh, kv);
-      if (!(a.cd > 0 && b.cd > 0) || a.cd < CUT_FLOOR * top) continue;
+      if (!(a.cd > 0 && b.cd > 0) || a.cd < CUT_FLOOR * top || (CUT.minRays > 0 && b.neff < CUT.minRays)) continue;
       const g = Math.log10(a.cd / b.cd), sg = Math.hypot(a.sd / a.cd, b.sd / b.cd) / Math.LN10;
       if (!best || g > best.g) best = { g, sg, v: v + dvd / 2 };
     }
@@ -606,5 +609,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
+  RF.Spec = { CUT, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
