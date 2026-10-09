@@ -209,3 +209,8 @@ Cost of continuity: ~90 lm and a few rows without a shield (its ~3.5° normal mi
   → defocus ≥ 1 mm softens the edge (G 0.19–0.30) but kills the hotspot; stay at auto. Fixes: no-signal window keeps its φ (was: doubled); zone cap applies when the
   window's PATCH (±slitDeg) touches the zone. Then (8 M): **slit 0.6: 12/0/7**, **slit 0.4: 14/0/5** — 0 fails both; sharpness 0.46 / 0.44 (unsure, limit 0.40);
   Zone III 1770 / 2168 now at 3.3–3.7L 0.1–0.3U (by the oncoming line, near B50L 531/—): NOT yet traced — Point 8's patch (4L 0, on Zone III's boundary) or beam spill.
+- 10-09 JUDGE (shared js/spec.js, committed 21fc616 + next): (1) cut-off scan ignores steps whose dark side < 10 rays (sharpness winner's curse: 8 M read 1.75
+  vs 32 M 0.42; perforated design's TRUE G ≈ 0.42 vs limit 0.40). (2) Re-aim by expected fails Σ Φ((bound − value)/σ), hysteresis 0.5, smallest move within 0.1.
+  FINDING: the aim wobble was the RE-AIM BOX, not the instrumental cut-off find (that moves ≤ 0.05° between batches). Re-aim spread FMVSS 0.35° → 0.08°;
+  R112 perforated stays bimodal (re-aim left −0.5 or right +0.3 tie). 2 M fail counts now closer to 32 M (old rule hid fails). Re-aim reads ONE map at
+  many offsets (panning, no retrace) — a winner's curse over noise; FMVSS per-point = best of 13 readings per point.
