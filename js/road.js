@@ -84,6 +84,12 @@
       let x = near; while (x + step <= far && lux([x + step, y, z]) >= IIHS.lux) x += step;
       return x;
     }
+    // the farthest point on the line (y, z) with ≥ 5 lx, scanning in from the far limit (0 = never lit): a dark patch
+    // nearer the car does not end it (the IIHS number above does)
+    function farthest(y, z, near, far, step) {
+      for (let x = far; x >= near; x -= step) if (lux([x, y, z]) >= IIHS.lux) return x;
+      return 0;
+    }
     function iihs() {
       const L = IIHS.lane, step = 0.5;
       const right = reach(-L / 2, IIHS.sensorZ, IIHS.near, IIHS.far, step), left = reach(1.5 * L, IIHS.sensorZ, IIHS.nearLeft, IIHS.far, step);
@@ -91,7 +97,8 @@
       const glare = []; for (let x = 10; x <= IIHS.far; x += 2) glare.push([x, lux([x, IIHS.glareY, IIHS.glareZ])]);
       // demerit equations as published (not capped: the protocol's "critical value" points are 9 at 70 m / 40 m)
       const dem = { right: Math.max(0, 30 - 0.3 * right), left: Math.max(0, 27 - 0.45 * left) };
-      return { right, left, glareMax, glareOver: glareMax > IIHS.glareMax, glare, demerits: dem };
+      const farRight = farthest(-L / 2, IIHS.sensorZ, IIHS.near, IIHS.far, step), farLeft = farthest(1.5 * L, IIHS.sensorZ, IIHS.nearLeft, IIHS.far, step);
+      return { right, left, farRight, farLeft, glareMax, glareOver: glareMax > IIHS.glareMax, glare, demerits: dem };
     }
     // IIHS curves: radius R (m), dir 'right' | 'left'. The car is on its lane centre heading +x; the lane centre bends
     // with radius R; distance = travel along the arc (the protocol's). Sensors at the edges of the 3.3 m travel lane,
@@ -136,5 +143,15 @@
     const cutV = ev && ev.aim && isFinite(ev.aim.cutV) ? ev.aim.cutV : 0;
     return [0, cutV - (road.aimPct || 0) * PCT];
   }
-  RF.Road = { PCT, LANES, IIHS, REF, defaults, resolve, mountDefault, laneWidth, lamps, arc, model, aimShift };
+  // the beam as the road sees it: I(h, v) in the road's frame (h + = left of the car's own lane side; mir −1 for LHT),
+  // read from the judged fine grid G where it covers the direction, else the wide grid W; kh × kv = kernel half-widths
+  // (degrees) on G, kw × W's bin on W.  sh = the aim shift (aimShift).  Shared by Spec mode's Road view and tools.trace.
+  function beamOf(G, W, sh, mir, kh, kv, kw) {
+    return (h, v) => {
+      const H = mir * h + sh[0], V = v + sh[1];
+      const g = G && H >= G.h0 && H <= G.h1 && V >= G.v0 && V <= G.v1 ? G : W; if (!g) return 0;
+      const r = g === G ? RF.FarField.intensityAt(g, H, V, kh, kv) : RF.FarField.intensityAt(g, H, V, Math.max(kh, kw * g.step)); return r.cd > 0 ? r.cd : 0;
+    };
+  }
+  RF.Road = { PCT, LANES, IIHS, REF, defaults, resolve, mountDefault, laneWidth, lamps, arc, model, aimShift, beamOf };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

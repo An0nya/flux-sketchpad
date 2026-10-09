@@ -594,11 +594,7 @@
     const sh = RF.Road.aimShift(road, s.ev), G = s.G, W = s.Gw, k = 0.2, mir = md(ui).traffic === 'LHT' ? -1 : 1;
     // the beam as the road sees it: the judged fine grid where it covers the direction, else the wide one; kh × kv = the kernel
     // half-widths (degrees) on the fine grid, kw × the wide grid's bin on the wide one
-    const mkI = (kh, kv, kw) => (h, v) => {
-      const H = mir * h + sh[0], V = v + sh[1];
-      const g = H >= G.h0 && H <= G.h1 && V >= G.v0 && V <= G.v1 ? G : W; if (!g) return 0;
-      const r = g === G ? RF.FarField.intensityAt(g, H, V, kh, kv) : RF.FarField.intensityAt(g, H, V, Math.max(kh, kw * g.step)); return r.cd > 0 ? r.cd : 0;
-    }, I = mkI(k, k, 1);
+    const mkI = (kh, kv, kw) => RF.Road.beamOf(G, W, sh, mir, kh, kv, kw), I = mkI(k, k, 1);
     const mdl = RF.Road.model({ road, preset: md(ui).preset, conv: G.conv || md(ui).conv || 'A', I });
     s.road = { mdl, sh, mir, mkI, iihs: mdl.iihs(), curves: mdl.curves(), lane: RF.Road.laneWidth(mdl.road, md(ui).preset), laneDrive: RF.Road.laneWidth(mdl.road, md(ui).preset, true), map: null }; s.roadKey = key;
     return s.road;

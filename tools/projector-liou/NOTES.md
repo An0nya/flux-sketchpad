@@ -218,3 +218,11 @@ Cost of continuity: ~90 lm and a few rows without a shield (its ~3.5° normal mi
   design aim (more fails, matches 32 M at λ 2); λ barely moves R112/SQM (their h scatter is genuine ties). Cut-off = steepest edge with darkness ≥ 0.5° above it
   (< 25 % of its bright side): SQM 7" misfire (1 in 5 traces aimed 2.8° low → 7 fails) gone; liou designs unchanged; FMVSS G ~0.1 lower (32 M 0.17 vs min 0.13).
   ⚠️ Remaining bias: at 2 M the 10-ray floor finds the cut-off 0.1–0.2° LOWER than 32 M does (thin top steps excluded) — consistent, not noisy, but ray-count dependent.
+
+## 10-09 — queue item 3: final-pick ranking (Anya's spec)
+- **Order:** expected fails (Σ P(fail), tie within 0.5) → road reach √(farL·farR) (tie within 5 %) → lumens in the spec window. 2 M-ray guided spec trace per finalist (was 1 M, sure fails then spec score). Judged BEFORE window sizing (Anya: windows are a compliance fix, not beam performance).
+- **Reach = farthest point with ≥ 5 lx** on the IIHS straightaway lines (lane edges, 25 cm up), scanning in from 250 m — not IIHS's "continuous from the near limit" (which reads 0 when the left shoulder is dark at 15 m). Anya: 50/50 > 100/10, 60/40 > 80/20, 80/60 > 100/40 → the geometric mean fits all three; scale- and side-free. She is not worried about a lone far hotspot gaming it ("right hotspots at 50+ m are probably a solid design anyway").
+- **Shared app changes:** `road` joined `js/solver-env.js`; `RF.Road.beamOf` (the Road view's beam reader, lifted out of spec-ui.js) ; `iihs()` also returns `farRight` / `farLeft`; `tools.trace(o.road)` → `res.road {right, left, farRight, farLeft, glareMax}`; `res.spec` gained `expFails`, `lmWindow`.
+- ⚠️ **Found:** `trace()` caps rays at 2 M (`Math.min(2e6, …)`), so `perfRays: 3e6` has been 2 M all along (the note says 3 M). Not changed.
+- **First run (R112 B, default + cleanup shield, OBSERVED):** f 74 #1 1.91 exp. fails, R 62 / L 36 m, 592 lm · f 74 #2 1.87, R 62 / L 39, 515 lm · f 84 3.61 (1 fail), R 72.5 / L 46, 522 lm. #1 and #2 tie on fails and reach (47.2 vs 49.2, 4 %) → lumens picks #1. IIHS left = 0 m for all three (dark near shoulder) while the far reach is 36–46 m: exactly Anya's case. f 84 has the best reach but loses on fails — by design.
+- Not checked: the app's Road view after the beamOf refactor (tests pass; it only renders after a Spec trace).

@@ -206,6 +206,8 @@
     const P = RF.Engine.prepare(sc, surfaces); P.recordHits = !!(o.attribution || o.occlusion);
     const wantSpec = !!(o.spec && scene.modeD && RF.Spec && RF.FarField);
     if (wantSpec) P.ffStreams = [RF.Spec.gridOpts(scene)];        // the far field the host judges, at the spec's measuring distance
+    const wantRoad = wantSpec && o.road && RF.Road;
+    if (wantRoad) P.ffStreams.push(RF.Spec.wideOpts(scene));      // the road's near shoulder sits outside the spec window
     const N = Math.max(1, Math.min(2e6, o.rays | 0 || 20000));
     // spec traces are guided by default (as the app's Refine): a quarter of the rays as a pilot, then rounds that send more
     // rays where the window is dim (sign points, zone III), weighted so nothing is biased.  o.guided: false = plain.
@@ -238,12 +240,20 @@
     }
     if (wantSpec) {                                            // the host's own judge, so a solver can score itself exactly as the report will
       const G = RF.FarField.build(c, P.ffStreams[0]), ev = RF.Spec.evaluate(G, scene.modeD, o.frozen ? { frozen: o.frozen } : undefined);      // o.frozen: judge at a given aim (res.spec.frozen of an earlier trace)
-      res.spec = { guided, verdict: ev.verdict, n: ev.n, score: ev.score, worst: ev.worst, aim: ev.aim.note, shift: ev.shift, frozen: { base: ev.aim.base.slice(), reaim: (ev.reaim || [0, 0]).slice(), note: ev.aim.note, cutV: ev.aim.cutV },
+      res.spec = { guided, verdict: ev.verdict, n: ev.n, expFails: ev.expFails, lmWindow: G.lmWindow, score: ev.score, worst: ev.worst, aim: ev.aim.note, shift: ev.shift, frozen: { base: ev.aim.base.slice(), reaim: (ev.reaim || [0, 0]).slice(), note: ev.aim.note, cutV: ev.aim.cutV },
         rows: ev.rows.map((r) => ({ name: r.name, kind: r.kind, value: r.value, sd: r.sd, bound: r.bound, isMin: r.isMin, verdict: r.verdict, margin: r.margin, at: r.at })) };
       // o.probe: [[h, v, box?], …] — intensity at each spec-frame point AT THE JUDGED AIM (kernel-smoothed, as the judge reads it), and the peak within ±box° of it
       if (Array.isArray(o.probe)) {
         const k = scene.modeD && scene.modeD.kernel > 0 ? scene.modeD.kernel : 0.15, sf = ev.shift || [0, 0], at = (h, v) => RF.FarField.intensityAt(G, h + sf[0], v + sf[1], k);
         res.spec.probe = o.probe.map(([h, v, box]) => { const r = at(h, v); let peak = r.cd; if (box > 0) for (let dh = -box; dh <= box + 1e-9; dh += 0.1) for (let dv = -box; dv <= box + 1e-9; dv += 0.1) { const q = at(h + dh, v + dv).cd; if (q > peak) peak = q; } return { cd: r.cd, sd: r.sd, peak }; });
+      }
+      // o.road: the IIHS straightaway on the judged beam, as Spec mode's Road view reads it (the scene's road settings):
+      //   right / left = 5 lx reach from the near limit (IIHS), farRight / farLeft = the farthest point with ≥ 5 lx
+      if (wantRoad) {
+        const md = scene.modeD, road = md.road || RF.Road.defaults(), W = RF.FarField.build(c, P.ffStreams[1]);
+        const I = RF.Road.beamOf(G, W, RF.Road.aimShift(road, ev), md.traffic === 'LHT' ? -1 : 1, 0.2, 0.2, 1);
+        const r = RF.Road.model({ road, preset: md.preset, conv: G.conv || md.conv || 'A', I }).iihs();
+        res.road = { right: r.right, left: r.left, farRight: r.farRight, farLeft: r.farLeft, glareMax: r.glareMax };
       }
     }
     return res;

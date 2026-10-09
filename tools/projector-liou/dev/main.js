@@ -119,11 +119,22 @@
     results.sort((a, b) => b.m.score - a.m.score);
     const fin = []; let slowF = 0; for (const r of results.slice(0, s.finalists)) { if (fin.length && el() + 1.3 * slowF > 0.8 * budgetMs) { notes.push(`time governor: ${fin.length} finalist(s)`); break; } const tF = el(), rf = design(P, r.lay, D, s, Kmax, true); slowF = Math.max(slowF, el() - tF); if (rf) { fin.push(rf); P.lap(`  FINAL ${r.lay.c.kind} k ${r.lay.c.k.toFixed(2)} f ${r.lay.f} a ${r.lay.a.toFixed(1)}: model ${rf.m.hard} fails, ${rf.m.lm.toFixed(0)} lm, score ${rf.m.score.toFixed(1)}`); } }
     for (const r of fin) results.unshift(r); results.sort((a, b) => b.m.score - a.m.score);
-    // the model does not see direct / stray light: the engine breaks ties between the best finalists (one guided 1 M-ray spec trace each, ~3 s)
+    // the model does not see direct / stray light: the engine picks among the best finalists (one guided 2 M-ray spec trace each, ~6 s).
+    // Order (Anya 10-09): expected fails (Σ P(fail), ties within 0.5) → road reach √(farL·farR) (5 lx, farthest point; ties
+    // within 5 %: balance beats one long side) → lumens in the window. Judged before window sizing: the windows are a compliance fix.
     if (s.verify && tools && typeof tools.trace === 'function' && fin.length >= 1 && results.length > 1 && el() < 0.8 * budgetMs) {
       const top = results.slice(0, 3);      // three, not two: the two best were often the same lens
-      for (const r of top) { try { const t = await tools.trace(r.surfaces, { rays: 1e6, spec: true, bounces: 3, seed: 11 }); r.tr = t && t.spec ? t.spec : null; } catch (e) { r.tr = null; } }
-      if (top.every((r) => r.tr)) { top.sort((a, b) => (a.tr.n.fail - b.tr.n.fail) || (b.tr.score - a.tr.score)); results.splice(results.indexOf(top[0]), 1); results.unshift(top[0]); notes.push('engine check of the best three (1 M rays): ' + top.map((r) => `f ${r.lay.f} → ${r.tr.n.fail} fail / ${r.tr.n.unsure} unsure, score ${r.tr.score.toFixed(3)}`).join('; ')); }
+      for (const r of top) { try { const t = await tools.trace(r.surfaces, { rays: 2e6, spec: true, road: true, bounces: 3, seed: 11 }); r.tr = t && t.spec ? Object.assign({}, t.spec, { road: t.road || null, lm: t.spec.lmWindow }) : null; } catch (e) { r.tr = null; } }
+      if (top.every((r) => r.tr)) {
+        const ef = (t) => isFinite(t.expFails) ? t.expFails : t.n.fail, reach = (t) => t.road ? Math.sqrt(t.road.farLeft * t.road.farRight) : 0, lm = (t) => t.lm || 0;
+        const cmp = (a, b) => { const x = a.tr, y = b.tr;
+          if (Math.abs(ef(x) - ef(y)) > 0.5) return ef(x) - ef(y);
+          const rx = reach(x), ry = reach(y); if (Math.abs(rx - ry) > 0.05 * Math.max(rx, ry)) return ry - rx;
+          return lm(y) - lm(x); };
+        top.sort(cmp); results.splice(results.indexOf(top[0]), 1); results.unshift(top[0]);
+        notes.push('engine pick of the best three (2 M rays; expected fails → reach √(L·R) → lumens): ' + top.map((r) => { const t = r.tr, rd = t.road;
+          return `f ${r.lay.f} → ${ef(t).toFixed(2)} exp. fails (${t.n.fail} fail / ${t.n.unsure} unsure), reach ${rd ? `R ${rd.farRight} / L ${rd.farLeft} m (IIHS ${rd.right} / ${rd.left})` : '?'}, ${lm(t).toFixed(0)} lm`; }).join('; '));
+      }
     }
     const best = results[0], lay = best.lay;
     // perforated windows sized by the ENGINE (s.slitSize 'perforate'): window light is linear in its open share phi and each window lands on its own sign point,
