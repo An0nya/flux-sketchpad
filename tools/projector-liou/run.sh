@@ -2,7 +2,7 @@
 # run.sh <name> '<settings fragment>' [rays] — run projector-liou on a scene, print one summary line; out/<name>.{log,png,scene.json}
 #   env: SCENE (default scenes/her-fmvss.json), BUDGET (facets, default 150). Quote compliance only from >= 2e6 rays.
 D=$(cd "$(dirname "$0")" && pwd); mkdir -p "$D/out"; N=$1; R=${3:-2e5}; SC=${SCENE:-$D/scenes/her-fmvss.json}; case "$SC" in /*) ;; *) SC="$PWD/$SC";; esac
-cd "$D/../sqm-hl" && node run-on-scene.js projector-liou --load "$D/../../solvers/projector-liou.js" --scene "$SC" --budget ${BUDGET:-150} --rays "$R" --dir "$D/out" --out "$N" --settings "{\"verbose\":true${2:+,$2}}" > "$D/out/$N.log" 2>&1
+cd "$D/../sqm-hl" && node run-on-scene.js projector-liou --load "$D/../../solvers/projector-liou.js" --scene "$SC" --budget ${BUDGET:-150} --rays "$R" --dir "$D/out" --out "$N" --settings "{\"verbose\":true${2:+,$2}}" ${MS:+--ms $MS} > "$D/out/$N.log" 2>&1
 python3 - "$D/out/$N.log" "$N" <<'PY'
 import re,sys,json
 t=open(sys.argv[1]).read(); m=re.search(r'^verdict \w+ n (\{.*?\}) score ([\d.]+) lm-in-window (\d+)',t,re.M); pk=re.findall(r'peak (\d+)',t); sv=re.search(r'^solve .*?(\d+) surfaces',t,re.M); rc=re.search(r'^reach (\S+) m',t,re.M)

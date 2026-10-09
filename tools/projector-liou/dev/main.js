@@ -26,6 +26,8 @@
     { key: 'edgeSharp', label: 'Edge pass: facets whose sharpest image is at most this tall (rms °) are placed first, scored on the band under the line (0 = off)', type: 'number', min: 0, max: 5, step: 0.1, default: 1.5, adv: true },
     { key: 'edgeBand', label: 'Edge pass: height of the band under the line (°)', type: 'number', min: 0.3, max: 5, step: 0.1, default: 1.5, adv: true },
     { key: 'leak', label: 'Screenless: share of a facet\'s light that may land above the cut-off line', type: 'number', min: 0, max: 0.5, step: 0.005, default: 0.01 },
+    { key: 'leakWide', label: 'Screenless: leak share allowed out wide (beyond leakFrom; −1 = same as leak everywhere)', type: 'number', min: -1, max: 0.5, step: 0.005, default: -1, hidden: true },
+    { key: 'leakFrom', label: 'Screenless: the strict leak applies within this many degrees of the centre', type: 'number', min: 0, max: 30, step: 0.5, default: 8, hidden: true },
     { key: 'edgeMargin', label: 'Screenless: images sit this far below the cut-off line (°)', type: 'number', min: -1, max: 2, step: 0.05, default: 0, adv: true },
     { key: 'refine', label: 'Screenless: rounds of re-tracing each placed facet at its real aim and sliding it under the line (0 = trust the nominal footprints)', type: 'number', min: 0, max: 6, step: 1, default: 3, adv: true },
     { key: 'cap', label: 'Direct-light cap: a small absorbing disc ahead of the emitter that hides the lens from it (direct light leaves the lens far out of focus, above the cut-off too)', type: 'select', options: [{ value: 'off', label: 'off' }, { value: 'bulb', label: 'the bulb’s own (H1 cap, H7/H11 black top, from the preset)' }, { value: 'on', label: 'on (sized to hide the lens)' }], default: 'bulb' },
@@ -68,6 +70,7 @@
     { key: 'wTrack', label: 'Polish weight of following the ideal beam', type: 'number', min: 0, step: 0.01, default: 0.03, hidden: true },
     { key: 'decalGain', label: 'Decal flux margin over a sign-point floor', type: 'number', min: 0.5, max: 6, step: 0.1, default: 1.5, hidden: true },
     { key: 'edgeTrust', label: 'How far (pixels of 0.1°) a facet that forms the cut-off edge may move in the polish', type: 'number', min: 0, max: 40, step: 1, default: 3, hidden: true },
+    { key: 'edgeEngine', label: 'Check the model\'s edge heights with the engine (a few 2 M-ray traces in the final design)', type: 'checkbox', default: false, hidden: true },
     { key: 'edgeSearch', label: 'Search the shield edge height (left / right) against the model', type: 'checkbox', default: true, hidden: true },
     { key: 'finalists', label: 'Layouts that get the full treatment (edge search, polish)', type: 'number', min: 1, max: 6, step: 1, default: 3, hidden: true },
     { key: 'verify', label: 'Let the engine (one 1 M-ray spec trace each) pick between the two best layouts', type: 'checkbox', default: true, hidden: true },
@@ -103,7 +106,7 @@
     const EFF = { quick: { keepTop: 2, finalists: 1, verify: false, paths: '24', focals: [54] }, normal: { keepTop: 6, finalists: 3, verify: true, paths: '16,24,32' }, thorough: { keepTop: 12, finalists: 4, verify: true, paths: '8,16,24,32,40' } }[s.effort] || null;
     if (EFF) { s.keepTop = EFF.keepTop; s.finalists = EFF.finalists; s.verify = EFF.verify; if (s.pathScan === 'effort') s.pathScan = EFF.paths; s.focalList = EFF.focals || null; }
     else if (s.pathScan === 'effort') s.pathScan = '16,24,32';
-    const budgetMs = tools && tools.budget && isFinite(tools.budget.ms) && tools.budget.ms > 0 ? tools.budget.ms : 120000, el = () => Date.now() - P.t0;      // the host's solve time limit; what is not finished by then is lost
+    const budgetMs = tools && tools.budget && isFinite(tools.budget.ms) && tools.budget.ms > 0 ? tools.budget.ms : 120000, el = () => Date.now() - P.t0; P.budgetMs = budgetMs; P.tools = tools;      // the host's solve time limit; what is not finished by then is lost
     const Kmax = Math.min(P.maxF, s.facets > 0 ? s.facets : 300);
     const D = P3.dirs(P, S.nDirs); P.lap(`directions: ${D.n}, ${D.tot.toFixed(0)} lm`);
     // 1. layouts by the cheap proxy
@@ -246,8 +249,12 @@
     // screenless: a footprint may sit only where at most s.leak of its light lands above the cut-off line (minus s.edgeMargin); a spot that leaks slides DOWN to the highest row that does not
     const hOfI = (i) => G.h0 + (i + 0.5) * G.step, vOfJ = (j) => G.v0 + (j + 0.5) * G.step, topJ = new Float64Array(G.nh);
     const leakAt = (fp, ci, cj) => { let L = 0; for (let q = 0; q < fp.n; q++) { const i = ci + fp.di[q]; if (i < 0 || i >= G.nh) continue; if (vOfJ(cj + fp.dj[q]) > topJ[i]) L += fp.val[q]; } return L; };
+    // the leak tolerance by angle (s.leakWide ≥ 0): the specs grade the cut-off only at 1.5–3.5L and cap the light over it with ceilings that end at
+    // ±8° (R112 Zone III) or are a few hundred cd to 1 kcd (FMVSS 0.5U / 1U); so out wide an image may straddle the line more (s.leak within ±leakFrom°,
+    // ramping to s.leakWide over the next 3°) and sit higher instead of being pushed into the foreground
+    const leakOf = (ci) => { if (!(s.leakWide >= 0)) return s.leak; const t = clamp((Math.abs(hOfI(ci)) - s.leakFrom) / 3, 0, 1); return s.leak + t * (s.leakWide - s.leak); };
     const snap = s.shield !== 'auto' && P.cut ? (ci, cj, fp, k) => {
-      const tol = s.leak * fp.flux; let j = cj;
+      const tol = leakOf(ci) * fp.flux; let j = cj;
       if (leakAt(fp, ci, cj) > tol) { let lo = cj - 300, hi = cj; if (leakAt(fp, ci, lo) > tol) return null; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (leakAt(fp, ci, m) > tol) hi = m; else lo = m; } j = lo; }
       return lensOk(hOfI(ci), vOfJ(j), fp, k) ? j : null;
     } : null;
@@ -295,7 +302,7 @@
         let moved = 0, dropped = 0;
         recL = recL.filter((rec) => {
           const f = lensFacet(rec, 'tmp'), fp = f ? P3.footOf(P, f, postL, G, 16) : null; if (!fp) { dropped++; return false; }
-          const tol = s.leak * fp.flux, ci = fp.ri, cj = fp.rj; if (leakAt(fp, ci, cj) <= tol) return true;
+          const ci = fp.ri, cj = fp.rj, tol = leakOf(ci) * fp.flux; if (leakAt(fp, ci, cj) <= tol) return true;
           let lo = cj - 300, hi = cj; if (leakAt(fp, ci, lo) > tol) { dropped++; return false; }
           while (hi - lo > 1) { const m = (lo + hi) >> 1; if (leakAt(fp, ci, m) > tol) hi = m; else lo = m; }
           const aim = [rec.aim[0], rec.aim[1] + (lo - cj) * G.step];
@@ -336,7 +343,23 @@
       const score = (eL, eR) => { place(eL, eR); const m = P3.evaluate(P, lay, cleanShield(eL, eR), buildAll(), 16); return m.score + 0.0005 * m.lm; };
       let bR = { v: 0, sc: score(0, 0) }; for (const eR of [0.25, 0.5, 0.8, 1.2, 1.6, 2.0]) { const sc = score(0, eR); if (sc > bR.sc) bR = { v: eR, sc }; }
       let bL = { v: 0, sc: bR.sc }; for (const eL of [0.15, 0.3]) { const sc = score(eL, bR.v); if (sc > bL.sc) bL = { v: eL, sc }; }
-      place(bL.v, bR.v); shield = cleanShield(bL.v, bR.v); edgeNote = `screenless line shift L ${bL.v}° R ${bR.v}°`; P.lap('    ' + edgeNote);
+      // the model misjudges light just over the line (the 0.5U 1R–3R / 1.5L-to-L rows flip run to run): the ENGINE checks the model's pick against its left
+      // edge 0.2° lower and its right edge 0.3° lower (and both, if each helped) — pre-polish designs, 2 M rays, judged at the pick's own aim; expected
+      // fails decide (ties within 0.5 → lumens).  Synchronous trace (the worker's and the bench's are); skipped near the deadline.
+      let engNote = '';
+      const tr = P.tools && typeof P.tools.trace === 'function' ? P.tools.trace : null, left = () => (P.budgetMs || 120000) - (Date.now() - P.t0);
+      if (s.edgeEngine && tr && left() > 0.45 * (P.budgetMs || 120000)) {
+        const judge = (eL, eR, frozen) => { if (left() < 0.3 * (P.budgetMs || 120000)) return null; place(eL, eR); let t = null; try { t = tr(P3.surfacesOf(P, lay, cleanShield(eL, eR), buildAll(), s), { rays: 2e6, spec: true, bounces: 3, seed: 11, frozen }); } catch (e) { t = null; }
+          return t && t.spec && isFinite(t.spec.expFails) ? { eL, eR, ef: t.spec.expFails, lm: t.spec.lmWindow, n: t.spec.n, frozen: t.spec.frozen } : null; };
+        const better = (a, b) => a.ef < b.ef - 0.5 || (Math.abs(a.ef - b.ef) <= 0.5 && a.lm > 1.02 * b.lm);
+        const base = judge(bL.v, bR.v);
+        if (base) { const tried = [base], l = judge(bL.v + 0.2, bR.v, base.frozen), r = judge(bL.v, bR.v + 0.3, base.frozen); if (l) tried.push(l); if (r) tried.push(r);
+          if (l && r && better(l, base) && better(r, base)) { const c = judge(bL.v + 0.2, bR.v + 0.3, base.frozen); if (c) tried.push(c); }
+          let win = base; for (const t of tried) if (better(t, win)) win = t;
+          engNote = '; engine: ' + tried.map((t) => `L ${t.eL.toFixed(2)} R ${t.eR.toFixed(2)} → ${t.ef.toFixed(2)} exp. fails (${t.n.fail}f/${t.n.unsure}u) ${t.lm.toFixed(0)} lm`).join(', ') + (win === base ? ' (model pick kept)' : ` → L ${win.eL.toFixed(2)} R ${win.eR.toFixed(2)}`);
+          bL.v = win.eL; bR.v = win.eR; }
+      }
+      place(bL.v, bR.v); shield = cleanShield(bL.v, bR.v); edgeNote = `screenless line shift L ${bL.v}° R ${bR.v}°` + engNote; P.lap('    ' + edgeNote);
     }
     if (full && P.cut && s.shield === 'auto' && s.edgeSearch) {
       const score = (sh) => { const fs = buildAll(), m = P3.evaluate(P, lay, sh, fs, 16); return { m, sc: m.score + 0.0005 * m.lm }; };
