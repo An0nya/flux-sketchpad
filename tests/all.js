@@ -35,6 +35,7 @@ run('spec mode + far field (tests/spec.js)', ['tests/spec.js']);
 run('multi-part optics + multi-emitter (tests/optics-parts.js)', ['tests/optics-parts.js']);
 run('watching a solve: worker previews (tests/preview.js)', ['tests/preview.js']);
 run('road model + IIHS metrics (tests/road.js)', ['tests/road.js']);
+run('beam quality report (tests/beam-quality.js)', ['tests/beam-quality.js']);
 run('driver\'s-eye view (tests/drive.js)', ['tests/drive.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
