@@ -316,6 +316,18 @@
     }
     return res;
   }
+  /* Re-aim choices read ONE traced map at many offsets, so ranking them by verdict LABELS (fails, then unsure) chases shot noise: a row ~1σ from its bound is
+   * 'unsure' in one trace and 'pass' in the next, and the chosen aim jumped 0.25° between traces of one design.  AIM.expected: rank by expected fails
+   * Σ P(row fails) = Φ((bound − value)/σ) (min rows; mirrored for max) — smooth in noise, a sure fail still ≈ 1; the box moves only when it beats the aim by
+   * AIM.hyst, and then by the SMALLEST move within AIM.tie of the best (many aims tie within noise; the strict minimum among them was a coin toss).  AIM.pointLcb: a per-point re-aim (FMVSS: best of 13 readings of one noisy map) CHOOSES with every reading pushed σ × pointLcb toward failing
+   * (less winner's curse) and REPORTS the plain reading.  AIM.expected = false restores the label rules.  (10-09)                                         */
+  const AIM = { expected: true, hyst: 0.5, tie: 0.1, pointLcb: 1 };
+  const Phi = (z) => { const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z / 2); return z >= 0 ? (1 + y) / 2 : (1 - y) / 2; };
+  const pFail = (r, push) => {
+    if (!isFinite(r.value) || !isFinite(r.bound) || !(r.sd > 0)) return r.verdict === 'fail' ? 1 : r.verdict === 'pass' ? 0 : 0.5;
+    const z = (r.isMin ? r.bound - r.value : r.value - r.bound) / r.sd + (push || 0); return Phi(z);
+  };
+  const expFails = (rows, push) => { let e = 0; for (const r of rows) e += pFail(r, push); return e; };
   const REAIM_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7071, 0.7071], [0.7071, -0.7071], [-0.7071, 0.7071], [-0.7071, -0.7071], [0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5]];
   function evalAt(G, items, k, dh, dv, cache, itemReaim) {
     // references for relative bounds: a point item by name (read at this aim), or 'Imax' (the map's maximum)
@@ -334,11 +346,12 @@
       // per-test-point re-aim (FMVSS 108 S14.2.5.5: "a 1/4° reaim is permitted in any direction at any test point"): each
       // point / zone / sum may be read up to itemReaim away, whichever reading does best (fewest fails, then unsure, then margin)
       if (itemReaim > 0 && (it.kind === 'point' || it.kind === 'zone' || it.kind === 'sum')) {
-        const key = (r) => { let f = 0, u = 0, m = Infinity; for (const x of r) { if (x.verdict === 'fail') f++; else if (x.verdict === 'unsure') u++; if (x.margin < m) m = x.margin; } return [f, u, -m]; };
+        const key = AIM.expected ? (r) => { let m = Infinity; for (const x of r) if (x.margin < m) m = x.margin; return [expFails(r, AIM.pointLcb), 0, -m]; }
+          : (r) => { let f = 0, u = 0, m = Infinity; for (const x of r) { if (x.verdict === 'fail') f++; else if (x.verdict === 'unsure') u++; if (x.margin < m) m = x.margin; } return [f, u, -m]; };
         let kb = key(rs);
         for (const [ox, oy] of REAIM_DIRS) {
           const alt = evalItem(G, it, k, dh + ox * itemReaim, dv + oy * itemReaim, cache, refOf), ka = key(alt);
-          if (ka[0] < kb[0] || (ka[0] === kb[0] && (ka[1] < kb[1] || (ka[1] === kb[1] && ka[2] < kb[2] - 1e-12)))) { rs = alt; kb = ka; off = [+(-ox * itemReaim).toFixed(3), +(-oy * itemReaim).toFixed(3)]; }
+          if (ka[0] < kb[0] - (AIM.expected ? 1e-6 : 0) || (Math.abs(ka[0] - kb[0]) <= (AIM.expected ? 1e-6 : 0) && (ka[1] < kb[1] || (ka[1] === kb[1] && ka[2] < kb[2] - 1e-12)))) { rs = alt; kb = ka; off = [+(-ox * itemReaim).toFixed(3), +(-oy * itemReaim).toFixed(3)]; }
         }
       }
       for (const r of rs) rows.push(Object.assign(r, { id: it.id, name: it.name, kind: it.kind, w: it.w > 0 ? it.w : 1 }, off ? { pointReaim: off } : {}));
@@ -392,6 +405,7 @@
     if (box && md.traffic === 'LHT') box = { left: box.right, right: box.left, up: box.up, down: box.down };
     if (!skipBox && box && items.length && (box.left || box.right || box.up || box.down)) {
       const st = Math.max(G.step, md.aimStep || 0.05);
+      const eBase = expFails(best.rows), cands = [];
       // beam moved right by x ⇔ sampling offset −x: dh ∈ [−right, +left], dv ∈ [−up, +down]
       for (let dv = -(box.up || 0); dv <= (box.down || 0) + 1e-9; dv += st) for (let dh = -(box.right || 0); dh <= (box.left || 0) + 1e-9; dh += st) {
         const ddh = +dh.toFixed(6) || 0, ddv = +dv.toFixed(6) || 0; if (!ddh && !ddv) continue;
@@ -399,11 +413,14 @@
         // the lab re-aims only to make the lamp PASS: fewest sure fails, then fewest undecided rows, then the smallest move.  A move
         // that changes no verdict is not taken.  (Ranking by worst margin or soft score let rows no aim can fix — a sign point with
         // no light at all — drag the beam half a degree and sink 75R.)
+        if (AIM.expected) { const e = expFails(r.rows); if (e <= eBase - AIM.hyst) cands.push({ r, e, d: [ddh, ddv] }); continue; }
         const dF = r.n.fail - best.n.fail, dU = r.n.unsure - best.n.unsure;
         if (dF < 0 || (dF === 0 && dU < 0) || (dF === 0 && dU === 0 && Math.hypot(ddh, ddv) < Math.hypot(reaim[0], reaim[1]) - 1e-9)) { best = r; reaim = [ddh, ddv]; }
       }
+      // the aim landscape is flat within noise: of the moves that beat the aim by ≥ hyst, take the SMALLEST whose expected fails is within AIM.tie of the best
+      if (cands.length) { const eMin = Math.min(...cands.map((c) => c.e)); let pick = null; for (const c of cands) if (c.e <= eMin + AIM.tie && (!pick || Math.hypot(c.d[0], c.d[1]) < Math.hypot(pick.d[0], pick.d[1]) - 1e-9 || (Math.abs(Math.hypot(c.d[0], c.d[1]) - Math.hypot(pick.d[0], pick.d[1])) <= 1e-9 && c.e < pick.e))) pick = c; best = pick.r; reaim = pick.d; }
     }
-    const out = Object.assign({}, best, { aim, reaim, atAim, atZero: atAim, kernel: k, distance: G.distance, conv: G.conv, rays: G.rays });
+    const out = Object.assign({}, best, { expFails: expFails(best.rows), aim, reaim, atAim, atZero: atAim, kernel: k, distance: G.distance, conv: G.conv, rays: G.rays });
     out.verdict = !best.rows.length ? 'empty' : best.n.fail ? 'fail' : best.n.unsure ? 'unsure' : 'pass';
     // how many times more rays would turn each unsure row into a decided one (σ ∝ 1/√N): (2σ / |value − bound|)²
     let need = 1;
@@ -609,5 +626,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { CUT, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
+  RF.Spec = { CUT, AIM, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
