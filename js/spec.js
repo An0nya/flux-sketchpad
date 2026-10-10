@@ -242,6 +242,9 @@
   const CUT = { minRays: 10, above: 0.25, gap: 0.5 };
   function scanCut(G, h, v0, v1, scan, dvd, kh, dh, dv) {
     const kv = Math.max(G.step / 2, 0.035) * 0.99;            // Annex 9: ~30 mm detector at 25 m ≈ 0.07° across
+    // CUT.minRays and CUT.above guard against SHOT NOISE; a noise-free model (eRay 0: SQM's and spec-hl's judge grids) has none, and there the
+    // guards misfire: minRays reads every bin as 0 rays (all steps skipped, rows NaN), above aimed SQM's model 2.9° high.  Traces: unchanged.
+    const noisy = G.eRay > 0;
     const I = []; let top = 0;
     for (let v = v0; v <= v1 + 1e-9; v += scan) { const a = RF.FarField.intensityAt(G, h + dh, v + dv, kh, kv); I.push({ v, a }); if (a.cd > top) top = a.cd; }
     const supMax = new Array(I.length + 1).fill(0); for (let q = I.length - 1; q >= 0; q--) supMax[q] = Math.max(supMax[q + 1], I[q].a.cd > 0 ? I[q].a.cd : 0);      // brightest at or above each scan point
@@ -250,10 +253,10 @@
     for (let q = 0; q < I.length; q++) {
       const v = I[q].v; if (!(v + dvd <= v1 + 1e-9)) break;
       const a = I[q].a, b = RF.FarField.intensityAt(G, h + dh, v + dvd + dv, kh, kv);
-      if (!(a.cd > 0 && b.cd > 0) || a.cd < CUT_FLOOR * top || (CUT.minRays > 0 && b.neff < CUT.minRays)) continue;
+      if (!(a.cd > 0 && b.cd > 0) || a.cd < CUT_FLOOR * top || (noisy && CUT.minRays > 0 && b.neff < CUT.minRays)) continue;
       const g = Math.log10(a.cd / b.cd), sg = Math.hypot(a.sd / a.cd, b.sd / b.cd) / Math.LN10, st = { g, sg, v: v + dvd / 2 };
       if (!best || g > best.g) best = st;
-      if (CUT.above > 0 && supMax[Math.min(I.length, q + kd)] <= CUT.above * a.cd && (!bestTop || g > bestTop.g)) bestTop = st;
+      if (noisy && CUT.above > 0 && supMax[Math.min(I.length, q + kd)] <= CUT.above * a.cd && (!bestTop || g > bestTop.g)) bestTop = st;
     }
     return bestTop || best;
   }
