@@ -252,10 +252,12 @@
       if (wantRoad) {
         const md = scene.modeD, road = md.road || RF.Road.defaults(), W = RF.FarField.build(c, P.ffStreams[1]);
         const I = RF.Road.beamOf(G, W, RF.Road.aimShift(road, ev), md.traffic === 'LHT' ? -1 : 1, 0.2, 0.2, 1);
-        const r = RF.Road.model({ road, preset: md.preset, conv: G.conv || md.conv || 'A', I }).iihs();
+        const mdl = RF.Road.model({ road, preset: md.preset, conv: G.conv || md.conv || 'A', I }), r = mdl.iihs();
         res.road = { right: r.right, left: r.left, farRight: r.farRight, farLeft: r.farLeft, glareMax: r.glareMax };
-        // o.quality: the beam-quality report too (js/beam-quality.js; report only, ~0.1 s): core size, lobes, foreground share
-        if (o.quality && RF.BeamQuality) res.road.quality = RF.BeamQuality.measure(I);
+        // o.quality: the beam-quality report too (js/beam-quality.js; report only, ~0.1 s): core size, lobes, foreground share;
+        // o.ideal: the ideal-beam goals (js/ideal-beam.js, md.ideal or its defaults) → res.road.ideal { goals, met, n }
+        if ((o.quality || o.ideal) && RF.BeamQuality) res.road.quality = RF.BeamQuality.measure(I);
+        if (o.ideal && RF.IdealBeam && res.road.quality) res.road.ideal = RF.IdealBeam.check(I, md, mdl, res.road.quality);
       }
     }
     return res;

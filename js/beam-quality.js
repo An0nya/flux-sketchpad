@@ -8,8 +8,9 @@
  *               lobe. Lobes dimmer than 1/3 of the peak don't count; the hotspot's own shoulder past the box is not a lobe.
  *   core[f]     f = 1/3, 1/4, 1/5: cells ≥ f·peak, dropouts up to 1° bridged, the blob that holds the peak;
  *               width/height in degrees, extents (h0…h1, v0…v1 from the horizon), area in deg²
- *   lobes       separate bright peaks ≥ 1/3 of the peak with ≥ 20 % prominence (persistence on the superlevel sets:
- *               a peak counts only if the beam dips ≥ 20 % of its height before it joins a brighter one)
+ *   lobes       separate bright peaks ≥ 1/3 of the peak with prominence ≥ 15 % OF THE MAIN PEAK (persistence on the
+ *               superlevel sets: a peak counts only if the beam dips that far before it joins a brighter one). Measured
+ *               against the main peak, not the lobe's own height: ripple along a flat band at 1/3 peak is not a lobe.
  *   roughness   blotchiness inside the 1/4 core's row spans (dropouts included): Σ|I − blur(I)| ÷ Σ blur(I), with a small
  *               Gaussian blur (σ 0.75° h × 0.25° v). A smooth taper barely changes under it (≈ 0.03 for a 4° × 0.8° hotspot);
  *               streaks, blotches and gaps a degree or two across do (a ±40 % ripple at 2° reads ≈ 0.25). 0 = smooth.
@@ -20,7 +21,7 @@
   'use strict';
   const RF = root.RF;
   const D2R = Math.PI / 180;
-  const DEF = { rough: { h: 0.75, v: 0.25 }, h0: -30, h1: 30, dh: 0.25, v0: -15, v1: 5, dv: 0.125, box: { h: 5, top: 0, bottom: -4 }, fracs: [1 / 3, 1 / 4, 1 / 5], gap: 1, lobeFrac: 1 / 3, prominence: 0.2, fgV: -4, strayTop: 1 };
+  const DEF = { rough: { h: 0.75, v: 0.25 }, h0: -30, h1: 30, dh: 0.25, v0: -15, v1: 5, dv: 0.125, box: { h: 5, top: 0, bottom: -4 }, fracs: [1 / 3, 1 / 4, 1 / 5], gap: 1, lobeFrac: 1 / 3, prominence: 0.15, fgV: -4, strayTop: 1 };
 
   function sample(I, o) {
     const H = [], Vv = [];
@@ -51,10 +52,10 @@
   }
 
   // separate bright peaks: union-find over cells in descending order; when two blobs meet at level s, the one with the
-  // lower summit b dies with prominence (b − s) / b. Peaks ≥ lobeFrac·peak that die with ≥ `prominence` (or never die) count.
+  // lower summit b dies with prominence (b − s) / peak. Peaks ≥ lobeFrac·peak that die with ≥ `prominence` (or never die) count.
   function lobes(g, peak, o) {
     const { ni, nj, cd, H, V } = g, n = ni * nj, ord = [], par = new Int32Array(n).fill(-1), top = new Int32Array(n);
-    const floor = o.lobeFrac * peak * (1 - o.prominence);
+    const floor = Math.max(0, (o.lobeFrac - o.prominence) * peak);
     for (let k = 0; k < n; k++) if (cd[k] >= floor && V[(k - k % ni) / ni] <= o.strayTop) ord.push(k);
     ord.sort((a, b) => cd[b] - cd[a]);
     const find = (x) => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
@@ -65,7 +66,7 @@
         if (m < 0 || m >= n || par[m] < 0) continue;
         const a = find(k), b = find(m); if (a === b) continue;
         const win = cd[top[a]] >= cd[top[b]] ? a : b, lose = win === a ? b : a, t = top[lose];
-        if (t !== k) dead.set(t, (cd[t] - cd[k]) / cd[t]);      // the lower summit dies at this saddle (k itself is no summit)
+        if (t !== k) dead.set(t, (cd[t] - cd[k]) / peak);       // the lower summit dies at this saddle (k itself is no summit), dip ÷ main peak
         par[lose] = win;
       }
     }

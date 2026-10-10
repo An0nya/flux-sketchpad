@@ -99,6 +99,7 @@
         row('Angles', sel([['A', 'A: V = elevation, H = azimuth'], ['B', 'B: H out of the vertical plane'], ['S', 'Flat screen: atan(x/D), atan(y/D)']], () => m().conv, (v) => { m().conv = v; }), 'Which (H, V) a direction gets. R112 (Annex 3, Figure A) uses A: a vertical polar axis, h = azimuth, v = latitude. B and the flat screen differ by < 0.05° inside ±10° H.'),
         row('Bin (°)', num(() => m().step, (v) => { m().step = Math.max(0.02, Math.min(1, v)); }, { min: 0.02, max: 1, step: 0.02 }, true), 'Far-field grid resolution.')),
       sectionFn('Road', { open: false, key: 'D-road', tag: 'IIHS-style view' }, ...roadRows(ui, row)),
+      sectionFn('Ideal beam', { open: false, key: 'D-ideal', tag: 'goals, report only' }, ...idealRows(ui, row)),
       sectionFn('Paint as a secondary goal', { open: true, key: 'D-paint' },
         row('Solve at (m)', num(() => (m().solveAt === undefined ? 25000 : m().solveAt) / 1000, (v) => { m().solveAt = Math.max(0, Math.min(1000, v)) * 1000; }, { min: 0, max: 1000, step: 5 }), 'The paint solvers aim at a flat plane; Spec mode hands them one this far away, sized to the spec window, so near-field parallax doesn’t shift the beam (0.2° at 10 m for a facet 40 mm off-axis). 0 = your target plane.'),
         row('Use the painting', chk(() => m().usePaint !== false, (v) => { m().usePaint = v; }), 'Off: the solver sees only the spec (floors at minimums, holes at maximums).'),
@@ -586,10 +587,45 @@
       row('Inclination (%)', rnum(() => r().aimPct, (v) => { r().aimPct = Math.max(-5, Math.min(1, v)); }, { min: -5, max: 1, step: 0.1 }), 'Used with "Manual". R48 initial aim: −1.0 to −1.5 % below 0.8 m mounting height; FMVSS VOL ≈ −0.7 % (0.4° D).'),
     ];
   }
+  // ---------------------------------------------------------------- ideal beam (js/ideal-beam.js): goals beside the spec, report only
+  // md.ideal holds only the knobs you changed: the rest follow RF.IdealBeam.defaults(), so new defaults reach saved scenes
+  const idealOf = (ui) => { const m0 = md(ui); if (!m0.ideal) m0.ideal = {}; return m0.ideal; };
+  const IDEAL_ROWS = [
+    ['on', 'Report the goals', 'chk', 'Off: no goals tile in the footer. The goals never change the spec verdict or what a solver does (yet).'],
+    ['hotH', 'Hotspot centre H (°, + = own side)', 0.25, 'Where the hotspot sits left / right. Right-hand traffic: + is right.'],
+    ['hotW', 'Hotspot half-width (°)', 0.5, 'The hotspot box spans centre ± this.'],
+    ['hotTop', 'Hotspot top, max depth (° D)', 0.125, 'The hotspot’s top (where it falls under 90 % going up, over centre ± 1°) may sit at most this far below the horizon at the judged aim. Lower = the hotspot lands nearer the car.'],
+    ['hotHt', 'Hotspot height (°)', 0.25, 'The hotspot box runs from its top down this far.'],
+    ['hotContrast', 'Hotspot contrast (× wash)', 0.1, 'The hotspot box must average this many times the wash box: a hotspot that stands out. A flat band reads ~1, a tight hotspot in a filled wash ~1.8.'],
+    ['washW', 'Wash half-width (°)', 1, 'The next step down: ± this wide, from the wash top down the wash height.'],
+    ['washTop', 'Wash top (° D)', 0.25, 'Where the wash box starts below the horizon. Keep it under the cut-off (ECE’s left side is at 0.57° D), or the dark above the line counts as holes.'],
+    ['washHt', 'Wash height (°)', 0.5, 'How far down the wash box runs from its top.'],
+    ['washRatio', 'Wash level (× peak)', 0.05, 'The wash box must average at least this share of the peak (Anya: 1/3–1/5).'],
+    ['washHoles', 'Wash holes: full credit up to', 0.05, 'Graded goal. Share of the wash box under half the wash level (dark patches, gaps between lobes): full credit up to this, falling to none at the next value. Anya: under 20 % is fine, up to 40 % okay for a shallow strip.'],
+    ['washHolesZero', 'Wash holes: no credit from', 0.05, 'Where the wash-holes credit reaches zero.'],
+    ['fill3L', '3L fill (× right side)', 0.05, '3L → 0 under the line (0.5–1.5° D) must average this share of 0 → 3R: light toward the oncoming side, under the cut-off.'],
+    ['fgCap', 'Foreground cap (share of lm)', 0.05, 'At most this share of the lumens may land below 4° D (the road just ahead of the car).'],
+    ['strayLow', 'Low stray lobe max (× peak)', 0.05, 'No separate lobe below 4° D brighter than this share of the peak (light dumped near the car). Side lobes in the 0–4° D band are only reported, not counted.'],
+    ['nearLeft', 'Near-left edge lit by (m, 0 = off)', 0.5, 'The IIHS left road edge should reach 5 lx by this distance (IIHS asks for 15 m). 0 = no goal.'],
+    ['reachR', 'Right reach goal (m, 0 = off)', 5, 'Farthest 5 lx on the right road edge.'],
+    ['reachL', 'Left reach goal (m, 0 = off)', 5, 'Farthest 5 lx on the left road edge.'],
+  ];
+  function idealRows(ui, row) {
+    const g = () => idealOf(ui), cur = () => RF.IdealBeam.of(md(ui));
+    const out = [el('div', { class: 'note' }, 'What a good low beam looks like between the spec’s test points, as goals measured at the judged aim. Report only: the footer’s “goals” tile, never the verdict. All relative to the beam’s own centre peak except the road distances. Defaults come from three hand-tuned SQM scenes (10-09); tune them to taste.')];
+    for (const [k, label, step, tip] of IDEAL_ROWS) {
+      let x;
+      if (step === 'chk') { x = el('input', { type: 'checkbox' }); x._chk = true; x._get = () => cur()[k] !== false; x.addEventListener('change', () => { g()[k] = x.checked; roadChanged(ui); }); }
+      else { x = el('input', { type: 'number', step, min: 0 }); x._get = () => cur()[k]; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) g()[k] = k === 'hotH' ? v : Math.max(0, v); roadChanged(ui); }); }
+      x.dataset.spec = '1'; out.push(row(label, x, tip));
+    }
+    out.push(row('Reset to defaults', Object.assign(el('button', {}, 'Reset'), { onclick: () => { md(ui).ideal = {}; roadChanged(ui); ui.redrawSpec(); } }), 'Back to the current defaults (forgets every knob you changed).'));
+    return out;
+  }
   // the road model on the judged far field (the fine grid where it covers the direction, else the wide one); cached
   function roadModel(ui) {
     const s = ui.spec; if (!s || !s.G || !s.ev || !RF.Road) return null;
-    const road = roadOf(ui), key = JSON.stringify([road, md(ui).preset]);
+    const road = roadOf(ui), key = JSON.stringify([road, md(ui).preset, md(ui).ideal || null]);
     if (s.road && s.roadKey === key) return s.road;
     const sh = RF.Road.aimShift(road, s.ev), G = s.G, W = s.Gw, k = 0.2, mir = md(ui).traffic === 'LHT' ? -1 : 1;
     // the beam as the road sees it: the judged fine grid where it covers the direction, else the wide one; kh × kv = the kernel
@@ -597,6 +633,8 @@
     const mkI = (kh, kv, kw) => RF.Road.beamOf(G, W, sh, mir, kh, kv, kw), I = mkI(k, k, 1);
     const mdl = RF.Road.model({ road, preset: md(ui).preset, conv: G.conv || md(ui).conv || 'A', I });
     s.road = { mdl, sh, mir, mkI, iihs: mdl.iihs(), curves: mdl.curves(), quality: RF.BeamQuality ? RF.BeamQuality.measure(I) : null, lane: RF.Road.laneWidth(mdl.road, md(ui).preset), laneDrive: RF.Road.laneWidth(mdl.road, md(ui).preset, true), map: null }; s.roadKey = key;
+    const idl = Object.assign(RF.IdealBeam ? RF.IdealBeam.defaults() : {}, md(ui).ideal || {});
+    s.road.ideal = RF.IdealBeam && idl.on !== false && s.road.quality ? RF.IdealBeam.check(I, md(ui), mdl, s.road.quality) : null;
     return s.road;
   }
   // a tiny marching squares for one level on a grid E[j·ny + i] (j along x, i along y) → segment end points in (x, y)

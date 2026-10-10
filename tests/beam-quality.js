@@ -10,7 +10,7 @@ const BEAMS = {
   hotspot: gauss(40000, 1.5, -1.5, 4, 0.8),
   // two equal peaks 8.75° apart with a deep valley: two lobes (v3's round-filament beam)
   twoLobes: sum(gauss(40000, 1.5, -2, 1.5, 1.5), gauss(40000, -7.25, -4.5, 1.5, 1.5)),
-  // the same two peaks overlapping so the dip is < 20 %: one lobe
+  // the same two peaks overlapping so the dip is < 15 % of the peak: one lobe
   shallowDip: sum(gauss(40000, 1.5, -2, 2.5, 1.5), gauss(36000, -2.5, -2, 2.5, 1.5)),
   // a hotspot plus a hot foreground spot at 6° D, 40 % of the peak
   hotForeground: sum(gauss(40000, 1.5, -1.5, 4, 0.8), gauss(16000, -2, -6, 1, 1)),
@@ -18,6 +18,10 @@ const BEAMS = {
   sideLobe: sum(gauss(30000, 1.5, -1.5, 3, 0.8), gauss(38000, -13, -4, 2, 1)),
   // the hotspot with a ±40 % ripple every 2° across: blotchy
   rippled: (h, v) => gauss(40000, 1.5, -1.5, 4, 0.8)(h, v) * (1 + 0.4 * Math.sin(2 * Math.PI * h / 2)),
+  // a band at 40 % of a central hotspot with a ±10 %-of-peak ripple every 2°: ripple, not lobes (SQM scenes 5/7/9 read 14)
+  // band 16,000 ± 2,400 cd under a separate 40,000 cd hotspot: each dip is 4,800 = 12 % of the main peak (no lobe now) but
+  // 26 % of the ripple's own height (the old rule counted every ripple)
+  rippleBand: sum(gauss(40000, 1.5, -1.5, 2, 0.4), (h, v) => (Math.abs(h) <= 15 && v <= -3 && v >= -4 ? 16000 + 2400 * Math.cos(Math.PI * h) : 0)),
   // a flat, hard-edged plateau ±15° (control for the dropouts)
   plateau: (h, v) => (Math.abs(h) <= 15 && v <= -1 && v >= -4 ? 30000 : 0),
   // a flat plateau ±15° with a 0.75° dark stripe at 6° L: bridged, full width, some holes
@@ -41,8 +45,10 @@ ok('smooth hotspot → roughness < 0.05', R.hotspot.roughness < 0.05, 'roughness
 ok('2° ±40 % ripple → roughness > 0.2', R.rippled.roughness > 0.2, 'roughness ' + R.rippled.roughness);
 ok('a bridged dropout adds roughness to a flat plateau', R.smallDropout.roughness > R.plateau.roughness + 0.01, 'plateau ' + R.plateau.roughness + ' (its hard edges), with a 0.75° dropout ' + R.smallDropout.roughness);
 // 2. lobes
+ok('ripple along a separate 40 % band → 2 lobes (hotspot + band), not one per ripple', R.rippleBand.lobes.length === 2, R.rippleBand.lobes.length + ' lobes');
+ok('control: the same band with a loose 5 % threshold counts the ripples', Q.measure(BEAMS.rippleBand, { prominence: 0.05 }).lobes.length > 10, Q.measure(BEAMS.rippleBand, { prominence: 0.05 }).lobes.length + ' lobes');
 ok('two separated peaks → 2 lobes', R.twoLobes.lobes.length === 2, JSON.stringify(R.twoLobes.lobes));
-ok('two peaks with a < 20 % dip → 1 lobe', R.shallowDip.lobes.length === 1, JSON.stringify(R.shallowDip.lobes));
+ok('two peaks with a < 15 % dip → 1 lobe', R.shallowDip.lobes.length === 1, JSON.stringify(R.shallowDip.lobes));
 // 3. foreground
 ok('hot spot at 6D → foreground ≈ 0.4 of peak', Math.abs(R.hotForeground.foreground.peakRatio - 0.4) < 0.02, JSON.stringify(R.hotForeground.foreground));
 // 4. stray side lobe
