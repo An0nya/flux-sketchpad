@@ -11,6 +11,10 @@
   const { V } = RF;
   const C = RF.Controller, P = RF.Panels, R2 = RF.Render2D;
   const PREVIEW_RAYS = 1500;
+  // A full trace (not a drag preview) is mostly waiting on the UI: at 12 ms of tracing per frame and a redraw every 90 ms (heat / far field, the 3D views, the
+  // live judgement, the footer) a 500 k Spec trace spent ~5 % of its time tracing (10-10, measured: 0.6 s of 14 s).  While one runs: trace TRACE_STEP_MS per frame
+  // and redraw every TRACE_UI_MS; previews keep the fast cadence.  The finished run is drawn and judged in full as before.
+  const TRACE_STEP_MS = 40, TRACE_UI_MS = 1000;
   const isPaint = (m) => m === 'A' || m === 'D';     // Spec mode (D) extends Paint: same painting, same solver, plus a beam spec
 
   const ui = {
@@ -542,8 +546,8 @@
     }
     const run = ui.run;
     let justDone = false;
-    if (run && !run.ctx.done) { RF.Engine.step(run.ctx, document.hidden ? 200 : 12); justDone = run.ctx.done; }
-    if (run && (justDone || now - ui.lastHeat > 90)) { drawHeat(); ui.lastHeat = now; ui.sceneDirty = true; }
+    if (run && !run.ctx.done) { RF.Engine.step(run.ctx, document.hidden ? 200 : run.preview ? 12 : TRACE_STEP_MS); justDone = run.ctx.done; }
+    if (run && (justDone || now - ui.lastHeat > (run.preview ? 90 : TRACE_UI_MS))) { drawHeat(); ui.lastHeat = now; ui.sceneDirty = true; }
     if (run) {
       const c = run.ctx, pct = c.N ? c.next / c.N : 1;
       if (ui.solving) { /* the solve owns the status line and the bar until it ends */ }
@@ -553,7 +557,7 @@
       else if (!ui.pendingA || !store.dirty.has('A')) ui.setStatus(c.done ? (run.preview ? 'preview' : 'up to date') : 'tracing ' + Math.floor(100 * c.next / c.N) + '%' + (run.preview ? ' (preview)' : ''));   // counts + ms live in the footer
       else ui.setStatus('design changed — regenerating when you pause…');
     }
-    if (run && (justDone || now - ui.lastStats > 300)) { renderStats(!run.ctx.done); ui.lastStats = now; }
+    if (run && (justDone || now - ui.lastStats > (run.preview ? 300 : TRACE_UI_MS))) { renderStats(!run.ctx.done); ui.lastStats = now; }
     if (run && (justDone || ui._refineN !== run.ctx.N)) { const b = document.getElementById('btn-refine'); if (b) { b.disabled = !ui.canRefine(); b.textContent = run.ctx.N < REFINE_MAX ? 'Refine → ' + RF.U.fmtInt(Math.min(REFINE_MAX, 2 * run.ctx.N)) + ' rays' : 'Refine (at 50M)'; } ui._refineN = run.ctx.N; }
     markStale();
     if (ui.sceneDirty) { drawSceneView(); drawSurfaceView(); drawLeft(); ui.sceneDirty = false; }

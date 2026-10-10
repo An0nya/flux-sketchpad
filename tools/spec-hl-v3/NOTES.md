@@ -328,3 +328,15 @@ quality fast, …). Anya got a tight beam in the app. Re-solved s12 with the ide
 0 fail, 3 unsure, aim −0.35 cut-off (sane), 5 lx reach 100.5 R / 49.5 L (plain sqm-hl s12: 1 fail, 69–74 / 44–50). n = 1 seed.
 The smeared s11/s12 beams (no cut-off) are also what triggered the window-edge judge bug — the bug was real, the beam was an artifact.
 Which carried setting smeared it: not isolated (washCap 500 is the obvious suspect, unverified). s11 not re-solved yet.
+
+### 10-10 cut-off scan rule: no variant wins (Opus, exploring — Anya to decide)
+AIM.onlyFails (re-aim only on a sure fail) is a clear win: wash0.75 s2 old judge re-aimed +0.5 INTO a fail; s7-ideal no longer swings ±0.7.
+The cut-off SCAN rule is not settled. Same traces judged under each rule (fails; scratchpad ablate2.js / ablate3.js):
+  rule                         s7-plain  s9-plain  wash.75 s2  s5-plain s3  s12-ideal  s11 smear
+  10-09 (window-top free pass)    0         0          0           1        1 (incl.)   9 (aimed 2.9 down)
+  fix A pushed 0524129            1 (lin.)  ?          ?           ?        0           10
+  ref 'below' 0.25, ext 0.5       0         2 (ZIV,P7) 1 (sharp.)  1        0           10
+  ref 'below' 0.05                0         2          1           1        4           6 (noCut)
+Every variant moves some beam's found cut-off ~0.1° and flips a borderline row (linearity / inclination / Zone IV). The per-column cut-off
+pick is fragile on soft beams; any fixed rule trades one beam's fail for another's. Candidate real fix: fit the edge (smoothed log profile,
+max of a fitted derivative) instead of picking the single steepest 0.05° step.

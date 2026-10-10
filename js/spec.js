@@ -239,8 +239,6 @@
   // CUT.above: the cut-off is the beam's UPPER boundary — an edge with darkness above it.  The steepest step anywhere in the window let the bottom of a hotspot
   // or of a dim notch win by noise (SQM 7" bucket: 1 trace in 5 aimed 2.8° low).  A step qualifies only if nothing from CUT.gap° above it to the top of the scan is brighter
   // than CUT.above × its bright side (a soft edge falls ~1.5 decades in 0.5°); the steepest qualifying step wins (none qualifies → the steepest overall, the old rule).  (10-09)
-  // A step within dvd + gap of the scan's top has nothing above it left to check: it used to read 'dark above' by default and won (HB3 s11/s12: the window's
-  // last step, 2.55° U, aimed the beam 2.9° down in 6 of 6 traces).  It now cannot qualify; it can still win as the steepest overall.  (10-10)
   const CUT = { minRays: 10, above: 0.25, gap: 0.5 };
   function scanCut(G, h, v0, v1, scan, dvd, kh, dh, dv) {
     const kv = Math.max(G.step / 2, 0.035) * 0.99;            // Annex 9: ~30 mm detector at 25 m ≈ 0.07° across
@@ -258,9 +256,9 @@
       if (!(a.cd > 0 && b.cd > 0) || a.cd < CUT_FLOOR * top || (noisy && CUT.minRays > 0 && b.neff < CUT.minRays)) continue;
       const g = Math.log10(a.cd / b.cd), sg = Math.hypot(a.sd / a.cd, b.sd / b.cd) / Math.LN10, st = { g, sg, v: v + dvd / 2 };
       if (!best || g > best.g) best = st;
-      if (noisy && CUT.above > 0 && q + kd < I.length && supMax[q + kd] <= CUT.above * a.cd && (!bestTop || g > bestTop.g)) bestTop = st;
+      if (noisy && CUT.above > 0 && supMax[Math.min(I.length, q + kd)] <= CUT.above * a.cd && (!bestTop || g > bestTop.g)) bestTop = st;
     }
-    return bestTop || best;
+    return bestTop || (best && Object.assign(best, { soft: noisy && CUT.above > 0 }));   // soft: no step had darkness above it (a traced beam without a cut-off)
   }
   /* evaluate one constraint at sampling offset (dh, dv) — reading the beam at (h + dh, v + dv) is the lamp re-aimed by
    * (−dh, −dv).  Returns rows { value, sd, at: [h, v], bound, isMin, margin, verdict, soft } (zones/min: the dimmest
@@ -332,11 +330,11 @@
   /* Re-aim choices read ONE traced map at many offsets, so ranking them by verdict LABELS (fails, then unsure) chases shot noise: a row ~1σ from its bound is
    * 'unsure' in one trace and 'pass' in the next, and the chosen aim jumped 0.25° between traces of one design.  AIM.expected: rank by expected fails
    * Σ P(row fails) = Φ((bound − value)/σ) (min rows; mirrored for max) — smooth in noise, a sure fail still ≈ 1; the box moves only when it beats the aim by
-   * AIM.hyst, and then by the SMALLEST move within AIM.tie of the best (many aims tie within noise; the strict minimum among them was a coin toss).  AIM.pointLcb: a per-point re-aim (FMVSS: best of 13 readings of one noisy map) CHOOSES with every reading pushed σ × pointLcb toward failing
+   * AIM.hyst, and then by the SMALLEST move within AIM.tie of the best (since 10-10 at any move cost λ — before, λ > 0 took the strict minimum, a coin toss between ±0.5° moves — and only among the tied moves with the fewest sure fails, then fewest unsure rows: the smallest move must not be the one that leaves a row undecided) (many aims tie within noise; the strict minimum among them was a coin toss).  AIM.pointLcb: a per-point re-aim (FMVSS: best of 13 readings of one noisy map) CHOOSES with every reading pushed σ × pointLcb toward failing
    * (less winner's curse) and REPORTS the plain reading.  AIM.expected = false restores the label rules.  (10-09)                                         */
   // AIM.onlyFails: the lab re-aims to make a lamp PASS — with no sure fail at the instrumental aim, the box is not searched.  Before, rows within noise of
   // their bounds let ±0.5° moves tie and noise picked the side (one design, 3 seeds: h −0.5 / +0.5 / 0).  false = search the box whenever it helps.  (10-10)
-  const AIM = { expected: true, hyst: 0.5, tie: 0.1, pointLcb: 1, onlyFails: true };
+  const AIM = { expected: true, hyst: 0.5, tie: 0.1, pointLcb: 1, onlyFails: true, noCutDesign: true };
   const Phi = (z) => { const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z / 2); return z >= 0 ? (1 + y) / 2 : (1 - y) / 2; };
   const pFail = (r, push) => {
     if (!isFinite(r.value) || !isFinite(r.bound) || !(r.sd > 0)) return r.verdict === 'fail' ? 1 : r.verdict === 'pass' ? 0 : 0.5;
@@ -404,6 +402,10 @@
       const S = md.aimScan > 0 ? md.aimScan : 3, kh = (g && g.kh) || 0.25;
       const b = scanCut(G, h, Math.max(G.v0 + 0.2, line - S), Math.min(G.v1 - 0.2, line + S), 0.05, 0.1, kh, 0, 0) || scanCut(G, h, Math.max(G.v0 + 0.2, -6), Math.min(G.v1 - 0.2, 4), 0.05, 0.1, kh, 0, 0);
       if (!b) return { base: [0, 0], note: 'no cut-off found at ' + Math.abs(h) + '° to aim by: judged as designed' };
+      // AIM.noCutDesign: a traced beam with no edge that has darkness above it has no cut-off to aim by; the steepest soft step is noise (HB3 s11, one design,
+      // 3 seeds: aimed 2.9° down / 2.6° UP / 1.9° down).  The lab could not aim it either: judge it as designed and say so.  (10-10)
+      // ⚠ Rarely fires: a step near the scan's top passes the darkness check by default (nothing above it is read), the known 10-09 window-edge limitation.
+      if (b.soft && AIM.noCutDesign) return { base: [0, 0], note: 'no clear cut-off at ' + Math.abs(h) + '° (no edge with darkness above it): judged as designed', noCut: true };
       return { base: [0, +(b.v - line).toFixed(4)], note: 'cut-off inflection at ' + b.v.toFixed(2) + '° put on ' + Math.abs(line) + '° D', cutV: b.v };
     }
     return { base: [0, 0], note: 'as designed' };
@@ -442,7 +444,7 @@
         if (dF < 0 || (dF === 0 && dU < 0) || (dF === 0 && dU === 0 && Math.hypot(ddh, ddv) < Math.hypot(reaim[0], reaim[1]) - 1e-9)) { best = r; reaim = [ddh, ddv]; }
       }
       // the aim landscape is flat within noise: of the moves that beat the aim by ≥ hyst, take the best (expected fails + λ·move); with λ = 0, the SMALLEST within AIM.tie of the best (λ > 0 already prefers small moves)
-      if (cands.length) { const eMin = Math.min(...cands.map((c) => c.e)), tie = lam > 0 ? 1e-6 : AIM.tie; let pick = null; for (const c of cands) if (c.e <= eMin + tie && (!pick || Math.hypot(c.d[0], c.d[1]) < Math.hypot(pick.d[0], pick.d[1]) - 1e-9 || (Math.abs(Math.hypot(c.d[0], c.d[1]) - Math.hypot(pick.d[0], pick.d[1])) <= 1e-9 && c.e < pick.e))) pick = c; best = pick.r; reaim = pick.d; }
+      if (cands.length) { const eMin = Math.min(...cands.map((c) => c.e)), tie = AIM.tie, near = cands.filter((c) => c.e <= eMin + tie), fMin = Math.min(...near.map((c) => c.r.n.fail)), uMin = Math.min(...near.filter((c) => c.r.n.fail === fMin).map((c) => c.r.n.unsure)); let pick = null; for (const c of near) if (c.r.n.fail === fMin && c.r.n.unsure === uMin && (!pick || Math.hypot(c.d[0], c.d[1]) < Math.hypot(pick.d[0], pick.d[1]) - 1e-9 || (Math.abs(Math.hypot(c.d[0], c.d[1]) - Math.hypot(pick.d[0], pick.d[1])) <= 1e-9 && c.e < pick.e))) pick = c; best = pick.r; reaim = pick.d; }
     }
     const out = Object.assign({}, best, { expFails: expFails(best.rows), aim, reaim, atAim, atZero: atAim, kernel: k, distance: G.distance, conv: G.conv, rays: G.rays });
     out.verdict = !best.rows.length ? 'empty' : best.n.fail ? 'fail' : best.n.unsure ? 'unsure' : 'pass';
