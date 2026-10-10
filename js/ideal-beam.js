@@ -7,11 +7,18 @@
  *
  *   hotTop     the hotspot's top (90 % point above the max, averaged over hotH ± 1°) is no deeper than hotTop° below the horizon
  *   hotPos     the brightest point of the centre box sits within hotH ± hotPosTol (10-09: SQM's peaks drifted to ~4.5° R, up the 15° rise)
- *   hotContrast the hotspot box (hotLeft° L … hotRight° R, from its top down hotHt) averages ≥ hotContrast × the wash box (info: fill ÷ peak)
- *   wash       the wash box (± washW, from washTop° D down washHt, minus the hotspot box) averages ≥ washRatio of the peak.  Default 0.75–2.25° D = the road at
- *              ~17–50 m for a lamp 0.65 m up (Anya 10-09: candela belongs 0–2° D; 1–3.5° D was 11–37 m, i.e. asking for near-road light)
- *   streak     the right-side streak (streakFrom° … washW° on the own side, from the horizon down streakHt, under the cut-off) averages
- *              ≥ streakRatio of the peak: light along the horizon right of the elbow, what a 15° kink or a 45° step delivers (curves, signs)
+ *   hotContrast the hotspot box (hotLeft° L … hotRight° R, from the wash top down hotHt) averages ≥ hotContrast × the wash box (info: fill ÷ peak)
+ *   wash       the wash box (± washW, from washTop° D down washHt, minus the hotspot box) averages ≥ washRatio of the peak.  Default 0.6–2.1° D (Anya 10-10) = the road at
+ *              ~20–72 m for an ECE lamp 0.75 m up (Anya 10-09: candela belongs 0–2° D; the first 1–3.5° D box asked for near-road light)
+ *   edgeL      the left edge strip (edgeFrom° … edgeTo° L, from the left cut-off line down edgeHt): its dimmer quarter (25th percentile of
+ *              the column means) ≥ edgeCd, ABSOLUTE cd: where the IIHS left road edge sits at ~22–50 m (ECE 0.75 m mount).  10-10, 21 beams,
+ *              seed-averaged: ≥ 9.5 kcd → left reach 41–60 m, 5.5–7.7 → 32–35, < 5 → 19–30.  Not × peak: ECE caps 75L / 50L near 10.6 /
+ *              13.2 kcd, so a share of a bright hotspot would ask for illegal light
+ *   streak     the right-side strip (streakFrom° … washW° on the own side, from the horizon / cut-off down streakHt): its dimmer quarter
+ *              (25th pct of column means) ≥ streakCd (6 kcd ≈ 5 lx at 50 m from two lamps; 10-10 ideal beams at ~6 kcd → right curves ~50 m),
+ *              ABSOLUTE like edgeL.  A right-hand curve's outer road edge at 30–60 m sits at 6.6–12.8° R,
+ *              0.48–0.95° D (R250 / R150, 0.75 m mount) → 5–15° R × 0–1° D.  Legal: ECE has nothing there (BR, Zone III are above H); FMVSS
+ *              wants 500–2,700 cd at 0.5U 1R–3R just above it.  (10-10: was ≥ 0.25 × peak from 2.5° R; a share let the left / right trade)
  *   washHoles  share of the wash box under half of washRatio·peak: GRADED, full credit ≤ washHoles, none from washHolesZero
  *   fill3L     3L → 0 band (0.5–1.5° D) ≥ fill3L × the 0 → 3R band: light toward the oncoming side, under the line.
  *              The box deliberately overlaps the left cut-off fade (0.57° D): a sharper cut-off scores higher (Anya 10-09: reach)
@@ -24,8 +31,8 @@
   'use strict';
   const RF = root.RF;
   function defaults() {
-    return { on: true, hotH: 1.5, hotLeft: 4, hotRight: 5.5, hotPosTol: 1.5, hotTop: 1.0, hotHt: 1.5, hotContrast: 1.5, washW: 15, washTop: 0.75, washHt: 1.5,
-      washRatio: 0.25, washHoles: 0.3, washHolesZero: 0.6, streakFrom: 2.5, streakHt: 1.5, streakRatio: 0.25, fill3L: 0.5, fgCap: 0.3, strayLow: 0.5,
+    return { on: true, hotH: 1.5, hotLeft: 4, hotRight: 5.5, hotPosTol: 1.5, hotTop: 1.0, hotHt: 1.5, hotContrast: 1.5, washW: 15, washTop: 0.6, washHt: 1.5,
+      washRatio: 0.2, washHoles: 0.3, washHolesZero: 0.6, streakFrom: 5, streakHt: 1, streakCd: 6000, edgeFrom: 3, edgeTo: 10, edgeHt: 0.75, edgeCd: 8000, fill3L: 0.5, fgCap: 0.3, strayLow: 0.5,
       nearLeft: 15, reachR: 0, reachL: 0 };
   }
   // a scene saved before 10-09 may carry hotW (a symmetric box, hotH ± hotW): it sets both extents unless they were set themselves
@@ -55,10 +62,12 @@
     const pkH = q.peak.h;
     add('hotPos', 'Hotspot position', +pkH.toFixed(2), g.hotH, Math.abs(pkH - g.hotH) <= g.hotPosTol + 1e-9, 'peak at ' + Math.abs(pkH) + '° ' + (pkH < 0 ? 'L' : 'R') + ' (want ' + g.hotH + ' ± ' + g.hotPosTol + '°)');
     if (top !== null) add('hotTop', 'Hotspot top', r2(-top), g.hotTop, -top <= g.hotTop + 1e-9, 'top ' + (top <= 0 ? r2(-top) + '° D' : r2(top) + '° U (above the horizon)') + ' (want ≤ ' + g.hotTop + '° D)');
-    const t0 = top !== null ? Math.min(top, -0.25) : -g.hotTop;
+    // the hotspot box starts at the wash top (Anya 10-10): one shared top edge, the wash leaves the whole hotspot box out; a low hotspot shows
+    // as a dim band at the top of its own box (and in hotTop), instead of its upper fringe counting as wash
+    const t0 = -g.washTop;
     const hm = mean(I, -g.hotLeft, g.hotRight, t0 - g.hotHt, t0), hf = hm / pk;
     let ws = 0, wn = 0, dark = 0; const lo = 0.5 * g.washRatio * pk;
-    // the wash is the next step down AROUND the hotspot: cells inside the hotspot box are left out (at 0.75–2.25° D the two overlap, and the
+    // the wash is the next step down AROUND the hotspot: cells inside the hotspot box are left out (at 0.6–2.1° D the two overlap, and the
     // hotspot would otherwise prop up the wash level, hide its holes and be compared with itself in the contrast)
     const inHot = (h, v) => h >= -g.hotLeft && h <= g.hotRight && v >= t0 - g.hotHt && v <= t0;
     for (let h = -g.washW; h <= g.washW + 1e-9; h += 0.25) for (let v = -g.washTop - g.washHt; v <= -g.washTop + 1e-9; v += 0.125) { if (inHot(h, v)) continue; const x = I(h, v); ws += x; wn++; if (x < lo) dark++; }
@@ -76,9 +85,14 @@
     add('washHoles', 'Wash holes', r2(wh), g.washHoles, wh <= g.washHoles, Math.round(100 * wh) + ' % of the wash box under half the wash level (full credit ≤ ' + Math.round(100 * g.washHoles) + ' %, none from ' + Math.round(100 * g.washHolesZero) + ' %): credit ' + r2(whc), whc);
     // the right-side streak: under the horizon AND under the cut-off line (cutTop: the preset's own line on the own side; default the ECE 15° rise)
     { const ct = cutTop(md), h0 = g.streakFrom, h1 = Math.max(h0 + 0.5, g.washW); let s = 0, n = 0;
-      for (let h = h0; h <= h1 + 1e-9; h += 0.25) { const top = Math.min(0, ct(h)); for (let v = top - g.streakHt; v <= top + 1e-9; v += 0.125) { s += I(h, v); n++; } }
-      const sr = n ? s / n / pk : 0;
-      add('streak', 'Right streak', r2(sr), g.streakRatio, sr >= g.streakRatio, r2(sr) + ' of peak along the horizon ' + h0 + '–' + h1 + '° R, ' + g.streakHt + '° deep under the cut-off (want ≥ ' + g.streakRatio + ')'); }
+      const cols = []; for (let h = h0; h <= h1 + 1e-9; h += 0.25) { const top = Math.min(0, ct(h)); s = 0; n = 0; for (let v = top - g.streakHt; v <= top + 1e-9; v += 0.125) { s += I(h, v); n++; } cols.push(n ? s / n : 0); }
+      cols.sort((a, b) => a - b); const s25 = cols[Math.floor(cols.length / 4)] || 0;
+      if (g.streakCd > 0) add('streak', 'Right strip', Math.round(s25), g.streakCd, s25 >= g.streakCd, 'dimmer quarter of ' + h0 + '–' + h1 + '° R, horizon / cut-off down ' + g.streakHt + '°: ' + (s25 / 1000).toFixed(1) + ' kcd (want ≥ ' + (g.streakCd / 1000).toFixed(1) + '; right-curve road edges at 30–60 m)'); }
+    // the left edge strip: under the left (horizontal) cut-off line, out where the IIHS left road edge is
+    if (g.edgeCd > 0) { const line = cutTop(md)(-1), cols = [];
+      for (let h = -g.edgeTo; h <= -g.edgeFrom + 1e-9; h += 0.25) cols.push(mean(I, h, h, line - g.edgeHt, line));
+      cols.sort((a, b) => a - b); const e25 = cols[Math.floor(cols.length / 4)] || 0;
+      add('edgeL', 'Left edge strip', Math.round(e25), g.edgeCd, e25 >= g.edgeCd, 'dimmer quarter of ' + g.edgeFrom + '–' + g.edgeTo + '° L, ' + g.edgeHt + '° under the left cut-off: ' + (e25 / 1000).toFixed(1) + ' kcd (want ≥ ' + (g.edgeCd / 1000).toFixed(1) + '; the left road edge at ~22–50 m)'); }
     const fl = mean(I, -3, 0, -1.5, -0.5), fr = mean(I, 0, 3, -1.5, -0.5), f3 = fr > 0 ? fl / fr : 0;
     add('fill3L', '3L fill', r2(f3), g.fill3L, f3 >= g.fill3L, '3L→0 is ' + r2(f3) + ' × 0→3R, 0.5–1.5° D (want ≥ ' + g.fill3L + ')');
     const fg = q.foreground.lmShare;

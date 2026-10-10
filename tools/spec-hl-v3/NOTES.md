@@ -182,3 +182,122 @@ Streak passes in all six ideal runs (0.28–0.45; plain 0.11–0.21); foreground
 Still failing: hotPos — the built beams (and T* on scenes 7 / 9 at the second design call, hotspot brightened ×3) peak at ~3.5° R on
 the 15° rise; hotTop 1.13–1.25° D everywhere (model loss 0.7–0.8°, the measured second solve does not recover it); nearLeft 16 m.
 Measured overshoot: second solve kept 1 of 3; same or worse otherwise → no evidence it earns its 2× time.
+
+### 10-10 hotspot-top offset sweep (scene 9, scratch build hotup/: dome top fixed at an offset from the horizon-capped cut-off at hotH,
+### allowed above it; bands still clamp; n = 1 per step; sheet docs/spec-hl-v3/hotspot-offset-sweep.png, untracked)
+offset (+ below line): T* goals / traced goals / hard fails / reach R/L / lm / traced peak
+  +0.75: 8 / 8 / 0 / 67/29 / 827 / 86 kcd @1.75R 1.6D   ·  +0.5: 8 / 8 / 0 / 61.5/36.5 / 836 / 94 @1.5R 1.75D
+  +0.25: 7 / 8 / 1 (B50L) / 67/26 / 830 / 93 @2.25R      ·   0  : 9 / 9 / 0 / 76/34 / 836 / 99 @2.75R 1.4D (only nearLeft missing)
+  −0.25: 9 / 7 / 0 / 75/49 / 835 / 64 @3.75R (hotPos, hotTop fail) · −0.5: 9 / 4.3 / 3 (B50L, 75R, Zone I) / 54.5/0 / 563 / 35 @3R 2.5D
+Read (observation): the TARGET's top follows the offset (T* hotTop 1.5 → 0.5° D), but the BUILT beam's top stays at 1.13–1.25° D from
++0.75 to −0.25 → the hotspot-top loss is in the reflector, not the target (except off 0, which passed at ≤ 1.0 once). At −0.5 the ask
+above the line breaks the solve (T* itself retreats: SQM's cut-off search picks the try with fewest judged fails, which drops and spreads
+the whole plateau; the built beam fails 3 rows and loses a third of its light). Best single run: off 0 (dome top AT the line).
+T* at 0 / −0.25 shows a thin dark vertical slot at ~3.4° L: SQM's B50L treatment in the target (Anya's "dark gap near 3.5L").
+
+### 10-10 wash-top sweep (scene 9, committed sqm-hl-ideal, washTop 0.75 → 0.15° D, height 1.5; n = 1; docs/spec-hl-v3/wash-top-sweep.png)
+washTop: light at 6° L, 0.75° D / left reach / judged aim dv / hard fails
+  0.75: 5.6 kcd / 37.5 m / 0 / –  ·  0.6: 3.8 / 27 / 0.45 / B50L  ·  0.45: 2.9 / 19.5 / 0.05 / – (lost 140 lm, fg 24 %: odd run)
+  0.3: 1.6 / 31.5 / 0.5 / –  ·  0.15: 0.5 / 29 / 0.1 / –
+Observation: raising the wash does NOT push light toward the left edge; the light under the left cut-off at 6° L FALLS steadily (5.6 → 0.5 kcd at
+0.75° D). Left reach does not follow any trend. The judged vertical aim moves 0–0.5° from run to run with no pattern, and two runs aimed
+0.45–0.5° down got 27 / 31.5 m → the "aimed down 0.5° explains the −0.25 hotspot run's 49 m" idea (10-10, inference) is NOT supported.
+Next candidates: a left-edge strip goal (3–10° L, cut-off down ~0.75°); repeat runs (seeds) to measure how noisy left reach is before
+reading any single run.
+
+### 10-10 reseeds: 3 trace seeds (8 M) per design, hotspot-offset + wash-top designs, scene 9
+Solve is deterministic (hotup off0 re-solved: identical surfaces hash) → all spread below is TRACE noise (incl. the judge's aim).
+left reach m (s1 / s2 / s3; mean):  off+0.75 29/29/27.5 (28.5) · off+0.5 36.5/36.5/45 (39) · off+0.25 26/27/27.5 (27) · off0 34/34/30.5 (33)
+  off−0.25 49/34/31.5 (38) · off−0.5 0/0/19.5 · wash0.75 37.5/25.5/27.5 (30) · wash0.6 27/33.5/28 (29.5) · wash0.45 19.5/19.5/18 (19)
+right reach: spread ±4 m (off0 76/76/68). Hard fails reproduce per design (off+0.25: B50L 3/3; off−0.5: 3/3/1; wash0.75 s2 and wash0.6 s1: 1).
+⇒ the 49 m was a lucky seed (mean 38, same as off+0.5). Single-trace left reach is ±~8 m (up to 15 m) noise — compare means of ≥ 3 seeds.
+⚠ The judged aim of ONE design moves up to 1° between seeds (wash0.75: −0.5,0 vs +0.5,0.3; off−0.25 h −0.2 … +0.35): the re-aim
+(expected-fails, 3968eb4 / d109a0b) is unstable at 8 M — likely also why SQM's B50L notch "doesn't line up" (Anya). Judge issue, not solver.
+Wash 0.45 is consistently worse on the left (19 m). Raising the wash does not help the left edge (confirmed with seeds).
+
+### 10-10 wrap-up decisions (Anya: "hotspot box at the line and wash box at .6D … based on vibes"; judge aim after this)
+- sqm-hl-ideal: hotOffset (default 0 = dome top AT the cut-off line at hotH, parallel to it; negative = above, experimental) replaces the
+  overshoot / measured-loss modes (removed: the built top stayed 1.13–1.25° D whatever the target asked). The dome may spill its soft top
+  over the line (as in the hotup sweep); the bands still clamp.
+- goals: washTop 0.6 (0.6–2.1° D ≈ 20–72 m at the ECE 0.75 m mount; my earlier distance table used 0.65 m — ECE is 0.75, FMVSS 0.65);
+  left edge strip goal is ABSOLUTE: the dimmer quarter (25th pct of column means) of 3–10° L × 0.75° under the left line ≥ 8 kcd
+  (× peak was unreachable: ECE 75L / 50L cap 10.6 / 13.2 kcd there). Seed-averaged on 21 beams: ≥ 9.5 kcd → 41–60 m, < 5 → 19–30 m.
+- target: absolute edge floor (edgeCd × 1.15). Bug fixed on the way: Lh was sampled at the horizon (first shapes() has no cut) → 1.3 kcd,
+  everything scaled off it collapsed; now 0.3° under the cut-off at hotH. T* after: 9/10, 10/10, 10/10 (scenes 5 / 7 / 9).
+- Anya's scene 10 (~/Downloads/reflector-scene-10.json): HB3 1300 lm, FMVSS LB2V, aim as designed 0.4° D, ¼° re-aim per point, sqm-hl
+  0.2 with her settings, 140 facets, envelope ~234 × 206 × 314 mm; everything carried over in the JSON.
+Running: final 3-seed comparison (scratchpad final/), plain vs ideal on scenes 5 / 7 / 9 / 10.
+
+### 10-10 final comparison (3 trace seeds, 8 M; sheet docs/spec-hl-v3/sqm-ideal-final.png, untracked; scratchpad final/)
+                plain → ideal          goals /11     hard fails/seed   reach R (range)          reach L (range)          lm      fg
+  scene 5 ECE   6.83 → 8.33            1,0,1 → 0,0,0   65.5 → 72.8 (66.5–78)    34 → 33 (29–36.5)        697 → 685   23 → 10 %
+  scene 7 ECE   6.67 → 6.31            0 → 0           69.3 → 72.8 (67–76)      41 → 34.3 (28.5–45.5)    528 → 831   34 → 9 %
+  scene 9 ECE   3.67 → 7.33            0 → 0           57.5 → 67.3 (67–68)      28.2 → 29 (29–29)        733 → 833   58 → 7 %
+  scene 10 FMVSS (HB3) 9.99 → 10       2,2,2 → 5,5,6   87.7 → 78                62.5 → 65.2              805 → 505   4 → 8 %
+ECE: no hard fails anywhere for ideal; right reach +3.5…+10 m; foreground ÷ 2–8; left reach unchanged (5, 9) or worse (7: 41 → 34).
+The left edge goal (≥ 8 kcd) is met by the TARGET but almost never by the built beam (1/3, 0/3, 0/3): the reflector doesn't deliver it.
+Scene 7's peak drifted again (hotPos 0/3).
+⚠ Scene 10 (HB3, FMVSS LB2V, aim as designed, Anya's settings incl. fast quality, rightLift 0.9): sqm-hl-ideal BREAKS — model verdict
+9 fails / worst −8 decades (10U–90U boundary, 1.5U 1R to R …), traced 5–6 fails, 505 lm, peak 24 kcd, a diffuse glow everywhere.
+Plain on the same scene: 71 kcd, 2 fails. Not diagnosed. Suspects (untested): the dome's soft top allowed over the line meets FMVSS's
+above-line maxima with no instrumental re-aim to rescue it; the volume HB3 source; her settings outside what ideal.js was tried with.
+
+### 10-10 Anya: right-side strip? hot box top even with the wash top? (proposals, awaiting go)
+Curve geometry: a right-hand curve's outer road edge at 30–60 m sits at 6.6–12.8° R, 0.5–0.95° D (R250 / R150) → inside the streak box.
+Scene 10 plain: 10L 1D 17.6 kcd vs 10R 1D 2.2 kcd, right strip dimmer quarter 0.8 kcd, right curves 38.5 / 32 m (left 55.5 / 45.5).
+Scene 9 ideal: the mirror image (10R 21.3 kcd, 10L 1.2 kcd; right curves 53 / 49 m, left 35 / 28 m).
+Proposals: streak → absolute like edgeL (dimmer quarter of 5–15° R, horizon/cut-off down 1.5° ≥ 8 kcd); hot box top = washTop (the
+overlay drew it at the 1° D goal line, the code measures from each beam's own top — a low hotspot let its upper fringe count as wash).
+Backlog: "copy settings as JSON" button (Anya couldn't copy the solver's number fields; the settings do ride in the scene JSON).
+
+### 10-10 goals v3 (Anya: right strip yes; legal to put it at 0–0.45° D?; hot box top = wash top; record IIHS curves)
+Legal check (preset tables): ECE nothing at 0–0.45° D right of the elbow (BR 2.5R 1U ≤ 1750 and Zone III are above H); FMVSS LB2V
+WANTS light just above it (0.5U 1R–3R 500–2700, 1.5U 1R–3R ≥ 200). Geometry: 0.45° D ≈ 95 m on flat road (0.75 m mount); right-curve road
+edges at 30–60 m sit 0.48–0.95° D → default depth 1°, 0.45 available as the knob.
+Baseline curves (final/, 3 seeds, binding edge d in m, R250 right / R250 left / R150 right / R150 left, demerits):
+  s5 plain 41 / 36.2 / 31.7 / 34.5, 17.5 → ideal 53 / 36.2 / 48.3 / 33.7, 13.3
+  s7 plain 44.8 / 41.7 / 33.5 / 40.7, 14.9 → ideal 47 / 38.7 / 43.3 / 28.5, 15.4
+  s9 plain 32.5 / 32.7 / 27 / 27.5, 21.1 → ideal 53.7 / 34.7 / 49.2 / 27.8, 14.2
+  s10 plain 38.7 / 56 / 32 / 45.5, 13.2 → ideal 52.5 / 51.8 / 45.2 / 42.3, 10.2
+  ⇒ the ideal variant buys RIGHT curves (+6…+21 m), left curves flat or worse.
+Goals v3: streak → absolute "right strip" (dimmer quarter of 5–15° R, horizon/cut-off down 1° ≥ 6 kcd ≈ 5 lx at 50 m, two lamps; plain
+SQM puts 30–400 cd there, ideal 4–6 kcd, mosaic 8.4 kcd); hot box top = washTop (shared top edge; a low hotspot now fails contrast too);
+washRatio 0.25 → 0.2 (box geometry changed; most beams read 0.21–0.26). Contrast 1.5 kept (good beams 1.6–2.7).
+Scene 11 = scene 10 + rightLift 0.9 → 1.2, wPaint 1.5 → 0, aim cut-off scan 0.4 (was as designed).
+
+### 10-10 curves round 1 (goals v3, 3 seeds; scratchpad curves/) — ECE good, FMVSS broken → fixed in the target
+                fails/seed  R250 R-curve  R250 L-curve  R150 R  R150 L   demerits  reach R / L
+  s5  plain     1,0,1       41.0          36.2          31.7    34.5     17.5      65.5 / 34.0
+  s5  ideal     0,0,0       45.5          37.3          39.8    31.5     15.9      70.3 / 30.7
+  s7  plain     0,0,0       44.8          41.7          33.5    40.7     14.9      69.3 / 41.0
+  s7  ideal     1,0,0       66.5          45.7          56.2    40.5      7.7      73.2 / 44.7
+  s9  plain     0,0,0       32.5          32.7          27.0    27.5     21.1      57.5 / 28.2
+  s9  ideal     0,0,0       55.8          38.7          48.0    30.7     13.0      69.7 / 40.5
+  s11 plain     2,2,2       35.3          46.2          30.0    38.0     16.6      79.7 / 49.0
+  s11 ideal     11,12,10    38.0          29.7          25.2    25.5     21.3      47.5 / 0
+ECE: demerits −1.6 / −7.2 / −8.1; left curves now hold or improve (the absolute strips stopped the left / right trade).
+FMVSS scene 11 diagnosis: T* itself failed cut-off inclination (0.8° vs 0.2); plain T* 0.05. Cause: the 0.86D 3.5L maximum (12 kcd ÷ her
+margin 1.4 = 8571) clamped a ~100 kcd dome into a flat notch whose LOWER edge (8.6 → 49 kcd in 0.2°) out-steeped the real cut-off in the
+3.5° L scan column. (Not the edge floor, not the 3L floor — both tested.) Fix: softCeil() — point maxima below the cut-off become log-space
+cones (0.3 decades/°, chamfer transform); zones excluded (Zone I's cone flattened the hotspot: contrast < 1). All five T* pass the judge
+after (inclination ≤ 0.05). Also: the 3L floor hangs from the left line (was fixed 0.5–1.5° D). Scene 11/12 T* contrast < 1: her rightLift
+1.2 makes the right wash brighter than the hotspot box (a setting, not a bug).
+Anya's scene 12: she hand-capped 0.86D 3.5L at 6 kcd (the manufacturers' notch) → ~100 m reach from the HB3.
+
+### 10-10 curves round 2 (soft point ceilings + 3L floor from the line; 3 seeds; scratchpad curves2/)
+                fails/seed  R250 R   R250 L   R150 R   R150 L   demerits  reach R / L   lm    goals/11
+  s5  plain     1,0,1       41.0     36.2     31.7     34.5     17.5      65.5 / 34.0   697   6.9
+  s5  ideal     1,0,0       50.3     39.8     44.2     36.8     13.3      75.0 / 38.7   700   6.7
+  s7  plain     0,0,0       44.8     41.7     33.5     40.7     14.9      69.3 / 41.0   528   7.0
+  s7  ideal     0,0,0       68.5     41.2     55.0     38.8      8.7      77.8 / 44.3   832   7.3
+  s9  plain     0,0,0       32.5     32.7     27.0     27.5     21.1      57.5 / 28.2   733   4.7
+  s9  ideal     0,0,0       67.8     36.8     56.8     32.0     10.4      82.7 / 34.7   833   7.3
+  s11 plain     2,2,2       35.3     46.2     30.0     38.0     16.6      79.7 / 49.0   804   8.7
+  s11 ideal     9,9,9       36.7     24.7     27.2     20.0     22.7      39.5 / 0      492   2.0
+  s12 plain     1,1,1       35.5     41.2     27.5     36.7     17.9      71.8 / 47.2   810   4.6
+  s12 ideal     8,8,8       40.0     23.5     29.8     24.0     21.4      40.8 / 0      508   2.0
+ECE LED: works (demerits −4…−11, right curves +9…+35 m, left curves hold / improve, ~0 hard fails).
+⚠ FMVSS HB3 (scenes 11, 12): T* passes the judge (after softCeil) but the BUILT beam fails 8–9 rows: model puts 4–6 kcd ABOVE the line,
+the trace aims down, minima miss, half the lumens lost. hotOffset 0.5 / 1.0 (dome lower) does NOT fix it: the model then misses the
+minima by 2–5 decades (centre 3–5 kcd vs 10–15 required) → a realization problem (the mirrors cannot build this T* with an HB3 and
+Anya's tuned settings), not a goal problem. Plain sqm-hl on the same scenes: 71 kcd, 1–2 fails. UNRESOLVED — open investigation.
