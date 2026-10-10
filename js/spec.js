@@ -633,7 +633,7 @@
     const md = scene.modeD;
     return { preset: md.preset, items: itemsOf(md), conv: md.conv || 'A', kernel: md.kernel, step: md.step, window: windowOf(md), traffic: md.traffic,
       measure: { distance: md.distance > 0 ? md.distance : Infinity }, aim: { mode: md.aimMode || 'design', line: md.aimLine === undefined ? -0.57 : md.aimLine, scan: md.aimScan || 3, box: md.aimBox || null, itemReaim: md.itemReaim || 0 },
-      centre: scene.source.pos.slice() };
+      centre: scene.source.pos.slice(), ideal: RF.IdealBeam ? RF.IdealBeam.of(md) : null };   // ideal-beam goals: only solvers that ask for them read this
   }
   // target size that shows the whole spec window at the current distance (square plane, centred on the axis)
   function fitTargetSize(scene) {

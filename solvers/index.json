@@ -24,6 +24,14 @@
   "group": "default"
  },
  {
+  "file": "sqm-hl-ideal.js",
+  "model": "SQM headlamp solver, ideal beam shaped by the ideal-beam goals (Claude Opus 5.5, briefed by Anya)",
+  "run": "2026-10-09",
+  "workspace": "this repo",
+  "note": "lab",
+  "group": "default"
+ },
+ {
   "file": "sqm-hl-dish.js",
   "model": "SQM headlamp solver, any base shell (Claude Sonnet 5.5, briefed by Anya)",
   "run": "2026-10-06",

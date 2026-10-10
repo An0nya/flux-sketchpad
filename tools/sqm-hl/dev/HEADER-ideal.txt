@@ -1,0 +1,32 @@
+/* SQM headlamp, ideal beam (sqm-hl-ideal) — plain sqm-hl (below) with its ideal beam T* shaped from the ideal-beam goals (Spec → "Ideal beam"):
+ * a hotspot box at the goals' position, width and height, floors for the 1–3.5° D band and the 3L fill, the foreground capped at the goals'
+ * share, and the light the road cannot use put into a wider, then brighter hotspot.  The regulation still comes first: every pixel of T* stays
+ * inside the spec's bands and the cut-off search and the aim guard are unchanged.  Notes report the goals on T* and on the finished model.
+ * Source: tools/sqm-hl/dev/ideal.js (node tools/sqm-hl/build.js --ideal); notes: tools/spec-hl-v3/NOTES.md (10-09).
+ *
+ *
+ * The method of supporting quadrics (Oliker; Kochengin–Oliker): every aim owns a confocal ellipsoid (a paraboloid for the far field) with the LED as one
+ * focus; in each direction the NEAREST ellipsoid is the mirror, so the reflector is one continuous surface, and the ellipsoid sizes are found so that each cell
+ * catches its share of the light (semi-discrete optimal transport, damped Newton).  What this file adds for a headlamp:
+ *
+ *  1. THE IDEAL BEAM.  The spec's floors and ceilings (with a margin) + a road-driven plateau (illuminance ∝ distance^−γ out to the IIHS reach) + a foreground wash
+ *     for the light nothing else can use + a cut-off whose sharpness is tuned until the app's own judge passes the ideal beam (noise-free).
+ *  2. AIMS AND SIZES.  Flux-weighted k-means cells (equal flux each) for the beam, a few wide units for the dim glow; the dish covers ONLY the flux the beam needs,
+ *     from the directions that fit the envelope best, at the biggest uniform scale (the biggest dish makes the sharpest LED images).
+ *  3. FACETS.  One exact-quadric facet per cell, clipped to the envelope; the dim units are small compact "decals" on the finished surface; two-curvature
+ *     facets widen every image to its cell.
+ *  4. A NOISE-FREE FAR-FIELD MODEL of the finished design (exact geometry, occlusion included: model/trace flux 1.00, bright areas ±5 %), judged by RF.Spec.evaluate,
+ *     and an aim POLISH on it: each facet's aim is tilted (a 0.4° tilt moves a 7 mm facet's edge 0.02 mm, so the surface stays edge to edge) to cut floor/ceiling
+ *     violations and to follow the ideal cut-off.  Nothing here needs more than a handful of ray-traced verifications.
+ *  5. THE JUDGE'S WEAK SPOTS.  The stock cut-off finder (aim) reads the steepest log-step in one column and ignores steps whose bright side is under 2 % of the column maximum; shot
+ *     noise in a glow near that level makes steps steeper than the real edge and moves the aim by up to a degree.  The ideal beam and the polish therefore keep the glow in the judge's
+ *     columns under ~1 % of the column maximum (aimGuard), and the model that the polish judges against is sampled finely enough (naEval) not to invent a sharper edge than there is.
+ *  6. v0.2 vs v0.1.  A brighter ideal beam (peakCap 300,000: the plateau asks for what the source can give, which is what lifts the far-field rows over the judge's noise), the
+ *     polish judged on a model sampled 100×/facet (finalists re-judged at 250×) with a score that counts how many rows miss and by how much instead of only the worst one, and
+ *     a pull that puts the cut-off at one height in every scan column (alignGain).  Noise-free model bench, 6 scenes, 100 facets, same brightness: rows failing for sure 10 → 3.
+ *  Paint mode (no input.spec): the painting is the ideal beam and the polish tracks it.
+ *
+ * Settings: the first group = constraints, quality and the beam's goals; "Advanced" = every parameter the algorithm otherwise chooses itself.  Ranges are open:
+ * labels give the default and a reasonable range, only physical limits are enforced.  ~16 facets give a nominal beam, 40–50 start to pass, ~100 is the sweet spot.
+ * Not done yet: stray-light shields, a paint/spec secondary-goal mix beyond the road goal, finite-distance planes that are tilted (paint mode approximates them).
+ * Source: tools/sqm-hl/dev/*.js (this file is generated: node tools/sqm-hl/build.js); notes, benchmarks and open issues: tools/sqm-hl/NOTES.md.        */

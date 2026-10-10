@@ -6,7 +6,7 @@ const { RF, ROOT, judge } = require('../sqm-hl/lib.js');
 const { scene } = require('./scenes.js');
 const { renderFF } = require('../sqm-hl/ffpng.js');
 const arg = {}; for (let i = 2; i < process.argv.length; i += 2) { assert(process.argv[i].startsWith('--')); arg[process.argv[i].slice(2)] = process.argv[i + 1]; }
-const files = ['spec-hl-v2', 'spec-hl-v3', 'sqm-hl', 'sqm-hl-dish', 'sonnet55-2026-09-28-dish-fit', 'opus55-2026-09-27-mosaic', 'projector-liou'];
+const files = ['spec-hl-v2', 'spec-hl-v3', 'sqm-hl', 'sqm-hl-dish', 'sqm-hl-ideal', 'sonnet55-2026-09-28-dish-fit', 'opus55-2026-09-27-mosaic', 'projector-liou'];
 for (const f of files) { const p = path.join(ROOT, 'solvers', f + '.js'); if (fs.existsSync(p)) vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename: p }); }
 const hash = (x) => crypto.createHash('sha256').update(x).digest('hex');
 (async () => {
