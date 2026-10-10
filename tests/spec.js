@@ -309,5 +309,24 @@ function fakeG(fn, win, step) {
   check('519A: the dedomed die under an n = 1.41 dome predicts the domed sample\u2019s measured apparent area within 15 %', Math.abs(r - 1) < 0.15 && RF.SourcePresets.matches(d), 'predicted / measured ' + r.toFixed(3));
   RF.SourcePresets.apply(d, 'generic'); check('applying a preset without a dome removes it', !d.dome);
 }
+{
+  // CUT.fit: a soft, shot-noisy cut-off (2 decades, logistic in log space, true inflection at V = 0.3°) traced 24 times with different noise.
+  // The fitted edge must sit on the true inflection (|mean error| ≤ 0.03°) and scatter less across seeds than the 10-09 single-step pick.
+  let seed = 0; const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+  const c0 = 0.3, prof = (v) => 10 ** (4 - 2 / (1 + Math.exp(-(v - c0) / 0.1)));
+  const noisyG = (s0) => {
+    seed = s0; const G = fakeG((h, v) => prof(v), [-3, 3, -2, 2], 0.05), eRay = 2e-5;   // ~50 rays in a dark-side reading (8 M-ray traces read tens to hundreds there)
+    for (let m = 0; m < G.E.length; m++) { const lam = G.E[m] / eRay, k = Math.max(0, Math.round(lam + Math.sqrt(lam) * gauss())); G.E[m] = k * eRay; G.E2[m] = k * eRay * eRay; }
+    const W = G.nh + 1, sat = (a) => { const S = new Float64Array(W * (G.nv + 1)); for (let j = 0; j < G.nv; j++) { let row = 0; for (let i = 0; i < G.nh; i++) { row += a[j * G.nh + i]; S[(j + 1) * W + i + 1] = S[j * W + i + 1] + row; } } return S; };
+    G.sat.E = sat(G.E); G.sat.E2 = sat(G.E2); G.eRay = eRay; return G;
+  };
+  const md = { traffic: 'RHT', conv: 'A', kernel: 0.1, aimMode: 'design', items: [{ id: 'g', kind: 'gradient', name: 'G', h: 0, v0: -1.5, v1: 1.5, scan: 0.05, dv: 0.1, min: 0.01, on: true }] };
+  const at = (fit, s0) => { const was = RF.Spec.CUT.fit; RF.Spec.CUT.fit = fit; try { return RF.Spec.evaluate(noisyG(s0), md).rows[0].at[1]; } finally { RF.Spec.CUT.fit = was; } };
+  const stat = (fit) => { const xs = []; for (let s0 = 1; s0 <= 24; s0++) xs.push(at(fit, 1000 + s0)); const m = xs.reduce((a, b) => a + b, 0) / xs.length; return { m, sd: Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1)) }; };
+  const F = stat(true), P0 = stat(false);
+  check('fitted cut-off: on the true inflection and steadier across noise than the single-step pick', Math.abs(F.m - c0) <= 0.03 && F.sd < P0.sd,
+    'fit ' + F.m.toFixed(3) + '° ± ' + F.sd.toFixed(3) + ' · single step ' + P0.m.toFixed(3) + '° ± ' + P0.sd.toFixed(3) + ' (true ' + c0 + '°)');
+}
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown

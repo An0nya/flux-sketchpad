@@ -340,3 +340,13 @@ The cut-off SCAN rule is not settled. Same traces judged under each rule (fails;
 Every variant moves some beam's found cut-off ~0.1° and flips a borderline row (linearity / inclination / Zone IV). The per-column cut-off
 pick is fragile on soft beams; any fixed rule trades one beam's fail for another's. Candidate real fix: fit the edge (smoothed log profile,
 max of a fitted derivative) instead of picking the single steepest 0.05° step.
+
+### 10-10 fitted cut-off edge (CUT.fit, traced grids only) — built, NOT committed, awaiting Anya's visual check
+Smooth the log profile (Gaussian σ 0.05°, equal weights — inverse-variance weights dragged the edge ~1 step to the dark side), steepest qualifying
+smoothed 0.1° gradient (10-09 qualification), parabola sub-step; G reported = best raw step within ±1 step. Unit test (tests/spec.js): noisy logistic
+edge, true inflection 0.30°, 24 noise seeds: fit 0.302 ± 0.012 vs 10-09 pick 0.308 ± 0.024.
+Real traces, 12 designs × 3 seeds (scratchpad fit/rows.jsonl): median aim spread 0.05 → 0.034°, tighter on 7/11, fails 39 → 38 total. NOT fixed by it:
+wash0.45 (−0.78 / −0.35 / −0.41): TWO real edges in the 2.5 L aim column (a notch under the cut-off) and the seed decides which wins. Same family:
+s7-plain aims by the NOTCH bottom at 2.5 L (−0.95; 1.5 / 3.5 L read −0.4 / −0.5) → beam aimed 0.35° UP. That is the "B50L notch doesn't line up" effect.
+s12-plain: fit sits +0.1° above the pick in all 3 seeds (−0.20, quantized: the parabola has no right neighbour) → 1 → 2 fails in 2 seeds.
+Sheets: docs/spec-hl-v3/cutoff-fit-ece.png, cutoff-fit-wash-fmvss.png (untracked).

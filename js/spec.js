@@ -239,7 +239,11 @@
   // CUT.above: the cut-off is the beam's UPPER boundary — an edge with darkness above it.  The steepest step anywhere in the window let the bottom of a hotspot
   // or of a dim notch win by noise (SQM 7" bucket: 1 trace in 5 aimed 2.8° low).  A step qualifies only if nothing from CUT.gap° above it to the top of the scan is brighter
   // than CUT.above × its bright side (a soft edge falls ~1.5 decades in 0.5°); the steepest qualifying step wins (none qualifies → the steepest overall, the old rule).  (10-09)
-  const CUT = { minRays: 10, above: 0.25, gap: 0.5 };
+  // CUT.fit (traced grids only): the steepest single 0.05° step of a noisy profile is a lottery — on a soft cut-off several steps tie within noise and the
+  // pick moved the aim 0.15–0.35° between trace seeds of one design.  Fit instead: smooth the log profile (Gaussian, σ CUT.sigma°, unlit samples skipped), take
+  // the steepest qualifying gradient of the SMOOTH profile (same 10-09 qualification), and refine its position with a parabola through it and its neighbours
+  // (sub-step).  The reported G stays a raw reading — the best raw step within ±1 step of the fitted edge, not the window's luckiest one.  false = the 10-09 pick.  (10-10)
+  const CUT = { minRays: 10, above: 0.25, gap: 0.5, fit: true, sigma: 0.05 };
   function scanCut(G, h, v0, v1, scan, dvd, kh, dh, dv) {
     const kv = Math.max(G.step / 2, 0.035) * 0.99;            // Annex 9: ~30 mm detector at 25 m ≈ 0.07° across
     // CUT.minRays and CUT.above guard against SHOT NOISE; a noise-free model (eRay 0: SQM's and spec-hl's judge grids) has none, and there the
@@ -258,7 +262,42 @@
       if (!best || g > best.g) best = st;
       if (noisy && CUT.above > 0 && supMax[Math.min(I.length, q + kd)] <= CUT.above * a.cd && (!bestTop || g > bestTop.g)) bestTop = st;
     }
+    if (noisy && CUT.fit) return fitCut(I, G, h, v1, scan, dvd, kh, kv, dh, dv, top) || bestTop || (best && Object.assign(best, { soft: CUT.above > 0 }));
     return bestTop || (best && Object.assign(best, { soft: noisy && CUT.above > 0 }));   // soft: no step had darkness above it (a traced beam without a cut-off)
+  }
+  // the CUT.fit edge (see CUT): I = the scan's readings {v, a: {cd, sd, neff}} at `scan` spacing from scanCut
+  function fitCut(I, G, h, v1, scan, dvd, kh, kv, dh, dv, top) {
+    const n = I.length, y = new Float64Array(n), w = new Float64Array(n);
+    for (let q = 0; q < n; q++) { const a = I[q].a; if (a.cd > 0) { y[q] = Math.log10(a.cd); w[q] = 1; } }   // equal weights: inverse-variance weights differ ~100× across an edge and drag the smooth edge to the dark side
+    const R = Math.max(1, Math.ceil(3 * CUT.sigma / scan)), ys = new Float64Array(n), ok = new Uint8Array(n);
+    for (let q = 0; q < n; q++) {
+      let sw = 0, sy = 0;
+      for (let k = Math.max(0, q - R); k <= Math.min(n - 1, q + R); k++) { if (!(w[k] > 0)) continue; const u = (k - q) * scan / CUT.sigma, ww = w[k] * Math.exp(-0.5 * u * u); sw += ww; sy += ww * y[k]; }
+      if (sw > 0) { ys[q] = sy / sw; ok[q] = 1; }
+    }
+    const kd = Math.round((dvd + CUT.gap) / scan), d = Math.max(1, Math.round(dvd / scan));
+    const sup = new Float64Array(n + 1).fill(-Infinity); for (let q = n - 1; q >= 0; q--) sup[q] = Math.max(sup[q + 1], ok[q] ? ys[q] : -Infinity);   // smooth log, brightest at or above
+    const gs = new Float64Array(n).fill(NaN), lt = Math.log10(CUT_FLOOR * top), la = Math.log10(CUT.above);
+    let qb = -1, qt = -1;
+    for (let q = 0; q + d < n && I[q].v + dvd <= v1 + 1e-9; q++) {
+      if (!ok[q] || !ok[q + d] || ys[q] < lt) continue;
+      const b = I[q + d].a; if (CUT.minRays > 0 && !(b.neff >= CUT.minRays)) continue;
+      gs[q] = ys[q] - ys[q + d];
+      if (qb < 0 || gs[q] > gs[qb]) qb = q;
+      if (CUT.above > 0 && sup[Math.min(n, q + kd)] <= la + ys[q] && (qt < 0 || gs[q] > gs[qt])) qt = q;
+    }
+    const q = qt >= 0 ? qt : qb; if (q < 0) return null;
+    let off = 0;                                                       // parabola through (q−1, q, q+1): vertex offset in steps, clamped to ±½
+    if (q > 0 && isFinite(gs[q - 1]) && isFinite(gs[q + 1])) { const den = gs[q - 1] - 2 * gs[q] + gs[q + 1]; if (den < 0) off = Math.max(-0.5, Math.min(0.5, 0.5 * (gs[q - 1] - gs[q + 1]) / den)); }
+    // the raw G near the fitted edge: the best raw 0.1° step within ±1 step of it
+    let rb = null;
+    for (let k = Math.max(0, q - 1); k <= Math.min(n - 1 - d, q + 1); k++) {
+      const a = I[k].a, b = RF.FarField.intensityAt(G, h + dh, I[k].v + dvd + dv, kh, kv);
+      if (!(a.cd > 0 && b.cd > 0)) continue;
+      const g = Math.log10(a.cd / b.cd), sg = Math.hypot(a.sd / a.cd, b.sd / b.cd) / Math.LN10; if (!rb || g > rb.g) rb = { g, sg };
+    }
+    if (!rb) return null;
+    return { g: rb.g, sg: rb.sg, v: I[q].v + off * scan + dvd / 2, fit: true, gSmooth: gs[q], soft: qt < 0 && CUT.above > 0 };
   }
   /* evaluate one constraint at sampling offset (dh, dv) — reading the beam at (h + dh, v + dv) is the lamp re-aimed by
    * (−dh, −dv).  Returns rows { value, sd, at: [h, v], bound, isMin, margin, verdict, soft } (zones/min: the dimmest
@@ -652,5 +691,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { CUT, AIM, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
+  RF.Spec = { CUT, AIM, scanCut, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
