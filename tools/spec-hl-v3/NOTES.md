@@ -321,3 +321,10 @@ Anya's tuned settings), not a goal problem. Plain sqm-hl on the same scenes: 71 
   search the box and some don't (wash0.75 −0.5,−0.25 / 0 / 0; s5-plain −0.15 / −0.6 / 0).
   A is correct but doesn't rescue beams without a cut-off: s11 s3 and s12 s2/s3 still aim at the window top (it now wins as the steepest step
   overall), s11 s2 flipped to the window BOTTOM (beam aimed 2.6° up, F13). No real edge ⇒ any cut-off scan answer is noise.
+
+### 10-10 RETRACTION: "sqm-hl-ideal fails HB3 FMVSS" was my harness (scratchpad ideal/solve.js)
+The harness merged Anya's plain sqm-hl settings into sqm-hl-ideal (washCap 500 vs 12000, gTarget 0.8 vs 0.28, softAll 0.01 vs 0.22, fluxFrac 1 vs 0.7,
+quality fast, …). Anya got a tight beam in the app. Re-solved s12 with the ideal solver's own defaults (smear/): model 26/26 pass; traced 8 M seed 1:
+0 fail, 3 unsure, aim −0.35 cut-off (sane), 5 lx reach 100.5 R / 49.5 L (plain sqm-hl s12: 1 fail, 69–74 / 44–50). n = 1 seed.
+The smeared s11/s12 beams (no cut-off) are also what triggered the window-edge judge bug — the bug was real, the beam was an artifact.
+Which carried setting smeared it: not isolated (washCap 500 is the obvious suspect, unverified). s11 not re-solved yet.

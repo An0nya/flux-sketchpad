@@ -2,8 +2,9 @@
  * a hotspot box at the goals' position, width and height, floors for the 1–3.5° D band and the 3L fill, the foreground capped at the goals'
  * share, and the light the road cannot use put into a wider, then brighter hotspot.  The regulation still comes first: every pixel of T* stays
  * inside the spec's bands and the cut-off search and the aim guard are unchanged.  Notes report the goals on T* and on the finished model.
- * EXPERIMENTAL (10-10): validated on ECE R112 LED scenes (3 trace seeds: IIHS curve demerits −4…−11, ~0 hard fails); FAILS on HB3
- * FMVSS LB2V scenes (the built beam misses 8–9 rows although its ideal beam passes) — unresolved, see NOTES.
+ * EXPERIMENTAL (10-10): validated on ECE R112 LED scenes (3 trace seeds: IIHS curve demerits −4…−11, ~0 hard fails); HB3 FMVSS LB2V
+ * scene 12 with this solver's own defaults: 0 fails, 3 unsure, 5 lx reach 100 / 50 m (1 seed). An earlier "fails on HB3" came from plain
+ * sqm-hl settings carried over (washCap 500, gTarget 0.8, …), not from the solver.
  * Source: tools/sqm-hl/dev/ideal.js (node tools/sqm-hl/build.js --ideal); notes: tools/spec-hl-v3/NOTES.md (10-09).
  *
  *

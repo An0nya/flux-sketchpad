@@ -25,7 +25,7 @@
  },
  {
   "file": "sqm-hl-ideal.js",
-  "model": "SQM headlamp solver, ideal beam shaped by the ideal-beam goals — experimental: ECE LED ok, HB3 FMVSS fails (Claude Opus 5.5, briefed by Anya)",
+  "model": "SQM headlamp solver, ideal beam shaped by the ideal-beam goals — experimental: ECE LED and HB3 FMVSS ok on its own defaults (Claude Opus 5.5, briefed by Anya)",
   "run": "2026-10-09",
   "workspace": "this repo",
   "note": "lab",
