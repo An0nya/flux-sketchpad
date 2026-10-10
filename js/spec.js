@@ -239,6 +239,8 @@
   // CUT.above: the cut-off is the beam's UPPER boundary — an edge with darkness above it.  The steepest step anywhere in the window let the bottom of a hotspot
   // or of a dim notch win by noise (SQM 7" bucket: 1 trace in 5 aimed 2.8° low).  A step qualifies only if nothing from CUT.gap° above it to the top of the scan is brighter
   // than CUT.above × its bright side (a soft edge falls ~1.5 decades in 0.5°); the steepest qualifying step wins (none qualifies → the steepest overall, the old rule).  (10-09)
+  // A step within dvd + gap of the scan's top has nothing above it left to check: it used to read 'dark above' by default and won (HB3 s11/s12: the window's
+  // last step, 2.55° U, aimed the beam 2.9° down in 6 of 6 traces).  It now cannot qualify; it can still win as the steepest overall.  (10-10)
   const CUT = { minRays: 10, above: 0.25, gap: 0.5 };
   function scanCut(G, h, v0, v1, scan, dvd, kh, dh, dv) {
     const kv = Math.max(G.step / 2, 0.035) * 0.99;            // Annex 9: ~30 mm detector at 25 m ≈ 0.07° across
@@ -256,7 +258,7 @@
       if (!(a.cd > 0 && b.cd > 0) || a.cd < CUT_FLOOR * top || (noisy && CUT.minRays > 0 && b.neff < CUT.minRays)) continue;
       const g = Math.log10(a.cd / b.cd), sg = Math.hypot(a.sd / a.cd, b.sd / b.cd) / Math.LN10, st = { g, sg, v: v + dvd / 2 };
       if (!best || g > best.g) best = st;
-      if (noisy && CUT.above > 0 && supMax[Math.min(I.length, q + kd)] <= CUT.above * a.cd && (!bestTop || g > bestTop.g)) bestTop = st;
+      if (noisy && CUT.above > 0 && q + kd < I.length && supMax[q + kd] <= CUT.above * a.cd && (!bestTop || g > bestTop.g)) bestTop = st;
     }
     return bestTop || best;
   }
@@ -332,7 +334,9 @@
    * Σ P(row fails) = Φ((bound − value)/σ) (min rows; mirrored for max) — smooth in noise, a sure fail still ≈ 1; the box moves only when it beats the aim by
    * AIM.hyst, and then by the SMALLEST move within AIM.tie of the best (many aims tie within noise; the strict minimum among them was a coin toss).  AIM.pointLcb: a per-point re-aim (FMVSS: best of 13 readings of one noisy map) CHOOSES with every reading pushed σ × pointLcb toward failing
    * (less winner's curse) and REPORTS the plain reading.  AIM.expected = false restores the label rules.  (10-09)                                         */
-  const AIM = { expected: true, hyst: 0.5, tie: 0.1, pointLcb: 1 };
+  // AIM.onlyFails: the lab re-aims to make a lamp PASS — with no sure fail at the instrumental aim, the box is not searched.  Before, rows within noise of
+  // their bounds let ±0.5° moves tie and noise picked the side (one design, 3 seeds: h −0.5 / +0.5 / 0).  false = search the box whenever it helps.  (10-10)
+  const AIM = { expected: true, hyst: 0.5, tie: 0.1, pointLcb: 1, onlyFails: true };
   const Phi = (z) => { const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z / 2); return z >= 0 ? (1 + y) / 2 : (1 - y) / 2; };
   const pFail = (r, push) => {
     if (!isFinite(r.value) || !isFinite(r.bound) || !(r.sd > 0)) return r.verdict === 'fail' ? 1 : r.verdict === 'pass' ? 0 : 0.5;
@@ -389,6 +393,10 @@
       const c = RF.FarField.binCentre(G, m % G.nh, Math.floor(m / G.nh));
       return { base: [c[0], c[1]], note: 'maximum (' + c[0].toFixed(2) + '°, ' + c[1].toFixed(2) + '°) put on HV' };
     }
+    if (mode === 'manual') {   // md.aimManual { h, v }: beam moved right / up (°); no cut-off scan, no re-aim box (per-point re-aim still applies)
+      const a = md.aimManual || {}, h = +a.h || 0, v = +a.v || 0;
+      return { base: [-h, -v], note: 'manual: beam ' + (h ? Math.abs(h) + '° ' + (h > 0 ? 'R' : 'L') : '') + (h && v ? ', ' : '') + (v ? Math.abs(v) + '° ' + (v > 0 ? 'up' : 'down') : '') + (h || v ? '' : 'as designed') };
+    }
     if (mode === 'cutoff') {
       const g = items.find((x) => x.kind === 'gradient'), h = g ? g.h : -2.5 * mirrorH(md), line = md.aimLine === undefined ? -0.57 : md.aimLine;
       // search near the line first (the lab finds THE cut-off, not a stray streak at 4° U: SQM in the 7" bucket), then widely
@@ -412,14 +420,14 @@
    *   noBox: true — find the instrumental aim (cheap) but skip the re-aim box search.
    * The finished run is judged without opts: that is the number to trust.                                                                                    */
   function evaluate(G, md, opts) {
-    const items = itemsOf(md), k = md.kernel > 0 ? md.kernel : 0.15, cache = new Map(), fz = opts && opts.frozen, skipBox = !!(fz || (opts && opts.noBox));
+    const items = itemsOf(md), k = md.kernel > 0 ? md.kernel : 0.15, cache = new Map(), fz = opts && opts.frozen, skipBox = !!(fz || (opts && opts.noBox) || md.aimMode === 'manual');
     const aim = fz ? { base: fz.base.slice(), note: (fz.note || 'aim') + ' (held while the trace runs)', cutV: fz.cutV } : aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
     const ir = md.itemReaim > 0 ? md.itemReaim : 0, held = fz ? fz.reaim : [0, 0];
     const atAim = evalAt(G, items, k, bh, bv, cache, ir, moveCostOf(md));
     let best = held[0] || held[1] ? evalAt(G, items, k, bh + held[0], bv + held[1], cache, ir, moveCostOf(md)) : atAim, reaim = held.slice();
     let box = md.aimBox ? Object.assign({}, md.aimBox) : md.aimTol > 0 ? { left: md.aimTol, right: md.aimTol, up: md.aimTol, down: md.aimTol } : null;
     if (box && md.traffic === 'LHT') box = { left: box.right, right: box.left, up: box.up, down: box.down };
-    if (!skipBox && box && items.length && (box.left || box.right || box.up || box.down)) {
+    if (!skipBox && box && items.length && (box.left || box.right || box.up || box.down) && !(AIM.onlyFails && !atAim.n.fail)) {
       const st = Math.max(G.step, md.aimStep || 0.05);
       const eBase = expFails(best.rows), cands = [], lam = moveCostOf(md);
       // beam moved right by x ⇔ sampling offset −x: dh ∈ [−right, +left], dv ∈ [−up, +down]

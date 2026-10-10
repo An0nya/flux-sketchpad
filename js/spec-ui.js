@@ -14,7 +14,7 @@
   const fmtDist = (d) => !(d > 0) || !isFinite(d) ? '∞ (goniometer)' : d >= 1000 ? (d / 1000).toPrecision(3).replace(/\.0+$/, '') + ' m screen' : d + ' mm screen';
 
   // ---------------------------------------------------------------- evaluation (cached per run, spec and distance)
-  const evalKey = (m) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimScan, m.itemReaim, m.aimBox, m.aimMoveCost, m.traffic, m.conv, m.step, m.distance]);
+  const evalKey = (m) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimManual, m.aimScan, m.itemReaim, m.aimBox, m.aimMoveCost, m.traffic, m.conv, m.step, m.distance]);
   // (re)judge the current run; cheap to call often: rebuilds only when the run grew or the spec changed
   function update(ui, force) {
     const run = ui.run, sc = ui.store.scene;
@@ -86,7 +86,11 @@
       row('Measure at', distSel, 'Where the report reads intensity. ∞ = far field (goniometer). A finite screen shows the near-field error: how a test at that distance would read this lamp.'),
       sectionFn('Measurement', { open: false, key: 'D-meas' },
         row('Kernel ± (°)', num(() => m().kernel, (v) => { m().kernel = Math.max(0.05, Math.min(5, v)); }, { min: 0.05, max: 5, step: 0.05 }, true), 'Half-width of the square each point is read over. Smaller = sharper but noisier.'),
-        row('Aim', sel([['design', 'As designed'], ['cutoff', 'By the cut-off (R112 Annex 9 §3.1)'], ['peak', 'Maximum on HV (§6.3.1)']], () => m().aimMode || 'design', (v) => { m().aimMode = v; }, true), 'How the lab aims the lamp before measuring. By the cut-off: the inflection of a vertical scan at 2.5° from V-V goes on 0.57° D.'),
+        row('Aim', sel([['design', 'As designed'], ['cutoff', 'By the cut-off (R112 Annex 9 §3.1)'], ['peak', 'Maximum on HV (§6.3.1)'], ['manual', 'Manual (set below)']], () => m().aimMode || 'design', (v) => { m().aimMode = v; }, true), 'How the lab aims the lamp before measuring. By the cut-off: the inflection of a vertical scan at 2.5° from V-V goes on 0.57° D. Manual: the beam is moved exactly as set below — no cut-off scan, no re-aim box (re-aim per point still applies).'),
+        row('Manual aim R / up (°)', el('span', { class: 'numpair' },
+          num(() => (m().aimManual || {}).h || 0, (v) => { m().aimManual = Object.assign({ h: 0, v: 0 }, m().aimManual, { h: Math.max(-5, Math.min(5, v)) }); }, { min: -5, max: 5, step: 0.05, 'aria-label': 'Manual aim, beam right' }, true),
+          num(() => (m().aimManual || {}).v || 0, (v) => { m().aimManual = Object.assign({ h: 0, v: 0 }, m().aimManual, { v: Math.max(-5, Math.min(5, v)) }); }, { min: -5, max: 5, step: 0.05, 'aria-label': 'Manual aim, beam up' }, true)),
+          'Used when Aim is Manual: how far the beam is moved before it is read, right and up in degrees (negative = left / down). Example: −0.25 up reads the beam a quarter degree lower.'),
         row('Aim line (° D)', num(() => -(m().aimLine === undefined ? -0.57 : m().aimLine), (v) => { m().aimLine = -Math.max(-2, Math.min(3, v)); }, { min: -2, max: 3, step: 0.01 }, true), 'Where the cut-off goes when aiming by it: R112 0.57° D (line B); FMVSS 108 VOL 0.4° D, VOR 0 (H-H).'),
         row('Aim scan ± (°)', num(() => m().aimScan || 3, (v) => { m().aimScan = Math.max(0.5, Math.min(6, v)); }, { min: 0.5, max: 6, step: 0.5 }, true), 'The cut-off is looked for this far around the aim line first (then anywhere): a stray streak far above the beam must not set the aim.'),
         row('Re-aim per point (°)', num(() => m().itemReaim || 0, (v) => { m().itemReaim = Math.max(0, Math.min(1, v)); }, { min: 0, max: 1, step: 0.05 }, true), 'Each test point / zone may be read this far off, whichever reads best. FMVSS 108 S14.2.5.5: ¼° in any direction at any test point. R112: 0 (it re-aims the whole lamp instead).'),
@@ -662,7 +666,7 @@
   }
   // ---- Road view options (per viewer, remembered, like the far field's): the bend, how far, the colour scale and its top,
   // which lux outlines, which sensor. Only the picture changes; the road settings (Spec → Road) are the scene's.
-  const RV_DEF = { shape: 'straight', range: 100, scale: 'log', max: 0, lev: [5], extra: 0, sensor: 'car', stretch: 'fit' };
+  const RV_DEF = { shape: 'straight', range: 100, scale: 'log', max: 0, lev: [5], extra: 0, sensor: 'car', stretch: 1 };
   const RV_SHAPES = ['straight', '250R', '250L', '150R', '150L'], RV_RANGES = [50, 100, 200, 300], RV_LEVELS = [1, 3, 5, 10, 30];
   function rvOpts(ui) {
     if (!ui.rvOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/roadView') || '{}'); } catch (e) { /* ignore */ } ui.rvOpts = Object.assign({}, RV_DEF, o); }

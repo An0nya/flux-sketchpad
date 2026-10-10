@@ -301,3 +301,23 @@ ECE LED: works (demerits −4…−11, right curves +9…+35 m, left curves hold
 the trace aims down, minima miss, half the lumens lost. hotOffset 0.5 / 1.0 (dome lower) does NOT fix it: the model then misses the
 minima by 2–5 decades (centre 3–5 kcd vs 10–15 required) → a realization problem (the mirrors cannot build this T* with an HB3 and
 Anya's tuned settings), not a goal problem. Plain sqm-hl on the same scenes: 71 kcd, 1–2 fails. UNRESOLVED — open investigation.
+
+### 10-10 judge aim instability: what actually moves (Opus, exploring; read from ~150 saved results, scratchpad curves/curves2/final/hotup/washup/ideal*)
+- Vertical instrumental aim (cut-off scan): stable to ±0.05° on sharp cut-offs; up to 0.35° on soft ones (washup top0.45: −0.2 / −0.15 / +0.15).
+- Re-aim box (R112): the big mover. Same design, three seeds: s7-ideal (curves2) h 0 / −0.7 / +0.2; washup top0.75 −0.5 / +0.5 / 0; s5-plain −0.15 / −0.6 / 0.
+  Mostly on beams with 0 sure fails. Code reading: with aimMoveCost λ > 0 the AIM.tie window is 1e-6, so the pick is a strict argmin of a noisy sum.
+- ⭐ HB3 FMVSS s11/s12 ideal: the judge put the cut-off at 2.25–2.55° U and aimed the beam ~2.9° DOWN (all 6 traces). Scene aimScan 3, line −0.4
+  → window top 2.6°: 2.55 is the window's LAST step. Code reading: scanCut's darkness-above test reads supMax past the end of the scan (= 0) for any
+  step within dvd + gap (0.6°) of the window top, so those steps qualify trivially. If the real cut-off fails the test (light above it), a window-top
+  step wins. s11 rows at that aim: 4D 4R 22.7k vs ≤ 12.5k, 1.5D 2R 5.9k vs ≥ 15k = the hotspot read ~3° low. ⇒ the "unresolved HB3 realization
+  failure" is at least partly a judge mis-aim. Not yet re-judged at a sane aim (needs the manual-aim override). Plain sqm on s11 aims fine (−0.35).
+- Fix A + B landed (spec.js: CUT window-edge; AIM.onlyFails) + manual aim mode (aimMode 'manual', md.aimManual {h, v} beam R / up). Tests all pass.
+  s11-ideal seed 1 re-judged: cut-off now found at 1.50° U (was 2.55, the window edge) → beam 1.9° down, still 10 fails. The beam image shows why: the
+  HB3 ideal beam has NO real cut-off — a soft dome rising well above H. So the judge bug was real but the HB3 failure is mostly realization after all
+  (tempers the "at least partly a judge mis-aim" above: the aim moved 1°, the fail count didn't).
+- Before/after, same seeds (scratchpad aimfix/; washup top0.75 and ideal4 s9-fixed are the SAME solve — identical rows):
+  B works where it should: s7-ideal re-aims −0.70 / +0.20 → 0 / 0; wash0.75 s2 old judge re-aimed +0.5 INTO a fail (F1, expected-fails ranking
+  traded a sure fail for fewer near-misses) → now no move, F0. Remaining swing: when the instrumental aim has ONE borderline sure fail, some seeds
+  search the box and some don't (wash0.75 −0.5,−0.25 / 0 / 0; s5-plain −0.15 / −0.6 / 0).
+  A is correct but doesn't rescue beams without a cut-off: s11 s3 and s12 s2/s3 still aim at the window top (it now wins as the steepest step
+  overall), s11 s2 flipped to the window BOTTOM (beam aimed 2.6° up, F13). No real edge ⇒ any cut-off scan answer is noise.
