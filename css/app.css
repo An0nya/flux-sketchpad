@@ -231,7 +231,7 @@ body.mode-D .canvas-wrap.road .road-tools { display: flex; }
 .feas > .reason { padding-left: calc(18px * var(--density)); }
 /* "no limit binds": plain text, only the mark coloured */
 .bind.ok { color: var(--ink) !important; } .bind.ok .mk { color: var(--ok); } .bind.bad .mk { color: var(--bad); }
-.pane-head .modes button { min-height: 26px; padding: var(--s-2) var(--s-10); }
+.pane-head .modes button { min-height: 26px; padding: var(--s-2) var(--s-8); }
 .side-top { padding-top: var(--s-6); }
 #pattern-box .pat-name { flex: 1 1 90px; min-width: 70px; }
 
