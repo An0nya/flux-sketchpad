@@ -1572,7 +1572,11 @@
       el.classList.remove('phone-hidden');
       el.classList.toggle('rail', r.cls[k] === 'rail'); el.classList.toggle('bar', r.cls[k] === 'bar'); el.classList.toggle('collapsed', !!r.cls[k]);
     }
-    for (const d of document.querySelectorAll('.divider')) d.classList.toggle('off', !r.dividers[{ split: 'main', rowSplit: 'row', pairSplit: 'pair' }[d.dataset.split]]);
+    const eff = { split: [r.cols[0], r.cols[2]], rowSplit: [r.rows[0], r.rows[2]], pairSplit: [r.pair.sizes[0], r.pair.sizes[2]] };
+    for (const d of document.querySelectorAll('.divider')) {
+      const on = !!r.dividers[{ split: 'main', rowSplit: 'row', pairSplit: 'pair' }[d.dataset.split]], e = eff[d.dataset.split], share = on && e[0] + e[1] > 0 ? e[0] / (e[0] + e[1]) : st[d.dataset.split];
+      d.classList.toggle('off', !on); d.tabIndex = on ? 0 : -1; d.setAttribute('aria-disabled', String(!on)); d.setAttribute('aria-valuenow', String(Math.round(100 * share)));   // an off divider is inert for the keyboard too
+    }
   }
   // Collapse / expand / restore animate the grid tracks (px → px interpolates); resizes and divider drags don't.
   function animateLayout() {
@@ -1601,6 +1605,15 @@
   // Dividers: drag writes the stored share (and ends an expand, so the pane follows the pointer);
   // arrow keys nudge; double-click resets.
   function wireDividers() {
+  // An expand shows the other splits at pixel sizes that differ from their stored shares; ending the expand by
+  // dragging one divider must keep those sizes, so write them back as shares first.
+  function freezeExpand() {
+    const st = ui.layout; if (!st.expanded || phone()) return;
+    const W = document.getElementById('workspace'), r = RF.Layout.compute(st, W.clientWidth, W.clientHeight);
+    const sh = (a, b) => a + b > 0 ? Math.min(0.9, Math.max(0.1, a / (a + b))) : null;
+    const m = sh(r.cols[0], r.cols[2]), w = sh(r.rows[0], r.rows[2]), p = r.pair.both ? null : sh(r.pair.sizes[0], r.pair.sizes[2]);
+    if (r.dividers.main && m) st.split = m; if (r.dividers.row && w) st.rowSplit = w; if (r.dividers.pair && p) st.pairSplit = p;
+  }
     for (const d of document.querySelectorAll('.divider')) {
       const key = d.dataset.split;
       const share = (e) => {
@@ -1608,17 +1621,19 @@
         const vert = key === 'rowSplit' || (key === 'pairSplit' && document.getElementById('pair').classList.contains('stacked'));
         return vert ? (e.clientY - box.top) / box.height : (e.clientX - box.left) / box.width;
       };
-      const set = (v) => { ui.layout[key] = Math.min(0.9, Math.max(0.1, v)); ui.layout.expanded = null; layoutGrid(); };
+      const set = (v) => { freezeExpand(); ui.layout[key] = Math.min(0.9, Math.max(0.1, v)); ui.layout.expanded = null; layoutGrid(); };
+      const live = () => !d.classList.contains('off');
+      d.setAttribute('aria-valuemin', '10'); d.setAttribute('aria-valuemax', '90');
       let id = null;
-      d.addEventListener('pointerdown', (e) => { id = e.pointerId; try { d.setPointerCapture(id); } catch (err) { /* ignore */ } d.classList.add('dragging'); e.preventDefault(); });
+      d.addEventListener('pointerdown', (e) => { if (!live()) return; id = e.pointerId; try { d.setPointerCapture(id); } catch (err) { /* ignore */ } d.classList.add('dragging'); e.preventDefault(); });
       d.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(share(e)); });
       const stop = (e) => { if (e.pointerId !== id) return; id = null; d.classList.remove('dragging'); saveLayout(); };
       d.addEventListener('pointerup', stop); d.addEventListener('pointercancel', stop);
       d.addEventListener('keydown', (e) => {
-        const k = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (!k) return;
-        e.preventDefault(); set(ui.layout[key] + k * 0.02); saveLayout();
+        const k = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (!k || !live()) return;
+        e.preventDefault(); freezeExpand(); set(ui.layout[key] + k * 0.02); saveLayout();
       });
-      d.addEventListener('dblclick', () => { set(RF.Layout.defaults()[key]); saveLayout(); });
+      d.addEventListener('dblclick', () => { if (!live()) return; set(RF.Layout.defaults()[key]); saveLayout(); });
     }
   }
   ui.layoutGrid = layoutGrid;
