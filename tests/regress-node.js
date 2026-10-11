@@ -1,4 +1,6 @@
 // Regression checks for fixed QA groups (headless): node tests/regress-node.js — exits 1 on failure.
+// G21 reads memory after a forced GC, so the file re-runs itself with --expose-gc when started without it
+if (!global.gc) { const r = require('child_process').spawnSync(process.execPath, ['--expose-gc', __filename, ...process.argv.slice(2)], { stdio: 'inherit' }); process.exit(r.status === null ? 1 : r.status); }
 const { load } = require('./load.js'); const RF = load(); const C = RF.Controller;
 let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail ? '  — ' + detail : '')); if (!cond) fails++; };
 
