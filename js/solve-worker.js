@@ -1,5 +1,6 @@
 /* solve-worker.js — runs loaded (untrusted) solvers off the page.  It has the engine but no DOM, so a
  * solver here can't touch the page, the grader or the tracer the host scores it with.
+ * Every request carries a `rid`; every reply echoes it.
  *   → { type: 'load', src }                         ← { type: 'loaded', defs: [{ id, name, version, modes, settings }] } | { type: 'error' }
  *   → { type: 'solve', id, input, settings, scene, budget, preview }  ← { type: 'progress', pct } … { type: 'preview', … } … { type: 'done', output } | { type: 'error' }
  * Previews (tools.preview, SOLVER_API.md § "Watching a solve"): display-only snapshots of what the solver is trying, sent
@@ -25,7 +26,7 @@ function previewMsg(surfaces, info, n) {
   return m;
 }
 self.onmessage = async (e) => {
-  const m = e.data;
+  const m = e.data, send = (o, tr) => { o.rid = m.rid; self.postMessage(o, tr || []); };   // every reply echoes the request's rid (the host matches replies to requests by it)
   try {
     if (m.type === 'load') {
       // record what THIS file registers (loading a new version of an already-loaded id replaces it);
@@ -35,7 +36,7 @@ self.onmessage = async (e) => {
       try { importScripts(URL.createObjectURL(new Blob([m.src], { type: 'text/javascript' }))); } finally { RF.Solvers.register = reg; }
       const defs = [...new Set(ids)].map((id) => meta(RF.Solvers.get(id)));
       if (!defs.length) throw new Error('the file did not call RF.Solvers.register(...)');
-      self.postMessage({ type: 'loaded', defs });
+      send({ type: 'loaded', defs });
     } else if (m.type === 'solve') {
       const def = RF.Solvers.get(m.id); if (!def) throw new Error('solver ' + m.id + ' is not loaded in the worker');
       // held = the latest preview call not sent yet, as REFERENCES (a dropped call costs nothing); it is copied when sent
@@ -45,11 +46,11 @@ self.onmessage = async (e) => {
       if (RF.GpuTrace) { RF.GpuTrace.enable(!!m.gpu); if (m.gpu) await RF.GpuTrace.init(); }   // no WebGPU here → traceAsync runs on the CPU
       const post = () => {
         const h = held; held = null; let p; try { p = previewMsg(h.surfaces, h.info, h.n); } catch (e) { return; }   // a malformed preview is dropped
-        lastAt = performance.now(); self.postMessage(p, p.grid ? [p.grid.buffer] : []);
+        lastAt = performance.now(); send(p, p.grid ? [p.grid.buffer] : []);
       };
       const flush = () => { if (held && performance.now() - lastAt >= PREVIEW_MS) post(); };
       const tools = {
-        progress: (pct, stage) => { flush(); self.postMessage({ type: 'progress', pct: +pct || 0, stage: stage ? String(stage).slice(0, 80) : undefined }); },
+        progress: (pct, stage) => { flush(); send({ type: 'progress', pct: +pct || 0, stage: stage ? String(stage).slice(0, 80) : undefined }); },
         budget: m.budget,
         trace: (surfaces, o) => { flush(); spend(o); return RF.Solvers.trace(m.scene, surfaces, o); },
         // the same trace, possibly on the GPU (the user's Simulation → GPU trace): same rays, f32 (res.gpu says which ran)
@@ -63,7 +64,7 @@ self.onmessage = async (e) => {
       };
       const output = await def.solve(m.input, m.settings, tools);
       if (held) post();                              // the latest candidate always reaches the page before the result
-      self.postMessage({ type: 'done', output, raysUsed, previews: nPrev });
+      send({ type: 'done', output, raysUsed, previews: nPrev });
     }
-  } catch (err) { self.postMessage({ type: 'error', message: String(err && err.message || err) }); }
+  } catch (err) { send({ type: 'error', message: String(err && err.message || err) }); }
 };
