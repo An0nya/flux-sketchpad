@@ -21,7 +21,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   ok('hover cards (' + cards.length + ' rows): no headroom factor above 1000', cards.length > 0 && big.length === 0, big.slice(0, 2).map((c) => c.name + ': ' + c.text.replace(/\s+/g, ' ')).join(' | '));
   ok('hover cards: no headroom claimed on an unsure row', un.length === 0, un.slice(0, 2).map((c) => c.name + ': ' + c.text.replace(/\s+/g, ' ')).join(' | '));
   // 2. exposure buttons
-  await page.evaluate(() => RF.UI.setDisplay('drive')); await page.waitForTimeout(1500);
+  await page.evaluate(() => { RF.UI.setPane('result', 'expand'); RF.UI.setDisplay('drive'); }); await page.waitForTimeout(1500);   // the drive toolbar shows only while the Result pane is expanded (B4b)
   const t = await page.evaluate(() => ({ evm: document.querySelector('[data-dv="evm"]').title, evp: document.querySelector('[data-dv="evp"]').title, ev0: RF.UI.dvOpts.ev }));
   await page.click('[data-dv="evp"]'); await page.waitForTimeout(500);
   const step = (await page.evaluate(() => RF.UI.dvOpts.ev)) - t.ev0;

@@ -271,7 +271,7 @@ button.text:hover { color: var(--ink); border-color: var(--line); }
 /* panes */
 .pane { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .pane.active { border-color: #3d5a60; }
-.pane-head { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-4) var(--s-6);
+.pane-head { position: relative; display: flex; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: var(--s-4) var(--s-6);
   padding: var(--s-4) 40px var(--s-4) var(--s-8); min-height: 40px; }
 /* chevron + title stay top-left, ⤢ is pinned top-right; the tools follow the title and move to their own
    line (as a group) only when they don't fit, starting at the same x as the chevron and the map caption */
@@ -438,7 +438,7 @@ button.toggle[aria-pressed="true"] { background: #3a2f1f; color: var(--warn); bo
 
 #heat-display button { padding-left: 8px; padding-right: 8px; }   /* four views fit where three did */
 /* Result: the view buttons keep their size and drop below the title when the header is narrow (never overflow) */
-.head-tools:has(#heat-display) { flex: 0 0 auto; max-width: calc(100% - 40px); }
+.head-tools:has(#heat-display) { flex: 0 0 auto; max-width: 100%; }   /* (the head's padding already leaves room for ⤢; -40px broke Fidelity off by 3 px at 1500) */
 #heat-display { flex-wrap: wrap; }   /* a very narrow pane: the buttons wrap rather than spill past the edge */
 .side details.solver-adv { border-bottom: 0; padding: var(--s-4, 6px) 0 0; }
 .side details.solver-adv > summary { font-size: 12px; color: var(--dim); }
@@ -523,3 +523,13 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 #min-row .spec-v b span.v-fail, #min-row .spec-worst.v-fail b { color: #ff9a3d; }
 #min-row .spec-v b span.v-unsure, #min-row .spec-worst.v-unsure b { color: #f2b441; }
 #min-row .spec-worst b { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Spec, Result pane NOT expanded: sized like Mode A's. The extra Spec controls (the view buttons Road / Drive / Far field and the toolbars over the map)
+   show only when the pane is expanded; a faint hint says so after a moment.  Phones (tabbed panes, no ⤢) keep everything. */
+@media (min-width: 761px) {
+  body.mode-D .result-pane:not(.expanded) :is(.ff-tools, .road-tools, .drive-tools, [data-disp=road], [data-disp=drive], [data-disp=ff]) { display: none !important; }
+  body.mode-D .pair:not(.stacked) > .pane:not(.collapsed):not(.expanded) > figure.map > figcaption { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.mode-D .result-pane:not(.expanded):not(.collapsed) .canvas-wrap::after { content: 'Expand for more options'; position: absolute; right: 6px; bottom: 4px; z-index: 2; font-size: 11px; color: var(--faint);
+    pointer-events: none; opacity: 0; animation: expand-hint .6s ease 5s forwards; }
+}
+@keyframes expand-hint { to { opacity: .75; } }
