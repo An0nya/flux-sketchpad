@@ -71,10 +71,11 @@
       if (pts.size === 0) {
         const isTap = downAt && moved < 6 && performance.now() - downAt.t < 450;
         if (mode === 'drag' && h.onDragEnd) h.onDragEnd(target, false);
+        if (mode !== 'drag' && mode !== 'swallowed') end();      // before the gesture commits, or its re-run still sees interacting and stays a preview
         if (mode === 'primary' && h.onPrimaryEnd) h.onPrimaryEnd(false);
         if (isTap && h.onTap && mode !== 'pinch' && mode !== 'swallowed' && !cold) h.onTap(p[0], p[1], target, e);
         const was = mode; mode = null; target = null; last = null; pinch = null; cold = false;
-        if (was !== 'swallowed') end();
+        if (was === 'drag') end();
       } else if (mode === 'pinch' && pts.size === 1) {
         last = [...pts.values()][0]; mode = 'pan-rest';          // lifting one finger: stop zooming
       }
