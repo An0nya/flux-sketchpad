@@ -125,7 +125,7 @@
       const th = rr * tmax, ph = Math.atan2(py, px) * 180 / Math.PI;
       const info = RF.ModeB.dirInfo(scene, th, ph);
       const t = Math.min(255, Math.round(info.I * 230)), dim = info.room ? 1 : 0.28;
-      img.data[o] = LUT[3 * t] * dim + 18; img.data[o + 1] = LUT[3 * t + 1] * dim + 20; img.data[o + 2] = LUT[3 * t + 2] * dim + 26; img.data[o + 3] = clearZero && !(v > 0) ? 0 : 255;
+      img.data[o] = LUT[3 * t] * dim + 18; img.data[o + 1] = LUT[3 * t + 1] * dim + 20; img.data[o + 2] = LUT[3 * t + 2] * dim + 26; img.data[o + 3] = 255;
     }
     g.putImageData(img, 0, 0);
     pickerCache = { key, img: c, tmax };
