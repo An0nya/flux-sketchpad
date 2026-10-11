@@ -22,7 +22,8 @@
   };
   View2D.prototype.toScreen = function (x, y) { return [this.ox + this.s * x, this.oy - this.s * y]; };
   View2D.prototype.toContent = function (sx, sy) { return [(sx - this.ox) / this.s, (this.oy - sy) / this.s]; };
-  View2D.prototype.zoomAt = function (f, sx, sy) { this.ox = sx - (sx - this.ox) * f; this.oy = sy - (sy - this.oy) * f; this.s *= f; this.zoomed = true; };
+  View2D.prototype.zoomAt = function (f, sx, sy) { if (this.fitS > 0) f = Math.max(this.fitS * 0.05, Math.min(this.fitS * 200, this.s * f)) / this.s;   // zoom stays within [0.05, 200] x the fitted scale
+    this.ox = sx - (sx - this.ox) * f; this.oy = sy - (sy - this.oy) * f; this.s *= f; this.zoomed = true; };
   View2D.prototype.panBy = function (dx, dy) { this.ox += dx; this.oy += dy; this.zoomed = true; };
   // the canvas changed size under a view the user zoomed or panned: keep the same zoom factor and centre
   View2D.prototype.refitKeep = function (b, w, h) {

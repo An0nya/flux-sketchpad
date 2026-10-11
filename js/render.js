@@ -127,8 +127,10 @@
     const el = Math.asin(Math.max(-1, Math.min(1, e[2]))) * 180 / Math.PI, az = Math.atan2(e[1], e[0]) * 180 / Math.PI;
     this.setAngles(az - dx * k, Math.max(-89, Math.min(89, el + dy * k)));
   };
+  const ZOOM_MIN = 0.05, ZOOM_MAX = 200;   // zoom limits, relative to the fitted scale
   Camera.prototype.zoomAt = function (factor, sx, sy) {
     const ox = sx - this.w / 2 - this.pan[0], oy = sy - this.h / 2 - this.pan[1];
+    if (this.fitScale > 0) factor = Math.max(this.fitScale * ZOOM_MIN, Math.min(this.fitScale * ZOOM_MAX, this.scale * factor)) / this.scale;   // zoom stays within [0.05, 200] x the fitted scale
     this.scale *= factor;
     this.pan[0] -= ox * (factor - 1); this.pan[1] -= oy * (factor - 1);
   };
@@ -138,7 +140,7 @@
     let lo = [Infinity, Infinity], hi = [-Infinity, -Infinity], c = [0, 0, 0];
     for (const p of pts) c = V.add(c, p);
     c = V.mul(c, 1 / pts.length);
-    this.center = c; this.fitted = true;
+    this.center = c; this.fitted = true; this.fitScale = 0;   // no zoom limit while fitting
     for (const p of pts) { const d = V.sub(p, c), x = V.dot(R[0], d), y = V.dot(R[1], d); lo = [Math.min(lo[0], x), Math.min(lo[1], y)]; hi = [Math.max(hi[0], x), Math.max(hi[1], y)]; }
     const m = margin || 0.12;
     this.scale = Math.min(this.w / Math.max(1e-9, (hi[0] - lo[0]) * (1 + 2 * m)), this.h / Math.max(1e-9, (hi[1] - lo[1]) * (1 + 2 * m)));
@@ -154,6 +156,7 @@
       if (Math.abs(f - 1) < 0.01) break;
       this.zoomAt(f, this.w / 2, this.h / 2);
     }
+    this.fitScale = this.scale;
   };
 
   function fitCanvas(cv) {
