@@ -1845,7 +1845,8 @@
       bar.append(ok, no);
       document.querySelector('.side-top').append(bar);
     });
-    root.addEventListener('resize', () => { layoutGrid(); ui.sceneDirty = true; drawHeat(); schedule(); });   // phone ↔ desktop switch (ResizeObserver does the rest)
+    let wasNarrow = narrow();
+    root.addEventListener('resize', () => { const n = narrow(); if (n && !wasNarrow && !document.body.classList.contains('side-hidden')) setSide(false); wasNarrow = n; layoutGrid(); ui.sceneDirty = true; drawHeat(); schedule(); });   // phone ↔ desktop switch (ResizeObserver does the rest)
   }
 
   function boot() {
