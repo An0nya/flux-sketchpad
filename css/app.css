@@ -199,9 +199,9 @@ button.mini { min-height: 24px; padding: 1px var(--s-8); font-size: 11px; color:
 .colorbar .cb-labels.ticks .end-l { left: 0; transform: none; }
 .colorbar .cb-labels.ticks .end-r { right: 0; transform: none; }
 /* far-field view toggles, floating in the canvas corner (Spec mode, Far field view only) */
-.ff-tools { display: none; position: absolute; left: 4px; top: 4px; z-index: 2; gap: 2px; }
+.ff-tools { display: none; position: absolute; left: 4px; top: 4px; right: 4px; z-index: 2; gap: 2px; flex-wrap: wrap; pointer-events: none; }
 body.mode-D .canvas-wrap.ff .ff-tools { display: flex; }
-.ff-tools button { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); }
+.ff-tools button { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); pointer-events: auto; }
 /* drive-view controls (Spec mode, Drive view only) + the luminance readout under the pointer */
 .drive-tools { display: none; position: absolute; left: 4px; top: 4px; right: 4px; z-index: 2; gap: 2px; flex-wrap: wrap; pointer-events: none; align-items: center; }
 body.mode-D .canvas-wrap.drive .drive-tools { display: flex; }
@@ -243,6 +243,7 @@ input.scrub:focus { cursor: text; }
 input.scrub.scrubbing { border-color: var(--b); color: var(--b); }
 
 .modes.seg { gap: 0; }
+.pane-head .modes.seg { flex-wrap: wrap; max-width: 100%; }   /* a narrow pane: the tabs wrap rather than run past the edge (Spec was unreachable) */
 /* sidebar copy of the mode tabs: always shown (the Editor's copy dims when that pane is inactive) */
 .side-top .modes { display: flex; flex: 1 1 100%; }
 .side-top .modes button { flex: 1; justify-content: center; }
