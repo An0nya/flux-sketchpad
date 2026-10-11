@@ -7,14 +7,21 @@ actually get.
 
 ## Running it
 
-**No server needed.** Open `index.html` directly (`file://`). Every script is a classic
-`<script>`, not an ES module, and the app never uses fetch, XHR, workers or dynamic imports. If a
-script fails to load anyway, the page shows a banner that names the missing module instead of
+**Serve it over HTTP for the full app.** Any static server works, e.g. `python3 tests/serve.py 8743`
+(from the repo root) and open `http://localhost:8743/index.html`. The scripts are classic
+`<script>`s, not ES modules, but the app does use `fetch` (the bundled solvers listed in
+`solvers/index.json`, the sample photos) and Web Workers (the solve and preview traces), and those need `http(s)://`.
+If a script fails to load, the page shows a banner that names the missing module instead of
 going blank.
 
-> Verified in this session only over `http://localhost`. The in-app preview pane I tested with
-> renders `file://` pages as a static snapshot without their relative assets. See
-> *Honest gaps*.
+Opening `index.html` directly (`file://`) is partial. Checked in headless Chromium: the page
+loads, but only 2 built-in solvers are registered (none of the bundled ones), so the scene's
+solver falls back to Spoke, the bundled solvers do not load (`fetch` of
+`solvers/index.json`, `js/solver-host.js:89`), sample photos do not load (`fetch`,
+`js/ui.js:1377`), and the workers are refused (`new Worker`, `js/solver-host.js:22`,
+`js/ui.js:359`; Chromium blocks worker scripts on `file://`), so there are no live preview traces.
+There is currently no on-page notice that the solvers failed to load. Other browsers' `file://`
+rules differ and were not tested.
 
 The verification suite runs headless in Node (v18+; this session used v25.8.1):
 
@@ -25,8 +32,8 @@ node tests/headless.js
 Options: `--only 1,2,14` runs a subset, `--json out.json` writes results. Exit code 1 means a
 check failed. The same checks run in the page under **Verification → Run all checks**.
 
-`tests/serve.py` is a tiny no-cache static server that I used for browser testing only (port
-8743). The app doesn't need it.
+`tests/serve.py` is a tiny no-cache static server (default port 8743; pass another port as the
+first argument). Use it, or any static server, to run the app.
 
 ## A two-minute tour
 
@@ -306,9 +313,9 @@ warm-up or throttling (the tab was hidden), but I haven't proven that.
 
 ## Honest gaps and deviations
 
-- **`file://` not verified by me.** The code has no `file://` hazards (classic scripts only; no
-  fetch or modules), but my testing browser couldn't load a `file://` page with its assets. All
-  browser testing was done over `http://localhost:8743`.
+- **`file://` is partial.** Verified headless in Chromium: bundled solvers, sample photos and
+  workers do not work from `file://` (see *Running it*); everything else was tested over
+  `http://localhost`. The app does not warn on the page when this happens.
 - **Touch** was exercised with synthetic PointerEvents (touch type, including a two-pointer pinch)
   and wheel events, not on a physical touchscreen.
 - **No convex (diverging) facets.** Curved facets are ellipsoids or paraboloids. Tiles larger
