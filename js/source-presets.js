@@ -262,6 +262,7 @@
     Object.assign(src, JSON.parse(JSON.stringify(p.set)));
     if (p.axis) { src.axis = p.axis.slice(); src.roll = 0; }
     if (p.obscuration) src.obscuration = JSON.parse(JSON.stringify(p.obscuration)); else delete src.obscuration;      // the bulb's cap / black top (R37), carried with the scene so solvers in a worker see it
+    const prevFluxModel = src.fluxModel, prevDriveA = src.driveA, fresh = src.preset !== id;   // a different emitter opens at its own default current / flux model, not the last one's
     src.preset = id;
     delete src.effArea; delete src.dome;                  // a dome comes only with a model that has one
     if (p.custom && opts && opts.measured) src.measured = JSON.parse(JSON.stringify(opts.measured));
@@ -271,11 +272,11 @@
       if (src.volts) { delete src.volts; src.power = PRESETS.generic.set.power; }
     }
     if (p.drive) {
-      if (!p.custom) src.fluxModel = opts && p.drive.models[opts.model] ? opts.model : (p.drive.models[src.fluxModel] ? src.fluxModel : p.drive.model);
+      if (!p.custom) src.fluxModel = opts && p.drive.models[opts.model] ? opts.model : (!fresh && p.drive.models[prevFluxModel] ? prevFluxModel : p.drive.model);
       else src.fluxModel = 'rows';
       const m = modelOf(src, p);
       if (!m) return p;                                   // the measured emitter before any rows: geometry left as is
-      src.driveA = opts && opts.amps > 0 ? Math.min(m.maxA, opts.amps) : (src.driveA > 0 ? Math.min(m.maxA, src.driveA) : Math.min(m.maxA, p.drive.defaultA));
+      src.driveA = opts && opts.amps > 0 ? Math.min(m.maxA, opts.amps) : (!fresh && prevDriveA > 0 ? Math.min(m.maxA, prevDriveA) : Math.min(m.maxA, p.drive.defaultA));
       src.power = Math.round(lerp(m.curve, src.driveA));
       if (m.set) Object.assign(src, JSON.parse(JSON.stringify(m.set)));   // a model with a fixed die (e.g. the datasheet die size) or a dome
       const am = m.areaFrom || m;                         // the die's own effective area (a domed model: the dedomed sample's)

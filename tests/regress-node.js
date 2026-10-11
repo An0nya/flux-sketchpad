@@ -193,5 +193,19 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('D-E08 a source outside the envelope gets a warning item', !!it && it.violated === true && /outside/i.test(it.text), it && it.text);
     ok('D-E08 the source position is not clamped', sc.source.pos[0] === env.center[0] + env.half[0] + 10);
   }
+  // D-C14: switching LED presets opens the new LED at its own default drive current and flux model, not the previous emitter's
+  {
+    const SP = RF.SourcePresets, ids = Object.keys(SP.PRESETS).filter((k) => SP.PRESETS[k].drive && !SP.PRESETS[k].custom);
+    let bad = [], n = 0;
+    for (const a of ids) for (const b of ids) {
+      if (a === b) continue;
+      const pb = SP.PRESETS[b], mb = pb.drive.models[pb.drive.model];
+      const ref = {}; SP.apply(ref, b); const src = {}; SP.apply(src, a, { amps: SP.PRESETS[a].drive.models[SP.PRESETS[a].drive.model].maxA }); const keepA = src.driveA; SP.apply(src, b); n++;
+      if (src.driveA !== ref.driveA || src.fluxModel !== ref.fluxModel || src.power !== ref.power) bad.push(a + '→' + b + ' amps ' + src.driveA + ' vs ' + ref.driveA + ', model ' + src.fluxModel + ' vs ' + ref.fluxModel);
+    }
+    ok('D-C14 every LED preset opens the same from any previous LED as from a fresh source (' + n + ' pairs)', bad.length === 0, bad.slice(0, 3).join(' | '));
+    const a0 = ids[0], s2 = {}; SP.apply(s2, a0); SP.apply(s2, a0, { amps: 0.5 }); SP.apply(s2, a0);
+    ok('D-C14 re-applying the SAME preset (model/current edits) still keeps the chosen current', s2.driveA === 0.5, 'driveA ' + s2.driveA);
+  }
   process.exitCode = fails ? 1 : 0;
 })();
