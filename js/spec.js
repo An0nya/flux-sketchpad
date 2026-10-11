@@ -177,8 +177,10 @@
     return [Math.max(-89, r(h0, Math.floor)), Math.min(89, r(h1, Math.ceil)), Math.max(-80, r(v0, Math.floor)), Math.min(80, r(v1, Math.ceil))];
   }
   // far-field grid options for a scene: distance 0 = far field (∞); otherwise a screen at that many mm
+  // modeD.distance < 0 is the "target" link: the screen sits wherever the target plane is now
+  function measureAt(scene) { const d = scene.modeD.distance; return d < 0 ? scene.target.distance : d > 0 ? d : 0; }
   function gridOpts(scene, distanceOverride) {
-    const md = scene.modeD, d = distanceOverride !== undefined ? distanceOverride : md.distance;
+    const md = scene.modeD, d = distanceOverride !== undefined ? distanceOverride : measureAt(scene);
     return { win: windowOf(md), step: md.step || 0.1, conv: md.conv || 'A', distance: d > 0 ? d : Infinity, centre: scene.source.pos.slice() };
   }
   // the far-field picture's context grid: the spec window widened to ±45° H × 30° D–15° U at 0.25° bins (a road a few
@@ -417,6 +419,16 @@
     for (const r of rows) { sw += r.w; ss += r.w * r.soft; n[r.verdict]++; if (r.margin < worst) worst = r.margin; }
     return { rows, score: sw > 0 ? ss / sw : 1, worst: rows.length ? worst : 0, n, shift: [dh, dv] };
   }
+  // a vertical angle with its direction: + is up (U), − down (D); dp = decimals (omit to print the number as is)
+  const fmtVert = (v, dp) => (dp === undefined ? Math.abs(v) : Math.abs(v).toFixed(dp)) + '°' + (v > 0 ? ' U' : v < 0 ? ' D' : '');
+  // the beam's cut-off (the inflection of a vertical scan at the gradient item's H, in the beam's own V), whatever the aim mode: null if none
+  function findCut(G, md, items) {
+    const g = items.find((x) => x.kind === 'gradient'), h = g ? g.h : -2.5 * mirrorH(md), line = md.aimLine === undefined ? -0.57 : md.aimLine;
+    // search near the line first (the lab finds THE cut-off, not a stray streak at 4° U: SQM in the 7" bucket), then widely
+    // (a lamp built far off its line still gets aimed)
+    const S = md.aimScan > 0 ? md.aimScan : 3, kh = (g && g.kh) || 0.25;
+    return scanCut(G, h, Math.max(G.v0 + 0.2, line - S), Math.min(G.v1 - 0.2, line + S), 0.05, 0.1, kh, 0, 0) || scanCut(G, h, Math.max(G.v0 + 0.2, -6), Math.min(G.v1 - 0.2, 4), 0.05, 0.1, kh, 0, 0);
+  }
   /* How the lamp is aimed before it is judged (as a sampling offset [dh, dv]):
    *   'design' — as built.   'peak' — maximum on HV (§6.3.1, a driving-beam-only lamp).
    *   'cutoff' — instrumental vertical aim (Annex 9 §3.1): the inflection of a vertical scan through the horizontal
@@ -435,17 +447,13 @@
       return { base: [-h, -v], note: 'manual: beam ' + (h ? Math.abs(h) + '° ' + (h > 0 ? 'R' : 'L') : '') + (h && v ? ', ' : '') + (v ? Math.abs(v) + '° ' + (v > 0 ? 'up' : 'down') : '') + (h || v ? '' : 'as designed') };
     }
     if (mode === 'cutoff') {
-      const g = items.find((x) => x.kind === 'gradient'), h = g ? g.h : -2.5 * mirrorH(md), line = md.aimLine === undefined ? -0.57 : md.aimLine;
-      // search near the line first (the lab finds THE cut-off, not a stray streak at 4° U: SQM in the 7" bucket), then widely
-      // (a lamp built far off its line still gets aimed)
-      const S = md.aimScan > 0 ? md.aimScan : 3, kh = (g && g.kh) || 0.25;
-      const b = scanCut(G, h, Math.max(G.v0 + 0.2, line - S), Math.min(G.v1 - 0.2, line + S), 0.05, 0.1, kh, 0, 0) || scanCut(G, h, Math.max(G.v0 + 0.2, -6), Math.min(G.v1 - 0.2, 4), 0.05, 0.1, kh, 0, 0);
+      const g = items.find((x) => x.kind === 'gradient'), h = g ? g.h : -2.5 * mirrorH(md), line = md.aimLine === undefined ? -0.57 : md.aimLine, b = findCut(G, md, items);
       if (!b) return { base: [0, 0], note: 'no cut-off found at ' + Math.abs(h) + '° to aim by: judged as designed' };
       // AIM.noCutDesign: a traced beam with no edge that has darkness above it has no cut-off to aim by; the steepest soft step is noise (HB3 s11, one design,
       // 3 seeds: aimed 2.9° down / 2.6° UP / 1.9° down).  The lab could not aim it either: judge it as designed and say so.  (10-10)
       // ⚠ Rarely fires: a step near the scan's top passes the darkness check by default (nothing above it is read), the known 10-09 window-edge limitation.
       if (b.soft && AIM.noCutDesign) return { base: [0, 0], note: 'no clear cut-off at ' + Math.abs(h) + '° (no edge with darkness above it): judged as designed', noCut: true };
-      return { base: [0, +(b.v - line).toFixed(4)], note: 'cut-off inflection at ' + b.v.toFixed(2) + '° put on ' + Math.abs(line) + '° D', cutV: b.v };
+      return { base: [0, +(b.v - line).toFixed(4)], note: 'cut-off inflection at ' + fmtVert(b.v, 2) + ' put on ' + fmtVert(line), cutV: b.v };
     }
     return { base: [0, 0], note: 'as designed' };
   }
@@ -460,9 +468,12 @@
    *   frozen: { base: [dh, dv], reaim: [dh, dv], note?, cutV? } — judge at exactly this aim (a previous full judgement's aim): no cut-off scan, no box search;
    *   noBox: true — find the instrumental aim (cheap) but skip the re-aim box search.
    * The finished run is judged without opts: that is the number to trust.                                                                                    */
+  const HELD = ' (held while the trace runs)';   // the live note's suffix: added once, however many live judgements feed their note back
   function evaluate(G, md, opts) {
     const items = itemsOf(md), k = md.kernel > 0 ? md.kernel : 0.15, cache = new Map(), fz = opts && opts.frozen, skipBox = !!(fz || (opts && opts.noBox) || md.aimMode === 'manual');
-    const aim = fz ? { base: fz.base.slice(), note: (fz.note || 'aim') + ' (held while the trace runs)', cutV: fz.cutV } : aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
+    const aim = fz ? { base: fz.base.slice(), note: (fz.note || 'aim').replace(HELD, '') + HELD, cutV: fz.cutV } : aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
+    // the Road's manual inclination needs the cut-off position even when the judge aimed another way (design / peak / manual): note it, aim nothing
+    if (!fz && aim.cutV === undefined && md.aimMode !== 'cutoff') { const cb = findCut(G, md, items); if (cb && !(cb.soft && AIM.noCutDesign)) aim.cutV = cb.v; }
     const ir = md.itemReaim > 0 ? md.itemReaim : 0, held = fz ? fz.reaim : [0, 0];
     const atAim = evalAt(G, items, k, bh, bv, cache, ir, moveCostOf(md));
     let best = held[0] || held[1] ? evalAt(G, items, k, bh + held[0], bv + held[1], cache, ir, moveCostOf(md)) : atAim, reaim = held.slice();
@@ -681,7 +692,7 @@
   function solverSpec(scene) {
     const md = scene.modeD;
     return { preset: md.preset, items: itemsOf(md), conv: md.conv || 'A', kernel: md.kernel, step: md.step, window: windowOf(md), traffic: md.traffic,
-      measure: { distance: md.distance > 0 ? md.distance : Infinity }, aim: { mode: md.aimMode || 'design', line: md.aimLine === undefined ? -0.57 : md.aimLine, scan: md.aimScan || 3, box: md.aimBox || null, itemReaim: md.itemReaim || 0 },
+      measure: { distance: measureAt(scene) > 0 ? measureAt(scene) : Infinity }, aim: { mode: md.aimMode || 'design', line: md.aimLine === undefined ? -0.57 : md.aimLine, scan: md.aimScan || 3, box: md.aimBox || null, itemReaim: md.itemReaim || 0 },
       centre: scene.source.pos.slice(), ideal: RF.IdealBeam ? RF.IdealBeam.of(md) : null };   // ideal-beam goals: only solvers that ask for them read this
   }
   // target size that shows the whole spec window at the current distance (square plane, centred on the axis)
@@ -691,5 +702,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { CUT, AIM, scanCut, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
+  RF.Spec = { CUT, AIM, scanCut, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, fmtVert, measureAt, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -14,12 +14,12 @@
   const fmtDist = (d) => !(d > 0) || !isFinite(d) ? '∞ (goniometer)' : d >= 1000 ? (d / 1000).toPrecision(3).replace(/\.0+$/, '') + ' m screen' : d + ' mm screen';
 
   // ---------------------------------------------------------------- evaluation (cached per run, spec and distance)
-  const evalKey = (m) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimManual, m.aimScan, m.itemReaim, m.aimBox, m.aimMoveCost, m.traffic, m.conv, m.step, m.distance]);
+  const evalKey = (m, tg) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimManual, m.aimScan, m.itemReaim, m.aimBox, m.aimMoveCost, m.traffic, m.conv, m.step, RF.Spec.measureAt({ modeD: m, target: tg })]);
   // (re)judge the current run; cheap to call often: rebuilds only when the run grew or the spec changed
   function update(ui, force) {
     const run = ui.run, sc = ui.store.scene;
     if (!run || sc.mode !== 'D' || !(run.ctx.ex || run.ctx.ff) || !(run.ctx.next > 0)) return ui.spec || null;
-    const key = evalKey(sc.modeD), now = performance.now(), c = run.ctx;
+    const key = evalKey(sc.modeD, sc.target), now = performance.now(), c = run.ctx;
     const s = ui.spec, live = !c.done;
     // a judgement made while the run was still tracing (aim held) is not final: when the run ends it is judged again, fully
     if (!force && s && s.ctx === c && s.key === key && ((s.next === c.next && (s.full || live)) || (live && now - s.t < 700))) return s;
@@ -40,7 +40,7 @@
   }
   // the far-field grids a Spec run streams: the report's distance plus the comparison set (∞, 25 m, 10 m, the target)
   function streams(sc) {
-    const md0 = sc.modeD || {}, ds = [md0.distance > 0 ? md0.distance : 0, 0, 25000, 10000, sc.target.distance];
+    const ds = [RF.Spec.measureAt(sc), 0, 25000, 10000, sc.target.distance];
     return ds.filter((d, i) => ds.indexOf(d) === i).map((d) => RF.Spec.gridOpts(sc, d)).concat([RF.Spec.wideOpts(sc)]);
   }
   // a different measuring distance on the same run (no re-trace) — for the comparison table
@@ -75,7 +75,7 @@
     const distSel = el('div', { class: 'seg spec-dist', role: 'radiogroup', 'aria-label': 'Measure at' });
     for (const [d, t] of [[0, '∞'], [25000, '25 m'], [10000, '10 m'], [-1, 'target']]) {
       const b = el('button', { type: 'button', 'data-dist': d, title: d === 0 ? 'Far field: intensity by direction, what a goniometer measures' : d < 0 ? 'A screen at the target plane’s distance' : 'A screen at ' + t + ' from the source, read as apparent intensity (illuminance × r² / cos θ)' }, t);
-      b.addEventListener('click', () => { m().distance = d < 0 ? ui.store.scene.target.distance : d; changed(ui, false); });
+      b.addEventListener('click', () => { m().distance = d; changed(ui, false); });
       distSel.append(b);
     }
     const body = el('div', { id: 'spec-box' },
@@ -125,7 +125,7 @@
   // solve: the working target changed (re-solve per the auto switches); otherwise only the judging did
   function changed(ui, solve) {
     if (solve) { ui.store.invalidate(['A']); ui.afterChange(); }
-    else { ui.autosave(); update(ui, true); ui.redrawSpec(); }
+    else { ui.autosave(); update(ui, true); ui.redrawSpec(); if (ui.rerenderStats) ui.rerenderStats(); }
     render(ui);
   }
 
@@ -189,7 +189,7 @@
       el('span', { class: 'note', title: 'Soft score: each constraint scores 1 when met, falling linearly (in log) to 0 at a factor of 2 off; weighted mean.' }, 'score ' + pc(ev.score))));
     box.append(el('div', { class: 'note' }, 'Measured at ' + fmtDist(s.G.distance) + ' · kernel ±' + ev.kernel + '° · ' + (s.done ? '' : 'partial: ') + s.G.coverage.toLocaleString() + ' rays' +
       ' · aimed: ' + ev.aim.note +
-      (Math.hypot(ev.reaim[0], ev.reaim[1]) > 1e-9 ? ' · then re-aimed (beam) ' + fmtMove(ev.reaim, m.traffic) + ' (before: ' + ev.atAim.n.fail + ' fail)' : m.aimBox ? ' · no re-aim helps' : '') +
+      (Math.hypot(ev.reaim[0], ev.reaim[1]) > 1e-9 ? ' · then re-aimed (beam) ' + fmtMove(ev.reaim, m.traffic) + ' (before: ' + ev.atAim.n.fail + ' fail)' : m.aimBox ? ((m.aimMode || 'design') === 'manual' ? ' · re-aim box not used (manual aim)' : s.full ? ' · no re-aim helps' : '') : '') +
       (m.verified === false ? ' · ⚠ preset values unverified' : '')));
     const tbl = el('div', { class: 'spec-rows' });
     for (const r of ev.rows) {
@@ -230,7 +230,7 @@
     const need = (r.isMin ? '≥ ' : '≤ ') + (r.rel ? r.rel.factor + '×' + r.rel.ref + (isFinite(r.bound) ? ' (' + fmtCd(r.bound) + ')' : '') : f(r.bound));
     const got = isFinite(r.value) ? f(r.value) + ' ± ' + f(r.sd) : '—';
     const fac = isFinite(r.margin) ? Math.pow(10, Math.abs(r.margin)) : NaN;
-    const off = !(r.margin < 0) ? (isFinite(fac) && r.unit !== 'deg' && r.unit !== 'log' ? '×' + fac.toFixed(2) + ' headroom' : '') : r.unit === 'deg' ? (r.value - r.bound).toFixed(2) + '° over' : r.isMin && !(r.value > 0) ? 'no light read here' : '×' + fac.toFixed(2) + (r.isMin ? ' short' : ' over');
+    const off = !(r.margin < 0) ? (isFinite(fac) && r.verdict === 'pass' && r.value > 0 && r.unit !== 'deg' && r.unit !== 'log' ? (fac > 1000 ? '> ×1000' : '×' + fac.toFixed(2)) + ' headroom' : '') : r.unit === 'deg' ? (r.value - r.bound).toFixed(2) + '° over' : r.isMin && !(r.value > 0) ? 'no light read here' : '×' + fac.toFixed(2) + (r.isMin ? ' short' : ' over');
     const mk = { pass: '✓', fail: '✗', unsure: '?' }[r.verdict];
     return { need, got, off, mk };
   }
@@ -244,8 +244,8 @@
     if (ui.store.scene.mode !== 'D') return;
     const m = md(ui);
     for (const i of document.querySelectorAll('#spec-box [data-spec]')) { if (document.activeElement === i) continue; const v = i._get(); if (i._chk) i.checked = !!v; else i.value = v === undefined ? '' : v; }
-    const d = m.distance > 0 ? m.distance : 0;
-    for (const b of document.querySelectorAll('#spec-box [data-dist]')) { const bd = +b.dataset.dist; b.classList.toggle('on', bd < 0 ? d > 0 && d === ui.store.scene.target.distance && d !== 25000 && d !== 10000 : bd === d); }
+    const d = m.distance > 0 ? m.distance : m.distance < 0 ? -1 : 0;
+    for (const b of document.querySelectorAll('#spec-box [data-dist]')) { const bd = +b.dataset.dist; b.classList.toggle('on', bd === d); }
     const src = document.getElementById('spec-source');
     if (src) src.textContent = (m.verified === false ? '⚠ ' : '') + (m.source || '');
     renderTable(ui); renderReport(ui);
@@ -393,7 +393,8 @@
     // the far field is in degrees, not the paint grid: no size pairing with the Editor (that cap shrank it to the
     // smaller pane). Default fit = the spec window; zoom out to see the wide context grid around it.
     const cap = view.cap; view.cap = 0;
-    if (!view.fitted || view.bounds.join() !== win.join()) view.fit(win, box.w, box.h);
+    if (!(box.w > 0 && box.h > 0)) { /* collapsed pane (0×0): keep the last good view, as prepare2d does */ }
+    else if (!view.fitted || view.bounds.join() !== win.join()) view.fit(win, box.w, box.h);
     else if (view.w !== box.w || view.h !== box.h) { if (view.zoomed) view.refitKeep(win, box.w, box.h); else view.fit(win, box.w, box.h); }
     view.cap = cap; view.capAt = cap;
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.clearRect(0, 0, box.w, box.h);
@@ -485,7 +486,7 @@
     ctx.font = '10px system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,0.9)';
     // summary in the plot's top-right corner (away from the beam): how far the judge moved the beam
     const mv = fmtMove(sh, m.traffic).replace(/ right/g, ' R').replace(/ left/g, ' L').replace(/ up/g, ' U').replace(/ down/g, ' D');
-    const t = 'aim: beam ' + (mv === 'none' ? 'as designed' : mv) + ((m.aimMode || 'design') === 'cutoff' ? ' · cut-off on ' + Math.abs(m.aimLine === undefined ? -0.57 : m.aimLine) + '° D' : '');
+    const t = 'aim: beam ' + (mv === 'none' ? 'as designed' : mv) + ((m.aimMode || 'design') === 'cutoff' ? ' · cut-off on ' + RF.Spec.fmtVert(m.aimLine === undefined ? -0.57 : m.aimLine) : '');
     const w = ctx.measureText(t).width, x = Math.max(a[0] + 3, b[0] - w - 5), y = a[1] + 13;
     ctx.fillStyle = 'rgba(12,13,16,0.75)'; ctx.fillRect(x - 2, y - 10, w + 4, 13); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillText(t, x, y);
     ctx.restore();
@@ -563,11 +564,13 @@
     return m0.road;
   };
   // road settings only redraw: no new trace, no re-judging
+  // Road view / Drive view rows only change the picture: setRV / setDV already redrew once, so just echo the stored (clamped) value
+  function viewChanged(ui) { render(ui); }
   function roadChanged(ui) { ui.autosave(); if (ui.spec) ui.spec.road = null; ui.redrawSpec(); if (ui.rerenderStats) ui.rerenderStats(); render(ui); }
   function roadRows(ui, row) {
     const r = () => roadOf(ui);
-    const rsel = (opts, get, set) => { const x = el('select', {}, ...opts.map(([v, t]) => el('option', { value: v }, t))); x.dataset.spec = '1'; x._get = get; x.addEventListener('change', () => { set(x.value); roadChanged(ui); }); return x; };
-    const rnum = (get, set, o) => { const x = el('input', Object.assign({ type: 'number', step: 'any' }, o)); x.dataset.spec = '1'; x._get = get; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) set(v); roadChanged(ui); }); return x; };
+    const rsel = (opts, get, set, view) => { const x = el('select', {}, ...opts.map(([v, t]) => el('option', { value: v }, t))); x.dataset.spec = '1'; x._get = get; x.addEventListener('change', () => { set(x.value); (view ? viewChanged : roadChanged)(ui); }); return x; };
+    const rnum = (get, set, o, view) => { const x = el('input', Object.assign({ type: 'number', step: 'any' }, o)); x.dataset.spec = '1'; x._get = get; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) set(v); (view ? viewChanged : roadChanged)(ui); }); return x; };
     const rchk = (get, set) => { const x = el('input', { type: 'checkbox' }); x.dataset.spec = '1'; x._get = get; x._chk = true; x.addEventListener('change', () => { set(x.checked); roadChanged(ui); }); return x; };
     return [
       el('div', { class: 'note' }, 'A straight two-lane road lit by this beam: Result → Road (bird’s-eye), Far field → road, and the 5 lx reach in the footer. The reach follows IIHS (5 lx, 25 cm up, edges of a 6.6 m road); the lanes drawn follow the width below. Right-hand traffic (mirrored for left-hand).'),
@@ -576,17 +579,17 @@
       row('Mounting height (m)', rnum(() => r().mountH > 0 ? r().mountH : RF.Road.mountDefault(md(ui).preset), (v) => { r().mountH = v > 0 ? Math.max(0.2, Math.min(2, v)) : null; }, { min: 0.2, max: 2, step: 0.05 }), 'Height of the lamp above the road. A regulation spec sets its own until you type one: ECE R112 0.75 m (its V angles are 1 % / 1.5 % / 3 % of 75 / 50 / 25 m at that height), otherwise 0.65 m. R48 §6.2.6.1.2 sets the dipped-beam aim by it: under 0.8 m, −1.0 to −1.5 %; over 1.0 m, −1.5 to −2.0 %.'),
       row('Lamp spacing (m)', rnum(() => r().spacing, (v) => { r().spacing = Math.max(0, Math.min(2.5, v)); }, { min: 0, max: 2.5, step: 0.05 }), 'Between the two lamps’ centres. Both lamps are this same design (a real pair has the same beam, not mirror images), so two lamps cost no extra rays.'),
       row('Two lamps', rchk(() => r().two !== false, (v) => { r().two = v; }), 'Off: only the right-hand lamp.'),
-      row('Road view: scale top (lx)', rnum(() => rvOpts(ui).max || '', (v) => { setRV(ui, 'max', v > 0 ? v : 0); }, { min: 0, step: 'any', placeholder: 'auto' }), 'Top of the Road view’s colour scale. Empty = automatic: 30 lx on the log scale, the 99.5th percentile of the picture on the linear one.'),
-      row('Road view: extra outline (lx)', rnum(() => rvOpts(ui).extra || '', (v) => { setRV(ui, 'extra', v > 0 ? v : 0); }, { min: 0, step: 'any', placeholder: 'none' }), 'One more outline at this level, besides the 1 / 3 / 5 / 10 / 30 lx toggles on the Road view.'),
-      row('Road view: sideways stretch', rsel([['fit', 'Fit the pane (straight road)'], ['1', '×1 (true shape)'], ['2', '×2'], ['4', '×4']], () => String(rvOpts(ui).stretch), (v) => { setRV(ui, 'stretch', v === 'fit' ? 'fit' : +v); }), 'A straight road is a long thin strip; this stretches it sideways to fill the pane (the caption says by how much). A bend is always drawn true.'),
-      row('Drive view: marking reflectivity (mcd/m²/lx)', rnum(() => dvOpts(ui).RL, (v) => { setDV(ui, 'RL', Math.max(0, Math.min(1000, v))); }, { min: 0, max: 1000, step: 10 }), 'Retroreflected luminance coefficient R_L of white road paint, at the standard headlamp-and-driver geometry (EN 1436: classes R2–R5 are 100–300 minimum; worn paint is lower, glass-bead paint when new is higher). Yellow paint uses 0.6 ×.'),
-      row('Drive view: ambient light', rsel([['0', 'None (headlamp only)'], ['0.2', 'Full moon (0.2 lx)'], ['5', 'Dusk (5 lx)']], () => String(dvOpts(ui).ambient), (v) => { setDV(ui, 'ambient', +v); }), 'Light on diffuse surfaces from the sky, besides the lamps. None judges the beam alone.'),
-      row('Drive view: oncoming car distance (m)', rnum(() => dvOpts(ui).onDist, (v) => { setDV(ui, 'onDist', Math.max(10, Math.min(400, v))); }, { min: 10, max: 400, step: 5 }), 'Where the oncoming car is (the “oncoming” toggle on the Drive view). Its headlamps are emitters, seen at the intensity below.'),
-      row('Drive view: oncoming headlamp intensity (kcd)', rnum(() => dvOpts(ui).onKcd, (v) => { setDV(ui, 'onKcd', Math.max(1, Math.min(500, v))); }, { min: 1, max: 500, step: 5 }), 'Both lamps together, toward you. A passing beam seen head-on is roughly 30–60 kcd; a driving beam 100+.'),
-      row('Drive view: preceding car distance (m)', rnum(() => dvOpts(ui).preDist, (v) => { setDV(ui, 'preDist', Math.max(5, Math.min(300, v))); }, { min: 5, max: 300, step: 5 }), 'Where the car ahead of you is (the “preceding” toggle): tail lamps lit, retroreflective plate and reflectors lit by your beam.'),
-      row('Drive view: beam smoothing', rsel([['sharp', 'Sharp (0.2° × 0.2°)'], ['smooth', 'Smooth along H (0.5° × 0.15°)'], ['soft', 'Soft (1° × 0.3°)']], () => dvOpts(ui).smooth, (v) => { setDV(ui, 'smooth', v); }), 'The trace is a few million rays, so the beam has shot noise that the picture shows as mottled asphalt. Smoothing along H leaves the cut-off (a vertical edge) sharp. Raise the ray count (Simulation) for a cleaner picture.'),
-      row('Drive view: picture size', rsel([['480', '480 × 270'], ['640', '640 × 360'], ['960', '960 × 540'], ['1280', '1280 × 720']], () => String(dvOpts(ui).res), (v) => { setDV(ui, 'res', +v); }), 'Render size. 640 takes ~0.3 s in the browser; 1280 about a second in a forest or city.'),
-      row('Drive view: field of view (°)', rsel([['45', '45 (telephoto)'], ['60', '60'], ['75', '75'], ['90', '90 (wide)']], () => String(dvOpts(ui).fov), (v) => { setDV(ui, 'fov', +v); }), 'Horizontal field of view. The eye is 1.2 m up, 2 m behind the lamps, 0.37 m left of the car centre (mirrored for left-hand traffic).'),
+      row('Road view: scale top (lx)', rnum(() => rvOpts(ui).max || '', (v) => { setRV(ui, 'max', v > 0 ? v : 0); }, { min: 0, step: 'any', placeholder: 'auto' }, true), 'Top of the Road view’s colour scale. Empty = automatic: 30 lx on the log scale, the 99.5th percentile of the picture on the linear one.'),
+      row('Road view: extra outline (lx)', rnum(() => rvOpts(ui).extra || '', (v) => { setRV(ui, 'extra', v > 0 ? v : 0); }, { min: 0, step: 'any', placeholder: 'none' }, true), 'One more outline at this level, besides the 1 / 3 / 5 / 10 / 30 lx toggles on the Road view.'),
+      row('Road view: sideways stretch', rsel([['fit', 'Fit the pane (straight road)'], ['1', '×1 (true shape)'], ['2', '×2'], ['4', '×4']], () => String(rvOpts(ui).stretch), (v) => { setRV(ui, 'stretch', v === 'fit' ? 'fit' : +v); }, true), 'A straight road is a long thin strip; this stretches it sideways to fill the pane (the caption says by how much). A bend is always drawn true.'),
+      row('Drive view: marking reflectivity (mcd/m²/lx)', rnum(() => dvOpts(ui).RL, (v) => { setDV(ui, 'RL', Math.max(0, Math.min(1000, v))); }, { min: 0, max: 1000, step: 10 }, true), 'Retroreflected luminance coefficient R_L of white road paint, at the standard headlamp-and-driver geometry (EN 1436: classes R2–R5 are 100–300 minimum; worn paint is lower, glass-bead paint when new is higher). Yellow paint uses 0.6 ×.'),
+      row('Drive view: ambient light', rsel([['0', 'None (headlamp only)'], ['0.2', 'Full moon (0.2 lx)'], ['5', 'Dusk (5 lx)']], () => String(dvOpts(ui).ambient), (v) => { setDV(ui, 'ambient', +v); }, true), 'Light on diffuse surfaces from the sky, besides the lamps. None judges the beam alone.'),
+      row('Drive view: oncoming car distance (m)', rnum(() => dvOpts(ui).onDist, (v) => { setDV(ui, 'onDist', Math.max(10, Math.min(400, v))); }, { min: 10, max: 400, step: 5 }, true), 'Where the oncoming car is (the “oncoming” toggle on the Drive view). Its headlamps are emitters, seen at the intensity below.'),
+      row('Drive view: oncoming headlamp intensity (kcd)', rnum(() => dvOpts(ui).onKcd, (v) => { setDV(ui, 'onKcd', Math.max(1, Math.min(500, v))); }, { min: 1, max: 500, step: 5 }, true), 'Both lamps together, toward you. A passing beam seen head-on is roughly 30–60 kcd; a driving beam 100+.'),
+      row('Drive view: preceding car distance (m)', rnum(() => dvOpts(ui).preDist, (v) => { setDV(ui, 'preDist', Math.max(5, Math.min(300, v))); }, { min: 5, max: 300, step: 5 }, true), 'Where the car ahead of you is (the “preceding” toggle): tail lamps lit, retroreflective plate and reflectors lit by your beam.'),
+      row('Drive view: beam smoothing', rsel([['sharp', 'Sharp (0.2° × 0.2°)'], ['smooth', 'Smooth along H (0.5° × 0.15°)'], ['soft', 'Soft (1° × 0.3°)']], () => dvOpts(ui).smooth, (v) => { setDV(ui, 'smooth', v); }, true), 'The trace is a few million rays, so the beam has shot noise that the picture shows as mottled asphalt. Smoothing along H leaves the cut-off (a vertical edge) sharp. Raise the ray count (Simulation) for a cleaner picture.'),
+      row('Drive view: picture size', rsel([['480', '480 × 270'], ['640', '640 × 360'], ['960', '960 × 540'], ['1280', '1280 × 720']], () => String(dvOpts(ui).res), (v) => { setDV(ui, 'res', +v); }, true), 'Render size. 640 takes ~0.3 s in the browser; 1280 about a second in a forest or city.'),
+      row('Drive view: field of view (°)', rsel([['45', '45 (telephoto)'], ['60', '60'], ['75', '75'], ['90', '90 (wide)']], () => String(dvOpts(ui).fov), (v) => { setDV(ui, 'fov', +v); }, true), 'Horizontal field of view. The eye is 1.2 m up, 2 m behind the lamps, 0.37 m left of the car centre (mirrored for left-hand traffic).'),
       row('Aim on the car', rsel([['spec', 'As the spec’s lab aims it'], ['manual', 'Manual inclination (%)']], () => r().aim, (v) => { r().aim = v; }), 'As the lab aims it: the same aim the report uses. Manual: the cut-off (where the judge found it) is set at this downward slope; 1 % = 1 cm per metre ≈ 0.57°.'),
       row('Inclination (%)', rnum(() => r().aimPct, (v) => { r().aimPct = Math.max(-5, Math.min(1, v)); }, { min: -5, max: 1, step: 0.1 }), 'Used with "Manual". R48 initial aim: −1.0 to −1.5 % below 0.8 m mounting height; FMVSS VOL ≈ −0.7 % (0.4° D).'),
     ];
@@ -629,7 +632,7 @@
     for (const [k, label, step, tip] of IDEAL_ROWS) {
       let x;
       if (step === 'chk') { x = el('input', { type: 'checkbox' }); x._chk = true; x._get = () => cur()[k] !== false; x.addEventListener('change', () => { g()[k] = x.checked; roadChanged(ui); }); }
-      else { x = el('input', { type: 'number', step, min: 0 }); x._get = () => cur()[k]; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) g()[k] = k === 'hotH' ? v : Math.max(0, v); roadChanged(ui); }); }
+      else { x = el('input', k === 'hotH' ? { type: 'number', step } : { type: 'number', step, min: 0 }); x._get = () => cur()[k]; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) g()[k] = k === 'hotH' ? v : Math.max(0, v); roadChanged(ui); }); }
       x.dataset.spec = '1'; out.push(row(label, x, tip));
     }
     out.push(row('Reset to defaults', Object.assign(el('button', {}, 'Reset'), { onclick: () => { md(ui).ideal = {}; roadChanged(ui); ui.redrawSpec(); } }), 'Back to the current defaults (forgets every knob you changed).'));
@@ -739,14 +742,15 @@
     const k = bx.sp ? 1 : o.stretch === 'fit' ? Math.max(1, Math.min(6, Math.round(10 * box.h * (B0[2] - B0[0]) / (box.w * (B0[3] - B0[1]))) / 10)) : +o.stretch || 1;
     const B = [B0[0], B0[1] * k, B0[2], B0[3] * k]; view.roadK = k;
     const cap = view.cap; view.cap = 0;
-    if (!view.fitted || view.bounds.join() !== B.join()) view.fit(B, box.w, box.h);
+    if (!(box.w > 0 && box.h > 0)) { /* collapsed pane (0×0): keep the last good view, as prepare2d does */ }
+    else if (!view.fitted || view.bounds.join() !== B.join()) view.fit(B, box.w, box.h);
     else if (view.w !== box.w || view.h !== box.h) { if (view.zoomed) view.refitKeep(B, box.w, box.h); else view.fit(B, box.w, box.h); }
     view.cap = cap; view.capAt = cap;
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.clearRect(0, 0, box.w, box.h);
     const S = (x, y) => view.toScreen(x, y * k), a = S(B0[0], B0[3]), b = S(B0[2], B0[1]);
     ctx.fillStyle = '#0c0d10'; ctx.fillRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
     const up = o.sensor === 'up';
-    document.getElementById('right-caption').textContent = 'Road · bird’s-eye · lux on ' + (up ? 'the road surface' : 'a vertical sensor 25 cm up, facing the car (IIHS)') + ' · ' + (bx.sp ? o.shape.replace(/([RL])$/, ' m $1') + ' bend' : 'straight' + (k > 1.05 ? ', sideways ×' + k.toFixed(1) : ''));
+    document.getElementById('right-caption').textContent = 'Road · bird’s-eye · lux on ' + (up ? 'the road surface' : 'a vertical sensor 25 cm up, facing the car (IIHS)') + ' · ' + (bx.sp ? o.shape.replace(/([RL])$/, ' m $1') + ' bend' : 'straight' + (k > 1.05 ? ', sideways ×' + k.toFixed(1) : '')) + (roadOf(ui).aim === 'manual' && rd && !isFinite(ui.spec.ev.aim.cutV) ? ' · no cut-off found in the beam: inclination counted from 0°' : '');
     const cb = document.getElementById('colorbar'); cb.innerHTML = '';
     if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The road appears when the trace has been judged.', a[0] + 10, a[1] + 20); return; }
     const M = roadMap(ui, rd, o, bx), Mp = M.Mp, sc = roadScale(o, Mp), imgKey = JSON.stringify([sc.log, sc.lo, sc.top]);
@@ -845,9 +849,9 @@
       btn('shape', 'The road: straight, or an IIHS bend (shared with the Road view)', () => { const o = rvOpts(ui); setRV(ui, 'shape', RV_SHAPES[(RV_SHAPES.indexOf(o.shape) + 1) % RV_SHAPES.length]); });
       btn('wet', 'Dry or wet asphalt (wet is darker and mirror-like)', () => setDV(ui, 'wet', !dvOpts(ui).wet));
       btn('expMode', 'Exposure. Fixed: an absolute EV, so two designs at the same EV are comparable (EV 0 puts 10 cd/m² at white). Auto: the average lit pixel goes to mid grey, so every picture looks exposed and brightness differences hide.', () => setDV(ui, 'expMode', dvOpts(ui).expMode === 'auto' ? 'fixed' : 'auto'));
-      btn('evm', 'One stop darker', () => setDV(ui, 'ev', Math.max(-8, dvOpts(ui).ev - 0.5)));
+      btn('evm', 'Half a stop darker', () => setDV(ui, 'ev', Math.max(-8, dvOpts(ui).ev - 0.5)));
       btn('ev', 'Exposure value (click to reset)', () => setDV(ui, 'ev', DV_DEF.ev));
-      btn('evp', 'One stop brighter', () => setDV(ui, 'ev', Math.min(10, dvOpts(ui).ev + 0.5)));
+      btn('evp', 'Half a stop brighter', () => setDV(ui, 'ev', Math.min(10, dvOpts(ui).ev + 0.5)));
       btn('glare', 'Glare: the part of any pixel above display white is blurred wide and added back, a cheap stand-in for the eye\u2019s light scatter. Not calibrated. Off / low (default) / high (the first version\u2019s strength).', () => { const i = DV_GLARE.findIndex((g) => g[0] === dvOpts(ui).glare); setDV(ui, 'glare', DV_GLARE[(i + 1) % DV_GLARE.length][0]); });
       btn('people', 'Pedestrians (dark clothes, hi-vis vest with tape, light clothes)', () => setDV(ui, 'people', !dvOpts(ui).people));
       btn('animals', 'Deer, with retroreflecting eyes', () => setDV(ui, 'animals', !dvOpts(ui).animals));
