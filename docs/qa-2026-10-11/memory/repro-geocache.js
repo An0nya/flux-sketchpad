@@ -9,7 +9,7 @@ const pw = require('/Users/anya/Projects/agent-qa/node_modules/playwright');
   const h0 = await heap();
   const rows = [['n', 'heapMB']]; rows.push([0, h0]);
   for (const n of [100, 200, 400]) {
-    await page.evaluate((n) => { const R = 100; for (let q = 0; q < n; q++) { const p = new Array(R * R).fill(0); for (let k = 0; k < p.length; k++) if (Math.random() < 0.3) p[k] = 1; RF.Modes.geometry(p, R); } }, n - (rows.length > 2 ? rows[rows.length - 1][0] : 0));
+    await page.evaluate((n) => { const R = 100; for (let q = 0; q < n; q++) { const p = new Array(R * R).fill(0); let s = q * 2654435761 + 7; for (let k = 0; k < p.length; k++) { s = (s * 1664525 + 1013904223) >>> 0; if (s / 4294967296 < 0.3) p[k] = 1; } RF.Modes.geometry(p, R); } }, n - (rows.length > 2 ? rows[rows.length - 1][0] : 0));
     rows.push([n, await heap()]);
   }
   // control: same work with a fresh K each time is the same cache; control instead = allocate+drop arrays of the same size
