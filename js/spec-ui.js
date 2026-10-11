@@ -818,7 +818,7 @@
       let cl = rd.curves.map((c) => c.R + (c.dir === 'right' ? 'R' : 'L') + ' ' + c.d + ' m').join(' · ');
       ctx.font = '10px system-ui, sans-serif'; let tw = ctx.measureText('curves: ' + cl).width;
       if (tw > (b[0] - a[0]) * 0.6) { cl = rd.curves.map((c) => c.R + (c.dir === 'right' ? 'R' : 'L') + ' ' + c.d).join(' · ') + ' m'; tw = ctx.measureText('curves: ' + cl).width; }
-      const tb = cv.parentElement.querySelector('.road-tools'), tbBottom = tb ? tb.getBoundingClientRect().bottom - cv.getBoundingClientRect().top : 0;
+      const tb = cv.parentElement.querySelector('.road-tools'), tbBottom = tb && tb.offsetHeight ? tb.getBoundingClientRect().bottom - cv.getBoundingClientRect().top : 0;
       const x = Math.max(6, Math.min(b[0], box.w) - tw - 12), y = Math.max(a[1] + 2, tbBottom + 2);
       ctx.fillStyle = 'rgba(12,13,16,0.8)'; ctx.fillRect(x - 4, y, tw + 8, 14); ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillText('curves: ' + cl, x, y + 10);
     }
