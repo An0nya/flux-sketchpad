@@ -27,12 +27,14 @@
   // the canvas changed size under a view the user zoomed or panned: keep the same zoom factor and centre
   View2D.prototype.refitKeep = function (b, w, h) {
     const f = this.s / this.fitS, c = this.toContent(this.w / 2, this.h / 2);
+    if (!isFinite(f) || !(f > 0) || !c.every(isFinite)) return this.fit(b, w, h);   // a poisoned view (fit at 0×0) restarts from the plain fit
     this.fit(b, w, h);
     this.s = this.fitS * f; this.ox = w / 2 - this.s * c[0]; this.oy = h / 2 + this.s * c[1]; this.zoomed = true;
   };
 
   function prepare2d(cv, view, bounds, refit) {
     const box = fitCanvas(cv), ctx = cv.getContext('2d');
+    if (!(box.w > 0 && box.h > 0)) return { ctx, box };   // collapsed / hidden (0×0): keep the last good view, draw nothing
     const sameBounds = view.bounds.join() === bounds.join();
     if (!view.fitted || refit || !sameBounds) view.fit(bounds, box.w, box.h);
     else if (view.w !== box.w || view.h !== box.h || view.capAt !== view.cap) { if (view.zoomed) view.refitKeep(bounds, box.w, box.h); else view.fit(bounds, box.w, box.h); }
