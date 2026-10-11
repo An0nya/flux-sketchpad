@@ -14,7 +14,7 @@
 (function (root) {
   'use strict';
   const RF = root.RF;
-  const K = { RAIL: 34, BAR: 40, DIV: 10, MIN: 180, MIN_H: 140, DOM: 0.62, CHROME: 100, RIGHT_COLLAPSED_W: 220 };   // CHROME ≈ a map pane's head + caption + tools
+  const K = { RAIL: 34, BAR: 40, DIV: 10, MIN: 240, MIN_H: 300, DOM: 0.62, CHROME: 100, RIGHT_COLLAPSED_W: 220 };   // CHROME ≈ a map pane's head + caption + tools; MIN_H = the measured map chrome (~180, up to 250 when the head wraps) + a ~120 px map
   const PANES = ['scene', 'editor', 'result', 'optics'];
 
   function defaults() {
@@ -31,16 +31,16 @@
     return o;
   }
 
-  // one split of `total` px between sides a and b, with a divider of `div` px between them
+  // one split of `total` px between sides a and b, with a divider of `div` px between them (min: a number, or [a's, b's])
   function split(total, share, aCol, bCol, aExp, bExp, colSize, min, div) {
     if (aCol && bCol) return { a: colSize, b: Math.max(0, total - colSize - div), div };
     if (aCol) return { a: colSize, b: Math.max(0, total - colSize - div), div };
     if (bCol) return { a: Math.max(0, total - colSize - div), b: colSize, div };
     let s = share;
     if (aExp) s = Math.max(s, K.DOM); else if (bExp) s = Math.min(s, 1 - K.DOM);
-    const room = Math.max(0, total - div);
+    const room = Math.max(0, total - div), minA = Array.isArray(min) ? min[0] : min, minB = Array.isArray(min) ? min[1] : min;
     let a = Math.round(room * s);
-    if (room >= 2 * min) a = Math.min(Math.max(a, min), room - min);
+    if (room >= minA + minB) a = Math.min(Math.max(a, minA), room - minB);
     return { a, b: room - a, div };
   }
 
@@ -53,7 +53,7 @@
     // Scene | right
     let h;
     if (rightCol && !c.scene) h = { a: Math.max(0, W - K.RIGHT_COLLAPSED_W - K.DIV), b: K.RIGHT_COLLAPSED_W, div: K.DIV };
-    else h = split(W, st.split, !!c.scene, false, x === 'scene', inRight, K.RAIL, K.MIN, K.DIV);
+    else h = split(W, st.split, !!c.scene, false, x === 'scene', inRight, K.RAIL, [K.MIN, x === 'scene' || c.editor || c.result ? K.MIN : 2 * K.MIN + K.DIV], K.DIV);   // the right column keeps room for both maps side by side
     if (c.scene) cls.scene = 'rail';
 
     // pair over Optics

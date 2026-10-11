@@ -199,9 +199,9 @@ button.mini { min-height: 24px; padding: 1px var(--s-8); font-size: 11px; color:
 .colorbar .cb-labels.ticks .end-l { left: 0; transform: none; }
 .colorbar .cb-labels.ticks .end-r { right: 0; transform: none; }
 /* far-field view toggles, floating in the canvas corner (Spec mode, Far field view only) */
-.ff-tools { display: none; position: absolute; left: 4px; top: 4px; z-index: 2; gap: 2px; }
+.ff-tools { display: none; position: absolute; left: 4px; top: 4px; right: 4px; z-index: 2; gap: 2px; flex-wrap: wrap; pointer-events: none; }
 body.mode-D .canvas-wrap.ff .ff-tools { display: flex; }
-.ff-tools button { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); }
+.ff-tools button { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); pointer-events: auto; }
 /* drive-view controls (Spec mode, Drive view only) + the luminance readout under the pointer */
 .drive-tools { display: none; position: absolute; left: 4px; top: 4px; right: 4px; z-index: 2; gap: 2px; flex-wrap: wrap; pointer-events: none; align-items: center; }
 body.mode-D .canvas-wrap.drive .drive-tools { display: flex; }
@@ -231,7 +231,7 @@ body.mode-D .canvas-wrap.road .road-tools { display: flex; }
 .feas > .reason { padding-left: calc(18px * var(--density)); }
 /* "no limit binds": plain text, only the mark coloured */
 .bind.ok { color: var(--ink) !important; } .bind.ok .mk { color: var(--ok); } .bind.bad .mk { color: var(--bad); }
-.pane-head .modes button { min-height: 26px; padding: var(--s-2) var(--s-10); }
+.pane-head .modes button { min-height: 26px; padding: var(--s-2) var(--s-8); }
 .side-top { padding-top: var(--s-6); }
 #pattern-box .pat-name { flex: 1 1 90px; min-width: 70px; }
 
@@ -243,6 +243,7 @@ input.scrub:focus { cursor: text; }
 input.scrub.scrubbing { border-color: var(--b); color: var(--b); }
 
 .modes.seg { gap: 0; }
+.pane-head .modes.seg { flex-wrap: wrap; max-width: 100%; }   /* a narrow pane: the tabs wrap rather than run past the edge (Spec was unreachable) */
 /* sidebar copy of the mode tabs: always shown (the Editor's copy dims when that pane is inactive) */
 .side-top .modes { display: flex; flex: 1 1 100%; }
 .side-top .modes button { flex: 1; justify-content: center; }
@@ -289,6 +290,15 @@ figure.map .canvas-wrap.sq { aspect-ratio: auto; flex: 1 1 0; min-height: 0; }
 /* caption + tools line up with the drawn square, not the letterboxed canvas box (--sq set by JS) */
 figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: var(--sq, 100%); min-width: min(100%, 240px); max-width: 100%; margin-left: auto; margin-right: auto; }
 
+/* Editor | Result side by side: the two panes share their header / caption / tools rows (subgrid), so the two map squares sit at the same
+   height however many lines each header wraps to (Result's view buttons wrap more than Editor's tabs) */
+@media (min-width: 761px) {
+  .pair:not(.stacked):not(.both-bars) { grid-template-rows: auto auto minmax(0, 1fr) auto !important; }
+  .pair:not(.stacked):not(.both-bars) > .pane, .pair:not(.stacked):not(.both-bars) > .divider.pd { grid-row: 1 / span 4; }
+  .pair:not(.stacked):not(.both-bars) > .pane:not(.collapsed) { display: grid; grid-template-rows: subgrid; container-type: normal; }   /* (size containment would stop it being a subgrid; no @container query reads .pane) */
+  .pair:not(.stacked):not(.both-bars) > .pane:not(.collapsed) > figure.map { display: grid; grid-template-rows: subgrid; grid-row: 2 / span 3; gap: var(--s-4); }
+}
+
 /* collapsed: a BAR (header only) in a stacked split, a RAIL (vertical strip) in a side-by-side one; click restores */
 .pane.collapsed { cursor: pointer; }
 .pane.collapsed > :not(.pane-head) { display: none !important; }
@@ -323,11 +333,13 @@ figure.map > figcaption, figure.map > .toolrow, figure.map > .colorbar { width: 
 .tile-sep { width: 1px; align-self: stretch; background: var(--line); }
 .tile.rays b { font-size: 13px; color: var(--dim); font-weight: 500; }
 .tile .ms { color: #46545f; font-size: 9px; margin-left: 3px; }   /* a teensy fun detail */
-.foot-mid { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: var(--s-4); }
+.foot-mid { flex: 1 1 120px; min-width: 0; display: flex; flex-direction: column; gap: var(--s-4); }
 .foot-mid .energy { height: 7px; border: 0; border-radius: 2px; opacity: .85; }
-.min-limits { font-size: 12px; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-6); }
+.min-limits { font-size: 12px; line-height: 16px; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-6); }
 .min-limits .issue { color: var(--ink); }
 .min-limits .issue .mk { color: var(--warn); font-weight: 700; }
+/* a single-row footer: keep two lines of limits text, so the PREVIEW tile squeezing the text onto a second line doesn't make the footer (and every pane) grow mid-solve */
+@container (min-width: 1100px) { .min-limits { min-height: 32px; } }
 /* the energy bar only when the footer has room for it */
 @container (max-width: 900px) { .foot-mid .energy { display: none; } }
 /* Details: opens upward over the panes, bounded, scrolls itself */
@@ -437,6 +449,8 @@ button.primary.stale::after { content: ' •'; }
 /* ---- a solve is running (body.solving): make it obvious, esp. on a phone where the header status is hidden.
    The Rebuild buttons carry a spinner, the strip's text and the Result map carry a slow light sweep.  Transform /
    background-position only, so the compositor keeps them moving; still indicators when motion is reduced. */
+#btn-generate-top, #btn-generate { justify-content: center; }
+#btn-generate-top { min-width: 7.5em; } #btn-generate { min-width: 12em; }   /* hold the width the solving spinner adds, so nothing beside the button shifts */
 body.solving #btn-generate-top::before, body.solving #btn-generate::before { content: ''; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%;
   border: 2px solid currentColor; border-right-color: transparent; display: inline-block; vertical-align: -1px; box-sizing: border-box; }
 body.solving .canvas-wrap:has(> #heat-canvas) { position: relative; overflow: hidden; }

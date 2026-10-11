@@ -23,5 +23,16 @@ if (JSON.stringify(a) !== JSON.stringify(c) || b.rows[2] <= a.rows[2]) bad('expa
 // garbage in → defaults, not NaN
 const g = L.compute({ split: 'x', rowSplit: 7, collapsed: null, expanded: 'nope' }, 1200, 700);
 if (g.cols.some((v) => !isFinite(v))) bad('sanitize');
+// G12: at extreme divider shares a map pane still gets its chrome (~180 px measured) plus a usable map (>= 120 px)
+{
+  const MINMAP = 300;   // measured map chrome ~180 + a map of ~120
+  for (const [W, H] of [[1220, 800], [1100, 700], [900, 650]]) for (const sh of [0.06, 0.94]) for (const key of ['split', 'rowSplit', 'pairSplit']) {
+    const r = L.compute({ split: 0.48, rowSplit: 0.58, pairSplit: 0.5, [key]: sh, collapsed: {} }, W, H), tag = 'G12 ' + W + '×' + H + ' ' + key + '=' + sh;
+    if (r.rows[0] < MINMAP || r.rows[2] < MINMAP) bad(tag + ' row heights ' + r.rows[0] + '/' + r.rows[2] + ' < ' + MINMAP);
+    if (r.pair.stacked && r.rows[0] >= 2 * MINMAP + 10 && (r.pair.sizes[0] < MINMAP || r.pair.sizes[2] < MINMAP)) bad(tag + ' stacked pane heights ' + r.pair.sizes[0] + '/' + r.pair.sizes[2] + ' < ' + MINMAP);
+    if (r.cols[0] < 240 || r.cols[2] < 490) bad(tag + ' column widths ' + r.cols[0] + '/' + r.cols[2] + ' (Scene >= 240, Editor + Result side by side >= 490)');
+    n++;
+  }
+}
 console.log((fails ? '[FAIL] ' + fails + ' of ' : '[PASS] all ') + n + ' layouts fill the space; collapsed panes stay reachable; expand dominates and restores');
 process.exitCode = fails ? 1 : 0;   // not process.exit(): it intermittently hung in Node 25.8 platform shutdown
