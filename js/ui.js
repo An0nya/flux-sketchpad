@@ -154,6 +154,7 @@
     ui.store.invalidate(['B']); ui.store.commit({ deferA: true });
     document.body.classList.remove('mode-A', 'mode-B', 'mode-C', 'mode-D');
     document.body.classList.add('mode-' + m);
+    specLayout(m === 'D');
     const gt = document.getElementById('btn-generate-top');
     if (gt) { gt.disabled = !isPaint(m); gt.title = isPaint(m) ? 'Solve the reflector for the painted target' : 'Stamp and Profile modes rebuild live; Rebuild is for Paint and Spec modes'; }
     // Spec mode opens on its far-field view; leaving it, a far-field view falls back to the grid
@@ -1388,17 +1389,24 @@
   }
 
   // ---------------------------------------------------------------- Optics slow orbit
-  // First load: Optics turns until you move it by hand (then never again this load).  Idle orbit (sidebar,
+  // First load: Optics turns until you move it by hand, click into it, or the page sits idle for ORBIT_STOP_S (no pointer / key /
+  // wheel input, no solve or trace running); then never again this load.  Idle orbit (sidebar,
   // default never): it resumes after that many seconds untouched.  Off under reduced motion, while the tab
   // is hidden, while Optics is collapsed, and while you're dragging anything.  A turn doesn't count as
   // "moved by you", so an untouched view still refits.
   const ORBIT_DEG_S = 4, IDLE_STEPS = [0, 5, 10, 20, 30, 60, Infinity];
-  ui.orbitFirst = true; ui.orbitIdle = Infinity; ui.orbitLast = performance.now();
+  const ORBIT_STOP_S = 10;
+  ui.orbitFirst = true; ui.orbitIdle = Infinity; ui.orbitLast = ui.pageLast = performance.now();
   function orbitTouched() { ui.orbitFirst = false; ui.orbitLast = performance.now(); }
+  for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel']) document.addEventListener(ev, () => { ui.pageLast = performance.now(); }, { passive: true, capture: true });
+  document.addEventListener('pointerdown', (e) => { if (e.target.closest && e.target.closest('.optics-pane')) orbitTouched(); }, { passive: true, capture: true });   // clicking into Optics ends the first orbit
   function orbitWanted() {
     const pane = document.querySelector('.optics-pane');
     if (!ui.model || document.hidden || ui.interacting || ui.activeHandle || !pane || pane.classList.contains('bar') || pane.classList.contains('rail')) return false;
     if (root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    const now = performance.now();
+    if (ui.solving || (ui.run && !ui.run.ctx.done)) ui.pageLast = now;                      // a solve or trace running is not idle
+    if (ui.orbitFirst && now - ui.pageLast > ORBIT_STOP_S * 1000) { ui.orbitFirst = false; ui.orbitLast = now; }   // the first orbit ends for good; the sidebar option can still restart it
     return ui.orbitFirst || performance.now() - ui.orbitLast > ui.orbitIdle * 1000;
   }
   let orbitRaf = 0, orbitT = 0;
@@ -1552,8 +1560,9 @@
     document.body.classList.toggle('target-collapsed', !!st.collapsed.editor);
     for (const [k, el] of Object.entries(panes)) { el.classList.toggle('active', st.active === k); el.classList.toggle('expanded', st.expanded === k); }
     ui.inspCache = null; renderInspector();             // the numbers panel exists only while Optics is expanded
-    for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === st.active);
-    for (const b of document.querySelectorAll('[data-expand]')) { const on = st.expanded === b.dataset.expand; b.textContent = on ? '↙' : '⤢'; b.title = on ? 'Restore size' : 'Expand'; }
+    for (const b of document.querySelectorAll('[data-tab]')) { b.classList.toggle('on', b.dataset.tab === st.active); b.setAttribute('aria-pressed', String(b.dataset.tab === st.active)); }
+    for (const b of document.querySelectorAll('button.collapse')) b.setAttribute('aria-expanded', String(!st.collapsed[b.dataset.collapse]));
+    for (const b of document.querySelectorAll('[data-expand]')) { const on = st.expanded === b.dataset.expand; b.textContent = on ? '↙' : '⤢'; b.title = on ? 'Restore size' : 'Expand'; b.setAttribute('aria-pressed', String(on)); }
     if (phone()) {
       for (const el of [W, R, PR]) el.removeAttribute('style');
       PR.classList.remove('stacked', 'both-bars');
@@ -1571,7 +1580,24 @@
       el.classList.remove('phone-hidden');
       el.classList.toggle('rail', r.cls[k] === 'rail'); el.classList.toggle('bar', r.cls[k] === 'bar'); el.classList.toggle('collapsed', !!r.cls[k]);
     }
-    for (const d of document.querySelectorAll('.divider')) d.classList.toggle('off', !r.dividers[{ split: 'main', rowSplit: 'row', pairSplit: 'pair' }[d.dataset.split]]);
+    const eff = { split: [r.cols[0], r.cols[2]], rowSplit: [r.rows[0], r.rows[2]], pairSplit: [r.pair.sizes[0], r.pair.sizes[2]] };
+    for (const d of document.querySelectorAll('.divider')) {
+      const on = !!r.dividers[{ split: 'main', rowSplit: 'row', pairSplit: 'pair' }[d.dataset.split]], e = eff[d.dataset.split], share = on && e[0] + e[1] > 0 ? e[0] / (e[0] + e[1]) : st[d.dataset.split];
+      d.classList.toggle('off', !on); d.tabIndex = on ? 0 : -1; d.setAttribute('aria-disabled', String(!on)); d.setAttribute('aria-valuenow', String(Math.round(100 * share)));   // an off divider is inert for the keyboard too
+    }
+  }
+  // Spec mode opens with Editor collapsed and Result expanded; leaving it restores the layout from before (whatever was changed in
+  // between).  The pre-Spec layout is kept per browser, so a reload in Spec stays in its layout and the other modes keep theirs.
+  function specLayout(on) {
+    if (!ui.layout) return;
+    if (on && !ui.preSpec) {
+      if (phone()) return;
+      ui.preSpec = JSON.parse(JSON.stringify(ui.layout));
+      const st = ui.layout; st.collapsed.editor = true; st.collapsed.result = false; st.expanded = 'result'; st.active = 'result';
+    } else if (!on && ui.preSpec) { ui.layout = ui.preSpec; ui.preSpec = null; }
+    else return;
+    try { if (ui.preSpec) localStorage.setItem('flux/layoutPre', JSON.stringify(ui.preSpec)); else localStorage.removeItem('flux/layoutPre'); } catch (e) { /* ignore */ }
+    saveLayout(); animateLayout();
   }
   // Collapse / expand / restore animate the grid tracks (px → px interpolates); resizes and divider drags don't.
   function animateLayout() {
@@ -1584,7 +1610,7 @@
   function syncMapCap() {
     const a = document.getElementById('left-canvas').getBoundingClientRect(), b = document.getElementById('heat-canvas').getBoundingClientRect();
     const cap = a.width > 0 && b.width > 0 && a.height > 0 && b.height > 0 ? Math.floor(Math.min(a.width, a.height, b.width, b.height)) : 0;
-    ui.vLeft.cap = ui.vHeat.cap = cap;
+    ui.vLeft.cap = ui.vHeat.cap = ui.layout && (ui.layout.expanded === 'editor' || ui.layout.expanded === 'result') ? 0 : cap;   // an expanded map may outgrow its partner
   }
   ui.setPane = function (k, change) {           // change: 'collapse' | 'expand' | 'activate'
     const st = ui.layout, was = JSON.stringify(st);
@@ -1599,6 +1625,15 @@
   };
   // Dividers: drag writes the stored share (and ends an expand, so the pane follows the pointer);
   // arrow keys nudge; double-click resets.
+  // An expand shows the other splits at pixel sizes that differ from their stored shares; ending the expand by
+  // dragging one divider must keep those sizes, so write them back as shares first.
+  function freezeExpand() {
+    const st = ui.layout; if (!st.expanded || phone()) return;
+    const W = document.getElementById('workspace'), r = RF.Layout.compute(st, W.clientWidth, W.clientHeight);
+    const sh = (a, b) => a + b > 0 ? Math.min(0.9, Math.max(0.1, a / (a + b))) : null;
+    const m = sh(r.cols[0], r.cols[2]), w = sh(r.rows[0], r.rows[2]), p = r.pair.both ? null : sh(r.pair.sizes[0], r.pair.sizes[2]);
+    if (r.dividers.main && m) st.split = m; if (r.dividers.row && w) st.rowSplit = w; if (r.dividers.pair && p) st.pairSplit = p;
+  }
   function wireDividers() {
     for (const d of document.querySelectorAll('.divider')) {
       const key = d.dataset.split;
@@ -1607,17 +1642,19 @@
         const vert = key === 'rowSplit' || (key === 'pairSplit' && document.getElementById('pair').classList.contains('stacked'));
         return vert ? (e.clientY - box.top) / box.height : (e.clientX - box.left) / box.width;
       };
-      const set = (v) => { ui.layout[key] = Math.min(0.9, Math.max(0.1, v)); ui.layout.expanded = null; layoutGrid(); };
+      const set = (v) => { freezeExpand(); ui.layout[key] = Math.min(0.9, Math.max(0.1, v)); ui.layout.expanded = null; layoutGrid(); };
+      const live = () => !d.classList.contains('off');
+      d.setAttribute('aria-valuemin', '10'); d.setAttribute('aria-valuemax', '90');
       let id = null;
-      d.addEventListener('pointerdown', (e) => { id = e.pointerId; try { d.setPointerCapture(id); } catch (err) { /* ignore */ } d.classList.add('dragging'); e.preventDefault(); });
+      d.addEventListener('pointerdown', (e) => { if (!live()) return; id = e.pointerId; try { d.setPointerCapture(id); } catch (err) { /* ignore */ } d.classList.add('dragging'); e.preventDefault(); });
       d.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(share(e)); });
       const stop = (e) => { if (e.pointerId !== id) return; id = null; d.classList.remove('dragging'); saveLayout(); };
       d.addEventListener('pointerup', stop); d.addEventListener('pointercancel', stop);
       d.addEventListener('keydown', (e) => {
-        const k = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (!k) return;
-        e.preventDefault(); set(ui.layout[key] + k * 0.02); saveLayout();
+        const k = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (!k || !live()) return;
+        e.preventDefault(); freezeExpand(); set(ui.layout[key] + k * 0.02); saveLayout();
       });
-      d.addEventListener('dblclick', () => { set(RF.Layout.defaults()[key]); saveLayout(); });
+      d.addEventListener('dblclick', () => { if (!live()) return; set(RF.Layout.defaults()[key]); saveLayout(); });
     }
   }
   ui.layoutGrid = layoutGrid;
@@ -1648,7 +1685,7 @@
 
   function setDisplay(d) {
     ui.display = d;
-    for (const o of document.querySelectorAll('#heat-display button')) o.classList.toggle('on', o.dataset.disp === d);
+    for (const o of document.querySelectorAll('#heat-display button')) { o.classList.toggle('on', o.dataset.disp === d); o.setAttribute('aria-checked', String(o.dataset.disp === d)); }
     document.getElementById('heat-canvas').parentElement.classList.toggle('ff', d === 'ff');   // shows the far-field toggles
     document.getElementById('heat-canvas').parentElement.classList.toggle('road', d === 'road');   // shows the road-view toggles
     document.getElementById('heat-canvas').parentElement.classList.toggle('drive', d === 'drive');   // shows the drive-view toggles
@@ -1681,6 +1718,8 @@
     // panes: chevron / title collapses; a collapsed rail or bar restores on click; ⤢ expands
     try { ui.layout = JSON.parse(localStorage.getItem('flux/layout') || 'null'); } catch (e) { ui.layout = null; }
     ui.layout = RF.Layout.sanitize(ui.layout);
+    try { ui.preSpec = JSON.parse(localStorage.getItem('flux/layoutPre') || 'null'); } catch (e) { ui.preSpec = null; }
+    if (ui.preSpec) ui.preSpec = RF.Layout.sanitize(ui.preSpec);
     for (const b of document.querySelectorAll('[data-collapse]')) b.addEventListener('click', (e) => { e.stopPropagation(); ui.setPane(b.dataset.collapse, 'collapse'); });
     for (const b of document.querySelectorAll('[data-expand]')) b.addEventListener('click', (e) => { e.stopPropagation(); ui.setPane(b.dataset.expand, 'expand'); });
     for (const el of document.querySelectorAll('.pane')) {
@@ -1712,6 +1751,9 @@
       renderSolverBox();
     });
     // Scene: Reset view = the view the app opens with; Setup = show the edit handles here too
+    const resetOptics = () => { ui.camS.setAngles(193.8, 19.3); refitSurfaces(); ui.sceneDirty = true; schedule(); };   // Optics: the view the app opens with
+    document.getElementById('btn-optics-reset').addEventListener('click', resetOptics);
+    document.getElementById('surface-canvas').addEventListener('dblclick', resetOptics);
     document.getElementById('btn-reset-view').addEventListener('click', () => { ui.cam.setAngles(193.8, 19.3); ui.fit('all'); });
     const setupBtn = document.getElementById('btn-setup');
     setupBtn.addEventListener('click', () => { ui.setup = !ui.setup; setupBtn.setAttribute('aria-pressed', String(ui.setup)); ui.sceneDirty = true; schedule(); });
@@ -1828,17 +1870,19 @@
       bar.append(ok, no);
       document.querySelector('.side-top').append(bar);
     });
-    root.addEventListener('resize', () => { layoutGrid(); ui.sceneDirty = true; drawHeat(); schedule(); });   // phone ↔ desktop switch (ResizeObserver does the rest)
+    let wasNarrow = narrow();
+    root.addEventListener('resize', () => { const n = narrow(); if (n && !wasNarrow && !document.body.classList.contains('side-hidden')) setSide(false); wasNarrow = n; layoutGrid(); ui.sceneDirty = true; drawHeat(); schedule(); });   // phone ↔ desktop switch (ResizeObserver does the rest)
   }
 
   function boot() {
     let scene = null, restored = false;
     try { scene = RF.State.loadLocal(); restored = !!scene; } catch (e) { scene = null; }
+    const bad = !scene && RF.State.loadError && RF.State.loadError();   // the saved scene was unreadable: say so once
     if (!scene) scene = RF.State.defaultScene();
     ui.store = C.createStore(scene);
     P.buildSide(ui); renderPatterns();
     wireTopbar(); wireScene(); wireHeat(); wireLeft();
-    ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : null, true);
+    ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : bad ? 'Your saved scene could not be read (' + bad.message + '), so this is the default scene. ' + (bad.kept ? 'The unreadable copy is kept in this browser under “' + bad.key + '”.' : 'It could not be kept: browser storage is full.') : null, true);
     if (!scene.groups.A.surfaces.length && isPaint(scene.mode)) {
       // the default solver is a worker solver that arrives with the bundle: wait for it (restore() solves after)
       const waiting = RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(ui.store.scene));
