@@ -544,7 +544,7 @@
         const s = !extra.previewOf ? ui.spec : null, ev = s && s.ev;
         if (ev) {
           const worst = ev.rows.slice().sort((a, b) => a.margin - b.margin)[0], wt = worst ? RF.SpecUI.rowText(worst) : null;
-          row.append(el('div', { class: 'tile spec-v', title: 'Constraints that pass / fail / are unsure (the ±2σ noise band crosses the limit; more rays would settle them). Measured at ' + (s.G && isFinite(s.G.distance) ? Math.round(s.G.distance / 1000) + ' m' : '∞') + '.' },
+          row.append(el('div', { class: 'tile spec-v', title: 'Constraints that pass / fail / are unsure (the ±2σ noise band crosses the limit; more rays would settle them). Measured at ' + (s.G && isFinite(s.G.distance) ? (s.G.distance >= 1000 ? +(s.G.distance / 1000).toPrecision(3) + ' m' : s.G.distance + ' mm') : '∞') + '.' },
             el('b', {}, el('span', { class: 'v-pass' }, ev.n.pass + '✓'), ' ', el('span', { class: 'v-fail' }, ev.n.fail + '✗'), ' ', el('span', { class: 'v-unsure' }, ev.n.unsure + '?')), el('span', {}, 'pass · fail · unsure')));
           if (worst) row.append(t(worst.name, (worst.margin < 0 ? wt.off : wt.off || 'met') , 'Tightest constraint: ' + worst.name + ' needs ' + wt.need + ', read ' + wt.got + ' (' + worst.verdict + ').', 'spec-worst v-' + worst.verdict));
         } else row.append(t('—', extra.previewOf ? 'not judged (preview)' : 'not judged yet', extra.previewOf ? 'Preview candidates are traced for the picture, not judged (the judge takes seconds).' : 'The report appears when the trace runs.'));
