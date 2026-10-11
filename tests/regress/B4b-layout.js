@@ -12,7 +12,7 @@ const open = async (browser, vp) => {
   await page.waitForTimeout(800); return page;
 };
 const rect = (page, sel) => page.evaluate((s) => { const e = document.querySelector(s), r = e && e.getBoundingClientRect(); return r && { x: r.x, y: r.y, w: r.width, h: r.height, shown: getComputedStyle(e).display !== 'none' && r.height > 0 }; }, sel);
-const spec = async (page) => { await page.evaluate(() => RF.UI.setMode('D')); await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 150000 }); await page.waitForTimeout(800); };
+const spec = async (page) => { await page.evaluate(() => { RF.UI.setMode('D'); RF.UI.layout.collapsed.editor = false; RF.UI.layout.expanded = null; RF.UI.layoutGrid(); }); await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 150000 }); await page.waitForTimeout(800); };
 const expand = async (page) => { await page.evaluate(() => RF.UI.setPane('result', 'expand')); await page.waitForTimeout(700); };
 (async () => {
   const browser = await pw.chromium.launch();

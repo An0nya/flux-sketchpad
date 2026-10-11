@@ -11,7 +11,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
   await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 150000 });
   ok('page identifies as the Flux app (RF.UI exists)', await page.evaluate(() => !!(RF.UI && RF.UI.setMode && RF.SpecUI && RF.Spec)));
-  await page.evaluate(() => RF.UI.setMode('D'));
+  await page.evaluate(() => { RF.UI.setMode('D'); RF.UI.layout.collapsed.editor = false; RF.UI.layout.expanded = null; RF.UI.layoutGrid(); });
   await page.waitForFunction(() => { const ui = RF.UI; return ui.store.scene.mode === 'D' && !ui.solving && ui.run && ui.run.ctx.done && ui.spec && ui.spec.ctx === ui.run.ctx && ui.spec.full && ui.spec.ev; }, null, { timeout: 180000, polling: 250 });
   // 1. hover cards of every item: no headroom factor above 1000 and none on an unsure row
   const cards = await page.evaluate(() => { const ui = RF.UI, cv = document.getElementById('heat-canvas'), out = [];
