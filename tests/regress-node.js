@@ -208,5 +208,30 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     const a0 = ids[0], s2 = {}; SP.apply(s2, a0); SP.apply(s2, a0, { amps: 0.5 }); SP.apply(s2, a0);
     ok('D-C14 re-applying the SAME preset (model/current edits) still keeps the chosen current', s2.driveA === 0.5, 'driveA ' + s2.driveA);
   }
+  // D-E17: brush mode. raise (default, today's Math.max) / set (exactly the level) / lower (Math.min, only darkens); stored with the brush, validated like other enums
+  {
+    const SS = RF.State, st = C.createStore(SS.testScene()), sc = st.scene, p = sc.modeA.paint, res = sc.target.res;
+    const paintOnce = (level, mode, erase) => { sc.modeA.brush.strength = level; if (mode !== undefined) C.setControl(st, 'A.brushMode', mode); return C.actions.paintAt(st, 0, 0, erase); };
+    const cell = () => { let mx = 0, mn = 2; for (let k = 0; k < p.length; k++) if (p[k] > 0) { mx = Math.max(mx, p[k]); mn = Math.min(mn, p[k]); } return [mn, mx]; };
+    ok('D-E17 default brush mode is raise', sc.modeA.brush.mode === 'raise' && SS.defaultScene().modeA.brush.mode === 'raise', String(sc.modeA.brush.mode));
+    C.actions.clearPaint(st); paintOnce(0.8); paintOnce(0.3);
+    ok('D-E17 raise: a lower level does not darken (max of 0.8, 0.3 = 0.8)', cell()[1] === 0.8 && cell()[0] === 0.8, JSON.stringify(cell()));
+    paintOnce(0.3, 'set');
+    ok('D-E17 set: the cell becomes exactly the level (0.3)', cell()[1] === 0.3 && cell()[0] === 0.3, JSON.stringify(cell()));
+    paintOnce(0.9, 'set');
+    ok('D-E17 set: can also brighten (0.9)', cell()[1] === 0.9 && cell()[0] === 0.9, JSON.stringify(cell()));
+    paintOnce(0.5, 'lower');
+    ok('D-E17 lower: only darkens (min of 0.9, 0.5 = 0.5)', cell()[1] === 0.5 && cell()[0] === 0.5, JSON.stringify(cell()));
+    paintOnce(0.8, 'lower');
+    ok('D-E17 lower: a higher level does not brighten, and it does not paint empty cells', cell()[1] === 0.5, JSON.stringify(cell()));
+    C.actions.clearPaint(st); paintOnce(0.7, 'lower');
+    ok('D-E17 lower on an empty grid paints nothing', p.filter((x) => x > 0).length === 0);
+    paintOnce(0.7, 'set'); ok('D-E17 erase still zeroes in every mode', (paintOnce(0.7, 'lower', true), cell()[1] === 0) , JSON.stringify(cell()));
+    ok('D-E17 an unknown mode is refused by the control', (() => { try { C.setControl(st, 'A.brushMode', 'blend'); } catch (e) { /* ok either way */ } return sc.modeA.brush.mode === 'lower'; })(), sc.modeA.brush.mode);
+    const round = SS.deserialize(SS.serialize(sc)); ok('D-E17 the mode survives save / load', round.modeA.brush.mode === 'lower', round.modeA.brush.mode);
+    const old = JSON.parse(SS.serialize(sc)); delete old.modeA.brush.mode; ok('D-E17 an older file without the field loads as raise', SS.deserialize(old).modeA.brush.mode === 'raise');
+    const badScene = JSON.parse(SS.serialize(sc)); badScene.modeA.brush.mode = 'blend'; let threw = false; try { SS.deserialize(badScene); } catch (e) { threw = /brush\.mode/.test(e.message); }
+    ok('D-E17 a scene with an unknown brush mode is rejected by the schema check', threw);
+  }
   process.exitCode = fails ? 1 : 0;
 })();
