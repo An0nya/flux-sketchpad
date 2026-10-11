@@ -746,7 +746,7 @@
     const S = (x, y) => view.toScreen(x, y * k), a = S(B0[0], B0[3]), b = S(B0[2], B0[1]);
     ctx.fillStyle = '#0c0d10'; ctx.fillRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
     const up = o.sensor === 'up';
-    document.getElementById('right-caption').textContent = 'Road · bird’s-eye · lux on ' + (up ? 'the road surface' : 'a vertical sensor 25 cm up, facing the car (IIHS)') + ' · ' + (bx.sp ? o.shape.replace(/([RL])$/, ' m $1') + ' bend' : 'straight' + (k > 1.05 ? ', sideways ×' + k.toFixed(1) : ''));
+    document.getElementById('right-caption').textContent = 'Road · bird’s-eye · lux on ' + (up ? 'the road surface' : 'a vertical sensor 25 cm up, facing the car (IIHS)') + ' · ' + (bx.sp ? o.shape.replace(/([RL])$/, ' m $1') + ' bend' : 'straight' + (k > 1.05 ? ', sideways ×' + k.toFixed(1) : '')) + (roadOf(ui).aim === 'manual' && rd && !isFinite(ui.spec.ev.aim.cutV) ? ' · no cut-off found in the beam: inclination counted from 0°' : '');
     const cb = document.getElementById('colorbar'); cb.innerHTML = '';
     if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The road appears when the trace has been judged.', a[0] + 10, a[1] + 20); return; }
     const M = roadMap(ui, rd, o, bx), Mp = M.Mp, sc = roadScale(o, Mp), imgKey = JSON.stringify([sc.log, sc.lo, sc.top]);

@@ -419,6 +419,14 @@
     for (const r of rows) { sw += r.w; ss += r.w * r.soft; n[r.verdict]++; if (r.margin < worst) worst = r.margin; }
     return { rows, score: sw > 0 ? ss / sw : 1, worst: rows.length ? worst : 0, n, shift: [dh, dv] };
   }
+  // the beam's cut-off (the inflection of a vertical scan at the gradient item's H, in the beam's own V), whatever the aim mode: null if none
+  function findCut(G, md, items) {
+    const g = items.find((x) => x.kind === 'gradient'), h = g ? g.h : -2.5 * mirrorH(md), line = md.aimLine === undefined ? -0.57 : md.aimLine;
+    // search near the line first (the lab finds THE cut-off, not a stray streak at 4° U: SQM in the 7" bucket), then widely
+    // (a lamp built far off its line still gets aimed)
+    const S = md.aimScan > 0 ? md.aimScan : 3, kh = (g && g.kh) || 0.25;
+    return scanCut(G, h, Math.max(G.v0 + 0.2, line - S), Math.min(G.v1 - 0.2, line + S), 0.05, 0.1, kh, 0, 0) || scanCut(G, h, Math.max(G.v0 + 0.2, -6), Math.min(G.v1 - 0.2, 4), 0.05, 0.1, kh, 0, 0);
+  }
   /* How the lamp is aimed before it is judged (as a sampling offset [dh, dv]):
    *   'design' — as built.   'peak' — maximum on HV (§6.3.1, a driving-beam-only lamp).
    *   'cutoff' — instrumental vertical aim (Annex 9 §3.1): the inflection of a vertical scan through the horizontal
@@ -437,11 +445,7 @@
       return { base: [-h, -v], note: 'manual: beam ' + (h ? Math.abs(h) + '° ' + (h > 0 ? 'R' : 'L') : '') + (h && v ? ', ' : '') + (v ? Math.abs(v) + '° ' + (v > 0 ? 'up' : 'down') : '') + (h || v ? '' : 'as designed') };
     }
     if (mode === 'cutoff') {
-      const g = items.find((x) => x.kind === 'gradient'), h = g ? g.h : -2.5 * mirrorH(md), line = md.aimLine === undefined ? -0.57 : md.aimLine;
-      // search near the line first (the lab finds THE cut-off, not a stray streak at 4° U: SQM in the 7" bucket), then widely
-      // (a lamp built far off its line still gets aimed)
-      const S = md.aimScan > 0 ? md.aimScan : 3, kh = (g && g.kh) || 0.25;
-      const b = scanCut(G, h, Math.max(G.v0 + 0.2, line - S), Math.min(G.v1 - 0.2, line + S), 0.05, 0.1, kh, 0, 0) || scanCut(G, h, Math.max(G.v0 + 0.2, -6), Math.min(G.v1 - 0.2, 4), 0.05, 0.1, kh, 0, 0);
+      const g = items.find((x) => x.kind === 'gradient'), h = g ? g.h : -2.5 * mirrorH(md), line = md.aimLine === undefined ? -0.57 : md.aimLine, b = findCut(G, md, items);
       if (!b) return { base: [0, 0], note: 'no cut-off found at ' + Math.abs(h) + '° to aim by: judged as designed' };
       // AIM.noCutDesign: a traced beam with no edge that has darkness above it has no cut-off to aim by; the steepest soft step is noise (HB3 s11, one design,
       // 3 seeds: aimed 2.9° down / 2.6° UP / 1.9° down).  The lab could not aim it either: judge it as designed and say so.  (10-10)
@@ -465,6 +469,8 @@
   function evaluate(G, md, opts) {
     const items = itemsOf(md), k = md.kernel > 0 ? md.kernel : 0.15, cache = new Map(), fz = opts && opts.frozen, skipBox = !!(fz || (opts && opts.noBox) || md.aimMode === 'manual');
     const aim = fz ? { base: fz.base.slice(), note: (fz.note || 'aim') + ' (held while the trace runs)', cutV: fz.cutV } : aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
+    // the Road's manual inclination needs the cut-off position even when the judge aimed another way (design / peak / manual): note it, aim nothing
+    if (!fz && aim.cutV === undefined && md.aimMode !== 'cutoff') { const cb = findCut(G, md, items); if (cb && !(cb.soft && AIM.noCutDesign)) aim.cutV = cb.v; }
     const ir = md.itemReaim > 0 ? md.itemReaim : 0, held = fz ? fz.reaim : [0, 0];
     const atAim = evalAt(G, items, k, bh, bv, cache, ir, moveCostOf(md));
     let best = held[0] || held[1] ? evalAt(G, items, k, bh + held[0], bv + held[1], cache, ir, moveCostOf(md)) : atAim, reaim = held.slice();

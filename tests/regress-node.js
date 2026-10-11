@@ -101,5 +101,26 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     sc.modeD.distance = 18300; ok('G17 a numeric distance (FMVSS 18.3 m) is unchanged', RF.Spec.gridOpts(sc).distance === 18300);
     sc.modeD.distance = 0; ok('G17 distance 0 is still the far field', RF.Spec.gridOpts(sc).distance === Infinity);
   }
+  // G18: the cut-off position (ev.aim.cutV) is found whatever the Aim mode, so the Road's "Manual inclination" can use it
+  {
+  function fakeG(fn, win, step) {
+    const h0 = win[0], v0 = win[2], nh = Math.round((win[1] - win[0]) / step), nv = Math.round((win[3] - win[2]) / step), n = nh * nv, E = new Float64Array(n), E2 = new Float64Array(n), Om = new Float64Array(n), eRay = 1e-6;
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nh; i++) { const m = j * nh + i, om = RF.FarField.binOmega(h0 + i * step, h0 + (i + 1) * step, v0 + j * step, v0 + (j + 1) * step, 'A'); Om[m] = om; E[m] = fn(h0 + (i + 0.5) * step, v0 + (j + 0.5) * step) * om; E2[m] = E[m] * eRay; }
+    // build() is the only producer of sat; reuse its helper by building a G-shaped object the same way
+    const sat = (a) => { const W = nh + 1, S = new Float64Array(W * (nv + 1)); for (let j = 0; j < nv; j++) { let row = 0; for (let i = 0; i < nh; i++) { row += a[j * nh + i]; S[(j + 1) * W + i + 1] = S[j * W + i + 1] + row; } } return S; };
+    return { E, E2, Om, nh, nv, h0, v0, step, h1: h0 + nh * step, v1: v0 + nv * step, conv: 'A', distance: Infinity, eRay, rays: 1e9, sat: { E: sat(E), E2: sat(E2), Om: sat(Om) } };
+  }
+    const lamp = fakeG((h, v) => (v < 0.3 ? 10000 : 100), [-12, 12, -6, 6], 0.05), noCut = fakeG(() => 0, [-12, 12, -6, 6], 0.05);
+    const md0 = { traffic: 'RHT', conv: 'A', kernel: 0.1, aimLine: -0.57, aimBox: null, items: [{ id: 'g', kind: 'gradient', name: 'G', h: -2.5, v0: -1.5, v1: 0.5, scan: 0.05, dv: 0.1, min: 0.13, max: 0.40, on: true }] };
+    for (const mode of ['cutoff', 'design', 'peak', 'manual']) {
+      const ev = RF.Spec.evaluate(lamp, Object.assign({}, md0, { aimMode: mode, aimManual: { h: 0, v: 0.2 } }));
+      ok('G18 aim=' + mode + ': cut-off position found at 0.3 deg', isFinite(ev.aim.cutV) && Math.abs(ev.aim.cutV - 0.3) <= 0.05, 'cutV ' + ev.aim.cutV);
+    }
+    const evd = RF.Spec.evaluate(lamp, Object.assign({}, md0, { aimMode: 'design' })), evc = RF.Spec.evaluate(lamp, Object.assign({}, md0, { aimMode: 'cutoff' }));
+    ok('G18 finding the cut-off does not move a design-aimed judgement', evd.shift[0] === 0 && evd.shift[1] === 0, JSON.stringify(evd.shift));
+    ok('G18 a beam with no light reports no cut-off (design aim)', RF.Spec.evaluate(noCut, Object.assign({}, md0, { aimMode: 'design' })).aim.cutV === undefined);
+    const sh = RF.Road.aimShift({ aim: 'manual', aimPct: -1 }, evd);
+    ok('G18 Road manual -1 % puts the found cut-off at 0.573 deg D under design aim', Math.abs((evd.aim.cutV - sh[1]) + RF.Road.PCT) < 1e-9, 'cut-off on the road at ' + (evd.aim.cutV - sh[1]).toFixed(4));
+  }
   process.exitCode = fails ? 1 : 0;
 })();
