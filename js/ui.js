@@ -322,7 +322,8 @@
     if (secs > 1.5) ui.store.notice('Stopped the running solve (' + name + ', after ' + secs.toFixed(0) + ' s): ' + why + '.');   // quick re-solves while you drag a slider stay quiet
     return true;
   }
-  ui.stopSolve = () => { const j = ui.solving; if (!j) return; const seq = j.seq; RF.SolverHost.abort('stopped by you', 'user'); if (ui.solving && ui.solving.seq === seq) { ui.solving = null; showStop(false); ui.solveSeq++; ui.store.dirty.delete('A'); ui.setStatus('stopped — previous design kept'); ui.progress('done'); if (!solveFailed(j, 'user', 'stopped by you')) ui.store.notice('Solve stopped (' + j.name + '). The previous design is kept.'); P.renderNotices(ui); schedule(); } };
+  // Stop leaves dirty A set: the shown design was not solved for the current scene
+  ui.stopSolve = () => { const j = ui.solving; if (!j) return; const seq = j.seq; RF.SolverHost.abort('stopped by you', 'user'); if (ui.solving && ui.solving.seq === seq) { ui.solving = null; showStop(false); ui.solveSeq++; ui.setStatus('stopped — design out of date, press Rebuild'); ui.progress('done'); if (!solveFailed(j, 'user', 'stopped by you')) ui.store.notice('Solve stopped (' + j.name + '). The previous design is kept.'); P.renderNotices(ui); schedule(); } };
 
   // ---------------------------------------------------------------- watching a solve (tools.preview, SOLVER_API.md)
   // ui.watch = { seq, name, meta, version, t0, msg (the latest preview), n, model / heat (built on the next frame), failed? }.
@@ -512,9 +513,9 @@
           ui.refreshPanels(); ui.needCompile = true; ui.autosave(); schedule();
         }, (err) => {
           if (seq !== ui.solveSeq) return;
-          ui.solving = null; showStop(false); store.dirty.delete('A');
-          if (err && err.aborted) { job.budgetMs = err.budgetMs; if (!solveFailed(job, err.kind, err.message)) store.notice('Solve stopped (' + def.name + ', ' + err.message + '). The previous design is kept.'); ui.setStatus('stopped — previous design kept'); ui.progress('done'); ui.refreshPanels(); schedule(); return; }
-          store.reports.A = { error: 'Solver ' + def.name + ': ' + err.message, warnings: [], placed: 0 };
+          ui.solving = null; showStop(false);               // dirty A stays set: this solve's result was never applied, the kept design is out of date
+          if (err && err.aborted) { job.budgetMs = err.budgetMs; if (!solveFailed(job, err.kind, err.message)) store.notice('Solve stopped (' + def.name + ', ' + err.message + '). The previous design is kept.'); ui.setStatus('stopped — design out of date, press Rebuild'); ui.progress('done'); ui.refreshPanels(); schedule(); return; }
+          if (!store.reports.A) store.reports.A = { error: 'Solver ' + def.name + ': ' + err.message, warnings: [], placed: 0 };
           solveFailed(job, 'error', err.message); ui.refreshPanels(); schedule();
         });
         return;
