@@ -184,5 +184,14 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('G40 the metrics row has a capturable share (' + run.row.capturable + ')', run.row.capturable > 0 && run.row.capturable <= 1);
     ok('G40 hotspot ofPossible is a finite number (got ' + m.ofPossible + ')', isFinite(m.ofPossible) && m.ofPossible >= 0);
   }
+  // D-E08: a source outside the envelope is allowed (a valid design) but the limits panel warns while it is outside
+  {
+    const sc = RF.State.testScene(), F = RF.Feasibility, env = sc.envelope;
+    ok('D-E08 no warning while the source is inside the envelope', !F.analyze(sc).items.some((i) => i.key === 'srcOutside'));
+    sc.source.pos = [env.center[0] + env.half[0] + 10, env.center[1], env.center[2]];
+    const a = F.analyze(sc), it = a.items.find((i) => i.key === 'srcOutside');
+    ok('D-E08 a source outside the envelope gets a warning item', !!it && it.violated === true && /outside/i.test(it.text), it && it.text);
+    ok('D-E08 the source position is not clamped', sc.source.pos[0] === env.center[0] + env.half[0] + 10);
+  }
   process.exitCode = fails ? 1 : 0;
 })();
