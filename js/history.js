@@ -40,7 +40,7 @@
 
   // Write an intent snapshot into a live scene, keeping its view/tool state; caller re-derives groups.
   function apply(scene, it) {
-    const keep = { en: ['A', 'B', 'C'].map((g) => scene.groups[g].enabled), mode: scene.mode, notices: scene.notices, brush: scene.modeA.brush, selected: scene.modeB.selected,
+    const keep = { surfacesA: scene.groups.A && scene.groups.A.surfaces, en: ['A', 'B', 'C'].map((g) => scene.groups[g].enabled), mode: scene.mode, notices: scene.notices, brush: scene.modeA.brush, selected: scene.modeB.selected,
       solve: scene.solve, view: scene.sim.view, surfaceView: scene.sim.surfaceView, smoothing: scene.sim.smoothing };
     const c = JSON.parse(JSON.stringify(it));
     for (const k of Object.keys(scene)) if (!(k in c) && k !== 'mode' && k !== 'notices' && k !== 'groups') delete scene[k];
@@ -48,7 +48,8 @@
       if (k === 'groups') continue;
       scene[k] = v;
     }
-    for (const [g, v] of Object.entries(c.groups || {})) scene.groups[g] = Object.assign({ surfaces: [] }, v, DERIVED.includes(g) ? { surfaces: [] } : {});
+    // B/C/L rebuild synchronously; A's re-solve may be async (worker), so keep the solved reflector until it lands (dirty A marks it stale)
+    for (const [g, v] of Object.entries(c.groups || {})) scene.groups[g] = Object.assign({ surfaces: [] }, v, DERIVED.includes(g) ? { surfaces: g === 'A' && keep.surfacesA ? keep.surfacesA : [] } : {});
     if (keep.solve && scene.solve && keep.solve.id === scene.solve.id) scene.solve = keep.solve;   // the solver's meta describes the kept reflector
     ['A', 'B', 'C'].forEach((g, i) => { scene.groups[g].enabled = keep.en[i]; });
     scene.mode = keep.mode; scene.notices = keep.notices; scene.modeA.brush = keep.brush;

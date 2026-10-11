@@ -91,7 +91,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       ok('G05 boxBlur with a kernel 1e7 cells wide on a 200x200 grid is instant (' + ms + ' ms)', ms < 500);
     }
   }
-  // G07: derived and lazily created fields (solver meta, empty solverSettings, default road) are not intent
+  // G07 / G08: derived and lazily created fields are not intent; undo keeps the solved reflector until the re-solve replaces it
   {
     const H = RF.History, st = C.createStore(RF.State.defaultScene()); C.regenerateA(st);
     const h = H.create(100); h.reset(H.intent(st.scene)); delete st.scene.solve;   // the state right after a load: no solve key yet
@@ -113,6 +113,11 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('G07 four Undos walk back four edits and push nothing (past ' + n0 + ' -> ' + h.past.length + ', pushed ' + loops + ')', loops === 0 && h.past.length === n0 - 4);
     const picked = H.intent(Object.assign(JSON.parse(JSON.stringify(st.scene)), { solve: { id: 'fill' } }));
     ok('G07 choosing a different solver is still an edit', H.key(picked) !== H.key(H.intent(st.scene)));
+    // G08: apply() must not blank the solved reflector (group A) while a worker solve is pending
+    const st2 = C.createStore(RF.State.defaultScene()); C.regenerateA(st2); const n = st2.scene.groups.A.surfaces.length;
+    H.apply(st2.scene, H.intent(st2.scene));
+    ok('G08 undo keeps the current reflector until the re-solve lands (' + st2.scene.groups.A.surfaces.length + ' of ' + n + ' surfaces)', n > 0 && st2.scene.groups.A.surfaces.length === n);
+    ok('G08 the derived groups that rebuild synchronously are still reset', st2.scene.groups.B.surfaces.length === 0);
   }
   process.exitCode = fails ? 1 : 0;
 })();
