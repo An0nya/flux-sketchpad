@@ -1729,6 +1729,9 @@
       renderSolverBox();
     });
     // Scene: Reset view = the view the app opens with; Setup = show the edit handles here too
+    const resetOptics = () => { ui.camS.setAngles(193.8, 19.3); refitSurfaces(); ui.sceneDirty = true; schedule(); };   // Optics: the view the app opens with
+    document.getElementById('btn-optics-reset').addEventListener('click', resetOptics);
+    document.getElementById('surface-canvas').addEventListener('dblclick', resetOptics);
     document.getElementById('btn-reset-view').addEventListener('click', () => { ui.cam.setAngles(193.8, 19.3); ui.fit('all'); });
     const setupBtn = document.getElementById('btn-setup');
     setupBtn.addEventListener('click', () => { ui.setup = !ui.setup; setupBtn.setAttribute('aria-pressed', String(ui.setup)); ui.sceneDirty = true; schedule(); });
