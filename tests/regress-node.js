@@ -43,5 +43,44 @@ let fails = 0; const ok = (name, cond) => { console.log((cond ? '[PASS] ' : '[FA
     }
     for (const id of Object.keys(RF.SourcePresets.PRESETS)) { const sc = S.testScene(); RF.SourcePresets.apply(sc.source, id, id === 'measured' ? undefined : undefined); try { S.deserialize(S.serialize(sc)); } catch (e) { ok('G04 round-trips preset ' + id + ' (' + e.message + ')', false); } }
   }
+  // G05: every number control has finite bounds and the action layer clamps to them; no input can freeze or NaN the scene
+  {
+    const fresh = () => { const st = C.createStore(RF.State.defaultScene()); C.regenerateA(st); return st; };
+    const unbounded = C.CONTROLS.filter((c) => c.type === 'number' && !(isFinite(c.min) && isFinite(c.max))).map((c) => c.id);
+    ok('G05 every number control has a finite min and max (unbounded: ' + unbounded.join(' ') + ')', unbounded.length === 0);
+    let bad = [];
+    for (const c of C.CONTROLS.filter((c) => c.type === 'number')) {
+      for (const v of [1e300, -1e300, 1e10]) { const st = fresh(); try { C.setControl(st, c.id, v); const g = c.get(st); if (!(isFinite(g) && g >= c.min - 1e-9 && g <= c.max + 1e-9)) bad.push(c.id + '=' + v + '->' + g); } catch (e) { bad.push(c.id + ' threw ' + e.message); } }
+      const st = fresh(), before = c.get(st); for (const v of [NaN, Infinity, 'x', undefined]) { try { C.setControl(st, c.id, v); } catch (e) { /* a throw is also a rejection */ } } if (!Object.is(c.get(st), before)) bad.push(c.id + ' changed by a non-number: ' + before + ' -> ' + c.get(st));
+    }
+    ok('G05 typed extremes stay inside each control\'s range; NaN / Infinity / text are rejected (' + bad.slice(0, 4).join('; ') + (bad.length > 4 ? ' …' + bad.length : '') + ')', bad.length === 0);
+    { const st = C.createStore(RF.State.testScene()), t = st.scene.target, en = st.scene.envelope;   // testScene: the envelope reaches x = +20
+      C.actions.setTargetDistance(st, 1e-6); ok('G05 target cannot be dragged into the optic (distance ' + t.distance + ', envelope front ' + (en.center[0] + en.half[0]) + ')', t.distance > en.center[0] + en.half[0]);
+      C.actions.setTargetDistance(st, 1e12); ok('G05 target distance has a ceiling (' + t.distance + ')', t.distance <= 1e6);
+      C.actions.setTargetDistance(st, NaN); ok('G05 target distance ignores NaN', isFinite(t.distance)); }
+    { const st = fresh(); const s1 = C.actions.addStamp(st, 0, 0) || st.scene.modeB.stamps[0]; const id = st.scene.modeB.stamps[0].id, half = RF.Engine.designFrame(st.scene.target).half;
+      C.actions.moveStamp(st, id, 1e6, -1e6); const m = st.scene.modeB.stamps[0]; ok('G05 a stamp cannot be moved off the target (u ' + m.u + ', v ' + m.v + ', half ' + half + ')', Math.abs(m.u) <= half && Math.abs(m.v) <= half);
+      C.actions.moveStamp(st, id, NaN, 5); ok('G05 a stamp ignores a NaN move', isFinite(m.u) && isFinite(m.v)); }
+    { const st = fresh(); st.scene.source.kind = 'planar'; C.setControl(st, 'src.domeR', 3); C.setControl(st, 'src.domeZ', 2.85); C.setControl(st, 'src.domeR', 0.5); const d = st.scene.source.dome;
+      ok('G05 shrinking the dome keeps its centre in range (r ' + d.r + ', z ' + d.z + ')', Math.abs(d.z) <= 0.95 * d.r + 1e-12); }
+    // lenses: out-of-range or non-finite values are clamped / ignored, and no lens kind builds NaN geometry at the clamp limits
+    { const nonFinite = (o) => { if (typeof o === 'number') return !isFinite(o); if (o && typeof o === 'object') return Object.values(o).some(nonFinite); return false; };
+      const keys = { planoconvex: ['f', 'a', 'edge'], biconvex: ['f', 'a', 'edge'], asphere: ['f', 'a', 'edge'], tir: ['A', 'rc', 'hc', 'thMax'], fresnel: ['f', 'a', 'rings', 'tb'] }, probs = [];
+      for (const kind of Object.keys(keys)) for (const k of keys[kind].concat(['ior', 'fresnelT', 'd'])) for (const v of [0, -10, 1e6, NaN, Infinity]) {
+        const st = fresh(), L = C.actions.addLens(st, kind); if (k === 'd') C.actions.updateLens(st, L.id, 'auto', false); const t0 = Date.now();
+        C.actions.updateLens(st, L.id, k, v); try { st.commit(); } catch (e) { probs.push(kind + '.' + k + '=' + v + ' threw ' + e.message); continue; }
+        if (!isFinite(L.params[k]) || nonFinite(st.scene.groups.L.surfaces)) probs.push(kind + '.' + k + '=' + v + ' -> ' + L.params[k] + (nonFinite(st.scene.groups.L.surfaces) ? ' NaN surfaces' : ''));
+        if (Date.now() - t0 > 3000) probs.push(kind + '.' + k + '=' + v + ' slow');
+      }
+      ok('G05 lens fields at 0 / -10 / 1e6 / NaN / Infinity: stored finite, no NaN surfaces, no stall (' + probs.slice(0, 4).join('; ') + (probs.length > 4 ? ' …' + probs.length : '') + ')', probs.length === 0); }
+    // boxBlur: a kernel far wider than the grid must cost O(R^2), and equal the plain loop for ordinary widths
+    {
+      const R = 60, g = new Float64Array(R * R).map((_, k) => (k * 7919) % 13), ref = (src, w) => { const h = w / 2, pass = (a, ax) => { const o = new Float64Array(R * R); for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) { const c0 = ax ? i : j, a0 = c0 + 0.5 - h, b0 = c0 + 0.5 + h; let q0 = 0; for (let q = Math.floor(a0); q < Math.ceil(b0); q++) { if (q < 0 || q >= R) continue; q0 += (Math.min(b0, q + 1) - Math.max(a0, q)) * (ax ? a[j * R + q] : a[q * R + i]); } o[j * R + i] = q0 / w; } return o; }; return pass(pass(src, true), false); };
+      const a = RF.Photometry.boxBlur(g, R, 3.5), b = ref(g, 3.5); let d = 0; for (let k = 0; k < a.length; k++) d = Math.max(d, Math.abs(a[k] - b[k]));
+      ok('G05 boxBlur unchanged for an ordinary width (max diff ' + d + ')', d < 1e-12);
+      const t0 = Date.now(); RF.Photometry.boxBlur(new Float64Array(200 * 200).fill(1), 200, 1e7); const ms = Date.now() - t0;
+      ok('G05 boxBlur with a kernel 1e7 cells wide on a 200x200 grid is instant (' + ms + ' ms)', ms < 500);
+    }
+  }
   process.exitCode = fails ? 1 : 0;
 })();

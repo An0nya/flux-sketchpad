@@ -182,7 +182,7 @@
       const out = new Float64Array(R * R);
       for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
         const c = alongX ? i : j, a0 = c + 0.5 - h, b0 = c + 0.5 + h; let s = 0;
-        for (let q = Math.floor(a0); q < Math.ceil(b0); q++) { if (q < 0 || q >= R) continue; s += (Math.min(b0, q + 1) - Math.max(a0, q)) * (alongX ? g[j * R + q] : g[q * R + i]); }
+        for (let q = Math.max(0, Math.floor(a0)), qe = Math.min(R, Math.ceil(b0)); q < qe; q++) { s += (Math.min(b0, q + 1) - Math.max(a0, q)) * (alongX ? g[j * R + q] : g[q * R + i]); }
         out[j * R + i] = s / w;
       }
       return out;
