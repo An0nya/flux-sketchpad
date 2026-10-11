@@ -17,7 +17,7 @@
     'src.az': [0, 25], 'src.el': [90, 70], 'src.roll': [0, 30], 'src.x': [0, -3], 'src.y': [0, 3], 'src.z': [0, 2], 'src.power': [1000, 2000],
     'env.keep': [2.5, 4.5], 'A.minDist': [12, 18], 'env.hx': [40, 30], 'env.hy': [45, 30], 'env.hz': [32.5, 25], 'env.cx': [-20, -15], 'env.cy': [0, 5], 'env.cz': [27.5, 5],
     'tgt.dist': [1000, 1500], 'tgt.size': [1000, 800], 'tgt.tiltX': [0, 15], 'tgt.tiltY': [0, 15], 'aim.x': [1000, 1200], 'aim.y': [0, 100], 'aim.z': [0, 100], 'tgt.res': [50, 40],
-    'A.budget': [24, 12], 'A.refl': [0.9, 0.6], 'A.req': [0, 90], 'A.brush': [3, 8], 'A.strength': [1, 0.3],
+    'A.budget': [24, 12], 'A.refl': [0.9, 0.6], 'A.req': [0, 90], 'A.brush': [3, 8], 'A.strength': [1, 0.3], 'A.brushMode': ['raise', 'set'],
     'B.scale': [160, 60], 'B.ap': [10, 16],
     'C.f': [12, 20], 'C.rim': [45, 30], 'C.depth': [30, 60], 'C.theta': [20, 35], 'C.a1': [2, 3], 'C.n': [40, 20], 'C.len': [60, 20], 'C.az': [0, 16],
     'C.refl': [0.9, 0.5], 'C.ior': [1.49, 1.8], 'C.T': [0.96, 0.8],
@@ -50,6 +50,7 @@
     const A = C.actions;
     if (id === 'A.brush' || id === 'A.strength') A.paintAt(store, 300, 200);
     if (id === 'A.erase') A.paintAt(store, 0, 0);
+    if (id === 'A.brushMode') { store.scene.modeA.brush.strength = 0.3; A.paintAt(store, 0, 0); }   // set pulls a brighter cell down to 0.3, raise leaves it
     if (id === 'tgt.linked') C.setControl(store, 'tgt.dist', 1300);
     if (id === 'B.dir') {                          // manual keeps the current direction; the user then drags the picker
       store.commit();

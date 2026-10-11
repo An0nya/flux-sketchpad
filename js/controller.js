@@ -97,6 +97,8 @@
   function num(id, label, get, set, o) {
     return Object.assign({ id, label, type: 'number', get, set, modes: all, adv: false, groups: [], min: -Infinity, max: Infinity, step: 'any' }, o || {});
   }
+  const BRUSH_MODES = ['raise', 'set', 'lower'];
+  const BRUSH_HELP = 'Raise: a cell takes the brush level only if that is brighter (the default). Set: a cell becomes exactly the brush level, brighter or darker. Lower: a lit cell takes the brush level only if that is darker; empty cells stay empty.';
   function sel(id, label, options, get, set, o) { return Object.assign(num(id, label, get, set, o), { type: 'select', options }); }
   function chk(id, label, get, set, o) { return Object.assign(num(id, label, get, set, o), { type: 'check' }); }
   const S = (s) => s.scene.source, EN = (s) => s.scene.envelope, TG = (s) => s.scene.target, SIM = (s) => s.scene.sim;
@@ -159,6 +161,7 @@
     num('A.req', 'Required delivered flux %', (s) => s.scene.modeA.requiredFlux, (s, v) => { s.scene.modeA.requiredFlux = RF.U.clamp(v, 0, 100); }, { section: 'modeA', modes: ['A', 'D'], adv: true, min: 0, max: 100, step: 1, help: '0 = shape only. Otherwise the feasibility report checks this absolute level against what the envelope can intercept.' }),
     num('A.brush', 'Brush size (cells)', (s) => s.scene.modeA.brush.size, (s, v) => { s.scene.modeA.brush.size = RF.U.clamp(v, 0.5, 20); }, { section: 'heatmap', modes: ['A', 'D'], min: 0.5, max: 20, step: 0.5 }),
     num('A.strength', 'Brush level', (s) => s.scene.modeA.brush.strength, (s, v) => { s.scene.modeA.brush.strength = RF.U.clamp(v, 0.05, 1); }, { section: 'heatmap', modes: ['A', 'D'], min: 0.05, max: 1, step: 0.05 }),
+    sel('A.brushMode', 'Brush mode', [['raise', 'Raise (only brightens)'], ['set', 'Set (exact level)'], ['lower', 'Lower (only darkens)']], (s) => s.scene.modeA.brush.mode, (s, v) => { if (BRUSH_MODES.includes(v)) s.scene.modeA.brush.mode = v; }, { section: 'heatmap', modes: ['A', 'D'], help: BRUSH_HELP }),
     chk('A.erase', 'Erase', (s) => !!s.scene.modeA.brush.erase, (s, v) => { s.scene.modeA.brush.erase = !!v; }, { section: 'heatmap', modes: ['A', 'D'] }),
     // ---- Mode B (selected stamp)
     num('B.scale', 'Tile scale (mm)', (s) => selStamp(s) ? selStamp(s).scale : s.scene.modeB.defaultScale, (s, v) => { const st = selStamp(s); if (st) st.scale = Math.max(1e-6, v); else s.scene.modeB.defaultScale = Math.max(1e-6, v); }, { primary: true, section: 'modeB', modes: ['B'], groups: ['B'], min: 1, max: 5000, step: 1, help: 'Range clamps to what this facet can physically paint (reason shown below).' }),
@@ -240,8 +243,8 @@
       for (let j = Math.floor(cj - rad - 1); j <= Math.ceil(cj + rad + 1); j++) for (let i = Math.floor(ci - rad - 1); i <= Math.ceil(ci + rad + 1); i++) {
         if (i < 0 || j < 0 || i >= res || j >= res) continue;
         if ((i - ci) ** 2 + (j - cj) ** 2 > rad * rad + 0.25) continue;
-        const k = j * res + i, nv = (erase === undefined ? b.erase : erase) ? 0 : Math.max(sc.modeA.paint[k], b.strength);
-        if (nv !== sc.modeA.paint[k]) { sc.modeA.paint[k] = nv; changed = true; }
+        const k = j * res + i, old = sc.modeA.paint[k], nv = (erase === undefined ? b.erase : erase) ? 0 : b.mode === 'set' ? b.strength : b.mode === 'lower' ? Math.min(old, b.strength) : Math.max(old, b.strength);   // raise (default) = max
+        if (nv !== old) { sc.modeA.paint[k] = nv; changed = true; }
       }
       if (changed) store.invalidate(['A']);
       return changed;

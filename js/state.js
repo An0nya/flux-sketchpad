@@ -51,7 +51,7 @@
       target: { distance: 1000, size: 1000, tiltX: 0, tiltY: 0, res: 50, linked: true, aim: [1000, 0, 0] },
       sim: { rays: 10000, res: 50, autoRes: false, bounces: 1, floor: 0.01, seed: 1, smoothing: false, view: 'total', surfaceView: 'shaded' },
       mode: 'A',
-      modeA: { paint: defaultPaint(50), brush: { size: 3, strength: 1, erase: false }, budget: 48, facetType: 'curved', reflectivity: 0.9, requiredFlux: 0, minDistance: 12 },   // minDistance: solver preference (was part of a 12 mm keep-out)
+      modeA: { paint: defaultPaint(50), brush: { size: 3, strength: 1, erase: false, mode: 'raise' }, budget: 48, facetType: 'curved', reflectivity: 0.9, requiredFlux: 0, minDistance: 12 },   // minDistance: solver preference (was part of a 12 mm keep-out)
       modeB: { stamps: [], selected: null, facetType: 'curved', defaultScale: 160, minDistance: 12 },
       modeD: RF.Spec ? RF.Spec.defaults() : {},     // Spec mode: beam spec (points / zones / cut-off) + the paint as a secondary goal (js/spec.js)
       modeC: {
@@ -122,6 +122,7 @@
     const sm = obj(sc.sim, 'sim');
     num(sm, 'rays', 100, 2e7, 'sim', true); num(sm, 'res', 10, 1000, 'sim', true); num(sm, 'bounces', 1, 16, 'sim', true); num(sm, 'floor', 0, 1, 'sim'); num(sm, 'seed', -2147483648, 2147483647, 'sim', true);
     num(obj(sc.modeA, 'modeA'), 'budget', 1, 2000, 'modeA', true);
+    oneOf(obj(sc.modeA.brush, 'modeA.brush'), 'mode', ['raise', 'set', 'lower'], 'modeA.brush');
     const keep = (list, path, ok) => { arr(list, path); return list.filter(ok); };
     sc.modeB.stamps = keep(sc.modeB.stamps, 'modeB.stamps', isObj);
     sc.modeC.profile = keep(sc.modeC.profile, 'modeC.profile', (p) => Array.isArray(p) && p.length >= 2 && isFinite(p[0]) && isFinite(p[1]) && typeof p[0] === 'number' && typeof p[1] === 'number');
