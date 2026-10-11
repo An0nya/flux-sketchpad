@@ -393,7 +393,8 @@
     // the far field is in degrees, not the paint grid: no size pairing with the Editor (that cap shrank it to the
     // smaller pane). Default fit = the spec window; zoom out to see the wide context grid around it.
     const cap = view.cap; view.cap = 0;
-    if (!view.fitted || view.bounds.join() !== win.join()) view.fit(win, box.w, box.h);
+    if (!(box.w > 0 && box.h > 0)) { /* collapsed pane (0×0): keep the last good view, as prepare2d does */ }
+    else if (!view.fitted || view.bounds.join() !== win.join()) view.fit(win, box.w, box.h);
     else if (view.w !== box.w || view.h !== box.h) { if (view.zoomed) view.refitKeep(win, box.w, box.h); else view.fit(win, box.w, box.h); }
     view.cap = cap; view.capAt = cap;
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.clearRect(0, 0, box.w, box.h);
@@ -741,7 +742,8 @@
     const k = bx.sp ? 1 : o.stretch === 'fit' ? Math.max(1, Math.min(6, Math.round(10 * box.h * (B0[2] - B0[0]) / (box.w * (B0[3] - B0[1]))) / 10)) : +o.stretch || 1;
     const B = [B0[0], B0[1] * k, B0[2], B0[3] * k]; view.roadK = k;
     const cap = view.cap; view.cap = 0;
-    if (!view.fitted || view.bounds.join() !== B.join()) view.fit(B, box.w, box.h);
+    if (!(box.w > 0 && box.h > 0)) { /* collapsed pane (0×0): keep the last good view, as prepare2d does */ }
+    else if (!view.fitted || view.bounds.join() !== B.join()) view.fit(B, box.w, box.h);
     else if (view.w !== box.w || view.h !== box.h) { if (view.zoomed) view.refitKeep(B, box.w, box.h); else view.fit(B, box.w, box.h); }
     view.cap = cap; view.capAt = cap;
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.clearRect(0, 0, box.w, box.h);
