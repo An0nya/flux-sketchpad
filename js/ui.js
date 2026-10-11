@@ -1605,7 +1605,6 @@
   };
   // Dividers: drag writes the stored share (and ends an expand, so the pane follows the pointer);
   // arrow keys nudge; double-click resets.
-  function wireDividers() {
   // An expand shows the other splits at pixel sizes that differ from their stored shares; ending the expand by
   // dragging one divider must keep those sizes, so write them back as shares first.
   function freezeExpand() {
@@ -1615,6 +1614,7 @@
     const m = sh(r.cols[0], r.cols[2]), w = sh(r.rows[0], r.rows[2]), p = r.pair.both ? null : sh(r.pair.sizes[0], r.pair.sizes[2]);
     if (r.dividers.main && m) st.split = m; if (r.dividers.row && w) st.rowSplit = w; if (r.dividers.pair && p) st.pairSplit = p;
   }
+  function wireDividers() {
     for (const d of document.querySelectorAll('.divider')) {
       const key = d.dataset.split;
       const share = (e) => {
