@@ -573,7 +573,7 @@
     const rnum = (get, set, o, view) => { const x = el('input', Object.assign({ type: 'number', step: 'any' }, o)); x.dataset.spec = '1'; x._get = get; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) set(v); (view ? viewChanged : roadChanged)(ui); }); return x; };
     const rchk = (get, set) => { const x = el('input', { type: 'checkbox' }); x.dataset.spec = '1'; x._get = get; x._chk = true; x.addEventListener('change', () => { set(x.checked); roadChanged(ui); }); return x; };
     return [
-      el('div', { class: 'note' }, 'A straight two-lane road lit by this beam: Result → Road (bird’s-eye), Far field → road, and the 5 lx reach in the footer. The reach follows IIHS (5 lx, 25 cm up, edges of a 6.6 m road); the lanes drawn follow the width below. Right-hand traffic (mirrored for left-hand).'),
+      el('div', { class: 'note' }, 'A straight two-lane road lit by this beam: Result → Road (bird’s-eye), Far field → road, and the 5 lx reach in the footer. The reach follows IIHS (5 lx, 25 cm up, at the IIHS points, the edges of IIHS\u2019s own 6.6 m road (two 3.3 m lanes): 1.65 m right and 4.95 m left of the car); the lanes drawn follow the width below, so the blue IIHS markers need not sit on the drawn edges. Right-hand traffic (mirrored for left-hand).'),
       row('Lane width', rsel([['auto', 'By preset (ECE → R112 reference, FMVSS → US)'], ['r112', 'R112 reference: right edge 1.5 m from the lamp'], ['us', 'US 3.6 m (12 ft)'], ['eu', 'EU 3.5 m'], ['iihs', 'IIHS 3.3 m']], () => r().lane, (v) => { r().lane = v; }),
         'R112’s 75R and 50R test points sit 1.5 m right of the lamp axis, so on the reference road its right edge passes through them (Road view and the far-field overlay). The Drive view keeps a real lane (ECE 3.5 m, FMVSS 3.6 m) unless you pick the reference lane here. FMVSS points are plain angles, so it keeps the US 3.6 m.'),
       row('Mounting height (m)', rnum(() => r().mountH > 0 ? r().mountH : RF.Road.mountDefault(md(ui).preset), (v) => { r().mountH = v > 0 ? Math.max(0.2, Math.min(2, v)) : null; }, { min: 0.2, max: 2, step: 0.05 }), 'Height of the lamp above the road. A regulation spec sets its own until you type one: ECE R112 0.75 m (its V angles are 1 % / 1.5 % / 3 % of 75 / 50 / 25 m at that height), otherwise 0.65 m. R48 §6.2.6.1.2 sets the dipped-beam aim by it: under 0.8 m, −1.0 to −1.5 %; over 1.0 m, −1.5 to −2.0 %.'),
@@ -787,13 +787,16 @@
       if (far) { const p = S(far[0], far[1]), t = fmtLx(L) + ' lx', w = ctx.measureText(t).width; ctx.fillStyle = 'rgba(12,13,16,0.8)'; ctx.fillRect(p[0] + 3, p[1] - 14, w + 4, 12); ctx.fillStyle = '#ffffff'; ctx.fillText(t, p[0] + 5, p[1] - 4); }
     }
     for (const L of rd.mdl.lamps) { const p = S(0.4, L[1]); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, 2 * Math.PI); ctx.fill(); }
-    // IIHS 5 lx reach on each edge (the vertical sensor's metric: not drawn for the ground sensor)
+    // IIHS 5 lx reach on each edge (the vertical sensor's metric: not drawn for the ground sensor).  The markers are IIHS's measurement
+    // points, not the drawn road: IIHS Headlight Test and Rating Protocol, Version III, July 2018, "Test Conditions" (printed p. 5) + Figure 2:
+    // straightaway = points 1 and 3, the right and left edges of a 6.6 m road (two 3.3 m lanes, origin X on the car's lane centre), 25 cm up;
+    // curves = points 1 and 2, the edges of the 3.3 m travel lane.  Matches road.js IIHS.lane = 3.3 (right -1.65 m, left +4.95 m).
     const I3 = RF.Road.IIHS, R = rd.iihs, mark = (x, y, txt) => { const p = S(Math.max(x, 0.5), y); ctx.fillStyle = '#5aa7ff'; ctx.beginPath(); ctx.moveTo(p[0], p[1] - 6); ctx.lineTo(p[0] + 5, p[1]); ctx.lineTo(p[0], p[1] + 6); ctx.closePath(); ctx.fill(); ctx.fillStyle = 'rgba(12,13,16,0.8)'; const w = ctx.measureText(txt).width; ctx.fillRect(p[0] + 7, p[1] - 7, w + 4, 13); ctx.fillStyle = '#ffffff'; ctx.fillText(txt, p[0] + 9, p[1] + 3); };
     if (!up) {
-      if (!bx.sp) { mark(R.right, -I3.lane / 2, 'R edge 5 lx: ' + R.right + ' m'); mark(R.left, 1.5 * I3.lane, 'L edge 5 lx: ' + R.left + ' m'); }
+      if (!bx.sp) { mark(R.right, -I3.lane / 2, 'IIHS R point: 5 lx to ' + R.right + ' m'); mark(R.left, 1.5 * I3.lane, 'IIHS L point: 5 lx to ' + R.left + ' m'); }
       else {
         const c = rd.curves.find((q) => q.R === bx.sp.R && q.dir === bx.sp.dir);
-        if (c) { const pr = bx.A.at(c.right, -I3.lane / 2).p, pl = bx.A.at(c.left, I3.lane / 2).p; mark(pr[0], pr[1], 'R edge 5 lx: ' + c.right + ' m'); mark(pl[0], pl[1], 'L edge 5 lx: ' + c.left + ' m'); }
+        if (c) { const pr = bx.A.at(c.right, -I3.lane / 2).p, pl = bx.A.at(c.left, I3.lane / 2).p; mark(pr[0], pr[1], 'IIHS R point: 5 lx to ' + c.right + ' m'); mark(pl[0], pl[1], 'IIHS L point: 5 lx to ' + c.left + ' m'); }
       }
     }
     ctx.restore();
@@ -810,7 +813,7 @@
     const pos = (v) => (sc.log ? 100 * Math.log10(v / sc.lo) / Math.log10(sc.top / sc.lo) : 100 * v / sc.top).toFixed(1) + '%';
     const ticks = sc.log ? niceTicks(sc.lo, sc.top) : niceTicks(sc.top / 12, sc.top).filter((v) => v >= sc.top / 8);
     const bar = el('i', { style: 'background:' + RF.Render2D.colorbarCSS() }); for (const v of ticks) bar.append(el('b', { style: 'left:' + pos(v) }));
-    const labels = el('div', { class: 'cb-labels ticks', title: (sc.log ? 'Log scale, two decades under the top. ' : 'Linear scale, 0 to the top (' + (o.max > 0 ? 'set in Spec → Road' : 'automatic: the 99.5th percentile of this view') + '). ') + 'White outline: 5 lx (the IIHS visibility level).' }, el('span', { class: 'end-l' }, sc.log ? fmtLx(sc.lo) + ' lx' : '0'));
+    const labels = el('div', { class: 'cb-labels ticks', title: (sc.log ? 'Log scale, two decades under the top. ' : 'Linear scale, 0 to the top (' + (o.max > 0 ? 'set in Spec → Road' : 'automatic: the 99.5th percentile of this view') + '). ') + 'White outline: 5 lx (the IIHS visibility level). Blue markers: the IIHS measurement points (straightaway points 1 and 3: the edges of IIHS\u2019s own 6.6 m road, 1.65 m right and 4.95 m left of the car, 25 cm up), where the 5 lx reach is read; they are not the drawn road edges.' }, el('span', { class: 'end-l' }, sc.log ? fmtLx(sc.lo) + ' lx' : '0'));
     for (const v of ticks) labels.append(el('span', { style: 'left:' + pos(v) }, fmtLx(v)));
     labels.append(el('span', { class: 'end-r' }, fmtLx(sc.top) + ' lx')); cb.append(bar, labels);
   }
