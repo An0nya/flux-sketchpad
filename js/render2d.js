@@ -22,17 +22,20 @@
   };
   View2D.prototype.toScreen = function (x, y) { return [this.ox + this.s * x, this.oy - this.s * y]; };
   View2D.prototype.toContent = function (sx, sy) { return [(sx - this.ox) / this.s, (this.oy - sy) / this.s]; };
-  View2D.prototype.zoomAt = function (f, sx, sy) { this.ox = sx - (sx - this.ox) * f; this.oy = sy - (sy - this.oy) * f; this.s *= f; this.zoomed = true; };
+  View2D.prototype.zoomAt = function (f, sx, sy) { if (this.fitS > 0) f = Math.max(this.fitS * 0.05, Math.min(this.fitS * 200, this.s * f)) / this.s;   // zoom stays within [0.05, 200] x the fitted scale
+    this.ox = sx - (sx - this.ox) * f; this.oy = sy - (sy - this.oy) * f; this.s *= f; this.zoomed = true; };
   View2D.prototype.panBy = function (dx, dy) { this.ox += dx; this.oy += dy; this.zoomed = true; };
   // the canvas changed size under a view the user zoomed or panned: keep the same zoom factor and centre
   View2D.prototype.refitKeep = function (b, w, h) {
     const f = this.s / this.fitS, c = this.toContent(this.w / 2, this.h / 2);
+    if (!isFinite(f) || !(f > 0) || !c.every(isFinite)) return this.fit(b, w, h);   // a poisoned view (fit at 0×0) restarts from the plain fit
     this.fit(b, w, h);
     this.s = this.fitS * f; this.ox = w / 2 - this.s * c[0]; this.oy = h / 2 + this.s * c[1]; this.zoomed = true;
   };
 
   function prepare2d(cv, view, bounds, refit) {
     const box = fitCanvas(cv), ctx = cv.getContext('2d');
+    if (!(box.w > 0 && box.h > 0)) return { ctx, box };   // collapsed / hidden (0×0): keep the last good view, draw nothing
     const sameBounds = view.bounds.join() === bounds.join();
     if (!view.fitted || refit || !sameBounds) view.fit(bounds, box.w, box.h);
     else if (view.w !== box.w || view.h !== box.h || view.capAt !== view.cap) { if (view.zoomed) view.refitKeep(bounds, box.w, box.h); else view.fit(bounds, box.w, box.h); }
@@ -125,7 +128,7 @@
       const th = rr * tmax, ph = Math.atan2(py, px) * 180 / Math.PI;
       const info = RF.ModeB.dirInfo(scene, th, ph);
       const t = Math.min(255, Math.round(info.I * 230)), dim = info.room ? 1 : 0.28;
-      img.data[o] = LUT[3 * t] * dim + 18; img.data[o + 1] = LUT[3 * t + 1] * dim + 20; img.data[o + 2] = LUT[3 * t + 2] * dim + 26; img.data[o + 3] = clearZero && !(v > 0) ? 0 : 255;
+      img.data[o] = LUT[3 * t] * dim + 18; img.data[o + 1] = LUT[3 * t + 1] * dim + 20; img.data[o + 2] = LUT[3 * t + 2] * dim + 26; img.data[o + 3] = 255;
     }
     g.putImageData(img, 0, 0);
     pickerCache = { key, img: c, tmax };
