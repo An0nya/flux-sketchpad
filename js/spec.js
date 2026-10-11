@@ -130,7 +130,7 @@
   let idSeq = 1;
   const newId = (items) => { const ids = new Set((items || []).map((x) => x.id)); let id; do id = 'c' + idSeq++; while (ids.has(id)); return id; };
   function defaults() {
-    return Object.assign({ traffic: 'RHT', conv: 'A', paintCd: 0, paintWeight: 1, usePaint: true, selected: null }, presetState('ece-r112-b'));
+    return Object.assign({ traffic: 'RHT', conv: 'A', paintCd: 0, paintWeight: 1, usePaint: true, selected: null }, presetState('ece-r112-b'), { distance: 0 });   // a new scene measures the far field (∞); loading a preset sets its own distance (R112 25 m, FMVSS 18.3 m)
   }
   const PRESET_KEYS = ['kernel', 'distance', 'step', 'conv', 'aimMode', 'aimLine', 'aimBox', 'aimScan', 'itemReaim'];
   function presetState(id) {

@@ -25,12 +25,19 @@
     if (!force && s && s.ctx === c && s.key === key && ((s.next === c.next && (s.full || live)) || (live && now - s.t < 700))) return s;
     try {
       const G = RF.FarField.build(c, RF.Spec.gridOpts(sc));
-      // while rays are still being traced, do NOT re-aim (the re-aim box + per-point re-aim cost seconds per judgement, FMVSS worst): hold the aim of the
-      // last judgement of this spec, or find the instrumental aim once without the box; the finished run gets the full judgement
-      const prev = live && s && s.key === key && s.ev && s.ev.aim ? s.ev : null;
-      const ev = RF.Spec.evaluate(G, sc.modeD, live ? (prev ? { frozen: { base: prev.aim.base, reaim: prev.reaim || [0, 0], note: prev.aim.note, cutV: prev.aim.cutV } } : { noBox: true }) : undefined);
+      // while rays are still being traced, do NOT search for an aim at all (the cut-off scan + re-aim box cost seconds per judgement, FMVSS worst): judge at
+      // the aim the scene had when the trace started (the last finished judgement of this spec; none yet: the design aim), the finished run is judged fully
+      const fin = live && ui._specFinal && ui._specFinal.key === key ? ui._specFinal.frozen : null;
+      const ev = RF.Spec.evaluate(G, sc.modeD, live ? { frozen: fin || { base: [0, 0], reaim: [0, 0], note: 'design aim (no finished judgement of this spec yet)' } } : undefined);
+      if (!live && ev.aim) ui._specFinal = { key, frozen: { base: ev.aim.base.slice(), reaim: (ev.reaim || [0, 0]).slice(), note: ev.aim.note, cutV: ev.aim.cutV } };
       let Gw = null; try { const wo = RF.Spec.wideOpts(sc); if (c.ff && RF.FarField.streamOf(c, wo)) Gw = RF.FarField.build(c, wo); } catch (e) { /* the picture just stays narrow */ }
-      ui.spec = { ctx: c, key, next: c.next, done: c.done, full: !live, t: now, G, Gw, ev, map: null };
+      // the far field (∞) the Road / Drive / beam quality / goals read: the same grids unless Measure at is a screen; a run without those streams falls back to them
+      let Gf = G, Gwf = Gw;
+      if (RF.Spec.measureAt(sc) > 0) {
+        try { const fo = RF.Spec.gridOpts(sc, 0); if (RF.FarField.streamOf(c, fo)) Gf = RF.FarField.build(c, fo); } catch (e) { /* the measured-at grid stands in */ }
+        try { const fw = RF.Spec.wideOpts(sc, 0); if (c.ff && RF.FarField.streamOf(c, fw)) Gwf = RF.FarField.build(c, fw); } catch (e) { /* the measured-at grid stands in */ }
+      }
+      ui.spec = { ctx: c, key, next: c.next, done: c.done, full: !live, t: now, G, Gw, Gf, Gwf, ev, map: null };
     } catch (e) {
       ui.spec = { ctx: c, key, next: c.next, t: now, error: e.message };
       // the grid settings (window, bin, angles) changed since this run started: its streams don't cover them — re-trace once
@@ -41,7 +48,9 @@
   // the far-field grids a Spec run streams: the report's distance plus the comparison set (∞, 25 m, 10 m, the target)
   function streams(sc) {
     const ds = [RF.Spec.measureAt(sc), 0, 25000, 10000, sc.target.distance];
-    return ds.filter((d, i) => ds.indexOf(d) === i).map((d) => RF.Spec.gridOpts(sc, d)).concat([RF.Spec.wideOpts(sc)]);
+    // + the wide grid at the report's distance, and at ∞ when that differs: the Road / Drive / beam-quality / goals read the far field
+    const wide = [RF.Spec.wideOpts(sc)]; if (RF.Spec.measureAt(sc) > 0) wide.push(RF.Spec.wideOpts(sc, 0));
+    return ds.filter((d, i) => ds.indexOf(d) === i).map((d) => RF.Spec.gridOpts(sc, d)).concat(wide);
   }
   // a different measuring distance on the same run (no re-trace) — for the comparison table
   function evalAt(ui, distance) {
@@ -590,7 +599,7 @@
       row('Drive view: beam smoothing', rsel([['sharp', 'Sharp (0.2° × 0.2°)'], ['smooth', 'Smooth along H (0.5° × 0.15°)'], ['soft', 'Soft (1° × 0.3°)']], () => dvOpts(ui).smooth, (v) => { setDV(ui, 'smooth', v); }, true), 'The trace is a few million rays, so the beam has shot noise that the picture shows as mottled asphalt. Smoothing along H leaves the cut-off (a vertical edge) sharp. Raise the ray count (Simulation) for a cleaner picture.'),
       row('Drive view: picture size', rsel([['480', '480 × 270'], ['640', '640 × 360'], ['960', '960 × 540'], ['1280', '1280 × 720']], () => String(dvOpts(ui).res), (v) => { setDV(ui, 'res', +v); }, true), 'Render size. 640 takes ~0.3 s in the browser; 1280 about a second in a forest or city.'),
       row('Drive view: field of view (°)', rsel([['45', '45 (telephoto)'], ['60', '60'], ['75', '75'], ['90', '90 (wide)']], () => String(dvOpts(ui).fov), (v) => { setDV(ui, 'fov', +v); }, true), 'Horizontal field of view. The eye is 1.2 m up, 2 m behind the lamps, 0.37 m left of the car centre (mirrored for left-hand traffic).'),
-      row('Aim on the car', rsel([['spec', 'As the spec’s lab aims it'], ['manual', 'Manual inclination (%)']], () => r().aim, (v) => { r().aim = v; }), 'As the lab aims it: the same aim the report uses. Manual: the cut-off (where the judge found it) is set at this downward slope; 1 % = 1 cm per metre ≈ 0.57°.'),
+      row('Aim on the car', rsel([['spec', 'As the spec’s lab aims it'], ['manual', 'Manual inclination (%)']], () => r().aim, (v) => { r().aim = v; }), 'As the lab aims it: the same aim the report uses. Manual: the cut-off (where the judge found it) is set at this downward slope; 1 % = 1 cm per metre ≈ 0.57°. Beam quality and the ideal-beam goals are always measured at the judge\u2019s aim, whatever you pick here.'),
       row('Inclination (%)', rnum(() => r().aimPct, (v) => { r().aimPct = Math.max(-5, Math.min(1, v)); }, { min: -5, max: 1, step: 0.1 }), 'Used with "Manual". R48 initial aim: −1.0 to −1.5 % below 0.8 m mounting height; FMVSS VOL ≈ −0.7 % (0.4° D).'),
     ];
   }
@@ -643,14 +652,18 @@
     const s = ui.spec; if (!s || !s.G || !s.ev || !RF.Road) return null;
     const road = roadOf(ui), key = JSON.stringify([road, md(ui).preset, md(ui).ideal || null]);
     if (s.road && s.roadKey === key) return s.road;
-    const sh = RF.Road.aimShift(road, s.ev), G = s.G, W = s.Gw, k = 0.2, mir = md(ui).traffic === 'LHT' ? -1 : 1;
+    // the far field (∞: it applies the aim), whatever Measure at is; the judged fine grid where it covers the direction, else the wide one
+    const sh = RF.Road.aimShift(road, s.ev), G = s.Gf || s.G, W = s.Gwf || s.Gw, k = 0.2, mir = md(ui).traffic === 'LHT' ? -1 : 1;
     // the beam as the road sees it: the judged fine grid where it covers the direction, else the wide one; kh × kv = the kernel
     // half-widths (degrees) on the fine grid, kw × the wide grid's bin on the wide one
     const mkI = (kh, kv, kw) => RF.Road.beamOf(G, W, sh, mir, kh, kv, kw), I = mkI(k, k, 1);
     const mdl = RF.Road.model({ road, preset: md(ui).preset, conv: G.conv || md(ui).conv || 'A', I });
-    s.road = { mdl, sh, mir, mkI, iihs: mdl.iihs(), curves: mdl.curves(), quality: RF.BeamQuality ? RF.BeamQuality.measure(I) : null, lane: RF.Road.laneWidth(mdl.road, md(ui).preset), laneDrive: RF.Road.laneWidth(mdl.road, md(ui).preset, true), map: null }; s.roadKey = key;
+    // beam quality and the ideal-beam goals are measured at the judge's own aim (what their label says), not the Road's "Aim on the car"
+    const shJ = s.ev.shift ? s.ev.shift.slice() : [0, 0], same = shJ[0] === sh[0] && shJ[1] === sh[1];
+    const IJ = same ? I : RF.Road.beamOf(G, W, shJ, mir, k, k, 1), mdlJ = same ? mdl : RF.Road.model({ road, preset: md(ui).preset, conv: G.conv || md(ui).conv || 'A', I: IJ });
+    s.road = { mdl, sh, mir, mkI, iihs: mdl.iihs(), curves: mdl.curves(), quality: RF.BeamQuality ? RF.BeamQuality.measure(IJ) : null, lane: RF.Road.laneWidth(mdl.road, md(ui).preset), laneDrive: RF.Road.laneWidth(mdl.road, md(ui).preset, true), map: null }; s.roadKey = key;
     const idl = Object.assign(RF.IdealBeam ? RF.IdealBeam.defaults() : {}, md(ui).ideal || {});
-    s.road.ideal = RF.IdealBeam && idl.on !== false && s.road.quality ? RF.IdealBeam.check(I, md(ui), mdl, s.road.quality) : null;
+    s.road.ideal = RF.IdealBeam && idl.on !== false && s.road.quality ? RF.IdealBeam.check(IJ, md(ui), mdlJ, s.road.quality) : null;
     return s.road;
   }
   // a tiny marching squares for one level on a grid E[j·ny + i] (j along x, i along y) → segment end points in (x, y)
