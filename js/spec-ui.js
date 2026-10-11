@@ -125,7 +125,7 @@
   // solve: the working target changed (re-solve per the auto switches); otherwise only the judging did
   function changed(ui, solve) {
     if (solve) { ui.store.invalidate(['A']); ui.afterChange(); }
-    else { ui.autosave(); update(ui, true); ui.redrawSpec(); }
+    else { ui.autosave(); update(ui, true); ui.redrawSpec(); if (ui.rerenderStats) ui.rerenderStats(); }
     render(ui);
   }
 
