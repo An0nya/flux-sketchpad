@@ -32,7 +32,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   const res = await page.evaluate(() => { cancelAnimationFrame(window.__raf); return { seen: window.__seen, r: Object.fromEntries(Object.entries(window.__r).map(([k, v]) => [k, [...v]])) }; });
   ok('a solve was observed', res.seen);
   for (const k of Object.keys(res.r)) ok('size of ' + k + ' is the same before, during and after the solve', res.r[k].length === 1, res.r[k].join(' | '));
-  await page.evaluate(() => RF.UI.setMode('D')); await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 150000 }); await page.waitForTimeout(1200);
+  await page.evaluate(() => { RF.UI.setMode('D'); RF.UI.layout.collapsed.editor = false; RF.UI.layout.expanded = null; RF.UI.layoutGrid(); }); await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 150000 }); await page.waitForTimeout(1200);   // plain two-map layout, not Spec's auto layout (D-spec-layout)
   t = await tops();
   ok('Spec: Editor and Result map squares sit at the same height', Math.abs(t.left - t.heat) <= 1, JSON.stringify(t));
   ok('no page errors', errors.length === 0, errors.join(' | '));
