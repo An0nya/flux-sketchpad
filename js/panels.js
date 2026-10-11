@@ -416,7 +416,7 @@
       const cb = el('input', { type: 'checkbox', checked: g.enabled ? true : null, 'aria-label': 'include ' + g.label });
       cb.addEventListener('change', () => ui.setGroupEnabled(k, cb.checked));
       list.append(el('div', { class: 'item' }, cb, el('span', { class: 'grow' }, g.label + ' — ' + g.surfaces.length + ' surfaces'),
-        g.surfaces.length ? confirmButton('clear', 'clear?', () => ui.clearGroup(k)) : null));
+        g.surfaces.length ? confirmButton('clear', 'clear?', () => { ui._histHint = 'Clear ' + g.label; ui.clearGroup(k); }) : null));
     }
   }
 
@@ -571,7 +571,7 @@
       if (fd && !specOn) row.append(t(st.uniformity.toFixed(2), 'uniformity', 'U₀ = 5th percentile ÷ mean of delivered ÷ painted. Sees only the dim end (holes), not hotspots. Noise ceiling ' + st.noiseCeiling.toFixed(2) + '.'));
       row.append(el('span', { class: 'tile-sep' }));
       row.append(isPaint(sc.mode) && rA && !rA.error
-        ? t(rA.placed + ' / ' + sc.modeA.budget, 'facets · ' + solverLabel(sc, rA), 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : '') + ' ' + solverTip(sc, rA), 'facets')
+        ? t((sc.modeA.cleared ? 0 : rA.placed) + ' / ' + sc.modeA.budget, 'facets · ' + solverLabel(sc, rA), 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : '') + ' ' + solverTip(sc, rA), 'facets')
         : t(String(st.surfaces), 'surfaces', 'Surfaces in the scene.'));
       row.append(el('div', { class: 'tile rays', title: 'Rays traced · trace time (tracing work only, not total wait)' + (extra.preview ? ' · coarse preview while dragging' : '') },
         el('b', {}, st.rays.toLocaleString() + (extra.running ? ' …' : '')), el('span', {}, 'rays ', el('small', { class: 'ms' }, st.timeMs.toFixed(0) + ' ms' + (st.gpu ? ' · GPU' : '')))));

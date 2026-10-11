@@ -156,5 +156,25 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   { const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'spec-ui.js'), 'utf8');
     ok('D-S13 no marker is labelled as a road "edge"', !/'[RL] edge 5 lx: '/.test(src));
     ok('D-S13 markers are labelled IIHS points, legend names the 6.6 m IIHS road', /'IIHS R point: 5 lx to '/.test(src) && /'IIHS L point: 5 lx to '/.test(src) && /not the drawn road edges/.test(src)); }
+  // G10 / owner decision: Clear on the Mode A reflector empties it AND stops auto-solve for it, undoably (the flag is intent), until a solve (Rebuild)
+  {
+    const st = C.createStore(RF.State.testScene()); C.regenerateA(st);
+    const n0 = st.scene.groups.A.surfaces.length, h = RF.History;
+    const before = h.intent(st.scene);
+    ok('G10 setup: the test scene has a solved reflector', n0 > 0, n0 + ' surfaces');
+    C.actions.clearGroup(st, 'A');
+    ok('G10 clear empties the reflector', st.scene.groups.A.surfaces.length === 0);
+    ok('G10 clear is a history-visible change (one entry)', h.key(h.intent(st.scene)) !== h.key(before));
+    st.invalidate(['A']); st.commit({ deferA: false });                                    // e.g. a source nudge with auto-solve on
+    ok('G10 a later edit does not bring the reflector back', st.scene.groups.A.surfaces.length === 0 && !st.dirty.has('A'));
+    ok('G10 auto-solve reads as off while cleared', st.autoA === false);
+    const intentCleared = h.intent(st.scene);
+    const sc2 = JSON.parse(JSON.stringify(st.scene)); h.apply(sc2, before);
+    ok('G10 undo (restoring the old intent) lifts the cleared state', !sc2.modeA.cleared);
+    C.regenerateA(st);
+    ok('G10 a solve (Rebuild) puts the reflector back and auto-solve returns', st.scene.groups.A.surfaces.length > 0 && st.autoA === true && !st.scene.modeA.cleared);
+    h.apply(st.scene, intentCleared); st.invalidate(['A']); st.commit({ forceA: true });
+    ok('G10 redo (cleared intent) leaves the reflector cleared', st.scene.groups.A.surfaces.length === 0 && !st.dirty.has('A'));
+  }
   process.exitCode = fails ? 1 : 0;
 })();
