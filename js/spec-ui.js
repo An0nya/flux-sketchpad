@@ -189,7 +189,7 @@
       el('span', { class: 'note', title: 'Soft score: each constraint scores 1 when met, falling linearly (in log) to 0 at a factor of 2 off; weighted mean.' }, 'score ' + pc(ev.score))));
     box.append(el('div', { class: 'note' }, 'Measured at ' + fmtDist(s.G.distance) + ' · kernel ±' + ev.kernel + '° · ' + (s.done ? '' : 'partial: ') + s.G.coverage.toLocaleString() + ' rays' +
       ' · aimed: ' + ev.aim.note +
-      (Math.hypot(ev.reaim[0], ev.reaim[1]) > 1e-9 ? ' · then re-aimed (beam) ' + fmtMove(ev.reaim, m.traffic) + ' (before: ' + ev.atAim.n.fail + ' fail)' : m.aimBox ? ' · no re-aim helps' : '') +
+      (Math.hypot(ev.reaim[0], ev.reaim[1]) > 1e-9 ? ' · then re-aimed (beam) ' + fmtMove(ev.reaim, m.traffic) + ' (before: ' + ev.atAim.n.fail + ' fail)' : m.aimBox ? ((m.aimMode || 'design') === 'manual' ? ' · re-aim box not used (manual aim)' : s.full ? ' · no re-aim helps' : '') : '') +
       (m.verified === false ? ' · ⚠ preset values unverified' : '')));
     const tbl = el('div', { class: 'spec-rows' });
     for (const r of ev.rows) {
@@ -485,7 +485,7 @@
     ctx.font = '10px system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,0.9)';
     // summary in the plot's top-right corner (away from the beam): how far the judge moved the beam
     const mv = fmtMove(sh, m.traffic).replace(/ right/g, ' R').replace(/ left/g, ' L').replace(/ up/g, ' U').replace(/ down/g, ' D');
-    const t = 'aim: beam ' + (mv === 'none' ? 'as designed' : mv) + ((m.aimMode || 'design') === 'cutoff' ? ' · cut-off on ' + Math.abs(m.aimLine === undefined ? -0.57 : m.aimLine) + '° D' : '');
+    const t = 'aim: beam ' + (mv === 'none' ? 'as designed' : mv) + ((m.aimMode || 'design') === 'cutoff' ? ' · cut-off on ' + RF.Spec.fmtVert(m.aimLine === undefined ? -0.57 : m.aimLine) : '');
     const w = ctx.measureText(t).width, x = Math.max(a[0] + 3, b[0] - w - 5), y = a[1] + 13;
     ctx.fillStyle = 'rgba(12,13,16,0.75)'; ctx.fillRect(x - 2, y - 10, w + 4, 13); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillText(t, x, y);
     ctx.restore();

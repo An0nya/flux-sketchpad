@@ -419,6 +419,8 @@
     for (const r of rows) { sw += r.w; ss += r.w * r.soft; n[r.verdict]++; if (r.margin < worst) worst = r.margin; }
     return { rows, score: sw > 0 ? ss / sw : 1, worst: rows.length ? worst : 0, n, shift: [dh, dv] };
   }
+  // a vertical angle with its direction: + is up (U), − down (D); dp = decimals (omit to print the number as is)
+  const fmtVert = (v, dp) => (dp === undefined ? Math.abs(v) : Math.abs(v).toFixed(dp)) + '°' + (v > 0 ? ' U' : v < 0 ? ' D' : '');
   // the beam's cut-off (the inflection of a vertical scan at the gradient item's H, in the beam's own V), whatever the aim mode: null if none
   function findCut(G, md, items) {
     const g = items.find((x) => x.kind === 'gradient'), h = g ? g.h : -2.5 * mirrorH(md), line = md.aimLine === undefined ? -0.57 : md.aimLine;
@@ -451,7 +453,7 @@
       // 3 seeds: aimed 2.9° down / 2.6° UP / 1.9° down).  The lab could not aim it either: judge it as designed and say so.  (10-10)
       // ⚠ Rarely fires: a step near the scan's top passes the darkness check by default (nothing above it is read), the known 10-09 window-edge limitation.
       if (b.soft && AIM.noCutDesign) return { base: [0, 0], note: 'no clear cut-off at ' + Math.abs(h) + '° (no edge with darkness above it): judged as designed', noCut: true };
-      return { base: [0, +(b.v - line).toFixed(4)], note: 'cut-off inflection at ' + b.v.toFixed(2) + '° put on ' + Math.abs(line) + '° D', cutV: b.v };
+      return { base: [0, +(b.v - line).toFixed(4)], note: 'cut-off inflection at ' + fmtVert(b.v, 2) + ' put on ' + fmtVert(line), cutV: b.v };
     }
     return { base: [0, 0], note: 'as designed' };
   }
@@ -466,9 +468,10 @@
    *   frozen: { base: [dh, dv], reaim: [dh, dv], note?, cutV? } — judge at exactly this aim (a previous full judgement's aim): no cut-off scan, no box search;
    *   noBox: true — find the instrumental aim (cheap) but skip the re-aim box search.
    * The finished run is judged without opts: that is the number to trust.                                                                                    */
+  const HELD = ' (held while the trace runs)';   // the live note's suffix: added once, however many live judgements feed their note back
   function evaluate(G, md, opts) {
     const items = itemsOf(md), k = md.kernel > 0 ? md.kernel : 0.15, cache = new Map(), fz = opts && opts.frozen, skipBox = !!(fz || (opts && opts.noBox) || md.aimMode === 'manual');
-    const aim = fz ? { base: fz.base.slice(), note: (fz.note || 'aim') + ' (held while the trace runs)', cutV: fz.cutV } : aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
+    const aim = fz ? { base: fz.base.slice(), note: (fz.note || 'aim').replace(HELD, '') + HELD, cutV: fz.cutV } : aimOf(G, md, items, k, cache), [bh, bv] = aim.base;
     // the Road's manual inclination needs the cut-off position even when the judge aimed another way (design / peak / manual): note it, aim nothing
     if (!fz && aim.cutV === undefined && md.aimMode !== 'cutoff') { const cb = findCut(G, md, items); if (cb && !(cb.soft && AIM.noCutDesign)) aim.cutV = cb.v; }
     const ir = md.itemReaim > 0 ? md.itemReaim : 0, held = fz ? fz.reaim : [0, 0];
@@ -699,5 +702,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { CUT, AIM, scanCut, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, measureAt, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
+  RF.Spec = { CUT, AIM, scanCut, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, fmtVert, measureAt, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
