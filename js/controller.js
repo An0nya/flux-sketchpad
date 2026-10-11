@@ -22,7 +22,7 @@
     store.on = (fn) => store.listeners.push(fn);
     store.notify = (what) => { store.version++; for (const fn of store.listeners) fn(what); };
     store.notice = (msg) => { store.notices.unshift({ t: Date.now(), msg }); store.notices.length = Math.min(store.notices.length, 8); };
-    store.invalidate = (groups) => { for (const g of groups || []) store.dirty.add(g); };
+    store.invalidate = (groups) => { for (const g of groups || []) { store.dirty.add(g); if (g === 'A') store.version++; } };   // version = the token a running solve compares on return
     // Rebuild invalidated groups.  A is regenerated only when forceA (button / idle) or auto.
     store.commit = (opts) => {
       opts = opts || {};
