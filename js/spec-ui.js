@@ -39,6 +39,7 @@
       const src = RF.Spec.roadSource(c, sc, ev, G, Gw, live ? (finF || { base: [0, 0], reaim: [0, 0], note: 'design aim (no finished judgement of this spec yet)' }) : undefined);
       if (!live && ui._specFinal && ui._specFinal.key === key && src.ev.aim) ui._specFinal.frozenFar = { base: src.ev.aim.base.slice(), reaim: (src.ev.reaim || [0, 0]).slice(), note: src.ev.aim.note, cutV: src.ev.aim.cutV };
       const Gf = src.G, Gwf = src.W, evF = src.ev;
+      if (src.fallback && !live && ui._roadFallbackKey !== key) { ui._roadFallbackKey = key; ui.store.notice('This run has no far-field (∞) record, so Road, Drive, IIHS reach, beam quality and goals were read at Measure at instead: they can differ from a far-field read. Re-trace to read them at ∞.'); }
       ui.spec = { ctx: c, key, next: c.next, done: c.done, full: !live, t: now, G, Gw, Gf, Gwf, ev, evF, map: null };
     } catch (e) {
       ui.spec = { ctx: c, key, next: c.next, t: now, error: e.message };

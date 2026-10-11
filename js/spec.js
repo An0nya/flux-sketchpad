@@ -200,7 +200,7 @@
     let Gf = null, Gwf = null;
     try { const fo = gridOpts(scene, 0); if (RF.FarField.streamOf(c, fo)) Gf = RF.FarField.build(c, fo); } catch (e) { /* the report's grid stands in */ }
     try { const fw = wideOpts(scene, 0); if (c.ff && RF.FarField.streamOf(c, fw)) Gwf = RF.FarField.build(c, fw); } catch (e) { /* the report's grid stands in */ }
-    if (!Gf) return { G, W: Gw, ev };
+    if (!Gf) return { G, W: Gw, ev, fallback: true };   // no ∞ stream in this run: the road reads the report's grid. Say so (fallback) — never silently
     return { G: Gf, W: Gwf || Gw, ev: evaluate(Gf, scene.modeD, frozen ? { frozen } : undefined) };
   }
   // (H, V) → design-plane (u, v) mm, as seen from the photometric centre (the source).  null if the plane is behind.

@@ -279,7 +279,7 @@
         // the same far-field source and the same arithmetic as Spec mode's page (RF.Spec.roadSource, RF.Road.analyse), so the numbers match what the page shows;
         // (a screen Measure at: the far field is judged afresh at its own aim, not at o.frozen, which was found on the screen's grid)
         const src = RF.Spec.roadSource(c, scene, ev, G, W), a = RF.Road.analyse(src, md, road, { quality: o.quality || o.ideal, ideal: o.ideal }), r = a.iihs;
-        res.road = { right: r.right, left: r.left, farRight: r.farRight, farLeft: r.farLeft, glareMax: r.glareMax };
+        res.road = { right: r.right, left: r.left, farRight: r.farRight, farLeft: r.farLeft, glareMax: r.glareMax, source: src.fallback ? 'measure-at (no far-field stream)' : 'far field' };   // source: which grid the road numbers came from (they should be 'far field')
         // o.quality: the beam-quality report too (js/beam-quality.js; report only, ~0.1 s): core size, lobes, foreground share;
         // o.ideal: the ideal-beam goals (js/ideal-beam.js, md.ideal or its defaults) → res.road.ideal { goals, met, n }
         if (a.quality) res.road.quality = a.quality;
