@@ -154,6 +154,7 @@
     ui.store.invalidate(['B']); ui.store.commit({ deferA: true });
     document.body.classList.remove('mode-A', 'mode-B', 'mode-C', 'mode-D');
     document.body.classList.add('mode-' + m);
+    specLayout(m === 'D');
     const gt = document.getElementById('btn-generate-top');
     if (gt) { gt.disabled = !isPaint(m); gt.title = isPaint(m) ? 'Solve the reflector for the painted target' : 'Stamp and Profile modes rebuild live; Rebuild is for Paint and Spec modes'; }
     // Spec mode opens on its far-field view; leaving it, a far-field view falls back to the grid
@@ -1586,6 +1587,19 @@
       d.classList.toggle('off', !on); d.tabIndex = on ? 0 : -1; d.setAttribute('aria-disabled', String(!on)); d.setAttribute('aria-valuenow', String(Math.round(100 * share)));   // an off divider is inert for the keyboard too
     }
   }
+  // Spec mode opens with Editor collapsed and Result expanded; leaving it restores the layout from before (whatever was changed in
+  // between).  The pre-Spec layout is kept per browser, so a reload in Spec stays in its layout and the other modes keep theirs.
+  function specLayout(on) {
+    if (!ui.layout) return;
+    if (on && !ui.preSpec) {
+      if (phone()) return;
+      ui.preSpec = JSON.parse(JSON.stringify(ui.layout));
+      const st = ui.layout; st.collapsed.editor = true; st.collapsed.result = false; st.expanded = 'result'; st.active = 'result';
+    } else if (!on && ui.preSpec) { ui.layout = ui.preSpec; ui.preSpec = null; }
+    else return;
+    try { if (ui.preSpec) localStorage.setItem('flux/layoutPre', JSON.stringify(ui.preSpec)); else localStorage.removeItem('flux/layoutPre'); } catch (e) { /* ignore */ }
+    saveLayout(); animateLayout();
+  }
   // Collapse / expand / restore animate the grid tracks (px → px interpolates); resizes and divider drags don't.
   function animateLayout() {
     const W = document.getElementById('workspace');
@@ -1705,6 +1719,8 @@
     // panes: chevron / title collapses; a collapsed rail or bar restores on click; ⤢ expands
     try { ui.layout = JSON.parse(localStorage.getItem('flux/layout') || 'null'); } catch (e) { ui.layout = null; }
     ui.layout = RF.Layout.sanitize(ui.layout);
+    try { ui.preSpec = JSON.parse(localStorage.getItem('flux/layoutPre') || 'null'); } catch (e) { ui.preSpec = null; }
+    if (ui.preSpec) ui.preSpec = RF.Layout.sanitize(ui.preSpec);
     for (const b of document.querySelectorAll('[data-collapse]')) b.addEventListener('click', (e) => { e.stopPropagation(); ui.setPane(b.dataset.collapse, 'collapse'); });
     for (const b of document.querySelectorAll('[data-expand]')) b.addEventListener('click', (e) => { e.stopPropagation(); ui.setPane(b.dataset.expand, 'expand'); });
     for (const el of document.querySelectorAll('.pane')) {
