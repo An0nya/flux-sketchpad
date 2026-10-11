@@ -200,7 +200,7 @@
       const q = Math.sqrt(info.n / N);
       const mask = scene.modeA.paint.map((w) => (w > 0 ? 1 : 0));
       const fine = finestFeature(mask, res).width;
-      const occ = ctx.stats ? ctx.stats.occlusion : null, pc = (x) => (x * 100).toFixed(1) + '%';
+      const occ = ctx.stats ? ctx.stats.occlusion : null, pc = (x) => (isFinite(x) ? (100 * Math.min(1, Math.max(0, x))).toFixed(1) + '%' : '—');   // a share: 0–100 %, never NaN / Infinity / 126 %
       items.push({
         key: 'budget', title: 'Facet budget & occlusion', ratio: q / fine,
         text: N + ' tiles over ' + info.n + ' painted cells quantise the pattern at ≈ ' + q.toFixed(1) + ' cells per tile (finest lit feature ' + fine.toFixed(0) + ' cells).' +

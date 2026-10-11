@@ -234,7 +234,7 @@ function context(input, rays) {
 function runFromTrace(input, tr, ctx) {
   const R = ctx.R, G = RF.Engine.toPaintGrid(tr.grid, tr.res, R), em = tr.energy.emitted || 1, f = tr.fidelity || {};
   return { R, paint: input.paint.cells, D: Array.from(G, (x) => x / em),
-    row: { rays: ctx.rays, cdPerD: ctx.cdPerD, achievableKernelCells: ctx.kernelCells, fidelity: f.fidelity, onPaint: f.onPaint, spill: f.spill, peakCd: tr.peakCd, reflectivity: ctx.reflectivity } };
+    row: { rays: ctx.rays, cdPerD: ctx.cdPerD, achievableKernelCells: ctx.kernelCells, fidelity: f.fidelity, onPaint: f.onPaint, spill: f.spill, peakCd: tr.peakCd, reflectivity: ctx.reflectivity, capturable: capturable(input) } };
 }
 
 // ---- one design, one goal → raw metrics + the gates it fails.  opt.tol = the cutoff edge tolerance in cells.

@@ -176,5 +176,13 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     h.apply(st.scene, intentCleared); st.invalidate(['A']); st.commit({ forceA: true });
     ok('G10 redo (cleared intent) leaves the reflector cleared', st.scene.groups.A.surfaces.length === 0 && !st.dirty.has('A'));
   }
+  // G40: the row handed to the goal metrics carries capturable, so the hot zone's "of the most this light could give it" is a number, not NaN
+  {
+    const st = C.createStore(RF.State.testScene()), input = RF.Solvers.inputOf(st.scene), M = RF.Modes, R = input.paint.res;
+    const ctx = M.context(input, 1e5), grid = new Float64Array(R * R).fill(1), tr = { grid, res: R, energy: { emitted: 1e5 }, fidelity: { fidelity: 0.5, onPaint: 0.5, spill: 0.1 }, peakCd: 1 };
+    const run = M.runFromTrace(input, tr, ctx), m = M.hotspot(run);
+    ok('G40 the metrics row has a capturable share (' + run.row.capturable + ')', run.row.capturable > 0 && run.row.capturable <= 1);
+    ok('G40 hotspot ofPossible is a finite number (got ' + m.ofPossible + ')', isFinite(m.ofPossible) && m.ofPossible >= 0);
+  }
   process.exitCode = fails ? 1 : 0;
 })();
