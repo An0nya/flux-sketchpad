@@ -133,7 +133,7 @@
 
     // ---- 0. source outside the envelope: allowed (a valid design), but flagged while it is
     const eo = scene.envelope, out = Math.hypot(...[0, 1, 2].map((k) => Math.max(0, Math.abs(S[k] - eo.center[k]) - eo.half[k])));
-    if (out > 1e-9) items.push({ key: 'srcOutside', title: 'Source outside the envelope', ratio: 1 + out / Math.max(1e-9, Math.max(...eo.half)),
+    if (out > 1e-9) items.push({ key: 'srcOutside', title: 'Source outside the envelope', ratio: 0, warn: true,   // a warning, not a physical limit: never the binding one
       text: 'The light source sits ' + out.toFixed(1) + ' mm outside the envelope. That is allowed, but the optic can only catch light that enters the envelope, and the checks below assume the source is where you put it.' });
 
     // ---- 1. minimum feature size
@@ -215,7 +215,7 @@
     }
 
     let binding = null, worst = 1;
-    for (const it of items) { it.violated = it.ratio > 1; if (it.ratio > worst) { worst = it.ratio; binding = it.key; } }
+    for (const it of items) { it.violated = !it.warn && it.ratio > 1; if (it.ratio > worst) { worst = it.ratio; binding = it.key; } }
     const b = items.find((i) => i.key === binding);
     const summary = b ? 'Binding: ' + b.title + ' — exceeded ×' + b.ratio.toFixed(2) + '.' : 'No physical limit binds (first-order check).';
     return { items, binding, summary };

@@ -190,7 +190,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('D-E08 no warning while the source is inside the envelope', !F.analyze(sc).items.some((i) => i.key === 'srcOutside'));
     sc.source.pos = [env.center[0] + env.half[0] + 10, env.center[1], env.center[2]];
     const a = F.analyze(sc), it = a.items.find((i) => i.key === 'srcOutside');
-    ok('D-E08 a source outside the envelope gets a warning item', !!it && it.violated === true && /outside/i.test(it.text), it && it.text);
+    ok('D-E08 a source outside the envelope gets a warning item', !!it && it.warn === true && /outside/i.test(it.text), it && it.text);
+    ok('D-E08 the warning never becomes the binding physical limit', F.analyze(sc).binding !== 'srcOutside');
     ok('D-E08 the source position is not clamped', sc.source.pos[0] === env.center[0] + env.half[0] + 10);
   }
   // D-C14: switching LED presets opens the new LED at its own default drive current and flux model, not the previous emitter's

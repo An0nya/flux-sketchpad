@@ -592,7 +592,7 @@
     if (!f) { box.append(el('div', { class: 'note' }, '—')); return; }
     box.append(el('div', { class: 'bind ' + (f.binding ? 'bad' : 'ok') }, el('span', { class: 'mk' }, f.binding ? '✗' : '✓'), ' ' + f.summary));
     const ul = el('ul');
-    for (const it of f.items) ul.append(el('li', { class: it.violated ? 'bad' : 'ok' }, el('b', {}, it.title + (it.ratio > 0 ? ' (×' + it.ratio.toFixed(2) + ')' : '') + ': '), it.text));
+    for (const it of f.items) ul.append(el('li', { class: it.violated || it.warn ? 'bad' : 'ok' }, el('b', {}, it.title + (it.ratio > 0 ? ' (×' + it.ratio.toFixed(2) + ')' : '') + ': '), it.text));
     box.append(ul);
     if (extra && extra.warnings && extra.warnings.length) for (const w of extra.warnings) box.append(el('div', { class: 'reason' }, w));
     // footer issue line: this design's own problems first (they're actionable), then the global limits
@@ -611,6 +611,7 @@
         if (lossMD >= 0.05) issues.push('Min facet distance ' + md + ' mm: at least ' + Math.round(100 * lossMD) + '% of the LED\'s light has room for a mirror only closer than that');
       }
       if (f.binding) issues.push(f.summary);
+      for (const it of f.items) if (it.warn) issues.push(it.title);   // allowed, but worth seeing (e.g. the source outside the envelope)
       if (issues.length) ml.append(el('div', { class: 'issue' }, el('span', { class: 'mk' }, '!'), ' ' + issues.join(' · ')));
       else {
         const rest = f.items.filter((it) => !it.violated && it.ratio > 0).sort((a, b) => b.ratio - a.ratio);
