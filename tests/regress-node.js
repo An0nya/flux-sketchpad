@@ -91,5 +91,15 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       ok('G05 boxBlur with a kernel 1e7 cells wide on a 200x200 grid is instant (' + ms + ' ms)', ms < 500);
     }
   }
+  // G17: Measure at "target" is a link (modeD.distance = -1), resolved against the live target distance; numbers are untouched
+  {
+    const sc = RF.State.testScene(); sc.mode = 'D'; sc.modeD = Object.assign({}, RF.Spec.defaults ? RF.Spec.defaults() : {}, sc.modeD);
+    sc.modeD.distance = -1; sc.target.distance = 7000;
+    ok('G17 gridOpts at "target" reads the live target distance', RF.Spec.gridOpts(sc).distance === 7000, 'got ' + RF.Spec.gridOpts(sc).distance);
+    sc.target.distance = 5000;
+    ok('G17 gridOpts follows the target when it moves', RF.Spec.gridOpts(sc).distance === 5000 && RF.Spec.solverSpec(sc).measure.distance === 5000, 'got ' + RF.Spec.gridOpts(sc).distance + ' / ' + RF.Spec.solverSpec(sc).measure.distance);
+    sc.modeD.distance = 18300; ok('G17 a numeric distance (FMVSS 18.3 m) is unchanged', RF.Spec.gridOpts(sc).distance === 18300);
+    sc.modeD.distance = 0; ok('G17 distance 0 is still the far field', RF.Spec.gridOpts(sc).distance === Infinity);
+  }
   process.exitCode = fails ? 1 : 0;
 })();

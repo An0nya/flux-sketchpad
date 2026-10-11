@@ -177,8 +177,10 @@
     return [Math.max(-89, r(h0, Math.floor)), Math.min(89, r(h1, Math.ceil)), Math.max(-80, r(v0, Math.floor)), Math.min(80, r(v1, Math.ceil))];
   }
   // far-field grid options for a scene: distance 0 = far field (∞); otherwise a screen at that many mm
+  // modeD.distance < 0 is the "target" link: the screen sits wherever the target plane is now
+  function measureAt(scene) { const d = scene.modeD.distance; return d < 0 ? scene.target.distance : d > 0 ? d : 0; }
   function gridOpts(scene, distanceOverride) {
-    const md = scene.modeD, d = distanceOverride !== undefined ? distanceOverride : md.distance;
+    const md = scene.modeD, d = distanceOverride !== undefined ? distanceOverride : measureAt(scene);
     return { win: windowOf(md), step: md.step || 0.1, conv: md.conv || 'A', distance: d > 0 ? d : Infinity, centre: scene.source.pos.slice() };
   }
   // the far-field picture's context grid: the spec window widened to ±45° H × 30° D–15° U at 0.25° bins (a road a few
@@ -681,7 +683,7 @@
   function solverSpec(scene) {
     const md = scene.modeD;
     return { preset: md.preset, items: itemsOf(md), conv: md.conv || 'A', kernel: md.kernel, step: md.step, window: windowOf(md), traffic: md.traffic,
-      measure: { distance: md.distance > 0 ? md.distance : Infinity }, aim: { mode: md.aimMode || 'design', line: md.aimLine === undefined ? -0.57 : md.aimLine, scan: md.aimScan || 3, box: md.aimBox || null, itemReaim: md.itemReaim || 0 },
+      measure: { distance: measureAt(scene) > 0 ? measureAt(scene) : Infinity }, aim: { mode: md.aimMode || 'design', line: md.aimLine === undefined ? -0.57 : md.aimLine, scan: md.aimScan || 3, box: md.aimBox || null, itemReaim: md.itemReaim || 0 },
       centre: scene.source.pos.slice(), ideal: RF.IdealBeam ? RF.IdealBeam.of(md) : null };   // ideal-beam goals: only solvers that ask for them read this
   }
   // target size that shows the whole spec window at the current distance (square plane, centred on the axis)
@@ -691,5 +693,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { CUT, AIM, scanCut, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
+  RF.Spec = { CUT, AIM, scanCut, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, measureAt, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

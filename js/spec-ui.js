@@ -14,12 +14,12 @@
   const fmtDist = (d) => !(d > 0) || !isFinite(d) ? '∞ (goniometer)' : d >= 1000 ? (d / 1000).toPrecision(3).replace(/\.0+$/, '') + ' m screen' : d + ' mm screen';
 
   // ---------------------------------------------------------------- evaluation (cached per run, spec and distance)
-  const evalKey = (m) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimManual, m.aimScan, m.itemReaim, m.aimBox, m.aimMoveCost, m.traffic, m.conv, m.step, m.distance]);
+  const evalKey = (m, tg) => JSON.stringify([m.items, m.kernel, m.aimTol, m.aimMode, m.aimLine, m.aimManual, m.aimScan, m.itemReaim, m.aimBox, m.aimMoveCost, m.traffic, m.conv, m.step, RF.Spec.measureAt({ modeD: m, target: tg })]);
   // (re)judge the current run; cheap to call often: rebuilds only when the run grew or the spec changed
   function update(ui, force) {
     const run = ui.run, sc = ui.store.scene;
     if (!run || sc.mode !== 'D' || !(run.ctx.ex || run.ctx.ff) || !(run.ctx.next > 0)) return ui.spec || null;
-    const key = evalKey(sc.modeD), now = performance.now(), c = run.ctx;
+    const key = evalKey(sc.modeD, sc.target), now = performance.now(), c = run.ctx;
     const s = ui.spec, live = !c.done;
     // a judgement made while the run was still tracing (aim held) is not final: when the run ends it is judged again, fully
     if (!force && s && s.ctx === c && s.key === key && ((s.next === c.next && (s.full || live)) || (live && now - s.t < 700))) return s;
@@ -40,7 +40,7 @@
   }
   // the far-field grids a Spec run streams: the report's distance plus the comparison set (∞, 25 m, 10 m, the target)
   function streams(sc) {
-    const md0 = sc.modeD || {}, ds = [md0.distance > 0 ? md0.distance : 0, 0, 25000, 10000, sc.target.distance];
+    const ds = [RF.Spec.measureAt(sc), 0, 25000, 10000, sc.target.distance];
     return ds.filter((d, i) => ds.indexOf(d) === i).map((d) => RF.Spec.gridOpts(sc, d)).concat([RF.Spec.wideOpts(sc)]);
   }
   // a different measuring distance on the same run (no re-trace) — for the comparison table
@@ -75,7 +75,7 @@
     const distSel = el('div', { class: 'seg spec-dist', role: 'radiogroup', 'aria-label': 'Measure at' });
     for (const [d, t] of [[0, '∞'], [25000, '25 m'], [10000, '10 m'], [-1, 'target']]) {
       const b = el('button', { type: 'button', 'data-dist': d, title: d === 0 ? 'Far field: intensity by direction, what a goniometer measures' : d < 0 ? 'A screen at the target plane’s distance' : 'A screen at ' + t + ' from the source, read as apparent intensity (illuminance × r² / cos θ)' }, t);
-      b.addEventListener('click', () => { m().distance = d < 0 ? ui.store.scene.target.distance : d; changed(ui, false); });
+      b.addEventListener('click', () => { m().distance = d; changed(ui, false); });
       distSel.append(b);
     }
     const body = el('div', { id: 'spec-box' },
@@ -244,8 +244,8 @@
     if (ui.store.scene.mode !== 'D') return;
     const m = md(ui);
     for (const i of document.querySelectorAll('#spec-box [data-spec]')) { if (document.activeElement === i) continue; const v = i._get(); if (i._chk) i.checked = !!v; else i.value = v === undefined ? '' : v; }
-    const d = m.distance > 0 ? m.distance : 0;
-    for (const b of document.querySelectorAll('#spec-box [data-dist]')) { const bd = +b.dataset.dist; b.classList.toggle('on', bd < 0 ? d > 0 && d === ui.store.scene.target.distance && d !== 25000 && d !== 10000 : bd === d); }
+    const d = m.distance > 0 ? m.distance : m.distance < 0 ? -1 : 0;
+    for (const b of document.querySelectorAll('#spec-box [data-dist]')) { const bd = +b.dataset.dist; b.classList.toggle('on', bd === d); }
     const src = document.getElementById('spec-source');
     if (src) src.textContent = (m.verified === false ? '⚠ ' : '') + (m.source || '');
     renderTable(ui); renderReport(ui);
