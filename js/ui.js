@@ -1040,22 +1040,28 @@
         }
         if (isPaint(m)) paintAt(x, y, true);
       },
-      onPrimaryStart(x, y) { if (isPaint(ui.store.scene.mode)) paintAt(x, y, false); },
+      onPrimaryStart(x, y) { ui.paintLast = null; if (isPaint(ui.store.scene.mode)) paintAt(x, y, false); },
       onPrimary(x, y, dx, dy) {
         const m = ui.store.scene.mode;
         if (isPaint(m)) paintAt(x, y, false);
         else { view().panBy(dx, dy); ui.sceneDirty = true; schedule(); }
       },
-      onPrimaryEnd() { if (isPaint(ui.store.scene.mode) && ui.painted) { ui.painted = false; ui.afterChange(); } },
+      onPrimaryEnd() { ui.paintLast = null; if (isPaint(ui.store.scene.mode) && ui.painted) { ui.painted = false; ui.afterChange(); } },
       onHover(x, y) { if (isPaint(ui.store.scene.mode) && liveFor(cv)(false)) { ui.brushAt = ui.vLeft.toContent(x, y); ui.sceneDirty = true; schedule(); } },
       onLeave() { if (ui.brushAt) { ui.brushAt = null; ui.sceneDirty = true; schedule(); } },
       onPan(dx, dy) { view().panBy(dx, dy); ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { const v = view(); v.zoomAt(f, x, y); if (v === ui.vProf) v.lockBounds = v.bounds.slice(); ui.sceneDirty = true; schedule(); },
     });
+    // Stamp the brush at (x, y); after the first dab of a stroke, also along the segment from the previous dab (spacing <= a quarter of the
+    // brush) so a fast stroke with few pointer samples leaves no gaps.  commit: end the stroke here (one undo entry for all of it).
     function paintAt(x, y, commit) {
-      const c = ui.vLeft.toContent(x, y), uv = R2.cellToUV(RF.Engine.targetFrame(ui.store.scene.target), c[0], c[1]);
-      ui.brushAt = c;
-      if (C.actions.paintAt(ui.store, uv[0], uv[1], ui.modErase ? true : undefined)) ui.painted = true;   // ⌘/Ctrl held = erase
+      const c = ui.vLeft.toContent(x, y), T = RF.Engine.targetFrame(ui.store.scene.target), prev = ui.paintLast, size = ui.store.scene.modeA.brush.size;
+      const n = prev ? Math.min(256, Math.ceil(Math.hypot(c[0] - prev[0], c[1] - prev[1]) / Math.max(0.1, size / 4))) : 1;
+      for (let i = 1; i <= n; i++) {
+        const q = prev ? [prev[0] + (c[0] - prev[0]) * i / n, prev[1] + (c[1] - prev[1]) * i / n] : c, uv = R2.cellToUV(T, q[0], q[1]);
+        if (C.actions.paintAt(ui.store, uv[0], uv[1], ui.modErase ? true : undefined)) ui.painted = true;   // ⌘/Ctrl held = erase
+      }
+      ui.brushAt = c; ui.paintLast = commit ? null : c;
       ui.sceneDirty = true; schedule();
       if (commit && ui.painted) { ui.painted = false; ui.afterChange(); }
     }
