@@ -181,7 +181,7 @@
       }
       const bm = C.BY_ID['A.brushMode'];
       const bsel = P.el('select', { 'data-control': 'A.brushMode', 'aria-label': bm.label, title: bm.label + '. ' + bm.help });
-      for (const [v, t] of bm.options) bsel.append(P.el('option', { value: v }, t));
+      for (const [v, t] of bm.options) bsel.append(P.el('option', { value: v }, t.split(' (')[0]));   // short names in the row; the tooltip explains
       bsel.addEventListener('change', () => ui.setControl('A.brushMode', bsel.value));
       box.append(P.el('label', { 'data-wrap': 'A.brushMode', class: 'brushctl' }, P.el('span', {}, 'mode'), bsel));
       const er = P.el('button', { type: 'button', id: 'erase-btn', class: 'toggle', 'aria-pressed': String(!!C.BY_ID['A.erase'].get(ui.store)), title: 'Erase (paint level 0)' }, 'Erase');
