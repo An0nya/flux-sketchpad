@@ -230,7 +230,7 @@
     const need = (r.isMin ? '≥ ' : '≤ ') + (r.rel ? r.rel.factor + '×' + r.rel.ref + (isFinite(r.bound) ? ' (' + fmtCd(r.bound) + ')' : '') : f(r.bound));
     const got = isFinite(r.value) ? f(r.value) + ' ± ' + f(r.sd) : '—';
     const fac = isFinite(r.margin) ? Math.pow(10, Math.abs(r.margin)) : NaN;
-    const off = !(r.margin < 0) ? (isFinite(fac) && r.unit !== 'deg' && r.unit !== 'log' ? '×' + fac.toFixed(2) + ' headroom' : '') : r.unit === 'deg' ? (r.value - r.bound).toFixed(2) + '° over' : r.isMin && !(r.value > 0) ? 'no light read here' : '×' + fac.toFixed(2) + (r.isMin ? ' short' : ' over');
+    const off = !(r.margin < 0) ? (isFinite(fac) && r.verdict === 'pass' && r.value > 0 && r.unit !== 'deg' && r.unit !== 'log' ? (fac > 1000 ? '> ×1000' : '×' + fac.toFixed(2)) + ' headroom' : '') : r.unit === 'deg' ? (r.value - r.bound).toFixed(2) + '° over' : r.isMin && !(r.value > 0) ? 'no light read here' : '×' + fac.toFixed(2) + (r.isMin ? ' short' : ' over');
     const mk = { pass: '✓', fail: '✗', unsure: '?' }[r.verdict];
     return { need, got, off, mk };
   }
@@ -631,7 +631,7 @@
     for (const [k, label, step, tip] of IDEAL_ROWS) {
       let x;
       if (step === 'chk') { x = el('input', { type: 'checkbox' }); x._chk = true; x._get = () => cur()[k] !== false; x.addEventListener('change', () => { g()[k] = x.checked; roadChanged(ui); }); }
-      else { x = el('input', { type: 'number', step, min: 0 }); x._get = () => cur()[k]; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) g()[k] = k === 'hotH' ? v : Math.max(0, v); roadChanged(ui); }); }
+      else { x = el('input', k === 'hotH' ? { type: 'number', step } : { type: 'number', step, min: 0 }); x._get = () => cur()[k]; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) g()[k] = k === 'hotH' ? v : Math.max(0, v); roadChanged(ui); }); }
       x.dataset.spec = '1'; out.push(row(label, x, tip));
     }
     out.push(row('Reset to defaults', Object.assign(el('button', {}, 'Reset'), { onclick: () => { md(ui).ideal = {}; roadChanged(ui); ui.redrawSpec(); } }), 'Back to the current defaults (forgets every knob you changed).'));
@@ -847,9 +847,9 @@
       btn('shape', 'The road: straight, or an IIHS bend (shared with the Road view)', () => { const o = rvOpts(ui); setRV(ui, 'shape', RV_SHAPES[(RV_SHAPES.indexOf(o.shape) + 1) % RV_SHAPES.length]); });
       btn('wet', 'Dry or wet asphalt (wet is darker and mirror-like)', () => setDV(ui, 'wet', !dvOpts(ui).wet));
       btn('expMode', 'Exposure. Fixed: an absolute EV, so two designs at the same EV are comparable (EV 0 puts 10 cd/m² at white). Auto: the average lit pixel goes to mid grey, so every picture looks exposed and brightness differences hide.', () => setDV(ui, 'expMode', dvOpts(ui).expMode === 'auto' ? 'fixed' : 'auto'));
-      btn('evm', 'One stop darker', () => setDV(ui, 'ev', Math.max(-8, dvOpts(ui).ev - 0.5)));
+      btn('evm', 'Half a stop darker', () => setDV(ui, 'ev', Math.max(-8, dvOpts(ui).ev - 0.5)));
       btn('ev', 'Exposure value (click to reset)', () => setDV(ui, 'ev', DV_DEF.ev));
-      btn('evp', 'One stop brighter', () => setDV(ui, 'ev', Math.min(10, dvOpts(ui).ev + 0.5)));
+      btn('evp', 'Half a stop brighter', () => setDV(ui, 'ev', Math.min(10, dvOpts(ui).ev + 0.5)));
       btn('glare', 'Glare: the part of any pixel above display white is blurred wide and added back, a cheap stand-in for the eye\u2019s light scatter. Not calibrated. Off / low (default) / high (the first version\u2019s strength).', () => { const i = DV_GLARE.findIndex((g) => g[0] === dvOpts(ui).glare); setDV(ui, 'glare', DV_GLARE[(i + 1) % DV_GLARE.length][0]); });
       btn('people', 'Pedestrians (dark clothes, hi-vis vest with tape, light clothes)', () => setDV(ui, 'people', !dvOpts(ui).people));
       btn('animals', 'Deer, with retroreflecting eyes', () => setDV(ui, 'animals', !dvOpts(ui).animals));
