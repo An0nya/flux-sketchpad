@@ -491,7 +491,16 @@
     ui.raf = requestAnimationFrame(tick);
     ui.tmo = setTimeout(tick, 80);
   }
+  // One bad frame must not end the loop: an exception in any draw or update is reported once per message, and the next frame is
+  // always scheduled when work remains.  guard() isolates a single draw so the rest of the frame (trace step, status) still runs.
+  function tickError(e) { const m = String(e && e.message || e); if (ui._tickErr !== m) { ui._tickErr = m; console.error('frame error:', e); if (ui.store) ui.store.notice('Display error (' + m + '): the app keeps running; please reload if the views look wrong.'); } }
+  function guard(fn) { try { return fn(); } catch (e) { tickError(e); } }
   function tick() {
+    try { tickFrame(); } catch (e) { tickError(e); ui.sceneDirty = false; ui.watchDirty = false; }
+    const run = ui.run;
+    if ((run && !run.ctx.done) || (ui.pendingA && ui.store.dirty.has('A')) || ui.solveArmed) schedule();
+  }
+  function tickFrame() {
     cancelAnimationFrame(ui.raf); clearTimeout(ui.tmo);
     ui.raf = 0;
     const now = performance.now(), store = ui.store;
@@ -527,8 +536,8 @@
     }
     if (ui.watchDirty) {                               // a new preview (or the watch ended): at most once per frame
       const tw = performance.now(); ui.watchDirty = false; prepWatch(); ui.sceneDirty = true;
-      if (!drawWatchHeat() && ui.run) drawHeat();
-      syncWatchBadges(); ui.watchStats.prepMs += performance.now() - tw;   // compile + map image + badges (the view redraw is any frame's)
+      guard(() => { if (!drawWatchHeat() && ui.run) drawHeat(); });
+      guard(syncWatchBadges); ui.watchStats.prepMs += performance.now() - tw;   // compile + map image + badges (the view redraw is any frame's)
     }
     if (ui.needCompile) {
       ui.needCompile = false;
@@ -561,7 +570,7 @@
       justDone = run.ctx.done;
     }
     if (run && run.ctx._landed) { run.ctx._landed = false; justDone = justDone || run.ctx.done; }
-    if (run && (justDone || now - ui.lastHeat > (run.preview ? 90 : TRACE_UI_MS))) { drawHeat(); ui.lastHeat = now; ui.sceneDirty = true; }
+    if (run && (justDone || now - ui.lastHeat > (run.preview ? 90 : TRACE_UI_MS))) { guard(drawHeat); ui.lastHeat = now; ui.sceneDirty = true; }
     if (run) {
       const c = run.ctx, pct = c.N ? c.next / c.N : 1;
       if (ui.solving) { /* the solve owns the status line and the bar until it ends */ }
@@ -571,11 +580,10 @@
       else if (!ui.pendingA || !store.dirty.has('A')) ui.setStatus(c.done ? (run.preview ? 'preview' : 'up to date') : 'tracing ' + Math.floor(100 * c.next / c.N) + '%' + (run.preview ? ' (preview)' : ''));   // counts + ms live in the footer
       else ui.setStatus('design changed — regenerating when you pause…');
     }
-    if (run && (justDone || now - ui.lastStats > (run.preview ? 300 : TRACE_UI_MS))) { renderStats(!run.ctx.done); ui.lastStats = now; }
+    if (run && (justDone || now - ui.lastStats > (run.preview ? 300 : TRACE_UI_MS))) { guard(() => renderStats(!run.ctx.done)); ui.lastStats = now; }
     if (run && (justDone || ui._refineN !== run.ctx.N)) { const b = document.getElementById('btn-refine'); if (b) { b.disabled = !ui.canRefine(); b.textContent = run.ctx.N < REFINE_MAX ? 'Refine → ' + RF.U.fmtInt(Math.min(REFINE_MAX, 2 * run.ctx.N)) + ' rays' : 'Refine (at 50M)'; } ui._refineN = run.ctx.N; }
     markStale();
-    if (ui.sceneDirty) { drawSceneView(); drawSurfaceView(); drawLeft(); ui.sceneDirty = false; }
-    if ((run && !run.ctx.done) || (ui.pendingA && store.dirty.has('A')) || ui.solveArmed) schedule();
+    if (ui.sceneDirty) { guard(drawSceneView); guard(drawSurfaceView); guard(drawLeft); ui.sceneDirty = false; }
   }
   // Refine: keep tracing the finished run up to ×2 the rays (exactly the run a bigger ray count would have made: see Engine.extend)
   const REFINE_MAX = 5e7;
@@ -1071,9 +1079,8 @@
   // whose light lands in the spot, not only the ones the solver meant to light it.
   function selInfo() {
     const s = ui.sel, run = ui.run; if (!s || !run) return null;
-    const c = run.ctx, key = c.nHits + ':' + run.started;
-    if (ui.selCache && ui.selCache.sel === s && ui.selCache.key === key) return ui.selCache.info;
-    const sc = ui.store.scene, rep = isPaint(sc.mode) ? ui.store.reports.A : null, surfs = RF.State.allSurfaces(sc);
+    const c = run.ctx, key = c.nHits + ':' + run.started, sc = ui.store.scene, rep = isPaint(sc.mode) ? ui.store.reports.A : null, surfs = RF.State.allSurfaces(sc);
+    if (ui.selCache && ui.selCache.sel === s && ui.selCache.key === key && ui.selCache.rep === rep) return ui.selCache.info;   // a new report (re-solve) has other zones
     const info = { emph: new Map(), zones: [], primaries: [], secondary: [], contrib: [], landed: 0, vals: null, paths: [], loss: null };
     const T = run.P.T, sr = run.P.res, metas = run.P.G.metas;
     const simCell = (h) => { let i = Math.floor((c.hits[3 * h] + T.half) / (2 * T.half) * sr), j = Math.floor((c.hits[3 * h + 1] + T.half) / (2 * T.half) * sr); if (i >= sr) i = sr - 1; if (j >= sr) j = sr - 1; return j * sr + i; };
@@ -1133,7 +1140,7 @@
     const MAXR = Math.min(rays.length, Math.max(rays.length ? 1 : 0, Math.round(total * share * SEL_RAY_BOOST))), step = Math.max(1, rays.length / MAXR);   // an even sample, retraced exactly
     for (let t = 0; t < rays.length && info.paths.length < MAXR; t += step) { const p = RF.Engine.retrace(run.P, rays[Math.floor(t)]); p.sel = true; info.paths.push(p); }
     if (info.loss) info.paths.push(...info.loss.ghosts);
-    ui.selCache = { sel: s, key, info };
+    ui.selCache = { sel: s, key, rep, info };
     return info;
   }
   // where a facet's light went (Engine.facetLosses), plus ghost rays sampled like the bundle
