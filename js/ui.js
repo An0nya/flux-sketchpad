@@ -885,6 +885,7 @@
       onZoom(f, x, y) { ui.cam.zoomAt(f, x, y); ui.cam.userMoved = true; ui.sceneDirty = true; schedule(); },
     });
     // Drag a setup handle in whichever view it was grabbed (screen deltas → world through that view's camera)
+    const ENV_MIN = 0.1;                             // mm: thinnest envelope a face drag can make
     function dragHandle(h, cam, dx, dy) {
         const sc = ui.store.scene;
         const along = (axis) => {                        // world distance moved along a unit axis
@@ -900,8 +901,14 @@
           const ax = [0, 0, 0]; ax[h.axis] = 1;
           const d = along(ax), e = sc.envelope;
           const lo = e.center[h.axis] - e.half[h.axis], hi = e.center[h.axis] + e.half[h.axis];
+          // the face follows the pointer's accumulated travel (not the live width), so pushing it past the opposite face stops at a
+          // minimum thickness and dragging back un-sticks it; a new drag, or an edit from elsewhere, restarts from the face itself
+          const face = h.sign > 0 ? hi : lo, st = dragHandle.env;
+          if (!st || st.h !== h || Math.abs(st.face - face) > 1e-9) dragHandle.env = { h, face, raw: face };
+          dragHandle.env.raw += d;
           let nlo = lo, nhi = hi;
-          if (h.sign > 0) nhi = Math.max(lo + 1e-3 * (hi - lo + 1), hi + d); else nlo = Math.min(hi - 1e-3 * (hi - lo + 1), lo + d);
+          if (h.sign > 0) nhi = Math.max(lo + ENV_MIN, dragHandle.env.raw); else nlo = Math.min(hi - ENV_MIN, dragHandle.env.raw);
+          dragHandle.env.face = h.sign > 0 ? nhi : nlo;
           const c = e.center.slice(); c[h.axis] = (nlo + nhi) / 2;
           C.actions.setEnvelopeCenter(ui.store, c); C.actions.setEnvelopeHalf(ui.store, h.axis, (nhi - nlo) / 2);
         } else if (h.id === 'tgt') {
