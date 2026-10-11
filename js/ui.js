@@ -183,12 +183,11 @@
       const bsel = P.el('select', { 'data-control': 'A.brushMode', 'aria-label': bm.label, title: bm.label + '. ' + bm.help });
       for (const [v, t] of bm.options) bsel.append(P.el('option', { value: v }, t.split(' (')[0]));   // short names in the row; the tooltip explains
       bsel.addEventListener('change', () => ui.setControl('A.brushMode', bsel.value));
-      box.append(P.el('label', { 'data-wrap': 'A.brushMode', class: 'brushctl' }, P.el('span', {}, 'mode'), bsel));
       const er = P.el('button', { type: 'button', id: 'erase-btn', class: 'toggle', 'aria-pressed': String(!!C.BY_ID['A.erase'].get(ui.store)), title: 'Erase (paint level 0)' }, 'Erase');
       er.addEventListener('click', () => { const v = !C.BY_ID['A.erase'].get(ui.store); ui.setControl('A.erase', v); er.setAttribute('aria-pressed', String(v)); });
       const inv = P.el('button', { type: 'button', title: 'Invert the painting (level → 1 − level)' }, 'Invert');
       inv.addEventListener('click', () => { ui._histHint = 'Invert paint'; C.actions.invertPaint(ui.store); ui.afterChange(); });
-      box.append(P.el('span', { class: 'btn-pair' }, er, inv));
+      box.append(P.el('span', { class: 'btn-pair', 'data-wrap': 'A.brushMode' }, bsel, er, inv));   // the mode select rides with Erase / Invert: no extra wrapped row under the map
       if (m === 'D' && RF.SpecUI) RF.SpecUI.leftTools(ui, box);
     } else if (m === 'B') {
       box.append(P.el('span', {}, 'centre = emission axis, rings = 30° steps · bright = source intensity · dim = no room in the envelope'));
