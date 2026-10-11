@@ -16,5 +16,15 @@ let fails = 0; const ok = (name, cond) => { console.log((cond ? '[PASS] ' : '[FA
       ok('G06 solve with no edit meanwhile is applied', (await p2) !== null && !st.dirty.has('A'));
     } finally { RF.Solvers.runAsync = real; }
   }
+  // G09: hb4 -> measured (no rows yet) must give a coherent planar emitter, not the bulb's shape / volts / lumens
+  {
+    const st = C.createStore(RF.State.testScene()), src = st.scene.source;
+    C.actions.applySourcePreset(st, 'hb4'); const bulbPower = src.power;
+    C.actions.applySourcePreset(st, 'measured');
+    ok('G09 planar source has a planar shape (got ' + src.shape + ')', ['rect', 'disc'].includes(src.shape));
+    ok('G09 bulb voltage is dropped (volts ' + src.volts + ')', src.volts === undefined);
+    ok('G09 bulb lumens are not inherited (power ' + src.power + ' vs bulb ' + bulbPower + ')', src.power !== bulbPower);
+    ok('G09 filament emission mode is dropped (' + src.emission + ')', src.emission === undefined);
+  }
   process.exitCode = fails ? 1 : 0;
 })();
