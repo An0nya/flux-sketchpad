@@ -1038,28 +1038,46 @@
           C.actions.setProfile(ui.store, pts); ui.afterChange();
           setTimeout(() => { ui.vProf.lockBounds = null; }, 0);
         }
-        if (isPaint(m)) paintAt(x, y, true);
+        // (a paint tap is handled in onPrimaryEnd: it has to wait to see whether it is half of a double-click)
       },
-      onPrimaryStart(x, y) { ui.paintLast = null; if (isPaint(ui.store.scene.mode)) paintAt(x, y, false); },
+      // The first dab waits until the pointer moves a few px (a second finger or a double-click then paints nothing); a click paints on release,
+      // after the double-click window, and a second click close to the first (the double-click that resets the view) cancels both.
+      onPrimaryStart(x, y) { ui.paintLast = null; if (isPaint(ui.store.scene.mode)) { ui.paintPend = { x, y, t: performance.now(), erase: !!ui.modErase }; } },
       onPrimary(x, y, dx, dy) {
         const m = ui.store.scene.mode;
-        if (isPaint(m)) paintAt(x, y, false);
-        else { view().panBy(dx, dy); ui.sceneDirty = true; schedule(); }
+        if (isPaint(m)) {
+          const p = ui.paintPend;
+          if (p) { if (Math.hypot(x - p.x, y - p.y) < 4) return; ui.paintPend = null; flushTap(); paintAt(p.x, p.y, false); }
+          paintAt(x, y, false);
+        } else { view().panBy(dx, dy); ui.sceneDirty = true; schedule(); }
       },
-      onPrimaryEnd() { ui.paintLast = null; if (isPaint(ui.store.scene.mode) && ui.painted) { ui.painted = false; ui.afterChange(); } },
+      onPrimaryEnd(cancelled) {
+        ui.paintLast = null;
+        const p = ui.paintPend; ui.paintPend = null;
+        if (p && !cancelled) tapPaint(p);                  // released without moving: a click (a second finger arriving instead drops it)
+        if (isPaint(ui.store.scene.mode) && ui.painted) { ui.painted = false; ui.afterChange(); }
+      },
       onHover(x, y) { if (isPaint(ui.store.scene.mode) && liveFor(cv)(false)) { ui.brushAt = ui.vLeft.toContent(x, y); ui.sceneDirty = true; schedule(); } },
       onLeave() { if (ui.brushAt) { ui.brushAt = null; ui.sceneDirty = true; schedule(); } },
       onPan(dx, dy) { view().panBy(dx, dy); ui.sceneDirty = true; schedule(); },
       onZoom(f, x, y) { const v = view(); v.zoomAt(f, x, y); if (v === ui.vProf) v.lockBounds = v.bounds.slice(); ui.sceneDirty = true; schedule(); },
     });
+    const DBL_MS = 400, DBL_PX = 8;                  // a second click inside this window and radius counts as the double-click
+    function flushTap() { const t = ui.paintTap; if (!t) return; clearTimeout(t.id); ui.paintTap = null; if (isPaint(ui.store.scene.mode)) paintAt(t.x, t.y, true, t.erase); }
+    function tapPaint(p) {
+      const t = ui.paintTap;
+      if (t && p.t - t.t < DBL_MS && Math.hypot(p.x - t.x, p.y - t.y) < DBL_PX) { clearTimeout(t.id); ui.paintTap = null; return; }
+      flushTap();
+      ui.paintTap = { x: p.x, y: p.y, t: p.t, erase: p.erase, id: setTimeout(flushTap, DBL_MS) };
+    }
     // Stamp the brush at (x, y); after the first dab of a stroke, also along the segment from the previous dab (spacing <= a quarter of the
     // brush) so a fast stroke with few pointer samples leaves no gaps.  commit: end the stroke here (one undo entry for all of it).
-    function paintAt(x, y, commit) {
+    function paintAt(x, y, commit, erase) {
       const c = ui.vLeft.toContent(x, y), T = RF.Engine.targetFrame(ui.store.scene.target), prev = ui.paintLast, size = ui.store.scene.modeA.brush.size;
       const n = prev ? Math.min(256, Math.ceil(Math.hypot(c[0] - prev[0], c[1] - prev[1]) / Math.max(0.1, size / 4))) : 1;
       for (let i = 1; i <= n; i++) {
         const q = prev ? [prev[0] + (c[0] - prev[0]) * i / n, prev[1] + (c[1] - prev[1]) * i / n] : c, uv = R2.cellToUV(T, q[0], q[1]);
-        if (C.actions.paintAt(ui.store, uv[0], uv[1], ui.modErase ? true : undefined)) ui.painted = true;   // ⌘/Ctrl held = erase
+        if (C.actions.paintAt(ui.store, uv[0], uv[1], (erase === undefined ? ui.modErase : erase) ? true : undefined)) ui.painted = true;   // ⌘/Ctrl held = erase
       }
       ui.brushAt = c; ui.paintLast = commit ? null : c;
       ui.sceneDirty = true; schedule();
