@@ -121,6 +121,7 @@
   ui.autoPrefs = autoPrefs;
   ui.loadScene = function (scene, notice, silent) {
     ui.store = C.createStore(scene);
+    stopWorkerSolve('a new scene was loaded'); dropWatch(); ui.pendingA = 0; ui.solveArmed = false;   // the old scene's solve, preview and queued rebuild don't carry over
     const au = autoPrefs(); ui.store.autoA = au.paint; ui.store.autoSet = au.settings;
     // rebuild derived groups from intent. Mode A is re-solved too (~50 ms): the solver report isn't
     // saved with the scene, so otherwise the limits panel is empty after any load.
@@ -197,7 +198,7 @@
     const groups = [['Default', paintDefs.filter((d) => d.bundled && grpOf(d) === 'default')], ['Benchmark runs', paintDefs.filter((d) => d.bundled && grpOf(d) === 'benchmark')], ['Legacy', paintDefs.filter((d) => (d.bundled && grpOf(d) === 'legacy') || !d.worker)], ['Loaded by you', paintDefs.filter((d) => d.loaded)]];
     const pick = el('select', { 'aria-label': 'Solver' }, ...groups.filter(([, ds]) => ds.length).map(([g, ds]) => el('optgroup', { label: g }, ...ds.map((d) => opt(d, d.name + ' v' + d.version + (d.bundled ? ' — ' + d.bundled.model.replace(/ \(.*\)$/, '') + ', ' + d.bundled.run.slice(5) : ''))))));
     pick.value = cur;
-    pick.addEventListener('change', () => { sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.store.invalidate(['A']); if (ui.store.autoA) ui.pendingA = performance.now() + 100; markStale(); schedule(); renderSolverBox(); });
+    pick.addEventListener('change', () => { stopWorkerSolve('solver changed'); sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.store.invalidate(['A']); if (ui.store.autoA) ui.pendingA = performance.now() + 100; markStale(); schedule(); renderSolverBox(); });
     const file = el('input', { type: 'file', accept: '.js,text/javascript', hidden: '' });
     file.addEventListener('change', async () => {
       const f = file.files && file.files[0]; if (!f) return;
@@ -509,7 +510,7 @@
           if (seq !== ui.solveSeq) return;                // superseded: a newer solve owns the UI
           ui.solving = null; showStop(false); ui.lastGenMs = performance.now() - t0;
           if (ui.watch && ui.watch.seq === seq) { ui.watch = null; ui.watchDirty = true; }   // the verified result replaces the preview
-          if (!rep) { ui.pendingA = performance.now(); schedule(); return; }   // scene changed meanwhile: solve again
+          if (!rep) { ui.refreshPanels(); schedule(); return; }   // scene changed meanwhile: result dropped, dirty A stays (the edit already queued its own auto-solve if its switch is on)
           ui.refreshPanels(); ui.needCompile = true; ui.autosave(); schedule();
         }, (err) => {
           if (seq !== ui.solveSeq) return;
@@ -520,6 +521,7 @@
         });
         return;
       }
+      stopWorkerSolve('replaced by ' + def.name);        // a page solver wins over a worker solve still running (its preview would sit on the new design)
       C.regenerateA(store); ui.lastGenMs = performance.now() - t0;
       ui.refreshPanels(); ui.needCompile = true; ui.autosave();
     }
