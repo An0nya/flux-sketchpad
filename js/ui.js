@@ -1835,11 +1835,12 @@
   function boot() {
     let scene = null, restored = false;
     try { scene = RF.State.loadLocal(); restored = !!scene; } catch (e) { scene = null; }
+    const bad = !scene && RF.State.loadError && RF.State.loadError();   // the saved scene was unreadable: say so once
     if (!scene) scene = RF.State.defaultScene();
     ui.store = C.createStore(scene);
     P.buildSide(ui); renderPatterns();
     wireTopbar(); wireScene(); wireHeat(); wireLeft();
-    ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : null, true);
+    ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : bad ? 'Your saved scene could not be read (' + bad.message + '), so this is the default scene. ' + (bad.kept ? 'The unreadable copy is kept in this browser under “' + bad.key + '”.' : 'It could not be kept: browser storage is full.') : null, true);
     if (!scene.groups.A.surfaces.length && isPaint(scene.mode)) {
       // the default solver is a worker solver that arrives with the bundle: wait for it (restore() solves after)
       const waiting = RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(ui.store.scene));

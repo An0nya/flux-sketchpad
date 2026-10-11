@@ -233,5 +233,24 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     const badScene = JSON.parse(SS.serialize(sc)); badScene.modeA.brush.mode = 'blend'; let threw = false; try { SS.deserialize(badScene); } catch (e) { threw = /brush\.mode/.test(e.message); }
     ok('D-E17 a scene with an unknown brush mode is rejected by the schema check', threw);
   }
+  // G38: an unreadable autosave is kept aside under "<key>.bad" (and reported), not silently overwritten
+  {
+    const SS = RF.State, KEY = 'faceted-reflector-demo/scene/v1', store = {};
+    globalThis.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
+    try {
+      store[KEY] = '{garbage';
+      const r = SS.loadLocal();
+      ok('G38 an unparseable autosave still loads as "nothing" (caller starts from defaults)', r === null);
+      ok('G38 the bad text is kept under the .bad key', store[KEY + '.bad'] === '{garbage', String(store[KEY + '.bad']));
+      ok('G38 the failure is reported to the caller', !!(SS.loadError && SS.loadError() && /garbage|JSON|position/i.test(SS.loadError().message) && SS.loadError().kept === true), JSON.stringify(SS.loadError && SS.loadError()));
+      SS.saveLocal(SS.defaultScene());
+      ok('G38 a later autosave does not touch the .bad copy', store[KEY + '.bad'] === '{garbage');
+      ok('G38 a good autosave loads and clears the report', SS.loadLocal() !== null && !(SS.loadError && SS.loadError()));
+      delete store[KEY]; delete store[KEY + '.bad'];
+      ok('G38 nothing saved is not an error', SS.loadLocal() === null && !(SS.loadError && SS.loadError()) && !((KEY + '.bad') in store));
+      store[KEY] = JSON.stringify({ mode: 'Z' });
+      ok('G38 a schema failure is kept aside too', SS.loadLocal() === null && store[KEY + '.bad'] === store[KEY] && /mode/.test(String(SS.loadError && SS.loadError() && SS.loadError().message)));
+    } finally { delete globalThis.localStorage; }
+  }
   process.exitCode = fails ? 1 : 0;
 })();

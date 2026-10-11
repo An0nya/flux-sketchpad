@@ -157,12 +157,24 @@
   function saveLocal(scene) {
     try { if (typeof localStorage !== 'undefined') localStorage.setItem(LS_KEY, serialize(scene)); return true; } catch (e) { return false; }
   }
+  // An autosave that cannot be read is not "nothing saved": the next autosave would overwrite the only copy.  The raw text is
+  // kept under "<key>.bad" and loadError() says why (boot shows one notice); the caller still gets null and starts from defaults.
+  let lastLoadError = null;
+  function loadError() { return lastLoadError; }
   function loadLocal() {
+    lastLoadError = null;
+    let s = null;
     try {
       if (typeof localStorage === 'undefined') return null;
-      const s = localStorage.getItem(LS_KEY);
+      s = localStorage.getItem(LS_KEY);
       return s ? deserialize(s) : null;
-    } catch (e) { return null; }
+    } catch (e) {
+      if (s) {
+        let kept = false; try { localStorage.setItem(LS_KEY + '.bad', s); kept = true; } catch (e2) { /* storage full */ }
+        lastLoadError = { message: String((e && e.message) || e), kept, key: LS_KEY + '.bad' };
+      }
+      return null;
+    }
   }
   // Manual snapshot: its own key, so autosave (crash recovery) never overwrites it.
   const SNAP_KEY = LS_KEY + '/snapshot';
@@ -246,6 +258,6 @@
 
   RF.State = { CLEAR_MAX,
     VERSION, LS_KEY, defaultScene, testScene, defaultPaint, allSurfaces, serialize, deserialize,
-    saveLocal, loadLocal, clearLocal, saveSnapshot, loadSnapshot, snapshotTime, mapSurface, scaleScene, mirrorSceneY, reorderScene,
+    saveLocal, loadLocal, loadError, clearLocal, saveSnapshot, loadSnapshot, snapshotTime, mapSurface, scaleScene, mirrorSceneY, reorderScene,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
