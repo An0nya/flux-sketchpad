@@ -1389,17 +1389,24 @@
   }
 
   // ---------------------------------------------------------------- Optics slow orbit
-  // First load: Optics turns until you move it by hand (then never again this load).  Idle orbit (sidebar,
+  // First load: Optics turns until you move it by hand, click into it, or the page sits idle for ORBIT_STOP_S (no pointer / key /
+  // wheel input, no solve or trace running); then never again this load.  Idle orbit (sidebar,
   // default never): it resumes after that many seconds untouched.  Off under reduced motion, while the tab
   // is hidden, while Optics is collapsed, and while you're dragging anything.  A turn doesn't count as
   // "moved by you", so an untouched view still refits.
   const ORBIT_DEG_S = 4, IDLE_STEPS = [0, 5, 10, 20, 30, 60, Infinity];
-  ui.orbitFirst = true; ui.orbitIdle = Infinity; ui.orbitLast = performance.now();
+  const ORBIT_STOP_S = 10;
+  ui.orbitFirst = true; ui.orbitIdle = Infinity; ui.orbitLast = ui.pageLast = performance.now();
   function orbitTouched() { ui.orbitFirst = false; ui.orbitLast = performance.now(); }
+  for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel']) document.addEventListener(ev, () => { ui.pageLast = performance.now(); }, { passive: true, capture: true });
+  document.addEventListener('pointerdown', (e) => { if (e.target.closest && e.target.closest('.optics-pane')) orbitTouched(); }, { passive: true, capture: true });   // clicking into Optics ends the first orbit
   function orbitWanted() {
     const pane = document.querySelector('.optics-pane');
     if (!ui.model || document.hidden || ui.interacting || ui.activeHandle || !pane || pane.classList.contains('bar') || pane.classList.contains('rail')) return false;
     if (root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    const now = performance.now();
+    if (ui.solving || (ui.run && !ui.run.ctx.done)) ui.pageLast = now;                      // a solve or trace running is not idle
+    if (ui.orbitFirst && now - ui.pageLast > ORBIT_STOP_S * 1000) { ui.orbitFirst = false; ui.orbitLast = now; }   // the first orbit ends for good; the sidebar option can still restart it
     return ui.orbitFirst || performance.now() - ui.orbitLast > ui.orbitIdle * 1000;
   }
   let orbitRaf = 0, orbitT = 0;
