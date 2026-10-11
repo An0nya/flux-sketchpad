@@ -17,6 +17,9 @@ before the fix. Opus reviews the diffs and merges into `main` one batch at a tim
 | B5 | Spec: footer refresh, Measure at "target" follows the target, road cut-off in every aim mode, wording | G15–G20, G02b |
 | B5b | Anya's Spec decisions: no live aim during traces, Measure at ∞ default, road/goals from far field at the judge's aim, IIHS labels (checked vs IIHS protocol v3, 2018) | D-S03/S13/S16/S18 |
 | B6 | geometry cache bounded (LRU 8), README corrected (file:// is partial) | G21, G22 |
+| B7 | solver host: request-id map (`rid`), single-flight rebuild, crash recovery, corrupt solver list, file:// notice | G22b, G23, G24 |
+| B8 | ui.js solve lifecycle: Stop/timeout/crash keep 'out of date', scene/solver change cancels the solve, frame errors isolated, atomic loadScene | G04 (ui half), G25–G30 |
+| B10 | stats/panels: Mode A clear (option B), field write-back, no NaN/Infinity, far-field footer peak, outside-envelope warning, LED presets at own defaults | G10, G39–G42, D-E08, D-C14 |
 | — | GPU trace branch (`claude/webgpu-webgl-traces-9bi0ul`), opt-in, benched on the M4: ~30–40× one CPU core | — |
 | — | ideal-goals-port branch (solvers/ + tools/) | — |
 
@@ -25,14 +28,8 @@ all 19 `tests/regress/*.js` browser tests 0 fail (runner: `run-all.sh <dir> <por
 `PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright`, as Playwright isn't installed globally).
 
 ## Not merged yet
-- **B7 solver host** (G23 request-id map, worker crash recovery, G24 corrupt solver list, G22b file:// notice):
-  an agent was running on branch `fix/b7-solver-host` (worktree `.claude/worktrees/b7`, base 661c94f) when
-  this was written. Check `fixes/B7.md` and the branch before relaunching anything.
-- **B8** ui.js solve lifecycle (G25–G30, G04's ui.js half, G08's Stop half: keep dirty A when the
-  interrupted solve's result was never applied). Worktree `.claude/worktrees/b8` created at 8d2a2cd; maybe not started.
-- **B10** panels.js (G39–G42, G10 "clear" = Anya's option B: remove the reflector AND turn auto-solve off
-  for that group; E08 warn on source outside the envelope; C14 LED presets open at their own defaults).
-  Worktree `.claude/worktrees/b10` created at 8d2a2cd; maybe not started.
+- Pushed main = 8f7e96b (green: all.js, regress-node, 38 browser regress lines). Running when written: B9 (gestures + brush mode, worktree .claude/worktrees/b9-gestures) and B4b (layout follow-ups, .claude/worktrees/b4b-layout), both from 8f7e96b.
+- Spec-mode inputs keep rejected text (S14, spec-ui.js:246): not yet fixed (B10 stopped it as out of scope) → B11 or B12.
 - **B9** ui.js gestures (G31–G33) + brush mode option (raise = default, set, lower). After B8.
 - **B11** ui.js chrome (G34–G38) + Optics turntable stops 10 s after idle and when the pane is clicked into
   + Spec auto-layout (entering Spec collapses Editor, expands Result; leaving restores). After B8.
