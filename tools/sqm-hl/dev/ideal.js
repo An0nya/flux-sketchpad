@@ -1,4 +1,8 @@
-/* ideal.js — sqm-hl-ideal only (node build.js --ideal): the ideal beam T* shaped from the ideal-beam goals (spec.ideal = RF.IdealBeam.of(md)).
+/* ideal.js — sqm-hl-ideal / sqm-hl-dish-ideal (node build.js --ideal) and projector-liou (idealShape 'goals'): the ideal beam T* shaped from the
+ * ideal-beam goals (spec.ideal = RF.IdealBeam.of(md)).
+ * In an SQM build (RF.SqmPipe present) it replaces T.design and wraps Pipe.solve to pass the settings in (CUR) and report the goals.  Anywhere
+ * else (projector-liou's own copy of target.js) it is only taken when the caller asks for it: T.design(P) with P.shape === 'goals', the
+ * settings in P.ideal = { goals, hotOffset, leftover, hotGain }; every other shape goes to the caller's own design.
  *
  * Plain SQM builds T* from a road plateau (the reach), a foreground wash that soaks up the light the road cannot use, and the glow; then a
  * cut-off search and the aim guard.  This variant keeps all of that and adds (shapes() below):
@@ -16,7 +20,7 @@
  * Removed 10-10: the overshoot / measured-loss modes (the built hotspot top stayed at 1.13–1.25° D whatever the target asked; see NOTES). */
 (function () {
   'use strict';
-  const RF = globalThis.RF, T = RF.SqmTarget, Pipe = RF.SqmPipe;
+  const RF = globalThis.RF, T = RF.SqmTarget, Pipe = Object.prototype.hasOwnProperty.call(RF, 'SqmPipe') ? RF.SqmPipe : null;   // own property: this file's private RF, never another solver's through the app's
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x)), sm = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
   const box = (x, a, b, e) => sm((x - a) / e + 0.5) * sm((b - x) / e + 0.5);       // 1 inside [a, b], soft edges e wide
   let CUR = null;                                                                     // the running solve's settings (T.design gets no S)
@@ -83,7 +87,7 @@
 
   // T* for the ideal variant (replaces T.design in this build; plain SQM's design is untouched in sqm-hl.js)
   function design(P) {
-    const C = CUR || {}, G = C.goals || RF.IdealBeam.defaults(), off = isFinite(C.hotOffset) ? C.hotOffset : 0, mode = C.leftover === 'uncollected' ? 'uncollected' : 'hotspot', gain = C.hotGain > 1 ? C.hotGain : 4;
+    const C = CUR || P.ideal || {}, G = C.goals || RF.IdealBeam.defaults(), off = isFinite(C.hotOffset) ? C.hotOffset : 0, mode = C.leftover === 'uncollected' ? 'uncollected' : 'hotspot', gain = C.hotGain > 1 ? C.hotGain : 4;
     const { g, spec } = P, gd = P.gd || 0.34, road = T.roadPlateau(g, spec, P.road); let rmax = 0; for (const x of road) if (x > rmax) rmax = x;
     const S = { road, wash: T.washShape(g, spec, P.wash), glow: T.glowField(g, P.B.lo, P.B.hi, P.glowR || 3.0), cut: P.cut === undefined ? T.cutOf(spec) : P.cut }; S.guard = T.guardCols(P, S.cut);
     const alpha = P.peakCap > 0 ? P.peakCap / Math.max(1e-9, rmax) : (P.alpha || 1), cap = P.peakCap > 0 ? P.peakCap : Infinity;
@@ -155,18 +159,19 @@
     const ideal = { relCaps, Lh, s: best.s, level: levelOf(best.s, gain), off, topD: best.topD, mode, fgShare: fluxBelow(best.T) };
     return { guard, guardDropped, T: best.T, alpha, W0: best.W0, flux, leftover: Math.max(0, (P.fluxTarget || 0) - flux), edge: { sv: best.sv, dTop: best.dTop, G: best.G }, ev: best.ev, tries: tries.map((t) => ({ dTop: t.dTop, sv: +t.sv.toFixed(3), G: +t.G.toFixed(3), fails: t.fails, worst: +t.worst.toFixed(2) })), road, glow: S.glow, ideal };
   }
-  T.design = design;
+  const design0 = T.design;
+  T.design = Pipe ? design : (P) => (P.shape === 'goals' ? design(P) : design0(P));
 
   // the goals on a cd map over P.g (aimed by `sh` = the judge's shift, [0, 0] for T*)
   function goalsOn(P, cd, sh, G) {
     const g = P.g, own = P.spec.traffic === 'LHT' ? -1 : 1, s = sh || [0, 0];
     const I = (h, v) => { const i = g.iOf(own * h + s[0]), j = g.jOf(v + s[1]); return i < 0 || j < 0 || i >= g.nh || j >= g.nv ? 0 : cd[j * g.nh + i]; };
-    return RF.IdealBeam.check(I, { ideal: G }, null);
+    return RF.IdealBeam.check(I, { ideal: G, preset: P.spec.preset, aimLine: P.spec.aim && P.spec.aim.line }, null);   // preset / line: the strips hang from the spec's own cut-off line (was the ECE line under FMVSS too)
   }
   const line = (r) => r.score + '/' + r.n + ' (' + r.goals.map((x) => (x.met ? '✓' : x.credit > 0 ? '◐' : '✗') + x.key + ' ' + x.value).join(', ') + ')';
   const modelCd = (P, m) => { const g = P.g, out = new Float64Array(g.n); for (let q = 0; q < g.n; q++) out[q] = m.Et[q] / g.om[q]; return out; };
 
-  const solve0 = Pipe.solve;
+  const solve0 = Pipe && Pipe.solve;
   function solveOnce(input, S, tools, off) {
     CUR = { goals: (input.spec && input.spec.ideal) || RF.IdealBeam.defaults(), hotOffset: off, leftover: S.leftover, hotGain: S.hotGain };
     try { return solve0(input, S, tools); } finally { CUR = null; }
@@ -177,7 +182,7 @@
     const tM = rM.goals.find((x) => x.key === 'hotTop');
     return { rT, rM, off, top: tM ? tM.value : NaN, d };
   }
-  Pipe.solve = function (input, S, tools) {
+  if (Pipe) Pipe.solve = function (input, S, tools) {
     if (!input.spec) return solve0(input, S, tools);
     const G = input.spec.ideal || RF.IdealBeam.defaults(), off = isFinite(S.hotOffset) ? S.hotOffset : 0;
     const o = solveOnce(input, S, tools, off); o.ideal = report(o, G, off); return o;

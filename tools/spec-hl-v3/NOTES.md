@@ -350,3 +350,26 @@ wash0.45 (−0.78 / −0.35 / −0.41): TWO real edges in the 2.5 L aim column (
 s7-plain aims by the NOTCH bottom at 2.5 L (−0.95; 1.5 / 3.5 L read −0.4 / −0.5) → beam aimed 0.35° UP. That is the "B50L notch doesn't line up" effect.
 s12-plain: fit sits +0.1° above the pick in all 3 seeds (−0.20, quantized: the parabola has no right neighbour) → 1 → 2 fails in 2 seeds.
 Sheets: docs/spec-hl-v3/cutoff-fit-ece.png, cutoff-fit-wash-fmvss.png (untracked).
+
+### 10-11 step 4 ported: the ideal-beam goals in the other headlamp solvers (Opus; Anya away, all opt-in, defaults unchanged)
+- sqm-hl-dish-ideal (new file, `node tools/sqm-hl/build.js --dish --ideal`): the dish's shells + ideal.js's T*. build.js / solver-main.js
+  now combine variant flags (RF.SqmVariant 'dish-ideal'); sqm-hl / -dish / -ideal rebuilt, differing only in the gated lines.
+  Check: forced `shell: natural` reproduces sqm-hl-ideal's model output exactly (box ECE: 16/3/0, goals 4.28/10, same fail rows).
+- projector-liou `idealShape: 'goals'` (+ hotOffset, idealLeftover, hotGain, adv): the SAME module, tools/sqm-hl/dev/ideal.js, now in
+  Liou's build after target.js. ideal.js takes over T.design only in an SQM build (own-property RF.SqmPipe); elsewhere only when
+  P.shape === 'goals' (settings in P.ideal). Notes report the goals on T* and on the finished model (model judge's aim).
+  Also: goalsOn() passes the spec's preset / aim line, so the strips hang from the FMVSS line under FMVSS (was the ECE line; report only).
+- spec-hl-v3 `idealWeight` (0 = off) + hotOffset / hotGain (adv): idealTarget() = the road target's plateau max'ed with the goal shapes
+  (dome at the line, wash, 3L, absolute strips, soft point-max cones), budgeted to 0.8 × available (widen → brighten ≤ hotGain → foreground
+  wash ≤ 0.9 × fgCap → rest free), weights idealWeight over goal pixels on top of the road's. Candidates become v2 fallback / ideal /
+  ideal × 3 weight; the pick is compliance → goals score (traced, ±0.25 tie) → reach. Shapes are copied, not shared (v3 is hand-written).
+Smoke results, n = 1 seed each (judge 2–4 M rays; synthetic scenes, not Anya's 5/7/9/11/12, which are not in this container):
+  v3 box ECE    road: 15/0/4, reach 86/48, goals 5.4   → ideal: 16/0/3, reach 82/50, goals 7 (pilot)
+  v3 box FMVSS  road: 22/0/4 (v2 picked), 76/44, 6      → ideal: 25/0/1, 101/61, 7
+  v3 led-back   road: 16/0/3 (v2 picked), 81/58, 10     → ideal ×3: 14/0/5, 70/54, 11 — goals-before-reach picked a shorter-reach beam
+  Liou her-r112b  road 13/1/5, IIHS 68/42 → goals 13/0/6, 63/0 (left from the near limit 0); T* 8/10 goals, model only 2/10
+  Liou her-fmvss  road 21/4/1, 56/43      → goals 22/1/3, 88/0 (0.5U 1R–3R 14 kcd: the dome at the line pokes over the own-side line); T* 9/10, model 3/10
+  dish-ideal box: conic shell picked, 14/3/2 (B50L, Zone III, linearity) vs dish 11/0/8; led-back: 13/0/6, model goals 5/10
+Read: v3 realizes the goals best (the fit chases the map directly); Liou meets them on T* but its placement doesn't (model foreground 45 %
+vs 10 % asked — the same deep-spill problem as 10-09 item 2); dish-ideal inherits sqm-hl-ideal's behaviour, and on box the conic shell
+costs rows. Open for Anya: flip any default? keep goals-before-reach in v3's pick? Liou needs the placement fixes before goals pay off.
