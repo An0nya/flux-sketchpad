@@ -1553,8 +1553,9 @@
     document.body.classList.toggle('target-collapsed', !!st.collapsed.editor);
     for (const [k, el] of Object.entries(panes)) { el.classList.toggle('active', st.active === k); el.classList.toggle('expanded', st.expanded === k); }
     ui.inspCache = null; renderInspector();             // the numbers panel exists only while Optics is expanded
-    for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === st.active);
-    for (const b of document.querySelectorAll('[data-expand]')) { const on = st.expanded === b.dataset.expand; b.textContent = on ? '↙' : '⤢'; b.title = on ? 'Restore size' : 'Expand'; }
+    for (const b of document.querySelectorAll('[data-tab]')) { b.classList.toggle('on', b.dataset.tab === st.active); b.setAttribute('aria-pressed', String(b.dataset.tab === st.active)); }
+    for (const b of document.querySelectorAll('button.collapse')) b.setAttribute('aria-expanded', String(!st.collapsed[b.dataset.collapse]));
+    for (const b of document.querySelectorAll('[data-expand]')) { const on = st.expanded === b.dataset.expand; b.textContent = on ? '↙' : '⤢'; b.title = on ? 'Restore size' : 'Expand'; b.setAttribute('aria-pressed', String(on)); }
     if (phone()) {
       for (const el of [W, R, PR]) el.removeAttribute('style');
       PR.classList.remove('stacked', 'both-bars');
@@ -1664,7 +1665,7 @@
 
   function setDisplay(d) {
     ui.display = d;
-    for (const o of document.querySelectorAll('#heat-display button')) o.classList.toggle('on', o.dataset.disp === d);
+    for (const o of document.querySelectorAll('#heat-display button')) { o.classList.toggle('on', o.dataset.disp === d); o.setAttribute('aria-checked', String(o.dataset.disp === d)); }
     document.getElementById('heat-canvas').parentElement.classList.toggle('ff', d === 'ff');   // shows the far-field toggles
     document.getElementById('heat-canvas').parentElement.classList.toggle('road', d === 'road');   // shows the road-view toggles
     document.getElementById('heat-canvas').parentElement.classList.toggle('drive', d === 'drive');   // shows the drive-view toggles
