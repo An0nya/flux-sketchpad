@@ -31,7 +31,7 @@ const sum = (a) => { let s = 0; for (const x of a) s += x; return s; };
 const geoCache = new Map();
 function geometry(paint, R, K) {
   K = K || 10; let key = R + ':' + K; for (let k = 0; k < paint.length; k += 7) key += paint[k] > 0 ? '1' : '0';
-  if (geoCache.has(key)) return geoCache.get(key);
+  if (geoCache.has(key)) { const h = geoCache.get(key); geoCache.delete(key); geoCache.set(key, h); return h; }   // hit: move to the newest end
   const sd = new Float32Array(R * R), up = new Int8Array(R * R);       // up: 1 = the nearest opposite cell is above (a painted cell's edge on its top side, or an unpainted cell whose nearest paint is BELOW it)
   for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
     const k = j * R + i, me = paint[k] > 0; let best = K + 1, bdy = 0;
@@ -42,7 +42,7 @@ function geometry(paint, R, K) {
     sd[k] = (me ? 1 : -1) * (best > K ? K + 0.5 : best - 0.5);
     up[k] = me ? (bdy > 0 ? 1 : 0) : (bdy < 0 ? 1 : 0);              // painted: opposite above → top edge of the lit zone.  unpainted: paint below → this is dark cell above a lit zone
   }
-  const g = { sd, up }; geoCache.set(key, g); return g;
+  const g = { sd, up }; geoCache.set(key, g); if (geoCache.size > 8) geoCache.delete(geoCache.keys().next().value); return g;   // keep the 8 newest (~48 KB each at res 100)
 }
 const kernelOf = (run) => Math.max(1, run.row.achievableKernelCells || 1);
 const interior = (run, geo, extra) => { const t = kernelOf(run) / 2 + 1 + (extra || 0), out = []; for (let k = 0; k < run.D.length; k++) if (run.paint[k] > 0 && geo.sd[k] >= t) out.push(k); return out; };
