@@ -124,19 +124,24 @@
   ui.setAuto = function (k, on) { const a = autoPrefs(); a[k] = on; try { localStorage.setItem('flux/autoSolve', JSON.stringify(a)); } catch (e) { /* ignore */ } if (ui.store) { ui.store.autoA = a.paint; ui.store.autoSet = a.settings; } };
   ui.autoPrefs = autoPrefs;
   ui.loadScene = function (scene, notice, silent) {
-    ui.store = C.createStore(scene);
-    stopWorkerSolve('a new scene was loaded'); dropWatch(); ui.pendingA = 0; ui.solveArmed = false;   // the old scene's solve, preview and queued rebuild don't carry over
-    const au = autoPrefs(); ui.store.autoA = au.paint; ui.store.autoSet = au.settings;
+    const prev = ui.store, store = C.createStore(scene);        // all-or-nothing: the new store is built and committed on the side, and replaces the live one only once the load works
+    const au = autoPrefs(); store.autoA = au.paint; store.autoSet = au.settings;
     // rebuild derived groups from intent. Mode A is re-solved too (~50 ms): the solver report isn't
     // saved with the scene, so otherwise the limits panel is empty after any load.
-    ui.store.invalidate(['B', 'C', 'L']);
-    if ((scene.groups.A.surfaces.length || isPaint(scene.mode)) && (scene.modeA.paint.some((x) => x > 0) || scene.mode === 'D')) ui.store.invalidate(['A']);
-    ui.store.commit({ forceA: ui.store.dirty.has('A') });
-    if (notice) ui.store.notice(notice);
+    store.invalidate(['B', 'C', 'L']);
+    if ((scene.groups.A.surfaces.length || isPaint(scene.mode)) && (scene.modeA.paint.some((x) => x > 0) || scene.mode === 'D')) store.invalidate(['A']);
+    store.commit({ forceA: store.dirty.has('A') });
+    if (notice) store.notice(notice);
+    ui.store = store;
+    if (!silent) {
+      try {
+        ui.setMode(scene.mode, true);
+        ui.fit(ui.fitMode || 'all');
+        ui.vLeft.fitted = ui.vHeat.fitted = ui.vPick.fitted = ui.vProf.fitted = false;
+      } catch (e) { ui.store = prev; document.body.classList.remove('mode-' + scene.mode); if (prev) { try { ui.setMode(prev.scene.mode, true); } catch (e2) { /* best effort */ } } throw e; }   // a bad scene leaves the old one live
+    }
+    stopWorkerSolve('a new scene was loaded'); dropWatch(); ui.pendingA = 0; ui.solveArmed = false;   // the old scene's solve, preview and queued rebuild don't carry over
     if (silent) return;
-    ui.setMode(scene.mode, true);
-    ui.fit(ui.fitMode || 'all');
-    ui.vLeft.fitted = ui.vHeat.fitted = ui.vPick.fitted = ui.vProf.fitted = false;
     ui.refreshPanels(); ui.requestRun(false); ui.autosave();
   };
 
