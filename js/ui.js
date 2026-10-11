@@ -50,6 +50,10 @@
     ui.autosave();
   };
   ui.generateA = function () {
+    if (RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(ui.store.scene))) {   // the chosen solver is still loading: current() would fall back to Spoke and applySolve would save that
+      ui.store.invalidate(['A']); ui.setStatus('waiting for the solvers to load…'); ui.progress('solve');   // restore() (boot) solves once they are in
+      return;
+    }
     const def = RF.Solvers.get(RF.Solvers.current(ui.store.scene));
     if (def.worker) { ui.store.invalidate(['A']); ui.solveArmed = true; schedule(); return; }   // worker path lives in tick()
     stopWorkerSolve('replaced by ' + def.name);        // a page solver wins over a worker solve still running
@@ -120,18 +124,24 @@
   ui.setAuto = function (k, on) { const a = autoPrefs(); a[k] = on; try { localStorage.setItem('flux/autoSolve', JSON.stringify(a)); } catch (e) { /* ignore */ } if (ui.store) { ui.store.autoA = a.paint; ui.store.autoSet = a.settings; } };
   ui.autoPrefs = autoPrefs;
   ui.loadScene = function (scene, notice, silent) {
-    ui.store = C.createStore(scene);
-    const au = autoPrefs(); ui.store.autoA = au.paint; ui.store.autoSet = au.settings;
+    const prev = ui.store, store = C.createStore(scene);        // all-or-nothing: the new store is built and committed on the side, and replaces the live one only once the load works
+    const au = autoPrefs(); store.autoA = au.paint; store.autoSet = au.settings;
     // rebuild derived groups from intent. Mode A is re-solved too (~50 ms): the solver report isn't
     // saved with the scene, so otherwise the limits panel is empty after any load.
-    ui.store.invalidate(['B', 'C', 'L']);
-    if ((scene.groups.A.surfaces.length || isPaint(scene.mode)) && (scene.modeA.paint.some((x) => x > 0) || scene.mode === 'D')) ui.store.invalidate(['A']);
-    ui.store.commit({ forceA: ui.store.dirty.has('A') });
-    if (notice) ui.store.notice(notice);
+    store.invalidate(['B', 'C', 'L']);
+    if ((scene.groups.A.surfaces.length || isPaint(scene.mode)) && (scene.modeA.paint.some((x) => x > 0) || scene.mode === 'D')) store.invalidate(['A']);
+    store.commit({ forceA: store.dirty.has('A') });
+    if (notice) store.notice(notice);
+    ui.store = store;
+    if (!silent) {
+      try {
+        ui.setMode(scene.mode, true);
+        ui.fit(ui.fitMode || 'all');
+        ui.vLeft.fitted = ui.vHeat.fitted = ui.vPick.fitted = ui.vProf.fitted = false;
+      } catch (e) { ui.store = prev; document.body.classList.remove('mode-' + scene.mode); if (prev) { try { ui.setMode(prev.scene.mode, true); } catch (e2) { /* best effort */ } } throw e; }   // a bad scene leaves the old one live
+    }
+    stopWorkerSolve('a new scene was loaded'); dropWatch(); ui.pendingA = 0; ui.solveArmed = false;   // the old scene's solve, preview and queued rebuild don't carry over
     if (silent) return;
-    ui.setMode(scene.mode, true);
-    ui.fit(ui.fitMode || 'all');
-    ui.vLeft.fitted = ui.vHeat.fitted = ui.vPick.fitted = ui.vProf.fitted = false;
     ui.refreshPanels(); ui.requestRun(false); ui.autosave();
   };
 
@@ -197,7 +207,7 @@
     const groups = [['Default', paintDefs.filter((d) => d.bundled && grpOf(d) === 'default')], ['Benchmark runs', paintDefs.filter((d) => d.bundled && grpOf(d) === 'benchmark')], ['Legacy', paintDefs.filter((d) => (d.bundled && grpOf(d) === 'legacy') || !d.worker)], ['Loaded by you', paintDefs.filter((d) => d.loaded)]];
     const pick = el('select', { 'aria-label': 'Solver' }, ...groups.filter(([, ds]) => ds.length).map(([g, ds]) => el('optgroup', { label: g }, ...ds.map((d) => opt(d, d.name + ' v' + d.version + (d.bundled ? ' — ' + d.bundled.model.replace(/ \(.*\)$/, '') + ', ' + d.bundled.run.slice(5) : ''))))));
     pick.value = cur;
-    pick.addEventListener('change', () => { sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.store.invalidate(['A']); if (ui.store.autoA) ui.pendingA = performance.now() + 100; markStale(); schedule(); renderSolverBox(); });
+    pick.addEventListener('change', () => { stopWorkerSolve('solver changed'); sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.store.invalidate(['A']); if (ui.store.autoA) ui.pendingA = performance.now() + 100; markStale(); schedule(); renderSolverBox(); });
     const file = el('input', { type: 'file', accept: '.js,text/javascript', hidden: '' });
     file.addEventListener('change', async () => {
       const f = file.files && file.files[0]; if (!f) return;
@@ -322,7 +332,8 @@
     if (secs > 1.5) ui.store.notice('Stopped the running solve (' + name + ', after ' + secs.toFixed(0) + ' s): ' + why + '.');   // quick re-solves while you drag a slider stay quiet
     return true;
   }
-  ui.stopSolve = () => { const j = ui.solving; if (!j) return; const seq = j.seq; RF.SolverHost.abort('stopped by you', 'user'); if (ui.solving && ui.solving.seq === seq) { ui.solving = null; showStop(false); ui.solveSeq++; ui.store.dirty.delete('A'); ui.setStatus('stopped — previous design kept'); ui.progress('done'); if (!solveFailed(j, 'user', 'stopped by you')) ui.store.notice('Solve stopped (' + j.name + '). The previous design is kept.'); P.renderNotices(ui); schedule(); } };
+  // Stop leaves dirty A set: the shown design was not solved for the current scene
+  ui.stopSolve = () => { const j = ui.solving; if (!j) return; const seq = j.seq; RF.SolverHost.abort('stopped by you', 'user'); if (ui.solving && ui.solving.seq === seq) { ui.solving = null; showStop(false); ui.solveSeq++; ui.setStatus('stopped — design out of date, press Rebuild'); ui.progress('done'); if (!solveFailed(j, 'user', 'stopped by you')) ui.store.notice('Solve stopped (' + j.name + '). The previous design is kept.'); P.renderNotices(ui); schedule(); } };
 
   // ---------------------------------------------------------------- watching a solve (tools.preview, SOLVER_API.md)
   // ui.watch = { seq, name, meta, version, t0, msg (the latest preview), n, model / heat (built on the next frame), failed? }.
@@ -333,8 +344,8 @@
   // that stays and "Use last candidate" (RF.Controller.applyCandidate: the host's verify + applySolve, like a result).
   // A solve replaced by a newer request (you changed something) drops its preview silently.
   try { ui.watchOn = localStorage.getItem('flux/watchSolve') !== '0'; } catch (e) { ui.watchOn = true; }
-  ui.setWatch = (on) => { ui.watchOn = !!on; try { localStorage.setItem('flux/watchSolve', on ? '1' : '0'); } catch (e) { /* ignore */ } ui.watchDirty = true; schedule(); };
-  const watchShown = () => !!(ui.watch && ui.watch.msg && (ui.watch.failed || (ui.watchOn && ui.solving && ui.solving.seq === ui.watch.seq)));
+  ui.setWatch = (on) => { ui.watchOn = !!on; try { localStorage.setItem('flux/watchSolve', on ? '1' : '0'); } catch (e) { /* ignore */ } ui.watchDirty = true; if (!on && ui.run) renderStats(!ui.run.ctx.done); schedule(); };   // off: the footer goes back to the design's numbers
+  const watchShown = () => !!(ui.watch && ui.watch.msg && isPaint(ui.store.scene.mode) && (ui.watch.failed || (ui.watchOn && ui.solving && ui.solving.seq === ui.watch.seq)));
   ui.watchShown = watchShown; ui.watchStats = { previews: 0, prepMs: 0 };   // measured in tests/watch-solve-e2e.js --perf
   function onPreview(job, msg) {                     // worker → page, ≤ 4/s; the drawing waits for the next frame (tick)
     if (ui.solving !== job) return;
@@ -377,7 +388,7 @@
   // numbers come back when the result is traced. Coarse (200k rays) and marked as a preview.
   try { ui.previewStats = localStorage.getItem('flux/previewStats') !== '0'; } catch (e) { ui.previewStats = true; }
   ui.setPreviewStats = (on) => { ui.previewStats = !!on; try { localStorage.setItem('flux/previewStats', on ? '1' : '0'); } catch (e) { /* ignore */ } if (!on && ui.run) renderStats(!ui.run.ctx.done); else renderPreviewStats(); };
-  function previewStatsOn() { const w = ui.watch; return !!(ui.previewStats && ui.solving && w && w.seq === ui.solving.seq && !w.failed && w.traced && w.traced.st); }
+  function previewStatsOn() { const w = ui.watch; return !!(ui.previewStats && ui.watchOn && isPaint(ui.store.scene.mode) && ui.solving && w && w.seq === ui.solving.seq && !w.failed && w.traced && w.traced.st); }
   function renderPreviewStats() {
     if (!previewStatsOn()) return false;
     const t = ui.watch.traced;
@@ -480,8 +491,14 @@
   // where bigger slices are fine because there is no UI to keep responsive.
   // stale = paint mode, the design no longer matches the settings, and no solve is queued or running
   const stale = () => isPaint(ui.store.scene.mode) && ui.store.dirty.has('A') && !ui.pendingA && !ui.solveArmed && !ui.solving;
+  function refreshRefine() {                         // also when a solve starts or ends / the design goes stale (canRefine reads both)
+    const run = ui.run, b = document.getElementById('btn-refine'); if (!run) return;
+    if (b) { const d = !ui.canRefine(), t = run.ctx.N < REFINE_MAX ? 'Refine → ' + RF.U.fmtInt(Math.min(REFINE_MAX, 2 * run.ctx.N)) + ' rays' : 'Refine (at 50M)'; if (b.disabled !== d) b.disabled = d; if (b.textContent !== t) b.textContent = t; }
+    ui._refineN = run.ctx.N;
+  }
   function markStale() {
     const on = stale();
+    refreshRefine();
     for (const id of ['btn-generate', 'btn-generate-top']) { const b = document.getElementById(id); if (b) { b.classList.toggle('stale', on); b.title = on ? 'Changed since the last solve: rebuild to see it' : 'Re-solve the reflector for the painted target and re-trace'; } }
   }
   function schedule() {
@@ -489,7 +506,16 @@
     ui.raf = requestAnimationFrame(tick);
     ui.tmo = setTimeout(tick, 80);
   }
+  // One bad frame must not end the loop: an exception in any draw or update is reported once per message, and the next frame is
+  // always scheduled when work remains.  guard() isolates a single draw so the rest of the frame (trace step, status) still runs.
+  function tickError(e) { const m = String(e && e.message || e); if (ui._tickErr !== m) { ui._tickErr = m; console.error('frame error:', e); if (ui.store) ui.store.notice('Display error (' + m + '): the app keeps running; please reload if the views look wrong.'); } }
+  function guard(fn) { try { return fn(); } catch (e) { tickError(e); } }
   function tick() {
+    try { tickFrame(); } catch (e) { tickError(e); ui.sceneDirty = false; ui.watchDirty = false; }
+    const run = ui.run;
+    if ((run && !run.ctx.done) || (ui.pendingA && ui.store.dirty.has('A')) || ui.solveArmed) schedule();
+  }
+  function tickFrame() {
     cancelAnimationFrame(ui.raf); clearTimeout(ui.tmo);
     ui.raf = 0;
     const now = performance.now(), store = ui.store;
@@ -508,24 +534,25 @@
           if (seq !== ui.solveSeq) return;                // superseded: a newer solve owns the UI
           ui.solving = null; showStop(false); ui.lastGenMs = performance.now() - t0;
           if (ui.watch && ui.watch.seq === seq) { ui.watch = null; ui.watchDirty = true; }   // the verified result replaces the preview
-          if (!rep) { ui.pendingA = performance.now(); schedule(); return; }   // scene changed meanwhile: solve again
+          if (!rep) { ui.refreshPanels(); schedule(); return; }   // scene changed meanwhile: result dropped, dirty A stays (the edit already queued its own auto-solve if its switch is on)
           ui.refreshPanels(); ui.needCompile = true; ui.autosave(); schedule();
         }, (err) => {
           if (seq !== ui.solveSeq) return;
-          ui.solving = null; showStop(false); store.dirty.delete('A');
-          if (err && err.aborted) { job.budgetMs = err.budgetMs; if (!solveFailed(job, err.kind, err.message)) store.notice('Solve stopped (' + def.name + ', ' + err.message + '). The previous design is kept.'); ui.setStatus('stopped — previous design kept'); ui.progress('done'); ui.refreshPanels(); schedule(); return; }
-          store.reports.A = { error: 'Solver ' + def.name + ': ' + err.message, warnings: [], placed: 0 };
+          ui.solving = null; showStop(false);               // dirty A stays set: this solve's result was never applied, the kept design is out of date
+          if (err && err.aborted) { job.budgetMs = err.budgetMs; if (!solveFailed(job, err.kind, err.message)) store.notice('Solve stopped (' + def.name + ', ' + err.message + '). The previous design is kept.'); ui.setStatus('stopped — design out of date, press Rebuild'); ui.progress('done'); ui.refreshPanels(); schedule(); return; }
+          if (!store.reports.A) store.reports.A = { error: 'Solver ' + def.name + ': ' + err.message, warnings: [], placed: 0 };
           solveFailed(job, 'error', err.message); ui.refreshPanels(); schedule();
         });
         return;
       }
+      stopWorkerSolve('replaced by ' + def.name);        // a page solver wins over a worker solve still running (its preview would sit on the new design)
       C.regenerateA(store); ui.lastGenMs = performance.now() - t0;
       ui.refreshPanels(); ui.needCompile = true; ui.autosave();
     }
     if (ui.watchDirty) {                               // a new preview (or the watch ended): at most once per frame
       const tw = performance.now(); ui.watchDirty = false; prepWatch(); ui.sceneDirty = true;
-      if (!drawWatchHeat() && ui.run) drawHeat();
-      syncWatchBadges(); ui.watchStats.prepMs += performance.now() - tw;   // compile + map image + badges (the view redraw is any frame's)
+      guard(() => { if (!drawWatchHeat() && ui.run) drawHeat(); });
+      guard(syncWatchBadges); ui.watchStats.prepMs += performance.now() - tw;   // compile + map image + badges (the view redraw is any frame's)
     }
     if (ui.needCompile) {
       ui.needCompile = false;
@@ -558,7 +585,7 @@
       justDone = run.ctx.done;
     }
     if (run && run.ctx._landed) { run.ctx._landed = false; justDone = justDone || run.ctx.done; }
-    if (run && (justDone || now - ui.lastHeat > (run.preview ? 90 : TRACE_UI_MS))) { drawHeat(); ui.lastHeat = now; ui.sceneDirty = true; }
+    if (run && (justDone || now - ui.lastHeat > (run.preview ? 90 : TRACE_UI_MS))) { guard(drawHeat); ui.lastHeat = now; ui.sceneDirty = true; }
     if (run) {
       const c = run.ctx, pct = c.N ? c.next / c.N : 1;
       if (ui.solving) { /* the solve owns the status line and the bar until it ends */ }
@@ -568,11 +595,10 @@
       else if (!ui.pendingA || !store.dirty.has('A')) ui.setStatus(c.done ? (run.preview ? 'preview' : 'up to date') : 'tracing ' + Math.floor(100 * c.next / c.N) + '%' + (run.preview ? ' (preview)' : ''));   // counts + ms live in the footer
       else ui.setStatus('design changed — regenerating when you pause…');
     }
-    if (run && (justDone || now - ui.lastStats > (run.preview ? 300 : TRACE_UI_MS))) { renderStats(!run.ctx.done); ui.lastStats = now; }
-    if (run && (justDone || ui._refineN !== run.ctx.N)) { const b = document.getElementById('btn-refine'); if (b) { b.disabled = !ui.canRefine(); b.textContent = run.ctx.N < REFINE_MAX ? 'Refine → ' + RF.U.fmtInt(Math.min(REFINE_MAX, 2 * run.ctx.N)) + ' rays' : 'Refine (at 50M)'; } ui._refineN = run.ctx.N; }
+    if (run && (justDone || now - ui.lastStats > (run.preview ? 300 : TRACE_UI_MS))) { guard(() => renderStats(!run.ctx.done)); ui.lastStats = now; }
+    if (run && (justDone || ui._refineN !== run.ctx.N)) refreshRefine();
     markStale();
-    if (ui.sceneDirty) { drawSceneView(); drawSurfaceView(); drawLeft(); ui.sceneDirty = false; }
-    if ((run && !run.ctx.done) || (ui.pendingA && store.dirty.has('A')) || ui.solveArmed) schedule();
+    if (ui.sceneDirty) { guard(drawSceneView); guard(drawSurfaceView); guard(drawLeft); ui.sceneDirty = false; }
   }
   // Refine: keep tracing the finished run up to ×2 the rays (exactly the run a bigger ray count would have made: see Engine.extend)
   const REFINE_MAX = 5e7;
@@ -1068,9 +1094,8 @@
   // whose light lands in the spot, not only the ones the solver meant to light it.
   function selInfo() {
     const s = ui.sel, run = ui.run; if (!s || !run) return null;
-    const c = run.ctx, key = c.nHits + ':' + run.started;
-    if (ui.selCache && ui.selCache.sel === s && ui.selCache.key === key) return ui.selCache.info;
-    const sc = ui.store.scene, rep = isPaint(sc.mode) ? ui.store.reports.A : null, surfs = RF.State.allSurfaces(sc);
+    const c = run.ctx, key = c.nHits + ':' + run.started, sc = ui.store.scene, rep = isPaint(sc.mode) ? ui.store.reports.A : null, surfs = RF.State.allSurfaces(sc);
+    if (ui.selCache && ui.selCache.sel === s && ui.selCache.key === key && ui.selCache.rep === rep) return ui.selCache.info;   // a new report (re-solve) has other zones
     const info = { emph: new Map(), zones: [], primaries: [], secondary: [], contrib: [], landed: 0, vals: null, paths: [], loss: null };
     const T = run.P.T, sr = run.P.res, metas = run.P.G.metas;
     const simCell = (h) => { let i = Math.floor((c.hits[3 * h] + T.half) / (2 * T.half) * sr), j = Math.floor((c.hits[3 * h + 1] + T.half) / (2 * T.half) * sr); if (i >= sr) i = sr - 1; if (j >= sr) j = sr - 1; return j * sr + i; };
@@ -1130,7 +1155,7 @@
     const MAXR = Math.min(rays.length, Math.max(rays.length ? 1 : 0, Math.round(total * share * SEL_RAY_BOOST))), step = Math.max(1, rays.length / MAXR);   // an even sample, retraced exactly
     for (let t = 0; t < rays.length && info.paths.length < MAXR; t += step) { const p = RF.Engine.retrace(run.P, rays[Math.floor(t)]); p.sel = true; info.paths.push(p); }
     if (info.loss) info.paths.push(...info.loss.ghosts);
-    ui.selCache = { sel: s, key, info };
+    ui.selCache = { sel: s, key, rep, info };
     return info;
   }
   // where a facet's light went (Engine.facetLosses), plus ghost rays sampled like the bundle
