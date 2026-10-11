@@ -20,6 +20,9 @@ before the fix. Opus reviews the diffs and merges into `main` one batch at a tim
 | B7 | solver host: request-id map (`rid`), single-flight rebuild, crash recovery, corrupt solver list, file:// notice | G22b, G23, G24 |
 | B8 | ui.js solve lifecycle: Stop/timeout/crash keep 'out of date', scene/solver change cancels the solve, frame errors isolated, atomic loadScene | G04 (ui half), G25–G30 |
 | B10 | stats/panels: Mode A clear (option B), field write-back, no NaN/Infinity, far-field footer peak, outside-envelope warning, LED presets at own defaults | G10, G39–G42, D-E08, D-C14 |
+| B9 | gestures: no paint on pinch/double-click, interpolated strokes, envelope min thickness; brush mode raise (default) / set / lower | G31–G33, D-E17 |
+| B4b | titles aligned, Fidelity on the mode row, compact Spec Result pane (toolbars only when expanded, hint), | L-title, L-fidelity, L-spec-compact |
+| B11 | dividers, ARIA, sidebar on narrow, Optics reset, autosave backup, turntable stops (idle 10 s / click), Spec auto-layout, Expand enlarges its map | G34–G38, D-M03, D-spec-layout, L04 |
 | — | GPU trace branch (`claude/webgpu-webgl-traces-9bi0ul`), opt-in, benched on the M4: ~30–40× one CPU core | — |
 | — | ideal-goals-port branch (solvers/ + tools/) | — |
 
@@ -28,17 +31,8 @@ all 19 `tests/regress/*.js` browser tests 0 fail (runner: `run-all.sh <dir> <por
 `PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright`, as Playwright isn't installed globally).
 
 ## Not merged yet
-- Pushed main = 8f7e96b (green: all.js, regress-node, 38 browser regress lines). Running when written: B9 (gestures + brush mode, worktree .claude/worktrees/b9-gestures) and B4b (layout follow-ups, .claude/worktrees/b4b-layout), both from 8f7e96b.
-- Spec-mode inputs keep rejected text (S14, spec-ui.js:246): not yet fixed (B10 stopped it as out of scope) → B11 or B12.
-- **B9** ui.js gestures (G31–G33) + brush mode option (raise = default, set, lower). After B8.
-- **B11** ui.js chrome (G34–G38) + Optics turntable stops 10 s after idle and when the pane is clicked into
-  + Spec auto-layout (entering Spec collapses Editor, expands Result; leaving restores). After B8.
-- **B4b** layout follow-ups: Editor/Result titles on one line; Fidelity on the Result mode row when it fits;
-  compact Spec Result pane (extra toolbars only when expanded, idle hint to expand); Expand may enlarge its map.
-- **B12** one source of truth: road numbers independent of Measure at under cut-off aim; `tools.trace`
-  road numbers from the far field at the judge's aim; preview numbers aligned; a consistency test.
-- Known remainder: at 1280×720 with the sidebar open, Spec leaves the Result map 0 px tall (B4b's compact
-  pane should fix it).
+- Pushed main = cfd61a4 (green: all.js, regress-node 91, all browser regress). Last batch running: **B12 one source of truth** (worktree .claude/worktrees/b12): road/IIHS/quality/goals aim from ∞ regardless of Measure at; tools.trace and preview road numbers from the same source; a consistency test; Spec inputs write back (S14); autosave on mode switch; Spec Result reopens expanded.
+- Open product calls: (1) hide or keep the Far field/Road/Drive view buttons on the compact Spec pane (hidden now); (2) 1280×720 + sidebar: Spec Result map 61 px, the rest is the 2-row Spec footer; (3) single paint click lands 400 ms late (tells click from double-click reset) vs. double-click reset only outside Paint; (4) Drive canvas may overflow its pane on the right (unchecked, may predate B4b).
 
 ## Lessons
 - 6 parallel Opus QA agents hit the usage cap together; Sonnet with a precise brief does fix work well.
