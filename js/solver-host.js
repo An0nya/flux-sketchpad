@@ -57,7 +57,7 @@
         return ready.then(() => {
           live = { id: def.id, name: def.name, t0: performance.now() };
           const ms = limitMs(), onPreview = typeof tools.preview === 'function' && !tools.preview.none ? tools.preview : null;   // no preview callback ⇒ the worker sends none
-          return ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview }, tools.progress, ms, onPreview);
+          return ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.pref()) }, tools.progress, ms, onPreview);
         }).then((d) => d.output);
       },
     }));

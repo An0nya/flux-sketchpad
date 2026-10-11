@@ -40,6 +40,9 @@ self.onmessage = async (e) => {
       const def = RF.Solvers.get(m.id); if (!def) throw new Error('solver ' + m.id + ' is not loaded in the worker');
       // held = the latest preview call not sent yet, as REFERENCES (a dropped call costs nothing); it is copied when sent
       let raysUsed = 0, held = null, lastAt = -1e9, nPrev = 0;
+      const spend = (o) => { const n = Math.max(1, (o && o.rays) | 0 || 20000); raysUsed += n; if (raysUsed > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays.toLocaleString() + ')'); };
+      if (m.gpu && !RF.GpuTrace) importScripts('gpu-trace.js');
+      if (RF.GpuTrace) { RF.GpuTrace.enable(!!m.gpu); if (m.gpu) await RF.GpuTrace.init(); }   // no WebGPU here → traceAsync runs on the CPU
       const post = () => {
         const h = held; held = null; let p; try { p = previewMsg(h.surfaces, h.info, h.n); } catch (e) { return; }   // a malformed preview is dropped
         lastAt = performance.now(); self.postMessage(p, p.grid ? [p.grid.buffer] : []);
@@ -48,7 +51,9 @@ self.onmessage = async (e) => {
       const tools = {
         progress: (pct, stage) => { flush(); self.postMessage({ type: 'progress', pct: +pct || 0, stage: stage ? String(stage).slice(0, 80) : undefined }); },
         budget: m.budget,
-        trace: (surfaces, o) => { flush(); const n = Math.max(1, (o && o.rays) | 0 || 20000); raysUsed += n; if (raysUsed > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays.toLocaleString() + ')'); return RF.Solvers.trace(m.scene, surfaces, o); },
+        trace: (surfaces, o) => { flush(); spend(o); return RF.Solvers.trace(m.scene, surfaces, o); },
+        // the same trace, possibly on the GPU (the user's Simulation → GPU trace): same rays, f32 (res.gpu says which ran)
+        traceAsync: async (surfaces, o) => { flush(); spend(o); return RF.Solvers.traceAsync(m.scene, surfaces, o); },
         // display only: never throws into the solver, never changes what it computes
         preview: (surfaces, info) => {
           if (!m.preview) return;

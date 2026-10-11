@@ -584,6 +584,7 @@
       effViaSurface: E.reflected / em,
       effDirect: E.direct / em,
       timeMs: ctx.elapsed,
+      gpu: ctx.gpuMs > 0,                                      // some of the rays ran on the GPU (js/gpu-trace.js)
       energy: Object.assign({}, E),
       conservationError: (accounted - E.emitted) / em,
       selfShadow: E.intercepted > 0 ? E.reHit / E.intercepted : 0,   // (legacy name) share of intercepted light that re-hits a surface

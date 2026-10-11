@@ -14,7 +14,7 @@
   // A full trace (not a drag preview) is mostly waiting on the UI: at 12 ms of tracing per frame and a redraw every 90 ms (heat / far field, the 3D views, the
   // live judgement, the footer) a 500 k Spec trace spent ~5 % of its time tracing (10-10, measured: 0.6 s of 14 s).  While one runs: trace TRACE_STEP_MS per frame
   // and redraw every TRACE_UI_MS; previews keep the fast cadence.  The finished run is drawn and judged in full as before.
-  const TRACE_STEP_MS = 40, TRACE_UI_MS = 1000;
+  const TRACE_STEP_MS = 40, TRACE_UI_MS = 1000, GPU_BATCH_MS = 150;
   const isPaint = (m) => m === 'A' || m === 'D';     // Spec mode (D) extends Paint: same painting, same solver, plus a beam spec
 
   const ui = {
@@ -546,7 +546,18 @@
     }
     const run = ui.run;
     let justDone = false;
-    if (run && !run.ctx.done) { RF.Engine.step(run.ctx, document.hidden ? 200 : run.preview ? 12 : TRACE_STEP_MS); justDone = run.ctx.done; }
+    if (run && !run.ctx.done) {
+      // GPU trace (Simulation → Advanced): one batch in flight, sized to ~GPU_BATCH_MS from the measured rate; it lands between frames.
+      // A GPU error drops this run back to the CPU from where it got to (ctx.gpuError)
+      if (RF.GpuTrace && RF.GpuTrace.use(run.ctx)) {
+        if (!run.ctx._gpuBusy) {
+          const rate = ui._gpuRate || 2e6, batch = Math.max(65536, Math.min(8e6, Math.round(rate * (run.preview ? 30 : GPU_BATCH_MS) / 1000))), t0 = performance.now(), n0 = run.ctx.next;
+          RF.GpuTrace.step(run.ctx, batch, (err) => { if (!err) ui._gpuRate = (run.ctx.next - n0) / Math.max(1e-3, (performance.now() - t0) / 1000); else console.warn('GPU trace failed, continuing on the CPU:', err); run.ctx._landed = true; schedule(); });
+        }
+      } else RF.Engine.step(run.ctx, document.hidden ? 200 : run.preview ? 12 : TRACE_STEP_MS);
+      justDone = run.ctx.done;
+    }
+    if (run && run.ctx._landed) { run.ctx._landed = false; justDone = justDone || run.ctx.done; }
     if (run && (justDone || now - ui.lastHeat > (run.preview ? 90 : TRACE_UI_MS))) { drawHeat(); ui.lastHeat = now; ui.sceneDirty = true; }
     if (run) {
       const c = run.ctx, pct = c.N ? c.next / c.N : 1;

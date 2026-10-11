@@ -112,6 +112,16 @@
     s.addEventListener('change', () => H.setLimit(+s.value));
     return el('div', { class: 'row', title: 'How long a solver may run before the app stops it and keeps the previous design (its last preview stays on offer). Remembered in this browser. Solvers that pace themselves to the limit (e.g. Spec headlamp v2) use the extra time.' }, el('label', {}, 'Solve time limit'), s);
   }
+  // GPU trace (js/gpu-trace.js): the same rays on WebGPU, f32 — statistically the same result, not bit-identical; remembered per browser
+  function gpuRow(ui) {
+    const G = RF.GpuTrace; if (!G) return el('span');
+    const box = el('input', { type: 'checkbox', checked: G.pref() ? true : null }), note = el('small', { class: 'ms' }, '');
+    const say = () => { note.textContent = !G.available() ? 'no WebGPU in this browser' : G.ready() ? (G.pref() ? 'on' : 'ready') + (G.info() && G.info().architecture ? ' · ' + [G.info().vendor, G.info().architecture].filter(Boolean).join(' ') : '') : G.error() ? 'unavailable: ' + G.error().slice(0, 80) : G.pref() ? 'starting…' : ''; };
+    box.addEventListener('change', () => { G.setPref(box.checked); say(); if (box.checked) G.init().then(() => { say(); ui.requestRun(false); }); else ui.requestRun(false); });
+    if (G.pref()) G.init().then(say);
+    say();
+    return el('label', { class: 'tog', title: 'Trace on the graphics card (WebGPU) instead of the CPU: the same rays in 32-bit floats, so results match a CPU trace within noise but not to the last digit. Used by the main trace and by solvers that ask for it (tools.traceAsync). Exit-ray lists stay on the CPU. Remembered in this browser; off by default.' }, box, ' GPU trace (WebGPU, experimental) ', note);
+  }
   function controlRow(ui, c) {
     const input = controlInput(ui, c);
     const row = el('div', { class: 'row', 'data-row': c.id }, el('label', {}, c.label), input);
@@ -187,7 +197,7 @@
     // ---- 3. Simulation
     side.append(section('Simulation', { open: true, key: 'sim', tag: 'rays & grids' }, ...rowsFor(ui, ['rays', 'tgt.res', 'sim.res', 'sim.autoRes']), solveLimitRow(),
       el('div', { class: 'btnrow' }, el('button', { type: 'button', id: 'btn-refine', disabled: true, title: 'Keep tracing the finished run up to twice the rays (up to 50M). Exactly what that ray count would give from scratch, without starting over.', onclick: () => ui.refine(2) }, 'Refine ×2')),
-      section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']))));
+      section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']), gpuRow(ui))));
     // ---- 4. View (display only, remembered per browser)
     side.append(section('View', { open: false, key: 'view', tag: 'display only' },
       el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit'),
@@ -564,7 +574,7 @@
         ? t(rA.placed + ' / ' + sc.modeA.budget, 'facets · ' + solverLabel(sc, rA), 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : '') + ' ' + solverTip(sc, rA), 'facets')
         : t(String(st.surfaces), 'surfaces', 'Surfaces in the scene.'));
       row.append(el('div', { class: 'tile rays', title: 'Rays traced · trace time (tracing work only, not total wait)' + (extra.preview ? ' · coarse preview while dragging' : '') },
-        el('b', {}, st.rays.toLocaleString() + (extra.running ? ' …' : '')), el('span', {}, 'rays ', el('small', { class: 'ms' }, st.timeMs.toFixed(0) + ' ms'))));
+        el('b', {}, st.rays.toLocaleString() + (extra.running ? ' …' : '')), el('span', {}, 'rays ', el('small', { class: 'ms' }, st.timeMs.toFixed(0) + ' ms' + (st.gpu ? ' · GPU' : '')))));
       mb.innerHTML = ''; for (const n of bar.children) mb.append(n.cloneNode(true));
     }
   }
