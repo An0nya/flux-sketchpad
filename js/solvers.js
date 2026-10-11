@@ -234,6 +234,7 @@
     if (wantSpec) P.ffStreams = [RF.Spec.gridOpts(scene)];        // the far field the host judges, at the spec's measuring distance
     const wantRoad = wantSpec && o.road && RF.Road;
     if (wantRoad) P.ffStreams.push(RF.Spec.wideOpts(scene));      // the road's near shoulder sits outside the spec window
+    if (wantRoad && RF.Spec.measureAt(scene) > 0) P.ffStreams.push(RF.Spec.gridOpts(scene, 0), RF.Spec.wideOpts(scene, 0));   // the road-side numbers read the far field (∞), whatever Measure at is (RF.Spec.roadSource)
     const N = Math.max(1, Math.min(2e6, o.rays | 0 || 20000));
     // spec traces are guided by default (as the app's Refine): a quarter of the rays as a pilot, then rounds that send more
     // rays where the window is dim (sign points, zone III), weighted so nothing is biased.  o.guided: false = plain.
@@ -275,13 +276,14 @@
       //   right / left = 5 lx reach from the near limit (IIHS), farRight / farLeft = the farthest point with ≥ 5 lx; + o.quality
       if (wantRoad) {
         const md = scene.modeD, road = md.road || RF.Road.defaults(), W = RF.FarField.build(c, P.ffStreams[1]);
-        const I = RF.Road.beamOf(G, W, RF.Road.aimShift(road, ev), md.traffic === 'LHT' ? -1 : 1, 0.2, 0.2, 1);
-        const mdl = RF.Road.model({ road, preset: md.preset, conv: G.conv || md.conv || 'A', I }), r = mdl.iihs();
-        res.road = { right: r.right, left: r.left, farRight: r.farRight, farLeft: r.farLeft, glareMax: r.glareMax };
+        // the same far-field source and the same arithmetic as Spec mode's page (RF.Spec.roadSource, RF.Road.analyse), so the numbers match what the page shows;
+        // (a screen Measure at: the far field is judged afresh at its own aim, not at o.frozen, which was found on the screen's grid)
+        const src = RF.Spec.roadSource(c, scene, ev, G, W), a = RF.Road.analyse(src, md, road, { quality: o.quality || o.ideal, ideal: o.ideal }), r = a.iihs;
+        res.road = { right: r.right, left: r.left, farRight: r.farRight, farLeft: r.farLeft, glareMax: r.glareMax, source: src.fallback ? 'measure-at (no far-field stream)' : 'far field' };   // source: which grid the road numbers came from (they should be 'far field')
         // o.quality: the beam-quality report too (js/beam-quality.js; report only, ~0.1 s): core size, lobes, foreground share;
         // o.ideal: the ideal-beam goals (js/ideal-beam.js, md.ideal or its defaults) → res.road.ideal { goals, met, n }
-        if ((o.quality || o.ideal) && RF.BeamQuality) res.road.quality = RF.BeamQuality.measure(I);
-        if (o.ideal && RF.IdealBeam && res.road.quality) res.road.ideal = RF.IdealBeam.check(I, md, mdl, res.road.quality);
+        if (a.quality) res.road.quality = a.quality;
+        if (a.ideal) res.road.ideal = a.ideal;
       }
     }
     return res;

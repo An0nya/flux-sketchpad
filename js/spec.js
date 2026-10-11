@@ -190,6 +190,19 @@
     const o = gridOpts(scene, distanceOverride), w = o.win;
     return Object.assign(o, { win: [Math.min(w[0], WIDE[0]), Math.max(w[1], WIDE[1]), Math.min(w[2], WIDE[2]), Math.max(w[3], WIDE[3])], step: 0.25 });
   }
+  /* The one source of the road-side readings (Road view, Drive view, IIHS reach, beam quality, ideal-beam goals): the far field (∞), judged at its
+   * OWN aim, whatever "Measure at" is. The report (the spec table) keeps judging at Measure at; with a cut-off aim that judge finds the aim on its
+   * own grid, so its shift moves with Measure at and the road would move with it. ev, G, Gw = the report's judgement and grids (they are the far field
+   * when Measure at is ∞); frozen (optional) = the aim to hold, as evaluate()'s opts. A run that lacks the ∞ streams falls back to the report's.
+   * Shared by Spec mode's page and tools.trace, so both read the same numbers. → { G, W, ev } (W = the wide grid or null) */
+  function roadSource(c, scene, ev, G, Gw, frozen) {
+    if (!(measureAt(scene) > 0)) return { G, W: Gw, ev };
+    let Gf = null, Gwf = null;
+    try { const fo = gridOpts(scene, 0); if (RF.FarField.streamOf(c, fo)) Gf = RF.FarField.build(c, fo); } catch (e) { /* the report's grid stands in */ }
+    try { const fw = wideOpts(scene, 0); if (c.ff && RF.FarField.streamOf(c, fw)) Gwf = RF.FarField.build(c, fw); } catch (e) { /* the report's grid stands in */ }
+    if (!Gf) return { G, W: Gw, ev, fallback: true };   // no ∞ stream in this run: the road reads the report's grid. Say so (fallback) — never silently
+    return { G: Gf, W: Gwf || Gw, ev: evaluate(Gf, scene.modeD, frozen ? { frozen } : undefined) };
+  }
   // (H, V) → design-plane (u, v) mm, as seen from the photometric centre (the source).  null if the plane is behind.
   function planeUV(scene, h, v) {
     const T = RF.Engine.designFrame(scene.target), c = scene.source.pos, d = RF.FarField.dirOf(h, v, scene.modeD.conv);
@@ -702,5 +715,5 @@
     return 2 * D * Math.tan(Math.min(80, ext) * Math.PI / 180);
   }
 
-  RF.Spec = { CUT, AIM, scanCut, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, fmtVert, measureAt, gridOpts, wideOpts, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
+  RF.Spec = { CUT, AIM, scanCut, FIXTURES, applyFixture, solveScene, solverSpec, PRESETS, defaults, applyPreset, presetState, newId, itemsOf, inPoly, windowOf, fmtVert, measureAt, gridOpts, wideOpts, roadSource, limitsAt, planeUV, hvAtUV, evaluate, feasibility, workingPaint, seedPaint, roadGoalPaint, fitTargetSize };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

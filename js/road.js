@@ -153,5 +153,18 @@
       const r = g === G ? RF.FarField.intensityAt(g, H, V, kh, kv) : RF.FarField.intensityAt(g, H, V, Math.max(kh, kw * g.step)); return r.cd > 0 ? r.cd : 0;
     };
   }
-  RF.Road = { PCT, LANES, IIHS, REF, defaults, resolve, mountDefault, laneWidth, lamps, arc, model, aimShift, beamOf };
+  /* The road-side numbers from ONE far-field source src = { G, W, ev } (RF.Spec.roadSource): the IIHS reach on the beam at the road's aim
+   * (aimShift), beam quality and (o.ideal) the ideal-beam goals on the beam at the judge's own aim (what their label says). Shared by Spec mode's
+   * page and tools.trace, so a solver reads the numbers the page shows. → { mdl, sh, mir, mkI, iihs, quality, ideal } */
+  function analyse(src, md, road, o) {
+    const { G, W, ev } = src, k = 0.2, mir = md.traffic === 'LHT' ? -1 : 1, conv = G.conv || md.conv || 'A';
+    const sh = aimShift(road, ev), mkI = (kh, kv, kw) => beamOf(G, W, sh, mir, kh, kv, kw), I = mkI(k, k, 1);
+    const mdl = model({ road, preset: md.preset, conv, I });
+    const shJ = ev.shift ? ev.shift.slice() : [0, 0], same = shJ[0] === sh[0] && shJ[1] === sh[1];
+    const IJ = same ? I : beamOf(G, W, shJ, mir, k, k, 1), mdlJ = same ? mdl : model({ road, preset: md.preset, conv, I: IJ });
+    const quality = o && (o.quality || o.ideal) && RF.BeamQuality ? RF.BeamQuality.measure(IJ) : null;
+    const ideal = o && o.ideal && RF.IdealBeam && quality ? RF.IdealBeam.check(IJ, md, mdlJ, quality) : null;
+    return { mdl, sh, mir, mkI, iihs: mdl.iihs(), quality, ideal };
+  }
+  RF.Road = { PCT, LANES, IIHS, REF, defaults, resolve, mountDefault, laneWidth, lamps, arc, model, aimShift, beamOf, analyse };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
