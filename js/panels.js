@@ -62,12 +62,14 @@
   function numberControl(ui, c) {
     const clamp = (v) => Math.min(isFinite(c.max) ? c.max : Infinity, Math.max(isFinite(c.min) ? c.min : -Infinity, v));
     const field = el('input', { type: 'text', inputmode: 'decimal', class: 'scrub', 'data-control': c.id, 'aria-label': c.label, autocomplete: 'off', spellcheck: 'false' });
-    const commitTyped = () => { const v = parseFloat(field.value); if (isFinite(v)) ui.setControl(c.id, clamp(v)); };
+    const show = () => { const v = c.get(ui.store); field.value = isFinite(v) ? +(+v).toFixed(6) : ''; };      // the field always shows the value in use
+    const commitTyped = () => { const v = parseFloat(field.value); if (isFinite(v)) ui.setControl(c.id, clamp(v)); show(); };
     field.addEventListener('change', commitTyped);
+    field.addEventListener('blur', show);
     field.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { commitTyped(); field.blur(); }
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {          // arrow keys still nudge, reliably
-        e.preventDefault(); const v0 = parseFloat(field.value) || 0, s = scrubStep(c, v0) * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1);
+        e.preventDefault(); const v0 = c.get(ui.store) || 0, s = scrubStep(c, v0) * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1);
         const v = clamp(v0 + (e.key === 'ArrowUp' ? s : -s)); field.value = +v.toFixed(Math.max(decimals(s), 0) + 2); ui.setControl(c.id, v);
       }
     });
@@ -289,7 +291,7 @@
     if (p.drive && (!p.custom || SP.measuredModel(src.measured))) {
       const e = SP.electrical(src), models = Object.entries(p.drive.models);
       const a = el('input', { type: 'number', min: 0.1, max: e ? e.maxA : 4, step: 0.1, value: src.driveA, 'aria-label': 'Drive current (A)' });
-      a.addEventListener('change', () => { const v = parseFloat(a.value); if (v > 0) { C.actions.setDriveCurrent(ui.store, v); ui.afterChange(); renderSourcePreset(ui); } });
+      a.addEventListener('change', () => { const v = parseFloat(a.value); if (v > 0) { C.actions.setDriveCurrent(ui.store, v); ui.afterChange(); } renderSourcePreset(ui); });
       if (models.length > 1) {
         const mdl = el('select', { 'aria-label': 'Flux model' }, ...models.map(([k, m]) => el('option', { value: k }, m.label)));
         mdl.value = src.fluxModel;
@@ -416,7 +418,7 @@
       const cb = el('input', { type: 'checkbox', checked: g.enabled ? true : null, 'aria-label': 'include ' + g.label });
       cb.addEventListener('change', () => ui.setGroupEnabled(k, cb.checked));
       list.append(el('div', { class: 'item' }, cb, el('span', { class: 'grow' }, g.label + ' — ' + g.surfaces.length + ' surfaces'),
-        g.surfaces.length ? confirmButton('clear', 'clear?', () => ui.clearGroup(k)) : null));
+        g.surfaces.length ? confirmButton('clear', 'clear?', () => { ui._histHint = 'Clear ' + g.label; ui.clearGroup(k); }) : null));
     }
   }
 
@@ -426,7 +428,7 @@
   const EN_COLS = [['direct', '#6f8fb8', 'direct on target'], ['reflected', '#b9dcdc', 'via surfaces on target'], ['absorbed', '#56606b', 'absorbed'], ['backface', '#434b55', 'back faces'], ['interfaceLoss', '#8b7fb8', 'Fresnel loss'], ['escaped', '#1c2630', 'escaped'], ['targetBack', '#333c46', 'hit target back'], ['truncated', '#8e6440', 'cut (cap/floor)']];
   // photometry formatting: candela with its shot-noise error (1/√rays in the peak cell) and, when that's
   // over 3%, the ray count that would bring it to ±3% (error ∝ 1/√rays ⇒ rays needed ∝ 1/tolerance²)
-  const fmtCd = (cd) => (cd >= 1e6 ? (cd / 1e6).toFixed(2) + ' Mcd' : cd >= 1e3 ? (cd / 1e3).toFixed(cd >= 1e5 ? 0 : 1) + ' kcd' : Math.round(cd) + ' cd');
+  const fmtCd = (cd) => (!isFinite(cd) ? '—' : cd >= 1e6 ? (cd / 1e6).toFixed(2) + ' Mcd' : cd >= 1e3 ? (cd / 1e3).toFixed(cd >= 1e5 ? 0 : 1) + ' kcd' : Math.round(cd) + ' cd');
   const noiseOf = (peakRays) => (peakRays > 0 ? 1 / Math.sqrt(peakRays) : 1);
   function raysFor3pc(peakRays, traced) { const need = traced * (1 / 0.03) ** 2 / Math.max(1e-9, peakRays); return need >= 1e6 ? (need / 1e6).toFixed(need >= 1e7 ? 0 : 1) + 'M' : Math.round(need / 1e3) + 'k'; }
   const fmtLm = (lm) => (lm >= 100 ? Math.round(lm) : lm >= 10 ? lm.toFixed(1) : lm.toPrecision(2)) + ' lm';
@@ -434,7 +436,7 @@
   function renderStats(ui, st, extra) {
     const box = document.getElementById('stats');
     if (!st) { box.innerHTML = '<div class="stat"><b>—</b><span>no run yet</span></div>'; return; }
-    const pct = (x) => (x === null || x === undefined ? '—' : (x * 100).toFixed(1) + '%');
+    const pct = (x) => (x === null || x === undefined || !isFinite(x) ? '—' : (x * 100).toFixed(1) + '%');
     const E = st.energy, em = E.emitted || 1;
     box.innerHTML = '';
     const s = (val, lab, cls) => box.append(el('div', { class: 'stat ' + (cls || '') }, el('b', {}, val), el('span', {}, lab)));
@@ -498,20 +500,21 @@
     if (extra.match) s('r = ' + extra.match.r.toFixed(3) + ' · ' + pct(extra.match.onPaint), 'shape match: correlation intended↔simulated · energy on painted cells', 'pair');
     if (ui.peakInfo) s('≈ ' + ui.peakInfo.lux + ' lx', 'peak — 99.5th pct of ' + ui.peakInfo.res + '² sim cells (not the single max: a noise spike); white point of both heat views');
     // a preview carries only the footer's photometry (phF); the drawer's Photometry section needs a real run (ph)
-    const phF = extra.photo, ph = extra.previewOf ? null : phF, pct0 = (x) => (x === null || x === undefined ? '—' : Math.round(100 * x) + '%');
+    const phF = extra.photo, ph = extra.previewOf ? null : phF, pct0 = (x) => (x === null || x === undefined || !isFinite(x) ? '—' : Math.round(100 * x) + '%');
     if (ph) {
       const nz = noiseOf(ph.peakRays);
       box.append(el('h4', { class: 'stats-sub' }, 'Photometry'));
       s(fmtCd(ph.peakCd) + ' ±' + Math.round(100 * nz) + '%', 'peak intensity (99.5th pct cell × distance²)' + (nz > 0.03 ? ' — noise-limited: ~' + raysFor3pc(ph.peakRays, st.rays) + ' rays for ±3%' : ''));
       s(Math.round(ph.throwM).toLocaleString() + ' m', 'throw (ANSI FL1: distance to 0.25 lx = 2·√cd)');
-      s(pct0(ph.ofDesign) + ' · ' + pct0(ph.ofEnvelope), 'of the brightness ceiling: this design (' + fmtCd(ph.designCeiling) + ') · any design in this envelope (' + fmtCd(ph.envelopeCeiling) + ') — ceiling = LED luminance × reflectivity × area facing the target', 'pair');
+      if (isFinite(ph.designCeiling) && isFinite(ph.envelopeCeiling)) s(pct0(ph.ofDesign) + ' · ' + pct0(ph.ofEnvelope), 'of the brightness ceiling: this design (' + fmtCd(ph.designCeiling) + ') · any design in this envelope (' + fmtCd(ph.envelopeCeiling) + ') — ceiling = LED luminance × reflectivity × area facing the target', 'pair');
       s(isFinite(ph.luminance) ? ph.luminance.toFixed(ph.luminance >= 100 ? 0 : 1) + ' cd/mm²' : '∞ (point)', 'LED luminance (on axis)');
       s(fmtMm2(ph.reflectorArea) + ' · ' + fmtMm2(ph.apertureProj), 'reflector area · its area facing the target');
       s(fmtLm(ph.lmOnTarget), 'on target');
       if (ph.ratio) s(ph.ratio.p5.toFixed(2) + ' · ' + ph.ratio.p50.toFixed(2) + ' · ' + ph.ratio.p95.toFixed(2), 'delivered ÷ intended per painted cell (5th · median · 95th pct; 1 = as painted, scaled to the mean)', 'pair');
     }
     const oc = st.occlusion;
-    if (oc) s((100 * oc.blocked).toFixed(1) + '% · ' + (oc.shadowed === null ? '…' : (100 * oc.shadowed).toFixed(1) + '%'), 'occlusion: blocked (reflected light that runs into another surface' + (oc.blockedWorst.length ? '; worst ' + oc.blockedWorst.slice(0, 2).map((w) => w.id + ' ' + Math.round(100 * w.lost) + '%').join(', ') : '') + ') · shadowed (source light a facet lost to one in front of it' + (oc.shadowedWorst && oc.shadowedWorst.length ? '; worst ' + oc.shadowedWorst.slice(0, 2).map((w) => w.id + ' ' + Math.round(100 * w.lost) + '%').join(', ') : '') + ')', 'pair');
+    const sh = (x, d) => (isFinite(x) ? (100 * Math.min(1, Math.max(0, x))).toFixed(d) + '%' : '—');   // a share is 0–100 %; a ratio gone wild shows as a limit, not as 126 % or Infinity
+    if (oc) s(sh(oc.blocked, 1) + ' · ' + (oc.shadowed === null ? '…' : sh(oc.shadowed, 1)), 'occlusion: blocked (reflected light that runs into another surface' + (oc.blockedWorst.length ? '; worst ' + oc.blockedWorst.slice(0, 2).map((w) => w.id + ' ' + sh(w.lost, 0)).join(', ') : '') + ') · shadowed (source light a facet lost to one in front of it' + (oc.shadowedWorst && oc.shadowedWorst.length ? '; worst ' + oc.shadowedWorst.slice(0, 2).map((w) => w.id + ' ' + sh(w.lost, 0)).join(', ') : '') + ')', 'pair');
     const bar = el('div', { class: 'energy', title: 'energy accounting' });
     const leg = el('div', { class: 'legend' });
     for (const [k, col, lab] of EN_COLS) {
@@ -541,7 +544,7 @@
         const s = !extra.previewOf ? ui.spec : null, ev = s && s.ev;
         if (ev) {
           const worst = ev.rows.slice().sort((a, b) => a.margin - b.margin)[0], wt = worst ? RF.SpecUI.rowText(worst) : null;
-          row.append(el('div', { class: 'tile spec-v', title: 'Constraints that pass / fail / are unsure (the ±2σ noise band crosses the limit; more rays would settle them). Measured at ' + (s.G && isFinite(s.G.distance) ? Math.round(s.G.distance / 1000) + ' m' : '∞') + '.' },
+          row.append(el('div', { class: 'tile spec-v', title: 'Constraints that pass / fail / are unsure (the ±2σ noise band crosses the limit; more rays would settle them). Measured at ' + (s.G && isFinite(s.G.distance) ? (s.G.distance >= 1000 ? +(s.G.distance / 1000).toPrecision(3) + ' m' : s.G.distance + ' mm') : '∞') + '.' },
             el('b', {}, el('span', { class: 'v-pass' }, ev.n.pass + '✓'), ' ', el('span', { class: 'v-fail' }, ev.n.fail + '✗'), ' ', el('span', { class: 'v-unsure' }, ev.n.unsure + '?')), el('span', {}, 'pass · fail · unsure')));
           if (worst) row.append(t(worst.name, (worst.margin < 0 ? wt.off : wt.off || 'met') , 'Tightest constraint: ' + worst.name + ' needs ' + wt.need + ', read ' + wt.got + ' (' + worst.verdict + ').', 'spec-worst v-' + worst.verdict));
         } else row.append(t('—', extra.previewOf ? 'not judged (preview)' : 'not judged yet', extra.previewOf ? 'Preview candidates are traced for the picture, not judged (the judge takes seconds).' : 'The report appears when the trace runs.'));
@@ -567,11 +570,15 @@
         t(pct(st.coverage), 'beam', 'Beam coverage: share of the ' + (st.basis === 'paint' ? 'painted cells' : 'beam area') + ' at ≥50% of ' + (st.basis === 'paint' ? 'intended' : 'peak') + '. Field (≥10%): ' + pct(st.coverageField) + '.'),
         t(st.uniformity.toFixed(2), 'uniformity', 'Uniformity U₀ = 5th percentile ÷ mean over ' + (st.basis === 'paint' ? 'painted cells (sim ÷ paint)' : 'the beam area') + '. Noise ceiling ' + st.noiseCeiling.toFixed(2) + ' at ' + Math.round(st.raysPerCell) + ' rays/cell.' + (st.uniformity >= st.noiseCeiling - 0.02 ? ' Noise-limited: more rays or a coarser sim grid.' : ''), st.uniformity >= st.noiseCeiling - 0.02 ? 'capped' : ''));
       if (extra.match && !fd && !specOn) row.append(t(extra.match.r.toFixed(2), 'shape', 'Shape match: correlation between intended and simulated (raw grid). ' + pct(extra.match.onPaint) + ' of target energy lands on painted cells.'));
-      if (phF) row.append(t(fmtCd(phF.peakCd), 'peak', 'Peak intensity ±' + Math.round(100 * noiseOf(phF.peakRays)) + '% (shot noise). Throw ' + Math.round(phF.throwM) + ' m. ' + pct0(phF.ofDesign) + ' of this design\u2019s brightness ceiling, ' + pct0(phF.ofEnvelope) + ' of the envelope\u2019s. More in Details.'));
+      const sp = specOn && !extra.previewOf ? ui.spec : null;
+      if (sp && sp.G && sp.ev && !sp.G.preview) {       // Spec: the far-field maximum (what the rest of the Spec page reads), not the target-plane grid's 99.5th percentile
+        if (!sp.ffPk || sp.ffPk.G !== sp.G) { const cd = RF.FarField.map(sp.G, sp.ev.kernel > 0 ? sp.ev.kernel : 0.15).cd; let m = 0; for (let q = 0; q < cd.length; q++) if (cd[q] > m) m = cd[q]; sp.ffPk = { G: sp.G, cd: m }; }
+        row.append(t(fmtCd(sp.ffPk.cd), 'peak', 'Far-field peak: the brightest direction, smoothed over \u00b1' + sp.ev.kernel + '\u00b0 (the spec\u2019s measuring kernel). Throw ' + Math.round(2 * Math.sqrt(sp.ffPk.cd)) + ' m.'));
+      } else if (phF) row.append(t(fmtCd(phF.peakCd), 'peak', 'Peak intensity ±' + Math.round(100 * noiseOf(phF.peakRays)) + '% (shot noise). Throw ' + Math.round(phF.throwM) + ' m. ' + pct0(phF.ofDesign) + ' of this design\u2019s brightness ceiling, ' + pct0(phF.ofEnvelope) + ' of the envelope\u2019s. More in Details.'));
       if (fd && !specOn) row.append(t(st.uniformity.toFixed(2), 'uniformity', 'U₀ = 5th percentile ÷ mean of delivered ÷ painted. Sees only the dim end (holes), not hotspots. Noise ceiling ' + st.noiseCeiling.toFixed(2) + '.'));
       row.append(el('span', { class: 'tile-sep' }));
       row.append(isPaint(sc.mode) && rA && !rA.error
-        ? t(rA.placed + ' / ' + sc.modeA.budget, 'facets · ' + solverLabel(sc, rA), 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : '') + ' ' + solverTip(sc, rA), 'facets')
+        ? t((sc.modeA.cleared ? 0 : rA.placed) + ' / ' + sc.modeA.budget, 'facets · ' + solverLabel(sc, rA), 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : '') + ' ' + solverTip(sc, rA), 'facets')
         : t(String(st.surfaces), 'surfaces', 'Surfaces in the scene.'));
       row.append(el('div', { class: 'tile rays', title: 'Rays traced · trace time (tracing work only, not total wait)' + (extra.preview ? ' · coarse preview while dragging' : '') },
         el('b', {}, st.rays.toLocaleString() + (extra.running ? ' …' : '')), el('span', {}, 'rays ', el('small', { class: 'ms' }, st.timeMs.toFixed(0) + ' ms' + (st.gpu ? ' · GPU' : '')))));
@@ -585,7 +592,7 @@
     if (!f) { box.append(el('div', { class: 'note' }, '—')); return; }
     box.append(el('div', { class: 'bind ' + (f.binding ? 'bad' : 'ok') }, el('span', { class: 'mk' }, f.binding ? '✗' : '✓'), ' ' + f.summary));
     const ul = el('ul');
-    for (const it of f.items) ul.append(el('li', { class: it.violated ? 'bad' : 'ok' }, el('b', {}, it.title + (it.ratio > 0 ? ' (×' + it.ratio.toFixed(2) + ')' : '') + ': '), it.text));
+    for (const it of f.items) ul.append(el('li', { class: it.violated || it.warn ? 'bad' : 'ok' }, el('b', {}, it.title + (it.ratio > 0 ? ' (×' + it.ratio.toFixed(2) + ')' : '') + ': '), it.text));
     box.append(ul);
     if (extra && extra.warnings && extra.warnings.length) for (const w of extra.warnings) box.append(el('div', { class: 'reason' }, w));
     // footer issue line: this design's own problems first (they're actionable), then the global limits
@@ -604,6 +611,7 @@
         if (lossMD >= 0.05) issues.push('Min facet distance ' + md + ' mm: at least ' + Math.round(100 * lossMD) + '% of the LED\'s light has room for a mirror only closer than that');
       }
       if (f.binding) issues.push(f.summary);
+      for (const it of f.items) if (it.warn) issues.push(it.title);   // allowed, but worth seeing (e.g. the source outside the envelope)
       if (issues.length) ml.append(el('div', { class: 'issue' }, el('span', { class: 'mk' }, '!'), ' ' + issues.join(' · ')));
       else {
         const rest = f.items.filter((it) => !it.violated && it.ratio > 0).sort((a, b) => b.ratio - a.ratio);

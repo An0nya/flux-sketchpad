@@ -17,8 +17,10 @@
     const store = {
       scene, reports: { A: null, B: [], C: null, L: {}, feas: null }, version: 0,
       dirty: new Set(), listeners: [], notices: [],
-      autoA: true,
     };
+    // auto-solve for the reflector: the user's switch, off while the reflector is cleared (modeA.cleared is intent, so undo / redo carry it)
+    let autoA = true;
+    Object.defineProperty(store, 'autoA', { enumerable: true, get: () => autoA && !(store.scene.modeA && store.scene.modeA.cleared), set: (v) => { autoA = !!v; } });
     store.on = (fn) => store.listeners.push(fn);
     store.notify = (what) => { store.version++; for (const fn of store.listeners) fn(what); };
     store.notice = (msg) => { store.notices.unshift({ t: Date.now(), msg }); store.notices.length = Math.min(store.notices.length, 8); };
@@ -27,6 +29,7 @@
     store.commit = (opts) => {
       opts = opts || {};
       const sc = store.scene;
+      if (sc.modeA && sc.modeA.cleared) { sc.groups.A.surfaces = []; store.dirty.delete('A'); }   // cleared: stays empty until a solve (Rebuild) ends it
       if (store.dirty.has('B')) { const b = RF.ModeB.build(sc); sc.groups.B.surfaces = b.surfaces; store.reports.B = b.reports; store.dirty.delete('B'); }
       if (store.dirty.has('C')) { const c = RF.Profile.build(sc); sc.groups.C.surfaces = c.surfaces; store.reports.C = c.report; store.dirty.delete('C'); }
       if (store.dirty.has('L')) { const l = RF.Lenses.buildAll(sc); sc.groups.L.surfaces = l.surfaces; store.reports.L = l.infos; store.dirty.delete('L'); }
@@ -58,6 +61,7 @@
   function applySolve(store, r) {
     const sc = store.scene, out = r.output || {}, f = r.facts, extras = out.extras || {};
     sc.groups.A.surfaces = f.errors.length ? [] : out.surfaces;
+    delete sc.modeA.cleared;
     if (!f.errors.length && f.needsBounces) ensureBounces(store, f.needsBounces, 'the ' + r.meta.id + ' optic needs ' + f.needsBounces + ' interactions per ray (' + (f.parts && f.placed ? 'reflector + lens / shield parts' : f.parts ? 'lens / TIR parts' : 'several reflections') + ')');
     sc.solve = r.meta;
     const rep = Object.assign({}, extras, {
@@ -334,7 +338,7 @@
       if (g === 'B') { store.scene.modeB.stamps = []; store.scene.modeB.selected = null; }
       if (g === 'L') store.scene.lenses = [];
       if (g === 'C') store.scene.modeC.profile = [];
-      if (g === 'A') store.dirty.delete('A');
+      if (g === 'A') { store.scene.modeA.cleared = true; store.dirty.delete('A'); store.version++; }   // version: a solve still running is dropped on return
     },
     // Scene-view handle drags (UI path for direct manipulation)
     // a real emitter (js/source-presets.js): geometry, emission and power; position kept

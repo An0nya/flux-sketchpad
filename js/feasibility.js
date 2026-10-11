@@ -131,6 +131,11 @@
     const dT = V.dist(S, Zc);
     const facets = (scene.groups.A.surfaces || []).concat(scene.groups.B.surfaces || []).filter((f) => f.type === 'facet');
 
+    // ---- 0. source outside the envelope: allowed (a valid design), but flagged while it is
+    const eo = scene.envelope, out = Math.hypot(...[0, 1, 2].map((k) => Math.max(0, Math.abs(S[k] - eo.center[k]) - eo.half[k])));
+    if (out > 1e-9) items.push({ key: 'srcOutside', title: 'Source outside the envelope', ratio: 0, warn: true,   // a warning, not a physical limit: never the binding one
+      text: 'The light source sits ' + out.toFixed(1) + ' mm outside the envelope. That is allowed, but the optic can only catch light that enters the envelope, and the checks below assume the source is where you put it.' });
+
     // ---- 1. minimum feature size
     let bestW = Infinity, typW = NaN;
     const widths = [];
@@ -200,7 +205,7 @@
       const q = Math.sqrt(info.n / N);
       const mask = scene.modeA.paint.map((w) => (w > 0 ? 1 : 0));
       const fine = finestFeature(mask, res).width;
-      const occ = ctx.stats ? ctx.stats.occlusion : null, pc = (x) => (x * 100).toFixed(1) + '%';
+      const occ = ctx.stats ? ctx.stats.occlusion : null, pc = (x) => (isFinite(x) ? (100 * Math.min(1, Math.max(0, x))).toFixed(1) + '%' : '—');   // a share: 0–100 %, never NaN / Infinity / 126 %
       items.push({
         key: 'budget', title: 'Facet budget & occlusion', ratio: q / fine,
         text: N + ' tiles over ' + info.n + ' painted cells quantise the pattern at ≈ ' + q.toFixed(1) + ' cells per tile (finest lit feature ' + fine.toFixed(0) + ' cells).' +
@@ -210,7 +215,7 @@
     }
 
     let binding = null, worst = 1;
-    for (const it of items) { it.violated = it.ratio > 1; if (it.ratio > worst) { worst = it.ratio; binding = it.key; } }
+    for (const it of items) { it.violated = !it.warn && it.ratio > 1; if (it.ratio > worst) { worst = it.ratio; binding = it.key; } }
     const b = items.find((i) => i.key === binding);
     const summary = b ? 'Binding: ' + b.title + ' — exceeded ×' + b.ratio.toFixed(2) + '.' : 'No physical limit binds (first-order check).';
     return { items, binding, summary };

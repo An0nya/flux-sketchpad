@@ -156,5 +156,57 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   { const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'spec-ui.js'), 'utf8');
     ok('D-S13 no marker is labelled as a road "edge"', !/'[RL] edge 5 lx: '/.test(src));
     ok('D-S13 markers are labelled IIHS points, legend names the 6.6 m IIHS road', /'IIHS R point: 5 lx to '/.test(src) && /'IIHS L point: 5 lx to '/.test(src) && /not the drawn road edges/.test(src)); }
+  // G10 / owner decision: Clear on the Mode A reflector empties it AND stops auto-solve for it, undoably (the flag is intent), until a solve (Rebuild)
+  {
+    const st = C.createStore(RF.State.testScene()); C.regenerateA(st);
+    const n0 = st.scene.groups.A.surfaces.length, h = RF.History;
+    const before = h.intent(st.scene);
+    ok('G10 setup: the test scene has a solved reflector', n0 > 0, n0 + ' surfaces');
+    C.actions.clearGroup(st, 'A');
+    ok('G10 clear empties the reflector', st.scene.groups.A.surfaces.length === 0);
+    ok('G10 clear is a history-visible change (one entry)', h.key(h.intent(st.scene)) !== h.key(before));
+    st.invalidate(['A']); st.commit({ deferA: false });                                    // e.g. a source nudge with auto-solve on
+    ok('G10 a later edit does not bring the reflector back', st.scene.groups.A.surfaces.length === 0 && !st.dirty.has('A'));
+    ok('G10 auto-solve reads as off while cleared', st.autoA === false);
+    const intentCleared = h.intent(st.scene);
+    const sc2 = JSON.parse(JSON.stringify(st.scene)); h.apply(sc2, before);
+    ok('G10 undo (restoring the old intent) lifts the cleared state', !sc2.modeA.cleared);
+    C.regenerateA(st);
+    ok('G10 a solve (Rebuild) puts the reflector back and auto-solve returns', st.scene.groups.A.surfaces.length > 0 && st.autoA === true && !st.scene.modeA.cleared);
+    h.apply(st.scene, intentCleared); st.invalidate(['A']); st.commit({ forceA: true });
+    ok('G10 redo (cleared intent) leaves the reflector cleared', st.scene.groups.A.surfaces.length === 0 && !st.dirty.has('A'));
+  }
+  // G40: the row handed to the goal metrics carries capturable, so the hot zone's "of the most this light could give it" is a number, not NaN
+  {
+    const st = C.createStore(RF.State.testScene()), input = RF.Solvers.inputOf(st.scene), M = RF.Modes, R = input.paint.res;
+    const ctx = M.context(input, 1e5), grid = new Float64Array(R * R).fill(1), tr = { grid, res: R, energy: { emitted: 1e5 }, fidelity: { fidelity: 0.5, onPaint: 0.5, spill: 0.1 }, peakCd: 1 };
+    const run = M.runFromTrace(input, tr, ctx), m = M.hotspot(run);
+    ok('G40 the metrics row has a capturable share (' + run.row.capturable + ')', run.row.capturable > 0 && run.row.capturable <= 1);
+    ok('G40 hotspot ofPossible is a finite number (got ' + m.ofPossible + ')', isFinite(m.ofPossible) && m.ofPossible >= 0);
+  }
+  // D-E08: a source outside the envelope is allowed (a valid design) but the limits panel warns while it is outside
+  {
+    const sc = RF.State.testScene(), F = RF.Feasibility, env = sc.envelope;
+    ok('D-E08 no warning while the source is inside the envelope', !F.analyze(sc).items.some((i) => i.key === 'srcOutside'));
+    sc.source.pos = [env.center[0] + env.half[0] + 10, env.center[1], env.center[2]];
+    const a = F.analyze(sc), it = a.items.find((i) => i.key === 'srcOutside');
+    ok('D-E08 a source outside the envelope gets a warning item', !!it && it.warn === true && /outside/i.test(it.text), it && it.text);
+    ok('D-E08 the warning never becomes the binding physical limit', F.analyze(sc).binding !== 'srcOutside');
+    ok('D-E08 the source position is not clamped', sc.source.pos[0] === env.center[0] + env.half[0] + 10);
+  }
+  // D-C14: switching LED presets opens the new LED at its own default drive current and flux model, not the previous emitter's
+  {
+    const SP = RF.SourcePresets, ids = Object.keys(SP.PRESETS).filter((k) => SP.PRESETS[k].drive && !SP.PRESETS[k].custom);
+    let bad = [], n = 0;
+    for (const a of ids) for (const b of ids) {
+      if (a === b) continue;
+      const pb = SP.PRESETS[b], mb = pb.drive.models[pb.drive.model];
+      const ref = {}; SP.apply(ref, b); const src = {}; SP.apply(src, a, { amps: SP.PRESETS[a].drive.models[SP.PRESETS[a].drive.model].maxA }); const keepA = src.driveA; SP.apply(src, b); n++;
+      if (src.driveA !== ref.driveA || src.fluxModel !== ref.fluxModel || src.power !== ref.power) bad.push(a + '→' + b + ' amps ' + src.driveA + ' vs ' + ref.driveA + ', model ' + src.fluxModel + ' vs ' + ref.fluxModel);
+    }
+    ok('D-C14 every LED preset opens the same from any previous LED as from a fresh source (' + n + ' pairs)', bad.length === 0, bad.slice(0, 3).join(' | '));
+    const a0 = ids[0], s2 = {}; SP.apply(s2, a0); SP.apply(s2, a0, { amps: 0.5 }); SP.apply(s2, a0);
+    ok('D-C14 re-applying the SAME preset (model/current edits) still keeps the chosen current', s2.driveA === 0.5, 'driveA ' + s2.driveA);
+  }
   process.exitCode = fails ? 1 : 0;
 })();
