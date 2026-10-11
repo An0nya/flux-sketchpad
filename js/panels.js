@@ -62,12 +62,14 @@
   function numberControl(ui, c) {
     const clamp = (v) => Math.min(isFinite(c.max) ? c.max : Infinity, Math.max(isFinite(c.min) ? c.min : -Infinity, v));
     const field = el('input', { type: 'text', inputmode: 'decimal', class: 'scrub', 'data-control': c.id, 'aria-label': c.label, autocomplete: 'off', spellcheck: 'false' });
-    const commitTyped = () => { const v = parseFloat(field.value); if (isFinite(v)) ui.setControl(c.id, clamp(v)); };
+    const show = () => { const v = c.get(ui.store); field.value = isFinite(v) ? +(+v).toFixed(6) : ''; };      // the field always shows the value in use
+    const commitTyped = () => { const v = parseFloat(field.value); if (isFinite(v)) ui.setControl(c.id, clamp(v)); show(); };
     field.addEventListener('change', commitTyped);
+    field.addEventListener('blur', show);
     field.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { commitTyped(); field.blur(); }
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {          // arrow keys still nudge, reliably
-        e.preventDefault(); const v0 = parseFloat(field.value) || 0, s = scrubStep(c, v0) * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1);
+        e.preventDefault(); const v0 = c.get(ui.store) || 0, s = scrubStep(c, v0) * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1);
         const v = clamp(v0 + (e.key === 'ArrowUp' ? s : -s)); field.value = +v.toFixed(Math.max(decimals(s), 0) + 2); ui.setControl(c.id, v);
       }
     });
@@ -289,7 +291,7 @@
     if (p.drive && (!p.custom || SP.measuredModel(src.measured))) {
       const e = SP.electrical(src), models = Object.entries(p.drive.models);
       const a = el('input', { type: 'number', min: 0.1, max: e ? e.maxA : 4, step: 0.1, value: src.driveA, 'aria-label': 'Drive current (A)' });
-      a.addEventListener('change', () => { const v = parseFloat(a.value); if (v > 0) { C.actions.setDriveCurrent(ui.store, v); ui.afterChange(); renderSourcePreset(ui); } });
+      a.addEventListener('change', () => { const v = parseFloat(a.value); if (v > 0) { C.actions.setDriveCurrent(ui.store, v); ui.afterChange(); } renderSourcePreset(ui); });
       if (models.length > 1) {
         const mdl = el('select', { 'aria-label': 'Flux model' }, ...models.map(([k, m]) => el('option', { value: k }, m.label)));
         mdl.value = src.fluxModel;
