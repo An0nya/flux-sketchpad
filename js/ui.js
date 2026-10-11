@@ -486,8 +486,14 @@
   // where bigger slices are fine because there is no UI to keep responsive.
   // stale = paint mode, the design no longer matches the settings, and no solve is queued or running
   const stale = () => isPaint(ui.store.scene.mode) && ui.store.dirty.has('A') && !ui.pendingA && !ui.solveArmed && !ui.solving;
+  function refreshRefine() {                         // also when a solve starts or ends / the design goes stale (canRefine reads both)
+    const run = ui.run, b = document.getElementById('btn-refine'); if (!run) return;
+    if (b) { const d = !ui.canRefine(), t = run.ctx.N < REFINE_MAX ? 'Refine → ' + RF.U.fmtInt(Math.min(REFINE_MAX, 2 * run.ctx.N)) + ' rays' : 'Refine (at 50M)'; if (b.disabled !== d) b.disabled = d; if (b.textContent !== t) b.textContent = t; }
+    ui._refineN = run.ctx.N;
+  }
   function markStale() {
     const on = stale();
+    refreshRefine();
     for (const id of ['btn-generate', 'btn-generate-top']) { const b = document.getElementById(id); if (b) { b.classList.toggle('stale', on); b.title = on ? 'Changed since the last solve: rebuild to see it' : 'Re-solve the reflector for the painted target and re-trace'; } }
   }
   function schedule() {
@@ -585,7 +591,7 @@
       else ui.setStatus('design changed — regenerating when you pause…');
     }
     if (run && (justDone || now - ui.lastStats > (run.preview ? 300 : TRACE_UI_MS))) { guard(() => renderStats(!run.ctx.done)); ui.lastStats = now; }
-    if (run && (justDone || ui._refineN !== run.ctx.N)) { const b = document.getElementById('btn-refine'); if (b) { b.disabled = !ui.canRefine(); b.textContent = run.ctx.N < REFINE_MAX ? 'Refine → ' + RF.U.fmtInt(Math.min(REFINE_MAX, 2 * run.ctx.N)) + ' rays' : 'Refine (at 50M)'; } ui._refineN = run.ctx.N; }
+    if (run && (justDone || ui._refineN !== run.ctx.N)) refreshRefine();
     markStale();
     if (ui.sceneDirty) { guard(drawSceneView); guard(drawSurfaceView); guard(drawLeft); ui.sceneDirty = false; }
   }
