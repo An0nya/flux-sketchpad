@@ -19,6 +19,11 @@
       // auto-aimed stamps get th/ph written back by the Mode B build (modeB.js) — derived, not intent
       for (const st of s.modeB.stamps || []) if (st.dirMode !== 'manual') { delete st.th; delete st.ph; }
     }
+    // the solver choice is intent; the meta applySolve writes (version, settings, seed) and an unset choice are not
+    s.solve = { id: (s.solve && s.solve.id) || (RF.Solvers ? RF.Solvers.PREFERRED_ID : 'auto') };
+    if (s.solverSettings && !Object.keys(s.solverSettings).length) delete s.solverSettings;   // ui.js creates {} when the solver box renders
+    // modeD.road is created on the first Spec visit (spec-ui roadOf); left at its defaults it is not a choice
+    if (s.modeD && s.modeD.road && RF.Road && key(s.modeD.road) === key(RF.Road.defaults())) delete s.modeD.road;
     if (s.sim) { delete s.sim.view; delete s.sim.surfaceView; delete s.sim.smoothing; }
     for (const g of DERIVED) if (s.groups && s.groups[g]) delete s.groups[g].surfaces;
     // A/B/C visibility follows the mode tab (view state), so it isn't an edit either
@@ -35,15 +40,17 @@
 
   // Write an intent snapshot into a live scene, keeping its view/tool state; caller re-derives groups.
   function apply(scene, it) {
-    const keep = { en: ['A', 'B', 'C'].map((g) => scene.groups[g].enabled), mode: scene.mode, notices: scene.notices, brush: scene.modeA.brush, selected: scene.modeB.selected,
-      view: scene.sim.view, surfaceView: scene.sim.surfaceView, smoothing: scene.sim.smoothing };
+    const keep = { surfacesA: scene.groups.A && scene.groups.A.surfaces, en: ['A', 'B', 'C'].map((g) => scene.groups[g].enabled), mode: scene.mode, notices: scene.notices, brush: scene.modeA.brush, selected: scene.modeB.selected,
+      solve: scene.solve, view: scene.sim.view, surfaceView: scene.sim.surfaceView, smoothing: scene.sim.smoothing };
     const c = JSON.parse(JSON.stringify(it));
     for (const k of Object.keys(scene)) if (!(k in c) && k !== 'mode' && k !== 'notices' && k !== 'groups') delete scene[k];
     for (const [k, v] of Object.entries(c)) {
       if (k === 'groups') continue;
       scene[k] = v;
     }
-    for (const [g, v] of Object.entries(c.groups || {})) scene.groups[g] = Object.assign({ surfaces: [] }, v, DERIVED.includes(g) ? { surfaces: [] } : {});
+    // B/C/L rebuild synchronously; A's re-solve may be async (worker), so keep the solved reflector until it lands (dirty A marks it stale)
+    for (const [g, v] of Object.entries(c.groups || {})) scene.groups[g] = Object.assign({ surfaces: [] }, v, DERIVED.includes(g) ? { surfaces: g === 'A' && keep.surfacesA ? keep.surfacesA : [] } : {});
+    if (keep.solve && scene.solve && keep.solve.id === scene.solve.id) scene.solve = keep.solve;   // the solver's meta describes the kept reflector
     ['A', 'B', 'C'].forEach((g, i) => { scene.groups[g].enabled = keep.en[i]; });
     scene.mode = keep.mode; scene.notices = keep.notices; scene.modeA.brush = keep.brush;
     for (const st of scene.modeB.stamps) if (st.th === undefined) { st.th = 45; st.ph = 0; }   // newStamp defaults; the build re-aims

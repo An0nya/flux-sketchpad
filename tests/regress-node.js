@@ -91,5 +91,33 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       ok('G05 boxBlur with a kernel 1e7 cells wide on a 200x200 grid is instant (' + ms + ' ms)', ms < 500);
     }
   }
+  // G07 / G08: derived and lazily created fields are not intent; undo keeps the solved reflector until the re-solve replaces it
+  {
+    const H = RF.History, st = C.createStore(RF.State.defaultScene()); C.regenerateA(st);
+    const h = H.create(100); h.reset(H.intent(st.scene)); delete st.scene.solve;   // the state right after a load: no solve key yet
+    h.reset(H.intent(st.scene));
+    C.regenerateA(st); st.scene.solve.id = 'auto';   // headless has no worker solver: stand in for Auto's meta, as the page writes it
+    ok('G07 the first solve after load is not an edit (solve ' + JSON.stringify(st.scene.solve && st.scene.solve.id) + ')', !h.checkpoint(H.intent(st.scene), 1e4));
+    st.scene.modeD.road = RF.Road.defaults(); ok('G07 a lazily created default road is not an edit', !h.checkpoint(H.intent(st.scene), 2e4));
+    st.scene.modeD.road.spacing = 2; ok('G07 a real road edit still is', !!h.checkpoint(H.intent(st.scene), 3e4));
+    st.scene.solverSettings = {}; ok('G07 an empty solverSettings is not an edit', !h.checkpoint(H.intent(st.scene), 4e4));
+    // the undo loop: restore a snapshot with no solve key, re-solve (writes solve), checkpoint again, repeatedly
+    h.reset(H.intent(st.scene)); delete st.scene.solve; h.reset(H.intent(st.scene));   // a scene that has not been solved yet
+    for (let i = 0; i < 4; i++) { C.setControl(st, 'A.budget', 50 + i * 10); h.checkpoint(H.intent(st.scene), 5e4 + i * 1e4); }
+    const n0 = h.past.length; let loops = 0;
+    for (let i = 0; i < 4; i++) {
+      const e = h.undo(H.intent(st.scene)); H.apply(st.scene, e.it);
+      st.invalidate(['A', 'B', 'C', 'L']); st.commit({ forceA: true }); C.regenerateA(st); st.scene.solve.id = 'auto';
+      if (h.checkpoint(H.intent(st.scene), 2e5 + i * 1e4)) loops++;
+    }
+    ok('G07 four Undos walk back four edits and push nothing (past ' + n0 + ' -> ' + h.past.length + ', pushed ' + loops + ')', loops === 0 && h.past.length === n0 - 4);
+    const picked = H.intent(Object.assign(JSON.parse(JSON.stringify(st.scene)), { solve: { id: 'fill' } }));
+    ok('G07 choosing a different solver is still an edit', H.key(picked) !== H.key(H.intent(st.scene)));
+    // G08: apply() must not blank the solved reflector (group A) while a worker solve is pending
+    const st2 = C.createStore(RF.State.defaultScene()); C.regenerateA(st2); const n = st2.scene.groups.A.surfaces.length;
+    H.apply(st2.scene, H.intent(st2.scene));
+    ok('G08 undo keeps the current reflector until the re-solve lands (' + st2.scene.groups.A.surfaces.length + ' of ' + n + ' surfaces)', n > 0 && st2.scene.groups.A.surfaces.length === n);
+    ok('G08 the derived groups that rebuild synchronously are still reset', st2.scene.groups.B.surfaces.length === 0);
+  }
   process.exitCode = fails ? 1 : 0;
 })();
