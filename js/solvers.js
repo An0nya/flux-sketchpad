@@ -9,7 +9,7 @@
  *     field  = { key, label, type: 'number'|'range'|'select'|'checkbox', min, max, step, options, default, help }
  *     input  = { source, envelope, target, paint: { res, cells }, stamps, seed, limits: { maxFacets, reflectivity } }
  *              (deep copy; mutate freely).  limits are the USER's: a solver reads them, never declares them.
- *     tools  = { trace(surfaces, { rays, seed, attribution }), progress(pct), budget: { rays, ms }, preview(surfaces, info?) }
+ *     tools  = { trace(surfaces, { rays, seed, attribution }), traceAsync(…) (same, may run on the GPU), progress(pct), budget: { rays, ms }, preview(surfaces, info?) }
  *              preview = display only (the page draws what the solver is trying; SOLVER_API.md § "Watching a solve"): a no-op
  *              here and in the headless hosts, throttled in the worker; it never changes the result.
  *     output = { surfaces, intent?: [{ facet: id|null, cells: [[paintCell, weight]…] }], notes?: [..], extras?,
@@ -175,7 +175,7 @@
     id = id || current(scene);
     const def = get(id); if (!def) throw new Error('no solver ' + id);
     const settings = settingsOf(scene, id), input = inputOf(scene), problem = problemOf(scene);
-    const tools = { progress() {}, preview: NO_PREVIEW, budget: { rays: Infinity, ms: Infinity }, scene: problem, trace: (surfaces, o) => trace(problem, surfaces, o) };
+    const tools = { progress() {}, preview: NO_PREVIEW, budget: { rays: Infinity, ms: Infinity }, scene: problem, trace: (surfaces, o) => trace(problem, surfaces, o), traceAsync: (surfaces, o) => traceAsync(problem, surfaces, o) };
     return { def, id, settings, input, tools, meta: metaOf(scene, id) };
   }
   // what a result records about its solve (scene.solve): also used for a candidate applied from a stopped solve's preview
@@ -200,6 +200,32 @@
   //   → { grid, res, energy, raysPerCell, noise, blocked, peakCd, peakNoise, ofCeiling, ofEnvelope, throwM, lmOnTarget,
   //       perFacet? (attribution), shadowed? (occlusion: one extra pass) }   — the same definitions the app scores with
   function trace(scene, surfaces, o) {
+    const t = traceSetup(scene, surfaces, o);
+    let c;
+    if (!t.guided) c = RF.Engine.runSync(t.P, t.N, 0);
+    else {
+      const n0 = Math.max(100000, Math.floor(t.N / 4)); c = RF.Engine.newCtx(t.P, n0, 0); RF.Engine.traceRange(c, 0, n0); c.next = n0; c.done = true;
+      while (c.N < t.N) { const n1 = c.N, g = RF.Engine.buildGuide(c); c = RF.Engine.extend(c, Math.min(t.N, 2 * n1), g); RF.Engine.traceRange(c, n1, c.N); c.next = c.N; c.done = true; }
+    }
+    return traceFinish(t, c);
+  }
+  /* tools.traceAsync: the same trace and the same result (same rays, same scoring), but the rays may run on the GPU
+   * (RF.GpuTrace, when the host has started it and the trace needs nothing GPU-less, e.g. exit lists) — statistically
+   * the same answer, not bit-identical (f32): res.gpu says which ran.  o.gpu: false = CPU always.  Without a GPU it is
+   * trace() in a promise.                                                                                          */
+  async function traceAsync(scene, surfaces, o) {
+    const t = traceSetup(scene, surfaces, o), GT = RF.GpuTrace;
+    const gpu = !!(GT && (!o || o.gpu !== false) && GT.on() && GT.ready() && GT.supports(t.P) === true);
+    const run = async (c, i0, i1) => { if (gpu) await GT.traceRange(c, i0, i1); else RF.Engine.traceRange(c, i0, i1); c.next = i1; c.done = i1 >= c.N; };
+    let c;
+    if (!t.guided) { c = RF.Engine.newCtx(t.P, t.N, 0); await run(c, 0, t.N); }
+    else {
+      const n0 = Math.max(100000, Math.floor(t.N / 4)); c = RF.Engine.newCtx(t.P, n0, 0); await run(c, 0, n0);
+      while (c.N < t.N) { const n1 = c.N, g = RF.Engine.buildGuide(c); c = RF.Engine.extend(c, Math.min(t.N, 2 * n1), g); await run(c, n1, c.N); }
+    }
+    const res = traceFinish(t, c); res.gpu = gpu; return res;
+  }
+  function traceSetup(scene, surfaces, o) {
     o = o || {};
     // o.bounces: a multi-part optic traces with the cap it needs (reflector + lens = 3), as the app will once it declares needs.bounces
     const sc = Object.assign({}, scene, { sim: Object.assign({}, scene.sim, { seed: o.seed !== undefined ? o.seed : scene.sim.seed }, o.bounces > 0 ? { bounces: Math.max(scene.sim.bounces | 0, Math.min(16, Math.round(o.bounces))) } : {}) });
@@ -213,12 +239,10 @@
     // rays where the window is dim (sign points, zone III), weighted so nothing is biased.  o.guided: false = plain.
     const guided = wantSpec && o.guided !== false && N >= 200000;
     if (guided) P.guideLearn = true;
-    let c;
-    if (!guided) c = RF.Engine.runSync(P, N, 0);
-    else {
-      const n0 = Math.max(100000, Math.floor(N / 4)); c = RF.Engine.newCtx(P, n0, 0); RF.Engine.traceRange(c, 0, n0); c.next = n0; c.done = true;
-      while (c.N < N) { const n1 = c.N, g = RF.Engine.buildGuide(c); c = RF.Engine.extend(c, Math.min(N, 2 * n1), g); RF.Engine.traceRange(c, n1, c.N); c.next = c.N; c.done = true; }
-    }
+    return { scene, sc, o, P, N, guided, wantSpec, wantRoad };
+  }
+  function traceFinish(t, c) {
+    const { scene, sc, o, P, guided, wantSpec, wantRoad } = t;
     const grid = RF.Engine.gridTotal(c), st = RF.Engine.evaluate(c);
     const res = { grid: Array.from(grid), res: P.res, energy: Object.assign({}, c.E), raysPerCell: st.raysPerCell, noise: st.raysPerCell > 0 ? 1 / Math.sqrt(st.raysPerCell) : 1,
       blocked: c.occ.out1 > 0 ? c.occ.blocked / c.occ.out1 : 0 };
@@ -263,5 +287,5 @@
     return res;
   }
 
-  RF.Solvers = { paintOf, metaOf, NO_PREVIEW, PREFERRED_ID, wanted, register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
+  RF.Solvers = { paintOf, metaOf, NO_PREVIEW, PREFERRED_ID, wanted, register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, traceAsync, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

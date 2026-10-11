@@ -178,6 +178,15 @@ Rules for parts:
 `input.source`, which older solvers keep reading. Every emitter has its own LED clearance (the host checks each).
 Traces draw each ray's emitter in proportion to power, so every ray carries the same energy.
 
+## Tracing on the GPU (`tools.traceAsync`, optional)
+
+**`await tools.traceAsync(surfaces, o)`**: the same options and the same result as `tools.trace`, plus `res.gpu` (true when
+the rays ran on WebGPU). It runs on the GPU only when the user has switched on Simulation → Advanced → *GPU trace* and the
+trace needs nothing the GPU path lacks; otherwise it is `tools.trace` in a promise (Node, the benches, older browsers). The GPU
+traces the **same rays** in 32-bit floats: results match the CPU trace within noise, not to the last digit (`GPU.md` has the
+numbers). Use it from an `async solve` where you trace in a loop; keep `tools.trace` where you need bit-identical reruns.
+Older hosts may lack it: `(tools.traceAsync || tools.trace)(surfaces, o)` works in both (await the result).
+
 ## Watching a solve (`tools.preview`, optional)
 
 An iterating solver can let the user watch it work: call **`tools.preview(surfaces, info)`** whenever it has a

@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPU trace check</title>
+<!-- The GPU trace vs the CPU engine, in any browser with WebGPU (Safari 26+, Chrome): python3 tests/serve.py 8746, then open
+     http://localhost:8746/tests/gpu.html.  The same cases as tests/gpu.js; the timings here are the real GPU's.  -->
+<style>
+  :root { --bg: #0b1016; --fg: #d8e2ea; --dim: #7f93a3; --ok: #6fd3a8; --bad: #f08a7a; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f6f8fa; --fg: #17222c; --dim: #5b6b78; --ok: #187a52; --bad: #b2402f; } }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.45 ui-monospace, Menlo, monospace; margin: 0; padding: 16px; }
+  button { font: inherit; padding: 6px 12px; margin: 0 8px 8px 0; }
+  pre { white-space: pre-wrap; word-break: break-word; } .ok { color: var(--ok); } .bad { color: var(--bad); } .dim { color: var(--dim); }
+</style>
+<h1 style="font-size:16px">GPU trace vs CPU engine</h1>
+<div><button id="quick">Quick (rays + speed)</button><button id="all">All cases</button></div>
+<pre id="out" class="dim">Loading…</pre>
+<script src="../js/core.js"></script>
+<script src="../js/geometry.js"></script>
+<script src="../js/source.js"></script>
+<script src="../js/source-presets.js"></script>
+<script src="../js/engine.js"></script>
+<script src="../js/state.js"></script>
+<script src="../js/solver.js"></script>
+<script src="../js/solver-env.js"></script>
+<script src="../js/modeA.js"></script>
+<script src="../js/solvers.js"></script>
+<script src="../js/solver-spoke.js"></script>
+<script src="../js/solver-constellation.js"></script>
+<script src="../js/modeB.js"></script>
+<script src="../js/feasibility.js"></script>
+<script src="../js/photometry.js"></script>
+<script src="../js/farfield.js"></script>
+<script src="../js/spec.js"></script>
+<script src="../js/road.js"></script>
+<script src="../js/beam-quality.js"></script>
+<script src="../js/ideal-beam.js"></script>
+<script src="../js/drive.js"></script>
+<script src="../js/drive-scenes.js"></script>
+<script src="../js/modes.js"></script>
+<script src="../js/profile.js"></script>
+<script src="../js/lenses.js"></script>
+<script src="../js/controller.js"></script>
+<script src="../js/history.js"></script>
+<script src="../js/checks1.js"></script>
+<script src="../js/checks2.js"></script>
+<script src="../js/checks3.js"></script>
+<script src="../js/gpu-trace.js"></script>
+<script src="../solvers/lab-fill-fix.js"></script>
+<script src="../solvers/lab-sqm.js"></script>
+<script src="../solvers/sonnet55-2026-09-28-dish-fit.js"></script>
+<script src="../solvers/opus55-2026-09-27-mosaic.js"></script>
+<script src="../solvers/lab-auto.js"></script>
+<script src="gpu-page.js"></script>
+<script>
+  const out = document.getElementById('out'), log = (s, c) => { const e = document.createElement('div'); if (c) e.className = c; e.textContent = s; out.append(e); };
+  const f = (x) => (x < 1e-3 ? x.toExponential(1) : (100 * x).toFixed(3) + '%');
+  async function run(names) {
+    out.textContent = ''; out.className = '';
+    const ok = await GpuCompare.init(), info = GpuCompare.info();
+    log('device: ' + (ok ? JSON.stringify(info.info) : 'unavailable ' + (info.error || '(no navigator.gpu)')), ok ? 'ok' : 'bad'); if (!ok) return;
+    for (const n of names) {
+      log('… ' + n, 'dim'); await new Promise((r) => setTimeout(r, 20));
+      try {
+        const r = await GpuCompare.run(n);
+        if (n === 'speed') { for (const x of r.out) log('speed ' + (x.N / 1e6).toFixed(2) + ' M rays: CPU ' + x.cpuMs.toFixed(0) + ' ms (' + x.cpuMraysPerS.toFixed(2) + ' M/s) · GPU ' + x.gpuMs.toFixed(0) + ' ms (' + x.gpuMraysPerS.toFixed(2) + ' M/s) · ×' + (x.cpuMs / x.gpuMs).toFixed(1)); continue; }
+        if (n === 'emission') { for (const [k, v] of Object.entries(r)) log('emission ' + k + ': p99.9 ' + v.p999.toExponential(1) + ' rad', v.p999 < 2e-6 ? 'ok' : 'bad'); continue; }
+        if (n === 'specBox') { log('specBox: guided max ' + r.zMax.toFixed(2) + 'σ√2 · same rays ' + r.zFrozenMax.toFixed(3) + 'σ · verdict ' + r.verdict.join('/') + ' · CPU ' + r.cpuMs.toFixed(0) + ' ms, GPU ' + r.gpuMs.toFixed(0) + ' ms', r.zMax < 3 && r.zFrozenMax < 0.1 ? 'ok' : 'bad'); continue; }
+        if (n === 'deterministic') { log('deterministic: ' + (r.oneShotVsChunked && r.rayK), r.oneShotVsChunked && r.rayK ? 'ok' : 'bad'); continue; }
+        log(n + ': ledger ' + f(r.ledgerWorst) + ' · grid ' + f(r.grid) + (r.rayKDiff !== undefined ? ' · rays differing ' + f(r.rayKDiff) : '') + ' · CPU ' + r.cpuMs.toFixed(0) + ' ms, GPU ' + r.gpuMs.toFixed(0) + ' ms', r.ledgerWorst < 2e-3 && r.grid < 2e-3 ? 'ok' : 'bad');
+      } catch (e) { log(n + ': ' + (e && e.message || e), 'bad'); }
+    }
+    log('done', 'dim');
+  }
+  document.getElementById('quick').onclick = () => run(['emission', 'modeA', 'speed']);
+  document.getElementById('all').onclick = () => run(Object.keys(GpuCompare.CASES));
+  out.textContent = 'Ready. ' + (navigator.gpu ? '' : 'This browser has no WebGPU (navigator.gpu).');
+</script>
