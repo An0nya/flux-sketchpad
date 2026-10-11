@@ -17,7 +17,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   await page.evaluate(() => {
     window.__c = { model: 0, drive: 0, redraw: 0 };
     const wrap = (o, k, n) => { const f = o[k]; o[k] = function () { window.__c[n]++; return f.apply(this, arguments); }; };
-    wrap(RF.Road, 'model', 'model'); wrap(RF.Drive, 'render', 'drive'); wrap(RF.UI, 'redrawSpec', 'redraw');
+    wrap(RF.Road, 'analyse', 'model'); wrap(RF.Drive, 'render', 'drive'); wrap(RF.UI, 'redrawSpec', 'redraw');   // the page builds its road model through Road.analyse (B12), which calls model() internally
   });
   const setRow = (re, val) => page.evaluate(([re, val]) => { const r = [...document.querySelectorAll('#spec-box .row')].find((r) => new RegExp(re).test((r.querySelector('label') || {}).textContent || '')); const i = r.querySelector('input,select'); i.value = val; i.dispatchEvent(new Event('change')); }, [re, val]);
   const counts = async (label, fn) => { await page.evaluate(() => { window.__c = { model: 0, drive: 0, redraw: 0 }; }); await fn(); await page.waitForTimeout(2500); return page.evaluate(() => Object.assign({}, window.__c)); };
