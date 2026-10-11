@@ -1585,7 +1585,7 @@
   function syncMapCap() {
     const a = document.getElementById('left-canvas').getBoundingClientRect(), b = document.getElementById('heat-canvas').getBoundingClientRect();
     const cap = a.width > 0 && b.width > 0 && a.height > 0 && b.height > 0 ? Math.floor(Math.min(a.width, a.height, b.width, b.height)) : 0;
-    ui.vLeft.cap = ui.vHeat.cap = cap;
+    ui.vLeft.cap = ui.vHeat.cap = ui.layout && (ui.layout.expanded === 'editor' || ui.layout.expanded === 'result') ? 0 : cap;   // an expanded map may outgrow its partner
   }
   ui.setPane = function (k, change) {           // change: 'collapse' | 'expand' | 'activate'
     const st = ui.layout, was = JSON.stringify(st);
