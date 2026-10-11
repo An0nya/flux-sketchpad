@@ -8,6 +8,8 @@
   const P = RF.Panels, el = P.el;
   const COL = { pass: '#5aa7ff', fail: '#ff9a3d', unsure: '#f2b441', min: '#88d7d4', max: '#f4c17c', sel: '#ffffff' };
   const md = (ui) => ui.store.scene.modeD;
+  // render() skips the focused input, so after a change / blur the field is written back with the value in use (a rejected or clamped entry must not stay on screen)
+  const writeBack = (i) => { if (i._get) { const v = i._get(); i.value = v === undefined || v === null ? '' : v; } };
   const fmtCd = (x) => !isFinite(x) ? '—' : x >= 1e5 ? (x / 1000).toFixed(0) + 'k' : x >= 1e3 ? (x / 1000).toFixed(x >= 1e4 ? 1 : 2).replace(/\.?0+$/, '') + 'k' : Math.round(x).toString();
   // a sampling offset → the beam move it stands for, in words (beam right = offset −x)
   const fmtMove = (o, traffic) => { const h = -o[0], v = -o[1], p = []; if (Math.abs(h) > 1e-9) p.push(Math.abs(h).toFixed(2) + '° ' + (h > 0 ? 'right' : 'left')); if (Math.abs(v) > 1e-9) p.push(Math.abs(v).toFixed(2) + '° ' + (v > 0 ? 'up' : 'down')); return p.join(', ') || 'none'; };
@@ -82,7 +84,7 @@
     roadSeed.title = 'Secondary goal = light the road: each direction asks for the intensity that puts 5 lx (IIHS, 25 cm up) where it lands, out to 100 m along the right edge and 60 m along the left road edge. Sets Paint level 1 to that intensity; the spec\u2019s floors and ceilings still win. Uses Spec → Road (height, lamps).';
     const row = (label, input, help) => el('div', {}, el('div', { class: 'row', title: help || '' }, el('label', {}, label), input));
     const sel = (opts, get, set, evalOnly) => { const s = el('select', {}, ...opts.map(([v, t]) => el('option', { value: v }, t))); s.dataset.spec = '1'; s._get = get; s.addEventListener('change', () => { set(s.value); changed(ui, !evalOnly); }); return s; };
-    const num = (get, set, o, evalOnly) => { const i = el('input', Object.assign({ type: 'number', step: 'any' }, o || {})); i.dataset.spec = '1'; i._get = get; i.addEventListener('change', () => { const v = parseFloat(i.value); if (isFinite(v)) { set(v); changed(ui, !evalOnly); } }); return i; };
+    const num = (get, set, o, evalOnly) => { const i = el('input', Object.assign({ type: 'number', step: 'any' }, o || {})); i.dataset.spec = '1'; i._get = get; i.addEventListener('change', () => { const v = parseFloat(i.value); if (isFinite(v)) { set(v); changed(ui, !evalOnly); } writeBack(i); }); i.addEventListener('blur', () => writeBack(i)); return i; };
     const chk = (get, set) => { const i = el('input', { type: 'checkbox' }); i.dataset.spec = '1'; i._get = get; i._chk = true; i.addEventListener('change', () => { set(i.checked); changed(ui, true); }); return i; };
     const distSel = el('div', { class: 'seg spec-dist', role: 'radiogroup', 'aria-label': 'Measure at' });
     for (const [d, t] of [[0, '∞'], [25000, '25 m'], [10000, '10 m'], [-1, 'target']]) {
@@ -582,7 +584,7 @@
   function roadRows(ui, row) {
     const r = () => roadOf(ui);
     const rsel = (opts, get, set, view) => { const x = el('select', {}, ...opts.map(([v, t]) => el('option', { value: v }, t))); x.dataset.spec = '1'; x._get = get; x.addEventListener('change', () => { set(x.value); (view ? viewChanged : roadChanged)(ui); }); return x; };
-    const rnum = (get, set, o, view) => { const x = el('input', Object.assign({ type: 'number', step: 'any' }, o)); x.dataset.spec = '1'; x._get = get; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) set(v); (view ? viewChanged : roadChanged)(ui); }); return x; };
+    const rnum = (get, set, o, view) => { const x = el('input', Object.assign({ type: 'number', step: 'any' }, o)); x.dataset.spec = '1'; x._get = get; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) set(v); (view ? viewChanged : roadChanged)(ui); writeBack(x); }); x.addEventListener('blur', () => writeBack(x)); return x; };
     const rchk = (get, set) => { const x = el('input', { type: 'checkbox' }); x.dataset.spec = '1'; x._get = get; x._chk = true; x.addEventListener('change', () => { set(x.checked); roadChanged(ui); }); return x; };
     return [
       el('div', { class: 'note' }, 'A straight two-lane road lit by this beam: Result → Road (bird’s-eye), Far field → road, and the 5 lx reach in the footer. The reach follows IIHS (5 lx, 25 cm up, at the IIHS points, the edges of IIHS\u2019s own 6.6 m road (two 3.3 m lanes): 1.65 m right and 4.95 m left of the car); the lanes drawn follow the width below, so the blue IIHS markers need not sit on the drawn edges. Right-hand traffic (mirrored for left-hand).'),
@@ -644,7 +646,7 @@
     for (const [k, label, step, tip] of IDEAL_ROWS) {
       let x;
       if (step === 'chk') { x = el('input', { type: 'checkbox' }); x._chk = true; x._get = () => cur()[k] !== false; x.addEventListener('change', () => { g()[k] = x.checked; roadChanged(ui); }); }
-      else { x = el('input', k === 'hotH' ? { type: 'number', step } : { type: 'number', step, min: 0 }); x._get = () => cur()[k]; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) g()[k] = k === 'hotH' ? v : Math.max(0, v); roadChanged(ui); }); }
+      else { x = el('input', k === 'hotH' ? { type: 'number', step } : { type: 'number', step, min: 0 }); x._get = () => cur()[k]; x.addEventListener('change', () => { const v = +x.value; if (isFinite(v)) g()[k] = k === 'hotH' ? v : Math.max(0, v); roadChanged(ui); writeBack(x); }); x.addEventListener('blur', () => writeBack(x)); }
       x.dataset.spec = '1'; out.push(row(label, x, tip));
     }
     out.push(row('Reset to defaults', Object.assign(el('button', {}, 'Reset'), { onclick: () => { md(ui).ideal = {}; roadChanged(ui); ui.redrawSpec(); } }), 'Back to the current defaults (forgets every knob you changed).'));

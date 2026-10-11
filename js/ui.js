@@ -166,6 +166,7 @@
     buildLeftTools();
     ui.refreshPanels();
     ui.requestRun(false);
+    if (!quiet) saveSoon();                          // the mode is saved with the scene, but a switch alone is view state: autosave without a history entry
   };
   function buildLeftTools() {
     const box = document.getElementById('left-tools'); box.innerHTML = '';
@@ -1617,6 +1618,7 @@
     if (change === 'collapse') {
       st.collapsed[k] = !st.collapsed[k];
       if (st.collapsed[k] && st.expanded === k) st.expanded = null;
+      else if (!st.collapsed[k] && k === 'result' && ui.store.scene.mode === 'D' && !phone()) st.expanded = 'result';   // Spec's layout has Result expanded: reopening it comes back that way
     } else if (change === 'expand') {
       st.expanded = st.expanded === k ? null : k; st.collapsed[k] = false; st.active = k;
     } else { st.active = k; st.collapsed[k] = phone() ? false : st.collapsed[k]; }
