@@ -529,7 +529,7 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 @media (min-width: 761px) {
   body.mode-D .result-pane:not(.expanded) :is(.ff-tools, .road-tools, .drive-tools, [data-disp=road], [data-disp=drive], [data-disp=ff]) { display: none !important; }
   body.mode-D .pair:not(.stacked) > .pane:not(.collapsed):not(.expanded) > figure.map > figcaption { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  body.mode-D .result-pane:not(.expanded):not(.collapsed) .canvas-wrap::after { content: 'Expand for more options'; position: absolute; right: 6px; bottom: 4px; z-index: 2; font-size: 11px; color: var(--faint);
+  body.mode-D .result-pane:not(.expanded):not(.collapsed) .canvas-wrap::after { content: 'Expand for more options'; position: absolute; left: 6px; bottom: 4px; z-index: 2; font-size: 11px; color: var(--faint);
     pointer-events: none; opacity: 0; animation: expand-hint .6s ease 5s forwards; }
 }
 @keyframes expand-hint { to { opacity: .75; } }
