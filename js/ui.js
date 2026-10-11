@@ -50,6 +50,10 @@
     ui.autosave();
   };
   ui.generateA = function () {
+    if (RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(ui.store.scene))) {   // the chosen solver is still loading: current() would fall back to Spoke and applySolve would save that
+      ui.store.invalidate(['A']); ui.setStatus('waiting for the solvers to load…'); ui.progress('solve');   // restore() (boot) solves once they are in
+      return;
+    }
     const def = RF.Solvers.get(RF.Solvers.current(ui.store.scene));
     if (def.worker) { ui.store.invalidate(['A']); ui.solveArmed = true; schedule(); return; }   // worker path lives in tick()
     stopWorkerSolve('replaced by ' + def.name);        // a page solver wins over a worker solve still running
