@@ -23,6 +23,7 @@ before the fix. Opus reviews the diffs and merges into `main` one batch at a tim
 | B9 | gestures: no paint on pinch/double-click, interpolated strokes, envelope min thickness; brush mode raise (default) / set / lower | G31–G33, D-E17 |
 | B4b | titles aligned, Fidelity on the mode row, compact Spec Result pane (toolbars only when expanded, hint), | L-title, L-fidelity, L-spec-compact |
 | B11 | dividers, ARIA, sidebar on narrow, Optics reset, autosave backup, turntable stops (idle 10 s / click), Spec auto-layout, Expand enlarges its map | G34–G38, D-M03, D-spec-layout, L04 |
+| B12 | one source of truth: road/IIHS/quality/goals read ∞ at its own aim whatever Measure at is; tools.trace uses the same Road.analyse; consistency test (UI == tools.trace at ∞/25 m/10 m/target); fallback flagged (notice + res.road.source); Spec inputs write back; mode switch autosaves; Spec Result reopens expanded | T1, T2, T4–T7 (T3 not needed: preview has no road numbers) |
 | — | GPU trace branch (`claude/webgpu-webgl-traces-9bi0ul`), opt-in, benched on the M4: ~30–40× one CPU core | — |
 | — | ideal-goals-port branch (solvers/ + tools/) | — |
 
@@ -31,7 +32,7 @@ all 19 `tests/regress/*.js` browser tests 0 fail (runner: `run-all.sh <dir> <por
 `PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright`, as Playwright isn't installed globally).
 
 ## Not merged yet
-- Pushed main = cfd61a4 (green: all.js, regress-node 91, all browser regress). Last batch running: **B12 one source of truth** (worktree .claude/worktrees/b12): road/IIHS/quality/goals aim from ∞ regardless of Measure at; tools.trace and preview road numbers from the same source; a consistency test; Spec inputs write back (S14); autosave on mode switch; Spec Result reopens expanded.
+- Nothing: all 13 batches merged. Pushed main is green: all.js, regress-node 104, 51 browser regress files.
 - Open product calls: (1) hide or keep the Far field/Road/Drive view buttons on the compact Spec pane (hidden now); (2) 1280×720 + sidebar: Spec Result map 61 px, the rest is the 2-row Spec footer; (3) single paint click lands 400 ms late (tells click from double-click reset) vs. double-click reset only outside Paint; (4) Drive canvas may overflow its pane on the right (unchecked, may predate B4b).
 
 ## Lessons
