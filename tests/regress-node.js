@@ -152,5 +152,9 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     const sh = RF.Road.aimShift({ aim: 'manual', aimPct: -1 }, evd);
     ok('G18 Road manual -1 % puts the found cut-off at 0.573 deg D under design aim', Math.abs((evd.aim.cutV - sh[1]) + RF.Road.PCT) < 1e-9, 'cut-off on the road at ' + (evd.aim.cutV - sh[1]).toFixed(4));
   }
+  // D-S13: the IIHS 5 lx markers say they are IIHS points (source check: the canvas text is only drawn in the browser)
+  { const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'spec-ui.js'), 'utf8');
+    ok('D-S13 no marker is labelled as a road "edge"', !/'[RL] edge 5 lx: '/.test(src));
+    ok('D-S13 markers are labelled IIHS points, legend names the 6.6 m IIHS road', /'IIHS R point: 5 lx to '/.test(src) && /'IIHS L point: 5 lx to '/.test(src) && /not the drawn road edges/.test(src)); }
   process.exitCode = fails ? 1 : 0;
 })();

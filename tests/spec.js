@@ -259,7 +259,7 @@ function fakeG(fn, win, step) {
   let agree = 0, tot = 0; const T1 = RF.Engine.designFrame(ss.target);
   for (let j = 0; j < sc.target.res; j += 7) for (let i = 0; i < sc.target.res; i += 7) { const [u, v] = RF.Engine.cellCenter(T1, i, j), hv = RF.Spec.hvAtUV(ss, u, v); const want = RF.Spec.seedPaint(ss)[j * sc.target.res + i] > 0; tot++; if ((ss.modeA.paint[j * sc.target.res + i] > 0) === want) agree++; }
   check('Spec mode solves on a 25 m plane; the painting is carried over by direction', inp.target.distance === 25000 && sc.target.distance === 10000 && agree / tot > 0.95, 'agree ' + (100 * agree / tot).toFixed(0) + ' %');
-  check('solvers get input.spec (constraints in degrees, aim, measuring distance)', inp.spec && inp.spec.items.length === sc.modeD.items.length && inp.spec.aim.line === -0.57 && inp.spec.measure.distance === 25000);
+  check('solvers get input.spec (constraints in degrees, aim, measuring distance)', inp.spec && inp.spec.items.length === sc.modeD.items.length && inp.spec.aim.line === -0.57 && inp.spec.measure.distance === null);   // D-S03: a new scene measures the far field (was 25 m); Infinity arrives as null (JSON)
   const prob = Object.assign(RF.U.deepCopy({ source: sc.source, envelope: sc.envelope, sim: sc.sim, modeD: sc.modeD, mode: 'D' }), { target: inp.target, modeA: { paint: inp.paint.cells } });
   const tr = RF.Solvers.trace(prob, RF.ModeA.generate(RF.U.deepCopy(Object.assign({}, ss, { mode: 'A', modeA: Object.assign({}, ss.modeA, { paint: inp.paint.cells }) }))).surfaces, { rays: 400000, spec: true });
   const trG = RF.Solvers.trace(prob, tr._surf || [], { rays: 10000, spec: true });
