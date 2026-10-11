@@ -36,7 +36,7 @@
     const spec = input.spec || { items: [], conv: 'A', kernel: 0.15, step: 0.1, window: [-10, 10, -5, 5], aim: { mode: 'design', line: -0.57 }, measure: { distance: Infinity }, traffic: 'RHT' };
     const conv = spec.conv || 'A', gs = S.grid;
     const win = (spec.window || [-10, 10, -5, 5]).slice();
-    if (S.roadWeight > 0 && spec.aim.mode === 'cutoff') { win[0] = Math.min(win[0], -25); win[1] = Math.max(win[1], 25); win[2] = Math.min(win[2], -10); }
+    if ((S.roadWeight > 0 || S.idealWeight > 0) && spec.aim.mode === 'cutoff') { win[0] = Math.min(win[0], -25); win[1] = Math.max(win[1], 25); win[2] = Math.min(win[2], -10); }
     const nh = Math.max(1, Math.round((win[1] - win[0]) / gs)), nv = Math.max(1, Math.round((win[3] - win[2]) / gs));
     const G = { gs, h0: win[0], v0: win[2], nh, nv, conv, n: nh * nv };
     G.omega = new Float64Array(G.n);
@@ -744,6 +744,66 @@
     return {tg,ws,n,tmax:tmax*scale,absolute:true};
   }
 
+  /* Ideal-beam goals as the secondary target (idealWeight > 0; a port of sqm-hl-ideal's T*, tools/sqm-hl/dev/ideal.js): the goals in
+   * md.ideal (Spec → "Ideal beam", RF.IdealBeam) become an absolute cd map ranked after the bands, like the road target:
+   *   road   the road target above (its plateau, never its weights' share: roadWeight still sets those)
+   *   hot    a dome at hotH (½ at hotLeft L / hotRight R), its top at the cut-off line at hotH minus hotOffset and parallel to the
+   *          (horizon-capped) line; level L
+   *   band / left   the wash floor (± washW × washTop … + washHt) and the 3L fill (hung from the left line), × L
+   *   streak / edge the right strip and the left edge strip: ABSOLUTE floors (streakCd / edgeCd), like the goals
+   *   fg     the foreground below 4° D: a weak pull toward a low wash (capped at the goals' fgCap share), so leftover light is not dumped
+   * L is the road level at the hotspot; the light the road cannot use first widens the dome (× 1.6), then brightens it (up to hotGain ×),
+   * then fills the foreground wash up to its share; if the fixed parts alone are over budget the whole map comes down.  Point maxima
+   * under the line are soft log cones (0.3 decades/°), not notches (sqm-hl-ideal 10-10: an FMVSS 0.86D 3.5L notch out-steeped the cut-off).
+   * Weights: idealWeight spread over the goal pixels (strips 1.5, hot / wash / 3L 1, foreground 0.25), on top of the road's own. */
+  function idealTarget(P, S, B, units, notes) {
+    const { G } = P, n = G.n, own = P.spec.traffic === 'LHT' ? -1 : 1, us = /^fmvss/.test(P.spec.preset || ''), Gi = P.spec.ideal || (RF.IdealBeam && RF.IdealBeam.defaults());
+    if (!Gi) return roadTarget(P, S, B, units, notes);
+    const rd = roadTarget(P, Object.assign({}, S, { roadWeight: S.roadWeight > 0 ? S.roadWeight : 1 }), B, units, []), rws = S.roadWeight > 0 ? rd.ws : new Float32Array(n);
+    const sm = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); }, box = (x, a, b, e) => sm((x - a) / e + 0.5) * sm((b - x) / e + 0.5);
+    const line = B.edge.line, cutAt = (h) => (h <= 0 ? line : Math.min(1, line + h * (us ? 1.4 : 0.2679))), ceil = (h) => Math.min(cutAt(h), 0);   // h on the own side
+    const off = isFinite(S.hotOffset) ? S.hotOffset : 0, tT = ceil(Gi.hotH) - off, dL = Math.max(0.5, Gi.hotH + Gi.hotLeft), dR = Math.max(0.5, Gi.hotRight - Gi.hotH);
+    const hot = (w) => { const out = new Float64Array(n);
+      for (let i = 0; i < G.nh; i++) { const h = own * G.hOf(i), d = (h - Gi.hotH) / ((h < Gi.hotH ? dL : dR) * w), fh = Math.exp(-Math.LN2 * d * d); if (fh < 0.02) continue;
+        const t = tT + ceil(h) - ceil(Gi.hotH); for (let j = 0; j < G.nv; j++) { const fv = box(G.vOf(j), t - Gi.hotHt, t, 0.3); if (fv > 0) out[j * G.nh + i] = fh * fv; } }
+      return out; };
+    const rel = new Float64Array(n), abs = new Float64Array(n), fg = new Float64Array(n), wk = new Float32Array(n), s1 = Math.max(Gi.streakFrom + 0.5, Gi.washW);
+    for (let i = 0; i < G.nh; i++) { const h = own * G.hOf(i), sc = ceil(h), fbh = box(h, -Gi.washW, Gi.washW, 0.5), flh = box(h, -3, 0, 0.3), fsh = Gi.streakCd > 0 ? box(h, Gi.streakFrom, s1, 0.5) : 0, feh = Gi.edgeCd > 0 ? box(h, -Gi.edgeTo, -Gi.edgeFrom, 0.5) : 0;
+      for (let j = 0; j < G.nv; j++) { const v = G.vOf(j), p = j * G.nh + i;
+        const b = Gi.washRatio * 1.15 * fbh * box(v, -(Gi.washTop + Gi.washHt), -Gi.washTop, 0.25), l = Gi.fill3L * 1.15 * flh * box(v, line - 1.0, line - 0.05, 0.15);
+        rel[p] = Math.max(b, l); if (rel[p] > 0.01) wk[p] = 1;
+        let a = 0; if (fsh > 0) a = Gi.streakCd * 1.15 * fsh * box(v, sc - Gi.streakHt, sc - 0.1, 0.2); if (feh > 0) a = Math.max(a, Gi.edgeCd * 1.15 * feh * box(v, line - Gi.edgeHt, line - 0.05, 0.15));
+        abs[p] = a; if (a > 100) wk[p] = 1.5;
+        if (v < -4.2) { fg[p] = sm((-4.2 - v) / 1.6) * Math.exp(-((G.hOf(i) / 18) ** 2)) * (v < -14 ? Math.max(0, 1 - (-14 - v) / 6) : 1); if (!wk[p] && fg[p] > 0.02) wk[p] = 0.25; } } }
+    // soft ceilings: point maxima wholly under the left line → log-space cones (chamfer distance, two passes)
+    const Lc = new Float64Array(n).fill(Infinity); let anyC = false;
+    for (const r of B.rows) { if (r.kind !== 'point' || !(r.max > 0) || !r.px || !r.px.length) continue; let vTop = -Infinity; for (const q of r.px) vTop = Math.max(vTop, G.vOf((q / G.nh) | 0)); if (vTop > line - 0.2) continue;
+      for (const q of r.px) { const x = B.hi[q]; if (x > 0 && x < 1e29 && Math.log(x) < Lc[q]) { Lc[q] = Math.log(x); anyC = true; } } }
+    if (anyC) { const c = Math.LN10 * 0.3 * G.gs, cd = c * Math.SQRT2, nh = G.nh;
+      for (let j = 0; j < G.nv; j++) for (let i = 0; i < nh; i++) { const q = j * nh + i; let v = Lc[q]; if (i > 0) v = Math.min(v, Lc[q - 1] + c); if (j > 0) { v = Math.min(v, Lc[q - nh] + c); if (i > 0) v = Math.min(v, Lc[q - nh - 1] + cd); if (i < nh - 1) v = Math.min(v, Lc[q - nh + 1] + cd); } Lc[q] = v; }
+      for (let j = G.nv - 1; j >= 0; j--) for (let i = nh - 1; i >= 0; i--) { const q = j * nh + i; let v = Lc[q]; if (i < nh - 1) v = Math.min(v, Lc[q + 1] + c); if (j < G.nv - 1) { v = Math.min(v, Lc[q + nh] + c); if (i < nh - 1) v = Math.min(v, Lc[q + nh + 1] + cd); if (i > 0) v = Math.min(v, Lc[q + nh - 1] + cd); } Lc[q] = v; } }
+    // the level: the road target 0.3° under the line at the hotspot (sqm-hl-ideal's Lh)
+    const qH = G.jOf(tT - Math.max(0, -off) - 0.3) * G.nh + G.iOf(own * Gi.hotH), L0 = Math.max(rd.tg[qH] || 0, 2 * (Gi.edgeCd || 4000));   // floor: a hotspot dimmer than twice the edge strip would be no hotspot
+    const hot1 = hot(1), hot16 = hot(1.6), avail = units.filter((u) => !u.dead).reduce((a, u) => a + u.flux, 0) * P.refl, want = 0.8 * avail;
+    const build = (k, wide, kHot, W) => { const hs = wide ? hot16 : hot1, out = new Float32Array(n);
+      for (let p = 0; p < n; p++) { let x = Math.max(k * rd.tg[p], k * abs[p], L0 * kHot * hs[p], L0 * Math.min(1, kHot) * rel[p], W * fg[p]);
+        if (anyC && x > 0 && Math.log(x) > Lc[p]) x = Math.exp(Lc[p]); x = Math.min(x, 0.85 * B.hi[p]); if (B.lo[p] > x) x = B.lo[p]; out[p] = x; }
+      return out; };
+    const flux = (t) => { let f = 0; for (let p = 0; p < n; p++) f += t[p] * G.omega[p]; return f; }, fgShare = (t) => { let a = 0, b = 0; for (let p = 0; p < n; p++) { const f = t[p] * G.omega[p]; b += f; if (G.vOf((p / G.nh) | 0) < -4) a += f; } return b > 0 ? a / b : 0; };
+    const bis = (f, lo, hi) => { for (let it = 0; it < 14; it++) { const m = 0.5 * (lo + hi); (f(m) < want ? (lo = m) : (hi = m)); } return 0.5 * (lo + hi); };
+    const gain = S.hotGain > 1 ? S.hotGain : 4; let k = 1, wide = false, kHot = 1, W = 0, how;
+    if (flux(build(1, false, 1, 0)) >= want) { k = flux(build(0.1, false, 0.1, 0)) >= want ? 0.1 : bis((x) => flux(build(x, false, x, 0)), 0.1, 1); kHot = k; how = 'over budget: whole map × ' + k.toFixed(2); }
+    else if (flux(build(1, true, 1, 0)) >= want) { wide = true; how = 'hotspot widened'; }
+    else { wide = true; kHot = flux(build(1, true, gain, 0)) >= want ? bis((x) => flux(build(1, true, x, 0)), 1, gain) : gain; how = 'hotspot widened, × ' + kHot.toFixed(2);
+      if (kHot >= gain - 1e-6) { const cap = 0.9 * Gi.fgCap, okW = (x) => fgShare(build(1, true, kHot, x)) <= cap; let hiW = 2 * L0; if (!okW(hiW)) { let a = 0, b = hiW; for (let it = 0; it < 14; it++) { const m = 0.5 * (a + b); okW(m) ? (a = m) : (b = m); } hiW = a; }
+        W = flux(build(1, true, kHot, hiW)) <= want ? hiW : bis((x) => flux(build(1, true, kHot, x)), 0, hiW); how += ', foreground wash ' + Math.round(W) + ' cd'; } }
+    const tg = build(k, wide, kHot, W), ws = new Float32Array(n), hs = wide ? hot16 : hot1; let wsum = 0, tmax = 0, cnt = 0;
+    for (let p = 0; p < n; p++) { tg[p] = Math.max(60, tg[p]); if (tg[p] > tmax) tmax = tg[p]; const w = Math.max(wk[p], hs[p] > 0.05 ? 1 : 0); if (w > 0) { ws[p] = w; wsum += w; cnt++; } }
+    for (let p = 0; p < n; p++) ws[p] = ws[p] * S.idealWeight / Math.max(1, wsum) + rws[p];
+    const fl = flux(tg); notes.push('ideal-beam goals target: ' + Math.round(fl) + ' lm requested of ' + Math.round(avail) + ' lm available; hotspot ' + Math.round(L0 * kHot) + ' cd (' + how + '), foreground ' + Math.round(100 * fgShare(tg)) + ' %; weight ' + S.idealWeight + ' (road ' + (S.roadWeight || 0) + ')');
+    return { tg, ws, n: cnt, tmax, absolute: true, ideal: { L0, kHot, wide, W, k } };
+  }
+
   function secondaryTarget(P, S, bands) {
     const G = P.G, input = P.input, pc = input.paint && input.paint.cells, tg = new Float32Array(G.n), ws = new Float32Array(G.n);
     if (!pc || !pc.length || !(S.paintWeight > 0)) return { tg, ws, n: 0 };
@@ -1192,7 +1252,7 @@
     if (cover < 0.35) notes.push((cover < 0.05 ? 'WARNING: the mirrors can catch almost none of the LED\'s light (' : 'warning: the mirrors can catch only ' + (100 * cover).toFixed(0) + '% (') + (100 * cover).toFixed(1) + '%) — the rest leaves unshaped; turn the LED toward the envelope or move it, otherwise the spec is out of reach');
     if (cover < 0.05) S.restarts = 0;
     if (!P.spec.items.length) notes.push('no spec rows (not Spec mode): following the painting alone');
-    const B = buildBands(P, S), sec = S.roadWeight > 0 && P.spec.aim.mode === 'cutoff' ? roadTarget(P, S, B, sh.units, notes) : secondaryTarget(P, S, B);
+    const B = buildBands(P, S), sec = S.idealWeight > 0 && P.spec.aim.mode === 'cutoff' ? idealTarget(P, S, B, sh.units, notes) : S.roadWeight > 0 && P.spec.aim.mode === 'cutoff' ? roadTarget(P, S, B, sh.units, notes) : secondaryTarget(P, S, B);
     notes.push('bands: ' + B.rows.length + ' rows' + (B.edge.glare ? ', glare ceiling ' + Math.round(B.edge.glare.cap) + ' cd above the cut-off' : '') + '; ' + (sec.n ? 'painting: ' + sec.n + ' cells as the secondary goal' : 'no painting'));
     const tFit = Date.now();
     let R = fit(P, S, B, sec, sh.units, notes, tools);
@@ -1241,9 +1301,16 @@
   // Compare fully built reflectors with the host's actual trace. The v2-equivalent design
   // is a real fallback, so a road preference cannot silently replace an easier compliance win.
   async function solveGuarded(input, settings, tools) {
-    if (settings.effort === 'single' || !(settings.roadWeight > 0) || !input.spec || input.spec.aim.mode !== 'cutoff') return solveOnce(input, settings, tools);
+    const ideal = settings.idealWeight > 0;
+    if (settings.effort === 'single' || !(settings.roadWeight > 0 || ideal) || !input.spec || input.spec.aim.mode !== 'cutoff') return solveOnce(input, settings, tools);
     const t0 = Date.now(), total = tools && tools.budget && Number.isFinite(tools.budget.ms) ? tools.budget.ms : 300000;
-    const menu = [
+    // ideal-beam goals (idealWeight > 0): the two road candidates become ideal-goals candidates (the road plateau is part of their target), and
+    // the pick ranks the goals' score (Σ credit, traced beam) after compliance and before reach: lexicographic, like the goals themselves
+    const menu = ideal ? [
+      { label: 'v2 fallback', settings: Object.assign({}, settings, { roadWeight: 0, idealWeight: 0 }) },
+      { label: 'ideal-beam goals', settings },
+      { label: 'ideal-beam goals, stronger', settings: Object.assign({}, settings, { idealWeight: Math.min(10, settings.idealWeight * 3) }) },
+    ] : [
       { label: 'v2 fallback', settings: Object.assign({}, settings, { roadWeight: 0 }) },
       { label: 'road, gentle', settings },
       { label: 'road, stronger shoulders', settings: Object.assign({}, settings, { roadWeight: Math.min(10, settings.roadWeight * 10), reachLeft: Math.max(80,settings.reachLeft), roadLux: Math.max(10,settings.roadLux) }) },
@@ -1252,7 +1319,7 @@
     const tried=[]; let best=null, base=null;
     const trace = async (out) => {
       if (!tools || !tools.trace) return null;
-      const r = await tools.trace(out.surfaces, { rays: 2e6, seed: (input.seed|0)+811, spec: true, guided: true, road: true });
+      const r = await tools.trace(out.surfaces, { rays: 2e6, seed: (input.seed|0)+811, spec: true, guided: true, road: true, ideal: true });
       return r && r.spec ? { spec:r.spec, road:r.road } : null;
     };
     const merit = r => r && r.road ? Math.sqrt(r.road.farRight*r.road.farLeft) * .8 + Math.sqrt(r.road.right*r.road.left) * .2 : 0;
@@ -1271,14 +1338,15 @@
         const materiallyBetter=ef<bf-.75 && r.spec.n.fail<=best.r.spec.n.fail;
         const sameCompliance=ef<=bf+.35 && r.spec.n.fail<=best.r.spec.n.fail;
         const shouldersSafe=!base||!base.road||!r.road||(r.road.farLeft>=.9*base.road.farLeft&&r.road.farRight>=.9*base.road.farRight);
-        keep=materiallyBetter || (sameCompliance && shouldersSafe && merit(r)>1.04*merit(best.r));
+        const gs=x=>x&&x.road&&x.road.ideal?x.road.ideal.score:0, dg=gs(r)-gs(best.r);
+        keep=ideal ? materiallyBetter || (sameCompliance && (dg>0.25 || (dg>=-0.25 && merit(r)>1.04*merit(best.r)))) : materiallyBetter || (sameCompliance && shouldersSafe && merit(r)>1.04*merit(best.r));
         if(keep)best={out,r,label:m.label};
       }
-      tried.push(m.label+': '+(r? r.spec.n.pass+'/'+r.spec.n.fail+'/'+r.spec.n.unsure+', expected fails '+r.spec.expFails.toFixed(2)+', reach '+(r.road?Math.round(r.road.farRight)+'/'+Math.round(r.road.farLeft):'unavailable')+' m, '+Math.round(r.spec.lmWindow)+' lm':'host judgment unavailable'));
+      tried.push(m.label+': '+(r? r.spec.n.pass+'/'+r.spec.n.fail+'/'+r.spec.n.unsure+', expected fails '+r.spec.expFails.toFixed(2)+', reach '+(r.road?Math.round(r.road.farRight)+'/'+Math.round(r.road.farLeft):'unavailable')+' m, '+Math.round(r.spec.lmWindow)+' lm'+(r.road&&r.road.ideal?', goals '+r.road.ideal.score+'/'+r.road.ideal.n:''):'host judgment unavailable'));
       if(tools&&tools.preview)tools.preview(best.out.surfaces,{label:'v3: '+best.label,note:'Best verified candidate so far'});
     }
     best.out.notes.push(...tried.map(s=>'v3 comparison (2 M guided rays): '+s));
-    best.out.notes.push('v3 selected '+best.label+'; compliance first, then both shoulders and continuous/farthest reach. Pilot selection is not final proof of compliance.');
+    best.out.notes.push('v3 selected '+best.label+(ideal?'; compliance first, then the ideal-beam goals, then reach.':'; compliance first, then both shoulders and continuous/farthest reach.')+' Pilot selection is not final proof of compliance.');
     return best.out;
   }
   RF.Solvers.register({
@@ -1286,6 +1354,9 @@
     settings: [
       { key: 'effort', label: 'Design search', type: 'select', default: 'normal', options: [{value:'quick',label:'two candidates'},{value:'normal',label:'three candidates'},{value:'single',label:'one road design (experimental)'}], help: 'Includes a v2 fallback and checks the actual ray-traced beam before choosing.' },
       { key: 'roadWeight', label: 'Road goal weight', type: 'number', min: 0, max: 10, step: 0.1, default: 0.3, help: 'Broad distance and shoulder light; 0 reproduces v2. The road target is absolute and limited by available flux.' },
+      { key: 'idealWeight', label: 'Ideal-beam goals weight', type: 'number', min: 0, max: 10, step: 0.1, default: 0, help: 'Experimental (10-11). > 0: the secondary target is shaped by the ideal-beam goals (Spec → Ideal beam; sqm-hl-ideal\'s target ported): a hotspot at the line, wash / 3L / side-strip floors, a capped foreground, on top of the road plateau. Candidates are then ranked compliance → goals → reach. 0 = off.' },
+      { key: 'hotOffset', adv: true, label: 'Ideal goals: hotspot top below the cut-off line (°)', type: 'number', min: -1, max: 1.5, step: 0.05, default: 0, help: '0 = at the line (the sqm-hl-ideal default).' },
+      { key: 'hotGain', adv: true, label: 'Ideal goals: hotspot brightening with left-over light (×)', type: 'number', min: 1, max: 8, step: 0.1, default: 4 },
       { key: 'reachRight', label: 'Right reach goal (m)', type: 'number', min: 30, max: 180, step: 5, default: 100 },
       { key: 'reachLeft', label: 'Left reach goal (m)', type: 'number', min: 20, max: 120, step: 5, default: 65 },
       { key: 'roadLux', label: 'Road sensor target (lux)', type: 'number', min: 2, max: 20, step: 1, default: 7, help: 'Two lamps, vertical sensor 25 cm above ground; a design objective, not an IIHS certification.' },

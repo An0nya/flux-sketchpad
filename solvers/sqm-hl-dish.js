@@ -1224,9 +1224,10 @@ globalThis.RF.SqmVariant = 'dish';
 (function () {
   'use strict';
   const RF = globalThis.RF, V = RF.V;
-  const DISH = RF.SqmVariant === 'dish';      // the second solver built from the same sources: the base shell of the reflector is a setting (shell.js)
-  const IDEAL = RF.SqmVariant === 'ideal';    // the third: the ideal beam shaped from the ideal-beam goals (ideal.js)
-  const ID = DISH ? 'sqm-hl-dish' : IDEAL ? 'sqm-hl-ideal' : 'sqm-hl', VERSION = DISH ? '0.1' : IDEAL ? '0.1' : '0.2';
+  const VAR = RF.SqmVariant || '';
+  const DISH = /dish/.test(VAR);              // the second solver built from the same sources: the base shell of the reflector is a setting (shell.js)
+  const IDEAL = /ideal/.test(VAR);            // the third: the ideal beam shaped from the ideal-beam goals (ideal.js); the fourth = both (sqm-hl-dish-ideal)
+  const ID = 'sqm-hl' + (DISH ? '-dish' : '') + (IDEAL ? '-ideal' : ''), VERSION = DISH || IDEAL ? '0.1' : '0.2';
 
   // quality presets: what each tier spends (directions, correction rounds, polish sweeps, verification traces)
   const QUALITY = {
@@ -1307,7 +1308,8 @@ globalThis.RF.SqmVariant = 'dish';
     { key: 'leftover', label: 'Light the road cannot use: hotspot = widen the hotspot to ±5°, then brighten it, then the foreground up to the goals\' cap; uncollected = plain SQM\'s foreground (capped at the goals\' share) and the rest left uncollected', type: 'select', default: 'hotspot', options: [{ value: 'hotspot', label: 'into the hotspot' }, { value: 'uncollected', label: 'uncollected (like plain SQM)' }] },
     { key: 'hotGain', label: 'How much brighter than the road plateau the hotspot may get with left-over light (× its level; default 4 ≈ no cap: the spec\'s ceilings stop it first; a low cap leaves light uncollected and the dish shrinks)', type: 'number', min: 1, max: 8, step: 0.1, default: 4, adv: true },
   ];
-  const SETTINGS = IDEAL ? (() => { const i = SETTINGS_ALL.findIndex((f) => f.key === 'washCap') + 1; return SETTINGS_ALL.slice(0, i).concat(IDEAL1, SETTINGS_ALL.slice(i)); })() : !DISH ? SETTINGS_ALL : (() => { const i = SETTINGS_ALL.findIndex((f) => f.key === 'facets') + 1, out = SETTINGS_ALL.slice(0, i).concat(SHELL1, SETTINGS_ALL.slice(i)); return out.concat(SHELL2); })();
+  const after = (list, key, add) => { const i = list.findIndex((f) => f.key === key) + 1; return list.slice(0, i).concat(add, list.slice(i)); };
+  const SETTINGS = ((s) => { if (IDEAL) s = after(s, 'washCap', IDEAL1); if (DISH) s = after(s, 'facets', SHELL1).concat(SHELL2); return s; })(SETTINGS_ALL);
 
   const loose = (r) => { if (!isFinite(r.value) || !(r.bound > 0 || r.unit === 'deg')) return 'unsure'; const sd = r.sd || 0; const ok = r.isMin ? r.value - sd >= r.bound : r.value + sd <= r.bound, bad = r.isMin ? r.value < r.bound / 10 : r.value > r.bound * 10; return bad ? 'fail' : ok ? 'pass' : 'near'; };
 
@@ -1330,7 +1332,7 @@ globalThis.RF.SqmVariant = 'dish';
     notes.push(`time ${((Date.now() - t0) / 1000).toFixed(1)} s` + (out.timing ? ' (' + out.timing + ')' : ''));
     return { surfaces, notes, extras: { model: { verdict: m.ev.verdict, n: m.ev.n }, shell: P.shellReport || null } };
   }
-  RF.Solvers.register({ id: ID, name: DISH ? 'SQM headlamp, any base shell (arbitrary dish)' : IDEAL ? 'SQM headlamp, ideal beam (shaped by the ideal-beam goals)' : 'SQM headlamp (continuous reflector)', version: VERSION, modes: ['paint'], settings: SETTINGS, solve });
+  RF.Solvers.register({ id: ID, name: DISH && IDEAL ? 'SQM headlamp, any base shell, ideal beam (shaped by the ideal-beam goals)' : DISH ? 'SQM headlamp, any base shell (arbitrary dish)' : IDEAL ? 'SQM headlamp, ideal beam (shaped by the ideal-beam goals)' : 'SQM headlamp (continuous reflector)', version: VERSION, modes: ['paint'], settings: SETTINGS, solve });
   RF.SqmSolver = { solve, SETTINGS, QUALITY, loose };
 })();
 
