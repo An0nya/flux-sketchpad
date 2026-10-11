@@ -265,7 +265,11 @@
     src.preset = id;
     delete src.effArea; delete src.dome;                  // a dome comes only with a model that has one
     if (p.custom && opts && opts.measured) src.measured = JSON.parse(JSON.stringify(opts.measured));
-    if (p.custom && !src.shape) src.shape = (src.measured && src.measured.shape) || 'rect';
+    if (p.custom) {                                       // a planar die: drop what the previous (volume / bulb) emitter left behind, before the no-rows early return below
+      if (!['rect', 'disc'].includes(src.shape)) src.shape = (src.measured && src.measured.shape) || 'rect';
+      delete src.emission;
+      if (src.volts) { delete src.volts; src.power = PRESETS.generic.set.power; }
+    }
     if (p.drive) {
       if (!p.custom) src.fluxModel = opts && p.drive.models[opts.model] ? opts.model : (p.drive.models[src.fluxModel] ? src.fluxModel : p.drive.model);
       else src.fluxModel = 'rows';

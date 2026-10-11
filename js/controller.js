@@ -22,7 +22,7 @@
     store.on = (fn) => store.listeners.push(fn);
     store.notify = (what) => { store.version++; for (const fn of store.listeners) fn(what); };
     store.notice = (msg) => { store.notices.unshift({ t: Date.now(), msg }); store.notices.length = Math.min(store.notices.length, 8); };
-    store.invalidate = (groups) => { for (const g of groups || []) store.dirty.add(g); };
+    store.invalidate = (groups) => { for (const g of groups || []) { store.dirty.add(g); if (g === 'A') store.version++; } };   // version = the token a running solve compares on return
     // Rebuild invalidated groups.  A is regenerated only when forceA (button / idle) or auto.
     store.commit = (opts) => {
       opts = opts || {};
@@ -102,54 +102,54 @@
     num('rays', 'Rays', (s) => SIM(s).rays, (s, v) => { SIM(s).rays = Math.round(RF.U.clamp(v, 100, 2e7)); }, { section: 'run', min: 100, max: 2e7, step: 100, log: true, help: 'Rays per run (100 – 20,000,000). Big runs render progressively; Refine adds more to a finished run without starting over.' }),
     num('bounces', 'Max bounces', (s) => SIM(s).bounces, (s, v) => { SIM(s).bounces = Math.round(RF.U.clamp(v, 1, 16)); }, { section: 'sim', adv: true, min: 1, max: 16, step: 1, help: 'Surface interactions per ray (default 1, hard cap 16). A ray that meets a surface after its budget is spent is stopped there (occlusion still applies).' }),
     num('floor', 'Energy floor %', (s) => SIM(s).floor * 100, (s, v) => { SIM(s).floor = RF.U.clamp(v, 0, 100) / 100; }, { section: 'sim', adv: true, min: 0, max: 100, step: 0.1, help: 'Rays whose remaining energy drops below this fraction of their initial energy are terminated (counted as "cut").' }),
-    num('seed', 'Seed', (s) => SIM(s).seed, (s, v) => { SIM(s).seed = Math.round(v) | 0; }, { section: 'sim', adv: true, step: 1, help: 'PRNG seed. Same inputs + same seed ⇒ byte-identical grid.' }),
+    num('seed', 'Seed', (s) => SIM(s).seed, (s, v) => { SIM(s).seed = Math.round(v) | 0; }, { section: 'sim', adv: true, min: -2147483647, max: 2147483647, step: 1, help: 'PRNG seed. Same inputs + same seed ⇒ byte-identical grid.' }),
     // ---- source
     sel('src.kind', 'Source type', [['point', 'Point'], ['planar', 'Planar (LED die)'], ['volume', 'Volume (filament)']], (s) => S(s).kind,
       (s, v) => { const o = S(s); o.kind = v; if (v === 'planar' && !['rect', 'disc'].includes(o.shape)) o.shape = 'rect'; if (v === 'volume' && !['sphere', 'cylinder'].includes(o.shape)) o.shape = 'cylinder'; if (v === 'volume' && o.dist === 'lambertian') o.dist = 'isotropic'; }, { section: 'source', groups: srcGroups }),
     sel('src.shape', 'Shape', [['rect', 'Rectangle'], ['disc', 'Disc'], ['sphere', 'Sphere'], ['cylinder', 'Cylinder']], (s) => S(s).shape, (s, v) => { S(s).shape = v; }, { section: 'source', groups: srcGroups, show: (s) => S(s).kind !== 'point', optionFilter: (s, v) => (S(s).kind === 'planar' ? ['rect', 'disc'] : ['sphere', 'cylinder']).includes(v) }),
-    num('src.w', 'Width (mm)', (s) => S(s).w, (s, v) => { S(s).w = Math.max(1e-6, v); }, { section: 'source', groups: srcGroups, min: 0.001, step: 0.1, show: (s) => S(s).kind === 'planar' && S(s).shape === 'rect' }),
-    num('src.h', 'Height (mm)', (s) => S(s).h, (s, v) => { S(s).h = Math.max(1e-6, v); }, { section: 'source', groups: srcGroups, min: 0.001, step: 0.1, show: (s) => S(s).kind === 'planar' && S(s).shape === 'rect' }),
-    num('src.radius', 'Radius (mm)', (s) => S(s).radius, (s, v) => { S(s).radius = Math.max(1e-6, v); }, { section: 'source', groups: srcGroups, min: 0.001, step: 0.1, show: (s) => S(s).kind !== 'point' && S(s).shape !== 'rect' }),
-    num('src.length', 'Length (mm)', (s) => S(s).length, (s, v) => { S(s).length = Math.max(1e-6, v); }, { section: 'source', groups: srcGroups, min: 0.001, step: 0.1, show: (s) => S(s).kind === 'volume' && S(s).shape === 'cylinder' }),
-    num('src.domeR', 'Dome radius (mm, 0 = none)', (s) => (S(s).dome ? S(s).dome.r : 0), (s, v) => { if (v > 0) S(s).dome = Object.assign({ n: 1.41, z: 0 }, S(s).dome || {}, { r: v }); else delete S(s).dome; }, { section: 'source', groups: srcGroups, min: 0, step: 0.1, show: (s) => S(s).kind === 'planar', help: 'A silicone dome over the die, traced for real: refraction, total internal reflection, Fresnel reflection, and light recycled off the base. The optics see the die magnified (× n for a die at the dome centre); solvers plan with that apparent emitter.' }),
+    num('src.w', 'Width (mm)', (s) => S(s).w, (s, v) => { S(s).w = Math.max(1e-6, v); }, { section: 'source', groups: srcGroups, min: 0.001, max: 1000, step: 0.1, show: (s) => S(s).kind === 'planar' && S(s).shape === 'rect' }),
+    num('src.h', 'Height (mm)', (s) => S(s).h, (s, v) => { S(s).h = Math.max(1e-6, v); }, { section: 'source', groups: srcGroups, min: 0.001, max: 1000, step: 0.1, show: (s) => S(s).kind === 'planar' && S(s).shape === 'rect' }),
+    num('src.radius', 'Radius (mm)', (s) => S(s).radius, (s, v) => { S(s).radius = Math.max(1e-6, v); }, { section: 'source', groups: srcGroups, min: 0.001, max: 1000, step: 0.1, show: (s) => S(s).kind !== 'point' && S(s).shape !== 'rect' }),
+    num('src.length', 'Length (mm)', (s) => S(s).length, (s, v) => { S(s).length = Math.max(1e-6, v); }, { section: 'source', groups: srcGroups, min: 0.001, max: 1000, step: 0.1, show: (s) => S(s).kind === 'volume' && S(s).shape === 'cylinder' }),
+    num('src.domeR', 'Dome radius (mm, 0 = none)', (s) => (S(s).dome ? S(s).dome.r : 0), (s, v) => { if (v > 0) { const d = S(s).dome = Object.assign({ n: 1.41, z: 0 }, S(s).dome || {}, { r: v }); d.z = RF.U.clamp(d.z, -0.95 * v, 0.95 * v); } else delete S(s).dome; }, { section: 'source', groups: srcGroups, min: 0, max: 100, step: 0.1, show: (s) => S(s).kind === 'planar', help: 'A silicone dome over the die, traced for real: refraction, total internal reflection, Fresnel reflection, and light recycled off the base. The optics see the die magnified (× n for a die at the dome centre); solvers plan with that apparent emitter.' }),
     num('src.domeN', 'Dome index n', (s) => (S(s).dome ? S(s).dome.n : 1.41), (s, v) => { if (S(s).dome) S(s).dome.n = RF.U.clamp(v, 1.0001, 3); }, { section: 'source', groups: srcGroups, min: 1, max: 3, step: 0.01, show: (s) => S(s).kind === 'planar' && !!S(s).dome, help: 'Silicone ≈ 1.41 (methyl) – 1.53 (phenyl); PMMA 1.49; glass 1.5.' }),
-    num('src.domeZ', 'Dome centre above die (mm)', (s) => (S(s).dome ? S(s).dome.z || 0 : 0), (s, v) => { if (S(s).dome) S(s).dome.z = RF.U.clamp(v, -0.95 * S(s).dome.r, 0.95 * S(s).dome.r); }, { section: 'source', groups: srcGroups, step: 0.05, show: (s) => S(s).kind === 'planar' && !!S(s).dome, help: '0 = a hemisphere centred on the die (magnification n). Above the die (> 0): more than a hemisphere, a bigger image and a narrower beam.' }),
+    num('src.domeZ', 'Dome centre above die (mm)', (s) => (S(s).dome ? S(s).dome.z || 0 : 0), (s, v) => { if (S(s).dome) S(s).dome.z = RF.U.clamp(v, -0.95 * S(s).dome.r, 0.95 * S(s).dome.r); }, { section: 'source', groups: srcGroups, min: -100, max: 100, step: 0.05, show: (s) => S(s).kind === 'planar' && !!S(s).dome, help: '0 = a hemisphere centred on the die (magnification n). Above the die (> 0): more than a hemisphere, a bigger image and a narrower beam.' }),
     sel('src.emission', 'Emits from', [['volume', 'its volume (glowing gas, arc, tube)'], ['surface', 'its surface (opaque coil)']], (s) => S(s).emission || 'volume', (s, v) => { S(s).emission = v; }, { section: 'source', groups: srcGroups, show: (s) => S(s).kind === 'volume', help: 'Volume: light from every point inside, directions set by Distribution (an optically thin glow). Surface: an opaque body with a Lambertian skin (a tightly wound filament): as bright as its projected area, so a coil is dark end-on.' }),
     sel('src.dist', 'Distribution', [['lambertian', 'Lambertian'], ['gaussian', 'Gaussian'], ['cone', 'Uniform cone'], ['isotropic', 'Isotropic']], (s) => S(s).dist, (s, v) => { S(s).dist = v; }, { section: 'source', groups: srcGroups, show: (s) => !(S(s).kind === 'volume' && S(s).emission === 'surface') }),
     num('src.sigma', 'Gaussian σ (°)', (s) => S(s).sigma, (s, v) => { S(s).sigma = RF.U.clamp(v, 0.5, 180); }, { section: 'source', groups: srcGroups, min: 0.5, max: 180, step: 0.5, show: (s) => S(s).dist === 'gaussian' }),
     num('src.half', 'Cone half-angle (°)', (s) => S(s).halfAngle, (s, v) => { S(s).halfAngle = RF.U.clamp(v, 0.5, 180); }, { section: 'source', groups: srcGroups, min: 0.5, max: 180, step: 0.5, show: (s) => S(s).dist === 'cone' }),
     num('src.az', 'Axis azimuth (°)', (s) => V.toAzEl(S(s).axis)[0], (s, v) => { const e = V.toAzEl(S(s).axis)[1]; S(s).axis = V.fromAzEl(v, e); }, { section: 'source', groups: srcGroups, min: -180, max: 180, step: 1, help: 'Emission axis, any 3D direction (also draggable in the scene: grab the arrow tip).' }),
     num('src.el', 'Axis elevation (°)', (s) => V.toAzEl(S(s).axis)[1], (s, v) => { const a = V.toAzEl(S(s).axis)[0]; S(s).axis = V.fromAzEl(a, RF.U.clamp(v, -90, 90)); }, { section: 'source', groups: srcGroups, min: -90, max: 90, step: 1 }),
-    num('src.roll', 'Roll (°)', (s) => S(s).roll || 0, (s, v) => { S(s).roll = v; }, { section: 'source', adv: true, groups: srcGroups, step: 1 }),
-    num('src.x', 'Position x', (s) => S(s).pos[0], (s, v) => { S(s).pos[0] = v; }, { section: 'source', adv: true, groups: srcGroups, step: 0.5 }),
-    num('src.y', 'Position y', (s) => S(s).pos[1], (s, v) => { S(s).pos[1] = v; }, { section: 'source', adv: true, groups: srcGroups, step: 0.5 }),
-    num('src.z', 'Position z', (s) => S(s).pos[2], (s, v) => { S(s).pos[2] = v; }, { section: 'source', adv: true, groups: srcGroups, step: 0.5 }),
-    num('src.power', 'Power (lm)', (s) => S(s).power, (s, v) => { S(s).power = Math.max(1e-9, v); }, { section: 'source', adv: true, step: 10 }),
+    num('src.roll', 'Roll (°)', (s) => S(s).roll || 0, (s, v) => { S(s).roll = v; }, { section: 'source', adv: true, groups: srcGroups, min: -360, max: 360, step: 1 }),
+    num('src.x', 'Position x', (s) => S(s).pos[0], (s, v) => { S(s).pos[0] = v; }, { section: 'source', adv: true, groups: srcGroups, min: -10000, max: 10000, step: 0.5 }),
+    num('src.y', 'Position y', (s) => S(s).pos[1], (s, v) => { S(s).pos[1] = v; }, { section: 'source', adv: true, groups: srcGroups, min: -10000, max: 10000, step: 0.5 }),
+    num('src.z', 'Position z', (s) => S(s).pos[2], (s, v) => { S(s).pos[2] = v; }, { section: 'source', adv: true, groups: srcGroups, min: -10000, max: 10000, step: 0.5 }),
+    num('src.power', 'Power (lm)', (s) => S(s).power, (s, v) => { S(s).power = Math.max(1e-9, v); }, { section: 'source', adv: true, min: 0.001, max: 1e7, step: 10 }),
     // ---- envelope
     sel('env.shape', 'Envelope', [['box', 'Box'], ['cylinder', 'Cylinder'], ['ellipsoid', 'Ellipsoid']], (s) => EN(s).shape, (s, v) => { EN(s).shape = v; }, { section: 'envelope', groups: ['A', 'B'] }),
     sel('env.axis', 'Cylinder axis', [['0', 'x'], ['1', 'y'], ['2', 'z']], (s) => String(EN(s).axis), (s, v) => { EN(s).axis = +v; }, { section: 'envelope', groups: ['A', 'B'], show: (s) => EN(s).shape === 'cylinder' }),
     num('env.keep', 'LED clearance (mm)', (s) => EN(s).keepOut, (s, v) => { EN(s).keepOut = RF.U.clamp(v, 0, RF.State.CLEAR_MAX); }, { section: 'envelope', groups: ['A', 'B'], min: 0, max: RF.State.CLEAR_MAX, step: 0.1, help: 'Hard clearance around the emitter (LED dome / package / board): no surface may come closer. Checked by the app, whatever the solver. To keep facets farther away for sharper images, use the solver\u2019s Min facet distance.' }),
-    num('env.hx', 'Half-size x', (s) => EN(s).half[0], (s, v) => { EN(s).half[0] = Math.max(1e-6, v); }, { section: 'envelope', adv: true, groups: ['A', 'B'], step: 1 }),
-    num('env.hy', 'Half-size y', (s) => EN(s).half[1], (s, v) => { EN(s).half[1] = Math.max(1e-6, v); }, { section: 'envelope', adv: true, groups: ['A', 'B'], step: 1 }),
-    num('env.hz', 'Half-size z', (s) => EN(s).half[2], (s, v) => { EN(s).half[2] = Math.max(1e-6, v); }, { section: 'envelope', adv: true, groups: ['A', 'B'], step: 1 }),
-    num('env.cx', 'Centre x', (s) => EN(s).center[0], (s, v) => { EN(s).center[0] = v; }, { section: 'envelope', adv: true, groups: ['A', 'B'], step: 1 }),
-    num('env.cy', 'Centre y', (s) => EN(s).center[1], (s, v) => { EN(s).center[1] = v; }, { section: 'envelope', adv: true, groups: ['A', 'B'], step: 1 }),
-    num('env.cz', 'Centre z', (s) => EN(s).center[2], (s, v) => { EN(s).center[2] = v; }, { section: 'envelope', adv: true, groups: ['A', 'B'], step: 1 }),
+    num('env.hx', 'Half-size x', (s) => EN(s).half[0], (s, v) => { EN(s).half[0] = Math.max(1e-6, v); }, { section: 'envelope', adv: true, groups: ['A', 'B'], min: 0.001, max: 10000, step: 1 }),
+    num('env.hy', 'Half-size y', (s) => EN(s).half[1], (s, v) => { EN(s).half[1] = Math.max(1e-6, v); }, { section: 'envelope', adv: true, groups: ['A', 'B'], min: 0.001, max: 10000, step: 1 }),
+    num('env.hz', 'Half-size z', (s) => EN(s).half[2], (s, v) => { EN(s).half[2] = Math.max(1e-6, v); }, { section: 'envelope', adv: true, groups: ['A', 'B'], min: 0.001, max: 10000, step: 1 }),
+    num('env.cx', 'Centre x', (s) => EN(s).center[0], (s, v) => { EN(s).center[0] = v; }, { section: 'envelope', adv: true, groups: ['A', 'B'], min: -10000, max: 10000, step: 1 }),
+    num('env.cy', 'Centre y', (s) => EN(s).center[1], (s, v) => { EN(s).center[1] = v; }, { section: 'envelope', adv: true, groups: ['A', 'B'], min: -10000, max: 10000, step: 1 }),
+    num('env.cz', 'Centre z', (s) => EN(s).center[2], (s, v) => { EN(s).center[2] = v; }, { section: 'envelope', adv: true, groups: ['A', 'B'], min: -10000, max: 10000, step: 1 }),
     // ---- target
-    num('tgt.dist', 'Target distance (mm)', (s) => TG(s).distance, (s, v) => { TG(s).distance = Math.max(1e-6, v); }, { section: 'target', groups: ['A', 'B', 'C', 'L'], min: 1, step: 10, help: 'Also draggable in the scene (the handle at the target centre).' }),
-    num('tgt.size', 'Target width (mm)', (s) => TG(s).size, (s, v) => { TG(s).size = Math.max(1e-6, v); }, { section: 'target', groups: ['A', 'B'], min: 1, step: 10 }),
+    num('tgt.dist', 'Target distance (mm)', (s) => TG(s).distance, (s, v) => { TG(s).distance = Math.max(targetFloor(s.scene), v); }, { section: 'target', groups: ['A', 'B', 'C', 'L'], min: 1, max: 1000000, step: 10, help: 'Also draggable in the scene (the handle at the target centre).' }),
+    num('tgt.size', 'Target width (mm)', (s) => TG(s).size, (s, v) => { TG(s).size = Math.max(1e-6, v); }, { section: 'target', groups: ['A', 'B'], min: 1, max: 1000000, step: 10 }),
     num('tgt.tiltX', 'Tilt about u (°)', (s) => TG(s).tiltX, (s, v) => { TG(s).tiltX = RF.U.clamp(v, -89, 89); }, { section: 'target', groups: ['A', 'B'], min: -89, max: 89, step: 1 }),
     num('tgt.tiltY', 'Tilt about v (°)', (s) => TG(s).tiltY, (s, v) => { TG(s).tiltY = RF.U.clamp(v, -89, 89); }, { section: 'target', groups: ['A', 'B'], min: -89, max: 89, step: 1 }),
     chk('tgt.linked', 'Aim point moves with target', (s) => TG(s).linked !== false, (s, v) => { const t = TG(s); if (!v && t.linked !== false) t.aim = [t.distance, 0, 0]; t.linked = !!v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], help: 'Unlink to move the target plane without moving the optical target point the facets aim at (the design stays focused at the aim point).' }),
-    num('aim.x', 'Aim x', (s) => RF.Engine.aimPoint(TG(s))[0], (s, v) => { TG(s).aim[0] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], step: 10, show: (s) => TG(s).linked === false }),
-    num('aim.y', 'Aim y', (s) => RF.Engine.aimPoint(TG(s))[1], (s, v) => { TG(s).aim[1] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], step: 10, show: (s) => TG(s).linked === false }),
-    num('aim.z', 'Aim z', (s) => RF.Engine.aimPoint(TG(s))[2], (s, v) => { TG(s).aim[2] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], step: 10, show: (s) => TG(s).linked === false }),
+    num('aim.x', 'Aim x', (s) => RF.Engine.aimPoint(TG(s))[0], (s, v) => { TG(s).aim[0] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], min: -1000000, max: 1000000, step: 10, show: (s) => TG(s).linked === false }),
+    num('aim.y', 'Aim y', (s) => RF.Engine.aimPoint(TG(s))[1], (s, v) => { TG(s).aim[1] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], min: -1000000, max: 1000000, step: 10, show: (s) => TG(s).linked === false }),
+    num('aim.z', 'Aim z', (s) => RF.Engine.aimPoint(TG(s))[2], (s, v) => { TG(s).aim[2] = v; }, { section: 'target', groups: ['A', 'B', 'C', 'L'], min: -1000000, max: 1000000, step: 10, show: (s) => TG(s).linked === false }),
     num('tgt.res', 'Paint grid', (s) => TG(s).res, (s, v) => setResolution(s, Math.round(RF.U.clamp(v, 10, 200))), { section: 'heatmap', min: 10, max: 200, step: 1, help: 'Paint / design grid N×N (default 50, up to 200). The simulation has its own grid.' }),
     num('sim.res', 'Sim grid', (s) => SIM(s).res, (s, v) => { SIM(s).res = Math.round(RF.U.clamp(v, 10, 1000)); }, { section: 'heatmap', min: 10, max: 1000, step: 10, help: 'Simulation accumulator N×N (10–1000). Every statistic is computed on this grid.' }),
     chk('sim.autoRes', 'Auto sim grid', (s) => !!SIM(s).autoRes, (s, v) => { SIM(s).autoRes = !!v; }, { section: 'heatmap', help: 'Pick the sim grid for ~50 rays per lit cell, from a 4,000-ray pilot.' }),
     // ---- Mode A
     num('A.budget', 'Facet budget', (s) => s.scene.modeA.budget, (s, v) => { s.scene.modeA.budget = Math.round(RF.U.clamp(v, 1, 2000)); }, { primary: true, section: 'modeA', modes: ['A', 'D'], groups: ['A'], min: 1, max: 2000, step: 1, help: 'How many segments you are willing to make. Everything else (search resolution etc.) is derived.' }),
-    num('A.minDist', 'Min facet distance (mm)', (s) => s.scene.modeA.minDistance || 0, (s, v) => { s.scene.modeA.minDistance = Math.max(0, v); }, { section: 'modeA', modes: ['A', 'D'], groups: ['A'], min: 0, step: 0.5, help: 'Solver preference: facets at least this far from the LED. Farther ⇒ sharper images; nearer ⇒ more light caught in tight corners. 0 = let the solver use the whole envelope.' }),
+    num('A.minDist', 'Min facet distance (mm)', (s) => s.scene.modeA.minDistance || 0, (s, v) => { s.scene.modeA.minDistance = Math.max(0, v); }, { section: 'modeA', modes: ['A', 'D'], groups: ['A'], min: 0, max: 1000, step: 0.5, help: 'Solver preference: facets at least this far from the LED. Farther ⇒ sharper images; nearer ⇒ more light caught in tight corners. 0 = let the solver use the whole envelope.' }),
     sel('A.type', 'Facets', [['curved', 'Curved (tile size solved)'], ['flat', 'Flat (tile locked to footprint)']], (s) => s.scene.modeA.facetType, (s, v) => { s.scene.modeA.facetType = v; }, { primary: true, section: 'modeA', modes: ['A', 'D'], groups: ['A'] }),
     num('A.refl', 'Mirror reflectivity', (s) => s.scene.modeA.reflectivity, (s, v) => { s.scene.modeA.reflectivity = RF.U.clamp(v, 0, 1); }, { section: 'modeA', modes: ['A', 'D'], groups: ['A'], min: 0, max: 1, step: 0.01 }),
     num('A.req', 'Required delivered flux %', (s) => s.scene.modeA.requiredFlux, (s, v) => { s.scene.modeA.requiredFlux = RF.U.clamp(v, 0, 100); }, { section: 'modeA', modes: ['A', 'D'], adv: true, min: 0, max: 100, step: 1, help: '0 = shape only. Otherwise the feasibility report checks this absolute level against what the envelope can intercept.' }),
@@ -157,20 +157,20 @@
     num('A.strength', 'Brush level', (s) => s.scene.modeA.brush.strength, (s, v) => { s.scene.modeA.brush.strength = RF.U.clamp(v, 0.05, 1); }, { section: 'heatmap', modes: ['A', 'D'], min: 0.05, max: 1, step: 0.05 }),
     chk('A.erase', 'Erase', (s) => !!s.scene.modeA.brush.erase, (s, v) => { s.scene.modeA.brush.erase = !!v; }, { section: 'heatmap', modes: ['A', 'D'] }),
     // ---- Mode B (selected stamp)
-    num('B.scale', 'Tile scale (mm)', (s) => selStamp(s) ? selStamp(s).scale : s.scene.modeB.defaultScale, (s, v) => { const st = selStamp(s); if (st) st.scale = Math.max(1e-6, v); else s.scene.modeB.defaultScale = Math.max(1e-6, v); }, { primary: true, section: 'modeB', modes: ['B'], groups: ['B'], step: 1, help: 'Range clamps to what this facet can physically paint (reason shown below).' }),
+    num('B.scale', 'Tile scale (mm)', (s) => selStamp(s) ? selStamp(s).scale : s.scene.modeB.defaultScale, (s, v) => { const st = selStamp(s); if (st) st.scale = Math.max(1e-6, v); else s.scene.modeB.defaultScale = Math.max(1e-6, v); }, { primary: true, section: 'modeB', modes: ['B'], groups: ['B'], min: 1, max: 5000, step: 1, help: 'Range clamps to what this facet can physically paint (reason shown below).' }),
     sel('B.type', 'Facet', [['curved', 'Curved (curvature sets size)'], ['flat', 'Flat (size sets size)']], (s) => (selStamp(s) ? selStamp(s).facetType : s.scene.modeB.facetType), (s, v) => { const st = selStamp(s); if (st) st.facetType = v; else s.scene.modeB.facetType = v; }, { primary: true, section: 'modeB', modes: ['B'], groups: ['B'] }),
     num('B.ap', 'Facet half-angle (°)', (s) => (selStamp(s) ? selStamp(s).apDeg : 10), (s, v) => { const st = selStamp(s); if (st) st.apDeg = RF.U.clamp(v, 0.2, 30); }, { section: 'modeB', modes: ['B'], groups: ['B'], min: 0.2, max: 30, step: 0.2, show: (s) => selStamp(s) && selStamp(s).facetType === 'curved', help: 'Angular size of a curved facet as seen from the source (sets its flux).' }),
     sel('B.dir', 'Direction', [['auto', 'Auto (brightest free direction)'], ['manual', 'Manual (picker)']], (s) => (selStamp(s) ? selStamp(s).dirMode : 'auto'), (s, v) => { const st = selStamp(s); if (st) st.dirMode = v; }, { section: 'modeB', modes: ['B'], groups: ['B'], show: (s) => !!selStamp(s) }),
     // ---- Mode C
     sel('C.preset', 'Preset', [['parabola', 'Parabola (focus at source)'], ['ellipse', 'Ellipse (2nd focus on axis)'], ['cpc', 'CPC collimator'], ['cone', 'Cone'], ['sphere', 'Sphere (retro)'], ['flat', 'Flat disc']], (s) => s.scene.modeC.preset.kind, (s, v) => { s.scene.modeC.preset.kind = v; applyPreset(s); }, { section: 'modeC', modes: ['C'], groups: ['C'] }),
-    num('C.f', 'Focal length (mm)', (s) => s.scene.modeC.preset.f, (s, v) => { s.scene.modeC.preset.f = Math.max(0.01, v); applyPreset(s); }, { primary: true, section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, step: 0.5, show: (s) => ['parabola', 'ellipse', 'flat'].includes(s.scene.modeC.preset.kind) }),
-    num('C.rim', 'Rim radius (mm)', (s) => s.scene.modeC.preset.rim, (s, v) => { s.scene.modeC.preset.rim = Math.max(0.01, v); applyPreset(s); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, step: 0.5, show: (s) => s.scene.modeC.preset.kind !== 'cpc' }),
-    num('C.depth', 'Focus separation (mm)', (s) => s.scene.modeC.preset.depth, (s, v) => { s.scene.modeC.preset.depth = Math.max(0.01, v); applyPreset(s); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, step: 1, show: (s) => ['ellipse', 'cone'].includes(s.scene.modeC.preset.kind) }),
+    num('C.f', 'Focal length (mm)', (s) => s.scene.modeC.preset.f, (s, v) => { s.scene.modeC.preset.f = Math.max(0.01, v); applyPreset(s); }, { primary: true, section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 10000, step: 0.5, show: (s) => ['parabola', 'ellipse', 'flat'].includes(s.scene.modeC.preset.kind) }),
+    num('C.rim', 'Rim radius (mm)', (s) => s.scene.modeC.preset.rim, (s, v) => { s.scene.modeC.preset.rim = Math.max(0.01, v); applyPreset(s); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 10000, step: 0.5, show: (s) => s.scene.modeC.preset.kind !== 'cpc' }),
+    num('C.depth', 'Focus separation (mm)', (s) => s.scene.modeC.preset.depth, (s, v) => { s.scene.modeC.preset.depth = Math.max(0.01, v); applyPreset(s); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 10000, step: 1, show: (s) => ['ellipse', 'cone'].includes(s.scene.modeC.preset.kind) }),
     num('C.theta', 'Angle (°)', (s) => s.scene.modeC.preset.theta, (s, v) => { s.scene.modeC.preset.theta = RF.U.clamp(v, 1, 170); applyPreset(s); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 1, max: 170, step: 1, show: (s) => ['cpc', 'cone', 'sphere'].includes(s.scene.modeC.preset.kind), help: 'CPC: acceptance half-angle. Cone: wall angle. Sphere: cap span.' }),
-    num('C.a1', 'Small aperture radius (mm)', (s) => s.scene.modeC.preset.a1 || 2, (s, v) => { s.scene.modeC.preset.a1 = Math.max(0.01, v); applyPreset(s); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, step: 0.1, show: (s) => ['cpc', 'cone'].includes(s.scene.modeC.preset.kind) }),
+    num('C.a1', 'Small aperture radius (mm)', (s) => s.scene.modeC.preset.a1 || 2, (s, v) => { s.scene.modeC.preset.a1 = Math.max(0.01, v); applyPreset(s); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 10000, step: 0.1, show: (s) => ['cpc', 'cone'].includes(s.scene.modeC.preset.kind) }),
     num('C.n', 'Profile segments', (s) => s.scene.modeC.preset.n, (s, v) => { s.scene.modeC.preset.n = Math.round(RF.U.clamp(v, 1, 400)); applyPreset(s); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 1, max: 400, step: 1, help: 'Facets along the profile (rings after revolving).' }),
     sel('C.sweep', 'Sweep', [['revolve', 'Revolve (dish / cup)'], ['extrude', 'Extrude (trough)']], (s) => s.scene.modeC.sweep, (s, v) => { s.scene.modeC.sweep = v; }, { primary: true, section: 'modeC', modes: ['C'], groups: ['C'] }),
-    num('C.len', 'Extrude length (mm)', (s) => s.scene.modeC.extrudeLength, (s, v) => { s.scene.modeC.extrudeLength = Math.max(0.01, v); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, step: 1, show: (s) => s.scene.modeC.sweep === 'extrude' }),
+    num('C.len', 'Extrude length (mm)', (s) => s.scene.modeC.extrudeLength, (s, v) => { s.scene.modeC.extrudeLength = Math.max(0.01, v); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 10000, step: 1, show: (s) => s.scene.modeC.sweep === 'extrude' }),
     num('C.az', 'Azimuthal facets (0 = smooth)', (s) => s.scene.modeC.azSegments, (s, v) => { s.scene.modeC.azSegments = Math.round(RF.U.clamp(v, 0, 360)); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 0, max: 360, step: 1, show: (s) => s.scene.modeC.sweep === 'revolve' }),
     sel('C.axis', 'Sweep axis', [['aim', 'Source → aim point'], ['source', 'Source emission axis'], ['x', 'World x'], ['y', 'World y'], ['z', 'World z']], (s) => s.scene.modeC.axisMode, (s, v) => { s.scene.modeC.axisMode = v; }, { section: 'modeC', modes: ['C'], groups: ['C'] }),
     chk('C.mirror', 'Mirror copy', (s) => s.scene.modeC.mirror, (s, v) => { s.scene.modeC.mirror = !!v; }, { section: 'modeC', modes: ['C'], groups: ['C'] }),
@@ -201,10 +201,20 @@
     s.invalidate(['A']);
   }
 
+  // The least the target distance may be: just in front of the envelope (the optic), never inside it
+  function targetFloor(scene) { const en = scene.envelope; return Math.max(1, en.center[0] + en.half[0] + 1); }
+  // Lens parameter ranges (mm unless noted); anything else is stored as given
+  const LENS_RANGE = {
+    f: { min: 0.1, max: 1e4 }, a: { min: 0.1, max: 1e3 }, edge: { min: 0, max: 1e3 }, tb: { min: 0.01, max: 1e3 }, d: { min: 0.1, max: 1e4 },
+    A: { min: 0.1, max: 1e3 }, rc: { min: 0.1, max: 1e3 }, hc: { min: 0, max: 1e3 }, thMax: { min: 1, max: 89 },
+    rings: { min: 1, max: 200, int: true }, ior: { min: 1.01, max: 4 }, fresnelT: { min: 0, max: 1 },
+  };
+
   // Set a control through its table row (the path the DOM uses)
   function setControl(store, id, value) {
     const c = BY_ID[id];
     if (!c) throw new Error('no control ' + id);
+    if (c.type === 'number') { if (typeof value !== 'number' || !isFinite(value)) return c; value = RF.U.clamp(value, c.min, c.max); }   // the one place every typed / dragged / scripted number passes: reject non-numbers, clamp to the row's range
     c.set(store, value);
     store.invalidate(c.groups);
     return c;
@@ -270,7 +280,7 @@
       store.scene.modeB.stamps.push(st); store.scene.modeB.selected = st.id; store.invalidate(['B']);
       return st;
     },
-    moveStamp(store, id, u, v) { const st = store.scene.modeB.stamps.find((t) => t.id === id); if (st) { st.u = u; st.v = v; store.invalidate(['B']); } },
+    moveStamp(store, id, u, v) { const st = store.scene.modeB.stamps.find((t) => t.id === id); if (st && isFinite(u) && isFinite(v)) { const h = RF.Engine.designFrame(store.scene.target).half; st.u = RF.U.clamp(u, -h, h); st.v = RF.U.clamp(v, -h, h); store.invalidate(['B']); } },   // on the target, like onTap
     setStampDir(store, id, th, ph) { const st = store.scene.modeB.stamps.find((t) => t.id === id); if (st) { st.dirMode = 'manual'; st.th = th; st.ph = ph; store.invalidate(['B']); } },
     duplicateStamp(store, id) {
       const st = store.scene.modeB.stamps.find((t) => t.id === id); if (!st) return null;
@@ -291,7 +301,12 @@
       store.invalidate(['L']);
       return L;
     },
-    updateLens(store, id, key, value) { const L = store.scene.lenses.find((l) => l.id === id); if (L) { L.params[key] = value; store.invalidate(['L']); } },
+    updateLens(store, id, key, value) {
+      const L = store.scene.lenses.find((l) => l.id === id); if (!L) return;
+      if (typeof value === 'number') { if (!isFinite(value)) return; const r = LENS_RANGE[key]; if (r) value = RF.U.clamp(r.int ? Math.round(value) : value, r.min, r.max); }   // an unusable entry leaves the lens as it was
+      if (key === 'auto' && value === false && !(L.params.d > 0)) L.params.d = 20;   // the field shows 20 until edited: store what it shows
+      L.params[key] = value; store.invalidate(['L']);
+    },
     removeLens(store, id) { store.scene.lenses = store.scene.lenses.filter((l) => l.id !== id); store.invalidate(['L']); },
     // extra emitters (multi-LED optics): a copy of the main source, offset sideways; the solve and the trace see them all
     addEmitter(store) {
@@ -328,7 +343,7 @@
     setLampVolts(store, volts) { const s = store.scene.source; const p = RF.SourcePresets.PRESETS[s.preset]; if (p && p.volts) { RF.SourcePresets.apply(s, s.preset, { volts }); store.invalidate(srcGroups); } },
     moveSource(store, p) { store.scene.source.pos = p.slice(); store.invalidate(srcGroups); },
     setSourceAxis(store, a) { store.scene.source.axis = V.norm(a); store.invalidate(srcGroups); },
-    setTargetDistance(store, d) { store.scene.target.distance = Math.max(1e-6, d); store.invalidate(['A', 'B', 'C', 'L']); },
+    setTargetDistance(store, d) { if (!isFinite(d)) return; store.scene.target.distance = RF.U.clamp(d, targetFloor(store.scene), BY_ID['tgt.dist'].max); store.invalidate(['A', 'B', 'C', 'L']); },
     setEnvelopeHalf(store, axis, h) { store.scene.envelope.half[axis] = Math.max(1e-6, h); store.invalidate(['A', 'B']); },
     setEnvelopeCenter(store, c) { store.scene.envelope.center = c.slice(); store.invalidate(['A', 'B']); },
   };

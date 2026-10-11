@@ -95,9 +95,48 @@
   const INF_SAFE = (k, v) => (v === Infinity ? 1e308 : v === -Infinity ? -1e308 : v);
   function serialize(scene) { return JSON.stringify(scene, INF_SAFE); }
   const CLEAR_MAX = 5;                                  // mm: the LED clearance control's range (package / dome)
+  // Schema check for a loaded scene (after the defaults are merged): whitelist the enums, require the arrays, clamp the
+  // numbers to the ranges their controls allow, drop malformed list entries, and throw a clear Error for anything that
+  // cannot be repaired.  loadLocal turns a throw into "start from defaults"; Open-from-disk reports it and keeps the old scene.
+  const SURFACE_TYPES = ['facet', 'plane', 'quad', 'parab', 'rev'];
+  function validate(sc) {
+    const bad = (path, why) => { throw new Error('bad scene: ' + path + ' ' + why); };
+    const isObj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+    const obj = (o, path) => { if (!isObj(o)) bad(path, 'must be an object'); return o; };
+    const arr = (o, path) => { if (!Array.isArray(o)) bad(path, 'must be a list'); return o; };
+    const oneOf = (o, k, list, path) => { if (!list.includes(o[k])) bad(path + '.' + k, 'must be one of ' + list.join(', ') + ' (got ' + JSON.stringify(o[k]) + ')'); };
+    const num = (o, k, lo, hi, path, int) => { const v = o[k]; if (typeof v !== 'number' || !isFinite(v)) bad(path + '.' + k, 'must be a finite number'); o[k] = Math.min(hi, Math.max(lo, int ? Math.round(v) : v)); };
+    const vec3 = (o, k, path) => { const v = o[k]; if (!Array.isArray(v) || v.length !== 3 || !v.every((x) => typeof x === 'number' && isFinite(x))) bad(path + '.' + k, 'must be 3 finite numbers'); };
+    const src = (o, path) => {
+      obj(o, path); oneOf(o, 'kind', ['point', 'planar', 'volume'], path); oneOf(o, 'shape', ['rect', 'disc', 'sphere', 'cylinder'], path); oneOf(o, 'dist', ['lambertian', 'gaussian', 'cone', 'isotropic'], path);
+      vec3(o, 'pos', path); vec3(o, 'axis', path); if (!(o.axis[0] || o.axis[1] || o.axis[2])) bad(path + '.axis', 'must not be the zero vector');
+      for (const k of ['w', 'h', 'radius', 'length', 'power']) num(o, k, 1e-6, 1e12, path);
+    };
+    oneOf(sc, 'mode', ['A', 'B', 'C', 'D'], 'scene');
+    src(obj(sc.source, 'source'), 'source');
+    const en = obj(sc.envelope, 'envelope'); oneOf(en, 'shape', ['box', 'cylinder', 'ellipsoid'], 'envelope'); vec3(en, 'center', 'envelope'); vec3(en, 'half', 'envelope');
+    for (let i = 0; i < 3; i++) en.half[i] = Math.max(1e-6, en.half[i]);
+    num(en, 'axis', 0, 2, 'envelope', true); num(en, 'keepOut', 0, CLEAR_MAX, 'envelope');
+    const t = obj(sc.target, 'target');
+    num(t, 'res', 10, 200, 'target', true); num(t, 'distance', 1e-6, 1e9, 'target'); num(t, 'size', 1e-6, 1e9, 'target'); num(t, 'tiltX', -89, 89, 'target'); num(t, 'tiltY', -89, 89, 'target');
+    const sm = obj(sc.sim, 'sim');
+    num(sm, 'rays', 100, 2e7, 'sim', true); num(sm, 'res', 10, 1000, 'sim', true); num(sm, 'bounces', 1, 16, 'sim', true); num(sm, 'floor', 0, 1, 'sim'); num(sm, 'seed', -2147483648, 2147483647, 'sim', true);
+    num(obj(sc.modeA, 'modeA'), 'budget', 1, 2000, 'modeA', true);
+    const keep = (list, path, ok) => { arr(list, path); return list.filter(ok); };
+    sc.modeB.stamps = keep(sc.modeB.stamps, 'modeB.stamps', isObj);
+    sc.modeC.profile = keep(sc.modeC.profile, 'modeC.profile', (p) => Array.isArray(p) && p.length >= 2 && isFinite(p[0]) && isFinite(p[1]) && typeof p[0] === 'number' && typeof p[1] === 'number');
+    sc.lenses = keep(sc.lenses, 'lenses', (l) => isObj(l) && isObj(l.params));
+    sc.emitters = keep(sc.emitters, 'emitters', isObj); sc.emitters.forEach((e, i) => src(e, 'emitters[' + i + ']'));
+    obj(sc.groups, 'groups');
+    for (const k of Object.keys(sc.groups)) {
+      const g = obj(sc.groups[k], 'groups.' + k);
+      g.surfaces = keep(g.surfaces, 'groups.' + k + '.surfaces', (f) => isObj(f) && SURFACE_TYPES.includes(f.type) && (f.type === 'rev' || (Array.isArray(f.P) && f.P.length === 3 && f.P.every((x) => typeof x === 'number' && isFinite(x)))));
+    }
+    return sc;
+  }
   function deserialize(str) {
     const obj = typeof str === 'string' ? JSON.parse(str) : str;
-    if (!obj || typeof obj !== 'object') throw new Error('not a scene object');
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('not a scene object');
     const sc = mergeDefaults(obj, defaultScene());
     // 09-25: the old keep-out split into a hard LED clearance (≤ CLEAR_MAX, verified) + a per-solver minimum
     // facet distance.  Older files keep their exact geometry: clearance = min(old, max), distance = the rest.
@@ -108,6 +147,7 @@
     if (!obj.sim || obj.sim.res === undefined) sc.sim.res = sc.target.res;   // older files: sim grid = paint grid
     // groups: keep loaded surfaces verbatim
     if (obj.groups) for (const k of Object.keys(obj.groups)) sc.groups[k] = Object.assign({ label: k, enabled: true, surfaces: [] }, obj.groups[k]);
+    validate(sc);
     if (!Array.isArray(sc.modeA.paint) || sc.modeA.paint.length !== sc.target.res * sc.target.res) sc.modeA.paint = defaultPaint(sc.target.res);
     // spec-mode branch, first day: the R112 preset was written from memory (verified: false) and had wrong rows; swap in the regulation's
     if (sc.modeD && sc.modeD.verified === false && RF.Spec) RF.Spec.applyPreset(sc.modeD, RF.Spec.PRESETS[sc.modeD.preset] ? sc.modeD.preset : 'ece-r112-b');
