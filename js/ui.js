@@ -339,8 +339,8 @@
   // that stays and "Use last candidate" (RF.Controller.applyCandidate: the host's verify + applySolve, like a result).
   // A solve replaced by a newer request (you changed something) drops its preview silently.
   try { ui.watchOn = localStorage.getItem('flux/watchSolve') !== '0'; } catch (e) { ui.watchOn = true; }
-  ui.setWatch = (on) => { ui.watchOn = !!on; try { localStorage.setItem('flux/watchSolve', on ? '1' : '0'); } catch (e) { /* ignore */ } ui.watchDirty = true; schedule(); };
-  const watchShown = () => !!(ui.watch && ui.watch.msg && (ui.watch.failed || (ui.watchOn && ui.solving && ui.solving.seq === ui.watch.seq)));
+  ui.setWatch = (on) => { ui.watchOn = !!on; try { localStorage.setItem('flux/watchSolve', on ? '1' : '0'); } catch (e) { /* ignore */ } ui.watchDirty = true; if (!on && ui.run) renderStats(!ui.run.ctx.done); schedule(); };   // off: the footer goes back to the design's numbers
+  const watchShown = () => !!(ui.watch && ui.watch.msg && isPaint(ui.store.scene.mode) && (ui.watch.failed || (ui.watchOn && ui.solving && ui.solving.seq === ui.watch.seq)));
   ui.watchShown = watchShown; ui.watchStats = { previews: 0, prepMs: 0 };   // measured in tests/watch-solve-e2e.js --perf
   function onPreview(job, msg) {                     // worker → page, ≤ 4/s; the drawing waits for the next frame (tick)
     if (ui.solving !== job) return;
@@ -383,7 +383,7 @@
   // numbers come back when the result is traced. Coarse (200k rays) and marked as a preview.
   try { ui.previewStats = localStorage.getItem('flux/previewStats') !== '0'; } catch (e) { ui.previewStats = true; }
   ui.setPreviewStats = (on) => { ui.previewStats = !!on; try { localStorage.setItem('flux/previewStats', on ? '1' : '0'); } catch (e) { /* ignore */ } if (!on && ui.run) renderStats(!ui.run.ctx.done); else renderPreviewStats(); };
-  function previewStatsOn() { const w = ui.watch; return !!(ui.previewStats && ui.solving && w && w.seq === ui.solving.seq && !w.failed && w.traced && w.traced.st); }
+  function previewStatsOn() { const w = ui.watch; return !!(ui.previewStats && ui.watchOn && isPaint(ui.store.scene.mode) && ui.solving && w && w.seq === ui.solving.seq && !w.failed && w.traced && w.traced.st); }
   function renderPreviewStats() {
     if (!previewStatsOn()) return false;
     const t = ui.watch.traced;
