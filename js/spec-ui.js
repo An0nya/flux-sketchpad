@@ -31,13 +31,13 @@
       const ev = RF.Spec.evaluate(G, sc.modeD, live ? { frozen: fin || { base: [0, 0], reaim: [0, 0], note: 'design aim (no finished judgement of this spec yet)' } } : undefined);
       if (!live && ev.aim) ui._specFinal = { key, frozen: { base: ev.aim.base.slice(), reaim: (ev.reaim || [0, 0]).slice(), note: ev.aim.note, cutV: ev.aim.cutV } };
       let Gw = null; try { const wo = RF.Spec.wideOpts(sc); if (c.ff && RF.FarField.streamOf(c, wo)) Gw = RF.FarField.build(c, wo); } catch (e) { /* the picture just stays narrow */ }
-      // the far field (∞) the Road / Drive / beam quality / goals read: the same grids unless Measure at is a screen; a run without those streams falls back to them
-      let Gf = G, Gwf = Gw;
-      if (RF.Spec.measureAt(sc) > 0) {
-        try { const fo = RF.Spec.gridOpts(sc, 0); if (RF.FarField.streamOf(c, fo)) Gf = RF.FarField.build(c, fo); } catch (e) { /* the measured-at grid stands in */ }
-        try { const fw = RF.Spec.wideOpts(sc, 0); if (c.ff && RF.FarField.streamOf(c, fw)) Gwf = RF.FarField.build(c, fw); } catch (e) { /* the measured-at grid stands in */ }
-      }
-      ui.spec = { ctx: c, key, next: c.next, done: c.done, full: !live, t: now, G, Gw, Gf, Gwf, ev, map: null };
+      // the far field (∞), judged at its own aim, that the Road / Drive / beam quality / goals read, whatever Measure at is (RF.Spec.roadSource); held at the
+      // aim the last finished judgement of this spec found there while tracing, like the report's
+      const finF = live && ui._specFinal && ui._specFinal.key === key ? ui._specFinal.frozenFar : null;
+      const src = RF.Spec.roadSource(c, sc, ev, G, Gw, live ? (finF || { base: [0, 0], reaim: [0, 0], note: 'design aim (no finished judgement of this spec yet)' }) : undefined);
+      if (!live && ui._specFinal && ui._specFinal.key === key && src.ev.aim) ui._specFinal.frozenFar = { base: src.ev.aim.base.slice(), reaim: (src.ev.reaim || [0, 0]).slice(), note: src.ev.aim.note, cutV: src.ev.aim.cutV };
+      const Gf = src.G, Gwf = src.W, evF = src.ev;
+      ui.spec = { ctx: c, key, next: c.next, done: c.done, full: !live, t: now, G, Gw, Gf, Gwf, ev, evF, map: null };
     } catch (e) {
       ui.spec = { ctx: c, key, next: c.next, t: now, error: e.message };
       // the grid settings (window, bin, angles) changed since this run started: its streams don't cover them — re-trace once
@@ -52,6 +52,9 @@
     const wide = [RF.Spec.wideOpts(sc)]; if (RF.Spec.measureAt(sc) > 0) wide.push(RF.Spec.wideOpts(sc, 0));
     return ds.filter((d, i) => ds.indexOf(d) === i).map((d) => RF.Spec.gridOpts(sc, d)).concat(wide);
   }
+  // the two grids a solver's traced preview candidate gets (js/preview-worker.js): the report's own fine and wide grids at Measure at, because the preview
+  // only draws the Result's far-field picture (no judging, no road numbers: those read the ∞ grids of a real run, roadSource)
+  const previewFF = (sc) => ({ fine: RF.Spec.gridOpts(sc), wide: RF.Spec.wideOpts(sc), k: Math.max(sc.modeD.kernel || 0.15, 0.15) });
   // a different measuring distance on the same run (no re-trace) — for the comparison table
   function evalAt(ui, distance) {
     const sc = ui.store.scene, G = RF.FarField.build(ui.run.ctx, RF.Spec.gridOpts(sc, distance));
@@ -92,7 +95,7 @@
       el('div', { class: 'btnrow' }, presetSel, apply),
       el('div', { id: 'spec-source', class: 'note' }),
       row('Traffic', sel([['RHT', 'Right-hand (mirror: none)'], ['LHT', 'Left-hand (mirror H)']], () => m().traffic, (v) => { m().traffic = v; })),
-      row('Measure at', distSel, 'Where the report reads intensity. ∞ = far field (goniometer). A finite screen shows the near-field error: how a test at that distance would read this lamp.'),
+      row('Measure at', distSel, 'Where the report reads intensity. ∞ = far field (goniometer). A finite screen shows the near-field error: how a test at that distance would read this lamp. Only the spec table and its far-field map are judged (and aimed) at this distance; the Road, Drive, IIHS reach, beam quality and goals always read the far field (∞) at its own aim.'),
       sectionFn('Measurement', { open: false, key: 'D-meas' },
         row('Kernel ± (°)', num(() => m().kernel, (v) => { m().kernel = Math.max(0.05, Math.min(5, v)); }, { min: 0.05, max: 5, step: 0.05 }, true), 'Half-width of the square each point is read over. Smaller = sharper but noisier.'),
         row('Aim', sel([['design', 'As designed'], ['cutoff', 'By the cut-off (R112 Annex 9 §3.1)'], ['peak', 'Maximum on HV (§6.3.1)'], ['manual', 'Manual (set below)']], () => m().aimMode || 'design', (v) => { m().aimMode = v; }, true), 'How the lab aims the lamp before measuring. By the cut-off: the inflection of a vertical scan at 2.5° from V-V goes on 0.57° D. Manual: the beam is moved exactly as set below — no cut-off scan, no re-aim box (re-aim per point still applies).'),
@@ -599,7 +602,7 @@
       row('Drive view: beam smoothing', rsel([['sharp', 'Sharp (0.2° × 0.2°)'], ['smooth', 'Smooth along H (0.5° × 0.15°)'], ['soft', 'Soft (1° × 0.3°)']], () => dvOpts(ui).smooth, (v) => { setDV(ui, 'smooth', v); }, true), 'The trace is a few million rays, so the beam has shot noise that the picture shows as mottled asphalt. Smoothing along H leaves the cut-off (a vertical edge) sharp. Raise the ray count (Simulation) for a cleaner picture.'),
       row('Drive view: picture size', rsel([['480', '480 × 270'], ['640', '640 × 360'], ['960', '960 × 540'], ['1280', '1280 × 720']], () => String(dvOpts(ui).res), (v) => { setDV(ui, 'res', +v); }, true), 'Render size. 640 takes ~0.3 s in the browser; 1280 about a second in a forest or city.'),
       row('Drive view: field of view (°)', rsel([['45', '45 (telephoto)'], ['60', '60'], ['75', '75'], ['90', '90 (wide)']], () => String(dvOpts(ui).fov), (v) => { setDV(ui, 'fov', +v); }, true), 'Horizontal field of view. The eye is 1.2 m up, 2 m behind the lamps, 0.37 m left of the car centre (mirrored for left-hand traffic).'),
-      row('Aim on the car', rsel([['spec', 'As the spec’s lab aims it'], ['manual', 'Manual inclination (%)']], () => r().aim, (v) => { r().aim = v; }), 'As the lab aims it: the same aim the report uses. Manual: the cut-off (where the judge found it) is set at this downward slope; 1 % = 1 cm per metre ≈ 0.57°. Beam quality and the ideal-beam goals are always measured at the judge\u2019s aim, whatever you pick here.'),
+      row('Aim on the car', rsel([['spec', 'As the spec’s lab aims it'], ['manual', 'Manual inclination (%)']], () => r().aim, (v) => { r().aim = v; }), 'As the lab aims it: the aim the judge finds on the far field (∞), which can differ slightly from the spec table’s own aim when Measure at is a screen. Manual: the cut-off (where the judge found it) is set at this downward slope; 1 % = 1 cm per metre ≈ 0.57°. Beam quality and the ideal-beam goals are always measured at the judge\u2019s aim, whatever you pick here.'),
       row('Inclination (%)', rnum(() => r().aimPct, (v) => { r().aimPct = Math.max(-5, Math.min(1, v)); }, { min: -5, max: 1, step: 0.1 }), 'Used with "Manual". R48 initial aim: −1.0 to −1.5 % below 0.8 m mounting height; FMVSS VOL ≈ −0.7 % (0.4° D).'),
     ];
   }
@@ -652,18 +655,11 @@
     const s = ui.spec; if (!s || !s.G || !s.ev || !RF.Road) return null;
     const road = roadOf(ui), key = JSON.stringify([road, md(ui).preset, md(ui).ideal || null]);
     if (s.road && s.roadKey === key) return s.road;
-    // the far field (∞: it applies the aim), whatever Measure at is; the judged fine grid where it covers the direction, else the wide one
-    const sh = RF.Road.aimShift(road, s.ev), G = s.Gf || s.G, W = s.Gwf || s.Gw, k = 0.2, mir = md(ui).traffic === 'LHT' ? -1 : 1;
-    // the beam as the road sees it: the judged fine grid where it covers the direction, else the wide one; kh × kv = the kernel
-    // half-widths (degrees) on the fine grid, kw × the wide grid's bin on the wide one
-    const mkI = (kh, kv, kw) => RF.Road.beamOf(G, W, sh, mir, kh, kv, kw), I = mkI(k, k, 1);
-    const mdl = RF.Road.model({ road, preset: md(ui).preset, conv: G.conv || md(ui).conv || 'A', I });
+    // the far field (∞) at its own aim (s.evF), whatever Measure at is (RF.Spec.roadSource); the fine grid where it covers the direction, else the wide one;
     // beam quality and the ideal-beam goals are measured at the judge's own aim (what their label says), not the Road's "Aim on the car"
-    const shJ = s.ev.shift ? s.ev.shift.slice() : [0, 0], same = shJ[0] === sh[0] && shJ[1] === sh[1];
-    const IJ = same ? I : RF.Road.beamOf(G, W, shJ, mir, k, k, 1), mdlJ = same ? mdl : RF.Road.model({ road, preset: md(ui).preset, conv: G.conv || md(ui).conv || 'A', I: IJ });
-    s.road = { mdl, sh, mir, mkI, iihs: mdl.iihs(), curves: mdl.curves(), quality: RF.BeamQuality ? RF.BeamQuality.measure(IJ) : null, lane: RF.Road.laneWidth(mdl.road, md(ui).preset), laneDrive: RF.Road.laneWidth(mdl.road, md(ui).preset, true), map: null }; s.roadKey = key;
     const idl = Object.assign(RF.IdealBeam ? RF.IdealBeam.defaults() : {}, md(ui).ideal || {});
-    s.road.ideal = RF.IdealBeam && idl.on !== false && s.road.quality ? RF.IdealBeam.check(IJ, md(ui), mdlJ, s.road.quality) : null;
+    const a = RF.Road.analyse({ G: s.Gf || s.G, W: s.Gwf || s.Gw, ev: s.evF || s.ev }, md(ui), road, { quality: true, ideal: idl.on !== false }), mdl = a.mdl;
+    s.road = { mdl, sh: a.sh, mir: a.mir, mkI: a.mkI, iihs: a.iihs, curves: mdl.curves(), quality: a.quality, lane: RF.Road.laneWidth(mdl.road, md(ui).preset), laneDrive: RF.Road.laneWidth(mdl.road, md(ui).preset, true), map: null, ideal: a.ideal }; s.roadKey = key;
     return s.road;
   }
   // a tiny marching squares for one level on a grid E[j·ny + i] (j along x, i along y) → segment end points in (x, y)
@@ -763,7 +759,7 @@
     const S = (x, y) => view.toScreen(x, y * k), a = S(B0[0], B0[3]), b = S(B0[2], B0[1]);
     ctx.fillStyle = '#0c0d10'; ctx.fillRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
     const up = o.sensor === 'up';
-    document.getElementById('right-caption').textContent = 'Road · bird’s-eye · lux on ' + (up ? 'the road surface' : 'a vertical sensor 25 cm up, facing the car (IIHS)') + ' · ' + (bx.sp ? o.shape.replace(/([RL])$/, ' m $1') + ' bend' : 'straight' + (k > 1.05 ? ', sideways ×' + k.toFixed(1) : '')) + (roadOf(ui).aim === 'manual' && rd && !isFinite(ui.spec.ev.aim.cutV) ? ' · no cut-off found in the beam: inclination counted from 0°' : '');
+    document.getElementById('right-caption').textContent = 'Road · bird’s-eye · lux on ' + (up ? 'the road surface' : 'a vertical sensor 25 cm up, facing the car (IIHS)') + ' · ' + (bx.sp ? o.shape.replace(/([RL])$/, ' m $1') + ' bend' : 'straight' + (k > 1.05 ? ', sideways ×' + k.toFixed(1) : '')) + (roadOf(ui).aim === 'manual' && rd && !isFinite((ui.spec.evF || ui.spec.ev).aim.cutV) ? ' · no cut-off found in the beam: inclination counted from 0°' : '');
     const cb = document.getElementById('colorbar'); cb.innerHTML = '';
     if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The road appears when the trace has been judged.', a[0] + 10, a[1] + 20); return; }
     const M = roadMap(ui, rd, o, bx), Mp = M.Mp, sc = roadScale(o, Mp), imgKey = JSON.stringify([sc.log, sc.lo, sc.top]);
@@ -1002,5 +998,5 @@
     box.append(el('span', { class: 'btn-pair' }, wt));
   }
 
-  RF.SpecUI = { streams, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, roadReadout, drawDrive, driveReadout, editorOverlay, readout, leftTools, COL };
+  RF.SpecUI = { streams, previewFF, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, roadReadout, drawDrive, driveReadout, editorOverlay, readout, leftTools, COL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

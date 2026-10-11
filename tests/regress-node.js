@@ -252,5 +252,39 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       ok('G38 a schema failure is kept aside too', SS.loadLocal() === null && store[KEY + '.bad'] === store[KEY] && /mode/.test(String(SS.loadError && SS.loadError() && SS.loadError().message)));
     } finally { delete globalThis.localStorage; }
   }
+  // B12: one source for the road-side numbers. The 5 lx reach / IIHS points / beam quality / goals must not move with "Measure at", and the UI's
+  // Spec update, tools.trace's res.road and the preview worker's grids must agree for the same trace (same rays -> same numbers, so EXACT equality)
+  {
+    const fs = require('fs'), vm = require('vm'), path = require('path');
+    RF.Panels = RF.Panels || { el: () => ({}) }; RF.Render = RF.Render || {};
+    if (!RF.SpecUI) vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'js', 'spec-ui.js'), 'utf8'), { filename: 'spec-ui.js' });
+    const sc0 = RF.State.defaultScene(); sc0.mode = 'D'; sc0.target.distance = 10000; sc0.target.size = RF.Spec.fitTargetSize(sc0); sc0.modeA.paint = RF.Spec.seedPaint(sc0);
+    const inp = RF.Solvers.inputOf(sc0), ss = RF.Spec.solveScene(sc0);
+    const surf = RF.ModeA.generate(RF.U.deepCopy(Object.assign({}, ss, { mode: 'A', modeA: Object.assign({}, ss.modeA, { paint: inp.paint.cells }) }))).surfaces;
+    const mk = (d) => { const p = Object.assign(RF.U.deepCopy({ source: sc0.source, envelope: sc0.envelope, sim: sc0.sim, modeD: sc0.modeD, mode: 'D' }), { target: Object.assign({}, inp.target, { distance: 15000 }), modeA: { paint: inp.paint.cells } }); p.modeD.distance = d; return p; };
+    const RAYS = 150000, J = JSON.stringify, rows = {};
+    for (const [label, d] of [['inf', 0], ['25m', 25000], ['10m', 10000], ['target', -1]]) {
+      const scn = mk(d);
+      // (a) the UI: the run's streams as the page sets them, then SpecUI.update + roadModel
+      const sca = Object.assign({}, scn, { sim: Object.assign({}, scn.sim) }), P = RF.Engine.prepare(sca, surf); P.ffStreams = RF.SpecUI.streams(scn);
+      const c = RF.Engine.runSync(P, RAYS, 0), ui = { run: { ctx: c }, store: { scene: mk(d) }, spec: null, requestRun() {} };
+      const s = RF.SpecUI.update(ui, true), rd = RF.SpecUI.roadModel(ui);
+      // (b) a solver's tools.trace
+      const t = RF.Solvers.trace(mk(d), surf, { rays: RAYS, spec: true, guided: false, road: true, quality: true, ideal: true });
+      // (c) the preview worker: the same two grids ui.js sends (fine, wide), traced the way js/preview-worker.js does
+      const ff = RF.SpecUI.previewFF(scn), Pw = RF.Engine.prepare(sca, surf); Pw.ffStreams = [ff.fine, ff.wide];
+      const cw = RF.Engine.runSync(Pw, RAYS, 0), Gp = RF.FarField.build(cw, ff.fine), Gpw = RF.FarField.build(cw, ff.wide);
+      rows[label] = { lab: s.ev.shift, road: t.road, ui: { iihs: rd.iihs, quality: rd.quality, ideal: rd.ideal }, same: { fine: J(Array.from(Gp.E)) === J(Array.from(s.G.E)), wide: J(Array.from(Gpw.E)) === J(Array.from(s.Gw.E)) } };
+    }
+    const L = Object.keys(rows), ref = rows.inf;
+    ok('B12 test is not vacuous: the report\'s own judge aims differently at different Measure at', new Set(L.map((k) => J(rows[k].lab))).size > 1, L.map((k) => k + ' ' + J(rows[k].lab)).join(' | '));
+    for (const k of L) {
+      const r = rows[k];
+      ok('B12 [' + k + '] tools.trace res.road equals the UI road model (5 lx reach, IIHS, quality, goals)', J([r.road.right, r.road.left, r.road.farRight, r.road.farLeft, r.road.glareMax]) === J([r.ui.iihs.right, r.ui.iihs.left, r.ui.iihs.farRight, r.ui.iihs.farLeft, r.ui.iihs.glareMax]) && J(r.road.quality) === J(r.ui.quality) && J(r.road.ideal) === J(r.ui.ideal),
+        J({ trace: [r.road.right, r.road.left], ui: [r.ui.iihs.right, r.ui.iihs.left] }));
+      ok('B12 [' + k + '] the road-side numbers equal those at Measure at = infinity', J(r.ui.iihs) === J(ref.ui.iihs) && J(r.ui.quality) === J(ref.ui.quality) && J(r.ui.ideal) === J(ref.ui.ideal) && J(r.road) === J(ref.road), J({ reach: [r.ui.iihs.right, r.ui.iihs.left], ref: [ref.ui.iihs.right, ref.ui.iihs.left] }));
+      ok('B12 [' + k + '] the preview worker\'s grids are the report\'s grids (fine and wide)', r.same.fine && r.same.wide);
+    }
+  }
   process.exitCode = fails ? 1 : 0;
 })();

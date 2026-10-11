@@ -375,7 +375,7 @@
       try { ptr.worker = new Worker('js/preview-worker.js'); ptr.worker.onmessage = onTraced; ptr.worker.onerror = () => { ptr.busy = null; }; }
       catch (e) { ui.previewTrace = false; return; }
     }
-    const sc = ui.store.scene, ff = sc.mode === 'D' && RF.Spec ? { fine: RF.Spec.gridOpts(sc), wide: RF.Spec.wideOpts(sc), k: Math.max(sc.modeD.kernel || 0.15, 0.15) } : null;
+    const sc = ui.store.scene, ff = sc.mode === 'D' && RF.Spec && RF.SpecUI ? RF.SpecUI.previewFF(sc) : null;
     req.id = ++ptr.seq; ptr.busy = req;
     try { ptr.worker.postMessage({ id: req.id, scene: previewScene(), surfaces: req.msg.surfaces, rays: CANDIDATE_RAYS, bounces: req.msg.needs && req.msg.needs.bounces, ff }); }
     catch (e) { ptr.busy = null; }
