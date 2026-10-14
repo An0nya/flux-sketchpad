@@ -82,7 +82,8 @@
     const low = s.beam === 'low', f = s.focal > 0 ? s.focal : lamp.f;
     const F = low ? [S[0] - s.lowFwd, S[1] - s.lowLeft, S[2] - s.lowUp] : S.slice();          // the paraboloid's focus (x forward, y left, z up)
     const a = lamp.r, vx = F[0] - f, depth = a * a / (4 * f), xin = vx + depth;
-    return { lamp, f, F, S, a, vx, depth, xin, low };
+    const env = input.envelope && input.envelope.center && input.envelope.half ? { c0: input.envelope.center[0], h0: input.envelope.half[0] } : null;   // the envelope's far end along x bounds the lens thickness
+    return { lamp, f, F, S, a, vx, depth, xin, low, env };
   }
   function paraboloid(L, refl) {
     return { type: 'rev', id: 'sb_reflector', O: [L.vx, L.F[1], L.F[2]], W: [1, 0, 0], ref: [0, 1, 0], seg: { kind: 'conic', zv: 0, R: 2 * L.f, k: -1, r0: 0, r1: L.a }, front: -1, optics: { interaction: 'reflect', reflectivity: refl } };
@@ -111,8 +112,8 @@
   /* The lens for flute parameters p.  Returns { surfaces, cells, tMax }.  conv: the angle convention (RF.FarField.dirOf). */
   function lensSurfaces(L, s, p, conv) {
     const ior = s.ior, out = [], cw = Math.max(3, s.cell), R = L.a, Rl = R + cw, glass = glassOf(ior);
-    const n = Math.ceil(Rl / cw), cells = [];
-    let sagMax = 0;
+    const n = Math.ceil(Rl / cw), cells = [], env = L.env, sagCap = env ? Math.max(0.5, (env.c0 + env.h0 - L.xin - 8.5) / 2) : 1e9, sagOf = (N, w) => (Math.abs(N[1]) + Math.abs(N[2])) * (w / 2) / Math.abs(N[0]);
+    let sagMax = 0, capped = 0;
     for (let i = -n; i < n; i++) for (let j = -n; j < n; j++) {
       const yc = (i + 0.5) * cw + L.F[1], zc = (j + 0.5) * cw + L.F[2];
       if (Math.hypot(yc - L.F[1], zc - L.F[2]) > R + 0.3 * cw) continue;
@@ -132,6 +133,11 @@
       const d = arrival(L, c.yc, c.zc), e = RF.FarField.dirOf(hs, vs, conv);
       c.d = d; c.h = hs; c.v = vs;
       c.N = d ? cellNormal(d, e, ior) : null;
+      // the slab has to fit the envelope: a cell whose tilt would make the step across it taller than sagCap is aimed less far (its deviation scaled down)
+      if (c.N && sagOf(c.N, cw) > sagCap) {
+        let lam = 1; for (let it = 0; it < 24 && sagOf(c.N, cw) > sagCap; it++) { lam *= 0.85; const e2 = V.norm(V.add(d, V.mul(V.sub(e, d), lam))); c.N = cellNormal(d, e2, ior); if (!c.N) break; }
+        capped++;
+      }
     }
     // inner face
     for (const c of cells) {
@@ -140,7 +146,7 @@
       const h = cw / 2, corners = [[-h, -h], [h, -h], [h, h], [-h, h]].map(([dy, dz]) => { sagMax = Math.max(sagMax, Math.abs(sx(dy, dz))); return [L.xin + sx(dy, dz), c.yc + dy, c.zc + dz]; });
       out.push({ type: 'plane', id: 'sb_f' + c.i + '_' + c.j, P: [L.xin, c.yc, c.zc], n: N, clip: { kind: 'poly', pts3: corners }, optics: glass });
     }
-    return { surfaces: out, cells, sagMax, Rl, glass };
+    return { surfaces: out, cells, sagMax, Rl, glass, capped };
   }
   function build(input, s, p, conv) {
     const L = layout(input, s), surf = [paraboloid(L, input.limits.reflectivity)], notes = [];
@@ -195,7 +201,7 @@
       notes.push('tuned: ' + TUNABLE.map((k) => k + ' ' + p[k]).join(', '));
     }
     if (tools && tools.preview) tools.preview(b.surfaces, { label: 'sealed beam', needs: { bounces: 3 } });
-    notes.push(b.layout.lamp.label + ', f ' + b.layout.f + ' mm, depth ' + b.layout.depth.toFixed(1) + ' mm, ' + (s.beam === 'low' ? 'low' : 'high') + ' beam, lens ' + s.lens + (b.lens ? ', ' + b.lens.cells.length + ' flutes' : '') + '; ' + b.notes.join('; '));
+    notes.push(b.layout.lamp.label + ', f ' + b.layout.f + ' mm, depth ' + b.layout.depth.toFixed(1) + ' mm, ' + (s.beam === 'low' ? 'low' : 'high') + ' beam, lens ' + s.lens + (b.lens ? ', ' + b.lens.cells.length + ' flutes' + (b.lens.capped ? ' (' + b.lens.capped + ' aimed less far to fit the envelope)' : '') : '') + '; ' + b.notes.join('; '));
     return { surfaces: b.surfaces, needs: { bounces: 3 }, notes };
   }
 

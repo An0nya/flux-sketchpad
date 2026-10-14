@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /* make-examples.js — writes examples/sealed-beam-<lamp>-<beam>.json: a Spec-mode (FMVSS 108) scene with the H4 filament, the sealed-beam envelope,
- * the solver set to sealed-beam-v1 with the TUNED flute settings from tools/sealed-beam/results.jsonl (rows 'fluted, tuned'), and the solved
+ * the solver set to sealed-beam-v1 with the TUNED flute settings from tools/sealed-beam/results-transverse.jsonl (rows 'fluted, tuned'), and the solved
  * design already in group A so it loads and traces without a solve.   node tools/sealed-beam/make-examples.js [results.jsonl]               */
 const fs = require('fs'), path = require('path');
 const L = require('./lab.js'), RF = L.RF;
-const resFile = process.argv[2] || path.join(__dirname, 'results.jsonl');
+const resFile = process.argv[2] || path.join(__dirname, 'results-transverse.jsonl');
 const rows = fs.readFileSync(resFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((r) => r.variant === 'fluted, tuned');
 (async () => {
   for (const lamp of ['7', '5.75']) for (const beam of ['low', 'high']) {

@@ -295,6 +295,10 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       if (r.facts.errors.length || r.facts.violations.envelope.length || r.facts.violations.keepOut.length || r.facts.violations.budget) bad.push(lamp + '/' + beam + '/' + lens + ' ' + JSON.stringify(r.facts.errors.concat(r.facts.violations)));
     }
     ok('F3 sealed-beam: 2 lamps x 2 beams x 3 lenses verify clean (no errors, envelope, keep-out or budget violations)', bad.length === 0, bad.join(' | ') || '12 variants');
+    for (const lamp of ['7', '5.75']) {            // aggressive flutes (steep prisms) must still fit the envelope: the lens thickness is capped by the envelope, steep cells are aimed less far
+      const sc = lab.makeScene(lamp, 'low'), r = await lab.solve(sc, { lens: 'fluted', tune: false, hSpread: 30, vSpread: 15, spillR: 0.4, spillAngle: 30 });
+      ok('F3 sealed-beam: ' + lamp + '" with extreme flute angles still verifies clean', !r.facts.errors.length && !r.facts.violations.envelope.length && !r.facts.violations.keepOut.length, JSON.stringify(r.facts.violations) + ' ' + r.out.notes[r.out.notes.length - 1].slice(0, 160));
+    }
     // end to end: a ~point filament at the focus, every flute aimed at one spot → the far-field peak lands there (checks the cell-normal solve, Snell at both faces, the angle convention)
     const peak = async (lens, over) => {
       const sc = lab.makeScene('7', 'high'); Object.assign(sc.source, { length: 0.2, radius: 0.05 });
