@@ -15,7 +15,9 @@ function makeScene(lamp, beam, opts) {
   for (const g of ['A', 'B', 'C']) sc.groups[g].enabled = g === 'A';
   sc.groups.A.surfaces = [];
   RF.SourcePresets.apply(sc.source, beam === 'low' ? 'h4-low' : 'h4-high');
-  Object.assign(sc.source, { pos: [0, 0, 0], axis: [1, 0, 0], roll: 0 });
+  // filament orientation (ASSUMED, no source found): 'transverse' = across the lamp axis, left-right (the classic sealed-beam coil: its length smears the beam sideways, where it is wanted);
+  // 'axial' = along the lamp axis (as in an H4 reflector headlamp: its length smears the beam vertically by up to ±8° at the rim)
+  Object.assign(sc.source, { pos: [0, 0, 0], axis: opts.filament === 'axial' ? [1, 0, 0] : [0, 1, 0], roll: 0 });
   // envelope: the lamp's bucket + lens (x forward), centred on the focus axis; sized from the solver's own layout at default settings
   const input = { source: sc.source };
   const s = { lamp: lamp, beam: beam, focal: 0, lowUp: 2.5, lowLeft: 1.5, lowFwd: 0 };
