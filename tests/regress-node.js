@@ -286,5 +286,36 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       ok('B12 [' + k + '] the preview worker\'s grids are the report\'s grids (fine and wide)', r.same.fine && r.same.wide);
     }
   }
+  // F4: curve objects (js/profile.js).  A profile is a chain of quadratic-Bézier segments; the engine still reads modeC.profile.
+  {
+    const P = RF.Profile, J = JSON.stringify, near = (a, b) => Math.abs(a - b) < 1e-9;
+    const old = [[0, 10], [5, 10.5], [9, 12], [12, 15]];
+    ok('F4 a point profile converts to a curve and flattens back to exactly the same points (lossless)', J(P.curveFlatten(P.curveFromPoints(old))) === J(old));
+    const cv = { nodes: [[0, 10], [8, 14]], bulge: [0.2] }, g = P.segGeom(cv.nodes[0], cv.nodes[1], 0.2), fl = P.curveFlatten(cv), mid = fl[fl.length >> 1];
+    ok('F4 the bend handle sits on the curve: the Bézier at t=1/2 is chord middle + bulge x chord along the left normal', near(mid[0], g.mid[0]) && near(mid[1], g.mid[1]) && near(P.kFromMid(cv.nodes[0], cv.nodes[1], g.mid), 0.2), J(mid));
+    ok('F4 the ends of a flattened curve are the nodes exactly', J(fl[0]) === J(cv.nodes[0]) && J(fl[fl.length - 1]) === J(cv.nodes[1]));
+    const sp = P.curveSplit(cv, 0), spl = P.curveFlatten(sp), onCurve = (p) => { let d = 1e9; for (let i = 0; i <= 4000; i++) { const t = i / 4000, u = 1 - t; d = Math.min(d, Math.hypot(u * u * 0 + 2 * u * t * g.ctrl[0] + t * t * 8 - p[0], u * u * 10 + 2 * u * t * g.ctrl[1] + t * t * 14 - p[1])); } return d; };
+    ok('F4 splitting a bent segment keeps its shape to within 0.05 mm on a 9 mm chord (each half is re-fitted as a symmetric arc, so not exact; 3 nodes, 2 bulges)', sp.nodes.length === 3 && sp.bulge.length === 2 && Math.max(...spl.map(onCurve)) < 0.05, 'max dev ' + Math.max(...spl.map(onCurve)).toExponential(2));
+    const dn = P.curveDeleteNode({ nodes: [[0, 0], [1, 1], [2, 0], [3, 1]], bulge: [0.1, 0.2, 0.3] }, 1);
+    ok('F4 deleting an interior node leaves one straight segment in its place', dn.nodes.length === 3 && J(dn.bulge) === J([0, 0.3]), J(dn));
+    // old scenes: no modeC.curve appears on load or serialize, and the sweep + trace is bit-identical
+    const st = C.createStore(RF.State.testScene()); st.scene.modeC.profile = RF.Profile.presetProfile(st.scene.modeC.preset, st.scene); st.scene.mode = 'C';
+    const wire = RF.State.serialize(st.scene), back = RF.State.deserialize(wire);
+    ok('F4 an old scene (profile points only) loads with no curve object and the same points', back.modeC.curve === undefined && J(back.modeC.profile) === J(st.scene.modeC.profile) && !/"curve"/.test(wire));
+    const trace = (sc) => { const surf = RF.Profile.build(sc).surfaces, Pp = RF.Engine.prepare(Object.assign({}, sc, { sim: Object.assign({}, sc.sim) }), surf), c = RF.Engine.runSync(Pp, 4000, 0); return J(surf).length + ':' + J(Array.from(c.grid || c.E || [])).length + ':' + J(surf); };
+    ok('F4 that old scene builds the same surfaces before and after the save/load round trip', trace(st.scene) === trace(back));
+    // a stored curve: valid while it still flattens to the profile, retired when the profile is rewritten, dropped if malformed, scaled with the scene
+    C.actions.setCurve(st, cv);
+    ok('F4 setCurve writes curve + flattened profile; curveLive trusts it', J(st.scene.modeC.profile) === J(P.curveFlatten(cv)) && !!P.curveLive(st.scene.modeC));
+    const sc2 = RF.State.deserialize(RF.State.serialize(st.scene));
+    ok('F4 a curve scene round-trips', J(sc2.modeC.curve) === J(cv) && !!P.curveLive(sc2.modeC));
+    const bad = JSON.parse(RF.State.serialize(st.scene)); bad.modeC.curve = { nodes: [[0, 0]], bulge: [] };
+    ok('F4 a malformed curve is dropped on load, the profile points stay', RF.State.deserialize(bad).modeC.curve === undefined && RF.State.deserialize(bad).modeC.profile.length === st.scene.modeC.profile.length);
+    const big = RF.State.scaleScene(st.scene, 2);
+    ok('F4 scaling the scene scales curve nodes and leaves the (dimensionless) bulge alone', J(big.modeC.curve.nodes) === J(cv.nodes.map(([r, z]) => [r * 2, z * 2])) && J(big.modeC.curve.bulge) === J(cv.bulge) && !!P.curveLive(big.modeC), J(big.modeC.curve));
+    C.actions.setProfile(st, old);
+    ok('F4 a point edit (setProfile) retires the curve', st.scene.modeC.curve === undefined && !P.curveLive(st.scene.modeC));
+    st.scene.modeC.curve = cv; ok('F4 a stale curve (profile no longer matches) is not trusted', !P.curveLive(st.scene.modeC));
+  }
   process.exitCode = fails ? 1 : 0;
 })();

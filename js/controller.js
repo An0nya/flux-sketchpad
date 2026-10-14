@@ -193,7 +193,7 @@
   function selStamp(s) { const id = s.scene.modeB.selected; return s.scene.modeB.stamps.find((t) => t.id === id) || null; }
   function applyPreset(s) {
     const mc = s.scene.modeC;
-    mc.profile = RF.Profile.presetProfile(mc.preset, s.scene);
+    mc.profile = RF.Profile.presetProfile(mc.preset, s.scene); delete mc.curve;
     if (mc.preset.kind === 'cpc') ensureBounces(s, 4, 'a CPC needs several wall bounces.');
   }
   function setResolution(s, res) {
@@ -298,7 +298,8 @@
     },
     deleteStamp(store, id) { const b = store.scene.modeB; b.stamps = b.stamps.filter((t) => t.id !== id); if (b.selected === id) b.selected = null; store.invalidate(['B']); },
     clearStamps(store) { store.scene.modeB.stamps = []; store.scene.modeB.selected = null; store.invalidate(['B']); },
-    setProfile(store, pts) { store.scene.modeC.profile = pts.map((p) => [p[0], p[1]]); store.invalidate(['C']); },
+    setProfile(store, pts) { store.scene.modeC.profile = pts.map((p) => [p[0], p[1]]); delete store.scene.modeC.curve; store.invalidate(['C']); },
+    setCurve(store, cv) { const mc = store.scene.modeC; mc.curve = { nodes: cv.nodes.map((p) => [p[0], p[1]]), bulge: cv.bulge.slice() }; mc.profile = RF.Profile.curveFlatten(mc.curve); store.invalidate(['C']); },
     applyPreset(store) { applyPreset(store); store.invalidate(['C']); },
     addLens(store, kind) {
       const ids = new Set(store.scene.lenses.map((l) => l.id)); let k = 1; while (ids.has('l' + k)) k++;

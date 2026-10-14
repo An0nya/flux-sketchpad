@@ -126,6 +126,9 @@
     const keep = (list, path, ok) => { arr(list, path); return list.filter(ok); };
     sc.modeB.stamps = keep(sc.modeB.stamps, 'modeB.stamps', isObj);
     sc.modeC.profile = keep(sc.modeC.profile, 'modeC.profile', (p) => Array.isArray(p) && p.length >= 2 && isFinite(p[0]) && isFinite(p[1]) && typeof p[0] === 'number' && typeof p[1] === 'number');
+    { const cv = sc.modeC.curve;           // optional (curve editor); anything malformed is dropped, the profile points remain
+      if (cv !== undefined && !(isObj(cv) && Array.isArray(cv.nodes) && Array.isArray(cv.bulge) && cv.nodes.length >= 2 && cv.bulge.length === cv.nodes.length - 1 &&
+        cv.nodes.every((p) => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]) && typeof p[0] === 'number' && typeof p[1] === 'number') && cv.bulge.every((b) => typeof b === 'number' && isFinite(b)))) delete sc.modeC.curve; }
     sc.lenses = keep(sc.lenses, 'lenses', (l) => isObj(l) && isObj(l.params));
     sc.emitters = keep(sc.emitters, 'emitters', isObj); sc.emitters.forEach((e, i) => src(e, 'emitters[' + i + ']'));
     obj(sc.groups, 'groups');
@@ -226,6 +229,7 @@
     for (const L of sc.lenses) for (const k of LEN) if (typeof L.params[k] === 'number') L.params[k] = Math.abs(fl(L.params[k]));
     const mc = sc.modeC;
     mc.profile = mc.profile.map(([r, z]) => [Math.abs(fl(r)), fl(z)]);
+    if (mc.curve) mc.curve.nodes = mc.curve.nodes.map(([r, z]) => [Math.abs(fl(r)), fl(z)]);   // bulge is a ratio: unchanged
     for (const k of ['f', 'rim', 'depth', 'a1']) if (typeof mc.preset[k] === 'number') mc.preset[k] = Math.abs(fl(mc.preset[k]));
     mc.extrudeLength = Math.abs(fl(mc.extrudeLength));
     const fu = mapScene.fu || ((u) => fl(u));

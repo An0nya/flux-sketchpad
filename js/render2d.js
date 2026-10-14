@@ -225,12 +225,35 @@
     drawLine(pts, [], mc.interaction === 'refract' ? '#8fb8ff' : '#b48cf0');
     // front-side ticks (left normal, flipped if requested)
     ctx.strokeStyle = 'rgba(255,214,120,0.8)'; ctx.lineWidth = 1;
-    for (let i = 0; i + 1 < pts.length; i++) {
-      const [r0, z0] = pts[i], [r1, z1] = pts[i + 1], L = Math.hypot(r1 - r0, z1 - z0); if (!L) continue;
+    const tick = (r0, z0, r1, z1) => {
+      const L = Math.hypot(r1 - r0, z1 - z0); if (!L) return;
       let nx = -(z1 - z0) / L, ny = (r1 - r0) / L; if (mc.flipFacing) { nx = -nx; ny = -ny; }
       const m = view.toScreen((r0 + r1) / 2, (z0 + z1) / 2);
       ctx.beginPath(); ctx.moveTo(m[0], m[1]); ctx.lineTo(m[0] + nx * 7, m[1] - ny * 7); ctx.stroke();
+    };
+    const cv = opts.curve;
+    if (cv) {
+      // curve mode: one tick per curve segment (at its middle), node handles (circles), a bend handle at each segment's middle (diamond)
+      const handles = [], P = RF.Profile;
+      for (let i = 0; i + 1 < cv.nodes.length; i++) {
+        const g = P.segGeom(cv.nodes[i], cv.nodes[i + 1], cv.bulge[i] || 0);
+        const sp = P.segPoints(cv.nodes[i], cv.nodes[i + 1], cv.bulge[i] || 0), m = Math.floor(sp.length / 2);
+        tick(sp[m - 1][0], sp[m - 1][1], sp[m][0], sp[m][1]);
+        if (i === opts.selSeg) { ctx.strokeStyle = 'rgba(255,214,120,0.9)'; ctx.lineWidth = 4; ctx.beginPath(); sp.forEach((p, j) => { const q = view.toScreen(p[0], p[1]); if (j) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }); ctx.globalAlpha = 0.35; ctx.stroke(); ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(255,214,120,0.8)'; ctx.lineWidth = 1; }
+        if (cv.bulge[i]) { const c = view.toScreen(g.ctrl[0], g.ctrl[1]), a = view.toScreen(cv.nodes[i][0], cv.nodes[i][1]), b = view.toScreen(cv.nodes[i + 1][0], cv.nodes[i + 1][1]);
+          ctx.setLineDash([2, 3]); ctx.strokeStyle = 'rgba(180,140,240,0.45)'; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]); ctx.strokeStyle = 'rgba(255,214,120,0.8)'; }
+        const q = view.toScreen(g.mid[0], g.mid[1]); handles.push({ kind: 'mid', i, x: q[0], y: q[1] });
+      }
+      cv.nodes.forEach((p, i) => { const q = view.toScreen(p[0], p[1]); handles.push({ kind: 'node', i, x: q[0], y: q[1] }); });
+      for (const h of handles) {
+        ctx.beginPath();
+        if (h.kind === 'mid') { const R = h.i === opts.selSeg ? 6 : 5; ctx.moveTo(h.x, h.y - R); ctx.lineTo(h.x + R, h.y); ctx.lineTo(h.x, h.y + R); ctx.lineTo(h.x - R, h.y); ctx.closePath(); ctx.fillStyle = h.i === opts.selSeg ? '#ffd678' : '#d9c4f7'; }
+        else { ctx.arc(h.x, h.y, h.i === sel ? 7 : 5, 0, 2 * Math.PI); ctx.fillStyle = h.i === sel ? '#ffd678' : '#b48cf0'; }
+        ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.stroke();
+      }
+      return { handles };
     }
+    for (let i = 0; i + 1 < pts.length; i++) tick(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
     const handles = pts.map((p, i) => { const q = view.toScreen(p[0], p[1]); return { i, x: q[0], y: q[1] }; });
     for (const h of handles) { ctx.beginPath(); ctx.arc(h.x, h.y, h.i === sel ? 7 : 5, 0, 2 * Math.PI); ctx.fillStyle = h.i === sel ? '#ffd678' : '#b48cf0'; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.stroke(); }
     return { handles };
