@@ -196,7 +196,8 @@
    * layer: 'objects' (the animated view, drive-anim.js): trace only the pixels objects can touch, and no ground or sky. Each pixel is
    * then (r, g, b = the objects' luminance already weighted by their coverage, a = the share of the pixel they cover), so that
    * final = rgb + (1 − a) · ground. Pass rgba (Float32Array 4·w·h) to have them written there (only the touched tiles; the caller
-   * clears) and get rows [y0, y1) back; without it the result has rgb + cov. Not set: the whole picture, as always.                 */
+   * clears) and get rows [y0, y1) back; without it the result has rgb + cov. Not set: the whole picture, as always.
+   * tight: tile each object by the projected corners of its box, not its bounding sphere (fewer pixels traced; the picture is the same wherever an object is).  */
   function render(o) {
     const w = o.w, h = o.h, tanH = Math.tan(o.hfov * D2R / 2), tanV = tanH * h / w, eye = o.eye, ex = eye[0], ey = eye[1], ez = eye[2];
     const lamps = o.lamps, nl = lamps.length, lut = o.lut, conv = o.conv || 'A', lc = o.lampRGB || [1, 1, 1], A = o.arc || null, Lw = o.lane;
@@ -216,6 +217,16 @@
       if (d > R * 1.001 && qx > 0.05) {
         const ux = (w / 2) * (1 + (-qy / qx) / tanH), vy = (h / 2) * (1 - (qz / qx) / tanV), rp = Math.tan(Math.asin(Math.min(1, R / d))) / tanH * w / 2 * 1.15 + 2;   // centre and a generous radius, px
         x0 = Math.max(0, Math.floor((ux - rp) / TS)); x1 = Math.min(tw - 1, Math.floor((ux + rp) / TS)); y0 = Math.max(0, Math.floor((vy - rp) / TS)); y1 = Math.min(th - 1, Math.floor((vy + rp) / TS));
+      }
+      if (o.tight) {        // the box around the object instead of its bounding sphere (a post close by is thin, its sphere fills the picture): the projected corners
+        const b = ob.k === 'cyl' ? [ob.x - ob.r, ob.x + ob.r, ob.y - ob.r, ob.y + ob.r, ob.z0, ob.z1] : ob.k === 'ell' ? [ob.x - ob.rx, ob.x + ob.rx, ob.y - ob.ry, ob.y + ob.ry, ob.z - ob.rz, ob.z + ob.rz]
+          : ob.k === 'box' ? (() => { const R = Math.hypot(ob.hx, ob.hy); return [ob.x - R, ob.x + R, ob.y - R, ob.y + R, ob.z0, ob.z1]; })() : [ob.x - ob.r, ob.x + ob.r, ob.y - ob.r, ob.y + ob.r, ob.z - ob.r, ob.z + ob.r];
+        let ux0 = Infinity, ux1 = -Infinity, vy0 = Infinity, vy1 = -Infinity, ok = true;
+        for (let c = 0; c < 8 && ok; c++) {
+          const cx = (c & 1 ? b[1] : b[0]) - ex, cy = (c & 2 ? b[3] : b[2]) - ey, cz = (c & 4 ? b[5] : b[4]) - ez; if (cx <= 0.05) { ok = false; break; }
+          const ux = (w / 2) * (1 + (-cy / cx) / tanH), vy = (h / 2) * (1 - (cz / cx) / tanV); if (ux < ux0) ux0 = ux; if (ux > ux1) ux1 = ux; if (vy < vy0) vy0 = vy; if (vy > vy1) vy1 = vy;
+        }
+        if (ok) { x0 = Math.max(x0, Math.floor((ux0 - 2) / TS)); x1 = Math.min(x1, Math.floor((ux1 + 2) / TS)); y0 = Math.max(y0, Math.floor((vy0 - 2) / TS)); y1 = Math.min(y1, Math.floor((vy1 + 2) / TS)); }
       }
       for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) (tiles[ty * tw + tx] || (tiles[ty * tw + tx] = [])).push(idx);
     });

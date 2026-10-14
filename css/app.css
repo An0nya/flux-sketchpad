@@ -210,6 +210,7 @@ body.mode-D .canvas-wrap.drive .drive-tools { display: flex; }
 /* animated drive view (drive-anim.js): the GL canvas sits over the still picture, its controls along the bottom; the large view fills the work column (everything but the sidebar) */
 .work-col { position: relative; }
 .drive-gl { position: absolute; pointer-events: none; z-index: 1; }
+.canvas-wrap:not(.drive) > .drive-gl, .canvas-wrap:not(.drive) > .drive-anim-tools { display: none; }
 .drive-anim-tools { display: none; position: absolute; left: 4px; right: 4px; bottom: 4px; z-index: 2; gap: 4px; flex-wrap: wrap; pointer-events: none; align-items: center; font-size: 11px; color: #fff; }
 body.mode-D .canvas-wrap.drive .drive-anim-tools:not([hidden]), .dp-stage .drive-anim-tools:not([hidden]) { display: flex; }
 .drive-anim-tools button { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); pointer-events: auto; }

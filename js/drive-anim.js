@@ -15,7 +15,7 @@
 (function (root) {
   'use strict';
   const RF = root.RF || (root.RF = {}), D = RF.Drive;
-  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, MAX_SIM = 1600, ANIM_SCENES = { road: 1, forest: 1 };
+  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, MAX_SIM = 1600, ANIM_SCENES = { road: 1 };
   const CLASSES = [['posts', 'posts', 'Delineator posts with reflectors'], ['signs', 'signs', 'Road signs (retroreflective sheeting)'], ['people', 'people', 'Pedestrians'], ['animals', 'deer', 'Deer, with retroreflecting eyes'], ['veg', 'trees', 'Trees and bushes at the roadside'], ['obstacle', 'crates', 'A dark crate on the road every 150 m (the hard target: 3 % reflectance, nothing retroreflective)']];
 
   // ---------------------------------------------------------------- CPU: scenery, ground, composition (pure; tests use these)
@@ -51,7 +51,7 @@
   }
   // the objects at `dist`, rendered into rgba (4·w·h, cleared by the caller where it was written last); → rows [y0, y1) touched
   function objects(p, dist, rgba, ss) {
-    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', rgba, scene: { objects: place(p.src, dist, p.A), markings: [], verge: p.src.verge } }, camOf(p)));
+    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, scene: { objects: place(p.src, dist, p.A), markings: [], verge: p.src.verge } }, camOf(p)));
     return r.rows;
   }
   // coverage of a pixel's footprint [s − h, s + h] by the stripe pattern at s + dist (drive.js covLon with the pattern shifted)
@@ -233,12 +233,14 @@ void main() {
   function frame() {
     const ui = V.ui, st = S(ui), I = info(), o = I.o, t0 = performance.now(), W = V.p.w, pb = V.band, had = pb[1] > pb[0];
     if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
-    const rows = objects(V.p, st.dist, V.rgba, W > 1100 ? 1 : 2);
+    const rows = objects(V.p, st.dist, V.rgba, W > 1100 ? 1 : (V.ss || 2));
     const t1 = performance.now();
+    // samples per pixel for the objects: 2×2 where it is cheap; one while a big object is close (the cost is its area) and until things are calm again
+    if (W <= 1100) { if ((V.ss || 2) === 2 && t1 - t0 > 20) { V.ss = 1; V.calm = 0; } else if (V.ss === 1 && t1 - t0 < 5) { if (++V.calm > 20) V.ss = 2; } else V.calm = 0; }
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
     V.gl.draw({ hfov: o.fov, dist: st.dist, A: I.A, pat: V.g.pat, k: exposure(), glare: +o.glare || 0, flip: I.mirrored });
-    const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++;
+    const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
     ui.dvAnimFrames = V.frames;
   }
   function layout() {
@@ -246,8 +248,11 @@ void main() {
     if (V.canvas.width !== cw || V.canvas.height !== ch) { V.canvas.width = cw; V.canvas.height = ch; }
     cs.left = sz.left + 'px'; cs.top = sz.top + 'px'; cs.width = sz.cssW + 'px'; cs.height = sz.cssH + 'px'; return sz;
   }
+  // the large view belongs to the Spec Result → Drive view: leave the mode or the display and it goes
+  const popValid = (ui) => ui.store && ui.store.scene.mode === 'D' && ui.display === 'drive';
   function tick(t) {
     V.raf = 0; const ui = V.ui, st = S(ui);
+    if (st.popout && !popValid(ui)) { closePop(ui); return; }
     if (!visible() || !st.playing || !(st.view === 'anim' || st.popout)) { V.suspended = true; return; }
     const dt = V.last ? Math.min(0.1, (t - V.last) / 1000) : 0; V.last = t;
     const v = (+info().o.speed || 50) / 3.6; st.total += v * dt; st.dist = (st.dist + v * dt) % PERIOD;
@@ -277,7 +282,7 @@ void main() {
   }
   function labels(ui) {
     const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
-    for (const b of q('[data-anim="animate"]')) { b.setAttribute('aria-pressed', String(st.view === 'anim')); b.disabled = !sup; b.title = sup ? 'Animate: drive down the road. Off = the still picture.' : 'Animation covers the open road and the forest road; city and intersection stay still'; }
+    for (const b of q('[data-anim="animate"]')) { b.setAttribute('aria-pressed', String(st.view === 'anim')); b.disabled = !sup; b.title = sup ? 'Animate: drive down the road. Off = the still picture.' : 'Animation covers the open road; the other scenes stay still (the forest traces ~270 ms a frame)'; }
     for (const b of q('[data-anim="popout"]')) { b.setAttribute('aria-pressed', String(st.popout)); b.disabled = !sup; b.textContent = st.popout ? '✕ close' : '⤢ large'; }
     if (!V.bar) return;
     V.bar.hidden = !(sup && (st.view === 'anim' || st.popout));
@@ -315,6 +320,7 @@ void main() {
   /* I: { rd, o (dvOpts), A (arc|null), mirrored, us, conv, lut () → the beam lookup, tm (the still picture's tone map), groundKey, setDV, toolbar } */
   function sync(ui, cv, I) {
     V.ui = ui; V.cv = cv; V.info = I; const st = S(ui);
+    if (st.popout && !popValid(ui)) closePop(ui);
     topButtons(ui, I.toolbar, I.setDV); bars(ui, I.setDV);
     if (!V.bar.parentElement) cv.parentElement.append(V.bar);
     if (!st.popout) mount(ui);
@@ -330,15 +336,17 @@ void main() {
     prepare(sz); frame();
     if (st.playing) go(); else stop();
   }
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (V.ui) { if (document.visibilityState === 'hidden') stop(); else if (V.info) { V.ui.redrawSpec(); } } });
+  // a hidden tab stops the loop; showing it again redraws (which restarts it)
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (V.ui) { if (document.visibilityState === 'hidden') stop(); else if (V.info) { if (S(V.ui).popout && !popValid(V.ui)) closePop(V.ui); else V.ui.redrawSpec(); } } });
 
   // ---------------------------------------------------------------- numbers for tests and the report
+  const pct = (a, q) => { if (!a || !a.length) return 0; const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * q))]; };
   function stats() {
     const t = V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); iv.sort((a, b) => a - b);
     const med = iv.length ? iv[iv.length >> 1] : 0, c = V.cpu;
-    return { frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, ss: V.p && (V.p.w > 1100 ? 1 : 2) };
+    return { frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), ss: V.p && V.p.w > 1100 ? 1 : (V.ss || 2) };
   }
-  function resetStats() { V.times = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
+  function resetStats() { V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
   function bench(n) {
     const ui = V.ui, st = S(ui), d0 = st.dist; resetStats(); const t0 = performance.now();
