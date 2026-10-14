@@ -491,7 +491,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
       try {
         if (!has()) return false;
         const ad = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }); if (!ad) return false;
-        const lim = ad.limits;
+        const lim = ad.limits; st.limits = { maxBufferSize: lim.maxBufferSize, maxStorageBufferBindingSize: lim.maxStorageBufferBindingSize };
         const dev = await ad.requestDevice({ requiredLimits: { maxStorageBufferBindingSize: lim.maxStorageBufferBindingSize, maxBufferSize: lim.maxBufferSize } });
         dev.lost.then(() => { st.lost = true; st.device = null; st.pipeline = null; st.init = null; });
         const mod = dev.createShaderModule({ code: WGSL });
@@ -676,9 +676,37 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
     return false;
   }
 
-  // the user's choice (Simulation → Advanced → GPU trace, remembered per browser): a property of the machine, not the scene
-  function pref() { try { return typeof localStorage !== 'undefined' && localStorage.getItem('flux/gpu') === '1'; } catch (e) { return false; } }
+  // the user's choice (Simulation → Advanced → GPU trace, remembered per browser): a property of the machine, not the scene.
+  // Never chosen → ON wherever WebGPU exists (it only runs once an adapter was obtained: use() needs ready()); '0' stays off.
+  function userChoice() { try { const v = typeof localStorage !== 'undefined' ? localStorage.getItem('flux/gpu') : null; return v === '1' ? true : v === '0' ? false : null; } catch (e) { return null; } }
+  function pref() { const c = userChoice(); return c === null ? has() : c; }
   function setPref(on) { try { localStorage.setItem('flux/gpu', on ? '1' : '0'); } catch (e) { /* ignore */ } }
+  /* Per-device ray cap, pure: env = { gpu: bool, limits: adapter limits, deviceMemory: GB (navigator.deviceMemory, Chrome only, ≤ 8),
+   * mobile: bool } → { cap: rays per trace (Infinity = none), batch: most rays in one GPU call, why }.  Each signal can only lower
+   * the cap.  The numbers are judgement, not measurements of any phone: 150 k on a touch-first device, 100 k / 250 k at ≤ 2 / ≤ 4 GB
+   * reported memory, 250 k when the storage-buffer limit is the WebGPU spec's default floor (128 MiB).  A call allocates the
+   * accumulator plus 2 × 20 B/ray of hit records, so the batch is kept to a twentieth of the smaller buffer limit (≥ 64 k, ≤ 8 M). */
+  function rayCap(env) {
+    env = env || {}; const lim = env.gpu ? env.limits || null : null, mem = +env.deviceMemory || 0;
+    let cap = Infinity, why = ''; const take = (c, w) => { if (c < cap) { cap = c; why = w; } };
+    if (env.mobile) take(150000, 'touch device');
+    if (mem > 0 && mem <= 2) take(100000, mem + ' GB device memory'); else if (mem > 0 && mem <= 4) take(250000, mem + ' GB device memory');
+    const bind = lim ? Math.min(lim.maxStorageBufferBindingSize || Infinity, lim.maxBufferSize || Infinity) : Infinity;
+    if (bind <= 134217728) take(250000, 'GPU buffer limit ' + Math.round(bind / 1048576) + ' MiB');
+    let batch = isFinite(bind) ? Math.max(65536, Math.min(8e6, Math.floor(bind / 40))) : 8e6;
+    if (env.mobile) batch = Math.min(batch, 262144);
+    return { cap, batch, why };
+  }
+  function deviceEnv() {
+    const n = typeof navigator !== 'undefined' ? navigator : {}, mm = (q) => { try { return typeof matchMedia === 'function' && matchMedia(q).matches; } catch (e) { return false; } };
+    const mobile = !!(n.userAgentData && n.userAgentData.mobile) || /Android|iPhone|iPad|iPod|Mobile/i.test(n.userAgent || '') || (mm('(pointer: coarse)') && !mm('(hover: hover)'));
+    return { gpu: !!st.limits, limits: st.limits, deviceMemory: n.deviceMemory, mobile };
+  }
+  // this device's cap, and the user's override (Simulation → Advanced; localStorage flux/rayCap = 'off', per browser)
+  function rayLimit() { const r = rayCap(deviceEnv()); let off = false; try { off = typeof localStorage !== 'undefined' && localStorage.getItem('flux/rayCap') === 'off'; } catch (e) { /* ignore */ } return Object.assign(r, { off }); }
+  function setRayCapOff(off) { try { localStorage.setItem('flux/rayCap', off ? 'off' : 'on'); } catch (e) { /* ignore */ } }
+  const capRays = (n) => { const r = rayLimit(); return r.off ? n : Math.min(n, r.cap); };
+  const batchMax = () => rayLimit().batch;
   // on: the page follows the preference; a worker (no localStorage) is switched by its host per request (enable)
   let forced = null;
   const enable = (on) => { forced = on === null || on === undefined ? null : !!on; };
@@ -686,5 +714,5 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
   // the page loop's question: trace this context on the GPU now?
   const use = (ctx) => on() && ready() && !ctx.gpuError && supports(ctx.P) === true;
 
-  RF.GpuTrace = { init, ready, supports, traceRange, step, use, on, enable, pref, setPref, info: () => st.info, error: () => st.error || null, available: has, WGSL };
+  RF.GpuTrace = { init, ready, supports, traceRange, step, use, on, enable, pref, userChoice, setPref, rayCap, rayLimit, setRayCapOff, capRays, batchMax, info: () => st.info, error: () => st.error || null, available: has, WGSL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
