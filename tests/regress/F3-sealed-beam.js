@@ -31,6 +31,12 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok(ex + ': worker solve for fluted / plain / none verifies clean and the designs differ (flutes >> plain > none)',
       ['fluted', 'plain', 'none'].every((k) => n[k].errors === 0 && n[k].env === 0 && n[k].by === 'sealed-beam-v1') && n.fluted.n > 100 && n.plain.n < 10 && n.none.n < 5 && n.fluted.n > n.plain.n && n.plain.n > n.none.n && n.fluted.bounces >= 3, JSON.stringify(n));
   }
+  // the tuner runs in the worker too (Spec mode: tools.trace({ spec: true }) from inside the solve)
+  await page.evaluate(async () => { RF.UI.loadScene(RF.State.deserialize(await (await fetch('examples/sealed-beam-7in-low.json')).text()), 'tune'); await new Promise((r) => setTimeout(r, 300)); const sc = RF.UI.store.scene; sc.solverSettings = { 'sealed-beam-v1': Object.assign({}, sc.solve.settings, { lens: 'fluted', tune: true, tuneEvals: 6, tuneRays: 40000 }) }; RF.UI.generateA(); });
+  await page.waitForFunction(() => RF.UI.solving, null, { timeout: 10000 }).catch(() => {});
+  await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 180000 });
+  const tn = await page.evaluate(() => { const r = RF.UI.store.reports.A; return { notes: ((r && r.warnings) || []).join(' | '), n: RF.UI.store.scene.groups.A.surfaces.length, err: r && r.facts ? r.facts.errors.length : -1 }; });
+  ok('tuner runs inside the worker (6 candidates, 40k rays) and returns a verified lens', tn.n > 100 && tn.err === 0 && /tuner: 7 traces/.test(tn.notes), tn.notes.slice(0, 200) + ' (' + tn.n + ' surfaces)');
   ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | ').slice(0, 300));
   await browser.close(); process.exitCode = fails ? 1 : 0;
 })().catch((e) => { console.error(e); process.exit(1); });
