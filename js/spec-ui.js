@@ -841,7 +841,7 @@
     return px.toFixed(1) + ' m ahead, ' + Math.abs(py).toFixed(1) + ' m ' + (py >= 0 ? 'left' : 'right') + ' of lane centre: ' + rd.mdl.lux([px, py, z], up ? 'up' : 'car').toFixed(1) + ' lx';
   }
   // ---------------------------------------------------------------- Drive: the driver's-eye view (js/drive.js, js/drive-scenes.js)
-  const DV_DEF = { scene: 'road', wet: false, expMode: 'fixed', ev: 1, glare: 0.3, people: true, animals: true, signs: true, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60 };
+  const DV_DEF = { scene: 'road', wet: false, expMode: 'fixed', ev: 1, glare: 0.3, people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60 };
   const DV_GLARE = [[0, 'off'], [0.3, 'low'], [1, 'high']];
   const DV_SMOOTH = { sharp: [0.2, 0.2, 1], smooth: [0.5, 0.15, 2], soft: [1.0, 0.3, 3] };    // kernel half-widths: horizontal, vertical (°), wide-grid bins
   function dvOpts(ui) {
@@ -855,9 +855,9 @@
   }
   const fmtL = (x) => x >= 100 ? Math.round(x) + '' : x >= 10 ? x.toFixed(0) : x >= 1 ? x.toFixed(1) : x >= 0.1 ? x.toFixed(2) : x.toPrecision(2);
   function driveTools(ui, cv) {
-    const wrap = cv.parentElement; let bar = wrap.querySelector('.drive-tools');
+    const wrap = cv.parentElement; let bar = ui.driveBar || wrap.querySelector('.drive-tools');       // the bar moves into the large view (drive-anim.js) and back
     if (!bar) {
-      bar = el('div', { class: 'drive-tools' });
+      bar = ui.driveBar = el('div', { class: 'drive-tools' });
       const btn = (k, title, fn) => { const b = el('button', { type: 'button', class: 'toggle', 'data-dv': k, title }); b.addEventListener('click', fn); bar.append(b); return b; };
       const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road, a city street' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)));
       sel.addEventListener('change', () => setDV(ui, 'scene', sel.value)); bar.append(sel);
@@ -876,7 +876,7 @@
       wrap.append(bar);
       const ro = el('div', { class: 'drive-readout' }); wrap.append(ro);
       cv.addEventListener('mousemove', (e) => {
-        if (ui.display !== 'drive' || !ui.driveShown) return;
+        if (ui.display !== 'drive' || !ui.driveShown || (ui.dvAnim && ui.dvAnim.view === 'anim')) { ro.textContent = ''; return; }       // the readout probes the still picture
         const r = cv.getBoundingClientRect(), d = ui.driveShown, x = (e.clientX - r.left - d.ox) / d.sc, y = (e.clientY - r.top - d.oy) / d.sc;
         if (x < 0 || y < 0 || x >= d.res.w || y >= d.res.h) { ro.textContent = ''; return; }
         const p = RF.Drive.probe(d.res, d.flip ? d.res.w - 1 - x : x, y);
@@ -906,10 +906,10 @@
     const cap = document.getElementById('right-caption'), cb = document.getElementById('colorbar'); cb.innerHTML = '';
     cap.textContent = 'Drive · what the driver sees · ' + RF.Drive.scenes[o.scene].label.toLowerCase() + ' · ' + (rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' m $1') + ' bend') + (o.wet ? ' · wet' : ' · dry');
     if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The drive view appears when the trace has been judged.', 14, 80); return; }
-    const road = rd.mdl.road, mirrored = md(ui).traffic === 'LHT', key = JSON.stringify([rd.laneDrive, o.scene, o.wet, o.people, o.animals, o.signs, o.oncoming && [o.onDist, o.onKcd], o.preceding && o.preDist, o.RL, o.ambient, o.smooth, o.res, o.fov, rv.shape]);
+    const road = rd.mdl.road, mirrored = md(ui).traffic === 'LHT', key = JSON.stringify([rd.laneDrive, o.scene, o.wet, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.oncoming && [o.onDist, o.onKcd], o.preceding && o.preDist, o.RL, o.ambient, o.smooth, o.res, o.fov, rv.shape]);
     if (!rd.drive || rd.drive.key !== key) {
       const t0 = performance.now(), sm = DV_SMOOTH[o.smooth] || DV_SMOOTH.smooth, lut = RF.Drive.lutFrom(rd.mkI(sm[0], sm[1], sm[2])), sp = parseShape(rv.shape), A = sp ? RF.Road.arc(sp.R, sp.dir) : null;
-      const scene = RF.Drive.buildScene(o.scene, { Lw: rd.laneDrive, A, us: !/^ece/.test(md(ui).preset || ''), seed: 7 }, { people: o.people, animals: o.animals, signs: o.signs, oncoming: o.oncoming ? { dist: o.onDist, kcd: o.onKcd } : null, preceding: o.preceding ? { dist: o.preDist } : null });
+      const scene = RF.Drive.buildScene(o.scene, { Lw: rd.laneDrive, A, us: !/^ece/.test(md(ui).preset || ''), seed: 7 }, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, oncoming: o.oncoming ? { dist: o.onDist, kcd: o.onKcd } : null, preceding: o.preceding ? { dist: o.preDist } : null });
       const W = o.res, H = Math.round(W * 9 / 16);
       const res = RF.Drive.render({ w: W, h: H, hfov: o.fov, eye: [-2.0, 0.37, 1.2], lamps: rd.mdl.lamps, lut, conv: (ui.spec.G && ui.spec.G.conv) || md(ui).conv || 'A', arc: A, lane: rd.laneDrive, scene, look: { wet: o.wet, RL: o.RL / 1000, ambient: o.ambient } });
       rd.drive = { key, res, ms: performance.now() - t0, tmKey: '' };
@@ -924,6 +924,9 @@
     if (mirrored) { ctx.save(); ctx.translate(ox + W * sc, oy); ctx.scale(-sc, sc); ctx.drawImage(D.img, 0, 0); ctx.restore(); } else ctx.drawImage(D.img, ox, oy, W * sc, H * sc);
     ui.driveShown = { res: D.res, tm: D.tm, ox, oy, sc, flip: mirrored };
     driveTools(ui, cv);      // the EV button shows the white level of THIS picture
+    if (RF.DriveAnim) RF.DriveAnim.sync(ui, cv, { rd, o, A: parseShape(rv.shape) ? RF.Road.arc(parseShape(rv.shape).R, parseShape(rv.shape).dir) : null, mirrored, us: !/^ece/.test(md(ui).preset || ''), conv: (ui.spec.G && ui.spec.G.conv) || md(ui).conv || 'A', tm: D.tm, setDV: (u, k, v, quiet) => { if (quiet) { dvOpts(u)[k] = v; try { localStorage.setItem('flux/driveView', JSON.stringify(u.dvOpts)); } catch (e) { /* ignore */ } } else setDV(u, k, v); },
+      lut: () => { const sm = DV_SMOOTH[o.smooth] || DV_SMOOTH.smooth; if (!rd.animLut || rd.animLut.k !== o.smooth) rd.animLut = { k: o.smooth, lut: RF.Drive.lutFrom(rd.mkI(sm[0], sm[1], sm[2])) }; return rd.animLut.lut; },
+      groundKey: JSON.stringify([rd.laneDrive, o.scene, o.wet, o.RL, o.ambient, o.smooth, o.fov, rv.shape, mirrored]), toolbar: ui.driveBar });
     cb.append(el('div', { class: 'cb-labels', title: 'Fixed: EV 0 puts 10 cd/m² at display white and each stop doubles it, so two designs at the same EV are comparable. Auto: the geometric mean of the lit pixels goes to mid grey (plus the EV offset). Hover the picture for the luminance under the pointer. Rendered in ' + Math.round(D.ms) + ' ms: ' + road.mountH.toFixed(2) + ' m lamps, ' + (road.two ? 'two' : 'one') + '.' }, el('span', {}, (o.expMode === 'auto' ? 'auto' : 'fixed') + ' exposure · display white = ' + fmtL(D.tm.white) + ' cd/m²')));
   }
   const driveReadout = (ui) => ui.driveShown ? 'Hover the picture for the luminance (cd/m²), distance and material under the pointer.' : '';
