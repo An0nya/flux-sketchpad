@@ -233,7 +233,7 @@ void main() {
   function frame() {
     const ui = V.ui, st = S(ui), I = info(), o = I.o, t0 = performance.now(), W = V.p.w, pb = V.band, had = pb[1] > pb[0];
     if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
-    const rows = objects(V.p, st.dist, V.rgba, W > 1100 ? 1 : (V.ss || 2));
+    const rows = objects(V.p, st.dist, V.rgba, V.pinSS || (W > 1100 ? 1 : (V.ss || 2)));
     const t1 = performance.now();
     // samples per pixel for the objects: 2×2 where it is cheap; one while a big object is close (the cost is its area) and until things are calm again
     if (W <= 1100) { if ((V.ss || 2) === 2 && t1 - t0 > 20) { V.ss = 1; V.calm = 0; } else if (V.ss === 1 && t1 - t0 < 5) { if (++V.calm > 20) V.ss = 2; } else V.calm = 0; }
@@ -344,7 +344,7 @@ void main() {
   function stats() {
     const t = V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); iv.sort((a, b) => a - b);
     const med = iv.length ? iv[iv.length >> 1] : 0, c = V.cpu;
-    return { frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), ss: V.p && V.p.w > 1100 ? 1 : (V.ss || 2) };
+    return { frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
   }
   function resetStats() { V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
