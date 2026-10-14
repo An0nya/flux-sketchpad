@@ -812,8 +812,8 @@
       const r = R2.drawProfile(cv, ui.vProf, sc, ui.profSel, false, { pairs: ui.profPairs !== false, curve: cvo, selSeg: ui.profSeg });
       ui.profHandles = r.handles;
       const info = document.getElementById('prof-info');
-      if (info && cvo) info.textContent = cvo.nodes.length + ' nodes · ' + (ui.profSeg >= 0 ? 'segment ' + (ui.profSeg + 1) + ' selected: drag the diamond to bend' : ui.profSel >= 0 ? 'node ' + (ui.profSel + 1) + ' selected' : 'drag a segment to move it · ends to extend · diamond to bend · tap empty space to extend');
-      else if (info) info.textContent = sc.modeC.profile.length < 2 ? 'Empty profile — tap to add points, or use “Apply preset to profile” in the sidebar.' : sc.modeC.profile.length + ' points · ' + (ui.profSel >= 0 ? 'point ' + (ui.profSel + 1) + ' selected' : 'tap empty space to add a point');
+      if (info && cvo) { info.textContent = cvo.nodes.length + ' nodes' + (ui.profSeg >= 0 ? ' · segment ' + (ui.profSeg + 1) : ui.profSel >= 0 ? ' · node ' + (ui.profSel + 1) : ''); info.title = 'Drag a segment to move it, an end to extend it, the diamond to bend it; tap empty space to extend the chain.'; }   // short on purpose: a wrapping line resizes the canvas mid-drag
+      else if (info) { info.title = ''; info.textContent = sc.modeC.profile.length < 2 ? 'Empty profile — tap to add points, or use “Apply preset to profile” in the sidebar.' : sc.modeC.profile.length + ' points · ' + (ui.profSel >= 0 ? 'point ' + (ui.profSel + 1) + ' selected' : 'tap empty space to add a point'); }
     }
     alignFigure('left-canvas', isPaint(sc.mode) ? ui.vLeft : sc.mode === 'B' ? ui.vPick : ui.vProf);
   }
@@ -1024,7 +1024,7 @@
         const nearest = (list, r) => { let best = null, bd = r; for (const k of list) { const d = Math.hypot(k.x - x, k.y - y); if (d < bd) { bd = d; best = k; } } return best; };
         if (m === 'B') { const k = nearest(ui.pickMarks, 16); if (k) return { kind: 'mark', id: k.id }; }
         if (m === 'C' && ui.curveNow()) {
-          const hd = nearest(ui.profHandles, 14); if (hd) return { kind: hd.kind, i: hd.i };
+          const hd = nearest(ui.profHandles, 11); if (hd) return { kind: hd.kind, i: hd.i };   // tighter than the point editor's 14: the body must stay grabbable between handles
           const sg = ui.curveSegAt(x, y); return sg >= 0 ? { kind: 'seg', i: sg } : null;
         }
         if (m === 'C') { const hd = nearest(ui.profHandles, 14); if (hd) return { kind: 'pt', i: hd.i }; }
@@ -1058,7 +1058,7 @@
           if (t && t.kind === 'pt') { ui.profSel = t.i; ui.sceneDirty = true; schedule(); return; }
           if (t && (t.kind === 'node' || t.kind === 'mid' || t.kind === 'seg')) { ui.profSel = t.kind === 'node' ? t.i : -1; ui.profSeg = t.kind === 'node' ? -1 : t.i; ui.sceneDirty = true; ui.refreshPanels(); schedule(); return; }
           if (ui.profCurve !== false) {                       // curve editor: a tap in empty space extends the chain
-            const c = ui.vProf.toContent(x, y), cv = ui.curveNow() || { nodes: [], bulge: [] }, np = ui.curveSnap([ui.store.scene.modeC.sweep === 'revolve' ? Math.max(0, c[0]) : c[0], c[1]], -1, cv);
+            const c = ui.vProf.toContent(x, y), cv = ui.curveNow() || RF.Profile.curveFromPoints(ui.store.scene.modeC.profile), np = ui.curveSnap([ui.store.scene.modeC.sweep === 'revolve' ? Math.max(0, c[0]) : c[0], c[1]], -1, cv);
             const nodes = cv.nodes.map((q) => q.slice()), bulge = cv.bulge.slice(); if (nodes.length) bulge.push(0); nodes.push(np);
             ui.profSel = nodes.length - 1; ui.profSeg = -1; ui.vProf.lockBounds = ui.vProf.bounds.slice();
             if (nodes.length < 2) C.actions.setProfile(ui.store, nodes); else C.actions.setCurve(ui.store, { nodes, bulge });
