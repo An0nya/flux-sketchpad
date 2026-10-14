@@ -192,13 +192,18 @@
   // ---------------------------------------------------------------- render
   /* o: { w, h, hfov (deg), eye [x,y,z], lamps [[x,y,z]…], lut, conv, lampRGB, arc (RF.Road.arc or null), lane (m), scene, look:
    *      { wet, RL (cd/m²/lx of white paint), ambient (lx) }, ss (samples per side where there are objects, default 2) }
-   * → { w, h, rgb: Float32Array (cd/m², linear RGB), depth (m, Infinity = sky), mat (index into keys), keys }                     */
+   * → { w, h, rgb: Float32Array (cd/m², linear RGB), depth (m, Infinity = sky), mat (index into keys), keys }
+   * layer: 'objects' (the animated view, drive-anim.js): trace only the pixels objects can touch, and no ground or sky. Each pixel is
+   * then (r, g, b = the objects' luminance already weighted by their coverage, a = the share of the pixel they cover), so that
+   * final = rgb + (1 − a) · ground. Pass rgba (Float32Array 4·w·h) to have them written there (only the touched tiles; the caller
+   * clears) and get rows [y0, y1) back; without it the result has rgb + cov. Not set: the whole picture, as always.                 */
   function render(o) {
     const w = o.w, h = o.h, tanH = Math.tan(o.hfov * D2R / 2), tanV = tanH * h / w, eye = o.eye, ex = eye[0], ey = eye[1], ez = eye[2];
     const lamps = o.lamps, nl = lamps.length, lut = o.lut, conv = o.conv || 'A', lc = o.lampRGB || [1, 1, 1], A = o.arc || null, Lw = o.lane;
     const look = Object.assign({ wet: false, RL: 0.2, ambient: 0 }, o.look), M = Object.assign(materials(look), o.mats || {}), scene = o.scene || { objects: [], markings: [], verge: ['gravel', 1.5, 'grass'] };
     const objs = scene.objects || [], cross = scene.cross || null, marks = scene.markings || [], vg = scene.verge || ['gravel', 1.5, 'grass'], ssN = o.ss || 2;
-    const rgb = new Float32Array(w * h * 3), depth = new Float32Array(w * h).fill(Infinity), matBuf = new Uint8Array(w * h);
+    const objOnly = o.layer === 'objects', rgba = objOnly && o.rgba ? o.rgba : null, cov = objOnly && !rgba ? new Float32Array(w * h) : null;
+    const rgb = rgba ? null : new Float32Array(w * h * 3), depth = objOnly ? null : new Float32Array(w * h).fill(Infinity), matBuf = objOnly ? null : new Uint8Array(w * h);
     const amb = look.ambient > 0 ? look.ambient : 0, skyL = amb * 0.012;       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
     const delta0 = 2 * tanH / w;                                              // radians per pixel
     // tiles of 16 px: which objects can touch them (by the bounding sphere's projection)
@@ -257,7 +262,7 @@
       else { const dOut = off < -Lw / 2 ? -Lw / 2 - off : off - 1.5 * Lw; mat = dOut < (vg[1] || 1.5) ? vg[0] : (vg[2] || vg[0]); }
       shade(px, py, 0, 0, 0, 1, M[mat], rest * kw, vx, vy, vz); if (rest > bestW) GM = M[mat].id;
     }
-    let sampleDepth = Infinity, sampleMat = MAT_ID.sky;
+    let sampleDepth = Infinity, sampleMat = MAT_ID.sky, covAcc = 0;
     // one ray through (fx, fy) in pixel units; adds weight k to the accumulators
     function sample(fx, fy, k, tileObjs, delta) {
       const u = fx / w * 2 - 1, v = 1 - fy / h * 2; let dx = 1, dy = -u * tanH, dz = v * tanV; const il = 1 / Math.sqrt(dx * dx + dy * dy + dz * dz); dx *= il; dy *= il; dz *= il;
@@ -272,19 +277,23 @@
         if (hnx * dx + hny * dy + hnz * dz > 0) { hnx = -hnx; hny = -hny; hnz = -hnz; }
         const key = typeof ob.mat === 'function' ? ob.mat({ x: px, y: py, z: pz, u: hu, face: hf }) : ob.mat;
         let m = M[key] || M.wall; if (ob.emit) m = ob.emitM && ob.emitBase === m ? ob.emitM : (ob.emitBase = m, ob.emitM = Object.assign({}, m, { emit: ob.emit, emitPow: ob.emitPow }));   // this object glows (a lamp: its own luminance); emitPow > 1 makes it directional (cos^n)
-        shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs);
+        shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs); covAcc += k;
         if (sampleDepth === Infinity) { sampleDepth = tbest; sampleMat = m.id; }
-      } else if (tg < Infinity && tg < 5000) {
+      } else if (objOnly) { /* the ground and the sky are the other layer's */ } else if (tg < Infinity && tg < 5000) {
         ground(ex + tg * dx, ey + tg * dy, tg, -dz, -dx, -dy, -dz, delta, k);
         if (sampleDepth === Infinity) { sampleDepth = tg; sampleMat = GM; }
       } else { const sl = skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(dz) * 8)); LR += k * sl; LG += k * sl; LB += k * sl; }
     }
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const tl = tiles[((y / TS) | 0) * tw + ((x / TS) | 0)], n = tl ? ssN : 1, k = 1 / (n * n), delta = delta0 / n;
-      LR = LG = LB = 0; sampleDepth = Infinity; sampleMat = MAT_ID.sky;
+      if (objOnly && !tl) continue;
+      LR = LG = LB = 0; sampleDepth = Infinity; sampleMat = MAT_ID.sky; covAcc = 0;
       for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) sample(x + (i + 0.5) / n, y + (j + 0.5) / n, k, tl, delta);
-      const q = y * w + x; rgb[3 * q] = LR; rgb[3 * q + 1] = LG; rgb[3 * q + 2] = LB; depth[q] = sampleDepth; matBuf[q] = sampleMat;
+      const q = y * w + x;
+      if (rgba) { rgba[4 * q] = LR; rgba[4 * q + 1] = LG; rgba[4 * q + 2] = LB; rgba[4 * q + 3] = covAcc; }
+      else { rgb[3 * q] = LR; rgb[3 * q + 1] = LG; rgb[3 * q + 2] = LB; if (cov) cov[q] = covAcc; else { depth[q] = sampleDepth; matBuf[q] = sampleMat; } }
     }
+    if (objOnly) { let y0 = th, y1 = -1; for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) if (tiles[ty * tw + tx]) { if (ty < y0) y0 = ty; if (ty > y1) y1 = ty; } return { w, h, rgb, cov, rgba, rows: y1 < 0 ? [0, 0] : [y0 * TS, Math.min(h, (y1 + 1) * TS)], hfov: o.hfov }; }
     return { w, h, rgb, depth, mat: matBuf, keys: MAT_KEYS, names: MAT_KEYS.map((k) => MAT_DEF[k].name), hfov: o.hfov };
   }
   const lumaOf = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
