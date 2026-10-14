@@ -200,7 +200,7 @@ All of the following are **outside the current GUI pass**:
 - Selectable solver algorithms; algorithm distinct from single-solve/auto-tune mode.
 - A worker for responsiveness, progress, and cancellation; small CPU worker pool
   for independent searches if profiling justifies it. This does not require WebGPU.
-- GPU compute: built 2026-10-11 as an opt-in WebGPU trace backend (same rays, f32; `GPU.md`). Three.js rendering does not automatically accelerate
+- GPU compute: built 2026-10-11 as a WebGPU trace backend (same rays, f32; default on for the page trace since F1; `GPU.md`). Three.js rendering does not automatically accelerate
   the JavaScript optical solver/tracer. Lit/reflective visual meshes are appealing
   but remain distinct from the physical ray calculation.
 - Higher static-scene ray counts / progressive accumulation and fast drag previews.

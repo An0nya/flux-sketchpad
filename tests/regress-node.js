@@ -14,6 +14,21 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   const p0 = paint(1000), g1 = RF.Modes.geometry(p0, R, 3); ok('G21 the latest painting is still served from the cache', RF.Modes.geometry(p0, R, 3) === g1); }
 
 (async () => {
+  // F1: the per-device ray cap is one pure function; fake limits (not any real phone's), loaded the way the page loads the file
+  {
+    require('vm').runInThisContext(require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'gpu-trace.js'), 'utf8'), { filename: 'gpu-trace.js' });
+    const cap = RF.GpuTrace.rayCap, MiB = 1048576;
+    const phone = cap({ gpu: true, mobile: true, deviceMemory: 4, limits: { maxBufferSize: 256 * MiB, maxStorageBufferBindingSize: 128 * MiB } });
+    const desk = cap({ gpu: true, mobile: false, deviceMemory: 8, limits: { maxBufferSize: 4096 * MiB, maxStorageBufferBindingSize: 2048 * MiB } });
+    const none = cap({ gpu: false, mobile: false }), noneMobile = cap({ gpu: false, mobile: true }), low = cap({ gpu: true, mobile: true, deviceMemory: 2, limits: { maxBufferSize: 256 * MiB, maxStorageBufferBindingSize: 128 * MiB } });
+    ok('F1 phone-like (touch, 4 GB, 128 MiB buffers): capped well under 500k, small batches', phone.cap === 150000 && phone.batch <= 262144, JSON.stringify(phone));
+    ok('F1 desktop-like (8 GB, GiB buffers): no cap, 8 M batch', desk.cap === Infinity && desk.batch === 8e6, JSON.stringify(desk));
+    ok('F1 no WebGPU, desktop: no cap (CPU path unchanged); touch device without WebGPU still capped', none.cap === Infinity && noneMobile.cap === 150000, JSON.stringify([none, noneMobile]));
+    ok('F1 a signal can only lower the cap (2 GB phone < 4 GB phone); empty env is uncapped', low.cap === 100000 && cap().cap === Infinity && cap({}).batch === 8e6, JSON.stringify(low));
+    ok('F1 batch stays within bounds for absurd limits', cap({ gpu: true, limits: { maxStorageBufferBindingSize: 1000 } }).batch === 65536);
+    ok('F1 no localStorage in Node: pref() is off without WebGPU (CPU), userChoice() null', RF.GpuTrace.pref() === false && RF.GpuTrace.userChoice() === null);
+    ok('F1 capRays passes a small request through and clamps nothing without a cap', RF.GpuTrace.capRays(500000) === 500000);
+  }
   // G06: a solve whose scene changed while it ran must be dropped, and the design stays marked out of date
   {
     const st = C.createStore(RF.State.testScene()); C.regenerateA(st);
