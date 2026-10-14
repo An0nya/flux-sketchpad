@@ -355,6 +355,7 @@ js/profile.js lenses.js   Mode C sweep + presets; lens presets
 js/feasibility.js     physical limits and binding constraint
 js/road.js            Spec mode's road: IIHS reach, bends (arc), regulation lamp height + lane by preset (pure)
 js/drive.js drive-scenes.js   Spec mode's driver's-eye view: luminance render, materials, exposure; open road / forest / city (pure)
+js/drive-anim.js              the animated Drive view (opt-in, open road): cached lit ground + CPU objects composed, glared and tone-mapped in WebGL2; the large view
 js/controller.js      control table + actions shared by the DOM and the checks
 js/render.js render2d.js  canvas renderers                                        (rendering)
 js/input.js           Pointer Events: drag, orbit, pinch, pan, wheel, tap          (input handling)
