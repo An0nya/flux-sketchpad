@@ -301,8 +301,10 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     // F2c: the same object at dist and dist + PERIOD is at the same spot (the scenery repeats exactly)
     { const a = DA.place(src, 12.5, null), b = DA.place(src, 12.5 + DA.PERIOD, null); let worst = 0; for (let i = 0; i < a.length; i++) worst = Math.max(worst, Math.abs(a[i].x - b[i].x), Math.abs(a[i].y - b[i].y)); ok('F2c place(dist) = place(dist + PERIOD)', worst < 1e-9, 'worst ' + worst); }
     // F2d: layered = whole. Ground + (objects layer) composed as the shader does, against the whole picture of the displaced world; outside the objects' tiles it matches to float rounding
-    for (const [name, A, dist] of [['straight', null, 0], ['straight', null, 37.3], ['250R bend', RF.Road.arc(250, 'right'), 37.3], ['150L bend', RF.Road.arc(150, 'left'), 111.7]]) {
-      const p = Object.assign({ A, src }, base), g = DA.ground(p), rgba = new Float32Array(4 * 160 * 90); DA.objects(p, dist, rgba, 2);
+    const srcUS = DA.source('road', 3.5, true, flags);      // US markings: nothing patterned, so the ground has no moving part at all
+    ok('F2d the US road has no patterned marking (ground = one layer), the EU road has the dashes', !srcUS.markings.some((m) => m.pat) && src.markings.some((m) => m.pat) && DA.ground(Object.assign({ A: null, src: srcUS }, base)).B === null);
+    for (const [S, tag, name, A, dist] of [[src, 'EU', 'straight', null, 0], [src, 'EU', 'straight', null, 37.3], [src, 'EU', '250R bend', RF.Road.arc(250, 'right'), 37.3], [src, 'EU', '150L bend', RF.Road.arc(150, 'left'), 111.7], [srcUS, 'US', 'straight', null, 37.3], [srcUS, 'US', '250R bend', RF.Road.arc(250, 'right'), 111.7]]) {
+      const src = S, p = Object.assign({ A, src }, base), g = DA.ground(p), rgba = new Float32Array(4 * 160 * 90); DA.objects(p, dist, rgba, 2);
       const comp = DA.composeCPU(p, g, rgba, dist), shift = (m) => m.pat ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { s0: m.pat.s0 - dist, s1: m.pat.s1 - dist }) }) : m;
       const scene = { objects: DA.place(src, dist, A), markings: src.markings.map(shift), verge: src.verge }, cam = Object.assign({ arc: A, scene }, base);
       const ref2 = D.render(cam), ref1 = D.render(Object.assign({}, cam, { ss: 1 }));
@@ -313,9 +315,9 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
         if (ref2.rgb[3 * q] === ref1.rgb[3 * q] && ref2.rgb[3 * q + 1] === ref1.rgb[3 * q + 1] && ref2.rgb[3 * q + 2] === ref1.rgb[3 * q + 2]) { nG++; gMax = Math.max(gMax, Math.abs(luma(comp, q) - luma(ref2.rgb, q))); }
       }
       const q50 = (a) => a.sort((x, y) => x - y)[a.length >> 1] || 0, qMax = (a) => a.length ? Math.max(...a) : 0;
-      ok('F2d layered = whole, ' + name + ' at ' + dist + ' m: ground outside the object tiles', nG > 5000 && gMax < 1e-3, nG + ' px, worst abs ' + gMax.toExponential(1) + ' cd/m²');
-      ok('F2d layered = whole, ' + name + ' at ' + dist + ' m: pixels an object covers fully', fRel.length > 5 && qMax(fRel) < 1e-4, fRel.length + ' px, worst relative ' + qMax(fRel).toExponential(1));
-      ok('F2d layered = whole, ' + name + ' at ' + dist + ' m: edge pixels (the ground behind them is 1 sample here, 2×2 there)', eRel.length > 5 && q50(eRel) < 0.05, eRel.length + ' px, median relative ' + (100 * q50(eRel)).toFixed(2) + ' %');
+      ok('F2d layered = whole, ' + tag + ' ' + name + ' at ' + dist + ' m: ground outside the object tiles', nG > 5000 && gMax < 1e-3, nG + ' px, worst abs ' + gMax.toExponential(1) + ' cd/m²');
+      ok('F2d layered = whole, ' + tag + ' ' + name + ' at ' + dist + ' m: pixels an object covers fully', fRel.length > 5 && qMax(fRel) < 1e-4, fRel.length + ' px, worst relative ' + qMax(fRel).toExponential(1));
+      ok('F2d layered = whole, ' + tag + ' ' + name + ' at ' + dist + ' m: edge pixels (the ground behind them is 1 sample here, 2×2 there)', eRel.length > 5 && q50(eRel) < 0.05, eRel.length + ' px, median relative ' + (100 * q50(eRel)).toFixed(2) + ' %');
     }
     // F2e: a class switched off takes only that class away; the rest of the scene is exactly where it was (the random stream is not touched)
     { const all = D.buildScene('road', { Lw: 3.5, A: null, us: false, seed: 7 }, {}).objects, key = (ob) => JSON.stringify([ob.k, ob.x, ob.y, ob.z, ob.z0, ob.z1]);

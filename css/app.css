@@ -208,7 +208,7 @@ body.mode-D .canvas-wrap.drive .drive-tools { display: flex; }
 .drive-tools button, .drive-tools select { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); pointer-events: auto; }
 .drive-readout { position: absolute; left: 6px; bottom: 6px; z-index: 2; font-size: 11px; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; font-variant-numeric: tabular-nums; }
 /* animated drive view (drive-anim.js): the GL canvas sits over the still picture, its controls along the bottom; the large view fills the work column (everything but the sidebar) */
-.work-col { position: relative; }
+.work-col:has(> .drive-popout) { position: relative; }          /* the large view is positioned against the work column; only while it is open */
 .drive-gl { position: absolute; pointer-events: none; z-index: 1; }
 .canvas-wrap:not(.drive) > .drive-gl, .canvas-wrap:not(.drive) > .drive-anim-tools { display: none; }
 .drive-anim-tools { display: none; position: absolute; left: 4px; right: 4px; bottom: 4px; z-index: 2; gap: 4px; flex-wrap: wrap; pointer-events: none; align-items: center; font-size: 11px; color: #fff; }
@@ -541,7 +541,7 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 /* Spec, Result pane NOT expanded: sized like Mode A's. The extra Spec controls (the view buttons Road / Drive / Far field and the toolbars over the map)
    show only when the pane is expanded; a faint hint says so after a moment.  Phones (tabbed panes, no ⤢) keep everything. */
 @media (min-width: 761px) {
-  body.mode-D .result-pane:not(.expanded) :is(.ff-tools, .road-tools, .drive-tools, .drive-anim-tools, [data-disp=road], [data-disp=drive], [data-disp=ff]) { display: none !important; }
+  body.mode-D .result-pane:not(.expanded) :is(.ff-tools, .road-tools, .drive-tools, .drive-anim-tools, .drive-gl, [data-disp=road], [data-disp=drive], [data-disp=ff]) { display: none !important; }
   body.mode-D .pair:not(.stacked) > .pane:not(.collapsed):not(.expanded) > figure.map > figcaption { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   body.mode-D .result-pane:not(.expanded):not(.collapsed) .canvas-wrap::after { content: 'Expand for more options'; position: absolute; left: 6px; bottom: 4px; z-index: 2; font-size: 11px; color: var(--faint);
     pointer-events: none; opacity: 0; animation: expand-hint .6s ease 5s forwards; }

@@ -196,7 +196,7 @@ void main() {
   const visible = () => {
     const ui = V.ui; if (!ui || !V.canvas || !V.info || typeof document === 'undefined') return false;
     if (document.visibilityState === 'hidden') return false;
-    if (!V.canvas.isConnected || !V.canvas.parentElement.offsetWidth || !V.canvas.parentElement.offsetHeight) return false;
+    if (!V.canvas.isConnected || !V.canvas.getClientRects().length) return false;          // collapsed pane, display: none (the canvas itself, not its parent)
     return S(ui).popout || (ui.display === 'drive' && ui.store.scene.mode === 'D');
   };
 
@@ -282,7 +282,7 @@ void main() {
   }
   function labels(ui) {
     const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
-    for (const b of q('[data-anim="animate"]')) { b.setAttribute('aria-pressed', String(st.view === 'anim')); b.disabled = !sup; b.title = sup ? 'Animate: drive down the road. Off = the still picture.' : 'Animation covers the open road; the other scenes stay still (the forest traces ~270 ms a frame)'; }
+    for (const b of q('[data-anim="animate"]')) { b.setAttribute('aria-pressed', String(st.view === 'anim')); b.disabled = !sup; b.title = sup ? 'Animate: drive down the road. Off = the still picture.' : 'Animation covers the open road; the other scenes stay still (their objects trace at 40–270 ms a frame, and the ground path animates one patterned marking)'; }
     for (const b of q('[data-anim="popout"]')) { b.setAttribute('aria-pressed', String(st.popout)); b.disabled = !sup; b.textContent = st.popout ? '✕ close' : '⤢ large'; }
     if (!V.bar) return;
     V.bar.hidden = !(sup && (st.view === 'anim' || st.popout));

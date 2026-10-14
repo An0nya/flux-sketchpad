@@ -1,7 +1,7 @@
 // F2: the animated Drive view and its large view (js/drive-anim.js).
-// node tests/regress/F2-drive-anim.js [port]   (needs a server: python3 tests/serve.py <port>; F2_REAL_GPU=1 uses the real GPU browser instead of the software one)
+// node tests/regress/F2-drive-anim.js [port] [--perf]   (needs a server: python3 tests/serve.py <port>; F2_REAL_GPU=1 uses the real GPU browser instead of the software one; --perf prints frame rates for the pane and the large view at dpr 1 and 2)
 const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync('npm root -g').toString().trim() + '/playwright'));
-const port = +(process.argv.slice(2).find((a) => /^\d+$/.test(a)) || 8722);
+const port = +(process.argv.slice(2).find((a) => /^\d+$/.test(a)) || 8722), perf = process.argv.includes('--perf');
 let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail ? '  — ' + detail : '')); if (!cond) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
@@ -57,14 +57,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate(() => RF.UI.setDisplay('drive')); await sleep(1000); f0 = await frames(); await sleep(600); f1 = await frames();
   ok('Result back on Drive: frames resume', f1 > f0 && (await running()));
 
+  // 4b. the Result pane collapsed, or not expanded (its tool bars are hidden then): nothing is traced for a pane nobody sees
+  const paneState = () => page.evaluate(() => { const p = document.querySelector('.result-pane'); return { collapsed: p.classList.contains('collapsed'), expanded: p.classList.contains('expanded') }; });
+  const wasExpanded = (await paneState()).expanded;
+  await page.evaluate(() => RF.UI.setPane('result', 'collapse')); await sleep(1200); f0 = await frames(); await sleep(700); f1 = await frames(); let ps = await paneState();
+  ok('Result pane collapsed: frames stop', ps.collapsed && f1 === f0 && !(await running()), JSON.stringify(ps) + ' ' + f0 + ' → ' + f1);
+  await page.evaluate(() => RF.UI.setPane('result', 'collapse')); await sleep(2000); f0 = await frames(); await sleep(700); f1 = await frames(); ps = await paneState();
+  ok('Result pane restored: frames resume', !ps.collapsed && f1 > f0 && (await running()), JSON.stringify(ps) + ' ' + f0 + ' → ' + f1);
+  await page.evaluate(() => RF.UI.setPane('result', 'expand')); await sleep(1500); f0 = await frames(); await sleep(700); f1 = await frames(); ps = await paneState();
+  ok('Result pane not expanded (its tool bars are hidden): canvas hidden, frames stop', wasExpanded && !ps.expanded && f1 === f0 && !(await running()) && await page.evaluate(() => getComputedStyle(document.querySelector('.drive-gl')).display === 'none'), JSON.stringify(ps) + ' ' + f0 + ' → ' + f1);
+  await page.evaluate(() => RF.UI.setPane('result', 'expand')); await sleep(2000); f0 = await frames(); await sleep(700); f1 = await frames(); ps = await paneState();
+  ok('Result pane expanded again: frames resume', ps.expanded && f1 > f0 && (await running()), JSON.stringify(ps) + ' ' + f0 + ' → ' + f1);
+
   // 5. scenery toggles: each class has its own switch and takes only its own objects out
   const cnt = (cls) => page.evaluate((cls) => RF.DriveAnim._.V.src.objects.filter((o) => (o.cls || '') === cls).length, cls);
+  await page.evaluate(() => { window.__still = 0; if (!RF.Drive.__spied) { RF.Drive.__spied = true; const f = RF.Drive.render; RF.Drive.render = function (o) { if (!o.layer && !(o.scene && o.scene.objects && o.scene.objects.length === 0)) window.__still++; return f.apply(this, arguments); }; } });
   const all = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length), posts = await cnt('post'), crates0 = await cnt('obstacle');
   await page.click('[data-anim="c-posts"]'); await sleep(500); const noPosts = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length);
   ok('posts toggle: only the delineator posts go (' + all + ' → ' + noPosts + ' objects)', posts > 0 && noPosts === all - posts && (await cnt('post')) === 0);
   await page.click('[data-anim="c-posts"]'); await page.click('[data-anim="c-obstacle"]'); await sleep(500);
   ok('crates toggle: off by default, on adds crates', crates0 === 0 && (await cnt('obstacle')) >= 2, 'crates ' + (await cnt('obstacle')));
-  await page.click('[data-anim="c-obstacle"]'); await sleep(300);
+  await page.click('[data-anim="c-obstacle"]'); await sleep(300); await page.click('[data-anim="c-veg"]'); await sleep(300); await page.click('[data-anim="c-veg"]'); await sleep(300);
+  ok('posts, trees and crates are animation-only: toggling them did not re-render the still picture', (await page.evaluate(() => window.__still)) === 0, 'still renders ' + await page.evaluate(() => window.__still));
   for (const k of ['signs', 'people', 'animals', 'veg']) { const before = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length); await page.click('[data-anim="c-' + k + '"]'); await sleep(300); const after = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length); ok('toggle ' + k + ' changes the scenery (' + before + ' → ' + after + ' objects)', after < before); await page.click('[data-anim="c-' + k + '"]'); await sleep(200); }
 
   // 6. the large view
@@ -137,6 +151,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     ok('GPU tone map vs Drive.tonemap, glare ' + gl + (gl ? ' (blurred at half size on the GPU: close, not identical)' : ' (no blur: the same 8-bit values, ±1 for the GPU\'s pow rounding; exactly 0 on the Apple GPU)'), !r.skip && (gl === 0 ? r.max <= 1 && r.mean < 0.01 : r.mean < 0.2 && r.max <= 24), JSON.stringify(r));
   }
   await page.keyboard.press('Escape'); await sleep(500);
+  // 8c. US markings (double solid yellow, nothing patterned): the ground has no moving part; the shader takes its no-stripe path
+  const preset0 = await page.evaluate(() => RF.UI.store.scene.modeD.preset); await page.evaluate(() => { RF.UI.store.scene.modeD.preset = 'fmvss-lb2m'; });
+  { const r = await parity({ shape: 'straight', dist: 37.3 }), noPat = await page.evaluate(() => RF.DriveAnim._.V.g.pat === null && RF.DriveAnim._.V.g.B === null);
+    ok('US markings: no stripe layer, GL frame = whole picture (ground outside tiles, object pixels, shader sum)', noPat && r.groundMax < 5e-3 && r.fullMax < 5e-3 && r.glVsCpu < 5e-3, 'pat none: ' + noPat + ', ground ' + r.groundMax.toExponential(1) + ', objects ' + r.fullMax.toExponential(1)); }
+  await page.evaluate((p) => { RF.UI.store.scene.modeD.preset = p; RF.UI.redrawSpec(); }, preset0); await sleep(800);
   await page.close();
 
   // 9. a 2× display: the canvas has twice the pixels of its css box, the picture is traced at up to 1600 px
@@ -158,6 +177,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok('1280×720: the animated canvas and its controls stay inside the pane', ov2.glRight <= ov2.paneRight + 0.5 && ov2.maxBtn <= ov2.paneRight + 0.5 && ov2.barBottom <= ov2.paneBottom + 0.5, JSON.stringify(ov2));
   await p3.close();
 
+  if (perf) for (const dpr of [1, 2]) {
+    const pg = await open({ width: 1500, height: 950 }, dpr);
+    for (const mode of ['pane', 'popout']) {
+      await pg.evaluate(() => { const st = RF.UI.dvAnim || (RF.UI.dvAnim = { view: 'still', playing: true, popout: false, dist: 0, total: 0 }); st.view = 'anim'; st.playing = true; RF.UI.redrawSpec(); });
+      if (mode === 'popout' && !(await pg.evaluate(() => RF.UI.dvAnim.popout))) await pg.click('[data-anim="popout"]');
+      await sleep(2500); await pg.evaluate(() => { RF.UI.dvAnim.playing = true; RF.UI.redrawSpec(); RF.DriveAnim.resetStats(); }); await sleep(4000);
+      const live = await pg.evaluate(() => { const s = RF.DriveAnim.stats(), t = RF.DriveAnim._.V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); return Object.assign(s, { n: iv.length, over25: iv.filter((x) => x > 25).length }); });
+      await pg.evaluate(() => { RF.UI.dvAnim.playing = false; RF.UI.redrawSpec(); }); await sleep(300); const b = await pg.evaluate(() => RF.DriveAnim.bench(90)), f = (x) => x.toFixed(1);
+      console.log('[PERF] dpr ' + dpr + ' ' + mode + ': trace ' + live.sim.join('x') + ', canvas ' + live.canvasPx.join('x') + ' | rAF median ' + f(live.rafMedianMs) + ' ms, p95 ' + f(live.p95Ms) + ' ms, >25 ms ' + live.over25 + '/' + live.n + ' | objects ' + f(live.cpuObjMs) + ' ms mean, p95 ' + f(live.objP95Ms) + ' | free-run ' + f(b.msPerFrame) + ' ms/frame (' + f(1000 / b.msPerFrame) + ' fps, GPU-synced)');
+    }
+    await pg.close();
+  }
   ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close(); process.exit(fails ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });
