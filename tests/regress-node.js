@@ -286,5 +286,26 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       ok('B12 [' + k + '] the preview worker\'s grids are the report\'s grids (fine and wide)', r.same.fine && r.same.wide);
     }
   }
+  // F3: sealed-beam solver (solvers/sealed-beam-v1.js) — the flutes steer the beam where their parameters say, and every variant stays inside the envelope
+  {
+    const lab = require('../tools/sealed-beam/lab.js');
+    const bad = [];
+    for (const lamp of ['7', '5.75']) for (const beam of ['low', 'high']) for (const lens of ['fluted', 'plain', 'none']) {
+      const sc = lab.makeScene(lamp, beam), r = await lab.solve(sc, { lens, tune: false });
+      if (r.facts.errors.length || r.facts.violations.envelope.length || r.facts.violations.keepOut.length || r.facts.violations.budget) bad.push(lamp + '/' + beam + '/' + lens + ' ' + JSON.stringify(r.facts.errors.concat(r.facts.violations)));
+    }
+    ok('F3 sealed-beam: 2 lamps x 2 beams x 3 lenses verify clean (no errors, envelope, keep-out or budget violations)', bad.length === 0, bad.join(' | ') || '12 variants');
+    // end to end: a ~point filament at the focus, every flute aimed at one spot → the far-field peak lands there (checks the cell-normal solve, Snell at both faces, the angle convention)
+    const peak = async (lens, over) => {
+      const sc = lab.makeScene('7', 'high'); Object.assign(sc.source, { length: 0.2, radius: 0.05 });
+      const r = await lab.solve(sc, Object.assign({ lens, tune: false, shield: false }, over)), j = lab.judge(sc, r.out.surfaces, 400000, ['fmvss-ub2']);
+      return j.peakAt;
+    };
+    const near = (a, h, v, tol) => Math.abs(a[0] - h) <= tol && Math.abs(a[1] - v) <= tol;
+    const A = await peak('fluted', { hotR: 5, hotH: 3, hotV: -2, hotSpread: 0 }), B = await peak('fluted', { hotR: 5, hotH: -4, hotV: 1, hotSpread: 0 }), P = await peak('plain', {});
+    ok('F3 sealed-beam: flutes aimed at (3 R, 2 D) put the peak there', near(A, 3, -2, 0.6), 'peak at ' + JSON.stringify(A));
+    ok('F3 sealed-beam: flutes aimed at (4 L, 1 U) put the peak there', near(B, -4, 1, 0.6), 'peak at ' + JSON.stringify(B));
+    ok('F3 sealed-beam: plain cover glass keeps the paraboloid\'s beam on the axis (0, 0)', near(P, 0, 0, 0.6), 'peak at ' + JSON.stringify(P));
+  }
   process.exitCode = fails ? 1 : 0;
 })();

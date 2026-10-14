@@ -37,6 +37,7 @@ async function solve(sc, over) {
   const def = RF.Solvers.get('sealed-beam-v1');
   const { input, problem } = problemOf(sc);
   const settings = Object.assign(RF.Solvers.settingsOf(sc, 'sealed-beam-v1'), over || {});
+  for (const k of ['lamp', 'beam', 'lens']) { const want = (over && over[k] !== undefined) ? over[k] : sc.solverSettings['sealed-beam-v1'][k]; if (want !== undefined && settings[k] !== want) throw new Error('setting ' + k + ' = ' + want + ' was silently replaced by ' + settings[k] + ' (select options must be {value,label})'); }
   const tools = { progress() {}, preview() {}, budget: { rays: Infinity, ms: Infinity }, scene: problem, trace: (s, o) => RF.Solvers.trace(problem, s, o) };
   const t0 = Date.now(), out = await def.solve(input, settings, tools);
   return { out, ms: Date.now() - t0, facts: RF.Solvers.verify(sc, out) };
@@ -49,8 +50,9 @@ function judge(sc, surfaces, N, presets) {
   let c = RF.Engine.newCtx(P, N0, 0); RF.Engine.traceRange(c, 0, N0); c.next = N0; c.done = true;
   while (c.N < N) { const n1 = c.N, g = RF.Engine.buildGuide(c); c = RF.Engine.extend(c, Math.min(N, 2 * n1), g); RF.Engine.traceRange(c, n1, c.N); c.next = c.N; c.done = true; }
   const G = RF.FarField.build(c, P.ffStreams[0]), M = RF.FarField.map(G, 0.25);
-  let pk = 0; for (const x of M.cd) if (x > pk) pk = x;
-  const res = { rays: N, peakCd: Math.round(pk), lmWindow: Math.round(G.lmWindow), lmTotal: Math.round(c.E && c.E.landed !== undefined ? c.E.landed : 0), E: Object.assign({}, c.E), evals: {} };
+  let pk = 0, pi = 0; for (let q = 0; q < M.cd.length; q++) if (M.cd[q] > pk) { pk = M.cd[q]; pi = q; }
+  const peakAt = [+(G.h0 + ((pi % G.nh) + 0.5) * G.step).toFixed(3), +(G.v0 + (Math.floor(pi / G.nh) + 0.5) * G.step).toFixed(3)];
+  const res = { rays: N, peakCd: Math.round(pk), peakAt, lmWindow: Math.round(G.lmWindow), lmTotal: Math.round(c.E && c.E.landed !== undefined ? c.E.landed : 0), E: Object.assign({}, c.E), evals: {} };
   for (const name of presets || []) {
     const md = JSON.parse(JSON.stringify(sc.modeD)); RF.Spec.applyPreset(md, name);
     const ev = RF.Spec.evaluate(G, md);

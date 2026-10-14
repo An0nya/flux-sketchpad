@@ -17,7 +17,7 @@
  *      is what the real flutes do), shaped by `peak` (an exponent: > 1 piles the light near the centre of the spread).
  *   3. Shield (setting `shield`): an absorbing disc in front of the filament sized to block the direct (unreflected) cone to the rim,
  *      the sealed beam's stray-light cap.  It also shadows a small central part of the reflector.
- *   4. Tuner (setting `tune`, needs Spec mode and tools.trace): a coordinate search over the flute parameters, judged by
+ *   4. Tuner (setting `tune`, needs Spec mode and tools.trace): a (1+1) evolution-strategy search over the flute parameters, judged by
  *      tools.trace({ spec: true }) at few rays (expected fails first, soft score second), common random numbers.
  * Limits of the model (stated, not hidden): flutes are plane cells with NO riser faces (steps between cells), so rays that graze a step
  * are not traced; one tilt per cell (a real flute is curved); the glass is a solid slab with a flat outer face; ior 1.50 is an
@@ -42,13 +42,21 @@
     ['kick', 'Kick-down in the low zone (°)', 0, 15, 0.25, 2, 0, 'extra downward aim of the rows below the kick line'],
     ['kickZ', 'Kick line (fraction of radius, −1…1)', -1, 1, 0.05, 0, 0, 'rows below this height get the kick'],
     ['peak', 'Centre-weighting exponent', 0.4, 3, 0.1, 1.3, 1, '> 1 piles the sub-beams toward the centre of the spread'],
+    ['leftDrop', 'Left side lowered (°)', 0, 6, 0.25, 1.5, 0, 'cells aimed left of straight ahead are aimed this much lower (the low beam’s cut-off step)'],
+    ['hotR', 'Hot-spot zone radius (fraction of lens radius)', 0, 0.8, 0.05, 0.3, 0.4, 'the lens centre is aimed at one hot spot; 0 = no hot-spot zone'],
+    ['hotH', 'Hot spot, ° right', -3, 6, 0.25, 2, 0, ''],
+    ['hotV', 'Hot spot, ° up', -4, 1.5, 0.25, -1.5, 0, ''],
+    ['hotSpread', 'Hot-spot scatter ± (°)', 0, 4, 0.25, 1, 1, ''],
+    ['spillR', 'Spill zone starts at (fraction of lens radius)', 0.4, 1.05, 0.05, 0.9, 1.05, 'the lens rim is aimed wide; 1.05 = no spill zone'],
+    ['spillAngle', 'Spill reach ± (°)', 5, 30, 0.5, 18, 12, ''],
+    ['spillV', 'Spill, ° up', -8, 2, 0.25, -3, -2, ''],
   ];
-  const TUNABLE = ['hSpread', 'hBias', 'hBiasL', 'vSpread', 'vCentre', 'kick', 'kickZ', 'peak'];
+  const TUNABLE = KNOBS.map((k) => k[0]);
   const settings = [
     { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0, help: 'unused: the reflector is one paraboloid' },
-    { key: 'lamp', label: 'Lamp', type: 'select', options: [['7', LAMPS['7'].label], ['5.75', LAMPS['5.75'].label]], default: '7' },
-    { key: 'beam', label: 'Filament', type: 'select', options: [['low', 'Low beam (filament beside the focus)'], ['high', 'High beam (filament at the focus)']], default: 'low' },
-    { key: 'lens', label: 'Cover lens', type: 'select', options: [['fluted', 'Fluted (prismatic)'], ['plain', 'Plain flat glass'], ['none', 'None (bare paraboloid)']], default: 'fluted' },
+    { key: 'lamp', label: 'Lamp', type: 'select', options: [{ value: '7', label: LAMPS['7'].label }, { value: '5.75', label: LAMPS['5.75'].label }], default: '7' },
+    { key: 'beam', label: 'Filament', type: 'select', options: [{ value: 'low', label: 'Low beam (filament beside the focus)' }, { value: 'high', label: 'High beam (filament at the focus)' }], default: 'low' },
+    { key: 'lens', label: 'Cover lens', type: 'select', options: [{ value: 'fluted', label: 'Fluted (prismatic)' }, { value: 'plain', label: 'Plain flat glass' }, { value: 'none', label: 'None (bare paraboloid)' }], default: 'fluted' },
     { key: 'focal', label: 'Focal length (mm, 0 = lamp default)', type: 'number', min: 0, step: 0.5, default: 0 },
     { key: 'lowUp', label: 'Low filament above focus (mm)', type: 'number', min: -10, step: 0.25, default: 2.5, help: 'low beam only; assumed (no published offset found)' },
     { key: 'lowLeft', label: 'Low filament left of focus (mm)', type: 'number', min: -10, step: 0.25, default: 1.5, help: 'low beam only; left = +y, sends light right' },
@@ -60,7 +68,7 @@
   ].concat(KNOBS.map((k) => ({ key: k[0], label: k[1], type: 'number', min: k[2], max: k[3], step: k[4], default: k[5], help: k[7] + ' (default shown is the low beam’s; high beam uses its own when left unset by the tuner)' })),
     [{ key: 'tune', label: 'Tune the flute pattern against the spec', type: 'checkbox', default: true, help: 'Spec mode only: coordinate search with tools.trace({spec:true})' },
      { key: 'tuneRays', label: 'Tuner rays per trace', type: 'number', min: 20000, max: 400000, step: 10000, default: 60000 },
-     { key: 'tunePasses', label: 'Tuner passes', type: 'range', min: 0, max: 8, step: 1, default: 3 },
+     { key: 'tuneEvals', label: 'Tuner candidates (0 = off)', type: 'number', min: 0, max: 2000, step: 10, default: 150 },
      { key: 'tuneSeconds', label: 'Tuner time limit (s, 0 = none)', type: 'number', min: 0, step: 5, default: 40, help: 'a wall-clock cap; the result then depends on machine speed. 0 = deterministic' }]);
 
   // ---------------------------------------------------------------- geometry helpers
@@ -111,10 +119,16 @@
       cells.push({ i, j, yc, zc });
     }
     for (const c of cells) {
-      const u = (c.zc - L.F[2]) / R;                                                         // height on the lens, −1…1
-      // targets (degrees): columns spread sideways, rows spread vertically, the low zone is kicked down
-      const hs = p.hSpread * shape(golden(c.i + 17), p.peak) + p.hBias + (c.yc > L.F[1] ? p.hBiasL : 0);
-      const vs = p.vCentre + p.vSpread * shape(golden(c.j * 3 + 5), p.peak) - (u < p.kickZ ? p.kick : 0);
+      const u = (c.zc - L.F[2]) / R, rho = Math.hypot(c.yc - L.F[1], c.zc - L.F[2]) / R, k = c.i * 5 + c.j * 11;
+      let hs, vs;
+      if (rho < p.hotR) {                                                                    // centre: one hot spot
+        hs = p.hotH + p.hotSpread * golden(k + 1); vs = p.hotV + 0.5 * p.hotSpread * golden(k + 4);
+      } else if (rho >= p.spillR) {                                                          // rim: wide spill, sideways both ways and down
+        hs = p.spillAngle * (0.35 + 0.65 * Math.abs(golden(k + 2))) * (golden(k + 3) < 0 ? -1 : 1); vs = p.spillV + 0.4 * p.spillAngle * 0.25 * golden(k + 6);
+      } else {                                                                               // main zone: columns spread sideways, rows vertically, low zone kicked down
+        hs = p.hSpread * shape(golden(c.i + 17), p.peak) + p.hBias + (c.yc > L.F[1] ? p.hBiasL : 0);
+        vs = p.vCentre + p.vSpread * shape(golden(c.j * 3 + 5), p.peak) - (u < p.kickZ ? p.kick : 0) - (hs < 0 ? p.leftDrop : 0);
+      }
       const d = arrival(L, c.yc, c.zc), e = RF.FarField.dirOf(hs, vs, conv);
       c.d = d; c.h = hs; c.v = vs;
       c.N = d ? cellNormal(d, e, ior) : null;
@@ -160,29 +174,24 @@
     s = Object.assign({}, s);
     if (s.beam === 'high') for (const k of KNOBS) if (s[k[0]] === k[5]) s[k[0]] = k[6];
     let p = paramsOf(s), b = build(input, s, p, conv), best = null;
-    const canTune = s.tune && s.lens === 'fluted' && input.spec && tools && tools.trace && s.tunePasses > 0;
+    const canTune = s.tune && s.lens === 'fluted' && input.spec && tools && tools.trace && s.tuneEvals > 0;
     if (canTune) {
       const T = (pp) => objective(tools.trace(build(input, s, pp, conv).surfaces, { rays: s.tuneRays, seed: 7, spec: true, guided: false, bounces: 3 }));
+      // (1+1) evolution strategy: perturb 1–3 knobs by a Gaussian step (a fraction sigma of each knob's range), keep the child if the judge likes it
+      // more; sigma grows on success, shrinks on failure.  Seeded, so the sequence of candidates is deterministic.
+      let seed = 12345; const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let z = Math.imul(seed ^ (seed >>> 15), 1 | seed); z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z; return ((z ^ (z >>> 14)) >>> 0) / 4294967296; };
+      const gauss = () => Math.sqrt(-2 * Math.log(Math.max(1e-12, rnd()))) * Math.cos(2 * Math.PI * rnd());
       const t0 = Date.now(), over = () => s.tuneSeconds > 0 && Date.now() - t0 > s.tuneSeconds * 1000;
-      best = T(p); let evals = 1;
-      const step = {}; for (const k of KNOBS) step[k[0]] = Math.max(k[4], (k[3] - k[2]) / 12);
-      scan: for (let pass = 0; pass < s.tunePasses; pass++) {
-        let moved = false;
-        for (const k of KNOBS) {
-          for (const dir of [1, -1]) {
-            const q = Object.assign({}, p), key = k[0]; q[key] = Math.min(k[3], Math.max(k[2], +(p[key] + dir * step[key]).toFixed(4)));
-            if (q[key] === p[key]) continue;
-            const o = T(q); evals++;
-            if (better(o, best)) { best = o; p = q; moved = true; break; }
-            if (over()) break scan;
-          }
-          if (tools.progress) tools.progress((pass + (KNOBS.indexOf(k) + 1) / KNOBS.length) / s.tunePasses);
-        }
-        for (const key in step) step[key] /= 2;
-        if (!moved && pass > 0) break;
+      best = T(p); let evals = 1, sigma = 0.2, accepted = 0;
+      for (let it = 0; it < s.tuneEvals && !over(); it++) {
+        const q = Object.assign({}, p), m = 1 + Math.floor(rnd() * 3);
+        for (let r = 0; r < m; r++) { const k = KNOBS[Math.floor(rnd() * KNOBS.length)]; q[k[0]] = Math.min(k[3], Math.max(k[2], +(Math.round((q[k[0]] + gauss() * sigma * (k[3] - k[2])) / k[4]) * k[4]).toFixed(4))); }
+        const o = T(q); evals++;
+        if (better(o, best)) { best = o; p = q; sigma = Math.min(0.5, sigma * 1.25); accepted++; } else sigma = Math.max(0.03, sigma * 0.96);
+        if (tools.progress && it % 5 === 0) tools.progress(it / s.tuneEvals);
       }
       b = build(input, s, p, conv);
-      notes.push('tuner: ' + evals + ' traces at ' + s.tuneRays + ' rays, expected fails ' + best[0].toFixed(2) + ', soft score ' + (-best[1]).toFixed(3) + (over() ? ' (time limit hit)' : ''));
+      notes.push('tuner: ' + evals + ' traces at ' + s.tuneRays + ' rays (' + accepted + ' accepted), expected fails ' + best[0].toFixed(2) + ', soft score ' + (-best[1]).toFixed(3) + (over() ? ' (time limit hit)' : ''));
       notes.push('tuned: ' + TUNABLE.map((k) => k + ' ' + p[k]).join(', '));
     }
     if (tools && tools.preview) tools.preview(b.surfaces, { label: 'sealed beam', needs: { bounces: 3 } });
