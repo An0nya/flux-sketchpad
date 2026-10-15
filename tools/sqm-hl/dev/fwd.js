@@ -67,13 +67,18 @@
     return { pts: Float64Array.from(out), n: out.length / 7, area };
   }
 
+  // Scratch for footprint(): a dense accumulator over the grid + the keys in first-touched order, instead of a Map (same sums in the same order, the same idx / val order;
+  // no per-bin hashing or boxing).  One call at a time, so one buffer is shared.
+  let SCR = null;
+  function scratch(n) { if (!SCR || SCR.n < n) SCR = { n, mark: new Int32Array(n).fill(-1), val: new Float64Array(n), ord: new Int32Array(n), stamp: 0 }; return SCR; }
+  const R2D = 180 / Math.PI;
   // ------------------------------------------------------------------ footprint of one facet on a far-field grid
   // returns { flux, idx: Int32Array, val: Float64Array (lm per bin, bilinear), hc, vc (flux centroid), cov [hh, hv, vv] in degrees² }
   function footprint(f, S, grid, opt) {
     opt = opt || {};
     const fq = quadricOf(f), refl = f.optics && f.optics.reflectivity !== undefined ? f.optics.reflectivity : 0.9;
     const A = apertureSamples(f, fq, opt.na || 48); if (opt.occ) opt.occ(f, A);
-    const nh = grid.nh, nv = grid.nv, acc = new Map();
+    const nh = grid.nh, nv = grid.nv, sc = scratch(nh * nv), mk = sc.mark, av = sc.val, od = sc.ord, st = ++sc.stamp; let nk = 0, cv = grid.conv || 'A';
     const fin = isFinite(grid.distance), plane = fin ? grid.centre[0] + grid.distance : 0, c0 = grid.centre;
     let flux = 0, mh = 0, mv = 0, shh = 0, shv = 0, svv = 0;
     const wA = A.area / Math.max(1, A.n);
@@ -89,13 +94,15 @@
         const k = 2 * (dx * n0 + dy * n1 + dz * n2), ox = dx - k * n0, oy = dy - k * n1, oz = dz - k * n2;
         let ux = ox, uy = oy, uz = oz;
         if (fin) { if (!(ox > 1e-9)) continue; const t = (plane - X0) / ox; ux = X0 + t * ox - c0[0]; uy = X1 + t * oy - c0[1]; uz = X2 + t * oz - c0[2]; const L = Math.hypot(ux, uy, uz); ux /= L; uy /= L; uz /= L; }
-        const hv = RF.FarField.hvOf([ux, uy, uz], grid.conv), gh = (hv[0] - grid.h0) / grid.step - 0.5, gv = (hv[1] - grid.v0) / grid.step - 0.5;
-        flux += w; mh += w * hv[0]; mv += w * hv[1]; shh += w * hv[0] * hv[0]; shv += w * hv[0] * hv[1]; svv += w * hv[1] * hv[1];
+        let H, V_;     // = RF.FarField.hvOf([ux, uy, uz], conv), written out for convention A (the arithmetic is the same) so that no array is made per sample pair
+        if (cv === 'A') { const L = Math.hypot(ux, uy, uz) || 1; H = Math.atan2(-uy / L, ux / L) * R2D; V_ = Math.asin(Math.max(-1, Math.min(1, uz / L))) * R2D; } else { const hv = RF.FarField.hvOf([ux, uy, uz], grid.conv); H = hv[0]; V_ = hv[1]; }
+        const gh = (H - grid.h0) / grid.step - 0.5, gv = (V_ - grid.v0) / grid.step - 0.5;
+        flux += w; mh += w * H; mv += w * V_; shh += w * H * H; shv += w * H * V_; svv += w * V_ * V_;
         const i0 = Math.floor(gh), j0 = Math.floor(gv), fh = gh - i0, fv = gv - j0;
-        for (let jj = 0; jj < 2; jj++) for (let ii = 0; ii < 2; ii++) { const i = i0 + ii, j = j0 + jj; if (i < 0 || j < 0 || i >= nh || j >= nv) continue; const key = j * nh + i, ww = w * (ii ? fh : 1 - fh) * (jj ? fv : 1 - fv); acc.set(key, (acc.get(key) || 0) + ww); }
+        for (let jj = 0; jj < 2; jj++) for (let ii = 0; ii < 2; ii++) { const i = i0 + ii, j = j0 + jj; if (i < 0 || j < 0 || i >= nh || j >= nv) continue; const key = j * nh + i, ww = w * (ii ? fh : 1 - fh) * (jj ? fv : 1 - fv); if (mk[key] !== st) { mk[key] = st; av[key] = 0; od[nk++] = key; } av[key] += ww; }
       }
     }
-    const idx = new Int32Array(acc.size), val = new Float64Array(acc.size); let q = 0; for (const [k, v] of acc) { idx[q] = k; val[q] = v; q++; }
+    const idx = new Int32Array(nk), val = new Float64Array(nk); for (let q = 0; q < nk; q++) { idx[q] = od[q]; val[q] = av[od[q]]; }
     const hc = flux > 0 ? mh / flux : 0, vc = flux > 0 ? mv / flux : 0;
     return { flux, idx, val, hc, vc, cov: flux > 0 ? [shh / flux - hc * hc, shv / flux - hc * vc, svv / flux - vc * vc] : [0, 0, 0], samples: A.n * S.n };
   }

@@ -14,17 +14,28 @@
   const KEY = 'flux/solvers', BUDGET = { ms: 120000, rays: 5e7 };
   // the user's time limit (Simulation → Solve time limit, remembered per browser): a property of the machine, not the scene
   let userMs = 0; try { userMs = +localStorage.getItem('flux/solveLimitMs') || 0; } catch (e) { /* default */ }
-  // Simulation → Advanced → Solver threads: workers a solver may use for its independent tasks (tools.pool; 0 = none, the default).  Per browser, like the time limit.
+  // Simulation → Advanced → Solver threads: workers a solver may use for its independent tasks (tools.pool).  Never chosen → min(4, cores − 2) (0 when that is under 2; the
+  // measured gain is flat past 4); a stored 0 = off.  Per browser, like the time limit.
   // Keep solving in the background: a tab behind another tab is demoted by the OS to slow cores (measured 4-5x slower); an inaudible tone keeps it at full speed.
-  const pref = (k) => { try { return +localStorage.getItem(k) || 0; } catch (e) { return 0; } };
-  let threads = Math.max(0, Math.min(16, pref('flux/solverThreads'))), keepOn = !!pref('flux/solveKeepAwake'), awake = null;
+  // Never chosen (null) → off, and the first solve that ran while the tab was hidden asks once (askAwake below); the Advanced checkbox is the setting.
+  const prefRaw = (k) => { try { const v = localStorage.getItem(k); return v === null ? null : +v || 0; } catch (e) { return null; } };
+  const cores = () => (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
+  const defThreads = () => { const n = Math.min(4, cores() - 2); return n >= 2 ? n : 0; };
+  let threadsPref = prefRaw('flux/solverThreads'), keepPref = prefRaw('flux/solveKeepAwake'), awake = null;
+  const threads = () => threadsPref === null ? defThreads() : Math.max(0, Math.min(16, threadsPref)), keepOn = () => keepPref === 1;
   const setPref = (k, v) => { try { localStorage.setItem(k, String(v)); } catch (e) { /* ignore */ } };
-  const setThreads = (n) => { threads = Math.max(0, Math.min(16, n | 0)); setPref('flux/solverThreads', threads); };
-  const setKeepAwake = (on) => { keepOn = !!on; setPref('flux/solveKeepAwake', keepOn ? 1 : 0); };
+  const setThreads = (n) => { threadsPref = Math.max(0, Math.min(16, n | 0)); setPref('flux/solverThreads', threadsPref); };
+  const setKeepAwake = (on) => { keepPref = on ? 1 : 0; setPref('flux/solveKeepAwake', keepPref); asked = false; if (typeof document !== 'undefined') document.dispatchEvent(new Event('flux-awake-ask')); };
+  // the one-time question: a solve ran while the tab was hidden and the user never chose.  Shown when they come back (nobody sees it before); answer() is a click, so audio may start.
+  let hiddenSolve = false, asked = false;
+  const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
+  const askAwake = () => asked;
+  const answerAwake = (on) => { setKeepAwake(on); };   // either answer is stored, so it is never asked again
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (live && hidden()) hiddenSolve = true; if (!hidden() && hiddenSolve && keepPref === null && !live) { asked = true; hiddenSolve = false; document.dispatchEvent(new Event('flux-awake-ask')); } });
   function wake(on) {                               // start / stop the tone while a solve runs (needs the browser to allow audio: after a click, it does)
     try {
       if (!on) { if (awake) { awake.close(); awake = null; } return; }
-      if (!keepOn || awake || typeof AudioContext === 'undefined') return;
+      if (!keepOn() || awake || typeof AudioContext === 'undefined') return;
       const ac = awake = new AudioContext(), o = ac.createOscillator(), g = ac.createGain(); g.gain.value = 0.00001; o.connect(g); g.connect(ac.destination); o.start(); ac.resume();
     } catch (e) { awake = null; }
   }
@@ -93,11 +104,11 @@
             if (!j.cancel) return;                      // stopped while it waited
             j.cancel = null;
             const ms = limitMs(), onPreview = typeof tools.preview === 'function' && !tools.preview.none ? tools.preview : null;   // no preview callback ⇒ the worker sends none
-            const p = ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.userChoice() === true), pool: threads }, tools.progress, ms, onPreview);
-            wake(true); const off = () => wake(false); p.then(off, off);
+            const p = ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.pref()), pool: threads() }, tools.progress, ms, onPreview);
+            wake(true); if (hidden()) hiddenSolve = true; const off = () => { wake(false); if (hiddenSolve && keepPref === null && !hidden()) { asked = true; if (typeof document !== 'undefined') document.dispatchEvent(new Event('flux-awake-ask')); } if (!hidden()) hiddenSolve = false; }; p.then(off, off);   // still hidden at the end: the question waits for the visibilitychange
             j.rid = p.rid; p.then(resolve, reject);
           });
-        }).then((d) => { lastStats = { traceMs: d.traceMs, traces: d.traces, raysUsed: d.raysUsed, ms: performance.now() - j.t0 }; return d.output; });
+        }).then((d) => { lastStats = { traceMs: d.traceMs, traces: d.traces, gpuTraces: d.gpuTraces || 0, raysUsed: d.raysUsed, ms: performance.now() - j.t0 }; return d.output; });
       },
     }));
   }
@@ -181,5 +192,5 @@
   }
   // test hook: run the next solves with a shorter time budget (ms; 0 = back to BUDGET.ms).  BUDGET itself never changes.
   const testBudget = (ms) => { testMs = Math.max(0, +ms || 0); };
-  RF.SolverHost = { threads: () => threads, setThreads, keepAwake: () => keepOn, setKeepAwake, lastStats: () => lastStats, load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
+  RF.SolverHost = { threads, threadsDefault: defThreads, threadsChosen: () => threadsPref !== null, setThreads, keepAwake: keepOn, setKeepAwake, askAwake, answerAwake, lastStats: () => lastStats, load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

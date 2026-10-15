@@ -18,25 +18,27 @@ const sets = Object.fromEntries(flags('set').map((kv) => { const i = kv.indexOf(
   const page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.addInitScript(([g, th]) => { try { localStorage.setItem('flux/gpu', g ? '1' : '0'); localStorage.setItem('flux/solveLimitMs', '1800000'); localStorage.setItem('flux/solverThreads', String(th)); } catch (e) { /* ignore */ } }, [gpu, +flag('threads', 0)]);
+  const defaults = argv.includes('--defaults');       // W3c: the page's own defaults for GPU and Solver threads (nothing stored), as a user who never opened Advanced gets them
+  await page.addInitScript(([g, th, dflt]) => { try { if (!dflt) { localStorage.setItem('flux/gpu', g ? '1' : '0'); localStorage.setItem('flux/solverThreads', String(th)); } localStorage.setItem('flux/solveLimitMs', '1800000'); } catch (e) { /* ignore */ } }, [gpu, +flag('threads', 0), defaults]);
   await page.goto('http://localhost:' + port + '/index.html');
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
   await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 300000 });
   if (String(await page.evaluate(() => location.port)) !== String(port) || !(await page.evaluate(() => !!RF.UI))) throw new Error('wrong page');
   if (gpu) await page.waitForFunction(() => RF.GpuTrace && RF.GpuTrace.ready(), null, { timeout: 120000 });
+  if (defaults) await page.evaluate(() => RF.GpuTrace && RF.GpuTrace.available() ? RF.GpuTrace.init() : null);      // the page itself starts the device at boot when the preference is on; wait for it so the row says which
   const gpuInfo = await page.evaluate(() => (RF.GpuTrace && RF.GpuTrace.info ? RF.GpuTrace.info() : null));
   const res = await page.evaluate(async ([txt, id, sets, preview, V]) => {
     const sc = RF.State.deserialize(txt), def = RF.Solvers.get(id); if (!def) return { error: 'no solver ' + id };
     sc.solve = { id }; sc.solverSettings = Object.assign({}, sc.solverSettings, { [id]: Object.assign({}, (sc.solverSettings || {})[id], sets) });
     const t0 = performance.now(), r = await RF.Solvers.runAsync(sc, id, () => {}, preview ? () => {} : undefined), wall = performance.now() - t0, st = RF.SolverHost.lastStats() || {};
-    const out = { wallMs: Math.round(wall), traceMs: st.traceMs, traces: st.traces, rays: st.raysUsed, placed: r.facts.placed, errors: r.facts.errors, notes: (r.output.notes || []).slice(0, 3).map((s) => String(s).slice(0, 200)), surfaces: r.output.surfaces.length,
+    const out = { wallMs: Math.round(wall), traceMs: st.traceMs, traces: st.traces, gpuTraces: st.gpuTraces, threads: RF.SolverHost.threads(), rays: st.raysUsed, placed: r.facts.placed, errors: r.facts.errors, notes: (r.output.notes || []).slice(0, 3).map((s) => String(s).slice(0, 200)), surfaces: r.output.surfaces.length,
       digest: (() => { const s = JSON.stringify(r.output.surfaces); let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(16); })() };
     if (V > 0) { const input = RF.Solvers.inputOf(sc), problem = { source: sc.source, emitters: sc.emitters || [], envelope: sc.envelope, sim: sc.sim, modeD: sc.modeD, mode: sc.mode, target: input.target, modeA: { paint: input.paint.cells } };
       const t = RF.Solvers.trace(problem, r.output.surfaces, { rays: V, seed: input.seed, spec: sc.mode === 'D', guided: true, bounces: r.output.needs && r.output.needs.bounces });
       out.verify = sc.mode === 'D' && t.spec ? { rays: V, verdict: t.spec.verdict, n: t.spec.n, expFails: t.spec.expFails, lm: Math.round(t.spec.lmWindow * 10) / 10 } : { rays: V, fid: t.fidelity && t.fidelity.fidelity, lm: t.lmOnTarget }; }
     return out;
   }, [fs.readFileSync(path.resolve(sceneFile), 'utf8'), id, sets, argv.includes('--preview'), +flag('verify', 0)]);
-  const row = Object.assign({ tag: flag('tag', ''), where: 'page', browser: argv.includes('--headless-shell') ? 'headless_shell' : 'chromium', gpuTicked: gpu, threads: +flag('threads', 0), adapter: gpuInfo, preview: argv.includes('--preview'), solver: id, scene: path.basename(sceneFile), sets, pageErrors: errors.slice(0, 3) }, res);
+  const row = Object.assign({ tag: flag('tag', ''), where: 'page', browser: argv.includes('--headless-shell') ? 'headless_shell' : 'chromium', gpuTicked: gpu, defaults, threadsFlag: +flag('threads', 0), adapter: gpuInfo, preview: argv.includes('--preview'), solver: id, scene: path.basename(sceneFile), sets, pageErrors: errors.slice(0, 3) }, res);
   console.log(JSON.stringify(row)); const o = flag('out'); if (o) fs.appendFileSync(o, JSON.stringify(row) + '\n');
   await browser.close();
 })().catch((e) => { console.error(e.stack || e); process.exit(1); });

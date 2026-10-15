@@ -317,7 +317,7 @@
       { key: 'goal', label: 'Goal', type: 'select', options: ['faithful', 'throw', 'efficient'], default: 'faithful' },
       { key: 'rays', label: 'Rays per trial trace', type: 'number', min: 50000, max: 2000000, step: 50000, default: 400000 },
       { key: 'trials', label: 'Max trial designs (one trace each)', type: 'range', min: 1, max: 30, step: 1, default: 18 },
-      { key: 'traceGpu', label: 'Trace trials via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: false },
+      { key: 'traceGpu', label: 'Trace trials via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: true, help: 'same rays, f32; without a GPU the same CPU trace. Measured 2.3x (3.1x with solver threads) on an M4' },
     ],
     async solve(input, st, tools) {
       const base = RF.Solvers.defaults(STATIC); base.minDistance = st.minDistance; base.debug = false;
@@ -337,11 +337,14 @@
         try { tools.preview(out.surfaces, { label, trace: tr, note: 'trial design (static dish-fit, tuned settings)' }); } catch (e) { /* display only */ }
       };
       // run a batch of trials: in the pool (parallel, in order), on the GPU (designs here or in the pool, traces on the GPU), or here
+      let gpuOn = !!st.traceGpu && typeof tools.traceAsync === 'function';
       const runTrials = async (overs) => {
         const args = overs.map((over) => ({ base, over, rays: st.rays, seed: input.seed }));
-        if (st.traceGpu && typeof tools.traceAsync === 'function') {
+        if (gpuOn) {
           const outs = tools.pool && tools.pool.size > 1 ? await tools.pool.map('design', args) : args.map((a) => TASKS.design(input, a));
-          return Promise.all(outs.map((out, j) => (out.surfaces.length ? Promise.resolve().then(() => tools.traceAsync(out.surfaces, { rays: args[j].rays, seed: args[j].seed })).then((tr) => ({ out, tr }), () => null) : null)));
+          const rs = await Promise.all(outs.map((out, j) => (out.surfaces.length ? Promise.resolve().then(() => tools.traceAsync(out.surfaces, { rays: args[j].rays, seed: args[j].seed })).then((tr) => ({ out, tr }), () => null) : null)));
+          if (rs.some((r) => r && r.tr && !r.tr.gpu)) gpuOn = false;      // no GPU here (switch off, no adapter, an exit-list trace): the next batches go the CPU way, designs and traces together in the pool
+          return rs;
         }
         return tools.pool ? tools.pool.map('candidate', args) : args.map((a) => TASKS.candidate(input, a, { trace: tools.trace }));
       };

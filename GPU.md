@@ -1,7 +1,8 @@
 # GPU trace (WebGPU) — what exists, how far it matches, what to do next
 
-Status 2026-10-14: built, validated against the CPU engine in Chromium (SwiftShader software WebGPU), **on by default for the
-page trace wherever WebGPU gives an adapter** (your choice in the checkbox wins), timed once on the M4 (see Speed). Files: `js/gpu-trace.js`, `tests/gpu.js` + `tests/gpu-page.js` + `tests/gpu.html`,
+Status 2026-10-15: built, validated against the CPU engine in Chromium (SwiftShader software WebGPU), **on by default for the
+page trace wherever WebGPU gives an adapter** (your choice in the checkbox wins), timed once on the M4 (see Speed). **Solver workers follow
+the same default since W3c** (see "Solvers" below), and dish-fit-auto / sealed-beam-v1 / sealed-beam-v2 use it by default. Files: `js/gpu-trace.js`, `tests/gpu.js` + `tests/gpu-page.js` + `tests/gpu.html`,
 `tests/gpu-app.js`.
 
 ## What it is
@@ -30,8 +31,8 @@ the CPU too.
   trace starts on the CPU and moves to the GPU as soon as an adapter and device are ready (any error, no adapter or a lost device
   leaves it on the CPU). Unticking stores `'0'` and that stays off. When on, the page loop keeps one batch in flight (sized to
   ~150 ms from the measured rate, never above `batchMax`) and redraws as before; the footer says `· GPU`. Any GPU error drops
-  that run back to the CPU from where it got to. Solver workers stay opt-in: they only get the GPU when the box was ticked
-  explicitly (no solver calls `traceAsync` yet, so this changes nothing today).
+  that run back to the CPU from where it got to. The solve worker follows the same preference (W3c): never chosen → on wherever
+  `navigator.gpu` exists, unticked → off.
 - **Per-device ray cap:** `RF.GpuTrace.rayCap(env)` (pure; tested in `tests/regress-node.js`, F1) returns `{ cap, batch, why }`
   from `{ gpu, limits, deviceMemory, mobile }`. Each signal can only lower the cap: touch-first device (UA mobile, or coarse
   pointer without hover) → 150 k; `navigator.deviceMemory` ≤ 2 GB → 100 k, ≤ 4 GB → 250 k; adapter storage-buffer limit at the WebGPU
@@ -41,9 +42,11 @@ the CPU too.
   `capped from 500,000 for this device (why)` and the rays tile gets a `*`. Simulation → Advanced shows *Limit rays to this
   device* (only on a device that has a cap); unticking it (`localStorage flux/rayCap = 'off'`) traces the full count. The cap
   applies to the page trace on the CPU as well as the GPU; solvers and `tools.trace` use `sim.rays` as before.
-- **Solvers:** `tools.traceAsync(surfaces, o)` — same options and result as `tools.trace`, plus `res.gpu`. On the GPU only
-  when the user switched it on and the trace needs nothing GPU-less; otherwise it is the CPU trace in a promise. **No solver
-  calls it yet**: `tools.trace` is untouched and stays synchronous, so every existing solver gives byte-identical results.
+- **Solvers:** `tools.traceAsync(surfaces, o)`: same options and result as `tools.trace`, plus `res.gpu`. On the GPU when the preference is on (default
+  on with an adapter) and the trace needs nothing GPU-less; otherwise it is the CPU trace in a promise. The solve worker starts the device at its first
+  `traceAsync` (a solve that never calls it never wakes the GPU); `RF.SolverHost.lastStats().gpuTraces` says how many of a solve's traces ran there.
+  `tools.trace` is untouched and stays synchronous. Solvers that call `traceAsync` **by default**: `dish-fit-auto` (`traceGpu`), `sealed-beam-v1` and
+  `sealed-beam-v2` (`tuneGpu`); `opus-mosaic-auto` has the setting off (1.17x only: its traces are 22 % of the run). A scene that saved the setting keeps it.
 - Node / headless runners: no WebGPU → `traceAsync` is the CPU trace.
 
 ## How close is "the same"?
@@ -107,12 +110,61 @@ reproduced or traced to its cause. Spec mode adds far-field streams (tens of MB,
 | opus-mosaic-auto | 81 s | 28 % (20 traces, 13 M rays) | `best` 29 %, `blobDelta` 20 %, `tryAt` 10 % (local search) |
 | spec-hl-v3 | 116 s | 44 % (3 judge traces + its own exit-list traces) | `traceUnit` 9 %, `addMut` / `moveDelta` / `pc` 21 %, `finishPattern` 8 % |
 | spec-hl-v2 | 32 s | 31 % | — |
-| sqm-hl / sqm-hl-ideal | 50–58 s | **5 %** | polish `trial` + `costPx` 31 %, OT Newton `evalF` 15 %, `logBlur` 14 %, `footprint` 9 % |
+| sqm-hl / sqm-hl-ideal | 50–58 s | **5 %** | polish `trial` + `costPx` 31 %, OT Newton `evalF` 15 %, `logBlur` 14 %, `footprint` 9 % (re-profiled in W3c, box-ece, below) |
 | fill-fix | 16 s | 0 % | — |
 
 And the page (10-10 note): a 500 k trace spent ~5 % of its wall time tracing; the redraws were the cost (fixed by redraw
 throttling). So a GPU trace alone speeds up dish-fit-auto-like tuners, Refine to 8–50 M, and final-pick verification — not
 SQM, and not the page at default ray counts.
+
+## W3c rollout: what changed, what it measured (2026-10-15, Apple M4, Node and Chromium with the tab in front)
+
+**sqm-hl profile (Node, box-ece, 100 facets, normal quality; self time of 38.5 s):** polish `costPx` 25.8 % + `trial` 12.4 % + `put` 8.3 % (= 19.1 s inclusive),
+`footprint` 18.6 % (9.1 s inclusive, 24 % of the run), `logBlur` 8 %, OT Newton `evalF` 5.8 %. Rewritten for speed with **byte-identical output** (digests equal on box-ece for all
+four variants and the default paint scene; `tests/sqm-reference.js` keeps the old code as a bit-exact reference): `footprint` accumulates into a dense scratch array in first-touched order
+instead of a Map and writes convention-A angles without allocating; the polish caches ln T* and every pixel's current cost (one `costPx` per touched pixel instead of two) and uses scratch
+arrays instead of closures and arrays per trial; `logBlur` clips its window at the grid edge once. After: 25.4 s (polish 11.6 s, footprint 4.4 s, logBlur 2.3 s, evalF unchanged 2.2 s).
+Not done, and why: the polish is Gauss-Seidel over units (each unit's best move depends on the previous ones' applied moves) and one trial is microseconds, so it is not poolable; a
+"skip units whose neighbourhood did not change" variant (exact) was tried and skipped 38 of 8,377 unit turns (63 % of turns move something), so it was dropped. The shaping candidates and
+the shell ranking are independent in principle, but they are clock-governed and share one mutable problem object: a refactor, not done. `evalF` is `Math.log` / `Math.exp` on values
+that change every Newton step: nothing exact to cache.
+
+**Defaults** (a scene that saved a setting keeps it): Solver threads min(4, cores − 2) (4 here); worker GPU follows the page default; `dish-fit-auto.traceGpu`, `sealed-beam-v1/v2.tuneGpu` on;
+`sealed-beam-v1.tuneAim` frozen (v2 already was). Without a GPU these are the same CPU traces (a solver that sees `res.gpu === false` on its first GPU batch returns to the pool path).
+
+**Wall time, seconds, seeds 1 / 2 / 3** (sealed-beam: tuner seeds 12345 / 777 / 4242). Before = commit 5b9818b with its defaults; after = this branch with its defaults (Node: `--pool 4`, no GPU;
+page: nothing stored in localStorage, so 4 threads and the Metal adapter). Timings were taken while another agent's browser kept 1-2 cores busy (load 3-5), so every row is CONTENDED, except the
+"clean" column (load 1-2, seed 1, repeated afterwards). Outputs: Node before = after digest for every row except the sealed-beam-v1 tuner (frozen aim changes the search on purpose).
+
+| solver | Node before | Node after | page before | page after | page clean before → after (seed 1) |
+|---|---|---|---|---|---|
+| dish-fit-auto | 5.7 / 3.4 / 4.7 | 4.1 / 2.6 / 3.4 | 5.6 / 3.3 / 7.9 | 3.1 / 1.5 / 1.9 (GPU) | 5.6 → 1.8 |
+| opus-mosaic-auto | 29.2 / 29.3 / 27.4 | 14.4 / 15.5 / 14.7 | 34.2 / 33.0 / 43.2 | 27.2 / 20.6 / 19.4 | 33.1 → 16.5 |
+| spec-hl-v3 | 44.3 / 42.8 / 41.5 | 16.6 / 14.6 / 16.4 | 40.3 / 40.0 / 58.0 | 24.5 / 20.0 / 25.8 | 39.4 → 14.1 |
+| sqm-hl | 38.7 / 40.4 / 39.2 | 25.8 / 26.1 / 25.9 | 37.0 (s1) | 25.5 (s1) | 37.1 → 22.8 |
+| sealed-beam-v1 tuner | 77 / 72 / 69 | 20 / 19 / 19 | 89 / 70 / 72 | 7.6 / 7.8 / 6.4 (GPU) | not repeated |
+| sealed-beam-v2 tuner | 33 / 28 / 31 | 33 / 28 / 30 (no GPU in Node) | 31 / 29 / 42 | 8.2 / 8.1 / 8.1 (GPU) | not repeated |
+
+**Quality** (the finished design traced with 1 M guided Spec rays; expected fails, lower is better, and pass/fail/unsure). Identical (same digest) wherever the code path is the same:
+mosaic and spec-hl-v3 in every environment and thread count, dish-fit-auto in Node, sqm-hl everywhere. Differences:
+
+| | seed 1 | seed 2 | seed 3 |
+|---|---|---|---|
+| sealed-beam-v1 before (scan, CPU) | 6.61 (18/6/2) | 6.61 (16/6/4) | 7.41 (16/7/3) |
+| sealed-beam-v1 after, Node (frozen) | 6.54 (17/6/3) | 6.86 (17/6/3) | 6.04 (20/6/0) |
+| sealed-beam-v1 after, page (frozen + GPU) | 6.41 (18/6/2) | 6.77 (16/6/4) | 6.73 (16/6/4) |
+| sealed-beam-v2 before = after (Node and page, frozen already; GPU gave the same design) | 4.98 (17/4/1) | 3.41 (15/3/4) | 4.57 (15/4/3) |
+| dish-fit-auto page, GPU vs CPU | 4.71 = 4.71 | 4.86 = 4.86 | 4.74 (13/4/2) vs 4.52 (9/3/7): the one seed where f32 changed the design |
+
+Reading: mean expected fails of the v1 tuner 6.88 → 6.48 (Node) / 6.64 (page): not worse; n = 3 cannot rank them. dish-fit seed 3 is +0.22 expected fails with one more fail and four more passes: within the run-to-run
+spread of these searches, so the GPU default stays, but it is the one place where the default changes a result.
+
+**Threads, determinism:** same design for no pool / 0 / 1 / 2 / 3 / 4 workers: dish-fit-auto, opus-mosaic-auto, spec-hl-v3 (`tests/solver-rollout.js`, `tests/regress/W3c-solver-rollout.js`; W3b did 0-8).
+
+**Background tab.** A tab behind another tab is demoted by the OS (W3b: 4.3-4.5x slower; an inaudible tone brought a 25.9 s solve back to 5.7 s). It is not reproducible in Playwright (visibilityState stays
+'visible'), so this rollout re-measured nothing there; the flow is tested with a faked visibility. Behaviour now: off until chosen. The first solve that ran while the tab was hidden (it was hidden at the start or went
+hidden during the run) asks once, when the user is back: "Keep it fast" (stores 1, ticks Simulation → Advanced → *Keep solving at full speed in a background tab*) or "No thanks" (stores 0, never asked again).
+The question is a click, so the browser's autoplay rule is met; no AudioContext is created before it. A solve that ran only in the front never asks.
 
 ## What else is worth parallelising
 

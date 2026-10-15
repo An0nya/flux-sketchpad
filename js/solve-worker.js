@@ -43,10 +43,11 @@ self.onmessage = async (e) => {
     } else if (m.type === 'solve') {
       const def = RF.Solvers.get(m.id); if (!def) throw new Error('solver ' + m.id + ' is not loaded in the worker');
       // held = the latest preview call not sent yet, as REFERENCES (a dropped call costs nothing); it is copied when sent
-      let raysUsed = 0, held = null, lastAt = -1e9, nPrev = 0, traceMs = 0, nTrace = 0;   // traceMs / nTrace: time inside tools.trace / traceAsync (reported in 'done', for the benchmarks)
+      let raysUsed = 0, held = null, lastAt = -1e9, nPrev = 0, traceMs = 0, nTrace = 0, nGpu = 0;   // traceMs / nTrace: time inside tools.trace / traceAsync (reported in 'done', for the benchmarks); nGpu: how many of them ran on the GPU
       const spend = (o) => { const n = Math.max(1, (o && o.rays) | 0 || 20000); raysUsed += n; if (raysUsed > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays.toLocaleString() + ')'); };
       if (m.gpu && !RF.GpuTrace) importScripts('gpu-trace.js');
-      if (RF.GpuTrace) { RF.GpuTrace.enable(!!m.gpu); if (m.gpu) await RF.GpuTrace.init(); }   // no WebGPU here → traceAsync runs on the CPU
+      if (RF.GpuTrace) RF.GpuTrace.enable(!!m.gpu);   // the device itself starts at the first traceAsync (below): a solve that never asks for the GPU never wakes it.  No WebGPU here → traceAsync runs on the CPU
+      let gpuInit = null; const gpuReady = () => (m.gpu && RF.GpuTrace ? (gpuInit || (gpuInit = RF.GpuTrace.init().catch(() => {}))) : null);
       const post = () => {
         const h = held; held = null; let p; try { p = previewMsg(h.surfaces, h.info, h.n); } catch (e) { return; }   // a malformed preview is dropped
         lastAt = performance.now(); send(p, p.grid ? [p.grid.buffer] : []);
@@ -67,7 +68,7 @@ self.onmessage = async (e) => {
         pool: poolOf(),
         trace: (surfaces, o) => { flush(); spend(o); const t = performance.now(); try { return RF.Solvers.trace(m.scene, surfaces, o); } finally { traceMs += performance.now() - t; nTrace++; } },
         // the same trace, possibly on the GPU (the user's Simulation → GPU trace): same rays, f32 (res.gpu says which ran)
-        traceAsync: async (surfaces, o) => { flush(); spend(o); const t = performance.now(); try { return await RF.Solvers.traceAsync(m.scene, surfaces, o); } finally { traceMs += performance.now() - t; nTrace++; } },
+        traceAsync: async (surfaces, o) => { flush(); spend(o); const t = performance.now(); try { await gpuReady(); const r = await RF.Solvers.traceAsync(m.scene, surfaces, o); if (r && r.gpu) nGpu++; return r; } finally { traceMs += performance.now() - t; nTrace++; } },
         // display only: never throws into the solver, never changes what it computes
         preview: (surfaces, info) => {
           if (!m.preview) return;
@@ -77,7 +78,7 @@ self.onmessage = async (e) => {
       };
       let output; try { output = await def.solve(m.input, m.settings, tools); } finally { if (pool) pool.close(); }
       if (held) post();                              // the latest candidate always reaches the page before the result
-      send({ type: 'done', output, raysUsed, previews: nPrev, traceMs: Math.round(traceMs), traces: nTrace });
+      send({ type: 'done', output, raysUsed, previews: nPrev, traceMs: Math.round(traceMs), traces: nTrace, gpuTraces: nGpu });
     }
   } catch (err) { send({ type: 'error', message: String(err && err.message || err) }); }
 };

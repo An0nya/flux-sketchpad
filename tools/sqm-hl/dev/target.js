@@ -64,9 +64,15 @@
   function logBlur(g, T, sv, sh) {
     const lg = new Float64Array(g.n); for (let q = 0; q < g.n; q++) lg[q] = Math.log(Math.max(T[q], 1e-3));
     const pass = (src, sigma, vert) => {
-      if (!(sigma > 0)) return src; const r = Math.ceil(3 * sigma / g.step), w = []; let ws = 0; for (let d = -r; d <= r; d++) { const x = Math.exp(-0.5 * (d * g.step / sigma) ** 2); w.push(x); ws += x; }
-      const out = new Float64Array(g.n);
-      for (let j = 0; j < g.nv; j++) for (let i = 0; i < g.nh; i++) { let s = 0, ww = 0; for (let d = -r; d <= r; d++) { const ii = vert ? i : i + d, jj = vert ? j + d : j; if (ii < 0 || jj < 0 || ii >= g.nh || jj >= g.nv) continue; s += w[d + r] * src[jj * g.nh + ii]; ww += w[d + r]; } out[j * g.nh + i] = s / ww; }
+      if (!(sigma > 0)) return src; const r = Math.ceil(3 * sigma / g.step), W = r * 2 + 1, w = new Float64Array(W); for (let d = -r; d <= r; d++) w[d + r] = Math.exp(-0.5 * (d * g.step / sigma) ** 2);
+      const out = new Float64Array(g.n), nh = g.nh, nv = g.nv, len = vert ? nv : nh;
+      // the window along the blurred axis is clipped at the grid edge (the same terms in the same order as testing each one), and its weight sum depends on that position only
+      const wsum = new Float64Array(len); for (let p = 0; p < len; p++) { let ww = 0; for (let d = Math.max(-r, -p); d <= Math.min(r, len - 1 - p); d++) ww += w[d + r]; wsum[p] = ww; }
+      for (let j = 0; j < nv; j++) for (let i = 0; i < nh; i++) {
+        const p = vert ? j : i, d0 = Math.max(-r, -p), d1 = Math.min(r, len - 1 - p); let s = 0;
+        if (vert) { for (let d = d0; d <= d1; d++) s += w[d + r] * src[(j + d) * nh + i]; } else { const b = j * nh + i; for (let d = d0; d <= d1; d++) s += w[d + r] * src[b + d]; }
+        out[j * nh + i] = s / wsum[p];
+      }
       return out;
     };
     const o = pass(pass(lg, sv, true), sh, false); const T2 = new Float64Array(g.n); for (let q = 0; q < g.n; q++) T2[q] = Math.exp(o[q]); return T2;

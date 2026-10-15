@@ -503,6 +503,16 @@
     x.addEventListener('click', dropWatch); kids.push(x);
     box.append(P.el('div', { class: 'solve-fail', id: 'solve-fail', role: 'alert' }, ...kids));
   };
+  // The one-time question after a solve that ran while the tab was hidden (SolverHost.askAwake; the OS slows a background tab 4-5x): keep solving at full speed with an
+  // inaudible tone?  Either answer is stored (Simulation → Advanced has the same setting), so it is asked once.  The click is the user gesture audio needs.
+  ui.renderAwakePrompt = function (box) {
+    const H = RF.SolverHost; if (!H || !H.askAwake || !H.askAwake()) return;
+    const yes = P.el('button', { type: 'button', class: 'primary', id: 'btn-awake-yes', title: 'Play an inaudible tone while a solve runs so the browser does not slow this tab down when it is in the background' }, 'Keep it fast');
+    const no = P.el('button', { type: 'button', class: 'text', id: 'btn-awake-no', title: 'Do not ask again; Simulation → Advanced has the setting' }, 'No thanks');
+    yes.addEventListener('click', () => { H.answerAwake(true); P.renderNotices(ui); ui.refreshPanels(); }); no.addEventListener('click', () => { H.answerAwake(false); P.renderNotices(ui); ui.refreshPanels(); });
+    box.append(P.el('div', { class: 'solve-fail', id: 'awake-prompt', role: 'alert' }, P.el('span', {}, 'The last solve ran while this tab was in the background, which the browser slows 4-5x. Keep solves at full speed there by playing an inaudible tone while they run? '), yes, no));
+  };
+  if (typeof document !== 'undefined') document.addEventListener('flux-awake-ask', () => { if (ui.store) P.renderNotices(ui); });
   ui.useCandidate = function () {
     const w = ui.watch, store = ui.store; if (!w || !w.failed || !w.msg) return null;
     if (ui.solving || store.version !== w.version || RF.Solvers.current(store.scene) !== w.meta.id) { store.notice('The scene or the solver changed since that solve: its candidate would describe old settings, so it was not applied. Rebuild instead.'); dropWatch(); return null; }

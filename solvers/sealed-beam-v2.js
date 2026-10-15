@@ -70,7 +70,7 @@
      { key: 'tuneRays', label: 'Tuner rays per trace', type: 'number', min: 20000, max: 400000, step: 10000, default: 60000 },
      { key: 'tuneEvals', label: 'Tuner candidates (0 = off)', type: 'number', min: 0, max: 2000, step: 10, default: 150 },
      { key: 'tuneAim', label: 'Tuner aim', type: 'select', options: ['scan', 'frozen'], default: 'frozen', help: 'scan: every trace finds the cut-off aim afresh (the slow part of a trace). frozen: candidates use the starting incumbent aim; full aim procedure once for the final verdict' },
-     { key: 'tuneGpu', label: 'Tuner traces via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: false },
+     { key: 'tuneGpu', label: 'Tuner traces via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: true, help: 'same rays, f32; without a GPU the same CPU trace. Measured ~11x with the frozen aim on an M4' },
      { key: 'tuneSeed', label: 'Tuner random seed', type: 'number', min: 0, step: 1, default: 12345, help: 'the (1+1) search\u2019s own dice; another seed is another run of the same search' },
      { key: 'tuneSeconds', label: 'Tuner time limit (s, 0 = none)', type: 'number', min: 0, step: 5, default: 0, help: 'a wall-clock cap; the result then depends on machine speed. 0 = deterministic' }]);
 

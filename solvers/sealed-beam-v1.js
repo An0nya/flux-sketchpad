@@ -69,8 +69,8 @@
     [{ key: 'tune', label: 'Tune the flute pattern against the spec', type: 'checkbox', default: true, help: 'Spec mode only: coordinate search with tools.trace({spec:true})' },
      { key: 'tuneRays', label: 'Tuner rays per trace', type: 'number', min: 20000, max: 400000, step: 10000, default: 60000 },
      { key: 'tuneEvals', label: 'Tuner candidates (0 = off)', type: 'number', min: 0, max: 2000, step: 10, default: 150 },
-     { key: 'tuneAim', label: 'Tuner aim', type: 'select', options: ['scan', 'frozen'], default: 'scan', help: 'scan: every trace finds the cut-off aim afresh (the slow part of a trace). frozen: candidates are judged at the incumbent\u2019s aim (about 4x faster), re-found whenever a candidate wins' },
-     { key: 'tuneGpu', label: 'Tuner traces via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: false },
+     { key: 'tuneAim', label: 'Tuner aim', type: 'select', options: ['scan', 'frozen'], default: 'frozen', help: 'frozen (default): candidates are judged at the incumbent\u2019s aim (about 4x faster), re-found by a full scan whenever a candidate wins, so the final design always has a full-aim verdict. scan: every trace finds the cut-off aim afresh (the slow part of a trace)' },
+     { key: 'tuneGpu', label: 'Tuner traces via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: true, help: 'same rays, f32; without a GPU the same CPU trace. Measured ~11x with the frozen aim on an M4' },
      { key: 'tuneSeed', label: 'Tuner random seed', type: 'number', min: 0, step: 1, default: 12345, help: 'the (1+1) search\u2019s own dice; another seed is another run of the same search' },
      { key: 'tuneSeconds', label: 'Tuner time limit (s, 0 = none)', type: 'number', min: 0, step: 5, default: 40, help: 'a wall-clock cap; the result then depends on machine speed. 0 = deterministic' }]);
 
@@ -210,15 +210,16 @@
     };
     if (canTune && !viaAsync) {
       const { T, over, mutate, finish } = tune((surf, o) => tools.trace(surf, o));
-      let r0 = T(p), best = objective(r0), fz = frozen && r0.spec ? r0.spec.frozen : null, evals = 1, sigma = 0.2, accepted = 0;
+      let r0 = T(p), best = objective(r0), fz = frozen && r0.spec ? r0.spec.frozen : null, evals = 1, sigma = 0.2, accepted = 0, full = r0;
       for (let it = 0; it < s.tuneEvals && !over(); it++) {
         const q = mutate(sigma), rq = T(q, fz), o = objective(rq); evals++;
         if (better(o, best)) {
-          if (fz) { const rs = T(q); evals++; if (rs.spec) { fz = rs.spec.frozen; best = objective(rs); } else best = o; } else best = o;
+          if (fz) { const rs = T(q); evals++; if (rs.spec) { fz = rs.spec.frozen; best = objective(rs); full = rs; } else best = o; } else best = o;
           p = q; sigma = Math.min(0.5, sigma * 1.25); accepted++;
         } else sigma = Math.max(0.03, sigma * 0.96);
         if (tools.progress && it % 5 === 0) tools.progress(it / s.tuneEvals);
       }
+      if (frozen && full.spec) notes.push('final full-aim verdict: ' + JSON.stringify(full.spec.n));
       finish(best, evals, accepted);
     }
     const out = () => {
@@ -229,15 +230,16 @@
     if (viaAsync) {
       const { T, over, mutate, finish } = tune((surf, o) => tools.traceAsync(surf, o));
       return (async () => {
-        let r0 = await T(p), best = objective(r0), fz = frozen && r0.spec ? r0.spec.frozen : null, evals = 1, sigma = 0.2, accepted = 0;
+        let r0 = await T(p), best = objective(r0), fz = frozen && r0.spec ? r0.spec.frozen : null, evals = 1, sigma = 0.2, accepted = 0, full = r0;
         for (let it = 0; it < s.tuneEvals && !over(); it++) {
           const q = mutate(sigma), rq = await T(q, fz), o = objective(rq); evals++;
           if (better(o, best)) {
-            if (fz) { const rs = await T(q); evals++; if (rs.spec) { fz = rs.spec.frozen; best = objective(rs); } else best = o; } else best = o;
+            if (fz) { const rs = await T(q); evals++; if (rs.spec) { fz = rs.spec.frozen; best = objective(rs); full = rs; } else best = o; } else best = o;
             p = q; sigma = Math.min(0.5, sigma * 1.25); accepted++;
           } else sigma = Math.max(0.03, sigma * 0.96);
           if (tools.progress && it % 5 === 0) tools.progress(it / s.tuneEvals);
         }
+        if (frozen && full.spec) notes.push('final full-aim verdict: ' + JSON.stringify(full.spec.n));
         finish(best, evals, accepted); return out();
       })();
     }
