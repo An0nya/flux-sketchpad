@@ -1055,7 +1055,7 @@ void main() {
       for (const e of V.gameBar.querySelectorAll('input,select')) e.disabled = false;
       const repair = g.results.reduce((sum, r) => sum + r.repair, 0);
       V.gameCard.textContent = 'GAME SCORECARD — ' + (g.reason || (g.results.some((r) => r.conscience) ? 'Person hit: run lost · conscience cost 100' : last && last.lost ? last.tier : 'Run complete')) + '\nHazards seen: ' + g.seen + ' / ' + g.spawned + ' · mean reaction: ' + mean + ' (' + g.reactions.length + ' measured presses)\nHits: ' + hits + ' · passes: ' + passes + ' · flashed ' + g.flashes + ' cops: $' + ticket + '\nLamp Spec verdict: ' + g.verdict.toUpperCase() + (g.verdict === 'unsure' || g.verdict === 'empty' ? ' (compliance not established)' : '') + ' · repair bands total: $' + repair + '\n' + g.results.map((r) => '#' + r.id + ' ' + r.kind + ': ' + (r.hit ? r.speed.toFixed(1) + ' km/h impact · ' + r.damage + ' $' + r.repair + ' · liability ' + r.liability.toFixed(1) + ' (' + Math.round(r.mitigation * 100) + '% mitigation) · ' + r.tier : 'pass')).join('\n') + '\nAbsolute reach beats foreground width. Earlier light buys braking distance.\nGame flavour, not legal advice. 1500 kg energy proxy; costs and liability are invented game bands.';
-      const restart = V.gameBar.querySelector('[data-game="start"]'); restart.hidden = false; restart.textContent = 'Run again';
+      const restart = V.gameBar.querySelector('[data-game="start"]'); restart.hidden = false; restart.textContent = 'Run again'; V.gameBar.querySelector('[data-game="exit"]').hidden = false;
     }
   }
   function gameControls(ui) {
@@ -1068,6 +1068,8 @@ void main() {
       pause.addEventListener('click', () => { st.playing = !st.playing; ui.redrawSpec(); });
       const start = E('button', { type: 'button', 'data-game': 'start' }, 'Start run'), brake = E('button', { type: 'button', 'data-game': 'brake', 'aria-label': 'Hold to brake', 'aria-pressed': 'false' }, 'Hold: BRAKE');
       start.addEventListener('click', () => startGame(ui));
+      // The card and lobby cover the toolbar's Exit Play button (MG-test: unclickable at 1500 px and 390 px), so the panel carries its own.
+      const exit = E('button', { type: 'button', 'data-game': 'exit' }, 'Exit Play'); exit.addEventListener('click', () => toggleGame(ui));
       const active = () => st.game && !st.game.done && st.playing && visible();
       const hold = (held, source) => { if (!st.game) return; const now = performance.now();
         // Integrate the interval BEFORE this input with the previous brake state; never brake retroactively over a slow frame.
@@ -1080,7 +1082,7 @@ void main() {
       const suspend = () => { if (st.game && !st.game.done) { hold(false, 'all'); if (st.game.pauseAt === undefined) st.game.pauseAt = performance.now(); st.playing = false; stop(); ui.redrawSpec(); } };
       root.addEventListener('blur', suspend); document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); });
       V.gameStatus = E('div', { 'data-game': 'status', role: 'status' }); V.gameCard = E('div', { 'data-game': 'card', class: 'game-card', hidden: '' });
-      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), start, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. A stop passes the encounter; release after a stop to resume cruise after 2 s. Game flavour, not legal advice.'));
+      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. A stop passes the encounter; release after a stop to resume cruise after 2 s. Game flavour, not legal advice.'));
       V.cv.parentElement.append(box); speed.value = info().o.speed; seed.value = info().o.seed; wet.value = info().o.wet ? 'wet' : 'dry';
     }
     V.gameBar.hidden = !st.gameMode; V.gameBar.classList.toggle('running', !!st.game && !st.game.done); mount(ui);
@@ -1097,6 +1099,7 @@ void main() {
     V.gameBar.querySelector('[data-game="pause"]').hidden = !st.game || st.game.done;
     V.gameBar.querySelector('[data-game="pause"]').textContent = st.playing ? 'Pause' : 'Resume';
     V.gameBar.querySelector('[data-game="start"]').hidden = !!st.game && !st.game.done;
+    V.gameBar.querySelector('[data-game="exit"]').hidden = !!st.game && !st.game.done;
     if (st.game) {
       if (!st.playing && !st.game.done && st.game.pauseAt === undefined) { st.game.pauseAt = performance.now(); if (st.game.inputs) st.game.inputs.clear(); RF.DriveGame.press(st.game, false, performance.now()); }
       if (st.game.ctx !== (ui.run && ui.run.ctx) || st.game.judge !== (ui.spec && ui.spec.ev) || st.game.road !== info().rd) { st.game.done = true; st.game.reason = 'Lamp changed; start a new run'; st.playing = false; }

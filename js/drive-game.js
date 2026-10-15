@@ -24,6 +24,7 @@
     return lo <= hi && lo <= 1 && hi >= 0 ? clamp(lo, 0, 1) : null;
   }
   function score(o) {
+    // Mitigation (doc §6 contradicts itself: 'both −25 max' vs 15 + 20 = 35): game choice = 35 % when both apply, capped at 50 %. Persons only; never erases recklessness.
     const speed = Math.max(0, o.speed || 0), hit = !!o.hit, noncompliant = o.verdict === 'fail', mitigation = o.person ? Math.min(0.5, (o.noHiViz ? 0.15 : 0) + (o.jaywalking ? 0.20 : 0)) : 0;
     const recklessness = hit ? Math.min(100, (noncompliant ? 40 : 0) + (o.highMisuse ? 30 : 0) + speed) : 0, liability = recklessness * (1 - mitigation);
     const energy = hit ? 0.5 * 1500 * (speed / 3.6) ** 2 * clamp(o.fraction || 0, 0, 1) : 0;

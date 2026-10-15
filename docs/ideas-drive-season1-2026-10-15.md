@@ -58,6 +58,7 @@ still carried when the boxes overlap).
   at night −15 · jaywalking (mid-block / against the light) −20 · both −25 max (as written; note 15 + 20 = 35 elsewhere
   in the text, pick one).
 - **Liability** = recklessness × (1 − mitigating %).
+- *MG decision (2026-10-15):* the game uses **35 %** when both mitigations apply (15 + 20, matching the 5 km/h worked example), still capped at 50 %; the "−25 max" wording is not used.
 - **Outcomes:** liability < 20 and collision_speed < 10 and compliant → repair cost (~$2k) · 20–60 → ticket + civil
   (~$5k + points) · > 60, or > 30 km/h in a crosswalk, or non-compliant and > 30 km/h → jail-risk game-over screen.
 - Person hit at any speed = run lost (conscience cost 100); the money is flavour.

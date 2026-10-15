@@ -39,7 +39,9 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   const end=await page.evaluate(()=>{const g=RF.UI.dvAnim.game;RF.DriveGame.resolve(g,{id:99,kind:'person',resolved:false,reaction:null,noHiViz:true,jaywalking:true,crosswalk:true},true,5,1);RF.DriveAnim._.gameFrame(g);return {lost:g.results[g.results.length-1].lost,card:document.querySelector('[data-game=card]').textContent,visible:!document.querySelector('[data-game=card]').hidden};});
   ok('MG person-hit end card includes statistics, Spec verdict, tickets and teaching point',end.lost&&end.visible&&/run lost/.test(end.card)&&/mean reaction/.test(end.card)&&/Spec verdict/.test(end.card)&&/cops/.test(end.card)&&/Absolute reach beats foreground width/.test(end.card),end);
   if(shots)await page.screenshot({path:shots+'/end-card.png'});
-  await page.setViewportSize({width:1500,height:950});await page.click('[data-game=toggle]');
+  await page.setViewportSize({width:1500,height:950});await page.waitForTimeout(250);
+  ok('MG end card leaves a clickable Exit Play (the toolbar button sits under the card)',await page.evaluate(()=>{const b=document.querySelector('[data-game=exit]');if(!b||b.hidden)return false;const r=b.getBoundingClientRect(),e=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return e===b;}));
+  await page.click('[data-game=exit]');
   const restored=await page.evaluate(()=>{const u=RF.UI,_=RF.DriveAnim._;_.frame();const hdr=_.readHdr();return {options:JSON.stringify(u.dvOpts),scene:RF.State.serialize(u.store.scene),state:{dist:u.dvAnim.dist,t:u.dvAnim.t,total:u.dvAnim.total},identical:hdr.length===window.mgBefore.length&&hdr.every((v,i)=>v===window.mgBefore[i]),off:!u.dvAnim.gameMode&&!u.dvAnim.game};});
   ok('MG exit restores normal options, camera state, saved scene and exact HDR',restored.off&&restored.options===before.options&&restored.scene===before.scene&&JSON.stringify(restored.state)===JSON.stringify(before.state)&&restored.identical,{before,restored});
   ok('MG no page errors',errors.length===0,errors);
