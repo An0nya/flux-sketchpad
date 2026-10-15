@@ -115,19 +115,22 @@
     return el('div', { class: 'row', title: 'How long a solver may run before the app stops it and keeps the previous design (its last preview stays on offer). Remembered in this browser. Solvers that pace themselves to the limit (e.g. Spec headlamp v2) use the extra time.' }, el('label', {}, 'Solve time limit'), s);
   }
   // Simulation → Advanced → Solver threads: workers a solver may use for its independent trials (tools.pool; only solvers that declare tasks use them, the
-  // result is the same for any number); remembered per browser.  Off by default.  Keep solving in the background: see js/solver-host.js (wake).
+  // result is the same for any number); remembered per browser.  Never chosen → min(4, cores − 2) (RF.SolverHost.threadsDefault; flat past 4).
   function solverThreadsRow() {
     const H = RF.SolverHost; if (!H || !H.setThreads || typeof Worker === 'undefined') return el('span');
-    const hw = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4, opts = [[0, 'off (default)']].concat([2, 3, 4, 6, 8].filter((n) => n <= hw).map((n) => [n, String(n)])), cur = H.threads();
+    const hw = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4, def = H.threadsDefault(), cur = H.threads();
+    const opts = [[0, 'off']].concat([2, 3, 4, 6, 8].filter((n) => n <= hw || n === cur).map((n) => [n, String(n)])).map(([v, t]) => [v, v === def ? t + ' (default)' : t]);
     const s = el('select', { 'aria-label': 'Solver threads' }, ...opts.map(([v, t]) => el('option', { value: String(v), selected: v === cur ? true : null }, t)));
     s.addEventListener('change', () => H.setThreads(+s.value));
-    return el('div', { class: 'row', title: 'Worker threads a solve may use for trials that do not depend on each other (Dish + kernel fit auto, Mosaic auto-tuner). The design is the same for any number; only the time changes. Needs idle cores: with the Watch solve previews or other tabs busy, fewer is better. Remembered in this browser.' }, el('label', {}, 'Solver threads'), s);
+    return el('div', { class: 'row', title: 'Worker threads a solve may use for trials that do not depend on each other (Dish + kernel fit auto, Mosaic auto-tuner, Spec headlamp v3). The design is the same for any number; only the time changes (measured: 1.5-3x, flat past 4). Needs idle cores: with the Watch solve previews or other tabs busy, fewer is better. Default: the smaller of 4 and (cores − 2). Remembered in this browser.' }, el('label', {}, 'Solver threads'), s);
   }
+  // Keep a solve fast while the tab is in the background (an inaudible tone, js/solver-host.js).  Off until chosen: the first solve that ran while the tab was hidden
+  // asks once (ui.renderAwakePrompt), and this box is the setting.
   function keepAwakeRow() {
     const H = RF.SolverHost; if (!H || !H.setKeepAwake) return el('span');
     const box = el('input', { type: 'checkbox', checked: H.keepAwake() ? true : null });
     box.addEventListener('change', () => H.setKeepAwake(box.checked));
-    return el('label', { class: 'tog', title: 'A tab that is not in front is slowed by the operating system to a fraction of its speed (measured 4-5x on an M4). While a solve runs, play an inaudible tone so the browser treats the tab as active. Off by default; some browsers show a speaker icon on the tab.' }, box, ' Keep solving at full speed in a background tab');
+    return el('label', { class: 'tog', title: 'A tab that is not in front is slowed by the operating system to a fraction of its speed (measured 4-5x on an M4). While a solve runs, play an inaudible tone (volume 0.001 %, no sound you can hear) so the browser treats the tab as active. Off by default; some browsers show a speaker icon on the tab. If you never chose, the app asks once after a solve that ran while the tab was hidden.' }, box, ' Keep solving at full speed in a background tab');
   }
   // GPU trace (js/gpu-trace.js): the same rays on WebGPU, f32 — statistically the same result, not bit-identical; remembered per browser
   function gpuRow(ui) {
@@ -718,6 +721,7 @@
     const box = document.getElementById('notices');
     box.innerHTML = '';
     if (ui.renderSolveFail) ui.renderSolveFail(box);   // a solve that stopped without a result: stays until dismissed (ui.js)
+    if (ui.renderAwakePrompt) ui.renderAwakePrompt(box);   // the one-time background-tab question (ui.js)
     // notices live NOTICE_TTL ms (fading over the last second); the same warnings stay in the limits report
     const NOTICE_TTL = 8000, now = Date.now();
     const live = ui.store.notices.filter((n) => now - n.t < NOTICE_TTL).slice(0, 4);

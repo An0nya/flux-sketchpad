@@ -317,7 +317,7 @@
       { key: 'goal', label: 'Goal', type: 'select', options: ['faithful', 'throw', 'efficient'], default: 'faithful' },
       { key: 'rays', label: 'Rays per trial trace', type: 'number', min: 50000, max: 2000000, step: 50000, default: 400000 },
       { key: 'trials', label: 'Max trial designs (one trace each)', type: 'range', min: 1, max: 30, step: 1, default: 18 },
-      { key: 'traceGpu', label: 'Trace trials via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: false },
+      { key: 'traceGpu', label: 'Trace trials via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: true, help: 'same rays, f32; without a GPU the same CPU trace. Measured 2.3x (3.1x with solver threads) on an M4' },
     ],
     async solve(input, st, tools) {
       const base = RF.Solvers.defaults(STATIC); base.minDistance = st.minDistance; base.debug = false;

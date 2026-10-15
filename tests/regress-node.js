@@ -663,6 +663,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('W3b sealed-beam tuner: tuneGpu without a GPU = the default tuner (same surfaces)', hashOf(b0) === hashOf(b1), hashOf(b0) + ' vs ' + hashOf(b1));
     ok('W3b sealed-beam tuner: tuneAim frozen runs and reports its traces', b2.notes.some((n) => /^tuner: \d+ traces/.test(n)) && b2.surfaces.length > 0, b2.notes[0].slice(0, 100));
   }
+  // W3c: solver rollout (frozen-aim tuner defaults, GPU defaults, thread determinism, sqm-hl speed-ups = the old numbers); tests/solver-rollout.js, also runnable alone
+  await require('./solver-rollout.js').run(RF, ok);
   // D3: deterministic moving traffic, rigid cars, the existing lighting path and once-per-driver glare count.
   {
     const DA = RF.DriveAnim, D = RF.Drive, flags = { posts: false, veg: false, people: false, animals: false, signs: false, rpm: false };
