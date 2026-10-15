@@ -15,7 +15,7 @@
 (function (root) {
   'use strict';
   const RF = root.RF || (root.RF = {}), D = RF.Drive;
-  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, MAX_SIM = 1600, ANIM_SCENES = { road: 1, forest: 1, city: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
+  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, MAX_SIM = 1600, HEAVY_SIM = { forest: 960, city: 960 }, ANIM_SCENES = { road: 1, forest: 1, city: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
   const CLASSES = [['posts', 'posts', 'Delineator posts with reflectors'], ['signs', 'signs', 'Road signs (retroreflective sheeting)'], ['people', 'people', 'Pedestrians'], ['animals', 'deer', 'Deer, with retroreflecting eyes'], ['veg', 'trees', 'Trees and bushes at the roadside'], ['obstacle', 'crates', 'A dark crate on the road every 150 m (the hard target: 3 % reflectance, nothing retroreflective)'], ['rpm', 'studs', 'Raised reflective pavement markers on the centre and edge lines (random scenery only)'], ['tex', 'grain', 'Asphalt grain: a subtle texture on the road surface that moves with the drive'], ['mt', 'threads', 'Trace the objects on several CPU threads (Web Workers), so big scenes keep up. Off: this thread only. Needs the page served over http(s) (browsers block workers on file://)'], ['wild', 'random', 'Random scenery from a seed: denser, different every 300 m, walkers and deer that move. Off: the original fixed scenery, repeating every 300 m']];
 
   // ---------------------------------------------------------------- CPU: scenery, ground, composition (pure; tests use these)
@@ -108,32 +108,39 @@
     };
   }
   // tileRow(ty) → true: trace only these 16-px tile rows (a worker's share); the rows come back with .trows = the tile rows that were traced
-  function objects(p, dist, rgba, ss, tauOf, tileRow) {
-    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, tileRow, scene: { objects: place(p.src, dist, p.A, tauOf, dimFoliage(p)), markings: [], verge: p.src.verge } }, camOf(p)));
+  function objects(p, dist, rgba, ss, tauOf, tileRow, placed) {
+    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, tileRow, scene: { objects: placed || place(p.src, dist, p.A, tauOf, dimFoliage(p)), markings: [], verge: p.src.verge } }, camOf(p)));
     r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
   }
   // walkers and deer start to move when the car is ACT m from where they stood: act = id → the clock (s) at that moment. Pure state, so every thread that sees the same frames keeps the same copy
-  const tauFor = (act, t) => (id, rel0) => { const t0 = act.get(id); if (t0 !== undefined) return t - t0; if (rel0 <= ACT) act.set(id, t); return 0; };
+  const tauFor = (act, t) => (id) => { const t0 = act.get(id); return t0 === undefined ? 0 : t - t0; };
+  // start the walkers and deer the car has come within ACT m of (the page does this once per frame and hands the result to every thread, so they all pose the same actor the same way)
+  function activate(src, dist, t, act) {
+    if (!src.chunk) return;
+    const k0 = Math.floor((dist - 6) / PERIOD);
+    for (let k = k0 - 1; k <= k0 + 1; k++) for (const a of src.chunk(k).actors) { const id = k + ':' + a.id; if (!act.has(id) && k * PERIOD + a.s0 - dist <= ACT) act.set(id, t); }
+  }
   function pruneAct(act, dist) { if (act.size > 80) { const k0 = Math.floor((dist - 6) / PERIOD); for (const id of act.keys()) if (+id.split(':')[0] < k0 - 2) act.delete(id); } }
   /* The object trace of one worker thread (js/drive-worker.js; the page can run one too, tests do). It rebuilds the scenery itself from parameters (materials are functions: they cannot cross postMessage),
    * and for every frame traces its share of the picture: tile rows ty with ty % n === i, packed into one Float32Array (the rows of each traced tile row, in order). Same code as the page's own trace, so the pixels are the same. */
   function tracer() {
-    let p = null, rgba = null, prev = [], act = new Map(), cfgId = 0;
+    let p = null, rgba = null, prev = [], cfgId = 0, seq = -1, placed = null;
     return {
       cfg(m) {
         const q = m.p; p = Object.assign({}, q, { A: m.arc ? RF.Road.arc(m.arc.R, m.arc.dir) : null }); p.src = source(m.src[0], m.src[1], m.src[2], m.src[3], m.src[4]);
-        rgba = new Float32Array(4 * p.w * p.h); prev = []; act = new Map(m.act || []); cfgId = m.id;
+        rgba = new Float32Array(4 * p.w * p.h); prev = []; cfgId = m.id; seq = -1; placed = null;
       },
-      frame(m) {
+      // job m: { seq, dist, t, ss, act (id, clock pairs), c, K (the tile rows ty % K === c), ret (a buffer to reuse), wid }
+      job(m) {
         const t0 = performance.now(), W = p.w, H = p.h, TS = 16;
         for (const ty of prev) rgba.fill(0, ty * TS * W * 4, Math.min(H, (ty + 1) * TS) * W * 4);
-        pruneAct(act, m.dist);
-        const rows = objects(p, m.dist, rgba, m.ss, tauFor(act, m.t), m.n > 1 ? (ty) => ty % m.n === m.i : null), tr = rows.trows;
+        if (m.seq !== seq) { seq = m.seq; placed = place(p.src, m.dist, p.A, tauFor(new Map(m.act), m.t), dimFoliage(p)); }          // the scenery of this frame, placed once for all this thread's jobs
+        const rows = objects(p, m.dist, rgba, m.ss, null, m.K > 1 ? (ty) => ty % m.K === m.c : null, placed), tr = rows.trows;
         let len = 0; for (const ty of tr) len += (Math.min(H, (ty + 1) * TS) - ty * TS) * W * 4;
         const f = m.ret && m.ret.byteLength >= len * 4 ? new Float32Array(m.ret) : new Float32Array(len); let off = 0;
         for (const ty of tr) { const a = ty * TS * W * 4, b = Math.min(H, (ty + 1) * TS) * W * 4; f.set(rgba.subarray(a, b), off); off += b - a; }
         prev = tr;
-        return { type: 'rows', seq: m.seq, cfg: cfgId, i: m.i, trows: tr, buf: f.buffer, len, act: m.i === 0 ? [...act] : null, ms: performance.now() - t0 };
+        return { type: 'rows', seq: m.seq, cfg: cfgId, wid: m.wid, c: m.c, trows: tr, buf: f.buffer, len, ms: performance.now() - t0 };
       },
     };
   }
@@ -300,7 +307,8 @@ void main() {
 
   function size() {                                           // → { cssW, cssH, dpr, W, H } for the container the canvas lives in
     const par = V.canvas.parentElement, bw = par.clientWidth, bh = par.clientHeight, dpr = Math.min(2, root.devicePixelRatio || 1);
-    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16, W = Math.max(MIN_SIM, Math.min(MAX_SIM, Math.round(cssW * dpr))) & ~1, H = Math.round(W * 9 / 16) & ~1;
+    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16, W = Math.max(MIN_SIM, Math.min(V.info && HEAVY_SIM[V.info.o.scene] || MAX_SIM, Math.round(cssW * dpr))) & ~1,       // the forest and the city fill the whole picture with objects: their trace is capped lower (the canvas is the same size, bilinear up)
+       H = Math.round(W * 9 / 16) & ~1;
     return { cssW, cssH, dpr, W, H, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
   }
   function ensureCanvas() {
@@ -337,7 +345,7 @@ void main() {
   function frame() {
     const ui = V.ui, st = S(ui), I = info(), o = I.o, t0 = performance.now(), W = V.p.w, pb = V.band, had = pb[1] > pb[0];
     if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
-    pruneAct(V.act, st.dist);
+    pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
     const rows = objects(V.p, st.dist, V.rgba, ssNow(), tauFor(V.act, st.t));
     const t1 = performance.now();
     adaptSS(t1 - t0);
@@ -372,20 +380,25 @@ void main() {
     const I = info(), p = V.p, key = JSON.stringify([V.skey, p.w, p.h, p.hfov, p.lane, p.conv, p.lamps, p.look, I.A && [I.A.R, I.A.dir]]);
     if (key === Wk.cfgKey && Wk.lut === p.lut) return;
     Wk.cfgKey = key; Wk.lut = p.lut; Wk.cfgId++; Wk.busy = null;           // a frame in flight belongs to the old picture: dropped when it arrives
-    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lane: p.lane, look: p.look }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs, act: [...V.act] };
+    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lane: p.lane, look: p.look }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
     for (const w of Wk.list) w.postMessage(m);
   }
+  // the frame is cut into K jobs (tile rows ty % K === c); every worker gets one, and a worker that finishes gets the next: threads that run slower (efficiency cores, a busy machine) just do fewer
   function sendFrame() {
-    const st = S(V.ui), n = Wk.list.length, ss = ssNow(); Wk.seq++;
-    Wk.busy = { seq: Wk.seq, dist: st.dist, t: st.t, sent: performance.now(), got: 0, parts: new Array(n) };
-    Wk.list.forEach((w, i) => { const ret = Wk.pool.pop(); w.postMessage({ type: 'frame', seq: Wk.seq, dist: st.dist, t: st.t, ss, i, n, ret }, ret ? [ret] : []); });
+    const st = S(V.ui), n = Wk.list.length, ss = ssNow(), th = Math.ceil(V.p.h / 16), K = n > 1 ? Math.min(th, 4 * n) : 1; Wk.seq++;
+    pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
+    const b = Wk.busy = { seq: Wk.seq, dist: st.dist, t: st.t, sent: performance.now(), done: 0, next: 0, K, ss, act: [...V.act], parts: [] };
+    for (let i = 0; i < n && b.next < K; i++) sendJob(i, b);
   }
+  function sendJob(i, b) { const ret = Wk.pool.pop(); Wk.list[i].postMessage({ type: 'job', seq: b.seq, dist: b.dist, t: b.t, ss: b.ss, act: b.act, c: b.next++, K: b.K, ret, wid: i }, ret ? [ret] : []); }
   function onWorker(d) {
     if (!d) return;
     if (d.type === 'err') { failWorkers(d.message); return; }
     if (d.type !== 'rows') return;
     const b = Wk.busy; if (!b || d.seq !== b.seq || d.cfg !== Wk.cfgId) { Wk.pool.push(d.buf); return; }       // an old picture
-    b.parts[d.i] = d; if (++b.got === b.parts.length) finishFrame(b);
+    b.parts.push(d); b.done++;
+    if (b.next < b.K) sendJob(d.wid, b);
+    if (b.done === b.K) finishFrame(b);
   }
   // all the rows are in: assemble, upload what was touched, draw at the dist they were traced at
   function finishFrame(b) {
@@ -399,7 +412,7 @@ void main() {
     }
     if (y1 <= y0) { y0 = 0; y1 = 0; }
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], y0) : y0, had ? Math.max(pb[1], y1) : y1); V.band = [y0, y1];
-    const t2 = performance.now(), act = b.parts[0] && b.parts[0].act; if (act) V.act = new Map(act);
+    const t2 = performance.now();
     V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, b.dist), A: I.A, k: exposure(), glare: +o.glare || 0, flip: I.mirrored, tex: o.tex ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
@@ -554,7 +567,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, Wk, frame, frameMT, mt, size, prepare, exposure, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
