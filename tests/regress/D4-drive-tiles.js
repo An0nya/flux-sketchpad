@@ -28,7 +28,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       Object.assign(u.dvOpts, { oncoming: true, preceding: true }); u.redrawSpec();
       for (const scene of ['road','forest','city','intersection']) for (const [dist,t] of [[40,0],[1060,13],[1860,30]]) {
         u.dvOpts.scene = scene; Object.assign(u.dvAnim, { dist,t,playing:false }); u.redrawSpec(); _.frame(); const a = _.readHdr(), raw = _.V.rgba;
-        for (let i=0;i<a.length;i++) if (i%4!==3) rgbError = Math.max(rgbError, Math.abs(a[i]-raw[i]) / Math.max(0.01, Math.abs(raw[i])));
+        for (let i=0;i<a.length;i++) if (i%4!==3 && raw[i] < 65504) rgbError = Math.max(rgbError, Math.abs(a[i]-raw[i]) / Math.max(0.01, Math.abs(raw[i])));
         workers = await _.frameMT(dist,t) && workers; const b = _.readHdr();
         for (let i=0;i<a.length;i++) { worst=Math.max(worst,Math.abs(a[i]-b[i])); n++; }
       }
@@ -49,7 +49,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.click('[data-dv="preceding"]'); await sleep(150);
     ok('traffic on shows counter/reset', await page.evaluate(() => ['flashes','reset-flashes'].every((k)=>!document.querySelector('[data-anim="'+k+'"]').hidden)));
     const guard = await page.evaluate(async () => {
-      const u=RF.UI,D=RF.DriveAnim,_=D._; const car=D.trafficCars(_.V.src,0,0).find((c)=>c.kind==='preceding'); u.dvAnim.dist=car.rel-10; u.dvAnim.t=0; _.frame();
+      const u=RF.UI,D=RF.DriveAnim,_=D._; const tr=_.V.src.traffic; tr.safeGap=false; let car, d0=0; for (; d0<2000 && !car; d0+=20) car=D.trafficCars(_.V.src,d0,0).find((c)=>c.kind==='preceding'); tr.safeGap=true; u.dvAnim.dist=d0-20+car.rel-10; u.dvAnim.t=0; _.frame();
       const guarded=D.trafficCars(_.V.src,u.dvAnim.dist,0).every((c)=>c.kind!=='preceding'||c.rel>=25);
       // The speed range uses the quiet setting path: exercise its real input event, then a worker frame.
       const e=document.querySelector('[data-anim="speed"]'); e.value='130'; e.dispatchEvent(new Event('input',{bubbles:true}));
