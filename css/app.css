@@ -643,3 +643,5 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 /* P0: readout floats over the picture; it never enlarges the controls row. */
 .drive-perf { position: absolute; left: 6px; top: 58px; z-index: 3; max-width: calc(100% - 12px); max-height: 45%; overflow: auto; box-sizing: border-box; padding: 4px 6px; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: auto; touch-action: pan-y; background: rgba(5,10,18,.85); color: #e5efff; font: 10px/1.35 monospace; font-variant-numeric: tabular-nums; }
 .drive-perf[hidden], .canvas-wrap:not(.drive) > .drive-perf { display: none; }
+.dp-stage > .drive-tools:has(.drive-more[open]) ~ .drive-perf { top: auto; bottom: 6px; }
+.canvas-wrap > .drive-tools:has(.drive-more[open]) ~ .drive-perf { display: none; }   /* inline: the open More panel covers the picture; the readout returns when it closes */   /* P0P1-test: the open More panel covered the readout's spot (and its fps toggle) */
