@@ -300,13 +300,24 @@
   // ------------------------------------------------------------------ the tuner
   // Same algorithm; the free settings (dish size, dark-cell weight, flux target) are chosen with real traces (same seed for
   // every candidate, so differences are geometry, not dice).  Coordinate search around the static solver's own pick.
+  // One trial = a static design for the given overrides + its trace.  A pure function of (input, arg): the host may run the trials of one move in parallel
+  // (tools.pool, SOLVER_API.md § "Parallel tasks") or on the GPU (setting traceGpu); the results come back in order, so the search is the same either way.
+  const TASKS = {
+    design: (input, a) => STATIC.solve(input, Object.assign({}, a.base, a.over)),
+    candidate(input, a, ctx) {
+      const out = STATIC.solve(input, Object.assign({}, a.base, a.over)); if (!out.surfaces.length) return null;
+      let tr; try { tr = ctx.trace(out.surfaces, { rays: a.rays, seed: a.seed }); } catch (e) { return null; }
+      return { out, tr };
+    },
+  };
   RF.Solvers.register({
-    id: 'dish-fit-auto', name: 'Dish + kernel fit, trace-tuned', version: '0.1', modes: ['paint'],
+    id: 'dish-fit-auto', name: 'Dish + kernel fit, trace-tuned', version: '0.1', modes: ['paint'], tasks: TASKS,
     settings: [
       { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },
       { key: 'goal', label: 'Goal', type: 'select', options: ['faithful', 'throw', 'efficient'], default: 'faithful' },
       { key: 'rays', label: 'Rays per trial trace', type: 'number', min: 50000, max: 2000000, step: 50000, default: 400000 },
       { key: 'trials', label: 'Max trial designs (one trace each)', type: 'range', min: 1, max: 30, step: 1, default: 18 },
+      { key: 'traceGpu', label: 'Trace trials via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: false },
     ],
     async solve(input, st, tools) {
       const base = RF.Solvers.defaults(STATIC); base.minDistance = st.minDistance; base.debug = false;
@@ -325,23 +336,45 @@
         const t = Date.now(); if (t - lastShow < 1000) return; lastShow = t;
         try { tools.preview(out.surfaces, { label, trace: tr, note: 'trial design (static dish-fit, tuned settings)' }); } catch (e) { /* display only */ }
       };
-      const evaluate = (over) => {
-        const key = JSON.stringify(over); if (seen.has(key) || trials.length >= maxT) return null; seen.add(key);
-        const out = STATIC.solve(input, Object.assign({}, base, over)); if (!out.surfaces.length) return null;
-        let tr; try { tr = tools.trace(out.surfaces, { rays: st.rays, seed: input.seed }); } catch (e) { return null; }
-        show(out, tr, 'trial ' + (trials.length + 1) + '/' + maxT);
-        const r = { out, over, fid: tr.fidelity ? tr.fidelity.fidelity : 0, onPaint: tr.fidelity ? tr.fidelity.onPaint : 0, peak: tr.peakCd || 0, f: out.extras.f, gw: out.extras.gw };
-        if (!trials.length) baseFid = r.fid;
-        trials.push(r); tools.progress(trials.length / maxT); return r;
+      // run a batch of trials: in the pool (parallel, in order), on the GPU (designs here or in the pool, traces on the GPU), or here
+      const runTrials = async (overs) => {
+        const args = overs.map((over) => ({ base, over, rays: st.rays, seed: input.seed }));
+        if (st.traceGpu && typeof tools.traceAsync === 'function') {
+          const outs = tools.pool && tools.pool.size > 1 ? await tools.pool.map('design', args) : args.map((a) => TASKS.design(input, a));
+          return Promise.all(outs.map((out, j) => (out.surfaces.length ? Promise.resolve().then(() => tools.traceAsync(out.surfaces, { rays: args[j].rays, seed: args[j].seed })).then((tr) => ({ out, tr }), () => null) : null)));
+        }
+        return tools.pool ? tools.pool.map('candidate', args) : args.map((a) => TASKS.candidate(input, a, { trace: tools.trace }));
       };
-      const first = evaluate({}); if (!first) return STATIC.solve(input, Object.assign({}, base));
+      // the trials of one move don't depend on each other (only on the incumbent), so they are one batch; bookkeeping in order, as one at a time
+      const evaluateMany = async (overs) => {
+        const res = overs.map(() => null); let todo = overs.map((o, i) => i);
+        while (todo.length) {
+          const batch = [], skipped = [];
+          for (const i of todo) { const key = JSON.stringify(overs[i]); if (seen.has(key)) continue; if (trials.length + batch.length >= maxT) { skipped.push(i); continue; } seen.add(key); batch.push(i); }
+          if (!batch.length) break;
+          const outs = await runTrials(batch.map((i) => overs[i])); let failed = false;
+          batch.forEach((i, j) => {
+            const o = outs[j]; if (!o) { failed = true; return; }
+            const over = overs[i], out = o.out, tr = o.tr;
+            show(out, tr, 'trial ' + (trials.length + 1) + '/' + maxT);
+            const r = { out, over, fid: tr.fidelity ? tr.fidelity.fidelity : 0, onPaint: tr.fidelity ? tr.fidelity.onPaint : 0, peak: tr.peakCd || 0, f: out.extras.f, gw: out.extras.gw };
+            if (!trials.length) baseFid = r.fid;
+            trials.push(r); tools.progress(trials.length / maxT); res[i] = r;
+          });
+          todo = failed ? skipped : [];       // a trial that failed leaves room under the cap for one that was held back
+        }
+        return res;
+      };
+      const evaluate = async (over) => (await evaluateMany([over]))[0];
+      const first = await evaluate({}); if (!first) return STATIC.solve(input, Object.assign({}, base));
       let inc = first, incO = objective(first), cur = { focus: first.f, gapW: first.gw, util: 1, order: 'blurry-first', finePasses: 3 };
       const moves = st.goal === 'faithful'
         ? [['focus', (c) => [c.focus * 0.87, c.focus * 1.15]], ['gapW', (c) => [c.gapW * 0.4, c.gapW * 2.5]], ['util', () => [0.92, 1.1]], ['order', () => ['sharp-first', 'flux-first']], ['finePasses', () => [5]]]
         : [['util', () => [1.15, 1.3]], ['focus', (c) => [c.focus * 0.87, c.focus * 1.15]], ['gapW', (c) => [c.gapW * 0.4, c.gapW * 2.5]], ['util', () => [0.92, 1.5]]];
       for (let sweep = 0; sweep < 2 && trials.length < maxT; sweep++) for (const [key, vals] of moves) {
         let bestHere = null;
-        for (const v of vals(cur)) { const over = Object.assign({}, cur, { [key]: v }), r = evaluate(over); if (r) { const o = objective(r); if (o > incO + 0.002 && (!bestHere || o > bestHere.o)) bestHere = { r, o, over }; } }
+        const overs = vals(cur).map((v) => Object.assign({}, cur, { [key]: v })), rs = await evaluateMany(overs);
+        overs.forEach((over, k) => { const r = rs[k]; if (r) { const o = objective(r); if (o > incO + 0.002 && (!bestHere || o > bestHere.o)) bestHere = { r, o, over }; } });
         if (bestHere) { inc = bestHere.r; incO = bestHere.o; cur = bestHere.over; }
       }
       const out = inc.out; out.notes = (out.notes || []).concat(['tuner (' + st.goal + '): ' + trials.length + ' traces of ' + st.rays + ' rays; first ' + (100 * first.fid).toFixed(1) + '% → chosen ' + (100 * inc.fid).toFixed(1) + '% fidelity, on paint ' + (100 * inc.onPaint).toFixed(1) + '%; settings ' + JSON.stringify(cur)]);

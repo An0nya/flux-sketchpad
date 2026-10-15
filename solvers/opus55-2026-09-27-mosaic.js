@@ -578,14 +578,21 @@
     ['maxDefocus', [1.25, 3]], ['tight', [0.02, 0.12]], ['areaMix', [0.05, 0.4]],
   ];
   const GOAL_W = { faithful: null, efficient: [0.7, 0.3], throw: [0.1, 0.9] };
+  // One candidate = the static design for the given overrides + its trace.  Pure in (input, arg): the host may run the candidates of one knob in parallel
+  // (tools.pool, SOLVER_API.md § "Parallel tasks") or trace them on the GPU (setting traceGpu); the results come back in order, so the search is the same.
+  const TASKS = {
+    design(input, a) { const def = RF.Solvers.get('opus-mosaic'); return solve(RF.U.deepCopy(input), RF.Solvers.sanitize(def, Object.assign({}, a.base, a.over))); },
+    candidate(input, a, ctx) { const out = TASKS.design(input, a); return { out, tr: ctx.trace(out.surfaces, { rays: a.rays, seed: a.seed }) }; },
+  };
   RF.Solvers.register({
-    id: 'opus-mosaic-auto', name: 'Mosaic auto-tuner', version: '0.1', modes: ['paint'],
+    id: 'opus-mosaic-auto', name: 'Mosaic auto-tuner', version: '0.1', modes: ['paint'], tasks: TASKS,
     settings: [
       { key: 'minDistance', label: 'Min facet distance (mm)', type: 'number', min: 0, step: 0.5, default: 0 },
       { key: 'goal', label: 'Goal', type: 'select', default: 'faithful', options: [
         { value: 'faithful', label: 'Faithful (fidelity first)' }, { value: 'efficient', label: 'Efficient (light on the paint)' }, { value: 'throw', label: 'Throw (peak intensity)' }] },
       { key: 'screenRays', label: 'Rays per candidate', type: 'number', min: 50000, step: 50000, default: 600000 },
       { key: 'finalRays', label: 'Rays for the final three', type: 'number', min: 50000, step: 50000, default: 1000000 },
+      { key: 'traceGpu', label: 'Trace candidates via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: false },
     ],
     async solve(input, settings, tools) {
       const def = RF.Solvers.get('opus-mosaic');
@@ -596,14 +603,32 @@
       const knobs = input.limits.maxFacets > 150 ? TUNE_KNOBS.slice(0, 1) : TUNE_KNOBS;
       const seed = input.seed | 0, w = GOAL_W[settings.goal] || null, cache = new Map(), total = 1 + knobs.reduce((a, k) => a + k[1].length, 0) + 3;
       let done = 0, op0 = 0, pk0 = 0;
-      const run = async (over, rays) => {
-        const key = JSON.stringify(over) + '@' + rays; if (cache.has(key)) return cache.get(key);
-        const out = design(over), tr = await tools.trace(out.surfaces, { rays, seed }), f = tr.fidelity || {};
-        const r = { over, out, rays, F: f.fidelity || 0, op: f.onPaint || 0, pk: tr.peakCd || 0 };
-        cache.set(key, r); done++; if (tools.progress) tools.progress(Math.min(0.99, done / total));
-        if (tools.preview) tools.preview(out.surfaces, { label: 'candidate ' + done + '/' + total, trace: tr, note: JSON.stringify(over) });   // display only: the trace it already made
-        return r;
+      // a batch of candidates (same rays): in the pool (parallel, results in order), on the GPU (designs here or in the pool, traces on the GPU), or here
+      const runBatch = async (overs, rays) => {
+        const args = overs.map((over) => ({ base, over, rays, seed }));
+        if (settings.traceGpu && typeof tools.traceAsync === 'function') {
+          const outs = tools.pool && tools.pool.size > 1 ? await tools.pool.map('design', args) : args.map((a) => TASKS.design(input, a));
+          return Promise.all(outs.map((out) => Promise.resolve().then(() => tools.traceAsync(out.surfaces, { rays, seed })).then((tr) => ({ out, tr }))));
+        }
+        if (tools.pool) return tools.pool.map('candidate', args);
+        const o = []; for (const a of args) { const out = TASKS.design(input, a); o.push({ out, tr: await tools.trace(out.surfaces, { rays, seed }) }); }
+        return o;
       };
+      const runMany = async (overs, rays) => {
+        const keys = overs.map((o) => JSON.stringify(o) + '@' + rays), need = [];
+        keys.forEach((k, i) => { if (!cache.has(k) && !need.some((n) => n.k === k)) need.push({ k, over: overs[i] }); });
+        if (need.length) {
+          const outs = await runBatch(need.map((n) => n.over), rays);
+          need.forEach((n, j) => {
+            const out = outs[j].out, tr = outs[j].tr, f = tr.fidelity || {};
+            const r = { over: n.over, out, rays, F: f.fidelity || 0, op: f.onPaint || 0, pk: tr.peakCd || 0 };
+            cache.set(n.k, r); done++; if (tools.progress) tools.progress(Math.min(0.99, done / total));
+            if (tools.preview) tools.preview(out.surfaces, { label: 'candidate ' + done + '/' + total, trace: tr, note: JSON.stringify(n.over) });   // display only: the trace it already made
+          });
+        }
+        return keys.map((k) => cache.get(k));
+      };
+      const run = async (over, rays) => (await runMany([over], rays))[0];
       const J = (r) => {
         if (!w) return r.F + 0.01 * (op0 > 0 ? r.op / op0 : 0);
         const g = clamp((r.F - 0.5) / 0.25, 0, 1), ro = op0 > 0 ? Math.min(2, r.op / op0) : 0, rp = pk0 > 0 ? Math.min(2, r.pk / pk0) : 0;
@@ -613,13 +638,13 @@
       let best = await run({}, R0); op0 = best.op; pk0 = best.pk;
       for (const [k, vals] of knobs) {
         let kb = best;
-        for (const v of vals) { const r = await run(Object.assign({}, best.over, { [k]: v }), R0); if (J(r) > J(kb) + 1e-9) kb = r; }
+        for (const r of await runMany(vals.map((v) => Object.assign({}, best.over, { [k]: v })), R0)) if (J(r) > J(kb) + 1e-9) kb = r;
         best = kb;
       }
       const screened = [...cache.values()].sort((a, b) => J(b) - J(a) || JSON.stringify(a.over).localeCompare(JSON.stringify(b.over)));
       let pick = screened[0];
       if (R1 !== R0) {
-        const fin = []; for (const r of screened.slice(0, 3)) fin.push(await run(r.over, R1));
+        const fin = await runMany(screened.slice(0, 3).map((r) => r.over), R1);
         fin.sort((a, b) => J(b) - J(a) || JSON.stringify(a.over).localeCompare(JSON.stringify(b.over)));
         pick = fin[0];
       }

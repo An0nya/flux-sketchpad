@@ -69,6 +69,9 @@
     [{ key: 'tune', label: 'Tune the flute pattern against the spec', type: 'checkbox', default: true, help: 'Spec mode only: coordinate search with tools.trace({spec:true})' },
      { key: 'tuneRays', label: 'Tuner rays per trace', type: 'number', min: 20000, max: 400000, step: 10000, default: 60000 },
      { key: 'tuneEvals', label: 'Tuner candidates (0 = off)', type: 'number', min: 0, max: 2000, step: 10, default: 150 },
+     { key: 'tuneAim', label: 'Tuner aim', type: 'select', options: ['scan', 'frozen'], default: 'scan', help: 'scan: every trace finds the cut-off aim afresh (the slow part of a trace). frozen: candidates are judged at the incumbent\u2019s aim (about 4x faster), re-found whenever a candidate wins' },
+     { key: 'tuneGpu', label: 'Tuner traces via tools.traceAsync (GPU when the GPU switch is on)', type: 'checkbox', default: false },
+     { key: 'tuneSeed', label: 'Tuner random seed', type: 'number', min: 0, step: 1, default: 12345, help: 'the (1+1) search\u2019s own dice; another seed is another run of the same search' },
      { key: 'tuneSeconds', label: 'Tuner time limit (s, 0 = none)', type: 'number', min: 0, step: 5, default: 40, help: 'a wall-clock cap; the result then depends on machine speed. 0 = deterministic' }]);
 
   // ---------------------------------------------------------------- geometry helpers
@@ -181,28 +184,64 @@
     if (s.beam === 'high') for (const k of KNOBS) if (s[k[0]] === k[5]) s[k[0]] = k[6];
     let p = paramsOf(s), b = build(input, s, p, conv), best = null;
     const canTune = s.tune && s.lens === 'fluted' && input.spec && tools && tools.trace && s.tuneEvals > 0;
-    if (canTune) {
-      const T = (pp) => objective(tools.trace(build(input, s, pp, conv).surfaces, { rays: s.tuneRays, seed: 7, spec: true, guided: false, bounces: 3 }));
+    // tuneAim 'frozen': a child is judged at the aim the incumbent was found to have (o.frozen, no cut-off scan: the slow part of a trace), and a child
+    // that wins is traced once more with the full scan, which becomes the incumbent.  tuneGpu: the traces go through tools.traceAsync (the GPU when the
+    // user's GPU switch is on and the host has it, else the CPU; the same result up to f32) and solve() then returns a promise.
+    const frozen = s.tuneAim === 'frozen', viaAsync = canTune && s.tuneGpu && typeof tools.traceAsync === 'function';
+    const tune = (runTrace) => {      // runTrace(surfaces, o) → result or promise of it
+      const base = { rays: s.tuneRays, seed: 7, spec: true, guided: false, bounces: 3 };
       // (1+1) evolution strategy: perturb 1–3 knobs by a Gaussian step (a fraction sigma of each knob's range), keep the child if the judge likes it
       // more; sigma grows on success, shrinks on failure.  Seeded, so the sequence of candidates is deterministic.
-      let seed = 12345; const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let z = Math.imul(seed ^ (seed >>> 15), 1 | seed); z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z; return ((z ^ (z >>> 14)) >>> 0) / 4294967296; };
+      let seed = s.tuneSeed | 0; const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let z = Math.imul(seed ^ (seed >>> 15), 1 | seed); z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z; return ((z ^ (z >>> 14)) >>> 0) / 4294967296; };
       const gauss = () => Math.sqrt(-2 * Math.log(Math.max(1e-12, rnd()))) * Math.cos(2 * Math.PI * rnd());
       const t0 = Date.now(), over = () => s.tuneSeconds > 0 && Date.now() - t0 > s.tuneSeconds * 1000;
-      best = T(p); let evals = 1, sigma = 0.2, accepted = 0;
-      for (let it = 0; it < s.tuneEvals && !over(); it++) {
+      const T = (pp, fz) => runTrace(build(input, s, pp, conv).surfaces, fz ? Object.assign({ frozen: fz }, base) : base);
+      const finish = (best, evals, accepted) => {
+        b = build(input, s, p, conv);
+        notes.push('tuner: ' + evals + ' traces at ' + s.tuneRays + ' rays (' + accepted + ' accepted), expected fails ' + best[0].toFixed(2) + ', soft score ' + (-best[1]).toFixed(3) + (over() ? ' (time limit hit)' : ''));
+        notes.push('tuned: ' + TUNABLE.map((k) => k + ' ' + p[k]).join(', '));
+      };
+      const mutate = (sigma) => {
         const q = Object.assign({}, p), m = 1 + Math.floor(rnd() * 3);
         for (let r = 0; r < m; r++) { const k = KNOBS[Math.floor(rnd() * KNOBS.length)]; q[k[0]] = Math.min(k[3], Math.max(k[2], +(Math.round((q[k[0]] + gauss() * sigma * (k[3] - k[2])) / k[4]) * k[4]).toFixed(4))); }
-        const o = T(q); evals++;
-        if (better(o, best)) { best = o; p = q; sigma = Math.min(0.5, sigma * 1.25); accepted++; } else sigma = Math.max(0.03, sigma * 0.96);
+        return q;
+      };
+      return { T, over, mutate, finish };
+    };
+    if (canTune && !viaAsync) {
+      const { T, over, mutate, finish } = tune((surf, o) => tools.trace(surf, o));
+      let r0 = T(p), best = objective(r0), fz = frozen && r0.spec ? r0.spec.frozen : null, evals = 1, sigma = 0.2, accepted = 0;
+      for (let it = 0; it < s.tuneEvals && !over(); it++) {
+        const q = mutate(sigma), rq = T(q, fz), o = objective(rq); evals++;
+        if (better(o, best)) {
+          if (fz) { const rs = T(q); evals++; if (rs.spec) { fz = rs.spec.frozen; best = objective(rs); } else best = o; } else best = o;
+          p = q; sigma = Math.min(0.5, sigma * 1.25); accepted++;
+        } else sigma = Math.max(0.03, sigma * 0.96);
         if (tools.progress && it % 5 === 0) tools.progress(it / s.tuneEvals);
       }
-      b = build(input, s, p, conv);
-      notes.push('tuner: ' + evals + ' traces at ' + s.tuneRays + ' rays (' + accepted + ' accepted), expected fails ' + best[0].toFixed(2) + ', soft score ' + (-best[1]).toFixed(3) + (over() ? ' (time limit hit)' : ''));
-      notes.push('tuned: ' + TUNABLE.map((k) => k + ' ' + p[k]).join(', '));
+      finish(best, evals, accepted);
     }
+    const out = () => {
     if (tools && tools.preview) tools.preview(b.surfaces, { label: 'sealed beam', needs: { bounces: 3 } });
     notes.push(b.layout.lamp.label + ', f ' + b.layout.f + ' mm, depth ' + b.layout.depth.toFixed(1) + ' mm, ' + (s.beam === 'low' ? 'low' : 'high') + ' beam, lens ' + s.lens + (b.lens ? ', ' + b.lens.cells.length + ' flutes' + (b.lens.capped ? ' (' + b.lens.capped + ' aimed less far to fit the envelope)' : '') : '') + '; ' + b.notes.join('; '));
     return { surfaces: b.surfaces, needs: { bounces: 3 }, notes };
+    };
+    if (viaAsync) {
+      const { T, over, mutate, finish } = tune((surf, o) => tools.traceAsync(surf, o));
+      return (async () => {
+        let r0 = await T(p), best = objective(r0), fz = frozen && r0.spec ? r0.spec.frozen : null, evals = 1, sigma = 0.2, accepted = 0;
+        for (let it = 0; it < s.tuneEvals && !over(); it++) {
+          const q = mutate(sigma), rq = await T(q, fz), o = objective(rq); evals++;
+          if (better(o, best)) {
+            if (fz) { const rs = await T(q); evals++; if (rs.spec) { fz = rs.spec.frozen; best = objective(rs); } else best = o; } else best = o;
+            p = q; sigma = Math.min(0.5, sigma * 1.25); accepted++;
+          } else sigma = Math.max(0.03, sigma * 0.96);
+          if (tools.progress && it % 5 === 0) tools.progress(it / s.tuneEvals);
+        }
+        finish(best, evals, accepted); return out();
+      })();
+    }
+    return out();
   }
 
   RF.Solvers.register({ id: 'sealed-beam-v1', name: 'Sealed beam (paraboloid + fluted lens), experimental', version: '0.1', modes: ['paint'], settings, solve });

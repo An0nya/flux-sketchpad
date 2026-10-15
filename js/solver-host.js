@@ -14,9 +14,23 @@
   const KEY = 'flux/solvers', BUDGET = { ms: 120000, rays: 5e7 };
   // the user's time limit (Simulation → Solve time limit, remembered per browser): a property of the machine, not the scene
   let userMs = 0; try { userMs = +localStorage.getItem('flux/solveLimitMs') || 0; } catch (e) { /* default */ }
+  // Simulation → Advanced → Solver threads: workers a solver may use for its independent tasks (tools.pool; 0 = none, the default).  Per browser, like the time limit.
+  // Keep solving in the background: a tab behind another tab is demoted by the OS to slow cores (measured 4-5x slower); an inaudible tone keeps it at full speed.
+  const pref = (k) => { try { return +localStorage.getItem(k) || 0; } catch (e) { return 0; } };
+  let threads = Math.max(0, Math.min(16, pref('flux/solverThreads'))), keepOn = !!pref('flux/solveKeepAwake'), awake = null;
+  const setPref = (k, v) => { try { localStorage.setItem(k, String(v)); } catch (e) { /* ignore */ } };
+  const setThreads = (n) => { threads = Math.max(0, Math.min(16, n | 0)); setPref('flux/solverThreads', threads); };
+  const setKeepAwake = (on) => { keepOn = !!on; setPref('flux/solveKeepAwake', keepOn ? 1 : 0); };
+  function wake(on) {                               // start / stop the tone while a solve runs (needs the browser to allow audio: after a click, it does)
+    try {
+      if (!on) { if (awake) { awake.close(); awake = null; } return; }
+      if (!keepOn || awake || typeof AudioContext === 'undefined') return;
+      const ac = awake = new AudioContext(), o = ac.createOscillator(), g = ac.createGain(); g.gain.value = 0.00001; o.connect(g); g.connect(ac.destination); o.start(); ac.resume();
+    } catch (e) { awake = null; }
+  }
   const limitMs = () => testMs || userMs || BUDGET.ms;
   const setLimit = (ms) => { userMs = Math.max(0, +ms || 0); try { localStorage.setItem('flux/solveLimitMs', String(userMs)); } catch (e) { /* ignore */ } };
-  let worker = null, sources = [], srcIds = [], bundled = [], ready = Promise.resolve(), live = null, testMs = 0, loading = typeof Worker !== "undefined";   // true from page load until restore() has the bundled solvers in
+  let worker = null, sources = [], srcIds = [], bundled = [], ready = Promise.resolve(), live = null, testMs = 0, lastStats = null, loading = typeof Worker !== "undefined";   // true from page load until restore() has the bundled solvers in
   // sources[i] = a loaded file's text, srcIds[i] = the ids it registered;  bundled = [{ src, meta }] from solvers/
   // Requests: every message to the worker carries rid = ++seq and the worker echoes it on every reply, so replies find their request
   // however many are out.  reqs: rid → { onMsg, reject, timer }.  Stopping anything means killing the worker, which fails every request
@@ -79,10 +93,11 @@
             if (!j.cancel) return;                      // stopped while it waited
             j.cancel = null;
             const ms = limitMs(), onPreview = typeof tools.preview === 'function' && !tools.preview.none ? tools.preview : null;   // no preview callback ⇒ the worker sends none
-            const p = ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.userChoice() === true) }, tools.progress, ms, onPreview);
+            const p = ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.userChoice() === true), pool: threads }, tools.progress, ms, onPreview);
+            wake(true); const off = () => wake(false); p.then(off, off);
             j.rid = p.rid; p.then(resolve, reject);
           });
-        }).then((d) => d.output);
+        }).then((d) => { lastStats = { traceMs: d.traceMs, traces: d.traces, raysUsed: d.raysUsed, ms: performance.now() - j.t0 }; return d.output; });
       },
     }));
   }
@@ -166,5 +181,5 @@
   }
   // test hook: run the next solves with a shorter time budget (ms; 0 = back to BUDGET.ms).  BUDGET itself never changes.
   const testBudget = (ms) => { testMs = Math.max(0, +ms || 0); };
-  RF.SolverHost = { load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
+  RF.SolverHost = { threads: () => threads, setThreads, keepAwake: () => keepOn, setKeepAwake, lastStats: () => lastStats, load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -4,7 +4,7 @@
 //   node tools/flux.js list solvers|spec-presets|sources
 //   node tools/flux.js scene <scene.json>
 //   node tools/flux.js trace <scene.json> [--rays 2e6] [--spec fmvss-lb2m,ece-r112-b]
-//   node tools/flux.js solve <scene.json> [--solver id] [--set key=value ...] [--out solved.json] [--rays 2e6]
+//   node tools/flux.js solve <scene.json> [--solver id] [--set key=value ...] [--out solved.json] [--rays 2e6] [--threads N]
 //   node tools/flux.js heatmap <scene.json> --out farfield.png [--rays 2e6] [--scale 1]
 //   node tools/flux.js manifest [--out api.json]                      (Layer 3: what exists, as one static file)
 // Layer 2, the real page through Playwright (its own headless Chromium on the real GPU, never the shared Browser pane):
@@ -199,7 +199,10 @@ async function pageEval() {
     const settings = RF.Solvers.sanitize(def, Object.assign(RF.Solvers.settingsOf(sc, id), sets));
     for (const [k, v] of Object.entries(sets)) if (settings[k] !== v) die('setting ' + k + ' = ' + JSON.stringify(v) + ' was replaced by ' + JSON.stringify(settings[k]) + ' (unknown key, out of range, or not one of its options)');
     const tools = { progress() {}, preview() {}, budget: { rays: Infinity, ms: Infinity }, scene: problem, trace: (s, o) => RF.Solvers.trace(problem, s, o) };
-    const t0 = Date.now(), res = await def.solve(input, settings, tools), ms = Date.now() - t0, facts = RF.Solvers.verify(sc, res || {});
+    const nThr = +flag('threads', 0), ent = loadBundled().find((b) => b.id === id);   // --threads N: tools.pool with N worker threads (solvers that declare tasks; the design is the same for any N)
+    if (nThr > 0 && def.tasks && ent) { vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'js', 'solver-pool.js'), 'utf8'), { filename: 'solver-pool.js' });
+      tools.pool = RF.SolverPool.create({ size: nThr, spawn: require('./pool-worker-node.js').spawner(), id, srcs: [fs.readFileSync(path.join(ROOT, 'solvers', ent.file), 'utf8')], scene: problem, input, run: (name, a) => def.tasks[name](input, a, { trace: tools.trace }) }); }
+    const t0 = Date.now(), res = await def.solve(input, settings, tools); if (tools.pool) tools.pool.close(); const ms = Date.now() - t0, facts = RF.Solvers.verify(sc, res || {});
     const report = { solver: id, version: def.version, settings, solveMs: ms, errors: facts.errors, placed: facts.placed, notes: (res && res.notes) || [] };
     if (!facts.errors.length) {
       sc.groups.A.surfaces = res.surfaces; sc.solve = { id }; sc.solverSettings = Object.assign({}, sc.solverSettings, { [id]: settings });

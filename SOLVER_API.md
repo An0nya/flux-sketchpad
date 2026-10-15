@@ -187,6 +187,31 @@ traces the **same rays** in 32-bit floats: results match the CPU trace within no
 numbers). Use it from an `async solve` where you trace in a loop; keep `tools.trace` where you need bit-identical reruns.
 Older hosts may lack it: `(tools.traceAsync || tools.trace)(surfaces, o)` works in both (await the result).
 
+## Parallel tasks (`tools.pool`, optional)
+
+A solver whose work contains **independent trials** (a tuner's candidates for one knob, the finalists of a search) can let the host run them on
+several worker threads. Declare the trial as a pure function next to `solve`, and ask for a batch:
+
+```js
+RF.Solvers.register({ id: 'my-auto', ...,
+  tasks: { candidate(input, arg, ctx) { const out = design(input, arg.over); return { out, tr: ctx.trace(out.surfaces, { rays: arg.rays, seed: arg.seed }) }; } },
+  async solve(input, settings, tools) {
+    const run = tools.pool ? (args) => tools.pool.map('candidate', args)                       // results in the order of args
+                           : async (args) => args.map((a) => this.tasks.candidate(input, a, { trace: tools.trace }));
+    const results = await run(overs.map((over) => ({ over, rays: 400000, seed: input.seed })));
+```
+
+- `tools.pool` exists only when the user set *Simulation → Advanced → Solver threads* above 0 (and the solver declares `tasks`); `tools.pool.size` says how many.
+  Without it the solver runs the same tasks itself, so one code path serves both. A task gets a **copy** of `input`, the argument, and `ctx.trace` (the host's
+  `tools.trace`); it must return plain data (structured-cloneable) and may not depend on anything but those, or on the clock.
+- **Same answer for any number of threads**: `map` returns the results in argument order, whichever worker finished first, and a task sees the same input and
+  argument everywhere. The solver must pick its batch before running it (not from the results of the same batch). Tested for dish-fit-auto and opus-mosaic-auto
+  with 0, 1, 2, 4 workers (identical output).
+- Not for time-governed searches: a solver that stops by the clock (`Date.now()`) is not deterministic anyway; parallelism only moves where it stops.
+- The ray budget counts the rays of pooled tasks. Workers start on the first `map` and end with the solve (or when it is stopped).
+- Previews: call `tools.preview` yourself from the results (workers cannot).
+- In Node (`tools/pool-worker-node.js`) the harnesses `tests/bench/solver-par.js --pool N` and the CLI offer the same pool.
+
 ## Watching a solve (`tools.preview`, optional)
 
 An iterating solver can let the user watch it work: call **`tools.preview(surfaces, info)`** whenever it has a
