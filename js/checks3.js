@@ -21,6 +21,7 @@
     'B.scale': [160, 60], 'B.ap': [10, 16],
     'C.f': [12, 20], 'C.rim': [45, 30], 'C.depth': [30, 60], 'C.theta': [20, 35], 'C.a1': [2, 3], 'C.n': [40, 20], 'C.len': [60, 20], 'C.az': [0, 16],
     'C.refl': [0.9, 0.5], 'C.ior': [1.49, 1.8], 'C.T': [0.96, 0.8],
+    'C.cdv': [0, 30], 'C.cth': [0, 10], 'C.cph': [0, 10],
   };
   const MODE_OVERRIDE = { bounces: 'C' };
   // context so conditional controls are visible and meaningful
@@ -41,6 +42,11 @@
       if (id === 'C.depth') sc.modeC.preset.kind = 'ellipse';
       if (id === 'C.theta' || id === 'C.a1') sc.modeC.preset.kind = 'cpc';
       A.applyPreset(store);
+      if (/^C\.(sh|cdv$|cth$|cph$)/.test(id)) {                  // facet shell: switch it on; a cell control edits a lit cell (ring 6, sector 0 = up); the ring / sector counts clear edits, so give them one to clear
+        set('C.shell', true);
+        if (/^C\.c/.test(id)) A.shellSelect(store, 6, 0);
+        if (id === 'C.shNr' || id === 'C.shNa') sc.modeC.shell.cells['6:0'] = { dTheta: 10 };
+      }
       if (id === 'C.len') set('C.sweep', 'extrude');
       if (id === 'C.ior' || id === 'C.T') { set('C.inter', 'refract'); A.setProfile(store, [[0, 30], [15, 30], [15, 33], [0, 40]]); }  // closed lens
     }
