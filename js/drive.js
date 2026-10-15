@@ -53,6 +53,8 @@
     'sign-back': { name: 'sign back / post', rho: [0.2, 0.2, 0.2] },
     'reflector-white': { name: 'post reflector', rho: [0.4, 0.4, 0.4], retro: [600, 600, 600] },
     'reflector-red': { name: 'red reflector', rho: [0.1, 0.01, 0.01], retro: [200, 6, 6] },
+    'rpm-white': { name: 'pavement marker (white)', rho: [0.4, 0.4, 0.4], retro: [80, 80, 80] },
+    'rpm-yellow': { name: 'pavement marker (yellow)', rho: [0.5, 0.38, 0.08], retro: [70, 52, 3] },
     'wall': { name: 'building wall', rho: [0.22, 0.19, 0.16] },
     'wall-light': { name: 'light wall', rho: [0.45, 0.43, 0.40] },
     'win-dark': { name: 'dark window', rho: [0.03, 0.04, 0.05], gloss: { a: 0.08, F0: 0.04 } },
@@ -118,7 +120,8 @@
       { o0: -Lw / 2 - edge / 2 + 0.2, o1: -Lw / 2 + edge / 2 + 0.2, mat: 'white-paint', pat: null },            // right edge line, just inside the lane
       { o0: 1.5 * Lw - edge / 2 - 0.2, o1: 1.5 * Lw + edge / 2 - 0.2, mat: 'white-paint', pat: null },          // left edge line
     ];
-    if (o.us) m.push({ o0: Lw / 2 - 0.15, o1: Lw / 2 - 0.05, mat: 'yellow-paint', pat: null }, { o0: Lw / 2 + 0.05, o1: Lw / 2 + 0.15, mat: 'yellow-paint', pat: null });   // double solid yellow
+    if (o.us && o.broken) m.push({ o0: Lw / 2 - 0.075, o1: Lw / 2 + 0.075, mat: 'yellow-paint', pat: { s0: -18, s1: 1e5, period: 12, on: 3 } });             // a passing zone: one broken yellow line (3 m line, 9 m gap; MUTCD's 10 ft / 30 ft)
+    else if (o.us) m.push({ o0: Lw / 2 - 0.15, o1: Lw / 2 - 0.05, mat: 'yellow-paint', pat: null }, { o0: Lw / 2 + 0.05, o1: Lw / 2 + 0.15, mat: 'yellow-paint', pat: null });   // double solid yellow
     else m.push({ o0: Lw / 2 - w / 2, o1: Lw / 2 + w / 2, mat: 'white-paint', pat: { s0: -20, s1: 1e5, period: 12, on: 4 } });                                           // 4 m dash, 8 m gap
     return m;
   }
@@ -291,7 +294,7 @@
         if (hnx * dx + hny * dy + hnz * dz > 0) { hnx = -hnx; hny = -hny; hnz = -hnz; }
         const key = typeof ob.mat === 'function' ? ob.mat({ x: px, y: py, z: pz, u: hu, face: hf }) : ob.mat;
         let m = M[key] || M.wall; if (ob.emit) m = ob.emitM && ob.emitBase === m ? ob.emitM : (ob.emitBase = m, ob.emitM = Object.assign({}, m, { emit: ob.emit, emitPow: ob.emitPow }));   // this object glows (a lamp: its own luminance); emitPow > 1 makes it directional (cos^n)
-        shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs); covAcc += k;
+        shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
         if (sampleDepth === Infinity) { sampleDepth = tbest; sampleMat = m.id; }
       } else if (objOnly) { /* the ground and the sky are the other layer's */ } else if (tg < Infinity && tg < 5000) {
         ground(ex + tg * dx, ey + tg * dy, tg, -dz, -dx, -dy, -dz, delta, k);
