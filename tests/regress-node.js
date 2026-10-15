@@ -586,5 +586,59 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       ok('F5 the preset controls drive a live shell (focal length 20: R 40, zv -20)', st4.scene.modeC.shell.R === 40 && st4.scene.modeC.shell.zv === -20);
     }
   }
+
+  // D2: the object trace (drive.js render, drive-anim.js tracer) — exact culling, the worker's jobs, the ground's pattern layers, forest + city in the animation
+  {
+    const DA = RF.DriveAnim, D = RF.Drive, lut = D.lutFrom((h, v) => 30000 * Math.exp(-((h / 12) ** 2 + ((v + 1.5) / 3) ** 2))), lamps = [[0, 0.7, 0.7], [0, -0.7, 0.7]];
+    const flags = { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: true, rpm: true };
+    const camOf = (w, h, A) => ({ w, h, hfov: 60, eye: DA.EYE, lamps, lut, conv: 'A', arc: A, lane: 3.5, look: { RL: 0.2 } });
+    const same = (a, b) => { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; };
+    // D2a: front-to-back early-out and the walk over non-empty tiles change no value (the objects layer AND the whole picture), on every animated scene, straight and bent, 1 and 2 samples
+    { let n = 0, bad = [];
+      for (const [name, opts] of [['road', { wild: true, seed: 3, density: 1.5 }], ['forest', {}], ['city', {}]]) for (const A of [null, RF.Road.arc(150, 'left')]) for (const ss of [1, 2]) for (const dist of [0, 37.3, 111.7, 250]) {
+        const src = DA.source(name, 3.5, false, flags, opts), w = 120, h = 68, cam = camOf(w, h, A), objs = DA.place(src, dist, A, () => 0), r = [];
+        for (const sort of [false, true]) { const rgba = new Float32Array(4 * w * h); D.render(Object.assign({ ss, layer: 'objects', tight: true, rgba, sort, scene: { objects: objs, markings: [], verge: src.verge } }, cam)); const wh = D.render(Object.assign({ ss, sort, scene: { objects: objs, markings: src.markings, verge: src.verge } }, cam)); r.push([rgba, wh.rgb, wh.depth]); }
+        n++; if (!same(r[0][0], r[1][0]) || !same(r[0][1], r[1][1]) || !same(r[0][2], r[1][2])) bad.push(name + ' ss' + ss + ' d' + dist + (A ? ' bend' : ''));
+      }
+      ok('D2a sorted early-out = original order, bit for bit (objects layer, whole picture, depth): ' + n + ' cases over road, forest, city', bad.length === 0, bad.slice(0, 3).join('; ')); }
+    // D2b: the tracer's jobs (what a worker computes) put together are the page's own objects layer, bit for bit, whatever K
+    { const w = 160, h = 90, A = RF.Road.arc(250, 'right'); let bad = [], n = 0;
+      for (const [name, opts] of [['road', { wild: true, seed: 5, density: 1.5 }], ['forest', {}], ['city', {}]]) for (const dist of [0, 60.5, 140]) for (const K of [1, 5, 11]) {
+        const src = DA.source(name, 3.5, false, flags, opts), act = new Map(), t = dist / 13.9;
+        const p = { w, h, hfov: 60, lamps, lut, conv: 'A', lane: 3.5, look: { RL: 0.2 }, A, src }, T = DA.tracer();
+        DA.activate(src, dist, t, act);
+        T.cfg({ id: 1, p: { w, h, hfov: 60, lamps, lut, conv: 'A', lane: 3.5, look: { RL: 0.2 } }, arc: { R: A.R, dir: A.dir }, src: [name, 3.5, false, flags, opts] });
+        const ref = new Float32Array(4 * w * h), tauOf = (id) => (act.has(id) ? t - act.get(id) : 0); DA.objects(p, dist, ref, 1, null, null, DA.place(src, dist, A, tauOf, DA.dimFoliage(p)));
+        const got = new Float32Array(4 * w * h);
+        for (let c = 0; c < K; c++) { const r = T.job({ seq: 1, dist, t, ss: 1, act: [...act], c, K, ret: null, wid: 0 }), f = new Float32Array(r.buf, 0, r.len); let off = 0; for (const ty of r.trows) { const a = ty * 16, e = Math.min(h, a + 16), m = (e - a) * w * 4; got.set(f.subarray(off, off + m), a * w * 4); off += m; } }
+        n++; if (!same(ref, got)) bad.push(name + ' d' + dist + ' K' + K);
+      }
+      ok('D2b the worker\'s jobs, assembled, equal the objects layer traced in one go (' + n + ' cases on a bend, K = 1, 5, 11)', bad.length === 0, bad.slice(0, 3).join('; ')); }
+    // D2c: forest and city are in the animation; the intersection is not; the single-occurrence stripes (crossing, stop line) come round every lap
+    { ok('D2c forest and city are animated, the intersection is not', DA.ANIM_SCENES.forest && DA.ANIM_SCENES.city && !DA.ANIM_SCENES.intersection && DA.ANIM_SCENES.road);
+      const city = DA.source('city', 3.5, false, flags, {}), g = DA.ground({ w: 120, h: 68, hfov: 60, A: null, lamps, lut, conv: 'A', lane: 3.5, look: { RL: 0.2 }, src: city });
+      ok('D2c city: three moving layers (centre dash 12 m, crossing and stop line every 300 m), the crossing\'s bars are one layer', g.layers.length === 3 && g.layers.map((L) => L.pat.period).join() === '12,300,300' && g.layers[1].pat.on === 3.5 && g.layers[2].pat.on === 0.4, JSON.stringify(g.layers.map((L) => L.pat)));
+      ok('D2c the still scene is untouched: its crossing is still a single-occurrence stripe', D.buildScene('city', { Lw: 3.5, A: null, us: false, seed: 7 }, {}).markings.filter((m) => m.pat && m.pat.period >= 1e5).length === 8);
+      const forest = DA.source('forest', 3.5, false, flags, {}), gf = DA.ground({ w: 120, h: 68, hfov: 60, A: null, lamps, lut, conv: 'A', lane: 3.5, look: { RL: 0.2 }, src: forest });
+      ok('D2c forest: the dash is the one moving layer', gf.layers.length === 1 && gf.layers[0].pat.period === 12); }
+    // D2d: the city's ground layers = the still picture (pixel differences), at three distances, with the crossing and stop line approaching
+    { const w = 320, h = 180, src = DA.source('city', 3.5, false, flags, {}), p = { w, h, hfov: 60, lamps, lut, conv: 'A', lane: 3.5, look: { RL: 0.2 }, A: null, src }, g = DA.ground(p), luma = (a, q) => 0.2126 * a[3 * q] + 0.7152 * a[3 * q + 1] + 0.0722 * a[3 * q + 2];
+      for (const dist of [0, 20, 33]) {
+        const shift = (m) => m.pat ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { s0: m.pat.s0 - dist, s1: m.pat.s1 - dist }) }) : m;
+        const ref = D.render(Object.assign({ ss: 1, scene: { objects: [], markings: src.markings.map(shift), verge: src.verge } }, camOf(w, h, null))), comp = DA.composeCPU(p, g, null, dist);
+        let worst = 0; const rels = []; for (let q = 0; q < w * h; q++) { const a = luma(comp, q), b = luma(ref.rgb, q), d = Math.abs(a - b); worst = Math.max(worst, d); if (b > 0.05) rels.push(d / b); }
+        rels.sort((x, y) => x - y); const q99 = rels[Math.floor(rels.length * 0.99)] || 0, bad = rels.filter((r) => r > 1e-3).length, mx = rels[rels.length - 1];
+        // (where two paints overlap — a crossing bar over the edge or centre line — the still view adds both and drops the leftover asphalt weight when it goes negative; the layers sum linearly: ≤ ~1 % there)
+        ok('D2d city ground layers vs the still picture at ' + dist + ' m: ≥ 99 % of lit pixels within 0.1 %, none beyond 3 %', rels.length > 1000 && bad / rels.length < 0.01 && mx < 0.03, rels.length + ' lit px, ' + bad + ' beyond 0.1 %, p99 relative ' + q99.toExponential(1) + ', worst relative ' + mx.toExponential(1) + ', worst absolute ' + worst.toExponential(1) + ' cd/m²'); } }
+    // D2e: forest foliage the beam cannot reach is left out (the same bound as D1f, now on the fixed scenes too): the picture does not change beyond 1e-3 cd/m²
+    { const w = 200, h = 112, src = DA.source('forest', 3.5, false, flags, {}), p = { w, h, hfov: 60, lamps, lut, conv: 'A', A: null, lane: 3.5, look: { RL: 0.2 }, src }; let nAll = 0, nKept = 0, worst = 0; const dim = DA.dimFoliage(p);
+      for (const dist of [0, 55, 130, 210]) {
+        const L1 = DA.place(src, dist, null, () => 0), L2 = DA.place(src, dist, null, () => 0, dim); nAll += L1.length; nKept += L2.length;
+        const a1 = new Float32Array(4 * w * h), a2 = new Float32Array(4 * w * h), cam = Object.assign({ ss: 1, layer: 'objects', tight: true }, camOf(w, h, null));
+        D.render(Object.assign({ rgba: a1, scene: { objects: L1, markings: [], verge: src.verge } }, cam)); D.render(Object.assign({ rgba: a2, scene: { objects: L2, markings: [], verge: src.verge } }, cam));
+        for (let q = 0; q < w * h; q++) for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(a1[4 * q + c] - a2[4 * q + c]));
+      }
+      ok('D2e forest: leaving out unlit foliage changes no pixel by more than 1e-3 cd/m² (' + nKept + ' of ' + nAll + ' objects traced)', worst < 1e-3 && nKept < nAll, 'worst ' + worst.toExponential(1)); }
+  }
   process.exitCode = fails ? 1 : 0;
 })();

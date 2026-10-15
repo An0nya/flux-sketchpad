@@ -841,7 +841,7 @@
     return px.toFixed(1) + ' m ahead, ' + Math.abs(py).toFixed(1) + ' m ' + (py >= 0 ? 'left' : 'right') + ' of lane centre: ' + rd.mdl.lux([px, py, z], up ? 'up' : 'car').toFixed(1) + ' lx';
   }
   // ---------------------------------------------------------------- Drive: the driver's-eye view (js/drive.js, js/drive-scenes.js)
-  const DV_DEF = { scene: 'road', wet: false, expMode: 'fixed', ev: 1, glare: 0.3, people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true, tex: true, wild: true, seed: 7, density: 1.5, cline: 'solid', speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60 };
+  const DV_DEF = { scene: 'road', wet: false, expMode: 'fixed', ev: 1, glare: 0.3, people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true, tex: true, wild: true, mt: true, seed: 7, density: 1.5, cline: 'solid', speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60 };
   const DV_GLARE = [[0, 'off'], [0.3, 'low'], [1, 'high']];
   const DV_SMOOTH = { sharp: [0.2, 0.2, 1], smooth: [0.5, 0.15, 2], soft: [1.0, 0.3, 3] };    // kernel half-widths: horizontal, vertical (°), wide-grid bins
   function dvOpts(ui) {

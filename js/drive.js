@@ -141,6 +141,13 @@
     if (ob.k === 'box') { ob.cy = Math.cos(ob.yaw || 0); ob.sy = Math.sin(ob.yaw || 0); }
     return ob;
   }
+  // one slab of a box test (module state instead of a closure per call: this runs for every ray × object)
+  let ST0 = 0, ST1 = 0, SFACE = -1;
+  function slab(o, d, lo, hi, f) {
+    if (Math.abs(d) < 1e-12) return o >= lo && o <= hi;
+    let a = (lo - o) / d, b = (hi - o) / d, fa = f * 2, fb = f * 2 + 1; if (a > b) { const tt = a; a = b; b = tt; const tf = fa; fa = fb; fb = tf; }
+    if (a > ST0) { ST0 = a; SFACE = fa; } if (b < ST1) ST1 = b; return ST0 <= ST1;
+  }
   // nearest hit of a ray (o + t·d, d unit) with a primitive in (1e-4, tmax); sets NX/NY/NZ, HU, HF, HSCALE
   function hitObj(ob, ox, oy, oz, dx, dy, dz, tmax, delta) {
     HSCALE = 1; HF = 0;
@@ -148,7 +155,7 @@
       const px = ox - ob.x, py = oy - ob.y, a = dx * dx + dy * dy; let best = Infinity;
       if (a > 1e-12) {
         const b = 2 * (px * dx + py * dy), c = px * px + py * py - ob.r * ob.r, q = b * b - 4 * a * c;
-        if (q >= 0) { const sq = Math.sqrt(q); for (const t of [(-b - sq) / (2 * a), (-b + sq) / (2 * a)]) { if (t > 1e-4 && t < tmax) { const z = oz + t * dz; if (z >= ob.z0 && z <= ob.z1) { best = t; NX = (px + t * dx) / ob.r; NY = (py + t * dy) / ob.r; NZ = 0; HU = Math.atan2(NY, NX) * ob.r; break; } } } }
+        if (q >= 0) { const sq = Math.sqrt(q); for (let e = 0; e < 2; e++) { const t = e ? (-b + sq) / (2 * a) : (-b - sq) / (2 * a); if (t > 1e-4 && t < tmax) { const z = oz + t * dz; if (z >= ob.z0 && z <= ob.z1) { best = t; NX = (px + t * dx) / ob.r; NY = (py + t * dy) / ob.r; NZ = 0; HU = Math.atan2(NY, NX) * ob.r; break; } } } }
       }
       if (dz < 0 && oz > ob.z1) { const t = (ob.z1 - oz) / dz; if (t > 1e-4 && t < best && t < tmax) { const qx = px + t * dx, qy = py + t * dy; if (qx * qx + qy * qy <= ob.r * ob.r) { best = t; NX = 0; NY = 0; NZ = 1; HU = qx; HF = 4; } } }
       return best;
@@ -163,13 +170,9 @@
     }
     if (ob.k === 'box') {
       const c = ob.cy, s = ob.sy, rx = ox - ob.x, ry = oy - ob.y, lx = c * rx + s * ry, ly = -s * rx + c * ry, ldx = c * dx + s * dy, ldy = -s * dx + c * dy;
-      let t0 = 1e-4, t1 = tmax, face = -1;
-      const slab = (o, d, lo, hi, f) => {
-        if (Math.abs(d) < 1e-12) return o >= lo && o <= hi;
-        let a = (lo - o) / d, b = (hi - o) / d, fa = f * 2, fb = f * 2 + 1; if (a > b) { const tt = a; a = b; b = tt; const tf = fa; fa = fb; fb = tf; }
-        if (a > t0) { t0 = a; face = fa; } if (b < t1) t1 = b; return t0 <= t1;
-      };
+      ST0 = 1e-4; ST1 = tmax; SFACE = -1;
       if (!slab(lx, ldx, -ob.hx, ob.hx, 0) || !slab(ly, ldy, -ob.hy, ob.hy, 1) || !slab(oz, dz, ob.z0, ob.z1, 2)) return Infinity;
+      const t0 = ST0, face = SFACE;
       if (face < 0 || t0 >= tmax) return Infinity;
       let nx = 0, ny = 0, nz = 0, u = 0; const px = lx + t0 * ldx, py = ly + t0 * ldy;
       if (face === 0) { nx = -1; u = py; } else if (face === 1) { nx = 1; u = py; } else if (face === 2) { ny = -1; u = px; } else if (face === 3) { ny = 1; u = px; } else if (face === 4) { nz = -1; u = px; } else { nz = 1; u = px; }
@@ -212,10 +215,24 @@
     const delta0 = 2 * tanH / w;                                              // radians per pixel
     // tiles of 16 px: which objects can touch them (by the bounding sphere's projection)
     const TS = 16, tw = Math.ceil(w / TS), th = Math.ceil(h / TS), tiles = new Array(tw * th).fill(null);
-    objs.forEach((ob, idx) => {
-      if (!ob.bs) boundOf(ob);
+    // front to back: near[i] = a lower bound of any hit distance on object i (its bounding sphere; 0 for the sub-pixel discs, whose tent spread can reach past the sphere). A tile lists its objects by near,
+    // and a ray stops testing at the first one whose near is not below the best hit so far: the same nearest hit, fewer tests (o.sort === false: the original order, every object tested)
+    const near = new Float32Array(objs.length), ord = new Int32Array(objs.length); objs.forEach((ob, idx) => { ord[idx] = idx; if (!ob.bs) boundOf(ob); });
+    if (o.sort !== false) {
+      objs.forEach((ob, idx) => {
+        if (ob.k === 'disc' && ob.sub) return;
+        let d;
+        if (ob.k === 'box') { const rx = ex - ob.x, ry = ey - ob.y, lx = ob.cy * rx + ob.sy * ry, ly = -ob.sy * rx + ob.cy * ry; d = Math.hypot(Math.max(Math.abs(lx) - ob.hx, 0), Math.max(Math.abs(ly) - ob.hy, 0), Math.max(ob.z0 - ez, ez - ob.z1, 0)); }   // the distance from the eye to the box itself, not its bounding sphere (a long building has a huge sphere)
+        else if (ob.k === 'cyl') d = Math.hypot(Math.max(Math.hypot(ex - ob.x, ey - ob.y) - ob.r, 0), Math.max(ob.z0 - ez, ez - ob.z1, 0));
+        else d = Math.max(0, Math.hypot(ob.bs[0] - ex, ob.bs[1] - ey, ob.bs[2] - ez) - ob.bs[3]);
+        near[idx] = Math.max(0, d * 0.999 - 1e-3);
+      });
+      ord.sort((a, b) => near[a] - near[b] || a - b);
+    }
+    for (let oi = 0; oi < ord.length; oi++) {
+      const idx = ord[oi], ob = objs[idx];
       const qx = ob.bs[0] - ex, qy = ob.bs[1] - ey, qz = ob.bs[2] - ez, R = ob.bs[3], d = Math.hypot(qx, qy, qz);
-      if (qx + R <= 0.05) return;
+      if (qx + R <= 0.05) continue;
       let x0 = 0, x1 = tw - 1, y0 = 0, y1 = th - 1;
       if (d > R * 1.001 && qx > 0.05) {
         const ux = (w / 2) * (1 + (-qy / qx) / tanH), vy = (h / 2) * (1 - (qz / qx) / tanV), rp = Math.tan(Math.asin(Math.min(1, R / d))) / tanH * w / 2 * 1.15 + 2;   // centre and a generous radius, px
@@ -232,9 +249,12 @@
         if (ok) { x0 = Math.max(x0, Math.floor((ux0 - 2) / TS)); x1 = Math.min(x1, Math.floor((ux1 + 2) / TS)); y0 = Math.max(y0, Math.floor((vy0 - 2) / TS)); y1 = Math.min(y1, Math.floor((vy1 + 2) / TS)); }
       }
       for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) (tiles[ty * tw + tx] || (tiles[ty * tw + tx] = [])).push(idx);
-    });
+    }
     // ---- shading
     let LR = 0, LG = 0, LB = 0;
+    // a direction outside the beam table's window has I = 0 (lutAt): with the table's window in hand (A convention) most of a scene is rejected without the two trig calls of hvFast. Never rejects inside the window.
+    const lw = [lut.h0, lut.h0 + lut.nh * lut.step, lut.v0, lut.v0 + lut.nv * lut.step], preA = conv === 'A' && lw[0] > -89 && lw[1] < 89 && lw[2] > -89 && lw[3] < 89;
+    const sv0 = Math.sin(lw[2] * D2R) - 1e-9, sv1 = Math.sin(lw[3] * D2R) + 1e-9, th0 = Math.tan(lw[0] * D2R) * (1 + 1e-9) - 1e-12, th1 = Math.tan(lw[1] * D2R) * (1 + 1e-9) + 1e-12;
     // add a surface point's luminance, weighted: P = hit, n = unit normal (facing the eye), m = material, k = weight, v = unit vector to the eye
     function shade(px, py, pz, nx, ny, nz, m, k, vx, vy, vz, rscale) {
       let r = 0, g = 0, b = 0;
@@ -244,6 +264,7 @@
       for (let i = 0; i < nl; i++) {
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
         if (!(NoL > 0)) continue;
+        if (preA) { const a = dx / rr, b = -dy / rr, c = dz / rr; if (c < sv0 || c > sv1 || a <= 0 || b > a * th1 || b < a * th0) continue; }
         hvFast(dx, dy, dz, conv); const I = lutAt(lut, HV0, HV1); if (!(I > 0)) continue;
         const Ep = I / r2;                                                    // E⊥, lux square to the beam
         const d = Ep * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
@@ -286,8 +307,9 @@
       let tg = Infinity; if (dz < -1e-6) tg = -ez / dz;
       let tbest = tg, hit = -1, hnx = 0, hny = 0, hnz = 1, hu = 0, hf = 0, hs = 1;
       if (tileObjs) for (let q = 0; q < tileObjs.length; q++) {
-        const ob = objs[tileObjs[q]], t = hitObj(ob, ex, ey, ez, dx, dy, dz, tbest, delta);
-        if (t < tbest) { tbest = t; hit = tileObjs[q]; hnx = NX; hny = NY; hnz = NZ; hu = HU; hf = HF; hs = HSCALE; }
+        const oi = tileObjs[q]; if (near[oi] >= tbest) break;
+        const ob = objs[oi], t = hitObj(ob, ex, ey, ez, dx, dy, dz, tbest * (1 + 1e-12), delta);             // (a hair past tbest: an exact tie with an earlier-listed object, e.g. a plate and its reflectors on one plane, goes to the earlier one, as in the original order)
+        if (t < tbest || (t === tbest && oi < hit)) { tbest = t; hit = oi; hnx = NX; hny = NY; hnz = NZ; hu = HU; hf = HF; hs = HSCALE; }
       }
       if (hit >= 0) {
         const ob = objs[hit], px = ex + tbest * dx, py = ey + tbest * dy, pz = ez + tbest * dz;
@@ -301,16 +323,17 @@
         if (sampleDepth === Infinity) { sampleDepth = tg; sampleMat = GM; }
       } else { const sl = skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(dz) * 8)); LR += k * sl; LG += k * sl; LB += k * sl; }
     }
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const tl = tiles[((y / TS) | 0) * tw + ((x / TS) | 0)], n = tl ? ssN : 1, k = 1 / (n * n), delta = delta0 / n;
-      if (objOnly && !tl) continue;
+    const pixel = (x, y, tl) => {
+      const n = tl ? ssN : 1, k = 1 / (n * n), delta = delta0 / n;
       LR = LG = LB = 0; sampleDepth = Infinity; sampleMat = MAT_ID.sky; covAcc = 0;
       for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) sample(x + (i + 0.5) / n, y + (j + 0.5) / n, k, tl, delta);
       const q = y * w + x;
       if (rgba) { rgba[4 * q] = LR; rgba[4 * q + 1] = LG; rgba[4 * q + 2] = LB; rgba[4 * q + 3] = covAcc; }
       else { rgb[3 * q] = LR; rgb[3 * q + 1] = LG; rgb[3 * q + 2] = LB; if (cov) cov[q] = covAcc; else { depth[q] = sampleDepth; matBuf[q] = sampleMat; } }
-    }
-    if (objOnly) { let y0 = th, y1 = -1; for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) if (tiles[ty * tw + tx]) { if (ty < y0) y0 = ty; if (ty > y1) y1 = ty; } return { w, h, rgb, cov, rgba, rows: y1 < 0 ? [0, 0] : [y0 * TS, Math.min(h, (y1 + 1) * TS)], hfov: o.hfov }; }
+    };
+    if (objOnly) { for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) { const tl = tiles[ty * tw + tx]; if (!tl || (o.tileRow && !o.tileRow(ty))) continue; for (let y = ty * TS, ye = Math.min(h, y + TS); y < ye; y++) for (let x = tx * TS, xe = Math.min(w, x + TS); x < xe; x++) pixel(x, y, tl); } }   // only the tiles an object can touch (o.tileRow(ty): only these tile rows, the workers' share)
+    else for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) pixel(x, y, tiles[((y / TS) | 0) * tw + ((x / TS) | 0)]);
+    if (objOnly) { let y0 = th, y1 = -1; const trows = []; for (let ty = 0; ty < th; ty++) { let any = false; if (!o.tileRow || o.tileRow(ty)) for (let tx = 0; tx < tw; tx++) if (tiles[ty * tw + tx]) { any = true; break; } if (any) { trows.push(ty); if (ty < y0) y0 = ty; if (ty > y1) y1 = ty; } } return { w, h, rgb, cov, rgba, rows: y1 < 0 ? [0, 0] : [y0 * TS, Math.min(h, (y1 + 1) * TS)], trows, TS, hfov: o.hfov }; }
     return { w, h, rgb, depth, mat: matBuf, keys: MAT_KEYS, names: MAT_KEYS.map((k) => MAT_DEF[k].name), hfov: o.hfov };
   }
   const lumaOf = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
