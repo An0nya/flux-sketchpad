@@ -53,6 +53,8 @@
     'sign-back': { name: 'sign back / post', rho: [0.2, 0.2, 0.2] },
     'reflector-white': { name: 'post reflector', rho: [0.4, 0.4, 0.4], retro: [600, 600, 600] },
     'reflector-red': { name: 'red reflector', rho: [0.1, 0.01, 0.01], retro: [200, 6, 6] },
+    'rpm-white': { name: 'pavement marker (white)', rho: [0.4, 0.4, 0.4], retro: [80, 80, 80] },
+    'rpm-yellow': { name: 'pavement marker (yellow)', rho: [0.5, 0.38, 0.08], retro: [70, 52, 3] },
     'wall': { name: 'building wall', rho: [0.22, 0.19, 0.16] },
     'wall-light': { name: 'light wall', rho: [0.45, 0.43, 0.40] },
     'win-dark': { name: 'dark window', rho: [0.03, 0.04, 0.05], gloss: { a: 0.08, F0: 0.04 } },
@@ -118,7 +120,8 @@
       { o0: -Lw / 2 - edge / 2 + 0.2, o1: -Lw / 2 + edge / 2 + 0.2, mat: 'white-paint', pat: null },            // right edge line, just inside the lane
       { o0: 1.5 * Lw - edge / 2 - 0.2, o1: 1.5 * Lw + edge / 2 - 0.2, mat: 'white-paint', pat: null },          // left edge line
     ];
-    if (o.us) m.push({ o0: Lw / 2 - 0.15, o1: Lw / 2 - 0.05, mat: 'yellow-paint', pat: null }, { o0: Lw / 2 + 0.05, o1: Lw / 2 + 0.15, mat: 'yellow-paint', pat: null });   // double solid yellow
+    if (o.us && o.broken) m.push({ o0: Lw / 2 - 0.075, o1: Lw / 2 + 0.075, mat: 'yellow-paint', pat: { s0: -18, s1: 1e5, period: 12, on: 3 } });             // a passing zone: one broken yellow line (3 m line, 9 m gap; MUTCD's 10 ft / 30 ft)
+    else if (o.us) m.push({ o0: Lw / 2 - 0.15, o1: Lw / 2 - 0.05, mat: 'yellow-paint', pat: null }, { o0: Lw / 2 + 0.05, o1: Lw / 2 + 0.15, mat: 'yellow-paint', pat: null });   // double solid yellow
     else m.push({ o0: Lw / 2 - w / 2, o1: Lw / 2 + w / 2, mat: 'white-paint', pat: { s0: -20, s1: 1e5, period: 12, on: 4 } });                                           // 4 m dash, 8 m gap
     return m;
   }
@@ -257,21 +260,24 @@
     // the ground at P (distance t along the ray): road / verge, and the markings by coverage of the pixel's footprint
     let GM = 0;                                         // the material with the largest share of the last ground footprint (for the probe)
     function ground(px, py, t, sinB, vx, vy, vz, delta, kw) {
-      let s = px, off = py; if (A) { const f = A.frame(px, py); s = f.s; off = f.off; }
+      let s = px, off = py, nx = 0, ny = 1; if (A) { const f = A.frame(px, py); s = f.s; off = f.off; nx = -f.t[1]; ny = f.t[0]; }
       const hw = Math.max(0.5 * t * delta, 1e-4), hl = hw / Math.max(sinB, 0.003);
+      // the pixel's footprint on the ground is hw wide across the ray and hl long along it: its half-extent in the offset direction (a bend's far lines run across the view, where hl counts)
+      const hh = Math.hypot(vx, vy) || 1, ho = Math.hypot(hw * (nx * -vy + ny * vx) / hh, hl * (nx * vx + ny * vy) / hh);
       let rest = 1, bestW = 0; GM = MAT_ID.asphalt;
       for (let i = 0; i < marks.length; i++) {
-        const mk = marks[i], c = covLat(off, hw, mk.o0, mk.o1); if (c <= 0) continue;
+        const mk = marks[i], c = covLat(off, ho, mk.o0, mk.o1); if (c <= 0) continue;
         if (mk.skip) { let cut = false; for (let q = 0; q < mk.skip.length; q++) if (s > mk.skip[q][0] && s < mk.skip[q][1]) { cut = true; break; } if (cut) continue; }
         const cl = c * covLon(s, hl, mk.pat); if (cl <= 0) continue;
         shade(px, py, 0, 0, 0, 1, M[mk.mat], cl * kw, vx, vy, vz); rest -= cl; if (cl > bestW) { bestW = cl; GM = M[mk.mat].id; }
       }
       if (rest <= 0) return;
-      let mat;
-      if (cross && s >= cross.s0 && s <= cross.s1) mat = 'asphalt';                               // a cross street: pavement across every offset
-      else if (off >= -Lw / 2 && off <= 1.5 * Lw) mat = 'asphalt';
-      else { const dOut = off < -Lw / 2 ? -Lw / 2 - off : off - 1.5 * Lw; mat = dOut < (vg[1] || 1.5) ? vg[0] : (vg[2] || vg[0]); }
-      shade(px, py, 0, 0, 0, 1, M[mat], rest * kw, vx, vy, vz); if (rest > bestW) GM = M[mat].id;
+      if (cross && s >= cross.s0 && s <= cross.s1) { shade(px, py, 0, 0, 0, 1, M.asphalt, rest * kw, vx, vy, vz); if (rest > bestW) GM = M.asphalt.id; return; }   // a cross street: pavement across every offset
+      // the road, the two verge strips and what lies beyond them, each weighted by the share of the footprint it covers (no stair-steps along a long diagonal edge)
+      const vw = vg[1] || 1.5, far = vg[2] || vg[0], INF = 1e9, e0 = -Lw / 2, e1 = 1.5 * Lw;
+      const bands = [['asphalt', e0, e1], [vg[0], e0 - vw, e0], [vg[0], e1, e1 + vw], [far, -INF, e0 - vw], [far, e1 + vw, INF]];
+      let tot = 0; for (let i = 0; i < 5; i++) tot += covLat(off, ho, bands[i][1], bands[i][2]);
+      for (let i = 0; i < 5; i++) { const c = covLat(off, ho, bands[i][1], bands[i][2]) / (tot || 1); if (c <= 0) continue; shade(px, py, 0, 0, 0, 1, M[bands[i][0]], c * rest * kw, vx, vy, vz); if (c * rest > bestW) { bestW = c * rest; GM = M[bands[i][0]].id; } }
     }
     let sampleDepth = Infinity, sampleMat = MAT_ID.sky, covAcc = 0;
     // one ray through (fx, fy) in pixel units; adds weight k to the accumulators
@@ -288,7 +294,7 @@
         if (hnx * dx + hny * dy + hnz * dz > 0) { hnx = -hnx; hny = -hny; hnz = -hnz; }
         const key = typeof ob.mat === 'function' ? ob.mat({ x: px, y: py, z: pz, u: hu, face: hf }) : ob.mat;
         let m = M[key] || M.wall; if (ob.emit) m = ob.emitM && ob.emitBase === m ? ob.emitM : (ob.emitBase = m, ob.emitM = Object.assign({}, m, { emit: ob.emit, emitPow: ob.emitPow }));   // this object glows (a lamp: its own luminance); emitPow > 1 makes it directional (cos^n)
-        shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs); covAcc += k;
+        shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
         if (sampleDepth === Infinity) { sampleDepth = tbest; sampleMat = m.id; }
       } else if (objOnly) { /* the ground and the sky are the other layer's */ } else if (tg < Infinity && tg < 5000) {
         ground(ex + tg * dx, ey + tg * dy, tg, -dz, -dx, -dy, -dz, delta, k);

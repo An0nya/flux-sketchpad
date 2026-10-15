@@ -48,18 +48,20 @@
       },
       bush(s, off, r) { const p = at(s, off); add({ k: 'ell', x: p.x, y: p.y, z: r * 0.55, rx: r, ry: r, rz: r * 0.6, mat: 'foliage' }); },
       // a deer standing broadside to the road with its head turned toward the car: body, neck, head, four legs, two eyes
-      deer(s, off) {
-        const p = at(s, off), c = Math.cos(p.yaw), sn = Math.sin(p.yaw), L = (a, b) => [p.x + a * c - b * sn, p.y + a * sn + b * c];   // a along the road, b to the left
+      // o (moving deer, drive-anim.js): face −1 mirrors it (head toward the left), gait swings the legs (m, across the road)
+      deer(s, off, o) {
+        const F = (o && o.face) || 1, G = (o && o.gait) || 0, p = at(s, off), c = Math.cos(p.yaw), sn = Math.sin(p.yaw), L = (a, b) => [p.x + a * c - F * b * sn, p.y + a * sn + F * b * c];   // a along the road, b to the left
         const body = L(0, 0); add({ k: 'ell', x: body[0], y: body[1], z: 0.95, rx: 0.2, ry: 0.6, rz: 0.34, mat: 'fur' });
         const neck = L(0, -0.55); add({ k: 'ell', x: neck[0], y: neck[1], z: 1.25, rx: 0.12, ry: 0.22, rz: 0.3, mat: 'fur' });
         const head = L(-0.12, -0.82); add({ k: 'ell', x: head[0], y: head[1], z: 1.5, rx: 0.2, ry: 0.1, rz: 0.1, mat: 'fur' });
-        for (const [a, b] of [[-0.1, 0.4], [0.1, 0.4], [-0.1, -0.4], [0.1, -0.4]]) { const q = L(a, b); add({ k: 'cyl', x: q[0], y: q[1], r: 0.04, z0: 0, z1: 0.65, mat: 'fur' }); }
+        for (const [a, b, g] of [[-0.1, 0.4, 1], [0.1, 0.4, -1], [-0.1, -0.4, -1], [0.1, -0.4, 1]]) { const q = L(a, b + g * G); add({ k: 'cyl', x: q[0], y: q[1], r: 0.04, z0: 0, z1: 0.65, mat: 'fur' }); }
         for (const side of [-0.05, 0.05]) { const e = L(-0.31, -0.82 + side); add({ k: 'disc', x: e[0], y: e[1], z: 1.52, r: 0.013, nx: -c, ny: -sn, nz: 0, sub: true, mat: 'eyeshine' }); }
       },
       // a pedestrian: 'dark' clothes | 'hivis' vest with tape | 'light' clothes
-      person(s, off, kind) {
-        const p = at(s, off), legs = kind === 'light' ? 'cloth-dark' : 'cloth-dark', torso = ({ dark: 'cloth-dark', hivis: 'hivis', light: 'cloth-light' })[kind] || 'cloth-dark';
-        for (const dy of [-0.1, 0.1]) { const q = at(s, off + dy); add({ k: 'cyl', x: q.x, y: q.y, r: 0.085, z0: 0, z1: 0.85, mat: legs }); }
+      // o (a walker, drive-anim.js): dir [along, across] the unit direction of travel, gait = how far the legs swing (m)
+      person(s, off, kind, o) {
+        const p = at(s, off), legs = kind === 'light' ? 'cloth-dark' : 'cloth-dark', torso = ({ dark: 'cloth-dark', hivis: 'hivis', light: 'cloth-light' })[kind] || 'cloth-dark', dr = (o && o.dir) || [1, 0], G = (o && o.gait) || 0;
+        for (const dy of [-0.1, 0.1]) { const q = at(s + dr[0] * G * Math.sign(dy), off + dy + dr[1] * G * Math.sign(dy)); add({ k: 'cyl', x: q.x, y: q.y, r: 0.085, z0: 0, z1: 0.85, mat: legs }); }
         add({ k: 'cyl', x: p.x, y: p.y, r: 0.2, z0: 0.85, z1: 1.5, mat: kind === 'hivis' ? ({ z }) => ((z > 1.0 && z < 1.06) || (z > 1.26 && z < 1.32) ? 'hivis-tape' : 'hivis') : torso });
         add({ k: 'ell', x: p.x, y: p.y, z: 1.64, rx: 0.1, ry: 0.09, rz: 0.12, mat: 'skin' });
       },
@@ -86,10 +88,15 @@
         for (const key of ['red', 'amber', 'green']) add({ k: 'disc', x: p.x - 0.18 * c, y: p.y - 0.18 * sn, z: z + dz[key], r: 0.1, nx: -c, ny: -sn, nz: 0, mat: 'pole', emitPow: 2, emit: key === lit ? cols[key] : null });
       },
       parkedCar(s, off) { this.car(s, off, { face: 1 }); },
+      // a raised pavement marker: a small retroreflecting face toward the car, standing on the road. glow: it adds light to the ground pixel instead of covering it
+      rpm(s, off, yellow) {
+        const p = at(s, off), c = Math.cos(p.yaw), sn = Math.sin(p.yaw), tz = 0.148, tl = Math.sqrt(1 - tz * tz);
+        add({ k: 'disc', x: p.x, y: p.y, z: 0.035, r: 0.035, nx: -c * tl, ny: -sn * tl, nz: tz, sub: true, glow: true, mat: yellow ? 'rpm-yellow' : 'rpm-white' });
+      },
       // a dark crate lying on the road (the hard target: 3 % reflectance, nothing retroreflective), along the road by across it
       obstacle(s, off, o) { o = o || {}; const p = at(s, off); add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: o.h || 0.35, hx: o.l || 0.3, hy: o.w || 0.2, yaw: p.yaw, mat: 'tyre' }); },
     };
-    for (const [m, c] of [['post', 'post'], ['sign', 'sign'], ['tree', 'veg'], ['bush', 'veg'], ['deer', 'deer'], ['person', 'person'], ['car', 'car'], ['parkedCar', 'car'], ['signal', 'signal'], ['obstacle', 'obstacle']]) { const f = k[m]; k[m] = function () { cur = c; try { return f.apply(this, arguments); } finally { cur = ''; } }; }
+    for (const [m, c] of [['post', 'post'], ['sign', 'sign'], ['tree', 'veg'], ['bush', 'veg'], ['deer', 'deer'], ['person', 'person'], ['car', 'car'], ['parkedCar', 'car'], ['signal', 'signal'], ['obstacle', 'obstacle'], ['rpm', 'rpm']]) { const f = k[m]; k[m] = function () { cur = c; try { return f.apply(this, arguments); } finally { cur = ''; } }; }
     return k;
   }
 
@@ -206,6 +213,44 @@
     const k = kit(ctx); for (let s = 80, i = 0; s < 300; s += 150, i++) k.obstacle(s, i % 2 ? 0.55 : -0.55);
     for (const ob of k.O) objects.push(ob);
   }
+  /* The open road for the animated view (drive-anim.js), one PERIOD-long chunk at a time, from a seed: every chunk is different, the same seed gives the same road.
+   * ctx { Lw, us, seed (a number for THIS chunk), density (1 = about what the still view has, ×1.5 default in the view), broken (US centre line) },
+   * o { people, animals, signs, posts, veg, obstacle, rpm }. → { objects (still), actors (walkers and deer: data, drive-anim.js poses them), markings, verge }.  */
+  function wildChunk(ctx, o) {
+    const R = rng(ctx.seed), c = Object.assign({}, ctx, { rand: R, A: null }), k = kit(c), Lw = c.Lw, dn = c.density === undefined ? 1 : c.density, us = c.us, P = 300;
+    const markings = D.laneMarkings(Lw, { us, broken: !!c.broken }), actors = [];
+    if (o.posts !== false) for (let s = 20; s < P; s += 50) { k.post(s, k.edgeR - 0.9); k.post(s + 25, k.edgeL + 0.9); }
+    if (o.signs) {
+      const types = [['green', { w: 1.8, h: 1.0 }], ['yellow', { w: 0.8, h: 0.8 }], ['white', { w: 0.7, h: 0.9 }]]; let last = -100;
+      for (let i = 0, n = Math.round(R() * 2.4 * Math.min(1.5, dn)); i < n; i++) { const s = Math.max(40, last + 60) + R() * 40; if (s > 270) break; last = s; const t = types[Math.floor(R() * 3)], side = R() < 0.5 ? 1 : -1; k.sign(s, side > 0 ? k.edgeL + 1.8 + 1.4 * R() : k.edgeR - 1.8 - 1.4 * R(), t[0], t[1]); }
+    }
+    if (o.veg !== false) {
+      const nb = Math.round(14 * dn), nt = Math.round(3 * dn);
+      for (const side of [1, -1]) {
+        for (let i = 0; i < nb; i++) { const s = (i + R()) * P / nb, off = 1.4 + 9 * R() * R(); k.bush(s, side > 0 ? k.edgeL + off : k.edgeR - off, 0.5 + 0.9 * R()); }
+        for (let i = 0; i < nt; i++) { const s = (i + R()) * P / nt, off = 5 + 13 * R(); k.tree(s, side > 0 ? k.edgeL + off : k.edgeR - off, { birch: R() < 0.15 }); }
+      }
+    }
+    if (o.rpm !== false) {                                  // markers on the centre line (in the middle of each gap when the line is dashed) and, staggered, on both edge lines
+      const pat = markings.find((m) => m.pat && m.o0 < Lw / 2 && m.o1 > Lw / 2), per = pat ? pat.pat.period : 12, s0 = pat ? pat.pat.s0 + pat.pat.on + (per - pat.pat.on) / 2 : 0;
+      for (let s = s0 - Math.floor(s0 / per) * per; s < P; s += per) k.rpm(s, Lw / 2, us);
+      for (let s = 6; s < P; s += 24) { k.rpm(s, -Lw / 2 + 0.2); k.rpm(s + 12, 1.5 * Lw - 0.2); }
+    }
+    if (o.obstacle) for (let s = 80, i = 0; s < P; s += 150, i++) k.obstacle(s, i % 2 ? 0.55 : -0.55);
+    // walkers and deer: where they start, where they head, how fast. Poses come from drive-anim.js (they move from the moment the car is ~110 m away)
+    const edge = (side) => (side > 0 ? k.edgeL : k.edgeR);
+    if (o.people) for (let i = 0, n = Math.round((0.8 + 1.6 * R()) * Math.min(1.5, dn)); i < n; i++) {
+      const side = R() < 0.5 ? 1 : -1, kind = ['dark', 'dark', 'hivis', 'light'][Math.floor(R() * 4)], s0 = 30 + R() * 250, spd = 0.9 + 0.7 * R();
+      if (R() < 0.35) actors.push({ id: 'p' + i, kind: 'person', ptype: kind, mode: 'cross', s0, off0: edge(side) + side * (0.6 + 1.4 * R()), ds: 0, doff: -side, spd, len: 1.5 * Lw + 2 * (0.6 + 1.4) + 0.5 });
+      else { const dir = R() < 0.5 ? 1 : -1; actors.push({ id: 'p' + i, kind: 'person', ptype: kind, mode: 'along', s0, off0: edge(side) + side * (0.8 + 2.4 * R()), ds: dir, doff: 0, spd, len: 90 }); }
+    }
+    if (o.animals) for (let i = 0, n = Math.round(R() * 1.6 * Math.min(1.5, dn) + 0.45); i < n; i++) {
+      const side = R() < 0.5 ? 1 : -1, s0 = 40 + R() * 230, graze = R() < 0.25, into = -0.4 + (R() < 0.5 ? 0.7 * R() : 0.7 * R() + Lw * (0.4 + 0.5 * R()));   // into: how far onto the road it goes (m past the edge line)
+      actors.push({ id: 'd' + i, kind: 'deer', mode: graze ? 'graze' : 'step', s0, off0: edge(side) + side * (3 + 5 * R()), ds: 0, doff: -side, spd: 1.0 + 0.5 * R(), len: 0, delay: 0.3 + 1.2 * R(), side, into });
+      const a = actors[actors.length - 1]; a.len = graze ? 0 : Math.abs(a.off0 - (edge(side) - side * a.into));
+    }
+    return { objects: k.O, actors, markings, verge: ['gravel', 1.6, 'grass'] };
+  }
   // build a scene by name: ctx { Lw (lane width m), A (RF.Road.arc or null), us (US markings), seed }, o { people, animals, signs, posts, veg (false = leave
   // that class out; everything else stays where it was), obstacle (true = add crates) }
   function buildScene(name, ctx, o) {
@@ -215,5 +260,5 @@
     if (opt.obstacle) addObstacles(c, out.objects);
     return out;
   }
-  RF.Drive.scenes = SCENES; RF.Drive.buildScene = buildScene; RF.Drive.rng = rng;
+  RF.Drive.scenes = SCENES; RF.Drive.buildScene = buildScene; RF.Drive.rng = rng; RF.Drive.kit = kit; RF.Drive.wildChunk = wildChunk;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

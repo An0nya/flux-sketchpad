@@ -215,6 +215,7 @@ body.mode-D .canvas-wrap.drive .drive-tools { display: flex; }
 body.mode-D .canvas-wrap.drive .drive-anim-tools:not([hidden]), .dp-stage .drive-anim-tools:not([hidden]) { display: flex; }
 .drive-anim-tools button { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); pointer-events: auto; }
 .drive-anim-tools input[type=range] { width: 110px; pointer-events: auto; }
+.drive-anim-tools input.anim-seed { width: 58px; min-height: 22px; padding: 0 4px; font-size: 11px; pointer-events: auto; background: rgba(11,17,24,.7); color: #fff; border: 1px solid var(--line); border-radius: 4px; }
 .drive-anim-tools .anim-speed { min-width: 54px; text-shadow: 0 0 3px #000, 0 0 3px #000; font-variant-numeric: tabular-nums; }
 .drive-popout { position: absolute; inset: 0; z-index: 40; display: flex; flex-direction: column; background: #05060a; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .dp-head { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12px; border-bottom: 1px solid var(--line); }

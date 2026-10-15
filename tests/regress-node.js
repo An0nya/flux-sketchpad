@@ -402,5 +402,63 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('F4 a point edit (setProfile) retires the curve', st.scene.modeC.curve === undefined && !P.curveLive(st.scene.modeC));
     st.scene.modeC.curve = cv; ok('F4 a stale curve (profile no longer matches) is not trusted', !P.curveLive(st.scene.modeC));
   }
+  // D1a: the ground is anti-aliased across its material edges (asphalt / gravel / grass), not only along the paint: a 160x90 ground (1 sample) against the same view at 640x360 box-filtered down
+  {
+    const D = RF.Drive, lut = D.lutFrom(() => 3000), mean = (A) => {
+      const go = (w) => D.render({ w, h: w * 9 / 16, hfov: 45, eye: [-2, 0.37, 1.2], lamps: [[0, 0.7, 0.7], [0, -0.7, 0.7]], lut, conv: 'A', lane: 3.5, arc: A, ss: 1, look: { RL: 0.2 }, scene: { objects: [], markings: D.laneMarkings(3.5, { us: true }), verge: ['gravel', 1.5, 'grass'] } }).rgb;
+      const lo = go(160), hi = go(640); let e = 0, n = 0;
+      for (let y = 0; y < 90; y++) for (let x = 0; x < 160; x++) { let a = 0; for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) { const q = 3 * ((y * 4 + j) * 640 + x * 4 + i); a += (0.2126 * hi[q] + 0.7152 * hi[q + 1] + 0.0722 * hi[q + 2]) / 16; } const q = 3 * (y * 160 + x), b = 0.2126 * lo[q] + 0.7152 * lo[q + 1] + 0.0722 * lo[q + 2]; if (a > 1e-3) { e += Math.abs(a - b) / a; n++; } }
+      return e / n;
+    };
+    const bend = mean(RF.Road.arc(150, 'left')), straight = mean(null);
+    ok('D1a ground edges are anti-aliased (mean relative error vs a 4x render; before: 0.054 bend / 0.042 straight)', bend < 0.03 && straight < 0.03, 'bend ' + bend.toFixed(4) + ', straight ' + straight.toFixed(4));
+  }
+  // D1b-e: the animated view's random scenery, moving walkers and deer, pavement markers, the US broken centre line (CPU side)
+  {
+    const DA = RF.DriveAnim, D = RF.Drive, flags = { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true }, J = JSON.stringify;
+    const mk = (seed, dn, us, cl) => DA.source('road', 3.5, !!us, flags, { wild: true, seed, density: dn === undefined ? 1.5 : dn, cline: cl });
+    const a = mk(7), b = mk(7), c = mk(8);
+    ok('D1b same seed, same road (chunks 0..4 identical); another seed differs', [0, 1, 2, 3, 4].every((k) => J(a.chunk(k)) === J(b.chunk(k))) && J(a.chunk(2)) !== J(c.chunk(2)));
+    ok('D1b chunks differ from each other: no 300 m repeat (statics of chunk 1 are not chunk 0 shifted, 5 chunks pairwise different)', [0, 1, 2, 3, 4].every((k) => [0, 1, 2, 3, 4].every((q) => q <= k || J(a.chunk(k).objects.map((o) => [o.k, +o.y.toFixed(3), +o.x.toFixed(3)])) !== J(a.chunk(q).objects.map((o) => [o.k, +o.y.toFixed(3), +o.x.toFixed(3)])))));
+    { const p1 = DA.place(a, 12.5, null), p2 = DA.place(a, 12.5 + DA.PERIOD, null), key = (L) => J(L.map((o) => [o.k, +o.y.toFixed(3), +o.x.toFixed(3)]).sort());
+      ok('D1b place(): a lap (300 m later) does not show the same scenery; the original scenery (no opts) still repeats exactly', key(p1) !== key(p2) && key(DA.place(DA.source('road', 3.5, false, flags), 12.5, null)) === key(DA.place(DA.source('road', 3.5, false, flags), 12.5 + DA.PERIOD, null))); }
+    { const cnt = (dn) => { let n = 0; for (let k = 0; k < 6; k++) n += mk(7, dn).chunk(k).objects.length; return n / 6; }, c1 = cnt(1), c15 = cnt(1.5), c3 = cnt(3), still = DA.source('road', 3.5, false, flags).objects.length;
+      ok('D1b density: more scenery per chunk at higher density, denser than the original fixed scene at the default (' + c15.toFixed(0) + ' vs ' + still + ')', c1 < c15 && c15 < c3 && c15 > still, [c1, c15, c3].map((x) => x.toFixed(0)).join(' / ')); }
+    // moving people and deer: they start where the chunk put them, walk at plausible speeds, stop where their track ends
+    { const ch = a.chunk(1), act = ch.actors, dist = 300 + 40; let bad = [];
+      const at = (tau) => DA.place(a, dist, null, () => tau);
+      const p0 = at(0), p5 = at(5), p200 = at(200), p400 = at(400);
+      ok('D1c walkers and deer exist in a chunk, and place() with no clock leaves them at their start', act.some((x) => x.kind === 'person') && ch.actors.length >= 1 && p0.length > 0 && J(DA.place(a, dist, null)) === J(p0));
+      ok('D1c they move: scenery differs between 0 s and 5 s; and stops moving once every track is done (200 s = 400 s)', J(p0) !== J(p5) && J(p200) === J(p400));
+      for (const x of act) { const sp = x.spd; if (x.kind === 'person' && !(sp >= 0.8 && sp <= 1.7)) bad.push(x.id + ' ' + sp); if (x.kind === 'deer' && !(sp >= 0.9 && sp <= 1.6)) bad.push(x.id + ' ' + sp); }
+      let tot = 0, n = 0; for (let k = 0; k < 20; k++) for (const x of a.chunk(k).actors) { tot++; if (x.kind === 'deer' && x.mode === 'step') { const edge = x.doff < 0 ? 5.25 : -1.75, towardRoad = Math.sign(edge - x.off0) === Math.sign(x.doff) || Math.abs(x.len) < 1e-6; if (!towardRoad) bad.push('deer ' + x.id + ' walks away from the road'); n++; } }
+      ok('D1c speeds are walking speeds (people 0.8-1.7 m/s, deer 0.9-1.6 m/s) and stepping deer head toward the road (' + n + ' of ' + tot + ' actors checked)', bad.length === 0 && n > 3, bad.join('; ')); }
+    { const pose = (x, t) => { const run = Math.max(0, t - (x.delay || 0)), d = Math.min(x.spd * run, x.len); return [x.s0 + x.ds * d, x.off0 + x.doff * d]; };
+      const deer = a.chunk(3).actors.concat(a.chunk(4).actors, a.chunk(5).actors, a.chunk(6).actors).find((x) => x.kind === 'deer' && x.mode === 'step'), e0 = deer ? pose(deer, 0)[1] : 0, e9 = deer ? pose(deer, 99)[1] : 0, road = (o) => o >= -1.75 && o <= 5.25;
+      ok('D1c a stepping deer ends nearer the road than it started (or on it)', !!deer && Math.abs(e9 - (deer.side > 0 ? 5.25 : -1.75)) < Math.abs(e0 - (deer.side > 0 ? 5.25 : -1.75)), deer ? 'off ' + e0.toFixed(2) + ' → ' + e9.toFixed(2) : 'no deer found'); }
+    // pavement markers: lit by the beam like any retroreflector, add light, hide nothing
+    { const lut = D.lutFrom(() => 30000), base = { w: 160, h: 90, hfov: 60, eye: DA.EYE, lamps: [[0, 0.7, 0.7], [0, -0.7, 0.7]], lut, conv: 'A', lane: 3.5, look: { RL: 0.2 } };
+      const rpms = a.chunk(0).objects.filter((o) => o.cls === 'rpm');
+      ok('D1d the road has pavement markers on the centre line and both edges (' + rpms.length + ' per chunk), they glow (add light, no coverage)', rpms.length >= 45 && rpms.every((o) => o.glow && o.k === 'disc'));
+      const r = D.render(Object.assign({ ss: 2, layer: 'objects', tight: true, scene: { objects: DA.place(a, 0, null).filter((o) => o.cls === 'rpm' && o.x > 8 && o.x < 40), markings: [], verge: a.verge } }, base));
+      let lit = 0, covered = 0; for (let q = 0; q < 160 * 90; q++) { if (r.rgb[3 * q] > 0) lit++; if (r.cov[q] > 0) covered++; }
+      ok('D1d traced alone, markers 8-40 m ahead light pixels and cover none', lit > 3 && covered === 0, lit + ' lit, ' + covered + ' covered'); }
+    // D1f: foliage the beam cannot reach is left out of the trace; the picture does not change (black either way), and the trace has less to do
+    { const lut = D.lutFrom((h, v) => 30000 * Math.exp(-((h / 10) ** 2 + ((v + 1.5) / 2.5) ** 2))), w = 200, h = 112, p = { w, h, hfov: 60, lamps: [[0, 0.7, 0.7], [0, -0.7, 0.7]], lut, conv: 'A', A: null, lane: 3.5, look: { RL: 0.2 }, src: a };
+      let nAll = 0, nKept = 0, worst = 0; const dim = DA.dimFoliage(p);
+      for (const dist of [0, 55, 130, 210]) {
+        const L1 = DA.place(a, dist, null, () => 0), L2 = DA.place(a, dist, null, () => 0, dim); nAll += L1.filter((o) => o.cls === 'veg').length; nKept += L2.filter((o) => o.cls === 'veg').length;
+        const rgba1 = new Float32Array(4 * w * h), rgba2 = new Float32Array(4 * w * h), cam = Object.assign({ ss: 1, layer: 'objects', tight: true }, { w, h, hfov: 60, eye: DA.EYE, lamps: p.lamps, lut, conv: 'A', lane: 3.5, look: p.look });
+        D.render(Object.assign({ rgba: rgba1, scene: { objects: L1, markings: [], verge: a.verge } }, cam)); D.render(Object.assign({ rgba: rgba2, scene: { objects: L2, markings: [], verge: a.verge } }, cam));
+        for (let q = 0; q < w * h; q++) for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(rgba1[4 * q + c] - rgba2[4 * q + c]));
+      }
+      ok('D1f leaving out unlit foliage changes no pixel by more than 1e-3 cd/m² (' + nKept + ' of ' + nAll + ' foliage pieces traced)', worst < 1e-3 && nKept < nAll, 'worst ' + worst.toExponential(1)); }
+    { const eu = mk(7, 1.5, false), us = mk(7, 1.5, true), usb = mk(7, 1.5, true, 'broken');
+      ok('D1e US: double solid yellow by default; the broken-line option has ONE patterned yellow line (3 m on, 12 m cycle); the EU road keeps its dashed white line', !us.markings.some((m) => m.pat) && usb.markings.filter((m) => m.pat).length === 1 && usb.markings.find((m) => m.pat).mat === 'yellow-paint' && usb.markings.find((m) => m.pat).pat.on === 3 && eu.markings.find((m) => m.pat).mat === 'white-paint' && eu.markings.find((m) => m.pat).pat.on === 4);
+      const g = DA.ground({ w: 160, h: 90, hfov: 60, A: null, lanes: 0, lamps: [[0, 0.7, 0.7], [0, -0.7, 0.7]], lut: D.lutFrom(() => 3000), conv: 'A', lane: 3.5, look: { RL: 0.2 }, src: usb });
+      ok('D1e broken centre line gives the ground a moving stripe layer on the US preset (pattern period 12)', !!g.B && g.pat && g.pat.period === 12);
+      const gap = (m) => m.pat.s0 + m.pat.on + (m.pat.period - m.pat.on) / 2, cl = usb.chunk(0).objects.filter((o) => o.cls === 'rpm' && Math.abs(o.y - 1.75) < 1e-9), pm = usb.markings.find((m) => m.pat), per = pm.pat.period;
+      ok('D1e markers on a broken centre line sit in the middle of the gaps', cl.length > 10 && cl.every((o) => { const u = ((o.x + 0.0 - gap(pm)) % per + per) % per; return Math.min(u, per - u) < 0.06 + 0.05; }), cl.length + ' markers'); }
+  }
   process.exitCode = fails ? 1 : 0;
 })();

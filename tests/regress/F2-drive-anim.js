@@ -79,7 +79,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok('crates toggle: off by default, on adds crates', crates0 === 0 && (await cnt('obstacle')) >= 2, 'crates ' + (await cnt('obstacle')));
   await page.click('[data-anim="c-obstacle"]'); await sleep(300); await page.click('[data-anim="c-veg"]'); await sleep(300); await page.click('[data-anim="c-veg"]'); await sleep(300);
   ok('posts, trees and crates are animation-only: toggling them did not re-render the still picture', (await page.evaluate(() => window.__still)) === 0, 'still renders ' + await page.evaluate(() => window.__still));
-  for (const k of ['signs', 'people', 'animals', 'veg']) { const before = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length); await page.click('[data-anim="c-' + k + '"]'); await sleep(300); const after = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length); ok('toggle ' + k + ' changes the scenery (' + before + ' → ' + after + ' objects)', after < before); await page.click('[data-anim="c-' + k + '"]'); await sleep(200); }
+  for (const k of ['signs', 'people', 'animals', 'veg']) { const before = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length + (RF.DriveAnim._.V.src.chunk ? RF.DriveAnim._.V.src.chunk(0).actors.length : 0)); await page.click('[data-anim="c-' + k + '"]'); await sleep(300); const after = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length + (RF.DriveAnim._.V.src.chunk ? RF.DriveAnim._.V.src.chunk(0).actors.length : 0)); ok('toggle ' + k + ' changes the scenery (' + before + ' → ' + after + ' objects)', after < before); await page.click('[data-anim="c-' + k + '"]'); await sleep(200); }
 
   // 6. the large view
   await page.click('[data-anim="popout"]'); await sleep(2500);
@@ -115,7 +115,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // 8. parity: an animated frame against the whole picture of the same displaced world (the still renderer)
   const parity = (cfg) => page.evaluate(async (cfg) => {
-    const ui = RF.UI; ui.dvOpts.glare = 0; ui.dvOpts.expMode = 'fixed'; ui.rvOpts.shape = cfg.shape; const st = ui.dvAnim; st.view = 'anim'; st.playing = false; ui.redrawSpec(); await new Promise((r) => setTimeout(r, 1500));
+    const ui = RF.UI; ui.dvOpts.glare = 0; ui.dvOpts.expMode = 'fixed'; ui.dvOpts.tex = false; ui.dvOpts.wild = false; /* the original fixed scenery, no grain: what the still renderer can reproduce */ ui.rvOpts.shape = cfg.shape; const st = ui.dvAnim; st.view = 'anim'; st.playing = false; ui.redrawSpec(); await new Promise((r) => setTimeout(r, 1500));
     const DA = RF.DriveAnim, X = DA._, V = X.V; V.pinSS = 2; X.setDist(cfg.dist); /* 2×2 samples, as the reference has */ const p = V.p, W = p.w, H = p.h, hdr = X.readHdr(), src = V.src;
     const shift = (m) => m.pat ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { s0: m.pat.s0 - cfg.dist, s1: m.pat.s1 - cfg.dist }) }) : m;
     const cam = { w: W, h: H, hfov: p.hfov, eye: DA.EYE, lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look, scene: { objects: DA.place(src, cfg.dist, p.A), markings: src.markings.map(shift), verge: src.verge } };

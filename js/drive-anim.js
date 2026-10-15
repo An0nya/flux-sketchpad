@@ -15,29 +15,60 @@
 (function (root) {
   'use strict';
   const RF = root.RF || (root.RF = {}), D = RF.Drive;
-  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, MAX_SIM = 1600, ANIM_SCENES = { road: 1 };
-  const CLASSES = [['posts', 'posts', 'Delineator posts with reflectors'], ['signs', 'signs', 'Road signs (retroreflective sheeting)'], ['people', 'people', 'Pedestrians'], ['animals', 'deer', 'Deer, with retroreflecting eyes'], ['veg', 'trees', 'Trees and bushes at the roadside'], ['obstacle', 'crates', 'A dark crate on the road every 150 m (the hard target: 3 % reflectance, nothing retroreflective)']];
+  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, MAX_SIM = 1600, ANIM_SCENES = { road: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
+  const CLASSES = [['posts', 'posts', 'Delineator posts with reflectors'], ['signs', 'signs', 'Road signs (retroreflective sheeting)'], ['people', 'people', 'Pedestrians'], ['animals', 'deer', 'Deer, with retroreflecting eyes'], ['veg', 'trees', 'Trees and bushes at the roadside'], ['obstacle', 'crates', 'A dark crate on the road every 150 m (the hard target: 3 % reflectance, nothing retroreflective)'], ['rpm', 'studs', 'Raised reflective pavement markers on the centre and edge lines (random scenery only)'], ['tex', 'grain', 'Asphalt grain: a subtle texture on the road surface that moves with the drive'], ['wild', 'random', 'Random scenery from a seed: denser, different every 300 m, walkers and deer that move. Off: the original fixed scenery, repeating every 300 m']];
 
   // ---------------------------------------------------------------- CPU: scenery, ground, composition (pure; tests use these)
   // the scenery on a straight road, in (s, off) coordinates
-  function source(name, lane, us, flags) {
-    const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7 }, flags);
-    return { objects: sc.objects, markings: sc.markings, verge: sc.verge };
+  // opts (the view's settings; none = the original scenery, as the tests build it): { wild: random scenery from `seed` (chunks of PERIOD m, `density`), cline: 'broken' = a US passing-zone centre line }
+  function source(name, lane, us, flags, opts) {
+    const broken = !!(opts && us && opts.cline === 'broken');
+    if (!(opts && opts.wild) || name !== 'road') {
+      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7 }, flags), src = { objects: sc.objects, markings: sc.markings, verge: sc.verge, lane };
+      if (broken && name === 'road') src.markings = D.laneMarkings(lane, { us, broken });
+      return src;
+    }
+    const mix = (k) => (Math.imul((+opts.seed || 0) | 0, 2654435761) ^ Math.imul(k + 1, 0x9E3779B1)) >>> 0, chunks = new Map();
+    const src = { wild: true, lane, markings: D.laneMarkings(lane, { us, broken }), verge: ['gravel', 1.6, 'grass'], chunk(k) {
+      let c = chunks.get(k); if (!c) { c = D.wildChunk({ Lw: lane, us, seed: mix(k), density: opts.density === undefined ? 1.5 : +opts.density, broken }, flags); chunks.set(k, c); if (chunks.size > 8) chunks.delete(chunks.keys().next().value); } return c;
+    } };
+    src.objects = src.chunk(0).objects; return src;
+  }
+  // a pose of a walker or deer `tau` s after it started moving: where it is along the road (s) and across it (off), and its leg swing
+  function actorPose(a, tau) {
+    const run = a.mode === 'graze' ? 0 : Math.max(0, tau - (a.delay || 0)), d = Math.min(a.spd * run, a.len), moving = run > 0 && d < a.len;
+    return { s: a.s0 + a.ds * d, off: a.off0 + a.doff * d, gait: moving ? (a.kind === 'deer' ? 0.14 : 0.11) * Math.sin(2 * Math.PI * (a.kind === 'deer' ? 1.4 : 1.8) * run) : 0 };
   }
   // the objects as the car at distance `dist` sees them (car frame). Every object appears once, at s ∈ [dist − 6, dist − 6 + PERIOD); A: RF.Road.arc or null
-  function place(src, dist, A) {
+  // ob copied to n, moved to `rel` m ahead of the car (on a bend: along the lane, turned with the tangent)
+  function move(n, ob, rel, A) {
+    n.bs = undefined;
+    if (A) {
+      const q = A.at(rel, ob.y), psi = Math.atan2(q.t[1], q.t[0]), c = Math.cos(psi), sn = Math.sin(psi);
+      n.x = q.p[0]; n.y = q.p[1];
+      if (ob.k === 'box') n.yaw = (ob.yaw || 0) + psi;
+      else if (ob.k === 'disc') { n.nx = ob.nx * c - ob.ny * sn; n.ny = ob.nx * sn + ob.ny * c; }
+    } else n.x = rel;
+    return n;
+  }
+  /* tauOf(id, rel0) → seconds since that walker/deer started moving (0 without it: they stand where they start). Random scenery: the chunks around the car, each object once */
+  function place(src, dist, A, tauOf, skip) {
     const out = [];
-    for (const ob of src.objects) {
-      const rel = ob.x - dist - Math.floor((ob.x - dist + 6) / PERIOD) * PERIOD, n = Object.assign({}, ob);
-      n.bs = undefined;
-      if (A) {
-        const q = A.at(rel, ob.y), psi = Math.atan2(q.t[1], q.t[0]), c = Math.cos(psi), sn = Math.sin(psi);
-        n.x = q.p[0]; n.y = q.p[1];
-        if (ob.k === 'box') n.yaw = (ob.yaw || 0) + psi;
-        else if (ob.k === 'disc') { n.nx = ob.nx * c - ob.ny * sn; n.ny = ob.nx * sn + ob.ny * c; }
-      } else n.x = rel;
-      out.push(n);
+    if (src.chunk) {
+      const k0 = Math.floor((dist - 6) / PERIOD), K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
+      for (let k = k0 - 1; k <= k0 + 1; k++) {
+        const base = k * PERIOD, ch = src.chunk(k);
+        if (k >= k0) for (const ob of ch.objects) { const rel = ob.x + base - dist; if (rel >= -6 && rel <= CULL) { const n = move(Object.assign({}, ob), ob, rel, A); if (!skip || !skip(n)) out.push(n); } }
+        for (const a of ch.actors) {
+          const id = k + ':' + a.id, tau = tauOf ? tauOf(id, base + a.s0 - dist) : 0, ps = actorPose(a, tau), rel = base + ps.s - dist; if (rel < -6 || rel > CULL) continue;
+          const n0 = K.O.length;
+          if (a.kind === 'deer') K.deer(rel, ps.off, { face: a.side > 0 ? 1 : -1, gait: ps.gait }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait });
+          for (let i = n0; i < K.O.length; i++) out.push(move(Object.assign({}, K.O[i]), K.O[i], K.O[i].x, A));
+        }
+      }
+      return out;
     }
+    for (const ob of src.objects) out.push(move(Object.assign({}, ob), ob, ob.x - dist - Math.floor((ob.x - dist + 6) / PERIOD) * PERIOD, A));
     return out;
   }
   const camOf = (p) => ({ w: p.w, h: p.h, hfov: p.hfov, eye: EYE, lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look });
@@ -50,8 +81,24 @@
     return { A, B, pat: pat ? pat.pat : null, ms: Date.now() - t0 };
   }
   // the objects at `dist`, rendered into rgba (4·w·h, cleared by the caller where it was written last); → rows [y0, y1) touched
-  function objects(p, dist, rgba, ss) {
-    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, scene: { objects: place(p.src, dist, p.A), markings: [], verge: p.src.verge } }, camOf(p)));
+  /* Foliage and bark (reflectance ≤ 0.08, nothing retroreflective) the beam cannot reach is black on the screen whether or not it is traced, and the trees are what makes a
+   * dense roadside slow (huge ellipsoids). An upper bound of its luminance, from the beam's largest intensity over the object's bounding cube and the nearest distance, below
+   * 1e-3 cd/m² (a third of one 8-bit step at EV 0, black at any EV in range): not traced. Not with ambient light (it lights diffuse surfaces by itself).                       */
+  function dimFoliage(p) {
+    if (p.look && p.look.ambient > 0) return null;
+    return (n) => {
+      if (n.cls !== 'veg') return false;
+      D.boundOf(n); const b = n.bs, R = b[3]; let I = 0;
+      for (const L of p.lamps) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+        D.hvFast(b[0] + i * R - L[0], b[1] + j * R - L[1], b[2] + k * R - L[2], p.conv || 'A'); const q = D.lutAt(p.lut, D.hv()[0], D.hv()[1]); if (q > I) I = q;
+      }
+      if (!(I > 0)) return true;
+      const d = Math.max(Math.hypot(b[0] - p.lamps[0][0], b[1] - p.lamps[0][1], b[2] - p.lamps[0][2]) - R, 0.5);
+      return 3 * p.lamps.length * 0.08 / Math.PI * I / (d * d) < 1e-3;
+    };
+  }
+  function objects(p, dist, rgba, ss, tauOf) {
+    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, scene: { objects: place(p.src, dist, p.A, tauOf, p.src.chunk ? dimFoliage(p) : null), markings: [], verge: p.src.verge } }, camOf(p)));
     return r.rows;
   }
   // coverage of a pixel's footprint [s − h, s + h] by the stripe pattern at s + dist (drive.js covLon with the pattern shifted)
@@ -79,19 +126,28 @@
 void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
   const FS_COMPOSE = `#version 300 es
 precision highp float; precision highp int; precision highp sampler2D;
-uniform sampler2D uA, uB, uO; uniform vec2 uSize; uniform vec3 uEye; uniform float uTanH, uTanV, uDelta0, uDist, uR, uSg, uHasPat; uniform vec4 uPat;
+uniform sampler2D uA, uB, uO; uniform vec2 uSize; uniform vec3 uEye; uniform float uTanH, uTanV, uDelta0, uDist, uR, uSg, uHasPat, uTex, uTexDist, uLw, uVw; uniform vec4 uPat;
 out vec4 o;
 float F(float x) { float u = x - uPat.x; float n = floor(u / uPat.z); return n * uPat.w + min(u - n * uPat.z, uPat.w); }
+// asphalt grain: value noise in road coordinates (s along, off across), three scales (15 cm, 60 cm, 2.4 m), each faded out where a pixel's footprint F (m) is as big as its cells: no shimmer, same mean
+float hsh(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vn(vec2 c, float N) { vec2 i = floor(c), f = fract(c); f = f * f * (3.0 - 2.0 * f); float x0 = mod(i.x, N), x1 = mod(i.x + 1.0, N);
+  return mix(mix(hsh(vec2(x0, i.y)), hsh(vec2(x1, i.y)), f.x), mix(hsh(vec2(x0, i.y + 1.0)), hsh(vec2(x1, i.y + 1.0)), f.x), f.y); }
+float grain(float s, float off, float F) {
+  float a = 1.0 - smoothstep(0.4, 1.2, F / 0.15), b = 1.0 - smoothstep(0.4, 1.2, F / 0.6), c = 1.0 - smoothstep(0.4, 1.2, F / 2.4);
+  return 0.45 * a * (vn(vec2(s / 0.15, off / 0.15), 512.0) * 2.0 - 1.0) + 0.35 * b * (vn(vec2(s / 0.6, off / 0.6), 128.0) * 2.0 - 1.0) + 0.2 * c * (vn(vec2(s / 2.4, off / 2.4), 32.0) * 2.0 - 1.0);
+}
 void main() {
   ivec2 ip = ivec2(gl_FragCoord.xy); vec3 g = texelFetch(uA, ip, 0).rgb; vec4 ob = texelFetch(uO, ip, 0);
-  if (uHasPat > 0.5) {
+  if (uHasPat > 0.5 || uTex > 0.0) {
     float u = gl_FragCoord.x / uSize.x * 2.0 - 1.0, v = 1.0 - gl_FragCoord.y / uSize.y * 2.0;
     vec3 d = normalize(vec3(1.0, -u * uTanH, v * uTanV));
     if (d.z < -1e-6) {
-      float tg = -uEye.z / d.z; vec3 P = uEye + tg * d; float s = P.x;
-      if (uR > 0.0) s = atan(P.x, -uSg * (P.y - uSg * uR)) * uR;
-      float h = max(0.5 * tg * uDelta0, 1e-4) / max(-d.z, 0.003), sw = s + uDist, a = max(sw - h, uPat.x), b = min(sw + h, uPat.y);
-      if (b > a) g += (F(b) - F(a)) / (2.0 * h) * texelFetch(uB, ip, 0).rgb;
+      float tg = -uEye.z / d.z; vec3 P = uEye + tg * d; float s = P.x, off = P.y;
+      if (uR > 0.0) { float ry = P.y - uSg * uR; s = atan(P.x, -uSg * ry) * uR; float rr = length(vec2(P.x, ry)); off = uSg > 0.0 ? uR - rr : rr - uR; }
+      float h = max(0.5 * tg * uDelta0, 1e-4) / max(-d.z, 0.003);
+      if (uHasPat > 0.5) { float sw = s + uDist, a = max(sw - h, uPat.x), b = min(sw + h, uPat.y); if (b > a) g += (F(b) - F(a)) / (2.0 * h) * texelFetch(uB, ip, 0).rgb; }
+      if (uTex > 0.0 && off > -0.5 * uLw - uVw && off < 1.5 * uLw + uVw) g *= max(0.25, 1.0 + uTex * grain(s + uTexDist, off, h));
     }
   }
   o = vec4(ob.rgb + (1.0 - ob.a) * g, 1.0);
@@ -162,7 +218,7 @@ void main() {
         const W = R.W, H = R.H, hw = T.src.w, hh = T.src.h, tanH = Math.tan(f.hfov * Math.PI / 360), tanV = tanH * H / W;
         gl.disable(gl.BLEND);
         gl.bindFramebuffer(gl.FRAMEBUFFER, T.hdr.f); gl.viewport(0, 0, W, H);
-        use(P.compose, { uSize: [W, H], uEye: EYE, uTanH: tanH, uTanV: tanV, uDelta0: 2 * tanH / W, uDist: f.dist, uR: f.A ? f.A.R : 0, uSg: f.A ? f.A.sg : 0, uHasPat: f.pat ? 1 : 0, uPat: f.pat ? [f.pat.s0, f.pat.s1, f.pat.period, f.pat.on] : [0, 1, 1, 1] });
+        use(P.compose, { uSize: [W, H], uEye: EYE, uTanH: tanH, uTanV: tanV, uDelta0: 2 * tanH / W, uDist: f.dist, uR: f.A ? f.A.R : 0, uSg: f.A ? f.A.sg : 0, uHasPat: f.pat ? 1 : 0, uPat: f.pat ? [f.pat.s0, f.pat.s1, f.pat.period, f.pat.on] : [0, 1, 1, 1], uTex: f.tex || 0, uTexDist: f.texDist || 0, uLw: f.lane || 3.5, uVw: f.vw || 1.6 });
         bindTex(0, 'A', P.compose.u.uA); bindTex(1, 'B', P.compose.u.uB); bindTex(2, 'O', P.compose.u.uO);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         if (f.glare > 0) {
@@ -190,8 +246,8 @@ void main() {
   }
 
   // ---------------------------------------------------------------- the view: state, canvas, loop
-  const V = { ui: null, cv: null, info: null, gl: null, canvas: null, pop: null, g: null, gkey: '', src: null, skey: '', lut: null, rgba: null, band: [0, 0], frames: 0, raf: 0, last: 0, times: [], cpu: { obj: 0, up: 0, gl: 0, n: 0 }, kAuto: null, why: '' };
-  const S = (ui) => ui.dvAnim || (ui.dvAnim = { view: 'still', playing: true, popout: false, dist: 0, total: 0 });
+  const V = { ui: null, cv: null, info: null, gl: null, canvas: null, pop: null, g: null, gkey: '', src: null, skey: '', lut: null, rgba: null, band: [0, 0], frames: 0, raf: 0, last: 0, times: [], cpu: { obj: 0, up: 0, gl: 0, n: 0 }, kAuto: null, why: '', act: new Map() };
+  const S = (ui) => ui.dvAnim || (ui.dvAnim = { view: 'still', playing: true, popout: false, dist: 0, total: 0, t: 0 });
   const supported = (o) => !!ANIM_SCENES[o.scene];
   const visible = () => {
     const ui = V.ui; if (!ui || !V.canvas || !V.info || typeof document === 'undefined') return false;
@@ -214,9 +270,9 @@ void main() {
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H]);
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle]);
-    if (V.skey !== skey || !V.src) { V.src = source(o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle }); V.skey = skey; }
+    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken']);
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline]);
+    if (V.skey !== skey || !V.src) { V.src = source(o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline }); V.skey = skey; V.act.clear(); }
     V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, RL: o.RL / 1000, ambient: o.ambient }, src: V.src };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
@@ -233,13 +289,16 @@ void main() {
   function frame() {
     const ui = V.ui, st = S(ui), I = info(), o = I.o, t0 = performance.now(), W = V.p.w, pb = V.band, had = pb[1] > pb[0];
     if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
-    const rows = objects(V.p, st.dist, V.rgba, V.pinSS || (W > 1100 ? 1 : (V.ss || 2)));
+    const tauOf = (id, rel0) => { const t0 = V.act.get(id); if (t0 !== undefined) return st.t - t0; if (rel0 <= ACT) V.act.set(id, st.t); return 0; };     // a walker or deer starts to move when the car is ACT m from where it stood
+    if (V.act.size > 80) { const k0 = Math.floor((st.dist - 6) / PERIOD); for (const id of V.act.keys()) if (+id.split(':')[0] < k0 - 2) V.act.delete(id); }
+    const rows = objects(V.p, st.dist, V.rgba, V.pinSS || (W > 1100 ? 1 : (V.ss || 2)), tauOf);
     const t1 = performance.now();
     // samples per pixel for the objects: 2×2 where it is cheap; one while a big object is close (the cost is its area) and until things are calm again
-    if (W <= 1100) { if ((V.ss || 2) === 2 && t1 - t0 > 20) { V.ss = 1; V.calm = 0; } else if (V.ss === 1 && t1 - t0 < 5) { if (++V.calm > 20) V.ss = 2; } else V.calm = 0; }
+    V.avg = V.avg === undefined ? t1 - t0 : V.avg * 0.9 + (t1 - t0) * 0.1;       // a smoothed cost: one slow frame (a big object passing) must not drop the edges to hard 1-sample for a long while
+    if (W <= 1100) { if ((V.ss || 2) === 2 && V.avg > 18) { V.ss = 1; V.calm = 0; } else if (V.ss === 1 && V.avg < 8) { if (++V.calm > 20) V.ss = 2; } else V.calm = 0; }
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
-    V.gl.draw({ hfov: o.fov, dist: st.dist, A: I.A, pat: V.g.pat, k: exposure(), glare: +o.glare || 0, flip: I.mirrored });
+    V.gl.draw({ hfov: o.fov, dist: V.g.pat ? st.dist % V.g.pat.period : 0, A: I.A, pat: V.g.pat, k: exposure(), glare: +o.glare || 0, flip: I.mirrored, tex: o.tex ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane });
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
     ui.dvAnimFrames = V.frames;
   }
@@ -255,7 +314,7 @@ void main() {
     if (st.popout && !popValid(ui)) { closePop(ui); return; }
     if (!visible() || !st.playing || !(st.view === 'anim' || st.popout)) { V.suspended = true; return; }
     const dt = V.last ? Math.min(0.1, (t - V.last) / 1000) : 0; V.last = t;
-    const v = (+info().o.speed || 50) / 3.6; st.total += v * dt; st.dist = (st.dist + v * dt) % PERIOD;
+    const v = (+info().o.speed || 50) / 3.6; st.total += v * dt; st.dist += v * dt; st.t += dt;
     V.times.push(t); if (V.times.length > 300) V.times.shift();
     frame(); V.raf = requestAnimationFrame(tick);
   }
@@ -271,6 +330,12 @@ void main() {
     const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Speed of the drive' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); lab.textContent = sp.value + ' km/h'; });
     const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
     for (const [k, txt, title] of CLASSES) btn('c-' + k, title, () => setDV(ui, k, !info().o[k]), txt);
+    // random scenery: the seed (same seed = same road), how dense, and the US centre line (double solid yellow, or the broken line of a passing zone)
+    const sd = E('input', { type: 'number', min: 0, max: 99999, step: 1, 'data-anim': 'seed', 'aria-label': 'Scenery seed', title: 'Seed of the random scenery: the same number gives the same road', class: 'anim-seed' }); sd.addEventListener('change', () => setDV(ui, 'seed', Math.max(0, Math.min(99999, Math.round(+sd.value || 0)))));
+    const dice = btn('dice', 'A new random seed', () => setDV(ui, 'seed', (Date.now() * 2654435761 >>> 0) % 100000), '⚄');
+    const dn = E('input', { type: 'range', min: 0.5, max: 3, step: 0.5, 'data-anim': 'density', 'aria-label': 'Scenery density', title: 'How much roadside scenery (1 = about what the still view has)' }); dn.addEventListener('change', () => setDV(ui, 'density', +dn.value));
+    btn('cline', 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)', () => setDV(ui, 'cline', info().o.cline === 'broken' ? 'solid' : 'broken'), 'centre');
+    bar.append(sd, dice, dn);
     V.bar = bar; return bar;
   }
   function topButtons(ui, tb, setDV) {                         // 'animate' and 'popout' go into the existing toolbar
@@ -289,6 +354,11 @@ void main() {
     const run = st.playing && (st.view === 'anim' || st.popout), pb = V.bar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ pause' : '▶ play'; pb.setAttribute('aria-pressed', String(run));
     V.bar.querySelector('[data-anim="speed"]').value = o.speed; V.bar.querySelector('[data-anim="speedlab"]').textContent = o.speed + ' km/h';
     for (const [k] of CLASSES) { const b = V.bar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
+    V.bar.querySelector('[data-anim="seed"]').value = o.seed; V.bar.querySelector('[data-anim="seed"]').disabled = !o.wild; V.bar.querySelector('[data-anim="dice"]').disabled = !o.wild;
+    V.bar.querySelector('[data-anim="density"]').value = o.density; V.bar.querySelector('[data-anim="density"]').disabled = !o.wild;
+    const cl = V.bar.querySelector('[data-anim="cline"]'); cl.disabled = !I.us; cl.textContent = o.cline === 'broken' && I.us ? 'centre: broken' : 'centre: solid'; cl.setAttribute('aria-pressed', String(o.cline === 'broken' && I.us));
+    cl.title = I.us ? 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)' : 'Only on the US presets (the EU presets already have a dashed centre line)';
+    for (const k of ['rpm']) V.bar.querySelector('[data-anim="c-' + k + '"]').disabled = !o.wild;
   }
 
   // ---------------------------------------------------------------- popout
@@ -349,11 +419,11 @@ void main() {
   function resetStats() { V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
   function bench(n) {
-    const ui = V.ui, st = S(ui), d0 = st.dist; resetStats(); const t0 = performance.now();
-    for (let i = 0; i < n; i++) { st.dist = (st.dist + 0.5) % PERIOD; frame(); }
-    V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; return Object.assign({ n, msPerFrame: ms }, stats());
+    const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t; resetStats(); const t0 = performance.now();
+    for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
+    V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, ground, objects, composeCPU, makeGL, sync, stats, resetStats, bench, closePop, openPop,
+  RF.DriveAnim = { PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, sync, stats, resetStats, bench, closePop, openPop,
     // test hooks
     _: { V, S, frame, size, prepare, exposure, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
