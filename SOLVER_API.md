@@ -181,11 +181,38 @@ Traces draw each ray's emitter in proportion to power, so every ray carries the 
 ## Tracing on the GPU (`tools.traceAsync`, optional)
 
 **`await tools.traceAsync(surfaces, o)`**: the same options and the same result as `tools.trace`, plus `res.gpu` (true when
-the rays ran on WebGPU). It runs on the GPU only when the user has switched on Simulation → Advanced → *GPU trace* and the
-trace needs nothing the GPU path lacks; otherwise it is `tools.trace` in a promise (Node, the benches, older browsers). The GPU
-traces the **same rays** in 32-bit floats: results match the CPU trace within noise, not to the last digit (`GPU.md` has the
-numbers). Use it from an `async solve` where you trace in a loop; keep `tools.trace` where you need bit-identical reruns.
-Older hosts may lack it: `(tools.traceAsync || tools.trace)(surfaces, o)` works in both (await the result).
+the rays ran on WebGPU). It runs on the GPU when Simulation → Advanced → *GPU trace* is on (**the default wherever the browser
+gives WebGPU an adapter**; unticking it stays off) and the trace needs nothing the GPU path lacks (exit-ray lists); otherwise it is
+`tools.trace` in a promise (Node, the benches, no adapter). The solve worker starts the device at its first `traceAsync`, so a solve
+that never calls it never wakes the GPU. The GPU traces the **same rays** in 32-bit floats: results match the CPU trace within noise,
+not to the last digit (`GPU.md` has the numbers). Use it from an `async solve` where you trace in a loop; keep `tools.trace` where you
+need bit-identical reruns. Older hosts may lack it: `(tools.traceAsync || tools.trace)(surfaces, o)` works in both (await the result).
+
+Which solvers use it by default (their own setting; a scene that saved the setting keeps what it saved): `dish-fit-auto` (`traceGpu`),
+`sealed-beam-v1` / `sealed-beam-v2` (`tuneGpu`). `opus-mosaic-auto` (`traceGpu`) stays opt-in: its traces are 22 % of the run, so the GPU
+gives 1.17x there (2.6x together with solver threads). A solver that has a pool too should look at `res.gpu` of its first GPU batch and go
+back to the pool path when it is false (no GPU here), as `dish-fit-auto` and `opus-mosaic-auto` do: otherwise the traces would run one
+after the other on the solve worker.
+
+## Tuning loops: hold the aim (`o.frozen`)
+
+A tuner that judges a candidate with `tools.trace(…, { spec: true })` pays for **two** things per trace: the rays and the judge's cut-off
+aim scan. At a tuner's small ray counts the scan is the bigger part (sealed-beam-v1, 60 k rays: 349 of 462 ms), and re-aiming per
+candidate also chases a moving target: two designs are compared at two different aims. The rule (decided by the owner): **hold the aim
+inside the loop, run the full aim procedure once for the verdict.**
+
+```js
+const r0 = tools.trace(surfaces, { rays: 60000, spec: true });            // full scan; r0.spec.frozen = { base, reaim, note, cutV }
+const rq = tools.trace(child,    { rays: 60000, spec: true, frozen: r0.spec.frozen });   // judged at exactly that aim: no scan (3 ms)
+// ... keep the better child; re-find the aim only when you accept one (sealed-beam-v1) or never inside the loop (sealed-beam-v2)
+const final = tools.trace(best, { rays: 60000, spec: true });             // the verdict: full aim procedure, once
+```
+
+Both sealed-beam tuners do this by default (`tuneAim: 'frozen'`; `'scan'` is the old behaviour) and report the final full-aim verdict in their notes.
+It only pays when the rays are few: at 1-2 M rays per trace (projector-v2, tir-array-v2 calibration, spec-hl-v3's three candidate checks,
+projector-v3 / projector-liou's finalist checks) the ray loop is 90 %+ of a trace and the aim scan is noise, so those keep one full-aim trace
+per candidate (each candidate, a different design, is judged at its own aim: that *is* the verdict). projector-liou already passes `frozen`
+in its perforated-window and edge-shift loops.
 
 ## Scene-editing settings (`RF.SolverHooks`, optional)
 
@@ -210,12 +237,16 @@ RF.Solvers.register({ id: 'my-auto', ...,
     const results = await run(overs.map((over) => ({ over, rays: 400000, seed: input.seed })));
 ```
 
-- `tools.pool` exists only when the user set *Simulation → Advanced → Solver threads* above 0 (and the solver declares `tasks`); `tools.pool.size` says how many.
+- `tools.pool` exists when *Simulation → Advanced → Solver threads* is above 0 (and the solver declares `tasks`); `tools.pool.size` says how many. **Default: the smaller of 4 and (cores − 2)** when the user never chose (0 when that is under 2); an explicit *off* stays off. Measured gain: spec-hl-v3 2.9x, mosaic 2x, dish-fit 1.5x, flat past 4 threads (`tests/bench/solver-par.js --pool N` in Node; the CLI's `--threads N` is opt-in, default 0, so scripts stay serial unless asked).
   Without it the solver runs the same tasks itself, so one code path serves both. A task gets a **copy** of `input`, the argument, and `ctx.trace` (the host's
   `tools.trace`); it must return plain data (structured-cloneable) and may not depend on anything but those, or on the clock.
 - **Same answer for any number of threads**: `map` returns the results in argument order, whichever worker finished first, and a task sees the same input and
-  argument everywhere. The solver must pick its batch before running it (not from the results of the same batch). Tested for dish-fit-auto and opus-mosaic-auto
-  with 0, 1, 2, 4 workers (identical output).
+  argument everywhere. The solver must pick its batch before running it (not from the results of the same batch). Tested for dish-fit-auto, opus-mosaic-auto and
+  spec-hl-v3 with 0, 1, 2, 3, 4 workers (identical output: `tests/solver-rollout.js`, `tests/regress/W3c-solver-rollout.js`).
+- Solvers that declare `tasks` today: dish-fit-auto, opus-mosaic-auto, spec-hl-v3. Looked at and left serial: sealed-beam-v1/v2 (a (1+1) search: each candidate depends on the
+  last accepted one), sqm-hl* (the polish is Gauss-Seidel over units, each trial microseconds; the shaping candidates and shell ranking are independent but clock-governed and share
+  one mutable problem object), projector-v2/v3, projector-liou, tir-array-v2 (a few long sequential calibration rounds or 2-3 finalist traces), lab-auto and the benchmark-group
+  solvers (kept as submitted).
 - Not for time-governed searches: a solver that stops by the clock (`Date.now()`) is not deterministic anyway; parallelism only moves where it stops.
 - The ray budget counts the rays of pooled tasks. Workers start on the first `map` and end with the solve (or when it is stopped).
 - Previews: call `tools.preview` yourself from the results (workers cannot).

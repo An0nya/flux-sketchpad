@@ -36,7 +36,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   await page.waitForFunction(() => RF.UI.solving, null, { timeout: 10000 }).catch(() => {});
   await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 180000 });
   const tn = await page.evaluate(() => { const r = RF.UI.store.reports.A; return { notes: ((r && r.warnings) || []).join(' | '), n: RF.UI.store.scene.groups.A.surfaces.length, err: r && r.facts ? r.facts.errors.length : -1 }; });
-  ok('tuner runs inside the worker (6 candidates, 40k rays) and returns a verified lens', tn.n > 100 && tn.err === 0 && /tuner: 7 traces/.test(tn.notes), tn.notes.slice(0, 200) + ' (' + tn.n + ' surfaces)');
+  ok('tuner runs inside the worker (6 candidates, 40k rays) and returns a verified lens', tn.n > 100 && tn.err === 0 && /tuner: \d+ traces at 40000 rays/.test(tn.notes) && /final full-aim verdict/.test(tn.notes), tn.notes.slice(0, 200) + ' (' + tn.n + ' surfaces)');
   ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | ').slice(0, 300));
   await browser.close(); process.exitCode = fails ? 1 : 0;
 })().catch((e) => { console.error(e); process.exit(1); });

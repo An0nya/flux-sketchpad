@@ -37,6 +37,14 @@ async function run(RF, ok) {
     m2 = hashOf(await solveWith(scm, 'opus-mosaic-auto', small, 2, 'opus55-2026-09-27-mosaic.js')), m3 = hashOf(await solveWith(scm, 'opus-mosaic-auto', small, 3, 'opus55-2026-09-27-mosaic.js'));
   ok('W3c opus-mosaic-auto: no pool = pool of 0 = 2 workers = 3 workers (same design)', m0 === m1 && m1 === m2 && m2 === m3, [m0, m1, m2, m3].join(' '));
 
+  // 3b. spec-hl-v3: its candidates run side by side with a pool (2 candidates at effort 'quick', 30 facets): the same design as one after the other (~25 s)
+  loadSolver('spec-hl-v3.js', 'spec-hl-v3');
+  {
+    const { makeScene } = require('../tools/sqm-hl/scenes.js'), sc3 = makeScene('box', { preset: 'ece-r112-b', budget: 30 }); sc3.sim.seed = 1;
+    const v0 = await solveWith(sc3, 'spec-hl-v3', { effort: 'quick' }, 0, 'spec-hl-v3.js'), v2p = await solveWith(sc3, 'spec-hl-v3', { effort: 'quick' }, 2, 'spec-hl-v3.js');
+    ok('W3c spec-hl-v3: pool of 0 = pool of 2 workers (same design, candidates compared in menu order)', hashOf(v0) === hashOf(v2p) && v0.surfaces.length > 10, hashOf(v0) + ' vs ' + hashOf(v2p));
+  }
+
   // 4. sqm-hl: footprint / logBlur / polish were rewritten for speed (typed scratch instead of a Map, hoisted weights, cached per-pixel costs): the OLD code (tests/sqm-reference.js)
   //    must give the same numbers bit for bit on a real problem
   {
