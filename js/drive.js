@@ -203,15 +203,19 @@
    * then (r, g, b = the objects' luminance already weighted by their coverage, a = the share of the pixel they cover), so that
    * final = rgb + (1 − a) · ground. Pass rgba (Float32Array 4·w·h) to have them written there (only the touched tiles; the caller
    * clears) and get rows [y0, y1) back; without it the result has rgb + cov. Not set: the whole picture, as always.
-   * tight: tile each object by the projected corners of its box, not its bounding sphere (fewer pixels traced; the picture is the same wherever an object is).  */
+   * tight: tile each object by the projected corners of its box, not its bounding sphere (fewer pixels traced; the picture is the same wherever an object is).
+   * layer: 'frame' writes complete opaque RGBA rows for moving route tiles; tileRow also splits the ground/sky work.
+   * pointLights [{x,y,z,cd,rgb}]: downward diffuse-only street lights; crossings [{s0,s1,o0,o1}]: side-road ground openings;
+   * grain(s,off,halfFootprint): ground-only brightness factor. These are render options, not saved scene fields. */
   function render(o) {
     const w = o.w, h = o.h, tanH = Math.tan(o.hfov * D2R / 2), tanV = tanH * h / w, eye = o.eye, ex = eye[0], ey = eye[1], ez = eye[2];
     const lamps = o.lamps, nl = lamps.length, lut = o.lut, conv = o.conv || 'A', lc = o.lampRGB || [1, 1, 1], A = o.arc || null, Lw = o.lane;
     const look = Object.assign({ wet: false, RL: 0.2, ambient: 0 }, o.look), M = Object.assign(materials(look), o.mats || {}), scene = o.scene || { objects: [], markings: [], verge: ['gravel', 1.5, 'grass'] };
     const objs = scene.objects || [], cross = scene.cross || null, marks = scene.markings || [], vg = scene.verge || ['gravel', 1.5, 'grass'], ssN = o.ss || 2;
-    const objOnly = o.layer === 'objects', rgba = objOnly && o.rgba ? o.rgba : null, cov = objOnly && !rgba ? new Float32Array(w * h) : null;
+    const fullLayer = o.layer === 'frame', objOnly = o.layer === 'objects', rgba = (objOnly || fullLayer) && o.rgba ? o.rgba : null, cov = objOnly && !rgba ? new Float32Array(w * h) : null;
     const rgb = rgba ? null : new Float32Array(w * h * 3), depth = objOnly ? null : new Float32Array(w * h).fill(Infinity), matBuf = objOnly ? null : new Uint8Array(w * h);
     const amb = look.ambient > 0 ? look.ambient : 0, skyL = amb * 0.012;       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
+    const pointLights = o.pointLights || [], crossings = o.crossings || [];
     const delta0 = 2 * tanH / w;                                              // radians per pixel
     // tiles of 16 px: which objects can touch them (by the bounding sphere's projection)
     const TS = 16, tw = Math.ceil(w / TS), th = Math.ceil(h / TS), tiles = new Array(tw * th).fill(null);
@@ -261,6 +265,13 @@
       const rho = m.rho, NoV = nx * vx + ny * vy + nz * vz;
       if (m.emit && NoV > 0) { const es = (rscale === undefined ? 1 : rscale) * (m.emitPow > 1 ? Math.pow(NoV, m.emitPow) : NoV); r += m.emit[0] * es; g += m.emit[1] * es; b += m.emit[2] * es; }   // a flat emitter is Lambertian, L·cosθ; lamps are directional: cos^n
       if (amb > 0 && nz > -0.9) { const e = amb * (0.5 + 0.5 * nz) / PI; r += rho[0] * e; g += rho[1] * e; b += rho[2] * e; }
+      // Optional street lights: downward point sources, diffuse only, no shadows. Emitters alone do not light other surfaces.
+      for (const L of pointLights) {
+        const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz;
+        if (dz <= 0 || r2 < 0.01) continue;
+        const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2));
+        r += rho[0] * L.rgb[0] * e; g += rho[1] * L.rgb[1] * e; b += rho[2] * L.rgb[2] * e;
+      }
       for (let i = 0; i < nl; i++) {
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
         if (!(NoL > 0)) continue;
@@ -283,6 +294,7 @@
     function ground(px, py, t, sinB, vx, vy, vz, delta, kw) {
       let s = px, off = py, nx = 0, ny = 1; if (A) { const f = A.frame(px, py); s = f.s; off = f.off; nx = -f.t[1]; ny = f.t[0]; }
       const hw = Math.max(0.5 * t * delta, 1e-4), hl = hw / Math.max(sinB, 0.003);
+      if (o.grain && off > -0.5 * Lw - vg[1] && off < 1.5 * Lw + vg[1]) kw *= o.grain(s, off, hl);
       // the pixel's footprint on the ground is hw wide across the ray and hl long along it: its half-extent in the offset direction (a bend's far lines run across the view, where hl counts)
       const hh = Math.hypot(vx, vy) || 1, ho = Math.hypot(hw * (nx * -vy + ny * vx) / hh, hl * (nx * vx + ny * vy) / hh);
       let rest = 1, bestW = 0; GM = MAT_ID.asphalt;
@@ -294,6 +306,10 @@
       }
       if (rest <= 0) return;
       if (cross && s >= cross.s0 && s <= cross.s1) { shade(px, py, 0, 0, 0, 1, M.asphalt, rest * kw, vx, vy, vz); if (rest > bestW) GM = M.asphalt.id; return; }   // a cross street: pavement across every offset
+      for (const c of crossings) {
+        const cl = covLon(s, hl, { s0: c.s0, s1: c.s1, period: 1e9, on: c.s1 - c.s0 }) * covLat(off, ho, c.o0, c.o1);
+        if (cl > 0) { shade(px, py, 0, 0, 0, 1, M.asphalt, cl * rest * kw, vx, vy, vz); rest *= 1 - cl; if (cl > bestW) { bestW = cl; GM = M.asphalt.id; } }
+      }
       // the road, the two verge strips and what lies beyond them, each weighted by the share of the footprint it covers (no stair-steps along a long diagonal edge)
       const vw = vg[1] || 1.5, far = vg[2] || vg[0], INF = 1e9, e0 = -Lw / 2, e1 = 1.5 * Lw;
       const bands = [['asphalt', e0, e1], [vg[0], e0 - vw, e0], [vg[0], e1, e1 + vw], [far, -INF, e0 - vw], [far, e1 + vw, INF]];
@@ -328,12 +344,12 @@
       LR = LG = LB = 0; sampleDepth = Infinity; sampleMat = MAT_ID.sky; covAcc = 0;
       for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) sample(x + (i + 0.5) / n, y + (j + 0.5) / n, k, tl, delta);
       const q = y * w + x;
-      if (rgba) { rgba[4 * q] = LR; rgba[4 * q + 1] = LG; rgba[4 * q + 2] = LB; rgba[4 * q + 3] = covAcc; }
+      if (rgba) { rgba[4 * q] = LR; rgba[4 * q + 1] = LG; rgba[4 * q + 2] = LB; rgba[4 * q + 3] = fullLayer ? 1 : covAcc; }
       else { rgb[3 * q] = LR; rgb[3 * q + 1] = LG; rgb[3 * q + 2] = LB; if (cov) cov[q] = covAcc; else { depth[q] = sampleDepth; matBuf[q] = sampleMat; } }
     };
     if (objOnly) { for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) { const tl = tiles[ty * tw + tx]; if (!tl || (o.tileRow && !o.tileRow(ty))) continue; for (let y = ty * TS, ye = Math.min(h, y + TS); y < ye; y++) for (let x = tx * TS, xe = Math.min(w, x + TS); x < xe; x++) pixel(x, y, tl); } }   // only the tiles an object can touch (o.tileRow(ty): only these tile rows, the workers' share)
-    else for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) pixel(x, y, tiles[((y / TS) | 0) * tw + ((x / TS) | 0)]);
-    if (objOnly) { let y0 = th, y1 = -1; const trows = []; for (let ty = 0; ty < th; ty++) { let any = false; if (!o.tileRow || o.tileRow(ty)) for (let tx = 0; tx < tw; tx++) if (tiles[ty * tw + tx]) { any = true; break; } if (any) { trows.push(ty); if (ty < y0) y0 = ty; if (ty > y1) y1 = ty; } } return { w, h, rgb, cov, rgba, rows: y1 < 0 ? [0, 0] : [y0 * TS, Math.min(h, (y1 + 1) * TS)], trows, TS, hfov: o.hfov }; }
+    else for (let y = 0; y < h; y++) { if (o.tileRow && !o.tileRow((y / TS) | 0)) continue; for (let x = 0; x < w; x++) pixel(x, y, tiles[((y / TS) | 0) * tw + ((x / TS) | 0)]); }
+    if (objOnly || fullLayer) { let y0 = th, y1 = -1; const trows = []; for (let ty = 0; ty < th; ty++) { let any = fullLayer; if (!o.tileRow || o.tileRow(ty)) { for (let tx = 0; !any && tx < tw; tx++) if (tiles[ty * tw + tx]) { any = true; break; } } else any = false; if (any) { trows.push(ty); if (ty < y0) y0 = ty; if (ty > y1) y1 = ty; } } return { w, h, rgb, cov, rgba, rows: y1 < 0 ? [0, 0] : [y0 * TS, Math.min(h, (y1 + 1) * TS)], trows, TS, hfov: o.hfov }; }
     return { w, h, rgb, depth, mat: matBuf, keys: MAT_KEYS, names: MAT_KEYS.map((k) => MAT_DEF[k].name), hfov: o.hfov };
   }
   const lumaOf = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
