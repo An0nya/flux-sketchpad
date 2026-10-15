@@ -134,7 +134,7 @@
         const fin = (x) => typeof x === 'number' && isFinite(x);
         if (!(isObj(sh) && fin(sh.R) && sh.R > 0 && fin(sh.k) && fin(sh.zv) && fin(sh.r1) && sh.r1 > 0 && fin(sh.nRad) && fin(sh.nAng))) delete sc.modeC.shell;
         else {
-          sh.on = !!sh.on; sh.nRad = Math.min(64, Math.max(1, Math.round(sh.nRad))); sh.nAng = Math.min(128, Math.max(3, Math.round(sh.nAng)));
+          sh.on = !!sh.on; sh.nRad = Math.min(32, Math.max(1, Math.round(sh.nRad))); sh.nAng = Math.min(72, Math.max(3, Math.round(sh.nAng)));   // 32 x 72 = 2304 cells is ~1.8 MB saved (each cell is a saved surface): the most the browser's ~5 MB autosave can carry comfortably
           const cells = {}, src0 = isObj(sh.cells) ? sh.cells : {};
           for (const key of Object.keys(src0)) {
             const m = /^(\d+):(\d+)$/.exec(key), c = src0[key];

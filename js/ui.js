@@ -69,7 +69,13 @@
     }, 20);
   };
   ui.autosave = function () { histCheckpoint(); saveSoon(); };
-  function saveSoon() { clearTimeout(ui._saveT); ui._saveT = setTimeout(() => RF.State.saveLocal(ui.store.scene), 800); }
+  function saveSoon() {
+    clearTimeout(ui._saveT);
+    ui._saveT = setTimeout(() => {
+      if (RF.State.saveLocal(ui.store.scene)) ui._saveFailed = false;
+      else if (!ui._saveFailed) { ui._saveFailed = true; ui.store.notice('Autosave failed: the scene is too big for this browser\u2019s storage (a facet shell with many cells is the usual cause). Use Save to disk, or lower the ring / sector count.'); P.renderNotices(ui); }
+    }, 800);
+  }
 
   // ---------------------------------------------------------------- undo / redo (see history.js)
   // Checkpoint wherever the app autosaves; ui._histHint labels whole-scene loads.
@@ -1159,6 +1165,9 @@
       else if (at >= 0 && list.length === 1) list.length = 0;
       else { list.length = 0; list.push(item); }
       ui.sel = list.length ? { kind: one.kind, items: list } : null;
+    }
+    if (ui.sel && ui.sel.kind === 'facet' && ui.sel.items.length === 1 && RF.Profile.shellOn(ui.store.scene.modeC)) {   // a shell cell picked anywhere (Optics, Scene) is the cell the panel edits
+      const m = /^S(\d+)_(\d+)$/.exec(ui.sel.items[0]); if (m) { C.actions.shellSelect(ui.store, +m[1], +m[2]); ui.refreshPanels(); }
     }
     ui.selCache = null; ui.sceneDirty = true; drawHeat(); renderSelChips(); schedule();   // sceneDirty also redraws the Editor
   };

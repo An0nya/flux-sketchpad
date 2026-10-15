@@ -441,8 +441,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     const d0 = shellRun(), cd = cmp(ref, d0), eb = (r) => r.c.E;
     ok('F5 default cells vs the exact conic zone (parabola, 12 x 24 = 288 cells, 200k rays): >= 99.99% of rays land identically, none move', cd.same / cd.n >= 0.9999 && cd.moved === 0 && cd.gained === 0, J(cd));
     ok('F5 ...and the energy bins agree to 0.05% (reflected / absorbed / escaped / intercepted)', ['reflected', 'absorbed', 'escaped', 'intercepted'].every((k) => Math.abs(eb(d0)[k] - eb(ref)[k]) <= 5e-4 * eb(ref).emitted), ['reflected', 'absorbed', 'escaped', 'intercepted'].map((k) => k + ' ' + eb(ref)[k].toFixed(2) + ' vs ' + eb(d0)[k].toFixed(2)).join('; '));
-    const fine = cmp(ref, shellRun({}, 5, 7));
-    ok('F5 default cells also match with other counts (5 rings x 7 sectors)', fine.same / fine.n >= 0.9999 && fine.moved === 0, J(fine));
+    for (const [nr, na] of [[5, 7], [3, 6], [32, 72]]) { const fine = cmp(ref, shellRun({}, nr, na)); ok('F5 default cells also match with other counts (' + nr + ' rings x ' + na + ' sectors = ' + nr * na + ' cells)', fine.same / fine.n >= 0.9999 && fine.moved === 0 && fine.gained / fine.n <= 1e-4, J(fine)); }
     const t1 = cmp(ref, shellRun({ '5:3': { dTheta: 2 } })), v1 = cmp(ref, shellRun({ '5:3': { dv: 5 } }));
     ok('F5 negative control: ONE cell tilted 2 deg fails the same comparison (rays move)', t1.moved > 300, J(t1));
     ok('F5 negative control: ONE cell with focus 5 per m fails it too', v1.moved > 300, J(v1));
@@ -472,6 +471,28 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       const rv = [Object.assign({}, plainConic[0], { seg: { kind: 'conic', zv: c.zv, R: c.R, k: c.k, r0: 0, r1: c.r1 } })], a1 = runS(sc, rv), b1 = runS(sc, P.build(sc).surfaces), q = cmp(a1, b1);
       ok('F5 default cells = exact conic zone for the ' + kind + ' preset too', q.same / q.n >= 0.9995 && q.moved === 0 && q.gained === 0, J(q));
     }
+    // several bounces: coincident (overlapping) default cells must not make a ray hit its own sheet again — truncated / re-hit tallies and landings stay those of the plain conic
+    for (const kind of ['parabola', 'ellipse', 'sphere']) {
+      const sc = mk(); sc.modeC.preset.kind = kind; const c = P.shellFromPreset(sc.modeC.preset); Object.assign(sc.modeC.shell, c); sc.modeC.profile = P.presetProfile(sc.modeC.preset, sc); sc.sim.bounces = 4;
+      const rv = [Object.assign({}, plainConic[0], { seg: { kind: 'conic', zv: c.zv, R: c.R, k: c.k, r0: 0, r1: c.r1 } })], a1 = runS(sc, rv), b1 = runS(sc, P.build(sc).surfaces), q = cmp(a1, b1), Ea = a1.c.E, Eb = b1.c.E;
+      ok('F5 ' + kind + ' shell with 4 bounces: landings and the re-hit / truncated tallies match the plain conic', q.same / q.n >= 0.9995 && q.moved === 0 && q.gained === 0 && Math.abs(Eb.reHit - Ea.reHit) <= 1e-3 * Ea.emitted && Math.abs(Eb.truncated - Ea.truncated) <= 1e-3 * Ea.emitted, J(q) + ' reHit ' + Ea.reHit.toFixed(2) + ' vs ' + Eb.reHit.toFixed(2) + ', truncated ' + Ea.truncated.toFixed(2) + ' vs ' + Eb.truncated.toFixed(2));
+    }
+    // scale and mirror, by tracing: an edited shell scaled 2x has the cells' quadrics scaled 1/2 (and the same normals), and a y-mirrored scene's cell 5:(N-1-3) reflects like the original 5:3 mirrored
+    {
+      const base = mk({ '5:3': { dv: 20, dTheta: 3, dPhi: 4 }, '2:10': { dv: -10 } }), bs = P.build(base).surfaces, big = RF.State.scaleScene(base, 2), gs = P.build(big).surfaces;
+      let worstA = 0, worstN = 0, worstP = 0;
+      bs.forEach((a, i) => { const b = gs[i]; a.quadric.A.forEach((x, j) => { worstA = Math.max(worstA, Math.abs(b.quadric.A[j] - x / 2) / (Math.abs(x) + 1e-9 * 2)); }); worstN = Math.max(worstN, RF.V.dist(a.n, b.n)); worstP = Math.max(worstP, RF.V.dist(RF.V.mul(a.P, 2), b.P)); });
+      ok('F5 scene scaled 2x with an edited cell: every cell\'s quadric curvatures halve (incl. the focus edit), normals and centres (x2) agree', bs.length === gs.length && worstA < 1e-9 && worstN < 1e-12 && worstP < 1e-9, 'worst relative curvature error ' + worstA.toExponential(1) + ', normal ' + worstN.toExponential(1) + ', centre ' + worstP.toExponential(1));
+      const mir = RF.State.mirrorSceneY(base), ms = P.build(mir).surfaces, M = (v) => [v[0], -v[1], v[2]];
+      const meanOut = (sc, surfaces, id) => { const r = runS(sc, surfaces), k = surfaces.findIndex((s) => s.id === id) + 1; let sum = [0, 0, 0], n = 0; for (let i = 0; i < N; i++) if (r.c.rayK[i] === k) { const p = RF.Engine.retrace(r.P, i); if (p.length < 9) continue; sum = RF.V.add(sum, RF.V.norm([p[6] - p[3], p[7] - p[4], p[8] - p[5]])); n++; } return { d: RF.V.norm(sum), n }; };
+      const o = meanOut(base, bs, 'S5_3'), m = meanOut(mir, ms, 'S5_20'), wrong = meanOut(mir, ms, 'S5_3'), ang = (u, v) => Math.acos(Math.min(1, RF.V.dot(u, v))) * 180 / Math.PI;
+      const cP = RF.V.dist(M(bs.find((s) => s.id === 'S5_3').P), ms.find((s) => s.id === 'S5_20').P);
+      ok('F5 mirrored scene: cell 5:20 sits where 5:3 did, mirrored (centre error ' + cP.toExponential(1) + ' mm) and its mean reflected direction is the mirror image of the original\'s (within 0.3 deg), the un-remapped cell 5:3 is not', cP < 1e-9 && ang(M(o.d), m.d) < 0.3 && ang(M(o.d), wrong.d) > 3, ang(M(o.d), m.d).toFixed(3) + ' deg (rays ' + o.n + '/' + m.n + '); un-remapped ' + ang(M(o.d), wrong.d).toFixed(2) + ' deg');
+    }
+    // size: the most cells the controls allow still saves in well under the browser's autosave quota (each cell is a saved surface)
+    { const sc = mk({}, 32, 72), st = C.createStore(sc); st.dirty.add('C'); st.commit({ deferA: true }); const kb = RF.State.serialize(st.scene).length / 1024;
+      const bigc = JSON.parse(RF.State.serialize(st.scene)); bigc.modeC.shell.nRad = 64; bigc.modeC.shell.nAng = 128;
+      ok('F5 at the largest allowed counts (32 x 72 = 2304 cells) the saved scene is under 2.5 MB; larger counts in a file are clamped on load', kb < 2500 && RF.State.deserialize(JSON.stringify(bigc)).modeC.shell.nRad === 32 && RF.State.deserialize(JSON.stringify(bigc)).modeC.shell.nAng === 72, kb.toFixed(0) + ' KB'); }
     // scene format: round trip, validation, scale, mirror, history label
     {
       const st = C.createStore(mk({ '5:3': { dv: 5, dTheta: 1 }, '0:0': { dPhi: -2 } })), wire = RF.State.serialize(st.scene), back = RF.State.deserialize(wire);
