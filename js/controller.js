@@ -110,6 +110,9 @@
     if (v) cfg[f] = v; else delete cfg[f];
     if (Object.keys(cfg).length) sh.cells[key] = cfg; else delete sh.cells[key];
   }
+  // the shell as it is, or as it would start (switched off, from the preset): scripted writes to a shell control create the switched-off shell
+  const shellSeed = (s) => s.scene.modeC.shell || Object.assign({ on: false, nRad: 12, nAng: 24, cells: {} }, RF.Profile.shellFromPreset(s.scene.modeC.preset) || { R: 24, k: -1, zv: -12, r1: 45 });
+  const shellEnsure = (s) => s.scene.modeC.shell || (s.scene.modeC.shell = shellSeed(s));
   function shellSample(s) { const mc = s.scene.modeC; mc.profile = RF.Profile.shellProfile(mc.shell, mc.preset.n); delete mc.curve; }   // the profile stays the shell's cross-section
   function shellSwitch(s, on) {
     const mc = s.scene.modeC;
@@ -122,12 +125,12 @@
     shellSample(s);
   }
   function shellCount(s, f, v) {
-    const sh = shellOf(s); if (!sh) return;
+    const sh = shellEnsure(s);
     v = Math.round(v); if (v === sh[f]) return;
     if (Object.keys(sh.cells).length) s.notice('Facet shell: the ' + (f === 'nRad' ? 'ring' : 'sector') + ' count changed, so the per-cell edits were cleared (undo brings them back).');
     sh[f] = v; sh.cells = {}; s.shellSel = null;
   }
-  function shellConic(s, f, v) { const sh = shellOf(s); if (!sh) return; sh[f] = v; shellSample(s); }
+  function shellConic(s, f, v) { const sh = shellEnsure(s); sh[f] = v; if (sh.on) shellSample(s); }
   // anything that rewrites the profile by hand ends the shell (the cells stay in the scene)
   function shellRetire(s, why) { const sh = s.scene.modeC.shell; if (sh && sh.on) { sh.on = false; s.notice('Facet shell turned off: ' + why + ' Its cells are kept; tick it again to bring the shell back.'); } }
   const BRUSH_MODES = ['raise', 'set', 'lower'];
@@ -218,12 +221,12 @@
     chk('C.rev', 'Reverse axis', (s) => s.scene.modeC.reverseAxis, (s, v) => { s.scene.modeC.reverseAxis = !!v; }, { section: 'modeC', modes: ['C'], groups: ['C'] }),
     // ---- facet shell (js/profile.js shellBuild): one conic cut into ring x sector cells, each cell editable
     chk('C.shell', 'Facet shell (ring × sector cells)', (s) => !!(s.scene.modeC.shell && s.scene.modeC.shell.on), (s, v) => shellSwitch(s, !!v), { primary: true, section: 'modeC', modes: ['C'], groups: ['C'], help: 'Cuts one conic mirror into rings × sectors, each cell its own surface that you can tilt or refocus. With every cell at 0 it traces the same as the plain conic. Needs a reflecting, un-mirrored, un-flipped revolve. Edits made to the shape in the Editor, or switching to a preset that is not a conic, turn it off (the cells are kept).' }),
-    num('C.shNr', 'Rings', (s) => (shellOf(s) ? shellOf(s).nRad : 12), (s, v) => shellCount(s, 'nRad', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: 1, max: 64, step: 1, show: shellShown, help: 'Equal steps in radius. Changing the ring or sector count clears the per-cell edits (undo brings them back).' }),
-    num('C.shNa', 'Sectors', (s) => (shellOf(s) ? shellOf(s).nAng : 24), (s, v) => shellCount(s, 'nAng', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: 3, max: 128, step: 1, show: shellShown }),
-    num('C.shR', 'Shell vertex radius R (mm)', (s) => (shellOf(s) ? shellOf(s).R : 0), (s, v) => shellConic(s, 'R', Math.max(0.01, v)), { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 100000, step: 0.5, show: shellShown, help: 'The shell is x²+y²+(1+k)(z−zv)² = 2R(z−zv) about the sweep axis, z from the source. Parabola preset: R = 2f, k = −1, zv = −f. The preset controls above rewrite these.' }),
-    num('C.shK', 'Conic constant k', (s) => (shellOf(s) ? shellOf(s).k : 0), (s, v) => shellConic(s, 'k', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -50, max: 50, step: 0.05, show: shellShown, help: '0 sphere, −1 paraboloid, between −1 and 0 an ellipsoid, below −1 a hyperboloid.' }),
-    num('C.shZv', 'Shell vertex z (mm)', (s) => (shellOf(s) ? shellOf(s).zv : 0), (s, v) => shellConic(s, 'zv', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -10000, max: 10000, step: 0.5, show: shellShown }),
-    num('C.shRim', 'Shell rim radius (mm)', (s) => (shellOf(s) ? shellOf(s).r1 : 0), (s, v) => shellConic(s, 'r1', Math.max(0.01, v)), { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 100000, step: 0.5, show: shellShown }),
+    num('C.shNr', 'Rings', (s) => shellSeed(s).nRad, (s, v) => shellCount(s, 'nRad', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: 1, max: 64, step: 1, show: shellShown, help: 'Equal steps in radius. Changing the ring or sector count clears the per-cell edits (undo brings them back).' }),
+    num('C.shNa', 'Sectors', (s) => shellSeed(s).nAng, (s, v) => shellCount(s, 'nAng', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: 3, max: 128, step: 1, show: shellShown }),
+    num('C.shR', 'Shell vertex radius R (mm)', (s) => shellSeed(s).R, (s, v) => shellConic(s, 'R', Math.max(0.01, v)), { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 100000, step: 0.5, show: shellShown, help: 'The shell is x²+y²+(1+k)(z−zv)² = 2R(z−zv) about the sweep axis, z from the source. Parabola preset: R = 2f, k = −1, zv = −f. The preset controls above rewrite these.' }),
+    num('C.shK', 'Conic constant k', (s) => shellSeed(s).k, (s, v) => shellConic(s, 'k', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -50, max: 50, step: 0.05, show: shellShown, help: '0 sphere, −1 paraboloid, between −1 and 0 an ellipsoid, below −1 a hyperboloid.' }),
+    num('C.shZv', 'Shell vertex z (mm)', (s) => shellSeed(s).zv, (s, v) => shellConic(s, 'zv', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -10000, max: 10000, step: 0.5, show: shellShown }),
+    num('C.shRim', 'Shell rim radius (mm)', (s) => shellSeed(s).r1, (s, v) => shellConic(s, 'r1', Math.max(0.01, v)), { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 100000, step: 0.5, show: shellShown }),
     num('C.cdv', 'Cell focus (1/m)', (s) => cellGet(s, 'dv'), (s, v) => cellSet(s, 'dv', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -1000, max: 1000, step: 0.5, show: cellShown, help: 'Adds focusing power to the selected cell: the reflected beam’s vergence changes by this much (+ converges, − diverges). 1 per m = a focus 1 m away from a collimated cell. 0 = on the shell.' }),
     num('C.cth', 'Cell aim, outward (°)', (s) => cellGet(s, 'dTheta'), (s, v) => cellSet(s, 'dTheta', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -30, max: 30, step: 0.1, show: cellShown, help: 'Turns the selected cell’s reflected beam away from the axis (+) or toward it (−). The cell’s normal tilts by half.' }),
     num('C.cph', 'Cell aim, around (°)', (s) => cellGet(s, 'dPhi'), (s, v) => cellSet(s, 'dPhi', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -30, max: 30, step: 0.1, show: cellShown, help: 'Turns the selected cell’s reflected beam sideways, toward increasing sector number (+).' }),

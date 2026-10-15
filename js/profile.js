@@ -239,7 +239,8 @@
   const shellKey = (i, a) => i + ':' + a;
   function shellProfile(s, n) {                  // the cross-section as profile points (r, z)
     const out = [], N = Math.max(2, n | 0);
-    for (let i = 0; i <= N; i++) { const r = s.r1 * i / N; out.push([r, s.zv + RF.Geo.conicSag(s.R, s.k, r)]); }
+    const reach = 1 + s.k > 0 ? 0.9999 * s.R / Math.sqrt(1 + s.k) : Infinity;                  // a closed conic ends there (the build reports a rim beyond it)
+    for (let i = 0; i <= N; i++) { const r = Math.min(s.r1 * i / N, reach); out.push([r, s.zv + RF.Geo.conicSag(s.R, s.k, r)]); }
     return out;
   }
   function shellBuild(scene) {

@@ -402,5 +402,110 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('F4 a point edit (setProfile) retires the curve', st.scene.modeC.curve === undefined && !P.curveLive(st.scene.modeC));
     st.scene.modeC.curve = cv; ok('F4 a stale curve (profile no longer matches) is not trusted', !P.curveLive(st.scene.modeC));
   }
+  // F5: facet shell (js/profile.js shellBuild).  modeC.shell = ring x sector cells cut from one conic; absent = every old scene.
+  {
+    const P = RF.Profile, J = JSON.stringify, fs = require('fs'), crypto = require('crypto'), sha = (x) => crypto.createHash('sha1').update(x).digest('hex');
+    // old scenes trace identically: hashes taken at base commit 1a9aee1 (git archive, before any F5 code): sha1 of the built surfaces : the grid hash of a 20 000-ray run
+    const BASE = {
+      'sealed-beam-5.75in-high.json': '6d61062e34d2a9774d8bb00e0d69879f747a5b9d:c6c97f18129ea874',
+      'sealed-beam-5.75in-low.json': '67669068f7a76e069ce4b10f46040c222875105b:a512eaf7e9e683e0',
+      'sealed-beam-7in-high.json': 'a2c781a36d19e5c1da7279f28d79179429136078:372b137722b3739b',
+      'sealed-beam-7in-low.json': '39ca8f5cdfd7d2d25be1e7912b31db42112537a2:0f1cd18a0e5ebdfc',
+      'modeC-parabola': 'f5aad0d366fb3560f6855f074fdf6916535e37da:abe73f26ee405bc9',
+      'modeC-ellipse': '76d5d808760763e1533fb253f0173657f42275ad:8702ae3cbd0cfb77',
+      'modeC-sphere': 'a7fc03e3863d4bd3973723e7a9fdc0481f061d1c:e35920f4b25a2648',
+      'modeC-cpc': '1c489facc28a6c531c8090abef8104a02b3f4a2a:606cad64ef6ea944'
+    };
+    const trace = (sc) => { const st = C.createStore(sc); st.dirty.add('B'); st.dirty.add('C'); st.dirty.add('L'); st.commit({ deferA: true }); const surf = RF.State.allSurfaces(st.scene), Pp = RF.Engine.prepare(Object.assign({}, st.scene, { sim: Object.assign({}, st.scene.sim) }), surf), c = RF.Engine.runSync(Pp, 20000, 0); return sha(J(surf)) + ':' + RF.Engine.gridHash(c); };
+    const old = {}, exDir = require('path').join(__dirname, '..', 'examples');
+    for (const f of fs.readdirSync(exDir).filter((x) => x.endsWith('.json'))) { const sc = RF.State.deserialize(fs.readFileSync(require('path').join(exDir, f), 'utf8')); old[f] = sc.modeC.shell !== undefined ? 'HAS SHELL' : trace(sc); }
+    for (const kind of ['parabola', 'ellipse', 'sphere', 'cpc']) { const sc = RF.State.testScene(); sc.mode = 'C'; sc.modeC.preset.kind = kind; sc.modeC.profile = P.presetProfile(sc.modeC.preset, sc); const wire = RF.State.serialize(sc); old['modeC-' + kind] = /shell/.test(wire) ? 'WIRE HAS SHELL' : trace(RF.State.deserialize(wire)); }
+    ok('F5 old scenes (' + Object.keys(BASE).length + ': the example JSONs + Mode C parabola / ellipse / sphere / CPC) build and trace exactly as at the base commit', Object.keys(BASE).every((k) => old[k] === BASE[k]), Object.keys(BASE).filter((k) => old[k] !== BASE[k]).join(', ') || 'all ' + Object.keys(BASE).length + ' hashes equal');
+    // a shell that is switched off, or inactive (extrude, refract, mirror, flip), builds the plain profile byte for byte
+    { const sc = RF.State.testScene(); sc.mode = 'C'; sc.modeC.profile = P.presetProfile(sc.modeC.preset, sc); const plain = J(P.build(sc).surfaces);
+      sc.modeC.shell = Object.assign({ on: false, nRad: 12, nAng: 24, cells: { '3:4': { dv: 5 } } }, P.shellFromPreset(sc.modeC.preset));
+      const offB = J(P.build(sc).surfaces); sc.modeC.shell.on = true; const live = P.build(sc);
+      ok('F5 a shell switched off builds exactly the plain profile; switched on it builds nRad x nAng cells', offB === plain && live.surfaces.length === 288 && live.surfaces.every((s) => s.type === 'quad'), live.surfaces.length + ' cells');
+      const gate = (set) => { const s2 = RF.U.deepCopy(sc); set(s2.modeC); return P.shellOn(s2.modeC) === false && !P.build(s2).report.shell; };
+      ok('F5 the shell is inactive (plain profile traced) for extrude / refract / mirror / flip facing', [(m) => { m.sweep = 'extrude'; }, (m) => { m.interaction = 'refract'; }, (m) => { m.mirror = true; }, (m) => { m.flipFacing = true; }].every(gate));
+    }
+    // default cells = the plain shell: the same quadric, compared with one exact `rev` conic zone, same rays and seed
+    const mk = (cells, nr, na) => { const sc = RF.State.testScene(); sc.mode = 'C'; sc.modeC.profile = P.presetProfile(sc.modeC.preset, sc); sc.sim.bounces = 1; sc.sim.seed = 7; sc.source.kind = 'point'; sc.source.dist = 'isotropic';
+      sc.modeC.shell = Object.assign({ on: true, nRad: nr || 12, nAng: na || 24, cells: cells || {} }, P.shellFromPreset(sc.modeC.preset)); return sc; };
+    const N = 200000, runS = (sc, surf) => { const Pp = RF.Engine.prepare(Object.assign({}, sc, { sim: Object.assign({}, sc.sim) }), surf); Pp.recordHits = true; return { P: Pp, c: RF.Engine.runSync(Pp, N, 0) }; };
+    const sc0 = mk(), sh0 = sc0.modeC.shell, fr = P.axisFrame(sc0, 'aim');
+    const plainConic = [{ type: 'rev', id: 'P', group: 'C', O: fr.O, W: fr.W, ref: fr.e1, seg: { kind: 'conic', zv: sh0.zv, R: sh0.R, k: sh0.k, r0: 0, r1: sh0.r1 }, front: -1, optics: { interaction: 'reflect', reflectivity: 0.9, ior: 1.49, fresnelT: 0.96, twoSided: false } }];
+    const ref = runS(sc0, plainConic), land = (r) => { const m = new Map(); for (let h = 0; h < r.c.nHits; h++) m.set(r.c.hitI[h], [r.c.hits[3 * h], r.c.hits[3 * h + 1]]); return m; };
+    const cmp = (a, b) => { const A = land(a), B = land(b); let same = 0, moved = 0, lost = 0, gained = 0; for (const [i, x] of A) { const y = B.get(i); if (!y) lost++; else if (Math.hypot(x[0] - y[0], x[1] - y[1]) < 1e-2) same++; else moved++; } for (const i of B.keys()) if (!A.has(i)) gained++; return { same, moved, lost, gained, n: A.size }; };
+    const shellRun = (cells, nr, na) => { const sc = mk(cells, nr, na); return runS(sc, P.build(sc).surfaces); };
+    const d0 = shellRun(), cd = cmp(ref, d0), eb = (r) => r.c.E;
+    ok('F5 default cells vs the exact conic zone (parabola, 12 x 24 = 288 cells, 200k rays): >= 99.99% of rays land identically, none move', cd.same / cd.n >= 0.9999 && cd.moved === 0 && cd.gained === 0, J(cd));
+    ok('F5 ...and the energy bins agree to 0.05% (reflected / absorbed / escaped / intercepted)', ['reflected', 'absorbed', 'escaped', 'intercepted'].every((k) => Math.abs(eb(d0)[k] - eb(ref)[k]) <= 5e-4 * eb(ref).emitted), ['reflected', 'absorbed', 'escaped', 'intercepted'].map((k) => k + ' ' + eb(ref)[k].toFixed(2) + ' vs ' + eb(d0)[k].toFixed(2)).join('; '));
+    const fine = cmp(ref, shellRun({}, 5, 7));
+    ok('F5 default cells also match with other counts (5 rings x 7 sectors)', fine.same / fine.n >= 0.9999 && fine.moved === 0, J(fine));
+    const t1 = cmp(ref, shellRun({ '5:3': { dTheta: 2 } })), v1 = cmp(ref, shellRun({ '5:3': { dv: 5 } }));
+    ok('F5 negative control: ONE cell tilted 2 deg fails the same comparison (rays move)', t1.moved > 300, J(t1));
+    ok('F5 negative control: ONE cell with focus 5 per m fails it too', v1.moved > 300, J(v1));
+    // dv sign and size: for rays through one cell, outgoing direction vs offset across the cell has slope -dv/1000 in the sagittal direction, x cos(incidence) in the tangential one
+    {
+      const slopeOf = (cells) => { const sc = mk(cells), b = P.build(sc), r = runS(sc, b.surfaces), k = b.surfaces.findIndex((s) => s.id === 'S5_3') + 1, s = b.surfaces[k - 1], ey = RF.V.cross(s.n, s.ref); let n = 0; const sx = [0, 0], sy = [0, 0], sxx = [0, 0], sxy = [0, 0];
+        for (let i = 0; i < N; i++) if (r.c.rayK[i] === k) { const p = RF.Engine.retrace(r.P, i); if (p.length < 9) continue; const d = RF.V.norm([p[6] - p[3], p[7] - p[4], p[8] - p[5]]), o = [p[3] - s.P[0], p[4] - s.P[1], p[5] - s.P[2]]; n++;
+          [s.ref, ey].forEach((ax, q) => { const x = RF.V.dot(o, ax), y = RF.V.dot(d, ax); sx[q] += x; sy[q] += y; sxx[q] += x * x; sxy[q] += x * y; }); }
+        const sl = (q) => (n * sxy[q] - sx[q] * sy[q]) / (n * sxx[q] - sx[q] * sx[q]); return { tan: sl(0), sag: sl(1), n, s }; };
+      const z = slopeOf({}), pos = slopeOf({ '5:3': { dv: 40 } }), neg = slopeOf({ '5:3': { dv: -40 } });
+      const cosI = -RF.V.dot(RF.V.norm(z.s.P), z.s.n);
+      ok('F5 focus: +40 per m converges (sagittal slope -0.040 +- 10%), -40 diverges (+0.040); the default cell has no slope', Math.abs(z.sag) < 1e-3 && Math.abs(pos.sag - z.sag + 0.04) < 0.004 && Math.abs(neg.sag - z.sag - 0.04) < 0.004, 'sagittal slopes ' + [z.sag, pos.sag, neg.sag].map((x) => x.toFixed(4)).join(' / ') + ', rays ' + [z.n, pos.n, neg.n].join('/'));
+      ok('F5 focus: the tangential slope is the sagittal one times cos(incidence)^2 (Coddington: one cos for the foreshortened beam, one for the direction measured along the surface), here ' + (cosI * cosI).toFixed(3), Math.abs(pos.tan / pos.sag - cosI * cosI) < 0.1 * cosI * cosI, 'ratio ' + (pos.tan / pos.sag).toFixed(3));
+    }
+    // aim: +dTheta turns the cell's reflected beam outward from the axis; dPhi turns it toward increasing azimuth
+    {
+      const dirOf = (cells) => { const sc = mk(cells), b = P.build(sc), r = runS(sc, b.surfaces), k = b.surfaces.findIndex((s) => s.id === 'S5_3') + 1; let sum = [0, 0, 0];
+        for (let i = 0; i < N; i++) if (r.c.rayK[i] === k) { const p = RF.Engine.retrace(r.P, i); if (p.length < 9) continue; sum = RF.V.add(sum, RF.V.norm([p[6] - p[3], p[7] - p[4], p[8] - p[5]])); } return RF.V.norm(sum); };
+      const z = dirOf({}), a = dirOf({ '5:3': { dTheta: 2 } }), b2 = dirOf({ '5:3': { dPhi: 2 } });
+      const ang = (u, v) => Math.acos(Math.min(1, RF.V.dot(u, v))) * 180 / Math.PI, fr0 = P.axisFrame(mk(), 'aim'), pm = 2 * Math.PI * 3.5 / 24, rad = RF.V.add(RF.V.mul(fr0.e1, Math.cos(pm)), RF.V.mul(fr0.e2, Math.sin(pm))), azi = RF.V.add(RF.V.mul(fr0.e1, -Math.sin(pm)), RF.V.mul(fr0.e2, Math.cos(pm)));
+      ok('F5 aim: dTheta = +2 turns the cell\'s mean reflected direction by 2.0 deg, outward from the axis', Math.abs(ang(z, a) - 2) < 0.1 && RF.V.dot(RF.V.sub(a, z), rad) > 0, ang(z, a).toFixed(3) + ' deg, outward component ' + RF.V.dot(RF.V.sub(a, z), rad).toExponential(2));
+      ok('F5 aim: dPhi = +2 turns it by 2.0 deg toward increasing azimuth', Math.abs(ang(z, b2) - 2) < 0.1 && RF.V.dot(RF.V.sub(b2, z), azi) > 0, ang(z, b2).toFixed(3) + ' deg, azimuthal component ' + RF.V.dot(RF.V.sub(b2, z), azi).toExponential(2));
+    }
+    // other conics: an ellipse and a sphere shell are the same sheet as their rev conic zone too (no foci needed)
+    for (const kind of ['ellipse', 'sphere']) {
+      const sc = mk(); sc.modeC.preset.kind = kind; const c = P.shellFromPreset(sc.modeC.preset); Object.assign(sc.modeC.shell, c); sc.modeC.profile = P.presetProfile(sc.modeC.preset, sc);
+      const rv = [Object.assign({}, plainConic[0], { seg: { kind: 'conic', zv: c.zv, R: c.R, k: c.k, r0: 0, r1: c.r1 } })], a1 = runS(sc, rv), b1 = runS(sc, P.build(sc).surfaces), q = cmp(a1, b1);
+      ok('F5 default cells = exact conic zone for the ' + kind + ' preset too', q.same / q.n >= 0.9995 && q.moved === 0 && q.gained === 0, J(q));
+    }
+    // scene format: round trip, validation, scale, mirror, history label
+    {
+      const st = C.createStore(mk({ '5:3': { dv: 5, dTheta: 1 }, '0:0': { dPhi: -2 } })), wire = RF.State.serialize(st.scene), back = RF.State.deserialize(wire);
+      ok('F5 shell + cells survive save / load exactly', J(back.modeC.shell) === J(st.scene.modeC.shell), J(back.modeC.shell.cells));
+      const bad = JSON.parse(wire); bad.modeC.shell.cells['99:1'] = { dv: 1 }; bad.modeC.shell.cells['2:2'] = { dv: 'x', dTheta: 99 }; bad.modeC.shell.cells.x = {};
+      const v = RF.State.deserialize(J(bad)).modeC.shell;
+      ok('F5 validation drops cells outside the grid and bad numbers, clamps aim to 30 deg', !v.cells['99:1'] && !v.cells.x && J(v.cells['2:2']) === J({ dTheta: 30 }) && Object.keys(v.cells).length === 3, J(v.cells));
+      const bad2 = JSON.parse(wire); bad2.modeC.shell.R = -3; ok('F5 a malformed shell is dropped on load, the profile stays', RF.State.deserialize(J(bad2)).modeC.shell === undefined && RF.State.deserialize(J(bad2)).modeC.profile.length === st.scene.modeC.profile.length);
+      const big = RF.State.scaleScene(st.scene, 2).modeC.shell;
+      ok('F5 scaling the scene scales R, zv, rim and (inversely) focus; angles stay', big.R === 2 * st.scene.modeC.shell.R && big.r1 === 2 * st.scene.modeC.shell.r1 && big.cells['5:3'].dv === 2.5 && big.cells['5:3'].dTheta === 1, J(big.cells));
+      const mir = RF.State.mirrorSceneY(st.scene).modeC.shell;
+      ok('F5 mirroring the scene reverses the sector numbering and the sign of the sideways aim', mir.cells['5:20'] && mir.cells['0:23'] && mir.cells['0:23'].dPhi === 2 && mir.cells['5:20'].dv === 5, J(mir.cells));
+      const a = RF.History.intent(st.scene), st2 = RF.U.deepCopy(st.scene); st2.modeC.shell.cells['1:1'] = { dv: 1 };
+      ok('F5 history sees a cell edit and labels it', RF.History.key(a) !== RF.History.key(RF.History.intent(st2)) && /facet shell cell edit/i.test(RF.History.describe(a, RF.History.intent(st2)).text), RF.History.describe(a, RF.History.intent(st2)).text);
+    }
+    // controller: switch on from the preset, per-cell controls through setControl, counts clear the cells, a hand edit of the profile retires the shell
+    {
+      const st = C.createStore(RF.State.testScene()); st.scene.mode = 'C'; C.setControl(st, 'C.shell', true);
+      ok('F5 ticking Facet shell seeds the conic from the parabola preset (R 2f, k -1, zv -f) and resamples the profile onto it', st.scene.modeC.shell.on && st.scene.modeC.shell.R === 24 && st.scene.modeC.shell.k === -1 && st.scene.modeC.shell.zv === -12 && st.scene.modeC.profile.length === 41 && Math.abs(st.scene.modeC.profile[40][1] - (-12 + 45 * 45 / 48)) < 1e-9, J(st.scene.modeC.shell));
+      C.actions.shellSelect(st, 3, 4); C.setControl(st, 'C.cth', 2); C.setControl(st, 'C.cdv', 5); C.setControl(st, 'C.cph', 0);
+      ok('F5 per-cell controls write a sparse entry for the selected cell only', J(st.scene.modeC.shell.cells) === J({ '3:4': { dTheta: 2, dv: 5 } }), J(st.scene.modeC.shell.cells));
+      C.setControl(st, 'C.cdv', 0); C.setControl(st, 'C.cth', 0);
+      ok('F5 setting a cell back to 0 removes it (the sparse field stays sparse)', J(st.scene.modeC.shell.cells) === '{}');
+      C.setControl(st, 'C.cth', 2); C.actions.shellCells(st, 'ring');
+      ok('F5 Apply to ring copies the cell to its whole ring (24 cells); Reset all clears', Object.keys(st.scene.modeC.shell.cells).length === 24 && (C.actions.shellCells(st, 'reset-all'), Object.keys(st.scene.modeC.shell.cells).length === 0));
+      C.setControl(st, 'C.cth', 1); C.setControl(st, 'C.shNa', 16);
+      ok('F5 changing the sector count clears the cell edits and says so', J(st.scene.modeC.shell.cells) === '{}' && st.scene.modeC.shell.nAng === 16 && st.notices.some((x) => /count changed/.test(x.msg)));
+      C.actions.setProfile(st, [[0, 1], [5, 2]]);
+      ok('F5 editing the profile by hand turns the shell off (cells kept) and says so', st.scene.modeC.shell.on === false && st.notices.some((x) => /turned off/.test(x.msg)));
+      const st3 = C.createStore(RF.State.testScene()); st3.scene.modeC.preset.kind = 'cpc'; C.setControl(st3, 'C.shell', true);
+      ok('F5 a preset that is not a conic cannot start a shell (notice, nothing written)', st3.scene.modeC.shell === undefined && st3.notices.length === 1);
+      const st4 = C.createStore(RF.State.testScene()); C.setControl(st4, 'C.shell', true); C.setControl(st4, 'C.f', 20);
+      ok('F5 the preset controls drive a live shell (focal length 20: R 40, zv -20)', st4.scene.modeC.shell.R === 40 && st4.scene.modeC.shell.zv === -20);
+    }
+  }
   process.exitCode = fails ? 1 : 0;
 })();
