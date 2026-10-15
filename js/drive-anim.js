@@ -652,7 +652,7 @@ void main() {
       return { p, u };
     };
     const P = { compose: prog(FS_COMPOSE), bright: prog(FS_BRIGHT), reduce: prog(FS_REDUCE), blur: prog(FS_BLUR), fin: prog(FS_FINAL) };
-    gl.bindVertexArray(gl.createVertexArray());
+    const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
     const T = {};                                         // name → { t, f, w, h }
     const mk = (name, w, h, ifmt, filter) => {
       if (T[name]) { gl.deleteTexture(T[name].t); gl.deleteFramebuffer(T[name].f); }
@@ -696,6 +696,8 @@ void main() {
       draw(f) {
         const timing = f.profile, t0 = timing ? performance.now() : 0;
         const W = R.W, H = R.H, hw = T.acc.w, hh = T.acc.h, tanH = Math.tan(f.hfov * Math.PI / 360), tanV = tanH * H / W;
+        if (f.groundGPU) f.groundGPU(T.A.f, T.O.f);
+        gl.bindVertexArray(vao); gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.disable(gl.SCISSOR_TEST); gl.colorMask(true, true, true, true);
         gl.disable(gl.BLEND);
         gl.bindFramebuffer(gl.FRAMEBUFFER, T.hdr.f); gl.viewport(0, 0, W, H);
         const pats = f.pats || [], U = P.compose.u;
@@ -817,6 +819,7 @@ void main() {
   function contextLost(e) {
     if (!recovery()) return;
     e.preventDefault(); if (V.lost || V.glFailed) return;
+    if (V.three) { V.three.dispose(); V.three = null; V.gpuFailure = 'context lost; using CPU renderer after restore'; }
     V.lost = true; V.resume = S(V.ui).playing; S(V.ui).playing = false; stop(); killWorkers();
     const game = S(V.ui).game; if (game && !game.done) { game.pauseAt = performance.now(); if (game.inputs) game.inputs.clear(); RF.DriveGame.press(game, false, performance.now()); }
     if (V.canvas) V.canvas.hidden = true;
@@ -831,7 +834,7 @@ void main() {
       V.gl = makeGL(V.canvas); if (!V.gl) throw new Error('float render targets unavailable');
       V.lost = false; V.gkey = ''; V.rdRef = null; V.band = [0, 0];
       const g = S(V.ui).game;   // UX1-DP-test: a running minigame stays paused after a restore until the player resumes (same as the hidden-tab path)
-      S(V.ui).playing = !!V.resume && !(g && !g.done); say(''); V.ui.redrawSpec();
+      S(V.ui).playing = !!V.resume && !(g && !g.done); say(V.gpuFailure ? 'GPU drive context was lost; using CPU renderer.' : ''); V.ui.redrawSpec();
     } catch (e) { contextFallback('Drive graphics rebuild failed: ' + (e.message || e)); }
   }
   function contextReady() {
@@ -842,7 +845,7 @@ void main() {
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles]);
+    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles, !!V.three]);
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
@@ -850,7 +853,7 @@ void main() {
     V.renderScale = sz.scale || 1;
     V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src };
     if (V.gkey !== key || V.rdRef !== I.rd) {
-      V.g = o.tiles || (o.wet && o.wetSheen) ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
+      V.g = V.three || o.tiles || (o.wet && o.wetSheen) ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
     }
     V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr));
@@ -883,7 +886,7 @@ void main() {
     const t0 = performance.now(); resolutionPrepare();
     const ui = V.ui, st = S(ui), I = info(), o = I.o, W = V.p.w, pb = V.band, had = pb[1] > pb[0], profiling = profileOn(), trafficMs = V.cameraMs || 0;
     V.cameraMs = 0; V.p.profile = profiling ? {} : null;
-    if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
+    if (had && !V.three) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
     V.src.traffic.speed = +info().o.speed || 50; pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
     const placed = (V.src.tiles ? tileWorld : placedObjects)(V.p, st.dist, st.t, tauFor(V.act, st.t));
     if (st.game) {
@@ -891,17 +894,21 @@ void main() {
       V.p.hazardBodyMask = new Uint8Array(W * V.p.h); V.p.sampleTiles = new Uint8Array(Math.ceil(W / 16) * Math.ceil(V.p.h / 16));
       gameObjects(st.game, placed); V.gameMask = mask; V.gameBodyMask = V.p.hazardBodyMask;
     } else V.p.sampleTiles = V.p.hazardMask = V.p.hazardBodyMask = null;
-    const tPlaced = performance.now(), ss = ssNow(), rows = objects(V.p, st.dist, V.rgba, ss, null, null, placed, st.t);
+    const tPlaced = performance.now(), ss = ssNow(), rows = V.three
+      ? [0, V.p.h]
+      : objects(V.p, st.dist, V.rgba, ss, null, null, placed, st.t);
     const traceProfile = V.p.profile && Object.assign({}, V.p.profile), t1 = performance.now();
     adaptSS(t1 - t0);
-    V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
+    if (!V.three) V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
     const sources = D.glareSources(V.src.tiles ? placed.objects : placed, EYE);
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
     const draw = { profile: glProfile, hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
-    V.gl.draw(draw); if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
+    if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
+    try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
+    if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
-    flashLabel(st.dist, st.t); const detectorStart = performance.now(); if (st.game) gameFrame(st.game); const detectorMs = performance.now() - detectorStart; ui.dvAnimFrames = V.frames;
+    flashLabel(st.dist, st.t); const detectorStart = performance.now(); if (st.game) { if (V.three) { const masks = V.three.masks(V.p, ss); V.gameMask = masks.mask; V.gameBodyMask = masks.body; } gameFrame(st.game); } const detectorMs = performance.now() - detectorStart; ui.dvAnimFrames = V.frames;
     recordFrame(t0 - trafficMs, { trafficMs, placementMs: tPlaced - t0, uploadMs: t2 - t1, sourcesMs: sourceEnd - t2, glMs: t3 - sourceEnd, ...(glProfile || {}), detectorMs, workerRoundTripMs: 0, workerCpuMs: 0, assemblyMs: 0 }, traceProfile, traceProfile, false);
   }
 
@@ -921,7 +928,7 @@ void main() {
   }
   // true when this frame is traced on workers (they are started, or stopped, to match the switch)
   function mt() {
-    const want = !S(V.ui || {}).game && !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
+    const want = !V.three && !S(V.ui || {}).game && !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
     if (!want) { if (Wk.list.length) killWorkers(); return false; }
     if (Wk.list.length !== n) {
       killWorkers();
@@ -1082,6 +1089,7 @@ void main() {
     primary.append(bar.querySelector('[data-anim=play]'));
     btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off restores the previous traffic and gap guard.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
+    btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => setDV(ui, 'gpuRenderer', !info().o.gpuRenderer), 'GPU drive renderer');
     btn('fps-counter', 'Frame cadence and CPU breakdown; sampled trace attribution adds profiling overhead. GPU execution requires the tester bench.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'fps / timings');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
     const target = E('input', { type: 'number', min: 16, max: 200, step: 1, 'data-anim': 'frame-target', 'aria-label': 'Frame target (ms)', title: 'Dynamic resolution target, milliseconds per frame', class: 'anim-seed' });
@@ -1137,7 +1145,7 @@ void main() {
     for (const b of q('[data-anim="popout"]')) { b.setAttribute('aria-pressed', String(st.popout)); b.disabled = !sup; b.textContent = st.popout ? '✕ close' : '⤢ large'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
-    for (const [name, key] of [['fps-counter', 'fpsCounter'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key]));
+    for (const [name, key] of [['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key]));
     V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
     if (V.perfLab) { const host = st.popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement; if (host && V.perfLab.parentElement !== host) host.append(V.perfLab); V.perfLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
     for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
@@ -1204,6 +1212,10 @@ void main() {
     if (!tileRows.size) return null;
     const y0 = Math.min(...tileRows) * 16, y1 = Math.min(V.p.h, (Math.max(...tileRows) + 1) * 16), rgba = new Float32Array(V.rgba);
     const world = Object.assign({}, placed, { objects: placed.objects.filter((ob) => ob.gameHazard !== id) });
+    if (V.three) {
+      try { V.gl.draw(Object.assign({}, draw, { groundGPU: (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss) })); return V.gl.readCanvas(); }
+      finally { V.gl.draw(draw); }
+    }
     try {
       objects(Object.assign({}, V.p, { profile: null, hazardMask: null, hazardBodyMask: null }), st.dist, rgba, ss, null, (ty) => tileRows.has(ty), world, st.t);
       V.gl.setObjects(rgba, y0, y1); V.gl.draw(draw); return V.gl.readCanvas();
@@ -1329,6 +1341,20 @@ void main() {
     for (const e of [V.canvas, ui.driveBar, V.gameBar, V.notice, V.perfLab]) if (e && e.parentElement !== host) host.append(e);
   }
 
+  // The optional ES module is loaded only on HTTP; the classic CPU app still opens from file://.
+  let threeModule, threeLoading;
+  function gpuFallback(why) {
+    if (V.three) { V.three.dispose(); V.three = null; }
+    V.gkey = ''; V.gpuFailure = String(why); say('GPU drive unavailable (' + V.gpuFailure.split('\n')[0].slice(0, 160) + '); using CPU renderer.');
+  }
+  function gpuRenderer() {
+    if (!info().o.gpuRenderer) { if (V.three) { V.three.dispose(); V.three = null; V.gkey = ''; } if (V.gpuFailure) { V.gpuFailure = ''; say(''); } return; }
+    if (V.three || V.gpuFailure) return;
+    if (root.location && root.location.protocol === 'file:') { gpuFallback('ES modules need HTTP'); return; }
+    if (threeModule) { try { V.three = threeModule.create(V.canvas, V.gl.gl); V.gkey = ''; killWorkers(); } catch (e) { gpuFallback(e.message || e); } return; }
+    if (!threeLoading) threeLoading = import('./drive-three.js').then(m => { threeModule = m; threeLoading = null; if (V.ui) V.ui.redrawSpec(); }).catch(e => { threeLoading = null; if (V.info && info().o.gpuRenderer) gpuFallback(e.message || e); });
+  }
+
   // ---------------------------------------------------------------- hook from drawDrive
   /* I: { rd, o (dvOpts), A (arc|null), mirrored, us, conv, lut () → the beam lookup, tm (the still picture's tone map), groundKey, setDV, toolbar } */
   function sync(ui, cv, I) {
@@ -1347,6 +1373,7 @@ void main() {
     V.canvas.hidden = false; mount(ui);
     if (!visible()) { stop(); return; }
     try {
+      gpuRenderer();
       const sz = layout();
       if (I.o.expMode === 'auto' && I.tm) { const ak = I.groundKey + '|' + I.o.ev; if (!V.kAuto || V.autoKey !== ak) { V.kAuto = I.tm.k; V.autoKey = ak; } } else V.kAuto = null;      // auto exposure would flicker as the scene moves: frozen at the still picture's
       prepare(sz);
@@ -1368,7 +1395,7 @@ void main() {
     const t = V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); iv.sort((a, b) => a - b);
     const med = iv.length ? iv[iv.length >> 1] : 0, c = V.cpu;
     const all = V.profiles || [], recent = all.filter((r) => r.at >= (all.length ? all[all.length - 1].at : 0) - 1000);
-    return { profiling: profileOn(), renderScale: V.renderScale || 1, resolution: V.resolution || resolutionState(), frameTargetMs: V.info && V.info.o.frameTargetMs || 33, breakdown: breakdown(recent), breakdownMean: breakdown(all), lastFrame: all.length ? all[all.length - 1] : null, white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
+    return { renderer: V.three ? 'three' : 'cpu', gpuFailure: V.gpuFailure || '', profiling: profileOn(), renderScale: V.renderScale || 1, resolution: V.resolution || resolutionState(), frameTargetMs: V.info && V.info.o.frameTargetMs || 33, breakdown: breakdown(recent), breakdownMean: breakdown(all), lastFrame: all.length ? all[all.length - 1] : null, white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
   }
   function breakdown(samples) {
     const rows = samples || [], n = rows.length, mean = (key) => n ? rows.reduce((s, r) => s + (r[key] || 0), 0) / n : 0, frameMs = mean('frameMs'), components = {};
