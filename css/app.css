@@ -549,3 +549,25 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
     pointer-events: none; opacity: 0; animation: expand-hint .6s ease 5s forwards; }
 }
 @keyframes expand-hint { to { opacity: .75; } }
+
+/* A/B comparison is opt-in; the ordinary Result canvas keeps its own layout. */
+.ab-tools { display:flex; gap:6px; flex-wrap:wrap; padding:5px 10px; align-items:center; }
+.ab-tools details { margin-left:auto; max-width:420px; font-size:12px; }
+.ab-tools details[open] { flex-basis:100%; max-width:none; }
+.ab-tools details label { display:block; margin:6px 0; }
+#ab-dialog { width:min(1100px, 94vw); max-height:90vh; overflow:auto; color:var(--text, #ddd); background:var(--panel, #171d27); border:1px solid #607087; border-radius:8px; padding:16px; }
+#ab-dialog::backdrop { background:#0009; }
+#ab-dialog h2 { margin:0 0 10px; }
+.ab-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+#ab-rays { width:105px; }
+#ab-maps { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+#ab-maps.single { grid-template-columns:1fr; }
+#ab-maps[hidden], #ab-maps figure[hidden] { display:none; }
+#ab-maps figure { margin:0; min-width:0; }
+#ab-maps figcaption { padding:5px 0; }
+#ab-maps canvas { display:block; width:100%; height:auto; background:#00204d; }
+#ab-table { width:100%; border-collapse:collapse; font-size:12px; }
+#ab-table th, #ab-table td { text-align:right; padding:5px; border-bottom:1px solid #60708755; }
+#ab-table th:first-child { text-align:left; }
+#ab-table .ab-up td:last-child { color:#80bbff; font-weight:bold; }
+#ab-table .ab-down td:last-child { color:#ffb16d; font-weight:bold; }

@@ -822,5 +822,58 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     }
     ok('D4i tiles OFF is pixel-identical to base 4bae491: cached animation and still renderer, road/forest/city, straight/bend', identical, compared+' displaced worlds');
   }
+  // AB: shared comparison, key invalidation, bounded eviction, and pin/history semantics.
+  {
+    const a = RF.State.testScene(); C.regenerateA(C.createStore(a)); const b = RF.U.deepCopy(a), cmp = RF.Compare;
+    const same = cmp.run(a, b, { rays: 3000, specs: ['fmvss-ub2'], maps: true });
+    ok('AB identical designs have zero numeric metric deltas', same.diff.every((r) => r.a === r.b && (r.delta === null || r.delta === 0)), JSON.stringify(same.a.metrics));
+    ok('AB identical designs use identical far-field maps', same.maps.a.cd.every((v, i) => Object.is(v, same.maps.b.cd[i])));
+    b.source.power *= 0.5; const dim = cmp.run(a, b, { rays: 3000, specs: ['fmvss-ub2'] });
+    ok('AB half source power halves window flux and peak with signed diff', Math.abs(dim.b.metrics.lmWindow / dim.a.metrics.lmWindow - 0.5) < 1e-9 && Math.abs(dim.b.metrics.peakCd / dim.a.metrics.peakCd - 0.5) < 1e-9 && dim.diff.find((r) => r.metric === 'peakCd').delta < 0);
+    const ev = dim.a.specs['fmvss-ub2']; ok('AB verdict counts match raw rows', ev.pass + ev.fail + ev.unsure === ev.rows.length && ev.rows.filter((r) => r.verdict === 'fail').length === ev.fail);
+    const old = RF.State.serialize(a); a.compareA = { version: 1, scene: cmp.snapshot(b) };
+    ok('AB small pin survives JSON roundtrip, never nests another pin', !!RF.State.deserialize(RF.State.serialize(a)).compareA.scene && !cmp.snapshot(a).compareA);
+    const it = RF.History.intent(a); const saved = a.compareA; RF.History.apply(a, it);
+    ok('AB undo intent excludes pin and applying intent preserves it', !it.compareA && a.compareA === saved);
+    a.compareA = { version: 1, scene: { padding: 'x'.repeat(cmp.PIN_BYTES) } };
+    ok('AB oversized pin omitted from scene JSON', !JSON.parse(RF.State.serialize(a)).compareA);
+    delete a.compareA; ok('AB ordinary scene serialization unchanged by comparison', RF.State.serialize(JSON.parse(old)) === old);
+    const collimated = cmp.snapshot(a); collimated.groups.A.surfaces[0].di = Infinity;
+    ok('AB pin preserves collimating curvature through scene serializer', cmp.snapshot(collimated).groups.A.surfaces[0].di === 1e308);
+    const cache = RF.SolveCache, r = { id: 'spoke', def: RF.Solvers.get('spoke'), settings: RF.Solvers.settingsOf(a, 'spoke'), input: RF.Solvers.inputOf(a), tools: { scene: a } };
+    const key = await cache.keyOf(r, 'engine-1', { ms: 100 });
+    ok('AB SHA key stable for equal input and sanitized settings', key === await cache.keyOf(RF.U.deepCopy(r), 'engine-1', { ms: 100 }));
+    const changed = RF.U.deepCopy(r); changed.input.seed++;
+    ok('AB cache invalidates on seed, engine, budget, and solver version', key !== await cache.keyOf(changed, 'engine-1', { ms: 100 }) && key !== await cache.keyOf(r, 'engine-2', { ms: 100 }) && key !== await cache.keyOf(r, 'engine-1', { ms: 200 }) && key !== await cache.keyOf(Object.assign({}, r, { def: Object.assign({}, r.def, { version: 'new' }) }), 'engine-1', { ms: 100 }));
+    const painted = RF.U.deepCopy(r); painted.input.paint.cells[0] = 0.123; const set = Object.assign({}, r, { settings: Object.assign({}, r.settings, { minDistance: 99 }) });
+    ok('AB cache invalidates on painting and sanitized setting changes', key !== await cache.keyOf(painted, 'engine-1', { ms: 100 }) && key !== await cache.keyOf(set, 'engine-1', { ms: 100 }));
+    r.def.cacheSource = 'same version, revised source';
+    try { ok('AB source edit invalidates even without a version bump', key !== await cache.keyOf(r, 'engine-1', { ms: 100 })); } finally { delete r.def.cacheSource; }
+    ok('AB cache detects clocks, random and delegation conservatively', [() => Date.now(), () => performance.now(), { toString: () => ['Math', 'random()'].join('.') }, () => RF.Solvers.get('spoke')].every((solve) => cache.timed({ solve })) && cache.timed({ worker: true, solve() {} }) && cache.timed({ worker: true, cacheSource: 'no clocks in this source', solve() {} }) && !cache.timed({ solve() { return { surfaces: [] }; } }));
+    const rows = [{ key: 'old', used: 1, bytes: 12 }, { key: 'recent', used: 3, bytes: 12 }, { key: 'middle', used: 2, bytes: 12 }];
+    ok('AB LRU enforces byte and entry caps', JSON.stringify(cache.victims(rows, 24, 3)) === '["old"]' && JSON.stringify(cache.victims(rows, 99, 1)) === '["old","middle"]');
+    const actual = await RF.Solvers.runAsync(a, 'spoke');
+    ok('AB cache disabled leaves normal async solve and verification working', !actual.fromCache && !actual.facts.errors.length && actual.output.surfaces.length > 0);
+    cache.setEnabled(true);
+    try {
+      // A Node host has no document / IndexedDB: this is the real unavailable-storage fallback, not a mock cache.
+      const fallback = await RF.Solvers.runAsync(a, 'spoke');
+      ok('AB unavailable browser cache falls back to real solve, with a visible reason', !fallback.fromCache && !fallback.facts.errors.length && RF.State.serialize(fallback.output) === RF.State.serialize(actual.output) && /unavailable/i.test(cache.status()));
+      let ran = false, aborted = false; const pending = cache.solve(r, () => { ran = true; return actual.output; }); cache.cancelPending();
+      try { await pending; } catch (e) { aborted = !!e.aborted; }
+      ok('AB replacing a request during async cache setup prevents its solve', aborted && !ran);
+    } finally { cache.setEnabled(false); }
+    const path = require('path'), root = path.join(__dirname, '..'), { Worker } = require('worker_threads');
+    const worker = new Worker(`const { parentPort } = require('worker_threads'), fs = require('fs'), path = require('path'), vm = require('vm');
+      globalThis.self = globalThis;
+      globalThis.importScripts = (...files) => { for (const f of files) vm.runInThisContext(fs.readFileSync(path.join(${JSON.stringify(root)}, 'js', f), 'utf8'), { filename: f }); };
+      globalThis.postMessage = (m) => parentPort.postMessage(m);
+      importScripts('compare-worker.js'); parentPort.on('message', (data) => self.onmessage({ data }));`, { eval: true });
+    try {
+      const reply = await new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('AB comparison worker timed out')), 30000); worker.once('message', (m) => { clearTimeout(timer); resolve(m); }); worker.once('error', (e) => { clearTimeout(timer); reject(e); }); worker.postMessage({ a, b, options: { rays: 3000, specs: ['fmvss-ub2'] } }); });
+      ok('AB actual comparison worker imports and produces the shared metrics', !reply.error && JSON.stringify(reply.result.a.metrics) === JSON.stringify(dim.a.metrics) && JSON.stringify(reply.result.b.metrics) === JSON.stringify(dim.b.metrics), reply.error || JSON.stringify(reply.result.a.metrics));
+    } finally { await worker.terminate(); }
+  }
+  console.log(fails ? fails + ' FAILED' : 'all regress-node checks passed');
   process.exitCode = fails ? 1 : 0;
 })();

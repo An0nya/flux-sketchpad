@@ -1,0 +1,84 @@
+// Tester only: python3 tests/serve.py 8738 ; node tests/regress/AB-compare.js 8738
+const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync('npm root -g').toString().trim() + '/playwright'));
+const { load } = require('../load.js'), RF = load(), port = +(process.argv[2] || 8738);
+let fails = 0; const ok = (name, cond, info) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (info ? ' — ' + JSON.stringify(info) : '')); if (!cond) fails++; };
+(async () => {
+  const browser = await pw.chromium.launch(), page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  const sc = RF.State.testScene(); sc.sim.rays = 3000;
+  await page.addInitScript((scene) => { if (!localStorage.getItem('AB/setup')) { localStorage.setItem('faceted-reflector-demo/scene/v1', scene); localStorage.setItem('AB/setup', '1'); } }, RF.State.serialize(sc));
+  await page.goto('http://localhost:' + port + '/index.html');
+  const ready = () => page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.CompareUI && !RF.SolverHost.loading() && document.getElementById('ab-pin') && !document.getElementById('ab-pin').disabled && !RF.UI.solving && RF.UI.run && RF.UI.run.ctx.done, null, { timeout: 120000 });
+  await ready();
+  ok('AB page identifies RF.UI and expected port', await page.evaluate((p) => !!RF.UI && +location.port === p, port));
+  ok('AB new session has no A, compare is disabled, cache off', await page.evaluate(() => !RF.CompareUI.current() && document.getElementById('ab-open').disabled && !RF.SolveCache.enabled()));
+  await page.locator('.ab-tools summary').click(); await page.check('#ab-cache');
+  await page.evaluate(() => RF.SolveCache.clear());
+  const solve = async (force) => {
+    await page.evaluate((force) => { window.__abSeq = RF.UI.solveSeq; if (force) RF.SolveCache.bypass(); RF.UI.generateA(); }, !!force);
+    await page.waitForFunction(() => RF.UI.solveSeq > window.__abSeq && !RF.UI.solving && !RF.UI.solveArmed && RF.UI.store.reports.A, null, { timeout: 30000 });
+    return page.evaluate(() => ({ cached: RF.UI.store.reports.A.fromCache, surfaces: RF.State.serialize({ groups: RF.UI.store.scene.groups }), note: document.getElementById('ab-cache-status').textContent }));
+  };
+  const fresh = await solve(), hit = await solve(), forced = await solve(true);
+  ok('AB identical solve hits IndexedDB and exposes From cache note', !fresh.cached && hit.cached && /from cache/i.test(hit.note) && fresh.surfaces === hit.surfaces, { fresh: fresh.cached, hit: hit.cached, note: hit.note });
+  ok('AB Re-solve anyway bypasses lookup', !forced.cached);
+  await page.evaluate(() => { RF.UI.setControl('seed', 2); }); const changed = await solve();
+  ok('AB changed seed misses cache', !changed.cached);
+  await page.evaluate(() => RF.UI.undo());
+  await page.waitForFunction(() => !RF.UI.pendingA && !RF.UI.solving && !RF.UI.solveArmed && RF.UI.store.scene.sim.seed === 1 && RF.UI.store.reports.A.fromCache, null, { timeout: 30000 });
+  ok('AB undo restores original solve from cache', await page.evaluate(() => RF.UI.store.scene.sim.seed === 1 && RF.UI.store.reports.A.fromCache));
+  await page.evaluate(() => RF.UI.redo());
+  await page.waitForFunction(() => !RF.UI.pendingA && !RF.UI.solving && !RF.UI.solveArmed && RF.UI.store.scene.sim.seed === 2 && RF.UI.store.reports.A.fromCache, null, { timeout: 30000 });
+  ok('AB redo restores edited solve from cache', await page.evaluate(() => RF.UI.store.scene.sim.seed === 2 && RF.UI.store.reports.A.fromCache));
+  await page.evaluate(() => RF.UI.undo());
+  await page.waitForFunction(() => !RF.UI.pendingA && !RF.UI.solving && !RF.UI.solveArmed && RF.UI.store.scene.sim.seed === 1 && RF.UI.store.reports.A.fromCache, null, { timeout: 30000 });
+  await page.click('#ab-pin'); await page.waitForFunction(() => !!RF.UI.store.scene.compareA);
+  const pin = await page.evaluate(() => RF.State.serialize(RF.CompareUI.current()));
+  ok('AB small A embedded in scene JSON', await page.evaluate(() => !!JSON.parse(RF.State.serialize(RF.UI.store.scene)).compareA.scene));
+  await page.evaluate(() => RF.SolveCache.clear());
+  ok('AB clearing solve cache preserves A', await page.evaluate(() => RF.State.serialize(RF.CompareUI.current())) === pin);
+  await page.evaluate(() => { RF.UI.setControl('src.power', 500); document.getElementById('ab-rays').value = 10000; document.getElementById('ab-spec').value = 'fmvss-ub2'; });
+  await page.click('#ab-open'); await page.waitForFunction(() => !!RF.CompareUI.result(), null, { timeout: 60000 });
+  const comp = await page.evaluate(() => RF.CompareUI.result());
+  ok('AB common-window flux halves when B source power halves', Math.abs(comp.b.metrics.lmWindow / comp.a.metrics.lmWindow - 0.5) < 1e-8, { a: comp.a.metrics, b: comp.b.metrics });
+  const directA = RF.State.deserialize(pin), directB = RF.Compare.snapshot(directA); directB.source.power = 500;
+  const expected = RF.Compare.run(directA, directB, { rays: 10000, specs: ['fmvss-ub2'] });
+  ok('AB page worker and shared CLI metrics agree', comp.diff.every((r, i) => r.delta === null ? r.a === expected.diff[i].a && r.b === expected.diff[i].b : Math.abs(r.delta - expected.diff[i].delta) < 1e-6));
+  ok('AB blue/orange signed diff table has expected rows', await page.evaluate(() => document.querySelectorAll('#ab-table tbody tr').length === RF.CompareUI.result().diff.length && [...document.querySelectorAll('#ab-table td:last-child')].some((x) => /↓/.test(x.textContent))));
+  await page.selectOption('#ab-view', 'a'); ok('AB A/B toggle hides B only', await page.locator('#ab-figure-a').isVisible() && !await page.locator('#ab-figure-b').isVisible());
+  await page.selectOption('#ab-view', 'both'); await page.click('#ab-close');
+  await page.evaluate(() => RF.UI.setControl('src.power', 750)); await page.click('#ab-open');
+  // The new request has a snapshot; edit before it returns to exercise stale-result indication.
+  await page.evaluate(() => RF.UI.setControl('src.power', 800)); await page.waitForFunction(() => !!RF.CompareUI.result(), null, { timeout: 60000 });
+  ok('AB editing while comparing marks result stale', /changed|out of date/i.test(await page.locator('#ab-status').textContent()));
+  await page.click('#ab-close');
+  ok('AB edits do not mutate A', await page.evaluate(() => RF.State.serialize(RF.CompareUI.current())) === pin);
+  await page.waitForTimeout(1000); await page.reload(); await ready();
+  ok('AB pin survives reload', await page.evaluate(() => RF.State.serialize(RF.CompareUI.current())) === pin);
+  const exported = await page.evaluate(() => RF.State.serialize(RF.UI.store.scene));
+  await page.evaluate(() => RF.CompareUI.unpin());
+  await page.evaluate((json) => RF.UI.loadScene(RF.State.deserialize(json), 'AB import fixture'), exported);
+  ok('AB opening exported JSON imports pinned A', await page.evaluate(() => RF.State.serialize(RF.CompareUI.current())) === pin);
+  // Large pin is persisted separately and excluded from scene JSON. Padding is a test fixture, never optics data.
+  await page.evaluate(async () => { RF.UI.store.scene.abTestPadding = 'x'.repeat(RF.Compare.PIN_BYTES + 1); await RF.CompareUI.pin(); });
+  ok('AB large pin has visible browser-only note and no JSON payload', await page.evaluate(() => !JSON.parse(RF.State.serialize(RF.UI.store.scene)).compareA && /browser only/.test(document.getElementById('ab-pin-note').textContent)));
+  await page.waitForTimeout(1000); await page.reload(); await ready();
+  ok('AB large browser-only A survives reload', await page.evaluate(() => RF.CompareUI.current().abTestPadding.length > RF.Compare.PIN_BYTES));
+  await page.evaluate(async () => { await RF.SolveCache.clear(); await RF.CompareUI.unpin(); const plain = RF.State.testScene(); plain.sim.rays = 3000; RF.UI.loadScene(plain, 'AB reset'); });
+  // A worker source with a clock is skipped unless its owner explicitly opts in.
+  await page.evaluate(async () => { await RF.SolverHost.load("RF.Solvers.register({id:'ab-clock',name:'AB clock fixture',version:'1',modes:['paint'],settings:[],solve(){return {surfaces:[],notes:[String(Date.now())]};}});"); RF.UI.store.scene.solve = { id: 'ab-clock' }; RF.SolveCache.setTimed(false); });
+  const timed1 = await solve(), timed2 = await solve();
+  ok('AB clock solver skips cache without separate opt-in', !timed1.cached && !timed2.cached && /clock|uncertain/.test(timed2.note));
+  if (!await page.locator('#ab-cache-timed').isVisible()) await page.locator('.ab-tools summary').click();
+  await page.check('#ab-cache-timed'); const opted1 = await solve(), opted2 = await solve();
+  ok('AB clock solver caches only after owner opts in', !opted1.cached && opted2.cached);
+  const storage = await page.evaluate(async () => {
+    await RF.SolveCache.clear();
+    for (let i = 0; i < RF.SolveCache.MAX_ENTRIES; i++) await RF.SolveCache.put('AB/' + i.toString().padStart(3, '0'), { surfaces: [], notes: ['fixture ' + i] });
+    await RF.SolveCache.get('AB/000'); await RF.SolveCache.put('AB/next', { surfaces: [] });
+    return { kept: !!await RF.SolveCache.get('AB/000'), evicted: !await RF.SolveCache.get('AB/001') };
+  });
+  ok('AB IndexedDB eviction keeps recently read entry', storage.kept && storage.evicted, storage);
+  ok('AB no page errors', errors.length === 0, errors);
+  await browser.close(); console.log(fails ? fails + ' FAILED' : 'all AB page checks passed'); process.exitCode = fails ? 1 : 0;
+})().catch((e) => { console.error(e); process.exit(1); });

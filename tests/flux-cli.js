@@ -19,13 +19,26 @@ check(threw, 'an unknown --set fails loudly instead of being dropped');
 const h = run('heatmap', ex, '--out', path.join(tmp, 'ff.png'), '--rays', '200000');
 const buf = fs.readFileSync(h.file);
 check(buf.slice(1, 4).toString() === 'PNG' && buf.readUInt32BE(16) === h.width && buf.readUInt32BE(20) === h.height, 'heatmap writes a PNG of the reported size', { w: h.width, h: h.height });
+const comp = run('compare', ex, ex, '--rays', '10000', '--spec', 'fmvss-ub2');
+const unequal = comp.diff.filter((r) => r.a !== r.b || (r.delta !== null && r.delta !== 0));
+check(!unequal.length, 'compare: identical saved designs have identical metrics and zero numeric deltas', unequal.length ? unequal : comp.a.metrics);
+const dim = JSON.parse(fs.readFileSync(path.join(ROOT, ex), 'utf8')); dim.source.power *= 0.5;
+const dimFile = path.join(tmp, 'dim.json'); fs.writeFileSync(dimFile, JSON.stringify(dim));
+const cmp = run('compare', ex, dimFile, '--rays', '10000', '--spec', 'fmvss-ub2');
+check(Math.abs(cmp.b.metrics.lmWindow / cmp.a.metrics.lmWindow - 0.5) < 1e-8 && cmp.diff.find((r) => r.metric === 'peakCd').delta < 0, 'compare: halving source power halves window lumens, peak delta has correct sign', { a: cmp.a.metrics.lmWindow, b: cmp.b.metrics.lmWindow });
+check(cmp.a.specs['fmvss-ub2'].pass + cmp.a.specs['fmvss-ub2'].fail + cmp.a.specs['fmvss-ub2'].unsure === cmp.a.specs['fmvss-ub2'].rows.length, 'compare: preset counts agree with raw verdict rows');
+const multi = run('compare', ex, ex, '--rays', '3000', '--spec', 'fmvss-ub2,ece-r112-b');
+check(multi.specs.length === 2 && multi.diff.filter((r) => r.metric.endsWith('.verdict')).length === 2 && multi.diff.every((r) => r.delta === null || r.delta === 0), 'compare: multiple presets each produce a verdict and zero self-diff');
+let badCompare = false; try { execFileSync(process.execPath, [CLI, 'compare', ex, ex, '--spec', 'not-a-spec'], { cwd: ROOT, stdio: 'pipe' }); } catch (err) { badCompare = /unknown spec/.test(String(err.stderr)); }
+check(badCompare, 'compare: unknown presets fail loudly');
 // Layer 3: api.json (served next to index.html) must describe the code as it is now; commit/date are allowed to lag
 const strip = (m) => { const c = Object.assign({}, m); delete c.commit; delete c.date; return JSON.stringify(c); };
 const onDisk = JSON.parse(fs.readFileSync(path.join(ROOT, 'api.json'), 'utf8')), fresh = run('manifest');
 check(strip(onDisk) === strip(fresh), 'api.json is current (else: node tools/flux.js manifest --out api.json)', { onDisk: onDisk.solvers.length, now: fresh.solvers.length });
 // Layer 2 needs Playwright; skipped (not failed) where it isn't installed
 let pw = null; for (const p of [process.env.PLAYWRIGHT, 'playwright', '/Users/anya/Projects/agent-qa/node_modules/playwright']) { if (!p) continue; try { require.resolve(p); pw = p; break; } catch (e) { /* next */ } }
-if (!pw) console.log('[SKIP] shot / page: Playwright not found');
+if (process.argv.includes('--node-only')) console.log('[SKIP] shot / page: --node-only (builder contract forbids browser launches)');
+else if (!pw) console.log('[SKIP] shot / page: Playwright not found');
 else {
   const sh = run('shot', ex, '--pane', 'result', '--display', 'ff', '--out', path.join(tmp, 'ff-page.png'));
   const b2 = fs.readFileSync(sh.file);
@@ -33,4 +46,5 @@ else {
   const pv = run('page', ex, '--eval', 'RF.UI.store.scene.groups.A.surfaces.length');
   check(pv.value === sum.surfaces.A.count, 'page --eval reads the loaded scene from the live app', { value: pv.value });
 }
+console.log(fail ? fail + ' FAILED' : 'all flux-cli checks passed');
 process.exitCode = fail ? 1 : 0;
