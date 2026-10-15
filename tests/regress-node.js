@@ -724,5 +724,103 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     }
     ok('D3h both traffic lanes through worker jobs = page trace bit for bit across moving frames in road, forest, city', parity, n + ' frames');
   }
+  // D4: route geometry, moving markings/lights, traffic gap, and full-frame worker rows.
+  {
+    const A = RF.DriveAnim, D = RF.Drive, flags = { posts: false, veg: false, signs: false, people: true, animals: true, rpm: false }, J = JSON.stringify;
+    const opts = { tiles: true, seed: 7, wild: true, density: 0.5, oncoming: true, preceding: true, trafficDensity: 2, streetLamps: 'sodium' };
+    const recipe = (seed) => Array.from({ length: 160 }, (_, k) => A.roadTile(seed, k));
+    const kinds = new Set(recipe(7).map((t) => t.kind));
+    ok('D4a seed repeats every tile recipe and changes the route; all eight tile types occur', J(recipe(7)) === J(recipe(7)) && J(recipe(7)) !== J(recipe(8)) && A.TILE_KINDS.every((k) => kinds.has(k)), [...kinds].join(', '));
+    let worst = 0, seam = 0;
+    for (const dist of [0, 49.999, 50, 150, 199.999, 200, 250, 350, 400, 1e8]) {
+      const r = A.tileRoute(7, dist);
+      for (let s = -5; s < 230; s += 11) for (const o of [-2, 0, 4]) { const q = r.at(s, o), f = r.frame(...q.p); worst = Math.max(worst, Math.abs(f.s - s), Math.abs(f.off - o)); }
+      const q = r.at(0, 0); worst = Math.max(worst, Math.hypot(...q.p), Math.abs(q.t[0] - 1), Math.abs(q.t[1]));
+    }
+    for (let k = 0; k < 30; k++) for (const u of [0, 50, 150, 200]) {
+      const s = k * 200 + u, r = A.tileRoute(7, s - 70), a = r.at(70 - 1e-6, 0), b = r.at(70 + 1e-6, 0);
+      seam = Math.max(seam, Math.hypot(a.p[0] - b.p[0], a.p[1] - b.p[1]), Math.hypot(a.t[0] - b.t[0], a.t[1] - b.t[1]));
+    }
+    // When the route window advances, its camera basis changes continuously, rather than resetting the global heading.
+    const before = A.tileRoute(7, 199.999), after = A.tileRoute(7, 200.001), centre = before.at(0.002, 0), q = before.at(100.002, 3), ref = after.at(100, 3);
+    const dx = q.p[0] - centre.p[0], dy = q.p[1] - centre.p[1];
+    const drift = Math.hypot(dx * centre.t[0] + dy * centre.t[1] - ref.p[0], -dx * centre.t[1] + dy * centre.t[0] - ref.p[1]);
+    ok('D4b route inverse, camera origin and all bend/tile joins are continuous, including window changes and long routes', worst < 1e-7 && seam < 2.1e-6 && drift < 1e-7, J({ worst, seam, drift }));
+    const p = { w: 128, h: 72, hfov: 60, lamps: [[0, 0.7, 0.7], [0, -0.7, 0.7]], lut: D.lutFrom(() => 30000), conv: 'A', lane: 3.5, look: { RL: 0.2, ambient: 0 }, A: null };
+    const make = (name, extra) => Object.assign({}, p, { src: A.source(name, 3.5, false, flags, Object.assign({}, opts, extra)) });
+    const find = (kind) => recipe(7).find((t) => t.kind === kind);
+    for (const kind of ['intersection', 't-junction']) {
+      const tile = find(kind), dist = tile.s0 + 40, clock = (50 - tile.phase) % 50, pp = make('road'), red = A.tileWorld(pp, dist, clock), green = A.tileWorld(pp, dist, clock + 30), amber = A.tileWorld(pp, dist, clock + 48);
+      const c = red.crossings.find((c) => c.s0 > 40 && c.s0 < 70), light = (w) => w.objects.filter((o) => o.cls === 'signal' && o.emit && o.emit.some((v) => v > 0));
+      ok('D4c ' + kind + ': ground openings, moving crossing/stop paint, lane gaps, and one lit signal head per junction', !!c && red.markings.filter((m) => m.pat && m.pat.period === 1e9).length >= 15 && red.markings.some((m) => m.skip && m.skip.length) && light(red).some((o) => o.emit[0] > 1e4) && light(green).some((o) => o.emit[1] === 8000) && light(amber).some((o) => o.emit[1] === 5000) && (kind !== 't-junction' || (c.o0 === -1.75 || c.o1 === 5.25)));
+      const redActor = red.objects.filter((o) => o.tile === tile.k && o.cls === 'person'), greenActor = green.objects.filter((o) => o.tile === tile.k && o.cls === 'person');
+      const offActor = A.tileWorld(Object.assign({}, p, { src: A.source('road', 3.5, false, Object.assign({}, flags, { people: false }), opts) }), dist, clock).objects.filter((o) => o.tile === tile.k && o.cls === 'person');
+      ok('D4d ' + kind + ': red spawns a crossing person, green and people-off remove them; pause is deterministic', redActor.length > 0 && !greenActor.length && !offActor.length && J(redActor) === J(A.tileWorld(pp, dist, clock).objects.filter((o) => o.tile === tile.k && o.cls === 'person')));
+      const moved = A.tileWorld(pp, dist + 1, clock).crossings.find((n) => Math.abs(n.s0 - (c.s0 - 1)) < 1e-8);
+      ok('D4d ' + kind + ': markings move one metre with one metre of travel', !!moved);
+    }
+    const urban = find('urban'), sd = urban.s0 + 15, warm = A.tileWorld(make('road'), sd, 0), cool = A.tileWorld(make('road', { streetLamps: 'led' }), sd, 0), off = A.tileWorld(make('road', { streetLamps: 'off' }), sd, 0);
+    const positions = warm.lights.map((L) => warm.A.frame(L.x, L.y).s).filter((s) => s >= 0 && s < 190).sort((a,b) => a-b);
+    ok('D4e urban lights every 50 m; warm/LED colours differ, off removes both light and poles', positions.length >= 3 && positions.slice(1).every((s,i) => Math.abs(s - positions[i] - 50) < 1e-7) && warm.lights[0].rgb[2] < cool.lights[0].rgb[2] && !off.lights.length && !off.objects.some((o) => o.cls === 'street-lamp'), J(positions));
+    // Read actual side-road surface pixels, including the T's closed side; a recipe alone cannot verify the ground renderer.
+    const tj = find('t-junction'), tw = A.tileWorld(make('road', { streetLamps: 'off', tex: false }), tj.s0 + 40, 0);
+    const surfaceAt = (off) => {
+      const q = tw.A.at(60, off), eye = [q.p[0] - 1.2 / Math.tan(Math.PI / 6), q.p[1], 1.2];
+      const r = D.render({ w: 1, h: 2, hfov: 60, eye, lamps: p.lamps, lut: p.lut, lane: 3.5, arc: tw.A, crossings: tw.crossings, scene: { objects: [], markings: [], verge: ['gravel',1.6,'grass'] } });
+      return r.keys[r.mat[1]];
+    };
+    ok('D4e actual T-junction ground pixels show asphalt on its open side and grass on its closed side', surfaceAt(tj.side * 15) === 'asphalt' && surfaceAt(-tj.side * 15) === 'grass', J([surfaceAt(tj.side * 15), surfaceAt(-tj.side * 15)]));
+    // Existing D1 actors must still move in the new route, including bends (not just agree between two stationary traces).
+    const moving = make('road');
+    for (const kind of ['person','deer']) {
+      let found;
+      for (let k=0;k<20 && !found;k++) { const a=moving.src.chunk(k).actors.find((a)=>a.kind===kind && a.mode!=='graze'); if(a) found={k,a}; }
+      const d=found.k*300+found.a.s0-50, id=found.k+':'+found.a.id;
+      const at=(tau)=>A.tileWorld(moving,d,0,(key)=>key===id?tau:0).objects.filter((o)=>o.cls===kind).map((o)=>[o.x,o.y,o.z,o.z0,o.z1]);
+      ok('D4e D1 '+kind+' continues moving while placed on tiles', J(at(0))!==J(at(5)), J(found.a));
+    }
+    // Independent diffuse point-light check on an actual ground pixel. The zero beam excludes all headlamp contributions.
+    const light = { x: 4, y: 0, z: 7, cd: 900, rgb: [1, 0.43, 0.1] }, black = D.lutFrom(() => 0);
+    const common = { w: 1, h: 2, ss: 1, hfov: 60, eye: A.EYE, lamps: p.lamps, lut: black, lane: 100, mats: { asphalt: { rho: [0.1, 0.1, 0.1], id: 0 } }, scene: { objects: [], markings: [] } };
+    const img = D.render(Object.assign({}, common, { pointLights: [light] })), px = A.EYE[0] + A.EYE[2] / Math.tan(Math.PI / 6), py = A.EYE[1], r2 = (px - 4) ** 2 + py ** 2 + 49, expected = 0.1 / Math.PI * 900 * 7 / r2 ** 1.5;
+    ok('D4f actual ground RGB equals inverse-square point-light diffuse shading with cosine incidence', Math.abs(img.rgb[3] / expected - 1) < 1e-6 && Math.abs(img.rgb[5] / img.rgb[3] - 0.1) < 1e-6, J({ rgb: Array.from(img.rgb.slice(3)), expected }));
+    const K = D.kit({ Lw: 3.5, A: null, rand: () => 0.5 }); K.person(10, 0, 'light');
+    const objectImg = (lit) => D.render({ w: 128, h: 72, ss: 1, hfov: 60, eye: A.EYE, lamps: p.lamps, lut: black, lane: 3.5, layer: 'objects', scene: { objects: K.O, markings: [] }, pointLights: lit ? [{ x: 6, y: 0, z: 7, cd: 900, rgb: [1,1,1] }] : [] }).rgb;
+    const lit = objectImg(true), unlit = objectImg(false); let diff = 0; for (let i=0;i<lit.length;i++) diff += lit[i] - unlit[i];
+    ok('D4f street light illuminates actual object pixels with the headlamp beam off', diff > 0 && unlit.every((v) => v === 0), 'summed added object RGB ' + diff);
+    const safe = make('road'), legacy = make('road', { safeGap: false }); let guarded = true, caught = false;
+    for (const speed of [5, 50, 130]) { safe.src.traffic.speed = speed; for (let t = 0; t < 2000; t += 3.7) {
+      const d = t * speed / 3.6, min = Math.max(25, 2 * speed / 3.6);
+      guarded = guarded && A.trafficCars(safe.src, d, t).every((c) => c.kind !== 'preceding' || c.rel >= min);
+      caught = caught || A.trafficCars(legacy.src, d, t).some((c) => c.kind === 'preceding' && c.rel < 5);
+    } }
+    ok('D4g default gap guard prevents driving through slower cars at 5/50/130 km/h; off restores legacy close passes', guarded && caught);
+    // Real worker entry point: every row once, partial last row, actors and both lanes, successive positions and a live speed change.
+    let parity = true, frames = 0;
+    for (const name of ['road', 'forest', 'city', 'intersection']) {
+      const pp = make(name), T = A.tracer(); T.cfg({ id: 4, p, arc: null, src: [name, 3.5, false, flags, opts] });
+      for (const [seq, dist, t, speed] of [[1, 40, 0, 50], [2, 1060, 13, 130], [3, 1860, 30, 5]]) {
+        const act = new Map(); A.activate(pp.src, dist, t, act); const tau = (id) => act.has(id) ? t - act.get(id) : 0;
+        pp.src.traffic.speed = speed; const ref = new Float32Array(4*p.w*p.h), got = new Float32Array(ref.length); A.objects(pp, dist, ref, 1, tau, null, null, t);
+        for (let c=0;c<4;c++) { const job=T.job({seq,dist,t,speed,ss:1,act:[...act],c,K:4,wid:0}), f=new Float32Array(job.buf,0,job.len); let off=0;
+          for (const ty of job.trows) { const y=ty*16, len=(Math.min(p.h,y+16)-y)*p.w*4; got.set(f.subarray(off,off+len),y*p.w*4); off+=len; }
+        }
+        parity = parity && ref.every((v,i) => Number.isFinite(v) && v===got[i]) && got.every((v,i) => i%4!==3 || v===1); frames++;
+      }
+    }
+    ok('D4h complete worker frames = main-thread pixels bit for bit across all four scenes, moving tiles, lamps, signals, traffic and actors', parity, frames + ' frames');
+    // Compare actual old code, rather than two paths through the new implementation. No browser, timing or generated baseline values.
+    const vm = require('vm'), cp = require('child_process'), ctx = vm.createContext({ performance });
+    for (const f of ['core','road','drive','drive-scenes','drive-anim']) vm.runInContext(cp.execFileSync('git', ['show', '4bae491:js/'+f+'.js'], { encoding: 'utf8' }), ctx);
+    const old=ctx.RF.DriveAnim, oldD=ctx.RF.Drive; let identical=true, compared=0;
+    for (const name of ['road','forest','city']) for (const bend of [null, RF.Road.arc(250,'right')]) for (const dist of [0,37.3,111.7]) for (const traffic of [false,true]) {
+      const o={wild:true,seed:7,density:0.5,safeGap:false,tiles:false,oncoming:traffic,preceding:traffic}, now=Object.assign({},p,{w:96,h:54,A:bend,src:A.source(name,3.5,false,flags,o)}), then=Object.assign({},now,{src:old.source(name,3.5,false,flags,o)});
+      const g=A.ground(now), h=old.ground(then), r=new Float32Array(4*96*54), s=new Float32Array(r.length); A.objects(now,dist,r,1); old.objects(then,dist,s,1);
+      const a=A.composeCPU(now,g,r,dist), b=old.composeCPU(then,h,s,dist); identical=identical && a.every((v,i)=>v===b[i]); compared++;
+      const scene=D.buildScene(name,{Lw:3.5,A:bend,us:false,seed:7},flags), base=oldD.buildScene(name,{Lw:3.5,A:bend,us:false,seed:7},flags), cam={w:96,h:54,hfov:60,eye:A.EYE,lamps:p.lamps,lut:p.lut,lane:3.5,arc:bend,look:p.look,ss:1};
+      const u=D.render(Object.assign({},cam,{scene})).rgb,v=oldD.render(Object.assign({},cam,{scene:base})).rgb; identical=identical&&u.every((x,i)=>x===v[i]);
+    }
+    ok('D4i tiles OFF is pixel-identical to base 4bae491: cached animation and still renderer, road/forest/city, straight/bend', identical, compared+' displaced worlds');
+  }
   process.exitCode = fails ? 1 : 0;
 })();

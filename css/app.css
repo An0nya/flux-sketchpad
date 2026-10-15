@@ -213,7 +213,8 @@ body.mode-D .canvas-wrap.drive .drive-tools { display: flex; }
 .canvas-wrap:not(.drive) > .drive-gl, .canvas-wrap:not(.drive) > .drive-anim-tools { display: none; }
 .drive-anim-tools { display: none; position: absolute; left: 4px; right: 4px; bottom: 4px; z-index: 2; gap: 4px; flex-wrap: wrap; pointer-events: none; align-items: center; font-size: 11px; color: #fff; }
 body.mode-D .canvas-wrap.drive .drive-anim-tools:not([hidden]), .dp-stage .drive-anim-tools:not([hidden]) { display: flex; }
-.drive-anim-tools button { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); pointer-events: auto; }
+.drive-anim-tools button, .drive-anim-tools select { min-height: 22px; padding: 0 6px; font-size: 11px; background: rgba(11,17,24,.7); pointer-events: auto; }
+.drive-anim-tools [hidden] { display: none; }
 .drive-anim-tools input[type=range] { width: 110px; pointer-events: auto; }
 .drive-anim-tools input.anim-seed { width: 58px; min-height: 22px; padding: 0 4px; font-size: 11px; pointer-events: auto; background: rgba(11,17,24,.7); color: #fff; border: 1px solid var(--line); border-radius: 4px; }
 .drive-anim-tools .anim-speed { min-width: 54px; text-shadow: 0 0 3px #000, 0 0 3px #000; font-variant-numeric: tabular-nums; }
