@@ -618,3 +618,4 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .drive-fit > .drive-tools > *, .drive-fit > .drive-anim-tools > * { flex: 0 0 auto; }
 .drive-notice { position: absolute; left: 8px; right: 8px; top: 38px; z-index: 4; padding: 4px 8px; background: #17283e; color: #fff; font-size: 12px; pointer-events: none; }
 .drive-notice[hidden], .canvas-wrap:not(.drive) > .drive-notice { display: none; }
+.canvas-wrap.drive-fit > .drive-tools { right: 34px; }   /* RB-test: keep the corner free for the reset-zoom icon (it was covered by the scrolling top row) */

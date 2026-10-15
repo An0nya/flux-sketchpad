@@ -87,6 +87,7 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
     // Scroll both full option bars to their last controls and use hit-testing, at each reported width.
     for (const width of [360, 390, 430]) {
       await page.setViewportSize({ width, height: 844 });
+      await page.click('[data-tab=result]');   // phone layout shows one pane at a time: the Drive controls live in Result
       await page.evaluate(() => { const p = document.querySelector('.result-pane'); if (p) p.classList.add('expanded'); RF.UI.redrawSpec(); });
       const fit = await page.evaluate(() => {
         const top = document.querySelector('.drive-tools'), bottom = document.querySelector('.drive-anim-tools'), game = document.querySelector('[data-game=toggle]');
@@ -130,6 +131,7 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
     await page.waitForFunction(() => RF.DriveAnim._.V.glFailed);
     const fallback = await page.evaluate(() => ({ view: RF.UI.dvAnim.view, popout: RF.UI.dvAnim.popout, dialog: !!document.querySelector('.drive-popout'), hidden: RF.DriveAnim._.V.canvas.hidden, still: !!(RF.UI.driveShown && RF.UI.driveShown.res), notice: RF.DriveAnim._.V.why }));
     ok('RB failed restore closes popout and returns to CPU still with notice', fallback.view === 'still' && !fallback.popout && !fallback.dialog && fallback.hidden && fallback.still && /rebuild failed/.test(fallback.notice), fallback);
+    await page.setViewportSize({ width: 1280, height: 720 });   // phone layout hides the Scene pane, so no GL underlay would be visible
     await page.evaluate(() => { RF.RenderGL.setPref(true); RF.RenderGL._resetFailure(); RF.UI.sceneDirty = true; RF.UI.redrawSpec(); });
     await page.waitForFunction(() => [...document.querySelectorAll('.gl-under')].some((c) => c.style.display !== 'none' && c.getClientRects().length));
     await page.evaluate(() => {

@@ -128,6 +128,7 @@ void main() {
   function get(cv) {
     if (failed) return null;
     let r = R.get(cv);
+    if (r && (r.lost || r.gl.isContextLost())) { r.canvas.remove(); R.delete(cv); r = null; }   // a lost context is never reused: re-enabling builds a fresh canvas + context
     if (!r) { try { r = make(cv); R.set(cv, r); } catch (e) { fail(String(e && e.message || e)); return null; } }
     return r;
   }
