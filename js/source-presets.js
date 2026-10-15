@@ -249,6 +249,32 @@
       axis: [1, 0, 0],
       volts: { 12: 825, 13.2: 1095 },
     },
+    'sealed-beam-assumed-low': {
+      label: 'ASSUMED sealed-beam low · transverse filament 4.5 mm', halogen: true,
+      note: 'Assumed sealed-beam filament, NOT an H4 installation. Transverse orientation and 1.4 mm diameter ASSUMED. Length 4.5 mm and flux 1000 lm borrowed from UN R37 H4 as a proxy, not sourced sealed-beam dimensions. No internal H4 cup, bulb glass or tip. See docs/sealed-beam-v2.md.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 4.5, emission: 'surface', dist: 'isotropic', power: 1000 },
+      axis: [0, 1, 0],
+    },
+    'h4-assembly-low': {
+      label: 'H4 low assembly · cup, tip and glass in sealed-beam-v2', halogen: true,
+      note: 'UN R37 H4/1–4: axial filament 4.5 mm, 1000 lm at 13.2 V. Assembly parts are generated ONLY by sealed-beam-v2 (Assembly = Auto/H4); other solvers see a bare filament. R37 constrains shield positions, not its detailed shape. Cup radius, glass wall/index and tip coordinates ASSUMED; see docs/sealed-beam-v2.md for dimensions and primary citations.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 4.5, emission: 'surface', dist: 'isotropic', power: 1000 },
+      axis: [1, 0, 0],
+      volts: { 12: 750, 13.2: 1000 },
+    },
+    'sealed-beam-assumed-high': {
+      label: 'ASSUMED sealed-beam high · transverse filament 5.5 mm', halogen: true,
+      note: 'Assumed sealed-beam filament, NOT an H4 installation. Transverse orientation and 1.4 mm diameter ASSUMED. Length 5.5 mm and flux 1650 lm borrowed from UN R37 H4 as a proxy, not sourced sealed-beam dimensions. No internal H4 cup, bulb glass or tip. See docs/sealed-beam-v2.md.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 5.5, emission: 'surface', dist: 'isotropic', power: 1650 },
+      axis: [0, 1, 0],
+    },
+    'h4-assembly-high': {
+      label: 'H4 high assembly · cup, tip and glass in sealed-beam-v2', halogen: true,
+      note: 'UN R37 H4/1–4: axial filament 5.5 mm, 1650 lm at 13.2 V. Assembly parts are generated ONLY by sealed-beam-v2 (Assembly = Auto/H4); other solvers see a bare filament. R37 constrains shield positions, not its detailed shape. Cup radius, glass wall/index and tip coordinates ASSUMED; see docs/sealed-beam-v2.md for dimensions and primary citations.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 5.5, emission: 'surface', dist: 'isotropic', power: 1650 },
+      axis: [1, 0, 0],
+      volts: { 12: 1250, 13.2: 1650 },
+    },
     'h4-low': {
       label: 'H4 / 9003 halogen · passing-beam filament 4.5 mm', halogen: true,
       note: 'UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets H4/2 and H4/4: passing-beam (low) filament 55 W, IR = 4.5 mm, e = 28.5 mm; 1,000 lm ± 15 % at 13.2 V (reference 750 lm at 12 V). Diameter NOT on the sheet: 1.4 mm assumed. Axial filament (the capsule axis is the reference axis). Not modelled: the H4 internal shield under the filament, the cap obscuration, the glass bulb. The capsule inside a US halogen sealed beam (H6024 etc.) is an “H4-style” burner (forum, forabodiesonly.com); its orientation there is assumed axial.',

@@ -42,6 +42,13 @@
     return def.id;
   }
   const get = (id) => reg.get(id) || null;
+  // Optional scene-editing hook: RF.SolverHooks[id].prepareScene(scene, settings, setKeys) edits the HOST scene (e.g. scene.source) from settings before a solve.
+  // It lives in a js/ file (not the solver file) because the page runs solvers in a worker; returns true when a hook ran.
+  function prepareScene(id, scene, settings, setKeys) {
+    const h = RF.SolverHooks && RF.SolverHooks[id];
+    if (!h || typeof h.prepareScene !== 'function') return false;
+    h.prepareScene(scene, settings, setKeys || []); return true;
+  }
   const unregister = (id) => { if (id !== DEFAULT_ID) reg.delete(id); };
   const list = () => [...reg.values()];
   function defaults(def) { const o = {}; for (const f of def.settings) o[f.key] = f.default; return o; }
@@ -289,5 +296,5 @@
     return res;
   }
 
-  RF.Solvers = { paintOf, metaOf, NO_PREVIEW, PREFERRED_ID, wanted, register, unregister, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, traceAsync, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
+  RF.Solvers = { paintOf, metaOf, NO_PREVIEW, PREFERRED_ID, wanted, register, unregister, prepareScene, get, list, defaults, sanitize, current, settingsOf, inputOf, verify, intentIndex, runSync, runAsync, trace, traceAsync, DEFAULT_ID, SHARED, LIMIT_KEYS, REQUIRED };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

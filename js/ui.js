@@ -239,15 +239,26 @@
     const fields = [], advFields = [];
     if (cur !== RF.Solvers.DEFAULT_ID) {                // the default's settings are the Paint controls above
       sc.solverSettings = sc.solverSettings || {}; const vals = RF.Solvers.settingsOf(sc, cur);
+      if (cur === 'sealed-beam-v2') Object.assign(vals, RF.SealedBeamSource.poseOf(sc, vals));
+      if (cur === 'sealed-beam-v2') fields.push(el('div', { class: 'note' }, 'Fixed optics: filament position/orientation and bulb changes retrace the saved reflector and lens. Design offsets change the lens design on Rebuild. H4 shape assumptions: docs/sealed-beam-v2.md.'));
       const shared = def.settings.filter((f) => RF.Solvers.SHARED.includes(f.key)).map((f) => f.label || f.key);
       if (shared.length) fields.push(el('div', { class: 'note' }, shared.join(', ') + ': from the Paint settings above (shared by every solver).'));
       for (const f of def.settings) {
         if (RF.Solvers.SHARED.includes(f.key) || f.hidden) continue;      // hidden: a solver's internal constant (still overridable from a bench or a saved scene)
-        const set = (v) => { sc.solverSettings[cur] = Object.assign({}, vals, sc.solverSettings[cur], { [f.key]: v }); ui.store.invalidate(['A']); if (ui.store.autoSet) ui.pendingA = performance.now() + 400; markStale(); schedule(); };
+        const set = (v) => {
+          sc.solverSettings[cur] = Object.assign({}, vals, sc.solverSettings[cur], { [f.key]: v });
+          if (cur !== 'sealed-beam-v2') { ui.store.invalidate(['A']); if (ui.store.autoSet) ui.pendingA = performance.now() + 400; markStale(); schedule(); return; }
+          const sourceOnly = cur === 'sealed-beam-v2' && (RF.SealedBeamSource.POSE_KEYS.includes(f.key) || ['sourceModel', 'assembly', 'bulbCup', 'bulbTip', 'bulbGlass', 'bulbRadius', 'bulbWall', 'bulbIor', 'cupRadius'].includes(f.key));
+          if (sourceOnly || (cur === 'sealed-beam-v2' && f.key === 'beam')) C.actions.prepareSolverScene(ui.store, cur, RF.Solvers.sanitize(def, sc.solverSettings[cur]), [f.key]);
+          if (!sourceOnly) ui.store.invalidate(['A']);
+          ui.afterChange({ settings: true });
+        };
         let inp;
         if (f.type === 'select') { inp = el('select', {}, ...(f.options || []).map((o) => el('option', { value: o.value !== undefined ? o.value : o }, o.label || o.value || o))); inp.value = vals[f.key]; inp.addEventListener('change', () => set(inp.value)); }
         else if (f.type === 'checkbox') { inp = el('input', { type: 'checkbox' }); inp.checked = !!vals[f.key]; inp.addEventListener('change', () => set(inp.checked)); }
         else { inp = el('input', { type: f.type === 'range' ? 'range' : 'number', min: f.min, max: f.max, step: f.step || 'any', value: vals[f.key] }); inp.addEventListener('change', () => set(+inp.value)); }
+        inp.dataset.solverSetting = f.key; inp.dataset.solver = cur;
+        if (cur === 'sealed-beam-v2' && vals.mount === 'follow' && RF.SealedBeamSource.POSE_KEYS.slice(0, 3).includes(f.key)) inp.disabled = true;
         // a solver that marks its expert knobs (adv) gets its own split; a bundled model solver that doesn't has them all tucked away
         (f.adv || (def.bundled && !def.settings.some((x) => x.adv)) ? advFields : fields).push(el('div', { class: 'row', title: f.help || '' }, el('label', {}, f.label || f.key), inp));
       }

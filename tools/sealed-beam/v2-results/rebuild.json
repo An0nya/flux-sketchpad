@@ -1,0 +1,42 @@
+[
+  {
+    "name": "sealed-beam-v2-5.75in-high-h4.json",
+    "identical": true,
+    "errors": []
+  },
+  {
+    "name": "sealed-beam-v2-5.75in-high-sealed.json",
+    "identical": true,
+    "errors": []
+  },
+  {
+    "name": "sealed-beam-v2-5.75in-low-h4.json",
+    "identical": true,
+    "errors": []
+  },
+  {
+    "name": "sealed-beam-v2-5.75in-low-sealed.json",
+    "identical": true,
+    "errors": []
+  },
+  {
+    "name": "sealed-beam-v2-7in-high-h4.json",
+    "identical": true,
+    "errors": []
+  },
+  {
+    "name": "sealed-beam-v2-7in-high-sealed.json",
+    "identical": true,
+    "errors": []
+  },
+  {
+    "name": "sealed-beam-v2-7in-low-h4.json",
+    "identical": true,
+    "errors": []
+  },
+  {
+    "name": "sealed-beam-v2-7in-low-sealed.json",
+    "identical": true,
+    "errors": []
+  }
+]

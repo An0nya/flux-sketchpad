@@ -1,7 +1,7 @@
 {
  "app": "FLUX reflector sketchpad",
  "generatedBy": "node tools/flux.js manifest",
- "commit": "b74af10",
+ "commit": "f628861",
  "date": "2026-10-15",
  "docs": {
   "cli": "tools/FLUX-CLI.md",
@@ -89,6 +89,636 @@
      "max": 0.95,
      "step": 0.05,
      "default": 0.8
+    }
+   ]
+  },
+  {
+   "id": "sealed-beam-v2",
+   "name": "Sealed beam v2 (fixed optics, H4 assembly, curved flutes)",
+   "version": "0.2",
+   "modes": [
+    "paint"
+   ],
+   "file": "solvers/sealed-beam-v2.js",
+   "group": "default",
+   "note": "lab",
+   "settings": [
+    {
+     "key": "minDistance",
+     "label": "Min facet distance (mm)",
+     "type": "number",
+     "min": 0,
+     "step": 0.5,
+     "default": 0,
+     "help": "unused: the reflector is one paraboloid"
+    },
+    {
+     "key": "lamp",
+     "label": "Lamp",
+     "type": "select",
+     "default": "7",
+     "options": [
+      {
+       "value": "7",
+       "label": "7\" round (6014 / H6024 family)"
+      },
+      {
+       "value": "5.75",
+       "label": "5¾\" round (4000 family)"
+      }
+     ]
+    },
+    {
+     "key": "beam",
+     "label": "Filament",
+     "type": "select",
+     "default": "low",
+     "options": [
+      {
+       "value": "low",
+       "label": "Low beam (filament beside the focus)"
+      },
+      {
+       "value": "high",
+       "label": "High beam (filament at the focus)"
+      }
+     ]
+    },
+    {
+     "key": "lens",
+     "label": "Cover lens",
+     "type": "select",
+     "default": "fluted",
+     "options": [
+      {
+       "value": "fluted",
+       "label": "Fluted (prismatic)"
+      },
+      {
+       "value": "plain",
+       "label": "Plain flat glass"
+      },
+      {
+       "value": "none",
+       "label": "None (bare paraboloid)"
+      }
+     ]
+    },
+    {
+     "key": "focal",
+     "label": "Focal length (mm, 0 = lamp default)",
+     "type": "number",
+     "min": 0,
+     "step": 0.5,
+     "default": 0
+    },
+    {
+     "key": "lowUp",
+     "label": "Design low filament above focus (mm, ASSUMED)",
+     "type": "number",
+     "min": -10,
+     "step": 0.25,
+     "default": 2.5,
+     "help": "low beam only; assumed (no published offset found)"
+    },
+    {
+     "key": "lowLeft",
+     "label": "Design low filament left of focus (mm, ASSUMED)",
+     "type": "number",
+     "min": -10,
+     "step": 0.25,
+     "default": 1.5,
+     "help": "low beam only; left = +y, sends light right"
+    },
+    {
+     "key": "lowFwd",
+     "label": "Design low filament ahead of focus (mm, ASSUMED)",
+     "type": "number",
+     "min": -10,
+     "step": 0.25,
+     "default": 0,
+     "help": "low beam only; 0 = in the focal plane (US4180755)"
+    },
+    {
+     "key": "mount",
+     "label": "Source adjustment",
+     "type": "select",
+     "default": "fixed",
+     "options": [
+      {
+       "value": "fixed",
+       "label": "FIXED OPTICS — source edits only retrace"
+      },
+      {
+       "value": "follow",
+       "label": "Rebuild optics relative to source (v1)"
+      }
+     ]
+    },
+    {
+     "key": "sourceModel",
+     "label": "Source setup",
+     "type": "select",
+     "default": "scene",
+     "options": [
+      {
+       "value": "scene",
+       "label": "Use scene source"
+      },
+      {
+       "value": "sealed",
+       "label": "ASSUMED sealed-beam filament"
+      },
+      {
+       "value": "h4",
+       "label": "H4 bulb assembly (axial)"
+      }
+     ],
+     "help": "Preset change resets orientation; dimensions and assumptions: docs/sealed-beam-v2.md"
+    },
+    {
+     "key": "focusX",
+     "label": "Fixed reflector focus X (mm)",
+     "type": "number",
+     "min": -1000,
+     "max": 1000,
+     "step": 0.25,
+     "default": 0
+    },
+    {
+     "key": "focusY",
+     "label": "Fixed reflector focus Y (mm)",
+     "type": "number",
+     "min": -1000,
+     "max": 1000,
+     "step": 0.25,
+     "default": 0
+    },
+    {
+     "key": "focusZ",
+     "label": "Fixed reflector focus Z (mm)",
+     "type": "number",
+     "min": -1000,
+     "max": 1000,
+     "step": 0.25,
+     "default": 0
+    },
+    {
+     "key": "sourceFwd",
+     "label": "Filament centre forward (+x) from focus (mm)",
+     "type": "number",
+     "min": -50,
+     "max": 50,
+     "step": 0.25,
+     "default": 0
+    },
+    {
+     "key": "sourceLeft",
+     "label": "Filament centre left (+y; right is negative) from focus (mm)",
+     "type": "number",
+     "min": -50,
+     "max": 50,
+     "step": 0.25,
+     "default": 1.5
+    },
+    {
+     "key": "sourceUp",
+     "label": "Filament centre up (+z) from focus (mm)",
+     "type": "number",
+     "min": -50,
+     "max": 50,
+     "step": 0.25,
+     "default": 2.5
+    },
+    {
+     "key": "sourceAz",
+     "label": "Filament azimuth (0 = axial, 90 = transverse) (°)",
+     "type": "number",
+     "min": -180,
+     "max": 180,
+     "step": 1,
+     "default": 90
+    },
+    {
+     "key": "sourceEl",
+     "label": "Filament elevation (°)",
+     "type": "number",
+     "min": -90,
+     "max": 90,
+     "step": 1,
+     "default": 0
+    },
+    {
+     "key": "sourceRoll",
+     "label": "Filament assembly roll (°)",
+     "type": "number",
+     "min": -180,
+     "max": 180,
+     "step": 1,
+     "default": 0
+    },
+    {
+     "key": "assembly",
+     "label": "Bulb parts",
+     "type": "select",
+     "default": "auto",
+     "options": [
+      {
+       "value": "auto",
+       "label": "Auto (H4 assembly presets only)"
+      },
+      {
+       "value": "none",
+       "label": "None (bare filament)"
+      },
+      {
+       "value": "h4",
+       "label": "H4 assembly"
+      }
+     ]
+    },
+    {
+     "key": "bulbCup",
+     "label": "H4 internal dipping cup",
+     "type": "checkbox",
+     "default": true
+    },
+    {
+     "key": "bulbTip",
+     "label": "H4 opaque bulb tip",
+     "type": "checkbox",
+     "default": true
+    },
+    {
+     "key": "bulbGlass",
+     "label": "H4 bulb glass",
+     "type": "checkbox",
+     "default": true
+    },
+    {
+     "key": "bulbRadius",
+     "label": "H4 glass outer radius (mm, ASSUMED)",
+     "type": "number",
+     "min": 4,
+     "max": 12,
+     "step": 0.25,
+     "default": 8.5
+    },
+    {
+     "key": "bulbWall",
+     "label": "H4 glass wall (mm, ASSUMED)",
+     "type": "number",
+     "min": 0.2,
+     "max": 2,
+     "step": 0.1,
+     "default": 0.7
+    },
+    {
+     "key": "bulbIor",
+     "label": "H4 glass index (ASSUMED)",
+     "type": "number",
+     "min": 1.3,
+     "max": 1.9,
+     "step": 0.01,
+     "default": 1.46
+    },
+    {
+     "key": "cupRadius",
+     "label": "H4 cup radius (mm, ASSUMED)",
+     "type": "number",
+     "min": 1.5,
+     "max": 4,
+     "step": 0.25,
+     "default": 3
+    },
+    {
+     "key": "profile",
+     "label": "Flute profile",
+     "type": "select",
+     "default": "curved",
+     "options": [
+      {
+       "value": "curved",
+       "label": "Curved (sampled parabolic profile)"
+      },
+      {
+       "value": "planar",
+       "label": "Planar cells (v1 approximation)"
+      }
+     ]
+    },
+    {
+     "key": "regions",
+     "label": "Lens regions",
+     "type": "select",
+     "default": "variable",
+     "options": [
+      {
+       "value": "variable",
+       "label": "Variable-width rectangles"
+      },
+      {
+       "value": "uniform",
+       "label": "Uniform rectangles"
+      }
+     ]
+    },
+    {
+     "key": "cellHeight",
+     "label": "Flute region height (mm)",
+     "type": "number",
+     "min": 4,
+     "max": 40,
+     "step": 0.5,
+     "default": 20
+    },
+    {
+     "key": "widthRatio",
+     "label": "Rim / centre flute width",
+     "type": "number",
+     "min": 0.4,
+     "max": 3,
+     "step": 0.1,
+     "default": 1.8,
+     "help": "Changes region area and therefore collected flux, not ray weights"
+    },
+    {
+     "key": "curveSpread",
+     "label": "Within-flute horizontal spread ± (°)",
+     "type": "number",
+     "min": 0,
+     "max": 8,
+     "step": 0.25,
+     "default": 2
+    },
+    {
+     "key": "curveSteps",
+     "label": "Curved profile strips per flute",
+     "type": "number",
+     "min": 2,
+     "max": 16,
+     "step": 1,
+     "default": 4
+    },
+    {
+     "key": "risers",
+     "label": "Trace connecting and perimeter faces",
+     "type": "checkbox",
+     "default": true,
+     "help": "Off is the incomplete v1-style geometry, for comparison only"
+    },
+    {
+     "key": "cell",
+     "label": "Flute region centre width (mm)",
+     "type": "number",
+     "min": 4,
+     "max": 40,
+     "step": 0.5,
+     "default": 10
+    },
+    {
+     "key": "ior",
+     "label": "Glass index",
+     "type": "number",
+     "min": 1.3,
+     "max": 1.9,
+     "step": 0.01,
+     "default": 1.5,
+     "help": "assumed, not a sealed-beam datum"
+    },
+    {
+     "key": "shield",
+     "label": "Filament shield (direct-light cap)",
+     "type": "checkbox",
+     "default": true
+    },
+    {
+     "key": "shieldDist",
+     "label": "Shield distance ahead of filament (mm)",
+     "type": "number",
+     "min": 6,
+     "step": 0.5,
+     "default": 6.5
+    },
+    {
+     "key": "hSpread",
+     "label": "Horizontal spread ± (°)",
+     "type": "number",
+     "min": 0,
+     "max": 30,
+     "step": 0.25,
+     "default": 9,
+     "help": "half-width of the columns’ sideways targets (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "hBias",
+     "label": "Horizontal centre (° right)",
+     "type": "number",
+     "min": -10,
+     "max": 10,
+     "step": 0.25,
+     "default": 2.5,
+     "help": "where the columns’ spread is centred (right = +) (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "hBiasL",
+     "label": "Extra right bias, left half of lens (°)",
+     "type": "number",
+     "min": -10,
+     "max": 10,
+     "step": 0.25,
+     "default": 1,
+     "help": "cells on the lamp’s left half aim this much further right (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "vSpread",
+     "label": "Vertical spread ± (°)",
+     "type": "number",
+     "min": 0,
+     "max": 15,
+     "step": 0.25,
+     "default": 2.5,
+     "help": "half-width of the rows’ up/down targets (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "vCentre",
+     "label": "Vertical centre (° up)",
+     "type": "number",
+     "min": -10,
+     "max": 5,
+     "step": 0.25,
+     "default": -2,
+     "help": "where the rows’ spread is centred (down = −) (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "kick",
+     "label": "Kick-down in the low zone (°)",
+     "type": "number",
+     "min": 0,
+     "max": 15,
+     "step": 0.25,
+     "default": 2,
+     "help": "extra downward aim of the rows below the kick line (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "kickZ",
+     "label": "Kick line (fraction of radius, −1…1)",
+     "type": "number",
+     "min": -1,
+     "max": 1,
+     "step": 0.05,
+     "default": 0,
+     "help": "rows below this height get the kick (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "peak",
+     "label": "Centre-weighting exponent",
+     "type": "number",
+     "min": 0.4,
+     "max": 3,
+     "step": 0.1,
+     "default": 1.3,
+     "help": "> 1 piles the sub-beams toward the centre of the spread (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "leftDrop",
+     "label": "Left side lowered (°)",
+     "type": "number",
+     "min": 0,
+     "max": 6,
+     "step": 0.25,
+     "default": 1.5,
+     "help": "cells aimed left of straight ahead are aimed this much lower (the low beam’s cut-off step) (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "hotR",
+     "label": "Hot-spot zone radius (fraction of lens radius)",
+     "type": "number",
+     "min": 0,
+     "max": 0.8,
+     "step": 0.05,
+     "default": 0.3,
+     "help": "the lens centre is aimed at one hot spot; 0 = no hot-spot zone (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "hotH",
+     "label": "Hot spot, ° right",
+     "type": "number",
+     "min": -3,
+     "max": 6,
+     "step": 0.25,
+     "default": 2,
+     "help": " (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "hotV",
+     "label": "Hot spot, ° up",
+     "type": "number",
+     "min": -4,
+     "max": 1.5,
+     "step": 0.25,
+     "default": -1.5,
+     "help": " (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "hotSpread",
+     "label": "Hot-spot scatter ± (°)",
+     "type": "number",
+     "min": 0,
+     "max": 4,
+     "step": 0.25,
+     "default": 1,
+     "help": " (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "spillR",
+     "label": "Spill zone starts at (fraction of lens radius)",
+     "type": "number",
+     "min": 0.4,
+     "max": 1.05,
+     "step": 0.05,
+     "default": 0.9,
+     "help": "the lens rim is aimed wide; 1.05 = no spill zone (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "spillAngle",
+     "label": "Spill reach ± (°)",
+     "type": "number",
+     "min": 5,
+     "max": 30,
+     "step": 0.5,
+     "default": 18,
+     "help": " (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "spillV",
+     "label": "Spill, ° up",
+     "type": "number",
+     "min": -8,
+     "max": 2,
+     "step": 0.25,
+     "default": -3,
+     "help": " (explicit pattern setting; high-beam examples provide their own starting values)"
+    },
+    {
+     "key": "tune",
+     "label": "Tune the flute pattern against the spec",
+     "type": "checkbox",
+     "default": true,
+     "help": "Spec mode only: coordinate search with tools.trace({spec:true})"
+    },
+    {
+     "key": "tuneRays",
+     "label": "Tuner rays per trace",
+     "type": "number",
+     "min": 20000,
+     "max": 400000,
+     "step": 10000,
+     "default": 60000
+    },
+    {
+     "key": "tuneEvals",
+     "label": "Tuner candidates (0 = off)",
+     "type": "number",
+     "min": 0,
+     "max": 2000,
+     "step": 10,
+     "default": 150
+    },
+    {
+     "key": "tuneAim",
+     "label": "Tuner aim",
+     "type": "select",
+     "default": "frozen",
+     "options": [
+      "scan",
+      "frozen"
+     ],
+     "help": "scan: every trace finds the cut-off aim afresh (the slow part of a trace). frozen: candidates use the starting incumbent aim; full aim procedure once for the final verdict"
+    },
+    {
+     "key": "tuneGpu",
+     "label": "Tuner traces via tools.traceAsync (GPU when the GPU switch is on)",
+     "type": "checkbox",
+     "default": false
+    },
+    {
+     "key": "tuneSeed",
+     "label": "Tuner random seed",
+     "type": "number",
+     "min": 0,
+     "step": 1,
+     "default": 12345,
+     "help": "the (1+1) search’s own dice; another seed is another run of the same search"
+    },
+    {
+     "key": "tuneSeconds",
+     "label": "Tuner time limit (s, 0 = none)",
+     "type": "number",
+     "min": 0,
+     "step": 5,
+     "default": 0,
+     "help": "a wall-clock cap; the result then depends on machine speed. 0 = deterministic"
     }
    ]
   },
@@ -7530,6 +8160,30 @@
    "note": "UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets HB4/1–3: axial filament, f = 5.1 mm, e = 31.5 mm; 1,095 lm ± 15 % at 13.2 V (reference 825 lm at 12 V). Diameter NOT on the sheet: 1.4 mm assumed. The drawing shows a black bulb top (“shall extend to at least angle γ3”); its angle not read yet, so no obscuration data here."
   },
   {
+   "id": "sealed-beam-assumed-low",
+   "label": "ASSUMED sealed-beam low · transverse filament 4.5 mm",
+   "group": null,
+   "note": "Assumed sealed-beam filament, NOT an H4 installation. Transverse orientation and 1.4 mm diameter ASSUMED. Length 4.5 mm and flux 1000 lm borrowed from UN R37 H4 as a proxy, not sourced sealed-beam dimensions. No internal H4 cup, bulb glass or tip. See docs/sealed-beam-v2.md."
+  },
+  {
+   "id": "h4-assembly-low",
+   "label": "H4 low assembly · cup, tip and glass in sealed-beam-v2",
+   "group": null,
+   "note": "UN R37 H4/1–4: axial filament 4.5 mm, 1000 lm at 13.2 V. Assembly parts are generated ONLY by sealed-beam-v2 (Assembly = Auto/H4); other solvers see a bare filament. R37 constrains shield positions, not its detailed shape. Cup radius, glass wall/index and tip coordinates ASSUMED; see docs/sealed-beam-v2.md for dimensions and primary citations."
+  },
+  {
+   "id": "sealed-beam-assumed-high",
+   "label": "ASSUMED sealed-beam high · transverse filament 5.5 mm",
+   "group": null,
+   "note": "Assumed sealed-beam filament, NOT an H4 installation. Transverse orientation and 1.4 mm diameter ASSUMED. Length 5.5 mm and flux 1650 lm borrowed from UN R37 H4 as a proxy, not sourced sealed-beam dimensions. No internal H4 cup, bulb glass or tip. See docs/sealed-beam-v2.md."
+  },
+  {
+   "id": "h4-assembly-high",
+   "label": "H4 high assembly · cup, tip and glass in sealed-beam-v2",
+   "group": null,
+   "note": "UN R37 H4/1–4: axial filament 5.5 mm, 1650 lm at 13.2 V. Assembly parts are generated ONLY by sealed-beam-v2 (Assembly = Auto/H4); other solvers see a bare filament. R37 constrains shield positions, not its detailed shape. Cup radius, glass wall/index and tip coordinates ASSUMED; see docs/sealed-beam-v2.md for dimensions and primary citations."
+  },
+  {
    "id": "h4-low",
    "label": "H4 / 9003 halogen · passing-beam filament 4.5 mm",
    "group": null,
@@ -7546,6 +8200,14 @@
   "examples/sealed-beam-5.75in-high.json",
   "examples/sealed-beam-5.75in-low.json",
   "examples/sealed-beam-7in-high.json",
-  "examples/sealed-beam-7in-low.json"
+  "examples/sealed-beam-7in-low.json",
+  "examples/sealed-beam-v2-5.75in-high-h4.json",
+  "examples/sealed-beam-v2-5.75in-high-sealed.json",
+  "examples/sealed-beam-v2-5.75in-low-h4.json",
+  "examples/sealed-beam-v2-5.75in-low-sealed.json",
+  "examples/sealed-beam-v2-7in-high-h4.json",
+  "examples/sealed-beam-v2-7in-high-sealed.json",
+  "examples/sealed-beam-v2-7in-low-h4.json",
+  "examples/sealed-beam-v2-7in-low-sealed.json"
  ]
 }

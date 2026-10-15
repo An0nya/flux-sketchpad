@@ -187,6 +187,15 @@ traces the **same rays** in 32-bit floats: results match the CPU trace within no
 numbers). Use it from an `async solve` where you trace in a loop; keep `tools.trace` where you need bit-identical reruns.
 Older hosts may lack it: `(tools.traceAsync || tools.trace)(surfaces, o)` works in both (await the result).
 
+## Scene-editing settings (`RF.SolverHooks`, optional)
+
+A solver whose settings edit the *host scene* (for example `scene.source`) cannot do it in `solve`: that only returns surfaces. Register a hook instead:
+**`RF.SolverHooks[id] = { prepareScene(scene, settings, setKeys) {…} }`**. The host calls it through **`RF.Solvers.prepareScene(id, scene, settings, setKeys)`**
+(returns false when there is no hook) before a solve: `flux.js solve` does so with the keys given by `--set`, and the page does so
+(`C.actions.prepareSolverScene`) when a setting changes. The hook must live in a `js/` file that `index.html`, `tests/load.js` and `js/solver-env.js` load, NOT in the solver file:
+the page runs solvers in a worker and only holds a proxy for them on the main thread. Throw to refuse a combination. Solvers without a hook are unaffected.
+Bundled example: `js/sealed-beam-source.js` for `sealed-beam-v2`.
+
 ## Parallel tasks (`tools.pool`, optional)
 
 A solver whose work contains **independent trials** (a tuner's candidates for one knob, the finalists of a search) can let the host run them on

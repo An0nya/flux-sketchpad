@@ -25,7 +25,8 @@ const onDisk = JSON.parse(fs.readFileSync(path.join(ROOT, 'api.json'), 'utf8')),
 check(strip(onDisk) === strip(fresh), 'api.json is current (else: node tools/flux.js manifest --out api.json)', { onDisk: onDisk.solvers.length, now: fresh.solvers.length });
 // Layer 2 needs Playwright; skipped (not failed) where it isn't installed
 let pw = null; for (const p of [process.env.PLAYWRIGHT, 'playwright', '/Users/anya/Projects/agent-qa/node_modules/playwright']) { if (!p) continue; try { require.resolve(p); pw = p; break; } catch (e) { /* next */ } }
-if (!pw) console.log('[SKIP] shot / page: Playwright not found');
+if (process.argv.includes('--node-only')) console.log('[SKIP] shot / page: --node-only (builder contract forbids browser execution)');
+else if (!pw) console.log('[SKIP] shot / page: Playwright not found');
 else {
   const sh = run('shot', ex, '--pane', 'result', '--display', 'ff', '--out', path.join(tmp, 'ff-page.png'));
   const b2 = fs.readFileSync(sh.file);

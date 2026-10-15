@@ -194,10 +194,11 @@ async function pageEval() {
     const sc = readScene(positional[0]), id = flag('solver', (sc.solve && sc.solve.id) || RF.Solvers.PREFERRED_ID || RF.Solvers.DEFAULT_ID), def = id && RF.Solvers.get(id);
     if (!def) die('unknown solver ' + id + ' (see: flux.js list solvers)');
     const sets = Object.fromEntries(flags('set').map((kv) => { const i = kv.indexOf('='); const v = kv.slice(i + 1); return [kv.slice(0, i), v !== '' && !isNaN(+v) ? +v : v === 'true' ? true : v === 'false' ? false : v]; }));
-    const input = RF.Solvers.inputOf(sc);
-    const problem = Object.assign(RF.U.deepCopy({ source: sc.source, envelope: sc.envelope, sim: sc.sim, modeD: sc.modeD, mode: sc.mode }), { target: input.target, modeA: { paint: input.paint && input.paint.cells } });
     const settings = RF.Solvers.sanitize(def, Object.assign(RF.Solvers.settingsOf(sc, id), sets));
     for (const [k, v] of Object.entries(sets)) if (settings[k] !== v) die('setting ' + k + ' = ' + JSON.stringify(v) + ' was replaced by ' + JSON.stringify(settings[k]) + ' (unknown key, out of range, or not one of its options)');
+    RF.Solvers.prepareScene(id, sc, settings, Object.keys(sets));   // optional per-solver scene hook (SOLVER_API.md)
+    const input = RF.Solvers.inputOf(sc);
+    const problem = Object.assign(RF.U.deepCopy({ source: sc.source, envelope: sc.envelope, sim: sc.sim, modeD: sc.modeD, mode: sc.mode }), { target: input.target, modeA: { paint: input.paint && input.paint.cells } });
     const tools = { progress() {}, preview() {}, budget: { rays: Infinity, ms: Infinity }, scene: problem, trace: (s, o) => RF.Solvers.trace(problem, s, o) };
     const nThr = +flag('threads', 0), ent = loadBundled().find((b) => b.id === id);   // --threads N: tools.pool with N worker threads (solvers that declare tasks; the design is the same for any N)
     if (nThr > 0 && def.tasks && ent) { vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'js', 'solver-pool.js'), 'utf8'), { filename: 'solver-pool.js' });

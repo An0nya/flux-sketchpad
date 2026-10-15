@@ -1,0 +1,39 @@
+{"name":"origin","rays":2000000,"peakCd":30386,"lmWindow":496,"spec":{"fmvss-lb2m":{"pass":14,"fail":7,"unsure":1,"aim":"as designed"},"fmvss-lb2v":{"pass":12,"fail":11,"unsure":3,"aim":"cut-off inflection at 0.89\u00b0 U put on 0.4\u00b0 D"}}}
+{"name":"7-low-sealed","rays":2000000,"peakCd":69800,"lmWindow":685,"spec":{"fmvss-lb2m":{"pass":7,"fail":13,"unsure":2,"aim":"as designed"},"fmvss-lb2v":{"pass":9,"fail":13,"unsure":4,"aim":"cut-off inflection at 0.42\u00b0 D put on 0.4\u00b0 D"}}}
+{"name":"right","rays":2000000,"peakCd":27852,"lmWindow":486,"spec":{"fmvss-lb2m":{"pass":19,"fail":3,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":10,"fail":15,"unsure":1,"aim":"cut-off inflection at 0.67\u00b0 U put on 0.4\u00b0 D"}}}
+{"name":"7-low-h4","rays":2000000,"peakCd":6746,"lmWindow":311,"spec":{"fmvss-lb2m":{"pass":12,"fail":10,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":12,"fail":13,"unsure":1,"aim":"cut-off inflection at 0.20\u00b0 U put on 0.4\u00b0 D"}}}
+{"name":"7-low-h4-filament-only","rays":2000000,"peakCd":11309,"lmWindow":659,"spec":{"fmvss-lb2m":{"pass":12,"fail":10,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":14,"fail":11,"unsure":1,"aim":"cut-off inflection at 0.59\u00b0 U put on 0.4\u00b0 D"}}}
+{"name":"left-control","rays":2000000,"peakCd":27702,"lmWindow":487,"spec":{"fmvss-lb2m":{"pass":14,"fail":7,"unsure":1,"aim":"as designed"},"fmvss-lb2v":{"pass":9,"fail":16,"unsure":1,"aim":"cut-off inflection at 0.58\u00b0 U put on 0.4\u00b0 D"}}}
+{"name":"7-high-sealed","rays":2000000,"peakCd":392517,"lmWindow":1094,"spec":{"fmvss-ub2":{"pass":10,"fail":10,"unsure":0,"aim":"as designed"}}}
+{"name":"7-high-h4","rays":2000000,"peakCd":315960,"lmWindow":721,"spec":{"fmvss-ub2":{"pass":9,"fail":11,"unsure":0,"aim":"as designed"}}}
+{"name":"7-high-h4-filament-only","rays":2000000,"peakCd":399013,"lmWindow":1160,"spec":{"fmvss-ub2":{"pass":9,"fail":11,"unsure":0,"aim":"as designed"}}}
+{"name":"5.75-low-sealed","rays":2000000,"peakCd":47934,"lmWindow":693,"spec":{"fmvss-lb2m":{"pass":7,"fail":13,"unsure":2,"aim":"as designed"},"fmvss-lb2v":{"pass":7,"fail":11,"unsure":8,"aim":"cut-off inflection at 0.55\u00b0 U put on 0.4\u00b0 D"}}}
+{"name":"5.75-low-h4","rays":2000000,"peakCd":4758,"lmWindow":279,"spec":{"fmvss-lb2m":{"pass":10,"fail":12,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":10,"fail":15,"unsure":1,"aim":"cut-off inflection at 1.14\u00b0 D put on 0.4\u00b0 D"}}}
+{"name":"5.75-low-h4-filament-only","rays":2000000,"peakCd":7971,"lmWindow":622,"spec":{"fmvss-lb2m":{"pass":12,"fail":10,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":12,"fail":12,"unsure":2,"aim":"cut-off inflection at 0.61\u00b0 U put on 0.4\u00b0 D"}}}
+{"name":"5.75-high-sealed","rays":2000000,"peakCd":267455,"lmWindow":1105,"spec":{"fmvss-ub2":{"pass":11,"fail":9,"unsure":0,"aim":"as designed"}}}
+{"name":"5.75-high-h4","rays":2000000,"peakCd":215081,"lmWindow":731,"spec":{"fmvss-ub2":{"pass":9,"fail":11,"unsure":0,"aim":"as designed"}}}
+{"name":"5.75-high-h4-filament-only","rays":2000000,"peakCd":267224,"lmWindow":1167,"spec":{"fmvss-ub2":{"pass":8,"fail":12,"unsure":0,"aim":"as designed"}}}
+{"name":"7-low-sealed-plain","rays":2000000,"peakCd":62748,"lmWindow":545,"spec":{"fmvss-lb2m":{"pass":6,"fail":16,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":9,"fail":16,"unsure":1,"aim":"cut-off inflection at 0.30° D put on 0.4° D"}}}
+{"name":"7-low-sealed-fluted","rays":2000000,"peakCd":32108,"lmWindow":543,"spec":{"fmvss-lb2m":{"pass":11,"fail":10,"unsure":1,"aim":"as designed"},"fmvss-lb2v":{"pass":10,"fail":12,"unsure":4,"aim":"cut-off inflection at 1.00° U put on 0.4° D"}}}
+{"name":"7-low-sealed-tuned","rays":2000000,"peakCd":22734,"lmWindow":543,"spec":{"fmvss-lb2m":{"pass":14,"fail":7,"unsure":1,"aim":"as designed"},"fmvss-lb2v":{"pass":13,"fail":11,"unsure":2,"aim":"cut-off inflection at 0.86° U put on 0.4° D"}}}
+{"name":"7-low-h4-plain","rays":2000000,"peakCd":6130,"lmWindow":286,"spec":{"fmvss-lb2m":{"pass":12,"fail":10,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":12,"fail":13,"unsure":1,"aim":"cut-off inflection at 0.11° U put on 0.4° D"}}}
+{"name":"7-low-h4-fluted","rays":2000000,"peakCd":15426,"lmWindow":296,"spec":{"fmvss-lb2m":{"pass":9,"fail":11,"unsure":2,"aim":"as designed"},"fmvss-lb2v":{"pass":9,"fail":12,"unsure":5,"aim":"cut-off inflection at 1.02° U put on 0.4° D"}}}
+{"name":"7-low-h4-tuned","rays":2000000,"peakCd":20949,"lmWindow":296,"spec":{"fmvss-lb2m":{"pass":16,"fail":4,"unsure":2,"aim":"as designed"},"fmvss-lb2v":{"pass":12,"fail":12,"unsure":2,"aim":"cut-off inflection at 0.97° U put on 0.4° D"}}}
+{"name":"7-high-sealed-plain","rays":2000000,"peakCd":332279,"lmWindow":892,"spec":{"fmvss-ub2":{"pass":10,"fail":10,"unsure":0,"aim":"as designed"}}}
+{"name":"7-high-sealed-fluted","rays":2000000,"peakCd":84592,"lmWindow":891,"spec":{"fmvss-ub2":{"pass":12,"fail":8,"unsure":0,"aim":"as designed"}}}
+{"name":"7-high-sealed-tuned","rays":2000000,"peakCd":47005,"lmWindow":853,"spec":{"fmvss-ub2":{"pass":20,"fail":0,"unsure":0,"aim":"as designed"}}}
+{"name":"7-high-h4-plain","rays":2000000,"peakCd":267096,"lmWindow":634,"spec":{"fmvss-ub2":{"pass":9,"fail":11,"unsure":0,"aim":"as designed"}}}
+{"name":"7-high-h4-fluted","rays":2000000,"peakCd":54227,"lmWindow":633,"spec":{"fmvss-ub2":{"pass":12,"fail":8,"unsure":0,"aim":"as designed"}}}
+{"name":"7-high-h4-tuned","rays":2000000,"peakCd":51657,"lmWindow":627,"spec":{"fmvss-ub2":{"pass":20,"fail":0,"unsure":0,"aim":"as designed"}}}
+{"name":"5.75-low-sealed-plain","rays":2000000,"peakCd":41686,"lmWindow":533,"spec":{"fmvss-lb2m":{"pass":5,"fail":17,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":9,"fail":16,"unsure":1,"aim":"cut-off inflection at 0.55° U put on 0.4° D"}}}
+{"name":"5.75-low-sealed-fluted","rays":2000000,"peakCd":27450,"lmWindow":530,"spec":{"fmvss-lb2m":{"pass":13,"fail":8,"unsure":1,"aim":"as designed"},"fmvss-lb2v":{"pass":12,"fail":12,"unsure":2,"aim":"cut-off inflection at 0.66° U put on 0.4° D"}}}
+{"name":"5.75-low-sealed-tuned","rays":2000000,"peakCd":28025,"lmWindow":527,"spec":{"fmvss-lb2m":{"pass":17,"fail":5,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":16,"fail":8,"unsure":2,"aim":"cut-off inflection at 0.68° U put on 0.4° D"}}}
+{"name":"5.75-low-h4-plain","rays":2000000,"peakCd":4287,"lmWindow":251,"spec":{"fmvss-lb2m":{"pass":10,"fail":12,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":9,"fail":14,"unsure":3,"aim":"cut-off inflection at 0.70° D put on 0.4° D"}}}
+{"name":"5.75-low-h4-fluted","rays":2000000,"peakCd":13426,"lmWindow":278,"spec":{"fmvss-lb2m":{"pass":12,"fail":9,"unsure":1,"aim":"as designed"},"fmvss-lb2v":{"pass":13,"fail":9,"unsure":4,"aim":"cut-off inflection at 0.93° U put on 0.4° D"}}}
+{"name":"5.75-low-h4-tuned","rays":2000000,"peakCd":15293,"lmWindow":276,"spec":{"fmvss-lb2m":{"pass":18,"fail":4,"unsure":0,"aim":"as designed"},"fmvss-lb2v":{"pass":11,"fail":13,"unsure":2,"aim":"cut-off inflection at 0.69° U put on 0.4° D"}}}
+{"name":"5.75-high-sealed-plain","rays":2000000,"peakCd":223462,"lmWindow":868,"spec":{"fmvss-ub2":{"pass":11,"fail":9,"unsure":0,"aim":"as designed"}}}
+{"name":"5.75-high-sealed-fluted","rays":2000000,"peakCd":60699,"lmWindow":867,"spec":{"fmvss-ub2":{"pass":16,"fail":4,"unsure":0,"aim":"as designed"}}}
+{"name":"5.75-high-sealed-tuned","rays":2000000,"peakCd":45942,"lmWindow":852,"spec":{"fmvss-ub2":{"pass":20,"fail":0,"unsure":0,"aim":"as designed"}}}
+{"name":"5.75-high-h4-plain","rays":2000000,"peakCd":182616,"lmWindow":644,"spec":{"fmvss-ub2":{"pass":9,"fail":11,"unsure":0,"aim":"as designed"}}}
+{"name":"5.75-high-h4-fluted","rays":2000000,"peakCd":41897,"lmWindow":639,"spec":{"fmvss-ub2":{"pass":15,"fail":5,"unsure":0,"aim":"as designed"}}}
+{"name":"5.75-high-h4-tuned","rays":2000000,"peakCd":43858,"lmWindow":636,"spec":{"fmvss-ub2":{"pass":20,"fail":0,"unsure":0,"aim":"as designed"}}}

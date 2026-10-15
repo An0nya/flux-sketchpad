@@ -822,5 +822,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     }
     ok('D4i tiles OFF is pixel-identical to base 4bae491: cached animation and still renderer, road/forest/city, straight/bend', identical, compared+' displaced worlds');
   }
+  // SB2: explicit source mounting / H4 assembly, complete lens geometry and fixed-optics placement reproduction.
+  await require('./sb2-node.js')(ok);
   process.exitCode = fails ? 1 : 0;
 })();

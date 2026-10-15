@@ -24,7 +24,11 @@
     store.on = (fn) => store.listeners.push(fn);
     store.notify = (what) => { store.version++; for (const fn of store.listeners) fn(what); };
     store.notice = (msg) => { store.notices.unshift({ t: Date.now(), msg }); store.notices.length = Math.min(store.notices.length, 8); };
-    store.invalidate = (groups) => { for (const g of groups || []) { store.dirty.add(g); if (g === 'A') store.version++; } };   // version = the token a running solve compares on return
+    store.invalidate = (groups) => {
+      // SB2 fixed mounting: source edits replace only the bulb parts, then retrace the existing reflector/lens.
+      if (groups === srcGroups && fixedSealedBeamSource(store)) { groups = groups.filter((g) => g !== 'A'); store.version++; }
+      for (const g of groups || []) { store.dirty.add(g); if (g === 'A') store.version++; }
+    };   // version = the token a running solve compares on return
     // Rebuild invalidated groups.  A is regenerated only when forceA (button / idle) or auto.
     store.commit = (opts) => {
       opts = opts || {};
@@ -94,6 +98,19 @@
   // ---------------------------------------------------------------- the control table
   const all = ['A', 'B', 'C', 'D'];
   const srcGroups = ['A', 'B', 'C', 'L'];
+  function fixedSealedBeamSource(store) {
+    const sc = store.scene, id = 'sealed-beam-v2';
+    if (!RF.SealedBeamSource || RF.Solvers.current(sc) !== id) return false;
+    const s = RF.Solvers.settingsOf(sc, id);
+    if (s.mount !== 'fixed' || !RF.SealedBeamSource.replaceBulb(sc, s)) return false;
+    sc.solverSettings = sc.solverSettings || {};
+    sc.solverSettings[id] = Object.assign({}, s, RF.SealedBeamSource.poseOf(sc, s));
+    const facts = RF.Solvers.verify(sc, { surfaces: sc.groups.A.surfaces });
+    if (store.reports.A) { store.reports.A.facts = facts; store.reports.A.solveMs = undefined; }
+    ensureBounces(store, RF.SealedBeamSource.isH4(sc.source, s) && s.bulbGlass ? 12 : s.lens === 'none' ? 3 : 8, 'sealed-beam-v2 source assembly / connecting faces.');
+    return true;
+  }
+
   function num(id, label, get, set, o) {
     return Object.assign({ id, label, type: 'number', get, set, modes: all, adv: false, groups: [], min: -Infinity, max: Infinity, step: 'any' }, o || {});
   }
@@ -414,6 +431,12 @@
     applySourcePreset(store, id, opts) { const p = RF.SourcePresets.apply(store.scene.source, id, opts); if (p) store.invalidate(srcGroups); return p; },
     setDriveCurrent(store, amps) { const s = store.scene.source; if (RF.SourcePresets.PRESETS[s.preset] && RF.SourcePresets.PRESETS[s.preset].drive) { RF.SourcePresets.apply(s, s.preset, { amps }); store.invalidate(srcGroups); } },
     setLampVolts(store, volts) { const s = store.scene.source; const p = RF.SourcePresets.PRESETS[s.preset]; if (p && p.volts) { RF.SourcePresets.apply(s, s.preset, { volts }); store.invalidate(srcGroups); } },
+    prepareSolverScene(store, id, settings, keys) {   // the solver's optional prepareScene hook (SOLVER_API.md), then retrace
+      const sc = store.scene;
+      RF.Solvers.prepareScene(id, sc, settings, keys);
+      sc.solverSettings = sc.solverSettings || {}; sc.solverSettings[id] = settings;
+      store.invalidate(srcGroups);
+    },
     moveSource(store, p) { store.scene.source.pos = p.slice(); store.invalidate(srcGroups); },
     setSourceAxis(store, a) { store.scene.source.axis = V.norm(a); store.invalidate(srcGroups); },
     setTargetDistance(store, d) { if (!isFinite(d)) return; store.scene.target.distance = RF.U.clamp(d, targetFloor(store.scene), BY_ID['tgt.dist'].max); store.invalidate(['A', 'B', 'C', 'L']); },

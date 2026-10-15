@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* make-examples.js — writes examples/sealed-beam-<lamp>-<beam>.json: a Spec-mode (FMVSS 108) scene with the H4 filament, the sealed-beam envelope,
+/* make-examples.js — writes examples/sealed-beam-<lamp>-<beam>.json: a Spec-mode (FMVSS 108) scene with the ASSUMED transverse sealed-beam filament, the sealed-beam envelope,
  * the solver set to sealed-beam-v1 with the TUNED flute settings from tools/sealed-beam/results-transverse.jsonl (rows 'fluted, tuned'), and the solved
  * design already in group A so it loads and traces without a solve.   node tools/sealed-beam/make-examples.js [results.jsonl]               */
 const fs = require('fs'), path = require('path');

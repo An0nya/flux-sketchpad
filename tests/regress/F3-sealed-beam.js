@@ -4,7 +4,7 @@ const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync(
 const port = +(process.argv[2] || 8723);
 let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail ? '  — ' + detail : '')); if (!cond) fails++; };
 (async () => {
-  const browser = await pw.chromium.launch(), page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
+  const browser = await pw.chromium.launch({ channel: 'chromium', args: ['--enable-unsafe-webgpu'] }), page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto('http://localhost:' + port + '/index.html');

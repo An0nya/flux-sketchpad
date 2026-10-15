@@ -14,7 +14,7 @@ function makeScene(lamp, beam, opts) {
   RF.Spec.applyPreset(sc.modeD, opts.preset || PRESET_OF[beam]);
   for (const g of ['A', 'B', 'C']) sc.groups[g].enabled = g === 'A';
   sc.groups.A.surfaces = [];
-  RF.SourcePresets.apply(sc.source, beam === 'low' ? 'h4-low' : 'h4-high');
+  RF.SourcePresets.apply(sc.source, opts.filament === 'axial' ? 'h4-' + beam : 'sealed-beam-assumed-' + beam);
   // filament orientation (ASSUMED, no source found): 'transverse' = across the lamp axis, left-right (the classic sealed-beam coil: its length smears the beam sideways, where it is wanted);
   // 'axial' = along the lamp axis (as in an H4 reflector headlamp: its length smears the beam vertically by up to ±8° at the rim)
   Object.assign(sc.source, { pos: [0, 0, 0], axis: opts.filament === 'axial' ? [1, 0, 0] : [0, 1, 0], roll: 0 });
