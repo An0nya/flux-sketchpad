@@ -25,7 +25,20 @@ node tools/flux.js solve my-scene.json --solver sealed-beam-v1 --set beam=high -
 node tools/flux.js heatmap solved.json --out ff.png
 ```
 
-Not here yet (planned): **Layer 2** = real-page commands through Playwright (`shot` canvas screenshots of Optics /
-Result / Drive / Far field, `page --eval` to drive the live app) for what Node can't draw (WebGL drive view, WebGPU);
-**Layer 3** = a generated static `api.json` manifest (solvers, params, presets, version) so a crawler without a browser
-can see what exists.
+## Layer 2: the real page (Playwright)
+For what Node can't draw (WebGL drive view, WebGPU traces, the panels as the user sees them). Each call starts its own
+static server on a free port and its own headless Chromium on the real GPU (`channel: 'chromium'`), so it never touches
+the shared Browser pane and two calls can run at once. A few seconds of start-up per call.
+
+| command | what it does |
+|---|---|
+| `shot [scene.json] --out x.png [--pane result\|scene\|editor\|optics\|page] [--display ff\|drive\|road\|grid\|hits\|smooth\|fid] [--expand] [--mode A-D] [--viewport WxH] [--mobile] [--wait ms]` | loads the scene, waits for the solve and trace to finish, screenshots one pane (or the page). `--mobile` = 390×844 at 3× with touch (the F1 ray cap applies, as on a phone). JSON reports mode, display, ray count, whether the GPU traced, and any page errors |
+| `page [scene.json] --eval "<expression>"` | the expression's value as JSON, evaluated in the live app (`RF` is the app). Promises are awaited |
+
+Playwright is found from `$PLAYWRIGHT`, a global install, or `~/Projects/agent-qa/node_modules/playwright`.
+
+## Layer 3: api.json
+`node tools/flux.js manifest --out api.json` writes the repo-root `api.json`: every solver with its settings (keys,
+types, ranges, defaults, options), Spec presets, light-source presets, examples, the commit. GitHub Pages serves it next to
+`index.html`, so a reader with no browser (a chat model, a crawler) sees what exists. `tests/flux-cli.js` FAILS when it is
+stale: regenerate it after adding a solver, a setting or a preset.

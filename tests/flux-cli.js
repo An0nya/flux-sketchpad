@@ -19,4 +19,18 @@ check(threw, 'an unknown --set fails loudly instead of being dropped');
 const h = run('heatmap', ex, '--out', path.join(tmp, 'ff.png'), '--rays', '200000');
 const buf = fs.readFileSync(h.file);
 check(buf.slice(1, 4).toString() === 'PNG' && buf.readUInt32BE(16) === h.width && buf.readUInt32BE(20) === h.height, 'heatmap writes a PNG of the reported size', { w: h.width, h: h.height });
+// Layer 3: api.json (served next to index.html) must describe the code as it is now; commit/date are allowed to lag
+const strip = (m) => { const c = Object.assign({}, m); delete c.commit; delete c.date; return JSON.stringify(c); };
+const onDisk = JSON.parse(fs.readFileSync(path.join(ROOT, 'api.json'), 'utf8')), fresh = run('manifest');
+check(strip(onDisk) === strip(fresh), 'api.json is current (else: node tools/flux.js manifest --out api.json)', { onDisk: onDisk.solvers.length, now: fresh.solvers.length });
+// Layer 2 needs Playwright; skipped (not failed) where it isn't installed
+let pw = null; for (const p of [process.env.PLAYWRIGHT, 'playwright', '/Users/anya/Projects/agent-qa/node_modules/playwright']) { if (!p) continue; try { require.resolve(p); pw = p; break; } catch (e) { /* next */ } }
+if (!pw) console.log('[SKIP] shot / page: Playwright not found');
+else {
+  const sh = run('shot', ex, '--pane', 'result', '--display', 'ff', '--out', path.join(tmp, 'ff-page.png'));
+  const b2 = fs.readFileSync(sh.file);
+  check(b2.slice(1, 4).toString() === 'PNG' && sh.display === 'ff' && !sh.pageErrors.length, 'shot: far-field pane screenshot, no page errors', { display: sh.display, errors: sh.pageErrors.length });
+  const pv = run('page', ex, '--eval', 'RF.UI.store.scene.groups.A.surfaces.length');
+  check(pv.value === sum.surfaces.A.count, 'page --eval reads the loaded scene from the live app', { value: pv.value });
+}
 process.exitCode = fail ? 1 : 0;
