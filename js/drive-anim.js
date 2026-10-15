@@ -52,13 +52,13 @@
     return n;
   }
   /* tauOf(id, rel0) → seconds since that walker/deer started moving (0 without it: they stand where they start). Random scenery: the chunks around the car, each object once */
-  function place(src, dist, A, tauOf) {
+  function place(src, dist, A, tauOf, skip) {
     const out = [];
     if (src.chunk) {
       const k0 = Math.floor((dist - 6) / PERIOD), K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
       for (let k = k0 - 1; k <= k0 + 1; k++) {
         const base = k * PERIOD, ch = src.chunk(k);
-        if (k >= k0) for (const ob of ch.objects) { const rel = ob.x + base - dist; if (rel >= -6 && rel <= CULL) out.push(move(Object.assign({}, ob), ob, rel, A)); }
+        if (k >= k0) for (const ob of ch.objects) { const rel = ob.x + base - dist; if (rel >= -6 && rel <= CULL) { const n = move(Object.assign({}, ob), ob, rel, A); if (!skip || !skip(n)) out.push(n); } }
         for (const a of ch.actors) {
           const id = k + ':' + a.id, tau = tauOf ? tauOf(id, base + a.s0 - dist) : 0, ps = actorPose(a, tau), rel = base + ps.s - dist; if (rel < -6 || rel > CULL) continue;
           const n0 = K.O.length;
@@ -81,8 +81,24 @@
     return { A, B, pat: pat ? pat.pat : null, ms: Date.now() - t0 };
   }
   // the objects at `dist`, rendered into rgba (4·w·h, cleared by the caller where it was written last); → rows [y0, y1) touched
+  /* Foliage and bark (reflectance ≤ 0.08, nothing retroreflective) the beam cannot reach is black on the screen whether or not it is traced, and the trees are what makes a
+   * dense roadside slow (huge ellipsoids). An upper bound of its luminance, from the beam's largest intensity over the object's bounding cube and the nearest distance, below
+   * 1e-3 cd/m² (a third of one 8-bit step at EV 0, black at any EV in range): not traced. Not with ambient light (it lights diffuse surfaces by itself).                       */
+  function dimFoliage(p) {
+    if (p.look && p.look.ambient > 0) return null;
+    return (n) => {
+      if (n.cls !== 'veg') return false;
+      D.boundOf(n); const b = n.bs, R = b[3]; let I = 0;
+      for (const L of p.lamps) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+        D.hvFast(b[0] + i * R - L[0], b[1] + j * R - L[1], b[2] + k * R - L[2], p.conv || 'A'); const q = D.lutAt(p.lut, D.hv()[0], D.hv()[1]); if (q > I) I = q;
+      }
+      if (!(I > 0)) return true;
+      const d = Math.max(Math.hypot(b[0] - p.lamps[0][0], b[1] - p.lamps[0][1], b[2] - p.lamps[0][2]) - R, 0.5);
+      return 3 * p.lamps.length * 0.08 / Math.PI * I / (d * d) < 1e-3;
+    };
+  }
   function objects(p, dist, rgba, ss, tauOf) {
-    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, scene: { objects: place(p.src, dist, p.A, tauOf), markings: [], verge: p.src.verge } }, camOf(p)));
+    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, scene: { objects: place(p.src, dist, p.A, tauOf, p.src.chunk ? dimFoliage(p) : null), markings: [], verge: p.src.verge } }, camOf(p)));
     return r.rows;
   }
   // coverage of a pixel's footprint [s − h, s + h] by the stripe pattern at s + dist (drive.js covLon with the pattern shifted)
@@ -407,7 +423,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, ground, objects, composeCPU, makeGL, sync, stats, resetStats, bench, closePop, openPop,
+  RF.DriveAnim = { PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, sync, stats, resetStats, bench, closePop, openPop,
     // test hooks
     _: { V, S, frame, size, prepare, exposure, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

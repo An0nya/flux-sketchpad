@@ -225,7 +225,7 @@
       for (let i = 0, n = Math.round(R() * 2.4 * Math.min(1.5, dn)); i < n; i++) { const s = Math.max(40, last + 60) + R() * 40; if (s > 270) break; last = s; const t = types[Math.floor(R() * 3)], side = R() < 0.5 ? 1 : -1; k.sign(s, side > 0 ? k.edgeL + 1.8 + 1.4 * R() : k.edgeR - 1.8 - 1.4 * R(), t[0], t[1]); }
     }
     if (o.veg !== false) {
-      const nb = Math.round(16 * dn), nt = Math.round(4 * dn);
+      const nb = Math.round(14 * dn), nt = Math.round(3 * dn);
       for (const side of [1, -1]) {
         for (let i = 0; i < nb; i++) { const s = (i + R()) * P / nb, off = 1.4 + 9 * R() * R(); k.bush(s, side > 0 ? k.edgeL + off : k.edgeR - off, 0.5 + 0.9 * R()); }
         for (let i = 0; i < nt; i++) { const s = (i + R()) * P / nt, off = 5 + 13 * R(); k.tree(s, side > 0 ? k.edgeL + off : k.edgeR - off, { birch: R() < 0.15 }); }

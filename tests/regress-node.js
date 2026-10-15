@@ -443,6 +443,16 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       const r = D.render(Object.assign({ ss: 2, layer: 'objects', tight: true, scene: { objects: DA.place(a, 0, null).filter((o) => o.cls === 'rpm' && o.x > 8 && o.x < 40), markings: [], verge: a.verge } }, base));
       let lit = 0, covered = 0; for (let q = 0; q < 160 * 90; q++) { if (r.rgb[3 * q] > 0) lit++; if (r.cov[q] > 0) covered++; }
       ok('D1d traced alone, markers 8-40 m ahead light pixels and cover none', lit > 3 && covered === 0, lit + ' lit, ' + covered + ' covered'); }
+    // D1f: foliage the beam cannot reach is left out of the trace; the picture does not change (black either way), and the trace has less to do
+    { const lut = D.lutFrom((h, v) => 30000 * Math.exp(-((h / 10) ** 2 + ((v + 1.5) / 2.5) ** 2))), w = 200, h = 112, p = { w, h, hfov: 60, lamps: [[0, 0.7, 0.7], [0, -0.7, 0.7]], lut, conv: 'A', A: null, lane: 3.5, look: { RL: 0.2 }, src: a };
+      let nAll = 0, nKept = 0, worst = 0; const dim = DA.dimFoliage(p);
+      for (const dist of [0, 55, 130, 210]) {
+        const L1 = DA.place(a, dist, null, () => 0), L2 = DA.place(a, dist, null, () => 0, dim); nAll += L1.filter((o) => o.cls === 'veg').length; nKept += L2.filter((o) => o.cls === 'veg').length;
+        const rgba1 = new Float32Array(4 * w * h), rgba2 = new Float32Array(4 * w * h), cam = Object.assign({ ss: 1, layer: 'objects', tight: true }, { w, h, hfov: 60, eye: DA.EYE, lamps: p.lamps, lut, conv: 'A', lane: 3.5, look: p.look });
+        D.render(Object.assign({ rgba: rgba1, scene: { objects: L1, markings: [], verge: a.verge } }, cam)); D.render(Object.assign({ rgba: rgba2, scene: { objects: L2, markings: [], verge: a.verge } }, cam));
+        for (let q = 0; q < w * h; q++) for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(rgba1[4 * q + c] - rgba2[4 * q + c]));
+      }
+      ok('D1f leaving out unlit foliage changes no pixel by more than 1e-3 cd/m² (' + nKept + ' of ' + nAll + ' foliage pieces traced)', worst < 1e-3 && nKept < nAll, 'worst ' + worst.toExponential(1)); }
     { const eu = mk(7, 1.5, false), us = mk(7, 1.5, true), usb = mk(7, 1.5, true, 'broken');
       ok('D1e US: double solid yellow by default; the broken-line option has ONE patterned yellow line (3 m on, 12 m cycle); the EU road keeps its dashed white line', !us.markings.some((m) => m.pat) && usb.markings.filter((m) => m.pat).length === 1 && usb.markings.find((m) => m.pat).mat === 'yellow-paint' && usb.markings.find((m) => m.pat).pat.on === 3 && eu.markings.find((m) => m.pat).mat === 'white-paint' && eu.markings.find((m) => m.pat).pat.on === 4);
       const g = DA.ground({ w: 160, h: 90, hfov: 60, A: null, lanes: 0, lamps: [[0, 0.7, 0.7], [0, -0.7, 0.7]], lut: D.lutFrom(() => 3000), conv: 'A', lane: 3.5, look: { RL: 0.2 }, src: usb });
