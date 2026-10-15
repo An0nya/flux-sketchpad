@@ -1050,6 +1050,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('MF worst list ranks draft ascending, feature ascending, step descending; JSON excludes draw samples', MF.worst(ds, 'draft')[0].id === 'back' && MF.worst(step, 'step').length === 2 && !('faces' in MF.json(step)) && !('scales' in MF.json(step)));
   }
   require('./traffic-logic.js').run(RF, ok);
+  require('./minigame.js').run(RF, ok);
   console.log(fails ? fails + ' FAILED' : 'all regress-node checks passed');
   process.exitCode = fails ? 1 : 0;
 })();
