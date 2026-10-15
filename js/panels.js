@@ -124,6 +124,15 @@
     say();
     return el('label', { class: 'tog', title: 'Trace on the graphics card (WebGPU) instead of the CPU: the same rays in 32-bit floats, so results match a CPU trace within noise but not to the last digit. Used by the main trace and by solvers that ask for it (tools.traceAsync). Exit-ray lists stay on the CPU. Remembered in this browser; on by default wherever WebGPU works (untick to stay on the CPU).' }, box, ' GPU trace (WebGPU) ', note);
   }
+  // WebGL scene view (js/render-gl.js): Scene and Optics drawn on the graphics card; Canvas 2D stays the fallback. Remembered in this browser, off by default.
+  function glSceneRow(ui) {
+    const G = RF.RenderGL; if (!G) return el('span');
+    const box = el('input', { type: 'checkbox', checked: G.pref() ? true : null }), note = el('small', { class: 'ms' }, '');
+    const say = () => { note.textContent = !G.supported() ? 'no WebGL2 in this browser' : G.failure() ? 'fell back to Canvas 2D: ' + G.failure().slice(0, 80) : G.pref() ? 'on · rays drawn up to 20,000' : ''; };
+    box.addEventListener('change', () => { G.setPref(box.checked); G._resetFailure(); say(); if (ui.applyRayPaths) ui.applyRayPaths(); ui.sceneDirty = true; ui.redrawSpec ? ui.redrawSpec() : null; });
+    say();
+    return el('label', { class: 'tog', title: 'Draw the Scene and Optics views with WebGL instead of Canvas 2D: much cheaper with many rays, and every ray hit can be shown as its own point (Result display: hits). Same camera, colours and picking. Falls back to Canvas 2D if WebGL2 is missing or fails. Raises the “Rays drawn” limit from 2,000 to 20,000. Remembered in this browser; off by default.' }, box, ' WebGL scene view ', note);
+  }
   // per-device ray cap (js/gpu-trace.js rayCap): shown only where the device has one; unticking lifts it for this browser
   function capRow(ui) {
     const G = RF.GpuTrace; if (!G) return el('span');
@@ -211,7 +220,7 @@
     // ---- 3. Simulation
     side.append(section('Simulation', { open: true, key: 'sim', tag: 'rays & grids' }, ...rowsFor(ui, ['rays', 'tgt.res', 'sim.res', 'sim.autoRes']), solveLimitRow(),
       el('div', { class: 'btnrow' }, el('button', { type: 'button', id: 'btn-refine', disabled: true, title: 'Keep tracing the finished run up to twice the rays (up to 50M). Exactly what that ray count would give from scratch, without starting over.', onclick: () => ui.refine(2) }, 'Refine ×2')),
-      section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']), gpuRow(ui), capRow(ui))));
+      section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']), gpuRow(ui), capRow(ui), glSceneRow(ui))));
     // ---- 4. View (display only, remembered per browser)
     side.append(section('View', { open: false, key: 'view', tag: 'display only' },
       el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit'),

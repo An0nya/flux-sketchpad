@@ -817,11 +817,17 @@
     }
     alignFigure('left-canvas', isPaint(sc.mode) ? ui.vLeft : sc.mode === 'B' ? ui.vPick : ui.vProf);
   }
+  // WebGL scene view + Result display 'hits' (no selection): every recorded ray hit as a point on the target plane (the Canvas 2D view shows them binned into a texture)
+  function glHits() {
+    const run = ui.run; if (!(RF.RenderGL && RF.RenderGL.on()) || ui.display !== 'hits' || !run || !run.ctx.hits || !run.ctx.nHits || selScene()) return null;
+    const c = run.ctx; return { n: c.nHits, uv: c.hits, b: c.hitB, key: c };
+  }
   function drawSceneView() {
     if (!ui.model) return;
     const sc = ui.store.scene, wv = watchShown() && ui.watch.model;   // a solve preview: no rays (they belong to the old design)
+    const gh = !wv && glHits();
     ui.handles = RF.Render.drawScene(document.getElementById('scene-canvas'), ui.cam, {
-      scene: sc, model: viewModel(), paths: selScene() ? selScene().paths : ui.run ? ui.run.ctx.paths : null, heatCanvas: wv ? ui.watch.heat || null : sceneHeatTexture(), showRays: !wv && (ui.showRays || !!selScene()), setup: !!ui.setup,
+      scene: sc, model: viewModel(), paths: selScene() ? selScene().paths : ui.run ? ui.run.ctx.paths : null, heatCanvas: wv ? ui.watch.heat || null : gh ? null : sceneHeatTexture(), hits: gh || null, showRays: !wv && (ui.showRays || !!selScene()), setup: !!ui.setup,
       selPrimary: selScene() ? selScene().primaries : null, selSecondary: selScene() ? selScene().secondary : null,
       activeHandle: ui.activeHandle, preview: ui.preview && performance.now() < ui.preview.until ? ui.preview.pts : null, highlight: ui.highlight, sel: selEmph(true),
     });
@@ -1910,8 +1916,9 @@
     // drawn ray paths in the scene (display only — the trace itself is unaffected)
     const rp = document.getElementById('ray-paths'), rpOut = document.getElementById('ray-paths-out');
     try { const v = localStorage.getItem('flux/rayPaths'); if (v !== null) rp.value = v; } catch (e) { /* ignore */ }
+    ui.applyRayPaths = () => { rp.max = RF.RenderGL && RF.RenderGL.on() ? 20000 : 2000; applyRP(true); };   // the WebGL scene view lifts the drawn-rays limit
     const applyRP = (rerun) => { ui.rayPaths = +rp.value; rpOut.textContent = rp.value; try { localStorage.setItem('flux/rayPaths', rp.value); } catch (e) { /* ignore */ } if (rerun) ui.requestRun(false); };
-    rp.addEventListener('input', () => { rpOut.textContent = rp.value; }); rp.addEventListener('change', () => applyRP(true)); applyRP(false);
+    rp.addEventListener('input', () => { rpOut.textContent = rp.value; }); rp.addEventListener('change', () => applyRP(true)); rp.max = RF.RenderGL && RF.RenderGL.on() ? 20000 : 2000; try { const v = localStorage.getItem('flux/rayPaths'); if (v !== null) rp.value = v; } catch (e) { /* ignore */ } applyRP(false);
     const tt = document.getElementById('turntable');
     try { ui.turntable = localStorage.getItem('flux/turntable') !== '0'; } catch (e) { ui.turntable = true; }
     tt.checked = ui.turntable;
