@@ -42,7 +42,7 @@
     const o = opts || {}, dn = o.trafficDensity === undefined ? 1 : Math.max(0, Math.min(3, +o.trafficDensity || 0));
     src.traffic = { seed: (+o.seed || 0) | 0, density: dn, oncoming: !!o.oncoming, preceding: !!o.preceding, models: {} };
     src.traffic.onMode = o.onMode || (o.onKcd === undefined ? 'symmetric' : 'manual'); src.traffic.onKcd = o.onKcd === undefined ? 30 : +o.onKcd;
-    src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
+    src.traffic.logic = !!o.trafficLogic; src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
     if (o.tiles) src.markings = D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });
     if (o.tiles) src.tiles = { seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', grain: o.tex !== false, wet: !!o.wet };
     for (const kind of ['oncoming', 'preceding']) if (src.traffic[kind]) {
@@ -54,6 +54,7 @@
   // One car in each seeded interval of road, then translated by its own travel and ours. Look up only the intervals in view: bounded work even after hours.
   function trafficCars(src, dist, t) {
     const tr = src.traffic, out = []; if (!tr || !tr.density) return out;
+    if (tr.logic) return logicCars(src, dist, t);
     const gap = PERIOD / tr.density;
     for (const kind of ['oncoming', 'preceding']) if (tr[kind]) {
       const shift = dist + (kind === 'oncoming' ? 1 : -1) * TRAFFIC_SPEED[kind] * t;
@@ -66,11 +67,128 @@
     }
     return out;
   }
+  // IDM: Treiber, Hennecke & Helbing (2000), Phys. Rev. E 62, 1805. SI units; s is bumper-to-bumper.
+  const IDM = { T: 1.5, s0: 2, a: 1, b: 1.5, delta: 4, length: 4.4, dt: 0.05 };
+  function idmAcceleration(v, dv, s, v0, params) {
+    const q = Object.assign({}, IDM, params), star = q.s0 + Math.max(0, v * q.T + v * dv / (2 * Math.sqrt(q.a * q.b)));
+    return q.a * (1 - Math.pow(v / Math.max(0.1, v0), q.delta) - (s === Infinity ? 0 : Math.pow(star / Math.max(0.01, s), 2)));
+  }
+  // Longitudinal coordinates increase in the direction of travel. A virtual stop has zero length and speed.
+  // Ballistic integration stops within the step; the final constraint is a numerical safety guard, not extra IDM braking.
+  function idmStep(car, leader, dt, v0, stop, params) {
+    const q = Object.assign({}, IDM, params), half = q.length / 2;
+    let gap = leader ? leader.x - car.x - q.length : Infinity, dv = leader ? car.v - leader.v : 0, bound = leader ? leader.x - q.length - q.s0 : Infinity;
+    if (stop !== undefined && stop - car.x - half < gap) { gap = stop - car.x - half; dv = car.v; bound = Math.min(bound, stop - half - q.s0); }
+    const a = idmAcceleration(car.v, dv, gap, v0, q), h = a < 0 ? Math.min(dt, -car.v / a) : dt;
+    let x = car.x + car.v * h + 0.5 * a * h * h, v = Math.max(0, car.v + a * dt);
+    if (x > bound) { x = Math.max(car.x, bound); v = Math.min(v, leader && bound === leader.x - q.length - q.s0 ? leader.v : 0); }
+    return Object.assign({}, car, { x, v, a });
+  }
+  const isJunction = (tile) => tile.kind === 'intersection' || tile.kind === 't-junction';
+  function speedLimit(src, x) {
+    if (!src.tiles) return 80 / 3.6;
+    const tile = roadTile(src.tiles.seed, Math.floor(x / TILE_LEN));
+    return (isJunction(tile) || tile.kind === 'urban' ? 50 : tile.curvature ? 60 : 80) / 3.6;
+  }
+  // Both directions are through traffic on the same road, so their heads share the main-road green (not the cross-road phase).
+  function trafficSignal(src, car, t) {
+    if (!src.tiles) return null;
+    const dir = car.kind === 'oncoming' ? -1 : 1, k0 = Math.floor(car.x / TILE_LEN); let best = null;
+    for (let k = k0 - 2; k <= k0 + 2; k++) {
+      const tile = roadTile(src.tiles.seed, k); if (!isJunction(tile)) continue;
+      const line = tile.s0 + 100 + dir * (-src.lane - 5.7), gap = dir * (line - car.x) - IDM.length / 2;
+      if (gap >= -1e-7 && (!best || gap < best.gap)) best = { tile, line, gap, lit: signalState(tile, t).lit };
+    }
+    return best;
+  }
+  function trafficSeed(tr, kind, k) {
+    return D.rng((Math.imul(tr.seed, 2654435761) ^ Math.imul(k, 0x9E3779B1) ^ (kind === 'oncoming' ? 0x51ED270B : 0x165667B1)) >>> 0)();
+  }
+  function seedTraffic(src, state, dist, t, initial) {
+    const tr = src.traffic, spacing = PERIOD / tr.density;
+    for (const kind of ['oncoming', 'preceding']) {
+      const dir = kind === 'oncoming' ? -1 : 1, shift = dist - dir * TRAFFIC_SPEED[kind] * t, lo = Math.floor((shift - 400) / spacing), hi = Math.ceil((shift + 1400) / spacing);
+      for (let k = lo; k <= hi; k++) {
+        const id = kind + ':' + k; if (state.seen.has(id)) continue;
+        const x = (k + 0.2 + 0.6 * trafficSeed(tr, kind, k)) * spacing + dir * TRAFFIC_SPEED[kind] * t;
+        if (x > dist + 1400) continue; state.seen.add(id);
+        if ((!initial && x < dist + CULL + 100) || x < dist - 100) continue;
+        if (kind === 'preceding' && x < dist + Math.max(25, 2 * tr.speed / 3.6)) continue;
+        if (state.cars.some((c) => c.kind === kind && Math.abs(c.x - x) < IDM.length + IDM.s0)) continue;
+        const car = { id, kind, x, v: TRAFFIC_SPEED[kind] }, sig = trafficSignal(src, car, t);
+        if (sig && sig.lit !== 'green' && sig.gap < IDM.s0) { car.x = sig.line - dir * (IDM.length / 2 + IDM.s0); car.v = 0; }
+        state.cars.push(car);
+      }
+      for (const id of state.seen) if (id.startsWith(kind + ':') && (+id.split(':')[1] < lo - 8 || +id.split(':')[1] > hi + 8)) state.seen.delete(id);
+    }
+  }
+  function turnPose(car, t) {
+    const tau = Math.max(0, t - car.turn.t), angle = Math.min(Math.PI / 2, tau * 0.8);
+    return { x: car.turn.x, off: car.turn.side * (6 * (1 - Math.cos(angle)) + Math.max(0, tau - Math.PI / 1.6) * 6), yaw: car.turn.side * angle };
+  }
+  function advanceTraffic(src, state, own, t) {
+    const tr = src.traffic, vOwn = Math.max(0, tr.speed / 3.6), rear = Math.max(25, 2 * vOwn);
+    // The camera never brakes. Begin departures early enough to clear its lane, including when it approaches a red queue.
+    // This is a deliberate escape for this stage, not an IDM driver or a legal turning manoeuvre model.
+    for (const c of state.cars) if (c.kind === 'preceding' && !c.turn) {
+      const sig = trafficSignal(src, c, t), rel = c.x - own;
+      if (sig && ((sig.lit !== 'green' && rel < Math.max(60, 4 * vOwn) && sig.gap < 140) || (vOwn > speedLimit(src, sig.tile.s0 + 100) && sig.gap < 12))) c.turn = { t, x: c.x, side: sig.tile.kind === 't-junction' ? sig.tile.side : -1 };
+    }
+    const next = [];
+    for (const kind of ['oncoming', 'preceding']) {
+      const dir = kind === 'oncoming' ? -1 : 1, cars = state.cars.filter((c) => c.kind === kind).sort((a,b) => dir * (b.x - a.x)); let leader = null;
+      for (const c of cars) {
+        if (c.turn) {
+          const pose = turnPose(c, t); c.x = pose.x; next.push(c);
+          if (Math.abs(pose.off) < 2.4) leader = { x: dir * c.x, v: 0 };
+          continue;
+        }
+        const sig = trafficSignal(src, c, t), limit = speedLimit(src, c.x), desired = kind === 'preceding' ? Math.max(limit, vOwn + 2) : limit;
+        const n = idmStep(Object.assign({}, c, { x: dir * c.x }), leader, IDM.dt, desired, sig && sig.lit !== 'green' ? dir * sig.line : undefined);
+        n.x *= dir; next.push(n); leader = { x: dir * n.x, v: n.v };
+      }
+    }
+    // Rear pressure: preserve IDs and speed-match rather than D4's disappearance. Propagate spacing through the convoy.
+    let floor = own + rear;
+    for (const c of next.filter((c) => c.kind === 'preceding').sort((a,b) => a.x - b.x)) {
+      if (c.x < floor) {
+        const sig = trafficSignal(src, c, t);
+        if (!c.turn && sig && sig.lit !== 'green' && sig.gap < 140) c.turn = { t, x: c.x, side: sig.tile.kind === 't-junction' ? sig.tile.side : -1 };
+        if (c.turn) c.turn.x += floor - c.x;
+        c.x = floor; c.v = Math.max(c.v, vOwn);
+      }
+      floor = c.x + IDM.length + IDM.s0;
+    }
+    state.cars = next.filter((c) => c.x > own - 100 && c.x < own + 1600 && (!c.turn || t - c.turn.t < 5));
+  }
+  function logicCars(src, dist, t) {
+    const tr = src.traffic; if (tr.frame && tr.frame.dist === dist && tr.frame.t === t) return tr.frame.cars;
+    let st = tr.state;
+    // Enabling, seeking backwards or jumping the camera starts a new seeded local stream; normal play never reinitialises.
+    if (!st || t < st.time - 1e-8 || (t === st.time && dist !== st.dist) || Math.abs(dist - st.dist) > 200 || t - st.time > 5) {
+      st = tr.state = { time: t, tick: 0, epoch: t, dist, cars: [], seen: new Set() }; seedTraffic(src, st, dist, t, true);
+    }
+    const tick = Math.floor((t - st.epoch) / IDM.dt + 1e-8);
+    for (; st.tick < tick; st.tick++) {
+      const time = st.epoch + (st.tick + 1) * IDM.dt, f = t === st.time ? 1 : (time - st.time) / (t - st.time), own = st.dist + (dist - st.dist) * f;
+      seedTraffic(src, st, own, time, false); advanceTraffic(src, st, own, time);
+    }
+    st.time = t; st.dist = dist;
+    const cars = [];
+    for (const c of st.cars) {
+      if (!tr[c.kind]) continue;
+      const pose = c.turn ? turnPose(c, t) : { x: c.x, off: 0, yaw: 0 }, rel = pose.x - dist;
+      if (rel < -6 || rel > CULL) continue;
+      cars.push({ id: c.id, kind: c.kind, rel, off: (c.kind === 'oncoming' ? src.lane : 0) + pose.off, yaw: pose.yaw, v: c.v, turning: !!c.turn });
+    }
+    return cars;
+  }
+  const copyTraffic = (s) => s && Object.assign({}, s, { cars: s.cars.map((c) => Object.assign({}, c, c.turn ? { turn: Object.assign({}, c.turn) } : {})), seen: new Set(s.seen) });
   // Rotate the whole car around its centre (including emitter normals), so it stays rigid on a bend.
   function trafficObjects(src, cars, A, p) {
     const out = [];
     for (const car of cars) {
-      const q = A ? A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }, c = q.t[0], sn = q.t[1], yaw = Math.atan2(sn, c);
+      const q = A ? A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }, yaw = Math.atan2(q.t[1], q.t[0]) + (car.yaw || 0), c = car.yaw ? Math.cos(yaw) : q.t[0], sn = car.yaw ? Math.sin(yaw) : q.t[1];
       for (const ob of src.traffic.models[car.kind]) {
         const n = Object.assign({}, ob, { x: q.p[0] + ob.x * c - ob.y * sn, y: q.p[1] + ob.x * sn + ob.y * c, bs: undefined, traffic: car.id });
         if (ob.k === 'box') n.yaw = (ob.yaw || 0) + yaw;
@@ -99,8 +217,9 @@
     for (const car of cars) if (car.kind === 'oncoming' && car.rel > 0 && eyeLux(p, car) > 1 && !state.seen.has(car.id)) { state.seen.add(car.id); state.n++; }
     // IDs behind this monotonically advancing stream can never return; keep only the small visible window.
     if (p.src.traffic && p.src.traffic.density) {
-      const k0 = Math.floor((dist + TRAFFIC_SPEED.oncoming * t - 6) / (PERIOD / p.src.traffic.density));
-      for (const id of state.seen) if (+id.split(':')[1] < k0) state.seen.delete(id);
+      const k0 = p.src.traffic.logic ? -Infinity : Math.floor((dist + TRAFFIC_SPEED.oncoming * t - 6) / (PERIOD / p.src.traffic.density));
+      const active = p.src.traffic.logic && new Set((p.src.traffic.state ? p.src.traffic.state.cars.filter((c) => c.x - dist >= -6) : cars).map((c) => c.id));
+      for (const id of state.seen) if (+id.split(':')[1] < k0 || (active && !active.has(id))) state.seen.delete(id);
     }
     return state.n;
   }
@@ -171,6 +290,14 @@
         K.add({ k: 'cyl', x: c1 + 1, y: edgeR - 1, r: 0.07, z0: 0, z1: 5.8, mat: 'pole', cls: 'signal' });
         K.add({ k: 'box', x: c1 + 1, y: (edgeR - 1) / 2, hx: 0.05, hy: Math.abs(edgeR - 1) / 2, z0: 5.65, z1: 5.75, mat: 'pole', cls: 'signal' });
         const sig = signalState(tile, t); K.signal(c1 + 1, 0, 5.25, sig.lit);
+        if (src.traffic.logic) {
+          const first = K.O.length, x = c0 - 1; K.signal(x, lane, 5.25, sig.lit);
+          for (const ob of K.O.slice(first)) {
+            ob.x = 2 * x - ob.x; ob.y = 2 * lane - ob.y;
+            if (ob.k === 'box') ob.yaw = (ob.yaw || 0) + Math.PI;
+            if (ob.k === 'disc') { ob.nx = -ob.nx; ob.ny = -ob.ny; }
+          }
+        }
         // A deterministic crossing during red, with a fresh actor each cycle. This does not control the car or other traffic.
         if (cfg.flags.people !== false && sig.lit === 'red') {
           const off = edgeR - 0.7 + (2 * lane + 1.4) * Math.min(1, sig.phase / 12);
@@ -323,7 +450,7 @@
       job(m) {
         const t0 = performance.now(), W = p.w, H = p.h, TS = 16;
         for (const ty of prev) rgba.fill(0, ty * TS * W * 4, Math.min(H, (ty + 1) * TS) * W * 4);
-        if (m.seq !== seq) { seq = m.seq; if (m.speed !== undefined) p.src.traffic.speed = m.speed; placed = (p.src.tiles ? tileWorld : placedObjects)(p, m.dist, m.t, tauFor(new Map(m.act), m.t)); }          // the scenery of this frame, placed once for all this thread's jobs
+        if (m.seq !== seq) { seq = m.seq; if (m.speed !== undefined) p.src.traffic.speed = m.speed; p.src.traffic.frame = m.traffic ? { dist: m.dist, t: m.t, cars: m.traffic } : null; placed = (p.src.tiles ? tileWorld : placedObjects)(p, m.dist, m.t, tauFor(new Map(m.act), m.t)); }          // the scenery of this frame, placed once for all this thread's jobs
         const rows = objects(p, m.dist, rgba, m.ss, null, m.K > 1 ? (ty) => ty % m.K === m.c : null, placed), tr = rows.trows;
         let len = 0; for (const ty of tr) len += (Math.min(H, (ty + 1) * TS) - ty * TS) * W * 4;
         const f = m.ret && m.ret.byteLength >= len * 4 ? new Float32Array(m.ret) : new Float32Array(len); let off = 0;
@@ -534,9 +661,9 @@ void main() {
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
     const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles]);
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, o.tiles && [o.streetLamps, o.tex, o.wet]]);
-    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, speed: o.speed, tiles: !!o.tiles, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; V.src = source.apply(null, V.srcArgs); V.skey = tkey; }
-    const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity]);
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, !!o.trafficLogic, o.tiles && [o.streetLamps, o.tex, o.wet]]);
+    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, tiles: !!o.tiles, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
+    const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src };
     if (V.gkey !== key || V.rdRef !== I.rd) {
@@ -615,10 +742,10 @@ void main() {
   function sendFrame() {
     const st = S(V.ui), n = Wk.list.length, ss = ssNow(), th = Math.ceil(V.p.h / 16), K = n > 1 ? Math.min(th, 4 * n) : 1; Wk.seq++;
     V.src.traffic.speed = +info().o.speed || 50; pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
-    const b = Wk.busy = { seq: Wk.seq, dist: st.dist, t: st.t, sent: performance.now(), done: 0, next: 0, K, ss, speed: V.src.traffic.speed, act: [...V.act], parts: [] };
+    const b = Wk.busy = { seq: Wk.seq, dist: st.dist, t: st.t, sent: performance.now(), done: 0, next: 0, K, ss, speed: V.src.traffic.speed, traffic: V.src.traffic.logic ? trafficCars(V.src, st.dist, st.t) : null, act: [...V.act], parts: [] };
     for (let i = 0; i < n && b.next < K; i++) sendJob(i, b);
   }
-  function sendJob(i, b) { const ret = Wk.pool.pop(); Wk.list[i].postMessage({ type: 'job', seq: b.seq, dist: b.dist, t: b.t, speed: b.speed, ss: b.ss, act: b.act, c: b.next++, K: b.K, ret, wid: i }, ret ? [ret] : []); }
+  function sendJob(i, b) { const ret = Wk.pool.pop(); Wk.list[i].postMessage({ type: 'job', seq: b.seq, dist: b.dist, t: b.t, speed: b.speed, traffic: b.traffic, ss: b.ss, act: b.act, c: b.next++, K: b.K, ret, wid: i }, ret ? [ret] : []); }
   function onWorker(d) {
     if (!d) return;
     if (d.type === 'err') { failWorkers(d.message); return; }
@@ -658,11 +785,12 @@ void main() {
   // n frames back to back on the workers (no display pacing), waiting for each: → a promise of { msPerFrame (fresh frames), ... stats }
   function benchMT(n) {
     return new Promise((resolve) => {
-      const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, was = st.playing, flashes = V.flash; if (!mt()) { resolve(null); return; }
+      const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, was = st.playing, flashes = V.flash, traffic = V.src.traffic.state; if (!mt()) { resolve(null); return; }
+      V.src.traffic.state = copyTraffic(traffic);
       st.playing = false; V.flash = flashState(); stop(); workerCfg(); resetStats(); const t0 = performance.now(); let i = 0, mid = 0;
       const step = () => {
         if (i === Math.floor(n / 5)) { resetStats(); mid = performance.now(); }       // the first fifth is warm-up (worker start, JIT)
-        if (i++ >= n) { V.gl.sync(); const ms = (performance.now() - mid) / (n - Math.floor(n / 5)); Wk.afterFrame = null; st.dist = d0; st.t = t0s; st.playing = was; V.flash = flashes; flashText(); resolve(Object.assign({ n, msPerFrame: ms, workers: Wk.list.length }, stats())); return; }
+        if (i++ >= n) { V.gl.sync(); const ms = (performance.now() - mid) / (n - Math.floor(n / 5)); Wk.afterFrame = null; st.dist = d0; st.t = t0s; st.playing = was; V.flash = flashes; V.src.traffic.state = traffic; flashText(); resolve(Object.assign({ n, msPerFrame: ms, workers: Wk.list.length }, stats())); return; }
         st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); sendFrame();
       };
       Wk.afterFrame = step; step(); void t0;
@@ -698,6 +826,7 @@ void main() {
     btn('play', 'Play / pause the drive', () => { st.playing = !st.playing; if (st.playing) { if (st.view !== 'anim') st.view = 'anim'; } ui.redrawSpec(); });
     const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Speed of the drive' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); lab.textContent = sp.value + ' km/h'; });
     const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
+    btn('traffic-logic', 'IDM car following and red/yellow stops. Our camera keeps its set speed: caught cars match it, or leave via a junction. Off restores the previous traffic and gap guard.', () => setDV(ui, 'trafficLogic', !info().o.trafficLogic), 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
     const lamps = E('select', { 'data-anim': 'street-lamps', 'aria-label': 'Street lamps on urban tiles', title: 'Downward point lights, diffuse illumination without shadows; approximate sodium / LED colour, not measured fixture photometry' });
     for (const [value, label] of [['off', 'street lamps off'], ['sodium', 'sodium ~2000 K'], ['led', 'LED ~4000 K']]) lamps.append(E('option', { value }, label));
@@ -710,7 +839,7 @@ void main() {
     const dn = E('input', { type: 'range', min: 0.5, max: 3, step: 0.5, 'data-anim': 'density', 'aria-label': 'Scenery density', title: 'How much roadside scenery (1 = about what the still view has)' }); dn.addEventListener('change', () => setDV(ui, 'density', +dn.value));
     btn('cline', 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)', () => setDV(ui, 'cline', info().o.cline === 'broken' ? 'solid' : 'broken'), 'centre');
     bar.append(sd, dice, dn);
-    const td = E('input', { type: 'range', min: 0, max: 3, step: 0.5, 'data-anim': 'traffic-density', 'aria-label': 'Traffic density', title: 'Cars per 300 m in each enabled lane. Oncoming: 50 km/h; preceding: 40 km/h, removed at the minimum gap when gap guard is on.' }); td.addEventListener('change', () => setDV(ui, 'trafficDensity', +td.value));
+    const td = E('input', { type: 'range', min: 0, max: 3, step: 0.5, 'data-anim': 'traffic-density', 'aria-label': 'Traffic density', title: 'Cars per 300 m in each enabled lane. Traffic logic off: oncoming 50 km/h, preceding 40 km/h. On: IDM speeds and signals.' }); td.addEventListener('change', () => setDV(ui, 'trafficDensity', +td.value));
     V.flashLab = E('span', { class: 'anim-speed', 'data-anim': 'flashes' });
     bar.append(E('span', { class: 'anim-speed' }, 'traffic'), td, V.flashLab);
     btn('reset-flashes', 'Start the count again (each driver counts once above 1 lx at their eye)', () => { V.flash = flashState(); V.flashLab.textContent = 'oncoming drivers above 1 lx: 0'; }, 'reset count');
@@ -746,7 +875,8 @@ void main() {
     const trafficOn = o.oncoming || o.preceding;
     if (V.flashLab) V.flashLab.hidden = !trafficOn;
     V.bar.querySelector('[data-anim="reset-flashes"]').hidden = !trafficOn;
-    V.bar.querySelector('[data-anim="gap"]').setAttribute('aria-pressed', String(o.safeGap !== false));
+    V.bar.querySelector('[data-anim="traffic-logic"]').setAttribute('aria-pressed', String(!!o.trafficLogic));
+    V.bar.querySelector('[data-anim="gap"]').setAttribute('aria-pressed', String(o.safeGap !== false)); V.bar.querySelector('[data-anim="gap"]').disabled = !!o.trafficLogic;
     V.bar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.bar.querySelector('[data-anim="street-lamps"]').disabled = !o.tiles;
     V.tileLab.hidden = !o.tiles;
     const wd = o.wild && (o.scene === 'road' || (o.tiles && o.scene === 'intersection'));        // forest and city keep their existing scenery
@@ -818,11 +948,11 @@ void main() {
   function resetStats() { V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
   function bench(n) {
-    const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, flashes = V.flash; V.flash = flashState(); resetStats(); const t0 = performance.now();
+    const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, flashes = V.flash, traffic = V.src.traffic.state; V.src.traffic.state = copyTraffic(traffic); V.flash = flashState(); resetStats(); const t0 = performance.now();
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
-    V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
+    V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, Wk, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
