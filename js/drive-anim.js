@@ -44,7 +44,7 @@
     src.traffic.onMode = o.onMode || (o.onKcd === undefined ? 'symmetric' : 'manual'); src.traffic.onKcd = o.onKcd === undefined ? 30 : +o.onKcd;
     src.traffic.logic = !!o.trafficLogic; src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
     if (o.tiles) src.markings = D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });
-    if (o.tiles) src.tiles = { seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', grain: o.tex !== false, wet: !!o.wet };
+    if (o.tiles) src.tiles = { seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', grain: o.tex !== false, wet: !!o.wet, groundCache: o.tileCache ? {} : null };
     for (const kind of ['oncoming', 'preceding']) if (src.traffic[kind]) {
       const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
       K.car(0, 0, kind === 'oncoming' ? { face: -1, lamps: 'head', kcd: +o.onKcd || 30 } : { face: 1, lamps: 'tail' }); src.traffic.models[kind] = K.O;
@@ -315,7 +315,7 @@
     return { k, s0: k * TILE_LEN, kind, curvature: /[RL]$/.test(kind) ? (kind.endsWith('L') ? 1 : -1) / parseInt(kind, 10) : 0, side: R() < 0.5 ? -1 : 1, phase: Math.floor(R() * 50) };
   }
   // Integrate only a local window, then put the camera at (0,0), facing its tangent. No accumulated drift or growing route history.
-  function tileRoute(seed, dist) {
+  function tileRoute(seed, dist, cached) {
     const parts = [], tiles = [], k0 = Math.floor(dist / TILE_LEN); let x = 0, y = 0, a = 0;
     const point = (q, u) => {
       const b = q.a + q.c * u;
@@ -331,11 +331,22 @@
     const find = (s) => parts.find((q) => s >= q.s && s < q.s + q.len) || (s < parts[0].s ? parts[0] : parts[parts.length - 1]);
     const origin = find(dist), cam = point(origin, dist - origin.s), ca = cam.t[0], sn = cam.t[1];
     for (const q of parts) { const dx = q.x - cam.p[0], dy = q.y - cam.p[1]; q.x = dx * ca + dy * sn; q.y = -dx * sn + dy * ca; q.a -= Math.atan2(sn, ca); q.ca = Math.cos(q.a); q.sn = Math.sin(q.a); }
+    if (cached) for (let i = 1; i < parts.length - 1; i++) {
+      const q = parts[i], end = point(q, q.len), pad = Math.abs(q.c) * q.len * q.len / 8 + 1e-7;
+      // An arc is inside its chord's box plus its sagitta (<= curvature * length² / 8).
+      q.bounds = [Math.min(q.x, end.p[0]) - pad, Math.max(q.x, end.p[0]) + pad, Math.min(q.y, end.p[1]) - pad, Math.max(q.y, end.p[1]) + pad];
+    }
     const at = (s, off) => { const q = find(s + dist), p = point(q, s + dist - q.s), o = off || 0; p.p[0] -= o * p.t[1]; p.p[1] += o * p.t[0]; return p; };
     const frame = (px, py) => {
       let best = Infinity, ans;
       for (let i = 0; i < parts.length; i++) {
-        const q = parts[i], dx = px - q.x, dy = py - q.y, lx = dx * q.ca + dy * q.sn, ly = -dx * q.sn + dy * q.ca;
+        const q = parts[i];
+        if (q.bounds) {
+          const b = q.bounds, bx = Math.max(b[0] - px, px - b[1], 0), by = Math.max(b[2] - py, py - b[3], 0);
+          if (bx * bx + by * by > best * (1 + 1e-12) + 1e-9) continue;
+        }
+        const dx = px - q.x, dy = py - q.y, lx = dx * q.ca + dy * q.sn, ly = -dx * q.sn + dy * q.ca;
+        if (cached && !q.c && ly * ly > best * (1 + 1e-12) + 1e-9) continue;
         let u = q.c ? Math.atan2(q.c * lx, 1 - q.c * ly) / q.c : lx;
         u = Math.max(i === 0 ? -1e5 : 0, Math.min(i === parts.length - 1 ? 1e5 : q.len, u));
         const p = point(q, u), ex = px - p.p[0], ey = py - p.p[1], d = ex * ex + ey * ey;
@@ -351,7 +362,7 @@
   }
   // A frame's markings stay in route coordinates, objects and light positions use the very same route transform.
   function tileWorld(p, dist, t, tauOf) {
-    const src = p.src, cfg = src.tiles, lane = p.lane, A = tileRoute(cfg.seed, dist), edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
+    const src = p.src, cfg = src.tiles, lane = p.lane, A = tileRoute(cfg.seed, dist, !!cfg.groundCache), edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
     const pp = Object.assign({}, p, { A });
     // Street lights can reach foliage outside our beam: keep it for actual per-point shading.
     const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' ? dimFoliage(pp) : null).concat(trafficObjects(src, trafficCars(src, dist, t), A, pp));
@@ -425,7 +436,7 @@
     };
   }
   function tileFrame(p, dist, t, rgba, ss, tauOf, tileRow, world) {
-    const sc = world || tileWorld(p, dist, t, tauOf), r = D.render(Object.assign({}, camOf(p), { arc: sc.A, layer: 'frame', rgba, ss: ss || 2, tight: true, tileRow, hazardMask: p.hazardMask, hazardBodyMask: p.hazardBodyMask, sampleTiles: p.sampleTiles, pointLights: sc.lights, crossings: sc.crossings,
+    const sc = world || tileWorld(p, dist, t, tauOf), r = D.render(Object.assign({}, camOf(p), { arc: sc.A, layer: 'frame', rgba, ss: ss || 2, tight: true, tileRow, groundCache: p.src.tiles.groundCache, hazardMask: p.hazardMask, hazardBodyMask: p.hazardBodyMask, sampleTiles: p.sampleTiles, pointLights: sc.lights, crossings: sc.crossings,
       grain: p.src.tiles.grain ? tileGrain(dist, p.src.tiles.wet) : null, scene: { objects: sc.objects, markings: sc.markings, verge: p.src.verge } }));
     r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
   }
@@ -778,7 +789,8 @@ void main() {
     try {
       V.gl = makeGL(V.canvas); if (!V.gl) throw new Error('float render targets unavailable');
       V.lost = false; V.gkey = ''; V.rdRef = null; V.band = [0, 0];
-      S(V.ui).playing = !!V.resume; say(''); V.ui.redrawSpec();
+      const g = S(V.ui).game;   // UX1-DP-test: a running minigame stays paused after a restore until the player resumes (same as the hidden-tab path)
+      S(V.ui).playing = !!V.resume && !(g && !g.done); say(''); V.ui.redrawSpec();
     } catch (e) { contextFallback('Drive graphics rebuild failed: ' + (e.message || e)); }
   }
   function contextReady() {
@@ -790,8 +802,8 @@ void main() {
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
     const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles]);
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, !!o.trafficLogic, o.tiles && [o.streetLamps, o.tex, o.wet]]);
-    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, tiles: !!o.tiles, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
+    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src };
@@ -954,7 +966,7 @@ void main() {
     let left = dt;
     while (left > 1e-9) {
       const h = Math.min(IDM.dt, left), old = st.camera;
-      const camera = old && Math.abs(old.x - st.dist) < 1e-7 ? old : { x: st.dist, v: 0 };
+      const camera = old && Math.abs(old.x - st.dist) < 1e-7 ? old : { x: st.dist, v: Math.min(speed, speedLimit(V.src, st.dist)) };
       st.camera = cameraStep(V.src, camera, h, st.t); st.total += st.camera.x - st.dist; st.dist = st.camera.x; st.t += h; left -= h;
     }
   }
@@ -1003,14 +1015,18 @@ void main() {
   const E = (tag, attrs, ...kids) => { const e = document.createElement(tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); e.append(...kids); return e; };
   function bars(ui, setDV) {
     if (V.bar) return V.bar;
-    const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
+    const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveBar.querySelector('.drive-primary'), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
     btn('play', 'Play / pause the drive', () => { st.playing = !st.playing; if (st.playing) { if (st.view !== 'anim') st.view = 'anim'; } ui.redrawSpec(); });
-    btn('fit-controls', 'Keep the two toolbars in separate scrolling rows. Off restores wrapping toolbars.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
+    btn('fit-controls', 'Keep primary controls in one scrolling row. Off wraps the primary controls.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
-    const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Speed of the drive' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); lab.textContent = sp.value + ' km/h'; });
+    const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed; traffic logic also obeys road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
     const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
-    btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Camera follows queues; speed is a target. Off restores the previous traffic and gap guard.', () => setDV(ui, 'trafficLogic', !info().o.trafficLogic), 'traffic logic');
+    const speedBox = E('span', { class: 'drive-speed' }); speedBox.append(sp, lab);
+    primary.querySelector('[data-dv=scene]').after(speedBox);
+    primary.append(bar.querySelector('[data-anim=play]'));
+    btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off restores the previous traffic and gap guard.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
+    btn('tile-cache', 'Reuse beam-lit ground samples across route tiles. Moving markings, grain and street lights still update each frame. Animation with tiles only.', () => setDV(ui, 'tileCache', !info().o.tileCache), 'cache ground');
     const lamps = E('select', { 'data-anim': 'street-lamps', 'aria-label': 'Street lamps on urban tiles', title: 'Downward point lights, diffuse illumination without shadows; approximate sodium / LED colour, not measured fixture photometry' });
     for (const [value, label] of [['off', 'street lamps off'], ['sodium', 'sodium ~2000 K'], ['led', 'LED ~4000 K']]) lamps.append(E('option', { value }, label));
     lamps.addEventListener('change', () => setDV(ui, 'streetLamps', lamps.value)); bar.append(lamps);
@@ -1032,6 +1048,7 @@ void main() {
   function flashLabel(dist, t) {
     if (!V.flash) V.flash = flashState();
     countFlashes(V.flash, V.p, dist, t); flashText();
+    speedLabel(V.ui);
     if (V.tileLab && V.src.tiles) { const tile = roadTile(V.src.tiles.seed, Math.floor(dist / TILE_LEN)); V.tileLab.textContent = tile.kind + (['intersection', 't-junction'].includes(tile.kind) ? ' · ' + signalState(tile, t).lit : ''); }
   }
   function topButtons(ui, tb, setDV) {                         // 'animate' and 'popout' go into the existing toolbar
@@ -1042,7 +1059,16 @@ void main() {
     const tiles = E('button', { type: 'button', class: 'toggle', 'data-anim': 'tiles', title: 'Seeded route: straights, bends, intersections, T-junctions and lit urban sections. Off = the original constant road. Animation only; traces at 640 × 360.' }, 'tiles');
     tiles.addEventListener('click', () => setDV(ui, 'tiles', !info().o.tiles));
     const game = E('button', { type: 'button', class: 'toggle', 'data-game': 'toggle', 'aria-pressed': 'false', title: 'Reach > uniformity: five hazards, hold Space or Brake. Game scoring, not legal advice.' }, 'Play');
-    game.addEventListener('click', () => toggleGame(ui)); tb.append(a, p, tiles, game);
+    game.addEventListener('click', () => toggleGame(ui));
+    const primary = tb.querySelector('.drive-primary'); primary.querySelector('.drive-speed') ? primary.querySelector('.drive-speed').after(game) : primary.querySelector('[data-dv=scene]').after(game);
+    primary.append(a, p); tb.querySelector('.drive-extras').append(tiles);
+  }
+  function speedLabel(ui) {
+    if (!ui.driveBar) return;
+    const st = S(ui), o = info().o, lab = ui.driveBar.querySelector('[data-anim=speedlab]');
+    if (!lab) return;
+    const actual = st.camera && o.trafficLogic && st.view === 'anim' ? st.camera.v * 3.6 : o.speed;
+    lab.textContent = o.speed + ' km/h' + (Math.abs(actual - o.speed) >= 0.5 ? ' · actual ' + actual.toFixed(1) + ' km/h' : '');
   }
   function labels(ui) {
     const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
@@ -1052,8 +1078,8 @@ void main() {
     if (!V.bar) return;
     for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
     V.bar.hidden = !(sup && (st.view === 'anim' || st.popout));
-    const run = st.playing && (st.view === 'anim' || st.popout), pb = V.bar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ pause' : '▶ play'; pb.setAttribute('aria-pressed', String(run));
-    V.bar.querySelector('[data-anim="speed"]').value = o.speed; V.bar.querySelector('[data-anim="speedlab"]').textContent = o.speed + ' km/h';
+    const run = st.playing && (st.view === 'anim' || st.popout), pb = ui.driveBar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ pause' : '▶ play'; pb.setAttribute('aria-pressed', String(run));
+    ui.driveBar.querySelector('[data-anim="speed"]').value = o.speed; speedLabel(ui);
     for (const [k] of CLASSES) { const b = V.bar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
     V.bar.querySelector('[data-anim="traffic-density"]').value = o.trafficDensity === undefined ? 1 : o.trafficDensity;
     if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0);
@@ -1062,6 +1088,7 @@ void main() {
     V.bar.querySelector('[data-anim="reset-flashes"]').hidden = !trafficOn;
     V.bar.querySelector('[data-anim="traffic-logic"]').setAttribute('aria-pressed', String(!!o.trafficLogic));
     V.bar.querySelector('[data-anim="gap"]').setAttribute('aria-pressed', String(o.safeGap !== false)); V.bar.querySelector('[data-anim="gap"]').disabled = !!o.trafficLogic;
+    V.bar.querySelector('[data-anim="tile-cache"]').setAttribute('aria-pressed', String(!!o.tileCache)); V.bar.querySelector('[data-anim="tile-cache"]').disabled = !o.tiles;
     V.bar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.bar.querySelector('[data-anim="street-lamps"]').disabled = !o.tiles;
     V.tileLab.hidden = !o.tiles;
     const wd = o.wild && (o.scene === 'road' || (o.tiles && o.scene === 'intersection'));        // forest and city keep their existing scenery
@@ -1089,7 +1116,7 @@ void main() {
     if (!(speed >= 5 && speed <= 130) || !Number.isInteger(seed) || seed < 0 || seed > 99999) { V.gameStatus.textContent = 'Choose 5–130 km/h and a whole seed from 0–99999.'; return; }
     if (!ui.spec || !ui.spec.full || !ui.spec.ev || ui.spec.ctx !== (ui.run && ui.run.ctx)) { V.gameStatus.textContent = 'Finish the lamp’s Spec trace before starting.'; return; }
     stop(); killWorkers();
-    st.game = RF.DriveGame.create({ seed, speed, wet, verdict: ui.spec.ev.verdict, rules: box.querySelector('[data-game=rules]').value, highBeam: /(?:^fmvss-ub|-drive$)/.test(ui.store.scene.modeD.preset || '') }); st.game.ctx = ui.spec.ctx; st.game.judge = ui.spec.ev; st.game.road = info().rd;
+    st.game = RF.DriveGame.create({ seed, speed, wet, verdict: ui.spec.ev.verdict, rules: box.querySelector('[data-game=rules]').value, clearLane: box.querySelector('[data-game=clear-lane]').checked, highBeam: /(?:^fmvss-ub|-drive$)/.test(ui.store.scene.modeD.preset || '') }); st.game.ctx = ui.spec.ctx; st.game.judge = ui.spec.ev; st.game.road = info().rd;
     st.gameOptions = { scene: 'road', tiles: true, wild: true, seed, speed, wet, people: false, animals: false, obstacle: false, trafficLogic: false, oncoming: true, preceding: false };
     // MG2-test: 'symmetric' oncoming lamps carry the PLAYER's design, so a high-reach lamp blinds itself (real GPU, 130 km/h wet: 7in-high first seen 48 m vs default 65 m; with a fixed generic dipped oncoming lamp: 114 m vs 63 m). The lesson needs the lamp under test to be the only variable. Original rules keep the old behaviour.
     if (st.game.rules !== 'legacy') st.gameOptions.onMode = 'generic';
@@ -1143,7 +1170,7 @@ void main() {
     if (!V.gameStatus) return;
     const hits = g.results.filter((r) => r.hit).length, passes = g.results.length - hits, mean = g.reactions.length ? (g.reactions.reduce((a, b) => a + b, 0) / g.reactions.length).toFixed(2) + ' s' : 'not measured';
     const ticket = RF.DriveGame.score({ verdict: g.verdict, flashes: g.flashes }).tickets, last = g.results[g.results.length - 1];
-    V.gameStatus.textContent = (g.done ? 'Run ended' : g.resume !== null ? 'Release Brake · cruise resumes after 2 s' : g.brake ? 'BRAKING' : 'Hold Space or Brake') + ' · ' + (g.v * 3.6).toFixed(1) + ' km/h · ' + g.results.length + '/5 resolved';
+    V.gameStatus.textContent = (g.done ? 'Run ended' : g.resume !== null ? g.clearLane && g.rules !== 'legacy' ? 'Waiting for clear lane · release Brake to resume' : 'Release Brake · cruise resumes after 2 s' : g.brake ? 'BRAKING' : 'Hold Space or Brake') + ' · ' + (g.v * 3.6).toFixed(1) + ' km/h · ' + g.results.length + '/5 resolved';
     V.gameCard.hidden = !g.done;
     if (g.done) {
       V.gameBar.classList.remove('running');
@@ -1163,6 +1190,7 @@ void main() {
       wet.append(E('option', { value: 'dry' }, 'dry'), E('option', { value: 'wet' }, 'wet'));
       const rules = E('select', { 'data-game': 'rules', 'aria-label': 'Hazard rules' });
       rules.append(E('option', { value: 'visible' }, 'Visible hazard'), E('option', { value: 'legacy' }, 'Original rules'));
+      const clearLane = E('input', { 'data-game': 'clear-lane', type: 'checkbox', checked: '' });
       const pause = E('button', { type: 'button', 'data-game': 'pause' }, 'Pause');
       pause.addEventListener('click', () => { st.playing = !st.playing; ui.redrawSpec(); });
       const start = E('button', { type: 'button', 'data-game': 'start' }, 'Start run'), brake = E('button', { type: 'button', 'data-game': 'brake', 'aria-label': 'Hold to brake', 'aria-pressed': 'false' }, 'Hold: BRAKE');
@@ -1176,12 +1204,17 @@ void main() {
         const inputs = st.game.inputs || (st.game.inputs = new Set()); source = source || 'pointer'; if (!active() || source === 'all') inputs.clear(); else if (held) inputs.add(source); else inputs.delete(source); RF.DriveGame.press(st.game, inputs.size > 0, now); brake.setAttribute('aria-pressed', String(st.game.brake)); gameText(st.game); };
       brake.addEventListener('pointerdown', (e) => { e.preventDefault(); brake.setPointerCapture(e.pointerId); hold(true); });
       for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) brake.addEventListener(event, () => hold(false));
+      // Non-passive touch listeners suppress iOS selection/callout without losing hold-to-brake.
+      brake.addEventListener('touchstart', (e) => { e.preventDefault(); hold(true, 'touch'); }, { passive: false });
+      for (const event of ['touchend', 'touchcancel']) brake.addEventListener(event, (e) => { e.preventDefault(); hold(false, 'touch'); }, { passive: false });
+      box.addEventListener('touchstart', (e) => { if (e.target === box || e.target.closest('[data-game=brake],[data-game=status],strong,small')) e.preventDefault(); }, { passive: false });
+      box.addEventListener('contextmenu', (e) => e.preventDefault());
       document.addEventListener('keydown', (e) => { if (e.code === 'Space' && active() && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); if (!e.repeat) hold(true, 'keyboard'); } });
       document.addEventListener('keyup', (e) => { if (e.code === 'Space' && st.game) { e.preventDefault(); hold(false, 'keyboard'); } });
       const suspend = () => { if (st.game && !st.game.done) { hold(false, 'all'); if (st.game.pauseAt === undefined) st.game.pauseAt = performance.now(); st.playing = false; stop(); ui.redrawSpec(); } };
       root.addEventListener('blur', suspend); document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); });
       V.gameStatus = E('div', { 'data-game': 'status', role: 'status' }); V.gameCard = E('div', { 'data-game': 'card', class: 'game-card', hidden: '' });
-      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), rules, start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. A stop passes the encounter; release after a stop to resume cruise after 2 s. Game flavour, not legal advice.'));
+      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), rules, E('label', {}, clearLane, ' Wait for clear lane'), start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. After a stop, hazards leave the road before cruise resumes (at least 2 s). Uncheck Wait for clear lane or choose Original rules for the previous resume. Game flavour, not legal advice.'));
       V.cv.parentElement.append(box); speed.value = info().o.speed; seed.value = info().o.seed; wet.value = info().o.wet ? 'wet' : 'dry';
     }
     if (V.notice) V.notice.hidden = !V.why || (st.gameMode && !V.lost);
@@ -1230,7 +1263,7 @@ void main() {
   function mount(ui) {
     const st = S(ui), host = st.popout && V.popStage ? V.popStage : (V.cv ? V.cv.parentElement : null); if (!host) return;
     host.classList.toggle('drive-fit', info().o.fitControls !== false);
-    for (const e of [V.canvas, ui.driveBar, V.bar, V.gameBar, V.notice]) if (e && e.parentElement !== host) host.append(e);
+    for (const e of [V.canvas, ui.driveBar, V.gameBar, V.notice]) if (e && e.parentElement !== host) host.append(e);
   }
 
   // ---------------------------------------------------------------- hook from drawDrive
@@ -1240,7 +1273,7 @@ void main() {
     if (st.game) Object.assign(I.o, st.gameOptions);
     if (st.popout && !popValid(ui)) closePop(ui);
     topButtons(ui, I.toolbar, I.setDV); bars(ui, I.setDV);
-    if (!V.bar.parentElement) cv.parentElement.append(V.bar);
+    if (!V.bar.parentElement) ui.driveBar.querySelector('.drive-extras').append(V.bar);
     if (!st.popout) mount(ui);
     if (!supported(I.o)) { if (st.popout) closePop(ui); st.view = 'still'; }
     labels(ui); gameControls(ui);

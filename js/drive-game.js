@@ -87,7 +87,7 @@
   }
   function create(o) {
     const rand = RF.Drive.rng((o.seed | 0) ^ 0x4d47414d);
-    return { rules: o.rules === 'legacy' ? 'legacy' : 'visible', seed: o.seed | 0, speed: o.speed, wet: !!o.wet, verdict: o.verdict || 'unsure', highBeam: !!o.highBeam, rand, next: 10 + 10 * rand(), t: 0, x: 0, v: o.speed / 3.6, brake: false, hazards: [], results: [], seen: 0, reactions: [], flashes: 0, spawned: 0, limit: 5, done: false, accumulator: 0, resume: null, wallLit: null };
+    return { rules: o.rules === 'legacy' ? 'legacy' : 'visible', clearLane: o.clearLane !== false, seed: o.seed | 0, speed: o.speed, wet: !!o.wet, verdict: o.verdict || 'unsure', highBeam: !!o.highBeam, rand, next: 10 + 10 * rand(), t: 0, x: 0, v: o.speed / 3.6, brake: false, hazards: [], results: [], seen: 0, reactions: [], flashes: 0, spawned: 0, limit: 5, done: false, accumulator: 0, resume: null, wallLit: null };
   }
   function legacySpawn(g, lane, p) {
     const A = RF.DriveAnim, r = g.rand, distance = 80 + 100 * r(), desiredPerson = r() < 0.1, initialSide = r() < 0.5 ? -1 : 1;
@@ -134,7 +134,11 @@
     const h = { id: ++g.spawned, born: g.t, kind: person ? 'person' : 'deer', s0: s, off0: off, ds: 0, doff: -side, spd, len: Math.abs(off) + .15, delay, side, crosswalk, noHiViz: r() < .5, jaywalking: person && (!crosswalk || A.signalState(tile, g.t).lit !== 'red'), lit: null, reaction: null, resolved: false, outsideLux };
     g.hazards.push(h); g.next += 10 + 10 * r(); return h;
   }
-  const pose = (g, h, t) => RF.DriveAnim.actorPose(h, Math.max(0, t - h.born));
+  const pose = (g, h, t) => { const a = h.leaving && t >= h.leaving.born ? h.leaving : h; return RF.DriveAnim.actorPose(a, Math.max(0, t - a.born)); };
+  const waitsForLane = (g) => g.clearLane && g.rules !== 'legacy';
+  function laneClear(g) {
+    return g.hazards.every((h) => { const b = box(pose(g, h, g.t), h.kind), lane = g.lane || 3.5; return b.x + b.hx < g.x - 4.4 || b.y + b.hy < -lane / 2 || b.y - b.hy > 1.5 * lane; });
+  }
   const box = (ps, kind) => ({ x: ps.s, y: ps.off, hx: kind === 'person' ? 0.2 : 0.32, hy: kind === 'person' ? 0.2 : 0.95 });
   const car = (x) => ({ x: x - 2.2, y: 0, hx: 2.2, hy: 0.9 });
   function resolve(g, h, hit, speed, fraction) {
@@ -142,14 +146,20 @@
     const s = score({ hit, speed, fraction, verdict: g.verdict, person: h.kind === 'person', noHiViz: h.noHiViz, jaywalking: h.jaywalking, crosswalk: h.crosswalk, highMisuse: g.highBeam && (g.flashes > 0 || ['urban', 'intersection', 't-junction'].includes(RF.DriveAnim.roadTile(g.seed, Math.floor(g.x / 200)).kind)) });
     g.results.push(Object.assign({ id: h.id, kind: h.kind, hit, speed, reaction: h.reaction, fraction }, s));
     if (s.lost || g.results.length >= g.limit) g.done = true;
-    else if (g.v === 0 || hit) { g.v = 0; g.resume = g.t + 2; }
+    else if (g.v === 0 || hit) {
+      g.v = 0; g.resume = g.t + 2;
+      if (waitsForLane(g)) {
+        const ps = pose(g, h, g.t), dir = h.doff || -h.side || 1, target = dir > 0 ? 1.5 * (g.lane || 3.5) + 2.2 : -(g.lane || 3.5) / 2 - 2.2;
+        h.leaving = { born: g.t, kind: h.kind, s0: ps.s, off0: ps.off, ds: 0, doff: dir, spd: h.kind === 'person' ? 1.3 : 3.5, len: Math.abs(target - ps.off), delay: 0 };
+      }
+    }
   }
   function step(g, dt, lane, p) {
-    if (g.done) return; g.accumulator += dt;
+    if (g.done) return; g.lane = lane; g.accumulator += dt;
     while (g.accumulator + 1e-10 >= STEP && !g.done) {
       g.accumulator -= STEP;
-      if (g.resume !== null && g.t >= g.resume && !g.brake) { g.v = g.speed / 3.6; g.resume = null; }
-      if (g.spawned < g.limit && g.t + 1e-9 >= g.next) spawn(g, lane, p);
+      if (g.resume !== null && g.t >= g.resume && !g.brake && (!waitsForLane(g) || laneClear(g))) { g.v = g.speed / 3.6; g.resume = null; }
+      if (g.spawned < g.limit && g.t + 1e-9 >= g.next && !(waitsForLane(g) && g.resume !== null)) spawn(g, lane, p);
       const oldX = g.x, oldV = g.v, oldT = g.t, m = motion(g.v, STEP, g.brake, g.wet); g.x += m.dx; g.v = m.v; g.t += STEP;
       for (const h of g.hazards) if (!h.resolved) {
         const a = box(pose(g, h, oldT), h.kind), b = box(pose(g, h, g.t), h.kind), f = sweep(car(oldX), a, car(g.x), b);
@@ -164,5 +174,5 @@
     if (held && !g.brake) for (const h of g.hazards) if (!h.resolved && h.lit !== null && h.reaction === null) { h.reaction = Math.max(0, (now - h.lit) / 1000); g.reactions.push(h.reaction); }
     g.brake = held;
   }
-  RF.DriveGame = { G, STEP, mu, stoppingDistance, motion, overlap, sweep, score, VISIBILITY, firstLit, legacyFirstLit, create, spawn, pose, box, car, step, press, resolve };
+  RF.DriveGame = { G, STEP, mu, stoppingDistance, motion, overlap, sweep, score, VISIBILITY, firstLit, legacyFirstLit, create, spawn, pose, laneClear, box, car, step, press, resolve };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

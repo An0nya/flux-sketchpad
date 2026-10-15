@@ -84,15 +84,17 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
     await page.waitForFunction(() => !RF.DriveAnim._.V.lost && RF.UI.dvAnim.playing && RF.DriveAnim._.V.frames > __rbFrames + 1);
     ok('RB playing Drive automatically resumes fresh frames after context restoration', await page.evaluate(() => RF.UI.dvAnim.playing && !!RF.DriveAnim._.V.raf));
     await page.evaluate(() => { RF.UI.dvAnim.playing = false; RF.UI.redrawSpec(); });
-    // Scroll both full option bars to their last controls and use hit-testing, at each reported width.
+    // UX1 nests extras in More; retain RB's phone hit-test and non-overlap check on the new panel.
     for (const width of [360, 390, 430]) {
       await page.setViewportSize({ width, height: 844 });
       await page.click('[data-tab=result]');   // phone layout shows one pane at a time: the Drive controls live in Result
       await page.evaluate(() => { const p = document.querySelector('.result-pane'); if (p) p.classList.add('expanded'); RF.UI.redrawSpec(); });
       const fit = await page.evaluate(() => {
-        const top = document.querySelector('.drive-tools'), bottom = document.querySelector('.drive-anim-tools'), game = document.querySelector('[data-game=toggle]');
+        const top = document.querySelector('.drive-primary'), more = document.querySelector('.drive-more'), bottom = document.querySelector('.drive-extras'), game = document.querySelector('[data-game=toggle]');
+        more.open = false;
         game.scrollIntoView({ block: 'nearest', inline: 'end' });
-        const t = top.getBoundingClientRect(), b = bottom.getBoundingClientRect(), r = game.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        const t = top.getBoundingClientRect(), r = game.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        more.open = true; const b = bottom.getBoundingClientRect(); more.open = false;
         return { top: [t.top, t.bottom], bottom: [b.top, b.bottom], gameHit: hit === game, within: r.left >= 0 && r.right <= innerWidth, scroll: top.scrollWidth > top.clientWidth };
       });
       ok('RB full Drive controls do not overlap at ' + width + ' px; Play can be clicked', fit.top[1] <= fit.bottom[0] && fit.gameHit && fit.within && fit.scroll, fit);
