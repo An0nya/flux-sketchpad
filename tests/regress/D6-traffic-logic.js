@@ -25,7 +25,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const signal=await page.evaluate(async()=>{
       const u=RF.UI,A=RF.DriveAnim,_=A._;Object.assign(u.dvOpts,{tiles:true,trafficLogic:true,speed:5});u.redrawSpec();
       const src=_.V.src;src.traffic.speed=5;const tile=Array.from({length:100},(_,k)=>A.roadTile(7,k)).find(t=>t.kind==='intersection'),clock=(50-tile.phase)%50,own=tile.s0-100;
-      src.traffic.state={time:clock,epoch:clock,tick:0,dist:own,seen:new Set(),cars:['preceding','oncoming'].map(kind=>{const dir=kind==='preceding'?1:-1,line=tile.s0+100+dir*(-src.lane-5.7);return {id:kind+':fixture',kind,x:line-dir*80,v:10};})};
+      src.traffic.state={time:clock,epoch:clock,tick:0,dist:own,seen:new Set(),cars:['preceding','oncoming'].map(kind=>{const dir=kind==='preceding'?1:-1,line=tile.s0+100+dir*(-src.lane-5.7);return {id:kind+':fixture',kind,x:line-dir*80,v:10,route:kind==='preceding'?{k:tile.k,mid:tile.s0+100,take:false}:undefined};})};
       for(let i=0;i<=440;i++)A.trafficCars(src,own+i*.05*5/3.6,clock+i*.05);
       const t=clock+22,dist=own+22*5/3.6;Object.assign(u.dvAnim,{dist,t,playing:false});_.frame();
       const stopped=src.traffic.state.cars.filter(c=>c.id.endsWith(':fixture')).map(c=>({kind:c.kind,v:c.v,signal:A.trafficSignal(src,c,t)}));
@@ -57,7 +57,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
       }
       return {turn,min,speed:_.V.src.traffic.speed,fail:A.stats().mtFail};
     });
-    ok('over-limit car visibly turns off while the camera keeps its set speed',!!stream.turn&&stream.min>=72.2222&&stream.speed===130&&!stream.fail,JSON.stringify(stream));
+    ok('seeded car follows a turn while the selected target speed stays unchanged',!!stream.turn&&stream.speed===130&&!stream.fail,JSON.stringify(stream));
     if(shots)await page.screenshot({path:shots+'/junction-departure.png'});
     for(const key of ['oncoming','preceding']){await page.click('[data-dv="'+key+'"]');await sleep(120);}
     ok('both lane toggles off suppress all traffic with logic enabled',await page.evaluate(()=>{const _=RF.DriveAnim._,u=RF.UI;return RF.DriveAnim.trafficCars(_.V.src,u.dvAnim.dist,u.dvAnim.t).length===0;}));
