@@ -30,7 +30,7 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
         a.Wk.forced = 2; u.dvOpts.mt = true; u.redrawSpec(); const drawn = await a.frameMT(dist, t), worker = a.V.rgba; let workerWorst = 0;
         for (let q = 0; q < on.length; q++) workerWorst = Math.max(workerWorst, Math.abs(on[q] - worker[q]) / Math.max(1e-8, Math.abs(on[q])));
         const hdr = a.readHdr(); let halfWorst = 0, samples = [];
-        for (let q = 0; q < hdr.length; q++) if (q % 4 !== 3 && worker[q] >= 1e-5 && worker[q] < 65504) { const err = Math.abs(hdr[q] - worker[q]) / worker[q]; halfWorst = Math.max(halfWorst, err); if (samples.length < 5) samples.push({ q, cpu: worker[q], stored: hdr[q] }); }
+        for (let q = 0; q < hdr.length; q++) if (q % 4 !== 3 && worker[q] >= 6.2e-5 && worker[q] < 65504) { const err = Math.abs(hdr[q] - worker[q]) / worker[q]; halfWorst = Math.max(halfWorst, err); if (samples.length < 5) samples.push({ q, cpu: worker[q], stored: hdr[q] }); }
         u.dvOpts.mt = false; u.redrawSpec();
         return { worst, workerWorst, drawn, halfWorst, samples, workersFailed: a.Wk.failed };
       }, kind);

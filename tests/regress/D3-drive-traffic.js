@@ -9,7 +9,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try {
     const page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
-    await page.addInitScript(() => localStorage.clear());
+    await page.addInitScript(() => (localStorage.clear(),localStorage.setItem('flux/driveMore','true')));
     await page.goto('http://localhost:' + port + '/index.html');
     await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
     ok('Flux page identity and port ' + port, await page.evaluate((p) => !!RF.UI && !!RF.DriveAnim && location.port === String(p), port));

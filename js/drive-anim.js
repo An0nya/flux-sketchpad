@@ -830,7 +830,8 @@ void main() {
     try {
       V.gl = makeGL(V.canvas); if (!V.gl) throw new Error('float render targets unavailable');
       V.lost = false; V.gkey = ''; V.rdRef = null; V.band = [0, 0];
-      S(V.ui).playing = !!V.resume; say(''); V.ui.redrawSpec();
+      const g = S(V.ui).game;   // UX1-DP-test: a running minigame stays paused after a restore until the player resumes (same as the hidden-tab path)
+      S(V.ui).playing = !!V.resume && !(g && !g.done); say(''); V.ui.redrawSpec();
     } catch (e) { contextFallback('Drive graphics rebuild failed: ' + (e.message || e)); }
   }
   function contextReady() {

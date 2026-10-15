@@ -7,7 +7,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const browser=await pw.chromium.launch(process.env.D6_REAL_GPU?{channel:'chromium'}:{});
   try {
     const page=await browser.newPage({viewport:{width:1500,height:950}}),errors=[];page.on('pageerror',e=>errors.push(String(e)));
-    await page.addInitScript(()=>localStorage.clear());await page.goto('http://localhost:'+port+'/index.html');
+    await page.addInitScript(()=>(localStorage.clear(),localStorage.setItem('flux/driveMore','true')));await page.goto('http://localhost:'+port+'/index.html');
     await page.waitForFunction(()=>window.RF&&RF.UI&&RF.UI.store&&RF.SolverHost&&!RF.SolverHost.loading(),null,{timeout:60000});
     const identity=await page.evaluate(p=>!!RF.UI&&!!RF.DriveAnim&&location.port===String(p),port);ok('Flux page and port '+port,identity);if(!identity)throw Error('wrong page');
     await page.waitForFunction(()=>!RF.UI.solving,null,{timeout:150000});await page.evaluate(()=>RF.UI.setMode('D'));

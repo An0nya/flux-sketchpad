@@ -67,3 +67,13 @@ still carried when the boxes overlap).
 - ⚠️ Arithmetic check: GPT says 60 km/h dry is "~35 m even with perfect reaction". Braking alone (μ 0.8) is **17.7 m**;
   35 m is with a 1.0 s reaction (16.7 m + 17.7 m = 34.4 m). The worked examples: 60 km/h crosswalk + non-compliant =
   40 + 0 + 60 = 100 → jail-risk ✓; 5 km/h compliant jaywalker = 5 × (1 − 0.35) = 3.25 → repair cost ✓ (uses 35 %).
+
+## 7. Anya's playtest notes (2026-10-15 afternoon, live site, phone + desktop)
+- Glare works great. Minigame "wild, quite cool"; at 60 km/h trivial even wet with her lamp (physics: 60 dry stops in ~34 m at 1 s; her lamp sees > 100 m).
+- BUG: traffic logic ON with no preceding car → our car crawls.
+- iOS: holding the brake button starts text selection → CSS user-select:none, -webkit-touch-callout:none, touch-action on the button + game panel, preventDefault on touchstart.
+- After braking for a deer we accelerate and plough through it: deer should walk/bound off the road first (logged, not urgent).
+- Drive panel has become a monster: hide/move controls to the sidebar with sensible defaults.
+- Random-tile animation is considerably slower than the static road (D4: tiles trace the full frame every frame, no cached ground; ~4–5× frame time).
+- Ideas: lamps dip/pitch with braking/acceleration (beam shifts down/up); better car models ("less snowman build") if render overhead stays small; other traffic lighting the road/environment (not done today: their lamps are visible emitters + wet reflections only; cost ≈ one beam lookup per lit ground pixel per nearby car, using D5's generic-headlamp asset).
+- Glare question: her lamp vs generic toward an oncoming eye at 0.5U 1–5R (Claude, flux trace 2 M rays, unaimed far field of reflector-scene_2.json): hers 7.3/9.3/8.9/7.8/5.9 kcd at 1/2/3/4/5R vs generic 0.29/0.36/0.61/1.4/3.2 kcd. So in the far field hers is HIGHER there (consistent with her Spec fail "0.5U 1R–3R ×2.98 over"); her observation of LESS glare on left curves likely comes from (a) the drive view using the AIMED far field (LB2V re-aims the cut-off to 0.4D) or (b) Play mode forcing oncoming = generic for everyone (MG2 fix). Needs a check.
