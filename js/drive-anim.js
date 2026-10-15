@@ -1207,7 +1207,6 @@ void main() {
       // Non-passive touch listeners suppress iOS selection/callout without losing hold-to-brake.
       brake.addEventListener('touchstart', (e) => { e.preventDefault(); hold(true, 'touch'); }, { passive: false });
       for (const event of ['touchend', 'touchcancel']) brake.addEventListener(event, (e) => { e.preventDefault(); hold(false, 'touch'); }, { passive: false });
-      box.addEventListener('touchstart', (e) => { if (e.target === box || e.target.closest('[data-game=brake],[data-game=status],strong,small')) e.preventDefault(); }, { passive: false });
       box.addEventListener('contextmenu', (e) => e.preventDefault());
       document.addEventListener('keydown', (e) => { if (e.code === 'Space' && active() && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); if (!e.repeat) hold(true, 'keyboard'); } });
       document.addEventListener('keyup', (e) => { if (e.code === 'Space' && st.game) { e.preventDefault(); hold(false, 'keyboard'); } });
