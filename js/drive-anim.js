@@ -425,7 +425,7 @@
     };
   }
   function tileFrame(p, dist, t, rgba, ss, tauOf, tileRow, world) {
-    const sc = world || tileWorld(p, dist, t, tauOf), r = D.render(Object.assign({}, camOf(p), { arc: sc.A, layer: 'frame', rgba, ss: ss || 2, tight: true, tileRow, pointLights: sc.lights, crossings: sc.crossings,
+    const sc = world || tileWorld(p, dist, t, tauOf), r = D.render(Object.assign({}, camOf(p), { arc: sc.A, layer: 'frame', rgba, ss: ss || 2, tight: true, tileRow, hazardMask: p.hazardMask, pointLights: sc.lights, crossings: sc.crossings,
       grain: p.src.tiles.grain ? tileGrain(dist, p.src.tiles.wet) : null, scene: { objects: sc.objects, markings: sc.markings, verge: p.src.verge } }));
     r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
   }
@@ -785,6 +785,10 @@ void main() {
     if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
     V.src.traffic.speed = +info().o.speed || 50; pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
     const placed = (V.src.tiles ? tileWorld : placedObjects)(V.p, st.dist, st.t, tauFor(V.act, st.t));
+    if (st.game) {
+      const mask = V.p.hazardMask = new Uint8Array(W * V.p.h);
+      gameObjects(st.game, placed); V.gameMask = mask;
+    } else V.p.hazardMask = null;
     const rows = objects(V.p, st.dist, V.rgba, ssNow(), null, null, placed, st.t);
     const t1 = performance.now();
     adaptSS(t1 - t0);
@@ -793,7 +797,7 @@ void main() {
     const sources = D.glareSources(V.src.tiles ? placed.objects : placed, EYE);
     V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane });
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
-    flashLabel(st.dist, st.t); ui.dvAnimFrames = V.frames;
+    flashLabel(st.dist, st.t); if (st.game) gameFrame(st.game); ui.dvAnimFrames = V.frames;
   }
 
   // ---------------------------------------------------------------- the object trace on worker threads
@@ -806,7 +810,7 @@ void main() {
   function failWorkers(why) { killWorkers(); Wk.failed = String(why || 'worker error'); V.why = 'worker threads unavailable (' + Wk.failed.split('\n')[0].slice(0, 120) + '): the page traces the objects itself'; if (V.ui) { V.last = 0; if (V.info && V.bar) labels(V.ui); go(); } }
   // true when this frame is traced on workers (they are started, or stopped, to match the switch)
   function mt() {
-    const want = !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
+    const want = !S(V.ui || {}).game && !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
     if (!want) { if (Wk.list.length) killWorkers(); return false; }
     if (Wk.list.length !== n) {
       killWorkers();
@@ -868,6 +872,10 @@ void main() {
     advanceCamera(st, dt); sendFrame();
   }
   function advanceCamera(st, dt) {
+    if (st.game) {
+      RF.DriveGame.step(st.game, dt, V.p.lane, V.p); st.total += st.game.x - st.dist; st.dist = st.game.x; st.t = st.game.t; st.camera = { x: st.dist, v: st.game.v };
+      if (st.game.done) st.playing = false; return;
+    }
     const speed = (+info().o.speed || 50) / 3.6;
     if (!V.src.traffic.logic) { st.total += speed * dt; st.dist += speed * dt; st.t += dt; st.camera = null; return; }
     V.src.traffic.speed = speed * 3.6;
@@ -904,12 +912,15 @@ void main() {
   function tick(t) {
     V.raf = 0; const ui = V.ui, st = S(ui);
     if (st.popout && !popValid(ui)) { closePop(ui); return; }
-    if (!visible() || !st.playing || !(st.view === 'anim' || st.popout)) { V.suspended = true; return; }
+    if (!visible() || !st.playing || !(st.view === 'anim' || st.popout)) {
+      if (st.game && !st.game.done) { if (st.game.pauseAt === undefined) st.game.pauseAt = performance.now(); st.game.brake = false; if (st.game.inputs) st.game.inputs.clear(); st.playing = false; }
+      V.suspended = true; return;
+    }
     if (mt()) { workerCfg(); V.raf = requestAnimationFrame(tick); pump(t, 0); return; }
-    const dt = V.last ? Math.min(0.1, (t - V.last) / 1000) : 0; V.last = t;
+    const dt = V.last ? (st.game ? Math.max(0, (t - V.last) / 1000) : Math.min(0.1, (t - V.last) / 1000)) : 0; V.last = t;
     advanceCamera(st, dt);
     V.times.push(t); if (V.times.length > 300) V.times.shift();
-    frame(); V.raf = requestAnimationFrame(tick);
+    frame(); if (st.playing) V.raf = requestAnimationFrame(tick);
   }
   function stop() { if (V.raf) { cancelAnimationFrame(V.raf); V.raf = 0; } V.last = 0; }
   function go() { if (!V.raf && V.gl && visible() && S(V.ui).playing) { V.last = 0; V.raf = requestAnimationFrame(tick); } }
@@ -954,7 +965,8 @@ void main() {
     p.addEventListener('click', () => { S(ui).popout ? closePop(ui) : openPop(ui); });
     const tiles = E('button', { type: 'button', class: 'toggle', 'data-anim': 'tiles', title: 'Seeded route: straights, bends, intersections, T-junctions and lit urban sections. Off = the original constant road. Animation only; traces at 640 × 360.' }, 'tiles');
     tiles.addEventListener('click', () => setDV(ui, 'tiles', !info().o.tiles));
-    tb.append(a, p, tiles);
+    const game = E('button', { type: 'button', class: 'toggle', 'data-game': 'toggle', 'aria-pressed': 'false', title: 'Reach > uniformity: five hazards, hold Space or Brake. Game scoring, not legal advice.' }, 'Play');
+    game.addEventListener('click', () => toggleGame(ui)); tb.append(a, p, tiles, game);
   }
   function labels(ui) {
     const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
@@ -984,6 +996,117 @@ void main() {
     const mb = V.bar.querySelector('[data-anim="c-mt"]'); mb.disabled = typeof Worker === 'undefined' || !!Wk.failed; if (Wk.failed) mb.title = V.why;
   }
 
+  // ---------------------------------------------------------------- Reach > uniformity (all state is local to this view)
+  function toggleGame(ui) {
+    const st = S(ui);
+    if (st.gameMode) {
+      stop(); killWorkers(); Object.assign(info().o, st.gameSaved.options); Object.assign(st, st.gameSaved.state);
+      st.game = null; st.gameMode = false; st.gameOptions = null; V.p.hazardMask = null; V.last = 0; ui.redrawSpec(); V.flash = st.gameSaved.flash; V.src.traffic.state = st.gameSaved.traffic; V.act = st.gameSaved.act; flashText(); if (!st.playing && visible() && st.view === 'anim') frame(); return;
+    }
+    st.gameSaved = { options: Object.assign({}, info().o), state: { view: st.view, playing: st.playing, dist: st.dist, total: st.total, t: st.t, camera: st.camera }, flash: V.flash, traffic: V.src && V.src.traffic.state, act: new Map(V.act) };
+    st.gameMode = true; st.playing = false; st.view = 'anim'; ui.redrawSpec();
+  }
+  function startGame(ui) {
+    const st = S(ui), box = V.gameBar, speed = +box.querySelector('[data-game="speed"]').value, wet = box.querySelector('[data-game="wet"]').value === 'wet', seed = +box.querySelector('[data-game="seed"]').value;
+    if (!(speed >= 5 && speed <= 130) || !Number.isInteger(seed) || seed < 0 || seed > 99999) { V.gameStatus.textContent = 'Choose 5–130 km/h and a whole seed from 0–99999.'; return; }
+    if (!ui.spec || !ui.spec.full || !ui.spec.ev || ui.spec.ctx !== (ui.run && ui.run.ctx)) { V.gameStatus.textContent = 'Finish the lamp’s Spec trace before starting.'; return; }
+    stop(); killWorkers();
+    st.game = RF.DriveGame.create({ seed, speed, wet, verdict: ui.spec.ev.verdict, highBeam: /(?:^fmvss-ub|-drive$)/.test(ui.store.scene.modeD.preset || '') }); st.game.ctx = ui.spec.ctx; st.game.judge = ui.spec.ev; st.game.road = info().rd;
+    st.gameOptions = { scene: 'road', tiles: true, wild: true, seed, speed, wet, people: false, animals: false, obstacle: false, trafficLogic: false, oncoming: true, preceding: false };
+    st.dist = st.total = st.t = 0; st.camera = { x: 0, v: speed / 3.6 }; st.view = 'anim'; st.playing = true;
+    V.act.clear(); V.flash = flashState(); V.fkey = ''; V.last = 0; ui.redrawSpec();
+  }
+  function gameObjects(g, world) {
+    const A = world.A, K = D.kit({ Lw: V.p.lane, A: null, rand: () => 0.5 });
+    for (const h of g.hazards) if (!h.resolved) {
+      const ps = RF.DriveGame.pose(g, h, g.t), first = K.O.length, rel = ps.s - g.x;
+      if (h.kind === 'deer') K.deer(rel, ps.off, { face: h.side > 0 ? 1 : -1, gait: ps.gait });
+      else K.person(rel, ps.off, h.noHiViz ? 'dark' : 'hivis', { dir: [h.ds, h.doff], gait: ps.gait });
+      for (const ob of K.O.slice(first)) { ob.gameHazard = h.id; world.objects.push(move(Object.assign({}, ob), ob, ob.x, A)); }
+    }
+  }
+  function gameFrame(g) {
+    const now = performance.now(), st = S(V.ui);
+    if (g.pauseAt !== undefined && st.playing) { for (const h of g.hazards) if (h.lit !== null) h.lit += now - Math.max(g.pauseAt, h.lit); delete g.pauseAt; }
+    if (!st.playing && !g.done && g.pauseAt === undefined) g.pauseAt = now;
+    const unseen = g.hazards.filter((h) => !h.resolved && h.lit === null);
+    const bits = unseen.reduce((b, h) => b | (1 << (h.id - 1)), 0);
+    if (unseen.length && !g.done && V.gameMask.some((v) => v & bits)) {
+      const rgba = V.gl.readCanvas(), rect = V.canvas.getBoundingClientRect(), exclude = [];
+      for (const el of [V.gameBar, ...info().toolbar.querySelectorAll('button,select')]) if (el && !el.hidden && el.getClientRects().length) {
+        const r = el.getBoundingClientRect(); exclude.push([(r.left - rect.left) / rect.width * V.gl.cw, (r.top - rect.top) / rect.height * V.gl.ch, (r.right - rect.left) / rect.width * V.gl.cw, (r.bottom - rect.top) / rect.height * V.gl.ch]);
+      }
+      for (const h of unseen) {
+        const pixel = RF.DriveGame.firstLit({ rgba, exclude, mask: V.gameMask, id: h.id, w: V.gl.cw, h: V.gl.ch, mw: V.p.w, mh: V.p.h, flip: info().mirrored });
+        if (pixel) { h.lit = now; h.litAt = g.t; h.firstPixel = pixel; g.seen++; }
+      }
+    }
+    g.flashes = V.flash.n; gameText(g);
+  }
+  function gameText(g) {
+    if (!V.gameStatus) return;
+    const hits = g.results.filter((r) => r.hit).length, passes = g.results.length - hits, mean = g.reactions.length ? (g.reactions.reduce((a, b) => a + b, 0) / g.reactions.length).toFixed(2) + ' s' : 'not measured';
+    const ticket = RF.DriveGame.score({ verdict: g.verdict, flashes: g.flashes }).tickets, last = g.results[g.results.length - 1];
+    V.gameStatus.textContent = (g.done ? 'Run ended' : g.resume !== null ? 'Release Brake · cruise resumes after 2 s' : g.brake ? 'BRAKING' : 'Hold Space or Brake') + ' · ' + (g.v * 3.6).toFixed(1) + ' km/h · ' + g.results.length + '/5 resolved';
+    V.gameCard.hidden = !g.done;
+    if (g.done) {
+      V.gameBar.classList.remove('running');
+      V.gameBar.querySelector('[data-game="brake"]').hidden = true; V.gameBar.querySelector('[data-game="pause"]').hidden = true;
+      for (const e of V.gameBar.querySelectorAll('input,select')) e.disabled = false;
+      const repair = g.results.reduce((sum, r) => sum + r.repair, 0);
+      V.gameCard.textContent = 'GAME SCORECARD — ' + (g.reason || (g.results.some((r) => r.conscience) ? 'Person hit: run lost · conscience cost 100' : last && last.lost ? last.tier : 'Run complete')) + '\nHazards seen: ' + g.seen + ' / ' + g.spawned + ' · mean reaction: ' + mean + ' (' + g.reactions.length + ' measured presses)\nHits: ' + hits + ' · passes: ' + passes + ' · flashed ' + g.flashes + ' cops: $' + ticket + '\nLamp Spec verdict: ' + g.verdict.toUpperCase() + (g.verdict === 'unsure' || g.verdict === 'empty' ? ' (compliance not established)' : '') + ' · repair bands total: $' + repair + '\n' + g.results.map((r) => '#' + r.id + ' ' + r.kind + ': ' + (r.hit ? r.speed.toFixed(1) + ' km/h impact · ' + r.damage + ' $' + r.repair + ' · liability ' + r.liability.toFixed(1) + ' (' + Math.round(r.mitigation * 100) + '% mitigation) · ' + r.tier : 'pass')).join('\n') + '\nAbsolute reach beats foreground width. Earlier light buys braking distance.\nGame flavour, not legal advice. 1500 kg energy proxy; costs and liability are invented game bands.';
+      const restart = V.gameBar.querySelector('[data-game="start"]'); restart.hidden = false; restart.textContent = 'Run again'; V.gameBar.querySelector('[data-game="exit"]').hidden = false;
+    }
+  }
+  function gameControls(ui) {
+    const st = S(ui);
+    if (!V.gameBar) {
+      const box = V.gameBar = E('div', { class: 'drive-game', 'data-game': 'panel', hidden: '' });
+      const speed = E('input', { 'data-game': 'speed', type: 'number', min: 5, max: 130, step: 5, 'aria-label': 'Game speed km/h' }), wet = E('select', { 'data-game': 'wet', 'aria-label': 'Game road condition' }), seed = E('input', { 'data-game': 'seed', type: 'number', min: 0, max: 99999, step: 1, 'aria-label': 'Game seed' });
+      wet.append(E('option', { value: 'dry' }, 'dry'), E('option', { value: 'wet' }, 'wet'));
+      const pause = E('button', { type: 'button', 'data-game': 'pause' }, 'Pause');
+      pause.addEventListener('click', () => { st.playing = !st.playing; ui.redrawSpec(); });
+      const start = E('button', { type: 'button', 'data-game': 'start' }, 'Start run'), brake = E('button', { type: 'button', 'data-game': 'brake', 'aria-label': 'Hold to brake', 'aria-pressed': 'false' }, 'Hold: BRAKE');
+      start.addEventListener('click', () => startGame(ui));
+      // The card and lobby cover the toolbar's Exit Play button (MG-test: unclickable at 1500 px and 390 px), so the panel carries its own.
+      const exit = E('button', { type: 'button', 'data-game': 'exit' }, 'Exit Play'); exit.addEventListener('click', () => toggleGame(ui));
+      const active = () => st.game && !st.game.done && st.playing && visible();
+      const hold = (held, source) => { if (!st.game) return; const now = performance.now();
+        // Integrate the interval BEFORE this input with the previous brake state; never brake retroactively over a slow frame.
+        if (active() && V.last) { advanceCamera(st, Math.max(0, (now - V.last) / 1000)); V.last = now; }
+        const inputs = st.game.inputs || (st.game.inputs = new Set()); source = source || 'pointer'; if (!active() || source === 'all') inputs.clear(); else if (held) inputs.add(source); else inputs.delete(source); RF.DriveGame.press(st.game, inputs.size > 0, now); brake.setAttribute('aria-pressed', String(st.game.brake)); gameText(st.game); };
+      brake.addEventListener('pointerdown', (e) => { e.preventDefault(); brake.setPointerCapture(e.pointerId); hold(true); });
+      for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) brake.addEventListener(event, () => hold(false));
+      document.addEventListener('keydown', (e) => { if (e.code === 'Space' && active() && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); if (!e.repeat) hold(true, 'keyboard'); } });
+      document.addEventListener('keyup', (e) => { if (e.code === 'Space' && st.game) { e.preventDefault(); hold(false, 'keyboard'); } });
+      const suspend = () => { if (st.game && !st.game.done) { hold(false, 'all'); if (st.game.pauseAt === undefined) st.game.pauseAt = performance.now(); st.playing = false; stop(); ui.redrawSpec(); } };
+      root.addEventListener('blur', suspend); document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); });
+      V.gameStatus = E('div', { 'data-game': 'status', role: 'status' }); V.gameCard = E('div', { 'data-game': 'card', class: 'game-card', hidden: '' });
+      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. A stop passes the encounter; release after a stop to resume cruise after 2 s. Game flavour, not legal advice.'));
+      V.cv.parentElement.append(box); speed.value = info().o.speed; seed.value = info().o.seed; wet.value = info().o.wet ? 'wet' : 'dry';
+    }
+    V.gameBar.hidden = !st.gameMode; V.gameBar.classList.toggle('running', !!st.game && !st.game.done); mount(ui);
+    if (st.gameMode) V.bar.hidden = true;
+    const toggle = info().toolbar.querySelector('[data-game="toggle"]'); if (toggle) { toggle.setAttribute('aria-pressed', String(!!st.gameMode)); toggle.textContent = st.gameMode ? 'Exit Play' : 'Play'; }
+    // Freeze run inputs and the underlying toolbar; exit restores the owner's preferences in memory.
+    for (const bar of [V.bar, ui.driveBar]) if (bar) for (const e of bar.querySelectorAll('button,input,select')) {
+      if (e.matches('[data-game="toggle"],[data-anim="popout"],[data-anim="play"]')) continue;
+      if (st.gameMode) { if (e.dataset.gameWasDisabled === undefined) e.dataset.gameWasDisabled = String(e.disabled); e.disabled = true; }
+      else if (e.dataset.gameWasDisabled !== undefined) { e.disabled = e.dataset.gameWasDisabled === 'true'; delete e.dataset.gameWasDisabled; }
+    }
+    for (const e of V.gameBar.querySelectorAll('input,select')) e.disabled = !!st.game && !st.game.done;
+    V.gameBar.querySelector('[data-game="brake"]').hidden = !st.game || st.game.done;
+    V.gameBar.querySelector('[data-game="pause"]').hidden = !st.game || st.game.done;
+    V.gameBar.querySelector('[data-game="pause"]').textContent = st.playing ? 'Pause' : 'Resume';
+    V.gameBar.querySelector('[data-game="start"]').hidden = !!st.game && !st.game.done;
+    V.gameBar.querySelector('[data-game="exit"]').hidden = !!st.game && !st.game.done;
+    if (st.game) {
+      if (!st.playing && !st.game.done && st.game.pauseAt === undefined) { st.game.pauseAt = performance.now(); if (st.game.inputs) st.game.inputs.clear(); RF.DriveGame.press(st.game, false, performance.now()); }
+      if (st.game.ctx !== (ui.run && ui.run.ctx) || st.game.judge !== (ui.spec && ui.spec.ev) || st.game.road !== info().rd) { st.game.done = true; st.game.reason = 'Lamp changed; start a new run'; st.playing = false; }
+      gameText(st.game);
+    } else { V.gameStatus.textContent = 'Choose speed, surface and seed before the run. Earlier light buys braking distance.'; V.gameCard.hidden = true; }
+  }
+
   // ---------------------------------------------------------------- popout
   function openPop(ui) {
     const st = S(ui), host = document.querySelector('.work-col'); if (!host || st.popout) return;
@@ -1006,19 +1129,20 @@ void main() {
   // the canvas and the tool bars live in the popout while it is open, in the pane otherwise
   function mount(ui) {
     const st = S(ui), host = st.popout && V.popStage ? V.popStage : (V.cv ? V.cv.parentElement : null); if (!host) return;
-    for (const e of [V.canvas, ui.driveBar, V.bar]) if (e && e.parentElement !== host) host.append(e);
+    for (const e of [V.canvas, ui.driveBar, V.bar, V.gameBar]) if (e && e.parentElement !== host) host.append(e);
   }
 
   // ---------------------------------------------------------------- hook from drawDrive
   /* I: { rd, o (dvOpts), A (arc|null), mirrored, us, conv, lut () → the beam lookup, tm (the still picture's tone map), groundKey, setDV, toolbar } */
   function sync(ui, cv, I) {
     V.ui = ui; V.cv = cv; V.info = I; const st = S(ui);
+    if (st.game) Object.assign(I.o, st.gameOptions);
     if (st.popout && !popValid(ui)) closePop(ui);
     topButtons(ui, I.toolbar, I.setDV); bars(ui, I.setDV);
     if (!V.bar.parentElement) cv.parentElement.append(V.bar);
     if (!st.popout) mount(ui);
     if (!supported(I.o)) { if (st.popout) closePop(ui); st.view = 'still'; }
-    labels(ui);
+    labels(ui); gameControls(ui);
     const want = supported(I.o) && (st.view === 'anim' || st.popout);
     if (!want) { stop(); killWorkers(); if (V.canvas) V.canvas.hidden = true; return; }
     if (!ensureCanvas()) { st.view = 'still'; st.popout = false; labels(ui); return; }
@@ -1050,5 +1174,5 @@ void main() {
   }
   RF.DriveAnim = { TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
-    _: { V, S, Wk, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
+    _: { V, S, Wk, toggleGame, gameFrame, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

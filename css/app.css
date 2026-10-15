@@ -557,7 +557,7 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 /* Spec, Result pane NOT expanded: sized like Mode A's. The extra Spec controls (the view buttons Road / Drive / Far field and the toolbars over the map)
    show only when the pane is expanded; a faint hint says so after a moment.  Phones (tabbed panes, no ⤢) keep everything. */
 @media (min-width: 761px) {
-  body.mode-D .result-pane:not(.expanded) :is(.ff-tools, .road-tools, .drive-tools, .drive-anim-tools, .drive-gl, [data-disp=road], [data-disp=drive], [data-disp=ff]) { display: none !important; }
+  body.mode-D .result-pane:not(.expanded) :is(.ff-tools, .road-tools, .drive-tools, .drive-anim-tools, .drive-game, .drive-gl, [data-disp=road], [data-disp=drive], [data-disp=ff]) { display: none !important; }
   body.mode-D .pair:not(.stacked) > .pane:not(.collapsed):not(.expanded) > figure.map > figcaption { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   body.mode-D .result-pane:not(.expanded):not(.collapsed) .canvas-wrap::after { content: 'Expand for more options'; position: absolute; left: 6px; bottom: 4px; z-index: 2; font-size: 11px; color: var(--faint);
     pointer-events: none; opacity: 0; animation: expand-hint .6s ease 5s forwards; }
@@ -593,3 +593,20 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .export-options small { font-size: 11px; line-height: 1.4; }
 .export-options small:empty { display: none; }
 .export-options label { font-size: 12px; }
+
+/* Play is local to Drive; the card scrolls inside the pane/popout. */
+.drive-game { position: absolute; left: 8px; right: 8px; top: 36px; z-index: 3; max-height: 65%; overflow: auto; padding: 8px; background: rgba(5,10,18,.93); color: #eee; border: 1px solid #889bb5; border-radius: 6px; font-size: 12px; }
+.drive-game[hidden], .drive-game [hidden] { display: none; }
+.canvas-wrap:not(.drive) > .drive-game { display: none; }
+.game-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.drive-game input { width: 70px; }
+.drive-game input, .drive-game select, .drive-game button { min-height: 32px; }
+.drive-game [data-game=brake] { touch-action: none; user-select: none; background: #233f68; color: white; }
+.drive-game [data-game=brake][aria-pressed=true] { outline: 2px solid #ffd580; }
+.game-card { white-space: pre-line; margin: 8px 0; line-height: 1.5; }
+.drive-game small { display: block; margin-top: 4px; }
+
+.drive-game.running { top: auto; bottom: 4px; max-height: 35%; padding: 4px 8px; }
+.drive-game.running > strong, .drive-game.running > small, .drive-game.running .game-setup > label, .drive-game.running .game-setup > select { display: none; }
+.drive-game.running .game-setup { margin: 0; float: right; }
+.drive-game.running [data-game=status] { margin-right: 180px; }
