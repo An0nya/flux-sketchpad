@@ -619,3 +619,19 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .drive-notice { position: absolute; left: 8px; right: 8px; top: 38px; z-index: 4; padding: 4px 8px; background: #17283e; color: #fff; font-size: 12px; pointer-events: none; }
 .drive-notice[hidden], .canvas-wrap:not(.drive) > .drive-notice { display: none; }
 .canvas-wrap.drive-fit > .drive-tools { right: 34px; }   /* RB-test: keep the corner free for the reset-zoom icon (it was covered by the scrolling top row) */
+
+/* One primary row; the same controls live in More in both inline and large views. */
+.drive-tools, .drive-fit > .drive-tools { flex-direction: column; align-items: stretch; flex-wrap: nowrap; overflow: visible; white-space: normal; pointer-events: auto; background: rgba(5,10,18,.7); }
+.drive-primary { display: flex; align-items: center; gap: 4px; min-width: 0; margin-right: 52px; overflow-x: auto; scrollbar-width: thin; white-space: nowrap; }
+.drive-primary > * { flex: 0 0 auto; }
+.canvas-wrap:not(.drive-fit) .drive-primary, .dp-stage:not(.drive-fit) .drive-primary { flex-wrap: wrap; overflow-x: visible; white-space: normal; }
+.drive-speed { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-variant-numeric: tabular-nums; color: #fff; }
+.drive-speed input[type=range] { width: 85px; pointer-events: auto; }
+.drive-more { margin: 0; padding: 0; border: 0; min-width: 0; }
+.drive-more > summary { position: absolute; right: 0; top: 0; cursor: pointer; padding: 3px 5px; font-size: 11px; color: #fff; }
+.drive-extras { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px; max-height: min(45vh, 280px); overflow: auto; background: rgba(5,10,18,.95); }
+.drive-extras .drive-anim-tools { position: static; flex: 1 0 100%; flex-wrap: wrap; pointer-events: auto; }
+.drive-aim { flex: 1 0 100%; font-size: 11px; color: #d4deec; }
+.drive-game, .drive-game [data-game=brake] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.drive-game { touch-action: manipulation; }
+.drive-game input[type=checkbox] { width: auto; }
