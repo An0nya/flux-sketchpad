@@ -40,7 +40,7 @@ self.onmessage = async (e) => {
     } else if (m.type === 'solve') {
       const def = RF.Solvers.get(m.id); if (!def) throw new Error('solver ' + m.id + ' is not loaded in the worker');
       // held = the latest preview call not sent yet, as REFERENCES (a dropped call costs nothing); it is copied when sent
-      let raysUsed = 0, held = null, lastAt = -1e9, nPrev = 0;
+      let raysUsed = 0, held = null, lastAt = -1e9, nPrev = 0, traceMs = 0, nTrace = 0;   // traceMs / nTrace: time inside tools.trace / traceAsync (reported in 'done', for the benchmarks)
       const spend = (o) => { const n = Math.max(1, (o && o.rays) | 0 || 20000); raysUsed += n; if (raysUsed > m.budget.rays) throw new Error('ray budget exhausted (' + m.budget.rays.toLocaleString() + ')'); };
       if (m.gpu && !RF.GpuTrace) importScripts('gpu-trace.js');
       if (RF.GpuTrace) { RF.GpuTrace.enable(!!m.gpu); if (m.gpu) await RF.GpuTrace.init(); }   // no WebGPU here → traceAsync runs on the CPU
@@ -52,9 +52,9 @@ self.onmessage = async (e) => {
       const tools = {
         progress: (pct, stage) => { flush(); send({ type: 'progress', pct: +pct || 0, stage: stage ? String(stage).slice(0, 80) : undefined }); },
         budget: m.budget,
-        trace: (surfaces, o) => { flush(); spend(o); return RF.Solvers.trace(m.scene, surfaces, o); },
+        trace: (surfaces, o) => { flush(); spend(o); const t = performance.now(); try { return RF.Solvers.trace(m.scene, surfaces, o); } finally { traceMs += performance.now() - t; nTrace++; } },
         // the same trace, possibly on the GPU (the user's Simulation → GPU trace): same rays, f32 (res.gpu says which ran)
-        traceAsync: async (surfaces, o) => { flush(); spend(o); return RF.Solvers.traceAsync(m.scene, surfaces, o); },
+        traceAsync: async (surfaces, o) => { flush(); spend(o); const t = performance.now(); try { return await RF.Solvers.traceAsync(m.scene, surfaces, o); } finally { traceMs += performance.now() - t; nTrace++; } },
         // display only: never throws into the solver, never changes what it computes
         preview: (surfaces, info) => {
           if (!m.preview) return;
@@ -64,7 +64,7 @@ self.onmessage = async (e) => {
       };
       const output = await def.solve(m.input, m.settings, tools);
       if (held) post();                              // the latest candidate always reaches the page before the result
-      send({ type: 'done', output, raysUsed, previews: nPrev });
+      send({ type: 'done', output, raysUsed, previews: nPrev, traceMs: Math.round(traceMs), traces: nTrace });
     }
   } catch (err) { send({ type: 'error', message: String(err && err.message || err) }); }
 };

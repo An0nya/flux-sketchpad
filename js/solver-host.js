@@ -16,7 +16,7 @@
   let userMs = 0; try { userMs = +localStorage.getItem('flux/solveLimitMs') || 0; } catch (e) { /* default */ }
   const limitMs = () => testMs || userMs || BUDGET.ms;
   const setLimit = (ms) => { userMs = Math.max(0, +ms || 0); try { localStorage.setItem('flux/solveLimitMs', String(userMs)); } catch (e) { /* ignore */ } };
-  let worker = null, sources = [], srcIds = [], bundled = [], ready = Promise.resolve(), live = null, testMs = 0, loading = typeof Worker !== "undefined";   // true from page load until restore() has the bundled solvers in
+  let worker = null, sources = [], srcIds = [], bundled = [], ready = Promise.resolve(), live = null, testMs = 0, lastStats = null, loading = typeof Worker !== "undefined";   // true from page load until restore() has the bundled solvers in
   // sources[i] = a loaded file's text, srcIds[i] = the ids it registered;  bundled = [{ src, meta }] from solvers/
   // Requests: every message to the worker carries rid = ++seq and the worker echoes it on every reply, so replies find their request
   // however many are out.  reqs: rid → { onMsg, reject, timer }.  Stopping anything means killing the worker, which fails every request
@@ -82,7 +82,7 @@
             const p = ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.userChoice() === true) }, tools.progress, ms, onPreview);
             j.rid = p.rid; p.then(resolve, reject);
           });
-        }).then((d) => d.output);
+        }).then((d) => { lastStats = { traceMs: d.traceMs, traces: d.traces, raysUsed: d.raysUsed, ms: performance.now() - j.t0 }; return d.output; });
       },
     }));
   }
@@ -166,5 +166,5 @@
   }
   // test hook: run the next solves with a shorter time budget (ms; 0 = back to BUDGET.ms).  BUDGET itself never changes.
   const testBudget = (ms) => { testMs = Math.max(0, +ms || 0); };
-  RF.SolverHost = { load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
+  RF.SolverHost = { lastStats: () => lastStats, load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
