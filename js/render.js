@@ -72,6 +72,36 @@
     return true;
   }
 
+  // The same fill / edge decisions as drawScene / drawSurfaceView / surfStyle, as numbers for the WebGL view (js/render-gl.js).
+  // fill: base rgb 0..255 + alpha; lam: [a, b] so the shader's colour = rgb·(a + b·lambert); edge: rgba (alpha 0..1); w: edge width in css px.
+  // Dashed edges (the secondary facets) are drawn by the 2D overlay instead.
+  function glStyle(opts, p, kind) {
+    const col = GROUP_COL[p.g] || GROUP_COL.M, scene = kind === 'scene', pairs = !scene && opts.style === 'pairs', e = selEmph(opts, p.id);
+    const a = scene ? (p.inter === 'refract' ? 0.18 : p.inter === 'absorb' ? 0.5 : 0.26) : (p.inter === 'refract' ? 0.3 : 0.5), aDim = scene ? a * 0.3 : 0.12;
+    if (pairs) {
+      const ed = e === null ? [col[0], col[1], col[2], 0.35] : e > 0 ? [SEL_COL[0], SEL_COL[1], SEL_COL[2], 0.5 + 0.5 * e] : [col[0], col[1], col[2], 0.1];
+      return { fill: [0, 0, 0, 0], lam: [0, 1], edge: ed, w: e > 0 ? 1.2 : 0.8 };
+    }
+    if (e !== null) {
+      if (isSecondary(opts, p.id)) return { fill: [34, 38, 46, 0.8], lam: [1, 0], edge: [0, 0, 0, 0], w: 1.2 };
+      if (e > 0) return { fill: [SEL_COL[0], SEL_COL[1], SEL_COL[2], 0.35 + 0.55 * e], lam: [0.6, 0.4], edge: [255, 236, 200, 0.5 + 0.45 * e], w: 1.1 };
+      return { fill: [col[0], col[1], col[2], aDim], lam: [0, 1], edge: [col[0], col[1], col[2], 0.12], w: 0.6 };
+    }
+    if (scene) return { fill: p.inter === 'absorb' ? [70, 70, 76, opts.highlight === p.id ? 0.85 : a] : [col[0], col[1], col[2], opts.highlight === p.id ? 0.85 : a], lam: p.inter === 'absorb' ? [1, 0] : [0, 1], edge: [Math.min(255, col[0] + 40), Math.min(255, col[1] + 40), Math.min(255, col[2] + 40), 0.55], w: 0.7 };
+    return { fill: [col[0], col[1], col[2], a], lam: [0, 1], edge: [col[0], col[1], col[2], 0.7], w: 0.7 };
+  }
+  // the 2D overlay's share of a GL-drawn view: the dashed white edge of facets that shadow the selection
+  function overlaySecondary(ctx, cam, model, opts) {
+    if (!opts.selSecondary || !opts.sel) return;
+    ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.2;
+    for (const p of model.polys) {
+      if (!isSecondary(opts, p.id)) continue;
+      const pr = p.pts.map((q) => cam.project(q));
+      ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function Camera(az, el) {
     // focal: 35 mm-equivalent lens, Infinity = orthographic; fitted: false until fit() has sized it to a real canvas
     this.R = null; this.focal = Infinity; this.scale = 4; this.fitted = false; this.pan = [0, 0]; this.center = [0, 0, 0]; this.w = 300; this.h = 300;
@@ -204,17 +234,26 @@
     ctx.clearRect(0, 0, box.w, box.h);
     const sc = opts.scene, T = RF.Engine.targetFrame(sc.target), handles = [];
     const L = cam.scale;
+    // WebGL scene view (Simulation → Advanced): GL (underneath) draws facets, target plane + heat map, rays and hits; this canvas keeps the rest
+    const GL = RF.RenderGL, glOK = !!(GL && GL.on() && GL.scene(cv, cam, opts, box));
+    if (GL && !glOK) GL.release(cv);
     // ---- envelope wireframe (behind everything) — Scene shows it only in Setup mode
     if (opts.setup) drawEnvelope(ctx, cam, sc.envelope);
     // ---- polygons: surfaces + target plane, painter-sorted
     const items = [];
-    for (const p of opts.model.polys) {
+    if (glOK) {
+      overlaySecondary(ctx, cam, opts.model, opts);
+      const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => RF.Engine.targetUVtoWorld(T, a * T.half, b * T.half));
+      drawTargetPlane(ctx, cam, T, corners.map((q) => cam.project(q)), opts.hits ? null : opts.heatCanvas, opts.hits ? 'hits' : true);
+    } else for (const p of opts.model.polys) {
       const pr = p.pts.map((q) => cam.project(q));
       items.push({ type: 'surf', p, pr, z: pr.reduce((s, q) => s + q[2], 0) / pr.length });
     }
+    if (!glOK) {
     const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => RF.Engine.targetUVtoWorld(T, a * T.half, b * T.half));
     const tpr = corners.map((q) => cam.project(q));
     items.push({ type: 'target', pr: tpr, z: tpr.reduce((s, q) => s + q[2], 0) / 4 });
+    }
     items.sort((a, b) => a.z - b.z);
     const light = V.norm(V.add(V.add(cam.R[2], V.mul(cam.R[1], 0.6)), V.mul(cam.R[0], -0.3)));
     for (const it of items) {
@@ -235,6 +274,7 @@
     if (opts.showRays && opts.paths) {
       ctx.lineWidth = 1;
       for (const path of opts.paths) {
+        if (glOK && !path.ghost && !path.sel) continue;     // GL drew these
         if (path.ghost) {                                // light another facet caught first (LED → where it would have hit)
           ctx.setLineDash([1.5, 3]); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath();
           const a0 = cam.project([path[0], path[1], path[2]]), a1 = cam.project([path[3], path[4], path[5]]);
@@ -330,7 +370,7 @@
     }
     return out.map((p) => cam.project(p));
   }
-  function drawTargetPlane(ctx, cam, T, pr, heat) {
+  function drawTargetPlane(ctx, cam, T, pr, heat, glMode) {   // glMode: GL has drawn the plane's fill / texture; only the outline + the label go here
     const facing = V.dot(T.n, cam.R[2]) > 0;                    // lit side toward the viewer
     const W = (u, v) => RF.Engine.targetUVtoWorld(T, (-1 + 2 * u) * T.half, (1 - 2 * v) * T.half);
     const po = clipNear(cam, [W(0, 1), W(1, 1), W(1, 0), W(0, 0)]);   // the outline, clipped (u right, v down in the image)
@@ -338,7 +378,11 @@
     if (po.length < 3) return;                                  // all of it behind the eye
     ctx.save();
     outline();
-    if (facing && heat && heat.width && isFinite(cam.focal)) {
+    if (glMode) {
+      const lit = facing && (glMode === 'hits' || (heat && heat.width));
+      ctx.strokeStyle = lit ? 'rgba(143,184,255,0.9)' : 'rgba(143,184,255,0.5)'; ctx.lineWidth = lit ? 1.2 : 1; ctx.stroke();
+      if (!lit) { const c = po.reduce((s, q) => [s[0] + q[0] / po.length, s[1] + q[1] / po.length], [0, 0]); ctx.fillStyle = 'rgba(200,210,230,0.7)'; ctx.font = '11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(facing ? 'target' : 'target (back) — orbit round to see the lit side', c[0], c[1]); }
+    } else if (facing && heat && heat.width && isFinite(cam.focal)) {
       // Perspective: the plane's image isn't affine, so map the texture piecewise. Start from a 16×16 grid and split a
       // tile in four while its corners' perspective scales differ by > 12 % (affine error) or it crosses the near
       // plane; tiles behind the eye are skipped. Splitting is budget-capped so a pathological view can't stall the frame.
@@ -423,6 +467,8 @@
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0);
     ctx.clearRect(0, 0, box.w, box.h);
     const model = opts.model, sc = opts.scene, S = sc.source.pos;
+    const GL = RF.RenderGL, glOK = !!(GL && GL.on() && model.polys.length && GL.optics(cv, cam, opts, box));   // WebGL scene view: facets + edges underneath
+    if (GL && !glOK) GL.release(cv);
     if (opts.envelope) drawEnvelope(ctx, cam, sc.envelope);
     const finish = () => {                              // the fixture's setup lives here: source + its handles on top (Setup)
       for (const s of RF.Source.all(sc)) drawSource(ctx, cam, s);
@@ -434,8 +480,9 @@
       return finish();
     }
     const light = V.norm(V.add(cam.R[2], V.mul(cam.R[1], 0.6)));
-    const items = model.polys.map((p) => { const pr = p.pts.map((q) => cam.project(q)); return { p, pr, z: pr.reduce((s, q) => s + q[2], 0) / pr.length }; });
+    const items = glOK ? [] : model.polys.map((p) => { const pr = p.pts.map((q) => cam.project(q)); return { p, pr, z: pr.reduce((s, q) => s + q[2], 0) / pr.length }; });
     items.sort((a, b) => a.z - b.z);
+    if (glOK) overlaySecondary(ctx, cam, model, opts);
     const G = model.P.G;
     for (const it of items) {
       const col = GROUP_COL[it.p.g] || GROUP_COL.M;
@@ -487,5 +534,5 @@
     return finish();
   }
 
-  RF.Render = { Camera, fitCanvas, buildDrawModel, drawScene, drawSurfaceView, drawArrow, LUT, setRamp, GROUP_COL, rgba };
+  RF.Render = { glStyle, Camera, fitCanvas, buildDrawModel, drawScene, drawSurfaceView, drawArrow, LUT, setRamp, GROUP_COL, rgba };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

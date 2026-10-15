@@ -68,7 +68,7 @@
       img.data[o] = LUT[3 * t]; img.data[o + 1] = LUT[3 * t + 1]; img.data[o + 2] = LUT[3 * t + 2]; img.data[o + 3] = clearZero && !(v > 0) ? 0 : 255;
     }
     g.putImageData(img, 0, 0);
-    c.maxValue = peak;
+    c.maxValue = peak; c._glv = (c._glv || 0) + 1;   // content version: the WebGL scene view re-uploads its texture only when this changes
     return c;
   }
 
