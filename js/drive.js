@@ -209,6 +209,8 @@
    * hazardMask: optional Uint8Array(w*h), nearest-hit gameHazard ID bits (any covered subsample); no RGB changes.
    * hazardBodyMask: same bits, excluding pixels with ANY eyeshine sample (body detection, not eye dots).
    * sampleTiles: optional Uint8Array(ceil(w/16)*ceil(h/16)); records/retains supersampled tiles for paired renders.
+   * groundCache: optional persistent {}; caches static ground shading in bounded camera-distance bands (24 MiB).
+   * Replace the lut/data object when changing its values (as the page does); camera/look changes invalidate automatically.
    * grain(s,off,halfFootprint): ground-only brightness factor. These are render options, not saved scene fields. */
   function render(o) {
     const w = o.w, h = o.h, tanH = Math.tan(o.hfov * D2R / 2), tanV = tanH * h / w, eye = o.eye, ex = eye[0], ey = eye[1], ez = eye[2];
@@ -222,6 +224,15 @@
     const delta0 = 2 * tanH / w;                                              // radians per pixel
     // tiles of 16 px: which objects can touch them (by the bounding sphere's projection)
     const TS = 16, tw = Math.ceil(w / TS), th = Math.ceil(h / TS), tiles = new Array(tw * th).fill(null);
+    // Camera-distance bands (16-pixel tiles): static beam-lit ground, independent of the route's moving materials.
+    // Float64 retains the shader arithmetic; never cache grain, coverage, street lights or emitter reflections.
+    const gc = o.groundCache;
+    const cacheMats = gc && new Map(Object.keys(M).map((key, i) => [M[key], i]));
+    if (gc) {
+      const key = JSON.stringify([w, h, o.hfov, eye, lamps, conv, lc, look, o.mats, lut.h0, lut.v0, lut.step, lut.nh, lut.nv]);
+      if (gc.key !== key || gc.lut !== lut || gc.data !== lut.data) { gc.key = key; gc.lut = lut; gc.data = lut.data; gc.bands = []; gc.bytes = 0; gc.builds = (gc.builds || 0) + 1; gc.hits = gc.misses = 0; }
+    }
+    let groundBand = null, groundSlot = 0, groundSlots = 0, groundShading = false;
     // front to back: near[i] = a lower bound of any hit distance on object i (its bounding sphere; 0 for the sub-pixel discs, whose tent spread can reach past the sphere). A tile lists its objects by near,
     // and a ray stops testing at the first one whose near is not below the best hit so far: the same nearest hit, fewer tests (o.sort === false: the original order, every object tested)
     const near = new Float32Array(objs.length), ord = new Int32Array(objs.length); objs.forEach((ob, idx) => { ord[idx] = idx; if (!ob.bs) boundOf(ob); });
@@ -263,19 +274,45 @@
     const lw = [lut.h0, lut.h0 + lut.nh * lut.step, lut.v0, lut.v0 + lut.nv * lut.step], preA = conv === 'A' && lw[0] > -89 && lw[1] < 89 && lw[2] > -89 && lw[3] < 89;
     const sv0 = Math.sin(lw[2] * D2R) - 1e-9, sv1 = Math.sin(lw[3] * D2R) + 1e-9, th0 = Math.tan(lw[0] * D2R) * (1 + 1e-9) - 1e-12, th1 = Math.tan(lw[1] * D2R) * (1 + 1e-9) + 1e-12;
     // add a surface point's luminance, weighted: P = hit, n = unit normal (facing the eye), m = material, k = weight, v = unit vector to the eye
-    function shade(px, py, pz, nx, ny, nz, m, k, vx, vy, vz, rscale) {
+    function shade(px, py, pz, nx, ny, nz, m, k, vx, vy, vz, rscale, staticBuild) {
+      if (groundBand && groundShading && !staticBuild) {
+        const mi = cacheMats.get(m);
+        let a = groundBand.get(mi);
+        // Bounded per renderer/worker, even when dynamic job scheduling eventually visits every tile.
+        if (!a && gc.bytes + 32 * groundSlots <= 24 * 1024 * 1024) { a = new Float64Array(4 * groundSlots); groundBand.set(mi, a); gc.bytes += a.byteLength; }
+        if (a) {
+          const q = 4 * groundSlot;
+          if (!a[q + 3]) {
+            const r0 = LR, g0 = LG, b0 = LB; LR = LG = LB = 0;
+            shade(px, py, pz, nx, ny, nz, m, 1, vx, vy, vz, rscale, true);
+            a[q] = LR; a[q + 1] = LG; a[q + 2] = LB; a[q + 3] = 1;
+            LR = r0; LG = g0; LB = b0; gc.misses++;
+          } else gc.hits++;
+          let r = 0, g = 0, b = 0;
+          for (const L of pointLights) {
+            const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz;
+            if (dz <= 0 || r2 < 0.01) continue;
+            const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2));
+            r += m.rho[0] * L.rgb[0] * e; g += m.rho[1] * L.rgb[1] * e; b += m.rho[2] * L.rgb[2] * e;
+          }
+          if (sheen && (m.id === M.asphalt.id || m.id === M.concrete.id)) for (const L of reflections) {
+            const v = L.cd * wetLobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += v * L.rgb[0]; g += v * L.rgb[1]; b += v * L.rgb[2];
+          }
+          LR += k * (a[q] + r * lc[0]); LG += k * (a[q + 1] + g * lc[1]); LB += k * (a[q + 2] + b * lc[2]); return;
+        }
+      }
       let r = 0, g = 0, b = 0;
       const rho = m.rho, NoV = nx * vx + ny * vy + nz * vz;
       if (m.emit && NoV > 0) { const es = (rscale === undefined ? 1 : rscale) * (m.emitPow > 1 ? Math.pow(NoV, m.emitPow) : NoV); r += m.emit[0] * es; g += m.emit[1] * es; b += m.emit[2] * es; }   // a flat emitter is Lambertian, L·cosθ; lamps are directional: cos^n
       if (amb > 0 && nz > -0.9) { const e = amb * (0.5 + 0.5 * nz) / PI; r += rho[0] * e; g += rho[1] * e; b += rho[2] * e; }
       // Optional street lights: downward point sources, diffuse only, no shadows. Emitters alone do not light other surfaces.
-      for (const L of pointLights) {
+      if (!staticBuild) for (const L of pointLights) {
         const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz;
         if (dz <= 0 || r2 < 0.01) continue;
         const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2));
         r += rho[0] * L.rgb[0] * e; g += rho[1] * L.rgb[1] * e; b += rho[2] * L.rgb[2] * e;
       }
-      if (sheen && nz === 1 && (m.id === M.asphalt.id || m.id === M.concrete.id)) for (const L of reflections) {
+      if (!staticBuild && sheen && nz === 1 && (m.id === M.asphalt.id || m.id === M.concrete.id)) for (const L of reflections) {
         const a = L.cd * wetLobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
       }
       for (let i = 0; i < nl; i++) {
@@ -344,7 +381,9 @@
         shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
         if (sampleDepth === Infinity) { sampleDepth = tbest; sampleMat = m.id; }
       } else if (objOnly) { /* the ground and the sky are the other layer's */ } else if (tg < Infinity && tg < 5000) {
+        groundShading = true;
         ground(ex + tg * dx, ey + tg * dy, tg, -dz, -dx, -dy, -dz, delta, k);
+        groundShading = false;
         if (sampleDepth === Infinity) { sampleDepth = tg; sampleMat = GM; }
       } else { const sl = skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(dz) * 8)); LR += k * sl; LG += k * sl; LB += k * sl; }
     }
@@ -352,8 +391,16 @@
       const ti = Math.floor(y / TS) * tw + Math.floor(x / TS);
       if (o.sampleTiles && tl) o.sampleTiles[ti] = 1;
       const n = tl || (o.sampleTiles && o.sampleTiles[ti]) ? ssN : 1, k = 1 / (n * n), delta = delta0 / n;
+      // Materials are rebuilt each render; key cached planes by their position in the material table.
+      groundBand = null;
+      if (gc && y >= h / 2) {
+        const bands = gc.bands[n] || (gc.bands[n] = []);
+        groundBand = bands[ti] || (bands[ti] = new Map()); groundSlots = TS * TS * n * n;
+        groundSlot = ((y % TS) * TS + x % TS) * n * n;
+      }
       LR = LG = LB = 0; sampleDepth = Infinity; sampleMat = MAT_ID.sky; covAcc = 0; hazardAcc = 0; eyeAcc = 0;
-      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) sample(x + (i + 0.5) / n, y + (j + 0.5) / n, k, tl, delta);
+      const slot0 = groundSlot;
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { groundSlot = slot0 + j * n + i; sample(x + (i + 0.5) / n, y + (j + 0.5) / n, k, tl, delta); }
       const q = y * w + x;
       if (o.hazardMask) o.hazardMask[q] = hazardAcc;
       if (o.hazardBodyMask) o.hazardBodyMask[q] = hazardAcc & ~eyeAcc;
