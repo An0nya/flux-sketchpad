@@ -69,17 +69,18 @@
       // traffic: ±π/2). lamps: 'head' (white, kcd = its intensity toward the viewer), 'tail' (red), or false. Lamps are emitters with the
       // luminance that gives that intensity; the face toward the road's start carries a plate, and the rear red reflectors.
       car(s, off, o) {
-        o = o || {}; const p = at(s, off), yaw = p.yaw + (o.turn || 0), c = Math.cos(yaw), sn = Math.sin(yaw), F = o.face === -1 ? -1 : 1, L = (a, b) => [p.x + a * c - b * sn, p.y + a * sn + b * c];
+        o = o || {}; const first = O.length, p = at(s, off), yaw = p.yaw + (o.turn || 0), c = Math.cos(yaw), sn = Math.sin(yaw), F = o.face === -1 ? -1 : 1, L = (a, b) => [p.x + a * c - b * sn, p.y + a * sn + b * c];
         add({ k: 'box', x: p.x, y: p.y, z0: 0.25, z1: 0.85, hx: 2.2, hy: 0.9, yaw, mat: 'car-paint' });
         const cb = L(-F * 0.2, 0); add({ k: 'box', x: cb[0], y: cb[1], z0: 0.85, z1: 1.4, hx: 1.2, hy: 0.78, yaw, mat: ({ face }) => (face === 5 ? 'car-paint' : 'win-dark') });
         for (const a of [-1.35, 1.35]) for (const b of [-0.85, 0.85]) { const q = L(a, b); add({ k: 'box', x: q[0], y: q[1], z0: 0, z1: 0.64, hx: 0.32, hy: 0.11, yaw, mat: 'tyre' }); }
         const front = L(F * 2.21, 0), rear = L(-F * 2.21, 0), nF = [F * c, F * sn], face = (end, nrm, b, z, r, mat, extra) => { const q = L(end, b); add(Object.assign({ k: 'disc', x: q[0], y: q[1], z, r, nx: nrm[0], ny: nrm[1], nz: 0, sub: r < 0.07, mat }, extra)); };
         void front; void rear;
-        const lampR = o.lamps === 'head' ? 0.06 : 0.045, kcd = (o.kcd || 30) * 1000;
-        if (o.lamps === 'head') for (const b of [-0.62, 0.62]) face(F * 2.21, nF, b, 0.68, lampR, 'lamp-head', { emitPow: 8, emit: ((I) => { const Lm = I / (Math.PI * lampR * lampR); return [Lm, Lm, 0.93 * Lm]; })(kcd / 2) });   // a headlamp is a beam: cos^8 ≈ ±20° to 60 %, nothing at 70° (cross traffic)
-        if (o.lamps === 'tail') for (const b of [-0.7, 0.7]) face(-F * 2.21, [-nF[0], -nF[1]], b, 0.78, lampR, 'lamp-head', { emitPow: 2, emit: ((I) => { const Lm = I / (Math.PI * lampR * lampR); return [Lm, 0.03 * Lm, 0.015 * Lm]; })(o.tailCd || 80) });
+        const lampR = o.lamps === 'head' ? 0.06 : 0.045, kcd = (o.kcd === undefined ? 1 : o.kcd) * 1000;
+        if (o.lamps === 'head') for (const b of [-0.62, 0.62]) face(F * 2.21, nF, b, 0.68, lampR, 'lamp-head', { headlamp: true, emitPow: 8, emit: ((I) => { const Lm = I / (Math.PI * lampR * lampR); return [Lm, Lm, 0.93 * Lm]; })(kcd / 2) });   // a headlamp is a beam: cos^8 ≈ ±20° to 60 %, nothing at 70° (cross traffic)
+        if (o.lamps === 'tail') for (const b of [-0.7, 0.7]) face(-F * 2.21, [-nF[0], -nF[1]], b, 0.78, lampR, 'lamp-head', { taillamp: true, emitPow: 2, emit: ((I) => { const Lm = I / (Math.PI * lampR * lampR); return [Lm, 0.03 * Lm, 0.015 * Lm]; })(o.tailCd || 80) });
         face(F * 2.21, nF, 0, 0.55, 0.15, 'plate'); face(-F * 2.21, [-nF[0], -nF[1]], 0, 0.55, 0.15, 'plate');
         for (const b of [-0.7, 0.7]) face(-F * 2.21, [-nF[0], -nF[1]], b, 0.62, 0.035, 'reflector-red');
+        if (o.lamps === 'head' && o.kcd === undefined) D.Headlamp.apply(O.slice(first), { mode: 'generic' });
       },
       // a traffic-signal head facing the approaching car at (s, off, z), one lamp lit: 'red' | 'green'
       signal(s, off, z, lit) {
@@ -204,7 +205,7 @@
   // oncoming and preceding traffic, for any scene: { oncoming: { dist, kcd }, preceding: { dist } }
   function addTraffic(ctx, objects, o) {
     const k = kit(ctx);
-    if (o.oncoming && o.oncoming.dist > 0) k.car(o.oncoming.dist, ctx.Lw, { face: -1, lamps: 'head', kcd: o.oncoming.kcd || 30 });
+    if (o.oncoming && o.oncoming.dist > 0) k.car(o.oncoming.dist, ctx.Lw, { face: -1, lamps: 'head', kcd: o.oncoming.kcd });
     if (o.preceding && o.preceding.dist > 0) k.car(o.preceding.dist, 0, { face: 1, lamps: 'tail' });
     for (const ob of k.O) objects.push(ob);
   }
