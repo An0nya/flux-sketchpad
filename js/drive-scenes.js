@@ -15,7 +15,8 @@
   function kit(ctx) {
     const O = [], R = ctx.rand, Lw = ctx.Lw, edgeR = -Lw / 2, edgeL = 1.5 * Lw;
     const at = (s, off) => { if (ctx.A) { const q = ctx.A.at(s, off); return { x: q.p[0], y: q.p[1], yaw: Math.atan2(q.t[1], q.t[0]) }; } return { x: s, y: off, yaw: 0 }; };
-    const add = (ob) => { O.push(ob); return ob; };
+    let cur = '';                                                       // the class of the object being built (post, sign, veg, deer, person, car, signal, obstacle): lets a view switch a class off without touching the random stream
+    const add = (ob) => { if (cur) ob.cls = cur; O.push(ob); return ob; };
     const k = {
       O, at, add, edgeR, edgeL,
       // a post with a reflector on the face toward the oncoming car
@@ -85,7 +86,10 @@
         for (const key of ['red', 'amber', 'green']) add({ k: 'disc', x: p.x - 0.18 * c, y: p.y - 0.18 * sn, z: z + dz[key], r: 0.1, nx: -c, ny: -sn, nz: 0, mat: 'pole', emitPow: 2, emit: key === lit ? cols[key] : null });
       },
       parkedCar(s, off) { this.car(s, off, { face: 1 }); },
+      // a dark crate lying on the road (the hard target: 3 % reflectance, nothing retroreflective), along the road by across it
+      obstacle(s, off, o) { o = o || {}; const p = at(s, off); add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: o.h || 0.35, hx: o.l || 0.3, hy: o.w || 0.2, yaw: p.yaw, mat: 'tyre' }); },
     };
+    for (const [m, c] of [['post', 'post'], ['sign', 'sign'], ['tree', 'veg'], ['bush', 'veg'], ['deer', 'deer'], ['person', 'person'], ['car', 'car'], ['parkedCar', 'car'], ['signal', 'signal'], ['obstacle', 'obstacle']]) { const f = k[m]; k[m] = function () { cur = c; try { return f.apply(this, arguments); } finally { cur = ''; } }; }
     return k;
   }
 
@@ -197,10 +201,18 @@
     if (o.preceding && o.preceding.dist > 0) k.car(o.preceding.dist, 0, { face: 1, lamps: 'tail' });
     for (const ob of k.O) objects.push(ob);
   }
-  // build a scene by name: ctx { Lw (lane width m), A (RF.Road.arc or null), us (US markings), seed }, o { people, animals, signs }
+  // crates on the road, for any scene: o.obstacle = true → one every 150 m, alternately in the right and left half of our lane
+  function addObstacles(ctx, objects) {
+    const k = kit(ctx); for (let s = 80, i = 0; s < 300; s += 150, i++) k.obstacle(s, i % 2 ? 0.55 : -0.55);
+    for (const ob of k.O) objects.push(ob);
+  }
+  // build a scene by name: ctx { Lw (lane width m), A (RF.Road.arc or null), us (US markings), seed }, o { people, animals, signs, posts, veg (false = leave
+  // that class out; everything else stays where it was), obstacle (true = add crates) }
   function buildScene(name, ctx, o) {
     const sc = SCENES[name] || SCENES.road, c = Object.assign({ Lw: 3.5, A: null, us: false, seed: 7 }, ctx, { rand: rng((ctx && ctx.seed) || 7) }), opt = Object.assign({ people: true, animals: true, signs: true }, o), out = sc.build(c, opt);
     addTraffic(c, out.objects, opt);
+    if (opt.posts === false || opt.veg === false) out.objects = out.objects.filter((ob) => !((opt.posts === false && ob.cls === 'post') || (opt.veg === false && ob.cls === 'veg')));
+    if (opt.obstacle) addObstacles(c, out.objects);
     return out;
   }
   RF.Drive.scenes = SCENES; RF.Drive.buildScene = buildScene; RF.Drive.rng = rng;

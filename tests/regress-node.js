@@ -301,6 +301,51 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       ok('B12 [' + k + '] the preview worker\'s grids are the report\'s grids (fine and wide)', r.same.fine && r.same.wide);
     }
   }
+  // F2: the animated Drive view (js/drive-anim.js) — its CPU side, without a GPU. The still view must not change; the layered picture must equal the whole one.
+  {
+    const DA = RF.DriveAnim, D = RF.Drive, lut = D.lutFrom((h, v) => 30000 * Math.exp(-((h / 12) ** 2 + ((v + 1.5) / 3) ** 2)));
+    const base = { w: 160, h: 90, hfov: 60, eye: DA.EYE, lamps: [[0, 0.7, 0.7], [0, -0.7, 0.7]], lut, conv: 'A', lane: 3.5, look: { RL: 0.2 } };
+    const flags = { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: true };
+    const src = DA.source('road', 3.5, false, flags), luma = (a, q) => 0.2126 * a[3 * q] + 0.7152 * a[3 * q + 1] + 0.0722 * a[3 * q + 2];
+    // F2a: Drive.render without `layer` is what it always was: no cov/rows/rgba in the result, depth and mat present
+    const still = D.render(Object.assign({ scene: { objects: src.objects, markings: src.markings, verge: src.verge } }, base));
+    ok('F2a the whole-picture render is unchanged in shape (depth, mat, no layer fields)', !!still.depth && !!still.mat && still.cov === undefined && still.rows === undefined && still.rgba === undefined);
+    // F2b: scenery repeats every PERIOD m and stays in [dist − 6, dist − 6 + PERIOD) ahead; one copy of every object
+    { let bad = 0, n = 0; for (const dist of [0, 37.3, 299.9, 300, 1234.5]) { const o = DA.place(src, dist, null); n += o.length; if (o.length !== src.objects.length) bad++; for (const ob of o) if (ob.x < -6 - 1e-9 || ob.x >= DA.PERIOD - 6 + 1e-9) bad++; }
+      ok('F2b place(): every object once, ahead of the car within one period, at 5 distances', bad === 0, n + ' objects placed'); }
+    // F2c: the same object at dist and dist + PERIOD is at the same spot (the scenery repeats exactly)
+    { const a = DA.place(src, 12.5, null), b = DA.place(src, 12.5 + DA.PERIOD, null); let worst = 0; for (let i = 0; i < a.length; i++) worst = Math.max(worst, Math.abs(a[i].x - b[i].x), Math.abs(a[i].y - b[i].y)); ok('F2c place(dist) = place(dist + PERIOD)', worst < 1e-9, 'worst ' + worst); }
+    // F2d: layered = whole. Ground + (objects layer) composed as the shader does, against the whole picture of the displaced world; outside the objects' tiles it matches to float rounding
+    const srcUS = DA.source('road', 3.5, true, flags);      // US markings: nothing patterned, so the ground has no moving part at all
+    ok('F2d the US road has no patterned marking (ground = one layer), the EU road has the dashes', !srcUS.markings.some((m) => m.pat) && src.markings.some((m) => m.pat) && DA.ground(Object.assign({ A: null, src: srcUS }, base)).B === null);
+    for (const [S, tag, name, A, dist] of [[src, 'EU', 'straight', null, 0], [src, 'EU', 'straight', null, 37.3], [src, 'EU', '250R bend', RF.Road.arc(250, 'right'), 37.3], [src, 'EU', '150L bend', RF.Road.arc(150, 'left'), 111.7], [srcUS, 'US', 'straight', null, 37.3], [srcUS, 'US', '250R bend', RF.Road.arc(250, 'right'), 111.7]]) {
+      const src = S, p = Object.assign({ A, src }, base), g = DA.ground(p), rgba = new Float32Array(4 * 160 * 90); DA.objects(p, dist, rgba, 2);
+      const comp = DA.composeCPU(p, g, rgba, dist), shift = (m) => m.pat ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { s0: m.pat.s0 - dist, s1: m.pat.s1 - dist }) }) : m;
+      const scene = { objects: DA.place(src, dist, A), markings: src.markings.map(shift), verge: src.verge }, cam = Object.assign({ arc: A, scene }, base);
+      const ref2 = D.render(cam), ref1 = D.render(Object.assign({}, cam, { ss: 1 }));
+      let gMax = 0, fRel = [], eRel = [], nG = 0;
+      for (let q = 0; q < 160 * 90; q++) {
+        const c = rgba[4 * q + 3], rel = Math.abs(luma(comp, q) - luma(ref2.rgb, q)) / Math.max(luma(ref2.rgb, q), 0.02);
+        if (c >= 0.999) { fRel.push(rel); continue; } if (c > 0) { eRel.push(rel); continue; }
+        if (ref2.rgb[3 * q] === ref1.rgb[3 * q] && ref2.rgb[3 * q + 1] === ref1.rgb[3 * q + 1] && ref2.rgb[3 * q + 2] === ref1.rgb[3 * q + 2]) { nG++; gMax = Math.max(gMax, Math.abs(luma(comp, q) - luma(ref2.rgb, q))); }
+      }
+      const q50 = (a) => a.sort((x, y) => x - y)[a.length >> 1] || 0, qMax = (a) => a.length ? Math.max(...a) : 0;
+      ok('F2d layered = whole, ' + tag + ' ' + name + ' at ' + dist + ' m: ground outside the object tiles', nG > 5000 && gMax < 1e-3, nG + ' px, worst abs ' + gMax.toExponential(1) + ' cd/m²');
+      ok('F2d layered = whole, ' + tag + ' ' + name + ' at ' + dist + ' m: pixels an object covers fully', fRel.length > 5 && qMax(fRel) < 1e-4, fRel.length + ' px, worst relative ' + qMax(fRel).toExponential(1));
+      ok('F2d layered = whole, ' + tag + ' ' + name + ' at ' + dist + ' m: edge pixels (the ground behind them is 1 sample here, 2×2 there)', eRel.length > 5 && q50(eRel) < 0.05, eRel.length + ' px, median relative ' + (100 * q50(eRel)).toFixed(2) + ' %');
+    }
+    // F2e: a class switched off takes only that class away; the rest of the scene is exactly where it was (the random stream is not touched)
+    { const all = D.buildScene('road', { Lw: 3.5, A: null, us: false, seed: 7 }, {}).objects, key = (ob) => JSON.stringify([ob.k, ob.x, ob.y, ob.z, ob.z0, ob.z1]);
+      for (const [flag, cls] of [['posts', 'post'], ['veg', 'veg']]) {
+        const off = D.buildScene('road', { Lw: 3.5, A: null, us: false, seed: 7 }, { [flag]: false }).objects, want = all.filter((ob) => ob.cls !== cls).map(key), got = off.map(key);
+        ok('F2e ' + flag + ' off removes exactly the ' + cls + ' objects (' + (all.length - off.length) + ' of ' + all.length + '), the rest unchanged', all.some((ob) => ob.cls === cls) && JSON.stringify(want) === JSON.stringify(got)); }
+      const withCrates = D.buildScene('road', { Lw: 3.5, A: null, us: false, seed: 7 }, { obstacle: true }).objects;
+      ok('F2e crates are added after the scene (the old objects keep their order and place), default is none', withCrates.length > all.length && JSON.stringify(withCrates.slice(0, all.length).map(key)) === JSON.stringify(all.map(key)) && !all.some((ob) => ob.cls === 'obstacle')); }
+    // F2f: the object layer's `tight` tiles change nothing but the pixels traced: same picture as sphere tiles wherever an object is
+    { const sc = { objects: DA.place(src, 37.3, null), markings: [], verge: src.verge }, a = new Float32Array(4 * 160 * 90), b = new Float32Array(4 * 160 * 90);
+      D.render(Object.assign({ scene: sc, layer: 'objects', rgba: a }, base)); D.render(Object.assign({ scene: sc, layer: 'objects', rgba: b, tight: true }, base)); let d = 0; for (let i = 0; i < a.length; i++) d = Math.max(d, Math.abs(a[i] - b[i]));
+      ok('F2f tight tiles give the same object layer as sphere tiles', d < 1e-6, 'worst ' + d); }
+  }
   // F3: sealed-beam solver (solvers/sealed-beam-v1.js) — the flutes steer the beam where their parameters say, and every variant stays inside the envelope
   {
     const lab = require('../tools/sealed-beam/lab.js');
