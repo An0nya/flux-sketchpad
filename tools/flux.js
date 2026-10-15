@@ -5,7 +5,12 @@
 //   node tools/flux.js scene <scene.json>
 //   node tools/flux.js trace <scene.json> [--rays 2e6] [--spec fmvss-lb2m,ece-r112-b]
 //   node tools/flux.js solve <scene.json> [--solver id] [--set key=value ...] [--out solved.json] [--rays 2e6]
-//   node tools/flux.js heatmap <scene.json> --out farfield.png [--rays 2e6] [--scale 4]
+//   node tools/flux.js heatmap <scene.json> --out farfield.png [--rays 2e6] [--scale 1]
+//   node tools/flux.js manifest [--out api.json]                      (Layer 3: what exists, as one static file)
+// Layer 2, the real page through Playwright (its own headless Chromium on the real GPU, never the shared Browser pane):
+//   node tools/flux.js shot [scene.json] --out x.png [--pane result|scene|editor|optics|page] [--display ff|drive|road|grid|hits|smooth|fid]
+//                           [--expand] [--mode A|B|C|D] [--viewport 1500x950] [--mobile] [--wait 1500]
+//   node tools/flux.js page [scene.json] --eval "<JS expression; RF is the app>"   → its value as JSON
 // Spec-mode scenes (mode D), or any scene given --spec, are judged in the far field the way the Spec panel does
 // (a pilot quarter of the rays, then guided rounds); other modes report the target-plane stats and paint fidelity.
 'use strict';
@@ -88,6 +93,67 @@ const sceneSummary = (sc, file) => ({
   sim: sc.sim, target: { distance: sc.target.distance, size: sc.target.size, res: sc.target.res },
 });
 
+// ---- Layer 3: one static file listing what exists (served next to index.html, so a crawler without a browser can read it)
+function manifest() {
+  loadBundled();
+  const git = (a) => { try { return require('child_process').execFileSync('git', a, { cwd: ROOT }).toString().trim(); } catch (e) { return null; } };
+  const meta = new Map(bundled.filter((b) => b.id).map((b) => [b.id, b]));
+  return {
+    app: 'FLUX reflector sketchpad', generatedBy: 'node tools/flux.js manifest', commit: git(['rev-parse', '--short', 'HEAD']), date: git(['log', '-1', '--format=%cs']),
+    docs: { cli: 'tools/FLUX-CLI.md', solverApi: 'SOLVER_API.md', readme: 'README.md' },
+    modes: { A: 'Paint', B: 'Stamp', C: 'Profile', D: 'Spec' },
+    solvers: RF.Solvers.list().map((d) => ({ id: d.id, name: d.name, version: d.version, modes: d.modes, file: meta.has(d.id) ? 'solvers/' + meta.get(d.id).file : 'built-in (js/)', group: meta.has(d.id) ? meta.get(d.id).group : 'built-in', note: meta.has(d.id) ? meta.get(d.id).note : '',
+      settings: (d.settings || []).map((f) => Object.fromEntries(['key', 'label', 'type', 'min', 'max', 'step', 'default', 'options', 'help'].filter((k) => f[k] !== undefined).map((k) => [k, f[k]]))) })),
+    specPresets: Object.entries(RF.Spec.PRESETS).map(([id, p]) => ({ id, label: p.label, verified: !!p.verified, source: p.source })),
+    sources: Object.entries(RF.SourcePresets.PRESETS).map(([id, p]) => ({ id, label: p.label, group: p.group || null, note: p.note || null })),
+    examples: fs.readdirSync(path.join(ROOT, 'examples')).filter((f) => f.endsWith('.json')).map((f) => 'examples/' + f),
+  };
+}
+
+// ---- Layer 2: the real page.  Own static server on a free port + own headless Chromium (channel 'chromium' = the Apple GPU)
+function playwright() {
+  for (const p of [process.env.PLAYWRIGHT, 'playwright', '/Users/anya/Projects/agent-qa/node_modules/playwright']) { if (!p) continue; try { return require(p); } catch (e) { /* next */ } }
+  die('Playwright not found: set PLAYWRIGHT=/path/to/node_modules/playwright');
+}
+async function withPage(fn) {
+  const net = require('net'), { spawn } = require('child_process');
+  const port = await new Promise((res) => { const sv = net.createServer().listen(0, () => { const p = sv.address().port; sv.close(() => res(p)); }); });
+  const srv = spawn('python3', [path.join(ROOT, 'tests', 'serve.py'), String(port)], { cwd: ROOT, stdio: 'ignore' });
+  const pw = playwright(), mobile = argv.includes('--mobile');
+  const [vw, vh] = (flag('viewport', mobile ? '390x844' : '1500x950')).split('x').map(Number);
+  let browser;
+  try {
+    for (let i = 0; i < 50; i++) { const up = await new Promise((r) => net.connect(port, '127.0.0.1').on('connect', function () { this.end(); r(true); }).on('error', () => r(false))); if (up) break; await new Promise((r) => setTimeout(r, 100)); }
+    browser = await pw.chromium.launch({ channel: 'chromium', args: ['--enable-unsafe-webgpu'] });
+    const ctx = await browser.newContext({ viewport: { width: vw, height: vh }, deviceScaleFactor: mobile ? 3 : 1, isMobile: mobile, hasTouch: mobile });
+    const page = await ctx.newPage(), errors = []; page.on('pageerror', (e) => errors.push(String(e.message || e)));
+    await page.goto('http://127.0.0.1:' + port + '/index.html');
+    await page.waitForFunction(() => window.RF && RF.UI && RF.UI.run, null, { timeout: 60000 });
+    if (+(await page.evaluate(() => location.port)) !== port) throw new Error('wrong page');
+    if (positional[0]) await page.evaluate((txt) => RF.UI.loadScene(RF.State.deserialize(txt), 'flux.js'), fs.readFileSync(path.resolve(positional[0]), 'utf8'));
+    const m = flag('mode'); if (m) await page.evaluate((x) => RF.UI.setMode(x), m);
+    await page.waitForFunction(() => !RF.UI.solving && RF.UI.run && RF.UI.run.ctx && RF.UI.run.ctx.done, null, { timeout: +flag('timeout', 180000) });
+    return await fn(page, errors);
+  } finally { if (browser) await browser.close(); srv.kill(); }
+}
+async function shot() {
+  const file = flag('out'); if (!file) die('shot needs --out file.png');
+  return withPage(async (page, errors) => {
+    const pane = flag('pane', 'result'), disp = flag('display');
+    if (argv.includes('--expand')) await page.evaluate((p) => RF.UI.setPane(p, 'expand'), pane);
+    if (disp) await page.evaluate((d) => RF.UI.setDisplay(d), disp);
+    await page.waitForTimeout(+flag('wait', 1500));   // views draw on animation frames; the drive view also warms its textures
+    const target = pane === 'page' ? page : page.locator('section.pane[data-pane="' + pane + '"]');
+    await target.screenshot({ path: path.resolve(file) });
+    const info = await page.evaluate(() => ({ mode: RF.UI.store.scene.mode, display: RF.UI.display, rays: RF.UI.run.ctx.N, gpu: !!(RF.GpuTrace && RF.GpuTrace.use && RF.GpuTrace.use(RF.UI.run.ctx)), title: document.title }));
+    return Object.assign({ file: path.resolve(file), pane, pageErrors: errors }, info);
+  });
+}
+async function pageEval() {
+  const expr = flag('eval'); if (!expr) die('page needs --eval "<expression>"');
+  return withPage(async (page, errors) => ({ value: await page.evaluate((e) => Promise.resolve((0, eval)(e)), expr), pageErrors: errors }));
+}
+
 (async () => {
   if (cmd === 'list') {
     const what = positional[0];
@@ -142,5 +208,8 @@ const sceneSummary = (sc, file) => ({
     }
     return out(report);
   }
-  die('commands: list | scene | trace | solve | heatmap   (see the header of tools/flux.js)');
+  if (cmd === 'manifest') { const m = manifest(), file = flag('out'); if (file) { fs.writeFileSync(path.resolve(file), JSON.stringify(m, null, 1) + '\n'); return out({ file: path.resolve(file), solvers: m.solvers.length, specPresets: m.specPresets.length, sources: m.sources.length }); } return out(m); }
+  if (cmd === 'shot') return out(await shot());
+  if (cmd === 'page') return out(await pageEval());
+  die('commands: list | scene | trace | solve | heatmap | manifest | shot | page   (see the header of tools/flux.js)');
 })().catch((e) => die(e.stack || String(e)));
