@@ -8,7 +8,9 @@
  * passed: on the next preview / progress / trace call, or just before 'done'). */
 'use strict';
 importScripts('solver-env.js'); importScripts(...self.RF_SOLVER_ENV.map((f) => f + '.js'));   // the same list the runner and scorer use
+importScripts('solver-pool.js');
 const RF = self.RF;
+const srcOf = {};   // solver id → the source text it was loaded from (a pool worker loads the same text); the built-in solvers have none
 const meta = (d) => ({ id: d.id, name: d.name, version: d.version, modes: d.modes, settings: d.settings, declaresLimits: d.declaresLimits });
 const BUILTIN = new Set(RF.Solvers.list().map((d) => d.id));
 const PREVIEW_MS = 250;
@@ -34,6 +36,7 @@ self.onmessage = async (e) => {
       const ids = [], reg = RF.Solvers.register;
       RF.Solvers.register = (def) => { if (def && BUILTIN.has(def.id)) throw new Error("'" + def.id + "' is a built-in solver id: pick another"); const id = reg(def); ids.push(id); return id; };
       try { importScripts(URL.createObjectURL(new Blob([m.src], { type: 'text/javascript' }))); } finally { RF.Solvers.register = reg; }
+      for (const id of ids) srcOf[id] = m.src;
       const defs = [...new Set(ids)].map((id) => meta(RF.Solvers.get(id)));
       if (!defs.length) throw new Error('the file did not call RF.Solvers.register(...)');
       send({ type: 'loaded', defs });
@@ -49,9 +52,19 @@ self.onmessage = async (e) => {
         lastAt = performance.now(); send(p, p.grid ? [p.grid.buffer] : []);
       };
       const flush = () => { if (held && performance.now() - lastAt >= PREVIEW_MS) post(); };
+      // tools.pool (SOLVER_API.md § "Parallel tasks"): only when the host asked for threads and this solver declares tasks; workers start on the first map()
+      let pool = null;
+      const inlineRun = (name, a) => def.tasks[name](m.input, a, { trace: (surfaces, o) => { spend(o); return RF.Solvers.trace(m.scene, surfaces, o); } });
+      const poolOf = () => {
+        if (!(m.pool > 0) || !def.tasks || typeof Worker === 'undefined') return undefined;
+        pool = RF.SolverPool.create({ size: m.pool, id: m.id, srcs: srcOf[m.id] ? [srcOf[m.id]] : [], scene: m.scene, input: m.input, run: inlineRun, onRays: (n) => spend({ rays: n }),
+          spawn: () => { const w = new Worker('solver-pool-worker.js'), h = { post: (x) => w.postMessage(x), terminate: () => w.terminate(), onmessage: null, onerror: null }; w.onmessage = (e) => h.onmessage && h.onmessage(e.data); w.onerror = (e) => h.onerror && h.onerror(e.message || 'error'); return h; } });
+        return pool;
+      };
       const tools = {
         progress: (pct, stage) => { flush(); send({ type: 'progress', pct: +pct || 0, stage: stage ? String(stage).slice(0, 80) : undefined }); },
         budget: m.budget,
+        pool: poolOf(),
         trace: (surfaces, o) => { flush(); spend(o); const t = performance.now(); try { return RF.Solvers.trace(m.scene, surfaces, o); } finally { traceMs += performance.now() - t; nTrace++; } },
         // the same trace, possibly on the GPU (the user's Simulation → GPU trace): same rays, f32 (res.gpu says which ran)
         traceAsync: async (surfaces, o) => { flush(); spend(o); const t = performance.now(); try { return await RF.Solvers.traceAsync(m.scene, surfaces, o); } finally { traceMs += performance.now() - t; nTrace++; } },
@@ -62,7 +75,7 @@ self.onmessage = async (e) => {
           held = { surfaces, info, n: ++nPrev }; flush();
         },
       };
-      const output = await def.solve(m.input, m.settings, tools);
+      let output; try { output = await def.solve(m.input, m.settings, tools); } finally { if (pool) pool.close(); }
       if (held) post();                              // the latest candidate always reaches the page before the result
       send({ type: 'done', output, raysUsed, previews: nPrev, traceMs: Math.round(traceMs), traces: nTrace });
     }

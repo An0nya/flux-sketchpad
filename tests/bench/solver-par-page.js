@@ -1,6 +1,6 @@
 // W3b: wall time of one solve in the real page (the solver runs in the page's solve worker, as users run it).
 //   PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/bench/solver-par-page.js <port> <scene.json> <solver-id>
-//        [--set k=v ...] [--tag x] [--gpu] [--swiftshader] [--headless-shell] [--preview] [--out results.jsonl] [--verify 1e6]
+//        [--set k=v ...] [--tag x] [--gpu] [--threads N] [--swiftshader] [--headless-shell] [--preview] [--out results.jsonl] [--verify 1e6]
 // Needs `python3 tests/serve.py <port>` running on this worktree.  Default browser = channel 'chromium' (full Chromium, real Apple GPU for WebGPU).
 // --gpu: tick Simulation → GPU trace (the worker then gets the GPU; only solvers that call tools.traceAsync use it).  --preview: pass a preview callback (Watch solve on).
 'use strict';
@@ -8,7 +8,7 @@ const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync('npm root -g').toString().trim() + '/playwright'));
 const argv = process.argv.slice(2), flag = (k, d) => { const i = argv.indexOf('--' + k); return i < 0 ? d : argv[i + 1]; };
 const flags = (k) => argv.flatMap((a, i) => (a === '--' + k ? [argv[i + 1]] : []));
-const VAL = new Set(['set', 'tag', 'out', 'verify']);
+const VAL = new Set(['set', 'tag', 'out', 'verify', 'threads']);
 const pos = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && VAL.has(argv[i - 1].slice(2))));
 const [port, sceneFile, id] = pos;
 const sets = Object.fromEntries(flags('set').map((kv) => { const i = kv.indexOf('='), v = kv.slice(i + 1); return [kv.slice(0, i), v !== '' && !isNaN(+v) ? +v : v === 'true' ? true : v === 'false' ? false : v]; }));
@@ -18,7 +18,7 @@ const sets = Object.fromEntries(flags('set').map((kv) => { const i = kv.indexOf(
   const page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.addInitScript((g) => { try { localStorage.setItem('flux/gpu', g ? '1' : '0'); localStorage.setItem('flux/solveLimitMs', '1800000'); } catch (e) { /* ignore */ } }, gpu);
+  await page.addInitScript(([g, th]) => { try { localStorage.setItem('flux/gpu', g ? '1' : '0'); localStorage.setItem('flux/solveLimitMs', '1800000'); localStorage.setItem('flux/solverThreads', String(th)); } catch (e) { /* ignore */ } }, [gpu, +flag('threads', 0)]);
   await page.goto('http://localhost:' + port + '/index.html');
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
   await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 300000 });
@@ -36,7 +36,7 @@ const sets = Object.fromEntries(flags('set').map((kv) => { const i = kv.indexOf(
       out.verify = sc.mode === 'D' && t.spec ? { rays: V, verdict: t.spec.verdict, n: t.spec.n, expFails: t.spec.expFails, lm: Math.round(t.spec.lmWindow * 10) / 10 } : { rays: V, fid: t.fidelity && t.fidelity.fidelity, lm: t.lmOnTarget }; }
     return out;
   }, [fs.readFileSync(path.resolve(sceneFile), 'utf8'), id, sets, argv.includes('--preview'), +flag('verify', 0)]);
-  const row = Object.assign({ tag: flag('tag', ''), where: 'page', browser: argv.includes('--headless-shell') ? 'headless_shell' : 'chromium', gpuTicked: gpu, adapter: gpuInfo, preview: argv.includes('--preview'), solver: id, scene: path.basename(sceneFile), sets, pageErrors: errors.slice(0, 3) }, res);
+  const row = Object.assign({ tag: flag('tag', ''), where: 'page', browser: argv.includes('--headless-shell') ? 'headless_shell' : 'chromium', gpuTicked: gpu, threads: +flag('threads', 0), adapter: gpuInfo, preview: argv.includes('--preview'), solver: id, scene: path.basename(sceneFile), sets, pageErrors: errors.slice(0, 3) }, res);
   console.log(JSON.stringify(row)); const o = flag('out'); if (o) fs.appendFileSync(o, JSON.stringify(row) + '\n');
   await browser.close();
 })().catch((e) => { console.error(e.stack || e); process.exit(1); });

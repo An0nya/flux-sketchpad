@@ -1298,6 +1298,15 @@
     if (S.debug) res.debug = { F: Array.from(R.model.F), G: { nh: G.nh, nv: G.nv, h0: G.h0, v0: G.v0, gs: G.gs }, units: R.live.map((f, u) => ({ id: 'S' + f.idx, r: f.r, flux: f.flux, on: R.st[u].on, aim: [G.hOf(R.st[u].ai), G.vOf(R.st[u].aj)], shape: R.shapeOf(R.st[u].sh) })) };
     return res;
   }
+  // The candidates of the comparison below are independent of each other: with tools.pool (SOLVER_API.md § "Parallel tasks") they are designed and traced
+  // side by side; the choice between them is made afterwards, in menu order, exactly as when they run one after the other.
+  const TASKS = {
+    candidate(input, a, ctx) {
+      const out = solveOnce(input, a.settings, { progress() {}, preview() {}, budget: { rays: Infinity, ms: a.ms }, trace: ctx.trace });
+      const r = ctx.trace(out.surfaces, { rays: 2e6, seed: (input.seed | 0) + 811, spec: true, guided: true, road: true, ideal: true });
+      return { out, r: r && r.spec ? { spec: r.spec, road: r.road } : null };
+    },
+  };
   // Compare fully built reflectors with the host's actual trace. The v2-equivalent design
   // is a real fallback, so a road preference cannot silently replace an easier compliance win.
   async function solveGuarded(input, settings, tools) {
@@ -1317,6 +1326,8 @@
     ];
     if(settings.effort === 'quick') menu.length=2;
     const tried=[]; let best=null, base=null;
+    // pooled: every candidate at once; each gets the time share it would have had in its turn (its budget is a pace for the search, see solveOnce)
+    const pooled = tools && tools.pool && tools.pool.size > 1 && menu.length > 1 ? await tools.pool.map('candidate', menu.map((m, k) => ({ settings: m.settings, ms: Math.max(1000, total / (menu.length - k) * .78) }))) : null;
     const trace = async (out) => {
       if (!tools || !tools.trace) return null;
       const r = await tools.trace(out.surfaces, { rays: 2e6, seed: (input.seed|0)+811, spec: true, guided: true, road: true, ideal: true });
@@ -1325,11 +1336,15 @@
     const merit = r => r && r.road ? Math.sqrt(r.road.farRight*r.road.farLeft) * .8 + Math.sqrt(r.road.right*r.road.left) * .2 : 0;
     let slowest=0;
     for(let k=0;k<menu.length;k++) {
-      if(k && Date.now()-t0+slowest*1.2>total*.92) break;
+      if(k && !pooled && Date.now()-t0+slowest*1.2>total*.92) break;
       const start=Date.now(), m=menu[k], left=total-(start-t0);
-      const inner=Object.assign({},tools,{budget:{rays:tools&&tools.budget?tools.budget.rays:Infinity,ms:Math.max(1000,left/(menu.length-k)*.78)},
-        progress:(f,label)=>{if(tools&&tools.progress)tools.progress((k+f)/menu.length,m.label+': '+label);}});
-      const out=solveOnce(input,m.settings,inner), r=await trace(out);
+      let out, r;
+      if (pooled) { out = pooled[k].out; r = pooled[k].r; if (tools && tools.progress) tools.progress((k + 1) / menu.length, m.label); }
+      else {
+        const inner=Object.assign({},tools,{budget:{rays:tools&&tools.budget?tools.budget.rays:Infinity,ms:Math.max(1000,left/(menu.length-k)*.78)},
+          progress:(f,label)=>{if(tools&&tools.progress)tools.progress((k+f)/menu.length,m.label+': '+label);}});
+        out=solveOnce(input,m.settings,inner); r=await trace(out);
+      }
       slowest=Math.max(slowest,Date.now()-start);
       if(!best) {best={out,r,label:m.label};base=r;}
       let keep=false;
@@ -1350,7 +1365,7 @@
     return best.out;
   }
   RF.Solvers.register({
-    id: 'spec-hl-v3', name: 'Spec headlamp v3', version: '3.0-experimental', modes: ['paint'],
+    id: 'spec-hl-v3', name: 'Spec headlamp v3', version: '3.0-experimental', modes: ['paint'], tasks: TASKS,
     settings: [
       { key: 'effort', label: 'Design search', type: 'select', default: 'normal', options: [{value:'quick',label:'two candidates'},{value:'normal',label:'three candidates'},{value:'single',label:'one road design (experimental)'}], help: 'Includes a v2 fallback and checks the actual ray-traced beam before choosing.' },
       { key: 'roadWeight', label: 'Road goal weight', type: 'number', min: 0, max: 10, step: 0.1, default: 0.3, help: 'Broad distance and shoulder light; 0 reproduces v2. The road target is absolute and limited by available flux.' },

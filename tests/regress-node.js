@@ -640,5 +640,28 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       }
       ok('D2e forest: leaving out unlit foliage changes no pixel by more than 1e-3 cd/m² (' + nKept + ' of ' + nAll + ' objects traced)', worst < 1e-3 && nKept < nAll, 'worst ' + worst.toExponential(1)); }
   }
+  // W3b: solver parallelism (opt-in).  tools.pool results are in argument order whatever the worker count, so a pooled solve = the serial one;
+  // the sealed-beam tuner's new options leave the default untouched (tuneGpu on the CPU = the same traces), and `frozen` judges at a held aim.
+  {
+    const fsx = require('fs'), vmx = require('vm'), pth = require('path'), ROOTX = pth.join(__dirname, '..');
+    for (const f of ['sonnet55-2026-09-28-dish-fit.js', 'sealed-beam-v1.js']) vmx.runInThisContext(fsx.readFileSync(pth.join(ROOTX, 'solvers', f), 'utf8'), { filename: f });
+    vmx.runInThisContext(fsx.readFileSync(pth.join(ROOTX, 'js', 'solver-pool.js'), 'utf8'), { filename: 'solver-pool.js' });
+    const hashOf = (o) => require('crypto').createHash('sha1').update(JSON.stringify(o.surfaces)).digest('hex').slice(0, 12);
+    const problemOf = (sc, input) => Object.assign(RF.U.deepCopy({ source: sc.source, emitters: sc.emitters || [], envelope: sc.envelope, sim: sc.sim, modeD: sc.modeD, mode: sc.mode }), { target: input.target, modeA: { paint: input.paint.cells } });
+    const run = async (sc, id, set, poolN, srcFile) => {
+      const def = RF.Solvers.get(id), input = RF.Solvers.inputOf(sc), problem = problemOf(sc, input), settings = RF.Solvers.sanitize(def, Object.assign(RF.Solvers.settingsOf(sc, id), set));
+      const tools = { progress() {}, preview() {}, budget: { rays: 5e7, ms: 1e9 }, scene: problem, trace: (s, o) => RF.Solvers.trace(problem, s, o) };
+      if (poolN !== null) tools.pool = RF.SolverPool.create({ size: poolN, spawn: require('../tools/pool-worker-node.js').spawner(), id, srcs: [fsx.readFileSync(pth.join(ROOTX, 'solvers', srcFile), 'utf8')], scene: problem, input, run: (n, a) => def.tasks[n](input, a, { trace: tools.trace }) });
+      try { return await def.solve(input, settings, tools); } finally { if (tools.pool) tools.pool.close(); }
+    };
+    const sc = RF.State.defaultScene(); sc.modeA.budget = 30; const small = { rays: 60000, trials: 8 };
+    const h0 = hashOf(await run(sc, 'dish-fit-auto', small, null, 'sonnet55-2026-09-28-dish-fit.js')), h1 = hashOf(await run(sc, 'dish-fit-auto', small, 0, 'sonnet55-2026-09-28-dish-fit.js')),
+      h2 = hashOf(await run(sc, 'dish-fit-auto', small, 2, 'sonnet55-2026-09-28-dish-fit.js')), h3 = hashOf(await run(sc, 'dish-fit-auto', small, 3, 'sonnet55-2026-09-28-dish-fit.js'));
+    ok('W3b dish-fit-auto: no pool = pool of 0 = 2 workers = 3 workers (same design)', h0 === h1 && h1 === h2 && h2 === h3, [h0, h1, h2, h3].join(' '));
+    const sb = RF.State.deserialize(fsx.readFileSync(pth.join(ROOTX, 'examples', 'sealed-beam-7in-low.json'), 'utf8')), tuneSet = { tune: true, tuneEvals: 6, tuneRays: 20000, tuneSeconds: 0 };
+    const b0 = await run(sb, 'sealed-beam-v1', tuneSet, null), b1 = await run(sb, 'sealed-beam-v1', Object.assign({ tuneGpu: true }, tuneSet), null), b2 = await run(sb, 'sealed-beam-v1', Object.assign({ tuneAim: 'frozen' }, tuneSet), null);
+    ok('W3b sealed-beam tuner: tuneGpu without a GPU = the default tuner (same surfaces)', hashOf(b0) === hashOf(b1), hashOf(b0) + ' vs ' + hashOf(b1));
+    ok('W3b sealed-beam tuner: tuneAim frozen runs and reports its traces', b2.notes.some((n) => /^tuner: \d+ traces/.test(n)) && b2.surfaces.length > 0, b2.notes[0].slice(0, 100));
+  }
   process.exitCode = fails ? 1 : 0;
 })();

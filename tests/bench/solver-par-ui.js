@@ -7,14 +7,14 @@ const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync('npm root -g').toString().trim() + '/playwright'));
 const argv = process.argv.slice(2), flag = (k, d) => { const i = argv.indexOf('--' + k); return i < 0 ? d : argv[i + 1]; };
 const flags = (k) => argv.flatMap((a, i) => (a === '--' + k ? [argv[i + 1]] : []));
-const VAL = new Set(['set', 'tag', 'out', 'budget', 'watch', 'mitig']);
+const VAL = new Set(['set', 'tag', 'out', 'budget', 'watch', 'mitig', 'threads']);
 const pos = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && VAL.has(argv[i - 1].slice(2))));
 const [port, sceneFile, id] = pos;
 const sets = Object.fromEntries(flags('set').map((kv) => { const i = kv.indexOf('='), v = kv.slice(i + 1); return [kv.slice(0, i), v !== '' && !isNaN(+v) ? +v : v === 'true' ? true : v === 'false' ? false : v]; }));
 (async () => {
   const browser = await pw.chromium.launch({ channel: 'chromium', args: ['--enable-unsafe-webgpu'] });
   const ctx = await browser.newContext({ viewport: { width: 1500, height: 950 } }), page = await ctx.newPage();
-  await page.addInitScript(() => { try { localStorage.setItem('flux/solveLimitMs', '1800000'); } catch (e) { /* ignore */ } });
+  await page.addInitScript(([th, ka]) => { try { localStorage.setItem('flux/solveLimitMs', '1800000'); localStorage.setItem('flux/solverThreads', String(th)); localStorage.setItem('flux/solveKeepAwake', ka ? '1' : '0'); } catch (e) { /* ignore */ } }, [+flag('threads', 0), argv.includes('--keepawake')]);
   await page.goto('http://localhost:' + port + '/index.html');
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
   await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 300000 });
@@ -40,7 +40,7 @@ const sets = Object.fromEntries(flags('set').map((kv) => { const i = kv.indexOf(
   const solveMs = await page.evaluate(() => Math.round(RF.UI.lastGenMs)), t1 = Date.now();
   await page.waitForFunction(() => RF.UI.run && RF.UI.run.ctx.done, null, { timeout: 600000, polling: 250 });
   const r = await page.evaluate(() => ({ vis: document.visibilityState, lt: window.__lt.length, ltMax: Math.round(Math.max(0, ...window.__lt)), ltSum: Math.round(window.__lt.reduce((a, b) => a + b, 0)), vlog: window.__vlog, previews: window.__prev.size, tracedPreviews: window.__tr.size, placed: RF.UI.store.scene.groups.A.surfaces.length, st: RF.SolverHost.lastStats() }));
-  const row = { tag: flag('tag', ''), where: 'ui', solver: id, scene: path.basename(sceneFile), budget: +flag('budget', 0) || null, sets, watch: w === undefined ? 'default' : w, hidden: argv.includes('--hide'), visibility: r.vis, vlog: r.vlog, mitig: mitig || null,
+  const row = { tag: flag('tag', ''), where: 'ui', threads: +flag('threads', 0), keepAwake: argv.includes('--keepawake'), solver: id, scene: path.basename(sceneFile), budget: +flag('budget', 0) || null, sets, watch: w === undefined ? 'default' : w, hidden: argv.includes('--hide'), visibility: r.vis, vlog: r.vlog, mitig: mitig || null,
     solveMs, wallMs: t1 - t0, postRunMs: Date.now() - t1, previews: r.previews, tracedPreviews: r.tracedPreviews, workerTraceMs: r.st && r.st.traceMs, longTasks: r.lt, longTaskMax: r.ltMax, longTaskSum: r.ltSum, placed: r.placed };
   console.log(JSON.stringify(row)); const o = flag('out'); if (o) fs.appendFileSync(o, JSON.stringify(row) + '\n');
   await browser.close();
