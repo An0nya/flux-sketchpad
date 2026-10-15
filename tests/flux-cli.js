@@ -10,6 +10,13 @@ check(solvers.length > 10 && solvers.some((s) => s.id === 'sealed-beam-v1') && !
 check(run('list', 'spec-presets').some((p) => p.id === 'fmvss-lb2m'), 'list spec-presets has fmvss-lb2m');
 const ex = 'examples/sealed-beam-7in-high.json', sum = run('scene', ex);
 check(sum.mode === 'D' && sum.surfaces.A.count > 0, 'scene summary reads mode + surfaces', { mode: sum.mode, A: sum.surfaces.A });
+const mf = run('manufacturability', ex), mfx = run('manufacturability', ex, '--pull', '1,0,0', '--draft', '3');
+check(mf.summary.surfaces === Object.values(sum.surfaces).filter((g) => g.enabled).reduce((n, g) => n + g.count, 0) && mf.summary.sampledPoints > 0 && mf.conventions.source.startsWith('https://www.protolabs.com/') && !mf.faces, 'manufacturability: saved surfaces measured without a solve, units/conventions/source included', mf.summary);
+check(mfx.pull[0] === 1 && mfx.draftMinDeg === 3 && JSON.stringify(mfx.surfaces[0].draftDeg) !== JSON.stringify(mf.surfaces[0].draftDeg) && mfx.surfaces[0].maxCurvaturePerMm === mf.surfaces[0].maxCurvaturePerMm, 'manufacturability: custom pull and draft threshold change analysis, preserve curvature', { pull: mfx.pull, draft: mfx.draftMinDeg });
+for (const args of [['--pull', '0,0,0'], ['--pull', '1,,0'], ['--pull', '1,2'], ['--pull'], ['--draft', '-1'], ['--draft', 'NaN'], ['--draft'], ['--draft', '']]) {
+  let bad = false; try { execFileSync(process.execPath, [CLI, 'manufacturability', ex, ...args], { cwd: ROOT, stdio: 'pipe' }); } catch (err) { bad = /Pull direction|Minimum draft/.test(String(err.stderr)); }
+  check(bad, 'manufacturability: invalid setting fails loudly ' + args.join(' '));
+}
 const t = run('trace', ex, '--rays', '300000', '--spec', 'fmvss-ub2'), e = t.spec['fmvss-ub2'];
 check(e && e.pass + e.fail + e.unsure === e.rows.length && t.peakCd > 0, 'trace: spec verdict rows add up, peak > 0', { pass: e && e.pass, peak: t.peakCd });
 const solved = path.join(tmp, 's.json'), s = run('solve', ex, '--out', solved), t2 = run('trace', solved, '--rays', '300000', '--spec', 'fmvss-ub2');

@@ -76,6 +76,7 @@
   // fill: base rgb 0..255 + alpha; lam: [a, b] so the shader's colour = rgb·(a + b·lambert); edge: rgba (alpha 0..1); w: edge width in css px.
   // Dashed edges (the secondary facets) are drawn by the 2D overlay instead.
   function glStyle(opts, p, kind) {
+    if (kind === 'optics' && opts.manufacturability) return RF.Manufacturability.style(opts.manufacturability, p.mfIndex);
     const col = GROUP_COL[p.g] || GROUP_COL.M, scene = kind === 'scene', pairs = !scene && opts.style === 'pairs', e = selEmph(opts, p.id);
     const a = scene ? (p.inter === 'refract' ? 0.18 : p.inter === 'absorb' ? 0.5 : 0.26) : (p.inter === 'refract' ? 0.3 : 0.5), aDim = scene ? a * 0.3 : 0.12;
     if (pairs) {
@@ -209,7 +210,7 @@
         const c = V.mul(poly.reduce((s, q) => V.add(s, q), [0, 0, 0]), 1 / poly.length);
         let n = V.cross(V.sub(poly[1], poly[0]), V.sub(poly[poly.length - 1], poly[0]));
         if (V.len(n) < 1e-12 && poly.length > 2) n = V.cross(V.sub(poly[1], poly[0]), V.sub(poly[2], poly[0]));
-        polys.push({ k, g, inter, pts: poly, c, n: V.norm(n), id: meta.id });
+        polys.push({ k, g, inter, pts: poly, c, n: V.norm(n), id: meta.id, mfIndex: polys.length });
       }
     }
     return { polys, P };
@@ -486,7 +487,12 @@
     const G = model.P.G;
     for (const it of items) {
       const col = GROUP_COL[it.p.g] || GROUP_COL.M;
-      if (opts.style === 'pairs') {
+      if (opts.manufacturability) {
+        const s = RF.Manufacturability.style(opts.manufacturability, it.p.mfIndex);
+        ctx.fillStyle = rgba(s.fill, s.fill[3]); ctx.strokeStyle = rgba(s.edge, s.edge[3]); ctx.lineWidth = s.w;
+        ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
+        if (opts.manufacturability.result.faces[it.p.mfIndex].undercut) { ctx.strokeStyle = '#0b1118'; ctx.lineWidth = 0.6; ctx.stroke(); }
+      } else if (opts.style === 'pairs') {
         const e = selEmph(opts, it.p.id);
         ctx.strokeStyle = e === null ? rgba(col, 0.35) : e > 0 ? rgba(SEL_COL, 0.5 + 0.5 * e) : rgba(col, 0.1); ctx.lineWidth = e > 0 ? 1.2 : 0.8;
         ctx.beginPath(); it.pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.stroke();
@@ -500,9 +506,15 @@
       }
     }
     ctx.setLineDash([]);
+    if (glOK && opts.manufacturability) for (const p of model.polys) {
+      if (!opts.manufacturability.result.faces[p.mfIndex].undercut) continue;
+      const pr = p.pts.map((q) => cam.project(q));
+      ctx.beginPath(); pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.8; ctx.stroke(); ctx.strokeStyle = '#0b1118'; ctx.lineWidth = 0.6; ctx.stroke();
+    }
     // per-surface annotation: normals (shaded) or source→surface→out ray pairs; none for plain 'solid'
     const seen = new Set(), sizeRef = 40 / cam.scale;
-    for (let k = 0; k < (opts.style === 'solid' ? 0 : G.n); k++) {
+    for (let k = 0; k < (opts.manufacturability || opts.style === 'solid' ? 0 : G.n); k++) {
       const m = G.metas[k]; if (seen.has(k)) continue; seen.add(k);
       if (!m.frame) continue;
       const o = k * RF.Geo.STRIDE, D = G.D;

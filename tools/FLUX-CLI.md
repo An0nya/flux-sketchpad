@@ -9,6 +9,7 @@ stdout**. Errors go to stderr with exit code 1. No browser, no npm install. Star
 | `list spec-presets` | Spec presets (ECE R112, FMVSS 108 …): id, label, verified |
 | `list sources` | light-source presets (LEDs, R37 halogen filaments …) |
 | `scene <scene.json>` | summary: mode, solver, source, envelope, surface counts per group, sim, target |
+| `manufacturability <scene.json> [--pull x,y,z] [--draft 2]` | read-only physical metrics of enabled saved surfaces: sampled principal/Gaussian/mean curvature, aperture/feature size, signed draft, undercuts, adjacent seam heights, summary and cited conventions; no solve or trace |
 | `trace <scene.json> [--rays N] [--spec id,id]` | Spec-mode scene or `--spec`: far-field peak cd + where, lm in window, pass/fail/unsure per preset with every row. Other modes: delivered fraction, paint fidelity, spill, coverage, U0 |
 | `compare <a.json> <b.json> [--rays N] [--spec id,id]` | traces saved designs under common settings; A/B metrics, per-preset verdict counts and rows, and B − A deltas as JSON |
 | `solve <scene.json> [--solver id] [--set k=v …] [--out new.json]` | runs a solver exactly as the page's host does (inputOf → solve → verify → apply). Default solver = the scene's, else the app's preferred one. A `--set` the solver would silently change is an error |
@@ -25,6 +26,55 @@ node tools/flux.js trace examples/sealed-beam-7in-low.json --rays 2e6 --spec fmv
 node tools/flux.js solve my-scene.json --solver sealed-beam-v1 --set beam=high --out solved.json
 node tools/flux.js heatmap solved.json --out ff.png
 ```
+
+## Manufacturability
+
+`node tools/flux.js manufacturability examples/sealed-beam-7in-high.json --pull 1,0,0 --draft 2`
+
+The Optics → Manufacturability toggle is off by default. Its settings are view-only, immediate, and not saved in
+scene JSON. Canvas 2D and WebGL use the same cividis ramp and exact unlit colours. Choose principal-curvature magnitude,
+signed Gaussian or mean curvature, minimum signed draft, largest seam step, or minimum physical feature. The legend
+uses this design's sampled range and gives units; grey means unknown, a double white outline flags sampled undercuts.
+The worst-surface buttons select through the facet inspector, including F5 shell-cell selection. During Watch previews
+the metrics describe the preview and its list is disabled until applied.
+
+The CLI defaults to `source.axis` (the UI labels this explicitly as the lamp/source axis). This is the emitter's axis,
+which can differ from the reflector/beam axis, especially for a transverse filament: use `--pull 1,0,0` for the bundled
+sealed-beam reflector's +X withdrawal direction. Vectors are normalized; zero/nonfinite/malformed vectors and draft
+thresholds outside 0–90° are errors. The summary and per-surface rows have unit-bearing field names; `conventions`
+describes the math, limitations and source. Only saved enabled geometry is measured; the CLI does not rebuild intent.
+
+Curvature comes from the exact implicit quadric's shape operator **−Dn** (change in its optical front normal),
+sampled at display-patch vertices and a centre projected onto the exact sheet. `principalPerMm`, `meanPerMm` and
+`gaussianPerMm2` are sampled [min,max] ranges; H=(k1+k2)/2 and K=k1*k2. An outward sphere has negative principal
+curvatures; reversing the front changes H's sign and preserves K. These are sampled extrema, not guaranteed global
+extrema. Display-patch principal colour uses maximum |k| across its samples; H and K colours use its centre.
+
+Signed draft = **asin(frontNormal · normalizedPull)** in degrees: 0° is parallel to withdrawal, +90° faces pull,
+negative means a local undercut for that one pull direction. Two-sided optics still use the declared front.
+The editable 2° warning is a starting point, not a material specification: typical starting draft is 1–3°;
+[Protolabs' draft guide](https://www.protolabs.com/resources/design-tips/improving-part-moldability-with-draft/)
+suggests 1–2° for most situations and 3° for light texture, with other requirements for depth/material/finish.
+
+`apertureWidthMm` is the rectangle's short side, disc diameter, convex polygon's minimum caliper width, or minimum of
+profile length and maximum diameter for a full revolved patch. `featureMm` is also bounded by the smallest positive
+matched seam step; a zero-height continuous seam is not a tiny feature. Display subdivision edges do not count.
+The existing feasibility minimum-feature warning measures **optical source-image blur in target cells**; this view
+measures **physical dimensions in mm**. The scene has no material thickness, fillets, or added facet sidewalls.
+
+`seams` are estimates. Generic matching requires the same scene group and optical interaction, near-parallel
+boundaries with opposite interiors overlapping in the pull plane, within 2% of the smaller aperture width (floor
+0.00001 mm). Boundaries separated by more than half that width are treated as separate parts/unknown. F5 cells use
+their known ring/sector neighbors and nominal unedited shell seam because their apertures deliberately overlap.
+Exact quadric heights are compared along pull at each seam's ends and midpoint. Shell comparisons measure the sheets
+at nominal seams rather than added sidewalls. `method` identifies the matching route; `toleranceMm` is null for known
+shell topology. Unmatched boundaries are unknown (`maxStepMm: null`), while matched continuous seams are zero.
+Large gaps, rotated seams and complex overlaps may remain unmatched. This local surface check does not certify
+closed-solid mouldability, global trapping, wall thickness, or clearance through other parts.
+
+Geometry measurements are cached by compiled design; pull-dependent draft and seams are recomputed only when the
+design, pull or warning threshold changes. Orbit, pan, zoom, metric selection and offender selection reuse measurements.
+No solver, ray trace, saved scene semantics, or manufacturing constraints are changed.
 
 ## Layer 2: the real page (Playwright)
 For what Node can't draw (WebGL drive view, WebGPU traces, the panels as the user sees them). Each call starts its own
