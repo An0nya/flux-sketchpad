@@ -648,6 +648,7 @@ void main() {
       const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 1, ifmt, w, h);
       for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
       const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Drive framebuffer unavailable');
       T[name] = { t, f, w, h }; return T[name];
     };
     const use = (prog_, uni) => { gl.useProgram(prog_.p); for (const k in uni) { const v = uni[k], l = prog_.u[k]; if (l === undefined || l === null) continue; if (Array.isArray(v)) { if (v.length === 2) gl.uniform2fv(l, v); else if (v.length === 3) gl.uniform3fv(l, v); else gl.uniform4fv(l, v); } else if (Number.isInteger(v) && k === 'uRad') gl.uniform1i(l, v); else gl.uniform1f(l, v); } };
@@ -737,10 +738,53 @@ void main() {
     return { cssW, cssH, dpr, W, H, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
   }
   function ensureCanvas() {
-    if (V.canvas) return true;
+    if (V.lost || V.glFailed) return false;
+    if (V.canvas) return !!V.gl;
     const c = document.createElement('canvas'); c.className = 'drive-gl'; c.setAttribute('aria-label', 'Animated drive view'); c.setAttribute('role', 'img');
-    V.gl = makeGL(c); if (!V.gl) { V.why = 'WebGL2 with float render targets is not available here'; return false; }
+    c.addEventListener('webglcontextlost', contextLost);
+    c.addEventListener('webglcontextrestored', contextRestored);
+    try { V.gl = makeGL(c); } catch (e) { V.why = String(e.message || e); }
+    if (!V.gl) { say('WebGL2 with float render targets is unavailable; showing the CPU still view.'); return false; }
     V.canvas = c; return true;
+  }
+  const recovery = () => !RF.SolverHost || RF.SolverHost.recovery();
+  function say(message) {
+    V.why = message;
+    if (!V.cv) return;
+    if (!V.notice) V.notice = E('div', { class: 'drive-notice', 'data-anim': 'notice', role: 'status' });
+    V.notice.textContent = message; V.notice.hidden = !message;
+    const host = V.popStage || V.cv.parentElement; if (V.notice.parentElement !== host) host.append(V.notice);
+  }
+  function contextFallback(why) {
+    clearTimeout(V.restoreTimer); V.restoreTimer = 0; V.glFailed = true; stop(); killWorkers();
+    const st = S(V.ui); if (st.gameMode) toggleGame(V.ui); st.playing = false; st.view = 'still';
+    if (V.canvas) V.canvas.hidden = true;
+    if (st.popout) closePop(V.ui);
+    say(why + '; showing the CPU still view. Reload the page to retry animation.'); V.ui.redrawSpec();
+  }
+  function contextLost(e) {
+    if (!recovery()) return;
+    e.preventDefault(); if (V.lost || V.glFailed) return;
+    V.lost = true; V.resume = S(V.ui).playing; S(V.ui).playing = false; stop(); killWorkers();
+    const game = S(V.ui).game; if (game && !game.done) { game.pauseAt = performance.now(); if (game.inputs) game.inputs.clear(); RF.DriveGame.press(game, false, performance.now()); }
+    if (V.canvas) V.canvas.hidden = true;
+    say('Drive graphics context lost; paused while waiting for restore.');
+    V.restoreTimer = setTimeout(() => contextFallback('Drive graphics did not restore within 8 seconds'), V.restoreMs || 8000);
+    if (V.bar) labels(V.ui);
+  }
+  function contextRestored() {
+    if (!V.lost || V.glFailed) return;
+    clearTimeout(V.restoreTimer); V.restoreTimer = 0;
+    try {
+      V.gl = makeGL(V.canvas); if (!V.gl) throw new Error('float render targets unavailable');
+      V.lost = false; V.gkey = ''; V.rdRef = null; V.band = [0, 0];
+      S(V.ui).playing = !!V.resume; say(''); V.ui.redrawSpec();
+    } catch (e) { contextFallback('Drive graphics rebuild failed: ' + (e.message || e)); }
+  }
+  function contextReady() {
+    if (V.lost || V.glFailed || !V.gl) return false;
+    if (recovery() && V.gl.gl.isContextLost()) { contextLost({ preventDefault() {} }); return false; }
+    return true;
   }
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
@@ -781,6 +825,7 @@ void main() {
   }
   // one frame at S.dist
   function frame() {
+    if (!contextReady()) return;
     const ui = V.ui, st = S(ui), I = info(), o = I.o, t0 = performance.now(), W = V.p.w, pb = V.band, had = pb[1] > pb[0];
     if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
     V.src.traffic.speed = +info().o.speed || 50; pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
@@ -797,7 +842,7 @@ void main() {
     const t2 = performance.now();
     const sources = D.glareSources(V.src.tiles ? placed.objects : placed, EYE);
     const draw = { hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
-    V.gl.draw(draw); if (st.game) V.gameRender = { placed, ss, draw };
+    V.gl.draw(draw); if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
     flashLabel(st.dist, st.t); if (st.game) gameFrame(st.game); ui.dvAnimFrames = V.frames;
   }
@@ -806,17 +851,23 @@ void main() {
   /* The trace is the whole cost of a frame (the GPU passes and the upload are < 1 ms), and every pixel is independent: n workers (js/drive-worker.js) each trace the tile rows ty % n === i of the same frame and send them
    * back as one packed Float32Array (transferred, and returned to them with the next request, so nothing is allocated per frame). The page assembles the rows, uploads the touched band and draws with the dist the frame
    * was traced at, so the objects, the dashes and the grain are always the same instant. One frame in flight at a time. Off (the "threads" switch), no Worker (file://), or a worker that fails: the page traces itself, as before.  */
-  const Wk = { list: [], cfgKey: '', lut: null, cfgId: 0, seq: 0, busy: null, failed: '', pool: [], forced: 0, afterFrame: null };
+  const Wk = { list: [], cfgKey: '', lut: null, cfgId: 0, seq: 0, busy: null, failed: '', pool: [], forced: 0, afterFrame: null, jobs: new Map(), restarts: 0, maxRestarts: 2, deadlineMs: 3000 };
   const nWorkers = () => Wk.forced || Math.max(1, Math.min(6, ((root.navigator && root.navigator.hardwareConcurrency) || 4) - 2));
-  function killWorkers() { for (const w of Wk.list) w.terminate(); Wk.list = []; Wk.cfgKey = ''; Wk.lut = null; Wk.busy = null; Wk.pool = []; }
-  function failWorkers(why) { killWorkers(); Wk.failed = String(why || 'worker error'); V.why = 'worker threads unavailable (' + Wk.failed.split('\n')[0].slice(0, 120) + '): the page traces the objects itself'; if (V.ui) { V.last = 0; if (V.info && V.bar) labels(V.ui); go(); } }
+  function killWorkers() { for (const j of Wk.jobs.values()) clearTimeout(j.timer); Wk.jobs.clear(); for (const w of Wk.list) w.terminate(); Wk.list = []; Wk.cfgKey = ''; Wk.lut = null; Wk.busy = null; Wk.pool = []; if (Wk.afterFrame) { const done = Wk.afterFrame; Wk.afterFrame = null; done(false); } }
+  function failWorkers(why) { killWorkers(); Wk.failed = String(why || 'worker error'); say('worker threads unavailable (' + Wk.failed.split('\n')[0].slice(0, 120) + '): the page traces the objects itself'); if (V.ui) { V.last = 0; if (V.info && V.bar) labels(V.ui); go(); } }
+  function spawnWorker(i) {
+    const w = new Worker('js/drive-worker.js'); Wk.list[i] = w;
+    w.onmessage = (e) => { if (Wk.list[i] !== w) return; const d = e.data, j = Wk.jobs.get(i); if (j && d && (d.type === 'err' || (d.seq === j.msg.seq && d.cfg === j.cfg && d.c === j.msg.c))) { clearTimeout(j.timer); Wk.jobs.delete(i); } onWorker(d); };
+    w.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); if (Wk.list[i] === w) failWorkers(e && e.message); };
+    return w;
+  }
   // true when this frame is traced on workers (they are started, or stopped, to match the switch)
   function mt() {
     const want = !S(V.ui || {}).game && !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
     if (!want) { if (Wk.list.length) killWorkers(); return false; }
     if (Wk.list.length !== n) {
       killWorkers();
-      try { for (let i = 0; i < n; i++) { const w = new Worker('js/drive-worker.js'); w.onmessage = (e) => onWorker(e.data); w.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); failWorkers(e && e.message); }; Wk.list.push(w); } }
+      try { for (let i = 0; i < n; i++) spawnWorker(i); }
       catch (e) { failWorkers(e && e.message); return false; }
     }
     return true;
@@ -827,6 +878,7 @@ void main() {
     if (key === Wk.cfgKey && Wk.lut === p.lut) return;
     Wk.cfgKey = key; Wk.lut = p.lut; Wk.cfgId++; Wk.busy = null;           // a frame in flight belongs to the old picture: dropped when it arrives
     const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lane: p.lane, look: p.look }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
+    Wk.config = m;
     for (const w of Wk.list) w.postMessage(m);
   }
   // the frame is cut into K jobs (tile rows ty % K === c); every worker gets one, and a worker that finishes gets the next: threads that run slower (efficiency cores, a busy machine) just do fewer
@@ -834,9 +886,26 @@ void main() {
     const st = S(V.ui), n = Wk.list.length, ss = ssNow(), th = Math.ceil(V.p.h / 16), K = n > 1 ? Math.min(th, 4 * n) : 1; Wk.seq++;
     V.src.traffic.speed = +info().o.speed || 50; pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
     const b = Wk.busy = { seq: Wk.seq, dist: st.dist, t: st.t, sent: performance.now(), done: 0, next: 0, K, ss, speed: V.src.traffic.speed, traffic: V.src.traffic.logic ? trafficCars(V.src, st.dist, st.t) : null, act: [...V.act], parts: [] };
-    for (let i = 0; i < n && b.next < K; i++) sendJob(i, b);
+    for (let i = 0; i < n && b.next < K && Wk.busy === b; i++) sendJob(i, b);
   }
-  function sendJob(i, b) { const ret = Wk.pool.pop(); Wk.list[i].postMessage({ type: 'job', seq: b.seq, dist: b.dist, t: b.t, speed: b.speed, traffic: b.traffic, ss: b.ss, act: b.act, c: b.next++, K: b.K, ret, wid: i }, ret ? [ret] : []); }
+  function sendJob(i, b) { postJob(i, { type: 'job', seq: b.seq, dist: b.dist, t: b.t, speed: b.speed, traffic: b.traffic, ss: b.ss, act: b.act, c: b.next++, K: b.K, wid: i }); }
+  function postJob(i, msg) {
+    const old = Wk.jobs.get(i); if (old) clearTimeout(old.timer);
+    const j = { msg, cfg: Wk.cfgId, timer: 0 }; Wk.jobs.set(i, j);
+    if (recovery()) j.timer = setTimeout(() => {
+      if (Wk.jobs.get(i) !== j) return;
+      Wk.jobs.delete(i); if (!recovery()) return;
+      if (Wk.restarts >= Wk.maxRestarts) { failWorkers('job deadline exceeded; replacement limit reached'); return; }
+      Wk.restarts++; Wk.list[i].terminate();
+      try {
+        const w = spawnWorker(i); w.postMessage(Wk.config);
+        say('Drive worker missed its deadline; replaced (' + Wk.restarts + '/' + Wk.maxRestarts + ').');
+        if (Wk.busy && Wk.busy.seq === msg.seq && j.cfg === Wk.cfgId) postJob(i, msg);
+      } catch (e) { failWorkers(e.message); }
+    }, Wk.deadlineMs);
+    const ret = Wk.pool.pop();
+    try { Wk.list[i].postMessage(Object.assign({}, msg, { ret }), ret ? [ret] : []); } catch (e) { failWorkers(e.message); }
+  }
   function onWorker(d) {
     if (!d) return;
     if (d.type === 'err') { failWorkers(d.message); return; }
@@ -848,7 +917,7 @@ void main() {
   }
   // all the rows are in: assemble, upload what was touched, draw at the dist they were traced at
   function finishFrame(b) {
-    Wk.busy = null; if (!V.gl || !V.canvas || !V.rgba || !V.ui) { for (const d of b.parts) Wk.pool.push(d.buf); return; }
+    Wk.busy = null; if (!contextReady() || !V.canvas || !V.rgba || !V.ui) { for (const d of b.parts) Wk.pool.push(d.buf); return; }
     const I = info(), o = I.o, W = V.p.w, H = V.p.h, TS = 16, t1 = performance.now(), pb = V.band, had = pb[1] > pb[0]; let y0 = H, y1 = 0;
     if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are copied in
     for (const d of b.parts) {
@@ -861,6 +930,7 @@ void main() {
     const t2 = performance.now();
     const sources = frameSources(b.dist, b.t);
     V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
+    if (!contextReady()) return;
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
     V.times.push(t3); if (V.times.length > 300) V.times.shift();
@@ -894,7 +964,8 @@ void main() {
       const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, was = st.playing, flashes = V.flash, traffic = V.src.traffic.state; if (!mt()) { resolve(null); return; }
       V.src.traffic.state = copyTraffic(traffic);
       st.playing = false; V.flash = flashState(); stop(); workerCfg(); resetStats(); const t0 = performance.now(); let i = 0, mid = 0;
-      const step = () => {
+      const step = (drawn) => {
+        if (drawn === false) { Wk.afterFrame = null; st.dist = d0; st.t = t0s; st.playing = was; V.flash = flashes; V.src.traffic.state = traffic; flashText(); resolve(null); return; }
         if (i === Math.floor(n / 5)) { resetStats(); mid = performance.now(); }       // the first fifth is warm-up (worker start, JIT)
         if (i++ >= n) { V.gl.sync(); const ms = (performance.now() - mid) / (n - Math.floor(n / 5)); Wk.afterFrame = null; st.dist = d0; st.t = t0s; st.playing = was; V.flash = flashes; V.src.traffic.state = traffic; flashText(); resolve(Object.assign({ n, msPerFrame: ms, workers: Wk.list.length }, stats())); return; }
         st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); sendFrame();
@@ -903,7 +974,7 @@ void main() {
     });
   }
   // one frame on the workers at a given dist (tests): → a promise, true when it was drawn
-  function frameMT(dist, t) { return new Promise((res) => { if (!mt()) { res(false); return; } workerCfg(); const st = S(V.ui); st.dist = dist; if (t !== undefined) st.t = t; Wk.afterFrame = () => { Wk.afterFrame = null; res(true); }; sendFrame(); }); }
+  function frameMT(dist, t) { return new Promise((res) => { if (!mt()) { res(false); return; } workerCfg(); const st = S(V.ui); st.dist = dist; if (t !== undefined) st.t = t; Wk.afterFrame = (drawn) => { Wk.afterFrame = null; res(drawn !== false); }; sendFrame(); }); }
   function layout() {
     const sz = size(), cs = V.canvas.style, cw = Math.round(sz.cssW * sz.dpr), ch = Math.round(sz.cssH * sz.dpr);
     if (V.canvas.width !== cw || V.canvas.height !== ch) { V.canvas.width = cw; V.canvas.height = ch; }
@@ -913,6 +984,7 @@ void main() {
   const popValid = (ui) => ui.store && ui.store.scene.mode === 'D' && ui.display === 'drive';
   function tick(t) {
     V.raf = 0; const ui = V.ui, st = S(ui);
+    if (!contextReady()) return;
     if (st.popout && !popValid(ui)) { closePop(ui); return; }
     if (!visible() || !st.playing || !(st.view === 'anim' || st.popout)) {
       if (st.game && !st.game.done) { if (st.game.pauseAt === undefined) st.game.pauseAt = performance.now(); st.game.brake = false; if (st.game.inputs) st.game.inputs.clear(); st.playing = false; }
@@ -925,7 +997,7 @@ void main() {
     frame(); if (st.playing) V.raf = requestAnimationFrame(tick);
   }
   function stop() { if (V.raf) { cancelAnimationFrame(V.raf); V.raf = 0; } V.last = 0; }
-  function go() { if (!V.raf && V.gl && visible() && S(V.ui).playing) { V.last = 0; V.raf = requestAnimationFrame(tick); } }
+  function go() { if (!V.lost && !V.glFailed && !V.raf && V.gl && visible() && S(V.ui).playing) { V.last = 0; V.raf = requestAnimationFrame(tick); } }
 
   // ---------------------------------------------------------------- the controls
   const E = (tag, attrs, ...kids) => { const e = document.createElement(tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); e.append(...kids); return e; };
@@ -933,6 +1005,8 @@ void main() {
     if (V.bar) return V.bar;
     const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
     btn('play', 'Play / pause the drive', () => { st.playing = !st.playing; if (st.playing) { if (st.view !== 'anim') st.view = 'anim'; } ui.redrawSpec(); });
+    btn('fit-controls', 'Keep the two toolbars in separate scrolling rows. Off restores wrapping toolbars.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
+    btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
     const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Speed of the drive' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); lab.textContent = sp.value + ' km/h'; });
     const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
     btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Camera follows queues; speed is a target. Off restores the previous traffic and gap guard.', () => setDV(ui, 'trafficLogic', !info().o.trafficLogic), 'traffic logic');
@@ -976,6 +1050,7 @@ void main() {
     for (const b of q('[data-anim="popout"]')) { b.setAttribute('aria-pressed', String(st.popout)); b.disabled = !sup; b.textContent = st.popout ? '✕ close' : '⤢ large'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
+    for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
     V.bar.hidden = !(sup && (st.view === 'anim' || st.popout));
     const run = st.playing && (st.view === 'anim' || st.popout), pb = V.bar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ pause' : '▶ play'; pb.setAttribute('aria-pressed', String(run));
     V.bar.querySelector('[data-anim="speed"]').value = o.speed; V.bar.querySelector('[data-anim="speedlab"]').textContent = o.speed + ' km/h';
@@ -1002,6 +1077,7 @@ void main() {
   function toggleGame(ui) {
     const st = S(ui);
     if (st.gameMode) {
+      if (V.cardPop && st.popout) closePop(ui);
       stop(); killWorkers(); Object.assign(info().o, st.gameSaved.options); Object.assign(st, st.gameSaved.state);
       st.game = null; st.gameMode = false; st.gameOptions = null; V.p.hazardMask = null; V.last = 0; ui.redrawSpec(); V.flash = st.gameSaved.flash; V.src.traffic.state = st.gameSaved.traffic; V.act = st.gameSaved.act; flashText(); if (!st.playing && visible() && st.view === 'anim') frame(); return;
     }
@@ -1071,6 +1147,7 @@ void main() {
     V.gameCard.hidden = !g.done;
     if (g.done) {
       V.gameBar.classList.remove('running');
+      if (info().o.largeCard !== false && !S(V.ui).popout && V.largeCardRun !== g) { V.largeCardRun = g; requestAnimationFrame(() => { if (S(V.ui).game === g && g.done && S(V.ui).gameMode) { V.cardPop = true; openPop(V.ui); } }); }
       V.gameBar.querySelector('[data-game="brake"]').hidden = true; V.gameBar.querySelector('[data-game="pause"]').hidden = true;
       for (const e of V.gameBar.querySelectorAll('input,select')) e.disabled = false;
       const repair = g.results.reduce((sum, r) => sum + r.repair, 0);
@@ -1107,6 +1184,7 @@ void main() {
       box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), rules, start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. A stop passes the encounter; release after a stop to resume cruise after 2 s. Game flavour, not legal advice.'));
       V.cv.parentElement.append(box); speed.value = info().o.speed; seed.value = info().o.seed; wet.value = info().o.wet ? 'wet' : 'dry';
     }
+    if (V.notice) V.notice.hidden = !V.why || (st.gameMode && !V.lost);
     V.gameBar.hidden = !st.gameMode; V.gameBar.classList.toggle('running', !!st.game && !st.game.done); mount(ui);
     if (st.gameMode) V.bar.hidden = true;
     const toggle = info().toolbar.querySelector('[data-game="toggle"]'); if (toggle) { toggle.setAttribute('aria-pressed', String(!!st.gameMode)); toggle.textContent = st.gameMode ? 'Exit Play' : 'Play'; }
@@ -1142,7 +1220,7 @@ void main() {
     mount(ui); close.focus(); ui.redrawSpec();
   }
   function closePop(ui) {
-    const st = S(ui); if (!st.popout) return; st.popout = false;
+    const st = S(ui); if (!st.popout) return; st.popout = false; V.cardPop = false;
     document.removeEventListener('keydown', V.onKey, true); if (V.ro) { V.ro.disconnect(); V.ro = null; }
     if (V.pop) { V.pop.remove(); V.pop = null; V.popStage = null; }
     if (st.view !== 'anim') st.playing = true;
@@ -1151,7 +1229,8 @@ void main() {
   // the canvas and the tool bars live in the popout while it is open, in the pane otherwise
   function mount(ui) {
     const st = S(ui), host = st.popout && V.popStage ? V.popStage : (V.cv ? V.cv.parentElement : null); if (!host) return;
-    for (const e of [V.canvas, ui.driveBar, V.bar, V.gameBar]) if (e && e.parentElement !== host) host.append(e);
+    host.classList.toggle('drive-fit', info().o.fitControls !== false);
+    for (const e of [V.canvas, ui.driveBar, V.bar, V.gameBar, V.notice]) if (e && e.parentElement !== host) host.append(e);
   }
 
   // ---------------------------------------------------------------- hook from drawDrive
@@ -1167,15 +1246,22 @@ void main() {
     labels(ui); gameControls(ui);
     const want = supported(I.o) && (st.view === 'anim' || st.popout);
     if (!want) { stop(); killWorkers(); if (V.canvas) V.canvas.hidden = true; return; }
-    if (!ensureCanvas()) { st.view = 'still'; st.popout = false; labels(ui); return; }
+    if (V.lost && !V.glFailed) { stop(); return; }
+    if (!ensureCanvas()) { st.view = 'still'; if (V.canvas) V.canvas.hidden = true; if (st.popout) closePop(ui); labels(ui); return; }
     V.canvas.hidden = false; mount(ui);
     if (!visible()) { stop(); return; }
-    const sz = layout();
-    if (I.o.expMode === 'auto' && I.tm) { const ak = I.groundKey + '|' + I.o.ev; if (!V.kAuto || V.autoKey !== ak) { V.kAuto = I.tm.k; V.autoKey = ak; } } else V.kAuto = null;      // auto exposure would flicker as the scene moves: frozen at the still picture's
-    prepare(sz);
-    if (st.playing && mt()) workerCfg();      // playing on the workers: the loop draws the next frame
-    else frame();
-    if (st.playing) go(); else stop();
+    try {
+      const sz = layout();
+      if (I.o.expMode === 'auto' && I.tm) { const ak = I.groundKey + '|' + I.o.ev; if (!V.kAuto || V.autoKey !== ak) { V.kAuto = I.tm.k; V.autoKey = ak; } } else V.kAuto = null;      // auto exposure would flicker as the scene moves: frozen at the still picture's
+      prepare(sz);
+      if (st.playing && mt()) workerCfg();      // playing on the workers: the loop draws the next frame
+      else frame();
+      if (st.playing) go(); else stop();
+    } catch (e) {
+      if (!recovery()) throw e;
+      if (V.gl.gl.isContextLost()) contextLost({ preventDefault() {} });
+      else contextFallback('Drive graphics failed: ' + (e.message || e));
+    }
   }
   // a hidden tab stops the loop; showing it again redraws (which restarts it)
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (V.ui) { if (document.visibilityState === 'hidden') stop(); else if (V.info) { if (S(V.ui).popout && !popValid(V.ui)) closePop(V.ui); else V.ui.redrawSpec(); } } });
@@ -1185,7 +1271,7 @@ void main() {
   function stats() {
     const t = V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); iv.sort((a, b) => a - b);
     const med = iv.length ? iv[iv.length >> 1] : 0, c = V.cpu;
-    return { white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
+    return { white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
   }
   function resetStats() { V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
@@ -1196,5 +1282,5 @@ void main() {
   }
   RF.DriveAnim = { TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
-    _: { V, S, Wk, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
+    _: { V, S, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

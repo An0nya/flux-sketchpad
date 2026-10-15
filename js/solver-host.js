@@ -21,6 +21,9 @@
   const prefRaw = (k) => { try { const v = localStorage.getItem(k); return v === null ? null : +v || 0; } catch (e) { return null; } };
   const cores = () => (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
   const defThreads = () => { const n = Math.min(4, cores() - 2); return n >= 2 ? n : 0; };
+  let recoveryPref = prefRaw('flux/recovery');
+  const recovery = () => recoveryPref !== 0;
+  const setRecovery = (on) => { recoveryPref = on ? 1 : 0; setPref('flux/recovery', recoveryPref); };
   let threadsPref = prefRaw('flux/solverThreads'), keepPref = prefRaw('flux/solveKeepAwake'), awake = null;
   const threads = () => threadsPref === null ? defThreads() : Math.max(0, Math.min(16, threadsPref)), keepOn = () => keepPref === 1;
   const setPref = (k, v) => { try { localStorage.setItem(k, String(v)); } catch (e) { /* ignore */ } };
@@ -72,6 +75,7 @@
         timer,
         reject: (why, kind) => { done(); reject(Object.assign(new Error(why), { aborted: true, kind: kind || 'stopped', budgetMs: ms })); },
         onMsg: (d) => {
+          if (d.type === 'notice') { if (RF.UI && RF.UI.store) { RF.UI.store.notice(d.message); if (RF.Panels) RF.Panels.renderNotices(RF.UI); } return; }
           if (d.type === 'progress') { if (onProgress) onProgress(d.pct, d.stage); return; }
           if (d.type === 'preview') { if (onPreview) { try { onPreview(d); } catch (e) { /* display only */ } } return; }
           done(); if (d.type === 'error') reject(new Error(d.message)); else resolve(d);
@@ -104,7 +108,7 @@
             if (!j.cancel) return;                      // stopped while it waited
             j.cancel = null;
             const ms = limitMs(), onPreview = typeof tools.preview === 'function' && !tools.preview.none ? tools.preview : null;   // no preview callback ⇒ the worker sends none
-            const p = ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.pref()), pool: threads() }, tools.progress, ms, onPreview);
+            const p = ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.pref()), pool: threads(), recovery: recovery() }, tools.progress, ms, onPreview);
             wake(true); if (hidden()) hiddenSolve = true; const off = () => { wake(false); if (hiddenSolve && keepPref === null && !hidden()) { asked = true; if (typeof document !== 'undefined') document.dispatchEvent(new Event('flux-awake-ask')); } if (!hidden()) hiddenSolve = false; }; p.then(off, off);   // still hidden at the end: the question waits for the visibilitychange
             j.rid = p.rid; p.then(resolve, reject);
           });
@@ -192,5 +196,5 @@
   }
   // test hook: run the next solves with a shorter time budget (ms; 0 = back to BUDGET.ms).  BUDGET itself never changes.
   const testBudget = (ms) => { testMs = Math.max(0, +ms || 0); };
-  RF.SolverHost = { threads, threadsDefault: defThreads, threadsChosen: () => threadsPref !== null, setThreads, keepAwake: keepOn, setKeepAwake, askAwake, answerAwake, lastStats: () => lastStats, load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
+  RF.SolverHost = { recovery, setRecovery, threads, threadsDefault: defThreads, threadsChosen: () => threadsPref !== null, setThreads, keepAwake: keepOn, setKeepAwake, askAwake, answerAwake, lastStats: () => lastStats, load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

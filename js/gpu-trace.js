@@ -493,13 +493,15 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
         const ad = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }); if (!ad) return false;
         const lim = ad.limits; st.limits = { maxBufferSize: lim.maxBufferSize, maxStorageBufferBindingSize: lim.maxStorageBufferBindingSize };
         const dev = await ad.requestDevice({ requiredLimits: { maxStorageBufferBindingSize: lim.maxStorageBufferBindingSize, maxBufferSize: lim.maxBufferSize } });
-        dev.lost.then(() => { st.lost = true; st.device = null; st.pipeline = null; st.init = null; });
+        let lost = false;
+        dev.lost.then(() => { lost = true; if (!st.device || st.device === dev) { st.lost = true; st.device = null; st.pipeline = null; st.init = null; st.error = 'GPU device lost; continuing on the CPU'; } });
         const mod = dev.createShaderModule({ code: WGSL });
         const ci = mod.getCompilationInfo ? await mod.getCompilationInfo() : { messages: [] };
         const errs = ci.messages.filter((m) => m.type === 'error');
         if (errs.length) throw new Error('WGSL: ' + errs.map((m) => m.lineNum + ': ' + m.message).join('; '));
-        st.pipeline = await dev.createComputePipelineAsync({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
-        st.device = dev; st.lost = false;
+        const pipeline = await dev.createComputePipelineAsync({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
+        if (lost) throw new Error('GPU device lost during initialization');
+        st.pipeline = pipeline; st.device = dev; st.lost = false;
         const info = ad.info || {}; st.info = { vendor: info.vendor || '', architecture: info.architecture || '', description: info.description || '' };
         return true;
       } catch (e) { st.error = String(e && e.message || e); st.init = null; return false; }
@@ -580,8 +582,8 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
     if (!ready() && !(await init())) throw new Error('WebGPU is not available' + (st.error ? ': ' + st.error : ''));
     const P = ctx.P, ok = supports(P); if (ok !== true) throw new Error('GPU trace: ' + ok);
     // the first pathLimit rays keep their polylines: traced on the CPU, exactly as before
-    if (i0 < ctx.pathLimit) { const c1 = Math.min(i1, ctx.pathLimit); RF.Engine.traceRange(ctx, i0, c1); i0 = c1; }
-    if (i1 <= i0) return;
+    const cpu0 = i0, cpu1 = Math.min(i1, Math.max(i0, ctx.pathLimit)); i0 = cpu1;
+    if (i1 <= i0) { RF.Engine.traceRange(ctx, cpu0, cpu1); return; }
     const dev = st.device, geo = geometry(P), L = layout(ctx), count = i1 - i0;
     // aux: sampler, guides, streams
     const aux = [], src = packSource(P, aux);
@@ -628,11 +630,15 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
     enc.copyBufferToBuffer(accB, 0, accR, 0, 4 * L.size);
     if (recR) enc.copyBufferToBuffer(recB, 0, recR, 0, 20 * count);
     dev.queue.submit([enc.finish()]);
-    await accR.mapAsync(GPUMapMode.READ); if (recR) await recR.mapAsync(GPUMapMode.READ);
-    const A = new Uint32Array(accR.getMappedRange()), Rr = recR ? new Uint32Array(recR.getMappedRange()) : null;
-    if (P.gpuEmitDump) { ctx.emitDump = new Float32Array(Rr.slice().buffer); merge(ctx, L, A, null, i0, count); } else merge(ctx, L, A, Rr, i0, count);
-    accR.unmap(); if (recR) recR.unmap();
-    for (const b of [auxB, accB, recB, accR, recR].concat(tmp)) if (b) b.destroy();
+    try {
+      await accR.mapAsync(GPUMapMode.READ); if (recR) await recR.mapAsync(GPUMapMode.READ);
+      if (st.device !== dev || st.lost) throw new Error('GPU device lost before batch landed');
+      const A = new Uint32Array(accR.getMappedRange()), Rr = recR ? new Uint32Array(recR.getMappedRange()) : null;
+      if (P.gpuEmitDump) { ctx.emitDump = new Float32Array(Rr.slice().buffer); merge(ctx, L, A, null, i0, count); } else merge(ctx, L, A, Rr, i0, count);
+      accR.unmap(); if (recR) recR.unmap();
+    } finally { for (const b of [auxB, accB, recB, accR, recR].concat(tmp)) if (b) b.destroy(); }
+    // Commit the CPU path samples only after readback succeeds: a failed batch is retried from ctx.next.
+    if (cpu1 > cpu0) RF.Engine.traceRange(ctx, cpu0, cpu1);
     ctx.gpuMs = (ctx.gpuMs || 0) + RF.U.now() - t0;
   }
 
@@ -714,5 +720,5 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
   // the page loop's question: trace this context on the GPU now?
   const use = (ctx) => on() && ready() && !ctx.gpuError && supports(ctx.P) === true;
 
-  RF.GpuTrace = { init, ready, supports, traceRange, step, use, on, enable, pref, userChoice, setPref, rayCap, rayLimit, setRayCapOff, capRays, batchMax, info: () => st.info, error: () => st.error || null, available: has, WGSL };
+  RF.GpuTrace = { _loseDevice: () => { if (st.device) st.device.destroy(); }, init, ready, supports, traceRange, step, use, on, enable, pref, userChoice, setPref, rayCap, rayLimit, setRayCapOff, capRays, batchMax, info: () => st.info, error: () => st.error || null, available: has, WGSL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -612,3 +612,9 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .drive-game.running [data-game=status] { margin-right: 180px; }
 
 /* WCAG 2.5.5 enhanced target: https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced */
+
+/* RB: each options row can scroll without growing into the other one. */
+.drive-fit > .drive-tools, .drive-fit > .drive-anim-tools { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; pointer-events: auto; white-space: nowrap; background: rgba(5,10,18,.7); }
+.drive-fit > .drive-tools > *, .drive-fit > .drive-anim-tools > * { flex: 0 0 auto; }
+.drive-notice { position: absolute; left: 8px; right: 8px; top: 38px; z-index: 4; padding: 4px 8px; background: #17283e; color: #fff; font-size: 12px; pointer-events: none; }
+.drive-notice[hidden], .canvas-wrap:not(.drive) > .drive-notice { display: none; }
