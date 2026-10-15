@@ -129,6 +129,25 @@
     { const cv = sc.modeC.curve;           // optional (curve editor); anything malformed is dropped, the profile points remain
       if (cv !== undefined && !(isObj(cv) && Array.isArray(cv.nodes) && Array.isArray(cv.bulge) && cv.nodes.length >= 2 && cv.bulge.length === cv.nodes.length - 1 &&
         cv.nodes.every((p) => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]) && typeof p[0] === 'number' && typeof p[1] === 'number') && cv.bulge.every((b) => typeof b === 'number' && isFinite(b)))) delete sc.modeC.curve; }
+    { const sh = sc.modeC.shell;           // optional (facet shell, js/profile.js); malformed = dropped (the plain profile remains), cells outside the grid or off the numbers are dropped
+      if (sh !== undefined) {
+        const fin = (x) => typeof x === 'number' && isFinite(x);
+        if (!(isObj(sh) && fin(sh.R) && sh.R > 0 && fin(sh.k) && fin(sh.zv) && fin(sh.r1) && sh.r1 > 0 && fin(sh.nRad) && fin(sh.nAng))) delete sc.modeC.shell;
+        else {
+          sh.on = !!sh.on; sh.nRad = Math.min(64, Math.max(1, Math.round(sh.nRad))); sh.nAng = Math.min(128, Math.max(3, Math.round(sh.nAng)));
+          const cells = {}, src0 = isObj(sh.cells) ? sh.cells : {};
+          for (const key of Object.keys(src0)) {
+            const m = /^(\d+):(\d+)$/.exec(key), c = src0[key];
+            if (!m || +m[1] >= sh.nRad || +m[2] >= sh.nAng || !isObj(c)) continue;
+            const o = {};
+            if (fin(c.dv) && c.dv) o.dv = Math.min(1000, Math.max(-1000, c.dv));
+            if (fin(c.dTheta) && c.dTheta) o.dTheta = Math.min(30, Math.max(-30, c.dTheta));
+            if (fin(c.dPhi) && c.dPhi) o.dPhi = Math.min(30, Math.max(-30, c.dPhi));
+            if (Object.keys(o).length) cells[key] = o;
+          }
+          sh.cells = cells;
+        }
+      } }
     sc.lenses = keep(sc.lenses, 'lenses', (l) => isObj(l) && isObj(l.params));
     sc.emitters = keep(sc.emitters, 'emitters', isObj); sc.emitters.forEach((e, i) => src(e, 'emitters[' + i + ']'));
     obj(sc.groups, 'groups');
@@ -231,6 +250,17 @@
     mc.profile = mc.profile.map(([r, z]) => [Math.abs(fl(r)), fl(z)]);
     if (mc.curve) mc.curve.nodes = mc.curve.nodes.map(([r, z]) => [Math.abs(fl(r)), fl(z)]);   // bulge is a ratio: unchanged
     for (const k of ['f', 'rim', 'depth', 'a1']) if (typeof mc.preset[k] === 'number') mc.preset[k] = Math.abs(fl(mc.preset[k]));
+    if (mc.shell) {                                  // facet shell: lengths scale, vergence (1/m) scales inversely, angles stay; a mirror reverses the azimuth
+      const sh = mc.shell; sh.R = Math.abs(fl(sh.R)); sh.zv = fl(sh.zv); sh.r1 = Math.abs(fl(sh.r1));
+      const inv = fl(1) ? 1 / Math.abs(fl(1)) : 1, flip = !!mapScene.fu && mapScene.fu(1) < 0, cells = {};
+      for (const key of Object.keys(sh.cells || {})) {
+        const m = key.split(':'), c = Object.assign({}, sh.cells[key]);
+        if (c.dv) c.dv *= inv;
+        if (flip) { m[1] = sh.nAng - 1 - m[1]; if (c.dPhi) c.dPhi = -c.dPhi; }
+        cells[m[0] + ':' + m[1]] = c;
+      }
+      sh.cells = cells;
+    }
     mc.extrudeLength = Math.abs(fl(mc.extrudeLength));
     const fu = mapScene.fu || ((u) => fl(u));
     for (const st of sc.modeB.stamps) { st.u = fu(st.u); st.v = fl(st.v); st.scale = Math.abs(fl(st.scale)); }

@@ -97,6 +97,39 @@
   function num(id, label, get, set, o) {
     return Object.assign({ id, label, type: 'number', get, set, modes: all, adv: false, groups: [], min: -Infinity, max: Infinity, step: 'any' }, o || {});
   }
+
+  // ---- facet shell helpers (the data is modeC.shell; which cell is selected is store.shellSel = { i, a }, view state, not saved)
+  const shellOf = (s) => s.scene.modeC.shell || null;
+  const shellShown = (s) => !!(s.scene.modeC.shell && s.scene.modeC.shell.on);
+  const cellOf = (s) => { const sh = shellOf(s), c = s.shellSel; return sh && sh.on && c && c.i < sh.nRad && c.a < sh.nAng ? c : null; };
+  const cellShown = (s) => shellShown(s) && !!cellOf(s);
+  const cellGet = (s, f) => { const c = cellOf(s); return c ? ((shellOf(s).cells[RF.Profile.shellKey(c.i, c.a)] || {})[f] || 0) : 0; };
+  function cellSet(s, f, v) {
+    const c = cellOf(s); if (!c) return;
+    const sh = shellOf(s), key = RF.Profile.shellKey(c.i, c.a), cfg = Object.assign({}, sh.cells[key] || {});
+    if (v) cfg[f] = v; else delete cfg[f];
+    if (Object.keys(cfg).length) sh.cells[key] = cfg; else delete sh.cells[key];
+  }
+  function shellSample(s) { const mc = s.scene.modeC; mc.profile = RF.Profile.shellProfile(mc.shell, mc.preset.n); delete mc.curve; }   // the profile stays the shell's cross-section
+  function shellSwitch(s, on) {
+    const mc = s.scene.modeC;
+    if (!on) { if (mc.shell) mc.shell.on = false; return; }
+    if (!mc.shell) {
+      const c = RF.Profile.shellFromPreset(mc.preset);
+      if (!c) { s.notice('Facet shell: the ' + mc.preset.kind + ' preset is not a single conic. Pick parabola, ellipse or sphere first.'); return; }
+      mc.shell = Object.assign({ on: true, nRad: 12, nAng: 24, cells: {} }, c);
+    } else mc.shell.on = true;
+    shellSample(s);
+  }
+  function shellCount(s, f, v) {
+    const sh = shellOf(s); if (!sh) return;
+    v = Math.round(v); if (v === sh[f]) return;
+    if (Object.keys(sh.cells).length) s.notice('Facet shell: the ' + (f === 'nRad' ? 'ring' : 'sector') + ' count changed, so the per-cell edits were cleared (undo brings them back).');
+    sh[f] = v; sh.cells = {}; s.shellSel = null;
+  }
+  function shellConic(s, f, v) { const sh = shellOf(s); if (!sh) return; sh[f] = v; shellSample(s); }
+  // anything that rewrites the profile by hand ends the shell (the cells stay in the scene)
+  function shellRetire(s, why) { const sh = s.scene.modeC.shell; if (sh && sh.on) { sh.on = false; s.notice('Facet shell turned off: ' + why + ' Its cells are kept; tick it again to bring the shell back.'); } }
   const BRUSH_MODES = ['raise', 'set', 'lower'];
   const BRUSH_HELP = 'Raise: a cell takes the brush level only if that is brighter (the default). Set: a cell becomes exactly the brush level, brighter or darker. Lower: a lit cell takes the brush level only if that is darker; empty cells stay empty.';
   function sel(id, label, options, get, set, o) { return Object.assign(num(id, label, get, set, o), { type: 'select', options }); }
@@ -183,6 +216,17 @@
     chk('C.mirror', 'Mirror copy', (s) => s.scene.modeC.mirror, (s, v) => { s.scene.modeC.mirror = !!v; }, { section: 'modeC', modes: ['C'], groups: ['C'] }),
     chk('C.flip', 'Flip facing', (s) => s.scene.modeC.flipFacing, (s, v) => { s.scene.modeC.flipFacing = !!v; }, { section: 'modeC', modes: ['C'], groups: ['C'] }),
     chk('C.rev', 'Reverse axis', (s) => s.scene.modeC.reverseAxis, (s, v) => { s.scene.modeC.reverseAxis = !!v; }, { section: 'modeC', modes: ['C'], groups: ['C'] }),
+    // ---- facet shell (js/profile.js shellBuild): one conic cut into ring x sector cells, each cell editable
+    chk('C.shell', 'Facet shell (ring × sector cells)', (s) => !!(s.scene.modeC.shell && s.scene.modeC.shell.on), (s, v) => shellSwitch(s, !!v), { primary: true, section: 'modeC', modes: ['C'], groups: ['C'], help: 'Cuts one conic mirror into rings × sectors, each cell its own surface that you can tilt or refocus. With every cell at 0 it traces the same as the plain conic. Needs a reflecting, un-mirrored, un-flipped revolve. Edits made to the shape in the Editor, or switching to a preset that is not a conic, turn it off (the cells are kept).' }),
+    num('C.shNr', 'Rings', (s) => (shellOf(s) ? shellOf(s).nRad : 12), (s, v) => shellCount(s, 'nRad', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: 1, max: 64, step: 1, show: shellShown, help: 'Equal steps in radius. Changing the ring or sector count clears the per-cell edits (undo brings them back).' }),
+    num('C.shNa', 'Sectors', (s) => (shellOf(s) ? shellOf(s).nAng : 24), (s, v) => shellCount(s, 'nAng', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: 3, max: 128, step: 1, show: shellShown }),
+    num('C.shR', 'Shell vertex radius R (mm)', (s) => (shellOf(s) ? shellOf(s).R : 0), (s, v) => shellConic(s, 'R', Math.max(0.01, v)), { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 100000, step: 0.5, show: shellShown, help: 'The shell is x²+y²+(1+k)(z−zv)² = 2R(z−zv) about the sweep axis, z from the source. Parabola preset: R = 2f, k = −1, zv = −f. The preset controls above rewrite these.' }),
+    num('C.shK', 'Conic constant k', (s) => (shellOf(s) ? shellOf(s).k : 0), (s, v) => shellConic(s, 'k', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -50, max: 50, step: 0.05, show: shellShown, help: '0 sphere, −1 paraboloid, between −1 and 0 an ellipsoid, below −1 a hyperboloid.' }),
+    num('C.shZv', 'Shell vertex z (mm)', (s) => (shellOf(s) ? shellOf(s).zv : 0), (s, v) => shellConic(s, 'zv', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -10000, max: 10000, step: 0.5, show: shellShown }),
+    num('C.shRim', 'Shell rim radius (mm)', (s) => (shellOf(s) ? shellOf(s).r1 : 0), (s, v) => shellConic(s, 'r1', Math.max(0.01, v)), { section: 'modeC', modes: ['C'], groups: ['C'], min: 0.01, max: 100000, step: 0.5, show: shellShown }),
+    num('C.cdv', 'Cell focus (1/m)', (s) => cellGet(s, 'dv'), (s, v) => cellSet(s, 'dv', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -1000, max: 1000, step: 0.5, show: cellShown, help: 'Adds focusing power to the selected cell: the reflected beam’s vergence changes by this much (+ converges, − diverges). 1 per m = a focus 1 m away from a collimated cell. 0 = on the shell.' }),
+    num('C.cth', 'Cell aim, outward (°)', (s) => cellGet(s, 'dTheta'), (s, v) => cellSet(s, 'dTheta', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -30, max: 30, step: 0.1, show: cellShown, help: 'Turns the selected cell’s reflected beam away from the axis (+) or toward it (−). The cell’s normal tilts by half.' }),
+    num('C.cph', 'Cell aim, around (°)', (s) => cellGet(s, 'dPhi'), (s, v) => cellSet(s, 'dPhi', v), { section: 'modeC', modes: ['C'], groups: ['C'], min: -30, max: 30, step: 0.1, show: cellShown, help: 'Turns the selected cell’s reflected beam sideways, toward increasing sector number (+).' }),
     sel('C.inter', 'Profile is', [['reflect', 'Reflector'], ['refract', 'Refractor (lens)'], ['absorb', 'Absorber']], (s) => s.scene.modeC.interaction, (s, v) => { s.scene.modeC.interaction = v; if (v === 'refract') ensureBounces(s, 2, 'a refracting profile needs an entry and an exit interaction.'); }, { section: 'modeC', modes: ['C'], groups: ['C'] }),
     num('C.refl', 'Reflectivity', (s) => s.scene.modeC.reflectivity, (s, v) => { s.scene.modeC.reflectivity = RF.U.clamp(v, 0, 1); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 0, max: 1, step: 0.01, show: (s) => s.scene.modeC.interaction === 'reflect' }),
     num('C.ior', 'Index of refraction', (s) => s.scene.modeC.ior, (s, v) => { s.scene.modeC.ior = RF.U.clamp(v, 1, 4); }, { section: 'modeC', modes: ['C'], groups: ['C'], min: 1, max: 4, step: 0.01, show: (s) => s.scene.modeC.interaction === 'refract' }),
@@ -194,6 +238,10 @@
   function applyPreset(s) {
     const mc = s.scene.modeC;
     mc.profile = RF.Profile.presetProfile(mc.preset, s.scene); delete mc.curve;
+    if (mc.shell && mc.shell.on) {                       // a facet shell follows the preset while it describes a conic
+      const c = RF.Profile.shellFromPreset(mc.preset);
+      if (c) { Object.assign(mc.shell, c); shellSample(s); } else shellRetire(s, 'the ' + mc.preset.kind + ' preset is not a single conic.');
+    }
     if (mc.preset.kind === 'cpc') ensureBounces(s, 4, 'a CPC needs several wall bounces.');
   }
   function setResolution(s, res) {
@@ -298,8 +346,8 @@
     },
     deleteStamp(store, id) { const b = store.scene.modeB; b.stamps = b.stamps.filter((t) => t.id !== id); if (b.selected === id) b.selected = null; store.invalidate(['B']); },
     clearStamps(store) { store.scene.modeB.stamps = []; store.scene.modeB.selected = null; store.invalidate(['B']); },
-    setProfile(store, pts) { store.scene.modeC.profile = pts.map((p) => [p[0], p[1]]); delete store.scene.modeC.curve; store.invalidate(['C']); },
-    setCurve(store, cv) { const mc = store.scene.modeC; mc.curve = { nodes: cv.nodes.map((p) => [p[0], p[1]]), bulge: cv.bulge.slice() }; mc.profile = RF.Profile.curveFlatten(mc.curve); store.invalidate(['C']); },
+    setProfile(store, pts) { shellRetire(store, 'the profile was edited.'); store.scene.modeC.profile = pts.map((p) => [p[0], p[1]]); delete store.scene.modeC.curve; store.invalidate(['C']); },
+    setCurve(store, cv) { shellRetire(store, 'the profile was edited.'); const mc = store.scene.modeC; mc.curve = { nodes: cv.nodes.map((p) => [p[0], p[1]]), bulge: cv.bulge.slice() }; mc.profile = RF.Profile.curveFlatten(mc.curve); store.invalidate(['C']); },
     applyPreset(store) { applyPreset(store); store.invalidate(['C']); },
     addLens(store, kind) {
       const ids = new Set(store.scene.lenses.map((l) => l.id)); let k = 1; while (ids.has('l' + k)) k++;
@@ -336,12 +384,26 @@
       store.invalidate(srcGroups);
     },
     removeEmitter(store, id) { store.scene.emitters = (store.scene.emitters || []).filter((e) => e.id !== id); store.invalidate(srcGroups); },
+    // facet shell: pick a cell, and bulk edits (the per-cell numbers themselves are the C.cdv / C.cth / C.cph controls)
+    shellSelect(store, i, a) { const sh = store.scene.modeC.shell; store.shellSel = sh && i >= 0 && a >= 0 && i < sh.nRad && a < sh.nAng ? { i, a } : null; },
+    shellCells(store, how) {                   // how: 'reset-cell' | 'ring' | 'sector' | 'reset-all'  (ring / sector: copy the selected cell's numbers to its whole ring / sector)
+      const sh = store.scene.modeC.shell, c = store.shellSel; if (!sh) return;
+      const K = RF.Profile.shellKey, cfg = c ? sh.cells[K(c.i, c.a)] : null;
+      if (how === 'reset-all') sh.cells = {};
+      else if (!c) return;
+      else if (how === 'reset-cell') delete sh.cells[K(c.i, c.a)];
+      else {
+        const n = how === 'ring' ? sh.nAng : sh.nRad;
+        for (let q = 0; q < n; q++) { const key = how === 'ring' ? K(c.i, q) : K(q, c.a); if (cfg) sh.cells[key] = Object.assign({}, cfg); else delete sh.cells[key]; }
+      }
+      store.invalidate(['C']);
+    },
     setGroupEnabled(store, g, on) { store.scene.groups[g].enabled = !!on; },
     clearGroup(store, g) {
       store.scene.groups[g].surfaces = [];
       if (g === 'B') { store.scene.modeB.stamps = []; store.scene.modeB.selected = null; }
       if (g === 'L') store.scene.lenses = [];
-      if (g === 'C') store.scene.modeC.profile = [];
+      if (g === 'C') { store.scene.modeC.profile = []; if (store.scene.modeC.shell) store.scene.modeC.shell.on = false; }
       if (g === 'A') { store.scene.modeA.cleared = true; store.dirty.delete('A'); store.version++; }   // version: a solve still running is dropped on return
     },
     // Scene-view handle drags (UI path for direct manipulation)

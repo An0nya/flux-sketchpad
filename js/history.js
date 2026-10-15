@@ -86,6 +86,10 @@
       parts.push(d > 0 ? 'stamp added' : d < 0 ? 'stamp removed' : 'stamp edit');
     }
     if (J(a.modeC.profile) !== J(b.modeC.profile)) parts.push('profile edit');
+    if (J(a.modeC.shell) !== J(b.modeC.shell)) {
+      const sa = a.modeC.shell, sb = b.modeC.shell, cellsOnly = sa && sb && J(Object.assign({}, sa, { cells: 0 })) === J(Object.assign({}, sb, { cells: 0 }));
+      parts.push(cellsOnly ? 'facet shell cell edit' : 'facet shell');
+    }
     if (J(a.lenses) !== J(b.lenses)) parts.push('lens change');
     if (J(a.emitters || []) !== J(b.emitters || [])) parts.push('emitter change');
     if (J(a.source.pos) !== J(b.source.pos) || J(a.source.axis) !== J(b.source.axis)) { parts.push('source moved'); ch = ch.filter((x) => !/^src\.(x|y|z|az|el)$/.test(x.c.id)); }

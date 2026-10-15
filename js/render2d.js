@@ -223,6 +223,17 @@
     const drawLine = (P, dash, col) => { if (P.length < 2) return; ctx.setLineDash(dash); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); P.forEach((p, i) => { const q = view.toScreen(p[0], p[1]); if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }); ctx.stroke(); ctx.setLineDash([]); };
     if (mc.mirror) drawLine(mc.sweep === 'revolve' ? pts.map(([r, z]) => [r, -z]) : pts.map(([r, z]) => [-r, z]), [4, 4], 'rgba(180,140,240,0.5)');
     drawLine(pts, [], mc.interaction === 'refract' ? '#8fb8ff' : '#b48cf0');
+    if (opts.shell) {                              // facet shell: ring boundaries across the cross-section, the selected ring thick; read-only (no handles)
+      const sh = opts.shell.sh, sel = opts.shell.sel, sagz = (r) => sh.zv + RF.Geo.conicSag(sh.R, sh.k, r);
+      if (sel && sel.i < sh.nRad) {
+        ctx.strokeStyle = 'rgba(255,214,120,0.95)'; ctx.lineWidth = 5; ctx.globalAlpha = 0.55; ctx.beginPath();
+        for (let j = 0; j <= 12; j++) { const r = sh.r1 * (sel.i + j / 12) / sh.nRad, q = view.toScreen(r, sagz(r)); if (j) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }
+        ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      ctx.strokeStyle = 'rgba(255,214,120,0.8)'; ctx.lineWidth = 1;
+      for (let i = 0; i <= sh.nRad; i++) { const r = sh.r1 * i / sh.nRad, q = view.toScreen(r, sagz(r)); const q2 = view.toScreen(r, sagz(r) + 0.04 * (br[0] - tl[0])); ctx.beginPath(); ctx.moveTo(q[0], q[1]); ctx.lineTo(q2[0], q2[1]); ctx.stroke(); }
+      return { handles: [] };
+    }
     // front-side ticks (left normal, flipped if requested)
     ctx.strokeStyle = 'rgba(255,214,120,0.8)'; ctx.lineWidth = 1;
     const tick = (r0, z0, r1, z1) => {

@@ -180,6 +180,17 @@
       section('Shape', { open: true, key: 'C-shape' }, ...rowsFor(ui, ['C.preset', 'C.f', 'C.rim', 'C.depth', 'C.theta', 'C.a1', 'C.n']), el('div', { class: 'btnrow' }, applyBtn)),
       section('Sweep', { open: true, key: 'C-sweep' }, ...rowsFor(ui, ['C.sweep', 'C.len', 'C.az', 'C.axis', 'C.mirror', 'C.flip', 'C.rev'])),
       section('Material', { open: false, key: 'C-mat' }, ...rowsFor(ui, ['C.inter', 'C.refl', 'C.ior', 'C.T'])),
+      section('Facet shell', { open: false, key: 'C-shell', tag: 'ring × sector cells' },
+        ...rowsFor(ui, ['C.shell', 'C.shNr', 'C.shNa']),
+        section('Shell conic', { open: false, key: 'C-shell-conic', adv: true }, ...rowsFor(ui, ['C.shR', 'C.shK', 'C.shZv', 'C.shRim'])),
+        el('div', { id: 'shell-box' }),
+        ...rowsFor(ui, ['C.cdv', 'C.cth', 'C.cph']),
+        el('div', { class: 'btnrow', id: 'shell-btns' },
+          el('button', { type: 'button', id: 'btn-cell-reset', title: 'Put the selected cell back on the shell', onclick: () => ui.shellCells('reset-cell') }, 'Reset cell'),
+          el('button', { type: 'button', id: 'btn-cell-ring', title: 'Copy the selected cell\u2019s numbers to every cell of its ring', onclick: () => ui.shellCells('ring') }, 'Apply to ring'),
+          el('button', { type: 'button', id: 'btn-cell-sector', title: 'Copy the selected cell\u2019s numbers to every cell of its sector', onclick: () => ui.shellCells('sector') }, 'Apply to sector'),
+          confirmButton('Reset all cells', 'Reset every cell?', () => ui.shellCells('reset-all'))),
+        el('div', { id: 'shell-note', class: 'note' })),
       el('div', { class: 'btnrow' },
         el('button', { type: 'button', id: 'btn-del-point', onclick: () => ui.deleteProfilePoint() }, 'Delete selected point'),
         el('button', { type: 'button', id: 'btn-split-seg', title: 'Curve editor: insert a node in the middle of the selected segment (the shape is kept)', onclick: () => ui.splitCurveSegment() }, 'Split segment'),
@@ -230,6 +241,50 @@
       section('Solver files', { open: false, key: 'solver', tag: 'load your own' }, el('div', { id: 'solver-files' })),
       section('Diagnostics (solver internals)', { open: false, key: 'diag', tag: 'read-only' }, el('div', { id: 'diag', class: 'note' })),
       section('Scene contents', { open: false, key: 'groups', tag: 'visibility override' }, el('div', { id: 'group-list', class: 'group-list' }))));
+  }
+
+
+  // ---------------------------------------------------------------- facet shell: the cell map (a polar mini-map of rings x sectors) and notes
+  const SHELL_MAP = 220;
+  function shellWhy(mc) {                       // why a shell that is switched on is not tracing, or ''
+    const sh = mc.shell; if (!sh || !sh.on || RF.Profile.shellOn(mc)) return '';
+    return 'The shell is inactive: ' + (mc.sweep !== 'revolve' ? 'it needs Sweep = Revolve' : mc.interaction !== 'reflect' ? 'it needs a reflecting profile' : mc.mirror ? 'it does not work with Mirror copy' : mc.flipFacing ? 'it does not work with Flip facing' : 'its numbers are out of range') + ', so the plain profile is traced.';
+  }
+  function renderShell(ui) {
+    const box = document.getElementById('shell-box'), note = document.getElementById('shell-note'); if (!box) return;
+    const st = ui.store, mc = st.scene.modeC, sh = mc.shell, live = RF.Profile.shellOn(mc), sel = st.shellSel;
+    box.innerHTML = '';
+    for (const id of ['btn-cell-reset', 'btn-cell-ring', 'btn-cell-sector']) { const b = document.getElementById(id); if (b) b.disabled = !(sh && sh.on && sel); }
+    if (!sh || !sh.on) { if (note) note.textContent = sh ? 'Off. ' + Object.keys(sh.cells).length + ' edited cell(s) kept.' : 'Off. Ticking it cuts the current conic preset (parabola, ellipse or sphere) into ' + 12 + ' rings × ' + 24 + ' sectors with every cell on the shell.'; return; }
+    const cv = el('canvas', { id: 'shell-map', width: SHELL_MAP * 2, height: SHELL_MAP * 2, role: 'img', 'aria-label': 'Map of the facet shell: rings from the centre out, sectors around. Click a cell to select it.', tabindex: 0, style: 'width:' + SHELL_MAP + 'px;height:' + SHELL_MAP + 'px;display:block;margin:6px auto;cursor:pointer;touch-action:none' });
+    box.append(cv);
+    const ctx = cv.getContext('2d'), c = SHELL_MAP, Rm = SHELL_MAP / 2 - 6;
+    ctx.scale(2, 2); ctx.translate(SHELL_MAP / 2, SHELL_MAP / 2);
+    const at = (r, ph) => [r * Math.sin(ph), -r * Math.cos(ph)];            // sector 0 starts at the top and runs clockwise, seen from the source looking along the beam
+    const cell = (i, a, path) => {
+      const r0 = Rm * i / sh.nRad, r1 = Rm * (i + 1) / sh.nRad, p0 = 2 * Math.PI * a / sh.nAng, p1 = 2 * Math.PI * (a + 1) / sh.nAng;
+      ctx.beginPath(); ctx.arc(0, 0, r1, p0 - Math.PI / 2, p1 - Math.PI / 2); if (r0 > 0) ctx.arc(0, 0, r0, p1 - Math.PI / 2, p0 - Math.PI / 2, true); else ctx.lineTo(0, 0); ctx.closePath(); return path;
+    };
+    for (let i = 0; i < sh.nRad; i++) for (let a = 0; a < sh.nAng; a++) {
+      const e = sh.cells[RF.Profile.shellKey(i, a)];
+      cell(i, a); ctx.fillStyle = e ? '#e0a030' : (live ? '#2c3442' : '#222831'); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 0.6; ctx.stroke();
+    }
+    if (sel && sel.i < sh.nRad && sel.a < sh.nAng) { cell(sel.i, sel.a); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.2; ctx.stroke(); }
+    ctx.fillStyle = 'rgba(200,205,214,0.75)'; ctx.font = '10px system-ui'; ctx.fillText('0', -3, -Rm - 0.5);
+    cv.addEventListener('pointerdown', (ev) => {
+      const b = cv.getBoundingClientRect(), x = (ev.clientX - b.left) * SHELL_MAP / b.width - SHELL_MAP / 2, y = (ev.clientY - b.top) * SHELL_MAP / b.height - SHELL_MAP / 2, r = Math.hypot(x, y);
+      if (r > Rm) return;
+      const i = Math.min(sh.nRad - 1, Math.floor(r / Rm * sh.nRad)); let ph = Math.atan2(x, -y); if (ph < 0) ph += 2 * Math.PI;
+      ui.pickShellCell(i, Math.min(sh.nAng - 1, Math.floor(ph / (2 * Math.PI) * sh.nAng)));
+    });
+    cv.addEventListener('keydown', (ev) => {
+      const d = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [1, 0], ArrowDown: [-1, 0] }[ev.key]; if (!d) return;
+      ev.preventDefault(); const s0 = st.shellSel || { i: 0, a: 0 };
+      ui.pickShellCell(Math.max(0, Math.min(sh.nRad - 1, s0.i + d[0])), (s0.a + d[1] + sh.nAng) % sh.nAng, true);
+    });
+    const e = sel && sh.cells[RF.Profile.shellKey(sel.i, sel.a)];
+    if (note) note.textContent = (shellWhy(mc) || (sh.nRad * sh.nAng + ' cells' + (Object.keys(sh.cells).length ? ', ' + Object.keys(sh.cells).length + ' edited (amber)' : ', none edited') + '.')) + ' Map: rings from the centre out; sectors clockwise from the top, seen from the source along the beam.' + (sel ? ' Selected: ring ' + (sel.i + 1) + ', sector ' + (sel.a + 1) + (e ? '' : ' (on the shell)') + '.' : ' Click a cell to select it (it lights up in Optics), or tap a ring in the Editor.');
   }
 
   function definitions() {
@@ -779,5 +834,5 @@
     return results;
   }
 
-  RF.Panels = { renderSourcePreset, el, numberControl, fmtCd, noiseOf, raysFor3pc, fmtLm, fmtMm2, buildSide, syncControls, renderStampList, renderLensList, renderEmitterList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
+  RF.Panels = { renderShell, renderSourcePreset, el, numberControl, fmtCd, noiseOf, raysFor3pc, fmtLm, fmtMm2, buildSide, syncControls, renderStampList, renderLensList, renderEmitterList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

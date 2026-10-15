@@ -280,7 +280,7 @@
     renderSolverBox();
     P.syncControls(ui);
     const eb = document.getElementById('erase-btn'); if (eb) eb.setAttribute('aria-pressed', String(!!C.BY_ID['A.erase'].get(ui.store)));
-    P.renderStampList(ui); P.renderLensList(ui); P.renderEmitterList(ui); P.renderGroups(ui); P.renderNotices(ui);
+    P.renderShell(ui); P.renderStampList(ui); P.renderLensList(ui); P.renderEmitterList(ui); P.renderGroups(ui); P.renderNotices(ui);
     if (RF.SpecUI) RF.SpecUI.render(ui);
     P.renderSourcePreset(ui);
     P.syncControls(ui);
@@ -809,10 +809,11 @@
       ui.pickMarks = r.marks; ui.pickTmax = r.tmax;
     } else {
       const cvo = ui.curveNow();
-      const r = R2.drawProfile(cv, ui.vProf, sc, ui.profSel, false, { pairs: ui.profPairs !== false, curve: cvo, selSeg: ui.profSeg });
+      const r = R2.drawProfile(cv, ui.vProf, sc, ui.profSel, false, { pairs: ui.profPairs !== false, curve: cvo, selSeg: ui.profSeg, shell: RF.Profile.shellOn(sc.modeC) ? { sh: sc.modeC.shell, sel: ui.store.shellSel } : null });
       ui.profHandles = r.handles;
       const info = document.getElementById('prof-info');
       if (info && cvo) { info.textContent = cvo.nodes.length + ' nodes' + (ui.profSeg >= 0 ? ' · segment ' + (ui.profSeg + 1) : ui.profSel >= 0 ? ' · node ' + (ui.profSel + 1) : ''); info.title = 'Drag a segment to move it, an end to extend it, the diamond to bend it; tap empty space to extend the chain.'; }   // short on purpose: a wrapping line resizes the canvas mid-drag
+      else if (info && sc.modeC.shell && RF.Profile.shellOn(sc.modeC)) { info.title = 'The Editor shows the shell\u2019s cross-section and does not edit it: change the shape with the preset or Shell conic numbers, tap a ring here or a cell in the map to select it.'; info.textContent = 'Facet shell · ' + sc.modeC.shell.nRad + ' rings × ' + sc.modeC.shell.nAng + ' sectors'; }
       else if (info) { info.title = ''; info.textContent = sc.modeC.profile.length < 2 ? 'Empty profile — tap to add points, or use “Apply preset to profile” in the sidebar.' : sc.modeC.profile.length + ' points · ' + (ui.profSel >= 0 ? 'point ' + (ui.profSel + 1) + ' selected' : 'tap empty space to add a point'); }
     }
     alignFigure('left-canvas', isPaint(sc.mode) ? ui.vLeft : sc.mode === 'B' ? ui.vPick : ui.vProf);
@@ -1023,6 +1024,7 @@
         // nearest handle within reach (handles can be packed tightly, e.g. near a profile vertex)
         const nearest = (list, r) => { let best = null, bd = r; for (const k of list) { const d = Math.hypot(k.x - x, k.y - y); if (d < bd) { bd = d; best = k; } } return best; };
         if (m === 'B') { const k = nearest(ui.pickMarks, 16); if (k) return { kind: 'mark', id: k.id }; }
+        if (m === 'C' && RF.Profile.shellOn(ui.store.scene.modeC)) return null;      // the shell is picked, not dragged
         if (m === 'C' && ui.curveNow()) {
           const hd = nearest(ui.profHandles, 11); if (hd) return { kind: hd.kind, i: hd.i };   // tighter than the point editor's 14: the body must stay grabbable between handles
           const sg = ui.curveSegAt(x, y); return sg >= 0 ? { kind: 'seg', i: sg } : null;
@@ -1054,6 +1056,11 @@
       onTap(x, y, t) {
         const m = ui.store.scene.mode;
         if (m === 'B' && t && t.kind === 'mark') { ui.selectStamp(t.id); return; }
+        if (m === 'C' && RF.Profile.shellOn(ui.store.scene.modeC)) {                   // read-only cross-section: a tap picks the ring under it (keeping the sector)
+          const sh = ui.store.scene.modeC.shell, c = ui.vProf.toContent(x, y), r = c[0];
+          if (r >= 0 && r <= sh.r1) ui.pickShellCell(Math.min(sh.nRad - 1, Math.floor(r / sh.r1 * sh.nRad)), ui.store.shellSel ? ui.store.shellSel.a : 0);
+          return;
+        }
         if (m === 'C') {
           if (t && t.kind === 'pt') { ui.profSel = t.i; ui.sceneDirty = true; schedule(); return; }
           if (t && (t.kind === 'node' || t.kind === 'mid' || t.kind === 'seg')) { ui.profSel = t.kind === 'node' ? t.i : -1; ui.profSeg = t.kind === 'node' ? -1 : t.i; ui.sceneDirty = true; ui.refreshPanels(); schedule(); return; }
@@ -1557,11 +1564,20 @@
   const confirmDel = (fn) => { const b = P.confirmButton('Delete', 'Delete this saved pattern?', fn); b.title = 'Delete the selected saved pattern'; return b; };
   ui.renderPatterns = renderPatterns; ui.imageToPaint = imageToPaint;
   ui.clearPaint = function () { C.actions.clearPaint(ui.store); ui.afterChange(); };
+  // ---- facet shell (js/profile.js shellBuild): pick a cell (map, Editor ring tap, keyboard); the cell lights up in every view through the inspector selection
+  ui.pickShellCell = function (i, a, keepFocus) {
+    C.actions.shellSelect(ui.store, i, a);
+    const id = 'S' + i + '_' + a;
+    if (!(ui.sel && ui.sel.kind === 'facet' && ui.sel.items.length === 1 && ui.sel.items[0] === id)) ui.select({ kind: 'facet', id });
+    ui.refreshPanels(); ui.sceneDirty = true; schedule();
+    if (keepFocus) { const m = document.getElementById('shell-map'); if (m) m.focus(); }
+  };
+  ui.shellCells = function (how) { C.actions.shellCells(ui.store, how); ui.afterChange(); };
   ui.applyPreset = function (quiet) { C.actions.applyPreset(ui.store); ui.profSel = -1; ui.vProf.fitted = false; ui.store.commit({ deferA: true }); if (!quiet) ui.afterChange(); };
   // ---- curve editor (see js/profile.js "curve objects").  The curve in force: the stored one, or the profile read as a straight chain.
   ui.curveNow = function () {
     const mc = ui.store.scene.modeC;
-    if (ui.profCurve === false || mc.profile.length < 2) return null;
+    if (ui.profCurve === false || mc.profile.length < 2 || RF.Profile.shellOn(mc)) return null;
     return RF.Profile.curveLive(mc) || RF.Profile.curveFromPoints(mc.profile);
   };
   ui.curveSegAt = function (x, y) {                    // nearest curve segment within 8 px of a screen point, or -1
