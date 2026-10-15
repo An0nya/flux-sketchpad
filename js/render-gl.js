@@ -157,7 +157,9 @@ void main() {
     }
     // style: rebuilt when the selection / highlight / view style changes (the Map is a fresh object per redraw, so compare contents cheaply)
     const sk = kind + '|' + (opts.style || '') + '|' + (opts.highlight || '') + '|' + (opts.sel ? [...opts.sel].join(',') : '-') + '|' + (opts.selSecondary ? opts.selSecondary.join(',') : '-');
-    if (K.styleKey !== sk) {
+    const mf = kind === 'optics' ? opts.manufacturability : null;
+    if (K.styleKey !== sk || K.mfResult !== (mf && mf.result) || K.mfMetric !== (mf && mf.metric)) {
+      K.mfResult = mf && mf.result; K.mfMetric = mf && mf.metric;
       K.styleKey = sk;
       const st = new Float32Array(K.nv * 6), edgeData = new ArrayBuffer(K.ne * 32), ef = new Float32Array(edgeData), eb = new Uint8Array(edgeData);
       let v = 0, e = 0;
@@ -218,7 +220,7 @@ void main() {
       const needIdx = K.idxScratch && K.idxScratch.length >= 3 * K.nv ? K.idxScratch : (K.idxScratch = new Uint32Array(3 * K.nv));
       const runs = [];                                   // [start, count] triangle ranges, with the plane (-1) between them
       let q = 0, runStart = 0;
-      const styleAlpha = opts.style === 'pairs' && kind === 'optics';
+      const styleAlpha = opts.style === 'pairs' && kind === 'optics' && !opts.manufacturability;
       if (!styleAlpha) for (const k of ord) {
         if (k === planeIdx) { if (q > runStart) runs.push([runStart, q - runStart]); runs.push(-1); runStart = q; continue; }
         const n = polys[k].pts.length, f = K.first[k];

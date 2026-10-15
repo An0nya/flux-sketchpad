@@ -6,7 +6,7 @@ const ROOT = path.join(__dirname, '..');
 const FILES = ['core', 'geometry', 'source', 'source-presets', 'sealed-beam-source', 'engine', 'state', 'solver', 'solver-env', 'modeA', 'solvers', 'solver-spoke', 'solver-constellation', 'modeB', 'feasibility', 'photometry', 'farfield', 'spec', 'road', 'beam-quality', 'ideal-beam', 'drive', 'drive-scenes', 'drive-anim', 'modes', 'exports', 'compare', 'solve-cache', 'profile', 'lenses', 'controller', 'history', 'checks1', 'checks2', 'checks3'];
 function load(extra) {
   if (globalThis.RF) return globalThis.RF;
-  for (const f of FILES.concat(extra || [])) {
+  for (const f of FILES.concat(['manufacturability'], extra || [])) {
     const p = path.join(ROOT, 'js', f + '.js');
     if (!fs.existsSync(p)) continue;
     vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename: p });

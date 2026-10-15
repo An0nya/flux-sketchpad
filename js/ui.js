@@ -861,7 +861,8 @@
   function drawSurfaceView() {
     if (!ui.model) return;
     const wv = watchShown() && ui.watch.model;
-    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model: viewModel(), style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, handles: ui.opticsSetup !== false, sel: wv ? null : selEmph(false), selPrimary: !wv && selInfo() ? selInfo().primaries : null, selSecondary: !wv && selInfo() ? selInfo().secondary : null });
+    const model = viewModel(), manufacturability = RF.ManufacturabilityUI.overlay(ui, model, wv);
+    ui.handlesS = RF.Render.drawSurfaceView(document.getElementById('surface-canvas'), ui.camS, { scene: ui.store.scene, model, manufacturability, style: ui.surfaceView, envelope: ui.opticsEnv !== false, activeHandle: ui.activeHandle, handles: ui.opticsSetup !== false, sel: wv ? null : selEmph(false), selPrimary: !wv && selInfo() ? selInfo().primaries : null, selSecondary: !wv && selInfo() ? selInfo().secondary : null });
     renderSelChips();
   }
 
@@ -1826,6 +1827,7 @@
 
   // ---------------------------------------------------------------- boot
   function wireTopbar() {
+    RF.ManufacturabilityUI.init(ui, schedule);
     for (const b of document.querySelectorAll('.modes button')) b.addEventListener('click', () => ui.setMode(b.dataset.mode));
     document.querySelector('[data-control="tgt.res"]').addEventListener('change', () => { ui.vLeft.fitted = ui.vHeat.fitted = false; });
     document.querySelector('[data-control-view="surfaceView"]').addEventListener('change', (e) => { ui.surfaceView = e.target.value; ui.sceneDirty = true; schedule(); });

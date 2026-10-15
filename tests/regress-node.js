@@ -1010,6 +1010,45 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     }
     ok('D6h worker consumes the page-owned traffic snapshot with bit-identical HDR after a different frame history',parity,n+' frames');
   }
+  // MF: independent analytical shapes and seams; scene and trace are read-only inputs.
+  {
+    const MF = RF.Manufacturability, sc = RF.State.testScene(), close = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
+    const plane = (id, x, z = 0, n = [0, 0, 1]) => ({ type: 'plane', id, P: [x, 0, z], n, clip: { kind: 'rect', hx: 1, hy: 2, ref: [1, 0, 0] } });
+    const analyze = (surfaces, opts) => MF.analyze(sc, Object.assign({ G: RF.Geo.compile(surfaces), pull: [0, 0, 1] }, opts));
+    const p = analyze([plane('flat', 0)]).surfaces[0];
+    ok('MF plane: zero principal/Gaussian/mean curvature, 2 mm short side, +90° draft, unknown seam', p.principalPerMm.every((x) => x === 0) && p.meanPerMm.every((x) => x === 0) && p.gaussianPerMm2.every((x) => x === 0) && p.apertureWidthMm === 2 && p.draftDeg.every((x) => x === 90) && p.maxStepMm === null, JSON.stringify(p));
+    const sphere = { type: 'quad', id: 'sphere', P: [0, 0, 0], n: [0, 0, 1], curv: [0.1, 0.1, 0, 0.1], clip: { kind: 'disc', r: 3 } };
+    const sp = analyze([sphere]).surfaces[0], flipped = analyze([Object.assign({}, sphere, { front: -1 })]).surfaces[0];
+    ok('MF radius-10 sphere: |k|=.1, K=.01 at all samples; front reversal flips H/draft but preserves K', sp.principalPerMm.every((x) => close(x, 0.1)) && sp.gaussianPerMm2.every((x) => close(x, 0.01)) && flipped.meanPerMm.every((x) => close(x, -0.1)) && flipped.gaussianPerMm2.every((x) => close(x, 0.01)) && flipped.undercut && sp.apertureWidthMm === 6, JSON.stringify([sp.meanPerMm, flipped.meanPerMm, sp.gaussianPerMm2]));
+    const rev = (id, seg, front = 1) => ({ type: 'rev', id, O: [0, 0, 0], W: [0, 0, 1], seg, front });
+    const cylinder = analyze([rev('cylinder', { kind: 'line', r0: 10, r1: 10, z0: 0, z1: 6 }, -1)]).surfaces[0];
+    const arc = analyze([rev('arc', { kind: 'arc', zc: 0, R: 10, z0: -4, z1: 4 })]).surfaces[0];
+    const annulus = analyze([rev('annulus', { kind: 'line', r0: 2, r1: 5, z0: 0, z1: 0 })]).surfaces[0];
+    ok('MF revolved cylinder/arc/annulus: analytic curvature and physical dimensions, not strip tessellation widths', close(cylinder.principalPerMm[0], -0.1) && close(cylinder.principalPerMm[1], 0) && cylinder.gaussianPerMm2.every((x) => close(x, 0)) && close(cylinder.apertureWidthMm, 6) && arc.principalPerMm.every((x) => close(x, -0.1)) && close(arc.apertureWidthMm, 20 * Math.asin(0.4)) && annulus.apertureWidthMm === 3 && annulus.principalPerMm.every((x) => x === 0), JSON.stringify({ cylinder: cylinder.principalPerMm, arc: arc.principalPerMm, widths: [cylinder.apertureWidthMm, arc.apertureWidthMm, annulus.apertureWidthMm] }));
+    const saddle = { type: 'quad', id: 'saddle', P: [0, 0, 0], n: [0, 0, 1], curv: [0.2, -0.1, 0], clip: { kind: 'rect', hx: 1, hy: 1 } }, Gs = RF.Geo.compile([saddle]), ss = MF.sample(Gs, 0, [0, 0, 0], false);
+    ok('MF saddle centre: opposite signed principal curvatures, H=.05, K=−.02', close(ss.k1, -0.1) && close(ss.k2, 0.2) && close(ss.mean, 0.05) && close(ss.gaussian, -0.02), JSON.stringify(ss));
+    const sphereG = RF.Geo.compile([sphere]), angle = 30 * Math.PI / 180, rotation = [Math.sin(angle), 0, Math.cos(angle)];
+    const rotated = analyze([Object.assign({}, sphere, { P: [4, -9, 13], n: rotation })], { pull: rotation }).surfaces[0];
+    ok('MF world translation/rotation preserve curvature and draft extrema', close(rotated.meanPerMm[0], sp.meanPerMm[0]) && close(rotated.draftDeg[0], sp.draftDeg[0], 1e-6));
+    const ds = analyze([plane('grazing', 0, 0, [1, 0, 0]), plane('draft1', 5, 0, [Math.cos(Math.PI / 180), 0, Math.sin(Math.PI / 180)]), plane('back', 10, 0, [0, 0, -1])]);
+    ok('MF signed draft: grazing 0°, 1° below default 2°, reversed −90° undercut', close(ds.surfaces[0].draftDeg[0], 0) && close(ds.surfaces[1].draftDeg[0], 1) && ds.surfaces[1].belowDraft && !ds.surfaces[0].undercut && ds.surfaces[2].undercut && ds.surfaces[2].draftDeg[0] === -90);
+    const step = analyze([plane('left', -1), plane('right', 1, 0.5)]), flush = analyze([plane('left', -1), plane('right', 1)]), far = analyze([plane('left', -1), plane('right', 1, 50)]), gap = analyze([plane('left', -1), plane('right', 1.3, 0.5)]);
+    ok('MF known adjacent planes: .5 mm step and feature; continuous seam is zero; separated parts/gaps unknown', step.seams.length === 1 && close(step.summary.maxStepMm, 0.5) && close(step.summary.minFeatureMm, 0.5) && flush.seams.length === 1 && flush.summary.maxStepMm === 0 && far.summary.maxStepMm === null && gap.summary.maxStepMm === null, JSON.stringify(step.seams));
+    const scaled = analyze([Object.assign(plane('left', -2), { clip: { kind: 'rect', hx: 2, hy: 4, ref: [1, 0, 0] } }), Object.assign(plane('right', 2, 1), { clip: { kind: 'rect', hx: 2, hy: 4, ref: [1, 0, 0] } })]);
+    ok('MF doubling geometry doubles seam height and physical feature', close(scaled.summary.maxStepMm, 1) && close(scaled.summary.minFeatureMm, 1));
+    const s2 = RF.State.testScene(); Object.assign(s2.modeC, { sweep: 'revolve', interaction: 'reflect', axisMode: 'z', mirror: false, flipFacing: false, shell: { on: true, R: 24, k: -1, zv: -12, r1: 45, nRad: 12, nAng: 24, cells: {} } });
+    const shell = () => MF.analyze(s2, { G: RF.Geo.compile(RF.Profile.shellBuild(s2).surfaces), pull: [0, 0, 1] }), plain = shell();
+    s2.modeC.shell.cells = { '5:3': { dTheta: 2 } }; const edited = shell(), seams = edited.seams.filter((s) => s.a === 'S5_3' || s.b === 'S5_3');
+    ok('MF F5 shell: all 552 nominal seams continuous; tilting one cell produces four local discontinuities', plain.summary.matchedSeams === 552 && plain.summary.maxStepMm === 0 && seams.length === 4 && seams.every((s) => s.stepMm > 0.01) && edited.seams.filter((s) => s.stepMm > 0).length === 4, JSON.stringify(seams));
+    const raw = RF.State.serialize(sc), before = Array.from(sphereG.D), opts = { G: sphereG, pull: [0, 0, 1] }, a = MF.analyze(sc, opts), b = MF.analyze(sc, opts), reversed = MF.analyze(sc, { G: sphereG, pull: [0, 0, -3] });
+    ok('MF repeated draws reuse the same analysis; changing pull updates draft/undercut; compiled geometry and scene unchanged', a === b && reversed !== a && reversed.surfaces[0].undercut && RF.State.serialize(sc) === raw && JSON.stringify(Array.from(sphereG.D)) === JSON.stringify(before));
+    const empty = analyze([]), invalid = [[0, 0, 0], [1, NaN, 0], [1, 2], [1, Infinity, 0]].every((pull) => { try { analyze([], { pull }); return false; } catch (e) { return /Pull/.test(e.message); } });
+    ok('MF empty geometry reports null extrema; invalid pull vectors fail explicitly', empty.summary.surfaces === 0 && empty.summary.minFeatureMm === null && empty.summary.minDraftDeg === null && invalid, JSON.stringify(empty.summary));
+    require('vm').runInThisContext(require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'render.js'), 'utf8'), { filename: 'render.js' });
+    const model = RF.Render.buildDrawModel(sc, { G: sphereG }), r = MF.analyze(sc, { G: sphereG, polys: model.polys, pull: [0, 0, -1] }), ov = { result: r, metric: 'draft' }, style = RF.Render.glStyle({ manufacturability: ov }, model.polys[0], 'optics');
+    ok('MF GL per-face colour uses the shared unlit ramp and undercut outline, even in ray-pair style', JSON.stringify(style) === JSON.stringify(MF.style(ov, 0)) && style.fill[3] === 1 && style.lam[0] === 1 && style.w > 1 && RF.Render.glStyle({ manufacturability: ov, style: 'pairs' }, model.polys[0], 'optics').fill[3] === 1);
+    ok('MF worst list ranks draft ascending, feature ascending, step descending; JSON excludes draw samples', MF.worst(ds, 'draft')[0].id === 'back' && MF.worst(step, 'step').length === 2 && !('faces' in MF.json(step)) && !('scales' in MF.json(step)));
+  }
   console.log(fails ? fails + ' FAILED' : 'all regress-node checks passed');
   process.exitCode = fails ? 1 : 0;
 })();

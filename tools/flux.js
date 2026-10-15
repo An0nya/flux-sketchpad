@@ -4,6 +4,7 @@
 //   node tools/flux.js list solvers|spec-presets|sources
 //   node tools/flux.js compare <a.json> <b.json> [--rays N] [--spec id,id]
 //   node tools/flux.js scene <scene.json>
+//   node tools/flux.js manufacturability <scene.json> [--pull x,y,z] [--draft 2]
 //   node tools/flux.js trace <scene.json> [--rays 2e6] [--spec fmvss-lb2m,ece-r112-b]
 //   node tools/flux.js solve <scene.json> [--solver id] [--set key=value ...] [--out solved.json] [--rays 2e6] [--threads N]
 //   node tools/flux.js export <scene.json> --format ies|ldt|gltf --out file [--rays N] [--ies-2002]
@@ -163,6 +164,13 @@ async function pageEval() {
     return die('list what? solvers | spec-presets | sources');
   }
   if (cmd === 'scene') return out(sceneSummary(readScene(positional[0]), positional[0]));
+  if (cmd === 'manufacturability') {
+    const sc = readScene(positional[0]), dir = flag('pull'), draft = flag('draft');
+    if (argv.includes('--pull') && dir === undefined) die('Pull direction needs x,y,z.');
+    if (argv.includes('--draft') && (draft === undefined || draft.trim() === '')) die('Minimum draft needs a number between 0 and 90 degrees.');
+    const pull = dir === undefined ? undefined : dir.split(',').map((s) => s.trim() === '' ? NaN : Number(s));
+    return out(RF.Manufacturability.json(RF.Manufacturability.analyze(sc, { pull, draftMinDeg: draft === undefined ? undefined : Number(draft) })));
+  }
   if (cmd === 'compare') {
     const a = readScene(positional[0]), b = readScene(positional[1]), specs = (flag('spec', '') || '').split(',').filter(Boolean);
     return out(RF.Compare.run(a, b, { rays: rays(), specs }));
@@ -235,5 +243,5 @@ async function pageEval() {
   if (cmd === 'manifest') { const m = manifest(), file = flag('out'); if (file) { fs.writeFileSync(path.resolve(file), JSON.stringify(m, null, 1) + '\n'); return out({ file: path.resolve(file), solvers: m.solvers.length, specPresets: m.specPresets.length, sources: m.sources.length }); } return out(m); }
   if (cmd === 'shot') return out(await shot());
   if (cmd === 'page') return out(await pageEval());
-  die('commands: list | scene | trace | compare | solve | export | heatmap | manifest | shot | page   (see the header of tools/flux.js)');
+  die('commands: list | scene | manufacturability | trace | compare | solve | export | heatmap | manifest | shot | page   (see the header of tools/flux.js)');
 })().catch((e) => die(e.stack || String(e)));

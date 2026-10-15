@@ -60,7 +60,21 @@
     <div class="divider h" data-split="rowSplit" role="separator" tabindex="0" aria-orientation="horizontal" aria-label="Resize maps and Optics"></div>
     <section class="pane optics-pane" data-pane="optics">
       <div class="pane-head"><button class="collapse" data-collapse="optics" aria-label="Collapse Optics" title="Collapse / restore">▾</button><h2 data-collapse="optics">Optics</h2><div class="head-tools"><button id="btn-optics-setup" class="toggle" aria-pressed="true" title="Show the source, emission-axis and envelope handles here (off: clicks only select facets)">Setup</button><select data-control-view="surfaceView" aria-label="Surface view style"><option value="solid">shaded</option><option value="shaded">shaded + normals</option><option value="pairs">ray pairs</option></select><label class="tog" title="Show the envelope box and its face handles"><input type="checkbox" id="optics-env" checked> Envelope</label></div><button class="expand icon" data-expand="optics" aria-label="Expand Optics" title="Expand">⤢</button></div>
-      <div class="canvas-wrap"><canvas id="surface-canvas" aria-label="Optics view"></canvas><button class="icon reset-view" id="btn-optics-reset" title="Reset view (or double-click)" aria-label="Reset view">⌖</button><div class="insp-panel" id="insp-panel" hidden></div><div class="sel-chip" hidden><span></span><button class="icon" aria-label="Clear selection" title="Clear selection (Esc)">✕</button></div></div>
+      <label class="tog mf-toggle"><input type="checkbox" id="mf-on"> Manufacturability</label>
+      <div class="canvas-wrap"><canvas id="surface-canvas" aria-label="Optics view"></canvas><button class="icon reset-view" id="btn-optics-reset" title="Reset view (or double-click)" aria-label="Reset view">⌖</button><div class="insp-panel" id="insp-panel" hidden></div><div class="sel-chip" hidden><span></span><button class="icon" aria-label="Clear selection" title="Clear selection (Esc)">✕</button></div>
+        <details id="mf-panel" class="mf-panel" hidden open>
+          <summary>Manufacturability · measurements</summary>
+          <label>Colour <select id="mf-metric" aria-label="Manufacturability metric"><option value="curvature">Principal curvature</option><option value="gaussian">Gaussian curvature</option><option value="mean">Mean curvature</option><option value="draft">Draft angle</option><option value="step">Seam step</option><option value="feature">Physical feature size</option></select></label>
+          <label>Pull <select id="mf-pull" aria-label="Mould pull direction"><option value="lamp">Lamp axis (source axis)</option><option value="custom">Custom world vector</option></select></label>
+          <div id="mf-vector" hidden><label>X <input id="mf-x" aria-label="Pull X" type="number" value="0" step="0.1"></label><label>Y <input id="mf-y" aria-label="Pull Y" type="number" value="0" step="0.1"></label><label>Z <input id="mf-z" aria-label="Pull Z" type="number" value="1" step="0.1"></label></div>
+          <label>Draft warning below <input id="mf-draft" type="number" value="2" min="0" max="90" step="0.5" aria-label="Minimum draft degrees"> °</label>
+          <div id="mf-error" role="alert"></div>
+          <div id="mf-legend"></div><div class="mf-ramp" aria-hidden="true"></div><div id="mf-scale"></div>
+          <div id="mf-summary"></div><div class="note">Double white outlines: sampled undercuts. Grey: unknown. Smallest / largest are relative to this design.</div>
+          <div id="mf-worst" aria-label="Worst manufacturability surfaces"></div>
+          <details><summary>Conventions &amp; limits</summary><p>Draft = asin(front normal · pull): 0° is parallel to withdrawal; negative means a local undercut. Front means the optical front, even for two-sided mirrors. This checks one pull direction, not global trapping.</p><p>Curvature uses the exact surface equations, sampled at patch centres and vertices. H = (k₁+k₂)/2, K = k₁k₂; outward sphere: k = −1/R. Physical feature = aperture width or smaller positive seam step, in mm. The existing feature warning concerns optical blur on the target.</p><p>Seams are estimated between nearby boundaries of the same group and interaction, within 2% of the smaller facet width and half a facet width in separation. F5 uses its known ring/sector neighbors and nominal shell seams. Heights are measured along pull. Unmatched seams are unknown; this scene has no wall thickness or closed mould.</p><p>Typical starting draft: 1–3°. <a href="https://www.protolabs.com/resources/design-tips/improving-part-moldability-with-draft/" target="_blank" rel="noopener">Protolabs</a> suggests 1–2° for most situations and 3° for light texture. Default warning: 2°; adjust for material, depth and finish.</p></details>
+        </details>
+      </div>
     </section>
   </div>
 </main>
@@ -121,6 +135,7 @@
 
 <script src="js/core.js"></script>
 <script src="js/geometry.js"></script>
+<script src="js/manufacturability.js"></script>
 <script src="js/source.js"></script>
 <script src="js/source-presets.js"></script>
 <script src="js/sealed-beam-source.js"></script>
@@ -164,6 +179,7 @@
 <script src="js/spec-ui.js"></script>
 <script src="js/history.js"></script>
 <script src="js/compare-ui.js"></script>
+<script src="js/manufacturability-ui.js"></script>
 <script src="js/ui.js"></script>
 <script>
   // If any script failed to load (e.g. a missing file), say so instead of showing a dead page.
