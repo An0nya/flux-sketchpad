@@ -148,10 +148,14 @@ A CPU idea for the same goal: rays are deterministic per index, so after a move 
 (old or new footprint; first surface from `rayK`) need retracing. Exact, and much cheaper than a full trace for single-bounce
 reflectors. Not built.
 
-## WebGL scene pane (not built)
+## WebGL scene pane (built, opt-in)
 
-`js/render.js` draws the Scene and Optics views with Canvas 2D (orthographic camera, facets as polygons, the heat map as an
-affine image, ray polylines). A WebGL2 pane would be a rewrite of `drawScene` / `drawSurfaceView` (~500 lines): tessellated
-facet meshes (clip polygon + sag), instanced lines for envelope and paths, the heat map as a texture, hits as point sprites
-(millions, which Canvas can't draw), picking kept on the CPU camera math. No three.js (the app has no build and runs from
-file://; vendoring it is ~600 KB). Independent of the trace backend; worth doing when redraw time is the complaint again.
+`js/render-gl.js`, Simulation → Advanced → "WebGL scene view" (per browser, `flux/glScene`, off by default). A WebGL2 canvas sits under the 2D one in
+the Scene and Optics views and draws the facet meshes (fills, edges), the target plane with the heat map as a texture, the ray paths (instanced
+screen-space quads) and, in the Result display "hits", every recorded hit as a point sprite on the target plane. The 2D canvas on top keeps the source,
+handles, gizmo, labels, selection outline, envelope and the dashed paths. The vertex shader is `Camera.project` (same clamp at the eye), so picking,
+handles and fit stay on the CPU camera and agree with the pixels. No libraries. Canvas 2D is the fallback when WebGL2 is missing, the context is lost,
+or a draw throws (`RF.RenderGL.failure()`); the page does not reload. With it on, the "Rays drawn" limit goes from 2,000 to 20,000.
+Measured on an Apple M4 (real GPU): redraw is cheap in Canvas 2D at the default 240 rays (<= 11 ms with the readback); the win is many drawn rays
+(2000 rays: 17-21 ms -> 5-7 ms) and per-hit points. Numbers and method: `tests/bench/scene-redraw.js`, `tests/bench/gl-hits.js`; check: `tests/regress/W3a-webgl-scene.js`.
+Differences from 2D: facet edges are drawn after all fills (not interleaved in depth order), the envelope and dashed lines are on the 2D overlay (above the facets), thin lines are 1 device px minimum.

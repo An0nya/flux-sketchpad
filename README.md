@@ -358,6 +358,7 @@ js/drive.js drive-scenes.js   Spec mode's driver's-eye view: luminance render, m
 js/drive-anim.js              the animated Drive view (opt-in, open road): cached lit ground + CPU objects composed, glared and tone-mapped in WebGL2; the large view
 js/controller.js      control table + actions shared by the DOM and the checks
 js/render.js render2d.js  canvas renderers                                        (rendering)
+js/render-gl.js          optional WebGL2 Scene/Optics renderer (opt-in setting)     (rendering)
 js/input.js           Pointer Events: drag, orbit, pinch, pan, wheel, tap          (input handling)
 js/panels.js ui.js    DOM panels, run loop, interactions
 js/checks1-3.js       the verification suite (in-page and headless)
