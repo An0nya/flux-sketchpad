@@ -571,3 +571,11 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 #ab-table th:first-child { text-align:left; }
 #ab-table .ab-up td:last-child { color:#80bbff; font-weight:bold; }
 #ab-table .ab-down td:last-child { color:#ffb16d; font-weight:bold; }
+/* Export choices stay beside the scene download; reasons remain readable on touch devices. */
+.side .file-row { position: relative; }
+.side details.export-menu { position: static; padding: 0; border: 0; }
+.side .export-menu summary { cursor: pointer; padding: 3px 6px; white-space: nowrap; font-weight: 400; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel2); }
+.export-options { position: absolute; z-index: 20; right: 0; top: 100%; width: 270px; padding: 10px; display: grid; gap: 5px; background: var(--panel); border: 1px solid var(--dim); border-radius: 6px; box-shadow: 0 5px 20px #0008; }
+.export-options small { font-size: 11px; line-height: 1.4; }
+.export-options small:empty { display: none; }
+.export-options label { font-size: 12px; }

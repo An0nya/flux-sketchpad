@@ -12,6 +12,7 @@ stdout**. Errors go to stderr with exit code 1. No browser, no npm install. Star
 | `trace <scene.json> [--rays N] [--spec id,id]` | Spec-mode scene or `--spec`: far-field peak cd + where, lm in window, pass/fail/unsure per preset with every row. Other modes: delivered fraction, paint fidelity, spill, coverage, U0 |
 | `compare <a.json> <b.json> [--rays N] [--spec id,id]` | traces saved designs under common settings; A/B metrics, per-preset verdict counts and rows, and B − A deltas as JSON |
 | `solve <scene.json> [--solver id] [--set k=v …] [--out new.json]` | runs a solver exactly as the page's host does (inputOf → solve → verify → apply). Default solver = the scene's, else the app's preferred one. A `--set` the solver would silently change is an error |
+| `export <scene.json> --format ies\|ldt\|gltf --out file [--rays N] [--ies-2002]` | absolute far-field IES / EULUMDAT, or renderer surface geometry as glTF 2.0 with embedded buffer; JSON reports bytes, rays and window/exit lumens |
 | `heatmap <scene.json> --out ff.png [--rays N] [--scale k]` | far-field image: sqrt(cd / peak), cividis colour map (no red/green), grey H-V crosshair, 1 px = one 0.05° bin × k. JSON gives the degree range so pixels can be mapped back |
 
 Spec judging uses the Spec panel's recipe: a quarter of the rays as a pilot, then guided rounds. Results labelled
@@ -25,6 +26,21 @@ node tools/flux.js trace examples/sealed-beam-7in-low.json --rays 2e6 --spec fmv
 node tools/flux.js solve my-scene.json --solver sealed-beam-v1 --set beam=high --out solved.json
 node tools/flux.js heatmap solved.json --out ff.png
 ```
+
+## Exports
+
+```
+node tools/flux.js export examples/sealed-beam-7in-high.json --format ies --out lamp.ies --rays 2e6
+node tools/flux.js export examples/sealed-beam-7in-high.json --format ldt --out lamp.ldt
+node tools/flux.js export examples/sealed-beam-7in-high.json --format gltf --out optics.gltf
+```
+
+IES uses the LM-63-2019 header; `--ies-2002` selects the older-reader LM-63-2002 header. Photometry traces the saved
+scene at infinity even when its Measure at setting is finite, using the Spec grid and the usual pilot/guided recipe
+(default 2 M rays). Outputs retain absolute candela, without re-aim or display smoothing. Angles outside the traced
+window are zero (unmeasured). LDT normalizes to its traced-window lumens, and rejects zero window flux. Geometry needs
+no trace: enabled reflector/lens surfaces use the renderer's tessellation, in metres, with normals and names.
+See [format conventions, limitations and references](../docs/EXPORTS.md).
 
 ## Layer 2: the real page (Playwright)
 For what Node can't draw (WebGL drive view, WebGPU traces, the panels as the user sees them). Each call starts its own

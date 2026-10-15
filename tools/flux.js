@@ -6,6 +6,7 @@
 //   node tools/flux.js scene <scene.json>
 //   node tools/flux.js trace <scene.json> [--rays 2e6] [--spec fmvss-lb2m,ece-r112-b]
 //   node tools/flux.js solve <scene.json> [--solver id] [--set key=value ...] [--out solved.json] [--rays 2e6] [--threads N]
+//   node tools/flux.js export <scene.json> --format ies|ldt|gltf --out file [--rays N] [--ies-2002]
 //   node tools/flux.js heatmap <scene.json> --out farfield.png [--rays 2e6] [--scale 1]
 //   node tools/flux.js manifest [--out api.json]                      (Layer 3: what exists, as one static file)
 // Layer 2, the real page through Playwright (its own headless Chromium on the real GPU, never the shared Browser pane):
@@ -166,6 +167,22 @@ async function pageEval() {
     const a = readScene(positional[0]), b = readScene(positional[1]), specs = (flag('spec', '') || '').split(',').filter(Boolean);
     return out(RF.Compare.run(a, b, { rays: rays(), specs }));
   }
+  if (cmd === 'export') {
+    const format = flag('format'), file = flag('out');
+    if (!['ies', 'ldt', 'gltf'].includes(format)) die('export needs --format ies|ldt|gltf');
+    if (!file) die('export needs --out file');
+    const sc = readScene(positional[0]), N = rays();
+    if (!Number.isSafeInteger(N) || N < 1) die('--rays must be a positive safe integer');
+    let text, G;
+    if (format === 'gltf') text = RF.Exports.gltf(sc);
+    else {
+      // Always stream infinity; the saved Measure at setting may be a finite screen.
+      const copy = RF.U.deepCopy(sc); copy.modeD.distance = 0;
+      G = farTrace(copy, N).G; text = RF.Exports[format](G, { legacy: argv.includes('--ies-2002') });
+    }
+    fs.writeFileSync(path.resolve(file), text);
+    return out({ file: path.resolve(file), format, bytes: Buffer.byteLength(text), rays: G ? N : undefined, lmWindow: G && G.lmWindow, lmExit: G && G.lmExit });
+  }
   if (cmd === 'trace' || cmd === 'heatmap') {
     const sc = readScene(positional[0]), N = rays(), t0 = Date.now(), specs = (flag('spec', '') || '').split(',').filter(Boolean);
     const far = cmd === 'heatmap' || sc.mode === 'D' || specs.length;
@@ -218,5 +235,5 @@ async function pageEval() {
   if (cmd === 'manifest') { const m = manifest(), file = flag('out'); if (file) { fs.writeFileSync(path.resolve(file), JSON.stringify(m, null, 1) + '\n'); return out({ file: path.resolve(file), solvers: m.solvers.length, specPresets: m.specPresets.length, sources: m.sources.length }); } return out(m); }
   if (cmd === 'shot') return out(await shot());
   if (cmd === 'page') return out(await pageEval());
-  die('commands: list | scene | trace | compare | solve | heatmap | manifest | shot | page   (see the header of tools/flux.js)');
+  die('commands: list | scene | trace | compare | solve | export | heatmap | manifest | shot | page   (see the header of tools/flux.js)');
 })().catch((e) => die(e.stack || String(e)));

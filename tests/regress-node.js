@@ -925,6 +925,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       ok('AB actual comparison worker imports and produces the shared metrics', !reply.error && JSON.stringify(reply.result.a.metrics) === JSON.stringify(dim.a.metrics) && JSON.stringify(reply.result.b.metrics) === JSON.stringify(dim.b.metrics), reply.error || JSON.stringify(reply.result.a.metrics));
     } finally { await worker.terminate(); }
   }
+  // EX: photometric round trips and geometry schema / actual renderer mesh checks.
+  await require('./export-formats.js').checks(ok);
   console.log(fails ? fails + ' FAILED' : 'all regress-node checks passed');
   process.exitCode = fails ? 1 : 0;
 })();

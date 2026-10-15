@@ -83,6 +83,16 @@
     <div class="side-top">
     <div class="file-row">
       <button id="btn-download" title="Download the whole scene as one JSON file">Save to disk</button>
+      <details id="export-menu" class="export-menu">
+        <summary>Export…</summary>
+        <div class="export-options">
+          <button id="export-ies" type="button">IES (.ies)</button><small id="export-ies-reason"></small>
+          <button id="export-ldt" type="button">EULUMDAT (.ldt)</button><small id="export-ldt-reason"></small>
+          <button id="export-gltf" type="button">Geometry (.gltf)</button><small id="export-gltf-reason"></small>
+          <label><input id="export-legacy" type="checkbox"> IES 2002 header for older readers</label>
+          <small>Photometry: raw ∞ bins, design aim. Outside traced window = 0 (unmeasured).</small>
+        </div>
+      </details>
       <label class="filebtn" title="Load a scene JSON file">Open from disk<input id="file-input" type="file" accept=".json,application/json" hidden></label>
       <button id="btn-reset" class="danger" data-confirm="Reset the whole scene?">Reset</button>
     </div>
@@ -130,6 +140,7 @@
 <script src="js/photometry.js"></script>
 <script src="js/farfield.js"></script>
 <script src="js/spec.js"></script>
+<script src="js/exports.js"></script>
 <script src="js/road.js"></script>
 <script src="js/beam-quality.js"></script>
 <script src="js/ideal-beam.js"></script>

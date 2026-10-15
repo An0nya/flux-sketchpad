@@ -329,6 +329,7 @@
   // ---------------------------------------------------------------- sync controls from state
   function syncControls(ui) {
     const store = ui.store;
+    refreshExports(ui);
     for (const c of C.CONTROLS) {
       const nodes = document.querySelectorAll('[data-control="' + CSS.escape(c.id) + '"]');
       const vis = C.controlVisible(store, c);
@@ -788,6 +789,35 @@
     const a = el('a', { href: URL.createObjectURL(blob), download: 'reflector-scene.json' });
     document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
+  function exportReason(ui, format) {
+    const sc = ui.store.scene, c = ui.run && ui.run.ctx;
+    if (format === 'gltf') return RF.State.allSurfaces(sc).length ? '' : 'No enabled surfaces to export.';
+    if (ui.solving || ui.needCompile || ui.pendingA || ui.solveArmed) return 'Wait for the current design and trace.';
+    if (!c || !(c.next > 0) || !c.done || ui.run.preview) return 'Finish a trace in Spec mode first.';
+    if (!sc.modeD || !(c.ex || RF.FarField.streamOf(c, RF.Spec.gridOpts(sc, 0)))) return 'No matching far-field record; trace in Spec mode.';
+    if (format === 'ldt' && c.ff) { const stream = RF.FarField.streamOf(c, RF.Spec.gridOpts(sc, 0)); if (stream && !(stream.lm > 0)) return 'LDT needs positive traced-window lumens.'; }
+    return '';
+  }
+  function refreshExports(ui) {
+    for (const f of ['ies', 'ldt', 'gltf']) {
+      const b = document.getElementById('export-' + f), r = document.getElementById('export-' + f + '-reason'); if (!b) continue;
+      const why = exportReason(ui, f); b.disabled = !!why; b.title = why; if (r) r.textContent = why;
+    }
+  }
+  function exportFile(ui, format) {
+    const why = exportReason(ui, format); if (why) throw new Error(why);
+    const sc = ui.store.scene, text = format === 'gltf' ? RF.Exports.gltf(sc) : RF.Exports[format](RF.FarField.build(ui.run.ctx, RF.Spec.gridOpts(sc, 0)), { legacy: document.getElementById('export-legacy').checked });
+    const blob = new Blob([text], { type: format === 'gltf' ? 'model/gltf+json' : 'text/plain' });
+    const a = el('a', { href: URL.createObjectURL(blob), download: 'reflector.' + format }); document.body.append(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  function initExports(ui) {
+    document.getElementById('export-menu').addEventListener('toggle', () => refreshExports(ui));
+    for (const f of ['ies', 'ldt', 'gltf']) document.getElementById('export-' + f).addEventListener('click', () => {
+      try { exportFile(ui, f); } catch (e) { ui.store.notice('Export failed: ' + e.message); ui.refreshPanels(); }
+    });
+    refreshExports(ui);
+  }
   function upload(ui, file) {
     const r = new FileReader();
     r.onload = () => {
@@ -858,5 +888,5 @@
     return results;
   }
 
-  RF.Panels = { renderShell, renderSourcePreset, el, numberControl, fmtCd, noiseOf, raysFor3pc, fmtLm, fmtMm2, buildSide, syncControls, renderStampList, renderLensList, renderEmitterList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, upload, runChecks, confirmButton };
+  RF.Panels = { renderShell, renderSourcePreset, el, numberControl, fmtCd, noiseOf, raysFor3pc, fmtLm, fmtMm2, buildSide, syncControls, renderStampList, renderLensList, renderEmitterList, renderGroups, renderStats, renderFeasibility, renderNotices, presetScene, download, exportReason, refreshExports, initExports, upload, runChecks, confirmButton };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
