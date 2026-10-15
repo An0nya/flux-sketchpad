@@ -635,3 +635,7 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .drive-game, .drive-game [data-game=brake] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .drive-game { touch-action: manipulation; }
 .drive-game input[type=checkbox] { width: auto; }
+
+/* P0: readout floats over the picture; it never enlarges the controls row. */
+.drive-perf { position: absolute; left: 6px; top: 58px; z-index: 3; max-width: calc(100% - 12px); max-height: 45%; overflow: auto; box-sizing: border-box; padding: 4px 6px; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: auto; touch-action: pan-y; background: rgba(5,10,18,.85); color: #e5efff; font: 10px/1.35 monospace; font-variant-numeric: tabular-nums; }
+.drive-perf[hidden], .canvas-wrap:not(.drive) > .drive-perf { display: none; }

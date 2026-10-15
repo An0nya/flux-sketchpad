@@ -477,7 +477,7 @@
     for (const ob of src.objects) { const n = move(Object.assign({}, ob), ob, ob.x - dist - Math.floor((ob.x - dist + 6) / PERIOD) * PERIOD, A); if (!skip || !skip(n)) out.push(n); }
     return out;
   }
-  const camOf = (p) => ({ w: p.w, h: p.h, hfov: p.hfov, eye: EYE, lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look });
+  const camOf = (p) => ({ w: p.w, h: p.h, hfov: p.hfov, eye: EYE, lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look, profile: p.profile });
   /* the lit ground: A = everything that does not move; each patterned marking (the dashes, a crossing, a stop line) is a layer: the markings that share one pattern are drawn solid and what they add over A is its B,
    * which the compose shader fades by the pattern's coverage at s + dist. Lit paint adds linearly, so layers sum (where two overlap the sum is a little more than the still view's first-marking-wins: city's crossing over the dash).
    * layers = [{ pat, B }] (at most MAX_PAT; more patterned markings than that stay in A as they are at dist 0); B and pat = the first layer's (null: nothing patterned)  */
@@ -544,7 +544,7 @@
       },
       // job m: { seq, dist, t, ss, act (id, clock pairs), c, K (the tile rows ty % K === c), ret (a buffer to reuse), wid }
       job(m) {
-        const t0 = performance.now(), W = p.w, H = p.h, TS = 16;
+        const t0 = performance.now(), W = p.w, H = p.h, TS = 16; p.profile = m.profile ? {} : null;
         for (const ty of prev) rgba.fill(0, ty * TS * W * 4, Math.min(H, (ty + 1) * TS) * W * 4);
         if (m.seq !== seq) { seq = m.seq; if (m.speed !== undefined) p.src.traffic.speed = m.speed; p.src.traffic.frame = m.traffic ? { dist: m.dist, t: m.t, cars: m.traffic } : null; placed = (p.src.tiles ? tileWorld : placedObjects)(p, m.dist, m.t, tauFor(new Map(m.act), m.t)); }          // the scenery of this frame, placed once for all this thread's jobs
         const rows = objects(p, m.dist, rgba, m.ss, null, m.K > 1 ? (ty) => ty % m.K === m.c : null, placed), tr = rows.trows;
@@ -552,7 +552,7 @@
         const f = m.ret && m.ret.byteLength >= len * 4 ? new Float32Array(m.ret) : new Float32Array(len); let off = 0;
         for (const ty of tr) { const a = ty * TS * W * 4, b = Math.min(H, (ty + 1) * TS) * W * 4; f.set(rgba.subarray(a, b), off); off += b - a; }
         prev = tr;
-        return { type: 'rows', seq: m.seq, cfg: cfgId, wid: m.wid, c: m.c, trows: tr, buf: f.buffer, len, ms: performance.now() - t0 };
+        return { type: 'rows', seq: m.seq, cfg: cfgId, wid: m.wid, c: m.c, trows: tr, buf: f.buffer, len, ms: performance.now() - t0, profile: p.profile };
       },
     };
   }
@@ -694,6 +694,7 @@ void main() {
       },
       /* f: { cam: { tanH, hfov }, dist, A (arc|null), pat, k (exposure), glare (strength), flip } */
       draw(f) {
+        const timing = f.profile, t0 = timing ? performance.now() : 0;
         const W = R.W, H = R.H, hw = T.acc.w, hh = T.acc.h, tanH = Math.tan(f.hfov * Math.PI / 360), tanV = tanH * H / W;
         gl.disable(gl.BLEND);
         gl.bindFramebuffer(gl.FRAMEBUFFER, T.hdr.f); gl.viewport(0, 0, W, H);
@@ -702,6 +703,7 @@ void main() {
         gl.uniform1i(U.uNP, pats.length); const pa = new Float32Array(16), pd = new Float32Array(4); pats.forEach((q, k) => { pa.set([q.pat.s0, q.pat.s1, q.pat.period, q.pat.on], 4 * k); pd[k] = q.dist; }); gl.uniform4fv(U['uPat[0]'], pa); gl.uniform1fv(U['uPd[0]'], pd);
         bindTex(0, 'A', P.compose.u.uA); bindTex(2, 'O', P.compose.u.uO); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D_ARRAY, T.Bt); gl.uniform1i(P.compose.u.uB, 1);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
+        const tCompose = timing ? performance.now() : 0;
         if (f.glare > 0) {
           const sigma = D.glareSigma(W, f.hfov), rad = Math.ceil(3 * sigma);
           gl.viewport(0, 0, hw, hh);
@@ -718,10 +720,12 @@ void main() {
           }
           gl.disable(gl.BLEND);
         }
+        const tGlare = timing ? performance.now() : 0;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, R.cw, R.ch);
         use(P.fin, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: f.glare > 0 ? 1 : 0, uVeil: f.veil || 0, uTanH: tanH, uTanV: tanV });
         const sources = f.sources || [], sa = new Float32Array(128); sources.slice(0, 32).forEach((q, i) => sa.set(q, i * 4)); gl.uniform1i(P.fin.u.uNS, Math.min(32, sources.length)); gl.uniform4fv(P.fin.u['uSources[0]'], sa);
         bindTex(0, 'hdr', P.fin.u.uHdr); bindTex(1, 'acc', P.fin.u.uGlare); gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (timing) Object.assign(timing, { composeMs: tCompose - t0, glareMs: tGlare - tCompose, finalVeilMs: performance.now() - tGlare });
       },
       // the HDR sim image back on the CPU (tests): Float32Array 4·W·H, row 0 = top
       readHdr() { const a = new Float32Array(4 * R.W * R.H); gl.bindFramebuffer(gl.FRAMEBUFFER, T.hdr.f); gl.readPixels(0, 0, R.W, R.H, gl.RGBA, gl.FLOAT, a); return a; },
@@ -732,6 +736,43 @@ void main() {
   }
 
   // ---------------------------------------------------------------- the view: state, canvas, loop
+  // Scale is separate from samples per pixel. pinSS freezes both for reproducible comparisons.
+  const RES_SCALES = [1, 0.85, 0.7, 0.55, 0.4];
+  const resolutionState = () => ({ scale: 1, index: 0, slow: 0, fast: 0, cooldown: 0, average: 0 });
+  function resolutionStep(state, ms, opts) {
+    const o = opts || {}, s = Object.assign(resolutionState(), state), target = Number.isFinite(+o.target) && +o.target > 0 ? +o.target : 33;
+    if (!o.enabled || o.pinned) return resolutionState();
+    if (!(ms > 0) || !Number.isFinite(ms)) return s;
+    s.average = s.average ? 0.8 * s.average + 0.2 * ms : ms;
+    if (s.cooldown > 0) { s.cooldown--; return s; }
+    if (s.average > target * 1.15) { s.slow++; s.fast = 0; }
+    else if (s.average < target * 0.7) { s.fast++; s.slow = 0; }
+    else s.slow = s.fast = 0;
+    if (s.slow >= 6 && s.index < RES_SCALES.length - 1) { s.index++; s.slow = s.fast = 0; s.cooldown = 20; s.average = 0; }
+    else if (s.fast >= 60 && s.index > 0) { s.index--; s.slow = s.fast = 0; s.cooldown = 20; s.average = 0; }
+    s.scale = RES_SCALES[s.index]; return s;
+  }
+  function resolutionPrepare() {
+    const o = info().o;
+    if (!o.dynamicResolution || V.pinSS) V.resolution = resolutionState();
+    const scale = o.dynamicResolution && !V.pinSS ? (V.resolution || resolutionState()).scale : 1;
+    if (scale !== (V.renderScale || 1)) { prepare(layout()); if (Wk.list.length) workerCfg(); }
+  }
+  const profileOn = () => !!(V.info && V.info.o.fpsCounter);
+  function recordFrame(start, values, trace, cache, worker) {
+    const now = performance.now(), o = info().o, elapsed = now - start;
+    const live = S(V.ui).playing && V.last && !Wk.afterFrame, cadenceMs = live && V.completedAt ? now - V.completedAt : elapsed;
+    V.completedAt = live ? now : 0;
+    V.times.push(now); while (V.times.length > 2 && V.times[1] < now - 1000) V.times.shift();
+    V.resolution = resolutionStep(V.resolution, Math.max(elapsed, cadenceMs), { enabled: !!o.dynamicResolution, pinned: !!V.pinSS, target: o.frameTargetMs });
+    if (profileOn()) {
+      const sample = { at: now, frameMs: Math.max(elapsed, cadenceMs), workMs: elapsed, cadenceMs, pacingMs: Math.max(0, cadenceMs - elapsed), workerOtherMs: Math.max(0, (values.workerCpuMs || 0) - (trace && trace.traceMs || 0)), mainMs: worker ? Math.max(0, elapsed - (values.workerRoundTripMs || 0)) + (values.dispatchMs || 0) : elapsed, worker: !!worker, ...values,
+        objectMs: trace && trace.objectMs || 0, groundMs: trace && trace.groundMs || 0, wetMs: trace && trace.wetMs || 0, traceCpuMs: trace && trace.traceMs || 0,
+        cacheHits: cache && cache.cacheHits || 0, cacheMisses: cache && cache.cacheMisses || 0, sampledRays: trace && trace.sampledRays || 0 };
+      (V.profiles || (V.profiles = [])).push(sample); if (V.profiles.length > 600) V.profiles.shift();
+      if (V.perfLab && now - (V.perfLabelAt || 0) >= 500) { V.perfLabelAt = now; perfLabel(); }
+    }
+  }
   const V = { ui: null, cv: null, info: null, gl: null, canvas: null, pop: null, g: null, gkey: '', src: null, skey: '', lut: null, rgba: null, band: [0, 0], frames: 0, raf: 0, last: 0, times: [], cpu: { obj: 0, up: 0, gl: 0, n: 0 }, kAuto: null, why: '', act: new Map() };
   const S = (ui) => ui.dvAnim || (ui.dvAnim = { view: 'still', playing: true, popout: false, dist: 0, total: 0, t: 0 });
   const supported = (o) => !!ANIM_SCENES[o.scene] || (o.tiles && o.scene === 'intersection');
@@ -744,9 +785,9 @@ void main() {
 
   function size() {                                           // → { cssW, cssH, dpr, W, H } for the container the canvas lives in
     const par = V.canvas.parentElement, bw = par.clientWidth, bh = par.clientHeight, dpr = Math.min(2, root.devicePixelRatio || 1);
-    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16, W = Math.max(MIN_SIM, Math.min(V.info && (V.info.o.tiles || (V.info.o.wet && V.info.o.wetSheen)) ? 640 : V.info && HEAVY_SIM[V.info.o.scene] || MAX_SIM, Math.round(cssW * dpr))) & ~1,       // dynamic tiles redraw the ground: 640 px; forest/city otherwise use their existing cap (canvas size unchanged)
-       H = Math.round(W * 9 / 16) & ~1;
-    return { cssW, cssH, dpr, W, H, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
+    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16, baseW = Math.max(MIN_SIM, Math.min(V.info && (V.info.o.tiles || (V.info.o.wet && V.info.o.wetSheen)) ? 640 : V.info && HEAVY_SIM[V.info.o.scene] || MAX_SIM, Math.round(cssW * dpr))) & ~1,       // dynamic tiles redraw the ground: 640 px; forest/city otherwise use their existing cap (canvas size unchanged)
+       scale = V.info && V.info.o.dynamicResolution && !V.pinSS ? (V.resolution || resolutionState()).scale : 1, W = Math.max(160, Math.round(baseW * scale)) & ~1, H = Math.round(W * 9 / 16) & ~1;
+    return { cssW, cssH, dpr, W, H, baseW, scale, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
   }
   function ensureCanvas() {
     if (V.lost || V.glFailed) return false;
@@ -805,6 +846,7 @@ void main() {
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
+    V.renderScale = sz.scale || 1;
     V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = o.tiles || (o.wet && o.wetSheen) ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
@@ -837,7 +879,9 @@ void main() {
   // one frame at S.dist
   function frame() {
     if (!contextReady()) return;
-    const ui = V.ui, st = S(ui), I = info(), o = I.o, t0 = performance.now(), W = V.p.w, pb = V.band, had = pb[1] > pb[0];
+    const t0 = performance.now(); resolutionPrepare();
+    const ui = V.ui, st = S(ui), I = info(), o = I.o, W = V.p.w, pb = V.band, had = pb[1] > pb[0], profiling = profileOn(), trafficMs = V.cameraMs || 0;
+    V.cameraMs = 0; V.p.profile = profiling ? {} : null;
     if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
     V.src.traffic.speed = +info().o.speed || 50; pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
     const placed = (V.src.tiles ? tileWorld : placedObjects)(V.p, st.dist, st.t, tauFor(V.act, st.t));
@@ -846,16 +890,18 @@ void main() {
       V.p.hazardBodyMask = new Uint8Array(W * V.p.h); V.p.sampleTiles = new Uint8Array(Math.ceil(W / 16) * Math.ceil(V.p.h / 16));
       gameObjects(st.game, placed); V.gameMask = mask; V.gameBodyMask = V.p.hazardBodyMask;
     } else V.p.sampleTiles = V.p.hazardMask = V.p.hazardBodyMask = null;
-    const ss = ssNow(), rows = objects(V.p, st.dist, V.rgba, ss, null, null, placed, st.t);
-    const t1 = performance.now();
+    const tPlaced = performance.now(), ss = ssNow(), rows = objects(V.p, st.dist, V.rgba, ss, null, null, placed, st.t);
+    const traceProfile = V.p.profile && Object.assign({}, V.p.profile), t1 = performance.now();
     adaptSS(t1 - t0);
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
     const sources = D.glareSources(V.src.tiles ? placed.objects : placed, EYE);
-    const draw = { hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
+    const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
+    const draw = { profile: glProfile, hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     V.gl.draw(draw); if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
-    flashLabel(st.dist, st.t); if (st.game) gameFrame(st.game); ui.dvAnimFrames = V.frames;
+    flashLabel(st.dist, st.t); const detectorStart = performance.now(); if (st.game) gameFrame(st.game); const detectorMs = performance.now() - detectorStart; ui.dvAnimFrames = V.frames;
+    recordFrame(t0 - trafficMs, { trafficMs, placementMs: tPlaced - t0, uploadMs: t2 - t1, sourcesMs: sourceEnd - t2, glMs: t3 - sourceEnd, ...(glProfile || {}), detectorMs, workerRoundTripMs: 0, workerCpuMs: 0, assemblyMs: 0 }, traceProfile, traceProfile, false);
   }
 
   // ---------------------------------------------------------------- the object trace on worker threads
@@ -894,12 +940,16 @@ void main() {
   }
   // the frame is cut into K jobs (tile rows ty % K === c); every worker gets one, and a worker that finishes gets the next: threads that run slower (efficiency cores, a busy machine) just do fewer
   function sendFrame() {
+    const started = performance.now(); resolutionPrepare();
+    const trafficMs = V.cameraMs || 0; V.cameraMs = 0;
     const st = S(V.ui), n = Wk.list.length, ss = ssNow(), th = Math.ceil(V.p.h / 16), K = n > 1 ? Math.min(th, 4 * n) : 1; Wk.seq++;
     V.src.traffic.speed = +info().o.speed || 50; pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
-    const b = Wk.busy = { seq: Wk.seq, dist: st.dist, t: st.t, sent: performance.now(), done: 0, next: 0, K, ss, speed: V.src.traffic.speed, traffic: V.src.traffic.logic ? trafficCars(V.src, st.dist, st.t) : null, act: [...V.act], parts: [] };
+    const b = Wk.busy = { seq: Wk.seq, started: started - trafficMs, trafficMs, dist: st.dist, t: st.t, sent: performance.now(), done: 0, next: 0, K, ss, speed: V.src.traffic.speed, traffic: V.src.traffic.logic ? trafficCars(V.src, st.dist, st.t) : null, act: [...V.act], parts: [] };
+    b.sent = performance.now(); b.placementMs = b.sent - started; b.dispatchMs = 0;
     for (let i = 0; i < n && b.next < K && Wk.busy === b; i++) sendJob(i, b);
+    b.dispatchMs += performance.now() - b.sent;
   }
-  function sendJob(i, b) { postJob(i, { type: 'job', seq: b.seq, dist: b.dist, t: b.t, speed: b.speed, traffic: b.traffic, ss: b.ss, act: b.act, c: b.next++, K: b.K, wid: i }); }
+  function sendJob(i, b) { postJob(i, { type: 'job', seq: b.seq, dist: b.dist, t: b.t, speed: b.speed, traffic: b.traffic, ss: b.ss, profile: !!info().o.fpsCounter, act: b.act, c: b.next++, K: b.K, wid: i }); }
   function postJob(i, msg) {
     const old = Wk.jobs.get(i); if (old) clearTimeout(old.timer);
     const j = { msg, cfg: Wk.cfgId, timer: 0 }; Wk.jobs.set(i, j);
@@ -922,8 +972,9 @@ void main() {
     if (d.type === 'err') { failWorkers(d.message); return; }
     if (d.type !== 'rows') return;
     const b = Wk.busy; if (!b || d.seq !== b.seq || d.cfg !== Wk.cfgId) { Wk.pool.push(d.buf); return; }       // an old picture
-    b.parts.push(d); b.done++;
+    const dispatchStart = performance.now(); b.parts.push(d); b.done++;
     if (b.next < b.K) sendJob(d.wid, b);
+    b.dispatchMs += performance.now() - dispatchStart;
     if (b.done === b.K) finishFrame(b);
   }
   // all the rows are in: assemble, upload what was touched, draw at the dist they were traced at
@@ -937,15 +988,18 @@ void main() {
       Wk.pool.push(d.buf);
     }
     if (y1 <= y0) { y0 = 0; y1 = 0; }
+    const assembled = performance.now();
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], y0) : y0, had ? Math.max(pb[1], y1) : y1); V.band = [y0, y1];
     const t2 = performance.now();
-    const sources = frameSources(b.dist, b.t);
-    V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
+    const sources = frameSources(b.dist, b.t), sourceEnd = performance.now(), glProfile = profileOn() ? {} : null;
+    V.gl.draw({ profile: glProfile, hfov: o.fov, pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
     if (!contextReady()) return;
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
-    V.times.push(t3); if (V.times.length > 300) V.times.shift();
     adaptSS(rt); flashLabel(b.dist, b.t); V.ui.dvAnimFrames = V.frames;
+    const trace = {};
+    for (const d of b.parts) if (d.profile) for (const k of ['traceMs', 'objectMs', 'groundMs', 'wetMs', 'sampledRays', 'cacheHits', 'cacheMisses']) trace[k] = (trace[k] || 0) + (d.profile[k] || 0);
+    recordFrame(b.started, { dispatchMs: b.dispatchMs, trafficMs: b.trafficMs, placementMs: b.placementMs, assemblyMs: assembled - t1, uploadMs: t2 - assembled, sourcesMs: sourceEnd - t2, glMs: t3 - sourceEnd, ...(glProfile || {}), detectorMs: 0, workerRoundTripMs: rt, workerCpuMs: b.parts.reduce((sum, d) => sum + d.ms, 0) }, trace, trace, true);
     if (Wk.afterFrame) Wk.afterFrame(); else pump(t3, 14);
   }
   // advance the drive to `now` and ask for the next frame, unless one is out (called by the display's frame callback, and by a finished frame when the display has already waited `minGap` ms)
@@ -955,6 +1009,9 @@ void main() {
     advanceCamera(st, dt); sendFrame();
   }
   function advanceCamera(st, dt) {
+    const start = performance.now(); advanceCameraInner(st, dt); V.cameraMs = (V.cameraMs || 0) + performance.now() - start;
+  }
+  function advanceCameraInner(st, dt) {
     if (st.game) {
       RF.DriveGame.step(st.game, dt, V.p.lane, V.p); st.total += st.game.x - st.dist; st.dist = st.game.x; st.t = st.game.t; st.camera = { x: st.dist, v: st.game.v };
       if (st.game.done) st.playing = false; return;
@@ -1004,10 +1061,9 @@ void main() {
     if (mt()) { workerCfg(); V.raf = requestAnimationFrame(tick); pump(t, 0); return; }
     const dt = V.last ? (st.game ? Math.max(0, (t - V.last) / 1000) : Math.min(0.1, (t - V.last) / 1000)) : 0; V.last = t;
     advanceCamera(st, dt);
-    V.times.push(t); if (V.times.length > 300) V.times.shift();
     frame(); if (st.playing) V.raf = requestAnimationFrame(tick);
   }
-  function stop() { if (V.raf) { cancelAnimationFrame(V.raf); V.raf = 0; } V.last = 0; }
+  function stop() { if (V.raf) { cancelAnimationFrame(V.raf); V.raf = 0; } V.last = 0; V.completedAt = 0; }
   function go() { if (!V.lost && !V.glFailed && !V.raf && V.gl && visible() && S(V.ui).playing) { V.last = 0; V.raf = requestAnimationFrame(tick); } }
 
   // ---------------------------------------------------------------- the controls
@@ -1025,6 +1081,11 @@ void main() {
     primary.append(bar.querySelector('[data-anim=play]'));
     btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off restores the previous traffic and gap guard.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
+    btn('fps-counter', 'Frame cadence and CPU breakdown; sampled trace attribution adds profiling overhead. GPU execution requires the tester bench.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'fps / timings');
+    btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
+    const target = E('input', { type: 'number', min: 16, max: 200, step: 1, 'data-anim': 'frame-target', 'aria-label': 'Frame target (ms)', title: 'Dynamic resolution target, milliseconds per frame', class: 'anim-seed' });
+    target.addEventListener('change', () => setDV(ui, 'frameTargetMs', Math.max(16, Math.min(200, +target.value || 33)))); bar.append(target);
+    V.perfLab = E('output', { class: 'drive-perf', 'data-anim': 'perf-readout', 'aria-live': 'off', hidden: '' });
     btn('tile-cache', 'Reuse beam-lit ground samples across route tiles. Moving markings, grain and street lights still update each frame. Animation with tiles only.', () => setDV(ui, 'tileCache', !info().o.tileCache), 'cache ground');
     const lamps = E('select', { 'data-anim': 'street-lamps', 'aria-label': 'Street lamps on urban tiles', title: 'Downward point lights, diffuse illumination without shadows; approximate sodium / LED colour, not measured fixture photometry' });
     for (const [value, label] of [['off', 'street lamps off'], ['sodium', 'sodium ~2000 K'], ['led', 'LED ~4000 K']]) lamps.append(E('option', { value }, label));
@@ -1075,6 +1136,9 @@ void main() {
     for (const b of q('[data-anim="popout"]')) { b.setAttribute('aria-pressed', String(st.popout)); b.disabled = !sup; b.textContent = st.popout ? '✕ close' : '⤢ large'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
+    for (const [name, key] of [['fps-counter', 'fpsCounter'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key]));
+    V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
+    if (V.perfLab) { const host = st.popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement; if (host && V.perfLab.parentElement !== host) host.append(V.perfLab); V.perfLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
     for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
     V.bar.hidden = !(sup && (st.view === 'anim' || st.popout));
     const run = st.playing && (st.view === 'anim' || st.popout), pb = ui.driveBar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ pause' : '▶ play'; pb.setAttribute('aria-pressed', String(run));
@@ -1134,13 +1198,13 @@ void main() {
   // Counterfactual frame at the exact same pose, samples, exposure, glare and canvas size.
   // Retrace only tile rows touched by this hazard. Restore the displayed frame before returning.
   function gameBackground(id) {
-    const st = S(V.ui), { placed, ss, draw } = V.gameRender, bit = 1 << (id - 1), tileRows = new Set();
+    const st = S(V.ui), { placed, ss } = V.gameRender, draw = Object.assign({}, V.gameRender.draw, { profile: null }), bit = 1 << (id - 1), tileRows = new Set();
     for (let q = 0; q < V.gameMask.length; q++) if (V.gameMask[q] & bit) tileRows.add(Math.floor(q / V.p.w / 16));
     if (!tileRows.size) return null;
     const y0 = Math.min(...tileRows) * 16, y1 = Math.min(V.p.h, (Math.max(...tileRows) + 1) * 16), rgba = new Float32Array(V.rgba);
     const world = Object.assign({}, placed, { objects: placed.objects.filter((ob) => ob.gameHazard !== id) });
     try {
-      objects(Object.assign({}, V.p, { hazardMask: null, hazardBodyMask: null }), st.dist, rgba, ss, null, (ty) => tileRows.has(ty), world, st.t);
+      objects(Object.assign({}, V.p, { profile: null, hazardMask: null, hazardBodyMask: null }), st.dist, rgba, ss, null, (ty) => tileRows.has(ty), world, st.t);
       V.gl.setObjects(rgba, y0, y1); V.gl.draw(draw); return V.gl.readCanvas();
     } finally { V.gl.setObjects(V.rgba, y0, y1); V.gl.draw(draw); }
   }
@@ -1153,7 +1217,7 @@ void main() {
     if (unseen.length && !g.done && V.gameMask.some((v) => v & bits)) {
       const rgba = V.gl.readCanvas(), rect = V.canvas.getBoundingClientRect(), exclude = [];
       V.gameBackgrounds = {};
-      for (const el of [V.gameBar, ...info().toolbar.querySelectorAll('button,select')]) if (el && !el.hidden && el.getClientRects().length) {
+      for (const el of [V.gameBar, V.perfLab, ...info().toolbar.querySelectorAll('button,select')]) if (el && !el.hidden && el.getClientRects().length) {
         const r = el.getBoundingClientRect(); exclude.push([(r.left - rect.left) / rect.width * V.gl.cw, (r.top - rect.top) / rect.height * V.gl.ch, (r.right - rect.left) / rect.width * V.gl.cw, (r.bottom - rect.top) / rect.height * V.gl.ch]);
       }
       for (const h of unseen) {
@@ -1262,7 +1326,7 @@ void main() {
   function mount(ui) {
     const st = S(ui), host = st.popout && V.popStage ? V.popStage : (V.cv ? V.cv.parentElement : null); if (!host) return;
     host.classList.toggle('drive-fit', info().o.fitControls !== false);
-    for (const e of [V.canvas, ui.driveBar, V.gameBar, V.notice]) if (e && e.parentElement !== host) host.append(e);
+    for (const e of [V.canvas, ui.driveBar, V.gameBar, V.notice, V.perfLab]) if (e && e.parentElement !== host) host.append(e);
   }
 
   // ---------------------------------------------------------------- hook from drawDrive
@@ -1303,16 +1367,43 @@ void main() {
   function stats() {
     const t = V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); iv.sort((a, b) => a - b);
     const med = iv.length ? iv[iv.length >> 1] : 0, c = V.cpu;
-    return { white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
+    const all = V.profiles || [], recent = all.filter((r) => r.at >= (all.length ? all[all.length - 1].at : 0) - 1000);
+    return { profiling: profileOn(), renderScale: V.renderScale || 1, resolution: V.resolution || resolutionState(), frameTargetMs: V.info && V.info.o.frameTargetMs || 33, breakdown: breakdown(recent), breakdownMean: breakdown(all), lastFrame: all.length ? all[all.length - 1] : null, white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
   }
-  function resetStats() { V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
+  function breakdown(samples) {
+    const rows = samples || [], n = rows.length, mean = (key) => n ? rows.reduce((s, r) => s + (r[key] || 0), 0) / n : 0, frameMs = mean('frameMs'), components = {};
+    for (const key of ['objectMs', 'groundMs', 'wetMs', 'workerOtherMs', 'pacingMs', 'dispatchMs', 'trafficMs', 'placementMs', 'assemblyMs', 'uploadMs', 'sourcesMs', 'composeMs', 'glareMs', 'finalVeilMs', 'detectorMs', 'workerRoundTripMs']) {
+      components[key] = { ms: mean(key), pct: frameMs ? mean(key) / frameMs * 100 : 0,
+        basis: ['objectMs', 'groundMs', 'wetMs'].includes(key) ? 'sampled estimate' : 'measured elapsed', scope: key === 'workerOtherMs' ? 'summed worker CPU setup/packing (overlaps round-trip)' : key === 'dispatchMs' ? 'main CPU inside worker round-trip' : rows.some((r) => r.worker) && ['objectMs', 'groundMs', 'wetMs'].includes(key) ? 'trace CPU; worker sums overlap round-trip' : 'frame wall time' };
+    }
+    const other = n ? rows.reduce((sum, r) => {
+      const accounted = ['trafficMs', 'placementMs', 'assemblyMs', 'uploadMs', 'sourcesMs', 'glMs', 'detectorMs', 'workerRoundTripMs', 'pacingMs'].reduce((s, k) => s + (r[k] || 0), 0) + (r.worker ? 0 : r.traceCpuMs || 0);
+      return sum + Math.max(0, r.frameMs - accounted);
+    }, 0) / n : 0;
+    components.otherMs = { ms: other, pct: frameMs ? other / frameMs * 100 : 0, basis: 'measured residual', scope: 'frame wall time' };
+    return { frames: n, frameMs, workMs: mean('workMs'), mainMs: mean('mainMs'), workerCpuMs: mean('workerCpuMs'), traceCpuMs: mean('traceCpuMs'), components,
+      cache: { hits: rows.reduce((s, r) => s + (r.cacheHits || 0), 0), misses: rows.reduce((s, r) => s + (r.cacheMisses || 0), 0) }, sampledRays: rows.reduce((s, r) => s + (r.sampledRays || 0), 0), gpuMs: null,
+      notes: 'GL stages time CPU submission, not GPU execution. Final pass includes veil and tone map. Trace components partition trace CPU; worker sums and main dispatch overlap round-trip. Wet measures lobe evaluation only. Static ground setup is groundMs at stats root.' };
+  }
+  function perfLabel() {
+    if (!V.perfLab || !profileOn()) return;
+    if (V.canvas && V.canvas.parentElement !== V.perfLab.parentElement) V.canvas.parentElement.append(V.perfLab);
+    const s = stats(), b = s.breakdown, c = b.components, ms = (k) => c[k].ms.toFixed(1), scope = s.workers ? 'worker CPU sum' : 'CPU';
+    V.perfLab.textContent = s.fps.toFixed(1) + ' fps · p95 ' + s.p95Ms.toFixed(1) + ' ms · scale ' + s.renderScale.toFixed(2) + ' · SS ' + s.ss + '\n' +
+      'frame ' + b.frameMs.toFixed(1) + ' · main ' + b.mainMs.toFixed(1) + ' · worker RT ' + ms('workerRoundTripMs') + ' ms\n' +
+      scope + ' ≈ object/rays ' + ms('objectMs') + ' · ground ' + ms('groundMs') + ' · wet ' + ms('wetMs') + ' · worker setup/pack ' + ms('workerOtherMs') + ' ms\n' +
+      'cache ' + b.cache.hits + ' hit / ' + b.cache.misses + ' miss · upload ' + ms('uploadMs') + ' ms\n' +
+      'GL submit: compose ' + ms('composeMs') + ' · glare ' + ms('glareMs') + ' · final/veil ' + ms('finalVeilMs') + ' ms\n' +
+      'traffic ' + ms('trafficMs') + ' · placement ' + ms('placementMs') + ' · dispatch ' + ms('dispatchMs') + ' · detector ' + ms('detectorMs') + ' · pacing ' + ms('pacingMs') + ' · other ' + ms('otherMs') + ' ms';
+  }
+  function resetStats() { V.profiles = []; V.completedAt = 0; V.cameraMs = 0; V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
   function bench(n) {
     const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, flashes = V.flash, traffic = V.src.traffic.state; V.src.traffic.state = copyTraffic(traffic); V.flash = flashState(); resetStats(); const t0 = performance.now();
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

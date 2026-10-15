@@ -213,6 +213,10 @@
    * Replace the lut/data object when changing its values (as the page does); camera/look changes invalidate automatically.
    * grain(s,off,halfFootprint): ground-only brightness factor. These are render options, not saved scene fields. */
   function render(o) {
+    // Optional CPU attribution: hash pixels to avoid always sampling the same roadside columns.
+    const prof = o.profile, started = prof ? performance.now() : 0;
+    let timed = false, rays = 0, sampled = 0, groundTime = 0, wetTime = 0;
+    const lobe = prof ? (...args) => { if (!timed) return wetLobe(...args); const t = performance.now(), v = wetLobe(...args); wetTime += performance.now() - t; return v; } : wetLobe;
     const w = o.w, h = o.h, tanH = Math.tan(o.hfov * D2R / 2), tanV = tanH * h / w, eye = o.eye, ex = eye[0], ey = eye[1], ez = eye[2];
     const lamps = o.lamps, nl = lamps.length, lut = o.lut, conv = o.conv || 'A', lc = o.lampRGB || [1, 1, 1], A = o.arc || null, Lw = o.lane;
     const look = Object.assign({ wet: false, RL: 0.2, ambient: 0 }, o.look), M = Object.assign(materials(look), o.mats || {}), scene = o.scene || { objects: [], markings: [], verge: ['gravel', 1.5, 'grass'] };
@@ -232,6 +236,7 @@
       const key = JSON.stringify([w, h, o.hfov, eye, lamps, conv, lc, look, o.mats, lut.h0, lut.v0, lut.step, lut.nh, lut.nv]);
       if (gc.key !== key || gc.lut !== lut || gc.data !== lut.data) { gc.key = key; gc.lut = lut; gc.data = lut.data; gc.bands = []; gc.bytes = 0; gc.builds = (gc.builds || 0) + 1; gc.hits = gc.misses = 0; }
     }
+    const cacheHits = gc && gc.hits || 0, cacheMisses = gc && gc.misses || 0;
     let groundBand = null, groundSlot = 0, groundSlots = 0, groundShading = false;
     // front to back: near[i] = a lower bound of any hit distance on object i (its bounding sphere; 0 for the sub-pixel discs, whose tent spread can reach past the sphere). A tile lists its objects by near,
     // and a ray stops testing at the first one whose near is not below the best hit so far: the same nearest hit, fewer tests (o.sort === false: the original order, every object tested)
@@ -296,7 +301,7 @@
             r += m.rho[0] * L.rgb[0] * e; g += m.rho[1] * L.rgb[1] * e; b += m.rho[2] * L.rgb[2] * e;
           }
           if (sheen && (m.id === M.asphalt.id || m.id === M.concrete.id)) for (const L of reflections) {
-            const v = L.cd * wetLobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += v * L.rgb[0]; g += v * L.rgb[1]; b += v * L.rgb[2];
+            const v = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += v * L.rgb[0]; g += v * L.rgb[1]; b += v * L.rgb[2];
           }
           LR += k * (a[q] + r * lc[0]); LG += k * (a[q + 1] + g * lc[1]); LB += k * (a[q + 2] + b * lc[2]); return;
         }
@@ -313,14 +318,14 @@
         r += rho[0] * L.rgb[0] * e; g += rho[1] * L.rgb[1] * e; b += rho[2] * L.rgb[2] * e;
       }
       if (!staticBuild && sheen && nz === 1 && (m.id === M.asphalt.id || m.id === M.concrete.id)) for (const L of reflections) {
-        const a = L.cd * wetLobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
+        const a = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
       }
       for (let i = 0; i < nl; i++) {
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
         if (!(NoL > 0)) continue;
         if (preA) { const a = dx / rr, b = -dy / rr, c = dz / rr; if (c < sv0 || c > sv1 || a <= 0 || b > a * th1 || b < a * th0) continue; }
         hvFast(dx, dy, dz, conv); const I = lutAt(lut, HV0, HV1); if (!(I > 0)) continue;
-        if (sheen && nz === 1 && m.id === M.asphalt.id) { const a = I * wetLobe(-dx, -dy, -dz, vx, vy, vz); r += a; g += a; b += a; }
+        if (sheen && nz === 1 && m.id === M.asphalt.id) { const a = I * lobe(-dx, -dy, -dz, vx, vy, vz); r += a; g += a; b += a; }
         const Ep = I / r2;                                                    // E⊥, lux square to the beam
         const d = Ep * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
         if (m.gloss && NoV > 0) {
@@ -363,6 +368,7 @@
     let sampleDepth = Infinity, sampleMat = MAT_ID.sky, covAcc = 0, hazardAcc = 0, eyeAcc = 0;
     // one ray through (fx, fy) in pixel units; adds weight k to the accumulators
     function sample(fx, fy, k, tileObjs, delta) {
+      if (prof) { rays++; if (timed) sampled++; }
       const u = fx / w * 2 - 1, v = 1 - fy / h * 2; let dx = 1, dy = -u * tanH, dz = v * tanV; const il = 1 / Math.sqrt(dx * dx + dy * dy + dz * dz); dx *= il; dy *= il; dz *= il;
       let tg = Infinity; if (dz < -1e-6) tg = -ez / dz;
       let tbest = tg, hit = -1, hnx = 0, hny = 0, hnz = 1, hu = 0, hf = 0, hs = 1;
@@ -381,13 +387,16 @@
         shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
         if (sampleDepth === Infinity) { sampleDepth = tbest; sampleMat = m.id; }
       } else if (objOnly) { /* the ground and the sky are the other layer's */ } else if (tg < Infinity && tg < 5000) {
+        const tGround = timed ? performance.now() : 0;
         groundShading = true;
         ground(ex + tg * dx, ey + tg * dy, tg, -dz, -dx, -dy, -dz, delta, k);
         groundShading = false;
+        if (timed) groundTime += performance.now() - tGround;
         if (sampleDepth === Infinity) { sampleDepth = tg; sampleMat = GM; }
       } else { const sl = skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(dz) * 8)); LR += k * sl; LG += k * sl; LB += k * sl; }
     }
     const pixel = (x, y, tl) => {
+      if (prof) { const q = y * w + x; timed = ((Math.imul(q ^ (q >>> 16), 0x45d9f3b) >>> 16) & 63) === 0; }
       const ti = Math.floor(y / TS) * tw + Math.floor(x / TS);
       if (o.sampleTiles && tl) o.sampleTiles[ti] = 1;
       const n = tl || (o.sampleTiles && o.sampleTiles[ti]) ? ssN : 1, k = 1 / (n * n), delta = delta0 / n;
@@ -409,6 +418,10 @@
     };
     if (objOnly) { for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) { const tl = tiles[ty * tw + tx]; if (!tl || (o.tileRow && !o.tileRow(ty))) continue; for (let y = ty * TS, ye = Math.min(h, y + TS); y < ye; y++) for (let x = tx * TS, xe = Math.min(w, x + TS); x < xe; x++) pixel(x, y, tl); } }   // only the tiles an object can touch (o.tileRow(ty): only these tile rows, the workers' share)
     else for (let y = 0; y < h; y++) { if (o.tileRow && !o.tileRow((y / TS) | 0)) continue; for (let x = 0; x < w; x++) pixel(x, y, tiles[((y / TS) | 0) * tw + ((x / TS) | 0)]); }
+    if (prof) {
+      const total = performance.now() - started, factor = sampled ? rays / sampled : 0, ground = Math.min(total, groundTime * factor), wet = Math.min(ground, wetTime * factor);
+      Object.assign(prof, { traceMs: total, objectMs: total - ground, groundMs: ground - wet, wetMs: wet, rays, sampledRays: sampled, cacheHits: gc ? gc.hits - cacheHits : 0, cacheMisses: gc ? gc.misses - cacheMisses : 0, attribution: 'sampled estimate; object includes ray/setup/residual; wet is lobe evaluation only' });
+    }
     if (objOnly || fullLayer) { let y0 = th, y1 = -1; const trows = []; for (let ty = 0; ty < th; ty++) { let any = fullLayer; if (!o.tileRow || o.tileRow(ty)) { for (let tx = 0; !any && tx < tw; tx++) if (tiles[ty * tw + tx]) { any = true; break; } } else any = false; if (any) { trows.push(ty); if (ty < y0) y0 = ty; if (ty > y1) y1 = ty; } } return { w, h, rgb, cov, rgba, rows: y1 < 0 ? [0, 0] : [y0 * TS, Math.min(h, (y1 + 1) * TS)], trows, TS, hfov: o.hfov }; }
     return { w, h, rgb, depth, mat: matBuf, keys: MAT_KEYS, names: MAT_KEYS.map((k) => MAT_DEF[k].name), hfov: o.hfov };
   }
