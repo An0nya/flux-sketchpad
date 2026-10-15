@@ -48,3 +48,21 @@ Anya's brainstorm with GPT, saved as an idea bank. **Not a plan, nothing approve
 ## Relation to the approved drive plan (10-14)
 Stage 4 traffic → §1 glare veil and §4 flash-counting need oncoming cars first. Stage 5 tiles → §2. Stage 6 realism →
 §1, §5. §3/§4 (the game) is new: a mode on top of the drive view, after 4–5.
+
+## 6. Follow-up: liability scorecard (Anya + GPT, 10-15)
+Speed is automatic; the player controls only reaction and hold-to-brake. The key quantity is `collision_speed` (speed
+still carried when the boxes overlap).
+- **Recklessness** (can't be mitigated away; total capped at 100): non-compliant lamp (Spec verdict fail) +40 · high beam
+  in town or with oncoming/preceding present +30 · collision_speed ≈ 1 pt per km/h (0–10 → 0–10 … 60+ → 60+).
+- **Mitigating** (a percentage reduction, capped at 50 %, never erases recklessness): pedestrian without high-viz, unlit,
+  at night −15 · jaywalking (mid-block / against the light) −20 · both −25 max (as written; note 15 + 20 = 35 elsewhere
+  in the text, pick one).
+- **Liability** = recklessness × (1 − mitigating %).
+- **Outcomes:** liability < 20 and collision_speed < 10 and compliant → repair cost (~$2k) · 20–60 → ticket + civil
+  (~$5k + points) · > 60, or > 30 km/h in a crosswalk, or non-compliant and > 30 km/h → jail-risk game-over screen.
+- Person hit at any speed = run lost (conscience cost 100); the money is flavour.
+- Cops: every oncoming driver flashed on high beam = +$150 even without a crash → players learn to dip (what ADB
+  automates later).
+- ⚠️ Arithmetic check: GPT says 60 km/h dry is "~35 m even with perfect reaction". Braking alone (μ 0.8) is **17.7 m**;
+  35 m is with a 1.0 s reaction (16.7 m + 17.7 m = 34.4 m). The worked examples: 60 km/h crosswalk + non-compliant =
+  40 + 0 + 60 = 100 → jail-risk ✓; 5 km/h compliant jaywalker = 5 × (1 − 0.35) = 3.25 → repair cost ✓ (uses 35 %).
