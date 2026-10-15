@@ -363,7 +363,7 @@ void main() {
   const Wk = { list: [], cfgKey: '', lut: null, cfgId: 0, seq: 0, busy: null, failed: '', pool: [], forced: 0, afterFrame: null };
   const nWorkers = () => Wk.forced || Math.max(1, Math.min(6, ((root.navigator && root.navigator.hardwareConcurrency) || 4) - 2));
   function killWorkers() { for (const w of Wk.list) w.terminate(); Wk.list = []; Wk.cfgKey = ''; Wk.lut = null; Wk.busy = null; Wk.pool = []; }
-  function failWorkers(why) { killWorkers(); Wk.failed = String(why || 'worker error'); V.why = 'worker threads unavailable (' + Wk.failed.split('\n')[0].slice(0, 120) + '): the page traces the objects itself'; if (V.ui) { V.last = 0; go(); } }
+  function failWorkers(why) { killWorkers(); Wk.failed = String(why || 'worker error'); V.why = 'worker threads unavailable (' + Wk.failed.split('\n')[0].slice(0, 120) + '): the page traces the objects itself'; if (V.ui) { V.last = 0; if (V.info && V.bar) labels(V.ui); go(); } }
   // true when this frame is traced on workers (they are started, or stopped, to match the switch)
   function mt() {
     const want = !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
