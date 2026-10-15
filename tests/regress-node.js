@@ -927,6 +927,89 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   }
   // EX: photometric round trips and geometry schema / actual renderer mesh checks.
   await require('./export-formats.js').checks(ok);
+  // D6: IDM equations, seeded safety, signal stops and the page-owned worker snapshot. No browser needed.
+  {
+    const A = RF.DriveAnim, D = RF.Drive, J = JSON.stringify, flags = { posts:false,signs:false,people:false,animals:false,veg:false,rpm:false };
+    const make = (extra) => A.source('road',3.5,false,flags,Object.assign({seed:7,trafficLogic:true,oncoming:true,preceding:true,trafficDensity:3,speed:50,tiles:true},extra));
+    const expected = 1 - Math.pow(10/20,4) - Math.pow((2+10*1.5+10*2/(2*Math.sqrt(1*1.5)))/20,2);
+    ok('D6a IDM acceleration matches the published equation; equal speed still has a time headway', Math.abs(A.idmAcceleration(10,2,20,20)-expected)<1e-12 && A.idmAcceleration(10,0,10,20)<0 && A.idmAcceleration(10,0,Infinity,20)===0.9375, J({expected,actual:A.idmAcceleration(10,2,20,20)}));
+    let cars=Array.from({length:12},(_,i)=>({x:-i*25,v:0})), min=Infinity, safe=true; const random=D.rng(6391); let stop=100;
+    for(let i=0;i<72000;i++) {
+      if(i%1000===0) stop=cars[0].x+20+random()*150;
+      const red=i%1000<700, next=[];
+      for(let j=0;j<cars.length;j++) { const c=A.idmStep(cars[j],next[j-1],.05,12+j*.8,red?stop:undefined); next.push(c); if(j){const g=next[j-1].x-c.x-4.4;min=Math.min(min,g);safe=safe&&g>=2-1e-8;} safe=safe&&Number.isFinite(c.x)&&Number.isFinite(c.v)&&c.v>=0; }
+      cars=next;
+    }
+    ok('D6b one-hour seeded IDM platoon has no collisions, negative speeds or gap below s0',safe,'minimum bumper gap '+min+' m; tail '+J(cars.slice(0,2)));
+    const tile=Array.from({length:100},(_,k)=>A.roadTile(7,k)).find(t=>t.kind==='intersection'), clock=(50-tile.phase)%50;
+    const stops=[];
+    for(const kind of ['preceding','oncoming']) {
+      const src=make({speed:5}),dir=kind==='preceding'?1:-1,line=tile.s0+100+dir*(-3.5-5.7),state={cars:[{id:kind+':fixture',kind,x:line-dir*80,v:10}]};
+      for(let i=0;i<460;i++) A.advanceTraffic(src,state,tile.s0-500,clock+(i+1)*.05);
+      const at=state.cars[0], gap=dir*(line-at.x)-2.2;
+      ok('D6c '+kind+' stops at its own red line, then leaves on green',gap>=2-1e-8&&gap<2.1&&at.v<.05&&!at.turn,J({line,x:at.x,v:at.v,gap}));
+      stops.push({kind,line,x:at.x,v:at.v,gap});
+      for(let i=460;i<850;i++) A.advanceTraffic(src,state,tile.s0-500,clock+(i+1)*.05);
+      ok('D6c '+kind+' actually passes its line on green',state.cars.length===1&&dir*(state.cars[0].x-line)>0&&state.cars[0].v>1,J(state.cars[0]));
+      const q=A.idmStep({x:line-4.2,v:8},null,.05,20,line);
+      ok('D6c yellow virtual obstacle cannot be crossed even on a sudden phase change',q.x<=line-4.2+1e-9&&q.v===0);
+    }
+    let fullSafe=true, minGap=Infinity, minOwn=Infinity, redCross=0, stopCount=0, maxCars=0, maxSeen=0, samples=[];
+    for(const seed of [7,19]) for(const tiles of [false,true]) for(const speed of [5,50,130]) {
+      const src=make({seed,tiles,speed}); let previous=new Map();
+      for(let i=0;i<=12000;i++) {
+        const t=i*.05,dist=t*speed/3.6,visible=A.trafficCars(src,dist,t),all=src.traffic.state.cars;
+        maxCars=Math.max(maxCars,all.length);maxSeen=Math.max(maxSeen,src.traffic.state.seen.size);
+        for(const kind of ['preceding','oncoming']) {const dir=kind==='preceding'?1:-1,lane=all.filter(c=>c.kind===kind&&!c.turn).sort((a,b)=>dir*(b.x-a.x)); for(let j=1;j<lane.length;j++) {const g=dir*(lane[j-1].x-lane[j].x)-4.4;minGap=Math.min(minGap,g);fullSafe=fullSafe&&g>=2-1e-7;} }
+        for(const c of all) {
+          fullSafe=fullSafe&&Number.isFinite(c.x)&&Number.isFinite(c.v)&&c.v>=0;
+          if(c.turn) continue; const sig=A.trafficSignal(src,c,t),old=previous.get(c.id),dir=c.kind==='preceding'?1:-1;
+          if(old) {const before=A.trafficSignal(src,old,t);if(before&&before.lit!=='green'&&dir*(before.line-c.x)-2.2 < -1e-7) redCross++;}
+          if(sig&&sig.lit!=='green'&&sig.gap<2.1&&c.v<.05) {stopCount++;if(samples.length<4&& !samples.some(r=>r.kind===c.kind&&r.seed===seed))samples.push({seed,t,kind:c.kind,x:c.x,v:c.v,line:sig.line,lit:sig.lit});}
+        }
+        for(const c of visible) if(c.kind==='preceding'&&!c.turning) minOwn=Math.min(minOwn,c.rel);
+        previous=new Map(all.map(c=>[c.id,{...c}]));
+      }
+      fullSafe=fullSafe&&src.traffic.state.cars.length>0;
+    }
+    ok('D6d seeded traffic stays populated and collision-free for 10 minutes x 12 runs; red/yellow holds, bounded state',fullSafe&&redCross===0&&stopCount>0&&minOwn>=25-1e-7&&maxCars<260&&maxSeen<100,J({minGap,minOwn,redCross,stopCount,maxCars,maxSeen,samples}));
+    const replay=(seed,step)=>{const s=make({seed});for(let i=0;i<=Math.round(60/step);i++)A.trafficCars(s,i*step*50/3.6,i*step);return {s,out:A.trafficCars(s,60*50/3.6,60)};};
+    const a=replay(7,.1),b=replay(7,.1),c=replay(8,.1),fine=replay(7,.05),visible=a.out;
+    let cadence=visible.length===fine.out.length; for(let i=0;i<visible.length&&cadence;i++)cadence=visible[i].id===fine.out[i].id&&Math.abs(visible[i].rel-fine.out[i].rel)<1e-6;
+    ok('D6e same seed and inputs replay exactly; different seed changes cars; render cadence does not change the trajectory',J(visible)===J(b.out)&&J(visible)!==J(c.out)&&cadence&&J(visible)===J(A.trafficCars(a.s,60*50/3.6,60)),J(visible));
+    a.s.traffic.oncoming=false;const only=A.trafficCars(a.s,60*50/3.6,60);a.s.traffic.preceding=false;
+    ok('D6e lane toggles suppress only their own cars, including both off; zero density creates no traffic',only.every(c=>c.kind==='preceding')&&A.trafficCars(a.s,60*50/3.6,60).length===0&&A.trafficCars(make({trafficDensity:0}),0,0).length===0);
+    const flash=A.flashState(),probe={src:b.s,lamps:[[0,0,.68]],lut:D.lutFrom(()=>1e6),conv:'A',A:null},nFlash=A.countFlashes(flash,probe,60*50/3.6,60);
+    b.s.traffic.oncoming=false;A.countFlashes(flash,probe,60*50/3.6,60);b.s.traffic.oncoming=true;
+    ok('D6e hiding then showing traffic does not recount the same lit drivers',nFlash>0&&A.countFlashes(flash,probe,60*50/3.6,60)===nFlash,J({drivers:nFlash}));
+    const escort=make({tiles:false,speed:130});let first, retained=false,matched=false;
+    for(let i=0;i<2000;i++){const out=A.trafficCars(escort,i*.05*130/3.6,i*.05);if(!first)first=out.find(c=>c.kind==='preceding');const q=first&&out.find(c=>c.id===first.id);if(q&&q.rel<80){retained=true;matched=matched||q.v>=130/3.6;}}
+    ok('D6f caught preceding car retains its ID and matches our speed instead of vanishing at the gap',retained&&matched);
+    const turning=make({speed:130});let turn=null,departed=false;for(let i=0;i<4000;i++){const out=A.trafficCars(turning,i*.05*130/3.6,i*.05);const c=out.find(c=>c.turning&&Math.abs(c.off)>3.2);if(c&&!turn)turn=c;if(turn&&!out.some(c=>c.id===turn.id))departed=true;}
+    ok('D6f over-limit traffic visibly leaves the lane at a junction before being retired',!!turn&&departed,J(turn));
+    // Compare against actual D5 code, including raw objects and rendered HDR. Never an invented baseline.
+    const vm=require('vm'),cp=require('child_process'),ctx=vm.createContext({console,performance});
+    for(const f of ['core','road','drive','drive-scenes','drive-anim'])vm.runInContext(cp.execFileSync('git',['show','3916cb9:js/'+f+'.js'],{encoding:'utf8'}),ctx);
+    let identical=true, worlds=0;
+    for(const tiles of [false,true])for(const safeGap of [false,true])for(const scene of ['road','forest','city']) for(const bend of [false,true]) {
+      const opts={tiles,safeGap,trafficLogic:false,seed:7,speed:90,oncoming:true,preceding:true,onMode:'symmetric',trafficDensity:3,streetLamps:'off'},p={w:64,h:36,hfov:60,lamps:[[0,0,.68]],lut:D.lutFrom(()=>1000),conv:'A',lane:3.5,look:{wet:false},A:bend?RF.Road.arc(250,'right'):null};
+      const q={...p,src:A.source(scene,3.5,false,flags,opts)},old={...p,src:ctx.RF.DriveAnim.source(scene,3.5,false,flags,opts)},x=new Float32Array(64*36*4),y=new Float32Array(x.length);
+      identical=identical&&J(A.trafficCars(q.src,40,3))===J(ctx.RF.DriveAnim.trafficCars(old.src,40,3));
+      A.objects(q,40,x,1,null,null,null,3);ctx.RF.DriveAnim.objects(old,40,y,1,null,null,null,3);identical=identical&&x.every((v,i)=>v===y[i]);worlds++;
+    }
+    ok('D6g traffic logic OFF exactly equals D5 traffic and HDR, tiles on/off, guard on/off, road/forest/city',identical,worlds+' worlds');
+    let parity=true,n=0;
+    for(const tiles of [false,true]) {
+      const opts={tiles,trafficLogic:true,seed:7,speed:50,oncoming:true,preceding:true,trafficDensity:3},args=['road',3.5,false,flags,opts],p={w:96,h:54,hfov:60,lamps:[[0,0,.68]],lut:D.lutFrom(()=>1000),conv:'A',lane:3.5,look:{wet:tiles,wetSheen:tiles},A:null,src:A.source(...args)},T=A.tracer();T.cfg({id:8,p,arc:null,src:args});
+      for(let i=0;i<200;i++)A.trafficCars(p.src,i*.1*50/3.6,i*.1);
+      for(const [seq,t] of [[1,20],[2,20.2]]) {
+        const dist=t*50/3.6,traffic=A.trafficCars(p.src,dist,t),buf=new Float32Array(96*54*4);A.objects(p,dist,buf,1,null,null,null,t);
+        const r=T.job({seq,dist,t,speed:50,traffic,ss:1,act:[],c:0,K:1,wid:0}),got=new Float32Array(r.buf,0,r.len);let off=0;
+        for(const ty of r.trows){const start=ty*16*96*4,end=Math.min(54,(ty+1)*16)*96*4;for(let j=start;j<end;j++)parity=parity&&Number.isFinite(got[off])&&got[off++]===buf[j];}n++;
+      }
+    }
+    ok('D6h worker consumes the page-owned traffic snapshot with bit-identical HDR after a different frame history',parity,n+' frames');
+  }
   console.log(fails ? fails + ' FAILED' : 'all regress-node checks passed');
   process.exitCode = fails ? 1 : 0;
 })();

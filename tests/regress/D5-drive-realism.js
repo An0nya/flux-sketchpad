@@ -19,7 +19,7 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   ok('old saved non-default kcd (45) stays manual',await page.evaluate(()=>RF.UI.dvOpts.glare==='rain'&&RF.UI.dvOpts.onMode==='manual'&&RF.UI.dvOpts.onKcd===45));
   const saved=await page.evaluate(()=>RF.State.serialize(RF.UI.store.scene));
   await page.evaluate(()=>{localStorage.removeItem('flux/driveView');RF.UI.dvOpts=null;RF.UI.redrawSpec();});
-  ok('fresh defaults are symmetric/dry; sheen has an independent setting',await page.evaluate(()=>RF.UI.dvOpts.onMode==='symmetric'&&RF.UI.dvOpts.glare==='dry'&&RF.UI.dvOpts.wetSheen&&document.querySelector('[data-dv="wetSheen"]')));
+  ok('fresh defaults are symmetric/dry; sheen has an independent setting',await page.evaluate(()=>RF.UI.dvOpts.onMode==='symmetric'&&RF.UI.dvOpts.glare==='dry'&&RF.UI.dvOpts.wetSheen===false&&document.querySelector('[data-dv="wetSheen"]')));
   const levels=[];for(let i=0;i<4;i++){levels.push(await page.locator('[data-dv="glare"]').textContent());await page.click('[data-dv="glare"]');}
   ok('glare button visits all four named levels',new Set(levels).size===4&&levels.every(v=>/glare (off|dry-low|dry|rain)$/.test(v)),JSON.stringify(levels));
   const bloom=await page.evaluate(()=>{
