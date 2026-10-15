@@ -23,7 +23,7 @@
     vLeft: new R2.View2D(), vHeat: new R2.View2D(), vPick: new R2.View2D(), vProf: new R2.View2D(),
     fitMode: 'all', showRays: true, smooth: false, view: 'total', surfaceView: 'shaded',
     interacting: false, run: null, model: null, handles: [], activeHandle: null, preview: null,
-    raf: 0, display: 'grid', pendingA: 0, lastHeat: 0, lastStats: 0, pickMarks: [], profHandles: [], profSel: -1, heatImg: null, sceneDirty: true,
+    raf: 0, display: 'grid', pendingA: 0, lastHeat: 0, lastStats: 0, pickMarks: [], profHandles: [], profSel: -1, profSeg: -1, heatImg: null, sceneDirty: true,
   };
   RF.UI = ui;
 
@@ -196,7 +196,13 @@
     } else {
       const pc = P.el('input', { type: 'checkbox', id: 'prof-pairs' }); pc.checked = ui.profPairs !== false;
       pc.addEventListener('change', () => { ui.profPairs = pc.checked; ui.sceneDirty = true; schedule(); });
-      box.append(P.el('label', { class: 'tog', title: 'Source → segment → reflected / refracted chief ray, in this plane' }, pc, ' ray pairs'), P.el('span', { id: 'prof-info' }, ''));
+      const cc = P.el('input', { type: 'checkbox', id: 'prof-curve' }); cc.checked = ui.profCurve !== false;
+      cc.addEventListener('change', () => { ui.profCurve = cc.checked; ui.profSel = -1; ui.profSeg = -1; ui.sceneDirty = true; ui.refreshPanels(); schedule(); });
+      const sn = P.el('input', { type: 'checkbox', id: 'prof-snap' }); sn.checked = ui.profSnap !== false;
+      sn.addEventListener('change', () => { ui.profSnap = sn.checked; });
+      box.append(P.el('label', { class: 'tog', title: 'On: segments are curves (drag the body to move, the ends to extend, the diamond to bend). Off: the old editor, one draggable point per vertex.' }, cc, ' curve editor'),
+        P.el('label', { class: 'tog', title: 'Curve editor: nodes snap to the axis (r = 0) and to other nodes when dropped close to them' }, sn, ' snap joins'),
+        P.el('label', { class: 'tog', title: 'Source → segment → reflected / refracted chief ray, in this plane' }, pc, ' ray pairs'), P.el('span', { id: 'prof-info' }, ''));
     }
   }
 
@@ -802,10 +808,12 @@
       const r = R2.drawPicker(cv, ui.vPick, sc, ui.store.reports.B, sc.modeB.selected);
       ui.pickMarks = r.marks; ui.pickTmax = r.tmax;
     } else {
-      const r = R2.drawProfile(cv, ui.vProf, sc, ui.profSel, false, { pairs: ui.profPairs !== false });
+      const cvo = ui.curveNow();
+      const r = R2.drawProfile(cv, ui.vProf, sc, ui.profSel, false, { pairs: ui.profPairs !== false, curve: cvo, selSeg: ui.profSeg });
       ui.profHandles = r.handles;
       const info = document.getElementById('prof-info');
-      if (info) info.textContent = sc.modeC.profile.length < 2 ? 'Empty profile — tap to add points, or use “Apply preset to profile” in the sidebar.' : sc.modeC.profile.length + ' points · ' + (ui.profSel >= 0 ? 'point ' + (ui.profSel + 1) + ' selected' : 'tap empty space to add a point');
+      if (info && cvo) { info.textContent = cvo.nodes.length + ' nodes' + (ui.profSeg >= 0 ? ' · segment ' + (ui.profSeg + 1) : ui.profSel >= 0 ? ' · node ' + (ui.profSel + 1) : ''); info.title = 'Drag a segment to move it, an end to extend it, the diamond to bend it; tap empty space to extend the chain.'; }   // short on purpose: a wrapping line resizes the canvas mid-drag
+      else if (info) { info.title = ''; info.textContent = sc.modeC.profile.length < 2 ? 'Empty profile — tap to add points, or use “Apply preset to profile” in the sidebar.' : sc.modeC.profile.length + ' points · ' + (ui.profSel >= 0 ? 'point ' + (ui.profSel + 1) + ' selected' : 'tap empty space to add a point'); }
     }
     alignFigure('left-canvas', isPaint(sc.mode) ? ui.vLeft : sc.mode === 'B' ? ui.vPick : ui.vProf);
   }
@@ -1015,15 +1023,26 @@
         // nearest handle within reach (handles can be packed tightly, e.g. near a profile vertex)
         const nearest = (list, r) => { let best = null, bd = r; for (const k of list) { const d = Math.hypot(k.x - x, k.y - y); if (d < bd) { bd = d; best = k; } } return best; };
         if (m === 'B') { const k = nearest(ui.pickMarks, 16); if (k) return { kind: 'mark', id: k.id }; }
+        if (m === 'C' && ui.curveNow()) {
+          const hd = nearest(ui.profHandles, 11); if (hd) return { kind: hd.kind, i: hd.i };   // tighter than the point editor's 14: the body must stay grabbable between handles
+          const sg = ui.curveSegAt(x, y); return sg >= 0 ? { kind: 'seg', i: sg } : null;
+        }
         if (m === 'C') { const hd = nearest(ui.profHandles, 14); if (hd) return { kind: 'pt', i: hd.i }; }
         return null;
       },
-      onDragStart(t) { if (t.kind === 'pt') { ui.profSel = t.i; ui.vProf.lockBounds = ui.vProf.bounds.slice(); } if (t.kind === 'mark') ui.store.scene.modeB.selected = t.id; },
+      onDragStart(t, x, y) {
+        if (t.kind === 'node' || t.kind === 'mid' || t.kind === 'seg') {
+          ui.profSel = t.kind === 'node' ? t.i : -1; ui.profSeg = t.kind === 'node' ? -1 : t.i; ui.vProf.lockBounds = ui.vProf.bounds.slice();
+          ui.curveDrag = { start: ui.vProf.toContent(x, y), cv: RF.U.deepCopy(ui.curveNow()) };
+        }
+        if (t.kind === 'pt') { ui.profSel = t.i; ui.vProf.lockBounds = ui.vProf.bounds.slice(); } if (t.kind === 'mark') ui.store.scene.modeB.selected = t.id; },
       onDrag(t, x, y) {
         if (t.kind === 'mark') {
           const c = ui.vPick.toContent(x, y), rr = Math.min(1, Math.hypot(c[0], c[1]));
           C.actions.setStampDir(ui.store, t.id, Math.max(0.5, rr * ui.pickTmax), Math.atan2(c[1], c[0]) * 180 / Math.PI);
           ui.store.commit({ deferA: true }); firePreview(t.id);
+        } else if (t.kind === 'node' || t.kind === 'mid' || t.kind === 'seg') {
+          ui.curveDragTo(t, x, y);
         } else if (t.kind === 'pt') {
           const c = ui.vProf.toContent(x, y), pts = ui.store.scene.modeC.profile.map((p) => p.slice());
           pts[t.i] = [ui.store.scene.modeC.sweep === 'revolve' ? Math.max(0, c[0]) : c[0], c[1]];
@@ -1031,12 +1050,21 @@
         }
         ui.movedSomething = true; ui.sceneDirty = true; ui.requestRun(true);
       },
-      onDragEnd(t) { if (t && t.kind === 'pt') ui.vProf.lockBounds = null; },
+      onDragEnd(t) { if (t && (t.kind === 'pt' || t.kind === 'node' || t.kind === 'mid' || t.kind === 'seg')) { ui.vProf.lockBounds = null; ui.curveDrag = null; if (t.kind !== 'pt') ui.autosave(); } },
       onTap(x, y, t) {
         const m = ui.store.scene.mode;
         if (m === 'B' && t && t.kind === 'mark') { ui.selectStamp(t.id); return; }
         if (m === 'C') {
           if (t && t.kind === 'pt') { ui.profSel = t.i; ui.sceneDirty = true; schedule(); return; }
+          if (t && (t.kind === 'node' || t.kind === 'mid' || t.kind === 'seg')) { ui.profSel = t.kind === 'node' ? t.i : -1; ui.profSeg = t.kind === 'node' ? -1 : t.i; ui.sceneDirty = true; ui.refreshPanels(); schedule(); return; }
+          if (ui.profCurve !== false) {                       // curve editor: a tap in empty space extends the chain
+            const c = ui.vProf.toContent(x, y), cv = ui.curveNow() || RF.Profile.curveFromPoints(ui.store.scene.modeC.profile), np = ui.curveSnap([ui.store.scene.modeC.sweep === 'revolve' ? Math.max(0, c[0]) : c[0], c[1]], -1, cv);
+            const nodes = cv.nodes.map((q) => q.slice()), bulge = cv.bulge.slice(); if (nodes.length) bulge.push(0); nodes.push(np);
+            ui.profSel = nodes.length - 1; ui.profSeg = -1; ui.vProf.lockBounds = ui.vProf.bounds.slice();
+            if (nodes.length < 2) C.actions.setProfile(ui.store, nodes); else C.actions.setCurve(ui.store, { nodes, bulge });
+            ui.afterChange(); setTimeout(() => { ui.vProf.lockBounds = null; }, 0);
+            return;
+          }
           const c = ui.vProf.toContent(x, y), pts = ui.store.scene.modeC.profile.map((p) => p.slice());
           pts.push([ui.store.scene.modeC.sweep === 'revolve' ? Math.max(0, c[0]) : c[0], c[1]]);
           ui.profSel = pts.length - 1;
@@ -1530,12 +1558,61 @@
   ui.renderPatterns = renderPatterns; ui.imageToPaint = imageToPaint;
   ui.clearPaint = function () { C.actions.clearPaint(ui.store); ui.afterChange(); };
   ui.applyPreset = function (quiet) { C.actions.applyPreset(ui.store); ui.profSel = -1; ui.vProf.fitted = false; ui.store.commit({ deferA: true }); if (!quiet) ui.afterChange(); };
+  // ---- curve editor (see js/profile.js "curve objects").  The curve in force: the stored one, or the profile read as a straight chain.
+  ui.curveNow = function () {
+    const mc = ui.store.scene.modeC;
+    if (ui.profCurve === false || mc.profile.length < 2) return null;
+    return RF.Profile.curveLive(mc) || RF.Profile.curveFromPoints(mc.profile);
+  };
+  ui.curveSegAt = function (x, y) {                    // nearest curve segment within 8 px of a screen point, or -1
+    const cv = ui.curveNow(); if (!cv) return -1;
+    let best = -1, bd = 8;
+    for (let i = 0; i + 1 < cv.nodes.length; i++) {
+      const sp = RF.Profile.segPoints(cv.nodes[i], cv.nodes[i + 1], cv.bulge[i] || 0).map((p) => ui.vProf.toScreen(p[0], p[1]));
+      for (let j = 0; j + 1 < sp.length; j++) {
+        const ax = sp[j][0], ay = sp[j][1], bx = sp[j + 1][0], by = sp[j + 1][1], L2 = (bx - ax) * (bx - ax) + (by - ay) * (by - ay) || 1e-9;
+        const u = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / L2)), d = Math.hypot(x - (ax + u * (bx - ax)), y - (ay + u * (by - ay)));
+        if (d < bd) { bd = d; best = i; }
+      }
+    }
+    return best;
+  };
+  ui.curveSnap = function (p, skip, cv) {              // snap a content point to the axis and to other nodes (within 8 screen px)
+    if (ui.profSnap === false || !cv) return p;
+    const s = ui.vProf.toScreen(p[0], p[1]); let q = p.slice();
+    if (ui.store.scene.modeC.sweep === 'revolve' && Math.abs(ui.vProf.toScreen(0, p[1])[0] - s[0]) < 8) q[0] = 0;
+    let bd = 8; cv.nodes.forEach((n, i) => { if (i === skip) return; const m = ui.vProf.toScreen(n[0], n[1]), d = Math.hypot(m[0] - s[0], m[1] - s[1]); if (d < bd) { bd = d; q = n.slice(); } });
+    return q;
+  };
+  ui.curveDragTo = function (t, x, y) {
+    const d = ui.curveDrag; if (!d) return;
+    const cv = RF.U.deepCopy(d.cv), c = ui.vProf.toContent(x, y), rev = ui.store.scene.modeC.sweep === 'revolve', fix = (p) => [rev ? Math.max(0, p[0]) : p[0], p[1]];
+    if (t.kind === 'node') cv.nodes[t.i] = ui.curveSnap(fix(c), t.i, cv);
+    else if (t.kind === 'mid') cv.bulge[t.i] = Math.max(-2, Math.min(2, RF.Profile.kFromMid(cv.nodes[t.i], cv.nodes[t.i + 1], c)));
+    else { const dx = c[0] - d.start[0], dz = c[1] - d.start[1]; for (const i of [t.i, t.i + 1]) cv.nodes[i] = fix([cv.nodes[i][0] + dx, cv.nodes[i][1] + dz]); }
+    C.actions.setCurve(ui.store, cv); ui.store.commit({ deferA: true });
+    ui.movedSomething = true; ui.sceneDirty = true; ui.requestRun(true);
+  };
+  ui.splitCurveSegment = function () {
+    const cv = ui.curveNow(); if (!cv || ui.profSeg < 0 || ui.profSeg >= cv.bulge.length) return;
+    C.actions.setCurve(ui.store, RF.Profile.curveSplit(cv, ui.profSeg)); ui.afterChange();
+  };
+  ui.straightenCurveSegment = function () {
+    const cv = ui.curveNow(); if (!cv || ui.profSeg < 0 || ui.profSeg >= cv.bulge.length) return;
+    const b = cv.bulge.slice(); b[ui.profSeg] = 0; C.actions.setCurve(ui.store, { nodes: cv.nodes, bulge: b }); ui.afterChange();
+  };
   ui.deleteProfilePoint = function () {
     if (ui.profSel < 0) return;
+    const cv = ui.curveNow();
+    if (cv) {
+      const nx = RF.Profile.curveDeleteNode(cv, ui.profSel); ui.profSel = -1;
+      if (nx.nodes.length < 2) C.actions.setProfile(ui.store, nx.nodes); else C.actions.setCurve(ui.store, nx);
+      ui.afterChange(); return;
+    }
     const pts = ui.store.scene.modeC.profile.filter((p, i) => i !== ui.profSel);
     ui.profSel = -1; C.actions.setProfile(ui.store, pts); ui.afterChange();
   };
-  ui.clearProfile = function () { ui.profSel = -1; C.actions.setProfile(ui.store, []); ui.afterChange(); };
+  ui.clearProfile = function () { ui.profSel = -1; ui.profSeg = -1; C.actions.setProfile(ui.store, []); ui.afterChange(); };
   ui.addLens = function (kind) { C.actions.addLens(ui.store, kind); ui.afterChange(); };
   ui.updateLens = function (id, k, v) { C.actions.updateLens(ui.store, id, k, v); ui.afterChange(); };
   ui.removeLens = function (id) { C.actions.removeLens(ui.store, id); ui.afterChange(); };

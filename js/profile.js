@@ -156,6 +156,60 @@
     return { surfaces: out, report: { ok: out.length > 0, segments: out.length } };
   }
 
+  // ---------------------------------------------------------------- curve objects (the Profile editor's curve mode)
+  // A curve is the profile as a CHAIN: nodes [[r,z],…] joined by segments, each segment a quadratic Bézier
+  // (= a parabolic arc, the conic the vector editors use) described by one number, bulge[i] = sagitta / chord
+  // (signed, + toward the left normal of the drawn direction; 0 = straight).  The engine never sees it: the
+  // sweep still reads modeC.profile, which the editor rewrites as curveFlatten(curve).  Because a straight chain
+  // is just bulge 0, any old point profile converts losslessly (curveFromPoints), and a profile with no
+  // modeC.curve (every old scene) is untouched.  modeC.curve is trusted only while it still flattens to modeC.profile
+  // (curveLive), so a preset or a point edit that rewrites the profile silently retires it.
+  function segGeom(a, b, k) {
+    const dr = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dr, dz) || 1e-12;
+    const n = [-dz / L, dr / L], M = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    return { L, n, M, mid: [M[0] + n[0] * k * L, M[1] + n[1] * k * L], ctrl: [M[0] + n[0] * 2 * k * L, M[1] + n[1] * 2 * k * L] };
+  }
+  function kFromMid(a, b, m) { const g = segGeom(a, b, 0); return ((m[0] - g.M[0]) * g.n[0] + (m[1] - g.M[1]) * g.n[1]) / g.L; }
+  function segPoints(a, b, k) {                                   // a..b inclusive, uniform in the Bézier parameter
+    if (!k) return [[a[0], a[1]], [b[0], b[1]]];
+    const c = segGeom(a, b, k).ctrl, N = Math.max(4, Math.min(32, Math.ceil(Math.abs(k) * 60))), out = [];
+    for (let i = 0; i <= N; i++) { const t = i / N, u = 1 - t; out.push([u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]]); }
+    out[0] = [a[0], a[1]]; out[N] = [b[0], b[1]];
+    return out;
+  }
+  function curveFlatten(cv) {
+    const out = [];
+    for (let i = 0; i + 1 < cv.nodes.length; i++) { const sp = segPoints(cv.nodes[i], cv.nodes[i + 1], cv.bulge[i] || 0); if (i) sp.shift(); for (const p of sp) out.push(p); }
+    return out;
+  }
+  function curveFromPoints(pts) { return { nodes: pts.map((p) => [p[0], p[1]]), bulge: pts.slice(1).map(() => 0) }; }
+  function curveLive(mc) {
+    const cv = mc.curve;
+    if (!cv || !Array.isArray(cv.nodes) || !Array.isArray(cv.bulge) || cv.nodes.length < 2 || cv.bulge.length !== cv.nodes.length - 1) return null;
+    const f = curveFlatten(cv), p = mc.profile;
+    if (f.length !== p.length) return null;
+    for (let i = 0; i < f.length; i++) if (Math.abs(f[i][0] - p[i][0]) > 1e-9 || Math.abs(f[i][1] - p[i][1]) > 1e-9) return null;
+    return cv;
+  }
+  // Split segment i at its parametric midpoint (de Casteljau).  Each half is re-fitted as a symmetric arc (bulge only), so the
+  // shape is kept to a fraction of a percent of the chord, not exactly.
+  function curveSplit(cv, i) {
+    const a = cv.nodes[i], b = cv.nodes[i + 1], g = segGeom(a, b, cv.bulge[i] || 0);
+    const q0 = [(a[0] + g.ctrl[0]) / 2, (a[1] + g.ctrl[1]) / 2], q1 = [(g.ctrl[0] + b[0]) / 2, (g.ctrl[1] + b[1]) / 2], s = g.mid;
+    const k0 = (cv.bulge[i] || 0) ? kFromCtrl(a, s, q0) : 0, k1 = (cv.bulge[i] || 0) ? kFromCtrl(s, b, q1) : 0;
+    const nodes = cv.nodes.map((p) => p.slice()), bulge = cv.bulge.slice();
+    nodes.splice(i + 1, 0, [s[0], s[1]]); bulge.splice(i, 1, k0, k1);
+    return { nodes, bulge };
+  }
+  function kFromCtrl(a, b, c) { const g = segGeom(a, b, 0); return ((c[0] - g.M[0]) * g.n[0] + (c[1] - g.M[1]) * g.n[1]) / (2 * g.L); }
+  // Drop node i; the two segments around it become one straight segment.
+  function curveDeleteNode(cv, i) {
+    const nodes = cv.nodes.map((p) => p.slice()), bulge = cv.bulge.slice();
+    nodes.splice(i, 1);
+    if (i === 0) bulge.splice(0, 1); else if (i === cv.nodes.length - 1) bulge.splice(i - 1, 1); else bulge.splice(i - 1, 2, 0);
+    return { nodes, bulge };
+  }
+
   // Bounces a preset needs to work as intended (raised visibly by the UI, never silently)
   function bouncesNeeded(mc) {
     if (mc.interaction === 'refract') return 2;
@@ -163,5 +217,5 @@
     return 1;
   }
 
-  RF.Profile = { axisFrame, presetProfile, build, resample, bouncesNeeded };
+  RF.Profile = { axisFrame, presetProfile, build, resample, bouncesNeeded, segGeom, segPoints, kFromMid, curveFlatten, curveFromPoints, curveLive, curveSplit, curveDeleteNode };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

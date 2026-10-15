@@ -176,12 +176,14 @@
       el('div', { class: 'btnrow' }, confirmButton('Clear all stamps', 'Delete every stamp?', () => ui.clearStamps()))));
     const applyBtn = el('button', { type: 'button', onclick: () => ui.applyPreset() }, 'Apply preset to profile');
     side.append(section('Profile · revolve / extrude', { open: true, cls: 'only-C', key: 'C', tag: 'draw, then sweep' },
-      el('div', { class: 'note' }, 'In the Editor: tap to append a point, drag points to move, tap a point to select it. The profile is drawn around the source (the dot); ticks show the front (reflecting / air) side.'),
+      el('div', { class: 'note' }, 'In the Editor (curve editor on): drag a segment to move it, drag an end to extend or shorten it, drag the diamond at its middle to bend it; tap empty space to extend the chain. Turn "curve editor" off under the Editor for the old point-by-point editing. The profile is drawn around the source (the dot); ticks show the front (reflecting / air) side.'),
       section('Shape', { open: true, key: 'C-shape' }, ...rowsFor(ui, ['C.preset', 'C.f', 'C.rim', 'C.depth', 'C.theta', 'C.a1', 'C.n']), el('div', { class: 'btnrow' }, applyBtn)),
       section('Sweep', { open: true, key: 'C-sweep' }, ...rowsFor(ui, ['C.sweep', 'C.len', 'C.az', 'C.axis', 'C.mirror', 'C.flip', 'C.rev'])),
       section('Material', { open: false, key: 'C-mat' }, ...rowsFor(ui, ['C.inter', 'C.refl', 'C.ior', 'C.T'])),
       el('div', { class: 'btnrow' },
         el('button', { type: 'button', id: 'btn-del-point', onclick: () => ui.deleteProfilePoint() }, 'Delete selected point'),
+        el('button', { type: 'button', id: 'btn-split-seg', title: 'Curve editor: insert a node in the middle of the selected segment (the shape is kept)', onclick: () => ui.splitCurveSegment() }, 'Split segment'),
+        el('button', { type: 'button', id: 'btn-straight-seg', title: 'Curve editor: remove the bend from the selected segment', onclick: () => ui.straightenCurveSegment() }, 'Straighten segment'),
         confirmButton('Clear profile', 'Clear the profile?', () => ui.clearProfile())),
       el('div', { id: 'modeC-report', class: 'note' })));
     // ---- 2. Problem: what the design is for
@@ -673,17 +675,17 @@
         break;
       case 'parabola':
         sc.mode = 'C'; ledForward(); sc.modeC.preset = { kind: 'parabola', f: 8, rim: 32, n: 48, theta: 20, depth: 30, a1: 2 };
-        sc.modeC.profile = RF.Profile.presetProfile(sc.modeC.preset, sc); sc.modeA.paint.fill(0);
+        sc.modeC.profile = RF.Profile.presetProfile(sc.modeC.preset, sc); delete sc.modeC.curve; sc.modeA.paint.fill(0);
         noteList.push('revolved parabola f = 8 mm, rim 32 mm, with the source at its focus');
         break;
       case 'cpc':
         sc.mode = 'C'; ledForward(); sc.sim.bounces = 4; sc.modeC.preset = { kind: 'cpc', f: 10, rim: 30, n: 48, theta: 12, depth: 30, a1: 2.5 };
-        sc.modeC.profile = RF.Profile.presetProfile(sc.modeC.preset, sc); sc.modeA.paint.fill(0); sc.envelope.keepOut = 1;
+        sc.modeC.profile = RF.Profile.presetProfile(sc.modeC.preset, sc); delete sc.modeC.curve; sc.modeA.paint.fill(0); sc.envelope.keepOut = 1;
         noteList.push('CPC collimator (acceptance 12°); bounces raised to 4 because a CPC needs several wall bounces');
         break;
       case 'lenscup':
         sc.mode = 'C'; ledForward(); sc.sim.bounces = 2; sc.modeC.interaction = 'refract'; sc.modeC.sweep = 'revolve';
-        sc.modeC.profile = [[0, 12], [9, 12], [9, 14], [7, 17], [4, 19.5], [0, 20.5]]; sc.modeA.paint.fill(0);
+        sc.modeC.profile = [[0, 12], [9, 12], [9, 14], [7, 17], [4, 19.5], [0, 20.5]]; delete sc.modeC.curve; sc.modeA.paint.fill(0);
         noteList.push('closed profile tagged refract = a freeform lens (glass inside the closed outline); bounces 2 (entry + exit)');
         break;
       case 'tir':
