@@ -73,7 +73,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       Object.assign(s.modeC, { sweep: 'revolve', interaction: 'reflect', axisMode: 'source', mirror: false, flipFacing: false, shell: { on: true, R: 24, k: -1, zv: -12, r1: 45, nRad: 12, nAng: 24, cells: {} } });
       RF.UI.loadScene(s, 'MF F5 shell');
     }); await idle();
-    await page.selectOption('#mf-pull', 'lamp'); await page.selectOption('#mf-metric', 'step'); await page.check('#mf-on');
+    await page.check('#mf-on'); await page.selectOption('#mf-pull', 'lamp'); await page.selectOption('#mf-metric', 'step');
     await page.waitForFunction(() => RF.UI.mfResult && RF.UI.mfResult.summary.surfaces === 288);
     ok('MF F5 unedited shell seams are continuous', await page.evaluate(() => RF.UI.mfResult.summary.matchedSeams === 552 && RF.UI.mfResult.summary.maxStepMm === 0));
     await page.click('#mf-worst button');
