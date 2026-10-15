@@ -249,6 +249,20 @@
       axis: [1, 0, 0],
       volts: { 12: 825, 13.2: 1095 },
     },
+    'h4-low': {
+      label: 'H4 / 9003 halogen · passing-beam filament 4.5 mm', halogen: true,
+      note: 'UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets H4/2 and H4/4: passing-beam (low) filament 55 W, IR = 4.5 mm, e = 28.5 mm; 1,000 lm ± 15 % at 13.2 V (reference 750 lm at 12 V). Diameter NOT on the sheet: 1.4 mm assumed. Axial filament (the capsule axis is the reference axis). Not modelled: the H4 internal shield under the filament, the cap obscuration, the glass bulb. The capsule inside a US halogen sealed beam (H6024 etc.) is an “H4-style” burner (forum, forabodiesonly.com); its orientation there is assumed axial.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 4.5, emission: 'surface', dist: 'isotropic', power: 1000 },
+      axis: [1, 0, 0],
+      volts: { 12: 750, 13.2: 1000 },
+    },
+    'h4-high': {
+      label: 'H4 / 9003 halogen · driving-beam filament 5.5 mm', halogen: true,
+      note: 'UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets H4/2 and H4/4: driving-beam (high) filament 60 W, IC = 5.5 mm; 1,650 lm ± 15 % at 13.2 V (reference 1,250 lm at 12 V). Diameter NOT on the sheet: 1.4 mm assumed. Axial filament. Not modelled: the cap obscuration, the glass bulb.',
+      set: { kind: 'volume', shape: 'cylinder', radius: 0.7, length: 5.5, emission: 'surface', dist: 'isotropic', power: 1650 },
+      axis: [1, 0, 0],
+      volts: { 12: 1250, 13.2: 1650 },
+    },
   };
 
   // set src to preset id (position kept).  opts.amps / opts.volts for the drive.  Returns the applied preset.

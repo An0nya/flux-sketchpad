@@ -120,9 +120,19 @@
     const box = el('input', { type: 'checkbox', checked: G.pref() ? true : null }), note = el('small', { class: 'ms' }, '');
     const say = () => { note.textContent = !G.available() ? 'no WebGPU in this browser' : G.ready() ? (G.pref() ? 'on' : 'ready') + (G.info() && G.info().architecture ? ' · ' + [G.info().vendor, G.info().architecture].filter(Boolean).join(' ') : '') : G.error() ? 'unavailable: ' + G.error().slice(0, 80) : G.pref() ? 'starting…' : ''; };
     box.addEventListener('change', () => { G.setPref(box.checked); say(); if (box.checked) G.init().then(() => { say(); ui.requestRun(false); }); else ui.requestRun(false); });
-    if (G.pref()) G.init().then(say);
+    if (G.pref()) G.init().then(() => { say(); if (ui.capRowSay) ui.capRowSay(true); });
     say();
-    return el('label', { class: 'tog', title: 'Trace on the graphics card (WebGPU) instead of the CPU: the same rays in 32-bit floats, so results match a CPU trace within noise but not to the last digit. Used by the main trace and by solvers that ask for it (tools.traceAsync). Exit-ray lists stay on the CPU. Remembered in this browser; off by default.' }, box, ' GPU trace (WebGPU, experimental) ', note);
+    return el('label', { class: 'tog', title: 'Trace on the graphics card (WebGPU) instead of the CPU: the same rays in 32-bit floats, so results match a CPU trace within noise but not to the last digit. Used by the main trace and by solvers that ask for it (tools.traceAsync). Exit-ray lists stay on the CPU. Remembered in this browser; on by default wherever WebGPU works (untick to stay on the CPU).' }, box, ' GPU trace (WebGPU) ', note);
+  }
+  // per-device ray cap (js/gpu-trace.js rayCap): shown only where the device has one; unticking lifts it for this browser
+  function capRow(ui) {
+    const G = RF.GpuTrace; if (!G) return el('span');
+    const box = el('input', { type: 'checkbox' }), note = el('small', { class: 'ms' }, ''), row = el('label', { class: 'tog', title: 'Phones and small GPUs get a lower ray count than the scene asks for (the page crashed at 500,000 rays on one phone). Untick to trace the full count anyway. Remembered in this browser.' }, box, ' Limit rays to this device ', note);
+    let last = null;
+    const say = (rerun) => { const r = G.rayLimit(), eff = r.off ? Infinity : r.cap; row.hidden = !isFinite(r.cap); box.checked = !r.off; note.textContent = isFinite(r.cap) ? (r.off ? 'off' : 'max ' + r.cap.toLocaleString()) + ' · ' + r.why : ''; if (rerun && last !== null && eff !== last) ui.requestRun(false); last = eff; };
+    box.addEventListener('change', () => { G.setRayCapOff(!box.checked); say(false); last = null; ui.requestRun(false); });
+    ui.capRowSay = say; say(false);
+    return row;
   }
   function controlRow(ui, c) {
     const input = controlInput(ui, c);
@@ -199,7 +209,7 @@
     // ---- 3. Simulation
     side.append(section('Simulation', { open: true, key: 'sim', tag: 'rays & grids' }, ...rowsFor(ui, ['rays', 'tgt.res', 'sim.res', 'sim.autoRes']), solveLimitRow(),
       el('div', { class: 'btnrow' }, el('button', { type: 'button', id: 'btn-refine', disabled: true, title: 'Keep tracing the finished run up to twice the rays (up to 50M). Exactly what that ray count would give from scratch, without starting over.', onclick: () => ui.refine(2) }, 'Refine ×2')),
-      section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']), gpuRow(ui))));
+      section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']), gpuRow(ui), capRow(ui))));
     // ---- 4. View (display only, remembered per browser)
     side.append(section('View', { open: false, key: 'view', tag: 'display only' },
       el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit'),
@@ -433,6 +443,8 @@
   function raysFor3pc(peakRays, traced) { const need = traced * (1 / 0.03) ** 2 / Math.max(1e-9, peakRays); return need >= 1e6 ? (need / 1e6).toFixed(need >= 1e7 ? 0 : 1) + 'M' : Math.round(need / 1e3) + 'k'; }
   const fmtLm = (lm) => (lm >= 100 ? Math.round(lm) : lm >= 10 ? lm.toFixed(1) : lm.toPrecision(2)) + ' lm';
   const fmtMm2 = (a) => (a >= 100 ? Math.round(a).toLocaleString() : a.toFixed(1)) + ' mm²';
+  // the ray cap of this device (js/gpu-trace.js rayCap) cut the scene's ray count: say so
+  const capNote = (extra) => (extra && extra.capped ? ' — capped from ' + extra.capped.asked.toLocaleString() + ' for this device (' + extra.capped.why + '); lift it in Simulation → Advanced' : '');
   function renderStats(ui, st, extra) {
     const box = document.getElementById('stats');
     if (!st) { box.innerHTML = '<div class="stat"><b>—</b><span>no run yet</span></div>'; return; }
@@ -440,7 +452,7 @@
     const E = st.energy, em = E.emitted || 1;
     box.innerHTML = '';
     const s = (val, lab, cls) => box.append(el('div', { class: 'stat ' + (cls || '') }, el('b', {}, val), el('span', {}, lab)));
-    s(st.rays.toLocaleString() + (extra.running ? ' …' : ''), 'rays traced' + (extra.preview ? ' (coarse preview while dragging)' : '') + (extra.previewOf ? ' — PREVIEW: the solver\u2019s candidate ' + extra.previewOf + ', not the design' : ''));
+    s(st.rays.toLocaleString() + (extra.running ? ' …' : ''), 'rays traced' + (extra.preview ? ' (coarse preview while dragging)' : '') + (extra.previewOf ? ' — PREVIEW: the solver\u2019s candidate ' + extra.previewOf + ', not the design' : '') + capNote(extra));
     const fd = extra.fid;
     if (fd) {
       const q = fd.ratio, cnt = (x) => x ? pct(x.within) + ' of ' + x.cells : '—';
@@ -581,7 +593,7 @@
         ? t((sc.modeA.cleared ? 0 : rA.placed) + ' / ' + sc.modeA.budget, 'facets · ' + solverLabel(sc, rA), 'Facets placed / facet budget.' + (rA.dropped ? ' ' + rA.dropped + ' could not be placed inside the envelope.' : '') + ' ' + solverTip(sc, rA), 'facets')
         : t(String(st.surfaces), 'surfaces', 'Surfaces in the scene.'));
       row.append(el('div', { class: 'tile rays', title: 'Rays traced · trace time (tracing work only, not total wait)' + (extra.preview ? ' · coarse preview while dragging' : '') },
-        el('b', {}, st.rays.toLocaleString() + (extra.running ? ' …' : '')), el('span', {}, 'rays ', el('small', { class: 'ms' }, st.timeMs.toFixed(0) + ' ms' + (st.gpu ? ' · GPU' : '')))));
+        el('b', {}, st.rays.toLocaleString() + (extra.running ? ' …' : '')), el('span', { title: capNote(extra).trim() || null }, 'rays' + (extra.capped ? '*' : '') + ' ', el('small', { class: 'ms' }, st.timeMs.toFixed(0) + ' ms' + (st.gpu ? ' · GPU' : '')))));
       mb.innerHTML = ''; for (const n of bar.children) mb.append(n.cloneNode(true));
     }
   }
