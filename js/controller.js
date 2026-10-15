@@ -38,7 +38,7 @@
       if (store.dirty.has('C')) { const c = RF.Profile.build(sc); sc.groups.C.surfaces = c.surfaces; store.reports.C = c.report; store.dirty.delete('C'); }
       if (store.dirty.has('L')) { const l = RF.Lenses.buildAll(sc); sc.groups.L.surfaces = l.surfaces; store.reports.L = l.infos; store.dirty.delete('L'); }
       const waiting = RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(sc));   // boot: the chosen solver is still loading
-      if (store.dirty.has('A') && (opts.forceA || (store.autoA && !opts.deferA)) && !waiting && !RF.Solvers.get(RF.Solvers.current(sc)).worker) regenerateA(store);   // worker solvers: the UI runs them async
+      if (store.dirty.has('A') && (opts.forceA || (store.autoA && !opts.deferA)) && !waiting && !RF.Solvers.get(RF.Solvers.current(sc)).worker && !(RF.SolveCache && RF.SolveCache.enabled())) regenerateA(store);   // worker solvers: the UI runs them async
       return store;
     };
     return store;
@@ -70,7 +70,7 @@
     sc.solve = r.meta;
     const rep = Object.assign({}, extras, {
       placed: f.placed, parts: f.parts, facts: f, intent: out.intent || null, intentIndex: out.intent ? RF.Solvers.intentIndex(out.intent, sc.target.res) : null,
-      solver: r.meta, solveMs: r.ms, warnings: (out.notes || []).slice(),
+      solver: r.meta, solveMs: r.ms, fromCache: !!r.fromCache, warnings: (out.notes || []).slice(),
     });
     if (f.dropped !== null) rep.dropped = f.dropped;
     if (f.errors.length) { rep.error = 'Solver ' + r.meta.id + ' returned unusable output: ' + f.errors[0]; rep.ok = false; }

@@ -2,6 +2,7 @@
 // flux.js: one command-line front door to the app's internals for agents and scripts (Layer 1: Node only, no browser).
 // Loads the SAME js/ files the page loads (tests/load.js) and prints JSON on stdout; errors go to stderr with exit 1.
 //   node tools/flux.js list solvers|spec-presets|sources
+//   node tools/flux.js compare <a.json> <b.json> [--rays N] [--spec id,id]
 //   node tools/flux.js scene <scene.json>
 //   node tools/flux.js trace <scene.json> [--rays 2e6] [--spec fmvss-lb2m,ece-r112-b]
 //   node tools/flux.js solve <scene.json> [--solver id] [--set key=value ...] [--out solved.json] [--rays 2e6] [--threads N]
@@ -50,9 +51,7 @@ const rays = () => Math.round(+flag('rays', 2e6));
 function farTrace(sc, N) {
   const s2 = RF.U.deepCopy(sc); if (s2.sim.bounces < 3) s2.sim.bounces = 3;
   const P = RF.Engine.prepare(s2, RF.State.allSurfaces(s2)); P.ffStreams = [RF.Spec.gridOpts(s2)]; P.guideLearn = true;
-  const N0 = Math.min(N, Math.max(100000, N / 4));
-  let c = RF.Engine.newCtx(P, N0, 0); RF.Engine.traceRange(c, 0, N0); c.next = N0; c.done = true;
-  while (c.N < N) { const n1 = c.N, g = RF.Engine.buildGuide(c); c = RF.Engine.extend(c, Math.min(N, 2 * n1), g); RF.Engine.traceRange(c, n1, c.N); c.next = c.N; c.done = true; }
+  const c = RF.Compare.traceContext(P, N);
   return { c, G: RF.FarField.build(c, P.ffStreams[0]) };
 }
 function judgeSpec(sc, G, names) {
@@ -163,6 +162,10 @@ async function pageEval() {
     return die('list what? solvers | spec-presets | sources');
   }
   if (cmd === 'scene') return out(sceneSummary(readScene(positional[0]), positional[0]));
+  if (cmd === 'compare') {
+    const a = readScene(positional[0]), b = readScene(positional[1]), specs = (flag('spec', '') || '').split(',').filter(Boolean);
+    return out(RF.Compare.run(a, b, { rays: rays(), specs }));
+  }
   if (cmd === 'trace' || cmd === 'heatmap') {
     const sc = readScene(positional[0]), N = rays(), t0 = Date.now(), specs = (flag('spec', '') || '').split(',').filter(Boolean);
     const far = cmd === 'heatmap' || sc.mode === 'D' || specs.length;
@@ -215,5 +218,5 @@ async function pageEval() {
   if (cmd === 'manifest') { const m = manifest(), file = flag('out'); if (file) { fs.writeFileSync(path.resolve(file), JSON.stringify(m, null, 1) + '\n'); return out({ file: path.resolve(file), solvers: m.solvers.length, specPresets: m.specPresets.length, sources: m.sources.length }); } return out(m); }
   if (cmd === 'shot') return out(await shot());
   if (cmd === 'page') return out(await pageEval());
-  die('commands: list | scene | trace | solve | heatmap | manifest | shot | page   (see the header of tools/flux.js)');
+  die('commands: list | scene | trace | compare | solve | heatmap | manifest | shot | page   (see the header of tools/flux.js)');
 })().catch((e) => die(e.stack || String(e)));

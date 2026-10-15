@@ -93,7 +93,11 @@
   // JSON has no Infinity: JSON.stringify writes null, and a facet's di = null means FLAT, so a collimating facet
   // (di = ∞, a paraboloid) used to reload flat.  Write ±Infinity as ±1e308; geometry reads |di| ≥ 1e300 as ∞.
   const INF_SAFE = (k, v) => (v === Infinity ? 1e308 : v === -Infinity ? -1e308 : v);
-  function serialize(scene) { return JSON.stringify(scene, INF_SAFE); }
+  function serialize(scene) {
+    // Optional A/B metadata never makes a scene export carry a second large design.
+    const pin = scene.compareA, small = !pin || new TextEncoder().encode(JSON.stringify(pin, INF_SAFE)).byteLength <= 256 * 1024;
+    return JSON.stringify(scene, (k, v) => k === 'compareA' && !small ? undefined : INF_SAFE(k, v));
+  }
   const CLEAR_MAX = 5;                                  // mm: the LED clearance control's range (package / dome)
   // Schema check for a loaded scene (after the defaults are merged): whitelist the enums, require the arrays, clamp the
   // numbers to the ranges their controls allow, drop malformed list entries, and throw a clear Error for anything that

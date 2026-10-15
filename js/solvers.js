@@ -199,8 +199,9 @@
     const r = prepareRun(scene, id), t0 = RF.U.now();
     if (onProgress) r.tools.progress = onProgress;
     if (onPreview) r.tools.preview = onPreview;
-    const out = await r.def.solve(r.input, r.settings, r.tools);
-    return { output: out, facts: verify(scene, out), meta: r.meta, ms: RF.U.now() - t0 };
+    const run = () => r.def.solve(r.input, r.settings, r.tools);
+    const cached = RF.SolveCache ? await RF.SolveCache.solve(r, run) : { output: await run(), fromCache: false }, out = cached.output;
+    return { output: out, facts: verify(scene, out), meta: r.meta, ms: RF.U.now() - t0, fromCache: cached.fromCache };
   }
 
   // tools.trace for solvers: the real engine at a chosen ray count, no paths; same seed ⇒ common random numbers.

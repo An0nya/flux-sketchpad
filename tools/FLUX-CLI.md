@@ -10,6 +10,7 @@ stdout**. Errors go to stderr with exit code 1. No browser, no npm install. Star
 | `list sources` | light-source presets (LEDs, R37 halogen filaments …) |
 | `scene <scene.json>` | summary: mode, solver, source, envelope, surface counts per group, sim, target |
 | `trace <scene.json> [--rays N] [--spec id,id]` | Spec-mode scene or `--spec`: far-field peak cd + where, lm in window, pass/fail/unsure per preset with every row. Other modes: delivered fraction, paint fidelity, spill, coverage, U0 |
+| `compare <a.json> <b.json> [--rays N] [--spec id,id]` | traces saved designs under common settings; A/B metrics, per-preset verdict counts and rows, and B − A deltas as JSON |
 | `solve <scene.json> [--solver id] [--set k=v …] [--out new.json]` | runs a solver exactly as the page's host does (inputOf → solve → verify → apply). Default solver = the scene's, else the app's preferred one. A `--set` the solver would silently change is an error |
 | `heatmap <scene.json> --out ff.png [--rays N] [--scale k]` | far-field image: sqrt(cd / peak), cividis colour map (no red/green), grey H-V crosshair, 1 px = one 0.05° bin × k. JSON gives the degree range so pixels can be mapped back |
 
@@ -42,3 +43,40 @@ Playwright is found from `$PLAYWRIGHT`, a global install, or `~/Projects/agent-q
 types, ranges, defaults, options), Spec presets, light-source presets, examples, the commit. GitHub Pages serves it next to
 `index.html`, so a reader with no browser (a chat model, a crawler) sees what exists. `tests/flux-cli.js` FAILS when it is
 stale: regenerate it after adding a solver, a setting or a preset.
+
+## A/B comparison
+
+```
+node tools/flux.js compare a.json b.json --rays 300000 --spec fmvss-lb2m
+```
+
+No solver runs. Comparison uses the same `RF.Compare` implementation as Result → Compare A/B, including the pilot
+and guided trace rounds. Both designs use B’s seed and the greater bounce limit (at least 3), a common far-field
+window, and B’s spec and road settings. `--spec id,id` applies fresh presets; without it both use B’s saved spec.
+Multiple presets share their combined window and finest bin size; mixed angle conventions must be compared separately.
+Both beams are independently aimed by the same judging procedure. The pictures share axes, cividis colours and
+one intensity scale. `diff` contains numeric B − A deltas or null for unavailable metrics and string verdicts.
+Metrics: lumens in the common window, peak cd at the spec kernel, IIHS-style 5 lx right/left reach, quarter-peak core
+width/height, paint fidelity against each design’s own painting, and pass/fail/unsure counts per requested preset.
+Different paintings make fidelity a comparison of each design against its own brief; the other rules are common.
+This is a new comparison trace: sampling counts and measuring distance can differ from an existing Result report.
+CLI defaults to 2 M rays (like `trace`); the page defaults to 300k and exposes the ray count.
+
+In the page, Pin as A snapshots the current saved geometry (including enabled groups). A remains fixed during edits
+and undo/redo. Replace A and Unpin A are explicit. Compare / Refresh runs in a separate, stoppable worker; editing B
+marks the displayed result out of date. Side by side / A only / B only share the same scale. Arrows, signs and blue/orange
+mark differences; an increase does not necessarily mean an improvement.
+
+Pinned A is stored separately in IndexedDB for reload recovery. Snapshots at most 256 KiB (UTF-8 JSON) are also embedded
+as optional `compareA: { version: 1, scene: ... }` metadata in scene JSON. Larger pins stay browser-only and the UI says
+so. No trace or solved scene semantics change; older files have no pin. Opening a different scene replaces/clears its pin.
+
+Solve cache is off by default under Result → Solve cache. It stores verified solver output in IndexedDB, capped at
+40 entries / 32 MiB of estimated serialized output plus record overhead, evicting least recently used entries first.
+The key hashes the solver input, problem scene, sanitized settings and seed, solver id/version and registry source,
+engine/host source fingerprints, budget, backend choice and thread count. Reload after changing app code to use its new
+fingerprint. Re-solve anyway bypasses the next lookup; Clear solve cache leaves A intact. Storage failures visibly fall
+back to solving. A cache hit restores surfaces through the normal verification/apply path, then retraces the design.
+All worker solvers require the separate uncertain-solver opt-in: source inspection cannot prove that a helper never
+uses a clock. For page solvers, clock/random/budget/delegation references in source are also treated as uncertain,
+even progress-only clocks. This deliberately includes deterministic worker solvers. Preferences are per browser and immediate.

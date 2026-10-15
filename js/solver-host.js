@@ -81,9 +81,9 @@
     return true;
   }
   const busy = () => live;                          // { id, name, t0 } of the running solve, or null
-  function proxy(def, meta) {
+  function proxy(def, meta, src) {
     RF.Solvers.register(Object.assign({}, def, {
-      loaded: !meta, bundled: meta || null, worker: true,
+      loaded: !meta, bundled: meta || null, worker: true, cacheSource: src,
       solve(input, settings, tools) {
         const scene = tools.scene;                  // the host passes the problem scene for trace()
         const j = live = { id: def.id, name: def.name, t0: performance.now(), rid: 0, cancel: null };   // j.cancel: stop it before it has been sent (it is waiting for a rebuild)
@@ -103,7 +103,7 @@
   }
   async function loadInto(src, meta) {
     const d = await ask({ type: 'load', src });
-    for (const def of d.defs) proxy(def, meta);
+    for (const def of d.defs) proxy(def, meta, src);
     return d.defs;
   }
   async function load(src) {

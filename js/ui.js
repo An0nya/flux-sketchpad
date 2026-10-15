@@ -55,7 +55,7 @@
       return;
     }
     const def = RF.Solvers.get(RF.Solvers.current(ui.store.scene));
-    if (def.worker) { ui.store.invalidate(['A']); ui.solveArmed = true; schedule(); return; }   // worker path lives in tick()
+    if (def.worker || (RF.SolveCache && RF.SolveCache.enabled())) { ui.store.invalidate(['A']); ui.solveArmed = true; schedule(); return; }   // worker path lives in tick()
     stopWorkerSolve('replaced by ' + def.name);        // a page solver wins over a worker solve still running
     ui.setStatus('Rebuilding reflector…'); ui.progress('solve');
     setTimeout(() => {                               // let the status paint first
@@ -92,7 +92,7 @@
       if (mode) ui.store.scene.mode = mode;
       ui.store.invalidate(['A', 'B', 'C', 'L']); ui.store.commit({ forceA: true });
       // history holds intent, not solved geometry: a worker solver re-solves through the normal (async) path
-      if (ui.store.dirty.has('A') && RF.Solvers.get(RF.Solvers.current(ui.store.scene)).worker) ui.pendingA = performance.now();
+      if (ui.store.dirty.has('A') && (RF.Solvers.get(RF.Solvers.current(ui.store.scene)).worker || (RF.SolveCache && RF.SolveCache.enabled()))) ui.pendingA = performance.now();
       ui.setMode(ui.store.scene.mode, true);
       // keep the maps' zoom unless the undo changed what they show (target size or resolution)
       if (tk(ui.store.scene.target) !== before) ui.vLeft.fitted = ui.vHeat.fitted = false;
@@ -148,6 +148,7 @@
     }
     stopWorkerSolve('a new scene was loaded'); dropWatch(); ui.pendingA = 0; ui.solveArmed = false;   // the old scene's solve, preview and queued rebuild don't carry over
     if (silent) return;
+    if (RF.CompareUI) RF.CompareUI.loaded(ui);
     ui.refreshPanels(); ui.requestRun(false); ui.autosave();
   };
 
@@ -297,6 +298,7 @@
     renderSolverBox();
     P.syncControls(ui);
     const eb = document.getElementById('erase-btn'); if (eb) eb.setAttribute('aria-pressed', String(!!C.BY_ID['A.erase'].get(ui.store)));
+    if (RF.CompareUI) RF.CompareUI.refresh(ui);
     P.renderShell(ui); P.renderStampList(ui); P.renderLensList(ui); P.renderEmitterList(ui); P.renderGroups(ui); P.renderNotices(ui);
     if (RF.SpecUI) RF.SpecUI.render(ui);
     P.renderSourcePreset(ui);
@@ -354,6 +356,7 @@
     clearInterval(ui._solveTick); if (on) ui._solveTick = setInterval(solveStatus, 250);
   }
   function stopWorkerSolve(why) {                    // stop the running worker solve; its promise then rejects (and is ignored if superseded)
+    if (RF.SolveCache) RF.SolveCache.cancelPending();
     if (!ui.solving) return false;
     const name = ui.solving.name, secs = (performance.now() - ui.solving.t0) / 1000; ui.solving = null; ui.solveSeq++; showStop(false);
     if (RF.SolverHost) RF.SolverHost.abort(why, 'replaced');
@@ -362,7 +365,7 @@
     return true;
   }
   // Stop leaves dirty A set: the shown design was not solved for the current scene
-  ui.stopSolve = () => { const j = ui.solving; if (!j) return; const seq = j.seq; RF.SolverHost.abort('stopped by you', 'user'); if (ui.solving && ui.solving.seq === seq) { ui.solving = null; showStop(false); ui.solveSeq++; ui.setStatus('stopped — design out of date, press Rebuild'); ui.progress('done'); if (!solveFailed(j, 'user', 'stopped by you')) ui.store.notice('Solve stopped (' + j.name + '). The previous design is kept.'); P.renderNotices(ui); schedule(); } };
+  ui.stopSolve = () => { const j = ui.solving; if (!j) return; const seq = j.seq; if (RF.SolveCache) RF.SolveCache.cancelPending(); RF.SolverHost.abort('stopped by you', 'user'); if (ui.solving && ui.solving.seq === seq) { ui.solving = null; showStop(false); ui.solveSeq++; ui.setStatus('stopped — design out of date, press Rebuild'); ui.progress('done'); if (!solveFailed(j, 'user', 'stopped by you')) ui.store.notice('Solve stopped (' + j.name + '). The previous design is kept.'); P.renderNotices(ui); schedule(); } };
 
   // ---------------------------------------------------------------- watching a solve (tools.preview, SOLVER_API.md)
   // ui.watch = { seq, name, meta, version, t0, msg (the latest preview), n, model / heat (built on the next frame), failed? }.
@@ -553,7 +556,8 @@
     } else if (ui.solveArmed) {
       ui.solveArmed = false; ui.pendingA = 0;
       const t0 = performance.now(), def = RF.Solvers.get(RF.Solvers.current(store.scene));
-      if (def.worker) {                                  // a worker solver (bundled or loaded): stay responsive
+      if (def.worker || (RF.SolveCache && RF.SolveCache.enabled())) { // cache lookups are async too
+        // a worker solver (bundled or loaded): stay responsive
         // a newer request replaces a running solve: stop it (its result would describe old settings)
         if (ui.solving) stopWorkerSolve('replaced by a newer request');
         if (ui.watch) dropWatch();                       // a new solve: an older one's preview / failure notice no longer applies
@@ -2008,8 +2012,9 @@
     if (!scene.groups.A.surfaces.length && isPaint(scene.mode)) {
       // the default solver is a worker solver that arrives with the bundle: wait for it (restore() solves after)
       const waiting = RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(ui.store.scene));
-      if (waiting) ui.store.invalidate(['A']); else C.regenerateA(ui.store);
+      if (waiting) ui.store.invalidate(['A']); else if (RF.SolveCache && RF.SolveCache.enabled()) ui.generateA(); else C.regenerateA(ui.store);
     }
+    if (RF.CompareUI) RF.CompareUI.init(ui);
     ui.hist = RF.History.create(100); ui.hist.reset(RF.History.intent(ui.store.scene)); updateUndoButtons();   // history doesn't survive a reload
     ui.setMode(scene.mode, true);
     setTimeout(() => { ui.fit(ui.fitMode || 'all'); ui.refreshPanels(); ui.requestRun(false); }, 0);
