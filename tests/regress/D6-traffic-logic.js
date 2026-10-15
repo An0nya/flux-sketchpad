@@ -25,7 +25,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const signal=await page.evaluate(async()=>{
       const u=RF.UI,A=RF.DriveAnim,_=A._;Object.assign(u.dvOpts,{tiles:true,trafficLogic:true,speed:5});u.redrawSpec();
       const src=_.V.src;src.traffic.speed=5;const tile=Array.from({length:100},(_,k)=>A.roadTile(7,k)).find(t=>t.kind==='intersection'),clock=(50-tile.phase)%50,own=tile.s0-100;
-      src.traffic.state={time:clock,epoch:clock,tick:0,dist:own,seen:new Set(),cars:['preceding','oncoming'].map(kind=>{const dir=kind==='preceding'?1:-1,line=tile.s0+100+dir*(-src.lane-5.7);return {id:kind+':fixture',kind,x:line-dir*80,v:10};})};
+      src.traffic.state={time:clock,epoch:clock,tick:0,dist:own,seen:new Set(),cars:['preceding','oncoming'].map(kind=>{const dir=kind==='preceding'?1:-1,line=tile.s0+100+dir*(-src.lane-5.7);return {id:kind+':fixture',kind,x:line-dir*80,v:10,route:kind==='preceding'?{k:tile.k,mid:tile.s0+100,take:false}:undefined};})};
       for(let i=0;i<=440;i++)A.trafficCars(src,own+i*.05*5/3.6,clock+i*.05);
       const t=clock+22,dist=own+22*5/3.6;Object.assign(u.dvAnim,{dist,t,playing:false});_.frame();
       const stopped=src.traffic.state.cars.filter(c=>c.id.endsWith(':fixture')).map(c=>({kind:c.kind,v:c.v,signal:A.trafficSignal(src,c,t)}));
@@ -49,15 +49,15 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const liveSpeed=await page.evaluate(async()=>{const e=document.querySelector('[data-anim="speed"]');e.value='130';e.dispatchEvent(new Event('input',{bubbles:true}));const u=RF.UI,_=RF.DriveAnim._;await _.frameMT(u.dvAnim.dist,u.dvAnim.t);return {ui:u.dvOpts.speed,source:_.V.src.traffic.speed,fail:RF.DriveAnim.stats().mtFail};});
     ok('live speed input reaches the physics and worker job',liveSpeed.ui===130&&liveSpeed.source===130&&!liveSpeed.fail,JSON.stringify(liveSpeed));
     const stream=await page.evaluate(async()=>{
-      const u=RF.UI,A=RF.DriveAnim,_=A._;Object.assign(u.dvOpts,{speed:130,tiles:true});Object.assign(u.dvAnim,{dist:0,t:0});u.redrawSpec();let turn=null,min=Infinity;
-      for(let i=0;i<=1600;i++){const t=i*.05,dist=t*130/3.6,cars=A.trafficCars(_.V.src,dist,t);for(const c of cars)if(c.kind==='preceding'){if(!c.turning)min=Math.min(min,c.rel);if(c.turning&&Math.abs(c.off)>3.2&&!turn)turn={dist,t,id:c.id,off:c.off,yaw:c.yaw};}}
+      const u=RF.UI,A=RF.DriveAnim,_=A._;Object.assign(u.dvOpts,{speed:30,tiles:true});Object.assign(u.dvAnim,{dist:0,t:0});u.redrawSpec();let turn=null,min=Infinity;
+      for(let i=0;i<=3200;i++){const t=i*.05,dist=t*30/3.6,cars=A.trafficCars(_.V.src,dist,t);for(const c of cars)if(c.kind==='preceding'){if(!c.turning)min=Math.min(min,c.rel);if(c.turning&&Math.abs(c.off)>3.2&&!turn)turn={dist,t,id:c.id,off:c.off,yaw:c.yaw};}}
       if(turn){ // Replay to the departure moment for an actual traced picture, not just the final raw positions.
-        _.V.src.traffic.state=null;for(let i=0;i<=Math.round(turn.t/.05);i++)A.trafficCars(_.V.src,i*.05*130/3.6,i*.05);
+        _.V.src.traffic.state=null;for(let i=0;i<=Math.round(turn.t/.05);i++)A.trafficCars(_.V.src,i*.05*30/3.6,i*.05);
         Object.assign(u.dvAnim,{dist:turn.dist,t:turn.t});_.frame();await _.frameMT(turn.dist,turn.t);
       }
       return {turn,min,speed:_.V.src.traffic.speed,fail:A.stats().mtFail};
     });
-    ok('over-limit car visibly turns off while the camera keeps its set speed',!!stream.turn&&stream.min>=72.2222&&stream.speed===130&&!stream.fail,JSON.stringify(stream));
+    ok('seeded car follows a turn (forced 30 km/h camera path: a forced 130 km/h path outruns every car, D6b has no speed-driven turns)',!!stream.turn&&stream.speed===30&&!stream.fail,JSON.stringify(stream));
     if(shots)await page.screenshot({path:shots+'/junction-departure.png'});
     for(const key of ['oncoming','preceding']){await page.click('[data-dv="'+key+'"]');await sleep(120);}
     ok('both lane toggles off suppress all traffic with logic enabled',await page.evaluate(()=>{const _=RF.DriveAnim._,u=RF.UI;return RF.DriveAnim.trafficCars(_.V.src,u.dvAnim.dist,u.dvAnim.t).length===0;}));

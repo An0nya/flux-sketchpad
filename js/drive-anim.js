@@ -79,7 +79,12 @@
     const q = Object.assign({}, IDM, params), half = q.length / 2;
     let gap = leader ? leader.x - car.x - q.length : Infinity, dv = leader ? car.v - leader.v : 0, bound = leader ? leader.x - q.length - q.s0 : Infinity;
     if (stop !== undefined && stop - car.x - half < gap) { gap = stop - car.x - half; dv = car.v; bound = Math.min(bound, stop - half - q.s0); }
-    const a = idmAcceleration(car.v, dv, gap, v0, q), h = a < 0 ? Math.min(dt, -car.v / a) : dt;
+    let requested = Math.min(q.maxAccel === undefined ? Infinity : q.maxAccel, idmAcceleration(car.v, dv, gap, v0, q));
+    if (q.maxBrake !== undefined && stop !== undefined && stop - car.x - half - q.s0 > 0) {
+      const required = car.v * car.v / (2 * (stop - car.x - half - q.s0));
+      if (required >= q.b / 2 || car.v * dt >= (stop - car.x - half - q.s0) / 2) requested = Math.min(requested, -required);
+    }
+    const a = Math.max(q.maxBrake === undefined ? -Infinity : -q.maxBrake, requested), h = a < 0 ? Math.min(dt, -car.v / a) : dt;
     let x = car.x + car.v * h + 0.5 * a * h * h, v = Math.max(0, car.v + a * dt);
     if (x > bound) { x = Math.max(car.x, bound); v = Math.min(v, leader && bound === leader.x - q.length - q.s0 ? leader.v : 0); }
     return Object.assign({}, car, { x, v, a });
@@ -107,59 +112,139 @@
   function seedTraffic(src, state, dist, t, initial) {
     const tr = src.traffic, spacing = PERIOD / tr.density;
     for (const kind of ['oncoming', 'preceding']) {
-      const dir = kind === 'oncoming' ? -1 : 1, shift = dist - dir * TRAFFIC_SPEED[kind] * t, lo = Math.floor((shift - 400) / spacing), hi = Math.ceil((shift + 1400) / spacing);
+      const dir = kind === 'oncoming' ? -1 : 1, ahead = kind === 'oncoming' ? 1900 : 1400, shift = dist - dir * TRAFFIC_SPEED[kind] * t, lo = Math.floor((shift - 400) / spacing), hi = Math.ceil((shift + ahead) / spacing);
       for (let k = lo; k <= hi; k++) {
         const id = kind + ':' + k; if (state.seen.has(id)) continue;
         const x = (k + 0.2 + 0.6 * trafficSeed(tr, kind, k)) * spacing + dir * TRAFFIC_SPEED[kind] * t;
-        if (x > dist + 1400) continue; state.seen.add(id);
+        if (x > dist + ahead) continue; state.seen.add(id);
         if ((!initial && x < dist + CULL + 100) || x < dist - 100) continue;
         if (kind === 'preceding' && x < dist + Math.max(25, 2 * tr.speed / 3.6)) continue;
-        if (state.cars.some((c) => c.kind === kind && Math.abs(c.x - x) < IDM.length + IDM.s0)) continue;
+        // Reject insertion into an existing driver's braking space; nominal stream positions are not a safe merge.
+        if (state.cars.some((c) => c.kind === kind && Math.abs(c.x - x) < IDM.length + IDM.s0 + Math.pow(Math.max(c.v, TRAFFIC_SPEED[kind]), 2) / (2 * TRAFFIC_BRAKE) + IDM.T * Math.max(c.v, TRAFFIC_SPEED[kind]))) continue;
         const car = { id, kind, x, v: TRAFFIC_SPEED[kind] }, sig = trafficSignal(src, car, t);
-        if (sig && sig.lit !== 'green' && sig.gap < IDM.s0) { car.x = sig.line - dir * (IDM.length / 2 + IDM.s0); car.v = 0; }
+        const route = junctionPlan(src, car);
+        car.v = Math.min(car.v, approachSpeed(src, car));
+        if (route && route.take) car.v = Math.min(car.v, Math.sqrt(TURN_SPEED * TURN_SPEED + 2 * IDM.b * Math.max(0, route.start - car.x)));
+        if (sig && sig.lit !== 'green') {
+          car.v = Math.min(car.v, Math.sqrt(2 * IDM.b * Math.max(0, sig.gap - IDM.s0)));
+          if (sig.gap < IDM.s0) { car.x = sig.line - dir * (IDM.length / 2 + IDM.s0); car.v = 0; }
+        }
         state.cars.push(car);
       }
       for (const id of state.seen) if (id.startsWith(kind + ':') && (+id.split(':')[1] < lo - 8 || +id.split(':')[1] > hi + 8)) state.seen.delete(id);
     }
   }
-  function turnPose(car, t) {
-    const tau = Math.max(0, t - car.turn.t), angle = Math.min(Math.PI / 2, tau * 0.8);
-    return { x: car.turn.x, off: car.turn.side * (6 * (1 - Math.cos(angle)) + Math.max(0, tau - Math.PI / 1.6) * 6), yaw: car.turn.side * angle };
+  // Task's comfortable-stop design bound (3–4 m/s²), separate from IDM's desired b=1.5.
+  const TRAFFIC_BRAKE = 3.5, TURN_SPEED = 4, TURN_PROBABILITY = 0.25, TURN_GAP = 5;
+  function approachSpeed(src, car) {
+    const dir = car.kind === 'oncoming' ? -1 : 1, k0 = Math.floor(car.x / TILE_LEN);
+    let v = speedLimit(src, car.x);
+    if (src.tiles) for (let i = 1; i <= 3; i++) {
+      const k = k0 + dir * i, edge = dir > 0 ? k * TILE_LEN : (k + 1) * TILE_LEN, limit = speedLimit(src, k * TILE_LEN + 1);
+      v = Math.min(v, Math.sqrt(limit * limit + 2 * IDM.b * Math.max(0, dir * (edge - car.x))));
+    }
+    return v;
+  }
+  function approachAcceleration(src, car, route) {
+    const dir = car.kind === 'oncoming' ? -1 : 1, k0 = Math.floor(car.x / TILE_LEN); let a = IDM.a;
+    const brakeTo = (v, distance) => { if (car.v > v && distance > 0) a = Math.min(a, (v * v - car.v * car.v) / (2 * distance)); };
+    if (src.tiles) for (let i = 1; i <= 3; i++) {
+      const k = k0 + dir * i, edge = dir > 0 ? k * TILE_LEN : (k + 1) * TILE_LEN;
+      brakeTo(speedLimit(src, k * TILE_LEN + 1), dir * (edge - car.x));
+    }
+    if (route && route.take) brakeTo(TURN_SPEED, route.start - car.x);
+    return a;
+  }
+  function signalStop(src, car, t) {
+    const sig = trafficSignal(src, car, t);
+    if (!sig) return undefined;
+    if (sig.lit === 'green') { car.signalK = undefined; car.commit = undefined; return undefined; }
+    if (car.signalK !== sig.tile.k) {
+      car.signalK = sig.tile.k;
+      // Decide once at onset/first encounter. A committed car clears this line even after red begins.
+      car.commit = car.v * car.v / (2 * TRAFFIC_BRAKE) > Math.max(0, sig.gap - IDM.s0) ? sig.tile.k : undefined;
+    }
+    return car.commit === sig.tile.k ? undefined : (car.kind === 'oncoming' ? -1 : 1) * sig.line;
+  }
+  function junctionPlan(src, car) {
+    if (!src.tiles || car.kind !== 'preceding') return null;
+    if (car.route && car.x <= car.route.mid + 10) return car.route;
+    const k0 = Math.floor(car.x / TILE_LEN);
+    for (let k = k0; k <= k0 + 3; k++) {
+      const tile = roadTile(src.tiles.seed, k), mid = tile.s0 + 100;
+      if (!isJunction(tile) || mid - 3 < car.x - 1e-7) continue;
+      let hash = src.traffic.seed ^ Math.imul(k + 1, 0x85EBCA6B);
+      for (let i = 0; i < car.id.length; i++) hash = Math.imul(hash ^ car.id.charCodeAt(i), 16777619);
+      car.route = { k, mid, start: mid - 3, side: tile.kind === 't-junction' ? tile.side : -1, take: D.rng(hash >>> 0)() < TURN_PROBABILITY };
+      return car.route;
+    }
+    return null;
+  }
+  function turnPose(car) {
+    const q = car.turn, angle = Math.min(Math.PI / 2, q.s / q.radius), tail = Math.max(0, q.s - q.radius * Math.PI / 2);
+    return { x: q.x + q.radius * Math.sin(angle), off: q.side * (q.radius * (1 - Math.cos(angle)) + tail), yaw: q.side * angle };
+  }
+  function turnClear(src, cars, route, id, approachTime, t) {
+    for (const c of cars) {
+      if (c.id === id) continue;
+      if (c.turn && c.turn.k === route.k && Math.abs(turnPose(c).off) < 10) return false;
+      if (!c.turn && c.route && c.route.k === route.k && c.route.enter) return false;
+      // Worst reachable position under +1 m/s² up to 80 km/h; include bodies already in the conflict area.
+      const horizon = TURN_GAP + (approachTime || 0), free = Math.max(c.v, 80 / 3.6), accelerating = Math.min(horizon, Math.max(0, (free - c.v) / IDM.a));
+      const reach = c.v * accelerating + IDM.a * accelerating * accelerating / 2 + free * (horizon - accelerating);
+      if (route.side > 0 && c.kind === 'oncoming') {
+        const sig = trafficSignal(src, c, t), phase = sig && signalState(sig.tile, t).phase;
+        // Opposing cars that can stop at a red lasting the entire manoeuvre cannot enter its path.
+        if (sig && sig.tile.k === route.k && sig.lit !== 'green' && c.commit !== sig.tile.k && c.v * c.v / (2 * TRAFFIC_BRAKE) <= sig.gap - IDM.s0 + 1e-7 && (sig.lit === 'red' ? 24 - phase : 74 - phase) > horizon) continue;
+      }
+      if (route.side > 0 && c.kind === 'oncoming' && c.x >= route.mid - 8 && c.x <= route.mid + 8 + reach) return false;
+    }
+    return true;
   }
   function advanceTraffic(src, state, own, t) {
-    const tr = src.traffic, vOwn = Math.max(0, tr.speed / 3.6), rear = Math.max(25, 2 * vOwn);
-    // The camera never brakes. Begin departures early enough to clear its lane, including when it approaches a red queue.
-    // This is a deliberate escape for this stage, not an IDM driver or a legal turning manoeuvre model.
-    for (const c of state.cars) if (c.kind === 'preceding' && !c.turn) {
-      const sig = trafficSignal(src, c, t), rel = c.x - own;
-      if (sig && ((sig.lit !== 'green' && rel < Math.max(60, 4 * vOwn) && sig.gap < 140) || (vOwn > speedLimit(src, sig.tile.s0 + 100) && sig.gap < 12))) c.turn = { t, x: c.x, side: sig.tile.kind === 't-junction' ? sig.tile.side : -1 };
-    }
     const next = [];
     for (const kind of ['oncoming', 'preceding']) {
       const dir = kind === 'oncoming' ? -1 : 1, cars = state.cars.filter((c) => c.kind === kind).sort((a,b) => dir * (b.x - a.x)); let leader = null;
       for (const c of cars) {
         if (c.turn) {
-          const pose = turnPose(c, t); c.x = pose.x; next.push(c);
-          if (Math.abs(pose.off) < 2.4) leader = { x: dir * c.x, v: 0 };
+          const v = c.v + Math.max(-TRAFFIC_BRAKE * IDM.dt, Math.min(IDM.a * IDM.dt, TURN_SPEED - c.v));
+          c.turn.s += (c.v + v) * IDM.dt / 2; c.a = (v - c.v) / IDM.dt; c.v = v;
+          const pose = turnPose(c); c.x = pose.x; next.push(c);
+          if (Math.abs(pose.off) < 3.2) leader = { x: c.x, v: c.v * Math.cos(pose.yaw) };
           continue;
         }
-        const sig = trafficSignal(src, c, t), limit = speedLimit(src, c.x), desired = kind === 'preceding' ? Math.max(limit, vOwn + 2) : limit;
-        const n = idmStep(Object.assign({}, c, { x: dir * c.x }), leader, IDM.dt, desired, sig && sig.lit !== 'green' ? dir * sig.line : undefined);
-        n.x *= dir; next.push(n); leader = { x: dir * n.x, v: n.v };
+        const route = junctionPlan(src, c), turning = route && route.take;
+        let desired = approachSpeed(src, c), stop = signalStop(src, c, t);
+        if (turning) {
+          desired = Math.min(desired, Math.sqrt(TURN_SPEED * TURN_SPEED + 2 * IDM.b * Math.max(0, route.start - c.x)));
+          const distance = Math.max(0, route.start - c.x), eta = 2 * distance / Math.max(1, c.v + TURN_SPEED);
+          // Reserve only after this car has cleared its signal: a red wait must not consume the accepted gap.
+          if (!route.enter && distance < 8 && turnClear(src, state.cars, route, c.id, eta, t)) route.enter = true;
+          if (!route.enter) stop = Math.min(stop === undefined ? Infinity : stop, route.start + IDM.length / 2 + IDM.s0);
+        }
+        const n = idmStep(Object.assign({}, c, { x: dir * c.x }), leader, IDM.dt, desired, stop, { maxBrake: TRAFFIC_BRAKE, maxAccel: approachAcceleration(src, c, route) });
+        n.x *= dir;
+        if (turning && n.x >= route.start - 1e-7 && route.enter) {
+          n.turn = { k: route.k, t, x: route.start, side: route.side, radius: route.side > 0 ? 5.1 : 3, s: Math.max(0, n.x - route.start) };
+          n.x = turnPose(n).x;
+        }
+        next.push(n); leader = { x: dir * n.x, v: n.v };
       }
     }
-    // Rear pressure: preserve IDs and speed-match rather than D4's disappearance. Propagate spacing through the convoy.
-    let floor = own + rear;
-    for (const c of next.filter((c) => c.kind === 'preceding').sort((a,b) => a.x - b.x)) {
-      if (c.x < floor) {
-        const sig = trafficSignal(src, c, t);
-        if (!c.turn && sig && sig.lit !== 'green' && sig.gap < 140) c.turn = { t, x: c.x, side: sig.tile.kind === 't-junction' ? sig.tile.side : -1 };
-        if (c.turn) c.turn.x += floor - c.x;
-        c.x = floor; c.v = Math.max(c.v, vOwn);
-      }
-      floor = c.x + IDM.length + IDM.s0;
+    state.cars = next.filter((c) => c.x > own - 100 && c.x < own + 2100 && (!c.turn || Math.abs(turnPose(c).off) < 35));
+  }
+  // The live camera is a through driver. Following replaces the old queue-pushing escape; slider speed remains its target.
+  function cameraStep(src, camera, dt, t) {
+    const desired = Math.max(0, src.traffic.speed / 3.6);
+    if (!src.traffic.logic) return Object.assign({}, camera, { x: camera.x + desired * dt, v: desired });
+    trafficCars(src, camera.x, t);
+    let leader = null;
+    if (src.traffic.preceding) for (const c of src.traffic.state ? src.traffic.state.cars : []) {
+      if (c.kind !== 'preceding' || c.x <= camera.x || (c.turn && Math.abs(turnPose(c).off) >= 3.2)) continue;
+      if (!leader || c.x < leader.x) leader = { x: c.x, v: c.turn ? c.v * Math.cos(turnPose(c).yaw) : c.v };
     }
-    state.cars = next.filter((c) => c.x > own - 100 && c.x < own + 1600 && (!c.turn || t - c.turn.t < 5));
+    const c = Object.assign({}, camera, { id: 'camera', kind: 'preceding' }), stop = signalStop(src, c, t);
+    return idmStep(c, leader, dt, Math.min(desired, approachSpeed(src, c)), stop, { maxBrake: TRAFFIC_BRAKE, maxAccel: approachAcceleration(src, c) });
   }
   function logicCars(src, dist, t) {
     const tr = src.traffic; if (tr.frame && tr.frame.dist === dist && tr.frame.t === t) return tr.frame.cars;
@@ -183,7 +268,7 @@
     }
     return cars;
   }
-  const copyTraffic = (s) => s && Object.assign({}, s, { cars: s.cars.map((c) => Object.assign({}, c, c.turn ? { turn: Object.assign({}, c.turn) } : {})), seen: new Set(s.seen) });
+  const copyTraffic = (s) => s && Object.assign({}, s, { cars: s.cars.map((c) => Object.assign({}, c, { route: c.route && Object.assign({}, c.route) }, c.turn ? { turn: Object.assign({}, c.turn) } : {})), seen: new Set(s.seen) });
   // Rotate the whole car around its centre (including emitter normals), so it stays rigid on a bend.
   function trafficObjects(src, cars, A, p) {
     const out = [];
@@ -780,7 +865,18 @@ void main() {
   function pump(now, minGap) {
     const ui = V.ui, st = S(ui); if (!V.raf || Wk.busy || !st.playing || now - (Wk.sentAt || 0) < minGap) return;
     const dt = V.last ? Math.min(0.1, (now - V.last) / 1000) : 0; V.last = now; Wk.sentAt = now;
-    const v = (+info().o.speed || 50) / 3.6; st.total += v * dt; st.dist += v * dt; st.t += dt; sendFrame();
+    advanceCamera(st, dt); sendFrame();
+  }
+  function advanceCamera(st, dt) {
+    const speed = (+info().o.speed || 50) / 3.6;
+    if (!V.src.traffic.logic) { st.total += speed * dt; st.dist += speed * dt; st.t += dt; st.camera = null; return; }
+    V.src.traffic.speed = speed * 3.6;
+    let left = dt;
+    while (left > 1e-9) {
+      const h = Math.min(IDM.dt, left), old = st.camera;
+      const camera = old && Math.abs(old.x - st.dist) < 1e-7 ? old : { x: st.dist, v: 0 };
+      st.camera = cameraStep(V.src, camera, h, st.t); st.total += st.camera.x - st.dist; st.dist = st.camera.x; st.t += h; left -= h;
+    }
   }
   // n frames back to back on the workers (no display pacing), waiting for each: → a promise of { msPerFrame (fresh frames), ... stats }
   function benchMT(n) {
@@ -811,7 +907,7 @@ void main() {
     if (!visible() || !st.playing || !(st.view === 'anim' || st.popout)) { V.suspended = true; return; }
     if (mt()) { workerCfg(); V.raf = requestAnimationFrame(tick); pump(t, 0); return; }
     const dt = V.last ? Math.min(0.1, (t - V.last) / 1000) : 0; V.last = t;
-    const v = (+info().o.speed || 50) / 3.6; st.total += v * dt; st.dist += v * dt; st.t += dt;
+    advanceCamera(st, dt);
     V.times.push(t); if (V.times.length > 300) V.times.shift();
     frame(); V.raf = requestAnimationFrame(tick);
   }
@@ -826,7 +922,7 @@ void main() {
     btn('play', 'Play / pause the drive', () => { st.playing = !st.playing; if (st.playing) { if (st.view !== 'anim') st.view = 'anim'; } ui.redrawSpec(); });
     const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Speed of the drive' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); lab.textContent = sp.value + ' km/h'; });
     const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
-    btn('traffic-logic', 'IDM car following and red/yellow stops. Our camera keeps its set speed: caught cars match it, or leave via a junction. Off restores the previous traffic and gap guard.', () => setDV(ui, 'trafficLogic', !info().o.trafficLogic), 'traffic logic');
+    btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Camera follows queues; speed is a target. Off restores the previous traffic and gap guard.', () => setDV(ui, 'trafficLogic', !info().o.trafficLogic), 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
     const lamps = E('select', { 'data-anim': 'street-lamps', 'aria-label': 'Street lamps on urban tiles', title: 'Downward point lights, diffuse illumination without shadows; approximate sodium / LED colour, not measured fixture photometry' });
     for (const [value, label] of [['off', 'street lamps off'], ['sodium', 'sodium ~2000 K'], ['led', 'LED ~4000 K']]) lamps.append(E('option', { value }, label));
@@ -952,7 +1048,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, Wk, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
