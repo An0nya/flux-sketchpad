@@ -54,11 +54,11 @@ let fails = 0; const ok = (name, cond, info) => { console.log((cond ? '[PASS] ' 
   await page.click('#ab-close');
   ok('AB edits do not mutate A', await page.evaluate(() => RF.State.serialize(RF.CompareUI.current())) === pin);
   await page.waitForTimeout(1000); await page.reload(); await ready();
-  ok('AB pin survives reload', await page.evaluate(() => RF.State.serialize(RF.CompareUI.current())) === pin);
+  ok('AB pin survives reload', await page.evaluate((pn) => RF.SolveCache.canonical(JSON.parse(pn)) === RF.SolveCache.canonical(JSON.parse(RF.State.serialize(RF.CompareUI.current()))), pin));   // key order may differ after a reload; contents must not
   const exported = await page.evaluate(() => RF.State.serialize(RF.UI.store.scene));
   await page.evaluate(() => RF.CompareUI.unpin());
   await page.evaluate((json) => RF.UI.loadScene(RF.State.deserialize(json), 'AB import fixture'), exported);
-  ok('AB opening exported JSON imports pinned A', await page.evaluate(() => RF.State.serialize(RF.CompareUI.current())) === pin);
+  ok('AB opening exported JSON imports pinned A', await page.evaluate((pn) => RF.SolveCache.canonical(JSON.parse(pn)) === RF.SolveCache.canonical(JSON.parse(RF.State.serialize(RF.CompareUI.current()))), pin));
   // Large pin is persisted separately and excluded from scene JSON. Padding is a test fixture, never optics data.
   await page.evaluate(async () => { RF.UI.store.scene.abTestPadding = 'x'.repeat(RF.Compare.PIN_BYTES + 1); await RF.CompareUI.pin(); });
   ok('AB large pin has visible browser-only note and no JSON payload', await page.evaluate(() => !JSON.parse(RF.State.serialize(RF.UI.store.scene)).compareA && /browser only/.test(document.getElementById('ab-pin-note').textContent)));
