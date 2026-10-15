@@ -14,6 +14,21 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   const p0 = paint(1000), g1 = RF.Modes.geometry(p0, R, 3); ok('G21 the latest painting is still served from the cache', RF.Modes.geometry(p0, R, 3) === g1); }
 
 (async () => {
+  // F1: the per-device ray cap is one pure function; fake limits (not any real phone's), loaded the way the page loads the file
+  {
+    require('vm').runInThisContext(require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'gpu-trace.js'), 'utf8'), { filename: 'gpu-trace.js' });
+    const cap = RF.GpuTrace.rayCap, MiB = 1048576;
+    const phone = cap({ gpu: true, mobile: true, deviceMemory: 4, limits: { maxBufferSize: 256 * MiB, maxStorageBufferBindingSize: 128 * MiB } });
+    const desk = cap({ gpu: true, mobile: false, deviceMemory: 8, limits: { maxBufferSize: 4096 * MiB, maxStorageBufferBindingSize: 2048 * MiB } });
+    const none = cap({ gpu: false, mobile: false }), noneMobile = cap({ gpu: false, mobile: true }), low = cap({ gpu: true, mobile: true, deviceMemory: 2, limits: { maxBufferSize: 256 * MiB, maxStorageBufferBindingSize: 128 * MiB } });
+    ok('F1 phone-like (touch, 4 GB, 128 MiB buffers): capped well under 500k, small batches', phone.cap === 150000 && phone.batch <= 262144, JSON.stringify(phone));
+    ok('F1 desktop-like (8 GB, GiB buffers): no cap, 8 M batch', desk.cap === Infinity && desk.batch === 8e6, JSON.stringify(desk));
+    ok('F1 no WebGPU, desktop: no cap (CPU path unchanged); touch device without WebGPU still capped', none.cap === Infinity && noneMobile.cap === 150000, JSON.stringify([none, noneMobile]));
+    ok('F1 a signal can only lower the cap (2 GB phone < 4 GB phone); empty env is uncapped', low.cap === 100000 && cap().cap === Infinity && cap({}).batch === 8e6, JSON.stringify(low));
+    ok('F1 batch stays within bounds for absurd limits', cap({ gpu: true, limits: { maxStorageBufferBindingSize: 1000 } }).batch === 65536);
+    ok('F1 no localStorage in Node: pref() is off without WebGPU (CPU), userChoice() null', RF.GpuTrace.pref() === false && RF.GpuTrace.userChoice() === null);
+    ok('F1 capRays passes a small request through and clamps nothing without a cap', RF.GpuTrace.capRays(500000) === 500000);
+  }
   // G06: a solve whose scene changed while it ran must be dropped, and the design stays marked out of date
   {
     const st = C.createStore(RF.State.testScene()); C.regenerateA(st);
@@ -316,6 +331,31 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     C.actions.setProfile(st, old);
     ok('F4 a point edit (setProfile) retires the curve', st.scene.modeC.curve === undefined && !P.curveLive(st.scene.modeC));
     st.scene.modeC.curve = cv; ok('F4 a stale curve (profile no longer matches) is not trusted', !P.curveLive(st.scene.modeC));
+  }
+  // F3: sealed-beam solver (solvers/sealed-beam-v1.js) — the flutes steer the beam where their parameters say, and every variant stays inside the envelope
+  {
+    const lab = require('../tools/sealed-beam/lab.js');
+    const bad = [];
+    for (const lamp of ['7', '5.75']) for (const beam of ['low', 'high']) for (const lens of ['fluted', 'plain', 'none']) {
+      const sc = lab.makeScene(lamp, beam), r = await lab.solve(sc, { lens, tune: false });
+      if (r.facts.errors.length || r.facts.violations.envelope.length || r.facts.violations.keepOut.length || r.facts.violations.budget) bad.push(lamp + '/' + beam + '/' + lens + ' ' + JSON.stringify(r.facts.errors.concat(r.facts.violations)));
+    }
+    ok('F3 sealed-beam: 2 lamps x 2 beams x 3 lenses verify clean (no errors, envelope, keep-out or budget violations)', bad.length === 0, bad.join(' | ') || '12 variants');
+    for (const lamp of ['7', '5.75']) {            // aggressive flutes (steep prisms) must still fit the envelope: the lens thickness is capped by the envelope, steep cells are aimed less far
+      const sc = lab.makeScene(lamp, 'low'), r = await lab.solve(sc, { lens: 'fluted', tune: false, hSpread: 30, vSpread: 15, spillR: 0.4, spillAngle: 30 });
+      ok('F3 sealed-beam: ' + lamp + '" with extreme flute angles still verifies clean', !r.facts.errors.length && !r.facts.violations.envelope.length && !r.facts.violations.keepOut.length, JSON.stringify(r.facts.violations) + ' ' + r.out.notes[r.out.notes.length - 1].slice(0, 160));
+    }
+    // end to end: a ~point filament at the focus, every flute aimed at one spot → the far-field peak lands there (checks the cell-normal solve, Snell at both faces, the angle convention)
+    const peak = async (lens, over) => {
+      const sc = lab.makeScene('7', 'high'); Object.assign(sc.source, { length: 0.2, radius: 0.05 });
+      const r = await lab.solve(sc, Object.assign({ lens, tune: false, shield: false }, over)), j = lab.judge(sc, r.out.surfaces, 400000, ['fmvss-ub2']);
+      return j.peakAt;
+    };
+    const near = (a, h, v, tol) => Math.abs(a[0] - h) <= tol && Math.abs(a[1] - v) <= tol;
+    const A = await peak('fluted', { hotR: 5, hotH: 3, hotV: -2, hotSpread: 0 }), B = await peak('fluted', { hotR: 5, hotH: -4, hotV: 1, hotSpread: 0 }), P = await peak('plain', {});
+    ok('F3 sealed-beam: flutes aimed at (3 R, 2 D) put the peak there', near(A, 3, -2, 0.6), 'peak at ' + JSON.stringify(A));
+    ok('F3 sealed-beam: flutes aimed at (4 L, 1 U) put the peak there', near(B, -4, 1, 0.6), 'peak at ' + JSON.stringify(B));
+    ok('F3 sealed-beam: plain cover glass keeps the paraboloid\'s beam on the axis (0, 0)', near(P, 0, 0, 0.6), 'peak at ' + JSON.stringify(P));
   }
   process.exitCode = fails ? 1 : 0;
 })();

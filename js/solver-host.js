@@ -79,7 +79,7 @@
             if (!j.cancel) return;                      // stopped while it waited
             j.cancel = null;
             const ms = limitMs(), onPreview = typeof tools.preview === 'function' && !tools.preview.none ? tools.preview : null;   // no preview callback ⇒ the worker sends none
-            const p = ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.pref()) }, tools.progress, ms, onPreview);
+            const p = ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.userChoice() === true) }, tools.progress, ms, onPreview);
             j.rid = p.rid; p.then(resolve, reject);
           });
         }).then((d) => d.output);

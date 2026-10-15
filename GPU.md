@@ -1,7 +1,7 @@
 # GPU trace (WebGPU) — what exists, how far it matches, what to do next
 
-Status 2026-10-11: built, validated against the CPU engine in Chromium (SwiftShader software WebGPU), **off by default**,
-**not yet timed on a real GPU**. Files: `js/gpu-trace.js`, `tests/gpu.js` + `tests/gpu-page.js` + `tests/gpu.html`,
+Status 2026-10-14: built, validated against the CPU engine in Chromium (SwiftShader software WebGPU), **on by default for the
+page trace wherever WebGPU gives an adapter** (your choice in the checkbox wins), timed once on the M4 (see Speed). Files: `js/gpu-trace.js`, `tests/gpu.js` + `tests/gpu-page.js` + `tests/gpu.html`,
 `tests/gpu-app.js`.
 
 ## What it is
@@ -23,12 +23,24 @@ run is bit-reproducible on one device, and one dispatch ≡ two chunks (tested).
 `diag-stray.js`) → `supports(P)` refuses and the caller stays on the CPU. Preview-worker traces (200 k, Watch solve) stay on
 the CPU too.
 
-## Where it is used (all opt-in)
+## Where it is used
 
-- **Page trace:** Simulation → Advanced → *GPU trace (WebGPU, experimental)*. Per browser (`localStorage flux/gpu`), like
-  the solve time limit: a property of the machine, never saved in a scene. When on, the page loop keeps one batch in
-  flight (sized to ~150 ms from the measured rate) and redraws as before; the footer says `· GPU`. Any GPU error drops that
-  run back to the CPU from where it got to.
+- **Page trace (default on):** Simulation → Advanced → *GPU trace (WebGPU)*. Per browser (`localStorage flux/gpu`), like the
+  solve time limit: a property of the machine, never saved in a scene. **Never chosen → on wherever `navigator.gpu` exists**; the
+  trace starts on the CPU and moves to the GPU as soon as an adapter and device are ready (any error, no adapter or a lost device
+  leaves it on the CPU). Unticking stores `'0'` and that stays off. When on, the page loop keeps one batch in flight (sized to
+  ~150 ms from the measured rate, never above `batchMax`) and redraws as before; the footer says `· GPU`. Any GPU error drops
+  that run back to the CPU from where it got to. Solver workers stay opt-in: they only get the GPU when the box was ticked
+  explicitly (no solver calls `traceAsync` yet, so this changes nothing today).
+- **Per-device ray cap:** `RF.GpuTrace.rayCap(env)` (pure; tested in `tests/regress-node.js`, F1) returns `{ cap, batch, why }`
+  from `{ gpu, limits, deviceMemory, mobile }`. Each signal can only lower the cap: touch-first device (UA mobile, or coarse
+  pointer without hover) → 150 k; `navigator.deviceMemory` ≤ 2 GB → 100 k, ≤ 4 GB → 250 k; adapter storage-buffer limit at the WebGPU
+  spec's 128 MiB floor → 250 k. Desktops with none of these have no cap. `batch` (rays per GPU call) is a twentieth of the smaller
+  buffer limit, 64 k–8 M, and ≤ 262 k on a touch device. The numbers are judgement, **not measured on any phone**. The page
+  traces `min(sim.rays, cap)`; the scene's own `sim.rays` is untouched (saved scenes mean the same), the footer says
+  `capped from 500,000 for this device (why)` and the rays tile gets a `*`. Simulation → Advanced shows *Limit rays to this
+  device* (only on a device that has a cap); unticking it (`localStorage flux/rayCap = 'off'`) traces the full count. The cap
+  applies to the page trace on the CPU as well as the GPU; solvers and `tools.trace` use `sim.rays` as before.
 - **Solvers:** `tools.traceAsync(surfaces, o)` — same options and result as `tools.trace`, plus `res.gpu`. On the GPU only
   when the user switched it on and the trace needs nothing GPU-less; otherwise it is the CPU trace in a promise. **No solver
   calls it yet**: `tools.trace` is untouched and stays synchronous, so every existing solver gives byte-identical results.
@@ -57,16 +69,35 @@ Two things to know:
    the cut-off aim on the same rays moved 0.06° (−0.48° vs −0.37° inflection) and flipped two borderline rows (75L,
    linearity). Same instability as between seeds (the 10-10 aim notes); the GPU doesn't add it, it exposes it.
 
-## Speed: unknown on real hardware
+## Speed
 
-SwiftShader is WebGPU on the CPU (4 threads here) and runs ~4× *slower* than V8 single-threaded: 0.1 vs 0.4 M rays/s.
-Those numbers say nothing about an M4. To measure: `python3 tests/serve.py 8746`, open
-`http://localhost:8746/tests/gpu.html` in Safari 26 / Chrome, press *Quick*. Or `node tests/gpu.js --cases speed` on the Mac
-(Playwright's Chromium uses Metal there). Guess, not a measurement: tens of M rays/s, i.e. 20–100× one CPU core.
+SwiftShader is WebGPU on the CPU (4 threads here) and runs ~4× *slower* than V8 single-threaded: 0.1 vs 0.4 M rays/s — says
+nothing about a real GPU.
 
-Known costs that will matter once it's fast: per call it creates and maps buffers sized to the whole accumulator (grid + every
-stream + guide table, tens of MB in Spec mode) and 20 B/ray when hits are recorded; the hot-cell atomics contend. Fixes if
+**Measured 2026-10-14, Apple M4 (adapter `apple` / `metal-3`), Playwright `channel: 'chromium'` + `--enable-unsafe-webgpu`
+(real Metal, not SwiftShader).** The app's default scene (Mode A, `defaultScene()` + `regenerateA` → 100 facets, res 100, no far-field
+streams), `recordHits` on as the page runs it, 240 drawn paths on the CPU, one `traceRange(0, N)` per call after a 4096-ray warm-up,
+wall clock around the call (includes buffer creation and read-back). Two invocations, 3 runs each; the CPU is the page's own V8 engine
+on the same machine:
+
+| N | CPU (M rays/s) | GPU (M rays/s) | GPU / CPU |
+|---|---|---|---|
+| 500 k | 1.05–1.10 (455–475 ms) | 14.0–16.6 (30–36 ms) in the second invocation; 8.9–14.4 in the first | ~8–15× |
+| 2 M | 1.06–1.10 (1.82–1.89 s) | 13.7–22.0 (91–146 ms) | ~13–20× |
+
+Totals agreed (lm 1355.0319 CPU vs 1355.0318 GPU at 500 k; 1354.4307 vs 1354.4340 at 2 M). The run-to-run spread on the GPU is wide
+(~±25 %); 6 runs per N is not a benchmark suite. Other scenes (Spec mode with far-field streams, guided traces) were not timed.
+An iPhone/Android GPU: not measured.
+
+Known costs: per call it creates and maps buffers sized to the whole accumulator (grid + every
+stream + guide table, tens of MB in Spec mode) and 20 B/ray when hits are recorded (twice: the GPU buffer and its read-back copy); the hot-cell atomics contend. Fixes if
 the bench shows them: persistent buffers, reading back only touched ranges, a 16 B record.
+
+Buffer bytes for the page's 500 k default trace (from `layout()` and the `createBuffer` calls; default scene: res 100, 100 surfaces,
+no far-field streams): accumulator 4·(78 + 4·10 000 + 6·100) = 163 kB, twice (GPU + read-back); hit records 20 B × 500 k = 10 MB, twice
+= 20 MB (the page's first batch is ~300 k rays → 12 MB); plus the geometry/aux buffers (small), and on the JS side `Rr` (10 MB) and
+the ctx hit arrays (~10 MB). So ~40 MB in all: **this alone is unlikely to crash a phone**, and the page's crash at 500 k has *not* been
+reproduced or traced to its cause. Spec mode adds far-field streams (tens of MB, above). The cap is a guard, not a diagnosed fix.
 
 ## Where the time goes today (CPU profiles, box fixture, ECE, one solve each, this container)
 

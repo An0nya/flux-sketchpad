@@ -577,10 +577,10 @@
         ui.surfKey = key;
         refitSurfaces();
       }
-      const N = ui.previewRun ? Math.min(sc.sim.rays, PREVIEW_RAYS) : sc.sim.rays;
+      const nAsk = sc.sim.rays, nCap = RF.GpuTrace ? RF.GpuTrace.capRays(nAsk) : nAsk, N = ui.previewRun ? Math.min(nAsk, PREVIEW_RAYS) : nCap;   // nCap: this device's ray cap (js/gpu-trace.js rayCap), liftable in Simulation → Advanced
       Pc.recordHits = true;
       if (sc.mode === 'D' && RF.SpecUI) { Pc.ffStreams = RF.SpecUI.streams(sc); Pc.guideLearn = true; }   // Spec mode judges the far field: bin every ray's last leg as it goes (∞, 25 m, 10 m, target)
-      ui.run = { P: Pc, ctx: RF.Engine.newCtx(Pc, N, ui.rayPaths === undefined ? 240 : ui.rayPaths), preview: ui.previewRun, started: now };
+      ui.run = { P: Pc, ctx: RF.Engine.newCtx(Pc, N, ui.rayPaths === undefined ? 240 : ui.rayPaths), preview: ui.previewRun, started: now, capped: !ui.previewRun && nCap < nAsk ? { asked: nAsk, why: RF.GpuTrace.rayLimit().why } : null };
       ui.lastHeat = 0; ui.sceneDirty = true;
     }
     const run = ui.run;
@@ -590,7 +590,7 @@
       // A GPU error drops this run back to the CPU from where it got to (ctx.gpuError)
       if (RF.GpuTrace && RF.GpuTrace.use(run.ctx)) {
         if (!run.ctx._gpuBusy) {
-          const rate = ui._gpuRate || 2e6, batch = Math.max(65536, Math.min(8e6, Math.round(rate * (run.preview ? 30 : GPU_BATCH_MS) / 1000))), t0 = performance.now(), n0 = run.ctx.next;
+          const rate = ui._gpuRate || 2e6, batch = Math.max(65536, Math.min(RF.GpuTrace.batchMax(), Math.round(rate * (run.preview ? 30 : GPU_BATCH_MS) / 1000))), t0 = performance.now(), n0 = run.ctx.next;
           RF.GpuTrace.step(run.ctx, batch, (err) => { if (!err) ui._gpuRate = (run.ctx.next - n0) / Math.max(1e-3, (performance.now() - t0) / 1000); else console.warn('GPU trace failed, continuing on the CPU:', err); run.ctx._landed = true; schedule(); });
         }
       } else RF.Engine.step(run.ctx, document.hidden ? 200 : run.preview ? 12 : TRACE_STEP_MS);
@@ -668,7 +668,7 @@
       const s = RF.SpecUI.update(ui, !running && !judged);
       if (s && s !== ui._specShown) { ui._specShown = s; RF.SpecUI.render(ui); if (ui.display === 'ff') drawHeat(); }
     }
-    P.renderStats(ui, st, { running, preview: run.preview, match, fid: ui.fid, photo: !running && ui.photo && ui.photo.ctx === run.ctx ? ui.photo : null, goal: !running && ui.goal && ui.goal.ctx === run.ctx ? ui.goal : null });
+    P.renderStats(ui, st, { running, preview: run.preview, capped: run.capped, match, fid: ui.fid, photo: !running && ui.photo && ui.photo.ctx === run.ctx ? ui.photo : null, goal: !running && ui.goal && ui.goal.ctx === run.ctx ? ui.goal : null });
     if (!running) {
       const f = RF.Feasibility.analyze(sc, { designReport: sc.mode === 'A' ? ui.store.reports.A : null, stats: st, stampReports: ui.store.reports.B });
       P.renderFeasibility(ui, f, { warnings: sc.mode === 'A' && ui.store.reports.A ? ui.store.reports.A.warnings : [] });
