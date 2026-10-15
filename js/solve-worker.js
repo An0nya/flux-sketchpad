@@ -58,7 +58,7 @@ self.onmessage = async (e) => {
       const inlineRun = (name, a) => def.tasks[name](m.input, a, { trace: (surfaces, o) => { spend(o); return RF.Solvers.trace(m.scene, surfaces, o); } });
       const poolOf = () => {
         if (!(m.pool > 0) || !def.tasks || typeof Worker === 'undefined') return undefined;
-        pool = RF.SolverPool.create({ size: m.pool, id: m.id, srcs: srcOf[m.id] ? [srcOf[m.id]] : [], scene: m.scene, input: m.input, run: inlineRun, onRays: (n) => spend({ rays: n }),
+        pool = RF.SolverPool.create({ size: m.pool, recovery: m.recovery, onNotice: (message) => send({ type: 'notice', message }), id: m.id, srcs: srcOf[m.id] ? [srcOf[m.id]] : [], scene: m.scene, input: m.input, run: inlineRun, onRays: (n) => spend({ rays: n }),
           spawn: () => { const w = new Worker('solver-pool-worker.js'), h = { post: (x) => w.postMessage(x), terminate: () => w.terminate(), onmessage: null, onerror: null }; w.onmessage = (e) => h.onmessage && h.onmessage(e.data); w.onerror = (e) => h.onerror && h.onerror(e.message || 'error'); return h; } });
         return pool;
       };

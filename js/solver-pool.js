@@ -6,28 +6,62 @@
  * The pool is host-agnostic: create({ size, spawn }) where spawn() → { post(msg), onmessage = fn(data), onerror = fn(msg), terminate() }.
  * The worker end (workerHandler) is the same for the browser (js/solver-pool-worker.js) and Node (tools/pool-worker-node.js).
  * Workers are created on the first map(), run a dynamic queue (an idle worker takes the next task: efficiency cores finish later,
- * performance cores take more), and close() ends them.  A worker that dies fails the map (the solve then fails like any crash).    */
+ * performance cores take more), and close() ends them. Recovery retries timed-out jobs twice, then runs remaining tasks inline. */
 (function (root) {
   'use strict';
   const RF = root.RF || (root.RF = {});
   // ---- caller end
   function create(o) {
     const size = Math.max(0, Math.min(16, o.size | 0)), workers = [];
-    let started = null, seq = 0, closed = false;
+    let started = null, seq = 0, closed = false, fallback = false, respawns = 0;
+    const recover = o.recovery !== false, deadline = o.deadlineMs || 30000, cap = o.maxRespawns === undefined ? 2 : o.maxRespawns;
     const pending = new Map();           // rid → { resolve, reject }
+    const initMsg = () => ({ type: 'init', id: o.id, srcs: o.srcs || [], scene: o.scene, input: o.input });
+    const notice = (why) => { if (o.onNotice) o.onNotice(why); };
+    function retire(rec) {
+      const w = rec.w; rec.w = null; if (w) { try { w.terminate(); } catch (e) { /* gone */ } }
+      for (const [rid, r] of pending) if (r.rec === rec) { clearTimeout(r.timer); pending.delete(rid); r.reject(Object.assign(new Error(closed ? 'pool is closed' : 'pool worker stopped'), { workerFailure: true })); }
+    }
+    function spawn(rec) {
+      const w = rec.w = o.spawn();
+      w.onmessage = (d) => { const r = pending.get(d.rid); if (rec.w !== w || !r || r.rec !== rec) return; clearTimeout(r.timer); pending.delete(d.rid); if (d.error) r.reject(new Error(d.error)); else r.resolve(d); };
+      w.onerror = (m) => { if (rec.w !== w) return; retire(rec); if (!recover) close(); notice('Solver worker failed: ' + m); };
+    }
+    function useInline() { fallback = true; for (const rec of workers) retire(rec); notice('Solver workers unavailable after ' + respawns + ' replacements; continuing on the caller CPU.'); }
+    async function request(rec, msg) {
+      for (;;) {
+        if (closed) throw new Error('pool is closed');
+        if (fallback) return null;
+        try {
+          if (!rec.w) {
+            try { spawn(rec); } catch (e) { e.workerFailure = true; throw e; }
+            const d = await ask(rec, initMsg()); if (msg.type === 'init') return d;
+          }
+          return await ask(rec, msg);
+        } catch (e) {
+          if (closed || !recover || !e.workerFailure) throw e;
+          if (fallback) return null;
+          retire(rec);
+          if (respawns >= cap) { useInline(); return null; }
+          respawns++; notice('Solver worker stalled or failed; replacing it (' + respawns + '/' + cap + ').');
+        }
+      }
+    }
     function start() {
       if (started) return started;
       const ps = [];
       for (let i = 0; i < size; i++) {
-        const w = o.spawn(), rec = { w, busy: false, ready: null };
-        w.onmessage = (d) => { const r = pending.get(d.rid); if (!r) return; pending.delete(d.rid); if (d.error) r.reject(new Error(d.error)); else r.resolve(d); };
-        w.onerror = (m) => { for (const [k, r] of pending) { pending.delete(k); r.reject(new Error('pool worker failed: ' + m)); } };
-        rec.ready = ask(rec, { type: 'init', id: o.id, srcs: o.srcs || [], scene: o.scene, input: o.input });
+        const rec = { w: null, ready: null };
+        rec.ready = request(rec, initMsg());
         workers.push(rec); ps.push(rec.ready);
       }
       return (started = Promise.all(ps));
     }
-    function ask(rec, msg) { return new Promise((resolve, reject) => { const rid = ++seq; pending.set(rid, { resolve, reject }); rec.w.post(Object.assign({ rid }, msg)); }); }
+    function ask(rec, msg) { return new Promise((resolve, reject) => {
+      const rid = ++seq, timer = recover ? setTimeout(() => { const r = pending.get(rid); if (!r) return; pending.delete(rid); reject(Object.assign(new Error('pool worker deadline'), { workerFailure: true })); }, deadline) : 0;
+      pending.set(rid, { rec, timer, resolve, reject });
+      try { rec.w.post(Object.assign({ rid }, msg)); } catch (e) { clearTimeout(timer); pending.delete(rid); reject(Object.assign(e, { workerFailure: true })); }
+    }); }
     async function map(name, args) {
       if (closed) throw new Error('pool is closed');
       if (!size) return inline(name, args);
@@ -36,7 +70,7 @@
       await Promise.all(workers.map(async (rec) => {
         while (!failed && next < args.length) {
           const i = next++;
-          try { const d = await ask(rec, { type: 'task', name, arg: args[i] }); out[i] = d.result; if (o.onRays && d.rays > 0) o.onRays(d.rays); } catch (e) { failed = e; }
+          try { const d = await request(rec, { type: 'task', name, arg: args[i] }); out[i] = d ? d.result : await o.run(name, args[i]); if (d && o.onRays && d.rays > 0) o.onRays(d.rays); } catch (e) { failed = e; }
         }
       }));
       if (failed) throw failed;
@@ -44,7 +78,7 @@
     }
     // no workers: run here, with the caller's own trace.  Same result: tasks are pure.
     async function inline(name, args) { const out = []; for (const a of args) out.push(await o.run(name, a)); return out; }
-    function close() { closed = true; for (const r of workers) { try { r.w.terminate(); } catch (e) { /* gone */ } } workers.length = 0; pending.clear(); }
+    function close() { closed = true; for (const r of workers) retire(r); workers.length = 0; }
     return { size, map, close };
   }
   // ---- worker end: feed it each message; it replies through post(obj)

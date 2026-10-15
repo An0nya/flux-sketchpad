@@ -116,6 +116,12 @@
   }
   // Simulation → Advanced → Solver threads: workers a solver may use for its independent trials (tools.pool; only solvers that declare tasks use them, the
   // result is the same for any number); remembered per browser.  Never chosen → min(4, cores − 2) (RF.SolverHost.threadsDefault; flat past 4).
+  function recoveryRow(ui) {
+    const H = RF.SolverHost; if (!H) return el('span');
+    const box = el('input', { type: 'checkbox', 'aria-label': 'Automatic recovery', checked: H.recovery() ? true : null });
+    box.addEventListener('change', () => { H.setRecovery(box.checked); ui.redrawSpec(); });
+    return el('label', { class: 'tog', title: 'Pause Drive on graphics loss and rebuild on restore. Replace stalled Drive and solver workers at most twice, then trace on the caller CPU. On by default; remembered in this browser. New solves use this setting.' }, box, ' Automatic recovery');
+  }
   function solverThreadsRow() {
     const H = RF.SolverHost; if (!H || !H.setThreads || typeof Worker === 'undefined') return el('span');
     const hw = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4, def = H.threadsDefault(), cur = H.threads();
@@ -251,7 +257,7 @@
     // ---- 3. Simulation
     side.append(section('Simulation', { open: true, key: 'sim', tag: 'rays & grids' }, ...rowsFor(ui, ['rays', 'tgt.res', 'sim.res', 'sim.autoRes']), solveLimitRow(),
       el('div', { class: 'btnrow' }, el('button', { type: 'button', id: 'btn-refine', disabled: true, title: 'Keep tracing the finished run up to twice the rays (up to 50M). Exactly what that ray count would give from scratch, without starting over.', onclick: () => ui.refine(2) }, 'Refine ×2')),
-      section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']), gpuRow(ui), solverThreadsRow(), keepAwakeRow(), capRow(ui), glSceneRow(ui))));
+      section('Advanced', { open: false, key: 'sim-adv', adv: true }, ...rowsFor(ui, ['bounces', 'floor', 'seed']), gpuRow(ui), solverThreadsRow(), recoveryRow(ui), keepAwakeRow(), capRow(ui), glSceneRow(ui))));
     // ---- 4. View (display only, remembered per browser)
     side.append(section('View', { open: false, key: 'view', tag: 'display only' },
       el('label', { class: 'tog', title: 'On: orbit keeps the horizon level. Off: free trackball rotation.' }, el('input', { type: 'checkbox', id: 'turntable', checked: true }), ' turntable orbit'),

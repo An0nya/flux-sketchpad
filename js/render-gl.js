@@ -110,7 +110,7 @@ void main() {
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: false });
     if (!gl) { canvas.remove(); throw new Error('no WebGL2'); }
     const r = { cv2d, canvas, gl, lost: false, prog: {}, buf: {}, key: {}, tex: null, texSrc: null, texVer: -1, lut: null, lutName: null };
-    canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); r.lost = true; fail('WebGL context lost'); });
+    canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); r.lost = true; canvas.style.display = 'none'; fail('WebGL context lost'); if (RF.UI && RF.UI.redrawSpec) RF.UI.redrawSpec(); });
     r.prog.facet = program(gl, VS_FACET, FS_COL); r.prog.line = program(gl, VS_LINE, FS_COL); r.prog.plane = program(gl, VS_PLANE, FS_PLANE); r.prog.hit = program(gl, VS_HIT, FS_HIT);
     const mk = (n) => (r.buf[n] = gl.createBuffer());
     ['facetV', 'facetI', 'edge', 'ray', 'planeUV', 'planeI', 'hitUV', 'hitB', 'quad'].forEach(mk);
@@ -128,6 +128,7 @@ void main() {
   function get(cv) {
     if (failed) return null;
     let r = R.get(cv);
+    if (r && (r.lost || r.gl.isContextLost())) { r.canvas.remove(); R.delete(cv); r = null; }   // a lost context is never reused: re-enabling builds a fresh canvas + context
     if (!r) { try { r = make(cv); R.set(cv, r); } catch (e) { fail(String(e && e.message || e)); return null; } }
     return r;
   }
@@ -274,6 +275,7 @@ void main() {
       // ---- hits as point sprites on the target plane
       r.nHit = 0;
       if (kind === 'scene' && opts.hits) r.nHit = hits(r, opts.hits, T, cam, box, dpr);
+      if (gl.isContextLost()) { fail('WebGL context lost during draw'); canvas.style.display = 'none'; return false; }
       stats.frames++; stats.lastMs = performance.now() - t0;
       return true;
     } catch (e) { fail(String(e && e.message || e)); canvas.style.display = 'none'; return false; }

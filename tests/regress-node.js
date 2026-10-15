@@ -1051,6 +1051,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('MF GL per-face colour uses the shared unlit ramp and undercut outline, even in ray-pair style', JSON.stringify(style) === JSON.stringify(MF.style(ov, 0)) && style.fill[3] === 1 && style.lam[0] === 1 && style.w > 1 && RF.Render.glStyle({ manufacturability: ov, style: 'pairs' }, model.polys[0], 'optics').fill[3] === 1);
     ok('MF worst list ranks draft ascending, feature ascending, step descending; JSON excludes draw samples', MF.worst(ds, 'draft')[0].id === 'back' && MF.worst(step, 'step').length === 2 && !('faces' in MF.json(step)) && !('scales' in MF.json(step)));
   }
+  await require('./drive-robustness.js').run(RF, ok);
   require('./traffic-logic.js').run(RF, ok);
   require('./minigame.js').run(RF, ok);
   require('./minigame-2.js').run(RF, ok);

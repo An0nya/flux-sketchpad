@@ -7,7 +7,9 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
 const stickingOut = (page, paneSel, bottom = true) => page.evaluate(([paneSel, bottom]) => {
   const pane = document.querySelector(paneSel), p = pane.getBoundingClientRect(), vw = document.documentElement.clientWidth, out = [];
   for (const el of pane.querySelectorAll('button, select')) {
-    const r = el.getBoundingClientRect(); if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') continue;
+    let r = el.getBoundingClientRect(); if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') continue;
+    // RB: a control inside a horizontally scrolling row (Drive's toolbars) is reachable by scrolling: it counts where the row clips it
+    for (let a = el.parentElement; a && a !== pane; a = a.parentElement) { if (/auto|scroll/.test(getComputedStyle(a).overflowX) && a.scrollWidth > a.clientWidth) { const q = a.getBoundingClientRect(); r = { right: Math.min(r.right, q.right), bottom: r.bottom }; break; } }
     if (r.right > p.right + 1 || r.right > vw + 1 || (bottom && r.bottom > p.bottom + 1)) out.push((el.dataset.mode || el.dataset.disp || el.id || el.textContent.trim().slice(0, 12)) + ' r' + Math.round(r.right - p.right) + ' b' + Math.round(r.bottom - p.bottom));
   }
   return out;
