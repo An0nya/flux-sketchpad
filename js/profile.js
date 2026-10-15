@@ -91,6 +91,7 @@
     return { interaction: mc.interaction, reflectivity: mc.reflectivity, ior: mc.ior, fresnelT: mc.fresnelT, twoSided: false };
   }
   function build(scene) {
+    if (shellOn(scene.modeC)) return shellBuild(scene);
     const mc = scene.modeC, pts0 = (mc.profile || []).map((p) => [p[0], p[1]]);
     const out = [];
     if (pts0.length < 2) return { surfaces: out, report: { ok: false, error: 'Profile needs at least two points.' } };
@@ -210,6 +211,79 @@
     return { nodes, bulge };
   }
 
+
+  // ---------------------------------------------------------------- facet shell (F5)
+  // modeC.shell = { on, R, k, zv, r1, nRad, nAng, cells: { "ring:sector": { dv, dTheta, dPhi } } }  (sparse; absent = a plain profile).
+  // The shell is ONE conic of revolution about the profile axis, x²+y²+(1+k)(z−zv)² = 2R(z−zv) out to radius r1 (z measured from the source,
+  // like profile points), cut into nRad rings (equal in r) × nAng sectors.  Every cell is one `quad` surface that carries the EXACT conic
+  // (its quadric re-expressed in the cell's own frame at the cell centre, so a default cell is the same sheet as a `rev` conic zone, for any
+  // R, k, zv: no foci needed).  Per-cell offsets from the shell, all 0 = on the shell:
+  //   dTheta, dPhi (deg)  turn the cell's REFLECTED direction outward from the axis / toward +azimuth (the normal turns by half), by tilting the cell's frame
+  //   dv (1/m)            adds focusing power: the reflected beam's vergence changes by dv (+ converge, − diverge), split across the two
+  //                       principal directions by the Coddington relations, as facetQuadric2 does for facets
+  // modeC.profile stays the shell's own cross-section (shellProfile), so a build without this field still draws the plain cup.
+  // A shell is live only for a reflecting, un-mirrored, un-flipped revolve; otherwise the profile builds as usual.
+  const SHELL_OVERLAP = 0.06;                  // each cell's clip polygon is grown by this fraction of the cell on its interior edges: the polygons are
+                                               // straight-edged and projected on different tangent planes, so touching ones leave slivers; overlap on the same sheet is harmless
+  function shellOn(mc) {
+    const s = mc.shell;
+    return !!(s && s.on && mc.sweep === 'revolve' && mc.interaction === 'reflect' && !mc.mirror && !mc.flipFacing && s.R > 0 && s.r1 > 0 && s.nRad >= 1 && s.nAng >= 3);
+  }
+  // the shell conic that a preset describes (null: that preset is not a single conic of revolution about the source)
+  function shellFromPreset(p) {
+    if (p.kind === 'parabola') return { R: 2 * p.f, k: -1, zv: -p.f, r1: p.rim };
+    if (p.kind === 'ellipse') { const a = p.f + p.depth / 2, c = p.depth / 2, b = Math.sqrt(a * a - c * c); return { R: b * b / a, k: -(c * c) / (a * a), zv: -p.f, r1: Math.min(p.rim, 0.98 * b) }; }
+    if (p.kind === 'sphere') return { R: p.rim, k: 0, zv: -p.rim, r1: p.rim * Math.sin(Math.min(89, Math.max(10, p.theta)) * D2R) };
+    return null;
+  }
+  const shellKey = (i, a) => i + ':' + a;
+  function shellProfile(s, n) {                  // the cross-section as profile points (r, z)
+    const out = [], N = Math.max(2, n | 0);
+    for (let i = 0; i <= N; i++) { const r = s.r1 * i / N; out.push([r, s.zv + RF.Geo.conicSag(s.R, s.k, r)]); }
+    return out;
+  }
+  function shellBuild(scene) {
+    const mc = scene.modeC, sh = mc.shell, out = [];
+    const nR = sh.nRad | 0, nA = sh.nAng | 0, R = sh.R, k = sh.k || 0, k1 = 1 + k, zv = sh.zv, r1 = sh.r1, sag = (r) => RF.Geo.conicSag(R, k, r);
+    if (!isFinite(sag(r1))) return { surfaces: out, report: { ok: false, error: 'The shell conic does not reach its rim radius (r too large for R, k).' } };
+    const fr = axisFrame(scene, mc.axisMode), W = mc.reverseAxis ? V.neg(fr.W) : fr.W, e1 = fr.e1, e2 = mc.reverseAxis ? V.neg(fr.e2) : fr.e2;
+    const dirW = (v) => V.add(V.mul(e1, v[0]), V.add(V.mul(e2, v[1]), V.mul(W, v[2]))), ptW = (v) => V.add(fr.O, dirW(v));   // axis frame → world
+    const on = (r, ph) => [r * Math.cos(ph), r * Math.sin(ph), zv + sag(r)];
+    const dot = V.dot, cross = V.cross, norm = V.norm, add = V.add, sub = V.sub, mul = V.mul;
+    for (let i = 0; i < nR; i++) {
+      const ra = r1 * i / nR, rb = r1 * (i + 1) / nR, rm = (ra + rb) / 2;
+      for (let a = 0; a < nA; a++) {
+        const pa = 2 * Math.PI * a / nA, pb = 2 * Math.PI * (a + 1) / nA, pm = (pa + pb) / 2;
+        const Pc = on(rm, pm), g = [2 * Pc[0], 2 * Pc[1], 2 * k1 * (Pc[2] - zv) - 2 * R];
+        const sgn = dot(g, Pc) > 0 ? -1 : 1;                                        // the front faces the source (the origin)
+        const n0 = mul(norm(g), sgn), ex0 = norm([Math.cos(pm), Math.sin(pm), -2 * rm / g[2]]), d = norm(Pc);
+        const cfg = sh.cells && sh.cells[shellKey(i, a)] || {}, dTh = +cfg.dTheta || 0, dPh = +cfg.dPhi || 0, dv = (+cfg.dv || 0) / 1000;
+        // exact conic in the cell frame E0 = [ex0, ey0, n0]: u = E0ᵀ(x − Pc).  F(x) = xᵀQ0x + g·x + F(Pc) with Q0 = diag(1, 1, k1)
+        const E = [ex0, cross(n0, ex0), n0], Q0 = [1, 1, k1], q = (p, r) => E[p][0] * Q0[0] * E[r][0] + E[p][1] * Q0[1] * E[r][1] + E[p][2] * Q0[2] * E[r][2];
+        const f = -1 / dot(n0, g);                                                  // normalise so the local gradient is (0, 0, −1)
+        let n = n0, ex = ex0;
+        if (dTh || dPh) {
+          const a0 = sub(d, mul(n0, 2 * dot(d, n0)));                              // the shell's own reflected direction
+          let tW = [Math.cos(pm), Math.sin(pm), 0]; tW = sub(tW, mul(a0, dot(tW, a0))); tW = V.len(tW) > 1e-6 ? norm(tW) : [0, 0, 1];   // tW: outward from the axis, square to the beam
+          let tP = [-Math.sin(pm), Math.cos(pm), 0]; tP = sub(tP, add(mul(a0, dot(tP, a0)), mul(tW, dot(tP, tW)))); tP = V.len(tP) > 1e-6 ? norm(tP) : cross(a0, tW);
+          const a1 = norm(add(a0, add(mul(tW, Math.tan(dTh * D2R)), mul(tP, Math.tan(dPh * D2R))))); n = norm(sub(a1, d));
+          const ax = cross(n0, n), sA = V.len(ax), cA = dot(n0, n);                // rotate the frame n0 → n (Rodrigues)
+          if (sA > 1e-12) { const u = mul(ax, 1 / sA); ex = add(add(mul(ex0, cA), mul(cross(u, ex0), sA)), mul(u, dot(u, ex0) * (1 - cA))); }
+        }
+        const A = [f * q(0, 0), f * q(1, 1), f * q(2, 2), f * q(0, 1), f * q(0, 2), f * q(1, 2)], b = [f * dot(E[0], g), f * dot(E[1], g), -1];
+        if (dv) { const c = Math.max(1e-3, -dot(d, n)); A[0] += c * dv / 4; A[1] += dv / (4 * c); }   // sag z = uᵀAu: curvature K = 2A, so ΔK = c·dv/2 (in the plane of incidence), dv/(2c) across it
+        const Pw = ptW(Pc);
+        const ov = SHELL_OVERLAP, qa = pa - ov * (pb - pa), qb = pb + ov * (pb - pa), sa = i > 0 ? ra - ov * (rb - ra) : ra, sb = i < nR - 1 ? rb + ov * (rb - ra) : rb;   // grown on the interior edges only: the rim and the axis stay exact
+        const rim = []; if (i === nR - 1) for (let j = 1, m = Math.ceil((qb - qa) / (3 * D2R)); j < m; j++) rim.push(on(sb, qb - (qb - qa) * j / m));   // the rim edge is convex: follow the true circle, not its chord
+        let corners = [on(sa, qa), on(sa, qb), on(sb, qb), ...rim, on(sb, qa)].map(ptW);
+        corners = corners.filter((p, j, arr) => V.dist(p, arr[(j + arr.length - 1) % arr.length]) > 1e-9);
+        if (corners.length < 3) continue;
+        out.push({ type: 'quad', id: 'S' + i + '_' + a, group: 'C', P: Pw, n: dirW(n), ref: dirW(ex), quadric: { A, b }, clip: { kind: 'poly', pts3: corners }, front: 1, optics: optics(mc) });
+      }
+    }
+    return { surfaces: out, report: { ok: out.length > 0, segments: out.length, shell: true, cells: out.length } };
+  }
+
   // Bounces a preset needs to work as intended (raised visibly by the UI, never silently)
   function bouncesNeeded(mc) {
     if (mc.interaction === 'refract') return 2;
@@ -217,5 +291,5 @@
     return 1;
   }
 
-  RF.Profile = { axisFrame, presetProfile, build, resample, bouncesNeeded, segGeom, segPoints, kFromMid, curveFlatten, curveFromPoints, curveLive, curveSplit, curveDeleteNode };
+  RF.Profile = { axisFrame, presetProfile, build, resample, bouncesNeeded, segGeom, segPoints, kFromMid, curveFlatten, curveFromPoints, curveLive, curveSplit, curveDeleteNode, shellOn, shellFromPreset, shellProfile, shellKey, shellBuild };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
