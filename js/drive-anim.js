@@ -26,13 +26,74 @@
     if (!(opts && opts.wild) || name !== 'road') {
       const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7 }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
       if (broken && name === 'road') src.markings = D.laneMarkings(lane, { us, broken });
-      return src;
+      return trafficSource(src, opts);
     }
     const mix = (k) => (Math.imul((+opts.seed || 0) | 0, 2654435761) ^ Math.imul(k + 1, 0x9E3779B1)) >>> 0, chunks = new Map();
     const src = { wild: true, lane, markings: D.laneMarkings(lane, { us, broken }), verge: ['gravel', 1.6, 'grass'], chunk(k) {
       let c = chunks.get(k); if (!c) { c = D.wildChunk({ Lw: lane, us, seed: mix(k), density: opts.density === undefined ? 1.5 : +opts.density, broken }, flags); chunks.set(k, c); if (chunks.size > 8) chunks.delete(chunks.keys().next().value); } return c;
     } };
-    src.objects = src.chunk(0).objects; return src;
+    src.objects = src.chunk(0).objects; return trafficSource(src, opts);
+  }
+  // Traffic has its own stream of the scenery RNG: switching a class off never moves another class. Constant speeds (m/s) keep spacing steady.
+  const TRAFFIC_SPEED = { oncoming: 50 / 3.6, preceding: 40 / 3.6 };
+  function trafficSource(src, opts) {
+    const o = opts || {}, dn = o.trafficDensity === undefined ? 1 : Math.max(0, Math.min(3, +o.trafficDensity || 0));
+    src.traffic = { seed: (+o.seed || 0) | 0, density: dn, oncoming: !!o.oncoming, preceding: !!o.preceding, models: {} };
+    for (const kind of ['oncoming', 'preceding']) if (src.traffic[kind]) {
+      const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
+      K.car(0, 0, kind === 'oncoming' ? { face: -1, lamps: 'head', kcd: +o.onKcd || 30 } : { face: 1, lamps: 'tail' }); src.traffic.models[kind] = K.O;
+    }
+    return src;
+  }
+  // One car in each seeded interval of road, then translated by its own travel and ours. Look up only the intervals in view: bounded work even after hours.
+  function trafficCars(src, dist, t) {
+    const tr = src.traffic, out = []; if (!tr || !tr.density) return out;
+    const gap = PERIOD / tr.density;
+    for (const kind of ['oncoming', 'preceding']) if (tr[kind]) {
+      const shift = dist + (kind === 'oncoming' ? 1 : -1) * TRAFFIC_SPEED[kind] * t;
+      for (let k = Math.floor((shift - 6) / gap); k <= Math.floor((shift + CULL) / gap); k++) {
+        const R = D.rng((Math.imul(tr.seed, 2654435761) ^ Math.imul(k, 0x9E3779B1) ^ (kind === 'oncoming' ? 0x51ED270B : 0x165667B1)) >>> 0);
+        const rel = (k + 0.2 + 0.6 * R()) * gap - shift;
+        if (rel >= -6 && rel <= CULL) out.push({ id: kind + ':' + k, kind, rel, off: kind === 'oncoming' ? src.lane : 0 });
+      }
+    }
+    return out;
+  }
+  // Rotate the whole car around its centre (including emitter normals), so it stays rigid on a bend.
+  function trafficObjects(src, cars, A) {
+    const out = [];
+    for (const car of cars) {
+      const q = A ? A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }, c = q.t[0], sn = q.t[1], yaw = Math.atan2(sn, c);
+      for (const ob of src.traffic.models[car.kind]) {
+        const n = Object.assign({}, ob, { x: q.p[0] + ob.x * c - ob.y * sn, y: q.p[1] + ob.x * sn + ob.y * c, bs: undefined, traffic: car.id });
+        if (ob.k === 'box') n.yaw = (ob.yaw || 0) + yaw;
+        if (ob.k === 'disc') { n.nx = ob.nx * c - ob.ny * sn; n.ny = ob.nx * sn + ob.ny * c; }
+        out.push(n);
+      }
+    }
+    return out;
+  }
+  const placedObjects = (p, dist, t, tauOf) => place(p.src, dist, p.A, tauOf, dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A));
+  // Same eye illuminance as Road.model.lux: far-field intensity / distance² × incidence cosine. Driver faces back along their lane, eye 1.1 m up.
+  function eyeLux(p, car) {
+    const q = p.A ? p.A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }; let E = 0;
+    for (const L of p.lamps) {
+      const dx = q.p[0] - L[0], dy = q.p[1] - L[1], dz = 1.1 - L[2], r2 = dx * dx + dy * dy + dz * dz, cos = (dx * q.t[0] + dy * q.t[1]) / Math.sqrt(r2);
+      if (!(cos > 0) || !(dx > 0)) continue;
+      D.hvFast(dx, dy, dz, p.conv || 'A'); E += D.lutAt(p.lut, D.hv()[0], D.hv()[1]) * cos / r2;
+    }
+    return E;
+  }
+  const flashState = () => ({ n: 0, seen: new Set() });
+  function countFlashes(state, p, dist, t) {
+    const cars = trafficCars(p.src, dist, t);
+    for (const car of cars) if (car.kind === 'oncoming' && car.rel > 0 && eyeLux(p, car) > 1 && !state.seen.has(car.id)) { state.seen.add(car.id); state.n++; }
+    // IDs behind this monotonically advancing stream can never return; keep only the small visible window.
+    if (p.src.traffic && p.src.traffic.density) {
+      const k0 = Math.floor((dist + TRAFFIC_SPEED.oncoming * t - 6) / (PERIOD / p.src.traffic.density));
+      for (const id of state.seen) if (+id.split(':')[1] < k0) state.seen.delete(id);
+    }
+    return state.n;
   }
   // a pose of a walker or deer `tau` s after it started moving: where it is along the road (s) and across it (off), and its leg swing
   function actorPose(a, tau) {
@@ -108,8 +169,8 @@
     };
   }
   // tileRow(ty) → true: trace only these 16-px tile rows (a worker's share); the rows come back with .trows = the tile rows that were traced
-  function objects(p, dist, rgba, ss, tauOf, tileRow, placed) {
-    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, tileRow, scene: { objects: placed || place(p.src, dist, p.A, tauOf, dimFoliage(p)), markings: [], verge: p.src.verge } }, camOf(p)));
+  function objects(p, dist, rgba, ss, tauOf, tileRow, placed, t) {
+    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, tileRow, scene: { objects: placed || placedObjects(p, dist, t || 0, tauOf), markings: [], verge: p.src.verge } }, camOf(p)));
     r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
   }
   // walkers and deer start to move when the car is ACT m from where they stood: act = id → the clock (s) at that moment. Pure state, so every thread that sees the same frames keeps the same copy
@@ -134,7 +195,7 @@
       job(m) {
         const t0 = performance.now(), W = p.w, H = p.h, TS = 16;
         for (const ty of prev) rgba.fill(0, ty * TS * W * 4, Math.min(H, (ty + 1) * TS) * W * 4);
-        if (m.seq !== seq) { seq = m.seq; placed = place(p.src, m.dist, p.A, tauFor(new Map(m.act), m.t), dimFoliage(p)); }          // the scenery of this frame, placed once for all this thread's jobs
+        if (m.seq !== seq) { seq = m.seq; placed = placedObjects(p, m.dist, m.t, tauFor(new Map(m.act), m.t)); }          // the scenery of this frame, placed once for all this thread's jobs
         const rows = objects(p, m.dist, rgba, m.ss, null, m.K > 1 ? (ty) => ty % m.K === m.c : null, placed), tr = rows.trows;
         let len = 0; for (const ty of tr) len += (Math.min(H, (ty + 1) * TS) - ty * TS) * W * 4;
         const f = m.ret && m.ret.byteLength >= len * 4 ? new Float32Array(m.ret) : new Float32Array(len); let off = 0;
@@ -321,8 +382,10 @@ void main() {
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
     const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken']);
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline]);
-    if (V.skey !== skey || !V.src) { V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline }]; V.src = source.apply(null, V.srcArgs); V.skey = skey; V.act.clear(); }
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.trafficDensity]);
+    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, trafficDensity: o.trafficDensity }]; V.src = source.apply(null, V.srcArgs); V.skey = tkey; }
+    const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity]);
+    if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, RL: o.RL / 1000, ambient: o.ambient }, src: V.src };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
@@ -346,14 +409,14 @@ void main() {
     const ui = V.ui, st = S(ui), I = info(), o = I.o, t0 = performance.now(), W = V.p.w, pb = V.band, had = pb[1] > pb[0];
     if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
     pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
-    const rows = objects(V.p, st.dist, V.rgba, ssNow(), tauFor(V.act, st.t));
+    const rows = objects(V.p, st.dist, V.rgba, ssNow(), tauFor(V.act, st.t), null, null, st.t);
     const t1 = performance.now();
     adaptSS(t1 - t0);
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
     V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposure(), glare: +o.glare || 0, flip: I.mirrored, tex: o.tex ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane });
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
-    ui.dvAnimFrames = V.frames;
+    flashLabel(st.dist, st.t); ui.dvAnimFrames = V.frames;
   }
 
   // ---------------------------------------------------------------- the object trace on worker threads
@@ -417,7 +480,7 @@ void main() {
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
     V.times.push(t3); if (V.times.length > 300) V.times.shift();
-    adaptSS(rt); V.ui.dvAnimFrames = V.frames;
+    adaptSS(rt); flashLabel(b.dist, b.t); V.ui.dvAnimFrames = V.frames;
     if (Wk.afterFrame) Wk.afterFrame(); else pump(t3, 14);
   }
   // advance the drive to `now` and ask for the next frame, unless one is out (called by the display's frame callback, and by a finished frame when the display has already waited `minGap` ms)
@@ -429,11 +492,11 @@ void main() {
   // n frames back to back on the workers (no display pacing), waiting for each: → a promise of { msPerFrame (fresh frames), ... stats }
   function benchMT(n) {
     return new Promise((resolve) => {
-      const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, was = st.playing; if (!mt()) { resolve(null); return; }
-      st.playing = false; stop(); workerCfg(); resetStats(); const t0 = performance.now(); let i = 0, mid = 0;
+      const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, was = st.playing, flashes = V.flash; if (!mt()) { resolve(null); return; }
+      st.playing = false; V.flash = flashState(); stop(); workerCfg(); resetStats(); const t0 = performance.now(); let i = 0, mid = 0;
       const step = () => {
         if (i === Math.floor(n / 5)) { resetStats(); mid = performance.now(); }       // the first fifth is warm-up (worker start, JIT)
-        if (i++ >= n) { V.gl.sync(); const ms = (performance.now() - mid) / (n - Math.floor(n / 5)); Wk.afterFrame = null; st.dist = d0; st.t = t0s; st.playing = was; resolve(Object.assign({ n, msPerFrame: ms, workers: Wk.list.length }, stats())); return; }
+        if (i++ >= n) { V.gl.sync(); const ms = (performance.now() - mid) / (n - Math.floor(n / 5)); Wk.afterFrame = null; st.dist = d0; st.t = t0s; st.playing = was; V.flash = flashes; flashText(); resolve(Object.assign({ n, msPerFrame: ms, workers: Wk.list.length }, stats())); return; }
         st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); sendFrame();
       };
       Wk.afterFrame = step; step(); void t0;
@@ -476,7 +539,16 @@ void main() {
     const dn = E('input', { type: 'range', min: 0.5, max: 3, step: 0.5, 'data-anim': 'density', 'aria-label': 'Scenery density', title: 'How much roadside scenery (1 = about what the still view has)' }); dn.addEventListener('change', () => setDV(ui, 'density', +dn.value));
     btn('cline', 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)', () => setDV(ui, 'cline', info().o.cline === 'broken' ? 'solid' : 'broken'), 'centre');
     bar.append(sd, dice, dn);
+    const td = E('input', { type: 'range', min: 0, max: 3, step: 0.5, 'data-anim': 'traffic-density', 'aria-label': 'Traffic density', title: 'Cars per 300 m in each enabled lane. Oncoming: 50 km/h; preceding: 40 km/h.' }); td.addEventListener('change', () => setDV(ui, 'trafficDensity', +td.value));
+    V.flashLab = E('span', { class: 'anim-speed', 'data-anim': 'flashes' });
+    bar.append(E('span', { class: 'anim-speed' }, 'traffic'), td, V.flashLab);
+    btn('reset-flashes', 'Start the count again (each driver counts once above 1 lx at their eye)', () => { V.flash = flashState(); V.flashLab.textContent = 'oncoming drivers above 1 lx: 0'; }, 'reset count');
     V.bar = bar; return bar;
+  }
+  function flashText() { if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0); }
+  function flashLabel(dist, t) {
+    if (!V.flash) V.flash = flashState();
+    countFlashes(V.flash, V.p, dist, t); flashText();
   }
   function topButtons(ui, tb, setDV) {                         // 'animate' and 'popout' go into the existing toolbar
     if (tb.querySelector('[data-anim="animate"]')) return;
@@ -494,8 +566,11 @@ void main() {
     const run = st.playing && (st.view === 'anim' || st.popout), pb = V.bar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ pause' : '▶ play'; pb.setAttribute('aria-pressed', String(run));
     V.bar.querySelector('[data-anim="speed"]').value = o.speed; V.bar.querySelector('[data-anim="speedlab"]').textContent = o.speed + ' km/h';
     for (const [k] of CLASSES) { const b = V.bar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
+    V.bar.querySelector('[data-anim="traffic-density"]').value = o.trafficDensity === undefined ? 1 : o.trafficDensity;
+    if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0);
+    const trafficOn = o.oncoming || o.preceding;
     const wd = o.wild && o.scene === 'road';        // the random scenery is the open road's; forest and city are fixed scenes that repeat every lap
-    V.bar.querySelector('[data-anim="seed"]').value = o.seed; V.bar.querySelector('[data-anim="seed"]').disabled = !wd; V.bar.querySelector('[data-anim="dice"]').disabled = !wd;
+    V.bar.querySelector('[data-anim="seed"]').value = o.seed; V.bar.querySelector('[data-anim="seed"]').disabled = !(wd || trafficOn); V.bar.querySelector('[data-anim="dice"]').disabled = !(wd || trafficOn);
     V.bar.querySelector('[data-anim="density"]').value = o.density; V.bar.querySelector('[data-anim="density"]').disabled = !wd;
     const cl = V.bar.querySelector('[data-anim="cline"]'); cl.disabled = !I.us; cl.textContent = o.cline === 'broken' && I.us ? 'centre: broken' : 'centre: solid'; cl.setAttribute('aria-pressed', String(o.cline === 'broken' && I.us));
     cl.title = I.us ? 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)' : 'Only on the US presets (the EU presets already have a dashed centre line)';
@@ -563,11 +638,11 @@ void main() {
   function resetStats() { V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
   function bench(n) {
-    const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t; resetStats(); const t0 = performance.now();
+    const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, flashes = V.flash; V.flash = flashState(); resetStats(); const t0 = performance.now();
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
-    V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; return Object.assign({ n, msPerFrame: ms }, stats());
+    V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, Wk, frame, frameMT, mt, size, prepare, exposure, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

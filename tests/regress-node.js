@@ -663,5 +663,66 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('W3b sealed-beam tuner: tuneGpu without a GPU = the default tuner (same surfaces)', hashOf(b0) === hashOf(b1), hashOf(b0) + ' vs ' + hashOf(b1));
     ok('W3b sealed-beam tuner: tuneAim frozen runs and reports its traces', b2.notes.some((n) => /^tuner: \d+ traces/.test(n)) && b2.surfaces.length > 0, b2.notes[0].slice(0, 100));
   }
+  // D3: deterministic moving traffic, rigid cars, the existing lighting path and once-per-driver glare count.
+  {
+    const DA = RF.DriveAnim, D = RF.Drive, flags = { posts: false, veg: false, people: false, animals: false, signs: false, rpm: false };
+    const opts = { wild: true, seed: 7, density: 0.5, trafficDensity: 2, oncoming: true, preceding: true, onKcd: 30 };
+    const src = DA.source('road', 3.5, false, flags, opts), cars = DA.trafficCars(src, 0, 0), J = JSON.stringify;
+    const off = DA.source('road', 3.5, false, flags, Object.assign({}, opts, { oncoming: false, preceding: false }));
+    ok('D3a both lanes spawn deterministically; seed changes the traffic, toggles leave scenery unchanged', cars.some((c) => c.kind === 'oncoming') && cars.some((c) => c.kind === 'preceding') && J(cars) === J(DA.trafficCars(DA.source('road', 3.5, false, flags, opts), 0, 0)) && J(cars) !== J(DA.trafficCars(DA.source('road', 3.5, false, flags, Object.assign({}, opts, { seed: 8 })), 0, 0)) && J(src.chunk(0)) === J(off.chunk(0)) && !DA.trafficCars(off, 0, 0).length, J(cars));
+    let motion = true;
+    for (const c of cars) {
+      const next = DA.trafficCars(src, 10, 1).find((n) => n.id === c.id);
+      if (!next) continue;
+      const delta = -10 + (c.kind === 'oncoming' ? -50 : 40) / 3.6;
+      motion = motion && Math.abs(next.rel - c.rel - delta) < 1e-12 && next.off === (c.kind === 'oncoming' ? 3.5 : 0);
+    }
+    ok('D3b oncoming closing speed = ours + theirs; preceding = relative speed, each in its lane', motion);
+    let low = 0, high = 0, bounded = true;
+    for (const density of [0, 0.5, 3]) {
+      const s = DA.source('road', 3.5, false, flags, Object.assign({}, opts, { trafficDensity: density })); let n = 0;
+      for (let i = 0; i < 100; i++) { const cs = DA.trafficCars(s, i * 137.3, i * 3); n += cs.length; bounded = bounded && cs.length <= 6 && cs.every((c) => c.rel >= -6 && c.rel <= 230); }
+      if (!density) ok('D3c zero density suppresses both lanes', n === 0);
+      if (density === 0.5) low = n; if (density === 3) high = n;
+    }
+    ok('D3c higher density yields more cars; generation stays bounded far along the road', high > low && bounded && DA.trafficCars(src, 1e8, 1e7).length <= 6, 'cars across 100 samples: ' + low + ' / ' + high);
+    const A = RF.Road.arc(150, 'left'), sample = [{ id: 'oncoming:0', kind: 'oncoming', rel: 55, off: 3.5 }], a = DA.trafficObjects(src, sample, null), b = DA.trafficObjects(src, sample, A);
+    let rigid = true; for (let i = 0; i < a.length; i++) for (let j = 0; j < a.length; j++) rigid = rigid && Math.abs(Math.hypot(a[i].x - a[j].x, a[i].y - a[j].y) - Math.hypot(b[i].x - b[j].x, b[i].y - b[j].y)) < 1e-12;
+    ok('D3d car bodies, lamps and plates stay rigid on a bend; headlamps face the driver', rigid && b.filter((o) => o.emit).length === 2 && b.filter((o) => o.emit).every((o) => Math.abs(o.nx + Math.cos(55 / 150)) < 1e-12));
+    const lamps = [[0, 0.7, 0.7], [0, -0.7, 0.7]], lut = D.lutFrom(() => 30000), p = { w: 160, h: 90, hfov: 60, lamps, lut, conv: 'A', lane: 3.5, look: { RL: 0.2 }, A: null, src };
+    // Compare to Road.model.lux on the same tabulated beam; this independently checks angle conventions, inverse-square loss and incidence on bends.
+    let worst = 0;
+    for (const conv of ['A', 'B', 'S']) for (const arc of [null, A, RF.Road.arc(250, 'right')]) for (const rel of [15, 50, 100]) {
+      const car = { rel, off: 3.5 }, q = arc ? arc.at(rel, 3.5) : { p: [rel, 3.5], t: [1, 0] };
+      const mdl = RF.Road.model({ road: { mountH: 0.7, spacing: 1.4, two: true }, conv, I: (h, v) => D.lutAt(lut, h, v) });
+      const ref = mdl.lux([q.p[0], q.p[1], 1.1], [q.t[0], q.t[1], 0]), got = DA.eyeLux(Object.assign({}, p, { A: arc, conv }), car); worst = Math.max(worst, Math.abs(ref - got));
+    }
+    ok('D3e eye lux matches the road model at 1.1 m (27 cases: A/B/S, straight/left/right)', worst < 1e-10, 'worst absolute lux difference ' + worst);
+    const flashBeam = Object.assign({}, p, { lut: D.lutFrom(() => 1000) }), flash = DA.flashState(), near = cars.find((c) => c.kind === 'oncoming'), d = near.rel - 30;
+    const dark = Object.assign({}, p, { lut: D.lutFrom(() => 0) }); DA.countFlashes(flash, dark, d, 0);
+    ok('D3f unlit eye does not count; a lit eye counts only once across repeated frames', flash.n === 0 && DA.countFlashes(flash, flashBeam, d, 0) === 1 && DA.countFlashes(flash, flashBeam, d, 0) === 1);
+    const next = DA.trafficCars(src, d + 150, 0).find((c) => c.kind === 'oncoming'); DA.countFlashes(flash, flashBeam, d + 150 + next.rel - 30, 0);
+    ok('D3f another driver increments the count; passed IDs are pruned; reset starts at zero', flash.n === 2 && flash.seen.size <= 2 && DA.flashState().n === 0);
+    // Read actual rendered pixels, with and without emitters and our beam (no proxy score).
+    for (const kind of ['oncoming', 'preceding']) {
+      const objs = DA.trafficObjects(src, [{ id: kind + ':sample', kind, rel: 35, off: kind === 'oncoming' ? 3.5 : 0 }], null);
+      const image = (obs, beam) => D.render({ w: 320, h: 180, ss: 2, hfov: 60, eye: DA.EYE, lamps, lut: beam, lane: 3.5, scene: { objects: obs, markings: [] } }).rgb;
+      const lit = image(objs, dark.lut), unlit = image(objs.map((o) => Object.assign({}, o, { emit: [0, 0, 0] })), dark.lut), body = image(objs.map((o) => Object.assign({}, o, { emit: [0, 0, 0] })), lut);
+      let emission = 0, reflected = 0, r = 0, g = 0; for (let i = 0; i < lit.length; i++) { emission += lit[i] - unlit[i]; reflected += body[i] - unlit[i]; if (i % 3 === 0) r += lit[i]; if (i % 3 === 1) g += lit[i]; }
+      ok('D3g ' + kind + ': visible emitters and body lit by our beam' + (kind === 'preceding' ? '; tail light pixels are red' : ''), emission > 0 && reflected > 0 && (kind !== 'preceding' || r > 10 * g), 'emitted RGB sum ' + emission.toFixed(3) + ', beam-lit RGB sum ' + reflected.toFixed(3));
+    }
+    // Assemble real tracer jobs across successive moving frames. This is the worker entry point, including nonzero t and both lamp types.
+    let parity = true, n = 0;
+    for (const name of ['road', 'forest', 'city']) {
+      const sc = DA.source(name, 3.5, false, flags, opts), pp = Object.assign({}, p, { src: sc, A }), T = DA.tracer();
+      T.cfg({ id: 3, p: { w: p.w, h: p.h, hfov: p.hfov, lamps, lut, conv: 'A', lane: 3.5, look: p.look }, arc: { R: A.R, dir: A.dir }, src: [name, 3.5, false, flags, opts] });
+      for (const [seq, dist, t] of [[1, 0, 0], [2, 50, 2], [3, 95, 5]]) {
+        const ref = new Float32Array(4 * p.w * p.h), got = new Float32Array(ref.length); DA.objects(pp, dist, ref, 1, null, null, null, t);
+        for (let c = 0; c < 5; c++) { const job = T.job({ seq, dist, t, ss: 1, act: [], c, K: 5, wid: 0 }), f = new Float32Array(job.buf, 0, job.len); let off = 0; for (const ty of job.trows) { const y = ty * 16, len = (Math.min(p.h, y + 16) - y) * p.w * 4; got.set(f.subarray(off, off + len), y * p.w * 4); off += len; } }
+        for (let i = 0; i < ref.length; i++) if (ref[i] !== got[i]) parity = false; n++;
+      }
+    }
+    ok('D3h both traffic lanes through worker jobs = page trace bit for bit across moving frames in road, forest, city', parity, n + ' frames');
+  }
   process.exitCode = fails ? 1 : 0;
 })();
