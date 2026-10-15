@@ -814,7 +814,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     for (const f of ['core','road','drive','drive-scenes','drive-anim']) vm.runInContext(cp.execFileSync('git', ['show', '4bae491:js/'+f+'.js'], { encoding: 'utf8' }), ctx);
     const old=ctx.RF.DriveAnim, oldD=ctx.RF.Drive; let identical=true, compared=0;
     for (const name of ['road','forest','city']) for (const bend of [null, RF.Road.arc(250,'right')]) for (const dist of [0,37.3,111.7]) for (const traffic of [false,true]) {
-      const o={wild:true,seed:7,density:0.5,safeGap:false,tiles:false,oncoming:traffic,preceding:traffic}, now=Object.assign({},p,{w:96,h:54,A:bend,src:A.source(name,3.5,false,flags,o)}), then=Object.assign({},now,{src:old.source(name,3.5,false,flags,o)});
+      const o={wild:true,seed:7,density:0.5,safeGap:false,tiles:false,onMode:'manual',oncoming:traffic,preceding:traffic}, now=Object.assign({},p,{w:96,h:54,A:bend,src:A.source(name,3.5,false,flags,o)}), then=Object.assign({},now,{src:old.source(name,3.5,false,flags,o)});
       const g=A.ground(now), h=old.ground(then), r=new Float32Array(4*96*54), s=new Float32Array(r.length); A.objects(now,dist,r,1); old.objects(then,dist,s,1);
       const a=A.composeCPU(now,g,r,dist), b=old.composeCPU(then,h,s,dist); identical=identical && a.every((v,i)=>v===b[i]); compared++;
       const scene=D.buildScene(name,{Lw:3.5,A:bend,us:false,seed:7},flags), base=oldD.buildScene(name,{Lw:3.5,A:bend,us:false,seed:7},flags), cam={w:96,h:54,hfov:60,eye:A.EYE,lamps:p.lamps,lut:p.lut,lane:3.5,arc:bend,look:p.look,ss:1};
@@ -824,5 +824,54 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   }
   // SB2: explicit source mounting / H4 assembly, complete lens geometry and fixed-optics placement reproduction.
   await require('./sb2-node.js')(ok);
+  // D5: shared realism math + raw renderer/worker output (browser appearance belongs to the tester).
+  {
+    const D=RF.Drive, A=RF.DriveAnim, H=D.Headlamp, flags={people:false,animals:false,signs:false,posts:false,veg:false}, zero=D.lutFrom(()=>0), lut=D.lutFrom((h,v)=>2000+20*h+30*v);
+    const values=[[-3.43,0],[-3.43,.57],[3,0],[0,0]].map(([h,v])=>H.generic(h,v));
+    ok('D5a generic low beam has a right shoulder, ~1 kcd left horizon and <=350 cd at B50L; high beam is tens of kcd', values[0]>500&&values[0]<2000&&values[1]<=350&&values[2]>7000&&values[2]<13000&&H.generic(0,0,true)>20000, JSON.stringify(values));
+    const fallback=D.buildScene('road',{Lw:3.5}, {oncoming:{dist:80}}).objects.filter(o=>o.headlamp);
+    ok('D5a still scene without an intensity uses generic low beam instead of the old 30 kcd default',fallback.length===2&&fallback.every(o=>o.eyeCd>0&&o.eyeCd<1000),JSON.stringify(fallback.map(o=>o.eyeCd)));
+    let worst=0, samples=[];
+    for(const conv of ['A','B','S'])for(const bend of [null,RF.Road.arc(150,'right'),RF.Road.arc(150,'left')]){
+      const src=A.source('road',3.5,false,flags,{oncoming:true,onMode:'symmetric'}), p={lut,conv}, car={id:'oncoming:0',kind:'oncoming',rel:80,off:3.5}, obs=A.trafficObjects(src,[car],bend,p);
+      for(const ob of obs.filter(o=>o.headlamp)){
+        // Independent rotation into the other car's frame, then the public FarField angle conversion.
+        const dx=A.EYE[0]-ob.x,dy=A.EYE[1]-ob.y,dz=A.EYE[2]-ob.z, local=[dx*ob.nx+dy*ob.ny,-dx*ob.ny+dy*ob.nx,dz], hv=RF.FarField.hvOf(local,conv), expected=D.lutAt(lut,hv[0],hv[1]);
+        worst=Math.max(worst,Math.abs(ob.eyeCd-expected)); samples.push(ob.eyeCd);
+      }
+    }
+    ok('D5b symmetric lamps sample our far field at the other car direction on straight/left/right roads in A/B/S', worst<1e-8&&Math.max(...samples)-Math.min(...samples)>100, 'worst cd error '+worst+'; first six '+JSON.stringify(samples.slice(0,6)));
+    const k=D.kit({Lw:3.5});k.car(40,3.5,{face:-1,lamps:'head',kcd:1});H.apply(k.O,{mode:'symmetric',lut:zero});
+    const heads=k.O.filter(o=>o.headlamp);
+    ok('D5b absent/empty far field falls back to generic, with finite emitter luminance',heads.length===2&&heads.every(o=>o.eyeCd>0&&o.emit.every(Number.isFinite)),JSON.stringify(heads.map(o=>o.eyeCd)));
+    const theta=(a)=>[Math.cos(a*Math.PI/180),Math.sin(a*Math.PI/180),0], sources=[[1,0,0,1]], v2=D.veilAt(theta(2),sources),v4=D.veilAt(theta(4),sources);
+    ok('D5c Stiles-Holladay: 1 lx at 2 degrees -> 2.5 cd/m², twice angle -> quarter veil; finite core',Math.abs(v2-2.5)<1e-10&&Math.abs(v4-.625)<1e-10&&D.veilAt([1,0,0],sources)===10,JSON.stringify({v2,v4,core:D.veilAt([1,0,0],sources)}));
+    const s2=D.glareSources(k.O), E=heads.reduce((sum,o)=>{const dx=o.x-A.EYE[0],dy=o.y-A.EYE[1],dz=o.z-A.EYE[2],r=Math.hypot(dx,dy,dz);return sum+o.eyeCd*dx/(r*r*r);},0);
+    ok('D5c eye illuminance uses directional cd / distance² and incidence, before HDR clamping',Math.abs(s2.reduce((sum,o)=>sum+o[3],0)-E)<1e-12,JSON.stringify({E,sources:s2}));
+    const res={w:128,h:72,hfov:60,rgb:new Float32Array(128*72*3).fill(.1)}, opts={mode:'fixed',ev:1,glare:'off'};
+    const off=D.tonemap(res,opts), noSource=D.tonemap(res,{...opts,sources}), veiled=D.tonemap(res,{...opts,glare:'dry',sources}), adapted=D.tonemap(res,{...opts,mode:'adapt',glare:'dry',sources});
+    ok('D5c glare off ignores veil; veil adds before mapping and adapt lowers gain with incoming glare',off.px.every((v,i)=>v===noSource.px[i])&&veiled.px[0]>off.px[0]&&adapted.k<off.k&&adapted.white>off.white,JSON.stringify({plain:off.px[0],veil:veiled.px[0],white:off.white,adaptWhite:adapted.white}));
+    ok('D5d saved glare levels map to off/rain; named levels increase; capped bright pass cannot exceed 64',D.glareLevel(false)==='off'&&D.glareLevel(0)==='off'&&D.glareLevel(true)==='rain'&&D.glareLevel(.3)==='rain'&&D.glareLevel(1)==='rain'&&D.glareStrength('off')<D.glareStrength('dry-low')&&D.glareStrength('dry-low')<D.glareStrength('dry')&&D.glareStrength('dry')<D.glareStrength('rain')&&D.brightCap(1e12)<64&&D.brightCap(1)===0);
+    const w=640,h=360,rgb=new Float32Array(w*h*3);for(let y=176;y<184;y++)for(let x=316;x<324;x++)for(let c=0;c<3;c++)rgb[3*(y*w+x)+c]=65504;
+    const bloom=D.tonemap({w,h,hfov:60,rgb},{mode:'fixed',ev:1,glare:'rain'}),at=(x,y)=>bloom.px[4*(y*w+x)];
+    const profile={axis:at(330,180),sameRadiusDiagonal:at(327,187),far:at(345,180)};
+    ok('D5d extreme HDR patch has a round falling halo rather than a saturated box',profile.axis>profile.far&&profile.far>0&&Math.abs(profile.axis-profile.sameRadiusDiagonal)<8&&profile.axis<100,JSON.stringify(profile));
+    const huge=D.tonemap({w,h,hfov:60,rgb:rgb.map(v=>v*10000)},{mode:'fixed',ev:1,glare:'rain'});let capError=0;for(let q=0;q<w*h;q++)if(Math.abs(q%w-319.5)>8||Math.abs(Math.floor(q/w)-179.5)>8)capError=Math.max(capError,Math.abs(huge.px[4*q]-bloom.px[4*q]));
+    ok('D5d another 10000x lamp luminance cannot blow up the bounded halo; Gaussian angular size survives resolution changes',capError<=1&&Math.abs(D.glareSigma(1280,60)/D.glareSigma(640,60)-2)<1e-12,'worst halo byte change '+capError);
+    const patch={w:2,h:1,hfov:1,rgb:new Float32Array([.1,.1,.1,.12,.12,.12])}, clean=D.tonemap(patch,{mode:'fixed',ev:1,glare:'off'}),fog=D.tonemap(patch,{mode:'fixed',ev:1,glare:'dry',sources:[[1,0,0,.1]]}),contrast=px=>(px[4]-px[0])/(px[4]+px[0]);
+    ok('D5c a dim target actually loses displayed contrast under the incoming veil',contrast(fog.px)<contrast(clean.px),JSON.stringify({clean:[clean.px[0],clean.px[4]],veil:[fog.px[0],fog.px[4]],contrastClean:contrast(clean.px),contrastVeil:contrast(fog.px)}));
+    const cam={w:160,h:90,hfov:60,eye:A.EYE,lamps:[[0,0,.68]],lut:zero,lane:3.5,ss:1,scene:{objects:k.O,markings:[],verge:['grass',1,'grass']}}, plain=D.render({...cam,look:{wet:true,wetSheen:false}}),wet=D.render({...cam,look:{wet:true,wetSheen:true}});
+    let groundAdded=0;for(let q=0;q<160*90;q++){if(plain.mat[q]===D.materials({wet:true}).asphalt.id)groundAdded+=wet.rgb[3*q]-plain.rgb[3*q];}
+    ok('D5e traffic creates actual wet-road luminance with our beam off',groundAdded>0&&wet.rgb.every(Number.isFinite), 'summed added road red luminance '+groundAdded);
+    const light={x:30,y:0,z:7,cd:900,rgb:[1,.5,.2]},empty={...cam,scene:{objects:[],markings:[],verge:['grass',1,'grass']},pointLights:[light]},a=D.render({...empty,look:{wet:true}}),b=D.render({...empty,look:{wet:true,wetSheen:true}});
+    const dry=D.render({...cam,look:{wet:false}});
+    ok('D5e street lamps create road sheen beyond their diffuse lighting; dry setting suppresses sheen',b.rgb.some((v,i)=>v>a.rgb[i]+1e-4)&&D.render({...cam,look:{wet:false,wetSheen:true}}).rgb.every((v,i)=>v===dry.rgb[i]));
+    let parity=true,n=0;
+    for(const tiles of [false,true])for(const mode of ['symmetric','generic','high','manual']){
+      const srcArgs=['road',3.5,false,flags,{oncoming:true,preceding:true,onMode:mode,tiles,streetLamps:'led',seed:7,trafficDensity:2}], p={w:96,h:54,hfov:60,lamps:[[0,0,.68]],lut,conv:'A',lane:3.5,look:{wet:true,wetSheen:true},A:RF.Road.arc(250,'right'),src:A.source(...srcArgs)},buf=new Float32Array(96*54*4),rows=A.objects(p,40,buf,1,null,null,null,2),T=A.tracer();T.cfg({id:1,p,arc:{R:250,dir:'right'},src:srcArgs});
+      const r=T.job({seq:1,dist:40,t:2,ss:1,act:[],c:0,K:1,wid:0}),got=new Float32Array(r.buf,0,r.len);parity=parity&&r.trows.length===Math.ceil(54/16)&&got.length===buf.length&&got.every((v,i)=>Number.isFinite(v)&&v===buf[i]);n++;
+    }
+    ok('D5f full wet frames = worker frames bit for bit, tiles on/off × all four lamp modes',parity,n+' frames');
+  }
   process.exitCode = fails ? 1 : 0;
 })();

@@ -6,7 +6,7 @@
  *            render (the dash drawn solid minus the dash left out) that the compose shader fades by the stripe's coverage at s + dist, exactly as covLon does.
  *   objects  Posts, signs, people, deer, trees, bushes, crates are placed relative to the car every frame (the scenery repeats every PERIOD metres) and
  *            traced by RF.Drive.render in its `layer: 'objects'` mode: only the pixels they can touch, written as (luminance·coverage, coverage).
- *   GPU      compose (objects over ground + dash) → glare (separable box blurs, the radii and weights of Drive.tonemap) → ACES + sRGB → the canvas.
+ *   GPU      compose (objects over ground + dash) → glare (Gaussian pyramid, shared levels with Drive.tonemap) → ACES + sRGB → the canvas.
  * Frame = objects·(coverage) + (1 − coverage)·(ground + stripe·dash), then the same tone map. composeCPU() is that sum in plain JS (tests, parity).
  * The ground and the objects are rendered at the "sim" size (the canvas, 640..1600 px wide); the canvas itself is css px × devicePixelRatio (≤ 2).
  *
@@ -41,6 +41,7 @@
   function trafficSource(src, opts) {
     const o = opts || {}, dn = o.trafficDensity === undefined ? 1 : Math.max(0, Math.min(3, +o.trafficDensity || 0));
     src.traffic = { seed: (+o.seed || 0) | 0, density: dn, oncoming: !!o.oncoming, preceding: !!o.preceding, models: {} };
+    src.traffic.onMode = o.onMode || (o.onKcd === undefined ? 'symmetric' : 'manual'); src.traffic.onKcd = o.onKcd === undefined ? 30 : +o.onKcd;
     src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
     if (o.tiles) src.markings = D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });
     if (o.tiles) src.tiles = { seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', grain: o.tex !== false, wet: !!o.wet };
@@ -66,7 +67,7 @@
     return out;
   }
   // Rotate the whole car around its centre (including emitter normals), so it stays rigid on a bend.
-  function trafficObjects(src, cars, A) {
+  function trafficObjects(src, cars, A, p) {
     const out = [];
     for (const car of cars) {
       const q = A ? A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }, c = q.t[0], sn = q.t[1], yaw = Math.atan2(sn, c);
@@ -77,9 +78,10 @@
         out.push(n);
       }
     }
+    if (p && src.traffic && src.traffic.onMode !== 'manual') D.Headlamp.apply(out, { mode: src.traffic.onMode, kcd: src.traffic.onKcd, lut: p.lut, conv: p.conv });
     return out;
   }
-  const placedObjects = (p, dist, t, tauOf) => place(p.src, dist, p.A, tauOf, dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A));
+  const placedObjects = (p, dist, t, tauOf) => place(p.src, dist, p.A, tauOf, dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p));
   // Same eye illuminance as Road.model.lux: far-field intensity / distance² × incidence cosine. Driver faces back along their lane, eye 1.1 m up.
   function eyeLux(p, car) {
     const q = p.A ? p.A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }; let E = 0;
@@ -148,7 +150,7 @@
     const src = p.src, cfg = src.tiles, lane = p.lane, A = tileRoute(cfg.seed, dist), edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
     const pp = Object.assign({}, p, { A });
     // Street lights can reach foliage outside our beam: keep it for actual per-point shading.
-    const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' ? dimFoliage(pp) : null).concat(trafficObjects(src, trafficCars(src, dist, t), A));
+    const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' ? dimFoliage(pp) : null).concat(trafficObjects(src, trafficCars(src, dist, t), A, pp));
     for (const tile of A.tiles) {
       const mid = tile.s0 + 100 - dist, junction = tile.kind === 'intersection' || tile.kind === 't-junction';
       if (mid < -110 || mid > CULL + 110) continue;
@@ -291,6 +293,11 @@
   // tileRow(ty) → true: trace only these 16-px tile rows (a worker's share); the rows come back with .trows = the tile rows that were traced
   function objects(p, dist, rgba, ss, tauOf, tileRow, placed, t) {
     if (p.src.tiles) return tileFrame(p, dist, t || 0, rgba, ss, tauOf, tileRow, placed);
+    if (p.look.wet && p.look.wetSheen) {
+      const markings = p.src.markings.map((m) => m.pat ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { s0: m.pat.s0 - dist % m.pat.period, s1: m.pat.s1 - dist % m.pat.period }) }) : m);
+      const r = D.render(Object.assign({}, camOf(p), { ss: ss || 2, layer: 'frame', tight: true, rgba, tileRow, grain: p.look.grain ? tileGrain(dist, true) : null, scene: { objects: placed || placedObjects(p, dist, t || 0, tauOf), markings, verge: p.src.verge } }));
+      r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
+    }
     const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, tileRow, scene: { objects: placed || placedObjects(p, dist, t || 0, tauOf), markings: [], verge: p.src.verge } }, camOf(p)));
     r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
   }
@@ -375,21 +382,39 @@ void main() {
       if (uTex > 0.0 && off > -0.5 * uLw - uVw && off < 1.5 * uLw + uVw) g *= max(0.25, 1.0 + uTex * grain(s + uTexDist, off, h));
     }
   }
-  o = vec4(ob.rgb + (1.0 - ob.a) * g, 1.0);
+  o = vec4(min(vec3(65504.0), max(vec3(0.0), ob.rgb + (1.0 - ob.a) * g)), 1.0);
 }`;
   const FS_BRIGHT = `#version 300 es
 precision highp float; uniform sampler2D uT; uniform float uK; uniform vec2 uSize; out vec4 o;
-void main() { vec3 c = texture(uT, gl_FragCoord.xy / uSize).rgb * uK - 1.0; o = vec4(max(c, 0.0), 1.0); }`;
+void main() {
+  ivec2 base = ivec2(gl_FragCoord.xy) * 2, sz = textureSize(uT, 0); vec3 s = vec3(0.0);
+  for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) { vec3 x = max(texelFetch(uT, min(base + ivec2(i,j), sz-1), 0).rgb * uK - 1.0, 0.0); s += 64.0 * x / (64.0 + x); }
+  o = vec4(s * 0.25, 1.0);
+}`;
+  const FS_REDUCE = `#version 300 es
+precision highp float; uniform sampler2D uT; out vec4 o;
+void main() {
+  ivec2 base = ivec2(gl_FragCoord.xy) * 2, sz = textureSize(uT, 0); vec3 s = vec3(0.0);
+  for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) s += texelFetch(uT, min(base + ivec2(i,j), sz-1), 0).rgb;
+  o = vec4(s * 0.25, 1.0);
+}`;
   const FS_BLUR = `#version 300 es
-precision highp float; uniform sampler2D uT; uniform vec2 uSize, uDir; uniform int uRad; uniform float uScale; out vec4 o;
-void main() { vec2 uv = gl_FragCoord.xy / uSize; vec3 s = vec3(0.0); for (int i = -uRad; i <= uRad; i++) s += texture(uT, uv + float(i) * uDir / uSize).rgb; o = vec4(s / float(2 * uRad + 1) * uScale, 1.0); }`;
+precision highp float; uniform sampler2D uT; uniform vec2 uSize, uDir, uSourceSize; uniform float uScale, uSigma; uniform int uRad; out vec4 o;
+void main() {
+  vec2 uv = gl_FragCoord.xy / uSize; vec3 s = vec3(0.0); float norm = 0.0;
+  for (int i = -uRad; i <= uRad; i++) { float wt = exp(-0.5 * pow(float(i) / uSigma, 2.0)); s += texture(uT, uv + float(i) * uDir / uSourceSize).rgb * wt; norm += wt; }
+  o = vec4(s / norm * uScale, 1.0);
+}`;
   const FS_FINAL = `#version 300 es
-precision highp float; uniform sampler2D uHdr, uGlare; uniform vec2 uSize; uniform float uK, uFlip, uGl; out vec4 o;
+precision highp float; uniform sampler2D uHdr, uGlare; uniform vec2 uSize; uniform float uK, uFlip, uGl, uVeil, uTanH, uTanV; uniform int uNS; uniform vec4 uSources[32]; out vec4 o;
 vec3 aces(vec3 x) { x = max(x, 0.0); return min((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 1.0); }
 vec3 srgb(vec3 c) { return mix(12.92 * c, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 void main() {
   vec2 uv = gl_FragCoord.xy / uSize; uv.y = 1.0 - uv.y; if (uFlip > 0.5) uv.x = 1.0 - uv.x;
-  vec3 lin = texture(uHdr, uv).rgb * uK + (uGl > 0.0 ? texture(uGlare, uv).rgb : vec3(0.0));
+  vec3 dir = normalize(vec3(1.0, -(2.0 * uv.x - 1.0) * uTanH, (1.0 - 2.0 * uv.y) * uTanV));
+  float veil = 0.0;
+  if (uVeil > 0.0) for (int i = 0; i < 32; i++) { if (i >= uNS) break; float theta = max(1.0, degrees(acos(clamp(dot(dir, uSources[i].xyz), -1.0, 1.0)))); veil += 10.0 * uSources[i].w / (theta * theta); }
+  vec3 lin = (texture(uHdr, uv).rgb + uVeil * veil) * uK + (uGl > 0.0 ? texture(uGlare, uv).rgb : vec3(0.0));
   o = vec4(srgb(aces(lin)), 1.0);
 }`;
 
@@ -403,7 +428,7 @@ void main() {
       const u = {}; for (let i = 0, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i < n; i++) { const a = gl.getActiveUniform(p, i); u[a.name] = gl.getUniformLocation(p, a.name); }
       return { p, u };
     };
-    const P = { compose: prog(FS_COMPOSE), bright: prog(FS_BRIGHT), blur: prog(FS_BLUR), fin: prog(FS_FINAL) };
+    const P = { compose: prog(FS_COMPOSE), bright: prog(FS_BRIGHT), reduce: prog(FS_REDUCE), blur: prog(FS_BLUR), fin: prog(FS_FINAL) };
     gl.bindVertexArray(gl.createVertexArray());
     const T = {};                                         // name → { t, f, w, h }
     const mk = (name, w, h, ifmt, filter) => {
@@ -420,9 +445,10 @@ void main() {
       // allocate for a sim size and a canvas size
       resize(W, H, cw, ch) {
         R.cw = cw; R.ch = ch; if (W === R.W && H === R.H) return false;
-        R.W = W; R.H = H; const hw = Math.max(1, W >> 1), hh = Math.max(1, H >> 1);
+        R.W = W; R.H = H; const hw = Math.max(1, Math.ceil(W / 2)), hh = Math.max(1, Math.ceil(H / 2));
         mk('A', W, H, gl.RGBA16F, gl.NEAREST); R.BL = 0; mk('O', W, H, gl.RGBA32F, gl.NEAREST); mk('hdr', W, H, gl.RGBA16F, gl.LINEAR);
-        for (const n of ['src', 'p', 'q', 'acc']) mk(n, hw, hh, gl.RGBA16F, gl.LINEAR);
+        mk('acc', hw, hh, gl.RGBA16F, gl.LINEAR);
+        for (const factor of D.GLARE_BANDS) for (const n of ['s', 'p']) mk(n + factor, Math.max(1, Math.ceil(hw / factor)), Math.max(1, Math.ceil(hh / factor)), gl.RGBA16F, gl.LINEAR);
         gl.bindTexture(gl.TEXTURE_2D, T.O.t); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, W, H, gl.RGBA, gl.FLOAT, new Float32Array(4 * W * H));
         return true;
       },
@@ -444,7 +470,7 @@ void main() {
       },
       /* f: { cam: { tanH, hfov }, dist, A (arc|null), pat, k (exposure), glare (strength), flip } */
       draw(f) {
-        const W = R.W, H = R.H, hw = T.src.w, hh = T.src.h, tanH = Math.tan(f.hfov * Math.PI / 360), tanV = tanH * H / W;
+        const W = R.W, H = R.H, hw = T.acc.w, hh = T.acc.h, tanH = Math.tan(f.hfov * Math.PI / 360), tanV = tanH * H / W;
         gl.disable(gl.BLEND);
         gl.bindFramebuffer(gl.FRAMEBUFFER, T.hdr.f); gl.viewport(0, 0, W, H);
         const pats = f.pats || [], U = P.compose.u;
@@ -453,19 +479,24 @@ void main() {
         bindTex(0, 'A', P.compose.u.uA); bindTex(2, 'O', P.compose.u.uO); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D_ARRAY, T.Bt); gl.uniform1i(P.compose.u.uB, 1);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         if (f.glare > 0) {
+          const sigma = D.glareSigma(W, f.hfov), rad = Math.ceil(3 * sigma);
           gl.viewport(0, 0, hw, hh);
-          gl.bindFramebuffer(gl.FRAMEBUFFER, T.src.f); use(P.bright, { uK: f.k, uSize: [hw, hh] }); bindTex(0, 'hdr', P.bright.u.uT); gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, T.s1.f); use(P.bright, { uK: f.k, uSize: [hw, hh] }); bindTex(0, 'hdr', P.bright.u.uT); gl.drawArrays(gl.TRIANGLES, 0, 3);
           gl.bindFramebuffer(gl.FRAMEBUFFER, T.acc.f); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
-          const levels = [[Math.max(1, Math.round(W / 220)), 0.012], [Math.max(2, Math.round(W / 70)), 0.010], [Math.max(3, Math.round(W / 22)), 0.008]];
-          const pass = (src, dst, dx, dy, rad, scale, add) => {
-            gl.bindFramebuffer(gl.FRAMEBUFFER, T[dst].f); if (add) { gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); } else gl.disable(gl.BLEND);
-            use(P.blur, { uSize: [hw, hh], uDir: [dx, dy], uRad: rad, uScale: scale }); bindTex(0, src, P.blur.u.uT); gl.drawArrays(gl.TRIANGLES, 0, 3);
-          };
-          for (const [r, wt] of levels) { const rh = Math.max(1, Math.round(r / 2)); pass('src', 'p', 1, 0, rh, 1, false); pass('p', 'q', 0, 1, rh, 1, false); pass('q', 'p', 1, 0, rh, 1, false); pass('p', 'acc', 0, 1, rh, f.glare * wt, true); }
+          let prev = 's1';
+          for (const factor of D.GLARE_BANDS) {
+            const src = 's' + factor, tmp = 'p' + factor, a = T[src];
+            if (factor !== 1) { gl.disable(gl.BLEND); gl.viewport(0, 0, a.w, a.h); gl.bindFramebuffer(gl.FRAMEBUFFER, a.f); use(P.reduce, {}); bindTex(0, prev, P.reduce.u.uT); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+            gl.disable(gl.BLEND); gl.viewport(0, 0, a.w, a.h); gl.bindFramebuffer(gl.FRAMEBUFFER, T[tmp].f);
+            use(P.blur, { uSize: [a.w, a.h], uSourceSize: [a.w, a.h], uDir: [1, 0], uSigma: sigma, uRad: rad, uScale: 1 }); bindTex(0, src, P.blur.u.uT); gl.drawArrays(gl.TRIANGLES, 0, 3);
+            gl.viewport(0, 0, hw, hh); gl.bindFramebuffer(gl.FRAMEBUFFER, T.acc.f); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+            use(P.blur, { uSize: [hw, hh], uSourceSize: [a.w, a.h], uDir: [0, 1], uSigma: sigma, uRad: rad, uScale: f.glare * D.GLARE_WEIGHT }); bindTex(0, tmp, P.blur.u.uT); gl.drawArrays(gl.TRIANGLES, 0, 3); prev = src;
+          }
           gl.disable(gl.BLEND);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, R.cw, R.ch);
-        use(P.fin, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: f.glare > 0 ? 1 : 0 });
+        use(P.fin, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: f.glare > 0 ? 1 : 0, uVeil: f.veil || 0, uTanH: tanH, uTanV: tanV });
+        const sources = f.sources || [], sa = new Float32Array(128); sources.slice(0, 32).forEach((q, i) => sa.set(q, i * 4)); gl.uniform1i(P.fin.u.uNS, Math.min(32, sources.length)); gl.uniform4fv(P.fin.u['uSources[0]'], sa);
         bindTex(0, 'hdr', P.fin.u.uHdr); bindTex(1, 'acc', P.fin.u.uGlare); gl.drawArrays(gl.TRIANGLES, 0, 3);
       },
       // the HDR sim image back on the CPU (tests): Float32Array 4·W·H, row 0 = top
@@ -489,7 +520,7 @@ void main() {
 
   function size() {                                           // → { cssW, cssH, dpr, W, H } for the container the canvas lives in
     const par = V.canvas.parentElement, bw = par.clientWidth, bh = par.clientHeight, dpr = Math.min(2, root.devicePixelRatio || 1);
-    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16, W = Math.max(MIN_SIM, Math.min(V.info && V.info.o.tiles ? 640 : V.info && HEAVY_SIM[V.info.o.scene] || MAX_SIM, Math.round(cssW * dpr))) & ~1,       // dynamic tiles redraw the ground: 640 px; forest/city otherwise use their existing cap (canvas size unchanged)
+    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16, W = Math.max(MIN_SIM, Math.min(V.info && (V.info.o.tiles || (V.info.o.wet && V.info.o.wetSheen)) ? 640 : V.info && HEAVY_SIM[V.info.o.scene] || MAX_SIM, Math.round(cssW * dpr))) & ~1,       // dynamic tiles redraw the ground: 640 px; forest/city otherwise use their existing cap (canvas size unchanged)
        H = Math.round(W * 9 / 16) & ~1;
     return { cssW, cssH, dpr, W, H, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
   }
@@ -503,21 +534,32 @@ void main() {
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
     const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles]);
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.trafficDensity, o.safeGap, o.tiles && [o.streetLamps, o.tex, o.wet]]);
-    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, trafficDensity: o.trafficDensity, safeGap: o.safeGap, speed: o.speed, tiles: !!o.tiles, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; V.src = source.apply(null, V.srcArgs); V.skey = tkey; }
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, o.tiles && [o.streetLamps, o.tex, o.wet]]);
+    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, speed: o.speed, tiles: !!o.tiles, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; V.src = source.apply(null, V.srcArgs); V.skey = tkey; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
-    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, RL: o.RL / 1000, ambient: o.ambient }, src: V.src };
+    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src };
     if (V.gkey !== key || V.rdRef !== I.rd) {
-      V.g = o.tiles ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
+      V.g = o.tiles || (o.wet && o.wetSheen) ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
     }
     V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr));
   }
-  function exposure() {
+  function frameSources(dist, t) {
+    let p = V.p; if (p.src.tiles) p = Object.assign({}, p, { A: tileRoute(p.src.tiles.seed, dist) });
+    return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), EYE);
+  }
+  function exposure(sources) {
     const I = info(), o = I.o;
     if (o.expMode === 'auto' && V.kAuto) return V.kAuto;
-    return Math.pow(2, o.ev) / D.L_REF;
+    const k = Math.pow(2, o.ev) / D.L_REF;
+    return o.expMode === 'adapt' ? 1 / (1 / k + D.veilStrength(o.glare) * D.veilAt([1, 0, 0], sources || frameSources(S(V.ui).dist, S(V.ui).t))) : k;
+  }
+  function exposureLabel(k) {
+    V.white = 1 / k;
+    const I = info(), o = I.o, b = I.toolbar && I.toolbar.querySelector('[data-dv="ev"]');
+    if (o.expMode === 'adapt' && b) b.textContent = 'EV ' + (o.ev >= 0 ? '+' : '−') + Math.abs(o.ev).toFixed(1) + ' · white ' + V.white.toPrecision(3) + ' cd/m²';
+    return k;
   }
   const ssNow = () => V.pinSS || (V.p.w > 1100 ? 1 : (V.ss || 2));
   // samples per pixel for the objects: 2×2 where it is cheap; one while a big object is close (the cost is its area) and until things are calm again. ms = what the last frame's trace took
@@ -530,12 +572,14 @@ void main() {
     const ui = V.ui, st = S(ui), I = info(), o = I.o, t0 = performance.now(), W = V.p.w, pb = V.band, had = pb[1] > pb[0];
     if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
     V.src.traffic.speed = +info().o.speed || 50; pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
-    const rows = objects(V.p, st.dist, V.rgba, ssNow(), tauFor(V.act, st.t), null, null, st.t);
+    const placed = (V.src.tiles ? tileWorld : placedObjects)(V.p, st.dist, st.t, tauFor(V.act, st.t));
+    const rows = objects(V.p, st.dist, V.rgba, ssNow(), null, null, placed, st.t);
     const t1 = performance.now();
     adaptSS(t1 - t0);
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
-    V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposure(), glare: +o.glare || 0, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane });
+    const sources = D.glareSources(V.src.tiles ? placed.objects : placed, EYE);
+    V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane });
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
     flashLabel(st.dist, st.t); ui.dvAnimFrames = V.frames;
   }
@@ -597,7 +641,8 @@ void main() {
     if (y1 <= y0) { y0 = 0; y1 = 0; }
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], y0) : y0, had ? Math.max(pb[1], y1) : y1); V.band = [y0, y1];
     const t2 = performance.now();
-    V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, b.dist), A: I.A, k: exposure(), glare: +o.glare || 0, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
+    const sources = frameSources(b.dist, b.t);
+    V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
     V.times.push(t3); if (V.times.length > 300) V.times.shift();
@@ -768,7 +813,7 @@ void main() {
   function stats() {
     const t = V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); iv.sort((a, b) => a - b);
     const med = iv.length ? iv[iv.length >> 1] : 0, c = V.cpu;
-    return { frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
+    return { white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
   }
   function resetStats() { V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
@@ -779,5 +824,5 @@ void main() {
   }
   RF.DriveAnim = { TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
-    _: { V, S, Wk, frame, frameMT, mt, size, prepare, exposure, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
+    _: { V, S, Wk, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

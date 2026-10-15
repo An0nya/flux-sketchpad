@@ -215,7 +215,7 @@
     const fullLayer = o.layer === 'frame', objOnly = o.layer === 'objects', rgba = (objOnly || fullLayer) && o.rgba ? o.rgba : null, cov = objOnly && !rgba ? new Float32Array(w * h) : null;
     const rgb = rgba ? null : new Float32Array(w * h * 3), depth = objOnly ? null : new Float32Array(w * h).fill(Infinity), matBuf = objOnly ? null : new Uint8Array(w * h);
     const amb = look.ambient > 0 ? look.ambient : 0, skyL = amb * 0.012;       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
-    const pointLights = o.pointLights || [], crossings = o.crossings || [];
+    const pointLights = o.pointLights || [], crossings = o.crossings || [], sheen = look.wet && look.wetSheen, reflections = sheen ? reflectionSources(objs).concat(pointLights) : [];
     const delta0 = 2 * tanH / w;                                              // radians per pixel
     // tiles of 16 px: which objects can touch them (by the bounding sphere's projection)
     const TS = 16, tw = Math.ceil(w / TS), th = Math.ceil(h / TS), tiles = new Array(tw * th).fill(null);
@@ -272,11 +272,15 @@
         const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2));
         r += rho[0] * L.rgb[0] * e; g += rho[1] * L.rgb[1] * e; b += rho[2] * L.rgb[2] * e;
       }
+      if (sheen && nz === 1 && (m.id === M.asphalt.id || m.id === M.concrete.id)) for (const L of reflections) {
+        const a = L.cd * wetLobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
+      }
       for (let i = 0; i < nl; i++) {
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
         if (!(NoL > 0)) continue;
         if (preA) { const a = dx / rr, b = -dy / rr, c = dz / rr; if (c < sv0 || c > sv1 || a <= 0 || b > a * th1 || b < a * th0) continue; }
         hvFast(dx, dy, dz, conv); const I = lutAt(lut, HV0, HV1); if (!(I > 0)) continue;
+        if (sheen && nz === 1 && m.id === M.asphalt.id) { const a = I * wetLobe(-dx, -dy, -dz, vx, vy, vz); r += a; g += a; b += a; }
         const Ep = I / r2;                                                    // E⊥, lux square to the beam
         const d = Ep * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
         if (m.gloss && NoV > 0) {
@@ -360,18 +364,81 @@
     return { L: lumaOf(r, g, b), rgb: [r, g, b], depth: res.depth[q], mat: res.names[res.mat[q]] };
   }
 
+  // Reusable other-driver beam, independent of the scene/animation. Analytic sketch, NOT a certified lamp.
+  // R112 class B, B50L (0.57U/3.43L) <=350 cd is a constraint, not an entire far field.
+  // The right-side shoulder/hotspot and left-horizon spill are deliberately approximate (cd per lamp).
+  const Headlamp = {
+    generic(h, v, high) {
+      if (high) return 30000 * Math.exp(-0.5 * ((h / 9) ** 2 + (v / 4) ** 2)) + 300;
+      const cut = -0.35 + Math.min(1.4, Math.max(0, h) * 0.15), below = 1 / (1 + Math.exp(Math.max(-60, Math.min(60, (v - cut) / 0.12))));
+      return 120 + 750 * Math.exp(-Math.max(0, v) / 0.3) + below * (1800 + 10000 * Math.exp(-0.5 * (((h - 3) / 7) ** 2 + ((v + 1) / 2.5) ** 2)));
+    },
+    cd(ob, o) {
+      const eye = o.eye || [-2, 0.37, 1.2], dx = eye[0] - ob.x, dy = eye[1] - ob.y, dz = eye[2] - ob.z;
+      const forward = dx * ob.nx + dy * ob.ny, left = -dx * ob.ny + dy * ob.nx;
+      if (!(forward > 0)) return 0;
+      hvFast(forward, left, dz, o.mode === 'symmetric' && o.lut && o.hasDesign !== false ? o.conv || 'A' : 'A'); const h = HV0, v = HV1;
+      if (o.mode === 'manual') return Math.max(0, o.kcd === undefined ? 30 : o.kcd) * 500 * Math.pow(forward / Math.hypot(dx, dy, dz), 8);
+      if (o.mode === 'high') return Headlamp.generic(h, v, true);
+      return o.mode !== 'generic' && o.lut && o.lut.data && o.hasDesign !== false ? lutAt(o.lut, h, v) : Headlamp.generic(h, v, false);
+    },
+    apply(objects, o) {
+      // Test table availability once per frame, never scan it per lamp.
+      o = Object.assign({}, o); if (o.lut && !o.lut.data) o.lut = null; o.hasDesign = !!(o.lut && o.lut.data.some((x) => x > 0));
+      for (const ob of objects) if (ob.headlamp) {
+        const cd = Headlamp.cd(ob, o), e = o.eye || [-2, 0.37, 1.2], dx = e[0] - ob.x, dy = e[1] - ob.y, dz = e[2] - ob.z;
+        const cos = Math.max(1e-6, (dx * ob.nx + dy * ob.ny) / Math.hypot(dx, dy, dz));
+        // Renderer applies one cosine to emitter luminance. Cancel it: cd is already toward the eye.
+        const L = cd / (Math.PI * ob.r * ob.r * cos); ob.emit = [L, L, 0.93 * L]; ob.emitPow = 1; ob.eyeCd = cd;
+      }
+      return objects;
+    }
+  };
+  const GLARE = { off: 0, 'dry-low': 0.035, dry: 0.1, rain: 0.3 };
+  function glareLevel(v) { if (v in GLARE) return v; return v == null || v === false || v === 0 || v === 'off' ? 'off' : 'rain'; }
+  const glareStrength = (v) => typeof v === 'number' ? Math.max(0, v) : v === true ? 1 : GLARE[glareLevel(v)];
+  const brightCap = (v) => { const x = Math.max(0, v - 1); return 64 * x / (64 + x); };
+  // CIE 146:2002, CIE equations for disability glare; Stiles–Holladay 10 E / theta².
+  // 1 degree floor: the formula is not a model of the lamp core. No age/ocular-pigmentation correction or occlusion tracing.
+  function glareSources(objects, eye) {
+    eye = eye || [-2, 0.37, 1.2]; const out = [];
+    for (const ob of objects) if (ob.headlamp) {
+      const dx = ob.x - eye[0], dy = ob.y - eye[1], dz = ob.z - eye[2], rr = Math.hypot(dx, dy, dz);
+      if (dx <= 0 || !(rr > 0)) continue;
+      const cos = Math.max(0, -(dx * ob.nx + dy * ob.ny) / rr), cd = ob.eyeCd === undefined ? ob.emit[0] * Math.PI * ob.r * ob.r * Math.pow(cos, ob.emitPow || 1) : ob.eyeCd;
+      out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr)]);
+    }
+    return out.slice(0, 32);
+  }
+  function veilAt(dir, sources) {
+    let L = 0; for (const q of sources || []) { const theta = Math.max(1, Math.acos(Math.max(-1, Math.min(1, dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]))) / D2R); L += 10 * q[3] / (theta * theta); } return L;
+  }
+  const veilStrength = (v) => glareStrength(v) > 0 ? (glareLevel(v) === 'dry-low' ? 0.5 : 1) : 0;
+  function reflectionSources(objects) {
+    return objects.filter((o) => o.headlamp || o.taillamp).map((o) => ({ x: o.x, y: o.y, z: o.z, cd: o.eyeCd === undefined ? o.emit[0] * Math.PI * o.r * o.r : o.eyeCd, rgb: o.taillamp ? [1, 0.03, 0.015] : [1, 1, 0.93] }));
+  }
+  // Broadening the mirror image mostly along the viewing direction makes a road streak.
+  // Cheap anisotropic mirror-lobe approximation, not a measured wet-pavement BRDF or ray-traced reflection.
+  function wetLobe(dx, dy, dz, vx, vy, vz) {
+    const rr = Math.hypot(dx, dy, dz), lx = dx / rr, ly = dy / rr, lz = dz / rr;
+    let hx = lx + vx, hy = ly + vy, hz = lz + vz; const hl = Math.hypot(hx, hy, hz) || 1; hx /= hl; hy /= hl; hz /= hl;
+    const vl = Math.hypot(vx, vy) || 1, along = (hx * vx + hy * vy) / vl, across = (-hx * vy + hy * vx) / vl;
+    const F = 0.02 + 0.98 * (1 - Math.max(0, vz)) ** 5;
+    return F * Math.exp(-0.5 * ((along / 0.23) ** 2 + (across / 0.025) ** 2)) * Math.max(0, hz) * 4 / (rr * rr);
+  }
   // ---------------------------------------------------------------- exposure and tone mapping
-  /* Scene-referred luminance → a display. Two ways to set the exposure:
+  /* Scene-referred luminance → a display. Exposure modes:
    *   fixed — an absolute EV: EV 0 puts 10 cd/m² at display white, each stop doubles it. The same EV on two designs makes their
    *           brightness comparable (this is the mode for comparing).
    *   auto  — the geometric mean of the lit pixels goes to 18 % grey (+ the EV offset): every picture looks "exposed", so
    *           brightness differences between designs are hidden (this is the mode for looking).
-   * Then an ACES-style filmic curve (Narkowicz fit) and the sRGB transfer. glare: a cheap veiling-glare bloom — the part of each pixel
-   * above display white is spread by a wide kernel (the eye's scatter) and added back.                                           */
+   *   adapt — fixed reference white plus the central disability veil, recomputed as lamps approach.
+   * Then an ACES-style filmic curve (Narkowicz fit) and the sRGB transfer. glare: capped bright pixels spread through a
+   * Gaussian mixture (appearance); the separate Stiles–Holladay veil reduces contrast before mapping.                                           */
   const L_REF = 10;
   function exposureOf(res, opt) {
     const ev = opt.ev || 0;
-    if (opt.mode === 'fixed') return { k: Math.pow(2, ev) / L_REF, white: L_REF / Math.pow(2, ev) };
+    if (opt.mode === 'fixed' || opt.mode === 'adapt') return { k: Math.pow(2, ev) / L_REF, white: L_REF / Math.pow(2, ev) };
     let sum = 0, n = 0; const d = res.rgb;
     for (let q = 0; q < res.w * res.h; q++) { const y = lumaOf(d[3 * q], d[3 * q + 1], d[3 * q + 2]); if (y > 1e-4) { sum += Math.log(y); n++; } }
     const key = n ? Math.exp(sum / n) : 1, k = 0.18 * Math.pow(2, ev) / key;
@@ -379,24 +446,52 @@
   }
   const aces = (x) => { x = x < 0 ? 0 : x; const y = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14); return y > 1 ? 1 : y; };
   const srgb = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
-  function boxBlur(src, w, h, r) {        // separable box blur, 3 channels, edge-clamped
-    const tmp = new Float32Array(src.length), out = new Float32Array(src.length), n = 2 * r + 1;
-    for (let y = 0; y < h; y++) for (let c = 0; c < 3; c++) { let s = 0; for (let x = -r; x <= r; x++) s += src[3 * (y * w + Math.max(0, Math.min(w - 1, x))) + c]; for (let x = 0; x < w; x++) { tmp[3 * (y * w + x) + c] = s / n; s += src[3 * (y * w + Math.min(w - 1, x + r + 1)) + c] - src[3 * (y * w + Math.max(0, x - r)) + c]; } }
-    for (let x = 0; x < w; x++) for (let c = 0; c < 3; c++) { let s = 0; for (let y = -r; y <= r; y++) s += tmp[3 * (Math.max(0, Math.min(h - 1, y)) * w + x) + c]; for (let y = 0; y < h; y++) { out[3 * (y * w + x) + c] = s / n; s += tmp[3 * (Math.min(h - 1, y + r + 1) * w + x) + c] - tmp[3 * (Math.max(0, y - r) * w + x) + c]; } }
+  // Four equal-energy Gaussian bands at logarithmically spaced angular scales: their
+  // normalized 2D peaks scale as 1/sigma², approximating the CIE 146 theta^-2 tail.
+  // This is a visual approximation, not a fitted/calibrated CIE PSF; rain is an artistic level.
+  const GLARE_BANDS = [1, 2, 4, 8], GLARE_WEIGHT = 0.0075;
+  const glareSigma = (w, fov) => Math.max(0.35, 1.5 * w / 640 * Math.tan(Math.PI / 6) / Math.tan((fov || 60) * D2R / 2));
+  function resample(src, w, h, W, H) {
+    const out = new Float32Array(W * H * 3);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const xx = (x + 0.5) * w / W - 0.5, yy = (y + 0.5) * h / H - 0.5, ix = Math.floor(xx), iy = Math.floor(yy), fx = xx - ix, fy = yy - iy;
+      for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) for (let c = 0; c < 3; c++) out[3 * (y * W + x) + c] += src[3 * (Math.max(0, Math.min(h - 1, iy + j)) * w + Math.max(0, Math.min(w - 1, ix + i))) + c] * (i ? fx : 1 - fx) * (j ? fy : 1 - fy);
+    } return out;
+  }
+  function reduce(src, w, h, W, H) {
+    const out = new Float32Array(W * H * 3), nx = Math.ceil(w / W), ny = Math.ceil(h / H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) for (let c = 0; c < 3; c++) out[3 * (y * W + x) + c] += src[3 * (Math.min(h - 1, y * ny + j) * w + Math.min(w - 1, x * nx + i)) + c] / (nx * ny);
+    return out;
+  }
+  function gaussian(src, w, h, sigma) {
+    const rad = Math.ceil(3 * sigma), tmp = new Float32Array(src.length), out = new Float32Array(src.length), weights = Array.from({ length: 2 * rad + 1 }, (_, i) => Math.exp(-0.5 * ((i - rad) / sigma) ** 2)), norm = weights.reduce((a, b) => a + b, 0);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let i = -rad; i <= rad; i++) for (let c = 0; c < 3; c++) tmp[3 * (y * w + x) + c] += src[3 * (y * w + Math.max(0, Math.min(w - 1, x + i))) + c] * weights[i + rad] / norm;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let i = -rad; i <= rad; i++) for (let c = 0; c < 3; c++) out[3 * (y * w + x) + c] += tmp[3 * (Math.max(0, Math.min(h - 1, y + i)) * w + x) + c] * weights[i + rad] / norm;
     return out;
   }
   function tonemap(res, opt) {
     opt = opt || {}; const ex = exposureOf(res, opt), w = res.w, h = res.h, n = w * h, lin = new Float32Array(3 * n);
-    for (let q = 0; q < 3 * n; q++) lin[q] = res.rgb[q] * ex.k;
-    const gl = opt.glare === true ? 1 : +opt.glare || 0;           // strength: 0 off, 1 = the original weights
+    const vs = veilStrength(opt.glare), sources = opt.sources || [], tanH = Math.tan((res.hfov || 60) * D2R / 2), tanV = tanH * h / w;
+    if (opt.mode === 'adapt') { const white = L_REF / Math.pow(2, opt.ev || 0) + vs * veilAt([1, 0, 0], sources); ex.k = 1 / white; ex.white = white; }
+    for (let q = 0; q < n; q++) {
+      let veil = 0;
+      if (vs && sources.length) { const dy = -(2 * (q % w + 0.5) / w - 1) * tanH, dz = (1 - 2 * (Math.floor(q / w) + 0.5) / h) * tanV, rr = Math.hypot(1, dy, dz); veil = vs * veilAt([1 / rr, dy / rr, dz / rr], sources); }
+      for (let c = 0; c < 3; c++) lin[3 * q + c] = (res.rgb[3 * q + c] + veil) * ex.k;
+    }
+    const gl = glareStrength(opt.glare);
     if (gl > 0) {
-      const ex1 = new Float32Array(3 * n); let any = false; for (let q = 0; q < 3 * n; q++) { const e = lin[q] - 1; if (e > 0) { ex1[q] = e; any = true; } }
-      if (any) { for (const [r, wt] of [[Math.max(1, Math.round(w / 220)), 0.012], [Math.max(2, Math.round(w / 70)), 0.010], [Math.max(3, Math.round(w / 22)), 0.008]]) { const b = boxBlur(boxBlur(ex1, w, h, r), w, h, r); for (let q = 0; q < 3 * n; q++) lin[q] += gl * wt * b[q]; } }
+      let src = new Float32Array(3 * n), W = w, H = h;
+      for (let q = 0; q < 3 * n; q++) src[q] = brightCap(res.rgb[q] * ex.k);
+      for (const factor of GLARE_BANDS) {
+        const bw = Math.max(1, Math.ceil(w / (2 * factor))), bh = Math.max(1, Math.ceil(h / (2 * factor)));
+        src = reduce(src, W, H, bw, bh); W = bw; H = bh;
+        const b = resample(gaussian(src, W, H, glareSigma(w, res.hfov)), W, H, w, h); for (let q = 0; q < 3 * n; q++) lin[q] += gl * GLARE_WEIGHT * b[q];
+      }
     }
     const px = new Uint8ClampedArray(4 * n);
     for (let q = 0; q < n; q++) { px[4 * q] = Math.round(255 * srgb(aces(lin[3 * q]))); px[4 * q + 1] = Math.round(255 * srgb(aces(lin[3 * q + 1]))); px[4 * q + 2] = Math.round(255 * srgb(aces(lin[3 * q + 2]))); px[4 * q + 3] = 255; }
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
+  RF.Drive = { Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
