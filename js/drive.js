@@ -141,6 +141,13 @@
     if (ob.k === 'box') { ob.cy = Math.cos(ob.yaw || 0); ob.sy = Math.sin(ob.yaw || 0); }
     return ob;
   }
+  // one slab of a box test (module state instead of a closure per call: this runs for every ray × object)
+  let ST0 = 0, ST1 = 0, SFACE = -1;
+  function slab(o, d, lo, hi, f) {
+    if (Math.abs(d) < 1e-12) return o >= lo && o <= hi;
+    let a = (lo - o) / d, b = (hi - o) / d, fa = f * 2, fb = f * 2 + 1; if (a > b) { const tt = a; a = b; b = tt; const tf = fa; fa = fb; fb = tf; }
+    if (a > ST0) { ST0 = a; SFACE = fa; } if (b < ST1) ST1 = b; return ST0 <= ST1;
+  }
   // nearest hit of a ray (o + t·d, d unit) with a primitive in (1e-4, tmax); sets NX/NY/NZ, HU, HF, HSCALE
   function hitObj(ob, ox, oy, oz, dx, dy, dz, tmax, delta) {
     HSCALE = 1; HF = 0;
@@ -163,13 +170,9 @@
     }
     if (ob.k === 'box') {
       const c = ob.cy, s = ob.sy, rx = ox - ob.x, ry = oy - ob.y, lx = c * rx + s * ry, ly = -s * rx + c * ry, ldx = c * dx + s * dy, ldy = -s * dx + c * dy;
-      let t0 = 1e-4, t1 = tmax, face = -1;
-      const slab = (o, d, lo, hi, f) => {
-        if (Math.abs(d) < 1e-12) return o >= lo && o <= hi;
-        let a = (lo - o) / d, b = (hi - o) / d, fa = f * 2, fb = f * 2 + 1; if (a > b) { const tt = a; a = b; b = tt; const tf = fa; fa = fb; fb = tf; }
-        if (a > t0) { t0 = a; face = fa; } if (b < t1) t1 = b; return t0 <= t1;
-      };
+      ST0 = 1e-4; ST1 = tmax; SFACE = -1;
       if (!slab(lx, ldx, -ob.hx, ob.hx, 0) || !slab(ly, ldy, -ob.hy, ob.hy, 1) || !slab(oz, dz, ob.z0, ob.z1, 2)) return Infinity;
+      const t0 = ST0, face = SFACE;
       if (face < 0 || t0 >= tmax) return Infinity;
       let nx = 0, ny = 0, nz = 0, u = 0; const px = lx + t0 * ldx, py = ly + t0 * ldy;
       if (face === 0) { nx = -1; u = py; } else if (face === 1) { nx = 1; u = py; } else if (face === 2) { ny = -1; u = px; } else if (face === 3) { ny = 1; u = px; } else if (face === 4) { nz = -1; u = px; } else { nz = 1; u = px; }
@@ -216,7 +219,14 @@
     // and a ray stops testing at the first one whose near is not below the best hit so far: the same nearest hit, fewer tests (o.sort === false: the original order, every object tested)
     const near = new Float32Array(objs.length), ord = new Int32Array(objs.length); objs.forEach((ob, idx) => { ord[idx] = idx; if (!ob.bs) boundOf(ob); });
     if (o.sort !== false) {
-      objs.forEach((ob, idx) => { if (ob.k === 'disc' && ob.sub) return; const d = Math.hypot(ob.bs[0] - ex, ob.bs[1] - ey, ob.bs[2] - ez); near[idx] = Math.max(0, (d - ob.bs[3]) * 0.999 - 1e-3); });
+      objs.forEach((ob, idx) => {
+        if (ob.k === 'disc' && ob.sub) return;
+        let d;
+        if (ob.k === 'box') { const rx = ex - ob.x, ry = ey - ob.y, lx = ob.cy * rx + ob.sy * ry, ly = -ob.sy * rx + ob.cy * ry; d = Math.hypot(Math.max(Math.abs(lx) - ob.hx, 0), Math.max(Math.abs(ly) - ob.hy, 0), Math.max(ob.z0 - ez, ez - ob.z1, 0)); }   // the distance from the eye to the box itself, not its bounding sphere (a long building has a huge sphere)
+        else if (ob.k === 'cyl') d = Math.hypot(Math.max(Math.hypot(ex - ob.x, ey - ob.y) - ob.r, 0), Math.max(ob.z0 - ez, ez - ob.z1, 0));
+        else d = Math.max(0, Math.hypot(ob.bs[0] - ex, ob.bs[1] - ey, ob.bs[2] - ez) - ob.bs[3]);
+        near[idx] = Math.max(0, d * 0.999 - 1e-3);
+      });
       ord.sort((a, b) => near[a] - near[b] || a - b);
     }
     for (let oi = 0; oi < ord.length; oi++) {
@@ -242,6 +252,9 @@
     }
     // ---- shading
     let LR = 0, LG = 0, LB = 0;
+    // a direction outside the beam table's window has I = 0 (lutAt): with the table's window in hand (A convention) most of a scene is rejected without the two trig calls of hvFast. Never rejects inside the window.
+    const lw = [lut.h0, lut.h0 + lut.nh * lut.step, lut.v0, lut.v0 + lut.nv * lut.step], preA = conv === 'A' && lw[0] > -89 && lw[1] < 89 && lw[2] > -89 && lw[3] < 89;
+    const sv0 = Math.sin(lw[2] * D2R) - 1e-9, sv1 = Math.sin(lw[3] * D2R) + 1e-9, th0 = Math.tan(lw[0] * D2R) * (1 + 1e-9) - 1e-12, th1 = Math.tan(lw[1] * D2R) * (1 + 1e-9) + 1e-12;
     // add a surface point's luminance, weighted: P = hit, n = unit normal (facing the eye), m = material, k = weight, v = unit vector to the eye
     function shade(px, py, pz, nx, ny, nz, m, k, vx, vy, vz, rscale) {
       let r = 0, g = 0, b = 0;
@@ -251,6 +264,7 @@
       for (let i = 0; i < nl; i++) {
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
         if (!(NoL > 0)) continue;
+        if (preA) { const a = dx / rr, b = -dy / rr, c = dz / rr; if (c < sv0 || c > sv1 || a <= 0 || b > a * th1 || b < a * th0) continue; }
         hvFast(dx, dy, dz, conv); const I = lutAt(lut, HV0, HV1); if (!(I > 0)) continue;
         const Ep = I / r2;                                                    // E⊥, lux square to the beam
         const d = Ep * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
