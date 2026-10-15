@@ -126,10 +126,12 @@
   }
   // Keep a solve fast while the tab is in the background (an inaudible tone, js/solver-host.js).  Off until chosen: the first solve that ran while the tab was hidden
   // asks once (ui.renderAwakePrompt), and this box is the setting.
+  let awakeBox = null, awakeSync = false;
   function keepAwakeRow() {
     const H = RF.SolverHost; if (!H || !H.setKeepAwake) return el('span');
     const box = el('input', { type: 'checkbox', checked: H.keepAwake() ? true : null });
     box.addEventListener('change', () => H.setKeepAwake(box.checked));
+    awakeBox = box; if (!awakeSync && typeof document !== 'undefined') { awakeSync = true; document.addEventListener('flux-awake-ask', () => { if (awakeBox) awakeBox.checked = H.keepAwake(); }); }   // the one-time question answers into this box
     return el('label', { class: 'tog', title: 'A tab that is not in front is slowed by the operating system to a fraction of its speed (measured 4-5x on an M4). While a solve runs, play an inaudible tone (volume 0.001 %, no sound you can hear) so the browser treats the tab as active. Off by default; some browsers show a speaker icon on the tab. If you never chose, the app asks once after a solve that ran while the tab was hidden.' }, box, ' Keep solving at full speed in a background tab');
   }
   // GPU trace (js/gpu-trace.js): the same rays on WebGPU, f32 — statistically the same result, not bit-identical; remembered per browser

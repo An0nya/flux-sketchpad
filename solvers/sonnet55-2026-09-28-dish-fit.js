@@ -337,11 +337,14 @@
         try { tools.preview(out.surfaces, { label, trace: tr, note: 'trial design (static dish-fit, tuned settings)' }); } catch (e) { /* display only */ }
       };
       // run a batch of trials: in the pool (parallel, in order), on the GPU (designs here or in the pool, traces on the GPU), or here
+      let gpuOn = !!st.traceGpu && typeof tools.traceAsync === 'function';
       const runTrials = async (overs) => {
         const args = overs.map((over) => ({ base, over, rays: st.rays, seed: input.seed }));
-        if (st.traceGpu && typeof tools.traceAsync === 'function') {
+        if (gpuOn) {
           const outs = tools.pool && tools.pool.size > 1 ? await tools.pool.map('design', args) : args.map((a) => TASKS.design(input, a));
-          return Promise.all(outs.map((out, j) => (out.surfaces.length ? Promise.resolve().then(() => tools.traceAsync(out.surfaces, { rays: args[j].rays, seed: args[j].seed })).then((tr) => ({ out, tr }), () => null) : null)));
+          const rs = await Promise.all(outs.map((out, j) => (out.surfaces.length ? Promise.resolve().then(() => tools.traceAsync(out.surfaces, { rays: args[j].rays, seed: args[j].seed })).then((tr) => ({ out, tr }), () => null) : null)));
+          if (rs.some((r) => r && r.tr && !r.tr.gpu)) gpuOn = false;      // no GPU here (switch off, no adapter, an exit-list trace): the next batches go the CPU way, designs and traces together in the pool
+          return rs;
         }
         return tools.pool ? tools.pool.map('candidate', args) : args.map((a) => TASKS.candidate(input, a, { trace: tools.trace }));
       };

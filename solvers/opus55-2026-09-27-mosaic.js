@@ -604,11 +604,14 @@
       const seed = input.seed | 0, w = GOAL_W[settings.goal] || null, cache = new Map(), total = 1 + knobs.reduce((a, k) => a + k[1].length, 0) + 3;
       let done = 0, op0 = 0, pk0 = 0;
       // a batch of candidates (same rays): in the pool (parallel, results in order), on the GPU (designs here or in the pool, traces on the GPU), or here
+      let gpuOn = !!settings.traceGpu && typeof tools.traceAsync === 'function';
       const runBatch = async (overs, rays) => {
         const args = overs.map((over) => ({ base, over, rays, seed }));
-        if (settings.traceGpu && typeof tools.traceAsync === 'function') {
+        if (gpuOn) {
           const outs = tools.pool && tools.pool.size > 1 ? await tools.pool.map('design', args) : args.map((a) => TASKS.design(input, a));
-          return Promise.all(outs.map((out) => Promise.resolve().then(() => tools.traceAsync(out.surfaces, { rays, seed })).then((tr) => ({ out, tr }))));
+          const rs = await Promise.all(outs.map((out) => Promise.resolve().then(() => tools.traceAsync(out.surfaces, { rays, seed })).then((tr) => ({ out, tr }))));
+          if (rs.some((r) => !r.tr.gpu)) gpuOn = false;      // no GPU here: the next batches go the CPU way, designs and traces together in the pool
+          return rs;
         }
         if (tools.pool) return tools.pool.map('candidate', args);
         const o = []; for (const a of args) { const out = TASKS.design(input, a); o.push({ out, tr: await tools.trace(out.surfaces, { rays, seed }) }); }

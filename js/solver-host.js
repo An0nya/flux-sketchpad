@@ -105,7 +105,7 @@
             j.cancel = null;
             const ms = limitMs(), onPreview = typeof tools.preview === 'function' && !tools.preview.none ? tools.preview : null;   // no preview callback ⇒ the worker sends none
             const p = ask({ type: 'solve', id: def.id, input, settings, scene, budget: Object.assign({}, BUDGET, { ms }), preview: !!onPreview, gpu: !!(RF.GpuTrace && RF.GpuTrace.pref()), pool: threads() }, tools.progress, ms, onPreview);
-            wake(true); if (hidden()) hiddenSolve = true; const off = () => { wake(false); if (hiddenSolve && keepPref === null && !hidden()) { asked = true; if (typeof document !== 'undefined') document.dispatchEvent(new Event('flux-awake-ask')); } if (!hidden()) hiddenSolve = false; };   // still hidden: the question waits for the visibilitychange p.then(off, off);
+            wake(true); if (hidden()) hiddenSolve = true; const off = () => { wake(false); if (hiddenSolve && keepPref === null && !hidden()) { asked = true; if (typeof document !== 'undefined') document.dispatchEvent(new Event('flux-awake-ask')); } if (!hidden()) hiddenSolve = false; }; p.then(off, off);   // still hidden at the end: the question waits for the visibilitychange
             j.rid = p.rid; p.then(resolve, reject);
           });
         }).then((d) => { lastStats = { traceMs: d.traceMs, traces: d.traces, gpuTraces: d.gpuTraces || 0, raysUsed: d.raysUsed, ms: performance.now() - j.t0 }; return d.output; });
