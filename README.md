@@ -32,6 +32,9 @@ node tests/headless.js
 Options: `--only 1,2,14` runs a subset, `--json out.json` writes results. Exit code 1 means a
 check failed. The same checks run in the page under **Verification → Run all checks**.
 
+Agents and scripts: `node tools/flux.js` lists solvers and presets, traces and judges a scene, runs a solver and writes
+a far-field PNG, all as JSON on stdout without a browser. See [tools/FLUX-CLI.md](tools/FLUX-CLI.md).
+
 `tests/serve.py` is a tiny no-cache static server (default port 8743; pass another port as the
 first argument). Use it, or any static server, to run the app.
 
