@@ -34,7 +34,7 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
         if (popout) await page.locator('[data-anim=popout]').click();
         const layout = await page.evaluate(() => {
           const bar = RF.UI.driveBar, p = bar.querySelector('.drive-primary'), r = bar.getBoundingClientRect(), c = [...p.children].map((e) => e.getBoundingClientRect());
-          return { left: r.left, right: r.right, width: innerWidth, rowHeight: p.getBoundingClientRect().height, spread: Math.max(...c.map((e) => e.top)) - Math.min(...c.map((e) => e.top)), closed: !bar.querySelector('details').open, extraVisible: bar.querySelector('[data-dv=shape]').getClientRects().length > 0, primary: [...p.querySelectorAll('button,input,select')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game) };
+          return { left: r.left, right: r.right, width: innerWidth, rowHeight: p.getBoundingClientRect().height, spread: Math.max(...c.map((e) => e.top)) - Math.min(...c.map((e) => e.top)), closed: !bar.querySelector('details').open, extraVisible: bar.querySelector('[data-dv=shape]').checkVisibility(), primary: [...p.querySelectorAll('button,input,select')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game) };
         });
         ok('UX1 one scrollable primary row, extras collapsed ' + width + (popout ? ' large' : ' inline'), layout.left >= 0 && layout.right <= width && layout.rowHeight < 60 && layout.spread < 15 && layout.closed && !layout.extraVisible && ['scene','speed','toggle','glare','oncoming','preceding','animate','play','popout'].every((k) => layout.primary.includes(k)), layout);
         await page.locator('.drive-more > summary').click();
@@ -80,6 +80,16 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
     });
     ok('UX1 game waits beyond timer, renders departure and resumes with road clear', departure.waiting.v === 0 && departure.waiting.off > 0 && departure.waiting.rendered && departure.resumed && departure.clear, departure);
     if (shots) await page.screenshot({ path: path.join(shots, 'departure.png') });
+    // UX1-DP-test: a running minigame must stay paused after a WebGL context restore (RB-tester finding); the player resumes it.
+    await page.locator('[data-game=toggle]').click(); await page.locator('[data-game=toggle]').click(); await page.locator('[data-game=start]').click();
+    await page.waitForFunction(() => RF.UI.dvAnim.playing && RF.UI.dvAnim.game, null, { timeout: 15000 }); await page.waitForTimeout(800);
+    const restore = await page.evaluate(async () => {
+      const a = RF.DriveAnim._, st = a.S(RF.UI), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), ext = a.V.gl.gl.getExtension('WEBGL_lose_context');
+      ext.loseContext(); await sleep(400); ext.restoreContext(); await sleep(1500);
+      const x1 = st.game.x, playing = st.playing; await sleep(800);
+      return { playing, x1, x2: st.game.x, lost: a.V.lost };
+    });
+    ok('UX1-DP-test running minigame stays paused after WebGL context restore', restore.playing === false && restore.lost === false && restore.x1 === restore.x2, restore);
     ok('UX1 no page errors', errors.length === 0, errors);
     console.log('Manual iOS Safari check still required: hold Brake for 2+ seconds, slide off, release, scroll lobby/card. Synthetic Chromium touch cannot prove native callout suppression.');
   } finally { await browser.close(); }

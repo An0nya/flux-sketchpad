@@ -8,7 +8,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const browser = await pw.chromium.launch(process.env.D1_REAL_GPU ? { channel: 'chromium' } : {}), errors = [];
   const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
   page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (m) => { if (m.type() === 'error' && !/404/.test(m.text())) errors.push(m.text()); });
-  await page.addInitScript(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
+  await page.addInitScript(() => { try { localStorage.clear(),localStorage.setItem('flux/driveMore','true'); } catch (e) { /* ignore */ } });
   await page.goto('http://localhost:' + port + '/index.html');
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
   await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 150000 });

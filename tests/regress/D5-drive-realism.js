@@ -6,7 +6,7 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
  const browser=await pw.chromium.launch(process.env.D5_REAL_GPU?{channel:'chromium'}:{});
  try{
   const page=await browser.newPage({viewport:{width:1500,height:950}}),errors=[];page.on('pageerror',e=>errors.push(String(e)));
-  await page.addInitScript(()=>{localStorage.clear();localStorage.setItem('flux/driveView',JSON.stringify({glare:.3,onKcd:30,wet:false}));});
+  await page.addInitScript(()=>{localStorage.clear(),localStorage.setItem('flux/driveMore','true');localStorage.setItem('flux/driveView',JSON.stringify({glare:.3,onKcd:30,wet:false}));});
   await page.goto('http://localhost:'+port+'/index.html');
   await page.waitForFunction(()=>window.RF&&RF.UI&&RF.UI.store&&RF.SolverHost&&!RF.SolverHost.loading(),null,{timeout:60000});
   ok('Flux UI and expected page port',await page.evaluate(p=>!!RF.UI&&location.port===String(p),port));
