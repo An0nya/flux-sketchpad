@@ -9,11 +9,12 @@ const port = +(process.argv[2] || 8726);
   await page.waitForFunction(() => !RF.UI.solving && RF.UI.run && RF.UI.run.ctx.done, null, { timeout: 200000, polling: 300 });
   if (!(await page.evaluate((p) => !!RF.UI && location.port === String(p), port))) throw new Error('wrong page');
   const res = await page.evaluate(async () => {
+    let sd = 12345; const rnd = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);   // seeded: the suite forbids the platform RNG
     const ui = RF.UI, T = RF.Engine.targetFrame(ui.store.scene.target), cv = document.getElementById('scene-canvas'), out = [];
     ui.cam.setAngles(-150, 15); ui.cam.fit([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, c]) => RF.Engine.targetUVtoWorld(T, a * T.half, c * T.half)), 0.1);
     for (const n of [1e5, 1e6, 2e6, 5e6, 1e7, 2e7]) {
       const uv = new Float32Array(3 * n), b = new Uint8Array(n);
-      for (let i = 0; i < n; i++) { uv[3 * i] = (Math.random() - 0.5) * T.half; uv[3 * i + 1] = (Math.random() - 0.5) * T.half; uv[3 * i + 2] = 1; b[i] = i & 3; }
+      for (let i = 0; i < n; i++) { uv[3 * i] = (rnd() - 0.5) * T.half; uv[3 * i + 1] = (rnd() - 0.5) * T.half; uv[3 * i + 2] = 1; b[i] = i & 3; }
       const H = { n, uv, b, key: {} }, t = [];
       const opts = { scene: ui.store.scene, model: ui.model, paths: ui.run.ctx.paths, heatCanvas: null, showRays: true, setup: false, sel: null, hits: H };
       let up = 0; const sc = ui.cam.project(T.C); if (!(sc[0] > 0 && sc[0] < cv.getBoundingClientRect().width && sc[1] > 0)) throw new Error('target centre off screen: ' + sc);
