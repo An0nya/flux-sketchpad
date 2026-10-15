@@ -402,5 +402,16 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('F4 a point edit (setProfile) retires the curve', st.scene.modeC.curve === undefined && !P.curveLive(st.scene.modeC));
     st.scene.modeC.curve = cv; ok('F4 a stale curve (profile no longer matches) is not trusted', !P.curveLive(st.scene.modeC));
   }
+  // D1a: the ground is anti-aliased across its material edges (asphalt / gravel / grass), not only along the paint: a 160x90 ground (1 sample) against the same view at 640x360 box-filtered down
+  {
+    const D = RF.Drive, lut = D.lutFrom(() => 3000), mean = (A) => {
+      const go = (w) => D.render({ w, h: w * 9 / 16, hfov: 45, eye: [-2, 0.37, 1.2], lamps: [[0, 0.7, 0.7], [0, -0.7, 0.7]], lut, conv: 'A', lane: 3.5, arc: A, ss: 1, look: { RL: 0.2 }, scene: { objects: [], markings: D.laneMarkings(3.5, { us: true }), verge: ['gravel', 1.5, 'grass'] } }).rgb;
+      const lo = go(160), hi = go(640); let e = 0, n = 0;
+      for (let y = 0; y < 90; y++) for (let x = 0; x < 160; x++) { let a = 0; for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) { const q = 3 * ((y * 4 + j) * 640 + x * 4 + i); a += (0.2126 * hi[q] + 0.7152 * hi[q + 1] + 0.0722 * hi[q + 2]) / 16; } const q = 3 * (y * 160 + x), b = 0.2126 * lo[q] + 0.7152 * lo[q + 1] + 0.0722 * lo[q + 2]; if (a > 1e-3) { e += Math.abs(a - b) / a; n++; } }
+      return e / n;
+    };
+    const bend = mean(RF.Road.arc(150, 'left')), straight = mean(null);
+    ok('D1a ground edges are anti-aliased (mean relative error vs a 4x render; before: 0.054 bend / 0.042 straight)', bend < 0.03 && straight < 0.03, 'bend ' + bend.toFixed(4) + ', straight ' + straight.toFixed(4));
+  }
   process.exitCode = fails ? 1 : 0;
 })();

@@ -236,7 +236,8 @@ void main() {
     const rows = objects(V.p, st.dist, V.rgba, V.pinSS || (W > 1100 ? 1 : (V.ss || 2)));
     const t1 = performance.now();
     // samples per pixel for the objects: 2×2 where it is cheap; one while a big object is close (the cost is its area) and until things are calm again
-    if (W <= 1100) { if ((V.ss || 2) === 2 && t1 - t0 > 20) { V.ss = 1; V.calm = 0; } else if (V.ss === 1 && t1 - t0 < 5) { if (++V.calm > 20) V.ss = 2; } else V.calm = 0; }
+    V.avg = V.avg === undefined ? t1 - t0 : V.avg * 0.9 + (t1 - t0) * 0.1;       // a smoothed cost: one slow frame (a big object passing) must not drop the edges to hard 1-sample for a long while
+    if (W <= 1100) { if ((V.ss || 2) === 2 && V.avg > 18) { V.ss = 1; V.calm = 0; } else if (V.ss === 1 && V.avg < 8) { if (++V.calm > 20) V.ss = 2; } else V.calm = 0; }
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
     V.gl.draw({ hfov: o.fov, dist: st.dist, A: I.A, pat: V.g.pat, k: exposure(), glare: +o.glare || 0, flip: I.mirrored });

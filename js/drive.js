@@ -257,21 +257,24 @@
     // the ground at P (distance t along the ray): road / verge, and the markings by coverage of the pixel's footprint
     let GM = 0;                                         // the material with the largest share of the last ground footprint (for the probe)
     function ground(px, py, t, sinB, vx, vy, vz, delta, kw) {
-      let s = px, off = py; if (A) { const f = A.frame(px, py); s = f.s; off = f.off; }
+      let s = px, off = py, nx = 0, ny = 1; if (A) { const f = A.frame(px, py); s = f.s; off = f.off; nx = -f.t[1]; ny = f.t[0]; }
       const hw = Math.max(0.5 * t * delta, 1e-4), hl = hw / Math.max(sinB, 0.003);
+      // the pixel's footprint on the ground is hw wide across the ray and hl long along it: its half-extent in the offset direction (a bend's far lines run across the view, where hl counts)
+      const hh = Math.hypot(vx, vy) || 1, ho = Math.hypot(hw * (nx * -vy + ny * vx) / hh, hl * (nx * vx + ny * vy) / hh);
       let rest = 1, bestW = 0; GM = MAT_ID.asphalt;
       for (let i = 0; i < marks.length; i++) {
-        const mk = marks[i], c = covLat(off, hw, mk.o0, mk.o1); if (c <= 0) continue;
+        const mk = marks[i], c = covLat(off, ho, mk.o0, mk.o1); if (c <= 0) continue;
         if (mk.skip) { let cut = false; for (let q = 0; q < mk.skip.length; q++) if (s > mk.skip[q][0] && s < mk.skip[q][1]) { cut = true; break; } if (cut) continue; }
         const cl = c * covLon(s, hl, mk.pat); if (cl <= 0) continue;
         shade(px, py, 0, 0, 0, 1, M[mk.mat], cl * kw, vx, vy, vz); rest -= cl; if (cl > bestW) { bestW = cl; GM = M[mk.mat].id; }
       }
       if (rest <= 0) return;
-      let mat;
-      if (cross && s >= cross.s0 && s <= cross.s1) mat = 'asphalt';                               // a cross street: pavement across every offset
-      else if (off >= -Lw / 2 && off <= 1.5 * Lw) mat = 'asphalt';
-      else { const dOut = off < -Lw / 2 ? -Lw / 2 - off : off - 1.5 * Lw; mat = dOut < (vg[1] || 1.5) ? vg[0] : (vg[2] || vg[0]); }
-      shade(px, py, 0, 0, 0, 1, M[mat], rest * kw, vx, vy, vz); if (rest > bestW) GM = M[mat].id;
+      if (cross && s >= cross.s0 && s <= cross.s1) { shade(px, py, 0, 0, 0, 1, M.asphalt, rest * kw, vx, vy, vz); if (rest > bestW) GM = M.asphalt.id; return; }   // a cross street: pavement across every offset
+      // the road, the two verge strips and what lies beyond them, each weighted by the share of the footprint it covers (no stair-steps along a long diagonal edge)
+      const vw = vg[1] || 1.5, far = vg[2] || vg[0], INF = 1e9, e0 = -Lw / 2, e1 = 1.5 * Lw;
+      const bands = [['asphalt', e0, e1], [vg[0], e0 - vw, e0], [vg[0], e1, e1 + vw], [far, -INF, e0 - vw], [far, e1 + vw, INF]];
+      let tot = 0; for (let i = 0; i < 5; i++) tot += covLat(off, ho, bands[i][1], bands[i][2]);
+      for (let i = 0; i < 5; i++) { const c = covLat(off, ho, bands[i][1], bands[i][2]) / (tot || 1); if (c <= 0) continue; shade(px, py, 0, 0, 0, 1, M[bands[i][0]], c * rest * kw, vx, vy, vz); if (c * rest > bestW) { bestW = c * rest; GM = M[bands[i][0]].id; } }
     }
     let sampleDepth = Infinity, sampleMat = MAT_ID.sky, covAcc = 0;
     // one ray through (fx, fy) in pixel units; adds weight k to the accumulators
