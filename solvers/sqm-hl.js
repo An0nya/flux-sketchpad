@@ -97,13 +97,18 @@
     return { pts: Float64Array.from(out), n: out.length / 7, area };
   }
 
+  // Scratch for footprint(): a dense accumulator over the grid + the keys in first-touched order, instead of a Map (same sums in the same order, the same idx / val order;
+  // no per-bin hashing or boxing).  One call at a time, so one buffer is shared.
+  let SCR = null;
+  function scratch(n) { if (!SCR || SCR.n < n) SCR = { n, mark: new Int32Array(n).fill(-1), val: new Float64Array(n), ord: new Int32Array(n), stamp: 0 }; return SCR; }
+  const R2D = 180 / Math.PI;
   // ------------------------------------------------------------------ footprint of one facet on a far-field grid
   // returns { flux, idx: Int32Array, val: Float64Array (lm per bin, bilinear), hc, vc (flux centroid), cov [hh, hv, vv] in degrees² }
   function footprint(f, S, grid, opt) {
     opt = opt || {};
     const fq = quadricOf(f), refl = f.optics && f.optics.reflectivity !== undefined ? f.optics.reflectivity : 0.9;
     const A = apertureSamples(f, fq, opt.na || 48); if (opt.occ) opt.occ(f, A);
-    const nh = grid.nh, nv = grid.nv, acc = new Map();
+    const nh = grid.nh, nv = grid.nv, sc = scratch(nh * nv), mk = sc.mark, av = sc.val, od = sc.ord, st = ++sc.stamp; let nk = 0, cv = grid.conv || 'A';
     const fin = isFinite(grid.distance), plane = fin ? grid.centre[0] + grid.distance : 0, c0 = grid.centre;
     let flux = 0, mh = 0, mv = 0, shh = 0, shv = 0, svv = 0;
     const wA = A.area / Math.max(1, A.n);
@@ -119,13 +124,15 @@
         const k = 2 * (dx * n0 + dy * n1 + dz * n2), ox = dx - k * n0, oy = dy - k * n1, oz = dz - k * n2;
         let ux = ox, uy = oy, uz = oz;
         if (fin) { if (!(ox > 1e-9)) continue; const t = (plane - X0) / ox; ux = X0 + t * ox - c0[0]; uy = X1 + t * oy - c0[1]; uz = X2 + t * oz - c0[2]; const L = Math.hypot(ux, uy, uz); ux /= L; uy /= L; uz /= L; }
-        const hv = RF.FarField.hvOf([ux, uy, uz], grid.conv), gh = (hv[0] - grid.h0) / grid.step - 0.5, gv = (hv[1] - grid.v0) / grid.step - 0.5;
-        flux += w; mh += w * hv[0]; mv += w * hv[1]; shh += w * hv[0] * hv[0]; shv += w * hv[0] * hv[1]; svv += w * hv[1] * hv[1];
+        let H, V_;     // = RF.FarField.hvOf([ux, uy, uz], conv), written out for convention A (the arithmetic is the same) so that no array is made per sample pair
+        if (cv === 'A') { const L = Math.hypot(ux, uy, uz) || 1; H = Math.atan2(-uy / L, ux / L) * R2D; V_ = Math.asin(Math.max(-1, Math.min(1, uz / L))) * R2D; } else { const hv = RF.FarField.hvOf([ux, uy, uz], grid.conv); H = hv[0]; V_ = hv[1]; }
+        const gh = (H - grid.h0) / grid.step - 0.5, gv = (V_ - grid.v0) / grid.step - 0.5;
+        flux += w; mh += w * H; mv += w * V_; shh += w * H * H; shv += w * H * V_; svv += w * V_ * V_;
         const i0 = Math.floor(gh), j0 = Math.floor(gv), fh = gh - i0, fv = gv - j0;
-        for (let jj = 0; jj < 2; jj++) for (let ii = 0; ii < 2; ii++) { const i = i0 + ii, j = j0 + jj; if (i < 0 || j < 0 || i >= nh || j >= nv) continue; const key = j * nh + i, ww = w * (ii ? fh : 1 - fh) * (jj ? fv : 1 - fv); acc.set(key, (acc.get(key) || 0) + ww); }
+        for (let jj = 0; jj < 2; jj++) for (let ii = 0; ii < 2; ii++) { const i = i0 + ii, j = j0 + jj; if (i < 0 || j < 0 || i >= nh || j >= nv) continue; const key = j * nh + i, ww = w * (ii ? fh : 1 - fh) * (jj ? fv : 1 - fv); if (mk[key] !== st) { mk[key] = st; av[key] = 0; od[nk++] = key; } av[key] += ww; }
       }
     }
-    const idx = new Int32Array(acc.size), val = new Float64Array(acc.size); let q = 0; for (const [k, v] of acc) { idx[q] = k; val[q] = v; q++; }
+    const idx = new Int32Array(nk), val = new Float64Array(nk); for (let q = 0; q < nk; q++) { idx[q] = od[q]; val[q] = av[od[q]]; }
     const hc = flux > 0 ? mh / flux : 0, vc = flux > 0 ? mv / flux : 0;
     return { flux, idx, val, hc, vc, cov: flux > 0 ? [shh / flux - hc * hc, shv / flux - hc * vc, svv / flux - vc * vc] : [0, 0, 0], samples: A.n * S.n };
   }
@@ -230,9 +237,15 @@
   function logBlur(g, T, sv, sh) {
     const lg = new Float64Array(g.n); for (let q = 0; q < g.n; q++) lg[q] = Math.log(Math.max(T[q], 1e-3));
     const pass = (src, sigma, vert) => {
-      if (!(sigma > 0)) return src; const r = Math.ceil(3 * sigma / g.step), w = []; let ws = 0; for (let d = -r; d <= r; d++) { const x = Math.exp(-0.5 * (d * g.step / sigma) ** 2); w.push(x); ws += x; }
-      const out = new Float64Array(g.n);
-      for (let j = 0; j < g.nv; j++) for (let i = 0; i < g.nh; i++) { let s = 0, ww = 0; for (let d = -r; d <= r; d++) { const ii = vert ? i : i + d, jj = vert ? j + d : j; if (ii < 0 || jj < 0 || ii >= g.nh || jj >= g.nv) continue; s += w[d + r] * src[jj * g.nh + ii]; ww += w[d + r]; } out[j * g.nh + i] = s / ww; }
+      if (!(sigma > 0)) return src; const r = Math.ceil(3 * sigma / g.step), W = r * 2 + 1, w = new Float64Array(W); for (let d = -r; d <= r; d++) w[d + r] = Math.exp(-0.5 * (d * g.step / sigma) ** 2);
+      const out = new Float64Array(g.n), nh = g.nh, nv = g.nv, len = vert ? nv : nh;
+      // the window along the blurred axis is clipped at the grid edge (the same terms in the same order as testing each one), and its weight sum depends on that position only
+      const wsum = new Float64Array(len); for (let p = 0; p < len; p++) { let ww = 0; for (let d = Math.max(-r, -p); d <= Math.min(r, len - 1 - p); d++) ww += w[d + r]; wsum[p] = ww; }
+      for (let j = 0; j < nv; j++) for (let i = 0; i < nh; i++) {
+        const p = vert ? j : i, d0 = Math.max(-r, -p), d1 = Math.min(r, len - 1 - p); let s = 0;
+        if (vert) { for (let d = d0; d <= d1; d++) s += w[d + r] * src[(j + d) * nh + i]; } else { const b = j * nh + i; for (let d = d0; d <= d1; d++) s += w[d + r] * src[b + d]; }
+        out[j * nh + i] = s / wsum[p];
+      }
       return out;
     };
     const o = pass(pass(lg, sv, true), sh, false); const T2 = new Float64Array(g.n); for (let q = 0; q < g.n; q++) T2[q] = Math.exp(o[q]); return T2;
@@ -905,27 +918,32 @@
     // pixel weights for tracking: edge zone heavy, plateau light
     const wt = new Float64Array(n);
     for (let j = 0; j < nv; j++) { const v = g.vOf(j); for (let i = 0; i < nh; i++) { const q = j * nh + i; let w = opt.wTrack; if (cut) { const t = cut.top(g.hOf(i)); if (v > t - 1.4 && v < t + 1.6) w = opt.wEdge; } wt[q] = w; } }
+    // ln max(T*, f0) does not change during the polish: computed once per pixel (the same value the cost used to recompute on every call)
+    const logT = new Float64Array(n); for (let q = 0; q < n; q++) logT[q] = Math.log(Math.max(T_[q], f0));
     const wc = P.B.wc, costPx = (q, e) => { const f = e / om[q]; let c = 0; if (lo[q] > 0 && f < lo[q]) { const d = (lo[q] - f) / lo[q]; c += wBand * wc[q] * d * d; } if (hi[q] < Infinity && f > hi[q]) { const d = (f - hi[q]) / hi[q]; c += wBand * wc[q] * d * d; }
-      const a = Math.log(Math.max(f, f0)) - Math.log(Math.max(T_[q], f0)); return c + wt[q] * a * a; };
+      const a = Math.log(Math.max(f, f0)) - logT[q]; return c + wt[q] * a * a; };
+    // the cost of every pixel at its current E, kept up to date by apply(): a trial then needs one costPx per touched pixel, not two
+    const cpx = new Float64Array(n); for (let q = 0; q < n; q++) cpx[q] = costPx(q, E[q]);
     // each unit: its sparse footprint in (i, j) bins, its current shift in bins, its share multiplier
     const U = facets.map((f, k) => { const fp = fps[k], ii = new Int32Array(fp.idx.length), jj = new Int32Array(fp.idx.length); for (let t = 0; t < fp.idx.length; t++) { jj[t] = (fp.idx[t] / nh) | 0; ii[t] = fp.idx[t] - jj[t] * nh; } return { f, ii, jj, val: fp.val, di: 0, dj: 0, k: 1, aim: f.aimRef }; });
-    const mark = new Int32Array(n).fill(-1), delta = new Float64Array(n); let stamp = 0;
-    const trial = (u, di, dj, kk) => {       // cost change if unit u moved to (di, dj) with scale kk (others fixed)
-      stamp++; const touched = []; const put = (q, d) => { if (mark[q] !== stamp) { mark[q] = stamp; delta[q] = 0; touched.push(q); } delta[q] += d; };
-      for (let t = 0; t < u.val.length; t++) { const i = u.ii[t] + u.di, j = u.jj[t] + u.dj; if (i >= 0 && j >= 0 && i < nh && j < nv) put(j * nh + i, -u.k * u.val[t]); }
-      for (let t = 0; t < u.val.length; t++) { const i = u.ii[t] + di, j = u.jj[t] + dj; if (i >= 0 && j >= 0 && i < nh && j < nv) put(j * nh + i, kk * u.val[t]); }
-      let d = 0; for (const q of touched) d += costPx(q, Math.max(0, E[q] + delta[q])) - costPx(q, E[q]); return { d, touched: touched.map((q) => [q, delta[q]]) };
+    // a trial writes the touched pixels (in first-touched order, as the cost is summed in that order) and their deltas into scratch arrays: no allocation per trial
+    const mark = new Int32Array(n).fill(-1), delta = new Float64Array(n), tq = new Int32Array(n); let stamp = 0, nT = 0;
+    const trial = (u, di, dj, kk) => {       // cost change if unit u moved to (di, dj) with scale kk (others fixed); leaves the touched pixels in tq[0..nT) and delta[]
+      stamp++; nT = 0; const ii = u.ii, jj = u.jj, val = u.val, nv_ = val.length;
+      for (let t = 0; t < nv_; t++) { const i = ii[t] + u.di, j = jj[t] + u.dj; if (i >= 0 && j >= 0 && i < nh && j < nv) { const q = j * nh + i; if (mark[q] !== stamp) { mark[q] = stamp; delta[q] = 0; tq[nT++] = q; } delta[q] += -u.k * val[t]; } }
+      for (let t = 0; t < nv_; t++) { const i = ii[t] + di, j = jj[t] + dj; if (i >= 0 && j >= 0 && i < nh && j < nv) { const q = j * nh + i; if (mark[q] !== stamp) { mark[q] = stamp; delta[q] = 0; tq[nT++] = q; } delta[q] += kk * val[t]; } }
+      let d = 0; for (let t = 0; t < nT; t++) { const q = tq[t]; d += costPx(q, Math.max(0, E[q] + delta[q])) - cpx[q]; } return d;
     };
-    const apply = (u, di, dj, kk, tr) => { for (const [q, dd] of tr.touched) E[q] = Math.max(0, E[q] + dd); u.di = di; u.dj = dj; u.k = kk; };
+    const apply = (u, di, dj, kk) => { for (let t = 0; t < nT; t++) { const q = tq[t]; E[q] = Math.max(0, E[q] + delta[q]); cpx[q] = costPx(q, E[q]); } u.di = di; u.dj = dj; u.k = kk; };
     const maxShift = Math.round(opt.maxShift / g.step), steps = opt.steps.map((x) => Math.max(1, Math.round(x / g.step))), scales = opt.scales;
-    let total = 0; for (let q = 0; q < n; q++) total += costPx(q, E[q]); const c0 = total, order = U.map((_, i) => i);
+    let total = 0; for (let q = 0; q < n; q++) total += cpx[q]; const c0 = total, order = U.map((_, i) => i);
     for (let sweep = 0; sweep < opt.sweeps; sweep++) {
       let moved = 0;
       for (const ui of order) {
         const u = U[ui]; let best = null;
         const cands = []; for (const st of steps) for (const [a, b] of [[st, 0], [-st, 0], [0, st], [0, -st]]) cands.push([u.di + a, u.dj + b, u.k]); for (const sc of scales) cands.push([u.di, u.dj, u.k * sc]);
-        for (const [di, dj, kk] of cands) { if (Math.abs(di) > maxShift || Math.abs(dj) > maxShift || kk < 0.3 || kk > 3) continue; const tr = trial(u, di, dj, kk); if (tr.d < -1e-9 && (!best || tr.d < best.tr.d)) best = { di, dj, kk, tr }; }
-        if (best) { apply(u, best.di, best.dj, best.kk, best.tr); total += best.tr.d; moved++; }
+        for (const [di, dj, kk] of cands) { if (Math.abs(di) > maxShift || Math.abs(dj) > maxShift || kk < 0.3 || kk > 3) continue; const d = trial(u, di, dj, kk); if (d < -1e-9 && (!best || d < best.d)) best = { di, dj, kk, d }; }
+        if (best) { trial(u, best.di, best.dj, best.kk); apply(u, best.di, best.dj, best.kk); total += best.d; moved++; }      // the winner is run once more (the same numbers) to leave its pixels in the scratch arrays
       }
       if (!moved) break;
     }

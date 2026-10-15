@@ -176,27 +176,32 @@
     // pixel weights for tracking: edge zone heavy, plateau light
     const wt = new Float64Array(n);
     for (let j = 0; j < nv; j++) { const v = g.vOf(j); for (let i = 0; i < nh; i++) { const q = j * nh + i; let w = opt.wTrack; if (cut) { const t = cut.top(g.hOf(i)); if (v > t - 1.4 && v < t + 1.6) w = opt.wEdge; } wt[q] = w; } }
+    // ln max(T*, f0) does not change during the polish: computed once per pixel (the same value the cost used to recompute on every call)
+    const logT = new Float64Array(n); for (let q = 0; q < n; q++) logT[q] = Math.log(Math.max(T_[q], f0));
     const wc = P.B.wc, costPx = (q, e) => { const f = e / om[q]; let c = 0; if (lo[q] > 0 && f < lo[q]) { const d = (lo[q] - f) / lo[q]; c += wBand * wc[q] * d * d; } if (hi[q] < Infinity && f > hi[q]) { const d = (f - hi[q]) / hi[q]; c += wBand * wc[q] * d * d; }
-      const a = Math.log(Math.max(f, f0)) - Math.log(Math.max(T_[q], f0)); return c + wt[q] * a * a; };
+      const a = Math.log(Math.max(f, f0)) - logT[q]; return c + wt[q] * a * a; };
+    // the cost of every pixel at its current E, kept up to date by apply(): a trial then needs one costPx per touched pixel, not two
+    const cpx = new Float64Array(n); for (let q = 0; q < n; q++) cpx[q] = costPx(q, E[q]);
     // each unit: its sparse footprint in (i, j) bins, its current shift in bins, its share multiplier
     const U = facets.map((f, k) => { const fp = fps[k], ii = new Int32Array(fp.idx.length), jj = new Int32Array(fp.idx.length); for (let t = 0; t < fp.idx.length; t++) { jj[t] = (fp.idx[t] / nh) | 0; ii[t] = fp.idx[t] - jj[t] * nh; } return { f, ii, jj, val: fp.val, di: 0, dj: 0, k: 1, aim: f.aimRef }; });
-    const mark = new Int32Array(n).fill(-1), delta = new Float64Array(n); let stamp = 0;
-    const trial = (u, di, dj, kk) => {       // cost change if unit u moved to (di, dj) with scale kk (others fixed)
-      stamp++; const touched = []; const put = (q, d) => { if (mark[q] !== stamp) { mark[q] = stamp; delta[q] = 0; touched.push(q); } delta[q] += d; };
-      for (let t = 0; t < u.val.length; t++) { const i = u.ii[t] + u.di, j = u.jj[t] + u.dj; if (i >= 0 && j >= 0 && i < nh && j < nv) put(j * nh + i, -u.k * u.val[t]); }
-      for (let t = 0; t < u.val.length; t++) { const i = u.ii[t] + di, j = u.jj[t] + dj; if (i >= 0 && j >= 0 && i < nh && j < nv) put(j * nh + i, kk * u.val[t]); }
-      let d = 0; for (const q of touched) d += costPx(q, Math.max(0, E[q] + delta[q])) - costPx(q, E[q]); return { d, touched: touched.map((q) => [q, delta[q]]) };
+    // a trial writes the touched pixels (in first-touched order, as the cost is summed in that order) and their deltas into scratch arrays: no allocation per trial
+    const mark = new Int32Array(n).fill(-1), delta = new Float64Array(n), tq = new Int32Array(n); let stamp = 0, nT = 0;
+    const trial = (u, di, dj, kk) => {       // cost change if unit u moved to (di, dj) with scale kk (others fixed); leaves the touched pixels in tq[0..nT) and delta[]
+      stamp++; nT = 0; const ii = u.ii, jj = u.jj, val = u.val, nv_ = val.length;
+      for (let t = 0; t < nv_; t++) { const i = ii[t] + u.di, j = jj[t] + u.dj; if (i >= 0 && j >= 0 && i < nh && j < nv) { const q = j * nh + i; if (mark[q] !== stamp) { mark[q] = stamp; delta[q] = 0; tq[nT++] = q; } delta[q] += -u.k * val[t]; } }
+      for (let t = 0; t < nv_; t++) { const i = ii[t] + di, j = jj[t] + dj; if (i >= 0 && j >= 0 && i < nh && j < nv) { const q = j * nh + i; if (mark[q] !== stamp) { mark[q] = stamp; delta[q] = 0; tq[nT++] = q; } delta[q] += kk * val[t]; } }
+      let d = 0; for (let t = 0; t < nT; t++) { const q = tq[t]; d += costPx(q, Math.max(0, E[q] + delta[q])) - cpx[q]; } return d;
     };
-    const apply = (u, di, dj, kk, tr) => { for (const [q, dd] of tr.touched) E[q] = Math.max(0, E[q] + dd); u.di = di; u.dj = dj; u.k = kk; };
+    const apply = (u, di, dj, kk) => { for (let t = 0; t < nT; t++) { const q = tq[t]; E[q] = Math.max(0, E[q] + delta[q]); cpx[q] = costPx(q, E[q]); } u.di = di; u.dj = dj; u.k = kk; };
     const maxShift = Math.round(opt.maxShift / g.step), steps = opt.steps.map((x) => Math.max(1, Math.round(x / g.step))), scales = opt.scales;
-    let total = 0; for (let q = 0; q < n; q++) total += costPx(q, E[q]); const c0 = total, order = U.map((_, i) => i);
+    let total = 0; for (let q = 0; q < n; q++) total += cpx[q]; const c0 = total, order = U.map((_, i) => i);
     for (let sweep = 0; sweep < opt.sweeps; sweep++) {
       let moved = 0;
       for (const ui of order) {
         const u = U[ui]; let best = null;
         const cands = []; for (const st of steps) for (const [a, b] of [[st, 0], [-st, 0], [0, st], [0, -st]]) cands.push([u.di + a, u.dj + b, u.k]); for (const sc of scales) cands.push([u.di, u.dj, u.k * sc]);
-        for (const [di, dj, kk] of cands) { if (Math.abs(di) > maxShift || Math.abs(dj) > maxShift || kk < 0.3 || kk > 3) continue; const tr = trial(u, di, dj, kk); if (tr.d < -1e-9 && (!best || tr.d < best.tr.d)) best = { di, dj, kk, tr }; }
-        if (best) { apply(u, best.di, best.dj, best.kk, best.tr); total += best.tr.d; moved++; }
+        for (const [di, dj, kk] of cands) { if (Math.abs(di) > maxShift || Math.abs(dj) > maxShift || kk < 0.3 || kk > 3) continue; const d = trial(u, di, dj, kk); if (d < -1e-9 && (!best || d < best.d)) best = { di, dj, kk, d }; }
+        if (best) { trial(u, best.di, best.dj, best.kk); apply(u, best.di, best.dj, best.kk); total += best.d; moved++; }      // the winner is run once more (the same numbers) to leave its pixels in the scratch arrays
       }
       if (!moved) break;
     }
