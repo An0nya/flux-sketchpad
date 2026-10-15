@@ -1,8 +1,8 @@
 {
  "app": "FLUX reflector sketchpad",
  "generatedBy": "node tools/flux.js manifest",
- "commit": "fb7e869",
- "date": "2026-10-14",
+ "commit": "b74af10",
+ "date": "2026-10-15",
  "docs": {
   "cli": "tools/FLUX-CLI.md",
   "solverApi": "SOLVER_API.md",
@@ -415,6 +415,32 @@
      "max": 2000,
      "step": 10,
      "default": 150
+    },
+    {
+     "key": "tuneAim",
+     "label": "Tuner aim",
+     "type": "select",
+     "default": "scan",
+     "options": [
+      "scan",
+      "frozen"
+     ],
+     "help": "scan: every trace finds the cut-off aim afresh (the slow part of a trace). frozen: candidates are judged at the incumbent’s aim (about 4x faster), re-found whenever a candidate wins"
+    },
+    {
+     "key": "tuneGpu",
+     "label": "Tuner traces via tools.traceAsync (GPU when the GPU switch is on)",
+     "type": "checkbox",
+     "default": false
+    },
+    {
+     "key": "tuneSeed",
+     "label": "Tuner random seed",
+     "type": "number",
+     "min": 0,
+     "step": 1,
+     "default": 12345,
+     "help": "the (1+1) search’s own dice; another seed is another run of the same search"
     },
     {
      "key": "tuneSeconds",
@@ -5520,6 +5546,12 @@
      "max": 30,
      "step": 1,
      "default": 18
+    },
+    {
+     "key": "traceGpu",
+     "label": "Trace trials via tools.traceAsync (GPU when the GPU switch is on)",
+     "type": "checkbox",
+     "default": false
     }
    ]
   },
@@ -5775,6 +5807,12 @@
      "min": 50000,
      "step": 50000,
      "default": 1000000
+    },
+    {
+     "key": "traceGpu",
+     "label": "Trace candidates via tools.traceAsync (GPU when the GPU switch is on)",
+     "type": "checkbox",
+     "default": false
     }
    ]
   },
