@@ -18,7 +18,7 @@ function run(RF, ok) {
   ok('MG score: 35% combined mitigation, person always lost, cap100, crosswalk jail-risk, ticket rates', low.liability===3.25 && low.lost && low.conscience===100 && low.tier==='repair (~$2k)' && high.recklessness===100 && high.energy>100000 && high.tier==='jail-risk game over' && high.tickets===1000 && nohit.tickets===450 && nohit.damage==='none', J({low,high,nohit}));
   ok('MG damage energy scales by overlap and speed squared; unknown verdict never earns compliant tier', M.score({hit:true,speed:20,fraction:.5}).energy === M.score({hit:true,speed:10,fraction:1}).energy*2 && M.score({hit:true,speed:5,fraction:1,verdict:'unsure'}).tier !== low.tier);
   const size=9, mask=new Uint8Array(size*size), rgba=new Uint8Array(size*size*4), q=2*size+3; mask[q]=1;
-  const f={rgba,mask,w:size,h:size,mw:size,mh:size};
+  const f={legacy:true,rgba,mask,w:size,h:size,mw:size,mh:size};
   ok('MG first-lit: black actor stays unseen', M.firstLit(f)===null);
   const shown=(size-1-2)*size+3; rgba.fill(0);rgba[4*shown]=rgba[4*shown+1]=rgba[4*shown+2]=80;
   ok('MG first-lit: UI-covered pixels cannot start the timer', M.firstLit({...f,exclude:[[2,1,5,4]]})===null);
@@ -46,7 +46,7 @@ function run(RF, ok) {
   ok('MG seeded schedule, actors and outcomes independent of frame step grouping',J(snap(one))===J(snap(two)),J({spawned:one.spawned,results:one.results.length,x:one.x}));
   const heldStop=M.create({seed:4,speed:75});heldStop.v=0;heldStop.resume=0;heldStop.brake=true;M.step(heldStop,.1,3.5);const stayed=heldStop.v===0;heldStop.brake=false;M.step(heldStop,.1,3.5);
   ok('MG intermission waits for release before returning to chosen cruise',stayed&&heldStop.v===75/3.6);
-  const route=M.create({seed:19,speed:75}), sample=[];for(let i=0;i<5;i++){route.t=route.next;route.x=route.t*75/3.6;sample.push(M.spawn(route,3.5,{lamps:p.lamps,lut:p.lut,conv:'A'}));}
+  const route=M.create({seed:19,speed:75,rules:'legacy'}), sample=[];for(let i=0;i<5;i++){route.t=route.next;route.x=route.t*75/3.6;sample.push(M.spawn(route,3.5,{lamps:p.lamps,lut:p.lut,conv:'A'}));}
   ok('MG spawns 80–180m ahead outside useful beam; persons only at crosswalks; gaps10–20s',sample.every((h,i)=>h.s0-h.born*75/3.6>=80 && h.s0-h.born*75/3.6<=180 && Number.isFinite(h.outsideLux)&&h.outsideLux<1 && (h.kind!=='person'||h.crosswalk) && (!i||h.born-sample[i-1].born>=10&&h.born-sample[i-1].born<=20)),J(sample.map(h=>({kind:h.kind,range:h.s0-h.born*75/3.6,off:h.off0,lux:h.outsideLux,born:h.born}))));
   const hit=M.create({seed:1,speed:75,verdict:'pass'});hit.next=1000;hit.hazards=[{id:1,born:0,kind:'deer',s0:2,off0:0,ds:0,doff:0,spd:0,len:0,delay:0,lit:null,reaction:null}];
   M.step(hit,.1,3.5);ok('MG hit records our speed at overlap, rather than slider or stopping-speed estimate',hit.results.length===1&&Math.abs(hit.results[0].speed-75)<1e-10,J(hit.results));

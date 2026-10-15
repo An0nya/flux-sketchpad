@@ -595,13 +595,13 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .export-options label { font-size: 12px; }
 
 /* Play is local to Drive; the card scrolls inside the pane/popout. */
-.drive-game { position: absolute; left: 8px; right: 8px; top: 36px; z-index: 3; max-height: 65%; overflow: auto; padding: 8px; background: rgba(5,10,18,.93); color: #eee; border: 1px solid #889bb5; border-radius: 6px; font-size: 12px; }
+.drive-game { position: absolute; left: 8px; right: 8px; top: 36px; bottom: 8px; z-index: 3; max-height: calc(100% - 44px); box-sizing: border-box; overflow: auto; padding: 8px; background: rgba(5,10,18,.93); color: #eee; border: 1px solid #889bb5; border-radius: 6px; font-size: 12px; }
 .drive-game[hidden], .drive-game [hidden] { display: none; }
 .canvas-wrap:not(.drive) > .drive-game { display: none; }
 .game-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
 .drive-game input { width: 70px; }
 .drive-game input, .drive-game select, .drive-game button { min-height: 32px; }
-.drive-game [data-game=brake] { touch-action: none; user-select: none; background: #233f68; color: white; }
+.drive-game [data-game=brake] { min-width: 96px; min-height: 44px; touch-action: none; user-select: none; background: #233f68; color: white; }
 .drive-game [data-game=brake][aria-pressed=true] { outline: 2px solid #ffd580; }
 .game-card { white-space: pre-line; margin: 8px 0; line-height: 1.5; }
 .drive-game small { display: block; margin-top: 4px; }
@@ -610,3 +610,5 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .drive-game.running > strong, .drive-game.running > small, .drive-game.running .game-setup > label, .drive-game.running .game-setup > select { display: none; }
 .drive-game.running .game-setup { margin: 0; float: right; }
 .drive-game.running [data-game=status] { margin-right: 180px; }
+
+/* WCAG 2.5.5 enhanced target: https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced */

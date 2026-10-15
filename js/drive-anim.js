@@ -425,7 +425,7 @@
     };
   }
   function tileFrame(p, dist, t, rgba, ss, tauOf, tileRow, world) {
-    const sc = world || tileWorld(p, dist, t, tauOf), r = D.render(Object.assign({}, camOf(p), { arc: sc.A, layer: 'frame', rgba, ss: ss || 2, tight: true, tileRow, hazardMask: p.hazardMask, pointLights: sc.lights, crossings: sc.crossings,
+    const sc = world || tileWorld(p, dist, t, tauOf), r = D.render(Object.assign({}, camOf(p), { arc: sc.A, layer: 'frame', rgba, ss: ss || 2, tight: true, tileRow, hazardMask: p.hazardMask, hazardBodyMask: p.hazardBodyMask, sampleTiles: p.sampleTiles, pointLights: sc.lights, crossings: sc.crossings,
       grain: p.src.tiles.grain ? tileGrain(dist, p.src.tiles.wet) : null, scene: { objects: sc.objects, markings: sc.markings, verge: p.src.verge } }));
     r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
   }
@@ -787,15 +787,17 @@ void main() {
     const placed = (V.src.tiles ? tileWorld : placedObjects)(V.p, st.dist, st.t, tauFor(V.act, st.t));
     if (st.game) {
       const mask = V.p.hazardMask = new Uint8Array(W * V.p.h);
-      gameObjects(st.game, placed); V.gameMask = mask;
-    } else V.p.hazardMask = null;
-    const rows = objects(V.p, st.dist, V.rgba, ssNow(), null, null, placed, st.t);
+      V.p.hazardBodyMask = new Uint8Array(W * V.p.h); V.p.sampleTiles = new Uint8Array(Math.ceil(W / 16) * Math.ceil(V.p.h / 16));
+      gameObjects(st.game, placed); V.gameMask = mask; V.gameBodyMask = V.p.hazardBodyMask;
+    } else V.p.sampleTiles = V.p.hazardMask = V.p.hazardBodyMask = null;
+    const ss = ssNow(), rows = objects(V.p, st.dist, V.rgba, ss, null, null, placed, st.t);
     const t1 = performance.now();
     adaptSS(t1 - t0);
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
     const sources = D.glareSources(V.src.tiles ? placed.objects : placed, EYE);
-    V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane });
+    const draw = { hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
+    V.gl.draw(draw); if (st.game) V.gameRender = { placed, ss, draw };
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
     flashLabel(st.dist, st.t); if (st.game) gameFrame(st.game); ui.dvAnimFrames = V.frames;
   }
@@ -1011,19 +1013,32 @@ void main() {
     if (!(speed >= 5 && speed <= 130) || !Number.isInteger(seed) || seed < 0 || seed > 99999) { V.gameStatus.textContent = 'Choose 5–130 km/h and a whole seed from 0–99999.'; return; }
     if (!ui.spec || !ui.spec.full || !ui.spec.ev || ui.spec.ctx !== (ui.run && ui.run.ctx)) { V.gameStatus.textContent = 'Finish the lamp’s Spec trace before starting.'; return; }
     stop(); killWorkers();
-    st.game = RF.DriveGame.create({ seed, speed, wet, verdict: ui.spec.ev.verdict, highBeam: /(?:^fmvss-ub|-drive$)/.test(ui.store.scene.modeD.preset || '') }); st.game.ctx = ui.spec.ctx; st.game.judge = ui.spec.ev; st.game.road = info().rd;
+    st.game = RF.DriveGame.create({ seed, speed, wet, verdict: ui.spec.ev.verdict, rules: box.querySelector('[data-game=rules]').value, highBeam: /(?:^fmvss-ub|-drive$)/.test(ui.store.scene.modeD.preset || '') }); st.game.ctx = ui.spec.ctx; st.game.judge = ui.spec.ev; st.game.road = info().rd;
     st.gameOptions = { scene: 'road', tiles: true, wild: true, seed, speed, wet, people: false, animals: false, obstacle: false, trafficLogic: false, oncoming: true, preceding: false };
     st.dist = st.total = st.t = 0; st.camera = { x: 0, v: speed / 3.6 }; st.view = 'anim'; st.playing = true;
     V.act.clear(); V.flash = flashState(); V.fkey = ''; V.last = 0; ui.redrawSpec();
   }
-  function gameObjects(g, world) {
-    const A = world.A, K = D.kit({ Lw: V.p.lane, A: null, rand: () => 0.5 });
-    for (const h of g.hazards) if (!h.resolved) {
+  function gameObjects(g, world, lane) {
+    const A = world.A, K = D.kit({ Lw: lane || V.p.lane, A: null, rand: () => 0.5 });
+    for (const h of g.hazards) if (g.rules !== 'legacy' || !h.resolved) {
       const ps = RF.DriveGame.pose(g, h, g.t), first = K.O.length, rel = ps.s - g.x;
       if (h.kind === 'deer') K.deer(rel, ps.off, { face: h.side > 0 ? 1 : -1, gait: ps.gait });
       else K.person(rel, ps.off, h.noHiViz ? 'dark' : 'hivis', { dir: [h.ds, h.doff], gait: ps.gait });
       for (const ob of K.O.slice(first)) { ob.gameHazard = h.id; world.objects.push(move(Object.assign({}, ob), ob, ob.x, A)); }
     }
+  }
+  // Counterfactual frame at the exact same pose, samples, exposure, glare and canvas size.
+  // Retrace only tile rows touched by this hazard. Restore the displayed frame before returning.
+  function gameBackground(id) {
+    const st = S(V.ui), { placed, ss, draw } = V.gameRender, bit = 1 << (id - 1), tileRows = new Set();
+    for (let q = 0; q < V.gameMask.length; q++) if (V.gameMask[q] & bit) tileRows.add(Math.floor(q / V.p.w / 16));
+    if (!tileRows.size) return null;
+    const y0 = Math.min(...tileRows) * 16, y1 = Math.min(V.p.h, (Math.max(...tileRows) + 1) * 16), rgba = new Float32Array(V.rgba);
+    const world = Object.assign({}, placed, { objects: placed.objects.filter((ob) => ob.gameHazard !== id) });
+    try {
+      objects(Object.assign({}, V.p, { hazardMask: null, hazardBodyMask: null }), st.dist, rgba, ss, null, (ty) => tileRows.has(ty), world, st.t);
+      V.gl.setObjects(rgba, y0, y1); V.gl.draw(draw); return V.gl.readCanvas();
+    } finally { V.gl.setObjects(V.rgba, y0, y1); V.gl.draw(draw); }
   }
   function gameFrame(g) {
     const now = performance.now(), st = S(V.ui);
@@ -1033,12 +1048,15 @@ void main() {
     const bits = unseen.reduce((b, h) => b | (1 << (h.id - 1)), 0);
     if (unseen.length && !g.done && V.gameMask.some((v) => v & bits)) {
       const rgba = V.gl.readCanvas(), rect = V.canvas.getBoundingClientRect(), exclude = [];
+      V.gameBackgrounds = {};
       for (const el of [V.gameBar, ...info().toolbar.querySelectorAll('button,select')]) if (el && !el.hidden && el.getClientRects().length) {
         const r = el.getBoundingClientRect(); exclude.push([(r.left - rect.left) / rect.width * V.gl.cw, (r.top - rect.top) / rect.height * V.gl.ch, (r.right - rect.left) / rect.width * V.gl.cw, (r.bottom - rect.top) / rect.height * V.gl.ch]);
       }
       for (const h of unseen) {
-        const pixel = RF.DriveGame.firstLit({ rgba, exclude, mask: V.gameMask, id: h.id, w: V.gl.cw, h: V.gl.ch, mw: V.p.w, mh: V.p.h, flip: info().mirrored });
-        if (pixel) { h.lit = now; h.litAt = g.t; h.firstPixel = pixel; g.seen++; }
+        const legacy = g.rules === 'legacy', background = legacy ? null : gameBackground(h.id);
+        V.gameBackgrounds[h.id] = background;
+        const pixel = RF.DriveGame.firstLit({ rgba, background, legacy, cssW: rect.width, cssH: rect.height, exclude, mask: legacy ? V.gameMask : V.gameBodyMask, id: h.id, w: V.gl.cw, h: V.gl.ch, mw: V.p.w, mh: V.p.h, flip: info().mirrored });
+        if (pixel) { h.lit = performance.now(); h.litAt = g.t; h.firstRange = RF.DriveGame.pose(g, h, g.t).s - g.x; h.firstPixel = pixel; g.seen++; }
       }
     }
     g.flashes = V.flash.n; gameText(g);
@@ -1064,6 +1082,8 @@ void main() {
       const box = V.gameBar = E('div', { class: 'drive-game', 'data-game': 'panel', hidden: '' });
       const speed = E('input', { 'data-game': 'speed', type: 'number', min: 5, max: 130, step: 5, 'aria-label': 'Game speed km/h' }), wet = E('select', { 'data-game': 'wet', 'aria-label': 'Game road condition' }), seed = E('input', { 'data-game': 'seed', type: 'number', min: 0, max: 99999, step: 1, 'aria-label': 'Game seed' });
       wet.append(E('option', { value: 'dry' }, 'dry'), E('option', { value: 'wet' }, 'wet'));
+      const rules = E('select', { 'data-game': 'rules', 'aria-label': 'Hazard rules' });
+      rules.append(E('option', { value: 'visible' }, 'Visible hazard'), E('option', { value: 'legacy' }, 'Original rules'));
       const pause = E('button', { type: 'button', 'data-game': 'pause' }, 'Pause');
       pause.addEventListener('click', () => { st.playing = !st.playing; ui.redrawSpec(); });
       const start = E('button', { type: 'button', 'data-game': 'start' }, 'Start run'), brake = E('button', { type: 'button', 'data-game': 'brake', 'aria-label': 'Hold to brake', 'aria-pressed': 'false' }, 'Hold: BRAKE');
@@ -1082,7 +1102,7 @@ void main() {
       const suspend = () => { if (st.game && !st.game.done) { hold(false, 'all'); if (st.game.pauseAt === undefined) st.game.pauseAt = performance.now(); st.playing = false; stop(); ui.redrawSpec(); } };
       root.addEventListener('blur', suspend); document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); });
       V.gameStatus = E('div', { 'data-game': 'status', role: 'status' }); V.gameCard = E('div', { 'data-game': 'card', class: 'game-card', hidden: '' });
-      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. A stop passes the encounter; release after a stop to resume cruise after 2 s. Game flavour, not legal advice.'));
+      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), rules, start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. A stop passes the encounter; release after a stop to resume cruise after 2 s. Game flavour, not legal advice.'));
       V.cv.parentElement.append(box); speed.value = info().o.speed; seed.value = info().o.seed; wet.value = info().o.wet ? 'wet' : 'dry';
     }
     V.gameBar.hidden = !st.gameMode; V.gameBar.classList.toggle('running', !!st.game && !st.game.done); mount(ui);
@@ -1174,5 +1194,5 @@ void main() {
   }
   RF.DriveAnim = { TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
-    _: { V, S, Wk, toggleGame, gameFrame, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
+    _: { V, S, Wk, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
