@@ -37,7 +37,7 @@
   const luma = (rgba, q) => 0.2126 * lin(rgba[4 * q]) + 0.7152 * lin(rgba[4 * q + 1]) + 0.0722 * lin(rgba[4 * q + 2]);
   // Actual post-tone-map canvas bytes, GL bottom row first. Mask is nearest-hit actor-ID bits at sim resolution, top row first.
   // A lit pixel: positive local contrast >=20%, linear display luma >=.002, delta >=.001. Not a calibrated human-vision model.
-  function firstLit(f) {
+  function legacyFirstLit(f) {
     const { rgba, mask, w, h, mw, mh } = f, bit = 1 << ((f.id || 1) - 1), radius = Math.max(2, Math.ceil(w / mw * 2));
     const masked = (x, y) => mask[Math.min(mh - 1, Math.floor((h - 1 - y + 0.5) / h * mh)) * mw + Math.min(mw - 1, Math.floor((f.flip ? w - 1 - x + 0.5 : x + 0.5) / w * mw))] & bit;
     let mx0 = mw, my0 = mh, mx1 = -1, my1 = -1;
@@ -57,11 +57,39 @@
     }
     return null;
   }
+  // Game visibility rule: >=6 independent trace pixels AND >=6 CSS px², each with positive
+  // Weber contrast (L-Lbackground)/Lbackground >=.20, display-linear delta >=.001 and L >=.002.
+  // Background is the SAME frame with this hazard removed, never a neighbouring glare gradient.
+  // FHWA small-target guidance: size, adaptation, time and contrast jointly affect visibility:
+  // https://highways.fhwa.dot.gov/safety/other/visibility/fhwa-lighting-handbook-august-2012/3-vision-and-fundamental-concepts
+  // Caller supplies the body mask (any eyeshine sample excludes that trace pixel).
+  // These numerical cutoffs are conservative game tuning, not the calibrated Adrian visibility model.
+  const VISIBILITY = { contrast: 0.20, delta: 0.001, luma: 0.002, pixels: 6, cssArea: 6 };
+  function firstLit(f) {
+    if (f.legacy) return legacyFirstLit(f);
+    const { rgba, background, mask, w, h, mw, mh } = f, bit = 1 << ((f.id || 1) - 1);
+    if (!background || background.length !== rgba.length) return null;
+    const cells = new Set(), area = (f.cssW || w) * (f.cssH || h) / (w * h); let count = 0, first = null;
+    for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) if (mask[y * mw + x] & bit) {
+      const x0 = Math.floor((f.flip ? mw - 1 - x : x) * w / mw), x1 = Math.ceil((f.flip ? mw - x : x + 1) * w / mw);
+      const y0 = Math.floor(y * h / mh), y1 = Math.ceil((y + 1) * h / mh);
+      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) {
+        // Assign each canvas pixel to one trace cell, including non-integer scaling.
+        if (Math.floor((yy + .5) * mh / h) !== y || Math.floor(((f.flip ? w - 1 - xx : xx) + .5) * mw / w) !== x) continue;
+        if (f.exclude && f.exclude.some((r) => xx >= r[0] && xx < r[2] && yy >= r[1] && yy < r[3])) continue;
+        const q = (h - 1 - yy) * w + xx, L = luma(rgba, q), bg = luma(background, q), delta = L - bg;
+        if (L < VISIBILITY.luma || delta < VISIBILITY.delta || delta / Math.max(0.002, bg) < VISIBILITY.contrast) continue;
+        cells.add(y * mw + x); count++;
+        if (!first) first = { x: xx, y: yy, L, background: bg };
+      }
+    }
+    return cells.size >= VISIBILITY.pixels && count * area >= VISIBILITY.cssArea ? Object.assign(first, { pixels: cells.size, cssArea: count * area }) : null;
+  }
   function create(o) {
     const rand = RF.Drive.rng((o.seed | 0) ^ 0x4d47414d);
-    return { seed: o.seed | 0, speed: o.speed, wet: !!o.wet, verdict: o.verdict || 'unsure', highBeam: !!o.highBeam, rand, next: 10 + 10 * rand(), t: 0, x: 0, v: o.speed / 3.6, brake: false, hazards: [], results: [], seen: 0, reactions: [], flashes: 0, spawned: 0, limit: 5, done: false, accumulator: 0, resume: null, wallLit: null };
+    return { rules: o.rules === 'legacy' ? 'legacy' : 'visible', seed: o.seed | 0, speed: o.speed, wet: !!o.wet, verdict: o.verdict || 'unsure', highBeam: !!o.highBeam, rand, next: 10 + 10 * rand(), t: 0, x: 0, v: o.speed / 3.6, brake: false, hazards: [], results: [], seen: 0, reactions: [], flashes: 0, spawned: 0, limit: 5, done: false, accumulator: 0, resume: null, wallLit: null };
   }
-  function spawn(g, lane, p) {
+  function legacySpawn(g, lane, p) {
     const A = RF.DriveAnim, r = g.rand, distance = 80 + 100 * r(), desiredPerson = r() < 0.1, initialSide = r() < 0.5 ? -1 : 1;
     let s = g.x + distance, crosswalk = false, tile;
     if (desiredPerson) for (let k = Math.floor((g.x + 80) / 200); k <= Math.floor((g.x + 180) / 200); k++) {
@@ -79,6 +107,31 @@
     }
     if (p && outsideLux === null) { g.done = true; g.reason = 'No off-road spawn outside the beam; try a different lamp or seed'; return null; }
     const h = { id: ++g.spawned, born: g.t, kind: person ? 'person' : 'deer', s0: s, off0: off, ds: 0, doff: -side, spd: person ? 1.3 : 1 + 0.5 * r(), len: Math.abs(off) + 0.15, delay: 0.3 + r(), side, crosswalk, noHiViz: r() < 0.5, jaywalking: person && A.signalState(tile, g.t).lit !== 'red', lit: null, reaction: null, resolved: false, outsideLux };
+    g.hazards.push(h); g.next += 10 + 10 * r(); return h;
+  }
+  function spawn(g, lane, p) {
+    if (g.rules === 'legacy') return legacySpawn(g, lane, p);
+    const A = RF.DriveAnim, r = g.rand, base = 80 + 100 * r(), person = r() < .1, side = r() < .5 ? -1 : 1;
+    // Fixed 2.2 m shoulder setback: lamp width must NEVER move a hazard sideways.
+    const off = side < 0 ? -lane / 2 - 2.2 : 1.5 * lane + 2.2, pp = p && Object.assign({}, p, { A: A.tileRoute(g.seed, g.x) });
+    let distance = Math.max(base, g.speed / 3.6 * (Math.abs(off) / (person ? 1.3 : 3.5) + .3)), outsideLux = null, crosswalk = false, tile;
+    if (pp) {
+      // Search longitudinally beyond useful reach, checking both the shoulder and our lane.
+      // Last above-threshold sample wins, so a gap before a farther bright lobe is not 'outside'.
+      for (let d = distance; d <= 1200; d += 5) if (Math.max(A.eyeLux(pp, { rel: d, off }), A.eyeLux(pp, { rel: d, off: 0 })) >= 1) distance = d + 20;
+      outsideLux = A.eyeLux(pp, { rel: distance, off });
+      if (!Number.isFinite(outsideLux) || outsideLux >= 1 || A.eyeLux(pp, { rel: distance, off: 0 }) >= 1 || distance > 1200) { g.done = true; g.reason = 'Lamp reach exceeds the 1200 m spawn search; choose another lamp'; return null; }
+    }
+    let s = g.x + distance;
+    if (person) for (let k = Math.floor(s / 200); k <= Math.floor((s + 100) / 200); k++) {
+      const q = A.roadTile(g.seed, k), x = q.s0 + 100 - lane - 2.7;
+      if (['intersection', 't-junction'].includes(q.kind) && x >= s && x <= s + 100 && (!pp || (A.eyeLux(pp, { rel: x - g.x, off }) < 1 && A.eyeLux(pp, { rel: x - g.x, off: 0 }) < 1))) { s = x; crosswalk = true; tile = q; break; }
+    }
+    if (pp) outsideLux = A.eyeLux(pp, { rel: s - g.x, off });
+    // Sprint, prompt entry and hesitation in our lane are game tuning, not measured behaviour.
+    // Waiting on the shoulder until arrival would hide bodies from narrow long-throw lamps.
+    const spd = person ? 1.3 : 3.5 + r(), delay = .3;
+    const h = { id: ++g.spawned, born: g.t, kind: person ? 'person' : 'deer', s0: s, off0: off, ds: 0, doff: -side, spd, len: Math.abs(off) + .15, delay, side, crosswalk, noHiViz: r() < .5, jaywalking: person && (!crosswalk || A.signalState(tile, g.t).lit !== 'red'), lit: null, reaction: null, resolved: false, outsideLux };
     g.hazards.push(h); g.next += 10 + 10 * r(); return h;
   }
   const pose = (g, h, t) => RF.DriveAnim.actorPose(h, Math.max(0, t - h.born));
@@ -111,5 +164,5 @@
     if (held && !g.brake) for (const h of g.hazards) if (!h.resolved && h.lit !== null && h.reaction === null) { h.reaction = Math.max(0, (now - h.lit) / 1000); g.reactions.push(h.reaction); }
     g.brake = held;
   }
-  RF.DriveGame = { G, STEP, mu, stoppingDistance, motion, overlap, sweep, score, firstLit, create, spawn, pose, box, car, step, press, resolve };
+  RF.DriveGame = { G, STEP, mu, stoppingDistance, motion, overlap, sweep, score, VISIBILITY, firstLit, legacyFirstLit, create, spawn, pose, box, car, step, press, resolve };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

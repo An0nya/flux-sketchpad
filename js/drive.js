@@ -207,6 +207,8 @@
    * layer: 'frame' writes complete opaque RGBA rows for moving route tiles; tileRow also splits the ground/sky work.
    * pointLights [{x,y,z,cd,rgb}]: downward diffuse-only street lights; crossings [{s0,s1,o0,o1}]: side-road ground openings;
    * hazardMask: optional Uint8Array(w*h), nearest-hit gameHazard ID bits (any covered subsample); no RGB changes.
+   * hazardBodyMask: same bits, excluding pixels with ANY eyeshine sample (body detection, not eye dots).
+   * sampleTiles: optional Uint8Array(ceil(w/16)*ceil(h/16)); records/retains supersampled tiles for paired renders.
    * grain(s,off,halfFootprint): ground-only brightness factor. These are render options, not saved scene fields. */
   function render(o) {
     const w = o.w, h = o.h, tanH = Math.tan(o.hfov * D2R / 2), tanV = tanH * h / w, eye = o.eye, ex = eye[0], ey = eye[1], ez = eye[2];
@@ -321,7 +323,7 @@
       let tot = 0; for (let i = 0; i < 5; i++) tot += covLat(off, ho, bands[i][1], bands[i][2]);
       for (let i = 0; i < 5; i++) { const c = covLat(off, ho, bands[i][1], bands[i][2]) / (tot || 1); if (c <= 0) continue; shade(px, py, 0, 0, 0, 1, M[bands[i][0]], c * rest * kw, vx, vy, vz); if (c * rest > bestW) { bestW = c * rest; GM = M[bands[i][0]].id; } }
     }
-    let sampleDepth = Infinity, sampleMat = MAT_ID.sky, covAcc = 0, hazardAcc = 0;
+    let sampleDepth = Infinity, sampleMat = MAT_ID.sky, covAcc = 0, hazardAcc = 0, eyeAcc = 0;
     // one ray through (fx, fy) in pixel units; adds weight k to the accumulators
     function sample(fx, fy, k, tileObjs, delta) {
       const u = fx / w * 2 - 1, v = 1 - fy / h * 2; let dx = 1, dy = -u * tanH, dz = v * tanV; const il = 1 / Math.sqrt(dx * dx + dy * dy + dz * dz); dx *= il; dy *= il; dz *= il;
@@ -334,9 +336,10 @@
       }
       if (hit >= 0) {
         const ob = objs[hit], px = ex + tbest * dx, py = ey + tbest * dy, pz = ez + tbest * dz;
-        if (o.hazardMask && ob.gameHazard) hazardAcc |= 1 << (ob.gameHazard - 1);
+        if ((o.hazardMask || o.hazardBodyMask) && ob.gameHazard) hazardAcc |= 1 << (ob.gameHazard - 1);
         if (hnx * dx + hny * dy + hnz * dz > 0) { hnx = -hnx; hny = -hny; hnz = -hnz; }
         const key = typeof ob.mat === 'function' ? ob.mat({ x: px, y: py, z: pz, u: hu, face: hf }) : ob.mat;
+        if (ob.gameHazard && key === 'eyeshine') eyeAcc |= 1 << (ob.gameHazard - 1);
         let m = M[key] || M.wall; if (ob.emit) m = ob.emitM && ob.emitBase === m ? ob.emitM : (ob.emitBase = m, ob.emitM = Object.assign({}, m, { emit: ob.emit, emitPow: ob.emitPow }));   // this object glows (a lamp: its own luminance); emitPow > 1 makes it directional (cos^n)
         shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
         if (sampleDepth === Infinity) { sampleDepth = tbest; sampleMat = m.id; }
@@ -346,11 +349,14 @@
       } else { const sl = skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(dz) * 8)); LR += k * sl; LG += k * sl; LB += k * sl; }
     }
     const pixel = (x, y, tl) => {
-      const n = tl ? ssN : 1, k = 1 / (n * n), delta = delta0 / n;
-      LR = LG = LB = 0; sampleDepth = Infinity; sampleMat = MAT_ID.sky; covAcc = 0; hazardAcc = 0;
+      const ti = Math.floor(y / TS) * tw + Math.floor(x / TS);
+      if (o.sampleTiles && tl) o.sampleTiles[ti] = 1;
+      const n = tl || (o.sampleTiles && o.sampleTiles[ti]) ? ssN : 1, k = 1 / (n * n), delta = delta0 / n;
+      LR = LG = LB = 0; sampleDepth = Infinity; sampleMat = MAT_ID.sky; covAcc = 0; hazardAcc = 0; eyeAcc = 0;
       for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) sample(x + (i + 0.5) / n, y + (j + 0.5) / n, k, tl, delta);
       const q = y * w + x;
       if (o.hazardMask) o.hazardMask[q] = hazardAcc;
+      if (o.hazardBodyMask) o.hazardBodyMask[q] = hazardAcc & ~eyeAcc;
       if (rgba) { rgba[4 * q] = LR; rgba[4 * q + 1] = LG; rgba[4 * q + 2] = LB; rgba[4 * q + 3] = fullLayer ? 1 : covAcc; }
       else { rgb[3 * q] = LR; rgb[3 * q + 1] = LG; rgb[3 * q + 2] = LB; if (cov) cov[q] = covAcc; else { depth[q] = sampleDepth; matBuf[q] = sampleMat; } }
     };
