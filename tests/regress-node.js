@@ -873,5 +873,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     }
     ok('D5f full wet frames = worker frames bit for bit, tiles on/off × all four lamp modes',parity,n+' frames');
   }
+  // EX: photometric round trips and geometry schema / actual renderer mesh checks.
+  await require('./export-formats.js').checks(ok);
   process.exitCode = fails ? 1 : 0;
 })();

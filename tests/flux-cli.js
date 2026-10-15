@@ -19,6 +19,30 @@ check(threw, 'an unknown --set fails loudly instead of being dropped');
 const h = run('heatmap', ex, '--out', path.join(tmp, 'ff.png'), '--rays', '200000');
 const buf = fs.readFileSync(h.file);
 check(buf.slice(1, 4).toString() === 'PNG' && buf.readUInt32BE(16) === h.width && buf.readUInt32BE(20) === h.height, 'heatmap writes a PNG of the reported size', { w: h.width, h: h.height });
+// EX: exports use the same trace bins and writers as the page, including finite-screen scenes.
+const formats = require('./export-formats.js');
+const directRF = require('./load.js').load(), exportScene = directRF.State.deserialize(fs.readFileSync(path.join(ROOT, ex), 'utf8'));
+exportScene.modeD.step = 0.5; exportScene.modeD.distance = 10000;
+const exportInput = path.join(tmp, 'export-scene.json'); fs.writeFileSync(exportInput, directRF.State.serialize(exportScene));
+const exported = {};
+for (const format of ['ies', 'ldt', 'gltf']) {
+  const r = run('export', exportInput, '--format', format, '--out', path.join(tmp, 'out.' + format), '--rays', '30000');
+  const text = fs.readFileSync(r.file, 'utf8'); exported[format] = { r, parsed: format === 'gltf' ? formats.validateGltf(text).g : format === 'ies' ? formats.parseIes(text) : formats.parseLdt(text) };
+  check(r.bytes === Buffer.byteLength(text) && (format === 'gltf' ? exported[format].parsed.meshes.length === sum.surfaces.A.count : r.rays === 30000 && r.lmWindow > 0), 'export '+format+': writes and parses file, valid reported size', r);
+}
+const gopts = directRF.Spec.gridOpts(exportScene, 0), eP = directRF.Engine.prepare(exportScene, directRF.State.allSurfaces(exportScene)); eP.ffStreams = [gopts];
+const eCtx = directRF.Engine.runSync(eP, 30000), eG = directRF.FarField.build(eCtx, gopts); let exportWorst = 0;
+for (const [cd, q] of Array.from(eG.E, (e, q) => [e / eG.Om[q], q]).sort((a,b) => b[0]-a[0]).slice(0,5)) {
+  const h=eG.h0+(q%eG.nh+0.5)*eG.step, v=eG.v0+(Math.floor(q/eG.nh)+0.5)*eG.step;
+  for (const f of ['ies','ldt']) exportWorst=Math.max(exportWorst,Math.abs(formats.atHV(exported[f].parsed,h,v,eG.conv)-cd));
+}
+check(exportWorst < 0.001 && Math.abs(exported.ies.r.lmWindow-eG.lmWindow)<1e-8, 'export traces infinity despite saved 10 m setting; round-trip top five raw bins', { maxCdError: exportWorst, lmWindow: eG.lmWindow });
+const legacy = run('export', exportInput, '--format', 'ies', '--out', path.join(tmp, 'legacy.ies'), '--rays', '1000', '--ies-2002');
+check(fs.readFileSync(legacy.file,'utf8').startsWith('IESNA:LM-63-2002'), 'export --ies-2002 provides older-reader header');
+for (const extra of [['--format','bad','--out',path.join(tmp,'bad')], ['--format','ies'], ['--format','ies','--out',path.join(tmp,'bad'),'--rays','0']]) {
+  let rejected=false; try { execFileSync(process.execPath,[CLI,'export',exportInput,...extra],{cwd:ROOT,stdio:'pipe'}); } catch(e) { rejected=/flux:/.test(String(e.stderr)); }
+  check(rejected,'export invalid format / missing output / invalid ray count fails loudly: '+extra.join(' '));
+}
 // Layer 3: api.json (served next to index.html) must describe the code as it is now; commit/date are allowed to lag
 const strip = (m) => { const c = Object.assign({}, m); delete c.commit; delete c.date; return JSON.stringify(c); };
 const onDisk = JSON.parse(fs.readFileSync(path.join(ROOT, 'api.json'), 'utf8')), fresh = run('manifest');
@@ -34,4 +58,5 @@ else {
   const pv = run('page', ex, '--eval', 'RF.UI.store.scene.groups.A.surfaces.length');
   check(pv.value === sum.surfaces.A.count, 'page --eval reads the loaded scene from the live app', { value: pv.value });
 }
+console.log('flux CLI: ' + (fail ? fail + ' FAILED' : 'all checks passed'));
 process.exitCode = fail ? 1 : 0;

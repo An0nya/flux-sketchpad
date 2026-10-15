@@ -521,6 +521,7 @@
   // stale = paint mode, the design no longer matches the settings, and no solve is queued or running
   const stale = () => isPaint(ui.store.scene.mode) && ui.store.dirty.has('A') && !ui.pendingA && !ui.solveArmed && !ui.solving;
   function refreshRefine() {                         // also when a solve starts or ends / the design goes stale (canRefine reads both)
+    P.refreshExports(ui);
     const run = ui.run, b = document.getElementById('btn-refine'); if (!run) return;
     if (b) { const d = !ui.canRefine(), t = run.ctx.N < REFINE_MAX ? 'Refine → ' + RF.U.fmtInt(Math.min(REFINE_MAX, 2 * run.ctx.N)) + ' rays' : 'Refine (at 50M)'; if (b.disabled !== d) b.disabled = d; if (b.textContent !== t) b.textContent = t; }
     ui._refineN = run.ctx.N;
@@ -1891,6 +1892,7 @@
     envT.checked = ui.opticsEnv;
     envT.addEventListener('change', () => { ui.opticsEnv = envT.checked; try { localStorage.setItem('flux/opticsEnv', envT.checked ? '1' : '0'); } catch (e) { /* ignore */ } refitSurfaces(); ui.sceneDirty = true; schedule(); });
     document.getElementById('btn-download').addEventListener('click', () => P.download(ui));
+    P.initExports(ui);
     document.getElementById('btn-generate-top').addEventListener('click', () => ui.generateA());
     document.getElementById('btn-stop').addEventListener('click', () => ui.stopSolve());
     // Lens slider: 0–99 → 12–400 mm on a log scale; 100 → ∞ (orthographic).
