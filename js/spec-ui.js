@@ -845,7 +845,7 @@
   const DV_GLARE = Object.keys(RF.Drive.GLARE).map((k) => [k, k]);
   const DV_SMOOTH = { sharp: [0.2, 0.2, 1], smooth: [0.5, 0.15, 2], soft: [1.0, 0.3, 3] };    // kernel half-widths: horizontal, vertical (°), wide-grid bins
   function dvOpts(ui) {
-    if (!ui.dvOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/driveView') || '{}'); } catch (e) { /* ignore */ } ui.dvOpts = Object.assign({}, DV_DEF, o); ui.dvOpts.glare = RF.Drive.glareLevel(ui.dvOpts.glare); if (!o.onMode && Object.prototype.hasOwnProperty.call(o, 'onKcd')) ui.dvOpts.onMode = 'manual'; }   // old numeric/boolean glare -> off/rain; preserve explicitly saved manual lamp intensity
+    if (!ui.dvOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/driveView') || '{}'); } catch (e) { /* ignore */ } ui.dvOpts = Object.assign({}, DV_DEF, o); ui.dvOpts.glare = RF.Drive.glareLevel(ui.dvOpts.glare); if (!o.onMode && o.onKcd !== undefined && +o.onKcd !== DV_DEF.onKcd) ui.dvOpts.onMode = 'manual'; }   // old numeric/boolean glare -> off/rain. Old setDV saved the whole option set, so onKcd = 30 is the old default, not a choice: it migrates to symmetric; only a different saved kcd stays manual (tester fix)
     return ui.dvOpts;
   }
   function setDV(ui, k, v) {

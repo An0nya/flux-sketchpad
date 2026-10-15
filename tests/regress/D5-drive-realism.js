@@ -13,7 +13,10 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   await page.waitForFunction(()=>!RF.UI.solving,null,{timeout:150000});await page.evaluate(()=>RF.UI.setMode('D'));
   await page.waitForFunction(()=>{const u=RF.UI;return !u.solving&&u.run&&u.run.ctx.done&&u.spec&&u.spec.ctx===u.run.ctx&&u.spec.full&&u.spec.ev;},null,{timeout:180000});
   await page.evaluate(()=>{RF.UI.setDisplay('drive');RF.UI.setPane('result','activate');});await sleep(600);
-  ok('old saved low glare and kcd load as rain/manual',await page.evaluate(()=>RF.UI.dvOpts.glare==='rain'&&RF.UI.dvOpts.onMode==='manual'&&RF.UI.dvOpts.onKcd===30));
+  // Old setDV saved the WHOLE option set, so onKcd 30 (the old default) is in every existing user's storage: it must migrate to symmetric, not manual.
+  ok('old saved low glare + default 30 kcd (no onMode) load as rain/symmetric',await page.evaluate(()=>RF.UI.dvOpts.glare==='rain'&&RF.UI.dvOpts.onMode==='symmetric'));
+  await page.evaluate(()=>{localStorage.setItem('flux/driveView',JSON.stringify({glare:.3,onKcd:45,wet:false}));RF.UI.dvOpts=null;RF.UI.redrawSpec();});
+  ok('old saved non-default kcd (45) stays manual',await page.evaluate(()=>RF.UI.dvOpts.glare==='rain'&&RF.UI.dvOpts.onMode==='manual'&&RF.UI.dvOpts.onKcd===45));
   const saved=await page.evaluate(()=>RF.State.serialize(RF.UI.store.scene));
   await page.evaluate(()=>{localStorage.removeItem('flux/driveView');RF.UI.dvOpts=null;RF.UI.redrawSpec();});
   ok('fresh defaults are symmetric/dry; sheen has an independent setting',await page.evaluate(()=>RF.UI.dvOpts.onMode==='symmetric'&&RF.UI.dvOpts.glare==='dry'&&RF.UI.dvOpts.wetSheen&&document.querySelector('[data-dv="wetSheen"]')));
