@@ -40,7 +40,9 @@ this; Anya: "the drive view in particular is in desperate need". three.js = the 
 - Acceptance: parity vs the CPU renderer within stated thresholds per material class; the heavy scene ≥ 30 fps in
   the desktop popout; mobile measured; CPU fallback works.
 
-**P2: lighting extras**: tiled/clustered light culling if many lamps; other traffic lighting the road; lamp pitch on
+**P2: lighting extras**: retroreflective signs (and other bright lit surfaces) as wet-sheen sources: today only lamps
+(car head/tail lamps, street lamps, our beam) are, in js/drive.js reflectionSources(); a lit sign is roughly 10x dimmer than
+an oncoming lamp but visibly mirrors in real wet roads (Anya 10-15; estimate, not measured); tiled/clustered light culling if many lamps; other traffic lighting the road; lamp pitch on
 braking/acceleration (pitch ≈ k·a).
 
 **P3: models**: less "snowman" cars, deer/people (articulated, walking), foliage, cheap on the GPU now.
