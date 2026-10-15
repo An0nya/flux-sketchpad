@@ -69,7 +69,7 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
       const css = [b,panel].map((e) => { const s = getComputedStyle(e); return { select: s.userSelect || s.webkitUserSelect, action: s.touchAction, callout: s.webkitTouchCallout || 'unsupported in Chromium' }; });
       return { start: start.defaultPrevented, end: end.defaultPrevented, menu: menu.defaultPrevented, panel: ps.defaultPrevented, held, released: !RF.UI.dvAnim.game.brake, css };
     });
-    ok('UX1 touch hold brakes and releases; selection/menu defaults suppressed', touch.start && touch.end && touch.menu && touch.panel && touch.held && touch.released && touch.css.every((s) => s.select === 'none') && touch.css[0].action === 'none' && touch.css[1].action === 'manipulation', touch);
+    ok('UX1 touch hold brakes and releases; selection/menu suppressed on Brake only, the panel still touch-scrolls', touch.start && touch.end && touch.menu && !touch.panel && touch.held && touch.released && touch.css[0].select === 'none' && touch.css[1].select !== 'none' && touch.css[0].action === 'none' && touch.css[1].action === 'manipulation', touch);
     const departure = await page.evaluate(() => {
       const a = RF.DriveAnim._, st = a.S(RF.UI), g = st.game; st.playing = false; g.next = Infinity; g.v = 0; g.brake = false;
       g.hazards = [{ id: 1, born: g.t, kind: 'deer', s0: g.x + 30, off0: 0, ds: 0, doff: 1, spd: 3.5, len: 0, side: -1 }];
