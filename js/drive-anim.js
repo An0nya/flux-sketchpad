@@ -78,7 +78,7 @@
         out.push(n);
       }
     }
-    if (p && src.traffic.onMode !== 'manual') D.Headlamp.apply(out, { mode: src.traffic.onMode, kcd: src.traffic.onKcd, lut: p.lut, conv: p.conv });
+    if (p && src.traffic && src.traffic.onMode !== 'manual') D.Headlamp.apply(out, { mode: src.traffic.onMode, kcd: src.traffic.onKcd, lut: p.lut, conv: p.conv });
     return out;
   }
   const placedObjects = (p, dist, t, tauOf) => place(p.src, dist, p.A, tauOf, dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p));
