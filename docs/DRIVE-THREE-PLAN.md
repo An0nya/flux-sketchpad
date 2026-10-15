@@ -22,8 +22,10 @@ this; Anya: "the drive view in particular is in desperate need". three.js = the 
 - FPS counter + per-frame time breakdown (object trace, ground, workers, GL passes, glare, wet sheen, traffic logic,
   minigame detector) in the drive bar (toggle).
 - Dynamic resolution: lower the trace/render scale when the frame time exceeds a target, restore when there's headroom.
-- Profile Anya's slideshow config (city, wet + sheen, glare rain, reflections, random items dense, traffic logic) and
-  write the breakdown into the report: this decides P1's priorities.
+- Profile Anya's heavy scene. Her words: "a city scape with wet road, glare, road reflections, random items, and traffic
+  logic - it turns into a slideshow at like 3-5fps". The specific levels in the P0 brief (sheen on, glare "rain", items
+  dense, oncoming + preceding) are Claude's guesses at those settings, not her recorded config. Write the breakdown into
+  the report: this decides P1's priorities.
 
 **P1: three.js renderer (Codex, big)**
 - Scene from the existing drive-scenes object lists: InstancedMesh for repeated items (posts, studs, trees, signs),
@@ -35,7 +37,7 @@ this; Anya: "the drive view in particular is in desperate need". three.js = the 
 - Wet road: three.js `Reflector` (planar) or SSR, whichever matches D5's sheen look at lower cost.
 - Glare/bloom: keep OUR tuned bloom passes (D5) rather than three's bloom, unless parity is equal.
 - Minigame (MG/MG2) detector must work on the new renderer (hazard-only render via a layer mask).
-- Acceptance: parity vs the CPU renderer within stated thresholds per material class; the slideshow config ≥ 30 fps in
+- Acceptance: parity vs the CPU renderer within stated thresholds per material class; the heavy scene ≥ 30 fps in
   the desktop popout; mobile measured; CPU fallback works.
 
 **P2: lighting extras**: tiled/clustered light culling if many lamps; other traffic lighting the road; lamp pitch on
