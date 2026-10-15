@@ -33,15 +33,15 @@ const sets = Object.fromEntries(flags('set').map((kv) => { const i = kv.indexOf(
     if (/lock|both/.test(m)) navigator.locks.request('flux-solve', () => new Promise(() => {}));
     if (/audio|both/.test(m)) { const ac = new AudioContext(), o = ac.createOscillator(), g = ac.createGain(); g.gain.value = 0.00001; o.connect(g); g.connect(ac.destination); o.start(); await ac.resume(); window.__ac = ac; }
   }, mitig);
-  await page.evaluate(() => { window.__vlog = []; document.addEventListener('visibilitychange', () => window.__vlog.push(document.visibilityState)); window.__lt = []; window.__vis = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__lt.push(e.duration); }).observe({ entryTypes: ['longtask'] }); } catch (e) { /* none */ } });
+  await page.evaluate(() => { window.__vlog = []; document.addEventListener('visibilitychange', () => window.__vlog.push(document.visibilityState)); window.__lt = []; window.__tr = new Set(); window.__prev = new Set(); setInterval(() => { const w = RF.UI.watch; if (w && w.msg) window.__prev.add(w.msg.n); if (w && w.traced) window.__tr.add(w.traced.label + '|' + w.traced.ms); }, 50); window.__vis = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__lt.push(e.duration); }).observe({ entryTypes: ['longtask'] }); } catch (e) { /* none */ } });
   const t0 = Date.now();
   await page.evaluate(() => { RF.UI.lastGenMs = 0; RF.UI.generateA(); });
   await page.waitForFunction(() => RF.UI.lastGenMs > 0 && !RF.UI.solving, null, { timeout: 1800000, polling: 250 });
   const solveMs = await page.evaluate(() => Math.round(RF.UI.lastGenMs)), t1 = Date.now();
   await page.waitForFunction(() => RF.UI.run && RF.UI.run.ctx.done, null, { timeout: 600000, polling: 250 });
-  const r = await page.evaluate(() => ({ vis: document.visibilityState, lt: window.__lt.length, ltMax: Math.round(Math.max(0, ...window.__lt)), ltSum: Math.round(window.__lt.reduce((a, b) => a + b, 0)), vlog: window.__vlog, placed: RF.UI.store.scene.groups.A.surfaces.length, st: RF.SolverHost.lastStats() }));
+  const r = await page.evaluate(() => ({ vis: document.visibilityState, lt: window.__lt.length, ltMax: Math.round(Math.max(0, ...window.__lt)), ltSum: Math.round(window.__lt.reduce((a, b) => a + b, 0)), vlog: window.__vlog, previews: window.__prev.size, tracedPreviews: window.__tr.size, placed: RF.UI.store.scene.groups.A.surfaces.length, st: RF.SolverHost.lastStats() }));
   const row = { tag: flag('tag', ''), where: 'ui', solver: id, scene: path.basename(sceneFile), budget: +flag('budget', 0) || null, sets, watch: w === undefined ? 'default' : w, hidden: argv.includes('--hide'), visibility: r.vis, vlog: r.vlog, mitig: mitig || null,
-    solveMs, wallMs: t1 - t0, postRunMs: Date.now() - t1, workerTraceMs: r.st && r.st.traceMs, longTasks: r.lt, longTaskMax: r.ltMax, longTaskSum: r.ltSum, placed: r.placed };
+    solveMs, wallMs: t1 - t0, postRunMs: Date.now() - t1, previews: r.previews, tracedPreviews: r.tracedPreviews, workerTraceMs: r.st && r.st.traceMs, longTasks: r.lt, longTaskMax: r.ltMax, longTaskSum: r.ltSum, placed: r.placed };
   console.log(JSON.stringify(row)); const o = flag('out'); if (o) fs.appendFileSync(o, JSON.stringify(row) + '\n');
   await browser.close();
 })().catch((e) => { console.error(e.stack || e); process.exit(1); });

@@ -22,7 +22,7 @@ let traceMs = 0, nTrace = 0, rays = 0, loopMs = 0, depth = 0;
 const E = RF.Engine, trR = E.traceRange; E.traceRange = function () { const t = performance.now(); try { return trR.apply(this, arguments); } finally { loopMs += performance.now() - t; } };
 const runSync = E.runSync; E.runSync = function () { const t = performance.now(); try { return runSync.apply(this, arguments); } finally { loopMs += performance.now() - t; } };
 const timed = async (f, o) => { if (depth++ === 0) { nTrace++; rays += Math.max(1, (o && o.rays) | 0 || 20000); } const t = performance.now(); try { return await f(); } finally { if (--depth === 0) traceMs += performance.now() - t; } };
-const tools = { progress() {}, preview() {}, budget: { rays: Infinity, ms: Infinity }, scene: problem,
+const tools = { progress() {}, preview() {}, budget: { rays: 5e7, ms: +flag('ms', 1800000) }   /* = the page's BUDGET.rays and the bench page's time limit */, scene: problem,
   trace: (s, o) => { const t = performance.now(); nTrace++; rays += Math.max(1, (o && o.rays) | 0 || 20000); try { return RF.Solvers.trace(problem, s, o); } finally { traceMs += performance.now() - t; } },
   traceAsync: (s, o) => timed(() => RF.Solvers.traceAsync(problem, s, o), o) };
 (async () => {
@@ -30,7 +30,7 @@ const tools = { progress() {}, preview() {}, budget: { rays: Infinity, ms: Infin
   const t0 = performance.now(), res = await def.solve(input, settings, tools), ms = performance.now() - t0;
   const facts = RF.Solvers.verify(sc, res || {});
   const row = { tag: flag('tag', ''), where: 'node', solver: id, scene: path.basename(sceneFile), sets, wallMs: Math.round(ms), traceMs: Math.round(traceMs), loopMs: Math.round(loopMs), traces: nTrace, rays, otherMs: Math.round(ms - traceMs),
-    placed: facts.placed, errors: facts.errors, digest: crypto.createHash('sha1').update(JSON.stringify(res.surfaces)).digest('hex').slice(0, 12), notes: (res.notes || []).slice(0, 3).map((s) => String(s).slice(0, 200)) };
+    placed: facts.placed, errors: facts.errors, digest: crypto.createHash('sha1').update(JSON.stringify(res.surfaces)).digest('hex').slice(0, 12), hash: (() => { const t = JSON.stringify(res.surfaces); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return (h >>> 0).toString(16); })(), notes: (res.notes || []).slice(0, 3).map((s) => String(s).slice(0, 200)) };
   const V = +flag('verify', 0);
   if (V > 0 && !facts.errors.length) {   // judge the output the way the app would: same seed, fixed rays
     const t = RF.Solvers.trace(problem, res.surfaces, { rays: V, seed: input.seed, spec: sc.mode === 'D', guided: true, bounces: res.needs && res.needs.bounces });
