@@ -860,8 +860,8 @@
     if (!bar) {
       bar = ui.driveBar = el('div', { class: 'drive-tools' });
       const btn = (k, title, fn) => { const b = el('button', { type: 'button', class: 'toggle', 'data-dv': k, title }); b.addEventListener('click', fn); bar.append(b); return b; };
-      const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road, a city street' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)));
-      sel.addEventListener('change', () => setDV(ui, 'scene', sel.value)); bar.append(sel);
+      const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road, a city street' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)), el('option', { value: '__pass', title: 'Prototype: grades, hairpins, banking. Needs the GPU drive renderer for elevation; the CPU stays flat.' }, 'Mountain pass (prototype)'));
+      sel.addEventListener('change', () => { const v = sel.value; if (v === '__pass') setDV(ui, 'mountainPass', true); else { if (dvOpts(ui).mountainPass) setDV(ui, 'mountainPass', false); setDV(ui, 'scene', v); } }); bar.append(sel);   // v read first: setDV re-syncs this select
       btn('shape', 'The road: straight, or an IIHS bend (shared with the Road view)', () => { const o = rvOpts(ui); setRV(ui, 'shape', RV_SHAPES[(RV_SHAPES.indexOf(o.shape) + 1) % RV_SHAPES.length]); });
       btn('wet', 'Dry or wet asphalt (wet is darker and mirror-like)', () => setDV(ui, 'wet', !dvOpts(ui).wet));
       btn('wetSheen', 'Wet-road streaks: cheap anisotropic mirror-lobe approximation for our beam, traffic and street lamps. Off keeps the previous wet material.', () => setDV(ui, 'wetSheen', !dvOpts(ui).wetSheen));
@@ -897,7 +897,7 @@
     const o = dvOpts(ui), rv = rvOpts(ui), tm = ui.driveShown && ui.driveShown.tm;
     for (const b of new Set([...bar.querySelectorAll('[data-dv]'), ...ui.driveExtras.querySelectorAll('[data-dv]')])) {
       const k = b.dataset.dv;
-      if (k === 'scene') b.value = o.scene;
+      if (k === 'scene') b.value = o.mountainPass ? '__pass' : o.scene;
       else if (k === 'onMode') b.value = o.onMode;
       else if (k === 'wetSheen') { b.textContent = 'wet sheen'; b.disabled = !o.wet; b.setAttribute('aria-pressed', String(o.wetSheen)); }
       else if (k === 'shape') { b.textContent = rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' $1'); b.setAttribute('aria-pressed', String(rv.shape !== 'straight')); }
