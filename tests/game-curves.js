@@ -47,21 +47,36 @@ function run(RF, ok) {
   ok('GC mountain pass: every hairpin/bend at or below sqrt(3R) x1.05 over 3 km', r1.curved > 0 && r1.violations === 0);
   ok('GC mountain pass: speed returns to >= 75 km/h on long straights', r1.runs > 0 && r1.regainOk);
 
-  // (2) Tiled city/rural road: curve tiles at or below 60 km/h (+5 %). The run starts at x=0 with the car already at speed,
-  // so tile 0 is excluded (no run-up before it).
-  let curveMax = 0, curveTiles = 0, tileBad = 0;
+  // (2) Tiled city/rural road, slider 80 km/h: flat bends at or below sqrt(3R) (+5 %) using each tile's own radius; urban and
+  // junction tiles are never capped below the slider. The run starts at x=0 at speed, so tile 0 is excluded.
+  let curveTiles = 0, curveBad = 0, curveWorst = -Infinity, urbanSamples = 0, urbanBad = 0, urbanFree = 0;
+  const CURVES = ['urban', 'intersection', 't-junction'];
   for (const seed of [1, 2, 3]) {
     const tiled = A.source('road', 3.5, false, {}, { tiles: true, seed });
     const { trace } = drive(RF, { src: tiled, speed: 80, dist: DIST, seed });
+    const maxIn = new Map();
     for (const [x, v] of trace) {
+      const k = Math.floor(x / 200);
+      maxIn.set(k, Math.max(maxIn.get(k) ?? 0, v));
       if (x < 200) continue;
-      const tile = A.roadTile(tiled.tiles.seed, Math.floor(x / 200));
-      if (!tile.curvature || tile.kind === 'urban') continue;
-      curveMax = Math.max(curveMax, v * KMH); curveTiles++; if (v * KMH > 60 * CITY_TOL) tileBad++;
+      const tile = A.roadTile(tiled.tiles.seed, k);
+      if (CURVES.includes(tile.kind)) {
+        // no cap on urban/junction: the car holds the slider wherever no bend is within the lookahead
+        if (x > 0 && G.curveCap(tiled, x) === Infinity) { urbanSamples++; if (Math.abs(v * KMH - 80) > 0.5) urbanBad++; }
+      }
+    }
+    for (const [k, vmax] of maxIn) {
+      if (k < 1) continue;
+      const tile = A.roadTile(tiled.tiles.seed, k);
+      if (!tile.curvature || CURVES.includes(tile.kind)) continue;
+      const lim = Math.sqrt(3 * Math.abs(1 / tile.curvature));
+      curveTiles++; curveWorst = Math.max(curveWorst, (vmax / lim - 1) * 100);
+      if (vmax > lim * CITY_TOL) curveBad++;
     }
   }
-  console.log(`  tiled: ${curveTiles} samples on curve tiles, max ${curveMax.toFixed(2)} km/h`);
-  ok('GC tiles: speed on curve tiles <= 60 km/h +5 %', curveTiles > 0 && tileBad === 0);
+  console.log(`  flat bends: ${curveTiles} tiles, worst vs sqrt(3R) ${curveWorst.toFixed(2)} %; urban/junction free-running samples ${urbanSamples}, off-slider ${urbanBad}`);
+  ok('GC tiles: flat bends at or below sqrt(3R) +5 %', curveTiles > 0 && curveBad === 0);
+  ok('GC tiles: urban/junction tiles not capped below the slider', urbanSamples > 0 && urbanBad === 0);
 
   // (3) No tiles: byte-identical trace to main (hazards on, slider above 80 so any silent clamp would show).
   let mainSrc = null;
@@ -81,14 +96,14 @@ function run(RF, ok) {
   }
 
   // (4) POSITIVE CONTROL: old behaviour (cap disabled, car holds slider speed) must fail check (1).
-  const realApproach = A.approachSpeed;
-  A.approachSpeed = () => Infinity;
+  const realCap = G.curveCap;
+  G.curveCap = () => Infinity;
   try {
     const c = drive(RF, { src: pass, dist: DIST, touge: true });
     const r4 = checkMountain(RF, c.trace, DIST);
     console.log(`  positive control (cap off): worst overspeed ${r4.worstOverKmh.toFixed(2)} % at tile ${r4.worstK}, violations ${r4.violations}`);
     ok('GC positive control: fixed slider target fails the mountain apex bound', r4.violations > 0);
-  } finally { A.approachSpeed = realApproach; }
+  } finally { G.curveCap = realCap; }
 }
 
 module.exports = { run };

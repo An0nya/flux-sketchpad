@@ -175,21 +175,34 @@
       }
     }
   }
-  // Speed the car may carry at g.x: on a tiled road, the approach profile from js/drive-anim.js (slows before bends, lets the car
-  // accelerate out). Without tiles it is Infinity, so the slider speed alone decides and behaviour matches the old code exactly.
-  function speedCap(g, p) {
-    if (!(p && p.src && p.src.tiles) || !RF.DriveAnim || !RF.DriveAnim.approachSpeed) return Infinity;
-    return RF.DriveAnim.approachSpeed(p.src, { x: g.x, kind: 'preceding', v: g.v });
+  // Curve-only speed cap for the game car: no posted limits, so the slider still rules straights, urban and junction tiles.
+  // Per bend: v = sqrt(3 m/s^2 / |curvature|) (150R ~76 km/h, 250R ~98 km/h, same rule as the Mountain pass). Looks 3 tiles
+  // ahead and brakes to each bend at CURVE_DECEL. No tiles: Infinity, so behaviour matches the old code exactly.
+  function curveCap(src, x) {
+    if (!src || !src.tiles || !RF.DriveAnim) return Infinity;
+    const mountain = !!src.tiles.mountain, TL = RF.DriveAnim.TILE_LEN, k0 = Math.floor(x / TL);
+    let v = Infinity;
+    for (let i = 0; i <= 3; i++) {
+      const k = k0 + i, tile = mountain ? RF.Touge.tile(0, k) : RF.DriveAnim.roadTile(src.tiles.seed, k);
+      const c = Math.abs(tile.curvature || 0);
+      if (c <= 1e-6 || (!mountain && ['urban', 'intersection', 't-junction'].includes(tile.kind))) continue;
+      const vc = Math.sqrt(3 / c), gap = i === 0 ? 0 : Math.max(0, k * TL - x);
+      v = Math.min(v, Math.sqrt(vc * vc + 2 * CURVE_DECEL * gap));
+    }
+    return v;
   }
   function step(g, dt, lane, p) {
     g.deerBehaviour=RF.Drive.Models.deerEnabled(p);
     if (g.done) return; g.lane = lane; g.accumulator += dt;
     while (g.accumulator + 1e-10 >= STEP && !g.done) {
       g.accumulator -= STEP;
-      if (g.resume !== null && g.t >= g.resume && !g.brake && (!waitsForLane(g) || laneClear(g))) { if (g.acceleration !== 'gentle') g.v = Math.min(g.speed / 3.6, speedCap(g, p)); g.resume = null; }
+      if (g.resume !== null && g.t >= g.resume && !g.brake && (!waitsForLane(g) || laneClear(g))) { if (g.acceleration !== 'gentle') g.v = Math.min(g.speed / 3.6, RF.DriveGame.curveCap(p && p.src, g.x)); g.resume = null; }
       if (g.spawned < g.limit && g.t + 1e-9 >= g.next && !(waitsForLane(g) && g.resume !== null)) spawn(g, lane, p);
       for(const h of g.hazards)if(h.kind==='deer'&&h.alertAt===undefined&&h.s0-g.x<=RF.Drive.Models.deerProfile(g.seed+':'+h.id).trigger)h.alertAt=g.t;
-      const target = Math.min(g.speed / 3.6, speedCap(g, p)), ramp = g.resume === null && (g.acceleration === 'gentle' || !!(p && p.src && p.src.tiles));
+      const cap = RF.DriveGame.curveCap(p && p.src, g.x), target = Math.min(g.speed / 3.6, cap);
+      // g.shed: the car was slowed by a bend and may accelerate back out (default mode otherwise coasts, as on main).
+      if (cap < g.v) g.shed = true; else if (g.v >= g.speed / 3.6 - 1e-9) g.shed = false;
+      const ramp = g.resume === null && (g.acceleration === 'gentle' || (!!g.shed && !g.brake));
       const oldX = g.x, oldV = g.v, oldT = g.t, grade = p && p.touge ? RF.Touge.profile(g.x).grade : 0, m = cruiseMotion(g.v, STEP, g.brake, g.wet, target, ramp, grade); g.x += grade ? m.dx / Math.sqrt(1 + grade * grade) : m.dx; g.v = m.v; g.t += STEP;
       for (const h of g.hazards) if (!h.resolved) {
         const a = box(pose(g, h, oldT), h.kind), b = box(pose(g, h, g.t), h.kind), f = sweep(car(oldX), a, car(g.x), b);
@@ -204,5 +217,5 @@
     if (held && !g.brake) for (const h of g.hazards) if (!h.resolved && h.lit !== null && h.reaction === null) { h.reaction = Math.max(0, (now - h.lit) / 1000); g.reactions.push(h.reaction); }
     g.brake = held;
   }
-  RF.DriveGame = { G, STEP, ACCELERATION, cruiseMotion, speedCap, mu, stoppingDistance, motion, overlap, sweep, score, VISIBILITY, firstLit, legacyFirstLit, create, spawn, pose, laneClear, box, car, step, press, resolve };
+  RF.DriveGame = { G, STEP, ACCELERATION, cruiseMotion, curveCap, mu, stoppingDistance, motion, overlap, sweep, score, VISIBILITY, firstLit, legacyFirstLit, create, spawn, pose, laneClear, box, car, step, press, resolve };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
