@@ -4,15 +4,15 @@
   const RF = root.RF || (root.RF = {}), G = 9.81, STEP = 1 / 120;
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const mu = (wet) => wet ? 0.4 : 0.8;
-  const stoppingDistance = (kmh, reaction, wet) => { const v = kmh / 3.6; return v * reaction + v * v / (2 * mu(wet) * G); };
-  function motion(v, dt, brake, wet) {
-    const a = brake ? mu(wet) * G : 0, h = a ? Math.min(dt, v / a) : dt;
+  const stoppingDistance = (kmh, reaction, wet, grade = 0) => { const v = kmh / 3.6, a = grade ? G * (mu(wet) + grade) / Math.sqrt(1 + grade * grade) : mu(wet) * G; return a > 0 ? v * reaction + v * v / (2 * a) : Infinity; };
+  function motion(v, dt, brake, wet, grade = 0) {
+    const a = brake ? (grade ? G * (mu(wet) + grade) / Math.sqrt(1 + grade * grade) : mu(wet) * G) : 0, h = a > 0 ? Math.min(dt, v / a) : dt;
     return { v: Math.max(0, v - a * h), dx: v * h - a * h * h / 2 };
   }
   // Integrate acceleration exactly up to cruise speed; braking keeps the friction-limited law.
   const ACCELERATION = 2.5;
-  function cruiseMotion(v, dt, brake, wet, target, gentle) {
-    if (brake || !gentle || v >= target) return motion(v, dt, brake, wet);
+  function cruiseMotion(v, dt, brake, wet, target, gentle, grade = 0) {
+    if (brake || !gentle || v >= target) return motion(v, dt, brake, wet, grade);
     const a = Math.min(4, ACCELERATION), h = Math.min(dt, (target - v) / a);
     return { v: Math.min(target, v + a * h), dx: v * h + a * h * h / 2 + target * (dt - h) };
   }
@@ -101,13 +101,13 @@
     const A = RF.DriveAnim, r = g.rand, distance = 80 + 100 * r(), desiredPerson = r() < 0.1, initialSide = r() < 0.5 ? -1 : 1;
     let s = g.x + distance, crosswalk = false, tile;
     if (desiredPerson) for (let k = Math.floor((g.x + 80) / 200); k <= Math.floor((g.x + 180) / 200); k++) {
-      const q = A.roadTile(g.seed, k), x = q.s0 + 100 - lane - 2.7;
+      const q = p && p.src && p.src.tiles && p.src.tiles.mountain ? RF.Touge.tile(0,k) : A.roadTile(g.seed, k), x = q.s0 + 100 - lane - 2.7;
       if (['intersection', 't-junction'].includes(q.kind) && x >= g.x + 80 && x <= g.x + 180) { s = x; crosswalk = true; tile = q; break; }
     }
     const person = desiredPerson && crosswalk; let side = initialSide, off = side < 0 ? -lane / 2 - 2.2 : 1.5 * lane + 2.2, outsideLux = null;
     // Outside the useful beam = <1 lx at 1.1 m, using the same LUT/route as D3. Prefer the nearest unlit shoulder.
     if (p) {
-      const pp = Object.assign({}, p, { A: A.tileRoute(g.seed, g.x) }); let found = false;
+      const pp = Object.assign({}, p, { A: p.touge ? RF.Touge.route(g.x, lane) : A.tileRoute(g.seed, g.x) }); let found = false;
       for (let extra = 0; extra <= 1000 && !found; extra += 0.5) for (const sign of [initialSide, -initialSide]) {
         const y = sign < 0 ? -lane / 2 - 2.2 - extra : 1.5 * lane + 2.2 + extra, E = A.eyeLux(pp, { rel: s - g.x, off: y });
         if (E < 1) { side = sign; off = y; outsideLux = E; found = true; break; }
@@ -121,7 +121,7 @@
     if (g.rules === 'legacy') return legacySpawn(g, lane, p);
     const A = RF.DriveAnim, r = g.rand, base = 80 + 100 * r(), person = r() < .1, side = r() < .5 ? -1 : 1;
     // Fixed 2.2 m shoulder setback: lamp width must NEVER move a hazard sideways.
-    const off = side < 0 ? -lane / 2 - 2.2 : 1.5 * lane + 2.2, pp = p && Object.assign({}, p, { A: A.tileRoute(g.seed, g.x) });
+    const off = side < 0 ? -lane / 2 - 2.2 : 1.5 * lane + 2.2, pp = p && Object.assign({}, p, { A: p.touge ? RF.Touge.route(g.x, lane) : A.tileRoute(g.seed, g.x) });
     let distance = Math.max(base, g.speed / 3.6 * (Math.abs(off) / (person ? 1.3 : 3.5) + .3)), outsideLux = null, crosswalk = false, tile;
     if (pp) {
       // Search longitudinally beyond useful reach, checking both the shoulder and our lane.
@@ -132,7 +132,7 @@
     }
     let s = g.x + distance;
     if (person) for (let k = Math.floor(s / 200); k <= Math.floor((s + 100) / 200); k++) {
-      const q = A.roadTile(g.seed, k), x = q.s0 + 100 - lane - 2.7;
+      const q = p && p.src && p.src.tiles && p.src.tiles.mountain ? RF.Touge.tile(0,k) : A.roadTile(g.seed, k), x = q.s0 + 100 - lane - 2.7;
       if (['intersection', 't-junction'].includes(q.kind) && x >= s && x <= s + 100 && (!pp || (A.eyeLux(pp, { rel: x - g.x, off }) < 1 && A.eyeLux(pp, { rel: x - g.x, off: 0 }) < 1))) { s = x; crosswalk = true; tile = q; break; }
     }
     if (pp) outsideLux = A.eyeLux(pp, { rel: s - g.x, off });
@@ -180,11 +180,11 @@
       if (g.resume !== null && g.t >= g.resume && !g.brake && (!waitsForLane(g) || laneClear(g))) { if (g.acceleration !== 'gentle') g.v = g.speed / 3.6; g.resume = null; }
       if (g.spawned < g.limit && g.t + 1e-9 >= g.next && !(waitsForLane(g) && g.resume !== null)) spawn(g, lane, p);
       for(const h of g.hazards)if(h.kind==='deer'&&h.alertAt===undefined&&h.s0-g.x<=RF.Drive.Models.deerProfile(g.seed+':'+h.id).trigger)h.alertAt=g.t;
-      const oldX = g.x, oldV = g.v, oldT = g.t, m = cruiseMotion(g.v, STEP, g.brake, g.wet, g.speed / 3.6, g.acceleration === 'gentle' && g.resume === null); g.x += m.dx; g.v = m.v; g.t += STEP;
+      const oldX = g.x, oldV = g.v, oldT = g.t, grade = p && p.touge ? RF.Touge.profile(g.x).grade : 0, m = cruiseMotion(g.v, STEP, g.brake, g.wet, g.speed / 3.6, g.acceleration === 'gentle' && g.resume === null, grade); g.x += grade ? m.dx / Math.sqrt(1 + grade * grade) : m.dx; g.v = m.v; g.t += STEP;
       for (const h of g.hazards) if (!h.resolved) {
         const a = box(pose(g, h, oldT), h.kind), b = box(pose(g, h, g.t), h.kind), f = sweep(car(oldX), a, car(g.x), b);
         if (f !== null) {
-          const frac = Math.max(0.01, overlap(car(g.x), b)); resolve(g, h, true, cruiseMotion(oldV, STEP * f, g.brake, g.wet, g.speed / 3.6, g.acceleration === 'gentle' && g.resume === null).v * 3.6, frac);
+          const frac = Math.max(0.01, overlap(car(g.x), b)); resolve(g, h, true, cruiseMotion(oldV, STEP * f, g.brake, g.wet, g.speed / 3.6, g.acceleration === 'gentle' && g.resume === null, grade).v * 3.6, frac);
         } else if ((g.v === 0 && g.x < b.x - b.hx) || b.x + b.hx < g.x - 4.4) resolve(g, h, false, 0, 0);
       }
     }

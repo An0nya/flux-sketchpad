@@ -22,6 +22,7 @@
   // the scenery on a straight road, in (s, off) coordinates
   // opts (the view's settings; none = the original scenery, as the tests build it): { wild: random scenery from `seed` (chunks of PERIOD m, `density`), cline: 'broken' = a US passing-zone centre line }
   function source(name, lane, us, flags, opts) {
+    if (opts && opts.mountainPass) { opts = Object.assign({}, opts, { tiles: true, wild: false }); name = 'road'; }
     if (opts && opts.tiles) opts = Object.assign({}, opts, { flags: flags || {}, us });
     if (opts && opts.tiles && name === 'intersection') name = 'road';
     const broken = !!(opts && us && opts.cline === 'broken');
@@ -44,7 +45,7 @@
     src.traffic.onMode = o.onMode || (o.onKcd === undefined ? 'symmetric' : 'manual'); src.traffic.onKcd = o.onKcd === undefined ? 30 : +o.onKcd;
     src.traffic.logic = !!o.trafficLogic; src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
     if (o.tiles) src.markings = D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });
-    if (o.tiles) src.tiles = { seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', grain: o.tex !== false, wet: !!o.wet, groundCache: o.tileCache ? {} : null };
+    if (o.tiles) src.tiles = { mountain: !!o.mountainPass, density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', grain: o.tex !== false, wet: !!o.wet, groundCache: o.tileCache ? {} : null };
     for (const kind of ['oncoming', 'preceding']) if (src.traffic[kind]) {
       const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
       K.car(0, 0, kind === 'oncoming' ? { face: -1, lamps: 'head', kcd: +o.onKcd || 30 } : { face: 1, lamps: 'tail' }); src.traffic.models[kind] = K.O;
@@ -91,13 +92,14 @@
   }
   const isJunction = (tile) => tile.kind === 'intersection' || tile.kind === 't-junction';
   function speedLimit(src, x) {
+    if (src.tiles && src.tiles.mountain) return (Math.abs(RF.Touge.tile(0, Math.floor(x / 200)).curvature) > 1 / 100 ? 25 : 50) / 3.6;
     if (!src.tiles) return 80 / 3.6;
     const tile = roadTile(src.tiles.seed, Math.floor(x / TILE_LEN));
     return (isJunction(tile) || tile.kind === 'urban' ? 50 : tile.curvature ? 60 : 80) / 3.6;
   }
   // Both directions are through traffic on the same road, so their heads share the main-road green (not the cross-road phase).
   function trafficSignal(src, car, t) {
-    if (!src.tiles) return null;
+    if (!src.tiles || src.tiles.mountain) return null;
     const dir = car.kind === 'oncoming' ? -1 : 1, k0 = Math.floor(car.x / TILE_LEN); let best = null;
     for (let k = k0 - 2; k <= k0 + 2; k++) {
       const tile = roadTile(src.tiles.seed, k); if (!isJunction(tile)) continue;
@@ -167,7 +169,7 @@
     return car.commit === sig.tile.k ? undefined : (car.kind === 'oncoming' ? -1 : 1) * sig.line;
   }
   function junctionPlan(src, car) {
-    if (!src.tiles || car.kind !== 'preceding') return null;
+    if (!src.tiles || src.tiles.mountain || car.kind !== 'preceding') return null;
     if (car.route && car.x <= car.route.mid + 10) return car.route;
     const k0 = Math.floor(car.x / TILE_LEN);
     for (let k = k0; k <= k0 + 3; k++) {
@@ -288,6 +290,7 @@
   const placedObjects = (p, dist, t, tauOf) => D.Models.actors(place(p.src, dist, p.A, tauOf, p.detailedModels?null:dimFoliage(p), D.Models.deerEnabled(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p)),p.detailedModels);
   // Same eye illuminance as Road.model.lux: far-field intensity / distance² × incidence cosine. Driver faces back along their lane, eye 1.1 m up.
   function eyeLux(p, car) {
+    if (p.touge && p.A && p.A.touge) return RF.Touge.eyeLux(p, car);
     const q = p.A ? p.A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }; let E = 0;
     for (const L of p.lamps) {
       const dx = q.p[0] - L[0], dy = q.p[1] - L[1], dz = 1.1 - L[2], r2 = dx * dx + dy * dy + dz * dz, cos = (dx * q.t[0] + dy * q.t[1]) / Math.sqrt(r2);
@@ -298,7 +301,7 @@
   }
   const flashState = () => ({ n: 0, seen: new Set() });
   function countFlashes(state, p, dist, t) {
-    if (p.src.tiles) p = Object.assign({}, p, { A: tileRoute(p.src.tiles.seed, dist) });
+    if (p.src.tiles) p = Object.assign({}, p, { A: p.src.tiles.mountain ? RF.Touge.route(dist,p.lane,!!p.touge) : tileRoute(p.src.tiles.seed, dist) });
     const cars = trafficCars(p.src, dist, t);
     for (const car of cars) if (car.kind === 'oncoming' && car.rel > 0 && eyeLux(p, car) > 1 && !state.seen.has(car.id)) { state.seen.add(car.id); state.n++; }
     // IDs behind this monotonically advancing stream can never return; keep only the small visible window.
@@ -316,15 +319,15 @@
     return { k, s0: k * TILE_LEN, kind, curvature: /[RL]$/.test(kind) ? (kind.endsWith('L') ? 1 : -1) / parseInt(kind, 10) : 0, side: R() < 0.5 ? -1 : 1, phase: Math.floor(R() * 50) };
   }
   // Integrate only a local window, then put the camera at (0,0), facing its tangent. No accumulated drift or growing route history.
-  function tileRoute(seed, dist, cached) {
+  function tileRoute(seed, dist, cached, recipe) {
     const parts = [], tiles = [], k0 = Math.floor(dist / TILE_LEN); let x = 0, y = 0, a = 0;
     const point = (q, u) => {
       const b = q.a + q.c * u;
       return q.c ? { p: [q.x + (Math.sin(b) - Math.sin(q.a)) / q.c, q.y + (Math.cos(q.a) - Math.cos(b)) / q.c], t: [Math.cos(b), Math.sin(b)] }
         : { p: [q.x + u * Math.cos(q.a), q.y + u * Math.sin(q.a)], t: [Math.cos(q.a), Math.sin(q.a)] };
     };
-    for (let k = k0 - 1; k <= k0 + 2; k++) {
-      const tile = roadTile(seed, k); tiles.push(tile);
+    for (let k = k0 - 1; k <= k0 + (recipe ? 7 : 2); k++) {
+      const tile = (recipe || roadTile)(seed, k); tiles.push(tile);
       for (const [u, len, c] of tile.curvature ? [[0, 50, 0], [50, 100, tile.curvature], [150, 50, 0]] : [[0, TILE_LEN, 0]]) {
         const q = { s: tile.s0 + u, len, c, x, y, a }, end = point(q, len); parts.push(q); x = end.p[0]; y = end.p[1]; a += c * len;
       }
@@ -363,6 +366,7 @@
   }
   // A frame's markings stay in route coordinates, objects and light positions use the very same route transform.
   function tileWorld(p, dist, t, tauOf) {
+    if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t);
     const src = p.src, cfg = src.tiles, lane = p.lane, A = tileRoute(cfg.seed, dist, !!cfg.groundCache), edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
     const pp = Object.assign({}, p, { A });
     // Street lights can reach foliage outside our beam: keep it for actual per-point shading.
@@ -807,7 +811,7 @@ void main() {
   }
   const V = { ui: null, cv: null, info: null, gl: null, canvas: null, pop: null, g: null, gkey: '', src: null, skey: '', lut: null, rgba: null, band: [0, 0], frames: 0, raf: 0, last: 0, times: [], cpu: { obj: 0, up: 0, gl: 0, n: 0 }, kAuto: null, why: '', act: new Map() };
   const S = (ui) => ui.dvAnim || (ui.dvAnim = { view: 'still', playing: true, popout: false, dist: 0, total: 0, t: 0 });
-  const supported = (o) => !!ANIM_SCENES[o.scene] || (o.tiles && o.scene === 'intersection');
+  const supported = (o) => !!o.mountainPass || !!ANIM_SCENES[o.scene] || (o.tiles && o.scene === 'intersection');
   const visible = () => {
     const ui = V.ui; if (!ui || !V.canvas || !V.info || typeof document === 'undefined') return false;
     if (document.visibilityState === 'hidden') return false;
@@ -817,7 +821,7 @@ void main() {
 
   function size() {                                           // → { cssW, cssH, dpr, W, H } for the container the canvas lives in
     const par = V.canvas.parentElement, bw = par.clientWidth, bh = par.clientHeight, dpr = Math.min(2, root.devicePixelRatio || 1);
-    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16, baseW = Math.max(MIN_SIM, Math.min(V.info && (V.info.o.tiles || (V.info.o.wet && V.info.o.wetSheen)) ? 640 : V.info && HEAVY_SIM[V.info.o.scene] || MAX_SIM, Math.round(cssW * dpr))) & ~1,       // dynamic tiles redraw the ground: 640 px; forest/city otherwise use their existing cap (canvas size unchanged)
+    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16, baseW = Math.max(MIN_SIM, Math.min(V.three && V.info && V.info.o.mountainPass ? MAX_SIM : V.info && (V.info.o.tiles || (V.info.o.wet && V.info.o.wetSheen)) ? 640 : V.info && HEAVY_SIM[V.info.o.scene] || MAX_SIM, Math.round(cssW * dpr))) & ~1,       // TG GPU pass uses native resolution; existing dynamic tiles redraw the ground at 640 px; forest/city otherwise use their existing cap (canvas size unchanged)
        scale = V.info && V.info.o.dynamicResolution && !V.pinSS ? (V.resolution || resolutionState()).scale : 1, W = Math.max(160, Math.round(baseW * scale)) & ~1, H = Math.round(W * 9 / 16) & ~1;
     return { cssW, cssH, dpr, W, H, baseW, scale, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
   }
@@ -876,12 +880,12 @@ void main() {
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
     const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, !!o.surfaceSheen, !!o.lampPitch]);
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
-    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
+    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o) };
+    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -889,7 +893,8 @@ void main() {
     V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr));
   }
   function frameSources(dist, t) {
-    let p = V.p; if (p.src.tiles) p = Object.assign({}, p, { A: tileRoute(p.src.tiles.seed, dist) });
+    let p = V.p; if (p.src.tiles) p = Object.assign({}, p, { A: p.src.tiles.mountain ? RF.Touge.route(dist,p.lane,!!p.touge) : tileRoute(p.src.tiles.seed, dist) });
+    if(p.touge){const world=RF.Touge.world(p,dist,t);return RF.Touge.glareSources(world.objects,dist,world.A);}
     return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), EYE);
   }
   function exposure(sources) {
@@ -932,7 +937,7 @@ void main() {
     adaptSS(t1 - t0);
     if (!V.three) V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
-    const sources = D.glareSources(V.src.tiles ? placed.objects : placed, EYE);
+    const sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A) : D.glareSources(V.src.tiles ? placed.objects : placed, EYE);
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
     const draw = { profile: glProfile, hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
@@ -959,7 +964,7 @@ void main() {
   }
   // true when this frame is traced on workers (they are started, or stopped, to match the switch)
   function mt() {
-    const want = !V.three && !(V.info && (V.info.o.trafficBeams || V.info.o.surfaceSheen || V.info.o.lampPitch)) && !S(V.ui || {}).game && !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
+    const want = !V.three && !(V.info && (V.info.o.mountainPass || V.info.o.trafficBeams || V.info.o.surfaceSheen || V.info.o.lampPitch)) && !S(V.ui || {}).game && !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
     if (!want) { if (Wk.list.length) killWorkers(); return false; }
     if (Wk.list.length !== n) {
       killWorkers();
@@ -1139,6 +1144,7 @@ void main() {
     target.addEventListener('change', () => setDV(ui, 'frameTargetMs', Math.max(16, Math.min(200, +target.value || 33)))); bar.append(target);
     V.fpsLab = E('output', { class: 'drive-fps', 'data-anim': 'fps-readout', 'aria-live': 'off', hidden: '' });
     V.perfLab = E('output', { class: 'drive-perf', 'data-anim': 'perf-readout', 'aria-live': 'off', hidden: '' });
+    btn('mountain-pass', 'Prototype Mountain pass: grades, hairpins and banking. GPU gives elevation; CPU stays flat.', () => setDV(ui, 'mountainPass', !info().o.mountainPass), 'Mountain pass');
     btn('tile-cache', 'Reuse beam-lit ground samples across route tiles. Moving markings, grain and street lights still update each frame. Animation with tiles only.', () => setDV(ui, 'tileCache', !info().o.tileCache), 'cache ground');
     const lamps = E('select', { 'data-anim': 'street-lamps', 'aria-label': 'Street lamps on urban tiles', title: 'Downward point lights, diffuse illumination without shadows; approximate sodium / LED colour, not measured fixture photometry' });
     for (const [value, label] of [['off', 'street lamps off'], ['sodium', 'sodium ~2000 K'], ['led', 'LED ~4000 K']]) lamps.append(E('option', { value }, label));
@@ -1162,7 +1168,7 @@ void main() {
     if (!V.flash) V.flash = flashState();
     countFlashes(V.flash, V.p, dist, t); flashText();
     speedLabel(V.ui);
-    if (V.tileLab && V.src.tiles) { const tile = roadTile(V.src.tiles.seed, Math.floor(dist / TILE_LEN)); V.tileLab.textContent = tile.kind + (['intersection', 't-junction'].includes(tile.kind) ? ' · ' + signalState(tile, t).lit : ''); }
+    if (V.tileLab && V.src.tiles) { const tile = V.src.tiles.mountain ? RF.Touge.tile(0,Math.floor(dist/TILE_LEN)) : roadTile(V.src.tiles.seed, Math.floor(dist / TILE_LEN)); V.tileLab.textContent = (V.src.tiles.mountain ? 'Mountain pass · ' + (100*RF.Touge.profile(dist).grade).toFixed(1) + '% · ' : '') + tile.kind + (['intersection', 't-junction'].includes(tile.kind) ? ' · ' + signalState(tile, t).lit : ''); }
   }
   function topButtons(ui, tb, setDV) {
     if (ui.driveExtras.querySelector('[data-anim="animate"]')) return;
@@ -1189,7 +1195,7 @@ void main() {
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
     V.bar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
-    for (const [name, key] of [['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
+    for (const [name, key] of [['mountain-pass', 'mountainPass'], ['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
     V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
@@ -1245,7 +1251,7 @@ void main() {
     stop(); killWorkers();
     const lamp = st.gameLamp || ui.spec, lampScene = st.gameLamp ? st.gameLamp.scene : ui.store.scene;
     st.game = RF.DriveGame.create({ seed, speed, wet, acceleration: box.querySelector('[data-game=acceleration]').value, verdict: lamp.ev.verdict, rules: box.querySelector('[data-game=rules]').value, clearLane: box.querySelector('[data-game=clear-lane]').checked, highBeam: /(?:^fmvss-ub|-drive$)/.test(lampScene.modeD.preset || '') }); st.game.ctx = lamp.ctx; st.game.judge = lamp.ev; st.game.road = info().rd;
-    st.gameOptions = { scene: 'road', tiles: true, wild: true, seed, speed, wet, people: false, animals: false, obstacle: false, trafficLogic: false, oncoming: true, preceding: false };
+    st.gameOptions = { mountainPass: !!info().o.mountainPass, scene: 'road', tiles: true, wild: true, seed, speed, wet, people: false, animals: false, obstacle: false, trafficLogic: false, oncoming: true, preceding: false };
     // MG2-test: 'symmetric' oncoming lamps carry the PLAYER's design, so a high-reach lamp blinds itself (real GPU, 130 km/h wet: 7in-high first seen 48 m vs default 65 m; with a fixed generic dipped oncoming lamp: 114 m vs 63 m). The lesson needs the lamp under test to be the only variable. Original rules keep the old behaviour.
     if (st.game.rules !== 'legacy') st.gameOptions.onMode = 'generic';
     st.dist = st.total = st.t = 0; st.camera = { x: 0, v: speed / 3.6 }; st.view = 'anim'; st.playing = true;
@@ -1257,9 +1263,10 @@ void main() {
       const ps = RF.DriveGame.pose(g, h, g.t, D.Models.deerEnabled(V.p)), first = K.O.length, rel = ps.s - g.x;
       if (h.kind === 'deer') K.deer(rel, ps.off, { face: h.side > 0 ? 1 : -1, gait: ps.gait, motion:ps.motion, attention:ps.attention });
       else K.person(rel, ps.off, h.noHiViz ? 'dark' : 'hivis', { dir: [h.ds, h.doff], gait: ps.gait, motion:ps.motion });
-      for (const ob of K.O.slice(first)) { ob.gameHazard = h.id; world.objects.push(move(Object.assign({}, ob), ob, ob.x, A)); }
+      const moved = K.O.slice(first).map(ob => { ob.gameHazard = h.id; return move(Object.assign({}, ob), ob, ob.x, A); });
+      world.objects.push(...(A && A.touge ? D.Models.actors(moved,true).map(ob=>RF.Touge.lift(ob,A)) : moved));
     }
-    if(V.p && V.p.detailedModels)world.objects=D.Models.actors(world.objects,true);
+    if(V.p && V.p.detailedModels && !(A && A.touge))world.objects=D.Models.actors(world.objects,true);
   }
   // Counterfactual frame at the exact same pose, samples, exposure, glare and canvas size.
   // Retrace only tile rows touched by this hazard. Restore the displayed frame before returning.
@@ -1486,6 +1493,9 @@ void main() {
       const sz = layout();
       if (I.o.expMode === 'auto' && I.tm) { const ak = I.groundKey + '|' + I.o.ev; if (!V.kAuto || V.autoKey !== ak) { V.kAuto = I.tm.k; V.autoKey = ak; } } else V.kAuto = null;      // auto exposure would flicker as the scene moves: frozen at the still picture's
       prepare(sz);
+      if (I.o.mountainPass && !V.three && !V.gpuFailure) say('Mountain pass: CPU fallback stays flat; enable GPU drive renderer for elevation.');
+      else if (I.o.mountainPass && V.three && !V.gpuFailure) say('Mountain pass prototype · curve lengths and banking are tuning.');
+      else if (V.why && V.why.startsWith('Mountain pass')) say('');
       if (st.playing && mt()) workerCfg();      // playing on the workers: the loop draws the next frame
       else frame();
       if (st.playing) go(); else stop();
@@ -1504,7 +1514,7 @@ void main() {
     const t = V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); iv.sort((a, b) => a - b);
     const med = iv.length ? iv[iv.length >> 1] : 0, c = V.cpu;
     const all = V.profiles || [], recent = all.filter((r) => r.at >= (all.length ? all[all.length - 1].at : 0) - 1000);
-    return { renderer: V.three ? 'three' : 'cpu', pitch: V.p && V.p.pitch || 0, acceleration: V.ui && S(V.ui).acceleration || 0, gpuFailure: V.gpuFailure || '', profiling: profileOn(), renderScale: V.renderScale || 1, resolution: V.resolution || resolutionState(), frameTargetMs: V.info && V.info.o.frameTargetMs || 33, breakdown: breakdown(recent), breakdownMean: breakdown(all), lastFrame: all.length ? all[all.length - 1] : null, white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
+    return { renderer: V.three ? 'three' : 'cpu', mountain: V.p && V.p.touge ? RF.Touge.attitude(S(V.ui).dist) : null, pitch: V.p && V.p.pitch || 0, acceleration: V.ui && S(V.ui).acceleration || 0, gpuFailure: V.gpuFailure || '', profiling: profileOn(), renderScale: V.renderScale || 1, resolution: V.resolution || resolutionState(), frameTargetMs: V.info && V.info.o.frameTargetMs || 33, breakdown: breakdown(recent), breakdownMean: breakdown(all), lastFrame: all.length ? all[all.length - 1] : null, white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
   }
   function breakdown(samples) {
     const rows = samples || [], n = rows.length, mean = (key) => n ? rows.reduce((s, r) => s + (r[key] || 0), 0) / n : 0, frameMs = mean('frameMs'), components = {};
