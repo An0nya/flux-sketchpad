@@ -1063,6 +1063,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   require('./models-proto.js').run(RF, ok);
   require('./models-m2.js').run(RF, ok);
   require('./ped-gait.js').run(RF, ok);
+  require('./ped-cross.js').run(RF, ok);
   require('./deer-alert.js').run(RF, ok);
   require('./gr-robust.js').run(RF, ok);
   require('./p2-drive-lighting.js').run(RF, ok);
