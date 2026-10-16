@@ -224,13 +224,14 @@
     const fullLayer = o.layer === 'frame', objOnly = o.layer === 'objects', rgba = (objOnly || fullLayer) && o.rgba ? o.rgba : null, cov = objOnly && !rgba ? new Float32Array(w * h) : null;
     const rgb = rgba ? null : new Float32Array(w * h * 3), depth = objOnly ? null : new Float32Array(w * h).fill(Infinity), matBuf = objOnly ? null : new Uint8Array(w * h);
     const amb = look.ambient > 0 ? look.ambient : 0, skyL = amb * 0.012;       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
-    const pointLights = o.pointLights || [], crossings = o.crossings || [], sheen = look.wet && look.wetSheen, reflections = sheen ? reflectionSources(objs).concat(pointLights) : [];
+    const traffic = o.trafficBeams ? trafficSources(objs, eye) : [], otherBeam = traffic.length ? trafficBeam(o) : null, pitch = o.pitch || 0;
+    const pointLights = o.pointLights || [], crossings = o.crossings || [], sheen = look.wet && look.wetSheen, reflections = sheen ? reflectionSources(objs, o).concat(pointLights) : [];
     const delta0 = 2 * tanH / w;                                              // radians per pixel
     // tiles of 16 px: which objects can touch them (by the bounding sphere's projection)
     const TS = 16, tw = Math.ceil(w / TS), th = Math.ceil(h / TS), tiles = new Array(tw * th).fill(null);
     // Camera-distance bands (16-pixel tiles): static beam-lit ground, independent of the route's moving materials.
     // Float64 retains the shader arithmetic; never cache grain, coverage, street lights or emitter reflections.
-    const gc = o.groundCache;
+    const gc = traffic.length || pitch ? null : o.groundCache;
     const cacheMats = gc && new Map(Object.keys(M).map((key, i) => [M[key], i]));
     if (gc) {
       const key = JSON.stringify([w, h, o.hfov, eye, lamps, conv, lc, look, o.mats, lut.h0, lut.v0, lut.step, lut.nh, lut.nv]);
@@ -276,7 +277,7 @@
     // ---- shading
     let LR = 0, LG = 0, LB = 0;
     // a direction outside the beam table's window has I = 0 (lutAt): with the table's window in hand (A convention) most of a scene is rejected without the two trig calls of hvFast. Never rejects inside the window.
-    const lw = [lut.h0, lut.h0 + lut.nh * lut.step, lut.v0, lut.v0 + lut.nv * lut.step], preA = conv === 'A' && lw[0] > -89 && lw[1] < 89 && lw[2] > -89 && lw[3] < 89;
+    const lw = [lut.h0, lut.h0 + lut.nh * lut.step, lut.v0, lut.v0 + lut.nv * lut.step], preA = !pitch && conv === 'A' && lw[0] > -89 && lw[1] < 89 && lw[2] > -89 && lw[3] < 89;
     const sv0 = Math.sin(lw[2] * D2R) - 1e-9, sv1 = Math.sin(lw[3] * D2R) + 1e-9, th0 = Math.tan(lw[0] * D2R) * (1 + 1e-9) - 1e-12, th1 = Math.tan(lw[1] * D2R) * (1 + 1e-9) + 1e-12;
     // add a surface point's luminance, weighted: P = hit, n = unit normal (facing the eye), m = material, k = weight, v = unit vector to the eye
     function shade(px, py, pz, nx, ny, nz, m, k, vx, vy, vz, rscale, staticBuild) {
@@ -320,11 +321,17 @@
       if (!staticBuild && sheen && nz === 1 && (m.id === M.asphalt.id || m.id === M.concrete.id)) for (const L of reflections) {
         const a = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
       }
+      for (const L of traffic) {
+        const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 < 0.01) continue; const noL = Math.max(0, -(dx * nx + dy * ny + dz * nz) / Math.sqrt(r2)); if (!noL) continue;
+        const e = trafficAt(L, otherBeam, px, py, pz) / r2 * noL / PI;
+        r += rho[0] * e; g += rho[1] * e; b += rho[2] * e * 0.93;
+      }
       for (let i = 0; i < nl; i++) {
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
         if (!(NoL > 0)) continue;
         if (preA) { const a = dx / rr, b = -dy / rr, c = dz / rr; if (c < sv0 || c > sv1 || a <= 0 || b > a * th1 || b < a * th0) continue; }
-        hvFast(dx, dy, dz, conv); const I = lutAt(lut, HV0, HV1); if (!(I > 0)) continue;
+        const I = beamAt(lut, conv, dx, dy, dz, pitch); if (!(I > 0)) continue;
         if (sheen && nz === 1 && m.id === M.asphalt.id) { const a = I * lobe(-dx, -dy, -dz, vx, vy, vz); r += a; g += a; b += a; }
         const Ep = I / r2;                                                    // E⊥, lux square to the beam
         const d = Ep * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
@@ -463,6 +470,79 @@
       return objects;
     }
   };
+  // P2 budgets: eight nearest cars (two lamps each) within 150 m; bounded per-fragment work.
+  const TRAFFIC_CARS = 8, TRAFFIC_RANGE = 150, SURFACE_SOURCES = 8;
+  let genericLow;
+  function trafficBeam(p) {
+    const mode = p.src && p.src.traffic && p.src.traffic.onMode;
+    if (mode === 'symmetric' && p.lut && p.lut.data.some(x => x > 0)) return { lut: p.lut, conv: p.conv || 'A' };
+    if (!genericLow) genericLow = lutFrom((h, v) => Headlamp.generic(h, v, false), { win: [-90, 90, -90, 90], step: 0.25 });
+    return { lut: genericLow, conv: 'A' };
+  }
+  function trafficSources(objects, eye) {
+    eye = eye || [-2, 0.37, 1.2]; const groups = new Map();
+    for (const ob of objects) if (ob.traffic !== undefined) { if (!groups.has(ob.traffic)) groups.set(ob.traffic, []); groups.get(ob.traffic).push(ob); }
+    const cars = [];
+    for (const [id, obs] of groups) {
+      const heads = obs.filter(ob => ob.headlamp), tails = obs.filter(ob => ob.taillamp), lamps = heads.length ? heads : tails;
+      if (!lamps.length) continue;
+      const d = Math.hypot(lamps[0].x - eye[0], lamps[0].y - eye[1]); if (d > TRAFFIC_RANGE) continue;
+      const sources = lamps.slice(0, 2).map(ob => {
+        if (heads.length) return { x: ob.x, y: ob.y, z: ob.z, nx: ob.nx, ny: ob.ny, car: id };
+        // Preceding models have tails only. Infer front plane from the body's actual oriented boxes.
+        const nx = -ob.nx, ny = -ob.ny; let front = ob.x * nx + ob.y * ny;
+        for (const b of obs) if (b.k === 'box') { const c = Math.cos(b.yaw || 0), sn = Math.sin(b.yaw || 0); front = Math.max(front, b.x * nx + b.y * ny + b.hx * Math.abs(c * nx + sn * ny) + b.hy * Math.abs(-sn * nx + c * ny)); }
+        const shift = front - ob.x * nx - ob.y * ny + 0.01;
+        return { x: ob.x + nx * shift, y: ob.y + ny * shift, z: 0.68, nx, ny, car: id };
+      });
+      cars.push({ d, sources });
+    }
+    return cars.sort((a, b) => a.d - b.d).slice(0, TRAFFIC_CARS).flatMap(c => c.sources);
+  }
+  function beamAt(lut, conv, dx, dy, dz, pitch) {
+    if (pitch) { const c = Math.cos(pitch), s = Math.sin(pitch), x = dx; dx = c * x + s * dz; dz = c * dz - s * x; }
+    hvFast(dx, dy, dz, conv); return lutAt(lut, HV0, HV1);
+  }
+  function trafficAt(L, beam, px, py, pz) {
+    const dx = px - L.x, dy = py - L.y, dz = pz - L.z, forward = dx * L.nx + dy * L.ny;
+    return forward > 0 ? beamAt(beam.lut, beam.conv, forward, -dx * L.ny + dy * L.nx, dz, 0) : 0;
+  }
+  // Integrate actual returned RGB luminance over face area (8x8 midpoint quadrature, an estimate).
+  // cd = integral L(cd/m²) * cos(view) * dA(m²). Uses the same diffuse/retro/emit law as shade.
+  // Reusing the eye-direction return in the wet lobe is approximate: no angular retro BRDF or occlusion.
+  function surfaceSources(objects, p) {
+    const eye = p.eye || [-2, 0.37, 1.2], M = materials(p.look || {}), sources = [], traffic = p.trafficBeams ? trafficSources(objects, eye) : [], beam = traffic.length ? trafficBeam(p) : null;
+    for (const ob of objects) {
+      if (ob.headlamp || ob.taillamp || !['box', 'disc'].includes(ob.k) || (ob.k === 'disc' && Math.abs(ob.nz || 0) > 1e-6)) continue;
+      const z = ob.k === 'box' ? (ob.z0 + ob.z1) / 2 : ob.z, range = Math.hypot(ob.x - eye[0], ob.y - eye[1], z - eye[2]);
+      if (range > TRAFFIC_RANGE || range < 0.1) continue;
+      const yaw = ob.yaw || 0, nx = ob.k === 'box' ? -Math.cos(yaw) : ob.nx, ny = ob.k === 'box' ? -Math.sin(yaw) : ob.ny, nz = ob.k === 'box' ? 0 : ob.nz;
+      const view = Math.max(0, ((eye[0] - ob.x) * nx + (eye[1] - ob.y) * ny + (eye[2] - z) * nz) / range); if (!view) continue;
+      const keyAt = (u, zz) => typeof ob.mat === 'function' ? ob.mat({ u, z: zz, face: 0 }) : ob.mat;
+      if (![keyAt(0, z), keyAt(0, z + (ob.z1 - ob.z0 || 0) * 0.3)].some(k => M[k] && (M[k].retro || M[k].emit)) && !ob.emit) continue;
+      const rgb = [0, 0, 0], box = ob.k === 'box', area = box ? 2 * ob.hy * (ob.z1 - ob.z0) : PI * ob.r * ob.r;
+      for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) {
+        const u = ((i + 0.5) / 8 * 2 - 1) * (box ? ob.hy : ob.r), v = ((j + 0.5) / 8 * 2 - 1) * (box ? (ob.z1 - ob.z0) / 2 : ob.r);
+        if (!box && u * u + v * v > ob.r * ob.r) continue;
+        const px = ob.x + (box ? nx * ob.hx : 0) - ny * u, py = ob.y + (box ? ny * ob.hx : 0) + nx * u, pz = z + v, m = M[keyAt(u, pz)] || M.wall;
+        const lum = (ob.emit || m.emit || [0, 0, 0]).map(c => c * Math.pow(view, ob.emitPow || 1));
+        const diffuse = Math.max(0, p.look && p.look.ambient || 0) * (0.5 + 0.5 * nz) / PI;
+        for (const L of p.pointLights || []) { const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz; if (dz > 0 && r2 > 0.01) { const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * L.rgb[c]; } }
+        for (const L of traffic) { const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz; if (r2 > 0.01) { const e = trafficAt(L, beam, px, py, pz) * Math.max(0, -(dx * nx + dy * ny + dz * nz)) / (PI * r2 * Math.sqrt(r2)); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * (c === 2 ? 0.93 : 1); } }
+        for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * diffuse;
+        for (const L of p.lamps) {
+          const dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, noL = Math.max(0, -(dx * nx + dy * ny + dz * nz) / Math.sqrt(r2));
+          if (!noL || r2 < 0.01) continue; const E = beamAt(p.lut, p.conv || 'A', dx, dy, dz, p.pitch || 0) / r2;
+          for (let c = 0; c < 3; c++) lum[c] += E * (m.rho[c] * noL / PI + (m.retro ? m.retro[c] : 0));
+        }
+        const dA = (box ? area : 4 * ob.r * ob.r) / 64;
+        for (let c = 0; c < 3; c++) rgb[c] += lum[c] * view * dA;
+      }
+      const cd = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]; if (!(cd > 0)) continue;
+      sources.push({ x: ob.x, y: ob.y, z, cd, rgb: rgb.map(v => v / cd), area, returnedLuminance: cd / (area * view), rank: cd / (range * range) });
+    }
+    return sources.sort((a, b) => b.rank - a.rank).slice(0, SURFACE_SOURCES);
+  }
   const GLARE = { off: 0, 'dry-low': 0.035, dry: 0.1, rain: 0.3 };
   function glareLevel(v) { if (v in GLARE) return v; return v == null || v === false || v === 0 || v === 'off' ? 'off' : 'rain'; }
   const glareStrength = (v) => typeof v === 'number' ? Math.max(0, v) : v === true ? 1 : GLARE[glareLevel(v)];
@@ -483,8 +563,9 @@
     let L = 0; for (const q of sources || []) { const theta = Math.max(1, Math.acos(Math.max(-1, Math.min(1, dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]))) / D2R); L += 10 * q[3] / (theta * theta); } return L;
   }
   const veilStrength = (v) => glareStrength(v) > 0 ? (glareLevel(v) === 'dry-low' ? 0.5 : 1) : 0;
-  function reflectionSources(objects) {
-    return objects.filter((o) => o.headlamp || o.taillamp).map((o) => ({ x: o.x, y: o.y, z: o.z, cd: o.eyeCd === undefined ? o.emit[0] * Math.PI * o.r * o.r : o.eyeCd, rgb: o.taillamp ? [1, 0.03, 0.015] : [1, 1, 0.93] }));
+  function reflectionSources(objects, p) {
+    const lamps = objects.filter((o) => o.headlamp || o.taillamp).map((o) => ({ x: o.x, y: o.y, z: o.z, cd: o.eyeCd === undefined ? o.emit[0] * Math.PI * o.r * o.r : o.eyeCd, rgb: o.taillamp ? [1, 0.03, 0.015] : [1, 1, 0.93] }));
+    return p && p.surfaceSheen ? lamps.concat(surfaceSources(objects, p).slice(0, Math.max(0, 64 - lamps.length - (p.pointLights || []).length))) : lamps;
   }
   // Broadening the mirror image mostly along the viewing direction makes a road streak.
   // Cheap anisotropic mirror-lobe approximation, not a measured wet-pavement BRDF or ray-traced reflection.
@@ -562,5 +643,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
+  RF.Drive = { TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
