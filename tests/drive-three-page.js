@@ -77,7 +77,7 @@
   }
   async function bench({phone=false}={}) {
     const u=await ready(),D=RF.DriveAnim,a=D._,results=[];
-    Object.assign(u.dvOpts,{scene:'city',tiles:false,wet:true,wetSheen:true,glare:'rain',wild:true,density:3,trafficLogic:true,oncoming:true,preceding:true,mt:false,fpsCounter:true,dynamicResolution:false,tex:true});D.openPop(u);
+    Object.assign(u.dvOpts,{scene:'city',tiles:false,wet:true,wetSheen:true,glare:'rain',wild:true,density:3,trafficLogic:true,oncoming:true,preceding:true,mt:false,fpsCounter:true,debugTimings:true,dynamicResolution:false,tex:true});D.openPop(u);
     // Exact desktop display size; phone uses its normal responsive popout.
     if(!phone)Object.assign(a.V.popStage.style,{position:'fixed',left:'0',top:'0',width:'1600px',height:'900px'});
     a.V.pinSS=0;

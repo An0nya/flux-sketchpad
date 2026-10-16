@@ -613,35 +613,55 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 
 /* WCAG 2.5.5 enhanced target: https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced */
 
-/* RB: each options row can scroll without growing into the other one. */
-.drive-fit > .drive-tools, .drive-fit > .drive-anim-tools { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; pointer-events: auto; white-space: nowrap; background: rgba(5,10,18,.7); }
-.drive-fit > .drive-tools > *, .drive-fit > .drive-anim-tools > * { flex: 0 0 auto; }
-.drive-notice { position: absolute; left: 8px; right: 8px; top: 38px; z-index: 4; padding: 4px 8px; background: #17283e; color: #fff; font-size: 12px; pointer-events: none; }
-.drive-notice[hidden], .canvas-wrap:not(.drive) > .drive-notice { display: none; }
-.canvas-wrap.drive-fit > .drive-tools { right: 34px; }   /* RB-test: keep the corner free for the reset-zoom icon (it was covered by the scrolling top row) */
-
-/* One primary row; the same controls live in More in both inline and large views. */
+.drive-tools { z-index: 3; }
+/* Drive: compact controls wrap; advanced controls share one More panel. */
+.canvas-wrap > .drive-tools, .drive-fit > .drive-tools { right: 42px; }
 .drive-tools, .drive-fit > .drive-tools { flex-direction: column; align-items: stretch; flex-wrap: nowrap; overflow: visible; white-space: normal; pointer-events: auto; background: rgba(5,10,18,.7); }
-.drive-primary { display: flex; align-items: center; gap: 4px; min-width: 0; margin-right: 52px; overflow-x: auto; scrollbar-width: thin; white-space: nowrap; }
-.drive-primary > * { flex: 0 0 auto; }
-.canvas-wrap:not(.drive-fit) .drive-primary, .dp-stage:not(.drive-fit) .drive-primary { flex-wrap: wrap; overflow-x: visible; white-space: normal; }
-.drive-speed { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-variant-numeric: tabular-nums; color: #fff; }
+.drive-primary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; white-space: normal; }
+.drive-fit .drive-primary { gap: 4px; }
+.drive-primary > * { flex: 0 1 auto; max-width: 100%; min-width: 0; }
+.drive-primary select { max-width: 160px; }
+.drive-speed { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 11px; font-variant-numeric: tabular-nums; color: #fff; }
 .drive-speed input[type=range] { width: 85px; pointer-events: auto; }
 .drive-more { margin: 0; padding: 0; border: 0; min-width: 0; }
-/* UX1-DP-test: in a short inline pane the open More panel scrolls inside the pane instead of running past its bottom edge. */
-.drive-tools { max-height: calc(100% - 8px); overflow-y: auto; overflow-x: hidden; }
-.drive-more > summary { position: absolute; right: 0; top: 0; cursor: pointer; padding: 3px 5px; font-size: 11px; color: #fff; }
-.drive-extras { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px; max-height: min(45vh, 280px); overflow: auto; background: rgba(5,10,18,.95); }
+.drive-more > summary { cursor: pointer; padding: 3px 5px; font-size: 11px; color: #fff; }
+.drive-extras { position: absolute; top: calc(100% + 4px); left: 0; right: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px; max-height: min(45vh, 280px, var(--drive-extra-height, 280px)); overflow: auto; box-sizing: border-box; background: rgba(5,10,18,.95); }
+.drive-extras > * { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .drive-extras .drive-anim-tools { position: static; flex: 1 0 100%; flex-wrap: wrap; pointer-events: auto; }
+.drive-extras .drive-anim-tools > * { max-width: 100%; }
 .drive-aim { flex: 1 0 100%; font-size: 11px; color: #d4deec; }
-.drive-game [data-game=brake] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }   /* only the held button; the panel keeps touch scrolling */
-/* phones: the running panel sits above the browser's bottom bar (iOS Safari's floating toolbar covered Brake, Anya 10-15) */
-@media (max-width: 760px) and (pointer: coarse) { .drive-game.running { bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); } }
-.drive-game { touch-action: manipulation; }
+.drive-extras[hidden], .drive-below[hidden] { display: none; }
+.drive-game [data-game=brake] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.drive-game { top: var(--drive-toolbar-bottom, 80px); max-height: calc(100% - var(--drive-toolbar-bottom, 80px) - 8px); touch-action: manipulation; }
+.drive-game.running { top: auto; max-height: min(35%, calc(100% - var(--drive-toolbar-bottom, 80px) - 8px)); }
 .drive-game input[type=checkbox] { width: auto; }
-
-/* P0: readout floats over the picture; it never enlarges the controls row. */
-.drive-perf { position: absolute; left: 6px; top: 58px; z-index: 3; max-width: calc(100% - 12px); max-height: 45%; overflow: auto; box-sizing: border-box; padding: 4px 6px; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: auto; touch-action: pan-y; background: rgba(5,10,18,.85); color: #e5efff; font: 10px/1.35 monospace; font-variant-numeric: tabular-nums; }
-.drive-perf[hidden], .canvas-wrap:not(.drive) > .drive-perf { display: none; }
-.dp-stage > .drive-tools:has(.drive-more[open]) ~ .drive-perf { top: auto; bottom: 6px; }
-.canvas-wrap > .drive-tools:has(.drive-more[open]) ~ .drive-perf { display: none; }   /* inline: the open More panel covers the picture; the readout returns when it closes */   /* P0P1-test: the open More panel covered the readout's spot (and its fps toggle) */
+.drive-notice { position: absolute; left: 8px; right: 8px; top: var(--drive-toolbar-bottom, 80px); z-index: 4; padding: 4px 8px; background: #17283e; color: #fff; font-size: 12px; pointer-events: none; }
+.drive-notice[hidden], .canvas-wrap:not(.drive) > .drive-notice { display: none; }
+.drive-fps { position: absolute; right: 6px; top: var(--drive-toolbar-bottom, 80px); z-index: 2; padding: 2px 4px; color: #e5efff; background: #050a12b8; font: 10px/1.35 monospace; font-variant-numeric: tabular-nums; pointer-events: none; }
+.drive-perf { position: absolute; left: 6px; top: calc(var(--drive-toolbar-bottom, 80px) + 24px); z-index: 2; max-width: calc(100% - 12px); max-height: min(45%, calc(100% - var(--drive-toolbar-bottom, 80px) - 30px)); overflow: auto; box-sizing: border-box; padding: 4px 6px; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: auto; touch-action: pan-y; background: rgba(5,10,18,.85); color: #e5efff; font: 10px/1.35 monospace; font-variant-numeric: tabular-nums; }
+.drive-perf[hidden], .drive-fps[hidden], .canvas-wrap:not(.drive) > :is(.drive-perf, .drive-fps) { display: none; }
+.drive-below:empty, .drive-below:not(:has(> :not([hidden]))), body:not(.mode-D) .drive-below, figure.map:not(:has(> .canvas-wrap.drive)) > .drive-below { display: none; }
+@media (max-width: 760px), (pointer: coarse) {
+  body.mode-D:has(.canvas-wrap.drive) { height: auto; overflow: auto; }
+  .result-pane:not(.phone-hidden):not(.collapsed):has(.canvas-wrap.drive) { height: auto !important; display: flex !important; }
+  .result-pane:not(.phone-hidden):not(.collapsed):has(.canvas-wrap.drive) > figure.map { display: flex !important; flex: none; }
+  .result-pane figure.map > .canvas-wrap.drive { flex: none; height: clamp(320px, 56.25vw, 600px); min-height: 320px; }
+  .drive-popout { position: relative; inset: auto; overflow: visible; }
+  .dp-stage { flex: none; height: clamp(320px, 56.25vw, 700px); }
+  .drive-below { flex: none; min-width: 0; width: 100%; box-sizing: border-box; }
+  .drive-below > :is(.drive-extras, .drive-perf) { position: static; width: 100%; max-width: 100%; max-height: none; margin: 4px 0 0; overflow: visible; }
+  .drive-below .drive-anim-tools:not([hidden]) { display: flex; }
+  .drive-below .drive-extras :is(button,select), .drive-tools :is(button,select), .drive-more > summary { min-height: 32px; }
+  .drive-below .drive-extras select { max-width: 100%; }
+}
+@media (max-width: 760px) and (pointer: coarse) {
+  .drive-game.running { bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); max-height: min(35%, calc(100% - var(--drive-toolbar-bottom, 80px) - env(safe-area-inset-bottom, 0px) - 104px)); }
+}
+/* Touch laptops/tablets keep their desktop columns, but rows must grow with More. */
+@media (min-width: 761px) and (pointer: coarse) {
+  body.mode-D:has(.canvas-wrap.drive) { display: block; min-height: 100dvh; }
+  .app:has(.canvas-wrap.drive) { min-height: calc(100dvh - 48px); }
+  .workspace:has(.canvas-wrap.drive) { flex: none; }
+  .right:has(.canvas-wrap.drive) { grid-template-rows: auto 10px auto !important; align-content: start; }
+  .pair:has(.canvas-wrap.drive) { grid-template-rows: auto !important; }
+}

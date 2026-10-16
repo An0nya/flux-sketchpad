@@ -841,7 +841,7 @@
     return px.toFixed(1) + ' m ahead, ' + Math.abs(py).toFixed(1) + ' m ' + (py >= 0 ? 'left' : 'right') + ' of lane centre: ' + rd.mdl.lux([px, py, z], up ? 'up' : 'car').toFixed(1) + ' lx';
   }
   // ---------------------------------------------------------------- Drive: the driver's-eye view (js/drive.js, js/drive-scenes.js)
-  const DV_DEF = { scene: 'road', wet: false, wetSheen: false, expMode: 'fixed', ev: 1, glare: 'dry', onMode: 'symmetric', people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true, tex: true, wild: true, mt: true, fitControls: true, largeCard: true, seed: 7, density: 1.5, trafficDensity: 1, trafficLogic: false, safeGap: true, tiles: false, tileCache: false, gpuRenderer: false, fpsCounter: false, dynamicResolution: false, frameTargetMs: 33, streetLamps: 'sodium', cline: 'solid', speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60 };
+  const DV_DEF = { scene: 'road', wet: false, wetSheen: false, expMode: 'fixed', ev: 1, glare: 'dry', onMode: 'symmetric', people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true, tex: true, wild: true, mt: true, fitControls: true, largeCard: true, seed: 7, density: 1.5, trafficDensity: 1, trafficLogic: false, safeGap: true, tiles: false, tileCache: false, gpuRenderer: false, fpsCounter: false, debugTimings: false, dynamicResolution: false, frameTargetMs: 33, streetLamps: 'sodium', cline: 'solid', speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60 };
   const DV_GLARE = Object.keys(RF.Drive.GLARE).map((k) => [k, k]);
   const DV_SMOOTH = { sharp: [0.2, 0.2, 1], smooth: [0.5, 0.15, 2], soft: [1.0, 0.3, 3] };    // kernel half-widths: horizontal, vertical (°), wide-grid bins
   function dvOpts(ui) {
@@ -876,12 +876,12 @@
       btn('signs', 'Road signs (retroreflective sheeting)', () => setDV(ui, 'signs', !dvOpts(ui).signs));
       btn('oncoming', 'An oncoming car in the left lane with its headlamps on (distance and intensity: Spec → Road)', () => setDV(ui, 'oncoming', !dvOpts(ui).oncoming));
       btn('preceding', 'A car ahead in our lane, tail lamps on, with plate and red reflectors (distance: Spec → Road)', () => setDV(ui, 'preceding', !dvOpts(ui).preceding));
-      const primary = el('div', { class: 'drive-primary' }), more = el('details', { class: 'drive-more' }), extras = el('div', { class: 'drive-extras' });
-      more.append(el('summary', {}, 'More'), extras);
-      for (const control of [...bar.children]) (control.matches('[data-dv=scene],[data-dv=glare],[data-dv=oncoming],[data-dv=preceding]') ? primary : extras).append(control);
+      const primary = el('div', { class: 'drive-primary' }), more = el('details', { class: 'drive-more' }), extras = el('div', { class: 'drive-extras', id: 'drive-extras', role: 'region', 'aria-label': 'More drive settings' });
+      more.append(el('summary', { 'aria-controls': 'drive-extras' }, 'More'), extras);
+      for (const control of [...bar.children]) (control.matches('[data-dv=scene],[data-dv=glare]') ? primary : extras).append(control);
       try { more.open = localStorage.getItem('flux/driveMore') === 'true'; } catch (e) { /* ignore */ }
-      more.addEventListener('toggle', () => { try { localStorage.setItem('flux/driveMore', String(more.open)); } catch (e) { /* ignore */ } });
-      bar.append(primary, more);
+      more.addEventListener('toggle', () => { if (RF.DriveAnim) RF.DriveAnim.layoutControls(ui, more.open); try { localStorage.setItem('flux/driveMore', String(more.open)); } catch (e) { /* ignore */ } });
+      ui.driveExtras = extras; primary.append(more); bar.append(primary);
       wrap.append(bar);
       const ro = el('div', { class: 'drive-readout' }); wrap.append(ro);
       cv.addEventListener('mousemove', (e) => {
@@ -894,7 +894,7 @@
       cv.addEventListener('mouseleave', () => { ro.textContent = ''; });
     }
     const o = dvOpts(ui), rv = rvOpts(ui), tm = ui.driveShown && ui.driveShown.tm;
-    for (const b of bar.querySelectorAll('[data-dv]')) {
+    for (const b of new Set([...bar.querySelectorAll('[data-dv]'), ...ui.driveExtras.querySelectorAll('[data-dv]')])) {
       const k = b.dataset.dv;
       if (k === 'scene') b.value = o.scene;
       else if (k === 'onMode') b.value = o.onMode;
@@ -911,15 +911,15 @@
     const rd = roadModel(ui);
     if (rd) {
       const road = rd.mdl.road;
-      let aim = ui.driveBar.querySelector('[data-dv-aim]');
-      if (!aim) { aim = el('span', { class: 'drive-aim', 'data-dv-aim': '' }); ui.driveBar.querySelector('.drive-extras').append(aim); }
+      let aim = ui.driveExtras.querySelector('[data-dv-aim]');
+      if (!aim) { aim = el('span', { class: 'drive-aim', 'data-dv-aim': '' }); ui.driveExtras.append(aim); }
       const aimText = road.aim === 'manual' ? 'manual road aim ' + road.aimPct + '%' : 'aimed per ' + (md(ui).preset || 'Spec judge').replace(/-/g, ' ').toUpperCase();
       aim.textContent = 'Our beam + symmetric oncoming: ' + aimText;
       aim.title = 'Lookup shift H ' + rd.sh[0].toFixed(3) + '°, V ' + rd.sh[1].toFixed(3) + '°; fine far field with wide-field fallback. Both lamps use this same aimed lookup.';
-      const symmetric = ui.driveBar.querySelector('[data-dv=onMode] option[value=symmetric]');
+      const symmetric = ui.driveExtras.querySelector('[data-dv=onMode] option[value=symmetric]');
       symmetric.textContent = 'oncoming: our design · ' + aimText;
-      ui.driveBar.querySelector('[data-dv=oncoming]').title = 'Oncoming lamps: ' + o.onMode + (o.onMode === 'symmetric' ? ' · ' + aimText : '') + '. Lamp selection in More.';
-      if (o.onMode === 'symmetric') ui.driveBar.querySelector('[data-dv=oncoming]').textContent = 'oncoming · ' + aimText;
+      ui.driveExtras.querySelector('[data-dv=oncoming]').title = 'Oncoming lamps: ' + o.onMode + (o.onMode === 'symmetric' ? ' · ' + aimText : '') + '. Lamp selection in More.';
+      if (o.onMode === 'symmetric') ui.driveExtras.querySelector('[data-dv=oncoming]').textContent = 'oncoming · ' + aimText;
     }
   }
   // Result → Drive: what the driver sees. The beam lookup, the scene and the render are cached; exposure only redoes the tone map.
