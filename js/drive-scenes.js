@@ -97,7 +97,15 @@
       // a dark crate lying on the road (the hard target: 3 % reflectance, nothing retroreflective), along the road by across it
       obstacle(s, off, o) { o = o || {}; const p = at(s, off); add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: o.h || 0.35, hx: o.l || 0.3, hy: o.w || 0.2, yaw: p.yaw, mat: 'tyre' }); },
     };
-    for (const [m, c] of [['post', 'post'], ['sign', 'sign'], ['tree', 'veg'], ['bush', 'veg'], ['deer', 'deer'], ['person', 'person'], ['car', 'car'], ['parkedCar', 'car'], ['signal', 'signal'], ['obstacle', 'obstacle'], ['rpm', 'rpm']]) { const f = k[m]; k[m] = function () { cur = c; try { return f.apply(this, arguments); } finally { cur = ''; } }; }
+    for (const [m, c] of [['post', 'post'], ['sign', 'sign'], ['tree', 'veg'], ['bush', 'veg'], ['deer', 'deer'], ['person', 'person'], ['car', 'car'], ['parkedCar', 'car'], ['signal', 'signal'], ['obstacle', 'obstacle'], ['rpm', 'rpm']]) { const f = k[m]; k[m] = function () { cur = c; const first=O.length; try {
+      const result=f.apply(this, arguments);
+      if (['deer','person','tree','car'].includes(m) && O.length>first) {
+        const p=at(arguments[0],arguments[1]),opt=(m==='person'?arguments[3]:arguments[2])||{};
+        for(let i=first;i<O.length;i++){O[i].detailPart=m;O[i].modelId=opt.id||m+':'+arguments[0]+':'+arguments[1];}
+        O[first].detail={kind:m,x:p.x,y:p.y,yaw:p.yaw+(opt.turn||0),face:opt.face||1,gait:opt.gait||0,dir:opt.dir||[1,0],ptype:m==='person'?arguments[2]:null,h:m==='tree'?O[first].z1/.55:0,bound:!!opt.bound,motion:opt.motion,id:opt.id||m+':'+arguments[0]+':'+arguments[1],birch:!!opt.birch};
+      }
+      return result;
+    } finally { cur = ''; } }; }
     return k;
   }
 
@@ -143,7 +151,7 @@
         };
         for (const side of [1, -1]) for (let s = -8, i = 0; s < 280; s += 15 + 14 * R(), i++) {
           const len = 12 + 10 * R(), hgt = 9 + 18 * R(), dep = 7 + 4 * R(), off = side > 0 ? k.edgeL + walk + setback + dep : k.edgeR - walk - setback - dep, p = k.at(s + len, off), seed = i + (side > 0 ? 0 : 50);
-          k.add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: hgt, hx: len, hy: dep, yaw: p.yaw, mat: (h) => win(h, seed) });
+          k.add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: hgt, hx: len, hy: dep, yaw: p.yaw, facadeStyle:seed%3, mat: (h) => win(h, seed) });
         }
         for (let s = 12; s < 280; s += 32) for (const side of [1, -1]) { const off = side > 0 ? k.edgeL + 0.9 : k.edgeR - 0.9; k.add({ k: 'cyl', x: k.at(s, off).x, y: k.at(s, off).y, r: 0.07, z0: 0, z1: 7.5, mat: 'pole' }); }
         for (let s = 20; s < 160; s += 11 + 9 * R()) k.parkedCar(s, k.edgeR - 1.3);
@@ -176,7 +184,7 @@
       const win = ({ u, z, face }, seed) => { const gx = Math.floor((u + 400) / 2.6), gz = Math.floor(z / 3.2), cell = (u + 400) / 2.6 - gx, cz = z / 3.2 - gz;
         if (z < 3.0 || cell < 0.2 || cell > 0.8 || cz < 0.25 || cz > 0.8) return face === 0 ? 'wall-light' : 'wall';
         const h = Math.sin((gx + 1) * 12.9898 + (gz + 1) * 78.233 + seed * 3.1) * 43758.5453, f = h - Math.floor(h); return f < 0.22 ? 'win-warm' : f < 0.3 ? 'win-cool' : 'win-dark'; };
-      const bld = (sA, sB, side, dep, hgt, seed) => { const off = side > 0 ? edgeL + walk + 2.5 + dep : edgeR - walk - 2.5 - dep, p = k.at((sA + sB) / 2, off); k.add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: hgt, hx: (sB - sA) / 2, hy: dep, yaw: p.yaw, mat: (h) => win(h, seed) }); };
+      const bld = (sA, sB, side, dep, hgt, seed) => { const off = side > 0 ? edgeL + walk + 2.5 + dep : edgeR - walk - 2.5 - dep, p = k.at((sA + sB) / 2, off); k.add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: hgt, hx: (sB - sA) / 2, hy: dep, yaw: p.yaw, facadeStyle:seed%3, mat: (h) => win(h, seed) }); };
       for (const side of [1, -1]) { let i = 0;
         for (let s = c1 + walk + 0.5; s < 280; s += 0, i++) { const len = 12 + 10 * R(); bld(s, s + len, side, 7 + 4 * R(), 9 + 18 * R(), i + (side > 0 ? 0 : 40)); s += len + 1.5 + 12 * R(); }
         for (let s = c0 - walk - 0.5, j = 0; s > -30; j++) { const len = 12 + 10 * R(); bld(s - len, s, side, 7 + 4 * R(), 9 + 18 * R(), 80 + j + (side > 0 ? 0 : 40)); s -= len + 1.5 + 12 * R(); } }

@@ -3,7 +3,7 @@
  *   → { type: 'job', seq, dist, t, speed, traffic, ss, act, c, K, ret, wid }   trace rows ty % K === c at `dist` (tiles on: ground + objects; off: objects only); speed is current km/h; traffic is the page-owned IDM car snapshot (absent = legacy traffic)
  *   ← { type: 'rows', seq, cfg, wid, c, trows, buf, len, ms }         the traced rows, packed (buf is transferred)      | { type: 'err', message }                                  */
 'use strict';
-importScripts('core.js', 'road.js', 'drive.js', 'drive-scenes.js', 'drive-anim.js');
+importScripts('core.js', 'road.js', 'drive.js', 'drive-models.js', 'drive-scenes.js', 'drive-anim.js');
 const T = self.RF.DriveAnim.tracer();
 self.onmessage = (e) => {
   const m = e.data;

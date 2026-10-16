@@ -1059,6 +1059,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   require('./drive-polish.js').run(RF, ok);
   require('./drive-perf.js').run(RF, ok);
   require('./drive-three.js').run(RF, ok);
+  require('./models-proto.js').run(RF, ok);
+  require('./models-m2.js').run(RF, ok);
   require('./gr-robust.js').run(RF, ok);
   require('./p2-drive-lighting.js').run(RF, ok);
   // UX2: an old saved FPS preference must not enable the full trace profiler.

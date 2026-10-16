@@ -1,0 +1,32 @@
+{
+  "pack": "Car Kit 3.1",
+  "assets": [
+    {
+      "file": "sedan.glb",
+      "bytes": 172216,
+      "triangles": 2032,
+      "sha256": "b532ea7d2c59f7f6b22b138cf1955218a2c1898f1cea932af4d3fd563c3959b7",
+      "author": "Kenney",
+      "license": "CC0-1.0",
+      "source": "https://kenney.nl/assets/car-kit"
+    },
+    {
+      "file": "suv.glb",
+      "bytes": 207572,
+      "triangles": 2474,
+      "sha256": "9df31f6e89e927a8176fc792aa125f0b19dc1ba29d2025bfef7c4f4d6ab1778a",
+      "author": "Kenney",
+      "license": "CC0-1.0",
+      "source": "https://kenney.nl/assets/car-kit"
+    },
+    {
+      "file": "hatchback-sports.glb",
+      "bytes": 197804,
+      "triangles": 2088,
+      "sha256": "bd5c9d4c3b4bdd254a66b8426563a68b1487ae7a5076df3a2488e6ffed7be64f",
+      "author": "Kenney",
+      "license": "CC0-1.0",
+      "source": "https://kenney.nl/assets/car-kit"
+    }
+  ]
+}
