@@ -77,3 +77,19 @@ still carried when the boxes overlap).
 - Random-tile animation is considerably slower than the static road (D4: tiles trace the full frame every frame, no cached ground; ~4–5× frame time).
 - Ideas: lamps dip/pitch with braking/acceleration (beam shifts down/up); better car models ("less snowman build") if render overhead stays small; other traffic lighting the road/environment (not done today: their lamps are visible emitters + wet reflections only; cost ≈ one beam lookup per lit ground pixel per nearby car, using D5's generic-headlamp asset).
 - Glare question: her lamp vs generic toward an oncoming eye at 0.5U 1–5R (Claude, flux trace 2 M rays, unaimed far field of reflector-scene_2.json): hers 7.3/9.3/8.9/7.8/5.9 kcd at 1/2/3/4/5R vs generic 0.29/0.36/0.61/1.4/3.2 kcd. So in the far field hers is HIGHER there (consistent with her Spec fail "0.5U 1R–3R ×2.98 over"); her observation of LESS glare on left curves likely comes from (a) the drive view using the AIMED far field (LB2V re-aims the cut-off to 0.4D) or (b) Play mode forcing oncoming = generic for everyone (MG2 fix). Needs a check.
+
+## 8. Backlog from Anya's playtest + Muse brainstorm (2026-10-15 late)
+Not approved for building; logged.
+- **Deer eyeshine too apparent / too consistent.** Today every deer's two 13 mm retroreflecting eye discs face the road's
+  approach, so eyeshine is always on. Ideas: (a) dim/resize (13 mm is in the range of a dilated deer pupil, so size may be
+  fine and it's the consistency that reads wrong; check the retroreflection coefficient and its angular falloff);
+  (b) behaviour: grazing deer have head down (no eyeshine), become alert as the car approaches, raise and turn the head
+  toward the lights (eyeshine appears, often then freeze: "deer in the headlights"), then bolt. Eyeshine becomes an
+  early cue that depends on deer state, which is good gameplay. Needs the M2 articulated head.
+- **Lamp pitch and dive** (beam dips under braking, lifts under acceleration): in P2, building now.
+- **Elevation: inclines, sags, crests (a touge).** Crests hide hazards and the beam (a low beam aimed at the road runs out
+  of road over a crest; this is the classic crest-vertical-curve sight-distance problem); sags pull the beam's hit point
+  closer. Touge also wants hairpins (~20–30 m radius, today's tiles stop at 250R/150R), guardrails, cliff/drop edges,
+  camber/banking. GPU-only: the CPU tracer assumes flat ground (normal z = 1) throughout, so the fallback would stay flat.
+  Infrastructure-level change to the tile system + camera + placement: walk Anya through a design first.
+- (Riddick's "shine job" eyes noted; no ticket.)
