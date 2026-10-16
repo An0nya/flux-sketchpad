@@ -106,7 +106,7 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
       await page.evaluate(() => { const g = RF.UI.dvAnim.game; if (!g) throw new Error('no game fixture'); g.done = true; g.reason = 'RB presentation fixture'; RF.UI.dvAnim.playing = false; RF.DriveAnim._.gameFrame(g); });
       await page.waitForFunction(() => RF.UI.dvAnim.popout && !!document.querySelector('.drive-popout [data-game=card]:not([hidden])'));
       const card = await page.evaluate(() => {
-        const p = document.querySelector('[data-game=panel]'), c = document.querySelector('[data-game=card]'), host = p.parentElement.getBoundingClientRect();
+        const c = document.querySelector('[data-game=card]'), p = c.closest('.drive-below'), host = p.parentElement.getBoundingClientRect();
         p.scrollTop = p.scrollHeight; const r = p.getBoundingClientRect(); const tail = p.scrollTop + p.clientHeight >= p.scrollHeight - 1;
         p.scrollTop = 0; const exit = p.querySelector('[data-game=exit]'), e = exit.getBoundingClientRect();
         return { bounded: r.top >= host.top && r.bottom <= host.bottom + 1 && r.bottom <= innerHeight, tail, readable: p.clientHeight >= 200, exit: document.elementFromPoint(e.left + e.width / 2, e.top + e.height / 2) === exit, text: c.textContent.slice(-145), height: p.clientHeight };
