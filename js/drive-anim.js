@@ -824,7 +824,7 @@ void main() {
   function contextLost(e) {
     if (!recovery()) return;
     e.preventDefault(); if (V.lost || V.glFailed) return;
-    if (V.three) { V.three.dispose(); V.three = null; V.gpuFailure = 'context lost; using CPU renderer after restore'; }
+    if (V.three) { V.three.dispose(); V.three = null; V.gkey = ''; V.gpuTries = 0; }       // the GPU renderer is rebuilt on restore (gpuRenderer)
     V.lost = true; V.resume = S(V.ui).playing; S(V.ui).playing = false; stop(); killWorkers();
     const game = S(V.ui).game; if (game && !game.done) { game.pauseAt = performance.now(); if (game.inputs) game.inputs.clear(); RF.DriveGame.press(game, false, performance.now()); }
     if (V.canvas) V.canvas.hidden = true;
@@ -839,7 +839,7 @@ void main() {
       V.gl = makeGL(V.canvas); if (!V.gl) throw new Error('float render targets unavailable');
       V.lost = false; V.gkey = ''; V.rdRef = null; V.band = [0, 0];
       const g = S(V.ui).game;   // UX1-DP-test: a running minigame stays paused after a restore until the player resumes (same as the hidden-tab path)
-      S(V.ui).playing = !!V.resume && !(g && !g.done); say(V.gpuFailure ? 'GPU drive context was lost; using CPU renderer.' : ''); V.ui.redrawSpec();
+      S(V.ui).playing = !!V.resume && !(g && !g.done); say(''); V.ui.redrawSpec();
     } catch (e) { contextFallback('Drive graphics rebuild failed: ' + (e.message || e)); }
   }
   function contextReady() {
@@ -1094,7 +1094,7 @@ void main() {
     primary.append(bar.querySelector('[data-anim=play]'));
     btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off restores the previous traffic and gap guard.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
-    btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => setDV(ui, 'gpuRenderer', !info().o.gpuRenderer), 'GPU drive renderer');
+    btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => { if (V.gpuFailure && info().o.gpuRenderer) { V.gpuFailure = ''; V.gpuTries = 0; say(''); labels(ui); ui.redrawSpec(); } else setDV(ui, 'gpuRenderer', !info().o.gpuRenderer); }, 'GPU drive renderer');      // failed while ON: a click retries the GPU
     btn('fps-counter', 'Small frame-rate badge; no sampled trace profiling.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'FPS');
     btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
@@ -1151,7 +1151,8 @@ void main() {
     for (const b of q('[data-anim="popout"]')) { const label = st.popout ? 'Close large view' : 'Large view'; b.setAttribute('aria-pressed', String(st.popout)); b.setAttribute('aria-label', label); b.title = label; b.disabled = !sup; b.textContent = st.popout ? '⤡' : '⤢'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
-    for (const [name, key] of [['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key]));
+    for (const [name, key] of [['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
+    V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
     for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
@@ -1391,13 +1392,20 @@ void main() {
   let threeModule, threeLoading;
   function gpuFallback(why) {
     if (V.three) { V.three.dispose(); V.three = null; }
-    V.gkey = ''; V.gpuFailure = String(why); say('GPU drive unavailable (' + V.gpuFailure.split('\n')[0].slice(0, 160) + '); using CPU renderer.');
+    V.gkey = ''; V.gpuFailure = String(why); say('GPU drive unavailable (' + V.gpuFailure.split('\n')[0].slice(0, 160) + '); using CPU renderer.'); if (V.bar) labels(V.ui);
+  }
+  function gpuCreate() {                                      // first build, and the rebuild after a context restore: a few tries, then the visible CPU fallback
+    try { V.three = threeModule.create(V.canvas, V.gl.gl); V.gkey = ''; V.gpuTries = 0; killWorkers(); }
+    catch (e) {
+      if ((V.gpuTries = (V.gpuTries || 0) + 1) >= 3) { V.gpuTries = 0; gpuFallback(e.message || e); return; }
+      clearTimeout(V.gpuRetry); V.gpuRetry = setTimeout(() => { V.gpuRetry = 0; if (V.ui && V.info && info().o.gpuRenderer && !V.three && !V.lost) V.ui.redrawSpec(); }, 250 * V.gpuTries);
+    }
   }
   function gpuRenderer() {
-    if (!info().o.gpuRenderer) { if (V.three) { V.three.dispose(); V.three = null; V.gkey = ''; } if (V.gpuFailure) { V.gpuFailure = ''; say(''); } return; }
+    if (!info().o.gpuRenderer) { if (V.three) { V.three.dispose(); V.three = null; V.gkey = ''; } if (V.gpuFailure) { V.gpuFailure = ''; say(''); if (V.bar) labels(V.ui); } return; }
     if (V.three || V.gpuFailure) return;
     if (root.location && root.location.protocol === 'file:') { gpuFallback('ES modules need HTTP'); return; }
-    if (threeModule) { try { V.three = threeModule.create(V.canvas, V.gl.gl); V.gkey = ''; killWorkers(); } catch (e) { gpuFallback(e.message || e); } return; }
+    if (threeModule) { if (!V.gpuRetry) gpuCreate(); return; }
     if (!threeLoading) threeLoading = import('./drive-three.js').then(m => { threeModule = m; threeLoading = null; if (V.ui) V.ui.redrawSpec(); }).catch(e => { threeLoading = null; if (V.info && info().o.gpuRenderer) gpuFallback(e.message || e); });
   }
 

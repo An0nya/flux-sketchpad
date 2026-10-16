@@ -100,7 +100,7 @@
       results.push({conv,relative:error/Math.max(sum,1e-9),max,pass:error/Math.max(sum,1e-9)<.005});
     }
     a.frame();const gl=a.V.gl.gl,ext=gl.getExtension('WEBGL_lose_context');let context={measured:false};
-    if(ext){ext.loseContext();await sleep(250);const lost=D.stats().contextLost;ext.restoreContext();for(let i=0;i<40&&D.stats().contextLost;i++)await sleep(100);await sleep(250);context={measured:true,lost,stats:D.stats(),notice:a.V.why,pass:lost&&!D.stats().contextLost&&D.stats().renderer==='cpu'&&/CPU/.test(a.V.why)};}
+    if(ext){ext.loseContext();await sleep(250);const lost=D.stats().contextLost;ext.restoreContext();for(let i=0;i<40&&D.stats().contextLost;i++)await sleep(100);await sleep(250);context={measured:true,lost,stats:D.stats(),notice:a.V.why,pass:lost&&!D.stats().contextLost&&D.stats().renderer==='three'&&!a.V.why};}
     return {conventions:results,context,pass:results.every(r=>r.pass)&&context.pass};
   }
   window.P1Page={run,bench,ready,select,thresholds,aux};
