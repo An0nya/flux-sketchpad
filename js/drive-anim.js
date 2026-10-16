@@ -849,10 +849,26 @@ void main() {
   const recovery = () => !RF.SolverHost || RF.SolverHost.recovery();
   function say(message) {
     V.why = message;
+    if (V.protoState === 'showing') protoEnd();      // an error/fallback notice takes the same spot: the prototype note yields
     if (!V.cv) return;
     if (!V.notice) V.notice = E('div', { class: 'drive-notice', 'data-anim': 'notice', role: 'status' });
     V.notice.textContent = message; V.notice.hidden = !message;
     const host = V.popStage || V.cv.parentElement; if (V.notice.parentElement !== host) host.append(V.notice);
+  }
+  // Mountain pass prototype note: a short pill that fades after 6 s. Its own element (not V.notice) so the per-frame say() calls cannot
+  // resurrect it; V.protoState is 'showing' or 'done' (done = gone for the rest of the page session, so it never comes back).
+  function protoNote(on) {
+    if (!on) { if (V.protoState === 'showing') protoEnd(); return; }
+    if (V.protoState || !V.cv) return;
+    V.protoState = 'showing';
+    if (!V.protoEl) V.protoEl = E('div', { class: 'drive-notice drive-proto', 'data-anim': 'proto-notice', role: 'status' });
+    const el = V.protoEl; el.textContent = 'Mountain pass · prototype'; el.classList.remove('fading'); el.hidden = false;
+    const host = V.popStage || V.cv.parentElement; if (el.parentElement !== host) host.append(el);
+    V.protoTimer = setTimeout(() => { el.classList.add('fading'); V.protoTimer = setTimeout(protoEnd, 450); }, 6000);
+  }
+  function protoEnd() {
+    clearTimeout(V.protoTimer); V.protoTimer = 0; V.protoState = 'done';
+    if (V.protoEl) { V.protoEl.hidden = true; V.protoEl.classList.remove('fading'); }
   }
   // Photosensitivity notice: shown at the first animated frame of a page load; dismissal is remembered in localStorage.
   const PS_KEY = 'flux/photosafeNotice', PS_TEXT = 'Flashing lights: the drive view can flash (glare, passing headlamps). Glare is off by default; your system\'s Reduce Motion setting caps it.';
@@ -1524,8 +1540,8 @@ void main() {
       if (I.o.expMode === 'auto' && I.tm) { const ak = I.groundKey + '|' + I.o.ev; if (!V.kAuto || V.autoKey !== ak) { V.kAuto = I.tm.k; V.autoKey = ak; } } else V.kAuto = null;      // auto exposure would flicker as the scene moves: frozen at the still picture's
       prepare(sz);
       if (I.o.mountainPass && !V.three && !V.gpuFailure) say('Mountain pass: CPU fallback stays flat; enable GPU drive renderer for elevation.');
-      else if (I.o.mountainPass && V.three && !V.gpuFailure) say('Mountain pass prototype · curve lengths and banking are tuning.');
-      else if (V.why && V.why.startsWith('Mountain pass')) say('');
+      else if (I.o.mountainPass && V.three && !V.gpuFailure) { if (V.why && V.why.startsWith('Mountain pass')) say(''); protoNote(true); }   // clears a stale CPU-fallback line from before the GPU came up
+      else { protoNote(false); if (V.why && V.why.startsWith('Mountain pass')) say(''); }
       if (st.playing && mt()) workerCfg();      // playing on the workers: the loop draws the next frame
       else frame();
       if (st.playing) go(); else stop();
