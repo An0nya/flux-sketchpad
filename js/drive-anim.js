@@ -55,7 +55,7 @@
   // One car in each seeded interval of road, then translated by its own travel and ours. Look up only the intervals in view: bounded work even after hours.
   function trafficCars(src, dist, t) {
     const tr = src.traffic, out = []; if (!tr || !tr.density) return out;
-    if (tr.logic) return logicCars(src, dist, t);
+    if (tr.logic || src.tiles && src.tiles.mountain) return logicCars(src, dist, t);
     const gap = PERIOD / tr.density;
     for (const kind of ['oncoming', 'preceding']) if (tr[kind]) {
       const shift = dist + (kind === 'oncoming' ? 1 : -1) * TRAFFIC_SPEED[kind] * t;
@@ -92,9 +92,7 @@
   }
   const isJunction = (tile) => tile.kind === 'intersection' || tile.kind === 't-junction';
   function speedLimit(src, x) {
-    // Mountain pass: comfortable cornering speed from the curve radius, v = sqrt(a_lat * R) with a_lat 3 m/s² (a tuning value:
-    // relaxed driving sits around 2–4 m/s²), capped at 80 km/h on straights; the slider still caps it elsewhere.
-    if (src.tiles && src.tiles.mountain) { const c = Math.abs(RF.Touge.tile(0, Math.floor(x / 200)).curvature); return Math.min(80 / 3.6, c > 1e-6 ? Math.sqrt(3 / c) : Infinity); }
+    if (src.tiles && src.tiles.mountain) return Math.min(80 / 3.6, curveSpeed(curvatureAt(src, x)));
     if (!src.tiles) return 80 / 3.6;
     const tile = roadTile(src.tiles.seed, Math.floor(x / TILE_LEN));
     return (isJunction(tile) || tile.kind === 'urban' ? 50 : tile.curvature ? 60 : 80) / 3.6;
@@ -140,7 +138,62 @@
   }
   // Task's comfortable-stop design bound (3–4 m/s²), separate from IDM's desired b=1.5.
   const TRAFFIC_BRAKE = 3.5, TURN_SPEED = 4, TURN_PROBABILITY = 0.25, TURN_GAP = 5;
+  // Same sections as the drawn route, in horizontal station metres. Shared with Touge.curvature.
+  function curveSections(tile) {
+    return tile.curvature ? [[tile.s0, 50, 0], [tile.s0 + 50, 100, tile.curvature], [tile.s0 + 150, 50, 0]] : [[tile.s0, TILE_LEN, 0]];
+  }
+  function curveSpeed(c) { return Math.abs(c) > 1e-6 ? Math.sqrt(3 / Math.abs(c)) : Infinity; }
+  function curvatureAt(src, x, off = 0) {
+    if (!src || !src.tiles) return 0;
+    const tile = (src.tiles.mountain ? RF.Touge.tile : roadTile)(src.tiles.seed, Math.floor(x / TILE_LEN));
+    const c = curveSections(tile).find(q => x >= q[0] && x < q[0] + q[1])[2];
+    return c / (1 - off * c);
+  }
+  // An offset lane has ds_lane = (1 - off * curvature) ds_center. Keep v in actual lane m/s.
+  function laneDistance(src, x, end, off) {
+    let length = 0;
+    for (let k = Math.floor(Math.min(x,end)/TILE_LEN); k <= Math.floor(Math.max(x,end)/TILE_LEN); k++)
+      for (const [s,len,c] of curveSections(RF.Touge.tile(src.tiles.seed,k)))
+        length += Math.max(0,Math.min(Math.max(x,end),s+len)-Math.max(Math.min(x,end),s)) * (1-off*c);
+    return length;
+  }
+  function laneAdvance(src, x, travel, off) {
+    const dir = Math.sign(travel); let left = Math.abs(travel);
+    while (left > 1e-9) {
+      // Sample just inside the section in our travel direction to resolve exact joins.
+      const probe = x + dir * 1e-7, tile = RF.Touge.tile(src.tiles.seed,Math.floor(probe/TILE_LEN));
+      const q = curveSections(tile).find(q => probe >= q[0] && probe < q[0]+q[1]);
+      const edge = dir > 0 ? q[0]+q[1] : q[0], scale = 1-off*q[2], distance = Math.abs(edge-x)*scale;
+      if (left <= distance) return x + dir*left/scale;
+      x = edge; left -= distance;
+    }
+    return x;
+  }
+  // Exact section edges, with 2 m of settling space before discontinuous curvature starts.
+  // Braking envelope v² = v_bend² + 2 b distance; no metre-grid sampling can miss a short bend.
+  function curveEnvelope(src, car) {
+    const dir = car.kind === 'oncoming' ? -1 : 1, off = dir < 0 ? src.lane : 0;
+    let cap = 80 / 3.6, acceleration = IDM.a;
+    const k0 = Math.floor(car.x / TILE_LEN);
+    for (let i = -1; i <= 4; i++) {
+      const tile = RF.Touge.tile(src.tiles.seed, k0 + dir * i);
+      for (const [s, len, c] of curveSections(tile)) {
+        if (!c || dir * ((dir > 0 ? s + len : s) - car.x) < 0) continue;
+        const v = curveSpeed(c / (1 - off * c));
+        const edge = dir > 0 ? s : s + len;
+        const gap = dir * (edge-car.x) > 0 ? Math.max(0,laneDistance(src,car.x,edge,off)-2) : 0;
+        cap = Math.min(cap, Math.sqrt(v * v + 2 * IDM.b * gap));
+        // Bound the next 50 ms step against the moving braking envelope. Far bends allow acceleration;
+        // braking from the moment a bend enters the horizon would keep the whole pass at crawl speed.
+        const travel = car.v * IDM.dt + .5 * IDM.a * IDM.dt * IDM.dt;
+        const nextCap = Math.sqrt(v * v + 2 * IDM.b * Math.max(0, gap - travel));
+        acceleration = Math.min(acceleration, (nextCap - car.v) / IDM.dt);
+      }
+    }
+    return { cap, acceleration };
+  }
   function approachSpeed(src, car) {
+    if (src.tiles && src.tiles.mountain) return curveEnvelope(src, car).cap;
     const dir = car.kind === 'oncoming' ? -1 : 1, k0 = Math.floor(car.x / TILE_LEN);
     let v = speedLimit(src, car.x);
     if (src.tiles) for (let i = 1; i <= 3; i++) {
@@ -150,6 +203,7 @@
     return v;
   }
   function approachAcceleration(src, car, route) {
+    if (src.tiles && src.tiles.mountain) return curveEnvelope(src, car).acceleration;
     const dir = car.kind === 'oncoming' ? -1 : 1, k0 = Math.floor(car.x / TILE_LEN); let a = IDM.a;
     const brakeTo = (v, distance) => { if (car.v > v && distance > 0) a = Math.min(a, (v * v - car.v * car.v) / (2 * distance)); };
     if (src.tiles) for (let i = 1; i <= 3; i++) {
@@ -218,7 +272,7 @@
           continue;
         }
         const route = junctionPlan(src, c), turning = route && route.take;
-        let desired = approachSpeed(src, c), stop = stopFor(src, c, t);
+        let desired = Math.min(approachSpeed(src, c), src.traffic.logic || !(src.tiles && src.tiles.mountain) ? Infinity : TRAFFIC_SPEED[c.kind]), stop = stopFor(src, c, t);
         if (turning) {
           desired = Math.min(desired, Math.sqrt(TURN_SPEED * TURN_SPEED + 2 * IDM.b * Math.max(0, route.start - c.x)));
           const distance = Math.max(0, route.start - c.x), eta = 2 * distance / Math.max(1, c.v + TURN_SPEED);
@@ -228,6 +282,7 @@
         }
         const n = idmStep(Object.assign({}, c, { x: dir * c.x }), leader, IDM.dt, desired, stop, { maxBrake: TRAFFIC_BRAKE, maxAccel: approachAcceleration(src, c, route) });
         n.x *= dir;
+        if (src.tiles && src.tiles.mountain && dir < 0) n.x = laneAdvance(src,c.x,n.x-c.x,src.lane);
         if (turning && n.x >= route.start - 1e-7 && route.enter) {
           n.turn = { k: route.k, t, x: route.start, side: route.side, radius: route.side > 0 ? 5.1 : 3, s: Math.max(0, n.x - route.start) };
           n.x = turnPose(n).x;
@@ -240,14 +295,14 @@
   // The live camera is a through driver. Following replaces the old queue-pushing escape; slider speed remains its target.
   function cameraStep(src, camera, dt, t) {
     const desired = Math.max(0, src.traffic.speed / 3.6);
-    if (!src.traffic.logic) return Object.assign({}, camera, { x: camera.x + desired * dt, v: desired });
+    if (!src.traffic.logic && !(src.tiles && src.tiles.mountain)) return Object.assign({}, camera, { x: camera.x + desired * dt, v: desired });
     trafficCars(src, camera.x, t);
     let leader = null;
-    if (src.traffic.preceding) for (const c of src.traffic.state ? src.traffic.state.cars : []) {
+    if (src.traffic.logic && src.traffic.preceding) for (const c of src.traffic.state ? src.traffic.state.cars : []) {
       if (c.kind !== 'preceding' || c.x <= camera.x || (c.turn && Math.abs(turnPose(c).off) >= 3.2)) continue;
       if (!leader || c.x < leader.x) leader = { x: c.x, v: c.turn ? c.v * Math.cos(turnPose(c).yaw) : c.v };
     }
-    const c = Object.assign({}, camera, { id: 'camera', kind: 'preceding' }), stop = stopFor(src, c, t);
+    const c = Object.assign({}, camera, { id: 'camera', kind: 'preceding' }), stop = src.traffic.logic ? stopFor(src, c, t) : undefined;
     return idmStep(c, leader, dt, Math.min(desired, approachSpeed(src, c)), stop, { maxBrake: TRAFFIC_BRAKE, maxAccel: approachAcceleration(src, c) });
   }
   function logicCars(src, dist, t) {
@@ -297,7 +352,7 @@
     for (const L of p.lamps) {
       const dx = q.p[0] - L[0], dy = q.p[1] - L[1], dz = 1.1 - L[2], r2 = dx * dx + dy * dy + dz * dz, cos = (dx * q.t[0] + dy * q.t[1]) / Math.sqrt(r2);
       if (!(cos > 0) || !(dx > 0)) continue;
-      E += D.beamAt(p.lut, p.conv || 'A', dx, dy, dz, p.pitch || 0) * cos / r2;
+      E += D.ownBeamAt(p, dx, dy, dz, L[1]) * cos / r2;
     }
     return E;
   }
@@ -330,8 +385,8 @@
     };
     for (let k = k0 - 1; k <= k0 + (recipe ? 7 : 2); k++) {
       const tile = (recipe || roadTile)(seed, k); tiles.push(tile);
-      for (const [u, len, c] of tile.curvature ? [[0, 50, 0], [50, 100, tile.curvature], [150, 50, 0]] : [[0, TILE_LEN, 0]]) {
-        const q = { s: tile.s0 + u, len, c, x, y, a }, end = point(q, len); parts.push(q); x = end.p[0]; y = end.p[1]; a += c * len;
+      for (const [s, len, c] of curveSections(tile)) {
+        const q = { s, len, c, x, y, a }, end = point(q, len); parts.push(q); x = end.p[0]; y = end.p[1]; a += c * len;
       }
     }
     const find = (s) => parts.find((q) => s >= q.s && s < q.s + q.len) || (s < parts[0].s ? parts[0] : parts[parts.length - 1]);
@@ -562,7 +617,26 @@
     }
     return out;
   }
-  const lightingExtras = p => !!(p.trafficBeams || p.surfaceSheen || p.lampPitch || p.pitch);
+  // Tuning, not an OEM control law: preview 0.8 s (8..30 m), 15° clamp, 12°/s slew.
+  const AFS_MAX = Math.PI / 12, AFS_RATE = Math.PI / 15;
+  function steeringSignal(src, x, v) {
+    const c = curvatureAt(src, x), ahead = curvatureAt(src, x + Math.max(8, Math.min(30, v * .8)));
+    return { current: c, preview: c || ahead };
+  }
+  function afsTarget(src, x, v) {
+    const c = steeringSignal(src, x, v).preview;
+    return Math.max(-AFS_MAX, Math.min(AFS_MAX, c * Math.max(8, Math.min(30, v * .8)) * Math.min(1, Math.max(0, v) / 3)));
+  }
+  function lightingStep(state, src, x, v, dt, afs, cornering) {
+    state = state || { yaw: 0, left: 0, right: 0 };
+    const slew = (a,b,rate) => a + Math.max(-rate * dt, Math.min(rate * dt, b-a));
+    const c = steeringSignal(src,x,v).current;
+    // Current curvature only: do not fire a discrete lamp early on a straight or through junctions we do not turn at.
+    const strength = cornering ? Math.max(0, Math.min(1, (Math.abs(c)-.008)/.012)) * Math.max(0, Math.min(1,(40-v*3.6)/5)) : 0;
+    return { yaw: afs ? slew(state.yaw, RF.DriveAnim.afsTarget(src,x,v), AFS_RATE) : 0,
+      left: cornering ? slew(state.left,c>0?strength:0,2) : 0, right: cornering ? slew(state.right,c<0?strength:0,2) : 0 };
+  }
+  const lightingExtras = p => !!(p.trafficBeams || p.surfaceSheen || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight);
   // Tuning, not a passenger-car measurement: 0.12 deg/(m/s²), critically damped 1.5 Hz.
   // Exact constant-input solution stays stable at low frame rates. Positive acceleration lifts the beam.
   function pitchStep(state, acceleration, dt) {
@@ -570,7 +644,7 @@
     const x = q.angle - target, b = q.rate + w * x, e = Math.exp(-w * Math.max(0, dt));
     return { angle: target + (x + b * dt) * e, rate: (q.rate - w * b * dt) * e };
   }
-  const camOf = (p) => ({ w: p.w, h: p.h, hfov: p.hfov, eye: EYE, lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look, profile: p.profile, src: p.src, trafficBeams: p.trafficBeams, surfaceSheen: p.surfaceSheen, pitch: p.pitch, lampRGB: p.lampRGB });
+  const camOf = (p) => ({ w: p.w, h: p.h, hfov: p.hfov, eye: EYE, lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look, profile: p.profile, src: p.src, trafficBeams: p.trafficBeams, surfaceSheen: p.surfaceSheen, pitch: p.pitch, yaw: p.yaw, cornerLeft: p.cornerLeft, cornerRight: p.cornerRight, lampRGB: p.lampRGB });
   /* the lit ground: A = everything that does not move; each patterned marking (the dashes, a crossing, a stop line) is a layer: the markings that share one pattern are drawn solid and what they add over A is its B,
    * which the compose shader fades by the pattern's coverage at s + dist. Lit paint adds linearly, so layers sum (where two overlap the sum is a little more than the still view's first-marking-wins: city's crossing over the dash).
    * layers = [{ pat, B }] (at most MAX_PAT; more patterned markings than that stay in A as they are at dist 0); B and pat = the first layer's (null: nothing patterned)  */
@@ -998,15 +1072,15 @@ void main() {
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, !!o.surfaceSheen, !!o.lampPitch, I.lampRGB]);
+    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB]);
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
+    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
-      V.g = V.three || V.src.cross || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
+      V.g = V.three || V.src.cross || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
     }
     V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr));
@@ -1041,6 +1115,9 @@ void main() {
     if (!contextReady()) return;
     const t0 = performance.now(); resolutionPrepare();
     const ui = V.ui, st = S(ui), I = info(), o = I.o, W = V.p.w, pb = V.band, had = pb[1] > pb[0], profiling = profileOn(), trafficMs = V.cameraMs || 0;
+    V.p.yaw = o.afs && st.lighting ? st.lighting.yaw : 0;
+    V.p.cornerLeft = o.corneringLamps && st.lighting ? st.lighting.left : 0;
+    V.p.cornerRight = o.corneringLamps && st.lighting ? st.lighting.right : 0;
     V.p.pitch = o.lampPitch && st.pitch ? st.pitch.angle : 0;
     V.cameraMs = 0; V.p.profile = profiling ? {} : null;
     if (had && !V.three) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
@@ -1085,7 +1162,7 @@ void main() {
   }
   // true when this frame is traced on workers (they are started, or stopped, to match the switch)
   function mt() {
-    const want = !V.three && !(V.info && (V.info.o.mountainPass || V.info.o.trafficBeams || V.info.o.surfaceSheen || V.info.o.lampPitch)) && !S(V.ui || {}).game && !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
+    const want = !V.three && !(V.info && (V.info.o.mountainPass || V.info.o.trafficBeams || V.info.o.surfaceSheen || V.info.o.lampPitch || V.info.o.afs || V.info.o.corneringLamps)) && !S(V.ui || {}).game && !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
     if (!want) { if (Wk.list.length) killWorkers(); return false; }
     if (Wk.list.length !== n) {
       killWorkers();
@@ -1177,6 +1254,7 @@ void main() {
     const start = performance.now(), speed = (+info().o.speed || 50) / 3.6, oldV = st.game ? st.game.v : st.camera ? st.camera.v : V.src.traffic.logic ? Math.min(speed, speedLimit(V.src, st.dist)) : speed;
     advanceCameraInner(st, dt);
     const newV = st.game ? st.game.v : st.camera ? st.camera.v : (+info().o.speed || 50) / 3.6;
+    st.lighting = lightingStep(st.lighting, V.src, st.dist, newV, dt, !!info().o.afs, !!info().o.corneringLamps);
     if (info().o.lampPitch && dt > 0) { st.acceleration = (newV - oldV) / dt; st.pitch = pitchStep(st.pitch, st.acceleration, dt); }
     else { st.pitch = null; st.acceleration = 0; } V.cameraMs = (V.cameraMs || 0) + performance.now() - start;
   }
@@ -1186,12 +1264,12 @@ void main() {
       if (st.game.done) st.playing = false; return;
     }
     const speed = (+info().o.speed || 50) / 3.6;
-    if (!V.src.traffic.logic) { st.total += speed * dt; st.dist += speed * dt; st.t += dt; st.camera = null; return; }
+    if (!V.src.traffic.logic && !(V.src.tiles && V.src.tiles.mountain)) { st.total += speed * dt; st.dist += speed * dt; st.t += dt; st.camera = null; return; }
     V.src.traffic.speed = speed * 3.6;
     let left = dt;
     while (left > 1e-9) {
       const h = Math.min(IDM.dt, left), old = st.camera;
-      const camera = old && Math.abs(old.x - st.dist) < 1e-7 ? old : { x: st.dist, v: Math.min(speed, speedLimit(V.src, st.dist)) };
+      const camera = old && Math.abs(old.x - st.dist) < 1e-7 ? old : { x: st.dist, v: Math.min(speed, approachSpeed(V.src, { x: st.dist, kind: 'preceding', v: speed })) };
       st.camera = cameraStep(V.src, camera, h, st.t); st.total += st.camera.x - st.dist; st.dist = st.camera.x; st.t += h; left -= h;
     }
   }
@@ -1244,18 +1322,20 @@ void main() {
     btn('play', 'Drive / pause: Pause freezes distance and time', () => { const current = S(ui); current.playing = !current.playing; setDV(ui, 'playing', current.playing); });
     btn('fit-controls', 'Compact spacing for the wrapping drive controls. Off uses wider spacing.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
-    const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed; traffic logic also obeys road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
+    const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed. Mountain pass always slows for bends; traffic logic adds road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
     const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
     const speedBox = E('span', { class: 'drive-speed' }); speedBox.append(sp, lab);
     primary.querySelector('[data-dv=scene]').after(speedBox);
     primary.append(bar.querySelector('[data-anim=play]'));
-    btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off restores the previous traffic and gap guard.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
+    btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off uses scripted traffic; Mountain pass curve speeds remain active.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
     for (const [name, key, label, title] of [
       ['traffic-beams', 'trafficBeams', 'traffic beams', 'Nearest eight cars within 150 m cast low beams onto road and objects. CPU uses full-frame tracing.'],
       ['surface-sheen', 'surfaceSheen', 'lit surface sheen', 'Up to eight lit sign/bright faces add wet streaks from integrated returned luminance and area.'],
+      ['afs', 'afs', 'AFS', 'Adaptive front-lighting: low beam swivels into tiled bends, up to 15 degrees.'],
+      ['cornering-lamps', 'corneringLamps', 'cornering lamps', 'Wide separate lamps fade into tight bends below 40 km/h. Generic study, not measured lamp photometry.'],
       ['lamp-pitch', 'lampPitch', 'lamp pitch', 'Drive only: suspension pitch follows acceleration and braking. Tuning: 0.12 degrees per m/s², 1.5 Hz.']
-    ]) btn(name, title, () => { if (key === 'lampPitch') { st.pitch = null; st.acceleration = 0; } setDV(ui, key, !info().o[key]); }, label);
+    ]) btn(name, title, () => { if (key === 'afs' || key === 'corneringLamps') st.lighting = null; if (key === 'lampPitch') { st.pitch = null; st.acceleration = 0; } setDV(ui, key, !info().o[key]); }, label);
     btn('deer-behaviour', 'Deer graze, turn toward the lamps, freeze and bolt. Defaults on with detailed models; you can enable it for primitive deer too. Timing and eye acceptance are tuning. Off restores the original movement and eyes.', () => setDV(ui, 'deerBehaviour', !D.Models.deerEnabled(info().o)), 'deer behaviour');
     btn('detailed-models', 'Detailed deer, people and sphere-cluster trees on CPU/GPU. Mesh cars, far tree cards and facade styles are GPU-only; CPU keeps primitive cars and facades. Play scores follow the visible models.', () => setDV(ui, 'detailedModels', !info().o.detailedModels), 'detailed models');
     btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => { if (V.gpuFailure && info().o.gpuRenderer) { V.gpuFailure = ''; V.gpuTries = 0; say(''); labels(ui); ui.redrawSpec(); } else setDV(ui, 'gpuRenderer', !info().o.gpuRenderer); }, 'GPU drive renderer');      // failed while ON: a click retries the GPU
@@ -1304,7 +1384,7 @@ void main() {
     if (!ui.driveBar) return;
     const st = S(ui), o = info().o, lab = ui.driveBar.querySelector('[data-anim=speedlab]');
     if (!lab) return;
-    const actual = st.camera && o.trafficLogic && st.view === 'anim' ? st.camera.v * 3.6 : o.speed;
+    const actual = st.camera && (o.trafficLogic || o.mountainPass) && st.view === 'anim' ? st.camera.v * 3.6 : o.speed;
     lab.textContent = o.speed + ' km/h' + (Math.abs(actual - o.speed) >= 0.5 ? ' · actual ' + actual.toFixed(1) + ' km/h' : '');
   }
   function labels(ui) {
@@ -1313,7 +1393,7 @@ void main() {
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
     V.bar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
-    for (const [name, key] of [['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
+    for (const [name, key] of [['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
     V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
@@ -1643,7 +1723,7 @@ void main() {
     const t = V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); iv.sort((a, b) => a - b);
     const med = iv.length ? iv[iv.length >> 1] : 0, c = V.cpu;
     const all = V.profiles || [], recent = all.filter((r) => r.at >= (all.length ? all[all.length - 1].at : 0) - 1000);
-    return { renderer: V.three ? 'three' : 'cpu', mountain: V.p && V.p.touge ? RF.Touge.attitude(S(V.ui).dist) : null, pitch: V.p && V.p.pitch || 0, acceleration: V.ui && S(V.ui).acceleration || 0, gpuFailure: V.gpuFailure || '', profiling: profileOn(), renderScale: V.renderScale || 1, resolution: V.resolution || resolutionState(), frameTargetMs: V.info && V.info.o.frameTargetMs || 33, breakdown: breakdown(recent), breakdownMean: breakdown(all), lastFrame: all.length ? all[all.length - 1] : null, white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
+    return { swivel: V.p && V.p.yaw || 0, cornering: V.p ? [V.p.cornerLeft || 0, V.p.cornerRight || 0] : [0,0], renderer: V.three ? 'three' : 'cpu', mountain: V.p && V.p.touge ? RF.Touge.attitude(S(V.ui).dist) : null, pitch: V.p && V.p.pitch || 0, acceleration: V.ui && S(V.ui).acceleration || 0, gpuFailure: V.gpuFailure || '', profiling: profileOn(), renderScale: V.renderScale || 1, resolution: V.resolution || resolutionState(), frameTargetMs: V.info && V.info.o.frameTargetMs || 33, breakdown: breakdown(recent), breakdownMean: breakdown(all), lastFrame: all.length ? all[all.length - 1] : null, white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
   }
   function breakdown(samples) {
     const rows = samples || [], n = rows.length, mean = (key) => n ? rows.reduce((s, r) => s + (r[key] || 0), 0) / n : 0, frameMs = mean('frameMs'), components = {};
@@ -1669,7 +1749,7 @@ void main() {
       scope + ' ≈ object/rays ' + ms('objectMs') + ' · ground ' + ms('groundMs') + ' · wet ' + ms('wetMs') + ' · worker setup/pack ' + ms('workerOtherMs') + ' ms\n' +
       'cache ' + b.cache.hits + ' hit / ' + b.cache.misses + ' miss · upload ' + ms('uploadMs') + ' ms\n' +
       'GL submit: compose ' + ms('composeMs') + ' · glare ' + ms('glareMs') + ' · final/veil ' + ms('finalVeilMs') + ' ms\n' +
-      'traffic ' + ms('trafficMs') + ' · placement ' + ms('placementMs') + ' · dispatch ' + ms('dispatchMs') + ' · detector ' + ms('detectorMs') + ' · pacing ' + ms('pacingMs') + ' · other ' + ms('otherMs') + ' ms';
+      'AFS ' + ((V.p && V.p.yaw || 0) * 180 / Math.PI).toFixed(1) + '° · ' + 'traffic ' + ms('trafficMs') + ' · placement ' + ms('placementMs') + ' · dispatch ' + ms('dispatchMs') + ' · detector ' + ms('detectorMs') + ' · pacing ' + ms('pacingMs') + ' · other ' + ms('otherMs') + ' ms';
   }
   function resetStats() { V.profiles = []; V.completedAt = 0; V.cameraMs = 0; V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
@@ -1678,7 +1758,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { laneDistance, laneAdvance, AFS_MAX, AFS_RATE, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

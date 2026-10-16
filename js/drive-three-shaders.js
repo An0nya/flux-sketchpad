@@ -109,11 +109,19 @@ uniform vec4 otherLutInfo;
 uniform vec2 otherLutSize, trafficDir[16];
 uniform vec3 trafficLamp[16];
 uniform int nTraffic, otherConvention;
-uniform float pitch;
+uniform float pitch, yaw;
+uniform vec2 cornering;
 `)
-    .replace('float intensity(vec3 d) {\n', 'float intensity(vec3 d) {\n' + `  if(pitch!=0.0) { float c=cos(pitch), s=sin(pitch); d=vec3(c*d.x+s*d.z,d.y,c*d.z-s*d.x); }
+    .replace('float intensity(vec3 d) {\n', 'float intensity(vec3 d) {\n' + `  if(yaw!=0.0) { float c=cos(yaw), s=sin(yaw); d.xy=vec2(c*d.x+s*d.y,c*d.y-s*d.x); }
+  if(pitch!=0.0) { float c=cos(pitch), s=sin(pitch); d=vec3(c*d.x+s*d.z,d.y,c*d.z-s*d.x); }
 `)
-    .replace('float wetLobe', `float otherIntensity(vec3 d) {
+    .replace('float I=intensity(d);', 'float I=intensity(d)+cornerIntensity(d,lamp[i]);')
+    .replace('float wetLobe', `float cornerIntensity(vec3 d,vec3 origin) {
+  if((cornering.x==0.0 && cornering.y==0.0) || d.x<=0.0 || d.z>=0.0)return 0.0;
+  float h=atan(d.y,d.x), v=atan(d.z,length(d.xy)), rad=PI/180.0;
+  return 400.0*exp(-0.5*pow((v+6.0*rad)/(7.0*rad),2.0))*((origin.y>=0.0 ? cornering.x : 0.0)*exp(-0.5*pow((h-55.0*rad)/(22.0*rad),2.0))+(origin.y<0.0 ? cornering.y : 0.0)*exp(-0.5*pow((h+55.0*rad)/(22.0*rad),2.0)));
+}
+float otherIntensity(vec3 d) {
   vec3 q=normalize(d); float a=q.x, b=-q.y, c=q.z; vec2 hv;
   if(otherConvention==1) hv=vec2(asin(clamp(b,-1.0,1.0)),atan(c,a));
   else if(otherConvention==2) { if(a<=0.0) return 0.0; hv=atan(vec2(b,c)/a); }

@@ -43,5 +43,6 @@ run('detailed models final geometry (tests/models-m2.js)', ['tests/models-m2.js'
 run('optional GPU Drive wiring + vendor pins (tests/drive-three.js)', ['tests/drive-three.js']);
 run('P2 Drive lighting extras (tests/p2-drive-lighting.js)', ['tests/p2-drive-lighting.js']);
 run('eurobeat pattern data (tests/eurobeat.js)', ['tests/eurobeat.js']);
+run('Mountain pass speeds and adaptive lighting (tests/touge-r2.js)', ['tests/touge-r2.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

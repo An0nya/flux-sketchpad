@@ -234,7 +234,7 @@
     const TS = 16, tw = Math.ceil(w / TS), th = Math.ceil(h / TS), tiles = new Array(tw * th).fill(null);
     // Camera-distance bands (16-pixel tiles): static beam-lit ground, independent of the route's moving materials.
     // Float64 retains the shader arithmetic; never cache grain, coverage, street lights or emitter reflections.
-    const gc = traffic.length || pitch ? null : o.groundCache;
+    const gc = traffic.length || pitch || o.yaw || o.cornerLeft || o.cornerRight ? null : o.groundCache;
     const cacheMats = gc && new Map(Object.keys(M).map((key, i) => [M[key], i]));
     if (gc) {
       const key = JSON.stringify([w, h, o.hfov, eye, lamps, conv, lc, look, o.mats, lut.h0, lut.v0, lut.step, lut.nh, lut.nv]);
@@ -280,7 +280,7 @@
     // ---- shading
     let LR = 0, LG = 0, LB = 0;
     // a direction outside the beam table's window has I = 0 (lutAt): with the table's window in hand (A convention) most of a scene is rejected without the two trig calls of hvFast. Never rejects inside the window.
-    const lw = [lut.h0, lut.h0 + lut.nh * lut.step, lut.v0, lut.v0 + lut.nv * lut.step], preA = !pitch && conv === 'A' && lw[0] > -89 && lw[1] < 89 && lw[2] > -89 && lw[3] < 89;
+    const lw = [lut.h0, lut.h0 + lut.nh * lut.step, lut.v0, lut.v0 + lut.nv * lut.step], preA = !pitch && !o.yaw && !o.cornerLeft && !o.cornerRight && conv === 'A' && lw[0] > -89 && lw[1] < 89 && lw[2] > -89 && lw[3] < 89;
     const sv0 = Math.sin(lw[2] * D2R) - 1e-9, sv1 = Math.sin(lw[3] * D2R) + 1e-9, th0 = Math.tan(lw[0] * D2R) * (1 + 1e-9) - 1e-12, th1 = Math.tan(lw[1] * D2R) * (1 + 1e-9) + 1e-12;
     // add a surface point's luminance, weighted: P = hit, n = unit normal (facing the eye), m = material, k = weight, v = unit vector to the eye
     function shade(px, py, pz, nx, ny, nz, m, k, vx, vy, vz, rscale, staticBuild, eyeFalloff) {
@@ -334,7 +334,7 @@
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
         if (!(NoL > 0)) continue;
         if (preA) { const a = dx / rr, b = -dy / rr, c = dz / rr; if (c < sv0 || c > sv1 || a <= 0 || b > a * th1 || b < a * th0) continue; }
-        const I = beamAt(lut, conv, dx, dy, dz, pitch); if (!(I > 0)) continue;
+        const I = ownBeamAt(o, dx, dy, dz, L[1]); if (!(I > 0)) continue;
         if (sheen && nz === 1 && m.id === M.asphalt.id) { const a = I * lobe(-dx, -dy, -dz, vx, vy, vz); r += a; g += a; b += a; }
         const Ep = I / r2;                                                    // E⊥, lux square to the beam
         const d = Ep * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
@@ -514,7 +514,21 @@
     }
     return cars.sort((a, b) => a.d - b.d).slice(0, TRAFFIC_CARS).flatMap(c => c.sources);
   }
-  function beamAt(lut, conv, dx, dy, dz, pitch) {
+  // Generic static lamps at the existing mounting points: 400 cd on the selected side, 55° outboard.
+  // Angular Gaussian, 22° horizontal / 7° vertical sigma, aimed 6° down; no LUT allocation.
+  function cornerAt(dx,dy,dz,left,right) {
+    if ((!left && !right) || dx <= 0 || dz >= 0) return 0;
+    const h = Math.atan2(dy,dx), v = Math.atan2(dz,Math.hypot(dx,dy)), rad = Math.PI/180;
+    const vertical = Math.exp(-.5 * Math.pow((v+6*rad)/(7*rad),2));
+    return 200 * vertical * ((left || 0)*Math.exp(-.5*Math.pow((h-55*rad)/(22*rad),2)) + (right || 0)*Math.exp(-.5*Math.pow((h+55*rad)/(22*rad),2)));
+  }
+  function ownBeamAt(p,dx,dy,dz,side) {
+    const left = side === undefined ? p.cornerLeft : side >= 0 ? 2 * (p.cornerLeft || 0) : 0;
+    const right = side === undefined ? p.cornerRight : side < 0 ? 2 * (p.cornerRight || 0) : 0;
+    return beamAt(p.lut,p.conv || 'A',dx,dy,dz,p.pitch || 0,p.yaw || 0) + cornerAt(dx,dy,dz,left,right);
+  }
+  function beamAt(lut, conv, dx, dy, dz, pitch, yaw) {
+    if (yaw) { const c = Math.cos(yaw), s = Math.sin(yaw), x = dx; dx = c * x + s * dy; dy = c * dy - s * x; }
     if (pitch) { const c = Math.cos(pitch), s = Math.sin(pitch), x = dx; dx = c * x + s * dz; dz = c * dz - s * x; }
     hvFast(dx, dy, dz, conv); return lutAt(lut, HV0, HV1);
   }
@@ -547,7 +561,7 @@
         for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * diffuse;
         for (const L of p.lamps) {
           const dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, noL = Math.max(0, -(dx * nx + dy * ny + dz * nz) / Math.sqrt(r2));
-          if (!noL || r2 < 0.01) continue; const E = beamAt(p.lut, p.conv || 'A', dx, dy, dz, p.pitch || 0) / r2;
+          if (!noL || r2 < 0.01) continue; const E = ownBeamAt(p, dx, dy, dz, L[1]) / r2;
           for (let c = 0; c < 3; c++) lum[c] += E * (m.rho[c] * noL / PI + (m.retro ? m.retro[c] : 0));
         }
         const dA = (box ? area : 4 * ob.r * ob.r) / 64;
@@ -681,5 +695,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { occluded, dipState, TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
+  RF.Drive = { cornerAt, ownBeamAt, occluded, dipState, TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
