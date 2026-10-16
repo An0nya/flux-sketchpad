@@ -26,7 +26,7 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
     ok('UX1 More starts collapsed', !await more.evaluate((e) => e.open));
     await advanced('[data-anim=animate]');
     await page.locator('[data-anim=play]').click(); // freeze the picture while inspecting layout
-    const controls = await page.evaluate(() => [...document.querySelectorAll('.drive-tools button,.drive-tools input,.drive-tools select,.drive-extras button,.drive-extras input,.drive-extras select')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game));
+    const controls = await page.evaluate(() => [...document.querySelectorAll('.drive-tools button,.drive-tools input,.drive-tools select,.drive-extras button,.drive-extras input,.drive-extras select,[data-anim=popout]')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game));
     ok('UX1 all original drive controls remain', ['scene','shape','wet','wetSheen','onMode','expMode','evm','ev','evp','glare','people','animals','signs','oncoming','preceding','animate','popout','tiles','toggle','play','fit-controls','large-card','speed','traffic-logic','gap','street-lamps','c-people','c-animals','c-signs','c-posts','c-veg','c-obstacle','c-rpm','c-tex','c-wild','c-mt','seed','dice','density','cline','traffic-density','reset-flashes'].every((k) => controls.includes(k)), controls);
     for (const width of [360, 390, 430, 1500]) {
       await page.setViewportSize({ width, height: 950 });
@@ -38,7 +38,7 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
           return { left: r.left, right: r.right, width: innerWidth, rowHeight: p.getBoundingClientRect().height, spread: Math.max(...c.map((e) => e.top)) - Math.min(...c.map((e) => e.top)), closed: !bar.querySelector('details').open, extraVisible: RF.UI.driveExtras.querySelector('[data-dv=shape]').checkVisibility(), fits: p.scrollWidth <= p.clientWidth + 1, primary: [...p.querySelectorAll('button,input,select')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game) };
         });
         ok('UX1 wrapping primary controls fit, extras collapsed ' + width + (popout ? ' large' : ' inline'), layout.left >= 0 && layout.right <= width && layout.fits && layout.closed && !layout.extraVisible && ['scene','speed','toggle','glare','play'].every((k) => layout.primary.includes(k)), layout);
-        await page.locator('.drive-more > summary').click();
+        await page.locator('.drive-more > summary').click(); await page.waitForTimeout(150);   // the <details> toggle event un-hides the extras a task later
         ok('UX1 More exposes extras ' + width + (popout ? ' large' : ' inline'), await page.locator('[data-dv=shape]').isVisible() && await page.locator('[data-anim=traffic-logic]').isVisible());
         if (shots) await page.screenshot({ path: path.join(shots, width + (popout ? '-large' : '-inline') + '-more.png') });
         await page.locator('.drive-more > summary').click();

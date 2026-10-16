@@ -1822,6 +1822,9 @@
 
   function setDisplay(d) {
     ui.display = d;
+    const corner = document.querySelector('[data-reset=heat]'), drive = d === 'drive';
+    corner.textContent = drive ? '⤢' : '⌖'; corner.setAttribute('aria-label', drive ? 'Large view' : 'Reset zoom'); corner.title = drive ? 'Large view' : 'Reset zoom (or double-click)';
+    if (drive) corner.dataset.anim = 'popout'; else { delete corner.dataset.anim; corner.removeAttribute('aria-pressed'); corner.disabled = false; }
     for (const o of document.querySelectorAll('#heat-display button')) { o.classList.toggle('on', o.dataset.disp === d); o.setAttribute('aria-checked', String(o.dataset.disp === d)); }
     document.getElementById('heat-canvas').parentElement.classList.toggle('ff', d === 'ff');   // shows the far-field toggles
     document.getElementById('heat-canvas').parentElement.classList.toggle('road', d === 'road');   // shows the road-view toggles
@@ -1844,7 +1847,7 @@
     for (const b of document.querySelectorAll('#heat-display button')) b.addEventListener('click', () => setDisplay(b.dataset.disp));
     // reset zoom on the target canvases (button or double-click)
     const resetView = (w) => { if (w === 'heat') ui.vHeat.fitted = false; else ui.vLeft.fitted = ui.vPick.fitted = ui.vProf.fitted = false; drawHeat(); ui.sceneDirty = true; schedule(); };
-    for (const b of document.querySelectorAll('[data-reset]')) b.addEventListener('click', () => resetView(b.dataset.reset));
+    for (const b of document.querySelectorAll('[data-reset]')) b.addEventListener('click', () => { if (b.dataset.reset === 'heat' && ui.display === 'drive') { ui.dvAnim && ui.dvAnim.popout ? RF.DriveAnim.closePop(ui) : RF.DriveAnim.openPop(ui); } else resetView(b.dataset.reset); });
     document.getElementById('left-canvas').addEventListener('dblclick', () => resetView('left'));
     // ⌘-click / Ctrl-click (and drag) on the paint grid erases.  Captured on window so it is set before the canvas
     // handlers read it; key events keep the brush ring's colour honest while hovering.
