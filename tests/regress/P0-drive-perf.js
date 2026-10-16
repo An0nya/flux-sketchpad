@@ -20,7 +20,9 @@ const ok = (n,c,d) => { console.log((c?'[PASS] ':'[FAIL] ')+n+(d?' — '+JSON.st
     ok('P0 defaults off and 33 ms target',await page.evaluate(()=>!RF.UI.dvOpts.fpsCounter&&!RF.UI.dvOpts.dynamicResolution&&RF.UI.dvOpts.frameTargetMs===33));
     await page.locator('[data-anim=fps-counter]').click();
     ok('P0 counter remembered in drive preferences',await page.evaluate(()=>RF.UI.dvOpts.fpsCounter&&JSON.parse(localStorage.getItem('flux/driveView')).fpsCounter));
-    const parity=await page.evaluate(()=>{const u=RF.UI,a=RF.DriveAnim._;const draw=on=>{u.dvOpts.fpsCounter=on;u.redrawSpec();a.frame();return {cpu:new Float32Array(a.V.rgba),canvas:a.readCanvas()};};const off=draw(false),on=draw(true);return {cpu:off.cpu.every((v,i)=>v===on.cpu[i]),canvas:off.canvas.every((v,i)=>v===on.canvas[i]),stats:RF.DriveAnim.stats()};});
+    await page.locator('[data-anim=debug-timings]').click();
+    ok('P0 debug timings remembered separately',await page.evaluate(()=>RF.UI.dvOpts.debugTimings&&JSON.parse(localStorage.getItem('flux/driveView')).debugTimings));
+    const parity=await page.evaluate(()=>{const u=RF.UI,a=RF.DriveAnim._;const draw=on=>{u.dvOpts.debugTimings=on;u.redrawSpec();a.frame();return {cpu:new Float32Array(a.V.rgba),canvas:a.readCanvas()};};const off=draw(false),on=draw(true);return {cpu:off.cpu.every((v,i)=>v===on.cpu[i]),canvas:off.canvas.every((v,i)=>v===on.canvas[i]),stats:RF.DriveAnim.stats()};});
     ok('P0 profiler preserves CPU and canvas pixels',parity.cpu&&parity.canvas);
     ok('P0 stats exposes sampled trace and CPU GL breakdown',parity.stats.lastFrame&&parity.stats.breakdown.sampledRays>0&&parity.stats.breakdown.gpuMs===null&&parity.stats.breakdown.components.finalVeilMs.ms>=0,parity.stats.breakdown);
     await page.locator('[data-anim=dynamic-resolution]').click();
@@ -29,12 +31,12 @@ const ok = (n,c,d) => { console.log((c?'[PASS] ':'[FAIL] ')+n+(d?' — '+JSON.st
     ok('P0 render integration reduces dimensions, pinSS and off restore',scales.small<scales.full&&scales.pin===scales.full&&scales.restored===scales.full,scales);
     const worker=await page.evaluate(async()=>{const D=RF.DriveAnim,a=D._,u=RF.UI;a.Wk.forced=2;u.dvOpts.mt=true;u.redrawSpec();D.resetStats();const drawn=await a.frameMT(25,5);return {drawn,...D.stats()};});
     ok('P0 worker round-trip and main work exposed',worker.drawn&&worker.workers===2&&worker.breakdown.workerCpuMs>0&&worker.breakdown.components.workerRoundTripMs.ms>0&&worker.breakdown.mainMs>0&&!worker.mtFail,worker.breakdown);
-    // Both normal and narrow popout; counter must remain within the canvas host, with primary controls scrollable.
+    // Both normal and narrow popout; counter must remain within the canvas host, with primary controls wrapping.
     for(const width of [1900,390]) {
       await page.setViewportSize({width,height:width===390?844:1050});
       await page.evaluate(()=>{RF.UI.dvOpts.mt=false;RF.UI.dvAnim.playing=false;RF.UI.setPane('result','activate');RF.DriveAnim.openPop(RF.UI);RF.UI.redrawSpec();});
-      const fit=await page.evaluate(()=>{const a=RF.DriveAnim._,r=a.V.perfLab.getBoundingClientRect(),h=a.V.canvas.parentElement.getBoundingClientRect(),p=RF.UI.driveBar.querySelector('.drive-primary');return {mounted:a.V.perfLab.parentElement===a.V.canvas.parentElement,visible:!a.V.perfLab.hidden,inside:r.left>=h.left-1&&r.right<=h.right+1,width:r.width,host:h.width,primary:p.clientWidth,scroll:p.scrollWidth,overflow:getComputedStyle(p).overflowX};});
-      ok('P0 counter and toolbar fit '+width,fit.mounted&&fit.visible&&fit.inside&&fit.primary>0&&fit.overflow==='auto',fit);
+      const fit=await page.evaluate(()=>{const a=RF.DriveAnim._,r=a.V.perfLab.getBoundingClientRect(),h=a.V.canvas.parentElement.getBoundingClientRect(),p=RF.UI.driveBar.querySelector('.drive-primary');return {mounted:a.V.perfLab.parentElement===(matchMedia('(max-width: 760px), (pointer: coarse)').matches?a.V.below:a.V.canvas.parentElement),visible:!a.V.perfLab.hidden,inside:r.left>=h.left-1&&r.right<=h.right+1,width:r.width,host:h.width,primary:p.clientWidth,scroll:p.scrollWidth,overflow:getComputedStyle(p).overflowX};});
+      ok('P0 counter and toolbar fit '+width,fit.mounted&&fit.visible&&fit.inside&&fit.primary>0&&fit.scroll<=fit.primary+1,fit);
       await page.evaluate(()=>RF.DriveAnim.closePop(RF.UI));
     }
     // Real detector and paired background at reduced trace dimensions, with a nearby deterministic hazard.
