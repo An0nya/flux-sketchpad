@@ -10,8 +10,14 @@ const fs = require('fs'), path = require('path'), pw = require(process.env.PLAYW
     await page.addScriptTag({ url: '/tests/p2-drive-lighting-page.js' }); const result = await page.evaluate(p => P2Page.run(p), port);
     const base = {}, files = { cpu: 'js/drive.js', renderer: 'js/drive-three.js', objects: 'js/drive-three-objects.js', shaders: 'js/drive-three-shaders.js' };
     for (const [k, file] of Object.entries(files)) base[k] = require('child_process').execFileSync('git', ['show', 'a95029b:' + file], { cwd: path.join(__dirname, '../..'), encoding: 'utf8' });
-    result.baseProof = await page.evaluate(base => P2Page.baseProof(base), base); result.pass = result.pass && result.baseProof.pass;
-    console.log((result.baseProof.pass ? '[PASS] ' : '[FAIL] ') + 'P2 all-off CPU and GPU frames identical to base a95029b in eight cases');
+    result.baseProof = await page.evaluate(base => P2Page.baseProof(base), base);
+    // GPU frames legitimately differ from a95029b since the QOL1 cylinder-precision fix (posts no longer falsely occlude
+    // reflectors); the a95029b blob harness can't load newer object modules, so the GPU arm is informational now. P2-off GPU
+    // identity is still covered by "all-off restores identical GPU frame after every feature" below.
+    const cpuSame = result.baseProof.results.every((r) => r.cpuEqual), gpuSame = result.baseProof.results.every((r) => r.gpuHDREqual);
+    result.pass = result.pass && cpuSame;
+    console.log((cpuSame ? '[PASS] ' : '[FAIL] ') + 'P2 all-off CPU frames identical to base a95029b in eight cases');
+    console.log('[INFO] P2 all-off GPU frames vs a95029b (pre cylinder fix): ' + (gpuSame ? 'identical' : 'differ, expected'));
     for (const c of result.checks) console.log((c.pass ? '[PASS] ' : '[FAIL] ') + c.name + (c.detail ? ' — ' + JSON.stringify(c.detail) : ''));
     console.log(JSON.stringify(result)); console.log((errors.length ? '[FAIL]' : '[PASS]') + ' P2 no page errors ' + JSON.stringify(errors)); process.exitCode = result.pass && !errors.length ? 0 : 1;
   } finally { await browser.close(); }
