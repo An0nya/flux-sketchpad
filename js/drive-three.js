@@ -1,6 +1,7 @@
 /* Opt-in Drive ground renderer. CPU objects and the established display passes share its WebGL context. */
 import * as T from '../vendor/three/three.module.min.js';
 import { vertex, ground, withLighting } from './drive-three-shaders.js';
+import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
 const D = globalThis.RF.Drive;
 const texture = (data, w, h, format = T.RGBAFormat) => { const t = new T.DataTexture(data, w, h, format, T.FloatType); t.needsUpdate = true; return t; };
@@ -25,16 +26,19 @@ export function create(canvas, gl, onModelsReady) {
   renderer.debug.onShaderError = (g, program, vs, fs) => { failure = [g.getProgramInfoLog(program), g.getShaderInfoLog(vs), g.getShaderInfoLog(fs)].filter(Boolean).join(' '); console.error('GPU drive shader: ' + failure); };
   const u = {}, set = (k, v) => { if (u[k]) u[k].value = v; else u[k] = { value: v }; };
   for (const [k, v] of Object.entries({ otherBeam: null, otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(16, T.Vector2), trafficLamp: array(16, T.Vector3), nTraffic: 0, otherConvention: 0, pitch: 0, beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, grain: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2() })) set(k, v);
+  set('worldFromCar', new T.Matrix3()); set('carFromWorld', new T.Matrix3()); set('passDepth', null); set('passShadow0',null); set('passShadow1',null); set('trafficPitch',new Float32Array(16));
   const materialData = new Float32Array(D.MAT_KEYS.length * 4 * 4), markData = new Float32Array(128 * 4 * 2);
   const materialTexture = texture(materialData, D.MAT_KEYS.length, 4), markTexture = texture(markData, 128, 2);
   set('materials', materialTexture); set('marks', markTexture);
   const mat = new T.ShaderMaterial({ uniforms: u, vertexShader: vertex, fragmentShader: ground, depthTest: false, depthWrite: false });
   const scene = new T.Scene(), mesh = new T.Mesh(new T.PlaneGeometry(2, 2), mat); mesh.frustumCulled = false; scene.add(mesh);
+  const pass = surface(u);
   const camera = new T.Camera(), objectView = objects(renderer, u, onModelsReady);
-  function shading(material, enabled) {
+  function shading(material, enabled, mountain = false) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
-    if (material.userData.p2 === enabled) return;
-    material.fragmentShader = enabled ? withLighting(material.userData.baseFragment) : material.userData.baseFragment;
+    if (material.userData.p2 === enabled && material.userData.tg === mountain) return;
+    let source = enabled ? withLighting(material.userData.baseFragment) : material.userData.baseFragment;
+    material.fragmentShader = mountain ? passShader(source) : source; material.userData.tg = mountain;
     material.userData.p2 = enabled; material.needsUpdate = true;
   }
   function update(p, world, dist) {
@@ -55,7 +59,7 @@ export function create(canvas, gl, onModelsReady) {
     marks.forEach((m, i) => { markData.set([m.o0, m.o1, D.MAT_KEYS.indexOf(m.mat), m.skip ? 1 : 0], 4 * i); const pat = m.pat; markData.set(pat ? [pat.s0, pat.s1, pat.period, pat.on] : [0, 0, 0, 0], 4 * (128 + i)); }); markTexture.needsUpdate = true;
     const crossings = world.crossings || []; if (crossings.length > 16) throw Error('too many crossings'); set('nCross', crossings.length); crossings.forEach((c, i) => u.crossing.value[i].set(c.s0, c.s1, c.o0, c.o1));
     set('nPart', 0); u.arc.value.set(A && A.R || 0, A && A.sg || 0);
-    if (A && A.tiles) {
+    if (A && A.tiles && !p.touge) {
       const parts = [];
       for (const tile of A.tiles) for (const [offset, len, c] of tile.curvature ? [[0, 50, 0], [50, 100, tile.curvature], [150, 50, 0]] : [[0, 200, 0]]) {
         const s = tile.s0 + offset - dist, q = A.at(s); parts.push({ s, len, c, q });
@@ -63,13 +67,23 @@ export function create(canvas, gl, onModelsReady) {
       if (parts.length > 16) throw Error('too many route parts'); set('nPart', parts.length);
       parts.forEach(({ s, len, c, q }, i) => { u.part.value[i].set(q.p[0], q.p[1], Math.atan2(q.t[1], q.t[0]), c); u.partShape.value[i].set(s, len, 0, 0); });
     }
+    u.eye.value.fromArray([-2,.37,1.2]);
+    if (p.touge) {
+      const a = globalThis.RF.Touge.attitude(dist), [f,l,n] = [a.forward,a.left,a.up];
+      u.worldFromCar.value.set(f[0],l[0],n[0],f[1],l[1],n[1],f[2],l[2],n[2]); u.carFromWorld.value.copy(u.worldFromCar.value).transpose();
+      u.eye.value.applyMatrix3(u.worldFromCar.value); u.lamp.value.forEach((q,i) => { if(i<p.lamps.length)q.applyMatrix3(u.worldFromCar.value); });
+    }
     set('pitch', p.pitch || 0);
     const traffic = p.trafficBeams ? D.trafficSources(world.objects) : []; set('nTraffic', traffic.length);
     if (traffic.length) {
       const b = D.trafficBeam(p), L = b.lut;
       if (otherRef !== L) { if (otherTexture) otherTexture.dispose(); otherRef = L; otherTexture = texture(L.data, L.nh, L.nv, T.RedFormat); set('otherBeam', otherTexture); }
       u.otherLutInfo.value.set(L.h0, L.v0, L.step, 0); u.otherLutSize.value.set(L.nh, L.nv); set('otherConvention', b.conv === 'B' ? 1 : b.conv === 'S' ? 2 : 0);
-      traffic.forEach((q, i) => { u.trafficLamp.value[i].set(q.x, q.y, q.z); u.trafficDir.value[i].set(q.nx, q.ny); });
+      traffic.forEach((q, i) => {
+        if(p.touge){const f=world.A.frame(q.x,q.y),a=world.A.surface(f.s,f.off);u.trafficPitch.value[i]=Math.atan(a.grade*(q.nx*f.t[0]+q.ny*f.t[1]));
+          if(!world.objects.some(ob=>ob.traffic===q.car && ob.headlamp))q.z+=world.A.height(f.s,f.off);
+        }
+        u.trafficLamp.value[i].set(q.x, q.y, q.z); u.trafficDir.value[i].set(q.nx, q.ny); });
     }
     const lights = world.lights || [], reflections = D.reflectionSources(world.objects, { ...p, pointLights: lights }).concat(lights);
     for (const [name, values] of [['light', lights], ['reflection', reflections]]) { if (values.length > 64) throw Error('too many ' + name + ' sources'); set(name === 'light' ? 'nLight' : 'nReflection', values.length); values.forEach((q, i) => { u[name].value[i].set(q.x, q.y, q.z, q.cd); u[name + 'RGB'].value[i].fromArray(q.rgb); }); }
@@ -78,10 +92,11 @@ export function create(canvas, gl, onModelsReady) {
     version: T.REVISION,
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
-      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch); shading(mat, extras);
+      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch); shading(mat, extras); shading(pass.material,extras, true);
       renderer.resetState();
-      if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthBuffer: false, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
-      renderer.setRenderTarget(target); renderer.render(scene, camera);
+      if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
+      renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
+      set('passDepth', target.depthTexture);
       if (failure) throw Error(failure);
       // CPU textures use row zero = top; three's target uses row zero = bottom.
       const source = gl.getParameter(gl.FRAMEBUFFER_BINDING);
@@ -89,7 +104,7 @@ export function create(canvas, gl, onModelsReady) {
       gl.blitFramebuffer(0, 0, p.w, p.h, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, gl.NEAREST);
       if (objectDestination) {
         if (!objectTarget || objectTarget.width !== p.w * ss || objectTarget.height !== p.h * ss) { if (objectTarget) objectTarget.dispose(); objectTarget = new T.WebGLRenderTarget(p.w * ss, p.h * ss, { type: T.FloatType, depthTexture: new T.DepthTexture(p.w * ss, p.h * ss, T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
-        objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
+        objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
         if (failure) throw Error(failure);
         const src = gl.getParameter(gl.FRAMEBUFFER_BINDING); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, objectDestination);
         gl.blitFramebuffer(0, 0, p.w * ss, p.h * ss, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, ss > 1 ? gl.LINEAR : gl.NEAREST);
@@ -122,6 +137,6 @@ export function create(canvas, gl, onModelsReady) {
         if(gl.getQueryParameter(query,gl.QUERY_RESULT_AVAILABLE)){const gpuMs=gl.getQueryParameter(query,gl.QUERY_RESULT)/1e6/repeats;gl.deleteQuery(query);return {gpuMs,repeats};}}
       gl.deleteQuery(query);return {gpuMs:null,reason:'timer timeout'};
     },
-    dispose() { renderer.setRenderTarget(null); renderer.debug.onShaderError = null; objectView.dispose(); if (objectTarget) objectTarget.dispose(); if (target) target.dispose(); if (beamTexture) beamTexture.dispose(); if (otherTexture) otherTexture.dispose(); materialTexture.dispose(); markTexture.dispose(); mat.dispose(); mesh.geometry.dispose(); renderer.resetState(); },       // the renderer itself stays with the GL context (see shared)
+    dispose() { renderer.setRenderTarget(null); renderer.debug.onShaderError = null; objectView.dispose(); if (objectTarget) objectTarget.dispose(); if (target) target.dispose(); if (beamTexture) beamTexture.dispose(); if (otherTexture) otherTexture.dispose(); materialTexture.dispose(); markTexture.dispose(); mat.dispose(); mesh.geometry.dispose(); pass.dispose(); renderer.resetState(); },       // the renderer itself stays with the GL context (see shared)
   };
 }

@@ -146,7 +146,7 @@ export function objects(renderer, uniforms, onModelsReady) {
     scene,camera,
     update(p,obs,ss) {
       prototype.actors=prototype.nearTrees=prototype.farTrees=0;
-      if(p.detailedModels){
+      if(p.detailedModels && !p.touge){
         models.load();if(!card)card=bakeTree();
         obs=models.adapt(D.Models.actors(obs,true),p);
         const roots=obs.filter(ob=>ob.detailPart==='analytic-tree'&&ob.detail),ranges=roots.map(ob=>Math.hypot(ob.x+2,ob.y-.37)).sort((a,b)=>a-b),cutoff=Math.min(D.Models.TREE_DISTANCE,ranges[D.Models.TREE_COUNT]||Infinity),detailed=[];
@@ -178,7 +178,9 @@ export function objects(renderer, uniforms, onModelsReady) {
       for(const values of planes.values())if(values.length>1){values.sort((a,b)=>a.d-b.d);values.forEach((v,i)=>tieRanks.get(v.ob)[v.face]=i);}
       const buckets=new Map(),tanH=Math.tan(p.hfov*Math.PI/360),tanV=tanH*p.h/p.w,eye=[-2,.37,1.2];let count=0;
       obs.forEach((ob,index)=>{
-        if(!ob.bs){if(ob.k==='rect')ob.bs=[ob.x,ob.y,ob.z,ob.r];else D.boundOf(ob);}const [x,y,z,R]=ob.bs,dx=x-eye[0],dy=y-eye[1],dz=z-eye[2],d=Math.hypot(dx,dy,dz);
+        if(!ob.bs){if(ob.k==='rect')ob.bs=[ob.x,ob.y,ob.z,ob.r];else D.boundOf(ob);}const [x,y,z,R]=ob.bs; let dx=x-eye[0],dy=y-eye[1],dz=z-eye[2];
+        if(p.touge){const q=new T.Vector3(x,y,z).sub(uniforms.eye.value).applyMatrix3(uniforms.carFromWorld.value);dx=q.x;dy=q.y;dz=q.z;}
+        const d=Math.hypot(dx,dy,dz);
         if(dx+R<=.05)return;
         let bounds=[-1,1,-1,1];
         if(d>R*1.001 && dx>.05){const cx=-dy/dx/tanH,cy=dz/dx/tanV,rp=Math.tan(Math.asin(Math.min(1,R/d)))*1.15;bounds=[cx-rp/tanH-4/p.w,cx+rp/tanH+4/p.w,cy-rp/tanV-4/p.h,cy+rp/tanV+4/p.h];if(bounds[0]>1||bounds[1]<-1||bounds[2]>1||bounds[3]<-1)return;}
@@ -187,7 +189,7 @@ export function objects(renderer, uniforms, onModelsReady) {
       for(const g of groups.values())g.mesh.count=0;
       for(const [key,items]of buckets){const g=group(key,items.length,materialMap(items[0].ob));g.mesh.count=items.length;g.mesh.renderOrder=items[0].index;g.uniforms.samples.value=ss;g.uniforms.detailed.value=!!p.detailedModels;g.uniforms.sdfNodes.value=nodeTexture;g.uniforms.treeCard.value=card;
         items.forEach(({ob,index,bounds},i)=>{const k=ob.k,kind=k==='sdf'?4:k==='impostor'?5:k==='rect'?6:k==='ell'?0:k==='box'?1:k==='cyl'?(ob.axis?7:2):3,zc=k==='box'||k==='cyl'?(ob.z0+ob.z1)/2:ob.z;
-          const values={aCenter:[ob.x,ob.y,zc],aShape:k==='sdf'?[ob.r,ob.r,ob.r,kind]:k==='impostor'||k==='rect'?[ob.rx,ob.rx,ob.rz,kind]:k==='ell'?[ob.rx,ob.ry,ob.rz,kind]:k==='box'?[ob.hx,ob.hy,(ob.z1-ob.z0)/2,kind]:[ob.r,ob.r,k==='cyl'?(ob.z1-ob.z0)/2:ob.r,kind],aPose:[k==='impostor'?(ob.birch?1:0):(ob.yaw||0),...(ob.axis||[ob.nx||0,ob.ny||0,ob.nz||0])],aBounds:bounds,aTie:tieRanks.get(ob)||[0,0,0,0],aPlane:k==='sdf'?[ob.sdfRow,ob.nodeCount,0,0]:k==='impostor'?[0,0,ob.cardIndex,0]:[ob.x-(ob.hx||0),ob.x+(ob.hx||0),ob.y-(ob.hy||0),ob.y+(ob.hy||0)],aEmit:[...(ob.emit||[0,0,0]),ob.emit?(ob.emitPow||1):-1],aMat:[Math.max(0,D.MAT_KEYS.indexOf(ob.mat)),ob.gameHazard||0,index],aFlags:[ob.sub?1:0,ob.glow?1:0,...(ob.lod||[ob.facadeStyle||0,0])]};
+          const values={aCenter:[ob.x,ob.y,zc],aShape:k==='sdf'?[ob.r,ob.r,ob.r,kind]:k==='impostor'||k==='rect'?[ob.rx,ob.rx,ob.rz,kind]:k==='ell'?[ob.rx,ob.ry,ob.rz,kind]:k==='box'?[ob.hx,ob.hy,(ob.z1-ob.z0)/2,kind]:[ob.r,ob.r,k==='cyl'?(ob.z1-ob.z0)/2:ob.r,kind],aPose:[k==='impostor'?(ob.birch?1:0):(ob.yaw||0),...(ob.axis||[ob.nx||0,ob.ny||0,ob.nz||0])],aBounds:bounds,aTie:p.touge ? (ob.passSlope||[0,0,0,0]) : tieRanks.get(ob)||[0,0,0,0],aPlane:k==='sdf'?[ob.sdfRow,ob.nodeCount,0,0]:k==='impostor'?[0,0,ob.cardIndex,0]:[ob.x-(ob.hx||0),ob.x+(ob.hx||0),ob.y-(ob.hy||0),ob.y+(ob.hy||0)],aEmit:[...(ob.emit||[0,0,0]),ob.emit?(ob.emitPow||1):-1],aMat:[Math.max(0,D.MAT_KEYS.indexOf(ob.mat)),ob.gameHazard||0,index],aFlags:[ob.sub?1:0,ob.glow?1:0,...(ob.lod||[ob.facadeStyle||0,0])]};
           for(const [name,v]of Object.entries(values))g.attrs[name].array.set(v,i*fields[name]);
         });for(const a of Object.values(g.attrs))a.needsUpdate=true;
       }
