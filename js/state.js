@@ -7,7 +7,7 @@
   'use strict';
   const RF = root.RF;
   const { V } = RF;
-  const VERSION = 1;
+  const VERSION = 1; // additive HID kind: old v1 scenes unchanged; arc scenes need an arc-aware reader
   const LS_KEY = 'faceted-reflector-demo/scene/v1';
 
   function defaultPaint(res) {
@@ -112,9 +112,23 @@
     const num = (o, k, lo, hi, path, int) => { const v = o[k]; if (typeof v !== 'number' || !isFinite(v)) bad(path + '.' + k, 'must be a finite number'); o[k] = Math.min(hi, Math.max(lo, int ? Math.round(v) : v)); };
     const vec3 = (o, k, path) => { const v = o[k]; if (!Array.isArray(v) || v.length !== 3 || !v.every((x) => typeof x === 'number' && isFinite(x))) bad(path + '.' + k, 'must be 3 finite numbers'); };
     const src = (o, path) => {
-      obj(o, path); oneOf(o, 'kind', ['point', 'planar', 'volume'], path); oneOf(o, 'shape', ['rect', 'disc', 'sphere', 'cylinder'], path); oneOf(o, 'dist', ['lambertian', 'gaussian', 'cone', 'isotropic'], path);
+      obj(o, path); oneOf(o, 'kind', ['point', 'planar', 'volume', 'arc'], path); oneOf(o, 'shape', ['rect', 'disc', 'sphere', 'cylinder'], path); oneOf(o, 'dist', ['lambertian', 'gaussian', 'cone', 'isotropic'], path);
       vec3(o, 'pos', path); vec3(o, 'axis', path); if (!(o.axis[0] || o.axis[1] || o.axis[2])) bad(path + '.axis', 'must not be the zero vector');
       for (const k of ['w', 'h', 'radius', 'length', 'power']) num(o, k, 1e-6, 1e12, path);
+      if (o.kind === 'arc') {
+        if (o.arc !== undefined) obj(o.arc, path + '.arc');
+        o.shape = 'cylinder'; o.dist = 'isotropic'; o.emission = 'volume';
+        o.arc = RF.Source.arcParams(o); const a = o.arc, ap = path + '.arc';
+        num(o, 'length', 0.1, 100, path);
+        for (const [k, lo, hi] of [['bow', 0, 10], ['fwhm', 0.01, 10], ['hot', 0, 20], ['tipWidth', 0.01, 10], ['tubeRadius', 0.1, 100], ['wall', 0.01, 10], ['tubeLength', 0.1, 200], ['index', 1, 3], ['stripeRadius', 0.1, 200], ['stripeWidth', 0, 80], ['stripeAngle', -360, 360]]) num(a, k, lo, hi, ap);
+        vec3(a, 'up', ap); if (!a.up.some((v) => v)) bad(ap + '.up', 'must not be the zero vector');
+        const upScale = Math.max(...a.up.map(Math.abs)); a.up = V.norm(a.up.map((v) => v / upScale));
+        for (const k of ['tube', 'stripes']) if (typeof a[k] !== 'boolean') bad(ap + '.' + k, 'must be boolean');
+        // Keep the complete 3σ cloud inside the cavity and both inside the shading cylinder.
+        a.tubeLength = Math.max(a.tubeLength, o.length * 1.1);
+        a.tubeRadius = Math.max(a.tubeRadius, (a.bow + 3 * a.fwhm / 2.354820045) / Math.sqrt(1 - (o.length / a.tubeLength) ** 2) * 1.01);
+        a.stripeRadius = Math.max(a.stripeRadius, a.tubeRadius + a.wall + 0.01);
+      }
     };
     oneOf(sc, 'mode', ['A', 'B', 'C', 'D'], 'scene');
     src(obj(sc.source, 'source'), 'source');
@@ -240,6 +254,9 @@
     const s = sc.source;
     s.pos = fp(s.pos); s.axis = fv(s.axis);
     s.w = fl(s.w); s.h = fl(s.h); s.radius = fl(s.radius); s.length = fl(s.length);
+    const arcMap = (o) => { if (o.kind !== 'arc') return; const a = o.arc = Object.assign({}, RF.Source.ARC_DEFAULTS, o.arc || {}); a.up = fv(a.up); for (const k of ['bow', 'fwhm', 'tipWidth', 'tubeRadius', 'wall', 'tubeLength', 'stripeRadius']) a[k] = Math.abs(fl(a[k])); if (mapScene.fu) a.stripeAngle = -a.stripeAngle; };
+    arcMap(s);
+    for (const e of sc.emitters || []) if (e.kind === 'arc') { e.pos = fp(e.pos); e.axis = fv(e.axis); for (const k of ['w', 'h', 'radius', 'length']) e[k] = fl(e[k]); arcMap(e); }
     sc.envelope.center = fp(sc.envelope.center);
     sc.envelope.half = sc.envelope.half.map((h) => Math.abs(fl(h)));
     sc.envelope.keepOut = Math.abs(fl(sc.envelope.keepOut || 0));

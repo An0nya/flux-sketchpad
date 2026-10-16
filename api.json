@@ -1,8 +1,8 @@
 {
  "app": "FLUX reflector sketchpad",
  "generatedBy": "node tools/flux.js manifest",
- "commit": "6d2e1ce",
- "date": "2026-10-15",
+ "commit": "68bc063",
+ "date": "2026-10-16",
  "docs": {
   "cli": "tools/FLUX-CLI.md",
   "solverApi": "SOLVER_API.md",
@@ -8197,6 +8197,102 @@
    "label": "H4 / 9003 halogen · driving-beam filament 5.5 mm",
    "group": null,
    "note": "UN R37 Rev.7 (E/ECE/324/Rev.1/Add.36/Rev.7, 2012; Anya’s copy R037r7e.pdf), sheets H4/2 and H4/4: driving-beam (high) filament 60 W, IC = 5.5 mm; 1,650 lm ± 15 % at 13.2 V (reference 1,250 lm at 12 V). Diameter NOT on the sheet: 1.4 mm assumed. Axial filament. Not modelled: the cap obscuration, the glass bulb."
+  },
+  {
+   "id": "d1s",
+   "label": "D1S HID · axial arc (+x) · S clear bulb",
+   "group": null,
+   "note": "R99 Rev.3 DxS/4–6: 3200 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d1s-transverse",
+   "label": "D1S HID · side-entry, transverse arc (+y) · S clear bulb",
+   "group": null,
+   "note": "R99 Rev.3 DxS/4–6: 3200 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d2s",
+   "label": "D2S HID · axial arc (+x) · S clear bulb",
+   "group": null,
+   "note": "R99 Rev.3 DxS/4–6: 3200 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d2s-transverse",
+   "label": "D2S HID · side-entry, transverse arc (+y) · S clear bulb",
+   "group": null,
+   "note": "R99 Rev.3 DxS/4–6: 3200 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d3s",
+   "label": "D3S HID · axial arc (+x) · S clear bulb",
+   "group": null,
+   "note": "R99 Rev.3 DxS/4–6: 3200 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d3s-transverse",
+   "label": "D3S HID · side-entry, transverse arc (+y) · S clear bulb",
+   "group": null,
+   "note": "R99 Rev.3 DxS/4–6: 3200 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d4s",
+   "label": "D4S HID · axial arc (+x) · S clear bulb",
+   "group": null,
+   "note": "R99 Rev.3 DxS/4–6: 3200 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d4s-transverse",
+   "label": "D4S HID · side-entry, transverse arc (+y) · S clear bulb",
+   "group": null,
+   "note": "R99 Rev.3 DxS/4–6: 3200 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d1r",
+   "label": "D1R HID · axial arc (+x) · R stripes",
+   "group": null,
+   "note": "R99 Rev.3 DxR/4–6: 2800 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d1r-transverse",
+   "label": "D1R HID · side-entry, transverse arc (+y) · R stripes",
+   "group": null,
+   "note": "R99 Rev.3 DxR/4–6: 2800 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d2r",
+   "label": "D2R HID · axial arc (+x) · R stripes",
+   "group": null,
+   "note": "R99 Rev.3 DxR/4–6: 2800 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d2r-transverse",
+   "label": "D2R HID · side-entry, transverse arc (+y) · R stripes",
+   "group": null,
+   "note": "R99 Rev.3 DxR/4–6: 2800 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d3r",
+   "label": "D3R HID · axial arc (+x) · R stripes",
+   "group": null,
+   "note": "R99 Rev.3 DxR/4–6: 2800 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d3r-transverse",
+   "label": "D3R HID · side-entry, transverse arc (+y) · R stripes",
+   "group": null,
+   "note": "R99 Rev.3 DxR/4–6: 2800 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d4r",
+   "label": "D4R HID · axial arc (+x) · R stripes",
+   "group": null,
+   "note": "R99 Rev.3 DxR/4–6: 2800 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
+  },
+  {
+   "id": "d4r-transverse",
+   "label": "D4R HID · side-entry, transverse arc (+y) · R stripes",
+   "group": null,
+   "note": "R99 Rev.3 DxR/4–6: 2800 lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. D2S geometry used as proxy: tuning, unverified for this category. Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector."
   }
  ],
  "examples": [

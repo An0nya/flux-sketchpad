@@ -72,18 +72,20 @@
     const kinds = { lambRect: { kind: 'planar', shape: 'rect', w: 2, h: 2, dist: 'lambertian' }, gaussDisc: { kind: 'planar', shape: 'disc', radius: 1.2, dist: 'gaussian', sigma: 40 },
       cone: { kind: 'planar', shape: 'rect', w: 2, h: 2, dist: 'cone', halfAngle: 70 }, point: { kind: 'point', dist: 'isotropic' }, ballGlow: { kind: 'volume', shape: 'sphere', radius: 1, dist: 'isotropic', emission: 'volume' },
       coil: { kind: 'volume', shape: 'cylinder', radius: 0.6, length: 4.5, dist: 'isotropic', emission: 'surface' }, ballSkin: { kind: 'volume', shape: 'sphere', radius: 1, dist: 'isotropic', emission: 'surface' }, dome: { kind: 'planar', shape: 'rect', w: 2, h: 2, dist: 'lambertian', dome: { r: 2.5, n: 1.41, z: 0 } } };
+    for (const id of ['d2s', 'd2s-transverse', 'd2r']) { const src = RF.U.deepCopy(sc.source); RF.SourcePresets.apply(src, id); kinds['hid-' + id] = src; const glass = RF.U.deepCopy(src); glass.arc.tube = true; kinds['hid-' + id + '-quartz'] = glass; }
     for (const [name, src] of Object.entries(kinds)) {
       const s2 = Object.assign({}, sc, { source: Object.assign(RF.U.deepCopy(sc.source), { dome: null, emission: undefined }, src) }), N = 50000;
       const P = E.prepare(s2, RF.State.allSurfaces(s2)); P.gpuEmitDump = true; const g = E.newCtx(P, N, 0); await RF.GpuTrace.traceRange(g, 0, N);
-      const F = g.emitDump, o = new Float64Array(3), d = new Float64Array(3), e = [];
-      for (let i = 0; i < N; i++) { E.rayAt(P, i, o, d); e.push(Math.hypot(F[5 * i] - d[0], F[5 * i + 1] - d[1], F[5 * i + 2] - d[2])); }
-      e.sort((a, b) => a - b); out[name] = { p50: e[N >> 1], p999: e[Math.floor(0.999 * N)], worst: e[N - 1], over: e.filter((x) => x > 1e-4).length / N };
+      const F = g.emitDump, o = new Float64Array(3), d = new Float64Array(3), e = [], origins = [], raw = [];
+      for (let i = 0; i < N; i++) { E.rayAt(P, i, o, d); const de = Math.hypot(F[6 * i] - d[0], F[6 * i + 1] - d[1], F[6 * i + 2] - d[2]), oe = Math.hypot(F[6 * i + 3] - o[0], F[6 * i + 4] - o[1], F[6 * i + 5] - o[2]); e.push(de); origins.push(oe); if (i < 5 || (raw.length < 10 && (de > 1e-4 || oe > 1e-3))) raw.push({ i, cpu: [...o, ...d], gpu: [F[6*i+3], F[6*i+4], F[6*i+5], F[6*i], F[6*i+1], F[6*i+2]] }); }
+      e.sort((a, b) => a - b); origins.sort((a, b) => a - b); out[name] = { p50: e[N >> 1], p999: e[Math.floor(0.999 * N)], worst: e[N - 1], over: e.filter((x) => x > 1e-4).length / N, originP999: origins[Math.floor(.999 * N)], originWorst: origins[N - 1], originOver: origins.filter((x) => x > 1e-3).length / N, raw: name.startsWith('hid-') ? raw : undefined };
     }
     return out;
   }
 
   const CASES = {
     emission,
+    async hidArc() { const s = lens(); RF.SourcePresets.apply(s.sc.source, 'd2r-transverse'); s.sc.source.arc.tube = true; const r = await both(s.sc, s.surfaces, 300000); return Object.assign(compare(r.c, r.g), { cpuMs: r.cpuMs, gpuMs: r.gpuMs }); },
     async modeA() { const s = modeA(); const r = await both(s.sc, s.surfaces, 400000, { paths: 240 }); return Object.assign(compare(r.c, r.g), { cpuMs: r.cpuMs, gpuMs: r.gpuMs, paths: [r.c.paths.length, r.g.paths.length] }); },
     async domeLed() { const s = withSource((src) => Object.assign(src, { kind: 'planar', shape: 'rect', w: 2, h: 2, dist: 'lambertian', dome: { r: 2.5, n: 1.41, z: 0 } })); const r = await both(s.sc, s.surfaces, 300000); return Object.assign(compare(r.c, r.g), { cpuMs: r.cpuMs, gpuMs: r.gpuMs }); },
     async gaussianDisc() { const s = withSource((src) => Object.assign(src, { kind: 'planar', shape: 'disc', radius: 1.2, dist: 'gaussian', sigma: 40, dome: null })); const r = await both(s.sc, s.surfaces, 300000); return Object.assign(compare(r.c, r.g), { cpuMs: r.cpuMs, gpuMs: r.gpuMs }); },
