@@ -106,7 +106,7 @@
       const cosine=Math.max(1e-6,local[0]/Math.hypot(...d));let cd=0;
       if(local[0]>0 && !blocked(A,eye,[ob.x,ob.y,ob.z])){
         if(tr.onMode==='manual')cd=Math.max(0,tr.onKcd)*500*cosine**8;
-        else if(tr.onMode==='symmetric' && hasDesign)cd=D.beamAt(p.lut,p.conv||'A',...local);
+        else if(tr.onMode==='symmetric' && hasDesign)cd=D.beamAt(p.lowLut||p.lut,p.conv||'A',...local);
         else{D.hvFast(...local,'A');const [h,v]=D.hv();cd=D.Headlamp.generic(h,v,tr.onMode==='high');}
       }
       const L=cd/(Math.PI*ob.r*ob.r*cosine);ob.eyeCd=cd;ob.emit=[L,L,.93*L];ob.emitPow=1;

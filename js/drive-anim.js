@@ -341,7 +341,7 @@
         out.push(n);
       }
     }
-    if (p && src.traffic && src.traffic.onMode !== 'manual') D.Headlamp.apply(out, { mode: src.traffic.onMode, kcd: src.traffic.onKcd, lut: p.lut, conv: p.conv, seed: src.traffic.seed });
+    if (p && src.traffic && src.traffic.onMode !== 'manual') D.Headlamp.apply(out, { mode: src.traffic.onMode, kcd: src.traffic.onKcd, lut: p.lowLut || p.lut, conv: p.conv, seed: src.traffic.seed });
     return out;
   }
   const placedObjects = (p, dist, t, tauOf) => D.Models.actors(place(p.src, dist, p.A, tauOf, p.detailedModels?null:dimFoliage(p), D.Models.deerEnabled(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p)),p.detailedModels);
@@ -1072,13 +1072,13 @@ void main() {
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB]);
+    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high]);     // V.high: the switch changes the lamp table, so the cached ground and picture rows are rebuilt
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
+    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: D.withHigh(I.lut(), !!V.high), lowLut: I.lut(), conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1176,7 +1176,7 @@ void main() {
     const I = info(), p = V.p, key = JSON.stringify([V.skey, p.w, p.h, p.hfov, p.lane, p.conv, p.lamps, p.look, p.detailedModels, p.deerBehaviour, I.A && [I.A.R, I.A.dir]]);
     if (key === Wk.cfgKey && Wk.lut === p.lut) return;
     Wk.cfgKey = key; Wk.lut = p.lut; Wk.cfgId++; Wk.busy = null;           // a frame in flight belongs to the old picture: dropped when it arrives
-    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lampRGB: p.lampRGB, lane: p.lane, look: p.look, detailedModels: p.detailedModels, deerBehaviour:p.deerBehaviour }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
+    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, lowLut: p.lowLut, conv: p.conv, lampRGB: p.lampRGB, lane: p.lane, look: p.look, detailedModels: p.detailedModels, deerBehaviour:p.deerBehaviour }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
     Wk.config = m;
     for (const w of Wk.list) w.postMessage(m);
   }
@@ -1320,6 +1320,9 @@ void main() {
     if (V.bar) return V.bar;
     const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveBar.querySelector('.drive-primary'), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
     btn('play', 'Drive / pause: Pause freezes distance and time', () => { const current = S(ui); current.playing = !current.playing; setDV(ui, 'playing', current.playing); });
+    // High beam (H key or this button): session state on V, not saved prefs, so it is off on every reload
+    btn('high-beam', 'High beam (H): low beam plus the generic high beam. Off by default; not saved across reloads.', () => setHigh(ui, !V.high), 'high beam');
+    document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.bar.hidden && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); setHigh(ui, !V.high); } });
     btn('fit-controls', 'Compact spacing for the wrapping drive controls. Off uses wider spacing.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
     const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed. Mountain pass always slows for bends; traffic logic adds road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
@@ -1387,12 +1390,18 @@ void main() {
     const actual = st.camera && (o.trafficLogic || o.mountainPass) && st.view === 'anim' ? st.camera.v * 3.6 : o.speed;
     lab.textContent = o.speed + ' km/h' + (Math.abs(actual - o.speed) >= 0.5 ? ' · actual ' + actual.toFixed(1) + ' km/h' : '');
   }
+  // the high-beam switch: V.high is the live state; the minigame's game object follows it so a hazard resolves with the switch as it is then
+  function setHigh(ui, on) {
+    V.high = !!on; const g = S(ui).game; if (g) g.highBeam = V.high;
+    labels(ui); ui.redrawSpec();
+  }
   function labels(ui) {
     const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
     for (const b of q('[data-anim="popout"]')) { const label = st.popout ? 'Close large view' : 'Large view'; b.setAttribute('aria-pressed', String(st.popout)); b.setAttribute('aria-label', label); b.title = label; b.disabled = !sup; b.textContent = st.popout ? '⤡' : '⤢'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
     V.bar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
+    V.bar.querySelector('[data-anim="high-beam"]').setAttribute('aria-pressed', String(!!V.high));
     for (const [name, key] of [['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
     V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
@@ -1455,7 +1464,7 @@ void main() {
     if (!st.gameLamp && (!ui.spec || !ui.spec.full || !ui.spec.ev || ui.spec.ctx !== (ui.run && ui.run.ctx))) { V.gameStatus.textContent = 'Finish the lamp’s Spec trace before starting.'; return; }
     stop(); killWorkers();
     const lamp = st.gameLamp || ui.spec, lampScene = st.gameLamp ? st.gameLamp.scene : ui.store.scene;
-    st.game = RF.DriveGame.create({ seed, speed, wet, acceleration: box.querySelector('[data-game=acceleration]').value, verdict: lamp.ev.verdict, rules: box.querySelector('[data-game=rules]').value, clearLane: box.querySelector('[data-game=clear-lane]').checked, highBeam: /(?:^fmvss-ub|-drive$)/.test(lampScene.modeD.preset || '') }); st.game.ctx = lamp.ctx; st.game.judge = lamp.ev; st.game.road = info().rd;
+    st.game = RF.DriveGame.create({ seed, speed, wet, acceleration: box.querySelector('[data-game=acceleration]').value, verdict: lamp.ev.verdict, rules: box.querySelector('[data-game=rules]').value, clearLane: box.querySelector('[data-game=clear-lane]').checked, highBeam: !!V.high }); st.game.ctx = lamp.ctx; st.game.judge = lamp.ev; st.game.road = info().rd;
     st.gameOptions = { mountainPass: !!info().o.mountainPass, scene: 'road', tiles: true, wild: true, seed, speed, wet, people: false, animals: false, obstacle: false, trafficLogic: false, oncoming: true, preceding: false };
     // MG2-test: 'symmetric' oncoming lamps carry the PLAYER's design, so a high-reach lamp blinds itself (real GPU, 130 km/h wet: 7in-high first seen 48 m vs default 65 m; with a fixed generic dipped oncoming lamp: 114 m vs 63 m). The lesson needs the lamp under test to be the only variable. Original rules keep the old behaviour.
     if (st.game.rules !== 'legacy') st.gameOptions.onMode = 'generic';
