@@ -27,7 +27,7 @@
     if (opts && opts.tiles && name === 'intersection') name = 'road';
     const broken = !!(opts && us && opts.cline === 'broken');
     if (!(opts && opts.wild) || name !== 'road') {
-      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7 }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
+      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7, kerbPeople: !!(opts && opts.tiles) }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
       if (broken && name === 'road') src.markings = D.laneMarkings(lane, { us, broken });
       return trafficSource(src, opts);
     }
@@ -43,7 +43,7 @@
     const o = opts || {}, dn = o.trafficDensity === undefined ? 1 : Math.max(0, Math.min(3, +o.trafficDensity || 0));
     src.traffic = { seed: (+o.seed || 0) | 0, density: dn, oncoming: !!o.oncoming, preceding: !!o.preceding, models: {} };
     src.traffic.onMode = o.onMode || (o.onKcd === undefined ? 'symmetric' : 'manual'); src.traffic.onKcd = o.onKcd === undefined ? 30 : +o.onKcd;
-    src.traffic.logic = !!o.trafficLogic; src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
+    src.traffic.logic = !!o.trafficLogic; src.traffic.pedStop = o.pedStop !== false; src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
     if (o.tiles) src.markings = D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });
     if (o.tiles) src.tiles = { mountain: !!o.mountainPass, density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', grain: o.tex !== false, wet: !!o.wet, groundCache: o.tileCache ? {} : null };
     for (const kind of ['oncoming', 'preceding']) if (src.traffic[kind]) {
@@ -218,7 +218,7 @@
           continue;
         }
         const route = junctionPlan(src, c), turning = route && route.take;
-        let desired = approachSpeed(src, c), stop = signalStop(src, c, t);
+        let desired = approachSpeed(src, c), stop = stopFor(src, c, t);
         if (turning) {
           desired = Math.min(desired, Math.sqrt(TURN_SPEED * TURN_SPEED + 2 * IDM.b * Math.max(0, route.start - c.x)));
           const distance = Math.max(0, route.start - c.x), eta = 2 * distance / Math.max(1, c.v + TURN_SPEED);
@@ -247,7 +247,7 @@
       if (c.kind !== 'preceding' || c.x <= camera.x || (c.turn && Math.abs(turnPose(c).off) >= 3.2)) continue;
       if (!leader || c.x < leader.x) leader = { x: c.x, v: c.turn ? c.v * Math.cos(turnPose(c).yaw) : c.v };
     }
-    const c = Object.assign({}, camera, { id: 'camera', kind: 'preceding' }), stop = signalStop(src, c, t);
+    const c = Object.assign({}, camera, { id: 'camera', kind: 'preceding' }), stop = stopFor(src, c, t);
     return idmStep(c, leader, dt, Math.min(desired, approachSpeed(src, c)), stop, { maxBrake: TRAFFIC_BRAKE, maxAccel: approachAcceleration(src, c) });
   }
   function logicCars(src, dist, t) {
@@ -371,6 +371,54 @@
     const d = (2 * lane + 1.4) * Math.min(1, sigPhase / 12), p = D.Models.pedestrian(d, sigPhase >= 12 ? sigPhase - 12 : null);
     return { off: edgeR - 0.7 + d, motion: p.motion, gait: p.gait };
   }
+  // City crossers: at most one walker per urban tile per 50 s cycle, seeded by (seed, tile, cycle). It starts 5-30 s into the cycle,
+  // walks the whole carriageway at 1.4 m/s, then stands on the far kerb until the cycle ends (no despawn inside the cycle).
+  // lead: the stop window opens this long before the walker starts. Fixed, not speed-based: a longer lead made cars already on approach stop for ~12 s (measured), past the 9 s bound
+  const PED = { cycle: 50, speed: 1.4, p: 0.5, walkStart: 5, walkSpread: 25, lead: 2.5, clear: 0.5 };
+  function pedCrossing(seed, k, cyc) {
+    const R = D.rng((Math.imul(seed | 0, 2654435761) ^ Math.imul(k + 1, 0x27D4EB2F) ^ Math.imul(cyc + 1, 0x165667B1)) >>> 0);
+    if (R() >= PED.p) return null;
+    const dir = R() < 0.5 ? 1 : -1, start = cyc * PED.cycle + PED.walkStart + R() * PED.walkSpread, s = k * TILE_LEN + 25 + R() * 50;
+    return { k, s, dir, start, end: (cyc + 1) * PED.cycle };
+  }
+  // Pose at time t (only inside [start, end)): offset walks from one kerb to the other; gait from the distance walked, as the red-light walker.
+  function pedCrossingPose(lane, ev, t) {
+    const span = 2 * lane + 1.4, tau = t - ev.start, walked = Math.min(PED.speed * Math.max(0, tau), span), arrive = span / PED.speed;
+    const off = ev.dir > 0 ? -lane / 2 - 0.7 + walked : 1.5 * lane + 0.7 - walked, p = D.Models.pedestrian(walked, tau > arrive ? tau - arrive : null);
+    return { s: ev.s, off, dir: ev.dir, motion: p.motion, gait: p.gait };
+  }
+  // A pedestrian stop, in the same direction-space as signalStop: the car stops short of a walker who is on, or about to step onto, the carriageway.
+  // The window opens PED.lead before the walker starts, and closes once the walker is across.
+  // Off when people are off (the walkers do not exist), when traffic logic is off, or when the pedStop option is false (a test control).
+  function pedestrianStop(src, car, t) {
+    const tc = src.tiles, tr = src.traffic;
+    if (!tc || tc.mountain || !tr.logic || tr.pedStop === false || tc.flags.people === false || car.turn) return undefined;
+    const dir = car.kind === 'oncoming' ? -1 : 1, k0 = Math.floor(car.x / TILE_LEN), lead = PED.lead;
+    let best;
+    const consider = (s, from, to) => {
+      // not yet in the window, or too close to stop short of it (a stop line closer than half a car plus s0 cannot be reached: the car would sit on it)
+      if (t < from || t > to || dir * (s - car.x) < IDM.length / 2 + IDM.s0) return;
+      if (best === undefined || dir * s < best) best = dir * s;
+    };
+    const cur = Math.floor(t / PED.cycle);
+    for (let k = k0 - 2; k <= k0 + 3; k++) {
+      const tile = roadTile(tc.seed, k);
+      if (tile.kind === 'urban') for (const cyc of [cur, cur + 1]) {
+        const ev = pedCrossing(tc.seed, k, cyc);
+        if (ev) consider(ev.s, ev.start - lead, ev.start + (2 * src.lane + 1.4) / PED.speed + PED.clear);
+      }
+      if (isJunction(tile)) {                                        // the red-light walker: crosses in the first 12 s of red
+        const sig = signalState(tile, t);
+        if (sig.lit === 'red' && sig.phase < 12.5) consider(tile.s0 + 100 - src.lane - 2.7, t, t);
+      }
+    }
+    return best;
+  }
+  // The nearer of the signal and pedestrian stops (both in direction-space, so the smaller one is nearer).
+  function stopFor(src, car, t) {
+    const sig = signalStop(src, car, t), ped = pedestrianStop(src, car, t);
+    return ped === undefined ? sig : sig === undefined ? ped : Math.min(sig, ped);
+  }
   // A frame's markings stay in route coordinates, objects and light positions use the very same route transform.
   function tileWorld(p, dist, t, tauOf) {
     if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t);
@@ -424,6 +472,15 @@
           const q = A.at(s, head); lights.push({ x: q.p[0], y: q.p[1], z: 6.85, cd: 900, rgb });
         }
         for (const ob of K.O) extra.push(move(Object.assign({}, ob), ob, ob.x, A));
+      }
+      // The city crosser (see pedCrossing): one walker per cycle, placed in the tile's own s range, so the stop line and the walker agree.
+      if (tile.kind === 'urban' && cfg.flags.people !== false) {
+        const ev = pedCrossing(cfg.seed, tile.k, Math.floor(t / PED.cycle));
+        if (ev && t >= ev.start && t < ev.end && ev.s - dist > -65 && ev.s - dist < CULL) {
+          const w = pedCrossingPose(lane, ev, t), K = D.kit({ Lw: lane, A: null, rand: () => 0.5 });
+          K.person(ev.s - dist, w.off, 'dark', { dir: [0, w.dir], gait: w.gait, motion: w.motion });
+          for (const ob of K.O) extra.push(move(Object.assign({}, ob), ob, ob.x, A));
+        }
       }
     }
     for (const m of src.markings) { const n = Object.assign({}, m, { skip }); if (m.pat) n.pat = Object.assign({}, m.pat, { s0: m.pat.s0 - dist, s1: m.pat.s1 - dist }); marks.push(n); }
@@ -1596,7 +1653,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

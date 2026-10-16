@@ -157,7 +157,8 @@
         for (let s = 20; s < 160; s += 11 + 9 * R()) k.parkedCar(s, k.edgeR - 1.3);
         for (let s = 30; s < 140; s += 17 + 10 * R()) k.parkedCar(s + 5, k.edgeL + 1.3 + 0.9);
         if (o.signs) { k.sign(75, k.edgeR - 1.0, 'white', { w: 0.6, h: 0.8, z0: 2.0 }); k.sign(135, k.edgeR - 1.0, 'green', { w: 1.4, h: 0.7, z0: 2.3 }); }
-        if (o.people) { k.person(48, 0.3, 'dark'); k.person(48.4, -1.4, 'hivis'); k.person(46, k.edgeL + 1.5, 'light'); k.person(92, k.edgeR - 2.0, 'dark'); }
+        // ctx.kerbPeople (set by the animated drive view only): the two walkers that stood in the lanes move to the right-hand pavement, so the still Spec scene is unchanged
+        if (o.people) { ctx.kerbPeople ? (k.person(48, k.edgeR - 3.0, 'dark'), k.person(50, k.edgeR - 3.0, 'hivis')) : (k.person(48, 0.3, 'dark'), k.person(48.4, -1.4, 'hivis')); k.person(46, k.edgeL + 1.5, 'light'); k.person(92, k.edgeR - 2.0, 'dark'); }
         if (o.animals) k.deer(110, k.edgeL + 2.2);
         const marks = D.laneMarkings(ctx.Lw, { us: ctx.us });
         for (let b = k.edgeR + 0.4; b < k.edgeL - 0.2; b += 1.0) marks.push({ o0: b, o1: b + 0.5, mat: 'white-paint', pat: { s0: 40, s1: 1e5, period: 1e6, on: 3.5 } });   // zebra crossing, 40–43.5 m
