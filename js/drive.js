@@ -466,6 +466,42 @@
     const u = Math.max(0, Math.min(1, (distance - at) / 8 + 0.5));
     return { forgetful, at, high: forgetful ? 1 : u * u * (3 - 2 * u) };
   }
+  // Auto high beam (AH). Camera-sensor style: what the sensor sees in the frame decides, a hold timer brings the high beam back.
+  // Tuning values (not survey data): 400 m / 20 deg for oncoming headlamps, 200 m for preceding tail lamps in our lane or the next,
+  // 30 km/h, 2 s hold before returning to high. The sensor and the step are pure, so the node test drives them directly.
+  const AUTO = { onRange: 400, onCone: 20, preRange: 200, slowKmh: 30, hold: 2 };
+  // What the camera sees. objects: the frame's opaque objects and lamps; eye: camera position; opts.occluders defaults to objects; opts.lane = lane width (m).
+  // An oncoming car counts when a headlamp faces us within onRange and onCone of our heading, and is not hidden (occluded).
+  // A preceding car counts when a tail lamp is within preRange, within the same cone, and within 1.5 lanes of our centreline, and is not hidden.
+  function autoHighSense(objects, eye, opts) {
+    const o = opts || {}, E = eye || [-2, 0.37, 1.2], occ = o.occluders || objects, lane = o.lane || 3.5;
+    const sinCone = Math.sin((o.cone === undefined ? AUTO.onCone : o.cone) * Math.PI / 180), onRange = o.onRange || AUTO.onRange, preRange = o.preRange || AUTO.preRange;
+    let oncoming = false, preceding = false;
+    for (const ob of objects) {
+      if (!(ob.headlamp || ob.taillamp) || (ob.headlamp ? oncoming : preceding)) continue;
+      const dx = ob.x - E[0], dy = ob.y - E[1], dz = ob.z - E[2], d = Math.hypot(dx, dy, dz);
+      if (!(dx > 0) || !(d > 0) || Math.hypot(dy, dz) > d * sinCone) continue;
+      if (ob.headlamp) {
+        if (d > onRange || !(-(dx * ob.nx + dy * ob.ny) > 0)) continue;     // a headlamp only shines at us when its face points our way
+      } else {
+        if (d > preRange || Math.abs(ob.y) > 1.5 * lane) continue;
+      }
+      if (occluded([ob.x, ob.y, ob.z], E, occ)) continue;
+      if (ob.headlamp) oncoming = true; else preceding = true;
+    }
+    return { oncoming, preceding };
+  }
+  // One sensor step. state = { high, timer, reason } (mutated and returned). inputs = { oncoming, preceding, urban, speedKmh }.
+  // Any trigger dips at once. Back to high only after opts.hold seconds with no trigger (hold 0 = no hysteresis, the positive control).
+  function autoHighStep(state, inputs, dt, opts) {
+    const hold = opts && opts.hold !== undefined ? opts.hold : AUTO.hold, s = state, n = inputs || {};
+    const why = n.oncoming ? 'oncoming' : n.preceding ? 'preceding' : n.urban ? 'urban' : n.speedKmh !== undefined && n.speedKmh < AUTO.slowKmh ? 'slow' : null;
+    if (why) { s.high = false; s.timer = 0; s.reason = why; return s; }
+    if (s.high) { s.reason = 'clear'; return s; }
+    s.timer += Math.max(0, dt || 0);
+    if (s.timer >= hold) { s.high = true; s.timer = 0; s.reason = 'clear'; } else s.reason = 'hold';
+    return s;
+  }
   const Headlamp = {
     generic(h, v, high) {
       if (high) return 30000 * Math.exp(-0.5 * ((h / 9) ** 2 + (v / 4) ** 2)) + 300;
@@ -709,5 +745,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { cornerAt, ownBeamAt, occluded, dipState, TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
+  RF.Drive = { cornerAt, ownBeamAt, occluded, dipState, AUTO, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
