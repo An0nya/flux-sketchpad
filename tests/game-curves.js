@@ -86,10 +86,10 @@ function run(RF, ok) {
     const copy = Object.assign({}, RF); const sandbox = { RF: copy };
     vm.runInNewContext(mainSrc, sandbox, { filename: 'main:drive-game.js' });
     const OLD = sandbox.RF.DriveGame, flat = A.source('road', 3.5, false, {}, {});
-    let identical = true;
+    let identical = true; const HB_FIELDS = (k, v) => (k === 'highBeam' || k === 'highMisuse') ? undefined : v;
     for (const speed of [50, 80, 130]) for (const seed of [11, 12]) {
       const a = drive(RF, { src: flat, speed, seed, hazards: true, dist: 1500, G }), b = drive(RF, { src: flat, speed, seed, hazards: true, dist: 1500, G: OLD });
-      const same = a.trace.length === b.trace.length && a.trace.every((s, i) => s[0] === b.trace[i][0] && s[1] === b.trace[i][1]) && JSON.stringify(a.g.results) === JSON.stringify(b.g.results);
+      const same = a.trace.length === b.trace.length && a.trace.every((s, i) => s[0] === b.trace[i][0] && s[1] === b.trace[i][1]) && JSON.stringify(a.g.results, HB_FIELDS) === JSON.stringify(b.g.results, HB_FIELDS) /* HB added these two result fields; the curve cap must not change anything else */;
       identical &&= same;
     }
     ok('GC no tiles: speed trace and hazard results identical to main (speeds 50/80/130)', identical);
