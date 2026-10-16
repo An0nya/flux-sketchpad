@@ -366,6 +366,11 @@
     const phase = ((t + tile.phase) % 50 + 50) % 50;
     return { lit: phase < 24 ? 'red' : phase < 47 ? 'green' : 'amber', phase };
   }
+  // the crosswalk walker at a red light: sigPhase (s into the red) walks it across in 12 s, then it stands on the far kerb. Off = its offset; motion/gait from its distance
+  function crossingPose(lane, edgeR, sigPhase) {
+    const d = (2 * lane + 1.4) * Math.min(1, sigPhase / 12), p = D.Models.pedestrian(d, sigPhase >= 12 ? sigPhase - 12 : null);
+    return { off: edgeR - 0.7 + d, motion: p.motion, gait: p.gait };
+  }
   // A frame's markings stay in route coordinates, objects and light positions use the very same route transform.
   function tileWorld(p, dist, t, tauOf) {
     if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t);
@@ -403,8 +408,8 @@
         }
         // A deterministic crossing during red, with a fresh actor each cycle. This does not control the car or other traffic.
         if (cfg.flags.people !== false && sig.lit === 'red') {
-          const off = edgeR - 0.7 + (2 * lane + 1.4) * Math.min(1, sig.phase / 12);
-          K.person(c0 - 2.5, off, 'dark', { dir: [0, 1], gait: 0.11 * Math.sin(t * 11) });
+          const w = crossingPose(lane, edgeR, sig.phase);
+          K.person(c0 - 2.5, w.off, 'dark', { dir: [0, 1], gait: w.gait, motion: w.motion });
         }
         for (const ob of K.O) { const n = move(Object.assign({}, ob), ob, ob.x, A); n.tile = tile.k; extra.push(n); }
       }
@@ -450,6 +455,10 @@
   // a pose of a walker or deer `tau` s after it started moving: where it is along the road (s) and across it (off), and its leg swing
   function actorPose(a, tau) {
     const run = a.mode === 'graze' ? 0 : Math.max(0, tau - (a.delay || 0)), d = Math.min(a.spd * run, a.len), moving = run > 0 && d < a.len;
+    if (a.kind === 'person') {   // legs follow the distance walked, and settle when it stops (D.Models.pedestrian)
+      const stoppedFor = run > 0 && d >= a.len ? run - a.len / a.spd : null, p = D.Models.pedestrian(d, stoppedFor);
+      return { s: a.s0 + a.ds * d, off: a.off0 + a.doff * d, motion: p.motion, gait: p.gait };
+    }
     return { s: a.s0 + a.ds * d, off: a.off0 + a.doff * d, motion:D.Models.locomotion(a.kind,d,a.spd,moving,a.gaitState), gait: moving ? (a.kind === 'deer' ? 0.14 : 0.11) * Math.sin(2 * Math.PI * (a.kind === 'deer' ? 1.4 : 1.8) * run) : 0 };
   }
   // the objects as the car at distance `dist` sees them (car frame). Every object appears once, at s ∈ [dist − 6, dist − 6 + PERIOD); A: RF.Road.arc or null
@@ -1568,7 +1577,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
