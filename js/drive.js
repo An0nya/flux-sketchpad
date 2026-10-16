@@ -94,6 +94,18 @@
     const tx = fx - i, ty = fy - j, d = L.data, k = j * L.nh + i;
     return (d[k] * (1 - tx) + d[k + 1] * tx) * (1 - ty) + (d[k + L.nh] * (1 - tx) + d[k + L.nh + 1] * tx) * ty;
   }
+  // High beam switch: our table + the generic high beam (Headlamp.generic(h, v, true)) sampled on the SAME grid. lutAt is linear
+  // between grid points, so the sum equals own + high everywhere, not only at the nodes. Off returns the table itself (identity).
+  // Generic high is a gaussian about the axis (0,0) in the table's own H/V coordinates; for conventions B and S that is an
+  // approximation of the off-axis shape (the axis itself maps to (0,0) in all three). Cached per low table object.
+  const highCache = new WeakMap();
+  function withHigh(low, on) {
+    if (!on || !low || !low.data) return low;
+    let c = highCache.get(low); if (c) return c;
+    const nh = low.nh, data = new Float32Array(low.data.length);
+    for (let j = 0; j < low.nv; j++) for (let i = 0; i < nh; i++) { const k = j * nh + i; data[k] = low.data[k] + Headlamp.generic(low.h0 + (i + 0.5) * low.step, low.v0 + (j + 0.5) * low.step, true); }
+    c = Object.assign({}, low, { data }); highCache.set(low, c); return c;
+  }
   // direction (road frame, x ahead, y left) → [H, V] in a convention; the same as FarField.hvOf (tests/drive.js checks it)
   let HV0 = 0, HV1 = 0;
   function hvFast(dx, dy, dz, conv) {
@@ -490,7 +502,9 @@
   let genericLow;
   function trafficBeam(p) {
     const mode = p.src && p.src.traffic && p.src.traffic.onMode;
-    if (mode === 'symmetric' && p.lut && p.lut.data.some(x => x > 0)) return { lut: p.lut, conv: p.conv || 'A' };
+    // oncoming cars use OUR LOW table (p.lowLut), never the high-switched one: the high switch is ours alone
+    const low = p.lowLut || p.lut;
+    if (mode === 'symmetric' && low && low.data.some(x => x > 0)) return { lut: low, conv: p.conv || 'A' };
     if (!genericLow) genericLow = lutFrom((h, v) => Headlamp.generic(h, v, false), { win: [-90, 90, -90, 90], step: 0.25 });
     return { lut: genericLow, conv: 'A' };
   }
@@ -681,5 +695,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { occluded, dipState, TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
+  RF.Drive = { occluded, dipState, TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -164,8 +164,9 @@
   const car = (x) => ({ x: x - 2.2, y: 0, hx: 2.2, hy: 0.9 });
   function resolve(g, h, hit, speed, fraction) {
     if (h.resolved) return; h.resolved = true;
-    const s = score({ hit, speed, fraction, verdict: g.verdict, person: h.kind === 'person', noHiViz: h.noHiViz, jaywalking: h.jaywalking, crosswalk: h.crosswalk, highMisuse: g.highBeam && (g.flashes > 0 || ['urban', 'intersection', 't-junction'].includes(RF.DriveAnim.roadTile(g.seed, Math.floor(g.x / 200)).kind)) });
-    g.results.push(Object.assign({ id: h.id, kind: h.kind, hit, speed, reaction: h.reaction, fraction }, s));
+    const highMisuse = !!(g.highBeam && (g.flashes > 0 || ['urban', 'intersection', 't-junction'].includes(RF.DriveAnim.roadTile(g.seed, Math.floor(g.x / 200)).kind)));
+    const s = score({ hit, speed, fraction, verdict: g.verdict, person: h.kind === 'person', noHiViz: h.noHiViz, jaywalking: h.jaywalking, crosswalk: h.crosswalk, highMisuse });
+    g.results.push(Object.assign({ id: h.id, kind: h.kind, hit, speed, reaction: h.reaction, fraction, highBeam: !!g.highBeam, highMisuse }, s));
     if (s.lost || g.results.length >= g.limit) g.done = true;
     else if (g.v === 0 || hit) {
       g.v = 0; g.resume = g.t + 2;
