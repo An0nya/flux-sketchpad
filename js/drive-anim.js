@@ -92,7 +92,9 @@
   }
   const isJunction = (tile) => tile.kind === 'intersection' || tile.kind === 't-junction';
   function speedLimit(src, x) {
-    if (src.tiles && src.tiles.mountain) return (Math.abs(RF.Touge.tile(0, Math.floor(x / 200)).curvature) > 1 / 100 ? 25 : 50) / 3.6;
+    // Mountain pass: comfortable cornering speed from the curve radius, v = sqrt(a_lat * R) with a_lat 3 m/s² (a tuning value:
+    // relaxed driving sits around 2–4 m/s²), capped at 80 km/h on straights; the slider still caps it elsewhere.
+    if (src.tiles && src.tiles.mountain) { const c = Math.abs(RF.Touge.tile(0, Math.floor(x / 200)).curvature); return Math.min(80 / 3.6, c > 1e-6 ? Math.sqrt(3 / c) : Infinity); }
     if (!src.tiles) return 80 / 3.6;
     const tile = roadTile(src.tiles.seed, Math.floor(x / TILE_LEN));
     return (isJunction(tile) || tile.kind === 'urban' ? 50 : tile.curvature ? 60 : 80) / 3.6;
