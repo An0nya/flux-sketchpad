@@ -1191,7 +1191,9 @@ void main() {
     st.gameMode = true; st.playing = false; st.view = 'anim'; ui.redrawSpec();
   }
   function startGame(ui) {
-    const st = S(ui), box = V.gameBar, speed = +box.querySelector('[data-game="speed"]').value, wet = box.querySelector('[data-game="wet"]').value === 'wet', seed = +box.querySelector('[data-game="seed"]').value;
+    const st = S(ui), box = V.gameBar, speed = +box.querySelector('[data-game="speed"]').value, wet = box.querySelector('[data-game="wet"]').value === 'wet', seedEl = box.querySelector('[data-game="seed"]'), reseedEl = box.querySelector('[data-game=reseed]');
+    if (reseedEl && reseedEl.checked) seedEl.value = (Date.now() * 2654435761 >>> 0) % 100000;
+    const seed = +seedEl.value;
     if (!(speed >= 5 && speed <= 130) || !Number.isInteger(seed) || seed < 0 || seed > 99999) { V.gameStatus.textContent = 'Choose 5–130 km/h and a whole seed from 0–99999.'; return; }
     if (!ui.spec || !ui.spec.full || !ui.spec.ev || ui.spec.ctx !== (ui.run && ui.run.ctx)) { V.gameStatus.textContent = 'Finish the lamp’s Spec trace before starting.'; return; }
     stop(); killWorkers();
@@ -1270,6 +1272,7 @@ void main() {
     if (!V.gameBar) {
       const box = V.gameBar = E('div', { class: 'drive-game', 'data-game': 'panel', hidden: '' });
       const speed = E('input', { 'data-game': 'speed', type: 'number', min: 5, max: 130, step: 5, 'aria-label': 'Game speed km/h' }), wet = E('select', { 'data-game': 'wet', 'aria-label': 'Game road condition' }), seed = E('input', { 'data-game': 'seed', type: 'number', min: 0, max: 99999, step: 1, 'aria-label': 'Game seed' });
+      const reseed = E('input', { 'data-game': 'reseed', type: 'checkbox', checked: '', title: 'Pick a new random seed every run; untick to replay the same seed' });
       wet.append(E('option', { value: 'dry' }, 'dry'), E('option', { value: 'wet' }, 'wet'));
       const rules = E('select', { 'data-game': 'rules', 'aria-label': 'Hazard rules' });
       rules.append(E('option', { value: 'visible' }, 'Visible hazard'), E('option', { value: 'legacy' }, 'Original rules'));
@@ -1296,7 +1299,7 @@ void main() {
       const suspend = () => { if (st.game && !st.game.done) { hold(false, 'all'); if (st.game.pauseAt === undefined) st.game.pauseAt = performance.now(); st.playing = false; stop(); ui.redrawSpec(); } };
       root.addEventListener('blur', suspend); document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); });
       V.gameStatus = E('div', { 'data-game': 'status', role: 'status' }); V.gameCard = E('div', { 'data-game': 'card', class: 'game-card', hidden: '' });
-      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), rules, E('label', {}, clearLane, ' Wait for clear lane'), start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. After a stop, hazards leave the road before cruise resumes (at least 2 s). Uncheck Wait for clear lane or choose Original rules for the previous resume. Game flavour, not legal advice.'));
+      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), E('label', {}, reseed, ' new each run'), rules, E('label', {}, clearLane, ' Wait for clear lane'), start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. After a stop, hazards leave the road before cruise resumes (at least 2 s). Uncheck Wait for clear lane or choose Original rules for the previous resume. Game flavour, not legal advice.'));
       V.cv.parentElement.append(box); speed.value = info().o.speed; seed.value = info().o.seed; wet.value = info().o.wet ? 'wet' : 'dry';
     }
     if (V.notice) V.notice.hidden = !V.why || (st.gameMode && !V.lost);

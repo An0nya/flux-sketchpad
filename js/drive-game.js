@@ -85,9 +85,10 @@
     }
     return cells.size >= VISIBILITY.pixels && count * area >= VISIBILITY.cssArea ? Object.assign(first, { pixels: cells.size, cssArea: count * area }) : null;
   }
+  const SPACING = [15, 30];   // s between hazards (visible rules); legacy keeps 10–20 s. Anya 10-16: spread them out
   function create(o) {
     const rand = RF.Drive.rng((o.seed | 0) ^ 0x4d47414d);
-    return { rules: o.rules === 'legacy' ? 'legacy' : 'visible', clearLane: o.clearLane !== false, seed: o.seed | 0, speed: o.speed, wet: !!o.wet, verdict: o.verdict || 'unsure', highBeam: !!o.highBeam, rand, next: 10 + 10 * rand(), t: 0, x: 0, v: o.speed / 3.6, brake: false, hazards: [], results: [], seen: 0, reactions: [], flashes: 0, spawned: 0, limit: 5, done: false, accumulator: 0, resume: null, wallLit: null };
+    return { rules: o.rules === 'legacy' ? 'legacy' : 'visible', clearLane: o.clearLane !== false, seed: o.seed | 0, speed: o.speed, wet: !!o.wet, verdict: o.verdict || 'unsure', highBeam: !!o.highBeam, rand, next: o.rules === 'legacy' ? 10 + 10 * rand() : SPACING[0] + (SPACING[1] - SPACING[0]) * rand(), t: 0, x: 0, v: o.speed / 3.6, brake: false, hazards: [], results: [], seen: 0, reactions: [], flashes: 0, spawned: 0, limit: 5, done: false, accumulator: 0, resume: null, wallLit: null };
   }
   function legacySpawn(g, lane, p) {
     const A = RF.DriveAnim, r = g.rand, distance = 80 + 100 * r(), desiredPerson = r() < 0.1, initialSide = r() < 0.5 ? -1 : 1;
@@ -132,7 +133,7 @@
     // Waiting on the shoulder until arrival would hide bodies from narrow long-throw lamps.
     const spd = person ? 1.3 : 3.5 + r(), delay = .3;
     const h = { id: ++g.spawned, born: g.t, kind: person ? 'person' : 'deer', s0: s, off0: off, ds: 0, doff: -side, spd, len: Math.abs(off) + .15, delay, side, crosswalk, noHiViz: r() < .5, jaywalking: person && (!crosswalk || A.signalState(tile, g.t).lit !== 'red'), lit: null, reaction: null, resolved: false, outsideLux };
-    g.hazards.push(h); g.next += 10 + 10 * r(); return h;
+    g.hazards.push(h); g.next += SPACING[0] + (SPACING[1] - SPACING[0]) * r(); return h;
   }
   const pose = (g, h, t) => { const a = h.leaving && t >= h.leaving.born ? h.leaving : h; return RF.DriveAnim.actorPose(a, Math.max(0, t - a.born)); };
   const waitsForLane = (g) => g.clearLane && g.rules !== 'legacy';
