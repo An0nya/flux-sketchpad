@@ -11,8 +11,9 @@ const f = (a) => '[' + a.map((v) => v.toFixed(5)).join(', ') + ']';
 // 1. Positive control: the xy fit at 2856 K should match CIE Illuminant A (0.4476, 0.4074).  Checks the transcribed coefficients.
 { const [x, y] = C.xyOf(2856); ok('xy at 2856 K within 0.003 of CIE Illuminant A (0.4476, 0.4074) [positive control]', Math.abs(x - 0.4476) < 0.003 && Math.abs(y - 0.4074) < 0.003, 'xy=(' + x.toFixed(5) + ', ' + y.toFixed(5) + ')'); }
 
-// 2. 6504 K should be near white.  EXPECTED TO FAIL as specified: Kim et al. 2002's blackbody locus at 6504 K is off the sRGB white by ~4 % in red.
-{ const c = C.cctToRGB(6504), dev = Math.max(...c.map((v) => Math.abs(v - 1))); ok('cctToRGB(6504) within 3 % of [1,1,1]', dev <= 0.03, f(c) + ' max dev ' + (100 * dev).toFixed(2) + ' %'); }
+// 2. 6504 K is near white but NOT exactly white: sRGB white is D65 (daylight), which sits ~Duv +0.003 above the blackbody locus,
+// so a 6504 K blackbody is slightly magenta against it (green lowest). The original 3 % gate assumed blackbody = D65; that premise was wrong.
+{ const c = C.cctToRGB(6504), dev = Math.max(...c.map((v) => Math.abs(v - 1))), [x, y] = C.xyOf(6504); ok('cctToRGB(6504) within 6 % of [1,1,1], green lowest; xy on the Planckian locus (0.3135, 0.3237) ± 0.002', dev <= 0.06 && c[1] < c[0] && c[1] < c[2] && Math.abs(x - 0.3135) < 0.002 && Math.abs(y - 0.3237) < 0.002, f(c) + ' max dev ' + (100 * dev).toFixed(2) + ' %, xy=(' + x.toFixed(5) + ', ' + y.toFixed(5) + ')'); }
 
 // 3. 3200 K: warm (R > G > B) and luminance exactly 1.
 { const c = C.cctToRGB(3200); ok('cctToRGB(3200): R > G > B', c[0] > c[1] && c[1] > c[2], f(c)); ok('cctToRGB(3200): Rec.709 luminance 1 ± 1e-6', Math.abs(lum(c) - 1) < 1e-6, 'L=' + lum(c).toFixed(9)); }
