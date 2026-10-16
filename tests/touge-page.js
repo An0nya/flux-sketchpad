@@ -12,7 +12,7 @@
     const checks=[],ok=(name,pass,detail)=>{checks.push({name,pass:!!pass,detail});console.log((pass?'[PASS] ':'[FAIL] ')+name+(detail?' '+JSON.stringify(detail):''));};
     ok('TG RF.UI exists and correct page port',!!RF.UI&&location.port===String(port));if(location.port!==String(port))throw Error('wrong page');
     const u=await ready(),D=RF.DriveAnim,V=D._.V,P=RF.Touge;V.pinSS=1;
-    ok('TG Mountain pass UI setting is on',u.dvOpts.mountainPass&&!!document.querySelector('[data-anim=mountain-pass][aria-pressed=true]'));
+    ok('TG Mountain pass UI setting is on',u.dvOpts.mountainPass&&document.querySelector('[data-dv=scene]').value==='__pass');
     const trace=u.run.ctx,beam=V.p.lut;
     function maskAt(dist,station){
       u.dvAnim.dist=dist;u.redrawSpec();D._.frame();const p=V.p,world=P.world(p,dist,0);world.objects=world.objects.filter(ob=>ob.cls!=='deer');

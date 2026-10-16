@@ -614,8 +614,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
         n++; if (!same(ref, got)) bad.push(name + ' d' + dist + ' K' + K);
       }
       ok('D2b the worker\'s jobs, assembled, equal the objects layer traced in one go (' + n + ' cases on a bend, K = 1, 5, 11)', bad.length === 0, bad.slice(0, 3).join('; ')); }
-    // D2c: forest and city are in the animation; the intersection is not; the single-occurrence stripes (crossing, stop line) come round every lap
-    { ok('D2c forest and city are animated, the intersection is not', DA.ANIM_SCENES.forest && DA.ANIM_SCENES.city && !DA.ANIM_SCENES.intersection && DA.ANIM_SCENES.road);
+    // D2c: forest, city and fixed intersections use the animated renderer; the single-occurrence stripes (crossing, stop line) come round every lap
+    { ok('D2c forest, city and fixed intersections use the animated renderer', DA.ANIM_SCENES.forest && DA.ANIM_SCENES.city && DA.ANIM_SCENES.intersection && DA.ANIM_SCENES.road);
       const city = DA.source('city', 3.5, false, flags, {}), g = DA.ground({ w: 120, h: 68, hfov: 60, A: null, lamps, lut, conv: 'A', lane: 3.5, look: { RL: 0.2 }, src: city });
       ok('D2c city: three moving layers (centre dash 12 m, crossing and stop line every 300 m), the crossing\'s bars are one layer', g.layers.length === 3 && g.layers.map((L) => L.pat.period).join() === '12,300,300' && g.layers[1].pat.on === 3.5 && g.layers[2].pat.on === 0.4, JSON.stringify(g.layers.map((L) => L.pat)));
       ok('D2c the still scene is untouched: its crossing is still a single-occurrence stripe', D.buildScene('city', { Lw: 3.5, A: null, us: false, seed: 7 }, {}).markings.filter((m) => m.pat && m.pat.period >= 1e5).length === 8);
@@ -1057,6 +1057,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   require('./minigame.js').run(RF, ok);
   require('./minigame-2.js').run(RF, ok);
   require('./drive-ux.js').run(RF, ok);
+  require('./controls-dedupe.js').run(RF, ok);
   require('./drive-polish.js').run(RF, ok);
   require('./drive-perf.js').run(RF, ok);
   require('./drive-three.js').run(RF, ok);

@@ -39,11 +39,11 @@
     // Warm the lazy module before taking paired snapshots; its redraw can replace the initial UI beam cache.
     await select(true);await select(false);
     const cases=[];
-    for(const name of ['road','city','forest','tiles'])for(const wet of [false,true]) {
+    for(const name of ['road','city','forest','intersection','tiles'])for(const wet of [false,true]) {
       Object.assign(u.dvOpts,{scene:name==='tiles'?'city':name,tiles:name==='tiles',wet,wetSheen:wet,ambient:0});
       Object.assign(u.dvAnim,{dist:name==='tiles'?495:25,t:12,playing:false});
       await select(false);const cpu=a.readHdr();
-      const traceContext=u.run.ctx,p=a.V.p,dist=u.dvAnim.dist,t=u.dvAnim.t,world=p.src.tiles?D.tileWorld(p,dist,t):{A:p.A,objects:D.placedObjects(p,dist,t)};
+      const traceContext=u.run.ctx,p=a.V.p,dist=u.dvAnim.dist,t=u.dvAnim.t,world=p.src.tiles?D.tileWorld(p,dist,t):{A:p.A,objects:D.placedObjects(p,dist,t),...(p.src.cross?a.fixedIntersection(p.src,dist):{})};
       const labelled=RF.Drive.render({w:p.w,h:p.h,hfov:p.hfov,eye:D.EYE,lamps:p.lamps,lut:p.lut,conv:p.conv,arc:world.A,lane:p.lane,look:p.look,ss:1,pointLights:world.lights,crossings:world.crossings,scene:{objects:world.objects,markings:world.markings||p.src.markings,verge:p.src.verge}});
       const selected=await select(true),gpu=a.readHdr();
       ok('P1 GPU selected '+name+'/'+wet,selected.renderer==='three'&&!selected.gpuFailure);

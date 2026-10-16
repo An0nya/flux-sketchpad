@@ -1,4 +1,4 @@
-/* drive-anim.js — the animated Drive view: the car drives down the road, the scenery comes at it. Opt-in; the still view (drive.js) stays the default.
+/* drive-anim.js — the animated Drive view: the car drives down the road, the scenery comes at it. Play advances the world; Pause freezes distance and time. drive.js remains the CPU reference and recovery renderer.
  *
  * No new photometric model. Everything the picture is made of still comes from RF.Drive.render (the beam lookup, the BRDFs, the materials):
  *   ground   The car-frame geometry of the road never changes while the car drives (a straight road, or the constant-radius bends of RF.Road.arc), so the lit
@@ -15,7 +15,7 @@
 (function (root) {
   'use strict';
   const RF = root.RF || (root.RF = {}), D = RF.Drive;
-  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, MAX_SIM = 1600, HEAVY_SIM = { forest: 960, city: 960 }, ANIM_SCENES = { road: 1, forest: 1, city: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
+  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, MAX_SIM = 1600, HEAVY_SIM = { forest: 960, city: 960 }, ANIM_SCENES = { road: 1, forest: 1, city: 1, intersection: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
   const CLASSES = [['posts', 'posts', 'Delineator posts with reflectors'], ['signs', 'signs', 'Road signs (retroreflective sheeting)'], ['people', 'people', 'Pedestrians'], ['animals', 'deer', 'Deer, with retroreflecting eyes'], ['veg', 'trees', 'Trees and bushes at the roadside'], ['obstacle', 'crates', 'A dark crate on the road every 150 m (the hard target: 3 % reflectance, nothing retroreflective)'], ['rpm', 'studs', 'Raised reflective pavement markers on the centre and edge lines (random scenery only)'], ['tex', 'grain', 'Asphalt grain: a subtle texture on the road surface that moves with the drive'], ['mt', 'threads', 'Trace the objects on several CPU threads (Web Workers), so big scenes keep up. Off: this thread only. Needs the page served over http(s) (browsers block workers on file://)'], ['wild', 'random', 'Random scenery from a seed: denser, different every 300 m, walkers and deer that move. Off: the original fixed scenery, repeating every 300 m']];
 
   // ---------------------------------------------------------------- CPU: scenery, ground, composition (pure; tests use these)
@@ -27,7 +27,7 @@
     if (opts && opts.tiles && name === 'intersection') name = 'road';
     const broken = !!(opts && us && opts.cline === 'broken');
     if (!(opts && opts.wild) || name !== 'road') {
-      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7, kerbPeople: !!(opts && opts.tiles) }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
+      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7, kerbPeople: !!(opts && opts.tiles) }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, cross: sc.cross, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
       if (broken && name === 'road') src.markings = D.laneMarkings(lane, { us, broken });
       return trafficSource(src, opts);
     }
@@ -607,12 +607,23 @@
       return 3 * p.lamps.length * rho / Math.PI * I / (d * d) < 1e-3;
     };
   }
+  // Fixed intersections use the same repeating world as their objects. Move finite
+  // cross-street markings and lane openings together; ordinary lane dashes retain their phase.
+  function fixedIntersection(src, dist) {
+    const shift = Math.ceil((dist - src.cross.s1) / PERIOD) * PERIOD - dist;
+    const cross = { s0: src.cross.s0 + shift, s1: src.cross.s1 + shift };
+    const markings = src.markings.map(m => Object.assign({}, m, m.skip
+      ? { skip: m.skip.map(([a, b]) => [a + shift, b + shift]), ...(m.pat ? { pat: { ...m.pat, s0: m.pat.s0 - dist % m.pat.period, s1: m.pat.s1 - dist % m.pat.period } } : {}) }
+      : m.pat ? { pat: { ...m.pat, s0: m.pat.s0 + shift, s1: m.pat.s1 + shift } } : {}));
+    return { markings, crossings: [{ ...cross, o0: -1e5, o1: 1e5 }] };
+  }
   // tileRow(ty) → true: trace only these 16-px tile rows (a worker's share); the rows come back with .trows = the tile rows that were traced
   function objects(p, dist, rgba, ss, tauOf, tileRow, placed, t) {
     if (p.src.tiles) return tileFrame(p, dist, t || 0, rgba, ss, tauOf, tileRow, placed);
-    if ((p.look.wet && p.look.wetSheen) || lightingExtras(p)) {
+    if (p.src.cross || (p.look.wet && p.look.wetSheen) || lightingExtras(p)) {
       const markings = p.src.markings.map((m) => m.pat ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { s0: m.pat.s0 - dist % m.pat.period, s1: m.pat.s1 - dist % m.pat.period }) }) : m);
-      const r = D.render(Object.assign({}, camOf(p), { ss: ss || 2, layer: 'frame', tight: true, rgba, tileRow, grain: p.look.wet && p.look.grain ? tileGrain(dist, true) : null, scene: { objects: placed || placedObjects(p, dist, t || 0, tauOf), markings, verge: p.src.verge } }));
+      const fixed = p.src.cross ? fixedIntersection(p.src, dist) : null;
+      const r = D.render(Object.assign({}, camOf(p), { ss: ss || 2, layer: 'frame', tight: true, rgba, tileRow, crossings: fixed ? fixed.crossings : [], grain: p.look.wet && p.look.grain ? tileGrain(dist, true) : null, scene: { objects: placed || placedObjects(p, dist, t || 0, tauOf), markings: fixed ? fixed.markings : markings, verge: p.src.verge } }));
       r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
     }
     const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, tileRow, scene: { objects: placed || placedObjects(p, dist, t || 0, tauOf), markings: [], verge: p.src.verge } }, camOf(p)));
@@ -879,7 +890,14 @@ void main() {
     if ((o.fpsCounter || o.debugTimings) && now - (V.perfLabelAt || 0) >= 500) { V.perfLabelAt = now; perfLabel(); }
   }
   const V = { ui: null, cv: null, info: null, gl: null, canvas: null, pop: null, g: null, gkey: '', src: null, skey: '', lut: null, rgba: null, band: [0, 0], frames: 0, raf: 0, last: 0, times: [], cpu: { obj: 0, up: 0, gl: 0, n: 0 }, kAuto: null, why: '', act: new Map() };
-  const S = (ui) => ui.dvAnim || (ui.dvAnim = { view: 'still', playing: true, popout: false, dist: 0, total: 0, t: 0 });
+  function S(ui) {
+    const o = ui.dvOpts || {};
+    const st = ui.dvAnim || (ui.dvAnim = { view: o.view || 'anim', playing: o.playing === true, popout: false, dist: 0, total: 0, t: 0 });
+    // Old clients used a separate still/static view, sometimes with playing=true.
+    // Migrate before any controls or render decisions; keep position and all other preferences.
+    if (st.view === 'still' || st.view === 'static') { st.view = 'anim'; st.playing = false; }
+    return st;
+  }
   const supported = (o) => !!o.mountainPass || !!ANIM_SCENES[o.scene] || (o.tiles && o.scene === 'intersection');
   const visible = () => {
     const ui = V.ui; if (!ui || !V.canvas || !V.info || typeof document === 'undefined') return false;
@@ -901,7 +919,7 @@ void main() {
     c.addEventListener('webglcontextlost', contextLost);
     c.addEventListener('webglcontextrestored', contextRestored);
     try { V.gl = makeGL(c); } catch (e) { V.why = String(e.message || e); }
-    if (!V.gl) { say('WebGL2 with float render targets is unavailable; showing the CPU still view.'); return false; }
+    if (!V.gl) { say('WebGL2 with float render targets is unavailable; showing the CPU recovery picture.'); return false; }
     V.canvas = c; return true;
   }
   const recovery = () => !RF.SolverHost || RF.SolverHost.recovery();
@@ -946,10 +964,10 @@ void main() {
   }
   function contextFallback(why) {
     clearTimeout(V.restoreTimer); V.restoreTimer = 0; V.glFailed = true; stop(); killWorkers();
-    const st = S(V.ui); if (st.gameMode) toggleGame(V.ui); st.playing = false; st.view = 'still';
+    const st = S(V.ui); if (st.gameMode) toggleGame(V.ui); st.playing = false; st.view = 'anim';
     if (V.canvas) V.canvas.hidden = true;
     if (st.popout) closePop(V.ui);
-    say(why + '; showing the CPU still view. Reload the page to retry animation.'); V.ui.redrawSpec();
+    say(why + '; showing the CPU recovery picture. Reload the page to retry animation.'); V.ui.redrawSpec();
   }
   function contextLost(e) {
     if (!recovery()) return;
@@ -988,7 +1006,7 @@ void main() {
     V.renderScale = sz.scale || 1;
     V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
-      V.g = V.three || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
+      V.g = V.three || V.src.cross || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
     }
     V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr));
@@ -1043,7 +1061,7 @@ void main() {
     const sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A) : D.glareSources(V.src.tiles ? placed.objects : placed, EYE);
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
     const draw = { profile: glProfile, hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
-    if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
+    if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed, ...(V.src.cross ? fixedIntersection(V.src, st.dist) : {}) }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
     try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
     if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
@@ -1223,7 +1241,7 @@ void main() {
   function bars(ui, setDV) {
     if (V.bar) return V.bar;
     const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveBar.querySelector('.drive-primary'), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
-    btn('play', 'Drive / pause the animation', () => { st.playing = !(st.playing && (st.view === 'anim' || st.popout)); if (st.playing) st.view = 'anim'; ui.redrawSpec(); });
+    btn('play', 'Drive / pause: Pause freezes distance and time', () => { const current = S(ui); current.playing = !current.playing; setDV(ui, 'playing', current.playing); });
     btn('fit-controls', 'Compact spacing for the wrapping drive controls. Off uses wider spacing.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
     const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed; traffic logic also obeys road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
@@ -1248,7 +1266,6 @@ void main() {
     target.addEventListener('change', () => setDV(ui, 'frameTargetMs', Math.max(16, Math.min(200, +target.value || 33)))); bar.append(target);
     V.fpsLab = E('output', { class: 'drive-fps', 'data-anim': 'fps-readout', 'aria-live': 'off', hidden: '' });
     V.perfLab = E('output', { class: 'drive-perf', 'data-anim': 'perf-readout', 'aria-live': 'off', hidden: '' });
-    btn('mountain-pass', 'Prototype Mountain pass: grades, hairpins and banking. GPU gives elevation; CPU stays flat.', () => setDV(ui, 'mountainPass', !info().o.mountainPass), 'Mountain pass');
     btn('tile-cache', 'Reuse beam-lit ground samples across route tiles. Moving markings, grain and street lights still update each frame. Animation with tiles only.', () => setDV(ui, 'tileCache', !info().o.tileCache), 'cache ground');
     const lamps = E('select', { 'data-anim': 'street-lamps', 'aria-label': 'Street lamps on urban tiles', title: 'Downward point lights, diffuse illumination without shadows; approximate sodium / LED colour, not measured fixture photometry' });
     for (const [value, label] of [['off', 'street lamps off'], ['sodium', 'sodium ~2000 K'], ['led', 'LED ~4000 K']]) lamps.append(E('option', { value }, label));
@@ -1258,7 +1275,7 @@ void main() {
     // random scenery: the seed (same seed = same road), how dense, and the US centre line (double solid yellow, or the broken line of a passing zone)
     const sd = E('input', { type: 'number', min: 0, max: 99999, step: 1, 'data-anim': 'seed', 'aria-label': 'Scenery seed', title: 'Seed of the random scenery: the same number gives the same road', class: 'anim-seed' }); sd.addEventListener('change', () => setDV(ui, 'seed', Math.max(0, Math.min(99999, Math.round(+sd.value || 0)))));
     const dice = btn('dice', 'A new random seed', () => setDV(ui, 'seed', (Date.now() * 2654435761 >>> 0) % 100000), '⚄');
-    const dn = E('input', { type: 'range', min: 0.5, max: 3, step: 0.5, 'data-anim': 'density', 'aria-label': 'Scenery density', title: 'How much roadside scenery (1 = about what the still view has)' }); dn.addEventListener('change', () => setDV(ui, 'density', +dn.value));
+    const dn = E('input', { type: 'range', min: 0.5, max: 3, step: 0.5, 'data-anim': 'density', 'aria-label': 'Scenery density', title: 'How much roadside scenery (1 = about the fixed scenery)' }); dn.addEventListener('change', () => setDV(ui, 'density', +dn.value));
     btn('cline', 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)', () => setDV(ui, 'cline', info().o.cline === 'broken' ? 'solid' : 'broken'), 'centre');
     bar.append(sd, dice, dn);
     const td = E('input', { type: 'range', min: 0, max: 3, step: 0.5, 'data-anim': 'traffic-density', 'aria-label': 'Traffic density', title: 'Cars per 300 m in each enabled lane. Traffic logic off: oncoming 50 km/h, preceding 40 km/h. On: IDM speeds and signals.' }); td.addEventListener('change', () => setDV(ui, 'trafficDensity', +td.value));
@@ -1275,15 +1292,13 @@ void main() {
     if (V.tileLab && V.src.tiles) { const tile = V.src.tiles.mountain ? RF.Touge.tile(0,Math.floor(dist/TILE_LEN)) : roadTile(V.src.tiles.seed, Math.floor(dist / TILE_LEN)); V.tileLab.textContent = (V.src.tiles.mountain ? 'Mountain pass · ' + (100*RF.Touge.profile(dist).grade).toFixed(1) + '% · ' : '') + tile.kind + (['intersection', 't-junction'].includes(tile.kind) ? ' · ' + signalState(tile, t).lit : ''); }
   }
   function topButtons(ui, tb, setDV) {
-    if (ui.driveExtras.querySelector('[data-anim="animate"]')) return;
-    const a = E('button', { type: 'button', class: 'toggle', 'data-anim': 'animate', title: 'Animate: drive down the road. Off = the still picture.' }, 'animate');
-    a.addEventListener('click', () => { const st = S(ui); st.view = st.view === 'anim' ? 'still' : 'anim'; st.playing = true; ui.redrawSpec(); });
+    if (tb.querySelector('[data-game="toggle"]')) return;
     const tiles = E('button', { type: 'button', class: 'toggle', 'data-anim': 'tiles', title: 'Seeded route: straights, bends, intersections, T-junctions and lit urban sections. Off = the original constant road. Animation only; traces at 640 × 360.' }, 'tiles');
     tiles.addEventListener('click', () => setDV(ui, 'tiles', !info().o.tiles));
     const game = E('button', { type: 'button', class: 'toggle', 'data-game': 'toggle', 'aria-pressed': 'false', title: 'Reach > uniformity: five hazards, hold Space or Brake. Game scoring, not legal advice.' }, 'Game');
     game.addEventListener('click', () => toggleGame(ui));
     const primary = tb.querySelector('.drive-primary'); primary.querySelector('.drive-speed') ? primary.querySelector('.drive-speed').after(game) : primary.querySelector('[data-dv=scene]').after(game);
-    ui.driveExtras.append(a, tiles);
+    ui.driveExtras.append(tiles);
   }
   function speedLabel(ui) {
     if (!ui.driveBar) return;
@@ -1294,12 +1309,11 @@ void main() {
   }
   function labels(ui) {
     const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
-    for (const b of q('[data-anim="animate"]')) { b.setAttribute('aria-pressed', String(st.view === 'anim')); b.disabled = !sup; b.title = sup ? 'Animate: drive down the road. Off = the still picture.' : 'Animation covers the open road, the forest road and the city street; enable tiles to animate a route from the intersection scene'; }
     for (const b of q('[data-anim="popout"]')) { const label = st.popout ? 'Close large view' : 'Large view'; b.setAttribute('aria-pressed', String(st.popout)); b.setAttribute('aria-label', label); b.title = label; b.disabled = !sup; b.textContent = st.popout ? '⤡' : '⤢'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
     V.bar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
-    for (const [name, key] of [['mountain-pass', 'mountainPass'], ['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
+    for (const [name, key] of [['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
     V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
@@ -1496,7 +1510,7 @@ void main() {
     V.popScroll = { x: root.scrollX, y: root.scrollY, focus: document.activeElement, style: document.body.getAttribute('style') };
     pop.append(head, stage); document.body.append(pop); V.pop = pop; V.popStage = stage;
     Object.assign(document.body.style, { position: 'fixed', top: -V.popScroll.y + 'px', left: -V.popScroll.x + 'px', width: '100%', overflow: 'hidden' });
-    st.popout = true; if (st.view !== 'anim') st.playing = false;          // opened from the still view: the same picture, large, paused
+    st.popout = true;          // opening/closing preserves the current playback state
     V.onKey = (e) => {
       if (e.key === 'Escape' && S(ui).popout) { e.preventDefault(); e.stopPropagation(); closePop(ui); }
       if (e.key === 'Tab' && S(ui).popout) {
@@ -1512,7 +1526,6 @@ void main() {
     const st = S(ui); if (!st.popout) return; st.popout = false; V.cardPop = false;
     document.removeEventListener('keydown', V.onKey, true); if (V.ro) { V.ro.disconnect(); V.ro = null; }
     const pop = V.pop, saved = V.popScroll; V.pop = null; V.popStage = null;
-    if (st.view !== 'anim') st.playing = true;
     mount(ui); if (pop) pop.remove();
     if (saved) { if (saved.style === null) document.body.removeAttribute('style'); else document.body.setAttribute('style', saved.style); }
     ui.redrawSpec();
@@ -1584,12 +1597,12 @@ void main() {
     topButtons(ui, I.toolbar, I.setDV); bars(ui, I.setDV);
     if (!V.bar.parentElement) ui.driveExtras.append(V.bar);
     if (!st.popout) mount(ui);
-    if (!supported(I.o)) { if (st.popout) closePop(ui); st.view = 'still'; }
+    if (!supported(I.o)) { if (st.popout) closePop(ui); st.playing = false; }
     labels(ui); gameControls(ui);
     const want = supported(I.o) && (st.view === 'anim' || st.popout);
     if (!want) { stop(); killWorkers(); if (V.canvas) V.canvas.hidden = true; return; }
     if (V.lost && !V.glFailed) { stop(); return; }
-    if (!ensureCanvas()) { st.view = 'still'; if (V.canvas) V.canvas.hidden = true; if (st.popout) closePop(ui); labels(ui); return; }
+    if (!ensureCanvas()) { st.playing = false; if (V.canvas) V.canvas.hidden = true; if (st.popout) closePop(ui); labels(ui); return; }
     V.canvas.hidden = false; mount(ui);
     if (!visible()) { stop(); return; }
     try {
@@ -1655,5 +1668,5 @@ void main() {
   }
   RF.DriveAnim = { renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
-    _: { V, S, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
+    _: { V, S, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

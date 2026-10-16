@@ -25,12 +25,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok('WebGL2 with float render targets exists in this browser', gpu);
   if (!gpu) { await browser.close(); process.exit(1); }
 
-  // 1. the default is the still picture
-  let st = await page.evaluate(() => ({ view: RF.UI.dvAnim ? RF.UI.dvAnim.view : 'still', gl: !!document.querySelector('.drive-gl') && !document.querySelector('.drive-gl').hidden, btn: document.querySelector('[data-anim="animate"]').getAttribute('aria-pressed') }));
-  ok('default: still view, no animated canvas shown, animate button off', st.view === 'still' && !st.gl && st.btn === 'false', JSON.stringify(st));
+  // 1. the default is paused animation
+  let st = await page.evaluate(() => ({ view: RF.UI.dvAnim.view, gl: !!document.querySelector('.drive-gl') && !document.querySelector('.drive-gl').hidden, btn: document.querySelector('[data-anim="play"]').getAttribute('aria-pressed'), playing: RF.UI.dvAnim.playing }));
+  ok('default: paused animation, canvas shown, Play off', st.view === 'anim' && st.gl && !st.playing && st.btn === 'false', JSON.stringify(st));
 
   // 2. animate: frames advance, distance advances, canvas sits over the still picture
-  await page.click('[data-anim="animate"]'); await sleep(2500);
+  await page.click('[data-anim="play"]'); await sleep(2500);
   let f0 = await frames(), d0 = await dist(); await sleep(1000); let f1 = await frames(), d1 = await dist();
   ok('animate: frames keep coming (' + (f1 - f0) + ' in 1 s) and the car moves (' + (d1 - d0).toFixed(1) + ' m at 50 km/h)', f1 - f0 >= 5 && d1 > d0 + 5, 'speed ' + await page.evaluate(() => RF.UI.dvOpts.speed));
   const geo = await page.evaluate(() => { const g = document.querySelector('.drive-gl').getBoundingClientRect(), w = document.getElementById('heat-canvas').getBoundingClientRect(); return { gl: [g.left, g.top, g.right, g.bottom], wrap: [w.left, w.top, w.right, w.bottom], ratio: g.width / g.height }; });
@@ -106,12 +106,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok('leaving Spec mode closes the popout', !(await page.evaluate(() => !!document.querySelector('.drive-popout'))));
   await page.evaluate(() => { RF.UI.setMode('D'); RF.UI.setDisplay('drive'); }); await sleep(2500);
 
-  // 7. the animation is a layer on top: the still picture is not rendered again by it, and turning it off gives the still view back
+  // 7. playback never renders the CPU reference per frame; Pause leaves the animated picture visible
   await page.evaluate(() => { const st = RF.UI.dvAnim; st.view = 'anim'; st.playing = true; RF.UI.redrawSpec(); }); await sleep(800);
   await page.evaluate(() => { window.__n = 0; const f = RF.Drive.render; RF.Drive.render = function (o) { if (!o.layer && !(o.scene && o.scene.objects && o.scene.objects.length === 0)) window.__n++; return f.apply(this, arguments); }; }); await sleep(2000);
   ok('while animating, the whole-picture renderer is not called per frame', (await page.evaluate(() => window.__n)) === 0, 'calls ' + await page.evaluate(() => window.__n));
-  await page.click('[data-anim="animate"]'); await sleep(800); f0 = await frames(); await sleep(600); f1 = await frames();
-  ok('animate off: loop stopped, canvas hidden, still picture shown', f1 === f0 && await page.evaluate(() => document.querySelector('.drive-gl').hidden && RF.UI.dvAnim.view === 'still'));
+  await page.click('[data-anim="play"]'); await sleep(800); f0 = await frames(); await sleep(600); f1 = await frames();
+  ok('pause: loop stopped, animated canvas stays visible', f1 === f0 && await page.evaluate(() => !document.querySelector('.drive-gl').hidden && RF.UI.dvAnim.view === 'anim' && !RF.UI.dvAnim.playing));
 
   // 8. parity: an animated frame against the whole picture of the same displaced world (the still renderer)
   const parity = (cfg) => page.evaluate(async (cfg) => {
@@ -160,7 +160,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // 9. a 2× display: the canvas has twice the pixels of its css box, the picture is traced at up to 1600 px
   const p2 = await open({ width: 1500, height: 950 }, 2);
-  await p2.evaluate(() => { const st = RF.UI.dvAnim || (RF.UI.dvAnim = { view: 'still', playing: true, popout: false, dist: 0, total: 0 }); }); await p2.click('[data-anim="animate"]'); await sleep(2000);
+  await p2.evaluate(() => { const st = RF.UI.dvAnim || (RF.UI.dvAnim = { view: 'anim', playing: false, popout: false, dist: 0, total: 0 }); }); await p2.click('[data-anim="play"]'); await sleep(2000);
   const d2 = await p2.evaluate(() => { const g = document.querySelector('.drive-gl'), r = g.getBoundingClientRect(); return { px: [g.width, g.height], css: [r.width, r.height], dpr: devicePixelRatio, sim: RF.DriveAnim.stats().sim }; });
   ok('devicePixelRatio 2: canvas backing store = css size × 2', Math.abs(d2.px[0] - d2.css[0] * 2) <= 1 && Math.abs(d2.px[1] - d2.css[1] * 2) <= 1, JSON.stringify(d2));
   await p2.click('[data-anim="popout"]'); await sleep(2500);
@@ -172,7 +172,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const p3 = await open({ width: 1280, height: 720 });
   const ov = await p3.evaluate(() => { const pane = document.querySelector('.result-pane').getBoundingClientRect(), cv = document.getElementById('heat-canvas').getBoundingClientRect(), gl = document.querySelector('.drive-gl'); return { paneRight: pane.right, canvasRight: cv.right, sideHidden: document.body.classList.contains('side-hidden'), glRight: gl && !gl.hidden ? gl.getBoundingClientRect().right : null }; });
   ok('1280×720, sidebar open: drive canvas right edge inside the Result pane', !ov.sideHidden && ov.canvasRight <= ov.paneRight + 0.5, JSON.stringify(ov));
-  await p3.click('[data-anim="animate"]'); await sleep(2000);
+  await p3.click('[data-anim="play"]'); await sleep(2000);
   const ov2 = await p3.evaluate(() => { const pane = document.querySelector('.result-pane').getBoundingClientRect(), gl = document.querySelector('.drive-gl').getBoundingClientRect(), barEl = document.querySelector('.drive-anim-tools'), bar = (document.querySelector('.drive-tools') || barEl).getBoundingClientRect() /* UX1-DP-test: the animation extras now live in the scrolling More panel; judge the whole panel */, els = [...barEl.querySelectorAll('button')].map((b) => Math.min(b.getBoundingClientRect().right, bar.right)); return { paneRight: pane.right, paneBottom: pane.bottom, glRight: gl.right, barBottom: bar.bottom, maxBtn: Math.max(...els) }; });
   ok('1280×720: the animated canvas and its controls stay inside the pane', ov2.glRight <= ov2.paneRight + 0.5 && ov2.maxBtn <= ov2.paneRight + 0.5 && ov2.barBottom <= ov2.paneBottom + 0.5, JSON.stringify(ov2));
   await p3.close();
@@ -180,7 +180,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (perf) for (const dpr of [1, 2]) {
     const pg = await open({ width: 1500, height: 950 }, dpr);
     for (const mode of ['pane', 'popout']) {
-      await pg.evaluate(() => { const st = RF.UI.dvAnim || (RF.UI.dvAnim = { view: 'still', playing: true, popout: false, dist: 0, total: 0 }); st.view = 'anim'; st.playing = true; RF.UI.redrawSpec(); });
+      await pg.evaluate(() => { const st = RF.UI.dvAnim || (RF.UI.dvAnim = { view: 'anim', playing: false, popout: false, dist: 0, total: 0 }); st.view = 'anim'; st.playing = true; RF.UI.redrawSpec(); });
       if (mode === 'popout' && !(await pg.evaluate(() => RF.UI.dvAnim.popout))) await pg.click('[data-anim="popout"]');
       await sleep(2500); await pg.evaluate(() => { RF.UI.dvAnim.playing = true; RF.UI.redrawSpec(); RF.DriveAnim.resetStats(); }); await sleep(4000);
       const live = await pg.evaluate(() => { const s = RF.DriveAnim.stats(), t = RF.DriveAnim._.V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); return Object.assign(s, { n: iv.length, over25: iv.filter((x) => x > 25).length }); });

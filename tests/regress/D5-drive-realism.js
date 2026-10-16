@@ -53,9 +53,9 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   ok('lamp-mode setting persists to localStorage',await page.evaluate(()=>JSON.parse(localStorage.getItem('flux/driveView')).onMode==='generic'));
   if(shots){
    require('fs').mkdirSync(shots,{recursive:true});
-   // Still view reproduces the owner's original close-pass distances. Keep exposure fixed for comparisons.
+   // Pause the animated stream at the requested close-pass distance. Keep exposure fixed for comparisons.
    for(const distance of [12,20,30])for(const glare of ['off','dry-low','dry','rain']){
-    await page.evaluate(({distance,glare})=>{const u=RF.UI;Object.assign(u.dvOpts,{onDist:distance,onMode:'high',glare,wet:false,expMode:'fixed',ev:1.5});u.dvAnim.view='still';u.redrawSpec();},{distance,glare});await sleep(100);await page.screenshot({path:shots+'/still-'+distance+'m-'+glare+'.png'});
+    await page.evaluate(({distance,glare})=>{const u=RF.UI;Object.assign(u.dvOpts,{onMode:'high',glare,wet:false,expMode:'fixed',ev:1.5,scene:'road',tiles:false,oncoming:true,preceding:false,trafficDensity:1,trafficLogic:false});Object.assign(u.dvAnim,{view:'anim',playing:false,dist:0,t:0});u.redrawSpec();const D=RF.DriveAnim,car=D.trafficCars(D._.V.src,0,0).find(c=>c.kind==='oncoming');if(!car)throw Error('missing close-pass fixture');u.dvAnim.dist=car.rel-distance;u.redrawSpec();},{distance,glare});await sleep(100);await page.screenshot({path:shots+'/paused-'+distance+'m-'+glare+'.png'});
    }
    for(const streetLamps of ['sodium','led']){await page.evaluate(streetLamps=>{const u=RF.UI,D=RF.DriveAnim,tile=Array.from({length:160},(_,k)=>D.roadTile(7,k)).find(t=>t.kind==='urban');Object.assign(u.dvOpts,{tiles:true,streetLamps,wet:true,wetSheen:true,glare:'rain',onMode:'generic'});Object.assign(u.dvAnim,{view:'anim',dist:tile.s0+55,t:2,playing:false});u.redrawSpec();},streetLamps);await sleep(200);await page.screenshot({path:shots+'/wet-'+streetLamps+'.png'});}
   }

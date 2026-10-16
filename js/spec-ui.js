@@ -599,11 +599,8 @@
       row('Road view: sideways stretch', rsel([['fit', 'Fit the pane (straight road)'], ['1', '×1 (true shape)'], ['2', '×2'], ['4', '×4']], () => String(rvOpts(ui).stretch), (v) => { setRV(ui, 'stretch', v === 'fit' ? 'fit' : +v); }, true), 'A straight road is a long thin strip; this stretches it sideways to fill the pane (the caption says by how much). A bend is always drawn true.'),
       row('Drive view: marking reflectivity (mcd/m²/lx)', rnum(() => dvOpts(ui).RL, (v) => { setDV(ui, 'RL', Math.max(0, Math.min(1000, v))); }, { min: 0, max: 1000, step: 10 }, true), 'Retroreflected luminance coefficient R_L of white road paint, at the standard headlamp-and-driver geometry (EN 1436: classes R2–R5 are 100–300 minimum; worn paint is lower, glass-bead paint when new is higher). Yellow paint uses 0.6 ×.'),
       row('Drive view: ambient light', rsel([['0', 'None (headlamp only)'], ['0.2', 'Full moon (0.2 lx)'], ['5', 'Dusk (5 lx)']], () => String(dvOpts(ui).ambient), (v) => { setDV(ui, 'ambient', +v); }, true), 'Light on diffuse surfaces from the sky, besides the lamps. None judges the beam alone.'),
-      row('Drive view: oncoming car distance (m)', rnum(() => dvOpts(ui).onDist, (v) => { setDV(ui, 'onDist', Math.max(10, Math.min(400, v))); }, { min: 10, max: 400, step: 5 }, true), 'Where the oncoming car is (the “oncoming” toggle on the Drive view). Its headlamps are emitters, seen at the intensity below.'),
       row('Drive view: oncoming headlamp intensity (kcd)', rnum(() => dvOpts(ui).onKcd, (v) => { setDV(ui, 'onKcd', Math.max(1, Math.min(500, v))); }, { min: 1, max: 500, step: 5 }, true), 'Manual mode only: both lamps together toward you. Tens of kcd describe high beam; low-beam spill toward a driver is of order 1 kcd or less.'),
-      row('Drive view: preceding car distance (m)', rnum(() => dvOpts(ui).preDist, (v) => { setDV(ui, 'preDist', Math.max(5, Math.min(300, v))); }, { min: 5, max: 300, step: 5 }, true), 'Where the car ahead of you is (the “preceding” toggle): tail lamps lit, retroreflective plate and reflectors lit by your beam.'),
       row('Drive view: beam smoothing', rsel([['sharp', 'Sharp (0.2° × 0.2°)'], ['smooth', 'Smooth along H (0.5° × 0.15°)'], ['soft', 'Soft (1° × 0.3°)']], () => dvOpts(ui).smooth, (v) => { setDV(ui, 'smooth', v); }, true), 'The trace is a few million rays, so the beam has shot noise that the picture shows as mottled asphalt. Smoothing along H leaves the cut-off (a vertical edge) sharp. Raise the ray count (Simulation) for a cleaner picture.'),
-      row('Drive view: picture size', rsel([['480', '480 × 270'], ['640', '640 × 360'], ['960', '960 × 540'], ['1280', '1280 × 720']], () => String(dvOpts(ui).res), (v) => { setDV(ui, 'res', +v); }, true), 'Render size. 640 takes ~0.3 s in the browser; 1280 about a second in a forest or city.'),
       row('Drive view: field of view (°)', rsel([['45', '45 (telephoto)'], ['60', '60'], ['75', '75'], ['90', '90 (wide)']], () => String(dvOpts(ui).fov), (v) => { setDV(ui, 'fov', +v); }, true), 'Horizontal field of view. The eye is 1.2 m up, 2 m behind the lamps, 0.37 m left of the car centre (mirrored for left-hand traffic).'),
       row('Aim on the car', rsel([['spec', 'As the spec’s lab aims it'], ['manual', 'Manual inclination (%)']], () => r().aim, (v) => { r().aim = v; }), 'As the lab aims it: the aim the judge finds on the far field (∞), which can differ slightly from the spec table’s own aim when Measure at is a screen. Manual: the cut-off (where the judge found it) is set at this downward slope; 1 % = 1 cm per metre ≈ 0.57°. Beam quality and the ideal-beam goals are always measured at the judge\u2019s aim, whatever you pick here.'),
       row('Inclination (%)', rnum(() => r().aimPct, (v) => { r().aimPct = Math.max(-5, Math.min(1, v)); }, { min: -5, max: 1, step: 0.1 }), 'Used with "Manual". R48 initial aim: −1.0 to −1.5 % below 0.8 m mounting height; FMVSS VOL ≈ −0.7 % (0.4° D).'),
@@ -842,13 +839,18 @@
     return px.toFixed(1) + ' m ahead, ' + Math.abs(py).toFixed(1) + ' m ' + (py >= 0 ? 'left' : 'right') + ' of lane centre: ' + rd.mdl.lux([px, py, z], up ? 'up' : 'car').toFixed(1) + ' lx';
   }
   // ---------------------------------------------------------------- Drive: the driver's-eye view (js/drive.js, js/drive-scenes.js)
-  const DV_DEF = { scene: 'road', wet: false, wetSheen: false, expMode: 'fixed', ev: 1, glare: 'off', onMode: 'symmetric', people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true, tex: true, wild: true, mt: true, fitControls: true, largeCard: true, seed: 7, density: 1.5, trafficDensity: 1, trafficLogic: false, safeGap: true, tiles: false, tileCache: false, mountainPass: false, gpuRenderer: false, trafficBeams: false, surfaceSheen: false, lampPitch: false, fpsCounter: false, debugTimings: false, dynamicResolution: false, frameTargetMs: 33, streetLamps: 'sodium', cline: 'solid', speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60, detailedModels: false };
+  const DV_DEF = { playing: false, scene: 'road', wet: false, wetSheen: false, expMode: 'fixed', ev: 1, glare: 'off', onMode: 'symmetric', people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true, tex: true, wild: true, mt: true, fitControls: true, largeCard: true, seed: 7, density: 1.5, trafficDensity: 1, trafficLogic: false, safeGap: true, tiles: false, tileCache: false, mountainPass: false, gpuRenderer: false, trafficBeams: false, surfaceSheen: false, lampPitch: false, fpsCounter: false, debugTimings: false, dynamicResolution: false, frameTargetMs: 33, streetLamps: 'sodium', cline: 'solid', speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60, detailedModels: false };
   const DV_GLARE = Object.keys(RF.Drive.GLARE).map((k) => [k, k]);
   const DV_SMOOTH = { sharp: [0.2, 0.2, 1], smooth: [0.5, 0.15, 2], soft: [1.0, 0.3, 3] };    // kernel half-widths: horizontal, vertical (°), wide-grid bins
   // Drive view lamp colour: the flux-weighted tint of the scene's emitters (RF.CCT). All-unset scenes give [1,1,1].
   const lampTint = (ui) => { const sc = ui.store.scene; return RF.CCT ? RF.CCT.lampRGB([sc.source].concat(sc.emitters || [])) : [1, 1, 1]; };
   function dvOpts(ui) {
     if (!ui.dvOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/driveView') || '{}'); } catch (e) { /* ignore */ } ui.dvOpts = Object.assign({}, DV_DEF, o); ui.dvOpts.glare = RF.Drive.glareLevel(ui.dvOpts.glare); if (!o.onMode && o.onKcd !== undefined && +o.onKcd !== DV_DEF.onKcd) ui.dvOpts.onMode = 'manual'; }   // old numeric/boolean glare -> off/rain. Old setDV saved the whole option set, so onKcd = 30 is the old default, not a choice: it migrates to symmetric; only a different saved kcd stays manual (tester fix)
+    if (ui.dvOpts.view === 'still' || ui.dvOpts.view === 'static') {
+      ui.dvOpts.view = 'anim'; ui.dvOpts.playing = false;
+      if (ui.dvAnim) { ui.dvAnim.view = 'anim'; ui.dvAnim.playing = false; }
+      try { localStorage.setItem('flux/driveView', JSON.stringify(ui.dvOpts)); } catch (e) { /* ignore */ }
+    }
     return ui.dvOpts;
   }
   function setDV(ui, k, v) {
@@ -862,7 +864,7 @@
     if (!bar) {
       bar = ui.driveBar = el('div', { class: 'drive-tools' });
       const btn = (k, title, fn) => { const b = el('button', { type: 'button', class: 'toggle', 'data-dv': k, title }); b.addEventListener('click', fn); bar.append(b); return b; };
-      const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road, a city street' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)), el('option', { value: '__pass', title: 'Prototype: grades, hairpins, banking. Needs the GPU drive renderer for elevation; the CPU stays flat.' }, 'Mountain pass (prototype)'));
+      const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road, a city street or an intersection' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)), el('option', { value: '__pass', title: 'Prototype: grades, hairpins, banking. Needs the GPU drive renderer for elevation; the CPU stays flat.' }, 'Mountain pass (prototype)'));
       sel.addEventListener('change', () => { const v = sel.value; if (v === '__pass') setDV(ui, 'mountainPass', true); else { if (dvOpts(ui).mountainPass) setDV(ui, 'mountainPass', false); setDV(ui, 'scene', v); } }); bar.append(sel);   // v read first: setDV re-syncs this select
       btn('shape', 'The road: straight, or an IIHS bend (shared with the Road view)', () => { const o = rvOpts(ui); setRV(ui, 'shape', RV_SHAPES[(RV_SHAPES.indexOf(o.shape) + 1) % RV_SHAPES.length]); });
       btn('wet', 'Dry or wet asphalt (wet is darker and mirror-like)', () => setDV(ui, 'wet', !dvOpts(ui).wet));
@@ -874,11 +876,8 @@
       btn('ev', 'Exposure value (click to reset)', () => setDV(ui, 'ev', DV_DEF.ev));
       btn('evp', 'Half a stop brighter', () => setDV(ui, 'ev', Math.min(10, dvOpts(ui).ev + 0.5)));
       btn('glare', 'Eye scatter + contrast-reducing Stiles–Holladay veil: off / dry-low / dry / rain. Round Gaussian scales, capped bright input. Visual approximation, not a calibrated eye/weather model.', () => { const i = DV_GLARE.findIndex((g) => g[0] === RF.Drive.glareLevel(dvOpts(ui).glare)); setDV(ui, 'glare', DV_GLARE[(i + 1) % DV_GLARE.length][0]); });
-      btn('people', 'Pedestrians (dark clothes, hi-vis vest with tape, light clothes)', () => setDV(ui, 'people', !dvOpts(ui).people));
-      btn('animals', 'Deer, with retroreflecting eyes', () => setDV(ui, 'animals', !dvOpts(ui).animals));
-      btn('signs', 'Road signs (retroreflective sheeting)', () => setDV(ui, 'signs', !dvOpts(ui).signs));
-      btn('oncoming', 'An oncoming car in the left lane with its headlamps on (distance and intensity: Spec → Road)', () => setDV(ui, 'oncoming', !dvOpts(ui).oncoming));
-      btn('preceding', 'A car ahead in our lane, tail lamps on, with plate and red reflectors (distance: Spec → Road)', () => setDV(ui, 'preceding', !dvOpts(ui).preceding));
+      btn('oncoming', 'Traffic in the oncoming lane with headlamps on (manual intensity: Spec → Road)', () => setDV(ui, 'oncoming', !dvOpts(ui).oncoming));
+      btn('preceding', 'Traffic ahead in our lane, with tail lamps, plates and red reflectors', () => setDV(ui, 'preceding', !dvOpts(ui).preceding));
       const primary = el('div', { class: 'drive-primary' }), more = el('details', { class: 'drive-more' }), extras = el('div', { class: 'drive-extras', id: 'drive-extras', role: 'region', 'aria-label': 'More drive settings' });
       more.append(el('summary', { 'aria-controls': 'drive-extras' }, 'More'), extras);
       for (const control of [...bar.children]) (control.matches('[data-dv=scene],[data-dv=glare]') ? primary : extras).append(control);
@@ -888,7 +887,7 @@
       wrap.append(bar);
       const ro = el('div', { class: 'drive-readout' }); wrap.append(ro);
       cv.addEventListener('mousemove', (e) => {
-        if (ui.display !== 'drive' || !ui.driveShown || (ui.dvAnim && ui.dvAnim.view === 'anim')) { ro.textContent = ''; return; }       // the readout probes the still picture
+        if (ui.display !== 'drive' || !ui.driveShown || (RF.DriveAnim && RF.DriveAnim._.V.canvas && !RF.DriveAnim._.V.canvas.hidden)) { ro.textContent = ''; return; }       // the readout probes the CPU recovery picture
         const r = cv.getBoundingClientRect(), d = ui.driveShown, x = (e.clientX - r.left - d.ox) / d.sc, y = (e.clientY - r.top - d.oy) / d.sc;
         if (x < 0 || y < 0 || x >= d.res.w || y >= d.res.h) { ro.textContent = ''; return; }
         const p = RF.Drive.probe(d.res, d.flip ? d.res.w - 1 - x : x, y);
@@ -958,7 +957,7 @@
       groundKey: JSON.stringify([rd.laneDrive, !/^ece/.test(dm.preset || ''), o.scene, o.wet, o.wetSheen, o.RL, o.ambient, o.smooth, o.fov, rv.shape, mirrored]), toolbar: ui.driveBar });
     cb.append(el('div', { class: 'cb-labels', title: 'Fixed: EV 0 puts 10 cd/m² at display white and each stop doubles it, so two designs at the same EV are comparable. Auto: the geometric mean of the lit pixels goes to mid grey (plus the EV offset). Hover the picture for the luminance under the pointer. Rendered in ' + Math.round(D.ms) + ' ms: ' + road.mountH.toFixed(2) + ' m lamps, ' + (road.two ? 'two' : 'one') + '.' }, el('span', {}, o.expMode + ' exposure · display white = ' + fmtL(D.tm.white) + ' cd/m²')));
   }
-  const driveReadout = (ui) => ui.driveShown ? 'Hover the picture for the luminance (cd/m²), distance and material under the pointer.' : '';
+  const driveReadout = (ui) => ui.driveShown && !(RF.DriveAnim && RF.DriveAnim._.V.canvas && !RF.DriveAnim._.V.canvas.hidden) ? 'Hover the picture for the luminance (cd/m²), distance and material under the pointer.' : '';
   // Far field → road: the lane lines and the horizon in degrees, as the right-hand lamp sees them on the car
   function drawRoadOverlay(ctx, ui, view, a, b) {
     const rd = roadModel(ui); if (!rd) return;

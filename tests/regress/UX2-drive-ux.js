@@ -76,7 +76,7 @@
           ok('UX3 game dock preserves the actual picture '+JSON.stringify({popout,state,open,fit}),m.gameBelow&&m.gameOverlap<=.20,{game:m.game,render:m.render,picture:m.picture,overlap:m.gameOverlap,below:m.gameBelow});
           if(popout)ok('UX3 full viewport overlay and toolbar clearance '+JSON.stringify({state,open,fit}),m.popout.left===0&&m.popout.top===0&&Math.abs(m.popout.right-innerWidth)<1&&Math.abs(m.popout.bottom-innerHeight)<1&&m.safe,m.popout);
           ok('UX2 primary has only driving controls',m.primary.length===6&&['scene','speed','play','toggle','glare','more'].every(k=>m.primary.includes(k)),m.primary);
-          if(open)ok('UX2 More keeps advanced controls available',visible(u.driveExtras)&&['oncoming','preceding','wet','wetSheen','onMode'].every(k=>u.driveExtras.querySelector('[data-dv='+k+']'))&&['animate','tiles','gpu-renderer','fps-counter','debug-timings'].every(k=>u.driveExtras.querySelector('[data-anim='+k+']')));
+          if(open)ok('UX2 More keeps advanced controls available',visible(u.driveExtras)&&['oncoming','preceding','wet','wetSheen','onMode'].every(k=>u.driveExtras.querySelector('[data-dv='+k+']'))&&['tiles','gpu-renderer','fps-counter','debug-timings'].every(k=>u.driveExtras.querySelector('[data-anim='+k+']')));
         }
       }
       game.click();if(popout)D.closePop(u);
@@ -100,7 +100,7 @@
     ok('UX2 fixture trace stays stable throughout the layout matrix',u.run.ctx===trace&&!u.solving);
     Object.assign(u.dvOpts,{fpsCounter:false,debugTimings:false,fitControls:true});u.redrawSpec();await settle();
     ok('UX2 both readouts can be switched off',a.V.fpsLab.hidden&&a.V.perfLab.hidden);
-    u.dvAnim.view='still';u.dvAnim.playing=true;u.redrawSpec();ok('UX2 still view remains available',a.V.canvas.hidden);play.click();ok('UX2 Drive starts animation from the still view',u.dvAnim.view==='anim'&&u.dvAnim.playing&&!a.V.canvas.hidden);play.click();
+    u.dvAnim.view='still';u.dvAnim.playing=true;u.redrawSpec();ok('UX2 legacy still view becomes paused animation',u.dvAnim.view==='anim'&&!u.dvAnim.playing&&!a.V.canvas.hidden);play.click();ok('UX2 Drive resumes the migrated paused view',u.dvAnim.view==='anim'&&u.dvAnim.playing&&!a.V.canvas.hidden);play.click();
     Object.assign(u.dvOpts,{fpsCounter:true,debugTimings:true});u.redrawSpec();more.open=true;await settle();
     // Leave a heavy-scene screenshot with More open and both readouts enabled.
     await sleep(700);window.scrollTo({top:0,behavior:'instant'});await settle();

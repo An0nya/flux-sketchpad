@@ -89,14 +89,14 @@ async function run(RF, ok) {
     a.contextLost({ preventDefault() { prevented++; } });
     const paused = !a.V.ui.dvAnim.playing && a.V.lost && a.V.canvas.hidden && ws.every((w) => w.dead);
     await h.expire();
-    ok('RB graphics loss pauses and cancels work; missing restoration reaches CPU still with notice', prevented === 1 && paused && a.V.glFailed && a.V.ui.dvAnim.view === 'still' && /8 seconds/.test(a.V.why) && /CPU still/.test(a.V.why) && redraws > 0 && h.timers.size === 0, a.V.why);
+    ok('RB graphics loss pauses and cancels work; missing restoration reaches paused CPU recovery with notice', prevented === 1 && paused && a.V.glFailed && a.V.ui.dvAnim.view === 'anim' && !a.V.ui.dvAnim.playing && /8 seconds/.test(a.V.why) && /CPU recovery picture/.test(a.V.why) && redraws > 0 && h.timers.size === 0, a.V.why);
   }
   {
     const { h, a } = drive();
     a.V.ui = { dvAnim: { view: 'anim', playing: false, popout: false }, redrawSpec() {} };
     a.V.canvas = { hidden: false, getContext: () => null };
     a.contextLost({ preventDefault() {} }); a.contextRestored();
-    ok('RB graphics rebuild failure takes CPU still fallback and cancels restore deadline', a.V.glFailed && a.V.ui.dvAnim.view === 'still' && /rebuild failed/.test(a.V.why) && h.timers.size === 0, a.V.why);
+    ok('RB graphics rebuild failure takes paused CPU recovery fallback and cancels restore deadline', a.V.glFailed && a.V.ui.dvAnim.view === 'anim' && !a.V.ui.dvAnim.playing && /rebuild failed/.test(a.V.why) && h.timers.size === 0, a.V.why);
   }
 
 }
