@@ -843,6 +843,22 @@ void main() {
     V.notice.textContent = message; V.notice.hidden = !message;
     const host = V.popStage || V.cv.parentElement; if (V.notice.parentElement !== host) host.append(V.notice);
   }
+  // Photosensitivity notice: shown at the first animated frame of a page load; dismissal is remembered in localStorage.
+  const PS_KEY = 'flux/photosafeNotice', PS_TEXT = 'Flashing lights: the drive view can flash (glare, passing headlamps). Glare is off by default; your system\'s Reduce Motion setting caps it.';
+  function photosafeNotice() {
+    if (V.psShown || !V.cv) return;
+    V.psShown = true;
+    try { if (localStorage.getItem(PS_KEY) === 'dismissed') return; } catch (e) { /* no storage: show it */ }
+    const box = document.createElement('div');
+    // Own fixed bottom banner, not .drive-notice: that class sits under the toolbar and is covered by the layout check (UX2).
+    box.setAttribute('data-anim', 'photosafe-notice'); box.setAttribute('role', 'status');
+    box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:5;padding:6px 8px;background:#17283e;color:#fff;font-size:12px;';
+    const text = document.createElement('span'); text.textContent = PS_TEXT;
+    const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = 'Dismiss'; btn.setAttribute('data-anim', 'photosafe-dismiss');
+    btn.addEventListener('click', () => { try { localStorage.setItem(PS_KEY, 'dismissed'); } catch (e) { /* ignore */ } box.remove(); });
+    box.append(text, ' ', btn);
+    (V.popStage || V.cv.parentElement).append(box);
+  }
   function contextFallback(why) {
     clearTimeout(V.restoreTimer); V.restoreTimer = 0; V.glFailed = true; stop(); killWorkers();
     const st = S(V.ui); if (st.gameMode) toggleGame(V.ui); st.playing = false; st.view = 'still';
@@ -901,7 +917,7 @@ void main() {
     const I = info(), o = I.o;
     if (o.expMode === 'auto' && V.kAuto) return V.kAuto;
     const k = Math.pow(2, o.ev) / D.L_REF;
-    return o.expMode === 'adapt' ? 1 / (1 / k + D.veilStrength(o.glare) * D.veilAt([1, 0, 0], sources || frameSources(S(V.ui).dist, S(V.ui).t))) : k;
+    return o.expMode === 'adapt' ? 1 / (1 / k + D.veilStrength(D.capGlare(o.glare)) * D.veilAt([1, 0, 0], sources || frameSources(S(V.ui).dist, S(V.ui).t))) : k;
   }
   function exposureLabel(k) {
     V.white = 1 / k;
@@ -939,7 +955,7 @@ void main() {
     const t2 = performance.now();
     const sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A) : D.glareSources(V.src.tiles ? placed.objects : placed, EYE);
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
-    const draw = { profile: glProfile, hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
+    const draw = { profile: glProfile, hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
     try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
     if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
@@ -1036,7 +1052,7 @@ void main() {
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], y0) : y0, had ? Math.max(pb[1], y1) : y1); V.band = [y0, y1];
     const t2 = performance.now();
     const sources = frameSources(b.dist, b.t), sourceEnd = performance.now(), glProfile = profileOn() ? {} : null;
-    V.gl.draw({ profile: glProfile, hfov: o.fov, pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(o.glare), veil: D.veilStrength(o.glare), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
+    V.gl.draw({ profile: glProfile, hfov: o.fov, pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
     if (!contextReady()) return;
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
@@ -1106,6 +1122,7 @@ void main() {
       if (st.game && !st.game.done) { if (st.game.pauseAt === undefined) st.game.pauseAt = performance.now(); st.game.brake = false; if (st.game.inputs) st.game.inputs.clear(); st.playing = false; }
       V.suspended = true; return;
     }
+    photosafeNotice();
     if (mt()) { workerCfg(); V.raf = requestAnimationFrame(tick); pump(t, 0); return; }
     const dt = V.last ? (st.game ? Math.max(0, (t - V.last) / 1000) : Math.min(0.1, (t - V.last) / 1000)) : 0; V.last = t;
     advanceCamera(st, dt);
@@ -1549,7 +1566,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { pitchStep, layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
