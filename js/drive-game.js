@@ -11,7 +11,10 @@
   }
   // Integrate acceleration exactly up to cruise speed; braking keeps the friction-limited law.
   const ACCELERATION = 2.5;
+  // Rate the car sheds speed for a bend it is not braking for; equals IDM.b in js/drive-anim.js, the rate approachSpeed plans with.
+  const CURVE_DECEL = 1.5;
   function cruiseMotion(v, dt, brake, wet, target, gentle, grade = 0) {
+    if (!brake && v > target) { const h = Math.min(dt, (v - target) / CURVE_DECEL); return { v: v - CURVE_DECEL * h, dx: v * h - CURVE_DECEL * h * h / 2 + target * (dt - h) }; }
     if (brake || !gentle || v >= target) return motion(v, dt, brake, wet, grade);
     const a = Math.min(4, ACCELERATION), h = Math.min(dt, (target - v) / a);
     return { v: Math.min(target, v + a * h), dx: v * h + a * h * h / 2 + target * (dt - h) };
@@ -172,19 +175,26 @@
       }
     }
   }
+  // Speed the car may carry at g.x: on a tiled road, the approach profile from js/drive-anim.js (slows before bends, lets the car
+  // accelerate out). Without tiles it is Infinity, so the slider speed alone decides and behaviour matches the old code exactly.
+  function speedCap(g, p) {
+    if (!(p && p.src && p.src.tiles) || !RF.DriveAnim || !RF.DriveAnim.approachSpeed) return Infinity;
+    return RF.DriveAnim.approachSpeed(p.src, { x: g.x, kind: 'preceding', v: g.v });
+  }
   function step(g, dt, lane, p) {
     g.deerBehaviour=RF.Drive.Models.deerEnabled(p);
     if (g.done) return; g.lane = lane; g.accumulator += dt;
     while (g.accumulator + 1e-10 >= STEP && !g.done) {
       g.accumulator -= STEP;
-      if (g.resume !== null && g.t >= g.resume && !g.brake && (!waitsForLane(g) || laneClear(g))) { if (g.acceleration !== 'gentle') g.v = g.speed / 3.6; g.resume = null; }
+      if (g.resume !== null && g.t >= g.resume && !g.brake && (!waitsForLane(g) || laneClear(g))) { if (g.acceleration !== 'gentle') g.v = Math.min(g.speed / 3.6, speedCap(g, p)); g.resume = null; }
       if (g.spawned < g.limit && g.t + 1e-9 >= g.next && !(waitsForLane(g) && g.resume !== null)) spawn(g, lane, p);
       for(const h of g.hazards)if(h.kind==='deer'&&h.alertAt===undefined&&h.s0-g.x<=RF.Drive.Models.deerProfile(g.seed+':'+h.id).trigger)h.alertAt=g.t;
-      const oldX = g.x, oldV = g.v, oldT = g.t, grade = p && p.touge ? RF.Touge.profile(g.x).grade : 0, m = cruiseMotion(g.v, STEP, g.brake, g.wet, g.speed / 3.6, g.acceleration === 'gentle' && g.resume === null, grade); g.x += grade ? m.dx / Math.sqrt(1 + grade * grade) : m.dx; g.v = m.v; g.t += STEP;
+      const target = Math.min(g.speed / 3.6, speedCap(g, p)), ramp = g.resume === null && (g.acceleration === 'gentle' || !!(p && p.src && p.src.tiles));
+      const oldX = g.x, oldV = g.v, oldT = g.t, grade = p && p.touge ? RF.Touge.profile(g.x).grade : 0, m = cruiseMotion(g.v, STEP, g.brake, g.wet, target, ramp, grade); g.x += grade ? m.dx / Math.sqrt(1 + grade * grade) : m.dx; g.v = m.v; g.t += STEP;
       for (const h of g.hazards) if (!h.resolved) {
         const a = box(pose(g, h, oldT), h.kind), b = box(pose(g, h, g.t), h.kind), f = sweep(car(oldX), a, car(g.x), b);
         if (f !== null) {
-          const frac = Math.max(0.01, overlap(car(g.x), b)); resolve(g, h, true, cruiseMotion(oldV, STEP * f, g.brake, g.wet, g.speed / 3.6, g.acceleration === 'gentle' && g.resume === null, grade).v * 3.6, frac);
+          const frac = Math.max(0.01, overlap(car(g.x), b)); resolve(g, h, true, cruiseMotion(oldV, STEP * f, g.brake, g.wet, target, ramp, grade).v * 3.6, frac);
         } else if ((g.v === 0 && g.x < b.x - b.hx) || b.x + b.hx < g.x - 4.4) resolve(g, h, false, 0, 0);
       }
     }
@@ -194,5 +204,5 @@
     if (held && !g.brake) for (const h of g.hazards) if (!h.resolved && h.lit !== null && h.reaction === null) { h.reaction = Math.max(0, (now - h.lit) / 1000); g.reactions.push(h.reaction); }
     g.brake = held;
   }
-  RF.DriveGame = { G, STEP, ACCELERATION, cruiseMotion, mu, stoppingDistance, motion, overlap, sweep, score, VISIBILITY, firstLit, legacyFirstLit, create, spawn, pose, laneClear, box, car, step, press, resolve };
+  RF.DriveGame = { G, STEP, ACCELERATION, cruiseMotion, speedCap, mu, stoppingDistance, motion, overlap, sweep, score, VISIBILITY, firstLit, legacyFirstLit, create, spawn, pose, laneClear, box, car, step, press, resolve };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
