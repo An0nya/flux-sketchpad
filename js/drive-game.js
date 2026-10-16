@@ -9,6 +9,13 @@
     const a = brake ? mu(wet) * G : 0, h = a ? Math.min(dt, v / a) : dt;
     return { v: Math.max(0, v - a * h), dx: v * h - a * h * h / 2 };
   }
+  // Integrate acceleration exactly up to cruise speed; braking keeps the friction-limited law.
+  const ACCELERATION = 2.5;
+  function cruiseMotion(v, dt, brake, wet, target, gentle) {
+    if (brake || !gentle || v >= target) return motion(v, dt, brake, wet);
+    const a = Math.min(4, ACCELERATION), h = Math.min(dt, (target - v) / a);
+    return { v: Math.min(target, v + a * h), dx: v * h + a * h * h / 2 + target * (dt - h) };
+  }
   // Continuous overlap interval for two axis-aligned boxes in road coordinates. Sweeping avoids driving through a thin actor between frames.
   function overlap(a, b) {
     const x = Math.min(a.x + a.hx, b.x + b.hx) - Math.max(a.x - a.hx, b.x - b.hx), y = Math.min(a.y + a.hy, b.y + b.hy) - Math.max(a.y - a.hy, b.y - b.hy);
@@ -88,7 +95,7 @@
   const SPACING = [15, 30];   // s between hazards (visible rules); legacy keeps 10–20 s. Anya 10-16: spread them out
   function create(o) {
     const rand = RF.Drive.rng((o.seed | 0) ^ 0x4d47414d);
-    return { rules: o.rules === 'legacy' ? 'legacy' : 'visible', clearLane: o.clearLane !== false, seed: o.seed | 0, speed: o.speed, wet: !!o.wet, verdict: o.verdict || 'unsure', highBeam: !!o.highBeam, rand, next: o.rules === 'legacy' ? 10 + 10 * rand() : SPACING[0] + (SPACING[1] - SPACING[0]) * rand(), t: 0, x: 0, v: o.speed / 3.6, brake: false, hazards: [], results: [], seen: 0, reactions: [], flashes: 0, spawned: 0, limit: 5, done: false, accumulator: 0, resume: null, wallLit: null };
+    return { acceleration: o.acceleration === 'gentle' ? 'gentle' : 'original', rules: o.rules === 'legacy' ? 'legacy' : 'visible', clearLane: o.clearLane !== false, seed: o.seed | 0, speed: o.speed, wet: !!o.wet, verdict: o.verdict || 'unsure', highBeam: !!o.highBeam, rand, next: o.rules === 'legacy' ? 10 + 10 * rand() : SPACING[0] + (SPACING[1] - SPACING[0]) * rand(), t: 0, x: 0, v: o.speed / 3.6, brake: false, hazards: [], results: [], seen: 0, reactions: [], flashes: 0, spawned: 0, limit: 5, done: false, accumulator: 0, resume: null, wallLit: null };
   }
   function legacySpawn(g, lane, p) {
     const A = RF.DriveAnim, r = g.rand, distance = 80 + 100 * r(), desiredPerson = r() < 0.1, initialSide = r() < 0.5 ? -1 : 1;
@@ -159,13 +166,13 @@
     if (g.done) return; g.lane = lane; g.accumulator += dt;
     while (g.accumulator + 1e-10 >= STEP && !g.done) {
       g.accumulator -= STEP;
-      if (g.resume !== null && g.t >= g.resume && !g.brake && (!waitsForLane(g) || laneClear(g))) { g.v = g.speed / 3.6; g.resume = null; }
+      if (g.resume !== null && g.t >= g.resume && !g.brake && (!waitsForLane(g) || laneClear(g))) { if (g.acceleration !== 'gentle') g.v = g.speed / 3.6; g.resume = null; }
       if (g.spawned < g.limit && g.t + 1e-9 >= g.next && !(waitsForLane(g) && g.resume !== null)) spawn(g, lane, p);
-      const oldX = g.x, oldV = g.v, oldT = g.t, m = motion(g.v, STEP, g.brake, g.wet); g.x += m.dx; g.v = m.v; g.t += STEP;
+      const oldX = g.x, oldV = g.v, oldT = g.t, m = cruiseMotion(g.v, STEP, g.brake, g.wet, g.speed / 3.6, g.acceleration === 'gentle' && g.resume === null); g.x += m.dx; g.v = m.v; g.t += STEP;
       for (const h of g.hazards) if (!h.resolved) {
         const a = box(pose(g, h, oldT), h.kind), b = box(pose(g, h, g.t), h.kind), f = sweep(car(oldX), a, car(g.x), b);
         if (f !== null) {
-          const frac = Math.max(0.01, overlap(car(g.x), b)); resolve(g, h, true, motion(oldV, STEP * f, g.brake, g.wet).v * 3.6, frac);
+          const frac = Math.max(0.01, overlap(car(g.x), b)); resolve(g, h, true, cruiseMotion(oldV, STEP * f, g.brake, g.wet, g.speed / 3.6, g.acceleration === 'gentle' && g.resume === null).v * 3.6, frac);
         } else if ((g.v === 0 && g.x < b.x - b.hx) || b.x + b.hx < g.x - 4.4) resolve(g, h, false, 0, 0);
       }
     }
@@ -175,5 +182,5 @@
     if (held && !g.brake) for (const h of g.hazards) if (!h.resolved && h.lit !== null && h.reaction === null) { h.reaction = Math.max(0, (now - h.lit) / 1000); g.reactions.push(h.reaction); }
     g.brake = held;
   }
-  RF.DriveGame = { G, STEP, mu, stoppingDistance, motion, overlap, sweep, score, VISIBILITY, firstLit, legacyFirstLit, create, spawn, pose, laneClear, box, car, step, press, resolve };
+  RF.DriveGame = { G, STEP, ACCELERATION, cruiseMotion, mu, stoppingDistance, motion, overlap, sweep, score, VISIBILITY, firstLit, legacyFirstLit, create, spawn, pose, laneClear, box, car, step, press, resolve };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

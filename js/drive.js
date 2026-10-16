@@ -447,6 +447,13 @@
   // Reusable other-driver beam, independent of the scene/animation. Analytic sketch, NOT a certified lamp.
   // R112 class B, B50L (0.57U/3.43L) <=350 cd is a constraint, not an entire far field.
   // The right-side shoulder/hotspot and left-horizon spill are deliberately approximate (cd per lamp).
+  // Seeded driving behaviour, not survey data: 5% forget, others dip at 150–400 m over 8 m of travel.
+  function dipState(seed, id, distance) {
+    let h = (seed | 0) ^ 0x6d2b79f5; for (const c of String(id)) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+    const R = RF.Drive.rng(h >>> 0), forgetful = R() < 0.05, at = 150 + 250 * R();
+    const u = Math.max(0, Math.min(1, (distance - at) / 8 + 0.5));
+    return { forgetful, at, high: forgetful ? 1 : u * u * (3 - 2 * u) };
+  }
   const Headlamp = {
     generic(h, v, high) {
       if (high) return 30000 * Math.exp(-0.5 * ((h / 9) ** 2 + (v / 4) ** 2)) + 300;
@@ -460,6 +467,10 @@
       hvFast(forward, left, dz, o.mode === 'symmetric' && o.lut && o.hasDesign !== false ? o.conv || 'A' : 'A'); const h = HV0, v = HV1;
       if (o.mode === 'manual') return Math.max(0, o.kcd === undefined ? 30 : o.kcd) * 500 * Math.pow(forward / Math.hypot(dx, dy, dz), 8);
       if (o.mode === 'high') return Headlamp.generic(h, v, true);
+      if (o.mode === 'high-dip') {
+        const f = dipState(o.seed === undefined ? 7 : o.seed, ob.traffic === undefined ? 'still' : ob.traffic, Math.hypot(dx, dy, dz)).high;
+        return f * Headlamp.generic(h, v, true) + (1 - f) * Headlamp.generic(h, v, false);
+      }
       return o.mode !== 'generic' && o.lut && o.lut.data && o.hasDesign !== false ? lutAt(o.lut, h, v) : Headlamp.generic(h, v, false);
     },
     apply(objects, o) {
@@ -647,5 +658,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
+  RF.Drive = { dipState, TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

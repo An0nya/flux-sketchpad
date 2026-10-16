@@ -282,7 +282,7 @@
         out.push(n);
       }
     }
-    if (p && src.traffic && src.traffic.onMode !== 'manual') D.Headlamp.apply(out, { mode: src.traffic.onMode, kcd: src.traffic.onKcd, lut: p.lut, conv: p.conv });
+    if (p && src.traffic && src.traffic.onMode !== 'manual') D.Headlamp.apply(out, { mode: src.traffic.onMode, kcd: src.traffic.onKcd, lut: p.lut, conv: p.conv, seed: src.traffic.seed });
     return out;
   }
   const placedObjects = (p, dist, t, tauOf) => D.Models.actors(place(p.src, dist, p.A, tauOf, p.detailedModels?null:dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p)),p.detailedModels);
@@ -1207,19 +1207,28 @@ void main() {
     if (st.gameMode) {
       if (V.cardPop && st.popout) closePop(ui);
       stop(); killWorkers(); Object.assign(info().o, st.gameSaved.options); Object.assign(st, st.gameSaved.state);
-      st.game = null; st.gameMode = false; st.gameOptions = null; V.p.hazardMask = null; V.last = 0; ui.redrawSpec(); V.flash = st.gameSaved.flash; V.src.traffic.state = st.gameSaved.traffic; V.act = st.gameSaved.act; flashText(); if (!st.playing && visible() && st.view === 'anim') frame(); return;
+      st.gameLoad = null; st.gameLamp = null; st.game = null; st.gameMode = false; st.gameOptions = null; V.p.hazardMask = null; V.last = 0; ui.redrawSpec(); V.flash = st.gameSaved.flash; V.src.traffic.state = st.gameSaved.traffic; V.act = st.gameSaved.act; flashText(); if (!st.playing && visible() && st.view === 'anim') frame(); return;
     }
     st.gameSaved = { options: Object.assign({}, info().o), state: { view: st.view, playing: st.playing, dist: st.dist, total: st.total, t: st.t, camera: st.camera }, flash: V.flash, traffic: V.src && V.src.traffic.state, act: new Map(V.act) };
     st.gameMode = true; st.playing = false; st.view = 'anim'; ui.redrawSpec();
   }
-  function startGame(ui) {
+  async function startGame(ui) {
     const st = S(ui), box = V.gameBar, speed = +box.querySelector('[data-game="speed"]').value, wet = box.querySelector('[data-game="wet"]').value === 'wet', seedEl = box.querySelector('[data-game="seed"]'), reseedEl = box.querySelector('[data-game=reseed]');
     if (reseedEl && reseedEl.checked) seedEl.value = (Date.now() * 2654435761 >>> 0) % 100000;
     const seed = +seedEl.value;
     if (!(speed >= 5 && speed <= 130) || !Number.isInteger(seed) || seed < 0 || seed > 99999) { V.gameStatus.textContent = 'Choose 5–130 km/h and a whole seed from 0–99999.'; return; }
-    if (!ui.spec || !ui.spec.full || !ui.spec.ev || ui.spec.ctx !== (ui.run && ui.run.ctx)) { V.gameStatus.textContent = 'Finish the lamp’s Spec trace before starting.'; return; }
+    const lampName = box.querySelector('[data-game=lamp]').value;
+    if (lampName !== 'your') {
+      const token = st.gameLoad = {}; V.gameStatus.textContent = 'Tracing starter lamp…'; box.querySelector('[data-game=start]').disabled = true;
+      try { const lamp = await RF.StarterLamps.photometry(lampName); if (!st.gameMode || st.gameLoad !== token) return; st.gameLamp = lamp; }
+      catch (e) { V.gameStatus.textContent = e.message; return; }
+      finally { box.querySelector('[data-game=start]').disabled = false; }
+      ui.redrawSpec();
+    } else { st.gameLamp = null; ui.redrawSpec(); }
+    if (!st.gameLamp && (!ui.spec || !ui.spec.full || !ui.spec.ev || ui.spec.ctx !== (ui.run && ui.run.ctx))) { V.gameStatus.textContent = 'Finish the lamp’s Spec trace before starting.'; return; }
     stop(); killWorkers();
-    st.game = RF.DriveGame.create({ seed, speed, wet, verdict: ui.spec.ev.verdict, rules: box.querySelector('[data-game=rules]').value, clearLane: box.querySelector('[data-game=clear-lane]').checked, highBeam: /(?:^fmvss-ub|-drive$)/.test(ui.store.scene.modeD.preset || '') }); st.game.ctx = ui.spec.ctx; st.game.judge = ui.spec.ev; st.game.road = info().rd;
+    const lamp = st.gameLamp || ui.spec, lampScene = st.gameLamp ? st.gameLamp.scene : ui.store.scene;
+    st.game = RF.DriveGame.create({ seed, speed, wet, acceleration: box.querySelector('[data-game=acceleration]').value, verdict: lamp.ev.verdict, rules: box.querySelector('[data-game=rules]').value, clearLane: box.querySelector('[data-game=clear-lane]').checked, highBeam: /(?:^fmvss-ub|-drive$)/.test(lampScene.modeD.preset || '') }); st.game.ctx = lamp.ctx; st.game.judge = lamp.ev; st.game.road = info().rd;
     st.gameOptions = { scene: 'road', tiles: true, wild: true, seed, speed, wet, people: false, animals: false, obstacle: false, trafficLogic: false, oncoming: true, preceding: false };
     // MG2-test: 'symmetric' oncoming lamps carry the PLAYER's design, so a high-reach lamp blinds itself (real GPU, 130 km/h wet: 7in-high first seen 48 m vs default 65 m; with a fixed generic dipped oncoming lamp: 114 m vs 63 m). The lesson needs the lamp under test to be the only variable. Original rules keep the old behaviour.
     if (st.game.rules !== 'legacy') st.gameOptions.onMode = 'generic';
@@ -1278,7 +1287,7 @@ void main() {
     if (!V.gameStatus) return;
     const hits = g.results.filter((r) => r.hit).length, passes = g.results.length - hits, mean = g.reactions.length ? (g.reactions.reduce((a, b) => a + b, 0) / g.reactions.length).toFixed(2) + ' s' : 'not measured';
     const ticket = RF.DriveGame.score({ verdict: g.verdict, flashes: g.flashes }).tickets, last = g.results[g.results.length - 1];
-    V.gameStatus.textContent = (g.done ? 'Run ended' : g.resume !== null ? g.clearLane && g.rules !== 'legacy' ? 'Waiting for clear lane · release Brake to resume' : 'Release Brake · cruise resumes after 2 s' : g.brake ? 'BRAKING' : 'Hold Space or Brake') + ' · ' + (g.v * 3.6).toFixed(1) + ' km/h · ' + g.results.length + '/5 resolved';
+    V.gameStatus.textContent = (g.done ? 'Run ended' : g.resume !== null ? g.clearLane && g.rules !== 'legacy' ? 'Waiting for clear lane · release Brake to resume' : 'Release Brake · cruise resumes after 2 s' : g.brake ? 'BRAKING' : g.acceleration === 'gentle' && g.v < g.speed / 3.6 - .01 ? 'Accelerating gently' : 'Hold Space or Brake') + ' · ' + (g.v * 3.6).toFixed(1) + ' km/h · ' + g.results.length + '/5 resolved';
     V.gameCard.hidden = !g.done;
     if (g.done) {
       V.gameBar.classList.remove('running');
@@ -1299,6 +1308,10 @@ void main() {
       wet.append(E('option', { value: 'dry' }, 'dry'), E('option', { value: 'wet' }, 'wet'));
       const rules = E('select', { 'data-game': 'rules', 'aria-label': 'Hazard rules' });
       rules.append(E('option', { value: 'visible' }, 'Visible hazard'), E('option', { value: 'legacy' }, 'Original rules'));
+      const lamp = E('select', { 'data-game': 'lamp', 'aria-label': 'Game lamp' });
+      lamp.append(E('option', { value: 'your' }, 'your lamp'), E('option', { value: 'starter-low' }, 'starter low'), E('option', { value: 'starter-high' }, 'starter high'));
+      const acceleration = E('select', { 'data-game': 'acceleration', 'aria-label': 'Acceleration after braking' });
+      acceleration.append(E('option', { value: 'original' }, 'Recovery · original'), E('option', { value: 'gentle' }, 'Gentle acceleration'));
       const clearLane = E('input', { 'data-game': 'clear-lane', type: 'checkbox', checked: '' });
       const pause = E('button', { type: 'button', 'data-game': 'pause' }, 'Pause');
       pause.addEventListener('click', () => { st.playing = !st.playing; ui.redrawSpec(); });
@@ -1322,7 +1335,7 @@ void main() {
       const suspend = () => { if (st.game && !st.game.done) { hold(false, 'all'); if (st.game.pauseAt === undefined) st.game.pauseAt = performance.now(); st.playing = false; stop(); ui.redrawSpec(); } };
       root.addEventListener('blur', suspend); document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); });
       V.gameStatus = E('div', { 'data-game': 'status', role: 'status' }); V.gameCard = E('div', { 'data-game': 'card', class: 'game-card', hidden: '' });
-      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), E('label', {}, reseed, ' new each run'), rules, E('label', {}, clearLane, ' Wait for clear lane'), start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release coasts. After a stop, hazards leave the road before cruise resumes (at least 2 s). Uncheck Wait for clear lane or choose Original rules for the previous resume. Game flavour, not legal advice.'));
+      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), E('label', {}, reseed, ' new each run'), lamp, acceleration, rules, E('label', {}, clearLane, ' Wait for clear lane'), start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release to recover with the chosen acceleration. After a stop, hazards leave the road before recovery (at least 2 s). Gentle acceleration returns to speed at 2.5 m/s². Uncheck Wait for clear lane or choose Original rules for the previous resume. Game flavour, not legal advice.'));
       V.cv.parentElement.append(box); speed.value = info().o.speed; seed.value = info().o.seed; wet.value = info().o.wet ? 'wet' : 'dry';
     }
     if (V.notice) V.notice.hidden = !V.why || (st.gameMode && !V.lost);
@@ -1343,7 +1356,7 @@ void main() {
     V.gameBar.querySelector('[data-game="exit"]').hidden = !!st.game && !st.game.done;
     if (st.game) {
       if (!st.playing && !st.game.done && st.game.pauseAt === undefined) { st.game.pauseAt = performance.now(); if (st.game.inputs) st.game.inputs.clear(); RF.DriveGame.press(st.game, false, performance.now()); }
-      if (st.game.ctx !== (ui.run && ui.run.ctx) || st.game.judge !== (ui.spec && ui.spec.ev) || st.game.road !== info().rd) { st.game.done = true; st.game.reason = 'Lamp changed; start a new run'; st.playing = false; }
+      if (st.game.ctx !== (st.gameLamp ? st.gameLamp.ctx : ui.run && ui.run.ctx) || st.game.judge !== (st.gameLamp ? st.gameLamp.ev : ui.spec && ui.spec.ev) || st.game.road !== info().rd) { st.game.done = true; st.game.reason = 'Lamp changed; start a new run'; st.playing = false; }
       gameText(st.game);
     } else { V.gameStatus.textContent = 'Choose speed, surface and seed before the run. Earlier light buys braking distance.'; V.gameCard.hidden = true; }
   }

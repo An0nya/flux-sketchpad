@@ -655,6 +655,7 @@
   }
   // the road model on the judged far field (the fine grid where it covers the direction, else the wide one); cached
   function roadModel(ui) {
+    if (ui.dvAnim && ui.dvAnim.gameMode && ui.dvAnim.gameLamp) return ui.dvAnim.gameLamp.rd;
     const s = ui.spec; if (!s || !s.G || !s.ev || !RF.Road) return null;
     const road = roadOf(ui), key = JSON.stringify([road, md(ui).preset, md(ui).ideal || null]);
     if (s.road && s.roadKey === key) return s.road;
@@ -864,7 +865,7 @@
       btn('shape', 'The road: straight, or an IIHS bend (shared with the Road view)', () => { const o = rvOpts(ui); setRV(ui, 'shape', RV_SHAPES[(RV_SHAPES.indexOf(o.shape) + 1) % RV_SHAPES.length]); });
       btn('wet', 'Dry or wet asphalt (wet is darker and mirror-like)', () => setDV(ui, 'wet', !dvOpts(ui).wet));
       btn('wetSheen', 'Wet-road streaks: cheap anisotropic mirror-lobe approximation for our beam, traffic and street lamps. Off keeps the previous wet material.', () => setDV(ui, 'wetSheen', !dvOpts(ui).wetSheen));
-      const onMode = el('select', { 'data-dv': 'onMode', 'aria-label': 'Oncoming headlamps', title: 'Symmetric: their lamps carry our design, sampled toward our eye each frame. Generic: approximate low beam. High: generic high beam. Manual: saved kcd (Spec → Road).' }, ...[['symmetric', 'oncoming: our design'], ['generic', 'oncoming: generic low'], ['high', 'oncoming: high beam'], ['manual', 'oncoming: manual kcd']].map(([value, label]) => el('option', { value }, label)));
+      const onMode = el('select', { 'data-dv': 'onMode', 'aria-label': 'Oncoming headlamps', title: 'Symmetric: their lamps carry our design, sampled toward our eye each frame. Generic: approximate low beam. High: generic high beam, always on. High then dip: seeded 150–400 m switch, 5% forget (scenario assumptions). Manual: saved kcd (Spec → Road).' }, ...[['symmetric', 'oncoming: our design'], ['generic', 'oncoming: generic low'], ['high', 'oncoming: high beam (always)'], ['high-dip', 'oncoming: high, then dip'], ['manual', 'oncoming: manual kcd']].map(([value, label]) => el('option', { value }, label)));
       onMode.addEventListener('change', () => setDV(ui, 'onMode', onMode.value)); bar.append(onMode);
       btn('expMode', 'Exposure. Fixed: an absolute EV, so two designs at the same EV are comparable (EV 0 puts 10 cd/m² at white). Auto: the average lit pixel goes to mid grey, so every picture looks exposed and brightness differences hide. Adapt: fixed reference white plus the oncoming veil at the centre of view, updated every frame.', () => setDV(ui, 'expMode', ['fixed', 'auto', 'adapt'][(['fixed', 'auto', 'adapt'].indexOf(dvOpts(ui).expMode) + 1) % 3]));
       btn('evm', 'Half a stop darker', () => setDV(ui, 'ev', Math.max(-8, dvOpts(ui).ev - 0.5)));
@@ -924,19 +925,20 @@
   }
   // Result → Drive: what the driver sees. The beam lookup, the scene and the render are cached; exposure only redoes the tone map.
   function drawDrive(ui, cv, view) {
+    const gameLamp = ui.dvAnim && ui.dvAnim.gameMode && ui.dvAnim.gameLamp, dm = gameLamp ? gameLamp.scene.modeD : md(ui), beamG = gameLamp ? gameLamp.G : ui.spec && ui.spec.G;
     const box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d'), rd = roadModel(ui), o = dvOpts(ui), rv = rvOpts(ui);
     driveTools(ui, cv);
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.fillStyle = '#05060a'; ctx.fillRect(0, 0, box.w, box.h);
     const cap = document.getElementById('right-caption'), cb = document.getElementById('colorbar'); cb.innerHTML = '';
     cap.textContent = 'Drive · what the driver sees · ' + RF.Drive.scenes[o.scene].label.toLowerCase() + ' · ' + (rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' m $1') + ' bend') + (o.wet ? ' · wet' : ' · dry');
     if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The drive view appears when the trace has been judged.', 14, 80); return; }
-    const road = rd.mdl.road, mirrored = md(ui).traffic === 'LHT', key = JSON.stringify([rd.laneDrive, o.scene, o.wet, o.wetSheen, o.onMode, o.people, o.animals, o.signs, o.oncoming && [o.onDist, o.onKcd], o.preceding && o.preDist, o.RL, o.ambient, o.smooth, o.res, o.fov, rv.shape]);
+    const road = rd.mdl.road, mirrored = dm.traffic === 'LHT', key = JSON.stringify([rd.laneDrive, o.scene, o.wet, o.wetSheen, o.onMode, o.onMode === 'high-dip' && o.seed, o.people, o.animals, o.signs, o.oncoming && [o.onDist, o.onKcd], o.preceding && o.preDist, o.RL, o.ambient, o.smooth, o.res, o.fov, rv.shape]);
     if (!rd.drive || rd.drive.key !== key) {
       const t0 = performance.now(), sm = DV_SMOOTH[o.smooth] || DV_SMOOTH.smooth, lut = RF.Drive.lutFrom(rd.mkI(sm[0], sm[1], sm[2])), sp = parseShape(rv.shape), A = sp ? RF.Road.arc(sp.R, sp.dir) : null;
-      const scene = RF.Drive.buildScene(o.scene, { Lw: rd.laneDrive, A, us: !/^ece/.test(md(ui).preset || ''), seed: 7 }, { people: o.people, animals: o.animals, signs: o.signs, oncoming: o.oncoming ? { dist: o.onDist, kcd: o.onKcd } : null, preceding: o.preceding ? { dist: o.preDist } : null });
-      if (o.onMode !== 'manual') RF.Drive.Headlamp.apply(scene.objects, { mode: o.onMode, kcd: o.onKcd, lut, conv: (ui.spec.G && ui.spec.G.conv) || md(ui).conv || 'A' });
+      const scene = RF.Drive.buildScene(o.scene, { Lw: rd.laneDrive, A, us: !/^ece/.test(dm.preset || ''), seed: 7 }, { people: o.people, animals: o.animals, signs: o.signs, oncoming: o.oncoming ? { dist: o.onDist, kcd: o.onKcd } : null, preceding: o.preceding ? { dist: o.preDist } : null });
+      if (o.onMode !== 'manual') RF.Drive.Headlamp.apply(scene.objects, { mode: o.onMode, kcd: o.onKcd, seed: o.seed, lut, conv: (beamG && beamG.conv) || dm.conv || 'A' });
       const W = o.res, H = Math.round(W * 9 / 16);
-      const res = RF.Drive.render({ w: W, h: H, hfov: o.fov, eye: [-2.0, 0.37, 1.2], lamps: rd.mdl.lamps, lut, conv: (ui.spec.G && ui.spec.G.conv) || md(ui).conv || 'A', arc: A, lane: rd.laneDrive, scene, look: { wet: o.wet, wetSheen: o.wetSheen, RL: o.RL / 1000, ambient: o.ambient } });
+      const res = RF.Drive.render({ w: W, h: H, hfov: o.fov, eye: [-2.0, 0.37, 1.2], lamps: rd.mdl.lamps, lut, conv: (beamG && beamG.conv) || dm.conv || 'A', arc: A, lane: rd.laneDrive, scene, look: { wet: o.wet, wetSheen: o.wetSheen, RL: o.RL / 1000, ambient: o.ambient } });
       rd.drive = { key, res, sources: RF.Drive.glareSources(scene.objects), ms: performance.now() - t0, tmKey: '' };
     }
     const D = rd.drive, tmKey = JSON.stringify([o.expMode, o.ev, o.glare]);
@@ -949,9 +951,9 @@
     if (mirrored) { ctx.save(); ctx.translate(ox + W * sc, oy); ctx.scale(-sc, sc); ctx.drawImage(D.img, 0, 0); ctx.restore(); } else ctx.drawImage(D.img, ox, oy, W * sc, H * sc);
     ui.driveShown = { res: D.res, tm: D.tm, ox, oy, sc, flip: mirrored };
     driveTools(ui, cv);      // the EV button shows the white level of THIS picture
-    if (RF.DriveAnim) RF.DriveAnim.sync(ui, cv, { rd, o, A: parseShape(rv.shape) ? RF.Road.arc(parseShape(rv.shape).R, parseShape(rv.shape).dir) : null, mirrored, us: !/^ece/.test(md(ui).preset || ''), conv: (ui.spec.G && ui.spec.G.conv) || md(ui).conv || 'A', tm: D.tm, setDV: (u, k, v, quiet) => { if (quiet) { dvOpts(u)[k] = v; try { localStorage.setItem('flux/driveView', JSON.stringify(u.dvOpts)); } catch (e) { /* ignore */ } } else setDV(u, k, v); },
+    if (RF.DriveAnim) RF.DriveAnim.sync(ui, cv, { rd, o, A: parseShape(rv.shape) ? RF.Road.arc(parseShape(rv.shape).R, parseShape(rv.shape).dir) : null, mirrored, us: !/^ece/.test(dm.preset || ''), conv: (beamG && beamG.conv) || dm.conv || 'A', tm: D.tm, setDV: (u, k, v, quiet) => { if (quiet) { dvOpts(u)[k] = v; try { localStorage.setItem('flux/driveView', JSON.stringify(u.dvOpts)); } catch (e) { /* ignore */ } } else setDV(u, k, v); },
       lut: () => { const sm = DV_SMOOTH[o.smooth] || DV_SMOOTH.smooth; if (!rd.animLut || rd.animLut.k !== o.smooth) rd.animLut = { k: o.smooth, lut: RF.Drive.lutFrom(rd.mkI(sm[0], sm[1], sm[2])) }; return rd.animLut.lut; },
-      groundKey: JSON.stringify([rd.laneDrive, !/^ece/.test(md(ui).preset || ''), o.scene, o.wet, o.wetSheen, o.RL, o.ambient, o.smooth, o.fov, rv.shape, mirrored]), toolbar: ui.driveBar });
+      groundKey: JSON.stringify([rd.laneDrive, !/^ece/.test(dm.preset || ''), o.scene, o.wet, o.wetSheen, o.RL, o.ambient, o.smooth, o.fov, rv.shape, mirrored]), toolbar: ui.driveBar });
     cb.append(el('div', { class: 'cb-labels', title: 'Fixed: EV 0 puts 10 cd/m² at display white and each stop doubles it, so two designs at the same EV are comparable. Auto: the geometric mean of the lit pixels goes to mid grey (plus the EV offset). Hover the picture for the luminance under the pointer. Rendered in ' + Math.round(D.ms) + ' ms: ' + road.mountH.toFixed(2) + ' m lamps, ' + (road.two ? 'two' : 'one') + '.' }, el('span', {}, o.expMode + ' exposure · display white = ' + fmtL(D.tm.white) + ' cd/m²')));
   }
   const driveReadout = (ui) => ui.driveShown ? 'Hover the picture for the luminance (cd/m²), distance and material under the pointer.' : '';

@@ -673,3 +673,12 @@ figure.map > .drive-below:has(> .drive-game:not([hidden])) { flex-shrink: 1; max
   .right:has(.canvas-wrap.drive) { grid-template-rows: auto 10px auto !important; align-content: start; }
   .pair:has(.canvas-wrap.drive) { grid-template-rows: auto !important; }
 }
+
+/* Recovery stays above the workspace on phones and desktop. */
+.recovery-banner { padding: 8px 12px; background: #443b23; color: #fff1ca; position: relative; z-index: 60; }
+.recovery-banner[hidden] { display: none; }
+
+.first-guide { position: fixed; top: 65px; right: 12px; width: min(320px, calc(100vw - 24px)); padding: 14px; background: #172631; color: #deedf4; border: 1px solid #5c8192; border-radius: 8px; z-index: 55; box-shadow: 0 6px 24px #0008; font-size: 13px; }
+.first-guide ol { padding-left: 20px; }
+.first-guide li { margin: 8px 0; }
+.first-guide[hidden] { display: none; }

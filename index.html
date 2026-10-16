@@ -8,6 +8,7 @@
 </head>
 <body>
 <noscript><div class="boot-error">This tool needs JavaScript.</div></noscript>
+<div id="safe-banner" class="recovery-banner" role="status" hidden>The last load didn’t finish: started safely · <button id="safe-reset">Restore defaults</button> <button id="safe-retry">Try again</button></div>
 <div id="boot-error" class="boot-error" hidden></div>
 
 <!-- Icons: Lucide (lucide.dev), ISC License, © Lucide Icons and Contributors — inlined, unmodified paths. -->
@@ -18,6 +19,8 @@
     <button id="btn-stop" class="text stop" hidden title="Stop the running solve (the current design is kept)">Stop</button>
     <button id="btn-undo" class="icon" disabled title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg></button>
     <button id="btn-redo" class="icon" disabled title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/></svg></button>
+    <button id="btn-help" class="icon" aria-label="Help" title="Getting started">?</button>
+    <button id="btn-trace" class="text" title="Trace the saved optics without solving">Trace</button>
     <button id="btn-generate-top" class="primary" title="Re-solve the reflector for the painted target and re-trace">Rebuild</button>
     <button id="btn-snapshot" class="text" title="Save a snapshot in this browser (separate from autosave)">Save</button>
     <button id="btn-restore" class="text">Restore</button>
@@ -27,6 +30,11 @@
   <div id="progress-strip" class="progress-strip" aria-live="polite"><span id="progress-text">—</span></div>
 </header>
 
+<aside id="first-guide" class="first-guide" aria-label="Getting started" hidden>
+  <strong>A lamp in four steps</strong>
+  <ol><li>Load a starter from Presets in Settings, or paint a beam and press Rebuild.</li><li>Open Spec to check where your light goes and whether it meets the limits.</li><li>In Result, choose Drive to see the road through your lamp.</li><li>Press Game in Drive to try braking for things ahead.</li></ol>
+  <button id="guide-close">Got it</button>
+</aside>
 <div class="app">
 <div class="work-col">
 <nav class="pane-tabs" id="pane-tabs" aria-label="Panes"><button data-tab="scene">Scene</button><button data-tab="editor">Editor</button><button data-tab="result">Result</button><button data-tab="optics">Optics</button></nav>
@@ -115,6 +123,8 @@
     </nav>
     <select id="preset-select" aria-label="Scene preset">
       <option value="">Presets…</option>
+      <option value="starter-low">Starter low beam (saved optics)</option>
+      <option value="starter-high">Starter high beam (saved optics)</option>
       <option value="headlamp">Headlamp beam (Mode A)</option>
       <option value="spec-box">Spec: low beam, reflector box 105 × 55</option>
       <option value="spec-slim">Spec: low beam, slim reflector 120 × 35</option>
@@ -182,6 +192,7 @@
 <script src="js/history.js"></script>
 <script src="js/compare-ui.js"></script>
 <script src="js/manufacturability-ui.js"></script>
+<script src="js/starter-lamps.js"></script>
 <script src="js/ui.js"></script>
 <script>
   // If any script failed to load (e.g. a missing file), say so instead of showing a dead page.

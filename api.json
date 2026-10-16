@@ -1,8 +1,8 @@
 {
  "app": "FLUX reflector sketchpad",
  "generatedBy": "node tools/flux.js manifest",
- "commit": "6d2e1ce",
- "date": "2026-10-15",
+ "commit": "ecf6d3e",
+ "date": "2026-10-16",
  "docs": {
   "cli": "tools/FLUX-CLI.md",
   "solverApi": "SOLVER_API.md",
@@ -8211,6 +8211,7 @@
   "examples/sealed-beam-v2-7in-high-h4.json",
   "examples/sealed-beam-v2-7in-high-sealed.json",
   "examples/sealed-beam-v2-7in-low-h4.json",
-  "examples/sealed-beam-v2-7in-low-sealed.json"
+  "examples/sealed-beam-v2-7in-low-sealed.json",
+  "examples/starter-low.json"
  ]
 }
