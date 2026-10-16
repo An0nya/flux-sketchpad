@@ -485,7 +485,8 @@
         for (const a of ch.actors) {
           const id = k + ':' + a.id, tau = tauOf ? tauOf(id, base + a.s0 - dist) : 0, ps = actorPose(a, tau), rel = base + ps.s - dist; if (rel < -6 || rel > CULL) continue;
           const n0 = K.O.length, attention=deerBehaviour&&a.kind==='deer'?D.Models.deerAttention((src.traffic?.seed||0)+':'+id,tauOf?tauOf('@'+id):-1):null;
-          if(attention){ps.s=a.s0;ps.off=a.off0;ps.gait=0;ps.motion=D.Models.locomotion('deer',0,0,false);}
+          // Behaviour on: the walk runs as it does with behaviour off until the bolt; the bolt starts from where the deer is then (walk clock frozen at bolt onset), so a deer that has stepped onto the carriageway bounds off it.
+          if(attention&&attention.state==='bolt')Object.assign(ps,actorPose(a,Math.max(0,tau-(attention.elapsed-attention.bolt))));
           if (attention && attention.state==='bolt') { const d=Math.max(0,attention.elapsed-attention.bolt)*3.8;ps.off+=a.side*d;ps.motion=D.Models.locomotion('deer',d,3.8,true,'bound'); }
           if (a.kind === 'deer') K.deer(rel, ps.off, { face: (a.side > 0 ? 1 : -1)*(attention?.state==='bolt'?-1:1), gait: ps.gait, motion:ps.motion, attention }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait, motion:ps.motion });
           for (let i = n0; i < K.O.length; i++) out.push(move(Object.assign({}, K.O[i]), K.O[i], K.O[i].x, A));
