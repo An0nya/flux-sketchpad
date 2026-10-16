@@ -1,5 +1,6 @@
 /* Shared assertions: standalone Playwright test and the owner's existing runner execute the same page code. */
-window.qol1Checks = async function (mode, expectedPort) {
+if (typeof window === 'undefined') console.log('[SKIP] QOL1-checks.js is a page-side helper; run QOL1-qol.js for the page suite.');
+else window.qol1Checks = async function (mode, expectedPort) {
   const checks = [], ui = RF.UI, wait = async (fn, ms = 30000) => { const t = performance.now(); while (!fn()) { if (performance.now() - t > ms) throw new Error('Timed out: ' + fn); await new Promise(r => setTimeout(r, 40)); } };
   const ok = (name, cond, detail) => { checks.push({ name, pass: !!cond, detail }); console.log((cond ? '[PASS] ' : '[FAIL] ') + 'QOL1 ' + name + (detail ? ' — ' + JSON.stringify(detail) : '')); };
   ok('page identity', RF.UI && location.port === String(expectedPort), { port: location.port });
