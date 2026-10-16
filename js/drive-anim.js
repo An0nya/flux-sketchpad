@@ -1122,17 +1122,16 @@ void main() {
     speedLabel(V.ui);
     if (V.tileLab && V.src.tiles) { const tile = roadTile(V.src.tiles.seed, Math.floor(dist / TILE_LEN)); V.tileLab.textContent = tile.kind + (['intersection', 't-junction'].includes(tile.kind) ? ' · ' + signalState(tile, t).lit : ''); }
   }
-  function topButtons(ui, tb, setDV) {                         // 'animate' and 'popout' go into the existing toolbar
+  function topButtons(ui, tb, setDV) {
     if (ui.driveExtras.querySelector('[data-anim="animate"]')) return;
-    const a = E('button', { type: 'button', class: 'toggle', 'data-anim': 'animate', title: 'Animate: drive down the road. Off = the still picture.' }, 'animate'), p = E('button', { type: 'button', class: 'toggle', 'data-anim': 'popout', title: 'Show the drive view large, over the whole page except the sidebar (Esc closes)' }, '⤢ large');
+    const a = E('button', { type: 'button', class: 'toggle', 'data-anim': 'animate', title: 'Animate: drive down the road. Off = the still picture.' }, 'animate');
     a.addEventListener('click', () => { const st = S(ui); st.view = st.view === 'anim' ? 'still' : 'anim'; st.playing = true; ui.redrawSpec(); });
-    p.addEventListener('click', () => { S(ui).popout ? closePop(ui) : openPop(ui); });
     const tiles = E('button', { type: 'button', class: 'toggle', 'data-anim': 'tiles', title: 'Seeded route: straights, bends, intersections, T-junctions and lit urban sections. Off = the original constant road. Animation only; traces at 640 × 360.' }, 'tiles');
     tiles.addEventListener('click', () => setDV(ui, 'tiles', !info().o.tiles));
     const game = E('button', { type: 'button', class: 'toggle', 'data-game': 'toggle', 'aria-pressed': 'false', title: 'Reach > uniformity: five hazards, hold Space or Brake. Game scoring, not legal advice.' }, 'Game');
     game.addEventListener('click', () => toggleGame(ui));
     const primary = tb.querySelector('.drive-primary'); primary.querySelector('.drive-speed') ? primary.querySelector('.drive-speed').after(game) : primary.querySelector('[data-dv=scene]').after(game);
-    ui.driveExtras.append(a, p, tiles);
+    ui.driveExtras.append(a, tiles);
   }
   function speedLabel(ui) {
     if (!ui.driveBar) return;
@@ -1144,7 +1143,7 @@ void main() {
   function labels(ui) {
     const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
     for (const b of q('[data-anim="animate"]')) { b.setAttribute('aria-pressed', String(st.view === 'anim')); b.disabled = !sup; b.title = sup ? 'Animate: drive down the road. Off = the still picture.' : 'Animation covers the open road, the forest road and the city street; enable tiles to animate a route from the intersection scene'; }
-    for (const b of q('[data-anim="popout"]')) { b.setAttribute('aria-pressed', String(st.popout)); b.disabled = !sup; b.textContent = st.popout ? '✕ close' : '⤢ large'; }
+    for (const b of q('[data-anim="popout"]')) { const label = st.popout ? 'Close large view' : 'Large view'; b.setAttribute('aria-pressed', String(st.popout)); b.setAttribute('aria-label', label); b.title = label; b.disabled = !sup; b.textContent = st.popout ? '⤡' : '⤢'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
     for (const [name, key] of [['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key]));
@@ -1319,12 +1318,20 @@ void main() {
 
   // ---------------------------------------------------------------- popout
   function openPop(ui) {
-    const st = S(ui), host = document.querySelector('.work-col'); if (!host || st.popout) return;
-    const pop = E('div', { class: 'drive-popout', role: 'dialog', 'aria-label': 'Drive view, large' }), head = E('div', { class: 'dp-head' }, E('strong', {}, 'Drive view')), stage = E('div', { class: 'dp-stage' });
+    const st = S(ui); if (st.popout) return;
+    const pop = E('div', { class: 'drive-popout', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Drive view, large' }), head = E('div', { class: 'dp-head' }, E('strong', {}, 'Drive view')), stage = E('div', { class: 'dp-stage' });
     const close = E('button', { type: 'button', class: 'dp-close', title: 'Close (Esc)' }, '✕ Close'); close.addEventListener('click', () => closePop(ui)); head.append(E('span', { class: 'dp-hint' }, 'Esc closes'), close);
-    pop.append(head, stage); host.append(pop); V.pop = pop; V.popStage = stage; V.home = V.canvas ? V.canvas.parentElement : null;
+    V.popScroll = { x: root.scrollX, y: root.scrollY, focus: document.activeElement, style: document.body.getAttribute('style') };
+    pop.append(head, stage); document.body.append(pop); V.pop = pop; V.popStage = stage;
+    Object.assign(document.body.style, { position: 'fixed', top: -V.popScroll.y + 'px', left: -V.popScroll.x + 'px', width: '100%', overflow: 'hidden' });
     st.popout = true; if (st.view !== 'anim') st.playing = false;          // opened from the still view: the same picture, large, paused
-    V.onKey = (e) => { if (e.key === 'Escape' && S(ui).popout) { e.preventDefault(); e.stopPropagation(); closePop(ui); } };
+    V.onKey = (e) => {
+      if (e.key === 'Escape' && S(ui).popout) { e.preventDefault(); e.stopPropagation(); closePop(ui); }
+      if (e.key === 'Tab' && S(ui).popout) {
+        const items = [...pop.querySelectorAll('button,input,select,summary,[tabindex]')].filter(b => !b.disabled && b.checkVisibility() && b.tabIndex >= 0), i = items.indexOf(document.activeElement);
+        if (e.shiftKey ? i <= 0 : i < 0 || i === items.length - 1) { e.preventDefault(); items[e.shiftKey ? items.length - 1 : 0].focus(); }
+      }
+    };
     document.addEventListener('keydown', V.onKey, true);
     if (root.ResizeObserver) { V.ro = new ResizeObserver(() => { if (S(ui).popout) { ui.redrawSpec(); } }); V.ro.observe(stage); }
     mount(ui); close.focus(); ui.redrawSpec();
@@ -1332,9 +1339,13 @@ void main() {
   function closePop(ui) {
     const st = S(ui); if (!st.popout) return; st.popout = false; V.cardPop = false;
     document.removeEventListener('keydown', V.onKey, true); if (V.ro) { V.ro.disconnect(); V.ro = null; }
-    if (V.pop) { V.pop.remove(); V.pop = null; V.popStage = null; }
+    const pop = V.pop, saved = V.popScroll; V.pop = null; V.popStage = null;
     if (st.view !== 'anim') st.playing = true;
-    mount(ui); const b = document.querySelector('[data-anim="popout"]'); if (b) b.focus(); ui.redrawSpec();
+    mount(ui); if (pop) pop.remove();
+    if (saved) { if (saved.style === null) document.body.removeAttribute('style'); else document.body.setAttribute('style', saved.style); }
+    ui.redrawSpec();
+    const b = saved && saved.focus && saved.focus.isConnected && saved.focus !== document.body ? saved.focus : document.querySelector('[data-anim="popout"]'); if (b) b.focus({ preventScroll: true });
+    if (saved) root.scrollTo({ left: saved.x, top: saved.y, behavior: 'instant' }); V.popScroll = null;
   }
   // More and debug are ordinary page content on phones; desktop keeps the overlay.
   const mobileControls = () => root.matchMedia('(max-width: 760px), (pointer: coarse)').matches;
@@ -1344,12 +1355,12 @@ void main() {
     const mobile = mobileControls(), more = ui.driveBar.querySelector('.drive-more');
     if (!V.below) V.below = E('div', { class: 'drive-below' });
     if (host.nextElementSibling !== V.below) host.after(V.below);
-    V.below.hidden = !mobile || (!st.popout && ui.display !== 'drive');
+    V.below.hidden = !st.popout && ui.display !== 'drive';
     const extrasHost = mobile ? V.below : more;
     if (ui.driveExtras.parentElement !== extrasHost) extrasHost.append(ui.driveExtras);
     ui.driveExtras.hidden = !more.open;
     if (V.perfLab && V.perfLab.parentElement !== (mobile ? V.below : host)) (mobile ? V.below : host).append(V.perfLab);
-    if (V.gameBar && V.gameBar.parentElement !== host) host.append(V.gameBar);
+    if (V.gameBar && V.gameBar.parentElement !== V.below) V.below.prepend(V.gameBar);
     if (V.fpsLab && V.fpsLab.parentElement !== host) host.append(V.fpsLab);
     const h = ui.driveBar.getBoundingClientRect().height;
     host.style.setProperty('--drive-toolbar-bottom', (h + 8) + 'px');
@@ -1359,7 +1370,7 @@ void main() {
   function mount(ui) {
     const st = S(ui), host = st.popout && V.popStage ? V.popStage : (V.cv ? V.cv.parentElement : null); if (!host) return;
     host.classList.toggle('drive-fit', info().o.fitControls !== false);
-    for (const e of [V.canvas, ui.driveBar, V.notice]) if (e && e.parentElement !== host) host.append(e);
+    for (const e of [V.canvas, ui.driveBar, V.notice, document.querySelector('[data-reset=heat]')]) if (e && e.parentElement !== host) host.append(e);
     const primary = ui.driveBar.querySelector('.drive-primary');
     for (const selector of ['[data-dv=scene]', '.drive-speed', '[data-anim=play]', '[data-game=toggle]', '[data-dv=glare]', '.drive-more']) {
       const e = primary.querySelector(selector); if (e && primary.lastElementChild !== e) primary.append(e);
