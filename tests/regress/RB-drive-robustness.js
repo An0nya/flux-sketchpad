@@ -23,6 +23,8 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
     });
     await page.goto('http://localhost:' + port + '/index.html');
     await page.waitForFunction(() => window.RF && RF.UI && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
+    // QOL1's first-visit 'Getting started' card is fixed over the phone tabs and would intercept clicks; dismiss it as a first-time user would.
+    await page.evaluate(() => { if (!document.getElementById('first-guide').hidden) document.getElementById('guide-close').click(); });
     ok('RB identifies RF.UI and exact requested port', await page.evaluate((p) => !!RF.UI && location.port === String(p), port));
     await page.waitForFunction(() => !RF.UI.solving && RF.UI.run && RF.UI.run.ctx.done, null, { timeout: 180000 });
     // Real page-loop fallback: destroy the device in the call that starts a batch, avoiding a timing race with the tester.
