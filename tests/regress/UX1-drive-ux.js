@@ -21,6 +21,8 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
       await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvOpts, { mt: false, fitControls: true, scene: 'road', speed: 50, tiles: false, oncoming: false, preceding: false, trafficDensity: 0, trafficLogic: false }); u.redrawSpec(); });
     };
     await page.evaluate(() => localStorage.removeItem('flux/driveMore')); await ready();
+    // QOL1's first-visit 'Getting started' card is fixed over the drive bar at 360 px and would intercept clicks; dismiss it as a first-time user would.
+    await page.evaluate(() => { if (!document.getElementById('first-guide').hidden) document.getElementById('guide-close').click(); });
     const more = page.locator('.drive-more');
     const advanced = async (selector) => { await more.evaluate(e => e.open = true); await page.locator(selector).click(); await more.evaluate(e => e.open = false); };
     ok('UX1 More starts collapsed', !await more.evaluate((e) => e.open));
