@@ -12,7 +12,8 @@
     const controls=[...primary.querySelectorAll('button,input,select,summary')].filter(e=>!e.closest('.drive-extras')&&visible(e));
     const collisions=[];
     for(let i=0;i<controls.length;i++)for(let j=i+1;j<controls.length;j++)if(overlaps(rect(controls[i]),rect(controls[j])))collisions.push([controls[i].outerHTML,controls[j].outerHTML]);
-    const overlays=[u.driveExtras, ...document.querySelectorAll('.drive-perf,.drive-fps,.drive-game,.drive-notice,.drive-readout'),host.querySelector('.reset-view')].filter(visible);
+    const guide=document.getElementById('first-guide'),guideOpen=!document.querySelector('.drive-popout')?[guide]:[];   // GS: first-visit guide (skipped under the full-viewport popout)
+    const overlays=[...guideOpen,u.driveExtras, ...document.querySelectorAll('.drive-perf,.drive-fps,.drive-game,.drive-notice,.drive-readout'),host.querySelector('.reset-view')].filter(visible);
     for(const e of overlays)if(overlaps(bounds,shown(e)))collisions.push(['toolbar',e.className]);
     const clipped=controls.filter(e=>{const r=rect(e);return r.left<bounds.left-1||r.right>bounds.right+1||r.top<bounds.top-1||r.bottom>bounds.bottom+1;}).map(e=>e.outerHTML);
     for(const e of controls)for(let parent=e.parentElement;parent&&parent!==document.body;parent=parent.parentElement){
