@@ -275,8 +275,8 @@
     for (const car of cars) {
       const q = A ? A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }, yaw = Math.atan2(q.t[1], q.t[0]) + (car.yaw || 0), c = car.yaw ? Math.cos(yaw) : q.t[0], sn = car.yaw ? Math.sin(yaw) : q.t[1];
       for (const ob of src.traffic.models[car.kind]) {
-        const n = Object.assign({}, ob, { x: q.p[0] + ob.x * c - ob.y * sn, y: q.p[1] + ob.x * sn + ob.y * c, bs: undefined, traffic: car.id });
-        if (ob.detail) n.detail = {...ob.detail,x:q.p[0]+ob.detail.x*c-ob.detail.y*sn,y:q.p[1]+ob.detail.x*sn+ob.detail.y*c,yaw:ob.detail.yaw+yaw};
+        const n = Object.assign({}, ob, { x: q.p[0] + ob.x * c - ob.y * sn, y: q.p[1] + ob.x * sn + ob.y * c, bs: undefined, traffic: car.id, modelId:car.id });
+        if (ob.detail) n.detail = {...ob.detail,x:q.p[0]+ob.detail.x*c-ob.detail.y*sn,y:q.p[1]+ob.detail.x*sn+ob.detail.y*c,yaw:ob.detail.yaw+yaw,id:car.id};
         if (ob.k === 'box') n.yaw = (ob.yaw || 0) + yaw;
         if (ob.k === 'disc') { n.nx = ob.nx * c - ob.ny * sn; n.ny = ob.nx * sn + ob.ny * c; }
         out.push(n);
@@ -285,7 +285,7 @@
     if (p && src.traffic && src.traffic.onMode !== 'manual') D.Headlamp.apply(out, { mode: src.traffic.onMode, kcd: src.traffic.onKcd, lut: p.lut, conv: p.conv });
     return out;
   }
-  const placedObjects = (p, dist, t, tauOf) => D.Models.actors(place(p.src, dist, p.A, tauOf, dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p)),p.detailedModels);
+  const placedObjects = (p, dist, t, tauOf) => D.Models.actors(place(p.src, dist, p.A, tauOf, p.detailedModels?null:dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p)),p.detailedModels);
   // Same eye illuminance as Road.model.lux: far-field intensity / distance² × incidence cosine. Driver faces back along their lane, eye 1.1 m up.
   function eyeLux(p, car) {
     const q = p.A ? p.A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }; let E = 0;
@@ -366,7 +366,7 @@
     const src = p.src, cfg = src.tiles, lane = p.lane, A = tileRoute(cfg.seed, dist, !!cfg.groundCache), edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
     const pp = Object.assign({}, p, { A });
     // Street lights can reach foliage outside our beam: keep it for actual per-point shading.
-    const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' ? dimFoliage(pp) : null).concat(trafficObjects(src, trafficCars(src, dist, t), A, pp));
+    const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' && !p.detailedModels ? dimFoliage(pp) : null).concat(trafficObjects(src, trafficCars(src, dist, t), A, pp));
     for (const tile of A.tiles) {
       const mid = tile.s0 + 100 - dist, junction = tile.kind === 'intersection' || tile.kind === 't-junction';
       if (mid < -110 || mid > CULL + 110) continue;
@@ -444,7 +444,7 @@
   // a pose of a walker or deer `tau` s after it started moving: where it is along the road (s) and across it (off), and its leg swing
   function actorPose(a, tau) {
     const run = a.mode === 'graze' ? 0 : Math.max(0, tau - (a.delay || 0)), d = Math.min(a.spd * run, a.len), moving = run > 0 && d < a.len;
-    return { s: a.s0 + a.ds * d, off: a.off0 + a.doff * d, gait: moving ? (a.kind === 'deer' ? 0.14 : 0.11) * Math.sin(2 * Math.PI * (a.kind === 'deer' ? 1.4 : 1.8) * run) : 0 };
+    return { s: a.s0 + a.ds * d, off: a.off0 + a.doff * d, motion:D.Models.locomotion(a.kind,d,a.spd,moving,a.gaitState), gait: moving ? (a.kind === 'deer' ? 0.14 : 0.11) * Math.sin(2 * Math.PI * (a.kind === 'deer' ? 1.4 : 1.8) * run) : 0 };
   }
   // the objects as the car at distance `dist` sees them (car frame). Every object appears once, at s ∈ [dist − 6, dist − 6 + PERIOD); A: RF.Road.arc or null
   // ob copied to n, moved to `rel` m ahead of the car (on a bend: along the lane, turned with the tangent)
@@ -470,7 +470,7 @@
         for (const a of ch.actors) {
           const id = k + ':' + a.id, tau = tauOf ? tauOf(id, base + a.s0 - dist) : 0, ps = actorPose(a, tau), rel = base + ps.s - dist; if (rel < -6 || rel > CULL) continue;
           const n0 = K.O.length;
-          if (a.kind === 'deer') K.deer(rel, ps.off, { face: a.side > 0 ? 1 : -1, gait: ps.gait, bound: a.spd>1.3 }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait });
+          if (a.kind === 'deer') K.deer(rel, ps.off, { face: a.side > 0 ? 1 : -1, gait: ps.gait, motion:ps.motion }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait, motion:ps.motion });
           for (let i = n0; i < K.O.length; i++) out.push(move(Object.assign({}, K.O[i]), K.O[i], K.O[i].x, A));
         }
       }
@@ -858,7 +858,7 @@ void main() {
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, detailedModels: !!o.detailedModels };
+    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || o.tiles || (o.wet && o.wetSheen) ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1096,7 +1096,7 @@ void main() {
     primary.append(bar.querySelector('[data-anim=play]'));
     btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off restores the previous traffic and gap guard.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
-    btn('detailed-models', 'Prototype: articulated deer and people; GPU also adds car bodies, tree detail and facade panels.', () => setDV(ui, 'detailedModels', !info().o.detailedModels), 'detailed models');
+    btn('detailed-models', 'Detailed deer, people and sphere-cluster trees on CPU/GPU. Mesh cars, far tree cards and facade styles are GPU-only; CPU keeps primitive cars and facades. Play scores follow the visible models.', () => setDV(ui, 'detailedModels', !info().o.detailedModels), 'detailed models');
     btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => { if (V.gpuFailure && info().o.gpuRenderer) { V.gpuFailure = ''; V.gpuTries = 0; say(''); labels(ui); ui.redrawSpec(); } else setDV(ui, 'gpuRenderer', !info().o.gpuRenderer); }, 'GPU drive renderer');      // failed while ON: a click retries the GPU
     btn('fps-counter', 'Small frame-rate badge; no sampled trace profiling.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'FPS');
     btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
@@ -1209,8 +1209,8 @@ void main() {
     const A = world.A, K = D.kit({ Lw: lane || V.p.lane, A: null, rand: () => 0.5 });
     for (const h of g.hazards) if (g.rules !== 'legacy' || !h.resolved) {
       const ps = RF.DriveGame.pose(g, h, g.t), first = K.O.length, rel = ps.s - g.x;
-      if (h.kind === 'deer') K.deer(rel, ps.off, { face: h.side > 0 ? 1 : -1, gait: ps.gait });
-      else K.person(rel, ps.off, h.noHiViz ? 'dark' : 'hivis', { dir: [h.ds, h.doff], gait: ps.gait });
+      if (h.kind === 'deer') K.deer(rel, ps.off, { face: h.side > 0 ? 1 : -1, gait: ps.gait, motion:ps.motion });
+      else K.person(rel, ps.off, h.noHiViz ? 'dark' : 'hivis', { dir: [h.ds, h.doff], gait: ps.gait, motion:ps.motion });
       for (const ob of K.O.slice(first)) { ob.gameHazard = h.id; world.objects.push(move(Object.assign({}, ob), ob, ob.x, A)); }
     }
     if(V.p && V.p.detailedModels)world.objects=D.Models.actors(world.objects,true);
@@ -1399,7 +1399,7 @@ void main() {
     V.gkey = ''; V.gpuFailure = String(why); say('GPU drive unavailable (' + V.gpuFailure.split('\n')[0].slice(0, 160) + '); using CPU renderer.'); if (V.bar) labels(V.ui);
   }
   function gpuCreate() {                                      // first build, and the rebuild after a context restore: a few tries, then the visible CPU fallback
-    try { V.three = threeModule.create(V.canvas, V.gl.gl, () => { if (V.ui) V.ui.redrawSpec(); }); V.gkey = ''; V.gpuTries = 0; killWorkers(); }
+    try { V.three = threeModule.create(V.canvas, V.gl.gl, () => { if(V.three && V.three.modelState().error)say('Detailed car assets unavailable; using primitive cars.'); if (V.ui) V.ui.redrawSpec(); }); V.gkey = ''; V.gpuTries = 0; killWorkers(); }
     catch (e) {
       if ((V.gpuTries = (V.gpuTries || 0) + 1) >= 3) { V.gpuTries = 0; gpuFallback(e.message || e); return; }
       clearTimeout(V.gpuRetry); V.gpuRetry = setTimeout(() => { V.gpuRetry = 0; if (V.ui && V.info && info().o.gpuRenderer && !V.three && !V.lost) V.ui.redrawSpec(); }, 250 * V.gpuTries);

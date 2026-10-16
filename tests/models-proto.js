@@ -4,7 +4,7 @@ function run(RF,ok){
  const K=D.kit({Lw:3.5,rand:()=>.5});K.person(10,0,'hivis',{gait:.11});K.deer(12,2,{gait:-.14});K.car(20,0);K.tree(40,8);
  ok('M1 off returns original list unchanged',M.actors(K.O,false)===K.O);
  const detailed=M.actors(K.O,true),sdfs=detailed.filter(o=>o.k==='sdf');
- ok('M1 only actors change on CPU; car/tree primitives stay',sdfs.length===2 && detailed.filter(o=>o.detailPart==='car').length===K.O.filter(o=>o.detailPart==='car').length && detailed.filter(o=>o.detailPart==='tree').length===4);
+ ok('M2 shared actors and analytic trees; primitive CPU cars stay',sdfs.length===2 && detailed.filter(o=>o.detailPart==='car').length===K.O.filter(o=>o.detailPart==='car').length && detailed.filter(o=>o.detailPart==='analytic-tree'&&o.k==='ell').length>=6);
  ok('M1 eyes remain analytic retroreflectors',detailed.filter(o=>o.mat==='eyeshine').length===2 && detailed.filter(o=>o.mat==='eyeshine').every(o=>o.sub));
  for(const kind of ['person','deer','tree']) {
   const ob=M.build(kind,{gait:.1,ptype:'hivis',yaw:.4,bound:true});D.boundOf(ob);
@@ -17,7 +17,7 @@ function run(RF,ok){
  const p0=M.build('person',{gait:0}),p1=M.build('person',{gait:.11}),d0=M.build('deer',{gait:.14}),d1=M.build('deer',{gait:.14,bound:true});
  ok('M1 joint angles alter walk and bound geometry',!p0.nodes.every((v,i)=>v===p1.nodes[i])&&!d0.nodes.every((v,i)=>v===d1.nodes[i]));
  // Compare raw default-off reference frames with the specified main base in a separate global context.
- const ctx=vm.createContext({console,performance});ctx.globalThis=ctx;for(const f of ['core','road','drive','drive-scenes','drive-anim'])vm.runInContext(cp.execFileSync('git',['show','3425a24:js/'+f+'.js'],{encoding:'utf8'}),ctx);
+ const ctx=vm.createContext({console,performance});ctx.globalThis=ctx;for(const f of ['core','road','drive','drive-scenes','drive-anim'])vm.runInContext(cp.execFileSync('git',['show','c5231d9:js/'+f+'.js'],{encoding:'utf8'}),ctx);
  const old=ctx.RF,hash=a=>crypto.createHash('sha256').update(Buffer.from(a.buffer,a.byteOffset,a.byteLength)).digest('hex');
  for(const scene of ['road','city','forest'])for(const wet of [false,true]) {
   const recipe=rf=>{const D=rf.Drive;return D.render({w:128,h:72,hfov:60,eye:[-2,.37,1.2],lamps:[[0,-.6,.65],[0,.6,.65]],lut:D.lutFrom((h,v)=>Math.abs(h)<20&&v<1?10000:0),ss:1,look:{wet,wetSheen:wet,ambient:.1,RL:.2},lane:3.5,scene:D.buildScene(scene,{Lw:3.5,seed:7},{people:true,animals:true,veg:true})});};

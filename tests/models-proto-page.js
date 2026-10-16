@@ -10,7 +10,7 @@
  function kit(kind){const K=RF.Drive.kit({Lw:3.5,rand:()=>.5});
   if(kind==='actors'){K.person(8,-1,'hivis',{gait:.085,dir:[0,1]});K.person(8,1.5,'light',{gait:-.08,dir:[1,0]});K.deer(9,0,{gait:.1});}
   if(kind==='cars'){K.car(10,-3,{face:1,turn:.4,lamps:'tail'});K.car(14,1,{face:-1,turn:.2,lamps:'head',kcd:.5});K.car(17,4,{face:1,turn:-.2,lamps:'tail'});}
-  if(kind==='trees'){K.tree(12,-5,{h:8});K.tree(25,10,{h:9});K.tree(80,12,{h:10});}
+  if(kind==='trees'){K.tree(12,-5,{h:8});K.tree(25,10,{h:9});K.tree(180,12,{h:10});}
   return K.O;
  }
  let zeroBeam;
@@ -49,7 +49,7 @@
   u.dvOpts.detailedModels=false;u.redrawSpec();document.querySelector('[data-anim=detailed-models]').click();ok('M1 toggle persists',JSON.parse(localStorage.getItem('flux/driveView')).detailedModels===true);
   draw(kit('cars'),true);for(let i=0;i<100&&!a().V.three.modelState().ready;i++){await sleep(50);draw(kit('cars'),true);}const car=draw(kit('cars'),true).state;
   ok('M1 all three CC0 bodies loaded',car.ready&&!car.error&&car.cars===3&&car.triangles===6594,car);
-  const tree=draw(kit('trees'),true).state;ok('M1 near SDF and far relightable tree card',tree.nearTrees===2&&tree.farTrees===1,tree);
+  const tree=draw(kit('trees'),true).state;ok('M2 near analytic trees and far relightable card',tree.nearTrees===2&&tree.farTrees===1,tree);
   return {pass:checks.every(c=>c.pass),checks,cases,thresholds};
  }
  async function bench(port){
