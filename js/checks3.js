@@ -27,6 +27,7 @@
   // context so conditional controls are visible and meaningful
   function context(store, id) {
     const sc = store.scene, A = C.actions, set = (k, v) => C.setControl(store, k, v);
+    if (id.startsWith('src.arc.')) { RF.SourcePresets.apply(sc.source, 'd2r'); sc.source.arc.tube = true; }
     if (id === 'src.sigma') set('src.dist', 'gaussian');
     if (id === 'src.az') set('src.el', 60);                    // azimuth is degenerate at el = 90°
     if (id === 'bounces') sc.modeC.preset.kind = 'cpc';         // multiple bounces matter in a CPC

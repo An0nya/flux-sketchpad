@@ -5,10 +5,10 @@
 // (f32 vs f64 moves a few rays near facet edges), first surface per ray almost always identical, Spec rows within noise.
 const http = require('http'), fs = require('fs'), path = require('path');
 const { FILES } = require('./load.js');
-const pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright');
+const pw = require(process.env.PLAYWRIGHT || require('child_process').execSync('npm root -g').toString().trim() + '/playwright');
 const ROOT = path.join(__dirname, '..');
 const args = process.argv.slice(2), opt = (k) => (args.includes(k) ? args[args.indexOf(k) + 1] : null);
-const cases = (opt('--cases') || 'emission,deterministic,modeA,domeLed,gaussianDisc,filamentHB3,multiEmitter,lensShieldDish,specBox,speed').split(',');
+const cases = (opt('--cases') || 'emission,deterministic,modeA,domeLed,gaussianDisc,filamentHB3,hidArc,multiEmitter,lensShieldDish,specBox,speed').split(',');
 const SOLVERS = ['lab-fill-fix', 'lab-sqm', 'sonnet55-2026-09-28-dish-fit', 'opus55-2026-09-27-mosaic', 'lab-auto'];
 let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail ? '  — ' + detail : '')); if (!cond) fails++; };
 const pct = (x) => (100 * x).toFixed(x < 1e-3 ? 5 : 3) + '%';
@@ -35,7 +35,7 @@ const server = http.createServer((q, r) => {
   for (const name of cases) {
     let r; try { r = await pg.evaluate((n) => GpuCompare.run(n), name); } catch (e) { ok(name + ' ran', false, String(e.message || e).slice(0, 300)); continue; }
     out[name] = r;
-    if (name === 'emission') { for (const [k, v] of Object.entries(r)) ok('emission ' + k + ': GPU rays = CPU rays (f32)', v.p999 < 2e-6 && v.over < 2e-4, 'direction error p50 ' + v.p50.toExponential(1) + ', p99.9 ' + v.p999.toExponential(1) + ', worst ' + v.worst.toExponential(1) + ' rad; > 1e-4 rad: ' + pct(v.over) + (k === 'dome' ? ' (a dome ray whose Fresnel draw sits on the threshold takes the other branch)' : '')); continue; }
+    if (name === 'emission') { for (const [k, v] of Object.entries(r)) ok('emission ' + k + ': GPU rays = CPU rays (f32)', v.p999 < (k.startsWith('hid-') ? 3e-5 : 2e-6) && v.over < (k.startsWith('hid-') ? 2e-3 : 2e-4) && (!k.startsWith('hid-') || (v.originP999 < 3e-4 && v.originOver < 2e-3)), 'direction error p50 ' + v.p50.toExponential(1) + ', p99.9 ' + v.p999.toExponential(1) + ', worst ' + v.worst.toExponential(1) + ' rad; > 1e-4 rad: ' + pct(v.over) + (k.startsWith('hid-') ? '; origin p99.9 ' + v.originP999.toExponential(2) + ' mm, worst ' + v.originWorst.toExponential(2) + ' mm' : '') + (k === 'dome' ? ' (a dome ray whose Fresnel draw sits on the threshold takes the other branch)' : '')); continue; }
     if (name === 'deterministic') { ok('GPU deterministic: one dispatch ≡ two chunks (integer sums)', r.oneShotVsChunked && r.rayK && r.emitted[0] === r.emitted[1]); continue; }
     if (name === 'speed') { for (const x of r.out) console.log('       speed ' + (x.N / 1e6).toFixed(2) + ' M rays: CPU ' + x.cpuMs.toFixed(0) + ' ms (' + x.cpuMraysPerS.toFixed(2) + ' M/s)  GPU ' + x.gpuMs.toFixed(0) + ' ms (' + x.gpuMraysPerS.toFixed(2) + ' M/s)  ×' + (x.cpuMs / x.gpuMs).toFixed(1)); continue; }
     if (name === 'specBox') {

@@ -239,7 +239,7 @@
     side.append(section('Problem', { open: true, key: 'problem', tag: 'source · target · envelope' },
       section('Light source', { open: true, key: 'source' },
         el('div', { id: 'source-preset' }),
-        ...rowsFor(ui, ['src.kind', 'src.shape', 'src.w', 'src.h', 'src.radius', 'src.length', 'src.dist', 'src.sigma', 'src.half', 'src.domeR', 'src.domeN', 'src.domeZ']),
+        ...rowsFor(ui, ['src.kind', 'src.shape', 'src.w', 'src.h', 'src.radius', 'src.length', 'src.arc.mount', 'src.arc.gap', 'src.arc.bow', 'src.arc.fwhm', 'src.arc.hot', 'src.arc.tipWidth', 'src.arc.tube', 'src.arc.tubeRadius', 'src.arc.wall', 'src.arc.tubeLength', 'src.arc.index', 'src.arc.stripes', 'src.arc.stripeRadius', 'src.arc.stripeWidth', 'src.arc.stripeAngle', 'src.dist', 'src.sigma', 'src.half', 'src.domeR', 'src.domeN', 'src.domeZ']),
         section('Advanced', { adv: true, key: 'source-adv' }, el('div', { class: 'note' }, 'Direction and position are also draggable in Optics (source dot, arrow tip), or in the Scene with Setup on.'), ...rowsFor(ui, ['src.az', 'src.el', 'src.roll', 'src.x', 'src.y', 'src.z', 'src.power'])),
         section('More emitters', { open: false, key: 'emitters', tag: 'multi-LED' },
           el('div', { class: 'note' }, 'Extra LEDs, each a copy of the source above (same die and dome) with its own position, aim and power. Rays are shared out by power. Solvers that design per emitter (TIR array) read them all; reflector solvers design for the first one.'),
@@ -364,9 +364,9 @@
     const box = document.getElementById('source-preset'); if (!box || !RF.SourcePresets) return;
     const SP = RF.SourcePresets, src = ui.store.scene.source, p = SP.PRESETS[src.preset];
     // grouped: datasheet parts, koef3's bench measurements, everything else
-    const grp = (q, id) => (q.halogen ? 'Halogen (UN R37)' : q.custom || id === 'sketch' ? 'Other' : id.startsWith('generic') ? 'Generic' : q.measured ? 'Measured by koef3 (BLF/TLF)' : 'From datasheets');
+    const grp = (q, id) => (q.hid ? 'HID (UN R99; shape model)' : q.halogen ? 'Halogen (UN R37)' : q.custom || id === 'sketch' ? 'Other' : id.startsWith('generic') ? 'Generic' : q.measured ? 'Measured by koef3 (BLF/TLF)' : 'From datasheets');
     const groups = {}; for (const [id, q] of Object.entries(SP.PRESETS)) (groups[grp(q, id)] = groups[grp(q, id)] || []).push(el('option', { value: id }, q.label.replace(/ · koef3$/, '')));
-    const sel = el('select', { 'aria-label': 'Emitter preset' }, el('option', { value: '' }, 'Custom (the fields below)'), ...['Generic', 'From datasheets', 'Measured by koef3 (BLF/TLF)', 'Halogen (UN R37)', 'Other'].filter((g) => groups[g]).map((g) => el('optgroup', { label: g }, ...groups[g])));
+    const sel = el('select', { 'aria-label': 'Emitter preset' }, el('option', { value: '' }, 'Custom (the fields below)'), ...['Generic', 'From datasheets', 'Measured by koef3 (BLF/TLF)', 'Halogen (UN R37)', 'HID (UN R99; shape model)', 'Other'].filter((g) => groups[g]).map((g) => el('optgroup', { label: g }, ...groups[g])));
     sel.value = p ? src.preset : '';
     sel.addEventListener('change', () => { if (!sel.value) { delete src.preset; renderSourcePreset(ui); return; } ui._histHint = 'Emitter: ' + SP.PRESETS[sel.value].label; C.actions.applySourcePreset(ui.store, sel.value); ui.afterChange(); renderSourcePreset(ui); });
     box.innerHTML = '';

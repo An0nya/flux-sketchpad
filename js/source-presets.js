@@ -291,6 +291,35 @@
     },
   };
 
+  // R99 Rev.3 (2014), Annex 1, sheets DxS/4–6 (pp.25–27), DxR/4–6 (pp.17–19).
+  // Manufacturer geometry: Philips MPDL/PS 1000-1, 1996-09-01, p.2. Its s is the FULL width
+  // at 20% peak (read the drawing), so a Gaussian has FWHM = s sqrt(ln2/ln5). This is a model
+  // inferred from the manufacturer's envelope, not a measured luminance map or intrinsic plasma width.
+  const HID_R99 = 'https://unece.org/fileadmin/DAM/trans/main/wp29/wp29regs/2015/R099r3e.pdf';
+  const HID_MIRROR = 'https://www.scribd.com/document/717200954/R099r3e';
+  const HID_PHILIPS = 'https://www.pff.de/wcf/file-download/70835/';
+  const HID_OSRAM = 'https://www.osram.com/appsj/pdc/pdf.do?cid=GPS01_1056953&lid=EN&vid=PP_EUROPE_Europe_eCat';
+  for (const type of ['d1s', 'd2s', 'd3s', 'd4s', 'd1r', 'd2r', 'd3r', 'd4r']) {
+    const R = type.endsWith('r'), series = +type[1], sheet = R ? 'DxR' : 'DxS';
+    for (const transverse of [false, true]) {
+      const id = type + (transverse ? '-transverse' : ''), arc = Object.assign({}, RF.Source.ARC_DEFAULTS, { up: [0, 0, 1], stripes: R });
+      PRESETS[id] = {
+        label: type.toUpperCase() + ' HID · ' + (transverse ? 'side-entry, transverse arc (+y)' : 'axial arc (+x)') + (R ? ' · R stripes' : ' · S clear bulb'), hid: true,
+        note: 'R99 Rev.3 ' + sheet + '/4–6: ' + (R ? '2800' : '3200') + ' lm ±450 (production), nominal electrode separation c = 4.2 mm. Electrode-region tolerances are in provenance, not a fabricated gap ± tolerance. Philips D2S PS 1000-1 p.2: bending 0.50 ±0.40 mm, full 20%-peak width 1.10 ±0.40 mm; Gaussian inferred FWHM ≈0.722 mm. ' + (type === 'd2s' ? '' : 'D2S geometry used as proxy: tuning, unverified for this category. ') + 'Parabolic bow, tip boost/length, quartz dimensions/index and simplified opposing stripes: tuning, unverified. Tube off by default: the quoted geometry is seen through the bulb already. Turning refraction on is an intrinsic-plasma experiment. Flux is outside the complete bulb; stripes resample blocked rays rather than subtract rated coating loss twice. Position is the electrode midpoint; the base is not modelled. Mounting is an optical setup choice, not an assertion about every projector.',
+        axis: transverse ? [0, 1, 0] : [1, 0, 0],
+        set: { kind: 'arc', shape: 'cylinder', length: 4.2, emission: 'volume', dist: 'isotropic', power: R ? 2800 : 3200, arc },
+        provenance: {
+          regulation: { url: HID_R99, inspectedMirror: HID_MIRROR, edition: 'Rev.3, 26 June 2014', flux: { sheet: sheet + '/4', page: R ? 17 : 25, lm: R ? 2800 : 3200, productionToleranceLm: 450, standardToleranceLm: 150 },
+            electrodes: { sheet: sheet + '/5', page: R ? 18 : 26, cMm: 4.2, a1: R ? 'd + 0.5' : 'd + 0.2', a2: R ? 'd + 0.7' : 'd + 0.5', b1Mm: R ? 0.4 : 0.3, b2Mm: R ? 0.8 : 0.6, electrodeDiameterMaxMm: series <= 2 ? 0.3 : 0.4, diameterLimitExclusive: true, note: 'a1/a2 and b1/b2 are full electrode-tip acceptance-region dimensions, not independent ± gap tolerances.' },
+            arc: { sheet: sheet + '/6', page: R ? 19 : 27, bowMm: 0.5, bowProductionToleranceMm: R ? 0.25 : 0.4, diffusionMm: 1.1, diffusionProductionToleranceMm: R ? (series <= 2 ? [-0.25, 0.25] : [-0.4, 0.25]) : [-0.4, 0.4], measurementFromReferencePlaneMm: 27.1 } },
+          manufacturer: { url: HID_PHILIPS, document: 'Philips MPDL / PS 1000-1, provisional 1996-09-01', page: 2, category: 'D2S', bowMm: 0.5, bowToleranceMm: 0.4, fullWidthAt20PercentMm: 1.1, widthToleranceMm: 0.4, fwhm: 'derived Gaussian: 1.1 sqrt(ln2/ln5); not a measured profile', proxy: type !== 'd2s' },
+          fluxCrossCheck: type === 'd3r' ? { url: HID_R99, sheet: 'DxR/4', page: 17 } : { url: HID_OSRAM, page: 2, table: 'Electrical Data / Photometric Data', note: 'OSRAM nominal flux agrees; manufacturer percentage tolerances differ from R99 production tolerances.' },
+          tuning: { status: 'tuning, unverified', bowCurve: 'parabola', hot: arc.hot, tipWidthMm: arc.tipWidth, tubeRadiusMm: arc.tubeRadius, wallMm: arc.wall, tubeLengthMm: arc.tubeLength, index: arc.index, stripeWidthDeg: arc.stripeWidth, stripeAngleDeg: arc.stripeAngle, stripeRadiusMm: arc.stripeRadius, gaussianTruncationSigma: 3, note: 'Outer shading radius 4.5 mm corresponds to OSRAM nominal 9 mm bulb diameter (p.2); exact coating location and all other geometry are unverified. D3/D4 plasma chemistry differs (OSRAM HID brochure p.12).' },
+        },
+      };
+    }
+  }
+
   // set src to preset id (position kept).  opts.amps / opts.volts for the drive.  Returns the applied preset.
   // the flux model a source uses under preset p (the pasted rows for the measured emitter)
   function modelOf(src, p) {
@@ -299,6 +328,7 @@
   }
   function apply(src, id, opts) {
     const p = PRESETS[id]; if (!p) return null;
+    if (!p.hid) delete src.arc;
     Object.assign(src, JSON.parse(JSON.stringify(p.set)));
     if (p.axis) { src.axis = p.axis.slice(); src.roll = 0; }
     if (p.obscuration) src.obscuration = JSON.parse(JSON.stringify(p.obscuration)); else delete src.obscuration;      // the bulb's cap / black top (R37), carried with the scene so solvers in a worker see it
@@ -347,7 +377,7 @@
     if (m && m.set) for (const [k, v] of Object.entries(m.set)) if (typeof v === 'object' ? JSON.stringify(src[k]) !== JSON.stringify(v) : src[k] !== v) return false;
     if (src.dome && !(m && m.set && m.set.dome)) return false;          // a dome added by hand
     const geo = ['w', 'h', 'radius', 'shape'].concat(m && m.set ? Object.keys(m.set) : []);               // a measured die follows the drive current: compare its area instead
-    for (const [k, v] of Object.entries(p.set)) if (k !== 'power' && !(src.effArea > 0 && geo.includes(k)) && src[k] !== v) return false;
+    for (const [k, v] of Object.entries(p.set)) if (k !== 'power' && !(src.effArea > 0 && geo.includes(k)) && (typeof v === 'object' ? JSON.stringify(src[k]) !== JSON.stringify(v) : src[k] !== v)) return false;
     if (src.effArea > 0) {                // the die follows the drive current: check it still has the effective area
       const A = src.shape === 'disc' ? Math.PI * src.radius * src.radius : src.w * src.h;
       if (Math.abs(A / src.effArea - 1) > 0.01) return false;

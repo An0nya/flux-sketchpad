@@ -1075,6 +1075,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     } finally { V.info = saved; }
   }
   require('./qol1.js').run(RF, ok);
+  require('./hid-arc.js').run(RF, ok);
   console.log(fails ? fails + ' FAILED' : 'all regress-node checks passed');
   process.exitCode = fails ? 1 : 0;
 })();

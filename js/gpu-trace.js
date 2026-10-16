@@ -189,7 +189,57 @@ fn domeOut(b: u32, o0: vec3f, d0: vec3f, u0: u32, u3: u32, u4: u32) -> Ray {
   }
   return Ray(o, normalize(o - c));
 }
+// HID arc: local x/y are the transverse plane, z runs between the electrode tips.
+fn arcShell(c: u32, q0: vec3f, d0: vec3f) -> Ray {
+  let ri = af(c + 4u); let hi = af(c + 6u); let wall = af(c + 5u); let index = af(c + 7u);
+  var q = q0; var d = d0; var glass = false;
+  for (var k = 0; k < 64; k++) {
+    var t = BIG; var normal = vec3f(0.0); var outer = false;
+    for (var j = 0; j < 2; j++) {
+      let r = ri + select(0.0, wall, j == 1); let h = hi + select(0.0, wall, j == 1);
+      let inv = vec3f(1.0 / (r * r), 1.0 / (r * r), 1.0 / (h * h));
+      let A = dot(d * d, inv); let B = dot(q * d, inv); let C = dot(q * q, inv) - 1.0; let disc = B * B - A * C;
+      if (disc < 0.0) { continue; }
+      for (var root = 0; root < 2; root++) {
+        let hit = (-B + select(-sqrt(disc), sqrt(disc), root == 1)) / A;
+        if (hit > 1e-5 && hit < t) { t = hit; normal = normalize((q + t * d) * inv); outer = j == 1; }
+      }
+    }
+    if (t == BIG) { return Ray(q, vec3f(0.0)); }
+    q = q + t * d;
+    if (dot(d, normal) < 0.0) { normal = -normal; }
+    let ci = dot(d, normal); let eta = select(1.0 / index, index, glass); let s2 = eta * eta * max(0.0, 1.0 - ci * ci);
+    if (s2 >= 1.0) { d = d - 2.0 * ci * normal; }
+    else { d = eta * d + (sqrt(1.0 - s2) - eta * ci) * normal; if (glass && outer) { return Ray(q, d); } glass = !glass; }
+  }
+  return Ray(q, vec3f(0.0));
+}
+fn arcBlocked(c: u32, q: vec3f, d: vec3f) -> bool {
+  let A = d.x * d.x + d.y * d.y; if (A < 1e-12) { return false; }
+  let B = q.x * d.x + q.y * d.y; let R = af(c + 10u); let C = q.x * q.x + q.y * q.y - R * R;
+  let t = (-B + sqrt(max(0.0, B * B - A * C))) / A; let p = q + t * d;
+  return abs(p.x * af(c + 12u) - p.y * af(c + 13u)) < R * af(c + 11u);
+}
+fn arcRay(b: u32, initial: array<u32, 6>) -> Ray {
+  let c = aux[b + 29u]; let N = aux[c + 2u]; let tab = aux[c + 3u]; let L = af(b + 22u);
+  var u = initial; var rng = u[0] ^ (u[3] * 0x9E3779B1u) ^ (u[4] >> 1u);
+  loop {
+    let f = min(f32(N) - 0.0001220703125, uf(u[2]) * f32(N)); let j = u32(f); let z = af(tab + j) + (af(tab + j + 1u) - af(tab + j)) * (f - f32(j));
+    let r = af(c + 1u) * sqrt(-2.0 * log(1.0 - uf(u[0]) * 0.9888910034617577)); let ph = scPhase(u[1]);
+    var q = vec3f(r * ph.y, r * ph.x + af(c) * (1.0 - (2.0 * z / L) * (2.0 * z / L)), z);
+    let ct = 1.0 - 2.0 * uf(u[3]); let sn = sqrt(max(0.0, 1.0 - ct * ct)); let az = scPhase(u[4]); var d = vec3f(sn * az.y, sn * az.x, ct);
+    var escaped = true;
+    if (af(c + 8u) > 0.0) { let ray = arcShell(c, q, d); q = ray.o; d = ray.d; escaped = dot(d, d) > 0.0; }
+    var blocked = false; if (af(c + 9u) > 0.0) { blocked = arcBlocked(c, q, d); }
+    if (escaped && !blocked) {
+      let fu = av3(b + 10u); let fv = av3(b + 13u); let fa = av3(b + 16u);
+      return Ray(av3(b + 7u) + q.x * fu + q.y * fv + q.z * fa, d.x * fu + d.y * fv + d.z * fa);
+    }
+    for (var i = 0; i < 5; i++) { u[i] = mb(&rng); }
+  }
+}
 fn sampleRay(b: u32, u: array<u32, 6>) -> Ray {
+  if (aux[b] == 3u) { return arcRay(b, u); }
   let fu = av3(b + 10u); let fv = av3(b + 13u); let fa = av3(b + 16u); let p = av3(b + 7u);
   let kind = aux[b]; let shape = aux[b + 1u];
   let x0 = uf(u[0]); let x1 = uf(u[1]); let x2 = uf(u[2]);
@@ -460,9 +510,9 @@ fn traceRay(i: u32, slot: u32) {
     o = wpt; lastK = kBest;
   }
   if (rec) {
-    let r5 = 5u * slot;
+    let r5 = select(5u, 6u, (flags & 8u) != 0u) * slot;
     if ((flags & 8u) != 0u) {                        // P.gpuEmitDump (tests): the sampled ray instead of the hit record
-      rayOut[r5] = bitcast<u32>(ray.d.x); rayOut[r5 + 1u] = bitcast<u32>(ray.d.y); rayOut[r5 + 2u] = bitcast<u32>(ray.d.z); rayOut[r5 + 3u] = bitcast<u32>(ray.o.x); rayOut[r5 + 4u] = bitcast<u32>(ray.o.y); return;
+      rayOut[r5] = bitcast<u32>(ray.d.x); rayOut[r5 + 1u] = bitcast<u32>(ray.d.y); rayOut[r5 + 2u] = bitcast<u32>(ray.d.z); rayOut[r5 + 3u] = bitcast<u32>(ray.o.x); rayOut[r5 + 4u] = bitcast<u32>(ray.o.y); rayOut[r5 + 5u] = bitcast<u32>(ray.o.z); return;
     }
     rayOut[r5] = u32(firstK + 1); rayOut[r5 + 1u] = hitRec;
     rayOut[r5 + 2u] = bitcast<u32>(hu); rayOut[r5 + 3u] = bitcast<u32>(hv); rayOut[r5 + 4u] = bitcast<u32>(he);
@@ -544,7 +594,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
     const parts = P.S.mix ? P.S.parts : [P.S], base = out.length, tables = [];
     for (const S of parts) {
       const w = new Array(32).fill(0), fr = S.fr;
-      w[0] = S.kind === 'planar' ? 1 : S.kind === 'volume' ? 2 : 0;
+      w[0] = S.kind === 'planar' ? 1 : S.kind === 'volume' ? 2 : S.kind === 'arc' ? 3 : 0;
       w[1] = S.shape === 'disc' ? 1 : S.shape === 'sphere' ? 2 : S.shape === 'cylinder' ? 3 : 0;
       w[2] = S.dist === 'lambertian' ? 0 : S.dist === 'gaussian' ? 1 : 2;
       w[3] = S.opaque ? 1 : 0; w[4] = S.dome ? 1 : 0;
@@ -557,6 +607,13 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
     }
     if (P.S.mix) for (let i = 0; i <= parts.length; i++) out.push({ f: P.S.cdf[i] });
     tables.forEach((t, k) => { if (!t) return; out[base + 32 * k + 5] = out.length; for (let i = 0; i < t.length; i++) out.push(fix32(t[i])); });
+    parts.forEach((S, k) => {
+      if (!S.arc) return;
+      const a = S.arc, c = out.length; out[base + 32 * k + 29] = c;
+      out.push(...[a.bow, a.fwhm / 2.354820045, 0, 0, a.tubeRadius, a.wall, a.tubeLength / 2, a.index, +a.tube, +a.stripes, a.stripeRadius, Math.sin(a.stripeWidth * Math.PI / 360), Math.sin(a.stripeAngle * Math.PI / 180), Math.cos(a.stripeAngle * Math.PI / 180)].map((f) => ({ f })));
+      out[c + 2] = S.arcTable.length - 1; out[c + 3] = out.length;
+      for (const f of S.arcTable) out.push({ f });
+    });
     return { base, n: parts.length };
   }
   const toU32 = (list) => { const u = new Uint32Array(Math.max(4, list.length)), f = new Float32Array(1), fu = new Uint32Array(f.buffer); for (let i = 0; i < list.length; i++) { const x = list[i]; if (typeof x === 'object') { f[0] = x.f; u[i] = fu[0]; } else u[i] = x >>> 0; } return u; };
@@ -616,9 +673,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
     const t0 = RF.U.now();
     const auxB = dev.createBuffer({ size: 4 * Math.max(4, aux.length), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }); dev.queue.writeBuffer(auxB, 0, toU32(aux));
     const accB = dev.createBuffer({ size: 4 * L.size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
-    const rec = P.recordHits || P.gpuEmitDump, recB = dev.createBuffer({ size: rec ? 20 * count : 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    const rec = P.recordHits || P.gpuEmitDump, recordBytes = P.gpuEmitDump ? 24 : 20, recB = dev.createBuffer({ size: rec ? recordBytes * count : 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     const accR = dev.createBuffer({ size: 4 * L.size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-    const recR = rec ? dev.createBuffer({ size: 20 * count, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }) : null;
+    const recR = rec ? dev.createBuffer({ size: recordBytes * count, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }) : null;
     const enc = dev.createCommandEncoder(), tmp = [];
     enc.clearBuffer(accB);
     for (let a = i0; a < i1; a += CHUNK) {
@@ -628,7 +685,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
       const pass = enc.beginComputePass(); pass.setPipeline(st.pipeline); pass.setBindGroup(0, bg); pass.dispatchWorkgroups(Math.ceil(n / 64)); pass.end();
     }
     enc.copyBufferToBuffer(accB, 0, accR, 0, 4 * L.size);
-    if (recR) enc.copyBufferToBuffer(recB, 0, recR, 0, 20 * count);
+    if (recR) enc.copyBufferToBuffer(recB, 0, recR, 0, recordBytes * count);
     dev.queue.submit([enc.finish()]);
     try {
       await accR.mapAsync(GPUMapMode.READ); if (recR) await recR.mapAsync(GPUMapMode.READ);
