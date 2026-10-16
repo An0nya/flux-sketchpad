@@ -1057,6 +1057,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   require('./minigame-2.js').run(RF, ok);
   require('./drive-ux.js').run(RF, ok);
   require('./drive-polish.js').run(RF, ok);
+  require('./drive-perf.js').run(RF, ok);
+  require('./drive-three.js').run(RF, ok);
   console.log(fails ? fails + ' FAILED' : 'all regress-node checks passed');
   process.exitCode = fails ? 1 : 0;
 })();

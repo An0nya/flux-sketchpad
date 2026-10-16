@@ -38,5 +38,6 @@ run('road model + IIHS metrics (tests/road.js)', ['tests/road.js']);
 run('beam quality report (tests/beam-quality.js)', ['tests/beam-quality.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('driver\'s-eye view (tests/drive.js)', ['tests/drive.js']);
+run('optional GPU Drive wiring + vendor pins (tests/drive-three.js)', ['tests/drive-three.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
