@@ -1215,7 +1215,7 @@ void main() {
     advanceCamera(st, dt);
     frame(); if (st.playing) V.raf = requestAnimationFrame(tick);
   }
-  function stop() { if (V.raf) { cancelAnimationFrame(V.raf); V.raf = 0; } V.last = 0; V.completedAt = 0; }
+  function stop() { if (V.raf) { cancelAnimationFrame(V.raf); V.raf = 0; } V.last = 0; V.completedAt = 0; if (RF.Eurobeat) RF.Eurobeat.stop(); }
   function go() { if (!V.lost && !V.glFailed && !V.raf && V.gl && visible() && S(V.ui).playing) { V.last = 0; V.raf = requestAnimationFrame(tick); } }
 
   // ---------------------------------------------------------------- the controls
@@ -1328,6 +1328,13 @@ void main() {
   }
 
   // ---------------------------------------------------------------- Reach > uniformity (all state is local to this view)
+  // Eurobeat plays only while a run is live, in Mountain pass, with the box ticked. Called from mount() and gameText().
+  function musicSync(ui) {
+    const m = V.gameMusic; if (!m || !RF.Eurobeat) return;
+    const st = S(ui), mountain = !!info().o.mountainPass;
+    m.closest('[data-game="music-wrap"]').hidden = !mountain;
+    if (st.gameMode && st.game && !st.game.done && st.playing && m.checked && mountain && visible()) RF.Eurobeat.start(); else RF.Eurobeat.stop();
+  }
   function toggleGame(ui) {
     const st = S(ui);
     if (st.gameMode) {
@@ -1417,7 +1424,7 @@ void main() {
     V.gameStatus.textContent = (g.done ? 'Run ended' : g.resume !== null ? g.clearLane && g.rules !== 'legacy' ? 'Waiting for clear lane · release Brake to resume' : 'Release Brake · cruise resumes after 2 s' : g.brake ? 'BRAKING' : g.acceleration === 'gentle' && g.v < g.speed / 3.6 - .01 ? 'Accelerating gently' : 'Hold Space or Brake') + ' · ' + (g.v * 3.6).toFixed(1) + ' km/h · ' + g.results.length + '/5 resolved';
     V.gameCard.hidden = !g.done;
     if (g.done) {
-      V.gameBar.classList.remove('running');
+      V.gameBar.classList.remove('running'); musicSync(V.ui);
       if (info().o.largeCard !== false && !S(V.ui).popout && V.largeCardRun !== g) { V.largeCardRun = g; requestAnimationFrame(() => { if (S(V.ui).game === g && g.done && S(V.ui).gameMode) { V.cardPop = true; openPop(V.ui); } }); }
       V.gameBar.querySelector('[data-game="brake"]').hidden = true; V.gameBar.querySelector('[data-game="pause"]').hidden = true;
       for (const e of V.gameBar.querySelectorAll('input,select')) e.disabled = false;
@@ -1440,10 +1447,14 @@ void main() {
       const acceleration = E('select', { 'data-game': 'acceleration', 'aria-label': 'Acceleration after braking' });
       acceleration.append(E('option', { value: 'original' }, 'Recovery · original'), E('option', { value: 'gentle' }, 'Gentle acceleration'));
       const clearLane = E('input', { 'data-game': 'clear-lane', type: 'checkbox', checked: '' });
+      const music = E('input', { 'data-game': 'music', type: 'checkbox', 'aria-label': 'Eurobeat music' }), musicWrap = E('span', { 'data-game': 'music-wrap' }, E('label', {}, music, ' ♪ Eurobeat'));
+      try { music.checked = root.localStorage.getItem('flux.eurobeat') === '1'; } catch (e) { /* storage blocked: stays off */ }
+      music.addEventListener('change', () => { try { root.localStorage.setItem('flux.eurobeat', music.checked ? '1' : '0'); } catch (e) { /* storage blocked: not remembered */ } if (music.checked && RF.Eurobeat) RF.Eurobeat.unlock(); musicSync(ui); });
+      V.gameMusic = music;
       const pause = E('button', { type: 'button', 'data-game': 'pause' }, 'Pause');
       pause.addEventListener('click', () => { st.playing = !st.playing; ui.redrawSpec(); });
       const start = E('button', { type: 'button', 'data-game': 'start' }, 'Start run'), brake = E('button', { type: 'button', 'data-game': 'brake', 'aria-label': 'Hold to brake', 'aria-pressed': 'false' }, 'Hold: BRAKE');
-      start.addEventListener('click', () => startGame(ui));
+      start.addEventListener('click', () => { if (music.checked && RF.Eurobeat) RF.Eurobeat.unlock(); startGame(ui); });
       // The lobby and scorecard also carry their own exit control.
       const exit = E('button', { type: 'button', 'data-game': 'exit' }, 'Exit game'); exit.addEventListener('click', () => toggleGame(ui));
       const active = () => st.game && !st.game.done && st.playing && visible();
@@ -1462,12 +1473,13 @@ void main() {
       const suspend = () => { if (st.game && !st.game.done) { hold(false, 'all'); if (st.game.pauseAt === undefined) st.game.pauseAt = performance.now(); st.playing = false; stop(); ui.redrawSpec(); } };
       root.addEventListener('blur', suspend); document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); });
       V.gameStatus = E('div', { 'data-game': 'status', role: 'status' }); V.gameCard = E('div', { 'data-game': 'card', class: 'game-card', hidden: '' });
-      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), E('label', {}, reseed, ' new each run'), lamp, acceleration, rules, E('label', {}, clearLane, ' Wait for clear lane'), start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release to recover with the chosen acceleration. After a stop, hazards leave the road before recovery (at least 2 s). Gentle acceleration returns to speed at 2.5 m/s². Uncheck Wait for clear lane or choose Original rules for the previous resume. Game flavour, not legal advice.'));
+      box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), E('label', {}, reseed, ' new each run'), lamp, acceleration, rules, E('label', {}, clearLane, ' Wait for clear lane'), musicWrap, start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release to recover with the chosen acceleration. After a stop, hazards leave the road before recovery (at least 2 s). Gentle acceleration returns to speed at 2.5 m/s². Uncheck Wait for clear lane or choose Original rules for the previous resume. Game flavour, not legal advice.'));
       V.cv.parentElement.append(box); speed.value = info().o.speed; seed.value = info().o.seed; wet.value = info().o.wet ? 'wet' : 'dry';
     }
     if (V.notice) V.notice.hidden = !V.why || (st.gameMode && !V.lost);
     V.gameBar.hidden = !st.gameMode; V.gameBar.classList.toggle('running', !!st.game && !st.game.done); mount(ui);
     if (st.gameMode) V.bar.hidden = true;
+    musicSync(ui);
     const toggle = info().toolbar.querySelector('[data-game="toggle"]'); if (toggle) { toggle.setAttribute('aria-pressed', String(!!st.gameMode)); toggle.textContent = st.gameMode ? 'Exit game' : 'Game'; }
     // Freeze run inputs and the underlying toolbar; exit restores the owner's preferences in memory.
     for (const bar of [V.bar, ui.driveBar, ui.driveExtras]) if (bar) for (const e of bar.querySelectorAll('button,input,select')) {
@@ -1475,7 +1487,7 @@ void main() {
       if (st.gameMode) { if (e.dataset.gameWasDisabled === undefined) e.dataset.gameWasDisabled = String(e.disabled); e.disabled = true; }
       else if (e.dataset.gameWasDisabled !== undefined) { e.disabled = e.dataset.gameWasDisabled === 'true'; delete e.dataset.gameWasDisabled; }
     }
-    for (const e of V.gameBar.querySelectorAll('input,select')) e.disabled = !!st.game && !st.game.done;
+    for (const e of V.gameBar.querySelectorAll('input:not([data-game=music]),select')) e.disabled = !!st.game && !st.game.done;
     V.gameBar.querySelector('[data-game="brake"]').hidden = !st.game || st.game.done;
     V.gameBar.querySelector('[data-game="pause"]').hidden = !st.game || st.game.done;
     V.gameBar.querySelector('[data-game="pause"]').textContent = st.playing ? 'Pause' : 'Resume';
