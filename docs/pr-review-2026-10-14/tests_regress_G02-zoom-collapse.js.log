@@ -1,6 +1,0 @@
-[PASS] page identifies as the Flux app (RF.UI exists)
-[PASS] editor: zoomed view is finite before collapse  — {"s":8.484743246993402,"ox":-284.0614332153578,"oy":568.3675196091551,"ok":true}
-[PASS] editor: zoomed view is finite after collapse + reopen  — {"s":8.484743246993402,"ox":-284.0614332153578,"oy":568.3675196091551,"ok":true}
-[PASS] result: zoomed view is finite before collapse  — {"s":8.484743246993402,"ox":-284.0614332153578,"oy":568.3675196091551,"ok":true}
-[PASS] result: zoomed view is finite after collapse + reopen  — {"s":8.484743246993403,"ox":-284.06143321535797,"oy":568.3675196091551,"ok":true}
-[PASS] no page errors

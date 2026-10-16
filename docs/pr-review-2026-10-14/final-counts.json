@@ -1,8 +1,0 @@
-{
-  "runs": 56,
-  "browserScripts": 53,
-  "browserAssertions": 553,
-  "nodeAssertions": 156,
-  "failures": [],
-  "unique": 56
-}

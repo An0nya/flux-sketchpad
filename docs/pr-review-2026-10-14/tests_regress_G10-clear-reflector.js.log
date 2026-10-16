@@ -1,8 +1,0 @@
-[PASS] page identifies as the Flux app (RF.UI exists)
-[PASS] setup: a solved reflector, footer shows its facets  — {"n":93,"dirty":false,"auto":true,"past":0,"foot":"93 / 100"}
-[PASS] clear empties the reflector, footer shows 0 facets, one history entry  — {"n":0,"dirty":false,"auto":false,"past":1,"foot":"0 / 100"}
-[PASS] a source nudge does not bring the reflector back  — {"n":0,"dirty":false,"auto":false,"past":2,"foot":"0 / 100"}
-[PASS] undo restores the reflector  — {"n":93,"dirty":false,"auto":true,"past":0,"foot":"93 / 100"}
-[PASS] redo clears it again  — {"n":0,"dirty":false,"auto":false,"past":2,"foot":"0 / 100"}
-[PASS] Rebuild brings the reflector back and auto-solve returns  — {"n":92,"dirty":false,"auto":true,"past":3,"foot":"92 / 100"}
-[PASS] no page errors

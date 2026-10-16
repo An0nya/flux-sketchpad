@@ -1,6 +1,0 @@
-[PASS] drag of the row divider while Optics is expanded: Scene | right columns stay put  — 444px 10px 725px -> 444px 10px 725px
-[PASS] ... and the Editor | Result columns stay put  — 358px 10px 357px -> 358px 10px 357px
-[PASS] ... and the dragged row follows the pointer (within 12 px of where it was)  — 304px 10px 495px -> 306px 10px 493px
-[PASS] an off divider is out of the tab order and aria-disabled  — {"off":true,"tab":-1,"dis":"true"}
-[PASS] arrow keys / double-click on an off divider change nothing
-[PASS] an active divider is focusable again  — {"off":false,"tab":0,"dis":"false"}

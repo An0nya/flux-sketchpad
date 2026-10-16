@@ -1,6 +1,0 @@
-[PASS] page identifies as the Flux app (RF.UI exists)
-[PASS] found two opposite envelope face handles  — [{"id":"env","axis":0,"sign":-1,"x":323.08609671594655,"y":157.66723257184614},{"id":"env","axis":0,"sign":1,"x":269.4462136424948,"y":113.03101473549835},{"id":"env","axis":1,"sign":-1,"x":436.6963607199822,"y":119.43201532196693},{"id":"env","axis":1,"sign":1,"x":133.52164790082492,"y":149.10200684011735},{"id":"env","axis":2,"sign":-1,"x":294.51584237249995,"y":210.88727344894335},{"id":"env","axis":2,"sign":1,"x":293.302649614351,"y":50.82758796805996}]
-[PASS] past the opposite face: thickness stays >= 0.05 mm (not ~0)  — width 0.10000000000000142
-[PASS] past the opposite face: the opposite face has not moved  — [{"lo":-60,"hi":-4.099999999999998,"w":55.9},{"lo":-60,"hi":-59.900000000000006,"w":0.10000000000000142}]
-[PASS] reversing the drag brings the face back out to its start  — [{"lo":-60,"hi":-4.099999999999998,"w":55.9},{"lo":-60,"hi":-4.099999999999984,"w":55.90000000000001}]
-[PASS] no page errors

@@ -1,6 +1,0 @@
-[PASS] page identifies as the flux app
-[PASS] the crashed solve rejects with kind crash  — crash:solver worker crashed: Uncaught Error: qa async boom
-[PASS] a LOADED solver works after the crash (sources restored)  — ok
-[PASS] a bundled solver solves after the crash  — {"solving":false,"busy":false,"fail":false,"failText":"","repSolver":"patch-array","notices":[]}
-[PASS] host is idle and no worker leaked  — workers 2 (before the crash 2)
-[PASS] no page errors besides the worker crash

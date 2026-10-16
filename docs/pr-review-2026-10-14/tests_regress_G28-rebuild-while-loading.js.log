@@ -1,5 +1,0 @@
-[PASS] page identified as the app
-[PASS] precondition: bundle still loading and the wanted solver not registered yet  — {"loading":true,"wanted":"auto","have":false}
-[PASS] the scene keeps the wanted solver (auto), not Spoke  — {"scSolve":"auto","rep":"auto","dropdown":"auto","nA":93}
-[PASS] and the Rebuild ran once the solvers arrived (a design exists)  — {"scSolve":"auto","rep":"auto","dropdown":"auto","nA":93}
-[PASS] no page errors

@@ -1,7 +1,0 @@
-[PASS] no stored choice: GPU pref follows WebGPU availability, device is ready  — {"avail":true,"ready":true,"pref":true}
-[PASS] desktop: not capped, full scene ray count  — N 500000
-[PASS] explicit off in localStorage stays off
-[PASS] 2 GB device: ray count clamped to 100,000 and flagged  — N 100000 of 500000
-[PASS] footer says it was capped (stats line + tile marker)  — 100,000rays traced — capped from 500,000 for this device (2 GB device memory); lift it in Simulation → AdvancedFidelity to the paint0.1%painted right: painted c || 100,000
-rays* 12 ms | — capped from 500,000 for this device (2 GB device memory); lift it in Simulation → Advanced
-[PASS] user lifted the cap: full count again  — N 500000

@@ -1,6 +1,0 @@
-[PASS] page identifies as the Flux app (RF.UI exists)
-[PASS] footer matches the report 200 ms after Aim -> manual  — {"same":true,"f":"5✓ 6✗ 8?","rep":"5✓ 6✗ 8?"}
-[PASS] footer matches the report 150 ms after Manual up edit #0  — {"same":true,"f":"4✓ 4✗ 11?","rep":"4✓ 4✗ 11?"}
-[PASS] footer matches the report 150 ms after Manual up edit #1  — {"same":true,"f":"5✓ 3✗ 11?","rep":"5✓ 3✗ 11?"}
-[PASS] footer matches the report 150 ms after Manual up edit #2  — {"same":true,"f":"5✓ 4✗ 10?","rep":"5✓ 4✗ 10?"}
-[PASS] no page errors

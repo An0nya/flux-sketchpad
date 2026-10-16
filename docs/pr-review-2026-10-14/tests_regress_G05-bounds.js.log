@@ -1,7 +1,0 @@
-[PASS] page identified as the app
-[PASS] typing 1e10 as the target distance does not freeze the tab
-[PASS] target distance was clamped to the control max  — 1000000
-[PASS] the lens panel has a Rings N field
-[PASS] Rings N = 5000 is clamped (stored 200, 401 surfaces, 899 ms)
-[PASS] Index n = 0 is clamped to a usable value
-[PASS] no page errors

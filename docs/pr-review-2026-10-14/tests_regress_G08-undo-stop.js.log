@@ -1,6 +1,0 @@
-[PASS] page identified as the app
-[PASS] painted + solved: reflector present (88 surfaces), an Undo entry exists
-[PASS] while the re-solve runs the previous reflector is still there (88 surfaces)
-[PASS] and it is marked out of date (dirty A true)
-[PASS] after Stop the reflector is not empty (88 surfaces)
-[PASS] no page errors

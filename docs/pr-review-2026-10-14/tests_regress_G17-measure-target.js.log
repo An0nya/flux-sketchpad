@@ -1,5 +1,0 @@
-[PASS] page identifies as the Flux app (RF.UI exists)
-[PASS] "target" button is on after clicking it  — {"md":-1,"target":2000,"on":["target"],"G":2000}
-[PASS] "target" button stays on after the target moved to 5 m  — {"md":-1,"target":5000,"on":["target"],"G":5000}
-[PASS] the report measures at the new target distance (5000 mm)  — {"md":-1,"target":5000,"on":["target"],"G":5000}
-[PASS] no page errors

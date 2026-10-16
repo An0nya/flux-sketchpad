@@ -1,9 +1,0 @@
-[PASS] page identified as the app
-[PASS] built-in chosen mid-solve: the worker solve is cancelled  — {"solving":false,"busy":false,"shown":false,"watch":false,"pendingA":0,"armed":false,"dirtyA":false,"solver":"spoke"}
-[PASS] built-in chosen mid-solve: no preview drawn over the new design  — {"solving":false,"busy":false,"shown":false,"watch":false,"pendingA":0,"armed":false,"dirtyA":false,"solver":"spoke"}
-[PASS] settled with no pending auto-solve left over (pendingA 0)  — {"solving":false,"busy":false,"shown":false,"watch":false,"pendingA":0,"armed":false,"dirtyA":false,"solver":"spoke"}
-[PASS] a setting change afterwards does not auto-solve (Auto-solve on settings is off)
-[PASS] preset loaded mid-solve: the old scene's solve is cancelled  — {"solving":false,"busy":false,"shown":false,"watch":false,"pendingA":0,"armed":false,"dirtyA":false,"solver":"auto"}
-[PASS] preset loaded mid-solve: its preview is not drawn over the new scene  — {"solving":false,"busy":false,"shown":false,"watch":false,"pendingA":0,"armed":false,"dirtyA":false,"solver":"auto"}
-[PASS] preset loaded mid-solve: the old solve never lands in the new scene (no solver report from fill-fix)
-[PASS] no page errors

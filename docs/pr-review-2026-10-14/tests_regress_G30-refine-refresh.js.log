@@ -1,5 +1,0 @@
-[PASS] page identified as the app
-[PASS] idle, finished run: Refine is enabled  — {"disabled":false,"can":true,"solving":false}
-[PASS] while a solve runs: Refine is disabled  — {"disabled":true,"can":false,"solving":true}
-[PASS] after Stop (design out of date): Refine stays disabled, matching canRefine  — {"disabled":true,"can":false,"solving":false}
-[PASS] no page errors

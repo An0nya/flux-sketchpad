@@ -1,5 +1,0 @@
-[PASS] wide: sidebar open
-[PASS] narrowed to 900: sidebar closed
-[PASS] ... and can be opened by hand as an overlay
-[PASS] further narrowing (still <= 1024) leaves a hand-opened sidebar alone
-[PASS] crossing 1024 again closes it again

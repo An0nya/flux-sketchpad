@@ -1,6 +1,0 @@
-[PASS] page identifies as the Flux app (RF.UI exists)
-[PASS] Drive marking reflectivity: one redraw, no road-model rebuild  — {"model":0,"drive":1,"redraw":1}
-[PASS] Drive marking reflectivity: the drive picture is rendered once  — {"model":0,"drive":1,"redraw":1}
-[PASS] Road view scale top: one redraw, no road-model rebuild  — {"model":0,"drive":0,"redraw":1}
-[PASS] Mounting height still rebuilds the road model (once) and redraws once  — {"model":1,"drive":0,"redraw":1}
-[PASS] no page errors

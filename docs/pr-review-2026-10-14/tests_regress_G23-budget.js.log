@@ -1,9 +1,0 @@
-[PASS] page identifies as the flux app
-[PASS] default limit is the 120 s budget
-[PASS] timeout notice shown  — Fill & fix ran past its 3 s budget and was stopped at shell 2/5 (08:35:57 PM); your previous design is kept.Use last can
-[PASS] it fired near the budget (2.5 s, within 8 s)  — 2636 ms
-[PASS] a solve queued behind the rebuild still times out with the notice  — Fill & fix ran past its 3 s budget and was stopped at shell 1/5 (08:36:00 PM); your previous design 
-[PASS] a load during a budgeted solve succeeds  — loaded
-[PASS] and the solve still times out with the notice  — Fill & fix ran past its 3 s budget and was stopped at shell 1/5 (08:36:03 PM); your previous design 
-[PASS] the next solve completes  — {"solving":false,"busy":false,"fail":false,"failText":"","repSolver":"patch-array","notices":["Solve stopped (Fill & fix). The previous design is kept."]}
-[PASS] no page errors

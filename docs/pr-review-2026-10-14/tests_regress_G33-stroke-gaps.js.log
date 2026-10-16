@@ -1,7 +1,0 @@
-[PASS] page identifies as the Flux app (RF.UI exists)
-[PASS] stroke in 40 move step(s) leaves no gap (filled == span)  — {"span":68,"filled":68,"undo":2}
-[PASS] stroke in 8 move step(s) leaves no gap (filled == span)  — {"span":68,"filled":68,"undo":4}
-[PASS] stroke in 2 move step(s) leaves no gap (filled == span)  — {"span":68,"filled":68,"undo":6}
-[PASS] stroke in 1 move step(s) leaves no gap (filled == span)  — {"span":68,"filled":68,"undo":8}
-[PASS] the whole stroke is one undo entry  — entries added 1
-[PASS] no page errors

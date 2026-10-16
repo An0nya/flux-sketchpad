@@ -1,6 +1,0 @@
-[PASS] page identified as the app
-[PASS] in Paint mode the solve shows a PREVIEW badge
-[PASS] Profile mode mid-solve: no preview badge / overlay  — []
-[PASS] precondition: the footer shows PREVIEW numbers while Watch is on  — PREVIEW · size 1 · compensate 1/2
-[PASS] Watch off: the footer no longer shows PREVIEW numbers  — null
-[PASS] no page errors

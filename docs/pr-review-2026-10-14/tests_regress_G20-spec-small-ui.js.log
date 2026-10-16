@@ -1,7 +1,0 @@
-[PASS] page identifies as the Flux app (RF.UI exists)
-[PASS] hover cards (19 rows): no headroom factor above 1000
-[PASS] hover cards: no headroom claimed on an unsure row
-[PASS] exposure + button title matches its step (0.5 EV)  — Half a stop brighter
-[PASS] exposure - button title matches its step  — Half a stop darker
-[PASS] Hotspot centre H input accepts -1  — {"min":"","validAtMinus1":true}
-[PASS] no page errors

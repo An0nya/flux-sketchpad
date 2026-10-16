@@ -1,5 +1,0 @@
-[PASS] page identified as the app
-[PASS] with a throwing draw the solve and the trace still finish  — {"solving":false,"done":true,"next":500000,"N":500000,"status":"up to date","raf":0}
-[PASS] and the status line is not frozen on "Solving" / "tracing"  — up to date
-[PASS] stale selection after a re-solve: no page error
-[PASS] and the trace finished with a settled status  — {"status":"up to date","done":true,"sel":{"kind":"facet","items":["F12"]}}

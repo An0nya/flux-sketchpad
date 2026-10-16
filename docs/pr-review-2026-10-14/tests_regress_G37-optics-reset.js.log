@@ -1,4 +1,0 @@
-[PASS] Optics has a reset button
-[PASS] orbit + zoom moved the view  — {"s":8.033,"um":true,"pan":[17,91],"r":"-0.89,-0.45,0,0.01,-0.02,1,-0.45,0.89,0.02"}
-[PASS] the button restores the opening view (angle, userMoved)  — {"s":3.294,"um":false,"pan":[-12,37],"r":"0.24,-0.97,0,0.32,0.08,0.94,-0.92,-0.23,0.33"} vs 0.24,-0.97,0,0.32,0.08,0.94,-0.92,-0.23,0.33
-[PASS] double-click restores it too  — {"s":3.294,"um":false,"pan":[-12,37],"r":"0.24,-0.97,0,0.32,0.08,0.94,-0.92,-0.23,0.33"}
