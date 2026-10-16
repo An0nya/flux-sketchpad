@@ -23,6 +23,16 @@
     return [a[0]+dx/d*along+bend*(-dz/d)*h,a[1],a[2]+dz/d*along+bend*(dx/d)*h];
   }
   function stableId(value){let h=2166136261;for(const c of String(value)){h=Math.imul(h^c.charCodeAt(0),16777619);}return h>>>0;}
+  // All timings, probabilities and angular acceptance below are gameplay tuning, not measured deer responses.
+  const deerEnabled=p=>!!p&&(p.deerBehaviour===undefined?!!p.detailedModels:!!p.deerBehaviour);
+  function deerProfile(id){
+    const u=n=>D.rng(stableId(String(id)+':deer:'+n))();
+    return {trigger:60+140*u(0),turn:.5+.5*u(1),freeze:1.2+3*u(2),never:u(3)<.15,early:u(4)<.2};
+  }
+  function deerAttention(id,elapsed){
+    const p=deerProfile(id),t=Math.max(0,elapsed),turn=p.never?0:clamp(t/p.turn),bolt=p.early?.18:p.turn+p.freeze;
+    return {state:elapsed<0?'grazing':t>=bolt?'bolt':p.never?'grazing':t<p.turn?'turning':'freeze',up:elapsed<0?0:turn,turn:elapsed<0?0:turn,bolt,elapsed,profile:p};
+  }
   function tree(o){
     const h=o.h||9,v=stableId(o.id||'tree')%3,out=[],x=o.x||0,y=o.y||0,tag={detailPart:'analytic-tree',treeId:o.id};
     out.push({...tag,k:'cyl',x,y,r:h*.018,z0:0,z1:h*.65,mat:o.birch?'trunk-birch':'bark',cls:'veg',detail:{...o,variant:v}});
@@ -36,8 +46,9 @@
   function build(kind, o) {
     o=o||{};const nodes=[],eyes=[],yaw=(o.yaw||0)+(kind==='person'?Math.atan2((o.dir||[1,0])[1],(o.dir||[1,0])[0]):0),c=Math.cos(yaw),s=Math.sin(yaw),F=o.face||1;
     const point=p=>[c*p[0]-s*p[1],s*p[0]+c*p[1],p[2]], id=k=>D.MAT_KEYS.indexOf(k);
-    const ell=(p,r,m)=>{p=point(p);nodes.push([...p,0,...r,1,0,0,0,id(m)]);};
+    const ell=(p,r,m,angle=0)=>{p=point(p);nodes.push([...p,0,...r,1,0,0,angle,id(m)]);};
     const cap=(a,b,r,m)=>{a=point(a);b=point(b);nodes.push([...a,r,...b,0,0,0,0,id(m)]);};
+    const attention=o.attention;let eyeNormal=null;
     const legacy=(o.gait||0)/(kind==='deer'?.14:.11),state=o.motion?.state||(o.bound?'bound':Math.abs(legacy)>0?'walk':'stand'),settings=GAITS[state]||GAITS.walk;
     const phase=o.motion?o.motion.distance/settings.stride:fract(legacy*.25),feet=[];
     if(kind==='person') {
@@ -52,16 +63,20 @@
     } else if(kind==='deer') {
       const bound=state==='bound',cycle=fract(phase),air=bound?Math.max(0,Math.sin((cycle-.3)/.7*Math.PI))*.20:0,flex=bound?Math.sin(cycle*2*Math.PI)*.07:0,z=air;
       ell([0,F*.05,1.02+z],[.22,.53,.27],'fur');ell([0,-F*.36,1.02+z],[.205,.26,.34],'fur');ell([0,F*.37,1.01+z+flex],[.20,.26,.28],'fur');
-      cap([0,-F*.42,1.13+z],[-.025,-F*.65,1.39+z],.115,'fur');ell([-.03,-F*.77,1.42+z],[.095,.20,.115],'fur');
-      cap([-.07,-F*.84,1.4+z],[-.19,-F*.87,1.37+z],.065,'fur');
+      const up=attention?attention.up:1,turn=attention?attention.turn:1;
+      const target=Math.atan2(-(o.y||0),-(o.x||1))-yaw,delta=Math.atan2(Math.sin(target-Math.PI),Math.cos(target-Math.PI)),angle=attention?F*Math.PI/2*(1-turn)+delta*turn:0;
+      if(attention)eyeNormal=[-Math.cos(yaw+angle),-Math.sin(yaw+angle),0];
+      const hc=[-.03,-F*(1.02-.25*up),.36+1.06*up+z],co=Math.cos(angle),si=Math.sin(angle),head=p=>[hc[0]+co*p[0]-si*p[1],hc[1]+si*p[0]+co*p[1],hc[2]+p[2]];
+      cap([0,-F*.42,1.13+z],attention?head([0,F*.12,-.03]):[-.025,-F*.65,1.39+z],.115,'fur');ell(hc,[.095,.20,.115],'fur',angle);
+      cap(head([-.04,-F*.07,-.02]),head([-.16,-F*.10,-.05]),.065,'fur');
       for(const side of [-1,1]) {
-        ell([side*.10,-F*(.69+side*.055),1.605+z],[.038,.063,.125],'fur');
+        ell(attention?head([side*.10,F*(.08-side*.055),.185]):[side*.10,-F*(.69+side*.055),1.605+z],[.038,.063,.125],'fur',angle);
         for(const end of [-1,1]) {
           const offset=bound?(end===-1?0:.16):state==='trot'?(side*end===1?0:.5):(side===1?0:.5)+(end===1?.25:0),f=foot(state,phase,offset),hip=[0,side*.13,.90+z+(end===1?flex:0)],ankle=[f.x,side*.13,f.z];
           const hock=[f.x-(end===1?.11:.025),side*.13,f.z+.25],k=knee(hip,hock,.34,.34,end===1?-1:1),map=p=>[p[1],F*(end*.40-p[0]),p[2]];
           cap(map(hip),map(k),end===1?.07:.055,'fur');cap(map(k),map(hock),.035,'fur');cap(map(hock),map(ankle),.021,'fur');ell(map(ankle),[.035,.05,.045],'tyre');feet.push({...f,p:point(map(ankle))});
         }
-        eyes.push(point([-.145,-F*.81+side*.065,1.475+z]));
+        if(!attention)eyes.push(point([-.145,-F*.81+side*.065,1.475+z]));else if(up>.15)eyes.push(point(head([-.115,-F*.04+side*.065,.055])));
       }
       cap([0,F*.53,1.08+z],[0,F*.67,1.12+z],.045,'fur');cap([0,F*.57,1.065+z],[0,F*.66,1.095+z],.027,'cloth-light');
     } else {
@@ -74,12 +89,12 @@
     }
     if(nodes.length>MAX_NODES)throw Error('model node limit');
     // Rotated ellipsoids retain their local axes. Texel 3 stores cosine/sine once per pose.
-    for(const n of nodes){n[8]=Math.cos(yaw);n[9]=Math.sin(yaw);}
+    for(const n of nodes){n[8]=Math.cos(yaw+n[10]);n[9]=Math.sin(yaw+n[10]);}
     let lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
     for(const n of nodes){const r=n[7]===1?Math.max(n[4],n[5],n[6]):n[3];for(let j=0;j<3;j++){lo[j]=Math.min(lo[j],n[j]-r,n[7]===0?n[4+j]-r:Infinity);hi[j]=Math.max(hi[j],n[j]+r,n[7]===0?n[4+j]+r:-Infinity);}}
     const z=(lo[2]+hi[2])/2,r=Math.hypot(Math.max(Math.abs(lo[0]),Math.abs(hi[0])),Math.max(Math.abs(lo[1]),Math.abs(hi[1])),(hi[2]-lo[2])/2)+BLEND*nodes.length/4;
     const data=new Float32Array(nodes.flat());for(let i=0;i<nodes.length;i++){data[i*12+2]-=z;if(data[i*12+7]===0)data[i*12+6]-=z;}
-    return {k:'sdf',x:o.x||0,y:o.y||0,z,r,nodes:data,nodeCount:nodes.length,mat:kind==='deer'?'fur':kind==='tree'?'foliage':'cloth-dark',cls:kind==='tree'?'veg':kind,ptype:o.ptype,state,phase,feet,eyes:eyes.map(p=>[p[0]+(o.x||0),p[1]+(o.y||0),p[2]]),gameHazard:o.gameHazard||0};
+    return {k:'sdf',x:o.x||0,y:o.y||0,z,r,nodes:data,nodeCount:nodes.length,mat:kind==='deer'?'fur':kind==='tree'?'foliage':'cloth-dark',cls:kind==='tree'?'veg':kind,ptype:o.ptype,state,phase,feet,eyes:eyes.map(p=>[p[0]+(o.x||0),p[1]+(o.y||0),p[2]]),gameHazard:o.gameHazard||0,attention,eyeNormal};
   }
   function cylinder(ob,ox,oy,oz,dx,dy,dz,tmax){
     const A=ob.axis,p=[ox-ob.x,oy-ob.y,oz-(ob.z0+ob.z1)/2],d=[dx,dy,dz],half=(ob.z1-ob.z0)/2,pa=p.reduce((s,v,i)=>s+v*A[i],0),da=d.reduce((s,v,i)=>s+v*A[i],0),q=p.map((v,i)=>v-A[i]*pa),v=d.map((v,i)=>v-A[i]*da),a=v.reduce((s,n)=>s+n*n,0),b=q.reduce((s,n,i)=>s+2*n*v[i],0),c=q.reduce((s,n)=>s+n*n,0)-ob.r*ob.r;
@@ -111,9 +126,11 @@
       if(ob.detailPart==='tree'){if(ob.detail)out.push(...tree(ob.detail));continue;}
       if(ob.detailPart!=='person' && ob.detailPart!=='deer'){out.push(ob);continue;}
       if(!ob.detail)continue;const m=build(ob.detail.kind,{...ob.detail,x:ob.detail.x,y:ob.detail.y,gameHazard:ob.gameHazard});out.push(m);
-      for(const e of m.eyes)out.push({k:'disc',x:e[0],y:e[1],z:e[2],r:.013,nx:-Math.cos(ob.detail.yaw),ny:-Math.sin(ob.detail.yaw),nz:0,sub:true,mat:'eyeshine',cls:'deer',gameHazard:ob.gameHazard});
+      // Behavioural pupil: tuned 13 mm diameter; legacy keeps its 13 mm radius.
+      // cos^8 incidence acceptance is tuning (half power ~23.5 degrees), not calibrated biology.
+      for(const e of m.eyes)out.push({k:'disc',x:e[0],y:e[1],z:e[2],r:m.attention?.0065:.013,nx:m.eyeNormal?m.eyeNormal[0]:-Math.cos(ob.detail.yaw),ny:m.eyeNormal?m.eyeNormal[1]:-Math.sin(ob.detail.yaw),nz:0,eyeFalloff:m.attention?8:0,sub:true,mat:'eyeshine',cls:'deer',gameHazard:ob.gameHazard});
     }
     return out;
   }
-  D.Models={TREE_COUNT:128,TREE_DISTANCE:140,build,distance,trace,cylinder,actors,tree,stableId,locomotion,foot,GAITS,MAX_NODES,STEPS,EPS,BLEND,material:()=>material};
+  D.Models={TREE_COUNT:128,TREE_DISTANCE:140,deerEnabled,deerProfile,deerAttention,build,distance,trace,cylinder,actors,tree,stableId,locomotion,foot,GAITS,MAX_NODES,STEPS,EPS,BLEND,material:()=>material};
 })(typeof self!=='undefined'?self:globalThis);

@@ -11,7 +11,7 @@ varying vec2 screen;
 void main() { center=aCenter; shape=aShape; pose=aPose; emission=aEmit; planes=aPlane; ties=aTie; matInfo=aMat; flags=aFlags.xy;lod=aFlags.zw; order=aMat.z;
  screen=mix(aBounds.xz,aBounds.yw,position.xy+0.5); gl_Position=vec4(screen,0,1); }
 `;
-export const objectFragment = ground.slice(0, ground.indexOf('vec4 roadFrame')).replace('retro*Ep;', 'retro*Ep*retroScale;').replace('vec3 shade(', 'float retroScale=1.0;\nvec3 shade(') + `
+export const objectFragment = ground.slice(0, ground.indexOf('vec4 roadFrame')).replace('retro*Ep;', 'retro*Ep*retroScale*pow(NoL,eyeFalloff);').replace('vec3 shade(', 'float retroScale=1.0,eyeFalloff=0.0;\nvec3 shade(') + `
 flat varying vec3 center; flat varying vec4 shape, pose, emission, planes, ties; flat varying vec3 matInfo; flat varying vec2 flags,lod; flat varying float order;
 uniform sampler2DArray materialMap;
 uniform vec3 mapExtent;
@@ -69,7 +69,7 @@ void main() {
    n=pose.yzw;float den=dot(ray,n);if(abs(den)<1e-9)discard;t=-dot(o,n)/den;vec3 q=o+t*ray,tangent=normalize(vec3(-n.y,n.x,0)),up=cross(n,tangent);
    if(abs(dot(q,tangent))>shape.x||abs(dot(q,up))>shape.z)discard;
  } else {
-   n=pose.yzw;float den=dot(ray,n);if(abs(den)<1e-9)discard;t=-dot(o,n)/den;vec3 q=o+t*ray;
+   n=pose.yzw;float den=dot(ray,n);if(lod.x<0.0&&den>=0.0)discard;if(abs(den)<1e-9)discard;t=-dot(o,n)/den;vec3 q=o+t*ray;
    float footprint=t*2.0*tanH/(size.x*samples);
    if(flags.x>0.0 && PI*shape.x*shape.x<footprint*footprint){vec2 a=abs(q.yz/footprint);if(any(greaterThanEqual(a,vec2(1))))discard;scale=PI*shape.x*shape.x/(footprint*footprint)*(1.0-a.x)*(1.0-a.y);}
    else {if(dot(q,q)>shape.x*shape.x)discard;coord=length(q);}
@@ -107,7 +107,8 @@ void main() {
  }
  if(maskMode==2){gl_FragColor=vec4(float(id),coord,p.z,order);return;}
  if(maskMode>0){float bit=matInfo.y>0.0?exp2(matInfo.y-1.0):0.0;gl_FragColor=vec4(bit,id==11?bit:0.0,0,1);return;}
- retroScale=scale;vec3 color=shade(p,n,v,id);float NoV=dot(n,v);
+ // Negative lod.x carries only the behavioural eye acceptance exponent.
+ retroScale=scale;eyeFalloff=lod.x<0.0?-lod.x:0.0;vec3 color=shade(p,n,v,id);float NoV=dot(n,v);
  if(NoV>0.0){vec3 emit=emission.w<0.0?texelFetch(materials,ivec2(id,3),0).rgb:emission.rgb;color+=emit*scale*(emission.w>1.0?pow(NoV,emission.w):NoV)*lampRGB;}
  gl_FragColor=vec4(color,flags.y>0.0?0.0:1.0);
 }
@@ -187,7 +188,7 @@ export function objects(renderer, uniforms, onModelsReady) {
       for(const g of groups.values())g.mesh.count=0;
       for(const [key,items]of buckets){const g=group(key,items.length,materialMap(items[0].ob));g.mesh.count=items.length;g.mesh.renderOrder=items[0].index;g.uniforms.samples.value=ss;g.uniforms.detailed.value=!!p.detailedModels;g.uniforms.sdfNodes.value=nodeTexture;g.uniforms.treeCard.value=card;
         items.forEach(({ob,index,bounds},i)=>{const k=ob.k,kind=k==='sdf'?4:k==='impostor'?5:k==='rect'?6:k==='ell'?0:k==='box'?1:k==='cyl'?(ob.axis?7:2):3,zc=k==='box'||k==='cyl'?(ob.z0+ob.z1)/2:ob.z;
-          const values={aCenter:[ob.x,ob.y,zc],aShape:k==='sdf'?[ob.r,ob.r,ob.r,kind]:k==='impostor'||k==='rect'?[ob.rx,ob.rx,ob.rz,kind]:k==='ell'?[ob.rx,ob.ry,ob.rz,kind]:k==='box'?[ob.hx,ob.hy,(ob.z1-ob.z0)/2,kind]:[ob.r,ob.r,k==='cyl'?(ob.z1-ob.z0)/2:ob.r,kind],aPose:[k==='impostor'?(ob.birch?1:0):(ob.yaw||0),...(ob.axis||[ob.nx||0,ob.ny||0,ob.nz||0])],aBounds:bounds,aTie:tieRanks.get(ob)||[0,0,0,0],aPlane:k==='sdf'?[ob.sdfRow,ob.nodeCount,0,0]:k==='impostor'?[0,0,ob.cardIndex,0]:[ob.x-(ob.hx||0),ob.x+(ob.hx||0),ob.y-(ob.hy||0),ob.y+(ob.hy||0)],aEmit:[...(ob.emit||[0,0,0]),ob.emit?(ob.emitPow||1):-1],aMat:[Math.max(0,D.MAT_KEYS.indexOf(ob.mat)),ob.gameHazard||0,index],aFlags:[ob.sub?1:0,ob.glow?1:0,...(ob.lod||[ob.facadeStyle||0,0])]};
+          const values={aCenter:[ob.x,ob.y,zc],aShape:k==='sdf'?[ob.r,ob.r,ob.r,kind]:k==='impostor'||k==='rect'?[ob.rx,ob.rx,ob.rz,kind]:k==='ell'?[ob.rx,ob.ry,ob.rz,kind]:k==='box'?[ob.hx,ob.hy,(ob.z1-ob.z0)/2,kind]:[ob.r,ob.r,k==='cyl'?(ob.z1-ob.z0)/2:ob.r,kind],aPose:[k==='impostor'?(ob.birch?1:0):(ob.yaw||0),...(ob.axis||[ob.nx||0,ob.ny||0,ob.nz||0])],aBounds:bounds,aTie:tieRanks.get(ob)||[0,0,0,0],aPlane:k==='sdf'?[ob.sdfRow,ob.nodeCount,0,0]:k==='impostor'?[0,0,ob.cardIndex,0]:[ob.x-(ob.hx||0),ob.x+(ob.hx||0),ob.y-(ob.hy||0),ob.y+(ob.hy||0)],aEmit:[...(ob.emit||[0,0,0]),ob.emit?(ob.emitPow||1):-1],aMat:[Math.max(0,D.MAT_KEYS.indexOf(ob.mat)),ob.gameHazard||0,index],aFlags:[ob.sub?1:0,ob.glow?1:0,...(ob.lod||[ob.eyeFalloff?-ob.eyeFalloff:ob.facadeStyle||0,0])]};
           for(const [name,v]of Object.entries(values))g.attrs[name].array.set(v,i*fields[name]);
         });for(const a of Object.values(g.attrs))a.needsUpdate=true;
       }

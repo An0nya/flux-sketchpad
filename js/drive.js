@@ -182,7 +182,7 @@
       NX = c * nx - s * ny; NY = s * nx + c * ny; NZ = nz; HU = u; HF = face; return t0;
     }
     // disc
-    const den = dx * ob.nx + dy * ob.ny + dz * ob.nz; if (Math.abs(den) < 1e-9) return Infinity;
+    const den = dx * ob.nx + dy * ob.ny + dz * ob.nz; if(ob.eyeFalloff && den>=0)return Infinity; if (Math.abs(den) < 1e-9) return Infinity;
     const t = ((ob.x - ox) * ob.nx + (ob.y - oy) * ob.ny + (ob.z - oz) * ob.nz) / den; if (!(t > 1e-4 && t < tmax)) return Infinity;
     const qx = ox + t * dx - ob.x, qy = oy + t * dy - ob.y, qz = oz + t * dz - ob.z, d2 = qx * qx + qy * qy + qz * qz;
     if (ob.sub) {
@@ -283,7 +283,7 @@
     const lw = [lut.h0, lut.h0 + lut.nh * lut.step, lut.v0, lut.v0 + lut.nv * lut.step], preA = !pitch && conv === 'A' && lw[0] > -89 && lw[1] < 89 && lw[2] > -89 && lw[3] < 89;
     const sv0 = Math.sin(lw[2] * D2R) - 1e-9, sv1 = Math.sin(lw[3] * D2R) + 1e-9, th0 = Math.tan(lw[0] * D2R) * (1 + 1e-9) - 1e-12, th1 = Math.tan(lw[1] * D2R) * (1 + 1e-9) + 1e-12;
     // add a surface point's luminance, weighted: P = hit, n = unit normal (facing the eye), m = material, k = weight, v = unit vector to the eye
-    function shade(px, py, pz, nx, ny, nz, m, k, vx, vy, vz, rscale, staticBuild) {
+    function shade(px, py, pz, nx, ny, nz, m, k, vx, vy, vz, rscale, staticBuild, eyeFalloff) {
       if (groundBand && groundShading && !staticBuild) {
         const mi = cacheMats.get(m);
         let a = groundBand.get(mi);
@@ -344,7 +344,7 @@
           const F = m.gloss.F0 + (1 - m.gloss.F0) * Math.pow(1 - Math.max(0, VoH), 5), kk = m.gloss.a / 2, G1 = (x) => x / (x * (1 - kk) + kk);
           const s = D * F * G1(NoL) * G1(NoV) / (4 * NoV) * Ep; r += s; g += s; b += s;
         }
-        if (m.retro) { const q = Ep * (rscale === undefined ? 1 : rscale); r += m.retro[0] * q; g += m.retro[1] * q; b += m.retro[2] * q; }
+        if (m.retro) { const q = Ep * (rscale === undefined ? 1 : rscale) * (eyeFalloff ? Math.pow(NoL,eyeFalloff) : 1); r += m.retro[0] * q; g += m.retro[1] * q; b += m.retro[2] * q; }
       }
       LR += k * r * lc[0]; LG += k * g * lc[1]; LB += k * b * lc[2];
     }
@@ -395,7 +395,7 @@
         const key = sdfKey ? (sdfKey==='hivis' && ((pz>1 && pz<1.06)||(pz>1.26 && pz<1.32))?'hivis-tape':sdfKey) : typeof ob.mat === 'function' ? ob.mat({ x: px, y: py, z: pz, u: hu, face: hf }) : ob.mat;
         if (ob.gameHazard && key === 'eyeshine') eyeAcc |= 1 << (ob.gameHazard - 1);
         let m = M[key] || M.wall; if (ob.emit) m = ob.emitM && ob.emitBase === m ? ob.emitM : (ob.emitBase = m, ob.emitM = Object.assign({}, m, { emit: ob.emit, emitPow: ob.emitPow }));   // this object glows (a lamp: its own luminance); emitPow > 1 makes it directional (cos^n)
-        shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
+        shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs, false, ob.eyeFalloff); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
         if (sampleDepth === Infinity) { sampleDepth = tbest; sampleMat = m.id; }
       } else if (objOnly) { /* the ground and the sky are the other layer's */ } else if (tg < Infinity && tg < 5000) {
         const tGround = timed ? performance.now() : 0;

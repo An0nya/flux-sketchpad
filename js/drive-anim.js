@@ -285,7 +285,7 @@
     if (p && src.traffic && src.traffic.onMode !== 'manual') D.Headlamp.apply(out, { mode: src.traffic.onMode, kcd: src.traffic.onKcd, lut: p.lut, conv: p.conv, seed: src.traffic.seed });
     return out;
   }
-  const placedObjects = (p, dist, t, tauOf) => D.Models.actors(place(p.src, dist, p.A, tauOf, p.detailedModels?null:dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p)),p.detailedModels);
+  const placedObjects = (p, dist, t, tauOf) => D.Models.actors(place(p.src, dist, p.A, tauOf, p.detailedModels?null:dimFoliage(p), D.Models.deerEnabled(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p)),p.detailedModels);
   // Same eye illuminance as Road.model.lux: far-field intensity / distance² × incidence cosine. Driver faces back along their lane, eye 1.1 m up.
   function eyeLux(p, car) {
     const q = p.A ? p.A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }; let E = 0;
@@ -366,7 +366,7 @@
     const src = p.src, cfg = src.tiles, lane = p.lane, A = tileRoute(cfg.seed, dist, !!cfg.groundCache), edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
     const pp = Object.assign({}, p, { A });
     // Street lights can reach foliage outside our beam: keep it for actual per-point shading.
-    const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' && !p.detailedModels ? dimFoliage(pp) : null).concat(trafficObjects(src, trafficCars(src, dist, t), A, pp));
+    const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' && !p.detailedModels ? dimFoliage(pp) : null, D.Models.deerEnabled(p)).concat(trafficObjects(src, trafficCars(src, dist, t), A, pp));
     for (const tile of A.tiles) {
       const mid = tile.s0 + 100 - dist, junction = tile.kind === 'intersection' || tile.kind === 't-junction';
       if (mid < -110 || mid > CULL + 110) continue;
@@ -460,7 +460,7 @@
     return n;
   }
   /* tauOf(id, rel0) → seconds since that walker/deer started moving (0 without it: they stand where they start). Random scenery: the chunks around the car, each object once */
-  function place(src, dist, A, tauOf, skip) {
+  function place(src, dist, A, tauOf, skip, deerBehaviour) {
     const out = [];
     if (src.chunk) {
       const k0 = Math.floor((dist - 6) / PERIOD), K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
@@ -469,14 +469,24 @@
         if (k >= k0) for (const ob of ch.objects) { const rel = ob.x + base - dist; if (rel >= -6 && rel <= CULL) { const n = move(Object.assign({}, ob), ob, rel, A); if (!skip || !skip(n)) out.push(n); } }
         for (const a of ch.actors) {
           const id = k + ':' + a.id, tau = tauOf ? tauOf(id, base + a.s0 - dist) : 0, ps = actorPose(a, tau), rel = base + ps.s - dist; if (rel < -6 || rel > CULL) continue;
-          const n0 = K.O.length;
-          if (a.kind === 'deer') K.deer(rel, ps.off, { face: a.side > 0 ? 1 : -1, gait: ps.gait, motion:ps.motion }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait, motion:ps.motion });
+          const n0 = K.O.length, attention=deerBehaviour&&a.kind==='deer'?D.Models.deerAttention((src.traffic?.seed||0)+':'+id,tauOf?tauOf('@'+id):-1):null;
+          if(attention){ps.s=a.s0;ps.off=a.off0;ps.gait=0;ps.motion=D.Models.locomotion('deer',0,0,false);}
+          if (attention && attention.state==='bolt') { const d=Math.max(0,attention.elapsed-attention.bolt)*3.8;ps.off+=a.side*d;ps.motion=D.Models.locomotion('deer',d,3.8,true,'bound'); }
+          if (a.kind === 'deer') K.deer(rel, ps.off, { face: (a.side > 0 ? 1 : -1)*(attention?.state==='bolt'?-1:1), gait: ps.gait, motion:ps.motion, attention }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait, motion:ps.motion });
           for (let i = n0; i < K.O.length; i++) out.push(move(Object.assign({}, K.O[i]), K.O[i], K.O[i].x, A));
         }
       }
       return out;
     }
-    for (const ob of src.objects) { const n = move(Object.assign({}, ob), ob, ob.x - dist - Math.floor((ob.x - dist + 6) / PERIOD) * PERIOD, A); if (!skip || !skip(n)) out.push(n); }
+    for (const ob of src.objects) {
+      const cycle=-Math.floor((ob.x-dist+6)/PERIOD),rel=ob.x-dist+cycle*PERIOD,n=move(Object.assign({},ob),ob,rel,A);
+      if(deerBehaviour&&ob.detailPart==='deer'){
+        if(!ob.detail)continue;
+        const id=cycle+':static:'+ob.modelId,attention=D.Models.deerAttention((src.traffic?.seed||0)+':'+id,tauOf?tauOf('@'+id):-1),d=attention.state==='bolt'?Math.max(0,attention.elapsed-attention.bolt)*3.8:0,side=ob.y>src.lane/2?1:-1,K=D.kit({Lw:src.lane,A,rand:()=>.5});
+        K.deer(rel,ob.detail.y+side*d,{attention,motion:D.Models.locomotion('deer',d,3.8,d>0,'bound'),face:d>0?-side:ob.detail.face});out.push(...K.O);continue;
+      }
+      if(!skip||!skip(n))out.push(n);
+    }
     return out;
   }
   const lightingExtras = p => !!(p.trafficBeams || p.surfaceSheen || p.lampPitch || p.pitch);
@@ -536,14 +546,18 @@
     r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
   }
   // walkers and deer start to move when the car is ACT m from where they stood: act = id → the clock (s) at that moment. Pure state, so every thread that sees the same frames keeps the same copy
-  const tauFor = (act, t) => (id) => { const t0 = act.get(id); return t0 === undefined ? 0 : t - t0; };
+  // @ clocks are deer attention onset, independent of the legacy movement clock; -1 means still grazing.
+  const tauFor = (act, t) => (id) => { const t0 = act.get(id); return t0 === undefined ? (id[0]==='@'?-1:0) : t - t0; };
   // start the walkers and deer the car has come within ACT m of (the page does this once per frame and hands the result to every thread, so they all pose the same actor the same way)
   function activate(src, dist, t, act) {
-    if (!src.chunk) return;
+    if (!src.chunk) {
+      for(const ob of src.objects)if(ob.detailPart==='deer'&&ob.detail){const cycle=-Math.floor((ob.x-dist+6)/PERIOD),id=cycle+':static:'+ob.modelId;if(!act.has('@'+id)&&ob.x+cycle*PERIOD-dist<=D.Models.deerProfile((src.traffic?.seed||0)+':'+id).trigger)act.set('@'+id,t);}
+      return;
+    }
     const k0 = Math.floor((dist - 6) / PERIOD);
-    for (let k = k0 - 1; k <= k0 + 1; k++) for (const a of src.chunk(k).actors) { const id = k + ':' + a.id; if (!act.has(id) && k * PERIOD + a.s0 - dist <= ACT) act.set(id, t); }
+    for (let k = k0 - 1; k <= k0 + 1; k++) for (const a of src.chunk(k).actors) { const id = k + ':' + a.id; if (!act.has(id) && k * PERIOD + a.s0 - dist <= ACT) act.set(id, t); if(a.kind==='deer'&&!act.has('@'+id)&&k*PERIOD+a.s0-dist<=D.Models.deerProfile((src.traffic?.seed||0)+':'+id).trigger)act.set('@'+id,t); }
   }
-  function pruneAct(act, dist) { if (act.size > 80) { const k0 = Math.floor((dist - 6) / PERIOD); for (const id of act.keys()) if (+id.split(':')[0] < k0 - 2) act.delete(id); } }
+  function pruneAct(act, dist) { if (act.size > 80) { const k0 = Math.floor((dist - 6) / PERIOD); for (const id of act.keys()) if (+id.replace(/^@/,'').split(':')[0] < k0 - 2) act.delete(id); } }
   /* The object trace of one worker thread (js/drive-worker.js; the page can run one too, tests do). It rebuilds the scenery itself from parameters (materials are functions: they cannot cross postMessage),
    * and for every frame traces its share of the picture: tile rows ty with ty % n === i, packed into one Float32Array (the rows of each traced tile row, in order). Same code as the page's own trace, so the pixels are the same. */
   function tracer() {
@@ -867,7 +881,7 @@ void main() {
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels };
+    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -956,10 +970,10 @@ void main() {
   }
   // tell the workers what the picture is made of (when that changes): the scenery's recipe, the camera, the beam
   function workerCfg() {
-    const I = info(), p = V.p, key = JSON.stringify([V.skey, p.w, p.h, p.hfov, p.lane, p.conv, p.lamps, p.look, p.detailedModels, I.A && [I.A.R, I.A.dir]]);
+    const I = info(), p = V.p, key = JSON.stringify([V.skey, p.w, p.h, p.hfov, p.lane, p.conv, p.lamps, p.look, p.detailedModels, p.deerBehaviour, I.A && [I.A.R, I.A.dir]]);
     if (key === Wk.cfgKey && Wk.lut === p.lut) return;
     Wk.cfgKey = key; Wk.lut = p.lut; Wk.cfgId++; Wk.busy = null;           // a frame in flight belongs to the old picture: dropped when it arrives
-    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lane: p.lane, look: p.look, detailedModels: p.detailedModels }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
+    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lane: p.lane, look: p.look, detailedModels: p.detailedModels, deerBehaviour:p.deerBehaviour }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
     Wk.config = m;
     for (const w of Wk.list) w.postMessage(m);
   }
@@ -1115,6 +1129,7 @@ void main() {
       ['surface-sheen', 'surfaceSheen', 'lit surface sheen', 'Up to eight lit sign/bright faces add wet streaks from integrated returned luminance and area.'],
       ['lamp-pitch', 'lampPitch', 'lamp pitch', 'Drive only: suspension pitch follows acceleration and braking. Tuning: 0.12 degrees per m/s², 1.5 Hz.']
     ]) btn(name, title, () => { if (key === 'lampPitch') { st.pitch = null; st.acceleration = 0; } setDV(ui, key, !info().o[key]); }, label);
+    btn('deer-behaviour', 'Deer graze, turn toward the lamps, freeze and bolt. Defaults on with detailed models; you can enable it for primitive deer too. Timing and eye acceptance are tuning. Off restores the original movement and eyes.', () => setDV(ui, 'deerBehaviour', !D.Models.deerEnabled(info().o)), 'deer behaviour');
     btn('detailed-models', 'Detailed deer, people and sphere-cluster trees on CPU/GPU. Mesh cars, far tree cards and facade styles are GPU-only; CPU keeps primitive cars and facades. Play scores follow the visible models.', () => setDV(ui, 'detailedModels', !info().o.detailedModels), 'detailed models');
     btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => { if (V.gpuFailure && info().o.gpuRenderer) { V.gpuFailure = ''; V.gpuTries = 0; say(''); labels(ui); ui.redrawSpec(); } else setDV(ui, 'gpuRenderer', !info().o.gpuRenderer); }, 'GPU drive renderer');      // failed while ON: a click retries the GPU
     btn('fps-counter', 'Small frame-rate badge; no sampled trace profiling.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'FPS');
@@ -1173,6 +1188,7 @@ void main() {
     for (const b of q('[data-anim="popout"]')) { const label = st.popout ? 'Close large view' : 'Large view'; b.setAttribute('aria-pressed', String(st.popout)); b.setAttribute('aria-label', label); b.title = label; b.disabled = !sup; b.textContent = st.popout ? '⤡' : '⤢'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
+    V.bar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
     for (const [name, key] of [['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
     V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
@@ -1238,8 +1254,8 @@ void main() {
   function gameObjects(g, world, lane) {
     const A = world.A, K = D.kit({ Lw: lane || V.p.lane, A: null, rand: () => 0.5 });
     for (const h of g.hazards) if (g.rules !== 'legacy' || !h.resolved) {
-      const ps = RF.DriveGame.pose(g, h, g.t), first = K.O.length, rel = ps.s - g.x;
-      if (h.kind === 'deer') K.deer(rel, ps.off, { face: h.side > 0 ? 1 : -1, gait: ps.gait, motion:ps.motion });
+      const ps = RF.DriveGame.pose(g, h, g.t, D.Models.deerEnabled(V.p)), first = K.O.length, rel = ps.s - g.x;
+      if (h.kind === 'deer') K.deer(rel, ps.off, { face: h.side > 0 ? 1 : -1, gait: ps.gait, motion:ps.motion, attention:ps.attention });
       else K.person(rel, ps.off, h.noHiViz ? 'dark' : 'hivis', { dir: [h.ds, h.doff], gait: ps.gait, motion:ps.motion });
       for (const ob of K.O.slice(first)) { ob.gameHazard = h.id; world.objects.push(move(Object.assign({}, ob), ob, ob.x, A)); }
     }
