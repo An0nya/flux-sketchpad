@@ -99,7 +99,7 @@ export function objects(renderer, uniforms) {
   }
   function group(key, count, map) {
     let g=groups.get(key);if(g && g.capacity>=count)return g;
-    if(g){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.material.dispose();}
+    if(g){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();}
     const capacity=Math.max(16,2**Math.ceil(Math.log2(count))),geometry=new T.PlaneGeometry(1,1),attrs={};
     for(const [name,n]of Object.entries(fields)){attrs[name]=new T.InstancedBufferAttribute(new Float32Array(n*capacity),n).setUsage(T.DynamicDrawUsage);geometry.setAttribute(name,attrs[name]);}
     const local={...uniforms,materialMap:{value:map?map.tex:zero},mapExtent:{value:map?map.extent:new T.Vector3(1,0,1)},mapped:{value:map?map.mode:0},signKind:{value:map?map.signKind:0},maskMode:{value:0},samples:{value:1}};
@@ -129,10 +129,10 @@ export function objects(renderer, uniforms) {
           for(const [name,v]of Object.entries(values))g.attrs[name].array.set(v,i*fields[name]);
         });for(const a of Object.values(g.attrs))a.needsUpdate=true;
       }
-      for(const [key,g] of groups) if(!g.mesh.count){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.material.dispose();groups.delete(key);const map=maps.get(key);if(map){map.tex.dispose();maps.delete(key);}}
+      for(const [key,g] of groups) if(!g.mesh.count){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();groups.delete(key);const map=maps.get(key);if(map){map.tex.dispose();maps.delete(key);}}
       return count;
     },
     mask(on){for(const g of groups.values())g.uniforms.maskMode.value=typeof on==='number'?on:on?1:0;},
-    dispose(){for(const g of groups.values()){g.mesh.geometry.dispose();g.mesh.material.dispose();}for(const m of maps.values())m.tex.dispose();zero.dispose();groups.clear();maps.clear();},
+    dispose(){for(const g of groups.values()){g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();}for(const m of maps.values())m.tex.dispose();zero.dispose();groups.clear();maps.clear();},
   };
 }
