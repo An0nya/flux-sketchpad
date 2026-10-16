@@ -28,6 +28,7 @@ run('metrics (tests/metrics.js)', ['tests/metrics.js']);
 run('layout (tests/layout.js)', ['tests/layout.js']);
 run('attribution (tests/attribution.js)', ['tests/attribution.js']);
 run('photometry (tests/photometry.js)', ['tests/photometry.js']);
+run('auto-high (tests/auto-high.js)', ['tests/auto-high.js']);
 run('two-curvature facet (tests/facet2.js)', ['tests/facet2.js']);
 run('solvers (tests/solvers.js)', ['tests/solvers.js']);
 run('modes + auto (tests/modes.js)', ['tests/modes.js']);
