@@ -199,6 +199,8 @@
     num('src.y', 'Position y', (s) => S(s).pos[1], (s, v) => { S(s).pos[1] = v; }, { section: 'source', adv: true, groups: srcGroups, min: -10000, max: 10000, step: 0.5 }),
     num('src.z', 'Position z', (s) => S(s).pos[2], (s, v) => { S(s).pos[2] = v; }, { section: 'source', adv: true, groups: srcGroups, min: -10000, max: 10000, step: 0.5 }),
     num('src.power', 'Power (lm)', (s) => S(s).power, (s, v) => { S(s).power = Math.max(1e-9, v); }, { section: 'source', adv: true, min: 0.001, max: 1e7, step: 10 }),
+    // optional: blank = unset (the light renders white). Presets fill it on apply (js/cct.js); legacy scenes never have it.
+    num('src.cct', 'Colour temperature (K)', (s) => S(s).cct, (s, v) => { if (v > 0) S(s).cct = Math.round(v); else delete S(s).cct; }, { section: 'source', adv: true, blankUnset: true, viewOnly: true, groups: srcGroups, min: 1667, max: 25000, step: 100, help: 'Tints the Drive view lamps toward this colour temperature (brightness unchanged). Blank = unset, white. LED presets fill it from their stated K; halogen 3200 K and HID 4200 K are assumed.' }),
     // ---- envelope
     sel('env.shape', 'Envelope', [['box', 'Box'], ['cylinder', 'Cylinder'], ['ellipsoid', 'Ellipsoid']], (s) => EN(s).shape, (s, v) => { EN(s).shape = v; }, { section: 'envelope', groups: ['A', 'B'] }),
     sel('env.axis', 'Cylinder axis', [['0', 'x'], ['1', 'y'], ['2', 'z']], (s) => String(EN(s).axis), (s, v) => { EN(s).axis = +v; }, { section: 'envelope', groups: ['A', 'B'], show: (s) => EN(s).shape === 'cylinder' }),
@@ -304,6 +306,7 @@
   function setControl(store, id, value) {
     const c = BY_ID[id];
     if (!c) throw new Error('no control ' + id);
+    if (c.blankUnset && value === null) { c.set(store, null); store.invalidate(c.groups); return c; }   // an optional value cleared by a blank field (src.cct)
     if (c.type === 'number') { if (typeof value !== 'number' || !isFinite(value)) return c; value = RF.U.clamp(value, c.min, c.max); }   // the one place every typed / dragged / scripted number passes: reject non-numbers, clamp to the row's range
     c.set(store, value);
     store.invalidate(c.groups);

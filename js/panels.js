@@ -63,7 +63,11 @@
     const clamp = (v) => Math.min(isFinite(c.max) ? c.max : Infinity, Math.max(isFinite(c.min) ? c.min : -Infinity, v));
     const field = el('input', { type: 'text', inputmode: 'decimal', class: 'scrub', 'data-control': c.id, 'aria-label': c.label, autocomplete: 'off', spellcheck: 'false' });
     const show = () => { const v = c.get(ui.store); field.value = isFinite(v) ? +(+v).toFixed(6) : ''; };      // the field always shows the value in use
-    const commitTyped = () => { const v = parseFloat(field.value); if (isFinite(v)) ui.setControl(c.id, clamp(v)); show(); };
+    const commitTyped = () => {
+      if (c.blankUnset && field.value.trim() === '') ui.setControl(c.id, null);     // a blank field clears an optional value (e.g. src.cct)
+      else { const v = parseFloat(field.value); if (isFinite(v)) ui.setControl(c.id, clamp(v)); }
+      show();
+    };
     field.addEventListener('change', commitTyped);
     field.addEventListener('blur', show);
     field.addEventListener('keydown', (e) => {
@@ -240,7 +244,7 @@
       section('Light source', { open: true, key: 'source' },
         el('div', { id: 'source-preset' }),
         ...rowsFor(ui, ['src.kind', 'src.shape', 'src.w', 'src.h', 'src.radius', 'src.length', 'src.arc.mount', 'src.arc.gap', 'src.arc.bow', 'src.arc.fwhm', 'src.arc.hot', 'src.arc.tipWidth', 'src.arc.tube', 'src.arc.tubeRadius', 'src.arc.wall', 'src.arc.tubeLength', 'src.arc.index', 'src.arc.stripes', 'src.arc.stripeRadius', 'src.arc.stripeWidth', 'src.arc.stripeAngle', 'src.dist', 'src.sigma', 'src.half', 'src.domeR', 'src.domeN', 'src.domeZ']),
-        section('Advanced', { adv: true, key: 'source-adv' }, el('div', { class: 'note' }, 'Direction and position are also draggable in Optics (source dot, arrow tip), or in the Scene with Setup on.'), ...rowsFor(ui, ['src.az', 'src.el', 'src.roll', 'src.x', 'src.y', 'src.z', 'src.power'])),
+        section('Advanced', { adv: true, key: 'source-adv' }, el('div', { class: 'note' }, 'Direction and position are also draggable in Optics (source dot, arrow tip), or in the Scene with Setup on.'), ...rowsFor(ui, ['src.az', 'src.el', 'src.roll', 'src.x', 'src.y', 'src.z', 'src.power', 'src.cct'])),
         section('More emitters', { open: false, key: 'emitters', tag: 'multi-LED' },
           el('div', { class: 'note' }, 'Extra LEDs, each a copy of the source above (same die and dome) with its own position, aim and power. Rays are shared out by power. Solvers that design per emitter (TIR array) read them all; reflector solvers design for the first one.'),
           el('div', { class: 'btnrow' }, el('button', { type: 'button', onclick: () => ui.addEmitter() }, 'Add emitter')),
