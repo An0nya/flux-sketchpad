@@ -1,5 +1,5 @@
 // node tests/regress/QOL1-qol.js 8788 — tester only; uses the same assertions as the running owner runner.
-const fs = require('fs'), path = require('path'), pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright');
+const fs = require('fs'), path = require('path'), pw = require(process.env.PLAYWRIGHT || require('child_process').execSync('npm root -g').toString().trim() + '/playwright');
 const port = +(process.argv[2] || 8788), root = path.join(__dirname, '../..'); let fails = 0;
 (async () => {
   const browser = await pw.chromium.launch({ channel: 'chromium', args: ['--enable-unsafe-webgpu'] });
