@@ -639,6 +639,8 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .drive-game input[type=checkbox] { width: auto; }
 .drive-notice { position: absolute; left: 8px; right: 8px; top: var(--drive-toolbar-bottom, 80px); z-index: 4; padding: 4px 8px; background: #17283e; color: #fff; font-size: 12px; pointer-events: none; }
 .drive-notice[hidden], .canvas-wrap:not(.drive) > .drive-notice { display: none; }
+.drive-notice.drive-proto { right: auto; width: max-content; max-width: 70%; transition: opacity .4s; }
+.drive-notice.drive-proto.fading { opacity: 0; }
 .drive-fps { position: absolute; right: 6px; top: var(--drive-toolbar-bottom, 80px); z-index: 2; padding: 2px 4px; color: #e5efff; background: #050a12b8; font: 10px/1.35 monospace; font-variant-numeric: tabular-nums; pointer-events: none; }
 .drive-perf { position: absolute; left: 6px; top: calc(var(--drive-toolbar-bottom, 80px) + 24px); z-index: 2; max-width: calc(100% - 12px); max-height: min(45%, calc(100% - var(--drive-toolbar-bottom, 80px) - 30px)); overflow: auto; box-sizing: border-box; padding: 4px 6px; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: auto; touch-action: pan-y; background: rgba(5,10,18,.85); color: #e5efff; font: 10px/1.35 monospace; font-variant-numeric: tabular-nums; }
 .drive-perf[hidden], .drive-fps[hidden], .canvas-wrap:not(.drive) > :is(.drive-perf, .drive-fps) { display: none; }
