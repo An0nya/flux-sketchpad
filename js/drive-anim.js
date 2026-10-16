@@ -570,7 +570,7 @@
     const x = q.angle - target, b = q.rate + w * x, e = Math.exp(-w * Math.max(0, dt));
     return { angle: target + (x + b * dt) * e, rate: (q.rate - w * b * dt) * e };
   }
-  const camOf = (p) => ({ w: p.w, h: p.h, hfov: p.hfov, eye: EYE, lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look, profile: p.profile, src: p.src, trafficBeams: p.trafficBeams, surfaceSheen: p.surfaceSheen, pitch: p.pitch });
+  const camOf = (p) => ({ w: p.w, h: p.h, hfov: p.hfov, eye: EYE, lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look, profile: p.profile, src: p.src, trafficBeams: p.trafficBeams, surfaceSheen: p.surfaceSheen, pitch: p.pitch, lampRGB: p.lampRGB });
   /* the lit ground: A = everything that does not move; each patterned marking (the dashes, a crossing, a stop line) is a layer: the markings that share one pattern are drawn solid and what they add over A is its B,
    * which the compose shader fades by the pattern's coverage at s + dist. Lit paint adds linearly, so layers sum (where two overlap the sum is a little more than the still view's first-marking-wins: city's crossing over the dash).
    * layers = [{ pat, B }] (at most MAX_PAT; more patterned markings than that stay in A as they are at dist 0); B and pat = the first layer's (null: nothing patterned)  */
@@ -980,13 +980,13 @@ void main() {
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, !!o.surfaceSheen, !!o.lampPitch]);
+    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, !!o.surfaceSheen, !!o.lampPitch, I.lampRGB]);
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
+    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1081,7 +1081,7 @@ void main() {
     const I = info(), p = V.p, key = JSON.stringify([V.skey, p.w, p.h, p.hfov, p.lane, p.conv, p.lamps, p.look, p.detailedModels, p.deerBehaviour, I.A && [I.A.R, I.A.dir]]);
     if (key === Wk.cfgKey && Wk.lut === p.lut) return;
     Wk.cfgKey = key; Wk.lut = p.lut; Wk.cfgId++; Wk.busy = null;           // a frame in flight belongs to the old picture: dropped when it arrives
-    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lane: p.lane, look: p.look, detailedModels: p.detailedModels, deerBehaviour:p.deerBehaviour }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
+    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lampRGB: p.lampRGB, lane: p.lane, look: p.look, detailedModels: p.detailedModels, deerBehaviour:p.deerBehaviour }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
     Wk.config = m;
     for (const w of Wk.list) w.postMessage(m);
   }
