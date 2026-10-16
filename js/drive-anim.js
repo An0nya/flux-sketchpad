@@ -740,18 +740,23 @@ void main() {
   // ---------------------------------------------------------------- the view: state, canvas, loop
   // Scale is separate from samples per pixel. pinSS freezes both for reproducible comparisons.
   const RES_SCALES = [1, 0.85, 0.7, 0.55, 0.4];
-  const resolutionState = () => ({ scale: 1, index: 0, slow: 0, fast: 0, cooldown: 0, average: 0 });
+  const BOUNCE_MS = 30000, HOLD_MS = 30000, HOLD_MAX_MS = 240000;       // a step-down within BOUNCE_MS of a step-up doubles the wait before the next step-up (30 s, 60 s .. 240 s); BOUNCE_MS without a bounce resets it
+  const resolutionState = () => ({ scale: 1, index: 0, slow: 0, fast: 0, cooldown: 0, average: 0, clock: 0, upAt: -1e9, holdUntil: 0, hold: 0 });
   function resolutionStep(state, ms, opts) {
     const o = opts || {}, s = Object.assign(resolutionState(), state), target = Number.isFinite(+o.target) && +o.target > 0 ? +o.target : 33;
     if (!o.enabled || o.pinned) return resolutionState();
     if (!(ms > 0) || !Number.isFinite(ms)) return s;
+    s.clock += ms; if (s.hold && s.upAt > -1e9 && s.clock - s.upAt >= BOUNCE_MS) { s.hold = 0; s.upAt = -1e9; }
     s.average = s.average ? 0.8 * s.average + 0.2 * ms : ms;
     if (s.cooldown > 0) { s.cooldown--; return s; }
     if (s.average > target * 1.15) { s.slow++; s.fast = 0; }
     else if (s.average < target * 0.7) { s.fast++; s.slow = 0; }
     else s.slow = s.fast = 0;
-    if (s.slow >= 6 && s.index < RES_SCALES.length - 1) { s.index++; s.slow = s.fast = 0; s.cooldown = 20; s.average = 0; }
-    else if (s.fast >= 60 && s.index > 0) { s.index--; s.slow = s.fast = 0; s.cooldown = 20; s.average = 0; }
+    if (s.slow >= 6 && s.index < RES_SCALES.length - 1) {
+      if (s.clock - s.upAt < BOUNCE_MS) { s.hold = Math.min(HOLD_MAX_MS, s.hold ? s.hold * 2 : HOLD_MS); s.holdUntil = s.clock + s.hold; s.upAt = -1e9; }
+      s.index++; s.slow = s.fast = 0; s.cooldown = 20; s.average = 0;
+    }
+    else if (s.fast >= 60 && s.index > 0 && s.clock >= s.holdUntil) { s.index--; s.upAt = s.clock; s.slow = s.fast = 0; s.cooldown = 20; s.average = 0; }
     s.scale = RES_SCALES[s.index]; return s;
   }
   function resolutionPrepare() {
