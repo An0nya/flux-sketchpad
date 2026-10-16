@@ -1113,6 +1113,7 @@ void main() {
   // one frame at S.dist
   function frame() {
     if (!contextReady()) return;
+    if (V.highMode === 'auto') autoTick(V.ui, S(V.ui));
     const t0 = performance.now(); resolutionPrepare();
     const ui = V.ui, st = S(ui), I = info(), o = I.o, W = V.p.w, pb = V.band, had = pb[1] > pb[0], profiling = profileOn(), trafficMs = V.cameraMs || 0;
     V.p.yaw = o.afs && st.lighting ? st.lighting.yaw : 0;
@@ -1321,8 +1322,8 @@ void main() {
     const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveBar.querySelector('.drive-primary'), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
     btn('play', 'Drive / pause: Pause freezes distance and time', () => { const current = S(ui); current.playing = !current.playing; setDV(ui, 'playing', current.playing); });
     // High beam (H key or this button): session state on V, not saved prefs, so it is off on every reload
-    btn('high-beam', 'High beam (H): low beam plus the generic high beam. Off by default; not saved across reloads.', () => setHigh(ui, !V.high), 'high beam');
-    document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.bar.hidden && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); setHigh(ui, !V.high); } });
+    btn('high-beam', 'High beam (H) cycles Off, On, Auto. Auto dips for oncoming headlamps, preceding tail lamps, urban or junction tiles and under 30 km/h, then returns to high after 2 s clear. Off by default; not saved across reloads.', () => cycleHigh(ui), 'high beam');
+    document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.bar.hidden && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
     btn('fit-controls', 'Compact spacing for the wrapping drive controls. Off uses wider spacing.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
     const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed. Mountain pass always slows for bends; traffic logic adds road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
@@ -1391,9 +1392,37 @@ void main() {
     lab.textContent = o.speed + ' km/h' + (Math.abs(actual - o.speed) >= 0.5 ? ' · actual ' + actual.toFixed(1) + ' km/h' : '');
   }
   // the high-beam switch: V.high is the live state; the minigame's game object follows it so a hazard resolves with the switch as it is then
-  function setHigh(ui, on) {
-    V.high = !!on; const g = S(ui).game; if (g) g.highBeam = V.high;
+  // The high-beam switch cycles Off, On, Auto. V.high is always the beam as lit now (the LUT and the minigame read it);
+  // V.highMode is the driver's choice. In Auto, autoTick flips V.high once per frame from the camera sensor.
+  const HIGH_MODES = ['off', 'on', 'auto'];
+  function cycleHigh(ui) { setHighMode(ui, HIGH_MODES[(HIGH_MODES.indexOf(V.highMode || 'off') + 1) % HIGH_MODES.length]); }
+  function setHighMode(ui, mode) {
+    V.highMode = mode; V.high = mode !== 'off'; V.autoT = undefined; V.autoSt = { high: V.high, timer: 0, reason: 'clear' }; V.autoShown = null;
+    const g = S(ui).game; if (g) g.highBeam = V.high;
     labels(ui); ui.redrawSpec();
+  }
+  // Camera-sensor inputs for Auto: the same objects frameSources traces glare from, so the sensor sees what the frame shows.
+  function autoSense(p, dist, t) {
+    if (p.touge) { const w = RF.Touge.world(p, dist, t); return D.autoHighSense(w.objects, EYE, { occluders: w.objects, lane: p.lane }); }
+    const tauOf = tauFor(V.act, t), occ = p.src.tiles ? tileWorld(p, dist, t, tauOf).objects : placedObjects(p, dist, t, tauOf);
+    const A = p.src.tiles ? (p.src.tiles.mountain ? RF.Touge.route(dist, p.lane, false) : tileRoute(p.src.tiles.seed, dist)) : p.A;
+    return D.autoHighSense(trafficObjects(p.src, trafficCars(p.src, dist, t), A, Object.assign({}, p, { A })), EYE, { occluders: occ, lane: p.lane });
+  }
+  // current or next tile urban or a junction: the sensor's road input
+  function autoUrban(seed, dist) {
+    const k = Math.floor(dist / TILE_LEN);
+    for (const j of [k, k + 1]) { const tile = roadTile(seed, j); if (tile.kind === 'urban' || isJunction(tile)) return true; }
+    return false;
+  }
+  // One Auto step per frame, on the sim clock (st.t). Flips the beam only on a change; the readout is refreshed only then.
+  function autoTick(ui, st) {
+    const A = V.autoSt || (V.autoSt = { high: true, timer: 0, reason: 'clear' }), o = info().o, p = V.p;
+    const dt = V.autoT === undefined ? 0 : Math.min(1, Math.max(0, st.t - V.autoT)); V.autoT = st.t;
+    const sense = autoSense(p, st.dist, st.t);
+    D.autoHighStep(A, { oncoming: sense.oncoming, preceding: sense.preceding, urban: !!(p.src.tiles && autoUrban(p.src.tiles.seed, st.dist)), speedKmh: +o.speed || 50 }, dt, { hold: D.AUTO.hold });
+    const flipped = A.high !== V.high;
+    if (flipped) { V.high = A.high; if (st.game) st.game.highBeam = V.high; prepare(layout()); }
+    if (flipped || A.reason !== V.autoShown) { V.autoShown = A.reason; labels(ui); }
   }
   function labels(ui) {
     const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
@@ -1401,7 +1430,9 @@ void main() {
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
     V.bar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
-    V.bar.querySelector('[data-anim="high-beam"]').setAttribute('aria-pressed', String(!!V.high));
+    const hb = V.bar.querySelector('[data-anim="high-beam"]'), mode = V.highMode || 'off';
+    hb.setAttribute('aria-pressed', String(!!V.high)); hb.dataset.state = mode;
+    hb.textContent = mode === 'auto' ? 'high beam: auto (' + (V.autoSt ? V.autoSt.reason : 'clear') + ')' : 'high beam: ' + mode;
     for (const [name, key] of [['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
     V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;

@@ -35,7 +35,7 @@ const gpuOn = process.argv.includes('--gpu-only');
       const band = (sel) => page.evaluate(() => { const a = HB.frame(), V = RF.DriveAnim._.V; let s = 0, n = 0; const cw = V.gl.cw, ch = V.gl.ch; for (let y = Math.floor(ch * 0.38); y < Math.floor(ch * 0.52); y++) for (let x = Math.floor(cw * 0.3); x < Math.floor(cw * 0.7); x++) { const i = 4 * (y * cw + x); s += 0.2126 * a[i] + 0.7152 * a[i + 1] + 0.0722 * a[i + 2]; n++; } return s / n; });
       const hashNow = () => page.evaluate(() => { const a = HB.frame(); let h = 2166136261; for (let i = 0; i < a.length; i++) h = Math.imul(h ^ a[i], 16777619); return h >>> 0; });
       // two clicks (on, off) rebuild the picture with the current renderer, so the low frame below is the real low frame
-      await page.evaluate(() => { const b = document.querySelector('[data-anim="high-beam"]'); b.click(); b.click(); });
+      await page.evaluate(() => { window.HBmode = (m) => { const b = document.querySelector('[data-anim="high-beam"]'); for (let i = 0; i < 3 && b.dataset.state !== m; i++) b.click(); return b.dataset.state; }; window.HBmode("on"); window.HBmode("off"); });
       if (mode.gpu) await page.waitForFunction(() => RF.DriveAnim._.V.three === true, null, { timeout: 20000 }).catch(() => {});
       const warm = await st();
       ok(mode.name + ' runs the ' + (mode.gpu ? 'GPU (three)' : 'CPU') + ' renderer', mode.gpu ? warm.three === true && !warm.gpuFailure : warm.three === false, { three: warm.three, gpuFailure: warm.gpuFailure });
@@ -48,13 +48,13 @@ const gpuOn = process.argv.includes('--gpu-only');
       const highLuma = await band();
       const ratio = highLuma / lowLuma;
       ok(mode.name + ' far road near the horizon is brighter with high on (mean luma ratio > 1.5)', ratio > 1.5, { lowLuma: +lowLuma.toFixed(2), highLuma: +highLuma.toFixed(2), ratio: +ratio.toFixed(3) });
-      await page.evaluate(() => document.querySelector('[data-anim="high-beam"]').click());   // DOM click: the button sits in the collapsed drive-more area, so Playwright reports it not visible
+      await page.evaluate(() => window.HBmode("off"));   // explicit: drive to off (the cycle may pass through auto)
       const offBtn = await st();
       ok(mode.name + ' button turns the switch off (aria-pressed false)', !offBtn.high && offBtn.pressed === 'false', offBtn);
       if (!mode.gpu) { const back = await hashNow(); ok('CPU: switch off restores the exact low-beam frame bytes', back === lowHash, { lowHash, back }); }
       // minigame wiring: the game object follows the live switch
-      await page.evaluate(() => document.querySelector('[data-anim="high-beam"]').click());
-      const gameSync = await page.evaluate(() => { const S = RF.DriveAnim._.S, V = RF.DriveAnim._.V; const g = RF.DriveGame.create({ seed: 19, speed: 50, highBeam: true }); const prev = S(V.ui).game; S(V.ui).game = g; document.querySelector('[data-anim="high-beam"]').click(); const after = g.highBeam; S(V.ui).game = prev; return { after, back: g.highBeam }; });
+      await page.evaluate(() => window.HBmode("on"));
+      const gameSync = await page.evaluate(() => { const S = RF.DriveAnim._.S, V = RF.DriveAnim._.V; const g = RF.DriveGame.create({ seed: 19, speed: 50, highBeam: true }); const prev = S(V.ui).game; S(V.ui).game = g; window.HBmode("off"); const after = g.highBeam; S(V.ui).game = prev; return { after, back: g.highBeam }; });
       ok(mode.name + ' minigame game object follows the switch', gameSync.after === false, gameSync);
       ok(mode.name + ' no page or console errors', errors.length === 0, errors.slice(0, 5));
       await page.close();
