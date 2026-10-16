@@ -5,8 +5,9 @@ const uniforms = `uniform mat3 worldFromCar, carFromWorld; uniform sampler2D pas
 export function passShader(source, vertex = false) {
   if (vertex) return source;
   let s = uniforms + source;
+  s = s.replace('float cornerIntensity(vec3 d,vec3 origin) {', 'float cornerIntensity(vec3 d,vec3 origin) { d=carFromWorld*d; origin=carFromWorld*origin;');
   s = s.replace('float intensity(vec3 d) {', 'float intensity(vec3 d) { d=carFromWorld*d;');
-  s = s.replace('float I=intensity(d);', `vec3 sd=carFromWorld*d; float st=length(d); vec2 suv=vec2(-sd.y/1.2,sd.z/.6)/sd.x*.5+.5;
+  s = s.replace('float I=intensity(d)', `vec3 sd=carFromWorld*d; float st=length(d); vec2 suv=vec2(-sd.y/1.2,sd.z/.6)/sd.x*.5+.5;
     if(sd.x>0.0 && all(greaterThanEqual(suv,vec2(0))) && all(lessThanEqual(suv,vec2(1)))) {
       float depth=i==0 ? texture2D(passShadow0,suv).r : texture2D(passShadow1,suv).r;
       vec2 cell=(floor(suv*vec2(2048,1024))+.5)/vec2(2048,1024);
@@ -14,7 +15,7 @@ export function passShader(source, vertex = false) {
       vec3 pn=normalize(cross(dFdx(p),dFdy(p)));float den=dot(sr,pn), expected=dot(d,pn)/den;
       if(abs(den)>.000001 && expected>0.0 && expected/5000.0>depth+0.00003)continue;
     }
-    float I=intensity(d);`);
+    float I=intensity(d)`);
   s = s.replace('r+=rho*vec3(1,1,0.93)*otherIntensity(local)', `float cp=cos(trafficPitch[i]),sp=sin(trafficPitch[i]);local=vec3(cp*local.x+sp*local.z,local.y,cp*local.z-sp*local.x);
     r+=rho*vec3(1,1,0.93)*otherIntensity(local)`);
   s = s.replace('float wetLobe(vec3 d,vec3 v) {', `float wetLobe(vec3 d,vec3 v,vec3 normal) {

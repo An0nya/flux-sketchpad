@@ -25,7 +25,7 @@ export function create(canvas, gl, onModelsReady) {
   let failure = '', target, objectTarget, beamRef, beamTexture, otherRef, otherTexture;
   renderer.debug.onShaderError = (g, program, vs, fs) => { failure = [g.getProgramInfoLog(program), g.getShaderInfoLog(vs), g.getShaderInfoLog(fs)].filter(Boolean).join(' '); console.error('GPU drive shader: ' + failure); };
   const u = {}, set = (k, v) => { if (u[k]) u[k].value = v; else u[k] = { value: v }; };
-  for (const [k, v] of Object.entries({ otherBeam: null, otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(16, T.Vector2), trafficLamp: array(16, T.Vector3), nTraffic: 0, otherConvention: 0, pitch: 0, beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, grain: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2() })) set(k, v);
+  for (const [k, v] of Object.entries({ otherBeam: null, otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(16, T.Vector2), trafficLamp: array(16, T.Vector3), nTraffic: 0, otherConvention: 0, pitch: 0, yaw: 0, cornering: new T.Vector2(), beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, grain: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2() })) set(k, v);
   set('worldFromCar', new T.Matrix3()); set('carFromWorld', new T.Matrix3()); set('passDepth', null); set('passShadow0',null); set('passShadow1',null); set('trafficPitch',new Float32Array(16));
   const materialData = new Float32Array(D.MAT_KEYS.length * 4 * 4), markData = new Float32Array(128 * 4 * 2);
   const materialTexture = texture(materialData, D.MAT_KEYS.length, 4), markTexture = texture(markData, 128, 2);
@@ -74,7 +74,7 @@ export function create(canvas, gl, onModelsReady) {
       u.worldFromCar.value.set(f[0],l[0],n[0],f[1],l[1],n[1],f[2],l[2],n[2]); u.carFromWorld.value.copy(u.worldFromCar.value).transpose();
       u.eye.value.applyMatrix3(u.worldFromCar.value); u.lamp.value.forEach((q,i) => { if(i<p.lamps.length)q.applyMatrix3(u.worldFromCar.value); });
     }
-    set('pitch', p.pitch || 0);
+    set('pitch', p.pitch || 0); set('yaw', p.yaw || 0); u.cornering.value.set(p.cornerLeft || 0,p.cornerRight || 0);
     const traffic = p.trafficBeams ? D.trafficSources(world.objects) : []; set('nTraffic', traffic.length);
     if (traffic.length) {
       const b = D.trafficBeam(p), L = b.lut;
@@ -93,7 +93,7 @@ export function create(canvas, gl, onModelsReady) {
     version: T.REVISION,
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
-      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch); shading(mat, extras); shading(pass.material,extras, true);
+      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); shading(mat, extras); shading(pass.material,extras, true);
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);

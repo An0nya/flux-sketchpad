@@ -187,7 +187,7 @@
       const k = k0 + i, tile = mountain ? RF.Touge.tile(0, k) : RF.DriveAnim.roadTile(src.tiles.seed, k);
       const c = Math.abs(tile.curvature || 0);
       if (c <= 1e-6 || (!mountain && ['urban', 'intersection', 't-junction'].includes(tile.kind))) continue;
-      const vc = Math.sqrt(3 / c), gap = i === 0 ? 0 : Math.max(0, k * TL - x);
+      const vc = RF.DriveAnim.curveSpeed(c), gap = i === 0 ? 0 : Math.max(0, k * TL - x);
       v = Math.min(v, Math.sqrt(vc * vc + 2 * CURVE_DECEL * gap));
     }
     return v;

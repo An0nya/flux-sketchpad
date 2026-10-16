@@ -127,8 +127,8 @@
       if(incidence<=0 || local[0]<=0)continue;
       let blocked=false;
       for(let k=1;k<32;k++){const t=k/32,x=L[0]+d[0]*t,y=L[1]+d[1]*t,f=A.frame(x,y);if(A.height(f.s,f.off)>L[2]+d[2]*t+.02){blocked=true;break;}}
-      if(!blocked)E+=D.beamAt(p.lut,p.conv||'A',...local,p.pitch||0)*incidence/r2;
+      if(!blocked)E+=D.ownBeamAt(p,...local,lamp[1])*incidence/r2;
     }return E;
   }
-  RF.Touge = { glareSources, blocked, eyeLux, PERIOD, curves, kinds, tile, profile, bank, terrain, route, attitude, lift, world };
+  RF.Touge = { curvature: s => RF.DriveAnim.curvatureAt({ tiles: { mountain: true } }, s), glareSources, blocked, eyeLux, PERIOD, curves, kinds, tile, profile, bank, terrain, route, attitude, lift, world };
 })(typeof self !== 'undefined' ? self : globalThis);
