@@ -22,38 +22,39 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
     };
     await page.evaluate(() => localStorage.removeItem('flux/driveMore')); await ready();
     const more = page.locator('.drive-more');
+    const advanced = async (selector) => { await more.evaluate(e => e.open = true); await page.locator(selector).click(); await more.evaluate(e => e.open = false); };
     ok('UX1 More starts collapsed', !await more.evaluate((e) => e.open));
-    await page.locator('[data-anim=animate]').click();
+    await advanced('[data-anim=animate]');
     await page.locator('[data-anim=play]').click(); // freeze the picture while inspecting layout
-    const controls = await page.evaluate(() => [...RF.UI.driveBar.querySelectorAll('button,input,select')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game));
+    const controls = await page.evaluate(() => [...document.querySelectorAll('.drive-tools button,.drive-tools input,.drive-tools select,.drive-extras button,.drive-extras input,.drive-extras select,[data-anim=popout]')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game));
     ok('UX1 all original drive controls remain', ['scene','shape','wet','wetSheen','onMode','expMode','evm','ev','evp','glare','people','animals','signs','oncoming','preceding','animate','popout','tiles','toggle','play','fit-controls','large-card','speed','traffic-logic','gap','street-lamps','c-people','c-animals','c-signs','c-posts','c-veg','c-obstacle','c-rpm','c-tex','c-wild','c-mt','seed','dice','density','cline','traffic-density','reset-flashes'].every((k) => controls.includes(k)), controls);
     for (const width of [360, 390, 430, 1500]) {
       await page.setViewportSize({ width, height: 950 });
       await page.evaluate(() => { RF.UI.setPane('result', 'activate'); document.querySelector('.result-pane').classList.add('expanded'); RF.UI.redrawSpec(); });
       for (const popout of [false, true]) {
-        if (popout) await page.locator('[data-anim=popout]').click();
+        if (popout) await advanced('[data-anim=popout]');
         const layout = await page.evaluate(() => {
           const bar = RF.UI.driveBar, p = bar.querySelector('.drive-primary'), r = bar.getBoundingClientRect(), c = [...p.children].map((e) => e.getBoundingClientRect());
-          return { left: r.left, right: r.right, width: innerWidth, rowHeight: p.getBoundingClientRect().height, spread: Math.max(...c.map((e) => e.top)) - Math.min(...c.map((e) => e.top)), closed: !bar.querySelector('details').open, extraVisible: bar.querySelector('[data-dv=shape]').checkVisibility(), primary: [...p.querySelectorAll('button,input,select')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game) };
+          return { left: r.left, right: r.right, width: innerWidth, rowHeight: p.getBoundingClientRect().height, spread: Math.max(...c.map((e) => e.top)) - Math.min(...c.map((e) => e.top)), closed: !bar.querySelector('details').open, extraVisible: RF.UI.driveExtras.querySelector('[data-dv=shape]').checkVisibility(), fits: p.scrollWidth <= p.clientWidth + 1, primary: [...p.querySelectorAll('button,input,select')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game) };
         });
-        ok('UX1 one scrollable primary row, extras collapsed ' + width + (popout ? ' large' : ' inline'), layout.left >= 0 && layout.right <= width && layout.rowHeight < 60 && layout.spread < 15 && layout.closed && !layout.extraVisible && ['scene','speed','toggle','glare','oncoming','preceding','animate','play','popout'].every((k) => layout.primary.includes(k)), layout);
-        await page.locator('.drive-more > summary').click();
+        ok('UX1 wrapping primary controls fit, extras collapsed ' + width + (popout ? ' large' : ' inline'), layout.left >= 0 && layout.right <= width && layout.fits && layout.closed && !layout.extraVisible && ['scene','speed','toggle','glare','play'].every((k) => layout.primary.includes(k)), layout);
+        await page.locator('.drive-more > summary').click(); await page.waitForTimeout(150);   // the <details> toggle event un-hides the extras a task later
         ok('UX1 More exposes extras ' + width + (popout ? ' large' : ' inline'), await page.locator('[data-dv=shape]').isVisible() && await page.locator('[data-anim=traffic-logic]').isVisible());
         if (shots) await page.screenshot({ path: path.join(shots, width + (popout ? '-large' : '-inline') + '-more.png') });
         await page.locator('.drive-more > summary').click();
-        if (popout) await page.locator('[data-anim=popout]').click();
+        if (popout) await advanced('[data-anim=popout]');
       }
     }
     await page.setViewportSize({ width: 1500, height: 950 }); await page.locator('.drive-more > summary').click();
     await page.waitForFunction(() => localStorage.getItem('flux/driveMore') === 'true');
     await page.reload(); await ready();
     ok('UX1 More remembers open across reload', await more.evaluate((e) => e.open));
-    await page.locator('[data-anim=animate]').click(); await page.locator('[data-anim=play]').click();
-    await page.locator('[data-anim=traffic-logic]').click();
+    await advanced('[data-anim=animate]'); await page.locator('[data-anim=play]').click();
+    await more.evaluate(e => e.open = true); await page.locator('[data-anim=traffic-logic]').click();
     const speed = await page.evaluate(() => {
       const a = RF.DriveAnim._, st = a.S(RF.UI); a.advanceCamera(st, .05); a.frame(); const initial = st.camera.v * 3.6;
       RF.UI.dvOpts.speed = 130; st.camera = null; a.advanceCamera(st, .05); a.frame();
-      return { initial, limited: st.camera.v * 3.6, label: RF.UI.driveBar.querySelector('[data-anim=speedlab]').textContent, aim: RF.UI.driveBar.querySelector('[data-dv-aim]').textContent };
+      return { initial, limited: st.camera.v * 3.6, label: RF.UI.driveBar.querySelector('[data-anim=speedlab]').textContent, aim: RF.UI.driveExtras.querySelector('[data-dv-aim]').textContent };
     });
     ok('UX1 toggling logic starts at speed; actual limit appears by slider', Math.abs(speed.initial - 50) < .01 && Math.abs(speed.limited - 80) < .01 && /130 km\/h.*actual 80\.0 km\/h/.test(speed.label), speed);
     ok('UX1 drive bar names the aim used by both beams', /Our beam \+ symmetric oncoming: aimed per/.test(speed.aim), speed.aim);

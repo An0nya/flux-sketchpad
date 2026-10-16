@@ -5,9 +5,21 @@ import { objects } from './drive-three-objects.js';
 const D = globalThis.RF.Drive;
 const texture = (data, w, h, format = T.RGBAFormat) => { const t = new T.DataTexture(data, w, h, format, T.FloatType); t.needsUpdate = true; return t; };
 const array = (n, type) => Array.from({ length: n }, () => new type());
+// One three renderer per GL context: renderer.dispose() leaves its 1x1 placeholder textures and blit framebuffers
+// behind (4 + 3 per renderer), so toggling would leak them. Reusing it keeps the count flat; a lost context drops it.
+const renderers = new WeakMap();
+function shared(canvas, gl) {
+  let renderer = renderers.get(gl);
+  if (renderer && gl.isContextLost()) { renderers.delete(gl); renderer.dispose(); renderer = null; }
+  if (renderer) return renderer;
+  renderer = new T.WebGLRenderer({ canvas, context: gl, antialias: false }); renderers.set(gl, renderer);
+  canvas.addEventListener('webglcontextlost', () => { if (renderers.get(gl) === renderer) renderers.delete(gl); renderer.dispose(); });   // the old GL objects died with the context; the restored one gets a fresh renderer
+  return renderer;
+}
 export function create(canvas, gl, onModelsReady) {
   if (!gl || !gl.getExtension('EXT_color_buffer_float')) throw Error('WebGL2 float targets unavailable');
-  const renderer = new T.WebGLRenderer({ canvas, context: gl, antialias: false });
+  const renderer = shared(canvas, gl);
+  renderer.setClearColor(0x000000, 1); renderer.setRenderTarget(null); renderer.resetState();
   renderer.outputColorSpace = T.LinearSRGBColorSpace; renderer.toneMapping = T.NoToneMapping;
   let failure = '', target, objectTarget, beamRef, beamTexture;
   renderer.debug.onShaderError = (g, program, vs, fs) => { failure = [g.getProgramInfoLog(program), g.getShaderInfoLog(vs), g.getShaderInfoLog(fs)].filter(Boolean).join(' '); console.error('GPU drive shader: ' + failure); };
@@ -95,6 +107,6 @@ export function create(canvas, gl, onModelsReady) {
         if(gl.getQueryParameter(query,gl.QUERY_RESULT_AVAILABLE)){const gpuMs=gl.getQueryParameter(query,gl.QUERY_RESULT)/1e6/repeats;gl.deleteQuery(query);return {gpuMs,repeats};}}
       gl.deleteQuery(query);return {gpuMs:null,reason:'timer timeout'};
     },
-    dispose() { objectView.dispose(); if (objectTarget) objectTarget.dispose(); if (target) target.dispose(); if (beamTexture) beamTexture.dispose(); materialTexture.dispose(); markTexture.dispose(); mat.dispose(); mesh.geometry.dispose(); renderer.dispose(); },
+    dispose() { renderer.setRenderTarget(null); renderer.debug.onShaderError = null; objectView.dispose(); if (objectTarget) objectTarget.dispose(); if (target) target.dispose(); if (beamTexture) beamTexture.dispose(); materialTexture.dispose(); markTexture.dispose(); mat.dispose(); mesh.geometry.dispose(); renderer.resetState(); },       // the renderer itself stays with the GL context (see shared)
   };
 }

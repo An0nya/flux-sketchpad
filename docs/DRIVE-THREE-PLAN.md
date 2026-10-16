@@ -50,3 +50,8 @@ braking/acceleration (pitch ≈ k·a).
 ## Status
 - 2026-10-15: plan approved. In flight before it: batched Sonnet review of UX1 (drive panel More, crawl fix, iOS
   brake, deer leave road, aimed-glare label) + DP part 1 (opt-in ground cache). P0 is next after that review.
+- 2026-10-15 evening: P0 + P1 merged (3425a24). Tester, heavy scene on M4: CPU 1-thread 7.8 / CPU 6 workers 31.6 / GPU 93.7 fps.
+  Anya's iPhone, live site, heavy scene (glare dry-low): CPU 5-7 fps (her count), GPU renderer 38.5 fps (P0 counter; dynamic
+  resolution had dropped to scale 0.70, SS 2). Frame 27 ms of which 'pacing' 23.7 ms: CPU-side work is ~3-4 ms, so the phone is
+  GPU-bound (or vsync-paced); next lever on phones is SS 2 -> 1 / resolution, not CPU. Readout overlaps the drive toolbar
+  on phone inline (cosmetic, logged). M1 models design + prototype running.

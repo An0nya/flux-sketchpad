@@ -89,15 +89,16 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
       await page.setViewportSize({ width, height: 844 });
       await page.click('[data-tab=result]');   // phone layout shows one pane at a time: the Drive controls live in Result
       await page.evaluate(() => { const p = document.querySelector('.result-pane'); if (p) p.classList.add('expanded'); RF.UI.redrawSpec(); });
-      const fit = await page.evaluate(() => {
-        const top = document.querySelector('.drive-primary'), more = document.querySelector('.drive-more'), bottom = document.querySelector('.drive-extras'), game = document.querySelector('[data-game=toggle]');
+      const fit = await page.evaluate(async () => {
+        const top = document.querySelector('.drive-primary'), more = document.querySelector('.drive-more'), bottom = RF.UI.driveExtras, game = document.querySelector('[data-game=toggle]');
         more.open = false;
         game.scrollIntoView({ block: 'nearest', inline: 'end' });
-        const t = top.getBoundingClientRect(), r = game.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-        more.open = true; const b = bottom.getBoundingClientRect(); more.open = false;
-        return { top: [t.top, t.bottom], bottom: [b.top, b.bottom], gameHit: hit === game, within: r.left >= 0 && r.right <= innerWidth, scroll: top.scrollWidth > top.clientWidth };
+        const t = top.getBoundingClientRect(), y0 = scrollY, r = game.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        more.open = true; await new Promise((r) => setTimeout(r, 150)); const b = bottom.getBoundingClientRect(), dy = y0 - scrollY;   // document coordinates: opening More may shift the scroll. The <details> toggle event un-hides the extras a task later
+         more.open = false;
+        return { top: [t.top, t.bottom], bottom: [b.top - dy, b.bottom - dy], gameHit: hit === game, within: r.left >= 0 && r.right <= innerWidth, scroll: top.scrollWidth <= top.clientWidth + 1 };
       });
-      ok('RB full Drive controls do not overlap at ' + width + ' px; Play can be clicked', fit.top[1] <= fit.bottom[0] && fit.gameHit && fit.within && fit.scroll, fit);
+      ok('RB full Drive controls do not overlap at ' + width + ' px; Game can be clicked', fit.top[1] <= fit.bottom[0] && fit.gameHit && fit.within && fit.scroll, fit);
     }
     // A completed fixture exercises presentation only; it makes no gameplay/detection claim.
     for (const [width, height] of [[1280, 720], [390, 844]]) {
@@ -106,7 +107,7 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
       await page.evaluate(() => { const g = RF.UI.dvAnim.game; if (!g) throw new Error('no game fixture'); g.done = true; g.reason = 'RB presentation fixture'; RF.UI.dvAnim.playing = false; RF.DriveAnim._.gameFrame(g); });
       await page.waitForFunction(() => RF.UI.dvAnim.popout && !!document.querySelector('.drive-popout [data-game=card]:not([hidden])'));
       const card = await page.evaluate(() => {
-        const p = document.querySelector('[data-game=panel]'), c = document.querySelector('[data-game=card]'), host = p.parentElement.getBoundingClientRect();
+        const c = document.querySelector('[data-game=card]'), p = c.closest('.drive-below'), host = p.parentElement.getBoundingClientRect();
         p.scrollTop = p.scrollHeight; const r = p.getBoundingClientRect(); const tail = p.scrollTop + p.clientHeight >= p.scrollHeight - 1;
         p.scrollTop = 0; const exit = p.querySelector('[data-game=exit]'), e = exit.getBoundingClientRect();
         return { bounded: r.top >= host.top && r.bottom <= host.bottom + 1 && r.bottom <= innerHeight, tail, readable: p.clientHeight >= 200, exit: document.elementFromPoint(e.left + e.width / 2, e.top + e.height / 2) === exit, text: c.textContent.slice(-145), height: p.clientHeight };
@@ -114,7 +115,7 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
       ok('RB end card opens large, stays within viewport, tail and Exit reachable at ' + width + '×' + height, card.bounded && card.tail && card.readable && card.exit && /Game flavour/.test(card.text), card);
       if (process.env.RB_SHOTS) await page.screenshot({ path: process.env.RB_SHOTS + '/RB-card-' + width + '.png' });
       await page.click('[data-game=exit]');
-      ok('RB Exit Play restores inline view after automatic card popout at ' + width, await page.evaluate(() => !RF.UI.dvAnim.popout && !document.querySelector('.drive-popout')));
+      ok('RB Exit game restores inline view after automatic card popout at ' + width, await page.evaluate(() => !RF.UI.dvAnim.popout && !document.querySelector('.drive-popout')));
     }
     // OFF options remain available and recovery preference persists; do not hang a worker with recovery OFF.
     const off = await page.evaluate(() => {

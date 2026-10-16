@@ -46,9 +46,9 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   ok('MG person-hit end card includes statistics, Spec verdict, tickets and teaching point',end.lost&&end.visible&&/run lost/.test(end.card)&&/mean reaction/.test(end.card)&&/Spec verdict/.test(end.card)&&/cops/.test(end.card)&&/Absolute reach beats foreground width/.test(end.card),end);
   if(shots)await page.screenshot({path:shots+'/end-card.png'});
   await page.setViewportSize({width:1500,height:950});await page.waitForTimeout(250);
-  ok('MG end card leaves a clickable Exit Play (the toolbar button sits under the card)',await page.evaluate(()=>{const b=document.querySelector('[data-game=exit]');if(!b||b.hidden)return false;const r=b.getBoundingClientRect(),e=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return e===b;}));
-  const cardFit=await page.evaluate(()=>{const p=document.querySelector('[data-game=panel]'),c=document.querySelector('[data-game=card]');p.scrollTop=p.scrollHeight;const r=p.getBoundingClientRect(),host=p.parentElement.getBoundingClientRect(),tail=c.lastChild;return {fits:r.top>=host.top&&r.bottom<=host.bottom+1&&r.bottom<=innerHeight,scrollable:p.scrollHeight>=p.clientHeight,atBottom:p.scrollTop+p.clientHeight>=p.scrollHeight-1};});
-  ok('MG2 desktop end card is within canvas; its last line is scroll-reachable',cardFit.fits&&cardFit.scrollable&&cardFit.atBottom,cardFit);
+  ok('MG end card leaves a clickable Exit game (the toolbar button sits under the card)',await page.evaluate(()=>{const b=document.querySelector('[data-game=exit]');if(!b||b.hidden)return false;const r=b.getBoundingClientRect(),e=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return e===b;}));
+  const cardFit=await page.evaluate(()=>{const c=document.querySelector('[data-game=card]'),p=c.closest('.drive-below');p.scrollTop=p.scrollHeight;const r=p.getBoundingClientRect(),host=p.parentElement.getBoundingClientRect(),tail=c.lastChild;return {fits:r.top>=host.top&&r.bottom<=host.bottom+1&&r.bottom<=innerHeight,scrollable:p.scrollHeight>=p.clientHeight,atBottom:p.scrollTop+p.clientHeight>=p.scrollHeight-1};});
+  ok('MG2 desktop end card dock is within viewport; its last line is scroll-reachable',cardFit.fits&&cardFit.scrollable&&cardFit.atBottom,cardFit);
   await page.click('[data-game=exit]');
   const restored=await page.evaluate(()=>{const u=RF.UI,_=RF.DriveAnim._;_.frame();const hdr=_.readHdr();return {options:JSON.stringify(u.dvOpts),scene:RF.State.serialize(u.store.scene),state:{dist:u.dvAnim.dist,t:u.dvAnim.t,total:u.dvAnim.total},identical:hdr.length===window.mgBefore.length&&hdr.every((v,i)=>v===window.mgBefore[i]),off:!u.dvAnim.gameMode&&!u.dvAnim.game};});
   ok('MG exit restores normal options, camera state, saved scene and exact HDR',restored.off&&restored.options===before.options&&restored.scene===before.scene&&JSON.stringify(restored.state)===JSON.stringify(before.state)&&restored.identical,{before,restored});
@@ -71,7 +71,7 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   // The ranges are recorded, not asserted: in this long session they depend on route/street-lamp context (a fresh-page 8-seed run gave default 96 m vs high beam 129 m mean at 75 km/h dry). What is asserted is the confound removal.
   await page.click('[data-game=toggle]');await page.selectOption('[data-game=rules]','visible');await page.click('[data-game=start]');
   const onMode=await page.evaluate(()=>RF.UI.dvOpts.onMode);await page.click('[data-game=toggle]');const onModeAfter=await page.evaluate(()=>RF.UI.dvOpts.onMode);
-  ok('MG2 Play uses a fixed (generic) oncoming lamp, not the player lamp; restored on exit; first-seen ranges finite',onMode==='generic'&&onModeAfter==='symmetric'&&Number.isFinite(defaultReach.mean)&&Number.isFinite(highReach.mean),{onMode,onModeAfter,defaultReach,highReach});
+  ok('MG2 Game uses a fixed (generic) oncoming lamp, not the player lamp; restored on exit; first-seen ranges finite',onMode==='generic'&&onModeAfter==='symmetric'&&Number.isFinite(defaultReach.mean)&&Number.isFinite(highReach.mean),{onMode,onModeAfter,defaultReach,highReach});
   ok('MG no page errors' ,errors.length===0,errors);
  }finally{await browser.close();}
  console.log(fails?fails+' FAILED':'all MG2 minigame page checks passed');process.exitCode=fails?1:0;

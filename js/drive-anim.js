@@ -742,18 +742,23 @@ void main() {
   // ---------------------------------------------------------------- the view: state, canvas, loop
   // Scale is separate from samples per pixel. pinSS freezes both for reproducible comparisons.
   const RES_SCALES = [1, 0.85, 0.7, 0.55, 0.4];
-  const resolutionState = () => ({ scale: 1, index: 0, slow: 0, fast: 0, cooldown: 0, average: 0 });
+  const BOUNCE_MS = 30000, HOLD_MS = 30000, HOLD_MAX_MS = 240000;       // a step-down within BOUNCE_MS of a step-up doubles the wait before the next step-up (30 s, 60 s .. 240 s); BOUNCE_MS without a bounce resets it
+  const resolutionState = () => ({ scale: 1, index: 0, slow: 0, fast: 0, cooldown: 0, average: 0, clock: 0, upAt: -1e9, holdUntil: 0, hold: 0 });
   function resolutionStep(state, ms, opts) {
     const o = opts || {}, s = Object.assign(resolutionState(), state), target = Number.isFinite(+o.target) && +o.target > 0 ? +o.target : 33;
     if (!o.enabled || o.pinned) return resolutionState();
     if (!(ms > 0) || !Number.isFinite(ms)) return s;
+    s.clock += ms; if (s.hold && s.upAt > -1e9 && s.clock - s.upAt >= BOUNCE_MS) { s.hold = 0; s.upAt = -1e9; }
     s.average = s.average ? 0.8 * s.average + 0.2 * ms : ms;
     if (s.cooldown > 0) { s.cooldown--; return s; }
     if (s.average > target * 1.15) { s.slow++; s.fast = 0; }
     else if (s.average < target * 0.7) { s.fast++; s.slow = 0; }
     else s.slow = s.fast = 0;
-    if (s.slow >= 6 && s.index < RES_SCALES.length - 1) { s.index++; s.slow = s.fast = 0; s.cooldown = 20; s.average = 0; }
-    else if (s.fast >= 60 && s.index > 0) { s.index--; s.slow = s.fast = 0; s.cooldown = 20; s.average = 0; }
+    if (s.slow >= 6 && s.index < RES_SCALES.length - 1) {
+      if (s.clock - s.upAt < BOUNCE_MS) { s.hold = Math.min(HOLD_MAX_MS, s.hold ? s.hold * 2 : HOLD_MS); s.holdUntil = s.clock + s.hold; s.upAt = -1e9; }
+      s.index++; s.slow = s.fast = 0; s.cooldown = 20; s.average = 0;
+    }
+    else if (s.fast >= 60 && s.index > 0 && s.clock >= s.holdUntil) { s.index--; s.upAt = s.clock; s.slow = s.fast = 0; s.cooldown = 20; s.average = 0; }
     s.scale = RES_SCALES[s.index]; return s;
   }
   function resolutionPrepare() {
@@ -762,7 +767,7 @@ void main() {
     const scale = o.dynamicResolution && !V.pinSS ? (V.resolution || resolutionState()).scale : 1;
     if (scale !== (V.renderScale || 1)) { prepare(layout()); if (Wk.list.length) workerCfg(); }
   }
-  const profileOn = () => !!(V.info && V.info.o.fpsCounter);
+  const profileOn = () => !!(V.info && V.info.o.debugTimings);
   function recordFrame(start, values, trace, cache, worker) {
     const now = performance.now(), o = info().o, elapsed = now - start;
     const live = S(V.ui).playing && V.last && !Wk.afterFrame, cadenceMs = live && V.completedAt ? now - V.completedAt : elapsed;
@@ -774,8 +779,8 @@ void main() {
         objectMs: trace && trace.objectMs || 0, groundMs: trace && trace.groundMs || 0, wetMs: trace && trace.wetMs || 0, traceCpuMs: trace && trace.traceMs || 0,
         cacheHits: cache && cache.cacheHits || 0, cacheMisses: cache && cache.cacheMisses || 0, sampledRays: trace && trace.sampledRays || 0 };
       (V.profiles || (V.profiles = [])).push(sample); if (V.profiles.length > 600) V.profiles.shift();
-      if (V.perfLab && now - (V.perfLabelAt || 0) >= 500) { V.perfLabelAt = now; perfLabel(); }
     }
+    if ((o.fpsCounter || o.debugTimings) && now - (V.perfLabelAt || 0) >= 500) { V.perfLabelAt = now; perfLabel(); }
   }
   const V = { ui: null, cv: null, info: null, gl: null, canvas: null, pop: null, g: null, gkey: '', src: null, skey: '', lut: null, rgba: null, band: [0, 0], frames: 0, raf: 0, last: 0, times: [], cpu: { obj: 0, up: 0, gl: 0, n: 0 }, kAuto: null, why: '', act: new Map() };
   const S = (ui) => ui.dvAnim || (ui.dvAnim = { view: 'still', playing: true, popout: false, dist: 0, total: 0, t: 0 });
@@ -821,7 +826,7 @@ void main() {
   function contextLost(e) {
     if (!recovery()) return;
     e.preventDefault(); if (V.lost || V.glFailed) return;
-    if (V.three) { V.three.dispose(); V.three = null; V.gpuFailure = 'context lost; using CPU renderer after restore'; }
+    if (V.three) { V.three.dispose(); V.three = null; V.gkey = ''; V.gpuTries = 0; }       // the GPU renderer is rebuilt on restore (gpuRenderer)
     V.lost = true; V.resume = S(V.ui).playing; S(V.ui).playing = false; stop(); killWorkers();
     const game = S(V.ui).game; if (game && !game.done) { game.pauseAt = performance.now(); if (game.inputs) game.inputs.clear(); RF.DriveGame.press(game, false, performance.now()); }
     if (V.canvas) V.canvas.hidden = true;
@@ -836,7 +841,7 @@ void main() {
       V.gl = makeGL(V.canvas); if (!V.gl) throw new Error('float render targets unavailable');
       V.lost = false; V.gkey = ''; V.rdRef = null; V.band = [0, 0];
       const g = S(V.ui).game;   // UX1-DP-test: a running minigame stays paused after a restore until the player resumes (same as the hidden-tab path)
-      S(V.ui).playing = !!V.resume && !(g && !g.done); say(V.gpuFailure ? 'GPU drive context was lost; using CPU renderer.' : ''); V.ui.redrawSpec();
+      S(V.ui).playing = !!V.resume && !(g && !g.done); say(''); V.ui.redrawSpec();
     } catch (e) { contextFallback('Drive graphics rebuild failed: ' + (e.message || e)); }
   }
   function contextReady() {
@@ -872,7 +877,7 @@ void main() {
   }
   function exposureLabel(k) {
     V.white = 1 / k;
-    const I = info(), o = I.o, b = I.toolbar && I.toolbar.querySelector('[data-dv="ev"]');
+    const I = info(), o = I.o, b = V.ui.driveExtras && V.ui.driveExtras.querySelector('[data-dv="ev"]');
     if (o.expMode === 'adapt' && b) b.textContent = 'EV ' + (o.ev >= 0 ? '+' : '−') + Math.abs(o.ev).toFixed(1) + ' · white ' + V.white.toPrecision(3) + ' cd/m²';
     return k;
   }
@@ -959,7 +964,7 @@ void main() {
     for (let i = 0; i < n && b.next < K && Wk.busy === b; i++) sendJob(i, b);
     b.dispatchMs += performance.now() - b.sent;
   }
-  function sendJob(i, b) { postJob(i, { type: 'job', seq: b.seq, dist: b.dist, t: b.t, speed: b.speed, traffic: b.traffic, ss: b.ss, profile: !!info().o.fpsCounter, act: b.act, c: b.next++, K: b.K, wid: i }); }
+  function sendJob(i, b) { postJob(i, { type: 'job', seq: b.seq, dist: b.dist, t: b.t, speed: b.speed, traffic: b.traffic, ss: b.ss, profile: profileOn(), act: b.act, c: b.next++, K: b.K, wid: i }); }
   function postJob(i, msg) {
     const old = Wk.jobs.get(i); if (old) clearTimeout(old.timer);
     const j = { msg, cfg: Wk.cfgId, timer: 0 }; Wk.jobs.set(i, j);
@@ -1081,8 +1086,8 @@ void main() {
   function bars(ui, setDV) {
     if (V.bar) return V.bar;
     const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveBar.querySelector('.drive-primary'), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
-    btn('play', 'Play / pause the drive', () => { st.playing = !st.playing; if (st.playing) { if (st.view !== 'anim') st.view = 'anim'; } ui.redrawSpec(); });
-    btn('fit-controls', 'Keep primary controls in one scrolling row. Off wraps the primary controls.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
+    btn('play', 'Drive / pause the animation', () => { st.playing = !(st.playing && (st.view === 'anim' || st.popout)); if (st.playing) st.view = 'anim'; ui.redrawSpec(); });
+    btn('fit-controls', 'Compact spacing for the wrapping drive controls. Off uses wider spacing.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
     const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed; traffic logic also obeys road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
     const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
@@ -1092,11 +1097,13 @@ void main() {
     btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off restores the previous traffic and gap guard.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
     btn('detailed-models', 'Prototype: articulated deer and people; GPU also adds car bodies, tree detail and facade panels.', () => setDV(ui, 'detailedModels', !info().o.detailedModels), 'detailed models');
-    btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => setDV(ui, 'gpuRenderer', !info().o.gpuRenderer), 'GPU drive renderer');
-    btn('fps-counter', 'Frame cadence and CPU breakdown; sampled trace attribution adds profiling overhead. GPU execution requires the tester bench.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'fps / timings');
+    btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => { if (V.gpuFailure && info().o.gpuRenderer) { V.gpuFailure = ''; V.gpuTries = 0; say(''); labels(ui); ui.redrawSpec(); } else setDV(ui, 'gpuRenderer', !info().o.gpuRenderer); }, 'GPU drive renderer');      // failed while ON: a click retries the GPU
+    btn('fps-counter', 'Small frame-rate badge; no sampled trace profiling.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'FPS');
+    btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
     const target = E('input', { type: 'number', min: 16, max: 200, step: 1, 'data-anim': 'frame-target', 'aria-label': 'Frame target (ms)', title: 'Dynamic resolution target, milliseconds per frame', class: 'anim-seed' });
     target.addEventListener('change', () => setDV(ui, 'frameTargetMs', Math.max(16, Math.min(200, +target.value || 33)))); bar.append(target);
+    V.fpsLab = E('output', { class: 'drive-fps', 'data-anim': 'fps-readout', 'aria-live': 'off', hidden: '' });
     V.perfLab = E('output', { class: 'drive-perf', 'data-anim': 'perf-readout', 'aria-live': 'off', hidden: '' });
     btn('tile-cache', 'Reuse beam-lit ground samples across route tiles. Moving markings, grain and street lights still update each frame. Animation with tiles only.', () => setDV(ui, 'tileCache', !info().o.tileCache), 'cache ground');
     const lamps = E('select', { 'data-anim': 'street-lamps', 'aria-label': 'Street lamps on urban tiles', title: 'Downward point lights, diffuse illumination without shadows; approximate sodium / LED colour, not measured fixture photometry' });
@@ -1123,17 +1130,16 @@ void main() {
     speedLabel(V.ui);
     if (V.tileLab && V.src.tiles) { const tile = roadTile(V.src.tiles.seed, Math.floor(dist / TILE_LEN)); V.tileLab.textContent = tile.kind + (['intersection', 't-junction'].includes(tile.kind) ? ' · ' + signalState(tile, t).lit : ''); }
   }
-  function topButtons(ui, tb, setDV) {                         // 'animate' and 'popout' go into the existing toolbar
-    if (tb.querySelector('[data-anim="animate"]')) return;
-    const a = E('button', { type: 'button', class: 'toggle', 'data-anim': 'animate', title: 'Animate: drive down the road. Off = the still picture.' }, 'animate'), p = E('button', { type: 'button', class: 'toggle', 'data-anim': 'popout', title: 'Show the drive view large, over the whole page except the sidebar (Esc closes)' }, '⤢ large');
+  function topButtons(ui, tb, setDV) {
+    if (ui.driveExtras.querySelector('[data-anim="animate"]')) return;
+    const a = E('button', { type: 'button', class: 'toggle', 'data-anim': 'animate', title: 'Animate: drive down the road. Off = the still picture.' }, 'animate');
     a.addEventListener('click', () => { const st = S(ui); st.view = st.view === 'anim' ? 'still' : 'anim'; st.playing = true; ui.redrawSpec(); });
-    p.addEventListener('click', () => { S(ui).popout ? closePop(ui) : openPop(ui); });
     const tiles = E('button', { type: 'button', class: 'toggle', 'data-anim': 'tiles', title: 'Seeded route: straights, bends, intersections, T-junctions and lit urban sections. Off = the original constant road. Animation only; traces at 640 × 360.' }, 'tiles');
     tiles.addEventListener('click', () => setDV(ui, 'tiles', !info().o.tiles));
-    const game = E('button', { type: 'button', class: 'toggle', 'data-game': 'toggle', 'aria-pressed': 'false', title: 'Reach > uniformity: five hazards, hold Space or Brake. Game scoring, not legal advice.' }, 'Play');
+    const game = E('button', { type: 'button', class: 'toggle', 'data-game': 'toggle', 'aria-pressed': 'false', title: 'Reach > uniformity: five hazards, hold Space or Brake. Game scoring, not legal advice.' }, 'Game');
     game.addEventListener('click', () => toggleGame(ui));
     const primary = tb.querySelector('.drive-primary'); primary.querySelector('.drive-speed') ? primary.querySelector('.drive-speed').after(game) : primary.querySelector('[data-dv=scene]').after(game);
-    primary.append(a, p); tb.querySelector('.drive-extras').append(tiles);
+    ui.driveExtras.append(a, tiles);
   }
   function speedLabel(ui) {
     if (!ui.driveBar) return;
@@ -1145,15 +1151,16 @@ void main() {
   function labels(ui) {
     const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
     for (const b of q('[data-anim="animate"]')) { b.setAttribute('aria-pressed', String(st.view === 'anim')); b.disabled = !sup; b.title = sup ? 'Animate: drive down the road. Off = the still picture.' : 'Animation covers the open road, the forest road and the city street; enable tiles to animate a route from the intersection scene'; }
-    for (const b of q('[data-anim="popout"]')) { b.setAttribute('aria-pressed', String(st.popout)); b.disabled = !sup; b.textContent = st.popout ? '✕ close' : '⤢ large'; }
+    for (const b of q('[data-anim="popout"]')) { const label = st.popout ? 'Close large view' : 'Large view'; b.setAttribute('aria-pressed', String(st.popout)); b.setAttribute('aria-label', label); b.title = label; b.disabled = !sup; b.textContent = st.popout ? '⤡' : '⤢'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
-    for (const [name, key] of [['detailed-models', 'detailedModels'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key]));
+    for (const [name, key] of [['detailed-models', 'detailedModels'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
+    V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
-    if (V.perfLab) { const host = st.popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement; if (host && V.perfLab.parentElement !== host) host.append(V.perfLab); V.perfLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
+    if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
     for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
     V.bar.hidden = !(sup && (st.view === 'anim' || st.popout));
-    const run = st.playing && (st.view === 'anim' || st.popout), pb = ui.driveBar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ pause' : '▶ play'; pb.setAttribute('aria-pressed', String(run));
+    const run = st.playing && (st.view === 'anim' || st.popout), pb = ui.driveBar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ Pause' : '▶ Drive'; pb.setAttribute('aria-pressed', String(run));
     ui.driveBar.querySelector('[data-anim="speed"]').value = o.speed; speedLabel(ui);
     for (const [k] of CLASSES) { const b = V.bar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
     V.bar.querySelector('[data-anim="traffic-density"]').value = o.trafficDensity === undefined ? 1 : o.trafficDensity;
@@ -1234,7 +1241,7 @@ void main() {
     if (unseen.length && !g.done && V.gameMask.some((v) => v & bits)) {
       const rgba = V.gl.readCanvas(), rect = V.canvas.getBoundingClientRect(), exclude = [];
       V.gameBackgrounds = {};
-      for (const el of [V.gameBar, V.perfLab, ...info().toolbar.querySelectorAll('button,select')]) if (el && !el.hidden && el.getClientRects().length) {
+      for (const el of [V.gameBar, V.perfLab, V.fpsLab, V.ui.driveExtras, ...info().toolbar.querySelectorAll('button,select')]) if (el && !el.hidden && el.getClientRects().length) {
         const r = el.getBoundingClientRect(); exclude.push([(r.left - rect.left) / rect.width * V.gl.cw, (r.top - rect.top) / rect.height * V.gl.ch, (r.right - rect.left) / rect.width * V.gl.cw, (r.bottom - rect.top) / rect.height * V.gl.ch]);
       }
       for (const h of unseen) {
@@ -1275,8 +1282,8 @@ void main() {
       pause.addEventListener('click', () => { st.playing = !st.playing; ui.redrawSpec(); });
       const start = E('button', { type: 'button', 'data-game': 'start' }, 'Start run'), brake = E('button', { type: 'button', 'data-game': 'brake', 'aria-label': 'Hold to brake', 'aria-pressed': 'false' }, 'Hold: BRAKE');
       start.addEventListener('click', () => startGame(ui));
-      // The card and lobby cover the toolbar's Exit Play button (MG-test: unclickable at 1500 px and 390 px), so the panel carries its own.
-      const exit = E('button', { type: 'button', 'data-game': 'exit' }, 'Exit Play'); exit.addEventListener('click', () => toggleGame(ui));
+      // The lobby and scorecard also carry their own exit control.
+      const exit = E('button', { type: 'button', 'data-game': 'exit' }, 'Exit game'); exit.addEventListener('click', () => toggleGame(ui));
       const active = () => st.game && !st.game.done && st.playing && visible();
       const hold = (held, source) => { if (!st.game) return; const now = performance.now();
         // Integrate the interval BEFORE this input with the previous brake state; never brake retroactively over a slow frame.
@@ -1299,9 +1306,9 @@ void main() {
     if (V.notice) V.notice.hidden = !V.why || (st.gameMode && !V.lost);
     V.gameBar.hidden = !st.gameMode; V.gameBar.classList.toggle('running', !!st.game && !st.game.done); mount(ui);
     if (st.gameMode) V.bar.hidden = true;
-    const toggle = info().toolbar.querySelector('[data-game="toggle"]'); if (toggle) { toggle.setAttribute('aria-pressed', String(!!st.gameMode)); toggle.textContent = st.gameMode ? 'Exit Play' : 'Play'; }
+    const toggle = info().toolbar.querySelector('[data-game="toggle"]'); if (toggle) { toggle.setAttribute('aria-pressed', String(!!st.gameMode)); toggle.textContent = st.gameMode ? 'Exit game' : 'Game'; }
     // Freeze run inputs and the underlying toolbar; exit restores the owner's preferences in memory.
-    for (const bar of [V.bar, ui.driveBar]) if (bar) for (const e of bar.querySelectorAll('button,input,select')) {
+    for (const bar of [V.bar, ui.driveBar, ui.driveExtras]) if (bar) for (const e of bar.querySelectorAll('button,input,select')) {
       if (e.matches('[data-game="toggle"],[data-anim="popout"],[data-anim="play"]')) continue;
       if (st.gameMode) { if (e.dataset.gameWasDisabled === undefined) e.dataset.gameWasDisabled = String(e.disabled); e.disabled = true; }
       else if (e.dataset.gameWasDisabled !== undefined) { e.disabled = e.dataset.gameWasDisabled === 'true'; delete e.dataset.gameWasDisabled; }
@@ -1321,12 +1328,20 @@ void main() {
 
   // ---------------------------------------------------------------- popout
   function openPop(ui) {
-    const st = S(ui), host = document.querySelector('.work-col'); if (!host || st.popout) return;
-    const pop = E('div', { class: 'drive-popout', role: 'dialog', 'aria-label': 'Drive view, large' }), head = E('div', { class: 'dp-head' }, E('strong', {}, 'Drive view')), stage = E('div', { class: 'dp-stage' });
+    const st = S(ui); if (st.popout) return;
+    const pop = E('div', { class: 'drive-popout', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Drive view, large' }), head = E('div', { class: 'dp-head' }, E('strong', {}, 'Drive view')), stage = E('div', { class: 'dp-stage' });
     const close = E('button', { type: 'button', class: 'dp-close', title: 'Close (Esc)' }, '✕ Close'); close.addEventListener('click', () => closePop(ui)); head.append(E('span', { class: 'dp-hint' }, 'Esc closes'), close);
-    pop.append(head, stage); host.append(pop); V.pop = pop; V.popStage = stage; V.home = V.canvas ? V.canvas.parentElement : null;
+    V.popScroll = { x: root.scrollX, y: root.scrollY, focus: document.activeElement, style: document.body.getAttribute('style') };
+    pop.append(head, stage); document.body.append(pop); V.pop = pop; V.popStage = stage;
+    Object.assign(document.body.style, { position: 'fixed', top: -V.popScroll.y + 'px', left: -V.popScroll.x + 'px', width: '100%', overflow: 'hidden' });
     st.popout = true; if (st.view !== 'anim') st.playing = false;          // opened from the still view: the same picture, large, paused
-    V.onKey = (e) => { if (e.key === 'Escape' && S(ui).popout) { e.preventDefault(); e.stopPropagation(); closePop(ui); } };
+    V.onKey = (e) => {
+      if (e.key === 'Escape' && S(ui).popout) { e.preventDefault(); e.stopPropagation(); closePop(ui); }
+      if (e.key === 'Tab' && S(ui).popout) {
+        const items = [...pop.querySelectorAll('button,input,select,summary,[tabindex]')].filter(b => !b.disabled && b.checkVisibility() && b.tabIndex >= 0), i = items.indexOf(document.activeElement);
+        if (e.shiftKey ? i <= 0 : i < 0 || i === items.length - 1) { e.preventDefault(); items[e.shiftKey ? items.length - 1 : 0].focus(); }
+      }
+    };
     document.addEventListener('keydown', V.onKey, true);
     if (root.ResizeObserver) { V.ro = new ResizeObserver(() => { if (S(ui).popout) { ui.redrawSpec(); } }); V.ro.observe(stage); }
     mount(ui); close.focus(); ui.redrawSpec();
@@ -1334,28 +1349,67 @@ void main() {
   function closePop(ui) {
     const st = S(ui); if (!st.popout) return; st.popout = false; V.cardPop = false;
     document.removeEventListener('keydown', V.onKey, true); if (V.ro) { V.ro.disconnect(); V.ro = null; }
-    if (V.pop) { V.pop.remove(); V.pop = null; V.popStage = null; }
+    const pop = V.pop, saved = V.popScroll; V.pop = null; V.popStage = null;
     if (st.view !== 'anim') st.playing = true;
-    mount(ui); const b = document.querySelector('[data-anim="popout"]'); if (b) b.focus(); ui.redrawSpec();
+    mount(ui); if (pop) pop.remove();
+    if (saved) { if (saved.style === null) document.body.removeAttribute('style'); else document.body.setAttribute('style', saved.style); }
+    ui.redrawSpec();
+    const b = saved && saved.focus && saved.focus.isConnected && saved.focus !== document.body ? saved.focus : document.querySelector('[data-anim="popout"]'); if (b) b.focus({ preventScroll: true });
+    if (saved) root.scrollTo({ left: saved.x, top: saved.y, behavior: 'instant' }); V.popScroll = null;
   }
-  // the canvas and the tool bars live in the popout while it is open, in the pane otherwise
+  // More and debug are ordinary page content on phones; desktop keeps the overlay.
+  const mobileControls = () => root.matchMedia('(max-width: 760px), (pointer: coarse)').matches;
+  function layoutControls(ui, scroll) {
+    const st = S(ui), host = st.popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement;
+    if (!host || !ui.driveExtras) return;
+    const mobile = mobileControls(), more = ui.driveBar.querySelector('.drive-more');
+    if (!V.below) V.below = E('div', { class: 'drive-below' });
+    if (host.nextElementSibling !== V.below) host.after(V.below);
+    V.below.hidden = !st.popout && ui.display !== 'drive';
+    const extrasHost = mobile ? V.below : more;
+    if (ui.driveExtras.parentElement !== extrasHost) extrasHost.append(ui.driveExtras);
+    ui.driveExtras.hidden = !more.open;
+    if (V.perfLab && V.perfLab.parentElement !== (mobile ? V.below : host)) (mobile ? V.below : host).append(V.perfLab);
+    if (V.gameBar && V.gameBar.parentElement !== V.below) V.below.prepend(V.gameBar);
+    if (V.fpsLab && V.fpsLab.parentElement !== host) host.append(V.fpsLab);
+    const h = ui.driveBar.getBoundingClientRect().height;
+    host.style.setProperty('--drive-toolbar-bottom', (h + 8) + 'px');
+    host.style.setProperty('--drive-extra-height', Math.max(40, host.clientHeight - h - 16) + 'px');
+    if (mobile && scroll && more.open) requestAnimationFrame(() => ui.driveExtras.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+  }
   function mount(ui) {
     const st = S(ui), host = st.popout && V.popStage ? V.popStage : (V.cv ? V.cv.parentElement : null); if (!host) return;
     host.classList.toggle('drive-fit', info().o.fitControls !== false);
-    for (const e of [V.canvas, ui.driveBar, V.gameBar, V.notice, V.perfLab]) if (e && e.parentElement !== host) host.append(e);
+    for (const e of [V.canvas, ui.driveBar, V.notice, document.querySelector('[data-reset=heat]')]) if (e && e.parentElement !== host) host.append(e);
+    const primary = ui.driveBar.querySelector('.drive-primary');
+    for (const selector of ['[data-dv=scene]', '.drive-speed', '[data-anim=play]', '[data-game=toggle]', '[data-dv=glare]', '.drive-more']) {
+      const e = primary.querySelector(selector); if (e && primary.lastElementChild !== e) primary.append(e);
+    }
+    if (!V.controlsRO && root.ResizeObserver) {
+      V.controlsRO = new ResizeObserver(() => layoutControls(ui)); V.controlsRO.observe(ui.driveBar);
+      const query = root.matchMedia('(max-width: 760px), (pointer: coarse)'); query.addEventListener('change', () => { layoutControls(ui); ui.redrawSpec(); });
+    }
+    layoutControls(ui);
   }
 
   // The optional ES module is loaded only on HTTP; the classic CPU app still opens from file://.
   let threeModule, threeLoading;
   function gpuFallback(why) {
     if (V.three) { V.three.dispose(); V.three = null; }
-    V.gkey = ''; V.gpuFailure = String(why); say('GPU drive unavailable (' + V.gpuFailure.split('\n')[0].slice(0, 160) + '); using CPU renderer.');
+    V.gkey = ''; V.gpuFailure = String(why); say('GPU drive unavailable (' + V.gpuFailure.split('\n')[0].slice(0, 160) + '); using CPU renderer.'); if (V.bar) labels(V.ui);
+  }
+  function gpuCreate() {                                      // first build, and the rebuild after a context restore: a few tries, then the visible CPU fallback
+    try { V.three = threeModule.create(V.canvas, V.gl.gl, () => { if (V.ui) V.ui.redrawSpec(); }); V.gkey = ''; V.gpuTries = 0; killWorkers(); }
+    catch (e) {
+      if ((V.gpuTries = (V.gpuTries || 0) + 1) >= 3) { V.gpuTries = 0; gpuFallback(e.message || e); return; }
+      clearTimeout(V.gpuRetry); V.gpuRetry = setTimeout(() => { V.gpuRetry = 0; if (V.ui && V.info && info().o.gpuRenderer && !V.three && !V.lost) V.ui.redrawSpec(); }, 250 * V.gpuTries);
+    }
   }
   function gpuRenderer() {
-    if (!info().o.gpuRenderer) { if (V.three) { V.three.dispose(); V.three = null; V.gkey = ''; } if (V.gpuFailure) { V.gpuFailure = ''; say(''); } return; }
+    if (!info().o.gpuRenderer) { if (V.three) { V.three.dispose(); V.three = null; V.gkey = ''; } if (V.gpuFailure) { V.gpuFailure = ''; say(''); if (V.bar) labels(V.ui); } return; }
     if (V.three || V.gpuFailure) return;
     if (root.location && root.location.protocol === 'file:') { gpuFallback('ES modules need HTTP'); return; }
-    if (threeModule) { try { V.three = threeModule.create(V.canvas, V.gl.gl, () => { if(V.ui)V.ui.redrawSpec(); }); V.gkey = ''; killWorkers(); } catch (e) { gpuFallback(e.message || e); } return; }
+    if (threeModule) { if (!V.gpuRetry) gpuCreate(); return; }
     if (!threeLoading) threeLoading = import('./drive-three.js').then(m => { threeModule = m; threeLoading = null; if (V.ui) V.ui.redrawSpec(); }).catch(e => { threeLoading = null; if (V.info && info().o.gpuRenderer) gpuFallback(e.message || e); });
   }
 
@@ -1366,7 +1420,7 @@ void main() {
     if (st.game) Object.assign(I.o, st.gameOptions);
     if (st.popout && !popValid(ui)) closePop(ui);
     topButtons(ui, I.toolbar, I.setDV); bars(ui, I.setDV);
-    if (!V.bar.parentElement) ui.driveBar.querySelector('.drive-extras').append(V.bar);
+    if (!V.bar.parentElement) ui.driveExtras.append(V.bar);
     if (!st.popout) mount(ui);
     if (!supported(I.o)) { if (st.popout) closePop(ui); st.view = 'still'; }
     labels(ui); gameControls(ui);
@@ -1417,8 +1471,8 @@ void main() {
       notes: 'GL stages time CPU submission, not GPU execution. Final pass includes veil and tone map. Trace components partition trace CPU; worker sums and main dispatch overlap round-trip. Wet measures lobe evaluation only. Static ground setup is groundMs at stats root.' };
   }
   function perfLabel() {
+    if (V.fpsLab && V.info && V.info.o.fpsCounter) V.fpsLab.textContent = Math.round(stats().fps) + ' fps';
     if (!V.perfLab || !profileOn()) return;
-    if (V.canvas && V.canvas.parentElement !== V.perfLab.parentElement) V.canvas.parentElement.append(V.perfLab);
     const s = stats(), b = s.breakdown, c = b.components, ms = (k) => c[k].ms.toFixed(1), scope = s.workers ? 'worker CPU sum' : 'CPU';
     V.perfLab.textContent = s.fps.toFixed(1) + ' fps · p95 ' + s.p95Ms.toFixed(1) + ' ms · scale ' + s.renderScale.toFixed(2) + ' · SS ' + s.ss + '\n' +
       'frame ' + b.frameMs.toFixed(1) + ' · main ' + b.mainMs.toFixed(1) + ' · worker RT ' + ms('workerRoundTripMs') + ' ms\n' +
@@ -1434,7 +1488,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

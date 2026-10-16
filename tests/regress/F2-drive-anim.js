@@ -83,8 +83,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // 6. the large view
   await page.click('[data-anim="popout"]'); await sleep(2500);
-  const pop = await page.evaluate(() => { const R = (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }, p = document.querySelector('.drive-popout'), wc = document.querySelector('.work-col'), sb = document.getElementById('sidebar'), g = document.querySelector('.drive-gl'); return { pop: R(p), work: R(wc), side: R(sb), gl: R(g), glParent: g.parentElement.className, st: RF.UI.dvAnim, focus: document.activeElement.className, bar: document.querySelector('.drive-tools').parentElement.className, vw: innerWidth }; });
-  ok('popout fills the work column and stops at the sidebar', Math.abs(pop.pop[0] - pop.work[0]) < 1 && Math.abs(pop.pop[2] - pop.work[2]) < 1 && pop.pop[2] <= pop.side[0] + 1 && Math.abs(pop.pop[3] - pop.work[3]) < 1, JSON.stringify({ pop: pop.pop, side: pop.side }));
+  const pop = await page.evaluate(() => { const R = (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }, p = document.querySelector('.drive-popout'), wc = document.querySelector('.work-col'), sb = document.getElementById('sidebar'), g = document.querySelector('.drive-gl'); return { pop: R(p), work: R(wc), side: R(sb), gl: R(g), glParent: g.parentElement.className, st: RF.UI.dvAnim, focus: document.activeElement.className, bar: document.querySelector('.drive-tools').parentElement.className, vw: innerWidth, vh: innerHeight }; });
+  ok('popout fills the viewport above the sidebar', Math.abs(pop.pop[0]) < 1 && Math.abs(pop.pop[1]) < 1 && Math.abs(pop.pop[2] - pop.vw) < 1 && Math.abs(pop.pop[3] - pop.vh) < 1, JSON.stringify({ pop: pop.pop, side: pop.side }));
   ok('popout holds the animated canvas and the toolbar, bigger than the pane\'s', pop.glParent.split(' ')[0] === 'dp-stage' && pop.bar.split(' ')[0] === 'dp-stage' && (pop.gl[2] - pop.gl[0]) > 800, 'canvas ' + Math.round(pop.gl[2] - pop.gl[0]) + ' px wide');
   ok('popout moves focus to its close button', /dp-close/.test(pop.focus), pop.focus);
   f0 = await frames(); await sleep(700); f1 = await frames(); ok('popout animates', f1 > f0);
@@ -148,7 +148,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       let mx = 0, sum = 0, n = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let c = 0; c < 3; c++) { const d = Math.abs(cv[4 * ((H - 1 - y) * W + x) + c] - tm.px[4 * (y * W + x) + c]); mx = Math.max(mx, d); sum += d; n++; }
       return { max: mx, mean: sum / n };
     }, gl);
-    ok('GPU tone map vs Drive.tonemap, glare ' + gl + (gl ? ' (blurred at half size on the GPU: close, not identical)' : ' (no blur: the same 8-bit values, ±1 for the GPU\'s pow rounding; exactly 0 on the Apple GPU)'), !r.skip && (gl === 0 ? r.max <= 1 && r.mean < 0.01 : r.mean < 0.2 && r.max <= 24), JSON.stringify(r));
+    ok('GPU tone map vs Drive.tonemap, glare ' + gl + (gl ? ' (blurred at half size on the GPU: close, not identical)' : ' (no blur: the same 8-bit values, ±1 for the GPU\'s pow rounding, a rare ±2 pixel on the software GPU at some canvas sizes; exactly 0 on the Apple GPU)'), !r.skip && (gl === 0 ? r.max <= 2 && r.mean < 0.001 : r.mean < 0.2 && r.max <= 24), JSON.stringify(r));
   }
   await page.keyboard.press('Escape'); await sleep(500);
   // 8c. US markings (double solid yellow, nothing patterned): the ground has no moving part; the shader takes its no-stripe path

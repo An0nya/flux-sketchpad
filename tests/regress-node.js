@@ -1060,6 +1060,17 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   require('./drive-perf.js').run(RF, ok);
   require('./drive-three.js').run(RF, ok);
   require('./models-proto.js').run(RF, ok);
+  require('./gr-robust.js').run(RF, ok);
+  // UX2: an old saved FPS preference must not enable the full trace profiler.
+  {
+    const D = RF.DriveAnim, V = D._.V, saved = V.info;
+    try {
+      V.info = { o: { fpsCounter: true } };
+      ok('UX2 legacy FPS preference does not enable debug profiling', D.stats().profiling === false);
+      V.info.o.debugTimings = true; V.info.o.fpsCounter = false;
+      ok('UX2 Debug timings profiles independently of the bare FPS badge', D.stats().profiling === true);
+    } finally { V.info = saved; }
+  }
   console.log(fails ? fails + ' FAILED' : 'all regress-node checks passed');
   process.exitCode = fails ? 1 : 0;
 })();

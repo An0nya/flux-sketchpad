@@ -77,7 +77,7 @@
   }
   async function bench({phone=false}={}) {
     const u=await ready(),D=RF.DriveAnim,a=D._,results=[];
-    Object.assign(u.dvOpts,{scene:'city',tiles:false,wet:true,wetSheen:true,glare:'rain',wild:true,density:3,trafficLogic:true,oncoming:true,preceding:true,mt:false,fpsCounter:true,dynamicResolution:false,tex:true});D.openPop(u);
+    Object.assign(u.dvOpts,{scene:'city',tiles:false,wet:true,wetSheen:true,glare:'rain',wild:true,density:3,trafficLogic:true,oncoming:true,preceding:true,mt:false,fpsCounter:true,debugTimings:true,dynamicResolution:false,tex:true});D.openPop(u);
     // Exact desktop display size; phone uses its normal responsive popout.
     if(!phone)Object.assign(a.V.popStage.style,{position:'fixed',left:'0',top:'0',width:'1600px',height:'900px'});
     a.V.pinSS=0;
@@ -100,7 +100,7 @@
       results.push({conv,relative:error/Math.max(sum,1e-9),max,pass:error/Math.max(sum,1e-9)<.005});
     }
     a.frame();const gl=a.V.gl.gl,ext=gl.getExtension('WEBGL_lose_context');let context={measured:false};
-    if(ext){ext.loseContext();await sleep(250);const lost=D.stats().contextLost;ext.restoreContext();for(let i=0;i<40&&D.stats().contextLost;i++)await sleep(100);await sleep(250);context={measured:true,lost,stats:D.stats(),notice:a.V.why,pass:lost&&!D.stats().contextLost&&D.stats().renderer==='cpu'&&/CPU/.test(a.V.why)};}
+    if(ext){ext.loseContext();await sleep(250);const lost=D.stats().contextLost;ext.restoreContext();for(let i=0;i<40&&D.stats().contextLost;i++)await sleep(100);await sleep(250);context={measured:true,lost,stats:D.stats(),notice:a.V.why,pass:lost&&!D.stats().contextLost&&D.stats().renderer==='three'&&!a.V.why};}
     return {conventions:results,context,pass:results.every(r=>r.pass)&&context.pass};
   }
   window.P1Page={run,bench,ready,select,thresholds,aux};
