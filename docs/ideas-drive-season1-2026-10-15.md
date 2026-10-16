@@ -98,3 +98,12 @@ Not approved for building; logged.
   the target and the solver matched it (oncoming cars carrying that lamp look switched off). Idea: in the image→target
   conversion, treat the bottom band as "≤ X cd, unknown" (a floor value or a don't-care-below-X weight) instead of 0, so
   converted designs keep realistic scatter/uplight and don't automatically fail the above-horizon minimums.
+- **Colour temperature for every source** (Anya 10-16 wishlist): street lamps already have CCT; LED presets carry
+  measured CCTs; halogen (~3,000–3,200 K) and HID (~4,000–4,300 K) get documented assumptions. Simplify: one CCT per
+  source (ignore drive-current shift for now), carried through to the beam pattern and Drive view colour.
+  **Chromatic aberration** as a later item: projector lenses separate colour at the cut-off (the blue/purple fringe on
+  real projectors); needs wavelength-dependent refraction (dispersion / Abbe number) in the tracer: a few spectral
+  bands, not full spectra.
+- **Touge follow-up** (Anya): curvature-based speed advice in traffic logic + the camera car (slow before curves,
+  accelerate out) so the pass isn't a rollercoaster. AFS after that.
+- **Try Haiku on scoped builds** (Anya): small, well-specified jobs to test capability; compare against Codex output.
