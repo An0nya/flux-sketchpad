@@ -4,7 +4,7 @@ const port=+(process.argv[2]||8793);
 (async()=>{const browser=await pw.chromium.launch({channel:'chromium'});let fails=0;const ok=(n,c,d)=>{console.log((c?'[PASS] ':'[FAIL] ')+n+(d?' '+JSON.stringify(d):''));if(!c)fails++;};try{
   const page=await browser.newPage({viewport:{width:1600,height:900}}),errors=[];
   await page.exposeFunction('trCheck',ok);
-  page.on('pageerror',e=>errors.push(String(e)));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+  page.on('pageerror',e=>errors.push(String(e)));page.on('console',m=>{if(m.type()==='error'&&!/favicon\.ico/.test(m.location().url||''))errors.push(m.text());}); /* the dev server has no favicon.ico; that 404 is not an app error */
   await page.addInitScript(()=>localStorage.clear());await page.goto(`http://127.0.0.1:${port}/index.html`);
   await page.waitForFunction(()=>window.RF&&RF.UI&&RF.UI.loadScene);
   await page.evaluate(s=>RF.UI.loadScene(RF.State.deserialize(s),'TR fixture'),fs.readFileSync(path.join(__dirname,'../fixtures/MG2-default-lamp.json'),'utf8'));
