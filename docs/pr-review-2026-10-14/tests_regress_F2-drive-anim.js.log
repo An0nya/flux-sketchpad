@@ -1,0 +1,57 @@
+[PASS] page identifies as the Flux app on port 8836 (RF.UI, RF.DriveAnim)
+[PASS] WebGL2 with float render targets exists in this browser
+[PASS] default: still view, no animated canvas shown, animate button off  — {"view":"still","gl":false,"btn":"false"}
+[PASS] animate: frames keep coming (69 in 1 s) and the car moves (13.9 m at 50 km/h)  — speed 50
+[PASS] animated canvas is 16:9 and inside the drive canvas box  — {"gl":[543,123.953125,1154.546875,467.953125],"wrap":[519.78125,123.953125,1178,467.8125],"ratio":1.777752543604651}
+[PASS] pause: no frames and no movement for 0.8 s, loop stopped
+[PASS] speed slider: 30 and 90 km/h are driven at about that speed  — 30.0 and 89.6 km/h measured
+[PASS] the speed is remembered in the drive-view settings
+[PASS] hidden tab: the frame counter stops  — 456 → 456
+[PASS] tab visible again: frames resume
+[PASS] Result switched to another view: frames stop and the canvas is not shown  — 547 → 547
+[PASS] Result back on Drive: frames resume
+[PASS] Result pane collapsed: frames stop  — {"collapsed":true,"expanded":false} 664 → 664
+[PASS] Result pane restored: frames resume  — {"collapsed":false,"expanded":true} 805 → 862
+[PASS] Result pane not expanded (its tool bars are hidden): canvas hidden, frames stop  — {"collapsed":false,"expanded":false} 862 → 862
+[PASS] Result pane expanded again: frames resume  — {"collapsed":false,"expanded":true} 1005 → 1057
+[PASS] posts toggle: only the delineator posts go (96 → 72 objects)
+[PASS] crates toggle: off by default, on adds crates  — crates 2
+[PASS] posts, trees and crates are animation-only: toggling them did not re-render the still picture  — still renders 0
+[PASS] toggle signs changes the scenery (96 → 90 objects)
+[PASS] toggle people changes the scenery (96 → 84 objects)
+[PASS] toggle animals changes the scenery (96 → 78 objects)
+[PASS] toggle veg changes the scenery (96 → 60 objects)
+[PASS] popout fills the work column and stops at the sidebar  — {"pop":[0,48,1200,950],"side":[1200,48,1500,950]}
+[PASS] popout holds the animated canvas and the toolbar, bigger than the pane's  — canvas 1198 px wide
+[PASS] popout moves focus to its close button  — dp-close
+[PASS] popout animates
+[PASS] popout canvas is the largest 16:9 that fits, one backing pixel per css pixel at dpr 1  — {"px":[1198,674],"css":[1198,673.875],"stage":[1198,863],"dpr":1}
+[PASS] popout follows a window resize (1500×950 → 1100×800)  — {"px":[798,449],"css":[798,448.875],"stage":[798,713]}
+[PASS] Esc closes it, canvas and toolbar go back to the pane, focus returns to the large button  — {"pop":false,"parent":"canvas-wrap sq drive","bar":"canvas-wrap sq drive","st":false,"focus":"popout"}
+[PASS] after closing, the pane animates again
+[PASS] the close button closes it too
+[PASS] popout open in a hidden tab: frames stop  — 2074 → 2074
+[PASS] leaving Spec mode closes the popout
+[PASS] while animating, the whole-picture renderer is not called per frame  — calls 0
+[PASS] animate off: loop stopped, canvas hidden, still picture shown
+[PASS] GL frame = whole picture, straight at 37.3 m: ground outside object tiles within half-float rounding  — 222019 px, worst relative 1.2e-3 (640×360)
+[PASS] GL frame = whole picture, straight at 37.3 m: pixels an object covers fully  — 2839 px, worst relative 8.6e-4
+[PASS] GL frame = whole picture, straight at 37.3 m: edge pixels, median  — 598 px, median 0.00 %
+[PASS] GL frame = the shader's sum in plain JS (composeCPU), straight  — worst relative 1.2e-3
+[PASS] GL frame = whole picture, 250R at 111.7 m: ground outside object tiles within half-float rounding  — 219592 px, worst relative 1.0e-3 (640×360)
+[PASS] GL frame = whole picture, 250R at 111.7 m: pixels an object covers fully  — 5180 px, worst relative 7.6e-4
+[PASS] GL frame = whole picture, 250R at 111.7 m: edge pixels, median  — 692 px, median 0.00 %
+[PASS] GL frame = the shader's sum in plain JS (composeCPU), 250R  — worst relative 1.1e-3
+[PASS] GL frame = whole picture, 150L at 5 m: ground outside object tiles within half-float rounding  — 221538 px, worst relative 4.8e-4 (640×360)
+[PASS] GL frame = whole picture, 150L at 5 m: pixels an object covers fully  — 2618 px, worst relative 8.5e-4
+[PASS] GL frame = whole picture, 150L at 5 m: edge pixels, median  — 494 px, median 0.00 %
+[PASS] GL frame = the shader's sum in plain JS (composeCPU), 150L  — worst relative 8.5e-4
+[PASS] GPU tone map vs Drive.tonemap, glare 0 (no blur: the same 8-bit values, ±1 for the GPU's pow rounding; exactly 0 on the Apple GPU)  — {"max":0,"mean":0}
+[PASS] GPU tone map vs Drive.tonemap, glare 0.3 (blurred at half size on the GPU: close, not identical)  — {"max":12,"mean":0.03400903913380197}
+[PASS] GPU tone map vs Drive.tonemap, glare 1 (blurred at half size on the GPU: close, not identical)  — {"max":19,"mean":0.08516708526740083}
+[PASS] US markings: no stripe layer, GL frame = whole picture (ground outside tiles, object pixels, shader sum)  — pat none: true, ground 4.8e-4, objects 8.4e-4
+[PASS] devicePixelRatio 2: canvas backing store = css size × 2  — {"px":[1223,688],"css":[611.546875,344],"dpr":2,"sim":[1222,686]}
+[PASS] devicePixelRatio 2 popout: backing store = css × 2, trace capped at 1600 px wide  — {"px":[2396,1348],"css":[1198,673.875],"sim":[1600,900]}
+[PASS] 1280×720, sidebar open: drive canvas right edge inside the Result pane  — {"paneRight":969.390625,"canvasRight":958,"sideHidden":false,"glRight":null}
+[PASS] 1280×720: the animated canvas and its controls stay inside the pane  — {"paneRight":969.390625,"paneBottom":364.390625,"glRight":866.15625,"barBottom":309.8125,"maxBtn":905.15625}
+[PASS] no page errors

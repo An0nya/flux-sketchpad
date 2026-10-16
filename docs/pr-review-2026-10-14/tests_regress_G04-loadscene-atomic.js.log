@@ -1,0 +1,6 @@
+[PASS] page identified as the app
+[PASS] a scene that fails to load throws  — {"threw":true,"same":true,"solving":true,"mode":"A","body":"solving mode-A"}
+[PASS] and the live store is still the old one  — {"threw":true,"same":true,"solving":true,"mode":"A","body":"solving mode-A"}
+[PASS] and the running solve was not cancelled  — {"threw":true,"same":true,"solving":true,"mode":"A","body":"solving mode-A"}
+[PASS] and the old mode is still shown (body class mode-A)  — solving mode-A
+[PASS] no page errors

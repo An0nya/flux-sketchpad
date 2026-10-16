@@ -1,0 +1,24 @@
+[PASS] {"a":1}: the app boots and finishes loading solvers  — errors 
+[PASS] {"a":1}: no page error
+[PASS] {"a":1}: the key is rebuilt as a clean array  — []
+[PASS] {"a":1}: a console warning names flux/solvers  — flux/solvers in localStorage is not a list of solver files: ignored and rebuilt | No available adapters.
+[PASS] "hi": the app boots and finishes loading solvers  — errors 
+[PASS] "hi": no page error
+[PASS] "hi": the key is rebuilt as a clean array  — []
+[PASS] "hi": a console warning names flux/solvers  — flux/solvers in localStorage is not a list of solver files: ignored and rebuilt | No available adapters.
+[PASS] 42: the app boots and finishes loading solvers  — errors 
+[PASS] 42: no page error
+[PASS] 42: the key is rebuilt as a clean array  — []
+[PASS] 42: a console warning names flux/solvers  — flux/solvers in localStorage is not a list of solver files: ignored and rebuilt | No available adapters.
+[PASS] null: the app boots and finishes loading solvers  — errors 
+[PASS] null: no page error
+[PASS] null: the key is rebuilt as a clean array  — []
+[PASS] null: a console warning names flux/solvers  — flux/solvers in localStorage is not a list of solver files: ignored and rebuilt | No available adapters.
+[PASS] [1,{"x":2}]: the app boots and finishes loading solvers  — errors 
+[PASS] [1,{"x":2}]: no page error
+[PASS] [1,{"x":2}]: the key is rebuilt as a clean array  — []
+[PASS] [1,{"x":2}]: a console warning names flux/solvers  — flux/solvers in localStorage had entries that are not solver files: dropped | No available adapters.
+[PASS] not json: the app boots and finishes loading solvers  — errors 
+[PASS] not json: no page error
+[PASS] not json: the key is rebuilt as a clean array  — []
+[PASS] not json: a console warning names flux/solvers  — flux/solvers in localStorage is not a list of solver files: ignored and rebuilt | No available adapters.

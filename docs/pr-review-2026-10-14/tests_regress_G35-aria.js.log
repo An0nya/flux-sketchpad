@@ -1,0 +1,9 @@
+[PASS] collapse buttons: aria-expanded true when open  — true,true,true,true
+[PASS] ... false for the collapsed Editor only  — true,false,true,true
+[PASS] expand buttons: aria-pressed false, then true for the expanded pane
+[PASS] ... Optics expand pressed  — false,false,false,true
+[PASS] Result view buttons are radios with aria-checked (Grid checked)
+[PASS] ... and follows the view
+[PASS] separators carry aria-valuenow (percent)  — 38,50,38
+[PASS] phone tabs: aria-pressed matches the active tab  — [["false",false],["false",false],["false",false],["true",true]]
+[PASS] ... and follows a tab change

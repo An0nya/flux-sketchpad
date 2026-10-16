@@ -1,0 +1,11 @@
+[PASS] page identifies as Flux
+[PASS] Paint: Editor and Result map squares sit at the same height  — {"left":304,"heat":304}
+[PASS] a solve was observed
+[PASS] size of footer is the same before, during and after the solve  — 1179x62
+[PASS] size of gen is the same before, during and after the solve  — 98x28
+[PASS] size of left is the same before, during and after the solve  — 276x286
+[PASS] size of heat is the same before, during and after the solve  — 276x286
+[PASS] size of scene is the same before, during and after the solve  — 559x765
+[PASS] size of surf is the same before, during and after the solve  — 606x292
+[PASS] Spec: Editor and Result map squares sit at the same height  — {"left":279,"heat":279}
+[PASS] no page errors

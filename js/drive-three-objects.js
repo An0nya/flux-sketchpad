@@ -114,9 +114,25 @@ void main() {
  gl_FragColor=vec4(color,flags.y>0.0?0.0:1.0);
 }
 `;
+// Only leaf buckets compile this source. The off shader above remains byte-identical to M2.
+// Object-local metres anchor the pattern through camera motion, bends and repeated chunks.
+export const leafyFragment = objectFragment.replace(
+  'coord=atan(n.y,n.x)*shape.x;', `coord=atan(n.y,n.x)*shape.x;
+   vec3 leafQ=(o+t*ray)*(shape.z<.65?9.0:5.0);
+   vec3 axis=abs(n);vec2 leafUV=axis.z>max(axis.x,axis.y)?leafQ.xy:axis.x>axis.y?leafQ.yz:leafQ.xz;
+   vec2 cell=floor(leafUV),f=fract(leafUV)-.5;
+   float hash=fract(dot(fract(vec3(cell.x,cell.y,cell.x)*.1031),vec3(17.1,31.7,13.3)));
+   if(hash>.5)f=f.yx;
+   // Elliptical leaf tips erode the outer contour most; subpixel detail closes smoothly.
+   float footprint=max(length(dFdx(leafUV)),length(dFdy(leafUV)));
+   float tip=dot(f*vec2(1.25,2.0),f*vec2(1.25,2.0));
+   float edge=1.0-abs(dot(n,ray)),filterLeaf=1.0-smoothstep(.35,1.0,footprint);
+   if(tip>mix(2.0,mix(1.05,.65,edge),filterLeaf))discard;
+  `);
+
 export function objects(renderer, uniforms, onModelsReady) {
   const scene = new T.Scene(), camera = new T.Camera(), groups = new Map(), maps = new Map();
-  const models=modelMeshes(scene,uniforms,onModelsReady);let nodeTexture=null,nodeData=null,card=null;const prototype={actors:0,nearTrees:0,farTrees:0};
+  const models=modelMeshes(scene,uniforms,onModelsReady);let nodeTexture=null,nodeData=null,card=null;const prototype={actors:0,nearTrees:0,farTrees:0,leafPrimitives:0,proxyPrimitives:0,proxyTriangles:0};
   const zero = new T.DataArrayTexture(new Uint8Array(6), 1, 1, 6); zero.format=T.RedFormat;zero.needsUpdate=true;
   const fields={aCenter:3,aShape:4,aPose:4,aBounds:4,aEmit:4,aPlane:4,aTie:4,aMat:3,aFlags:4};
   function materialMap(ob) {
@@ -135,22 +151,23 @@ export function objects(renderer, uniforms, onModelsReady) {
     const tex=new T.DataArrayTexture(data,w,h,6);tex.format=T.RedFormat;tex.needsUpdate=true;
     cached={tex,extent:mapExtent,mode,signKind};maps.set(cacheKey,cached);return cached;
   }
-  function group(key, count, map) {
+  function group(key, count, map, leafy) {
     let g=groups.get(key);if(g && g.capacity>=count)return g;
     if(g){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();}
     const capacity=Math.max(16,2**Math.ceil(Math.log2(count))),geometry=new T.PlaneGeometry(1,1),attrs={};
     for(const [name,n]of Object.entries(fields)){attrs[name]=new T.InstancedBufferAttribute(new Float32Array(n*capacity),n).setUsage(T.DynamicDrawUsage);geometry.setAttribute(name,attrs[name]);}
     const local={...uniforms,materialMap:{value:map?map.tex:zero},mapExtent:{value:map?map.extent:new T.Vector3(1,0,1)},mapped:{value:map?map.mode:0},signKind:{value:map?map.signKind:0},maskMode:{value:0},samples:{value:1},detailed:{value:false},sdfNodes:{value:null},treeCard:{value:null}};
-    const material=new T.ShaderMaterial({uniforms:local,vertexShader:objectVertex,fragmentShader:objectFragment,depthTest:true,depthWrite:true,depthFunc:T.LessDepth});
+    const material=new T.ShaderMaterial({uniforms:local,vertexShader:objectVertex,fragmentShader:leafy?leafyFragment:objectFragment,depthTest:true,depthWrite:true,depthFunc:T.LessDepth});
     const mesh=new T.InstancedMesh(geometry,material,capacity);mesh.frustumCulled=false;scene.add(mesh);g={mesh,attrs,capacity,uniforms:local};groups.set(key,g);return g;
   }
   return {
     scene,camera,
     update(p,obs,ss) {
-      prototype.actors=prototype.nearTrees=prototype.farTrees=0;
-      if(p.detailedModels && !p.touge){
-        models.load();if(!card)card=bakeTree();
-        obs=models.adapt(D.Models.actors(obs,true),p);
+      prototype.actors=prototype.nearTrees=prototype.farTrees=prototype.leafPrimitives=0;
+      if((p.detailedModels || p.leafyFoliage) && !p.touge){
+        if(p.detailedModels){models.load();obs=models.adapt(D.Models.actors(obs,true),p);}
+        else obs=obs.flatMap(ob=>ob.detailPart==='tree'?(ob.detail?D.Models.tree(ob.detail):[]):[ob]);
+        if(!card)card=bakeTree();
         const roots=obs.filter(ob=>ob.detailPart==='analytic-tree'&&ob.detail),ranges=roots.map(ob=>Math.hypot(ob.x+2,ob.y-.37)).sort((a,b)=>a-b),cutoff=Math.min(D.Models.TREE_DISTANCE,ranges[D.Models.TREE_COUNT]||Infinity),detailed=[];
         const fades=new Map(roots.map(ob=>[ob.treeId,Math.max(0,Math.min(1,(Math.hypot(ob.x+2,ob.y-.37)-(cutoff-8))/8))]));
         for(const ob of obs){
@@ -186,16 +203,18 @@ export function objects(renderer, uniforms, onModelsReady) {
         if(dx+R<=.05)return;
         let bounds=[-1,1,-1,1];
         if(d>R*1.001 && dx>.05){const cx=-dy/dx/tanH,cy=dz/dx/tanV,rp=Math.tan(Math.asin(Math.min(1,R/d)))*1.15;bounds=[cx-rp/tanH-4/p.w,cx+rp/tanH+4/p.w,cy-rp/tanV-4/p.h,cy+rp/tanV+4/p.h];if(bounds[0]>1||bounds[1]<-1||bounds[2]>1||bounds[3]<-1)return;}
-        const source=typeof ob.mat==='function'?String(ob.mat):'',key=source.includes('hivis-tape')?'vest':source.includes('face === 5')?'cabin':source?ob.mat:'constant';if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push({ob,index,bounds});count++;
+        const leafy=!!(p.leafyFoliage&&!p.touge&&ob.k==='ell'&&ob.mat==='foliage'&&(ob.foliage||ob.detailPart==='analytic-tree'));
+        const source=typeof ob.mat==='function'?String(ob.mat):'',key=leafy?'FO-leaves':source.includes('hivis-tape')?'vest':source.includes('face === 5')?'cabin':source?ob.mat:'constant';if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push({ob,index,bounds,leafy});count++;if(leafy)prototype.leafPrimitives++;
       });
       for(const g of groups.values())g.mesh.count=0;
-      for(const [key,items]of buckets){const g=group(key,items.length,materialMap(items[0].ob));g.mesh.count=items.length;g.mesh.renderOrder=items[0].index;g.uniforms.samples.value=ss;g.uniforms.detailed.value=!!p.detailedModels;g.uniforms.sdfNodes.value=nodeTexture;g.uniforms.treeCard.value=card;
+      for(const [key,items]of buckets){const g=group(key,items.length,materialMap(items[0].ob),items[0].leafy);g.mesh.count=items.length;g.mesh.renderOrder=items[0].index;g.uniforms.samples.value=ss;g.uniforms.detailed.value=!!p.detailedModels;g.uniforms.sdfNodes.value=nodeTexture;g.uniforms.treeCard.value=card;
         items.forEach(({ob,index,bounds},i)=>{const k=ob.k,kind=k==='sdf'?4:k==='impostor'?5:k==='rect'?6:k==='ell'?0:k==='box'?1:k==='cyl'?(ob.axis?7:2):3,zc=k==='box'||k==='cyl'?(ob.z0+ob.z1)/2:ob.z;
           const values={aCenter:[ob.x,ob.y,zc],aShape:k==='sdf'?[ob.r,ob.r,ob.r,kind]:k==='impostor'||k==='rect'?[ob.rx,ob.rx,ob.rz,kind]:k==='ell'?[ob.rx,ob.ry,ob.rz,kind]:k==='box'?[ob.hx,ob.hy,(ob.z1-ob.z0)/2,kind]:[ob.r,ob.r,k==='cyl'?(ob.z1-ob.z0)/2:ob.r,kind],aPose:[k==='impostor'?(ob.birch?1:0):(ob.yaw||0),...(ob.axis||[ob.nx||0,ob.ny||0,ob.nz||0])],aBounds:bounds,aTie:p.touge ? (ob.passSlope||[0,0,0,0]) : tieRanks.get(ob)||[0,0,0,0],aPlane:k==='sdf'?[ob.sdfRow,ob.nodeCount,0,0]:k==='impostor'?[0,0,ob.cardIndex,0]:[ob.x-(ob.hx||0),ob.x+(ob.hx||0),ob.y-(ob.hy||0),ob.y+(ob.hy||0)],aEmit:[...(ob.emit||[0,0,0]),ob.emit?(ob.emitPow||1):-1],aMat:[Math.max(0,D.MAT_KEYS.indexOf(ob.mat)),ob.gameHazard||0,index],aFlags:[ob.sub?1:0,ob.glow?1:0,...(ob.lod||[ob.eyeFalloff?-ob.eyeFalloff:ob.facadeStyle||0,0])]};
           for(const [name,v]of Object.entries(values))g.attrs[name].array.set(v,i*fields[name]);
         });for(const a of Object.values(g.attrs))a.needsUpdate=true;
       }
       for(const [key,g] of groups) if(!g.mesh.count){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();groups.delete(key);const map=maps.get(key);if(map){map.tex.dispose();maps.delete(key);}}
+      prototype.proxyPrimitives=count;prototype.proxyTriangles=count*2;
       return count;
     },
     prototype,models,

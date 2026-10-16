@@ -1,0 +1,14 @@
+[PASS] page identifies as the Flux app (RF.UI exists)
+[PASS] ff: view is finite before collapse (zoomed true)  — {"s":28.304893402843696,"f":3.320116922736548,"ox":140.1757291343122,"oy":119.4791547593468,"w":276.21875,"h":235.296875,"zoomed":true,"ok":true}
+[PASS] ff: view is finite after collapse + reopen  — {"mid":{"s":28.304893402843696,"f":3.320116922736548,"ox":140.1757291343122,"oy":119.4791547593468,"w":276.21875,"h":235.296875,"zoomed":true,"ok":true},"r":{"s":36.01356572369397,"f":3.320116922736549,"ox":212.7384886082145,"oy":119.47773990727786,"w":420.21875,"h":234.296875,"zoomed":true,"ok":true}}
+[PASS] ff: the zoom survives collapse + reopen (same zoom factor over the fit, still zoomed; in Spec the pane reopens expanded, so the fit itself may change)  — before ×3.320116922736548 (s 28.304893402843696), after ×3.320116922736549 (s 36.01356572369397), zoomed true
+[PASS] ff: the reopened canvas shows a picture  — non-transparent samples 1966
+[PASS] road: view is finite before collapse (zoomed true)  — {"s":12.918290584501841,"f":3.3201169227365486,"ox":-433.73880009077993,"oy":111.72667668235992,"w":420.21875,"h":218.921875,"zoomed":true,"ok":true}
+[PASS] road: view is finite after collapse + reopen  — {"mid":{"s":12.918290584501841,"f":3.3201169227365486,"ox":-433.73880009077993,"oy":111.72667668235992,"w":420.21875,"h":218.921875,"zoomed":true,"ok":true},"r":{"s":12.918290584501841,"f":3.3201169227365486,"ox":-433.73880009077993,"oy":111.7266766823599,"w":420.21875,"h":218.921875,"zoomed":true,"ok":true}}
+[PASS] road: the zoom survives collapse + reopen (same zoom factor over the fit, still zoomed; in Spec the pane reopens expanded, so the fit itself may change)  — before ×3.3201169227365486 (s 12.918290584501841), after ×3.3201169227365486 (s 12.918290584501841), zoomed true
+[PASS] road: the reopened canvas shows a picture  — non-transparent samples 1840
+[PASS] drive: view is finite before collapse (zoomed true)  — {"s":12.918290584501841,"f":3.3201169227365486,"ox":-433.73880009077993,"oy":111.7266766823599,"w":420.21875,"h":218.921875,"zoomed":true,"ok":true}
+[PASS] drive: view is finite after collapse + reopen  — {"mid":{"s":12.918290584501841,"f":3.3201169227365486,"ox":-433.73880009077993,"oy":111.7266766823599,"w":420.21875,"h":218.921875,"zoomed":true,"ok":true},"r":{"s":12.918290584501841,"f":3.3201169227365486,"ox":-433.73880009077993,"oy":111.7266766823599,"w":420.21875,"h":218.921875,"zoomed":true,"ok":true}}
+[PASS] drive: the zoom survives collapse + reopen (same zoom factor over the fit, still zoomed; in Spec the pane reopens expanded, so the fit itself may change)  — before ×3.3201169227365486 (s 12.918290584501841), after ×3.3201169227365486 (s 12.918290584501841), zoomed true
+[PASS] drive: the reopened canvas shows a picture  — non-transparent samples 1966
+[PASS] no page errors

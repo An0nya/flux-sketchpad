@@ -1,0 +1,3 @@
+[PASS] a visible notice says the solvers need http  — ["• The bundled solvers did not load: they need the page served over http (for example python3 tests/serve.py 8000, then open http://localhost:8000), not opened as a file. Until then solves use the built-in Spoke (default) solver."]
+[PASS] it names the fallback solver (Spoke (default))  — Spoke (default)
+[PASS] no page errors

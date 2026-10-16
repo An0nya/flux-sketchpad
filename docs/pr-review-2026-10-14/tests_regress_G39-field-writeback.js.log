@@ -1,0 +1,8 @@
+[PASS] page identifies as the Flux app (RF.UI exists)
+[PASS] text that is not a number: field shows the stored value again  — {"store":100,"field":"100"}
+[PASS] over the max: field shows the clamped value  — {"store":2000,"field":"2000"}
+[PASS] under the min (Tab away): field shows the clamped value  — {"store":1,"field":"1"}
+[PASS] ArrowUp after junk text steps from the stored value (50)  — {"store":51,"field":"51"}
+[PASS] drive current 0 is rejected and the field shows 5  — driveA 5 field 5
+[PASS] drive current -1 is rejected and the field shows 5  — driveA 5 field 5
+[PASS] no page errors

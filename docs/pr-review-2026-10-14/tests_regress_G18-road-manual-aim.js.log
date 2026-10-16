@@ -1,0 +1,6 @@
+[PASS] page identifies as the Flux app (RF.UI exists)
+[PASS] aim=cutoff: the cut-off sits at -1 % (0.573 deg D) on the road  — {"cutV":1.0799999999999963,"sh":[0,1.6529386976834823]}
+[PASS] aim=design: the cut-off sits at -1 % (0.573 deg D) on the road  — {"cutV":1.0799999999999963,"sh":[0,1.6529386976834823]}
+[PASS] aim=peak: the cut-off sits at -1 % (0.573 deg D) on the road  — {"cutV":1.0799999999999963,"sh":[0,1.6529386976834823]}
+[PASS] aim=manual: the cut-off sits at -1 % (0.573 deg D) on the road  — {"cutV":1.0799999999999963,"sh":[0,1.6529386976834823]}
+[PASS] no page errors

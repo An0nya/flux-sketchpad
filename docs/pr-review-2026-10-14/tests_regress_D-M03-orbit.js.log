@@ -1,0 +1,9 @@
+[PASS] the turntable runs after load
+       rAF callbacks in 5 s while orbiting: 350
+[PASS] after ~10 s of idle the turntable has stopped
+       rAF callbacks in 15 s idle (after it stopped): 0
+[PASS] idle: no per-frame redraw (< 60 rAF callbacks in 15 s)  — 0
+[PASS] the stop is permanent without input
+[PASS] page input keeps the turntable running past 10 s
+[PASS] a click into Optics stops it at once
+[PASS] the sidebar "idle orbit" option still restarts orbiting

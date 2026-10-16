@@ -1,0 +1,12 @@
+[PASS] page identified as the app
+[PASS] Stop: design stays marked out of date (dirty A)  — {"solving":false,"dirtyA":true,"status":"out of date — press Rebuild","stale":true,"keptRep":true,"nA":93}
+[PASS] Stop: status does not say "up to date"  — out of date — press Rebuild
+[PASS] Stop: Rebuild button carries the stale marker
+[PASS] Stop: the kept design and report are untouched
+[PASS] error: design stays marked out of date  — {"solving":false,"dirtyA":true,"status":"out of date — press Rebuild","stale":true,"keptRep":true,"nA":93}
+[PASS] error: status does not say "up to date"  — out of date — press Rebuild
+[PASS] error: the kept design's report is not replaced by the error  — report is the kept one: true
+[PASS] error: the failure is still told (notice / solve-fail)
+[PASS] timeout: design stays marked out of date  — {"solving":false,"dirtyA":true,"status":"out of date — press Rebuild","stale":true,"keptRep":true,"nA":93}
+[PASS] timeout: status does not say "up to date"  — out of date — press Rebuild
+[PASS] no page errors

@@ -1,0 +1,19 @@
+[PASS] page is the app under test (RF.UI, port 8836)
+[PASS] curve editor is on by default; the point-editor toggle exists
+[PASS] two taps create a 2-node curve with a straight segment  — {"nodes":[[2.0000004406421166,-11.999999288193504],[16.000001593090733,11.999999288193504]],"bulge":[0]}
+[PASS] dragging the body moves both ends by the same amount and keeps the length  — [[3.9999907808218342,-14.999996062904671],[17.99999193327045,9.000002513482336]]
+[PASS] dragging an end extends the segment and leaves the other end where it was  — [[3.9999907808218342,-14.999996062904671],[21.99999184852375,11.000003193196406]]
+[PASS] dragging the midpoint handle bends the segment (bulge != 0, more profile points, ends unchanged)  — bulge -0.13200009077029806, profile points 9
+[PASS] a tap in empty space extends the chain by a node and snaps to the axis (r = 0)  — [0,22.000000754172014]
+[PASS] Split segment adds a node and keeps two bent halves  — [-0.061699809544962604,-0.06169980954496255,0]
+[PASS] Straighten segment zeroes its bulge  — [0,-0.06169980954496255,0]
+       undo trail: 4n/-0.06,-0.06,0  <-  3n/-0.13,0  <-  2n/-0.13  <-  2n/0  <-  2n/0  <-  2n/0  <-  1p  <-  0p
+[PASS] undo steps back through straighten, split, node tap, bend (bulge -0.13 -> 0), extend, move, 2nd tap, 1st tap: one edit per press  — 4n/-0.06,-0.06,0 | 3n/-0.13,0 | 2n/-0.13 | 2n/0 | 2n/0 | 2n/0 | 1p | 0p
+[PASS] after undoing everything the profile is empty again  — {"n":0,"curve":null,"hist":0,"live":false}
+[PASS] redo brings the first edit back  — points 1
+[PASS] toggle off: curve editor off
+[PASS] toggle off: a tap appends a plain point and writes no curve object (old behaviour)  — {"n":3,"curve":null,"hist":3,"live":false}
+[PASS] toggle off: dragging a vertex moves just that point  — [[8,12],[9.000003947368421,13.999999967907574]]
+[PASS] old scene: 41 profile points load with no curve object
+[PASS] old scene: the sweep builds byte-identical surfaces after loading  — 16968 chars
+[PASS] no page errors

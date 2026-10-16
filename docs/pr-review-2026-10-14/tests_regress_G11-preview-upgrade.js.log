@@ -1,0 +1,4 @@
+[PASS] page identifies as Flux (RF.UI exists)
+[PASS] after a paint stroke the trace is the full one  — {"preview":false,"N":500000,"status":"up to date"}
+[PASS] after a tap the trace is the full one  — {"preview":false,"N":500000,"status":"up to date"}
+[PASS] no page errors

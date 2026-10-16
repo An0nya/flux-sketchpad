@@ -1,0 +1,21 @@
+[PASS] 1280x720: page identifies as Flux
+[PASS] 1280x720: Editor header mode tabs fit the pane
+[PASS] 1280x720: Spec Result / grid controls fit the pane
+[PASS] 1280x720: Spec Editor / grid controls fit the pane
+[PASS] 1280x720: Spec Result / ff controls fit the pane
+[PASS] 1280x720: Spec Editor / ff controls fit the pane
+[PASS] 1280x720: Spec Result / drive controls fit the pane
+[PASS] 1280x720: Spec Editor / drive controls fit the pane
+[PASS] 1280x720: Spec Result / road controls fit the pane
+[PASS] 1280x720: Spec Editor / road controls fit the pane
+[PASS] 768x1024: page identifies as Flux
+[PASS] 768x1024: Editor header mode tabs fit the pane
+[PASS] 768x1024: Spec Result / grid controls fit the pane
+[PASS] 768x1024: Spec Editor / grid controls fit the pane
+[PASS] 768x1024: Spec Result / ff controls fit the pane
+[PASS] 768x1024: Spec Editor / ff controls fit the pane
+[PASS] 768x1024: Spec Result / drive controls fit the pane
+[PASS] 768x1024: Spec Editor / drive controls fit the pane
+[PASS] 768x1024: Spec Result / road controls fit the pane
+[PASS] 768x1024: Spec Editor / road controls fit the pane
+[PASS] no page errors

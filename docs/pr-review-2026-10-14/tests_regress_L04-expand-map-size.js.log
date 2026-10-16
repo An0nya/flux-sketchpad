@@ -1,0 +1,5 @@
+[PASS] page identifies as Flux
+[PASS] side by side: the two maps share one scale  — {"l":2.556,"h":2.556,"cap":276,"exp":null}
+[PASS] Result expanded: it draws bigger than the Editor map  — {"l":2.308,"h":2.764,"cap":0,"exp":"result"}
+[PASS] un-expanded: shared scale restored  — {"l":2.556,"h":2.556,"cap":276,"exp":null}
+[PASS] no page errors

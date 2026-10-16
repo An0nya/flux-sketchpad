@@ -11,6 +11,28 @@
   const RF = root.RF || (root.RF = {}), D = RF.Drive;
   const rng = (seed) => { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
 
+  // FO prototype: separate RNG, so adding undergrowth never moves existing scenery.
+  // Two overlapping lobes per plant; the full footprint clears the edge line by >= .3 m.
+  function vergeFoliage(ctx, opt) {
+    if (!opt || !opt.leafyFoliage || opt.veg === false) return [];
+    const R = rng(((ctx.foliageSeed ?? ctx.seed) >>> 0) ^ 0x464f), out = [];
+    const density = Math.max(0, Math.min(3, ctx.density === undefined ? 1.5 : +ctx.density || 0));
+    const count = Math.round(30 * density), lane = ctx.Lw || 3.5;
+    for (const side of [-1, 1]) for (let i = 0; i < count; i++) {
+      const s = (i + .15 + .7 * R()) * 300 / count, h = .3 + .9 * R();
+      const radius = .25 + .4 * R(), edge = side < 0 ? -lane / 2 : 1.5 * lane;
+      const off = edge + side * (.31 + radius + .65 * R());
+      for (const lobe of [-1, 1]) {
+        const along = s + lobe * radius * .42, offset = off + lobe * radius * .12;
+        const p = ctx.A ? ctx.A.at(along, offset).p : [along, offset];
+        out.push({ k: 'ell', x: p[0], y: p[1], z: h * .5, rx: radius * .78,
+          ry: radius * .78, rz: h * .5, mat: 'foliage', cls: 'veg', foliage: true,
+          foliageId: side + ':' + i + ':' + lobe });
+      }
+    }
+    return out;
+  }
+
   // ---------------------------------------------------------------- building blocks
   function kit(ctx) {
     const O = [], R = ctx.rand, Lw = ctx.Lw, edgeR = -Lw / 2, edgeL = 1.5 * Lw;
@@ -259,6 +281,7 @@
       actors.push({ id: 'd' + i, kind: 'deer', mode: graze ? 'graze' : 'step', s0, off0: edge(side) + side * (3 + 5 * R()), ds: 0, doff: -side, spd: 1.0 + 0.5 * R(), len: 0, delay: 0.3 + 1.2 * R(), side, into });
       const a = actors[actors.length - 1]; a.len = graze ? 0 : Math.abs(a.off0 - (edge(side) - side * a.into));
     }
+    k.O.push(...vergeFoliage(ctx, o));
     return { objects: k.O, actors, markings, verge: ['gravel', 1.6, 'grass'] };
   }
   // build a scene by name: ctx { Lw (lane width m), A (RF.Road.arc or null), us (US markings), seed }, o { people, animals, signs, posts, veg (false = leave
@@ -266,9 +289,11 @@
   function buildScene(name, ctx, o) {
     const sc = SCENES[name] || SCENES.road, c = Object.assign({ Lw: 3.5, A: null, us: false, seed: 7 }, ctx, { rand: rng((ctx && ctx.seed) || 7) }), opt = Object.assign({ people: true, animals: true, signs: true }, o), out = sc.build(c, opt);
     addTraffic(c, out.objects, opt);
+    if (name === 'forest' || name === 'road') out.objects.push(...vergeFoliage(c, opt));
     if (opt.posts === false || opt.veg === false) out.objects = out.objects.filter((ob) => !((opt.posts === false && ob.cls === 'post') || (opt.veg === false && ob.cls === 'veg')));
     if (opt.obstacle) addObstacles(c, out.objects);
     return out;
   }
+  RF.Drive.vergeFoliage = vergeFoliage;
   RF.Drive.scenes = SCENES; RF.Drive.buildScene = buildScene; RF.Drive.rng = rng; RF.Drive.kit = kit; RF.Drive.wildChunk = wildChunk;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

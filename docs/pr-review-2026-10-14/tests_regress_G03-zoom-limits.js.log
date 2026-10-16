@@ -1,0 +1,10 @@
+[PASS] page identifies as the Flux app (RF.UI exists)
+[PASS] scene-canvas: zoom out is limited  — scale 0.03335869802728553, fit 0.6671739605457105, ratio 5.00e-2
+[PASS] scene-canvas: zoom in is limited  — scale 133.4347921091421, fit 0.6671739605457105, ratio 2.00e+2
+[PASS] surface-canvas: zoom out is limited  — scale 0.17600204617236892, fit 3.520040923447378, ratio 5.00e-2
+[PASS] surface-canvas: zoom in is limited  — scale 704.0081846894756, fit 3.520040923447378, ratio 2.00e+2
+[PASS] heat-canvas: zoom out is limited  — scale 0.12777777777777777, fit 2.5555555555555554, ratio 5.00e-2
+[PASS] heat-canvas: zoom in is limited  — scale 511.1111111111111, fit 2.5555555555555554, ratio 2.00e+2
+[PASS] left-canvas: zoom out is limited  — scale 0.12777777777777777, fit 2.5555555555555554, ratio 5.00e-2
+[PASS] left-canvas: zoom in is limited  — scale 511.1111111111111, fit 2.5555555555555554, ratio 2.00e+2
+[PASS] no page errors

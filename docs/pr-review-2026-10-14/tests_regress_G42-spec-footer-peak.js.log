@@ -1,0 +1,4 @@
+[PASS] page identifies as the Flux app (RF.UI exists)
+[PASS] footer peak equals the far-field maximum (159 kcd)  — {"far":"159 kcd","grid":"156 kcd","tile":"159 kcd"}
+[PASS] and is not the grid percentile (156 kcd)  — {"far":"159 kcd","grid":"156 kcd","tile":"159 kcd"}
+[PASS] no page errors

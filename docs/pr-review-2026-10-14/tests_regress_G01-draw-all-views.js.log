@@ -1,0 +1,32 @@
+[PASS] page identifies as the Flux app (RF.UI exists)
+[PASS] found heat displays and Optics view styles  — hits,grid,smooth,fid,road,drive,ff | solid,shaded,pairs
+[PASS] mode A / display hits: draws without errors
+[PASS] mode A / display grid: draws without errors
+[PASS] mode A / display smooth: draws without errors
+[PASS] mode A / display fid: draws without errors
+[PASS] mode A / display road: draws without errors
+[PASS] mode A / display drive: draws without errors
+[PASS] mode A / display ff: draws without errors
+[PASS] mode B / display hits: draws without errors
+[PASS] mode B / display grid: draws without errors
+[PASS] mode B / display smooth: draws without errors
+[PASS] mode B / display fid: draws without errors
+[PASS] mode B / display road: draws without errors
+[PASS] mode B / display drive: draws without errors
+[PASS] mode B / display ff: draws without errors
+[PASS] mode C / display hits: draws without errors
+[PASS] mode C / display grid: draws without errors
+[PASS] mode C / display smooth: draws without errors
+[PASS] mode C / display fid: draws without errors
+[PASS] mode C / display road: draws without errors
+[PASS] mode C / display drive: draws without errors
+[PASS] mode C / display ff: draws without errors
+[PASS] mode D / display hits: draws without errors
+[PASS] mode D / display grid: draws without errors
+[PASS] mode D / display smooth: draws without errors
+[PASS] mode D / display fid: draws without errors
+[PASS] mode D / display road: draws without errors
+[PASS] mode D / display drive: draws without errors
+[PASS] mode D / display ff: draws without errors
+[PASS] Stamp mode: picker canvas is not blank  — 45004 of 81420 px painted
+[PASS] no page errors overall

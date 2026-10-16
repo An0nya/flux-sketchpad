@@ -1,0 +1,7 @@
+[PASS] page identifies as Flux, Paint mode
+[PASS] entering Spec: Editor collapsed, Result expanded  — {"split":0.55,"rowSplit":0.4,"pairSplit":0.5,"collapsed":{"optics":true,"editor":true,"result":false},"expanded":"result","active":"result"}
+[PASS] ... Scene / Optics states and splits untouched
+[PASS] reload in Spec: it comes up in the layout it had (user changes kept, not re-applied)  — {"split":0.55,"rowSplit":0.4,"pairSplit":0.5,"collapsed":{"optics":true,"editor":true,"result":false,"scene":true},"expanded":null,"active":"result"}
+[PASS] leaving Spec (after a reload and changes in Spec) restores exactly the pre-Spec layout  — {"split":0.55,"rowSplit":0.4,"pairSplit":0.5,"collapsed":{"optics":true},"expanded":null,"active":"editor"} vs {"split":0.55,"rowSplit":0.4,"pairSplit":0.5,"collapsed":{"optics":true},"expanded":null,"active":"editor"}
+[PASS] reload in Paint: its own layout  — {"split":0.55,"rowSplit":0.4,"pairSplit":0.5,"collapsed":{"optics":true},"expanded":null,"active":"editor"}
+[PASS] Spec then Paint through the API restores it as well

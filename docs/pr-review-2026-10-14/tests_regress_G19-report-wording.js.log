@@ -1,0 +1,7 @@
+[PASS] page identifies as the Flux app (RF.UI exists)
+[PASS] aim line above the horizon reads "put on 0.5° U"  — Measured at ∞ (goniometer) · kernel ±0.0745° · 500,000 rays · aimed: cut-off inflection at 1.15° U put on 0.5° U · then re-aimed (beam) 0.15° right, 0.20° down (before: 5 fail)
+[PASS] the inflection position carries U / D  — Measured at ∞ (goniometer) · kernel ±0.0745° · 500,000 rays · aimed: cut-off inflection at 1.15° U put on 0.5° U · then re-aimed (beam) 0.15° right, 0.20° down (before: 5 fail)
+[PASS] Manual aim: no "no re-aim helps"  — Measured at ∞ (goniometer) · kernel ±0.0745° · 500,000 rays · aimed: manual: beam as designed · re-aim box not used (manual aim)
+[PASS] live notes seen (21 samples) say "held while the trace runs" at most once  — max copies 1
+[PASS] no live note claims "no re-aim helps"
+[PASS] no page errors

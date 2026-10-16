@@ -1,0 +1,7 @@
+[PASS] page identifies as the flux app
+[PASS] both requests settled (not solving 30 s later)  — {"solving":false,"busy":false,"fail":false,"failText":"","repSolver":"patch-array","notices":["Solve stopped (Fill & fix). The previous design is kept."]}
+[PASS] the second solve completed (report is from patch-array)  — repSolver patch-array
+  [{"d":0,"ra":"rejected user","rb":"rejected replaced","rc":"ok"},{"d":15,"ra":"rejected user","rb":"rejected replaced","rc":"ok"},{"d":40,"ra":"rejected user","rb":"rejected replaced","rc":"ok"},{"d":80,"ra":"rejected user","rb":"rejected replaced","rc":"ok"},{"d":150,"ra":"rejected user","rb":"rejected replaced","rc":"ok"}]
+[PASS] every solve queued behind a rebuild settles
+[PASS] a solve after two stops completes, at every delay
+[PASS] no page errors

@@ -1,0 +1,394 @@
+[
+  {
+    "file": "tests/all.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_all.js.log"
+  },
+  {
+    "file": "tests/regress-node.js",
+    "code": 0,
+    "pass": 156,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress-node.js.log"
+  },
+  {
+    "file": "tests/regress/B12-spec-inputs-mode.js",
+    "code": 0,
+    "pass": 12,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_B12-spec-inputs-mode.js.log"
+  },
+  {
+    "file": "tests/regress/B4b-layout.js",
+    "code": 0,
+    "pass": 41,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_B4b-layout.js.log"
+  },
+  {
+    "file": "tests/regress/D-E17-brush-mode.js",
+    "code": 0,
+    "pass": 11,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_D-E17-brush-mode.js.log"
+  },
+  {
+    "file": "tests/regress/D-M03-orbit.js",
+    "code": 0,
+    "pass": 7,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_D-M03-orbit.js.log"
+  },
+  {
+    "file": "tests/regress/D-spec-decisions.js",
+    "code": 0,
+    "pass": 14,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_D-spec-decisions.js.log"
+  },
+  {
+    "file": "tests/regress/D-spec-layout.js",
+    "code": 0,
+    "pass": 7,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_D-spec-layout.js.log"
+  },
+  {
+    "file": "tests/regress/F1-gpu-default.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_F1-gpu-default.js.log"
+  },
+  {
+    "file": "tests/regress/F2-drive-anim.js",
+    "code": 0,
+    "pass": 57,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_F2-drive-anim.js.log"
+  },
+  {
+    "file": "tests/regress/F3-sealed-beam.js",
+    "code": 0,
+    "pass": 10,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_F3-sealed-beam.js.log"
+  },
+  {
+    "file": "tests/regress/F4-curve-editor.js",
+    "code": 0,
+    "pass": 18,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_F4-curve-editor.js.log"
+  },
+  {
+    "file": "tests/regress/G01-draw-all-views.js",
+    "code": 0,
+    "pass": 32,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G01-draw-all-views.js.log"
+  },
+  {
+    "file": "tests/regress/G02-zoom-collapse.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G02-zoom-collapse.js.log"
+  },
+  {
+    "file": "tests/regress/G02b-spec-zoom-collapse.js",
+    "code": 0,
+    "pass": 14,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G02b-spec-zoom-collapse.js.log"
+  },
+  {
+    "file": "tests/regress/G03-zoom-limits.js",
+    "code": 0,
+    "pass": 10,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G03-zoom-limits.js.log"
+  },
+  {
+    "file": "tests/regress/G04-corrupt-scene.js",
+    "code": 0,
+    "pass": 21,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G04-corrupt-scene.js.log"
+  },
+  {
+    "file": "tests/regress/G04-loadscene-atomic.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G04-loadscene-atomic.js.log"
+  },
+  {
+    "file": "tests/regress/G05-bounds.js",
+    "code": 0,
+    "pass": 7,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G05-bounds.js.log"
+  },
+  {
+    "file": "tests/regress/G07-undo-walk.js",
+    "code": 0,
+    "pass": 7,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G07-undo-walk.js.log"
+  },
+  {
+    "file": "tests/regress/G08-undo-stop.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G08-undo-stop.js.log"
+  },
+  {
+    "file": "tests/regress/G10-clear-reflector.js",
+    "code": 0,
+    "pass": 8,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G10-clear-reflector.js.log"
+  },
+  {
+    "file": "tests/regress/G11-preview-upgrade.js",
+    "code": 0,
+    "pass": 4,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G11-preview-upgrade.js.log"
+  },
+  {
+    "file": "tests/regress/G15-spec-footer.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G15-spec-footer.js.log"
+  },
+  {
+    "file": "tests/regress/G14-chrome-stable.js",
+    "code": 0,
+    "pass": 11,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G14-chrome-stable.js.log"
+  },
+  {
+    "file": "tests/regress/G13-pane-rows-fit.js",
+    "code": 0,
+    "pass": 21,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G13-pane-rows-fit.js.log"
+  },
+  {
+    "file": "tests/regress/G17-measure-target.js",
+    "code": 0,
+    "pass": 5,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G17-measure-target.js.log"
+  },
+  {
+    "file": "tests/regress/G16-spec-view-settings.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G16-spec-view-settings.js.log"
+  },
+  {
+    "file": "tests/regress/G18-road-manual-aim.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G18-road-manual-aim.js.log"
+  },
+  {
+    "file": "tests/regress/G22b-file-notice.js",
+    "code": 0,
+    "pass": 3,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G22b-file-notice.js.log"
+  },
+  {
+    "file": "tests/regress/G23-boot.js",
+    "code": 0,
+    "pass": 0,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G23-boot.js.log"
+  },
+  {
+    "file": "tests/regress/G20-spec-small-ui.js",
+    "code": 0,
+    "pass": 7,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G20-spec-small-ui.js.log"
+  },
+  {
+    "file": "tests/regress/G19-report-wording.js",
+    "code": 0,
+    "pass": 7,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G19-report-wording.js.log"
+  },
+  {
+    "file": "tests/regress/G23-crash.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G23-crash.js.log"
+  },
+  {
+    "file": "tests/regress/G23-budget.js",
+    "code": 0,
+    "pass": 9,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G23-budget.js.log"
+  },
+  {
+    "file": "tests/regress/G24-corrupt-solvers.js",
+    "code": 0,
+    "pass": 24,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G24-corrupt-solvers.js.log"
+  },
+  {
+    "file": "tests/regress/G23-rebuild-race.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G23-rebuild-race.js.log"
+  },
+  {
+    "file": "tests/regress/G23-load-during-solve.js",
+    "code": 0,
+    "pass": 10,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G23-load-during-solve.js.log"
+  },
+  {
+    "file": "tests/regress/G27-cancel-solve.js",
+    "code": 0,
+    "pass": 9,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G27-cancel-solve.js.log"
+  },
+  {
+    "file": "tests/regress/G25-tick-isolation.js",
+    "code": 0,
+    "pass": 5,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G25-tick-isolation.js.log"
+  },
+  {
+    "file": "tests/regress/G26-stop-keeps-dirty.js",
+    "code": 0,
+    "pass": 12,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G26-stop-keeps-dirty.js.log"
+  },
+  {
+    "file": "tests/regress/G28-rebuild-while-loading.js",
+    "code": 0,
+    "pass": 5,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G28-rebuild-while-loading.js.log"
+  },
+  {
+    "file": "tests/regress/G30-refine-refresh.js",
+    "code": 0,
+    "pass": 5,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G30-refine-refresh.js.log"
+  },
+  {
+    "file": "tests/regress/G29-preview-gating.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G29-preview-gating.js.log"
+  },
+  {
+    "file": "tests/regress/G31-envelope-min-thickness.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G31-envelope-min-thickness.js.log"
+  },
+  {
+    "file": "tests/regress/G33-stroke-gaps.js",
+    "code": 0,
+    "pass": 7,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G33-stroke-gaps.js.log"
+  },
+  {
+    "file": "tests/regress/G32-paint-gesture.js",
+    "code": 0,
+    "pass": 12,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G32-paint-gesture.js.log"
+  },
+  {
+    "file": "tests/regress/G34-dividers.js",
+    "code": 0,
+    "pass": 6,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G34-dividers.js.log"
+  },
+  {
+    "file": "tests/regress/G35-aria.js",
+    "code": 0,
+    "pass": 9,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G35-aria.js.log"
+  },
+  {
+    "file": "tests/regress/G37-optics-reset.js",
+    "code": 0,
+    "pass": 4,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G37-optics-reset.js.log"
+  },
+  {
+    "file": "tests/regress/G36-sidebar-narrow.js",
+    "code": 0,
+    "pass": 5,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G36-sidebar-narrow.js.log"
+  },
+  {
+    "file": "tests/regress/G39-field-writeback.js",
+    "code": 0,
+    "pass": 8,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G39-field-writeback.js.log"
+  },
+  {
+    "file": "tests/regress/G41-tooltip-distance.js",
+    "code": 0,
+    "pass": 4,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G41-tooltip-distance.js.log"
+  },
+  {
+    "file": "tests/regress/G42-spec-footer-peak.js",
+    "code": 0,
+    "pass": 4,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G42-spec-footer-peak.js.log"
+  },
+  {
+    "file": "tests/regress/L04-expand-map-size.js",
+    "code": 0,
+    "pass": 5,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_L04-expand-map-size.js.log"
+  },
+  {
+    "file": "tests/regress/G40-stats-finite.js",
+    "code": 0,
+    "pass": 10,
+    "fail": 0,
+    "log": "/Users/anya/Projects/flux-sketchpad/docs/pr-review-2026-10-14/tests_regress_G40-stats-finite.js.log"
+  }
+]

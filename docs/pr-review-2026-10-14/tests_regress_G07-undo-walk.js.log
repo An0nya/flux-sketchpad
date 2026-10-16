@@ -1,0 +1,7 @@
+[PASS] page identified as the app
+[PASS] fresh load: Undo is disabled and the stack is empty  — past 0
+[PASS] visiting Spec and back makes no entry  — past 0
+[PASS] 4 slow taps add 4 profile points (49 -> 53)
+[PASS] 4 Undos remove the 4 points one at a time (points 52,51,50,49)
+[PASS] the stack went down by 4 and did not refill (past 5 -> 1)
+[PASS] no page errors
