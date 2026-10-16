@@ -52,10 +52,10 @@
       deer(s, off, o) {
         const F = (o && o.face) || 1, G = (o && o.gait) || 0, p = at(s, off), c = Math.cos(p.yaw), sn = Math.sin(p.yaw), L = (a, b) => [p.x + a * c - F * b * sn, p.y + a * sn + F * b * c];   // a along the road, b to the left
         const body = L(0, 0); add({ k: 'ell', x: body[0], y: body[1], z: 0.95, rx: 0.2, ry: 0.6, rz: 0.34, mat: 'fur' });
-        const neck = L(0, -0.55); add({ k: 'ell', x: neck[0], y: neck[1], z: 1.25, rx: 0.12, ry: 0.22, rz: 0.3, mat: 'fur' });
-        const head = L(-0.12, -0.82); add({ k: 'ell', x: head[0], y: head[1], z: 1.5, rx: 0.2, ry: 0.1, rz: 0.1, mat: 'fur' });
+        const B=o&&o.attention,up=B?B.up:1,target=Math.atan2(-p.y,-p.x)-p.yaw-Math.PI,angle=p.yaw+(B?F*Math.PI/2*(1-B.turn)+Math.atan2(Math.sin(target),Math.cos(target))*B.turn:0), neck = L(0, -.55-.2*(1-up)); add({ k: 'ell', x: neck[0], y: neck[1], z: B?.68+.57*up:1.25, rx: 0.12, ry: 0.22, rz: 0.3, mat: 'fur' });
+        const head = L(-0.12, -.82-.2*(1-up)); add({ k: 'ell', x: head[0], y: head[1], z: B?.36+1.14*up:1.5, rx: 0.2, ry: 0.1, rz: 0.1, mat: 'fur' });
         for (const [a, b, g] of [[-0.1, 0.4, 1], [0.1, 0.4, -1], [-0.1, -0.4, -1], [0.1, -0.4, 1]]) { const q = L(a, b + g * G); add({ k: 'cyl', x: q[0], y: q[1], r: 0.04, z0: 0, z1: 0.65, mat: 'fur' }); }
-        for (const side of [-0.05, 0.05]) { const e = L(-0.31, -0.82 + side); add({ k: 'disc', x: e[0], y: e[1], z: 1.52, r: 0.013, nx: -c, ny: -sn, nz: 0, sub: true, mat: 'eyeshine' }); }
+        for (const side of [-0.05, 0.05]) { if(B&&up<=.15)continue; const e = L(-0.31, -.82-.2*(1-up) + side); add({ k: 'disc', x: e[0], y: e[1], z: B?.38+1.14*up:1.52, r: B?.0065:.013, nx: -Math.cos(angle), ny: -Math.sin(angle), nz: 0, eyeFalloff:B?8:0, sub: true, mat: 'eyeshine' }); }
       },
       // a pedestrian: 'dark' clothes | 'hivis' vest with tape | 'light' clothes
       // o (a walker, drive-anim.js): dir [along, across] the unit direction of travel, gait = how far the legs swing (m)
@@ -102,7 +102,7 @@
       if (['deer','person','tree','car'].includes(m) && O.length>first) {
         const p=at(arguments[0],arguments[1]),opt=(m==='person'?arguments[3]:arguments[2])||{};
         for(let i=first;i<O.length;i++){O[i].detailPart=m;O[i].modelId=opt.id||m+':'+arguments[0]+':'+arguments[1];}
-        O[first].detail={kind:m,x:p.x,y:p.y,yaw:p.yaw+(opt.turn||0),face:opt.face||1,gait:opt.gait||0,dir:opt.dir||[1,0],ptype:m==='person'?arguments[2]:null,h:m==='tree'?O[first].z1/.55:0,bound:!!opt.bound,motion:opt.motion,id:opt.id||m+':'+arguments[0]+':'+arguments[1],birch:!!opt.birch};
+        O[first].detail={kind:m,x:p.x,y:p.y,yaw:p.yaw+(opt.turn||0),face:opt.face||1,gait:opt.gait||0,dir:opt.dir||[1,0],ptype:m==='person'?arguments[2]:null,h:m==='tree'?O[first].z1/.55:0,bound:!!opt.bound,motion:opt.motion,attention:opt.attention,id:opt.id||m+':'+arguments[0]+':'+arguments[1],birch:!!opt.birch};
       }
       return result;
     } finally { cur = ''; } }; }

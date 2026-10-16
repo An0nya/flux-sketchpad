@@ -135,7 +135,17 @@
     const h = { id: ++g.spawned, born: g.t, kind: person ? 'person' : 'deer', s0: s, off0: off, ds: 0, doff: -side, spd, len: Math.abs(off) + .15, delay, side, crosswalk, noHiViz: r() < .5, jaywalking: person && (!crosswalk || A.signalState(tile, g.t).lit !== 'red'), lit: null, reaction: null, resolved: false, outsideLux };
     g.hazards.push(h); g.next += SPACING[0] + (SPACING[1] - SPACING[0]) * r(); return h;
   }
-  const pose = (g, h, t) => { const a = h.leaving && t >= h.leaving.born ? h.leaving : h; return RF.DriveAnim.actorPose(a, Math.max(0, t - a.born)); };
+  function pose(g,h,t,behaviour=g.deerBehaviour){
+    const a=h.leaving&&t>=h.leaving.born?h.leaving:h,ps=RF.DriveAnim.actorPose(a,Math.max(0,t-a.born));
+    if(!behaviour||h.kind!=='deer')return ps;
+    const M=RF.Drive.Models,id=g.seed+':'+h.id,attention=M.deerAttention(id,h.alertAt===undefined?-1:t-h.alertAt);
+    ps.attention=attention;
+    if(a===h){
+      const d=attention.state==='bolt'?Math.max(0,attention.elapsed-attention.bolt)*h.spd:0;
+      ps.s=h.s0;ps.off=h.off0+h.doff*Math.min(d,h.len);ps.gait=0;ps.motion=M.locomotion('deer',d,h.spd,d>0&&d<h.len,'bound');
+    }else{ps.attention={...attention,state:'bolt',up:1,turn:1};}
+    return ps;
+  }
   const waitsForLane = (g) => g.clearLane && g.rules !== 'legacy';
   function laneClear(g) {
     return g.hazards.every((h) => { const b = box(pose(g, h, g.t), h.kind), lane = g.lane || 3.5; return b.x + b.hx < g.x - 4.4 || b.y + b.hy < -lane / 2 || b.y - b.hy > 1.5 * lane; });
@@ -156,11 +166,13 @@
     }
   }
   function step(g, dt, lane, p) {
+    g.deerBehaviour=RF.Drive.Models.deerEnabled(p);
     if (g.done) return; g.lane = lane; g.accumulator += dt;
     while (g.accumulator + 1e-10 >= STEP && !g.done) {
       g.accumulator -= STEP;
       if (g.resume !== null && g.t >= g.resume && !g.brake && (!waitsForLane(g) || laneClear(g))) { g.v = g.speed / 3.6; g.resume = null; }
       if (g.spawned < g.limit && g.t + 1e-9 >= g.next && !(waitsForLane(g) && g.resume !== null)) spawn(g, lane, p);
+      for(const h of g.hazards)if(h.kind==='deer'&&h.alertAt===undefined&&h.s0-g.x<=RF.Drive.Models.deerProfile(g.seed+':'+h.id).trigger)h.alertAt=g.t;
       const oldX = g.x, oldV = g.v, oldT = g.t, m = motion(g.v, STEP, g.brake, g.wet); g.x += m.dx; g.v = m.v; g.t += STEP;
       for (const h of g.hazards) if (!h.resolved) {
         const a = box(pose(g, h, oldT), h.kind), b = box(pose(g, h, g.t), h.kind), f = sweep(car(oldX), a, car(g.x), b);
