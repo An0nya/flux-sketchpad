@@ -26,10 +26,9 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
     const more = page.locator('.drive-more');
     const advanced = async (selector) => { await more.evaluate(e => e.open = true); await page.locator(selector).click(); await more.evaluate(e => e.open = false); };
     ok('UX1 More starts collapsed', !await more.evaluate((e) => e.open));
-    await advanced('[data-anim=animate]');
-    await page.locator('[data-anim=play]').click(); // freeze the picture while inspecting layout
+    await page.evaluate(() => { RF.UI.dvAnim.playing = false; RF.UI.redrawSpec(); }); // paused animation is the fixed picture
     const controls = await page.evaluate(() => [...document.querySelectorAll('.drive-tools button,.drive-tools input,.drive-tools select,.drive-extras button,.drive-extras input,.drive-extras select,[data-anim=popout]')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game));
-    ok('UX1 all original drive controls remain', ['scene','shape','wet','wetSheen','onMode','expMode','evm','ev','evp','glare','people','animals','signs','oncoming','preceding','animate','popout','tiles','toggle','play','fit-controls','large-card','speed','traffic-logic','gap','street-lamps','c-people','c-animals','c-signs','c-posts','c-veg','c-obstacle','c-rpm','c-tex','c-wild','c-mt','seed','dice','density','cline','traffic-density','reset-flashes'].every((k) => controls.includes(k)), controls);
+    ok('UX1 all distinct drive options remain after dedupe', ['scene','shape','wet','wetSheen','onMode','expMode','evm','ev','evp','glare','oncoming','preceding','popout','tiles','toggle','play','fit-controls','large-card','speed','traffic-logic','gap','street-lamps','c-people','c-animals','c-signs','c-posts','c-veg','c-obstacle','c-rpm','c-tex','c-wild','c-mt','seed','dice','density','cline','traffic-density','reset-flashes'].every((k) => controls.includes(k)), controls);
     for (const width of [360, 390, 430, 1500]) {
       await page.setViewportSize({ width, height: 950 });
       await page.evaluate(() => { RF.UI.setPane('result', 'activate'); document.querySelector('.result-pane').classList.add('expanded'); RF.UI.redrawSpec(); });
@@ -51,7 +50,7 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
     await page.waitForFunction(() => localStorage.getItem('flux/driveMore') === 'true');
     await page.reload(); await ready();
     ok('UX1 More remembers open across reload', await more.evaluate((e) => e.open));
-    await advanced('[data-anim=animate]'); await page.locator('[data-anim=play]').click();
+    await page.evaluate(() => { RF.UI.dvAnim.playing = false; RF.UI.redrawSpec(); });
     await more.evaluate(e => e.open = true); await page.locator('[data-anim=traffic-logic]').click();
     const speed = await page.evaluate(() => {
       const a = RF.DriveAnim._, st = a.S(RF.UI); a.advanceCamera(st, .05); a.frame(); const initial = st.camera.v * 3.6;

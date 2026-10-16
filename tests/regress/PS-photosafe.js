@@ -14,12 +14,12 @@ async function ready(page) {
   await page.waitForFunction(() => { const u = RF.UI; return !u.solving && u.run && u.run.ctx.done && u.spec && u.spec.ctx === u.run.ctx && u.spec.full && u.spec.ev; }, null, { timeout: 180000 });
   await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvOpts, { mt: false, fitControls: true, scene: 'road', speed: 50, tiles: false, oncoming: false, preceding: false, trafficDensity: 0, trafficLogic: false }); u.redrawSpec(); });
 }
-// Opens the animation view (the animate control lives in the More details) and waits for the first animated frame.
+// Starts playback from the paused animation and waits for the first rendered frame.
 async function startAnimation(page) {
   await page.locator('.drive-more').evaluate((e) => { e.open = true; });
-  await page.locator('[data-anim=animate]').click();
+  if (!await page.evaluate(() => RF.UI.dvAnim.playing)) await page.locator('[data-anim=play]').click();
   await page.locator('.drive-more').evaluate((e) => { e.open = false; });
-  await page.waitForFunction(() => RF.DriveAnim.renderedGlare() !== null, null, { timeout: 60000 });
+  await page.waitForFunction(() => RF.UI.dvAnim.playing && RF.DriveAnim.renderedGlare() !== null, null, { timeout: 60000 });
   await page.waitForTimeout(300);
 }
 
