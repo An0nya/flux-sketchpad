@@ -57,8 +57,9 @@ void main() {
    if(face<2){nn.x=face==0?-1.0:1.0;coord=h.y;}else if(face<4){nn.y=face==2?-1.0:1.0;coord=h.x;}else{nn.z=face==4?-1.0:1.0;coord=h.x;}
    n=vec3(ca*nn.x-sn*nn.y,sn*nn.x+ca*nn.y,nn.z);
  } else if(kind==2) {
-   float a=dot(ray.xy,ray.xy),b=2.0*dot(o.xy,ray.xy),c=dot(o.xy,o.xy)-shape.x*shape.x,disc=b*b-4.0*a*c;
-   if(a>1e-12 && disc>=0.0) for(int k=0;k<2;k++){float h=(-b+(k==0?-1.0:1.0)*sqrt(disc))/(2.0*a),z=o.z+h*ray.z;if(h>1e-4 && z>=-shape.z && z<=shape.z){t=h;n=vec3((o.xy+h*ray.xy)/shape.x,0);coord=atan(n.y,n.x)*shape.x;break;}}
+   // Cross-product distance avoids subtracting nearly equal squared ranges for distant thin posts.
+   float a=dot(ray.xy,ray.xy),b=dot(o.xy,ray.xy),crossD=o.x*ray.y-o.y*ray.x,disc=a*shape.x*shape.x-crossD*crossD;
+   if(a>1e-12 && disc>=0.0) for(int k=0;k<2;k++){float h=(-b+(k==0?-1.0:1.0)*sqrt(disc))/a,z=o.z+h*ray.z;if(h>1e-4 && z>=-shape.z && z<=shape.z){t=h;n=vec3((o.xy+h*ray.xy)/shape.x,0);coord=atan(n.y,n.x)*shape.x;break;}}
    if(ray.z<0.0 && o.z>shape.z){float h=(shape.z-o.z)/ray.z;vec2 q=o.xy+h*ray.xy;if(h>1e-4 && h<t && dot(q,q)<=shape.x*shape.x){t=h;n=vec3(0,0,1);coord=q.x;hf=4;}}
  } else if(kind==7) {
    vec3 axis=pose.yzw;float pa=dot(o,axis),da=dot(ray,axis);vec3 q=o-axis*pa,d=ray-axis*da;
