@@ -842,7 +842,7 @@
     return px.toFixed(1) + ' m ahead, ' + Math.abs(py).toFixed(1) + ' m ' + (py >= 0 ? 'left' : 'right') + ' of lane centre: ' + rd.mdl.lux([px, py, z], up ? 'up' : 'car').toFixed(1) + ' lx';
   }
   // ---------------------------------------------------------------- Drive: the driver's-eye view (js/drive.js, js/drive-scenes.js)
-  const DV_DEF = { scene: 'road', wet: false, wetSheen: false, expMode: 'fixed', ev: 1, glare: 'dry', onMode: 'symmetric', people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true, tex: true, wild: true, mt: true, fitControls: true, largeCard: true, seed: 7, density: 1.5, trafficDensity: 1, trafficLogic: false, safeGap: true, tiles: false, tileCache: false, mountainPass: false, gpuRenderer: false, trafficBeams: false, surfaceSheen: false, lampPitch: false, fpsCounter: false, debugTimings: false, dynamicResolution: false, frameTargetMs: 33, streetLamps: 'sodium', cline: 'solid', speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60, detailedModels: false };
+  const DV_DEF = { scene: 'road', wet: false, wetSheen: false, expMode: 'fixed', ev: 1, glare: 'off', onMode: 'symmetric', people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true, tex: true, wild: true, mt: true, fitControls: true, largeCard: true, seed: 7, density: 1.5, trafficDensity: 1, trafficLogic: false, safeGap: true, tiles: false, tileCache: false, mountainPass: false, gpuRenderer: false, trafficBeams: false, surfaceSheen: false, lampPitch: false, fpsCounter: false, debugTimings: false, dynamicResolution: false, frameTargetMs: 33, streetLamps: 'sodium', cline: 'solid', speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60, detailedModels: false };
   const DV_GLARE = Object.keys(RF.Drive.GLARE).map((k) => [k, k]);
   const DV_SMOOTH = { sharp: [0.2, 0.2, 1], smooth: [0.5, 0.15, 2], soft: [1.0, 0.3, 3] };    // kernel half-widths: horizontal, vertical (°), wide-grid bins
   function dvOpts(ui) {
@@ -906,7 +906,7 @@
       else if (k === 'evm') b.textContent = '−';
       else if (k === 'evp') b.textContent = '+';
       else if (k === 'ev') { b.textContent = 'EV ' + (o.ev >= 0 ? '+' : '−') + Math.abs(o.ev).toFixed(1) + (tm ? ' · white ' + fmtL(tm.white) + ' cd/m²' : ''); b.setAttribute('aria-pressed', 'false'); }
-      else if (k === 'glare') { b.textContent = 'glare ' + (DV_GLARE.find((g) => g[0] === RF.Drive.glareLevel(o.glare)) || DV_GLARE[1])[1]; b.setAttribute('aria-pressed', String(RF.Drive.glareStrength(o.glare) > 0)); }
+      else if (k === 'glare') { const lvl = RF.Drive.glareLevel(RF.Drive.capGlare(o.glare)), capped = lvl !== RF.Drive.glareLevel(o.glare); b.textContent = 'glare ' + lvl + (capped ? ' (capped: reduced motion)' : ''); b.setAttribute('aria-pressed', String(RF.Drive.glareStrength(RF.Drive.capGlare(o.glare)) > 0)); }
       else { b.textContent = { people: 'people', animals: 'deer', signs: 'signs', oncoming: 'oncoming', preceding: 'preceding' }[k] || k; b.setAttribute('aria-pressed', String(!!o[k])); }
     }
     const rd = roadModel(ui);

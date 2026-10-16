@@ -561,6 +561,9 @@
   const GLARE = { off: 0, 'dry-low': 0.035, dry: 0.1, rain: 0.3 };
   function glareLevel(v) { if (v in GLARE) return v; return v == null || v === false || v === 0 || v === 'off' ? 'off' : 'rain'; }
   const glareStrength = (v) => typeof v === 'number' ? Math.max(0, v) : v === true ? 1 : GLARE[glareLevel(v)];
+  // The OS Reduce Motion setting caps the level that is RENDERED at dry-low. The saved setting is untouched.
+  const reducedMotion = () => { try { return !!(globalThis.matchMedia && globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } };
+  const capGlare = (v) => reducedMotion() && (glareLevel(v) === 'dry' || glareLevel(v) === 'rain') ? 'dry-low' : v;
   const brightCap = (v) => { const x = Math.max(0, v - 1); return 64 * x / (64 + x); };
   // CIE 146:2002, CIE equations for disability glare; Stiles–Holladay 10 E / theta².
   // 1 degree floor: the formula is not a model of the lamp core. No age/ocular-pigmentation correction or occlusion tracing.
@@ -658,5 +661,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { dipState, TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
+  RF.Drive = { dipState, TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
