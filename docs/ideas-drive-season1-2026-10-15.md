@@ -93,3 +93,8 @@ Not approved for building; logged.
   camber/banking. GPU-only: the CPU tracer assumes flat ground (normal z = 1) throughout, so the fallback would stay flat.
   Infrastructure-level change to the tile system + camera + placement: walk Anya through a design first.
 - (Riddick's "shine job" eyes noted; no ticket.)
+- **Beamshot-to-target conversion floors uplight to zero** (Anya 10-16): her escape-hatch scene was solved with the
+  mosaic solver against a LUMA false-colour beamshot whose lowest band is pure black, so above-cut-off light was 0 in
+  the target and the solver matched it (oncoming cars carrying that lamp look switched off). Idea: in the image→target
+  conversion, treat the bottom band as "≤ X cd, unknown" (a floor value or a don't-care-below-X weight) instead of 0, so
+  converted designs keep realistic scatter/uplight and don't automatically fail the above-horizon minimums.
