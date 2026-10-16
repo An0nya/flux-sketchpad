@@ -97,7 +97,15 @@
       // a dark crate lying on the road (the hard target: 3 % reflectance, nothing retroreflective), along the road by across it
       obstacle(s, off, o) { o = o || {}; const p = at(s, off); add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: o.h || 0.35, hx: o.l || 0.3, hy: o.w || 0.2, yaw: p.yaw, mat: 'tyre' }); },
     };
-    for (const [m, c] of [['post', 'post'], ['sign', 'sign'], ['tree', 'veg'], ['bush', 'veg'], ['deer', 'deer'], ['person', 'person'], ['car', 'car'], ['parkedCar', 'car'], ['signal', 'signal'], ['obstacle', 'obstacle'], ['rpm', 'rpm']]) { const f = k[m]; k[m] = function () { cur = c; try { return f.apply(this, arguments); } finally { cur = ''; } }; }
+    for (const [m, c] of [['post', 'post'], ['sign', 'sign'], ['tree', 'veg'], ['bush', 'veg'], ['deer', 'deer'], ['person', 'person'], ['car', 'car'], ['parkedCar', 'car'], ['signal', 'signal'], ['obstacle', 'obstacle'], ['rpm', 'rpm']]) { const f = k[m]; k[m] = function () { cur = c; const first=O.length; try {
+      const result=f.apply(this, arguments);
+      if (['deer','person','tree','car'].includes(m) && O.length>first) {
+        const p=at(arguments[0],arguments[1]),opt=(m==='person'?arguments[3]:arguments[2])||{};
+        for(let i=first;i<O.length;i++)O[i].detailPart=m;
+        O[first].detail={kind:m,x:p.x,y:p.y,yaw:p.yaw+(opt.turn||0),face:opt.face||1,gait:opt.gait||0,dir:opt.dir||[1,0],ptype:m==='person'?arguments[2]:null,h:m==='tree'?O[first].z1/.55:0,bound:!!opt.bound};
+      }
+      return result;
+    } finally { cur = ''; } }; }
     return k;
   }
 

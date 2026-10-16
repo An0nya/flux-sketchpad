@@ -8,7 +8,7 @@ Unmodified ES modules from:
 - https://raw.githubusercontent.com/mrdoob/three.js/r180/build/three.core.min.js
 - https://raw.githubusercontent.com/mrdoob/three.js/r180/LICENSE
 
-MIT licence, included in LICENSE. No addons or runtime CDN. Only the opt-in
+MIT licence, included in LICENSE. No runtime CDN. Only the opt-in
 animated Drive view imports these files. HTTP serving is required for ES modules;
 opening index.html via file:// keeps the existing CPU renderer.
 
@@ -22,3 +22,17 @@ e2b5ee6bccd38fd6d8a2428546b83c5f2426d84b152ef82be8055556e3b40eb6  three.module.m
 The vendor core contains its own random UUID/math utilities. Check #23 excludes
 only these two pinned files; the app's seeded optics and scene RNG remain under
 the source scan. This dependency is not imported by the optics engine.
+
+## M1 prototype addons
+
+GLTFLoader.js and its BufferGeometryUtils.js dependency are vendored from the
+same r180 tag, under addons/loaders and addons/utils. Original source:
+- https://raw.githubusercontent.com/mrdoob/three.js/r180/examples/jsm/loaders/GLTFLoader.js
+- https://raw.githubusercontent.com/mrdoob/three.js/r180/examples/jsm/utils/BufferGeometryUtils.js
+
+Only the `from 'three'` import specifiers were changed to
+`from '../../three.module.min.js'` for local browser resolution without an importmap.
+MIT, covered by the existing LICENSE. Adapted-file SHA-256 pins: addons/pins.json.
+Combined addon source payload: 150,318 bytes. Car assets load only when detailed
+models is enabled; a bounded module cache retains the three parsed templates and
+shared textures across toggle cycles.

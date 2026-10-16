@@ -5,7 +5,7 @@ import { objects } from './drive-three-objects.js';
 const D = globalThis.RF.Drive;
 const texture = (data, w, h, format = T.RGBAFormat) => { const t = new T.DataTexture(data, w, h, format, T.FloatType); t.needsUpdate = true; return t; };
 const array = (n, type) => Array.from({ length: n }, () => new type());
-export function create(canvas, gl) {
+export function create(canvas, gl, onModelsReady) {
   if (!gl || !gl.getExtension('EXT_color_buffer_float')) throw Error('WebGL2 float targets unavailable');
   const renderer = new T.WebGLRenderer({ canvas, context: gl, antialias: false });
   renderer.outputColorSpace = T.LinearSRGBColorSpace; renderer.toneMapping = T.NoToneMapping;
@@ -18,7 +18,7 @@ export function create(canvas, gl) {
   set('materials', materialTexture); set('marks', markTexture);
   const mat = new T.ShaderMaterial({ uniforms: u, vertexShader: vertex, fragmentShader: ground, depthTest: false, depthWrite: false });
   const scene = new T.Scene(), mesh = new T.Mesh(new T.PlaneGeometry(2, 2), mat); mesh.frustumCulled = false; scene.add(mesh);
-  const camera = new T.Camera(), objectView = objects(renderer, u);
+  const camera = new T.Camera(), objectView = objects(renderer, u, onModelsReady);
   function update(p, world, dist) {
     const lut = p.lut, look = p.look, A = world.A || p.A;
     if (beamRef !== lut) { if (beamTexture) beamTexture.dispose(); beamRef = lut; beamTexture = texture(lut.data, lut.nh, lut.nv, T.RedFormat); set('beam', beamTexture); }
@@ -77,6 +77,23 @@ export function create(canvas, gl) {
       objectView.mask(false); renderer.setRenderTarget(null); renderer.resetState();
       if (debug) return pixels;
       return { mask, body: mask.map((b, i) => b & ~eyes[i]) };
+    },
+    modelState() { return { ...objectView.prototype, ...objectView.models.state, memory:{...renderer.info.memory} }; },
+    objectWork(p, ss=1) {
+      renderer.resetState();objectView.mask(3);renderer.setRenderTarget(objectTarget);renderer.render(objectView.scene,objectView.camera);
+      const pixels=new Float32Array(p.w*p.h*ss*ss*4);gl.readPixels(0,0,p.w*ss,p.h*ss,gl.RGBA,gl.FLOAT,pixels);
+      let steps=0,proxyPixels=0,hits=0,maxSteps=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i+2]===1){steps+=pixels[i];proxyPixels++;hits+=pixels[i+1];maxSteps=Math.max(maxSteps,pixels[i]);}
+      objectView.mask(false);renderer.setRenderTarget(null);renderer.resetState();return {steps,proxyPixels,hits,maxSteps,stepsPerProxyPixel:proxyPixels?steps/proxyPixels:0,totalStepsPerHitIncludingMisses: hits?steps/hits:0};
+    },
+    async timeObjects(repeats=8) {
+      const ext=gl.getExtension('EXT_disjoint_timer_query_webgl2');if(!ext)return {gpuMs:null,reason:'timer extension unavailable'};
+      if(gl.getQuery(ext.TIME_ELAPSED_EXT,gl.CURRENT_QUERY))return {gpuMs:null,reason:'another timer is active'};
+      const query=gl.createQuery();renderer.resetState();objectView.mask(false);renderer.setRenderTarget(objectTarget);
+      gl.beginQuery(ext.TIME_ELAPSED_EXT,query);for(let i=0;i<repeats;i++)renderer.render(objectView.scene,objectView.camera);gl.endQuery(ext.TIME_ELAPSED_EXT);
+      renderer.setRenderTarget(null);renderer.resetState();gl.flush();
+      for(let i=0;i<200;i++){await new Promise(r=>setTimeout(r,10));if(gl.getParameter(ext.GPU_DISJOINT_EXT)){gl.deleteQuery(query);return {gpuMs:null,reason:'disjoint GPU timer'};}
+        if(gl.getQueryParameter(query,gl.QUERY_RESULT_AVAILABLE)){const gpuMs=gl.getQueryParameter(query,gl.QUERY_RESULT)/1e6/repeats;gl.deleteQuery(query);return {gpuMs,repeats};}}
+      gl.deleteQuery(query);return {gpuMs:null,reason:'timer timeout'};
     },
     dispose() { objectView.dispose(); if (objectTarget) objectTarget.dispose(); if (target) target.dispose(); if (beamTexture) beamTexture.dispose(); materialTexture.dispose(); markTexture.dispose(); mat.dispose(); mesh.geometry.dispose(); renderer.dispose(); },
   };

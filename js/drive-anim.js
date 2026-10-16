@@ -276,6 +276,7 @@
       const q = A ? A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }, yaw = Math.atan2(q.t[1], q.t[0]) + (car.yaw || 0), c = car.yaw ? Math.cos(yaw) : q.t[0], sn = car.yaw ? Math.sin(yaw) : q.t[1];
       for (const ob of src.traffic.models[car.kind]) {
         const n = Object.assign({}, ob, { x: q.p[0] + ob.x * c - ob.y * sn, y: q.p[1] + ob.x * sn + ob.y * c, bs: undefined, traffic: car.id });
+        if (ob.detail) n.detail = {...ob.detail,x:q.p[0]+ob.detail.x*c-ob.detail.y*sn,y:q.p[1]+ob.detail.x*sn+ob.detail.y*c,yaw:ob.detail.yaw+yaw};
         if (ob.k === 'box') n.yaw = (ob.yaw || 0) + yaw;
         if (ob.k === 'disc') { n.nx = ob.nx * c - ob.ny * sn; n.ny = ob.nx * sn + ob.ny * c; }
         out.push(n);
@@ -284,7 +285,7 @@
     if (p && src.traffic && src.traffic.onMode !== 'manual') D.Headlamp.apply(out, { mode: src.traffic.onMode, kcd: src.traffic.onKcd, lut: p.lut, conv: p.conv });
     return out;
   }
-  const placedObjects = (p, dist, t, tauOf) => place(p.src, dist, p.A, tauOf, dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p));
+  const placedObjects = (p, dist, t, tauOf) => D.Models.actors(place(p.src, dist, p.A, tauOf, dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p)),p.detailedModels);
   // Same eye illuminance as Road.model.lux: far-field intensity / distance² × incidence cosine. Driver faces back along their lane, eye 1.1 m up.
   function eyeLux(p, car) {
     const q = p.A ? p.A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }; let E = 0;
@@ -422,7 +423,7 @@
       const hs = ob.k === 'box' ? c * ob.hx + sn * ob.hy : Math.max(ob.r || 0, ob.rx || 0, ob.ry || 0), ho = ob.k === 'box' ? sn * ob.hx + c * ob.hy : hs;
       return !crossings.some((q) => f.s + hs >= q.s0 - 1 && f.s - hs <= q.s1 + 1 && f.off + ho >= q.o0 && f.off - ho <= q.o1);
     });
-    return { A, objects: filtered.concat(extra), markings: marks, crossings, lights };
+    return { A, objects: D.Models.actors(filtered.concat(extra),p.detailedModels), markings: marks, crossings, lights };
   }
   // Filtered asphalt grain for the dynamic ground; no screen-space noise or moving texture on objects.
   function tileGrain(dist, wet) {
@@ -452,9 +453,10 @@
     if (A) {
       const q = A.at(rel, ob.y), psi = Math.atan2(q.t[1], q.t[0]), c = Math.cos(psi), sn = Math.sin(psi);
       n.x = q.p[0]; n.y = q.p[1];
+      if(ob.detail){const a=A.at(rel+ob.detail.x-ob.x,ob.detail.y);n.detail={...ob.detail,x:a.p[0],y:a.p[1],yaw:ob.detail.yaw+psi};}
       if (ob.k === 'box') n.yaw = (ob.yaw || 0) + psi;
       else if (ob.k === 'disc') { n.nx = ob.nx * c - ob.ny * sn; n.ny = ob.nx * sn + ob.ny * c; }
-    } else n.x = rel;
+    } else { n.x = rel; if(ob.detail)n.detail={...ob.detail,x:ob.detail.x+rel-ob.x}; }
     return n;
   }
   /* tauOf(id, rel0) → seconds since that walker/deer started moving (0 without it: they stand where they start). Random scenery: the chunks around the car, each object once */
@@ -468,7 +470,7 @@
         for (const a of ch.actors) {
           const id = k + ':' + a.id, tau = tauOf ? tauOf(id, base + a.s0 - dist) : 0, ps = actorPose(a, tau), rel = base + ps.s - dist; if (rel < -6 || rel > CULL) continue;
           const n0 = K.O.length;
-          if (a.kind === 'deer') K.deer(rel, ps.off, { face: a.side > 0 ? 1 : -1, gait: ps.gait }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait });
+          if (a.kind === 'deer') K.deer(rel, ps.off, { face: a.side > 0 ? 1 : -1, gait: ps.gait, bound: a.spd>1.3 }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait });
           for (let i = n0; i < K.O.length; i++) out.push(move(Object.assign({}, K.O[i]), K.O[i], K.O[i].x, A));
         }
       }
@@ -851,7 +853,7 @@ void main() {
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src };
+    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, wetSheen: o.wetSheen, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, detailedModels: !!o.detailedModels };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || o.tiles || (o.wet && o.wetSheen) ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -939,10 +941,10 @@ void main() {
   }
   // tell the workers what the picture is made of (when that changes): the scenery's recipe, the camera, the beam
   function workerCfg() {
-    const I = info(), p = V.p, key = JSON.stringify([V.skey, p.w, p.h, p.hfov, p.lane, p.conv, p.lamps, p.look, I.A && [I.A.R, I.A.dir]]);
+    const I = info(), p = V.p, key = JSON.stringify([V.skey, p.w, p.h, p.hfov, p.lane, p.conv, p.lamps, p.look, p.detailedModels, I.A && [I.A.R, I.A.dir]]);
     if (key === Wk.cfgKey && Wk.lut === p.lut) return;
     Wk.cfgKey = key; Wk.lut = p.lut; Wk.cfgId++; Wk.busy = null;           // a frame in flight belongs to the old picture: dropped when it arrives
-    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lane: p.lane, look: p.look }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
+    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lane: p.lane, look: p.look, detailedModels: p.detailedModels }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
     Wk.config = m;
     for (const w of Wk.list) w.postMessage(m);
   }
@@ -1089,6 +1091,7 @@ void main() {
     primary.append(bar.querySelector('[data-anim=play]'));
     btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off restores the previous traffic and gap guard.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
+    btn('detailed-models', 'Prototype: articulated deer and people; GPU also adds car bodies, tree detail and facade panels.', () => setDV(ui, 'detailedModels', !info().o.detailedModels), 'detailed models');
     btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => setDV(ui, 'gpuRenderer', !info().o.gpuRenderer), 'GPU drive renderer');
     btn('fps-counter', 'Frame cadence and CPU breakdown; sampled trace attribution adds profiling overhead. GPU execution requires the tester bench.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'fps / timings');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
@@ -1145,7 +1148,7 @@ void main() {
     for (const b of q('[data-anim="popout"]')) { b.setAttribute('aria-pressed', String(st.popout)); b.disabled = !sup; b.textContent = st.popout ? '✕ close' : '⤢ large'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
-    for (const [name, key] of [['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key]));
+    for (const [name, key] of [['detailed-models', 'detailedModels'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key]));
     V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
     if (V.perfLab) { const host = st.popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement; if (host && V.perfLab.parentElement !== host) host.append(V.perfLab); V.perfLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
     for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
@@ -1203,6 +1206,7 @@ void main() {
       else K.person(rel, ps.off, h.noHiViz ? 'dark' : 'hivis', { dir: [h.ds, h.doff], gait: ps.gait });
       for (const ob of K.O.slice(first)) { ob.gameHazard = h.id; world.objects.push(move(Object.assign({}, ob), ob, ob.x, A)); }
     }
+    if(V.p && V.p.detailedModels)world.objects=D.Models.actors(world.objects,true);
   }
   // Counterfactual frame at the exact same pose, samples, exposure, glare and canvas size.
   // Retrace only tile rows touched by this hazard. Restore the displayed frame before returning.
@@ -1351,7 +1355,7 @@ void main() {
     if (!info().o.gpuRenderer) { if (V.three) { V.three.dispose(); V.three = null; V.gkey = ''; } if (V.gpuFailure) { V.gpuFailure = ''; say(''); } return; }
     if (V.three || V.gpuFailure) return;
     if (root.location && root.location.protocol === 'file:') { gpuFallback('ES modules need HTTP'); return; }
-    if (threeModule) { try { V.three = threeModule.create(V.canvas, V.gl.gl); V.gkey = ''; killWorkers(); } catch (e) { gpuFallback(e.message || e); } return; }
+    if (threeModule) { try { V.three = threeModule.create(V.canvas, V.gl.gl, () => { if(V.ui)V.ui.redrawSpec(); }); V.gkey = ''; killWorkers(); } catch (e) { gpuFallback(e.message || e); } return; }
     if (!threeLoading) threeLoading = import('./drive-three.js').then(m => { threeModule = m; threeLoading = null; if (V.ui) V.ui.redrawSpec(); }).catch(e => { threeLoading = null; if (V.info && info().o.gpuRenderer) gpuFallback(e.message || e); });
   }
 

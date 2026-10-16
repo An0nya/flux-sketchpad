@@ -134,7 +134,8 @@
   // mat: a material key, or a function of the hit ({x, y, z, u, face}) returning one. u = distance along the face / around the shape.
   let NX = 0, NY = 0, NZ = 1, HU = 0, HF = 0, HSCALE = 1;
   function boundOf(ob) {
-    if (ob.k === 'cyl') { const hz = (ob.z1 - ob.z0) / 2; ob.bs = [ob.x, ob.y, (ob.z0 + ob.z1) / 2, Math.hypot(ob.r, hz)]; }
+    if (ob.k === 'sdf') ob.bs = [ob.x, ob.y, ob.z, ob.r];
+    else if (ob.k === 'cyl') { const hz = (ob.z1 - ob.z0) / 2; ob.bs = [ob.x, ob.y, (ob.z0 + ob.z1) / 2, Math.hypot(ob.r, hz)]; }
     else if (ob.k === 'ell') ob.bs = [ob.x, ob.y, ob.z, Math.max(ob.rx, ob.ry, ob.rz)];
     else if (ob.k === 'box') ob.bs = [ob.x, ob.y, (ob.z0 + ob.z1) / 2, Math.hypot(ob.hx, ob.hy, (ob.z1 - ob.z0) / 2)];
     else if (ob.k === 'disc') ob.bs = [ob.x, ob.y, ob.z, ob.r];
@@ -151,6 +152,7 @@
   // nearest hit of a ray (o + t·d, d unit) with a primitive in (1e-4, tmax); sets NX/NY/NZ, HU, HF, HSCALE
   function hitObj(ob, ox, oy, oz, dx, dy, dz, tmax, delta) {
     HSCALE = 1; HF = 0;
+    if (ob.k === 'sdf') { const h=RF.Drive.Models.trace(ob,ox,oy,oz,dx,dy,dz,tmax); if(Number.isFinite(h.t)){[NX,NY,NZ]=h.n;HU=h.id;}return h.t; }
     if (ob.k === 'cyl') {
       const px = ox - ob.x, py = oy - ob.y, a = dx * dx + dy * dy; let best = Infinity;
       if (a > 1e-12) {
@@ -381,7 +383,8 @@
         const ob = objs[hit], px = ex + tbest * dx, py = ey + tbest * dy, pz = ez + tbest * dz;
         if ((o.hazardMask || o.hazardBodyMask) && ob.gameHazard) hazardAcc |= 1 << (ob.gameHazard - 1);
         if (hnx * dx + hny * dy + hnz * dz > 0) { hnx = -hnx; hny = -hny; hnz = -hnz; }
-        const key = typeof ob.mat === 'function' ? ob.mat({ x: px, y: py, z: pz, u: hu, face: hf }) : ob.mat;
+        const sdfKey=ob.k==='sdf'?MAT_KEYS[Math.round(hu)]:null;
+        const key = sdfKey ? (sdfKey==='hivis' && ((pz>1 && pz<1.06)||(pz>1.26 && pz<1.32))?'hivis-tape':sdfKey) : typeof ob.mat === 'function' ? ob.mat({ x: px, y: py, z: pz, u: hu, face: hf }) : ob.mat;
         if (ob.gameHazard && key === 'eyeshine') eyeAcc |= 1 << (ob.gameHazard - 1);
         let m = M[key] || M.wall; if (ob.emit) m = ob.emitM && ob.emitBase === m ? ob.emitM : (ob.emitBase = m, ob.emitM = Object.assign({}, m, { emit: ob.emit, emitPow: ob.emitPow }));   // this object glows (a lamp: its own luminance); emitPow > 1 makes it directional (cos^n)
         shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it

@@ -1,5 +1,7 @@
 /* Instanced proxy meshes: rasterization bounds the work, analytic hits retain the CPU primitives and subpixel lamps. */
 import * as T from '../vendor/three/three.module.min.js';
+import { sdf } from './drive-models-glsl.js';
+import { modelMeshes, bakeTree } from './drive-three-models.js';
 import { ground } from './drive-three-shaders.js';
 const D = globalThis.RF.Drive;
 const objectVertex = `
@@ -9,12 +11,13 @@ varying vec2 screen;
 void main() { center=aCenter; shape=aShape; pose=aPose; emission=aEmit; planes=aPlane; ties=aTie; matInfo=aMat; flags=aFlags; order=aMat.z;
  screen=mix(aBounds.xz,aBounds.yw,position.xy+0.5); gl_Position=vec4(screen,0,1); }
 `;
-const objectFragment = ground.slice(0, ground.indexOf('vec4 roadFrame')).replace('retro*Ep;', 'retro*Ep*retroScale;').replace('vec3 shade(', 'float retroScale=1.0;\nvec3 shade(') + `
+export const objectFragment = ground.slice(0, ground.indexOf('vec4 roadFrame')).replace('retro*Ep;', 'retro*Ep*retroScale;').replace('vec3 shade(', 'float retroScale=1.0;\nvec3 shade(') + `
 flat varying vec3 center; flat varying vec4 shape, pose, emission, planes, ties; flat varying vec3 matInfo; flat varying vec2 flags; flat varying float order;
 uniform sampler2DArray materialMap;
 uniform vec3 mapExtent;
 uniform int mapped, maskMode, signKind;
 uniform float samples;
+uniform bool detailed;
 float nearT, farT; int face;
 bool slab(float o,float d,float lo,float hi,int f) {
  if(abs(d)<1e-12) return o>=lo && o<=hi;
@@ -22,12 +25,24 @@ bool slab(float o,float d,float lo,float hi,int f) {
  if(a>b){float z=a;a=b;b=z;int k=fa;fa=fb;fb=k;}
  if(a>nearT){nearT=a;face=fa;}farT=min(farT,b);return nearT<=farT;
 }
+${sdf}
 void main() {
  vec2 pixelScreen=gl_FragCoord.xy/(size*samples)*2.0-1.0;
  vec3 ray=normalize(vec3(1,-pixelScreen.x*tanH,pixelScreen.y*tanH*size.y/size.x)), n=vec3(0,0,1), v=-ray;
- float t=1e20, coord=0.0, scale=1.0; int hf=0, kind=int(shape.w+0.5);
+ float t=1e20, coord=0.0, scale=1.0, modelId=-1.0, work=0.0; int hf=0, kind=int(shape.w+0.5);
  vec3 o=eye-center; float ca=cos(pose.x),sn=sin(pose.x);
- if(kind==0) {
+ if(kind==4) {
+   bool hit=modelTrace(o,ray,t,n,modelId,work);
+   if(maskMode==3){gl_FragDepth=hit?min(.99999,t/5000.0):.999999;gl_FragColor=vec4(work,hit?1.0:0.0,1,1);return;}
+   if(!hit)discard;
+ } else if(kind==5) {
+   vec3 normal=pose.yzw,tangent=vec3(-normal.y,normal.x,0);float den=dot(ray,normal);if(abs(den)<1e-9)discard;
+   t=-dot(o,normal)/den;vec3 q=o+t*ray;vec2 uv=vec2(dot(q,tangent)/(shape.x*2.0)+.5,q.z/(shape.z*2.0)+.5);
+   if(any(lessThan(uv,vec2(0)))||any(greaterThan(uv,vec2(1))))discard;
+   vec4 card=texture(treeCard,uv);if(card.w<.5)discard;modelId=floor(card.w+.5)-1.0;
+   n=normalize(normal*sqrt(max(0.0,1.0-dot(card.xy,card.xy)))+tangent*card.x+vec3(0,0,card.y));
+   t+=-card.z*(shape.z*2.0)/den;
+ } else if(kind==0) {
    vec3 q=o/shape.xyz, d=ray/shape.xyz; float a=dot(d,d),b=2.0*dot(q,d),c=dot(q,q)-1.0,disc=b*b-4.0*a*c;
    if(disc<0.0) discard; t=(-b-sqrt(disc))/(2.0*a); n=normalize((o+t*ray)/(shape.xyz*shape.xyz)); coord=atan(n.y,n.x)*shape.x;
  } else if(kind==1) {
@@ -53,7 +68,8 @@ void main() {
  if(!(t>1e-4 && t<5000.0))discard;vec3 p=eye+t*ray;
  if(ray.z<0.0 && t>=-eye.z/ray.z)discard;
  if(dot(n,ray)>0.0)n=-n;
- int id=int(matInfo.x+0.5);
+ int id=modelId>=0.0?int(modelId+.5):int(matInfo.x+0.5);
+ if(kind==4 && id==15 && ((p.z>1.0 && p.z<1.06)||(p.z>1.26 && p.z<1.32)))id=16;
  if(mapped==2) {
    float gx=floor((coord+400.0)/2.6),gz=floor(p.z/3.2),cell=fract((coord+400.0)/2.6),cz=fract(p.z/3.2);
    if(p.z<3.0 || cell<0.2 || cell>0.8 || cz<0.25 || cz>0.8) id=hf==0?26:25;
@@ -70,6 +86,13 @@ void main() {
  else if(mapped==5) id=hf==5?30:27;
  else if(mapped==1) {float z=(p.z-mapExtent.y)/max(1e-6,mapExtent.z-mapExtent.y);id=int(texture(materialMap,vec3(clamp(coord/mapExtent.x*0.5+0.5,0.0,1.0),clamp(z,0.0,1.0),float(hf))).r*255.0+0.5);}
  gl_FragDepth=min(0.99999,t/5000.0+(kind==1 && hf<4 ? ties[hf]*1e-8 : 0.0)+order*1e-10);
+ if(detailed && mapped==2 && hf<4) {
+   vec2 uv=vec2((coord+400.0)/2.6,p.z/3.2),f=fract(uv),aa=max(fwidth(uv),vec2(.001));
+   float panel=1.0-smoothstep(.008,.008+aa.x,min(f.x,1.0-f.x));
+   float rail=1.0-smoothstep(.012,.012+aa.y,min(f.y,1.0-f.y));
+   if((id==28||id==29||id==27) && (abs(f.x-.5)<.014 || abs(f.y-.52)<.012))id=20;
+   if(panel>.5 || rail>.5)id=20;
+ }
  if(maskMode==2){gl_FragColor=vec4(float(id),coord,p.z,order);return;}
  if(maskMode>0){float bit=matInfo.y>0.0?exp2(matInfo.y-1.0):0.0;gl_FragColor=vec4(bit,id==11?bit:0.0,0,1);return;}
  retroScale=scale;vec3 color=shade(p,n,v,id);float NoV=dot(n,v);
@@ -77,8 +100,9 @@ void main() {
  gl_FragColor=vec4(color,flags.y>0.0?0.0:1.0);
 }
 `;
-export function objects(renderer, uniforms) {
+export function objects(renderer, uniforms, onModelsReady) {
   const scene = new T.Scene(), camera = new T.Camera(), groups = new Map(), maps = new Map();
+  const models=modelMeshes(scene,uniforms,onModelsReady);let nodeTexture=null,nodeData=null,card=null;const prototype={actors:0,nearTrees:0,farTrees:0};
   const zero = new T.DataArrayTexture(new Uint8Array(6), 1, 1, 6); zero.format=T.RedFormat;zero.needsUpdate=true;
   const fields={aCenter:3,aShape:4,aPose:4,aBounds:4,aEmit:4,aPlane:4,aTie:4,aMat:3,aFlags:2};
   function materialMap(ob) {
@@ -102,13 +126,37 @@ export function objects(renderer, uniforms) {
     if(g){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();}
     const capacity=Math.max(16,2**Math.ceil(Math.log2(count))),geometry=new T.PlaneGeometry(1,1),attrs={};
     for(const [name,n]of Object.entries(fields)){attrs[name]=new T.InstancedBufferAttribute(new Float32Array(n*capacity),n).setUsage(T.DynamicDrawUsage);geometry.setAttribute(name,attrs[name]);}
-    const local={...uniforms,materialMap:{value:map?map.tex:zero},mapExtent:{value:map?map.extent:new T.Vector3(1,0,1)},mapped:{value:map?map.mode:0},signKind:{value:map?map.signKind:0},maskMode:{value:0},samples:{value:1}};
+    const local={...uniforms,materialMap:{value:map?map.tex:zero},mapExtent:{value:map?map.extent:new T.Vector3(1,0,1)},mapped:{value:map?map.mode:0},signKind:{value:map?map.signKind:0},maskMode:{value:0},samples:{value:1},detailed:{value:false},sdfNodes:{value:null},treeCard:{value:null}};
     const material=new T.ShaderMaterial({uniforms:local,vertexShader:objectVertex,fragmentShader:objectFragment,depthTest:true,depthWrite:true,depthFunc:T.LessDepth});
     const mesh=new T.InstancedMesh(geometry,material,capacity);mesh.frustumCulled=false;scene.add(mesh);g={mesh,attrs,capacity,uniforms:local};groups.set(key,g);return g;
   }
   return {
     scene,camera,
     update(p,obs,ss) {
+      prototype.actors=prototype.nearTrees=prototype.farTrees=0;
+      if(p.detailedModels){
+        models.load();if(!card)card=bakeTree();
+        const detailed=[];
+        for(const ob of obs){
+          if(ob.detailPart==='car' && ob.k!=='disc' && models.ready){if(ob.detail)detailed.push({...ob,k:'mesh-car'});continue;}
+          if(ob.detailPart==='tree'){
+            if(ob.detail){const m=ob.detail,h=m.h||9,range=Math.hypot(m.x+2,m.y-.37);
+              if(range<65){detailed.push(D.Models.build('tree',{...m}));prototype.nearTrees++;}
+              else {const L=range||1;detailed.push({k:'impostor',x:m.x,y:m.y,z:h*.5,rx:h*.4,rz:h*.5,r:h*.75,nx:(-2-m.x)/L,ny:(.37-m.y)/L,nz:0,mat:'foliage',bs:[m.x,m.y,h*.5,h*.75]});prototype.farTrees++;}
+            }continue;
+          }
+          if(ob.k==='sdf' && ob.cls!=='veg')prototype.actors++;detailed.push(ob);
+        }
+        obs=detailed;
+      }
+      const cars=obs.filter(ob=>ob.k==='mesh-car');models.update(p,cars,ss,p.detailedModels);obs=obs.filter(ob=>ob.k!=='mesh-car');
+      const sdfs=obs.filter(ob=>ob.k==='sdf');
+      if(!nodeData || nodeData.length<D.Models.MAX_NODES*12*Math.max(1,sdfs.length)){
+        if(nodeTexture)nodeTexture.dispose();const capacity=Math.max(1,sdfs.length*2);nodeData=new Float32Array(D.Models.MAX_NODES*12*capacity);
+        nodeTexture=new T.DataTexture(nodeData,D.Models.MAX_NODES*3,capacity,T.RGBAFormat,T.FloatType);
+      }
+      sdfs.forEach((ob,i)=>{nodeData.set(ob.nodes,i*D.Models.MAX_NODES*12);ob.sdfRow=i;});if(sdfs.length)nodeTexture.needsUpdate=true;
+
       const tieRanks=new Map(),planes=new Map();
       // CPU subtraction retains tiny offsets between otherwise coincident city facades.
       // Preserve that order before converting geometry to float; only axis-aligned box faces share these groups.
@@ -123,16 +171,17 @@ export function objects(renderer, uniforms) {
         const source=typeof ob.mat==='function'?String(ob.mat):'',key=source.includes('hivis-tape')?'vest':source.includes('face === 5')?'cabin':source?ob.mat:'constant';if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push({ob,index,bounds});count++;
       });
       for(const g of groups.values())g.mesh.count=0;
-      for(const [key,items]of buckets){const g=group(key,items.length,materialMap(items[0].ob));g.mesh.count=items.length;g.mesh.renderOrder=items[0].index;g.uniforms.samples.value=ss;
-        items.forEach(({ob,index,bounds},i)=>{const k=ob.k,kind=k==='ell'?0:k==='box'?1:k==='cyl'?2:3,zc=k==='box'||k==='cyl'?(ob.z0+ob.z1)/2:ob.z;
-          const values={aCenter:[ob.x,ob.y,zc],aShape:k==='ell'?[ob.rx,ob.ry,ob.rz,kind]:k==='box'?[ob.hx,ob.hy,(ob.z1-ob.z0)/2,kind]:[ob.r,ob.r,k==='cyl'?(ob.z1-ob.z0)/2:ob.r,kind],aPose:[ob.yaw||0,ob.nx||0,ob.ny||0,ob.nz||0],aBounds:bounds,aTie:tieRanks.get(ob)||[0,0,0,0],aPlane:[ob.x-(ob.hx||0),ob.x+(ob.hx||0),ob.y-(ob.hy||0),ob.y+(ob.hy||0)],aEmit:[...(ob.emit||[0,0,0]),ob.emit?(ob.emitPow||1):-1],aMat:[Math.max(0,D.MAT_KEYS.indexOf(ob.mat)),ob.gameHazard||0,index],aFlags:[ob.sub?1:0,ob.glow?1:0]};
+      for(const [key,items]of buckets){const g=group(key,items.length,materialMap(items[0].ob));g.mesh.count=items.length;g.mesh.renderOrder=items[0].index;g.uniforms.samples.value=ss;g.uniforms.detailed.value=!!p.detailedModels;g.uniforms.sdfNodes.value=nodeTexture;g.uniforms.treeCard.value=card;
+        items.forEach(({ob,index,bounds},i)=>{const k=ob.k,kind=k==='sdf'?4:k==='impostor'?5:k==='ell'?0:k==='box'?1:k==='cyl'?2:3,zc=k==='box'||k==='cyl'?(ob.z0+ob.z1)/2:ob.z;
+          const values={aCenter:[ob.x,ob.y,zc],aShape:k==='sdf'?[ob.r,ob.r,ob.r,kind]:k==='impostor'?[ob.rx,ob.rx,ob.rz,kind]:k==='ell'?[ob.rx,ob.ry,ob.rz,kind]:k==='box'?[ob.hx,ob.hy,(ob.z1-ob.z0)/2,kind]:[ob.r,ob.r,k==='cyl'?(ob.z1-ob.z0)/2:ob.r,kind],aPose:[ob.yaw||0,ob.nx||0,ob.ny||0,ob.nz||0],aBounds:bounds,aTie:tieRanks.get(ob)||[0,0,0,0],aPlane:k==='sdf'?[ob.sdfRow,ob.nodeCount,0,0]:[ob.x-(ob.hx||0),ob.x+(ob.hx||0),ob.y-(ob.hy||0),ob.y+(ob.hy||0)],aEmit:[...(ob.emit||[0,0,0]),ob.emit?(ob.emitPow||1):-1],aMat:[Math.max(0,D.MAT_KEYS.indexOf(ob.mat)),ob.gameHazard||0,index],aFlags:[ob.sub?1:0,ob.glow?1:0]};
           for(const [name,v]of Object.entries(values))g.attrs[name].array.set(v,i*fields[name]);
         });for(const a of Object.values(g.attrs))a.needsUpdate=true;
       }
       for(const [key,g] of groups) if(!g.mesh.count){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();groups.delete(key);const map=maps.get(key);if(map){map.tex.dispose();maps.delete(key);}}
       return count;
     },
-    mask(on){for(const g of groups.values())g.uniforms.maskMode.value=typeof on==='number'?on:on?1:0;},
-    dispose(){for(const g of groups.values()){g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();}for(const m of maps.values())m.tex.dispose();zero.dispose();groups.clear();maps.clear();},
+    prototype,models,
+    mask(on){models.mask(on);for(const g of groups.values())g.uniforms.maskMode.value=typeof on==='number'?on:on?1:0;},
+    dispose(){models.dispose();if(nodeTexture)nodeTexture.dispose();if(card)card.dispose();for(const g of groups.values()){g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();}for(const m of maps.values())m.tex.dispose();zero.dispose();groups.clear();maps.clear();},
   };
 }
