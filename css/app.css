@@ -684,3 +684,5 @@ figure.map > .drive-below:has(> .drive-game:not([hidden])) { flex-shrink: 1; max
 .first-guide ol { padding-left: 20px; }
 .first-guide li { margin: 8px 0; }
 .first-guide[hidden] { display: none; }
+/* GS: phones get a bottom sheet so the top bar, pane tabs and drive bar stay clickable on first visit. */
+@media (max-width: 900px) { .first-guide { top: auto; bottom: 0; left: 16px; right: 16px; width: auto; max-height: 45vh; overflow-y: auto; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); border-radius: 8px 8px 0 0; box-shadow: 0 -6px 24px #0008; } }
