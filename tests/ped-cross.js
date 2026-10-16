@@ -2,7 +2,7 @@
 // Uses the app's own functions: RF.DriveAnim.{source, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, advanceTraffic, cameraStep, roadTile, IDM, TILE_LEN, PED}
 // and RF.Drive.buildScene (the still scene builder). Positive controls: pedStop:false (cars drive through) and kerbPeople off (the old lane positions).
 // Run: node tests/ped-cross.js (exits 1 on failure).
-const SEED = 7, LANE = 3.5, EDGE_R = -LANE / 2, EDGE_L = 1.5 * LANE, V = 50 / 3.6, DT = 0.05, MIN_GAP = 2;
+const PED_LEAD = 2.5, SEED = 7, LANE = 3.5, EDGE_R = -LANE / 2, EDGE_L = 1.5 * LANE, V = 50 / 3.6, DT = 0.05, MIN_GAP = 2;
 
 function run(RF, ok) {
   const A = RF.DriveAnim, D = RF.Drive;
@@ -77,7 +77,7 @@ function run(RF, ok) {
 
   // 2b. Full stop: the car is already on approach when the walker starts, so it must stop (speed to ~0) short of the walker
   quiet.slice(0, 1).forEach((ev) => {
-    const r = sim('preceding', ev, undefined, { back: 40, lead: 6 });
+    const r = sim('preceding', ev, undefined, { back: 40, lead: PED_LEAD });
     ok('PX full stop: preceding car already on approach stops (speed under 0.5 m/s) at >= 2 m, then passes', r.minGap >= MIN_GAP - 1e-6 && r.minV < 0.5 && r.passed && r.finalV > 1,
       'min gap in lane ' + r.minGap.toFixed(3) + ' m, min speed ' + r.minV.toFixed(2) + ' m/s, passed ' + r.passed + ', final ' + r.finalV.toFixed(2) + ' m/s');
   });
@@ -101,12 +101,43 @@ function run(RF, ok) {
     ok('PX people off: pedestrianStop is undefined (no phantom stops)', s === undefined, 'returned ' + s);
   }
 
+  stuckCheck(A, ok);
+
   // 5. Static walkers in the animated city scene (tiles on) are off the carriageway. The still scene and the tiles-off scenery keep their positions (D4i pins tiles-off = original), so they are the positive control
   const inLane = (objs) => objs.filter((o) => o.detail && o.detail.kind === 'person' && o.detail.y > EDGE_R - 0.3 && o.detail.y < EDGE_L + 0.3).length;
   const animated = A.source('city', LANE, false, {}, { tiles: true, seed: SEED }).objects, still = D.buildScene('city', { Lw: LANE, A: null, us: false, seed: 7 }, {}).objects;
   const walkers = (objs) => objs.filter((o) => o.detail && o.detail.kind === 'person').length;
   ok('PX animated city: no static walker sits inside a lane', inLane(animated) === 0 && walkers(animated) >= 4, 'walkers ' + walkers(animated) + ', in lane ' + inLane(animated));
   ok('PX still scene: its walkers keep the old lane positions (positive control: they are in lane)', inLane(still) >= 2 && walkers(still) === walkers(animated), 'walkers ' + walkers(still) + ', in lane ' + inLane(still));
+}
+
+// 6. Stuck cars: over 600 s of seeded tiles traffic at density 3 with traffic logic, no car may stay stopped (v < 0.5 m/s) for a pedestrian longer than
+// that walker's crossing time + 3 s: 6 s + 3 = 9 s for a mid-block walker, 12 s + 3 = 15 s for the red-light walker. Signal stops are excluded.
+function stuckCheck(A, ok) {
+  const src = A.source('road', LANE, false, {}, { seed: SEED, speed: 50, trafficDensity: 3, trafficLogic: true, tiles: true, oncoming: true, preceding: true });
+  const runs = new Map(), worst = { mid: 0, red: 0 }, where = {};
+  const close = (r) => {
+    const len = r.n * DT, s = Math.abs(r.ped), tile = A.roadTile(SEED, Math.floor(s / A.TILE_LEN));
+    const red = (tile.kind === 't-junction' || tile.kind === 'intersection') && Math.abs(s - (tile.s0 + 100 - LANE - 2.7)) < 1e-6;
+    const key = red ? 'red' : 'mid';
+    if (len > worst[key]) { worst[key] = len; where[key] = r.id + ' from ' + r.start.toFixed(2) + ' s'; }
+  };
+  for (let i = 0; i <= 12000; i++) {
+    const t = i * DT;
+    A.trafficCars(src, 0, t);
+    const st = src.traffic.state;
+    if (!st) continue;
+    for (const c of st.cars) {
+      const ped = A.pedestrianStop(src, c, t), sig = A.trafficSignal(src, c, t);
+      const sigStops = sig && sig.lit !== 'green' && sig.gap >= 0;
+      let r = runs.get(c.id);
+      if (c.v < 0.5 && ped !== undefined && !sigStops) { if (!r) { r = { id: c.id, start: t, n: 0 }; runs.set(c.id, r); } r.n++; r.ped = ped; }
+      else if (r) { close(r); runs.delete(c.id); }
+    }
+  }
+  for (const r of runs.values()) close(r);
+  ok('PX stuck cars: longest pedestrian stop in 600 s (density 3) is within walker crossing time + 3 s (mid-block 9 s, red walker 15 s)',
+    worst.mid <= 9 + 1e-9 && worst.red <= 15 + 1e-9, 'longest mid-block ' + worst.mid.toFixed(2) + ' s (' + (where.mid || '-') + '), longest red-walker ' + worst.red.toFixed(2) + ' s (' + (where.red || '-') + ')');
 }
 
 module.exports = { run };

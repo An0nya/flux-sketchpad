@@ -373,7 +373,8 @@
   }
   // City crossers: at most one walker per urban tile per 50 s cycle, seeded by (seed, tile, cycle). It starts 5-30 s into the cycle,
   // walks the whole carriageway at 1.4 m/s, then stands on the far kerb until the cycle ends (no despawn inside the cycle).
-  const PED = { cycle: 50, speed: 1.4, p: 0.5, walkStart: 5, walkSpread: 25, stopMargin: 2, clear: 0.5 };
+  // lead: the stop window opens this long before the walker starts. Fixed, not speed-based: a longer lead made cars already on approach stop for ~12 s (measured), past the 9 s bound
+  const PED = { cycle: 50, speed: 1.4, p: 0.5, walkStart: 5, walkSpread: 25, lead: 2.5, clear: 0.5 };
   function pedCrossing(seed, k, cyc) {
     const R = D.rng((Math.imul(seed | 0, 2654435761) ^ Math.imul(k + 1, 0x27D4EB2F) ^ Math.imul(cyc + 1, 0x165667B1)) >>> 0);
     if (R() >= PED.p) return null;
@@ -387,15 +388,16 @@
     return { s: ev.s, off, dir: ev.dir, motion: p.motion, gait: p.gait };
   }
   // A pedestrian stop, in the same direction-space as signalStop: the car stops short of a walker who is on, or about to step onto, the carriageway.
-  // The window opens a stopping time (v / TRAFFIC_BRAKE, plus a margin) before the walker starts, and closes once the walker is across.
+  // The window opens PED.lead before the walker starts, and closes once the walker is across.
   // Off when people are off (the walkers do not exist), when traffic logic is off, or when the pedStop option is false (a test control).
   function pedestrianStop(src, car, t) {
     const tc = src.tiles, tr = src.traffic;
     if (!tc || tc.mountain || !tr.logic || tr.pedStop === false || tc.flags.people === false || car.turn) return undefined;
-    const dir = car.kind === 'oncoming' ? -1 : 1, k0 = Math.floor(car.x / TILE_LEN), lead = car.v / TRAFFIC_BRAKE + PED.stopMargin;
+    const dir = car.kind === 'oncoming' ? -1 : 1, k0 = Math.floor(car.x / TILE_LEN), lead = PED.lead;
     let best;
     const consider = (s, from, to) => {
-      if (t < from || t > to || dir * (s - car.x) < 0) return;      // not yet in the window, or the car's centre has passed it
+      // not yet in the window, or too close to stop short of it (a stop line closer than half a car plus s0 cannot be reached: the car would sit on it)
+      if (t < from || t > to || dir * (s - car.x) < IDM.length / 2 + IDM.s0) return;
       if (best === undefined || dir * s < best) best = dir * s;
     };
     const cur = Math.floor(t / PED.cycle);
