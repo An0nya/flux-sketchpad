@@ -12,7 +12,7 @@
 
   // ---------------------------------------------------------------- 14. controls wired
   const PAIRS = {
-    rays: [2000, 3000], bounces: [1, 3], floor: [1, 95], seed: [1, 7],
+    rays: [2000, 3000], bounces: [1, 3], floor: [1, 95], seed: [1, 7], 'src.cct': [3000, 6500],
     'src.w': [2, 3], 'src.h': [2, 3], 'src.radius': [1, 1.5], 'src.length': [4, 6], 'src.sigma': [20, 40], 'src.half': [30, 60],
     'src.az': [0, 25], 'src.el': [90, 70], 'src.roll': [0, 30], 'src.x': [0, -3], 'src.y': [0, 3], 'src.z': [0, 2], 'src.power': [1000, 2000],
     'env.keep': [2.5, 4.5], 'A.minDist': [12, 18], 'env.hx': [40, 30], 'env.hy': [45, 30], 'env.hz': [32.5, 25], 'env.cx': [-20, -15], 'env.cy': [0, 5], 'env.cz': [27.5, 5],
@@ -104,13 +104,17 @@
         C.setControl(store, c.id, v);
         after(store, c.id);
         store.commit({ forceA: store.dirty.has('A') });
-        sig.push(signature(store));
+        const sg = signature(store);
+        // view-only controls (src.cct) change no optics output; they must change the Drive view's lamp tint instead
+        if (c.viewOnly) sg.lamp = JSON.stringify(RF.CCT.lampRGB([store.scene.source].concat(store.scene.emitters || [])));
+        sig.push(sg);
       }
       const gridDiff = sig[0].grid !== sig[1].grid, statDiff = sig[0].stats !== sig[1].stats, repDiff = sig[0].report !== sig[1].report;
+      const lampDiff = !!c.viewOnly && sig[0].lamp !== sig[1].lamp;
       // Check 14: each mode's primary controls must change the GRID; every other control must change
-      // some output (grid, energy tallies, or the feasibility report)
-      const pass = c.primary ? gridDiff : (gridDiff || statDiff || repDiff);
-      results.push({ id: c.id, mode, primary: !!c.primary, values: vals, pass, how: gridDiff ? 'grid hash' : statDiff ? 'energy tallies' : repDiff ? 'feasibility report' : 'NO CHANGE', h: [sig[0].grid, sig[1].grid] });
+      // some output (grid, energy tallies, or the feasibility report); view-only controls change the lamp tint
+      const pass = c.viewOnly ? lampDiff : c.primary ? gridDiff : (gridDiff || statDiff || repDiff);
+      results.push({ id: c.id, mode, primary: !!c.primary, values: vals, pass, how: lampDiff ? 'lamp tint' : gridDiff ? 'grid hash' : statDiff ? 'energy tallies' : repDiff ? 'feasibility report' : 'NO CHANGE', h: [sig[0].grid, sig[1].grid] });
     }
     return results;
   }

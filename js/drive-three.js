@@ -47,6 +47,7 @@ export function create(canvas, gl, onModelsReady) {
     u.lutInfo.value.set(lut.h0, lut.v0, lut.step, 0); u.lutSize.value.set(lut.nh, lut.nv); u.size.value.set(p.w, p.h);
     set('nLamp', p.lamps.length); if (p.lamps.length > 2) throw Error('more than two own lamps');
     p.lamps.forEach((l, i) => u.lamp.value[i].fromArray(l));
+    u.lampRGB.value.fromArray(p.lampRGB || [1, 1, 1]);
     set('convention', p.conv === 'B' ? 1 : p.conv === 'S' ? 2 : 0); set('tanH', Math.tan(p.hfov * Math.PI / 360));
     set('lane', p.lane); set('ambient', look.ambient || 0); set('sheen', look.wet && look.wetSheen ? 1 : 0);
     set('distance', dist); set('grain', look.grain && (p.src.tiles || (look.wet && look.wetSheen)) ? 0.4 * (look.wet ? 0.5 : 1) : 0);
