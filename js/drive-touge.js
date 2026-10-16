@@ -114,7 +114,7 @@
   }
   function glareSources(obs,dist,A){
     const a=attitude(dist),axes=[a.forward,a.left,a.up],eye=apply(axes,[-2,.37,1.2]),sources=[];
-    for(const ob of obs)if(ob.headlamp && !blocked(A,eye,[ob.x,ob.y,ob.z])){
+    for(const ob of obs)if(ob.headlamp && !blocked(A,eye,[ob.x,ob.y,ob.z]) && !D.occluded([ob.x,ob.y,ob.z],eye,obs)){   // eye and obs are both world frame here
       const p=[ob.x,ob.y,ob.z],q=axes.map(v=>dot(p,v)),n=axes.map(v=>dot([ob.nx,ob.ny,ob.nz||0],v));sources.push({...ob,x:q[0],y:q[1],z:q[2],nx:n[0],ny:n[1],nz:n[2]});
     }
     return D.glareSources(sources,[-2,.37,1.2]);

@@ -567,11 +567,31 @@
   const brightCap = (v) => { const x = Math.max(0, v - 1); return 64 * x / (64 + x); };
   // CIE 146:2002, CIE equations for disability glare; Stiles–Holladay 10 E / theta².
   // 1 degree floor: the formula is not a model of the lamp core. No age/ocular-pigmentation correction or occlusion tracing.
-  function glareSources(objects, eye) {
-    eye = eye || [-2, 0.37, 1.2]; const out = [];
+  // Is the segment from P (a glare source's centre) to the eye blocked by an opaque object? Only hits at least minT metres from P count:
+  // a lamp sits on its own car's face, so that body is hit within a few cm and is ignored. Emitters (headlamp/taillamp) and flat discs
+  // (sign faces, eyes, reflectors) do not block. Hard test: a lamp is either fully visible or fully hidden (no partial coverage).
+  function occluded(P, eye, occluders, minT) {
+    const lo = minT === undefined ? 0.3 : minT, ex0 = eye[0] - P[0], ey0 = eye[1] - P[1], ez0 = eye[2] - P[2], L = Math.hypot(ex0, ey0, ez0);
+    if (!(L > lo)) return false;
+    const dx = ex0 / L, dy = ey0 / L, dz = ez0 / L;
+    for (const ob of occluders) {
+      if (ob.headlamp || ob.taillamp || ob.k === 'disc') continue;
+      if (!ob.bs) boundOf(ob);
+      const [cx, cy, cz, R] = ob.bs, ux = cx - P[0], uy = cy - P[1], uz = cz - P[2];
+      const s = Math.min(L, Math.max(0, ux * dx + uy * dy + uz * dz)), px = ux - s * dx, py = uy - s * dy, pz = uz - s * dz;
+      if (px * px + py * py + pz * pz > R * R) continue;      // bounding sphere misses the segment
+      const t = hitObj(ob, P[0], P[1], P[2], dx, dy, dz, L, 0);
+      if (t >= lo && t < L) return true;
+    }
+    return false;
+  }
+  // occluders: the opaque objects of the same frame (default: objects themselves). A lamp hidden from the eye contributes nothing.
+  function glareSources(objects, eye, occluders) {
+    eye = eye || [-2, 0.37, 1.2]; const out = [], occ = occluders || objects;
     for (const ob of objects) if (ob.headlamp) {
       const dx = ob.x - eye[0], dy = ob.y - eye[1], dz = ob.z - eye[2], rr = Math.hypot(dx, dy, dz);
       if (dx <= 0 || !(rr > 0)) continue;
+      if (occluded([ob.x, ob.y, ob.z], eye, occ)) continue;
       const cos = Math.max(0, -(dx * ob.nx + dy * ob.ny) / rr), cd = ob.eyeCd === undefined ? ob.emit[0] * Math.PI * ob.r * ob.r * Math.pow(cos, ob.emitPow || 1) : ob.eyeCd;
       out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr)]);
     }
@@ -661,5 +681,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { dipState, TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
+  RF.Drive = { occluded, dipState, TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
