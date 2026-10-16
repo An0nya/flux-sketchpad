@@ -11,11 +11,22 @@
     const state=!moving?'stand':distance<.45?'walk':distance<.9&&target==='bound'?'trot':target;
     return {state,distance,stride:GAITS[state].stride};
   }
-  function foot(state,phase,offset) {
-    const g=GAITS[state]||GAITS.walk,q=fract(phase+offset),stance=q<g.duty;
+  // A walker's legs follow the ground it has covered, never the clock: one leg cycle is PERSON_STRIDE metres (two steps of ~0.7 m; a tuning value).
+  // BLEND_T: seconds for a stopped walker's legs to settle into a stand. LEG_SWING: primitive leg splay (m), as drive-scenes.js draws it.
+  const PERSON_STRIDE=1.45,BLEND_T=.3,LEG_SWING=.11;
+  function foot(state,phase,offset,stride,blend=1) {
+    const g=GAITS[state]||GAITS.walk,q=fract(phase+offset),stance=q<g.duty,s=stride||g.stride;
     if(state==='stand')return {x:0,z:.045,stance:true};
-    const t=(q-g.duty)/(1-g.duty),ease=t*t*(3-2*t);
-    return {x:stance?g.stride*(g.duty/2-q):g.stride*g.duty*(ease-.5),z:.045+(stance?0:g.lift*Math.sin(Math.PI*t)),stance};
+    const t=(q-g.duty)/(1-g.duty),ease=t*t*(3-2*t),z=.045+(stance?0:g.lift*Math.sin(Math.PI*t));
+    const x=stance?s*(g.duty/2-q):s*g.duty*(ease-.5);
+    return {x:x*blend,z:.045+(z-.045)*blend,stance};
+  }
+  // A pedestrian's gait from the distance it has walked (m). stoppedFor: seconds since it stopped, or null while it walks (or before it starts).
+  // Returns the motion for build() and the primitive leg splay: the cycle freezes where the walker stopped and the legs settle over BLEND_T.
+  function pedestrian(distance,stoppedFor) {
+    if(!(distance>0))return {motion:{state:'stand',distance:0,stride:GAITS.stand.stride,blend:0},gait:0};
+    const blend=stoppedFor==null?1:clamp(1-stoppedFor/BLEND_T);
+    return {motion:{state:blend>0?'walk':'stand',distance,stride:PERSON_STRIDE,blend},gait:LEG_SWING*blend*Math.sin(2*Math.PI*distance/PERSON_STRIDE)};
   }
   // Two-link inverse kinematics in the limb plane; bend chooses the knee/hock side.
   function knee(a,b,l1,l2,bend) {
@@ -50,14 +61,14 @@
     const cap=(a,b,r,m)=>{a=point(a);b=point(b);nodes.push([...a,r,...b,0,0,0,0,id(m)]);};
     const attention=o.attention;let eyeNormal=null;
     const legacy=(o.gait||0)/(kind==='deer'?.14:.11),state=o.motion?.state||(o.bound?'bound':Math.abs(legacy)>0?'walk':'stand'),settings=GAITS[state]||GAITS.walk;
-    const phase=o.motion?o.motion.distance/settings.stride:fract(legacy*.25),feet=[];
+    const phase=o.motion?o.motion.distance/(o.motion.stride||settings.stride):fract(legacy*.25),blend=o.motion?.blend??1,feet=[];
     if(kind==='person') {
       const torso=o.ptype==='light'?'cloth-light':o.ptype==='hivis'?'hivis':'cloth-dark';
       ell([0,0,1.19],[.16,.21,.31],torso);cap([0,0,1.43],[0,0,1.55],.06,'skin');ell([.015,0,1.66],[.1,.095,.13],'skin');
       for(const side of [-1,1]) {
-        const f=foot(state,phase,side===1?0:.5),hip=[0,side*.11,.89],ankle=[f.x,side*.11,f.z+.035],k=knee(hip,ankle,.43,.43,1);
+        const f=foot(state,phase,side===1?0:.5,o.motion?.stride,blend),hip=[0,side*.11,.89],ankle=[f.x,side*.11,f.z+.035],k=knee(hip,ankle,.43,.43,1);
         cap(hip,k,.075,'cloth-dark');cap(k,ankle,.052,'cloth-dark');cap([f.x-.04,side*.11,f.z],[f.x+.12,side*.11,f.z],.045,'cloth-dark');feet.push({...f,p:point([f.x,side*.11,f.z])});
-        const swing=state==='stand'?0:Math.sin(2*Math.PI*(phase+(side===1?0:.5)))*.32,shoulder=[0,side*.23,1.4],elbow=[-swing*.55,side*.24,1.13],hand=[-.04-swing,side*.24,.9];
+        const swing=state==='stand'?0:Math.sin(2*Math.PI*(phase+(side===1?0:.5)))*.32*blend,shoulder=[0,side*.23,1.4],elbow=[-swing*.55,side*.24,1.13],hand=[-.04-swing,side*.24,.9];
         cap(shoulder,elbow,.06,torso);cap(elbow,hand,.045,torso);ell(hand,[.05,.045,.06],'skin');
       }
     } else if(kind==='deer') {
@@ -132,5 +143,5 @@
     }
     return out;
   }
-  D.Models={TREE_COUNT:128,TREE_DISTANCE:140,deerEnabled,deerProfile,deerAttention,build,distance,trace,cylinder,actors,tree,stableId,locomotion,foot,GAITS,MAX_NODES,STEPS,EPS,BLEND,material:()=>material};
+  D.Models={TREE_COUNT:128,TREE_DISTANCE:140,deerEnabled,deerProfile,deerAttention,build,distance,trace,cylinder,actors,tree,stableId,locomotion,foot,pedestrian,PERSON_STRIDE,BLEND_T,LEG_SWING,GAITS,MAX_NODES,STEPS,EPS,BLEND,material:()=>material};
 })(typeof self!=='undefined'?self:globalThis);
