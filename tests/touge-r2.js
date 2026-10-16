@@ -31,6 +31,23 @@ function metrics(RF,samples,kind) {
 }
 function run(RF,ok) {
   const A=RF.DriveAnim,D=RF.Drive,src=source(A);
+  const {flatHairpinRoute}=require('./touge-r2-fixtures.js');
+  const parts=r=>r.tiles.reduce((n,t)=>n+A.curveSections(t).length,0);
+  let fixtureFits=true,nearbyUnchanged=true,maxFlatParts=0,maxMountainParts=0,maxFixtureParts=0;
+  for(let k=0;k<8;k++)for(const u of [0,49.5,50,149.5,150,199.5]){
+    const dist=k*A.TILE_LEN+u,mountain=RF.Touge.route(dist,3.5,false),flat=flatHairpinRoute(RF,dist);
+    maxFlatParts=Math.max(maxFlatParts,parts(A.tileRoute(7,dist)));
+    maxMountainParts=Math.max(maxMountainParts,parts(mountain));
+    maxFixtureParts=Math.max(maxFixtureParts,parts(flat));fixtureFits&&=parts(flat)<=16;
+    for(let s=-50;s<=350;s+=10)for(const off of [0,1,3.5]){
+      const a=mountain.at(s,off),b=flat.at(s,off);
+      nearbyUnchanged&&=a.p.every((v,i)=>Math.abs(v-b.p[i])<1e-9)&&a.t.every((v,i)=>Math.abs(v-b.t[i])<1e-9);
+    }
+  }
+  console.log('  route fixture '+JSON.stringify({originalAt655:parts(RF.Touge.route(655,3.5,false)),fixedAt655:parts(flatHairpinRoute(RF,655)),maxFlatParts,maxMountainParts,maxFixtureParts}));
+  ok('TR flat parity fixture fits 16 slots at all recipe phases and section edges',fixtureFits&&maxFlatParts<=12);
+  ok('TR flat parity fixture preserves nearby mountain hairpin positions and tangents',nearbyUnchanged);
+  ok('TR POSITIVE CONTROL: original flat-mountain fixture exceeds GPU route slots',parts(RF.Touge.route(655,3.5,false))>16);
   let matches=true;for(let x=-200;x<5200;x+=.5){const r=RF.Touge.route(x,3.5,false),a=r.at(0).t,b=r.at(.0001).t;const c=Math.atan2(a[0]*b[1]-a[1]*b[0],a[0]*b[0]+a[1]*b[1])/.0001;matches&&=Math.abs(c-RF.Touge.curvature(x))<1e-7;}
   ok('TR curvature matches the raw drawn route sections (including boundaries)',matches);
   for(const logic of [false,true])for(const kind of ['camera','preceding','oncoming']) {
