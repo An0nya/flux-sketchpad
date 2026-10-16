@@ -27,6 +27,20 @@
   };
   RF.UI = ui;
 
+  // Recovery is browser-local; the scene on disk keeps its requested ray count.
+  const BOOT_KEY = 'flux/booting', SAFE_RAYS = 100000;
+  let unfinished = false;
+  try { unfinished = localStorage.getItem(BOOT_KEY) === '1'; } catch (e) { /* ignore */ }
+  ui.safeMode = unfinished || new URLSearchParams(location.search).has('safe') || /(?:^#|[&#])safe(?:[=&]|$)/.test(location.hash);
+  ui.bootPending = true;
+  function bootMark(on) { try { if (on) localStorage.setItem(BOOT_KEY, '1'); else localStorage.removeItem(BOOT_KEY); } catch (e) { /* ignore */ } }
+  function leaveSafe() { ui.safeMode = false; const b = document.getElementById('safe-banner'); if (b) b.hidden = true; }
+  function allowLargeRun(n) {
+    const r = RF.GpuTrace && RF.GpuTrace.rayLimit();
+    return !r || !r.mobile || n <= r.cap || confirm('Trace ' + n.toLocaleString() + ' rays? This exceeds this device’s automatic limit (' + r.cap.toLocaleString() + ') and may close the page.');
+  }
+  ui.traceExplicit = function () { if (!allowLargeRun(ui.store.scene.sim.rays)) return; leaveSafe(); ui.explicitRays = ui.store.scene.sim.rays; ui.requestRun(false); };
+
   // ---------------------------------------------------------------- state changes
   ui.setControl = function (id, v) {
     C.setControl(ui.store, id, v);
@@ -44,17 +58,21 @@
     // Two switches (Anya, 09-30): 'painting' = paint, an image, a pattern, a solver swap, a drag in the 3D views (on by
     // default); 'settings' = any sidebar number or solver setting (off by default: with solves taking seconds, every nudge
     // shouldn't restart one).  Off → the design is marked stale until Rebuild.
-    if (aDirty && (opts && opts.settings ? store.autoSet : store.autoA)) ui.pendingA = performance.now() + (ui.interacting ? 600 : 250);
+    if (!ui.safeMode && aDirty && (opts && opts.settings ? store.autoSet : store.autoA)) ui.pendingA = performance.now() + (ui.interacting ? 600 : 250);
     ui.refreshPanels(); markStale();
     ui.requestRun(ui.interacting);
     ui.autosave();
   };
-  ui.generateA = function () {
+  ui.generateA = function (ready) {
+    if (!ready && !allowLargeRun(ui.store.scene.sim.rays)) return;
+    leaveSafe(); ui.explicitRays = ui.store.scene.sim.rays;
     if (RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(ui.store.scene))) {   // the chosen solver is still loading: current() would fall back to Spoke and applySolve would save that
-      ui.store.invalidate(['A']); ui.setStatus('waiting for the solvers to load…'); ui.progress('solve');   // restore() (boot) solves once they are in
+      ui.rebuildWaiting = true; ui.store.invalidate(['A']); ui.setStatus('waiting for the solvers to load…'); ui.progress('solve');   // restore() (boot) solves once they are in
       return;
     }
+    ui.rebuildWaiting = false;
     const def = RF.Solvers.get(RF.Solvers.current(ui.store.scene));
+    if (ui.bootPending) bootMark(true);
     if (def.worker || (RF.SolveCache && RF.SolveCache.enabled())) { ui.store.invalidate(['A']); ui.solveArmed = true; schedule(); return; }   // worker path lives in tick()
     stopWorkerSolve('replaced by ' + def.name);        // a page solver wins over a worker solve still running
     ui.setStatus('Rebuilding reflector…'); ui.progress('solve');
@@ -132,13 +150,12 @@
   ui.loadScene = function (scene, notice, silent) {
     const prev = ui.store, store = C.createStore(scene);        // all-or-nothing: the new store is built and committed on the side, and replaces the live one only once the load works
     const au = autoPrefs(); store.autoA = au.paint; store.autoSet = au.settings;
-    // rebuild derived groups from intent. Mode A is re-solved too (~50 ms): the solver report isn't
-    // saved with the scene, so otherwise the limits panel is empty after any load.
+    // Saved A geometry is authoritative. Its unsaved solver report is recomputed only by Rebuild.
     store.invalidate(['B', 'C', 'L']);
-    if ((scene.groups.A.surfaces.length || isPaint(scene.mode)) && (scene.modeA.paint.some((x) => x > 0) || scene.mode === 'D')) store.invalidate(['A']);
-    store.commit({ forceA: store.dirty.has('A') });
+    store.commit({ deferA: true });
     if (notice) store.notice(notice);
     ui.store = store;
+    const specPick = document.querySelector('[aria-label="Spec preset"]'); if (specPick && scene.modeD) specPick.value = scene.modeD.preset;
     if (!silent) {
       try {
         ui.setMode(scene.mode, true);
@@ -146,7 +163,7 @@
         ui.vLeft.fitted = ui.vHeat.fitted = ui.vPick.fitted = ui.vProf.fitted = false;
       } catch (e) { ui.store = prev; document.body.classList.remove('mode-' + scene.mode); if (prev) { try { ui.setMode(prev.scene.mode, true); } catch (e2) { /* best effort */ } } throw e; }   // a bad scene leaves the old one live
     }
-    stopWorkerSolve('a new scene was loaded'); dropWatch(); ui.pendingA = 0; ui.solveArmed = false;   // the old scene's solve, preview and queued rebuild don't carry over
+    stopWorkerSolve('a new scene was loaded'); dropWatch(); ui.pendingA = 0; ui.solveArmed = false; ui.rebuildWaiting = false; ui.explicitRays = false;   // the old scene's solve, preview and queued rebuild don't carry over
     if (silent) return;
     if (RF.CompareUI) RF.CompareUI.loaded(ui);
     ui.refreshPanels(); ui.requestRun(false); ui.autosave();
@@ -526,6 +543,8 @@
 
   // ---------------------------------------------------------------- run loop
   ui.requestRun = function (interactive) {
+    if (ui.safeMode) return;
+    if (ui.bootPending) bootMark(true);
     ui.needCompile = true; ui.previewRun = !!interactive;
     schedule();
   };
@@ -562,6 +581,7 @@
     cancelAnimationFrame(ui.raf); clearTimeout(ui.tmo);
     ui.raf = 0;
     const now = performance.now(), store = ui.store;
+    if (ui.safeMode) { ui.pendingA = 0; ui.solveArmed = false; return; }
     if (ui.pendingA && !ui.interacting && now >= ui.pendingA && store.dirty.has('A') && !ui.solveArmed) {
       ui.solveArmed = true; ui.setStatus('Rebuilding reflector…'); ui.progress('solve');   // let this frame paint first
     } else if (ui.solveArmed) {
@@ -609,7 +629,10 @@
         ui.surfKey = key;
         refitSurfaces();
       }
-      const nAsk = sc.sim.rays, nCap = RF.GpuTrace ? RF.GpuTrace.capRays(nAsk) : nAsk, N = ui.previewRun ? Math.min(nAsk, PREVIEW_RAYS) : nCap;   // nCap: this device's ray cap (js/gpu-trace.js rayCap), liftable in Simulation → Advanced
+      if (ui.bootPending) bootMark(true);
+      const limit = RF.GpuTrace && RF.GpuTrace.rayLimit();
+      const nAsk = sc.sim.rays, nCap = limit && limit.mobile ? (ui.explicitRays === nAsk ? nAsk : Math.min(nAsk, limit.cap)) : RF.GpuTrace ? RF.GpuTrace.capRays(nAsk) : nAsk, N = ui.previewRun ? Math.min(nAsk, PREVIEW_RAYS) : nCap;   // nCap: this device's ray cap (js/gpu-trace.js rayCap), liftable in Simulation → Advanced
+      ui.explicitRays = false;
       Pc.recordHits = true;
       if (sc.mode === 'D' && RF.SpecUI) { Pc.ffStreams = RF.SpecUI.streams(sc); Pc.guideLearn = true; }   // Spec mode judges the far field: bin every ray's last leg as it goes (∞, 25 m, 10 m, target)
       ui.run = { P: Pc, ctx: RF.Engine.newCtx(Pc, N, ui.rayPaths === undefined ? 240 : ui.rayPaths), preview: ui.previewRun, started: now, capped: !ui.previewRun && nCap < nAsk ? { asked: nAsk, why: RF.GpuTrace.rayLimit().why } : null };
@@ -643,6 +666,7 @@
     if (run && (justDone || ui._refineN !== run.ctx.N)) refreshRefine();
     markStale();
     if (ui.sceneDirty) { guard(drawSceneView); guard(drawSurfaceView); guard(drawLeft); ui.sceneDirty = false; }
+    if (ui.bootPending && run && run.ctx.done && !run.preview && !ui._tickErr) { ui.bootPending = false; bootMark(false); }
   }
   // Refine: keep tracing the finished run up to ×2 the rays (exactly the run a bigger ray count would have made: see Engine.extend)
   const REFINE_MAX = 5e7;
@@ -650,6 +674,7 @@
   ui.refine = function (factor) {
     if (!ui.canRefine()) return false;
     const run = ui.run, N2 = Math.min(REFINE_MAX, Math.round(run.ctx.N * (factor || 2)));
+    if (!allowLargeRun(N2)) return false;
     // Spec mode: the new rays go preferentially where the window is dim (test points, zone III), weighted so nothing is biased
     const guide = run.ctx.gl ? RF.Engine.buildGuide(run.ctx) : null;
     run.ctx = RF.Engine.extend(run.ctx, N2, guide); run.refined = true; run.guided = !!guide || run.guided;
@@ -1887,8 +1912,8 @@
     // loaded solvers persist per browser; once they're back, honour a saved choice
     if (RF.SolverHost) RF.SolverHost.restore().then(() => {
       let want = null; try { want = localStorage.getItem('flux/solverChoice'); } catch (e) { /* ignore */ }
-      if (want && want !== RF.Solvers.current(ui.store.scene) && RF.Solvers.get(want)) { ui.store.scene.solve = { id: want }; ui.generateA(); }
-      else if (ui.store.dirty.has('A')) ui.generateA();                        // the first solve waited for the chosen solver to load
+      if (want && !ui.store.scene.solve && RF.Solvers.get(want)) ui.store.scene.solve = { id: want };
+      if (ui.rebuildWaiting && !ui.safeMode) ui.generateA(true);
       renderSolverBox();
     });
     // Scene: Reset view = the view the app opens with; Setup = show the edit handles here too
@@ -2000,6 +2025,10 @@
     const reset = document.getElementById('btn-reset');
     const rb = P.confirmButton('Reset', 'Reset everything?', () => { RF.State.clearLocal(); ui._histHint = 'Reset'; ui._histMode = ui.store.scene.mode; ui.loadScene(RF.State.defaultScene(), 'Scene reset to defaults.'); });
     rb.id = 'btn-reset'; reset.replaceWith(rb);
+    const guide = document.getElementById('first-guide');
+    document.getElementById('btn-help').addEventListener('click', () => { guide.hidden = !guide.hidden; });
+    document.getElementById('guide-close').addEventListener('click', () => { guide.hidden = true; try { localStorage.setItem('flux/guideSeen', '1'); } catch (e) { /* ignore */ } });
+    try { guide.hidden = ui.safeMode || localStorage.getItem('flux/guideSeen') === '1'; } catch (e) { guide.hidden = ui.safeMode; }
     const sel = document.getElementById('preset-select');
     sel.addEventListener('change', () => {
       const name = sel.value; if (!name) return;
@@ -2008,7 +2037,7 @@
       const presetLabel = sel.options[sel.selectedIndex].text;
       const ok = P.el('button', { type: 'button', class: 'primary' }, 'Replace scene with “' + presetLabel + '”');
       const no = P.el('button', { type: 'button' }, 'Cancel');
-      ok.addEventListener('click', () => { const p = P.presetScene(name); bar.remove(); sel.value = ''; if (p) { ui._histHint = 'Preset: ' + presetLabel; ui._histMode = ui.store.scene.mode; } if (p) { ui.loadScene(p.scene, 'Preset: ' + p.notes.join('; ') + '.'); if (ui.store.dirty.has('A') && ui.store.autoA) ui.generateA(); } });   // a worker solver (Auto) isn't run by the load itself: start it
+      ok.addEventListener('click', async () => { let p; try { p = name.startsWith('starter-') ? await RF.StarterLamps.load(name) : P.presetScene(name); } catch (e) { ui.store.notice(e.message); P.renderNotices(ui); return; } bar.remove(); sel.value = ''; if (p) { ui._histHint = 'Preset: ' + presetLabel; ui._histMode = ui.store.scene.mode; } if (p) { ui.loadScene(p.scene, 'Preset: ' + p.notes.join('; ') + '.'); if (ui.store.dirty.has('A') && ui.store.autoA) ui.generateA(); } });   // a worker solver (Auto) isn't run by the load itself: start it
       no.addEventListener('click', () => { bar.remove(); sel.value = ''; });
       bar.append(ok, no);
       document.querySelector('.side-top').append(bar);
@@ -2022,15 +2051,15 @@
     try { scene = RF.State.loadLocal(); restored = !!scene; } catch (e) { scene = null; }
     const bad = !scene && RF.State.loadError && RF.State.loadError();   // the saved scene was unreadable: say so once
     if (!scene) scene = RF.State.defaultScene();
+    if (ui.safeMode) scene.sim.rays = Math.min(scene.sim.rays, SAFE_RAYS);
     ui.store = C.createStore(scene);
     P.buildSide(ui); renderPatterns();
     wireTopbar(); wireScene(); wireHeat(); wireLeft();
+    document.getElementById('btn-trace').addEventListener('click', ui.traceExplicit);
+    const banner = document.getElementById('safe-banner'); banner.hidden = !ui.safeMode;
+    document.getElementById('safe-retry').addEventListener('click', () => { leaveSafe(); ui.requestRun(false); });
+    document.getElementById('safe-reset').addEventListener('click', () => { RF.State.clearLocal(); leaveSafe(); const sc = RF.State.defaultScene(); sc.sim.rays = SAFE_RAYS; ui.loadScene(sc, 'Restored defaults. Press Rebuild or load a starter lamp.'); });
     ui.loadScene(scene, restored ? 'Restored your last scene from this browser (localStorage).' : bad ? 'Your saved scene could not be read (' + bad.message + '), so this is the default scene. ' + (bad.kept ? 'The unreadable copy is kept in this browser under “' + bad.key + '”.' : 'It could not be kept: browser storage is full.') : null, true);
-    if (!scene.groups.A.surfaces.length && isPaint(scene.mode)) {
-      // the default solver is a worker solver that arrives with the bundle: wait for it (restore() solves after)
-      const waiting = RF.SolverHost && RF.SolverHost.loading() && !RF.Solvers.get(RF.Solvers.wanted(ui.store.scene));
-      if (waiting) ui.store.invalidate(['A']); else if (RF.SolveCache && RF.SolveCache.enabled()) ui.generateA(); else C.regenerateA(ui.store);
-    }
     if (RF.CompareUI) RF.CompareUI.init(ui);
     ui.hist = RF.History.create(100); ui.hist.reset(RF.History.intent(ui.store.scene)); updateUndoButtons();   // history doesn't survive a reload
     ui.setMode(scene.mode, true);

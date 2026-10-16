@@ -162,9 +162,9 @@
   // per-device ray cap (js/gpu-trace.js rayCap): shown only where the device has one; unticking lifts it for this browser
   function capRow(ui) {
     const G = RF.GpuTrace; if (!G) return el('span');
-    const box = el('input', { type: 'checkbox' }), note = el('small', { class: 'ms' }, ''), row = el('label', { class: 'tog', title: 'Phones and small GPUs get a lower ray count than the scene asks for (the page crashed at 500,000 rays on one phone). Untick to trace the full count anyway. Remembered in this browser.' }, box, ' Limit rays to this device ', note);
+    const box = el('input', { type: 'checkbox' }), note = el('small', { class: 'ms' }, ''), row = el('label', { class: 'tog', title: 'Phones and small GPUs get a lower ray count than the scene asks for (the page crashed at 500,000 rays on one phone). Phones always limit automatic traces; use Trace for a larger run after confirmation. On desktop, untick to lift the limit for this browser.' }, box, ' Limit rays to this device ', note);
     let last = null;
-    const say = (rerun) => { const r = G.rayLimit(), eff = r.off ? Infinity : r.cap; row.hidden = !isFinite(r.cap); box.checked = !r.off; note.textContent = isFinite(r.cap) ? (r.off ? 'off' : 'max ' + r.cap.toLocaleString()) + ' · ' + r.why : ''; if (rerun && last !== null && eff !== last) ui.requestRun(false); last = eff; };
+    const say = (rerun) => { const r = G.rayLimit(), eff = r.off && !r.mobile ? Infinity : r.cap; row.hidden = !isFinite(r.cap); box.checked = r.mobile || !r.off; box.disabled = r.mobile; note.textContent = isFinite(r.cap) ? (r.mobile ? 'auto max ' + r.cap.toLocaleString() + ' · Trace asks for more' : r.off ? 'off' : 'max ' + r.cap.toLocaleString()) + ' · ' + r.why : ''; if (rerun && last !== null && eff !== last) ui.requestRun(false); last = eff; };
     box.addEventListener('change', () => { G.setRayCapOff(!box.checked); say(false); last = null; ui.requestRun(false); });
     ui.capRowSay = say; say(false);
     return row;
@@ -537,7 +537,7 @@
   const fmtLm = (lm) => (lm >= 100 ? Math.round(lm) : lm >= 10 ? lm.toFixed(1) : lm.toPrecision(2)) + ' lm';
   const fmtMm2 = (a) => (a >= 100 ? Math.round(a).toLocaleString() : a.toFixed(1)) + ' mm²';
   // the ray cap of this device (js/gpu-trace.js rayCap) cut the scene's ray count: say so
-  const capNote = (extra) => (extra && extra.capped ? ' — capped from ' + extra.capped.asked.toLocaleString() + ' for this device (' + extra.capped.why + '); lift it in Simulation → Advanced' : '');
+  const capNote = (extra) => (extra && extra.capped ? ' — capped from ' + extra.capped.asked.toLocaleString() + ' for this device (' + extra.capped.why + '); use Trace for a larger explicit run (phones ask first); device limit in Simulation → Advanced' : '');
   function renderStats(ui, st, extra) {
     const box = document.getElementById('stats');
     if (!st) { box.innerHTML = '<div class="stat"><b>—</b><span>no run yet</span></div>'; return; }

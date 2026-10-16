@@ -709,7 +709,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
     return { gpu: !!st.limits, limits: st.limits, deviceMemory: n.deviceMemory, mobile };
   }
   // this device's cap, and the user's override (Simulation → Advanced; localStorage flux/rayCap = 'off', per browser)
-  function rayLimit() { const r = rayCap(deviceEnv()); let off = false; try { off = typeof localStorage !== 'undefined' && localStorage.getItem('flux/rayCap') === 'off'; } catch (e) { /* ignore */ } return Object.assign(r, { off }); }
+  function rayLimit() { const r = rayCap(deviceEnv()); let off = false; try { off = typeof localStorage !== 'undefined' && localStorage.getItem('flux/rayCap') === 'off'; } catch (e) { /* ignore */ } return Object.assign(r, { off, mobile: deviceEnv().mobile }); }
   function setRayCapOff(off) { try { localStorage.setItem('flux/rayCap', off ? 'off' : 'on'); } catch (e) { /* ignore */ } }
   const capRays = (n) => { const r = rayLimit(); return r.off ? n : Math.min(n, r.cap); };
   const batchMax = () => rayLimit().batch;
