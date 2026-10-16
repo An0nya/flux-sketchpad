@@ -922,7 +922,9 @@ void main() {
   function frameSources(dist, t) {
     let p = V.p; if (p.src.tiles) p = Object.assign({}, p, { A: p.src.tiles.mountain ? RF.Touge.route(dist,p.lane,!!p.touge) : tileRoute(p.src.tiles.seed, dist) });
     if(p.touge){const world=RF.Touge.world(p,dist,t);return RF.Touge.glareSources(world.objects,dist,world.A);}
-    return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), EYE);
+    // occluders: the whole frame (world + traffic), as the rendered frame sees it, so a car or building between lamp and eye hides the lamp
+    const tauOf = tauFor(V.act, t), occ = p.src.tiles ? tileWorld(V.p, dist, t, tauOf).objects : placedObjects(p, dist, t, tauOf);
+    return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), EYE, occ);
   }
   function exposure(sources) {
     const I = info(), o = I.o;
