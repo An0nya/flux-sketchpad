@@ -148,7 +148,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       let mx = 0, sum = 0, n = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let c = 0; c < 3; c++) { const d = Math.abs(cv[4 * ((H - 1 - y) * W + x) + c] - tm.px[4 * (y * W + x) + c]); mx = Math.max(mx, d); sum += d; n++; }
       return { max: mx, mean: sum / n };
     }, gl);
-    ok('GPU tone map vs Drive.tonemap, glare ' + gl + (gl ? ' (blurred at half size on the GPU: close, not identical)' : ' (no blur: the same 8-bit values, ±1 for the GPU\'s pow rounding; exactly 0 on the Apple GPU)'), !r.skip && (gl === 0 ? r.max <= 1 && r.mean < 0.01 : r.mean < 0.2 && r.max <= 24), JSON.stringify(r));
+    ok('GPU tone map vs Drive.tonemap, glare ' + gl + (gl ? ' (blurred at half size on the GPU: close, not identical)' : ' (no blur: the same 8-bit values, ±1 for the GPU\'s pow rounding, a rare ±2 pixel on the software GPU at some canvas sizes; exactly 0 on the Apple GPU)'), !r.skip && (gl === 0 ? r.max <= 2 && r.mean < 0.001 : r.mean < 0.2 && r.max <= 24), JSON.stringify(r));
   }
   await page.keyboard.press('Escape'); await sleep(500);
   // 8c. US markings (double solid yellow, nothing patterned): the ground has no moving part; the shader takes its no-stripe path

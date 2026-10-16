@@ -38,7 +38,7 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
           return { left: r.left, right: r.right, width: innerWidth, rowHeight: p.getBoundingClientRect().height, spread: Math.max(...c.map((e) => e.top)) - Math.min(...c.map((e) => e.top)), closed: !bar.querySelector('details').open, extraVisible: RF.UI.driveExtras.querySelector('[data-dv=shape]').checkVisibility(), fits: p.scrollWidth <= p.clientWidth + 1, primary: [...p.querySelectorAll('button,input,select')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game) };
         });
         ok('UX1 wrapping primary controls fit, extras collapsed ' + width + (popout ? ' large' : ' inline'), layout.left >= 0 && layout.right <= width && layout.fits && layout.closed && !layout.extraVisible && ['scene','speed','toggle','glare','play'].every((k) => layout.primary.includes(k)), layout);
-        await page.locator('.drive-more > summary').click();
+        await page.locator('.drive-more > summary').click(); await page.waitForTimeout(150);   // the <details> toggle event un-hides the extras a task later
         ok('UX1 More exposes extras ' + width + (popout ? ' large' : ' inline'), await page.locator('[data-dv=shape]').isVisible() && await page.locator('[data-anim=traffic-logic]').isVisible());
         if (shots) await page.screenshot({ path: path.join(shots, width + (popout ? '-large' : '-inline') + '-more.png') });
         await page.locator('.drive-more > summary').click();
