@@ -145,7 +145,13 @@
   }
   function curveSpeed(c) { return Math.abs(c) > 1e-6 ? Math.sqrt(3 / Math.abs(c)) : Infinity; }
   function curvatureAt(src, x, off = 0) {
-    if (!src || !src.tiles) return 0;
+    if (!src) return 0;
+    if (!src.tiles) {
+      // Tiles off: the drive-bar shape arc (V.info.A, a constant bend) is the only road curvature. No shape = straight = 0.
+      const A = V.info && V.info.A; if (!A || !A.R) return 0;
+      const c = (A.dir === 'left' ? 1 : -1) / A.R;
+      return c / (1 - off * c);
+    }
     const tile = (src.tiles.mountain ? RF.Touge.tile : roadTile)(src.tiles.seed, Math.floor(x / TILE_LEN));
     const c = curveSections(tile).find(q => x >= q[0] && x < q[0] + q[1])[2];
     return c / (1 - off * c);
@@ -1323,7 +1329,7 @@ void main() {
     const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveBar.querySelector('.drive-primary'), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
     btn('play', 'Drive / pause: Pause freezes distance and time', () => { const current = S(ui); current.playing = !current.playing; setDV(ui, 'playing', current.playing); });
     // High beam (H key or this button): session state on V, not saved prefs, so it is off on every reload
-    btn('high-beam', 'High beam (H) cycles Off, On, Auto. Auto dips for oncoming headlamps, preceding tail lamps, urban or junction tiles and under 30 km/h, then returns to high after 2 s clear. Off by default; not saved across reloads.', () => cycleHigh(ui), 'high beam');
+    btn('high-beam', 'High beam (H) cycles Off, On, Auto. Auto dips for oncoming headlamps, preceding tail lamps, urban tiles and under 30 km/h, then returns to high after 2 s clear. Off by default; not saved across reloads.', () => cycleHigh(ui), 'high beam');
     document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.bar.hidden && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
     btn('fit-controls', 'Compact spacing for the wrapping drive controls. Off uses wider spacing.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
@@ -1410,18 +1416,18 @@ void main() {
     const A = p.src.tiles ? (p.src.tiles.mountain ? RF.Touge.route(dist, p.lane, false) : tileRoute(p.src.tiles.seed, dist)) : p.A;
     return D.autoHighSense(trafficObjects(p.src, trafficCars(p.src, dist, t), A, Object.assign({}, p, { A })), EYE, { occluders: occ, lane: p.lane });
   }
-  // current or next tile urban or a junction: the sensor's road input
-  function autoUrban(seed, dist) {
-    const k = Math.floor(dist / TILE_LEN);
-    for (const j of [k, k + 1]) { const tile = roadTile(seed, j); if (tile.kind === 'urban' || isJunction(tile)) return true; }
-    return false;
-  }
+  // the sensor's road input: the current tile is an urban tile (junctions do not count). The mountain pass has no
+  // urban tiles, and its seed would otherwise be read through the default road generator, so the pass is excluded.
+  function autoUrban(seed, dist) { return roadTile(seed, Math.floor(dist / TILE_LEN)).kind === 'urban'; }
+  function autoUrbanInput(src, dist) { return !!(src && src.tiles && !src.tiles.mountain && autoUrban(src.tiles.seed, dist)); }
+  // the sensor's speed: the actual car speed when the camera runs (traffic logic, pass); the slider is only the fallback
+  function autoSpeedKmh(st, slider) { return st.camera ? st.camera.v * 3.6 : (+slider || 50); }
   // One Auto step per frame, on the sim clock (st.t). Flips the beam only on a change; the readout is refreshed only then.
   function autoTick(ui, st) {
     const A = V.autoSt || (V.autoSt = { high: true, timer: 0, reason: 'clear' }), o = info().o, p = V.p;
     const dt = V.autoT === undefined ? 0 : Math.min(1, Math.max(0, st.t - V.autoT)); V.autoT = st.t;
     const sense = autoSense(p, st.dist, st.t);
-    D.autoHighStep(A, { oncoming: sense.oncoming, preceding: sense.preceding, urban: !!(p.src.tiles && autoUrban(p.src.tiles.seed, st.dist)), speedKmh: +o.speed || 50 }, dt, { hold: D.AUTO.hold });
+    D.autoHighStep(A, { oncoming: sense.oncoming, preceding: sense.preceding, urban: autoUrbanInput(p.src, st.dist), speedKmh: autoSpeedKmh(st, o.speed) }, dt, { hold: D.AUTO.hold });
     const flipped = A.high !== V.high;
     if (flipped) { V.high = A.high; if (st.game) st.game.highBeam = V.high; prepare(layout()); }
     if (flipped || A.reason !== V.autoShown) { V.autoShown = A.reason; labels(ui); }
@@ -1800,7 +1806,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { laneDistance, laneAdvance, AFS_MAX, AFS_RATE, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { laneDistance, laneAdvance, AFS_MAX, AFS_RATE, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -164,7 +164,7 @@
   const car = (x) => ({ x: x - 2.2, y: 0, hx: 2.2, hy: 0.9 });
   function resolve(g, h, hit, speed, fraction) {
     if (h.resolved) return; h.resolved = true;
-    const highMisuse = !!(g.highBeam && (g.flashes > 0 || ['urban', 'intersection', 't-junction'].includes(RF.DriveAnim.roadTile(g.seed, Math.floor(g.x / 200)).kind)));
+    const highMisuse = !!(g.highBeam && (g.flashes > 0 || (!g.mountain && ['urban', 'intersection', 't-junction'].includes(RF.DriveAnim.roadTile(g.seed, Math.floor(g.x / 200)).kind))));
     const s = score({ hit, speed, fraction, verdict: g.verdict, person: h.kind === 'person', noHiViz: h.noHiViz, jaywalking: h.jaywalking, crosswalk: h.crosswalk, highMisuse });
     g.results.push(Object.assign({ id: h.id, kind: h.kind, hit, speed, reaction: h.reaction, fraction, highBeam: !!g.highBeam, highMisuse }, s));
     if (s.lost || g.results.length >= g.limit) g.done = true;
@@ -194,7 +194,7 @@
   }
   function step(g, dt, lane, p) {
     g.deerBehaviour=RF.Drive.Models.deerEnabled(p);
-    if (g.done) return; g.lane = lane; g.accumulator += dt;
+    if (g.done) return; g.lane = lane; g.mountain = !!(p && p.src && p.src.tiles && p.src.tiles.mountain); g.accumulator += dt;
     while (g.accumulator + 1e-10 >= STEP && !g.done) {
       g.accumulator -= STEP;
       if (g.resume !== null && g.t >= g.resume && !g.brake && (!waitsForLane(g) || laneClear(g))) { if (g.acceleration !== 'gentle') g.v = Math.min(g.speed / 3.6, RF.DriveGame.curveCap(p && p.src, g.x)); g.resume = null; }
