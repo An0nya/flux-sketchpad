@@ -193,9 +193,9 @@ export function objects(renderer, uniforms, onModelsReady) {
       const tieRanks=new Map(),planes=new Map();
       // CPU subtraction retains tiny offsets between otherwise coincident city facades.
       // Preserve that order before converting geometry to float; only axis-aligned box faces share these groups.
-      for(const ob of obs)if(ob.k==='box' && Math.abs(ob.yaw||0)<1e-8){const ranks=[0,0,0,0];tieRanks.set(ob,ranks);for(let face=0;face<4;face++){const center=face<2?ob.x:ob.y,half=face<2?ob.hx:ob.hy,eye=face<2?-2:.37,bound=face%2?half:-half,world=center+bound,key=face+':'+Math.round(world*1e7);if(!planes.has(key))planes.set(key,[]);planes.get(key).push({ob,face,d:Math.abs(bound-(eye-center))});}}
+      for(const ob of obs)if(ob.k==='box' && Math.abs(ob.yaw||0)<1e-8){const ranks=[0,0,0,0];tieRanks.set(ob,ranks);for(let face=0;face<4;face++){const center=face<2?ob.x:ob.y,half=face<2?ob.hx:ob.hy,eye=face<2?(p.eye||[-2,.37,1.2])[0]:(p.eye||[-2,.37,1.2])[1],bound=face%2?half:-half,world=center+bound,key=face+':'+Math.round(world*1e7);if(!planes.has(key))planes.set(key,[]);planes.get(key).push({ob,face,d:Math.abs(bound-(eye-center))});}}
       for(const values of planes.values())if(values.length>1){values.sort((a,b)=>a.d-b.d);values.forEach((v,i)=>tieRanks.get(v.ob)[v.face]=i);}
-      const buckets=new Map(),tanH=Math.tan(p.hfov*Math.PI/360),tanV=tanH*p.h/p.w,eye=[-2,.37,1.2];let count=0;
+      const buckets=new Map(),tanH=Math.tan(p.hfov*Math.PI/360),tanV=tanH*p.h/p.w,eye=p.eye||[-2,.37,1.2];let count=0;
       obs.forEach((ob,index)=>{
         if(!ob.bs){if(ob.k==='rect')ob.bs=[ob.x,ob.y,ob.z,ob.r];else D.boundOf(ob);}const [x,y,z,R]=ob.bs; let dx=x-eye[0],dy=y-eye[1],dz=z-eye[2];
         if(p.touge){const q=new T.Vector3(x,y,z).sub(uniforms.eye.value).applyMatrix3(uniforms.carFromWorld.value);dx=q.x;dy=q.y;dz=q.z;}

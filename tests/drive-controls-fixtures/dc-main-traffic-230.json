@@ -1,0 +1,327 @@
+{
+ "source": "git archive 58bccea js/drive-anim.js (scratch copy, export added)",
+ "lane": 3.5,
+ "cases": [
+  {
+   "config": "density1-both",
+   "opts": {
+    "trafficDensity": 1,
+    "oncoming": true,
+    "preceding": true,
+    "seed": 7,
+    "speed": 50,
+    "safeGap": true,
+    "trafficLogic": false
+   },
+   "dist": 0,
+   "t": 0,
+   "cars": [
+    {
+     "id": "oncoming:0",
+     "kind": "oncoming",
+     "rel": 198.28979159239677,
+     "off": 3.5
+    }
+   ]
+  },
+  {
+   "config": "density1-both",
+   "opts": {
+    "trafficDensity": 1,
+    "oncoming": true,
+    "preceding": true,
+    "seed": 7,
+    "speed": 50,
+    "safeGap": true,
+    "trafficLogic": false
+   },
+   "dist": 777.3,
+   "t": 3.1,
+   "cars": []
+  },
+  {
+   "config": "density1-both",
+   "opts": {
+    "trafficDensity": 1,
+    "oncoming": true,
+    "preceding": true,
+    "seed": 7,
+    "speed": 50,
+    "safeGap": true,
+    "trafficLogic": false
+   },
+   "dist": 5000,
+   "t": 12.7,
+   "cars": [
+    {
+     "id": "oncoming:17",
+     "kind": "oncoming",
+     "rel": 149.55184853739138,
+     "off": 3.5
+    },
+    {
+     "id": "preceding:16",
+     "kind": "preceding",
+     "rel": 89.48556646808174,
+     "off": 0
+    }
+   ]
+  },
+  {
+   "config": "density1-both",
+   "opts": {
+    "trafficDensity": 1,
+    "oncoming": true,
+    "preceding": true,
+    "seed": 7,
+    "speed": 50,
+    "safeGap": true,
+    "trafficLogic": false
+   },
+   "dist": 123.4,
+   "t": 0,
+   "cars": [
+    {
+     "id": "oncoming:0",
+     "kind": "oncoming",
+     "rel": 74.88979159239676,
+     "off": 3.5
+    },
+    {
+     "id": "preceding:0",
+     "kind": "preceding",
+     "rel": 107.87410096582025,
+     "off": 0
+    }
+   ]
+  },
+  {
+   "config": "density1-both",
+   "opts": {
+    "trafficDensity": 1,
+    "oncoming": true,
+    "preceding": true,
+    "seed": 7,
+    "speed": 50,
+    "safeGap": true,
+    "trafficLogic": false
+   },
+   "dist": 2400.5,
+   "t": 8.25,
+   "cars": [
+    {
+     "id": "oncoming:8",
+     "kind": "oncoming",
+     "rel": 98.97851999818022,
+     "off": 3.5
+    }
+   ]
+  },
+  {
+   "config": "density3-both",
+   "opts": {
+    "trafficDensity": 3,
+    "oncoming": true,
+    "preceding": true,
+    "seed": 19,
+    "speed": 50,
+    "safeGap": true,
+    "trafficLogic": false
+   },
+   "dist": 0,
+   "t": 0,
+   "cars": [
+    {
+     "id": "oncoming:0",
+     "kind": "oncoming",
+     "rel": 48.86481680907309,
+     "off": 3.5
+    },
+    {
+     "id": "oncoming:1",
+     "kind": "oncoming",
+     "rel": 147.34778350219128,
+     "off": 3.5
+    },
+    {
+     "id": "preceding:0",
+     "kind": "preceding",
+     "rel": 40.56724026333541,
+     "off": 0
+    },
+    {
+     "id": "preceding:1",
+     "kind": "preceding",
+     "rel": 154.77433196268976,
+     "off": 0
+    }
+   ]
+  },
+  {
+   "config": "density3-both",
+   "opts": {
+    "trafficDensity": 3,
+    "oncoming": true,
+    "preceding": true,
+    "seed": 19,
+    "speed": 50,
+    "safeGap": true,
+    "trafficLogic": false
+   },
+   "dist": 777.3,
+   "t": 3.1,
+   "cars": [
+    {
+     "id": "oncoming:8",
+     "kind": "oncoming",
+     "rel": 30.661889598001267,
+     "off": 3.5
+    },
+    {
+     "id": "oncoming:9",
+     "kind": "oncoming",
+     "rel": 108.54306851908984,
+     "off": 3.5
+    },
+    {
+     "id": "preceding:7",
+     "kind": "preceding",
+     "rel": 30.926371611882473,
+     "off": 0
+    },
+    {
+     "id": "preceding:8",
+     "kind": "preceding",
+     "rel": 101.41007874090633,
+     "off": 0
+    }
+   ]
+  },
+  {
+   "config": "density3-both",
+   "opts": {
+    "trafficDensity": 3,
+    "oncoming": true,
+    "preceding": true,
+    "seed": 19,
+    "speed": 50,
+    "safeGap": true,
+    "trafficLogic": false
+   },
+   "dist": 5000,
+   "t": 12.7,
+   "cars": [
+    {
+     "id": "oncoming:52",
+     "kind": "oncoming",
+     "rel": 79.68066975112197,
+     "off": 3.5
+    },
+    {
+     "id": "oncoming:53",
+     "kind": "oncoming",
+     "rel": 202.4908430279338,
+     "off": 3.5
+    },
+    {
+     "id": "preceding:49",
+     "kind": "preceding",
+     "rel": 106.87288484639612,
+     "off": 0
+    },
+    {
+     "id": "preceding:50",
+     "kind": "preceding",
+     "rel": 164.88583556014237,
+     "off": 0
+    }
+   ]
+  },
+  {
+   "config": "density3-both",
+   "opts": {
+    "trafficDensity": 3,
+    "oncoming": true,
+    "preceding": true,
+    "seed": 19,
+    "speed": 50,
+    "safeGap": true,
+    "trafficLogic": false
+   },
+   "dist": 123.4,
+   "t": 0,
+   "cars": [
+    {
+     "id": "oncoming:1",
+     "kind": "oncoming",
+     "rel": 23.94778350219127,
+     "off": 3.5
+    },
+    {
+     "id": "oncoming:2",
+     "kind": "oncoming",
+     "rel": 139.01991447284817,
+     "off": 3.5
+    },
+    {
+     "id": "preceding:1",
+     "kind": "preceding",
+     "rel": 31.37433196268975,
+     "off": 0
+    },
+    {
+     "id": "preceding:2",
+     "kind": "preceding",
+     "rel": 110.95513132251801,
+     "off": 0
+    },
+    {
+     "id": "preceding:3",
+     "kind": "preceding",
+     "rel": 198.4281463347376,
+     "off": 0
+    }
+   ]
+  },
+  {
+   "config": "density3-both",
+   "opts": {
+    "trafficDensity": 3,
+    "oncoming": true,
+    "preceding": true,
+    "seed": 19,
+    "speed": 50,
+    "safeGap": true,
+    "trafficLogic": false
+   },
+   "dist": 2400.5,
+   "t": 8.25,
+   "cars": [
+    {
+     "id": "oncoming:25",
+     "kind": "oncoming",
+     "rel": 41.09461951969797,
+     "off": 3.5
+    },
+    {
+     "id": "oncoming:26",
+     "kind": "oncoming",
+     "rel": 113.0393923396864,
+     "off": 3.5
+    },
+    {
+     "id": "oncoming:27",
+     "kind": "oncoming",
+     "rel": 226.1982294262075,
+     "off": 3.5
+    },
+    {
+     "id": "preceding:24",
+     "kind": "preceding",
+     "rel": 127.02619922316308,
+     "off": 0
+    }
+   ]
+  }
+ ]
+}

@@ -68,7 +68,7 @@ export function create(canvas, gl, onModelsReady) {
       if (parts.length > 16) throw Error('too many route parts'); set('nPart', parts.length);
       parts.forEach(({ s, len, c, q }, i) => { u.part.value[i].set(q.p[0], q.p[1], Math.atan2(q.t[1], q.t[0]), c); u.partShape.value[i].set(s, len, 0, 0); });
     }
-    u.eye.value.fromArray([-2,.37,1.2]);
+    u.eye.value.fromArray(p.eye || [-2,.37,1.2]);
     if (p.touge) {
       const a = globalThis.RF.Touge.attitude(dist), [f,l,n] = [a.forward,a.left,a.up];
       u.worldFromCar.value.set(f[0],l[0],n[0],f[1],l[1],n[1],f[2],l[2],n[2]); u.carFromWorld.value.copy(u.worldFromCar.value).transpose();
