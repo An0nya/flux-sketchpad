@@ -15,7 +15,7 @@
 (function (root) {
   'use strict';
   const RF = root.RF || (root.RF = {}), D = RF.Drive;
-  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, MAX_SIM = 1600, HEAVY_SIM = { forest: 960, city: 960 }, ANIM_SCENES = { road: 1, forest: 1, city: 1, intersection: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
+  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, ANIM_SCENES = { road: 1, forest: 1, city: 1, intersection: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
   // Traffic-car window (m), owner option 'trafficRange'. CULL above is still the window for scenery, street lamps, crossings and actors.
   const TRAFFIC_RANGES = [230, 400, 600, 800], trafficCullOf = (v) => (TRAFFIC_RANGES.includes(+v) ? +v : 400);
   // The camera eye: the fixed EYE, or the dolly-moved eye that rides on the frame (drive.js eyeFor). Every consumer goes through here.
@@ -935,7 +935,22 @@ void main() {
 
   // ---------------------------------------------------------------- the view: state, canvas, loop
   // Scale is separate from samples per pixel. pinSS freezes both for reproducible comparisons.
-  const RES_SCALES = [1, 0.85, 0.7, 0.55, 0.4];
+  // Resolution selector: the sim width ceiling is the level picked in the drive controls (the same for every scene and mode).
+  // Min fps replaces the frame-time target: frameTargetMs = 1000 / minFps, so the old stored frameTargetMs still means something.
+  const SIM_CEILINGS = { low: 640, medium: 960, high: 1600, ultra: 2560, native: 3840 }, MIN_FPS = [20, 30, 45, 60];
+  function simCeiling(o) { return (o && SIM_CEILINGS[o.simCeiling]) || SIM_CEILINGS.high; }
+  function nearestMinFps(ms) { const fps = 1000 / ms; return MIN_FPS.reduce((a, b) => Math.abs(b - fps) < Math.abs(a - fps) ? b : a); }
+  // stored settings: a stored minFps wins; else an old stored frameTargetMs (ms) becomes the nearest choice; else 30
+  function fpsSettings(o) {
+    const fps = o && MIN_FPS.includes(+o.minFps) ? +o.minFps : o && +o.frameTargetMs > 0 ? nearestMinFps(+o.frameTargetMs) : 30;
+    return { minFps: fps, frameTargetMs: 1000 / fps };
+  }
+  // sim size for a canvas cssW css px wide at dpr: min(ceiling, backing width), floored at MIN_SIM, then the dynamic scale; even sizes
+  function simSize(ceiling, cssW, dpr, scale) {
+    const baseW = Math.max(MIN_SIM, Math.min(ceiling, Math.round(cssW * dpr))) & ~1, W = Math.max(160, Math.round(baseW * scale)) & ~1;
+    return { baseW, W, H: Math.round(W * 9 / 16) & ~1 };
+  }
+  const RES_SCALES = [1, 0.85, 0.7, 0.55, 0.4, 0.3];
   const BOUNCE_MS = 30000, HOLD_MS = 30000, HOLD_MAX_MS = 240000;       // a step-down within BOUNCE_MS of a step-up doubles the wait before the next step-up (30 s, 60 s .. 240 s); BOUNCE_MS without a bounce resets it
   const resolutionState = () => ({ scale: 1, index: 0, slow: 0, fast: 0, cooldown: 0, average: 0, clock: 0, upAt: -1e9, holdUntil: 0, hold: 0 });
   function resolutionStep(state, ms, opts) {
@@ -995,9 +1010,11 @@ void main() {
 
   function size() {                                           // → { cssW, cssH, dpr, W, H } for the container the canvas lives in
     const par = V.canvas.parentElement, bw = par.clientWidth, bh = par.clientHeight, dpr = Math.min(2, root.devicePixelRatio || 1);
-    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16, baseW = Math.max(MIN_SIM, Math.min(V.three && V.info && V.info.o.mountainPass ? MAX_SIM : V.info && (V.info.o.tiles || (V.info.o.wet && V.info.o.wetSheen)) ? 640 : V.info && HEAVY_SIM[V.info.o.scene] || MAX_SIM, Math.round(cssW * dpr))) & ~1,       // TG GPU pass uses native resolution; existing dynamic tiles redraw the ground at 640 px; forest/city otherwise use their existing cap (canvas size unchanged)
-       scale = V.info && V.info.o.dynamicResolution && !V.pinSS ? (V.resolution || resolutionState()).scale : 1, W = Math.max(160, Math.round(baseW * scale)) & ~1, H = Math.round(W * 9 / 16) & ~1;
-    return { cssW, cssH, dpr, W, H, baseW, scale, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
+    // the sim width ceiling is the owner's selected level, the same for every scene and mode (it used to be a per-scene cap: 640 tiles/wet, 960 forest/city, 1600 otherwise)
+    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16;
+    const scale = V.info && V.info.o.dynamicResolution && !V.pinSS ? (V.resolution || resolutionState()).scale : 1;
+    const sim = simSize(simCeiling(V.info && V.info.o), cssW, dpr, scale);
+    return { cssW, cssH, dpr, W: sim.W, H: sim.H, baseW: sim.baseW, scale, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
   }
   function ensureCanvas() {
     if (V.lost || V.glFailed) return false;
@@ -1085,7 +1102,7 @@ void main() {
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high]);     // V.high: the switch changes the lamp table, so the cached ground and picture rows are rebuilt
+    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high]);     // V.high: the switch changes the lamp table, so the cached ground and picture rows are rebuilt
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
@@ -1360,8 +1377,13 @@ void main() {
     btn('fps-counter', 'Small frame-rate badge; no sampled trace profiling.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'FPS');
     btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
-    const target = E('input', { type: 'number', min: 16, max: 200, step: 1, 'data-anim': 'frame-target', 'aria-label': 'Frame target (ms)', title: 'Dynamic resolution target, milliseconds per frame', class: 'anim-seed' });
-    target.addEventListener('change', () => setDV(ui, 'frameTargetMs', Math.max(16, Math.min(200, +target.value || 33)))); bar.append(target);
+    // the resolution ceiling: the sim width every scene and mode may use (the canvas stays css x dpr). Dynamic resolution steps down from it.
+    const resSel = E('select', { 'data-anim': 'resolution', 'aria-label': 'Resolution ceiling', title: 'Simulated image width ceiling, the same for every scene and mode: Low 640, Medium 960, High 1600, Ultra 2560, Native up to the canvas width (3840 max). Dynamic resolution steps down from this.' });
+    for (const [value, label] of [['low', 'Low 640'], ['medium', 'Medium 960'], ['high', 'High 1600'], ['ultra', 'Ultra 2560'], ['native', 'Native (canvas, max 3840)']]) resSel.append(E('option', { value }, label));
+    resSel.addEventListener('change', () => setDV(ui, 'simCeiling', resSel.value)); bar.append(resSel);
+    const minFps = E('select', { 'data-anim': 'min-fps', 'aria-label': 'Minimum frame rate for dynamic resolution', title: 'Dynamic resolution: step the scale down to hold this many frames per second, back up with headroom' });
+    for (const fps of MIN_FPS) minFps.append(E('option', { value: String(fps) }, 'min ' + fps + ' fps'));
+    minFps.addEventListener('change', () => { const f = fpsSettings({ minFps: +minFps.value }); setDV(ui, 'frameTargetMs', f.frameTargetMs); setDV(ui, 'minFps', f.minFps); }); bar.append(minFps);
     V.fpsLab = E('output', { class: 'drive-fps', 'data-anim': 'fps-readout', 'aria-live': 'off', hidden: '' });
     V.perfLab = E('output', { class: 'drive-perf', 'data-anim': 'perf-readout', 'aria-live': 'off', hidden: '' });
     btn('tile-cache', 'Reuse beam-lit ground samples across route tiles. Moving markings, grain and street lights still update each frame. Animation with tiles only.', () => setDV(ui, 'tileCache', !info().o.tileCache), 'cache ground');
@@ -1459,7 +1481,8 @@ void main() {
     hb.textContent = mode === 'auto' ? 'high beam: auto (' + (V.autoSt ? V.autoSt.reason : 'clear') + ')' : 'high beam: ' + mode;
     for (const [name, key] of [['telephoto-dolly', 'dolly'], ['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
     V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
-    V.bar.querySelector('[data-anim="frame-target"]').value = o.frameTargetMs || 33;
+    V.bar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
+    V.bar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
     for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
     V.bar.hidden = !(sup && (st.view === 'anim' || st.popout));
@@ -1789,7 +1812,7 @@ void main() {
     const t = V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); iv.sort((a, b) => a - b);
     const med = iv.length ? iv[iv.length >> 1] : 0, c = V.cpu;
     const all = V.profiles || [], recent = all.filter((r) => r.at >= (all.length ? all[all.length - 1].at : 0) - 1000);
-    return { swivel: V.p && V.p.yaw || 0, cornering: V.p ? [V.p.cornerLeft || 0, V.p.cornerRight || 0] : [0,0], renderer: V.three ? 'three' : 'cpu', mountain: V.p && V.p.touge ? RF.Touge.attitude(S(V.ui).dist) : null, pitch: V.p && V.p.pitch || 0, acceleration: V.ui && S(V.ui).acceleration || 0, gpuFailure: V.gpuFailure || '', profiling: profileOn(), renderScale: V.renderScale || 1, resolution: V.resolution || resolutionState(), frameTargetMs: V.info && V.info.o.frameTargetMs || 33, breakdown: breakdown(recent), breakdownMean: breakdown(all), lastFrame: all.length ? all[all.length - 1] : null, white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
+    return { swivel: V.p && V.p.yaw || 0, cornering: V.p ? [V.p.cornerLeft || 0, V.p.cornerRight || 0] : [0,0], renderer: V.three ? 'three' : 'cpu', mountain: V.p && V.p.touge ? RF.Touge.attitude(S(V.ui).dist) : null, pitch: V.p && V.p.pitch || 0, acceleration: V.ui && S(V.ui).acceleration || 0, gpuFailure: V.gpuFailure || '', profiling: profileOn(), renderScale: V.renderScale || 1, resolution: V.resolution || resolutionState(), simCeiling: simCeiling(V.info && V.info.o), minFps: V.info && V.info.o.minFps || 30, frameTargetMs: V.info && V.info.o.frameTargetMs || 33, breakdown: breakdown(recent), breakdownMean: breakdown(all), lastFrame: all.length ? all[all.length - 1] : null, white: V.white, frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, workerRestarts: Wk.restarts, contextLost: !!V.lost, contextFailed: !!V.glFailed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
   }
   function breakdown(samples) {
     const rows = samples || [], n = rows.length, mean = (key) => n ? rows.reduce((s, r) => s + (r[key] || 0), 0) / n : 0, frameMs = mean('frameMs'), components = {};
@@ -1810,7 +1833,7 @@ void main() {
     if (V.fpsLab && V.info && V.info.o.fpsCounter) V.fpsLab.textContent = Math.round(stats().fps) + ' fps';
     if (!V.perfLab || !profileOn()) return;
     const s = stats(), b = s.breakdown, c = b.components, ms = (k) => c[k].ms.toFixed(1), scope = s.workers ? 'worker CPU sum' : 'CPU';
-    V.perfLab.textContent = s.fps.toFixed(1) + ' fps · p95 ' + s.p95Ms.toFixed(1) + ' ms · scale ' + s.renderScale.toFixed(2) + ' · SS ' + s.ss + '\n' +
+    V.perfLab.textContent = s.fps.toFixed(1) + ' fps · p95 ' + s.p95Ms.toFixed(1) + ' ms · ceiling ' + s.simCeiling + ' · scale ' + (s.resolution ? s.resolution.scale : 1).toFixed(2) + ' · sim ' + (s.sim ? s.sim.join('×') : '–') + ' · min ' + s.minFps + ' fps · SS ' + s.ss + '\n' +
       'frame ' + b.frameMs.toFixed(1) + ' · main ' + b.mainMs.toFixed(1) + ' · worker RT ' + ms('workerRoundTripMs') + ' ms\n' +
       scope + ' ≈ object/rays ' + ms('objectMs') + ' · ground ' + ms('groundMs') + ' · wet ' + ms('wetMs') + ' · worker setup/pack ' + ms('workerOtherMs') + ' ms\n' +
       'cache ' + b.cache.hits + ' hit / ' + b.cache.misses + ' miss · upload ' + ms('uploadMs') + ' ms\n' +
@@ -1824,7 +1847,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { laneDistance, laneAdvance, AFS_MAX, AFS_RATE, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

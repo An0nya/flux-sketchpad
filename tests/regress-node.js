@@ -1068,6 +1068,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   require('./ped-cross.js').run(RF, ok);
   require('./deer-alert.js').run(RF, ok);
   require('./gr-robust.js').run(RF, ok);
+  require('./resolution.js').run(RF, ok);
   require('./p2-drive-lighting.js').run(RF, ok);
   // UX2: an old saved FPS preference must not enable the full trace profiler.
   {
