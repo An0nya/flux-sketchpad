@@ -106,6 +106,22 @@ function run(RF, ok) {
   }
   ok('PP2 pass: mesh car body within 5 cm of the lamp/road frame at every 40 m of the lap', fixedWorst < 0.05, 'worst ' + fixedWorst.toFixed(4) + ' m');
   ok('PP2 control: the pre-fix projection (no carFromWorld) FAILS that 5 cm check', brokenWorst >= 0.05, 'pre-fix worst ' + brokenWorst.toFixed(3) + ' m');
+  // 7. PP2c: a detailed deer's eyes lift with its body, so the rigid eye-to-body height holds on a cliff verge and on the crest.
+  // The pre-fix control lifts each eye at its own terrain sample (no surfaceAnchor): it must fail the 5 cm check.
+  const eyeErr = (dist, off, preFix) => {
+    const A = P.route(dist, 3.5, true), K = D.kit({ Lw: 3.5, A, rand: D.rng(701) });
+    K.deer(60, off, { id: 'probe:' + dist });
+    const local = D.Models.actors(K.O.map(o => ({ ...o })), true);
+    const eyesT = local.filter(o => o.k === 'disc' && o.mat === 'eyeshine'), sdfT = local.find(o => o.k === 'sdf');
+    const lifted = local.map(o => P.lift(preFix ? { ...o, surfaceAnchor: undefined } : o, A));
+    const sdfL = lifted.find(o => o.k === 'sdf'), eyesL = lifted.filter(o => o.k === 'disc' && o.mat === 'eyeshine');
+    return Math.max(...eyesL.map((e, i) => Math.abs((e.z - sdfL.z) - (eyesT[i].z - sdfT.z))));
+  };
+  const cliffOff = 1.5 * 3.5 + 3.5;
+  let eyeFixed = 0, eyeBroken = 0;
+  for (const dist of [0, 40, 120, 240, 320, 560, 720, 880, 1000]) { eyeFixed = Math.max(eyeFixed, eyeErr(dist, cliffOff, false)); eyeBroken = Math.max(eyeBroken, eyeErr(dist, cliffOff, true)); }
+  ok('PP2c deer eyes: rigid with the body on the cliff verge (<5 cm at 9 distances)', eyeFixed < 0.05, 'worst ' + (eyeFixed * 100).toFixed(2) + ' cm');
+  ok('PP2c control: per-eye terrain lift (pre-fix) FAILS that check', eyeBroken >= 0.05, 'pre-fix worst ' + (eyeBroken * 100).toFixed(1) + ' cm');
 }
 
 module.exports = { run };

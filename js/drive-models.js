@@ -139,7 +139,7 @@
       if(!ob.detail)continue;const m=build(ob.detail.kind,{...ob.detail,x:ob.detail.x,y:ob.detail.y,gameHazard:ob.gameHazard});out.push(m);
       // Behavioural pupil: tuned 13 mm diameter; legacy keeps its 13 mm radius.
       // cos^8 incidence acceptance is tuning (half power ~23.5 degrees), not calibrated biology.
-      for(const e of m.eyes)out.push({k:'disc',x:e[0],y:e[1],z:e[2],r:m.attention?.0065:.013,nx:m.eyeNormal?m.eyeNormal[0]:-Math.cos(ob.detail.yaw),ny:m.eyeNormal?m.eyeNormal[1]:-Math.sin(ob.detail.yaw),nz:0,eyeFalloff:m.attention?8:0,sub:true,mat:'eyeshine',cls:'deer',gameHazard:ob.gameHazard});
+      for(const e of m.eyes)out.push({k:'disc',x:e[0],y:e[1],z:e[2],r:m.attention?.0065:.013,nx:m.eyeNormal?m.eyeNormal[0]:-Math.cos(ob.detail.yaw),ny:m.eyeNormal?m.eyeNormal[1]:-Math.sin(ob.detail.yaw),nz:0,eyeFalloff:m.attention?8:0,sub:true,mat:'eyeshine',cls:'deer',gameHazard:ob.gameHazard,surfaceAnchor:[ob.detail.x,ob.detail.y]});   // pass: lift the eye with the deer's body, not with the terrain under the eye (touge lift)
     }
     return out;
   }
