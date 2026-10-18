@@ -18,7 +18,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForFunction(() => { const u = RF.UI; return u.store.scene.mode === 'D' && !u.solving && u.run && u.run.ctx.done && u.spec && u.spec.ctx === u.run.ctx && u.spec.full && u.spec.ev; }, null, { timeout: 180000 });
     await page.evaluate(() => RF.UI.setDisplay('drive')); await sleep(1000);
     const saved = await page.evaluate(() => RF.State.serialize(RF.UI.store.scene));
-    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { seed: 7, trafficDensity: 2, glare: 0.3, mt: true }); Object.assign(RF.UI.dvAnim, { view: 'anim', playing: false, popout: false, dist: 0, total: 0, t: 0 }); RF.UI.redrawSpec(); }); await sleep(700);
+    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { seed: 7, trafficDensity: 2, glare: 0.3, mt: true, gpuRenderer: false }); Object.assign(RF.UI.dvAnim, { view: 'anim', playing: false, popout: false, dist: 0, total: 0, t: 0 }); RF.UI.redrawSpec(); }); await sleep(700);
     await page.click('[data-dv="oncoming"]'); await page.click('[data-dv="preceding"]'); await sleep(700);
     const toggles = await page.evaluate(() => { const D = RF.DriveAnim, s = RF.UI.dvAnim; return { cars: D.trafficCars(D._.V.src, s.dist, s.t), pressed: ['oncoming', 'preceding'].every((k) => document.querySelector('[data-dv="' + k + '"]').getAttribute('aria-pressed') === 'true'), emit: D.placedObjects(D._.V.p, s.dist, s.t).filter((o) => o.traffic && o.emit).map((o) => o.emit) }; });
     ok('existing toolbar buttons add both traffic lanes and their emitters while paused', toggles.pressed && toggles.cars.some((c) => c.kind === 'oncoming') && toggles.cars.some((c) => c.kind === 'preceding') && toggles.emit.length >= 4, JSON.stringify(toggles.cars));

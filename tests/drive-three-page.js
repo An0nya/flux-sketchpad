@@ -32,7 +32,7 @@
     ok('P1 RF.UI and expected port',!!RF.UI && location.port===String(port));
     if(location.port!==String(port))throw Error('wrong page port');
     const u=await ready(),D=RF.DriveAnim,a=D._;
-    ok('P1 GPU renderer defaults off',u.dvOpts.gpuRenderer===false);
+    ok('P1 GPU renderer defaults on (GI1)',u.dvOpts.gpuRenderer===true);
     a.V.pinSS=1;Object.assign(u.dvOpts,{mt:false,tex:false,dynamicResolution:false,fpsCounter:false,trafficLogic:false,trafficDensity:1,speed:50,oncoming:true,preceding:true,wild:true});
     D.openPop(u);Object.assign(a.V.popStage.style,{position:'fixed',left:'0',top:'90px',width:'1280px',height:'720px'});
     await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);
@@ -64,7 +64,12 @@
     ok('P1 toggle remembered with drive settings',JSON.parse(localStorage.getItem('flux/driveView')).gpuRenderer===true);
     const original=a.V.three.render;a.V.three.render=()=>{throw Error('P1 injected shader failure');};a.frame();
     ok('P1 shader failure falls back to CPU with notice',D.stats().renderer==='cpu'&&/P1 injected/.test(D.stats().gpuFailure)&&/CPU/.test(a.V.why));
-    await select(false);await select(true);
+    // GI1: the failed drive must draw the CPU frame, and the toggle must show off with the failed flag.
+    const failedFrame=a.readCanvas(),failedButton=document.querySelector('[data-anim=gpu-renderer]'),failedPressed=failedButton.getAttribute('aria-pressed'),failedFlag=failedButton.hasAttribute('data-failed');
+    await select(false);const cpuRef=a.readCanvas();
+    ok('P1 failed GPU draws the CPU frame',failedFrame.length===cpuRef.length&&failedFrame.some(v=>v>0)&&failedFrame.every((v,i)=>v===cpuRef[i]),{length:failedFrame.length});
+    ok('P1 failed GPU toggle shows off and data-failed',failedPressed==='false'&&failedFlag,{pressed:failedPressed,failed:failedFlag});
+    await select(true);
     // Actual Play path, then a fixed nearby hazard for a repeatable lit-body assertion.
     a.toggleGame(u);document.querySelector('[data-game=start]').click();u.dvAnim.playing=false;u.redrawSpec();
     await new Promise(requestAnimationFrame);const g=u.dvAnim.game;g.next=1000;g.hazards=[{id:1,born:g.t,kind:'deer',s0:g.x+18,off0:0,ds:0,doff:0,spd:0,len:0,delay:0,side:-1,crosswalk:false,noHiViz:false,jaywalking:false,lit:null,reaction:null,resolved:false}];g.spawned=1;delete g.pauseAt;a.frame();

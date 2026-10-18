@@ -21,7 +21,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const frames = () => page.evaluate(() => RF.UI.dvAnimFrames || 0);
   const advances = async (ms) => { const a = await frames(); await sleep(ms); return (await frames()) - a; };
   const wk = () => page.evaluate(() => ({ n: RF.DriveAnim._.Wk.list.length, fail: RF.DriveAnim.stats().mtFail, pressed: document.querySelector('[data-anim="c-mt"]').getAttribute('aria-pressed') }));
-  await page.evaluate(() => { RF.UI.dvOpts.glare = 0; RF.UI.dvOpts.mt = true; RF.UI.dvOpts.tiles = false; RF.UI.dvAnim = { view: 'anim', playing: true, popout: false, dist: 0, total: 0, t: 0 }; RF.UI.redrawSpec(); });
+  await page.evaluate(() => { RF.UI.dvOpts.glare = 0; RF.UI.dvOpts.mt = true; RF.UI.dvOpts.gpuRenderer = false; RF.UI.dvOpts.tiles = false; RF.UI.dvAnim = { view: 'anim', playing: true, popout: false, dist: 0, total: 0, t: 0 }; RF.UI.redrawSpec(); });
   // 1. playing: workers start, frames are drawn from their rows
   await page.waitForFunction(() => RF.DriveAnim._.Wk.list.length > 0, null, { timeout: 20000 }); await sleep(2500);
   const w1 = await wk(), adv = await advances(2500);

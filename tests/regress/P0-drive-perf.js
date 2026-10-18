@@ -16,7 +16,7 @@ const ok = (n,c,d) => { console.log((c?'[PASS] ':'[FAIL] ')+n+(d?' — '+JSON.st
     await page.waitForFunction(()=>!RF.UI.solving,null,{timeout:180000});
     await page.evaluate(s=>{RF.UI.loadScene(RF.State.deserialize(s),'P0 fixture');RF.UI.setMode('D');},fs.readFileSync(path.join(__dirname,'../fixtures/MG2-default-lamp.json'),'utf8'));
     await page.waitForFunction(()=>{const u=RF.UI;return !u.solving&&u.run&&u.run.ctx.done&&u.spec&&u.spec.ctx===u.run.ctx&&u.spec.full&&u.spec.ev;},null,{timeout:180000});
-    await page.evaluate(()=>{const u=RF.UI;u.setDisplay('drive');u.setPane('result','activate');Object.assign(u.dvAnim||(u.dvAnim={}),{view:'anim',playing:false});Object.assign(u.dvOpts,{mt:false,scene:'city',wet:true,wetSheen:true,oncoming:true,preceding:true,trafficLogic:true});u.redrawSpec();document.querySelector('.drive-more').open=true;RF.DriveAnim._.V.pinSS=1;});
+    await page.evaluate(()=>{const u=RF.UI;u.setDisplay('drive');u.setPane('result','activate');Object.assign(u.dvAnim||(u.dvAnim={}),{view:'anim',playing:false});Object.assign(u.dvOpts,{mt:false,gpuRenderer:false,scene:'city',wet:true,wetSheen:true,oncoming:true,preceding:true,trafficLogic:true});u.redrawSpec();document.querySelector('.drive-more').open=true;RF.DriveAnim._.V.pinSS=1;});
     ok('P0 defaults off, min 30 fps (33.3 ms target), ceiling High',await page.evaluate(()=>!RF.UI.dvOpts.fpsCounter&&!RF.UI.dvOpts.dynamicResolution&&RF.UI.dvOpts.minFps===30&&Math.abs(RF.UI.dvOpts.frameTargetMs-1000/30)<1e-9&&RF.UI.dvOpts.simCeiling==='high'));
     await page.locator('[data-anim=fps-counter]').click();
     ok('P0 counter remembered in drive preferences',await page.evaluate(()=>RF.UI.dvOpts.fpsCounter&&JSON.parse(localStorage.getItem('flux/driveView')).fpsCounter));

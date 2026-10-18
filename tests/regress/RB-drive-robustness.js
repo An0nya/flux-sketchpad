@@ -43,7 +43,7 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
     await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 180000 });
     await page.evaluate(() => { RF.SolverHost.setRecovery(true); RF.UI.setMode('D'); });
     await page.waitForFunction(() => { const ui = RF.UI; return !ui.solving && ui.run && ui.run.ctx.done && ui.spec && ui.spec.ctx === ui.run.ctx && ui.spec.full && ui.spec.ev; }, null, { timeout: 180000 });
-    await page.evaluate(() => { RF.UI.setDisplay('drive'); Object.assign(RF.UI.dvOpts, { scene: 'road', fitControls: true, largeCard: true, mt: true }); RF.UI.redrawSpec(); });
+    await page.evaluate(() => { RF.UI.setDisplay('drive'); Object.assign(RF.UI.dvOpts, { scene: 'road', fitControls: true, largeCard: true, mt: true, gpuRenderer: false }); RF.UI.redrawSpec(); });
     await page.evaluate(() => { const a = RF.DriveAnim._; a.S(RF.UI).view = 'anim'; a.S(RF.UI).playing = false; a.V.pinSS = 1; RF.UI.redrawSpec(); });
     const hasGL = await page.evaluate(() => !!RF.DriveAnim._.V.gl);
     ok('RB Drive has WebGL2 float targets (required for these loss tests)', hasGL);
