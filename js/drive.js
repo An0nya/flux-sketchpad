@@ -469,7 +469,7 @@
   // Auto high beam (AH). Camera-sensor style: what the sensor sees in the frame decides, a hold timer brings the high beam back.
   // Tuning values (not survey data): 400 m / 20 deg for oncoming headlamps, 200 m for preceding tail lamps in our lane or the next,
   // 30 km/h, 2 s hold before returning to high. The sensor and the step are pure, so the node test drives them directly.
-  const AUTO = { onRange: 400, onCone: 20, preRange: 200, slowKmh: 30, hold: 2 };
+  const AUTO = { onRange: 160, onCone: 20, preRange: 100, slowKmh: 30, hold: 1 };
   // Camera eye. The fixed eye is the default. Telephoto dolly (opt-in): a horizontal FOV under 60 deg moves the eye back along the heading so a
   // subject 20 m away keeps its size: back = 20 m × (tan 30° / tan(fov/2) − 1). Dolly off, or 60 deg and wider: exactly the fixed eye.
   const EYE = [-2.0, 0.37, 1.2], DOLLY_REF = 20;

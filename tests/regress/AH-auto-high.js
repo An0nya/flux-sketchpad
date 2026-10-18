@@ -17,7 +17,7 @@ const SIM_STEP = 0.5, SIM_TOTAL = 60;
     page.on('pageerror', (e) => errors.push(String(e.stack || e).split('\n').slice(0, 3).join(' | ')));
     page.on('console', (m) => { if (m.type() === 'error' && !/favicon/i.test(m.text())) errors.push(m.text()); });
     // rural road (no tiles), oncoming traffic on, no preceding traffic, CPU renderer, animation paused so the test drives the clock
-    await page.addInitScript(() => { localStorage.clear(); localStorage.setItem('flux/driveView', JSON.stringify({ trafficRange: 230, view: 'anim', playing: false, ev: 2.5, seed: 19, glare: 'off', mt: false, wild: false, dynamicResolution: false, gpuRenderer: false, oncoming: true, preceding: false, tiles: false })); });
+    await page.addInitScript(() => { localStorage.clear(); localStorage.setItem('flux/driveView', JSON.stringify({ view: 'anim', playing: false, ev: 2.5, seed: 19, glare: 'off', mt: false, wild: false, dynamicResolution: false, gpuRenderer: false, oncoming: true, preceding: false, tiles: false })); });
     await page.goto('http://127.0.0.1:' + port + '/index.html');
     console.log('[step] page loaded; waiting for solver and loading the MG2 fixture');
     await page.evaluate(async () => {

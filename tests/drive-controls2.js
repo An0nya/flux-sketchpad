@@ -58,7 +58,7 @@ ok('scenery objects identical at 230 m and 800 m (the range is traffic only)', J
 const anim = read('js/drive-anim.js');
 const scenery = ['mid > CULL + 110', 's > CULL', 'ev.s - dist < CULL', 'rel <= CULL', 'rel > CULL) continue;'];
 ok('scenery, lamp, crossing and actor culls still read CULL (text)', scenery.slice(0, 4).every((s) => anim.includes(s)), scenery);
-ok('auto-high sensing range unchanged (400 m)', D.AUTO.onRange === 400);
+ok('auto-high sensing range is 160 m oncoming, 100 m preceding (owner, 2026-10-18)', D.AUTO.onRange === 160 && D.AUTO.preRange === 100);
 
 // 6. telephoto dolly math
 const back = (fov, on) => D.dollyBack(fov, on);

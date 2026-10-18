@@ -1,6 +1,6 @@
 // AH: auto high beam, headless. Node tests/auto-high.js — exits 1 on any failure.
 // Real functions: RF.Drive.autoHighSense (camera sensor, uses occluded) and RF.Drive.autoHighStep (hysteresis state machine).
-// POSITIVE CONTROL: AH_HYST=0 sets the hold to 0 (no hysteresis). The "returns high only after 2 s" check must then FAIL.
+// POSITIVE CONTROL: AH_HYST=0 sets the hold to 0 (no hysteresis). The "returns high only after 1 s" check must then FAIL.
 const { load } = require('./load.js'); const RF = load(); const D = RF.Drive;
 let fails = 0, n = 0; const ok = (name, cond, detail) => { n++; console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : '  — ' + JSON.stringify(detail))); if (!cond) fails++; };
 const EYE = [-2, 0.37, 1.2], DT = 0.05;
@@ -20,16 +20,16 @@ const truck = (x) => ({ k: 'box', x, y: 1.5, z0: 0, z1: 4, hx: 4, hy: 3, yaw: 0,
 const sense = (objs, extra) => D.autoHighSense(objs, EYE, Object.assign({ lane: 3.5 }, extra || {}));
 
 // 1. sensor: what is in view
-ok('sensor: oncoming car at 300 m, in view -> oncoming', sense(oncomingCar(298.01)).oncoming === true);
-ok('sensor: oncoming car at 450 m -> not seen (range 400 m)', sense(oncomingCar(448.01)).oncoming === false);
+ok('sensor: oncoming car at 150 m, in view -> oncoming', sense(oncomingCar(148.01)).oncoming === true);
+ok('sensor: oncoming car at 200 m -> not seen (range 160 m)', sense(oncomingCar(198.01)).oncoming === false);
 ok('sensor: oncoming car 60 m to the side (beyond 20 deg) -> not seen', sense(oncomingCar(60, 60 * Math.tan(30 * Math.PI / 180) + 1.5)).oncoming === false, sense(oncomingCar(60, 60 * Math.tan(30 * Math.PI / 180) + 1.5)));
-ok('sensor: a truck between us and the oncoming car hides it -> not seen', sense([...oncomingCar(298.01), truck(200)]).oncoming === false);
+ok('sensor: a truck between us and the oncoming car hides it -> not seen', sense([...oncomingCar(148.01), truck(100)]).oncoming === false);
 ok('sensor: preceding car at 60 m in our lane -> preceding', sense(precedingCar(58, 0)).preceding === true);
-ok('sensor: preceding car at 260 m (beyond 200 m) -> not preceding', sense(precedingCar(258, 0)).preceding === false);
+ok('sensor: preceding car at 130 m (beyond 100 m) -> not preceding', sense(precedingCar(128, 0)).preceding === false);
 ok('sensor: preceding car two lanes over -> not preceding', sense(precedingCar(58, 8)).preceding === false);
 {
   // the hidden oncoming car behind a truck does not dip, but a visible preceding car does (the brief's combined case)
-  const sc = [...oncomingCar(298.01), truck(200), ...precedingCar(58, 0)], s = sense(sc);
+  const sc = [...oncomingCar(148.01), truck(100), ...precedingCar(58, 0)], s = sense(sc);
   ok('sensor: truck hides oncoming, visible preceding car still counts', s.oncoming === false && s.preceding === true, s);
 }
 
@@ -57,7 +57,7 @@ function timeline(h) {
   // measured from the last frame the car was in view (t = 14.95 s), not from the first clear frame
   const high = log.filter((x) => x.t >= 15 && x.high);
   const back = high.length ? +(high[0].t - 14.95).toFixed(2) : null;
-  ok('returns high only after 2 s with no trigger (2 s hold)', back !== null && back >= 2 - 1e-6 && back <= 2.1, { returnedAfterS: back, hold: stepOpts.hold });
+  ok('returns high only after 1 s with no trigger (1 s hold)', back !== null && back >= 1 - 1e-6 && back <= 1.1, { returnedAfterS: back, hold: stepOpts.hold });
   ok('stays high on an empty road before the car (0 to 5 s)', log.filter((x) => x.t < 5).every((x) => x.high === true));
   ok('reason reads oncoming while dipped', at(10).reason === 'oncoming', at(10));
 }
@@ -81,7 +81,7 @@ for (const [label, inputs, reason] of [
   ok('speed exactly 30 km/h does not dip (below 30 only)', st.high === true, st);
 }
 
-// 4. positive control readout: with AH_HYST=0 the return delay is 0 s, so the 2 s check must fail (exit 1 is the expected result then)
-if (process.env.AH_HYST !== undefined) console.log('[control] hold = ' + hold + ' s (AH_HYST set): expecting the 2 s return check to FAIL');
+// 4. positive control readout: with AH_HYST=0 the return delay is 0 s, so the 1 s check must fail (exit 1 is the expected result then)
+if (process.env.AH_HYST !== undefined) console.log('[control] hold = ' + hold + ' s (AH_HYST set): expecting the 1 s return check to FAIL');
 console.log(fails ? 'auto-high: ' + fails + ' of ' + n + ' checks FAILED' : 'auto-high: all ' + n + ' checks passed');
 process.exitCode = fails ? 1 : 0;
