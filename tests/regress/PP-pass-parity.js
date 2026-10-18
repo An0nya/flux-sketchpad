@@ -5,7 +5,7 @@ const fs = require('fs'), path = require('path'), pw = require(process.env.PLAYW
 const port = +(process.argv[2] || 8942);
 const SHOTS = process.env.PP_SHOTS || '/Users/anya/Projects/flux-sketchpad/.claude/briefs/reports';
 (async () => {
-  const browser = await pw.chromium.launch({ channel: 'chromium' });
+  const browser = await pw.chromium.launch({ channel: 'chromium', args: ['--use-angle=metal'] });
   let fails = 0;
   const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ') + n + (d !== undefined ? ' ' + JSON.stringify(d) : '')); if (!c) fails++; };
   try {
@@ -42,6 +42,7 @@ const SHOTS = process.env.PP_SHOTS || '/Users/anya/Projects/flux-sketchpad/.clau
     await page.evaluate(() => { const { u, A, V } = window.PP; u.dvOpts.detailedModels = true; });
     // Car screenshot (detailed car on the pass).
     await page.screenshot({ path: path.join(SHOTS, 'pp-detailed-car.png') });
+    await page.screenshot({ path: path.join(SHOTS, 'pp-detailed-car-pane.png'), clip: { x: 558, y: 165, width: 720, height: 300 } });
     // Detailed off: primitive cars, no mesh cars.
     await page.evaluate(d => { const { u, A, V } = window.PP; u.dvOpts.detailedModels = false; u.dvAnim.dist = d; u.redrawSpec(); A._.frame(); }, pick.carDist || 0);
     const offState = await page.evaluate(() => RF.DriveAnim._.V.three.modelState());

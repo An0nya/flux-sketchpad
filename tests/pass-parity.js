@@ -72,6 +72,36 @@ function run(RF, ok) {
   ok('PP no lane studs on the pass', studs === 0, 'studs seen ' + studs);
   ok('PP only the two edge lines (no centre line, dashed or yellow)', centre === 0, 'extra markings ' + centre);
   ok('PP traffic cars on the pass exist and every one carries the road normal for the GPU mesh car', cars > 0 && normals === cars, 'cars ' + cars + ', with normal ' + normals);
+
+  // 6. PP2: the GPU mesh car body must be projected in the same car frame as the pass lamps and road (carFromWorld in the shader).
+  // Metric: camera-space up error in metres between the mesh's projection and the primitive (lamp/road) projection of the same car origin.
+  const fsM = require('fs'), pathM = require('path');
+  const meshSrc = fsM.readFileSync(pathM.join(__dirname, '..', 'js', 'drive-three-models.js'), 'utf8');
+  ok('PP2 mesh car vertex shader applies carFromWorld (source guard)', /uniform mat3 carFromWorld/.test(meshSrc) && /vec3 q=carFromWorld\*\(p\.xyz-eye\)/.test(meshSrc));
+  // frame = [f,l,n] (car axes in world); eye = the shader's eye uniform (already rotated into world on the pass).
+  // primitive: q = carFromWorld*(p-eye). mesh: q = carFromWorld*(p-eye) when fixed, p-eye when broken.
+  function offsetAt(points, frame, eye, meshInCarFrame) {
+    const [f, l, n] = frame, MT = [f, l, n];
+    const mul = (v) => MT.map(r => r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
+    let worst = 0;
+    for (const pt of points) {
+      const d = pt.map((v, i) => v - eye[i]), qP = mul(d), qM = meshInCarFrame ? mul(d) : d;
+      worst = Math.max(worst, Math.abs(qM[2] - qP[2]));                         // camera-space up error, metres (how far the body sits off the lamp frame)
+    }
+    return worst;
+  }
+  const flatOff = offsetAt([[40, 1, .5], [90, -2, 1]], [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [-2, .37, 1.2], false);
+  ok('PP2 control: flat scene (carFromWorld = identity) has zero mesh-vs-lamp offset', flatOff === 0, flatOff);
+  let fixedWorst = 0, brokenWorst = 0;
+  for (let d = 0; d < PERIOD; d += 40) {
+    const w = world(pass({ detailed: true }), d, () => -1), a = P.attitude(d), f = a.forward, l = a.left, n = a.up;
+    const eye = [0, 1, 2].map(i => f[i] * -2 + l[i] * .37 + n[i] * 1.2);
+    const pts = w.objects.filter(o => o.traffic && o.detail && o.detail.normal).map(o => [o.detail.x, o.detail.y, o.detail.z]);
+    fixedWorst = Math.max(fixedWorst, offsetAt(pts, [f, l, n], eye, true));
+    brokenWorst = Math.max(brokenWorst, offsetAt(pts, [f, l, n], eye, false));
+  }
+  ok('PP2 pass: mesh car body within 5 cm of the lamp/road frame at every 40 m of the lap', fixedWorst < 0.05, 'worst ' + fixedWorst.toFixed(4) + ' m');
+  ok('PP2 control: the pre-fix projection (no carFromWorld) FAILS that 5 cm check', brokenWorst >= 0.05, 'pre-fix worst ' + brokenWorst.toFixed(3) + ' m');
 }
 
 module.exports = { run };

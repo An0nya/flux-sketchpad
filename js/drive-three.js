@@ -73,7 +73,8 @@ export function create(canvas, gl, onModelsReady) {
       const a = globalThis.RF.Touge.attitude(dist), [f,l,n] = [a.forward,a.left,a.up];
       u.worldFromCar.value.set(f[0],l[0],n[0],f[1],l[1],n[1],f[2],l[2],n[2]); u.carFromWorld.value.copy(u.worldFromCar.value).transpose();
       u.eye.value.applyMatrix3(u.worldFromCar.value); u.lamp.value.forEach((q,i) => { if(i<p.lamps.length)q.applyMatrix3(u.worldFromCar.value); });
-    }
+    } else u.carFromWorld.value.identity();   // flat frames: a pass frame earlier in the session must not leave its rotation behind
+
     set('pitch', p.pitch || 0); set('yaw', p.yaw || 0); u.cornering.value.set(p.cornerLeft || 0,p.cornerRight || 0);
     const traffic = p.trafficBeams ? D.trafficSources(world.objects) : []; set('nTraffic', traffic.length);
     if (traffic.length) {
