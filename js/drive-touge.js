@@ -125,8 +125,9 @@
     const roots = new Map(obs.filter(ob => ob.treeId && ob.detail).map(ob => [ob.treeId,[ob.x,ob.y]]));
     const placed=obs.map(ob => lift(ob.treeId ? {...ob,surfaceAnchor:roots.get(ob.treeId)} : ob, A));
     if(A.touge)trafficLight(placed,A,p);
-    // Edge lines only: owner decision, no centre line (dashed or double yellow) and no lane studs on the pass.
-    return { A, objects: placed, markings: D.laneMarkings(p.lane, { us: p.us }).filter(m => m.mat === 'white-paint' && !m.pat), crossings: [], lights };
+    // Edge lines and the centre line, as the flat scenes draw them (US: double solid or broken yellow; EU: dashed). Pattern positions follow the car like the flat markings do. No lane studs.
+    const marks = D.laneMarkings(p.lane, { us: p.us, broken: !!p.src.tiles.broken });
+    return { A, objects: placed, markings: marks.map(m => m.pat ? { ...m, pat: { ...m.pat, s0: m.pat.s0 - dist, s1: m.pat.s1 - dist } } : m), crossings: [], lights };
   }
   const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0);
   const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];

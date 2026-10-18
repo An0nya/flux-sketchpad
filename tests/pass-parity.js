@@ -6,7 +6,7 @@ function run(RF, ok) {
   const A = RF.DriveAnim, P = RF.Touge, D = RF.Drive;
   const SEED = 7, PERIOD = 1600;
   const pass = (o) => {
-    const src = A.source('road', 3.5, true, { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: true, rpm: true }, { mountainPass: true, streetLamps: o.lamps || 'sodium', seed: SEED, oncoming: true, preceding: true, trafficDensity: 2 });
+    const src = A.source('road', 3.5, true, { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: true, rpm: true }, { mountainPass: true, streetLamps: o.lamps || 'sodium', seed: SEED, oncoming: true, preceding: true, trafficDensity: 2, cline: o.cline });
     return { src, lane: 3.5, us: true, touge: true, lut: D.lutFrom(() => 30000), conv: 'A', look: { RL: 0.2, ambient: 0 }, detailedModels: !!o.detailed, deerBehaviour: !!o.deer, lamps: [[0, 0.7, 0.7]] };
   };
   const world = (p, dist, tauOf) => P.world(p, dist, 0, tauOf);
@@ -64,13 +64,17 @@ function run(RF, ok) {
     const w = world(pass({ detailed: true, deer: true }), d, () => -1);
     people += w.objects.filter(o => o.cls === 'person' || o.detailPart === 'person').length;
     studs += w.objects.filter(o => o.cls === 'rpm').length;
-    centre += w.markings.filter(m => m.pat || m.mat !== 'white-paint').length;
     const tr = w.objects.filter(o => o.traffic && o.detail);
     cars += tr.length; normals += tr.filter(o => o.detail.normal && o.detail.normal.length === 3).length;
   }
   ok('PP no pedestrians anywhere on the pass', people === 0, 'people seen ' + people);
   ok('PP no lane studs on the pass', studs === 0, 'studs seen ' + studs);
-  ok('PP only the two edge lines (no centre line, dashed or yellow)', centre === 0, 'extra markings ' + centre);
+  // Centre line restored (PP2b): US solid = two yellow lines, broken = one dashed yellow line, plus the two white edge lines.
+  const mk = (o) => world(pass(o), 0).markings;
+  const solid = mk({}), brk = mk({ cline: 'broken' });
+  ok('PP centre line: US solid double yellow on the pass', solid.filter(m => m.mat === 'yellow-paint').length === 2 && solid.filter(m => m.mat === 'white-paint' && !m.pat).length === 2, solid.map(m => m.mat).join(','));
+  ok('PP centre line: broken yellow (passing zone) on the pass, with its dash pattern', brk.filter(m => m.mat === 'yellow-paint' && m.pat).length === 1 && brk.filter(m => m.mat === 'white-paint' && !m.pat).length === 2, brk.map(m => m.mat + (m.pat ? '/dash' : '')).join(','));
+  ok('PP centre line: sits on the lane centre (offset Lw/2)', solid.filter(m => m.mat === 'yellow-paint').every(m => Math.abs((m.o0 + m.o1) / 2 - 3.5 / 2) < 0.2), solid.filter(m => m.mat === 'yellow-paint').map(m => ((m.o0 + m.o1) / 2).toFixed(2)).join(','));
   ok('PP traffic cars on the pass exist and every one carries the road normal for the GPU mesh car', cars > 0 && normals === cars, 'cars ' + cars + ', with normal ' + normals);
 
   // 6. PP2: the GPU mesh car body must be projected in the same car frame as the pass lamps and road (carFromWorld in the shader).
