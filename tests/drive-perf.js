@@ -14,7 +14,7 @@ function run(RF, ok) {
   ok('P0 restoration waits for sustained headroom', s.scale === 0.7);
   s = step(s, 10); ok('P0 restores one step after 60 headroom frames', s.scale === 0.85);
   for (let i = 0; i < 500; i++) s = step(s, 100);
-  ok('P0 lower scale bound', s.scale === 0.4);
+  ok('P0 lower scale bound (ladder extended to 0.3 for min-fps mode)', s.scale === 0.3);
   ok('P0 disabling or pinning resets full scale; invalid timings ignored', step(s, 100, { enabled: false }).scale === 1 && step(s, 100, { pinned: true }).scale === 1 && JSON.stringify(step(s, NaN)) === JSON.stringify(s));
   let calm = D.resolutionState(); for (let i = 0; i < 300; i++) calm = step(calm, i % 2 ? 34 : 32);
   ok('P0 target neighbourhood does not oscillate', calm.scale === 1);
@@ -45,7 +45,7 @@ function run(RF, ok) {
   try {
     V.canvas = { parentElement: { clientWidth: 1600, clientHeight: 900 } }; V.info = { o: { scene: 'city', wet: true, wetSheen: true, dynamicResolution: false } }; V.resolution = { scale: 0.4 }; V.pinSS = 0;
     const full = D._.size(); V.info.o.dynamicResolution = true; const small = D._.size(); V.pinSS = 2; const pin = D._.size();
-    ok('P0 actual render scale lowers wet 640 cap; pinSS restores full dimensions', full.W === 640 && small.W === 256 && pin.W === 640 && small.cssW === full.cssW && small.dpr === full.dpr, JSON.stringify({ full, small, pin }));
+    ok('P0 actual render scale lowers the ceiling-limited width (default High 1600, wet no longer capped at 640); pinSS restores full dimensions', full.W === 1600 && small.W === 640 && pin.W === 1600 && small.cssW === full.cssW && small.dpr === full.dpr, JSON.stringify({ full, small, pin }));
   } finally { Object.assign(V, saved); }
 }
 module.exports = { run };
