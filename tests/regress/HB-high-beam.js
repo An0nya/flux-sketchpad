@@ -13,7 +13,7 @@ const gpuOn = process.argv.includes('--gpu-only');
       if (gpuOn && !mode.gpu) continue;
       const page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
       page.on('pageerror', (e) => errors.push(String(e.stack || e).split('\n').slice(0, 3).join(' | '))); page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-      await page.addInitScript((gpu) => { localStorage.clear(); localStorage.setItem('flux/driveView', JSON.stringify({ view: 'anim', playing: false, ev: 2.5, seed: 19, glare: 'off', mt: false, wild: false, dynamicResolution: false, gpuRenderer: gpu })); }, mode.gpu);
+      await page.addInitScript((gpu) => { localStorage.clear(); localStorage.setItem('flux/driveView', JSON.stringify({ view: 'anim', playing: false, ev: 2.5, seed: 19, glare: 'off', mt: false, wild: false, tiles: false, dynamicResolution: false, gpuRenderer: gpu })); }, mode.gpu);
       await page.goto('http://127.0.0.1:' + port + '/index.html');
       console.log('[step] page loaded; waiting for solver and loading the MG2 fixture');
       // same startup as UX2 ready(): wait for the solver, load the fixture, enter Drive, wait for the trace, show the drive display

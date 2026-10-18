@@ -20,7 +20,7 @@ async function frameOf(browser, p, cct) {
     if (!u.spec || !u.spec.full || u.needCompile) throw Error('No completed real lamp');
     await new Promise((r) => setTimeout(r, 500)); u.setDisplay('drive'); u.setPane('result', 'activate');
     Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false, dist: 25, t: 12 });
-    Object.assign(u.dvOpts, { mt: false, dynamicResolution: false, gpuRenderer: false }); u.redrawSpec();
+    Object.assign(u.dvOpts, { mt: false, dynamicResolution: false, gpuRenderer: false, tiles: false }); u.redrawSpec();
     for (let i = 0; i < 200 && RF.DriveAnim.stats().renderer !== 'cpu'; i++) await new Promise((r) => setTimeout(r, 50));
     if (cct !== undefined) { u.setControl('src.cct', cct); }
     u.redrawSpec(); await new Promise((r) => setTimeout(r, 600));
