@@ -46,5 +46,6 @@ run('optional GPU Drive wiring + vendor pins (tests/drive-three.js)', ['tests/dr
 run('P2 Drive lighting extras (tests/p2-drive-lighting.js)', ['tests/p2-drive-lighting.js']);
 run('eurobeat pattern data (tests/eurobeat.js)', ['tests/eurobeat.js']);
 run('Mountain pass speeds and adaptive lighting (tests/touge-r2.js)', ['tests/touge-r2.js']);
+run('Mountain pass parity: lamps, deer bolt, detail, edge lines (tests/pass-parity.js)', ['tests/pass-parity.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

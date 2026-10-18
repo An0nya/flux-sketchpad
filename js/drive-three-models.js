@@ -81,7 +81,7 @@ export function modelMeshes(scene,uniforms,onReady) {
       const out=[];state.mounts=[];
       for(const ob of obs){const m=roots.get(ob.modelId);if(!m||ob.detailPart!=='car'){out.push(ob);continue;}if(ob.k!=='disc'){if(ob.detail)out.push({...ob,k:'mesh-car'});continue;}
         const a=D.Models.stableId(m.id)%assets.length,F=m.face===-1?-1:1,yaw=m.yaw+(F===-1?Math.PI:0),c=Math.cos(yaw),s=Math.sin(yaw),end=((ob.x-m.x)*Math.cos(m.yaw)+(ob.y-m.y)*Math.sin(m.yaw))*F>0?1:-1,type=ob.mat==='plate'?'plate':ob.mat==='reflector-red'?'reflector':ob.headlamp?'head':'tail',side=type==='plate'?0:Math.sign(-(ob.x-m.x)*s+(ob.y-m.y)*c),mount=assets[a].mounts[end+':'+type+':'+side];
-        const q={...ob,x:m.x+c*mount.p[0]-s*mount.p[1],y:m.y+s*mount.p[0]+c*mount.p[1],z:mount.p[2],nx:c*mount.n[0]-s*mount.n[1],ny:s*mount.n[0]+c*mount.n[1],nz:mount.n[2],bs:undefined};
+        const q={...ob,x:m.x+c*mount.p[0]-s*mount.p[1],y:m.y+s*mount.p[0]+c*mount.p[1],z:(m.z||0)+mount.p[2],nx:c*mount.n[0]-s*mount.n[1],ny:s*mount.n[0]+c*mount.n[1],nz:mount.n[2],bs:undefined};
         if(type==='plate'){q.k='rect';q.rx=(p.us?.305:.520)/2;q.rz=(p.us?.152:.110)/2;q.r=Math.hypot(q.rx,q.rz);q.sub=false;}
         out.push(q);state.mounts.push({id:m.id,variant:names[a],type,side,end,...mount,width:q.rx?2*q.rx:undefined,height:q.rz?2*q.rz:undefined});
       }return out;
@@ -98,7 +98,13 @@ export function modelMeshes(scene,uniforms,onReady) {
             const mesh=new T.InstancedMesh(part.geometry,material,Math.max(16,list.length*2));mesh.frustumCulled=false;scene.add(mesh);g={mesh,local};groups.set(key,g);
           }
           g.mesh.count=part.region===undefined||part.region===!!p.us?list.length:0;
-          list.forEach((ob,i)=>{const m=ob.detail;position.set(m.x,m.y,0);rotation.setFromAxisAngle(new T.Vector3(0,0,1),m.yaw+(m.face===-1?Math.PI:0));matrix.compose(position,rotation,scale);g.mesh.setMatrixAt(i,matrix);state.triangles+=part.triangles;});g.mesh.instanceMatrix.needsUpdate=true;
+          list.forEach((ob,i)=>{const m=ob.detail;position.set(m.x,m.y,m.z||0);
+            if(m.normal){   // pass: sit on the road surface (its normal and grade) and follow the heading; flat cars keep the level pose below
+              const F=m.face===-1?-1:1,n=m.normal,t=[Math.cos(m.yaw)*F,Math.sin(m.yaw)*F,(m.grade||0)*F],k=t[0]*n[0]+t[1]*n[1]+t[2]*n[2];
+              const U=new T.Vector3(n[0],n[1],n[2]),X=new T.Vector3(t[0]-k*n[0],t[1]-k*n[1],t[2]-k*n[2]).normalize(),Y=new T.Vector3().crossVectors(U,X);
+              rotation.setFromRotationMatrix(new T.Matrix4().makeBasis(X,Y,U));
+            } else rotation.setFromAxisAngle(new T.Vector3(0,0,1),m.yaw+(m.face===-1?Math.PI:0));
+            matrix.compose(position,rotation,scale);g.mesh.setMatrixAt(i,matrix);state.triangles+=part.triangles;});g.mesh.instanceMatrix.needsUpdate=true;
         });
       }
     },

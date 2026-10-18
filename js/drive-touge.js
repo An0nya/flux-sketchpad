@@ -55,11 +55,38 @@
     if (n.z !== undefined) n.z += z;
     if (n.z0 !== undefined) { n.z0 += z; n.z1 += z; }
     // M2 sphere-cluster trees and SDF actors stay upright; all roots use the same surface.
-    if (ob.traffic || ob.cls === 'rail') { const q = A.surface(f.s,f.off), t = A.at(f.s).t; n.passSlope = [q.grade*t[0]-q.bank*t[1],q.grade*t[1]+q.bank*t[0],0,0]; }
-    if (n.detail) n.detail = { ...n.detail, z: (n.detail.z || 0) + z };
+    let surf = null;
+    if (ob.traffic || ob.cls === 'rail') { const q = A.surface(f.s,f.off), t = A.at(f.s).t; surf = q; n.passSlope = [q.grade*t[0]-q.bank*t[1],q.grade*t[1]+q.bank*t[0],0,0]; }
+    // Cars on the pass carry the road normal and grade, so the GPU mesh car can sit on the surface (drive-three-models.js update).
+    if (n.detail) n.detail = { ...n.detail, z: (n.detail.z || 0) + z, ...(surf && ob.traffic ? { normal: surf.normal, grade: surf.grade } : {}) };
     return n;
   }
-  function world(p, dist, t) {
+  const seedOf = p => (p.src.traffic && p.src.traffic.seed) || 0;
+  // Crest deer for the lap of `dist` and the next one (so a lap's first deer is built before the lap changes). Two per lap, as before.
+  function crestDeer(dist) {
+    const lap = Math.floor(dist / PERIOD), out = [];
+    for (let L = lap; L <= lap + 1; L++) for (const c of [160, 969]) { const rel = L * PERIOD + c - dist; if (rel > -10 && rel < 300) out.push({ rel, id: L + ':crest:' + c, side: 1 }); }
+    return out;
+  }
+  // Bolt clocks for the crest deer, started when the car comes within the deer's own trigger distance (the same rule as the flat scenes, drive-anim.js activate).
+  function activate(src, dist, t, act) {
+    const seed = (src.traffic && src.traffic.seed) || 0, lap = Math.floor(dist / PERIOD);
+    for (const c of [160, 969]) for (let L = lap; L <= lap + 1; L++) {
+      const id = L + ':crest:' + c, rel = L * PERIOD + c - dist;
+      if (!act.has('@' + id) && rel <= D.Models.deerProfile(seed + ':' + id).trigger) act.set('@' + id, t);
+    }
+  }
+  // Sparse street lamps: two 120 m stretches per lap, positions seeded by the traffic seed, clear of the crest deer (160 m, 969 m). Lamps alternate sides.
+  function lampSpots(dist, seed) {
+    const r = D.rng(9100 + (seed | 0)), lap = Math.floor(dist / PERIOD), starts = [300 + Math.floor(60 * r()), 1040 + Math.floor(40 * r())], out = [];
+    let n = 0;
+    for (let L = lap; L <= lap + 1; L++) for (const st of starts) for (let u = 20; u < 120; u += 40, n++) {
+      const rel = L * PERIOD + st + u - dist;
+      if (rel > -10 && rel < 300) out.push({ rel, side: n % 2 ? 1 : -1 });
+    }
+    return out;
+  }
+  function world(p, dist, t, tauOf) {
     const A = route(dist, p.lane, !!p.touge), K = D.kit({ Lw: p.lane, A, rand: D.rng(701) }), obs = [], flags = p.src.tiles.flags;
     const lo = Math.floor((dist - 10) / 8) * 8, hi = dist + 300;
     for (let s = lo; s <= hi; s += 8) {
@@ -75,21 +102,31 @@
       K.tree(s - dist, 1.5 * p.lane + 6 + 3 * Math.sin(s), { h: 9 + 2 * Math.cos(s), id: 'pass-tree:' + s });
       if (s % 36 === 0) K.tree(s - dist, -p.lane / 2 - 15, { h: 11, id: 'pass-tree-drop:' + s });
     }
-    if (flags.animals !== false) for (const crest of [160, 969]) {
-      const s = Math.floor(dist / PERIOD) * PERIOD + crest, rel = s - dist;
-      if (rel > -10 && rel < 300) K.deer(rel, .35, { id: 'crest-deer:' + s });
+    const deerOn = D.Models.deerEnabled(p), lampRGB = p.src.tiles.lamps === 'led' ? [1, .85, .66] : [1, .43, .10], lights = [];
+    if (flags.animals !== false) for (const c of crestDeer(dist)) {
+      // Behaviour on: the flat scenes' deer model, attention and bolt (tauOf is the activate clock; -1 = still grazing). Off: the original standing deer.
+      const att = deerOn ? D.Models.deerAttention(seedOf(p) + ':' + c.id, tauOf ? tauOf('@' + c.id) : -1) : null, bolting = !!att && att.state === 'bolt', d = bolting ? Math.max(0, att.elapsed - att.bolt) * 3.8 : 0;
+      K.deer(c.rel, .35 + c.side * d, deerOn ? { id: c.id, attention: att, face: bolting ? -1 : 1, motion: D.Models.locomotion('deer', d, 3.8, bolting, 'bound') } : { id: c.id });
+    }
+    if (p.src.tiles.lamps !== 'off') for (const c of lampSpots(dist, seedOf(p))) {
+      const b = c.side < 0 ? -p.lane / 2 - 1 : 1.5 * p.lane + 1, head = b - c.side * .8, pole = K.at(c.rel, b), hd = K.at(c.rel, head), mid = K.at(c.rel, (b + head) / 2);
+      obs.push({ k: 'cyl', x: pole.x, y: pole.y, r: .065, z0: 0, z1: 7, mat: 'pole', cls: 'street-lamp' });
+      obs.push({ k: 'box', x: mid.x, y: mid.y, hx: .08, hy: Math.abs(b - head) / 2, z0: 6.9, z1: 7, yaw: mid.yaw, mat: 'pole', cls: 'street-lamp' });
+      obs.push({ k: 'ell', x: hd.x, y: hd.y, z: 6.9, rx: .3, ry: .18, rz: .05, mat: 'lamp-head', emit: lampRGB.map(v => 9000 * v), cls: 'street-lamp' });
+      lights.push({ x: hd.x, y: hd.y, z: 6.85 + A.height(c.rel, head), cd: 900, rgb: lampRGB });
     }
     for(let k=Math.floor((dist-80)/200);k<=Math.floor((dist+240)/200);k++){
       const rel=k*200+65-dist;if(rel< -10 || rel>300)continue;
       if(flags.obstacle)K.obstacle(rel+5,-.4);
       if(flags.signs!==false)K.sign(rel,1.5*p.lane+1,'yellow');
     }
-    obs.push(...D.Models.actors(K.O, true));
+    obs.push(...D.Models.actors(K.O, !!p.detailedModels));
     obs.push(...RF.DriveAnim.trafficObjects(p.src, RF.DriveAnim.trafficCars(p.src, dist, t), A, p));
     const roots = new Map(obs.filter(ob => ob.treeId && ob.detail).map(ob => [ob.treeId,[ob.x,ob.y]]));
     const placed=obs.map(ob => lift(ob.treeId ? {...ob,surfaceAnchor:roots.get(ob.treeId)} : ob, A));
     if(A.touge)trafficLight(placed,A,p);
-    return { A, objects: placed, markings: D.laneMarkings(p.lane, { us: p.us }).map(m => m.pat ? { ...m, pat: { ...m.pat, s0: m.pat.s0 - dist, s1: m.pat.s1 - dist } } : m), crossings: [], lights: [] };
+    // Edge lines only: owner decision, no centre line (dashed or double yellow) and no lane studs on the pass.
+    return { A, objects: placed, markings: D.laneMarkings(p.lane, { us: p.us }).filter(m => m.mat === 'white-paint' && !m.pat), crossings: [], lights };
   }
   const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0);
   const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
@@ -130,5 +167,5 @@
       if(!blocked)E+=D.ownBeamAt(p,...local,lamp[1])*incidence/r2;
     }return E;
   }
-  RF.Touge = { curvature: s => RF.DriveAnim.curvatureAt({ tiles: { mountain: true } }, s), glareSources, blocked, eyeLux, PERIOD, curves, kinds, tile, profile, bank, terrain, route, attitude, lift, world };
+  RF.Touge = { curvature: s => RF.DriveAnim.curvatureAt({ tiles: { mountain: true } }, s), glareSources, blocked, eyeLux, PERIOD, curves, kinds, tile, profile, bank, terrain, route, attitude, lift, world, activate, crestDeer, lampSpots };
 })(typeof self !== 'undefined' ? self : globalThis);
