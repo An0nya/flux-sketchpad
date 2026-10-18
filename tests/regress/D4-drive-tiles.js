@@ -17,7 +17,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForFunction(() => { const u = RF.UI; return !u.solving && u.run && u.run.ctx.done && u.spec && u.spec.ctx === u.run.ctx && u.spec.full && u.spec.ev; }, null, { timeout: 180000 });
     await page.evaluate(() => { RF.UI.setDisplay('drive'); RF.UI.setPane('result', 'activate'); }); await sleep(700);
     const saved = await page.evaluate(() => RF.State.serialize(RF.UI.store.scene));
-    await page.evaluate(() => { const u = RF.UI; Object.assign(u.dvOpts, { scene: 'road', tiles: false, mt: true, seed: 7, oncoming: false, preceding: false, glare: 0.3 }); Object.assign(u.dvAnim, { view: 'anim', playing: false, dist: 40, total: 0, t: 0 }); u.redrawSpec(); RF.DriveAnim._.V.pinSS = 1; }); await sleep(500);
+    await page.evaluate(() => { const u = RF.UI; Object.assign(u.dvOpts, { scene: 'road', tiles: false, mt: true, seed: 7, oncoming: false, preceding: false, glare: 0.3, gpuRenderer: false }); Object.assign(u.dvAnim, { view: 'anim', playing: false, dist: 40, total: 0, t: 0 }); u.redrawSpec(); RF.DriveAnim._.V.pinSS = 1; }); await sleep(500);
     ok('traffic off hides flash count and reset; gap guard is default-on', await page.evaluate(() => ['flashes','reset-flashes'].every((k) => getComputedStyle(document.querySelector('[data-anim="'+k+'"]')).display === 'none') && RF.UI.dvOpts.safeGap && document.querySelector('[data-anim="gap"]').getAttribute('aria-pressed') === 'true'));
     // Save the actual old-path image, then exercise the UI and compare after returning to the same position.
     await page.evaluate(() => { RF.DriveAnim._.frame(); window.d4OffHdr = RF.DriveAnim._.readHdr(); });
@@ -25,8 +25,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     ok('tiles button enables a seeded route and its controls without touching the still scene', await page.evaluate(() => RF.UI.dvOpts.tiles && RF.DriveAnim._.V.src.tiles && RF.DriveAnim._.V.p.w === 640 && !document.querySelector('[data-anim="street-lamps"]').disabled && getComputedStyle(document.querySelector('[data-anim="street-lamps"]')).pointerEvents === 'auto' && document.querySelector('[data-anim="tiles"]').getAttribute('aria-pressed') === 'true'));
     const parity = await page.evaluate(async () => {
       const D = RF.DriveAnim, _ = D._, u = RF.UI; let worst = 0, n = 0, workers = true, rgbError = 0;
-      Object.assign(u.dvOpts, { oncoming: true, preceding: true }); u.redrawSpec();
-      for (const scene of ['road','forest','city','intersection']) for (const [dist,t] of [[40,0],[1060,13],[1860,30]]) {
+      Object.assign(u.dvOpts, { oncoming: true, preceding: true, gpuRenderer: false }); u.redrawSpec();
+      for (const scene of ['road','forest','city']) for (const [dist,t] of [[40,0],[1060,13],[1860,30]]) {
         u.dvOpts.scene = scene; Object.assign(u.dvAnim, { dist,t,playing:false }); u.redrawSpec(); _.frame(); const a = _.readHdr(), raw = _.V.rgba;
         for (let i=0;i<a.length;i++) if (i%4!==3 && raw[i] < 65504) rgbError = Math.max(rgbError, Math.abs(a[i]-raw[i]) / Math.max(0.01, Math.abs(raw[i])));
         workers = await _.frameMT(dist,t) && workers; const b = _.readHdr();

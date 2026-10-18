@@ -1,6 +1,6 @@
 // How visible are people and deer under each design?  node tools/drive-visibility.js outdir name=scene.json [name=scene.json …] [--rays 8e6]
 // Traces each design, then (1) prints the chest-height luminance of a dark / light / hi-vis pedestrian at 30, 60 and 100 m and the deer's body
-// and eyeshine, from the same beam lookup the Drive view uses, and (2) writes contact sheets (road, forest, intersection, high beam with traffic).
+// and eyeshine, from the same beam lookup the Drive view uses, and (2) writes contact sheets (road, forest, high beam with traffic).
 const fs = require('fs'), path = require('path');
 const { load } = require('../tests/load.js'); const RF = load(); const lib = require('./drive-lib.js'); const D = RF.Drive;
 const out = process.argv[2], N = (() => { const i = process.argv.indexOf('--rays'); return i > 0 ? +process.argv[i + 1] : 8e6; })();
@@ -23,7 +23,7 @@ for (const d of designs) {
   rows.push(row); fs.appendFileSync(path.join(out, 'visibility.jsonl'), JSON.stringify(row) + '\n');
   pics[d.name] = {
     road: lib.picture(RF, L, 'road', 'straight', {}), forest: lib.picture(RF, L, 'forest', 'straight', {}),
-    inter: lib.picture(RF, L, 'intersection', 'straight', {}), traffic: lib.picture(RF, L, 'road', 'straight', { oncoming: { dist: 110, kcd: 30 }, preceding: { dist: 55 } }),
+    traffic: lib.picture(RF, L, 'road', 'straight', { oncoming: { dist: 110, kcd: 30 }, preceding: { dist: 55 } }),
   };
   console.log('done ' + d.name + ' (' + row.verdict + ')');
 }
@@ -32,9 +32,9 @@ console.log('\nluminance at chest height, cd/m² (diffuse surface; hi-vis = vest
 const keys = ['dark@30', 'dark@60', 'dark@100', 'light@30', 'light@60', 'light@100', 'hivis@30', 'hivis@60', 'hivis@100', 'deer@60', 'deer@100', 'road@30', 'road@60', 'road@100'];
 console.log(['design'.padEnd(26)].concat(keys.map((k) => k.padStart(9))).join(' '));
 for (const r of rows) console.log([r.design.padEnd(26)].concat(keys.map((k) => f(r.I[k]).padStart(9))).join(' '));
-for (const [tag, key, cols] of [['low-road', 'road', 2], ['low-intersection', 'inter', 2], ['low-forest', 'forest', 2]]) {
+for (const [tag, key, cols] of [['low-road', 'road', 2], ['low-forest', 'forest', 2]]) {
   const set = designs.filter((d) => !/ub2|drive/i.test(d.name)).map((d) => pics[d.name][key]); if (set.length) { const sh = lib.sheet(set, cols); fs.writeFileSync(path.join(out, 'sheet-' + tag + '.png'), lib.png(sh.w, sh.h, sh.px)); }
 }
-for (const [tag, key, cols] of [['high-road', 'road', 2], ['high-traffic', 'traffic', 2], ['high-intersection', 'inter', 2]]) {
+for (const [tag, key, cols] of [['high-road', 'road', 2], ['high-traffic', 'traffic', 2]]) {
   const set = designs.filter((d) => /ub2|drive/i.test(d.name)).map((d) => pics[d.name][key]); if (set.length) { const sh = lib.sheet(set, cols); fs.writeFileSync(path.join(out, 'sheet-' + tag + '.png'), lib.png(sh.w, sh.h, sh.px)); }
 }

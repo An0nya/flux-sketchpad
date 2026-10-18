@@ -15,7 +15,7 @@
 (function (root) {
   'use strict';
   const RF = root.RF || (root.RF = {}), D = RF.Drive;
-  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, ANIM_SCENES = { road: 1, forest: 1, city: 1, intersection: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
+  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, ANIM_SCENES = { road: 1, forest: 1, city: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
   // Traffic-car window (m), owner option 'trafficRange'. CULL above is still the window for scenery, street lamps, crossings and actors.
   const TRAFFIC_RANGES = [230, 400, 600, 800], trafficCullOf = (v) => (TRAFFIC_RANGES.includes(+v) ? +v : 400);
   // The camera eye: the fixed EYE, or the dolly-moved eye that rides on the frame (drive.js eyeFor). Every consumer goes through here.
@@ -28,7 +28,6 @@
   function source(name, lane, us, flags, opts) {
     if (opts && opts.mountainPass) { opts = Object.assign({}, opts, { tiles: true, wild: false }); name = 'road'; }
     if (opts && opts.tiles) opts = Object.assign({}, opts, { flags: flags || {}, us });
-    if (opts && opts.tiles && name === 'intersection') name = 'road';
     if (opts && opts.leafyFoliage && !opts.mountainPass && (name === 'road' || name === 'forest')) flags = { ...flags, leafyFoliage: true };
     const broken = !!(opts && us && opts.cline === 'broken');
     if (!(opts && opts.wild) || name !== 'road') {
@@ -1000,7 +999,7 @@ void main() {
     if (st.view === 'still' || st.view === 'static') { st.view = 'anim'; st.playing = false; }
     return st;
   }
-  const supported = (o) => !!o.mountainPass || !!ANIM_SCENES[o.scene] || (o.tiles && o.scene === 'intersection');
+  const supported = (o) => !!o.mountainPass || !!ANIM_SCENES[o.scene];
   const visible = () => {
     const ui = V.ui; if (!ui || !V.canvas || !V.info || typeof document === 'undefined') return false;
     if (document.visibilityState === 'hidden') return false;
@@ -1501,7 +1500,7 @@ void main() {
     V.bar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.bar.querySelector('[data-anim="street-lamps"]').disabled = !(o.tiles || o.mountainPass);
     V.bar.querySelector('[data-anim="ambient"]').value = String(o.ambient || 0);
     V.tileLab.hidden = !o.tiles;
-    const wd = o.wild && (o.scene === 'road' || (o.tiles && o.scene === 'intersection'));        // forest and city keep their existing scenery
+    const wd = o.wild && o.scene === 'road';        // forest and city keep their existing scenery
     V.bar.querySelector('[data-anim="seed"]').value = o.seed; V.bar.querySelector('[data-anim="seed"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest'))); V.bar.querySelector('[data-anim="dice"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest')));
     V.bar.querySelector('[data-anim="density"]').value = o.density; V.bar.querySelector('[data-anim="density"]').disabled = !(wd || (o.leafyFoliage && (o.scene === 'forest' || o.scene === 'road')));
     const cl = V.bar.querySelector('[data-anim="cline"]'); cl.disabled = !I.us; cl.textContent = o.cline === 'broken' && I.us ? 'centre: broken' : 'centre: solid'; cl.setAttribute('aria-pressed', String(o.cline === 'broken' && I.us));

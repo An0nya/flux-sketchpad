@@ -189,42 +189,6 @@
       },
     },
   };
-  SCENES.intersection = {
-    label: 'Intersection',
-    build(ctx, o) {
-      const k = kit(ctx), R = ctx.rand, Lw = ctx.Lw, us = ctx.us, edgeR = k.edgeR, edgeL = k.edgeL, walk = 3.0, Wc = 2 * Lw + 0.4, c0 = 44, c1 = c0 + Wc;
-      // the road's own markings stop before the intersection and resume after it
-      const marks = D.laneMarkings(Lw, { us }); for (const m of marks) m.skip = [[c0 - 5.5, c1 + 4.5]];
-      // four crossings: across the main road on the near and far side (bars parallel to travel), and across both legs of the cross street
-      const across = (s0, len) => { for (let b = edgeR + 0.5; b < edgeL - 0.4; b += 1.0) marks.push({ o0: b, o1: b + 0.5, mat: 'white-paint', pat: { s0, s1: 1e5, period: 1e6, on: len } }); };
-      across(c0 - 4.0, 3.0); across(c1 + 1.0, 3.0);
-      const leg = (o0, o1) => marks.push({ o0, o1, mat: 'white-paint', pat: { s0: c0 + 0.5, s1: c1 - 0.4, period: 1.0, on: 0.5 } });
-      leg(edgeL + 1.5, edgeL + 4.5); leg(edgeR - 4.5, edgeR - 1.5);
-      marks.push({ o0: -Lw / 2 + 0.25, o1: Lw / 2 - 0.15, mat: 'white-paint', pat: { s0: c0 - 5.4, s1: 1e5, period: 1e6, on: 0.4 } });        // our stop line
-      const mid = c0 + Wc / 2, cl = us ? 'yellow-paint' : 'white-paint';
-      marks.push({ o0: edgeL + 6, o1: edgeL + 80, mat: cl, pat: { s0: mid - 0.08, s1: 1e5, period: 1e6, on: 0.16 } }, { o0: edgeR - 80, o1: edgeR - 6, mat: cl, pat: { s0: mid - 0.08, s1: 1e5, period: 1e6, on: 0.16 } });
-      // corner and street-wall buildings, cut where the cross street runs
-      const win = ({ u, z, face }, seed) => { const gx = Math.floor((u + 400) / 2.6), gz = Math.floor(z / 3.2), cell = (u + 400) / 2.6 - gx, cz = z / 3.2 - gz;
-        if (z < 3.0 || cell < 0.2 || cell > 0.8 || cz < 0.25 || cz > 0.8) return face === 0 ? 'wall-light' : 'wall';
-        const h = Math.sin((gx + 1) * 12.9898 + (gz + 1) * 78.233 + seed * 3.1) * 43758.5453, f = h - Math.floor(h); return f < 0.22 ? 'win-warm' : f < 0.3 ? 'win-cool' : 'win-dark'; };
-      const bld = (sA, sB, side, dep, hgt, seed) => { const off = side > 0 ? edgeL + walk + 2.5 + dep : edgeR - walk - 2.5 - dep, p = k.at((sA + sB) / 2, off); k.add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: hgt, hx: (sB - sA) / 2, hy: dep, yaw: p.yaw, facadeStyle:seed%3, mat: (h) => win(h, seed) }); };
-      for (const side of [1, -1]) { let i = 0;
-        for (let s = c1 + walk + 0.5; s < 280; s += 0, i++) { const len = 12 + 10 * R(); bld(s, s + len, side, 7 + 4 * R(), 9 + 18 * R(), i + (side > 0 ? 0 : 40)); s += len + 1.5 + 12 * R(); }
-        for (let s = c0 - walk - 0.5, j = 0; s > -30; j++) { const len = 12 + 10 * R(); bld(s - len, s, side, 7 + 4 * R(), 9 + 18 * R(), 80 + j + (side > 0 ? 0 : 40)); s -= len + 1.5 + 12 * R(); } }
-      for (const sa of [c0 - walk - 3, c1 + walk + 3, c0 - walk - 35, c1 + walk + 35]) for (const side of [1, -1]) { const off = side > 0 ? edgeL + 0.9 : edgeR - 0.9; k.add({ k: 'cyl', x: k.at(sa, off).x, y: k.at(sa, off).y, r: 0.07, z0: 0, z1: 7.5, mat: 'pole' }); }
-      // the signal: a mast over our lane on the far side, red
-      const mp = k.at(c1 + 1.2, edgeR - 1.3); k.add({ k: 'cyl', x: mp.x, y: mp.y, r: 0.1, z0: 0, z1: 6.4, mat: 'pole' });
-      const am = k.at(c1 + 1.2, (edgeR - 1.3) / 2); k.add({ k: 'box', x: am.x, y: am.y, z0: 6.1, z1: 6.3, hx: 0.06, hy: Math.abs(edgeR - 1.3) / 2 + 0.2, yaw: am.yaw, mat: 'pole' });
-      k.signal(c1 + 1.2, 0.0, 5.5, 'red'); k.signal(c1 + 1.2, Lw, 5.5, 'red');
-      if (o.signs) k.sign(c1 + 1.0, edgeL + 1.4, 'green', { w: 1.8, h: 0.5, z0: 3.2 });
-      // cross traffic: one car on each leg, crossing in opposite directions
-      k.car(c0 + Lw * 0.5 + 0.1, edgeL + 8.0, { turn: Math.PI / 2, face: -1, lamps: 'head', kcd: 30 });
-      k.car(c0 + Wc - Lw * 0.5 - 0.1, edgeR - 13.0, { turn: Math.PI / 2, face: 1, lamps: 'head', kcd: 30 });
-      for (let s = 12; s < c0 - 8; s += 13 + 8 * R()) k.parkedCar(s, edgeR - 1.3);
-      if (o.people) { k.person(c0 - 2.5, -0.9, 'dark'); k.person(c0 - 2.5, 2.0, 'hivis'); k.person(c1 + 2.5, 0.6, 'light'); k.person(c0 + 2.2, edgeL + 3.0, 'hivis'); k.person(c0 + 4.0, edgeR - 3.0, 'dark'); }
-      return { objects: k.O, markings: marks, verge: ['concrete', walk, 'concrete'], cross: { s0: c0, s1: c1 } };
-    },
-  };
   // standard test targets for comparing designs (not in the picker): ctx.targets = [{ kind, s, off }] pedestrians, ctx.deer = [s, …] deer on the left shoulder
   SCENES.targets = {
     label: 'Test targets', hidden: true,

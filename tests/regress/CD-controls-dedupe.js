@@ -62,10 +62,9 @@
       get(oldOptions.glare).click(); ok('CD glare works', u.dvOpts.glare === 'dry-low'); get(oldOptions.glare).click(); get(oldOptions.glare).click(); get(oldOptions.glare).click();
       const shape = u.rvOpts.shape; get(oldOptions.shape).click(); ok('CD bend selection works', u.rvOpts.shape !== shape && !!V.p.A);
       u.rvOpts.shape = 'straight'; u.redrawSpec();
-      for (const scene of ['road', 'forest', 'city', 'intersection']) {
+      for (const scene of ['road', 'forest', 'city']) {
         change(oldOptions.scene, scene); await settle();
         ok('CD fixed scene uses paused animated renderer: ' + scene, u.dvOpts.scene === scene && !V.src.tiles && !V.canvas.hidden && u.dvAnim.view === 'anim' && !u.dvAnim.playing && V.srcArgs[0] === scene);
-        if (scene === 'intersection') ok('CD fixed intersection keeps cross street and markings', !!V.src.cross && a.fixedIntersection(V.src, 0).crossings.length === 1 && a.fixedIntersection(V.src, 0).markings.some(m => m.skip));
       }
       change(oldOptions.scene, '__pass'); ok('CD Mountain pass has one scene selector', u.dvOpts.mountainPass && get(oldOptions.scene).value === '__pass');
       change(oldOptions.scene, 'road'); ok('CD scene selector exits Mountain pass', !u.dvOpts.mountainPass && u.dvOpts.scene === 'road');

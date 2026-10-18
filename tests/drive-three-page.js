@@ -39,7 +39,7 @@
     // Warm the lazy module before taking paired snapshots; its redraw can replace the initial UI beam cache.
     await select(true);await select(false);
     const cases=[];
-    for(const name of ['road','city','forest','intersection','tiles'])for(const wet of [false,true]) {
+    for(const name of ['road','city','forest','tiles'])for(const wet of [false,true]) {
       Object.assign(u.dvOpts,{scene:name==='tiles'?'city':name,tiles:name==='tiles',wet,wetSheen:wet,ambient:0});
       Object.assign(u.dvAnim,{dist:name==='tiles'?495:25,t:12,playing:false});
       await select(false);const cpu=a.readHdr();

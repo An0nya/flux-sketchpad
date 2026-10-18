@@ -614,8 +614,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
         n++; if (!same(ref, got)) bad.push(name + ' d' + dist + ' K' + K);
       }
       ok('D2b the worker\'s jobs, assembled, equal the objects layer traced in one go (' + n + ' cases on a bend, K = 1, 5, 11)', bad.length === 0, bad.slice(0, 3).join('; ')); }
-    // D2c: forest, city and fixed intersections use the animated renderer; the single-occurrence stripes (crossing, stop line) come round every lap
-    { ok('D2c forest, city and fixed intersections use the animated renderer', DA.ANIM_SCENES.forest && DA.ANIM_SCENES.city && DA.ANIM_SCENES.intersection && DA.ANIM_SCENES.road);
+    // D2c: forest and city use the animated renderer; the single-occurrence stripes (crossing, stop line) come round every lap
+    { ok('D2c forest, city and open road use the animated renderer', DA.ANIM_SCENES.forest && DA.ANIM_SCENES.city && DA.ANIM_SCENES.road && !DA.ANIM_SCENES.intersection);
       const city = DA.source('city', 3.5, false, flags, {}), g = DA.ground({ w: 120, h: 68, hfov: 60, A: null, lamps, lut, conv: 'A', lane: 3.5, look: { RL: 0.2 }, src: city });
       ok('D2c city: three moving layers (centre dash 12 m, crossing and stop line every 300 m), the crossing\'s bars are one layer', g.layers.length === 3 && g.layers.map((L) => L.pat.period).join() === '12,300,300' && g.layers[1].pat.on === 3.5 && g.layers[2].pat.on === 0.4, JSON.stringify(g.layers.map((L) => L.pat)));
       ok('D2c the still scene is untouched: its crossing is still a single-occurrence stripe', D.buildScene('city', { Lw: 3.5, A: null, us: false, seed: 7 }, {}).markings.filter((m) => m.pat && m.pat.period >= 1e5).length === 8);
@@ -800,7 +800,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('D4g default gap guard prevents driving through slower cars at 5/50/130 km/h; off restores legacy close passes', guarded && caught);
     // Real worker entry point: every row once, partial last row, actors and both lanes, successive positions and a live speed change.
     let parity = true, frames = 0;
-    for (const name of ['road', 'forest', 'city', 'intersection']) {
+    for (const name of ['road', 'forest', 'city']) {
       const pp = make(name), T = A.tracer(); T.cfg({ id: 4, p, arc: null, src: [name, 3.5, false, flags, opts] });
       for (const [seq, dist, t, speed] of [[1, 40, 0, 50], [2, 1060, 13, 130], [3, 1860, 30, 5]]) {
         const act = new Map(); A.activate(pp.src, dist, t, act); const tau = (id) => act.has(id) ? t - act.get(id) : 0;
@@ -811,7 +811,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
         parity = parity && ref.every((v,i) => Number.isFinite(v) && v===got[i]) && got.every((v,i) => i%4!==3 || v===1); frames++;
       }
     }
-    ok('D4h complete worker frames = main-thread pixels bit for bit across all four scenes, moving tiles, lamps, signals, traffic and actors', parity, frames + ' frames');
+    ok('D4h complete worker frames = main-thread pixels bit for bit across all three scenes, moving tiles, lamps, signals, traffic and actors', parity, frames + ' frames');
     // Compare actual old code, rather than two paths through the new implementation. No browser, timing or generated baseline values.
     const vm = require('vm'), cp = require('child_process'), ctx = vm.createContext({ performance });
     for (const f of ['core','road','drive','drive-scenes','drive-anim']) vm.runInContext(cp.execFileSync('git', ['show', '4bae491:js/'+f+'.js'], { encoding: 'utf8' }), ctx);
@@ -1079,6 +1079,22 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       V.info.o.debugTimings = true; V.info.o.fpsCounter = false;
       ok('UX2 Debug timings profiles independently of the bare FPS badge', D.stats().profiling === true);
     } finally { V.info = saved; }
+  }
+  // GI2: the intersection scene is gone; a stored scene 'intersection' loads as the open road, and the other stored settings survive
+  {
+    const fs = require('fs'), vm = require('vm'), path = require('path');
+    RF.Panels = RF.Panels || { el: () => ({}) }; RF.Render = RF.Render || {};
+    if (!RF.SpecUI) vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'js', 'spec-ui.js'), 'utf8'), { filename: 'spec-ui.js' });
+    const store = {}; globalThis.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
+    try {
+      store['flux/driveView'] = JSON.stringify({ scene: 'intersection', tiles: true, wet: true, ev: 2 });
+      const o = RF.SpecUI.dvOpts({});
+      ok('GI2 stored scene intersection loads as the open road', o.scene === 'road', o.scene);
+      ok('GI2 other stored drive settings survive the scene normalization', o.tiles === true && o.wet === true && o.ev === 2, JSON.stringify({ tiles: o.tiles, wet: o.wet, ev: o.ev }));
+      ok('GI2 the scene picker no longer offers intersection', !Object.keys(RF.Drive.scenes).includes('intersection') && Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).join() === 'road,forest,city', Object.keys(RF.Drive.scenes).join());
+      store['flux/driveView'] = JSON.stringify({ scene: 'city' });
+      ok('GI2 a stored city scene is unchanged', RF.SpecUI.dvOpts({}).scene === 'city');
+    } finally { delete globalThis.localStorage; }
   }
   require('./qol1.js').run(RF, ok);
   require('./hid-arc.js').run(RF, ok);

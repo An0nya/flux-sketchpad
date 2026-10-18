@@ -45,7 +45,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('[data-anim="c-mt"]'); await sleep(2500);
   const w3 = await wk(), adv3 = await advances(2000);
   ok('threads on again: workers are back and drawing', w3.n >= 1 && w3.pressed === 'true' && adv3 >= 3, JSON.stringify(w3) + ', ' + adv3 + ' frames');
-  // 4. forest, city and the fixed intersection use animation
+  // 4. forest and city use animation
   const sceneCheck = async (sc) => {
     await page.evaluate((s) => { RF.UI.dvOpts.scene = s; RF.UI.dvAnim.playing = true; RF.UI.redrawSpec(); }, sc); await sleep(3500);
     return page.evaluate(() => { const V = RF.DriveAnim._.V; return { scene: V.srcArgs && V.srcArgs[0], disabled: document.querySelector('[data-anim="play"]').disabled, view: RF.UI.dvAnim.view, layers: V.g ? V.g.layers.length : -1, seedOff: document.querySelector('[data-anim="seed"]').disabled, w: RF.DriveAnim._.Wk.list.length }; });
@@ -54,8 +54,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const r = await sceneCheck(sc), a = await advances(3000);
     ok(sc + ' is animated on the workers (' + a + ' frames in 3 s), ground layers ' + r.layers + ', seed field off (fixed scene)', r.scene === sc && !r.disabled && r.view === 'anim' && r.layers === layers && r.seedOff && r.w >= 1 && a >= 2, JSON.stringify(r));
   }
-  const xr = await sceneCheck('intersection');
-  ok('fixed intersection uses animated renderer with Play available', xr.disabled === false && xr.view === 'anim' && xr.w >= 1, JSON.stringify(xr));
   // 5. a worker that fails: the page falls back to tracing itself, says so, and the animation goes on
   await page.evaluate(() => { RF.UI.dvOpts.scene = 'road'; RF.UI.dvAnim.view = 'anim'; RF.UI.dvAnim.playing = true; RF.UI.redrawSpec(); }); await sleep(3000);
   await page.evaluate(() => { RF.DriveAnim._.Wk.list[0].onerror({ message: 'test: worker script failed', preventDefault() {} }); }); await sleep(1500);

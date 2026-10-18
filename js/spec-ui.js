@@ -843,7 +843,7 @@
   // Drive view lamp colour: the flux-weighted tint of the scene's emitters (RF.CCT). All-unset scenes give [1,1,1].
   const lampTint = (ui) => { const sc = ui.store.scene; return RF.CCT ? RF.CCT.lampRGB([sc.source].concat(sc.emitters || [])) : [1, 1, 1]; };
   function dvOpts(ui) {
-    if (!ui.dvOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/driveView') || '{}'); } catch (e) { /* ignore */ } ui.dvOpts = Object.assign({}, DV_DEF, o); ui.dvOpts.glare = RF.Drive.glareLevel(ui.dvOpts.glare); { const f = RF.DriveAnim.fpsSettings(o); ui.dvOpts.minFps = f.minFps; ui.dvOpts.frameTargetMs = f.frameTargetMs; }   /* old stored frameTargetMs (ms) -> nearest min fps; a stored minFps wins */ if (!o.onMode && o.onKcd !== undefined && +o.onKcd !== DV_DEF.onKcd) ui.dvOpts.onMode = 'manual'; }   // old numeric/boolean glare -> off/rain. Old setDV saved the whole option set, so onKcd = 30 is the old default, not a choice: it migrates to symmetric; only a different saved kcd stays manual (tester fix)
+    if (!ui.dvOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/driveView') || '{}'); } catch (e) { /* ignore */ } ui.dvOpts = Object.assign({}, DV_DEF, o); if (ui.dvOpts.scene === 'intersection') ui.dvOpts.scene = 'road';   /* GI2: the scene is removed; a stored one loads as the open road */ ui.dvOpts.glare = RF.Drive.glareLevel(ui.dvOpts.glare); { const f = RF.DriveAnim.fpsSettings(o); ui.dvOpts.minFps = f.minFps; ui.dvOpts.frameTargetMs = f.frameTargetMs; }   /* old stored frameTargetMs (ms) -> nearest min fps; a stored minFps wins */ if (!o.onMode && o.onKcd !== undefined && +o.onKcd !== DV_DEF.onKcd) ui.dvOpts.onMode = 'manual'; }   // old numeric/boolean glare -> off/rain. Old setDV saved the whole option set, so onKcd = 30 is the old default, not a choice: it migrates to symmetric; only a different saved kcd stays manual (tester fix)
     if (ui.dvOpts.view === 'still' || ui.dvOpts.view === 'static') {
       ui.dvOpts.view = 'anim'; ui.dvOpts.playing = false;
       if (ui.dvAnim) { ui.dvAnim.view = 'anim'; ui.dvAnim.playing = false; }
@@ -862,7 +862,7 @@
     if (!bar) {
       bar = ui.driveBar = el('div', { class: 'drive-tools' });
       const btn = (k, title, fn) => { const b = el('button', { type: 'button', class: 'toggle', 'data-dv': k, title }); b.addEventListener('click', fn); bar.append(b); return b; };
-      const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road, a city street or an intersection' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)), el('option', { value: '__pass', title: 'Prototype: grades, hairpins, banking. Needs the GPU drive renderer for elevation; the CPU stays flat.' }, 'Mountain pass (prototype)'));
+      const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road or a city street' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)), el('option', { value: '__pass', title: 'Prototype: grades, hairpins, banking. Needs the GPU drive renderer for elevation; the CPU stays flat.' }, 'Mountain pass (prototype)'));
       sel.addEventListener('change', () => { const v = sel.value; if (v === '__pass') setDV(ui, 'mountainPass', true); else { if (dvOpts(ui).mountainPass) setDV(ui, 'mountainPass', false); setDV(ui, 'scene', v); } }); bar.append(sel);   // v read first: setDV re-syncs this select
       btn('shape', 'The road: straight, or an IIHS bend (shared with the Road view)', () => { const o = rvOpts(ui); setRV(ui, 'shape', RV_SHAPES[(RV_SHAPES.indexOf(o.shape) + 1) % RV_SHAPES.length]); });
       btn('wet', 'Dry or wet asphalt (wet is darker and mirror-like)', () => setDV(ui, 'wet', !dvOpts(ui).wet));
@@ -1034,5 +1034,5 @@
     box.append(el('span', { class: 'btn-pair' }, wt));
   }
 
-  RF.SpecUI = { streams, previewFF, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, roadReadout, drawDrive, driveReadout, editorOverlay, readout, leftTools, COL };
+  RF.SpecUI = { dvOpts, streams, previewFF, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, roadReadout, drawDrive, driveReadout, editorOverlay, readout, leftTools, COL };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
