@@ -164,6 +164,8 @@ export function objects(renderer, uniforms, onModelsReady) {
     scene,camera,
     update(p,obs,ss) {
       prototype.actors=prototype.nearTrees=prototype.farTrees=prototype.leafPrimitives=0;
+      // Pass: only the car swap runs (the pass world already built its deer and trees; leafy foliage stays off on the pass).
+      if(p.touge && p.detailedModels){models.load();obs=models.adapt(obs,p);}
       if((p.detailedModels || p.leafyFoliage) && !p.touge){
         if(p.detailedModels){models.load();obs=models.adapt(D.Models.actors(obs,true),p);}
         else obs=obs.flatMap(ob=>ob.detailPart==='tree'?(ob.detail?D.Models.tree(ob.detail):[]):[ob]);

@@ -483,7 +483,7 @@
   }
   // A frame's markings stay in route coordinates, objects and light positions use the very same route transform.
   function tileWorld(p, dist, t, tauOf) {
-    if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t);
+    if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t, tauOf);
     const src = p.src, cfg = src.tiles, lane = p.lane, A = tileRoute(cfg.seed, dist, !!cfg.groundCache), edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
     const pp = Object.assign({}, p, { A });
     // Street lights can reach foliage outside our beam: keep it for actual per-point shading.
@@ -715,6 +715,7 @@
   const tauFor = (act, t) => (id) => { const t0 = act.get(id); return t0 === undefined ? (id[0]==='@'?-1:0) : t - t0; };
   // start the walkers and deer the car has come within ACT m of (the page does this once per frame and hands the result to every thread, so they all pose the same actor the same way)
   function activate(src, dist, t, act) {
+    if (src.tiles && src.tiles.mountain) return RF.Touge.activate(src, dist, t, act);
     if (!src.chunk) {
       for(const ob of src.objects)if(ob.detailPart==='deer'&&ob.detail){const cycle=-Math.floor((ob.x-dist+6)/PERIOD),id=cycle+':static:'+ob.modelId;if(!act.has('@'+id)&&ob.x+cycle*PERIOD-dist<=D.Models.deerProfile((src.traffic?.seed||0)+':'+id).trigger)act.set('@'+id,t);}
       return;
@@ -1458,7 +1459,7 @@ void main() {
     V.bar.querySelector('[data-anim="traffic-logic"]').setAttribute('aria-pressed', String(!!o.trafficLogic));
     V.bar.querySelector('[data-anim="gap"]').setAttribute('aria-pressed', String(o.safeGap !== false)); V.bar.querySelector('[data-anim="gap"]').disabled = !!o.trafficLogic;
     V.bar.querySelector('[data-anim="tile-cache"]').setAttribute('aria-pressed', String(!!o.tileCache)); V.bar.querySelector('[data-anim="tile-cache"]').disabled = !o.tiles;
-    V.bar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.bar.querySelector('[data-anim="street-lamps"]').disabled = !o.tiles;
+    V.bar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.bar.querySelector('[data-anim="street-lamps"]').disabled = !(o.tiles || o.mountainPass);
     V.tileLab.hidden = !o.tiles;
     const wd = o.wild && (o.scene === 'road' || (o.tiles && o.scene === 'intersection'));        // forest and city keep their existing scenery
     V.bar.querySelector('[data-anim="seed"]').value = o.seed; V.bar.querySelector('[data-anim="seed"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest'))); V.bar.querySelector('[data-anim="dice"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest')));
