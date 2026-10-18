@@ -122,6 +122,19 @@ function run(RF, ok) {
   for (const dist of [0, 40, 120, 240, 320, 560, 720, 880, 1000]) { eyeFixed = Math.max(eyeFixed, eyeErr(dist, cliffOff, false)); eyeBroken = Math.max(eyeBroken, eyeErr(dist, cliffOff, true)); }
   ok('PP2c deer eyes: rigid with the body on the cliff verge (<5 cm at 9 distances)', eyeFixed < 0.05, 'worst ' + (eyeFixed * 100).toFixed(2) + ' cm');
   ok('PP2c control: per-eye terrain lift (pre-fix) FAILS that check', eyeBroken >= 0.05, 'pre-fix worst ' + (eyeBroken * 100).toFixed(1) + ' cm');
+  // 8. PP2d: auto high beam must not see oncoming lamps through a crest. Camera at 100 m, crest at 160 m (60 m ahead).
+  const E = [-2, .37, 1.2], dist = 100, Ar = P.route(dist, 3.5, true);
+  const lampAt = (s, off) => { const q = Ar.at(s, off), L = [q.p[0], q.p[1], Ar.height(s, off) + .7], h = Math.hypot(E[0] - L[0], E[1] - L[1]); return { k: 'disc', x: L[0], y: L[1], z: L[2], headlamp: true, nx: (E[0] - L[0]) / h, ny: (E[1] - L[1]) / h, nz: 0, r: .03, mat: 'lamp' }; };
+  let hiddenS = null;
+  for (let s = 70; s <= 158 && hiddenS === null; s += 2) { const L = lampAt(s, -1.75); if (L.x > E[0] && P.blocked(Ar, E, [L.x, L.y, L.z])) hiddenS = s; }
+  ok('PP2d found a lamp beyond the crest that the terrain hides', hiddenS !== null, 'at rel ' + hiddenS + ' m');
+  const hidden = lampAt(hiddenS, -1.75), blockedHook = pos => P.blocked(Ar, E, pos);
+  ok('PP2d the sensor WITH the terrain hook does not see the hidden lamp', D.autoHighSense([hidden], E, { occluders: [hidden], lane: 3.5, blocked: blockedHook }).oncoming === false);
+  ok('PP2d control: without the hook the same lamp is reported (the bug)', D.autoHighSense([hidden], E, { occluders: [hidden], lane: 3.5 }).oncoming === true);
+  const nearLamp = lampAt(40, -1.75);
+  ok('PP2d a lamp in plain view over the near crest still counts with the hook', !P.blocked(Ar, E, [nearLamp.x, nearLamp.y, nearLamp.z]) && D.autoHighSense([nearLamp], E, { occluders: [nearLamp], lane: 3.5, blocked: blockedHook }).oncoming === true);
+  const animSrc = fsM.readFileSync(pathM.join(__dirname, '..', 'js', 'drive-anim.js'), 'utf8');
+  ok('PP2d pass wiring: autoSense passes the terrain hook for p.touge', /blocked: \(pos\) => RF\.Touge\.blocked\(w\.A, E, pos\)/.test(animSrc));
 }
 
 module.exports = { run };

@@ -1448,7 +1448,7 @@ void main() {
   }
   // Camera-sensor inputs for Auto: the same objects frameSources traces glare from, so the sensor sees what the frame shows.
   function autoSense(p, dist, t) {
-    if (p.touge) { const w = RF.Touge.world(p, dist, t); return D.autoHighSense(w.objects, eyeOf(p), { occluders: w.objects, lane: p.lane }); }
+    if (p.touge) { const w = RF.Touge.world(p, dist, t), E = eyeOf(p); return D.autoHighSense(w.objects, E, { occluders: w.objects, lane: p.lane, blocked: (pos) => RF.Touge.blocked(w.A, E, pos) }); }
     const tauOf = tauFor(V.act, t), occ = p.src.tiles ? tileWorld(p, dist, t, tauOf).objects : placedObjects(p, dist, t, tauOf);
     const A = p.src.tiles ? (p.src.tiles.mountain ? RF.Touge.route(dist, p.lane, false) : tileRoute(p.src.tiles.seed, dist)) : p.A;
     return D.autoHighSense(trafficObjects(p.src, trafficCars(p.src, dist, t), A, Object.assign({}, p, { A })), eyeOf(p), { occluders: occ, lane: p.lane });

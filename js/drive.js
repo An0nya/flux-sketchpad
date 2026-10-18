@@ -492,6 +492,7 @@
         if (d > preRange || Math.abs(ob.y) > 1.5 * lane) continue;
       }
       if (occluded([ob.x, ob.y, ob.z], E, occ)) continue;
+      if (o.blocked && o.blocked([ob.x, ob.y, ob.z])) continue;     // terrain between eye and lamp (pass only; flat scenes pass no hook)
       if (ob.headlamp) oncoming = true; else preceding = true;
     }
     return { oncoming, preceding };
