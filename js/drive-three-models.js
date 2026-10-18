@@ -9,7 +9,7 @@ const lighting=ground.slice(0,ground.indexOf('vec4 roadFrame')).replace('vec4 gl
 const vertex=`
 attribute float surfaceId;varying float modelId;varying vec3 worldPoint,worldNormal,localPoint;varying vec2 modelUV;
 void main(){vec4 p=instanceMatrix*vec4(position,1);localPoint=position;modelId=surfaceId;worldPoint=p.xyz;worldNormal=mat3(instanceMatrix)*normal;modelUV=uv;
- vec3 q=p.xyz-eye;gl_Position=vec4(-q.y/tanH,q.z/(tanH*size.y/size.x),0,q.x);}
+ vec3 q=carFromWorld*(p.xyz-eye);gl_Position=vec4(-q.y/tanH,q.z/(tanH*size.y/size.x),0,q.x);}
 `;
 const fragment=lighting+`
 varying float modelId;varying vec3 worldPoint,worldNormal,localPoint;varying vec2 modelUV;
@@ -94,7 +94,7 @@ export function modelMeshes(scene,uniforms,onReady) {
           if(!g || g.mesh.instanceMatrix.count<list.length){if(g){scene.remove(g.mesh);g.mesh.dispose();g.mesh.material.dispose();}
             const local={...uniforms,bodyMap:{value:part.map},wheel:{value:part.wheel},maskMode:{value:0}};
             // Include the same lighting uniforms in the vertex stage (only eye, tanH and size are needed there).
-            const material=new T.ShaderMaterial({uniforms:local,vertexShader:'uniform vec3 eye;uniform float tanH;uniform vec2 size;\n'+vertex,fragmentShader:fragment,depthTest:true,depthWrite:true,depthFunc:T.LessDepth,side:T.DoubleSide});
+            const material=new T.ShaderMaterial({uniforms:local,vertexShader:'uniform vec3 eye;uniform float tanH;uniform vec2 size;uniform mat3 carFromWorld;\n'+vertex,fragmentShader:fragment,depthTest:true,depthWrite:true,depthFunc:T.LessDepth,side:T.DoubleSide});
             const mesh=new T.InstancedMesh(part.geometry,material,Math.max(16,list.length*2));mesh.frustumCulled=false;scene.add(mesh);g={mesh,local};groups.set(key,g);
           }
           g.mesh.count=part.region===undefined||part.region===!!p.us?list.length:0;

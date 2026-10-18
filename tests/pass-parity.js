@@ -6,7 +6,7 @@ function run(RF, ok) {
   const A = RF.DriveAnim, P = RF.Touge, D = RF.Drive;
   const SEED = 7, PERIOD = 1600;
   const pass = (o) => {
-    const src = A.source('road', 3.5, true, { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: true, rpm: true }, { mountainPass: true, streetLamps: o.lamps || 'sodium', seed: SEED, oncoming: true, preceding: true, trafficDensity: 2 });
+    const src = A.source('road', 3.5, true, { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: true, rpm: true }, { mountainPass: true, streetLamps: o.lamps || 'sodium', seed: SEED, oncoming: true, preceding: true, trafficDensity: 2, cline: o.cline });
     return { src, lane: 3.5, us: true, touge: true, lut: D.lutFrom(() => 30000), conv: 'A', look: { RL: 0.2, ambient: 0 }, detailedModels: !!o.detailed, deerBehaviour: !!o.deer, lamps: [[0, 0.7, 0.7]] };
   };
   const world = (p, dist, tauOf) => P.world(p, dist, 0, tauOf);
@@ -64,14 +64,77 @@ function run(RF, ok) {
     const w = world(pass({ detailed: true, deer: true }), d, () => -1);
     people += w.objects.filter(o => o.cls === 'person' || o.detailPart === 'person').length;
     studs += w.objects.filter(o => o.cls === 'rpm').length;
-    centre += w.markings.filter(m => m.pat || m.mat !== 'white-paint').length;
     const tr = w.objects.filter(o => o.traffic && o.detail);
     cars += tr.length; normals += tr.filter(o => o.detail.normal && o.detail.normal.length === 3).length;
   }
   ok('PP no pedestrians anywhere on the pass', people === 0, 'people seen ' + people);
   ok('PP no lane studs on the pass', studs === 0, 'studs seen ' + studs);
-  ok('PP only the two edge lines (no centre line, dashed or yellow)', centre === 0, 'extra markings ' + centre);
+  // Centre line restored (PP2b): US solid = two yellow lines, broken = one dashed yellow line, plus the two white edge lines.
+  const mk = (o) => world(pass(o), 0).markings;
+  const solid = mk({}), brk = mk({ cline: 'broken' });
+  ok('PP centre line: US solid double yellow on the pass', solid.filter(m => m.mat === 'yellow-paint').length === 2 && solid.filter(m => m.mat === 'white-paint' && !m.pat).length === 2, solid.map(m => m.mat).join(','));
+  ok('PP centre line: broken yellow (passing zone) on the pass, with its dash pattern', brk.filter(m => m.mat === 'yellow-paint' && m.pat).length === 1 && brk.filter(m => m.mat === 'white-paint' && !m.pat).length === 2, brk.map(m => m.mat + (m.pat ? '/dash' : '')).join(','));
+  ok('PP centre line: sits on the lane centre (offset Lw/2)', solid.filter(m => m.mat === 'yellow-paint').every(m => Math.abs((m.o0 + m.o1) / 2 - 3.5 / 2) < 0.2), solid.filter(m => m.mat === 'yellow-paint').map(m => ((m.o0 + m.o1) / 2).toFixed(2)).join(','));
   ok('PP traffic cars on the pass exist and every one carries the road normal for the GPU mesh car', cars > 0 && normals === cars, 'cars ' + cars + ', with normal ' + normals);
+
+  // 6. PP2: the GPU mesh car body must be projected in the same car frame as the pass lamps and road (carFromWorld in the shader).
+  // Metric: camera-space up error in metres between the mesh's projection and the primitive (lamp/road) projection of the same car origin.
+  const fsM = require('fs'), pathM = require('path');
+  const meshSrc = fsM.readFileSync(pathM.join(__dirname, '..', 'js', 'drive-three-models.js'), 'utf8');
+  ok('PP2 mesh car vertex shader applies carFromWorld (source guard)', /uniform mat3 carFromWorld/.test(meshSrc) && /vec3 q=carFromWorld\*\(p\.xyz-eye\)/.test(meshSrc));
+  // frame = [f,l,n] (car axes in world); eye = the shader's eye uniform (already rotated into world on the pass).
+  // primitive: q = carFromWorld*(p-eye). mesh: q = carFromWorld*(p-eye) when fixed, p-eye when broken.
+  function offsetAt(points, frame, eye, meshInCarFrame) {
+    const [f, l, n] = frame, MT = [f, l, n];
+    const mul = (v) => MT.map(r => r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
+    let worst = 0;
+    for (const pt of points) {
+      const d = pt.map((v, i) => v - eye[i]), qP = mul(d), qM = meshInCarFrame ? mul(d) : d;
+      worst = Math.max(worst, Math.abs(qM[2] - qP[2]));                         // camera-space up error, metres (how far the body sits off the lamp frame)
+    }
+    return worst;
+  }
+  const flatOff = offsetAt([[40, 1, .5], [90, -2, 1]], [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [-2, .37, 1.2], false);
+  ok('PP2 control: flat scene (carFromWorld = identity) has zero mesh-vs-lamp offset', flatOff === 0, flatOff);
+  let fixedWorst = 0, brokenWorst = 0;
+  for (let d = 0; d < PERIOD; d += 40) {
+    const w = world(pass({ detailed: true }), d, () => -1), a = P.attitude(d), f = a.forward, l = a.left, n = a.up;
+    const eye = [0, 1, 2].map(i => f[i] * -2 + l[i] * .37 + n[i] * 1.2);
+    const pts = w.objects.filter(o => o.traffic && o.detail && o.detail.normal).map(o => [o.detail.x, o.detail.y, o.detail.z]);
+    fixedWorst = Math.max(fixedWorst, offsetAt(pts, [f, l, n], eye, true));
+    brokenWorst = Math.max(brokenWorst, offsetAt(pts, [f, l, n], eye, false));
+  }
+  ok('PP2 pass: mesh car body within 5 cm of the lamp/road frame at every 40 m of the lap', fixedWorst < 0.05, 'worst ' + fixedWorst.toFixed(4) + ' m');
+  ok('PP2 control: the pre-fix projection (no carFromWorld) FAILS that 5 cm check', brokenWorst >= 0.05, 'pre-fix worst ' + brokenWorst.toFixed(3) + ' m');
+  // 7. PP2c: a detailed deer's eyes lift with its body, so the rigid eye-to-body height holds on a cliff verge and on the crest.
+  // The pre-fix control lifts each eye at its own terrain sample (no surfaceAnchor): it must fail the 5 cm check.
+  const eyeErr = (dist, off, preFix) => {
+    const A = P.route(dist, 3.5, true), K = D.kit({ Lw: 3.5, A, rand: D.rng(701) });
+    K.deer(60, off, { id: 'probe:' + dist });
+    const local = D.Models.actors(K.O.map(o => ({ ...o })), true);
+    const eyesT = local.filter(o => o.k === 'disc' && o.mat === 'eyeshine'), sdfT = local.find(o => o.k === 'sdf');
+    const lifted = local.map(o => P.lift(preFix ? { ...o, surfaceAnchor: undefined } : o, A));
+    const sdfL = lifted.find(o => o.k === 'sdf'), eyesL = lifted.filter(o => o.k === 'disc' && o.mat === 'eyeshine');
+    return Math.max(...eyesL.map((e, i) => Math.abs((e.z - sdfL.z) - (eyesT[i].z - sdfT.z))));
+  };
+  const cliffOff = 1.5 * 3.5 + 3.5;
+  let eyeFixed = 0, eyeBroken = 0;
+  for (const dist of [0, 40, 120, 240, 320, 560, 720, 880, 1000]) { eyeFixed = Math.max(eyeFixed, eyeErr(dist, cliffOff, false)); eyeBroken = Math.max(eyeBroken, eyeErr(dist, cliffOff, true)); }
+  ok('PP2c deer eyes: rigid with the body on the cliff verge (<5 cm at 9 distances)', eyeFixed < 0.05, 'worst ' + (eyeFixed * 100).toFixed(2) + ' cm');
+  ok('PP2c control: per-eye terrain lift (pre-fix) FAILS that check', eyeBroken >= 0.05, 'pre-fix worst ' + (eyeBroken * 100).toFixed(1) + ' cm');
+  // 8. PP2d: auto high beam must not see oncoming lamps through a crest. Camera at 100 m, crest at 160 m (60 m ahead).
+  const E = [-2, .37, 1.2], dist = 100, Ar = P.route(dist, 3.5, true);
+  const lampAt = (s, off) => { const q = Ar.at(s, off), L = [q.p[0], q.p[1], Ar.height(s, off) + .7], h = Math.hypot(E[0] - L[0], E[1] - L[1]); return { k: 'disc', x: L[0], y: L[1], z: L[2], headlamp: true, nx: (E[0] - L[0]) / h, ny: (E[1] - L[1]) / h, nz: 0, r: .03, mat: 'lamp' }; };
+  let hiddenS = null;
+  for (let s = 70; s <= 158 && hiddenS === null; s += 2) { const L = lampAt(s, -1.75); if (L.x > E[0] && P.blocked(Ar, E, [L.x, L.y, L.z])) hiddenS = s; }
+  ok('PP2d found a lamp beyond the crest that the terrain hides', hiddenS !== null, 'at rel ' + hiddenS + ' m');
+  const hidden = lampAt(hiddenS, -1.75), blockedHook = pos => P.blocked(Ar, E, pos);
+  ok('PP2d the sensor WITH the terrain hook does not see the hidden lamp', D.autoHighSense([hidden], E, { occluders: [hidden], lane: 3.5, blocked: blockedHook }).oncoming === false);
+  ok('PP2d control: without the hook the same lamp is reported (the bug)', D.autoHighSense([hidden], E, { occluders: [hidden], lane: 3.5 }).oncoming === true);
+  const nearLamp = lampAt(40, -1.75);
+  ok('PP2d a lamp in plain view over the near crest still counts with the hook', !P.blocked(Ar, E, [nearLamp.x, nearLamp.y, nearLamp.z]) && D.autoHighSense([nearLamp], E, { occluders: [nearLamp], lane: 3.5, blocked: blockedHook }).oncoming === true);
+  const animSrc = fsM.readFileSync(pathM.join(__dirname, '..', 'js', 'drive-anim.js'), 'utf8');
+  ok('PP2d pass wiring: autoSense passes the terrain hook for p.touge', /blocked: \(pos\) => RF\.Touge\.blocked\(w\.A, E, pos\)/.test(animSrc));
 }
 
 module.exports = { run };
