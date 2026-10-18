@@ -1368,6 +1368,10 @@ void main() {
     const lamps = E('select', { 'data-anim': 'street-lamps', 'aria-label': 'Street lamps on urban tiles', title: 'Downward point lights, diffuse illumination without shadows; approximate sodium / LED colour, not measured fixture photometry' });
     for (const [value, label] of [['off', 'street lamps off'], ['sodium', 'sodium ~2000 K'], ['led', 'LED ~4000 K']]) lamps.append(E('option', { value }, label));
     lamps.addEventListener('change', () => setDV(ui, 'streetLamps', lamps.value)); bar.append(lamps);
+    // ambient light: moved here from the sidebar's Road section (drive only; the Spec view never reads it). Light from the sky on diffuse surfaces, besides the lamps; None judges the beam alone
+    const ambient = E('select', { 'data-anim': 'ambient', 'aria-label': 'Ambient light', title: 'Light on diffuse surfaces from the sky, besides the lamps. None judges the beam alone.' });
+    for (const [value, label] of [['0', 'ambient: none (headlamp only)'], ['0.2', 'ambient: full moon 0.2 lx'], ['5', 'ambient: dusk 5 lx']]) ambient.append(E('option', { value }, label));
+    ambient.addEventListener('change', () => setDV(ui, 'ambient', +ambient.value)); bar.append(ambient);
     V.tileLab = E('span', { class: 'anim-speed', 'data-anim': 'tile-status', 'aria-live': 'off' }); bar.append(V.tileLab);
     for (const [k, txt, title] of CLASSES) btn('c-' + k, title, () => setDV(ui, k, !info().o[k]), txt);
     // random scenery: the seed (same seed = same road), how dense, and the US centre line (double solid yellow, or the broken line of a passing zone)
@@ -1472,6 +1476,7 @@ void main() {
     V.bar.querySelector('[data-anim="gap"]').setAttribute('aria-pressed', String(o.safeGap !== false)); V.bar.querySelector('[data-anim="gap"]').disabled = !!o.trafficLogic;
     V.bar.querySelector('[data-anim="tile-cache"]').setAttribute('aria-pressed', String(!!o.tileCache)); V.bar.querySelector('[data-anim="tile-cache"]').disabled = !o.tiles;
     V.bar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.bar.querySelector('[data-anim="street-lamps"]').disabled = !(o.tiles || o.mountainPass);
+    V.bar.querySelector('[data-anim="ambient"]').value = String(o.ambient || 0);
     V.tileLab.hidden = !o.tiles;
     const wd = o.wild && (o.scene === 'road' || (o.tiles && o.scene === 'intersection'));        // forest and city keep their existing scenery
     V.bar.querySelector('[data-anim="seed"]').value = o.seed; V.bar.querySelector('[data-anim="seed"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest'))); V.bar.querySelector('[data-anim="dice"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest')));

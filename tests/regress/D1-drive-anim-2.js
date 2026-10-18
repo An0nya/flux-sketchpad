@@ -18,7 +18,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok('page is the Flux app on port ' + port + ' (RF.UI, RF.DriveAnim)', await page.evaluate((p) => !!(RF.UI && RF.DriveAnim) && location.port === String(p), port));
   const gpu = await page.evaluate(() => { const g = document.createElement('canvas').getContext('webgl2'); return !!g && !!g.getExtension('EXT_color_buffer_float'); });
   if (!gpu) { ok('WebGL2 with float targets exists', false); await browser.close(); process.exit(1); }
-  await page.evaluate(() => { RF.UI.dvOpts.glare = 0; RF.UI.dvAnim = { view: 'anim', playing: false, popout: false, dist: 0, total: 0, t: 0 }; RF.UI.redrawSpec(); }); await sleep(1500);
+  await page.evaluate(() => { RF.UI.dvOpts.glare = 0; RF.UI.dvOpts.tiles = false; RF.UI.dvAnim = { view: 'anim', playing: false, popout: false, dist: 0, total: 0, t: 0 }; RF.UI.redrawSpec(); }); await sleep(1500);
   // 1. the bar has the new controls, the defaults are on
   const bar = await page.evaluate(() => ({ btn: ['c-rpm', 'c-tex', 'c-wild', 'dice', 'cline'].map((k) => !!document.querySelector('[data-anim="' + k + '"]')), seed: document.querySelector('[data-anim="seed"]').value, dn: document.querySelector('[data-anim="density"]').value, pressed: ['c-rpm', 'c-tex', 'c-wild'].map((k) => document.querySelector('[data-anim="' + k + '"]').getAttribute('aria-pressed')) }));
   ok('new controls exist (studs, grain, random, seed, dice, density, centre line); random scenery, studs and grain are on by default', bar.btn.every(Boolean) && bar.pressed.every((x) => x === 'true') && bar.seed === '7' && +bar.dn === 1.5, JSON.stringify(bar));
