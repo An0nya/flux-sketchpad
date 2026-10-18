@@ -668,7 +668,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   // D3: deterministic moving traffic, rigid cars, the existing lighting path and once-per-driver glare count.
   {
     const DA = RF.DriveAnim, D = RF.Drive, flags = { posts: false, veg: false, people: false, animals: false, signs: false, rpm: false };
-    const opts = { wild: true, seed: 7, density: 0.5, trafficDensity: 2, oncoming: true, preceding: true, onKcd: 30 };
+    // trafficRange 230 pins the window these D3 checks were written for (the default is 400 since DC; drive-controls2.js covers 400)
+    const opts = { wild: true, seed: 7, density: 0.5, trafficDensity: 2, oncoming: true, preceding: true, onKcd: 30, trafficRange: 230 };
     const src = DA.source('road', 3.5, false, flags, opts), cars = DA.trafficCars(src, 0, 0), J = JSON.stringify;
     const off = DA.source('road', 3.5, false, flags, Object.assign({}, opts, { oncoming: false, preceding: false }));
     ok('D3a both lanes spawn deterministically; seed changes the traffic, toggles leave scenery unchanged', cars.some((c) => c.kind === 'oncoming') && cars.some((c) => c.kind === 'preceding') && J(cars) === J(DA.trafficCars(DA.source('road', 3.5, false, flags, opts), 0, 0)) && J(cars) !== J(DA.trafficCars(DA.source('road', 3.5, false, flags, Object.assign({}, opts, { seed: 8 })), 0, 0)) && J(src.chunk(0)) === J(off.chunk(0)) && !DA.trafficCars(off, 0, 0).length, J(cars));
@@ -816,7 +817,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     for (const f of ['core','road','drive','drive-scenes','drive-anim']) vm.runInContext(cp.execFileSync('git', ['show', '4bae491:js/'+f+'.js'], { encoding: 'utf8' }), ctx);
     const old=ctx.RF.DriveAnim, oldD=ctx.RF.Drive; let identical=true, compared=0;
     for (const name of ['road','forest','city']) for (const bend of [null, RF.Road.arc(250,'right')]) for (const dist of [0,37.3,111.7]) for (const traffic of [false,true]) {
-      const o={wild:true,seed:7,density:0.5,safeGap:false,tiles:false,onMode:'manual',oncoming:traffic,preceding:traffic}, now=Object.assign({},p,{w:96,h:54,A:bend,src:A.source(name,3.5,false,flags,o)}), then=Object.assign({},now,{src:old.source(name,3.5,false,flags,o)});
+      const o={wild:true,seed:7,density:0.5,safeGap:false,tiles:false,onMode:'manual',oncoming:traffic,preceding:traffic,trafficRange:230}, now=Object.assign({},p,{w:96,h:54,A:bend,src:A.source(name,3.5,false,flags,o)}), then=Object.assign({},now,{src:old.source(name,3.5,false,flags,o)});
       const g=A.ground(now), h=old.ground(then), r=new Float32Array(4*96*54), s=new Float32Array(r.length); A.objects(now,dist,r,1); old.objects(then,dist,s,1);
       const a=A.composeCPU(now,g,r,dist), b=old.composeCPU(then,h,s,dist); identical=identical && a.every((v,i)=>v===b[i]); compared++;
       const scene=D.buildScene(name,{Lw:3.5,A:bend,us:false,seed:7},flags), base=oldD.buildScene(name,{Lw:3.5,A:bend,us:false,seed:7},flags), cam={w:96,h:54,hfov:60,eye:A.EYE,lamps:p.lamps,lut:p.lut,lane:3.5,arc:bend,look:p.look,ss:1};
@@ -994,7 +995,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     for(const f of ['core','road','drive','drive-scenes','drive-anim'])vm.runInContext(cp.execFileSync('git',['show','2141222:js/'+f+'.js'],{encoding:'utf8'}),ctx);
     let identical=true, worlds=0;
     for(const tiles of [false,true])for(const safeGap of [false,true])for(const scene of ['road','forest','city']) for(const bend of [false,true]) {
-      const opts={tiles,safeGap,trafficLogic:false,seed:7,speed:90,oncoming:true,preceding:true,onMode:'symmetric',trafficDensity:3,streetLamps:'off'},p={w:64,h:36,hfov:60,lamps:[[0,0,.68]],lut:D.lutFrom(()=>1000),conv:'A',lane:3.5,look:{wet:false},A:bend?RF.Road.arc(250,'right'):null};
+      const opts={tiles,safeGap,trafficLogic:false,seed:7,speed:90,oncoming:true,preceding:true,onMode:'symmetric',trafficDensity:3,streetLamps:'off',trafficRange:230},p={w:64,h:36,hfov:60,lamps:[[0,0,.68]],lut:D.lutFrom(()=>1000),conv:'A',lane:3.5,look:{wet:false},A:bend?RF.Road.arc(250,'right'):null};
       const q={...p,src:A.source(scene,3.5,false,flags,opts)},old={...p,src:ctx.RF.DriveAnim.source(scene,3.5,false,flags,opts)},x=new Float32Array(64*36*4),y=new Float32Array(x.length);
       identical=identical&&J(A.trafficCars(q.src,40,3))===J(ctx.RF.DriveAnim.trafficCars(old.src,40,3));
       A.objects(q,40,x,1,null,null,null,3);ctx.RF.DriveAnim.objects(old,40,y,1,null,null,null,3);identical=identical&&x.every((v,i)=>v===y[i]);worlds++;
