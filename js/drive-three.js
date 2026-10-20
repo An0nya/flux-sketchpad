@@ -3,6 +3,7 @@ import * as T from '../vendor/three/three.module.min.js';
 import { vertex, ground, withLighting, tableSource, tablePassSource, tableBlurSource } from './drive-three-shaders.js';
 import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
+import { TABLE_BUDGET_MS, bandRows, smoothMsPerRow, tableStatus, fillFraction, tableBadge } from './table-pace.js';
 const D = globalThis.RF.Drive;
 const texture = (data, w, h, format = T.RGBAFormat) => { const t = new T.DataTexture(data, w, h, format, T.FloatType); t.needsUpdate = true; return t; };
 const array = (n, type) => Array.from({ length: n }, () => new type());
@@ -49,56 +50,119 @@ export function create(canvas, gl, onModelsReady) {
   const blurMesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: blurU, vertexShader: vertex, fragmentShader: tableBlurSource, depthTest: false, depthWrite: false }));
   const blurScene = new T.Scene(); blurMesh.frustumCulled = false; blurScene.add(blurMesh);
   function tableShading(extras) {
-    if (tabMesh.material.userData.lit === !!extras) return;
-    tabMesh.material.fragmentShader = tablePassSource(extras ? withLighting(ground) : ground); tabMesh.material.userData.lit = !!extras; tabMesh.material.needsUpdate = true;
+    if (tabMesh.material.userData.lit === !!extras) return false;
+    tabMesh.material.fragmentShader = tablePassSource(extras ? withLighting(ground) : ground); tabMesh.material.userData.lit = !!extras; tabMesh.material.needsUpdate = true; return true;
   }
   // SD2 cache (look.scatterCache 'on'): the table is redrawn only when its key changes (the lamp pose quantised to 0.05 degrees and
-  // 1e-4 m, the beam LUT identity, lamp colour, visibility, fov, size, eye, steps, res, blur, lit). Cycle 8 keeps up to eight versions with
-  // jitter seeds 0..7 (tableSeed), fills one per frame after an invalidation and shows the valid ones in rotation. Counters: globalThis.SD_SCATTER.
-  const TAB_VERSIONS = 8, tabStats = globalThis.SD_SCATTER = { recomputes: 0, skips: 0, valid: 0, cycle: 0, cache: false };
-  let tabVersions = [], tabTmp = null, tabSize = '', tabKey = null, tabValid = 0, tabFrame = 0;
+  // 1e-4 m, the beam LUT identity, lamp colour, visibility, fov, size, eye, steps, res, blur, lit, near fade). Cycle 8 keeps eight versions
+  // with jitter seeds 0..7 (tableSeed) and shows the valid ones in rotation. Counters: globalThis.SD_SCATTER.
+  // SE2 pacing and swap: with the cache on, a version is filled in horizontal bands (scissor rows) into one SPARE bank over frames, paced by
+  // TABLE_BUDGET_MS. When the spare is complete (blur applied) it swaps into its slot. The slot's previous contents stay shown until then
+  // (the previous valid version). A slot never filled shows nothing: scatter term 0 (no stall). A key change restarts the fill at slot 0 and
+  // keeps the old slots shown; a size change drops everything.
+  const TAB_VERSIONS = 8, tabStats = globalThis.SD_SCATTER = { recomputes: 0, skips: 0, valid: 0, cycle: 0, cache: false, shown: 0, fills: 0, pending: 0, wanted: 1, rowsDone: 0, rowsTotal: 0, lastMs: NaN, meanMs: NaN, msPerRow: 0, budgetMs: TABLE_BUDGET_MS, compileMs: NaN, compiles: 0, frames: 0, showingZero: true };
+  let slots = [], slotValid = [], spare = null, tabTmp = null, tabSize = '', tabKey = null, fillIdx = 0, tabFrame = 0, fill = null, compilePending = false;
+  const probePx = new Uint16Array(4);
+  const zeroTex = new T.DataTexture(new Float32Array(4), 1, 1, T.RGBAFormat, T.FloatType); zeroTex.magFilter = zeroTex.minFilter = T.NearestFilter; zeroTex.needsUpdate = true;
+  // Test hooks (tests/regress/SE-table-pacing.js): texels of a slot bank (half-float Uint16 words, GL row order, bottom row first), and a
+  // scissor check on the spare: rows below the fill's row must hold texels, rows at or above it must be empty.
+  tabStats.readVersion = (v, b) => { const t = slots[v][b], out = new Uint16Array(t.width * t.height * 4); renderer.readRenderTargetPixels(t, 0, 0, t.width, t.height, out); return out; };
+  tabStats.readSpare = (b) => { if (!spare) return null; const t = spare[b], out = new Uint16Array(t.width * t.height * 4); renderer.readRenderTargetPixels(t, 0, 0, t.width, t.height, out); return { data: out, width: t.width, height: t.height, rowsDone: fill ? fill.row : 0 }; };
+  tabStats.scissorCheck = () => {
+    if (!spare) return null;
+    const t = spare[0], W = t.width, H = t.height, out = new Uint16Array(W * H * 4); renderer.readRenderTargetPixels(t, 0, 0, W, H, out);
+    const rd = fill ? fill.row : 0; let below = 0, above = 0;
+    for (let y = 0; y < H; y++) { let nz = false; for (let x = 0; x < W * 4 && !nz; x++) if (out[y * W * 4 + x] !== 0) nz = true; if (y < rd) { if (!nz) below++; } else if (nz) above++; }
+    return { rowsDone: rd, rowsTotal: H, emptyBelow: below, filledAbove: above };
+  };
   const lutIds = new WeakMap(); let lutSeq = 0;
   const lutId = (l) => { if (!l) return 0; if (!lutIds.has(l)) lutIds.set(l, ++lutSeq); return lutIds.get(l); };
   const quant = (x, step) => Math.round((x || 0) / step), DEG05 = 0.05 * Math.PI / 180;
   function tableKey(p, extras, look, tw, th, sig) {
     return JSON.stringify([(p.lamps || []).map((l) => l.map((v) => quant(v, 1e-4))), quant(p.yaw, DEG05), quant(p.pitch, DEG05), quant(p.cornerLeft, DEG05), quant(p.cornerRight, DEG05),
       !!p.afs, !!p.lampPitch, !!p.corneringLamps, lutId(p.lut), (p.lampRGB || [1, 1, 1]).map((v) => quant(v, 1e-4)), look.visibility, quant(p.hfov, DEG05), p.w, p.h,
-      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig]);
+      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, look.scatterNearFade !== 'off']);
   }
-  function targetsFor(v) {
-    if (!tabVersions[v]) tabVersions[v] = [0, 1, 2].map(() => new T.WebGLRenderTarget(tabSize.w, tabSize.h, { type: T.HalfFloatType, depthBuffer: false }));
-    return tabVersions[v];
+  const newBank = () => [0, 1, 2].map(() => new T.WebGLRenderTarget(tabSize.w, tabSize.h, { type: T.HalfFloatType, depthBuffer: false }));
+  function dropAll() {
+    const dispose = (b) => b && b.forEach((t) => t.dispose());
+    slots.forEach(dispose); dispose(spare); if (tabTmp) tabTmp.dispose();
+    slots = []; slotValid = []; spare = null; tabTmp = null; tabKey = null; fillIdx = 0; fill = null;
+  }
+  // Rows [y0, y0 + rows) of the three banks for one seed (whole = the full target, no scissor, as before SE2).
+  function drawRows(bank, seed, y0, rows, tw, whole) {
+    set('tableSeed', seed);
+    for (let b = 0; b < 3; b++) {
+      set('tableBank', b); renderer.setRenderTarget(bank[b]);
+      if (whole) renderer.setScissorTest(false); else { renderer.setScissorTest(true); renderer.setScissor(0, y0, tw, rows); }
+      renderer.render(tabScene, camera);
+    }
+    renderer.setScissorTest(false);
+  }
+  function blurBank(bank, tw, th, sig) {
+    if (!(sig > 0)) return;
+    for (let b = 0; b < 3; b++) {
+      blurU.texel.value.set(1 / tw, 1 / th); blurU.sig.value = sig;
+      blurU.src.value = bank[b].texture; blurU.dirTexel.value.set(1, 0); renderer.setRenderTarget(tabTmp); renderer.render(blurScene, camera);
+      blurU.src.value = tabTmp.texture; blurU.dirTexel.value.set(0, 1); renderer.setRenderTarget(bank[b]); renderer.render(blurScene, camera);
+    }
   }
   function runTable(p, extras) {
     const look = p.look, f = look.scatterRes === 'full' ? 1 : 0.5, tw = Math.max(1, Math.round(p.w * f)), th = Math.max(1, Math.round(p.h * f));
     const sig = look.scatterBlur === 'mid' ? 1.5 : look.scatterBlur === 'strong' ? 3 : 0;
-    const cache = look.scatterCache === 'on', cycle = cache && look.scatterCycle === 8 ? TAB_VERSIONS : 1;
+    const cache = look.scatterCache === 'on', cycle = cache && look.scatterCycle === 8 ? TAB_VERSIONS : 1, wanted = cycle;
     if (tabSize === '' || tabSize.key !== tw + 'x' + th) {
-      tabVersions.forEach((v) => v && v.forEach((t) => t.dispose())); if (tabTmp) tabTmp.dispose();
-      tabVersions = []; tabSize = { w: tw, h: th, key: tw + 'x' + th }; tabTmp = new T.WebGLRenderTarget(tw, th, { type: T.HalfFloatType, depthBuffer: false }); tabKey = null; tabValid = 0;
+      dropAll(); tabSize = { w: tw, h: th, key: tw + 'x' + th }; tabTmp = new T.WebGLRenderTarget(tw, th, { type: T.HalfFloatType, depthBuffer: false });
     }
-    tableShading(extras);
+    if (tableShading(extras)) compilePending = true;
+    const compiling = compilePending; compilePending = false;
     const key = tableKey(p, extras, look, tw, th, sig);
-    if (!cache || key !== tabKey) { tabKey = key; tabValid = 0; }
-    // A fill is needed with no valid version yet, or (cycle 8) one more version per frame until all eight are valid.
-    const needFill = !cache || tabValid === 0 || (cycle > 1 && tabValid < cycle);
-    if (needFill) {
-      const v = !cache ? 0 : tabValid;
-      const bank = targetsFor(v);
-      set('tableH', th); set('tableSteps', Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48))); set('tableSeed', v);
-      for (let b = 0; b < 3; b++) { set('tableBank', b); renderer.setRenderTarget(bank[b]); renderer.render(tabScene, camera); }
-      if (sig > 0) for (let b = 0; b < 3; b++) {
-        blurU.texel.value.set(1 / tw, 1 / th); blurU.sig.value = sig;
-        blurU.src.value = bank[b].texture; blurU.dirTexel.value.set(1, 0); renderer.setRenderTarget(tabTmp); renderer.render(blurScene, camera);
-        blurU.src.value = tabTmp.texture; blurU.dirTexel.value.set(0, 1); renderer.setRenderTarget(bank[b]); renderer.render(blurScene, camera);
-      }
-      if (cache) tabValid++;
-      tabStats.recomputes++;
-    } else tabStats.skips++;
-    const shownIndex = cycle > 1 ? tabFrame % Math.max(1, tabValid) : 0, shown = targetsFor(shownIndex);
-    tabFrame++; tabStats.shown = shownIndex;
-    set('scatBank0', shown[0].texture); set('scatBank1', shown[1].texture); set('scatBank2', shown[2].texture);
-    tabStats.valid = cache ? tabValid : 1; tabStats.cycle = cycle === 1 ? 0 : cycle; tabStats.cache = cache;
+    set('tableH', th); set('tableSteps', Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48))); set('tableFade', look.scatterNearFade === 'off' ? 0 : 1);
+    const budget = Number.isFinite(globalThis.SD_TABLE_BUDGET_MS) ? globalThis.SD_TABLE_BUDGET_MS : TABLE_BUDGET_MS; tabStats.budgetMs = budget;
+    const t0 = performance.now();
+    let bank = null, rows = 0, finished = false;
+    if (!cache) {
+      // Cache off: the single version is rendered whole every frame, as before SE2.
+      tabKey = key; if (!slots[0]) slots[0] = newBank();
+      bank = slots[0]; drawRows(bank, 0, 0, th, tw, true); blurBank(bank, tw, th, sig);
+      slotValid[0] = true; fillIdx = 1; rows = th; tabStats.recomputes++;
+    } else {
+      if (!tabKey || key !== tabKey) { tabKey = key; fillIdx = 0; fill = null; }
+      if (fillIdx < wanted) {
+        if (!spare) spare = newBank();
+        if (!fill) fill = { row: 0, ms: 0, seed: fillIdx };
+        bank = spare;
+        rows = bandRows(budget, tabStats.msPerRow, th - fill.row);
+        drawRows(bank, fill.seed, fill.row, rows, tw, false);
+        fill.row += rows;
+        if (fill.row >= th) { blurBank(bank, tw, th, sig); finished = true; }
+      } else tabStats.skips++;
+    }
+    // Sync: read one texel of the last bank written, so the timer covers the GPU work that was submitted.
+    let ms = NaN;
+    if (rows > 0) { renderer.readRenderTargetPixels(bank[2], 0, 0, 1, 1, probePx); ms = performance.now() - t0; }
+    if (compiling && rows > 0) { tabStats.compileMs = ms; tabStats.compiles++; }
+    else if (rows > 0 && !finished) tabStats.msPerRow = smoothMsPerRow(tabStats.msPerRow, ms, rows);
+    if (cache && fill) fill.ms += ms;
+    if (!cache && rows > 0) tabStats.lastMs = ms;
+    if (cache && finished) {
+      // the finished spare swaps into its slot; the slot's old bank becomes the next spare
+      const verMs = fill.ms, old = slots[fillIdx];
+      slots[fillIdx] = spare; spare = old || null; slotValid[fillIdx] = true; fillIdx++; fill = null;
+      tabStats.recomputes++; tabStats.fills++; tabStats.lastMs = verMs;
+      tabStats.meanMs = tabStats.fills === 1 ? verMs : tabStats.meanMs + (verMs - tabStats.meanMs) / tabStats.fills;
+    } else if (!cache) tabStats.fills = tabStats.recomputes;
+    // Show: the valid slots in rotation (cycle 8) or slot 0; no valid slot yet = zero scatter term.
+    const valid = []; for (let i = 0; i < wanted; i++) if (slotValid[i] && slots[i]) valid.push(i);
+    const shownIndex = valid.length ? valid[tabFrame % valid.length] : -1;
+    tabFrame++;
+    const shown = shownIndex < 0 ? null : slots[shownIndex];
+    set('scatBank0', shown ? shown[0].texture : zeroTex); set('scatBank1', shown ? shown[1].texture : zeroTex); set('scatBank2', shown ? shown[2].texture : zeroTex);
+    tabStats.frames++;
+    const doneN = cache ? fillIdx : 1;
+    Object.assign(tabStats, { showingZero: shownIndex < 0, shown: shownIndex, cache, cycle: cycle === 1 ? 0 : cycle, wanted, valid: doneN, pending: Math.max(0, wanted - doneN),
+      rowsDone: fill ? fill.row : (cache ? 0 : th), rowsTotal: th, status: cache ? tableStatus(fillIdx, wanted) : null,
+      fraction: fillFraction(fillIdx, wanted, fill ? fill.row : 0, th), badge: tableBadge(cache, fillIdx, wanted, tabStats.lastMs) });
   }
   function update(p, world, dist) {
     const lut = p.lut, look = p.look, A = world.A || p.A;

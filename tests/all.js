@@ -56,7 +56,8 @@ run('wet road sheen: GGX BRDF + legacy frames unchanged (tests/wet-ggx.js)', ['t
 run('road wetness 0..1: dry and wet frames unchanged, damp in between (tests/wetness.js)', ['tests/wetness.js']);
 run('fog: off frames unchanged, Koschmieder attenuation, monotone, presets (tests/fog.js)', ['tests/fog.js']);
 run('visible beam in fog: in-scatter off = pinned frames, cone, density peak, convergence, determinism (tests/scatter.js)', ['tests/scatter.js']);
-run('SD air-beam scatter table: CPU twin within 10 percent of direct at 8-30 m, finite, monotone, zero without fog (tests/scatter-table.js)', ['tests/scatter-table.js']);
+run('SD air-beam scatter table: CPU twin within 10 percent of direct at 15-30 m, finite, monotone, zero without fog (tests/scatter-table.js)', ['tests/scatter-table.js']);
+run('SE table pacing helpers and near-eye fade on the CPU twin (tests/scatter-table-pace.js)', ['tests/scatter-table-pace.js']);
 run('scene snapshot: studs, posts, signs, lamps, deer, people, trees, markings per scene (tests/scene-snapshot.js)', ['tests/scene-snapshot.js']);
 run('scene digest: where every scenery object sits, 2 seeds, tiles on and off (tests/scene-digest.js)', ['tests/scene-digest.js']);
 run('scenery parameters: the forest and city generator equals the old builders (240 cases), rates keep the other classes in place, backdrop, options (tests/scenery-params.js)', ['tests/scenery-params.js']);

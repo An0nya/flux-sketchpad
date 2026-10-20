@@ -1104,7 +1104,7 @@ void main() {
   function contextLost(e) {
     if (!recovery()) return;
     e.preventDefault(); if (V.lost || V.glFailed) return;
-    if (V.three) { V.three.dispose(); V.three = null; V.gkey = ''; V.gpuTries = 0; }       // the GPU renderer is rebuilt on restore (gpuRenderer)
+    tableStripClear(); if (V.three) { V.three.dispose(); V.three = null; V.gkey = ''; V.gpuTries = 0; }       // the GPU renderer is rebuilt on restore (gpuRenderer)
     V.lost = true; V.resume = S(V.ui).playing; S(V.ui).playing = false; stop(); killWorkers();
     const game = S(V.ui).game; if (game && !game.done) { game.pauseAt = performance.now(); if (game.inputs) game.inputs.clear(); RF.DriveGame.press(game, false, performance.now()); }
     if (V.canvas) V.canvas.hidden = true;
@@ -1138,7 +1138,7 @@ void main() {
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
     const own = ownBeams(o), tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
-    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(), lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
+    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(), lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterNearFade: o.scatterNearFade, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || (D.wetnessOf(o) > 0 && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1186,6 +1186,7 @@ void main() {
   // one frame at S.dist
   function frame() {
     if (!contextReady()) return;
+    tableStrip();
     if (V.highMode === 'auto') autoTick(V.ui, S(V.ui));
     const t0 = performance.now(); resolutionPrepare();
     const ui = V.ui, st = S(ui), I = info(), o = I.o, W = V.p.w, pb = V.band, had = pb[1] > pb[0], profiling = profileOn(), trafficMs = V.cameraMs || 0;
@@ -1215,6 +1216,7 @@ void main() {
     const draw = { profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed, ...(V.src.cross ? fixedIntersection(V.src, st.dist) : {}) }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
     try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
+    tableStrip();   // after the draw: a version that completes on this frame clears the strip now, not on the next frame
     if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
     flashLabel(st.dist, st.t); if (detailsOn()) detailsSample(); const detectorStart = performance.now(); if (st.game) { if (V.three) { const masks = V.three.masks(V.p, ss); V.gameMask = masks.mask; V.gameBodyMask = masks.body; } gameFrame(st.game); } const detectorMs = performance.now() - detectorStart; ui.dvAnimFrames = V.frames;
@@ -2093,7 +2095,7 @@ void main() {
   // The optional ES module is loaded only on HTTP; the classic CPU app still opens from file://.
   let threeModule, threeLoading;
   function gpuFallback(why) {
-    if (V.three) { V.three.dispose(); V.three = null; }
+    tableStripClear(); if (V.three) { V.three.dispose(); V.three = null; }
     V.gkey = ''; V.gpuFailure = String(why); say('GPU drive unavailable (' + V.gpuFailure.split('\n')[0].slice(0, 160) + '); using CPU renderer.'); if (V.bar) labels(V.ui);
   }
   function gpuCreate() {                                      // first build, and the rebuild after a context restore: a few tries, then the visible CPU fallback
@@ -2271,8 +2273,31 @@ void main() {
     const sorted = xs.slice().sort((a, b) => a - b), mean = xs.reduce((a, b) => a + b, 0) / xs.length;
     return { n: xs.length, mean, p95: sorted[Math.min(sorted.length - 1, Math.ceil(0.95 * sorted.length) - 1)] };
   }
+  // SE1: air-beam table progress in the header strip (ui.progress / ui.setStatus, the strip solver jobs use). drive-three publishes its
+  // state on globalThis.SD_SCATTER; this owns the strip. It yields to a solve (ui.solving) and never runs for drag previews (ui.previewRun).
+  function tableOn() { return !!(V.info && V.info.o.scatterMode === 'table' && globalThis.SD_SCATTER && globalThis.SD_SCATTER.cache !== undefined); }
+  function tableStripClear() {
+    const ui = V.ui; if (!V.tableStripOn) return; V.tableStripOn = false;
+    if (ui && ui.progress && !ui.solving) { ui.progress('done'); if (V.tableStatusPrev !== undefined) ui.setStatus(V.tableStatusPrev); }
+    V.tableStatusPrev = undefined;
+  }
+  function tableStrip() {
+    const ui = V.ui, st = globalThis.SD_SCATTER;
+    if (!ui || !ui.progress) return;
+    if (ui.solving || ui.previewRun) { V.tableStripOn = false; return; }
+    if (!(tableOn() && V.three && st)) { tableStripClear(); return; }
+    if (!V.tableStripOn) V.tableStatusPrev = document.getElementById('progress-text') ? document.getElementById('progress-text').textContent : '';
+    if (st.frames === 0) {
+      // first table frame on this GPU renderer: the shaders compile inside this frame, so show an indeterminate strip now
+      V.tableStripOn = true; ui.progress('solve'); ui.setStatus('compiling air-beam shaders\u2026'); return;
+    }
+    if (st.cache && st.pending > 0) {
+      V.tableStripOn = true; ui.setStatus(st.status); ui.progress('trace', st.fraction);
+    } else tableStripClear();
+  }
   function perfLabel() {
     if (V.fpsLab && V.info && V.info.o.fpsCounter) { const f = frameMsSummary(V.frameMs || []); V.fpsLab.textContent = Math.round(stats().fps) + ' fps · ' + (f.n ? f.mean.toFixed(1) + ' ms mean · ' + f.p95.toFixed(1) + ' ms p95' : '– ms'); }
+    if (V.fpsLab && V.info && V.info.o.fpsCounter && tableOn()) V.fpsLab.textContent += ' · ' + globalThis.SD_SCATTER.badge;
     if (!V.perfLab || !profileOn()) return;
     const s = stats(), b = s.breakdown, c = b.components, ms = (k) => c[k].ms.toFixed(1), scope = s.workers ? 'worker CPU sum' : 'CPU';
     V.perfLab.textContent = s.fps.toFixed(1) + ' fps · p95 ' + s.p95Ms.toFixed(1) + ' ms · ceiling ' + s.simCeiling + ' · scale ' + (s.resolution ? s.resolution.scale : 1).toFixed(2) + ' · sim ' + (s.sim ? s.sim.join('×') : '–') + ' · min ' + s.minFps + ' fps · SS ' + s.ss + '\n' +
@@ -2281,7 +2306,7 @@ void main() {
       'cache ' + b.cache.hits + ' hit / ' + b.cache.misses + ' miss · upload ' + ms('uploadMs') + ' ms\n' +
       'GL submit: compose ' + ms('composeMs') + ' · glare ' + ms('glareMs') + ' · final/veil ' + ms('finalVeilMs') + ' ms\n' +
       'AFS ' + ((V.p && V.p.yaw || 0) * 180 / Math.PI).toFixed(1) + '° · ' + 'traffic ' + ms('trafficMs') + ' · placement ' + ms('placementMs') + ' · dispatch ' + ms('dispatchMs') + ' · detector ' + ms('detectorMs') + ' · pacing ' + ms('pacingMs') + ' · other ' + ms('otherMs') + ' ms';
-    if (globalThis.SD_SCATTER && globalThis.SD_SCATTER.cache !== undefined && V.info.o.scatterMode === 'table') V.perfLab.textContent += '\nbeam table: ' + (globalThis.SD_SCATTER.cache ? 'cache on, ' + (globalThis.SD_SCATTER.cycle || 1) + ' version(s), ' + globalThis.SD_SCATTER.valid + ' valid' : 'cache off') + ' · recomputes ' + globalThis.SD_SCATTER.recomputes + ' · skips ' + globalThis.SD_SCATTER.skips;
+    if (tableOn()) V.perfLab.textContent += '\n' + globalThis.SD_SCATTER.badge + ' · beam table: ' + (globalThis.SD_SCATTER.cache ? 'cache on, ' + (globalThis.SD_SCATTER.cycle || 1) + ' version(s), ' + globalThis.SD_SCATTER.valid + ' valid' : 'cache off') + ' · recomputes ' + globalThis.SD_SCATTER.recomputes + ' · skips ' + globalThis.SD_SCATTER.skips;
   }
   function resetStats() { V.profiles = []; V.completedAt = 0; V.cameraMs = 0; V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
