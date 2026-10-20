@@ -1,6 +1,7 @@
 // BT: per-car traffic beams on the CPU path. Node, no browser: node tests/traffic-beams.js (exits 1 on any failure).
 // BT1: with no pool every car uses the built-in beam, so the CPU frames are byte-identical to main (hashes below, taken on main a9cb102).
 // BT1: a pool gives each car its own beam; a one-entry pool must equal passing that entry as the built-in beam.
+// BT2: weightedPick balance and stability; per-car colour on the car; the pool builder rules (subset, empty, GPU, neutral fallback).
 const { load } = require('./load.js');
 const crypto = require('crypto');
 
@@ -73,6 +74,37 @@ function run(RF, ok) {
   // a non-symmetric mode ignores the pool (the generic lamp is used)
   const gen = D.trafficSources(objs2, EYE, { ...dim, src: { traffic: { onMode: 'generic', seed: 7 } } });
   ok('BT1 non-symmetric traffic takes no per-car beam', gen.every(s => s.beam === undefined));
+  // 4. the mountain pass: built-in frames unchanged vs main a9cb102 (pass at 150, 280, 400 m; traffic beams off and on)
+  const PASS_BASE = { '280-off': '54d1b91c8cfc44b0', '280-on': '54d1b91c8cfc44b0', '150-off': 'b950b06455a96654', '150-on': '0e1a6132d5f7726c', '400-off': 'c8defeb8372962a9', '400-on': '45ff8554ec990861' };
+  const psrc = A.source('road', 3.5, true, { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: true, rpm: true }, { mountainPass: true, streetLamps: 'sodium', seed: 7, oncoming: true, preceding: true, trafficLogic: false, onKcd: undefined });
+  const pp = { src: psrc, lane: 3.5, us: true, touge: true, lut, lowLut: lut, conv: 'A', look: { RL: 0.2, ambient: 0 }, detailedModels: false, deerBehaviour: false, lamps: [[0, 0.7, 0.7]], eye: [-2, 0.37, 1.2], w: 160, h: 90, hfov: 60, ss: 1 };
+  const passHashes = {};
+  for (const dist of [280, 150, 400]) for (const on of [false, true]) {
+    const world = RF.Touge.world(pp, dist, 0);
+    passHashes[dist + (on ? '-on' : '-off')] = sha(D.render({ ...pp, scene: { objects: world.objects, markings: [], verge: ['grass', 1.5, 'grass'] }, trafficBeams: on }).rgb);
+  }
+  for (const k of Object.keys(PASS_BASE)) ok('BT1 pass CPU frame unchanged vs main: ' + k, passHashes[k] === PASS_BASE[k], { got: passHashes[k], want: PASS_BASE[k] });
+
+  // 5. BT2 the car itself: its headlamps carry its own beam colour. A 3200 K car is warmer (emit blue/red) than a 6500 K car.
+  const ccars = A._.trafficCars(psrc, 215, 8);
+  const pairTint = (cct) => D.unitTint(RF.CCT.cctToRGB(cct));
+  const carEmit = (weights) => A._.trafficObjects(psrc, ccars, null, { src: psrc, lowLut: lut, conv: 'A', trafficPool: { entries: [{ id: 'h', lut, conv: 'A', tint: pairTint(3200) }, { id: 'l', lut, conv: 'A', tint: pairTint(6500) }], weights } }).filter(o => o.headlamp).map(o => o.emit[2] / o.emit[0]);
+  const halo = carEmit([1, 0]), led = carEmit([0, 1]);
+  ok('BT2 the car: halogen headlamps emit warmer than LED headlamps (blue/red ratio)', halo.length > 0 && led.length === halo.length && halo.every(r => r < 0.3) && led.every(r => r > 0.8), { halogen: halo.slice(0, 2).map(v => +v.toFixed(3)), led: led.slice(0, 2).map(v => +v.toFixed(3)) });
+
+  // 6. BT2 the pool builder (drive-anim): shuffle off, GPU, an empty or fully unticked library, and a subset all behave as specified
+  const items = [{ id: 'a', beamKind: 'low', lut, conv: 'A', colour: null }, { id: 'b', beamKind: 'low', lut, conv: 'A', colour: { cct: 3200 } }, { id: 'c', beamKind: 'high', lut, conv: 'A', colour: null }];
+  const lib = { trafficShuffle: 'library', trafficOutIds: [] }, rgbOf = (c) => RF.CCT.cctToRGB(c.cct);   // node has no RF.Beams: the page resolves colour the same way (lampFor)
+  ok('BT2 pool: shuffle off gives no pool', A._.poolOfBeams(items, { trafficShuffle: 'off' }, false, rgbOf) === null);
+  ok('BT2 pool: the GPU renderer gets no pool', A._.poolOfBeams(items, lib, true, rgbOf) === null);
+  ok('BT2 pool: an empty library gives no pool (built-in beam)', A._.poolOfBeams([], lib, false, rgbOf) === null);
+  ok('BT2 pool: high beams are never in the traffic pool', A._.poolOfBeams([items[2]], lib, false, rgbOf) === null);
+  const all = A._.poolOfBeams(items, lib, false, rgbOf);
+  ok('BT2 pool: all low beams by default, sorted by id, high excluded', all && all.entries.map(e => e.id).join() === 'a,b');
+  ok('BT2 pool: a beam with no saved colour is neutral (1,1,1), not the lamp tint', all.entries[0].tint.join() === '1,1,1' && all.entries[1].tint[2] / all.entries[1].tint[0] < 0.5);
+  const sub = A._.poolOfBeams(items, { ...lib, trafficOutIds: ['b'] }, false, rgbOf);
+  ok('BT2 subset: an unticked beam leaves the pool; a new beam joins by default', sub && sub.entries.map(e => e.id).join() === 'a');
+  ok('BT2 subset: all unticked gives no pool', A._.poolOfBeams(items, { ...lib, trafficOutIds: ['a', 'b'] }, false, rgbOf) === null);
 }
 module.exports = { run };
 if (require.main === module) {

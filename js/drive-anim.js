@@ -1119,7 +1119,7 @@ void main() {
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, pool = trafficPoolOf(o, I), W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, o.ownLow, o.ownHigh, lampTintOf(I, ownBeams(o)).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
+    const I = info(), o = I.o, pool = trafficPoolOf(o), W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, o.ownLow, o.ownHigh, lampTintOf(I, ownBeams(o)).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     if (V.shuf) V.shuf.title = V.three ? SHUFFLE_GPU_TIP : SHUFFLE_TIP;   // the tooltip follows the renderer, every frame
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o)]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: D.wetnessOf(o) > 0 }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
@@ -1498,14 +1498,17 @@ void main() {
   // never gets a pool (its atlas comes later), so it keeps the built-in beam for every car. null = no pool (built-in only).
   const SHUFFLE_TIP = 'Each car gets one saved low beam from the library, with its own colour and intensity. Symmetric traffic only. CPU renderer only.';
   const SHUFFLE_GPU_TIP = 'The GPU renderer keeps the built-in beam for every car until its atlas lands. Switch to the CPU renderer to see library beams on traffic.';
-  function trafficPoolOf(o, I) {
-    if (o.trafficShuffle !== 'library' || V.three) return null;
+  // a beam with no saved colour is neutral (not our lamp's tint: the owner's rule is that a car's beam sets its colour)
+  function poolOfBeams(items, o, gpu, rgbOf) {
+    if (o.trafficShuffle !== 'library' || gpu) return null;
     const out = new Set(Array.isArray(o.trafficOutIds) ? o.trafficOutIds : []);
-    const entries = libLoad().filter(e => e.beamKind === 'low' && !out.has(e.id)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-      .map(e => ({ id: e.id, lut: e.lut, conv: e.conv || 'A', tint: D.unitTint(RF.Beams.lampFor(e.colour, I.lampRGB, RF.CCT && RF.CCT.cctToRGB).rgb) }));
+    const entries = items.filter(e => e.beamKind === 'low' && !out.has(e.id)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map(e => ({ id: e.id, lut: e.lut, conv: e.conv || 'A', tint: e.colour ? D.unitTint(rgbOf(e.colour)) : [1, 1, 1] }));
     if (!entries.length) return null;
     return { entries, weights: null, key: JSON.stringify(entries.map(e => [e.id, e.tint])) };
   }
+  const beamRGB = (c) => RF.Beams.lampFor(c, [1, 1, 1], RF.CCT && RF.CCT.cctToRGB).rgb;
+  const trafficPoolOf = (o) => poolOfBeams(libLoad(), o, V.three, beamRGB);
   // The beams the options pick: null = built-in (our design for low, generic for high)
   function ownBeams(o) {
     const lo = o.ownLow && o.ownLow !== 'design' ? libFind(o.ownLow, 'low') : null, hi = o.ownHigh && o.ownHigh !== 'generic' ? libFind(o.ownHigh, 'high') : null;
@@ -2277,5 +2280,5 @@ void main() {
   }
   RF.DriveAnim = { frameMsSummary, simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
-    _: { V, S, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
+    _: { V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
