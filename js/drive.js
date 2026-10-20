@@ -684,6 +684,27 @@
     const F = 0.02 + 0.98 * (1 - Math.max(0, vz)) ** 5;
     return F * Math.exp(-0.5 * ((along / 0.23) ** 2 + (across / 0.025) ** 2)) * Math.max(0, hz) * 4 / (rr * rr);
   }
+  // Wet-road sheen, physically based option (look.wetModel === 'ggx'). A real BRDF: anisotropic GGX (Trowbridge-Reitz)
+  // distribution, Smith-GGX shadowing (anisotropic Lambda), Schlick Fresnel with F0 = 0.02 (water), on the road plane n = +z.
+  // Returns f_r(l, v) * cos(theta_i) / r^2 per candela: the caller multiplies by the lamp's cd toward the road point,
+  // so the result is radiance per cd exactly like wetLobe. d = point -> lamp (unnormalised), v = point -> eye.
+  // Roughness is the named tunables below: alongAlpha across the view direction's streak (along the road), acrossAlpha across it.
+  const WET_GGX = { alongAlpha: 0.25, acrossAlpha: 0.05, F0: 0.02 };
+  function wetGGX(dx, dy, dz, vx, vy, vz) {
+    const rr = Math.hypot(dx, dy, dz), lz = dz / rr, vr = Math.hypot(vx, vy, vz) || 1, ux = vx / vr, uy = vy / vr, uz = vz / vr;
+    if (!(lz > 0) || !(uz > 0)) return 0;
+    const lx = dx / rr, ly = dy / rr;
+    // tangent frame: T along the horizontal part of the view direction (as wetLobe's 'along'), B = n x T, N = +z
+    const hl0 = Math.hypot(ux, uy) || 1e-12, tx = ux / hl0, ty = uy / hl0, bx = -ty, by = tx;
+    let hx = lx + ux, hy = ly + uy, hz = lz + uz; const hn = Math.hypot(hx, hy, hz) || 1; hx /= hn; hy /= hn; hz /= hn;
+    const a = WET_GGX.alongAlpha, b = WET_GGX.acrossAlpha, ht = hx * tx + hy * ty, hb = hx * bx + hy * by;
+    const e = (ht / a) ** 2 + (hb / b) ** 2 + hz * hz, D = 1 / (Math.PI * a * b * e * e);
+    const lam = (wt, wb, wz) => (Math.sqrt(1 + (a * a * wt * wt + b * b * wb * wb) / (wz * wz)) - 1) / 2;
+    const G = 1 / (1 + lam(hl0, 0, uz) + lam(lx * tx + ly * ty, lx * bx + ly * by, lz));   // Smith height-correlated approx. of G2 (Heitz form: 1/(1+Lv+Ll))
+    const VoH = ux * hx + uy * hy + uz * hz, F = WET_GGX.F0 + (1 - WET_GGX.F0) * (1 - Math.max(0, VoH)) ** 5;
+    // f = D F G / (4 NoL NoV); times NoL (irradiance cos term) / r^2 (inverse square) gives D F G / (4 NoV r^2)
+    return D * F * G / (4 * uz * rr * rr);
+  }
   // ---------------------------------------------------------------- exposure and tone mapping
   /* Scene-referred luminance → a display. Exposure modes:
    *   fixed — an absolute EV: EV 0 puts 10 cd/m² at display white, each stop doubles it. The same EV on two designs makes their
@@ -762,5 +783,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { cornerAt, ownBeamAt, occluded, dipState, AUTO, eyeFor, dollyBack, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { cornerAt, ownBeamAt, occluded, dipState, AUTO, eyeFor, dollyBack, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
