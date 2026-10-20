@@ -1809,6 +1809,7 @@ void main() {
     if (!supported(I.o)) { if (st.popout) closePop(ui); st.playing = false; }
     labels(ui); gameControls(ui);
     const want = supported(I.o) && (st.view === 'anim' || st.popout);
+    detailsSync(want);
     if (!want) { stop(); killWorkers(); if (V.canvas) V.canvas.hidden = true; return; }
     if (V.lost && !V.glFailed) { stop(); return; }
     if (!ensureCanvas()) { st.playing = false; if (V.canvas) V.canvas.hidden = true; if (st.popout) closePop(ui); labels(ui); return; }
@@ -1831,8 +1832,66 @@ void main() {
       else contextFallback('Drive graphics failed: ' + (e.message || e));
     }
   }
+  // ---------------------------------------------------------------- scene details (the overlay; the registry is js/scene-details.js)
+  // Off costs nothing: no timer, no DOM. On: a panel refreshed about 4 times a second from a snapshot. The snapshot only READS the drive
+  // state (no traffic advance, no scenery activation, no draw), so turning the panel on cannot change the next frame.
+  const DETAIL_MS = 250, DEG = Math.PI / 180;
+  const detailsOn = () => !!(V.info && V.info.o.sceneDetails);
+  function detailState() {
+    const I = info(), o = I.o, st = S(V.ui), src = V.src, p = V.p, dist = st.dist;
+    const pass = !!(p && p.touge), kHere = curvatureAt(src, dist);
+    let tight = 0; for (let x = dist; x <= dist + 100; x += 10) tight = Math.max(tight, Math.abs(curvatureAt(src, x)));
+    return {
+      speedKmh: autoSpeedKmh(st, o.speed),
+      highMode: V.highMode || 'off', autoReason: V.autoSt ? V.autoSt.reason : 'clear',
+      afs: !!o.afs, afsYawDeg: st.lighting ? st.lighting.yaw / DEG : 0,
+      radius: kHere ? 1 / Math.abs(kHere) : Infinity, radius100: tight ? 1 / tight : Infinity,
+      pass, gradePct: pass ? 100 * RF.Touge.profile(dist).grade : null, bankPct: pass ? 100 * RF.Touge.bank(dist) : null,
+    };
+  }
+  function detailsSnapshot() {
+    const s = detailState(), M = RF.SceneDetails;
+    return { t: performance.now(), rows: M.METRICS.map((m) => { const na = m.applies(s); return { id: m.id, group: m.group, label: m.label, unit: m.unit, na, value: na ? null : m.read(s) }; }) };
+  }
+  function detailsRender(snap) {
+    const M = RF.SceneDetails;
+    if (!V.detailsEl) {
+      const el = E('section', { class: 'drive-details', 'data-anim': 'scene-details-panel', 'aria-label': 'Scene details' });
+      let g = null;
+      for (const m of M.METRICS) {
+        if (!g || g.getAttribute('data-group') !== m.group) { g = E('div', { class: 'dd-group', 'data-group': m.group }, E('div', { class: 'dd-head' }, M.GROUPS[m.group])); el.append(g); }
+        g.append(E('div', { class: 'dd-row', 'data-metric': m.id }, E('span', { class: 'dd-label' }, m.label), E('output', { class: 'dd-value' })));
+      }
+      V.detailsEl = el;
+    }
+    for (const r of snap.rows) {
+      const row = V.detailsEl.querySelector('[data-metric="' + r.id + '"]'); if (!row) continue;
+      row.classList.toggle('na', !!r.na); row.title = r.na ? 'Not applicable here: ' + r.na : '';
+      const shown = r.na ? 'n/a (' + r.na + ')' : M.format(r.value, r.unit) + (typeof r.value === 'number' && isFinite(r.value) && r.unit ? ' ' + r.unit : '');
+      row.querySelector('.dd-value').textContent = shown;
+    }
+  }
+  function detailsPause() { if (V.detailsTimer) { clearInterval(V.detailsTimer); V.detailsTimer = 0; } }
+  function detailsTick() {
+    if (!detailsOn()) { detailsSync(false); return; }
+    const snap = V.detailsSnap = detailsSnapshot();
+    const host = S(V.ui).popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement;
+    if (!host) return;
+    detailsRender(snap);
+    if (V.detailsEl.parentElement !== host) host.append(V.detailsEl);
+  }
+  // run = the drive view is shown. The timer runs only while the overlay is on AND shown; otherwise it is cleared and the panel removed.
+  function detailsSync(run) {
+    if (run && detailsOn()) { if (!V.detailsTimer) V.detailsTimer = setInterval(detailsTick, DETAIL_MS); detailsTick(); return; }
+    detailsPause();
+    if (V.detailsEl) { V.detailsEl.remove(); V.detailsEl = null; }
+    V.detailsSnap = null;
+  }
+  // the same numbers the panel shows, from the last tick (a copy, so a caller cannot change the snapshot)
+  const detailsStats = () => V.detailsSnap ? { t: V.detailsSnap.t, rows: V.detailsSnap.rows.map((r) => Object.assign({}, r)) } : null;
+
   // a hidden tab stops the loop; showing it again redraws (which restarts it)
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (V.ui) { if (document.visibilityState === 'hidden') stop(); else if (V.info) { if (S(V.ui).popout && !popValid(V.ui)) closePop(V.ui); else V.ui.redrawSpec(); } } });
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (V.ui) { if (document.visibilityState === 'hidden') { stop(); detailsPause(); } else if (V.info) { if (S(V.ui).popout && !popValid(V.ui)) closePop(V.ui); else V.ui.redrawSpec(); } } });
 
   // ---------------------------------------------------------------- numbers for tests and the report
   const pct = (a, q) => { if (!a || !a.length) return 0; const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * q))]; };
@@ -1875,7 +1934,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

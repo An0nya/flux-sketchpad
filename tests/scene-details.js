@@ -73,5 +73,14 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
   ok('applies: grade is greyed out off the pass with a reason', typeof grade.applies({ pass: false }) === 'string' && grade.applies({ pass: true }) === null);
 }
 
+// 7. Display text
+{
+  ok('format: null and NaN are a dash', S.format(null, 'm') === '—' && S.format(NaN, 'm') === '—');
+  ok('format: Infinity is ∞ (straight road radius)', S.format(Infinity, 'm') === '∞');
+  ok('format: % and degrees and lux get one decimal; km/h and m none; other units two', S.format(12.345, '%') === '12.3' && S.format(3.7, 'km/h') === '4' && S.format(0.5, 'lx') === '0.5' && S.format(1.2345, 'x') === '1.23');
+  ok('format: strings pass through', S.format('auto high beam', '') === 'auto high beam');
+  ok('groups: every registered metric has a known group', S.METRICS.every((m) => Object.prototype.hasOwnProperty.call(S.GROUPS, m.group)));
+}
+
 console.log(fails ? fails + ' FAILED' : 'all scene-details checks passed');
 process.exitCode = fails ? 1 : 0;

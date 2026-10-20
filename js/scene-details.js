@@ -73,5 +73,18 @@
   register({ id: 'grade', group: 'own', label: 'Grade', unit: '%', applies: onlyWhen((s) => s.pass, 'the pass only'), read: (s) => s.gradePct });
   register({ id: 'bank', group: 'own', label: 'Bank', unit: '%', applies: onlyWhen((s) => s.pass, 'the pass only'), read: (s) => s.bankPct });
 
-  RF.SceneDetails = { illuminance, angleDeg, peakTracker, firstFailure, roadLux, register, METRICS, HAZARD_LUX: 1, always, onlyWhen };
+  // Panel headings, in display order. A metric's group must be one of these keys.
+  const GROUPS = { own: 'Own car', oncoming: 'Oncoming traffic', glare: 'Glare we receive', hazards: 'Hazards', range: 'Range', lamp: 'Lamp' };
+
+  // Display text for a value: null or NaN is a dash, Infinity is ∞ (a straight road has an infinite radius), strings pass through.
+  const DP = { 'km/h': 0, m: 0, '%': 1, '°': 1, lx: 1, 'cd/m²': 0, EV: 1 };
+  function format(v, unit) {
+    if (v === null || v === undefined || (typeof v === 'number' && Number.isNaN(v))) return '—';
+    if (typeof v === 'string') return v;
+    if (typeof v !== 'number') return String(v);
+    if (v === Infinity) return '∞';
+    return v.toFixed(DP[unit] === undefined ? 2 : DP[unit]);
+  }
+
+  RF.SceneDetails = { illuminance, angleDeg, peakTracker, firstFailure, roadLux, register, METRICS, GROUPS, format, HAZARD_LUX: 1, always, onlyWhen };
 })();
