@@ -1372,6 +1372,7 @@ void main() {
   const BEAM_KEY = 'flux/beamLibrary', BEAM_BUDGET = 2.5e6, BEAM_COARSE = 0.25;   // bytes (UTF-16) the library may take; origin quota is about 5 MB
   const LIB = { items: null, msg: '', ver: 0, seq: 0 };
   const libEntry = (parsed, id, persisted) => ({ id, name: parsed.name, beamKind: parsed.beamKind, conv: parsed.conv, lut: RF.Beams.toLut(parsed), persisted: !!persisted });
+  const beamDefaultName = (I) => (I && I.designName) || 'our design';   // the design's name; BB3 adds the colour
   const libNewId = () => 'b' + Date.now().toString(36) + (++LIB.seq).toString(36);   // counter, not a random source
   function libLoad() {
     if (LIB.items) return LIB.items;
@@ -1511,8 +1512,12 @@ void main() {
       V.beamMsg.textContent = LIB.msg;
     });
     V.beamMsg = E('span', { class: 'anim-speed', 'data-anim': 'beam-status', 'aria-live': 'polite' });
+    // BB1: the name is typed here (empty = the default shown as the placeholder); a name already taken gets a counter
+    const nameIn = E('input', { type: 'text', maxlength: '80', 'data-anim': 'beam-name', 'aria-label': 'Name for the beam to save', title: 'Name for the beam you save. Empty uses the default shown. A name already in the library gets a number added.', placeholder: 'our design' });
+    V.nameIn = nameIn; bar.append(nameIn);
     btn('save-design', 'Save our design as a beam in the library (a low beam, with the design\'s convention)', () => {
-      const I = info(); libAdd([RF.Beams.fromLut(I.lut(), { name: 'our design', beamKind: 'low', conv: I.conv || 'A' })]); fillOwn(); V.beamMsg.textContent = LIB.msg;
+      const I = info(), name = RF.Beams.uniqueName(nameIn.value || beamDefaultName(I), libLoad().map(e => e.name));
+      libAdd([RF.Beams.fromLut(I.lut(), { name, beamKind: 'low', conv: I.conv || 'A' })]); nameIn.value = ''; fillOwn(); V.beamMsg.textContent = LIB.msg;
     }, 'save design');
     btn('import-beam', 'Import a beam file: one beam, or a bundle of several. Beams join the library.', () => fileIn.click(), 'import');
     btn('export-beams', 'Download the library as a beam file: one beam, or a bundle when there are several', () => {
@@ -1605,6 +1610,7 @@ void main() {
     V.bar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
     V.bar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
     if (V.fillOwn && V.libVer !== LIB.ver) V.fillOwn();
+    if (V.nameIn) V.nameIn.placeholder = beamDefaultName(info());
     if (V.fillOwn) { V.bar.querySelector('[data-anim="own-low"]').value = o.ownLow && o.ownLow !== 'design' && libFind(o.ownLow, 'low') ? o.ownLow : 'design'; V.bar.querySelector('[data-anim="own-high"]').value = o.ownHigh && o.ownHigh !== 'generic' && libFind(o.ownHigh, 'high') ? o.ownHigh : 'generic'; }
     if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0);
     const trafficOn = o.oncoming || o.preceding;

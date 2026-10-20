@@ -209,6 +209,25 @@
   // localStorage stores UTF-16: each character of the stored string costs 2 bytes against the origin quota.
   const storedBytes = (s) => 2 * String(s).length;
 
-  R.Beams = { FORMAT, build, parse, serialise, bundle, readFile, fromLut, toLut, resample, sameGrid, uniformWash, pointBeam, coarsen, combine, storedBytes, checksumOf, fnv1a, bytesToB64, b64ToBytes, floatsToBytes, bytesToFloats };
+  // ---- library names (BB1/BB2): pure, over the library's entry list (each entry has .id and .name)
+  // A name for a new beam: the base (trimmed, at most 80 characters), with " 2", " 3"... added until nothing else has it.
+  function uniqueName(base, taken) {
+    const b = String(base || '').trim().slice(0, 70) || 'untitled beam';
+    const names = new Set((taken || []).map(String));
+    if (!names.has(b)) return b;
+    for (let k = 2; ; k++) { const c = b + ' ' + k; if (!names.has(c)) return c; }
+  }
+  // Renames one entry in place. Throws on an empty name or an unknown id (the caller shows the message).
+  function renameIn(list, id, name) {
+    const e = list.find(x => x.id === id);
+    if (!e) throw new Error('no beam with id ' + id);
+    const n = String(name || '').trim().slice(0, 80);
+    if (!n) throw new Error('a beam needs a name');
+    e.name = n; return e;
+  }
+  // Returns the list without the entry (a new array). Unknown id leaves the list as it is.
+  const removeIn = (list, id) => list.filter(x => x.id !== id);
+
+  R.Beams = { FORMAT, build, parse, serialise, bundle, readFile, fromLut, toLut, resample, sameGrid, uniformWash, pointBeam, coarsen, combine, storedBytes, checksumOf, fnv1a, bytesToB64, b64ToBytes, floatsToBytes, bytesToFloats, uniqueName, renameIn, removeIn };
   if (typeof module !== 'undefined' && module.exports) module.exports = R.Beams;
 })();

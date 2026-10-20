@@ -121,5 +121,20 @@ const pt = [[0.1, 0.1], [7.3, -2.2], [-8.4, 3.1]];
   ok('bundle of in-memory + file-shaped beams reads back (2 beams, bit-exact)', back.length === 2 && bitsEqual(back[0].values, lut.data) && bitsEqual(back[1].values, lut.data));
 }
 
+// BB1/BB2: library names. Two designs saved under the same base get distinct names; rename and remove act on entries.
+{
+  ok('uniqueName: free base kept as typed (trimmed)', B.uniqueName('  our design 4300K ', []) === 'our design 4300K');
+  ok('uniqueName: taken base gets a counter, the next free one', B.uniqueName('our design', ['our design', 'our design 2']) === 'our design 3');
+  ok('uniqueName: empty base falls back, never a timestamp', B.uniqueName('   ', []) === 'untitled beam');
+  const list = [{ id: 'a', name: 'one' }, { id: 'b', name: 'two' }];
+  B.renameIn(list, 'b', '  HID 4300K  ');
+  ok('renameIn: trims and renames only that entry', list[1].name === 'HID 4300K' && list[0].name === 'one', list.map(e => e.name));
+  ok('renameIn: empty name rejected', throws(() => B.renameIn(list, 'a', '   '), /needs a name/) === 'ok');
+  ok('renameIn: unknown id rejected', throws(() => B.renameIn(list, 'zz', 'x'), /no beam/) === 'ok');
+  const left = B.removeIn(list, 'a');
+  ok('removeIn: returns a new list without the entry; the original is untouched', left.length === 1 && left[0].id === 'b' && list.length === 2);
+  ok('removeIn: unknown id leaves the list the same length', B.removeIn(list, 'zz').length === 2);
+}
+
 console.log(fails ? fails + ' of ' + n + ' FAILED' : 'all ' + n + ' beam checks passed');
 process.exit(fails ? 1 : 0);
