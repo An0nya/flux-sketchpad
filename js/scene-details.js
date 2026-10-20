@@ -51,6 +51,49 @@
     return E;
   }
 
+  // The strongest glare source at the eye, looking along dir: the largest veil term 10 lux / theta^2 (theta at least 1 deg, as veilAt).
+  // sources: [[dx, dy, dz, lux], ...] as drive.js glareSources makes them. Returns {angle (deg off dir), lux} or null.
+  function topSource(dir, sources) {
+    let best = null, bestVeil = -Infinity;
+    for (const q of sources || []) {
+      const th = Math.max(1, angleDeg(dir, q.slice(0, 3)));
+      const veil = 10 * q[3] / (th * th);
+      if (veil > bestVeil) { bestVeil = veil; best = { angle: th, lux: q[3] }; }
+    }
+    return best;
+  }
+
+  // Peak bookkeeping for the oncoming list. samplePeaks records each car's lux into its own tracker (cars ahead only) and forgets
+  // cars that are no longer listed. luxAt(car) -> lux at that car's eye from our beam now.
+  function samplePeaks(peaks, cars, luxAt) {
+    const here = new Set(cars.map((c) => c.id));
+    for (const id of peaks.keys()) if (!here.has(id)) peaks.delete(id);
+    for (const c of cars) {
+      if (!(c.rel > 0)) continue;
+      if (!peaks.has(c.id)) peaks.set(c.id, peakTracker());
+      peaks.get(c.id).update(luxAt(c), c.rel);
+    }
+    return peaks;
+  }
+
+  // The nearest n cars ahead as rows: distance (m), lux at their eye now, their peak so far and the distance it happened at, and the
+  // angle off our beam axis. angleAt(car) -> degrees. Cars behind us are not listed.
+  function oncomingRows(cars, n, luxAt, angleAt, peaks) {
+    return cars.filter((c) => c.rel > 0).sort((a, b) => a.rel - b.rel).slice(0, n).map((c) => {
+      const pk = peaks.get(c.id) || { value: NaN, at: null };
+      return { id: c.id, dist: c.rel, lux: luxAt(c), peak: pk.value, peakAt: pk.at, angle: angleAt(c) };
+    });
+  }
+
+  // Display text. A metric's own text(value) wins (lists and special readouts); otherwise the number to its precision and unit.
+  // A metric that does not apply shows its reason instead of a value.
+  function display(m, value, na) {
+    if (na) return 'n/a (' + na + ')';
+    if (m.text) return m.text(value);
+    const f = format(value, m.unit);
+    return typeof value === 'number' && isFinite(value) && m.unit ? f + ' ' + m.unit : f;
+  }
+
   // Registry. Pure data plus functions. Add a metric with register(); ids must be unique.
   const METRICS = [];
   const ids = new Set();
@@ -73,6 +116,15 @@
   register({ id: 'grade', group: 'own', label: 'Grade', unit: '%', applies: onlyWhen((s) => s.pass, 'the pass only'), read: (s) => s.gradePct });
   register({ id: 'bank', group: 'own', label: 'Bank', unit: '%', applies: onlyWhen((s) => s.pass, 'the pass only'), read: (s) => s.bankPct });
 
+  const lineOncoming = (r) => r.dist.toFixed(0) + ' m · ' + format(r.lux, 'lx') + ' lx · peak ' + format(r.peak, 'lx') + ' lx' + (r.peakAt === null ? '' : ' at ' + r.peakAt.toFixed(0) + ' m') + ' · ' + format(r.angle, '°') + '° off';
+  register({ id: 'oncoming', group: 'oncoming', label: 'Nearest oncoming cars', applies: onlyWhen((s) => s.oncomingOn, 'oncoming traffic is off'), read: (s) => s.oncoming,
+    text: (rows) => (rows.length ? rows.map(lineOncoming) : 'none in range') });
+  register({ id: 'veil', group: 'glare', label: 'Veiling luminance at our eye', unit: 'cd/m²', applies: onlyWhen((s) => s.glareOn, 'glare is off'), read: (s) => s.veil });
+  register({ id: 'veilTop', group: 'glare', label: 'Strongest glare source', applies: onlyWhen((s) => s.glareOn, 'glare is off'), read: (s) => s.veilTop,
+    text: (t) => (t ? format(t.angle, '°') + '° off ahead, ' + format(t.lux, 'lx') + ' lx at the eye' : 'none') });
+  register({ id: 'ev', group: 'glare', label: 'Exposure', unit: 'EV', read: (s) => s.ev });
+  register({ id: 'white', group: 'glare', label: 'Display white', unit: 'cd/m²', read: (s) => s.white });
+
   // Panel headings, in display order. A metric's group must be one of these keys.
   const GROUPS = { own: 'Own car', oncoming: 'Oncoming traffic', glare: 'Glare we receive', hazards: 'Hazards', range: 'Range', lamp: 'Lamp' };
 
@@ -86,5 +138,5 @@
     return v.toFixed(DP[unit] === undefined ? 2 : DP[unit]);
   }
 
-  RF.SceneDetails = { illuminance, angleDeg, peakTracker, firstFailure, roadLux, register, METRICS, GROUPS, format, HAZARD_LUX: 1, always, onlyWhen };
+  RF.SceneDetails = { illuminance, angleDeg, peakTracker, firstFailure, roadLux, topSource, samplePeaks, oncomingRows, display, register, METRICS, GROUPS, format, HAZARD_LUX: 1, always, onlyWhen };
 })();

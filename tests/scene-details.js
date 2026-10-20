@@ -82,5 +82,28 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
   ok('groups: every registered metric has a known group', S.METRICS.every((m) => Object.prototype.hasOwnProperty.call(S.GROUPS, m.group)));
 }
 
+// 8. Oncoming and glare helpers
+{
+  // top source: the larger 10 lux / theta^2 term wins (a bright lamp 1 deg off beats a dim one dead ahead)
+  const t = S.topSource([1, 0, 0], [[1, 0, 0, 3], [Math.cos(0.0175), Math.sin(0.0175), 0, 5]]);
+  ok('topSource: the largest veil term wins, angle is at least 1 deg', t && t.lux === 5 && near(t.angle, 1, 0.01) && S.topSource([1, 0, 0], []) === null, t);
+  // peak: lux 0.4, 2.0, 1.1 as the car approaches from 90 m: peak 2.0 at 60 m, and a car behind is never tracked
+  const pk = new Map(), lux = { 90: 0.4, 60: 2.0, 30: 1.1 };
+  [90, 60, 30].forEach((d) => S.samplePeaks(pk, [{ id: 'o1', rel: d }, { id: 'behind', rel: -5 }], (c) => lux[c.rel]));
+  ok('peak per oncoming car: 2.0 lx at 60 m, not the latest 1.1 lx', pk.get('o1').value === 2 && pk.get('o1').at === 60, pk.get('o1'));
+  ok('peak: a car behind us is not tracked', !pk.has('behind'));
+  S.samplePeaks(pk, [{ id: 'o2', rel: 40 }], () => 0.5);
+  ok('peak: a car no longer listed is forgotten', !pk.has('o1') && pk.has('o2'));
+  // rows: nearest first, five at most, behind excluded, peak NaN until sampled
+  const rows = S.oncomingRows([{ id: 'far', rel: 300 }, { id: 'near', rel: 20 }, { id: 'gone', rel: -2 }, { id: 'b', rel: 60 }, { id: 'c', rel: 80 }, { id: 'd', rel: 100 }, { id: 'e', rel: 120 }], 5, () => 1.5, () => 2, new Map());
+  ok('oncoming rows: nearest five ahead, nearest first', rows.map((r) => r.id).join(',') === 'near,b,c,d,e', rows.map((r) => r.id));
+  ok('oncoming rows: no sample yet means no peak (NaN), not 0', Number.isNaN(rows[0].peak) && rows[0].peakAt === null);
+  // display: n/a shows the reason; a list uses its own text; numbers take their unit
+  const m = S.METRICS.find((q) => q.id === 'oncoming');
+  ok('display: a metric that does not apply shows the reason', S.display(m, null, 'oncoming traffic is off') === 'n/a (oncoming traffic is off)');
+  ok('display: a list uses its own text', S.display(m, [], null) === 'none in range');
+  ok('display: a number takes its unit', S.display(S.METRICS.find((q) => q.id === 'speed'), 49.6, null) === '50 km/h');
+}
+
 console.log(fails ? fails + ' FAILED' : 'all scene-details checks passed');
 process.exitCode = fails ? 1 : 0;

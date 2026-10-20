@@ -52,7 +52,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
       for (const r of st.rows) {
         const row = document.querySelector('.drive-details [data-metric="' + r.id + '"]');
         const shown = row ? row.querySelector('.dd-value').textContent : '(missing row)';
-        const want = r.na ? 'n/a (' + r.na + ')' : RF.SceneDetails.format(r.value, r.unit) + (typeof r.value === 'number' && isFinite(r.value) && r.unit ? ' ' + r.unit : '');
+        const want = Array.isArray(r.shown) ? r.shown.join('\n') : r.shown;
         if (shown !== want) bad.push({ id: r.id, shown, want });
       }
       return { n: st.rows.length, bad };
@@ -90,6 +90,21 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     });
     ok('OV refreshes about 4 times a second (3 to 7 distinct snapshots in 1.2 s; 250 ms period)', ticks >= 3 && ticks <= 7, { ticks });
 
+    // 7. oncoming (traffic on in this drive) and glare (off in this drive): the list rows carry peaks at or above their lux, and glare is greyed out
+    const onc = await page.evaluate(() => {
+      const st = RF.DriveAnim.details(), r = st.rows.find((q) => q.id === 'oncoming'), v = st.rows.find((q) => q.id === 'veil');
+      const peakOk = Array.isArray(r.value) ? r.value.every((x) => Number.isNaN(x.peak) || x.peak >= x.lux - 1e-9) : true;
+      return { onc: r.na, rows: Array.isArray(r.value) ? r.value.length : r.value, shown: r.shown, peakOk, glareNa: v.na, glareShown: v.shown };
+    });
+    ok('OV oncoming: traffic on lists its cars (or says none), each peak is at least its lux', onc.onc === null && onc.peakOk, onc);
+    ok('OV glare off: the veiling row is greyed out with a reason', typeof onc.glareNa === 'string' && onc.glareShown.startsWith('n/a ('), onc);
+    // 6a. high beam: the oncoming lux is above zero for at least one car (low beam is cut off above the horizon: the eye gets ~0 lx)
+    await page.locator('[data-anim=high-beam]').click();              // off -> on
+    await page.waitForTimeout(600);
+    const hi = await page.evaluate(() => { const r = RF.DriveAnim.details().rows.find((q) => q.id === 'oncoming'); return Array.isArray(r.value) ? r.value.map((x) => x.lux) : r.shown; });
+    ok('OV high beam: at least one oncoming car gets more than 0 lx at its eye', Array.isArray(hi) && hi.some((v) => v > 0), hi);
+    await page.locator('[data-anim=high-beam]').click();              // on -> auto
+    await page.locator('[data-anim=high-beam]').click();              // auto -> off (back to the state the frame hash used)
     // 6. toggle off: panel removed, timer cleared, API empty
     await page.evaluate(() => { const u = RF.UI; u.driveBar.querySelector('.drive-more').open = true; RF.DriveAnim.layoutControls(u); });
     await page.locator('[data-anim=scene-details]').click();

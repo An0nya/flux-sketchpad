@@ -649,7 +649,7 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .drive-details .dd-head { font-weight: 600; margin-top: 3px; }
 .drive-details .dd-row { display: flex; justify-content: space-between; gap: 8px; }
 .drive-details .dd-row.na { opacity: .45; }
-.drive-details .dd-value { text-align: right; }
+.drive-details .dd-value { text-align: right; white-space: pre-line; }
 .drive-below:empty, .drive-below:not(:has(> :not([hidden]))), body:not(.mode-D) .drive-below, figure.map:not(:has(> .canvas-wrap.drive)) > .drive-below { display: none; }
 .drive-below { flex: none; min-width: 0; width: 100%; box-sizing: border-box; }
 .drive-below > .drive-game, .drive-below > .drive-game.running { position: static; width: 100%; max-height: none; margin: 4px 0 0; overflow: visible; }

@@ -374,7 +374,7 @@
   const flashState = () => ({ n: 0, seen: new Set() });
   function countFlashes(state, p, dist, t) {
     if (p.src.tiles) p = Object.assign({}, p, { A: p.src.tiles.mountain ? RF.Touge.route(dist,p.lane,!!p.touge) : tileRoute(p.src.tiles.seed, dist) });
-    const cars = trafficCars(p.src, dist, t);
+    const cars = trafficCars(p.src, dist, t); state.cars = cars; state.p = p;      // scene details reads these (pointers only)
     for (const car of cars) if (car.kind === 'oncoming' && car.rel > 0 && eyeLux(p, car) > 1 && !state.seen.has(car.id)) { state.seen.add(car.id); state.n++; }
     // IDs behind this monotonically advancing stream can never return; keep only the small visible window.
     if (p.src.traffic && p.src.traffic.density) {
@@ -1185,13 +1185,14 @@ void main() {
     if (!V.three) V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
     const sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A) : D.glareSources(V.src.tiles ? placed.objects : placed, eyeOf(V.p));
+    V.frameGlare = sources; V.framePlaced = placed;      // scene details reads these (pointers only)
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
     const draw = { profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed, ...(V.src.cross ? fixedIntersection(V.src, st.dist) : {}) }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
     try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
     if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
-    flashLabel(st.dist, st.t); const detectorStart = performance.now(); if (st.game) { if (V.three) { const masks = V.three.masks(V.p, ss); V.gameMask = masks.mask; V.gameBodyMask = masks.body; } gameFrame(st.game); } const detectorMs = performance.now() - detectorStart; ui.dvAnimFrames = V.frames;
+    flashLabel(st.dist, st.t); if (detailsOn()) detailsSample(); const detectorStart = performance.now(); if (st.game) { if (V.three) { const masks = V.three.masks(V.p, ss); V.gameMask = masks.mask; V.gameBodyMask = masks.body; } gameFrame(st.game); } const detectorMs = performance.now() - detectorStart; ui.dvAnimFrames = V.frames;
     recordFrame(t0 - trafficMs, { trafficMs, placementMs: tPlaced - t0, uploadMs: t2 - t1, sourcesMs: sourceEnd - t2, glMs: t3 - sourceEnd, ...(glProfile || {}), detectorMs, workerRoundTripMs: 0, workerCpuMs: 0, assemblyMs: 0 }, traceProfile, traceProfile, false);
   }
 
@@ -1837,21 +1838,44 @@ void main() {
   // state (no traffic advance, no scenery activation, no draw), so turning the panel on cannot change the next frame.
   const DETAIL_MS = 250, DEG = Math.PI / 180;
   const detailsOn = () => !!(V.info && V.info.o.sceneDetails);
+  // the direction from our lamps (their mean position) to the driver's eye at car, eye 1.1 m up as eyeLux has it
+  function driverDir(p, car) {
+    const q = p.A ? p.A.at(car.rel, car.off) : { p: [car.rel, car.off] }; let x = 0, y = 0, z = 0;
+    for (const L of p.lamps) { x += L[0]; y += L[1]; z += L[2]; }
+    const n = p.lamps.length || 1;
+    return [q.p[0] - x / n, q.p[1] - y / n, 1.1 - z / n];
+  }
+  // Peaks: one lux per oncoming car per drawn frame while the overlay is on (cheap), and at each tick. A new scene or a seek back
+  // more than 50 m starts them again. Reads V.flash (set by countFlashes this frame), so it draws nothing and advances nothing.
+  function detailsSample() {
+    const f = V.flash; if (!f || !f.cars || !f.p) return;
+    const dist = S(V.ui).dist;
+    if (!V.peaks || V.peaksSrc !== V.src || (V.peaksDist !== undefined && dist < V.peaksDist - 50)) V.peaks = new Map();
+    V.peaksSrc = V.src; V.peaksDist = dist;
+    RF.SceneDetails.samplePeaks(V.peaks, f.cars.filter((c) => c.kind === 'oncoming'), (c) => eyeLux(f.p, c));
+  }
   function detailState() {
-    const I = info(), o = I.o, st = S(V.ui), src = V.src, p = V.p, dist = st.dist;
+    const I = info(), o = I.o, st = S(V.ui), src = V.src, p = V.p, dist = st.dist, M = RF.SceneDetails;
     const pass = !!(p && p.touge), kHere = curvatureAt(src, dist);
     let tight = 0; for (let x = dist; x <= dist + 100; x += 10) tight = Math.max(tight, Math.abs(curvatureAt(src, x)));
+    const f = V.flash, cp = f && f.p ? f.p : p, cars = f && f.cars ? f.cars.filter((c) => c.kind === 'oncoming') : [];
+    const oncoming = o.oncoming && cp ? M.oncomingRows(cars, 5, (c) => eyeLux(cp, c), (c) => M.angleDeg([Math.cos(cp.yaw || 0), Math.sin(cp.yaw || 0), 0], driverDir(cp, c)), V.peaks || new Map()) : [];
+    const glare = D.glareStrength(D.capGlare(o.glare)) > 0, sources = V.frameGlare || [];
     return {
       speedKmh: autoSpeedKmh(st, o.speed),
       highMode: V.highMode || 'off', autoReason: V.autoSt ? V.autoSt.reason : 'clear',
       afs: !!o.afs, afsYawDeg: st.lighting ? st.lighting.yaw / DEG : 0,
       radius: kHere ? 1 / Math.abs(kHere) : Infinity, radius100: tight ? 1 / tight : Infinity,
       pass, gradePct: pass ? 100 * RF.Touge.profile(dist).grade : null, bankPct: pass ? 100 * RF.Touge.bank(dist) : null,
+      oncomingOn: !!o.oncoming, oncoming,
+      glareOn: glare, veil: glare ? D.veilStrength(D.capGlare(o.glare)) * D.veilAt([1, 0, 0], sources) : 0,
+      veilTop: glare ? M.topSource([1, 0, 0], sources) : null,
+      ev: o.ev, white: V.white === undefined ? null : V.white,
     };
   }
   function detailsSnapshot() {
     const s = detailState(), M = RF.SceneDetails;
-    return { t: performance.now(), rows: M.METRICS.map((m) => { const na = m.applies(s); return { id: m.id, group: m.group, label: m.label, unit: m.unit, na, value: na ? null : m.read(s) }; }) };
+    return { t: performance.now(), rows: M.METRICS.map((m) => { const na = m.applies(s), value = na ? null : m.read(s); return { id: m.id, group: m.group, label: m.label, unit: m.unit, na, value, shown: M.display(m, value, na) }; }) };
   }
   function detailsRender(snap) {
     const M = RF.SceneDetails;
@@ -1867,8 +1891,7 @@ void main() {
     for (const r of snap.rows) {
       const row = V.detailsEl.querySelector('[data-metric="' + r.id + '"]'); if (!row) continue;
       row.classList.toggle('na', !!r.na); row.title = r.na ? 'Not applicable here: ' + r.na : '';
-      const shown = r.na ? 'n/a (' + r.na + ')' : M.format(r.value, r.unit) + (typeof r.value === 'number' && isFinite(r.value) && r.unit ? ' ' + r.unit : '');
-      row.querySelector('.dd-value').textContent = shown;
+      row.querySelector('.dd-value').textContent = Array.isArray(r.shown) ? r.shown.join('\n') : r.shown;
     }
   }
   function detailsPause() { if (V.detailsTimer) { clearInterval(V.detailsTimer); V.detailsTimer = 0; } }
@@ -1882,7 +1905,7 @@ void main() {
   }
   // run = the drive view is shown. The timer runs only while the overlay is on AND shown; otherwise it is cleared and the panel removed.
   function detailsSync(run) {
-    if (run && detailsOn()) { if (!V.detailsTimer) V.detailsTimer = setInterval(detailsTick, DETAIL_MS); detailsTick(); return; }
+    if (run && detailsOn()) { if (!V.detailsTimer) { V.detailsTimer = setInterval(detailsTick, DETAIL_MS); V.peaks = new Map(); } detailsTick(); return; }
     detailsPause();
     if (V.detailsEl) { V.detailsEl.remove(); V.detailsEl = null; }
     V.detailsSnap = null;
