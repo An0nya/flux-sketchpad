@@ -186,3 +186,80 @@ float otherIntensity(vec3 d) {
   }
 ` + '  for(int i=0;i<2;i++)');
 }
+
+// SD1 table (look.scatterMode 'table'). A pre-pass fills three RGBA half-float targets (banks) with 12 segment integrals of the
+// same single-scatter integrand as inScatter (scalar; lampRGB multiplies at lookup). The lookup gives the cumulative value at a
+// distance, interpolated in log d between edges 0.5 m .. 120 m. Direct mode never sees this text: tableSource() is applied only when
+// the table is on, so the direct shader strings stay byte-identical. CPU twin: scatterTableBins / scatterTableAt in js/drive.js.
+const TABLE_DECL = `uniform int scatMode;   // 1 = table mode: inScatter reads the table (SD1)
+uniform sampler2D scatBank0, scatBank1, scatBank2;   // bins 0-3, 4-7, 8-11 (RGBA), at the table's resolution
+uniform vec2 scatUV;   // 1 / (pixels of the target this pass draws): gl_FragCoord * scatUV is the table texture coordinate
+float tableC(float d) {
+  if(d<=0.0) return 0.0;
+  vec2 uv=gl_FragCoord.xy*scatUV; vec4 a=texture(scatBank0,uv), b=texture(scatBank1,uv), c=texture(scatBank2,uv);
+  float C=0.0, prevC=0.0, prevE=0.0;
+  for(int k=0;k<12;k++) {
+    float bin=k<4 ? a[k] : (k<8 ? b[k-4] : c[k-8]);
+    float e=0.5*pow(240.0,float(k)/11.0);
+    C+=bin;
+    if(d<=e) return k==0 ? C*d/e : mix(prevC,C,log(d/prevE)/log(e/prevE));
+    prevC=C; prevE=e;
+  }
+  return C;
+}
+vec3 inScatterDirect(vec3 dir,float sEnd,float jit);
+vec3 inScatter(vec3 dir,float sEnd,float jit) { return scatMode==1 ? tableC(min(sEnd,scatSMax))*lampRGB : inScatterDirect(dir,sEnd,jit); }
+`;
+const TABLE_MAIN = `uniform int tableBank, tableSteps;
+uniform float tableH;
+float tableJitter() { uint x=uint(gl_FragCoord.x), y=uint(tableH)-1u-uint(gl_FragCoord.y); uint h=(x*0x27d4eb2du)^(y*0x165667b1u); h=(h^(h>>15u))*0x85ebca6bu; h=(h^(h>>13u))*0xc2b2ae35u; h^=h>>16u; return float(h)/4294967296.0; }
+float tableIntegrand(vec3 dir,float s) {
+  vec3 P=eye+s*dir; float f=0.0;
+  for(int i=0;i<2;i++) { if(i>=nLamp) break;
+    vec3 d=P-lamp[i]; float r2=dot(d,d); if(r2<=0.0) continue; float r=sqrt(r2);
+    float I=beamI(d,lamp[i]); if(I<=0.0) continue;
+    float cs=-dot(d,dir)/r, p=scatWFwd*hgP(scatGFwd,cs)+(1.0-scatWFwd)*hgP(scatGBack,cs);
+    float E=I/max(r2,scatRMin*scatRMin);
+    f+=sigma*p*E*exp(-sigma*r)*exp(-sigma*s);
+  }
+  return f;
+}
+void main() {
+  vec3 ray=normalize(vec3(1.0,-screen.x*tanH,screen.y*tanH*size.y/size.x));
+  float jit=tableJitter(); int n=max(1,(tableSteps+6)/12);
+  vec4 outv=vec4(0.0);
+  for(int j=0;j<4;j++) {
+    int k=tableBank*4+j;
+    float hi=0.5*pow(240.0,float(k)/11.0), lo=k==0 ? 0.0 : 0.5*pow(240.0,float(k-1)/11.0);
+    float acc=0.0;
+    for(int m=0;m<16;m++) { if(m>=n) break;
+      if(k==0) { float ds=hi/float(n), s=(float(m)+jit)*ds; acc+=tableIntegrand(ray,s)*ds; }
+      else { float a=lo*pow(hi/lo,float(m)/float(n)), b=lo*pow(hi/lo,float(m+1)/float(n)), s=a*pow(b/a,jit); acc+=tableIntegrand(ray,s)*(b-a); }
+    }
+    outv[j]=acc;
+  }
+  gl_FragColor=outv;
+}
+`;
+const DIRECT_HEAD = 'vec3 inScatter(vec3 dir,float sEnd,float jit) {';
+// Table mode for a lit shader source: the direct in-scatter becomes the table lookup. Sources without the direct function pass through.
+export function tableSource(source) {
+  if (!source.includes(DIRECT_HEAD)) return source;
+  return source.replace(DIRECT_HEAD, TABLE_DECL + DIRECT_HEAD.replace('inScatter(', 'inScatterDirect('));
+}
+// The table pass: the ground prefix (shading of the same look, lit or not) and the bin integrals in place of main.
+export function tablePassSource(source) {
+  return source.slice(0, source.indexOf('vec4 roadFrame')) + TABLE_MAIN;
+}
+// Separable Gaussian over the table (radius 6 texels), one axis per pass. sig 0 copies.
+export const tableBlurSource = `uniform sampler2D src;
+uniform vec2 texel, dirTexel;
+uniform float sig;
+void main() {
+  vec2 uv=gl_FragCoord.xy*texel;
+  if(sig<=0.0) { gl_FragColor=texture(src,uv); return; }
+  vec4 acc=vec4(0.0); float wsum=0.0;
+  for(int i=-6;i<=6;i++) { float w=exp(-0.5*float(i*i)/(sig*sig)); acc+=w*texture(src,uv+float(i)*dirTexel*texel); wsum+=w; }
+  gl_FragColor=acc/wsum;
+}
+`;
