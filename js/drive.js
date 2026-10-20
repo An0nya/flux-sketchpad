@@ -755,7 +755,51 @@
     }
     return out;
   }
-  const veilStrength = (v) => glareStrength(v) > 0 ? (glareLevel(v) === 'dry-low' ? 0.5 : 1) : 0;
+  // SD1 table (look.scatterMode 'table'): the CPU twin of the GPU table pass, for tests only. The ground, sky and object shaders read it
+  // in place of inScatter. Scalar per bin (lampRGB multiplies after the lookup). Bins are K segments of the eye ray, edges log-spaced
+  // from 0.5 m to S_MAX; segment 0 is [0, 0.5 m] (linear), the rest log-spaced. Unlike inScatter (which starts at s0 = min(1, S/4)), the
+  // table integrates from 0, so near-eye scatter is included. The per-bin sample count is round(steps / K), at least 1.
+  const TABLE = { K: 12, near: 0.5 };
+  const tableEdge = (k) => TABLE.near * Math.pow(SCAT.S_MAX / TABLE.near, k / (TABLE.K - 1));   // k = 0..K-1; edge K-1 = S_MAX
+  function scatterTableBins(o, dir, jit, steps) {
+    const sig = sigmaOf(o.look || {}), n = Math.max(1, Math.round((steps | 0) / TABLE.K)), bins = new Float64Array(TABLE.K);
+    if (!(sig > 0)) return bins;
+    const eye = o.eye, lamps = o.lamps || [], dx = dir[0], dy = dir[1], dz = dir[2];
+    const integrand = (s) => {
+      const px = eye[0] + s * dx, py = eye[1] + s * dy, pz = eye[2] + s * dz; let f = 0;
+      for (let i = 0; i < lamps.length; i++) {
+        const L = lamps[i], qx = px - L[0], qy = py - L[1], qz = pz - L[2], r2 = qx * qx + qy * qy + qz * qz;
+        if (!(r2 > 0)) continue;
+        const r = Math.sqrt(r2), I = ownBeamAt(o, qx, qy, qz, L[1]);
+        if (!(I > 0)) continue;
+        const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I / Math.max(r2, SCAT.rMin * SCAT.rMin);
+        f += sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Math.exp(-sig * s);
+      }
+      return Number.isFinite(f) ? f : 0;
+    };
+    for (let k = 0; k < TABLE.K; k++) {
+      const hi = tableEdge(k), lo = k === 0 ? 0 : tableEdge(k - 1);
+      let acc = 0;
+      for (let m = 0; m < n; m++) {
+        if (k === 0) { const ds = hi / n, s = (m + jit) * ds; acc += integrand(s) * ds; }
+        else { const a = lo * Math.pow(hi / lo, m / n), b = lo * Math.pow(hi / lo, (m + 1) / n), s = a * Math.pow(b / a, jit); acc += integrand(s) * (b - a); }
+      }
+      bins[k] = acc;
+    }
+    return bins;
+  }
+  // Cumulative value at distance d: linear from 0 to C_0 at the first edge, then linear in log d between edges; clamped beyond S_MAX.
+  function scatterTableAt(bins, d) {
+    if (!(d > 0)) return 0;
+    let C = 0, prevE = 0, prevC = 0;
+    for (let k = 0; k < TABLE.K; k++) {
+      C += bins[k]; const e = tableEdge(k);
+      if (d <= e) return k === 0 ? C * d / e : prevC + (C - prevC) * Math.log(d / prevE) / Math.log(e / prevE);
+      prevE = e; prevC = C;
+    }
+    return C;
+  }
+  const veilStrength = (v) => glareStrength(v) > 0 ?(glareLevel(v) === 'dry-low' ? 0.5 : 1) : 0;
   function reflectionSources(objects, p) {
     const lamps = objects.filter((o) => o.headlamp || o.taillamp).map((o) => ({ x: o.x, y: o.y, z: o.z, cd: o.eyeCd === undefined ? o.emit[0] * Math.PI * o.r * o.r : o.eyeCd, rgb: o.taillamp ? [1, 0.03, 0.015] : [1, 1, 0.93] }));
     return p && p.surfaceSheen ? lamps.concat(surfaceSources(objects, p).slice(0, Math.max(0, 64 - lamps.length - (p.pointLights || []).length))) : lamps;
@@ -868,5 +912,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, scatterPhase, scatterJitter, SCAT, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, scatterPhase, scatterJitter, SCAT, scatterTableBins, scatterTableAt, TABLE, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

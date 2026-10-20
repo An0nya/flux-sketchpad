@@ -1,6 +1,6 @@
 /* Opt-in Drive ground renderer. CPU objects and the established display passes share its WebGL context. */
 import * as T from '../vendor/three/three.module.min.js';
-import { vertex, ground, withLighting } from './drive-three-shaders.js';
+import { vertex, ground, withLighting, tableSource, tablePassSource, tableBlurSource } from './drive-three-shaders.js';
 import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
 const D = globalThis.RF.Drive;
@@ -25,7 +25,7 @@ export function create(canvas, gl, onModelsReady) {
   let failure = '', target, objectTarget, beamRef, beamTexture, otherRef, otherTexture;
   renderer.debug.onShaderError = (g, program, vs, fs) => { failure = [g.getProgramInfoLog(program), g.getShaderInfoLog(vs), g.getShaderInfoLog(fs)].filter(Boolean).join(' '); console.error('GPU drive shader: ' + failure); };
   const u = {}, set = (k, v) => { if (u[k]) u[k].value = v; else u[k] = { value: v }; };
-  for (const [k, v] of Object.entries({ otherBeam: null, otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(64, T.Vector2), trafficLamp: array(64, T.Vector4), nTraffic: 0, otherConvention: 0, pitch: 0, yaw: 0, sigma: 0, scatterSteps: 0, scatGFwd: 0, scatGBack: 0, scatWFwd: 0, scatRMin: 0, scatSMax: 0, cornering: new T.Vector2(), beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, wetModel: 0, grain: 0, wetness: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2() })) set(k, v);
+  for (const [k, v] of Object.entries({ otherBeam: null, otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(64, T.Vector2), trafficLamp: array(64, T.Vector4), nTraffic: 0, otherConvention: 0, pitch: 0, yaw: 0, sigma: 0, scatterSteps: 0, scatMode: 0, scatUV: new T.Vector2(1, 1), scatBank0: null, scatBank1: null, scatBank2: null, tableBank: 0, tableSteps: 48, tableH: 1, tableSeed: 0, scatGFwd: 0, scatGBack: 0, scatWFwd: 0, scatRMin: 0, scatSMax: 0, cornering: new T.Vector2(), beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, wetModel: 0, grain: 0, wetness: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2() })) set(k, v);
   set('worldFromCar', new T.Matrix3()); set('carFromWorld', new T.Matrix3()); set('passDepth', null); set('passShadow0',null); set('passShadow1',null); set('trafficPitch',new Float32Array(64));
   const materialData = new Float32Array(D.MAT_KEYS.length * 4 * 4), markData = new Float32Array(128 * 4 * 2);
   const materialTexture = texture(materialData, D.MAT_KEYS.length, 4), markTexture = texture(markData, 128, 2);
@@ -34,12 +34,71 @@ export function create(canvas, gl, onModelsReady) {
   const scene = new T.Scene(), mesh = new T.Mesh(new T.PlaneGeometry(2, 2), mat); mesh.frustumCulled = false; scene.add(mesh);
   const pass = surface(u);
   const camera = new T.Camera(), objectView = objects(renderer, u, onModelsReady);
-  function shading(material, enabled, mountain = false) {
+  function shading(material, enabled, mountain = false, table = false) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
-    if (material.userData.p2 === enabled && material.userData.tg === mountain) return;
+    if (material.userData.p2 === enabled && material.userData.tg === mountain && material.userData.tbl === table) return;
     let source = enabled ? withLighting(material.userData.baseFragment) : material.userData.baseFragment;
-    material.fragmentShader = mountain ? passShader(source) : source; material.userData.tg = mountain;
+    if (table) source = tableSource(source);
+    material.fragmentShader = mountain ? passShader(source) : source; material.userData.tg = mountain; material.userData.tbl = table;
     material.userData.p2 = enabled; material.needsUpdate = true;
+  }
+  // SD1 table pre-pass (look.scatterMode 'table'): three banks of four bins at the table's resolution, optional separable blur, then the lit passes read them.
+  const tabMesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: u, vertexShader: vertex, fragmentShader: tablePassSource(ground), depthTest: false, depthWrite: false }));
+  const tabScene = new T.Scene(); tabMesh.frustumCulled = false; tabScene.add(tabMesh);
+  const blurU = { src: { value: null }, texel: { value: new T.Vector2(1, 1) }, dirTexel: { value: new T.Vector2(1, 0) }, sig: { value: 0 } };
+  const blurMesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: blurU, vertexShader: vertex, fragmentShader: tableBlurSource, depthTest: false, depthWrite: false }));
+  const blurScene = new T.Scene(); blurMesh.frustumCulled = false; blurScene.add(blurMesh);
+  function tableShading(extras) {
+    if (tabMesh.material.userData.lit === !!extras) return;
+    tabMesh.material.fragmentShader = tablePassSource(extras ? withLighting(ground) : ground); tabMesh.material.userData.lit = !!extras; tabMesh.material.needsUpdate = true;
+  }
+  // SD2 cache (look.scatterCache 'on'): the table is redrawn only when its key changes (the lamp pose quantised to 0.05 degrees and
+  // 1e-4 m, the beam LUT identity, lamp colour, visibility, fov, size, eye, steps, res, blur, lit). Cycle 8 keeps up to eight versions with
+  // jitter seeds 0..7 (tableSeed), fills one per frame after an invalidation and shows the valid ones in rotation. Counters: globalThis.SD_SCATTER.
+  const TAB_VERSIONS = 8, tabStats = globalThis.SD_SCATTER = { recomputes: 0, skips: 0, valid: 0, cycle: 0, cache: false };
+  let tabVersions = [], tabTmp = null, tabSize = '', tabKey = null, tabValid = 0, tabFrame = 0;
+  const lutIds = new WeakMap(); let lutSeq = 0;
+  const lutId = (l) => { if (!l) return 0; if (!lutIds.has(l)) lutIds.set(l, ++lutSeq); return lutIds.get(l); };
+  const quant = (x, step) => Math.round((x || 0) / step), DEG05 = 0.05 * Math.PI / 180;
+  function tableKey(p, extras, look, tw, th, sig) {
+    return JSON.stringify([(p.lamps || []).map((l) => l.map((v) => quant(v, 1e-4))), quant(p.yaw, DEG05), quant(p.pitch, DEG05), quant(p.cornerLeft, DEG05), quant(p.cornerRight, DEG05),
+      !!p.afs, !!p.lampPitch, !!p.corneringLamps, lutId(p.lut), (p.lampRGB || [1, 1, 1]).map((v) => quant(v, 1e-4)), look.visibility, quant(p.hfov, DEG05), p.w, p.h,
+      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig]);
+  }
+  function targetsFor(v) {
+    if (!tabVersions[v]) tabVersions[v] = [0, 1, 2].map(() => new T.WebGLRenderTarget(tabSize.w, tabSize.h, { type: T.HalfFloatType, depthBuffer: false }));
+    return tabVersions[v];
+  }
+  function runTable(p, extras) {
+    const look = p.look, f = look.scatterRes === 'full' ? 1 : 0.5, tw = Math.max(1, Math.round(p.w * f)), th = Math.max(1, Math.round(p.h * f));
+    const sig = look.scatterBlur === 'mid' ? 1.5 : look.scatterBlur === 'strong' ? 3 : 0;
+    const cache = look.scatterCache === 'on', cycle = cache && look.scatterCycle === 8 ? TAB_VERSIONS : 1;
+    if (tabSize === '' || tabSize.key !== tw + 'x' + th) {
+      tabVersions.forEach((v) => v && v.forEach((t) => t.dispose())); if (tabTmp) tabTmp.dispose();
+      tabVersions = []; tabSize = { w: tw, h: th, key: tw + 'x' + th }; tabTmp = new T.WebGLRenderTarget(tw, th, { type: T.HalfFloatType, depthBuffer: false }); tabKey = null; tabValid = 0;
+    }
+    tableShading(extras);
+    const key = tableKey(p, extras, look, tw, th, sig);
+    if (!cache || key !== tabKey) { tabKey = key; tabValid = 0; }
+    // A fill is needed with no valid version yet, or (cycle 8) one more version per frame until all eight are valid.
+    const needFill = !cache || tabValid === 0 || (cycle > 1 && tabValid < cycle);
+    if (needFill) {
+      const v = !cache ? 0 : tabValid;
+      const bank = targetsFor(v);
+      set('tableH', th); set('tableSteps', Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48))); set('tableSeed', v);
+      for (let b = 0; b < 3; b++) { set('tableBank', b); renderer.setRenderTarget(bank[b]); renderer.render(tabScene, camera); }
+      if (sig > 0) for (let b = 0; b < 3; b++) {
+        blurU.texel.value.set(1 / tw, 1 / th); blurU.sig.value = sig;
+        blurU.src.value = bank[b].texture; blurU.dirTexel.value.set(1, 0); renderer.setRenderTarget(tabTmp); renderer.render(blurScene, camera);
+        blurU.src.value = tabTmp.texture; blurU.dirTexel.value.set(0, 1); renderer.setRenderTarget(bank[b]); renderer.render(blurScene, camera);
+      }
+      if (cache) tabValid++;
+      tabStats.recomputes++;
+    } else tabStats.skips++;
+    const shownIndex = cycle > 1 ? tabFrame % Math.max(1, tabValid) : 0, shown = targetsFor(shownIndex);
+    tabFrame++; tabStats.shown = shownIndex;
+    set('scatBank0', shown[0].texture); set('scatBank1', shown[1].texture); set('scatBank2', shown[2].texture);
+    tabStats.valid = cache ? tabValid : 1; tabStats.cycle = cycle === 1 ? 0 : cycle; tabStats.cache = cache;
   }
   function update(p, world, dist) {
     const lut = p.lut, look = p.look, A = world.A || p.A;
@@ -49,7 +108,7 @@ export function create(canvas, gl, onModelsReady) {
     p.lamps.forEach((l, i) => u.lamp.value[i].fromArray(l));
     u.lampRGB.value.fromArray(p.lampRGB || [1, 1, 1]);
     set('convention', p.conv === 'B' ? 1 : p.conv === 'S' ? 2 : 0); set('tanH', Math.tan(p.hfov * Math.PI / 360));
-    set('lane', p.lane); set('sigma', D.sigmaOf(look)); set('scatterSteps', D.sigmaOf(look) > 0 && look.scatter > 0 ? Math.round(look.scatter) : 0); set('scatGFwd', D.SCAT.gFwd); set('scatGBack', D.SCAT.gBack); set('scatWFwd', D.SCAT.wFwd); set('scatRMin', D.SCAT.rMin); set('scatSMax', D.SCAT.S_MAX); set('ambient', look.ambient || 0); set('wetness', D.wetnessOf(look)); set('sheen', D.wetnessOf(look) > 0 && look.wetSheen ? 1 : 0); set('wetModel', look.wetModel === 'ggx' ? 1 : 0);
+    set('lane', p.lane); set('sigma', D.sigmaOf(look)); set('scatterSteps', D.sigmaOf(look) > 0 && look.scatter > 0 ? Math.round(look.scatter) : 0); set('scatMode', D.sigmaOf(look) > 0 && look.scatter > 0 && look.scatterMode === 'table' ? 1 : 0); set('scatGFwd', D.SCAT.gFwd); set('scatGBack', D.SCAT.gBack); set('scatWFwd', D.SCAT.wFwd); set('scatRMin', D.SCAT.rMin); set('scatSMax', D.SCAT.S_MAX); set('ambient', look.ambient || 0); set('wetness', D.wetnessOf(look)); set('sheen', D.wetnessOf(look) > 0 && look.wetSheen ? 1 : 0); set('wetModel', look.wetModel === 'ggx' ? 1 : 0);
     set('distance', dist); set('grain', look.grain && (p.src.tiles || (D.wetnessOf(look) > 0 && look.wetSheen)) ? 0.4 * (D.wetnessOf(look) > 0 ? 0.5 : 1) : 0);
     const vg = p.src.verge; set('vergeWidth', vg[1] || 1.5); u.verge.value.set(D.MAT_KEYS.indexOf(vg[0]), D.MAT_KEYS.indexOf(vg[2] || vg[0]));
     const materials = D.materials(look), width = D.MAT_KEYS.length;
@@ -96,7 +155,8 @@ export function create(canvas, gl, onModelsReady) {
     lampUniform() { return u.lampRGB && u.lampRGB.value ? u.lampRGB.value.toArray() : null; },
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
-      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); shading(mat, extras); shading(pass.material,extras, true);
+      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn);
+      u.scatUV.value.set(1 / p.w, 1 / p.h); if (tableOn) runTable(p, extras);
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
@@ -108,7 +168,7 @@ export function create(canvas, gl, onModelsReady) {
       gl.blitFramebuffer(0, 0, p.w, p.h, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, gl.NEAREST);
       if (objectDestination) {
         if (!objectTarget || objectTarget.width !== p.w * ss || objectTarget.height !== p.h * ss) { if (objectTarget) objectTarget.dispose(); objectTarget = new T.WebGLRenderTarget(p.w * ss, p.h * ss, { type: T.FloatType, depthTexture: new T.DepthTexture(p.w * ss, p.h * ss, T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
-        objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
+        u.scatUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge, tableOn); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
         if (failure) throw Error(failure);
         const src = gl.getParameter(gl.FRAMEBUFFER_BINDING); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, objectDestination);
         gl.blitFramebuffer(0, 0, p.w * ss, p.h * ss, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, ss > 1 ? gl.LINEAR : gl.NEAREST);
