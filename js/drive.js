@@ -78,6 +78,8 @@
   const SHEEN_IDS = MAT_KEYS.filter((k) => MAT_DEF[k].wet).map((k) => MAT_ID[k]);
   const OWN_STREAK_IDS = MAT_KEYS.filter((k) => MAT_DEF[k].streak).map((k) => MAT_ID[k]);
   // Road wetness W in 0..1: look.wetness when given, else the legacy boolean look.wet (true = 1, the old wet road).
+  // Fog: look.visibility in metres; off = Infinity, null or 0. Koschmieder: extinction sigma = 3.912 / V per metre.
+  function sigmaOf(look) { const v = look && +look.visibility; return v > 0 && v < Infinity ? 3.912 / v : 0; }
   function wetnessOf(look) { if (look.wetness !== undefined) { const w = +look.wetness; return w > 0 ? Math.min(w, 1) : 0; } return look.wet ? 1 : 0; }
   const wetnessLevels = { dry: 0, damp: 0.4, wet: 1 };     // the three levels the road button cycles through (spec-ui)
   // One material at road wetness W. W = 1 assigns the wet values exactly (the old wet look, byte for byte). 0 < W < 1 blends: rho linearly,
@@ -260,7 +262,10 @@
     const objs = scene.objects || [], cross = scene.cross || null, marks = scene.markings || [], vg = scene.verge || ['gravel', 1.5, 'grass'], ssN = o.ss || 2;
     const fullLayer = o.layer === 'frame', objOnly = o.layer === 'objects', rgba = (objOnly || fullLayer) && o.rgba ? o.rgba : null, cov = objOnly && !rgba ? new Float32Array(w * h) : null;
     const rgb = rgba ? null : new Float32Array(w * h * 3), depth = objOnly ? null : new Float32Array(w * h).fill(Infinity), matBuf = objOnly ? null : new Uint8Array(w * h);
-    const amb = look.ambient > 0 ? look.ambient : 0, skyL = amb * 0.012;       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
+    const amb = look.ambient > 0 ? look.ambient : 0, skyL = amb * 0.012;
+    const sig = sigmaOf(look), fogD = (dx, dy, dz) => (sig ? Math.exp(-sig * Math.sqrt(dx * dx + dy * dy + dz * dz)) : 1);   // illumination path: transmittance over a light-to-surface distance (1 when off)
+    // view path: the samples' radiance gathered since r0..b0 is seen through T = exp(-sig t); airlight fills the rest with the sky value at that direction (glow: T only)
+    const veil = (t, rayDz, k, r0, g0, b0, glow) => { const T = Math.exp(-sig * t), A = glow ? 0 : skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(rayDz) * 8)) * (1 - T) * k; LR = r0 + T * (LR - r0) + A; LG = g0 + T * (LG - g0) + A; LB = b0 + T * (LB - b0) + A; };       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
     const traffic = o.trafficBeams ? trafficSources(objs, eye, o) : [], otherBeam = traffic.length ? trafficBeam(o) : null, pitch = o.pitch || 0;
     const pointLights = o.pointLights || [], crossings = o.crossings || [], wetW = wetnessOf(look), sheen = wetW > 0 && look.wetSheen, reflections = sheen ? reflectionSources(objs, o).concat(pointLights) : [];
     const delta0 = 2 * tanH / w;                                              // radians per pixel
@@ -335,11 +340,11 @@
           for (const L of pointLights) {
             const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz;
             if (dz <= 0 || r2 < 0.01) continue;
-            const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2));
+            const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)) * fogD(dx, dy, dz);
             r += m.rho[0] * L.rgb[0] * e; g += m.rho[1] * L.rgb[1] * e; b += m.rho[2] * L.rgb[2] * e;
           }
           if (sheen && SHEEN_IDS.includes(m.id)) for (const L of reflections) {
-            const v = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz) * wetW; r += v * L.rgb[0]; g += v * L.rgb[1]; b += v * L.rgb[2];
+            const v = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz) * wetW * fogD(L.x - px, L.y - py, L.z - pz); r += v * L.rgb[0]; g += v * L.rgb[1]; b += v * L.rgb[2];
           }
           LR += k * (a[q] + r * lc[0]); LG += k * (a[q + 1] + g * lc[1]); LB += k * (a[q + 2] + b * lc[2]); return;
         }
@@ -352,23 +357,23 @@
       if (!staticBuild) for (const L of pointLights) {
         const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz;
         if (dz <= 0 || r2 < 0.01) continue;
-        const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2));
+        const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)) * fogD(dx, dy, dz);
         r += rho[0] * L.rgb[0] * e; g += rho[1] * L.rgb[1] * e; b += rho[2] * L.rgb[2] * e;
       }
       if (!staticBuild && sheen && nz === 1 && SHEEN_IDS.includes(m.id)) for (const L of reflections) {
-        const a = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz) * wetW; r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
+        const a = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz) * wetW * fogD(L.x - px, L.y - py, L.z - pz); r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
       }
       for (const L of traffic) {
         const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz;
         if (r2 < 0.01) continue; const noL = Math.max(0, -(dx * nx + dy * ny + dz * nz) / Math.sqrt(r2)); if (!noL) continue;
-        const e = trafficAt(L, otherBeam, px, py, pz) / r2 * noL / PI;
+        const e = trafficAt(L, otherBeam, px, py, pz) / r2 * noL / PI * fogD(dx, dy, dz);
         r += rho[0] * e; g += rho[1] * e; b += rho[2] * e * 0.93;
       }
       for (let i = 0; i < nl; i++) {
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
         if (!(NoL > 0)) continue;
         if (preA) { const a = dx / rr, b = -dy / rr, c = dz / rr; if (c < sv0 || c > sv1 || a <= 0 || b > a * th1 || b < a * th0) continue; }
-        const I = ownBeamAt(o, dx, dy, dz, L[1]); if (!(I > 0)) continue;
+        const I = ownBeamAt(o, dx, dy, dz, L[1]) * fogD(dx, dy, dz); if (!(I > 0)) continue;
         if (sheen && nz === 1 && OWN_STREAK_IDS.includes(m.id)) { const a = I * lobe(-dx, -dy, -dz, vx, vy, vz) * wetW; r += a; g += a; b += a; }
         const Ep = I / r2;                                                    // E⊥, lux square to the beam
         const d = Ep * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
@@ -429,13 +434,15 @@
         const key = sdfKey ? (sdfKey==='hivis' && ((pz>1 && pz<1.06)||(pz>1.26 && pz<1.32))?'hivis-tape':sdfKey) : typeof ob.mat === 'function' ? ob.mat({ x: px, y: py, z: pz, u: hu, face: hf }) : ob.mat;
         if (ob.gameHazard && key === 'eyeshine') eyeAcc |= 1 << (ob.gameHazard - 1);
         let m = M[key] || M.wall; if (ob.emit) m = ob.emitM && ob.emitBase === m ? ob.emitM : (ob.emitBase = m, ob.emitM = Object.assign({}, m, { emit: ob.emit, emitPow: ob.emitPow }));   // this object glows (a lamp: its own luminance); emitPow > 1 makes it directional (cos^n)
-        shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs, false, ob.eyeFalloff); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
+        const r0 = LR, g0 = LG, b0 = LB; shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs, false, ob.eyeFalloff); if (sig) veil(tbest, dz, k, r0, g0, b0, !!ob.glow); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
         if (sampleDepth === Infinity) { sampleDepth = tbest; sampleMat = m.id; }
       } else if (objOnly) { /* the ground and the sky are the other layer's */ } else if (tg < Infinity && tg < 5000) {
         const tGround = timed ? performance.now() : 0;
+        const r0 = LR, g0 = LG, b0 = LB;
         groundShading = true;
         ground(ex + tg * dx, ey + tg * dy, tg, -dz, -dx, -dy, -dz, delta, k);
         groundShading = false;
+        if (sig) veil(tg, dz, k, r0, g0, b0, false);
         if (timed) groundTime += performance.now() - tGround;
         if (sampleDepth === Infinity) { sampleDepth = tg; sampleMat = GM; }
       } else { const sl = skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(dz) * 8)); LR += k * sl; LG += k * sl; LB += k * sl; }
@@ -629,6 +636,7 @@
   // cd = integral L(cd/m²) * cos(view) * dA(m²). Uses the same diffuse/retro/emit law as shade.
   // Reusing the eye-direction return in the wet lobe is approximate: no angular retro BRDF or occlusion.
   function surfaceSources(objects, p) {
+    const sg = sigmaOf(p.look || {}), fg = (dx, dy, dz) => (sg ? Math.exp(-sg * Math.sqrt(dx * dx + dy * dy + dz * dz)) : 1);   // fog on the lamp-to-object path, as in render
     const eye = p.eye || [-2, 0.37, 1.2], M = materials(p.look || {}), sources = [], traffic = p.trafficBeams ? trafficSources(objects, eye, p) : [], beam = traffic.length ? trafficBeam(p) : null;
     for (const ob of objects) {
       // SB2: lane studs are tilted discs (8.5 degrees up, nz 0.148) and are admitted by their kind (cls 'rpm'), not by loosening the flatness test, so no other tilted disc gets in
@@ -647,12 +655,12 @@
         const px = ob.x + (box ? nx * ob.hx : 0) - ny * u, py = ob.y + (box ? ny * ob.hx : 0) + nx * u, pz = z + v, m = M[keyAt(u, pz)] || M.wall;
         const lum = (ob.emit || m.emit || [0, 0, 0]).map(c => c * Math.pow(view, ob.emitPow || 1));
         const diffuse = Math.max(0, p.look && p.look.ambient || 0) * (0.5 + 0.5 * nz) / PI;
-        for (const L of p.pointLights || []) { const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz; if (dz > 0 && r2 > 0.01) { const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * L.rgb[c]; } }
-        for (const L of traffic) { const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz; if (r2 > 0.01) { const e = fade * trafficAt(L, beam, px, py, pz) * Math.max(0, -(dx * nx + dy * ny + dz * nz)) / (PI * r2 * Math.sqrt(r2)); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * (c === 2 ? 0.93 : 1); } }
+        for (const L of p.pointLights || []) { const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz; if (dz > 0 && r2 > 0.01) { const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)) * fg(dx, dy, dz); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * L.rgb[c]; } }
+        for (const L of traffic) { const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz; if (r2 > 0.01) { const e = fade * trafficAt(L, beam, px, py, pz) * Math.max(0, -(dx * nx + dy * ny + dz * nz)) / (PI * r2 * Math.sqrt(r2)) * fg(dx, dy, dz); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * (c === 2 ? 0.93 : 1); } }
         for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * diffuse;
         for (const L of p.lamps) {
           const dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, noL = Math.max(0, -(dx * nx + dy * ny + dz * nz) / Math.sqrt(r2));
-          if (!noL || r2 < 0.01) continue; const E = ownBeamAt(p, dx, dy, dz, L[1]) / r2;
+          if (!noL || r2 < 0.01) continue; const E = ownBeamAt(p, dx, dy, dz, L[1]) / r2 * fg(dx, dy, dz);
           for (let c = 0; c < 3; c++) lum[c] += E * (m.rho[c] * noL / PI + (m.retro ? m.retro[c] : 0));
         }
         const dA = (box ? area : 4 * ob.r * ob.r) / 64;
@@ -821,5 +829,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
