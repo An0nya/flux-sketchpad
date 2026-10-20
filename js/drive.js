@@ -240,7 +240,7 @@
     const fullLayer = o.layer === 'frame', objOnly = o.layer === 'objects', rgba = (objOnly || fullLayer) && o.rgba ? o.rgba : null, cov = objOnly && !rgba ? new Float32Array(w * h) : null;
     const rgb = rgba ? null : new Float32Array(w * h * 3), depth = objOnly ? null : new Float32Array(w * h).fill(Infinity), matBuf = objOnly ? null : new Uint8Array(w * h);
     const amb = look.ambient > 0 ? look.ambient : 0, skyL = amb * 0.012;       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
-    const traffic = o.trafficBeams ? trafficSources(objs, eye) : [], otherBeam = traffic.length ? trafficBeam(o) : null, pitch = o.pitch || 0;
+    const traffic = o.trafficBeams ? trafficSources(objs, eye, o) : [], otherBeam = traffic.length ? trafficBeam(o) : null, pitch = o.pitch || 0;
     const pointLights = o.pointLights || [], crossings = o.crossings || [], sheen = look.wet && look.wetSheen, reflections = sheen ? reflectionSources(objs, o).concat(pointLights) : [];
     const delta0 = 2 * tanH / w;                                              // radians per pixel
     // tiles of 16 px: which objects can touch them (by the bounding sphere's projection)
@@ -542,6 +542,14 @@
   };
   // P2 budgets: eight nearest cars (two lamps each) within 150 m; bounded per-fragment work.
   const TRAFFIC_CARS = 8, TRAFFIC_RANGE = 150, SURFACE_SOURCES = 8;
+  // TL1 taper: a car's road light fades from full at 65% of the range to zero at the range (smoothstep), and
+  // the nearest-N cap fades the same way: each car is weighted by how far it is inside the first excluded car's
+  // distance dCut (smoothstep over TAPER_BAND m). Weights depend only on distances, and order statistics are
+  // continuous, so swapping the Nth and (N+1)th car changes nothing. Excluded cars have weight exactly 0.
+  const TAPER_START = 0.65, TAPER_BAND = 2;
+  const smooth01 = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  // p.lightRange (m) and p.lightCars (nearest cars) come from the drive options; defaults are the original 150 m / 8 cars.
+  function trafficLimits(p) { return { range: p && p.lightRange > 0 ? p.lightRange : TRAFFIC_RANGE, cars: p && p.lightCars > 0 ? p.lightCars : TRAFFIC_CARS }; }
   let genericLow;
   function trafficBeam(p) {
     const mode = p.src && p.src.traffic && p.src.traffic.onMode;
@@ -551,14 +559,14 @@
     if (!genericLow) genericLow = lutFrom((h, v) => Headlamp.generic(h, v, false), { win: [-90, 90, -90, 90], step: 0.25 });
     return { lut: genericLow, conv: 'A' };
   }
-  function trafficSources(objects, eye) {
-    eye = eye || [-2, 0.37, 1.2]; const groups = new Map();
+  function trafficSources(objects, eye, p) {
+    eye = eye || [-2, 0.37, 1.2]; const groups = new Map(), lim = trafficLimits(p);
     for (const ob of objects) if (ob.traffic !== undefined) { if (!groups.has(ob.traffic)) groups.set(ob.traffic, []); groups.get(ob.traffic).push(ob); }
     const cars = [];
     for (const [id, obs] of groups) {
       const heads = obs.filter(ob => ob.headlamp), tails = obs.filter(ob => ob.taillamp), lamps = heads.length ? heads : tails;
       if (!lamps.length) continue;
-      const d = Math.hypot(lamps[0].x - eye[0], lamps[0].y - eye[1]); if (d > TRAFFIC_RANGE) continue;
+      const d = Math.hypot(lamps[0].x - eye[0], lamps[0].y - eye[1]); if (d >= lim.range) continue;
       const sources = lamps.slice(0, 2).map(ob => {
         if (heads.length) return { x: ob.x, y: ob.y, z: ob.z, nx: ob.nx, ny: ob.ny, car: id };
         // Preceding models have tails only. Infer front plane from the body's actual oriented boxes.
@@ -569,7 +577,12 @@
       });
       cars.push({ d, sources });
     }
-    return cars.sort((a, b) => a.d - b.d).slice(0, TRAFFIC_CARS).flatMap(c => c.sources);
+    cars.sort((a, b) => a.d - b.d);
+    const R = lim.range, dCut = cars.length > lim.cars ? cars[lim.cars].d : R;
+    return cars.slice(0, lim.cars).flatMap(c => {
+      const w = (1 - smooth01(TAPER_START * R, R, c.d)) * smooth01(0, TAPER_BAND, dCut - c.d);
+      return w > 0 ? c.sources.map(q => Object.assign(q, { w })) : [];
+    });
   }
   // Generic static lamps at the existing mounting points: 400 cd on the selected side, 55° outboard.
   // Angular Gaussian, 22° horizontal / 7° vertical sigma, aimed 6° down; no LUT allocation.
@@ -591,17 +604,17 @@
   }
   function trafficAt(L, beam, px, py, pz) {
     const dx = px - L.x, dy = py - L.y, dz = pz - L.z, forward = dx * L.nx + dy * L.ny;
-    return forward > 0 ? beamAt(beam.lut, beam.conv, forward, -dx * L.ny + dy * L.nx, dz, 0) : 0;
+    return forward > 0 ? (L.w === undefined ? 1 : L.w) * beamAt(beam.lut, beam.conv, forward, -dx * L.ny + dy * L.nx, dz, 0) : 0;
   }
   // Integrate actual returned RGB luminance over face area (8x8 midpoint quadrature, an estimate).
   // cd = integral L(cd/m²) * cos(view) * dA(m²). Uses the same diffuse/retro/emit law as shade.
   // Reusing the eye-direction return in the wet lobe is approximate: no angular retro BRDF or occlusion.
   function surfaceSources(objects, p) {
-    const eye = p.eye || [-2, 0.37, 1.2], M = materials(p.look || {}), sources = [], traffic = p.trafficBeams ? trafficSources(objects, eye) : [], beam = traffic.length ? trafficBeam(p) : null;
+    const eye = p.eye || [-2, 0.37, 1.2], M = materials(p.look || {}), sources = [], traffic = p.trafficBeams ? trafficSources(objects, eye, p) : [], beam = traffic.length ? trafficBeam(p) : null;
     for (const ob of objects) {
       if (ob.headlamp || ob.taillamp || !['box', 'disc'].includes(ob.k) || (ob.k === 'disc' && Math.abs(ob.nz || 0) > 1e-6)) continue;
       const z = ob.k === 'box' ? (ob.z0 + ob.z1) / 2 : ob.z, range = Math.hypot(ob.x - eye[0], ob.y - eye[1], z - eye[2]);
-      if (range > TRAFFIC_RANGE || range < 0.1) continue;
+      const lr = trafficLimits(p).range; if (range >= lr || range < 0.1) continue; const fade = 1 - smooth01(TAPER_START * lr, lr, range);   // TL1: object range taper, same as the lamps
       const yaw = ob.yaw || 0, nx = ob.k === 'box' ? -Math.cos(yaw) : ob.nx, ny = ob.k === 'box' ? -Math.sin(yaw) : ob.ny, nz = ob.k === 'box' ? 0 : ob.nz;
       const view = Math.max(0, ((eye[0] - ob.x) * nx + (eye[1] - ob.y) * ny + (eye[2] - z) * nz) / range); if (!view) continue;
       const keyAt = (u, zz) => typeof ob.mat === 'function' ? ob.mat({ u, z: zz, face: 0 }) : ob.mat;
@@ -614,7 +627,7 @@
         const lum = (ob.emit || m.emit || [0, 0, 0]).map(c => c * Math.pow(view, ob.emitPow || 1));
         const diffuse = Math.max(0, p.look && p.look.ambient || 0) * (0.5 + 0.5 * nz) / PI;
         for (const L of p.pointLights || []) { const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz; if (dz > 0 && r2 > 0.01) { const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * L.rgb[c]; } }
-        for (const L of traffic) { const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz; if (r2 > 0.01) { const e = trafficAt(L, beam, px, py, pz) * Math.max(0, -(dx * nx + dy * ny + dz * nz)) / (PI * r2 * Math.sqrt(r2)); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * (c === 2 ? 0.93 : 1); } }
+        for (const L of traffic) { const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz; if (r2 > 0.01) { const e = fade * trafficAt(L, beam, px, py, pz) * Math.max(0, -(dx * nx + dy * ny + dz * nz)) / (PI * r2 * Math.sqrt(r2)); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * (c === 2 ? 0.93 : 1); } }
         for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * diffuse;
         for (const L of p.lamps) {
           const dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, noL = Math.max(0, -(dx * nx + dy * ny + dz * nz) / Math.sqrt(r2));

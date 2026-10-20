@@ -1,7 +1,7 @@
 /* TG GPU-only ribbon terrain. Existing shaders are retained byte-for-byte outside the pass. */
 import * as T from '../vendor/three/three.module.min.js';
 import { ground } from './drive-three-shaders.js';
-const uniforms = `uniform mat3 worldFromCar, carFromWorld; uniform sampler2D passDepth, passShadow0, passShadow1; uniform float trafficPitch[16];\n`;
+const uniforms = `uniform mat3 worldFromCar, carFromWorld; uniform sampler2D passDepth, passShadow0, passShadow1; uniform float trafficPitch[64];\n`;
 export function passShader(source, vertex = false) {
   if (vertex) return source;
   let s = uniforms + source;
