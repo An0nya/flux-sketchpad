@@ -49,7 +49,21 @@
     const c = Math.cos(pitch), s = Math.sin(pitch), a = Math.cos(roll), b = Math.sin(roll);
     return { pitch, roll, forward: [c, 0, s], left: [-s * b, a, c * b], up: [-s * a, -b, c * a] };
   }
-  function lift(ob, A) {
+  // CR2: a lamp disc of a mesh car (drawn by the GPU mesh, see drive-three-models.js adapt) sits on the mesh mount, through the same carBasis the
+  // mesh is tilted by, so glare and AHB see the lamp where the body draws it. root = the car's detail (x, y, yaw, face, id). Null when no mount.
+  function meshLamp(ob, root, A) {
+    const f = A.frame(root.x, root.y), z = A.height(f.s, f.off), surf = A.surface(f.s, f.off);
+    const m = { id: root.id, x: root.x, y: root.y, z, yaw: root.yaw, face: root.face, grade: surf.grade, normal: surf.normal };
+    const B = D.Models.carBasis(m), F = m.face === -1 ? -1 : 1, yaw = m.yaw + (F === -1 ? Math.PI : 0), c = Math.cos(yaw), s = Math.sin(yaw);
+    const end = ((ob.x - m.x) * Math.cos(m.yaw) + (ob.y - m.y) * Math.sin(m.yaw)) * F > 0 ? 1 : -1;
+    const type = ob.mat === 'plate' ? 'plate' : ob.mat === 'reflector-red' ? 'reflector' : ob.headlamp ? 'head' : 'tail';
+    const side = type === 'plate' ? 0 : Math.sign(-(ob.x - m.x) * s + (ob.y - m.y) * c);
+    const mt = D.Models.meshMount(m.id, end, type, side);
+    if (!mt) return null;
+    const P = mt.p, N = mt.n, at = (k) => B.X[k] * P[0] + B.Y[k] * P[1] + B.U[k] * P[2], nt = (k) => B.X[k] * N[0] + B.Y[k] * N[1] + B.U[k] * N[2];
+    return { x: m.x + at(0), y: m.y + at(1), z: z + at(2), nx: nt(0), ny: nt(1), nz: nt(2) };
+  }
+  function lift(ob, A, root) {
     if (!A.touge || ob.tougePlaced) return ob;
     const f = A.frame(ob.surfaceAnchor ? ob.surfaceAnchor[0] : ob.x, ob.surfaceAnchor ? ob.surfaceAnchor[1] : ob.y), z = A.height(f.s, f.off), n = { ...ob, bs: undefined, tougePlaced: true };
     if (n.z !== undefined) n.z += z;
@@ -59,6 +73,7 @@
     if (ob.traffic || ob.cls === 'rail') { const q = A.surface(f.s,f.off), t = A.at(f.s).t; surf = q; n.passSlope = [q.grade*t[0]-q.bank*t[1],q.grade*t[1]+q.bank*t[0],0,0]; }
     // Cars on the pass carry the road normal and grade, so the GPU mesh car can sit on the surface (drive-three-models.js update).
     if (n.detail) n.detail = { ...n.detail, z: (n.detail.z || 0) + z, ...(surf && ob.traffic ? { normal: surf.normal, grade: surf.grade } : {}) };
+    if (root && ob.k === 'disc' && ob.detailPart === 'car') { const L = meshLamp(ob, root, A); if (L) return { ...n, ...L }; }
     return n;
   }
   const seedOf = p => (p.src.traffic && p.src.traffic.seed) || 0;
@@ -123,7 +138,9 @@
     obs.push(...D.Models.actors(K.O, !!p.detailedModels));
     obs.push(...RF.DriveAnim.trafficObjects(p.src, RF.DriveAnim.trafficCars(p.src, dist, t), A, p));
     const roots = new Map(obs.filter(ob => ob.treeId && ob.detail).map(ob => [ob.treeId,[ob.x,ob.y]]));
-    const placed=obs.map(ob => lift(ob.treeId ? {...ob,surfaceAnchor:roots.get(ob.treeId)} : ob, A));
+    // CR2: lamps of a car drawn as the GPU mesh follow its mount. Same gate as drive-three-objects.js (pass + detailed models; p.touge is set only with the GPU renderer).
+    const carRoots = p.touge && p.detailedModels ? new Map(obs.filter(ob => ob.detailPart === 'car' && ob.detail).map(ob => [ob.modelId, ob.detail])) : null;
+    const placed=obs.map(ob => lift(ob.treeId ? {...ob,surfaceAnchor:roots.get(ob.treeId)} : ob, A, carRoots && ob.detailPart === 'car' ? carRoots.get(ob.modelId) : undefined));
     if(A.touge)trafficLight(placed,A,p);
     // Edge lines and the centre line, as the flat scenes draw them (US: double solid or broken yellow; EU: dashed). Pattern positions follow the car like the flat markings do. No lane studs.
     const marks = D.laneMarkings(p.lane, { us: p.us, broken: !!p.src.tiles.broken });
