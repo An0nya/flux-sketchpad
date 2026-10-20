@@ -38,6 +38,17 @@
     return max;
   }
 
+  // The far edge of a lit stretch: walking outward from 'from', the first distance where ok fails after it has held. null if ok never holds
+  // (nothing lit), max if the stretch runs to max. Unlike firstFailure, the near field (not yet lit) is not an edge.
+  function litEdge(ok, step, max, from = 0) {
+    const n = Math.floor(max / step); let lit = false;
+    for (let i = Math.ceil(from / step); i <= n; i++) {
+      const d = i * step;
+      if (ok(d)) lit = true; else if (lit) return d;
+    }
+    return lit ? max : null;
+  }
+
   // Illuminance (lx) on the road from our own lamps at a ground point. Uses the same beam model as the rendered frame:
   // candela toward the point (ownBeamAt) times the road incidence cosine (lamp height / r), over r^2.
   // lamps: [[x, y, z], ...] in the lamp frame; beamAt(dx, dy, dz, side) returns candela (RF.Drive.ownBeamAt bound to p).
@@ -94,6 +105,37 @@
     return typeof value === 'number' && isFinite(value) && m.unit ? f + ' ' + m.unit : f;
   }
 
+  // Hazards: pedestrians and deer within this distance ahead count as near. Lit means at least HAZARD_LUX on the face toward the car.
+  const HAZARD_RANGE = 150, HAZARD_LUX = 1;
+
+  // Illuminance (lx) on a face with unit normal n at point P, from our lamps (same beam model as roadLux). The face sees a lamp only
+  // when the lamp is ahead of it and the ray meets its front: cos = -(n . d) / r with d = P - lamp.
+  function faceLux(lamps, beamAt, P, n) {
+    let E = 0;
+    for (const L of lamps) {
+      const dx = P[0] - L[0], dy = P[1] - L[1], dz = P[2] - L[2], r = Math.hypot(dx, dy, dz);
+      if (!(dx > 0) || !(r > 0)) continue;
+      E += illuminance(beamAt(dx, dy, dz, L[1]), r, -(n[0] * dx + n[1] * dy + n[2] * dz) / r);
+    }
+    return E;
+  }
+
+  // Hazard counts. hazards: [{x, y, z}] in the drive frame; o = { eye [x,y,z], hfov (deg), occludedAt(P) -> bool, luxAt(P) -> lx }.
+  // near: ahead and within HAZARD_RANGE. inView: near, inside the horizontal field of view (a cone of hfov/2 about the view axis) and not
+  // occluded. lit: near and at least HAZARD_LUX from our beam (whether or not in view). litDist: the farthest lit near hazard (m), or null.
+  function hazardCounts(hazards, o) {
+    let near = 0, inView = 0, lit = 0, litDist = null;
+    for (const h of hazards) {
+      const dx = h.x - o.eye[0], dy = h.y - o.eye[1], dz = h.z - o.eye[2], r = Math.hypot(dx, dy, dz);
+      if (!(dx > 0) || !(r <= HAZARD_RANGE)) continue;
+      near++;
+      const P = [h.x, h.y, h.z];
+      if (angleDeg([1, 0, 0], [dx, dy, dz]) <= o.hfov / 2 && !o.occludedAt(P)) inView++;
+      if (o.luxAt(P) >= HAZARD_LUX) { lit++; if (litDist === null || r > litDist) litDist = r; }
+    }
+    return { near, inView, lit, litDist };
+  }
+
   // Registry. Pure data plus functions. Add a metric with register(); ids must be unique.
   const METRICS = [];
   const ids = new Set();
@@ -125,6 +167,16 @@
   register({ id: 'ev', group: 'glare', label: 'Exposure', unit: 'EV', read: (s) => s.ev });
   register({ id: 'white', group: 'glare', label: 'Display white', unit: 'cd/m²', read: (s) => s.white });
 
+  register({ id: 'reach', group: 'range', label: 'Beam reach (1 lx on the lane centre)', unit: 'm', read: (s) => s.reach,
+    text: (d) => (d === null || d === undefined ? 'no lit road ahead' : d >= 300 ? 'over 300 m' : format(d, 'm') + ' m') });
+  register({ id: 'lamp', group: 'lamp', label: 'Beam in use', read: (s) => s.lamp });
+  const hazardsOn = onlyWhen((s) => s.hazardsOn, 'people and deer are both off');
+  register({ id: 'hazNear', group: 'hazards', label: 'Within 150 m ahead', applies: hazardsOn, read: (s) => s.hazards && s.hazards.near, text: (n) => String(n) });
+  register({ id: 'hazView', group: 'hazards', label: 'In view (in the field of view, not occluded)', applies: hazardsOn, read: (s) => s.hazards && s.hazards.inView, text: (n) => String(n) });
+  register({ id: 'hazLit', group: 'hazards', label: 'Lit by our beam (1 lx or more)', applies: hazardsOn, read: (s) => s.hazards && s.hazards.lit, text: (n) => String(n) });
+  register({ id: 'hazLitDist', group: 'hazards', label: 'Farthest lit hazard', unit: 'm', applies: hazardsOn, read: (s) => s.hazards && s.hazards.litDist,
+    text: (d) => (d === null || d === undefined ? 'none lit' : format(d, 'm') + ' m') });
+
   // Panel headings, in display order. A metric's group must be one of these keys.
   const GROUPS = { own: 'Own car', oncoming: 'Oncoming traffic', glare: 'Glare we receive', hazards: 'Hazards', range: 'Range', lamp: 'Lamp' };
 
@@ -138,5 +190,5 @@
     return v.toFixed(DP[unit] === undefined ? 2 : DP[unit]);
   }
 
-  RF.SceneDetails = { illuminance, angleDeg, peakTracker, firstFailure, roadLux, topSource, samplePeaks, oncomingRows, display, register, METRICS, GROUPS, format, HAZARD_LUX: 1, always, onlyWhen };
+  RF.SceneDetails = { illuminance, angleDeg, peakTracker, firstFailure, litEdge, roadLux, faceLux, hazardCounts, topSource, samplePeaks, oncomingRows, display, register, METRICS, GROUPS, format, HAZARD_LUX, HAZARD_RANGE, always, onlyWhen };
 })();

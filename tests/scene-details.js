@@ -105,5 +105,36 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
   ok('display: a number takes its unit', S.display(S.METRICS.find((q) => q.id === 'speed'), 49.6, null) === '50 km/h');
 }
 
+// 9. Face lux and hazard counts (hazards: lit, in view, occluded, out of range, out of the cone)
+{
+  // hand: lamp 30 kcd at (0,0,0.6); a pedestrian face at x = 10 that looks back at the car (normal -x).
+  // d = (10, 0, 0.3), r = hypot(10, 0.3), cos = 10 / r, E = I cos / r^2 (about 299.6 lx)
+  const lamps = [[0, 0, 0.6]], r = Math.hypot(10, 0.3), handE = 30000 * (10 / r) / (r * r);
+  const E = S.faceLux(lamps, () => 30000, [10, 0, 0.9], [-1, 0, 0]);
+  ok('face lux: 30 kcd at 10 m on a face looking back at the lamp matches I cos / r^2 (2 %)', near(E, handE, 0.02), { E, handE });
+  ok('face lux: a face that looks away from the lamp gets nothing', S.faceLux(lamps, () => 30000, [10, 0, 0.9], [1, 0, 0]) === 0);
+  // hazards: eye at (-2, 0, 1.1); A at 20 m (lit, in view); B at 100 m (lit, occluded); D at 50 m but 40 m to the side, 38 deg off axis (lit, outside the 30 deg half-angle);
+  // C at 200 m (out of range); E at 40 m behind the eye line (not ahead)
+  const H = [{ x: 20, y: 0, z: 0.9 }, { x: 100, y: 0, z: 0.9 }, { x: 50, y: 40, z: 0.9 }, { x: 200, y: 0, z: 0.9 }, { x: -40, y: 0, z: 0.9 }];
+  const occludedAt = (P) => P[0] === 100;
+  const luxAt = (P) => (P[0] <= 60 ? 5 : 0.2);
+  const c = S.hazardCounts(H, { eye: [-2, 0, 1.1], hfov: 60, occludedAt, luxAt });
+  ok('hazards: near counts ahead within 150 m only (A, B, D)', c.near === 3, c);
+  ok('hazards: in view = inside the cone and not occluded (A only)', c.inView === 1, c);
+  ok('hazards: lit = at least 1 lx (A and D; B is dim)', c.lit === 2, c);
+  const dD = Math.hypot(52, 40, 0.2);
+  ok('hazards: farthest lit distance is D at about hypot(52, 40) m', near(c.litDist, dD, 0.001), { litDist: c.litDist, dD });
+  const none = S.hazardCounts([], { eye: [0, 0, 1.1], hfov: 60, occludedAt, luxAt });
+  ok('hazards: none gives zero and no lit distance', none.near === 0 && none.litDist === null);
+}
+
+// 10. Lit-stretch edge: the reach is where the lit stretch ends, not where the near field is still dark
+{
+  const edge = S.litEdge((d) => d >= 6 && d < 80, 1, 300, 1);
+  ok('litEdge: a stretch lit from 6 m to 80 m ends at 80 m (not at the dark near field)', edge === 80, edge);
+  ok('litEdge: nothing lit gives null', S.litEdge(() => false, 1, 300, 1) === null);
+  ok('litEdge: lit to the end gives max', S.litEdge((d) => d >= 6, 1, 300, 1) === 300);
+}
+
 console.log(fails ? fails + ' FAILED' : 'all scene-details checks passed');
 process.exitCode = fails ? 1 : 0;

@@ -98,6 +98,14 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     });
     ok('OV oncoming: traffic on lists its cars (or says none), each peak is at least its lux', onc.onc === null && onc.peakOk, onc);
     ok('OV glare off: the veiling row is greyed out with a reason', typeof onc.glareNa === 'string' && onc.glareShown.startsWith('n/a ('), onc);
+    // 6b. hazards, beam reach and lamp: counts are whole numbers in order (inView <= near, lit <= near), the reach is a distance or 'over 300 m'
+    const hz = await page.evaluate(() => {
+      const rows = RF.DriveAnim.details().rows, g = (id) => rows.find((q) => q.id === id);
+      const n = g('hazNear').value, v = g('hazView').value, l = g('hazLit').value;
+      return { n, v, l, litDist: g('hazLitDist').shown, reach: g('reach').shown, reachValue: g('reach').value, lamp: g('lamp').value, hazNa: g('hazNear').na };
+    });
+    ok('OV hazards: whole counts with inView <= near and lit <= near', hz.hazNa === null && [hz.n, hz.v, hz.l].every((x) => Number.isInteger(x) && x >= 0) && hz.v <= hz.n && hz.l <= hz.n, hz);
+    ok('OV beam reach: a distance (or over 300 m) and the built-in lamp', typeof hz.reach === 'string' && hz.reach !== '—' && hz.lamp === 'built-in', hz);
     // 6a. high beam: the oncoming lux is above zero for at least one car (low beam is cut off above the horizon: the eye gets ~0 lx)
     await page.locator('[data-anim=high-beam]').click();              // off -> on
     await page.waitForTimeout(600);

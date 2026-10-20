@@ -1861,6 +1861,13 @@ void main() {
     const f = V.flash, cp = f && f.p ? f.p : p, cars = f && f.cars ? f.cars.filter((c) => c.kind === 'oncoming') : [];
     const oncoming = o.oncoming && cp ? M.oncomingRows(cars, 5, (c) => eyeLux(cp, c), (c) => M.angleDeg([Math.cos(cp.yaw || 0), Math.sin(cp.yaw || 0), 0], driverDir(cp, c)), V.peaks || new Map()) : [];
     const glare = D.glareStrength(D.capGlare(o.glare)) > 0, sources = V.frameGlare || [];
+    // hazards: the frame's placed people and deer (not traffic), seen from the driver's eye; occlusion and lit tests use the frame's objects and our beam
+    const beamAt = (dx, dy, dz, side) => D.ownBeamAt(p, dx, dy, dz, side), placed = V.framePlaced, objs = placed ? (Array.isArray(placed) ? placed : placed.objects || []) : [];
+    const people = !!o.people, animals = !!o.animals, eye = eyeOf(p);
+    const hazardList = objs.filter((ob) => !ob.traffic && ((ob.cls === 'person' && people) || (ob.cls === 'deer' && animals)));
+    const hazards = (people || animals) && p ? M.hazardCounts(hazardList, { eye, hfov: p.hfov, occludedAt: (P) => D.occluded(P, eye, objs), luxAt: (P) => M.faceLux(p.lamps, beamAt, P, [-1, 0, 0]) }) : null;
+    // beam reach: the far edge of the lit stretch on our own lane centre (lateral offset 0: the lamps sit at +-0.7 m, the oncoming lane at lane), where our road illuminance falls below 1 lx (walk to 300 m)
+    const reach = p && p.lamps ? M.litEdge((d) => { const q = p.A ? p.A.at(d, 0).p : [d, 0]; return M.roadLux(p.lamps, beamAt, q[0], q[1]) >= 1; }, 1, 300, 1) : null;
     return {
       speedKmh: autoSpeedKmh(st, o.speed),
       highMode: V.highMode || 'off', autoReason: V.autoSt ? V.autoSt.reason : 'clear',
@@ -1871,6 +1878,7 @@ void main() {
       glareOn: glare, veil: glare ? D.veilStrength(D.capGlare(o.glare)) * D.veilAt([1, 0, 0], sources) : 0,
       veilTop: glare ? M.topSource([1, 0, 0], sources) : null,
       ev: o.ev, white: V.white === undefined ? null : V.white,
+      hazardsOn: people || animals, hazards, reach, lamp: 'built-in',
     };
   }
   function detailsSnapshot() {
