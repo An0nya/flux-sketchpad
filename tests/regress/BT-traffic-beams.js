@@ -47,12 +47,17 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   ok('shuffle on: CPU frame differs from built-in', H1 !== H0, { H0, H1 });
   ok('shuffle on: pool holds all 3 library beams, with distinct colour tints (halogen warmer than LED)', s2.pool && s2.pool.length === 3 && s2.tints.some((t, i) => s2.tints.some((u, j) => j !== i && t.join() !== u.join())), s2);
   ok('shuffle on: the tooltip says it is CPU only', /CPU renderer only/.test(s2.title), s2.title);
+  ok('shuffle on: the beam without a saved colour is neutral (1,1,1), not our lamp tint', s2.tints.some(t => t.join() === '1,1,1') && s2.tints.some(t => t.join() !== '1,1,1'), s2.tints);
+  const saved1 = await page.evaluate(() => { const o = JSON.parse(localStorage.getItem('flux/driveView') || '{}'); return { shuffle: o.trafficShuffle, out: o.trafficOutIds }; });
+  ok('shuffle choice is saved in the drive view options', saved1.shuffle === 'library', saved1);
 
   // checklist: untick the halogen beam, so the pool is the other two (subset respected)
   const halogenId = await page.evaluate(() => [...document.querySelectorAll('[data-anim="traffic-beam-list"] input')].find(c => /halogen/.test(c.closest('label').textContent)).dataset.id);
   await page.evaluate((id) => { const c = document.querySelector('[data-anim="traffic-beam-list"] input[data-id="' + id + '"]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); }, halogenId);
   await settle(); const s3 = await state();
   ok('checklist: unticked beam leaves the pool (2 beams remain)', s3.pool && s3.pool.length === 2 && !s3.pool.includes(halogenId) && s3.out && s3.out.includes(halogenId), { pool: s3.pool, out: s3.out });
+  const saved2 = await page.evaluate(() => JSON.parse(localStorage.getItem('flux/driveView') || '{}').trafficOutIds || null);
+  ok('checklist: the unticked ids are saved in the drive view options', Array.isArray(saved2) && saved2.includes(halogenId), saved2);
 
   // empty pool: untick all three; traffic falls back to the built-in beam, so the frame is the built-in frame
   await page.evaluate(() => [...document.querySelectorAll('[data-anim="traffic-beam-list"] input')].forEach(c => { c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); }));
