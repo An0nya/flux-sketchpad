@@ -1395,6 +1395,7 @@ void main() {
     try {
       LIB.storeOk = !!RF.BeamStore && await RF.BeamStore.available();
       if (LIB.storeOk) {
+        LIB.durable = await RF.BeamStore.persist();   // asked once per page load; the browser decides
         try { for (const r of await RF.BeamStore.getAll()) { try { LIB.items.push(libEntry(r, String(r.id), true)); } catch (e) { /* skip a damaged record */ } } }
         catch (e) { LIB.storeOk = false; }
       }
@@ -1442,6 +1443,16 @@ void main() {
   function libUpdate(e, msg) {
     LIB.ver++; libSay(msg);
     return libWrite(e).then((stored) => { libSay(stored ? msg : msg + ' Browser storage refused the update, so it may not survive a reload.'); if (V.fillOwn) V.fillOwn(); return stored; });
+  }
+  // BI2: a table on a coarser grid when the chosen step is coarser than the table's own; never finer, never resampled up
+  const gridTo = (lut, step) => (Number.isFinite(step) && step > lut.step + 1e-9 ? RF.Beams.coarsen(lut, step) : lut);
+  // BI2: the storage line in the library manager: used of quota (navigator.storage.estimate, when the browser gives it) and whether
+  // the browser agreed to keep the data
+  async function libStorageText() {
+    if (!LIB.storeOk) return 'storage: unavailable, the library is for this session only';
+    const est = await RF.BeamStore.estimate(), persistent = LIB.durable ? 'yes' : 'no';
+    if (!est) return 'storage: size unknown, persistent: ' + persistent;
+    return 'storage: used ' + (est.usage / 1e6).toFixed(1) + ' of ' + (est.quota / 1e6).toFixed(0) + ' MB, persistent: ' + persistent;
   }
   // removes one stored beam, or every stored beam (id omitted); resolves true when the store accepted it
   const libDrop = (id) => (id ? RF.BeamStore.delete(id) : RF.BeamStore.clear()).then(() => true, () => false);
@@ -1558,7 +1569,7 @@ void main() {
     const fileIn = E('input', { type: 'file', accept: '.json,application/json', 'data-anim': 'beam-file', 'aria-label': 'Import beam file (single beam or bundle)', hidden: '' });
     fileIn.addEventListener('change', async () => {
       const f = fileIn.files && fileIn.files[0]; fileIn.value = ''; if (!f) return;
-      try { libAdd(RF.Beams.readFile(JSON.parse(await fileToText(f)))); fillOwn(); }
+      try { libAdd(RF.Beams.readFile(JSON.parse(await fileToText(f))).map(gridBeam)); fillOwn(); }
       catch (e) { LIB.msg = 'Import failed: ' + (e && e.message ? e.message : e); }
       V.beamMsg.textContent = LIB.msg;
     });
@@ -1566,9 +1577,18 @@ void main() {
     // BB1: the name is typed here (empty = the default shown as the placeholder); a name already taken gets a counter
     const nameIn = E('input', { type: 'text', maxlength: '80', 'data-anim': 'beam-name', 'aria-label': 'Name for the beam to save', title: 'Name for the beam you save. Empty uses the default shown. A name already in the library gets a number added.', placeholder: 'our design' });
     V.nameIn = nameIn; bar.append(nameIn);
+    // BI2: the grid a saved design is stored on. 0.25 deg is the default (flux within 0.0 %, peak within 1.6 %, test points about 1 %
+    // of the solved table); imported files keep their own grid unless this select is changed by hand
+    const gridSel = E('select', { 'data-anim': 'save-grid', 'aria-label': 'Grid of the beam to save', title: 'Grid of a saved design. As solved keeps the full table. 0.25 deg is the default. Imported files keep their own grid unless you change this.' },
+      E('option', { value: 'solved' }, 'as solved'), E('option', { value: '0.25' }, '0.25 deg'), E('option', { value: '0.5' }, '0.5 deg'));
+    gridSel.value = '0.25';
+    gridSel.addEventListener('change', () => { gridSel.dataset.touched = '1'; });
+    bar.append(gridSel);
+    // an imported beam takes the grid picked here only once the select has been changed by hand
+    const gridBeam = (b) => (gridSel.dataset.touched === '1' ? RF.Beams.fromLut(gridTo(RF.Beams.toLut(b), +gridSel.value), { name: b.name, beamKind: b.beamKind, conv: b.conv, colour: b.colour }) : b);
     btn('save-design', 'Save our design as a beam in the library (a low beam, with the design\'s convention)', () => {
       const I = info(), name = RF.Beams.uniqueName(nameIn.value || beamDefaultName(I), libLoad().map(e => e.name));
-      libAdd([RF.Beams.fromLut(I.lut(), { name, beamKind: 'low', conv: I.conv || 'A', colour: sourceColour(I) })]); nameIn.value = ''; fillOwn(); V.beamMsg.textContent = LIB.msg;
+      libAdd([RF.Beams.fromLut(gridTo(I.lut(), +gridSel.value), { name, beamKind: 'low', conv: I.conv || 'A', colour: sourceColour(I) })]); nameIn.value = ''; fillOwn(); V.beamMsg.textContent = LIB.msg;
     }, 'save design');
     btn('import-beam', 'Import a beam file: one beam, or a bundle of several. Beams join the library.', () => fileIn.click(), 'import');
     btn('export-beams', 'Download the library as a beam file: one beam, or a bundle when there are several', () => {
@@ -1607,10 +1627,10 @@ void main() {
         libSay(gone); V.fillOwn();
         libDrop(e.id).then((stored) => { libSay(gone + (stored ? '' : ' Browser storage refused the update, so it may come back on reload.')); V.fillOwn(); });
       });
-      const size = (e.lut.nh * e.lut.step).toFixed(0) + ' x ' + (e.lut.nv * e.lut.step).toFixed(0) + ' deg';
+      const size = 'grid ' + e.lut.step + ' deg, ' + (e.lut.nh * e.lut.step).toFixed(0) + ' x ' + (e.lut.nv * e.lut.step).toFixed(0) + ' deg, ' + (e.lut.data.byteLength / 1e6).toFixed(2) + ' MB';
       const cl = RF.Beams.colourLabel(e.colour);
       const colourCell = E('span', { class: 'anim-speed', 'data-anim': 'beam-colour' }, cl || 'colour: from current source');
-      const cells = [nm, E('span', { class: 'anim-speed' }, e.beamKind), E('span', { class: 'anim-speed' }, size), colourCell, E('span', { class: 'anim-speed' }, e.persisted ? 'saved' : 'session'), ren, del];
+      const cells = [nm, E('span', { class: 'anim-speed' }, e.beamKind), E('span', { class: 'anim-speed' }, size), colourCell, E('span', { class: 'anim-speed' }, e.persisted ? (e.coarse ? 'saved, coarse' : 'saved') : 'session'), ren, del];
       if (!e.colour) {   // no colour in the file: a kelvin can be set here, and the tint then travels with the beam
         const kIn = E('input', { type: 'number', min: '1000', max: '20000', step: '100', placeholder: 'K', 'data-anim': 'beam-row-cct', 'aria-label': 'Colour temperature for this beam, kelvin' });
         const kBtn = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-set-cct', title: 'Give this beam a colour temperature (1000 to 20000 K)' }, 'set K');
@@ -1640,6 +1660,8 @@ void main() {
       libDrop().then((stored) => { libSay(gone + (stored ? '' : ' Browser storage refused the update, so they may come back on reload.')); V.fillOwn(); });
     });
     box.replaceChildren(E('summary', {}, 'library (' + items.length + ')'), ...(rows.length ? rows : [E('span', { class: 'anim-speed' }, 'No saved beams yet. Save a design, or import a file.')]), E('div', { class: 'beam-row' }, clr));
+    const sto = E('span', { class: 'anim-speed', 'data-anim': 'beam-storage', title: 'Clearing this site\'s data deletes the library. Export to a file is the backup.' }, 'storage: checking...');
+    box.append(sto); libStorageText().then((t) => { sto.textContent = t; }, () => { sto.textContent = 'storage: unknown'; });
   }
   function flashText() { if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0); }
   function flashLabel(dist, t) {

@@ -107,6 +107,28 @@ const seed = (ctx) => ctx.addInitScript(() => { if (!localStorage.getItem('flux/
   ok('storage throws: the beam is selectable in the picker', (await waitOpts(pC, 2)) === true);
   await ctxC.close();
 
+  // ---- D (BI2): save design with the grid select (default 0.25 deg; 0.5 deg picked by hand), storage line, row size and grid
+  const ctxD = await browser.newContext({ viewport: VP }); await seed(ctxD);
+  const pD = await pageOf(ctxD); await boot(pD);
+  const srcStep = await pD.evaluate(() => RF.DriveAnim._.V.p.lowLut.step);
+  const gridDefault = await pD.evaluate(() => document.querySelector('[data-anim="save-grid"]').value);
+  ok('BI2: the grid select defaults to 0.25 deg', gridDefault === '0.25', gridDefault);
+  await pD.evaluate(() => document.querySelector('[data-anim="save-design"]').click());
+  for (let i = 0; i < 50 && !(await idbRows(pD)).length; i++) await pD.waitForTimeout(100);
+  const dDefault = await idbRows(pD);
+  ok('BI2: a saved design defaults to a 0.25 deg grid (the source step if the source is already coarser)', dDefault.length === 1 && dDefault[0].step === Math.max(srcStep, 0.25), { srcStep, steps: dDefault.map(r => r.step) });
+  await pick(pD, '[data-anim="save-grid"]', '0.5');
+  await pD.evaluate(() => document.querySelector('[data-anim="beam-name"]').value = 'half grid');
+  await pD.evaluate(() => document.querySelector('[data-anim="save-design"]').click());
+  for (let i = 0; i < 50 && (await idbRows(pD)).length < 2; i++) await pD.waitForTimeout(100);
+  const dHalf = (await idbRows(pD)).find(r => r.name === 'half grid');
+  ok('BI2: picking 0.5 deg stores that grid, full precision values kept (no quantisation)', dHalf && dHalf.step === 0.5, dHalf && { step: dHalf.step, n: dHalf.n });
+  const rowsD = await rowsDOM(pD);
+  ok('BI2: each row shows its grid step and size in MB', rowsD.length === 2 && rowsD.every(r => /grid \d/.test(r.size) && / MB/.test(r.size)), rowsD.map(r => r.size.slice(0, 60)));
+  const storageLine = await pD.evaluate(() => document.querySelector('[data-anim="beam-storage"]').textContent);
+  ok('BI2: storage line shows used of quota and persistence', /storage: used [\d.]+ of [\d.]+ MB, persistent: (yes|no)/.test(storageLine), storageLine);
+  await ctxD.close();
+
   ok('no page errors in any scenario', errors.length === 0, errors);
   await browser.close();
   console.log(fails ? fails + ' BI1 page check(s) FAILED' : 'all BI1 page checks passed');
