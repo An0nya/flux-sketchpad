@@ -131,6 +131,24 @@
     return k;
   }
 
+  // ---------------------------------------------------------------- scenes as presets (SB0)
+  // A scene is a preset: one pure resolver turns preset + explicit overrides into the feature flags a builder reads. Overrides win; an undefined override means "use the preset".
+  // Preset values are what each scene builds TODAY (SB0 changes no output). Stage SB1 flips studs on for every scene.
+  const FEATURE_DEFAULTS = { studs: false, posts: true, signs: true, people: true, animals: true, obstacle: false, veg: true };
+  const FEATURE_PRESETS = {
+    road: { studs: true },                   // the animated open road places studs in its wild scenery (wildChunk)
+    forest: { studs: false },
+    city: { studs: false },
+    pass: { studs: false, people: false },   // the mountain pass: no pedestrians today
+  };
+  function resolveFeatures(opts) {
+    const o = opts || {}, preset = Object.prototype.hasOwnProperty.call(FEATURE_PRESETS, o.preset) ? o.preset : 'road';
+    const F = Object.assign({}, FEATURE_DEFAULTS, FEATURE_PRESETS[preset]);
+    for (const key of Object.keys(o.overrides || {})) if (o.overrides[key] !== undefined) F[key] = o.overrides[key];
+    return F;
+  }
+  RF.Drive.resolveFeatures = resolveFeatures; RF.Drive.FEATURE_PRESETS = FEATURE_PRESETS; RF.Drive.FEATURE_DEFAULTS = FEATURE_DEFAULTS;
+
   // ---------------------------------------------------------------- scenes
   const SCENES = {
     road: {
@@ -227,7 +245,9 @@
         for (let i = 0; i < nt; i++) { const s = (i + R()) * P / nt, off = 5 + 13 * R(); k.tree(s, side > 0 ? k.edgeL + off : k.edgeR - off, { birch: R() < 0.15 }); }
       }
     }
-    if (o.rpm !== false) {                                  // markers on the centre line (in the middle of each gap when the line is dashed) and, staggered, on both edge lines
+    // markers on the centre line (in the middle of each gap when the line is dashed) and, staggered, on both edge lines.
+    // SB0: the read-site for resolveFeatures (undefined rpm = the road preset = on, as before)
+    if (resolveFeatures({ preset: 'road', overrides: { studs: o.rpm } }).studs) {
       const pat = markings.find((m) => m.pat && m.o0 < Lw / 2 && m.o1 > Lw / 2), per = pat ? pat.pat.period : 12, s0 = pat ? pat.pat.s0 + pat.pat.on + (per - pat.pat.on) / 2 : 0;
       for (let s = s0 - Math.floor(s0 / per) * per; s < P; s += per) k.rpm(s, Lw / 2, us);
       for (let s = 6; s < P; s += 24) { k.rpm(s, -Lw / 2 + 0.2); k.rpm(s + 12, 1.5 * Lw - 0.2); }
