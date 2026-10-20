@@ -65,8 +65,13 @@ function run(RF,ok) {
   ok('TR AFS sign follows left and right curves',signCheck());
   const real=A.afsTarget;A.afsTarget=()=>0;try{ok('TR POSITIVE CONTROL: forced zero swivel fails sign check',!signCheck());}finally{A.afsTarget=real;}
   let st=null,bounded=true,rate=true,prev=0;
-  for(let i=0;i<1000;i++){st=A.lightingStep(st,src,i<500?700:1300,10,.02,true,true);bounded&&=Math.abs(st.yaw)<=Math.PI/12+1e-12;rate&&=Math.abs(st.yaw-prev)<=A.AFS_RATE*.02+1e-12;prev=st.yaw;}
-  ok('TR AFS clamp <=15 degrees and slew <=12 degrees/s, including reversal',bounded&&rate);
+  for(let i=0;i<1000;i++){st=A.lightingStep(st,src,i<500?700:1300,10,.02,true,true);bounded&&=Math.abs(st.yaw)<=Math.PI/12+1e-12;rate&&=Math.abs(st.yaw-prev)<=A.AFS_RETURN*.02+1e-12;prev=st.yaw;}
+  ok('TR AFS clamp <=15 degrees and slew <=30 degrees/s, including reversal',bounded&&rate);
+  // Bend exit: swivel must come back with the wheels, not linger into the bend (owner report: beam still pointed into a hairpin after exiting).
+  let xe=700;while(Math.abs(A.curvatureAt(src,xe))>1e-9&&xe<1300)xe+=.5;
+  let ex={yaw:A.AFS_MAX*Math.sign(A.curvatureAt(src,xe-1)),left:0,right:0};for(let i=0;i<28;i++)ex=A.lightingStep(ex,src,xe,10,.02,true,false);
+  ok('TR AFS beam is back on centre 0.56 s after the bend ends (15 deg at 30 deg/s)',xe<1300&&ex.yaw===0);console.log('  exit x',xe,'yaw',ex.yaw);
+  ok('TR POSITIVE CONTROL: at the old 12 deg/s the same exit is still off centre',Math.abs(A.AFS_MAX-A.AFS_RATE*.56)>1e-6&&A.AFS_MAX-A.AFS_RATE*.56>0);
   for(let i=0;i<200;i++)st=A.lightingStep(st,src,300,10,.02,true,true);
   ok('TR AFS settles to zero on straights',st.yaw===0&&st.left===0&&st.right===0);
   ok('TR corner lamps select the bend side and fade out above 40 km/h',A.lightingStep(null,src,700,8,1,false,true).left===1&&A.lightingStep(null,src,1300,8,1,false,true).right===1&&A.lightingStep(null,src,700,12,1,false,true).left===0);

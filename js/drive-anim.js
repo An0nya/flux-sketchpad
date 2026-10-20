@@ -628,11 +628,13 @@
     }
     return out;
   }
-  // Tuning, not an OEM control law: preview 0.8 s (8..30 m), 15° clamp, 12°/s slew.
-  const AFS_MAX = Math.PI / 12, AFS_RATE = Math.PI / 15;
+  // Tuning, not an OEM control law: swivel follows the curvature under the car (a stand-in for steering angle; the sim has no
+  // separate steering or yaw), 8..30 m gain, 15° clamp, 12°/s out into a bend, 30°/s back to centre.
+  const AFS_MAX = Math.PI / 12, AFS_RATE = Math.PI / 15, AFS_RETURN = Math.PI / 6;
   function steeringSignal(src, x, v) {
     const c = curvatureAt(src, x), ahead = curvatureAt(src, x + Math.max(8, Math.min(30, v * .8)));
-    return { current: c, preview: c || ahead };
+    // Straightening road ahead wins over the bend under the car, so the beam starts coming back as the wheels do.
+    return { current: c, preview: Math.abs(ahead) < Math.abs(c) ? ahead : c };
   }
   function afsTarget(src, x, v) {
     const c = steeringSignal(src, x, v).preview;
@@ -641,10 +643,11 @@
   function lightingStep(state, src, x, v, dt, afs, cornering) {
     state = state || { yaw: 0, left: 0, right: 0 };
     const slew = (a,b,rate) => a + Math.max(-rate * dt, Math.min(rate * dt, b-a));
+    const swivel = (a,b) => slew(a, b, Math.abs(b) < Math.abs(a) ? AFS_RETURN : AFS_RATE);
     const c = steeringSignal(src,x,v).current;
     // Current curvature only: do not fire a discrete lamp early on a straight or through junctions we do not turn at.
     const strength = cornering ? Math.max(0, Math.min(1, (Math.abs(c)-.008)/.012)) * Math.max(0, Math.min(1,(40-v*3.6)/5)) : 0;
-    return { yaw: afs ? slew(state.yaw, RF.DriveAnim.afsTarget(src,x,v), AFS_RATE) : 0,
+    return { yaw: afs ? swivel(state.yaw, RF.DriveAnim.afsTarget(src,x,v)) : 0,
       left: cornering ? slew(state.left,c>0?strength:0,2) : 0, right: cornering ? slew(state.right,c<0?strength:0,2) : 0 };
   }
   const lightingExtras = p => !!(p.trafficBeams || p.surfaceSheen || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight);
@@ -1858,7 +1861,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
