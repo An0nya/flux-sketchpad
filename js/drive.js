@@ -471,11 +471,9 @@
   // Tuning values (not survey data): 400 m / 20 deg for oncoming headlamps, 200 m for preceding tail lamps in our lane or the next,
   // 30 km/h, 2 s hold before returning to high. The sensor and the step are pure, so the node test drives them directly.
   const AUTO = { onRange: 160, onCone: 20, preRange: 100, slowKmh: 30, hold: 1 };
-  // Camera eye. The fixed eye is the default. Telephoto dolly (opt-in): a horizontal FOV under 60 deg moves the eye back along the heading so a
-  // subject 20 m away keeps its size: back = 20 m × (tan 30° / tan(fov/2) − 1). Dolly off, or 60 deg and wider: exactly the fixed eye.
-  const EYE = [-2.0, 0.37, 1.2], DOLLY_REF = 20;
-  const dollyBack = (hfov, dolly) => dolly && hfov < 60 ? DOLLY_REF * (Math.tan(30 * D2R) / Math.tan(hfov * D2R / 2) - 1) : 0;
-  const eyeFor = (hfov, dolly) => [EYE[0] - dollyBack(hfov, dolly), EYE[1], EYE[2]];
+  // Camera eye: always the fixed eye. The view angle changes the lens, not the position.
+  const EYE = [-2.0, 0.37, 1.2];
+  const eyeFor = () => EYE.slice();
   // What the camera sees. objects: the frame's opaque objects and lamps; eye: camera position; opts.occluders defaults to objects; opts.lane = lane width (m).
   // An oncoming car counts when a headlamp faces us within onRange and onCone of our heading, and is not hidden (occluded).
   // A preceding car counts when a tail lamp is within preRange, within the same cone, and within 1.5 lanes of our centreline, and is not hidden.
@@ -797,5 +795,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { cornerAt, ownBeamAt, occluded, dipState, AUTO, eyeFor, dollyBack, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { cornerAt, ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
