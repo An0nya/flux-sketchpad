@@ -114,6 +114,10 @@ function run(RF, ok) {
     airWorst = Math.max(airWorst, Math.abs(got - A) / A); airN++;
   }
   ok('FG airlight limit: far ground under V=60 equals the sky value at its direction (T < 1e-3 beyond 150 m)', airN > 0 && airWorst < 1e-3, 'pixels=' + airN + ' worst rel=' + airWorst.toExponential(2));
+  // FG3: the FPS badge statistic (last 120 drawn-frame intervals: mean and 95th percentile)
+  const fms = RF.DriveAnim.frameMsSummary, seq = Array.from({ length: 200 }, (_, i) => i + 1), s120 = fms(seq), s3 = fms([10, 20, 30]), s0 = fms([]);
+  ok('FG FPS badge stat: 120-frame window, mean and p95 (nearest rank)', s120.n === 120 && Math.abs(s120.mean - 140.5) < 1e-9 && s120.p95 === 194 && s3.n === 3 && s3.mean === 20 && s3.p95 === 30 && s0.n === 0,
+    '200 frames: n=' + s120.n + ' mean=' + s120.mean + ' p95=' + s120.p95 + '; [10,20,30]: p95=' + s3.p95);
   ok('FG finite under fog with street lights and wet sheen', render(RF, withLight, { wet: true, wetSheen: true, ambient: 0.05 }, 200).rgb.every(Number.isFinite));
 }
 module.exports = { run };

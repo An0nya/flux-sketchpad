@@ -44,7 +44,9 @@ function run(RF, ok) {
   // Verify the literal default shader, not just its output against another current renderer.
   const current = fs.readFileSync('js/drive-three-objects.js', 'utf8'), base = cp.execFileSync('git', ['show', '322d119:js/drive-three-objects.js'], { encoding: 'utf8' });
   const shader = s => s.slice(s.indexOf('export const objectFragment'), s.indexOf('export function objects'));
-  ok('FO default shader literal unchanged', shader(current).split('// Only leaf buckets')[0].trim() === shader(base).trim());
+  // FG2 added one view-path fog line to this fragment (off when sigma is 0). Strip exactly that line; everything else must match the pinned literal.
+  const FOG_LINE = ' if(sigma>0.0){float T=exp(-sigma*t); color=color*T+vec3(flags.y>0.0?0.0:ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0))*(1.0-T));}\n';
+  ok('FO default shader literal unchanged apart from the FG fog line', shader(current).split(FOG_LINE).join('').split('// Only leaf buckets')[0].trim() === shader(base).trim() && shader(current).split(FOG_LINE).length === 2);
 }
 module.exports = { run };
 if (require.main === module) {
