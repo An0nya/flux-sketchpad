@@ -702,7 +702,18 @@
     const key = n ? Math.exp(sum / n) : 1, k = 0.18 * Math.pow(2, ev) / key;
     return { k, white: 1 / k, key };
   }
-  const aces = (x) => { x = x < 0 ? 0 : x; const y = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14); return y > 1 ? 1 : y; };
+  // Eye adaptation, adapt mode only: the gain eases toward its target in stops (log2 of k). Glare arriving (k falls) takes
+  // ADAPT_DOWN_S; glare leaving (k rises) takes ADAPT_UP_S. alpha = 1 - exp(-dt/tau), so the result does not depend on frame rate.
+  // state = { k } from the last drawn frame, or null. dt = sim seconds since then. No state, dt < 0, or a seek (dt > ADAPT_SEEK_S)
+  // snaps to target; dt = 0 (paused, or the same frame again) holds the state.
+  const ADAPT_DOWN_S = 0.4, ADAPT_UP_S = 3, ADAPT_SEEK_S = 0.5;
+  function adaptStep(state, target, dt) {
+    if (!state || !(state.k > 0) || !(target > 0) || !(dt >= 0) || dt > ADAPT_SEEK_S) return { k: target };
+    if (dt === 0) return { k: state.k };
+    const tau = target < state.k ? ADAPT_DOWN_S : ADAPT_UP_S, a = 1 - Math.exp(-dt / tau), l0 = Math.log2(state.k);
+    return { k: Math.pow(2, l0 + (Math.log2(target) - l0) * a) };
+  }
+  const aces =(x) => { x = x < 0 ? 0 : x; const y = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14); return y > 1 ? 1 : y; };
   const srgb = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
   // Four equal-energy Gaussian bands at logarithmically spaced angular scales: their
   // normalized 2D peaks scale as 1/sigma², approximating the CIE 146 theta^-2 tail.
@@ -751,5 +762,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { cornerAt, ownBeamAt, occluded, dipState, AUTO, eyeFor, dollyBack, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, tonemap, L_REF };
+  RF.Drive = { cornerAt, ownBeamAt, occluded, dipState, AUTO, eyeFor, dollyBack, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
