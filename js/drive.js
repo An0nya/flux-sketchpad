@@ -231,7 +231,8 @@
     // Optional CPU attribution: hash pixels to avoid always sampling the same roadside columns.
     const prof = o.profile, started = prof ? performance.now() : 0;
     let timed = false, rays = 0, sampled = 0, groundTime = 0, wetTime = 0;
-    const lobe = prof ? (...args) => { if (!timed) return wetLobe(...args); const t = performance.now(), v = wetLobe(...args); wetTime += performance.now() - t; return v; } : wetLobe;
+    const wetFn = o.look && o.look.wetModel === 'ggx' ? wetGGX : wetLobe;   // look.wetModel: 'legacy' (default) or 'ggx'
+    const lobe = prof ? (...args) => { if (!timed) return wetFn(...args); const t = performance.now(), v = wetFn(...args); wetTime += performance.now() - t; return v; } : wetFn;
     const w = o.w, h = o.h, tanH = Math.tan(o.hfov * D2R / 2), tanV = tanH * h / w, eye = o.eye, ex = eye[0], ey = eye[1], ez = eye[2];
     const lamps = o.lamps, nl = lamps.length, lut = o.lut, conv = o.conv || 'A', lc = o.lampRGB || [1, 1, 1], A = o.arc || null, Lw = o.lane;
     const look = Object.assign({ wet: false, RL: 0.2, ambient: 0 }, o.look), M = Object.assign(materials(look), o.mats || {}), scene = o.scene || { objects: [], markings: [], verge: ['gravel', 1.5, 'grass'] };

@@ -9,6 +9,7 @@ const LEGACY = {
 function frameHash(RF, opts) {
   const { recipe } = require('./drive-polish.js'), A = RF.DriveAnim;
   const p = recipe(RF, 'road', { wet: !!opts.wet, wetSheen: !!opts.wetSheen, tileCache: false }, 96), world = A.tileWorld(p, 95, 2);
+  if (opts.model) p.look.wetModel = opts.model;
   const out = new Float32Array(p.w * p.h * 4); A.tileFrame(p, 95, 2, out, 2, null, null, world);
   return crypto.createHash('sha256').update(Buffer.from(out.buffer)).digest('hex');
 }
@@ -18,6 +19,9 @@ function run(RF, ok) {
     frameHash(RF, {}) === LEGACY.dry && frameHash(RF, { wet: true }) === LEGACY.wetNoSheen && frameHash(RF, { wet: true, wetSheen: true }) === LEGACY.wetSheen);
   // GGX sanity: a real BRDF, finite, zero below the road plane, directional albedo <= 1
   const fin = [[0.1, 0.2, 1, 0.1, 0.2, 1.2], [-3, 1, 0.5, 2, 0.1, 0.4]].every(([a, b, c, d, e, f]) => Number.isFinite(D.wetGGX(a, b, c, d, e, f)));
+  const sheenFrame = (model) => frameHash(RF, { wet: true, wetSheen: true, model });
+  ok('WG wetModel legacy is the default and matches the pinned legacy frame', sheenFrame('legacy') === LEGACY.wetSheen && sheenFrame(undefined) === LEGACY.wetSheen);
+  ok('WG wetModel ggx changes the wet+sheen frame (positive control: the option is wired)', sheenFrame('ggx') !== LEGACY.wetSheen && sheenFrame('ggx') === sheenFrame('ggx'));
   ok('WG wetGGX is finite for ordinary geometry', fin);
   ok('WG wetGGX is zero for light below the road or eye below the road', D.wetGGX(10, 0, -0.5, 0, 0, 1) === 0 && D.wetGGX(10, 0, 0.5, 0, 0, -1) === 0);
   const albedo = (thetaV) => {
