@@ -28,6 +28,7 @@ run('metrics (tests/metrics.js)', ['tests/metrics.js']);
 run('layout (tests/layout.js)', ['tests/layout.js']);
 run('attribution (tests/attribution.js)', ['tests/attribution.js']);
 run('photometry (tests/photometry.js)', ['tests/photometry.js']);
+run('CCT defaults per preset (tests/cct-defaults.js)', ['tests/cct-defaults.js']);
 run('auto-high (tests/auto-high.js)', ['tests/auto-high.js']);
 run('eye adaptation: smoothing step response (tests/eye-adapt.js)', ['tests/eye-adapt.js']);
 run('drive controls: view angle, traffic range, fixed eye (tests/drive-controls2.js)', ['tests/drive-controls2.js']);

@@ -334,7 +334,7 @@
     if (p.obscuration) src.obscuration = JSON.parse(JSON.stringify(p.obscuration)); else delete src.obscuration;      // the bulb's cap / black top (R37), carried with the scene so solvers in a worker see it
     const prevFluxModel = src.fluxModel, prevDriveA = src.driveA, fresh = src.preset !== id;   // a different emitter opens at its own default current / flux model, not the last one's
     src.preset = id;
-    const cct = RF.CCT ? RF.CCT.presetCct(p) : undefined; if (cct) src.cct = cct; else delete src.cct;   // colour temperature default (js/cct.js): stated for LEDs; assumed 3200 K halogen / 4200 K HID
+    const cct = RF.CCT ? RF.CCT.presetCct(p, id) : undefined; if (cct) src.cct = cct; else delete src.cct;   // colour temperature default (js/cct.js): stated for LEDs; assumed 3200 K halogen / 4200 K HID / table value for the owner's assumed LEDs
     delete src.effArea; delete src.dome;                  // a dome comes only with a model that has one
     if (p.custom && opts && opts.measured) src.measured = JSON.parse(JSON.stringify(opts.measured));
     if (p.custom) {                                       // a planar die: drop what the previous (volume / bulb) emitter left behind, before the no-rows early return below
