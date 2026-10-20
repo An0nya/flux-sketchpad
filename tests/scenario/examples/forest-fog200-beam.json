@@ -1,0 +1,10 @@
+{
+  "name": "forest-fog200-beam",
+  "scene": "forest",
+  "seed": 7,
+  "dist": 40,
+  "speed": 50,
+  "options": { "visibility": 200, "scatter": 16, "scatterMode": "direct" },
+  "frames": 30,
+  "capture": [{ "name": "start", "frame": 0 }, { "name": "end", "frame": 29 }]
+}

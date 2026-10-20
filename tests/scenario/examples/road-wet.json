@@ -1,0 +1,10 @@
+{
+  "name": "road-wet",
+  "scene": "road",
+  "seed": 7,
+  "dist": 25,
+  "speed": 50,
+  "options": { "wet": true, "wetSheen": true },
+  "frames": 30,
+  "capture": [{ "name": "start", "frame": 0 }, { "name": "end", "frame": 29 }]
+}

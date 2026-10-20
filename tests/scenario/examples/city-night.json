@@ -1,0 +1,10 @@
+{
+  "name": "city-night",
+  "scene": "city",
+  "seed": 7,
+  "dist": 60,
+  "speed": 30,
+  "options": { "ambient": 0 },
+  "frames": 30,
+  "capture": [{ "name": "start", "frame": 0 }, { "name": "end", "frame": 29 }]
+}

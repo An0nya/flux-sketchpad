@@ -1,0 +1,10 @@
+{
+  "name": "pass",
+  "scene": "road",
+  "seed": 7,
+  "dist": 120,
+  "speed": 40,
+  "options": { "mountainPass": true },
+  "frames": 30,
+  "capture": [{ "name": "start", "frame": 0 }, { "name": "end", "frame": 29 }]
+}
