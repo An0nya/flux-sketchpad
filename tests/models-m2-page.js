@@ -16,6 +16,10 @@
   ok('M2 loaded cars and flush mounts',car.ready&&!car.error&&car.cars===3&&car.mounts.length>0&&car.mounts.every(m=>m.gap===.001),car);
   ok('M2 EU rectangular plate dimensions',car.mounts.filter(m=>m.type==='plate').every(m=>m.width===.520&&m.height===.110));
   const originalUS=a().V.p.us;a().V.p.us=true;const us=draw(M1Page.kit('cars'),true).state;ok('M2 US rectangular plate dimensions',us.mounts.filter(m=>m.type==='plate').every(m=>m.width===.305&&m.height===.152));a().V.p.us=originalUS;
+  // LP: the SUV's head lamps are centred in the light housings flanking the plate (car coords; housing bounds measured from a head-on render: |y| 0.30-0.64, z 0.55-0.86, centre ~(0.47,0.70)).
+  {let suvHeads=null;for(let x=5;x<=8&&!suvHeads;x+=.5){const K=RF.Drive.kit({Lw:3.5,rand:()=>.5});K.car(x,0,{face:-1,turn:0,lamps:'head',kcd:.5});const h=draw(K.O,true).state.mounts.filter(m=>m.type==='head'&&m.variant==='suv');if(h.length===2)suvHeads=h;}
+   const inHousing=m=>{const ay=Math.abs(m.p[1]),z=m.p[2];return ay>=.30&&ay<=.64&&z>=.55&&z<=.86&&Math.abs(ay-.47)<=.03&&Math.abs(z-.70)<=.03;};
+   ok('LP SUV head-lamp centres lie in the flanking housings',!!suvHeads&&suvHeads.every(inHousing),suvHeads&&suvHeads.map(m=>m.p));}
   const reversed=draw(M1Page.kit('cars').reverse(),true).state,variants=x=>JSON.stringify(x.mounts.map(m=>[m.id,m.variant,m.type,m.side,m.end]).sort());ok('M2 stable variants independent of render order',variants(car)===variants(reversed));
   const before=draw(M1Page.kit('cars'),false).pixels;draw(M1Page.kit('cars'),true);const after=draw(M1Page.kit('cars'),false).pixels;
   ok('M2 off/on/off exact HDR restoration',before.every((v,i)=>v===after[i]));
