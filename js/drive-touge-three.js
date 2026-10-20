@@ -43,7 +43,9 @@ export function surface(u) {
   body = body.replace('int(verge.y)', 'off>1.5*lane+2.2 ? 20 : int(verge.y)');
   const fragment = prefix + 'varying vec3 worldPoint, roadNormal; varying vec4 roadUV;\n' + body + `
 void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
- gl_FragColor=vec4(surface(worldPoint,v,t,max(.003,dot(v,normalize(roadNormal)))),1);
+ vec3 c=surface(worldPoint,v,t,max(.003,dot(v,normalize(roadNormal))));
+ if(sigma>0.0){float T=exp(-sigma*t); c=c*T+ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(v.z)*8.0))*(1.0-T);}
+ gl_FragColor=vec4(c,1);
  gl_FragDepth=min(.99999,t/5000.0); }
 `;
   const vertex = `uniform vec3 eye; uniform float tanH; uniform vec2 size; uniform mat3 carFromWorld;
