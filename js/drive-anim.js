@@ -1819,6 +1819,7 @@ void main() {
     V.bar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
     if (V.fillOwn && V.libVer !== LIB.ver) V.fillOwn();
     if (V.shuf) { V.shuf.value = o.trafficShuffle === 'library' ? 'library' : 'off'; V.shuf.title = V.three ? SHUFFLE_GPU_TIP : SHUFFLE_TIP; }
+    if (V.trafficList) for (const c of V.trafficList.querySelectorAll('input[type=checkbox]')) c.checked = !(Array.isArray(o.trafficOutIds) && o.trafficOutIds.includes(c.dataset.id));
     if (V.nameIn) V.nameIn.placeholder = beamDefaultName(info());
     if (V.fillOwn) { V.bar.querySelector('[data-anim="own-low"]').value = o.ownLow && o.ownLow !== 'design' && libFind(o.ownLow, 'low') ? o.ownLow : 'design'; V.bar.querySelector('[data-anim="own-high"]').value = o.ownHigh && o.ownHigh !== 'generic' && libFind(o.ownHigh, 'high') ? o.ownHigh : 'generic'; }
     if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0);

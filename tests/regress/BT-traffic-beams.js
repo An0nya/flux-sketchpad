@@ -8,7 +8,8 @@ const pick = (page, sel, v) => page.evaluate(([sel, v]) => { const el = document
 let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : '  — ' + JSON.stringify(detail))); if (!cond) fails++; };
 (async () => {
   const browser = await pw.chromium.launch({});
-  const page = await browser.newPage({ viewport: { width: 1500, height: 950 }, acceptDownloads: true }), errors = [];
+  const ctx = await browser.newContext({ viewport: { width: 1500, height: 950 }, acceptDownloads: true });   // one context: both pages share storage
+  const page = await ctx.newPage(), errors = [];
   page.on('pageerror', (e) => errors.push(String(e.stack || e).split('\n').slice(0, 2).join(' | ')));
   await page.addInitScript(() => { localStorage.clear(); localStorage.setItem('flux/driveView', JSON.stringify({ view: 'anim', playing: false, ev: 2.5, seed: 19, glare: 'off', mt: false, wild: false, tiles: false, dynamicResolution: false, gpuRenderer: false })); });
   await page.goto('http://127.0.0.1:' + port + '/index.html');
@@ -78,8 +79,32 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   ok('GPU renderer: no pool (built-in for every car) and a tooltip saying the GPU keeps the built-in beam', s5.three && s5.pool === null && /GPU renderer keeps the built-in beam/.test(s5.title), { three: s5.three, pool: s5.pool, title: s5.title });
   await page.evaluate(() => { const b = document.querySelector('[data-anim="gpu-renderer"]'); if (b.getAttribute('aria-pressed') === 'true') b.click(); });
 
+  // reload: untick the halogen beam, then open a second page in the same context (page.addInitScript is per page, so storage survives).
+  // The shuffle, the unticked box and the pool must all come back from the saved options (the checklist must not show stale state).
+  await page.evaluate((id) => { const c = document.querySelector('[data-anim="traffic-beam-list"] input[data-id="' + id + '"]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); }, halogenId);
+  const page2 = await ctx.newPage(), errors2 = [];
+  page2.on('pageerror', (e) => errors2.push(String(e.stack || e).split('\n').slice(0, 2).join(' | ')));
+  await page2.goto('http://127.0.0.1:' + port + '/index.html');
+  await page2.evaluate(async () => {
+    const u = RF.UI, sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (let i = 0; i < 1800 && (RF.SolverHost.loading() || u.solving); i++) await sleep(100);
+    u.loadScene(RF.State.deserialize(await (await fetch('/tests/fixtures/MG2-default-lamp.json')).text()), 'BT fixture'); u.setMode('D');
+    for (let i = 0; i < 1800 && !(u.spec && u.spec.ev && u.spec.full && !u.solving && !u.needCompile && u.run && u.run.ctx.done && u.spec.ctx === u.run.ctx); i++) await sleep(100);
+    u.setDisplay('drive');
+  });
+  await page2.waitForFunction(() => window.RF?.DriveAnim?._?.V?.p && RF.DriveAnim._.V.bar, null, { timeout: 120000 });
+  await page2.waitForFunction(() => document.querySelectorAll('[data-anim="traffic-beam-list"] input').length === 3, null, { timeout: 30000 }).catch(() => {});
+  await page2.evaluate(() => { for (let i = 0; i < 3; i++) RF.DriveAnim._.frame(); });
+  const r2 = await page2.evaluate(() => { const V = RF.DriveAnim._.V; return { shuffle: document.querySelector('[data-anim="traffic-shuffle"]').value, checks: [...document.querySelectorAll('[data-anim="traffic-beam-list"] input')].map(c => [c.dataset.id, c.checked]), pool: V.p.trafficPool ? V.p.trafficPool.entries.map(e => e.id) : null, out: V.info.o.trafficOutIds || null }; });
+  const halogenOn = (r2.checks.find(c => c[0] === halogenId) || [])[1];
+  ok('reload: shuffle reads library from the saved options', r2.shuffle === 'library', r2.shuffle);
+  ok('reload: the halogen box is still unticked (not stale ticked)', halogenOn === false && r2.checks.length === 3 && r2.checks.filter(c => c[1]).length === 2, r2.checks);
+  ok('reload: the pool excludes the halogen beam (2 beams)', r2.pool && r2.pool.length === 2 && !r2.pool.includes(halogenId), { pool: r2.pool, out: r2.out });
+  ok('reload: no page errors on the second page', errors2.length === 0, errors2.slice(0, 3));
+  await page2.close();
+
   ok('no page errors during the BT checks', errors.length === 0, errors.slice(0, 3));
   await browser.close();
   console.log(fails ? fails + ' FAILED' : 'all BT-traffic-beams page checks passed');
   process.exitCode = fails ? 1 : 0;
-})().catch((e) => { console.log('[FAIL] harness error: ' + (e && e.stack || e)); process.exitCode = 1; });
+})().catch(async (e) => { console.log('[FAIL] harness error: ' + (e && e.stack || e)); process.exitCode = 1; process.exit(1); });
