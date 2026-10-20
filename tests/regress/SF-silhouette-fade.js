@@ -67,11 +67,15 @@ async function meanLuma(page, png) {
     ok('SF gain: changing the gain does not rebuild the table (recomputes unchanged)', r2 === r1, r1 + ' -> ' + r2);
     ok('SF gain: the gain is stored in dvOpts', (await page.evaluate(() => RF.UI.dvOpts.scatterGain)) === 2);
     ok('SF gain: luminance rises with gain (0.5 < 1 < 2)', gHalf.luma < g1.luma && g1.luma < gTwo.luma, gHalf.luma.toFixed(2) + ' < ' + g1.luma.toFixed(2) + ' < ' + gTwo.luma.toFixed(2));
-    // the frame is not only scatter, so the factor is reported beside the check, not assumed: scatter-off frame as the floor
-    await setOpts({ scatter: 0 }, 800); const off = await snap('air off');
+    // linear light: the HDR readback (the P1 readback, before tone map). Scatter part = frame minus the air-off frame, same pose.
+    const hdrMean = () => page.evaluate(() => { RF.DriveAnim._.frame(); const a = RF.DriveAnim._.readHdr(); let s = 0; for (let i = 0; i < a.length; i++) s += a[i]; return s / a.length; });
+    await setGain(1); const h1 = await hdrMean();
+    await setGain(0.5); const h05 = await hdrMean();
+    await setGain(2); const h2 = await hdrMean();
+    await setOpts({ scatter: 0 }, 800); const hOff = await hdrMean();
     await setOpts({ scatter: 64, scatterGain: 1 }, 800);
-    const shareHalf = (gHalf.luma - off.luma) / (g1.luma - off.luma), shareTwo = (gTwo.luma - off.luma) / (g1.luma - off.luma);
-    ok('SF gain: scatter part scales by the gain (0.5 and 2, within 10 percent)', Math.abs(shareHalf - 0.5) <= 0.05 && Math.abs(shareTwo - 2) <= 0.2, 'air-off ' + off.luma.toFixed(2) + ', ratio at 0.5 ' + shareHalf.toFixed(3) + ', at 2 ' + shareTwo.toFixed(3));
+    const sHalf = (h05 - hOff) / (h1 - hOff), sTwo = (h2 - hOff) / (h1 - hOff);
+    ok("SF gain: scatter part scales by the gain in linear light (0.5 and 2, within 10 percent)", Math.abs(sHalf - 0.5) <= 0.05 && Math.abs(sTwo - 2) <= 0.2, "HDR mean air-off " + hOff.toFixed(4) + ", gain 1 " + h1.toFixed(4) + ", gain 0.5 ratio " + sHalf.toFixed(3) + ", gain 2 ratio " + sTwo.toFixed(3));
 
     // 3. old saved options load: a saved scatterNearFade 'off' becomes range off
     await page.evaluate(() => localStorage.setItem('flux/driveView', JSON.stringify({ scatterNearFade: 'off', scatterMode: 'table', visibility: 60, scatter: 64 })));
