@@ -51,5 +51,6 @@ run('Mountain pass speeds and adaptive lighting (tests/touge-r2.js)', ['tests/to
 run('Mountain pass parity: lamps, deer bolt, detail, edge lines (tests/pass-parity.js)', ['tests/pass-parity.js']);
 run('wet road sheen: GGX BRDF + legacy frames unchanged (tests/wet-ggx.js)', ['tests/wet-ggx.js']);
 run('scene snapshot: studs, posts, signs, lamps, deer, people, trees, markings per scene (tests/scene-snapshot.js)', ['tests/scene-snapshot.js']);
+run('SB2 wet sheen from studs and paint: source admission, caps, paint gloss, GPU ids (tests/sb2-sheen.js)', ['tests/sb2-sheen.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

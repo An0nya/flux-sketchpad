@@ -32,7 +32,8 @@
     Object.assign(u.dvOpts, { trafficBeams: false, surfaceSheen: false, lampPitch: false, tex: false, wild: false, ambient: 0, oncoming: true, preceding: true, trafficLogic: false });
     try {
       for (const scene of ['road', 'city']) for (const wet of [false, true]) for (const tiles of [false, true]) {
-        await select({ gpuRenderer: true, scene, tiles, wet, wetSheen: wet });
+        // SB2 put wet sheen on the painted lines, so a wet frame with the sheen on no longer matches the a95029b harness: the identity is checked with the sheen off
+        await select({ gpuRenderer: true, scene, tiles, wet, wetSheen: false });
         const p = { ...a.V.p, w: 320, h: 180, pitch: 0 }, world = worldOf(p, 25, 12);
         const options = { w: p.w, h: p.h, hfov: p.hfov, eye: RF.DriveAnim.EYE, lamps: p.lamps, lut: p.lut, conv: p.conv, arc: world.A, lane: p.lane, look: p.look, ss: 1, pointLights: world.lights, crossings: world.crossings, scene: { objects: world.objects, markings: world.markings || p.src.markings, verge: p.src.verge } };
         const before = baseD.render(options), after = D.render(options), cpuEqual = before.rgb.every((v, i) => v === after.rgb[i]);

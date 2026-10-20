@@ -69,6 +69,10 @@
   };
   const MAT_KEYS = Object.keys(MAT_DEF), MAT_ID = {};
   MAT_KEYS.forEach((k, i) => { MAT_ID[k] = i; });
+  // SB2: which materials take the wet sheen. Asphalt and concrete as before; the painted lines now too (their ids are 5 and 6; drive-three-shaders.js tests them by number).
+  // PAINT_WET_GLOSS: wet paint is rougher than wet asphalt (a binder with pigment, not a polished surface), so its sheen is lower and broader: GGX alpha 0.25 against asphalt's 0.09.
+  const PAINT_WET_GLOSS = { a: 0.25, F0: 0.02 };
+  const SHEEN_IDS = [MAT_ID.asphalt, MAT_ID.concrete, MAT_ID['white-paint'], MAT_ID['yellow-paint']], OWN_STREAK_IDS = [MAT_ID.asphalt, MAT_ID['white-paint'], MAT_ID['yellow-paint']];
   // the table for one render: wet asphalt is darker and mirror-like; retro scales take the user's R_L
   function materials(look) {
     const out = {};
@@ -78,6 +82,7 @@
       out[k] = r;
     }
     if (look.wet) { out.asphalt = Object.assign({}, out.asphalt, { rho: [0.05, 0.05, 0.05], gloss: { a: 0.09, F0: 0.02 } }); out.concrete = Object.assign({}, out.concrete, { rho: [0.2, 0.2, 0.19], gloss: { a: 0.15, F0: 0.02 } }); }
+    if (look.wet && look.wetSheen) for (const k of ['white-paint', 'yellow-paint']) out[k] = Object.assign({}, out[k], { gloss: PAINT_WET_GLOSS });
     return out;
   }
 
@@ -317,7 +322,7 @@
             const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2));
             r += m.rho[0] * L.rgb[0] * e; g += m.rho[1] * L.rgb[1] * e; b += m.rho[2] * L.rgb[2] * e;
           }
-          if (sheen && (m.id === M.asphalt.id || m.id === M.concrete.id)) for (const L of reflections) {
+          if (sheen && SHEEN_IDS.includes(m.id)) for (const L of reflections) {
             const v = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += v * L.rgb[0]; g += v * L.rgb[1]; b += v * L.rgb[2];
           }
           LR += k * (a[q] + r * lc[0]); LG += k * (a[q + 1] + g * lc[1]); LB += k * (a[q + 2] + b * lc[2]); return;
@@ -334,7 +339,7 @@
         const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2));
         r += rho[0] * L.rgb[0] * e; g += rho[1] * L.rgb[1] * e; b += rho[2] * L.rgb[2] * e;
       }
-      if (!staticBuild && sheen && nz === 1 && (m.id === M.asphalt.id || m.id === M.concrete.id)) for (const L of reflections) {
+      if (!staticBuild && sheen && nz === 1 && SHEEN_IDS.includes(m.id)) for (const L of reflections) {
         const a = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
       }
       for (const L of traffic) {
@@ -348,7 +353,7 @@
         if (!(NoL > 0)) continue;
         if (preA) { const a = dx / rr, b = -dy / rr, c = dz / rr; if (c < sv0 || c > sv1 || a <= 0 || b > a * th1 || b < a * th0) continue; }
         const I = ownBeamAt(o, dx, dy, dz, L[1]); if (!(I > 0)) continue;
-        if (sheen && nz === 1 && m.id === M.asphalt.id) { const a = I * lobe(-dx, -dy, -dz, vx, vy, vz); r += a; g += a; b += a; }
+        if (sheen && nz === 1 && OWN_STREAK_IDS.includes(m.id)) { const a = I * lobe(-dx, -dy, -dz, vx, vy, vz); r += a; g += a; b += a; }
         const Ep = I / r2;                                                    // E⊥, lux square to the beam
         const d = Ep * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
         if (m.gloss && NoV > 0) {
@@ -541,7 +546,7 @@
     }
   };
   // P2 budgets: eight nearest cars (two lamps each) within 150 m; bounded per-fragment work.
-  const TRAFFIC_CARS = 8, TRAFFIC_RANGE = 150, SURFACE_SOURCES = 8;
+  const TRAFFIC_CARS = 8, TRAFFIC_RANGE = 150, SURFACE_SOURCES = 8, STUD_SOURCES = 8;
   let genericLow;
   function trafficBeam(p) {
     const mode = p.src && p.src.traffic && p.src.traffic.onMode;
@@ -599,7 +604,9 @@
   function surfaceSources(objects, p) {
     const eye = p.eye || [-2, 0.37, 1.2], M = materials(p.look || {}), sources = [], traffic = p.trafficBeams ? trafficSources(objects, eye) : [], beam = traffic.length ? trafficBeam(p) : null;
     for (const ob of objects) {
-      if (ob.headlamp || ob.taillamp || !['box', 'disc'].includes(ob.k) || (ob.k === 'disc' && Math.abs(ob.nz || 0) > 1e-6)) continue;
+      // SB2: lane studs are tilted discs (8.5 degrees up, nz 0.148) and are admitted by their kind (cls 'rpm'), not by loosening the flatness test, so no other tilted disc gets in
+      const stud = ob.cls === 'rpm';
+      if (ob.headlamp || ob.taillamp || !['box', 'disc'].includes(ob.k) || (ob.k === 'disc' && Math.abs(ob.nz || 0) > 1e-6 && !stud)) continue;
       const z = ob.k === 'box' ? (ob.z0 + ob.z1) / 2 : ob.z, range = Math.hypot(ob.x - eye[0], ob.y - eye[1], z - eye[2]);
       if (range > TRAFFIC_RANGE || range < 0.1) continue;
       const yaw = ob.yaw || 0, nx = ob.k === 'box' ? -Math.cos(yaw) : ob.nx, ny = ob.k === 'box' ? -Math.sin(yaw) : ob.ny, nz = ob.k === 'box' ? 0 : ob.nz;
@@ -625,9 +632,12 @@
         for (let c = 0; c < 3; c++) rgb[c] += lum[c] * view * dA;
       }
       const cd = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]; if (!(cd > 0)) continue;
-      sources.push({ x: ob.x, y: ob.y, z, cd, rgb: rgb.map(v => v / cd), area, returnedLuminance: cd / (area * view), rank: cd / (range * range) });
+      sources.push({ x: ob.x, y: ob.y, z, cd, rgb: rgb.map(v => v / cd), area, returnedLuminance: cd / (area * view), rank: cd / (range * range), stud });
     }
-    return sources.sort((a, b) => b.rank - a.rank).slice(0, SURFACE_SOURCES);
+    // The cap: the nearest SURFACE_SOURCES non-stud sources as before, plus the nearest STUD_SOURCES studs (studs are dense along the centre line, so they get their own budget and
+    // cannot push the signs and reflectors out of the top 8). Both lists are by rank (cd / range^2). reflectionSources keeps the total under the 64-entry GPU array.
+    const byRank = (a, b) => b.rank - a.rank;
+    return sources.filter(q => !q.stud).sort(byRank).slice(0, SURFACE_SOURCES).concat(sources.filter(q => q.stud).sort(byRank).slice(0, STUD_SOURCES));
   }
   const GLARE = { off: 0, 'dry-low': 0.035, dry: 0.1, rain: 0.3 };
   function glareLevel(v) { if (v in GLARE) return v; return v == null || v === false || v === 0 || v === 'off' ? 'off' : 'rain'; }
