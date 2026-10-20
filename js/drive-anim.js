@@ -1368,49 +1368,119 @@ void main() {
 
   // ---------------------------------------------------------------- the controls
   const E = (tag, attrs, ...kids) => { const e = document.createElement(tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); e.append(...kids); return e; };
-  // ---- BA2 beam library: saved beams for our own low and high beam. Full tables live in memory (this session);
-  // a coarse copy (0.25 deg) is kept in localStorage 'flux/beamLibrary' when it fits a byte budget. Every storage access is
-  // wrapped: an empty, blocked or throwing localStorage just means the library is session-only.
-  const BEAM_KEY = 'flux/beamLibrary', BEAM_BUDGET = 2.5e6, BEAM_COARSE = 0.25;   // bytes (UTF-16) the library may take; origin quota is about 5 MB
-  const LIB = { items: null, msg: '', ver: 0, seq: 0 };
-  const libEntry = (parsed, id, persisted) => ({ id, name: parsed.name, beamKind: parsed.beamKind, conv: parsed.conv, lut: RF.Beams.toLut(parsed), colour: parsed.colour || null, persisted: !!persisted });
-  // BB3: the name in the picker, with the colour temperature when the beam has one
-  const beamLabel = (e) => e.name + (e.colour && Number.isFinite(e.colour.cct) ? ' (' + Math.round(e.colour.cct) + ' K)' : '') + (e.persisted ? '' : ' (session)');
+  // ---- BA2 beam library: saved beams for our own low and high beam. Full-resolution tables live in IndexedDB (js/beam-store.js),
+  // one record per beam. LIB.items is the synchronous in-memory copy every picker reads; a write lands in memory at once and
+  // its status line is set when the store settles. A missing or throwing store makes the library session-only, and the status says so.
+  const BEAM_KEY = 'flux/beamLibrary';   // the old localStorage library (coarse copies): moved into IndexedDB once, then removed
+  const LIB = { items: [], msg: '', ver: 0, seq: 0, storeOk: null, hydrated: false };
+  const libEntry = (parsed, id, persisted) => ({ id, name: parsed.name, beamKind: parsed.beamKind, conv: parsed.conv, lut: RF.Beams.toLut(parsed), colour: parsed.colour || null, persisted: !!persisted, coarse: !!parsed.coarse });
+  // BB3: the name in the picker, with the colour temperature when the beam has one; BI1: coarse beams say so
+  const beamLabel = (e) => e.name + (e.colour && Number.isFinite(e.colour.cct) ? ' (' + Math.round(e.colour.cct) + ' K)' : '') + (e.coarse ? ' (coarse 0.25 deg)' : '') + (e.builtin ? ' (built-in)' : (e.persisted ? '' : ' (session)'));
   // BB3: the colour a saved design carries: the lamp tint in use (rgb), plus the source's kelvin when it has one
   const sourceColour = (I) => { const c = { rgb: I.lampRGB.slice() }; if (Number.isFinite(I.lampCct) && I.lampCct >= 1000 && I.lampCct <= 20000) c.cct = I.lampCct; return c; };
   // the default name: the design's name, plus the source's kelvin when it has one (e.g. "Headlamp sketch 4300K")
   const beamDefaultName = (I) => { const base = (I && I.designName) || 'our design'; return I && Number.isFinite(I.lampCct) ? base + ' ' + Math.round(I.lampCct) + 'K' : base; };
   const libNewId = () => 'b' + Date.now().toString(36) + (++LIB.seq).toString(36);   // counter, not a random source
-  function libLoad() {
-    if (LIB.items) return LIB.items;
-    LIB.items = [];
+  const libLoad = () => LIB.items;
+  const libSay = (msg) => { LIB.msg = msg; if (V.beamMsg) V.beamMsg.textContent = msg; };
+  const libRec = (e) => ({ id: e.id, name: e.name, beamKind: e.beamKind, conv: e.conv, colour: e.colour || null, coarse: !!e.coarse,
+    grid: { h0: e.lut.h0, v0: e.lut.v0, step: e.lut.step, nh: e.lut.nh, nv: e.lut.nv }, values: e.lut.data });
+  // writes one entry; resolves true when the store kept it. Sets e.persisted either way.
+  async function libWrite(e) {
+    try { await RF.BeamStore.put(libRec(e)); e.persisted = true; return true; }
+    catch (err) { e.persisted = false; return false; }
+  }
+  // BI3: built-in samples. The bundles listed in samples/beams/index.json are fetched the first time the library manager or an own-beam
+  // select is opened. They are read-only and kept apart from LIB.items (never saved, renamed, deleted or cleared); 'copy to my
+  // library' makes a full-resolution copy. The shipped table is used as it is (no resampling).
+  LIB.builtins = []; LIB.biState = 'idle'; LIB.bi = null;
+  const BI_DIR = 'samples/beams/';
+  const libAll = () => [...LIB.items, ...LIB.builtins];
+  async function fetchJSON(url) { const r = await fetch(url, { cache: 'no-cache' }); if (!r.ok) throw new Error(url + ' ' + r.status); return r.json(); }
+  function ensureBuiltins() {
+    if (LIB.bi) return LIB.bi;
+    LIB.biState = 'loading';
+    LIB.bi = (async () => {
+      try {
+        const idx = await fetchJSON(BI_DIR + 'index.json'), out = [];
+        for (const f of (idx && idx.bundles) || []) {
+          for (const [i, b] of RF.Beams.readFile(await fetchJSON(BI_DIR + f)).entries()) { const e = libEntry(b, 'builtin:' + f + ':' + i, false); e.builtin = true; out.push(e); }
+        }
+        LIB.builtins = out; LIB.biState = 'ok';
+      } catch (e) { LIB.builtins = []; LIB.biState = 'unavailable'; }
+      LIB.ver++;
+      if (V.fillOwn) V.fillOwn();
+    })();
+    return LIB.bi;
+  }
+  // Startup: read the store into memory, then move the old localStorage library in. Runs once; the view is refreshed after.
+  async function libHydrate() {
     try {
-      const raw = JSON.parse(localStorage.getItem(BEAM_KEY) || '[]');
-      for (const r of Array.isArray(raw) ? raw : []) { try { LIB.items.push(libEntry(RF.Beams.parse(r.beam), String(r.id), true)); } catch (e) { /* skip a damaged entry */ } }
-    } catch (e) { /* no storage, or not JSON: session-only */ }
-    return LIB.items;
+      LIB.storeOk = !!RF.BeamStore && await RF.BeamStore.available();
+      if (LIB.storeOk) {
+        LIB.durable = await RF.BeamStore.persist();   // asked once per page load; the browser decides
+        try { for (const r of await RF.BeamStore.getAll()) { try { LIB.items.push(libEntry(r, String(r.id), true)); } catch (e) { /* skip a damaged record */ } } }
+        catch (e) { LIB.storeOk = false; }
+      }
+      await libMigrate();
+      LIB.hydrated = true; LIB.ver++;
+      if (V.fillOwn) V.fillOwn();
+      if (V.p) prepare(layout());   // the picture may have been built before the saved beam was known: rebuild it
+    } catch (e) { LIB.storeOk = false; libSay('Browser storage could not be read: the library is for this session only.'); }
   }
-  function libSaveStore() {
-    const coarse = libLoad().filter(e => e.persisted).map(e => ({ id: e.id, beam: RF.Beams.serialise(RF.Beams.fromLut(RF.Beams.coarsen(e.lut, BEAM_COARSE), { name: e.name, beamKind: e.beamKind, conv: e.conv, colour: e.colour || undefined })) }));
-    const text = JSON.stringify(coarse);
-    if (RF.Beams.storedBytes(text) > BEAM_BUDGET) return false;
-    try { localStorage.setItem(BEAM_KEY, text); return true; } catch (e) { return false; }
+  // One-time move of the old localStorage library. Each beam keeps its id (saved selections still resolve) and is marked coarse.
+  // The old key goes only when every beam is in the store; a damaged old entry or a refused write keeps it for the next load.
+  // With no store, the old beams are loaded for this session and the key is left alone.
+  async function libMigrate() {
+    let old = null;
+    try { const raw = localStorage.getItem(BEAM_KEY); old = raw ? JSON.parse(raw) : null; } catch (e) { old = null; }
+    if (!Array.isArray(old) || !old.length) return;
+    let complete = true; const fresh = [];
+    for (const r of old) { try { const e = libEntry(RF.Beams.parse(r.beam), String(r.id), false); e.coarse = true; fresh.push(e); } catch (err) { complete = false; } }
+    const moved = [];
+    for (const e of fresh) { if (!LIB.items.some(x => x.id === e.id)) { LIB.items.push(e); moved.push(e); } }   // already in the store: an earlier run moved it
+    LIB.ver++;
+    if (!LIB.storeOk) { libSay('Browser storage is unavailable: the older beams are kept for this session only.'); return; }
+    let allStored = complete;
+    for (const e of moved) { if (!(await libWrite(e))) allStored = false; }
+    if (allStored) { try { localStorage.removeItem(BEAM_KEY); } catch (e) { /* the copy stays; the next load sees it already moved */ } }
+    libSay(allStored ? 'Moved ' + fresh.length + ' older beam' + (fresh.length === 1 ? '' : 's') + ' into browser storage. They are coarse (0.25 deg): import the full-resolution files to replace them.'
+      : 'Some older beams could not be moved into browser storage; they stay for this session, and the older copy stays in this browser.');
   }
-  // Adds parsed beams. Persisted when the coarse library still fits; otherwise kept for this session and the message says so.
+  // Adds parsed beams. They show at once; each is written, and the status line says what stuck.
   function libAdd(parsedList) {
-    const items = libLoad(), added = [], dropped = [];
-    for (const parsed of parsedList) {
-      const id = libNewId(), e = libEntry(parsed, id, false);
-      items.push(e); added.push(e);
-    }
-    let stored = true; LIB.ver++;
-    // mark persisted only if the whole coarse store fits: try each new entry in order, keep the ones that fit
-    for (const e of added) { e.persisted = true; if (!libSaveStore()) { e.persisted = false; dropped.push(e.name); stored = false; } }
-    LIB.msg = added.length === 1 && stored ? 'Saved "' + added[0].name + '" to the library.'
-      : (dropped.length ? 'Kept for this session only (browser storage is full): ' + dropped.join(', ') + '. Export them to keep them.' : 'Added ' + added.length + ' beams.');
+    const items = libLoad(), added = [];
+    for (const parsed of parsedList) { const e = libEntry(parsed, libNewId(), false); items.push(e); added.push(e); }
+    LIB.ver++; libSay('Saving ' + added.length + ' beam' + (added.length === 1 ? '' : 's') + '...');
+    if (V.fillOwn) V.fillOwn();
+    (async () => {
+      const dropped = [];
+      for (const e of added) { if (!(await libWrite(e))) dropped.push(e.name); }
+      libSay(dropped.length === 0 ? (added.length === 1 ? 'Saved "' + added[0].name + '" to the library.' : 'Added ' + added.length + ' beams.')
+        : 'Kept for this session only (browser storage refused): ' + dropped.join(', ') + '. Export them to keep them.');
+      if (V.fillOwn) V.fillOwn();
+    })();
     return added;
   }
-  const libFind = (id, kind) => { const e = libLoad().find(x => x.id === id); return e && (!kind || e.beamKind === kind) ? e : null; };
+  // a changed entry (rename, colour): written, then the status line says what happened
+  function libUpdate(e, msg) {
+    LIB.ver++; libSay(msg);
+    return libWrite(e).then((stored) => { libSay(stored ? msg : msg + ' Browser storage refused the update, so it may not survive a reload.'); if (V.fillOwn) V.fillOwn(); return stored; });
+  }
+  // BI2: a table on a coarser grid when the chosen step is coarser than the table's own; never finer, never resampled up
+  const gridTo = (lut, step) => (Number.isFinite(step) && step > lut.step + 1e-9 ? RF.Beams.coarsen(lut, step) : lut);
+  // BI2: the storage line in the library manager: used of quota (navigator.storage.estimate, when the browser gives it) and whether
+  // the browser agreed to keep the data
+  async function libStorageText() {
+    if (!LIB.storeOk) return 'storage: unavailable, the library is for this session only';
+    const est = await RF.BeamStore.estimate(), persistent = LIB.durable ? 'yes' : 'no';
+    if (!est) return 'storage: size unknown, persistent: ' + persistent;
+    return 'storage: used ' + (est.usage / 1e6).toFixed(1) + ' of ' + (est.quota / 1e6).toFixed(0) + ' MB, persistent: ' + persistent;
+  }
+  // removes one stored beam, or every stored beam (id omitted); resolves true when the store accepted it
+  const libDrop = (id) => (id ? RF.BeamStore.delete(id) : RF.BeamStore.clear()).then(() => true, () => false);
+  const libFind = (id, kind) => { const e = libAll().find(x => x.id === id); return e && (!kind || e.beamKind === kind) ? e : null; };
+  libHydrate();   // startup: reads the store (async); the pickers refresh when it lands
   // The beams the options pick: null = built-in (our design for low, generic for high)
   function ownBeams(o) {
     const lo = o.ownLow && o.ownLow !== 'design' ? libFind(o.ownLow, 'low') : null, hi = o.ownHigh && o.ownHigh !== 'generic' ? libFind(o.ownHigh, 'high') : null;
@@ -1512,17 +1582,19 @@ void main() {
     const ownHigh = E('select', { 'data-anim': 'own-high', 'aria-label': 'Own high beam', title: 'Our high beam when the high switch is on: the generic high beam, or a saved high beam from the library (it is added to our low beam).' });
     const fillOwn = () => {
       const keep = { l: info() && info().o.ownLow, h: info() && info().o.ownHigh };
-      ownLow.replaceChildren(E('option', { value: 'design' }, 'our design'), ...libLoad().filter(e => e.beamKind === 'low').map(e => E('option', { value: e.id }, beamLabel(e))));
-      ownHigh.replaceChildren(E('option', { value: 'generic' }, 'generic high'), ...libLoad().filter(e => e.beamKind === 'high').map(e => E('option', { value: e.id }, beamLabel(e))));
+      ownLow.replaceChildren(E('option', { value: 'design' }, 'our design'), ...libAll().filter(e => e.beamKind === 'low').map(e => E('option', { value: e.id }, beamLabel(e))));
+      ownHigh.replaceChildren(E('option', { value: 'generic' }, 'generic high'), ...libAll().filter(e => e.beamKind === 'high').map(e => E('option', { value: e.id }, beamLabel(e))));
+      if (String(keep.l || '').startsWith('builtin:') || String(keep.h || '').startsWith('builtin:')) ensureBuiltins();
       ownLow.value = libFind(keep.l, 'low') || keep.l === 'design' || !keep.l ? (keep.l || 'design') : 'design';
       ownHigh.value = libFind(keep.h, 'high') || keep.h === 'generic' || !keep.h ? (keep.h || 'generic') : 'generic';
       renderManager();
     };
     ownLow.addEventListener('change', () => setDV(ui, 'ownLow', ownLow.value)); ownHigh.addEventListener('change', () => setDV(ui, 'ownHigh', ownHigh.value));
+    for (const sel of [ownLow, ownHigh]) { sel.addEventListener('mousedown', ensureBuiltins); sel.addEventListener('focus', ensureBuiltins); }
     const fileIn = E('input', { type: 'file', accept: '.json,application/json', 'data-anim': 'beam-file', 'aria-label': 'Import beam file (single beam or bundle)', hidden: '' });
     fileIn.addEventListener('change', async () => {
       const f = fileIn.files && fileIn.files[0]; fileIn.value = ''; if (!f) return;
-      try { libAdd(RF.Beams.readFile(JSON.parse(await fileToText(f)))); fillOwn(); }
+      try { libAdd(RF.Beams.readFile(JSON.parse(await fileToText(f))).map(gridBeam)); fillOwn(); }
       catch (e) { LIB.msg = 'Import failed: ' + (e && e.message ? e.message : e); }
       V.beamMsg.textContent = LIB.msg;
     });
@@ -1530,9 +1602,18 @@ void main() {
     // BB1: the name is typed here (empty = the default shown as the placeholder); a name already taken gets a counter
     const nameIn = E('input', { type: 'text', maxlength: '80', 'data-anim': 'beam-name', 'aria-label': 'Name for the beam to save', title: 'Name for the beam you save. Empty uses the default shown. A name already in the library gets a number added.', placeholder: 'our design' });
     V.nameIn = nameIn; bar.append(nameIn);
+    // BI2: the grid a saved design is stored on. 0.25 deg is the default (flux within 0.0 %, peak within 1.6 %, test points about 1 %
+    // of the solved table); imported files keep their own grid unless this select is changed by hand
+    const gridSel = E('select', { 'data-anim': 'save-grid', 'aria-label': 'Grid of the beam to save', title: 'Grid of a saved design. As solved keeps the full table. 0.25 deg is the default. Imported files keep their own grid unless you change this.' },
+      E('option', { value: 'solved' }, 'as solved'), E('option', { value: '0.25' }, '0.25 deg'), E('option', { value: '0.5' }, '0.5 deg'));
+    gridSel.value = '0.25';
+    gridSel.addEventListener('change', () => { gridSel.dataset.touched = '1'; });
+    bar.append(gridSel);
+    // an imported beam takes the grid picked here only once the select has been changed by hand
+    const gridBeam = (b) => (gridSel.dataset.touched === '1' ? RF.Beams.fromLut(gridTo(RF.Beams.toLut(b), +gridSel.value), { name: b.name, beamKind: b.beamKind, conv: b.conv, colour: b.colour }) : b);
     btn('save-design', 'Save our design as a beam in the library (a low beam, with the design\'s convention)', () => {
       const I = info(), name = RF.Beams.uniqueName(nameIn.value || beamDefaultName(I), libLoad().map(e => e.name));
-      libAdd([RF.Beams.fromLut(I.lut(), { name, beamKind: 'low', conv: I.conv || 'A', colour: sourceColour(I) })]); nameIn.value = ''; fillOwn(); V.beamMsg.textContent = LIB.msg;
+      libAdd([RF.Beams.fromLut(gridTo(I.lut(), +gridSel.value), { name, beamKind: 'low', conv: I.conv || 'A', colour: sourceColour(I) })]); nameIn.value = ''; fillOwn(); V.beamMsg.textContent = LIB.msg;
     }, 'save design');
     btn('import-beam', 'Import a beam file: one beam, or a bundle of several. Beams join the library.', () => fileIn.click(), 'import');
     btn('export-beams', 'Download the library as a beam file: one beam, or a bundle when there are several', () => {
@@ -1546,6 +1627,7 @@ void main() {
     // BB2 library manager: one row per saved beam (rename, delete), and clear all (two clicks)
     V.setOwn = (k, v) => setDV(ui, k, v);
     V.mgr = E('details', { class: 'beam-manager', 'data-anim': 'beam-manager', style: 'flex-basis:100%' }, E('summary', {}, 'library'));
+    V.mgr.addEventListener('toggle', () => { if (V.mgr.open) ensureBuiltins(); });
     bar.append(V.mgr); renderManager();
     V.bar = bar; return bar;
   }
@@ -1558,7 +1640,7 @@ void main() {
       const ren = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-rename', title: 'Rename this beam' }, 'rename');
       ren.addEventListener('click', () => {
         const others = items.filter(x => x.id !== e.id).map(x => x.name);
-        try { RF.Beams.renameIn(items, e.id, nm.value); e.name = RF.Beams.uniqueName(e.name, others); LIB.ver++; libSaveStore(); LIB.msg = 'Renamed to "' + e.name + '".'; }
+        try { RF.Beams.renameIn(items, e.id, nm.value); e.name = RF.Beams.uniqueName(e.name, others); libUpdate(e, 'Renamed to "' + e.name + '".'); }
         catch (err) { LIB.msg = 'Rename failed: ' + err.message; }
         V.fillOwn(); V.beamMsg.textContent = LIB.msg;
       });
@@ -1566,28 +1648,27 @@ void main() {
       del.addEventListener('click', () => {
         const wasLow = o.ownLow === e.id, wasHigh = o.ownHigh === e.id;
         LIB.items = RF.Beams.removeIn(items, e.id); LIB.ver++;
-        const stored = libSaveStore();
         if (wasLow) V.setOwn('ownLow', 'design'); if (wasHigh) V.setOwn('ownHigh', 'generic');
-        LIB.msg = 'Deleted "' + e.name + '".' + (wasLow ? ' It was the low beam in use: our design is selected now.' : '') + (wasHigh ? ' It was the high beam in use: generic high is selected now.' : '')
-          + (stored ? '' : ' Browser storage refused the update, so it may come back on reload.');
-        V.fillOwn(); V.beamMsg.textContent = LIB.msg;
+        const gone = 'Deleted "' + e.name + '".' + (wasLow ? ' It was the low beam in use: our design is selected now.' : '') + (wasHigh ? ' It was the high beam in use: generic high is selected now.' : '');
+        libSay(gone); V.fillOwn();
+        libDrop(e.id).then((stored) => { libSay(gone + (stored ? '' : ' Browser storage refused the update, so it may come back on reload.')); V.fillOwn(); });
       });
-      const size = (e.lut.nh * e.lut.step).toFixed(0) + ' x ' + (e.lut.nv * e.lut.step).toFixed(0) + ' deg';
+      const size = 'grid ' + e.lut.step + ' deg, ' + (e.lut.nh * e.lut.step).toFixed(0) + ' x ' + (e.lut.nv * e.lut.step).toFixed(0) + ' deg, ' + (e.lut.data.byteLength / 1e6).toFixed(2) + ' MB';
       const cl = RF.Beams.colourLabel(e.colour);
       const colourCell = E('span', { class: 'anim-speed', 'data-anim': 'beam-colour' }, cl || 'colour: from current source');
-      const cells = [nm, E('span', { class: 'anim-speed' }, e.beamKind), E('span', { class: 'anim-speed' }, size), colourCell, E('span', { class: 'anim-speed' }, e.persisted ? 'saved' : 'session'), ren, del];
-      if (!e.colour) {   // no colour in the file: a kelvin can be set here, and the tint then travels with the beam
+      const cells = [nm, E('span', { class: 'anim-speed' }, e.beamKind), E('span', { class: 'anim-speed' }, size), colourCell, E('span', { class: 'anim-speed' }, e.persisted ? (e.coarse ? 'saved, coarse' : 'saved') : 'session'), ren, del];
+      if (!(e.colour && Number.isFinite(e.colour.cct))) {   // no kelvin (none, or rgb only): a kelvin can be set here, and the tint then travels with the beam
         const kIn = E('input', { type: 'number', min: '1000', max: '20000', step: '100', placeholder: 'K', 'data-anim': 'beam-row-cct', 'aria-label': 'Colour temperature for this beam, kelvin' });
         const kBtn = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-set-cct', title: 'Give this beam a colour temperature (1000 to 20000 K)' }, 'set K');
         kBtn.addEventListener('click', () => {
           const v = +kIn.value;
           if (!(v >= 1000 && v <= 20000)) { LIB.msg = 'Colour needs a temperature from 1000 to 20000 K.'; V.beamMsg.textContent = LIB.msg; return; }
-          e.colour = { cct: v, rgb: RF.CCT.cctToRGB(v) }; LIB.ver++; const stored = libSaveStore();
+          e.colour = { cct: v, rgb: RF.CCT.cctToRGB(v) }; LIB.ver++;
           // a beam in use is picked again, so the picture is rebuilt with its new tint (the same path a select takes)
           const cur = info() ? info().o : {};
           if (cur.ownLow === e.id) V.setOwn('ownLow', e.id);
           if (cur.ownHigh === e.id) V.setOwn('ownHigh', e.id);
-          LIB.msg = 'Set "' + e.name + '" to ' + Math.round(v) + ' K.' + (stored ? '' : ' Browser storage refused the update, so it may not survive a reload.');
+          libUpdate(e, 'Set "' + e.name + '" to ' + Math.round(v) + ' K.');
           V.fillOwn(); V.beamMsg.textContent = LIB.msg;
         });
         cells.push(kIn, kBtn);
@@ -1599,12 +1680,23 @@ void main() {
     clr.addEventListener('click', () => {
       if (!V.clearArmed) { V.clearArmed = true; renderManager(); return; }
       V.clearArmed = false; const n = items.length; LIB.items = []; LIB.ver++;
-      const stored = libSaveStore();
       V.setOwn('ownLow', 'design'); V.setOwn('ownHigh', 'generic');
-      LIB.msg = 'Removed ' + n + ' beam' + (n === 1 ? '' : 's') + ' from the library; our design and generic high are selected.' + (stored ? '' : ' Browser storage refused the update, so they may come back on reload.');
-      V.fillOwn(); V.beamMsg.textContent = LIB.msg;
+      const gone = 'Removed ' + n + ' beam' + (n === 1 ? '' : 's') + ' from the library; our design and generic high are selected.';
+      libSay(gone); V.fillOwn();
+      libDrop().then((stored) => { libSay(gone + (stored ? '' : ' Browser storage refused the update, so they may come back on reload.')); V.fillOwn(); });
     });
-    box.replaceChildren(E('summary', {}, 'library (' + items.length + ')'), ...(rows.length ? rows : [E('span', { class: 'anim-speed' }, 'No saved beams yet. Save a design, or import a file.')]), E('div', { class: 'beam-row' }, clr));
+    const bstate = LIB.biState === 'loading' ? 'built-in samples: loading...' : LIB.biState === 'unavailable' ? 'built-in samples unavailable' : '';
+    const bRows = LIB.builtins.map((e) => {
+      const cp = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-copy', title: 'Copy this built-in beam into your library (a full-resolution copy you can rename or delete)' }, 'copy to my library');
+      cp.addEventListener('click', () => { libAdd([RF.Beams.fromLut(e.lut, { name: RF.Beams.uniqueName(e.name, libLoad().map(x => x.name)), beamKind: e.beamKind, conv: e.conv, colour: e.colour || undefined })]); });
+      return E('div', { class: 'beam-row builtin-row', 'data-builtin': e.id },
+        E('span', { class: 'anim-speed' }, e.name), E('span', { class: 'anim-speed' }, 'built-in ' + e.beamKind),
+        E('span', { class: 'anim-speed' }, 'grid ' + e.lut.step + ' deg, ' + (e.lut.nh * e.lut.step).toFixed(0) + ' x ' + (e.lut.nv * e.lut.step).toFixed(0) + ' deg'),
+        E('span', { class: 'anim-speed' }, RF.Beams.colourLabel(e.colour) || 'colour: from current source'), cp);
+    });
+    box.replaceChildren(E('summary', {}, 'library (' + items.length + ')'), ...bRows, ...(bstate ? [E('span', { class: 'anim-speed', 'data-anim': 'builtin-status' }, bstate)] : []), ...(rows.length ? rows : [E('span', { class: 'anim-speed' }, 'No saved beams yet. Save a design, or import a file.')]), E('div', { class: 'beam-row' }, clr));
+    const sto = E('span', { class: 'anim-speed', 'data-anim': 'beam-storage', title: 'Clearing this site\'s data deletes the library. Export to a file is the backup.' }, 'storage: checking...');
+    box.append(sto); libStorageText().then((t) => { sto.textContent = t; }, () => { sto.textContent = 'storage: unknown'; });
   }
   function flashText() { if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0); }
   function flashLabel(dist, t) {

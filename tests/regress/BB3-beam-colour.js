@@ -4,6 +4,9 @@
 //   PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/BB3-beam-colour.js <port>
 const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync('npm root -g').toString().trim() + '/playwright'));
 const port = +(process.argv[2] || 8997);
+// BI1: the library's stored records (IndexedDB 'flux-beams'), read back from the page
+const idbBeams = (page) => page.evaluate(() => new Promise((res, rej) => { const r = indexedDB.open('flux-beams', 1); r.onerror = () => rej(String(r.error));
+  r.onsuccess = () => { const db = r.result, g = db.transaction('beams').objectStore('beams').getAll(); g.onsuccess = () => { db.close(); res(g.result); }; }; }));
 let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : '  — ' + JSON.stringify(detail))); if (!cond) fails++; };
 const pick = (page, sel, v) => page.evaluate(([sel, v]) => { const el = document.querySelector(sel); el.value = v; el.dispatchEvent(new Event('change')); }, [sel, v]);
 const clickAnim = (page, k) => page.evaluate((k) => document.querySelector('[data-anim="' + k + '"]').click(), k);
@@ -43,7 +46,8 @@ async function run(browser, gpu) {
 
   // 1. save the design: the default name carries the source kelvin, and the beam keeps the tint and kelvin
   await clickAnim(page, 'save-design');
-  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('flux/beamLibrary') || '[]').map(r => r.beam));
+  for (let i = 0; i < 50 && !(await idbBeams(page)).length; i++) await page.waitForTimeout(100);   // the store write lands after the save
+  const saved = await idbBeams(page);
   ok(tag + ': saved design carries its colour (6000 K and the tint in use)', saved.length === 1 && saved[0].colour && saved[0].colour.cct === 6000 && maxDiff(saved[0].colour.rgb, tint6) < 1e-9, saved.map(b => b.colour));
   ok(tag + ': default name shows the kelvin', saved[0] && saved[0].name === 'Headlamp sketch 6000K', saved[0] && saved[0].name);
 

@@ -60,16 +60,18 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   const text = await (await dl.createReadStream()).toArray().then(c => Buffer.concat(c).toString('utf8')).catch(() => '');
   const back = await page.evaluate((t) => { try { return RF.Beams.readFile(JSON.parse(t)).map(b => [b.name, b.beamKind]); } catch (e) { return String(e.message); } }, text);
   ok('export downloads a bundle that reads back (3 beams, bit-exact via readFile)', Array.isArray(back) && back.length === 3, back);
-  // persistence: the coarse library is in localStorage and parses back
-  const stored = await page.evaluate(() => { try { return RF.Beams ? JSON.parse(localStorage.getItem('flux/beamLibrary') || '[]').map(r => [r.id.length > 0, RF.Beams.parse(r.beam).grid.step]) : null; } catch (e) { return String(e.message); } });
-  ok('library persisted at coarse 0.25 deg step, readable', Array.isArray(stored) && stored.length === 3 && stored.every(([a, s]) => a && s === 0.25), stored);
-  // quota: a throwing setItem keeps the beam for this session and says so; no page error
-  await page.evaluate(() => { window.__set = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (k === 'flux/beamLibrary') throw new Error('QuotaExceededError'); return window.__set.call(this, k, v); }; });
+  // persistence (BI1): the library is in IndexedDB at full resolution (the old coarse 0.25 deg copy is gone), one record per beam
+  const stored = await page.evaluate(() => new Promise((res, rej) => { const r = indexedDB.open('flux-beams', 1); r.onerror = () => rej(String(r.error));
+    r.onsuccess = () => { const db = r.result, g = db.transaction('beams').objectStore('beams').getAll(); g.onsuccess = () => { db.close(); res(g.result.map(x => [x.id.length > 0, x.grid.step])); }; g.onerror = () => rej(String(g.error)); }; }));
+  const srcStep = await page.evaluate(() => RF.DriveAnim._.V.p.lowLut.step);
+  ok('library persisted in IndexedDB at the source table\'s own step (full resolution, no coarsening), 3 beams', Array.isArray(stored) && stored.length === 3 && stored.every(([a, s]) => a && s === srcStep), { srcStep, stored });
+  // quota (BI1): an IndexedDB put that throws keeps the beam for this session and says so; no page error
+  await page.evaluate(() => { window.__put = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = function () { throw new Error('QuotaExceededError'); }; });
   await page.setInputFiles('[data-anim="beam-file"]', { name: 'one.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(await page.evaluate(() => RF.Beams.serialise(RF.Beams.fromLut({ ...RF.DriveAnim._.V.p.lowLut, data: Float32Array.from(RF.DriveAnim._.V.p.lowLut.data, x => x * 0.25) }, { name: 'quarter', beamKind: 'low' }))))) });
   await page.waitForFunction(() => document.querySelector('[data-anim="beam-status"]').textContent.includes('session only'), null, { timeout: 20000 }).catch(() => {});
   const s2 = await st();
   ok('storage refused: beam kept for this session and the status says so', s2.msg.includes('session only') && s2.options.some(v => v && v !== 'design'), s2.msg);
-  await page.evaluate(() => { Storage.prototype.setItem = window.__set; });
+  await page.evaluate(() => { IDBObjectStore.prototype.put = window.__put; });
   // bad file: rejected with a message, nothing added
   await page.setInputFiles('[data-anim="beam-file"]', { name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"format":1,"kind":"beam","name":"x"}') });
   await page.waitForFunction(() => document.querySelector('[data-anim="beam-status"]').textContent.startsWith('Import failed'), null, { timeout: 20000 }).catch(() => {});
