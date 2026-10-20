@@ -14,9 +14,9 @@ for (const r of rows) console.log(r.id + ' | ' + r.label.slice(0, 80) + ' | ' + 
 const count = {}; for (const r of rows) count[r.info.source] = (count[r.info.source] || 0) + 1;
 console.log('\nHEADLINE (' + rows.length + ' presets): ' + Object.entries(count).map(([k, v]) => k + ' ' + v).join(', '));
 
-// 2. Counts. Derived from the pre-change baseline (27 unset of 94 is the brief's number): 38 label, 13 halogen, 16 hid, 19 table, 8 unset.
-ok('94 presets in total', rows.length === 94, 'n=' + rows.length);
-ok('source counts are label 38, halogen 13, hid 16, table 22 (15 assumed + 7 known), unset 5', count.label === 38 && count.halogen === 13 && count.hid === 16 && count.table === 22 && count.unset === 5, JSON.stringify(count));
+// 2. Counts. LV1 split LHP531 into 5 presets (94 -> 98); all 5 are owner-known table values: table 26 = 15 assumed + 11 known.
+ok('98 presets in total', rows.length === 98, 'n=' + rows.length);
+ok('source counts are label 38, halogen 13, hid 16, table 26 (15 assumed + 11 known), unset 5', count.label === 38 && count.halogen === 13 && count.hid === 16 && count.table === 26 && count.unset === 5, JSON.stringify(count));
 
 // 3. The owner's values (assumptions, flagged as such).
 const at6500 = ['osram-cslpm1', 'osram-cslnm1', 'osram-hwqp', 'osram-q8wp', 'osram-oslon-bfx-kw4', 'osram-oslon-bfx-kw3', 'k3-48945',
@@ -26,26 +26,32 @@ const byId = Object.fromEntries(rows.map((r) => [r.id, r.info]));
 ok('owner assumed 6500 K list (Osram, Nichia NCSW170HT, Altilon, sft40-cw default, LMP LML2AW.DC, Cree CLP6B): all 15 are 6500 K, table, assumed',
   at6500.every((id) => byId[id] && byId[id].cct === 6500 && byId[id].source === 'table' && byId[id].assumed === true), JSON.stringify(at6500.filter((id) => !(byId[id] && byId[id].cct === 6500))));
 // 3b. Owner-supplied known values: table, not assumed, no note.
-const known = { sft25r: 5700, 'k3-49788': 6500, 'k3-49731': 4000, 'k3-71898': 6200, 'k3-49237': 4000, 'k3-221071': 5928, 'k3-229647': 6485 };
-ok('owner known values (sft25r, SST-40, Luxeon V, XM-L2, XP-L2, YLX, LHP531): exact cct, table, not assumed',
+const known = { sft25r: 5700, 'k3-49788': 6500, 'k3-49731': 4000, 'k3-71898': 6200, 'k3-49237': 4000, 'k3-221071': 5928, 'k3-229647': 5429, 'k3-229647-6500': 6485, 'k3-229647-4000': 4211, 'k3-229647-3000': 3172, 'k3-229647-1800': 1733 };
+ok('owner known values (sft25r, SST-40, Luxeon V, XM-L2, XP-L2, YLX, LHP531 x5 measured CCTs): exact cct, table, not assumed',
   Object.entries(known).every(([id, k]) => byId[id].cct === k && byId[id].source === 'table' && byId[id].assumed === false), JSON.stringify(Object.entries(known).filter(([id, k]) => byId[id].cct !== k)));
 ok('only Cree CLP6B-WKW carries the several-bins flag', byId['k3-219467'].multiBin === true && Object.keys(known).every((id) => byId[id].multiBin === false) && at6500.filter((id) => byId[id].multiBin).join() === 'k3-219467');
 ok('Osram, Nichia, Altilon entries do not carry the several-bins flag', at6500.slice(0, 12).every((id) => byId[id].multiBin === false));
 
 // 4. Stay unset (white): generic / sketch / measured, the coloured part, the Cree CXA1304 colour kit (owner to decide).
 const unsetIds = ['sketch', 'generic', 'measured', 'k3-48963', 'k3-71860'];
-ok('unset list: sketch, generic, measured, sft25r, k3-48963, k3-71898, k3-229647, k3-71860 are all unset', unsetIds.every((id) => byId[id].cct === undefined && byId[id].source === 'unset'),
+ok('unset list: sketch, generic, measured, k3-48963, k3-71860 are all unset', unsetIds.every((id) => byId[id].cct === undefined && byId[id].source === 'unset'),
   JSON.stringify(unsetIds.filter((id) => byId[id].cct !== undefined)));
 ok('coloured LED label (PC Amber 1500K class) stays unset', C.presetCct({ label: 'Cree XLamp XP-E2 Q4 Y2 PC Amber 1500K class, domed' }, 'k3-71860') === undefined);
 ok('coloured label stays unset even when its id is in the table', C.presetCct({ label: 'Osram amber LED' }, 'osram-cslpm1') === undefined);
 
-// 4b. Printed for the owner, not asserted: the LHP531 variants' tints (rgb, luminance 1). The app has ONE LHP531 preset
-// (model koef3), so only 6485 K is used; the other variants are in the report. 1733 K is the 1800 K PC-amber variant.
-{ const v = { '6485 K (used)': 6485, '5429 K': 5429, '4211 K': 4211, '3172 K': 3172, '1733 K (PC amber)': 1733 };
-  for (const [name, K] of Object.entries(v)) console.log('    LHP531 variant ' + name + ' rgb ' + f(C.cctToRGB(K)));
-  // The preset's two drive models (koef3, pts2) are flux curves, not CCT variants: one colour (6485 K) serves both.
-  ok('LHP531 preset: two flux models (koef3, pts2), no per-model cct, one colour 6485 K', JSON.stringify(Object.keys(SP.PRESETS['k3-229647'].drive.models)) === '["koef3","pts2"]' && SP.PRESETS['k3-229647'].drive.models.koef3.cct === undefined && SP.PRESETS['k3-229647'].drive.models.pts2.cct === undefined && C.presetCct(SP.PRESETS['k3-229647'], 'k3-229647') === 6485,
-    JSON.stringify(Object.keys(SP.PRESETS['k3-229647'].drive.models))); }
+// 4b. LHP531: five presets (LV1), each with its measured CCT (LV2). Tints printed for the owner; the 1800 K PC amber is an
+// owner-approved exception to the coloured rule (MEASURED_OVERRIDE in js/cct.js), so it gets a CCT and a tint.
+{ const L = { '5000 K (k3-229647)': 5429, '6500 K': 6485, '4000 K': 4211, '3000 K': 3172, '1800 K PC amber (exception)': 1733 };
+  for (const [name, K] of Object.entries(L)) console.log('    LHP531 ' + name + ' cct ' + K + ' rgb ' + f(C.cctToRGB(K)));
+  const lhp = ['k3-229647', 'k3-229647-6500', 'k3-229647-4000', 'k3-229647-3000', 'k3-229647-1800'];
+  const want = { 'k3-229647': 5429, 'k3-229647-6500': 6485, 'k3-229647-4000': 4211, 'k3-229647-3000': 3172, 'k3-229647-1800': 1733 };
+  ok('LHP531: five presets, each with its own measured cct (5429/6485/4211/3172/1733), table, not assumed (the nominal "6500 K" label does not win)',
+    lhp.every((id) => SP.PRESETS[id] && C.presetCct(SP.PRESETS[id], id) === want[id] && byId[id].source === 'table' && byId[id].assumed === false), JSON.stringify(lhp.map((id) => [id, C.presetCct(SP.PRESETS[id], id)])));
+  ok('LHP531 presets: models koef3, die, pts2 (die = quoted-area model)',
+    lhp.every((id) => JSON.stringify(Object.keys(SP.PRESETS[id].drive.models)) === '["koef3","die","pts2"]'), JSON.stringify(lhp.map((id) => Object.keys(SP.PRESETS[id].drive.models))));
+  ok('LHP531 1800 K PC amber: tints (exception), real preset label says amber', C.presetCct(SP.PRESETS['k3-229647-1800'], 'k3-229647-1800') === 1733 && /amber/i.test(SP.PRESETS['k3-229647-1800'].label));
+  ok('real PRESETS: k3-71860 (PC Amber 1500K class, Cree XP-E2) stays unset', byId['k3-71860'].cct === undefined && byId['k3-71860'].source === 'unset');
+}
 
 // 5. A stated K in the label always wins over the table; stated values are not 'assumed'.
 ok('label K beats the table: "X 4000K" under an Osram id gives 4000', C.presetCct({ label: 'X 4000K' }, 'osram-cslpm1') === 4000);

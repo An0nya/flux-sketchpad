@@ -70,9 +70,14 @@
     'k3-71898': 6200,                                                                   // Cree XM-L2 U3 colour kit 51 (owner)
     'k3-49237': 4000,                                                                   // Cree XP-L2 V5 40E 70CRI (owner)
     'k3-221071': 5928,                                                                  // YLX N3535B cool white, koef3 CRI-tool reading
-    'k3-229647': 6485,                                                                  // Lumenpioneer LHP531, koef3 spectrometer at 6500 K (1800-6500 K part; variants in the report)
+    'k3-229647': 5429,                                                                  // Lumenpioneer LHP531 5000 K series, koef3 spectrometer (owner's table)
+    'k3-229647-6500': 6485, 'k3-229647-4000': 4211, 'k3-229647-3000': 3172,            // the other LHP531 CCT variants (LV1 presets)
+    'k3-229647-1800': 1733,                                                             // 1800 K PC amber: owner-approved exception to the coloured rule
   };
   const MULTI_BIN = new Set(['k3-219467']);                                             // assumed values sold in several bins: the note says so
+  // Owner-measured CCT beats a stated K in the label (the label prints the nominal bin, e.g. 6500 K, but koef3 read 6485 K),
+  // and is checked BEFORE the coloured-LED rule, so the 1800 K PC amber variant gets a CCT. Only these five LHP531 ids.
+  const MEASURED_OVERRIDE = new Set(['k3-229647', 'k3-229647-6500', 'k3-229647-4000', 'k3-229647-3000', 'k3-229647-1800']);
 
   // Full answer for a preset: { cct, source, assumed, multiBin }. source is 'label' | 'halogen' | 'hid' | 'table' | 'unset'.
   // id is the PRESETS key (the preset object itself has none); pass it, or the table is not consulted.
@@ -80,6 +85,7 @@
   function presetCctInfo(p, id) {
     const none = { cct: undefined, source: 'unset', assumed: false, multiBin: false };
     if (!p) return none;
+    if (id && MEASURED_OVERRIDE.has(id)) return { cct: KNOWN_CCT[id], source: 'table', assumed: false, multiBin: false };
     if (!p.halogen && !p.hid && /amber|red|green|blue/i.test(p.label || '')) return none;   // coloured LEDs have no CCT (e.g. "PC Amber 1500K class")
     const m = /(?<![-–]\s?)\b(\d{4})\s*K\b/.exec(p.label || '');
     if (m && +m[1] >= 1500 && +m[1] <= 10000) return { cct: +m[1], source: 'label', assumed: false, multiBin: false };
