@@ -143,5 +143,21 @@
     }
     return out;
   }
-  D.Models={TREE_COUNT:128,TREE_DISTANCE:140,deerEnabled,deerProfile,deerAttention,build,distance,trace,cylinder,actors,tree,stableId,locomotion,foot,pedestrian,PERSON_STRIDE,BLEND_T,LEG_SWING,GAITS,MAX_NODES,STEPS,EPS,BLEND,material:()=>material};
+  // CR2: the GLB mounts the GPU mesh car is drawn with, per variant (MESH_NAMES order = drive-three-models.js names). Measured in the page
+  // (CR2 probe, state.mounts from drive-three-models.js adapt): p = mount point, n = normal, both in the mesh's own frame (x front, y left, z up).
+  // Keys are end:type:side exactly as adapt() builds them. Only the keys the kit uses are listed; the page test checks every one.
+  const MESH_NAMES=['sedan','suv','hatchback-sports'];
+  const MESH_MOUNTS=[
+    {'1:head:-1':{p:[2.01,-.62,.68],n:[1,0,0]},'1:head:1':{p:[2.01,.62,.68],n:[1,0,0]},'1:plate:0':{p:[2.0975,0,.43],n:[1,0,0]},
+     '-1:tail:-1':{p:[.5938,-.7,.78],n:[-1,0,0]},'-1:tail:1':{p:[.5938,.7,.78],n:[-1,0,0]},'-1:reflector:-1':{p:[-1.5164,-.7,.6409],n:[-.4351,0,.9004]},'-1:reflector:1':{p:[-1.5164,.7,.6409],n:[-.4351,0,.9004]},'-1:plate:0':{p:[-2.0975,0,.43],n:[-1,0,0]}},
+    {'1:head:-1':{p:[2.0195,-.47,.7],n:[1,0,0]},'1:head:1':{p:[2.0195,.47,.7],n:[1,0,0]},'1:plate:0':{p:[2.1023,0,.43],n:[1,0,0]},
+     '-1:tail:-1':{p:[.6819,-.7,.9],n:[-1,0,0]},'-1:tail:1':{p:[.6819,.7,.9],n:[-1,0,0]},'-1:reflector:-1':{p:[.6819,-.7,.76],n:[-1,0,0]},'-1:reflector:1':{p:[.6819,.7,.76],n:[-1,0,0]},'-1:plate:0':{p:[-1.86,.61,.4993],n:[-1,0,0]}},
+    {'1:head:-1':{p:[2.0254,-.62,.6296],n:[.9283,0,-.3719]},'1:head:1':{p:[2.0254,.62,.6296],n:[.9283,0,-.3719]},'1:plate:0':{p:[2.1065,0,.4],n:[1,0,0]},
+     '-1:tail:-1':{p:[-1.9515,-.7,.77],n:[-1,0,0]},'-1:tail:1':{p:[-1.9515,.7,.77],n:[-1,0,0]},'-1:reflector:-1':{p:[-1.954,-.7,.6304],n:[-.9283,0,.3719]},'-1:reflector:1':{p:[-1.954,.7,.6304],n:[-.9283,0,.3719]},'-1:plate:0':{p:[-2.1065,0,.46],n:[-1,0,0]}},
+  ];
+  // Mount for one car part: the car's variant is stableId(id) mod 3, as adapt() picks it. null = no mount for that key.
+  function meshMount(id,end,type,side){const v=MESH_MOUNTS[stableId(id)%MESH_NAMES.length];return v[end+':'+type+':'+side]||null;}
+  // The pass car's rigid basis: X = heading (with the face flip F) projected on the road normal, Y = U x X, U = normal. Used by the GPU mesh (drive-three-models.js adapt, update) and the CPU lamps (drive-touge.js).
+  function carBasis(m){const F=m.face===-1?-1:1,n=m.normal,t=[Math.cos(m.yaw)*F,Math.sin(m.yaw)*F,(m.grade||0)*F],k=t[0]*n[0]+t[1]*n[1]+t[2]*n[2],X=[t[0]-k*n[0],t[1]-k*n[1],t[2]-k*n[2]],L=Math.hypot(...X),x=X.map(v=>v/L),Y=[n[1]*x[2]-n[2]*x[1],n[2]*x[0]-n[0]*x[2],n[0]*x[1]-n[1]*x[0]];return{X:x,Y,U:n};}
+  D.Models={TREE_COUNT:128,carBasis,meshMount,MESH_MOUNTS,TREE_DISTANCE:140,deerEnabled,deerProfile,deerAttention,build,distance,trace,cylinder,actors,tree,stableId,locomotion,foot,pedestrian,PERSON_STRIDE,BLEND_T,LEG_SWING,GAITS,MAX_NODES,STEPS,EPS,BLEND,material:()=>material};
 })(typeof self!=='undefined'?self:globalThis);
