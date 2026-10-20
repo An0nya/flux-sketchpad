@@ -129,6 +129,45 @@ const seed = (ctx) => ctx.addInitScript(() => { if (!localStorage.getItem('flux/
   ok('BI2: storage line shows used of quota and persistence', /storage: used [\d.]+ of [\d.]+ MB, persistent: (yes|no)/.test(storageLine), storageLine);
   await ctxD.close();
 
+  // ---- E (BI3): built-in samples: fetched only when the library or an own-beam select opens; read-only; selectable; copy persists
+  const hashOf = (p) => p.evaluate(() => { const a = (RF.DriveAnim._.frame(), RF.DriveAnim._.readCanvas()); let x = 2166136261; for (let i = 0; i < a.length; i++) x = Math.imul(x ^ a[i], 16777619); return x >>> 0; });
+  const builtinCount = (p) => p.evaluate(() => document.querySelectorAll('.builtin-row[data-builtin]').length);
+  const ctxE = await browser.newContext({ viewport: VP, acceptDownloads: true }); await seed(ctxE);
+  const pE = await pageOf(ctxE);
+  const sampleReqs = []; pE.on('request', (r) => { if (r.url().includes('/samples/beams/')) sampleReqs.push(r.url().split('/').pop()); });
+  await boot(pE);
+  for (let i = 0; i < 3; i++) await hashOf(pE);
+  const H0 = await hashOf(pE);
+  ok('BI3: built-in samples are not fetched at page load', sampleReqs.length === 0, sampleReqs);
+  await pE.evaluate(() => { document.querySelector('[data-anim="beam-manager"]').open = true; });
+  for (let i = 0; i < 600 && (await builtinCount(pE)) < 5; i++) await pE.waitForTimeout(100);
+  const names = await pE.evaluate(() => [...document.querySelectorAll('.builtin-row[data-builtin] span')].map(x => x.textContent).filter(t => t.startsWith('7-inch') || t.startsWith('offset')));
+  ok('BI3: opening the library lists the 5 built-in samples, fetched only then', (await builtinCount(pE)) === 5 && sampleReqs.includes('sqm-samples.json') && sampleReqs.includes('index.json'), { n: await builtinCount(pE), sampleReqs });
+  ok('BI3: built-in rows are read-only (no delete or rename), and say they are built-in', (await pE.evaluate(() => document.querySelectorAll('.builtin-row [data-anim="beam-delete"], .builtin-row [data-anim="beam-rename"]').length)) === 0 && names.length >= 1, names.slice(0, 2));
+  const bId = await pE.evaluate(() => [...document.querySelectorAll('[data-anim="own-low"] option')].map(o => o.value).find(v => v.startsWith('builtin:')));
+  await pick(pE, '[data-anim="own-low"]', bId);
+  await hashOf(pE); const Hb = await hashOf(pE);
+  const tab = await pE.evaluate(() => { const L = RF.DriveAnim._.V.p.lowLut; return { nh: L.nh, step: L.step }; });
+  ok('BI3: a built-in beam selected as our low beam changes the picture and is used as shipped (0.1 deg table)', Hb !== H0 && tab.step === 0.1 && tab.nh === 900, { H0, Hb, tab });
+  // copy to library: full resolution, persisted, listed after a reload
+  await pE.evaluate(() => document.querySelector('.builtin-row [data-anim="beam-copy"]').click());
+  ok('BI3: copy to my library saves a full-resolution copy', await waitMsg(pE, 'Saved "'), await pE.evaluate(() => document.querySelector('[data-anim="beam-status"]').textContent));
+  for (let i = 0; i < 50 && !(await idbRows(pE)).length; i++) await pE.waitForTimeout(100);
+  const cop = await idbRows(pE);
+  ok('BI3: the copy is in IndexedDB at the shipped grid (0.1 deg, 900 x 450)', cop.length === 1 && cop[0].step === 0.1 && cop[0].nh === 900 && cop[0].nv === 450, cop.map(r => [r.name, r.step, r.nh, r.nv]));
+  const ctxE2 = await reopen(ctxE); const pE2 = await pageOf(ctxE2); await boot(pE2); await waitOpts(pE2, 2);
+  await pE2.evaluate(() => { document.querySelector('[data-anim="beam-manager"]').open = true; });
+  ok('BI3: the copy survives a reload and is listed as a saved beam', (await rowsDOM(pE2)).length === 1, await rowsDOM(pE2));
+  await ctxE2.close();
+  // built-in samples unavailable: the library still works and says so
+  const ctxF = await browser.newContext({ viewport: VP }); await seed(ctxF);
+  await ctxF.route('**/samples/beams/**', (route) => route.abort());
+  const pF = await pageOf(ctxF); await boot(pF);
+  await pF.evaluate(() => { document.querySelector('[data-anim="beam-manager"]').open = true; });
+  ok('BI3: samples that cannot be fetched say so; nothing else breaks', await pF.waitForFunction(() => (document.querySelector('[data-anim="builtin-status"]') || {}).textContent === 'built-in samples unavailable', null, { timeout: 30000 }).then(() => true, () => false));
+  await ctxF.close();
+  await ctxE.close();
+
   ok('no page errors in any scenario', errors.length === 0, errors);
   await browser.close();
   console.log(fails ? fails + ' BI1 page check(s) FAILED' : 'all BI1 page checks passed');

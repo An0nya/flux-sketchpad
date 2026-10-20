@@ -1375,7 +1375,7 @@ void main() {
   const LIB = { items: [], msg: '', ver: 0, seq: 0, storeOk: null, hydrated: false };
   const libEntry = (parsed, id, persisted) => ({ id, name: parsed.name, beamKind: parsed.beamKind, conv: parsed.conv, lut: RF.Beams.toLut(parsed), colour: parsed.colour || null, persisted: !!persisted, coarse: !!parsed.coarse });
   // BB3: the name in the picker, with the colour temperature when the beam has one; BI1: coarse beams say so
-  const beamLabel = (e) => e.name + (e.colour && Number.isFinite(e.colour.cct) ? ' (' + Math.round(e.colour.cct) + ' K)' : '') + (e.coarse ? ' (coarse 0.25 deg)' : '') + (e.persisted ? '' : ' (session)');
+  const beamLabel = (e) => e.name + (e.colour && Number.isFinite(e.colour.cct) ? ' (' + Math.round(e.colour.cct) + ' K)' : '') + (e.coarse ? ' (coarse 0.25 deg)' : '') + (e.builtin ? ' (built-in)' : (e.persisted ? '' : ' (session)'));
   // BB3: the colour a saved design carries: the lamp tint in use (rgb), plus the source's kelvin when it has one
   const sourceColour = (I) => { const c = { rgb: I.lampRGB.slice() }; if (Number.isFinite(I.lampCct) && I.lampCct >= 1000 && I.lampCct <= 20000) c.cct = I.lampCct; return c; };
   // the default name: the design's name, plus the source's kelvin when it has one (e.g. "Headlamp sketch 4300K")
@@ -1389,6 +1389,29 @@ void main() {
   async function libWrite(e) {
     try { await RF.BeamStore.put(libRec(e)); e.persisted = true; return true; }
     catch (err) { e.persisted = false; return false; }
+  }
+  // BI3: built-in samples. The bundles listed in samples/beams/index.json are fetched the first time the library manager or an own-beam
+  // select is opened. They are read-only and kept apart from LIB.items (never saved, renamed, deleted or cleared); 'copy to my
+  // library' makes a full-resolution copy. The shipped table is used as it is (no resampling).
+  LIB.builtins = []; LIB.biState = 'idle'; LIB.bi = null;
+  const BI_DIR = 'samples/beams/';
+  const libAll = () => [...LIB.items, ...LIB.builtins];
+  async function fetchJSON(url) { const r = await fetch(url, { cache: 'no-cache' }); if (!r.ok) throw new Error(url + ' ' + r.status); return r.json(); }
+  function ensureBuiltins() {
+    if (LIB.bi) return LIB.bi;
+    LIB.biState = 'loading';
+    LIB.bi = (async () => {
+      try {
+        const idx = await fetchJSON(BI_DIR + 'index.json'), out = [];
+        for (const f of (idx && idx.bundles) || []) {
+          for (const [i, b] of RF.Beams.readFile(await fetchJSON(BI_DIR + f)).entries()) { const e = libEntry(b, 'builtin:' + f + ':' + i, false); e.builtin = true; out.push(e); }
+        }
+        LIB.builtins = out; LIB.biState = 'ok';
+      } catch (e) { LIB.builtins = []; LIB.biState = 'unavailable'; }
+      LIB.ver++;
+      if (V.fillOwn) V.fillOwn();
+    })();
+    return LIB.bi;
   }
   // Startup: read the store into memory, then move the old localStorage library in. Runs once; the view is refreshed after.
   async function libHydrate() {
@@ -1456,7 +1479,7 @@ void main() {
   }
   // removes one stored beam, or every stored beam (id omitted); resolves true when the store accepted it
   const libDrop = (id) => (id ? RF.BeamStore.delete(id) : RF.BeamStore.clear()).then(() => true, () => false);
-  const libFind = (id, kind) => { const e = libLoad().find(x => x.id === id); return e && (!kind || e.beamKind === kind) ? e : null; };
+  const libFind = (id, kind) => { const e = libAll().find(x => x.id === id); return e && (!kind || e.beamKind === kind) ? e : null; };
   libHydrate();   // startup: reads the store (async); the pickers refresh when it lands
   // The beams the options pick: null = built-in (our design for low, generic for high)
   function ownBeams(o) {
@@ -1559,13 +1582,15 @@ void main() {
     const ownHigh = E('select', { 'data-anim': 'own-high', 'aria-label': 'Own high beam', title: 'Our high beam when the high switch is on: the generic high beam, or a saved high beam from the library (it is added to our low beam).' });
     const fillOwn = () => {
       const keep = { l: info() && info().o.ownLow, h: info() && info().o.ownHigh };
-      ownLow.replaceChildren(E('option', { value: 'design' }, 'our design'), ...libLoad().filter(e => e.beamKind === 'low').map(e => E('option', { value: e.id }, beamLabel(e))));
-      ownHigh.replaceChildren(E('option', { value: 'generic' }, 'generic high'), ...libLoad().filter(e => e.beamKind === 'high').map(e => E('option', { value: e.id }, beamLabel(e))));
+      ownLow.replaceChildren(E('option', { value: 'design' }, 'our design'), ...libAll().filter(e => e.beamKind === 'low').map(e => E('option', { value: e.id }, beamLabel(e))));
+      ownHigh.replaceChildren(E('option', { value: 'generic' }, 'generic high'), ...libAll().filter(e => e.beamKind === 'high').map(e => E('option', { value: e.id }, beamLabel(e))));
+      if (String(keep.l || '').startsWith('builtin:') || String(keep.h || '').startsWith('builtin:')) ensureBuiltins();
       ownLow.value = libFind(keep.l, 'low') || keep.l === 'design' || !keep.l ? (keep.l || 'design') : 'design';
       ownHigh.value = libFind(keep.h, 'high') || keep.h === 'generic' || !keep.h ? (keep.h || 'generic') : 'generic';
       renderManager();
     };
     ownLow.addEventListener('change', () => setDV(ui, 'ownLow', ownLow.value)); ownHigh.addEventListener('change', () => setDV(ui, 'ownHigh', ownHigh.value));
+    for (const sel of [ownLow, ownHigh]) { sel.addEventListener('mousedown', ensureBuiltins); sel.addEventListener('focus', ensureBuiltins); }
     const fileIn = E('input', { type: 'file', accept: '.json,application/json', 'data-anim': 'beam-file', 'aria-label': 'Import beam file (single beam or bundle)', hidden: '' });
     fileIn.addEventListener('change', async () => {
       const f = fileIn.files && fileIn.files[0]; fileIn.value = ''; if (!f) return;
@@ -1602,6 +1627,7 @@ void main() {
     // BB2 library manager: one row per saved beam (rename, delete), and clear all (two clicks)
     V.setOwn = (k, v) => setDV(ui, k, v);
     V.mgr = E('details', { class: 'beam-manager', 'data-anim': 'beam-manager', style: 'flex-basis:100%' }, E('summary', {}, 'library'));
+    V.mgr.addEventListener('toggle', () => { if (V.mgr.open) ensureBuiltins(); });
     bar.append(V.mgr); renderManager();
     V.bar = bar; return bar;
   }
@@ -1631,7 +1657,7 @@ void main() {
       const cl = RF.Beams.colourLabel(e.colour);
       const colourCell = E('span', { class: 'anim-speed', 'data-anim': 'beam-colour' }, cl || 'colour: from current source');
       const cells = [nm, E('span', { class: 'anim-speed' }, e.beamKind), E('span', { class: 'anim-speed' }, size), colourCell, E('span', { class: 'anim-speed' }, e.persisted ? (e.coarse ? 'saved, coarse' : 'saved') : 'session'), ren, del];
-      if (!e.colour) {   // no colour in the file: a kelvin can be set here, and the tint then travels with the beam
+      if (!(e.colour && Number.isFinite(e.colour.cct))) {   // no kelvin (none, or rgb only): a kelvin can be set here, and the tint then travels with the beam
         const kIn = E('input', { type: 'number', min: '1000', max: '20000', step: '100', placeholder: 'K', 'data-anim': 'beam-row-cct', 'aria-label': 'Colour temperature for this beam, kelvin' });
         const kBtn = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-set-cct', title: 'Give this beam a colour temperature (1000 to 20000 K)' }, 'set K');
         kBtn.addEventListener('click', () => {
@@ -1659,7 +1685,16 @@ void main() {
       libSay(gone); V.fillOwn();
       libDrop().then((stored) => { libSay(gone + (stored ? '' : ' Browser storage refused the update, so they may come back on reload.')); V.fillOwn(); });
     });
-    box.replaceChildren(E('summary', {}, 'library (' + items.length + ')'), ...(rows.length ? rows : [E('span', { class: 'anim-speed' }, 'No saved beams yet. Save a design, or import a file.')]), E('div', { class: 'beam-row' }, clr));
+    const bstate = LIB.biState === 'loading' ? 'built-in samples: loading...' : LIB.biState === 'unavailable' ? 'built-in samples unavailable' : '';
+    const bRows = LIB.builtins.map((e) => {
+      const cp = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-copy', title: 'Copy this built-in beam into your library (a full-resolution copy you can rename or delete)' }, 'copy to my library');
+      cp.addEventListener('click', () => { libAdd([RF.Beams.fromLut(e.lut, { name: RF.Beams.uniqueName(e.name, libLoad().map(x => x.name)), beamKind: e.beamKind, conv: e.conv, colour: e.colour || undefined })]); });
+      return E('div', { class: 'beam-row builtin-row', 'data-builtin': e.id },
+        E('span', { class: 'anim-speed' }, e.name), E('span', { class: 'anim-speed' }, 'built-in ' + e.beamKind),
+        E('span', { class: 'anim-speed' }, 'grid ' + e.lut.step + ' deg, ' + (e.lut.nh * e.lut.step).toFixed(0) + ' x ' + (e.lut.nv * e.lut.step).toFixed(0) + ' deg'),
+        E('span', { class: 'anim-speed' }, RF.Beams.colourLabel(e.colour) || 'colour: from current source'), cp);
+    });
+    box.replaceChildren(E('summary', {}, 'library (' + items.length + ')'), ...bRows, ...(bstate ? [E('span', { class: 'anim-speed', 'data-anim': 'builtin-status' }, bstate)] : []), ...(rows.length ? rows : [E('span', { class: 'anim-speed' }, 'No saved beams yet. Save a design, or import a file.')]), E('div', { class: 'beam-row' }, clr));
     const sto = E('span', { class: 'anim-speed', 'data-anim': 'beam-storage', title: 'Clearing this site\'s data deletes the library. Export to a file is the backup.' }, 'storage: checking...');
     box.append(sto); libStorageText().then((t) => { sto.textContent = t; }, () => { sto.textContent = 'storage: unknown'; });
   }
