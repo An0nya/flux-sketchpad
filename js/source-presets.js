@@ -114,6 +114,41 @@
     if (!rows.length) return null;
     return { label: meas.name || 'Measured', curve: [[0, 0]].concat(rows.map((r) => [r[0], r[1]])), lum: rows.filter((r) => r[2] > 0).map((r) => [r[0], r[2]]), vf: meas.vf && meas.vf.length ? meas.vf : null, maxA: rows[rows.length - 1][0] };
   }
+  // LHP531 (koef3 all-CCT test; owner's luminance table). The repo traces only the 5000 K series, so the other CCTs are that
+  // flux curve scaled, each with its own luminance rows: APPROXIMATIONS, flagged in each note. scale = owner-read peak ratio;
+  // 1800 K is not on koef3's chart, so it uses the mean luminance ratio at 0.7 and 2.8 A (0.707, 0.703).
+  const LHP531 = [
+    { id: 'k3-229647-6500', cct: '6500 K', scale: 1.04, peakLm: 6200, area: 13.5, maxA: 26.6, lum: [[0.7, 10.4], [2.8, 37.5], [26.6, 191.6]] },
+    { id: 'k3-229647', cct: '5000 K', scale: 1, peakLm: 5952, area: 13.5, maxA: 25.4, lum: [[0.7, 9.9], [2.8, 35.7], [25.4, 172.2]], base: true },
+    { id: 'k3-229647-4000', cct: '4000 K', scale: 0.933, peakLm: 5550, area: 13.5, maxA: 23.6, lum: [[0.7, 9.8], [2.8, 35.1], [23.6, 160.7]] },
+    { id: 'k3-229647-3000', cct: '3000 K', scale: 0.86, peakLm: 5100, area: 13.5, maxA: 23.4, lum: [[0.7, 9.5], [2.8, 33.8], [23.4, 148.2]] },
+    { id: 'k3-229647-1800', cct: '1800 K PC amber', scale: 0.705, peakLm: null, area: 14.3, maxA: 18.8, lum: [[0.7, 7.0], [2.8, 25.1], [18.8, 93.5]] },
+  ];
+  // The five LHP531 presets, from the KOEF3_2PT entry of the 5000 K series (base). Vf: the 5000 K curve (all CCTs within ~0.05 V).
+  function lhp531Presets(base) {
+    const T = base.tr, curve0 = [[0, 0]].concat(T.flux), fluxAt = (sc, a) => lerp(curve0, a) * sc, vfAt = (a) => +lerp(T.vf, a).toFixed(3);
+    return LHP531.map((v) => {
+      const flux = (a) => Math.round(fluxAt(v.scale, a)), sq = +Math.sqrt(v.area).toFixed(4);
+      const curve = curve0.filter(([a]) => a < v.maxA).map(([a]) => [a, flux(a)]).concat([[v.maxA, flux(v.maxA)]]);
+      const vf = T.vf.filter(([a]) => a < v.maxA).concat([[v.maxA, vfAt(v.maxA)]]);
+      const pts = v.base ? base.pts : [[9, flux(9), vfAt(9)], [v.maxA, flux(v.maxA), vfAt(v.maxA)]];   // the base keeps koef3's quoted points
+      const lumTxt = v.lum.map(([a, L]) => a + ' A: ' + L).join(', ');
+      const note = 'koef3’s all-CCT test of the Lumenpioneer LHP531 (luminance cd/mm²: ' + lumTxt + '). ' +
+        (v.base ? 'Flux and Vf traced off his 5000 K chart (the only CCT he traced). '
+          : 'APPROXIMATION: no per-CCT curve in the repo; flux = the 5000 K chart trace × ' + v.scale + (v.peakLm ? ' (peak ' + v.peakLm + ' lm read off his power chart, approximate). ' : ' (1800 K is not on his chart; scale = mean luminance ratio at 0.7 and 2.8 A, 0.705; an area-corrected 0.747 was NOT used). ')) +
+        'Effective die area = Φ / (π L) from his luminance rows, so the die follows them, not the quoted ' + v.area + ' mm²' + (v.cct.indexOf('1800') === 0 ? ' (his 1800 K figure is 14.3 mm²)' : '') + '.';
+      return [v.id, {
+        label: 'Lumenpioneer LHP531 ' + v.cct + ', 70CRI, 5050 (koef3)', measured: true, lowConfidence: !v.base, note,
+        set: { kind: 'planar', shape: 'rect', w: sq, h: sq, dist: 'lambertian' },
+        drive: { models: {
+          koef3: { label: 'koef3 ' + (v.base ? 'chart' : 'scaled curve (approx.)') + ' · effective area from his luminance', curve, vf, lum: v.lum, maxA: v.maxA },
+          die: { label: 'koef3 ' + (v.base ? 'chart' : 'scaled curve (approx.)') + ' · quoted area ' + v.area + ' mm²', curve, vf, maxA: v.maxA, set: { shape: 'rect', w: sq, h: sq } },
+          pts2: { label: 'koef3 ' + (v.base ? 'quoted points' : 'scaled curve at 9 A and max A (approx.)'), curve: [[0, 0]].concat(pts.map((p) => [p[0], p[1]])), vf: pts.map((p) => [p[0], p[2]]), maxA: pts[pts.length - 1][0] },
+        }, model: 'koef3', ratedA: Infinity, defaultA: 9 },
+      }];
+    });
+  }
+
   const PRESETS = {
     sketch: {
       label: 'Sketch LED · 1 × 1 mm, 1,000 lm',
@@ -190,6 +225,7 @@
         drive: { models: { pts2 }, model: 'pts2', ratedA: Infinity, defaultA: k.pts[0][0] },
       }];
     })),
+    ...Object.fromEntries(lhp531Presets(KOEF3_2PT.find((k) => k.id === 'k3-229647'))),   // replaces the generated k3-229647 entry
     measured: {
       label: 'Measured LED (paste flux + luminance rows)', measured: true, custom: true,
       note: 'Your own rows: current (A), flux (lm), luminance (cd/mm²), e.g. from a koef3 test. Flux follows the rows; the die is a square (or disc) of the effective area Φ / (π L), interpolated at the drive current. Lambertian.',

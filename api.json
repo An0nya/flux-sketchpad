@@ -1,8 +1,8 @@
 {
  "app": "FLUX reflector sketchpad",
  "generatedBy": "node tools/flux.js manifest",
- "commit": "3888af7",
- "date": "2026-10-16",
+ "commit": "194bee9",
+ "date": "2026-10-20",
  "docs": {
   "cli": "tools/FLUX-CLI.md",
   "solverApi": "SOLVER_API.md",
@@ -8062,9 +8062,9 @@
   },
   {
    "id": "k3-229647",
-   "label": "Lumenpioneer LHP531 1800-6500K, 70CRI, 5050 · koef3",
+   "label": "Lumenpioneer LHP531 5000 K, 70CRI, 5050 (koef3)",
    "group": null,
-   "note": "koef3’s measurements (BLF/TLF, Cu board, fan-cooled, 25 °C solder point). Flux and Vf traced off his chart by script (calibrated ~0.3 % against his raw tables; within 0.3 % of his quoted points). No luminance table — Emitting area 13.5 mm² (his sentence verified in the thread: “The light-emitting area is 13.5 mm² (1800K: 14.3 mm²).”), modelled as a square Lambertian die (LOW CONFIDENCE on luminance). Max current = where his test stopped. https://budgetlightforum.com/t/led-test-review-lumenpioneer-lhp531-all-cct-1800-3000-4000-5000-6500-k-70-cri-very-popular-5050-led-with-good-beam-and-very-good-price/229647 (2025-08-04). Trace note: no value at A=[2.0] (curve end / line hidden); left null; comparison chart, series LHP531_5000K_70CRI; Vf lines of the 5 CCTs lie within ~0.05 V of each other; Vf per CCT is least reliable."
+   "note": "koef3’s all-CCT test of the Lumenpioneer LHP531 (luminance cd/mm²: 0.7 A: 9.9, 2.8 A: 35.7, 25.4 A: 172.2). Flux and Vf traced off his 5000 K chart (the only CCT he traced). Effective die area = Φ / (π L) from his luminance rows, so the die follows them, not the quoted 13.5 mm²."
   },
   {
    "id": "k3-220791",
@@ -8113,6 +8113,30 @@
    "label": "Lumileds Luxeon MZ 5700K min 90CRI LMZ9-QW57, 3V, quad-die flip, domeless · koef3",
    "group": null,
    "note": "koef3’s measurements (BLF/TLF, Cu board, fan-cooled, 25 °C solder point). Flux and Vf traced off his chart by script (calibrated ~0.3 % against his raw tables; within 1 % of his quoted points). Die = square of the effective area Φ / (π L) from his luminance table; Emitting area 7.92 mm² (NOT verified verbatim: “The total LES is 7.92 mm²”) is the geometric alternate. Max current = where his test stopped. https://budgetlightforum.com/t/led-test-review-lumileds-luxeon-mz-5700-k-min-90-cri-3v-finally-high-cri-high-power-beautiful-light/49328 (2018-01-15). Trace note: no value at A=[17.0, 17.35] (curve end / line hidden); left null."
+  },
+  {
+   "id": "k3-229647-6500",
+   "label": "Lumenpioneer LHP531 6500 K, 70CRI, 5050 (koef3)",
+   "group": null,
+   "note": "koef3’s all-CCT test of the Lumenpioneer LHP531 (luminance cd/mm²: 0.7 A: 10.4, 2.8 A: 37.5, 26.6 A: 191.6). APPROXIMATION: no per-CCT curve in the repo; flux = the 5000 K chart trace × 1.04 (peak 6200 lm read off his power chart, approximate). Effective die area = Φ / (π L) from his luminance rows, so the die follows them, not the quoted 13.5 mm²."
+  },
+  {
+   "id": "k3-229647-4000",
+   "label": "Lumenpioneer LHP531 4000 K, 70CRI, 5050 (koef3)",
+   "group": null,
+   "note": "koef3’s all-CCT test of the Lumenpioneer LHP531 (luminance cd/mm²: 0.7 A: 9.8, 2.8 A: 35.1, 23.6 A: 160.7). APPROXIMATION: no per-CCT curve in the repo; flux = the 5000 K chart trace × 0.933 (peak 5550 lm read off his power chart, approximate). Effective die area = Φ / (π L) from his luminance rows, so the die follows them, not the quoted 13.5 mm²."
+  },
+  {
+   "id": "k3-229647-3000",
+   "label": "Lumenpioneer LHP531 3000 K, 70CRI, 5050 (koef3)",
+   "group": null,
+   "note": "koef3’s all-CCT test of the Lumenpioneer LHP531 (luminance cd/mm²: 0.7 A: 9.5, 2.8 A: 33.8, 23.4 A: 148.2). APPROXIMATION: no per-CCT curve in the repo; flux = the 5000 K chart trace × 0.86 (peak 5100 lm read off his power chart, approximate). Effective die area = Φ / (π L) from his luminance rows, so the die follows them, not the quoted 13.5 mm²."
+  },
+  {
+   "id": "k3-229647-1800",
+   "label": "Lumenpioneer LHP531 1800 K PC amber, 70CRI, 5050 (koef3)",
+   "group": null,
+   "note": "koef3’s all-CCT test of the Lumenpioneer LHP531 (luminance cd/mm²: 0.7 A: 7, 2.8 A: 25.1, 18.8 A: 93.5). APPROXIMATION: no per-CCT curve in the repo; flux = the 5000 K chart trace × 0.705 (1800 K is not on his chart; scale = mean luminance ratio at 0.7 and 2.8 A, 0.705; an area-corrected 0.747 was NOT used). Effective die area = Φ / (π L) from his luminance rows, so the die follows them, not the quoted 14.3 mm² (his 1800 K figure is 14.3 mm²)."
   },
   {
    "id": "measured",
