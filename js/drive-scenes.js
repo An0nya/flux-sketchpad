@@ -133,13 +133,13 @@
 
   // ---------------------------------------------------------------- scenes as presets (SB0)
   // A scene is a preset: one pure resolver turns preset + explicit overrides into the feature flags a builder reads. Overrides win; an undefined override means "use the preset".
-  // Preset values are what each scene builds TODAY (SB0 changes no output). Stage SB1 flips studs on for every scene.
-  const FEATURE_DEFAULTS = { studs: false, posts: true, signs: true, people: true, animals: true, obstacle: false, veg: true };
+  // Preset values: SB0 set each to what the scene built then; SB1 turned studs on for every scene (the animated view's rpm toggle).
+  const FEATURE_DEFAULTS = { studs: true, posts: true, signs: true, people: true, animals: true, obstacle: false, veg: true };
   const FEATURE_PRESETS = {
-    road: { studs: true },                   // the animated open road places studs in its wild scenery (wildChunk)
-    forest: { studs: false },
-    city: { studs: false },
-    pass: { studs: false, people: false },   // the mountain pass: no pedestrians today
+    road: { studs: true },
+    forest: { studs: true },
+    city: { studs: true },
+    pass: { studs: true, people: false },    // the mountain pass: no pedestrians (unchanged)
   };
   function resolveFeatures(opts) {
     const o = opts || {}, preset = Object.prototype.hasOwnProperty.call(FEATURE_PRESETS, o.preset) ? o.preset : 'road';
@@ -147,7 +147,7 @@
     for (const key of Object.keys(o.overrides || {})) if (o.overrides[key] !== undefined) F[key] = o.overrides[key];
     return F;
   }
-  RF.Drive.resolveFeatures = resolveFeatures; RF.Drive.FEATURE_PRESETS = FEATURE_PRESETS; RF.Drive.FEATURE_DEFAULTS = FEATURE_DEFAULTS;
+  RF.Drive.resolveFeatures = resolveFeatures; RF.Drive.laneStuds = laneStuds; RF.Drive.FEATURE_PRESETS = FEATURE_PRESETS; RF.Drive.FEATURE_DEFAULTS = FEATURE_DEFAULTS;
 
   // ---------------------------------------------------------------- scenes
   const SCENES = {
@@ -227,6 +227,15 @@
     const k = kit(ctx); for (let s = 80, i = 0; s < 300; s += 150, i++) k.obstacle(s, i % 2 ? 0.55 : -0.55);
     for (const ob of k.O) objects.push(ob);
   }
+  /* Lane studs (rpm) in road coordinates: on the centre line (in the middle of each gap when the line is dashed) and, staggered, on both edge lines.
+   * Walks the absolute positions s in [lo, hi) and places each one at s - shift (the pass uses its car's distance as shift; flat scenes use 0). Draws no
+   * random numbers, so adding studs never moves another object. Same placement as the original wildChunk loop when lo = 0 and shift = 0. */
+  function laneStuds(k, markings, Lw, us, lo, hi, shift) {
+    const sh = shift || 0, pat = markings.find((m) => m.pat && m.o0 < Lw / 2 && m.o1 > Lw / 2), per = pat ? pat.pat.period : 12, s0 = pat ? pat.pat.s0 + pat.pat.on + (per - pat.pat.on) / 2 : 0;
+    const first = (ph, step) => lo + ((ph - lo) - Math.floor((ph - lo) / step) * step);
+    for (let s = first(s0, per); s < hi; s += per) k.rpm(s - sh, Lw / 2, us);
+    for (let s = first(6, 24); s < hi; s += 24) { k.rpm(s - sh, -Lw / 2 + 0.2); k.rpm(s + 12 - sh, 1.5 * Lw - 0.2); }
+  }
   /* The open road for the animated view (drive-anim.js), one PERIOD-long chunk at a time, from a seed: every chunk is different, the same seed gives the same road.
    * ctx { Lw, us, seed (a number for THIS chunk), density (1 = about what the still view has, ×1.5 default in the view), broken (US centre line) },
    * o { people, animals, signs, posts, veg, obstacle, rpm }. → { objects (still), actors (walkers and deer: data, drive-anim.js poses them), markings, verge }.  */
@@ -245,13 +254,8 @@
         for (let i = 0; i < nt; i++) { const s = (i + R()) * P / nt, off = 5 + 13 * R(); k.tree(s, side > 0 ? k.edgeL + off : k.edgeR - off, { birch: R() < 0.15 }); }
       }
     }
-    // markers on the centre line (in the middle of each gap when the line is dashed) and, staggered, on both edge lines.
     // SB0: the read-site for resolveFeatures (undefined rpm = the road preset = on, as before)
-    if (resolveFeatures({ preset: 'road', overrides: { studs: o.rpm } }).studs) {
-      const pat = markings.find((m) => m.pat && m.o0 < Lw / 2 && m.o1 > Lw / 2), per = pat ? pat.pat.period : 12, s0 = pat ? pat.pat.s0 + pat.pat.on + (per - pat.pat.on) / 2 : 0;
-      for (let s = s0 - Math.floor(s0 / per) * per; s < P; s += per) k.rpm(s, Lw / 2, us);
-      for (let s = 6; s < P; s += 24) { k.rpm(s, -Lw / 2 + 0.2); k.rpm(s + 12, 1.5 * Lw - 0.2); }
-    }
+    if (resolveFeatures({ preset: 'road', overrides: { studs: o.rpm } }).studs) laneStuds(k, markings, Lw, us, 0, P);
     if (o.obstacle) for (let s = 80, i = 0; s < P; s += 150, i++) k.obstacle(s, i % 2 ? 0.55 : -0.55);
     // walkers and deer: where they start, where they head, how fast. Poses come from drive-anim.js (they move from the moment the car is ~110 m away)
     const edge = (side) => (side > 0 ? k.edgeL : k.edgeR);
@@ -272,6 +276,8 @@
   // that class out; everything else stays where it was), obstacle (true = add crates) }
   function buildScene(name, ctx, o) {
     const sc = SCENES[name] || SCENES.road, c = Object.assign({ Lw: 3.5, A: null, us: false, seed: 7 }, ctx, { rand: rng((ctx && ctx.seed) || 7) }), opt = Object.assign({ people: true, animals: true, signs: true }, o), out = sc.build(c, opt);
+    // SB1: studs on every flat scene. Only the animated view asks (it sends rpm: true); the still Spec view does not, so its scenery is unchanged.
+    if (resolveFeatures({ preset: name, overrides: { studs: opt.rpm === true } }).studs) { const kk = kit(c); laneStuds(kk, D.laneMarkings(c.Lw, { us: c.us, broken: !!c.broken }), c.Lw, c.us, 0, 300); out.objects.push(...kk.O); }
     addTraffic(c, out.objects, opt);
     if (name === 'forest' || name === 'road') out.objects.push(...vergeFoliage(c, opt));
     if (opt.posts === false || opt.veg === false) out.objects = out.objects.filter((ob) => !((opt.posts === false && ob.cls === 'post') || (opt.veg === false && ob.cls === 'veg')));

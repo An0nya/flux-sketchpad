@@ -31,7 +31,7 @@
     if (opts && opts.leafyFoliage && !opts.mountainPass && (name === 'road' || name === 'forest')) flags = { ...flags, leafyFoliage: true };
     const broken = !!(opts && us && opts.cline === 'broken');
     if (!(opts && opts.wild) || name !== 'road') {
-      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7, foliageSeed: opts && opts.seed, density: opts && opts.density, kerbPeople: !!(opts && opts.tiles) }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, cross: sc.cross, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
+      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7, foliageSeed: opts && opts.seed, density: opts && opts.density, kerbPeople: !!(opts && opts.tiles), broken }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, cross: sc.cross, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
       if (broken && name === 'road') src.markings = D.laneMarkings(lane, { us, broken });
       return trafficSource(src, opts);
     }
@@ -1520,7 +1520,7 @@ void main() {
     V.bar.querySelector('[data-anim="density"]').value = o.density; V.bar.querySelector('[data-anim="density"]').disabled = !(wd || (o.leafyFoliage && (o.scene === 'forest' || o.scene === 'road')));
     const cl = V.bar.querySelector('[data-anim="cline"]'); cl.disabled = !I.us; cl.textContent = o.cline === 'broken' && I.us ? 'centre: broken' : 'centre: solid'; cl.setAttribute('aria-pressed', String(o.cline === 'broken' && I.us));
     cl.title = I.us ? 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)' : 'Only on the US presets (the EU presets already have a dashed centre line)';
-    for (const k of ['rpm']) V.bar.querySelector('[data-anim="c-' + k + '"]').disabled = !wd;
+    for (const k of ['rpm']) V.bar.querySelector('[data-anim="c-' + k + '"]').disabled = false;   // SB1: studs on every scene, the pass included
     const mb = V.bar.querySelector('[data-anim="c-mt"]'); mb.disabled = typeof Worker === 'undefined' || !!Wk.failed; if (Wk.failed) mb.title = V.why;
   }
 

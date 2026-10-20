@@ -58,7 +58,7 @@ function run(RF, ok) {
   ok('PP detail: detailed models on give sdf deer; off give none', sdfDeer(detOn) > 0 && sdfDeer(detOff) === 0, 'on ' + sdfDeer(detOn) + ' off ' + sdfDeer(detOff));
   ok('PP detail: the actor set changes with the toggle (trees and deer)', JSON.stringify(detOn.objects.map(o => o.k)) !== JSON.stringify(detOff.objects.map(o => o.k)));
 
-  // 5. No pedestrians, no centre line, no lane studs, at many positions around the lap.
+  // 5. No pedestrians, no centre line, at many positions around the lap (lane studs are checked below).
   let people = 0, studs = 0, centre = 0, cars = 0, normals = 0;
   for (let d = 0; d < PERIOD; d += 97) {
     const w = world(pass({ detailed: true, deer: true }), d, () => -1);
@@ -68,7 +68,8 @@ function run(RF, ok) {
     cars += tr.length; normals += tr.filter(o => o.detail.normal && o.detail.normal.length === 3).length;
   }
   ok('PP no pedestrians anywhere on the pass', people === 0, 'people seen ' + people);
-  ok('PP no lane studs on the pass', studs === 0, 'studs seen ' + studs);
+  // SB1: studs on the pass are an owner decision (the old 'no lane studs' was a brief error, removed); every window of the lap has them
+  ok('PP lane studs on the pass: present around the lap', studs > 0, 'studs seen ' + studs);
   // Centre line restored (PP2b): US solid = two yellow lines, broken = one dashed yellow line, plus the two white edge lines.
   const mk = (o) => world(pass(o), 0).markings;
   const solid = mk({}), brk = mk({ cline: 'broken' });
