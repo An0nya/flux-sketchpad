@@ -141,9 +141,9 @@
       note: 'Luminus SFT-40-WxS/WxE datasheet (PDS-003134 Rev 05): 5000/5700/6500 K, CRI ~70, flat window, 1.97 × 1.97 mm, Lambertian (120° FWHM), 8 A and 29 W maximum. Flux = the chosen bin\u2019s minimum at Tj 85 °C (Luminus\u2019 calculated values away from 1.5 A).',
       set: { kind: 'planar', shape: 'rect', w: 1.97, h: 1.97, dist: 'lambertian' },
       drive: { models: {
-        n4: { label: '5000 / 5700 K · bin N4 min', curve: cwBin(303, 594, 760, 1057, 1550, 1758, 2128), vf: CW_VF, maxA: 8 },
-        n5: { label: '6500 K · bin N5 min', curve: cwBin(323, 634, 812, 1129, 1655, 1877, 2272), vf: CW_VF, maxA: 8 },
-        p3: { label: 'Top bin P3 min (any CCT, if you get one)', curve: cwBin(364, 713, 913, 1269, 1861, 2110, 2555), vf: CW_VF, maxA: 8 },
+        n4: { label: '5000 / 5700 K · bin N4 min', cct: 5700, curve: cwBin(303, 594, 760, 1057, 1550, 1758, 2128), vf: CW_VF, maxA: 8 },   // cct: owner's assumed value for this bin (js/cct.js)
+        n5: { label: '6500 K · bin N5 min', cct: 6500, curve: cwBin(323, 634, 812, 1129, 1655, 1877, 2272), vf: CW_VF, maxA: 8 },
+        p3: { label: 'Top bin P3 min (any CCT, if you get one)', cct: 5700, curve: cwBin(364, 713, 913, 1269, 1861, 2110, 2555), vf: CW_VF, maxA: 8 },
       }, model: 'n5', ratedA: 8, maxW: 29, defaultA: 6 },
     },
     'sft25r': {
@@ -334,7 +334,13 @@
     if (p.obscuration) src.obscuration = JSON.parse(JSON.stringify(p.obscuration)); else delete src.obscuration;      // the bulb's cap / black top (R37), carried with the scene so solvers in a worker see it
     const prevFluxModel = src.fluxModel, prevDriveA = src.driveA, fresh = src.preset !== id;   // a different emitter opens at its own default current / flux model, not the last one's
     src.preset = id;
-    const cct = RF.CCT ? RF.CCT.presetCct(p) : undefined; if (cct) src.cct = cct; else delete src.cct;   // colour temperature default (js/cct.js): stated for LEDs; assumed 3200 K halogen / 4200 K HID
+    // the flux model (bin) this apply will use: the drive-model menu's pick, else the last one (same emitter), else the default
+    const fluxKey = !p.drive ? null : p.custom ? 'rows' : (opts && p.drive.models[opts.model] ? opts.model : (!fresh && p.drive.models[prevFluxModel] ? prevFluxModel : p.drive.model));
+    // colour temperature default (js/cct.js): a bin's own value (SFT-40 menu), else the preset's (stated K / table / 3200 K halogen / 4200 K HID).
+    // A value the owner typed in Light source (cctManual) is kept across re-applies; a different emitter starts from its own default.
+    const binCct = fluxKey && p.drive.models[fluxKey] ? p.drive.models[fluxKey].cct : undefined;
+    if (fresh) delete src.cctManual;
+    if (!src.cctManual) { const cct = Number.isFinite(binCct) ? binCct : (RF.CCT ? RF.CCT.presetCct(p, id) : undefined); if (cct) src.cct = cct; else delete src.cct; }
     delete src.effArea; delete src.dome;                  // a dome comes only with a model that has one
     if (p.custom && opts && opts.measured) src.measured = JSON.parse(JSON.stringify(opts.measured));
     if (p.custom) {                                       // a planar die: drop what the previous (volume / bulb) emitter left behind, before the no-rows early return below
@@ -343,8 +349,7 @@
       if (src.volts) { delete src.volts; src.power = PRESETS.generic.set.power; }
     }
     if (p.drive) {
-      if (!p.custom) src.fluxModel = opts && p.drive.models[opts.model] ? opts.model : (!fresh && p.drive.models[prevFluxModel] ? prevFluxModel : p.drive.model);
-      else src.fluxModel = 'rows';
+      src.fluxModel = fluxKey;
       const m = modelOf(src, p);
       if (!m) return p;                                   // the measured emitter before any rows: geometry left as is
       src.driveA = opts && opts.amps > 0 ? Math.min(m.maxA, opts.amps) : (!fresh && prevDriveA > 0 ? Math.min(m.maxA, prevDriveA) : Math.min(m.maxA, p.drive.defaultA));
@@ -386,6 +391,15 @@
     return true;
   }
 
+  // The note under a preset when its colour temperature is an assumption (not stated, not typed by her). '' otherwise.
+  function cctNote(src) {
+    const p = PRESETS[src.preset]; if (!p || src.cctManual || !(src.cct > 0) || !RF.CCT) return '';
+    const m = p.drive && !p.custom && src.fluxModel ? p.drive.models[src.fluxModel] : null;
+    const info = RF.CCT.presetCctInfo(p, src.preset);
+    if (!(m && Number.isFinite(m.cct)) && !info.assumed) return '';
+    return 'Colour temperature assumed (edit it in Light source).' + (info.multiBin ? ' CCT assumed: these parts are sold in several bins, edit it.' : '');
+  }
+
   // surface luminance (cd/mm²) of a Lambertian planar source: L = Φ / (π A)
   // (domed: of the apparent emitter, the die magnified by the dome — what a luminance meter sees from outside)
   const luminanceOf = (src) => { if (src.kind === 'planar' && src.dist === 'lambertian') { const s = RF.Source.apparent(src); return s.power / (Math.PI * (s.shape === 'disc' ? Math.PI * s.radius * s.radius : s.w * s.h)); } return null; };
@@ -401,5 +415,5 @@
     }
     return rows;
   }
-  RF.SourcePresets = { luminanceOf, areaAt, measuredModel, parseRows, KOEF3, PRESETS, apply, electrical, matches, lumensAt: (id, a, model) => { const d = PRESETS[id] && PRESETS[id].drive; return d ? lerp((d.models[model] || d.models[d.model]).curve, a) : NaN; } };
+  RF.SourcePresets = { luminanceOf, areaAt, measuredModel, parseRows, KOEF3, PRESETS, apply, electrical, matches, cctNote, lumensAt: (id, a, model) => { const d = PRESETS[id] && PRESETS[id].drive; return d ? lerp((d.models[model] || d.models[d.model]).curve, a) : NaN; } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

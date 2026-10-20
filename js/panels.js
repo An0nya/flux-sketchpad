@@ -417,6 +417,7 @@
       box.append(el('div', { class: 'row' }, el('label', {}, 'Voltage'), v));
     }
     box.append(el('div', { class: 'note' }, (SP.matches(src) ? '' : '⚠ Edited since the preset was applied. ') + p.note));
+    const cctNote = SP.cctNote(src); if (cctNote) box.append(el('div', { class: 'note' }, cctNote));
   }
 
   // ---------------------------------------------------------------- lists: stamps, lenses, groups
