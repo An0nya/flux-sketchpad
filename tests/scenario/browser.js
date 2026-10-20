@@ -53,7 +53,10 @@ function pageHide(on) {
 
 // name: a library id or label. Finds it in the own-low or own-high select and fires its change handler.
 function pageBeam(name) {
-  for (const [sel, key, kind] of [[document.querySelector('[data-anim=own-low]'), 'ownLow', 'low'], [document.querySelector('[data-anim=own-high]'), 'ownHigh', 'high']]) {
+  const lo = document.querySelector('[data-anim=own-low]'), hi = document.querySelector('[data-anim=own-high]');
+  // focus is the UI's own trigger for loading the built-in samples (drive-anim.js ensureBuiltins); the options appear a moment later
+  for (const sel of [lo, hi]) if (sel) sel.dispatchEvent(new Event('focus'));
+  for (const [sel, key, kind] of [[lo, 'ownLow', 'low'], [hi, 'ownHigh', 'high']]) {
     if (!sel) continue;
     const opt = [...sel.options].find((o) => o.value === name || o.textContent.trim() === name || o.textContent.includes(name));
     if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change')); return { key, kind, value: opt.value }; }
