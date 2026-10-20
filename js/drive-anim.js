@@ -374,7 +374,7 @@
   const flashState = () => ({ n: 0, seen: new Set() });
   function countFlashes(state, p, dist, t) {
     if (p.src.tiles) p = Object.assign({}, p, { A: p.src.tiles.mountain ? RF.Touge.route(dist,p.lane,!!p.touge) : tileRoute(p.src.tiles.seed, dist) });
-    const cars = trafficCars(p.src, dist, t);
+    const cars = trafficCars(p.src, dist, t); state.cars = cars; state.p = p;      // scene details reads these (pointers only)
     for (const car of cars) if (car.kind === 'oncoming' && car.rel > 0 && eyeLux(p, car) > 1 && !state.seen.has(car.id)) { state.seen.add(car.id); state.n++; }
     // IDs behind this monotonically advancing stream can never return; keep only the small visible window.
     if (p.src.traffic && p.src.traffic.density) {
@@ -1127,6 +1127,7 @@ void main() {
     if(p.touge){const world=RF.Touge.world(p,dist,t);return RF.Touge.glareSources(world.objects,dist,world.A);}
     // occluders: the whole frame (world + traffic), as the rendered frame sees it, so a car or building between lamp and eye hides the lamp
     const tauOf = tauFor(V.act, t), occ = p.src.tiles ? tileWorld(V.p, dist, t, tauOf).objects : placedObjects(p, dist, t, tauOf);
+    V.framePlaced = occ;      // scene details: the hazard list reads this (pointer only)
     return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), eyeOf(p), occ);
   }
   function exposure(sources) {
@@ -1186,13 +1187,14 @@ void main() {
     if (!V.three) V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
     const sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A) : D.glareSources(V.src.tiles ? placed.objects : placed, eyeOf(V.p));
+    V.frameGlare = sources; V.framePlaced = placed;      // scene details reads these (pointers only)
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
     const draw = { profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed, ...(V.src.cross ? fixedIntersection(V.src, st.dist) : {}) }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
     try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
     if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
-    flashLabel(st.dist, st.t); const detectorStart = performance.now(); if (st.game) { if (V.three) { const masks = V.three.masks(V.p, ss); V.gameMask = masks.mask; V.gameBodyMask = masks.body; } gameFrame(st.game); } const detectorMs = performance.now() - detectorStart; ui.dvAnimFrames = V.frames;
+    flashLabel(st.dist, st.t); if (detailsOn()) detailsSample(); const detectorStart = performance.now(); if (st.game) { if (V.three) { const masks = V.three.masks(V.p, ss); V.gameMask = masks.mask; V.gameBodyMask = masks.body; } gameFrame(st.game); } const detectorMs = performance.now() - detectorStart; ui.dvAnimFrames = V.frames;
     recordFrame(t0 - trafficMs, { trafficMs, placementMs: tPlaced - t0, uploadMs: t2 - t1, sourcesMs: sourceEnd - t2, glMs: t3 - sourceEnd, ...(glProfile || {}), detectorMs, workerRoundTripMs: 0, workerCpuMs: 0, assemblyMs: 0 }, traceProfile, traceProfile, false);
   }
 
@@ -1288,7 +1290,7 @@ void main() {
     if (!contextReady()) return;
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
-    adaptSS(rt); flashLabel(b.dist, b.t); V.ui.dvAnimFrames = V.frames;
+    adaptSS(rt); flashLabel(b.dist, b.t); V.frameGlare = sources; if (detailsOn()) detailsSample(); V.ui.dvAnimFrames = V.frames;      // scene details: pointers and a peak sample, as frame() does
     const trace = {};
     for (const d of b.parts) if (d.profile) for (const k of ['traceMs', 'objectMs', 'groundMs', 'wetMs', 'sampledRays', 'cacheHits', 'cacheMisses']) trace[k] = (trace[k] || 0) + (d.profile[k] || 0);
     recordFrame(b.started, { dispatchMs: b.dispatchMs, trafficMs: b.trafficMs, placementMs: b.placementMs, assemblyMs: assembled - t1, uploadMs: t2 - assembled, sourcesMs: sourceEnd - t2, glMs: t3 - sourceEnd, ...(glProfile || {}), detectorMs: 0, workerRoundTripMs: rt, workerCpuMs: b.parts.reduce((sum, d) => sum + d.ms, 0) }, trace, trace, true);
@@ -1462,6 +1464,7 @@ void main() {
     btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => { if (V.gpuFailure && info().o.gpuRenderer) { V.gpuFailure = ''; V.gpuTries = 0; say(''); labels(ui); ui.redrawSpec(); } else setDV(ui, 'gpuRenderer', !info().o.gpuRenderer); }, 'GPU drive renderer');      // failed while ON: a click retries the GPU
     btn('fps-counter', 'Small frame-rate badge; no sampled trace profiling.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'FPS');
     btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
+    btn('scene-details', 'Live numbers about the scene in a small panel: own car, oncoming traffic, glare, hazards, range and lamp. Refreshes about 4 times a second; off costs nothing.', () => setDV(ui, 'sceneDetails', !info().o.sceneDetails), 'Scene details');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
     // the resolution ceiling: the sim width every scene and mode may use (the canvas stays css x dpr). Dynamic resolution steps down from it.
     const resSel = E('select', { 'data-anim': 'resolution', 'aria-label': 'Resolution ceiling', title: 'Simulated image width ceiling, the same for every scene and mode: Low 640, Medium 960, High 1600, Ultra 2560, Native up to the canvas width (3840 max). Dynamic resolution steps down from this.' });
@@ -1668,7 +1671,7 @@ void main() {
     const hb = V.bar.querySelector('[data-anim="high-beam"]'), mode = V.highMode || 'off';
     hb.setAttribute('aria-pressed', String(!!V.high)); hb.dataset.state = mode;
     hb.textContent = mode === 'auto' ? 'high beam: auto (' + (V.autoSt ? V.autoSt.reason : 'clear') + ')' : 'high beam: ' + mode;
-    for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
+    for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['scene-details', 'sceneDetails'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
     V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.bar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
     V.bar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
@@ -1975,6 +1978,7 @@ void main() {
     if (!supported(I.o)) { if (st.popout) closePop(ui); st.playing = false; }
     labels(ui); gameControls(ui);
     const want = supported(I.o) && (st.view === 'anim' || st.popout);
+    detailsSync(want);
     if (!want) { stop(); killWorkers(); if (V.canvas) V.canvas.hidden = true; return; }
     if (V.lost && !V.glFailed) { stop(); return; }
     if (!ensureCanvas()) { st.playing = false; if (V.canvas) V.canvas.hidden = true; if (st.popout) closePop(ui); labels(ui); return; }
@@ -1997,8 +2001,99 @@ void main() {
       else contextFallback('Drive graphics failed: ' + (e.message || e));
     }
   }
+  // ---------------------------------------------------------------- scene details (the overlay; the registry is js/scene-details.js)
+  // Off costs nothing: no timer, no DOM. On: a panel refreshed about 4 times a second from a snapshot. The snapshot only READS the drive
+  // state (no traffic advance, no scenery activation, no draw), so turning the panel on cannot change the next frame.
+  const DETAIL_MS = 250, DEG = Math.PI / 180;
+  const detailsOn = () => !!(V.info && V.info.o.sceneDetails);
+  // the direction from our lamps (their mean position) to the driver's eye at car, eye 1.1 m up as eyeLux has it
+  function driverDir(p, car) {
+    const q = p.A ? p.A.at(car.rel, car.off) : { p: [car.rel, car.off] }; let x = 0, y = 0, z = 0;
+    for (const L of p.lamps) { x += L[0]; y += L[1]; z += L[2]; }
+    const n = p.lamps.length || 1;
+    return [q.p[0] - x / n, q.p[1] - y / n, 1.1 - z / n];
+  }
+  // Peaks: one lux per oncoming car per drawn frame while the overlay is on (cheap), and at each tick. A new scene or a seek back
+  // more than 50 m starts them again. Reads V.flash (set by countFlashes this frame), so it draws nothing and advances nothing.
+  function detailsSample() {
+    const f = V.flash; if (!f || !f.cars || !f.p) return;
+    const dist = S(V.ui).dist;
+    if (!V.peaks || V.peaksSrc !== V.src || (V.peaksDist !== undefined && dist < V.peaksDist - 50)) V.peaks = new Map();
+    V.peaksSrc = V.src; V.peaksDist = dist;
+    RF.SceneDetails.samplePeaks(V.peaks, f.cars.filter((c) => c.kind === 'oncoming'), (c) => eyeLux(f.p, c));
+  }
+  function detailState() {
+    const I = info(), o = I.o, st = S(V.ui), src = V.src, p = V.p, dist = st.dist, M = RF.SceneDetails;
+    const pass = !!(p && p.touge), kHere = curvatureAt(src, dist);
+    let tight = 0; for (let x = dist; x <= dist + 100; x += 10) tight = Math.max(tight, Math.abs(curvatureAt(src, x)));
+    const f = V.flash, cp = f && f.p ? f.p : p, cars = f && f.cars ? f.cars.filter((c) => c.kind === 'oncoming') : [];
+    const oncoming = o.oncoming && cp ? M.oncomingRows(cars, 5, (c) => eyeLux(cp, c), (c) => M.angleDeg([Math.cos(cp.yaw || 0), Math.sin(cp.yaw || 0), 0], driverDir(cp, c)), V.peaks || new Map()) : [];
+    const glare = D.glareStrength(D.capGlare(o.glare)) > 0, sources = V.frameGlare || [];
+    // hazards: the frame's placed people and deer (not traffic), seen from the driver's eye; occlusion and lit tests use the frame's objects and our beam
+    const beamAt = (dx, dy, dz, side) => D.ownBeamAt(p, dx, dy, dz, side), placed = V.framePlaced, objs = placed ? (Array.isArray(placed) ? placed : placed.objects || []) : [];
+    const people = !!o.people, animals = !!o.animals, eye = eyeOf(p);
+    const hazardList = objs.filter((ob) => !ob.traffic && ((ob.cls === 'person' && people) || (ob.cls === 'deer' && animals)));
+    // one actor is several parts (a pedestrian ~4, a deer ~9) sharing a modelId; cylinders carry z0/z1, not z
+    const actors = new Map();
+    for (const ob of hazardList) { const k = String(ob.modelId ?? ob.id); if (!actors.has(k)) actors.set(k, []); actors.get(k).push({ x: ob.x, y: ob.y, z: ob.z !== undefined ? ob.z : ((ob.z0 || 0) + (ob.z1 || 0)) / 2 }); }
+    const hazards = (people || animals) && p ? M.hazardCounts([...actors.values()], { eye, hfov: p.hfov, occludedAt: (P) => D.occluded(P, eye, objs), luxAt: (P) => M.faceLux(p.lamps, beamAt, P, [-1, 0, 0]) }) : null;
+    // beam reach: the far edge of the lit stretch on our own lane centre (lateral offset 0: the lamps sit at +-0.7 m, the oncoming lane at lane), where our road illuminance falls below 1 lx (walk to 300 m)
+    const reach = p && p.lamps ? M.litEdge((d) => { const q = p.A ? p.A.at(d, 0).p : [d, 0]; return M.roadLux(p.lamps, beamAt, q[0], q[1]) >= 1; }, 1, 300, 1) : null;
+    return {
+      speedKmh: autoSpeedKmh(st, o.speed),
+      highMode: V.highMode || 'off', autoReason: V.autoSt ? V.autoSt.reason : 'clear',
+      afs: !!o.afs, afsYawDeg: st.lighting ? st.lighting.yaw / DEG : 0,
+      radius: kHere ? 1 / Math.abs(kHere) : Infinity, radius100: tight ? 1 / tight : Infinity,
+      pass, gradePct: pass ? 100 * RF.Touge.profile(dist).grade : null, bankPct: pass ? 100 * RF.Touge.bank(dist) : null,
+      oncomingOn: !!o.oncoming, oncoming,
+      glareOn: glare, glareName: D.glareLevel(D.capGlare(o.glare)), veil: D.veilAt([1, 0, 0], sources), veilTop: M.topSource([1, 0, 0], sources),
+      ev: o.ev, white: V.white === undefined ? null : V.white,
+      hazardsOn: people || animals, hazards, reach, lamp: 'built-in',
+    };
+  }
+  function detailsSnapshot() {
+    const s = detailState(), M = RF.SceneDetails;
+    return { t: performance.now(), rows: M.METRICS.map((m) => { const na = m.applies(s), value = na ? null : m.read(s); return { id: m.id, group: m.group, label: m.label, unit: m.unit, na, value, shown: M.display(m, value, na) }; }) };
+  }
+  function detailsRender(snap) {
+    const M = RF.SceneDetails;
+    if (!V.detailsEl) {
+      const el = E('section', { class: 'drive-details', 'data-anim': 'scene-details-panel', 'aria-label': 'Scene details' });
+      let g = null;
+      for (const m of M.METRICS) {
+        if (!g || g.getAttribute('data-group') !== m.group) { g = E('div', { class: 'dd-group', 'data-group': m.group }, E('div', { class: 'dd-head' }, M.GROUPS[m.group])); el.append(g); }
+        g.append(E('div', { class: 'dd-row', 'data-metric': m.id }, E('span', { class: 'dd-label' }, m.label), E('output', { class: 'dd-value' })));
+      }
+      V.detailsEl = el;
+    }
+    for (const r of snap.rows) {
+      const row = V.detailsEl.querySelector('[data-metric="' + r.id + '"]'); if (!row) continue;
+      row.classList.toggle('na', !!r.na); row.title = r.na ? 'Not applicable here: ' + r.na : '';
+      row.querySelector('.dd-value').textContent = Array.isArray(r.shown) ? r.shown.join('\n') : r.shown;
+    }
+  }
+  function detailsPause() { if (V.detailsTimer) { clearInterval(V.detailsTimer); V.detailsTimer = 0; } }
+  function detailsTick() {
+    if (!detailsOn()) { detailsSync(false); return; }
+    detailsSample();
+    const snap = V.detailsSnap = detailsSnapshot();
+    const host = S(V.ui).popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement;
+    if (!host) return;
+    detailsRender(snap);
+    if (V.detailsEl.parentElement !== host) host.append(V.detailsEl);
+  }
+  // run = the drive view is shown. The timer runs only while the overlay is on AND shown; otherwise it is cleared and the panel removed.
+  function detailsSync(run) {
+    if (run && detailsOn()) { if (!V.detailsTimer) { V.detailsTimer = setInterval(detailsTick, DETAIL_MS); V.peaks = new Map(); } detailsTick(); return; }
+    detailsPause();
+    if (V.detailsEl) { V.detailsEl.remove(); V.detailsEl = null; }
+    V.detailsSnap = null;
+  }
+  // the same numbers the panel shows, from the last tick (a copy, so a caller cannot change the snapshot)
+  const detailsStats = () => V.detailsSnap ? { t: V.detailsSnap.t, rows: V.detailsSnap.rows.map((r) => Object.assign({}, r)) } : null;
+
   // a hidden tab stops the loop; showing it again redraws (which restarts it)
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (V.ui) { if (document.visibilityState === 'hidden') stop(); else if (V.info) { if (S(V.ui).popout && !popValid(V.ui)) closePop(V.ui); else V.ui.redrawSpec(); } } });
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (V.ui) { if (document.visibilityState === 'hidden') { stop(); detailsPause(); } else if (V.info) { if (S(V.ui).popout && !popValid(V.ui)) closePop(V.ui); else V.ui.redrawSpec(); } } });
 
   // ---------------------------------------------------------------- numbers for tests and the report
   const pct = (a, q) => { if (!a || !a.length) return 0; const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * q))]; };
@@ -2041,7 +2136,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -644,6 +644,12 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 .drive-fps { position: absolute; right: 6px; top: var(--drive-toolbar-bottom, 80px); z-index: 2; padding: 2px 4px; color: #e5efff; background: #050a12b8; font: 10px/1.35 monospace; font-variant-numeric: tabular-nums; pointer-events: none; }
 .drive-perf { position: absolute; left: 6px; top: calc(var(--drive-toolbar-bottom, 80px) + 24px); z-index: 2; max-width: calc(100% - 12px); max-height: min(45%, calc(100% - var(--drive-toolbar-bottom, 80px) - 30px)); overflow: auto; box-sizing: border-box; padding: 4px 6px; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: auto; touch-action: pan-y; background: rgba(5,10,18,.85); color: #e5efff; font: 10px/1.35 monospace; font-variant-numeric: tabular-nums; }
 .drive-perf[hidden], .drive-fps[hidden], .canvas-wrap:not(.drive) > :is(.drive-perf, .drive-fps) { display: none; }
+.drive-details { position: absolute; right: 6px; top: calc(var(--drive-toolbar-bottom, 80px) + 24px); z-index: 2; width: min(260px, 45%); max-height: min(70%, calc(100% - var(--drive-toolbar-bottom, 80px) - 30px)); overflow: auto; box-sizing: border-box; padding: 4px 6px; background: rgba(5,10,18,.85); color: #e5efff; font: 10px/1.35 monospace; font-variant-numeric: tabular-nums; pointer-events: auto; touch-action: pan-y; }
+.drive-details[hidden], .canvas-wrap:not(.drive) > .drive-details { display: none; }
+.drive-details .dd-head { font-weight: 600; margin-top: 3px; }
+.drive-details .dd-row { display: flex; justify-content: space-between; gap: 8px; }
+.drive-details .dd-row.na { opacity: .45; }
+.drive-details .dd-value { text-align: right; white-space: pre-line; }
 .drive-below:empty, .drive-below:not(:has(> :not([hidden]))), body:not(.mode-D) .drive-below, figure.map:not(:has(> .canvas-wrap.drive)) > .drive-below { display: none; }
 .drive-below { flex: none; min-width: 0; width: 100%; box-sizing: border-box; }
 .drive-below > .drive-game, .drive-below > .drive-game.running { position: static; width: 100%; max-height: none; margin: 4px 0 0; overflow: visible; }
@@ -658,7 +664,7 @@ figure.map > .drive-below:has(> .drive-game:not([hidden])) { flex-shrink: 1; max
   .result-pane figure.map > .canvas-wrap.drive { flex: none; height: clamp(320px, 56.25vw, 600px); min-height: 320px; }
   .dp-stage { min-height: 320px; }
   figure.map > .drive-below:has(> .drive-game:not([hidden])) { max-height: none; overflow: visible; }
-  .drive-below > :is(.drive-extras, .drive-perf) { position: static; width: 100%; max-width: 100%; max-height: none; margin: 4px 0 0; overflow: visible; }
+  .drive-below > :is(.drive-extras, .drive-perf, .drive-details) { position: static; width: 100%; max-width: 100%; max-height: none; margin: 4px 0 0; overflow: visible; }
   .drive-below .drive-anim-tools:not([hidden]) { display: flex; }
   .drive-below .drive-extras :is(button,select), .drive-tools :is(button,select), .drive-more > summary { min-height: 32px; }
   .drive-below .drive-extras select { max-width: 100%; }
