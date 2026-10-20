@@ -79,6 +79,48 @@ async function meanLuma(page, png) {
     const seq = await drive(8);
     ok('SD cycle 8: eight versions valid, and eight consecutive frames show eight distinct versions', cyc.valid === 8 && cyc.cycle === 8 && new Set(seq).size === 8, 'valid ' + cyc.valid + ' shown ' + seq.join(','));
     await setOpts({ scatterCycle: 0, scatterCache: 'off', scatterMode: 'direct' });
+    // SD3 UI: the buttons appear in air only; table mode switches the labels and the scatter steps (16, 32, 64); res, blur, cache and cycle need table mode.
+    // Frames here are taken at one car position (no driving in this block), so direct frames can be compared with each other.
+    const ui = (k) => page.evaluate((key) => { const b = document.querySelector('[data-dv="' + key + '"]'); return b ? { text: b.textContent.trim(), hidden: b.hidden, disabled: b.disabled } : null; }, k);
+    const press = async (k) => { await page.evaluate((key) => document.querySelector('[data-dv="' + key + '"]').click(), k); await sleep(2200); };
+    const pressTo = async (k, text) => { for (let i = 0; i < 6; i++) { if ((await ui(k)).text === text) return true; await press(k); } return (await ui(k)).text === text; };
+    const snap = async (label) => { await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sc-drive', '1')); const png = await page.locator('canvas[data-sc-drive="1"]').screenshot(); return { label, hash: crypto.createHash('sha256').update(png).digest('hex'), luma: await meanLuma(page, png) }; };
+    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { visibility: null, scatter: 0, scatterMode: 'direct', scatterRes: 'half', scatterBlur: 'off', scatterCache: 'off', scatterCycle: 0, scatterTableSteps: undefined }); RF.UI.redrawSpec(); });
+    await sleep(1500);
+    const clearStates = await Promise.all(['scatterMode', 'scatterRes', 'scatterBlur', 'scatterCache', 'scatterCycle'].map((k) => ui(k)));
+    ok('SD UI: the five air beam buttons are hidden in clear air', clearStates.every((b) => b && b.hidden), JSON.stringify(clearStates.map((b) => b && b.hidden)));
+    await page.evaluate(() => { RF.UI.dvOpts.visibility = 200; RF.UI.redrawSpec(); }); await sleep(2000);
+    const dirUI = { mode: await ui('scatterMode'), res: await ui('scatterRes'), blur: await ui('scatterBlur'), cache: await ui('scatterCache'), cycle: await ui('scatterCycle') };
+    ok('SD UI: in air, direct mode: the mode button reads direct, the table-only buttons are disabled', dirUI.mode.text === 'air beam mode: direct' && !dirUI.mode.hidden && ['res', 'blur', 'cache', 'cycle'].every((k) => dirUI[k].disabled && !dirUI[k].hidden), JSON.stringify(dirUI));
+    const dirOff = await snap('direct, off');
+    await pressTo('scatter', 'air beam: high');
+    ok('SD UI: direct scatter labels read high at the top (4, 8, 16 steps, unchanged)', (await ui('scatter')).text === 'air beam: high', (await ui('scatter')).text);
+    const dirHigh = await snap('direct, high');
+    ok('SD UI: direct high frame differs from the beam-off frame (the button drives the frame)', dirHigh.hash !== dirOff.hash && dirHigh.luma > dirOff.luma, 'off ' + dirOff.luma.toFixed(3) + ' high ' + dirHigh.luma.toFixed(3));
+    await press('scatterMode');
+    ok('SD UI: switching to table keeps the level and shows the table step count (64)', (await ui('scatterMode')).text === 'air beam mode: table' && (await ui('scatter')).text === 'air beam: high (64)', (await ui('scatter')).text);
+    ok('SD UI: table mode enables res, blur and cache; cycle waits for the cache', !(await ui('scatterRes')).disabled && !(await ui('scatterBlur')).disabled && !(await ui('scatterCache')).disabled && (await ui('scatterCycle')).disabled);
+    const steps = [];
+    await pressTo('scatter', 'air beam: low (16)'); steps.push((await ui('scatter')).text);
+    await press('scatter'); steps.push((await ui('scatter')).text);
+    await press('scatter'); steps.push((await ui('scatter')).text);
+    ok('SD UI: table scatter steps read low (16), mid (32), high (64)', steps.join(' | ') === 'air beam: low (16) | air beam: mid (32) | air beam: high (64)', steps.join(' | '));
+    await pressTo('scatterCache', 'beam cache: on');
+    await pressTo('scatterCycle', 'beam cycle: 8');
+    ok('SD UI: cache on enables the cycle button, which reads 8', (await ui('scatterCache')).text === 'beam cache: on' && !(await ui('scatterCycle')).disabled && (await ui('scatterCycle')).text === 'beam cycle: 8');
+    await pressTo('scatterCycle', 'beam cycle: off'); await pressTo('scatterCache', 'beam cache: off');
+    await pressTo('scatterRes', 'beam res: full'); const resFull = (await ui('scatterRes')).text;
+    await pressTo('scatterRes', 'beam res: half');
+    await pressTo('scatterBlur', 'beam blur: strong'); const blurStrong = (await ui('scatterBlur')).text;
+    await pressTo('scatterBlur', 'beam blur: off');
+    ok('SD UI: res cycles half and full, blur cycles off, mid and strong', resFull === 'beam res: full' && blurStrong === 'beam blur: strong', resFull + ' / ' + blurStrong);
+    await pressTo('scatter', 'air beam: high (64)');
+    const tabHigh = await snap('table, high 64');
+    ok('SD UI: table frame at high (64) is within 15 percent of the direct high frame (mean luminance)', Math.abs(tabHigh.luma / dirHigh.luma - 1) < 0.15 && tabHigh.hash !== dirHigh.hash, 'direct ' + dirHigh.luma.toFixed(3) + ' table ' + tabHigh.luma.toFixed(3));
+    await press('scatterMode');
+    await pressTo('scatter', 'air beam: high');
+    const dirAgain = await snap('direct, high again');
+    ok('SD UI: back to direct at high: the frame equals the first direct high frame (same car position)', (await ui('scatterMode')).text === 'air beam mode: direct' && dirAgain.hash === dirHigh.hash, dirAgain.hash.slice(0, 12) + ' vs ' + dirHigh.hash.slice(0, 12));
     ok('SD nothing throws', errors.length === 0, errors.slice(0, 3).join(' | '));
   } catch (e) { ok('SD page run completed', false, String(e && e.stack || e).slice(0, 400)); }
   finally { await browser.close(); }

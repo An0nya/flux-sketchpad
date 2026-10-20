@@ -85,7 +85,7 @@ export function create(canvas, gl, onModelsReady) {
     if (needFill) {
       const v = !cache ? 0 : tabValid;
       const bank = targetsFor(v);
-      set('tableH', th); set('tableSteps', Math.max(1, Math.round(look.scatterTableSteps || 48))); set('tableSeed', v);
+      set('tableH', th); set('tableSteps', Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48))); set('tableSeed', v);
       for (let b = 0; b < 3; b++) { set('tableBank', b); renderer.setRenderTarget(bank[b]); renderer.render(tabScene, camera); }
       if (sig > 0) for (let b = 0; b < 3; b++) {
         blurU.texel.value.set(1 / tw, 1 / th); blurU.sig.value = sig;
