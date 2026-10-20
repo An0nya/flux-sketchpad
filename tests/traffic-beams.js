@@ -44,6 +44,32 @@ function run(RF, ok) {
   const q = D.trafficSources(objs2, EYE, dim)[0], fallback = D.trafficSources(objs2, EYE, { ...dim, trafficPool: null })[0];
   const ratio = probe(q, null) / probe(fallback, D.trafficBeam(dim));
   ok('BT1 negative control: the pooled beam, not the built-in, lights the car (ratio 4)', Math.abs(ratio - 4) < 1e-9, { ratio });
+  // BT2: weightedPick. Same seed gives the same assignment; a different seed moves cars; equal weights balance over 300 cars.
+  const ids = [...Array(300).keys()].map(k => 'oncoming:' + k);
+  const three = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const assign = (seed, pool, w) => ids.map(id => D.weightedPick(seed, id, pool, w));
+  ok('BT2 same seed gives the same assignment', JSON.stringify(assign(7, three)) === JSON.stringify(assign(7, three)));
+  // median share of cars that change beam between consecutive seeds (independent picks would give 2/3)
+  const movedAt = (s) => assign(s, three).filter((v, i) => v !== assign(s - 1, three)[i]).length / ids.length;
+  const movedSorted = [...Array(20).keys()].map(k => movedAt(k + 2)).sort((a, b) => a - b), medMove = movedSorted[10];
+  ok('BT2 a different seed reassigns cars: median of 20 seed pairs moves over 40% of cars', medMove > 0.4, { median: +medMove.toFixed(3), min: +movedSorted[0].toFixed(3) });
+  const counts = {};
+  for (const seed of [1, 2, 3, 4, 5, 7, 8, 42]) {
+    const c = [0, 0, 0]; for (const v of assign(seed, three)) c[v]++; counts[seed] = c.join('/');
+    ok('BT2 equal weights over 3 beams within 10% over 300 cars (seed ' + seed + ')', c.every(x => Math.abs(x - 100) <= 10), { counts: c });
+  }
+  ok('BT2 weights [1,0,0] pick only the first beam', assign(7, three, [1, 0, 0]).every(v => v === 0));
+  ok('BT2 zero weights or an empty pool pick nothing', D.weightedPick(7, 'oncoming:1', three, [0, 0, 0]) === -1 && D.weightedPick(7, 'oncoming:1', []) === -1);
+  ok('BT2 a car keeps its beam on every call (stable per car id)', ids.every(id => D.weightedPick(9, id, three) === D.weightedPick(9, id, three)));
+  // colour: a 3200 K entry and a 6500 K entry give cars different tints (the glare path multiplies by the tint)
+  const tintOf = (cct) => D.unitTint(RF.CCT.cctToRGB(cct));
+  const pool2 = [{ id: 'halogen', lut, conv: 'A', tint: tintOf(3200) }, { id: 'led', lut, conv: 'A', tint: tintOf(6500) }];
+  const cp = { ...p0, trafficPool: { entries: pool2, weights: [1, 0] } }, lg = { ...p0, trafficPool: { entries: pool2, weights: [0, 1] } };
+  const tHalo = D.trafficSources(objs2, EYE, cp)[0].tint, tLed = D.trafficSources(objs2, EYE, lg)[0].tint;
+  ok('BT2 a 3200 K beam tints its car warmer than a 6500 K beam', tHalo[2] / tHalo[0] < tLed[2] / tLed[0], { halogen: tHalo.map(v => +v.toFixed(3)), led: tLed.map(v => +v.toFixed(3)) });
+  // a pick with no library colour falls back to the source tint (here 1,1,1), so the car matches the built-in colour
+  ok('BT2 tints are chromaticity only: peak channel 1, so the glare brightness is the beam table alone', [3200, 6500].every(k => Math.max(...tintOf(k)) === 1));
+  ok('BT2 a beam with no colour keeps the neutral tint', D.trafficSources(objs2, EYE, { ...p0, trafficPool: { entries: [{ ...pool2[0], tint: [1, 1, 1] }], weights: null } })[0].tint.every(v => v === 1));
   // a non-symmetric mode ignores the pool (the generic lamp is used)
   const gen = D.trafficSources(objs2, EYE, { ...dim, src: { traffic: { onMode: 'generic', seed: 7 } } });
   ok('BT1 non-symmetric traffic takes no per-car beam', gen.every(s => s.beam === undefined));

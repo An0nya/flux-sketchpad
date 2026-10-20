@@ -600,11 +600,15 @@
     const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h >>> 0; };
     const id = String(carId), ord = /(\d+)$/.exec(id), off = fnv(String(seed)) / 4294967296;
     const u = ord ? (off + Number(ord[1]) * 0.6180339887498949) % 1 : fnv(String(seed) + ':' + id) / 4294967296;
+    // each seed also deals the intervals to the pool in its own order: a seed that only shifts the phase would move few cars
+    const deal = [...Array(n).keys()].map(i => [fnv(String(seed) + ':' + (pool[i] && pool[i].id !== undefined ? pool[i].id : i)), i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(e => e[1]);
     const target = u * total; let acc = 0;
-    for (let i = 0; i < n; i++) { acc += wt(i); if (target < acc && wt(i) > 0) return i; }
+    for (const i of deal) { acc += wt(i); if (target < acc && wt(i) > 0) return i; }
     for (let i = n - 1; i >= 0; i--) if (wt(i) > 0) return i;
     return -1;
   }
+  // BT: a beam's colour as a tint with its peak channel at 1: chromaticity only, so the intensity stays in the beam's own table
+  const unitTint = (rgb) => { const m = Math.max(...rgb); return m > 0 ? rgb.map(v => v / m) : [1, 1, 1]; };
   // BT: the library beam a car uses (its pool entry), or null for the built-in beam. Only symmetric traffic takes a pick:
   // the other modes light cars with the generic lamp, so the shuffle has nothing to change there.
   function trafficPickOf(p, carId) {
@@ -939,5 +943,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, weightedPick, trafficBeamFields, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, scatterPhase, scatterJitter, SCAT, scatterTableBins, scatterTableAt, TABLE, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, scatterPhase, scatterJitter, SCAT, scatterTableBins, scatterTableAt, TABLE, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
