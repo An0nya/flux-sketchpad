@@ -77,7 +77,7 @@
           ok('UX3 game dock preserves the actual picture '+JSON.stringify({popout,state,open,fit}),m.gameBelow&&m.gameOverlap<=.20,{game:m.game,render:m.render,picture:m.picture,overlap:m.gameOverlap,below:m.gameBelow});
           if(popout)ok('UX3 full viewport overlay and toolbar clearance '+JSON.stringify({state,open,fit}),m.popout.left===0&&m.popout.top===0&&Math.abs(m.popout.right-innerWidth)<1&&Math.abs(m.popout.bottom-innerHeight)<1&&m.safe,m.popout);
           ok('UX2 primary has only driving controls',m.primary.length===6&&['scene','speed','play','toggle','glare','more'].every(k=>m.primary.includes(k)),m.primary);
-          if(open)ok('UX2 More keeps advanced controls available',visible(u.driveExtras)&&['oncoming','preceding','wet','wetSheen','onMode'].every(k=>u.driveExtras.querySelector('[data-dv='+k+']'))&&['tiles','gpu-renderer','fps-counter','debug-timings'].every(k=>u.driveExtras.querySelector('[data-anim='+k+']')));
+          if(open)ok('UX2 More keeps advanced controls available',visible(u.driveExtras)&&['oncoming','preceding','wetness','wetSheen','onMode'].every(k=>u.driveExtras.querySelector('[data-dv='+k+']'))&&['tiles','gpu-renderer','fps-counter','debug-timings'].every(k=>u.driveExtras.querySelector('[data-anim='+k+']')));
         }
       }
       game.click();if(popout)D.closePop(u);
