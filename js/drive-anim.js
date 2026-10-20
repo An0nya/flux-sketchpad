@@ -1502,6 +1502,7 @@ void main() {
       ownHigh.replaceChildren(E('option', { value: 'generic' }, 'generic high'), ...libLoad().filter(e => e.beamKind === 'high').map(e => E('option', { value: e.id }, e.name + (e.persisted ? '' : ' (session)'))));
       ownLow.value = libFind(keep.l, 'low') || keep.l === 'design' || !keep.l ? (keep.l || 'design') : 'design';
       ownHigh.value = libFind(keep.h, 'high') || keep.h === 'generic' || !keep.h ? (keep.h || 'generic') : 'generic';
+      renderManager();
     };
     ownLow.addEventListener('change', () => setDV(ui, 'ownLow', ownLow.value)); ownHigh.addEventListener('change', () => setDV(ui, 'ownHigh', ownHigh.value));
     const fileIn = E('input', { type: 'file', accept: '.json,application/json', 'data-anim': 'beam-file', 'aria-label': 'Import beam file (single beam or bundle)', hidden: '' });
@@ -1528,7 +1529,49 @@ void main() {
     }, 'export');
     V.fillOwn = () => { fillOwn(); V.libVer = LIB.ver; }; V.fillOwn();
     bar.append(E('span', { class: 'anim-speed' }, 'beam'), ownLow, ownHigh, fileIn, V.beamMsg);
+    // BB2 library manager: one row per saved beam (rename, delete), and clear all (two clicks)
+    V.setOwn = (k, v) => setDV(ui, k, v);
+    V.mgr = E('details', { class: 'beam-manager', 'data-anim': 'beam-manager', style: 'flex-basis:100%' }, E('summary', {}, 'library'));
+    bar.append(V.mgr); renderManager();
     V.bar = bar; return bar;
+  }
+  // BB2: the library rows. Rename and delete change the library in memory first and then the stored copy; a failed store says so.
+  function renderManager() {
+    const box = V.mgr; if (!box) return;
+    const items = libLoad(), o = info() ? info().o : {};
+    const rows = items.map((e) => {
+      const nm = E('input', { type: 'text', maxlength: '80', 'data-anim': 'beam-row-name', 'aria-label': 'Name of this beam', value: e.name });
+      const ren = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-rename', title: 'Rename this beam' }, 'rename');
+      ren.addEventListener('click', () => {
+        const others = items.filter(x => x.id !== e.id).map(x => x.name);
+        try { RF.Beams.renameIn(items, e.id, nm.value); e.name = RF.Beams.uniqueName(e.name, others); LIB.ver++; libSaveStore(); LIB.msg = 'Renamed to "' + e.name + '".'; }
+        catch (err) { LIB.msg = 'Rename failed: ' + err.message; }
+        V.fillOwn(); V.beamMsg.textContent = LIB.msg;
+      });
+      const del = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-delete', title: 'Remove this beam from the library' }, 'delete');
+      del.addEventListener('click', () => {
+        const wasLow = o.ownLow === e.id, wasHigh = o.ownHigh === e.id;
+        LIB.items = RF.Beams.removeIn(items, e.id); LIB.ver++;
+        const stored = libSaveStore();
+        if (wasLow) V.setOwn('ownLow', 'design'); if (wasHigh) V.setOwn('ownHigh', 'generic');
+        LIB.msg = 'Deleted "' + e.name + '".' + (wasLow ? ' It was the low beam in use: our design is selected now.' : '') + (wasHigh ? ' It was the high beam in use: generic high is selected now.' : '')
+          + (stored ? '' : ' Browser storage refused the update, so it may come back on reload.');
+        V.fillOwn(); V.beamMsg.textContent = LIB.msg;
+      });
+      const size = (e.lut.nh * e.lut.step).toFixed(0) + ' x ' + (e.lut.nv * e.lut.step).toFixed(0) + ' deg';
+      return E('div', { class: 'beam-row', 'data-id': e.id }, nm, E('span', { class: 'anim-speed' }, e.beamKind), E('span', { class: 'anim-speed' }, size), E('span', { class: 'anim-speed' }, e.persisted ? 'saved' : 'session'), ren, del);
+    });
+    const clr = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-clear-all', title: 'Remove every beam from the library (asks twice)' }, items.length ? (V.clearArmed ? 'confirm: remove all ' + items.length : 'clear all') : 'library empty');
+    clr.disabled = !items.length;
+    clr.addEventListener('click', () => {
+      if (!V.clearArmed) { V.clearArmed = true; renderManager(); return; }
+      V.clearArmed = false; const n = items.length; LIB.items = []; LIB.ver++;
+      const stored = libSaveStore();
+      V.setOwn('ownLow', 'design'); V.setOwn('ownHigh', 'generic');
+      LIB.msg = 'Removed ' + n + ' beam' + (n === 1 ? '' : 's') + ' from the library; our design and generic high are selected.' + (stored ? '' : ' Browser storage refused the update, so they may come back on reload.');
+      V.fillOwn(); V.beamMsg.textContent = LIB.msg;
+    });
+    box.replaceChildren(E('summary', {}, 'library (' + items.length + ')'), ...(rows.length ? rows : [E('span', { class: 'anim-speed' }, 'No saved beams yet. Save a design, or import a file.')]), E('div', { class: 'beam-row' }, clr));
   }
   function flashText() { if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0); }
   function flashLabel(dist, t) {
