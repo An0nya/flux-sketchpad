@@ -54,7 +54,7 @@
     src.traffic.onMode = o.onMode || (o.onKcd === undefined ? 'symmetric' : 'manual'); src.traffic.onKcd = o.onKcd === undefined ? 30 : +o.onKcd;
     src.traffic.logic = !!o.trafficLogic; src.traffic.pedStop = o.pedStop !== false; src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
     if (o.tiles) src.markings = D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });
-    if (o.tiles) src.tiles = { mountain: !!o.mountainPass, density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
+    if (o.tiles) src.tiles = { mountain: !!o.mountainPass, density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
     for (const kind of ['oncoming', 'preceding']) if (src.traffic[kind]) {
       const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
       K.car(0, 0, kind === 'oncoming' ? { face: -1, lamps: 'head', kcd: +o.onKcd || 30 } : { face: 1, lamps: 'tail' }); src.traffic.models[kind] = K.O;
@@ -386,8 +386,17 @@
   }
   // ---------------------------------------------------------------- optional route tiles (200 m each, bends only in the middle 100 m)
   const TILE_LEN = 200, TILE_KINDS = ['straight', '250R', '250L', '150R', '150L', 'intersection', 't-junction', 'urban'];
-  function roadTile(seed, k) {
-    const R = D.rng((Math.imul(seed | 0, 2654435761) ^ Math.imul(k + 1, 0x85EBCA6B)) >>> 0), kind = TILE_KINDS[Math.floor(R() * TILE_KINDS.length)];
+  // weights (SP3, optional): a multiplier per kind; a kind not named counts 1. Absent, or every weight 1, is the old pick floor(R x 8), byte for byte.
+  // The kind takes one draw either way, so side and phase never move with the weights.
+  function pickKind(R, weights) {
+    if (!weights) return TILE_KINDS[Math.floor(R() * TILE_KINDS.length)];
+    let total = 0; const cum = TILE_KINDS.map((kd) => (total += weights[kd] === undefined ? 1 : Math.max(0, +weights[kd] || 0)));
+    if (!(total > 0)) return TILE_KINDS[Math.floor(R() * TILE_KINDS.length)];
+    const u = R() * total, i = cum.findIndex((c) => u < c);
+    return i < 0 ? TILE_KINDS[TILE_KINDS.length - 1] : TILE_KINDS[i];
+  }
+  function roadTile(seed, k, weights) {
+    const R = D.rng((Math.imul(seed | 0, 2654435761) ^ Math.imul(k + 1, 0x85EBCA6B)) >>> 0), kind = pickKind(R, weights);
     return { k, s0: k * TILE_LEN, kind, curvature: /[RL]$/.test(kind) ? (kind.endsWith('L') ? 1 : -1) / parseInt(kind, 10) : 0, side: R() < 0.5 ? -1 : 1, phase: Math.floor(R() * 50) };
   }
   // Integrate only a local window, then put the camera at (0,0), facing its tangent. No accumulated drift or growing route history.
@@ -531,9 +540,11 @@
         }
         for (const ob of K.O) { const n = move(Object.assign({}, ob), ob, ob.x, A); n.tile = tile.k; extra.push(n); }
       }
-      if ((junction || tile.kind === 'urban') && cfg.lamps !== 'off') {
+      // lamp rule (SP3): urban-only (the default, today) = junction and urban tiles, a lamp every 50 m; sparse = the same tiles, every 100 m; all = every tile, every 50 m; off = none
+      const lampRule = cfg.lampRule || 'urban-only', lampTile = lampRule === 'all' || (lampRule !== 'off' && (junction || tile.kind === 'urban'));
+      if (lampTile && cfg.lamps !== 'off') {
         const rgb = cfg.lamps === 'led' ? [1, 0.85, 0.66] : [1, 0.43, 0.10], K = D.kit({ Lw: lane, A: null, rand: () => 0.5 });
-        for (let u = 25, i = 0; u < TILE_LEN; u += 50, i++) {
+        for (let u = 25, i = 0; u < TILE_LEN; u += lampRule === 'sparse' ? 100 : 50, i++) {
           const s = tile.s0 + u - dist, side = i % 2 ? 1 : -1, b = side < 0 ? edgeR - 1 : edgeL + 1, head = b - side * 0.8;
           if (s < -65 || s > CULL) continue;
           K.add({ k: 'cyl', x: s, y: b, r: 0.065, z0: 0, z1: 7, mat: 'pole', cls: 'street-lamp' });
