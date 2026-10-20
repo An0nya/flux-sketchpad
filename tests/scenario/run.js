@@ -98,8 +98,17 @@ module.exports = { renderNode, writeOut, loadScenarios, encodePNG, frameStats, f
 if (require.main === module) {
   (async () => {
     const [arg, portArg] = process.argv.slice(2);
-    if (!arg) { console.error('usage: node tests/scenario/run.js <scenario.json | dir> [port]'); process.exit(2); }
+    if (!arg) { console.error('usage: node tests/scenario/run.js <scenario.json | dir> [port]  |  --check <file|dir>  |  --keys'); process.exit(2); }
     const dv = schema.readDvDefaults(), keys = schema.readOptionKeys();
+    if (arg === '--check') {   // validate only: node tests/scenario/run.js --check <file.json | dir>
+      const list = loadScenarios(portArg || '', dv, keys);
+      list.forEach((s) => console.log('ok  ' + s.name + ' (' + s.capture.length + ' capture' + (s.capture.length === 1 ? '' : 's') + ')'));
+      return;
+    }
+    if (arg === '--keys') {
+      for (const k of [...keys].sort()) console.log(k.padEnd(22) + (k in dv ? JSON.stringify(dv[k]) : '(set by the UI, no default in DV_DEF)'));
+      return;
+    }
     const list = loadScenarios(arg, dv, keys);
     if (portArg) {
       const { runBrowserAll } = require('./browser.js');

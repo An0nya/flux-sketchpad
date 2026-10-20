@@ -57,5 +57,24 @@ const withBeam = schema.parse(Object.assign({}, base, { beams: ['lib-entry'] }),
 try { run.renderNode(withBeam, RF, dv); ok('SH Node mode refuses beams with a message', false, 'rendered'); }
 catch (e) { ok('SH Node mode refuses beams with a message', /beams need the browser/.test(e.message), e.message); }
 
+// 5. the --check mode exits 0 on the examples
+const chk = spawnSync(process.execPath, [cli, '--check', run.EXAMPLE_DIR], { encoding: 'utf8' });
+ok('SH --check exits 0 on the five examples without rendering', chk.status === 0 && /ok {2}road-dry/.test(chk.stdout), (chk.stdout || chk.stderr).split('\n')[0]);
+
+// 6. compare: a dir against itself is within tolerance; a 10 % luminance change on one capture is flagged, the other capture is not
+const cmp = require('./scenario/compare.js');
+const self = cmp.compareDirs(run.OUT_DIR, run.OUT_DIR, 0.02);
+ok('SH compare: an output dir against itself has no row beyond tolerance', self.length > 0 && self.every((r) => !r.beyond), self.length + ' rows');
+const tmp = path.join(run.OUT_DIR, '_compare-test');
+fs.rmSync(tmp, { recursive: true, force: true }); fs.mkdirSync(tmp);
+try {
+  const doc = JSON.parse(fs.readFileSync(path.join(run.OUT_DIR, 'road-dry.json'), 'utf8'));
+  doc.captures[0].luma *= 1.1; for (const k of Object.keys(doc.captures[0].regions)) doc.captures[0].regions[k] *= 1.1;
+  fs.writeFileSync(path.join(tmp, 'road-dry.json'), JSON.stringify(doc));
+  const rows = cmp.compareDirs(run.OUT_DIR, tmp, 0.02).filter((r) => r.scenario === 'road-dry' && !r.note);
+  const start = rows.find((r) => r.capture === 'start'), end = rows.find((r) => r.capture === 'end');
+  ok('SH compare: a 10 % luminance change is BEYOND at 2 %, the unchanged capture is not', rows.length === 2 && start.beyond && !end.beyond && start.hashChanged === false, JSON.stringify({ start: start && start.luma, end: end && end.beyond }));
+} finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+
 console.log(fails ? fails + ' FAILED' : 'all scenario-node checks passed');
 process.exitCode = fails ? 1 : 0;
