@@ -375,8 +375,9 @@
     // colour temperature default (js/cct.js): a bin's own value (SFT-40 menu), else the preset's (stated K / table / 3200 K halogen / 4200 K HID).
     // A value the owner typed in Light source (cctManual) is kept across re-applies; a different emitter starts from its own default.
     const binCct = fluxKey && p.drive.models[fluxKey] ? p.drive.models[fluxKey].cct : undefined;
-    if (fresh) delete src.cctManual;
+    if (fresh) { delete src.cctManual; delete src.duvManual; }
     if (!src.cctManual) { const cct = Number.isFinite(binCct) ? binCct : (RF.CCT ? RF.CCT.presetCct(p, id) : undefined); if (cct) src.cct = cct; else delete src.cct; }
+    if (!src.duvManual) { const duv = RF.CCT ? RF.CCT.presetDuv(id) : undefined; if (duv !== undefined) src.duv = duv; else delete src.duv; }   // DU: only YLX N3535B has a default duv
     delete src.effArea; delete src.dome;                  // a dome comes only with a model that has one
     if (p.custom && opts && opts.measured) src.measured = JSON.parse(JSON.stringify(opts.measured));
     if (p.custom) {                                       // a planar die: drop what the previous (volume / bulb) emitter left behind, before the no-rows early return below

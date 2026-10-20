@@ -12,7 +12,7 @@
 
   // ---------------------------------------------------------------- 14. controls wired
   const PAIRS = {
-    rays: [2000, 3000], bounces: [1, 3], floor: [1, 95], seed: [1, 7], 'src.cct': [3000, 6500],
+    rays: [2000, 3000], bounces: [1, 3], floor: [1, 95], seed: [1, 7], 'src.cct': [3000, 6500], 'src.duv': [-0.02, 0.02],
     'src.w': [2, 3], 'src.h': [2, 3], 'src.radius': [1, 1.5], 'src.length': [4, 6], 'src.sigma': [20, 40], 'src.half': [30, 60],
     'src.az': [0, 25], 'src.el': [90, 70], 'src.roll': [0, 30], 'src.x': [0, -3], 'src.y': [0, 3], 'src.z': [0, 2], 'src.power': [1000, 2000],
     'env.keep': [2.5, 4.5], 'A.minDist': [12, 18], 'env.hx': [40, 30], 'env.hy': [45, 30], 'env.hz': [32.5, 25], 'env.cx': [-20, -15], 'env.cy': [0, 5], 'env.cz': [27.5, 5],
@@ -29,6 +29,7 @@
     const sc = store.scene, A = C.actions, set = (k, v) => C.setControl(store, k, v);
     if (id.startsWith('src.arc.')) { RF.SourcePresets.apply(sc.source, 'd2r'); sc.source.arc.tube = true; }
     if (id === 'src.sigma') set('src.dist', 'gaussian');
+    if (id === 'src.duv') set('src.cct', 6500);                  // a duv only tints a source that has a CCT
     if (id === 'src.az') set('src.el', 60);                    // azimuth is degenerate at el = 90°
     if (id === 'bounces') sc.modeC.preset.kind = 'cpc';         // multiple bounces matter in a CPC
     if (id === 'src.half') set('src.dist', 'cone');
