@@ -20,6 +20,8 @@ uniform vec2 verge;
 uniform vec2 arc;
 uniform float sigma;   // fog extinction per metre (look.visibility: 3.912 / V); 0 = off
 float fogT(float d) { return sigma>0.0 ? exp(-sigma*d) : 1.0; }   // transmittance over a light path (drive.js fogD)
+uniform int scatterSteps;   // in-scatter steps (look.scatter; 0 = off; only with sigma>0). drive.js inScatter is the CPU twin
+uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js SCAT
 varying vec2 screen;
 const float PI = 3.141592653589793;
 float coverage(float a, float h, float lo, float hi) { return max(0.0, min(a+h,hi)-max(a-h,lo))/(2.0*h); }
@@ -74,6 +76,31 @@ vec3 shade(vec3 p,vec3 n,vec3 v,int id) {
   }
   return r*lampRGB;
 }
+// Visible beam in fog (SC2): single in-scatter off the own lamps. Same math as inScatter in js/drive.js (the CPU twin), one table of constants.
+// beamI is the lamp's intensity toward d; withLighting adds the cornering term to it for the object shaders (as it does in the lamp loop of surface).
+float beamI(vec3 d,vec3 origin) { return intensity(d); }
+float hgP(float g,float c) { return (1.0-g*g)/(4.0*PI*pow(1.0+g*g-2.0*g*c,1.5)); }
+// Per-pixel jitter: the same integer hash as scatterJitter in drive.js, on the pixel index (row 0 = top, as the CPU rows).
+float scatterJitter() { uint x=uint(gl_FragCoord.x), y=uint(size.y)-1u-uint(gl_FragCoord.y); uint h=(x*0x27d4eb2du)^(y*0x165667b1u); h=(h^(h>>15u))*0x85ebca6bu; h=(h^(h>>13u))*0xc2b2ae35u; h^=h>>16u; return float(h)/4294967296.0; }
+// dir: unit eye ray; sEnd: the surface's eye distance (or huge for sky), capped at scatSMax. Stratified log steps from s0 = min(1, s1/4) to s1.
+vec3 inScatter(vec3 dir,float sEnd,float jit) {
+  vec3 acc=vec3(0.0);
+  float s1=min(sEnd,scatSMax);
+  if(sigma<=0.0 || s1<=0.0) return acc;
+  float s0=min(1.0,s1*0.25), q=pow(s1/s0,1.0/float(scatterSteps));
+  for(int k=0;k<16;k++) { if(k>=scatterSteps) break;
+    float a=s0*pow(q,float(k)), b=a*q, s=a*pow(q,jit), ds=b-a, Tv=exp(-sigma*s);
+    vec3 P=eye+s*dir;
+    for(int i=0;i<2;i++) { if(i>=nLamp) break;
+      vec3 d=P-lamp[i]; float r2=dot(d,d); if(r2<=0.0) continue; float r=sqrt(r2);
+      float I=beamI(d,lamp[i]); if(I<=0.0) continue;
+      float cs=-dot(d,dir)/r, p=scatWFwd*hgP(scatGFwd,cs)+(1.0-scatWFwd)*hgP(scatGBack,cs);
+      float E=I/max(r2,scatRMin*scatRMin);
+      acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;
+    }
+  }
+  return acc;
+}
 vec4 roadFrame(vec2 p) {
   if(nPart==0) {
     if(arc.x==0.0) return vec4(p,1,0);
@@ -114,6 +141,7 @@ void main() {
   vec3 ray=normalize(vec3(1.0,-screen.x*tanH,screen.y*tanH*size.y/size.x)); float t=ray.z < -1e-6 ? -eye.z/ray.z : 1e20;
   vec3 r; if(t<5000.0) { r=surface(eye+t*ray,-ray,t,-ray.z); if(sigma>0.0) { float T=exp(-sigma*t); r=r*T+ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0))*(1.0-T); } }
   else r=vec3(ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0)));
+  if(scatterSteps>0) r+=inScatter(ray,t<5000.0?t:1e20,scatterJitter());
   gl_FragColor=vec4(r,1);
 }
 `;
@@ -134,6 +162,7 @@ uniform vec2 cornering;
   if(pitch!=0.0) { float c=cos(pitch), s=sin(pitch); d=vec3(c*d.x+s*d.z,d.y,c*d.z-s*d.x); }
 `)
     .replace('float I=intensity(d);', 'float I=intensity(d)+cornerIntensity(d,lamp[i]);')
+    .replace('float beamI(vec3 d,vec3 origin) { return intensity(d); }', 'float beamI(vec3 d,vec3 origin) { return intensity(d)+cornerIntensity(d,origin); }')
     .replace('float wetLobe', `float cornerIntensity(vec3 d,vec3 origin) {
   if((cornering.x==0.0 && cornering.y==0.0) || d.x<=0.0 || d.z>=0.0)return 0.0;
   float h=atan(d.y,d.x), v=atan(d.z,length(d.xy)), rad=PI/180.0;

@@ -98,6 +98,30 @@ function run(RF, ok) {
   ok('SC determinism: jitter is pure, and the scatter frame repeats bit for bit and differs from the off frame', jitOK && h8a === h8b && h8a !== PINNED.render_v200, 'jitter=' + jitOK);
   const tileOn = tilesHash(RF, 200, { scatter: 8 });
   ok('SC tile path: the scatter tile frame differs from the off frame and repeats', tileOn !== PINNED.tiles_v200 && tileOn === tilesHash(RF, 200, { scatter: 8 }));
+  // 11. occlusion: a car ~20 m ahead in the beam. On its pixels the scatter term is the in-scatter up to the car's own eye distance, and nothing beyond it.
+  //     Check: (frame with scatter) − (frame without) on each car pixel equals inScatter(ray, depth) exactly (ss 1, same jitter), and the integral to depth + 10 m is clearly larger.
+  const car = { k: 'box', x: 20, y: 0, z0: 0.25, z1: 1.4, hx: 2.2, hy: 0.9, yaw: 0, mat: 'car-paint' };
+  const occ = Object.assign({}, base, { scene: { objects: [car], markings: [], verge: ['grass', 1.5, 'grass'] }, pointLights: [], ss: 1 });
+  const offR = D.render(Object.assign({}, occ, { look: { RL: 0.2, ambient: 0.05, visibility: 200 } }));
+  const onR = D.render(Object.assign({}, occ, { look: { RL: 0.2, ambient: 0.05, visibility: 200, scatter: 16 } }));
+  const tanH = Math.tan(occ.hfov * Math.PI / 360), tanV = tanH * occ.h / occ.w, inOcc = Object.assign({}, occ, { look: { visibility: 200 } });
+  let carPx = 0, worst = 0, beyondGain = 0, nonzero = 0;
+  for (let y = 0; y < occ.h; y++) for (let x = 0; x < occ.w; x++) {
+    const q = y * occ.w + x;
+    if (offR.keys[offR.mat[q]] !== 'car-paint') continue;
+    const u = (x + 0.5) / occ.w * 2 - 1, v = 1 - (y + 0.5) / occ.h * 2, dir = [1, -u * tanH, v * tanV];
+    const L = Math.hypot(dir[0], dir[1], dir[2]); dir[0] /= L; dir[1] /= L; dir[2] /= L;
+    const t = offR.depth[q], jit = D.scatterJitter(x, y), sc = D.inScatter(inOcc, dir, t, jit, 16), past = D.inScatter(inOcc, dir, t + 10, jit, 16);
+    carPx++;
+    for (let c = 0; c < 3; c++) {
+      const got = onR.rgb[3 * q + c] - offR.rgb[3 * q + c];
+      worst = Math.max(worst, Math.abs(got - sc[c]) / Math.max(Math.abs(sc[c]), 1e-9));
+      if (sc[c] > 0) nonzero++;
+      beyondGain = Math.max(beyondGain, (past[c] - sc[c]) / Math.max(sc[c], 1e-9));
+    }
+  }
+  ok('SC occlusion: on the car, the scatter term equals the in-scatter up to the car (not beyond it), and beyond-the-car in-scatter would be clearly larger',
+    carPx > 20 && nonzero > 0 && worst < 1e-5 && beyondGain > 0.05, 'car pixels=' + carPx + ' worst rel err=' + worst.toExponential(2) + ' beyond gain (max)=' + beyondGain.toFixed(3));
   // 10. phase function: normalised over the sphere; pinned back-lobe and forward values (own-beam geometry is cos near -1)
   let I = 0; const m = 200000; for (let i = 0; i < m; i++) I += D.scatterPhase(-1 + (i + 0.5) * 2 / m) * 2 / m;
   const back = D.scatterPhase(-1), fwd = D.scatterPhase(1);
