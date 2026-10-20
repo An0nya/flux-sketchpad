@@ -35,7 +35,7 @@
     if (opts && opts.leafyFoliage && !opts.mountainPass && (name === 'road' || name === 'forest')) flags = { ...flags, leafyFoliage: true };
     const broken = !!(opts && us && opts.cline === 'broken');
     if (!(opts && opts.wild) || name !== 'road') {
-      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7, foliageSeed: opts && opts.seed, density: opts && opts.density, kerbPeople: !!(opts && opts.tiles), broken }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, cross: sc.cross, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
+      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7, foliageSeed: opts && opts.seed, density: opts && opts.density, kerbPeople: !!(opts && opts.tiles), broken, scenery: opts && opts.scenery }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, cross: sc.cross, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
       if (broken && name === 'road') src.markings = D.laneMarkings(lane, { us, broken });
       return trafficSource(src, opts);
     }

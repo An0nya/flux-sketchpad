@@ -150,6 +150,147 @@
   RF.Drive.resolveFeatures = resolveFeatures; RF.Drive.laneStuds = laneStuds; RF.Drive.FEATURE_PRESETS = FEATURE_PRESETS; RF.Drive.FEATURE_DEFAULTS = FEATURE_DEFAULTS;
 
   // ---------------------------------------------------------------- scenes
+  // ---------------------------------------------------------------- scenery from parameters (SP2, stage 3)
+  // The forest and the city are parameter sets (SCENERY) for one generator, generateScenery. Its stages run in the order a set lists.
+  // Each stage makes the same kit calls in the same order as the old builder, on the scene stream (ctx.rand), so every object sits where it did.
+  // A rate decides only whether an item is KEPT: the item is drawn and built first, then dropped if its class is thinned, so thinning one
+  // class never moves another. Rates below 1 thin with a stream of their own; rates above 1 add items from a second stream (seeded from the
+  // scene seed). At rate 1 nothing is thinned or added, and nothing extra is drawn. scene-digest.js and the legacy oracle in scenery-params.js
+  // pin the defaults.
+  // The roadside sweep and the city backdrop share the scene stream, as the old builders did (giving each class its own stream would move
+  // every tree on the default road). Their extras and thinning use separate streams.
+  const SCENERY_SALT = { tree: 0x3A11, treeExtra: 0x3A12, bush: 0x3A13, bushExtra: 0x3A14, deer: 0x3A15, deerExtra: 0x3A16, person: 0x3A17, personExtra: 0x3A18, backdrop: 0x3A19 };
+  const SCENERY = {
+    forest: {
+      stages: ['roadside', 'posts', 'signs', 'deer', 'people', 'backdrop'],   // backdrop is off unless a caller sets it (it draws nothing when null)
+      roadside: { start: 4, end: 280, step: 3.2, stepRand: 4, birch: 0.18, treeOff: 2.6, treeSpread: 9, second: 0.6, secondOff: 12, secondSpread: 28, secondMix: 2,
+        bush: 0.35, bushS: 1.5, bushOff: 1.8, bushSpread: 2, bushSize: 0.5, bushSizeSpread: 0.5, treeRate: 1, bushRate: 1 },
+      posts: { from: 25, to: 280, step: 50, edge: 'R', d: 0.9 },
+      signs: [{ s: 115, edge: 'R', d: 2.0, color: 'yellow', opts: { w: 0.8, h: 0.8 } }],
+      deer: { list: [{ s: 48, edge: 'R', d: 3.2 }, { s: 88, edge: 'L', d: 3.0 }, { s: 130, edge: 'L', d: 5.5 }], rate: 1 },
+      people: { list: [{ s: 70, edge: 'R', d: 1.4, kind: 'dark' }, { s: 40, edge: 'L', d: 1.3, kind: 'hivis' }], rate: 1 },
+      backdrop: null,
+      verge: ['gravel', 1.0, 'leaves'],
+      urbanMarks: false,
+    },
+    city: {
+      stages: ['backdrop', 'poles', 'parked', 'signs', 'people', 'deer'],
+      backdrop: { walk: 3.0, setback: 2.5, fresh: false },
+      poles: { from: 12, to: 280, step: 32, d: 0.9, r: 0.07, h: 7.5 },
+      parked: [{ from: 20, to: 160, step: 11, stepRand: 9, edge: 'R', d: 1.3, extra: 0, sShift: 0 }, { from: 30, to: 140, step: 17, stepRand: 10, edge: 'L', d: 1.3, extra: 0.9, sShift: 5 }],
+      signs: [{ s: 75, edge: 'R', d: 1.0, color: 'white', opts: { w: 0.6, h: 0.8, z0: 2.0 } }, { s: 135, edge: 'R', d: 1.0, color: 'green', opts: { w: 1.4, h: 0.7, z0: 2.3 } }],
+      // the two walkers that stood in the lanes go to the right-hand pavement when the animated view asks (kerbPeople); the still scene keeps them in the lanes
+      people: { list: [{ s: 48, edge: 'R', d: 3.0, kind: 'dark', when: 'kerb' }, { s: 50, edge: 'R', d: 3.0, kind: 'hivis', when: 'kerb' },
+        { s: 48, edge: null, d: 0.3, kind: 'dark', when: 'lane' }, { s: 48.4, edge: null, d: -1.4, kind: 'hivis', when: 'lane' },
+        { s: 46, edge: 'L', d: 1.5, kind: 'light' }, { s: 92, edge: 'R', d: 2.0, kind: 'dark' }], rate: 1 },
+      deer: { list: [{ s: 110, edge: 'L', d: 2.2 }], rate: 1 },
+      verge: ['concrete', 3.0, 'concrete'],
+      urbanMarks: true,
+    },
+  };
+  // a point at distance d from the edge the item names (R: right edge, L: left edge, null: d is an absolute offset)
+  const placeAt = (k, it) => (it.edge === 'R' ? k.edgeR - it.d : it.edge === 'L' ? k.edgeL + it.d : it.d);
+  // a keep test for one class. Rate 1 keeps everything and draws nothing; otherwise the class has a stream of its own
+  const keepRate = (rate, seed, salt) => {
+    if (rate === 1) return () => true;
+    const r = rng(((seed | 0) ^ Math.imul(salt, 0x9E3779B1)) >>> 0);
+    return () => r() < rate;
+  };
+  const extraStream = (seed, salt) => rng(((seed | 0) ^ Math.imul(salt, 0x7F4A7C15)) >>> 0);
+  // builds one item, then drops it when its class is thinned out; returns whether it was kept
+  function emit(k, keep, build) { const n0 = k.O.length, kept = keep(); build(); if (!kept) k.O.length = n0; return kept; }
+  // rate above 1: (rate - 1) x n more items, placed by place(xk, xr) on a kit of their own, with the class's extra stream
+  function extras(ctx, k, rate, n, salt, place) {
+    if (!(rate > 1) || !n) return;
+    const xr = extraStream(ctx.seed, salt), xk = kit(Object.assign({}, ctx, { rand: xr }));
+    for (let i = 0, m = Math.round((rate - 1) * n); i < m; i++) place(xk, xr);
+    k.O.push(...xk.O);
+  }
+  function roadsideStage(ctx, k, P) {
+    const R = ctx.rand, Q = P.roadside, treeKeep = keepRate(Q.treeRate, ctx.seed, SCENERY_SALT.tree), bushKeep = keepRate(Q.bushRate, ctx.seed, SCENERY_SALT.bush);
+    let trees = 0, bushes = 0;
+    const tree = (s, off, o) => { if (emit(k, treeKeep, () => k.tree(s, off, o))) trees++; };
+    const bush = (s, off, size) => { if (emit(k, bushKeep, () => k.bush(s, off, size))) bushes++; };
+    for (const side of [1, -1]) for (let s = Q.start; s < Q.end; s += Q.step + Q.stepRand * R()) {
+      const off = side > 0 ? k.edgeL + Q.treeOff + Q.treeSpread * R() * R() : k.edgeR - Q.treeOff - Q.treeSpread * R() * R();
+      tree(s, off, { birch: R() < Q.birch });
+      if (R() < Q.second) { const off2 = side > 0 ? k.edgeL + Q.secondOff + Q.secondSpread * R() : k.edgeR - Q.secondOff - Q.secondSpread * R(); tree(s + Q.secondMix * R(), off2); }
+      if (R() < Q.bush) bush(s + Q.bushS, side > 0 ? k.edgeL + Q.bushOff + Q.bushSpread * R() : k.edgeR - Q.bushOff - Q.bushSpread * R(), Q.bushSize + Q.bushSizeSpread * R());
+    }
+    extras(ctx, k, Q.treeRate, trees, SCENERY_SALT.treeExtra, (xk, xr) => {
+      const side = xr() < 0.5 ? 1 : -1, s = Q.start + (Q.end - Q.start) * xr(), off = side > 0 ? xk.edgeL + Q.treeOff + Q.treeSpread * xr() * xr() : xk.edgeR - Q.treeOff - Q.treeSpread * xr() * xr();
+      xk.tree(s, off, { birch: xr() < Q.birch });
+    });
+    extras(ctx, k, Q.bushRate, bushes, SCENERY_SALT.bushExtra, (xk, xr) => {
+      const side = xr() < 0.5 ? 1 : -1, s = Q.start + (Q.end - Q.start) * xr();
+      xk.bush(s + Q.bushS, side > 0 ? xk.edgeL + Q.bushOff + Q.bushSpread * xr() : xk.edgeR - Q.bushOff - Q.bushSpread * xr(), Q.bushSize + Q.bushSizeSpread * xr());
+    });
+  }
+  function postsStage(ctx, k, P) { const Q = P.posts; for (let s = Q.from; s < Q.to; s += Q.step) k.post(s, placeAt(k, Q)); }
+  function signsStage(ctx, k, P, o) { if (o.signs) for (const g of P.signs) k.sign(g.s, placeAt(k, g), g.color, Object.assign({}, g.opts)); }
+  function deerStage(ctx, k, P, o) {
+    if (!o.animals) return;
+    const Q = P.deer, keep = keepRate(Q.rate, ctx.seed, SCENERY_SALT.deer); let n = 0;
+    for (const it of Q.list) if (emit(k, keep, () => k.deer(it.s, placeAt(k, it)))) n++;
+    extras(ctx, k, Q.rate, n, SCENERY_SALT.deerExtra, (xk, xr) => { const s = 40 + 240 * xr(), edge = xr() < 0.5 ? 'R' : 'L'; xk.deer(s, placeAt(xk, { edge, d: 3 + 5 * xr() })); });
+  }
+  function peopleStage(ctx, k, P, o) {
+    if (!o.people) return;
+    const Q = P.people, keep = keepRate(Q.rate, ctx.seed, SCENERY_SALT.person), where = ctx.kerbPeople ? 'kerb' : 'lane'; let n = 0;
+    for (const it of Q.list) { if (it.when && it.when !== where) continue; if (emit(k, keep, () => k.person(it.s, placeAt(k, it), it.kind))) n++; }
+    extras(ctx, k, Q.rate, n, SCENERY_SALT.personExtra, (xk, xr) => { const s = 30 + 250 * xr(), edge = xr() < 0.5 ? 'R' : 'L', kind = ['dark', 'hivis', 'light'][Math.floor(xr() * 3)]; xk.person(s, placeAt(xk, { edge, d: 0.6 + 4 * xr() }), kind); });
+  }
+  // the wall of a building, windows on the face seen from the road (the old city builder's closure, moved out unchanged)
+  function cityWindow({ u, z, face }, seed) {
+    const gx = Math.floor((u + 400) / 2.6), gz = Math.floor(z / 3.2), cell = (u + 400) / 2.6 - gx, cz = z / 3.2 - gz;
+    if (z < 3.0 || cell < 0.2 || cell > 0.8 || cz < 0.25 || cz > 0.8) return face === 0 ? 'wall-light' : 'wall';
+    const h = Math.sin((gx + 1) * 12.9898 + (gz + 1) * 78.233 + seed * 3.1) * 43758.5453, f = h - Math.floor(h);
+    return f < 0.22 ? 'win-warm' : f < 0.3 ? 'win-cool' : 'win-dark';
+  }
+  // the building backdrop: on the city it draws from the scene stream (as before); on any other scene, from a stream of its own (fresh)
+  function backdropStage(ctx, k, P) {
+    const Q = P.backdrop; if (!Q) return;
+    const R = Q.fresh ? extraStream(ctx.seed, SCENERY_SALT.backdrop) : ctx.rand, walk = Q.walk, setback = Q.setback;
+    const win = cityWindow;   // the facade closure keeps the old builder's source text ('(h) => win(h, seed)'): the foliage test encodes function text
+
+    for (const side of [1, -1]) for (let s = -8, i = 0; s < 280; s += 15 + 14 * R(), i++) {
+      const len = 12 + 10 * R(), hgt = 9 + 18 * R(), dep = 7 + 4 * R(), off = side > 0 ? k.edgeL + walk + setback + dep : k.edgeR - walk - setback - dep, p = k.at(s + len, off), seed = i + (side > 0 ? 0 : 50);
+      k.add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: hgt, hx: len, hy: dep, yaw: p.yaw, facadeStyle: seed % 3, mat: (h) => win(h, seed) });
+    }
+  }
+  function polesStage(ctx, k, P) {
+    const Q = P.poles;
+    for (let s = Q.from; s < Q.to; s += Q.step) for (const side of [1, -1]) { const off = side > 0 ? k.edgeL + Q.d : k.edgeR - Q.d; k.add({ k: 'cyl', x: k.at(s, off).x, y: k.at(s, off).y, r: Q.r, z0: 0, z1: Q.h, mat: 'pole' }); }
+  }
+  function parkedStage(ctx, k, P) {
+    const R = ctx.rand;
+    for (const it of P.parked) for (let s = it.from; s < it.to; s += it.step + it.stepRand * R()) k.parkedCar(s + it.sShift, it.edge === 'R' ? k.edgeR - it.d : k.edgeL + it.d + it.extra);
+  }
+  // a parameter set is a preset of values; overrides win key by key (an undefined override keeps the preset; an object merges one level)
+  function sceneryParams(name, overrides) {
+    const base = SCENERY[name];
+    if (!base) throw new Error('sceneryParams: no scenery set "' + name + '"');
+    const P = Object.assign({}, base), isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+    for (const key of Object.keys(overrides || {})) {
+      const v = overrides[key]; if (v === undefined) continue;
+      P[key] = isObj(v) && isObj(base[key]) ? Object.assign({}, base[key], v) : v;
+    }
+    return P;
+  }
+  // one generator for the forest and the city: the set's stages, then the ground markings the set asks for
+  function generateScenery(name, ctx, o, overrides) {
+    const P = sceneryParams(name, overrides), k = kit(ctx), flags = o || {};
+    const STAGE = { roadside: roadsideStage, posts: postsStage, signs: signsStage, deer: deerStage, people: peopleStage, backdrop: backdropStage, poles: polesStage, parked: parkedStage };
+    for (const st of P.stages) STAGE[st](ctx, k, P, flags);
+    const markings = D.laneMarkings(ctx.Lw, { us: ctx.us });
+    if (P.urbanMarks) {
+      for (let b = k.edgeR + 0.4; b < k.edgeL - 0.2; b += 1.0) markings.push({ o0: b, o1: b + 0.5, mat: 'white-paint', pat: { s0: 40, s1: 1e5, period: 1e6, on: 3.5 } });   // zebra crossing, 40–43.5 m
+      markings.push({ o0: k.edgeR, o1: 0.2 + ctx.Lw / 2 - 0.4, mat: 'white-paint', pat: { s0: 38, s1: 1e5, period: 1e6, on: 0.4 } });                                                 // stop line in our lane
+    }
+    return { objects: k.O, markings, verge: P.verge.slice() };
+  }
+  RF.Drive.generateScenery = generateScenery; RF.Drive.sceneryParams = sceneryParams; RF.Drive.SCENERY = SCENERY;
+
   const SCENES = {
     road: {
       label: 'Open road',
@@ -165,46 +306,11 @@
     },
     forest: {
       label: 'Forest road',
-      build(ctx, o) {
-        const k = kit(ctx), R = ctx.rand;
-        for (const side of [1, -1]) for (let s = 4; s < 280; s += 3.2 + 4 * R()) {
-          const off = side > 0 ? k.edgeL + 2.6 + 9 * R() * R() : k.edgeR - 2.6 - 9 * R() * R();
-          k.tree(s, off, { birch: R() < 0.18 });
-          if (R() < 0.6) { const off2 = side > 0 ? k.edgeL + 12 + 28 * R() : k.edgeR - 12 - 28 * R(); k.tree(s + 2 * R(), off2); }
-          if (R() < 0.35) k.bush(s + 1.5, side > 0 ? k.edgeL + 1.8 + 2 * R() : k.edgeR - 1.8 - 2 * R(), 0.5 + 0.5 * R());
-        }
-        for (let s = 25; s < 280; s += 50) k.post(s, k.edgeR - 0.9);
-        if (o.signs) k.sign(115, k.edgeR - 2.0, 'yellow', { w: 0.8, h: 0.8 });
-        if (o.animals) { k.deer(48, k.edgeR - 3.2); k.deer(88, k.edgeL + 3.0); k.deer(130, k.edgeL + 5.5); }
-        if (o.people) { k.person(70, k.edgeR - 1.4, 'dark'); k.person(40, k.edgeL + 1.3, 'hivis'); }
-        return { objects: k.O, markings: D.laneMarkings(ctx.Lw, { us: ctx.us }), verge: ['gravel', 1.0, 'leaves'] };
-      },
+      build(ctx, o) { return generateScenery('forest', ctx, o, ctx.scenery); },
     },
     city: {
       label: 'City street',
-      build(ctx, o) {
-        const k = kit(ctx), R = ctx.rand, walk = 3.0, setback = 2.5, win = ({ u, z, face }, seed) => {   // windows on the faces seen from the road
-          const gx = Math.floor((u + 400) / 2.6), gz = Math.floor(z / 3.2), cell = (u + 400) / 2.6 - gx, cz = z / 3.2 - gz;
-          if (z < 3.0 || cell < 0.2 || cell > 0.8 || cz < 0.25 || cz > 0.8) return face === 0 ? 'wall-light' : 'wall';
-          const h = Math.sin((gx + 1) * 12.9898 + (gz + 1) * 78.233 + seed * 3.1) * 43758.5453, f = h - Math.floor(h);
-          return f < 0.22 ? 'win-warm' : f < 0.3 ? 'win-cool' : 'win-dark';
-        };
-        for (const side of [1, -1]) for (let s = -8, i = 0; s < 280; s += 15 + 14 * R(), i++) {
-          const len = 12 + 10 * R(), hgt = 9 + 18 * R(), dep = 7 + 4 * R(), off = side > 0 ? k.edgeL + walk + setback + dep : k.edgeR - walk - setback - dep, p = k.at(s + len, off), seed = i + (side > 0 ? 0 : 50);
-          k.add({ k: 'box', x: p.x, y: p.y, z0: 0, z1: hgt, hx: len, hy: dep, yaw: p.yaw, facadeStyle:seed%3, mat: (h) => win(h, seed) });
-        }
-        for (let s = 12; s < 280; s += 32) for (const side of [1, -1]) { const off = side > 0 ? k.edgeL + 0.9 : k.edgeR - 0.9; k.add({ k: 'cyl', x: k.at(s, off).x, y: k.at(s, off).y, r: 0.07, z0: 0, z1: 7.5, mat: 'pole' }); }
-        for (let s = 20; s < 160; s += 11 + 9 * R()) k.parkedCar(s, k.edgeR - 1.3);
-        for (let s = 30; s < 140; s += 17 + 10 * R()) k.parkedCar(s + 5, k.edgeL + 1.3 + 0.9);
-        if (o.signs) { k.sign(75, k.edgeR - 1.0, 'white', { w: 0.6, h: 0.8, z0: 2.0 }); k.sign(135, k.edgeR - 1.0, 'green', { w: 1.4, h: 0.7, z0: 2.3 }); }
-        // ctx.kerbPeople (set by the animated drive view only): the two walkers that stood in the lanes move to the right-hand pavement, so the still Spec scene is unchanged
-        if (o.people) { ctx.kerbPeople ? (k.person(48, k.edgeR - 3.0, 'dark'), k.person(50, k.edgeR - 3.0, 'hivis')) : (k.person(48, 0.3, 'dark'), k.person(48.4, -1.4, 'hivis')); k.person(46, k.edgeL + 1.5, 'light'); k.person(92, k.edgeR - 2.0, 'dark'); }
-        if (o.animals) k.deer(110, k.edgeL + 2.2);
-        const marks = D.laneMarkings(ctx.Lw, { us: ctx.us });
-        for (let b = k.edgeR + 0.4; b < k.edgeL - 0.2; b += 1.0) marks.push({ o0: b, o1: b + 0.5, mat: 'white-paint', pat: { s0: 40, s1: 1e5, period: 1e6, on: 3.5 } });   // zebra crossing, 40–43.5 m
-        marks.push({ o0: k.edgeR, o1: 0.2 + ctx.Lw / 2 - 0.4, mat: 'white-paint', pat: { s0: 38, s1: 1e5, period: 1e6, on: 0.4 } });                                                 // stop line in our lane
-        return { objects: k.O, markings: marks, verge: ['concrete', walk, 'concrete'] };
-      },
+      build(ctx, o) { return generateScenery('city', ctx, o, ctx.scenery); },
     },
   };
   // standard test targets for comparing designs (not in the picker): ctx.targets = [{ kind, s, off }] pedestrians, ctx.deer = [s, …] deer on the left shoulder

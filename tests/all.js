@@ -59,6 +59,7 @@ run('visible beam in fog: in-scatter off = pinned frames, cone, density peak, co
 run('SD air-beam scatter table: CPU twin within 10 percent of direct at 8-30 m, finite, monotone, zero without fog (tests/scatter-table.js)', ['tests/scatter-table.js']);
 run('scene snapshot: studs, posts, signs, lamps, deer, people, trees, markings per scene (tests/scene-snapshot.js)', ['tests/scene-snapshot.js']);
 run('scene digest: where every scenery object sits, 2 seeds, tiles on and off (tests/scene-digest.js)', ['tests/scene-digest.js']);
+run('scenery parameters: the forest and city generator equals the old builders (240 cases), rates keep the other classes in place, backdrop, options (tests/scenery-params.js)', ['tests/scenery-params.js']);
 run('SB2 wet sheen from studs and paint: source admission, caps, paint gloss, GPU ids (tests/sb2-sheen.js)', ['tests/sb2-sheen.js']);
 run('saveable beams: format, checksum, grid, bundle, synthetic (tests/beams.js)', ['tests/beams.js']);
 run('scene details: registry and metric maths (tests/scene-details.js)', ['tests/scene-details.js']);
