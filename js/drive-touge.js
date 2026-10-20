@@ -161,14 +161,15 @@
   function trafficLight(obs,A,p){
     const a=attitude(A.dist),eye=apply([a.forward,a.left,a.up],[-2,.37,1.2]),tr=p.src.traffic,hasDesign=p.lut.data.some(v=>v>0);
     for(const ob of obs)if(ob.headlamp){
+      const pk=D.trafficPickOf(p,ob.traffic), tint=pk&&pk.tint?pk.tint:[1,1,1];   // BT: this car's own beam and colour, when the shuffle gives it one
       const f=A.frame(ob.x,ob.y),q=A.surface(f.s,f.off),dir=ob.nx*f.t[0]+ob.ny*f.t[1],forward=unit([ob.nx,ob.ny,q.grade*dir]),left=unit(cross(q.normal,forward)),d=eye.map((v,i)=>v-[ob.x,ob.y,ob.z][i]),local=[dot(d,forward),dot(d,left),dot(d,q.normal)];
       const cosine=Math.max(1e-6,local[0]/Math.hypot(...d));let cd=0;
       if(local[0]>0 && !blocked(A,eye,[ob.x,ob.y,ob.z])){
         if(tr.onMode==='manual')cd=Math.max(0,tr.onKcd)*500*cosine**8;
-        else if(tr.onMode==='symmetric' && hasDesign)cd=D.beamAt(p.lowLut||p.lut,p.conv||'A',...local);
+        else if(tr.onMode==='symmetric' && hasDesign)cd=pk?D.beamAt(pk.lut,pk.conv,...local):D.beamAt(p.lowLut||p.lut,p.conv||'A',...local);
         else{D.hvFast(...local,'A');const [h,v]=D.hv();cd=D.Headlamp.generic(h,v,tr.onMode==='high');}
       }
-      const L=cd/(Math.PI*ob.r*ob.r*cosine);ob.eyeCd=cd;ob.emit=[L,L,.93*L];ob.emitPow=1;
+      const L=cd/(Math.PI*ob.r*ob.r*cosine);ob.eyeCd=cd;ob.emit=[L*tint[0],L*tint[1],.93*L*tint[2]];ob.emitPow=1;
     }
   }
   function glareSources(obs,dist,A){

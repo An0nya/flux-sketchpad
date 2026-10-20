@@ -370,7 +370,7 @@
         const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz;
         if (r2 < 0.01) continue; const noL = Math.max(0, -(dx * nx + dy * ny + dz * nz) / Math.sqrt(r2)); if (!noL) continue;
         const e = trafficAt(L, otherBeam, px, py, pz) / r2 * noL / PI * fogD(dx, dy, dz);
-        r += rho[0] * e; g += rho[1] * e; b += rho[2] * e * 0.93;
+        const t = L.tint; r += rho[0] * e * (t ? t[0] : 1); g += rho[1] * e * (t ? t[1] : 1); b += rho[2] * e * 0.93 * (t ? t[2] : 1);
       }
       for (let i = 0; i < nl; i++) {
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
@@ -589,6 +589,36 @@
     if (!genericLow) genericLow = lutFrom((h, v) => Headlamp.generic(h, v, false), { win: [-90, 90, -90, 90], step: 0.25 });
     return { lut: genericLow, conv: 'A' };
   }
+  // BT: one car's pick from a weighted pool, a pure function of (seed, car id), so a car keeps its beam for the whole run.
+  // Ids ending in an ordinal ('oncoming:12') step a golden-ratio (Weyl) sequence: equal weights come out evenly spread over a
+  // stream of cars, where independent hashes miss +-10% over 300 cars about half the time. Other ids use an FNV-1a hash.
+  // Returns the pool index, or -1 when nothing can be picked (empty pool, or no positive weight).
+  function weightedPick(seed, carId, pool, weights) {
+    const n = pool ? pool.length : 0; if (!n) return -1;
+    const wt = (i) => { const x = weights ? weights[i] : 1; return Number.isFinite(x) && x > 0 ? x : 0; };
+    let total = 0; for (let i = 0; i < n; i++) total += wt(i); if (!(total > 0)) return -1;
+    const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h >>> 0; };
+    const id = String(carId), ord = /(\d+)$/.exec(id), off = fnv(String(seed)) / 4294967296;
+    const u = ord ? (off + Number(ord[1]) * 0.6180339887498949) % 1 : fnv(String(seed) + ':' + id) / 4294967296;
+    // each seed also deals the intervals to the pool in its own order: a seed that only shifts the phase would move few cars
+    const deal = [...Array(n).keys()].map(i => [fnv(String(seed) + ':' + (pool[i] && pool[i].id !== undefined ? pool[i].id : i)), i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(e => e[1]);
+    const target = u * total; let acc = 0;
+    for (const i of deal) { acc += wt(i); if (target < acc && wt(i) > 0) return i; }
+    for (let i = n - 1; i >= 0; i--) if (wt(i) > 0) return i;
+    return -1;
+  }
+  // BT: a beam's colour as a tint with its peak channel at 1: chromaticity only, so the intensity stays in the beam's own table
+  const unitTint = (rgb) => { const m = Math.max(...rgb); return m > 0 ? rgb.map(v => v / m) : [1, 1, 1]; };
+  // BT: the library beam a car uses (its pool entry), or null for the built-in beam. Only symmetric traffic takes a pick:
+  // the other modes light cars with the generic lamp, so the shuffle has nothing to change there.
+  function trafficPickOf(p, carId) {
+    const pool = p && p.trafficPool, mode = p && p.src && p.src.traffic && p.src.traffic.onMode;
+    if (!pool || mode !== 'symmetric' || !pool.entries.length) return null;
+    const i = weightedPick(p.src.traffic.seed, carId, pool.entries, pool.weights);
+    return i < 0 ? null : pool.entries[i];
+  }
+  // extra fields on a traffic source: its own beam and colour tint. Empty for the built-in beam, so those sources are unchanged.
+  const trafficBeamFields = (p, carId) => { const pk = trafficPickOf(p, carId); return pk ? { beam: { lut: pk.lut, conv: pk.conv }, tint: pk.tint } : {}; };
   function trafficSources(objects, eye, p) {
     eye = eye || [-2, 0.37, 1.2]; const groups = new Map(), lim = trafficLimits(p);
     for (const ob of objects) if (ob.traffic !== undefined) { if (!groups.has(ob.traffic)) groups.set(ob.traffic, []); groups.get(ob.traffic).push(ob); }
@@ -611,7 +641,7 @@
     const R = lim.range, dCut = cars.length > lim.cars ? cars[lim.cars].d : R;
     return cars.slice(0, lim.cars).flatMap(c => {
       const w = (1 - smooth01(TAPER_START * R, R, c.d)) * smooth01(0, TAPER_BAND, dCut - c.d);
-      return w > 0 ? c.sources.map(q => Object.assign(q, { w })) : [];
+      return w > 0 ? c.sources.map(q => Object.assign(q, { w }, trafficBeamFields(p, q.car))) : [];
     });
   }
   // Generic static lamps at the existing mounting points: 400 cd on the selected side, 55° outboard.
@@ -634,7 +664,8 @@
   }
   function trafficAt(L, beam, px, py, pz) {
     const dx = px - L.x, dy = py - L.y, dz = pz - L.z, forward = dx * L.nx + dy * L.ny;
-    return forward > 0 ? (L.w === undefined ? 1 : L.w) * beamAt(beam.lut, beam.conv, forward, -dx * L.ny + dy * L.nx, dz, 0) : 0;
+    const bm = L.beam || beam;   // BT: a car with its own beam uses it; otherwise the shared built-in beam
+    return forward > 0 ? (L.w === undefined ? 1 : L.w) * beamAt(bm.lut, bm.conv, forward, -dx * L.ny + dy * L.nx, dz, 0) : 0;
   }
   // Integrate actual returned RGB luminance over face area (8x8 midpoint quadrature, an estimate).
   // cd = integral L(cd/m²) * cos(view) * dA(m²). Uses the same diffuse/retro/emit law as shade.
@@ -660,7 +691,7 @@
         const lum = (ob.emit || m.emit || [0, 0, 0]).map(c => c * Math.pow(view, ob.emitPow || 1));
         const diffuse = Math.max(0, p.look && p.look.ambient || 0) * (0.5 + 0.5 * nz) / PI;
         for (const L of p.pointLights || []) { const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz; if (dz > 0 && r2 > 0.01) { const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)) * fg(dx, dy, dz); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * L.rgb[c]; } }
-        for (const L of traffic) { const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz; if (r2 > 0.01) { const e = fade * trafficAt(L, beam, px, py, pz) * Math.max(0, -(dx * nx + dy * ny + dz * nz)) / (PI * r2 * Math.sqrt(r2)) * fg(dx, dy, dz); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * (c === 2 ? 0.93 : 1); } }
+        for (const L of traffic) { const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz; if (r2 > 0.01) { const e = fade * trafficAt(L, beam, px, py, pz) * Math.max(0, -(dx * nx + dy * ny + dz * nz)) / (PI * r2 * Math.sqrt(r2)) * fg(dx, dy, dz); for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * e * (c === 2 ? 0.93 : 1) * (L.tint ? L.tint[c] : 1); } }
         for (let c = 0; c < 3; c++) lum[c] += m.rho[c] * diffuse;
         for (const L of p.lamps) {
           const dx = px - L[0], dy = py - L[1], dz = pz - L[2], r2 = dx * dx + dy * dy + dz * dz, noL = Math.max(0, -(dx * nx + dy * ny + dz * nz) / Math.sqrt(r2));
@@ -912,5 +943,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, scatterPhase, scatterJitter, SCAT, scatterTableBins, scatterTableAt, TABLE, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, scatterPhase, scatterJitter, SCAT, scatterTableBins, scatterTableAt, TABLE, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
