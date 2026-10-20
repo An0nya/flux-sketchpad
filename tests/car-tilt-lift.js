@@ -17,7 +17,7 @@ function run(RF, ok) {
   // Key = kind | material | part | car id, plus the occurrence index among objects with that key (the car kit order is fixed, so the key is stable across the gate).
   const keyed = list => { const seen = new Map(); return new Map(list.map(o => { const base = [o.k, typeof o.mat === 'function' ? 'fn' : o.mat, o.detailPart || '', o.modelId || ''].join('|'); const i = seen.get(base) || 0; seen.set(base, i + 1); return [base + '#' + i, o]; })); };
   const variants = new Set();
-  let carDiscs = 0, fallback = 0, badRigid = 0, badNormal = 0, nonCarMoved = 0, nonCarChecked = 0, unmatched = 0, gateOffBad = 0, worstSpacing = 0, headMove = 0;
+  let badKey = 0, carDiscs = 0, fallback = 0, badRigid = 0, badNormal = 0, nonCarMoved = 0, nonCarChecked = 0, unmatched = 0, gateOffBad = 0, worstSpacing = 0, headMove = 0;
   // dist 0: the traffic cars sit 40 to 380 m ahead, in the pass. The grade and bank change along the route, so the frame set covers several attitudes.
   for (const dist of [0, 190.25, 400, 700, 764.2, 1100]) {
     const t = 0, A = P.route(dist, 3.5, true);   // world() builds its route from dist, so the lift heights come from this one
@@ -47,6 +47,11 @@ function run(RF, ok) {
       if (len > 2.6) badRigid++;
       if (Math.abs(Math.hypot(n.nx, n.ny, n.nz) - 1) > 1e-3) badNormal++;   // the table holds normals to 1e-4
       if (n.headlamp) headMove = Math.max(headMove, Math.hypot(o.x - n.x, o.y - n.y));
+      // The key adapt() reads must be the kit classification (from the kit position o.x, o.y, not the lifted one): a rear mount can sit forward of the origin.
+      const F = root.detail.face === -1 ? -1 : 1, yw = root.detail.yaw, dd = (o.x - root.x) * Math.cos(yw) + (o.y - root.y) * Math.sin(yw);
+      const yaw2 = yw + (F === -1 ? Math.PI : 0), side = o.mat === 'plate' ? 0 : Math.sign(-(o.x - root.x) * Math.sin(yaw2) + (o.y - root.y) * Math.cos(yaw2));
+      const type = o.mat === 'plate' ? 'plate' : o.mat === 'reflector-red' ? 'reflector' : o.headlamp ? 'head' : 'tail';
+      if (n.meshKey !== ((dd * F > 0 ? 1 : -1) + ':' + type + ':' + side)) badKey++;
       const list = byCar.get(n.modelId) || []; list.push(n); byCar.set(n.modelId, list);
     }
     // Head-lamp pair spacing of one car equals its variant's mount spacing (a rigid transform keeps distances).
@@ -63,6 +68,7 @@ function run(RF, ok) {
   ok('CR2 gate off: car lamps are the untilted lift (kit x,y, own-anchor road height)', gateOffBad === 0, { gateOffBad });
   ok('CR2 gate on: every car lamp moves onto a mount (no kit fallback)', fallback === 0 && carDiscs > 0, { fallback, carDiscs });
   ok('CR2 gate on: car lamps are rigid (distance from the car root within 2.6 m)', badRigid === 0, { badRigid });
+  ok('CR2 gate on: each lamp carries the kit classification (end:type:side) that adapt() reads', badKey === 0, { badKey });
   ok('CR2 gate on: lamp normals stay unit length (1e-3)', badNormal === 0, { badNormal });
   ok('CR2 gate on: head-lamp pair spacing equals the variant mount spacing (< 1 mm)', worstSpacing < 1e-3, { worstSpacing: +worstSpacing.toFixed(6) });
   ok('CR2 coverage: all three GLB variants appear among the test cars', variants.size === 3, { variants: [...variants].sort() });

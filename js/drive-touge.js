@@ -61,7 +61,8 @@
     const mt = D.Models.meshMount(m.id, end, type, side);
     if (!mt) return null;
     const P = mt.p, N = mt.n, at = (k) => B.X[k] * P[0] + B.Y[k] * P[1] + B.U[k] * P[2], nt = (k) => B.X[k] * N[0] + B.Y[k] * N[1] + B.U[k] * N[2];
-    return { x: m.x + at(0), y: m.y + at(1), z: z + at(2), nx: nt(0), ny: nt(1), nz: nt(2) };
+    // meshKey: the kit classification (end:type:side), read by adapt() so a moved lamp keeps the mount it was classified with.
+    return { x: m.x + at(0), y: m.y + at(1), z: z + at(2), nx: nt(0), ny: nt(1), nz: nt(2), meshKey: end + ':' + type + ':' + side };
   }
   function lift(ob, A, root) {
     if (!A.touge || ob.tougePlaced) return ob;
