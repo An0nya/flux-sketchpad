@@ -51,5 +51,6 @@ run('eurobeat pattern data (tests/eurobeat.js)', ['tests/eurobeat.js']);
 run('Mountain pass speeds and adaptive lighting (tests/touge-r2.js)', ['tests/touge-r2.js']);
 run('Mountain pass parity: lamps, deer bolt, detail, edge lines (tests/pass-parity.js)', ['tests/pass-parity.js']);
 run('wet road sheen: GGX BRDF + legacy frames unchanged (tests/wet-ggx.js)', ['tests/wet-ggx.js']);
+run('scene details: registry and metric maths (tests/scene-details.js)', ['tests/scene-details.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
