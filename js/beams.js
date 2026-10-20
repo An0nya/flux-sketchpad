@@ -5,7 +5,7 @@
  * File shape (format 1), one beam:
  *   { format: 1, kind: 'beam', name, beamKind: 'low'|'high', conv: 'A'|'B'|'S', notes,
  *     grid: { h0, v0, step, nh, nv },            degrees; data[j*nh+i] is the cd at (h0+(i+.5)*step, v0+(j+.5)*step)
- *     colour: { cct?, rgb? },                    kelvin and/or [r,g,b] lamp tint (both optional)
+ *     colour: { cct?, rgb? },                    kelvin and/or [r,g,b] lamp tint, each channel 0..4 (both optional; absent = no colour)
  *     length: nh*nv, checksum: 'fnv1a32:<8 hex>',
  *     data: <base64 of little-endian Float32, row-major> }
  * A bundle holds many beams in one file: { format: 1, kind: 'beam-bundle', name, beams: [beam, ...] }.
@@ -66,7 +66,8 @@
       out.cct = c.cct;
     }
     if (c.rgb !== undefined) {
-      if (!Array.isArray(c.rgb) || c.rgb.length !== 3 || !c.rgb.every(v => Number.isFinite(v) && v >= 0 && v <= 1)) throw new Error('colour.rgb must be three numbers in 0..1');
+      // a lamp tint has luminance 1 but its channels can pass 1 (4300 K red is about 1.34), so the bound is 0..4
+      if (!Array.isArray(c.rgb) || c.rgb.length !== 3 || !c.rgb.every(v => Number.isFinite(v) && v >= 0 && v <= 4)) throw new Error('colour.rgb must be three numbers in 0..4');
       out.rgb = c.rgb.slice();
     }
     return out;
@@ -217,6 +218,19 @@
     if (!names.has(b)) return b;
     for (let k = 2; ; k++) { const c = b + ' ' + k; if (!names.has(c)) return c; }
   }
+  // BB3: the tint a beam lights with. A beam with a colour gives its own rgb (or the rgb of its cct); a beam with no colour gives
+  // the fallback (the current source's tint) and says so, so the list can show it. Returns { rgb, fromSource }.
+  function lampFor(colour, fallbackRGB, cctToRGB) {
+    if (colour && Array.isArray(colour.rgb) && colour.rgb.length === 3) return { rgb: colour.rgb.slice(), fromSource: false };
+    if (colour && Number.isFinite(colour.cct) && typeof cctToRGB === 'function') return { rgb: cctToRGB(colour.cct), fromSource: false };
+    return { rgb: (fallbackRGB || [1, 1, 1]).slice(), fromSource: true };
+  }
+  // Short label for a colour: "4300 K", "colour set" (rgb only) or null (no colour).
+  function colourLabel(colour) {
+    if (colour && Number.isFinite(colour.cct)) return Math.round(colour.cct) + ' K';
+    if (colour && Array.isArray(colour.rgb)) return 'colour set';
+    return null;
+  }
   // Renames one entry in place. Throws on an empty name or an unknown id (the caller shows the message).
   function renameIn(list, id, name) {
     const e = list.find(x => x.id === id);
@@ -228,6 +242,6 @@
   // Returns the list without the entry (a new array). Unknown id leaves the list as it is.
   const removeIn = (list, id) => list.filter(x => x.id !== id);
 
-  R.Beams = { FORMAT, build, parse, serialise, bundle, readFile, fromLut, toLut, resample, sameGrid, uniformWash, pointBeam, coarsen, combine, storedBytes, checksumOf, fnv1a, bytesToB64, b64ToBytes, floatsToBytes, bytesToFloats, uniqueName, renameIn, removeIn };
+  R.Beams = { FORMAT, build, parse, serialise, bundle, readFile, fromLut, toLut, resample, sameGrid, uniformWash, pointBeam, coarsen, combine, storedBytes, checksumOf, fnv1a, bytesToB64, b64ToBytes, floatsToBytes, bytesToFloats, uniqueName, renameIn, removeIn, lampFor, colourLabel };
   if (typeof module !== 'undefined' && module.exports) module.exports = R.Beams;
 })();

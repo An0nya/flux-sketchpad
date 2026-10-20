@@ -136,5 +136,26 @@ const pt = [[0.1, 0.1], [7.3, -2.2], [-8.4, 3.1]];
   ok('removeIn: unknown id leaves the list the same length', B.removeIn(list, 'zz').length === 2);
 }
 
+// BB3: the colour travels with the beam. A 4300 K tint has a red channel above 1 (luminance 1 keeps it there): it must round trip.
+{
+  const hid = B.build({ name: 'HID', beamKind: 'low', conv: 'A', grid: { h0: WIN[0], v0: WIN[2], step: STEP, nh: lut.nh, nv: lut.nv }, data: lut.data, colour: { cct: 4300, rgb: [1.34, 0.94, 0.61] } });
+  const back = B.readFile(JSON.parse(JSON.stringify(hid)))[0];
+  ok('colour round trip: cct 4300 and rgb above 1 kept', back.colour && back.colour.cct === 4300 && back.colour.rgb[0] === 1.34 && back.colour.rgb[2] === 0.61, back.colour);
+  ok('colour rgb above 4 is still refused', throws(() => B.build({ name: 'x', grid: { h0: WIN[0], v0: WIN[2], step: STEP, nh: lut.nh, nv: lut.nv }, data: lut.data, colour: { rgb: [5, 0, 0] } }), /0\.\.4/) === 'ok');
+  // an old file (no colour field) still loads, with no colour
+  const old = B.build({ name: 'old', beamKind: 'low', conv: 'A', grid: { h0: WIN[0], v0: WIN[2], step: STEP, nh: lut.nh, nv: lut.nv }, data: lut.data });
+  delete old.colour;
+  const oldBack = B.readFile(JSON.parse(JSON.stringify(old)))[0];
+  ok('old file without colour loads and has no colour', oldBack.colour === undefined && oldBack.values.length === lut.data.length, oldBack.colour);
+  // lampFor: a beam's own tint; cct only; no colour = the fallback, flagged
+  const src = [0.9, 1.0, 1.1];
+  ok('lampFor: beam rgb is used, not the source', JSON.stringify(B.lampFor({ cct: 4300, rgb: [1.34, 0.94, 0.61] }, src).rgb) === JSON.stringify([1.34, 0.94, 0.61]) && B.lampFor({ cct: 4300, rgb: [1, 1, 1] }, src).fromSource === false);
+  const fakeCct = (k) => [k / 1000, 1, 2];
+  ok('lampFor: cct only uses the converter', JSON.stringify(B.lampFor({ cct: 6000 }, src, fakeCct).rgb) === JSON.stringify([6, 1, 2]));
+  const none = B.lampFor(null, src);
+  ok('lampFor: no colour gives the source tint and says so', none.fromSource === true && JSON.stringify(none.rgb) === JSON.stringify(src) && none.rgb !== src);
+  ok('colourLabel: kelvin, rgb-only, none', B.colourLabel({ cct: 4300.4, rgb: [1, 1, 1] }) === '4300 K' && B.colourLabel({ rgb: [1, 1, 1] }) === 'colour set' && B.colourLabel(null) === null);
+}
+
 console.log(fails ? fails + ' of ' + n + ' FAILED' : 'all ' + n + ' beam checks passed');
 process.exit(fails ? 1 : 0);

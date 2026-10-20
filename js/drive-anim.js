@@ -1108,14 +1108,14 @@ void main() {
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, o.ownLow, o.ownHigh]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
+    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, o.ownLow, o.ownHigh, lampTintOf(I, ownBeams(o)).rgb]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    const own = ownBeams(o), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
-    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(), lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, wetModel: o.wetModel, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
+    const own = ownBeams(o), tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
+    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(), lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, wetModel: o.wetModel, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1223,7 +1223,7 @@ void main() {
   }
   // tell the workers what the picture is made of (when that changes): the scenery's recipe, the camera, the beam
   function workerCfg() {
-    const I = info(), p = V.p, key = JSON.stringify([V.skey, p.w, p.h, p.hfov, p.eye, p.lane, p.conv, p.lamps, p.look, p.detailedModels, p.deerBehaviour, I.A && [I.A.R, I.A.dir]]);
+    const I = info(), p = V.p, key = JSON.stringify([V.skey, p.w, p.h, p.hfov, p.eye, p.lane, p.conv, p.lamps, p.look, p.detailedModels, p.deerBehaviour, I.A && [I.A.R, I.A.dir], p.lampRGB]);
     if (key === Wk.cfgKey && Wk.lut === p.lut) return;
     Wk.cfgKey = key; Wk.lut = p.lut; Wk.cfgId++; Wk.busy = null;           // a frame in flight belongs to the old picture: dropped when it arrives
     const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, eye: p.eye, lamps: p.lamps, lut: p.lut, lowLut: p.lowLut, conv: p.conv, lampRGB: p.lampRGB, lane: p.lane, look: p.look, detailedModels: p.detailedModels, deerBehaviour:p.deerBehaviour }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
@@ -1371,8 +1371,13 @@ void main() {
   // wrapped: an empty, blocked or throwing localStorage just means the library is session-only.
   const BEAM_KEY = 'flux/beamLibrary', BEAM_BUDGET = 2.5e6, BEAM_COARSE = 0.25;   // bytes (UTF-16) the library may take; origin quota is about 5 MB
   const LIB = { items: null, msg: '', ver: 0, seq: 0 };
-  const libEntry = (parsed, id, persisted) => ({ id, name: parsed.name, beamKind: parsed.beamKind, conv: parsed.conv, lut: RF.Beams.toLut(parsed), persisted: !!persisted });
-  const beamDefaultName = (I) => (I && I.designName) || 'our design';   // the design's name; BB3 adds the colour
+  const libEntry = (parsed, id, persisted) => ({ id, name: parsed.name, beamKind: parsed.beamKind, conv: parsed.conv, lut: RF.Beams.toLut(parsed), colour: parsed.colour || null, persisted: !!persisted });
+  // BB3: the name in the picker, with the colour temperature when the beam has one
+  const beamLabel = (e) => e.name + (e.colour && Number.isFinite(e.colour.cct) ? ' (' + Math.round(e.colour.cct) + ' K)' : '') + (e.persisted ? '' : ' (session)');
+  // BB3: the colour a saved design carries: the lamp tint in use (rgb), plus the source's kelvin when it has one
+  const sourceColour = (I) => { const c = { rgb: I.lampRGB.slice() }; if (Number.isFinite(I.lampCct) && I.lampCct >= 1000 && I.lampCct <= 20000) c.cct = I.lampCct; return c; };
+  // the default name: the design's name, plus the source's kelvin when it has one (e.g. "Headlamp sketch 4300K")
+  const beamDefaultName = (I) => { const base = (I && I.designName) || 'our design'; return I && Number.isFinite(I.lampCct) ? base + ' ' + Math.round(I.lampCct) + 'K' : base; };
   const libNewId = () => 'b' + Date.now().toString(36) + (++LIB.seq).toString(36);   // counter, not a random source
   function libLoad() {
     if (LIB.items) return LIB.items;
@@ -1384,7 +1389,7 @@ void main() {
     return LIB.items;
   }
   function libSaveStore() {
-    const coarse = libLoad().filter(e => e.persisted).map(e => ({ id: e.id, beam: RF.Beams.serialise(RF.Beams.fromLut(RF.Beams.coarsen(e.lut, BEAM_COARSE), { name: e.name, beamKind: e.beamKind, conv: e.conv })) }));
+    const coarse = libLoad().filter(e => e.persisted).map(e => ({ id: e.id, beam: RF.Beams.serialise(RF.Beams.fromLut(RF.Beams.coarsen(e.lut, BEAM_COARSE), { name: e.name, beamKind: e.beamKind, conv: e.conv, colour: e.colour || undefined })) }));
     const text = JSON.stringify(coarse);
     if (RF.Beams.storedBytes(text) > BEAM_BUDGET) return false;
     try { localStorage.setItem(BEAM_KEY, text); return true; } catch (e) { return false; }
@@ -1407,7 +1412,13 @@ void main() {
   // The beams the options pick: null = built-in (our design for low, generic for high)
   function ownBeams(o) {
     const lo = o.ownLow && o.ownLow !== 'design' ? libFind(o.ownLow, 'low') : null, hi = o.ownHigh && o.ownHigh !== 'generic' ? libFind(o.ownHigh, 'high') : null;
-    return { low: lo ? lo.lut : null, high: hi ? hi.lut : null };
+    return { low: lo ? lo.lut : null, high: hi ? hi.lut : null, lowColour: lo ? lo.colour : null, highColour: hi ? hi.colour : null };
+  }
+  // BB3: the lamp tint the picture uses. While the high switch is on, a saved high beam's colour wins if it has one; otherwise the
+  // saved low beam's colour; a beam with no colour (old or imported file) lights with the current source's tint (fromSource).
+  function lampTintOf(I, own) {
+    const pick = (V.high && own.high ? own.highColour : null) || (own.low ? own.lowColour : null);
+    return RF.Beams.lampFor(pick, I.lampRGB, RF.CCT && RF.CCT.cctToRGB);
   }
   // saved high replaces the generic high: low + saved high, cached per (low table, saved high) so the picture keeps its identity
   const combineMemo = new WeakMap();
@@ -1498,8 +1509,8 @@ void main() {
     const ownHigh = E('select', { 'data-anim': 'own-high', 'aria-label': 'Own high beam', title: 'Our high beam when the high switch is on: the generic high beam, or a saved high beam from the library (it is added to our low beam).' });
     const fillOwn = () => {
       const keep = { l: info() && info().o.ownLow, h: info() && info().o.ownHigh };
-      ownLow.replaceChildren(E('option', { value: 'design' }, 'our design'), ...libLoad().filter(e => e.beamKind === 'low').map(e => E('option', { value: e.id }, e.name + (e.persisted ? '' : ' (session)'))));
-      ownHigh.replaceChildren(E('option', { value: 'generic' }, 'generic high'), ...libLoad().filter(e => e.beamKind === 'high').map(e => E('option', { value: e.id }, e.name + (e.persisted ? '' : ' (session)'))));
+      ownLow.replaceChildren(E('option', { value: 'design' }, 'our design'), ...libLoad().filter(e => e.beamKind === 'low').map(e => E('option', { value: e.id }, beamLabel(e))));
+      ownHigh.replaceChildren(E('option', { value: 'generic' }, 'generic high'), ...libLoad().filter(e => e.beamKind === 'high').map(e => E('option', { value: e.id }, beamLabel(e))));
       ownLow.value = libFind(keep.l, 'low') || keep.l === 'design' || !keep.l ? (keep.l || 'design') : 'design';
       ownHigh.value = libFind(keep.h, 'high') || keep.h === 'generic' || !keep.h ? (keep.h || 'generic') : 'generic';
       renderManager();
@@ -1518,12 +1529,12 @@ void main() {
     V.nameIn = nameIn; bar.append(nameIn);
     btn('save-design', 'Save our design as a beam in the library (a low beam, with the design\'s convention)', () => {
       const I = info(), name = RF.Beams.uniqueName(nameIn.value || beamDefaultName(I), libLoad().map(e => e.name));
-      libAdd([RF.Beams.fromLut(I.lut(), { name, beamKind: 'low', conv: I.conv || 'A' })]); nameIn.value = ''; fillOwn(); V.beamMsg.textContent = LIB.msg;
+      libAdd([RF.Beams.fromLut(I.lut(), { name, beamKind: 'low', conv: I.conv || 'A', colour: sourceColour(I) })]); nameIn.value = ''; fillOwn(); V.beamMsg.textContent = LIB.msg;
     }, 'save design');
     btn('import-beam', 'Import a beam file: one beam, or a bundle of several. Beams join the library.', () => fileIn.click(), 'import');
     btn('export-beams', 'Download the library as a beam file: one beam, or a bundle when there are several', () => {
       const items = libLoad(); if (!items.length) { V.beamMsg.textContent = 'The library is empty: save a design or import a file first.'; return; }
-      const parsed = items.map(e => RF.Beams.fromLut(e.lut, { name: e.name, beamKind: e.beamKind, conv: e.conv }));
+      const parsed = items.map(e => RF.Beams.fromLut(e.lut, { name: e.name, beamKind: e.beamKind, conv: e.conv, colour: e.colour || undefined }));
       const obj = parsed.length === 1 ? RF.Beams.serialise(parsed[0]) : RF.Beams.bundle(parsed, { name: 'beam library' });
       downloadBeams(obj, parsed.length === 1 ? 'beam.json' : 'beams.json'); V.beamMsg.textContent = 'Downloaded ' + parsed.length + ' beam' + (parsed.length === 1 ? '' : 's') + '.';
     }, 'export');
@@ -1559,7 +1570,26 @@ void main() {
         V.fillOwn(); V.beamMsg.textContent = LIB.msg;
       });
       const size = (e.lut.nh * e.lut.step).toFixed(0) + ' x ' + (e.lut.nv * e.lut.step).toFixed(0) + ' deg';
-      return E('div', { class: 'beam-row', 'data-id': e.id }, nm, E('span', { class: 'anim-speed' }, e.beamKind), E('span', { class: 'anim-speed' }, size), E('span', { class: 'anim-speed' }, e.persisted ? 'saved' : 'session'), ren, del);
+      const cl = RF.Beams.colourLabel(e.colour);
+      const colourCell = E('span', { class: 'anim-speed', 'data-anim': 'beam-colour' }, cl || 'colour: from current source');
+      const cells = [nm, E('span', { class: 'anim-speed' }, e.beamKind), E('span', { class: 'anim-speed' }, size), colourCell, E('span', { class: 'anim-speed' }, e.persisted ? 'saved' : 'session'), ren, del];
+      if (!e.colour) {   // no colour in the file: a kelvin can be set here, and the tint then travels with the beam
+        const kIn = E('input', { type: 'number', min: '1000', max: '20000', step: '100', placeholder: 'K', 'data-anim': 'beam-row-cct', 'aria-label': 'Colour temperature for this beam, kelvin' });
+        const kBtn = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-set-cct', title: 'Give this beam a colour temperature (1000 to 20000 K)' }, 'set K');
+        kBtn.addEventListener('click', () => {
+          const v = +kIn.value;
+          if (!(v >= 1000 && v <= 20000)) { LIB.msg = 'Colour needs a temperature from 1000 to 20000 K.'; V.beamMsg.textContent = LIB.msg; return; }
+          e.colour = { cct: v, rgb: RF.CCT.cctToRGB(v) }; LIB.ver++; const stored = libSaveStore();
+          // a beam in use is picked again, so the picture is rebuilt with its new tint (the same path a select takes)
+          const cur = info() ? info().o : {};
+          if (cur.ownLow === e.id) V.setOwn('ownLow', e.id);
+          if (cur.ownHigh === e.id) V.setOwn('ownHigh', e.id);
+          LIB.msg = 'Set "' + e.name + '" to ' + Math.round(v) + ' K.' + (stored ? '' : ' Browser storage refused the update, so it may not survive a reload.');
+          V.fillOwn(); V.beamMsg.textContent = LIB.msg;
+        });
+        cells.push(kIn, kBtn);
+      }
+      return E('div', { class: 'beam-row', 'data-id': e.id }, ...cells);
     });
     const clr = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-clear-all', title: 'Remove every beam from the library (asks twice)' }, items.length ? (V.clearArmed ? 'confirm: remove all ' + items.length : 'clear all') : 'library empty');
     clr.disabled = !items.length;

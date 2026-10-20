@@ -92,6 +92,8 @@ export function create(canvas, gl, onModelsReady) {
   }
   return {
     version: T.REVISION,
+    // BB3 test hook: the lamp tint currently in the lampRGB uniform (what the GPU lights with)
+    lampUniform() { return u.lampRGB && u.lampRGB.value ? u.lampRGB.value.toArray() : null; },
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
       const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); shading(mat, extras); shading(pass.material,extras, true);
