@@ -105,6 +105,15 @@ function run(RF, ok) {
   const sub = A._.poolOfBeams(items, { ...lib, trafficOutIds: ['b'] }, false, rgbOf);
   ok('BT2 subset: an unticked beam leaves the pool; a new beam joins by default', sub && sub.entries.map(e => e.id).join() === 'a');
   ok('BT2 subset: all unticked gives no pool', A._.poolOfBeams(items, { ...lib, trafficOutIds: ['a', 'b'] }, false, rgbOf) === null);
+  // 7. the mountain pass's own traffic light (drive-touge trafficLight) takes each car's beam: eyeCd scales with the beam, and emit carries its colour
+  const halfTable = { ...lut, data: Float32Array.from(lut.data, x => x * 0.5) };
+  const passLamps = (extra) => RF.Touge.world({ ...pp, ...extra }, 150, 0).objects.filter(o => o.headlamp && o.eyeCd > 0);
+  const passBuilt = passLamps({}), passHalf = passLamps({ trafficPool: { entries: [{ id: 'h', lut: halfTable, conv: 'A', tint: [1, 1, 1] }], weights: null } });
+  const passSame = passLamps({ trafficPool: { entries: [{ id: 's', lut, conv: 'A', tint: [1, 1, 1] }], weights: null } });
+  ok('BT1 pass: a half-strength pooled beam halves each pass headlamp eyeCd (the pass light reads the pool)', passBuilt.length > 0 && passHalf.length === passBuilt.length && passBuilt.every((o, i) => Math.abs(passHalf[i].eyeCd / o.eyeCd - 0.5) < 1e-6), { lamps: passBuilt.length });
+  ok('BT1 pass: a same-table pool gives identical eyeCd on each pass headlamp', passSame.length === passBuilt.length && passBuilt.every((o, i) => Math.abs(passSame[i].eyeCd - o.eyeCd) < 1e-9));
+  const passHalo = passLamps({ trafficPool: { entries: [{ id: 'h', lut, conv: 'A', tint: D.unitTint(RF.CCT.cctToRGB(3200)) }], weights: null } });
+  ok('BT2 pass: a 3200 K pooled beam tints each pass headlamp warm (blue/red emit under 0.3); the built-in is not (over 0.9)', passHalo.length > 0 && passHalo.every(o => o.emit[2] / o.emit[0] < 0.3) && passBuilt.every(o => o.emit[2] / o.emit[0] > 0.9), { halo: passHalo.slice(0, 1).map(o => +(o.emit[2] / o.emit[0]).toFixed(3)) });
 }
 module.exports = { run };
 if (require.main === module) {
