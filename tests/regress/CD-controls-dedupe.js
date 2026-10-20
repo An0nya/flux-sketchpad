@@ -4,7 +4,7 @@
   const settle = async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); await sleep(100); };
   // Every option in the former static bar, mapped to its single surviving control.
   const oldOptions = {
-    scene: '[data-dv=scene]', shape: '[data-dv=shape]', wet: '[data-dv=wet]', wetSheen: '[data-dv=wetSheen]',
+    scene: '[data-dv=scene]', shape: '[data-dv=shape]', wet: '[data-dv=wetness]', wetSheen: '[data-dv=wetSheen]',
     onMode: '[data-dv=onMode]', expMode: '[data-dv=expMode]', evm: '[data-dv=evm]', ev: '[data-dv=ev]', evp: '[data-dv=evp]',
     glare: '[data-dv=glare]', people: '[data-anim=c-people]', animals: '[data-anim=c-animals]', signs: '[data-anim=c-signs]',
     oncoming: '[data-dv=oncoming]', preceding: '[data-dv=preceding]'
@@ -41,7 +41,11 @@
         ok('CD former static option reachable exactly once: ' + key, controls.length === 1 && controls[0].checkVisibility() && !controls[0].disabled, selector);
       }
       // Invoke the actual controls and check that they change their shared option.
-      for (const key of ['wet', 'wetSheen', 'oncoming', 'preceding']) {
+      // WT: the road button cycles dry, damp, wet (wetness 1 -> 0 -> 0.4 -> 1), so it is checked as a cycle, not a toggle
+      { const L = [0, 0.4, 1], before = RF.Drive.wetnessOf(u.dvOpts), next = L[(L.indexOf(before) + 1) % 3]; get(oldOptions.wet).click();
+        ok('CD merged control works: wet cycles dry, damp, wet', RF.Drive.wetnessOf(u.dvOpts) === next && get(oldOptions.wet).getAttribute('aria-pressed') === String(next > 0), [before, next]);
+        get(oldOptions.wet).click(); get(oldOptions.wet).click(); }
+      for (const key of ['wetSheen', 'oncoming', 'preceding']) {
         const before = u.dvOpts[key]; get(oldOptions[key]).click();
         ok('CD merged control works: ' + key, u.dvOpts[key] === !before && get(oldOptions[key]).getAttribute('aria-pressed') === String(!before));
         get(oldOptions[key]).click();

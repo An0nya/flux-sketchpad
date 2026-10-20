@@ -29,14 +29,18 @@
   // ---------------------------------------------------------------- materials
   // rho: diffuse reflectance (linear RGB) · gloss {a: GGX roughness α, F0} · retro: [r,g,b] in cd/m²/lx, or {rl: scale} = scale × the
   // markings' R_L the user set · emit: cd/m² (lit windows, lamp heads)
+  // PAINT_WET_GLOSS: wet paint is rougher than wet asphalt (a binder with pigment, not a polished surface), so its sheen is lower and broader: GGX alpha 0.25 against asphalt's 0.09.
+  const PAINT_WET_GLOSS = { a: 0.25, F0: 0.02 };
+  // wet: the wet look of a material, applied by materials() at road wetness W (see wetMaterial). Its presence is what makes a material take the wet sheen (SHEEN_IDS).
+  // streak: the material also takes the streak from our own beam and the street lamps (OWN_STREAK_IDS). Concrete has the reflection sheen only, as before.
   const MAT_DEF = {
-    'asphalt': { name: 'asphalt', rho: [0.10, 0.10, 0.10], gloss: { a: 0.5, F0: 0.04 } },
+    'asphalt': { name: 'asphalt', rho: [0.10, 0.10, 0.10], gloss: { a: 0.5, F0: 0.04 }, wet: { rho: [0.05, 0.05, 0.05], gloss: { a: 0.09, F0: 0.02 } }, streak: true },
     'gravel': { name: 'gravel shoulder', rho: [0.22, 0.21, 0.19] },
     'grass': { name: 'grass', rho: [0.05, 0.09, 0.03] },
     'leaves': { name: 'forest floor', rho: [0.06, 0.05, 0.035] },
-    'concrete': { name: 'pavement', rho: [0.30, 0.30, 0.29], gloss: { a: 0.6, F0: 0.04 } },
-    'white-paint': { name: 'white marking', rho: [0.45, 0.45, 0.45], retro: { rl: 1 } },
-    'yellow-paint': { name: 'yellow marking', rho: [0.50, 0.38, 0.08], retro: { rl: 0.6, rgb: [1, 0.75, 0.1] } },
+    'concrete': { name: 'pavement', rho: [0.30, 0.30, 0.29], gloss: { a: 0.6, F0: 0.04 }, wet: { rho: [0.2, 0.2, 0.19], gloss: { a: 0.15, F0: 0.02 } } },
+    'white-paint': { name: 'white marking', rho: [0.45, 0.45, 0.45], retro: { rl: 1 }, wet: { gloss: PAINT_WET_GLOSS }, streak: true },
+    'yellow-paint': { name: 'yellow marking', rho: [0.50, 0.38, 0.08], retro: { rl: 0.6, rgb: [1, 0.75, 0.1] }, wet: { gloss: PAINT_WET_GLOSS }, streak: true },
     'bark': { name: 'bark', rho: [0.08, 0.06, 0.045] },
     'foliage': { name: 'foliage', rho: [0.035, 0.065, 0.02] },
     'trunk-birch': { name: 'birch bark', rho: [0.45, 0.43, 0.38] },
@@ -70,19 +74,31 @@
   const MAT_KEYS = Object.keys(MAT_DEF), MAT_ID = {};
   MAT_KEYS.forEach((k, i) => { MAT_ID[k] = i; });
   // SB2: which materials take the wet sheen. Asphalt and concrete as before; the painted lines now too (their ids are 5 and 6; drive-three-shaders.js tests them by number).
-  // PAINT_WET_GLOSS: wet paint is rougher than wet asphalt (a binder with pigment, not a polished surface), so its sheen is lower and broader: GGX alpha 0.25 against asphalt's 0.09.
-  const PAINT_WET_GLOSS = { a: 0.25, F0: 0.02 };
-  const SHEEN_IDS = [MAT_ID.asphalt, MAT_ID.concrete, MAT_ID['white-paint'], MAT_ID['yellow-paint']], OWN_STREAK_IDS = [MAT_ID.asphalt, MAT_ID['white-paint'], MAT_ID['yellow-paint']];
-  // the table for one render: wet asphalt is darker and mirror-like; retro scales take the user's R_L
+  // SB2: which materials take the wet sheen (those with a wet look: asphalt, concrete, the painted lines), and which of them also take our own beam's streak.
+  const SHEEN_IDS = MAT_KEYS.filter((k) => MAT_DEF[k].wet).map((k) => MAT_ID[k]);
+  const OWN_STREAK_IDS = MAT_KEYS.filter((k) => MAT_DEF[k].streak).map((k) => MAT_ID[k]);
+  // Road wetness W in 0..1: look.wetness when given, else the legacy boolean look.wet (true = 1, the old wet road).
+  function wetnessOf(look) { if (look.wetness !== undefined) { const w = +look.wetness; return w > 0 ? Math.min(w, 1) : 0; } return look.wet ? 1 : 0; }
+  const wetnessLevels = { dry: 0, damp: 0.4, wet: 1 };     // the three levels the road button cycles through (spec-ui)
+  // One material at road wetness W. W = 1 assigns the wet values exactly (the old wet look, byte for byte). 0 < W < 1 blends: rho linearly,
+  // gloss alpha in log space, F0 linearly. A material with no dry gloss (paint) takes its wet gloss only at W = 1 with the sheen on; below that
+  // its wetness shows only as the sheen weight (W, applied in render).
+  function wetMaterial(dry, wd, W, sheen) {
+    const out = Object.assign({}, dry);
+    if (W >= 1) { if (wd.rho) out.rho = wd.rho; if (wd.gloss && (dry.gloss || sheen)) out.gloss = wd.gloss; return out; }
+    if (wd.rho) out.rho = dry.rho.map((v, i) => v + (wd.rho[i] - v) * W);
+    if (dry.gloss && wd.gloss) out.gloss = { a: Math.exp(Math.log(dry.gloss.a) + (Math.log(wd.gloss.a) - Math.log(dry.gloss.a)) * W), F0: dry.gloss.F0 + (wd.gloss.F0 - dry.gloss.F0) * W };
+    return out;
+  }
+  // the table for one render: wet materials blend to their wet look at road wetness W; retro scales take the user's R_L
   function materials(look) {
-    const out = {};
+    const W = wetnessOf(look), out = {};
     for (const k of MAT_KEYS) {
       const m = MAT_DEF[k], r = { rho: m.rho, gloss: m.gloss || null, emit: m.emit || null, retro: null, id: MAT_ID[k] };
       if (m.retro) { const rl = m.retro.rl !== undefined ? m.retro.rl * look.RL : 0, c = m.retro.rgb || [1, 1, 1]; r.retro = Array.isArray(m.retro) ? m.retro : [rl * c[0], rl * c[1], rl * c[2]]; }
       out[k] = r;
     }
-    if (look.wet) { out.asphalt = Object.assign({}, out.asphalt, { rho: [0.05, 0.05, 0.05], gloss: { a: 0.09, F0: 0.02 } }); out.concrete = Object.assign({}, out.concrete, { rho: [0.2, 0.2, 0.19], gloss: { a: 0.15, F0: 0.02 } }); }
-    if (look.wet && look.wetSheen) for (const k of ['white-paint', 'yellow-paint']) out[k] = Object.assign({}, out[k], { gloss: PAINT_WET_GLOSS });
+    if (W > 0) for (const k of MAT_KEYS) if (MAT_DEF[k].wet) out[k] = wetMaterial(out[k], MAT_DEF[k].wet, W, !!look.wetSheen);
     return out;
   }
 
@@ -246,7 +262,7 @@
     const rgb = rgba ? null : new Float32Array(w * h * 3), depth = objOnly ? null : new Float32Array(w * h).fill(Infinity), matBuf = objOnly ? null : new Uint8Array(w * h);
     const amb = look.ambient > 0 ? look.ambient : 0, skyL = amb * 0.012;       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
     const traffic = o.trafficBeams ? trafficSources(objs, eye, o) : [], otherBeam = traffic.length ? trafficBeam(o) : null, pitch = o.pitch || 0;
-    const pointLights = o.pointLights || [], crossings = o.crossings || [], sheen = look.wet && look.wetSheen, reflections = sheen ? reflectionSources(objs, o).concat(pointLights) : [];
+    const pointLights = o.pointLights || [], crossings = o.crossings || [], wetW = wetnessOf(look), sheen = wetW > 0 && look.wetSheen, reflections = sheen ? reflectionSources(objs, o).concat(pointLights) : [];
     const delta0 = 2 * tanH / w;                                              // radians per pixel
     // tiles of 16 px: which objects can touch them (by the bounding sphere's projection)
     const TS = 16, tw = Math.ceil(w / TS), th = Math.ceil(h / TS), tiles = new Array(tw * th).fill(null);
@@ -323,7 +339,7 @@
             r += m.rho[0] * L.rgb[0] * e; g += m.rho[1] * L.rgb[1] * e; b += m.rho[2] * L.rgb[2] * e;
           }
           if (sheen && SHEEN_IDS.includes(m.id)) for (const L of reflections) {
-            const v = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += v * L.rgb[0]; g += v * L.rgb[1]; b += v * L.rgb[2];
+            const v = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz) * wetW; r += v * L.rgb[0]; g += v * L.rgb[1]; b += v * L.rgb[2];
           }
           LR += k * (a[q] + r * lc[0]); LG += k * (a[q + 1] + g * lc[1]); LB += k * (a[q + 2] + b * lc[2]); return;
         }
@@ -340,7 +356,7 @@
         r += rho[0] * L.rgb[0] * e; g += rho[1] * L.rgb[1] * e; b += rho[2] * L.rgb[2] * e;
       }
       if (!staticBuild && sheen && nz === 1 && SHEEN_IDS.includes(m.id)) for (const L of reflections) {
-        const a = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz); r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
+        const a = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz) * wetW; r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
       }
       for (const L of traffic) {
         const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz;
@@ -353,7 +369,7 @@
         if (!(NoL > 0)) continue;
         if (preA) { const a = dx / rr, b = -dy / rr, c = dz / rr; if (c < sv0 || c > sv1 || a <= 0 || b > a * th1 || b < a * th0) continue; }
         const I = ownBeamAt(o, dx, dy, dz, L[1]); if (!(I > 0)) continue;
-        if (sheen && nz === 1 && OWN_STREAK_IDS.includes(m.id)) { const a = I * lobe(-dx, -dy, -dz, vx, vy, vz); r += a; g += a; b += a; }
+        if (sheen && nz === 1 && OWN_STREAK_IDS.includes(m.id)) { const a = I * lobe(-dx, -dy, -dz, vx, vy, vz) * wetW; r += a; g += a; b += a; }
         const Ep = I / r2;                                                    // E⊥, lux square to the beam
         const d = Ep * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
         if (m.gloss && NoV > 0) {
@@ -805,5 +821,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { cornerAt, ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
