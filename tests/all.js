@@ -46,6 +46,7 @@ run('leafy foliage prototype (tests/foliage.js)', ['tests/foliage.js']);
 run('detailed models final geometry (tests/models-m2.js)', ['tests/models-m2.js']);
 run('optional GPU Drive wiring + vendor pins (tests/drive-three.js)', ['tests/drive-three.js']);
 run('P2 Drive lighting extras (tests/p2-drive-lighting.js)', ['tests/p2-drive-lighting.js']);
+run('TL1/TL2 traffic road light taper and options (tests/tl-traffic-taper.js)', ['tests/tl-traffic-taper.js']);
 run('eurobeat pattern data (tests/eurobeat.js)', ['tests/eurobeat.js']);
 run('Mountain pass speeds and adaptive lighting (tests/touge-r2.js)', ['tests/touge-r2.js']);
 run('Mountain pass parity: lamps, deer bolt, detail, edge lines (tests/pass-parity.js)', ['tests/pass-parity.js']);

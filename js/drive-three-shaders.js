@@ -121,8 +121,8 @@ export function withLighting(source) {
   if (!source.includes('float intensity(vec3 d) {') || !source.includes('  for(int i=0;i<2;i++)')) throw Error('P2 shared shading prefix changed');
   return source.replace('uniform sampler2D beam, materials, marks;\n', `uniform sampler2D beam, materials, marks, otherBeam;
 uniform vec4 otherLutInfo;
-uniform vec2 otherLutSize, trafficDir[16];
-uniform vec3 trafficLamp[16];
+uniform vec2 otherLutSize, trafficDir[64];
+uniform vec4 trafficLamp[64];
 uniform int nTraffic, otherConvention;
 uniform float pitch, yaw;
 uniform vec2 cornering;
@@ -147,10 +147,10 @@ float otherIntensity(vec3 d) {
   return mix(mix(texelFetch(otherBeam,k,0).r,texelFetch(otherBeam,k+ivec2(1,0),0).r,t.x),mix(texelFetch(otherBeam,k+ivec2(0,1),0).r,texelFetch(otherBeam,k+ivec2(1,1),0).r,t.x),t.y);
 }
 ` + 'float wetLobe')
-    .replace('  for(int i=0;i<2;i++)', `  for(int i=0;i<16;i++) { if(i>=nTraffic) break; vec3 d=p-trafficLamp[i]; float r2=dot(d,d), forward=dot(d.xy,trafficDir[i]);
+    .replace('  for(int i=0;i<2;i++)', `  for(int i=0;i<64;i++) { if(i>=nTraffic) break; vec3 d=p-trafficLamp[i].xyz; float r2=dot(d,d), forward=dot(d.xy,trafficDir[i]);
     if(forward<=0.0 || r2<0.01) continue; float NoL=max(0.0,-dot(d,n)/sqrt(r2)); if(NoL<=0.0) continue;
     vec3 local=vec3(forward,dot(d.xy,vec2(-trafficDir[i].y,trafficDir[i].x)),d.z);
-    r+=rho*vec3(1,1,0.93)*otherIntensity(local)*NoL/(PI*r2);
+    r+=rho*vec3(1,1,0.93)*otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w;
   }
 ` + '  for(int i=0;i<2;i++)');
 }

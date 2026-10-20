@@ -18,6 +18,10 @@
   const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, ANIM_SCENES = { road: 1, forest: 1, city: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
   // Traffic-car window (m), owner option 'trafficRange'. CULL above is still the window for scenery, street lamps, crossings and actors.
   const TRAFFIC_RANGES = [230, 400, 600, 800], trafficCullOf = (v) => (TRAFFIC_RANGES.includes(+v) ? +v : 400);
+  // TL2: road-light range (m) and nearest-car count. 'cars' = as far as cars spawn (the traffic range). Never beyond the traffic range.
+  const LIGHT_RANGES = ['150', '250', '400', 'cars'], LIGHT_CARS = ['8', '16', '32'];
+  const lightRangeOf = (o) => { const cull = trafficCullOf(o.trafficRange), v = String(o.trafficLightRange); return Math.min(v === 'cars' ? cull : LIGHT_RANGES.includes(v) ? +v : 150, cull); };
+  const lightCarsOf = (o) => (LIGHT_CARS.includes(String(o.trafficNearest)) ? +o.trafficNearest : 8);
   // The camera eye: the fixed EYE, or the dolly-moved eye that rides on the frame (drive.js eyeFor). Every consumer goes through here.
   const eyeOf = (p) => (p && p.eye) || EYE;
   const CLASSES = [['posts', 'posts', 'Delineator posts with reflectors'], ['signs', 'signs', 'Road signs (retroreflective sheeting)'], ['people', 'people', 'Pedestrians'], ['animals', 'deer', 'Deer, with retroreflecting eyes'], ['veg', 'trees', 'Trees and bushes at the roadside'], ['obstacle', 'crates', 'A dark crate on the road every 150 m (the hard target: 3 % reflectance, nothing retroreflective)'], ['rpm', 'studs', 'Raised reflective pavement markers on the centre and edge lines (random scenery only)'], ['tex', 'grain', 'Asphalt grain: a subtle texture on the road surface that moves with the drive'], ['mt', 'threads', 'Trace the objects on several CPU threads (Web Workers), so big scenes keep up. Off: this thread only. Needs the page served over http(s) (browsers block workers on file://)'], ['wild', 'random', 'Random scenery from a seed: denser, different every 300 m, walkers and deer that move. Off: the original fixed scenery, repeating every 300 m']];
@@ -658,7 +662,7 @@
     const x = q.angle - target, b = q.rate + w * x, e = Math.exp(-w * Math.max(0, dt));
     return { angle: target + (x + b * dt) * e, rate: (q.rate - w * b * dt) * e };
   }
-  const camOf = (p) => ({ w: p.w, h: p.h, hfov: p.hfov, eye: eyeOf(p), lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look, profile: p.profile, src: p.src, trafficBeams: p.trafficBeams, surfaceSheen: p.surfaceSheen, pitch: p.pitch, yaw: p.yaw, cornerLeft: p.cornerLeft, cornerRight: p.cornerRight, lampRGB: p.lampRGB });
+  const camOf = (p) => ({ w: p.w, h: p.h, hfov: p.hfov, eye: eyeOf(p), lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look, profile: p.profile, src: p.src, trafficBeams: p.trafficBeams, lightRange: p.lightRange, lightCars: p.lightCars, surfaceSheen: p.surfaceSheen, pitch: p.pitch, yaw: p.yaw, cornerLeft: p.cornerLeft, cornerRight: p.cornerRight, lampRGB: p.lampRGB });
   /* the lit ground: A = everything that does not move; each patterned marking (the dashes, a crossing, a stop line) is a layer: the markings that share one pattern are drawn solid and what they add over A is its B,
    * which the compose shader fades by the pattern's coverage at s + dist. Lit paint adds linearly, so layers sum (where two overlap the sum is a little more than the still view's first-marking-wins: city's crossing over the dash).
    * layers = [{ pat, B }] (at most MAX_PAT; more patterned markings than that stay in A as they are at dist 0); B and pat = the first layer's (null: nothing patterned)  */
@@ -1104,13 +1108,13 @@ void main() {
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high]);     // V.high: the switch changes the lamp table, so the cached ground and picture rows are rebuilt
+    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high]);     // V.high: the switch changes the lamp table, so the cached ground and picture rows are rebuilt
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(o.fov, o.dolly), lamps: I.rd.mdl.lamps, lut: D.withHigh(I.lut(), !!V.high), lowLut: I.lut(), conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, wetModel: o.wetModel, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
+    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(o.fov, o.dolly), lamps: I.rd.mdl.lamps, lut: D.withHigh(I.lut(), !!V.high), lowLut: I.lut(), conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, wetModel: o.wetModel, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1378,7 +1382,7 @@ void main() {
     btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off uses scripted traffic; Mountain pass curve speeds remain active.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
     for (const [name, key, label, title] of [
-      ['traffic-beams', 'trafficBeams', 'traffic beams', 'Nearest eight cars within 150 m cast low beams onto road and objects. CPU uses full-frame tracing.'],
+      ['traffic-beams', 'trafficBeams', 'traffic beams', 'Nearest cars (8 by default, see traffic light range and nearest cars) cast low beams onto road and objects, fading out toward the range. CPU uses full-frame tracing.'],
       ['surface-sheen', 'surfaceSheen', 'lit surface sheen', 'Up to eight lit sign/bright faces add wet streaks from integrated returned luminance and area.'],
       ['afs', 'afs', 'AFS', 'Adaptive front-lighting: low beam swivels into tiled bends, up to 15 degrees.'],
       ['cornering-lamps', 'corneringLamps', 'cornering lamps', 'Wide separate lamps fade into tight bends below 40 km/h. Generic study, not measured lamp photometry.'],
@@ -1422,6 +1426,13 @@ void main() {
     const trRange = E('select', { 'data-anim': 'traffic-range', 'aria-label': 'Traffic range', title: 'How far away traffic cars are drawn. Cars pop in at the edge of this range. Street lamps, scenery and pedestrians keep their own 230 m range.' });
     for (const m of TRAFFIC_RANGES) trRange.append(E('option', { value: m }, m + ' m'));
     trRange.addEventListener('change', () => setDV(ui, 'trafficRange', +trRange.value)); bar.append(trRange);
+    // TL2: how far the road light from other cars reaches (it fades out toward this range, so nothing pops), and how many nearest cars cast it.
+    const lrRange = E('select', { 'data-anim': 'traffic-light-range', 'aria-label': 'Traffic light range', title: 'How far the road light from other cars reaches. It fades out smoothly toward the edge, so nothing pops. Larger costs more frame time. As far as cars spawn = the traffic range above.' });
+    for (const [v, t] of [['150', 'light 150 m'], ['250', 'light 250 m'], ['400', 'light 400 m'], ['cars', 'light as far as cars spawn']]) lrRange.append(E('option', { value: v }, t));
+    lrRange.addEventListener('change', () => setDV(ui, 'trafficLightRange', lrRange.value)); bar.append(lrRange);
+    const lrCars = E('select', { 'data-anim': 'traffic-nearest', 'aria-label': 'Nearest cars with traffic light', title: 'How many of the nearest cars cast road light. Each car has two lamps. 16 and 32 cost more frame time.' });
+    for (const n of ['8', '16', '32']) lrCars.append(E('option', { value: n }, 'nearest ' + n + ' cars'));
+    lrCars.addEventListener('change', () => setDV(ui, 'trafficNearest', lrCars.value)); bar.append(lrCars);
     bar.append(E('span', { class: 'anim-speed' }, 'traffic'), td, V.flashLab);
     btn('reset-flashes', 'Start the count again (each driver counts once above 1 lx at their eye)', () => { V.flash = flashState(); V.flashLab.textContent = 'oncoming drivers above 1 lx: 0'; }, 'reset count');
     // telephoto dolly (opt-in): only changes the picture below a 60° view angle; default off keeps the fixed eye
@@ -1505,6 +1516,8 @@ void main() {
     for (const [k] of CLASSES) { const b = V.bar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
     V.bar.querySelector('[data-anim="traffic-density"]').value = o.trafficDensity === undefined ? 1 : o.trafficDensity;
     V.bar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));
+    V.bar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
+    V.bar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
     if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0);
     const trafficOn = o.oncoming || o.preceding;
     if (V.flashLab) V.flashLab.hidden = !trafficOn;
