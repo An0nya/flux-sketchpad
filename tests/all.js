@@ -56,7 +56,8 @@ run('wet road sheen: GGX BRDF + legacy frames unchanged (tests/wet-ggx.js)', ['t
 run('road wetness 0..1: dry and wet frames unchanged, damp in between (tests/wetness.js)', ['tests/wetness.js']);
 run('fog: off frames unchanged, Koschmieder attenuation, monotone, presets (tests/fog.js)', ['tests/fog.js']);
 run('visible beam in fog: in-scatter off = pinned frames, cone, density peak, convergence, determinism (tests/scatter.js)', ['tests/scatter.js']);
-run('SD air-beam scatter table: CPU twin within 10 percent of direct at 8-30 m, finite, monotone, zero without fog (tests/scatter-table.js)', ['tests/scatter-table.js']);
+run('SD air-beam scatter table: CPU twin within 10 percent of direct at 15-30 m, finite, monotone, zero without fog (tests/scatter-table.js)', ['tests/scatter-table.js']);
+run('SE table pacing helpers and near-eye fade on the CPU twin (tests/scatter-table-pace.js)', ['tests/scatter-table-pace.js']);
 run('scene snapshot: studs, posts, signs, lamps, deer, people, trees, markings per scene (tests/scene-snapshot.js)', ['tests/scene-snapshot.js']);
 run('SB2 wet sheen from studs and paint: source admission, caps, paint gloss, GPU ids (tests/sb2-sheen.js)', ['tests/sb2-sheen.js']);
 run('saveable beams: format, checksum, grid, bundle, synthetic (tests/beams.js)', ['tests/beams.js']);

@@ -761,9 +761,14 @@
   // table integrates from 0, so near-eye scatter is included. The per-bin sample count is round(steps / K), at least 1.
   const TABLE = { K: 12, near: 0.5 };
   const tableEdge = (k) => TABLE.near * Math.pow(SCAT.S_MAX / TABLE.near, k / (TABLE.K - 1));   // k = 0..K-1; edge K-1 = S_MAX
+  // SE3 near-eye fade (look.scatterNearFade, default 'on' in table mode): the integrand is weighted by smoothstep(1 m, 10 m, s).
+  // Classic script, so the constants are copies of SCAT_FADE_S0 / SCAT_FADE_S1 in js/table-pace.js (the shader reads that file).
+  const NEAR_FADE = { S0: 1.0, S1: 10.0 };
+  const nearFadeW = (s) => { const t = Math.min(1, Math.max(0, (s - NEAR_FADE.S0) / (NEAR_FADE.S1 - NEAR_FADE.S0))); return t * t * (3 - 2 * t); };
   function scatterTableBins(o, dir, jit, steps) {
     const sig = sigmaOf(o.look || {}), n = Math.max(1, Math.round((steps | 0) / TABLE.K)), bins = new Float64Array(TABLE.K);
     if (!(sig > 0)) return bins;
+    const fade = (o.look || {}).scatterNearFade !== 'off';
     const eye = o.eye, lamps = o.lamps || [], dx = dir[0], dy = dir[1], dz = dir[2];
     const integrand = (s) => {
       const px = eye[0] + s * dx, py = eye[1] + s * dy, pz = eye[2] + s * dz; let f = 0;
@@ -773,7 +778,7 @@
         const r = Math.sqrt(r2), I = ownBeamAt(o, qx, qy, qz, L[1]);
         if (!(I > 0)) continue;
         const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I / Math.max(r2, SCAT.rMin * SCAT.rMin);
-        f += sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Math.exp(-sig * s);
+        f += sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Math.exp(-sig * s) * (fade ? nearFadeW(s) : 1);
       }
       return Number.isFinite(f) ? f : 0;
     };
