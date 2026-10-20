@@ -83,7 +83,9 @@ export function modelMeshes(scene,uniforms,onReady) {
       const out=[];state.mounts=[];
       for(const ob of obs){const m=roots.get(ob.modelId);if(!m||ob.detailPart!=='car'){out.push(ob);continue;}if(ob.k!=='disc'){if(ob.detail)out.push({...ob,k:'mesh-car'});continue;}
         const a=D.Models.stableId(m.id)%assets.length,F=m.face===-1?-1:1,yaw=m.yaw+(F===-1?Math.PI:0),c=Math.cos(yaw),s=Math.sin(yaw),end=((ob.x-m.x)*Math.cos(m.yaw)+(ob.y-m.y)*Math.sin(m.yaw))*F>0?1:-1,type=ob.mat==='plate'?'plate':ob.mat==='reflector-red'?'reflector':ob.headlamp?'head':'tail',side=type==='plate'?0:Math.sign(-(ob.x-m.x)*s+(ob.y-m.y)*c),mount=assets[a].mounts[end+':'+type+':'+side];
-        const q={...ob,x:m.x+c*mount.p[0]-s*mount.p[1],y:m.y+s*mount.p[0]+c*mount.p[1],z:(m.z||0)+mount.p[2],nx:c*mount.n[0]-s*mount.n[1],ny:s*mount.n[0]+c*mount.n[1],nz:mount.n[2],bs:undefined};
+        // Pass cars (m.normal): the mesh is tilted by carBasis (same as update()), so mounts go through the same basis. Flat cars: unchanged.
+        const B=m.normal?carBasis(m):null,P=mount.p,N=mount.n;
+        const q={...ob,x:B?m.x+(B.X[0]*P[0]+B.Y[0]*P[1]+B.U[0]*P[2]):m.x+c*P[0]-s*P[1],y:B?m.y+(B.X[1]*P[0]+B.Y[1]*P[1]+B.U[1]*P[2]):m.y+s*P[0]+c*P[1],z:B?(m.z||0)+(B.X[2]*P[0]+B.Y[2]*P[1]+B.U[2]*P[2]):(m.z||0)+P[2],nx:B?B.X[0]*N[0]+B.Y[0]*N[1]+B.U[0]*N[2]:c*N[0]-s*N[1],ny:B?B.X[1]*N[0]+B.Y[1]*N[1]+B.U[1]*N[2]:s*N[0]+c*N[1],nz:B?B.X[2]*N[0]+B.Y[2]*N[1]+B.U[2]*N[2]:N[2],bs:undefined};
         if(type==='plate'){q.k='rect';q.rx=(p.us?.305:.520)/2;q.rz=(p.us?.152:.110)/2;q.r=Math.hypot(q.rx,q.rz);q.sub=false;}
         out.push(q);state.mounts.push({id:m.id,variant:names[a],type,side,end,...mount,width:q.rx?2*q.rx:undefined,height:q.rz?2*q.rz:undefined});
       }return out;
@@ -114,6 +116,8 @@ export function modelMeshes(scene,uniforms,onReady) {
     dispose(){disposed=true;const geometries=new Set(),textures=new Set();for(const g of groups.values()){scene.remove(g.mesh);geometries.add(g.mesh.geometry);textures.add(g.local.bodyMap.value);g.mesh.dispose();g.mesh.material.dispose();}for(const geometry of geometries)geometry.dispose();for(const tex of textures)if(tex)tex.dispose();groups.clear();},
   };
 }
+// The pass car's rigid basis, the same one update() rotates the mesh by: X = heading (with the face flip) projected on the road normal, Y = U x X, U = normal.
+function carBasis(m){const F=m.face===-1?-1:1,n=m.normal,t=[Math.cos(m.yaw)*F,Math.sin(m.yaw)*F,(m.grade||0)*F],k=t[0]*n[0]+t[1]*n[1]+t[2]*n[2],X=[t[0]-k*n[0],t[1]-k*n[1],t[2]-k*n[2]],L=Math.hypot(...X),x=X.map(v=>v/L),Y=[n[1]*x[2]-n[2]*x[1],n[2]*x[0]-n[0]*x[2],n[0]*x[1]-n[1]*x[0]];return{X:x,Y,U:n};}
 export function bakeTree() {
   const w=64,h=128,views=8,variants=3,data=new Float32Array(w*h*views*variants*4);
   for(let v=0;v<variants;v++){
