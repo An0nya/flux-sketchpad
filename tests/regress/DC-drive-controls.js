@@ -1,8 +1,8 @@
 // DC page checks. Serve the worktree first: python3 tests/serve.py <port> (background), then:
 //   PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/DC-drive-controls.js <port>
 // Checks: the view-angle select is in the drive bar (one copy, with 30), choosing 30 changes the rendered view (screenshots saved for 30 and 60);
-// the traffic range select at density 3 on the road scene shows more cars at 600 m than at 230 m; the telephoto dolly moves the eye at 45 and
-// not at 60; no page or console errors (favicon.ico 404 ignored).
+// the traffic range select at density 3 on the road scene shows more cars at 600 m than at 230 m; the eye stays fixed at 45 and 60 (the telephoto
+// dolly was removed, so there is no dolly button); no page or console errors (favicon.ico 404 ignored).
 const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync('npm root -g').toString().trim() + '/playwright'));
 const port = +(process.argv[2] || 8943);
 const REPORTS = process.env.DC_REPORTS || '/Users/anya/Projects/flux-sketchpad/.claude/briefs/reports';
@@ -36,7 +36,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     ok('view angle: one copy on the page (no sidebar duplicate)', (await page.evaluate(() => document.querySelectorAll('[data-dv=fov]').length)) === 1);
     await settle();
     const shot60 = await canvasShot('dc-fov-60.png');   // More closed: the expanded bar would cover the canvas
-    // the view angle, traffic range and dolly live under "More": open it the way a user does, choose 30, then close it again
+    // the view angle and traffic range live under "More": open it the way a user does, choose 30, then close it again
     await page.evaluate(() => { const m = document.querySelector('.drive-more'); if (!m.open) m.querySelector('summary').click(); });
     await sleep(300);
     await page.selectOption('select[data-dv=fov]', '30');
@@ -63,24 +63,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     ok('traffic range: 600 m shows more cars than 230 m at density 3 (and cars beyond 230 m)', c600.cars > c230.cars && c600.far > 0 && c230.far === 0, { at230: c230.cars, at600: c600.cars, beyond230at600: c600.far });
     await count(400);
 
-    // 3. telephoto dolly: opt-in; moves the eye only under 60°
+    // 3. fixed eye: no dolly control; the view angle moves the lens, not the eye
     await page.evaluate(() => { const m = document.querySelector('.drive-more'); if (!m.open) m.querySelector('summary').click(); });
     await sleep(300);
+    ok('no telephoto dolly button in the drive bar', (await page.evaluate(() => !document.querySelector('[data-anim=telephoto-dolly]'))));
     const eye = () => page.evaluate(() => RF.DriveAnim._.V.p.eye.slice());
-    await page.evaluate(() => { document.querySelector('select[data-dv=fov]').value = '45'; document.querySelector('select[data-dv=fov]').dispatchEvent(new Event('change', { bubbles: true })); });
+    const setFov = (v) => page.evaluate((x) => { const s = document.querySelector('select[data-dv=fov]'); s.value = String(x); s.dispatchEvent(new Event('change', { bubbles: true })); }, v);
+    await setFov(45);
     await page.waitForFunction(() => RF.DriveAnim._.V.p.hfov === 45, null, { timeout: 30000 });
-    const eyeOff45 = await eye();
-    await page.click('[data-anim=telephoto-dolly]');
-    await page.waitForFunction(() => RF.DriveAnim._.V.info.o.dolly === true, null, { timeout: 30000 });
-    const eyeOn45 = await eye(), pressed = await page.getAttribute('[data-anim=telephoto-dolly]', 'aria-pressed');
-    ok('dolly on at 45: eye moves back about 7.9 m (x only)', Math.abs((eyeOff45[0] - eyeOn45[0]) - 7.877) < 0.05 && eyeOn45[1] === eyeOff45[1] && eyeOn45[2] === eyeOff45[2], { off: eyeOff45, on: eyeOn45 });
-    ok('dolly button shows pressed', pressed === 'true', { pressed });
-    await page.evaluate(() => { document.querySelector('select[data-dv=fov]').value = '60'; document.querySelector('select[data-dv=fov]').dispatchEvent(new Event('change', { bubbles: true })); });
+    const eye45 = await eye();
+    ok('view angle 45: eye is the fixed eye (no move)', eye45[0] === -2 && eye45[1] === 0.37 && eye45[2] === 1.2, eye45);
+    await setFov(60);
     await page.waitForFunction(() => RF.DriveAnim._.V.p.hfov === 60, null, { timeout: 30000 });
-    const eyeOn60 = await eye();
-    ok('dolly on at 60: eye is the fixed eye (no move)', eyeOn60[0] === -2 && eyeOn60[1] === 0.37 && eyeOn60[2] === 1.2, eyeOn60);
-    await page.click('[data-anim=telephoto-dolly]');
-    await page.waitForFunction(() => RF.DriveAnim._.V.info.o.dolly === false, null, { timeout: 30000 });
+    const eye60 = await eye();
+    ok('view angle 60: eye is the fixed eye (no move)', eye60[0] === -2 && eye60[1] === 0.37 && eye60[2] === 1.2, eye60);
 
     ok('no page or console errors', errors.length === 0, errors.slice(0, 5));
   } finally {

@@ -1,5 +1,5 @@
 // DC drive controls, headless: node tests/drive-controls2.js — exits 1 on any failure.
-// Real functions: RF.DriveAnim._.source + trafficCars (the traffic window), RF.Drive.eyeFor / dollyBack (the telephoto dolly).
+// Real functions: RF.DriveAnim._.source + trafficCars (the traffic window), RF.Drive.eyeFor (the fixed eye; the telephoto dolly was removed).
 // Fixtures: tests/drive-controls-fixtures/dc-main-traffic-230.json = main (58bccea) car lists, generated from a scratch copy of main (not the worktree);
 //           tests/drive-controls-fixtures/drive-view-main-58bccea.json = a drive-view preference as main stores it (fov 45).
 // POSITIVE CONTROL: DC_WRONG_RANGE=400 makes "230 m reproduces main" use a 400 m window. That check must then FAIL (exit 1).
@@ -20,11 +20,11 @@ const specUI = read('js/spec-ui.js');
 const dvDefText = specUI.match(/const DV_DEF = (\{[^;]*\});/);
 ok('DV_DEF literal found in js/spec-ui.js', !!dvDefText);
 const DV_DEF = new Function('return ' + dvDefText[1])();
-ok('option defaults: fov 60, trafficRange 400, dolly off', DV_DEF.fov === 60 && DV_DEF.trafficRange === 400 && DV_DEF.dolly === false, { fov: DV_DEF.fov, trafficRange: DV_DEF.trafficRange, dolly: DV_DEF.dolly });
+ok('option defaults: fov 60, trafficRange 400, no dolly key', DV_DEF.fov === 60 && DV_DEF.trafficRange === 400 && !('dolly' in DV_DEF), { fov: DV_DEF.fov, trafficRange: DV_DEF.trafficRange, hasDolly: 'dolly' in DV_DEF });
 
 // 2. stored settings from main still load: the merge dvOpts() does, and the merged values drive the scene
 const merged = Object.assign({}, DV_DEF, storedMain);
-ok('stored main settings: fov 45 kept, new keys take defaults', merged.fov === 45 && merged.trafficRange === 400 && merged.dolly === false && merged.ev === 2.5 && merged.seed === 19, { fov: merged.fov, trafficRange: merged.trafficRange, dolly: merged.dolly, ev: merged.ev, seed: merged.seed });
+ok('stored main settings: fov 45 kept, new keys take defaults', merged.fov === 45 && merged.trafficRange === 400 && merged.ev === 2.5 && merged.seed === 19, { fov: merged.fov, trafficRange: merged.trafficRange, ev: merged.ev, seed: merged.seed });
 ok('stored main settings: traffic window of the merged settings is 400 m', A.source('road', 3.5, false, {}, merged).traffic.cull === 400);
 
 // 3. traffic range 230 reproduces main's car list exactly (ids, kinds, rel, off), for every recorded case
@@ -60,22 +60,21 @@ const scenery = ['mid > CULL + 110', 's > CULL', 'ev.s - dist < CULL', 'rel <= C
 ok('scenery, lamp, crossing and actor culls still read CULL (text)', scenery.slice(0, 4).every((s) => anim.includes(s)), scenery);
 ok('auto-high sensing range is 160 m oncoming, 100 m preceding (owner, 2026-10-18)', D.AUTO.onRange === 160 && D.AUTO.preRange === 100);
 
-// 6. telephoto dolly math
-const back = (fov, on) => D.dollyBack(fov, on);
-ok('dolly off: eye is the fixed eye at 45, 60, 90', [45, 60, 90].every((f) => JSON.stringify(D.eyeFor(f, false)) === JSON.stringify(EYE)));
-ok('dolly on at 60 and wider: eye is the fixed eye (offset 0)', [60, 75, 90].every((f) => JSON.stringify(D.eyeFor(f, true)) === JSON.stringify(EYE)));
-ok('dolly on at 45: eye moves back about 7.9 m (20 m × (tan30/tan22.5 − 1))', Math.abs(back(45, true) - 7.879) < 0.01, { back: back(45, true) });
-ok('dolly on at 45: eye moves along x only (y, z unchanged)', (() => { const e = D.eyeFor(45, true); return e[0] === EYE[0] - back(45, true) && e[1] === EYE[1] && e[2] === EYE[2]; })());
-ok('dolly keeps apparent size: (20 + back) × tan(fov/2) = 20 × tan30 at 45', Math.abs((20 + back(45, true)) * Math.tan(22.5 * Math.PI / 180) - 20 * Math.tan(30 * Math.PI / 180)) < 1e-9);
-ok('dolly on at 30: formula back = 23.09 m (brief said ~14 m; see report)', Math.abs(back(30, true) - 23.094) < 0.01, { back: back(30, true) });
-ok('the dolly is opt-in: the function is a no-op with dolly undefined', JSON.stringify(D.eyeFor(45, undefined)) === JSON.stringify(EYE));
+// 6. fixed eye: the view angle no longer moves the eye (the telephoto dolly was removed; old callers passing a 2nd argument get the same eye)
+ok('fixed eye at 30, 45, 60, 90, with or without a stray dolly argument', [30, 45, 60, 90].every((f) => JSON.stringify(D.eyeFor(f)) === JSON.stringify(EYE) && JSON.stringify(D.eyeFor(f, true)) === JSON.stringify(EYE)));
+ok('eyeFor returns a fresh copy (callers cannot mutate the shared EYE)', (() => { const e = D.eyeFor(); e[0] = 99; return JSON.stringify(D.eyeFor()) === JSON.stringify(EYE); })());
+ok('dollyBack is no longer exported', D.dollyBack === undefined);
+// stored dolly:true (a flux/driveView saved before the removal) is ignored: merged settings keep the key, nothing reads it, the eye is fixed
+const storedDolly = Object.assign({}, DV_DEF, Object.assign({}, storedMain, { dolly: true }));
+ok('stored dolly:true: merged settings load, eye is the fixed eye at the stored fov', storedDolly.dolly === true && storedDolly.fov === 45 && JSON.stringify(D.eyeFor(storedDolly.fov)) === JSON.stringify(EYE));
+ok('stored dolly:true: no code reads a dolly option (js/spec-ui.js, js/drive-anim.js, js/drive.js)', ![specUI, anim, read('js/drive.js')].some((s) => /\bo\.dolly\b|info\(\)\.o\.dolly|\.dolly\b/.test(s)));
 
 // 7. wiring (text): the controls and cache keys carry the new options
 ok('view angle: sidebar row removed, drive-bar select data-dv=fov present', !/Drive view: field of view/.test(specUI) && specUI.includes("'data-dv': 'fov'") && specUI.includes("setDV(ui, 'fov', +fov.value)"));
-ok('view angle: render uses the shared eye (eyeFor)', specUI.includes('eye: RF.Drive.eyeFor(o.fov, o.dolly)') && !specUI.includes('eye: [-2.0, 0.37, 1.2]'));
+ok('view angle: render uses the shared eye (eyeFor)', specUI.includes('eye: RF.Drive.eyeFor(),') && !specUI.includes('eye: [-2.0, 0.37, 1.2]'));
 ok('traffic range: cache key (tkey) and worker options carry it', anim.includes('o.trafficDensity, o.trafficRange, o.safeGap') && anim.includes('trafficRange: o.trafficRange, safeGap'));
-ok('traffic range: worker cfg key carries the eye (dolly changes it)', anim.includes('p.hfov, p.eye, p.lane'));
-ok('telephoto dolly: bar button and aria-pressed sync present', anim.includes("btn('telephoto-dolly'") && anim.includes("['telephoto-dolly', 'dolly']"));
+ok('traffic range: worker cfg key carries the eye (the eye rides on the frame)', anim.includes('p.hfov, p.eye, p.lane'));
+ok('telephoto dolly: no dolly in the drive view, bar, sync list or option defaults', !/dolly/i.test(anim) && !/dolly/i.test(specUI) && !/dolly/i.test(read('js/drive.js')) && !anim.includes("'telephoto-dolly'"));
 ok('three path: eye comes from the frame, not a constant', read('js/drive-three.js').includes('fromArray(p.eye || [-2,.37,1.2])') && read('js/drive-three-objects.js').includes('eye=p.eye||[-2,.37,1.2]'));
 
 console.log(fails ? fails + ' of ' + n + ' drive-controls2 checks FAILED' : 'all ' + n + ' drive-controls2 checks passed');
