@@ -13,9 +13,10 @@ void main(){vec4 p=instanceMatrix*vec4(position,1);localPoint=position;modelId=s
 `;
 const fragment=lighting+`
 varying float modelId;varying vec3 worldPoint,worldNormal,localPoint;varying vec2 modelUV;
-uniform sampler2D bodyMap;uniform int maskMode;uniform bool wheel;
+uniform sampler2D bodyMap;uniform int maskMode;uniform bool wheel;uniform float samples;
 void main(){vec3 p=worldPoint,n=normalize(worldNormal),ray=normalize(p-eye);float t=length(p-eye);
- if(t<.0001 || t>5000.0 || (ray.z<0.0 && t>=-eye.z/ray.z))discard;
+ if(t<.0001 || t>5000.0)discard;
+ if(ray.z<0.0 && t>=-eye.z/ray.z)discard;
  if(dot(n,ray)>0.0)n=-n;int id=int(modelId+.5);
  gl_FragDepth=min(.99999,t/5000.0);
  if(maskMode==2){gl_FragColor=vec4(float(id),0,p.z,0);return;}
@@ -87,12 +88,12 @@ export function modelMeshes(scene,uniforms,onReady) {
       }return out;
     },
     update(p,cars,ss,on){
-      state.cars=cars.length;state.triangles=0;for(const g of groups.values())g.mesh.count=0;
+      state.cars=cars.length;state.triangles=0;for(const g of groups.values()){g.mesh.count=0;g.local.samples.value=ss;}
       if(on && assets)for(let a=0;a<assets.length;a++){
         const list=cars.filter(ob=>D.Models.stableId(ob.detail.id)%assets.length===a);if(!list.length)continue;
         assets[a].forEach((part,j)=>{if(part.region!==undefined&&part.region!==!!p.us)return;const key=a+':'+j;let g=groups.get(key);
           if(!g || g.mesh.instanceMatrix.count<list.length){if(g){scene.remove(g.mesh);g.mesh.dispose();g.mesh.material.dispose();}
-            const local={...uniforms,bodyMap:{value:part.map},wheel:{value:part.wheel},maskMode:{value:0}};
+            const local={...uniforms,bodyMap:{value:part.map},wheel:{value:part.wheel},maskMode:{value:0},samples:{value:ss}};
             // Include the same lighting uniforms in the vertex stage (only eye, tanH and size are needed there).
             const material=new T.ShaderMaterial({uniforms:local,vertexShader:'uniform vec3 eye;uniform float tanH;uniform vec2 size;uniform mat3 carFromWorld;\n'+vertex,fragmentShader:fragment,depthTest:true,depthWrite:true,depthFunc:T.LessDepth,side:T.DoubleSide});
             const mesh=new T.InstancedMesh(part.geometry,material,Math.max(16,list.length*2));mesh.frustumCulled=false;scene.add(mesh);g={mesh,local};groups.set(key,g);
