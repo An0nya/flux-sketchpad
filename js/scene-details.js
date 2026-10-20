@@ -120,18 +120,23 @@
     return E;
   }
 
-  // Hazard counts. hazards: [{x, y, z}] in the drive frame; o = { eye [x,y,z], hfov (deg), occludedAt(P) -> bool, luxAt(P) -> lx }.
-  // near: ahead and within HAZARD_RANGE. inView: near, inside the horizontal field of view (a cone of hfov/2 about the view axis) and not
-  // occluded. lit: near and at least HAZARD_LUX from our beam (whether or not in view). litDist: the farthest lit near hazard (m), or null.
-  function hazardCounts(hazards, o) {
+  // Hazard counts, per actor. An actor is a group of parts (a pedestrian is about four parts, a deer about nine): hazards = [[{x, y, z}, ...], ...]
+  // in the drive frame. o = { eye [x,y,z], hfov (deg), occludedAt(P) -> bool, luxAt(P) -> lx }.
+  // near: the actor's mean position is ahead and within HAZARD_RANGE. inView: near, and some part is inside the horizontal field of view
+  // (a cone of hfov/2 about the view axis) and not occluded. lit: near, and some part is at least HAZARD_LUX from our beam (whether or not
+  // in view). litDist: the farthest lit near actor, from the eye to its mean position (m), or null.
+  function hazardCounts(actors, o) {
     let near = 0, inView = 0, lit = 0, litDist = null;
-    for (const h of hazards) {
-      const dx = h.x - o.eye[0], dy = h.y - o.eye[1], dz = h.z - o.eye[2], r = Math.hypot(dx, dy, dz);
+    for (const parts of actors) {
+      if (!parts.length) continue;
+      const m = [0, 0, 0];
+      for (const q of parts) { m[0] += q.x; m[1] += q.y; m[2] += q.z; }
+      m[0] /= parts.length; m[1] /= parts.length; m[2] /= parts.length;
+      const dx = m[0] - o.eye[0], dy = m[1] - o.eye[1], dz = m[2] - o.eye[2], r = Math.hypot(dx, dy, dz);
       if (!(dx > 0) || !(r <= HAZARD_RANGE)) continue;
       near++;
-      const P = [h.x, h.y, h.z];
-      if (angleDeg([1, 0, 0], [dx, dy, dz]) <= o.hfov / 2 && !o.occludedAt(P)) inView++;
-      if (o.luxAt(P) >= HAZARD_LUX) { lit++; if (litDist === null || r > litDist) litDist = r; }
+      if (parts.some((q) => { const px = q.x - o.eye[0], py = q.y - o.eye[1], pz = q.z - o.eye[2]; return px > 0 && angleDeg([1, 0, 0], [px, py, pz]) <= o.hfov / 2 && !o.occludedAt([q.x, q.y, q.z]); })) inView++;
+      if (parts.some((q) => o.luxAt([q.x, q.y, q.z]) >= HAZARD_LUX)) { lit++; if (litDist === null || r > litDist) litDist = r; }
     }
     return { near, inView, lit, litDist };
   }
@@ -161,16 +166,20 @@
   const lineOncoming = (r) => r.dist.toFixed(0) + ' m · ' + format(r.lux, 'lx') + ' lx · peak ' + format(r.peak, 'lx') + ' lx' + (r.peakAt === null ? '' : ' at ' + r.peakAt.toFixed(0) + ' m') + ' · ' + format(r.angle, '°') + '° off';
   register({ id: 'oncoming', group: 'oncoming', label: 'Nearest oncoming cars', applies: onlyWhen((s) => s.oncomingOn, 'oncoming traffic is off'), read: (s) => s.oncoming,
     text: (rows) => (rows.length ? rows.map(lineOncoming) : 'none in range') });
-  register({ id: 'veil', group: 'glare', label: 'Veiling luminance at our eye', unit: 'cd/m²', applies: onlyWhen((s) => s.glareOn, 'glare is off'), read: (s) => s.veil });
-  register({ id: 'veilTop', group: 'glare', label: 'Strongest glare source', applies: onlyWhen((s) => s.glareOn, 'glare is off'), read: (s) => s.veilTop,
+  register({ id: 'glareSetting', group: 'glare', label: 'Glare setting', read: (s) => s.glareName,
+    text: (name) => 'glare ' + name + (name === 'off' ? ' (the veil below is not in the picture)' : '') });
+  // the raw veiling luminance and strongest source, whatever the glare setting: the veil is the glare scattered over the image
+  register({ id: 'veil', group: 'glare', label: 'Veiling luminance at our eye (veilAt)', unit: 'cd/m²', read: (s) => s.veil });
+  register({ id: 'veilTop', group: 'glare', label: 'Strongest glare source', read: (s) => s.veilTop,
     text: (t) => (t ? format(t.angle, '°') + '° off ahead, ' + format(t.lux, 'lx') + ' lx at the eye' : 'none') });
   register({ id: 'ev', group: 'glare', label: 'Exposure', unit: 'EV', read: (s) => s.ev });
   register({ id: 'white', group: 'glare', label: 'Display white', unit: 'cd/m²', read: (s) => s.white });
 
-  register({ id: 'reach', group: 'range', label: 'Beam reach (1 lx on the lane centre)', unit: 'm', read: (s) => s.reach,
+  const notPass = (why) => (s) => (s.pass ? 'not checked on the pass yet' : why(s));
+  register({ id: 'reach', group: 'range', label: 'Beam reach (1 lx on the lane centre)', unit: 'm', applies: notPass(always), read: (s) => s.reach,
     text: (d) => (d === null || d === undefined ? 'no lit road ahead' : d >= 300 ? 'over 300 m' : format(d, 'm') + ' m') });
   register({ id: 'lamp', group: 'lamp', label: 'Beam in use', read: (s) => s.lamp });
-  const hazardsOn = onlyWhen((s) => s.hazardsOn, 'people and deer are both off');
+  const hazardsOn = notPass(onlyWhen((s) => s.hazardsOn, 'people and deer are both off'));
   register({ id: 'hazNear', group: 'hazards', label: 'Within 150 m ahead', applies: hazardsOn, read: (s) => s.hazards && s.hazards.near, text: (n) => String(n) });
   register({ id: 'hazView', group: 'hazards', label: 'In view (in the field of view, not occluded)', applies: hazardsOn, read: (s) => s.hazards && s.hazards.inView, text: (n) => String(n) });
   register({ id: 'hazLit', group: 'hazards', label: 'Lit by our beam (1 lx or more)', applies: hazardsOn, read: (s) => s.hazards && s.hazards.lit, text: (n) => String(n) });
@@ -181,7 +190,7 @@
   const GROUPS = { own: 'Own car', oncoming: 'Oncoming traffic', glare: 'Glare we receive', hazards: 'Hazards', range: 'Range', lamp: 'Lamp' };
 
   // Display text for a value: null or NaN is a dash, Infinity is ∞ (a straight road has an infinite radius), strings pass through.
-  const DP = { 'km/h': 0, m: 0, '%': 1, '°': 1, lx: 1, 'cd/m²': 0, EV: 1 };
+  const DP = { 'km/h': 0, m: 0, '%': 1, '°': 1, lx: 2, 'cd/m²': 2, EV: 1 };
   function format(v, unit) {
     if (v === null || v === undefined || (typeof v === 'number' && Number.isNaN(v))) return '—';
     if (typeof v === 'string') return v;

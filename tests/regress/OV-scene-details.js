@@ -33,6 +33,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
 
     // 2. toggle on from the bar: pressed state, panel with one row per registry metric
     await page.evaluate(() => { const u = RF.UI; u.driveBar.querySelector('.drive-more').open = true; RF.DriveAnim.layoutControls(u); });
+    const inMore = await page.evaluate(() => { const c = [...document.querySelectorAll('[data-anim=scene-details]')]; return { count: c.length, inMore: c.length === 1 && !!c[0].closest('.drive-more, .drive-extras') }; });
+    ok('OV the toggle is reachable exactly once, inside More', inMore.count === 1 && inMore.inMore, inMore);
     await page.locator('[data-anim=scene-details]').click();
     await page.waitForFunction(() => !!document.querySelector('.drive-details'), null, { timeout: 5000 }).catch(() => {});
     const on = await page.evaluate(() => ({
@@ -94,10 +96,11 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     const onc = await page.evaluate(() => {
       const st = RF.DriveAnim.details(), r = st.rows.find((q) => q.id === 'oncoming'), v = st.rows.find((q) => q.id === 'veil');
       const peakOk = Array.isArray(r.value) ? r.value.every((x) => Number.isNaN(x.peak) || x.peak >= x.lux - 1e-9) : true;
-      return { onc: r.na, rows: Array.isArray(r.value) ? r.value.length : r.value, shown: r.shown, peakOk, glareNa: v.na, glareShown: v.shown };
+      const gs = st.rows.find((q) => q.id === 'glareSetting');
+      return { onc: r.na, rows: Array.isArray(r.value) ? r.value.length : r.value, shown: r.shown, peakOk, veilShown: v.shown, glareSetting: gs.shown };
     });
     ok('OV oncoming: traffic on lists its cars (or says none), each peak is at least its lux', onc.onc === null && onc.peakOk, onc);
-    ok('OV glare off: the veiling row is greyed out with a reason', typeof onc.glareNa === 'string' && onc.glareShown.startsWith('n/a ('), onc);
+    ok('OV glare off: the veiling luminance is still shown (raw veilAt) and the glare setting says the veil is not in the picture', typeof onc.veilShown === 'string' && !onc.veilShown.startsWith('n/a') && onc.glareSetting.startsWith('glare off'), onc);
     // 6b. hazards, beam reach and lamp: counts are whole numbers in order (inView <= near, lit <= near), the reach is a distance or 'over 300 m'
     const hz = await page.evaluate(() => {
       const rows = RF.DriveAnim.details().rows, g = (id) => rows.find((q) => q.id === id);

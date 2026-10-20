@@ -1126,6 +1126,7 @@ void main() {
     if(p.touge){const world=RF.Touge.world(p,dist,t);return RF.Touge.glareSources(world.objects,dist,world.A);}
     // occluders: the whole frame (world + traffic), as the rendered frame sees it, so a car or building between lamp and eye hides the lamp
     const tauOf = tauFor(V.act, t), occ = p.src.tiles ? tileWorld(V.p, dist, t, tauOf).objects : placedObjects(p, dist, t, tauOf);
+    V.framePlaced = occ;      // scene details: the hazard list reads this (pointer only)
     return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), eyeOf(p), occ);
   }
   function exposure(sources) {
@@ -1288,7 +1289,7 @@ void main() {
     if (!contextReady()) return;
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
-    adaptSS(rt); flashLabel(b.dist, b.t); V.ui.dvAnimFrames = V.frames;
+    adaptSS(rt); flashLabel(b.dist, b.t); V.frameGlare = sources; if (detailsOn()) detailsSample(); V.ui.dvAnimFrames = V.frames;      // scene details: pointers and a peak sample, as frame() does
     const trace = {};
     for (const d of b.parts) if (d.profile) for (const k of ['traceMs', 'objectMs', 'groundMs', 'wetMs', 'sampledRays', 'cacheHits', 'cacheMisses']) trace[k] = (trace[k] || 0) + (d.profile[k] || 0);
     recordFrame(b.started, { dispatchMs: b.dispatchMs, trafficMs: b.trafficMs, placementMs: b.placementMs, assemblyMs: assembled - t1, uploadMs: t2 - assembled, sourcesMs: sourceEnd - t2, glMs: t3 - sourceEnd, ...(glProfile || {}), detectorMs: 0, workerRoundTripMs: rt, workerCpuMs: b.parts.reduce((sum, d) => sum + d.ms, 0) }, trace, trace, true);
@@ -1865,7 +1866,10 @@ void main() {
     const beamAt = (dx, dy, dz, side) => D.ownBeamAt(p, dx, dy, dz, side), placed = V.framePlaced, objs = placed ? (Array.isArray(placed) ? placed : placed.objects || []) : [];
     const people = !!o.people, animals = !!o.animals, eye = eyeOf(p);
     const hazardList = objs.filter((ob) => !ob.traffic && ((ob.cls === 'person' && people) || (ob.cls === 'deer' && animals)));
-    const hazards = (people || animals) && p ? M.hazardCounts(hazardList, { eye, hfov: p.hfov, occludedAt: (P) => D.occluded(P, eye, objs), luxAt: (P) => M.faceLux(p.lamps, beamAt, P, [-1, 0, 0]) }) : null;
+    // one actor is several parts (a pedestrian ~4, a deer ~9) sharing a modelId; cylinders carry z0/z1, not z
+    const actors = new Map();
+    for (const ob of hazardList) { const k = String(ob.modelId ?? ob.id); if (!actors.has(k)) actors.set(k, []); actors.get(k).push({ x: ob.x, y: ob.y, z: ob.z !== undefined ? ob.z : ((ob.z0 || 0) + (ob.z1 || 0)) / 2 }); }
+    const hazards = (people || animals) && p ? M.hazardCounts([...actors.values()], { eye, hfov: p.hfov, occludedAt: (P) => D.occluded(P, eye, objs), luxAt: (P) => M.faceLux(p.lamps, beamAt, P, [-1, 0, 0]) }) : null;
     // beam reach: the far edge of the lit stretch on our own lane centre (lateral offset 0: the lamps sit at +-0.7 m, the oncoming lane at lane), where our road illuminance falls below 1 lx (walk to 300 m)
     const reach = p && p.lamps ? M.litEdge((d) => { const q = p.A ? p.A.at(d, 0).p : [d, 0]; return M.roadLux(p.lamps, beamAt, q[0], q[1]) >= 1; }, 1, 300, 1) : null;
     return {
@@ -1875,8 +1879,7 @@ void main() {
       radius: kHere ? 1 / Math.abs(kHere) : Infinity, radius100: tight ? 1 / tight : Infinity,
       pass, gradePct: pass ? 100 * RF.Touge.profile(dist).grade : null, bankPct: pass ? 100 * RF.Touge.bank(dist) : null,
       oncomingOn: !!o.oncoming, oncoming,
-      glareOn: glare, veil: glare ? D.veilStrength(D.capGlare(o.glare)) * D.veilAt([1, 0, 0], sources) : 0,
-      veilTop: glare ? M.topSource([1, 0, 0], sources) : null,
+      glareOn: glare, glareName: D.glareLevel(D.capGlare(o.glare)), veil: D.veilAt([1, 0, 0], sources), veilTop: M.topSource([1, 0, 0], sources),
       ev: o.ev, white: V.white === undefined ? null : V.white,
       hazardsOn: people || animals, hazards, reach, lamp: 'built-in',
     };
@@ -1905,6 +1908,7 @@ void main() {
   function detailsPause() { if (V.detailsTimer) { clearInterval(V.detailsTimer); V.detailsTimer = 0; } }
   function detailsTick() {
     if (!detailsOn()) { detailsSync(false); return; }
+    detailsSample();
     const snap = V.detailsSnap = detailsSnapshot();
     const host = S(V.ui).popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement;
     if (!host) return;

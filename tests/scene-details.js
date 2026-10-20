@@ -77,7 +77,7 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
 {
   ok('format: null and NaN are a dash', S.format(null, 'm') === '—' && S.format(NaN, 'm') === '—');
   ok('format: Infinity is ∞ (straight road radius)', S.format(Infinity, 'm') === '∞');
-  ok('format: % and degrees and lux get one decimal; km/h and m none; other units two', S.format(12.345, '%') === '12.3' && S.format(3.7, 'km/h') === '4' && S.format(0.5, 'lx') === '0.5' && S.format(1.2345, 'x') === '1.23');
+  ok('format: % and degrees one decimal; lux and cd/m² two (small values need them); km/h and m none; other units two', S.format(12.345, '%') === '12.3' && S.format(3.7, 'km/h') === '4' && S.format(0.5, 'lx') === '0.50' && S.format(0.874, 'cd/m²') === '0.87' && S.format(1.2345, 'x') === '1.23');
   ok('format: strings pass through', S.format('auto high beam', '') === 'auto high beam');
   ok('groups: every registered metric has a known group', S.METRICS.every((m) => Object.prototype.hasOwnProperty.call(S.GROUPS, m.group)));
 }
@@ -113,17 +113,20 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
   const E = S.faceLux(lamps, () => 30000, [10, 0, 0.9], [-1, 0, 0]);
   ok('face lux: 30 kcd at 10 m on a face looking back at the lamp matches I cos / r^2 (2 %)', near(E, handE, 0.02), { E, handE });
   ok('face lux: a face that looks away from the lamp gets nothing', S.faceLux(lamps, () => 30000, [10, 0, 0.9], [1, 0, 0]) === 0);
-  // hazards: eye at (-2, 0, 1.1); A at 20 m (lit, in view); B at 100 m (lit, occluded); D at 50 m but 40 m to the side, 38 deg off axis (lit, outside the 30 deg half-angle);
-  // C at 200 m (out of range); E at 40 m behind the eye line (not ahead)
-  const H = [{ x: 20, y: 0, z: 0.9 }, { x: 100, y: 0, z: 0.9 }, { x: 50, y: 40, z: 0.9 }, { x: 200, y: 0, z: 0.9 }, { x: -40, y: 0, z: 0.9 }];
-  const occludedAt = (P) => P[0] === 100;
+  // actors (groups of parts): A at 20 m, 3 parts, one in view (lit); B at 100 m, 2 parts, all occluded (dim); D at 50 m, 40 m to the side,
+  // 38 deg off axis, 2 parts (lit, outside the 30 deg half-angle); C at 200 m (out of range); E behind the eye line
+  const part = (x, y, z) => ({ x, y, z });
+  const A = [part(20, 0, 0.1), part(20, 0, 1.6), part(20, 0.1, 0.9)], B = [part(100, 0, 0.1), part(100, 0, 1.6)];
+  const D = [part(50, 40, 0.1), part(50, 40, 1.6)], C = [part(200, 0, 0.1)], Bh = [part(-40, 0, 0.1)];
+  const occludedAt = (P) => P[0] === 100 || (P[0] === 20 && P[2] === 1.6);   // B hidden; A's head hidden but its body is seen
   const luxAt = (P) => (P[0] <= 60 ? 5 : 0.2);
-  const c = S.hazardCounts(H, { eye: [-2, 0, 1.1], hfov: 60, occludedAt, luxAt });
-  ok('hazards: near counts ahead within 150 m only (A, B, D)', c.near === 3, c);
-  ok('hazards: in view = inside the cone and not occluded (A only)', c.inView === 1, c);
-  ok('hazards: lit = at least 1 lx (A and D; B is dim)', c.lit === 2, c);
-  const dD = Math.hypot(52, 40, 0.2);
-  ok('hazards: farthest lit distance is D at about hypot(52, 40) m', near(c.litDist, dD, 0.001), { litDist: c.litDist, dD });
+  const c = S.hazardCounts([A, B, D, C, Bh], { eye: [-2, 0, 1.1], hfov: 60, occludedAt, luxAt });
+  ok('hazards: counted per actor, not per part (A, B, D near: 3; the 2-part and 3-part actors count once)', c.near === 3, c);
+  ok('hazards: in view = some part inside the cone and not occluded (A only)', c.inView === 1, c);
+  ok('hazards: lit = some part at least 1 lx (A and D; B is dim)', c.lit === 2, c);
+  const mD = [0, 0, 0].map((_, i) => D.reduce((a, q) => a + [q.x, q.y, q.z][i], 0) / D.length);
+  const dD = Math.hypot(mD[0] + 2, mD[1], mD[2] - 1.1);
+  ok('hazards: farthest lit distance is the mean position of D', near(c.litDist, dD, 0.001), { litDist: c.litDist, dD });
   const none = S.hazardCounts([], { eye: [0, 0, 1.1], hfov: 60, occludedAt, luxAt });
   ok('hazards: none gives zero and no lit distance', none.near === 0 && none.litDist === null);
 }
