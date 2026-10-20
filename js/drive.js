@@ -611,11 +611,15 @@
   const unitTint = (rgb) => { const m = Math.max(...rgb); return m > 0 ? rgb.map(v => v / m) : [1, 1, 1]; };
   // BT: the library beam a car uses (its pool entry), or null for the built-in beam. Only symmetric traffic takes a pick:
   // the other modes light cars with the generic lamp, so the shuffle has nothing to change there.
-  function trafficPickOf(p, carId) {
+  // BA5: the pool index of a car's beam (-1 for built-in). The GPU atlas uses this same index, so CPU and GPU agree on every car.
+  function trafficPickIndexOf(p, carId) {
     const pool = p && p.trafficPool, mode = p && p.src && p.src.traffic && p.src.traffic.onMode;
-    if (!pool || mode !== 'symmetric' || !pool.entries.length) return null;
-    const i = weightedPick(p.src.traffic.seed, carId, pool.entries, pool.weights);
-    return i < 0 ? null : pool.entries[i];
+    if (!pool || mode !== 'symmetric' || !pool.entries.length) return -1;
+    return weightedPick(p.src.traffic.seed, carId, pool.entries, pool.weights);
+  }
+  function trafficPickOf(p, carId) {
+    const i = trafficPickIndexOf(p, carId);
+    return i < 0 ? null : p.trafficPool.entries[i];
   }
   // extra fields on a traffic source: its own beam and colour tint. Empty for the built-in beam, so those sources are unchanged.
   const trafficBeamFields = (p, carId) => { const pk = trafficPickOf(p, carId); return pk ? { beam: { lut: pk.lut, conv: pk.conv }, tint: pk.tint } : {}; };
@@ -955,5 +959,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, scatterPhase, scatterJitter, SCAT, scatterTableBins, scatterTableAt, TABLE, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, scatterPhase, scatterJitter, SCAT, scatterTableBins, scatterTableAt, TABLE, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
