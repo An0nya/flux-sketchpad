@@ -1,5 +1,4 @@
 /* Linear luminance only. Formula reference: drive.js; display passes stay in drive-anim.js. */
-import { SCAT_FADE_S0, SCAT_FADE_S1 } from './table-pace.js';
 export const vertex = `
 varying vec2 screen;
 void main() { screen = position.xy; gl_Position = vec4(position.xy, 0.0, 1.0); }
@@ -209,16 +208,18 @@ float tableC(float d) {
   return C;
 }
 vec3 inScatterDirect(vec3 dir,float sEnd,float jit);
-vec3 inScatter(vec3 dir,float sEnd,float jit) { return scatMode==1 ? tableC(min(sEnd,scatSMax))*lampRGB : inScatterDirect(dir,sEnd,jit); }
+// SF2: scatGain multiplies the lookup only (table mode); it never enters the table, so it does not rebuild it.
+uniform float scatGain;
+vec3 inScatter(vec3 dir,float sEnd,float jit) { return scatMode==1 ? tableC(min(sEnd,scatSMax))*lampRGB*scatGain : inScatterDirect(dir,sEnd,jit); }
 `;
 const TABLE_MAIN = `uniform int tableBank, tableSteps, tableSeed;
 uniform float tableH;
 float tableJitter() { uint x=uint(gl_FragCoord.x), y=uint(tableH)-1u-uint(gl_FragCoord.y); uint h=(x*0x27d4eb2du)^(y*0x165667b1u)^(uint(tableSeed)*0x9e3779b9u); h=(h^(h>>15u))*0x85ebca6bu; h=(h^(h>>13u))*0xc2b2ae35u; h^=h>>16u; return float(h)/4294967296.0; }
 // SE3: near-eye fade. tableFade 1 weights the integrand by smoothstep(S0,S1,s) (0 = the SD table, unchanged).
-uniform float tableFade;
+uniform float tableFade, tableFadeS0, tableFadeS1;   // SF2: the fade range (metres) is a uniform, set from look.scatterNearFadeRange
 float tableIntegrand(vec3 dir,float s) {
   vec3 P=eye+s*dir; float f=0.0;
-  float w=mix(1.0,smoothstep(${SCAT_FADE_S0.toFixed(1)},${SCAT_FADE_S1.toFixed(1)},s),tableFade);
+  float w=mix(1.0,smoothstep(tableFadeS0,tableFadeS1,s),tableFade);
   for(int i=0;i<2;i++) { if(i>=nLamp) break;
     vec3 d=P-lamp[i]; float r2=dot(d,d); if(r2<=0.0) continue; float r=sqrt(r2);
     float I=beamI(d,lamp[i]); if(I<=0.0) continue;
