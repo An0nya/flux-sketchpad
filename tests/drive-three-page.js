@@ -27,7 +27,7 @@
   // Sum absolute RGB error / sum reference luminance, with a .01 cd/m² per-channel floor
   // for nearly black classes. Tight photometric gates; max error is reported separately.
   const thresholds={road:.03,markings:.03,signs:.05,vehicles:.05,buildings:.02,sky:.005,'actors/vegetation':.05};
-  async function run(port) {
+  async function run(port, extra) {
     const checks=[],ok=(name,pass,detail)=>{checks.push({name,pass:!!pass,detail});console.log((pass?'[PASS] ':'[FAIL] ')+name+(detail?' — '+JSON.stringify(detail):''));};
     ok('P1 RF.UI and expected port',!!RF.UI && location.port===String(port));
     if(location.port!==String(port))throw Error('wrong page port');
@@ -40,7 +40,7 @@
     await select(true);await select(false);
     const cases=[];
     for(const name of ['road','city','forest','tiles'])for(const wet of [false,true]) {
-      Object.assign(u.dvOpts,{scene:name==='tiles'?'city':name,tiles:name==='tiles',wet,wetSheen:wet,ambient:0});
+      Object.assign(u.dvOpts,{visibility:(extra&&extra.visibility)??null,scene:name==='tiles'?'city':name,tiles:name==='tiles',wet,wetSheen:wet,ambient:0});
       Object.assign(u.dvAnim,{dist:name==='tiles'?495:25,t:12,playing:false});
       await select(false);const cpu=a.readHdr();
       const traceContext=u.run.ctx,p=a.V.p,dist=u.dvAnim.dist,t=u.dvAnim.t,world=p.src.tiles?D.tileWorld(p,dist,t):{A:p.A,objects:D.placedObjects(p,dist,t),...(p.src.cross?a.fixedIntersection(p.src,dist):{})};

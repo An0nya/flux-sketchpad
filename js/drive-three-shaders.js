@@ -18,6 +18,8 @@ uniform vec4 crossing[16];
 uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance, wetModel, wetness;
 uniform vec2 verge;
 uniform vec2 arc;
+uniform float sigma;   // fog extinction per metre (look.visibility: 3.912 / V); 0 = off
+float fogT(float d) { return sigma>0.0 ? exp(-sigma*d) : 1.0; }   // transmittance over a light path (drive.js fogD)
 varying vec2 screen;
 const float PI = 3.141592653589793;
 float coverage(float a, float h, float lo, float hi) { return max(0.0, min(a+h,hi)-max(a-h,lo))/(2.0*h); }
@@ -58,11 +60,11 @@ vec3 shade(vec3 p,vec3 n,vec3 v,int id) {
   vec3 rho=texelFetch(materials,ivec2(id,0),0).rgb, retro=texelFetch(materials,ivec2(id,1),0).rgb;
   vec4 gloss=texelFetch(materials,ivec2(id,2),0); vec3 r=rho*ambient*(0.5+0.5*n.z)/PI;
   float NoV=dot(n,v);
-  for(int i=0;i<64;i++) { if(i>=nLight) break; vec3 d=light[i].xyz-p; float r2=dot(d,d); if(d.z>0.0 && r2>=0.01) r+=rho*lightRGB[i]*light[i].w*max(0.0,dot(d,n))/(PI*r2*sqrt(r2)); }
+  for(int i=0;i<64;i++) { if(i>=nLight) break; vec3 d=light[i].xyz-p; float r2=dot(d,d); if(d.z>0.0 && r2>=0.01) r+=rho*lightRGB[i]*light[i].w*max(0.0,dot(d,n))/(PI*r2*sqrt(r2))*fogT(sqrt(r2)); }
   // wet sheen: 0 asphalt, 4 concrete, 5 white paint, 6 yellow paint (the order of MAT_DEF in drive.js; SB2 adds the paint ids, drive.js SHEEN_IDS)
-  if(sheen>0.0 && (id==0||id==4||id==5||id==6)) for(int i=0;i<64;i++) { if(i>=nReflection) break; r+=wetness*reflection[i].w*(wetModel>0.5 ? wetGGX(reflection[i].xyz-p,v,n) : wetLobe(reflection[i].xyz-p,v))*reflectionRGB[i]; }
+  if(sheen>0.0 && (id==0||id==4||id==5||id==6)) for(int i=0;i<64;i++) { if(i>=nReflection) break; r+=wetness*reflection[i].w*(wetModel>0.5 ? wetGGX(reflection[i].xyz-p,v,n) : wetLobe(reflection[i].xyz-p,v))*fogT(length(reflection[i].xyz-p))*reflectionRGB[i]; }
   for(int i=0;i<2;i++) { if(i>=nLamp) break; vec3 d=p-lamp[i]; float r2=dot(d,d), rr=sqrt(r2), NoL=-dot(d,n)/rr; if(NoL<=0.0) continue;
-    float I=intensity(d); if(I<=0.0) continue;
+    float I=intensity(d); I*=fogT(rr); if(I<=0.0) continue;
     if(sheen>0.0 && (id==0||id==5||id==6)) r+=vec3(wetness*I*(wetModel>0.5 ? wetGGX(-d,v,n) : wetLobe(-d,v)));
     float Ep=I/r2; r+=rho*Ep*NoL/PI + retro*Ep;
     if(gloss.x>0.0 && NoV>0.0) { vec3 l=-d/rr, h=normalize(l+v); float NoH=dot(n,h), VoH=dot(v,h), a2=gloss.x*gloss.x, den=NoH*NoH*(a2-1.0)+1.0;
@@ -110,7 +112,7 @@ vec3 surface(vec3 p,vec3 v,float t,float sinB) {
 }
 void main() {
   vec3 ray=normalize(vec3(1.0,-screen.x*tanH,screen.y*tanH*size.y/size.x)); float t=ray.z < -1e-6 ? -eye.z/ray.z : 1e20;
-  vec3 r; if(t<5000.0) r=surface(eye+t*ray,-ray,t,-ray.z);
+  vec3 r; if(t<5000.0) { r=surface(eye+t*ray,-ray,t,-ray.z); if(sigma>0.0) { float T=exp(-sigma*t); r=r*T+ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0))*(1.0-T); } }
   else r=vec3(ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0)));
   gl_FragColor=vec4(r,1);
 }
@@ -151,7 +153,7 @@ float otherIntensity(vec3 d) {
     .replace('  for(int i=0;i<2;i++)', `  for(int i=0;i<64;i++) { if(i>=nTraffic) break; vec3 d=p-trafficLamp[i].xyz; float r2=dot(d,d), forward=dot(d.xy,trafficDir[i]);
     if(forward<=0.0 || r2<0.01) continue; float NoL=max(0.0,-dot(d,n)/sqrt(r2)); if(NoL<=0.0) continue;
     vec3 local=vec3(forward,dot(d.xy,vec2(-trafficDir[i].y,trafficDir[i].x)),d.z);
-    r+=rho*vec3(1,1,0.93)*otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w;
+    r+=rho*vec3(1,1,0.93)*otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w*fogT(sqrt(r2));
   }
 ` + '  for(int i=0;i<2;i++)');
 }
