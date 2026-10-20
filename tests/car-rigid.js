@@ -8,12 +8,9 @@ const { load } = require('./load.js');
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const unit = a => { const L = Math.hypot(...a); return a.map(v => v / L); };
-// carBasis, extracted from the file under test (so the test runs the shipped code).
-const src3 = fs.readFileSync(path.join(__dirname, '..', 'js', 'drive-three-models.js'), 'utf8');
-const carBasis = new Function('return ' + src3.match(/^function carBasis\(m\)\{.*\}$/m)[0].replace(/^function carBasis/, 'function'))();
 
 function run(RF, ok) {
-  const A0 = RF.DriveAnim, P = RF.Touge;
+  const A0 = RF.DriveAnim, P = RF.Touge, carBasis = RF.Drive.Models.carBasis;   // the shipped basis (drive-models.js), shared by the GPU mesh and CPU lamps
   const src = A0.source('road', 3.5, true, { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: true, rpm: true },
     { mountainPass: true, streetLamps: 'sodium', seed: 7, oncoming: true, preceding: true, trafficDensity: 2 });
   const scen = [['flat', 160], ['+8% grade', 40], ['-10% grade', 1100], ['bank -6%, grade +8%', 700], ['bank +6%, grade -10%', 1280], ['bank +6%, grade +8%', 860]];
