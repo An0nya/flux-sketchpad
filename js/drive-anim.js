@@ -1127,6 +1127,18 @@ void main() {
     const k = Math.pow(2, o.ev) / D.L_REF;
     return o.expMode === 'adapt' ? 1 / (1 / k + D.veilStrength(D.capGlare(o.glare)) * D.veilAt([1, 0, 0], sources || frameSources(S(V.ui).dist, S(V.ui).t))) : k;
   }
+  // EA: the adapt-mode gain eases toward exposure()'s target, once per drawn frame (drive.js adaptStep). It snaps when the options
+  // (EV, glare, mode, ground) change, on a seek, a scrub that moves dist without moving t, and during a minigame (its visibility
+  // rule reads the drawn pixels and must see the target). Other expMode values are not smoothed.
+  function displayK(target, t, dist) {
+    const I = info(), o = I.o;
+    if (o.expMode !== 'adapt' || S(V.ui).game) { V.adapt = null; return target; }
+    const key = [I.groundKey, o.ev, o.glare, o.expMode].join('|'), prev = V.adapt && V.adapt.key === key ? V.adapt : null;
+    const moved = !!prev && dist !== prev.dist && t === prev.t;
+    const next = D.adaptStep(moved ? null : prev, target, prev ? t - prev.t : NaN);
+    V.adapt = { key, t, dist, k: next.k };
+    return next.k;
+  }
   function exposureLabel(k) {
     V.white = 1 / k;
     const I = info(), o = I.o, b = V.ui.driveExtras && V.ui.driveExtras.querySelector('[data-dv="ev"]');
@@ -1167,7 +1179,7 @@ void main() {
     const t2 = performance.now();
     const sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A) : D.glareSources(V.src.tiles ? placed.objects : placed, eyeOf(V.p));
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
-    const draw = { profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
+    const draw = { profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed, ...(V.src.cross ? fixedIntersection(V.src, st.dist) : {}) }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
     try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
     if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
@@ -1264,7 +1276,7 @@ void main() {
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], y0) : y0, had ? Math.max(pb[1], y1) : y1); V.band = [y0, y1];
     const t2 = performance.now();
     const sources = frameSources(b.dist, b.t), sourceEnd = performance.now(), glProfile = profileOn() ? {} : null;
-    V.gl.draw({ profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(exposure(sources)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
+    V.gl.draw({ profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), b.t, b.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
     if (!contextReady()) return;
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
