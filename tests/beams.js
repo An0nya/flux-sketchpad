@@ -97,5 +97,29 @@ ok('float32 is little-endian on the wire (1.0 -> AACAPw==)', B.bytesToB64(B.floa
   ok('point beam: both points land in cell (0,1), outside point dropped', pts.data[4] === 150 && total === 150, { cell: pts.data[4], total });
 }
 
+// 8. BA2 helpers: coarse copy for localStorage, own low + saved high, UTF-16 byte cost
+{
+  const fine = D.lutFrom((h, v) => D.Headlamp.generic(h, v, false), { win: [-10, 10, -6, 4], step: 0.1 });
+  const c = B.coarsen(fine, 0.25);
+  ok('coarsen: same window, step raised to 0.25', c.h0 === fine.h0 && c.v0 === fine.v0 && c.step === 0.25 && c.nh === 80 && c.nv === 40, { nh: c.nh, nv: c.nv });
+  ok('coarsen: values equal the renderer lookup at the coarse nodes', c.data.every((x, k) => { const i = k % c.nh, j = (k - i) / c.nh; return Math.fround(Math.max(0, D.lutAt(fine, c.h0 + (i + 0.5) * c.step, c.v0 + (j + 0.5) * c.step))) === x; }));
+  ok('coarsen: a coarse table is returned at its own step', B.coarsen(c, 0.25).step === 0.25);
+  const low = D.lutFrom((h, v) => (Math.abs(h) < 5 ? 1000 : 0), { win: [-10, 10, -6, 4], step: 0.5 });
+  const high = B.uniformWash(300, { hMin: -10, hMax: 10, vMin: -6, vMax: 4 }, 1);
+  const comb = B.combine(low, high);
+  // points stay off the outer half-cell of the high table: lutAt (the renderer's own rule) reads 0 there, so resample does too
+const pt = [[0.1, 0.1], [7.3, -2.2], [-8.4, 3.1]];
+  ok('combine: low + high at points (high sampled on the low grid)', pt.every(([h, v]) => Math.abs(D.lutAt(comb, h, v) - (D.lutAt(low, h, v) + D.lutAt(high, h, v))) < 1e-3), pt.map(([h, v]) => [D.lutAt(comb, h, v), D.lutAt(low, h, v) + D.lutAt(high, h, v)]));
+  ok('storedBytes: 2 bytes per UTF-16 character', B.storedBytes('abcd') === 8);
+}
+
+// bundle() takes in-memory beams (fromLut) as well as file-shaped ones (build)
+{
+  const mem = B.fromLut(lut, { name: 'mem', beamKind: 'low' });
+  const bd = B.bundle([mem, B.build({ name: 'file', grid: { h0: WIN[0], v0: WIN[2], step: STEP, nh: lut.nh, nv: lut.nv }, data: lut.data })]);
+  const back = B.readFile(JSON.parse(JSON.stringify(bd)));
+  ok('bundle of in-memory + file-shaped beams reads back (2 beams, bit-exact)', back.length === 2 && bitsEqual(back[0].values, lut.data) && bitsEqual(back[1].values, lut.data));
+}
+
 console.log(fails ? fails + ' of ' + n + ' FAILED' : 'all ' + n + ' beam checks passed');
 process.exit(fails ? 1 : 0);

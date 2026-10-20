@@ -136,7 +136,7 @@
   // One file holding many beams. Input and output are plain JSON objects.
   function bundle(beams, o) {
     if (!Array.isArray(beams) || !beams.length) throw new Error('a bundle needs at least one beam');
-    return { format: FORMAT, kind: 'beam-bundle', name: String((o && o.name) || 'beam bundle').slice(0, 80), beams: beams.map(b => (b.kind === 'beam' ? b : serialise(b))) };
+    return { format: FORMAT, kind: 'beam-bundle', name: String((o && o.name) || 'beam bundle').slice(0, 80), beams: beams.map(b => serialise(b)) };
   }
   // Reads a file's JSON: a single beam or a bundle. Returns an array of parsed beams. A bad beam in a bundle rejects the whole file.
   function readFile(obj) {
@@ -192,6 +192,23 @@
     return { h0: grid.h0, v0: grid.v0, step: grid.step, nh: grid.nh, nv: grid.nv, data };
   }
 
-  R.Beams = { FORMAT, build, parse, serialise, bundle, readFile, fromLut, toLut, resample, sameGrid, uniformWash, pointBeam, checksumOf, fnv1a, bytesToB64, b64ToBytes, floatsToBytes, bytesToFloats };
+  // Coarse copy for localStorage: same window, step raised to `step` (degrees) when the table is finer. Values are re-sampled, not averaged.
+  function coarsen(lut, step) {
+    const s = Math.max(lut.step, step);
+    const nh = Math.max(2, Math.round((lut.nh * lut.step) / s)), nv = Math.max(2, Math.round((lut.nv * lut.step) / s));
+    return resample(lut, { h0: lut.h0, v0: lut.v0, step: s, nh, nv });
+  }
+  // Own beam + generic high replacement: a saved high table is sampled onto the low table's grid and added to it.
+  // lutAt is linear, so the sum equals low + high at every point, the same way withHigh() adds the generic high.
+  function combine(low, high) {
+    const h = resample(high, { h0: low.h0, v0: low.v0, step: low.step, nh: low.nh, nv: low.nv });
+    const data = new Float32Array(low.nh * low.nv);
+    for (let k = 0; k < data.length; k++) data[k] = low.data[k] + h.data[k];
+    return { h0: low.h0, v0: low.v0, step: low.step, nh: low.nh, nv: low.nv, data };
+  }
+  // localStorage stores UTF-16: each character of the stored string costs 2 bytes against the origin quota.
+  const storedBytes = (s) => 2 * String(s).length;
+
+  R.Beams = { FORMAT, build, parse, serialise, bundle, readFile, fromLut, toLut, resample, sameGrid, uniformWash, pointBeam, coarsen, combine, storedBytes, checksumOf, fnv1a, bytesToB64, b64ToBytes, floatsToBytes, bytesToFloats };
   if (typeof module !== 'undefined' && module.exports) module.exports = R.Beams;
 })();

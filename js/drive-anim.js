@@ -1108,13 +1108,14 @@ void main() {
   const info = () => V.info;
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high]);     // V.high: the switch changes the lamp table, so the cached ground and picture rows are rebuilt
+    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, o.ownLow, o.ownHigh]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, o.wet]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: o.wet }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(o.fov, o.dolly), lamps: I.rd.mdl.lamps, lut: D.withHigh(I.lut(), !!V.high), lowLut: I.lut(), conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, wetModel: o.wetModel, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
+    const own = ownBeams(o), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
+    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(o.fov, o.dolly), lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: I.lampRGB, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: o.wet, wetSheen: o.wetSheen, wetModel: o.wetModel, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || (o.wet && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1365,6 +1366,61 @@ void main() {
 
   // ---------------------------------------------------------------- the controls
   const E = (tag, attrs, ...kids) => { const e = document.createElement(tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); e.append(...kids); return e; };
+  // ---- BA2 beam library: saved beams for our own low and high beam. Full tables live in memory (this session);
+  // a coarse copy (0.25 deg) is kept in localStorage 'flux/beamLibrary' when it fits a byte budget. Every storage access is
+  // wrapped: an empty, blocked or throwing localStorage just means the library is session-only.
+  const BEAM_KEY = 'flux/beamLibrary', BEAM_BUDGET = 2.5e6, BEAM_COARSE = 0.25;   // bytes (UTF-16) the library may take; origin quota is about 5 MB
+  const LIB = { items: null, msg: '', ver: 0, seq: 0 };
+  const libEntry = (parsed, id, persisted) => ({ id, name: parsed.name, beamKind: parsed.beamKind, conv: parsed.conv, lut: RF.Beams.toLut(parsed), persisted: !!persisted });
+  const libNewId = () => 'b' + Date.now().toString(36) + (++LIB.seq).toString(36);   // counter, not a random source
+  function libLoad() {
+    if (LIB.items) return LIB.items;
+    LIB.items = [];
+    try {
+      const raw = JSON.parse(localStorage.getItem(BEAM_KEY) || '[]');
+      for (const r of Array.isArray(raw) ? raw : []) { try { LIB.items.push(libEntry(RF.Beams.parse(r.beam), String(r.id), true)); } catch (e) { /* skip a damaged entry */ } }
+    } catch (e) { /* no storage, or not JSON: session-only */ }
+    return LIB.items;
+  }
+  function libSaveStore() {
+    const coarse = libLoad().filter(e => e.persisted).map(e => ({ id: e.id, beam: RF.Beams.serialise(RF.Beams.fromLut(RF.Beams.coarsen(e.lut, BEAM_COARSE), { name: e.name, beamKind: e.beamKind, conv: e.conv })) }));
+    const text = JSON.stringify(coarse);
+    if (RF.Beams.storedBytes(text) > BEAM_BUDGET) return false;
+    try { localStorage.setItem(BEAM_KEY, text); return true; } catch (e) { return false; }
+  }
+  // Adds parsed beams. Persisted when the coarse library still fits; otherwise kept for this session and the message says so.
+  function libAdd(parsedList) {
+    const items = libLoad(), added = [], dropped = [];
+    for (const parsed of parsedList) {
+      const id = libNewId(), e = libEntry(parsed, id, false);
+      items.push(e); added.push(e);
+    }
+    let stored = true; LIB.ver++;
+    // mark persisted only if the whole coarse store fits: try each new entry in order, keep the ones that fit
+    for (const e of added) { e.persisted = true; if (!libSaveStore()) { e.persisted = false; dropped.push(e.name); stored = false; } }
+    LIB.msg = added.length === 1 && stored ? 'Saved "' + added[0].name + '" to the library.'
+      : (dropped.length ? 'Kept for this session only (browser storage is full): ' + dropped.join(', ') + '. Export them to keep them.' : 'Added ' + added.length + ' beams.');
+    return added;
+  }
+  const libFind = (id, kind) => { const e = libLoad().find(x => x.id === id); return e && (!kind || e.beamKind === kind) ? e : null; };
+  // The beams the options pick: null = built-in (our design for low, generic for high)
+  function ownBeams(o) {
+    const lo = o.ownLow && o.ownLow !== 'design' ? libFind(o.ownLow, 'low') : null, hi = o.ownHigh && o.ownHigh !== 'generic' ? libFind(o.ownHigh, 'high') : null;
+    return { low: lo ? lo.lut : null, high: hi ? hi.lut : null };
+  }
+  // saved high replaces the generic high: low + saved high, cached per (low table, saved high) so the picture keeps its identity
+  const combineMemo = new WeakMap();
+  function combineCached(low, high) {
+    let m = combineMemo.get(low); if (!m) { m = new Map(); combineMemo.set(low, m); }
+    let c = m.get(high); if (!c) { c = RF.Beams.combine(low, high); m.set(high, c); }
+    return c;
+  }
+  function fileToText(file) { return new Promise((res, rej) => { if (file.text) file.text().then(res, rej); else { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsText(file); } }); }
+  function downloadBeams(obj, name) {
+    const blob = new Blob([JSON.stringify(obj, null, 1)], { type: 'application/json' }), url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   function bars(ui, setDV) {
     if (V.bar) return V.bar;
     const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveBar.querySelector('.drive-primary'), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
@@ -1437,6 +1493,38 @@ void main() {
     btn('reset-flashes', 'Start the count again (each driver counts once above 1 lx at their eye)', () => { V.flash = flashState(); V.flashLab.textContent = 'oncoming drivers above 1 lx: 0'; }, 'reset count');
     // telephoto dolly (opt-in): only changes the picture below a 60° view angle; default off keeps the fixed eye
     btn('telephoto-dolly', 'Telephoto dolly (opt-in): with the view angle under 60°, the eye moves back so the subject keeps its size (a 45° view moves it about 7.9 m back, a 30° view about 23 m). Off keeps the fixed eye.', () => setDV(ui, 'dolly', !info().o.dolly), 'telephoto dolly');
+    // BA2 own beams: the low beam (our design, or a saved low beam; a saved LOW beam also changes symmetric-mode traffic) and
+    // the high beam (generic, or a saved high beam that replaces the generic one when the high switch is on).
+    const ownLow = E('select', { 'data-anim': 'own-low', 'aria-label': 'Own low beam', title: 'Our low beam: our design, or a saved low beam from the library. A saved LOW beam also changes symmetric-mode traffic, since oncoming cars carry our low table.' });
+    const ownHigh = E('select', { 'data-anim': 'own-high', 'aria-label': 'Own high beam', title: 'Our high beam when the high switch is on: the generic high beam, or a saved high beam from the library (it is added to our low beam).' });
+    const fillOwn = () => {
+      const keep = { l: info() && info().o.ownLow, h: info() && info().o.ownHigh };
+      ownLow.replaceChildren(E('option', { value: 'design' }, 'our design'), ...libLoad().filter(e => e.beamKind === 'low').map(e => E('option', { value: e.id }, e.name + (e.persisted ? '' : ' (session)'))));
+      ownHigh.replaceChildren(E('option', { value: 'generic' }, 'generic high'), ...libLoad().filter(e => e.beamKind === 'high').map(e => E('option', { value: e.id }, e.name + (e.persisted ? '' : ' (session)'))));
+      ownLow.value = libFind(keep.l, 'low') || keep.l === 'design' || !keep.l ? (keep.l || 'design') : 'design';
+      ownHigh.value = libFind(keep.h, 'high') || keep.h === 'generic' || !keep.h ? (keep.h || 'generic') : 'generic';
+    };
+    ownLow.addEventListener('change', () => setDV(ui, 'ownLow', ownLow.value)); ownHigh.addEventListener('change', () => setDV(ui, 'ownHigh', ownHigh.value));
+    const fileIn = E('input', { type: 'file', accept: '.json,application/json', 'data-anim': 'beam-file', 'aria-label': 'Import beam file (single beam or bundle)', hidden: '' });
+    fileIn.addEventListener('change', async () => {
+      const f = fileIn.files && fileIn.files[0]; fileIn.value = ''; if (!f) return;
+      try { libAdd(RF.Beams.readFile(JSON.parse(await fileToText(f)))); fillOwn(); }
+      catch (e) { LIB.msg = 'Import failed: ' + (e && e.message ? e.message : e); }
+      V.beamMsg.textContent = LIB.msg;
+    });
+    V.beamMsg = E('span', { class: 'anim-speed', 'data-anim': 'beam-status', 'aria-live': 'polite' });
+    btn('save-design', 'Save our design as a beam in the library (a low beam, with the design\'s convention)', () => {
+      const I = info(); libAdd([RF.Beams.fromLut(I.lut(), { name: 'our design', beamKind: 'low', conv: I.conv || 'A' })]); fillOwn(); V.beamMsg.textContent = LIB.msg;
+    }, 'save design');
+    btn('import-beam', 'Import a beam file: one beam, or a bundle of several. Beams join the library.', () => fileIn.click(), 'import');
+    btn('export-beams', 'Download the library as a beam file: one beam, or a bundle when there are several', () => {
+      const items = libLoad(); if (!items.length) { V.beamMsg.textContent = 'The library is empty: save a design or import a file first.'; return; }
+      const parsed = items.map(e => RF.Beams.fromLut(e.lut, { name: e.name, beamKind: e.beamKind, conv: e.conv }));
+      const obj = parsed.length === 1 ? RF.Beams.serialise(parsed[0]) : RF.Beams.bundle(parsed, { name: 'beam library' });
+      downloadBeams(obj, parsed.length === 1 ? 'beam.json' : 'beams.json'); V.beamMsg.textContent = 'Downloaded ' + parsed.length + ' beam' + (parsed.length === 1 ? '' : 's') + '.';
+    }, 'export');
+    V.fillOwn = () => { fillOwn(); V.libVer = LIB.ver; }; V.fillOwn();
+    bar.append(E('span', { class: 'anim-speed' }, 'beam'), ownLow, ownHigh, fileIn, V.beamMsg);
     V.bar = bar; return bar;
   }
   function flashText() { if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0); }
@@ -1518,6 +1606,8 @@ void main() {
     V.bar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));
     V.bar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
     V.bar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
+    if (V.fillOwn && V.libVer !== LIB.ver) V.fillOwn();
+    if (V.fillOwn) { V.bar.querySelector('[data-anim="own-low"]').value = o.ownLow && o.ownLow !== 'design' && libFind(o.ownLow, 'low') ? o.ownLow : 'design'; V.bar.querySelector('[data-anim="own-high"]').value = o.ownHigh && o.ownHigh !== 'generic' && libFind(o.ownHigh, 'high') ? o.ownHigh : 'generic'; }
     if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0);
     const trafficOn = o.oncoming || o.preceding;
     if (V.flashLab) V.flashLab.hidden = !trafficOn;
