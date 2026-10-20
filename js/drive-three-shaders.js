@@ -15,7 +15,7 @@ uniform vec4 part[16], partShape[16], light[64], reflection[64];
 uniform vec3 lightRGB[64], reflectionRGB[64];
 uniform vec2 skip[16];
 uniform vec4 crossing[16];
-uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance;
+uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance, wetModel;
 uniform vec2 verge;
 uniform vec2 arc;
 varying vec2 screen;
@@ -39,15 +39,30 @@ float wetLobe(vec3 d,vec3 v) {
   float F=0.02+0.98*pow(1.0-max(0.0,v.z),5.0);
   return F*exp(-0.5*(pow(along/0.23,2.0)+pow(across/0.025,2.0)))*max(0.0,h.z)*4.0/(rr*rr);
 }
+// Anisotropic GGX wet sheen (look.wetModel 'ggx'); the same math as wetGGX in js/drive.js. Returns f*cos/r^2 per candela.
+// d = point -> light (unnormalised), v = point -> eye (unit), n = surface normal. Tangent T follows the view direction horizontal part.
+float wetGGX(vec3 d,vec3 v,vec3 n) {
+  float rr=length(d); vec3 l=d/rr, h=normalize(l+v);
+  float NoV=dot(n,v), NoL=dot(n,l);
+  if(NoV<=0.0 || NoL<=0.0) return 0.0;
+  const float a=0.25, b=0.05;
+  vec3 pt=v-n*NoV; vec3 t=length(pt)>1e-6 ? normalize(pt) : vec3(1.0,0.0,0.0), bt=cross(n,t);
+  float ht=dot(h,t), hb=dot(h,bt), hn=dot(h,n);
+  float e=ht*ht/(a*a)+hb*hb/(b*b)+hn*hn, D=1.0/(PI*a*b*e*e);
+  float lt=dot(l,t), lb=dot(l,bt), vt=dot(v,t), vb=dot(v,bt);
+  float Lv=(sqrt(1.0+(a*a*vt*vt+b*b*vb*vb)/(NoV*NoV))-1.0)*0.5, Ll=(sqrt(1.0+(a*a*lt*lt+b*b*lb*lb)/(NoL*NoL))-1.0)*0.5;
+  float G=1.0/(1.0+Lv+Ll), VoH=dot(v,h), F=0.02+0.98*pow(1.0-max(0.0,VoH),5.0);
+  return D*F*G/(4.0*NoV*rr*rr);
+}
 vec3 shade(vec3 p,vec3 n,vec3 v,int id) {
   vec3 rho=texelFetch(materials,ivec2(id,0),0).rgb, retro=texelFetch(materials,ivec2(id,1),0).rgb;
   vec4 gloss=texelFetch(materials,ivec2(id,2),0); vec3 r=rho*ambient*(0.5+0.5*n.z)/PI;
   float NoV=dot(n,v);
   for(int i=0;i<64;i++) { if(i>=nLight) break; vec3 d=light[i].xyz-p; float r2=dot(d,d); if(d.z>0.0 && r2>=0.01) r+=rho*lightRGB[i]*light[i].w*max(0.0,dot(d,n))/(PI*r2*sqrt(r2)); }
-  if(sheen>0.0 && (id==0||id==4)) for(int i=0;i<64;i++) { if(i>=nReflection) break; r+=reflection[i].w*wetLobe(reflection[i].xyz-p,v)*reflectionRGB[i]; }
+  if(sheen>0.0 && (id==0||id==4)) for(int i=0;i<64;i++) { if(i>=nReflection) break; r+=reflection[i].w*(wetModel>0.5 ? wetGGX(reflection[i].xyz-p,v,n) : wetLobe(reflection[i].xyz-p,v))*reflectionRGB[i]; }
   for(int i=0;i<2;i++) { if(i>=nLamp) break; vec3 d=p-lamp[i]; float r2=dot(d,d), rr=sqrt(r2), NoL=-dot(d,n)/rr; if(NoL<=0.0) continue;
     float I=intensity(d); if(I<=0.0) continue;
-    if(sheen>0.0 && id==0) r+=vec3(I*wetLobe(-d,v));
+    if(sheen>0.0 && id==0) r+=vec3(I*(wetModel>0.5 ? wetGGX(-d,v,n) : wetLobe(-d,v)));
     float Ep=I/r2; r+=rho*Ep*NoL/PI + retro*Ep;
     if(gloss.x>0.0 && NoV>0.0) { vec3 l=-d/rr, h=normalize(l+v); float NoH=dot(n,h), VoH=dot(v,h), a2=gloss.x*gloss.x, den=NoH*NoH*(a2-1.0)+1.0;
       float D=a2/(PI*den*den), F=gloss.y+(1.0-gloss.y)*pow(1.0-max(0.0,VoH),5.0), k=gloss.x/2.0;
