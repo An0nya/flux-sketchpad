@@ -33,6 +33,10 @@ function run(RF, ok) {
   // 4. off: no fog (sigma 0) gives empty bins
   const clear = Object.assign({}, o, { look: {} });
   ok('SD table: no visibility gives zero bins and zero lookup', D.scatterTableBins(clear, rays[0], 0.5, 48).every((v) => v === 0) && D.scatterTableAt(D.scatterTableBins(clear, rays[0], 0.5, 48), 20) === 0);
+  // 4b. cycle 8 (eight jitter versions, averaged for display): the eight-version mean at 48 steps converges to the 64-step table mean
+  const v8 = (steps) => { let a = 0; for (const j of jitters) a += D.scatterTableAt(D.scatterTableBins(o, rays[0], j, steps), 15) / jitters.length; return a; };
+  const r8 = v8(48) / v8(64);
+  ok('SD cycle 8: the eight-version mean (48 steps) is within 3 percent of the 64-step table mean at 15 m', Math.abs(r8 - 1) < 0.03, 'ratio ' + r8.toFixed(4));
   // 5. one-jitter spread at 48 steps, reported (the GPU table uses one jitter per pixel)
   const one = jitters.map((j) => D.scatterTableAt(D.scatterTableBins(o, rays[0], j, 48), 15));
   const mean = one.reduce((a, b) => a + b, 0) / one.length;

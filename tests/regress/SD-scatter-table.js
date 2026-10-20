@@ -47,6 +47,38 @@ async function meanLuma(page, png) {
     ok('SD no NaN or empty frames (mean luminance finite and above zero in every table frame)', [table, blur, full].every((f) => Number.isFinite(f.luma) && f.luma > 0));
     const back = await frame('direct 16 again', { scatterMode: 'direct' });
     ok('SD back to direct: the frame equals the baseline again', back.hash === DIRECT16, back.hash.slice(0, 12));
+    // SD2 cache: the table is redrawn only when its key changes; cycle 8 shows eight jitter versions in rotation.
+    // The car moves 0.6 m per frame (the key does not depend on distance, so a straight drive must not redraw the table).
+    const counters = () => page.evaluate(() => ({ ...globalThis.SD_SCATTER }));
+    const setOpts = async (o) => { await page.evaluate((x) => { Object.assign(RF.UI.dvOpts, x); RF.UI.redrawSpec(); }, o); await sleep(2000); };
+    const drive = (n) => page.evaluate((k) => { const st = RF.DriveAnim._.S(RF.UI); const out = []; for (let i = 0; i < k; i++) { st.dist += 0.6; RF.DriveAnim._.frame(); out.push(globalThis.SD_SCATTER.shown); } return out; }, n);
+    const base = { scatterMode: 'table', scatter: 16, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', afs: false, lampPitch: false, corneringLamps: false, scatterCache: 'on', scatterCycle: 0 };
+    await setOpts(base);
+    await drive(3);
+    await page.evaluate(() => { globalThis.SD_SCATTER.recomputes = 0; globalThis.SD_SCATTER.skips = 0; });
+    await drive(30);
+    const straight = await counters();
+    ok('SD cache: a straight drive over 30 frames redraws none (key unchanged, skips counted)', straight.recomputes === 0 && straight.skips === 30 && straight.cache === true, JSON.stringify(straight));
+    await setOpts({ afs: true });
+    await drive(2);
+    const afsOn = await counters();
+    await setOpts({ lampPitch: true });
+    await drive(2);
+    const pitchOn = await counters();
+    ok('SD cache: switching AFS or lamp pitch changes the key and redraws', afsOn.recomputes > straight.recomputes && pitchOn.recomputes > afsOn.recomputes, 'recomputes ' + straight.recomputes + ' -> ' + afsOn.recomputes + ' -> ' + pitchOn.recomputes);
+    await setOpts({ afs: false, lampPitch: false });
+    // cache on (cycle 0) against cache off: the same single version (seed 0), so the frames match
+    const tbl = { scatterMode: 'table', scatter: 16, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off' };
+    const onFrame = await frame('cache on, cycle 0', Object.assign({ scatterCache: 'on', scatterCycle: 0 }, tbl));
+    const offFrame = await frame('cache off', Object.assign({ scatterCache: 'off', scatterCycle: 0 }, tbl));
+    ok('SD cache off equals cache on (cycle 0) within 1e-3 mean luminance', Math.abs(onFrame.luma - offFrame.luma) / offFrame.luma < 1e-3, 'on ' + onFrame.luma.toFixed(4) + ' off ' + offFrame.luma.toFixed(4) + ' hashes ' + (onFrame.hash === offFrame.hash ? 'equal' : 'differ'));
+    // cycle 8: eight versions fill one per frame after the change, then the shown index rotates through them
+    await setOpts({ scatterMode: 'table', scatter: 16, scatterCache: 'on', scatterCycle: 8 });
+    await drive(10);
+    const cyc = await counters();
+    const seq = await drive(8);
+    ok('SD cycle 8: eight versions valid, and eight consecutive frames show eight distinct versions', cyc.valid === 8 && cyc.cycle === 8 && new Set(seq).size === 8, 'valid ' + cyc.valid + ' shown ' + seq.join(','));
+    await setOpts({ scatterCycle: 0, scatterCache: 'off', scatterMode: 'direct' });
     ok('SD nothing throws', errors.length === 0, errors.slice(0, 3).join(' | '));
   } catch (e) { ok('SD page run completed', false, String(e && e.stack || e).slice(0, 400)); }
   finally { await browser.close(); }

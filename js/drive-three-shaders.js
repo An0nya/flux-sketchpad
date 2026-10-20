@@ -210,9 +210,9 @@ float tableC(float d) {
 vec3 inScatterDirect(vec3 dir,float sEnd,float jit);
 vec3 inScatter(vec3 dir,float sEnd,float jit) { return scatMode==1 ? tableC(min(sEnd,scatSMax))*lampRGB : inScatterDirect(dir,sEnd,jit); }
 `;
-const TABLE_MAIN = `uniform int tableBank, tableSteps;
+const TABLE_MAIN = `uniform int tableBank, tableSteps, tableSeed;
 uniform float tableH;
-float tableJitter() { uint x=uint(gl_FragCoord.x), y=uint(tableH)-1u-uint(gl_FragCoord.y); uint h=(x*0x27d4eb2du)^(y*0x165667b1u); h=(h^(h>>15u))*0x85ebca6bu; h=(h^(h>>13u))*0xc2b2ae35u; h^=h>>16u; return float(h)/4294967296.0; }
+float tableJitter() { uint x=uint(gl_FragCoord.x), y=uint(tableH)-1u-uint(gl_FragCoord.y); uint h=(x*0x27d4eb2du)^(y*0x165667b1u)^(uint(tableSeed)*0x9e3779b9u); h=(h^(h>>15u))*0x85ebca6bu; h=(h^(h>>13u))*0xc2b2ae35u; h^=h>>16u; return float(h)/4294967296.0; }
 float tableIntegrand(vec3 dir,float s) {
   vec3 P=eye+s*dir; float f=0.0;
   for(int i=0;i<2;i++) { if(i>=nLamp) break;
