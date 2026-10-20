@@ -31,10 +31,31 @@
     return [x, planckY(T, x)];
   }
 
+  // Duv: signed distance off the Planckian locus in CIE 1960 (u,v). + = above the locus = green; - = below = pink/magenta.
+  // Clamped to +-DUV_MAX; a value outside that is clamped, not rejected. Only a finite non-zero duv changes the colour.
+  const DUV_MAX = 0.05;
+  function uvOf(x, y) { const d = -2 * x + 12 * y + 3; return [4 * x / d, 6 * y / d]; }
+  function xyOfUv(u, v) { const d = 2 * u - 8 * v + 4; return [3 * u / d, 2 * v / d]; }
+
+  // The locus point at K, moved duv along its unit normal (the normal with positive v). K is clamped to the fit's range FIRST,
+  // so the +-1 % finite difference never collapses to two identical points at the ends.
+  function shiftedXy(K, duv) {
+    const Kc = Math.min(K_MAX, Math.max(K_MIN, K));
+    const [u, v] = uvOf(...xyOf(Kc));
+    const [u1, v1] = uvOf(...xyOf(Math.max(K_MIN, Kc * 0.99)));
+    const [u2, v2] = uvOf(...xyOf(Math.min(K_MAX, Kc * 1.01)));
+    const tu = u2 - u1, tv = v2 - v1, len = Math.hypot(tu, tv);
+    let nu = -tv / len, nv = tu / len;                           // unit normal to the tangent
+    if (nv < 0) { nu = -nu; nv = -nv; }                          // pick the normal that points to +v
+    return xyOfUv(u + duv * nu, v + duv * nv);
+  }
+
   // Kelvin → [r, g, b] linear sRGB, luminance 1.  Non-finite or non-positive K means "no CCT": white.
-  function cctToRGB(K) {
+  // duv (optional, see above): 0, unset, or non-finite leaves the Planckian colour exactly as it was.
+  function cctToRGB(K, duv) {
     if (!(K > 0) || !Number.isFinite(K)) return [1, 1, 1];
-    const [x, y] = xyOf(K);
+    const d = Number.isFinite(duv) ? Math.max(-DUV_MAX, Math.min(DUV_MAX, duv)) : 0;
+    const [x, y] = d === 0 ? xyOf(K) : shiftedXy(K, d);
     const X = x / y, Z = (1 - x - y) / y;                        // Y = 1
     let r = 3.2406 * X - 1.5372 - 0.4986 * Z, g = -0.9689 * X + 1.8758 + 0.0415 * Z, b = 0.0557 * X - 0.2040 + 1.0570 * Z;
     r = Math.max(0, r); g = Math.max(0, g); b = Math.max(0, b);  // clamp before normalising
@@ -98,6 +119,11 @@
   // A preset's default CCT (kelvin) or undefined. See presetCctInfo for the rules.
   function presetCct(p, id) { return presetCctInfo(p, id).cct; }
 
+  // Duv a preset sets by default. Only one: the YLX N3535B cool white (koef3 reading, with its 5928 K CCT above).
+  // Everything else is 0, unset. Typed values in Light source (src.duv) win for the same preset (see source-presets.js).
+  const PRESET_DUV = { 'k3-221071': 0.0189 };
+  function presetDuv(id) { return id && Object.prototype.hasOwnProperty.call(PRESET_DUV, id) ? PRESET_DUV[id] : undefined; }
+
   // Flux weight of a source: its luminous flux (lm; the `power` field is lm for every preset), or 1 if unset.
   const weightOf = (s) => (s && Number.isFinite(s.power) && s.power > 0 ? s.power : 1);
 
@@ -108,11 +134,11 @@
     if (!list.some((s) => Number.isFinite(s.cct) && s.cct > 0)) return [1, 1, 1];
     let W = 0, R = 0, G = 0, B = 0;
     for (const s of list) {
-      const w = weightOf(s), c = Number.isFinite(s.cct) && s.cct > 0 ? cctToRGB(s.cct) : [1, 1, 1];
+      const w = weightOf(s), c = Number.isFinite(s.cct) && s.cct > 0 ? cctToRGB(s.cct, s.duv) : [1, 1, 1];
       W += w; R += w * c[0]; G += w * c[1]; B += w * c[2];
     }
     return W > 0 ? [R / W, G / W, B / W] : [1, 1, 1];
   }
 
-  RF.CCT = { cctToRGB, xyOf, presetCct, presetCctInfo, lampRGB, HALOGEN_CCT, HID_CCT, ASSUMED_CCT, KNOWN_CCT };
+  RF.CCT = { cctToRGB, xyOf, shiftedXy, uvOf, presetCct, presetCctInfo, presetDuv, lampRGB, HALOGEN_CCT, HID_CCT, ASSUMED_CCT, KNOWN_CCT };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
