@@ -794,12 +794,18 @@
   const tableEdge = (k) => TABLE.near * Math.pow(SCAT.S_MAX / TABLE.near, k / (TABLE.K - 1));   // k = 0..K-1; edge K-1 = S_MAX
   // SE3 near-eye fade (look.scatterNearFade, default 'on' in table mode): the integrand is weighted by smoothstep(1 m, 10 m, s).
   // Classic script, so the constants are copies of SCAT_FADE_S0 / SCAT_FADE_S1 in js/table-pace.js (the shader reads that file).
-  const NEAR_FADE = { S0: 1.0, S1: 10.0 };
-  const nearFadeW = (s) => { const t = Math.min(1, Math.max(0, (s - NEAR_FADE.S0) / (NEAR_FADE.S1 - NEAR_FADE.S0))); return t * t * (3 - 2 * t); };
+  // SF2 fade range (look.scatterNearFadeRange): copies of FADE_RANGES in js/table-pace.js. Saved scatterNearFade: on = medium, off = none.
+  const NEAR_FADE_RANGES = { off: null, short: [0.5, 3], medium: [1.0, 10.0], long: [2.0, 20.0] };
+  function nearFadeRangeOf(look) {
+    const r = look && look.scatterNearFadeRange;
+    if (typeof r === 'string' && Object.prototype.hasOwnProperty.call(NEAR_FADE_RANGES, r)) return NEAR_FADE_RANGES[r];
+    return look && look.scatterNearFade === 'off' ? null : NEAR_FADE_RANGES.medium;
+  }
+  const nearFadeW = (s, S0, S1) => { const t = Math.min(1, Math.max(0, (s - S0) / (S1 - S0))); return t * t * (3 - 2 * t); };
   function scatterTableBins(o, dir, jit, steps) {
     const sig = sigmaOf(o.look || {}), n = Math.max(1, Math.round((steps | 0) / TABLE.K)), bins = new Float64Array(TABLE.K);
     if (!(sig > 0)) return bins;
-    const fade = (o.look || {}).scatterNearFade !== 'off';
+    const fr = nearFadeRangeOf(o.look || {});
     const eye = o.eye, lamps = o.lamps || [], dx = dir[0], dy = dir[1], dz = dir[2];
     const integrand = (s) => {
       const px = eye[0] + s * dx, py = eye[1] + s * dy, pz = eye[2] + s * dz; let f = 0;
@@ -809,7 +815,7 @@
         const r = Math.sqrt(r2), I = ownBeamAt(o, qx, qy, qz, L[1]);
         if (!(I > 0)) continue;
         const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I / Math.max(r2, SCAT.rMin * SCAT.rMin);
-        f += sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Math.exp(-sig * s) * (fade ? nearFadeW(s) : 1);
+        f += sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Math.exp(-sig * s) * (fr ? nearFadeW(s, fr[0], fr[1]) : 1);
       }
       return Number.isFinite(f) ? f : 0;
     };
@@ -825,15 +831,16 @@
     return bins;
   }
   // Cumulative value at distance d: linear from 0 to C_0 at the first edge, then linear in log d between edges; clamped beyond S_MAX.
-  function scatterTableAt(bins, d) {
+  // gain (SF2, look.scatterGain via scatterGainOf) multiplies the lookup only; default 1.
+  function scatterTableAt(bins, d, gain = 1) {
     if (!(d > 0)) return 0;
     let C = 0, prevE = 0, prevC = 0;
     for (let k = 0; k < TABLE.K; k++) {
       C += bins[k]; const e = tableEdge(k);
-      if (d <= e) return k === 0 ? C * d / e : prevC + (C - prevC) * Math.log(d / prevE) / Math.log(e / prevE);
+      if (d <= e) return gain * (k === 0 ? C * d / e : prevC + (C - prevC) * Math.log(d / prevE) / Math.log(e / prevE));
       prevE = e; prevC = C;
     }
-    return C;
+    return gain * C;
   }
   const veilStrength = (v) => glareStrength(v) > 0 ?(glareLevel(v) === 'dry-low' ? 0.5 : 1) : 0;
   function reflectionSources(objects, p) {

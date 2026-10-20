@@ -46,3 +46,20 @@ export function smoothstep(e0, e1, x) {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
   return t * t * (3 - 2 * t);
 }
+
+// SF2 near-eye fade range (look.scatterNearFadeRange): the S0..S1 pair in metres. 'off' has no pair (the plain SD table).
+// Saved options from before SF2 still work: scatterNearFade 'on' is 'medium', 'off' is 'off'. A range set on the button wins.
+export const FADE_RANGES = { off: null, short: [0.5, 3], medium: [SCAT_FADE_S0, SCAT_FADE_S1], long: [2, 20] };
+export function fadeRangeName(look) {
+  const r = look && look.scatterNearFadeRange;
+  if (typeof r === 'string' && Object.prototype.hasOwnProperty.call(FADE_RANGES, r)) return r;
+  return look && look.scatterNearFade === 'off' ? 'off' : 'medium';
+}
+export function fadeRangeOf(look) { return FADE_RANGES[fadeRangeName(look)]; }
+
+// SF2 scatter gain (look.scatterGain): multiplies the table LOOKUP only (never the table), log-scale 0.25 to 4, default 1.
+export const SCAT_GAIN = { min: 0.25, max: 4, def: 1 };
+export function scatterGainOf(look) {
+  const g = Number(look && look.scatterGain);
+  return Number.isFinite(g) && g > 0 ? Math.min(SCAT_GAIN.max, Math.max(SCAT_GAIN.min, g)) : SCAT_GAIN.def;
+}

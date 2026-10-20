@@ -34,7 +34,7 @@ async function meanLuma(page, png) {
     const SD = () => page.evaluate(() => ({ ...globalThis.SD_SCATTER }));
 
     // 1. the GPU renderer runs the table path
-    await setOpts(Object.assign({}, base, { scatterCache: 'on', scatterCycle: 0, scatterNearFade: 'on' }));
+    await setOpts(Object.assign({}, base, { scatterCache: 'on', scatterCycle: 0, scatterNearFadeRange: 'medium' }));
     await steps(3, true);
     const s1 = await SD();
     ok('SE GPU renderer runs table frames with the new counters', s1.frames > 0 && s1.cache === true && typeof s1.budgetMs === 'number', JSON.stringify({ frames: s1.frames, valid: s1.valid, budgetMs: s1.budgetMs }));
@@ -112,23 +112,23 @@ async function meanLuma(page, png) {
     ok('SE strip: closes after the fill is complete (0.8 s tuck)', !closed.open, JSON.stringify(closed));
 
     // 6. near-eye fade: the button (table mode, saved in the view options) toggles and changes the frame
-    await setOpts(Object.assign({}, base, { scatterCache: 'off', scatterCycle: 0, scatterNearFade: 'on' }), 1500);
+    await setOpts(Object.assign({}, base, { scatterCache: 'off', scatterCycle: 0, scatterNearFadeRange: 'medium' }), 1500);
     const ui = (k) => page.evaluate((key) => { const b = document.querySelector('[data-dv="' + key + '"]'); return b ? { text: b.textContent.trim(), hidden: b.hidden, disabled: b.disabled } : null; }, k);
-    const fadeOn = await ui('scatterNearFade');
-    ok('SE UI: the near-fade button reads on in table mode', fadeOn && fadeOn.text === 'beam near fade: on' && !fadeOn.disabled && !fadeOn.hidden, JSON.stringify(fadeOn));
+    const fadeOn = await ui('scatterNearFadeRange');
+    ok('SE UI: the near-fade button reads on in table mode', fadeOn && fadeOn.text === 'beam near fade: medium (1-10 m)' && !fadeOn.disabled && !fadeOn.hidden, JSON.stringify(fadeOn));
     const sOn = await snap('fade on');
-    await page.evaluate(() => document.querySelector('[data-dv="scatterNearFade"]').click()); await sleep(1500);
-    const fadeOff = await ui('scatterNearFade');
+    await page.evaluate(() => document.querySelector('[data-dv="scatterNearFadeRange"]').click()); await sleep(1500);
+    const fadeOff = await ui('scatterNearFadeRange');
     const sOff = await snap('fade off');
-    ok('SE UI: clicking the button switches to off and the frame changes', fadeOff.text === 'beam near fade: off' && sOff.hash !== sOn.hash, 'on ' + sOn.luma.toFixed(3) + ' off ' + sOff.luma.toFixed(3));
+    ok('SE UI: clicking the button moves medium to long and the frame changes', fadeOff.text === 'beam near fade: long (2-20 m)' && sOff.hash !== sOn.hash, 'on ' + sOn.luma.toFixed(3) + ' off ' + sOff.luma.toFixed(3));
     await setOpts({ scatterMode: 'direct' }, 1200);
-    const dirFade = await ui('scatterNearFade');
+    const dirFade = await ui('scatterNearFadeRange');
     ok('SE UI: the near-fade button is disabled in direct mode', dirFade && dirFade.disabled, JSON.stringify(dirFade));
 
     // 7. no valid version yet: the scatter term reads the 1x1 zero texture (no stall, no stale table), and the completed version replaces it.
     // The luminance comparison is not used: two screenshots of the same view did not differ in this harness, so the check reads the state (see the report).
     await page.evaluate(() => { globalThis.SD_TABLE_BUDGET_MS = 0.1; });
-    await setOpts(Object.assign({}, base, { scatterCache: 'on', scatterCycle: 0, scatterBlur: 'mid', scatterRes: 'full', scatterNearFade: 'on' }), 300);
+    await setOpts(Object.assign({}, base, { scatterCache: 'on', scatterCycle: 0, scatterBlur: 'mid', scatterRes: 'full', scatterNearFadeRange: 'medium' }), 300);
     await steps(3, false);
     const pendingSD = await SD();
     await page.evaluate(() => { globalThis.SD_TABLE_BUDGET_MS = 1e6; });
@@ -140,13 +140,13 @@ async function meanLuma(page, png) {
     await page.evaluate(() => { globalThis.SD_TABLE_BUDGET_MS = 1e6; });
     await until(1, 50);
     await page.evaluate(() => { globalThis.SD_TABLE_BUDGET_MS = 0.1; });
-    await setOpts(Object.assign({}, base, { scatterCache: 'on', scatterCycle: 0, scatterBlur: 'mid', scatterRes: 'full', scatterNearFade: 'on', visibility: 190 }), 300);
+    await setOpts(Object.assign({}, base, { scatterCache: 'on', scatterCycle: 0, scatterBlur: 'mid', scatterRes: 'full', scatterNearFadeRange: 'medium', visibility: 190 }), 300);
     await steps(2, false);
     const keyChange = await SD();
     ok('SE key change: the previous valid version stays shown while the new version fills (not zero)', keyChange.showingZero === false && keyChange.valid === 0 && keyChange.pending > 0, JSON.stringify({ showingZero: keyChange.showingZero, valid: keyChange.valid, pending: keyChange.pending }));
 
     // restore the default options for whatever follows in a shared session
-    await page.evaluate(() => { globalThis.SD_TABLE_BUDGET_MS = 8; Object.assign(RF.UI.dvOpts, { scatterMode: 'direct', scatter: 0, scatterCache: 'off', scatterCycle: 0, visibility: null, scatterNearFade: 'on' }); RF.UI.redrawSpec(); });
+    await page.evaluate(() => { globalThis.SD_TABLE_BUDGET_MS = 8; Object.assign(RF.UI.dvOpts, { scatterMode: 'direct', scatter: 0, scatterCache: 'off', scatterCycle: 0, visibility: null, scatterNearFadeRange: 'medium' }); RF.UI.redrawSpec(); });
     ok('SE nothing throws', errors.length === 0, errors.slice(0, 3).join(' | '));
   } catch (e) { ok('SE page run completed', false, String(e && e.stack || e).slice(0, 500)); }
   finally { await browser.close(); }

@@ -28,7 +28,7 @@ async function meanLuma(page, png) {
     // SE2 pacing: with the cache on a table fills over frames; wait until no version is pending before measuring (the cap guards a stall).
     const settle = () => page.evaluate(() => { let n = 0; while (RF.UI.dvOpts.scatterMode === 'table' && globalThis.SD_SCATTER.cache && globalThis.SD_SCATTER.pending > 0 && n < 4000) { RF.DriveAnim._.frame(); n++; } return n; });
     const frame = async (label, opts) => {
-      await page.evaluate((o) => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, visibility: 200, scatter: 16, scatterMode: 'direct', scatterRes: undefined, scatterBlur: 'off', scatterTableSteps: undefined, scatterNearFade: 'off', ...o }); RF.UI.redrawSpec(); }, opts);
+      await page.evaluate((o) => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, visibility: 200, scatter: 16, scatterMode: 'direct', scatterRes: undefined, scatterBlur: 'off', scatterTableSteps: undefined, scatterNearFadeRange: 'off', ...o }); RF.UI.redrawSpec(); }, opts);
       await sleep(2500); await settle();
       const st = await page.evaluate(() => { const s = RF.DriveAnim.stats(); return { renderer: s.renderer, gpuFailure: s.gpuFailure || '' }; });
       await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sc-drive', '1'));
@@ -54,7 +54,7 @@ async function meanLuma(page, png) {
     const counters = () => page.evaluate(() => ({ ...globalThis.SD_SCATTER }));
     const setOpts = async (o) => { await page.evaluate((x) => { Object.assign(RF.UI.dvOpts, x); RF.UI.redrawSpec(); }, o); await sleep(2000); await settle(); };
     const drive = (n) => page.evaluate((k) => { const st = RF.DriveAnim._.S(RF.UI); const out = []; for (let i = 0; i < k; i++) { st.dist += 0.6; RF.DriveAnim._.frame(); out.push(globalThis.SD_SCATTER.shown); } return out; }, n);
-    const base = { scatterMode: 'table', scatter: 16, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', afs: false, lampPitch: false, corneringLamps: false, scatterCache: 'on', scatterCycle: 0, scatterNearFade: 'off' };
+    const base = { scatterMode: 'table', scatter: 16, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', afs: false, lampPitch: false, corneringLamps: false, scatterCache: 'on', scatterCycle: 0, scatterNearFadeRange: 'off' };
     await setOpts(base);
     await drive(3);
     await page.evaluate(() => { globalThis.SD_SCATTER.recomputes = 0; globalThis.SD_SCATTER.skips = 0; });
@@ -70,12 +70,12 @@ async function meanLuma(page, png) {
     ok('SD cache: switching AFS or lamp pitch changes the key and redraws', afsOn.recomputes > straight.recomputes && pitchOn.recomputes > afsOn.recomputes, 'recomputes ' + straight.recomputes + ' -> ' + afsOn.recomputes + ' -> ' + pitchOn.recomputes);
     await setOpts({ afs: false, lampPitch: false });
     // cache on (cycle 0) against cache off: the same single version (seed 0), so the frames match
-    const tbl = { scatterMode: 'table', scatter: 16, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearFade: 'off' };
+    const tbl = { scatterMode: 'table', scatter: 16, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearFadeRange: 'off' };
     const onFrame = await frame('cache on, cycle 0', Object.assign({ scatterCache: 'on', scatterCycle: 0 }, tbl));
     const offFrame = await frame('cache off', Object.assign({ scatterCache: 'off', scatterCycle: 0 }, tbl));
     ok('SD cache off equals cache on (cycle 0) within 1e-3 mean luminance', Math.abs(onFrame.luma - offFrame.luma) / offFrame.luma < 1e-3, 'on ' + onFrame.luma.toFixed(4) + ' off ' + offFrame.luma.toFixed(4) + ' hashes ' + (onFrame.hash === offFrame.hash ? 'equal' : 'differ'));
     // cycle 8: eight versions fill one per frame after the change, then the shown index rotates through them
-    await setOpts({ scatterMode: 'table', scatter: 16, scatterCache: 'on', scatterCycle: 8, scatterNearFade: 'off' });
+    await setOpts({ scatterMode: 'table', scatter: 16, scatterCache: 'on', scatterCycle: 8, scatterNearFadeRange: 'off' });
     await drive(10);
     const cyc = await counters();
     const seq = await drive(8);

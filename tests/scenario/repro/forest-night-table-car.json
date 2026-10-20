@@ -1,0 +1,10 @@
+{
+  "name": "forest-night-table-car",
+  "scene": "forest",
+  "seed": 7,
+  "dist": 40,
+  "speed": 130,
+  "options": { "visibility": 60, "scatter": 64, "scatterMode": "table", "scatterRes": "full", "scatterBlur": "strong", "scatterCache": "on", "scatterCycle": 8, "ambient": 0, "preceding": true, "trafficLogic": true },
+  "frames": 8,
+  "capture": [{ "name": "table-f7", "frame": 7 }]
+}
