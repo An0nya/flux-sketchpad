@@ -48,22 +48,31 @@
   //   HID 4200 K     — metal-halide arc; an ASSUMPTION within the 4000–4300 K band typical for D2/D3 lamps.
   const HALOGEN_CCT = 3200, HID_CCT = 4200;
 
-  // LED presets whose label states no K. Owner's assumed values (not measured, not datasheet): cool white, 6500 K, for
-  // Osram, Nichia NCSW170HT and Lumileds Altilon Intense; the koef3 parts with no stated CCT and no high-CRI marking.
-  // Left OUT on purpose (stay white): sketch, generic, measured, the coloured/amber parts, the high-CRI and colour-kit
-  // parts (sft25r, k3-48963, k3-71898), and the Lumenpioneer LHP531 (k3-229647, 1800-6500 K range). sft40-cw is 6500 K
-  // here only as the default; its drive-bin menu sets the value (source-presets.js). Owner to decide: see the report.
+  // LED presets whose label states no K. Two kinds, both from the owner:
+  //   ASSUMED_CCT: the owner's assumed values (not measured): cool white 6500 K for Osram, Nichia NCSW170HT, Lumileds Altilon,
+  //     SFT-40 default (its bin menu sets the value, source-presets.js), LMP LML2AW.DC, and Cree CLP6B-WKW (several bins).
+  //   KNOWN_CCT: the owner's measured or known values (koef3 tests, datasheet bins). No 'assumed' note.
+  // Left OUT on purpose (stay white): sketch, generic, measured, the coloured/amber parts (existing rule), and Cree CXA1304
+  // colour kit (k3-48963, owner to decide). Real LED CCT rises with drive current; not modelled (see the report).
   const ASSUMED_CCT = {
     'osram-cslpm1': 6500, 'osram-cslnm1': 6500, 'osram-hwqp': 6500, 'osram-q8wp': 6500,
     'osram-oslon-bfx-kw4': 6500, 'osram-oslon-bfx-kw3': 6500, 'k3-48945': 6500,          // Osram SYNIOS
     'nichia-ncsw170h': 6500, 'nichia-ncsw170h-sa': 6500, 'nichia-ncsw170h-sb': 6500,
     'lumileds-altilon-intense-1x1': 6500, 'lumileds-altilon-intense-1x2': 6500,
     'sft40-cw': 6500,
-    'k3-220770': 6500, 'k3-221071': 6500,                                               // LMP LML2AW.DC, YLX N3535B cool white
-    'k3-219467': 6500, 'k3-49237': 6500,                                                // Cree (several bins)
-    'k3-49788': 6500, 'k3-49731': 6500,                                                 // Luminus SST-40 specialty white, Lumileds Luxeon V (several bins)
+    'k3-220770': 6500,                                                                  // LMP LML2AW.DC
+    'k3-219467': 6500,                                                                  // Cree CLP6B-WKW (several bins)
   };
-  const MULTI_BIN = new Set(['k3-219467', 'k3-49237', 'k3-49788', 'k3-49731']);       // these parts are sold in several bins: the note says so
+  const KNOWN_CCT = {
+    'sft25r': 5700,                                                                     // Luminus SFT-25R-WG (owner)
+    'k3-49788': 6500,                                                                   // Luminus SST-40-W specialty white (owner)
+    'k3-49731': 4000,                                                                   // Lumileds Luxeon V CSP (owner)
+    'k3-71898': 6200,                                                                   // Cree XM-L2 U3 colour kit 51 (owner)
+    'k3-49237': 4000,                                                                   // Cree XP-L2 V5 40E 70CRI (owner)
+    'k3-221071': 5928,                                                                  // YLX N3535B cool white, koef3 CRI-tool reading
+    'k3-229647': 6485,                                                                  // Lumenpioneer LHP531, koef3 spectrometer at 6500 K (1800-6500 K part; variants in the report)
+  };
+  const MULTI_BIN = new Set(['k3-219467']);                                             // assumed values sold in several bins: the note says so
 
   // Full answer for a preset: { cct, source, assumed, multiBin }. source is 'label' | 'halogen' | 'hid' | 'table' | 'unset'.
   // id is the PRESETS key (the preset object itself has none); pass it, or the table is not consulted.
@@ -77,6 +86,7 @@
     if (p.halogen) return { cct: HALOGEN_CCT, source: 'halogen', assumed: true, multiBin: false };
     if (p.hid) return { cct: HID_CCT, source: 'hid', assumed: true, multiBin: false };
     if (id && Object.prototype.hasOwnProperty.call(ASSUMED_CCT, id)) return { cct: ASSUMED_CCT[id], source: 'table', assumed: true, multiBin: MULTI_BIN.has(id) };
+    if (id && Object.prototype.hasOwnProperty.call(KNOWN_CCT, id)) return { cct: KNOWN_CCT[id], source: 'table', assumed: false, multiBin: false };
     return none;
   }
   // A preset's default CCT (kelvin) or undefined. See presetCctInfo for the rules.
@@ -98,5 +108,5 @@
     return W > 0 ? [R / W, G / W, B / W] : [1, 1, 1];
   }
 
-  RF.CCT = { cctToRGB, xyOf, presetCct, presetCctInfo, lampRGB, HALOGEN_CCT, HID_CCT, ASSUMED_CCT };
+  RF.CCT = { cctToRGB, xyOf, presetCct, presetCctInfo, lampRGB, HALOGEN_CCT, HID_CCT, ASSUMED_CCT, KNOWN_CCT };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
