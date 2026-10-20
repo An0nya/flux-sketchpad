@@ -1,0 +1,11 @@
+{
+  "name": "high-beam-dense-fog-curve-car",
+  "scene": "road",
+  "seed": 7,
+  "dist": 40,
+  "speed": 130,
+  "beams": ["high"],
+  "options": { "mountainPass": true, "visibility": 60, "scatter": 64, "scatterMode": "table", "scatterRes": "full", "scatterBlur": "strong", "scatterCache": "on", "scatterCycle": 8, "ambient": 0, "preceding": true, "trafficLogic": true, "trafficBeams": true, "scatterNearFade": "off" },
+  "frames": 40,
+  "capture": [{ "name": "f39", "frame": 39 }]
+}
