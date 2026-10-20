@@ -20,7 +20,7 @@ function run(RF,ok){
  const ctx=vm.createContext({console,performance});ctx.globalThis=ctx;for(const f of ['core','road','drive','drive-scenes','drive-anim'])vm.runInContext(cp.execFileSync('git',['show','c5231d9:js/'+f+'.js'],{encoding:'utf8'}),ctx);
  const old=ctx.RF,hash=a=>crypto.createHash('sha256').update(Buffer.from(a.buffer,a.byteOffset,a.byteLength)).digest('hex');
  for(const scene of ['road','city','forest'])for(const wet of [false,true]) {
-  const recipe=rf=>{const D=rf.Drive;return D.render({w:128,h:72,hfov:60,eye:[-2,.37,1.2],lamps:[[0,-.6,.65],[0,.6,.65]],lut:D.lutFrom((h,v)=>Math.abs(h)<20&&v<1?10000:0),ss:1,look:{wet,wetSheen:wet,ambient:.1,RL:.2},lane:3.5,scene:D.buildScene(scene,{Lw:3.5,seed:7},{people:true,animals:true,veg:true})});};
+  const recipe=rf=>{const D=rf.Drive;return D.render({w:128,h:72,hfov:60,eye:[-2,.37,1.2],lamps:[[0,-.6,.65],[0,.6,.65]],lut:D.lutFrom((h,v)=>Math.abs(h)<20&&v<1?10000:0),ss:1,look:{wet,wetSheen:false,ambient:.1,RL:.2},lane:3.5,scene:D.buildScene(scene,{Lw:3.5,seed:7},{people:true,animals:true,veg:true})});};
   const a=recipe(RF),b=recipe(old);ok('M1 base-off raw frame identical '+scene+'/'+wet,hash(a.rgb)===hash(b.rgb)&&hash(a.mat)===hash(b.mat));
  }
  const recipe=require('./drive-polish.js').recipe(RF,'forest',{wet:true,wetSheen:true},128);recipe.detailedModels=true;

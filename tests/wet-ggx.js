@@ -1,10 +1,12 @@
 // WG: physically based wet-road sheen (anisotropic GGX) behind look.wetModel. Node, no browser.
-// The legacy frame hashes were captured on main 7baad43 before any wet-model code existed: legacy output must stay byte-identical.
+// The legacy frame hashes were captured on main 7baad43 before any wet-model code existed: legacy output must stay byte-identical with the sheen off.
 const crypto = require('crypto');
 const LEGACY = {
   dry: 'd4bb869b384f084321398012da741a58713102b64ff8974b3b50213ce880c344',          // wet off
   wetNoSheen: '4019ad56a363c8fd8844f47420c173c38e00c7afb36a09753e7ba9e525ad5e69',    // wet on, sheen off
-  wetSheen: 'd1ef4f281b226c8b23cc74d071f7428082320b259cf3b72563c09ab47ce58291',      // wet + sheen (legacy lobe)
+  // wet + sheen (legacy lobe). SB2 changed this one on purpose: the painted lines take the wet sheen now (drive.js SHEEN_IDS), so the sheen-on road frame moved.
+  // The sheen-off frames (dry, wetNoSheen) are unchanged, which is the byte-identity the stage must keep. The previous value, before SB2: d1ef4f28...58291.
+  wetSheen: 'e651ae71b77d12cc562ebea86ae90460bb75f6ae3de9e68392cd3bb29cc928ed',
 };
 function frameHash(RF, opts) {
   const { recipe } = require('./drive-polish.js'), A = RF.DriveAnim;

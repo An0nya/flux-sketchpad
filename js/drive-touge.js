@@ -136,6 +136,9 @@
       if(flags.obstacle)K.obstacle(rel+5,-.4);
       if(flags.signs!==false)K.sign(rel,1.5*p.lane+1,'yellow');
     }
+    // SB1: lane studs on the pass, on the same centre and edge lines as the flat scenes. Absolute route positions (the pattern does not shift with the car);
+    // they go through lift() with the other pass objects, so they follow the grade and the bank like the posts do.
+    if (D.resolveFeatures({ preset: 'pass', overrides: { studs: flags.rpm } }).studs) D.laneStuds(K, D.laneMarkings(p.lane, { us: p.us, broken: !!p.src.tiles.broken }), p.lane, p.us, dist - 10, dist + 300, dist);
     obs.push(...D.Models.actors(K.O, !!p.detailedModels));
     obs.push(...RF.DriveAnim.trafficObjects(p.src, RF.DriveAnim.trafficCars(p.src, dist, t), A, p));
     const roots = new Map(obs.filter(ob => ob.treeId && ob.detail).map(ob => [ob.treeId,[ob.x,ob.y]]));
@@ -143,7 +146,7 @@
     const carRoots = p.touge && p.detailedModels ? new Map(obs.filter(ob => ob.detailPart === 'car' && ob.detail).map(ob => [ob.modelId, ob.detail])) : null;
     const placed=obs.map(ob => lift(ob.treeId ? {...ob,surfaceAnchor:roots.get(ob.treeId)} : ob, A, carRoots && ob.detailPart === 'car' ? carRoots.get(ob.modelId) : undefined));
     if(A.touge)trafficLight(placed,A,p);
-    // Edge lines and the centre line, as the flat scenes draw them (US: double solid or broken yellow; EU: dashed). Pattern positions follow the car like the flat markings do. No lane studs.
+    // Edge lines and the centre line, as the flat scenes draw them (US: double solid or broken yellow; EU: dashed). Pattern positions follow the car like the flat markings do.
     const marks = D.laneMarkings(p.lane, { us: p.us, broken: !!p.src.tiles.broken });
     return { A, objects: placed, markings: marks.map(m => m.pat ? { ...m, pat: { ...m.pat, s0: m.pat.s0 - dist, s1: m.pat.s1 - dist } } : m), crossings: [], lights };
   }

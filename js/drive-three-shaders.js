@@ -59,10 +59,11 @@ vec3 shade(vec3 p,vec3 n,vec3 v,int id) {
   vec4 gloss=texelFetch(materials,ivec2(id,2),0); vec3 r=rho*ambient*(0.5+0.5*n.z)/PI;
   float NoV=dot(n,v);
   for(int i=0;i<64;i++) { if(i>=nLight) break; vec3 d=light[i].xyz-p; float r2=dot(d,d); if(d.z>0.0 && r2>=0.01) r+=rho*lightRGB[i]*light[i].w*max(0.0,dot(d,n))/(PI*r2*sqrt(r2)); }
-  if(sheen>0.0 && (id==0||id==4)) for(int i=0;i<64;i++) { if(i>=nReflection) break; r+=reflection[i].w*(wetModel>0.5 ? wetGGX(reflection[i].xyz-p,v,n) : wetLobe(reflection[i].xyz-p,v))*reflectionRGB[i]; }
+  // wet sheen: 0 asphalt, 4 concrete, 5 white paint, 6 yellow paint (the order of MAT_DEF in drive.js; SB2 adds the paint ids, drive.js SHEEN_IDS)
+  if(sheen>0.0 && (id==0||id==4||id==5||id==6)) for(int i=0;i<64;i++) { if(i>=nReflection) break; r+=reflection[i].w*(wetModel>0.5 ? wetGGX(reflection[i].xyz-p,v,n) : wetLobe(reflection[i].xyz-p,v))*reflectionRGB[i]; }
   for(int i=0;i<2;i++) { if(i>=nLamp) break; vec3 d=p-lamp[i]; float r2=dot(d,d), rr=sqrt(r2), NoL=-dot(d,n)/rr; if(NoL<=0.0) continue;
     float I=intensity(d); if(I<=0.0) continue;
-    if(sheen>0.0 && id==0) r+=vec3(I*(wetModel>0.5 ? wetGGX(-d,v,n) : wetLobe(-d,v)));
+    if(sheen>0.0 && (id==0||id==5||id==6)) r+=vec3(I*(wetModel>0.5 ? wetGGX(-d,v,n) : wetLobe(-d,v)));
     float Ep=I/r2; r+=rho*Ep*NoL/PI + retro*Ep;
     if(gloss.x>0.0 && NoV>0.0) { vec3 l=-d/rr, h=normalize(l+v); float NoH=dot(n,h), VoH=dot(v,h), a2=gloss.x*gloss.x, den=NoH*NoH*(a2-1.0)+1.0;
       float D=a2/(PI*den*den), F=gloss.y+(1.0-gloss.y)*pow(1.0-max(0.0,VoH),5.0), k=gloss.x/2.0;
