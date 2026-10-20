@@ -40,7 +40,7 @@
     await select(true);await select(false);
     const cases=[];
     for(const name of ['road','city','forest','tiles'])for(const wet of [false,true]) {
-      Object.assign(u.dvOpts,{visibility:(extra&&extra.visibility)??null,scene:name==='tiles'?'city':name,tiles:name==='tiles',wet,wetSheen:wet,ambient:0});
+      Object.assign(u.dvOpts,{visibility:(extra&&extra.visibility)??null,scatter:(extra&&extra.scatter)||0,scene:name==='tiles'?'city':name,tiles:name==='tiles',wet,wetSheen:wet,ambient:0});
       Object.assign(u.dvAnim,{dist:name==='tiles'?495:25,t:12,playing:false});
       await select(false);const cpu=a.readHdr();
       const traceContext=u.run.ctx,p=a.V.p,dist=u.dvAnim.dist,t=u.dvAnim.t,world=p.src.tiles?D.tileWorld(p,dist,t):{A:p.A,objects:D.placedObjects(p,dist,t),...(p.src.cross?a.fixedIntersection(p.src,dist):{})};

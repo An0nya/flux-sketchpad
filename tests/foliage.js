@@ -46,7 +46,10 @@ function run(RF, ok) {
   const shader = s => s.slice(s.indexOf('export const objectFragment'), s.indexOf('export function objects'));
   // FG2 added one view-path fog line to this fragment (off when sigma is 0). Strip exactly that line; everything else must match the pinned literal.
   const FOG_LINE = ' if(sigma>0.0){float T=exp(-sigma*t); color=color*T+vec3(flags.y>0.0?0.0:ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0))*(1.0-T));}\n';
-  ok('FO default shader literal unchanged apart from the FG fog line', shader(current).split(FOG_LINE).join('').split('// Only leaf buckets')[0].trim() === shader(base).trim() && shader(current).split(FOG_LINE).length === 2);
+  // SC2 added one in-scatter line after it (off when scatterSteps is 0). Strip that line too.
+  const SCAT_LINE = ' if(scatterSteps>0 && flags.y<=0.0) color+=inScatter(ray,t,scatterJitter());\n';
+  const stripped = shader(current).split(FOG_LINE).join('').split(SCAT_LINE).join('');
+  ok('FO default shader literal unchanged apart from the FG fog line and the SC scatter line', stripped.split('// Only leaf buckets')[0].trim() === shader(base).trim() && shader(current).split(FOG_LINE).length === 2 && shader(current).split(SCAT_LINE).length === 2);
 }
 module.exports = { run };
 if (require.main === module) {

@@ -264,6 +264,9 @@
     const rgb = rgba ? null : new Float32Array(w * h * 3), depth = objOnly ? null : new Float32Array(w * h).fill(Infinity), matBuf = objOnly ? null : new Uint8Array(w * h);
     const amb = look.ambient > 0 ? look.ambient : 0, skyL = amb * 0.012;
     const sig = sigmaOf(look), fogD = (dx, dy, dz) => (sig ? Math.exp(-sig * Math.sqrt(dx * dx + dy * dy + dz * dz)) : 1);   // illumination path: transmittance over a light-to-surface distance (1 when off)
+    // in-scatter (look.scatter = steps; needs finite visibility): added after each view-path veil, weighted by the sample's k. Off = not called, nothing added.
+    const scatN = sig && look.scatter > 0 ? Math.round(look.scatter) : 0;
+    const addScatter = (dx, dy, dz, sEnd, k, fx, fy) => { const c = inScatter(o, [dx, dy, dz], sEnd, scatterJitter(Math.floor(fx), Math.floor(fy)), scatN); LR += k * c[0]; LG += k * c[1]; LB += k * c[2]; };
     // view path: the samples' radiance gathered since r0..b0 is seen through T = exp(-sig t); airlight fills the rest with the sky value at that direction (glow: T only)
     const veil = (t, rayDz, k, r0, g0, b0, glow) => { const T = Math.exp(-sig * t), A = glow ? 0 : skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(rayDz) * 8)) * (1 - T) * k; LR = r0 + T * (LR - r0) + A; LG = g0 + T * (LG - g0) + A; LB = b0 + T * (LB - b0) + A; };       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
     const traffic = o.trafficBeams ? trafficSources(objs, eye, o) : [], otherBeam = traffic.length ? trafficBeam(o) : null, pitch = o.pitch || 0;
@@ -434,7 +437,7 @@
         const key = sdfKey ? (sdfKey==='hivis' && ((pz>1 && pz<1.06)||(pz>1.26 && pz<1.32))?'hivis-tape':sdfKey) : typeof ob.mat === 'function' ? ob.mat({ x: px, y: py, z: pz, u: hu, face: hf }) : ob.mat;
         if (ob.gameHazard && key === 'eyeshine') eyeAcc |= 1 << (ob.gameHazard - 1);
         let m = M[key] || M.wall; if (ob.emit) m = ob.emitM && ob.emitBase === m ? ob.emitM : (ob.emitBase = m, ob.emitM = Object.assign({}, m, { emit: ob.emit, emitPow: ob.emitPow }));   // this object glows (a lamp: its own luminance); emitPow > 1 makes it directional (cos^n)
-        const r0 = LR, g0 = LG, b0 = LB; shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs, false, ob.eyeFalloff); if (sig) veil(tbest, dz, k, r0, g0, b0, !!ob.glow); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
+        const r0 = LR, g0 = LG, b0 = LB; shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs, false, ob.eyeFalloff); if (sig) veil(tbest, dz, k, r0, g0, b0, !!ob.glow); if (scatN && !ob.glow) addScatter(dx, dy, dz, tbest, k, fx, fy); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
         if (sampleDepth === Infinity) { sampleDepth = tbest; sampleMat = m.id; }
       } else if (objOnly) { /* the ground and the sky are the other layer's */ } else if (tg < Infinity && tg < 5000) {
         const tGround = timed ? performance.now() : 0;
@@ -443,9 +446,10 @@
         ground(ex + tg * dx, ey + tg * dy, tg, -dz, -dx, -dy, -dz, delta, k);
         groundShading = false;
         if (sig) veil(tg, dz, k, r0, g0, b0, false);
+        if (scatN) addScatter(dx, dy, dz, tg, k, fx, fy);
         if (timed) groundTime += performance.now() - tGround;
         if (sampleDepth === Infinity) { sampleDepth = tg; sampleMat = GM; }
-      } else { const sl = skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(dz) * 8)); LR += k * sl; LG += k * sl; LB += k * sl; }
+      } else { const sl = skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(dz) * 8)); LR += k * sl; LG += k * sl; LB += k * sl; if (scatN) addScatter(dx, dy, dz, Infinity, k, fx, fy); }
     }
     const pixel = (x, y, tl) => {
       if (prof) { const q = y * w + x; timed = ((Math.imul(q ^ (q >>> 16), 0x45d9f3b) >>> 16) & 63) === 0; }
@@ -716,6 +720,41 @@
   function veilAt(dir, sources) {
     let L = 0; for (const q of sources || []) { const theta = Math.max(1, Math.acos(Math.max(-1, Math.min(1, dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]))) / D2R); L += 10 * q[3] / (theta * theta); } return L;
   }
+  // Visible beam in fog: single in-scatter off the own lamps (SC1). Opt-in: look.scatter = steps (0 or absent = off), and only with a finite look.visibility.
+  // Along the eye ray (unit dir, from the eye) out to sEnd (capped at S_MAX): sum over steps of sigma · p(θ) · E(P) · T_light · T_view · ds, with
+  // E(P) = I(lamp→P) / r² from the same ownBeamAt as the surface lighting (yaw, pitch, cornering, high beam), T_light = exp(−sigma r), T_view = exp(−sigma s), per lamp in its lampRGB.
+  // p(θ) = wFwd · HG(gFwd, cos) + (1 − wFwd) · HG(gBack, cos), cos = dot(u, v): u = unit lamp→P (the light's travel), v = unit P→eye (= −dir). Forward scatter = 1.
+  // The own beam seen from the driver has θ ≈ 180° (cos ≈ −1), so the BACK lobe carries it: that is backscatter, the glare of one's own beam in fog.
+  // Steps: stratified log spacing from s0 = min(1 m, S/4) to S: cell k = [a_k, b_k] with a_k = s0·q^k, q = (S/s0)^(1/N); the sample sits at a_k·(b_k/a_k)^jitter,
+  // weight = b_k − a_k. Measured (scratch, SC1): log beats s² spacing on the beam's peaked integrand, and the jitter-mean is unbiased to ~6 % at 8 steps,
+  // but ONE jitter value scatters ±35 to 95 % per pixel at 8 steps (16 steps: ±15 to 30 %). So 8 steps is a noisy, cheap setting, not a converged one.
+  const SCAT = { S_MAX: 120, gFwd: 0.7, gBack: -0.4, wFwd: 0.7, rMin: 0.3 };   // tunables, one table (rMin: m, the lamp's own size; the point model is not valid inside it)
+  const hgPhase = (g, c) => (1 - g * g) / (4 * Math.PI * Math.pow(1 + g * g - 2 * g * c, 1.5));
+  function scatterPhase(c) { return SCAT.wFwd * hgPhase(SCAT.gFwd, c) + (1 - SCAT.wFwd) * hgPhase(SCAT.gBack, c); }
+  // per-pixel jitter in [0, 1): a hash of the integer pixel coordinates only (no time term), so frames are repeatable and banding is broken up
+  function scatterJitter(x, y) { let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1); h = Math.imul(h ^ (h >>> 15), 0x85ebca6b); h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+  // Returns [r, g, b] in cd/m² (the caller weights by the sample's k). LUT zero outside its window, so lamp-behind rays get nothing.
+  function inScatter(o, dir, sEnd, jit, steps) {
+    const out = [0, 0, 0], sig = sigmaOf(o.look || {}), N = steps | 0, s1 = Math.min(sEnd, SCAT.S_MAX);
+    if (!(sig > 0) || !(N > 0) || !(s1 > 0)) return out;
+    const eye = o.eye, lamps = o.lamps || [], lc = o.lampRGB || [1, 1, 1], dx = dir[0], dy = dir[1], dz = dir[2];
+    const s0 = Math.min(1, s1 / 4), q = Math.pow(s1 / s0, 1 / N);
+    for (let k = 0; k < N; k++) {
+      const a = s0 * Math.pow(q, k), b = a * q, s = a * Math.pow(q, jit), ds = b - a, Tv = Math.exp(-sig * s);
+      const px = eye[0] + s * dx, py = eye[1] + s * dy, pz = eye[2] + s * dz;
+      for (let i = 0; i < lamps.length; i++) {
+        const L = lamps[i], qx = px - L[0], qy = py - L[1], qz = pz - L[2], r2 = qx * qx + qy * qy + qz * qz;
+        if (!(r2 > 0)) continue;
+        const r = Math.sqrt(r2), I = ownBeamAt(o, qx, qy, qz, L[1]);
+        if (!(I > 0)) continue;
+        const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I / Math.max(r2, SCAT.rMin * SCAT.rMin);   // point-lamp 1/r² is capped inside rMin (a ray through the lamp itself would diverge)
+        const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Tv * ds;
+        if (!Number.isFinite(v)) continue;
+        out[0] += v * lc[0]; out[1] += v * lc[1]; out[2] += v * lc[2];
+      }
+    }
+    return out;
+  }
   const veilStrength = (v) => glareStrength(v) > 0 ? (glareLevel(v) === 'dry-low' ? 0.5 : 1) : 0;
   function reflectionSources(objects, p) {
     const lamps = objects.filter((o) => o.headlamp || o.taillamp).map((o) => ({ x: o.x, y: o.y, z: o.z, cd: o.eyeCd === undefined ? o.emit[0] * Math.PI * o.r * o.r : o.eyeCd, rgb: o.taillamp ? [1, 0.03, 0.015] : [1, 1, 0.93] }));
@@ -829,5 +868,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, scatterPhase, scatterJitter, SCAT, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

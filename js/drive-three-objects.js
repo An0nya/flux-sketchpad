@@ -112,6 +112,7 @@ void main() {
  retroScale=scale;eyeFalloff=lod.x<0.0?-lod.x:0.0;vec3 color=shade(p,n,v,id);float NoV=dot(n,v);
  if(NoV>0.0){vec3 emit=emission.w<0.0?texelFetch(materials,ivec2(id,3),0).rgb:emission.rgb;color+=emit*scale*(emission.w>1.0?pow(NoV,emission.w):NoV)*lampRGB;}
  if(sigma>0.0){float T=exp(-sigma*t); color=color*T+vec3(flags.y>0.0?0.0:ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0))*(1.0-T));}
+ if(scatterSteps>0 && flags.y<=0.0) color+=inScatter(ray,t,scatterJitter());
  gl_FragColor=vec4(color,flags.y>0.0?0.0:1.0);
 }
 `;
