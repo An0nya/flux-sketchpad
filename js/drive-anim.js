@@ -1368,49 +1368,85 @@ void main() {
 
   // ---------------------------------------------------------------- the controls
   const E = (tag, attrs, ...kids) => { const e = document.createElement(tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); e.append(...kids); return e; };
-  // ---- BA2 beam library: saved beams for our own low and high beam. Full tables live in memory (this session);
-  // a coarse copy (0.25 deg) is kept in localStorage 'flux/beamLibrary' when it fits a byte budget. Every storage access is
-  // wrapped: an empty, blocked or throwing localStorage just means the library is session-only.
-  const BEAM_KEY = 'flux/beamLibrary', BEAM_BUDGET = 2.5e6, BEAM_COARSE = 0.25;   // bytes (UTF-16) the library may take; origin quota is about 5 MB
-  const LIB = { items: null, msg: '', ver: 0, seq: 0 };
-  const libEntry = (parsed, id, persisted) => ({ id, name: parsed.name, beamKind: parsed.beamKind, conv: parsed.conv, lut: RF.Beams.toLut(parsed), colour: parsed.colour || null, persisted: !!persisted });
-  // BB3: the name in the picker, with the colour temperature when the beam has one
-  const beamLabel = (e) => e.name + (e.colour && Number.isFinite(e.colour.cct) ? ' (' + Math.round(e.colour.cct) + ' K)' : '') + (e.persisted ? '' : ' (session)');
+  // ---- BA2 beam library: saved beams for our own low and high beam. Full-resolution tables live in IndexedDB (js/beam-store.js),
+  // one record per beam. LIB.items is the synchronous in-memory copy every picker reads; a write lands in memory at once and
+  // its status line is set when the store settles. A missing or throwing store makes the library session-only, and the status says so.
+  const BEAM_KEY = 'flux/beamLibrary';   // the old localStorage library (coarse copies): moved into IndexedDB once, then removed
+  const LIB = { items: [], msg: '', ver: 0, seq: 0, storeOk: null, hydrated: false };
+  const libEntry = (parsed, id, persisted) => ({ id, name: parsed.name, beamKind: parsed.beamKind, conv: parsed.conv, lut: RF.Beams.toLut(parsed), colour: parsed.colour || null, persisted: !!persisted, coarse: !!parsed.coarse });
+  // BB3: the name in the picker, with the colour temperature when the beam has one; BI1: coarse beams say so
+  const beamLabel = (e) => e.name + (e.colour && Number.isFinite(e.colour.cct) ? ' (' + Math.round(e.colour.cct) + ' K)' : '') + (e.coarse ? ' (coarse 0.25 deg)' : '') + (e.persisted ? '' : ' (session)');
   // BB3: the colour a saved design carries: the lamp tint in use (rgb), plus the source's kelvin when it has one
   const sourceColour = (I) => { const c = { rgb: I.lampRGB.slice() }; if (Number.isFinite(I.lampCct) && I.lampCct >= 1000 && I.lampCct <= 20000) c.cct = I.lampCct; return c; };
   // the default name: the design's name, plus the source's kelvin when it has one (e.g. "Headlamp sketch 4300K")
   const beamDefaultName = (I) => { const base = (I && I.designName) || 'our design'; return I && Number.isFinite(I.lampCct) ? base + ' ' + Math.round(I.lampCct) + 'K' : base; };
   const libNewId = () => 'b' + Date.now().toString(36) + (++LIB.seq).toString(36);   // counter, not a random source
-  function libLoad() {
-    if (LIB.items) return LIB.items;
-    LIB.items = [];
+  const libLoad = () => LIB.items;
+  const libSay = (msg) => { LIB.msg = msg; if (V.beamMsg) V.beamMsg.textContent = msg; };
+  const libRec = (e) => ({ id: e.id, name: e.name, beamKind: e.beamKind, conv: e.conv, colour: e.colour || null, coarse: !!e.coarse,
+    grid: { h0: e.lut.h0, v0: e.lut.v0, step: e.lut.step, nh: e.lut.nh, nv: e.lut.nv }, values: e.lut.data });
+  // writes one entry; resolves true when the store kept it. Sets e.persisted either way.
+  async function libWrite(e) {
+    try { await RF.BeamStore.put(libRec(e)); e.persisted = true; return true; }
+    catch (err) { e.persisted = false; return false; }
+  }
+  // Startup: read the store into memory, then move the old localStorage library in. Runs once; the view is refreshed after.
+  async function libHydrate() {
     try {
-      const raw = JSON.parse(localStorage.getItem(BEAM_KEY) || '[]');
-      for (const r of Array.isArray(raw) ? raw : []) { try { LIB.items.push(libEntry(RF.Beams.parse(r.beam), String(r.id), true)); } catch (e) { /* skip a damaged entry */ } }
-    } catch (e) { /* no storage, or not JSON: session-only */ }
-    return LIB.items;
+      LIB.storeOk = !!RF.BeamStore && await RF.BeamStore.available();
+      if (LIB.storeOk) {
+        try { for (const r of await RF.BeamStore.getAll()) { try { LIB.items.push(libEntry(r, String(r.id), true)); } catch (e) { /* skip a damaged record */ } } }
+        catch (e) { LIB.storeOk = false; }
+      }
+      await libMigrate();
+      LIB.hydrated = true; LIB.ver++;
+      if (V.fillOwn) V.fillOwn();
+      if (V.p) prepare(layout());   // the picture may have been built before the saved beam was known: rebuild it
+    } catch (e) { LIB.storeOk = false; libSay('Browser storage could not be read: the library is for this session only.'); }
   }
-  function libSaveStore() {
-    const coarse = libLoad().filter(e => e.persisted).map(e => ({ id: e.id, beam: RF.Beams.serialise(RF.Beams.fromLut(RF.Beams.coarsen(e.lut, BEAM_COARSE), { name: e.name, beamKind: e.beamKind, conv: e.conv, colour: e.colour || undefined })) }));
-    const text = JSON.stringify(coarse);
-    if (RF.Beams.storedBytes(text) > BEAM_BUDGET) return false;
-    try { localStorage.setItem(BEAM_KEY, text); return true; } catch (e) { return false; }
+  // One-time move of the old localStorage library. Each beam keeps its id (saved selections still resolve) and is marked coarse.
+  // The old key goes only when every beam is in the store; a damaged old entry or a refused write keeps it for the next load.
+  // With no store, the old beams are loaded for this session and the key is left alone.
+  async function libMigrate() {
+    let old = null;
+    try { const raw = localStorage.getItem(BEAM_KEY); old = raw ? JSON.parse(raw) : null; } catch (e) { old = null; }
+    if (!Array.isArray(old) || !old.length) return;
+    let complete = true; const fresh = [];
+    for (const r of old) { try { const e = libEntry(RF.Beams.parse(r.beam), String(r.id), false); e.coarse = true; fresh.push(e); } catch (err) { complete = false; } }
+    const moved = [];
+    for (const e of fresh) { if (!LIB.items.some(x => x.id === e.id)) { LIB.items.push(e); moved.push(e); } }   // already in the store: an earlier run moved it
+    LIB.ver++;
+    if (!LIB.storeOk) { libSay('Browser storage is unavailable: the older beams are kept for this session only.'); return; }
+    let allStored = complete;
+    for (const e of moved) { if (!(await libWrite(e))) allStored = false; }
+    if (allStored) { try { localStorage.removeItem(BEAM_KEY); } catch (e) { /* the copy stays; the next load sees it already moved */ } }
+    libSay(allStored ? 'Moved ' + fresh.length + ' older beam' + (fresh.length === 1 ? '' : 's') + ' into browser storage. They are coarse (0.25 deg): import the full-resolution files to replace them.'
+      : 'Some older beams could not be moved into browser storage; they stay for this session, and the older copy stays in this browser.');
   }
-  // Adds parsed beams. Persisted when the coarse library still fits; otherwise kept for this session and the message says so.
+  // Adds parsed beams. They show at once; each is written, and the status line says what stuck.
   function libAdd(parsedList) {
-    const items = libLoad(), added = [], dropped = [];
-    for (const parsed of parsedList) {
-      const id = libNewId(), e = libEntry(parsed, id, false);
-      items.push(e); added.push(e);
-    }
-    let stored = true; LIB.ver++;
-    // mark persisted only if the whole coarse store fits: try each new entry in order, keep the ones that fit
-    for (const e of added) { e.persisted = true; if (!libSaveStore()) { e.persisted = false; dropped.push(e.name); stored = false; } }
-    LIB.msg = added.length === 1 && stored ? 'Saved "' + added[0].name + '" to the library.'
-      : (dropped.length ? 'Kept for this session only (browser storage is full): ' + dropped.join(', ') + '. Export them to keep them.' : 'Added ' + added.length + ' beams.');
+    const items = libLoad(), added = [];
+    for (const parsed of parsedList) { const e = libEntry(parsed, libNewId(), false); items.push(e); added.push(e); }
+    LIB.ver++; libSay('Saving ' + added.length + ' beam' + (added.length === 1 ? '' : 's') + '...');
+    if (V.fillOwn) V.fillOwn();
+    (async () => {
+      const dropped = [];
+      for (const e of added) { if (!(await libWrite(e))) dropped.push(e.name); }
+      libSay(dropped.length === 0 ? (added.length === 1 ? 'Saved "' + added[0].name + '" to the library.' : 'Added ' + added.length + ' beams.')
+        : 'Kept for this session only (browser storage refused): ' + dropped.join(', ') + '. Export them to keep them.');
+      if (V.fillOwn) V.fillOwn();
+    })();
     return added;
   }
+  // a changed entry (rename, colour): written, then the status line says what happened
+  function libUpdate(e, msg) {
+    LIB.ver++; libSay(msg);
+    return libWrite(e).then((stored) => { libSay(stored ? msg : msg + ' Browser storage refused the update, so it may not survive a reload.'); if (V.fillOwn) V.fillOwn(); return stored; });
+  }
+  // removes one stored beam, or every stored beam (id omitted); resolves true when the store accepted it
+  const libDrop = (id) => (id ? RF.BeamStore.delete(id) : RF.BeamStore.clear()).then(() => true, () => false);
   const libFind = (id, kind) => { const e = libLoad().find(x => x.id === id); return e && (!kind || e.beamKind === kind) ? e : null; };
+  libHydrate();   // startup: reads the store (async); the pickers refresh when it lands
   // The beams the options pick: null = built-in (our design for low, generic for high)
   function ownBeams(o) {
     const lo = o.ownLow && o.ownLow !== 'design' ? libFind(o.ownLow, 'low') : null, hi = o.ownHigh && o.ownHigh !== 'generic' ? libFind(o.ownHigh, 'high') : null;
@@ -1558,7 +1594,7 @@ void main() {
       const ren = E('button', { type: 'button', class: 'toggle', 'data-anim': 'beam-rename', title: 'Rename this beam' }, 'rename');
       ren.addEventListener('click', () => {
         const others = items.filter(x => x.id !== e.id).map(x => x.name);
-        try { RF.Beams.renameIn(items, e.id, nm.value); e.name = RF.Beams.uniqueName(e.name, others); LIB.ver++; libSaveStore(); LIB.msg = 'Renamed to "' + e.name + '".'; }
+        try { RF.Beams.renameIn(items, e.id, nm.value); e.name = RF.Beams.uniqueName(e.name, others); libUpdate(e, 'Renamed to "' + e.name + '".'); }
         catch (err) { LIB.msg = 'Rename failed: ' + err.message; }
         V.fillOwn(); V.beamMsg.textContent = LIB.msg;
       });
@@ -1566,11 +1602,10 @@ void main() {
       del.addEventListener('click', () => {
         const wasLow = o.ownLow === e.id, wasHigh = o.ownHigh === e.id;
         LIB.items = RF.Beams.removeIn(items, e.id); LIB.ver++;
-        const stored = libSaveStore();
         if (wasLow) V.setOwn('ownLow', 'design'); if (wasHigh) V.setOwn('ownHigh', 'generic');
-        LIB.msg = 'Deleted "' + e.name + '".' + (wasLow ? ' It was the low beam in use: our design is selected now.' : '') + (wasHigh ? ' It was the high beam in use: generic high is selected now.' : '')
-          + (stored ? '' : ' Browser storage refused the update, so it may come back on reload.');
-        V.fillOwn(); V.beamMsg.textContent = LIB.msg;
+        const gone = 'Deleted "' + e.name + '".' + (wasLow ? ' It was the low beam in use: our design is selected now.' : '') + (wasHigh ? ' It was the high beam in use: generic high is selected now.' : '');
+        libSay(gone); V.fillOwn();
+        libDrop(e.id).then((stored) => { libSay(gone + (stored ? '' : ' Browser storage refused the update, so it may come back on reload.')); V.fillOwn(); });
       });
       const size = (e.lut.nh * e.lut.step).toFixed(0) + ' x ' + (e.lut.nv * e.lut.step).toFixed(0) + ' deg';
       const cl = RF.Beams.colourLabel(e.colour);
@@ -1582,12 +1617,12 @@ void main() {
         kBtn.addEventListener('click', () => {
           const v = +kIn.value;
           if (!(v >= 1000 && v <= 20000)) { LIB.msg = 'Colour needs a temperature from 1000 to 20000 K.'; V.beamMsg.textContent = LIB.msg; return; }
-          e.colour = { cct: v, rgb: RF.CCT.cctToRGB(v) }; LIB.ver++; const stored = libSaveStore();
+          e.colour = { cct: v, rgb: RF.CCT.cctToRGB(v) }; LIB.ver++;
           // a beam in use is picked again, so the picture is rebuilt with its new tint (the same path a select takes)
           const cur = info() ? info().o : {};
           if (cur.ownLow === e.id) V.setOwn('ownLow', e.id);
           if (cur.ownHigh === e.id) V.setOwn('ownHigh', e.id);
-          LIB.msg = 'Set "' + e.name + '" to ' + Math.round(v) + ' K.' + (stored ? '' : ' Browser storage refused the update, so it may not survive a reload.');
+          libUpdate(e, 'Set "' + e.name + '" to ' + Math.round(v) + ' K.');
           V.fillOwn(); V.beamMsg.textContent = LIB.msg;
         });
         cells.push(kIn, kBtn);
@@ -1599,10 +1634,10 @@ void main() {
     clr.addEventListener('click', () => {
       if (!V.clearArmed) { V.clearArmed = true; renderManager(); return; }
       V.clearArmed = false; const n = items.length; LIB.items = []; LIB.ver++;
-      const stored = libSaveStore();
       V.setOwn('ownLow', 'design'); V.setOwn('ownHigh', 'generic');
-      LIB.msg = 'Removed ' + n + ' beam' + (n === 1 ? '' : 's') + ' from the library; our design and generic high are selected.' + (stored ? '' : ' Browser storage refused the update, so they may come back on reload.');
-      V.fillOwn(); V.beamMsg.textContent = LIB.msg;
+      const gone = 'Removed ' + n + ' beam' + (n === 1 ? '' : 's') + ' from the library; our design and generic high are selected.';
+      libSay(gone); V.fillOwn();
+      libDrop().then((stored) => { libSay(gone + (stored ? '' : ' Browser storage refused the update, so they may come back on reload.')); V.fillOwn(); });
     });
     box.replaceChildren(E('summary', {}, 'library (' + items.length + ')'), ...(rows.length ? rows : [E('span', { class: 'anim-speed' }, 'No saved beams yet. Save a design, or import a file.')]), E('div', { class: 'beam-row' }, clr));
   }

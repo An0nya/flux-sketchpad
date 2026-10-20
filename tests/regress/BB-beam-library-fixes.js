@@ -3,6 +3,9 @@
 //   PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/BB-beam-library-fixes.js <port>
 const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync('npm root -g').toString().trim() + '/playwright'));
 const port = +(process.argv[2] || 8997);
+// BI1: the library's stored records (IndexedDB 'flux-beams'), read back from the page
+const idbBeams = (page) => page.evaluate(() => new Promise((res, rej) => { const r = indexedDB.open('flux-beams', 1); r.onerror = () => rej(String(r.error));
+  r.onsuccess = () => { const db = r.result, g = db.transaction('beams').objectStore('beams').getAll(); g.onsuccess = () => { db.close(); res(g.result); }; }; }));
 let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : '  — ' + JSON.stringify(detail))); if (!cond) fails++; };
 // the bar's controls are not visible at this viewport in the headless run: clicks and values are set in the page
 const clickAnim = (page, k) => page.evaluate((k) => document.querySelector('[data-anim="' + k + '"]').click(), k);
@@ -56,7 +59,8 @@ const libNames = (page) => page.evaluate(() => [...document.querySelectorAll('[d
   // select 'Alpha HID 2' as our low beam, then delete it: selection falls back and the status says so
   await pick(page, '[data-anim="own-low"]', await idOf('Alpha HID 2'));
   await rowAct(2, 'beam-delete');
-  const afterDel = await page.evaluate(() => ({ low: document.querySelector('[data-anim="own-low"]').value, msg: document.querySelector('[data-anim="beam-status"]').textContent, stored: JSON.parse(localStorage.getItem('flux/beamLibrary') || '[]').map(r => r.beam.name) }));
+  await page.waitForFunction(() => (document.querySelector('[data-anim="beam-status"]').textContent || '').includes('Deleted'), null, { timeout: 20000 }).catch(() => {});
+  const afterDel = { ...(await page.evaluate(() => ({ low: document.querySelector('[data-anim="own-low"]').value, msg: document.querySelector('[data-anim="beam-status"]').textContent }))), stored: (await idbBeams(page)).map(r => r.name) };
   ok('BB2: deleting the selected beam falls back to our design and says so', afterDel.low === 'design' && afterDel.msg.includes('our design is selected now'), afterDel);
   ok('BB2: delete is persisted (stored copy lacks it)', !afterDel.stored.includes('Alpha HID 2') && afterDel.stored.length === 2, afterDel.stored);
   // reload keeps the remaining library and the fallback selection
@@ -68,8 +72,9 @@ const libNames = (page) => page.evaluate(() => [...document.querySelectorAll('[d
   const asked = await page.evaluate(() => document.querySelector('[data-anim="beam-clear-all"]').textContent);
   ok('BB2: clear all asks first (no change yet)', asked.startsWith('confirm') && (await rows()).length === 2, asked);
   await page.evaluate(() => document.querySelector('[data-anim="beam-clear-all"]').click());
-  const cleared = await page.evaluate(() => ({ rows: document.querySelectorAll('[data-anim="beam-manager"] .beam-row[data-id]').length, stored: localStorage.getItem('flux/beamLibrary'), low: document.querySelector('[data-anim="own-low"]').value }));
-  ok('BB2: clear all removes every beam, stored and shown, and resets the selection', cleared.rows === 0 && JSON.parse(cleared.stored || '[]').length === 0 && cleared.low === 'design', cleared);
+  for (let i = 0; i < 50 && (await idbBeams(page)).length; i++) await page.waitForTimeout(100);   // the store clears after the status is set
+  const cleared = { ...(await page.evaluate(() => ({ rows: document.querySelectorAll('[data-anim="beam-manager"] .beam-row[data-id]').length, low: document.querySelector('[data-anim="own-low"]').value }))), stored: (await idbBeams(page)).length };
+  ok('BB2: clear all removes every beam, stored and shown, and resets the selection', cleared.rows === 0 && cleared.stored === 0 && cleared.low === 'design', cleared);
 
   ok('BB: no page errors', errors.length === 0, errors);
   console.log(fails ? fails + ' BB check(s) FAILED' : 'all BB checks passed');
