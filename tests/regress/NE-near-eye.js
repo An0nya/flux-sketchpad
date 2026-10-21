@@ -66,6 +66,35 @@ async function meanLuma(page, png) {
     const ratio = on.luma / off.luma;
     ok('NE bias on vs off: mean road light within 10 percent (a resampling, not new light)', Math.abs(ratio - 1) < 0.10, 'off ' + off.luma.toFixed(3) + ' on ' + on.luma.toFixed(3) + ' ratio ' + ratio.toFixed(4));
     ok('NE no NaN or empty frames (mean luminance finite and above zero)', [off, on].every((f) => Number.isFinite(f.luma) && f.luma > 0));
+    // NE3: the debug slice field. Hidden unless Debug timings is on and the mode is table; a valid string sets the 12 counts exactly;
+    // an invalid one keeps the normal rule and shows the hint; the perf label shows the counts.
+    const binField = () => page.evaluate(() => { const s = document.querySelector('[data-dv="scatterBinCounts"]'); return s ? { hidden: s.hidden, tag: s.tagName, hints: [...s.parentElement.querySelectorAll('span')].map((x) => x.textContent) } : null; });
+    const setBin = async (str) => { await page.evaluate((v) => { const s = document.querySelector('[data-dv="scatterBinCounts"]'); s.value = v; s.dispatchEvent(new Event('input')); s.dispatchEvent(new Event('change')); }, str); await sleep(2500); await settle(); };
+    // the cache is pinned off here: the NE2 noise block leaves it on (cycle 8), and frame() does not reset it
+    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { visibility: 200, scatterMode: 'table', scatter: 48, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearFadeRange: 'medium', scatterNearBias: 0, scatterBinCounts: '', scatterCache: 'off', scatterCycle: 0, debugTimings: false }); RF.UI.redrawSpec(); });
+    await sleep(2000);
+    const bHidden = await binField();
+    await page.evaluate(() => { RF.UI.dvOpts.debugTimings = true; RF.UI.redrawSpec(); }); await sleep(1500);
+    const bShown = await binField();
+    ok('NE3 slice field: hidden with Debug timings off (table mode)', !!bHidden && bHidden.tag === 'INPUT' && bHidden.hidden === true, JSON.stringify(bHidden));
+    ok('NE3 slice field: shown with Debug timings on (table mode)', !!bShown && bShown.hidden === false, JSON.stringify(bShown));
+    const valid = '2,2,2,2,4,4,4,4,4,2,2,2';   // sum 34
+    await setBin(valid);
+    const bv = await page.evaluate(() => ({ binN: SD_SCATTER.binN, bias: SD_SCATTER.bias, label: RF.DriveAnim._.V.perfLab.textContent }));
+    ok('NE3 typed valid string: the table pass gets exactly those 12 counts', JSON.stringify(bv.binN) === JSON.stringify(valid.split(',').map(Number)), JSON.stringify(bv.binN));
+    ok('NE3 valid string: the perf label shows the slice counts and total', bv.label.includes('slices ' + valid + ' = 34'), bv.label.split('\n').filter((l) => l.startsWith('slices')).join(' | '));
+    const bTot = await binField();
+    ok('NE3 valid string: live total shows the sum (34)', !!bTot && bTot.hints.includes('total 34'), JSON.stringify(bTot && bTot.hints));
+    await setBin('1,2,3');
+    const bi = await page.evaluate(() => ({ binN: SD_SCATTER.binN, bias: SD_SCATTER.bias }));
+    const bh = await binField();
+    ok('NE3 invalid string: normal rule (4 per bin, near sampling off) and the "need 12 numbers" hint', JSON.stringify(bi.binN) === JSON.stringify(new Array(12).fill(4)) && bi.bias === 0 && !!bh && bh.hints.includes('need 12 numbers'), JSON.stringify([bi, bh && bh.hints]));
+    await setBin('');
+    await page.evaluate(() => { RF.UI.dvOpts.debugTimings = false; RF.UI.redrawSpec(); }); await sleep(1500);
+    const bBack = await binField();
+    ok('NE3 slice field: hidden again with Debug timings off', !!bBack && bBack.hidden === true, JSON.stringify(bBack));
+    const offAgain = await frame('table 48 off after NE3 (field empty)', { scatterMode: 'table', scatter: 48, scatterCache: 'off', scatterCycle: 0, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearBias: 0, scatterBinCounts: '', debugTimings: false });
+    ok('NE3 empty field: the table-off frame is byte-identical to the first off frame' + (TABLE48_MAIN ? ' and to main' : ''), offAgain.hash === off.hash && (!TABLE48_MAIN || offAgain.hash === TABLE48_MAIN), offAgain.hash.slice(0, 12) + ' vs ' + off.hash.slice(0, 12));
     // NE2: pixel noise over 6 frames from different cache versions (table cache on, cycle 8). The patch is the full canvas,
     // the same one the road-light check above uses; the 5-15 m band is not isolated in the image (no projection in this test).
     const noiseRun = async (bias) => {

@@ -841,21 +841,35 @@
   }
   const nearFadeW = (s, S0, S1) => { const t = Math.min(1, Math.max(0, (s - S0) / (S1 - S0))); return t * t * (3 - 2 * t); };
   // NE near-eye bias (look.scatterNearBias, table mode): samples per bin. Off: round(steps / K) in every bin, at least 1 (the old count).
-  // On (NE2 budget move, same total K * n): bins 0-3 (under ~2 m, empty in the road view) and bins 9-11 (26-120 m) get 1 sample each;
-  // bins 4-8 (2-26 m, where the road-view noise is) share the rest, (12n - 7) / 5 each. Leftovers go to bins 5, 6, 7 first, then 4, 8.
+  // On (NE3, same total K * n): bins 0-1 and 9-11 get 1 sample, bins 2-3 (the grain at ~1.4-2.2 m) get 2, and bins 4-8 (2-26 m,
+  // the road-view noise) share the rest, (12n - 9) / 5 each. Leftovers go to bins 5, 6, 7 first, then 4, 8.
+  // When the budget is too small for that (n = 1, 16 steps: 12 - 9 < 5), every bin stays 1.
   function tableBinSteps(steps, bias) {
     const n = Math.max(1, Math.round((steps | 0) / TABLE.K)), out = new Array(TABLE.K).fill(n);
     if (!(Number(bias) > 0)) return out;
-    const band = [4, 5, 6, 7, 8], rest = n * TABLE.K - 7;   // 7 single-sample bins: 0-3 and 9-11
-    for (const k of [0, 1, 2, 3, 9, 10, 11]) out[k] = 1;
+    const band = [4, 5, 6, 7, 8], rest = n * TABLE.K - 9;
+    if (rest < band.length) return new Array(TABLE.K).fill(1);
+    for (const k of [0, 1, 9, 10, 11]) out[k] = 1;
+    out[2] = 2; out[3] = 2;
     const q = Math.floor(rest / band.length);
     let r = rest - q * band.length;
     for (const k of band) out[k] = q;
     for (const k of [5, 6, 7, 4, 8]) { if (r > 0) { out[k]++; r--; } }
     return out;
   }
+  // NE3 slice override (look.scatterBinCounts, debug): exactly 12 comma-separated numbers, one per slice, each clamped to 0..32
+  // (the shader loop bound). Returns the counts, or null for an empty or invalid string (then the normal rule applies).
+  const BIN_MAX = 32;
+  function parseBinCounts(s) {
+    if (typeof s !== 'string' || !s.trim()) return null;
+    const parts = s.trim().split(',').map((p) => p.trim());
+    if (parts.length !== TABLE.K || parts.some((p) => !/^-?\d+(\.\d+)?$/.test(p))) return null;
+    return parts.map((p) => Math.min(BIN_MAX, Math.max(0, Math.floor(Number(p)))));
+  }
+  // The counts the table pass uses (CPU twin and GPU): the override when valid, else the near-sampling rule (or off).
+  function binCountsFor(steps, bias, s) { return parseBinCounts(s) || tableBinSteps(steps, bias); }
   function scatterTableBins(o, dir, jit, steps) {
-    const sig = sigmaOf(o.look || {}), counts = tableBinSteps(steps, (o.look || {}).scatterNearBias), bins = new Float64Array(TABLE.K);
+    const sig = sigmaOf(o.look || {}), counts = binCountsFor(steps, (o.look || {}).scatterNearBias, (o.look || {}).scatterBinCounts), bins = new Float64Array(TABLE.K);
     if (!(sig > 0)) return bins;
     const fr = nearFadeRangeOf(o.look || {});
     const eye = o.eye, lamps = o.lamps || [], dx = dir[0], dy = dir[1], dz = dir[2];
@@ -1007,5 +1021,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

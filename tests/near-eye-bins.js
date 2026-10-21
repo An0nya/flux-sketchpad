@@ -18,12 +18,26 @@ function run(RF, ok, report) {
   // 1. counts
   ok('NE off: round(steps/12), at least 1, in every bin (steps 16..96)', STEPS.every((s) => D.tableBinSteps(s, 0).every((c) => c === offOld(s))));
   ok('NE on: total preserved, K * n (steps 16..96)', STEPS.every((s) => D.tableBinSteps(s, 1).reduce((a, b) => a + b, 0) === K * offOld(s)));
-  ok('NE on: bins 0-3 and 9-11 are 1 sample each (steps 16..96)', STEPS.every((s) => { const c = D.tableBinSteps(s, 1); return [0, 1, 2, 3, 9, 10, 11].every((k) => c[k] === 1); }));
+  ok('NE on: bins 0, 1, 9-11 are 1 sample each (steps 16..96)', STEPS.every((s) => { const c = D.tableBinSteps(s, 1); return [0, 1, 9, 10, 11].every((k) => c[k] === 1); }));
+  ok('NE3 on: bins 2 and 3 get 2 samples where the budget allows (n >= 2, steps 24..96)', STEPS.filter((s) => s >= 24).every((s) => { const c = D.tableBinSteps(s, 1); return c[2] === 2 && c[3] === 2; }));
+  ok('NE3 on at 16 steps (n = 1, budget 12): every bin stays 1', JSON.stringify(D.tableBinSteps(16, 1)) === JSON.stringify(new Array(K).fill(1)));
   ok('NE on: bins 4-8 get at least the off count (steps 16..96)', STEPS.every((s) => { const c = D.tableBinSteps(s, 1), n = offOld(s); return BAND.every((k) => c[k] >= n); }));
   ok('NE on: counts are integers >= 1 (steps 16..96)', STEPS.every((s) => D.tableBinSteps(s, 1).every((c) => Number.isInteger(c) && c >= 1)));
   ok('NE on: at 16 steps (n = 1) on is identical to off', JSON.stringify(D.tableBinSteps(16, 1)) === JSON.stringify(D.tableBinSteps(16, 0)));
   const on48 = D.tableBinSteps(48, 1), off48 = D.tableBinSteps(48, 0);
-  ok('NE on at 48 steps: 1,1,1,1, 8,9,8,8,8, 1,1,1 (the budget move)', JSON.stringify(on48) === JSON.stringify([1, 1, 1, 1, 8, 9, 8, 8, 8, 1, 1, 1]), JSON.stringify(on48));
+  ok('NE3 on at 48 steps: 1,1,2,2, 8,8,8,8,7, 1,1,1', JSON.stringify(on48) === JSON.stringify([1, 1, 2, 2, 8, 8, 8, 8, 7, 1, 1, 1]), JSON.stringify(on48));
+  ok('NE3 on at 64 steps (UI max): 1,1,2,2, 10,11,10,10,10, 1,1,1', JSON.stringify(D.tableBinSteps(64, 1)) === JSON.stringify([1, 1, 2, 2, 10, 11, 10, 10, 10, 1, 1, 1]), JSON.stringify(D.tableBinSteps(64, 1)));
+
+  // NE3 slice override (debug): parse, clamp, zero, and the override beats the global steps and near sampling.
+  const good = '1,1,2,2,8,9,8,8,8,1,1,1';
+  ok('NE3 parse: 12 valid numbers (trimmed) give those counts', JSON.stringify(D.parseBinCounts(' ' + good + ' ')) === JSON.stringify([1, 1, 2, 2, 8, 9, 8, 8, 8, 1, 1, 1]));
+  ok('NE3 parse: empty or blank is null (normal rule)', D.parseBinCounts('') === null && D.parseBinCounts('   ') === null && D.parseBinCounts(undefined) === null);
+  ok('NE3 parse: too few, too many, empty field, letters, non-string are null', ['1,2,3', '1,2,3,4,5,6,7,8,9,10,11,12,13', '1,,1,1,1,1,1,1,1,1,1,1', 'a,1,1,1,1,1,1,1,1,1,1,1', 5, null].every((s) => D.parseBinCounts(s) === null));
+  ok('NE3 parse: each value clamped to 0..32 (99 -> 32, -3 -> 0, 2.7 -> 2)', JSON.stringify(D.parseBinCounts('99,-3,2.7,32,0,1,1,1,1,1,1,1')) === JSON.stringify([32, 0, 2, 32, 0, 1, 1, 1, 1, 1, 1, 1]));
+  ok('NE3 parse: zero skips a slice (count 0 is kept, not replaced)', JSON.stringify(D.parseBinCounts('0,0,0,0,0,0,0,0,0,0,0,0')) === JSON.stringify(new Array(K).fill(0)));
+  ok('NE3 override beats the global steps and near sampling (bias on, steps 48 ignored)', JSON.stringify(D.binCountsFor(48, 1, '3,3,3,3,3,3,3,3,3,3,3,3')) === JSON.stringify(new Array(K).fill(3)));
+  ok('NE3 override beats the global steps with bias off too', JSON.stringify(D.binCountsFor(16, 0, '5,5,5,5,5,5,5,5,5,5,5,5')) === JSON.stringify(new Array(K).fill(5)));
+  ok('NE3 empty or invalid override: the normal rule (on: 48 steps default, off: round(steps/12))', JSON.stringify(D.binCountsFor(48, 1, '')) === JSON.stringify(on48) && JSON.stringify(D.binCountsFor(48, 0, 'x,y')) === JSON.stringify(off48));
   ok('NE off at 48 steps: 4 in every bin', JSON.stringify(off48) === JSON.stringify(new Array(K).fill(4)));
   ok('NE: undefined, null, NaN and zero steps stay finite, at least 1 per bin', [undefined, null, NaN, 0, -5].every((s) => D.tableBinSteps(s, 1).every((c) => Number.isFinite(c) && c >= 1) && D.tableBinSteps(s, 0).every((c) => Number.isFinite(c) && c >= 1)));
   ok('NE: bias values other than 1 (undefined, 0, "0", NaN) are off', [undefined, 0, '0', NaN].every((b) => JSON.stringify(D.tableBinSteps(48, b)) === JSON.stringify(off48)));
