@@ -91,6 +91,7 @@ export function haloPass(renderer, u) {
     drawn: 0,      // lamps in the table this frame (page-test hook)
     lamps: [],     // those lamps (world position, direction, atlas index), nearest first
     passes: 0,     // draws this frame
+    ms: 0,         // table pass wall time (1-pixel readback sync), only when globalThis.SL_HALO_TIMING is set (test hook)
     get table() { return rt; }, get tab() { return tab; },
     // Build the table for this frame and point the lookup at it. Call before the ground pass. Off: haloOn 0, nothing drawn.
     build(p, world) {
@@ -110,6 +111,7 @@ export function haloPass(renderer, u) {
       }
       if (!used.length) return 0;
       ensure(p);
+      const timing = !!globalThis.SL_HALO_TIMING; if (timing) { renderer.getContext().finish(); } const t0 = timing ? performance.now() : 0;   // test hook: wall time of the table pass, synchronised by a 1-pixel readback
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
       try {
         renderer.autoClear = false; const m = atlas ? mats[1] : mats[0];
@@ -129,6 +131,7 @@ export function haloPass(renderer, u) {
           renderer.render(scene, camera); halo.passes++;
         }
       } finally { renderer.autoClear = ac; renderer.setClearColor(cc, ca); renderer.setRenderTarget(null); }
+      if (timing) { renderer.readRenderTargetPixels(rt, 0, 0, 1, 1, new Uint16Array(4)); halo.ms = performance.now() - t0; }
       u.haloTex.value = rt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = 1;
       halo.drawn = used.length; halo.lamps = used.map((q) => ({ lamp: [q.L.x, q.L.y, q.L.z], w: q.L.w, nx: q.L.nx, ny: q.L.ny, idx: q.idx, hasBeam: !!q.L.beam }));
       return halo.drawn;

@@ -245,7 +245,7 @@ export function create(canvas, gl, onModelsReady) {
   return {
     version: T.REVISION,
     // SL2 test hook: the halo quads drawn for the last frame (0 = off, or no lamp on screen)
-    haloState() { return { drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value }; },
+    haloState() { return { drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms }; },
     haloProbe(sx, sy) { return halo.probe(sx, sy); },
     haloLookup(bins, d) { return haloLookup(bins, d); }, haloEdges() { return HALO_EDGES.slice(); },
     programCount() { return renderer.info.programs ? renderer.info.programs.length : -1; },
