@@ -48,8 +48,10 @@ function run(RF, ok) {
   const FOG_LINE = ' if(sigma>0.0){float T=exp(-sigma*t); color=color*T+vec3(flags.y>0.0?0.0:ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0))*(1.0-T));}\n';
   // SC2 added one in-scatter line after it (off when scatterSteps is 0). Strip that line too.
   const SCAT_LINE = ' if(scatterSteps>0 && flags.y<=0.0) color+=inScatter(ray,t,scatterJitter());\n';
-  const stripped = shader(current).split(FOG_LINE).join('').split(SCAT_LINE).join('');
-  ok('FO default shader literal unchanged apart from the FG fog line and the SC scatter line', stripped.split('// Only leaf buckets')[0].trim() === shader(base).trim() && shader(current).split(FOG_LINE).length === 2 && shader(current).split(SCAT_LINE).length === 2);
+  // SL added one traffic-scatter-table line after it (off when haloOn is 0). Strip that line too.
+  const HALO_LINE = ' if(haloOn>0 && flags.y<=0.0) color+=haloScatter(t);\n';
+  const stripped = shader(current).split(FOG_LINE).join('').split(SCAT_LINE).join('').split(HALO_LINE).join('');
+  ok('FO default shader literal unchanged apart from the FG fog line, the SC scatter line and the SL traffic-scatter line', stripped.split('// Only leaf buckets')[0].trim() === shader(base).trim() && shader(current).split(FOG_LINE).length === 2 && shader(current).split(SCAT_LINE).length === 2 && shader(current).split(HALO_LINE).length === 2);
 }
 module.exports = { run };
 if (require.main === module) {
