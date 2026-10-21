@@ -13,7 +13,7 @@
  */
 (function () {
   const R = (typeof RF !== 'undefined' && RF) || (globalThis.RF = globalThis.RF || {});
-  const MAX_BEAMS = 16, MAX_RES = 128;
+  const MAX_BEAMS = 16, MAX_RES = 256;
   const CONV = { A: 0, B: 1, S: 2 };
 
   // A LUT (cd, row-major data[j*nh+i] at (h0+(i+.5)*step, v0+(j+.5)*step)) read at (h, v) degrees: bilinear over sample

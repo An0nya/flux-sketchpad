@@ -30,7 +30,7 @@ const P = A.packAtlas([warm, cool]);
 
 // 1. packing: sizes, offsets, metadata, candela
 ok('atlas is one band per beam, all W wide', P.width === P.W && P.height === P.H * 2 && P.data.length === P.W * P.H * 2, { W: P.W, H: P.H, height: P.height });
-ok('resolution is capped at 128 by the largest beam', P.W === 128 && P.H === 128, { W: P.W, H: P.H });
+ok('resolution is capped at 256 (W) and by the largest beam (H = 180 here)', P.W === 256 && P.H === 180, { W: P.W, H: P.H });
 ok('beam offsets: row 0 and row H', P.beamMeta[0] === 0 && P.beamMeta[4] === P.H, [P.beamMeta[0], P.beamMeta[4]]);
 ok('candelaScale is 1 (no renormalisation)', P.beamMeta[3] === 1 && P.beamMeta[7] === 1);
 ok('tint and convention are stored (A=0, B=1)', Math.abs(P.beamTint[1] - 0.72) < 1e-6 && P.beamTint[3] === 0 && P.beamTint[7] === 1, Array.from(P.beamTint));
@@ -55,6 +55,18 @@ const roundTrip = (entry, idx) => {
 const rt0 = roundTrip(warm, 0), rt1 = roundTrip(cool, 1);
 ok('resample round trip within 2% of peak (narrow beam, sigma 1 deg)', rt0 < 0.02, { worst: +rt0.toFixed(5) });
 ok('resample round trip within 2% of peak (wide beam, sigma 4 deg)', rt1 < 0.02, { worst: +rt1.toFixed(5) });
+// INFO, not a pass/fail check: a design-shaped beam (generic low table, 0.25 deg native over 180 deg) at the cap. Reported, not hidden.
+{
+  const gen = D.lutFrom((h, v) => D.Headlamp.generic(h, v, false), { win: [-90, 90, -90, 90], step: 0.25 });
+  const PG = A.packAtlas([{ lut: gen, tint: [1, 1, 1], conv: 'A' }]);
+  let peak = 0, worst = 0, at = null, sum = 0, n = 0;
+  for (const v of gen.data) peak = Math.max(peak, v);
+  for (let j = 1; j < gen.nv - 1; j++) for (let i = 1; i < gen.nh - 1; i++) {
+    const h = gen.h0 + (i + 0.5) * gen.step, v = gen.v0 + (j + 0.5) * gen.step, want = gen.data[j * gen.nh + i];
+    const e = Math.abs(A.sampleAtlas(PG, 0, h, v) - want) / peak; sum += e; n++; if (e > worst) { worst = e; at = [h, v]; }
+  }
+  console.log('[INFO] design-shaped beam at the cap: worst ' + (100 * worst).toFixed(2) + '% of peak at (h,v)=' + JSON.stringify(at.map(x => +x.toFixed(2))) + ', mean ' + (100 * sum / n).toFixed(3) + '% (bar is 2% worst)');
+}
 
 // 3. pick equality, stability, refusals
 const pool = (entries) => ({ entries, weights: null, key: JSON.stringify(entries.map(e => [e.id, e.tint])) });
