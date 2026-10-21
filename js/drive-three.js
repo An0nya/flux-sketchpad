@@ -125,7 +125,9 @@ export function create(canvas, gl, onModelsReady) {
     const compiling = compilePending; compilePending = false;
     const key = tableKey(p, extras, look, tw, th, sig);
     const tblSteps = Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48)), tblBinN = D.tableBinSteps(tblSteps, look.scatterNearBias);
-    set('tableH', th); set('tableSteps', tblSteps); set('tableBias', +look.scatterNearBias > 0 ? 1 : 0); set('tableBinN', tblBinN); tabStats.binN = tblBinN.slice(); tabStats.bias = +look.scatterNearBias > 0 ? 1 : 0;   // NE: tabStats.binN/bias are the values sent to the table pass (debug readback for the page test) { const fr = fadeRangeOf(look); set('tableFade', fr ? 1 : 0); set('tableFadeS0', fr ? fr[0] : 1); set('tableFadeS1', fr ? fr[1] : 10); }
+    // NE: tabStats.binN/bias are the values sent to the table pass (debug readback for the page test).
+    set('tableH', th); set('tableSteps', tblSteps); set('tableBias', +look.scatterNearBias > 0 ? 1 : 0); set('tableBinN', tblBinN); tabStats.binN = tblBinN.slice(); tabStats.bias = +look.scatterNearBias > 0 ? 1 : 0;
+    { const fr = fadeRangeOf(look); set('tableFade', fr ? 1 : 0); set('tableFadeS0', fr ? fr[0] : 1); set('tableFadeS1', fr ? fr[1] : 10); }
     const budget = Number.isFinite(globalThis.SD_TABLE_BUDGET_MS) ? globalThis.SD_TABLE_BUDGET_MS : TABLE_BUDGET_MS; tabStats.budgetMs = budget;
     const t0 = performance.now();
     let bank = null, rows = 0, finished = false;

@@ -66,6 +66,37 @@ async function meanLuma(page, png) {
     const ratio = on.luma / off.luma;
     ok('NE bias on vs off: mean road light within 10 percent (a resampling, not new light)', Math.abs(ratio - 1) < 0.10, 'off ' + off.luma.toFixed(3) + ' on ' + on.luma.toFixed(3) + ' ratio ' + ratio.toFixed(4));
     ok('NE no NaN or empty frames (mean luminance finite and above zero)', [off, on].every((f) => Number.isFinite(f.luma) && f.luma > 0));
+    // NE2: pixel noise over 6 frames from different cache versions (table cache on, cycle 8). The patch is the full canvas,
+    // the same one the road-light check above uses; the 5-15 m band is not isolated in the image (no projection in this test).
+    const noiseRun = async (bias) => {
+      await page.evaluate((b) => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, visibility: 200, scatterMode: 'table', scatter: 48, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearFadeRange: 'medium', scatterCache: 'on', scatterCycle: 8, scatterNearBias: b }); RF.UI.redrawSpec(); }, bias);
+      await sleep(2500); await settle();
+      const pngs = [], shown = [];
+      for (let i = 0; i < 6; i++) {
+        await page.evaluate(() => RF.DriveAnim._.frame()); await sleep(300);
+        shown.push(await page.evaluate(() => SD_SCATTER.shown));
+        await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sc-drive', '1'));
+        pngs.push((await page.locator('canvas[data-sc-drive="1"]').screenshot()).toString('base64'));
+      }
+      const sd = await page.evaluate(async (arr) => {
+        const frames = [];
+        for (const b64 of arr) {
+          const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)), bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+          const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
+          const d = g.getImageData(0, 0, c.width, c.height).data, L = new Float32Array(d.length / 4);
+          for (let i = 0, j = 0; i < d.length; i += 4, j++) L[j] = (d[i] + d[i + 1] + d[i + 2]) / 3;
+          frames.push(L);
+        }
+        const n = frames[0].length; let acc = 0, mean = 0;
+        for (let p = 0; p < n; p++) { let m = 0; for (const f of frames) m += f[p]; m /= frames.length; let v = 0; for (const f of frames) v += (f[p] - m) ** 2; acc += Math.sqrt(v / (frames.length - 1)); mean += m; }
+        return { pixelStd: acc / n, meanLuma: mean / n };
+      }, pngs);
+      return Object.assign(sd, { shown, distinct: new Set(shown).size });
+    };
+    const nzOff = await noiseRun(0), nzOn = await noiseRun(1);
+    console.log('NE2_NOISE off pixelStd ' + nzOff.pixelStd.toFixed(4) + ' on ' + nzOn.pixelStd.toFixed(4) + ' ratio ' + (nzOn.pixelStd / nzOff.pixelStd).toFixed(4) + ' | meanLuma off ' + nzOff.meanLuma.toFixed(3) + ' on ' + nzOn.meanLuma.toFixed(3) + ' | shown off ' + JSON.stringify(nzOff.shown) + ' on ' + JSON.stringify(nzOn.shown));
+    ok('NE2 the 6 frames come from different cache versions (off and on)', nzOff.distinct >= 2 && nzOn.distinct >= 2, JSON.stringify([nzOff.shown, nzOn.shown]));
+    ok('NE2 pixel noise over 6 cache versions (full road-light patch): bias on below off', nzOn.pixelStd < nzOff.pixelStd, 'off ' + nzOff.pixelStd.toFixed(4) + ' on ' + nzOn.pixelStd.toFixed(4) + ' (headless software GL)');
     ok('NE no page errors', errors.length === 0, errors.slice(0, 3).join(' | ').slice(0, 300));
   } catch (e) {
     ok('NE page run completed', false, String(e).slice(0, 300));

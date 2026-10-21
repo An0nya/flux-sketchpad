@@ -841,18 +841,17 @@
   }
   const nearFadeW = (s, S0, S1) => { const t = Math.min(1, Math.max(0, (s - S0) / (S1 - S0))); return t * t * (3 - 2 * t); };
   // NE near-eye bias (look.scatterNearBias, table mode): samples per bin. Off: round(steps / K) in every bin, at least 1 (the old count).
-  // On: weight 1.25 for bins 0-3, 1 for bins 4-7, 0.75 for bins 8-11, so the total stays K * n (the brief's 2 / 1 / 0.5 summed to 14n;
-  // 1.5 / 1 / 0.5 put the far-bin RMS at 2.0x, over the 1.5x limit, since quadrature error scales ~1/n). Counts are floored (min 1), then the
-  // leftover samples go to the largest fractions (ties to the lower bin). Result: exact total, non-increasing with bin index.
-  const NE_WEIGHTS = [1.25, 1.25, 1.25, 1.25, 1, 1, 1, 1, 0.75, 0.75, 0.75, 0.75];
+  // On (NE2 budget move, same total K * n): bins 0-3 (under ~2 m, empty in the road view) and bins 9-11 (26-120 m) get 1 sample each;
+  // bins 4-8 (2-26 m, where the road-view noise is) share the rest, (12n - 7) / 5 each. Leftovers go to bins 5, 6, 7 first, then 4, 8.
   function tableBinSteps(steps, bias) {
     const n = Math.max(1, Math.round((steps | 0) / TABLE.K)), out = new Array(TABLE.K).fill(n);
     if (!(Number(bias) > 0)) return out;
-    const tot = n * TABLE.K, frac = [];
-    for (let k = 0; k < TABLE.K; k++) { const t = NE_WEIGHTS[k] * n; out[k] = Math.max(1, Math.floor(t)); frac.push([t - Math.floor(t), k]); }
-    let left = tot - out.reduce((a, b) => a + b, 0);
-    frac.sort((a, b) => (b[0] - a[0]) || (a[1] - b[1]));
-    for (let i = 0; left > 0 && i < frac.length; i++) { if (frac[i][0] > 0) { out[frac[i][1]]++; left--; } }
+    const band = [4, 5, 6, 7, 8], rest = n * TABLE.K - 7;   // 7 single-sample bins: 0-3 and 9-11
+    for (const k of [0, 1, 2, 3, 9, 10, 11]) out[k] = 1;
+    const q = Math.floor(rest / band.length);
+    let r = rest - q * band.length;
+    for (const k of band) out[k] = q;
+    for (const k of [5, 6, 7, 4, 8]) { if (r > 0) { out[k]++; r--; } }
     return out;
   }
   function scatterTableBins(o, dir, jit, steps) {
