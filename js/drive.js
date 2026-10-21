@@ -266,7 +266,9 @@
     const sig = sigmaOf(look), fogD = (dx, dy, dz) => (sig ? Math.exp(-sig * Math.sqrt(dx * dx + dy * dy + dz * dz)) : 1);   // illumination path: transmittance over a light-to-surface distance (1 when off)
     // in-scatter (look.scatter = steps; needs finite visibility): added after each view-path veil, weighted by the sample's k. Off = not called, nothing added.
     const scatN = sig && look.scatter > 0 ? Math.round(look.scatter) : 0;
-    const addScatter = (dx, dy, dz, sEnd, k, fx, fy) => { const c = inScatter(o, [dx, dy, dz], sEnd, scatterJitter(Math.floor(fx), Math.floor(fy)), scatN); LR += k * c[0]; LG += k * c[1]; LB += k * c[2]; };
+    // SL1: the traffic halo (look.trafficHalo) is added at the same sample points, with the same jitter; haloK = 0 leaves the frame as it was.
+    const haloK = haloN(o);
+    const addScatter = (dx, dy, dz, sEnd, k, fx, fy) => { const jit = scatterJitter(Math.floor(fx), Math.floor(fy)), c = scatN ? inScatter(o, [dx, dy, dz], sEnd, jit, scatN) : [0, 0, 0], h = haloK ? trafficHalo([dx, dy, dz], sEnd, traffic, haloK, o, jit) : [0, 0, 0]; LR += k * (c[0] + h[0]); LG += k * (c[1] + h[1]); LB += k * (c[2] + h[2]); };
     // view path: the samples' radiance gathered since r0..b0 is seen through T = exp(-sig t); airlight fills the rest with the sky value at that direction (glow: T only)
     const veil = (t, rayDz, k, r0, g0, b0, glow) => { const T = Math.exp(-sig * t), A = glow ? 0 : skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(rayDz) * 8)) * (1 - T) * k; LR = r0 + T * (LR - r0) + A; LG = g0 + T * (LG - g0) + A; LB = b0 + T * (LB - b0) + A; };       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
     const traffic = o.trafficBeams ? trafficSources(objs, eye, o) : [], otherBeam = traffic.length ? trafficBeam(o) : null, pitch = o.pitch || 0;
@@ -437,7 +439,7 @@
         const key = sdfKey ? (sdfKey==='hivis' && ((pz>1 && pz<1.06)||(pz>1.26 && pz<1.32))?'hivis-tape':sdfKey) : typeof ob.mat === 'function' ? ob.mat({ x: px, y: py, z: pz, u: hu, face: hf }) : ob.mat;
         if (ob.gameHazard && key === 'eyeshine') eyeAcc |= 1 << (ob.gameHazard - 1);
         let m = M[key] || M.wall; if (ob.emit) m = ob.emitM && ob.emitBase === m ? ob.emitM : (ob.emitBase = m, ob.emitM = Object.assign({}, m, { emit: ob.emit, emitPow: ob.emitPow }));   // this object glows (a lamp: its own luminance); emitPow > 1 makes it directional (cos^n)
-        const r0 = LR, g0 = LG, b0 = LB; shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs, false, ob.eyeFalloff); if (sig) veil(tbest, dz, k, r0, g0, b0, !!ob.glow); if (scatN && !ob.glow) addScatter(dx, dy, dz, tbest, k, fx, fy); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
+        const r0 = LR, g0 = LG, b0 = LB; shade(px, py, pz, hnx, hny, hnz, m, k, -dx, -dy, -dz, hs, false, ob.eyeFalloff); if (sig) veil(tbest, dz, k, r0, g0, b0, !!ob.glow); if ((scatN || haloK) && !ob.glow) addScatter(dx, dy, dz, tbest, k, fx, fy); if (!ob.glow) covAcc += k;                        // glow (a pavement marker): adds its light, does not hide the ground under it
         if (sampleDepth === Infinity) { sampleDepth = tbest; sampleMat = m.id; }
       } else if (objOnly) { /* the ground and the sky are the other layer's */ } else if (tg < Infinity && tg < 5000) {
         const tGround = timed ? performance.now() : 0;
@@ -446,10 +448,10 @@
         ground(ex + tg * dx, ey + tg * dy, tg, -dz, -dx, -dy, -dz, delta, k);
         groundShading = false;
         if (sig) veil(tg, dz, k, r0, g0, b0, false);
-        if (scatN) addScatter(dx, dy, dz, tg, k, fx, fy);
+        if (scatN || haloK) addScatter(dx, dy, dz, tg, k, fx, fy);
         if (timed) groundTime += performance.now() - tGround;
         if (sampleDepth === Infinity) { sampleDepth = tg; sampleMat = GM; }
-      } else { const sl = skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(dz) * 8)); LR += k * sl; LG += k * sl; LB += k * sl; if (scatN) addScatter(dx, dy, dz, Infinity, k, fx, fy); }
+      } else { const sl = skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(dz) * 8)); LR += k * sl; LG += k * sl; LB += k * sl; if (scatN || haloK) addScatter(dx, dy, dz, Infinity, k, fx, fy); }
     }
     const pixel = (x, y, tl) => {
       if (prof) { const q = y * w + x; timed = ((Math.imul(q ^ (q >>> 16), 0x45d9f3b) >>> 16) & 63) === 0; }
@@ -790,6 +792,38 @@
     }
     return out;
   }
+  // SL1 traffic halo: single scatter of ONCOMING lamps (the traffic sources, both lamps of each car) along the eye ray. Opt-in: look.trafficHalo = N
+  // (4, 8 or 16 nearest lamps; 0 or absent = off), finite visibility, and o.trafficBeams. Same phase, beam (trafficAt: a shuffled or atlas beam is
+  // honoured) and transmittance as inScatter, per lamp: sigma · p(θ) · I/max(r², rMin²) · exp(−sigma r) · exp(−sigma s), integrated over s in [s0, min(sEnd, S_MAX)].
+  // Samples: the same stratified log spacing as inScatter, from s0 = min(1 m, S/4) to S = min(sEnd, S_MAX). Tried first: equiangular spacing around the ray's
+  // closest approach to the lamp (it cancels a 1/r² peak). It does NOT suit a narrow beam: the lit part of the ray is ~5–40 m in front of the lamp, far from that
+  // peak, so 8 equiangular cells landed on the unlit side and the per-jitter value swung by 10^7 (measured, SL1). Log spacing swings ~6x per jitter, the same
+  // kind of noise as inScatter (SC1). Samples beyond the lamp are kept: a lamp aimed away still lights the air past it.
+  const HALO = { steps: 8 };
+  function haloN(o) { const look = (o && o.look) || {}, n = +look.trafficHalo; return o && o.trafficBeams && sigmaOf(look) > 0 && n > 0 ? Math.min(16, Math.round(n)) : 0; }
+  function trafficHalo(ray, sEnd, sources, N, p, jit) {
+    const out = [0, 0, 0], n = N | 0, sig = sigmaOf((p && p.look) || {}), eye = (p && p.eye) || [-2, 0.37, 1.2];
+    if (!(sig > 0) || !(n > 0) || !(sEnd > 0) || !sources || !sources.length) return out;
+    const rx = ray[0], ry = ray[1], rz = ray[2], cap = Math.min(sEnd, SCAT.S_MAX), J = jit == null ? 0.5 : jit;
+    const near = sources.map((L, i) => ({ L, i, d: Math.hypot(L.x - eye[0], L.y - eye[1], L.z - eye[2]) })).sort((a, b) => a.d - b.d || a.i - b.i).slice(0, n);
+    const beam = p && p.src && near.some(q => !q.L.beam) ? trafficBeam(p) : null;
+    for (const { L } of near) {
+      if (!L.beam && !beam) continue;
+      const s1 = cap, s0 = Math.min(1, s1 / 4); if (!(s1 > s0)) continue;
+      const N = HALO.steps, q = Math.pow(s1 / s0, 1 / N), tint = L.tint || [1, 1, 1];
+      for (let k = 0; k < N; k++) {
+        const a = s0 * Math.pow(q, k), s = a * Math.pow(q, J), w = a * q - a, Tv = Math.exp(-sig * s);
+        const Px = eye[0] + s * rx, Py = eye[1] + s * ry, Pz = eye[2] + s * rz;
+        const I = trafficAt(L, beam, Px, Py, Pz); if (!(I > 0)) continue;
+        const dx = Px - L.x, dy = Py - L.y, dz = Pz - L.z, r2 = dx * dx + dy * dy + dz * dz; if (!(r2 > 0)) continue;
+        const r = Math.sqrt(r2), cos = -(dx * rx + dy * ry + dz * rz) / r, E = I / Math.max(r2, SCAT.rMin * SCAT.rMin);
+        const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Tv * w;
+        if (!Number.isFinite(v)) continue;
+        out[0] += v * tint[0]; out[1] += v * tint[1]; out[2] += v * tint[2];
+      }
+    }
+    return out;
+  }
   // SD1 table (look.scatterMode 'table'): the CPU twin of the GPU table pass, for tests only. The ground, sky and object shaders read it
   // in place of inScatter. Scalar per bin (lampRGB multiplies after the lookup). Bins are K segments of the eye ray, edges log-spaced
   // from 0.5 m to S_MAX; segment 0 is [0, 0.5 m] (linear), the rest log-spaced. Unlike inScatter (which starts at s0 = min(1, S/4)), the
@@ -959,5 +993,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, scatterPhase, scatterJitter, SCAT, scatterTableBins, scatterTableAt, TABLE, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, scatterTableAt, TABLE, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
