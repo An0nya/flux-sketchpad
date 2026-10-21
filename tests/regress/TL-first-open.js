@@ -20,9 +20,13 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
     if (ld) {
       console.log('TL raw load line: ' + JSON.stringify(ld));
       const at = (name) => ld.marks.find((m) => m.m === name);
-      const gl = at('GL context and shaders created'), f1 = at('frame 1 submitted'), g1 = at('frame 1 GPU done');
-      ok('TL load: t0 < GL context < frame 1 submitted (strict)', !!gl && !!f1 && gl.ms > 0 && f1.ms > gl.ms, [gl && gl.ms, f1 && f1.ms].join(' / '));
-      ok('TL load: frame 1 GPU done after frame 1 submitted (strict)', !!g1 && g1.ms > f1.ms, g1 ? f1.ms + ' -> ' + g1.ms : 'no GPU-done mark (reason ' + ld.reason + ')');
+      // a cold start: GL context, then the three renderer, then the first three-mode frame, then the GPU-done mark on that frame
+      const gl = at('GL context and shaders created'), tr = at('three renderer created');
+      const gd = ld.marks.find((m) => /^frame \d+ GPU done$/.test(m.m)) || null;
+      const k = gd ? gd.m.match(/\d+/)[0] : null, sub = k ? at('frame ' + k + ' submitted') : null;
+      ok('TL load: GL context < three renderer created (strict)', !!gl && !!tr && gl.ms > 0 && tr.ms > gl.ms, [gl && gl.ms, tr && tr.ms].join(' / '));
+      ok('TL load: the GPU-done frame is submitted after the renderer exists (strict)', !!sub && !!tr && sub.ms > tr.ms, sub ? 'frame ' + k + ' submitted ' + sub.ms + ', renderer ' + tr.ms : 'no GPU-done frame (reason ' + ld.reason + ')');
+      ok('TL load: the GPU-done mark is after its frame is submitted (strict)', !!gd && !!sub && gd.ms > sub.ms, gd ? sub.ms + ' -> ' + gd.ms : 'no GPU-done mark');
     }
     // Drive is the default view on load; switch away first so the click below is the open being timed
     await page.evaluate(() => RF.UI.setDisplay('hits')); await sleep(800);
