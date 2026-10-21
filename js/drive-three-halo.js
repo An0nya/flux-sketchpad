@@ -13,7 +13,8 @@
 import * as T from '../vendor/three/three.module.min.js';
 import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS } from './drive-three-shaders.js';
 const D = globalThis.RF.Drive;
-export const HALO_MAXL = 16, HALO_PER_DRAW = 3, HALO_BIN_STEPS = 6, HALO_MIN_W = 96, HALO_MIN_H = 54, HALO_DIV = 8;
+export const HALO_MAXL = 16, HALO_PER_DRAW = 1, HALO_BIN_STEPS = 6, HALO_MIN_W = 96, HALO_MIN_H = 54, HALO_DIV = 8, HALO_DIV_FEW = 4, HALO_FEW = 4;
+// One lamp per draw, 6 steps: a shader loop of 6 (it was 3 lamps x 6 = 18; Safari is suspected to stall compiling long loops). More draws, same pixels.
 export const HALO_EDGES = [0, 8, 14, 22, 34, 60, 120];   // bin edges, metres; the last is D.SCAT.S_MAX
 export const HALO_BINS = HALO_EDGES.length - 1;
 
@@ -55,7 +56,8 @@ void main() {
 const HAL_CONV = (c) => (c === 'B' ? 1 : c === 'S' ? 2 : 0);
 const half = (T.DataUtils && T.DataUtils.fromHalfFloat) || ((h) => { const e = (h >> 10) & 31, m = h & 1023, sg = h & 0x8000 ? -1 : 1; return e === 0 ? sg * Math.pow(2, -14) * (m / 1024) : e === 31 ? (m ? NaN : sg * Infinity) : sg * Math.pow(2, e - 15) * (1 + m / 1024); });
 
-export function haloTableSize(w, h) { return [Math.max(HALO_MIN_W, Math.ceil(w / HALO_DIV)), Math.max(HALO_MIN_H, Math.ceil(h / HALO_DIV))]; }
+// 1/4 of the view with 4 lamps or fewer (the stairs a coarser table leaves on a sharp glow edge show most on a lone distant car), 1/8 with more.
+export function haloTableSize(w, h, lamps = 99) { const div = lamps <= HALO_FEW ? HALO_DIV_FEW : HALO_DIV; return [Math.max(HALO_MIN_W, Math.ceil(w / div)), Math.max(HALO_MIN_H, Math.ceil(h / div))]; }
 // The CPU twin of the lookup in the shader (haloScatter): bins is the six bins, each [r, g, b]; d metres. Used by the page test to read the GPU table.
 export function haloLookup(bins, d) {
   if (!(d > 0)) return [0, 0, 0];
@@ -75,17 +77,13 @@ export function haloPass(renderer, u) {
     depthTest: false, depthWrite: false,
   });
   const mats = [mk(false), mk(true)], mesh = new T.Mesh(geo, mats[0]); mesh.frustumCulled = false; scene.add(mesh);
-  let rt = null, tab = [0, 0];
+  let rt = null, tab = [0, 0]; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
   const arr = () => Array.from({ length: HALO_PER_DRAW }, () => new T.Vector4());
   const hLamp = arr(), hDir = arr(), hTint = arr(), tabV = new T.Vector2(), edgesV = HALO_EDGES.slice(1);
-  const ensure = (p) => {
-    const [tw, th] = haloTableSize(p.w, p.h);
-    if (!rt || tab[0] !== tw || tab[1] !== th) {
-      if (rt) rt.dispose();
-      rt = new T.WebGLRenderTarget(tw * HALO_BINS, th, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false });
-      tab = [tw, th];
-    }
-    tabV.set(tw, th);
+  const ensure = (p, n) => {
+    const [tw, th] = haloTableSize(p.w, p.h, n), key = tw + 'x' + th;
+    if (!rts.has(key)) { if (rts.size > 3) { for (const r of rts.values()) r.dispose(); rts.clear(); } rts.set(key, new T.WebGLRenderTarget(tw * HALO_BINS, th, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false })); }
+    rt = rts.get(key); tab = [tw, th]; tabV.set(tw, th);
   };
   const halo = {
     drawn: 0,      // lamps in the table this frame (page-test hook)
@@ -110,7 +108,7 @@ export function haloPass(renderer, u) {
         used.push({ L, idx, tint: [tn ? tn.x : 1, tn ? tn.y : 1, tn ? tn.z : 1] });
       }
       if (!used.length) return 0;
-      ensure(p);
+      ensure(p, used.length);
       const timing = !!globalThis.SL_HALO_TIMING; if (timing) { renderer.getContext().finish(); } const t0 = timing ? performance.now() : 0;   // test hook: wall time of the table pass, synchronised by a 1-pixel readback
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
       try {

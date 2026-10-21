@@ -28,13 +28,23 @@ uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js S
 // air BEHIND it does not. haloOn is a uniform: off costs one branch, and toggling never changes the shader text (no recompile).
 uniform int haloOn; uniform sampler2D haloTex; uniform vec2 haloUV, haloTab;   // haloUV: 1 / pixels of the target this pass draws; haloTab: cells per tile
 const float HALO_E[6] = float[6](8.0, 14.0, 22.0, 34.0, 60.0, 120.0);
+// Cubic B-spline read of one bin tile in 4 bilinear fetches (the linear trick: B-spline weights are all positive, so two taps per axis are exact). It
+// removes the cell-grid stairs plain bilinear leaves on a sharp-edged glow. Tap centres are clamped inside the tile, so no bin bleeds into its neighbour.
+vec3 haloBin(int k, vec2 pc, vec2 f, vec2 tab) {
+  vec2 f2=f*f, f3=f2*f, w0=(1.0-f)*(1.0-f)*(1.0-f)/6.0, w1=(3.0*f3-6.0*f2+4.0)/6.0, w2=(-3.0*f3+3.0*f2+3.0*f+1.0)/6.0, w3=f3/6.0;
+  vec2 g0=w0+w1, g1=w2+w3, h0=pc-1.0+w1/g0, h1=pc+1.0+w3/g1;   // pc: texel index of the cell holding the fragment; taps land between texel centres
+  h0=clamp(h0+0.5,vec2(0.5),tab-0.5); h1=clamp(h1+0.5,vec2(0.5),tab-0.5);
+  float x0=(float(k)*tab.x+h0.x), x1=(float(k)*tab.x+h1.x), inv=1.0/(tab.x*6.0);
+  return g0.y*(g0.x*texture(haloTex,vec2(x0*inv,h0.y/tab.y)).rgb+g1.x*texture(haloTex,vec2(x1*inv,h0.y/tab.y)).rgb)
+       + g1.y*(g0.x*texture(haloTex,vec2(x0*inv,h1.y/tab.y)).rgb+g1.x*texture(haloTex,vec2(x1*inv,h1.y/tab.y)).rgb);
+}
 vec3 haloScatter(float d) {
   if(haloOn==0 || d<=0.0) return vec3(0.0);
-  vec2 uv=gl_FragCoord.xy*haloUV, cl=clamp(uv,0.5/haloTab,1.0-0.5/haloTab);
+  vec2 p=gl_FragCoord.xy*haloUV*haloTab-0.5, pc=floor(p), f=p-pc;
   float dd=min(d,120.0); vec3 C=vec3(0.0), prevC=vec3(0.0); float prevE=0.0;
   for(int k=0;k<6;k++) {
     float e=HALO_E[k];
-    C+=texture(haloTex,vec2((float(k)+cl.x)*(1.0/6.0),cl.y)).rgb;
+    C+=haloBin(k,pc,f,haloTab);
     if(dd<=e) return k==0 ? C*dd/e : mix(prevC,C,log(dd/prevE)/log(e/prevE));
     prevC=C; prevE=e;
   }

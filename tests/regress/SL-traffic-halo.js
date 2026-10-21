@@ -105,7 +105,8 @@ async function planes(page, a, b) {
       const [tw, th0] = S.tab, cellOf = (sx, sy) => [Math.min(tw - 1, Math.max(0, Math.floor((sx * 0.5 + 0.5) * tw))), Math.min(th0 - 1, Math.max(0, Math.floor((sy * 0.5 + 0.5) * th0)))];
       const lsx = -(dy / dx) / tanH, lsy = (dz / dx) * W / (H * tanH), [lc, lr0] = cellOf(lsx, lsy);
       // rays through exact cell centres (the table samples a cell at its centre; the lamp's own 1/r^2 core is not a fair comparison): the lamp cell, and cells to its left, below and above
-      const rays = [{ name: 'lamp cell', c: [lc, lr0] }, { name: '6 cells left', c: [lc - 6, lr0] }, { name: '4 cells down', c: [lc, lr0 - 4] }, { name: '5 cells up', c: [lc, lr0 + 5] }, { name: '10 cells right', c: [lc + 10, lr0] }];
+      const sc = Math.round(tw / (W / 8));   // offsets are in cells of a 1/8-view table (the angle they had before the table went 1/4 with few lamps)
+      const rays = [{ name: 'lamp cell', c: [lc, lr0] }, { name: '6 cells left', c: [lc - 6 * sc, lr0] }, { name: '4 cells down', c: [lc, lr0 - 4 * sc] }, { name: '5 cells up', c: [lc, lr0 + 5 * sc] }, { name: '10 cells right', c: [lc + 10 * sc, lr0] }];
       const out = { Dl: dx, R, tab: S.tab, rays: [] }; D.HALO.steps = 64;
       for (const r of rays) {
         const sx = ((r.c[0] + 0.5) / tw) * 2 - 1, sy = ((r.c[1] + 0.5) / th0) * 2 - 1;
