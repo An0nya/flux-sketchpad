@@ -3,6 +3,7 @@ import * as T from '../vendor/three/three.module.min.js';
 import { vertex, ground, withLighting, tableSource, tablePassSource, tableBlurSource } from './drive-three-shaders.js';
 import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
+import { haloPass } from './drive-three-halo.js';
 import { TABLE_BUDGET_MS, bandRows, smoothMsPerRow, tableStatus, fillFraction, tableBadge, fadeRangeName, fadeRangeOf, scatterGainOf } from './table-pace.js';
 const D = globalThis.RF.Drive;
 const texture = (data, w, h, format = T.RGBAFormat) => { const t = new T.DataTexture(data, w, h, format, T.FloatType); t.needsUpdate = true; return t; };
@@ -38,6 +39,7 @@ export function create(canvas, gl, onModelsReady) {
   const scene = new T.Scene(), mesh = new T.Mesh(new T.PlaneGeometry(2, 2), mat); mesh.frustumCulled = false; scene.add(mesh);
   const pass = surface(u);
   const camera = new T.Camera(), objectView = objects(renderer, u, onModelsReady);
+  const halo = haloPass(renderer, u);   // SL2: the traffic halo quads (drawn only when look.trafficHalo is on)
   function shading(material, enabled, mountain = false, table = false) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
     const atlas = atlasOn && enabled;
@@ -242,6 +244,8 @@ export function create(canvas, gl, onModelsReady) {
   }
   return {
     version: T.REVISION,
+    // SL2 test hook: the halo quads drawn for the last frame (0 = off, or no lamp on screen)
+    haloState() { return { drawn: halo.drawn, rects: halo.rects }; },
     // BB3 test hook: the lamp tint currently in the lampRGB uniform (what the GPU lights with)
     lampUniform() { return u.lampRGB && u.lampRGB.value ? u.lampRGB.value.toArray() : null; },
     // BA5 test hook: what the GPU got this frame: whether the atlas is on, the beam count, each lit source's atlas index, and the tints
@@ -253,6 +257,7 @@ export function create(canvas, gl, onModelsReady) {
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
+      if (!p.touge) halo.draw(p, world, target);   // SL2: after the ground, before the objects are composed (they cover it as they cover the ground)
       set('passDepth', target.depthTexture);
       if (failure) throw Error(failure);
       // CPU textures use row zero = top; three's target uses row zero = bottom.

@@ -151,11 +151,11 @@ void main() {
 // BA5: atlas = true reads each lamp's beam from the GPU atlas (beam-atlas.js) instead of the one otherBeam table.
 // atlas = false is main's text, byte for byte (pinned by tests/beam-atlas.js).
 const ATLAS_N = 16;
-const ATLAS_HEAD = `uniform vec4 beamMeta[${ATLAS_N}], beamGrid[${ATLAS_N}], beamTint[${ATLAS_N}], trafficBeamIdx[${ATLAS_N}];
+export const ATLAS_HEAD = `uniform vec4 beamMeta[${ATLAS_N}], beamGrid[${ATLAS_N}], beamTint[${ATLAS_N}], trafficBeamIdx[${ATLAS_N}];
 int tbeam=0;
 vec3 otint=vec3(1.0,1.0,0.93);
 `;
-const OTHER_LEGACY = `float otherIntensity(vec3 d) {
+export const OTHER_LEGACY = `float otherIntensity(vec3 d) {
   vec3 q=normalize(d); float a=q.x, b=-q.y, c=q.z; vec2 hv;
   if(otherConvention==1) hv=vec2(asin(clamp(b,-1.0,1.0)),atan(c,a));
   else if(otherConvention==2) { if(a<=0.0) return 0.0; hv=atan(vec2(b,c)/a); }
@@ -166,7 +166,7 @@ const OTHER_LEGACY = `float otherIntensity(vec3 d) {
   return mix(mix(texelFetch(otherBeam,k,0).r,texelFetch(otherBeam,k+ivec2(1,0),0).r,t.x),mix(texelFetch(otherBeam,k+ivec2(0,1),0).r,texelFetch(otherBeam,k+ivec2(1,1),0).r,t.x),t.y);
 }
 `;
-const OTHER_ATLAS = `float otherIntensity(vec3 d) {
+export const OTHER_ATLAS = `float otherIntensity(vec3 d) {
   vec3 q=normalize(d); float a=q.x, b=-q.y, c=q.z; vec2 hv;
   vec4 g=beamGrid[tbeam], m=beamMeta[tbeam], tn=beamTint[tbeam];
   int conv=int(tn.w+0.5);
