@@ -34,6 +34,7 @@ const MAP = [
   [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']],
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];
+const NOT_TESTS = ['gate', 'load', 'serve'];
 // ---- plan -------------------------------------------------------------------------------------------------------------
 const sh = (...a) => { try { return execFileSync(a[0], a.slice(1), { cwd: root, encoding: 'utf8' }).trim(); } catch (e) { return ''; } };
 function plan() {
@@ -44,7 +45,7 @@ function plan() {
   const picked = new Set(); let unmapped = [];
   for (const f of files) {
     const t = /^tests\/regress\/(.+)\.js$/.exec(f), n = /^tests\/([^/]+)\.js$/.exec(f);
-    if (t) { picked.add(t[1]); continue; } if (n) { picked.add('node:' + n[1]); continue; }
+    if (t) { picked.add(t[1]); continue; } if (n) { if (!NOT_TESTS.includes(n[1])) picked.add('node:' + n[1]); continue; }   // gate.js itself and loaders are not tests (picking gate.js ran a nested full gate)
     let hit = false; for (const [re, gs] of MAP) if (re.test(f)) { hit = true; for (const g of gs) (GROUPS[g] || [g]).forEach((x) => picked.add(x)); }
     if (!hit && /^(js|css|index\.html)/.test(f)) unmapped.push(f);
   }
