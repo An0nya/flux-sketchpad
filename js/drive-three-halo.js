@@ -12,7 +12,7 @@
 import * as T from '../vendor/three/three.module.min.js';
 import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS } from './drive-three-shaders.js';
 const D = globalThis.RF.Drive;
-export const HALO_G = 16, HALO_MAXL = 16, HALO_STEPS = 24, HALO_FADE0 = 0.55;   // table cells per side, lamp cap, march steps per cell, where the sprite window starts to fall (fraction of the half-size)
+export const HALO_G = 16, HALO_MAXL = 16, HALO_STEPS = 16, HALO_FADE0 = 0.55;   // table cells per side, lamp cap, march steps per cell (the shader loop bound is the same constant 16), where the sprite window starts to fall (fraction of the half-size)
 const HALO_ANG_MIN = 3 * Math.PI / 180, HALO_ANG_MAX = 20 * Math.PI / 180;      // sprite half-size, radians; set by 1 / (sigma * distance), clamped
 export const haloAngle = (sigma, dist) => Math.min(HALO_ANG_MAX, Math.max(HALO_ANG_MIN, Math.atan(1 / Math.max(1e-6, sigma * dist))));
 
@@ -34,7 +34,7 @@ void main() {
   vec3 ray = normalize(vec3(1.0, -screen.x * tanH, screen.y * tanH * size.y / size.x));
   float s1 = haloSMax, s0 = min(1.0, s1 * 0.25), q = pow(s1 / s0, 1.0 / float(haloSteps));
   vec3 acc = vec3(0.0);
-  for (int k = 0; k < 48; k++) {
+  for (int k = 0; k < 16; k++) {   // constant bound 16: the same as the old halo shader (a 48 bound is suspected of stalling Safari's shader compile)
     if (k >= haloSteps) break;
     float a = s0 * pow(q, float(k)), b = a * q, s = sqrt(a * b), ds = b - a, Tv = exp(-sigma * s);   // geometric midpoint of the log cell
     vec3 d = haloEye + s * ray - lamp; float r2 = dot(d, d); if (r2 <= 0.0) continue;
