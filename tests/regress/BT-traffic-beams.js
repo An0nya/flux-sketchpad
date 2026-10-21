@@ -47,7 +47,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   const H1 = await settle(); const s2 = await state();
   ok('shuffle on: CPU frame differs from built-in', H1 !== H0, { H0, H1 });
   ok('shuffle on: pool holds all 3 library beams, with distinct colour tints (halogen warmer than LED)', s2.pool && s2.pool.length === 3 && s2.tints.some((t, i) => s2.tints.some((u, j) => j !== i && t.join() !== u.join())), s2);
-  ok('shuffle on: the tooltip says it is CPU only', /CPU renderer only/.test(s2.title), s2.title);
+  ok('shuffle on: the tooltip no longer says CPU only (BA5: the GPU has the atlas)', !/CPU renderer only/.test(s2.title), s2.title);
   ok('shuffle on: the beam without a saved colour is neutral (1,1,1), not our lamp tint', s2.tints.some(t => t.join() === '1,1,1') && s2.tints.some(t => t.join() !== '1,1,1'), s2.tints);
   const saved1 = await page.evaluate(() => { const o = JSON.parse(localStorage.getItem('flux/driveView') || '{}'); return { shuffle: o.trafficShuffle, out: o.trafficOutIds }; });
   ok('shuffle choice is saved in the drive view options', saved1.shuffle === 'library', saved1);
@@ -76,7 +76,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   await page.evaluate(() => { const b = document.querySelector('[data-anim="gpu-renderer"]'); if (b.getAttribute('aria-pressed') !== 'true') b.click(); });
   await page.waitForFunction(() => RF.DriveAnim._.V.three, null, { timeout: 60000 }).catch(() => {});
   await settle(); const s5 = await state();
-  ok('GPU renderer: no pool (built-in for every car) and a tooltip saying the GPU keeps the built-in beam', s5.three && s5.pool === null && /GPU renderer keeps the built-in beam/.test(s5.title), { three: s5.three, pool: s5.pool, title: s5.title });
+  ok('GPU renderer: the library pool reaches the GPU (BA5 atlas), no GPU-only tooltip', s5.three && s5.pool !== null && s5.pool.length === s1.checks.length && !/GPU renderer keeps the built-in beam/.test(s5.title), { three: s5.three, pool: s5.pool, title: s5.title });
   await page.evaluate(() => { const b = document.querySelector('[data-anim="gpu-renderer"]'); if (b.getAttribute('aria-pressed') === 'true') b.click(); });
 
   // reload: untick the halogen beam, then open a second page in the same context (page.addInitScript is per page, so storage survives).

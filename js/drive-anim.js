@@ -1131,7 +1131,7 @@ void main() {
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
     const I = info(), o = I.o, pool = trafficPoolOf(o), W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, o.ownLow, o.ownHigh, lampTintOf(I, ownBeams(o)).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
-    if (V.shuf) V.shuf.title = V.three ? SHUFFLE_GPU_TIP : SHUFFLE_TIP;   // the tooltip follows the renderer, every frame
+    if (V.shuf) V.shuf.title = shuffleTip(o);   // the tooltip follows the renderer, every frame
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o)]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: D.wetnessOf(o) > 0 }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
@@ -1509,15 +1509,17 @@ void main() {
   // BT: the shuffle pool: the saved LOW beams not ticked out of 'use in traffic' (all by default), sorted by id so the same beam set
   // always gives the same picks. Built-in samples are not in it, so they cannot reshuffle cars when they load late. The GPU renderer
   // never gets a pool (its atlas comes later), so it keeps the built-in beam for every car. null = no pool (built-in only).
-  const SHUFFLE_TIP = 'Each car gets one saved low beam from the library, with its own colour and intensity. Symmetric traffic only. CPU renderer only.';
-  const SHUFFLE_GPU_TIP = 'The GPU renderer keeps the built-in beam for every car until its atlas lands. Switch to the CPU renderer to see library beams on traffic.';
+  const SHUFFLE_TIP = 'Each car gets one saved low beam from the library, with its own colour and intensity. Symmetric traffic only.';
+  const SHUFFLE_MANY_TIP = 'More than ' + 16 + ' saved beams in traffic: the GPU renderer keeps the built-in beam for every car. Untick some under "use in traffic".';
+  const shuffleTip = (o) => { const pool = poolOfBeams(libLoad(), o, false, beamRGB); return V.three && pool && pool.entries.length > RF.BeamAtlas.MAX_BEAMS ? SHUFFLE_MANY_TIP : SHUFFLE_TIP; };
   // a beam with no saved colour is neutral (not our lamp's tint: the owner's rule is that a car's beam sets its colour)
   function poolOfBeams(items, o, gpu, rgbOf) {
-    if (o.trafficShuffle !== 'library' || gpu) return null;
+    if (o.trafficShuffle !== 'library') return null;
     const out = new Set(Array.isArray(o.trafficOutIds) ? o.trafficOutIds : []);
     const entries = items.filter(e => e.beamKind === 'low' && !out.has(e.id)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .map(e => ({ id: e.id, lut: e.lut, conv: e.conv || 'A', tint: e.colour ? D.unitTint(rgbOf(e.colour)) : [1, 1, 1] }));
     if (!entries.length) return null;
+    if (gpu && entries.length > RF.BeamAtlas.MAX_BEAMS) return null;   // BA5: the atlas holds MAX_BEAMS beams; a longer pool stays built-in on the GPU
     return { entries, weights: null, key: JSON.stringify(entries.map(e => [e.id, e.tint])) };
   }
   const beamRGB = (c) => RF.Beams.lampFor(c, [1, 1, 1], RF.CCT && RF.CCT.cctToRGB).rgb;
@@ -1835,7 +1837,7 @@ void main() {
     V.bar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
     V.bar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
     if (V.fillOwn && V.libVer !== LIB.ver) V.fillOwn();
-    if (V.shuf) { V.shuf.value = o.trafficShuffle === 'library' ? 'library' : 'off'; V.shuf.title = V.three ? SHUFFLE_GPU_TIP : SHUFFLE_TIP; }
+    if (V.shuf) { V.shuf.value = o.trafficShuffle === 'library' ? 'library' : 'off'; V.shuf.title = shuffleTip(o); }
     if (V.trafficList) for (const c of V.trafficList.querySelectorAll('input[type=checkbox]')) c.checked = !(Array.isArray(o.trafficOutIds) && o.trafficOutIds.includes(c.dataset.id));
     if (V.nameIn) V.nameIn.placeholder = beamDefaultName(info());
     if (V.fillOwn) { V.bar.querySelector('[data-anim="own-low"]').value = o.ownLow && o.ownLow !== 'design' && libFind(o.ownLow, 'low') ? o.ownLow : 'design'; V.bar.querySelector('[data-anim="own-high"]').value = o.ownHigh && o.ownHigh !== 'generic' && libFind(o.ownHigh, 'high') ? o.ownHigh : 'generic'; }

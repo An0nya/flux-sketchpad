@@ -16,8 +16,11 @@ export function passShader(source, vertex = false) {
       if(abs(den)>.000001 && expected>0.0 && expected/5000.0>depth+0.00003)continue;
     }
     float I=intensity(d)`);
-  s = s.replace('r+=rho*vec3(1,1,0.93)*otherIntensity(local)', `float cp=cos(trafficPitch[i]),sp=sin(trafficPitch[i]);local=vec3(cp*local.x+sp*local.z,local.y,cp*local.z-sp*local.x);
-    r+=rho*vec3(1,1,0.93)*otherIntensity(local)`);
+  // BA5: the traffic loop has two spellings: the legacy one-table text and the atlas text (per-lamp tint 'otint'). Both get the pitch.
+  const loopCall = /r\+=rho\*(vec3\(1,1,0\.93\)|otint)\*otherIntensity\(local\)/;
+  if (!loopCall.test(s) && s.includes('otherIntensity(local)')) throw Error('BA5 touge pass: traffic loop text changed');   // no traffic loop (the plain pass material) is fine
+  s = s.replace(loopCall, (m, tint) => `float cp=cos(trafficPitch[i]),sp=sin(trafficPitch[i]);local=vec3(cp*local.x+sp*local.z,local.y,cp*local.z-sp*local.x);
+    r+=rho*${tint}*otherIntensity(local)`);
   s = s.replace('float wetLobe(vec3 d,vec3 v) {', `float wetLobe(vec3 d,vec3 v,vec3 normal) {
     vec3 x=normalize(vec3(normal.z,0,-normal.x)), y=cross(normal,x);
     d=vec3(dot(d,x),dot(d,y),dot(d,normal));v=vec3(dot(v,x),dot(v,y),dot(v,normal));`)

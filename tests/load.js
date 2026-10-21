@@ -3,7 +3,7 @@
 // through interceptors and run ~10x slower, which would make every timing meaningless.
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const ROOT = path.join(__dirname, '..');
-const FILES = ['core', 'geometry', 'source', 'source-presets', 'cct','sealed-beam-source', 'engine', 'state', 'solver', 'solver-env', 'modeA', 'solvers', 'solver-spoke', 'solver-constellation', 'modeB', 'feasibility', 'photometry', 'farfield', 'spec', 'road', 'beam-quality', 'ideal-beam', 'drive', 'drive-models', 'drive-scenes', 'drive-touge', 'scene-details', 'beam-store', 'drive-anim', 'drive-game', 'modes', 'exports', 'compare', 'solve-cache', 'profile', 'lenses', 'controller', 'history', 'checks1', 'checks2', 'checks3'];
+const FILES = ['core', 'geometry', 'source', 'source-presets', 'cct','sealed-beam-source', 'engine', 'state', 'solver', 'solver-env', 'modeA', 'solvers', 'solver-spoke', 'solver-constellation', 'modeB', 'feasibility', 'photometry', 'farfield', 'spec', 'road', 'beam-quality', 'ideal-beam', 'drive', 'drive-models', 'drive-scenes', 'drive-touge', 'scene-details', 'beam-store', 'beam-atlas', 'drive-anim', 'drive-game', 'modes', 'exports', 'compare', 'solve-cache', 'profile', 'lenses', 'controller', 'history', 'checks1', 'checks2', 'checks3'];
 function load(extra) {
   if (globalThis.RF) return globalThis.RF;
   for (const f of FILES.concat(['manufacturability'], extra || [])) {

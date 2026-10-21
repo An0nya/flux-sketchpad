@@ -96,7 +96,11 @@ function run(RF, ok) {
   const items = [{ id: 'a', beamKind: 'low', lut, conv: 'A', colour: null }, { id: 'b', beamKind: 'low', lut, conv: 'A', colour: { cct: 3200 } }, { id: 'c', beamKind: 'high', lut, conv: 'A', colour: null }];
   const lib = { trafficShuffle: 'library', trafficOutIds: [] }, rgbOf = (c) => RF.CCT.cctToRGB(c.cct);   // node has no RF.Beams: the page resolves colour the same way (lampFor)
   ok('BT2 pool: shuffle off gives no pool', A._.poolOfBeams(items, { trafficShuffle: 'off' }, false, rgbOf) === null);
-  ok('BT2 pool: the GPU renderer gets no pool', A._.poolOfBeams(items, lib, true, rgbOf) === null);
+  // BA5: the GPU renderer gets the pool too (the atlas), up to the atlas size; a longer pool stays built-in on the GPU
+  ok('BA5 pool: the GPU renderer gets the pool', (A._.poolOfBeams(items, lib, true, rgbOf) || {}).entries.length === 2);
+  const many = Array.from({ length: RF.BeamAtlas.MAX_BEAMS + 1 }, (_, i) => ({ id: 'm' + i, beamKind: 'low', lut, conv: 'A', colour: null }));
+  ok('BA5 pool: over the atlas size the GPU renderer keeps the built-in beam', A._.poolOfBeams(many, lib, true, rgbOf) === null);
+  ok('BA5 pool: over the atlas size the CPU renderer still gets the pool', (A._.poolOfBeams(many, lib, false, rgbOf) || {}).entries.length === many.length);
   ok('BT2 pool: an empty library gives no pool (built-in beam)', A._.poolOfBeams([], lib, false, rgbOf) === null);
   ok('BT2 pool: high beams are never in the traffic pool', A._.poolOfBeams([items[2]], lib, false, rgbOf) === null);
   const all = A._.poolOfBeams(items, lib, false, rgbOf);

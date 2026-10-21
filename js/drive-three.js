@@ -24,9 +24,12 @@ export function create(canvas, gl, onModelsReady) {
   renderer.setClearColor(0x000000, 1); renderer.setRenderTarget(null); renderer.resetState();
   renderer.outputColorSpace = T.LinearSRGBColorSpace; renderer.toneMapping = T.NoToneMapping;
   let failure = '', target, objectTarget, beamRef, beamTexture, otherRef, otherTexture;
+  // BA5: the per-car beam atlas. atlasOn picks the shader variant (shading and tableShading read it); the atlas is repacked only when the pool changes.
+  let atlasOn = false, atlasTexture = null, atlasPacked = null, atlasKey = null, atlasLuts = null;
+  const litCars = [];   // BA5 test hook: the car id behind each traffic source this frame
   renderer.debug.onShaderError = (g, program, vs, fs) => { failure = [g.getProgramInfoLog(program), g.getShaderInfoLog(vs), g.getShaderInfoLog(fs)].filter(Boolean).join(' '); console.error('GPU drive shader: ' + failure); };
   const u = {}, set = (k, v) => { if (u[k]) u[k].value = v; else u[k] = { value: v }; };
-  for (const [k, v] of Object.entries({ otherBeam: null, otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(64, T.Vector2), trafficLamp: array(64, T.Vector4), nTraffic: 0, otherConvention: 0, pitch: 0, yaw: 0, sigma: 0, scatterSteps: 0, scatMode: 0, scatUV: new T.Vector2(1, 1), scatBank0: null, scatBank1: null, scatBank2: null, tableBank: 0, tableSteps: 48, tableH: 1, tableSeed: 0, tableFade: 1, tableFadeS0: 1, tableFadeS1: 10, scatGain: 1, scatGFwd: 0, scatGBack: 0, scatWFwd: 0, scatRMin: 0, scatSMax: 0, cornering: new T.Vector2(), beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, wetModel: 0, grain: 0, wetness: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2() })) set(k, v);
+  for (const [k, v] of Object.entries({ otherBeam: null, beamMeta: array(16, T.Vector4), beamGrid: array(16, T.Vector4), beamTint: array(16, T.Vector4), trafficBeamIdx: array(16, T.Vector4), otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(64, T.Vector2), trafficLamp: array(64, T.Vector4), nTraffic: 0, otherConvention: 0, pitch: 0, yaw: 0, sigma: 0, scatterSteps: 0, scatMode: 0, scatUV: new T.Vector2(1, 1), scatBank0: null, scatBank1: null, scatBank2: null, tableBank: 0, tableSteps: 48, tableH: 1, tableSeed: 0, tableFade: 1, tableFadeS0: 1, tableFadeS1: 10, scatGain: 1, scatGFwd: 0, scatGBack: 0, scatWFwd: 0, scatRMin: 0, scatSMax: 0, cornering: new T.Vector2(), beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, wetModel: 0, grain: 0, wetness: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2() })) set(k, v);
   set('worldFromCar', new T.Matrix3()); set('carFromWorld', new T.Matrix3()); set('passDepth', null); set('passShadow0',null); set('passShadow1',null); set('trafficPitch',new Float32Array(64));
   const materialData = new Float32Array(D.MAT_KEYS.length * 4 * 4), markData = new Float32Array(128 * 4 * 2);
   const materialTexture = texture(materialData, D.MAT_KEYS.length, 4), markTexture = texture(markData, 128, 2);
@@ -37,11 +40,12 @@ export function create(canvas, gl, onModelsReady) {
   const camera = new T.Camera(), objectView = objects(renderer, u, onModelsReady);
   function shading(material, enabled, mountain = false, table = false) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
-    if (material.userData.p2 === enabled && material.userData.tg === mountain && material.userData.tbl === table) return;
-    let source = enabled ? withLighting(material.userData.baseFragment) : material.userData.baseFragment;
+    const atlas = atlasOn && enabled;
+    if (material.userData.p2 === enabled && material.userData.tg === mountain && material.userData.tbl === table && material.userData.at === atlas) return;
+    let source = enabled ? withLighting(material.userData.baseFragment, atlas) : material.userData.baseFragment;
     if (table) source = tableSource(source);
     material.fragmentShader = mountain ? passShader(source) : source; material.userData.tg = mountain; material.userData.tbl = table;
-    material.userData.p2 = enabled; material.needsUpdate = true;
+    material.userData.p2 = enabled; material.userData.at = atlas; material.needsUpdate = true;
   }
   // SD1 table pre-pass (look.scatterMode 'table'): three banks of four bins at the table's resolution, optional separable blur, then the lit passes read them.
   const tabMesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: u, vertexShader: vertex, fragmentShader: tablePassSource(ground), depthTest: false, depthWrite: false }));
@@ -50,8 +54,9 @@ export function create(canvas, gl, onModelsReady) {
   const blurMesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: blurU, vertexShader: vertex, fragmentShader: tableBlurSource, depthTest: false, depthWrite: false }));
   const blurScene = new T.Scene(); blurMesh.frustumCulled = false; blurScene.add(blurMesh);
   function tableShading(extras) {
-    if (tabMesh.material.userData.lit === !!extras) return false;
-    tabMesh.material.fragmentShader = tablePassSource(extras ? withLighting(ground) : ground); tabMesh.material.userData.lit = !!extras; tabMesh.material.needsUpdate = true; return true;
+    const key = (extras ? 'lit' : 'plain') + (extras && atlasOn ? '-atlas' : '');
+    if (tabMesh.material.userData.lit === key) return false;
+    tabMesh.material.fragmentShader = tablePassSource(extras ? withLighting(ground, atlasOn) : ground); tabMesh.material.userData.lit = key; tabMesh.material.needsUpdate = true; return true;
   }
   // SD2 cache (look.scatterCache 'on'): the table is redrawn only when its key changes (the lamp pose quantised to 0.05 degrees and
   // 1e-4 m, the beam LUT identity, lamp colour, visibility, fov, size, eye, steps, res, blur, lit, near fade). Cycle 8 keeps eight versions
@@ -164,6 +169,16 @@ export function create(canvas, gl, onModelsReady) {
       rowsDone: fill ? fill.row : (cache ? 0 : th), rowsTotal: th, status: cache ? tableStatus(fillIdx, wanted) : null,
       fraction: fillFraction(fillIdx, wanted, fill ? fill.row : 0, th), badge: tableBadge(cache, fillIdx, wanted, tabStats.lastMs) });
   }
+  // BA5: pack the pool into the atlas. Cached: the same LUT objects, ids, tints, conventions and weights give the same texture.
+  function atlasFor(pool) {
+    const luts = pool.entries.map(e => e.lut), key = JSON.stringify([pool.key, pool.weights || null, pool.entries.map(e => e.conv)]);
+    if (atlasPacked && key === atlasKey && luts.length === atlasLuts.length && luts.every((L, i) => L === atlasLuts[i])) return atlasPacked;
+    const P = RF.BeamAtlas.packAtlas(pool.entries);
+    if (atlasTexture) atlasTexture.dispose();
+    atlasTexture = texture(P.data, P.width, P.height, T.RedFormat);
+    for (let i = 0; i < P.count; i++) { u.beamMeta.value[i].fromArray(P.beamMeta, 4 * i); u.beamGrid.value[i].fromArray(P.beamGrid, 4 * i); u.beamTint.value[i].fromArray(P.beamTint, 4 * i); }
+    atlasPacked = P; atlasKey = key; atlasLuts = luts; return P;
+  }
   function update(p, world, dist) {
     const lut = p.lut, look = p.look, A = world.A || p.A;
     if (beamRef !== lut) { if (beamTexture) beamTexture.dispose(); beamRef = lut; beamTexture = texture(lut.data, lut.nh, lut.nv, T.RedFormat); set('beam', beamTexture); }
@@ -200,15 +215,27 @@ export function create(canvas, gl, onModelsReady) {
 
     set('pitch', p.pitch || 0); set('yaw', p.yaw || 0); u.cornering.value.set(p.cornerLeft || 0,p.cornerRight || 0);
     const traffic = p.trafficBeams ? D.trafficSources(world.objects, p.eye, p) : []; set('nTraffic', traffic.length);
-    if (traffic.length) {
+    // BA5: a symmetric-mode car with a pool pick reads its beam from the atlas. No pool, or any other mode: the single table, as before.
+    const pool = traffic.length ? p.trafficPool : null, atlas = !!(pool && pool.entries.length && traffic.some(q => q.beam));
+    atlasOn = atlas;
+    if (atlas) {
+      atlasFor(pool);
+      set('otherBeam', atlasTexture);   // not aliased to otherTexture: the single-table path disposes that one
+      otherRef = null;   // the single table is rebound when the atlas is switched off
+    } else if (traffic.length) {
       const b = D.trafficBeam(p), L = b.lut;
       if (otherRef !== L) { if (otherTexture) otherTexture.dispose(); otherRef = L; otherTexture = texture(L.data, L.nh, L.nv, T.RedFormat); set('otherBeam', otherTexture); }
       u.otherLutInfo.value.set(L.h0, L.v0, L.step, 0); u.otherLutSize.value.set(L.nh, L.nv); set('otherConvention', b.conv === 'B' ? 1 : b.conv === 'S' ? 2 : 0);
+    }
+    if (traffic.length) {
       traffic.forEach((q, i) => {
         if(p.touge){const f=world.A.frame(q.x,q.y),a=world.A.surface(f.s,f.off);u.trafficPitch.value[i]=Math.atan(a.grade*(q.nx*f.t[0]+q.ny*f.t[1]));
           if(!world.objects.some(ob=>ob.traffic===q.car && ob.headlamp))q.z+=world.A.height(f.s,f.off);
         }
-        u.trafficLamp.value[i].set(q.x, q.y, q.z, q.w); u.trafficDir.value[i].set(q.nx, q.ny); });
+        u.trafficLamp.value[i].set(q.x, q.y, q.z, q.w); u.trafficDir.value[i].set(q.nx, q.ny);
+        if (atlas) u.trafficBeamIdx.value[i >> 2].setComponent(i & 3, D.trafficPickIndexOf(p, q.car));
+        litCars[i] = q.car;
+      });
     }
     const lights = world.lights || [], reflections = D.reflectionSources(world.objects, { ...p, pointLights: lights }).concat(lights);
     for (const [name, values] of [['light', lights], ['reflection', reflections]]) { if (values.length > 64) throw Error('too many ' + name + ' sources'); set(name === 'light' ? 'nLight' : 'nReflection', values.length); values.forEach((q, i) => { u[name].value[i].set(q.x, q.y, q.z, q.cd); u[name + 'RGB'].value[i].fromArray(q.rgb); }); }
@@ -217,6 +244,8 @@ export function create(canvas, gl, onModelsReady) {
     version: T.REVISION,
     // BB3 test hook: the lamp tint currently in the lampRGB uniform (what the GPU lights with)
     lampUniform() { return u.lampRGB && u.lampRGB.value ? u.lampRGB.value.toArray() : null; },
+    // BA5 test hook: what the GPU got this frame: whether the atlas is on, the beam count, each lit source's atlas index, and the tints
+    atlasState() { const n = u.nTraffic.value; return { on: atlasOn, beams: atlasPacked ? atlasPacked.count : 0, nTraffic: n, cars: litCars.slice(0, n), idx: Array.from({ length: n }, (_, i) => u.trafficBeamIdx.value[i >> 2].getComponent(i & 3)), tints: atlasPacked ? Array.from({ length: atlasPacked.count }, (_, i) => u.beamTint.value[i].toArray().slice(0, 3)) : [] }; },
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
       const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn);
@@ -265,6 +294,6 @@ export function create(canvas, gl, onModelsReady) {
         if(gl.getQueryParameter(query,gl.QUERY_RESULT_AVAILABLE)){const gpuMs=gl.getQueryParameter(query,gl.QUERY_RESULT)/1e6/repeats;gl.deleteQuery(query);return {gpuMs,repeats};}}
       gl.deleteQuery(query);return {gpuMs:null,reason:'timer timeout'};
     },
-    dispose() { renderer.setRenderTarget(null); renderer.debug.onShaderError = null; objectView.dispose(); if (objectTarget) objectTarget.dispose(); if (target) target.dispose(); if (beamTexture) beamTexture.dispose(); if (otherTexture) otherTexture.dispose(); materialTexture.dispose(); markTexture.dispose(); mat.dispose(); mesh.geometry.dispose(); pass.dispose(); renderer.resetState(); },       // the renderer itself stays with the GL context (see shared)
+    dispose() { renderer.setRenderTarget(null); renderer.debug.onShaderError = null; objectView.dispose(); if (objectTarget) objectTarget.dispose(); if (target) target.dispose(); if (atlasTexture) atlasTexture.dispose(); if (beamTexture) beamTexture.dispose(); if (otherTexture) otherTexture.dispose(); materialTexture.dispose(); markTexture.dispose(); mat.dispose(); mesh.geometry.dispose(); pass.dispose(); renderer.resetState(); },       // the renderer itself stays with the GL context (see shared)
   };
 }
