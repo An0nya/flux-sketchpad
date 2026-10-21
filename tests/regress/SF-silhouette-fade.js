@@ -30,7 +30,9 @@ async function meanLuma(page, png) {
     const settle = () => page.evaluate(() => { let n = 0; while (globalThis.SD_SCATTER.fraction < 1 && n < 600) { RF.DriveAnim._.frame(); n++; } return n; });
     const snap = async (label) => { await settle(); await page.evaluate(() => RF.UI.redrawSpec()); await sleep(1200); await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sf-drive', '1')); const png = await page.locator('canvas[data-sf-drive="1"]').screenshot(); return { label, hash: crypto.createHash('sha256').update(png).digest('hex'), luma: await meanLuma(page, png) }; };
     const recomputes = () => page.evaluate(() => globalThis.SD_SCATTER.recomputes);
-    const btnText = (k) => page.evaluate((key) => document.querySelector('[data-dv="' + key + '"]').textContent, k);
+    // DD: near fade is a select now; stepFade moves it to the next option (what a click on the old button did).
+    const stepFade = () => page.evaluate(() => { const s = document.querySelector('[data-dv="scatterNearFadeRange"]'); s.selectedIndex = (s.selectedIndex + 1) % s.options.length; s.dispatchEvent(new Event('change', { bubbles: true })); });
+    const btnText = (k) => page.evaluate((key) => { const b = document.querySelector('[data-dv="' + key + '"]'); return b.tagName === 'SELECT' ? b.options[b.selectedIndex].textContent : b.textContent; }, k);
     const base = { visibility: 60, wet: false, wetness: 0, wetSheen: false, fpsCounter: false, scatterMode: 'table', scatter: 64, scatterTableSteps: 64, scatterRes: 'half', scatterBlur: 'off', scatterCache: 'on', scatterCycle: 0, scatterNearFade: 'on', scatterNearFadeRange: 'medium', scatterGain: 1, afs: false, lampPitch: false, corneringLamps: false };
     await setOpts(base, 1500);
 
@@ -40,12 +42,12 @@ async function meanLuma(page, png) {
     seq.push(await snap('off'));
     const rebuild0 = await recomputes();
     for (const want of ['short', 'medium', 'long']) {
-      await page.evaluate(() => document.querySelector('[data-dv="scatterNearFadeRange"]').click()); await sleep(600);
-      const r = await page.evaluate(() => RF.UI.dvOpts.scatterNearFadeRange);
+      await stepFade(); await sleep(600);
+      const r =await page.evaluate(() => RF.UI.dvOpts.scatterNearFadeRange);
       ok('SF button: cycle reaches ' + want, r === want, 'dvOpts ' + r);
       seq.push(await snap(want));
     }
-    await page.evaluate(() => document.querySelector('[data-dv="scatterNearFadeRange"]').click()); await sleep(600);
+    await stepFade(); await sleep(600);
     ok('SF button: cycle wraps back to off', (await page.evaluate(() => RF.UI.dvOpts.scatterNearFadeRange)) === 'off');
     ok('SF button: label names the range', /beam near fade: off/.test(await btnText('scatterNearFadeRange')), await btnText('scatterNearFadeRange'));
     const rebuild1 = await recomputes();

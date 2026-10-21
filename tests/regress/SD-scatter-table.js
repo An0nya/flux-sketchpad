@@ -83,8 +83,9 @@ async function meanLuma(page, png) {
     await setOpts({ scatterCycle: 0, scatterCache: 'off', scatterMode: 'direct' });
     // SD3 UI: the buttons appear in air only; table mode switches the labels and the scatter steps (16, 32, 64); res, blur, cache and cycle need table mode.
     // Frames here are taken at one car position (no driving in this block), so direct frames can be compared with each other.
-    const ui = (k) => page.evaluate((key) => { const b = document.querySelector('[data-dv="' + key + '"]'); return b ? { text: b.textContent.trim(), hidden: b.hidden, disabled: b.disabled } : null; }, k);
-    const press = async (k) => { await page.evaluate((key) => document.querySelector('[data-dv="' + key + '"]').click(), k); await sleep(2200); };
+    // DD: air beam, beam blur and near fade are selects now; press steps a select to its next option (like a click on the old button).
+    const ui = (k) => page.evaluate((key) => { const b = document.querySelector('[data-dv="' + key + '"]'); return b ? { text: b.tagName === 'SELECT' ? b.options[b.selectedIndex].textContent.trim() : b.textContent.trim(), hidden: b.hidden, disabled: b.disabled } : null; }, k);
+    const press = async (k) => { await page.evaluate((key) => { const b = document.querySelector('[data-dv="' + key + '"]'); if (b.tagName === 'SELECT') { b.selectedIndex = (b.selectedIndex + 1) % b.options.length; b.dispatchEvent(new Event('change', { bubbles: true })); } else b.click(); }, k); await sleep(2200); };
     const pressTo = async (k, text) => { for (let i = 0; i < 6; i++) { if ((await ui(k)).text === text) return true; await press(k); } return (await ui(k)).text === text; };
     const snap = async (label) => { await settle(); await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sc-drive', '1')); const png = await page.locator('canvas[data-sc-drive="1"]').screenshot(); return { label, hash: crypto.createHash('sha256').update(png).digest('hex'), luma: await meanLuma(page, png) }; };
     await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { visibility: null, scatter: 0, scatterMode: 'direct', scatterRes: 'half', scatterBlur: 'off', scatterCache: 'off', scatterCycle: 0, scatterTableSteps: undefined }); RF.UI.redrawSpec(); });

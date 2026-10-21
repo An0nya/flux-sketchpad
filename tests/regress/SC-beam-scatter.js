@@ -29,7 +29,7 @@ async function meanLuma(page, png) {
     await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, visibility: null, scatter: 0 }); RF.UI.redrawSpec(); });
     const state = async () => page.evaluate(() => {
       const s = RF.DriveAnim.stats(), b = document.querySelector('[data-dv="scatter"]');
-      return { renderer: s.renderer, gpuFailure: s.gpuFailure || '', btn: b ? b.textContent.trim() : '', hidden: b ? b.hidden : null };
+      return { renderer: s.renderer, gpuFailure: s.gpuFailure || '', btn: b ? (b.options ? b.options[b.selectedIndex].textContent.trim() : b.textContent.trim()) : '', hidden: b ? b.hidden : null };   // DD: air beam steps is a select
     });
     const capture = async (label) => {
       await sleep(2500);
@@ -49,7 +49,7 @@ async function meanLuma(page, png) {
     ok('SC fog 200: the air beam button shows, off', fogOff.st.hidden === false && fogOff.st.btn === 'air beam: off', JSON.stringify(fogOff.st));
     // 3. the beam steps: low, mid, high
     const levels = [fogOff];
-    for (const name of ['low', 'mid', 'high']) { await page.evaluate(() => document.querySelector('[data-dv="scatter"]').click()); levels.push(await capture('fog, beam ' + name)); }
+    for (const name of ['low', 'mid', 'high']) { await page.evaluate(() => { const s = document.querySelector('[data-dv="scatter"]'); s.selectedIndex = (s.selectedIndex + 1) % s.options.length; s.dispatchEvent(new Event('change', { bubbles: true })); }); levels.push(await capture('fog, beam ' + name)); }
     const labels = levels.map((f) => f.st.btn);
     ok('SC air beam button cycles off, low, mid, high', labels.join('|') === 'air beam: off|air beam: low|air beam: mid|air beam: high', labels.join(' | '));
     ok('SC the beam frames differ from the beam-off frame', new Set(levels.map((f) => f.hash)).size === levels.length, levels.map((f) => f.hash.slice(0, 8)).join(' '));

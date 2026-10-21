@@ -113,11 +113,11 @@ async function meanLuma(page, png) {
 
     // 6. near-eye fade: the button (table mode, saved in the view options) toggles and changes the frame
     await setOpts(Object.assign({}, base, { scatterCache: 'off', scatterCycle: 0, scatterNearFadeRange: 'medium' }), 1500);
-    const ui = (k) => page.evaluate((key) => { const b = document.querySelector('[data-dv="' + key + '"]'); return b ? { text: b.textContent.trim(), hidden: b.hidden, disabled: b.disabled } : null; }, k);
+    const ui = (k) => page.evaluate((key) => { const b = document.querySelector('[data-dv="' + key + '"]'); return b ? { text: b.tagName === 'SELECT' ? b.options[b.selectedIndex].textContent.trim() : b.textContent.trim(), hidden: b.hidden, disabled: b.disabled } : null; }, k);
     const fadeOn = await ui('scatterNearFadeRange');
     ok('SE UI: the near-fade button reads on in table mode', fadeOn && fadeOn.text === 'beam near fade: medium (1-10 m)' && !fadeOn.disabled && !fadeOn.hidden, JSON.stringify(fadeOn));
     const sOn = await snap('fade on');
-    await page.evaluate(() => document.querySelector('[data-dv="scatterNearFadeRange"]').click()); await sleep(1500);
+    await page.evaluate(() => { const s = document.querySelector('[data-dv="scatterNearFadeRange"]'); s.selectedIndex = (s.selectedIndex + 1) % s.options.length; s.dispatchEvent(new Event('change', { bubbles: true })); }); await sleep(1500);
     const fadeOff = await ui('scatterNearFadeRange');
     const sOff = await snap('fade off');
     ok('SE UI: clicking the button moves medium to long and the frame changes', fadeOff.text === 'beam near fade: long (2-20 m)' && sOff.hash !== sOn.hash, 'on ' + sOn.luma.toFixed(3) + ' off ' + sOff.luma.toFixed(3));

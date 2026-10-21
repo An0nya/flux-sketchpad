@@ -860,10 +860,8 @@
   // SD3: table mode (look.scatterMode 'table') takes table steps 16, 32, 64 for the same off/low/mid/high levels. The mode button keeps the level.
   const SCAT_TABLE_LEVELS = [0, 16, 32, 64];
   const scatLevels = (o) => o.scatterMode === 'table' ? SCAT_TABLE_LEVELS : SCAT_LEVELS;
-  function cycleScatter(ui) { const o = dvOpts(ui), L = scatLevels(o); const j = Math.max(0, L.indexOf(+o.scatter || 0)); setDV(ui, 'scatter', L[(j + 1) % L.length]); }
   // SL3: oncoming lamps' halo in fog, off, 4, 8 or 16 nearest lamps (look.trafficHalo). Shown only in air, like the air beam.
-  const HALO_LEVELS = [0, 4, 8, 16], HALO_NAMES = ['off', '4', '8', '16'];
-  function cycleTrafficHalo(ui) { const o = dvOpts(ui), j = Math.max(0, HALO_LEVELS.indexOf(+o.trafficHalo || 0)); setDV(ui, 'trafficHalo', HALO_LEVELS[(j + 1) % HALO_LEVELS.length]); }
+  const HALO_LEVELS = [0, 4, 8, 16];
   function cycleScatterMode(ui) {
     const o = dvOpts(ui), j = Math.max(0, scatLevels(o).indexOf(+o.scatter || 0)), table = o.scatterMode !== 'table';
     setDV(ui, 'scatter', (table ? SCAT_TABLE_LEVELS : SCAT_LEVELS)[j]); setDV(ui, 'scatterMode', table ? 'table' : 'direct');
@@ -871,6 +869,17 @@
   // SF2: the range a look resolves to (scatterNearFadeRange wins; saved scatterNearFade on/off map to medium/off).
   function fadeName(o) { return ['off', 'short', 'medium', 'long'].includes(o.scatterNearFadeRange) ? o.scatterNearFadeRange : (o.scatterNearFade === 'off' ? 'off' : 'medium'); }
   function cycleSD(ui, k, names) { const o = dvOpts(ui); setDV(ui, k, names[(Math.max(0, names.indexOf(o[k])) + 1) % names.length]); }
+  // DD: a heavy cycle button that stays a button (beam res, beam cycle). The label moves at once; the apply waits DV_DEBOUNCE_MS after the last click.
+  // The pending value lives in ui.dvPending, not dvOpts, because drive-anim reads dvOpts every frame and would apply it early.
+  const DV_DEBOUNCE_MS = 500;
+  function cycleDebounced(ui, k, names, cv) {
+    ui.dvPending = ui.dvPending || {}; ui.dvTimers = ui.dvTimers || {};
+    const cur = k in ui.dvPending ? ui.dvPending[k] : dvOpts(ui)[k];
+    const next = names[(Math.max(0, names.indexOf(cur)) + 1) % names.length];
+    ui.dvPending[k] = next; clearTimeout(ui.dvTimers[k]);
+    ui.dvTimers[k] = setTimeout(() => { delete ui.dvPending[k]; delete ui.dvTimers[k]; setDV(ui, k, next); }, DV_DEBOUNCE_MS);
+    driveTools(ui, cv);   // re-sync the labels now; setDV above does the real apply later
+  }
   function cycleVisibility(ui) { const j = visIndex(dvOpts(ui).visibility); setDV(ui, 'visibility', VIS_LEVELS[(j + 1) % VIS_LEVELS.length]); }
   function dvOpts(ui) {
     if (!ui.dvOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/driveView') || '{}'); } catch (e) { /* ignore */ } ui.dvOpts = Object.assign({}, DV_DEF, o); if (!('scatterNearFadeRange' in o)) ui.dvOpts.scatterNearFadeRange = o.scatterNearFade === 'off' ? 'off' : 'medium';   /* SF2: saved on/off becomes medium/off */ if (ui.dvOpts.scene === 'intersection') ui.dvOpts.scene = 'road';   /* GI2: the scene is removed; a stored one loads as the open road */ ui.dvOpts.glare = RF.Drive.glareLevel(ui.dvOpts.glare); { const lr = String(ui.dvOpts.trafficLightRange); ui.dvOpts.trafficLightRange = ['150', '250', '400', 'cars'].includes(lr) ? lr : '150'; const tn = String(ui.dvOpts.trafficNearest); ui.dvOpts.trafficNearest = ['8', '16', '32'].includes(tn) ? tn : '8'; }   /* TL2: unknown stored values fall back to the defaults */ { const f = RF.DriveAnim.fpsSettings(o); ui.dvOpts.minFps = f.minFps; ui.dvOpts.frameTargetMs = f.frameTargetMs; }   /* old stored frameTargetMs (ms) -> nearest min fps; a stored minFps wins */ if (!o.onMode && o.onKcd !== undefined && +o.onKcd !== DV_DEF.onKcd) ui.dvOpts.onMode = 'manual'; /* WT: the old wet boolean loads as wetness 1; while wetness is unset, wet alone still sets the road (RF.Drive.wetnessOf) */ if (ui.dvOpts.wetness !== undefined) ui.dvOpts.wetness = Math.max(0, Math.min(1, +ui.dvOpts.wetness || 0)); else if (o.wet) ui.dvOpts.wetness = 1; ui.dvOpts.wet = RF.Drive.wetnessOf(ui.dvOpts) > 0; }   // old numeric/boolean glare -> off/rain. Old setDV saved the whole option set, so onKcd = 30 is the old default, not a choice: it migrates to symmetric; only a different saved kcd stays manual (tester fix)
@@ -892,6 +901,8 @@
     if (!bar) {
       bar = ui.driveBar = el('div', { class: 'drive-tools' });
       const btn = (k, title, fn) => { const b = el('button', { type: 'button', class: 'toggle', 'data-dv': k, title }); b.addEventListener('click', fn); bar.append(b); return b; };
+      // DD: a heavy option with 3+ values is a select: one change, one apply. onPick reads s.value before it calls setDV (setDV re-syncs this select).
+      const dvSelect = (k, aria, title, opts, onPick) => { const s = el('select', { 'data-dv': k, 'aria-label': aria, title }, ...opts.map(([v, t]) => el('option', { value: v }, t))); s.addEventListener('change', () => onPick(s)); bar.append(s); return s; };
       const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road or a city street' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)), el('option', { value: '__pass', title: 'Prototype: grades, hairpins, banking. Needs the GPU drive renderer for elevation; the CPU stays flat.' }, 'Mountain pass (prototype)'));
       sel.addEventListener('change', () => { const v = sel.value; if (v === '__pass') setDV(ui, 'mountainPass', true); else { if (dvOpts(ui).mountainPass) setDV(ui, 'mountainPass', false); setDV(ui, 'scene', v); } }); bar.append(sel);   // v read first: setDV re-syncs this select
       btn('shape', 'The road: straight, or an IIHS bend (shared with the Road view)', () => { const o = rvOpts(ui); setRV(ui, 'shape', RV_SHAPES[(RV_SHAPES.indexOf(o.shape) + 1) % RV_SHAPES.length]); });
@@ -899,14 +910,14 @@
       btn('wetSheen', 'Wet-road streaks: cheap anisotropic mirror-lobe approximation for our beam, traffic and street lamps. Off keeps the previous wet material.', () => setDV(ui, 'wetSheen', !dvOpts(ui).wetSheen));
       btn('wetModel', 'Streak model. legacy: the original mirror-lobe approximation. GGX: a physically based anisotropic microfacet BRDF (Trowbridge-Reitz, Smith, Fresnel), evaluated per lamp from its candela toward the road point. Needs wet sheen on.', () => setDV(ui, 'wetModel', dvOpts(ui).wetModel === 'ggx' ? 'legacy' : 'ggx'));
       btn('visibility', 'Air visibility, cycling clear, haze (3 km), mist (1 km), fog (200 m) and dense (60 m). Fog darkens distant road, objects and lamps. The air beam button adds the visible beam in air.', () => cycleVisibility(ui));
-      btn('scatter', 'Visible beam in fog (single scatter off our own lamps): off, low, mid or high. Direct: 4, 8 or 16 steps per pixel. Table: 16, 32 or 64 table steps. Only shown in air. Costs frame time.', () => cycleScatter(ui));
-      btn('trafficHalo', 'Oncoming lamps glow in fog: their single scatter along the eye ray, off or from the 4, 8 or 16 nearest lamps. Only shown in air, with traffic beams on. Costs frame time.', () => cycleTrafficHalo(ui));
+      dvSelect('scatter', 'Air beam steps', 'Visible beam in fog (single scatter off our own lamps): off, low, mid or high. Direct: 4, 8 or 16 steps per pixel. Table: 16, 32 or 64 table steps. Only shown in air. Costs frame time.', [['0', 'air beam: off'], ['1', 'air beam: low'], ['2', 'air beam: mid'], ['3', 'air beam: high']], (s) => { const v = +s.value; setDV(ui, 'scatter', scatLevels(dvOpts(ui))[v]); });
+      dvSelect('trafficHalo', 'Traffic halo', 'Oncoming lamps glow in fog: their single scatter along the eye ray, off or from the 4, 8 or 16 nearest lamps. Only shown in air, with traffic beams on. Costs frame time.', [['0', 'traffic halo: off'], ['4', 'traffic halo: 4'], ['8', 'traffic halo: 8'], ['16', 'traffic halo: 16']], (s) => setDV(ui, 'trafficHalo', +s.value));
       btn('scatterMode', 'Air beam method. direct: the scatter is integrated per pixel in the shader (the default). table: one scatter table per frame at half or full res, looked up by distance; objects cost one lookup.', () => cycleScatterMode(ui));
-      btn('scatterRes', 'Scatter table resolution: half (default) or full. Table mode only.', () => cycleSD(ui, 'scatterRes', ['half', 'full']));
-      btn('scatterBlur', 'Blur of the scatter table: off, mid (1.5 texels) or strong (3 texels). Table mode only.', () => cycleSD(ui, 'scatterBlur', ['off', 'mid', 'strong']));
+      btn('scatterRes', 'Scatter table resolution: half (default) or full. Table mode only.', () => cycleDebounced(ui, 'scatterRes', ['half', 'full'], cv));
+      dvSelect('scatterBlur', 'Beam blur', 'Blur of the scatter table: off, mid (1.5 texels) or strong (3 texels). Table mode only.', [['off', 'beam blur: off'], ['mid', 'beam blur: mid'], ['strong', 'beam blur: strong']], (s) => setDV(ui, 'scatterBlur', s.value));
       btn('scatterCache', 'Scatter table cache: off redraws the table every frame; on redraws only when the lamp pose, beam, fog or size changes. Table mode only.', () => cycleSD(ui, 'scatterCache', ['off', 'on']));
-      btn('scatterNearFadeRange', 'Near-eye fade of the table, the metres over which near-eye scatter is weighted in: off (the plain table), short (0.5-3 m), medium (1-10 m, default) or long (2-20 m). Table mode only.', () => cycleSD(ui, 'scatterNearFadeRange', ['off', 'short', 'medium', 'long']));
-      btn('scatterCycle', 'Scatter table cycle: off shows one table; 8 keeps eight jitter versions and rotates them (less visible noise). Needs the cache on. Table mode only.', () => { const o = dvOpts(ui); setDV(ui, 'scatterCycle', o.scatterCycle === 8 ? 0 : 8); });
+      dvSelect('scatterNearFadeRange', 'Beam near fade', 'Near-eye fade of the table, the metres over which near-eye scatter is weighted in: off (the plain table), short (0.5-3 m), medium (1-10 m, default) or long (2-20 m). Table mode only.', [['off', 'beam near fade: off'], ['short', 'beam near fade: short (0.5-3 m)'], ['medium', 'beam near fade: medium (1-10 m)'], ['long', 'beam near fade: long (2-20 m)']], (s) => setDV(ui, 'scatterNearFadeRange', s.value));
+      btn('scatterCycle', 'Scatter table cycle: off shows one table; 8 keeps eight jitter versions and rotates them (less visible noise). Needs the cache on. Table mode only.', () => cycleDebounced(ui, 'scatterCycle', [0, 8], cv));
       const onMode = el('select', { 'data-dv': 'onMode', 'aria-label': 'Oncoming headlamps', title: 'Symmetric: their lamps carry our design, sampled toward our eye each frame. Generic: approximate low beam. High: generic high beam, always on. High then dip: seeded 150–400 m switch, 5% forget (scenario assumptions). Manual: saved kcd (Spec → Road).' }, ...[['symmetric', 'oncoming: our design'], ['generic', 'oncoming: generic low'], ['high', 'oncoming: high beam (always)'], ['high-dip', 'oncoming: high, then dip'], ['manual', 'oncoming: manual kcd']].map(([value, label]) => el('option', { value }, label)));
       onMode.addEventListener('change', () => setDV(ui, 'onMode', onMode.value)); bar.append(onMode);
       // View angle (horizontal FOV, degrees). Moved here from the sidebar; the saved key is still 'fov'. 30 is the telephoto preset below 45.
@@ -937,6 +948,7 @@
       cv.addEventListener('mouseleave', () => { ro.textContent = ''; });
     }
     const o = dvOpts(ui), rv = rvOpts(ui), tm = ui.driveShown && ui.driveShown.tm;
+    const pend = ui.dvPending || {}, ov = (k) => (k in pend ? pend[k] : o[k]);   // DD: a debounced button shows its pending value at once
     for (const b of new Set([...bar.querySelectorAll('[data-dv]'), ...ui.driveExtras.querySelectorAll('[data-dv]')])) {
       const k = b.dataset.dv;
       if (k === 'scene') b.value = o.mountainPass ? '__pass' : o.scene;
@@ -946,14 +958,14 @@
       else if (k === 'wetModel') { b.textContent = 'streaks: ' + (o.wetModel === 'ggx' ? 'GGX' : 'legacy'); b.disabled = !(RF.Drive.wetnessOf(o) > 0 && o.wetSheen); b.setAttribute('aria-pressed', String(o.wetModel === 'ggx')); }
       else if (k === 'shape') { b.textContent = rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' $1'); b.setAttribute('aria-pressed', String(rv.shape !== 'straight')); }
       else if (k === 'visibility') { b.textContent = 'air: ' + visLabel(o.visibility); b.setAttribute('aria-pressed', String(visIndex(o.visibility) > 0)); }
-      else if (k === 'scatter') { const L = scatLevels(o), j = Math.max(0, L.indexOf(+o.scatter || 0)); b.textContent = 'air beam: ' + SCAT_NAMES[j] + (o.scatterMode === 'table' && j > 0 ? ' (' + L[j] + ')' : ''); b.hidden = visIndex(o.visibility) === 0; b.setAttribute('aria-pressed', String(j > 0)); }
-      else if (k === 'trafficHalo') { const j = Math.max(0, HALO_LEVELS.indexOf(+o.trafficHalo || 0)); b.textContent = 'traffic halo: ' + HALO_NAMES[j]; b.hidden = visIndex(o.visibility) === 0; b.setAttribute('aria-pressed', String(j > 0)); }
+      else if (k === 'scatter') { const L = scatLevels(o), j = Math.max(0, L.indexOf(+o.scatter || 0)); [...b.options].forEach((op, i) => { op.textContent = 'air beam: ' + SCAT_NAMES[i] + (o.scatterMode === 'table' && i > 0 ? ' (' + L[i] + ')' : ''); }); b.value = String(j); b.hidden = visIndex(o.visibility) === 0; }
+      else if (k === 'trafficHalo') { const j = Math.max(0, HALO_LEVELS.indexOf(+o.trafficHalo || 0)); b.value = String(HALO_LEVELS[j]); b.hidden = visIndex(o.visibility) === 0; }
       else if (k === 'scatterMode') { b.textContent = 'air beam mode: ' + (o.scatterMode === 'table' ? 'table' : 'direct'); b.hidden = visIndex(o.visibility) === 0; b.setAttribute('aria-pressed', String(o.scatterMode === 'table')); }
-      else if (k === 'scatterRes') { b.textContent = 'beam res: ' + (o.scatterRes === 'full' ? 'full' : 'half'); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table'; }
-      else if (k === 'scatterBlur') { b.textContent = 'beam blur: ' + (o.scatterBlur === 'mid' || o.scatterBlur === 'strong' ? o.scatterBlur : 'off'); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table'; }
+      else if (k === 'scatterRes') { b.textContent = 'beam res: ' + (ov('scatterRes') === 'full' ? 'full' : 'half'); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table'; }
+      else if (k === 'scatterBlur') { b.value = o.scatterBlur === 'mid' || o.scatterBlur === 'strong' ? o.scatterBlur : 'off'; b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table'; }
       else if (k === 'scatterCache') { b.textContent = 'beam cache: ' + (o.scatterCache === 'on' ? 'on' : 'off'); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table'; }
-      else if (k === 'scatterNearFadeRange') { const nm = fadeName(o); b.textContent = 'beam near fade: ' + nm + (nm === 'off' ? '' : ' (' + ({ short: '0.5-3 m', medium: '1-10 m', long: '2-20 m' })[nm] + ')'); b.setAttribute('aria-pressed', String(nm !== 'off')); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table'; }
-      else if (k === 'scatterCycle') { b.textContent = 'beam cycle: ' + (o.scatterCycle === 8 ? '8' : 'off'); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table' || o.scatterCache !== 'on'; }
+      else if (k === 'scatterNearFadeRange') { b.value = fadeName(o); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table'; }
+      else if (k === 'scatterCycle') { b.textContent = 'beam cycle: ' + (ov('scatterCycle') === 8 ? '8' : 'off'); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table' || o.scatterCache !== 'on'; }
       else if (k === 'wetness') { b.textContent = 'road: ' + wetLabel(RF.Drive.wetnessOf(o)); b.setAttribute('aria-pressed', String(RF.Drive.wetnessOf(o) > 0)); }
       else if (k === 'expMode') { b.textContent = o.expMode; b.setAttribute('aria-pressed', String(o.expMode === 'fixed')); }
       else if (k === 'evm') b.textContent = '−';
