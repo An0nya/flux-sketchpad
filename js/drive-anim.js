@@ -1149,7 +1149,7 @@ void main() {
     const own = ownBeams(o), tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
     V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(), lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
-      V.g = V.three || V.src.cross || o.tiles || (D.wetnessOf(o) > 0 && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g); if (!TL.cur) tlOpen('rebuild'); tlMark(V.three ? 'ground (GPU path, drawn per frame)' : 'ground built (CPU)', V.three ? null : { ms: V.g.ms });
+      V.g = V.three || V.src.cross || o.tiles || (D.wetnessOf(o) > 0 && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g); if (!TL.cur) tlOpen('rebuild'); tlMark(V.three ? 'ground (GPU path, drawn per frame)' : 'ground built (CPU)', V.three ? null : { groundMs: V.g.ms });
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
     }
     V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr));
@@ -2334,11 +2334,14 @@ void main() {
     const mode = V.three ? 'three' : 'cpu', pc = V.three ? V.three.programCount() : -1;
     if (b.pc >= 0 && pc > b.pc) tlMark('programs compiled', { n: pc - b.pc, total: pc, mode });
     if (b.rc >= 0 && globalThis.SD_SCATTER.recomputes > b.rc) tlMark('beam table recomputed', { mode });
-    c.frames.push(mode); const n = c.frames.length;
-    tlMark('frame ' + n + ' submitted', { mode });
-    // only the open and load events read the GPU back, once; a rebuild never stalls the page. With the GPU renderer on, wait for its first frame.
+    const prev = c.frames.length ? c.frames[c.frames.length - 1] : null; c.frames.push(mode); const n = c.frames.length;
+    // every frame is counted in frames; a frame is marked only when it is the first, changes mode, syncs, or closes the event (CPU frames can run for seconds)
     const reads = c.kind === 'open' || c.kind === 'load';
-    if (reads && !c.synced && (V.three || !V.info.o.gpuRenderer || V.gpuFailure)) { c.synced = true; c.syncedAt = n; V.gl.sync(); tlMark('frame ' + n + ' GPU done'); }
+    const syncNow = reads && !c.synced && (V.three || !V.info.o.gpuRenderer || V.gpuFailure);
+    const closes = (c.synced && n > c.syncedAt) || (!reads && n >= 2);
+    if (n === 1 || mode !== prev || closes || syncNow) tlMark('frame ' + n + ' submitted', { mode });
+    // only the open and load events read the GPU back, once; a rebuild never stalls the page. With the GPU renderer on, wait for its first frame.
+    if (syncNow) { c.synced = true; c.syncedAt = n; V.gl.sync(); tlMark('frame ' + n + ' GPU done'); }
     if (c.synced) { if (n > c.syncedAt) return tlClose('ok'); tlGrace(c); }      // the next frame ends it, or 1.5 s without one
     else if (!reads) { if (n >= 2) return tlClose('ok'); tlGrace(c); }
   }
@@ -2356,7 +2359,7 @@ void main() {
   // one line: the newest event of any kind, under a constant prefix (a multi-line readout broke the UX2 mobile popout check)
   function tlText() {
     const e = TL.events[TL.events.length - 1];
-    return e ? 'first-open timeline [' + e.event + ']: ' + e.marks.slice(0, 5).map((m) => m.m + ' ' + m.ms).join(' · ') : '';
+    return e ? 'first-open timeline [' + e.event + ']: ' + e.marks.filter((m) => !/^ground/.test(m.m)).slice(0, 8).map((m) => m.m + ' ' + m.ms).join(' · ') : '';
   }
   // the click that opens Drive: capture phase, so t0 is taken before ui.js's own handler runs; a click while Drive already shows is not an open
   if (root.document) root.document.addEventListener('click', (e) => {

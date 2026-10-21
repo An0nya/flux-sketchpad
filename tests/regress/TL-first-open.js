@@ -20,6 +20,7 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
     if (ld) {
       console.log('TL raw load line: ' + JSON.stringify(ld));
       const at = (name) => ld.marks.find((m) => m.m === name);
+      ok('TL load: marks are non-decreasing', ld.marks.every((m, i) => i === 0 || m.ms >= ld.marks[i - 1].ms), ld.marks.map((m) => m.m + ' ' + m.ms).join(' | '));
       // a cold start: GL context, then the three renderer, then the first three-mode frame, then the GPU-done mark on that frame
       const gl = at('GL context and shaders created'), tr = at('three renderer created');
       const gd = ld.marks.find((m) => /^frame \d+ GPU done$/.test(m.m)) || null;
@@ -59,6 +60,8 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
     await page.click('[data-anim="debug-timings"]'); await sleep(1200);
     const shown = await page.evaluate(() => document.body.innerText.includes('first-open timeline'));
     ok('TL with debugTimings on, the readout appears in the drive area', shown);
+    const txt = await page.evaluate(() => document.body.innerText);
+    ok('TL the readout line shows the GPU-done milestone', /GPU done/.test(txt), (txt.match(/first-open timeline[^\n]*/) || [''])[0].slice(0, 300));
     ok('TL nothing throws', errors.length === 0, errors.slice(0, 2).join(' | '));
   } finally { await browser.close(); }
   console.log(fails ? fails + ' TL checks FAILED' : 'all TL checks passed'); process.exit(fails ? 1 : 0);
