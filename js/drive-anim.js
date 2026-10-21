@@ -1009,7 +1009,15 @@ void main() {
     const live = S(V.ui).playing && V.last && !Wk.afterFrame, cadenceMs = live && V.completedAt ? now - V.completedAt : elapsed;
     V.completedAt = live ? now : 0;
     V.times.push(now); while (V.times.length > 2 && V.times[1] < now - 1000) V.times.shift();
-    if (V.lastDrawn) { const ms = V.frameMs || (V.frameMs = []); ms.push(now - V.lastDrawn); if (ms.length > FRAME_MS_WINDOW) ms.shift(); } V.lastDrawn = now;   // FG: the last 120 drawn-frame intervals, for the FPS badge
+    // FG: the last 120 drawn-frame intervals, for the FPS badge. UX3: a play/pause change restarts the window, a view paused after playing
+    // records no frame times (V.pausedSeen, badge reads "paused"), and a gap above FRAME_GAP_CAP_MS (a stall or a hidden tab) is dropped.
+    const playingNow = !!S(V.ui).playing, wasPlaying = V.playingPrev; V.playingPrev = playingNow;
+    if (wasPlaying === true && !playingNow) V.pausedSeen = true;
+    if (playingNow) V.pausedSeen = false;
+    if (wasPlaying !== undefined && wasPlaying !== playingNow) { V.frameMs = []; V.lastDrawn = 0; }
+    if (V.pausedSeen) V.frameMs = [];
+    if (!V.pausedSeen && V.lastDrawn && now - V.lastDrawn <= FRAME_GAP_CAP_MS) { const ms = V.frameMs || (V.frameMs = []); ms.push(now - V.lastDrawn); if (ms.length > FRAME_MS_WINDOW) ms.shift(); }
+    V.lastDrawn = now;
     V.resolution = resolutionStep(V.resolution, Math.max(elapsed, cadenceMs), { enabled: !!o.dynamicResolution, pinned: !!V.pinSS, target: o.frameTargetMs });
     if (profileOn()) {
       const sample = { at: now, frameMs: Math.max(elapsed, cadenceMs), workMs: elapsed, cadenceMs, pacingMs: Math.max(0, cadenceMs - elapsed), workerOtherMs: Math.max(0, (values.workerCpuMs || 0) - (trace && trace.traceMs || 0)), mainMs: worker ? Math.max(0, elapsed - (values.workerRoundTripMs || 0)) + (values.dispatchMs || 0) : elapsed, worker: !!worker, ...values,
@@ -2272,7 +2280,7 @@ void main() {
       notes: 'GL stages time CPU submission, not GPU execution. Final pass includes veil and tone map. Trace components partition trace CPU; worker sums and main dispatch overlap round-trip. Wet measures lobe evaluation only. Static ground setup is groundMs at stats root.' };
   }
   // FG: mean and 95th-percentile (worst-5%) frame interval in ms over the last 120 drawn frames. Pure, so tests/fog.js checks it in Node.
-  const FRAME_MS_WINDOW = 120;
+  const FRAME_MS_WINDOW = 120, FRAME_GAP_CAP_MS = 1000;   // UX3: an interval above the cap is a pause or a stall, not a frame
   function frameMsSummary(ms) {
     const xs = ms.slice(-FRAME_MS_WINDOW).filter((x) => Number.isFinite(x) && x >= 0);
     if (!xs.length) return { n: 0, mean: 0, p95: 0 };
@@ -2302,7 +2310,7 @@ void main() {
     } else tableStripClear();
   }
   function perfLabel() {
-    if (V.fpsLab && V.info && V.info.o.fpsCounter) { const f = frameMsSummary(V.frameMs || []); V.fpsLab.textContent = Math.round(stats().fps) + ' fps · ' + (f.n ? f.mean.toFixed(1) + ' ms mean · ' + f.p95.toFixed(1) + ' ms p95' : '– ms'); }
+    if (V.fpsLab && V.info && V.info.o.fpsCounter) { const f = frameMsSummary(V.frameMs || []); V.fpsLab.textContent = V.pausedSeen ? 'paused' : Math.round(stats().fps) + ' fps · ' + (f.n ? f.mean.toFixed(1) + ' ms mean · ' + f.p95.toFixed(1) + ' ms p95' : '– ms'); }
     if (V.fpsLab && V.info && V.info.o.fpsCounter && tableOn()) V.fpsLab.textContent += ' · ' + globalThis.SD_SCATTER.badge;
     if (!V.perfLab || !profileOn()) return;
     const s = stats(), b = s.breakdown, c = b.components, ms = (k) => c[k].ms.toFixed(1), scope = s.workers ? 'worker CPU sum' : 'CPU';

@@ -31,7 +31,16 @@
   const BOOT_KEY = 'flux/booting', SAFE_RAYS = 100000;
   let unfinished = false;
   try { unfinished = localStorage.getItem(BOOT_KEY) === '1'; } catch (e) { /* ignore */ }
-  ui.safeMode = unfinished || new URLSearchParams(location.search).has('safe') || /(?:^#|[&#])safe(?:[=&]|$)/.test(location.hash);
+  // UX3: ?safe and ?reset (query or hash) are the one rescue URL. Both clear the saved Drive options before the Drive view reads them,
+  // so a bad saved setting cannot lock the owner out of the Drive tab; ?reset also turns on safe mode.
+  const rescueQ = new URLSearchParams(location.search), safeHash = /(?:^#|[&#])safe(?:[=&]|$)/.test(location.hash), resetHash = /(?:^#|[&#])reset(?:[=&]|$)/.test(location.hash);
+  const resetReq = rescueQ.has('reset') || resetHash, driveRescue = resetReq || rescueQ.has('safe') || safeHash;
+  ui.safeMode = unfinished || rescueQ.has('safe') || safeHash || resetReq;
+  ui.driveRescued = false;
+  if (driveRescue) {
+    try { ui.driveRescued = localStorage.getItem('flux/driveView') !== null; localStorage.removeItem('flux/driveView'); } catch (e) { /* no storage: nothing to clear */ }
+    if (ui.driveRescued) console.info('saved drive settings cleared (rescue URL)');
+  }
   ui.bootPending = true;
   function bootMark(on) { try { if (on) localStorage.setItem(BOOT_KEY, '1'); else localStorage.removeItem(BOOT_KEY); } catch (e) { /* ignore */ } }
   function leaveSafe() { ui.safeMode = false; const b = document.getElementById('safe-banner'); if (b) b.hidden = true; }
