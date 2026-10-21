@@ -1060,7 +1060,7 @@ void main() {
     c.addEventListener('webglcontextrestored', contextRestored);
     try { V.gl = makeGL(c); } catch (e) { V.why = String(e.message || e); }
     if (!V.gl) { say('WebGL2 with float render targets is unavailable; showing the CPU recovery picture.'); return false; }
-    V.canvas = c; return true;
+    V.canvas = c; tlMark('GL context and shaders created'); return true;
   }
   const recovery = () => !RF.SolverHost || RF.SolverHost.recovery();
   function say(message) {
@@ -1148,7 +1148,7 @@ void main() {
     const own = ownBeams(o), tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
     V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(), lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
-      V.g = V.three || V.src.cross || o.tiles || (D.wetnessOf(o) > 0 && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
+      V.g = V.three || V.src.cross || o.tiles || (D.wetnessOf(o) > 0 && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g); if (!TL.cur) tlOpen('rebuild'); tlMark(V.three ? 'ground (GPU path, drawn per frame)' : 'ground built (CPU)', V.three ? null : { ms: V.g.ms });
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
     }
     V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr));
@@ -1223,7 +1223,9 @@ void main() {
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
     const draw = { profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed, ...(V.src.cross ? fixedIntersection(V.src, st.dist) : {}) }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
+    const tlB = TL.cur ? tlBefore() : null;
     try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
+    if (tlB) tlAfter(tlB);
     tableStrip();   // after the draw: a version that completes on this frame clears the strip now, not on the next frame
     if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
     const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
@@ -2113,7 +2115,7 @@ void main() {
     V.gkey = ''; V.gpuFailure = String(why); say('GPU drive unavailable (' + V.gpuFailure.split('\n')[0].slice(0, 160) + '); using CPU renderer.'); if (V.bar) labels(V.ui);
   }
   function gpuCreate() {                                      // first build, and the rebuild after a context restore: a few tries, then the visible CPU fallback
-    try { V.three = threeModule.create(V.canvas, V.gl.gl, () => { if(V.three && V.three.modelState().error)say('Detailed car assets unavailable; using primitive cars.'); if (V.ui) V.ui.redrawSpec(); }); V.gkey = ''; V.gpuTries = 0; killWorkers(); }
+    try { V.three = threeModule.create(V.canvas, V.gl.gl, () => { if(V.three && V.three.modelState().error)say('Detailed car assets unavailable; using primitive cars.'); if (V.ui) V.ui.redrawSpec(); }); V.gkey = ''; V.gpuTries = 0; killWorkers(); tlMark('three renderer created'); }
     catch (e) {
       if ((V.gpuTries = (V.gpuTries || 0) + 1) >= 3) { V.gpuTries = 0; gpuFallback(e.message || e); return; }
       clearTimeout(V.gpuRetry); V.gpuRetry = setTimeout(() => { V.gpuRetry = 0; if (V.ui && V.info && info().o.gpuRenderer && !V.three && !V.lost) V.ui.redrawSpec(); }, 250 * V.gpuTries);
@@ -2309,6 +2311,52 @@ void main() {
       V.tableStripOn = true; ui.setStatus(st.status); ui.progress('trace', st.fraction);
     } else tableStripClear();
   }
+  // ---------------------------------------------------------------- first-open timeline (TL)
+  // Marks are performance.now() offsets from t0: the click that opens Drive, or the prepare() rebuild that has no open event. One console.info JSON line per
+  // closed event; with debugTimings on, the last 5 events also show in the perf label. Off: one click listener, a few marks, one boolean per frame.
+  const TL = { events: [], cur: null };
+  const TL_MAX_MARKS = 40, TL_TIMEOUT_MS = 6000;
+  function tlOpen(kind) {
+    if (TL.cur) tlClose('superseded');
+    const t0 = performance.now();
+    TL.cur = { kind, t0, marks: [], frames: [], synced: false, syncedAt: -1, timer: setTimeout(() => tlClose('timeout'), TL_TIMEOUT_MS) };
+    tlMark('t0 ' + kind);
+  }
+  function tlMark(name, extra) {
+    const c = TL.cur; if (!c || c.marks.length >= TL_MAX_MARKS) return;
+    const m = { m: name, ms: Math.round((performance.now() - c.t0) * 10) / 10 }; if (extra) Object.assign(m, extra); c.marks.push(m);
+  }
+  // programs and beam-table recomputes before a draw, so the delta after it can name what this frame built
+  function tlBefore() { return { pc: V.three ? V.three.programCount() : -1, rc: tableOn() ? globalThis.SD_SCATTER.recomputes : -1 }; }
+  function tlAfter(b) {
+    const c = TL.cur; if (!c) return;
+    const mode = V.three ? 'three' : 'cpu', pc = V.three ? V.three.programCount() : -1;
+    if (b.pc >= 0 && pc > b.pc) tlMark('programs compiled', { n: pc - b.pc, total: pc, mode });
+    if (b.rc >= 0 && globalThis.SD_SCATTER.recomputes > b.rc) tlMark('beam table recomputed', { mode });
+    c.frames.push(mode); const n = c.frames.length;
+    tlMark('frame ' + n + ' submitted', { mode });
+    // the GPU wait is one readback per event; with the GPU renderer on, wait for its first frame (a CPU frame is not the shader cost)
+    if (!c.synced && (V.three || !V.info.o.gpuRenderer || V.gpuFailure)) { c.synced = true; c.syncedAt = n; V.gl.sync(); tlMark('frame ' + n + ' GPU done'); }
+    else if (c.synced && n > c.syncedAt) tlClose('ok');
+  }
+  function tlClose(reason) {
+    const c = TL.cur; if (!c) return; TL.cur = null; clearTimeout(c.timer);
+    const o = V.info ? V.info.o : {};
+    const rec = { kind: 'drive-timeline', event: c.kind, reason, canvasPx: V.gl && [V.gl.cw, V.gl.ch], sim: V.p && [V.p.w, V.p.h], renderer: V.three ? 'three' : 'cpu',
+      options: { scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, trafficHalo: o.trafficHalo, detailedModels: !!o.detailedModels, leafyFoliage: !!o.leafyFoliage, gpuRenderer: !!o.gpuRenderer },
+      marks: c.marks, frames: c.frames };
+    TL.events.push(rec); if (TL.events.length > 5) TL.events.shift();
+    console.info(JSON.stringify(rec));
+    perfLabel();
+  }
+  function tlText() {
+    return 'first-open timeline (ms from click, last ' + TL.events.length + ' events):\n' + TL.events.map((e) => e.event + ' (' + e.reason + ', ' + e.renderer + '): ' + e.marks.map((m) => m.m + ' ' + m.ms).join(' · ')).join('\n');
+  }
+  // the click that opens Drive: capture phase, so t0 is taken before ui.js's own handler runs; a click while Drive already shows is not an open
+  if (root.document) root.document.addEventListener('click', (e) => {
+    const b = e.target && e.target.closest ? e.target.closest('#heat-display button[data-disp="drive"]') : null;
+    if (b && !(RF.UI && RF.UI.display === 'drive')) tlOpen('open');
+  }, true);
   function perfLabel() {
     if (V.fpsLab && V.info && V.info.o.fpsCounter) { const f = frameMsSummary(V.frameMs || []); V.fpsLab.textContent = V.pausedSeen ? 'paused' : Math.round(stats().fps) + ' fps · ' + (f.n ? f.mean.toFixed(1) + ' ms mean · ' + f.p95.toFixed(1) + ' ms p95' : '– ms'); }
     if (V.fpsLab && V.info && V.info.o.fpsCounter && tableOn()) V.fpsLab.textContent += ' · ' + globalThis.SD_SCATTER.badge;
@@ -2321,6 +2369,7 @@ void main() {
       'GL submit: compose ' + ms('composeMs') + ' · glare ' + ms('glareMs') + ' · final/veil ' + ms('finalVeilMs') + ' ms\n' +
       'AFS ' + ((V.p && V.p.yaw || 0) * 180 / Math.PI).toFixed(1) + '° · ' + 'traffic ' + ms('trafficMs') + ' · placement ' + ms('placementMs') + ' · dispatch ' + ms('dispatchMs') + ' · detector ' + ms('detectorMs') + ' · pacing ' + ms('pacingMs') + ' · other ' + ms('otherMs') + ' ms';
     if (tableOn()) V.perfLab.textContent += '\n' + globalThis.SD_SCATTER.badge + ' · gain ' + (Math.min(4, Math.max(0.25, +V.info.o.scatterGain || 1))).toFixed(2) + ' · beam table: ' + (globalThis.SD_SCATTER.cache ? 'cache on, ' + (globalThis.SD_SCATTER.cycle || 1) + ' version(s), ' + globalThis.SD_SCATTER.valid + ' valid' : 'cache off') + ' · recomputes ' + globalThis.SD_SCATTER.recomputes + ' · skips ' + globalThis.SD_SCATTER.skips;
+    if (TL.events.length) V.perfLab.textContent += '\n' + tlText();
   }
   function resetStats() { V.profiles = []; V.completedAt = 0; V.cameraMs = 0; V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
@@ -2329,7 +2378,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { frameMsSummary, simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { timeline: () => TL.events, frameMsSummary, simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
