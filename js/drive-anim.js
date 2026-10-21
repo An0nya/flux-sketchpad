@@ -1203,9 +1203,10 @@ void main() {
   // one frame at S.dist
   function frame() {
     if (!contextReady()) return;
+    airTick();
     tableStrip();
     if (V.highMode === 'auto') autoTick(V.ui, S(V.ui));
-    const t0 = performance.now(); resolutionPrepare();
+    const t0 = performance.now(); resolutionPrepare(); V.p.airHold = !!V.airHold;
     const ui = V.ui, st = S(ui), I = info(), o = I.o, W = V.p.w, pb = V.band, had = pb[1] > pb[0], profiling = profileOn(), trafficMs = V.cameraMs || 0;
     V.p.yaw = o.afs && st.lighting ? st.lighting.yaw : 0;
     V.p.cornerLeft = o.corneringLamps && st.lighting ? st.lighting.left : 0;
@@ -2308,10 +2309,28 @@ void main() {
     if (ui && ui.progress && !ui.solving) { ui.progress('done'); if (V.tableStatusPrev !== undefined) ui.setStatus(V.tableStatusPrev); }
     V.tableStatusPrev = undefined;
   }
+  // SN: first-open air deferral. A Drive with the air on (GPU renderer; table mode or traffic halo) draws its first AIR_HOLD_FRAMES frames with
+  // the air off, so the first frame paints before the air shaders compile. The last hold frame sets the status; the next frame, which comes
+  // after a paint, draws with the air and carries the compile. Off: V.airSeq stays null and V.airHold false, and nothing else changes.
+  const AIR_HOLD_FRAMES = 2;
+  function airTick() {
+    const o = V.info ? V.info.o : {};
+    if (!(V.three && (o.scatterMode === 'table' || o.trafficHalo))) { V.airSeq = null; V.airHold = false; return; }
+    const n = V.airSeq ? V.airSeq.n + 1 : 1;
+    V.airSeq = { n }; V.airHold = n <= AIR_HOLD_FRAMES;
+    V.airStatus = n === AIR_HOLD_FRAMES ? 'compiling air-beam shaders…' : 'preparing air beam…';
+    if (TL.cur && n <= AIR_HOLD_FRAMES + 1) tlMark(n <= AIR_HOLD_FRAMES ? 'air deferred frame ' + n : 'air beam on');
+    // paused: no tick draws the next frame, so the hold continues on its own frame request (one per hold frame, a paint in between)
+    if (V.airHold && !S(V.ui).playing) requestAnimationFrame(() => { if (V.three) frame(); });
+  }
   function tableStrip() {
     const ui = V.ui, st = globalThis.SD_SCATTER;
     if (!ui || !ui.progress) return;
     if (ui.solving || ui.previewRun) { V.tableStripOn = false; return; }
+    if (V.airHold && V.three) {
+      if (!V.tableStripOn) V.tableStatusPrev = document.getElementById('progress-text') ? document.getElementById('progress-text').textContent : '';
+      V.tableStripOn = true; ui.progress('solve'); ui.setStatus(V.airStatus); return;
+    }
     if (!(tableOn() && V.three && st)) { tableStripClear(); return; }
     if (!V.tableStripOn) V.tableStatusPrev = document.getElementById('progress-text') ? document.getElementById('progress-text').textContent : '';
     if (st.frames === 0) {

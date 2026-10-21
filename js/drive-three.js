@@ -189,7 +189,7 @@ export function create(canvas, gl, onModelsReady) {
     p.lamps.forEach((l, i) => u.lamp.value[i].fromArray(l));
     u.lampRGB.value.fromArray(p.lampRGB || [1, 1, 1]);
     set('convention', p.conv === 'B' ? 1 : p.conv === 'S' ? 2 : 0); set('tanH', Math.tan(p.hfov * Math.PI / 360));
-    set('lane', p.lane); set('sigma', D.sigmaOf(look)); set('scatterSteps', D.sigmaOf(look) > 0 && look.scatter > 0 ? Math.round(look.scatter) : 0); set('scatGain', scatterGainOf(look)); set('scatMode', D.sigmaOf(look) > 0 && look.scatter > 0 && look.scatterMode === 'table' ? 1 : 0); set('scatGFwd', D.SCAT.gFwd); set('scatGBack', D.SCAT.gBack); set('scatWFwd', D.SCAT.wFwd); set('scatRMin', D.SCAT.rMin); set('scatSMax', D.SCAT.S_MAX); set('ambient', look.ambient || 0); set('wetness', D.wetnessOf(look)); set('sheen', D.wetnessOf(look) > 0 && look.wetSheen ? 1 : 0); set('wetModel', look.wetModel === 'ggx' ? 1 : 0);
+    set('lane', p.lane); set('sigma', D.sigmaOf(look)); set('scatterSteps', D.sigmaOf(look) > 0 && look.scatter > 0 ? Math.round(look.scatter) : 0); set('scatGain', scatterGainOf(look)); set('scatMode', D.sigmaOf(look) > 0 && look.scatter > 0 && look.scatterMode === 'table' && !p.airHold ? 1 : 0); set('scatGFwd', D.SCAT.gFwd); set('scatGBack', D.SCAT.gBack); set('scatWFwd', D.SCAT.wFwd); set('scatRMin', D.SCAT.rMin); set('scatSMax', D.SCAT.S_MAX); set('ambient', look.ambient || 0); set('wetness', D.wetnessOf(look)); set('sheen', D.wetnessOf(look) > 0 && look.wetSheen ? 1 : 0); set('wetModel', look.wetModel === 'ggx' ? 1 : 0);
     set('distance', dist); set('grain', look.grain && (p.src.tiles || (D.wetnessOf(look) > 0 && look.wetSheen)) ? 0.4 * (D.wetnessOf(look) > 0 ? 0.5 : 1) : 0);
     const vg = p.src.verge; set('vergeWidth', vg[1] || 1.5); u.verge.value.set(D.MAT_KEYS.indexOf(vg[0]), D.MAT_KEYS.indexOf(vg[2] || vg[0]));
     const materials = D.materials(look), width = D.MAT_KEYS.length;
@@ -257,7 +257,7 @@ export function create(canvas, gl, onModelsReady) {
       update(p, world, dist);
       const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn);
       u.scatUV.value.set(1 / p.w, 1 / p.h); u.haloUV.value.set(1 / p.w, 1 / p.h); if (tableOn) runTable(p, extras);
-      if (!p.touge) halo.build(p, world); else u.haloOn.value = 0;   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
+      if (!p.touge && !p.airHold) halo.build(p, world); else u.haloOn.value = 0;   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
