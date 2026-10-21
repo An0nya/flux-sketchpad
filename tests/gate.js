@@ -62,7 +62,7 @@ function runOne(name, port) {
     let timedOut = false; const to = setTimeout(() => { timedOut = true; try { process.kill(-c.pid, 'SIGKILL'); } catch (e) { /* gone */ } }, WALL_MS);
     c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; });
     c.on('close', (code) => { clearTimeout(to); try { process.kill(-c.pid, 'SIGKILL'); } catch (e) { /* gone */ }   // reap leftover browsers of this test's process group
-      const fails = (out.match(/^\s*(FAIL|✗|not ok)/gm) || []).length; const s = ((Date.now() - t0) / 1000).toFixed(0);
+      const fails = (out.match(/^\s*\[?(FAIL|✗|not ok)/gm) || []).length; const s = ((Date.now() - t0) / 1000).toFixed(0);
       try { fs.mkdirSync(path.join(root, 'tests/gate-logs'), { recursive: true }); fs.writeFileSync(path.join(root, 'tests/gate-logs', name.replace(':', '-') + '.log'), out); } catch (e) { /* ignore */ }
       resolve({ name, code: timedOut ? 'TIMEOUT' : code, fails, s }); });
   });
