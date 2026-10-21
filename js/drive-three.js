@@ -4,7 +4,7 @@ import { vertex, ground, withLighting, tableSource, tablePassSource, tableBlurSo
 import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
 import { haloPass, haloLookup, HALO_EDGES } from './drive-three-halo.js';
-import { TABLE_BUDGET_MS, bandRows, smoothMsPerRow, tableStatus, fillFraction, tableBadge, fadeRangeName, fadeRangeOf, scatterGainOf } from './table-pace.js';
+import { TABLE_BUDGET_MS, bandRows, smoothMsPerRow, tableStatus, fillFraction, tableBadge, fadeRangeName, fadeRangeOf, scatterGainOf, cyclePhase } from './table-pace.js';
 const D = globalThis.RF.Drive;
 const texture = (data, w, h, format = T.RGBAFormat) => { const t = new T.DataTexture(data, w, h, format, T.FloatType); t.needsUpdate = true; return t; };
 const array = (n, type) => Array.from({ length: n }, () => new type());
@@ -69,6 +69,20 @@ export function create(canvas, gl, onModelsReady) {
   // keeps the old slots shown; a size change drops everything.
   const TAB_VERSIONS = 8, tabStats = globalThis.SD_SCATTER = { recomputes: 0, skips: 0, valid: 0, cycle: 0, cache: false, shown: 0, fills: 0, pending: 0, wanted: 1, rowsDone: 0, rowsTotal: 0, lastMs: NaN, meanMs: NaN, msPerRow: 0, budgetMs: TABLE_BUDGET_MS, compileMs: NaN, compiles: 0, frames: 0, showingZero: true };
   let slots = [], slotValid = [], spare = null, tabTmp = null, tabSize = '', tabKey = null, fillIdx = 0, tabFrame = 0, fill = null, compilePending = false;
+  // SM: the cycle phase in [0, 8) advances with the distance travelled (cyclePhase), once per displayed frame; t and dist are the last frame's.
+  const cyc = { phase: 0, t: NaN, dist: NaN };
+  const advanceCycle = (dist) => {
+    const now = performance.now();
+    const dtS = Number.isFinite(cyc.t) ? Math.min(0.1, Math.max(0, (now - cyc.t) / 1000)) : 0;
+    const dM = Number.isFinite(cyc.dist) && Number.isFinite(dist) ? dist - cyc.dist : 0;
+    cyc.phase = cyclePhase(cyc.phase, dM, dtS, TAB_VERSIONS); cyc.t = now; cyc.dist = dist;
+    return cyc.phase;
+  };
+  // SM: the version at slot k, or the nearest valid one (k first, then k +/- 1, ...); -1 when no version is valid.
+  const nearestValid = (k) => {
+    for (let d = 0; d < TAB_VERSIONS; d++) for (const i of [(k + d) % TAB_VERSIONS, (k - d + TAB_VERSIONS) % TAB_VERSIONS]) if (slotValid[i] && slots[i]) return i;
+    return -1;
+  };
   const probePx = new Uint16Array(4);
   const zeroTex = new T.DataTexture(new Float32Array(4), 1, 1, T.RGBAFormat, T.FloatType); zeroTex.magFilter = zeroTex.minFilter = T.NearestFilter; zeroTex.needsUpdate = true;
   // Test hooks (tests/regress/SE-table-pacing.js): texels of a slot bank (half-float Uint16 words, GL row order, bottom row first), and a
@@ -114,7 +128,7 @@ export function create(canvas, gl, onModelsReady) {
       blurU.src.value = tabTmp.texture; blurU.dirTexel.value.set(0, 1); renderer.setRenderTarget(bank[b]); renderer.render(blurScene, camera);
     }
   }
-  function runTable(p, extras) {
+  function runTable(p, extras, dist) {
     const look = p.look, f = look.scatterRes === 'full' ? 1 : 0.5, tw = Math.max(1, Math.round(p.w * f)), th = Math.max(1, Math.round(p.h * f));
     const sig = look.scatterBlur === 'mid' ? 1.5 : look.scatterBlur === 'strong' ? 3 : 0;
     const cache = look.scatterCache === 'on', cycle = cache && look.scatterCycle === 8 ? TAB_VERSIONS : 1, wanted = cycle;
@@ -159,17 +173,26 @@ export function create(canvas, gl, onModelsReady) {
       tabStats.recomputes++; tabStats.fills++; tabStats.lastMs = verMs;
       tabStats.meanMs = tabStats.fills === 1 ? verMs : tabStats.meanMs + (verMs - tabStats.meanMs) / tabStats.fills;
     } else if (!cache) tabStats.fills = tabStats.recomputes;
-    // Show: the valid slots in rotation (cycle 8) or slot 0; no valid slot yet = zero scatter term.
+    // Show: no valid slot yet = zero scatter term. Cycle off: the valid slots in rotation per frame (as before SM), or slot 0.
+    // SM cycle 8: the version at the distance phase (nearest valid), and with cycle blend on the next version too, mixed by the phase's fraction.
     const valid = []; for (let i = 0; i < wanted; i++) if (slotValid[i] && slots[i]) valid.push(i);
-    const shownIndex = valid.length ? valid[tabFrame % valid.length] : -1;
+    let shownIndex = -1, blendIndex = -1, fract = 0;
+    if (cycle === 1) { cyc.t = cyc.dist = NaN; shownIndex = valid.length ? valid[tabFrame % valid.length] : -1; }
+    else {
+      const ph = advanceCycle(dist), i0 = Math.floor(ph) % TAB_VERSIONS; fract = ph - Math.floor(ph);
+      shownIndex = nearestValid(i0);
+      if (look.scatterCycleFade === 'on' && valid.length >= 2) { const j = nearestValid((i0 + 1) % TAB_VERSIONS); if (j >= 0 && j !== shownIndex) blendIndex = j; }
+    }
     tabFrame++;
-    const shown = shownIndex < 0 ? null : slots[shownIndex];
+    const shown = shownIndex < 0 ? null : slots[shownIndex], blend = blendIndex < 0 ? null : slots[blendIndex];
     set('scatBank0', shown ? shown[0].texture : zeroTex); set('scatBank1', shown ? shown[1].texture : zeroTex); set('scatBank2', shown ? shown[2].texture : zeroTex);
+    set('scatBankB0', blend ? blend[0].texture : zeroTex); set('scatBankB1', blend ? blend[1].texture : zeroTex); set('scatBankB2', blend ? blend[2].texture : zeroTex);
+    set('scatFade', blend ? 1 : 0); set('scatFract', fract);
     tabStats.frames++;
     const doneN = cache ? fillIdx : 1;
-    Object.assign(tabStats, { showingZero: shownIndex < 0, shown: shownIndex, cache, cycle: cycle === 1 ? 0 : cycle, wanted, valid: doneN, pending: Math.max(0, wanted - doneN),
+    Object.assign(tabStats, { showingZero: shownIndex < 0, shown: shownIndex, blend: blendIndex, phase: cycle === 1 ? NaN : cyc.phase, fract: blend ? fract : NaN, cache, cycle: cycle === 1 ? 0 : cycle, wanted, valid: doneN, pending: Math.max(0, wanted - doneN),
       rowsDone: fill ? fill.row : (cache ? 0 : th), rowsTotal: th, status: cache ? tableStatus(fillIdx, wanted) : null,
-      fraction: fillFraction(fillIdx, wanted, fill ? fill.row : 0, th), badge: tableBadge(cache, fillIdx, wanted, tabStats.lastMs) });
+      fraction: fillFraction(fillIdx, wanted, fill ? fill.row : 0, th), badge: tableBadge(cache, fillIdx, wanted, tabStats.lastMs) + (cycle === 1 ? '' : ' · phase ' + cyc.phase.toFixed(2) + (blend ? ' · blend ' + fract.toFixed(2) : '')) });
   }
   // BA5: pack the pool into the atlas. Cached: the same LUT objects, ids, tints, conventions and weights give the same texture.
   function atlasFor(pool) {
@@ -256,7 +279,7 @@ export function create(canvas, gl, onModelsReady) {
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
       const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn);
-      u.scatUV.value.set(1 / p.w, 1 / p.h); u.haloUV.value.set(1 / p.w, 1 / p.h); if (tableOn) runTable(p, extras);
+      u.scatUV.value.set(1 / p.w, 1 / p.h); u.haloUV.value.set(1 / p.w, 1 / p.h); if (tableOn) runTable(p, extras, dist);
       if (!p.touge && !p.airHold) halo.build(p, world); else u.haloOn.value = 0;   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }

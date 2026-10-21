@@ -79,7 +79,9 @@ async function meanLuma(page, png) {
     await drive(10);
     const cyc = await counters();
     const seq = await drive(8);
-    ok('SD cycle 8: eight versions valid, and eight consecutive frames show eight distinct versions', cyc.valid === 8 && cyc.cycle === 8 && new Set(seq).size === 8, 'valid ' + cyc.valid + ' shown ' + seq.join(','));
+    // SM: the cycle follows distance travelled, not the frame count, so eight frames no longer show eight versions. Check the phase moves instead.
+    const cyc2 = await counters();
+    ok('SD cycle 8: eight versions valid, and the cycle phase moves with distance (SM)', cyc.valid === 8 && cyc.cycle === 8 && Number.isFinite(cyc2.phase) && cyc2.phase !== cyc.phase, 'valid ' + cyc.valid + ' phase ' + cyc.phase + ' -> ' + cyc2.phase + ' shown ' + seq.join(','));
     await setOpts({ scatterCycle: 0, scatterCache: 'off', scatterMode: 'direct' });
     // SD3 UI: the buttons appear in air only; table mode switches the labels and the scatter steps (16, 32, 64); res, blur, cache and cycle need table mode.
     // Frames here are taken at one car position (no driving in this block), so direct frames can be compared with each other.

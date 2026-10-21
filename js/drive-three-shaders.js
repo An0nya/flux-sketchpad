@@ -252,9 +252,9 @@ ${atlas ? OTHER_ATLAS : OTHER_LEGACY}` + 'float wetLobe')
 const TABLE_DECL = `uniform int scatMode;   // 1 = table mode: inScatter reads the table (SD1)
 uniform sampler2D scatBank0, scatBank1, scatBank2;   // bins 0-3, 4-7, 8-11 (RGBA), at the table's resolution
 uniform vec2 scatUV;   // 1 / (pixels of the target this pass draws): gl_FragCoord * scatUV is the table texture coordinate
-float tableC(float d) {
+// SM: the lookup takes its three texels as arguments, so the cycle crossfade can read a second bank set with the same code.
+float tableCBanks(float d, vec4 a, vec4 b, vec4 c) {
   if(d<=0.0) return 0.0;
-  vec2 uv=gl_FragCoord.xy*scatUV; vec4 a=texture(scatBank0,uv), b=texture(scatBank1,uv), c=texture(scatBank2,uv);
   float C=0.0, prevC=0.0, prevE=0.0;
   for(int k=0;k<12;k++) {
     float bin=k<4 ? a[k] : (k<8 ? b[k-4] : c[k-8]);
@@ -265,10 +265,22 @@ float tableC(float d) {
   }
   return C;
 }
+float tableC(float d) {
+  vec2 uv=gl_FragCoord.xy*scatUV;
+  return tableCBanks(d, texture(scatBank0,uv), texture(scatBank1,uv), texture(scatBank2,uv));
+}
+// SM: cycle blend. scatFade 1 mixes the lookup of bank set A (scatBank0..2) and bank set B (scatBankB0..2) by scatFract; 0 reads A alone.
+uniform sampler2D scatBankB0, scatBankB1, scatBankB2;
+uniform float scatFade, scatFract;
+float tableCMix(float d) {
+  if(scatFade<0.5) return tableC(d);
+  vec2 uv=gl_FragCoord.xy*scatUV;
+  return mix(tableC(d), tableCBanks(d, texture(scatBankB0,uv), texture(scatBankB1,uv), texture(scatBankB2,uv)), scatFract);
+}
 vec3 inScatterDirect(vec3 dir,float sEnd,float jit);
 // SF2: scatGain multiplies the lookup only (table mode); it never enters the table, so it does not rebuild it.
 uniform float scatGain;
-vec3 inScatter(vec3 dir,float sEnd,float jit) { return scatMode==1 ? tableC(min(sEnd,scatSMax))*lampRGB*scatGain : inScatterDirect(dir,sEnd,jit); }
+vec3 inScatter(vec3 dir,float sEnd,float jit) { return scatMode==1 ? tableCMix(min(sEnd,scatSMax))*lampRGB*scatGain : inScatterDirect(dir,sEnd,jit); }
 `;
 const TABLE_MAIN = `uniform int tableBank, tableSteps, tableSeed;
 uniform float tableH;
