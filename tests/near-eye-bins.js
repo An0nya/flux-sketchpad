@@ -46,6 +46,9 @@ function run(RF, ok, report) {
   // 2. light-weighted error, road view, same total (48 steps) for both arms; reference = 8x samples, averaged over the same jitters.
   const base = { eye: D.eyeFor(), lamps: [[0, -0.7, 0.65], [0, 0.7, 0.65]], lut: D.lutFrom((h, v) => D.Headlamp.generic(h, v, false)), conv: 'A', lampRGB: [1, 1, 1] };
   const bins = (look, dir, steps, j) => D.scatterTableBins(Object.assign({}, base, { look }), dir, j, steps);
+  // NE3: a slice set to 0 skips its samples (table value 0) and leaves the neighbours alone. Bin 4 carries scatter on this ray.
+  { const ray = ROAD_DIRS[0], all4 = bins({ visibility: 200, scatter: 48, scatterNearFadeRange: 'medium', scatterBinCounts: '4,4,4,4,4,4,4,4,4,4,4,4' }, ray, S, 0.5), zero4 = bins({ visibility: 200, scatter: 48, scatterNearFadeRange: 'medium', scatterBinCounts: '4,4,4,4,0,4,4,4,4,4,4,4' }, ray, S, 0.5);
+    ok('NE3 override 0 skips a slice: bin 4 value is 0 where it carries scatter, bin 5 unchanged', all4[4] > 0 && zero4[4] === 0 && zero4[5] === all4[5], 'bin 4 ' + all4[4].toExponential(2) + ' -> ' + zero4[4]); }
   for (const fr of ['off', 'medium']) {
     const look = { visibility: 200, scatter: 48, scatterNearFadeRange: fr };
     const ref = ROAD_DIRS.map((dir) => { const r = new Float64Array(K); for (const j of jitters) { const b = bins(look, dir, 8 * S, j); for (let k = 0; k < K; k++) r[k] += b[k] / jitters.length; } return r; });
