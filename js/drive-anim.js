@@ -2349,8 +2349,10 @@ void main() {
     console.info(JSON.stringify(rec));
     perfLabel();
   }
+  // one line, the newest open event: a taller label pushed the Drive toolbar out of its place in the UX2 mobile popout check. Rebuilds stay in the console line.
   function tlText() {
-    return 'first-open timeline (ms from click, last ' + TL.events.length + ' events):\n' + TL.events.map((e) => e.event + ' (' + e.reason + ', ' + e.renderer + '): ' + e.marks.map((m) => m.m + ' ' + m.ms).join(' · ')).join('\n');
+    const e = TL.events.filter((x) => x.event === 'open').pop();
+    return e ? 'first-open timeline (ms from click): ' + e.marks.slice(0, 5).map((m) => m.m + ' ' + m.ms).join(' · ') : '';
   }
   // the click that opens Drive: capture phase, so t0 is taken before ui.js's own handler runs; a click while Drive already shows is not an open
   if (root.document) root.document.addEventListener('click', (e) => {
@@ -2369,7 +2371,7 @@ void main() {
       'GL submit: compose ' + ms('composeMs') + ' · glare ' + ms('glareMs') + ' · final/veil ' + ms('finalVeilMs') + ' ms\n' +
       'AFS ' + ((V.p && V.p.yaw || 0) * 180 / Math.PI).toFixed(1) + '° · ' + 'traffic ' + ms('trafficMs') + ' · placement ' + ms('placementMs') + ' · dispatch ' + ms('dispatchMs') + ' · detector ' + ms('detectorMs') + ' · pacing ' + ms('pacingMs') + ' · other ' + ms('otherMs') + ' ms';
     if (tableOn()) V.perfLab.textContent += '\n' + globalThis.SD_SCATTER.badge + ' · gain ' + (Math.min(4, Math.max(0.25, +V.info.o.scatterGain || 1))).toFixed(2) + ' · beam table: ' + (globalThis.SD_SCATTER.cache ? 'cache on, ' + (globalThis.SD_SCATTER.cycle || 1) + ' version(s), ' + globalThis.SD_SCATTER.valid + ' valid' : 'cache off') + ' · recomputes ' + globalThis.SD_SCATTER.recomputes + ' · skips ' + globalThis.SD_SCATTER.skips;
-    if (TL.events.length) V.perfLab.textContent += '\n' + tlText();
+    const tl = tlText(); if (tl) V.perfLab.textContent += '\n' + tl;
   }
   function resetStats() { V.profiles = []; V.completedAt = 0; V.cameraMs = 0; V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
