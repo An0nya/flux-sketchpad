@@ -840,8 +840,22 @@
     return look && look.scatterNearFade === 'off' ? null : NEAR_FADE_RANGES.medium;
   }
   const nearFadeW = (s, S0, S1) => { const t = Math.min(1, Math.max(0, (s - S0) / (S1 - S0))); return t * t * (3 - 2 * t); };
+  // NE near-eye bias (look.scatterNearBias, table mode): samples per bin. Off: round(steps / K) in every bin, at least 1 (the old count).
+  // On (NE2 budget move, same total K * n): bins 0-3 (under ~2 m, empty in the road view) and bins 9-11 (26-120 m) get 1 sample each;
+  // bins 4-8 (2-26 m, where the road-view noise is) share the rest, (12n - 7) / 5 each. Leftovers go to bins 5, 6, 7 first, then 4, 8.
+  function tableBinSteps(steps, bias) {
+    const n = Math.max(1, Math.round((steps | 0) / TABLE.K)), out = new Array(TABLE.K).fill(n);
+    if (!(Number(bias) > 0)) return out;
+    const band = [4, 5, 6, 7, 8], rest = n * TABLE.K - 7;   // 7 single-sample bins: 0-3 and 9-11
+    for (const k of [0, 1, 2, 3, 9, 10, 11]) out[k] = 1;
+    const q = Math.floor(rest / band.length);
+    let r = rest - q * band.length;
+    for (const k of band) out[k] = q;
+    for (const k of [5, 6, 7, 4, 8]) { if (r > 0) { out[k]++; r--; } }
+    return out;
+  }
   function scatterTableBins(o, dir, jit, steps) {
-    const sig = sigmaOf(o.look || {}), n = Math.max(1, Math.round((steps | 0) / TABLE.K)), bins = new Float64Array(TABLE.K);
+    const sig = sigmaOf(o.look || {}), counts = tableBinSteps(steps, (o.look || {}).scatterNearBias), bins = new Float64Array(TABLE.K);
     if (!(sig > 0)) return bins;
     const fr = nearFadeRangeOf(o.look || {});
     const eye = o.eye, lamps = o.lamps || [], dx = dir[0], dy = dir[1], dz = dir[2];
@@ -858,11 +872,11 @@
       return Number.isFinite(f) ? f : 0;
     };
     for (let k = 0; k < TABLE.K; k++) {
-      const hi = tableEdge(k), lo = k === 0 ? 0 : tableEdge(k - 1);
+      const hi = tableEdge(k), lo = k === 0 ? 0 : tableEdge(k - 1), nk = counts[k];
       let acc = 0;
-      for (let m = 0; m < n; m++) {
-        if (k === 0) { const ds = hi / n, s = (m + jit) * ds; acc += integrand(s) * ds; }
-        else { const a = lo * Math.pow(hi / lo, m / n), b = lo * Math.pow(hi / lo, (m + 1) / n), s = a * Math.pow(b / a, jit); acc += integrand(s) * (b - a); }
+      for (let m = 0; m < nk; m++) {
+        if (k === 0) { const ds = hi / nk, s = (m + jit) * ds; acc += integrand(s) * ds; }
+        else { const a = lo * Math.pow(hi / lo, m / nk), b = lo * Math.pow(hi / lo, (m + 1) / nk), s = a * Math.pow(b / a, jit); acc += integrand(s) * (b - a); }
       }
       bins[k] = acc;
     }
@@ -993,5 +1007,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, scatterTableAt, TABLE, veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -283,6 +283,7 @@ uniform float scatGain;
 vec3 inScatter(vec3 dir,float sEnd,float jit) { return scatMode==1 ? tableCMix(min(sEnd,scatSMax))*lampRGB*scatGain : inScatterDirect(dir,sEnd,jit); }
 `;
 const TABLE_MAIN = `uniform int tableBank, tableSteps, tableSeed;
+uniform int tableBias, tableBinN[12];   // NE: near-eye bias on; per-bin sample counts from RF.Drive.tableBinSteps (off: tableSteps formula)
 uniform float tableH;
 float tableJitter() { uint x=uint(gl_FragCoord.x), y=uint(tableH)-1u-uint(gl_FragCoord.y); uint h=(x*0x27d4eb2du)^(y*0x165667b1u)^(uint(tableSeed)*0x9e3779b9u); h=(h^(h>>15u))*0x85ebca6bu; h=(h^(h>>13u))*0xc2b2ae35u; h^=h>>16u; return float(h)/4294967296.0; }
 // SE3: near-eye fade. tableFade 1 weights the integrand by smoothstep(S0,S1,s) (0 = the SD table, unchanged).
@@ -305,11 +306,12 @@ void main() {
   vec4 outv=vec4(0.0);
   for(int j=0;j<4;j++) {
     int k=tableBank*4+j;
+    int nk=tableBias==0 ? n : tableBinN[k];
     float hi=0.5*pow(240.0,float(k)/11.0), lo=k==0 ? 0.0 : 0.5*pow(240.0,float(k-1)/11.0);
     float acc=0.0;
-    for(int m=0;m<16;m++) { if(m>=n) break;
-      if(k==0) { float ds=hi/float(n), s=(float(m)+jit)*ds; acc+=tableIntegrand(ray,s)*ds; }
-      else { float a=lo*pow(hi/lo,float(m)/float(n)), b=lo*pow(hi/lo,float(m+1)/float(n)), s=a*pow(b/a,jit); acc+=tableIntegrand(ray,s)*(b-a); }
+    for(int m=0;m<32;m++) { if(m>=nk) break;   // NE2: bound 32 (was 16); per-bin count is 11 at the UI max of 64 steps
+      if(k==0) { float ds=hi/float(nk), s=(float(m)+jit)*ds; acc+=tableIntegrand(ray,s)*ds; }
+      else { float a=lo*pow(hi/lo,float(m)/float(nk)), b=lo*pow(hi/lo,float(m+1)/float(nk)), s=a*pow(b/a,jit); acc+=tableIntegrand(ray,s)*(b-a); }
     }
     outv[j]=acc;
   }
