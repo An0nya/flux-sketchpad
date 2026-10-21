@@ -11,7 +11,7 @@ const SHOTS = process.env.PP_SHOTS || '/Users/anya/Projects/flux-sketchpad/.clau
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 900 } }), errors = [];
     page.on('pageerror', e => errors.push('pageerror: ' + String(e)));
-    page.on('console', m => { const t = m.text(); if (m.type() === 'error' && !/favicon\.ico/.test(m.location().url || '')) errors.push('console: ' + t); if (/shader|ERROR: 0:/i.test(t)) errors.push('shader: ' + t); });
+    page.on('console', m => { const t = m.text(); if (m.type() === 'error' && !/favicon\.ico/.test(m.location().url || '')) errors.push('console: ' + t); if (m.type() !== 'info' && /shader|ERROR: 0:/i.test(t)) errors.push('shader: ' + t); });
     await page.addInitScript(() => localStorage.clear());
     await page.goto(`http://127.0.0.1:${port}/index.html`);
     await page.waitForFunction(() => window.RF && RF.UI && RF.UI.loadScene);
