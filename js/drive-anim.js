@@ -675,6 +675,14 @@
     return { yaw: afs ? swivel(state.yaw, RF.DriveAnim.afsTarget(src,x,v)) : 0,
       left: cornering ? slew(state.left,c>0?strength:0,2) : 0, right: cornering ? slew(state.right,c<0?strength:0,2) : 0 };
   }
+  // Advance the lighting over dt in fixed ~1/60 s substeps (at most 12), so the swivel and the sampled target stay fps-independent.
+  // dt <= 1/60 is one call with the original dt, so frames at 60+ fps are unchanged. x and v are the same for every substep.
+  function lightingSubsteps(state, src, x, v, dt, afs, cornering) {
+    const n = dt > 0 ? Math.max(1, Math.min(12, Math.ceil(dt * 60 - 1e-9))) : 1, h = dt / n;
+    let s = state;
+    for (let i = 0; i < n; i++) s = lightingStep(s, src, x, v, h, afs, cornering);
+    return s;
+  }
   const lightingExtras = p => !!(p.trafficBeams || p.surfaceSheen || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight);
   // Tuning, not a passenger-car measurement: 0.12 deg/(m/s²), critically damped 1.5 Hz.
   // Exact constant-input solution stays stable at low frame rates. Positive acceleration lifts the beam.
@@ -1342,8 +1350,10 @@ void main() {
     const start = performance.now(), speed = (+info().o.speed || 50) / 3.6, oldV = st.game ? st.game.v : st.camera ? st.camera.v : V.src.traffic.logic ? Math.min(speed, speedLimit(V.src, st.dist)) : speed;
     advanceCameraInner(st, dt);
     const newV = st.game ? st.game.v : st.camera ? st.camera.v : (+info().o.speed || 50) / 3.6;
-    st.lighting = lightingStep(st.lighting, V.src, st.dist, newV, dt, !!info().o.afs, !!info().o.corneringLamps);
-    if (info().o.lampPitch && dt > 0) { st.acceleration = (newV - oldV) / dt; st.pitch = pitchStep(st.pitch, st.acceleration, dt); }
+    // Game mode: a stall (dt is not clamped for the game clock) must not snap the lamps, so lighting and pitch see at most 0.25 s.
+    const ldt = st.game ? Math.min(dt, 0.25) : dt;
+    st.lighting = lightingSubsteps(st.lighting, V.src, st.dist, newV, ldt, !!info().o.afs, !!info().o.corneringLamps);
+    if (info().o.lampPitch && dt > 0) { st.acceleration = (newV - oldV) / dt; st.pitch = pitchStep(st.pitch, st.acceleration, ldt); }
     else { st.pitch = null; st.acceleration = 0; } V.cameraMs = (V.cameraMs || 0) + performance.now() - start;
   }
   function advanceCameraInner(st, dt) {
@@ -2387,7 +2397,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { timeline: () => TL.events, frameMsSummary, simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { timeline: () => TL.events, frameMsSummary, simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
