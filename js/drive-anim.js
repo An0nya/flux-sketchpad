@@ -1058,6 +1058,7 @@ void main() {
     const c = document.createElement('canvas'); c.className = 'drive-gl'; c.setAttribute('aria-label', 'Animated drive view'); c.setAttribute('role', 'img');
     c.addEventListener('webglcontextlost', contextLost);
     c.addEventListener('webglcontextrestored', contextRestored);
+    if (!TL.cur) tlOpen('load');   // GL built outside a click (Drive on load): the load event times it
     try { V.gl = makeGL(c); } catch (e) { V.why = String(e.message || e); }
     if (!V.gl) { say('WebGL2 with float render targets is unavailable; showing the CPU recovery picture.'); return false; }
     V.canvas = c; tlMark('GL context and shaders created'); return true;
@@ -2315,11 +2316,11 @@ void main() {
   // Marks are performance.now() offsets from t0: the click that opens Drive, or the prepare() rebuild that has no open event. One console.info JSON line per
   // closed event; with debugTimings on, the last 5 events also show in the perf label. Off: one click listener, a few marks, one boolean per frame.
   const TL = { events: [], cur: null };
-  const TL_MAX_MARKS = 40, TL_TIMEOUT_MS = 6000;
+  const TL_MAX_MARKS = 40, TL_OPEN_TIMEOUT_MS = 60000, TL_GRACE_MS = 1500;   // the open waits up to a minute: the GPU renderer can take 10-16 s on a real GPU
   function tlOpen(kind) {
     if (TL.cur) tlClose('superseded');
     const t0 = performance.now();
-    TL.cur = { kind, t0, marks: [], frames: [], synced: false, syncedAt: -1, timer: setTimeout(() => tlClose('timeout'), TL_TIMEOUT_MS) };
+    TL.cur = { kind, t0, marks: [], frames: [], synced: false, syncedAt: -1, timer: setTimeout(() => tlClose('timeout'), TL_OPEN_TIMEOUT_MS) };
     tlMark('t0 ' + kind);
   }
   function tlMark(name, extra) {
@@ -2335,10 +2336,13 @@ void main() {
     if (b.rc >= 0 && globalThis.SD_SCATTER.recomputes > b.rc) tlMark('beam table recomputed', { mode });
     c.frames.push(mode); const n = c.frames.length;
     tlMark('frame ' + n + ' submitted', { mode });
-    // the GPU wait is one readback per event; with the GPU renderer on, wait for its first frame (a CPU frame is not the shader cost)
-    if (!c.synced && (V.three || !V.info.o.gpuRenderer || V.gpuFailure)) { c.synced = true; c.syncedAt = n; V.gl.sync(); tlMark('frame ' + n + ' GPU done'); }
-    else if (c.synced && n > c.syncedAt) tlClose('ok');
+    // only the open and load events read the GPU back, once; a rebuild never stalls the page. With the GPU renderer on, wait for its first frame.
+    const reads = c.kind === 'open' || c.kind === 'load';
+    if (reads && !c.synced && (V.three || !V.info.o.gpuRenderer || V.gpuFailure)) { c.synced = true; c.syncedAt = n; V.gl.sync(); tlMark('frame ' + n + ' GPU done'); }
+    if (c.synced) { if (n > c.syncedAt) return tlClose('ok'); tlGrace(c); }      // the next frame ends it, or 1.5 s without one
+    else if (!reads) { if (n >= 2) return tlClose('ok'); tlGrace(c); }
   }
+  function tlGrace(c) { clearTimeout(c.timer); c.timer = setTimeout(() => tlClose('grace'), TL_GRACE_MS); }
   function tlClose(reason) {
     const c = TL.cur; if (!c) return; TL.cur = null; clearTimeout(c.timer);
     const o = V.info ? V.info.o : {};
@@ -2349,10 +2353,10 @@ void main() {
     console.info(JSON.stringify(rec));
     perfLabel();
   }
-  // one line, the newest open event: a taller label pushed the Drive toolbar out of its place in the UX2 mobile popout check. Rebuilds stay in the console line.
+  // one line: the newest event of any kind, under a constant prefix (a multi-line readout broke the UX2 mobile popout check)
   function tlText() {
-    const e = TL.events.filter((x) => x.event === 'open').pop();
-    return e ? 'first-open timeline (ms from click): ' + e.marks.slice(0, 5).map((m) => m.m + ' ' + m.ms).join(' · ') : '';
+    const e = TL.events[TL.events.length - 1];
+    return e ? 'first-open timeline [' + e.event + ']: ' + e.marks.slice(0, 5).map((m) => m.m + ' ' + m.ms).join(' · ') : '';
   }
   // the click that opens Drive: capture phase, so t0 is taken before ui.js's own handler runs; a click while Drive already shows is not an open
   if (root.document) root.document.addEventListener('click', (e) => {

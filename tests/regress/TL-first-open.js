@@ -13,6 +13,17 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
     page.on('console', (m) => { const t = m.text(); if (m.type() === 'info' && t.startsWith('{"kind":"drive-timeline"')) lines.push(t); });
     await page.goto('http://127.0.0.1:' + port + '/index.html'); await page.waitForFunction(() => window.RF?.UI?.loadScene, null, { timeout: 60000 });
     await page.addScriptTag({ url: '/tests/regress/UX2-drive-ux.js' }); await page.evaluate(() => UX2Page.ready()); await sleep(1500);
+    // Drive is the default view on load: the GL build and the GPU renderer happen in the load event, before any click. Let the renderer come up, then check that event.
+    await sleep(3000);
+    const ld = lines.map((l) => JSON.parse(l)).find((r) => r.event === 'load') || null;
+    ok('TL a load event is logged for the drive view built on page load', !!ld, ld ? ld.reason : 'no load line');
+    if (ld) {
+      console.log('TL raw load line: ' + JSON.stringify(ld));
+      const at = (name) => ld.marks.find((m) => m.m === name);
+      const gl = at('GL context and shaders created'), f1 = at('frame 1 submitted'), g1 = at('frame 1 GPU done');
+      ok('TL load: t0 < GL context < frame 1 submitted (strict)', !!gl && !!f1 && gl.ms > 0 && f1.ms > gl.ms, [gl && gl.ms, f1 && f1.ms].join(' / '));
+      ok('TL load: frame 1 GPU done after frame 1 submitted (strict)', !!g1 && g1.ms > f1.ms, g1 ? f1.ms + ' -> ' + g1.ms : 'no GPU-done mark (reason ' + ld.reason + ')');
+    }
     // Drive is the default view on load; switch away first so the click below is the open being timed
     await page.evaluate(() => RF.UI.setDisplay('hits')); await sleep(800);
     const before = lines.length;
