@@ -25,6 +25,7 @@ void main(){vec3 p=worldPoint,n=normalize(worldNormal),ray=normalize(p-eye);floa
  // SG: the same view-path terms as objectFragment (drive-three-objects.js): extinction and air-beam veil over t, then in-scatter. Off when sigma and scatterSteps are 0.
  if(sigma>0.0){float T=exp(-sigma*t); color=color*T+vec3(ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0))*(1.0-T));}
  if(scatterSteps>0) color+=inScatter(ray,t,scatterJitter());
+ if(haloOn>0) color+=haloScatter(t);
  gl_FragColor=vec4(color,1);
 }
 `;

@@ -22,6 +22,24 @@ uniform float sigma;   // fog extinction per metre (look.visibility: 3.912 / V);
 float fogT(float d) { return sigma>0.0 ? exp(-sigma*d) : 1.0; }   // transmittance over a light path (drive.js fogD)
 uniform int scatterSteps;   // in-scatter steps (look.scatter; 0 = off; only with sigma>0). drive.js inScatter is the CPU twin
 uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js SCAT
+// SL: the traffic scatter table (js/drive-three-halo.js). A screen-space table (1/8 of the view, six tiles side by side) holds, per cell, the oncoming
+// lamps' single-scatter integral over six distance bins [0,8], [8,14], [14,22], [22,34], [34,60], [60,120] m. haloScatter(d) sums the bins up to the fragment's
+// own end distance d (ground hit, object eye distance, sky = 120 m), interpolated in log d like tableC, so the lit air in FRONT of a surface adds to it and the
+// air BEHIND it does not. haloOn is a uniform: off costs one branch, and toggling never changes the shader text (no recompile).
+uniform int haloOn; uniform sampler2D haloTex; uniform vec2 haloUV, haloTab;   // haloUV: 1 / pixels of the target this pass draws; haloTab: cells per tile
+const float HALO_E[6] = float[6](8.0, 14.0, 22.0, 34.0, 60.0, 120.0);
+vec3 haloScatter(float d) {
+  if(haloOn==0 || d<=0.0) return vec3(0.0);
+  vec2 uv=gl_FragCoord.xy*haloUV, cl=clamp(uv,0.5/haloTab,1.0-0.5/haloTab);
+  float dd=min(d,120.0); vec3 C=vec3(0.0), prevC=vec3(0.0); float prevE=0.0;
+  for(int k=0;k<6;k++) {
+    float e=HALO_E[k];
+    C+=texture(haloTex,vec2((float(k)+cl.x)*(1.0/6.0),cl.y)).rgb;
+    if(dd<=e) return k==0 ? C*dd/e : mix(prevC,C,log(dd/prevE)/log(e/prevE));
+    prevC=C; prevE=e;
+  }
+  return C;
+}
 varying vec2 screen;
 const float PI = 3.141592653589793;
 float coverage(float a, float h, float lo, float hi) { return max(0.0, min(a+h,hi)-max(a-h,lo))/(2.0*h); }
@@ -142,6 +160,7 @@ void main() {
   vec3 r; if(t<5000.0) { r=surface(eye+t*ray,-ray,t,-ray.z); if(sigma>0.0) { float T=exp(-sigma*t); r=r*T+ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0))*(1.0-T); } }
   else r=vec3(ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0)));
   if(scatterSteps>0) r+=inScatter(ray,t<5000.0?t:1e20,scatterJitter());
+  if(haloOn>0) r+=haloScatter(t<5000.0?t:1e20);
   gl_FragColor=vec4(r,1);
 }
 `;

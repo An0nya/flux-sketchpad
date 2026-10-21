@@ -3,7 +3,7 @@ import * as T from '../vendor/three/three.module.min.js';
 import { vertex, ground, withLighting, tableSource, tablePassSource, tableBlurSource } from './drive-three-shaders.js';
 import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
-import { haloPass } from './drive-three-halo.js';
+import { haloPass, haloLookup, HALO_EDGES } from './drive-three-halo.js';
 import { TABLE_BUDGET_MS, bandRows, smoothMsPerRow, tableStatus, fillFraction, tableBadge, fadeRangeName, fadeRangeOf, scatterGainOf } from './table-pace.js';
 const D = globalThis.RF.Drive;
 const texture = (data, w, h, format = T.RGBAFormat) => { const t = new T.DataTexture(data, w, h, format, T.FloatType); t.needsUpdate = true; return t; };
@@ -30,7 +30,7 @@ export function create(canvas, gl, onModelsReady) {
   const litCars = [];   // BA5 test hook: the car id behind each traffic source this frame
   renderer.debug.onShaderError = (g, program, vs, fs) => { failure = [g.getProgramInfoLog(program), g.getShaderInfoLog(vs), g.getShaderInfoLog(fs)].filter(Boolean).join(' '); console.error('GPU drive shader: ' + failure); };
   const u = {}, set = (k, v) => { if (u[k]) u[k].value = v; else u[k] = { value: v }; };
-  for (const [k, v] of Object.entries({ otherBeam: null, beamMeta: array(16, T.Vector4), beamGrid: array(16, T.Vector4), beamTint: array(16, T.Vector4), trafficBeamIdx: array(16, T.Vector4), otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(64, T.Vector2), trafficLamp: array(64, T.Vector4), nTraffic: 0, otherConvention: 0, pitch: 0, yaw: 0, sigma: 0, scatterSteps: 0, scatMode: 0, scatUV: new T.Vector2(1, 1), scatBank0: null, scatBank1: null, scatBank2: null, tableBank: 0, tableSteps: 48, tableH: 1, tableSeed: 0, tableFade: 1, tableFadeS0: 1, tableFadeS1: 10, scatGain: 1, scatGFwd: 0, scatGBack: 0, scatWFwd: 0, scatRMin: 0, scatSMax: 0, cornering: new T.Vector2(), beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, wetModel: 0, grain: 0, wetness: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2() })) set(k, v);
+  for (const [k, v] of Object.entries({ otherBeam: null, beamMeta: array(16, T.Vector4), beamGrid: array(16, T.Vector4), beamTint: array(16, T.Vector4), trafficBeamIdx: array(16, T.Vector4), otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(64, T.Vector2), trafficLamp: array(64, T.Vector4), nTraffic: 0, otherConvention: 0, pitch: 0, yaw: 0, sigma: 0, scatterSteps: 0, scatMode: 0, scatUV: new T.Vector2(1, 1), haloOn: 0, haloTex: null, haloUV: new T.Vector2(1, 1), haloTab: new T.Vector2(48, 27), scatBank0: null, scatBank1: null, scatBank2: null, tableBank: 0, tableSteps: 48, tableH: 1, tableSeed: 0, tableFade: 1, tableFadeS0: 1, tableFadeS1: 10, scatGain: 1, scatGFwd: 0, scatGBack: 0, scatWFwd: 0, scatRMin: 0, scatSMax: 0, cornering: new T.Vector2(), beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, wetModel: 0, grain: 0, wetness: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2() })) set(k, v);
   set('worldFromCar', new T.Matrix3()); set('carFromWorld', new T.Matrix3()); set('passDepth', null); set('passShadow0',null); set('passShadow1',null); set('trafficPitch',new Float32Array(64));
   const materialData = new Float32Array(D.MAT_KEYS.length * 4 * 4), markData = new Float32Array(128 * 4 * 2);
   const materialTexture = texture(materialData, D.MAT_KEYS.length, 4), markTexture = texture(markData, 128, 2);
@@ -39,7 +39,7 @@ export function create(canvas, gl, onModelsReady) {
   const scene = new T.Scene(), mesh = new T.Mesh(new T.PlaneGeometry(2, 2), mat); mesh.frustumCulled = false; scene.add(mesh);
   const pass = surface(u);
   const camera = new T.Camera(), objectView = objects(renderer, u, onModelsReady);
-  const halo = haloPass(renderer, u);   // SL2: the traffic halo quads (drawn only when look.trafficHalo is on)
+  const halo = haloPass(renderer, u);   // SL: the traffic scatter table (built only when look.trafficHalo is on)
   function shading(material, enabled, mountain = false, table = false) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
     const atlas = atlasOn && enabled;
@@ -245,7 +245,10 @@ export function create(canvas, gl, onModelsReady) {
   return {
     version: T.REVISION,
     // SL2 test hook: the halo quads drawn for the last frame (0 = off, or no lamp on screen)
-    haloState() { return { drawn: halo.drawn, rects: halo.rects }; },
+    haloState() { return { drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value }; },
+    haloProbe(sx, sy) { return halo.probe(sx, sy); },
+    haloLookup(bins, d) { return haloLookup(bins, d); }, haloEdges() { return HALO_EDGES.slice(); },
+    programCount() { return renderer.info.programs ? renderer.info.programs.length : -1; },
     // BB3 test hook: the lamp tint currently in the lampRGB uniform (what the GPU lights with)
     lampUniform() { return u.lampRGB && u.lampRGB.value ? u.lampRGB.value.toArray() : null; },
     // BA5 test hook: what the GPU got this frame: whether the atlas is on, the beam count, each lit source's atlas index, and the tints
@@ -253,11 +256,11 @@ export function create(canvas, gl, onModelsReady) {
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
       const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn);
-      u.scatUV.value.set(1 / p.w, 1 / p.h); if (tableOn) runTable(p, extras);
+      u.scatUV.value.set(1 / p.w, 1 / p.h); u.haloUV.value.set(1 / p.w, 1 / p.h); if (tableOn) runTable(p, extras);
+      if (!p.touge) halo.build(p, world); else u.haloOn.value = 0;   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
-      if (!p.touge) halo.draw(p, world, target);   // SL2: after the ground, before the objects are composed (they cover it as they cover the ground)
       set('passDepth', target.depthTexture);
       if (failure) throw Error(failure);
       // CPU textures use row zero = top; three's target uses row zero = bottom.
@@ -266,7 +269,7 @@ export function create(canvas, gl, onModelsReady) {
       gl.blitFramebuffer(0, 0, p.w, p.h, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, gl.NEAREST);
       if (objectDestination) {
         if (!objectTarget || objectTarget.width !== p.w * ss || objectTarget.height !== p.h * ss) { if (objectTarget) objectTarget.dispose(); objectTarget = new T.WebGLRenderTarget(p.w * ss, p.h * ss, { type: T.FloatType, depthTexture: new T.DepthTexture(p.w * ss, p.h * ss, T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
-        u.scatUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge, tableOn); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
+        u.scatUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); u.haloUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge, tableOn); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
         if (failure) throw Error(failure);
         const src = gl.getParameter(gl.FRAMEBUFFER_BINDING); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, objectDestination);
         gl.blitFramebuffer(0, 0, p.w * ss, p.h * ss, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, ss > 1 ? gl.LINEAR : gl.NEAREST);
