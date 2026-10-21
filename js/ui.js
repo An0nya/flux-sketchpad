@@ -1063,9 +1063,11 @@
         if (Math.abs(uv[0]) > t.half || Math.abs(uv[1]) > t.half) return;
         ui.addStampAt(uv[0], uv[1]);
       },
-      onPrimary(x, y, dx, dy) { ui.vHeat.panBy(dx, dy); drawHeat(); },
-      onPan(dx, dy) { ui.vHeat.panBy(dx, dy); drawHeat(); },
-      onZoom(f, x, y) { ui.vHeat.zoomAt(f, x, y); drawHeat(); },
+      // DW: the Drive display is drawn through this canvas, so a pan or zoom of the heat view would zoom/shift the drive image (a free-spin wheel zoomed it out and
+      // shrank the render). The Drive display has no view to move: ignore them there.
+      onPrimary(x, y, dx, dy) { if (ui.display === 'drive') return; ui.vHeat.panBy(dx, dy); drawHeat(); },
+      onPan(dx, dy) { if (ui.display === 'drive') return; ui.vHeat.panBy(dx, dy); drawHeat(); },
+      onZoom(f, x, y) { if (ui.display === 'drive') return; ui.vHeat.zoomAt(f, x, y); drawHeat(); },
     });
     // hover cards on the far field's spec overlay (mouse / pen; a touch tap pins one instead, in onTap)
     cv.addEventListener('pointermove', (e) => {
