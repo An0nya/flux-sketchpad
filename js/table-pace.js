@@ -63,3 +63,28 @@ export function scatterGainOf(look) {
   const g = Number(look && look.scatterGain);
   return Number.isFinite(g) && g > 0 ? Math.min(SCAT_GAIN.max, Math.max(SCAT_GAIN.min, g)) : SCAT_GAIN.def;
 }
+
+// SM cycle by distance: the eight noise versions advance with the distance the car travelled, not with the frame count, so the
+// shimmer slows at low speed and stops at a standstill. Metres of travel per version step. Tuned 0.25 -> 0.5: at 20 km/h (5.6 m/s)
+// the speed term is 11 versions/s, under the cap, so 20 and 50 km/h differ; at 0.25 both would be capped.
+export const CYCLE_METRES_PER_VERSION = 0.5;
+// Cap on the speed term, versions per second. Not measured on the owner's phone; the cap is a guess to keep it no faster than the
+// per-frame cycle it replaces (the brief estimated 8-20 fps on the phone).
+export const CYCLE_MAX_HZ = 12;
+// Standstill floor: versions per second of slow drift while the car is still (the fade between versions makes this look like fog).
+export const CYCLE_DRIFT_HZ = 1.5;
+
+// The continuous cycle phase in [0, versions). dMetres is the distance travelled this frame (negative or NaN counts as 0), dtSeconds the
+// frame time (NaN or negative counts as 0). The speed term is capped at CYCLE_MAX_HZ, so one long jump (a seek) cannot race through.
+// o (optional) overrides { metres, maxHz, driftHz } for tests.
+export function cyclePhase(prev, dMetres, dtSeconds, versions, o) {
+  const metres = (o && o.metres) || CYCLE_METRES_PER_VERSION, maxHz = (o && o.maxHz) || CYCLE_MAX_HZ, driftHz = (o && o.driftHz) || CYCLE_DRIFT_HZ;
+  if (!(versions > 0)) return 0;
+  const dt = Number.isFinite(dtSeconds) && dtSeconds > 0 ? dtSeconds : 0;
+  const d = Number.isFinite(dMetres) && dMetres > 0 ? dMetres : 0;
+  const speedStep = Math.min(d / metres, maxHz * dt);
+  const base = Number.isFinite(prev) ? prev : 0;
+  let next = (base + speedStep + driftHz * dt) % versions;
+  if (next < 0) next += versions;
+  return next >= versions ? 0 : next;
+}
