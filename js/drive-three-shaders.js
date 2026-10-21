@@ -23,11 +23,11 @@ float fogT(float d) { return sigma>0.0 ? exp(-sigma*d) : 1.0; }   // transmittan
 uniform int scatterSteps;   // in-scatter steps (look.scatter; 0 = off; only with sigma>0). drive.js inScatter is the CPU twin
 uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js SCAT
 // SL: the traffic scatter table (js/drive-three-halo.js). A screen-space table (1/8 of the view, six tiles side by side) holds, per cell, the oncoming
-// lamps' single-scatter integral over six distance bins [0,8], [8,14], [14,22], [22,34], [34,60], [60,120] m. haloScatter(d) sums the bins up to the fragment's
+// lamps' single-scatter integral over six distance bins whose edges follow the nearest lamp (fixed ladder 8, 14, 22, 34, 60, 120 m when it is far). haloScatter(d) sums the bins up to the fragment's
 // own end distance d (ground hit, object eye distance, sky = 120 m), interpolated in log d like tableC, so the lit air in FRONT of a surface adds to it and the
 // air BEHIND it does not. haloOn is a uniform: off costs one branch, and toggling never changes the shader text (no recompile).
 uniform int haloOn; uniform sampler2D haloTex; uniform vec2 haloUV, haloTab;   // haloUV: 1 / pixels of the target this pass draws; haloTab: cells per tile
-const float HALO_E[6] = float[6](8.0, 14.0, 22.0, 34.0, 60.0, 120.0);
+uniform float haloE[6];   // the upper edge of each bin: set per frame (it follows the nearest lamp's distance, see drive-three-halo.js)
 // Cubic B-spline read of one bin tile in 4 bilinear fetches (the linear trick: B-spline weights are all positive, so two taps per axis are exact). It
 // removes the cell-grid stairs plain bilinear leaves on a sharp-edged glow. Tap centres are clamped inside the tile, so no bin bleeds into its neighbour.
 vec3 haloBin(int k, vec2 pc, vec2 f, vec2 tab) {
@@ -43,7 +43,7 @@ vec3 haloScatter(float d) {
   vec2 p=gl_FragCoord.xy*haloUV*haloTab-0.5, pc=floor(p), f=p-pc;
   float dd=min(d,120.0); vec3 C=vec3(0.0), prevC=vec3(0.0); float prevE=0.0;
   for(int k=0;k<6;k++) {
-    float e=HALO_E[k];
+    float e=haloE[k];
     C+=haloBin(k,pc,f,haloTab);
     if(dd<=e) return k==0 ? C*dd/e : mix(prevC,C,log(dd/prevE)/log(e/prevE));
     prevC=C; prevE=e;

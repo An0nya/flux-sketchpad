@@ -23,8 +23,8 @@ const stripHalo = (t) => t.replace(/\/\/ SL: the traffic scatter table[\s\S]*?re
 const full = S.withLighting(S.ground), pass = TOUGE.passShader(full);
 ok('withLighting(ground) minus the halo lookup equals main 7ee9c65', hash(stripHalo(full)) === '637af601f7d45f05', hash(stripHalo(full)));
 ok('touge pass minus the halo lookup equals main 7ee9c65', hash(TOUGE.passShader(stripHalo(full))) === '0c8989325af259ee', hash(TOUGE.passShader(stripHalo(full))));
-ok('withLighting(ground) with the halo lookup is pinned (SL)', hash(full) === '71a4d44c0bc07f78', hash(full));
-ok('touge pass with the halo lookup is pinned (SL)', hash(pass) === '00606c8c0d9ccf25', hash(pass));
+ok('withLighting(ground) with the halo lookup is pinned (SL)', hash(full) === 'b2f2f8bffa08b030', hash(full));
+ok('touge pass with the halo lookup is pinned (SL)', hash(pass) === '88b2eb67cabcd48e', hash(pass));
 ok('atlas variant reads the atlas and the per-lamp tint', S.withLighting(S.ground, true).includes('otint*otherIntensity(local)') && S.withLighting(S.ground, true).includes('trafficBeamIdx[i>>2][i&3]'));
 ok('touge pass patches the atlas loop spelling', TOUGE.passShader(S.withLighting(S.ground, true)).includes('cos(trafficPitch[i])') && TOUGE.passShader(S.withLighting(S.ground, true)).includes('r+=rho*otint*otherIntensity(local)'));
 
