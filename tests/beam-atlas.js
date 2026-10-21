@@ -1,14 +1,26 @@
-// BA5 node checks for the GPU beam atlas (js/beam-atlas.js): packing, resampling and the car pick. Node, no browser:
+// BA5 node checks for the GPU beam atlas (js/beam-atlas.js) and its shader text: packing, resampling and the car pick. Node, no browser:
 //   node tests/beam-atlas.js   (exits 1 on any failure)
+// 0. shader text: withLighting(ground) with the atlas off is main 7ee9c65's text (hash pinned), the touge pass too.
 // 1. packing keeps candela (2x cd gives 2x at the same angle), per-beam offsets, tint and convention in the metadata.
 // 2. resample round trip: the packed beam reads back within 2 percent of its peak at its own sample centres (interior cells).
 // 3. pick: the GPU index is the CPU pick for 100 cars, stable across calls and pool rebuilds; overflow and empty packs are refused.
-const fs = require('fs'), path = require('path'), vm = require('vm');
+const fs = require('fs'), path = require('path'), vm = require('vm'), crypto = require('crypto');
 const { load } = require('./load.js'); const RF = load();
 const ROOT = path.join(__dirname, '..');
 if (!RF.BeamAtlas) vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'js', 'beam-atlas.js'), 'utf8'), { filename: 'js/beam-atlas.js' });
 const A = RF.BeamAtlas, D = RF.Drive;
+const hash = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
+// the shader modules are ES modules: strip the export/import keywords and evaluate them as plain code
+const esm = (file, extra, names) => new Function(...Object.keys(extra || {}), fs.readFileSync(path.join(ROOT, 'js', file), 'utf8').replace(/^import .*$/mg, '').replace(/^export /mg, '') + '\nreturn { ' + names.join(', ') + ' };')(...Object.values(extra || {}));
 let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : '  ' + JSON.stringify(detail))); if (!cond) fails++; };
+
+// 0. shader text (BA5b): the atlas-off text is main's, byte for byte, so the CPU-equal GPU frames are untouched
+const S = esm('drive-three-shaders.js', null, ['withLighting', 'ground']);
+const TOUGE = esm('drive-touge-three.js', { ground: S.ground }, ['passShader']);
+ok('withLighting(ground) with atlas off equals main 7ee9c65', hash(S.withLighting(S.ground)) === '637af601f7d45f05', hash(S.withLighting(S.ground)));
+ok('touge pass with atlas off equals main 7ee9c65', hash(TOUGE.passShader(S.withLighting(S.ground))) === '0c8989325af259ee', hash(TOUGE.passShader(S.withLighting(S.ground))));
+ok('atlas variant reads the atlas and the per-lamp tint', S.withLighting(S.ground, true).includes('otint*otherIntensity(local)') && S.withLighting(S.ground, true).includes('trafficBeamIdx[i>>2][i&3]'));
+ok('touge pass patches the atlas loop spelling', TOUGE.passShader(S.withLighting(S.ground, true)).includes('cos(trafficPitch[i])') && TOUGE.passShader(S.withLighting(S.ground, true)).includes('r+=rho*otint*otherIntensity(local)'));
 
 // fixtures: two beams with different windows, steps and sizes
 const lutOf = (win, step, peak, sigmaH, sigmaV) => D.lutFrom((h, v) => peak * Math.exp(-0.5 * ((h / sigmaH) ** 2 + (v / sigmaV) ** 2)) + 200, { win, step });

@@ -148,7 +148,51 @@ void main() {
 
 // Keep the original shader byte-for-byte when off: inactive branches can still change compiler rounding.
 // Objects import the same ground prefix. Apply here to their materials, without touching model code.
-export function withLighting(source) {
+// BA5: atlas = true reads each lamp's beam from the GPU atlas (beam-atlas.js) instead of the one otherBeam table.
+// atlas = false is main's text, byte for byte (pinned by tests/beam-atlas.js).
+const ATLAS_N = 16;
+const ATLAS_HEAD = `uniform vec4 beamMeta[${ATLAS_N}], beamGrid[${ATLAS_N}], beamTint[${ATLAS_N}], trafficBeamIdx[${ATLAS_N}];
+int tbeam=0;
+vec3 otint=vec3(1.0,1.0,0.93);
+`;
+const OTHER_LEGACY = `float otherIntensity(vec3 d) {
+  vec3 q=normalize(d); float a=q.x, b=-q.y, c=q.z; vec2 hv;
+  if(otherConvention==1) hv=vec2(asin(clamp(b,-1.0,1.0)),atan(c,a));
+  else if(otherConvention==2) { if(a<=0.0) return 0.0; hv=atan(vec2(b,c)/a); }
+  else hv=vec2(atan(b,a),asin(clamp(c,-1.0,1.0)));
+  vec2 f=(degrees(hv)-otherLutInfo.xy)/otherLutInfo.z-0.5, base=floor(f), t=f-base;
+  if(any(lessThan(base,vec2(0)))||any(greaterThanEqual(base+1.0,otherLutSize))) return 0.0;
+  ivec2 k=ivec2(base);
+  return mix(mix(texelFetch(otherBeam,k,0).r,texelFetch(otherBeam,k+ivec2(1,0),0).r,t.x),mix(texelFetch(otherBeam,k+ivec2(0,1),0).r,texelFetch(otherBeam,k+ivec2(1,1),0).r,t.x),t.y);
+}
+`;
+const OTHER_ATLAS = `float otherIntensity(vec3 d) {
+  vec3 q=normalize(d); float a=q.x, b=-q.y, c=q.z; vec2 hv;
+  vec4 g=beamGrid[tbeam], m=beamMeta[tbeam], tn=beamTint[tbeam];
+  int conv=int(tn.w+0.5);
+  if(conv==1) hv=vec2(asin(clamp(b,-1.0,1.0)),atan(c,a));
+  else if(conv==2) { if(a<=0.0) return 0.0; hv=atan(vec2(b,c)/a); }
+  else hv=vec2(atan(b,a),asin(clamp(c,-1.0,1.0)));
+  vec2 f=(degrees(hv)-g.xy)*g.zw-0.5, base=floor(f), t=f-base;
+  if(any(lessThan(base,vec2(0)))||any(greaterThanEqual(base+1.0,m.yz))) return 0.0;
+  ivec2 k=ivec2(base)+ivec2(0,int(m.x+0.5));
+  return m.w*mix(mix(texelFetch(otherBeam,k,0).r,texelFetch(otherBeam,k+ivec2(1,0),0).r,t.x),mix(texelFetch(otherBeam,k+ivec2(0,1),0).r,texelFetch(otherBeam,k+ivec2(1,1),0).r,t.x),t.y);
+}
+`;
+const LOOP_LEGACY = `  for(int i=0;i<64;i++) { if(i>=nTraffic) break; vec3 d=p-trafficLamp[i].xyz; float r2=dot(d,d), forward=dot(d.xy,trafficDir[i]);
+    if(forward<=0.0 || r2<0.01) continue; float NoL=max(0.0,-dot(d,n)/sqrt(r2)); if(NoL<=0.0) continue;
+    vec3 local=vec3(forward,dot(d.xy,vec2(-trafficDir[i].y,trafficDir[i].x)),d.z);
+    r+=rho*vec3(1,1,0.93)*otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w*fogT(sqrt(r2));
+  }
+`;
+const LOOP_ATLAS = `  for(int i=0;i<64;i++) { if(i>=nTraffic) break; vec3 d=p-trafficLamp[i].xyz; float r2=dot(d,d), forward=dot(d.xy,trafficDir[i]);
+    if(forward<=0.0 || r2<0.01) continue; float NoL=max(0.0,-dot(d,n)/sqrt(r2)); if(NoL<=0.0) continue;
+    vec3 local=vec3(forward,dot(d.xy,vec2(-trafficDir[i].y,trafficDir[i].x)),d.z);
+    tbeam=int(trafficBeamIdx[i>>2][i&3]+0.5); otint=vec3(1.0,1.0,0.93)*beamTint[tbeam].rgb;
+    r+=rho*otint*otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w*fogT(sqrt(r2));
+  }
+`;
+export function withLighting(source, atlas = false) {
   if (!source.includes('float intensity(vec3 d) {') || !source.includes('  for(int i=0;i<2;i++)')) throw Error('P2 shared shading prefix changed');
   return source.replace('uniform sampler2D beam, materials, marks;\n', `uniform sampler2D beam, materials, marks, otherBeam;
 uniform vec4 otherLutInfo;
@@ -157,7 +201,7 @@ uniform vec4 trafficLamp[64];
 uniform int nTraffic, otherConvention;
 uniform float pitch, yaw;
 uniform vec2 cornering;
-`)
+` + (atlas ? ATLAS_HEAD : ''))
     .replace('float intensity(vec3 d) {\n', 'float intensity(vec3 d) {\n' + `  if(yaw!=0.0) { float c=cos(yaw), s=sin(yaw); d.xy=vec2(c*d.x+s*d.y,c*d.y-s*d.x); }
   if(pitch!=0.0) { float c=cos(pitch), s=sin(pitch); d=vec3(c*d.x+s*d.z,d.y,c*d.z-s*d.x); }
 `)
@@ -168,23 +212,8 @@ uniform vec2 cornering;
   float h=atan(d.y,d.x), v=atan(d.z,length(d.xy)), rad=PI/180.0;
   return 400.0*exp(-0.5*pow((v+6.0*rad)/(7.0*rad),2.0))*((origin.y>=0.0 ? cornering.x : 0.0)*exp(-0.5*pow((h-55.0*rad)/(22.0*rad),2.0))+(origin.y<0.0 ? cornering.y : 0.0)*exp(-0.5*pow((h+55.0*rad)/(22.0*rad),2.0)));
 }
-float otherIntensity(vec3 d) {
-  vec3 q=normalize(d); float a=q.x, b=-q.y, c=q.z; vec2 hv;
-  if(otherConvention==1) hv=vec2(asin(clamp(b,-1.0,1.0)),atan(c,a));
-  else if(otherConvention==2) { if(a<=0.0) return 0.0; hv=atan(vec2(b,c)/a); }
-  else hv=vec2(atan(b,a),asin(clamp(c,-1.0,1.0)));
-  vec2 f=(degrees(hv)-otherLutInfo.xy)/otherLutInfo.z-0.5, base=floor(f), t=f-base;
-  if(any(lessThan(base,vec2(0)))||any(greaterThanEqual(base+1.0,otherLutSize))) return 0.0;
-  ivec2 k=ivec2(base);
-  return mix(mix(texelFetch(otherBeam,k,0).r,texelFetch(otherBeam,k+ivec2(1,0),0).r,t.x),mix(texelFetch(otherBeam,k+ivec2(0,1),0).r,texelFetch(otherBeam,k+ivec2(1,1),0).r,t.x),t.y);
-}
-` + 'float wetLobe')
-    .replace('  for(int i=0;i<2;i++)', `  for(int i=0;i<64;i++) { if(i>=nTraffic) break; vec3 d=p-trafficLamp[i].xyz; float r2=dot(d,d), forward=dot(d.xy,trafficDir[i]);
-    if(forward<=0.0 || r2<0.01) continue; float NoL=max(0.0,-dot(d,n)/sqrt(r2)); if(NoL<=0.0) continue;
-    vec3 local=vec3(forward,dot(d.xy,vec2(-trafficDir[i].y,trafficDir[i].x)),d.z);
-    r+=rho*vec3(1,1,0.93)*otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w*fogT(sqrt(r2));
-  }
-` + '  for(int i=0;i<2;i++)');
+${atlas ? OTHER_ATLAS : OTHER_LEGACY}` + 'float wetLobe')
+    .replace('  for(int i=0;i<2;i++)', `${atlas ? LOOP_ATLAS : LOOP_LEGACY}` + '  for(int i=0;i<2;i++)');
 }
 
 // SD1 table (look.scatterMode 'table'). A pre-pass fills three RGBA half-float targets (banks) with 12 segment integrals of the
