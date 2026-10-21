@@ -5,7 +5,7 @@
 // (rows at the car's centre, 90 to 120 px left and right). A 4 px ring is NOT used: on this fixture the road below the car and the sky read 0.
 // Checks:
 //  (1) a mesh car is drawn; (2) >= 30 changed px; (3) body median / fog reference > 0.5 (the car is not black; before the fix it was ~0.01);
-//  (4) table body vs direct-16 body within 15 percent (SF1 convention: table 64 vs direct 16); (5) the air-clear linear HDR hash equals the pin
+//  (4) table body vs direct-16 body within 20 percent (owner-set, fade off; SF1 convention: table 64 vs direct 16); (5) the air-clear linear HDR hash equals the pin
 //  computed from main (SG1_PIN); (6) no NaN in any frame.
 // Run: python3 tests/serve.py 8996 & echo $! > pidfile; PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/SG1-far-car-fog.js 8996; kill $(cat pidfile)
 const fs = require('fs'), path = require('path');
@@ -29,7 +29,7 @@ const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pa
     await page.evaluate(() => P1Page.ready()); await sleep(1500);
     const base = { scene: 'road', mountainPass: true, gpuRenderer: true, detailedModels: true, deerBehaviour: false, streetLamps: 'sodium', preceding: false,
       trafficLogic: false, animals: false, people: true, posts: true, signs: true, seed: 7, speed: 130, wet: true, wetSheen: false, fpsCounter: false,
-      scatterRes: 'full', scatterBlur: 'strong', scatterCache: 'on', scatterCycle: 0, scatterNearFade: 'on', scatterNearFadeRange: 'medium', scatterGain: 1,
+      scatterRes: 'full', scatterBlur: 'strong', scatterCache: 'on', scatterCycle: 0, scatterNearFade: 'off', scatterNearFadeRange: 'off', scatterGain: 1,
       afs: false, lampPitch: false, corneringLamps: false, ambient: 0, playing: false, trafficDensity: 3, trafficRange: 800, trafficLightRange: 'cars', trafficBeams: false,
       visibility: 60, scatter: 64, scatterMode: 'table', oncoming: true };
     await page.evaluate((o) => { Object.assign(RF.UI.dvOpts, o); RF.UI.redrawSpec(); }, base); await sleep(900);
@@ -61,7 +61,8 @@ const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pa
     ok('SG1 car pixels changed by the car (>= 30 px)', table.px >= 30, table.px + ' px');
     ok('SG1 car body / fog beside the car > 0.5 (table 64, 60 m, fog 60 m; before the fix ~0.01)', fogRatio !== null && fogRatio > 0.5, 'body median ' + (table.median || 0).toExponential(3) + ' / fog ' + (table.side || 0).toExponential(3) + ' = ' + (fogRatio || 0).toFixed(3));
     const tabD = direct16.median !== null && table.median !== null ? table.median / direct16.median : null;
-    ok('SG1 table 64 body vs direct 16 body within 15 percent', tabD !== null && Math.abs(tabD - 1) <= 0.15, 'table/direct ' + (tabD || 0).toFixed(3));
+    // Owner-set band 20 percent (up to 25 allowed): the fade is off so the comparison is like for like; direct 16 is itself coarse (its loop caps at 16 steps, so direct 64 is unusable).
+    ok('SG1 table 64 body vs direct 16 body within 20 percent (near fade off)', tabD !== null && Math.abs(tabD - 1) <= 0.20, 'table/direct ' + (tabD || 0).toFixed(3));
     ok('SG1 no NaN in any frame', table.nan === 0 && direct16.nan === 0, 'nan table ' + table.nan + ', direct ' + direct16.nan);
     // Air-clear: visibility null, scatter 0. FNV-1a over the float bytes; PIN is the value computed on main (see the report).
     const clear = await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { visibility: null, scatter: 0, oncoming: true }); RF.UI.redrawSpec(); RF.DriveAnim._.frame(); const a = RF.DriveAnim._.readHdr(); const b = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let h = 0x811c9dc5; for (let i = 0; i < b.length; i++) { h ^= b[i]; h = Math.imul(h, 0x01000193) >>> 0; } return { n: a.length, hash: h.toString(16) }; });
