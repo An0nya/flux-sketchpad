@@ -74,9 +74,16 @@ async function pool(items, n, fn) { const res = []; let i = 0; await Promise.all
   const needsPage = tests.some((t) => !t.startsWith('node:')); let server = null, port = 0;
   if (needsPage) { port = await freePort(); server = spawn('python3', ['tests/serve.py', String(port)], { cwd: root, stdio: 'ignore' }); await new Promise((r) => setTimeout(r, 1500)); }
   const t0 = Date.now(); let res = [];
-  try { res = res.concat(await pool(par, JOBS, (t) => runOne(t, port))); res = res.concat(await pool(solo, 1, (t) => runOne(t, port))); }
+  try {
+    res = res.concat(await pool(par, JOBS, (t) => runOne(t, port)));
+    // A page test that fails in the parallel pool is re-run alone once: some checks are load-sensitive (SD's frame-hash pin passed alone twice and
+    // failed under 3-way load). A pass on the solo re-run counts as clean but is reported as LOAD-SENSITIVE so it is not forgotten.
+    for (const r of res.slice()) if ((r.code !== 0 || r.fails > 0) && !r.name.startsWith('node:')) { const again = await runOne(r.name, port); console.log(`${r.name} solo re-run exit ${again.code} fails ${again.fails} ${again.s}s`); if (again.code === 0 && again.fails === 0) { r.code = 0; r.fails = 0; r.flaky = true; } }
+    res = res.concat(await pool(solo, 1, (t) => runOne(t, port)));
+  }
   finally { if (server) { try { process.kill(server.pid); } catch (e) { /* gone */ } } }
   const bad = res.filter((r) => r.code !== 0 || r.fails > 0);
+  const flaky = res.filter((r) => r.flaky); if (flaky.length) console.log('LOAD-SENSITIVE (failed in the pool, passed alone): ' + flaky.map((r) => r.name).join(' '));
   console.log(`\n${res.length} tests, ${bad.length} not clean, ${((Date.now() - t0) / 1000).toFixed(0)}s` + (bad.length ? '\nNOT CLEAN: ' + bad.map((r) => `${r.name}(${r.code}/${r.fails})`).join(' ') : ''));
   process.exit(bad.length ? 1 : 0);
 })();
