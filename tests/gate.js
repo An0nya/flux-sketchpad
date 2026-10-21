@@ -16,11 +16,11 @@ const PW = process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules
 
 // ---- the curated gate -------------------------------------------------------------------------------------------------
 const NODE = ['all', 'regress-node', 'scatter-table', 'scatter-table-pace', 'scatter', 'scatter-fade-gain', 'fog', 'wetness', 'wet-ggx', 'foliage', 'beams', 'beam-atlas', 'traffic-beams', 'tl-traffic-taper', 'pass-parity', 'scene-digest', 'scenery-params', 'tile-options'];
-const PAGE_PAR = ['SB1-studs-everywhere', 'OV-scene-details', 'CD-controls-dedupe', 'UX2-drive-ux', 'DC-drive-controls', 'PM-pass-mesh', 'PP-pass-parity', 'P2-drive-lighting', 'WG-wet-ggx', 'WT-wetness', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'SF-silhouette-fade', 'SF1-car-silhouette', 'BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'TL2-traffic-light-range'];
+const PAGE_PAR = ['SB1-studs-everywhere', 'OV-scene-details', 'CD-controls-dedupe', 'UX2-drive-ux', 'DC-drive-controls', 'DW-drive-wheel', 'PM-pass-mesh', 'PP-pass-parity', 'P2-drive-lighting', 'WG-wet-ggx', 'WT-wetness', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'SF-silhouette-fade', 'SF1-car-silhouette', 'BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'TL2-traffic-light-range'];
 const PAGE_SOLO = ['P1-drive-three', 'SE-table-pacing'];   // P1 needs the real GPU; SE measures per-frame ms
 const GROUPS = {
   render: ['P1-drive-three', 'P2-drive-lighting', 'PM-pass-mesh', 'PP-pass-parity', 'WT-wetness', 'WG-wet-ggx', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'SE-table-pacing', 'SF-silhouette-fade', 'SF1-car-silhouette', 'BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'TL2-traffic-light-range', 'SB1-studs-everywhere', 'OV-scene-details'],
-  ui: ['CD-controls-dedupe', 'UX2-drive-ux', 'DC-drive-controls'],
+  ui: ['CD-controls-dedupe', 'UX2-drive-ux', 'DC-drive-controls', 'DW-drive-wheel'],
   scatter: ['SC-beam-scatter', 'SD-scatter-table', 'SE-table-pacing', 'SF-silhouette-fade', 'SF1-car-silhouette', 'FG-fog', 'node:scatter', 'node:scatter-table', 'node:scatter-table-pace', 'node:scatter-fade-gain', 'node:fog'],
   beams: ['BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'P1-drive-three', 'node:beams', 'node:beam-atlas', 'node:traffic-beams'],
   wet: ['WT-wetness', 'WG-wet-ggx', 'node:wetness', 'node:wet-ggx'],
@@ -29,7 +29,7 @@ const GROUPS = {
 // First match wins per changed file; every match contributes (union). A changed js/ file with no match => full gate.
 const MAP = [
   [/^js\/drive-three-shaders\.js$/, ['render', 'ui']], [/^js\/drive-three(-objects|-models)?\.js$/, ['render', 'ui']],
-  [/^js\/drive-anim\.js$/, ['render', 'ui', 'nodeAll']], [/^js\/spec-ui\.js$/, ['ui', 'scatter', 'beams']],
+  [/^js\/ui\.js$/, ['ui']], [/^js\/drive-anim\.js$/, ['render', 'ui', 'nodeAll']], [/^js\/spec-ui\.js$/, ['ui', 'scatter', 'beams']],
   [/^js\/drive\.js$/, ['render', 'nodeAll']], [/^js\/table-pace\.js$/, ['scatter']], [/^js\/beam-atlas\.js$/, ['beams']],
   [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']],
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
