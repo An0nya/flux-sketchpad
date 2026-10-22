@@ -109,13 +109,13 @@
         const p = at(s, off), dr = (o && o.dir) || [1, 0], G = (o && o.gait) || 0;
         let legsFirst = null;
         for (const dy of [-0.1, 0.1]) { const q = at(s + dr[0] * G * Math.sign(dy), off + dy + dr[1] * G * Math.sign(dy)); const ob = add({ k: 'cyl', x: q.x, y: q.y, r: 0.085, z0: 0, z1: 0.85, mat: legsMat }); legsFirst = legsFirst || ob; }
-        legsFirst.pedMats = { torso: torsoMat, legs: legsMat, vest };     // read by the detailed (SDF) pedestrian model, drive-models.js, so it wears the same clothes
+        legsFirst.pedMats = { torso: torsoMat, legs: legsMat, vest, strips };     // read by the detailed (SDF) pedestrian model, drive-models.js, so it wears the same clothes
         add({ k: 'cyl', x: p.x, y: p.y, r: 0.2, z0: 0.85, z1: 1.5, mat: vest ? ({ z }) => ((z > 1.0 && z < 1.06) || (z > 1.26 && z < 1.32) ? 'hivis-tape' : 'hivis') : torsoMat });
-        // Strips (modes mix and small): two small strips of the vest's tape on the back and a reflector patch on each shoe. Same material ('hivis-tape',
-        // retro 330 cd/lx/m² per m² of tape) as the vest, on smaller patches. Off in none and vest: nothing added.
+        // Strips (modes mix and small): two tape bands that wrap the torso (5 cm tall, at the vest's heights) and a reflector patch on each shoe. Same material
+        // ('hivis-tape', retro 330 cd/lx/m² per m² of tape) as the vest. The detailed (SDF) model draws the same bands and shoe patches (drive-models.js).
+        // Off in none and vest: nothing added.
         if (strips) {
-          const back = [-0.2 * Math.cos(p.yaw), -0.2 * Math.sin(p.yaw)];
-          for (const [z0, z1] of [[1.0, 1.04], [1.2, 1.24]]) add({ k: 'box', x: p.x + back[0], y: p.y + back[1], z0, z1, hx: 0.01, hy: 0.06, yaw: p.yaw, mat: 'hivis-tape' });
+          for (const [z0, z1] of [[1.0, 1.05], [1.25, 1.30]]) add({ k: 'cyl', x: p.x, y: p.y, r: 0.206, z0, z1, mat: 'hivis-tape' });
           for (const dy of [-0.1, 0.1]) { const q = at(s + dr[0] * G * Math.sign(dy), off + dy + dr[1] * G * Math.sign(dy)); add({ k: 'box', x: q.x, y: q.y, z0: 0.04, z1: 0.07, hx: 0.03, hy: 0.03, yaw: p.yaw, mat: 'hivis-tape' }); }
         }
         add({ k: 'ell', x: p.x, y: p.y, z: 1.64, rx: 0.1, ry: 0.09, rz: 0.12, mat: 'skin' });

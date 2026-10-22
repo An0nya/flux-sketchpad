@@ -64,12 +64,19 @@
     const phase=o.motion?o.motion.distance/(o.motion.stride||settings.stride):fract(legacy*.25),blend=o.motion?.blend??1,feet=[];
     if(kind==='person') {
       const pm=o.pedMats||{},torso=pm.torso||(o.ptype==='light'?'cloth-light':o.ptype==='hivis'?'hivis':'cloth-dark'),legsM=pm.legs||'cloth-dark';
+      // pm.strips (mix and small clothing modes, drive-scenes.js): reflective tape, 'hivis-tape'. Two torso bands 5 cm tall (flattened ellipsoids just outside the
+      // torso at z 1.02 and 1.28, the torso's width at each height plus about 1.2 cm), a cuff on each forearm, a band on each shin above the ankle, and a patch
+      // on each shoe. Each band is a few nodes; the whole body stays under MAX_NODES (15 nodes without tape, 23 with).
+      const tape=!!pm.strips, along=(a,b,t)=>a.map((x,i)=>x+(b[i]-x)*t);
       ell([0,0,1.19],[.16,.21,.31],torso);cap([0,0,1.43],[0,0,1.55],.06,'skin');ell([.015,0,1.66],[.1,.095,.13],'skin');
+      if(tape){ell([0,0,1.02],[.145,.195,.025],'hivis-tape');ell([0,0,1.28],[.165,.213,.025],'hivis-tape');}
       for(const side of [-1,1]) {
         const f=foot(state,phase,side===1?0:.5,o.motion?.stride,blend),hip=[0,side*.11,.89],ankle=[f.x,side*.11,f.z+.035],k=knee(hip,ankle,.43,.43,1);
         cap(hip,k,.075,legsM);cap(k,ankle,.052,legsM);cap([f.x-.04,side*.11,f.z],[f.x+.12,side*.11,f.z],.045,legsM);feet.push({...f,p:point([f.x,side*.11,f.z])});
+        if(tape){cap(along(k,ankle,.8),along(k,ankle,.95),.06,'hivis-tape');cap([f.x+.04,side*.11,f.z],[f.x+.12,side*.11,f.z],.047,'hivis-tape');}
         const swing=state==='stand'?0:Math.sin(2*Math.PI*(phase+(side===1?0:.5)))*.32*blend,shoulder=[0,side*.23,1.4],elbow=[-swing*.55,side*.24,1.13],hand=[-.04-swing,side*.24,.9];
         cap(shoulder,elbow,.06,torso);cap(elbow,hand,.045,torso);ell(hand,[.05,.045,.06],'skin');
+        if(tape)cap(along(elbow,hand,.6),along(elbow,hand,.8),.052,'hivis-tape');
       }
     } else if(kind==='deer') {
       const bound=state==='bound',cycle=fract(phase),air=bound?Math.max(0,Math.sin((cycle-.3)/.7*Math.PI))*.20:0,flex=bound?Math.sin(cycle*2*Math.PI)*.07:0,z=air;
