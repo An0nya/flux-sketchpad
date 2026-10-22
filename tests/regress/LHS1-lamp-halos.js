@@ -90,13 +90,20 @@ const setLH = (page, v) => page.evaluate((v) => RF.DriveAnim._.V.setOwn('lampHal
     // 3. the option is in More and reads back
     const ui = await page.evaluate(() => { const s = document.querySelector('[data-dv="lampHalos"]'); return s ? { value: s.value, inMore: !!s.closest('.drive-more'), title: (s.title || '').slice(0, 40) } : null; });
     ok('LHS1 option select (data-dv=lampHalos) is in the More panel', !!(ui && ui.inMore), JSON.stringify(ui));
-    // 5. LAMP-HALO-CONE: exported curve data, and the probe at three eye positions for one street lamp (no draw)
-    const cone = await page.evaluate(async () => {
-      const m = await import('/js/drive-three-lamphalo.js'), T3 = RF.DriveAnim._.V.three;
-      const out = { sodiumFlux: m.LAMP_CURVES.sodium.fluxCheck, ledFlux: m.LAMP_CURVES.led.fluxCheck, plateau: m.LAMP_CURVES.sodium.plateau, at80: m.coneIntensity('sodium', 80), at85: m.coneIntensity('sodium', 85), ledAt80: m.coneIntensity('led', 80) };
-      const tb = m.LAMP_CURVES.sodium.table; let s = 0;   // independent check: trapezoid over the exported 1-degree table
-      for (let i = 0; i < tb.length - 1; i++) { const a = tb[i][0] * Math.PI / 180, b = tb[i + 1][0] * Math.PI / 180; s += (tb[i][1] * Math.sin(a) + tb[i + 1][1] * Math.sin(b)) / 2 * (b - a); }
-      out.tableFlux = 2 * Math.PI * s;
+    // 5. LAMP-DIST (replaces LAMP-HALO-CONE): the shared distribution table (js/lamp-dist.js), checked on a 1-degree grid (independent of the 5 x 15 grid it is built on)
+    const dist = await page.evaluate(async () => {
+      const m = await import('/js/lamp-dist.js'), T3 = RF.DriveAnim._.V.three, out = { flux: {}, aboveMax: 0, classVDev: 0, peakG: {}, streetVsHouse: null, floorFar: null, peakIII: null };
+      for (const c of m.CLASSES) for (const k of m.KINDS) {
+        let s = 0, aboveMax = 0;
+        for (let g = 0.5; g < 90; g += 1) for (let p = 0.5; p < 360; p += 1) s += m.distAt(c, k, g, p) * Math.sin(g * Math.PI / 180) * (Math.PI / 180) ** 2;
+        out.flux[c + '/' + k] = s;
+        for (let p = 0; p < 360; p += 15) aboveMax = Math.max(aboveMax, m.distAt(c, k, 90.5, p), m.distAt(c, k, 91, p), m.distAt(c, k, 120, p));
+        out.aboveMax = Math.max(out.aboveMax, aboveMax);
+      }
+      for (const k of m.KINDS) for (let p = 0; p < 360; p += 15) out.classVDev = Math.max(out.classVDev, Math.abs(m.distAt('V', k, 65, p) - m.distAt('V', k, 65, 0)));
+      for (const c of m.CLASSES) for (const k of m.KINDS) { let bg = 0, bv = -1; for (let g = 0; g <= 90; g += 1) { const v = m.distAt(c, k, g, 0); if (v > bv) { bv = v; bg = g; } } out.peakG[c + '/' + k] = bg; }
+      out.streetVsHouse = [m.distAt('III', 'sodium', 65, 0), m.distAt('III', 'sodium', 65, 180)];
+      out.floorFar = m.spriteDistAt('III', 'sodium', 88, 0); out.peakIII = m.LAMP_DIST.peak['III/sodium'];
       const lamps = T3.lampHaloStreetLamps(), L = lamps[0];
       const near = { x: L.x - 7, y: L.y, z: 1.2 }, far = { x: L.x - 165, y: L.y, z: 1.2 }, behind = { x: Math.max(...lamps.map((l) => l.x)) + 5, y: L.y, z: 1.2 };
       const find = (list, eye) => { const rExp = Math.hypot(L.x - eye.x, L.y - eye.y, L.z - eye.z); return (list || []).find((c) => Math.abs(c.r - rExp) < 0.01) || null; };
@@ -104,11 +111,16 @@ const setLH = (page, v) => page.evaluate((v) => RF.DriveAnim._.V.setOwn('lampHal
       out.behindCount = (T3.lampHaloProbe(behind) || []).length; out.lampCount = lamps.length;
       return out;
     });
-    ok('LHS1 cone: exported curve integrates to the lamp lumens (sodium and LED, 1000 lm per klm)', Math.abs(cone.sodiumFlux - 1000) < 1 && Math.abs(cone.ledFlux - 1000) < 1 && Math.abs(cone.tableFlux - 1000) < 20, 'sodium ' + cone.sodiumFlux + ', led ' + cone.ledFlux + ', 1-deg table ' + cone.tableFlux.toFixed(1) + ', plateau ' + cone.plateau + ' cd/klm');
-    ok('LHS1 cone: intensity falls off: 100 cd/klm at 80 deg (sodium), below the plateau; 0 at 85 deg', Math.abs(cone.at80 - 100) < 1e-6 && cone.at85 === 0 && cone.at80 < 0.6 * cone.plateau, 'at80 ' + cone.at80 + ', at85 ' + cone.at85 + ', plateau ' + cone.plateau);
-    ok('LHS1 cone: near lamp (gamma ~50 deg) is listed with I > 0', !!(cone.near && cone.near.I > 0), JSON.stringify(cone.near));
-    ok('LHS1 cone: far lamp (gamma ~88 deg, 165 m) adds nothing: not listed', cone.far === null, JSON.stringify(cone.far));
-    ok('LHS1 cone: a lamp behind the viewer adds nothing (probe lists none)', cone.behindCount === 0, 'listed ' + cone.behindCount + ' of ' + cone.lampCount + ' lamps');
+    const fl = Object.values(dist.flux), fluxErr = Math.max(...fl.map((v) => Math.abs(v - 1000) / 1000));
+    ok('LHS1 table: every class and kind integrates to the lamp lumens (1000 lm per klm) on a 1-degree grid, within 2 percent', fluxErr < 0.02, 'worst error ' + (100 * fluxErr).toFixed(3) + ' %, sodium III ' + dist.flux['III/sodium'].toFixed(1));
+    ok('LHS1 table: zero above horizontal (gamma > 90), for every class, kind and azimuth', dist.aboveMax === 0 && dist.floorFar !== null, 'max above horizontal ' + dist.aboveMax);
+    ok('LHS1 table: peak of the batwing lobe at 60-75 deg (street side, all classes and kinds)', Object.values(dist.peakG).every((g) => g >= 60 && g <= 75), JSON.stringify(dist.peakG));
+    ok('LHS1 table: street side brighter than house side at the peak angle (class III sodium)', dist.streetVsHouse[0] > 1.5 * dist.streetVsHouse[1], 'street ' + dist.streetVsHouse[0].toFixed(1) + ', house ' + dist.streetVsHouse[1].toFixed(1) + ' cd/klm');
+    ok('LHS1 table: class V is symmetric (no dependence on azimuth)', dist.classVDev < 1e-9, 'max deviation ' + dist.classVDev);
+    ok('LHS1 sprite floor: at 88 deg (sodium III) the sprite value is 4 percent of the peak (not zero), table itself is 0', Math.abs(dist.floorFar - 0.04 * dist.peakIII) < 1e-6, 'floor ' + dist.floorFar.toFixed(2) + ' cd/klm, peak ' + dist.peakIII.toFixed(1));
+    ok('LHS1 cone: near lamp (gamma ~50 deg) is listed with I > 0', !!(dist.near && dist.near.I > 0), JSON.stringify(dist.near));
+    ok('LHS1 cone: far lamp (gamma ~88 deg, 165 m) is listed, dim (floor only, I <= 4 percent of peak lamp lumens)', !!(dist.far && dist.far.I > 0 && dist.far.I <= 0.04 * dist.peakIII * 9 * 1.01), JSON.stringify(dist.far));
+    ok('LHS1 cone: a lamp behind the viewer adds nothing (probe lists none)', dist.behindCount === 0, 'listed ' + dist.behindCount + ' of ' + dist.lampCount + ' lamps');
     // 4. GPU time of the halo pass, reported
     await setLH(page, 'on'); await frame(page);
     const t = await page.evaluate(() => RF.DriveAnim._.V.three.timeLampHalo(8)).catch((e) => ({ gpuMs: null, reason: String(e) }));
