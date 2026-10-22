@@ -1,5 +1,5 @@
 // HDX7 page checks: the traffic halo quality presets on the GPU drive renderer (fog 60, one oncoming car about 35 m away, as SL-traffic-halo).
-//  1. low, medium, high each apply: bins 4 / 16 / 24, polar tables 0 / 1 / 2 (per lamp of the nearest car), and the frame changes from halo off;
+//  1. low, medium, ultra each apply: bins 6 / 16 / 24, polar tables 0 / 1 / 2 (per lamp of the nearest car), and the frame changes from halo off;
 //  2. the preset round-trips through the saved drive view (localStorage flux/driveView) and the select reads back the level;
 //  3. the table never exceeds the GPU texture width: N tiles x cells per tile <= MAX_TEXTURE_SIZE at 912, 1378 and 1920 px canvases (preset high);
 //     and a forced narrow case (divisor 1.4, 32 bins) reports the clamp;
@@ -50,7 +50,7 @@ async function frame(page) {
     await setQuality('off'); await sleep(400);
     const offPng = await frame(page); const offState = await haloState();
     ok('HDX7 quality off: no halo table', offState.on === 0 && offState.passes === 0, JSON.stringify({ on: offState.on, passes: offState.passes }));
-    const expect = { low: [4, 0], medium: [16, 1], high: [24, 2] };
+    const expect = { low: [6, 0], medium: [16, 1], ultra: [24, 2] };
     const hashes = {};
     for (const name of ['low', 'medium', 'ultra']) {
       await setQuality(name);

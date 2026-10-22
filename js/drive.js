@@ -899,7 +899,7 @@
   // HDX7: the traffic halo quality presets (owner, 2026-10-22). Derived like airLevelOf: the options equal to one preset's bundle are that level, else 'custom'.
   // Defaults for a look that sets none: 24 bins, divisor auto (0), polar off, 2 polar lamps, gain 1. Only the traffic halo on counts; off is 'off'.
   const HALO_LEVELS_B = {
-    low: { trafficHalo: 16, haloBins: 4, haloDiv: 4, haloPolar: 'off', haloPolarLamps: 1, haloGain: 1 },
+    low: { trafficHalo: 16, haloBins: 6, haloDiv: 4, haloPolar: 'off', haloPolarLamps: 1, haloGain: 1 },
     medium: { trafficHalo: 16, haloBins: 16, haloDiv: 4, haloPolar: 'merged', haloPolarLamps: 2, haloGain: 1 },
     ultra: { trafficHalo: 16, haloBins: 24, haloDiv: 4, haloPolar: 'perlamp', haloPolarLamps: 2, haloGain: 1 },
   };
