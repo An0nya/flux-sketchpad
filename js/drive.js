@@ -896,6 +896,23 @@
     }
     return 'custom';
   }
+  // HDX7: the traffic halo quality presets (owner, 2026-10-22). Derived like airLevelOf: the options equal to one preset's bundle are that level, else 'custom'.
+  // Defaults for a look that sets none: 24 bins, divisor auto (0), polar off, 2 polar lamps, gain 1. Only the traffic halo on counts; off is 'off'.
+  const HALO_LEVELS_B = {
+    low: { trafficHalo: 16, haloBins: 4, haloDiv: 4, haloPolar: 'off', haloPolarLamps: 1, haloGain: 1 },
+    medium: { trafficHalo: 16, haloBins: 16, haloDiv: 4, haloPolar: 'merged', haloPolarLamps: 2, haloGain: 1 },
+    high: { trafficHalo: 16, haloBins: 24, haloDiv: 4, haloPolar: 'perlamp', haloPolarLamps: 2, haloGain: 1 },
+  };
+  const HALO_DEFAULTS = { trafficHalo: 0, haloBins: 24, haloDiv: 0, haloPolar: 'off', haloPolarLamps: 2, haloGain: 1 };
+  function haloLevelBundle(name) { return Object.prototype.hasOwnProperty.call(HALO_LEVELS_B, name) ? Object.assign({}, HALO_LEVELS_B[name]) : null; }
+  function haloLevelOf(o) {
+    if (!(Number(o && o.trafficHalo) > 0)) return 'off';
+    for (const name of Object.keys(HALO_LEVELS_B)) {
+      const b = HALO_LEVELS_B[name];
+      if (Object.keys(b).every((k) => (typeof b[k] === 'number' ? (Number(o[k] == null ? HALO_DEFAULTS[k] : o[k]) === b[k]) : String(o[k] == null ? HALO_DEFAULTS[k] : o[k]) === b[k]))) return name;
+    }
+    return 'custom';
+  }
   // The counts the table pass uses (CPU twin and GPU). Precedence: valid debug text > quality preset > near sampling / global steps.
   function binCountsFor(steps, bias, s, quality) { return parseBinCounts(s) || qualityCounts(quality) || tableBinSteps(steps, bias); }
   function scatterTableBins(o, dir, jit, steps) {
@@ -1051,5 +1068,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

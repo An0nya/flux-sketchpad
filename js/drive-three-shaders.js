@@ -64,31 +64,38 @@ vec3 haloScatterScr(float d) {
   for(int k=0;k<32;k++) { if(k>=haloNu) break; C+=haloBin(k,pc,f,haloTab); Cc[k]=C; }
   return haloCurve(Cc, dd);
 }
-// HDX6: the nearest lamp's own table, polar about the lamp's projection (haloPolarC, in pixels). Texel (x = bin * nT + angle index, y = log-radius index).
-vec3 haloPolarBin(int k, float ia, float ja) {
+uniform float haloGain;   // HDX7: the look's halo gain (1 = as computed; the multiply is exact at 1)
+uniform int haloPolarOn2; uniform sampler2D haloPolarTex2; uniform vec2 haloPolarF2, haloPolarRange2;   // HDX7: the second polar table (per-lamp: the nearest car's other lamp)
+// HDX6: a lamp's own table, polar about the lamp's projection. Texel (x = bin * nT + angle index, y = log-radius index).
+vec3 haloPolarBin(sampler2D tx, int k, float ia, float ja) {
   float nT = haloPolarN.x, nR = haloPolarN.y, ia0 = floor(ia), ja0 = floor(ja), fa = ia - ia0, fb = ja - ja0;
   float xa = float(k) * nT + mod(ia0, nT), xb = float(k) * nT + mod(ia0 + 1.0, nT);
   float ya = clamp(ja0, 0.0, nR - 1.0), yb = clamp(ja0 + 1.0, 0.0, nR - 1.0);
-  vec3 v00 = texelFetch(haloPolarTex, ivec2(int(xa), int(ya)), 0).rgb, v10 = texelFetch(haloPolarTex, ivec2(int(xb), int(ya)), 0).rgb;
-  vec3 v01 = texelFetch(haloPolarTex, ivec2(int(xa), int(yb)), 0).rgb, v11 = texelFetch(haloPolarTex, ivec2(int(xb), int(yb)), 0).rgb;
+  vec3 v00 = texelFetch(tx, ivec2(int(xa), int(ya)), 0).rgb, v10 = texelFetch(tx, ivec2(int(xb), int(ya)), 0).rgb;
+  vec3 v01 = texelFetch(tx, ivec2(int(xa), int(yb)), 0).rgb, v11 = texelFetch(tx, ivec2(int(xb), int(yb)), 0).rgb;
   return mix(mix(v00, v10, fa), mix(v01, v11, fa), fb);
+}
+vec3 haloPolarT(float d, sampler2D tx, vec2 F, vec2 rng) {
+  vec2 q = (gl_FragCoord.xy * haloUV - F) * haloPolarSz;   // view px: the objects pass may render at ss x the view size, haloUV is per pass
+  float th = dot(q, q) > 0.0 ? atan(q.y, q.x) : 0.0;
+  float ia = fract(th / 6.28318530718) * haloPolarN.x - 0.5;
+  float ja = (log(max(length(q), 0.25)) - rng.x) / rng.y - 0.5;
+  float dd = min(d, 120.0);
+  vec3 Cc[32]; vec3 C = vec3(0.0);
+  for(int k=0;k<32;k++) { if(k>=haloNu) break; C += haloPolarBin(tx, k, ia, ja); Cc[k] = C; }
+  return haloCurve(Cc, dd);
 }
 vec3 haloPolar(float d) {
   if(haloOn==0 || haloPolarOn==0 || d<=0.5) return vec3(0.0);
-  vec2 q = (gl_FragCoord.xy * haloUV - haloPolarF) * haloPolarSz;   // view px: the objects pass may render at ss x the view size, haloUV is per pass
-  float th = dot(q, q) > 0.0 ? atan(q.y, q.x) : 0.0;
-  float ia = fract(th / 6.28318530718) * haloPolarN.x - 0.5;
-  float ja = (log(max(length(q), 0.25)) - haloPolarRange.x) / haloPolarRange.y - 0.5;
-  float dd = min(d, 120.0);
-  vec3 Cc[32]; vec3 C = vec3(0.0);
-  for(int k=0;k<32;k++) { if(k>=haloNu) break; C += haloPolarBin(k, ia, ja); Cc[k] = C; }
-  return haloCurve(Cc, dd);
+  return haloPolarT(d, haloPolarTex, haloPolarF, haloPolarRange);
 }
 // HDX6: the screen table plus, when a polar table is on, the nearest lamp's polar table (the two add; the lamp is in one of them, never both).
+// HDX7: a second polar table adds the same way; the sum is multiplied by the look's gain.
 vec3 haloScatter(float d) {
   vec3 r = haloScatterScr(d);
   if(haloPolarOn!=0) r += haloPolar(d);
-  return r;
+  if(haloPolarOn2!=0 && haloOn!=0 && d>0.5) r += haloPolarT(d, haloPolarTex2, haloPolarF2, haloPolarRange2);
+  return r * haloGain;
 }
 varying vec2 screen;
 const float PI = 3.141592653589793;

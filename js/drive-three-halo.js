@@ -27,6 +27,7 @@ export function haloEdgesOf(n) { const e = [0, ...Array.from({ length: n }, (_, 
 export function haloStepOf(n) { return n === 24 ? 0.22836 : Math.log(240) / n; }   // the knot step in ln d: 0.22836 at 24, as the shader always had it
 export function setHaloBins(req) { const r = +req || 24, n = Math.min(HALO_MAX, Math.max(HALO_MIN, Math.round(r))); HALO_REQ = r; HALO_N = n; HALO_EDGES = haloEdgesOf(n); HALO_BINS = n; return n; }
 setHaloBins(new URLSearchParams(globalThis.location ? location.search : '').get('halobins') ?? 24);
+const HALO_URL_N = HALO_N;   // HDX7: the bin count from the page URL (the default when the look sets none)
 // The upper edge of each bin for a nearest lamp at distance D. The cumulative glow along a ray rises steeply up to the lamp's own distance and is flat after it;
 // the lookup interpolates between edges (log-linear), so a lamp sliding through a bin changes the interpolated shape and the glow around a close car shimmers
 // (measured: 5-15% frame-to-frame jumps in the halo's total at 10-25 m, clustered near the fixed edges). Edges that are fractions of D put the lamp's distance
@@ -89,7 +90,7 @@ const half = (T.DataUtils && T.DataUtils.fromHalfFloat) || ((h) => { const e = (
 
 // SL_HALO_DIV is a test override of the divisor (HDX4 resolution candidate); unset = unchanged.
 // 1/4 of the view with 4 lamps or fewer (the stairs a coarser table leaves on a sharp glow edge show most on a lone distant car), 1/8 with more.
-export function haloTableSize(w, h, lamps = 99) { const div = globalThis.SL_HALO_DIV || (lamps <= HALO_FEW ? HALO_DIV_FEW : HALO_DIV); return [Math.max(HALO_MIN_W, Math.ceil(w / div)), Math.max(HALO_MIN_H, Math.ceil(h / div))]; }
+export function haloTableSize(w, h, lamps = 99, divOv = 0) { const div = globalThis.SL_HALO_DIV || divOv || (lamps <= HALO_FEW ? HALO_DIV_FEW : HALO_DIV); return [Math.max(HALO_MIN_W, Math.ceil(w / div)), Math.max(HALO_MIN_H, Math.ceil(h / div))]; }
 // The CPU twin of the lookup in the shader (haloScatter): bins is the six bins, each [r, g, b]; d metres. Used by the page test to read the GPU table.
 // HDX3 lookup (mirrors haloScatter in drive-three-shaders.js): C at each bin's upper edge is the running sum; bin 0 is log d from 0.5 m with C(0.5)=0;
 // beyond the first edge, a monotone cubic Hermite (Fritsch-Carlson) in (log d, C) through the knots (the edges). Works for any ascending edges.
@@ -132,21 +133,22 @@ export function haloPass(renderer, u) {
   let rt = null, tab = [0, 0], tabClamp = null; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
   const arr = () => Array.from({ length: HALO_PER_DRAW }, () => new T.Vector4());
   const hLamp = arr(), hDir = arr(), hTint = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(120); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
-  const ensure = (p, n) => {
-    let [tw, th] = haloTableSize(p.w, p.h, n);
+  const ensure = (p, n, divOv) => {
+    let [tw, th] = haloTableSize(p.w, p.h, n, divOv);
     // HDX7: the table is HALO_N tiles side by side, so one tile may be at most maxTextureSize / HALO_N cells wide (at 1920 px and divisor 1.4 it is not, at 24 bins).
     const cap = Math.floor(renderer.capabilities.maxTextureSize / HALO_N); tabClamp = tw > cap ? { asked: tw, used: cap } : null; if (tw > cap) tw = cap;
     const key = tw + 'x' + th + 'x' + HALO_N;
     if (!rts.has(key)) { if (rts.size > 3) { for (const r of rts.values()) r.dispose(); rts.clear(); } rts.set(key, new T.WebGLRenderTarget(tw * HALO_N, th, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false })); }
     rt = rts.get(key); tab = [tw, th]; tabV.set(tw, th);
   };
-  let prt = null, prtN = 0;   // HDX6: the polar table (one target, HALO_N bins side by side, HALO_POL_R rows); HDX7: rebuilt when the bin count changes
-  const ensurePolar = () => {
-    if (!prt || prtN !== HALO_N) { if (prt) prt.dispose(); prt = new T.WebGLRenderTarget(HALO_POL_TH * HALO_N, HALO_POL_R, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false }); prtN = HALO_N; }
-    return prt;
+  const prts = [], prtNs = [];   // HDX6: the polar tables (HALO_POL_R rows, HALO_N bins side by side); HDX7: one target per table, rebuilt when the bin count changes
+  const ensurePolar = (si = 0) => {
+    if (!prts[si] || prtNs[si] !== HALO_N) { if (prts[si]) prts[si].dispose(); prts[si] = new T.WebGLRenderTarget(HALO_POL_TH * HALO_N, HALO_POL_R, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false }); prtNs[si] = HALO_N; }
+    return prts[si];
   };
   const halo = {
     edges: HALO_EDGES.slice(1),   // this frame's bin upper edges (page-test hook)
+    polars: [],   // HDX7: one entry per polar table this frame ({ lamps, C, rho, dL })
     get tabClamp() { return tabClamp; },   // HDX7: { asked, used } when the table was narrowed to fit maxTextureSize, else null
     drawn: 0,      // lamps in the table this frame (page-test hook)
     lamps: [],     // those lamps (world position, direction, atlas index), nearest first
@@ -159,9 +161,12 @@ export function haloPass(renderer, u) {
     // Build the table for this frame and point the lookup at it. Call before the ground pass. Off: haloOn 0, nothing drawn.
     build(p, world) {
       halo.drawn = 0; halo.lamps = []; halo.passes = 0; u.haloOn.value = 0; halo.sources = null;
-      u.haloPolarOn.value = 0; halo.msPolar = 0; halo.polar = null;   // HDX6
+      u.haloPolarOn.value = 0; u.haloPolarOn2.value = 0; halo.msPolar = 0; halo.polar = null; halo.polars = [];   // HDX6, HDX7
       const N = D.haloN(p); if (!N) return 0;
-      u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N);   // HDX7: the bin count in use (the shaders read it)
+      // HDX7: the look's halo settings. Bins: a count (clamped to 4..32; HALO_REQ keeps the ask). Divisor: 0 = the lamp-count rule. Gain: 1 = as computed.
+      const look = p.look || {}, wantN = look.haloBins != null ? +look.haloBins : HALO_URL_N;
+      if (wantN !== HALO_REQ) setHaloBins(wantN);
+      u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1;
       const eye = p.eye || [-2, 0.37, 1.2], traffic = D.trafficSources(world.objects, eye, p);
       if (!traffic.length) return 0;
       halo.sources = traffic;   // test hook: the sources the table was built from (beam, tint, axis)
@@ -176,22 +181,50 @@ export function haloPass(renderer, u) {
         used.push({ L, idx, tint: [tn ? tn.x : 1, tn ? tn.y : 1, tn ? tn.z : 1] });
       }
       if (!used.length) return 0;
-      let pol = null; halo.polarNote = null;   // HDX6: SL_HALO_POLAR is read every frame; unset = the screen table alone, as before
-      if (globalThis.SL_HALO_POLAR) {
-        if (renderer.capabilities.maxTextureSize < HALO_POL_TH * HALO_BINS) halo.polarNote = 'polar width ' + HALO_POL_TH * HALO_BINS + ' over maxTextureSize ' + renderer.capabilities.maxTextureSize;
-        else { pol = haloPolarPick(p, eye, used[0], tanH); if (!pol) halo.polarNote = 'nearest lamp not clearly in front or off-screen: screen table'; }
+      // HDX7 polar plan. SL_HALO_POLAR (test hook) = one polar table for the nearest lamp, as HDX6. look.haloPolar: off, perlamp (a table per lamp of
+      // the nearest car, one or two), merged (one table centred between the car's two lamps, both lamps drawn into it).
+      const pmode = globalThis.SL_HALO_POLAR && (!look.haloPolar || look.haloPolar === 'off') ? 'perlamp' : (look.haloPolar || 'off');
+      const plamps = look.haloPolarLamps === 1 ? 1 : 2;
+      const plan = [];   // [{ lamps: [q, ...], pk }], one polar table each
+      if (pmode !== 'off') {
+        if (renderer.capabilities.maxTextureSize < HALO_POL_TH * HALO_N) halo.polarNote = 'polar width ' + HALO_POL_TH * HALO_N + ' over maxTextureSize ' + renderer.capabilities.maxTextureSize;
+        else {
+          const first = used[0], second = plamps === 2 ? used.slice(1).find((q) => q.L.car !== undefined && q.L.car === first.L.car) : null;   // the nearest car's other lamp
+          if (pmode === 'merged' && second) {
+            const mid = { x: (first.L.x + second.L.x) / 2, y: (first.L.y + second.L.y) / 2, z: (first.L.z + second.L.z) / 2 };
+            const pk = haloPolarPick(p, eye, { L: mid }, tanH);
+            if (pk) plan.push({ lamps: [first, second], pk }); else halo.polarNote = 'merged centre not clearly in front: screen table';
+          } else {
+            for (const q of (second ? [first, second] : [first])) { const pk = haloPolarPick(p, eye, q, tanH); if (pk) plan.push({ lamps: [q], pk }); else halo.polarNote = 'nearest lamp not clearly in front or off-screen: screen table'; }
+          }
+        }
       }
-      halo.polar = pol ? { lamp: [used[0].L.x, used[0].L.y, used[0].L.z], C: pol.C, rho: pol.rho, dL: pol.dL } : null;
+      const polarSet = new Set(plan.flatMap((s) => s.lamps));
+      halo.polars = plan.map((s) => ({ lamps: s.lamps.map((q) => [q.L.x, q.L.y, q.L.z]), C: s.pk.C, rho: s.pk.rho, dL: s.pk.dL }));
+      halo.polar = plan.length ? { lamp: [plan[0].lamps[0].L.x, plan[0].lamps[0].L.y, plan[0].lamps[0].L.z], C: plan[0].pk.C, rho: plan[0].pk.rho, dL: plan[0].pk.dL } : null;
       haloEdgesFor(Math.hypot(used[0].L.x - eye[0], used[0].L.y - eye[1], used[0].L.z - eye[2]), edgesV); halo.edges = edgesV.slice(0, HALO_BINS);
-      ensure(p, used.length);
+      ensure(p, used.length, look.haloDiv);
       const timing = !!globalThis.SL_HALO_TIMING; if (timing) { renderer.getContext().finish(); } const t0 = timing ? performance.now() : 0;   // test hook: wall time of the table pass, synchronised by a 1-pixel readback
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
+      const setPolarU = (mp, q, P, j, pk) => {
+        hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, 0, 0); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
+        Object.assign(mp.uniforms, {
+          hLamp: { value: hLamp }, hDir: { value: hDir }, hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
+          haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
+          haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
+          sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) },
+          otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
+          otherConvention: { value: legacy ? HAL_CONV(legacy.conv) : 0 },
+          beamMeta: { value: u.beamMeta.value }, beamGrid: { value: u.beamGrid.value }, beamTint: { value: u.beamTint.value },
+          haloPolarC: { value: new T.Vector2(pk.C[0], pk.C[1]) }, haloPolarRange: { value: new T.Vector2(Math.log(HALO_POL_MIN_PX), pk.dL) }, haloPolarN: { value: new T.Vector2(HALO_POL_TH, HALO_POL_R) },
+        });
+      };
       try {
         renderer.autoClear = false; const m = atlas ? mats[1] : mats[0];
         renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m;
         // The nearest HALO_REFINE lamps within HALO_NEAR metres are drawn in HALO_SUB sub-passes (24 steps per bin); the rest in one (6).
         used.forEach((q, i) => {
-          if (pol && i === 0) return;   // HDX6: the polar lamp is in its own table, not this one
+          if (polarSet.has(q)) return;   // HDX6/HDX7: a polar lamp is in its own table, not this one
           const P = i < HALO_REFINE && q.L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;   // SL_HALO_SUB: test override (cost comparison)
           for (let j = 0; j < P; j++) {
             hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, 0, 0); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
@@ -207,32 +240,20 @@ export function haloPass(renderer, u) {
             renderer.render(scene, camera); halo.passes++;
           }
         });
-        if (pol) {   // HDX6: the polar lamp's own table: the same bin integrals, one texel per (angle, log radius) about its projection
+        // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass.
+        plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
-          const tp = timing ? performance.now() : 0, rp = ensurePolar(), mp = matsP[atlas ? 1 : 0], q = used[0], dL = pol.dL;
-          const P = q.L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;
+          const tp = timing ? performance.now() : 0, rp = ensurePolar(si), mp = matsP[atlas ? 1 : 0];
+          const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;
           renderer.setRenderTarget(rp); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
-          for (let j = 0; j < P; j++) {
-            hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, 0, 0); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
-            Object.assign(mp.uniforms, {
-              hLamp: { value: hLamp }, hDir: { value: hDir }, hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
-              haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
-              haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
-              sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) },
-              otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
-              otherConvention: { value: legacy ? HAL_CONV(legacy.conv) : 0 },
-              beamMeta: { value: u.beamMeta.value }, beamGrid: { value: u.beamGrid.value }, beamTint: { value: u.beamTint.value },
-              haloPolarC: { value: new T.Vector2(pol.C[0], pol.C[1]) }, haloPolarRange: { value: new T.Vector2(Math.log(HALO_POL_MIN_PX), dL) }, haloPolarN: { value: new T.Vector2(HALO_POL_TH, HALO_POL_R) },
-            });
-            renderer.render(scene, camera); halo.passes++;
-          }
-          if (timing) { renderer.readRenderTargetPixels(rp, 0, 0, 1, 1, new Uint16Array(4)); halo.msPolar = performance.now() - tp; }
-        }
+          for (let j = 0; j < P; j++) for (const q of s.lamps) { setPolarU(mp, q, P, j, s.pk); renderer.render(scene, camera); halo.passes++; }
+          if (timing) { renderer.readRenderTargetPixels(rp, 0, 0, 1, 1, new Uint16Array(4)); halo.msPolar += performance.now() - tp; }
+        });
       } finally { renderer.autoClear = ac; renderer.setClearColor(cc, ca); renderer.setRenderTarget(null); }
       if (timing) { renderer.readRenderTargetPixels(rt, 0, 0, 1, 1, new Uint16Array(4)); halo.ms = performance.now() - t0; }
       u.haloTex.value = rt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = globalThis.HALO_TABLE_ONLY ? 0 : 1;
-      u.haloPolarOn.value = pol ? 1 : 0;
-      if (pol) { u.haloPolarTex.value = prt.texture; u.haloPolarF.value.set(pol.C[0] / p.w, pol.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pol.dL); u.haloPolarN.value.set(HALO_POL_TH, HALO_POL_R); }
+      if (plan[0]) { const pk = plan[0].pk; u.haloPolarOn.value = 1; u.haloPolarTex.value = ensurePolar(0).texture; u.haloPolarF.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); u.haloPolarN.value.set(HALO_POL_TH, HALO_POL_R); }
+      if (plan[1]) { const pk = plan[1].pk; u.haloPolarOn2.value = 1; u.haloPolarTex2.value = ensurePolar(1).texture; u.haloPolarF2.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarRange2.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); }
       halo.drawn = used.length; halo.lamps = used.map((q) => ({ lamp: [q.L.x, q.L.y, q.L.z], w: q.L.w, nx: q.L.nx, ny: q.L.ny, idx: q.idx, hasBeam: !!q.L.beam }));
       return halo.drawn;
     },
