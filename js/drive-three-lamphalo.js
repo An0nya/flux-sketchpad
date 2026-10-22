@@ -9,8 +9,10 @@
 
    Labels (from reports/LAMP-HALO-REGS.md):
    - sodium lamp flux 9000 lm: verified (Philips SON-T 100 W datasheet).
-   - intensity toward the driver = 100 cd per 1000 lm (cutoff class at 80 deg, snippet, old IES definition) x 9 klm = 900 cd. A MAXIMUM at 80 deg; used at every
-     angle, so it overstates for lamps seen at steep angles. Inference.
+   - LAMP-HALO-CONE (street lamps): intensity toward the driver is I(gamma) x lamp lm / 1000, gamma = angle from straight down at the lamp. The curve (CONE_KNOTS, exported as
+     LAMP_CURVES) takes 100 cd per 1000 lm at 80 deg (cutoff-class ceiling, regs snippet) and falls to 0 at 85 deg (sodium; LED 0 at 80) so the sprite adds nothing outside the cone.
+     The plateau below 65 deg is solved so the flux integral = the lamp's lumens (normalisation: inference). The 85 deg edge and the LED curve are assumptions. No azimuth term.
+     Signal heads keep the flat-intensity path (see the report: the scene's signal emit is directional, the halo's is not).
    - LED lamp: 55 W at 75 lm/W = 4125 lm (LA County equivalency row, verified) x the same 100 cd/klm ceiling = 413 cd. ASSUMPTION: no LED 80-90 deg value was sourced.
    - signal head: I = max(emit channel) x pi r^2 from the scene's own emit (drive-scenes.js signal(): red 1.2e4 cd/m^2 on a 0.1 m disc = 377 cd). Inference: close to
      the 339 cd Caltrans-module minimum (snippet, unverified). Amber and green have no sourced intensity.
@@ -22,7 +24,34 @@ import * as T from '../vendor/three/three.module.min.js';
 const K_AGE = 20;                                   // Holladay age (years), the default
 const K_VEIL = 10 * (1 + Math.pow(K_AGE / 70, 4));  // ~10.07
 export const LAMP_HALO_MAX = 16, LAMP_HALO_THETA_MIN = 1, LAMP_HALO_THETA_MAX = 30;
-export const LAMP_HALO_CD_PER_KLM = 100, SODIUM_LM = 9000, LED_LM = 55 * 75;
+export const SODIUM_LM = 9000, LED_LM = 55 * 75;   // lamp lumens: sodium Philips SON-T 100 W (verified); LED 55 W at 75 lm/W (LA County row, verified)
+// LAMP-HALO-CONE: luminaire intensity toward the driver, cd per 1000 lamp lm, as a function of gamma (deg from straight down at the lamp).
+// Knots [deg, cd/klm]; null = the plateau level, solved so the downward flux (2 pi integral of I sin g over 0-90 deg) = 1000 lm per klm (the lamp's lumens).
+// Sodium: 100 at 80 deg is the cutoff-class ceiling (regs report, snippet); the cone edge at 85 deg is OWNER REQUEST 2026-10-22 plus an inference, not sourced.
+// LED: ASSUMPTION throughout (no LED 80-90 deg value was sourced); a sharper cutoff, cone edge at 80 deg.
+const CONE_KNOTS = {
+  sodium: [[0, null], [65, null], [80, 100], [85, 0]],
+  led: [[0, null], [55, null], [70, 100], [80, 0]],
+};
+function curveAt(pts, g) {                               // piecewise linear; 0 beyond the last knot (outside the cone)
+  if (!(g >= 0)) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) if (g <= pts[i][0]) { const [g0, v0] = pts[i - 1], [g1, v1] = pts[i]; return v0 + (v1 - v0) * (g - g0) / (g1 - g0); }
+  return 0;
+}
+function fluxPerKlm(pts) { const dg = 0.05 * Math.PI / 180; let s = 0; for (let k = 0; k < 1800; k++) { const g = (k + 0.5) * 0.05; s += curveAt(pts, g) * Math.sin(g * Math.PI / 180) * dg; } return 2 * Math.PI * s; }
+function resolveCurve(knots) {                           // flux is linear in the plateau level: solve it from two evaluations
+  const f0 = fluxPerKlm(knots.map(([g, v]) => [g, v === null ? 0 : v])), f1 = fluxPerKlm(knots.map(([g, v]) => [g, v === null ? 1 : v]));
+  const P = (1000 - f0) / (f1 - f0);
+  return knots.map(([g, v]) => [g, v === null ? P : v]);
+}
+// Exported data: each kind's resolved knots, plateau (cd/klm at nadir), fluxCheck (integral, should be 1000), and a 1-degree table [deg, cd/klm] for a real IES file to replace.
+export const LAMP_CURVES = {};
+for (const kind of Object.keys(CONE_KNOTS)) {
+  const knots = resolveCurve(CONE_KNOTS[kind]), table = [];
+  for (let g = 0; g <= 90; g++) table.push([g, +curveAt(knots, g).toFixed(3)]);
+  LAMP_CURVES[kind] = { knots, plateau: +knots[0][1].toFixed(2), fluxCheck: +fluxPerKlm(knots).toFixed(2), table };
+}
+export function coneIntensity(kind, gDeg) { return curveAt(LAMP_CURVES[kind].knots, gDeg); }   // cd per 1000 lamp lm
 export const LAMP_HALO_RANGE = [280, 300];          // m: full strength to 280, zero at 300 (ASSUMPTION: a cost bound only; the veil itself has no range, the sprite radius already shrinks with distance)
 export const LAMP_HALO_FLOOR = 0.05;               // cd/m^2: the sprite ends where the veil falls to this (ASSUMPTION; ~a tenth of an estimated road luminance of ~0.6 cd/m^2, inference). Without it the 1/theta^2 tail fills the whole frame.
 const SIGNAL_R = 0.1;                               // m, the signal disc radius in drive-scenes.js signal()
@@ -77,19 +106,21 @@ export function createLampHalo(renderer, u) {
     scene = new T.Scene(); scene.add(mesh); camera = new T.Camera();
   }
   // Build the lamp list for this frame from the eye the shader reads (u.eye) and the objects the frame draws. Returns the list (for tests).
-  function build(p, world) {
+  function build(p, world, eyeIn) {
     if (!mat) setup();
-    const eye = u.eye.value, tanH = Math.tan(p.hfov * Math.PI / 360);
+    const eye = eyeIn || u.eye.value, tanH = Math.tan(p.hfov * Math.PI / 360);
     const kind = p.lampKind === 'led' ? 'led' : 'sodium';
-    const street = kind === 'led' ? { I: LAMP_HALO_CD_PER_KLM * LED_LM / 1000, tint: LED_TINT() } : { I: LAMP_HALO_CD_PER_KLM * SODIUM_LM / 1000, tint: SODIUM_TINT() };
+    const street = { tint: kind === 'led' ? LED_TINT() : SODIUM_TINT() }, lampLm = kind === 'led' ? LED_LM : SODIUM_LM;
     const cand = [];
     for (const L of lampsOf(world.objects)) {
       const d = [L.x - eye.x, L.y - eye.y, L.z - eye.z], r = Math.hypot(d[0], d[1], d[2]);
       if (d[0] < 1 || r < 0.5) continue;                      // behind, or at the eye
       const sx = -d[1] / (d[0] * tanH), sy = d[2] * p.w / (d[0] * tanH * p.h);
       if (Math.abs(sx) > 3 || Math.abs(sy) > 3) continue;     // far outside the view: no pixel inside 30 deg of it
+      // LAMP-HALO-CONE: gamma = angle from straight down at the lamp, toward the eye (cos gamma = (lamp z - eye z) / r). Lamps above the eye only: below it gamma > 90, the cone is 0.
+      const gam = Math.acos(Math.max(-1, Math.min(1, (L.z - eye.z) / r))) * 180 / Math.PI;
       let I, tint;
-      if (L.kind === 'street') { I = street.I; tint = street.tint; }
+      if (L.kind === 'street') { I = coneIntensity(kind, gam) * lampLm / 1000; tint = street.tint; if (!(I > 0)) continue; }
       else {
         const e = L.emit, m = Math.max(...e.map((v) => +v || 0));
         I = m * Math.PI * SIGNAL_R * SIGNAL_R; tint = e.map((v) => Math.max(0, +v || 0) / Math.max(1e-9, lum(e)));
@@ -98,13 +129,13 @@ export function createLampHalo(renderer, u) {
       const fade = Math.max(0, Math.min(1, (LAMP_HALO_RANGE[1] - r) / (LAMP_HALO_RANGE[1] - LAMP_HALO_RANGE[0])));
       const E = I / (r * r) * fade;                           // lux at the eye
       const thMax = Math.min(LAMP_HALO_THETA_MAX, Math.sqrt(K_VEIL * E / LAMP_HALO_FLOOR));   // the sprite radius, deg
-      cand.push({ r, E, I, thMax, tint, dir: [d[0] / r, d[1] / r, d[2] / r], ce: tint.map((c) => c * E), kind: L.kind, sx, sy });
+      cand.push({ r, gam, E, I, thMax, tint, dir: [d[0] / r, d[1] / r, d[2] / r], ce: tint.map((c) => c * E), kind: L.kind, sx, sy });
     }
     cand.sort((a, b) => a.r - b.r);
     const near = cand.slice(0, LAMP_HALO_MAX);
     near.forEach((c, i) => { mat.uniforms.lampDir.value[i].set(...c.dir); mat.uniforms.lampCE.value[i].set(...c.ce); mat.uniforms.lampTh.value[i] = c.thMax; });
     mat.uniforms.nLamp.value = near.length; mat.uniforms.tanH.value = tanH;
-    lastState = { count: near.length, kind, on: 1, tanH, w: p.w, h: p.h, lamps: near.map((c) => ({ kind: c.kind, r: +c.r.toFixed(2), sx: +c.sx.toFixed(3), sy: +c.sy.toFixed(3), E: +c.E.toPrecision(4), I: +c.I.toPrecision(4), thMax: +c.thMax.toFixed(2), tint: c.tint.map((v) => +v.toFixed(3)) })) };
+    lastState = { count: near.length, kind, on: 1, tanH, w: p.w, h: p.h, lamps: near.map((c) => ({ kind: c.kind, r: +c.r.toFixed(2), g: +c.gam.toFixed(2), sx: +c.sx.toFixed(3), sy: +c.sy.toFixed(3), E: +c.E.toPrecision(4), I: +c.I.toPrecision(4), thMax: +c.thMax.toFixed(2), tint: c.tint.map((v) => +v.toFixed(3)) })) };
     return near;
   }
   return {
@@ -123,6 +154,9 @@ export function createLampHalo(renderer, u) {
       } catch (e) { fail = String(e && e.message || e); throw e; }
     },
     state() { return lastState; },
+    // LAMP-HALO-CONE test hooks: the lamp list for a given eye position (no draw; the last frame's eye otherwise), and the street lamp heads in the current world.
+    probe(eye) { if (!lastArgs) return null; return build(lastArgs.p, lastArgs.world, eye).map((c) => ({ r: c.r, g: c.gam, I: c.I, E: c.E, thMax: c.thMax })); },
+    streetLamps() { return lastArgs ? lampsOf(lastArgs.world.objects).filter((l) => l.kind === 'street').map((l) => ({ x: l.x, y: l.y, z: l.z })) : []; },
     // GPU time of the halo pass alone, ms per draw (timer query), into a scratch target of the same size: the frame target is left alone.
     // Call after at least one frame with lampHalos on (it times the last frame's lamp list).
     async time(gl, repeats = 8) {

@@ -90,6 +90,25 @@ const setLH = (page, v) => page.evaluate((v) => RF.DriveAnim._.V.setOwn('lampHal
     // 3. the option is in More and reads back
     const ui = await page.evaluate(() => { const s = document.querySelector('[data-dv="lampHalos"]'); return s ? { value: s.value, inMore: !!s.closest('.drive-more'), title: (s.title || '').slice(0, 40) } : null; });
     ok('LHS1 option select (data-dv=lampHalos) is in the More panel', !!(ui && ui.inMore), JSON.stringify(ui));
+    // 5. LAMP-HALO-CONE: exported curve data, and the probe at three eye positions for one street lamp (no draw)
+    const cone = await page.evaluate(async () => {
+      const m = await import('/js/drive-three-lamphalo.js'), T3 = RF.DriveAnim._.V.three;
+      const out = { sodiumFlux: m.LAMP_CURVES.sodium.fluxCheck, ledFlux: m.LAMP_CURVES.led.fluxCheck, plateau: m.LAMP_CURVES.sodium.plateau, at80: m.coneIntensity('sodium', 80), at85: m.coneIntensity('sodium', 85), ledAt80: m.coneIntensity('led', 80) };
+      const tb = m.LAMP_CURVES.sodium.table; let s = 0;   // independent check: trapezoid over the exported 1-degree table
+      for (let i = 0; i < tb.length - 1; i++) { const a = tb[i][0] * Math.PI / 180, b = tb[i + 1][0] * Math.PI / 180; s += (tb[i][1] * Math.sin(a) + tb[i + 1][1] * Math.sin(b)) / 2 * (b - a); }
+      out.tableFlux = 2 * Math.PI * s;
+      const lamps = T3.lampHaloStreetLamps(), L = lamps[0];
+      const near = { x: L.x - 7, y: L.y, z: 1.2 }, far = { x: L.x - 165, y: L.y, z: 1.2 }, behind = { x: Math.max(...lamps.map((l) => l.x)) + 5, y: L.y, z: 1.2 };
+      const find = (list, eye) => { const rExp = Math.hypot(L.x - eye.x, L.y - eye.y, L.z - eye.z); return (list || []).find((c) => Math.abs(c.r - rExp) < 0.01) || null; };
+      out.near = find(T3.lampHaloProbe(near), near); out.far = find(T3.lampHaloProbe(far), far);
+      out.behindCount = (T3.lampHaloProbe(behind) || []).length; out.lampCount = lamps.length;
+      return out;
+    });
+    ok('LHS1 cone: exported curve integrates to the lamp lumens (sodium and LED, 1000 lm per klm)', Math.abs(cone.sodiumFlux - 1000) < 1 && Math.abs(cone.ledFlux - 1000) < 1 && Math.abs(cone.tableFlux - 1000) < 20, 'sodium ' + cone.sodiumFlux + ', led ' + cone.ledFlux + ', 1-deg table ' + cone.tableFlux.toFixed(1) + ', plateau ' + cone.plateau + ' cd/klm');
+    ok('LHS1 cone: intensity falls off: 100 cd/klm at 80 deg (sodium), below the plateau; 0 at 85 deg', Math.abs(cone.at80 - 100) < 1e-6 && cone.at85 === 0 && cone.at80 < 0.6 * cone.plateau, 'at80 ' + cone.at80 + ', at85 ' + cone.at85 + ', plateau ' + cone.plateau);
+    ok('LHS1 cone: near lamp (gamma ~50 deg) is listed with I > 0', !!(cone.near && cone.near.I > 0), JSON.stringify(cone.near));
+    ok('LHS1 cone: far lamp (gamma ~88 deg, 165 m) adds nothing: not listed', cone.far === null, JSON.stringify(cone.far));
+    ok('LHS1 cone: a lamp behind the viewer adds nothing (probe lists none)', cone.behindCount === 0, 'listed ' + cone.behindCount + ' of ' + cone.lampCount + ' lamps');
     // 4. GPU time of the halo pass, reported
     await setLH(page, 'on'); await frame(page);
     const t = await page.evaluate(() => RF.DriveAnim._.V.three.timeLampHalo(8)).catch((e) => ({ gpuMs: null, reason: String(e) }));

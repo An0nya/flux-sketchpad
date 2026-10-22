@@ -277,7 +277,7 @@ export function create(canvas, gl, onModelsReady) {
     lampHaloState() { return lampHalo.state(); },
     timeLampHalo(repeats) { return lampHalo.time(gl, repeats); },
     haloState() { return { drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length }; },
-    haloProbe(sx, sy) { return halo.probe(sx, sy); }, haloSources() { return halo.sources; }, haloBeamAt(i, x, y, z) { const L = halo.sources[i]; return D.trafficAt ? D.trafficAt(L, null, x, y, z) : null; },
+    haloProbe(sx, sy) { return halo.probe(sx, sy); }, lampHaloProbe(eye) { return lampHalo.probe(eye); }, lampHaloStreetLamps() { return lampHalo.streetLamps(); }, haloSources() { return halo.sources; }, haloBeamAt(i, x, y, z) { const L = halo.sources[i]; return D.trafficAt ? D.trafficAt(L, null, x, y, z) : null; },
     haloLookup(bins, d) { return haloLookup(bins, d, halo.edges); }, haloEdges() { return halo.edges.slice(); },
     programCount() { return renderer.info.programs ? renderer.info.programs.length : -1; },
     // BB3 test hook: the lamp tint currently in the lampRGB uniform (what the GPU lights with)
