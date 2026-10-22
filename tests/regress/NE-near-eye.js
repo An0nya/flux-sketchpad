@@ -73,11 +73,14 @@ async function meanLuma(page, png) {
     // the cache is pinned off here: the NE2 noise block leaves it on (cycle 8), and frame() does not reset it
     await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { visibility: 200, scatterMode: 'table', scatter: 48, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearFadeRange: 'medium', scatterNearBias: 0, scatterBinCounts: '', scatterCache: 'off', scatterCycle: 0, debugTimings: false }); RF.UI.redrawSpec(); });
     await sleep(2000);
+    // NE5: the field is shown in table mode whatever the debug toggle says (it moved into the advanced air beam group)
+    await page.evaluate(() => { RF.UI.dvOpts.scatterMode = 'direct'; RF.UI.redrawSpec(); }); await sleep(1500);
     const bHidden = await binField();
-    await page.evaluate(() => { RF.UI.dvOpts.debugTimings = true; RF.UI.redrawSpec(); }); await sleep(1500);
+    await page.evaluate(() => { RF.UI.dvOpts.scatterMode = 'table'; RF.UI.redrawSpec(); }); await sleep(1500);
     const bShown = await binField();
-    ok('NE3 slice field: hidden with Debug timings off (table mode)', !!bHidden && bHidden.tag === 'INPUT' && bHidden.hidden === true, JSON.stringify(bHidden));
-    ok('NE3 slice field: shown with Debug timings on (table mode)', !!bShown && bShown.hidden === false, JSON.stringify(bShown));
+    ok('NE5 slice field: hidden in direct mode', !!bHidden && bHidden.tag === 'INPUT' && bHidden.hidden === true, JSON.stringify(bHidden));
+    ok('NE5 slice field: shown in table mode (debug timings off)', !!bShown && bShown.hidden === false, JSON.stringify(bShown));
+    await page.evaluate(() => { RF.UI.dvOpts.debugTimings = true; RF.UI.redrawSpec(); }); await sleep(1500);   // the perf label's slices line needs debug timings
     const valid = '2,2,2,2,4,4,4,4,4,2,2,2';   // sum 34
     await setBin(valid);
     const bv = await page.evaluate(() => ({ binN: SD_SCATTER.binN, bias: SD_SCATTER.bias, label: RF.DriveAnim._.V.perfLab.textContent }));
@@ -90,9 +93,9 @@ async function meanLuma(page, png) {
     const bh = await binField();
     ok('NE3 invalid string: normal rule (4 per bin, near sampling off) and the "need 12 numbers" hint', JSON.stringify(bi.binN) === JSON.stringify(new Array(12).fill(4)) && bi.bias === 0 && !!bh && bh.hints.includes('need 12 numbers'), JSON.stringify([bi, bh && bh.hints]));
     await setBin('');
-    await page.evaluate(() => { RF.UI.dvOpts.debugTimings = false; RF.UI.redrawSpec(); }); await sleep(1500);
+    await page.evaluate(() => { RF.UI.dvOpts.debugTimings = false; RF.UI.dvOpts.scatterMode = 'direct'; RF.UI.redrawSpec(); }); await sleep(1500);
     const bBack = await binField();
-    ok('NE3 slice field: hidden again with Debug timings off', !!bBack && bBack.hidden === true, JSON.stringify(bBack));
+    ok('NE5 slice field: hidden again in direct mode', !!bBack && bBack.hidden === true, JSON.stringify(bBack));
     const offAgain = await frame('table 48 off after NE3 (field empty)', { scatterMode: 'table', scatter: 48, scatterCache: 'off', scatterCycle: 0, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearBias: 0, scatterBinCounts: '', debugTimings: false });
     ok('NE3 empty field: the table-off frame is byte-identical to the first off frame' + (TABLE48_MAIN ? ' and to main' : ''), offAgain.hash === off.hash && (!TABLE48_MAIN || offAgain.hash === TABLE48_MAIN), offAgain.hash.slice(0, 12) + ' vs ' + off.hash.slice(0, 12));
     // NE2: pixel noise over 6 frames from different cache versions (table cache on, cycle 8). The patch is the full canvas,
@@ -144,8 +147,12 @@ async function meanLuma(page, png) {
     const sizeQ = await page.evaluate(() => SD_SCATTER.size);
     ok('NE4 quarter res: the table is a quarter of the drive frame (half is half, quarter is half over two, min 1)', !!sizeHalf && !!sizeQ && sizeQ[0] < sizeHalf[0] && Math.abs(sizeQ[0] * 2 - sizeHalf[0]) <= 2 && Math.abs(sizeQ[1] * 2 - sizeHalf[1]) <= 2, 'half ' + JSON.stringify(sizeHalf) + ' quarter ' + JSON.stringify(sizeQ));
     ok('NE4 quarter res: the frame differs from half res', quarter.hash !== half.hash, quarter.hash.slice(0, 12) + ' vs ' + half.hash.slice(0, 12));
-    const stepsDefault = await frame('steps quality (default)', qOpts('steps'));
-    ok('NE4 quality steps, half res, bias off: the frame is byte-identical to main (c033bd7c)', stepsDefault.hash === off.hash && (!TABLE48_MAIN || stepsDefault.hash === TABLE48_MAIN), stepsDefault.hash.slice(0, 12));
+    // NE5: the byte-identity check runs from a fresh page (storage cleared, reloaded). The order-dependent check that used to sit here
+    // (after presets and quarter res, on this same page) is tests/regress/NE-state-leak.js, which is not in the gate.
+    await page.evaluate(() => { localStorage.clear(); }); await page.reload(); await page.waitForFunction(() => window.RF?.UI?.loadScene, null, { timeout: 60000 });
+    await page.addScriptTag({ url: '/tests/regress/UX2-drive-ux.js' }); await page.evaluate(() => UX2Page.ready()); await sleep(1500);
+    const fresh = await frame('fresh page: table 48 off, quality steps', qOpts('steps'));
+    ok('NE5 fresh page: table off (quality steps) is byte-identical to the first off frame (and to main when set)', fresh.hash === off.hash && (!TABLE48_MAIN || fresh.hash === TABLE48_MAIN), fresh.hash.slice(0, 12) + ' vs ' + off.hash.slice(0, 12));
     ok('NE no page errors', errors.length === 0, errors.slice(0, 3).join(' | ').slice(0, 300));
   } catch (e) {
     ok('NE page run completed', false, String(e).slice(0, 300));

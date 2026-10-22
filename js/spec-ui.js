@@ -880,7 +880,6 @@
     ui.dvTimers[k] = setTimeout(() => { delete ui.dvPending[k]; delete ui.dvTimers[k]; setDV(ui, k, next); }, DV_DEBOUNCE_MS);
     driveTools(ui, cv);   // re-sync the labels now; setDV above does the real apply later
   }
-  function cycleVisibility(ui) { const j = visIndex(dvOpts(ui).visibility); setDV(ui, 'visibility', VIS_LEVELS[(j + 1) % VIS_LEVELS.length]); }
   function dvOpts(ui) {
     if (!ui.dvOpts) { let o = {}; try { o = JSON.parse(localStorage.getItem('flux/driveView') || '{}'); } catch (e) { /* ignore */ } ui.dvOpts = Object.assign({}, DV_DEF, o); if (!('scatterNearFadeRange' in o)) ui.dvOpts.scatterNearFadeRange = o.scatterNearFade === 'off' ? 'off' : 'medium';   /* SF2: saved on/off becomes medium/off */ if (ui.dvOpts.scene === 'intersection') ui.dvOpts.scene = 'road';   /* GI2: the scene is removed; a stored one loads as the open road */ ui.dvOpts.glare = RF.Drive.glareLevel(ui.dvOpts.glare); { const lr = String(ui.dvOpts.trafficLightRange); ui.dvOpts.trafficLightRange = ['150', '250', '400', 'cars'].includes(lr) ? lr : '150'; const tn = String(ui.dvOpts.trafficNearest); ui.dvOpts.trafficNearest = ['8', '16', '32'].includes(tn) ? tn : '8'; }   /* TL2: unknown stored values fall back to the defaults */ { const f = RF.DriveAnim.fpsSettings(o); ui.dvOpts.minFps = f.minFps; ui.dvOpts.frameTargetMs = f.frameTargetMs; }   /* old stored frameTargetMs (ms) -> nearest min fps; a stored minFps wins */ if (!o.onMode && o.onKcd !== undefined && +o.onKcd !== DV_DEF.onKcd) ui.dvOpts.onMode = 'manual'; /* WT: the old wet boolean loads as wetness 1; while wetness is unset, wet alone still sets the road (RF.Drive.wetnessOf) */ if (ui.dvOpts.wetness !== undefined) ui.dvOpts.wetness = Math.max(0, Math.min(1, +ui.dvOpts.wetness || 0)); else if (o.wet) ui.dvOpts.wetness = 1; ui.dvOpts.wet = RF.Drive.wetnessOf(ui.dvOpts) > 0; }   // old numeric/boolean glare -> off/rain. Old setDV saved the whole option set, so onKcd = 30 is the old default, not a choice: it migrates to symmetric; only a different saved kcd stays manual (tester fix)
     if (ui.dvOpts.view === 'still' || ui.dvOpts.view === 'static') {
@@ -889,6 +888,14 @@
       try { localStorage.setItem('flux/driveView', JSON.stringify(ui.dvOpts)); } catch (e) { /* ignore */ }
     }
     return ui.dvOpts;
+  }
+  // NE5: a level's bundle, applied together (one save, one redraw). 'off' only sets scatter 0; visibility is never touched here.
+  function setAirLevel(ui, name) {
+    const patch = name === 'off' ? { scatter: 0 } : RF.Drive.airLevelBundle(name);
+    if (!patch) return;
+    Object.assign(dvOpts(ui), patch);
+    try { localStorage.setItem('flux/driveView', JSON.stringify(ui.dvOpts)); } catch (e) { /* ignore */ }
+    ui.redrawSpec();
   }
   function setDV(ui, k, v) {
     dvOpts(ui)[k] = v;
@@ -909,7 +916,10 @@
       btn('wetness', 'Road surface, cycling dry, damp (a light wet film) and wet (darker and mirror-like)', () => cycleWetness(ui));
       btn('wetSheen', 'Wet-road streaks: cheap anisotropic mirror-lobe approximation for our beam, traffic and street lamps. Off keeps the previous wet material.', () => setDV(ui, 'wetSheen', !dvOpts(ui).wetSheen));
       btn('wetModel', 'Streak model. legacy: the original mirror-lobe approximation. GGX: a physically based anisotropic microfacet BRDF (Trowbridge-Reitz, Smith, Fresnel), evaluated per lamp from its candela toward the road point. Needs wet sheen on.', () => setDV(ui, 'wetModel', dvOpts(ui).wetModel === 'ggx' ? 'legacy' : 'ggx'));
-      btn('visibility', 'Air visibility, cycling clear, haze (3 km), mist (1 km), fog (200 m) and dense (60 m). Fog darkens distant road, objects and lamps. The air beam button adds the visible beam in air.', () => cycleVisibility(ui));
+      dvSelect('visibility', 'Air visibility (haze)', 'Air visibility: clear, haze (3 km), mist (1 km), fog (200 m) or dense (60 m). Fog darkens distant road, objects and lamps; the air beam is added on top.', VIS_NAMES.map((n) => [n, 'air: ' + n]), (s) => setDV(ui, 'visibility', VIS_LEVELS[VIS_NAMES.indexOf(s.value)]));
+      // NE5: the top air beam dropdown. Its value is derived from the options (RF.Drive.airLevelOf); 'custom' is shown but does nothing when picked.
+      const airCount = (n) => RF.Drive.qualityCounts(n).reduce((a, b) => a + b, 0);
+      dvSelect('airLevel', 'Air beam', 'Air beam: off, or a level (baseline to max) that sets the table sample counts, resolution, blur and cache together and ignores the global steps and near sampling; custom means the advanced settings match no level.', [['off', 'air beam: off'], ['baseline', 'air beam: baseline (' + airCount('baseline') + ')'], ['low', 'air beam: low (' + airCount('low') + ')'], ['medium', 'air beam: medium (' + airCount('medium') + ')'], ['high', 'air beam: high (' + airCount('high') + ')'], ['max', 'air beam: max (' + airCount('max') + ')'], ['custom', 'air beam: custom']], (s) => { if (s.value !== 'custom') setAirLevel(ui, s.value); });
       dvSelect('scatter', 'Air beam steps', 'Visible beam in fog (single scatter off our own lamps): off, low, mid or high. Direct: 4, 8 or 16 steps per pixel. Table: 16, 32 or 64 table steps. Only shown in air. Costs frame time.', [['0', 'air beam: off'], ['1', 'air beam: low'], ['2', 'air beam: mid'], ['3', 'air beam: high']], (s) => { const v = +s.value; setDV(ui, 'scatter', scatLevels(dvOpts(ui))[v]); });
       dvSelect('trafficHalo', 'Traffic halo', 'Oncoming lamps glow in fog: their single scatter along the eye ray, off or from the 4, 8 or 16 nearest lamps. Only shown in air, with traffic beams on. Costs frame time.', [['0', 'traffic halo: off'], ['4', 'traffic halo: 4'], ['8', 'traffic halo: 8'], ['16', 'traffic halo: 16']], (s) => setDV(ui, 'trafficHalo', +s.value));
       btn('scatterMode', 'Air beam method. direct: the scatter is integrated per pixel in the shader (the default). table: one scatter table per frame at half or full res, looked up by distance; objects cost one lookup.', () => cycleScatterMode(ui));
@@ -918,12 +928,10 @@
       btn('scatterCache', 'Scatter table cache: off redraws the table every frame; on redraws only when the lamp pose, beam, fog or size changes. Table mode only.', () => cycleSD(ui, 'scatterCache', ['off', 'on']));
       dvSelect('scatterNearFadeRange', 'Beam near fade', 'Near-eye fade of the table, the metres over which near-eye scatter is weighted in: off (the plain table), short (0.5-3 m), medium (1-10 m, default) or long (2-20 m). Table mode only.', [['off', 'beam near fade: off'], ['short', 'beam near fade: short (0.5-3 m)'], ['medium', 'beam near fade: medium (1-10 m)'], ['long', 'beam near fade: long (2-20 m)']], (s) => setDV(ui, 'scatterNearFadeRange', s.value));
       dvSelect('scatterNearBias', 'Near-eye sampling', 'Table sample placement: off spreads the samples evenly over the eye ray; on moves them out of the empty 0-2 m and 26-120 m bins into 2-26 m, where the road-view noise is, at the same total cost. Table mode only.', [['0', 'near sampling: even'], ['1', 'near sampling: 2-26 m']], (s) => setDV(ui, 'scatterNearBias', +s.value));
-      // NE4: quality presets. Labels carry each preset's total, read from the same table the drive uses.
-      const qLabel = (n) => (n === 'steps' ? 'air beam quality: steps' : 'air beam quality: ' + n + ' (' + RF.Drive.qualityCounts(n).reduce((a, b) => a + b, 0) + ')');
-      dvSelect('scatterQuality', 'Air beam quality', 'Table sample counts: steps uses the global air beam steps and near sampling; a preset (baseline to max) ignores both and sets fixed per-slice counts, leaving resolution and blur unchanged. Table mode only.', ['steps', 'baseline', 'low', 'medium', 'high', 'max'].map((n) => [n, qLabel(n)]), (s) => setDV(ui, 'scatterQuality', s.value));
+      // NE4: scatterQuality has no control of its own any more; the air beam dropdown writes it (NE5). The stored key and precedence are unchanged.
       // NE3 debug: hand-set counts per slice. Commits on change (Enter or leaving the field); the total and hint update while typing.
       const binIn = el('input', { type: 'text', 'data-dv': 'scatterBinCounts', 'aria-label': 'Slice samples (debug)', placeholder: '12 counts', size: 24,
-        title: 'Debug: 12 comma-separated sample counts, one per slice: 0-0.5, 0.5-0.8, 0.8-1.35, 1.35-2.2, 2.2-3.6, 3.6-5.9, 5.9-9.7, 9.7-15.9, 15.9-26, 26-43, 43-71, 71-120 m. 0 skips a slice. Empty uses the normal rule. Shown with Debug timings in table mode.' });
+        title: 'Debug: 12 comma-separated sample counts, one per slice: 0-0.5, 0.5-0.8, 0.8-1.35, 1.35-2.2, 2.2-3.6, 3.6-5.9, 5.9-9.7, 9.7-15.9, 15.9-26, 26-43, 43-71, 71-120 m. 0 skips a slice. Empty uses the normal rule. Table mode only; a valid entry overrides the air beam level.' });
       const binTotal = el('span', { class: 'note' }), binHint = el('span', { class: 'note' });
       binHint.style.color = 'red';
       const binShow = () => { const raw = binIn.value.trim(), c = RF.Drive.parseBinCounts(raw); binTotal.textContent = c ? 'total ' + c.reduce((a, b) => a + b, 0) : ''; binHint.textContent = raw && !c ? 'need 12 numbers' : ''; };
@@ -946,7 +954,17 @@
       btn('preceding', 'Traffic ahead in our lane, with tail lamps, plates and red reflectors', () => setDV(ui, 'preceding', !dvOpts(ui).preceding));
       const primary = el('div', { class: 'drive-primary' }), more = el('details', { class: 'drive-more' }), extras = el('div', { class: 'drive-extras', id: 'drive-extras', role: 'region', 'aria-label': 'More drive settings' });
       more.append(el('summary', { 'aria-controls': 'drive-extras' }, 'More'), extras);
-      for (const control of [...bar.children]) (control.matches('[data-dv=scene],[data-dv=glare]') ? primary : extras).append(control);
+      // NE5: the air beam steps, method, res, blur, cache, cycle, near fade, near sampling and the slice text sit in a collapsed group
+      // inside More. It remembers open or closed, as More does.
+      const adv = el('details', { class: 'drive-air-adv', 'data-dv-group': 'air-advanced' }, el('summary', { 'aria-controls': 'drive-air-adv-body' }, 'advanced air beam'));
+      const advBody = el('div', { class: 'drive-air-adv-body', id: 'drive-air-adv-body' });
+      adv.append(advBody);
+      for (const k of ['scatter', 'scatterMode', 'scatterRes', 'scatterBlur', 'scatterCache', 'scatterCycle', 'scatterNearFadeRange', 'scatterNearBias']) { const c = bar.querySelector('[data-dv="' + k + '"]'); if (c) advBody.append(c); }
+      advBody.append(binIn, binTotal, binHint);
+      try { adv.open = localStorage.getItem('flux/driveAirAdv') === 'true'; } catch (e) { /* ignore */ }
+      adv.addEventListener('toggle', () => { try { localStorage.setItem('flux/driveAirAdv', String(adv.open)); } catch (e) { /* ignore */ } });
+      bar.append(adv);
+      for (const control of [...bar.children]) (control.matches('[data-dv=scene],[data-dv=glare]') ? primary : extras).append(control);   // NE5: airLevel stays in More: the primary row sits over the drive canvas and the byte-identity checks read those pixels
       try { more.open = localStorage.getItem('flux/driveMore') === 'true'; } catch (e) { /* ignore */ }
       more.addEventListener('toggle', () => { if (RF.DriveAnim) RF.DriveAnim.layoutControls(ui, more.open); try { localStorage.setItem('flux/driveMore', String(more.open)); } catch (e) { /* ignore */ } });
       ui.driveExtras = extras; primary.append(more); bar.append(primary);
@@ -971,7 +989,8 @@
       else if (k === 'wetSheen') { b.textContent = 'wet sheen'; b.disabled = !(RF.Drive.wetnessOf(o) > 0); b.setAttribute('aria-pressed', String(o.wetSheen)); }
       else if (k === 'wetModel') { b.textContent = 'streaks: ' + (o.wetModel === 'ggx' ? 'GGX' : 'legacy'); b.disabled = !(RF.Drive.wetnessOf(o) > 0 && o.wetSheen); b.setAttribute('aria-pressed', String(o.wetModel === 'ggx')); }
       else if (k === 'shape') { b.textContent = rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' $1'); b.setAttribute('aria-pressed', String(rv.shape !== 'straight')); }
-      else if (k === 'visibility') { b.textContent = 'air: ' + visLabel(o.visibility); b.setAttribute('aria-pressed', String(visIndex(o.visibility) > 0)); }
+      else if (k === 'visibility') { b.value = visLabel(o.visibility); }
+      else if (k === 'airLevel') { b.value = RF.Drive.airLevelOf(o); }
       else if (k === 'scatter') { const L = scatLevels(o), j = Math.max(0, L.indexOf(+o.scatter || 0)); [...b.options].forEach((op, i) => { op.textContent = 'air beam: ' + SCAT_NAMES[i] + (o.scatterMode === 'table' && i > 0 ? ' (' + L[i] + ')' : ''); }); b.value = String(j); b.hidden = visIndex(o.visibility) === 0; }
       else if (k === 'trafficHalo') { const j = Math.max(0, HALO_LEVELS.indexOf(+o.trafficHalo || 0)); b.value = String(HALO_LEVELS[j]); b.hidden = visIndex(o.visibility) === 0; }
       else if (k === 'scatterMode') { b.textContent = 'air beam mode: ' + (o.scatterMode === 'table' ? 'table' : 'direct'); b.hidden = visIndex(o.visibility) === 0; b.setAttribute('aria-pressed', String(o.scatterMode === 'table')); }
@@ -981,7 +1000,7 @@
       else if (k === 'scatterCache') { b.textContent = 'beam cache: ' + (o.scatterCache === 'on' ? 'on' : 'off'); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table'; }
       else if (k === 'scatterNearFadeRange') { b.value = fadeName(o); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table'; }
       else if (k === 'scatterNearBias') { b.value = +o.scatterNearBias > 0 ? '1' : '0'; b.hidden = visIndex(o.visibility) === 0 || o.scatterMode !== 'table'; }
-      else if (k === 'scatterBinCounts') { if (document.activeElement !== b) b.value = o.scatterBinCounts || ''; b.hidden = !o.debugTimings || o.scatterMode !== 'table' || visIndex(o.visibility) === 0; b.spans.forEach((s) => { s.hidden = b.hidden; }); b.binShow(); }
+      else if (k === 'scatterBinCounts') { if (document.activeElement !== b) b.value = o.scatterBinCounts || ''; b.hidden = o.scatterMode !== 'table'; b.spans.forEach((s) => { s.hidden = b.hidden; }); b.binShow(); }
       else if (k === 'scatterCycle') { b.textContent = 'beam cycle: ' + (ov('scatterCycle') === 8 ? '8' : 'off'); b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table' || o.scatterCache !== 'on'; }
       else if (k === 'wetness') { b.textContent = 'road: ' + wetLabel(RF.Drive.wetnessOf(o)); b.setAttribute('aria-pressed', String(RF.Drive.wetnessOf(o) > 0)); }
       else if (k === 'expMode') { b.textContent = o.expMode; b.setAttribute('aria-pressed', String(o.expMode === 'fixed')); }

@@ -876,6 +876,26 @@
     max: [1, 1, 1, 64, 32, 16, 8, 8, 4, 4, 2, 2]
   };
   function qualityCounts(name) { return Object.prototype.hasOwnProperty.call(QUALITY, name) ? QUALITY[name].slice() : null; }
+  // NE5 air beam levels (the top dropdown): each bundle sets these options together. The counts are the QUALITY preset of the same name.
+  // scatter 16 is the on switch (the air beam also needs a finite visibility: the levels leave visibility alone). Bundles also clear
+  // the debug slice text and near sampling, so the level's counts are the ones applied.
+  const AIR_LEVELS = {
+    baseline: { scatter: 16, scatterMode: 'table', scatterQuality: 'baseline', scatterRes: 'half', scatterBlur: 'strong', scatterCache: 'on', scatterCycle: 8, scatterBinCounts: '', scatterNearBias: 0 },
+    low: { scatter: 16, scatterMode: 'table', scatterQuality: 'low', scatterRes: 'half', scatterBlur: 'strong', scatterCache: 'on', scatterCycle: 8, scatterBinCounts: '', scatterNearBias: 0 },
+    medium: { scatter: 16, scatterMode: 'table', scatterQuality: 'medium', scatterRes: 'half', scatterBlur: 'mid', scatterCache: 'on', scatterCycle: 8, scatterBinCounts: '', scatterNearBias: 0 },
+    high: { scatter: 16, scatterMode: 'table', scatterQuality: 'high', scatterRes: 'full', scatterBlur: 'mid', scatterCache: 'on', scatterCycle: 8, scatterBinCounts: '', scatterNearBias: 0 },
+    max: { scatter: 16, scatterMode: 'table', scatterQuality: 'max', scatterRes: 'full', scatterBlur: 'off', scatterCache: 'on', scatterCycle: 8, scatterBinCounts: '', scatterNearBias: 0 }
+  };
+  function airLevelBundle(name) { return Object.prototype.hasOwnProperty.call(AIR_LEVELS, name) ? Object.assign({}, AIR_LEVELS[name]) : null; }
+  // Derived, never stored: scatter 0 is 'off'; options equal to one level's bundle are that level; anything else is 'custom'.
+  function airLevelOf(o) {
+    if (!(Number(o && o.scatter) > 0)) return 'off';
+    for (const name of Object.keys(AIR_LEVELS)) {
+      const b = AIR_LEVELS[name];
+      if (Object.keys(b).every((k) => (typeof b[k] === 'number' ? (Number(o[k]) || 0) === b[k] : String(o[k] == null ? '' : o[k]) === b[k]))) return name;
+    }
+    return 'custom';
+  }
   // The counts the table pass uses (CPU twin and GPU). Precedence: valid debug text > quality preset > near sampling / global steps.
   function binCountsFor(steps, bias, s, quality) { return parseBinCounts(s) || qualityCounts(quality) || tableBinSteps(steps, bias); }
   function scatterTableBins(o, dir, jit, steps) {
@@ -1031,5 +1051,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

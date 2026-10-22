@@ -39,6 +39,21 @@ function run(RF, ok, report) {
   ok('NE4 precedence: valid debug text beats a preset', JSON.stringify(D.binCountsFor(48, 1, '3,3,3,3,3,3,3,3,3,3,3,3', 'max')) === JSON.stringify(new Array(K).fill(3)));
   ok('NE4 precedence: invalid debug text falls to the preset', JSON.stringify(D.binCountsFor(48, 0, '1,2', 'low')) === JSON.stringify(D.qualityCounts('low')));
   ok('NE4 clamp: a typed count above 64 becomes 64', JSON.stringify(D.parseBinCounts('200,1,1,1,1,1,1,1,1,1,1,1')) === JSON.stringify([64, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]));
+  // NE5 air beam levels: bundles, totals from the counts, the derived value (off / level / custom), and the bundle's effect on precedence.
+  const LEVEL_TOTAL = { baseline: 14, low: 21, medium: 41, high: 74, max: 143 };
+  for (const [name, total] of Object.entries(LEVEL_TOTAL)) {
+    const b = D.airLevelBundle(name);
+    ok('NE5 bundle ' + name + ': sets scatter 16, table, its quality, and the counts total ' + total, !!b && b.scatter === 16 && b.scatterMode === 'table' && b.scatterQuality === name && D.qualityCounts(name).reduce((a, c) => a + c, 0) === total && b.scatterBinCounts === '' && b.scatterNearBias === 0);
+  }
+  ok('NE5 bundle: unknown names and off have no bundle (null); a bundle is a copy', D.airLevelBundle('off') === null && D.airLevelBundle('nope') === null && (() => { const b = D.airLevelBundle('low'); b.scatter = 99; return D.airLevelBundle('low').scatter === 16; })());
+  const offBase = { scatter: 0, scatterMode: 'direct', scatterQuality: 'steps', scatterRes: 'half', scatterBlur: 'off', scatterCache: 'off', scatterCycle: 0, scatterBinCounts: '', scatterNearBias: 0 };
+  const withLevel = (name, extra) => Object.assign({}, offBase, D.airLevelBundle(name), extra || {});
+  ok('NE5 derived: scatter 0 is off', D.airLevelOf(offBase) === 'off' && D.airLevelOf(withLevel('medium', { scatter: 0 })) === 'off');
+  ok('NE5 derived: options equal to a level bundle read as that level (each level)', ['baseline', 'low', 'medium', 'high', 'max'].every((n) => D.airLevelOf(withLevel(n)) === n));
+  ok('NE5 derived: an advanced edit (steps 32, cycle 0, near sampling on, typed slices) reads custom', D.airLevelOf(withLevel('medium', { scatter: 32 })) === 'custom' && D.airLevelOf(withLevel('medium', { scatterCycle: 0 })) === 'custom' && D.airLevelOf(withLevel('medium', { scatterNearBias: 1 })) === 'custom' && D.airLevelOf(withLevel('medium', { scatterBinCounts: '1,1,1,1,1,1,1,1,1,1,1,1' })) === 'custom');
+  ok('NE5 derived: saved strings from a select still match a level (scatter "16", cycle "8")', D.airLevelOf(withLevel('high', { scatter: '16', scatterCycle: '8', scatterNearBias: '0' })) === 'high');
+  ok('NE5 derived: old saved settings without a quality read as custom, never as a level', D.airLevelOf({ scatter: 16, scatterMode: 'table', scatterRes: 'half', scatterBlur: 'off', scatterCache: 'on', scatterCycle: 8 }) === 'custom');
+  ok('NE5 precedence: a level beats near sampling and the global steps (the derived value is that level)', JSON.stringify(D.binCountsFor(16, 1, '', 'low')) === JSON.stringify(D.qualityCounts('low')) && D.airLevelOf(withLevel('low', { scatterTableSteps: 16 })) === 'low');
   // NE3 slice override (debug): parse, clamp, zero, and the override beats the global steps and near sampling.
   const good = '1,1,2,2,8,9,8,8,8,1,1,1';
   ok('NE3 parse: 12 valid numbers (trimmed) give those counts', JSON.stringify(D.parseBinCounts(' ' + good + ' ')) === JSON.stringify([1, 1, 2, 2, 8, 9, 8, 8, 8, 1, 1, 1]));

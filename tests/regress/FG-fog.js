@@ -28,7 +28,7 @@ async function session(browser, errors) {
   await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false }); if (RF.UI.dvOpts.visibility !== undefined) RF.UI.dvOpts.visibility = null; RF.UI.redrawSpec(); });
   const capture = async (label) => {
     await sleep(2500);
-    const state = await page.evaluate(() => { const s = RF.DriveAnim.stats(); return { renderer: s.renderer, gpuFailure: s.gpuFailure || '', btn: (document.querySelector('[data-dv="visibility"]') || {}).textContent || '' }; });
+    const state = await page.evaluate(() => { const s = RF.DriveAnim.stats(); return { renderer: s.renderer, gpuFailure: s.gpuFailure || '', btn: (document.querySelector('[data-dv="visibility"]') || {}).value || '' }; });
     await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-fg-drive', '1'));
     const png = await page.locator('canvas[data-fg-drive="1"]').screenshot();
     return { label, state, png, hash: crypto.createHash('sha256').update(png).digest('hex') };
@@ -45,9 +45,9 @@ async function session(browser, errors) {
     ok('FG GPU renderer is on (no GPU failure)', clear.state.renderer === 'three' && !clear.state.gpuFailure, JSON.stringify(clear.state));
     ok('FG clear frame equals the main baseline (GPU, visibility off)', OLD_CLEAR ? clear.hash === OLD_CLEAR : false, OLD_CLEAR ? clear.hash.slice(0, 12) : 'OLD_CLEAR not set');
     const frames = [clear];
-    for (let i = 1; i < LEVELS.length; i++) { await page.evaluate(() => document.querySelector('[data-dv="visibility"]').click()); frames.push(await capture(LEVELS[i])); }
-    const labels = frames.map((f) => f.state.btn.replace(/^\s+|\s+$/g, ''));
-    ok('FG air button cycles clear, haze, mist, fog, dense', labels.join('|') === LEVELS.map((l) => 'air: ' + l).join('|') , labels.join(' | '));
+    for (let i = 1; i < LEVELS.length; i++) { await page.evaluate((v) => { const s = document.querySelector('[data-dv="visibility"]'); s.value = v; s.dispatchEvent(new Event('change')); }, LEVELS[i]); frames.push(await capture(LEVELS[i])); }
+    const labels = frames.map((f) => f.state.btn);
+    ok('FG haze select steps clear, haze, mist, fog, dense (NE5: a select, values are the level names)', labels.join('|') === LEVELS.join('|'), labels.join(' | '));
     ok('FG frames differ at each air level', new Set(frames.map((f) => f.hash)).size === LEVELS.length, frames.map((f) => f.hash.slice(0, 8)).join(' '));
     const lum = [];
     for (const f of frames) lum.push(await meanLuma(page, f.png));
