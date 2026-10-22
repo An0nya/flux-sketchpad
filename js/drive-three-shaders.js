@@ -1,4 +1,6 @@
 /* Linear luminance only. Formula reference: drive.js; display passes stay in drive-anim.js. */
+// HALO-AB test hook: the halo bin count N (default 24 = today). ?halobins=N on the page URL sets it (4..32). Read by the halo table and the lookup shader alike.
+export const HALO_N = (() => { const v = +new URLSearchParams(globalThis.location ? location.search : '').get('halobins'); return v >= 4 && v <= 32 ? Math.round(v) : 24; })();
 export const vertex = `
 varying vec2 screen;
 void main() { screen = position.xy; gl_Position = vec4(position.xy, 0.0, 1.0); }
@@ -27,7 +29,7 @@ uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js S
 // own end distance d (ground hit, object eye distance, sky = 120 m), interpolated in log d like tableC, so the lit air in FRONT of a surface adds to it and the
 // air BEHIND it does not. haloOn is a uniform: off costs one branch, and toggling never changes the shader text (no recompile).
 uniform int haloOn; uniform sampler2D haloTex; uniform vec2 haloUV, haloTab;   // haloUV: 1 / pixels of the target this pass draws; haloTab: cells per tile
-uniform float haloE[24];
+uniform float haloE[${HALO_N}];   // the upper edge of each bin: fixed geometric 0.5..120 m, HALO_N bins (HDX3; see HALO_EDGES in drive-three-halo.js)
 uniform int haloPolarOn; uniform sampler2D haloPolarTex; uniform vec2 haloPolarF, haloPolarSz, haloPolarRange, haloPolarN;   // HDX6: centre as a fraction of the view, view px (see haloPolar below)   // the upper edge of each bin: fixed geometric 0.5..120 m, 24 bins (HDX3; see HALO_EDGES in drive-three-halo.js)
 // Cubic B-spline read of one bin tile in 4 bilinear fetches (the linear trick: B-spline weights are all positive, so two taps per axis are exact). It
 // removes the cell-grid stairs plain bilinear leaves on a sharp-edged glow. Tap centres are clamped inside the tile, so no bin bleeds into its neighbour.
@@ -35,7 +37,7 @@ vec3 haloBin(int k, vec2 pc, vec2 f, vec2 tab) {
   vec2 f2=f*f, f3=f2*f, w0=(1.0-f)*(1.0-f)*(1.0-f)/6.0, w1=(3.0*f3-6.0*f2+4.0)/6.0, w2=(-3.0*f3+3.0*f2+3.0*f+1.0)/6.0, w3=f3/6.0;
   vec2 g0=w0+w1, g1=w2+w3, h0=pc-1.0+w1/g0, h1=pc+1.0+w3/g1;   // pc: texel index of the cell holding the fragment; taps land between texel centres
   h0=clamp(h0+0.5,vec2(0.5),tab-0.5); h1=clamp(h1+0.5,vec2(0.5),tab-0.5);
-  float x0=(float(k)*tab.x+h0.x), x1=(float(k)*tab.x+h1.x), inv=1.0/(tab.x*24.0);
+  float x0=(float(k)*tab.x+h0.x), x1=(float(k)*tab.x+h1.x), inv=1.0/(tab.x*${HALO_N}.0);
   return g0.y*(g0.x*texture(haloTex,vec2(x0*inv,h0.y/tab.y)).rgb+g1.x*texture(haloTex,vec2(x1*inv,h0.y/tab.y)).rgb)
        + g1.y*(g0.x*texture(haloTex,vec2(x0*inv,h1.y/tab.y)).rgb+g1.x*texture(haloTex,vec2(x1*inv,h1.y/tab.y)).rgb);
 }
@@ -44,16 +46,16 @@ vec3 haloScatterScr(float d) {
   vec2 p=gl_FragCoord.xy*haloUV*haloTab-0.5, pc=floor(p), f=p-pc;
   float dd=min(d,120.0);
   // running total at each bin's upper edge (knots); HDX3: monotone cubic Hermite (Fritsch-Carlson, linear C, log d) between knots
-  vec3 Cc[24]; vec3 C=vec3(0.0);
-  for(int k=0;k<24;k++) { C+=haloBin(k,pc,f,haloTab); Cc[k]=C; }
+  vec3 Cc[${HALO_N}]; vec3 C=vec3(0.0);
+  for(int k=0;k<${HALO_N};k++) { C+=haloBin(k,pc,f,haloTab); Cc[k]=C; }
   if(dd<=haloE[0]) return Cc[0]*log(dd/0.5)/log(haloE[0]/0.5);   // bin 0: log d from 0.5 m (C(0.5)=0)
-  int s=0; for(int k=0;k<23;k++) if(dd>haloE[k]) s=k;            // segment s: knots s..s+1 bracket dd
-  const float h=0.22836;                                         // ln(240)/24: the knots are log-uniform (HALO_EDGES)
-  vec3 dS=(Cc[s+1]-Cc[s])/h, dP=(Cc[max(s-1,0)+1]-Cc[max(s-1,0)])/h, dN=(Cc[min(s+1,22)+1]-Cc[min(s+1,22)])/h;
+  int s=0; for(int k=0;k<${HALO_N - 1};k++) if(dd>haloE[k]) s=k;   // segment s: knots s..s+1 bracket dd
+  const float h=${HALO_N === 24 ? '0.22836' : (Math.log(240) / HALO_N).toFixed(8)};          // ln(240)/HALO_N: the knots are log-uniform (HALO_EDGES)
+  vec3 dS=(Cc[s+1]-Cc[s])/h, dP=(Cc[max(s-1,0)+1]-Cc[max(s-1,0)])/h, dN=(Cc[min(s+1,${HALO_N - 2})+1]-Cc[min(s+1,${HALO_N - 2})])/h;
   vec3 mP=vec3(0.0), mN=vec3(0.0);
   vec3 ab=dP*dS, ms=step(vec3(1e-30),ab); mP=ms*2.0*ab/mix(vec3(1.0),dP+dS,ms);   // harmonic mean where the slopes agree in sign, else 0
   vec3 ab2=dS*dN, ms2=step(vec3(1e-30),ab2); mN=ms2*2.0*ab2/mix(vec3(1.0),dS+dN,ms2);
-  vec3 mA=(s==0 ? dS : mP), mB=(s==22 ? dS : mN);
+  vec3 mA=(s==0 ? dS : mP), mB=(s==${HALO_N - 2} ? dS : mN);
   float t=(log(dd)-log(haloE[s]))/h, t2=t*t, t3=t2*t;
   return (2.0*t3-3.0*t2+1.0)*Cc[s] + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*Cc[s+1] + (t3-t2)*h*mB;
 }

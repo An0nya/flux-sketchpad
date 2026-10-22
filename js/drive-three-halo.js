@@ -11,7 +11,7 @@
    - Off (look.trafficHalo 0, clear air, no lamp): build() sets haloOn 0 and returns; no pass. The lookup code is always in the shaders behind a uniform
      branch, so toggling never changes shader text. */
 import * as T from '../vendor/three/three.module.min.js';
-import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS } from './drive-three-shaders.js';
+import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS, HALO_N } from './drive-three-shaders.js';
 const D = globalThis.RF.Drive;
 export const HALO_MAXL = 16, HALO_PER_DRAW = 1, HALO_BIN_STEPS = 6, HALO_MIN_W = 96, HALO_MIN_H = 54, HALO_DIV = 8, HALO_DIV_FEW = 4, HALO_FEW = 4, HALO_SUB = 4, HALO_REFINE = 4, HALO_NEAR = 45;
 // HDX6 polar table (SL_HALO_POLAR): 512 angles x 64 log-radii for the nearest lamp in front; 24 bins side by side = 12288 texels wide (under MAX_TEXTURE_SIZE 16384).
@@ -19,7 +19,7 @@ export const HALO_POL_TH = 512, HALO_POL_R = 64, HALO_POL_MIN_PX = 0.25, HALO_PO
 // One lamp per draw, 6 steps: a shader loop of 6 (it was 3 lamps x 6 = 18; Safari is suspected to stall compiling long loops). More draws, same pixels.
 // HDX3: 24 log-uniform bins from 0.5 to 120 m (edge k = 0.5 * 240^((k+1)/24)); the first entry is the origin, the last is D.SCAT.S_MAX.
 // The fixed edges replace the adaptive edges (HDX2: adaptive bin 0 = [0.5, 0.45 D] was the near-field overshoot). The shader's lookup assumes this log-uniform spacing.
-export const HALO_EDGES = [0, ...Array.from({ length: 24 }, (_, k) => 0.5 * Math.pow(240, (k + 1) / 24))]; HALO_EDGES[24] = 120;
+export const HALO_EDGES = [0, ...Array.from({ length: HALO_N }, (_, k) => 0.5 * Math.pow(240, (k + 1) / HALO_N))]; HALO_EDGES[HALO_N] = 120;   // HALO_N: test hook (?halobins=N), default 24
 export const HALO_BINS = HALO_EDGES.length - 1;
 // The upper edge of each bin for a nearest lamp at distance D. The cumulative glow along a ray rises steeply up to the lamp's own distance and is flat after it;
 // the lookup interpolates between edges (log-linear), so a lamp sliding through a bin changes the interpolated shape and the glow around a close car shimmers
@@ -219,7 +219,7 @@ export function haloPass(renderer, u) {
         }
       } finally { renderer.autoClear = ac; renderer.setClearColor(cc, ca); renderer.setRenderTarget(null); }
       if (timing) { renderer.readRenderTargetPixels(rt, 0, 0, 1, 1, new Uint16Array(4)); halo.ms = performance.now() - t0; }
-      u.haloTex.value = rt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = 1;
+      u.haloTex.value = rt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = globalThis.HALO_TABLE_ONLY ? 0 : 1;
       u.haloPolarOn.value = pol ? 1 : 0;
       if (pol) { u.haloPolarTex.value = prt.texture; u.haloPolarF.value.set(pol.C[0] / p.w, pol.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pol.dL); u.haloPolarN.value.set(HALO_POL_TH, HALO_POL_R); }
       halo.drawn = used.length; halo.lamps = used.map((q) => ({ lamp: [q.L.x, q.L.y, q.L.z], w: q.L.w, nx: q.L.nx, ny: q.L.ny, idx: q.idx, hasBeam: !!q.L.beam }));
