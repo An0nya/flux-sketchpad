@@ -66,6 +66,38 @@ async function meanLuma(page, png) {
     const ratio = on.luma / off.luma;
     ok('NE bias on vs off: mean road light within 10 percent (a resampling, not new light)', Math.abs(ratio - 1) < 0.10, 'off ' + off.luma.toFixed(3) + ' on ' + on.luma.toFixed(3) + ' ratio ' + ratio.toFixed(4));
     ok('NE no NaN or empty frames (mean luminance finite and above zero)', [off, on].every((f) => Number.isFinite(f.luma) && f.luma > 0));
+    // NE3: the debug slice field. Hidden unless Debug timings is on and the mode is table; a valid string sets the 12 counts exactly;
+    // an invalid one keeps the normal rule and shows the hint; the perf label shows the counts.
+    const binField = () => page.evaluate(() => { const s = document.querySelector('[data-dv="scatterBinCounts"]'); return s ? { hidden: s.hidden, tag: s.tagName, hints: [...s.parentElement.querySelectorAll('span')].map((x) => x.textContent) } : null; });
+    const setBin = async (str) => { await page.evaluate((v) => { const s = document.querySelector('[data-dv="scatterBinCounts"]'); s.value = v; s.dispatchEvent(new Event('input')); s.dispatchEvent(new Event('change')); }, str); await sleep(2500); await settle(); };
+    // the cache is pinned off here: the NE2 noise block leaves it on (cycle 8), and frame() does not reset it
+    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { visibility: 200, scatterMode: 'table', scatter: 48, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearFadeRange: 'medium', scatterNearBias: 0, scatterBinCounts: '', scatterCache: 'off', scatterCycle: 0, debugTimings: false }); RF.UI.redrawSpec(); });
+    await sleep(2000);
+    // NE5: the field is shown in table mode whatever the debug toggle says (it moved into the advanced air beam group)
+    await page.evaluate(() => { RF.UI.dvOpts.scatterMode = 'direct'; RF.UI.redrawSpec(); }); await sleep(1500);
+    const bHidden = await binField();
+    await page.evaluate(() => { RF.UI.dvOpts.scatterMode = 'table'; RF.UI.redrawSpec(); }); await sleep(1500);
+    const bShown = await binField();
+    ok('NE5 slice field: hidden in direct mode', !!bHidden && bHidden.tag === 'INPUT' && bHidden.hidden === true, JSON.stringify(bHidden));
+    ok('NE5 slice field: shown in table mode (debug timings off)', !!bShown && bShown.hidden === false, JSON.stringify(bShown));
+    await page.evaluate(() => { RF.UI.dvOpts.debugTimings = true; RF.UI.redrawSpec(); }); await sleep(1500);   // the perf label's slices line needs debug timings
+    const valid = '2,2,2,2,4,4,4,4,4,2,2,2';   // sum 34
+    await setBin(valid);
+    const bv = await page.evaluate(() => ({ binN: SD_SCATTER.binN, bias: SD_SCATTER.bias, label: RF.DriveAnim._.V.perfLab.textContent }));
+    ok('NE3 typed valid string: the table pass gets exactly those 12 counts', JSON.stringify(bv.binN) === JSON.stringify(valid.split(',').map(Number)), JSON.stringify(bv.binN));
+    ok('NE3 valid string: the perf label shows the slice counts and total', bv.label.includes('slices ' + valid + ' = 34'), bv.label.split('\n').filter((l) => l.startsWith('slices')).join(' | '));
+    const bTot = await binField();
+    ok('NE3 valid string: live total shows the sum (34)', !!bTot && bTot.hints.includes('total 34'), JSON.stringify(bTot && bTot.hints));
+    await setBin('1,2,3');
+    const bi = await page.evaluate(() => ({ binN: SD_SCATTER.binN, bias: SD_SCATTER.bias }));
+    const bh = await binField();
+    ok('NE3 invalid string: normal rule (4 per bin, near sampling off) and the "need 12 numbers" hint', JSON.stringify(bi.binN) === JSON.stringify(new Array(12).fill(4)) && bi.bias === 0 && !!bh && bh.hints.includes('need 12 numbers'), JSON.stringify([bi, bh && bh.hints]));
+    await setBin('');
+    await page.evaluate(() => { RF.UI.dvOpts.debugTimings = false; RF.UI.dvOpts.scatterMode = 'direct'; RF.UI.redrawSpec(); }); await sleep(1500);
+    const bBack = await binField();
+    ok('NE5 slice field: hidden again in direct mode', !!bBack && bBack.hidden === true, JSON.stringify(bBack));
+    const offAgain = await frame('table 48 off after NE3 (field empty)', { scatterMode: 'table', scatter: 48, scatterCache: 'off', scatterCycle: 0, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearBias: 0, scatterBinCounts: '', debugTimings: false });
+    ok('NE3 empty field: the table-off frame is byte-identical to the first off frame' + (TABLE48_MAIN ? ' and to main' : ''), offAgain.hash === off.hash && (!TABLE48_MAIN || offAgain.hash === TABLE48_MAIN), offAgain.hash.slice(0, 12) + ' vs ' + off.hash.slice(0, 12));
     // NE2: pixel noise over 6 frames from different cache versions (table cache on, cycle 8). The patch is the full canvas,
     // the same one the road-light check above uses; the 5-15 m band is not isolated in the image (no projection in this test).
     const noiseRun = async (bias) => {
@@ -73,7 +105,7 @@ async function meanLuma(page, png) {
       await sleep(2500); await settle();
       const pngs = [], shown = [];
       for (let i = 0; i < 6; i++) {
-        await page.evaluate(() => RF.DriveAnim._.frame()); await sleep(300);
+        await page.evaluate(() => { RF.DriveAnim._.S(RF.UI).dist += 2; RF.DriveAnim._.frame(); }); await sleep(300);   // (merge with SM: the shown version follows distance travelled, so move 2 m between frames)
         shown.push(await page.evaluate(() => SD_SCATTER.shown));
         await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sc-drive', '1'));
         pngs.push((await page.locator('canvas[data-sc-drive="1"]').screenshot()).toString('base64'));
@@ -97,6 +129,30 @@ async function meanLuma(page, png) {
     console.log('NE2_NOISE off pixelStd ' + nzOff.pixelStd.toFixed(4) + ' on ' + nzOn.pixelStd.toFixed(4) + ' ratio ' + (nzOn.pixelStd / nzOff.pixelStd).toFixed(4) + ' | meanLuma off ' + nzOff.meanLuma.toFixed(3) + ' on ' + nzOn.meanLuma.toFixed(3) + ' | shown off ' + JSON.stringify(nzOff.shown) + ' on ' + JSON.stringify(nzOn.shown));
     ok('NE2 the 6 frames come from different cache versions (off and on)', nzOff.distinct >= 2 && nzOn.distinct >= 2, JSON.stringify([nzOff.shown, nzOn.shown]));
     ok('NE2 pixel noise over 6 cache versions (full road-light patch): bias on below off', nzOn.pixelStd < nzOff.pixelStd, 'off ' + nzOff.pixelStd.toFixed(4) + ' on ' + nzOn.pixelStd.toFixed(4) + ' (headless software GL)');
+    // NE4: quality presets set the 12 counts exactly; quarter res shrinks the table; 'steps' is the old frame.
+    const qOpts = (q, extra) => Object.assign({ scatterMode: 'table', scatter: 48, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearBias: 0, scatterBinCounts: '', scatterCache: 'off', scatterCycle: 0, scatterQuality: q }, extra || {});
+    const presets = { baseline: [1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1], low: [1, 1, 1, 4, 4, 2, 2, 2, 1, 1, 1, 1], medium: [1, 1, 1, 8, 8, 8, 4, 4, 2, 2, 1, 1], high: [1, 1, 1, 32, 16, 8, 4, 4, 2, 2, 2, 1], max: [1, 1, 1, 64, 32, 16, 8, 8, 4, 4, 2, 2] };
+    const presetMs = {};
+    for (const [name, want] of Object.entries(presets)) {
+      const f = await frame('preset ' + name, qOpts(name));
+      const rb = await page.evaluate(() => ({ binN: SD_SCATTER.binN, bias: SD_SCATTER.bias, quality: SD_SCATTER.quality, ms: SD_SCATTER.lastMs }));
+      presetMs[name] = rb.ms;
+      ok('NE4 preset ' + name + ': the table pass gets exactly its counts (' + want.reduce((a, b) => a + b, 0) + ')', JSON.stringify(rb.binN) === JSON.stringify(want) && rb.quality === name && rb.bias === 1, JSON.stringify(rb));
+      if (name === 'medium') ok('NE4 preset medium: the frame differs from the off frame (counts, not steps)', f.hash !== off.hash, f.hash.slice(0, 12));
+    }
+    console.log('NE4_PRESET_FILL_MS (headless, lastMs of one table fill) ' + JSON.stringify(presetMs));
+    const half = await frame('quarter check: half res', qOpts('steps'));
+    const sizeHalf = await page.evaluate(() => SD_SCATTER.size);
+    const quarter = await frame('quarter res', qOpts('steps', { scatterRes: 'quarter' }));
+    const sizeQ = await page.evaluate(() => SD_SCATTER.size);
+    ok('NE4 quarter res: the table is a quarter of the drive frame (half is half, quarter is half over two, min 1)', !!sizeHalf && !!sizeQ && sizeQ[0] < sizeHalf[0] && Math.abs(sizeQ[0] * 2 - sizeHalf[0]) <= 2 && Math.abs(sizeQ[1] * 2 - sizeHalf[1]) <= 2, 'half ' + JSON.stringify(sizeHalf) + ' quarter ' + JSON.stringify(sizeQ));
+    ok('NE4 quarter res: the frame differs from half res', quarter.hash !== half.hash, quarter.hash.slice(0, 12) + ' vs ' + half.hash.slice(0, 12));
+    // NE5: the byte-identity check runs from a fresh page (storage cleared, reloaded). The order-dependent check that used to sit here
+    // (after presets and quarter res, on this same page) is tests/regress/NE-state-leak.js, which is not in the gate.
+    await page.evaluate(() => { localStorage.clear(); }); await page.reload(); await page.waitForFunction(() => window.RF?.UI?.loadScene, null, { timeout: 60000 });
+    await page.addScriptTag({ url: '/tests/regress/UX2-drive-ux.js' }); await page.evaluate(() => UX2Page.ready()); await sleep(1500);
+    const fresh = await frame('fresh page: table 48 off, quality steps', qOpts('steps'));
+    ok('NE5 fresh page: table off (quality steps) is byte-identical to the first off frame (and to main when set)', fresh.hash === off.hash && (!TABLE48_MAIN || fresh.hash === TABLE48_MAIN), fresh.hash.slice(0, 12) + ' vs ' + off.hash.slice(0, 12));
     ok('NE no page errors', errors.length === 0, errors.slice(0, 3).join(' | ').slice(0, 300));
   } catch (e) {
     ok('NE page run completed', false, String(e).slice(0, 300));

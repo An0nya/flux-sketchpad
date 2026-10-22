@@ -44,7 +44,7 @@ async function meanLuma(page, png) {
     ok('SC clear air: the frame equals the main baseline (button off, visibility off)', clear.hash === OLD_CLEAR, clear.hash.slice(0, 12));
     ok('SC clear air: the air beam button is hidden', clear.st.hidden === true, JSON.stringify(clear.st));
     // 2. fog 200: three clicks on the air button (clear, haze, mist, fog), then the beam button shows
-    for (let i = 0; i < 3; i++) await page.evaluate(() => document.querySelector('[data-dv="visibility"]').click());
+    await page.evaluate(() => { const s = document.querySelector('[data-dv="visibility"]'); s.value = 'fog'; s.dispatchEvent(new Event('change')); });   // NE5: haze is a select (was three clicks)
     const fogOff = await capture('fog, beam off');
     ok('SC fog 200: the air beam button shows, off', fogOff.st.hidden === false && fogOff.st.btn === 'air beam: off', JSON.stringify(fogOff.st));
     // 3. the beam steps: low, mid, high

@@ -841,21 +841,65 @@
   }
   const nearFadeW = (s, S0, S1) => { const t = Math.min(1, Math.max(0, (s - S0) / (S1 - S0))); return t * t * (3 - 2 * t); };
   // NE near-eye bias (look.scatterNearBias, table mode): samples per bin. Off: round(steps / K) in every bin, at least 1 (the old count).
-  // On (NE2 budget move, same total K * n): bins 0-3 (under ~2 m, empty in the road view) and bins 9-11 (26-120 m) get 1 sample each;
-  // bins 4-8 (2-26 m, where the road-view noise is) share the rest, (12n - 7) / 5 each. Leftovers go to bins 5, 6, 7 first, then 4, 8.
+  // On (NE3, same total K * n): bins 0-1 and 9-11 get 1 sample, bins 2-3 (the grain at ~1.4-2.2 m) get 2, and bins 4-8 (2-26 m,
+  // the road-view noise) share the rest, (12n - 9) / 5 each. Leftovers go to bins 5, 6, 7 first, then 4, 8.
+  // When the budget is too small for that (n = 1, 16 steps: 12 - 9 < 5), every bin stays 1.
   function tableBinSteps(steps, bias) {
     const n = Math.max(1, Math.round((steps | 0) / TABLE.K)), out = new Array(TABLE.K).fill(n);
     if (!(Number(bias) > 0)) return out;
-    const band = [4, 5, 6, 7, 8], rest = n * TABLE.K - 7;   // 7 single-sample bins: 0-3 and 9-11
-    for (const k of [0, 1, 2, 3, 9, 10, 11]) out[k] = 1;
+    const band = [4, 5, 6, 7, 8], rest = n * TABLE.K - 9;
+    if (rest < band.length) return new Array(TABLE.K).fill(1);
+    for (const k of [0, 1, 9, 10, 11]) out[k] = 1;
+    out[2] = 2; out[3] = 2;
     const q = Math.floor(rest / band.length);
     let r = rest - q * band.length;
     for (const k of band) out[k] = q;
     for (const k of [5, 6, 7, 4, 8]) { if (r > 0) { out[k]++; r--; } }
     return out;
   }
+  // NE3 slice override (look.scatterBinCounts, debug): exactly 12 comma-separated numbers, one per slice, each clamped to 0..64
+  // (the shader loop bound, NE4). Returns the counts, or null for an empty or invalid string (then the next rule applies).
+  const BIN_MAX = 64;
+  function parseBinCounts(s) {
+    if (typeof s !== 'string' || !s.trim()) return null;
+    const parts = s.trim().split(',').map((p) => p.trim());
+    if (parts.length !== TABLE.K || parts.some((p) => !/^-?\d+(\.\d+)?$/.test(p))) return null;
+    return parts.map((p) => Math.min(BIN_MAX, Math.max(0, Math.floor(Number(p)))));
+  }
+  // NE4 quality presets (look.scatterQuality): the owner's hand-tuned slice counts, slice 0 first. Counts only; res and blur are untouched.
+  // 'steps' (or anything unknown) is no preset: the global steps and near sampling decide.
+  const QUALITY = {
+    baseline: [1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1],
+    low: [1, 1, 1, 4, 4, 2, 2, 2, 1, 1, 1, 1],
+    medium: [1, 1, 1, 8, 8, 8, 4, 4, 2, 2, 1, 1],
+    high: [1, 1, 1, 32, 16, 8, 4, 4, 2, 2, 2, 1],
+    max: [1, 1, 1, 64, 32, 16, 8, 8, 4, 4, 2, 2]
+  };
+  function qualityCounts(name) { return Object.prototype.hasOwnProperty.call(QUALITY, name) ? QUALITY[name].slice() : null; }
+  // NE5 air beam levels (the top dropdown): each bundle sets these options together. The counts are the QUALITY preset of the same name.
+  // scatter 16 is the on switch (the air beam also needs a finite visibility: the levels leave visibility alone). Bundles also clear
+  // the debug slice text and near sampling, so the level's counts are the ones applied.
+  const AIR_LEVELS = {
+    baseline: { scatter: 16, scatterMode: 'table', scatterQuality: 'baseline', scatterRes: 'half', scatterBlur: 'strong', scatterCache: 'on', scatterCycle: 8, scatterCycleFade: 'on', scatterBinCounts: '', scatterNearBias: 0 },
+    low: { scatter: 16, scatterMode: 'table', scatterQuality: 'low', scatterRes: 'half', scatterBlur: 'strong', scatterCache: 'on', scatterCycle: 8, scatterCycleFade: 'on', scatterBinCounts: '', scatterNearBias: 0 },
+    medium: { scatter: 16, scatterMode: 'table', scatterQuality: 'medium', scatterRes: 'half', scatterBlur: 'mid', scatterCache: 'on', scatterCycle: 8, scatterCycleFade: 'on', scatterBinCounts: '', scatterNearBias: 0 },
+    high: { scatter: 16, scatterMode: 'table', scatterQuality: 'high', scatterRes: 'full', scatterBlur: 'mid', scatterCache: 'on', scatterCycle: 8, scatterCycleFade: 'on', scatterBinCounts: '', scatterNearBias: 0 },
+    max: { scatter: 16, scatterMode: 'table', scatterQuality: 'max', scatterRes: 'full', scatterBlur: 'off', scatterCache: 'on', scatterCycle: 8, scatterCycleFade: 'on', scatterBinCounts: '', scatterNearBias: 0 }
+  };
+  function airLevelBundle(name) { return Object.prototype.hasOwnProperty.call(AIR_LEVELS, name) ? Object.assign({}, AIR_LEVELS[name]) : null; }
+  // Derived, never stored: scatter 0 is 'off'; options equal to one level's bundle are that level; anything else is 'custom'.
+  function airLevelOf(o) {
+    if (!(Number(o && o.scatter) > 0)) return 'off';
+    for (const name of Object.keys(AIR_LEVELS)) {
+      const b = AIR_LEVELS[name];
+      if (Object.keys(b).every((k) => (typeof b[k] === 'number' ? (Number(o[k]) || 0) === b[k] : String(o[k] == null ? '' : o[k]) === b[k]))) return name;
+    }
+    return 'custom';
+  }
+  // The counts the table pass uses (CPU twin and GPU). Precedence: valid debug text > quality preset > near sampling / global steps.
+  function binCountsFor(steps, bias, s, quality) { return parseBinCounts(s) || qualityCounts(quality) || tableBinSteps(steps, bias); }
   function scatterTableBins(o, dir, jit, steps) {
-    const sig = sigmaOf(o.look || {}), counts = tableBinSteps(steps, (o.look || {}).scatterNearBias), bins = new Float64Array(TABLE.K);
+    const lk = o.look || {}, sig = sigmaOf(lk), counts = binCountsFor(steps, lk.scatterNearBias, lk.scatterBinCounts, lk.scatterQuality), bins = new Float64Array(TABLE.K);
     if (!(sig > 0)) return bins;
     const fr = nearFadeRangeOf(o.look || {});
     const eye = o.eye, lamps = o.lamps || [], dx = dir[0], dy = dir[1], dz = dir[2];
@@ -1007,5 +1051,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
