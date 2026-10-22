@@ -34,6 +34,12 @@
   }
 
   // ---------------------------------------------------------------- building blocks
+  // REFLECTIVE-CLOTHING selection: 'all' = every dark-clothed walker; 'some' = a seeded half, chosen by a hash of the spawn position (no draw from the
+  // scenery stream, so the rest of the scene is unchanged). Anything else (off, unset) = false. Walkers built without ctx (drive-anim traffic) stay as before.
+  function reflectOn(ctx, s, off) {
+    const m = ctx.reflectiveClothing; if (m === 'all') return true; if (m !== 'some') return false;
+    const f = Math.sin(s * 12.9898 + off * 78.233 + 4.27) * 43758.5453; return f - Math.floor(f) < 0.5;
+  }
   function kit(ctx) {
     const O = [], R = ctx.rand, Lw = ctx.Lw, edgeR = -Lw / 2, edgeL = 1.5 * Lw;
     const at = (s, off) => { if (ctx.A) { const q = ctx.A.at(s, off); return { x: q.p[0], y: q.p[1], yaw: Math.atan2(q.t[1], q.t[0]) }; } return { x: s, y: off, yaw: 0 }; };
@@ -85,6 +91,13 @@
         const p = at(s, off), legs = kind === 'light' ? 'cloth-dark' : 'cloth-dark', torso = ({ dark: 'cloth-dark', hivis: 'hivis', light: 'cloth-light' })[kind] || 'cloth-dark', dr = (o && o.dir) || [1, 0], G = (o && o.gait) || 0;
         for (const dy of [-0.1, 0.1]) { const q = at(s + dr[0] * G * Math.sign(dy), off + dy + dr[1] * G * Math.sign(dy)); add({ k: 'cyl', x: q.x, y: q.y, r: 0.085, z0: 0, z1: 0.85, mat: legs }); }
         add({ k: 'cyl', x: p.x, y: p.y, r: 0.2, z0: 0.85, z1: 1.5, mat: kind === 'hivis' ? ({ z }) => ((z > 1.0 && z < 1.06) || (z > 1.26 && z < 1.32) ? 'hivis-tape' : 'hivis') : torso });
+        // REFLECTIVE-CLOTHING (opt-in, ctx.reflectiveClothing 'some' | 'all'): a dark-clothed walker gets two small strips of the vest's tape on the back and a
+        // reflector patch on each shoe. Same material ('hivis-tape', retro 330 cd/lx/m² per m² of tape) as the vest, on smaller patches. Off: nothing added.
+        if (kind === 'dark' && reflectOn(ctx, s, off)) {
+          const back = [-0.2 * Math.cos(p.yaw), -0.2 * Math.sin(p.yaw)];
+          for (const [z0, z1] of [[1.0, 1.04], [1.2, 1.24]]) add({ k: 'box', x: p.x + back[0], y: p.y + back[1], z0, z1, hx: 0.01, hy: 0.06, yaw: p.yaw, mat: 'hivis-tape' });
+          for (const dy of [-0.1, 0.1]) { const q = at(s + dr[0] * G * Math.sign(dy), off + dy + dr[1] * G * Math.sign(dy)); add({ k: 'box', x: q.x, y: q.y, z0: 0.04, z1: 0.07, hx: 0.03, hy: 0.03, yaw: p.yaw, mat: 'hivis-tape' }); }
+        }
         add({ k: 'ell', x: p.x, y: p.y, z: 1.64, rx: 0.1, ry: 0.09, rz: 0.12, mat: 'skin' });
       },
       // a car, seen from any side. face = +1 heads along the road's direction, −1 against it (an oncoming car); turn rotates it (cross
