@@ -25,7 +25,7 @@ function run(RF, ok) {
   let identical = true, compared = 0, retained = true;
   const oldD = sandbox.RF.Drive, oldA = sandbox.RF.DriveAnim;
   for (const scene of ['road', 'forest', 'city']) for (const wild of [false, true]) for (const veg of [false, true]) {
-    const f = { people: true, animals: true, veg }, opts = { wild, seed: 17, density: 1.5, trafficDensity: 0 };
+    const f = { people: false, animals: true, veg }, opts = { wild, seed: 17, density: 1.5, trafficDensity: 0 };   // PED-CLOTHING-MODES: people off here (walkers' clothes changed in every mode; checked: identical with people off, differs only in cls 'person' with people on)
     const before = oldA.source(scene, 3.5, false, f, opts);
     const after = A.source(scene, 3.5, false, f, { ...opts, leafyFoliage: false });
     identical &&= encode(before.objects) === encode(after.objects);
@@ -40,7 +40,7 @@ function run(RF, ok) {
   ok('FO off object lists identical to main 322d119 (' + compared + ' worlds)', identical);
   ok('FO adding bushes preserves all original scenery and random streams', retained);
   const c = { Lw: 3.5, seed: 17, density: 1.5 };
-  ok('FO buildScene off identical to main', ['road', 'forest', 'city'].every(s => encode(D.buildScene(s, c, { leafyFoliage: false })) === encode(oldD.buildScene(s, c, {}))));
+  ok('FO buildScene off identical to main', ['road', 'forest', 'city'].every(s => encode(D.buildScene(s, c, { leafyFoliage: false, people: false })) === encode(oldD.buildScene(s, c, { people: false }))));
   // Verify the literal default shader, not just its output against another current renderer.
   const current = fs.readFileSync('js/drive-three-objects.js', 'utf8'), base = cp.execFileSync('git', ['show', '322d119:js/drive-three-objects.js'], { encoding: 'utf8' });
   const shader = s => s.slice(s.indexOf('export const objectFragment'), s.indexOf('export function objects'));

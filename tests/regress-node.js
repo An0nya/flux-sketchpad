@@ -813,14 +813,16 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     }
     ok('D4h complete worker frames = main-thread pixels bit for bit across all three scenes, moving tiles, lamps, signals, traffic and actors', parity, frames + ' frames');
     // Compare actual old code, rather than two paths through the new implementation. No browser, timing or generated baseline values.
+    // PED-CLOTHING-MODES: people are off in this comparison. The pedestrians' clothing colours are shuffled in every mode now, so the people-on frames cannot equal the old base (checked: this block passes with people off).
+    const flagsNP = Object.assign({}, flags, { people: false });
     const vm = require('vm'), cp = require('child_process'), ctx = vm.createContext({ performance });
     for (const f of ['core','road','drive','drive-scenes','drive-anim']) vm.runInContext(cp.execFileSync('git', ['show', '4bae491:js/'+f+'.js'], { encoding: 'utf8' }), ctx);
     const old=ctx.RF.DriveAnim, oldD=ctx.RF.Drive; let identical=true, compared=0;
     for (const name of ['road','forest','city']) for (const bend of [null, RF.Road.arc(250,'right')]) for (const dist of [0,37.3,111.7]) for (const traffic of [false,true]) {
-      const o={wild:true,seed:7,density:0.5,safeGap:false,tiles:false,onMode:'manual',oncoming:traffic,preceding:traffic,trafficRange:230}, now=Object.assign({},p,{w:96,h:54,A:bend,src:A.source(name,3.5,false,flags,o)}), then=Object.assign({},now,{src:old.source(name,3.5,false,flags,o)});
+      const o={wild:true,seed:7,density:0.5,safeGap:false,tiles:false,onMode:'manual',oncoming:traffic,preceding:traffic,trafficRange:230}, now=Object.assign({},p,{w:96,h:54,A:bend,src:A.source(name,3.5,false,flagsNP,o)}), then=Object.assign({},now,{src:old.source(name,3.5,false,flagsNP,o)});
       const g=A.ground(now), h=old.ground(then), r=new Float32Array(4*96*54), s=new Float32Array(r.length); A.objects(now,dist,r,1); old.objects(then,dist,s,1);
       const a=A.composeCPU(now,g,r,dist), b=old.composeCPU(then,h,s,dist); identical=identical && a.every((v,i)=>v===b[i]); compared++;
-      const scene=D.buildScene(name,{Lw:3.5,A:bend,us:false,seed:7},flags), base=oldD.buildScene(name,{Lw:3.5,A:bend,us:false,seed:7},flags), cam={w:96,h:54,hfov:60,eye:A.EYE,lamps:p.lamps,lut:p.lut,lane:3.5,arc:bend,look:p.look,ss:1};
+      const scene=D.buildScene(name,{Lw:3.5,A:bend,us:false,seed:7},flagsNP), base=oldD.buildScene(name,{Lw:3.5,A:bend,us:false,seed:7},flagsNP), cam={w:96,h:54,hfov:60,eye:A.EYE,lamps:p.lamps,lut:p.lut,lane:3.5,arc:bend,look:p.look,ss:1};
       const u=D.render(Object.assign({},cam,{scene})).rgb,v=oldD.render(Object.assign({},cam,{scene:base})).rgb; identical=identical&&u.every((x,i)=>x===v[i]);
     }
     ok('D4i tiles OFF is pixel-identical to base 4bae491: cached animation and still renderer, road/forest/city, straight/bend', identical, compared+' displaced worlds');
