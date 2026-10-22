@@ -837,7 +837,7 @@
     return px.toFixed(1) + ' m ahead, ' + Math.abs(py).toFixed(1) + ' m ' + (py >= 0 ? 'left' : 'right') + ' of lane centre: ' + rd.mdl.lux([px, py, z], up ? 'up' : 'car').toFixed(1) + ' lx';
   }
   // ---------------------------------------------------------------- Drive: the driver's-eye view (js/drive.js, js/drive-scenes.js)
-  const DV_DEF = { trafficShuffle: 'off', trafficOutIds: [], playing: false, scene: 'road', wet: false, visibility: null, scatter: 0, trafficHalo: 0, scatterMode: 'direct', scatterRes: 'half', scatterBlur: 'off', scatterCache: 'off', scatterCycle: 0, scatterBinCounts: '', scatterQuality: 'steps', scatterCycleFade: 'off', scatterNearFade: 'on', scatterNearFadeRange: 'medium', scatterNearBias: 0, scatterGain: 1, wetSheen: false, wetModel: 'legacy', expMode: 'fixed', ev: 1, glare: 'off', onMode: 'symmetric', people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true, tex: true, wild: true, mt: true, fitControls: true, largeCard: true, seed: 7, density: 1.5, trafficDensity: 1, trafficLogic: false, safeGap: true, tiles: true, tileCache: false, mountainPass: false, gpuRenderer: true, trafficBeams: false, surfaceSheen: false, lampPitch: false, afs: false, corneringLamps: false, fpsCounter: false, sceneDetails: false, debugTimings: false, dynamicResolution: false, frameTargetMs: 33, streetLamps: 'sodium', cline: 'solid', speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60, leafyFoliage: false, detailedModels: false, trafficRange: 400, trafficLightRange: '150', trafficNearest: '8', simCeiling: 'high', minFps: 30 };
+  const DV_DEF = { trafficShuffle: 'off', trafficOutIds: [], playing: false, scene: 'road', wet: false, visibility: null, scatter: 0, trafficHalo: 0, haloBins: 24, haloDiv: 0, haloPolar: 'off', haloPolarLamps: 2, haloGain: 1, scatterMode: 'direct', scatterRes: 'half', scatterBlur: 'off', scatterCache: 'off', scatterCycle: 0, scatterBinCounts: '', scatterQuality: 'steps', scatterCycleFade: 'off', scatterNearFade: 'on', scatterNearFadeRange: 'medium', scatterNearBias: 0, scatterGain: 1, wetSheen: false, wetModel: 'legacy', expMode: 'fixed', ev: 1, glare: 'off', onMode: 'symmetric', people: true, animals: true, signs: true, posts: true, veg: true, obstacle: false, rpm: true, tex: true, wild: true, mt: true, fitControls: true, largeCard: true, seed: 7, density: 1.5, trafficDensity: 1, trafficLogic: false, safeGap: true, tiles: true, tileCache: false, mountainPass: false, gpuRenderer: true, trafficBeams: false, surfaceSheen: false, lampPitch: false, afs: false, corneringLamps: false, fpsCounter: false, sceneDetails: false, debugTimings: false, dynamicResolution: false, frameTargetMs: 33, streetLamps: 'sodium', cline: 'solid', speed: 50, oncoming: false, preceding: false, onDist: 80, preDist: 50, onKcd: 30, RL: 200, ambient: 0, smooth: 'smooth', res: 640, fov: 60, leafyFoliage: false, detailedModels: false, trafficRange: 400, trafficLightRange: '150', trafficNearest: '8', simCeiling: 'high', minFps: 30, samples: '1' };
   const DV_GLARE = Object.keys(RF.Drive.GLARE).map((k) => [k, k]);
   const DV_SMOOTH = { sharp: [0.2, 0.2, 1], smooth: [0.5, 0.15, 2], soft: [1.0, 0.3, 3] };    // kernel half-widths: horizontal, vertical (°), wide-grid bins
   // Drive view lamp colour: the flux-weighted tint of the scene's emitters (RF.CCT). All-unset scenes give [1,1,1].
@@ -862,6 +862,12 @@
   const scatLevels = (o) => o.scatterMode === 'table' ? SCAT_TABLE_LEVELS : SCAT_LEVELS;
   // SL3: oncoming lamps' halo in fog, off, 4, 8 or 16 nearest lamps (look.trafficHalo). Shown only in air, like the air beam.
   const HALO_LEVELS = [0, 4, 8, 16];
+  // HDX7: a halo quality preset writes its bundle (RF.Drive.HALO_LEVELS_B); off writes trafficHalo 0. 'custom' does nothing when picked.
+  function applyHaloLevel(ui, name) {
+    if (name === 'off') { setDV(ui, 'trafficHalo', 0); return; }
+    const b = RF.Drive.haloLevelBundle(name); if (!b) return;
+    for (const k of Object.keys(b)) setDV(ui, k, b[k]);
+  }
   function cycleScatterMode(ui) {
     const o = dvOpts(ui), j = Math.max(0, scatLevels(o).indexOf(+o.scatter || 0)), table = o.scatterMode !== 'table';
     setDV(ui, 'scatter', (table ? SCAT_TABLE_LEVELS : SCAT_LEVELS)[j]); setDV(ui, 'scatterMode', table ? 'table' : 'direct');
@@ -923,6 +929,13 @@
       dvSelect('airLevel', 'Air beam', 'Air beam: off, or a level (baseline to max) that sets the table sample counts, resolution, blur and cache together and ignores the global steps and near sampling; custom means the advanced settings match no level.', [['off', 'air beam: off'], ['baseline', 'air beam: baseline (' + airCount('baseline') + ')'], ['low', 'air beam: low (' + airCount('low') + ')'], ['medium', 'air beam: medium (' + airCount('medium') + ')'], ['high', 'air beam: high (' + airCount('high') + ')'], ['max', 'air beam: max (' + airCount('max') + ')'], ['custom', 'air beam: custom']], (s) => { if (s.value !== 'custom') setAirLevel(ui, s.value); });
       dvSelect('scatter', 'Air beam steps', 'Visible beam in fog (single scatter off our own lamps): off, low, mid or high. Direct: 4, 8 or 16 steps per pixel. Table: 16, 32 or 64 table steps. Only shown in air. Costs frame time.', [['0', 'air beam: off'], ['1', 'air beam: low'], ['2', 'air beam: mid'], ['3', 'air beam: high']], (s) => { const v = +s.value; setDV(ui, 'scatter', scatLevels(dvOpts(ui))[v]); });
       dvSelect('trafficHalo', 'Traffic halo', 'Oncoming lamps glow in fog: their single scatter along the eye ray, off or from the 4, 8 or 16 nearest lamps. Only shown in air, with traffic beams on. Costs frame time.', [['0', 'traffic halo: off'], ['4', 'traffic halo: 4'], ['8', 'traffic halo: 8'], ['16', 'traffic halo: 16']], (s) => setDV(ui, 'trafficHalo', +s.value));
+      // HDX7: the halo quality presets (low, medium, ultra) and the advanced group beside them (bins, table divisor, polar mode and lamps, gain).
+      dvSelect('haloQuality', 'Halo quality', 'Traffic halo quality: off, or low (4 bins, table divisor 4), medium (16 bins, one polar table between the car lamps), ultra (24 bins, one polar table per lamp). Picking a level sets the advanced settings; custom means they match no level.', [['off', 'halo quality: off'], ['low', 'halo quality: low'], ['medium', 'halo quality: medium'], ['ultra', 'halo quality: ultra'], ['custom', 'halo quality: custom']], (s) => { if (s.value !== 'custom') applyHaloLevel(ui, s.value); });
+      dvSelect('haloBins', 'Halo bins', 'Halo distance bins: 4 to 32. A change recompiles nothing; more bins follow the glow more closely and cost more per pixel.', ['4', '6', '8', '12', '16', '24', '32'].map((n) => [n, 'halo bins: ' + n]), (s) => setDV(ui, 'haloBins', +s.value));
+      dvSelect('haloDiv', 'Halo table divisor', 'Halo table resolution: auto (the lamp-count rule), or the screen divided by 4, 2 or 1.4. Clamped so the table fits the GPU texture width (a clamp is shown in the stats).', [['0', 'halo table: auto'], ['4', 'halo table: 1/4'], ['2', 'halo table: 1/2'], ['1.4', 'halo table: 1/1.4']], (s) => setDV(ui, 'haloDiv', +s.value));
+      dvSelect('haloPolar', 'Halo polar', 'Polar halo tables, which keep a close car glowing without banding: off, merged (one table centred between the car lamps) or per-lamp (one table for each lamp).', [['off', 'halo polar: off'], ['merged', 'halo polar: merged'], ['perlamp', 'halo polar: per lamp']], (s) => setDV(ui, 'haloPolar', s.value));
+      dvSelect('haloPolarLamps', 'Halo polar lamps', 'Lamps of the nearest car that get a polar table: 1 or 2 (both lamps). Per-lamp and merged modes only.', [['1', 'polar lamps: 1'], ['2', 'polar lamps: 2']], (s) => setDV(ui, 'haloPolarLamps', +s.value));
+      dvSelect('haloGain', 'Halo gain', 'Multiplies the traffic halo (the glow only). 1 is as computed.', [['0.25', 'halo gain: x0.25'], ['0.5', 'halo gain: x0.5'], ['1', 'halo gain: x1'], ['2', 'halo gain: x2'], ['4', 'halo gain: x4']], (s) => setDV(ui, 'haloGain', +s.value));
       btn('scatterMode', 'Air beam method. direct: the scatter is integrated per pixel in the shader (the default). table: one scatter table per frame at half or full res, looked up by distance; objects cost one lookup.', () => cycleScatterMode(ui));
       dvSelect('scatterRes', 'Beam res', 'Scatter table resolution: half (default), full, or quarter, which is cheaper and blurrier, so pair it with strong blur. Table mode only.', [['half', 'beam res: half'], ['full', 'beam res: full'], ['quarter', 'beam res: quarter']], (s) => setDV(ui, 'scatterRes', s.value));
       dvSelect('scatterBlur', 'Beam blur', 'Blur of the scatter table: off, mid (1.5 texels) or strong (3 texels). Table mode only.', [['off', 'beam blur: off'], ['mid', 'beam blur: mid'], ['strong', 'beam blur: strong']], (s) => setDV(ui, 'scatterBlur', s.value));
@@ -947,6 +960,8 @@
       // View angle (horizontal FOV, degrees). Moved here from the sidebar; the saved key is still 'fov'. 30 is the telephoto preset below 45.
       const fov = el('select', { 'data-dv': 'fov', 'aria-label': 'Drive view field of view', title: 'Horizontal field of view. Narrower is more telephoto (the picture is larger). The eye is 1.2 m up, 2 m behind the lamps, 0.37 m left of the car centre (mirrored for left-hand traffic).' }, ...[['30', '30 (extreme telephoto)'], ['45', '45 (telephoto)'], ['60', '60'], ['75', '75'], ['90', '90 (wide)']].map(([v, t]) => el('option', { value: v }, t)));
       fov.addEventListener('change', () => setDV(ui, 'fov', +fov.value)); bar.append(fov);
+      const samples = el('select', { 'data-dv': 'samples', 'aria-label': 'supersampling: 1 / 2 / auto', title: 'Samples per pixel for the drive view. 1 is the default. 2 renders objects and foliage at twice the view size (4x the pixels) and is costly on phones. auto uses 2 on canvases up to 1100 px wide and drops to 1 while frames run slow; wider canvases use 1.' }, ...[['1', 'supersampling: 1'], ['2', 'supersampling: 2'], ['auto', 'supersampling: auto']].map(([v, t]) => el('option', { value: v }, t)));
+      samples.addEventListener('change', () => setDV(ui, 'samples', samples.value)); bar.append(samples);
       btn('expMode', 'Exposure. Fixed: an absolute EV, so two designs at the same EV are comparable (EV 0 puts 10 cd/m² at white). Auto: the average lit pixel goes to mid grey, so every picture looks exposed and brightness differences hide. Adapt: fixed reference white plus the oncoming veil at the centre of view, updated every frame.', () => setDV(ui, 'expMode', ['fixed', 'auto', 'adapt'][(['fixed', 'auto', 'adapt'].indexOf(dvOpts(ui).expMode) + 1) % 3]));
       btn('evm', 'Half a stop darker', () => setDV(ui, 'ev', Math.max(-8, dvOpts(ui).ev - 0.5)));
       btn('ev', 'Exposure value (click to reset)', () => setDV(ui, 'ev', DV_DEF.ev));
@@ -963,6 +978,14 @@
       adv.append(advBody);
       for (const k of ['scatter', 'scatterMode', 'scatterRes', 'scatterBlur', 'scatterCache', 'scatterCycle', 'scatterNearFadeRange', 'scatterNearBias']) { const c = bar.querySelector('[data-dv="' + k + '"]'); if (c) advBody.append(c); }
       advBody.append(binIn, binTotal, binHint);
+      // HDX7: the traffic halo's advanced group (a collapsed details, remembered like the air beam's). The air beam gain (scatterGain) joins it from drive-anim.
+      const haloAdv = el('details', { class: 'drive-halo-adv', 'data-dv-group': 'halo-advanced' }, el('summary', { 'aria-controls': 'drive-halo-adv-body' }, 'advanced halo'));
+      const haloBody = el('div', { class: 'drive-halo-adv-body', id: 'drive-halo-adv-body' });
+      haloAdv.append(haloBody); ui.haloAdvBody = haloBody;
+      for (const k of ['haloBins', 'haloDiv', 'haloPolar', 'haloPolarLamps', 'haloGain']) { const c = bar.querySelector('[data-dv="' + k + '"]'); if (c) haloBody.append(c); }
+      try { haloAdv.open = localStorage.getItem('flux/driveHaloAdv') === 'true'; } catch (e) { /* ignore */ }
+      haloAdv.addEventListener('toggle', () => { try { localStorage.setItem('flux/driveHaloAdv', String(haloAdv.open)); } catch (e) { /* ignore */ } });
+      bar.append(haloAdv);
       try { adv.open = localStorage.getItem('flux/driveAirAdv') === 'true'; } catch (e) { /* ignore */ }
       adv.addEventListener('toggle', () => { try { localStorage.setItem('flux/driveAirAdv', String(adv.open)); } catch (e) { /* ignore */ } });
       bar.append(adv);
@@ -988,6 +1011,7 @@
       if (k === 'scene') b.value = o.mountainPass ? '__pass' : o.scene;
       else if (k === 'onMode') b.value = o.onMode;
       else if (k === 'fov') b.value = String(o.fov);
+      else if (k === 'samples') b.value = ['1', '2', 'auto'].includes(String(o.samples)) ? String(o.samples) : '1';
       else if (k === 'wetSheen') { b.textContent = 'wet sheen'; b.disabled = !(RF.Drive.wetnessOf(o) > 0); b.setAttribute('aria-pressed', String(o.wetSheen)); }
       else if (k === 'wetModel') { b.textContent = 'streaks: ' + (o.wetModel === 'ggx' ? 'GGX' : 'legacy'); b.disabled = !(RF.Drive.wetnessOf(o) > 0 && o.wetSheen); b.setAttribute('aria-pressed', String(o.wetModel === 'ggx')); }
       else if (k === 'shape') { b.textContent = rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' $1'); b.setAttribute('aria-pressed', String(rv.shape !== 'straight')); }
@@ -995,6 +1019,12 @@
       else if (k === 'airLevel') { b.value = RF.Drive.airLevelOf(o); }
       else if (k === 'scatter') { const L = scatLevels(o), j = Math.max(0, L.indexOf(+o.scatter || 0)); [...b.options].forEach((op, i) => { op.textContent = 'air beam: ' + SCAT_NAMES[i] + (o.scatterMode === 'table' && i > 0 ? ' (' + L[i] + ')' : ''); }); b.value = String(j); b.hidden = visIndex(o.visibility) === 0; }
       else if (k === 'trafficHalo') { const j = Math.max(0, HALO_LEVELS.indexOf(+o.trafficHalo || 0)); b.value = String(HALO_LEVELS[j]); b.hidden = visIndex(o.visibility) === 0; }
+      else if (k === 'haloQuality') { b.value = RF.Drive.haloLevelOf(o); b.hidden = visIndex(o.visibility) === 0; }
+      else if (k === 'haloBins') { b.value = String(['4', '6', '8', '12', '16', '24', '32'].includes(String(o.haloBins)) ? o.haloBins : 24); b.hidden = visIndex(o.visibility) === 0; }
+      else if (k === 'haloDiv') { b.value = ['2', '4', '1.4'].includes(String(o.haloDiv)) ? String(o.haloDiv) : '0'; b.hidden = visIndex(o.visibility) === 0; }
+      else if (k === 'haloPolar') { b.value = ['merged', 'perlamp'].includes(o.haloPolar) ? o.haloPolar : 'off'; b.hidden = visIndex(o.visibility) === 0; }
+      else if (k === 'haloPolarLamps') { b.value = String(o.haloPolarLamps === 1 ? 1 : 2); b.hidden = visIndex(o.visibility) === 0; }
+      else if (k === 'haloGain') { b.value = ['0.25', '0.5', '2', '4'].includes(String(o.haloGain)) ? String(o.haloGain) : '1'; b.hidden = visIndex(o.visibility) === 0; }
       else if (k === 'scatterMode') { b.textContent = 'air beam mode: ' + (o.scatterMode === 'table' ? 'table' : 'direct'); b.hidden = visIndex(o.visibility) === 0; b.setAttribute('aria-pressed', String(o.scatterMode === 'table')); }
       else if (k === 'scatterRes') { b.value = ['full', 'quarter'].includes(ov('scatterRes')) ? ov('scatterRes') : 'half'; b.hidden = visIndex(o.visibility) === 0; b.disabled = o.scatterMode !== 'table'; }
       else if (k === 'scatterQuality') { b.value = ['baseline', 'low', 'medium', 'high', 'max'].includes(o.scatterQuality) ? o.scatterQuality : 'steps'; b.hidden = visIndex(o.visibility) === 0 || o.scatterMode !== 'table'; }
@@ -1035,7 +1065,7 @@
   let cpuStillRenders = 0;
   function cpuStill(ui, rd, o, rv) {
     const gameLamp = ui.dvAnim && ui.dvAnim.gameMode && ui.dvAnim.gameLamp, dm = gameLamp ? gameLamp.scene.modeD : md(ui), beamG = gameLamp ? gameLamp.G : ui.spec && ui.spec.G;
-    const road = rd.mdl.road, mirrored = dm.traffic === 'LHT', key = JSON.stringify([rd.laneDrive, o.scene, RF.Drive.wetnessOf(o), o.wetSheen, o.wetModel, o.visibility, o.scatter, o.trafficHalo, o.scatterMode, o.scatterRes, o.scatterBlur, o.scatterCache, o.scatterCycle, o.scatterNearFade, o.scatterNearFadeRange, o.scatterNearBias, o.scatterBinCounts, o.scatterQuality, o.scatterGain, o.onMode, o.onMode === 'high-dip' && o.seed, o.people, o.animals, o.signs, o.oncoming && [o.onDist, o.onKcd], o.preceding && o.preDist, o.RL, o.ambient, o.smooth, o.res, o.fov, rv.shape, lampTint(ui)]);
+    const road = rd.mdl.road, mirrored = dm.traffic === 'LHT', key = JSON.stringify([rd.laneDrive, o.scene, RF.Drive.wetnessOf(o), o.wetSheen, o.wetModel, o.visibility, o.scatter, o.trafficHalo, o.haloBins, o.haloDiv, o.haloPolar, o.haloPolarLamps, o.haloGain, o.scatterMode, o.scatterRes, o.scatterBlur, o.scatterCache, o.scatterCycle, o.scatterNearFade, o.scatterNearFadeRange, o.scatterNearBias, o.scatterBinCounts, o.scatterQuality, o.scatterGain, o.onMode, o.onMode === 'high-dip' && o.seed, o.people, o.animals, o.signs, o.oncoming && [o.onDist, o.onKcd], o.preceding && o.preDist, o.RL, o.ambient, o.smooth, o.res, o.fov, rv.shape, lampTint(ui)]);
     if (!rd.drive || rd.drive.key !== key) {
       cpuStillRenders++; const t0 = performance.now(), sm = DV_SMOOTH[o.smooth] || DV_SMOOTH.smooth, lut = RF.Drive.lutFrom(rd.mkI(sm[0], sm[1], sm[2])), sp = parseShape(rv.shape), A = sp ? RF.Road.arc(sp.R, sp.dir) : null;
       const scene = RF.Drive.buildScene(o.scene, { Lw: rd.laneDrive, A, us: !/^ece/.test(dm.preset || ''), seed: 7 }, { people: o.people, animals: o.animals, signs: o.signs, oncoming: o.oncoming ? { dist: o.onDist, kcd: o.onKcd } : null, preceding: o.preceding ? { dist: o.preDist } : null });
@@ -1102,7 +1132,7 @@
     driveTools(ui, cv);      // the EV button shows the white level of THIS picture
     if (RF.DriveAnim) RF.DriveAnim.sync(ui, cv, { rd, o, lampRGB: lampTint(ui), designName: ui.store.scene.name, lampCct: ui.store.scene.source && ui.store.scene.source.cct, A: parseShape(rv.shape) ? RF.Road.arc(parseShape(rv.shape).R, parseShape(rv.shape).dir) : null, mirrored, us: !/^ece/.test(dm.preset || ''), conv: (beamG && beamG.conv) || dm.conv || 'A', tm: still ? still.D.tm : null, setDV: (u, k, v, quiet) => { if (quiet) { dvOpts(u)[k] = v; try { localStorage.setItem('flux/driveView', JSON.stringify(u.dvOpts)); } catch (e) { /* ignore */ } } else setDV(u, k, v); },
       lut: () => { const sm = DV_SMOOTH[o.smooth] || DV_SMOOTH.smooth; if (!rd.animLut || rd.animLut.k !== o.smooth) rd.animLut = { k: o.smooth, lut: RF.Drive.lutFrom(rd.mkI(sm[0], sm[1], sm[2])) }; return rd.animLut.lut; },
-      groundKey: JSON.stringify([rd.laneDrive, !/^ece/.test(dm.preset || ''), o.scene, RF.Drive.wetnessOf(o), o.wetSheen, o.wetModel, o.visibility, o.scatter, o.trafficHalo, o.scatterMode, o.scatterRes, o.scatterBlur, o.scatterCache, o.scatterCycle, o.scatterNearFade, o.scatterNearFadeRange, o.scatterNearBias, o.scatterBinCounts, o.scatterQuality, o.scatterGain, o.RL, o.ambient, o.smooth, o.fov, rv.shape, mirrored]), toolbar: ui.driveBar });
+      groundKey: JSON.stringify([rd.laneDrive, !/^ece/.test(dm.preset || ''), o.scene, RF.Drive.wetnessOf(o), o.wetSheen, o.wetModel, o.visibility, o.scatter, o.trafficHalo, o.haloBins, o.haloDiv, o.haloPolar, o.haloPolarLamps, o.haloGain, o.scatterMode, o.scatterRes, o.scatterBlur, o.scatterCache, o.scatterCycle, o.scatterNearFade, o.scatterNearFadeRange, o.scatterNearBias, o.scatterBinCounts, o.scatterQuality, o.scatterGain, o.RL, o.ambient, o.smooth, o.fov, rv.shape, mirrored]), toolbar: ui.driveBar });
     if (lazy && !gpuShowing(o)) {          // the GPU did not take over after all: paint the CPU still now
       const late = cpuStill(ui, rd, o, rv); paintStill(ui, box, ctx, late.D, late.mirrored); driveTools(ui, cv);
     }

@@ -7,7 +7,7 @@
     if (!u.spec || !u.spec.full || u.needCompile) throw Error('No completed real lamp');
     await sleep(500); u.setDisplay('drive'); u.setPane('result', 'activate');
     Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false, dist: 25, t: 12 });
-    Object.assign(u.dvOpts, { mt: false, dynamicResolution: false, gpuRenderer: true }); u.redrawSpec();
+    Object.assign(u.dvOpts, { mt: false, dynamicResolution: false, gpuRenderer: true, samples: 'auto' }); u.redrawSpec();
     for (let i = 0; i < 200 && RF.DriveAnim.stats().renderer !== 'three'; i++) await sleep(50);
     if (RF.DriveAnim.stats().renderer !== 'three') throw Error('GPU unavailable: ' + RF.DriveAnim.stats().gpuFailure);
     u.redrawSpec(); await sleep(200); RF.DriveAnim.openPop(u);

@@ -5,7 +5,7 @@
     const u=RF.UI;u.setMode('D');
     for(let i=0;i<1800 && !(u.spec && u.spec.ev && u.spec.full && !u.solving && !u.needCompile && u.run && u.run.ctx.done && u.spec.ctx===u.run.ctx);i++)await sleep(100);
     if(!(u.spec && u.spec.ev && u.spec.full))throw Error('lamp trace did not finish');
-    await sleep(500);u.setDisplay('drive');u.setPane('result','activate');Object.assign(u.dvAnim||(u.dvAnim={}),{view:'anim',playing:false});u.redrawSpec();
+    await sleep(500);u.setDisplay('drive');u.setPane('result','activate');Object.assign(u.dvAnim||(u.dvAnim={}),{view:'anim',playing:false});u.dvOpts.samples='auto';u.redrawSpec();
     return u;
   }
   async function select(gpu) {
