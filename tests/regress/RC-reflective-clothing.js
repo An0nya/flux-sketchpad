@@ -6,6 +6,7 @@
 //     the same seed builds the same clothing twice; the palette gives at least two different colours across the walkers.
 // (2) pixels, the drive view: the none, mix, small and vest frames are not all the same; a second none frame after the others equals the first (nothing stuck);
 //     the wild scenery's none and vest frames differ (its walkers are chunk actors, placed each frame, so they are checked by pixels, not by objects).
+// (1b) detailed (SDF) pedestrians: tape nodes with detailed models on, none on none/vest, 8 per strip walker; the off-after-on repeat.
 // (3) no page errors.
 // Run: node tests/regress/RC-reflective-clothing.js 8831   (server: python3 tests/serve.py 8831)
 const fs = require('fs'), path = require('path');
@@ -51,6 +52,32 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   ok('all (saved value) builds as small', data.allIsSmall);
   ok('the same seed builds the same clothing twice', data.sameSeedRepeats);
   ok('the palette gives at least two colours across the walkers', data.palette.length >= 2, data.palette.join(','));
+
+  // (1b) detailed (SDF) pedestrians, drive-models.js: tape nodes (material 'hivis-tape') per person, with detailed models on and off.
+  // Node layout: 12 floats per node, material id in slot 11. A person has 15 nodes without tape and 23 with (8 tape nodes: 2 torso bands,
+  // 2 forearm cuffs, 2 shin bands, 2 shoe patches). MAX_NODES is 32.
+  const det = await page.evaluate(() => {
+    const D = RF.Drive, tape = D.MAT_KEYS.indexOf('hivis-tape');
+    const build = (m, on) => D.Models.actors(D.buildScene('road', { Lw: 3.5, A: null, us: true, seed: 7, reflectiveClothing: m }, { people: true, animals: false, signs: false, posts: false, veg: false }).objects, on);   // the detailed swap is actors() (what drive-anim's source() calls)
+    const persons = (objs) => objs.filter((o) => o.k === 'sdf' && o.cls === 'person').map((o) => {
+      const F = Array.isArray(o.nodes[0]) ? o.nodes.flat() : Array.from(o.nodes), n = o.nodeCount;
+      let t = 0; for (let i = 0; i < n; i++) if (F[i * 12 + 11] === tape) t++;
+      return { nodes: n, tape: t };
+    });
+    const out = {};
+    for (const m of ['none', 'mix', 'small', 'vest']) out[m] = persons(build(m, true));
+    out.smallOff = persons(build('small', false));
+    out.smallOnAgain = persons(build('small', true));
+    return out;
+  });
+  console.log('detailed: ' + JSON.stringify(det));
+  const tapeOf = (list) => list.map((q) => q.tape);
+  ok('detailed on, none: no tape nodes on any person', det.none.length > 0 && tapeOf(det.none).every((t) => t === 0), 'nodes ' + JSON.stringify(det.none));
+  ok('detailed on, vest: no tape nodes (the vest is its own material)', det.vest.every((q) => q.tape === 0), 'nodes ' + JSON.stringify(det.vest));
+  ok('detailed on, small: every non-vest person has 8 tape nodes and 23 nodes in all', det.small.length === 3 && det.small.every((q) => q.tape === 8 && q.nodes === 23), JSON.stringify(det.small));
+  ok('detailed on, mix: tape only on the seeded strip walkers, 8 nodes each', det.mix.every((q) => q.tape === 0 || q.tape === 8) && det.mix.filter((q) => q.tape === 8).length === data.mix.strips / 4, JSON.stringify(det.mix));
+  ok('detailed off, small: no SDF persons (primitive strips only)', det.smallOff.length === 0);
+  ok('off-after-on repeats: small with detailed on again gives the same nodes', JSON.stringify(det.small) === JSON.stringify(det.smallOnAgain));
 
   // (2) pixels: drive view, low beam, the same pose for each mode
   await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false });

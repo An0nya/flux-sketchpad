@@ -13,31 +13,34 @@ const CASES = [['road-static', 'road', { wild: false }], ['road-wild', 'road', {
 // key -> sha1 (first 16 hex). Pinned from the untouched code; a change must change the pin here with the reason.
 // PED-CLOTHING-MODES: the walker objects changed (palette colours and strip boxes, default mode mix). Re-baselined from the new build; with every
 // cls 'person' object left out, all 24 digests equal the pre-change pins (checked against main b38c628, people on and off).
+// PED-STRIPS-SDF: 22 of 24 changed (road-wild off unchanged; 'off' rows changed too, the walkers are in them). Cause: mix and small walkers now carry
+// tape. The detailed (SDF) model draws torso bands, cuffs, shin bands and shoe patches, and the primitive torso bands replace the two back strips. none and vest
+// are unchanged. Proof: with every cls 'person' object left out, all 24 digests equal main f52ed8a (checked in scratch, people on and off).
 const PINS = {
-  'road-static@7@tiles95': 'f72165fa8a46de9b',
-  'road-static@7@tiles400': '8780ad3dfa5c163e',
-  'road-static@7@off': '619140acc991bc8d',
-  'road-wild@7@tiles95': '1eb5ad5de97e8d0d',
-  'road-wild@7@tiles400': 'c115b66599ea0ae6',
+  'road-static@7@tiles95': 'ab67e7b6e25b9cbf',
+  'road-static@7@tiles400': '4016c6e5ed689358',
+  'road-static@7@off': 'c50d9a8d4e55c248',
+  'road-wild@7@tiles95': 'cd69e4e0171e3792',
+  'road-wild@7@tiles400': '897cbc8e1effeb6e',
   'road-wild@7@off': '52d7698a66a3c969',
-  'forest@7@tiles95': 'c13a88d509de5901',
-  'forest@7@tiles400': '926fe2eec9f4b94f',
-  'forest@7@off': '147f4ad401a44c25',
-  'city@7@tiles95': 'b89a885fd4de2f7f',
-  'city@7@tiles400': 'eda34d6dc38c5a44',
-  'city@7@off': 'bb9996a602f5c4cf',
-  'road-static@11@tiles95': '594ff54c155cf0e0',
-  'road-static@11@tiles400': '54af8224ee6aed02',
-  'road-static@11@off': '619140acc991bc8d',
-  'road-wild@11@tiles95': 'ff6defebc07304be',
-  'road-wild@11@tiles400': '124dc03af7d00821',
+  'forest@7@tiles95': '9abd05f429731329',
+  'forest@7@tiles400': 'f887d4bb312a2eaa',
+  'forest@7@off': '9dd957d63f1499ad',
+  'city@7@tiles95': '614f519c8f9a2437',
+  'city@7@tiles400': '03c3388d27e2f6c1',
+  'city@7@off': '227b99bb5e94dd14',
+  'road-static@11@tiles95': '5de1a0aa7bcf809f',
+  'road-static@11@tiles400': '12b6830ff207f23b',
+  'road-static@11@off': 'c50d9a8d4e55c248',
+  'road-wild@11@tiles95': 'dbfe95af9eb43c7f',
+  'road-wild@11@tiles400': 'c6d7e11a65ed26b1',
   'road-wild@11@off': 'a613818373b10e52',
-  'forest@11@tiles95': 'a44e731bb5ab6ec8',
-  'forest@11@tiles400': '0b0052c4f2e4608e',
-  'forest@11@off': '147f4ad401a44c25',
-  'city@11@tiles95': '972867e0b609959e',
-  'city@11@tiles400': '48d5f7fc6e0c0080',
-  'city@11@off': 'bb9996a602f5c4cf',
+  'forest@11@tiles95': 'c17f3f61effb5fa1',
+  'forest@11@tiles400': '522a02f78b643639',
+  'forest@11@off': '9dd957d63f1499ad',
+  'city@11@tiles95': '4feade3518ecb8a4',
+  'city@11@tiles400': '4dc05b3cc1c95545',
+  'city@11@off': '227b99bb5e94dd14',
 };
 
 // one object's identity: every field a builder sets that decides where it is and what it is
