@@ -244,7 +244,7 @@ export function create(canvas, gl, onModelsReady) {
     } else u.carFromWorld.value.identity();   // flat frames: a pass frame earlier in the session must not leave its rotation behind
 
     set('pitch', p.pitch || 0); set('yaw', p.yaw || 0); u.cornering.value.set(p.cornerLeft || 0,p.cornerRight || 0);
-    const traffic = p.trafficBeams ? D.trafficSources(world.objects, p.eye, p) : []; set('nTraffic', traffic.length);
+    const traffic = p.trafficBeams ? D.trafficSources(world.objects, p.eye, p, world.A) : []; set('nTraffic', traffic.length);
     // BA5: a symmetric-mode car with a pool pick reads its beam from the atlas. No pool, or any other mode: the single table, as before.
     const pool = traffic.length ? p.trafficPool : null, atlas = !!(pool && pool.entries.length && traffic.some(q => q.beam));
     atlasOn = atlas;
@@ -260,7 +260,6 @@ export function create(canvas, gl, onModelsReady) {
     if (traffic.length) {
       traffic.forEach((q, i) => {
         if(p.touge){const f=world.A.frame(q.x,q.y),a=world.A.surface(f.s,f.off);u.trafficPitch.value[i]=Math.atan(a.grade*(q.nx*f.t[0]+q.ny*f.t[1]));
-          if(!world.objects.some(ob=>ob.traffic===q.car && ob.headlamp))q.z+=world.A.height(f.s,f.off);
         }
         u.trafficLamp.value[i].set(q.x, q.y, q.z, q.w); u.trafficDir.value[i].set(q.nx, q.ny);
         if (atlas) u.trafficBeamIdx.value[i >> 2].setComponent(i & 3, D.trafficPickIndexOf(p, q.car));

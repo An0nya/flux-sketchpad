@@ -625,7 +625,7 @@
   }
   // extra fields on a traffic source: its own beam and colour tint. Empty for the built-in beam, so those sources are unchanged.
   const trafficBeamFields = (p, carId) => { const pk = trafficPickOf(p, carId); return pk ? { beam: { lut: pk.lut, conv: pk.conv }, tint: pk.tint } : {}; };
-  function trafficSources(objects, eye, p) {
+  function trafficSources(objects, eye, p, A) {
     eye = eye || [-2, 0.37, 1.2]; const groups = new Map(), lim = trafficLimits(p);
     for (const ob of objects) if (ob.traffic !== undefined) { if (!groups.has(ob.traffic)) groups.set(ob.traffic, []); groups.get(ob.traffic).push(ob); }
     const cars = [];
@@ -639,7 +639,10 @@
         const nx = -ob.nx, ny = -ob.ny; let front = ob.x * nx + ob.y * ny;
         for (const b of obs) if (b.k === 'box') { const c = Math.cos(b.yaw || 0), sn = Math.sin(b.yaw || 0); front = Math.max(front, b.x * nx + b.y * ny + b.hx * Math.abs(c * nx + sn * ny) + b.hy * Math.abs(-sn * nx + c * ny)); }
         const shift = front - ob.x * nx - ob.y * ny + 0.01;
-        return { x: ob.x + nx * shift, y: ob.y + ny * shift, z: 0.68, nx, ny, car: id };
+        // TOUGE-ELEV A: on the pass the tail source takes the road height under it, as the heads do through lift(). Done here so the
+        // halo and the direct beam (drive-three.js) read the same z. Flat road (no p.touge): 0.68, unchanged.
+        const x = ob.x + nx * shift, y = ob.y + ny * shift, rf = p && p.touge && A ? A.frame(x, y) : null;
+        return { x, y, z: rf ? 0.68 + A.height(rf.s, rf.off) : 0.68, nx, ny, car: id };
       });
       cars.push({ d, sources });
     }
