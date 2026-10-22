@@ -29,6 +29,7 @@ fs.mkdirSync(OUT, { recursive: true });
     await page.waitForFunction(() => RF.DriveAnim.stats().renderer === 'three' || RF.DriveAnim.stats().gpuFailure, null, { timeout: 120000 }).catch(() => {});
     const setOpt = (k, v) => page.evaluate(([k, v]) => RF.DriveAnim._.V.setOwn(k, v), [k, v]);
     await setOpt('trafficBeams', true); await setOpt('oncoming', true); await setOpt('preceding', false); await setOpt('seed', 1);
+    if (process.env.ONMODE) await setOpt('onMode', process.env.ONMODE);   // HDX6: oncoming beam: symmetric (our design, default) | generic (wide low beam)
     for (const [k, v] of [['glare', GLARE], ['tex', false], ['tiles', false], ['wetSheen', false], ['wet', false], ['scatter', 0], ['speed', 0], ['visibility', FOG]]) await setOpt(k, v);
     await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas; c.style.width = c.width + 'px'; c.style.height = c.height + 'px'; });
     await setOpt('trafficHalo', 4); await sleep(800);
