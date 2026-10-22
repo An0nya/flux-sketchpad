@@ -11,7 +11,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // LAZYCPU (2026-10-22): while the GPU view shows, the CPU still under the GPU canvas is no longer rendered, so the 1-px sub-pixel edge column of the element screenshot
 // now shows the page background instead of the CPU still. Proven by forcing RF.SpecUI.forceCpuStill = true: both old hashes below then match again (7/7). Re-baselined, no tolerance change.
 // Before (LAZYCPU): dry 26104b34d5d8066816b7828b8c93737189079d78340b9c74f9cb86c7dfa8f5f5, wet 44a8d9ef6bd4f6a0cfd602403274f95c3a30fb06eed56f7892dc83b962042e3c.
-const OLD = { dry: 'f8ce6e90440536832d29dae9bdc06203e6cd894fe472aaa0b4c42f81236552e6', wet: 'a4aa8a8c59edbff05d801c17277519553ba1f9c25900514ac396c56557875cc4' };
+// PED-CLOTHING-MODES: people are off in this session (walkers' clothes changed in every mode). The pins are main b38c628's frames with people off,
+// captured on main and equal to the new build with people off (full sha256 of the PNG). With people on, the old pins are f8ce6e90... / a4aa8a8c... and no longer match.
+const OLD = { dry: '8eb4e35ccda362c43f749ba920f616b3dd255b61bf6461a1f2f44378666fa879', wet: '1f69234ee88e1ec3938d2730daacdc3f35a2629665f0b654053ebfa0b177adc0' };
 
 // Two contexts. The legacy-seeded one only checks the loaded option (no frame: a page that starts wet and then goes dry keeps a
 // residue that depends on the start, measured on main as well, so the frame checks start from a fresh dry load).
@@ -37,7 +39,7 @@ async function session(browser) {
   await page.evaluate(() => UX2Page.ready());
   await sleep(1500);
   // the UX2 start sets wet and wetSheen on; the dry start sets the road to dry with the sheen off (the baseline state)
-  await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false }); RF.UI.redrawSpec(); });
+  await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, people: false }); RF.UI.redrawSpec(); });
   const capture = async (label) => {
     await sleep(2500);
     const state = await page.evaluate(() => { const s = RF.DriveAnim.stats(); return { wetness: RF.UI.dvOpts.wetness, label: document.querySelector('[data-dv="wetness"]').textContent, renderer: s.renderer, gpuFailure: s.gpuFailure || '' }; });

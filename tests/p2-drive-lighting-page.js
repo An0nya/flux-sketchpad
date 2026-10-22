@@ -29,7 +29,8 @@
     const moduleURL = url(base.renderer.replace("'../vendor/three/three.module.min.js'", JSON.stringify(vendor)).replace("'./drive-three-shaders.js'", JSON.stringify(shaders)).replace("'./drive-three-objects.js'", JSON.stringify(objs)));
     const original = await import(moduleURL), renderer = original.create(a.V.canvas, a.V.gl.gl);
     (0, eval)(base.cpu); const baseD = RF.Drive; RF.Drive = D;
-    Object.assign(u.dvOpts, { trafficBeams: false, surfaceSheen: false, lampPitch: false, tex: false, wild: false, ambient: 0, oncoming: true, preceding: true, trafficLogic: false });
+    // PED-CLOTHING-MODES: people off. The walkers' clothes changed in every mode; with people off the all-off CPU frames match the a95029b base exactly (checked), with people on they do not.
+    Object.assign(u.dvOpts, { trafficBeams: false, surfaceSheen: false, lampPitch: false, tex: false, wild: false, ambient: 0, oncoming: true, preceding: true, trafficLogic: false, people: false });
     try {
       for (const scene of ['road', 'city']) for (const wet of [false, true]) for (const tiles of [false, true]) {
         // SB2 put wet sheen on the painted lines, so a wet frame with the sheen on no longer matches the a95029b harness: the identity is checked with the sheen off
