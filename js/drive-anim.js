@@ -1574,7 +1574,7 @@ void main() {
   function bars(ui, setDV) {
     if (V.bar) return V.bar;
     const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveBar.querySelector('.drive-primary'), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
-    btn('play', 'Drive / pause: Pause freezes distance and time', () => { const current = S(ui); current.playing = !current.playing; setDV(ui, 'playing', current.playing); });
+    btn('play', 'Drive / pause: Pause freezes distance and time', () => { const current = S(ui); current.playing = !current.playing; if (current.playing && V.gpuFailure && V.gpuNote) say(V.gpuNote); setDV(ui, 'playing', current.playing); });   // drops the "Paused:" half of the GPU notice once driving again
     // High beam (H key or this button): session state on V, not saved prefs, so it is off on every reload
     btn('high-beam', 'High beam (H) cycles Off, On, Auto. Auto dips for oncoming headlamps, preceding tail lamps, urban tiles and under 30 km/h, then returns to high after 2 s clear. Off by default; not saved across reloads.', () => cycleHigh(ui), 'high beam');
     document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.bar.hidden && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
@@ -2126,7 +2126,13 @@ void main() {
   let threeModule, threeLoading;
   function gpuFallback(why) {
     tableStripClear(); if (V.three) { V.three.dispose(); V.three = null; }
-    V.gkey = ''; V.gpuFailure = String(why); say('GPU drive unavailable (' + V.gpuFailure.split('\n')[0].slice(0, 160) + '); using CPU renderer.'); if (V.bar) labels(V.ui);
+    // CPU-FALLBACK-PAUSE: a failure while the owner wanted the GPU and the sim was driving stops the sim, so the slower CPU never animates unasked. Deliberate CPU (gpuRenderer off) never reaches here.
+    const st = V.ui && S(V.ui), pause = !!(st && st.playing) && !!(V.info && info().o.gpuRenderer);
+    V.gkey = ''; V.gpuFailure = String(why);
+    if (pause) { st.playing = false; stop(); const game = st.game; if (game && !game.done) { game.pauseAt = performance.now(); if (game.inputs) game.inputs.clear(); RF.DriveGame.press(game, false, performance.now()); } }
+    V.gpuNote = 'GPU drive unavailable (' + V.gpuFailure.split('\n')[0].slice(0, 160) + '); using CPU renderer.';
+    say(V.gpuNote + (pause ? ' Paused: press Drive to continue on the slower CPU renderer.' : ''));
+    if (V.bar) labels(V.ui);
   }
   function gpuCreate() {                                      // first build, and the rebuild after a context restore: a few tries, then the visible CPU fallback
     try { V.three = threeModule.create(V.canvas, V.gl.gl, () => { if(V.three && V.three.modelState().error)say('Detailed car assets unavailable; using primitive cars.'); if (V.ui) V.ui.redrawSpec(); }); V.gkey = ''; V.gpuTries = 0; killWorkers(); tlMark('three renderer created'); }
