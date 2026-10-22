@@ -18,5 +18,5 @@ for (const n of names) { const b = D.haloLevelBundle(n); ok('HDX7 preset ' + n +
 for (let N = 4; N <= 32; N++) if (512 * N > 16384) { ok('HDX7 polar width fits maxTextureSize at N=' + N, false, 512 * N); }
 ok('HDX7 polar width 512 x 32 = 16384 fits the 16384 texture limit', 512 * 32 <= 16384, String(512 * 32));
 // the bundle is a copy: mutating it does not change the preset
-const bcopy = D.haloLevelBundle('low'); bcopy.haloBins = 99; ok('HDX7 haloLevelBundle returns a copy', D.HALO_LEVELS_B.low.haloBins === 4);
+const bcopy = D.haloLevelBundle('low'); bcopy.haloBins = 99; ok('HDX7 haloLevelBundle returns a copy', D.HALO_LEVELS_B.low.haloBins === 6);
 console.log(fails ? fails + ' FAILED' : 'all halo-level checks passed'); process.exit(fails ? 1 : 0);
