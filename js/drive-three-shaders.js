@@ -28,7 +28,7 @@ uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js S
 // air BEHIND it does not. haloOn is a uniform: off costs one branch, and toggling never changes the shader text (no recompile).
 uniform int haloOn; uniform sampler2D haloTex; uniform vec2 haloUV, haloTab;   // haloUV: 1 / pixels of the target this pass draws; haloTab: cells per tile
 uniform float haloE[24];
-uniform int haloPolarOn; uniform sampler2D haloPolarTex; uniform vec2 haloPolarC, haloPolarRange, haloPolarN;   // HDX6 (see haloPolar below)   // the upper edge of each bin: fixed geometric 0.5..120 m, 24 bins (HDX3; see HALO_EDGES in drive-three-halo.js)
+uniform int haloPolarOn; uniform sampler2D haloPolarTex; uniform vec2 haloPolarF, haloPolarSz, haloPolarRange, haloPolarN;   // HDX6: centre as a fraction of the view, view px (see haloPolar below)   // the upper edge of each bin: fixed geometric 0.5..120 m, 24 bins (HDX3; see HALO_EDGES in drive-three-halo.js)
 // Cubic B-spline read of one bin tile in 4 bilinear fetches (the linear trick: B-spline weights are all positive, so two taps per axis are exact). It
 // removes the cell-grid stairs plain bilinear leaves on a sharp-edged glow. Tap centres are clamped inside the tile, so no bin bleeds into its neighbour.
 vec3 haloBin(int k, vec2 pc, vec2 f, vec2 tab) {
@@ -69,7 +69,7 @@ vec3 haloPolarBin(int k, float ia, float ja) {
 }
 vec3 haloPolar(float d) {
   if(haloOn==0 || haloPolarOn==0 || d<=0.5) return vec3(0.0);
-  vec2 q = gl_FragCoord.xy - haloPolarC;
+  vec2 q = (gl_FragCoord.xy * haloUV - haloPolarF) * haloPolarSz;   // view px: the objects pass may render at ss x the view size, haloUV is per pass
   float th = dot(q, q) > 0.0 ? atan(q.y, q.x) : 0.0;
   float ia = fract(th / 6.28318530718) * haloPolarN.x - 0.5;
   float ja = (log(max(length(q), 0.25)) - haloPolarRange.x) / haloPolarRange.y - 0.5;

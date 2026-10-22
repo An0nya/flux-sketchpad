@@ -15,7 +15,7 @@ fs.mkdirSync(OUT, { recursive: true });
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
   const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
   try {
-    const page = await (await browser.newContext({ viewport: { width: 1280, height: 950 } })).newPage();
+    const page = await (await browser.newContext({ viewport: { width: +(process.env.VW || 1280), height: +(process.env.VH || 950) } })).newPage();
     await page.addInitScript('globalThis.SL_HALO_TIMING = 1;');
     if (process.env.HDIV) await page.addInitScript('globalThis.SL_HALO_DIV = ' + (+process.env.HDIV) + ';');
     if (process.env.HPOLAR) await page.addInitScript('globalThis.SL_HALO_POLAR = 1;');
@@ -63,11 +63,13 @@ fs.mkdirSync(OUT, { recursive: true });
       const info = await page.evaluate(() => { const V = RF.DriveAnim._.V, S = V.three.haloState(), msT = S.ms, e = V.p.eye, tanH = Math.tan(V.p.hfov * Math.PI / 360), W = V.p.w, H = V.p.h, c = V.canvas;
         const L = S.lamps.length ? S.lamps[0].lamp : null; const dx = L ? L[0] - e[0] : 0;
         const col = L ? (-((L[1] - e[1]) / dx) / tanH + 1) / 2 * W - 0.5 : null, row = L ? (1 - ((L[2] - e[2]) / dx) / (tanH * H / W)) / 2 * H - 0.5 : null;
-        return { dLamp: dx, eye: e.slice(), lampsN: S.lamps.length, tab: S.tab, W, H, cw: c.width, ch: c.height, col, row, halo: V.p.look && V.p.look.trafficHalo, hfov: V.p.hfov, haloMs: msT, div: globalThis.SL_HALO_DIV || null }; });
+        return { dLamp: dx, eye: e.slice(), lampsN: S.lamps.length, tab: S.tab, W, H, cw: c.width, ch: c.height, col, row, halo: V.p.look && V.p.look.trafficHalo, hfov: V.p.hfov, haloMs: msT, div: globalThis.SL_HALO_DIV || null, msPolar: S.msPolar, polarNote: S.polarNote, polar: S.polar, canvasPx: [c.width, c.height, W, H],
+          polarCheck: S.polar ? (() => { const C = S.polar.C, sx = C[0] / W * 2 - 1, sy = C[1] / H * 2 - 1, rd = [1, -sx * Math.tan(V.p.hfov * Math.PI / 360), sy * Math.tan(V.p.hfov * Math.PI / 360) * H / W]; const n = Math.hypot(...rd); const L = S.lamps[0].lamp, dv = [L[0] - e[0], L[1] - e[1], L[2] - e[2]]; const m = Math.hypot(...dv); return (rd[0] * dv[0] + rd[1] * dv[1] + rd[2] * dv[2]) / (n * m); })() : null }; });
       await shot('on_' + i);
       await setOpt('trafficHalo', 0); await page.evaluate(() => RF.DriveAnim._.frame()); await sleep(900);
       await shot('off_' + i);
       await setOpt('trafficHalo', 4); await page.evaluate(() => RF.DriveAnim._.frame()); await sleep(300);
+      if (i === 0) log('polar', JSON.stringify(info.polar), 'polarNote', info.polarNote, 'polarCheck(cos)', info.polarCheck, 'msPolar', info.msPolar, 'haloMs', info.haloMs, 'div', info.div, 'canvasPx', JSON.stringify(info.canvasPx), 'tab', info.tab.join('x'));
       meta.frames.push(info);
       if (i % 5 === 0) log('frame', i, 'dLamp', info.dLamp.toFixed(3), 'eyeY', info.eye[1].toFixed(3), 'lamps', info.lampsN, 'tab', info.tab.join('x'));
     }

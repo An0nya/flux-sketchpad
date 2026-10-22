@@ -221,7 +221,7 @@ export function haloPass(renderer, u) {
       if (timing) { renderer.readRenderTargetPixels(rt, 0, 0, 1, 1, new Uint16Array(4)); halo.ms = performance.now() - t0; }
       u.haloTex.value = rt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = 1;
       u.haloPolarOn.value = pol ? 1 : 0;
-      if (pol) { u.haloPolarTex.value = prt.texture; u.haloPolarC.value.set(pol.C[0], pol.C[1]); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pol.dL); u.haloPolarN.value.set(HALO_POL_TH, HALO_POL_R); }
+      if (pol) { u.haloPolarTex.value = prt.texture; u.haloPolarF.value.set(pol.C[0] / p.w, pol.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pol.dL); u.haloPolarN.value.set(HALO_POL_TH, HALO_POL_R); }
       halo.drawn = used.length; halo.lamps = used.map((q) => ({ lamp: [q.L.x, q.L.y, q.L.z], w: q.L.w, nx: q.L.nx, ny: q.L.ny, idx: q.idx, hasBeam: !!q.L.beam }));
       return halo.drawn;
     },
