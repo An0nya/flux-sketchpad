@@ -8,7 +8,10 @@ const port = +(process.argv[2] || 8981);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Pre-change GPU frames: sha256 of the drive canvas PNG, captured on main (194bee9) with this file's launch (channel chromium) after the
 // UX2 start with wet and wetSheen set explicitly: dry = wet false, wet = wet true with the sheen off.
-const OLD = { dry: '26104b34d5d8066816b7828b8c93737189079d78340b9c74f9cb86c7dfa8f5f5', wet: '44a8d9ef6bd4f6a0cfd602403274f95c3a30fb06eed56f7892dc83b962042e3c' };
+// LAZYCPU (2026-10-22): while the GPU view shows, the CPU still under the GPU canvas is no longer rendered, so the 1-px sub-pixel edge column of the element screenshot
+// now shows the page background instead of the CPU still. Proven by forcing RF.SpecUI.forceCpuStill = true: both old hashes below then match again (7/7). Re-baselined, no tolerance change.
+// Before (LAZYCPU): dry 26104b34d5d8066816b7828b8c93737189079d78340b9c74f9cb86c7dfa8f5f5, wet 44a8d9ef6bd4f6a0cfd602403274f95c3a30fb06eed56f7892dc83b962042e3c.
+const OLD = { dry: 'f8ce6e90440536832d29dae9bdc06203e6cd894fe472aaa0b4c42f81236552e6', wet: 'a4aa8a8c59edbff05d801c17277519553ba1f9c25900514ac396c56557875cc4' };
 
 // Two contexts. The legacy-seeded one only checks the loaded option (no frame: a page that starts wet and then goes dry keeps a
 // residue that depends on the start, measured on main as well, so the frame checks start from a fresh dry load).
