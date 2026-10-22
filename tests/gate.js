@@ -32,6 +32,7 @@ const MAP = [
   [/^js\/ui\.js$/, ['ui']], [/^js\/drive-anim\.js$/, ['render', 'ui', 'nodeAll']], [/^js\/spec-ui\.js$/, ['ui', 'scatter', 'beams']],
   [/^js\/drive\.js$/, ['render', 'nodeAll']], [/^js\/table-pace\.js$/, ['scatter']], [/^js\/beam-atlas\.js$/, ['beams']],
   [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']],
+  [/^js\/drive-scenes\.js$/, ['render', 'ui', 'nodeAll']],   // REFLECTIVE-CLOTHING: pedestrians are built here; the RC test is a new regress file, picked up automatically
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];
 const NOT_TESTS = ['gate', 'load', 'serve'];
