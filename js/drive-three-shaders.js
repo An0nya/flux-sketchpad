@@ -27,7 +27,8 @@ uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js S
 // own end distance d (ground hit, object eye distance, sky = 120 m), interpolated in log d like tableC, so the lit air in FRONT of a surface adds to it and the
 // air BEHIND it does not. haloOn is a uniform: off costs one branch, and toggling never changes the shader text (no recompile).
 uniform int haloOn; uniform sampler2D haloTex; uniform vec2 haloUV, haloTab;   // haloUV: 1 / pixels of the target this pass draws; haloTab: cells per tile
-uniform float haloE[24];   // the upper edge of each bin: fixed geometric 0.5..120 m, 24 bins (HDX3; see HALO_EDGES in drive-three-halo.js)
+uniform float haloE[24];
+uniform int haloPolarOn; uniform sampler2D haloPolarTex; uniform vec2 haloPolarC, haloPolarRange, haloPolarN;   // HDX6 (see haloPolar below)   // the upper edge of each bin: fixed geometric 0.5..120 m, 24 bins (HDX3; see HALO_EDGES in drive-three-halo.js)
 // Cubic B-spline read of one bin tile in 4 bilinear fetches (the linear trick: B-spline weights are all positive, so two taps per axis are exact). It
 // removes the cell-grid stairs plain bilinear leaves on a sharp-edged glow. Tap centres are clamped inside the tile, so no bin bleeds into its neighbour.
 vec3 haloBin(int k, vec2 pc, vec2 f, vec2 tab) {
@@ -38,7 +39,7 @@ vec3 haloBin(int k, vec2 pc, vec2 f, vec2 tab) {
   return g0.y*(g0.x*texture(haloTex,vec2(x0*inv,h0.y/tab.y)).rgb+g1.x*texture(haloTex,vec2(x1*inv,h0.y/tab.y)).rgb)
        + g1.y*(g0.x*texture(haloTex,vec2(x0*inv,h1.y/tab.y)).rgb+g1.x*texture(haloTex,vec2(x1*inv,h1.y/tab.y)).rgb);
 }
-vec3 haloScatter(float d) {
+vec3 haloScatterScr(float d) {
   if(haloOn==0 || d<=0.5) return vec3(0.0);
   vec2 p=gl_FragCoord.xy*haloUV*haloTab-0.5, pc=floor(p), f=p-pc;
   float dd=min(d,120.0);
@@ -55,6 +56,42 @@ vec3 haloScatter(float d) {
   vec3 mA=(s==0 ? dS : mP), mB=(s==22 ? dS : mN);
   float t=(log(dd)-log(haloE[s]))/h, t2=t*t, t3=t2*t;
   return (2.0*t3-3.0*t2+1.0)*Cc[s] + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*Cc[s+1] + (t3-t2)*h*mB;
+}
+// HDX6: the nearest lamp's own table, polar about the lamp's projection (haloPolarC, in pixels). Texel (x = bin * nT + angle index, y = log-radius index).
+// Same 24 bin integrals per texel as the screen table; the lookup is the same monotone Hermite across the bins (copied from haloScatterScr).
+vec3 haloPolarBin(int k, float ia, float ja) {
+  float nT = haloPolarN.x, nR = haloPolarN.y, ia0 = floor(ia), ja0 = floor(ja), fa = ia - ia0, fb = ja - ja0;
+  float xa = float(k) * nT + mod(ia0, nT), xb = float(k) * nT + mod(ia0 + 1.0, nT);
+  float ya = clamp(ja0, 0.0, nR - 1.0), yb = clamp(ja0 + 1.0, 0.0, nR - 1.0);
+  vec3 v00 = texelFetch(haloPolarTex, ivec2(int(xa), int(ya)), 0).rgb, v10 = texelFetch(haloPolarTex, ivec2(int(xb), int(ya)), 0).rgb;
+  vec3 v01 = texelFetch(haloPolarTex, ivec2(int(xa), int(yb)), 0).rgb, v11 = texelFetch(haloPolarTex, ivec2(int(xb), int(yb)), 0).rgb;
+  return mix(mix(v00, v10, fa), mix(v01, v11, fa), fb);
+}
+vec3 haloPolar(float d) {
+  if(haloOn==0 || haloPolarOn==0 || d<=0.5) return vec3(0.0);
+  vec2 q = gl_FragCoord.xy - haloPolarC;
+  float th = dot(q, q) > 0.0 ? atan(q.y, q.x) : 0.0;
+  float ia = fract(th / 6.28318530718) * haloPolarN.x - 0.5;
+  float ja = (log(max(length(q), 0.25)) - haloPolarRange.x) / haloPolarRange.y - 0.5;
+  float dd = min(d, 120.0);
+  vec3 Cc[24]; vec3 C = vec3(0.0);
+  for(int k=0;k<24;k++) { C += haloPolarBin(k, ia, ja); Cc[k] = C; }
+  if(dd<=haloE[0]) return Cc[0]*log(dd/0.5)/log(haloE[0]/0.5);
+  int s=0; for(int k=0;k<23;k++) if(dd>haloE[k]) s=k;
+  const float h=0.22836;
+  vec3 dS=(Cc[s+1]-Cc[s])/h, dP=(Cc[max(s-1,0)+1]-Cc[max(s-1,0)])/h, dN=(Cc[min(s+1,22)+1]-Cc[min(s+1,22)])/h;
+  vec3 mP=vec3(0.0), mN=vec3(0.0);
+  vec3 ab=dP*dS, ms=step(vec3(1e-30),ab); mP=ms*2.0*ab/mix(vec3(1.0),dP+dS,ms);
+  vec3 ab2=dS*dN, ms2=step(vec3(1e-30),ab2); mN=ms2*2.0*ab2/mix(vec3(1.0),dS+dN,ms2);
+  vec3 mA=(s==0 ? dS : mP), mB=(s==22 ? dS : mN);
+  float t=(log(dd)-log(haloE[s]))/h, t2=t*t, t3=t2*t;
+  return (2.0*t3-3.0*t2+1.0)*Cc[s] + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*Cc[s+1] + (t3-t2)*h*mB;
+}
+// HDX6: the screen table plus, when a polar table is on, the nearest lamp's polar table (the two add; the lamp is in one of them, never both).
+vec3 haloScatter(float d) {
+  vec3 r = haloScatterScr(d);
+  if(haloPolarOn!=0) r += haloPolar(d);
+  return r;
 }
 varying vec2 screen;
 const float PI = 3.141592653589793;
