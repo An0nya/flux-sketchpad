@@ -11,7 +11,7 @@
    - Off (look.trafficHalo 0, clear air, no lamp): build() sets haloOn 0 and returns; no pass. The lookup code is always in the shaders behind a uniform
      branch, so toggling never changes shader text. */
 import * as T from '../vendor/three/three.module.min.js';
-import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS, HALO_N } from './drive-three-shaders.js';
+import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS, HALO_MAX } from './drive-three-shaders.js';
 const D = globalThis.RF.Drive;
 export const HALO_MAXL = 16, HALO_PER_DRAW = 1, HALO_BIN_STEPS = 6, HALO_MIN_W = 96, HALO_MIN_H = 54, HALO_DIV = 8, HALO_DIV_FEW = 4, HALO_FEW = 4, HALO_SUB = 4, HALO_REFINE = 4, HALO_NEAR = 45;
 // HDX6 polar table (SL_HALO_POLAR): 512 angles x 64 log-radii for the nearest lamp in front; 24 bins side by side = 12288 texels wide (under MAX_TEXTURE_SIZE 16384).
@@ -19,8 +19,14 @@ export const HALO_POL_TH = 512, HALO_POL_R = 64, HALO_POL_MIN_PX = 0.25, HALO_PO
 // One lamp per draw, 6 steps: a shader loop of 6 (it was 3 lamps x 6 = 18; Safari is suspected to stall compiling long loops). More draws, same pixels.
 // HDX3: 24 log-uniform bins from 0.5 to 120 m (edge k = 0.5 * 240^((k+1)/24)); the first entry is the origin, the last is D.SCAT.S_MAX.
 // The fixed edges replace the adaptive edges (HDX2: adaptive bin 0 = [0.5, 0.45 D] was the near-field overshoot). The shader's lookup assumes this log-uniform spacing.
-export const HALO_EDGES = [0, ...Array.from({ length: HALO_N }, (_, k) => 0.5 * Math.pow(240, (k + 1) / HALO_N))]; HALO_EDGES[HALO_N] = 120;   // HALO_N: test hook (?halobins=N), default 24
-export const HALO_BINS = HALO_EDGES.length - 1;
+// HDX7: the bin count is a runtime setting (HALO_N, 4..32). The shaders size their arrays to HALO_MAX and read the count from a uniform (haloNu), so a change
+// needs no recompile. ?halobins=N sets the start value; an out-of-range value clamps and HALO_REQ keeps what was asked, so the UI can show the clamp.
+export const HALO_MIN = 4;
+export let HALO_N = 24, HALO_REQ = 24, HALO_EDGES = [], HALO_BINS = 0;
+export function haloEdgesOf(n) { const e = [0, ...Array.from({ length: n }, (_, k) => 0.5 * Math.pow(240, (k + 1) / n))]; e[n] = 120; return e; }
+export function haloStepOf(n) { return n === 24 ? 0.22836 : Math.log(240) / n; }   // the knot step in ln d: 0.22836 at 24, as the shader always had it
+export function setHaloBins(req) { const r = +req || 24, n = Math.min(HALO_MAX, Math.max(HALO_MIN, Math.round(r))); HALO_REQ = r; HALO_N = n; HALO_EDGES = haloEdgesOf(n); HALO_BINS = n; return n; }
+setHaloBins(new URLSearchParams(globalThis.location ? location.search : '').get('halobins') ?? 24);
 // The upper edge of each bin for a nearest lamp at distance D. The cumulative glow along a ray rises steeply up to the lamp's own distance and is flat after it;
 // the lookup interpolates between edges (log-linear), so a lamp sliding through a bin changes the interpolated shape and the glow around a close car shimmers
 // (measured: 5-15% frame-to-frame jumps in the halo's total at 10-25 m, clustered near the fixed edges). Edges that are fractions of D put the lamp's distance
@@ -35,7 +41,7 @@ const TVERT = `void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 const THEAD = `uniform vec4 hLamp[${HALO_PER_DRAW}], hDir[${HALO_PER_DRAW}], hTint[${HALO_PER_DRAW}];
 uniform vec3 haloEye; uniform vec2 size, haloTab; uniform int nHalo, otherConvention;
 uniform int haloP, haloSub;   // sub-pass haloSub of haloP (see the loop)
-uniform float haloEdges[${HALO_BINS}];   // the upper edge of each bin
+uniform float haloEdges[${HALO_MAX}];   // the upper edge of each bin (HDX7: HALO_MAX slots, the first HALO_BINS in use)
 uniform float tanH, sigma, haloRMin, haloGFwd, haloGBack, haloWFwd;
 uniform vec2 haloPolarC, haloPolarRange, haloPolarN;   // HDX6 polar pass: centre (px), (log r0, log-radius step), (angles, radii)
 uniform sampler2D otherBeam; uniform vec4 otherLutInfo; uniform vec2 otherLutSize;
@@ -123,21 +129,25 @@ export function haloPass(renderer, u) {
   });
   const mats = [mk(false), mk(true)], matsP = [mk(false, true), mk(true, true)];   // matsP: HDX6 polar pass materials
   const mesh = new T.Mesh(geo, mats[0]); mesh.frustumCulled = false; scene.add(mesh);
-  let rt = null, tab = [0, 0]; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
+  let rt = null, tab = [0, 0], tabClamp = null; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
   const arr = () => Array.from({ length: HALO_PER_DRAW }, () => new T.Vector4());
-  const hLamp = arr(), hDir = arr(), hTint = arr(), tabV = new T.Vector2(), edgesV = HALO_EDGES.slice(1); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges
+  const hLamp = arr(), hDir = arr(), hTint = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(120); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
   const ensure = (p, n) => {
-    const [tw, th] = haloTableSize(p.w, p.h, n), key = tw + 'x' + th;
-    if (!rts.has(key)) { if (rts.size > 3) { for (const r of rts.values()) r.dispose(); rts.clear(); } rts.set(key, new T.WebGLRenderTarget(tw * HALO_BINS, th, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false })); }
+    let [tw, th] = haloTableSize(p.w, p.h, n);
+    // HDX7: the table is HALO_N tiles side by side, so one tile may be at most maxTextureSize / HALO_N cells wide (at 1920 px and divisor 1.4 it is not, at 24 bins).
+    const cap = Math.floor(renderer.capabilities.maxTextureSize / HALO_N); tabClamp = tw > cap ? { asked: tw, used: cap } : null; if (tw > cap) tw = cap;
+    const key = tw + 'x' + th + 'x' + HALO_N;
+    if (!rts.has(key)) { if (rts.size > 3) { for (const r of rts.values()) r.dispose(); rts.clear(); } rts.set(key, new T.WebGLRenderTarget(tw * HALO_N, th, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false })); }
     rt = rts.get(key); tab = [tw, th]; tabV.set(tw, th);
   };
-  let prt = null;   // HDX6: the polar table (one target, 24 bins side by side, HALO_POL_R rows)
+  let prt = null, prtN = 0;   // HDX6: the polar table (one target, HALO_N bins side by side, HALO_POL_R rows); HDX7: rebuilt when the bin count changes
   const ensurePolar = () => {
-    if (!prt) prt = new T.WebGLRenderTarget(HALO_POL_TH * HALO_BINS, HALO_POL_R, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false });
+    if (!prt || prtN !== HALO_N) { if (prt) prt.dispose(); prt = new T.WebGLRenderTarget(HALO_POL_TH * HALO_N, HALO_POL_R, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false }); prtN = HALO_N; }
     return prt;
   };
   const halo = {
     edges: HALO_EDGES.slice(1),   // this frame's bin upper edges (page-test hook)
+    get tabClamp() { return tabClamp; },   // HDX7: { asked, used } when the table was narrowed to fit maxTextureSize, else null
     drawn: 0,      // lamps in the table this frame (page-test hook)
     lamps: [],     // those lamps (world position, direction, atlas index), nearest first
     passes: 0,     // draws this frame
@@ -151,6 +161,7 @@ export function haloPass(renderer, u) {
       halo.drawn = 0; halo.lamps = []; halo.passes = 0; u.haloOn.value = 0; halo.sources = null;
       u.haloPolarOn.value = 0; halo.msPolar = 0; halo.polar = null;   // HDX6
       const N = D.haloN(p); if (!N) return 0;
+      u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N);   // HDX7: the bin count in use (the shaders read it)
       const eye = p.eye || [-2, 0.37, 1.2], traffic = D.trafficSources(world.objects, eye, p);
       if (!traffic.length) return 0;
       halo.sources = traffic;   // test hook: the sources the table was built from (beam, tint, axis)
@@ -171,7 +182,7 @@ export function haloPass(renderer, u) {
         else { pol = haloPolarPick(p, eye, used[0], tanH); if (!pol) halo.polarNote = 'nearest lamp not clearly in front or off-screen: screen table'; }
       }
       halo.polar = pol ? { lamp: [used[0].L.x, used[0].L.y, used[0].L.z], C: pol.C, rho: pol.rho, dL: pol.dL } : null;
-      haloEdgesFor(Math.hypot(used[0].L.x - eye[0], used[0].L.y - eye[1], used[0].L.z - eye[2]), edgesV); halo.edges = edgesV.slice();
+      haloEdgesFor(Math.hypot(used[0].L.x - eye[0], used[0].L.y - eye[1], used[0].L.z - eye[2]), edgesV); halo.edges = edgesV.slice(0, HALO_BINS);
       ensure(p, used.length);
       const timing = !!globalThis.SL_HALO_TIMING; if (timing) { renderer.getContext().finish(); } const t0 = timing ? performance.now() : 0;   // test hook: wall time of the table pass, synchronised by a 1-pixel readback
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
