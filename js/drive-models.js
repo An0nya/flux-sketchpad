@@ -63,11 +63,11 @@
     const legacy=(o.gait||0)/(kind==='deer'?.14:.11),state=o.motion?.state||(o.bound?'bound':Math.abs(legacy)>0?'walk':'stand'),settings=GAITS[state]||GAITS.walk;
     const phase=o.motion?o.motion.distance/(o.motion.stride||settings.stride):fract(legacy*.25),blend=o.motion?.blend??1,feet=[];
     if(kind==='person') {
-      const torso=o.ptype==='light'?'cloth-light':o.ptype==='hivis'?'hivis':'cloth-dark';
+      const pm=o.pedMats||{},torso=pm.torso||(o.ptype==='light'?'cloth-light':o.ptype==='hivis'?'hivis':'cloth-dark'),legsM=pm.legs||'cloth-dark';
       ell([0,0,1.19],[.16,.21,.31],torso);cap([0,0,1.43],[0,0,1.55],.06,'skin');ell([.015,0,1.66],[.1,.095,.13],'skin');
       for(const side of [-1,1]) {
         const f=foot(state,phase,side===1?0:.5,o.motion?.stride,blend),hip=[0,side*.11,.89],ankle=[f.x,side*.11,f.z+.035],k=knee(hip,ankle,.43,.43,1);
-        cap(hip,k,.075,'cloth-dark');cap(k,ankle,.052,'cloth-dark');cap([f.x-.04,side*.11,f.z],[f.x+.12,side*.11,f.z],.045,'cloth-dark');feet.push({...f,p:point([f.x,side*.11,f.z])});
+        cap(hip,k,.075,legsM);cap(k,ankle,.052,legsM);cap([f.x-.04,side*.11,f.z],[f.x+.12,side*.11,f.z],.045,legsM);feet.push({...f,p:point([f.x,side*.11,f.z])});
         const swing=state==='stand'?0:Math.sin(2*Math.PI*(phase+(side===1?0:.5)))*.32*blend,shoulder=[0,side*.23,1.4],elbow=[-swing*.55,side*.24,1.13],hand=[-.04-swing,side*.24,.9];
         cap(shoulder,elbow,.06,torso);cap(elbow,hand,.045,torso);ell(hand,[.05,.045,.06],'skin');
       }

@@ -34,15 +34,25 @@
   }
 
   // ---------------------------------------------------------------- building blocks
-  // REFLECTIVE-CLOTHING selection: 'all' = every dark-clothed walker; 'some' = a seeded half, chosen by a hash of the spawn position (no draw from the
-  // scenery stream, so the rest of the scene is unchanged). Anything else (off, unset) = false. Walkers built without ctx (drive-anim traffic) stay as before.
-  function reflectOn(ctx, s, off) {
-    const m = ctx.reflectiveClothing; if (m === 'all') return true; if (m !== 'some') return false;
-    const f = Math.sin(s * 12.9898 + off * 78.233 + 4.27) * 43758.5453; return f - Math.floor(f) < 0.5;
+  // PED-CLOTHING-MODES (replaces REFLECTIVE-CLOTHING's off/some/all). One mode for every pedestrian, resolved in person(), the only place a walker's
+  // kind and clothing are chosen. none = no vests, no strips. mix = the scene's own vests, plus small strips and shoe reflectors on a seeded half of the
+  // non-vest walkers. small = no vests, every non-vest walker has strips and shoe reflectors. vest = every walker wears the full vest.
+  // Saved values: off -> mix, some -> mix, all -> small. Unset or unknown -> mix (the default).
+  const PED_MODES = ['none', 'mix', 'small', 'vest'];
+  function pedMode(v) { if (v === 'off' || v === 'some') return 'mix'; if (v === 'all') return 'small'; return PED_MODES.includes(v) ? v : 'mix'; }
+  // Clothing palette (linear-RGB rho: TUNING values, not measured fabric). cp-0..3 are the dark half, cp-4..7 the bright half; a walker's kind
+  // 'light' draws its torso from the bright half, everything else from the dark half. Legs always draw from the dark half (as the old fixed cloth-dark legs did).
+  const PED_PALETTE = ['cp-0', 'cp-1', 'cp-2', 'cp-3', 'cp-4', 'cp-5', 'cp-6', 'cp-7'];
+  // A pure hash of (scene seed, walker id, salt) in [0, 1). Never a draw from ctx.rand, so choosing a colour cannot move the scenery stream.
+  function unitOf(seed, id, salt) {
+    let h = 2166136261 >>> 0; const str = seed + '|' + id + '|' + salt;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d) >>> 0; h ^= h >>> 12; return (h >>> 0) / 4294967296;
   }
   function kit(ctx) {
     const O = [], R = ctx.rand, Lw = ctx.Lw, edgeR = -Lw / 2, edgeL = 1.5 * Lw;
     const at = (s, off) => { if (ctx.A) { const q = ctx.A.at(s, off); return { x: q.p[0], y: q.p[1], yaw: Math.atan2(q.t[1], q.t[0]) }; } return { x: s, y: off, yaw: 0 }; };
+    let pedN = 0;                                                       // walkers built here without an id: 0, 1, 2 ... (colour and strip choice hash on it)
     let cur = '';                                                       // the class of the object being built (post, sign, veg, deer, person, car, signal, obstacle): lets a view switch a class off without touching the random stream
     const add = (ob) => { if (cur) ob.cls = cur; O.push(ob); return ob; };
     const k = {
@@ -85,15 +95,25 @@
         for (const [a, b, g] of [[-0.1, 0.4, 1], [0.1, 0.4, -1], [-0.1, -0.4, -1], [0.1, -0.4, 1]]) { const q = L(a, b + g * G); add({ k: 'cyl', x: q[0], y: q[1], r: 0.04, z0: 0, z1: 0.65, mat: 'fur' }); }
         for (const side of [-0.05, 0.05]) { if(B&&up<=.15)continue; const e = L(-0.31, -.82-.2*(1-up) + side); add({ k: 'disc', x: e[0], y: e[1], z: B?.38+1.14*up:1.52, r: B?.0065:.013, nx: -Math.cos(angle), ny: -Math.sin(angle), nz: 0, eyeFalloff:B?8:0, sub: true, mat: 'eyeshine' }); }
       },
-      // a pedestrian: 'dark' clothes | 'hivis' vest with tape | 'light' clothes
-      // o (a walker, drive-anim.js): dir [along, across] the unit direction of travel, gait = how far the legs swing (m)
+      // a pedestrian: 'dark' clothes | 'hivis' vest with tape | 'light' clothes. The kind is the scene's (or the caller's) request; the mode decides what is built.
+      // o (a walker, drive-anim.js): dir [along, across] the unit direction of travel, gait = how far the legs swing (m), id = a stable key for this walker
+      // (the minigame's hazard id, drive-anim's walker id); without one, the kit counts its walkers. The id is what colour and strips hash on, not the position.
       person(s, off, kind, o) {
-        const p = at(s, off), legs = kind === 'light' ? 'cloth-dark' : 'cloth-dark', torso = ({ dark: 'cloth-dark', hivis: 'hivis', light: 'cloth-light' })[kind] || 'cloth-dark', dr = (o && o.dir) || [1, 0], G = (o && o.gait) || 0;
-        for (const dy of [-0.1, 0.1]) { const q = at(s + dr[0] * G * Math.sign(dy), off + dy + dr[1] * G * Math.sign(dy)); add({ k: 'cyl', x: q.x, y: q.y, r: 0.085, z0: 0, z1: 0.85, mat: legs }); }
-        add({ k: 'cyl', x: p.x, y: p.y, r: 0.2, z0: 0.85, z1: 1.5, mat: kind === 'hivis' ? ({ z }) => ((z > 1.0 && z < 1.06) || (z > 1.26 && z < 1.32) ? 'hivis-tape' : 'hivis') : torso });
-        // REFLECTIVE-CLOTHING (opt-in, ctx.reflectiveClothing 'some' | 'all'): a dark-clothed walker gets two small strips of the vest's tape on the back and a
-        // reflector patch on each shoe. Same material ('hivis-tape', retro 330 cd/lx/m² per m² of tape) as the vest, on smaller patches. Off: nothing added.
-        if (kind === 'dark' && reflectOn(ctx, s, off)) {
+        const mode = pedMode(ctx.reflectiveClothing), seed = ctx.seed | 0, pid = o && o.id != null ? String(o.id) : (ctx.pedSalt || '') + (pedN++);
+        const vest = mode === 'vest' || (mode === 'mix' && kind === 'hivis');       // full vest: the scene's hivis kind in mix, every walker in vest
+        kind = vest ? 'hivis' : kind === 'light' ? 'light' : 'dark';
+        const shade = (base, salt, n) => PED_PALETTE[base + Math.floor(unitOf(seed, pid, salt) * n)];
+        const torsoMat = vest ? 'hivis' : kind === 'light' ? shade(4, 'torso', 4) : shade(0, 'torso', 4);
+        const legsMat = vest ? 'cloth-dark' : shade(0, 'legs', 4);
+        const strips = !vest && (mode === 'small' || (mode === 'mix' && unitOf(seed, pid, 'strip') < 0.5));
+        const p = at(s, off), dr = (o && o.dir) || [1, 0], G = (o && o.gait) || 0;
+        let legsFirst = null;
+        for (const dy of [-0.1, 0.1]) { const q = at(s + dr[0] * G * Math.sign(dy), off + dy + dr[1] * G * Math.sign(dy)); const ob = add({ k: 'cyl', x: q.x, y: q.y, r: 0.085, z0: 0, z1: 0.85, mat: legsMat }); legsFirst = legsFirst || ob; }
+        legsFirst.pedMats = { torso: torsoMat, legs: legsMat, vest };     // read by the detailed (SDF) pedestrian model, drive-models.js, so it wears the same clothes
+        add({ k: 'cyl', x: p.x, y: p.y, r: 0.2, z0: 0.85, z1: 1.5, mat: vest ? ({ z }) => ((z > 1.0 && z < 1.06) || (z > 1.26 && z < 1.32) ? 'hivis-tape' : 'hivis') : torsoMat });
+        // Strips (modes mix and small): two small strips of the vest's tape on the back and a reflector patch on each shoe. Same material ('hivis-tape',
+        // retro 330 cd/lx/m² per m² of tape) as the vest, on smaller patches. Off in none and vest: nothing added.
+        if (strips) {
           const back = [-0.2 * Math.cos(p.yaw), -0.2 * Math.sin(p.yaw)];
           for (const [z0, z1] of [[1.0, 1.04], [1.2, 1.24]]) add({ k: 'box', x: p.x + back[0], y: p.y + back[1], z0, z1, hx: 0.01, hy: 0.06, yaw: p.yaw, mat: 'hivis-tape' });
           for (const dy of [-0.1, 0.1]) { const q = at(s + dr[0] * G * Math.sign(dy), off + dy + dr[1] * G * Math.sign(dy)); add({ k: 'box', x: q.x, y: q.y, z0: 0.04, z1: 0.07, hx: 0.03, hy: 0.03, yaw: p.yaw, mat: 'hivis-tape' }); }
@@ -137,7 +157,7 @@
       if (['deer','person','tree','car'].includes(m) && O.length>first) {
         const p=at(arguments[0],arguments[1]),opt=(m==='person'?arguments[3]:arguments[2])||{};
         for(let i=first;i<O.length;i++){O[i].detailPart=m;O[i].modelId=opt.id||m+':'+arguments[0]+':'+arguments[1];}
-        O[first].detail={kind:m,x:p.x,y:p.y,yaw:p.yaw+(opt.turn||0),face:opt.face||1,gait:opt.gait||0,dir:opt.dir||[1,0],ptype:m==='person'?arguments[2]:null,h:m==='tree'?O[first].z1/.55:0,bound:!!opt.bound,motion:opt.motion,attention:opt.attention,id:opt.id||m+':'+arguments[0]+':'+arguments[1],birch:!!opt.birch};
+        O[first].detail={kind:m,x:p.x,y:p.y,yaw:p.yaw+(opt.turn||0),face:opt.face||1,gait:opt.gait||0,dir:opt.dir||[1,0],ptype:m==='person'?arguments[2]:null,pedMats:(m==='person'&&O[first].pedMats)||null,h:m==='tree'?O[first].z1/.55:0,bound:!!opt.bound,motion:opt.motion,attention:opt.attention,id:opt.id||m+':'+arguments[0]+':'+arguments[1],birch:!!opt.birch};
       }
       return result;
     } finally { cur = ''; } }; }
@@ -215,7 +235,7 @@
   // rate above 1: (rate - 1) x n more items, placed by place(xk, xr) on a kit of their own, with the class's extra stream
   function extras(ctx, k, rate, n, salt, place) {
     if (!(rate > 1) || !n) return;
-    const xr = extraStream(ctx.seed, salt), xk = kit(Object.assign({}, ctx, { rand: xr }));
+    const xr = extraStream(ctx.seed, salt), xk = kit(Object.assign({}, ctx, { rand: xr, pedSalt: 'x' }));
     for (let i = 0, m = Math.round((rate - 1) * n); i < m; i++) place(xk, xr);
     k.O.push(...xk.O);
   }
@@ -404,5 +424,5 @@
     return out;
   }
   RF.Drive.vergeFoliage = vergeFoliage;
-  RF.Drive.scenes = SCENES; RF.Drive.buildScene = buildScene; RF.Drive.rng = rng; RF.Drive.kit = kit; RF.Drive.wildChunk = wildChunk;
+  RF.Drive.pedMode = pedMode; RF.Drive.scenes = SCENES; RF.Drive.buildScene = buildScene; RF.Drive.rng = rng; RF.Drive.kit = kit; RF.Drive.wildChunk = wildChunk;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

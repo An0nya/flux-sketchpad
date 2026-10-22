@@ -70,6 +70,15 @@
     'lamp-head': { name: 'street lamp', rho: [0, 0, 0], emit: [9000, 6500, 3200] },
     'pole': { name: 'pole', rho: [0.12, 0.12, 0.12] },
     'sky': { name: 'sky', rho: [0, 0, 0] },
+    // PED-CLOTHING-MODES palette (appended, so the ids of the materials above do not move). Linear-RGB rho: tuning values, not measured fabric.
+    'cp-0': { name: 'clothing: charcoal', rho: [0.035, 0.035, 0.04] },
+    'cp-1': { name: 'clothing: navy', rho: [0.012, 0.02, 0.06] },
+    'cp-2': { name: 'clothing: olive', rho: [0.05, 0.06, 0.015] },
+    'cp-3': { name: 'clothing: brown', rho: [0.06, 0.03, 0.014] },
+    'cp-4': { name: 'clothing: grey', rho: [0.2, 0.2, 0.2] },
+    'cp-5': { name: 'clothing: beige', rho: [0.5, 0.45, 0.33] },
+    'cp-6': { name: 'clothing: brick red', rho: [0.2, 0.03, 0.03] },
+    'cp-7': { name: 'clothing: sky blue', rho: [0.2, 0.3, 0.45] },
   };
   const MAT_KEYS = Object.keys(MAT_DEF), MAT_ID = {};
   MAT_KEYS.forEach((k, i) => { MAT_ID[k] = i; });
