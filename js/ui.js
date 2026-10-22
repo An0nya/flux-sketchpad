@@ -1044,7 +1044,7 @@
       onDrag(st, x, y) { const uv = toUV(x, y); C.actions.moveStamp(ui.store, st.id, uv[0], uv[1]); ui.movedSomething = true; ui.store.commit({ deferA: true }); firePreview(st.id); ui.requestRun(true); },
       onTap(x, y, st, e) {
         const sc = ui.store.scene, add = !!(e && e.shiftKey);
-        if (sc.mode === 'D' && ui.display === 'drive' && ui.driveShown) {   // drive view: the luminance under the tap (hover does the same on a mouse)
+        if (sc.mode === 'D' && ui.display === 'drive' && RF.SpecUI && RF.SpecUI.ensureCpuStill(ui)) {   // drive view (renders the CPU still on demand while the GPU shows): the luminance under the tap (hover does the same on a mouse)
           const d = ui.driveShown, px = (x - d.ox) / d.sc, py = (y - d.oy) / d.sc;
           if (px >= 0 && py >= 0 && px < d.res.w && py < d.res.h) { const p = RF.Drive.probe(d.res, d.flip ? d.res.w - 1 - px : px, py); toast(p.L.toPrecision(2) + ' cd/m²' + (isFinite(p.depth) ? ' at ' + p.depth.toFixed(0) + ' m (' + p.mat + ')' : ' (sky)')); }
           return;

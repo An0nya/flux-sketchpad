@@ -973,7 +973,7 @@
       wrap.append(bar);
       const ro = el('div', { class: 'drive-readout' }); wrap.append(ro);
       cv.addEventListener('mousemove', (e) => {
-        if (ui.display !== 'drive' || !ui.driveShown || (RF.DriveAnim && RF.DriveAnim._.V.canvas && !RF.DriveAnim._.V.canvas.hidden)) { ro.textContent = ''; return; }       // the readout probes the CPU recovery picture
+        if (ui.display !== 'drive' || !ui.driveShown || !ui.driveShown.res || (RF.DriveAnim && RF.DriveAnim._.V.canvas && !RF.DriveAnim._.V.canvas.hidden)) { ro.textContent = ''; return; }       // the readout probes the CPU recovery picture
         const r = cv.getBoundingClientRect(), d = ui.driveShown, x = (e.clientX - r.left - d.ox) / d.sc, y = (e.clientY - r.top - d.oy) / d.sc;
         if (x < 0 || y < 0 || x >= d.res.w || y >= d.res.h) { ro.textContent = ''; return; }
         const p = RF.Drive.probe(d.res, d.flip ? d.res.w - 1 - x : x, y);
@@ -1028,17 +1028,16 @@
     }
   }
   // Result → Drive: what the driver sees. The beam lookup, the scene and the render are cached; exposure only redoes the tone map.
-  function drawDrive(ui, cv, view) {
+  // ---------------------------------------------------------------- the CPU driver's-eye still (LAZYCPU)
+  // drive.js renders the still on the CPU (~2.5 s for a medium air beam). While the GPU drive view is showing nothing reads it
+  // except the click probe (ensureCpuStill), so drawDrive skips it then. Fixed exposure only: auto exposure freezes from the
+  // still's tone map and adapt reads the scene's glare sources, so those keep the CPU still on every redraw.
+  let cpuStillRenders = 0;
+  function cpuStill(ui, rd, o, rv) {
     const gameLamp = ui.dvAnim && ui.dvAnim.gameMode && ui.dvAnim.gameLamp, dm = gameLamp ? gameLamp.scene.modeD : md(ui), beamG = gameLamp ? gameLamp.G : ui.spec && ui.spec.G;
-    const box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d'), rd = roadModel(ui), o = dvOpts(ui), rv = rvOpts(ui);
-    driveTools(ui, cv);
-    ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.fillStyle = '#05060a'; ctx.fillRect(0, 0, box.w, box.h);
-    const cap = document.getElementById('right-caption'), cb = document.getElementById('colorbar'); cb.innerHTML = '';
-    cap.textContent = 'Drive · what the driver sees · ' + RF.Drive.scenes[o.scene].label.toLowerCase() + ' · ' + (rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' m $1') + ' bend') + ' · ' + wetLabel(RF.Drive.wetnessOf(o));
-    if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The drive view appears when the trace has been judged.', 14, 80); return; }
     const road = rd.mdl.road, mirrored = dm.traffic === 'LHT', key = JSON.stringify([rd.laneDrive, o.scene, RF.Drive.wetnessOf(o), o.wetSheen, o.wetModel, o.visibility, o.scatter, o.trafficHalo, o.scatterMode, o.scatterRes, o.scatterBlur, o.scatterCache, o.scatterCycle, o.scatterNearFade, o.scatterNearFadeRange, o.scatterNearBias, o.scatterBinCounts, o.scatterQuality, o.scatterGain, o.onMode, o.onMode === 'high-dip' && o.seed, o.people, o.animals, o.signs, o.oncoming && [o.onDist, o.onKcd], o.preceding && o.preDist, o.RL, o.ambient, o.smooth, o.res, o.fov, rv.shape, lampTint(ui)]);
     if (!rd.drive || rd.drive.key !== key) {
-      const t0 = performance.now(), sm = DV_SMOOTH[o.smooth] || DV_SMOOTH.smooth, lut = RF.Drive.lutFrom(rd.mkI(sm[0], sm[1], sm[2])), sp = parseShape(rv.shape), A = sp ? RF.Road.arc(sp.R, sp.dir) : null;
+      cpuStillRenders++; const t0 = performance.now(), sm = DV_SMOOTH[o.smooth] || DV_SMOOTH.smooth, lut = RF.Drive.lutFrom(rd.mkI(sm[0], sm[1], sm[2])), sp = parseShape(rv.shape), A = sp ? RF.Road.arc(sp.R, sp.dir) : null;
       const scene = RF.Drive.buildScene(o.scene, { Lw: rd.laneDrive, A, us: !/^ece/.test(dm.preset || ''), seed: 7 }, { people: o.people, animals: o.animals, signs: o.signs, oncoming: o.oncoming ? { dist: o.onDist, kcd: o.onKcd } : null, preceding: o.preceding ? { dist: o.preDist } : null });
       if (o.onMode !== 'manual') RF.Drive.Headlamp.apply(scene.objects, { mode: o.onMode, kcd: o.onKcd, seed: o.seed, lut, conv: (beamG && beamG.conv) || dm.conv || 'A' });
       const W = o.res, H = Math.round(W * 9 / 16);
@@ -1050,17 +1049,67 @@
       D.tm = RF.Drive.tonemap(D.res, { mode: o.expMode, ev: o.ev, glare: o.glare, sources: D.sources }); D.tmKey = tmKey;
       const c2 = D.img || document.createElement('canvas'); c2.width = D.res.w; c2.height = D.res.h; c2.getContext('2d').putImageData(new ImageData(D.tm.px, D.res.w, D.res.h), 0, 0); D.img = c2;
     }
-    const W = D.res.w, H = D.res.h, sc = Math.min(box.w / W, box.h / H), ox = (box.w - W * sc) / 2, oy = (box.h - H * sc) / 2;
+    return { D, mirrored };
+  }
+  // Where the still sits in the canvas box (no canvas write, so reading it cannot clear the canvas).
+  function stillPlace(D, w, h, mirrored) {
+    const W = D.res.w, H = D.res.h, sc = Math.min(w / W, h / H);
+    return { ox: (w - W * sc) / 2, oy: (h - H * sc) / 2, sc, flip: mirrored };
+  }
+  function paintStill(ui, box, ctx, D, mirrored) {
+    const W = D.res.w, H = D.res.h, p = stillPlace(D, box.w, box.h, mirrored), ox = p.ox, oy = p.oy, sc = p.sc;
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     if (mirrored) { ctx.save(); ctx.translate(ox + W * sc, oy); ctx.scale(-sc, sc); ctx.drawImage(D.img, 0, 0); ctx.restore(); } else ctx.drawImage(D.img, ox, oy, W * sc, H * sc);
     ui.driveShown = { res: D.res, tm: D.tm, ox, oy, sc, flip: mirrored };
+  }
+  // The GPU drive view is on screen and healthy: the CPU still is not needed for it. Set false to force the still (test hook).
+  function skipStill(ui, o) {
+    return !RF.SpecUI.forceCpuStill && o.expMode === 'fixed' && !!o.gpuRenderer && !(ui.dvAnim && ui.dvAnim.popout);
+  }
+  function gpuShowing(o) {
+    const V = RF.DriveAnim && RF.DriveAnim._ && RF.DriveAnim._.V;
+    return !!(V && V.canvas && !V.canvas.hidden && V.three && !V.gpuFailure && !V.lost && o.gpuRenderer);
+  }
+  // Fixed exposure: the white level is L_REF / 2^ev, the same number the still's tone map would give, so the EV label is unchanged.
+  function lazyStill(o) {
+    return { res: null, tm: { white: RF.Drive.L_REF / Math.pow(2, o.ev || 0) }, lazy: true };
+  }
+  // Readers that need the still (the click probe) call this. It renders on demand, returns the still's placement, or null.
+  function ensureCpuStill(ui) {
+    const s = ui.driveShown;
+    if (s && s.res) return s;
+    const rd = roadModel(ui), cv = document.getElementById('heat-canvas');
+    if (!rd || !cv) return null;
+    const { D, mirrored } = cpuStill(ui, rd, dvOpts(ui), rvOpts(ui));
+    const r = cv.getBoundingClientRect(), p = stillPlace(D, r.width, r.height, mirrored);
+    ui.driveShown = { res: D.res, tm: D.tm, ox: p.ox, oy: p.oy, sc: p.sc, flip: mirrored };
+    return ui.driveShown;
+  }
+
+  function drawDrive(ui, cv, view) {
+    const gameLamp = ui.dvAnim && ui.dvAnim.gameMode && ui.dvAnim.gameLamp, dm = gameLamp ? gameLamp.scene.modeD : md(ui), beamG = gameLamp ? gameLamp.G : ui.spec && ui.spec.G;
+    const box = RF.Render.fitCanvas(cv), ctx = cv.getContext('2d'), rd = roadModel(ui), o = dvOpts(ui), rv = rvOpts(ui);
+    driveTools(ui, cv);
+    ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.fillStyle = '#05060a'; ctx.fillRect(0, 0, box.w, box.h);
+    const cap = document.getElementById('right-caption'), cb = document.getElementById('colorbar'); cb.innerHTML = '';
+    cap.textContent = 'Drive · what the driver sees · ' + RF.Drive.scenes[o.scene].label.toLowerCase() + ' · ' + (rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' m $1') + ' bend') + ' · ' + wetLabel(RF.Drive.wetnessOf(o));
+    if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The drive view appears when the trace has been judged.', 14, 80); return; }
+    const road = rd.mdl.road, mirrored = dm.traffic === 'LHT';
+    const lazy = skipStill(ui, o);
+    const still = lazy ? null : cpuStill(ui, rd, o, rv);
+    if (still) paintStill(ui, box, ctx, still.D, still.mirrored);
+    else ui.driveShown = lazyStill(o);
     driveTools(ui, cv);      // the EV button shows the white level of THIS picture
-    if (RF.DriveAnim) RF.DriveAnim.sync(ui, cv, { rd, o, lampRGB: lampTint(ui), designName: ui.store.scene.name, lampCct: ui.store.scene.source && ui.store.scene.source.cct, A: parseShape(rv.shape) ? RF.Road.arc(parseShape(rv.shape).R, parseShape(rv.shape).dir) : null, mirrored, us: !/^ece/.test(dm.preset || ''), conv: (beamG && beamG.conv) || dm.conv || 'A', tm: D.tm, setDV: (u, k, v, quiet) => { if (quiet) { dvOpts(u)[k] = v; try { localStorage.setItem('flux/driveView', JSON.stringify(u.dvOpts)); } catch (e) { /* ignore */ } } else setDV(u, k, v); },
+    if (RF.DriveAnim) RF.DriveAnim.sync(ui, cv, { rd, o, lampRGB: lampTint(ui), designName: ui.store.scene.name, lampCct: ui.store.scene.source && ui.store.scene.source.cct, A: parseShape(rv.shape) ? RF.Road.arc(parseShape(rv.shape).R, parseShape(rv.shape).dir) : null, mirrored, us: !/^ece/.test(dm.preset || ''), conv: (beamG && beamG.conv) || dm.conv || 'A', tm: still ? still.D.tm : null, setDV: (u, k, v, quiet) => { if (quiet) { dvOpts(u)[k] = v; try { localStorage.setItem('flux/driveView', JSON.stringify(u.dvOpts)); } catch (e) { /* ignore */ } } else setDV(u, k, v); },
       lut: () => { const sm = DV_SMOOTH[o.smooth] || DV_SMOOTH.smooth; if (!rd.animLut || rd.animLut.k !== o.smooth) rd.animLut = { k: o.smooth, lut: RF.Drive.lutFrom(rd.mkI(sm[0], sm[1], sm[2])) }; return rd.animLut.lut; },
       groundKey: JSON.stringify([rd.laneDrive, !/^ece/.test(dm.preset || ''), o.scene, RF.Drive.wetnessOf(o), o.wetSheen, o.wetModel, o.visibility, o.scatter, o.trafficHalo, o.scatterMode, o.scatterRes, o.scatterBlur, o.scatterCache, o.scatterCycle, o.scatterNearFade, o.scatterNearFadeRange, o.scatterNearBias, o.scatterBinCounts, o.scatterQuality, o.scatterGain, o.RL, o.ambient, o.smooth, o.fov, rv.shape, mirrored]), toolbar: ui.driveBar });
-    cb.append(el('div', { class: 'cb-labels', title: 'Fixed: EV 0 puts 10 cd/m² at display white and each stop doubles it, so two designs at the same EV are comparable. Auto: the geometric mean of the lit pixels goes to mid grey (plus the EV offset). Hover the picture for the luminance under the pointer. Rendered in ' + Math.round(D.ms) + ' ms: ' + road.mountH.toFixed(2) + ' m lamps, ' + (road.two ? 'two' : 'one') + '.' }, el('span', {}, o.expMode + ' exposure · display white = ' + fmtL(D.tm.white) + ' cd/m²')));
+    if (lazy && !gpuShowing(o)) {          // the GPU did not take over after all: paint the CPU still now
+      const late = cpuStill(ui, rd, o, rv); paintStill(ui, box, ctx, late.D, late.mirrored); driveTools(ui, cv);
+    }
+    cb.append(el('div', { class: 'cb-labels', title: 'Fixed: EV 0 puts 10 cd/m² at display white and each stop doubles it, so two designs at the same EV are comparable. Auto: the geometric mean of the lit pixels goes to mid grey (plus the EV offset). Hover the picture for the luminance under the pointer. ' + (still ? 'Rendered in ' + Math.round(still.D.ms) + ' ms: ' : 'GPU view on, CPU still not rendered: ') + road.mountH.toFixed(2) + ' m lamps, ' + (road.two ? 'two' : 'one') + '.' }, el('span', {}, o.expMode + ' exposure · display white = ' + fmtL((still ? still.D.tm : ui.driveShown.tm).white) + ' cd/m²')));
   }
-  const driveReadout = (ui) => ui.driveShown && !(RF.DriveAnim && RF.DriveAnim._.V.canvas && !RF.DriveAnim._.V.canvas.hidden) ? 'Hover the picture for the luminance (cd/m²), distance and material under the pointer.' : '';
+
+  const driveReadout = (ui) => ui.driveShown && ui.driveShown.res && !(RF.DriveAnim && RF.DriveAnim._.V.canvas && !RF.DriveAnim._.V.canvas.hidden) ? 'Hover the picture for the luminance (cd/m²), distance and material under the pointer.' : '';
   // Far field → road: the lane lines and the horizon in degrees, as the right-hand lamp sees them on the car
   function drawRoadOverlay(ctx, ui, view, a, b) {
     const rd = roadModel(ui); if (!rd) return;
@@ -1135,5 +1184,7 @@
     box.append(el('span', { class: 'btn-pair' }, wt));
   }
 
-  RF.SpecUI = { dvOpts, streams, previewFF, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, roadReadout, drawDrive, driveReadout, editorOverlay, readout, leftTools, COL };
+  RF.SpecUI = { dvOpts, streams, previewFF, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, roadReadout, drawDrive, driveReadout, editorOverlay, readout, leftTools, COL,
+    // LAZYCPU hooks. forceCpuStill = true paints the CPU still on every redraw (tests that compare the CPU picture); cpuStillRenders() counts CPU renders; ensureCpuStill(ui) renders on demand.
+    forceCpuStill: false, cpuStillRenders: () => cpuStillRenders, ensureCpuStill };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
