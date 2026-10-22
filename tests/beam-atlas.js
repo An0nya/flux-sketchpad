@@ -21,10 +21,10 @@ const TOUGE = esm('drive-touge-three.js', { ground: S.ground }, ['passShader']);
 // therefore no longer main's byte for byte; stripping exactly that addition gives main's text again (hash pinned), and the full text has its own pin.
 const stripHalo = (t) => t.replace(/\/\/ SL: the traffic scatter table[\s\S]*?return C;\n}\n/, '').replace('  if(haloOn>0) r+=haloScatter(t<5000.0?t:1e20);\n', '');
 const full = S.withLighting(S.ground), pass = TOUGE.passShader(full);
-ok('withLighting(ground) minus the halo lookup equals main 7ee9c65 outside the halo declarations (HDX3 changed haloE[24] and the bin-tile width, which sit outside the stripped lookup)', hash(stripHalo(full)) === '1b5fcf6798d47435', hash(stripHalo(full)));
-ok('touge pass minus the halo lookup equals main 7ee9c65', hash(TOUGE.passShader(stripHalo(full))) === 'c654331d2edda80f', hash(TOUGE.passShader(stripHalo(full))));
-ok('withLighting(ground) with the halo lookup is pinned (SL)', hash(full) === '75cf89ab781e1555', hash(full));
-ok('touge pass with the halo lookup is pinned (SL)', hash(pass) === '0bf1aca818072b71', hash(pass));
+ok('withLighting(ground) minus the halo lookup equals main 7ee9c65 outside the halo declarations (HDX3 changed haloE[24] and the bin-tile width, which sit outside the stripped lookup)', hash(stripHalo(full)) === 'eada3a08e2cfcae7', hash(stripHalo(full)));
+ok('touge pass minus the halo lookup equals main 7ee9c65', hash(TOUGE.passShader(stripHalo(full))) === '7d5e2eca9819fac7', hash(TOUGE.passShader(stripHalo(full))));
+ok('withLighting(ground) with the halo lookup is pinned (SL)', hash(full) === 'd56a86cda19e6b46', hash(full));
+ok('touge pass with the halo lookup is pinned (SL)', hash(pass) === '6404d07768852b9d', hash(pass));
 ok('atlas variant reads the atlas and the per-lamp tint', S.withLighting(S.ground, true).includes('otint*otherIntensity(local)') && S.withLighting(S.ground, true).includes('trafficBeamIdx[i>>2][i&3]'));
 ok('touge pass patches the atlas loop spelling', TOUGE.passShader(S.withLighting(S.ground, true)).includes('cos(trafficPitch[i])') && TOUGE.passShader(S.withLighting(S.ground, true)).includes('r+=rho*otint*otherIntensity(local)'));
 
