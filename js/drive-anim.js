@@ -35,14 +35,14 @@
     if (opts && opts.leafyFoliage && !opts.mountainPass && (name === 'road' || name === 'forest')) flags = { ...flags, leafyFoliage: true };
     const broken = !!(opts && us && opts.cline === 'broken');
     if (!(opts && opts.wild) || name !== 'road') {
-      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7, reflectiveClothing: opts && opts.reflectiveClothing, foliageSeed: opts && opts.seed, density: opts && opts.density, kerbPeople: !!(opts && opts.tiles), broken, scenery: opts && opts.scenery }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, cross: sc.cross, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
+      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7, reflectiveClothing: opts && opts.reflectiveClothing, foliageSeed: opts && opts.seed, density: opts && opts.density, kerbPeople: !!(opts && opts.tiles), broken, scenery: opts && opts.scenery }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, cross: sc.cross, lane, pedMode: opts && opts.reflectiveClothing };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
       if (broken && name === 'road') src.markings = D.laneMarkings(lane, { us, broken });
       return trafficSource(src, opts);
     }
     const mix = (k) => (Math.imul((+opts.seed || 0) | 0, 2654435761) ^ Math.imul(k + 1, 0x9E3779B1)) >>> 0, chunks = new Map();
     const src = { wild: true, lane, markings: D.laneMarkings(lane, { us, broken }), verge: ['gravel', 1.6, 'grass'], chunk(k) {
-      let c = chunks.get(k); if (!c) { c = D.wildChunk({ Lw: lane, us, seed: mix(k), density: opts.density === undefined ? 1.5 : +opts.density, broken }, flags); chunks.set(k, c); if (chunks.size > 8) chunks.delete(chunks.keys().next().value); } return c;
-    } };
+      let c = chunks.get(k); if (!c) { c = D.wildChunk({ Lw: lane, us, seed: mix(k), density: opts.density === undefined ? 1.5 : +opts.density, broken, reflectiveClothing: opts.reflectiveClothing }, flags); chunks.set(k, c); if (chunks.size > 8) chunks.delete(chunks.keys().next().value); } return c;
+    }, pedMode: opts.reflectiveClothing };
     src.objects = src.chunk(0).objects; return trafficSource(src, opts);
   }
   // Traffic has its own stream of the scenery RNG: switching a class off never moves another class. Constant speeds (m/s) keep spacing steady.
@@ -54,7 +54,7 @@
     src.traffic.onMode = o.onMode || (o.onKcd === undefined ? 'symmetric' : 'manual'); src.traffic.onKcd = o.onKcd === undefined ? 30 : +o.onKcd;
     src.traffic.logic = !!o.trafficLogic; src.traffic.pedStop = o.pedStop !== false; src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
     if (o.tiles) src.markings = D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });
-    if (o.tiles) src.tiles = { mountain: !!o.mountainPass, density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
+    if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
     for (const kind of ['oncoming', 'preceding']) if (src.traffic[kind]) {
       const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
       K.car(0, 0, kind === 'oncoming' ? { face: -1, lamps: 'head', kcd: +o.onKcd || 30 } : { face: 1, lamps: 'tail' }); src.traffic.models[kind] = K.O;
@@ -559,8 +559,8 @@
           if (s < -65 || s > CULL) continue;
           K.add({ k: 'cyl', x: s, y: b, r: 0.065, z0: 0, z1: 7, mat: 'pole', cls: 'street-lamp' });
           K.add({ k: 'box', x: s, y: (b + head) / 2, hx: 0.08, hy: 0.5, z0: 6.9, z1: 7, mat: 'pole', cls: 'street-lamp' });
-          K.add({ k: 'ell', x: s, y: head, z: 6.9, rx: 0.3, ry: 0.18, rz: 0.05, mat: 'lamp-head', emit: rgb.map((v) => 9000 * v), cls: 'street-lamp' });
-          const q = A.at(s, head); lights.push({ x: q.p[0], y: q.p[1], z: 6.85, cd: 900, rgb });
+          K.add({ k: 'ell', x: s, y: head, z: 6.9, rx: 0.3, ry: 0.18, rz: 0.05, mat: 'lamp-head', emit: rgb.map((v) => 9000 * v), cls: 'street-lamp', roadSide: side });
+          const q = A.at(s, head); const psi = Math.atan2(q.t[1], q.t[0]); lights.push({ x: q.p[0], y: q.p[1], z: 6.85, cd: 900, rgb, street: [side * Math.sin(psi), -side * Math.cos(psi)] });
         }
         for (const ob of K.O) extra.push(move(Object.assign({}, ob), ob, ob.x, A));
       }
@@ -568,8 +568,8 @@
       if (tile.kind === 'urban' && cfg.flags.people !== false) {
         const ev = pedCrossing(cfg.seed, tile.k, Math.floor(t / PED.cycle));
         if (ev && t >= ev.start && t < ev.end && ev.s - dist > -65 && ev.s - dist < CULL) {
-          const w = pedCrossingPose(lane, ev, t), K = D.kit({ Lw: lane, A: null, rand: () => 0.5 });
-          K.person(ev.s - dist, w.off, 'dark', { dir: [0, w.dir], gait: w.gait, motion: w.motion });
+          const w = pedCrossingPose(lane, ev, t), K = D.kit({ Lw: lane, A: null, rand: () => 0.5, reflectiveClothing: cfg.pedMode });
+          K.person(ev.s - dist, w.off, 'dark', { dir: [0, w.dir], gait: w.gait, motion: w.motion, id: 'cross:' + tile.k + ':' + ev.start });
           for (const ob of K.O) extra.push(move(Object.assign({}, ob), ob, ob.x, A));
         }
       }
@@ -596,7 +596,7 @@
     };
   }
   function tileFrame(p, dist, t, rgba, ss, tauOf, tileRow, world) {
-    const sc = world || tileWorld(p, dist, t, tauOf), r = D.render(Object.assign({}, camOf(p), { arc: sc.A, layer: 'frame', rgba, ss: ss || 2, tight: true, tileRow, groundCache: p.src.tiles.groundCache, hazardMask: p.hazardMask, hazardBodyMask: p.hazardBodyMask, sampleTiles: p.sampleTiles, pointLights: sc.lights, crossings: sc.crossings,
+    const sc = world || tileWorld(p, dist, t, tauOf), r = D.render(Object.assign({}, camOf(p), { arc: sc.A, layer: 'frame', rgba, ss: ss || 2, tight: true, tileRow, groundCache: p.src.tiles.groundCache, hazardMask: p.hazardMask, hazardBodyMask: p.hazardBodyMask, sampleTiles: p.sampleTiles, pointLights: sc.lights, lampRoad: p.lampRoad, lampClass: p.lampClass, lampKind: p.lampKind, crossings: sc.crossings,
       grain: p.src.tiles.grain ? tileGrain(dist, p.src.tiles.wet) : null, scene: { objects: sc.objects, markings: sc.markings, verge: p.src.verge } }));
     r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
   }
@@ -618,6 +618,7 @@
       n.x = q.p[0]; n.y = q.p[1];
       if(ob.detail){const a=A.at(rel+ob.detail.x-ob.x,ob.detail.y);n.detail={...ob.detail,x:a.p[0],y:a.p[1],yaw:ob.detail.yaw+psi};}
       if (ob.k === 'box') n.yaw = (ob.yaw || 0) + psi;
+      if (ob.roadSide) n.street = [ob.roadSide * sn, -ob.roadSide * c];   // LAMP-DIST: the lamp's street side (world, horizontal) = the arm direction, local -side x-axis rotated by psi
       else if (ob.k === 'disc') { n.nx = ob.nx * c - ob.ny * sn; n.ny = ob.nx * sn + ob.ny * c; }
     } else { n.x = rel; if(ob.detail)n.detail={...ob.detail,x:ob.detail.x+rel-ob.x}; }
     return n;
@@ -626,7 +627,7 @@
   function place(src, dist, A, tauOf, skip, deerBehaviour) {
     const out = [];
     if (src.chunk) {
-      const k0 = Math.floor((dist - 6) / PERIOD), K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
+      const k0 = Math.floor((dist - 6) / PERIOD), K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5, reflectiveClothing: src.pedMode });
       for (let k = k0 - 1; k <= k0 + 1; k++) {
         const base = k * PERIOD, ch = src.chunk(k);
         if (k >= k0) for (const ob of ch.objects) { const rel = ob.x + base - dist; if (rel >= -6 && rel <= CULL) { const n = move(Object.assign({}, ob), ob, rel, A); if (!skip || !skip(n)) out.push(n); } }
@@ -636,7 +637,7 @@
           // Behaviour on: the walk runs as it does with behaviour off until the bolt; the bolt starts from where the deer is then (walk clock frozen at bolt onset), so a deer that has stepped onto the carriageway bounds off it.
           if(attention&&attention.state==='bolt')Object.assign(ps,actorPose(a,Math.max(0,tau-(attention.elapsed-attention.bolt))));
           if (attention && attention.state==='bolt') { const d=Math.max(0,attention.elapsed-attention.bolt)*3.8;ps.off+=a.side*d;ps.motion=D.Models.locomotion('deer',d,3.8,true,'bound'); }
-          if (a.kind === 'deer') K.deer(rel, ps.off, { face: (a.side > 0 ? 1 : -1)*(attention?.state==='bolt'?-1:1), gait: ps.gait, motion:ps.motion, attention }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait, motion:ps.motion });
+          if (a.kind === 'deer') K.deer(rel, ps.off, { face: (a.side > 0 ? 1 : -1)*(attention?.state==='bolt'?-1:1), gait: ps.gait, motion:ps.motion, attention }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait, motion:ps.motion, id: a.id });
           for (let i = n0; i < K.O.length; i++) out.push(move(Object.assign({}, K.O[i]), K.O[i], K.O[i].x, A));
         }
       }
@@ -1155,7 +1156,7 @@ void main() {
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
     const own = ownBeams(o), tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
-    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(), lampHalos: o.lampHalos, lampKind: o.streetLamps, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarLamps: o.haloPolarLamps, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
+    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(), lampHalos: o.lampHalos, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarLamps: o.haloPolarLamps, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || (D.wetnessOf(o) > 0 && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g); if (!TL.cur) tlOpen('rebuild'); tlMark(V.three ? 'ground (GPU path, drawn per frame)' : 'ground built (CPU)', V.three ? null : { groundMs: V.g.ms });
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1615,9 +1616,9 @@ void main() {
     const lamps = E('select', { 'data-anim': 'street-lamps', 'aria-label': 'Street lamps on urban tiles', title: 'Downward point lights, diffuse illumination without shadows; approximate sodium / LED colour, not measured fixture photometry' });
     for (const [value, label] of [['off', 'street lamps off'], ['sodium', 'sodium ~2000 K'], ['led', 'LED ~4000 K']]) lamps.append(E('option', { value }, label));
     lamps.addEventListener('change', () => setDV(ui, 'streetLamps', lamps.value)); bar.append(lamps);
-    // REFLECTIVE-CLOTHING: tape strips and shoe reflectors on dark-clothed pedestrians. off = the scene as before; some = a seeded half; all = every dark-clothed walker.
-    const refl = E('select', { 'data-anim': 'reflective-clothing', 'aria-label': 'Reflective clothing on pedestrians', title: 'Off: as before. Some: a seeded half of the dark-clothed pedestrians get small tape strips on the back and shoe reflectors. All: every dark-clothed pedestrian. The hi-vis vest is unchanged.' });
-    for (const [value, label] of [['off', 'reflective clothing off'], ['some', 'reflective: some'], ['all', 'reflective: all']]) refl.append(E('option', { value }, label));
+    // PED-CLOTHING-MODES: the pedestrian clothing mode (none | mix | small | vest), applied in RF.Drive.kit's person(); the option lives in the More panel.
+    const refl = E('select', { 'data-anim': 'reflective-clothing', 'aria-label': 'Reflective clothing on pedestrians', title: 'Pedestrian clothing. None: no vests, no strips. Mix: the scene\'s own vests, plus tape strips and shoe reflectors on a seeded half of the others. Small strips: no vests, every walker has strips and shoe reflectors. Full vest: every walker wears the vest. Clothing colours are shuffled in every mode.' });
+    for (const [value, label] of [['none', 'clothing: none'], ['mix', 'clothing: mix'], ['small', 'clothing: small strips'], ['vest', 'clothing: full vest']]) refl.append(E('option', { value }, label));
     refl.addEventListener('change', () => setDV(ui, 'reflectiveClothing', refl.value));
     V.reflSel = refl; (ui.driveExtras || bar).append(refl);   // in the More panel: a control in the toolbar changed the picture (measured, see the report)
     // ambient light: moved here from the sidebar's Road section (drive only; the Spec view never reads it). Light from the sky on diffuse surfaces, besides the lamps; None judges the beam alone
@@ -1878,7 +1879,7 @@ void main() {
     V.bar.querySelector('[data-anim="gap"]').setAttribute('aria-pressed', String(o.safeGap !== false)); V.bar.querySelector('[data-anim="gap"]').disabled = !!o.trafficLogic;
     V.bar.querySelector('[data-anim="tile-cache"]').setAttribute('aria-pressed', String(!!o.tileCache)); V.bar.querySelector('[data-anim="tile-cache"]').disabled = !o.tiles;
     V.bar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.bar.querySelector('[data-anim="street-lamps"]').disabled = !(o.tiles || o.mountainPass);
-    if (V.reflSel) V.reflSel.value = o.reflectiveClothing || 'off';
+    if (V.reflSel) V.reflSel.value = RF.Drive.pedMode(o.reflectiveClothing);
     V.bar.querySelector('[data-anim="ambient"]').value = String(o.ambient || 0);
     V.tileLab.hidden = !o.tiles;
     const wd = o.wild && o.scene === 'road';        // forest and city keep their existing scenery
@@ -1932,11 +1933,11 @@ void main() {
     V.act.clear(); V.flash = flashState(); V.fkey = ''; V.last = 0; ui.redrawSpec();
   }
   function gameObjects(g, world, lane) {
-    const A = world.A, K = D.kit({ Lw: lane || V.p.lane, A: null, rand: () => 0.5 });
+    const A = world.A, K = D.kit({ Lw: lane || V.p.lane, A: null, rand: () => 0.5, reflectiveClothing: ((info() && info().o) || {}).reflectiveClothing });
     for (const h of g.hazards) if (g.rules !== 'legacy' || !h.resolved) {
       const ps = RF.DriveGame.pose(g, h, g.t, D.Models.deerEnabled(V.p)), first = K.O.length, rel = ps.s - g.x;
       if (h.kind === 'deer') K.deer(rel, ps.off, { face: h.side > 0 ? 1 : -1, gait: ps.gait, motion:ps.motion, attention:ps.attention });
-      else K.person(rel, ps.off, h.noHiViz ? 'dark' : 'hivis', { dir: [h.ds, h.doff], gait: ps.gait, motion:ps.motion });
+      else K.person(rel, ps.off, h.noHiViz ? 'dark' : 'hivis', { dir: [h.ds, h.doff], gait: ps.gait, motion:ps.motion, id: 'hazard:' + h.id });
       const moved = K.O.slice(first).map(ob => { ob.gameHazard = h.id; return move(Object.assign({}, ob), ob, ob.x, A); });
       world.objects.push(...(A && A.touge ? D.Models.actors(moved,true).map(ob=>RF.Touge.lift(ob,A)) : moved));
     }

@@ -7,7 +7,8 @@ const crypto = require('crypto');
 const port = +(process.argv[2] || 8984), baseline = process.argv.includes('--baseline');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // sha256 of the drive canvas PNG on main cbcb340 with the UX2 start and wet, wetSheen off, visibility absent (set by --baseline).
-const OLD_CLEAR = process.env.FG_OLD_CLEAR || 'f195e8c7532d178e7aa0db9464b5e5fff642c97e1f5fa42f142983bdc67333e1';
+// PED-CLOTHING-MODES: people off in this session (walkers' clothes changed in every mode). The pin is main b38c628's clear frame with people off, equal to the new build with people off (full sha256). With people on, the old pin f195e8c7... no longer matches.
+const OLD_CLEAR = process.env.FG_OLD_CLEAR || 'aac7889105ba1d4cb0f6991f275a68bdb7cad1165c4f60d6a507cb3b07061e4a';
 const LEVELS = ['clear', 'haze', 'mist', 'fog', 'dense'];
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
@@ -25,7 +26,7 @@ async function session(browser, errors) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto('http://127.0.0.1:' + port + '/index.html'); await page.waitForFunction(() => window.RF?.UI?.loadScene, null, { timeout: 60000 });
   await page.addScriptTag({ url: '/tests/regress/UX2-drive-ux.js' }); await page.evaluate(() => UX2Page.ready()); await sleep(1500);
-  await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false }); if (RF.UI.dvOpts.visibility !== undefined) RF.UI.dvOpts.visibility = null; RF.UI.redrawSpec(); });
+  await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, people: false }); if (RF.UI.dvOpts.visibility !== undefined) RF.UI.dvOpts.visibility = null; RF.UI.redrawSpec(); });
   const capture = async (label) => {
     await sleep(2500);
     const state = await page.evaluate(() => { const s = RF.DriveAnim.stats(); return { renderer: s.renderer, gpuFailure: s.gpuFailure || '', btn: (document.querySelector('[data-dv="visibility"]') || {}).value || '' }; });

@@ -15,6 +15,18 @@ uniform vec3 eye, lamp[2], lampRGB;
 uniform int nLamp, convention, nMark, nPart, nLight, nReflection, nSkip, nCross;
 uniform vec4 part[16], partShape[16], light[64], reflection[64];
 uniform vec3 lightRGB[64], reflectionRGB[64];
+// LAMP-DIST: road lamp light = point light x the shared distribution (js/lamp-dist.js, 19 x 25 grid, row-major gi*25+pj, cd per klm), relative to 1000/(2 pi).
+// v = lamp -> point; gamma from straight down; phi from the lamp's street side lightStreet[i]. Off (lampRoadOn 0): the factor is 1.0, the same arithmetic as before.
+uniform int lampRoadOn; uniform vec4 lampDistTab4[120]; uniform vec2 lightStreet[64];   // the 475-value table packed 4 per vec4 (one float uniform per slot would exceed MAX_FRAGMENT_UNIFORM_VECTORS)
+float lampTabAt(int k) { int q=k/4; vec4 v=lampDistTab4[q]; int c=k-4*q; return c==0?v.x:(c==1?v.y:(c==2?v.z:v.w)); }
+float lampRoadF(vec3 v, vec2 st) {
+  float rr=length(v); float g=degrees(acos(clamp(-v.z/rr,-1.0,1.0)));
+  float ph=degrees(atan(st.x*v.y-st.y*v.x, st.x*v.x+st.y*v.y)); if(ph<0.0) ph+=360.0;
+  float fg=clamp(g/5.0,0.0,17.999), fp=clamp(ph/15.0,0.0,23.999);
+  float ig=floor(fg), tg=fg-ig, ip=floor(fp), tp=fp-ip; int k=int(ig)*25+int(ip);
+  float I=(lampTabAt(k)*(1.0-tp)+lampTabAt(k+1)*tp)*(1.0-tg)+(lampTabAt(k+25)*(1.0-tp)+lampTabAt(k+26)*tp)*tg;
+  return I/159.1549;
+}
 uniform vec2 skip[16];
 uniform vec4 crossing[16];
 uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance, wetModel, wetness;
@@ -137,7 +149,7 @@ vec3 shade(vec3 p,vec3 n,vec3 v,int id) {
   vec3 rho=texelFetch(materials,ivec2(id,0),0).rgb, retro=texelFetch(materials,ivec2(id,1),0).rgb;
   vec4 gloss=texelFetch(materials,ivec2(id,2),0); vec3 r=rho*ambient*(0.5+0.5*n.z)/PI;
   float NoV=dot(n,v);
-  for(int i=0;i<64;i++) { if(i>=nLight) break; vec3 d=light[i].xyz-p; float r2=dot(d,d); if(d.z>0.0 && r2>=0.01) r+=rho*lightRGB[i]*light[i].w*max(0.0,dot(d,n))/(PI*r2*sqrt(r2))*fogT(sqrt(r2)); }
+  for(int i=0;i<64;i++) { if(i>=nLight) break; vec3 d=light[i].xyz-p; float r2=dot(d,d); float fl=lampRoadOn==1 ? lampRoadF(-d,lightStreet[i]) : 1.0; if(d.z>0.0 && r2>=0.01) r+=rho*lightRGB[i]*light[i].w*fl*max(0.0,dot(d,n))/(PI*r2*sqrt(r2))*fogT(sqrt(r2)); }
   // wet sheen: 0 asphalt, 4 concrete, 5 white paint, 6 yellow paint (the order of MAT_DEF in drive.js; SB2 adds the paint ids, drive.js SHEEN_IDS)
   if(sheen>0.0 && (id==0||id==4||id==5||id==6)) for(int i=0;i<64;i++) { if(i>=nReflection) break; r+=wetness*reflection[i].w*(wetModel>0.5 ? wetGGX(reflection[i].xyz-p,v,n) : wetLobe(reflection[i].xyz-p,v))*fogT(length(reflection[i].xyz-p))*reflectionRGB[i]; }
   for(int i=0;i<2;i++) { if(i>=nLamp) break; vec3 d=p-lamp[i]; float r2=dot(d,d), rr=sqrt(r2), NoL=-dot(d,n)/rr; if(NoL<=0.0) continue;

@@ -17,10 +17,11 @@ function run(RF,ok){
  const p0=M.build('person',{gait:0}),p1=M.build('person',{gait:.11}),d0=M.build('deer',{gait:.14}),d1=M.build('deer',{gait:.14,bound:true});
  ok('M1 joint angles alter walk and bound geometry',!p0.nodes.every((v,i)=>v===p1.nodes[i])&&!d0.nodes.every((v,i)=>v===d1.nodes[i]));
  // Compare raw default-off reference frames with the specified main base in a separate global context.
+ // PED-CLOTHING-MODES: people are off in this recipe. The pedestrians' clothing colours are shuffled in every mode now, so people-on frames cannot equal the base (checked: identical with people off, different with people on, for all six).
  const ctx=vm.createContext({console,performance});ctx.globalThis=ctx;for(const f of ['core','road','drive','drive-scenes','drive-anim'])vm.runInContext(cp.execFileSync('git',['show','c5231d9:js/'+f+'.js'],{encoding:'utf8'}),ctx);
  const old=ctx.RF,hash=a=>crypto.createHash('sha256').update(Buffer.from(a.buffer,a.byteOffset,a.byteLength)).digest('hex');
  for(const scene of ['road','city','forest'])for(const wet of [false,true]) {
-  const recipe=rf=>{const D=rf.Drive;return D.render({w:128,h:72,hfov:60,eye:[-2,.37,1.2],lamps:[[0,-.6,.65],[0,.6,.65]],lut:D.lutFrom((h,v)=>Math.abs(h)<20&&v<1?10000:0),ss:1,look:{wet,wetSheen:false,ambient:.1,RL:.2},lane:3.5,scene:D.buildScene(scene,{Lw:3.5,seed:7},{people:true,animals:true,veg:true})});};
+  const recipe=rf=>{const D=rf.Drive;return D.render({w:128,h:72,hfov:60,eye:[-2,.37,1.2],lamps:[[0,-.6,.65],[0,.6,.65]],lut:D.lutFrom((h,v)=>Math.abs(h)<20&&v<1?10000:0),ss:1,look:{wet,wetSheen:false,ambient:.1,RL:.2},lane:3.5,scene:D.buildScene(scene,{Lw:3.5,seed:7},{people:false,animals:true,veg:true})});};
   const a=recipe(RF),b=recipe(old);ok('M1 base-off raw frame identical '+scene+'/'+wet,hash(a.rgb)===hash(b.rgb)&&hash(a.mat)===hash(b.mat));
  }
  const recipe=require('./drive-polish.js').recipe(RF,'forest',{wet:true,wetSheen:true},128);recipe.detailedModels=true;

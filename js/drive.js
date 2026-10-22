@@ -70,6 +70,15 @@
     'lamp-head': { name: 'street lamp', rho: [0, 0, 0], emit: [9000, 6500, 3200] },
     'pole': { name: 'pole', rho: [0.12, 0.12, 0.12] },
     'sky': { name: 'sky', rho: [0, 0, 0] },
+    // PED-CLOTHING-MODES palette (appended, so the ids of the materials above do not move). Linear-RGB rho: tuning values, not measured fabric.
+    'cp-0': { name: 'clothing: charcoal', rho: [0.035, 0.035, 0.04] },
+    'cp-1': { name: 'clothing: navy', rho: [0.012, 0.02, 0.06] },
+    'cp-2': { name: 'clothing: olive', rho: [0.05, 0.06, 0.015] },
+    'cp-3': { name: 'clothing: brown', rho: [0.06, 0.03, 0.014] },
+    'cp-4': { name: 'clothing: grey', rho: [0.2, 0.2, 0.2] },
+    'cp-5': { name: 'clothing: beige', rho: [0.5, 0.45, 0.33] },
+    'cp-6': { name: 'clothing: brick red', rho: [0.2, 0.03, 0.03] },
+    'cp-7': { name: 'clothing: sky blue', rho: [0.2, 0.3, 0.45] },
   };
   const MAT_KEYS = Object.keys(MAT_DEF), MAT_ID = {};
   MAT_KEYS.forEach((k, i) => { MAT_ID[k] = i; });
@@ -273,6 +282,8 @@
     const veil = (t, rayDz, k, r0, g0, b0, glow) => { const T = Math.exp(-sig * t), A = glow ? 0 : skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(rayDz) * 8)) * (1 - T) * k; LR = r0 + T * (LR - r0) + A; LG = g0 + T * (LG - g0) + A; LB = b0 + T * (LB - b0) + A; };       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
     const traffic = o.trafficBeams ? trafficSources(objs, eye, o) : [], otherBeam = traffic.length ? trafficBeam(o) : null, pitch = o.pitch || 0;
     const pointLights = o.pointLights || [], crossings = o.crossings || [], wetW = wetnessOf(look), sheen = wetW > 0 && look.wetSheen, reflections = sheen ? reflectionSources(objs, o).concat(pointLights) : [];
+    // LAMP-DIST (option lampRoad 'table'): the street-lamp pool is the shared distribution table, relative to its lower-hemisphere mean. Off: lampRoadOn is false and nothing below changes.
+    const lampRoadOn = o.lampRoad === 'table' && !!(globalThis.RF && RF.LampDist), lampRoadF = (L, vx, vy, vz) => { const rr = Math.hypot(vx, vy, vz), g = Math.acos(Math.max(-1, Math.min(1, -vz / rr))) * 180 / PI; return RF.LampDist.roadFactorAt(o.lampClass || 'III', RF.LampDist.kindOfLamp(o.lampKind), g, RF.LampDist.phiOf(L.street, [vx, vy])); };
     const delta0 = 2 * tanH / w;                                              // radians per pixel
     // tiles of 16 px: which objects can touch them (by the bounding sphere's projection)
     const TS = 16, tw = Math.ceil(w / TS), th = Math.ceil(h / TS), tiles = new Array(tw * th).fill(null);
@@ -345,7 +356,8 @@
           for (const L of pointLights) {
             const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz;
             if (dz <= 0 || r2 < 0.01) continue;
-            const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)) * fogD(dx, dy, dz);
+            const e0 = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)) * fogD(dx, dy, dz);
+            const e = lampRoadOn && L.street ? e0 * lampRoadF(L, -dx, -dy, -dz) : e0;   // LAMP-DIST: the cached ground path (the road itself)
             r += m.rho[0] * L.rgb[0] * e; g += m.rho[1] * L.rgb[1] * e; b += m.rho[2] * L.rgb[2] * e;
           }
           if (sheen && SHEEN_IDS.includes(m.id)) for (const L of reflections) {
@@ -362,7 +374,8 @@
       if (!staticBuild) for (const L of pointLights) {
         const dx = L.x - px, dy = L.y - py, dz = L.z - pz, r2 = dx * dx + dy * dy + dz * dz;
         if (dz <= 0 || r2 < 0.01) continue;
-        const e = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)) * fogD(dx, dy, dz);
+        const e0 = L.cd * Math.max(0, dx * nx + dy * ny + dz * nz) / (PI * r2 * Math.sqrt(r2)) * fogD(dx, dy, dz);
+        const e = lampRoadOn && L.street ? e0 * lampRoadF(L, -dx, -dy, -dz) : e0;
         r += rho[0] * L.rgb[0] * e; g += rho[1] * L.rgb[1] * e; b += rho[2] * L.rgb[2] * e;
       }
       if (!staticBuild && sheen && nz === 1 && SHEEN_IDS.includes(m.id)) for (const L of reflections) {

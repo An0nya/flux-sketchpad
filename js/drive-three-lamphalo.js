@@ -9,8 +9,9 @@
 
    Labels (from reports/LAMP-HALO-REGS.md):
    - sodium lamp flux 9000 lm: verified (Philips SON-T 100 W datasheet).
-   - intensity toward the driver = 100 cd per 1000 lm (cutoff class at 80 deg, snippet, old IES definition) x 9 klm = 900 cd. A MAXIMUM at 80 deg; used at every
-     angle, so it overstates for lamps seen at steep angles. Inference.
+   - LAMP-DIST (street lamps, replaces the LAMP-HALO-CONE curve): intensity toward the eye is I(gamma, phi) x lamp lm / 1000 from the shared table js/lamp-dist.js,
+     phi from the lamp's street side. The sprite floor (4 percent of the class peak, between the cutoff edge and horizontal) is applied here only. Labels and assumptions: see lamp-dist.js.
+     Signal heads keep the flat-intensity path (see the report: the scene's signal emit is directional, the halo's is not).
    - LED lamp: 55 W at 75 lm/W = 4125 lm (LA County equivalency row, verified) x the same 100 cd/klm ceiling = 413 cd. ASSUMPTION: no LED 80-90 deg value was sourced.
    - signal head: I = max(emit channel) x pi r^2 from the scene's own emit (drive-scenes.js signal(): red 1.2e4 cd/m^2 on a 0.1 m disc = 377 cd). Inference: close to
      the 339 cd Caltrans-module minimum (snippet, unverified). Amber and green have no sourced intensity.
@@ -19,10 +20,13 @@
    - the target is taken to be in cd/m^2 (headlamp emit I/(pi r^2) in drive-scenes.js:101 is cd/m^2, and the signal emit is on the same scale). Inference, not checked
      against a photometric measurement. */
 import * as T from '../vendor/three/three.module.min.js';
+import { spriteDistAt, kindOfLamp, phiOf } from './lamp-dist.js';
 const K_AGE = 20;                                   // Holladay age (years), the default
 const K_VEIL = 10 * (1 + Math.pow(K_AGE / 70, 4));  // ~10.07
 export const LAMP_HALO_MAX = 16, LAMP_HALO_THETA_MIN = 1, LAMP_HALO_THETA_MAX = 30;
-export const LAMP_HALO_CD_PER_KLM = 100, SODIUM_LM = 9000, LED_LM = 55 * 75;
+export const SODIUM_LM = 9000, LED_LM = 55 * 75;   // lamp lumens: sodium Philips SON-T 100 W (verified); LED 55 W at 75 lm/W (LA County row, verified)
+// LAMP-DIST: the street-lamp intensity is the shared table (js/lamp-dist.js), I(gamma, phi) in cd per 1000 lamp lm, sampled per lamp.
+// Its phi is the lamp's street side against the direction lamp -> eye (lamp.street, set in drive-anim.js move()). The sprite floor is applied here only.
 export const LAMP_HALO_RANGE = [280, 300];          // m: full strength to 280, zero at 300 (ASSUMPTION: a cost bound only; the veil itself has no range, the sprite radius already shrinks with distance)
 export const LAMP_HALO_FLOOR = 0.05;               // cd/m^2: the sprite ends where the veil falls to this (ASSUMPTION; ~a tenth of an estimated road luminance of ~0.6 cd/m^2, inference). Without it the 1/theta^2 tail fills the whole frame.
 const SIGNAL_R = 0.1;                               // m, the signal disc radius in drive-scenes.js signal()
@@ -60,7 +64,7 @@ function lampsOf(objects) {
   const out = [];
   for (const ob of objects || []) {
     if (!ob || !ob.emit) continue;
-    if (ob.cls === 'street-lamp' && ob.mat === 'lamp-head') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'street', emit: ob.emit });
+    if (ob.cls === 'street-lamp' && ob.mat === 'lamp-head') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'street', emit: ob.emit, street: ob.street || null });
     else if (ob.cls === 'signal' && ob.k === 'disc') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'signal', emit: ob.emit });
   }
   return out;
@@ -77,19 +81,21 @@ export function createLampHalo(renderer, u) {
     scene = new T.Scene(); scene.add(mesh); camera = new T.Camera();
   }
   // Build the lamp list for this frame from the eye the shader reads (u.eye) and the objects the frame draws. Returns the list (for tests).
-  function build(p, world) {
+  function build(p, world, eyeIn) {
     if (!mat) setup();
-    const eye = u.eye.value, tanH = Math.tan(p.hfov * Math.PI / 360);
-    const kind = p.lampKind === 'led' ? 'led' : 'sodium';
-    const street = kind === 'led' ? { I: LAMP_HALO_CD_PER_KLM * LED_LM / 1000, tint: LED_TINT() } : { I: LAMP_HALO_CD_PER_KLM * SODIUM_LM / 1000, tint: SODIUM_TINT() };
+    const eye = eyeIn || u.eye.value, tanH = Math.tan(p.hfov * Math.PI / 360);
+    const kind = kindOfLamp(p.lampKind), cls = p.lampClass || 'III';
+    const street = { tint: kind === 'led' ? LED_TINT() : SODIUM_TINT() }, lampLm = kind === 'led' ? LED_LM : SODIUM_LM;
     const cand = [];
     for (const L of lampsOf(world.objects)) {
       const d = [L.x - eye.x, L.y - eye.y, L.z - eye.z], r = Math.hypot(d[0], d[1], d[2]);
       if (d[0] < 1 || r < 0.5) continue;                      // behind, or at the eye
       const sx = -d[1] / (d[0] * tanH), sy = d[2] * p.w / (d[0] * tanH * p.h);
       if (Math.abs(sx) > 3 || Math.abs(sy) > 3) continue;     // far outside the view: no pixel inside 30 deg of it
+      // LAMP-HALO-CONE: gamma = angle from straight down at the lamp, toward the eye (cos gamma = (lamp z - eye z) / r). Lamps above the eye only: below it gamma > 90, the cone is 0.
+      const gam = Math.acos(Math.max(-1, Math.min(1, (L.z - eye.z) / r))) * 180 / Math.PI;
       let I, tint;
-      if (L.kind === 'street') { I = street.I; tint = street.tint; }
+      if (L.kind === 'street') { const phi = L.street ? phiOf(L.street, [-d[0], -d[1]]) : 0; I = spriteDistAt(cls, kind, gam, phi) * lampLm / 1000; tint = street.tint; if (!(I > 0)) continue; }
       else {
         const e = L.emit, m = Math.max(...e.map((v) => +v || 0));
         I = m * Math.PI * SIGNAL_R * SIGNAL_R; tint = e.map((v) => Math.max(0, +v || 0) / Math.max(1e-9, lum(e)));
@@ -98,13 +104,13 @@ export function createLampHalo(renderer, u) {
       const fade = Math.max(0, Math.min(1, (LAMP_HALO_RANGE[1] - r) / (LAMP_HALO_RANGE[1] - LAMP_HALO_RANGE[0])));
       const E = I / (r * r) * fade;                           // lux at the eye
       const thMax = Math.min(LAMP_HALO_THETA_MAX, Math.sqrt(K_VEIL * E / LAMP_HALO_FLOOR));   // the sprite radius, deg
-      cand.push({ r, E, I, thMax, tint, dir: [d[0] / r, d[1] / r, d[2] / r], ce: tint.map((c) => c * E), kind: L.kind, sx, sy });
+      cand.push({ r, gam, E, I, thMax, tint, dir: [d[0] / r, d[1] / r, d[2] / r], ce: tint.map((c) => c * E), kind: L.kind, sx, sy });
     }
     cand.sort((a, b) => a.r - b.r);
     const near = cand.slice(0, LAMP_HALO_MAX);
     near.forEach((c, i) => { mat.uniforms.lampDir.value[i].set(...c.dir); mat.uniforms.lampCE.value[i].set(...c.ce); mat.uniforms.lampTh.value[i] = c.thMax; });
     mat.uniforms.nLamp.value = near.length; mat.uniforms.tanH.value = tanH;
-    lastState = { count: near.length, kind, on: 1, tanH, w: p.w, h: p.h, lamps: near.map((c) => ({ kind: c.kind, r: +c.r.toFixed(2), sx: +c.sx.toFixed(3), sy: +c.sy.toFixed(3), E: +c.E.toPrecision(4), I: +c.I.toPrecision(4), thMax: +c.thMax.toFixed(2), tint: c.tint.map((v) => +v.toFixed(3)) })) };
+    lastState = { count: near.length, kind, on: 1, tanH, w: p.w, h: p.h, lamps: near.map((c) => ({ kind: c.kind, r: +c.r.toFixed(2), g: +c.gam.toFixed(2), sx: +c.sx.toFixed(3), sy: +c.sy.toFixed(3), E: +c.E.toPrecision(4), I: +c.I.toPrecision(4), thMax: +c.thMax.toFixed(2), tint: c.tint.map((v) => +v.toFixed(3)) })) };
     return near;
   }
   return {
@@ -123,6 +129,9 @@ export function createLampHalo(renderer, u) {
       } catch (e) { fail = String(e && e.message || e); throw e; }
     },
     state() { return lastState; },
+    // LAMP-HALO-CONE test hooks: the lamp list for a given eye position (no draw; the last frame's eye otherwise), and the street lamp heads in the current world.
+    probe(eye) { if (!lastArgs) return null; return build(lastArgs.p, lastArgs.world, eye).map((c) => ({ r: c.r, g: c.gam, I: c.I, E: c.E, thMax: c.thMax })); },
+    streetLamps() { return lastArgs ? lampsOf(lastArgs.world.objects).filter((l) => l.kind === 'street').map((l) => ({ x: l.x, y: l.y, z: l.z })) : []; },
     // GPU time of the halo pass alone, ms per draw (timer query), into a scratch target of the same size: the frame target is left alone.
     // Call after at least one frame with lampHalos on (it times the last frame's lamp list).
     async time(gl, repeats = 8) {
