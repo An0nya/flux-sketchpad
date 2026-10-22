@@ -17,13 +17,14 @@ uniform vec4 part[16], partShape[16], light[64], reflection[64];
 uniform vec3 lightRGB[64], reflectionRGB[64];
 // LAMP-DIST: road lamp light = point light x the shared distribution (js/lamp-dist.js, 19 x 25 grid, row-major gi*25+pj, cd per klm), relative to 1000/(2 pi).
 // v = lamp -> point; gamma from straight down; phi from the lamp's street side lightStreet[i]. Off (lampRoadOn 0): the factor is 1.0, the same arithmetic as before.
-uniform int lampRoadOn; uniform float lampDistTab[475]; uniform vec2 lightStreet[64];
+uniform int lampRoadOn; uniform vec4 lampDistTab4[120]; uniform vec2 lightStreet[64];   // the 475-value table packed 4 per vec4 (one float uniform per slot would exceed MAX_FRAGMENT_UNIFORM_VECTORS)
+float lampTabAt(int k) { int q=k/4; vec4 v=lampDistTab4[q]; int c=k-4*q; return c==0?v.x:(c==1?v.y:(c==2?v.z:v.w)); }
 float lampRoadF(vec3 v, vec2 st) {
   float rr=length(v); float g=degrees(acos(clamp(-v.z/rr,-1.0,1.0)));
   float ph=degrees(atan(st.x*v.y-st.y*v.x, st.x*v.x+st.y*v.y)); if(ph<0.0) ph+=360.0;
   float fg=clamp(g/5.0,0.0,17.999), fp=clamp(ph/15.0,0.0,23.999);
   float ig=floor(fg), tg=fg-ig, ip=floor(fp), tp=fp-ip; int k=int(ig)*25+int(ip);
-  float I=(lampDistTab[k]*(1.0-tp)+lampDistTab[k+1]*tp)*(1.0-tg)+(lampDistTab[k+25]*(1.0-tp)+lampDistTab[k+26]*tp)*tg;
+  float I=(lampTabAt(k)*(1.0-tp)+lampTabAt(k+1)*tp)*(1.0-tg)+(lampTabAt(k+25)*(1.0-tp)+lampTabAt(k+26)*tp)*tg;
   return I/159.1549;
 }
 uniform vec2 skip[16];
