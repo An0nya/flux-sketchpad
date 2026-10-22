@@ -2,7 +2,7 @@
 // (1) off: the canvas PNG hashes to the value captured on main (313d95b) with this file's viewport and flags, so off is byte-identical to main.
 // (2) all (measured 2026-10-22, real GPU, low beam, 55 m: 6 changed pixels, all brighter; the threshold is 1, set after that measurement, so this is a presence check, not a size check): the pixels that differ from off are brighter (tape and shoe reflectors light up), no pixel gets darker, and there is a visible number of them.
 // (3) off again after all: identical to the first off frame (the option is re-read, nothing is stuck).
-// Real GPU flags. Run: node tests/regress/RC-reflective-clothing.js 8831   (server: python3 tests/serve.py 8831)
+// Real GPU flags. samples is pinned to '1' (not 'auto'): on canvases up to 1100 px wide, 'auto' supersampling follows measured frame time (drive-anim.js ssRule, V.avg), so a loaded machine can change the picture between frames of the same scene. Pinned, the frames are deterministic. Run: node tests/regress/RC-reflective-clothing.js 8831   (server: python3 tests/serve.py 8831)
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const port = +(process.argv[2] || 8831);
@@ -20,7 +20,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   await page.evaluate((text) => RF.UI.loadScene(RF.State.deserialize(text), 'RC fixture'), fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp.json'), 'utf8'));
   await page.waitForFunction(() => { const u = RF.UI; return u.spec && u.spec.ev && u.spec.full && !u.solving && !u.needCompile && u.run && u.run.ctx.done && u.spec.ctx === u.run.ctx; }, null, { timeout: 180000, polling: 200 });
   await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false });
-    Object.assign(u.dvOpts, { scene: 'road', people: true, animals: false, signs: false, posts: false, veg: false, rpm: false, wild: false, tiles: false, obstacle: false, trafficLogic: false, oncoming: false, preceding: false, wet: false, wetSheen: false, samples: 'auto', gpuRenderer: true, mt: false, onMode: 'symmetric', reflectiveClothing: 'off' }); u.redrawSpec(); });
+    Object.assign(u.dvOpts, { scene: 'road', people: true, animals: false, signs: false, posts: false, veg: false, rpm: false, wild: false, tiles: false, obstacle: false, trafficLogic: false, oncoming: false, preceding: false, wet: false, wetSheen: false, samples: '1', gpuRenderer: true, mt: false, onMode: 'symmetric', reflectiveClothing: 'off' }); u.redrawSpec(); });
   await page.waitForSelector('[data-anim="play"]', { timeout: 30000 });
   await sleep(4000);
   console.log('renderer (real GPU flags): ' + await page.evaluate(() => RF.DriveAnim.stats().renderer));

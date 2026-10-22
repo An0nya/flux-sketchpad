@@ -1619,7 +1619,7 @@ void main() {
     const refl = E('select', { 'data-anim': 'reflective-clothing', 'aria-label': 'Reflective clothing on pedestrians', title: 'Off: as before. Some: a seeded half of the dark-clothed pedestrians get small tape strips on the back and shoe reflectors. All: every dark-clothed pedestrian. The hi-vis vest is unchanged.' });
     for (const [value, label] of [['off', 'reflective clothing off'], ['some', 'reflective: some'], ['all', 'reflective: all']]) refl.append(E('option', { value }, label));
     refl.addEventListener('change', () => setDV(ui, 'reflectiveClothing', refl.value));
-    V.reflSel = refl; (ui.driveBar.querySelector('.drive-more') || bar).append(refl);   // in the More panel: a control in the toolbar changed the picture (measured, see the report)
+    V.reflSel = refl; (ui.driveExtras || bar).append(refl);   // in the More panel: a control in the toolbar changed the picture (measured, see the report)
     // ambient light: moved here from the sidebar's Road section (drive only; the Spec view never reads it). Light from the sky on diffuse surfaces, besides the lamps; None judges the beam alone
     const ambient = E('select', { 'data-anim': 'ambient', 'aria-label': 'Ambient light', title: 'Light on diffuse surfaces from the sky, besides the lamps. None judges the beam alone.' });
     for (const [value, label] of [['0', 'ambient: none (headlamp only)'], ['0.2', 'ambient: full moon 0.2 lx'], ['5', 'ambient: dusk 5 lx']]) ambient.append(E('option', { value }, label));
