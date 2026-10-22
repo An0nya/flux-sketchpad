@@ -5,7 +5,10 @@ const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node
 const crypto = require('crypto');
 const port = +(process.argv[2] || 8991);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const DIRECT16 = process.env.SD_DIRECT16 || 'f7eba2f98a72dbcc4cf058c7b164699108772cf3fad4034411c4d59f915b5d9d';
+// Re-baselined by LAZYCPU: the GPU canvas is 476.4 px wide at a fractional x, so its element screenshot's edge column (x=476)
+// used to show the CPU still beneath it. With the CPU still skipped while the GPU view shows, that column shows the page background.
+// The GL frame itself is unchanged. Before (main 0f47b41 / pre-LAZYCPU): f7eba2f98a72...5d9d. After: fb9a713b4bf3...98f.
+const DIRECT16 = process.env.SD_DIRECT16 || 'fb9a713b4bf31d31699d7ab83b62a7a6e9e01f27f2d95bf82e059be798715f98';
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
   return page.evaluate(async (b64) => {
