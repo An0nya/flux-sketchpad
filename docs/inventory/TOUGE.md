@@ -126,14 +126,14 @@ MAX_TEXTURE_IMAGE_UNITS is 16 per fragment stage (WebGL2 minimum; the owner's cr
 | program (pass) | variant | samplers reachable from main | over 16? |
 |---|---|---|---|
 | ribbon | lit + air-beam table | 6 (beam, materials, marks, otherBeam, passShadow0, passShadow1): the table banks and halo textures are declared but unreachable from the ribbon main | no |
-| ribbon, if main also called `haloScatter` (the TOUGE-ELEV-B / halo-experiment change) | lit | 6 + 3 halo = 9 | no |
+| ribbon with `haloScatter` added (BOTH touge-halo branches: `git show exp/touge-halo:js/drive-touge-three.js` and `feat/touge-halo-elev:...` line 51 call only `haloScatter`) | lit | 6 + 3 halo = 9 | no |
 | ribbon, if main called BOTH `inScatter` (table) and `haloScatter` | lit + table | 6 + 3 halo + 6 table banks = 15 (16 if passDepth becomes reachable) | at the limit |
 | instanced objects | plain | 11 | no |
 | instanced objects | lit + table | **18** | **yes** |
 | instanced objects | plain + table | **17** | **yes** |
-| mesh cars (bodyMap) | lit + table | up to 15 declared (reachability not computed; stub main) | unknown |
+| mesh cars | lit + table | 15 reachable (17 declared; `bodyMap` is declared but never read) | no, one spare |
 
-So on main the program that overflows with the air beam in table mode is the instanced-object program, not the ribbon (INFERRED from text analysis; the owner's report names the ribbon, which matches the sampler total only for a ribbon variant that calls both scatter and halo). To settle it: the shader error log in the browser console names the program (`renderer.debug.onShaderError`, drive-three.js:33, throws `GPU drive` + the info log).
+So on main, and on both halo branches, the program that overflows with the air beam in table mode is the instanced-object program (17-18), not the ribbon (INFERRED from text analysis; the owner's report names the ribbon, which matches the sampler total only for a ribbon variant that calls both scatter and halo, and no such branch exists in `git branch -a`). To settle it: the shader error log in the browser console names the program (`renderer.debug.onShaderError`, drive-three.js:33, throws `GPU drive` + the info log).
 
 ## 6. Known gaps (merged from reports, re-verified where marked)
 

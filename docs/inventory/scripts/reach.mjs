@@ -39,7 +39,12 @@ const ribbonMain=`void main() { vec3 v=normalize(eye-worldPoint); float t=length
  gl_FragColor=vec4(c,1);
  gl_FragDepth=min(.99999,t/5000.0); }`;
 const ribbon=prefix+'varying vec3 worldPoint, roadNormal; varying vec4 roadUV;\n'+body+ribbonMain;
-const carBase=prefix+'\nuniform sampler2D bodyMap;uniform int maskMode;uniform bool wheel;uniform float samples;\nvoid main(){ vec4 q=texture2D(bodyMap,vec2(0)); gl_FragColor=q; }\n';
+// the real mesh-car fragment: the template literal in js/drive-three-models.js (no ${} in it) appended to the same 'lighting' prefix
+import fs from 'fs';
+const modelsText=fs.readFileSync(R+'drive-three-models.js','utf8');
+const tpl=modelsText.match(/const fragment=lighting\+`([\s\S]*?)`;/)[1];
+const lighting=prefix.replace('vec4 gloss=texelFetch(materials,ivec2(id,2),0);','vec4 gloss=texelFetch(materials,ivec2(id,2),0);if(id==20){rho=vec3(.04);gloss=vec4(.10,.60,0,0);}');
+const carBase=lighting+tpl;
 const rows=[];
 for(const v of variants){
   rows.push(['FLAT ground (full-screen)',tag(v),analyse(lighten(S.ground,v))]);
