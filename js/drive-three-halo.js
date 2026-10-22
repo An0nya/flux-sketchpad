@@ -71,8 +71,9 @@ void main() {
 const HAL_CONV = (c) => (c === 'B' ? 1 : c === 'S' ? 2 : 0);
 const half = (T.DataUtils && T.DataUtils.fromHalfFloat) || ((h) => { const e = (h >> 10) & 31, m = h & 1023, sg = h & 0x8000 ? -1 : 1; return e === 0 ? sg * Math.pow(2, -14) * (m / 1024) : e === 31 ? (m ? NaN : sg * Infinity) : sg * Math.pow(2, e - 15) * (1 + m / 1024); });
 
+// SL_HALO_DIV is a test override of the divisor (HDX4 resolution candidate); unset = unchanged.
 // 1/4 of the view with 4 lamps or fewer (the stairs a coarser table leaves on a sharp glow edge show most on a lone distant car), 1/8 with more.
-export function haloTableSize(w, h, lamps = 99) { const div = globalThis.SL_HALO_DIV || (lamps <= HALO_FEW ? HALO_DIV_FEW : HALO_DIV);   // SL_HALO_DIV: test override (HDX4 resolution candidate); unset = unchanged return [Math.max(HALO_MIN_W, Math.ceil(w / div)), Math.max(HALO_MIN_H, Math.ceil(h / div))]; }
+export function haloTableSize(w, h, lamps = 99) { const div = globalThis.SL_HALO_DIV || (lamps <= HALO_FEW ? HALO_DIV_FEW : HALO_DIV); return [Math.max(HALO_MIN_W, Math.ceil(w / div)), Math.max(HALO_MIN_H, Math.ceil(h / div))]; }
 // The CPU twin of the lookup in the shader (haloScatter): bins is the six bins, each [r, g, b]; d metres. Used by the page test to read the GPU table.
 // HDX3 lookup (mirrors haloScatter in drive-three-shaders.js): C at each bin's upper edge is the running sum; bin 0 is log d from 0.5 m with C(0.5)=0;
 // beyond the first edge, a monotone cubic Hermite (Fritsch-Carlson) in (log d, C) through the knots (the edges). Works for any ascending edges.
