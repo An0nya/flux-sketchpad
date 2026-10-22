@@ -126,6 +126,26 @@ async function meanLuma(page, png) {
     console.log('NE2_NOISE off pixelStd ' + nzOff.pixelStd.toFixed(4) + ' on ' + nzOn.pixelStd.toFixed(4) + ' ratio ' + (nzOn.pixelStd / nzOff.pixelStd).toFixed(4) + ' | meanLuma off ' + nzOff.meanLuma.toFixed(3) + ' on ' + nzOn.meanLuma.toFixed(3) + ' | shown off ' + JSON.stringify(nzOff.shown) + ' on ' + JSON.stringify(nzOn.shown));
     ok('NE2 the 6 frames come from different cache versions (off and on)', nzOff.distinct >= 2 && nzOn.distinct >= 2, JSON.stringify([nzOff.shown, nzOn.shown]));
     ok('NE2 pixel noise over 6 cache versions (full road-light patch): bias on below off', nzOn.pixelStd < nzOff.pixelStd, 'off ' + nzOff.pixelStd.toFixed(4) + ' on ' + nzOn.pixelStd.toFixed(4) + ' (headless software GL)');
+    // NE4: quality presets set the 12 counts exactly; quarter res shrinks the table; 'steps' is the old frame.
+    const qOpts = (q, extra) => Object.assign({ scatterMode: 'table', scatter: 48, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off', scatterNearBias: 0, scatterBinCounts: '', scatterCache: 'off', scatterCycle: 0, scatterQuality: q }, extra || {});
+    const presets = { baseline: [1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1], low: [1, 1, 1, 4, 4, 2, 2, 2, 1, 1, 1, 1], medium: [1, 1, 1, 8, 8, 8, 4, 4, 2, 2, 1, 1], high: [1, 1, 1, 32, 16, 8, 4, 4, 2, 2, 2, 1], max: [1, 1, 1, 64, 32, 16, 8, 8, 4, 4, 2, 2] };
+    const presetMs = {};
+    for (const [name, want] of Object.entries(presets)) {
+      const f = await frame('preset ' + name, qOpts(name));
+      const rb = await page.evaluate(() => ({ binN: SD_SCATTER.binN, bias: SD_SCATTER.bias, quality: SD_SCATTER.quality, ms: SD_SCATTER.lastMs }));
+      presetMs[name] = rb.ms;
+      ok('NE4 preset ' + name + ': the table pass gets exactly its counts (' + want.reduce((a, b) => a + b, 0) + ')', JSON.stringify(rb.binN) === JSON.stringify(want) && rb.quality === name && rb.bias === 1, JSON.stringify(rb));
+      if (name === 'medium') ok('NE4 preset medium: the frame differs from the off frame (counts, not steps)', f.hash !== off.hash, f.hash.slice(0, 12));
+    }
+    console.log('NE4_PRESET_FILL_MS (headless, lastMs of one table fill) ' + JSON.stringify(presetMs));
+    const half = await frame('quarter check: half res', qOpts('steps'));
+    const sizeHalf = await page.evaluate(() => SD_SCATTER.size);
+    const quarter = await frame('quarter res', qOpts('steps', { scatterRes: 'quarter' }));
+    const sizeQ = await page.evaluate(() => SD_SCATTER.size);
+    ok('NE4 quarter res: the table is a quarter of the drive frame (half is half, quarter is half over two, min 1)', !!sizeHalf && !!sizeQ && sizeQ[0] < sizeHalf[0] && Math.abs(sizeQ[0] * 2 - sizeHalf[0]) <= 2 && Math.abs(sizeQ[1] * 2 - sizeHalf[1]) <= 2, 'half ' + JSON.stringify(sizeHalf) + ' quarter ' + JSON.stringify(sizeQ));
+    ok('NE4 quarter res: the frame differs from half res', quarter.hash !== half.hash, quarter.hash.slice(0, 12) + ' vs ' + half.hash.slice(0, 12));
+    const stepsDefault = await frame('steps quality (default)', qOpts('steps'));
+    ok('NE4 quality steps, half res, bias off: the frame is byte-identical to main (c033bd7c)', stepsDefault.hash === off.hash && (!TABLE48_MAIN || stepsDefault.hash === TABLE48_MAIN), stepsDefault.hash.slice(0, 12));
     ok('NE no page errors', errors.length === 0, errors.slice(0, 3).join(' | ').slice(0, 300));
   } catch (e) {
     ok('NE page run completed', false, String(e).slice(0, 300));

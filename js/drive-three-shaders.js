@@ -297,7 +297,7 @@ void main() {
     int nk=tableBias==0 ? n : tableBinN[k];
     float hi=0.5*pow(240.0,float(k)/11.0), lo=k==0 ? 0.0 : 0.5*pow(240.0,float(k-1)/11.0);
     float acc=0.0;
-    for(int m=0;m<32;m++) { if(m>=nk) break;   // NE2: bound 32 (was 16); per-bin count is 11 at the UI max of 64 steps
+    for(int m=0;m<64;m++) { if(m>=nk) break;   // NE4: constant bound 64 (was 32); the per-slice cap, the parser clamp and the presets all stop at 64
       if(k==0) { float ds=hi/float(nk), s=(float(m)+jit)*ds; acc+=tableIntegrand(ray,s)*ds; }
       else { float a=lo*pow(hi/lo,float(m)/float(nk)), b=lo*pow(hi/lo,float(m+1)/float(nk)), s=a*pow(b/a,jit); acc+=tableIntegrand(ray,s)*(b-a); }
     }

@@ -857,19 +857,29 @@
     for (const k of [5, 6, 7, 4, 8]) { if (r > 0) { out[k]++; r--; } }
     return out;
   }
-  // NE3 slice override (look.scatterBinCounts, debug): exactly 12 comma-separated numbers, one per slice, each clamped to 0..32
-  // (the shader loop bound). Returns the counts, or null for an empty or invalid string (then the normal rule applies).
-  const BIN_MAX = 32;
+  // NE3 slice override (look.scatterBinCounts, debug): exactly 12 comma-separated numbers, one per slice, each clamped to 0..64
+  // (the shader loop bound, NE4). Returns the counts, or null for an empty or invalid string (then the next rule applies).
+  const BIN_MAX = 64;
   function parseBinCounts(s) {
     if (typeof s !== 'string' || !s.trim()) return null;
     const parts = s.trim().split(',').map((p) => p.trim());
     if (parts.length !== TABLE.K || parts.some((p) => !/^-?\d+(\.\d+)?$/.test(p))) return null;
     return parts.map((p) => Math.min(BIN_MAX, Math.max(0, Math.floor(Number(p)))));
   }
-  // The counts the table pass uses (CPU twin and GPU): the override when valid, else the near-sampling rule (or off).
-  function binCountsFor(steps, bias, s) { return parseBinCounts(s) || tableBinSteps(steps, bias); }
+  // NE4 quality presets (look.scatterQuality): the owner's hand-tuned slice counts, slice 0 first. Counts only; res and blur are untouched.
+  // 'steps' (or anything unknown) is no preset: the global steps and near sampling decide.
+  const QUALITY = {
+    baseline: [1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1],
+    low: [1, 1, 1, 4, 4, 2, 2, 2, 1, 1, 1, 1],
+    medium: [1, 1, 1, 8, 8, 8, 4, 4, 2, 2, 1, 1],
+    high: [1, 1, 1, 32, 16, 8, 4, 4, 2, 2, 2, 1],
+    max: [1, 1, 1, 64, 32, 16, 8, 8, 4, 4, 2, 2]
+  };
+  function qualityCounts(name) { return Object.prototype.hasOwnProperty.call(QUALITY, name) ? QUALITY[name].slice() : null; }
+  // The counts the table pass uses (CPU twin and GPU). Precedence: valid debug text > quality preset > near sampling / global steps.
+  function binCountsFor(steps, bias, s, quality) { return parseBinCounts(s) || qualityCounts(quality) || tableBinSteps(steps, bias); }
   function scatterTableBins(o, dir, jit, steps) {
-    const sig = sigmaOf(o.look || {}), counts = binCountsFor(steps, (o.look || {}).scatterNearBias, (o.look || {}).scatterBinCounts), bins = new Float64Array(TABLE.K);
+    const lk = o.look || {}, sig = sigmaOf(lk), counts = binCountsFor(steps, lk.scatterNearBias, lk.scatterBinCounts, lk.scatterQuality), bins = new Float64Array(TABLE.K);
     if (!(sig > 0)) return bins;
     const fr = nearFadeRangeOf(o.look || {});
     const eye = o.eye, lamps = o.lamps || [], dx = dir[0], dy = dir[1], dz = dir[2];
@@ -1021,5 +1031,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

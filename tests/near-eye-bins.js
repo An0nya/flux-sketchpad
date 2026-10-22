@@ -28,12 +28,23 @@ function run(RF, ok, report) {
   ok('NE3 on at 48 steps: 1,1,2,2, 8,8,8,8,7, 1,1,1', JSON.stringify(on48) === JSON.stringify([1, 1, 2, 2, 8, 8, 8, 8, 7, 1, 1, 1]), JSON.stringify(on48));
   ok('NE3 on at 64 steps (UI max): 1,1,2,2, 10,11,10,10,10, 1,1,1', JSON.stringify(D.tableBinSteps(64, 1)) === JSON.stringify([1, 1, 2, 2, 10, 11, 10, 10, 10, 1, 1, 1]), JSON.stringify(D.tableBinSteps(64, 1)));
 
+  // NE4 quality presets: totals, precedence (text > preset > steps / near sampling), 'steps' is the old rule, clamp to 64.
+  const PRESET = { baseline: 14, low: 21, medium: 41, high: 74, max: 143 };
+  for (const [name, total] of Object.entries(PRESET)) ok('NE4 preset ' + name + ': 12 counts summing to ' + total, D.qualityCounts(name) && D.qualityCounts(name).length === K && D.qualityCounts(name).reduce((a, b) => a + b, 0) === total, JSON.stringify(D.qualityCounts(name)));
+  ok('NE4 preset high: the owner listed a total of 68 but the counts sum to 74 (reported, not changed)', D.qualityCounts('high').reduce((a, b) => a + b, 0) === 74);
+  ok("NE4 quality 'steps' or an unknown name is no preset (null)", D.qualityCounts('steps') === null && D.qualityCounts('nope') === null && D.qualityCounts(undefined) === null);
+  ok('NE4 quality returns a copy (changing it does not change the preset)', (() => { const c = D.qualityCounts('low'); c[0] = 99; return D.qualityCounts('low')[0] === 1; })());
+  ok("NE4 quality 'steps' gives the old counts: near sampling off = round(steps/12), on = the NE3 rule", JSON.stringify(D.binCountsFor(48, 0, '', 'steps')) === JSON.stringify(off48) && JSON.stringify(D.binCountsFor(48, 1, '', 'steps')) === JSON.stringify(on48));
+  ok('NE4 precedence: a preset beats near sampling and global steps', JSON.stringify(D.binCountsFor(16, 1, '', 'medium')) === JSON.stringify(D.qualityCounts('medium')));
+  ok('NE4 precedence: valid debug text beats a preset', JSON.stringify(D.binCountsFor(48, 1, '3,3,3,3,3,3,3,3,3,3,3,3', 'max')) === JSON.stringify(new Array(K).fill(3)));
+  ok('NE4 precedence: invalid debug text falls to the preset', JSON.stringify(D.binCountsFor(48, 0, '1,2', 'low')) === JSON.stringify(D.qualityCounts('low')));
+  ok('NE4 clamp: a typed count above 64 becomes 64', JSON.stringify(D.parseBinCounts('200,1,1,1,1,1,1,1,1,1,1,1')) === JSON.stringify([64, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]));
   // NE3 slice override (debug): parse, clamp, zero, and the override beats the global steps and near sampling.
   const good = '1,1,2,2,8,9,8,8,8,1,1,1';
   ok('NE3 parse: 12 valid numbers (trimmed) give those counts', JSON.stringify(D.parseBinCounts(' ' + good + ' ')) === JSON.stringify([1, 1, 2, 2, 8, 9, 8, 8, 8, 1, 1, 1]));
   ok('NE3 parse: empty or blank is null (normal rule)', D.parseBinCounts('') === null && D.parseBinCounts('   ') === null && D.parseBinCounts(undefined) === null);
   ok('NE3 parse: too few, too many, empty field, letters, non-string are null', ['1,2,3', '1,2,3,4,5,6,7,8,9,10,11,12,13', '1,,1,1,1,1,1,1,1,1,1,1', 'a,1,1,1,1,1,1,1,1,1,1,1', 5, null].every((s) => D.parseBinCounts(s) === null));
-  ok('NE3 parse: each value clamped to 0..32 (99 -> 32, -3 -> 0, 2.7 -> 2)', JSON.stringify(D.parseBinCounts('99,-3,2.7,32,0,1,1,1,1,1,1,1')) === JSON.stringify([32, 0, 2, 32, 0, 1, 1, 1, 1, 1, 1, 1]));
+  ok('NE4 parse: each value clamped to 0..64 (99 -> 64, 65 -> 64, -3 -> 0, 2.7 -> 2, 32 kept)', JSON.stringify(D.parseBinCounts('99,-3,2.7,32,0,1,1,1,1,1,1,65')) === JSON.stringify([64, 0, 2, 32, 0, 1, 1, 1, 1, 1, 1, 64]));
   ok('NE3 parse: zero skips a slice (count 0 is kept, not replaced)', JSON.stringify(D.parseBinCounts('0,0,0,0,0,0,0,0,0,0,0,0')) === JSON.stringify(new Array(K).fill(0)));
   ok('NE3 override beats the global steps and near sampling (bias on, steps 48 ignored)', JSON.stringify(D.binCountsFor(48, 1, '3,3,3,3,3,3,3,3,3,3,3,3')) === JSON.stringify(new Array(K).fill(3)));
   ok('NE3 override beats the global steps with bias off too', JSON.stringify(D.binCountsFor(16, 0, '5,5,5,5,5,5,5,5,5,5,5,5')) === JSON.stringify(new Array(K).fill(5)));

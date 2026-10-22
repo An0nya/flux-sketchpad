@@ -88,7 +88,7 @@ export function create(canvas, gl, onModelsReady) {
   function tableKey(p, extras, look, tw, th, sig) {
     return JSON.stringify([(p.lamps || []).map((l) => l.map((v) => quant(v, 1e-4))), quant(p.yaw, DEG05), quant(p.pitch, DEG05), quant(p.cornerLeft, DEG05), quant(p.cornerRight, DEG05),
       !!p.afs, !!p.lampPitch, !!p.corneringLamps, lutId(p.lut), (p.lampRGB || [1, 1, 1]).map((v) => quant(v, 1e-4)), look.visibility, quant(p.hfov, DEG05), p.w, p.h,
-      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '']);
+      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps']);
   }
   const newBank = () => [0, 1, 2].map(() => new T.WebGLRenderTarget(tabSize.w, tabSize.h, { type: T.HalfFloatType, depthBuffer: false }));
   function dropAll() {
@@ -115,7 +115,7 @@ export function create(canvas, gl, onModelsReady) {
     }
   }
   function runTable(p, extras) {
-    const look = p.look, f = look.scatterRes === 'full' ? 1 : 0.5, tw = Math.max(1, Math.round(p.w * f)), th = Math.max(1, Math.round(p.h * f));
+    const look = p.look, f = look.scatterRes === 'full' ? 1 : look.scatterRes === 'quarter' ? 0.25 : 0.5, tw = Math.max(1, Math.round(p.w * f)), th = Math.max(1, Math.round(p.h * f));
     const sig = look.scatterBlur === 'mid' ? 1.5 : look.scatterBlur === 'strong' ? 3 : 0;
     const cache = look.scatterCache === 'on', cycle = cache && look.scatterCycle === 8 ? TAB_VERSIONS : 1, wanted = cycle;
     if (tabSize === '' || tabSize.key !== tw + 'x' + th) {
@@ -124,11 +124,11 @@ export function create(canvas, gl, onModelsReady) {
     if (tableShading(extras)) compilePending = true;
     const compiling = compilePending; compilePending = false;
     const key = tableKey(p, extras, look, tw, th, sig);
-    const tblSteps = Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48)), tblBinN = D.binCountsFor(tblSteps, look.scatterNearBias, look.scatterBinCounts);
+    const tblSteps = Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48)), tblBinN = D.binCountsFor(tblSteps, look.scatterNearBias, look.scatterBinCounts, look.scatterQuality);
     // NE3: a valid slice override or near sampling on turns on the per-slice counts (tableBias); empty or invalid with it off is the old path.
-    const tblPer = !!D.parseBinCounts(look.scatterBinCounts) || +look.scatterNearBias > 0;
+    const tblPer = !!D.parseBinCounts(look.scatterBinCounts) || !!D.qualityCounts(look.scatterQuality) || +look.scatterNearBias > 0;
     // NE: tabStats.binN/bias are the values sent to the table pass (debug readback for the page test).
-    set('tableH', th); set('tableSteps', tblSteps); set('tableBias', tblPer ? 1 : 0); set('tableBinN', tblBinN); tabStats.binN = tblBinN.slice(); tabStats.bias = tblPer ? 1 : 0; tabStats.override = !!D.parseBinCounts(look.scatterBinCounts);
+    set('tableH', th); set('tableSteps', tblSteps); set('tableBias', tblPer ? 1 : 0); set('tableBinN', tblBinN); tabStats.binN = tblBinN.slice(); tabStats.bias = tblPer ? 1 : 0; tabStats.override = !!D.parseBinCounts(look.scatterBinCounts); tabStats.quality = look.scatterQuality || 'steps'; tabStats.size = [tw, th];
     { const fr = fadeRangeOf(look); set('tableFade', fr ? 1 : 0); set('tableFadeS0', fr ? fr[0] : 1); set('tableFadeS1', fr ? fr[1] : 10); }
     const budget = Number.isFinite(globalThis.SD_TABLE_BUDGET_MS) ? globalThis.SD_TABLE_BUDGET_MS : TABLE_BUDGET_MS; tabStats.budgetMs = budget;
     const t0 = performance.now();
