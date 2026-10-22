@@ -22,7 +22,7 @@ const REPO = path.join(__dirname, '../..');
     await page.addScriptTag({ url: '/tests/regress/UX2-drive-ux.js' });
     await page.evaluate(async () => {
       const u = await P1Page.ready(), A = RF.DriveAnim, V = A._.V;
-      Object.assign(u.dvOpts, { scene: 'road', mountainPass: true, gpuRenderer: true, detailedModels: true, deerBehaviour: false, streetLamps: 'sodium', oncoming: true, preceding: false, trafficLogic: false, animals: false, people: true, posts: true, signs: true });
+      Object.assign(u.dvOpts, { samples: 'auto', scene: 'road', mountainPass: true, gpuRenderer: true, detailedModels: true, deerBehaviour: false, streetLamps: 'sodium', oncoming: true, preceding: false, trafficLogic: false, animals: false, people: true, posts: true, signs: true });
       window.PM = { u, A, V };
     });
     await page.waitForFunction(() => { const V = RF.DriveAnim._.V; return V.three && V.three.modelState().ready; }, null, { timeout: 60000 }).catch(() => {});

@@ -39,7 +39,7 @@
     for(let i=0;i<1800&&!(u.spec&&u.spec.ev&&u.spec.full&&!u.solving&&!u.needCompile&&u.run&&u.run.ctx.done&&u.spec.ctx===u.run.ctx);i++)await sleep(100);
     if(!(u.spec&&u.spec.ev&&u.spec.full))throw Error('UX2 lamp trace did not finish');
     u.setDisplay('drive');u.setPane('result','activate');document.querySelector('.result-pane').classList.add('expanded');
-    Object.assign(u.dvOpts,{scene:'city',wet:true,wetSheen:true,glare:'rain',gpuRenderer:true,mt:false,oncoming:true,preceding:true,trafficLogic:true});
+    Object.assign(u.dvOpts,{scene:'city',wet:true,wetSheen:true,glare:'rain',gpuRenderer:true,mt:false,oncoming:true,preceding:true,trafficLogic:true,samples:'auto'});
     Object.assign(u.dvAnim,{view:'anim',playing:false});u.redrawSpec();
     for(let i=0;i<200&&RF.DriveAnim.stats().renderer!=='three'&&!RF.DriveAnim.stats().gpuFailure;i++)await sleep(50);
     await settle();return u;
