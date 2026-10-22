@@ -121,6 +121,12 @@ export function haloPolarPick(p, eye, q, tanH) {
   const rho = Math.max(...[[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => Math.hypot(x - C[0], y - C[1])));   // the farthest corner: every screen pixel is inside
   return { C, rho, dL: (Math.log(rho) - Math.log(HALO_POL_MIN_PX)) / HALO_POL_R, sx, sy };
 }
+// TOUGE-ELEV B1: a touge frame projects the ribbon in the car frame (vertex carFromWorld*(position-eye), eye = p.eye), so a source in world
+// coordinates maps through carFromWorld (Matrix3, column-major). The direction keeps its horizontal part and is renormalised. Distances are unchanged.
+export function toCarFrame(traffic, m) {
+  const e = m.elements, mul = (v) => [e[0] * v[0] + e[3] * v[1] + e[6] * v[2], e[1] * v[0] + e[4] * v[1] + e[7] * v[2], e[2] * v[0] + e[5] * v[1] + e[8] * v[2]];
+  return traffic.map((q) => { const P = mul([q.x, q.y, q.z]), d = mul([q.nx, q.ny, 0]), n = Math.hypot(d[0], d[1]) || 1; return { ...q, x: P[0], y: P[1], z: P[2], nx: d[0] / n, ny: d[1] / n }; });
+}
 export function haloPass(renderer, u) {
   const scene = new T.Scene(), camera = new T.Camera(), geo = new T.PlaneGeometry(2, 2);
   const mk = (atlas, polar = false) => new T.ShaderMaterial({
@@ -167,7 +173,7 @@ export function haloPass(renderer, u) {
       const look = p.look || {}, wantN = look.haloBins != null ? +look.haloBins : HALO_URL_N;
       if (wantN !== HALO_REQ) setHaloBins(wantN);
       u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1;
-      const eye = p.eye || [-2, 0.37, 1.2], traffic = D.trafficSources(world.objects, eye, p, world.A);
+      const eye = p.eye || [-2, 0.37, 1.2], traffic = p.touge ? toCarFrame(D.trafficSources(world.objects, eye, p, world.A), u.carFromWorld.value) : D.trafficSources(world.objects, eye, p, world.A);   // TOUGE-ELEV B1: touge lamps into the car frame the ribbon projects in
       if (!traffic.length) return 0;
       halo.sources = traffic;   // test hook: the sources the table was built from (beam, tint, axis)
       const pool = p.trafficPool, atlas = !!(pool && pool.entries.length && traffic.some((q) => q.beam));

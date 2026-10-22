@@ -31,7 +31,7 @@ const MAP = [
   [/^js\/drive-three-shaders\.js$/, ['render', 'ui']], [/^js\/drive-three(-objects|-models)?\.js$/, ['render', 'ui']],
   [/^js\/ui\.js$/, ['ui']], [/^js\/drive-anim\.js$/, ['render', 'ui', 'nodeAll']], [/^js\/spec-ui\.js$/, ['ui', 'scatter', 'beams']],
   [/^js\/drive\.js$/, ['render', 'nodeAll']], [/^js\/table-pace\.js$/, ['scatter']], [/^js\/beam-atlas\.js$/, ['beams']],
-  [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']],
+  [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']], [/^js\/drive-touge-three\.js$/, ['TOUGE-ELEV-B']],
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];
 const NOT_TESTS = ['gate', 'load', 'serve'];
