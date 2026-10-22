@@ -15,18 +15,17 @@ import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS } from './drive-three-shaders.js'
 const D = globalThis.RF.Drive;
 export const HALO_MAXL = 16, HALO_PER_DRAW = 1, HALO_BIN_STEPS = 6, HALO_MIN_W = 96, HALO_MIN_H = 54, HALO_DIV = 8, HALO_DIV_FEW = 4, HALO_FEW = 4, HALO_SUB = 4, HALO_REFINE = 4, HALO_NEAR = 45;
 // One lamp per draw, 6 steps: a shader loop of 6 (it was 3 lamps x 6 = 18; Safari is suspected to stall compiling long loops). More draws, same pixels.
-export const HALO_EDGES = [0, 8, 14, 22, 34, 60, 120];   // the fixed bin edges, metres; the last is D.SCAT.S_MAX. Used when the nearest lamp is far; see haloEdgesFor
+// HDX3: 24 log-uniform bins from 0.5 to 120 m (edge k = 0.5 * 240^((k+1)/24)); the first entry is the origin, the last is D.SCAT.S_MAX.
+// The fixed edges replace the adaptive edges (HDX2: adaptive bin 0 = [0.5, 0.45 D] was the near-field overshoot). The shader's lookup assumes this log-uniform spacing.
+export const HALO_EDGES = [0, ...Array.from({ length: 24 }, (_, k) => 0.5 * Math.pow(240, (k + 1) / 24))]; HALO_EDGES[24] = 120;
 export const HALO_BINS = HALO_EDGES.length - 1;
 // The upper edge of each bin for a nearest lamp at distance D. The cumulative glow along a ray rises steeply up to the lamp's own distance and is flat after it;
 // the lookup interpolates between edges (log-linear), so a lamp sliding through a bin changes the interpolated shape and the glow around a close car shimmers
 // (measured: 5-15% frame-to-frame jumps in the halo's total at 10-25 m, clustered near the fixed edges). Edges that are fractions of D put the lamp's distance
 // ON an edge, and every edge moves continuously with D. Blended to the fixed ladder as the car gets far (55-75 m), where it was already steady.
 const ADAPT = [0.45, 0.7, 0.85, 1.0, 1.6];
-export function haloEdgesFor(D, out = new Array(HALO_BINS)) {
-  const t = Math.min(1, Math.max(0, (D - 55) / 20)), w = t * t * (3 - 2 * t);
-  for (let i = 0; i < HALO_BINS - 1; i++) out[i] = (D > 0 ? ADAPT[i] * D : HALO_EDGES[i + 1]) * (1 - w) + HALO_EDGES[i + 1] * w;
-  out[HALO_BINS - 1] = HALO_EDGES[HALO_BINS];
-  for (let i = 0; i < HALO_BINS - 1; i++) { out[i] = Math.max(out[i], (i ? out[i - 1] : 0.5) + 0.5); out[i] = Math.min(out[i], HALO_EDGES[HALO_BINS] - 0.5 * (HALO_BINS - i)); }
+export function haloEdgesFor(D, out = new Array(HALO_BINS)) {   // HDX3: the edges are fixed (D no longer moves them)
+  for (let i = 0; i < HALO_BINS; i++) out[i] = HALO_EDGES[i + 1];
   return out;
 }
 
@@ -75,15 +74,23 @@ const half = (T.DataUtils && T.DataUtils.fromHalfFloat) || ((h) => { const e = (
 // 1/4 of the view with 4 lamps or fewer (the stairs a coarser table leaves on a sharp glow edge show most on a lone distant car), 1/8 with more.
 export function haloTableSize(w, h, lamps = 99) { const div = lamps <= HALO_FEW ? HALO_DIV_FEW : HALO_DIV; return [Math.max(HALO_MIN_W, Math.ceil(w / div)), Math.max(HALO_MIN_H, Math.ceil(h / div))]; }
 // The CPU twin of the lookup in the shader (haloScatter): bins is the six bins, each [r, g, b]; d metres. Used by the page test to read the GPU table.
+// HDX3 lookup (mirrors haloScatter in drive-three-shaders.js): C at each bin's upper edge is the running sum; bin 0 is log d from 0.5 m with C(0.5)=0;
+// beyond the first edge, a monotone cubic Hermite (Fritsch-Carlson) in (log d, C) through the knots (the edges). Works for any ascending edges.
 export function haloLookup(bins, d, edges = HALO_EDGES.slice(1)) {
-  if (!(d > 0)) return [0, 0, 0];
-  const dd = Math.min(d, edges[HALO_BINS - 1]); let C = [0, 0, 0], prevC = [0, 0, 0], prevE = 0;
-  for (let k = 0; k < HALO_BINS; k++) {
-    const e = edges[k]; C = [C[0] + bins[k][0], C[1] + bins[k][1], C[2] + bins[k][2]];
-    if (dd <= e) { const f = k === 0 ? dd / e : Math.log(dd / prevE) / Math.log(e / prevE); return k === 0 ? C.map((v) => v * f) : C.map((v, i) => prevC[i] + (v - prevC[i]) * f); }
-    prevC = C; prevE = e;
-  }
-  return C;
+  if (!(d > 0.5)) return [0, 0, 0];
+  const n = HALO_BINS, dd = Math.min(d, edges[n - 1]), Cc = [];
+  let C = [0, 0, 0];
+  for (let k = 0; k < n; k++) { C = [C[0] + bins[k][0], C[1] + bins[k][1], C[2] + bins[k][2]]; Cc.push(C); }
+  if (dd <= edges[0]) { const f = Math.log(dd / 0.5) / Math.log(edges[0] / 0.5); return Cc[0].map((v) => v * f); }
+  const x = edges.map(Math.log), y = Cc, h = [], sl = [];
+  for (let k = 0; k < n - 1; k++) { h.push(x[k + 1] - x[k]); sl.push([0, 1, 2].map((c) => (y[k + 1][c] - y[k][c]) / h[k])); }
+  const m = (k) => {   // knot slope; Fritsch-Carlson: zero where neighbouring segments disagree in sign, else the weighted harmonic mean
+    if (k === 0) return sl[0]; if (k === n - 1) return sl[n - 2];
+    return [0, 1, 2].map((c) => { const a = sl[k - 1][c], b = sl[k][c]; if (a * b <= 0) return 0; const w1 = 2 * h[k] + h[k - 1], w2 = h[k] + 2 * h[k - 1]; return (w1 + w2) / (w1 / a + w2 / b); });
+  };
+  let s = 0; for (let k = 0; k < n - 1; k++) if (dd > edges[k]) s = k;
+  const lx = Math.log(dd), t = (lx - x[s]) / h[s], t2 = t * t, t3 = t2 * t, mA = m(s), mB = m(s + 1), hh = h[s];
+  return [0, 1, 2].map((c) => (2 * t3 - 3 * t2 + 1) * y[s][c] + (t3 - 2 * t2 + t) * hh * mA[c] + (-2 * t3 + 3 * t2) * y[s + 1][c] + (t3 - t2) * hh * mB[c]);
 }
 export function haloPass(renderer, u) {
   const scene = new T.Scene(), camera = new T.Camera(), geo = new T.PlaneGeometry(2, 2);
