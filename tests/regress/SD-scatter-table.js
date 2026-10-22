@@ -8,7 +8,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Re-baselined by LAZYCPU: the GPU canvas is 476.4 px wide at a fractional x, so its element screenshot's edge column (x=476)
 // used to show the CPU still beneath it. With the CPU still skipped while the GPU view shows, that column shows the page background.
 // The GL frame itself is unchanged. Before (main 0f47b41 / pre-LAZYCPU): f7eba2f98a72...5d9d. After: fb9a713b4bf3...98f.
-const DIRECT16 = process.env.SD_DIRECT16 || 'fb9a713b4bf31d31699d7ab83b62a7a6e9e01f27f2d95bf82e059be798715f98';
+// PED-CLOTHING-MODES: people off (walkers' clothes changed in every mode). Pin = main b38c628's direct frame with people off, equal to the new build with people off (full sha256). With people on the old pin fb9a713b... no longer matches.
+const DIRECT16 = process.env.SD_DIRECT16 || 'b1da94564d4c891b419083e3c209ee4224d8ace9be0529e6462d5ebd6e3ac309';
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
   return page.evaluate(async (b64) => {
@@ -31,7 +32,7 @@ async function meanLuma(page, png) {
     // SE2 pacing: with the cache on a table fills over frames; wait until no version is pending before measuring (the cap guards a stall).
     const settle = () => page.evaluate(() => { let n = 0; while (RF.UI.dvOpts.scatterMode === 'table' && globalThis.SD_SCATTER.cache && globalThis.SD_SCATTER.pending > 0 && n < 4000) { RF.DriveAnim._.frame(); n++; } return n; });
     const frame = async (label, opts) => {
-      await page.evaluate((o) => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, visibility: 200, scatter: 16, scatterMode: 'direct', scatterRes: undefined, scatterBlur: 'off', scatterTableSteps: undefined, scatterNearFadeRange: 'off', ...o }); RF.UI.redrawSpec(); }, opts);
+      await page.evaluate((o) => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, people: false, visibility: 200, scatter: 16, scatterMode: 'direct', scatterRes: undefined, scatterBlur: 'off', scatterTableSteps: undefined, scatterNearFadeRange: 'off', ...o }); RF.UI.redrawSpec(); }, opts);
       await sleep(2500); await settle();
       const st = await page.evaluate(() => { const s = RF.DriveAnim.stats(); return { renderer: s.renderer, gpuFailure: s.gpuFailure || '' }; });
       await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sc-drive', '1'));
