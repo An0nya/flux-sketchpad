@@ -154,7 +154,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 
 | option | label | kind | sits in | default | needs / ignored / conflicts |
 |---|---|---|---|---|---|
-| `trafficHalo` | traffic halo | profile | More | 0 | needs `air` [hidden], `trafficBeamsOn` [none]; ignored when `mountainPassAir` [none] |
+| `trafficHalo` | traffic halo | profile | More | 0 | needs `air` [hidden], `trafficBeamsOn` [none] |
 | `haloBins` | halo bins | profile | advanced halo | 24 | needs `air` [hidden], `haloOn` [none] |
 | `haloDiv` | halo table divisor | profile | advanced halo | 0 | needs `air` [hidden], `haloOn` [none] |
 | `haloPolar` | halo polar | profile | advanced halo | "off" | needs `air` [hidden], `haloOn` [none] |

@@ -77,7 +77,7 @@ Direct consequence (OBSERVED by reading; the render itself was not run): on the 
 
 | feature | on the pass | evidence |
 |---|---|---|
-| traffic halo (`trafficHalo`, haloQuality...) | OFF, silently; controls still shown; air-hold still armed (hold frames wait for a halo that never builds) | drive-three.js:295; drive-anim.js:2333 has no touge test |
+| traffic halo (`trafficHalo`, haloQuality...) | ON on feat/touge-halo-tilt (TOUGE-ELEV B1/B2, not on main). TILT (TOUGE-HALO-TILT): each source's axis is its own world beam (cos/sin of its trafficPitch, drive-three.js:265 formula) rotated by our carFromWorld, elevation kept as hDir.z (drive-three-halo.js toCarFrame, TMAIN `local`). Off-tilt A/B hook: globalThis.HALO_TILT_OFF. Main still reads drive-three.js:295 `if (!p.touge && !p.airHold)` | drive-three-halo.js:126-140; drive-three.js:295 (main); tests/regress/TOUGE-HALO-TILT.js |
 | air beam, direct (`scatter` > 0, direct) | not drawn on the ground ribbon (no `inScatter` in the ribbon main); drawn on objects | drive-touge-three.js:48-52 vs drive-three-shaders.js:231 (INFERRED effect) |
 | air beam, table | table pass runs in the flat frame (eye already rotated, ray basis level: INFERRED mismatch of roughly the grade/bank angle, as reports/TOUGE-survey.md item 2); `tableKey` has no attitude term (drive-three.js:105-109, OBSERVED) so cached versions are not invalidated as attitude changes | |
 | click probe / hover readout | reads the CPU flat still (`ensureCpuStill`, ui.js:1047; spec-ui.js:1077): on the pass it reports a flat road scene | OBSERVED code path; INFERRED wrong numbers (reports/TOUGE-survey.md item 3) |
@@ -139,10 +139,10 @@ So on main, and on both halo branches, the program that overflows with the air b
 
 | gap | status |
 |---|---|
-| halo not built on the pass | open on main (OBSERVED drive-three.js:295); fix exists on branch feat/touge-halo-elev (not merged) |
+| halo not built on the pass | open on main (OBSERVED drive-three.js:295); fix on feat/touge-halo-elev, carried into feat/touge-halo-tilt (not merged) |
 | ribbon has no air-beam or halo term | open (OBSERVED) |
-| table and halo ray basis level vs rotated eye | open (INFERRED) |
-| `tableKey` has no attitude term | open (OBSERVED) |
+| halo axis level in our frame (no per-car pitch) | closed on feat/touge-halo-tilt (TOUGE-HALO-TILT: the axis carries the car's own pitch, elevation in hDir.z). Air-beam TABLE still uses the flat ray basis (INFERRED mismatch, open) |
+| `tableKey` has no attitude term | closed on feat/touge-halo-tilt: our attitude pitch and roll (quantized 0.05 deg) are in the key on touge; flat is a constant. Note: tableKey guards the air-beam table only; the halo rebuilds every frame (no halo cache) |
 | click probe reads flat CPU still | open (OBSERVED path) |
 | AFS/cornering ignore grade and bank | open |
 | lampRoad/lampClass need `street` on pass lamps | open (INFERRED) |
