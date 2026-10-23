@@ -1903,11 +1903,17 @@ void main() {
     const st = S(ui);
     if (st.gameMode) {
       if (V.cardPop && st.popout) closePop(ui);
-      stop(); killWorkers(); Object.assign(info().o, st.gameSaved.options); Object.assign(st, st.gameSaved.state);
+      stop(); killWorkers(); restoreOptions(info().o, st.gameSaved.options); ui.dvBase = null; Object.assign(st, st.gameSaved.state);
       st.gameLoad = null; st.gameLamp = null; st.game = null; st.gameMode = false; st.gameOptions = null; V.p.hazardMask = null; V.last = 0; ui.redrawSpec(); V.flash = st.gameSaved.flash; V.src.traffic.state = st.gameSaved.traffic; V.act = st.gameSaved.act; flashText(); if (!st.playing && visible() && st.view === 'anim') frame(); return;
     }
     st.gameSaved = { options: Object.assign({}, info().o), state: { view: st.view, playing: st.playing, dist: st.dist, total: st.total, t: st.t, camera: st.camera }, flash: V.flash, traffic: V.src && V.src.traffic.state, act: new Map(V.act) };
+    ui.dvBase = st.gameSaved.options;   // spec-ui setDV writes this base (not the game overlay) to the saved profile while a game runs
     st.gameMode = true; st.playing = false; st.view = 'anim'; ui.redrawSpec();
+  }
+  // Exit: delete every key the game added, then put back the base values. JSON of the options is then exactly what it was before the game.
+  function restoreOptions(live, base) {
+    for (const k of Object.keys(live)) if (!(k in base)) delete live[k];
+    Object.assign(live, base);
   }
   async function startGame(ui) {
     const st = S(ui), box = V.gameBar, speed = +box.querySelector('[data-game="speed"]').value, wet = box.querySelector('[data-game="wet"]').value === 'wet', seedEl = box.querySelector('[data-game="seed"]'), reseedEl = box.querySelector('[data-game=reseed]');

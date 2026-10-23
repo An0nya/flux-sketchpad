@@ -13,6 +13,8 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   await page.waitForFunction(()=>{const u=RF.UI;return !u.solving&&u.run&&u.run.ctx.done&&u.spec&&u.spec.ctx===u.run.ctx&&u.spec.full&&u.spec.ev;},null,{timeout:180000});
   await page.evaluate(()=>{RF.UI.setDisplay('drive');RF.UI.setPane('result','activate');});
   ok('MG mode defaults OFF',await page.evaluate(()=>!RF.UI.dvAnim.gameMode));
+  // Let the drive layout settle first: the canvas is 650x366 until then and 658x370 after, so a baseline taken early compares two sizes (GAME-LEAK diagnosis).
+  await page.waitForTimeout(1500);await page.evaluate(()=>{RF.UI.redrawSpec();window.dispatchEvent(new Event('resize'));});await page.waitForTimeout(1500);
   const before=await page.evaluate(()=>{const u=RF.UI,_=RF.DriveAnim._;Object.assign(u.dvOpts,{scene:'road',tiles:false,trafficLogic:true,oncoming:false,preceding:false,mt:true,seed:7,speed:50});Object.assign(u.dvAnim,{view:'anim',playing:false,dist:40,t:3,total:40,camera:{x:40,v:10}});u.redrawSpec();_.V.pinSS=1;_.frame();window.mgBefore=Array.from(_.readHdr());return {options:JSON.stringify(u.dvOpts),scene:RF.State.serialize(u.store.scene),state:{dist:u.dvAnim.dist,t:u.dvAnim.t,total:u.dvAnim.total}};});
   await page.click('[data-game=toggle]');
   await page.fill('[data-game=speed]','75');await page.selectOption('[data-game=wet]','wet');await page.uncheck('[data-game=reseed]');await page.fill('[data-game=seed]','19');await page.click('[data-game=start]');
@@ -40,10 +42,23 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   ok('MG person-hit end card includes statistics, Spec verdict, tickets and teaching point',end.lost&&end.visible&&/run lost/.test(end.card)&&/mean reaction/.test(end.card)&&/Spec verdict/.test(end.card)&&/cops/.test(end.card)&&/Absolute reach beats foreground width/.test(end.card),end);
   if(shots)await page.screenshot({path:shots+'/end-card.png'});
   await page.setViewportSize({width:1500,height:950});await page.waitForTimeout(250);
+  // The 390px round trip leaves the drive canvas unsettled for a moment; settle it so the exit frame is compared at the same size as the baseline.
+  await page.waitForTimeout(1500);await page.evaluate(()=>{RF.UI.redrawSpec();window.dispatchEvent(new Event('resize'));});await page.waitForTimeout(1500);
   ok('MG end card leaves a clickable Exit game (the toolbar button sits under the card)',await page.evaluate(()=>{const b=document.querySelector('[data-game=exit]');if(!b||b.hidden)return false;const r=b.getBoundingClientRect(),e=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return e===b;}));
   await page.click('[data-game=exit]');
   const restored=await page.evaluate(()=>{const u=RF.UI,_=RF.DriveAnim._;_.frame();const hdr=_.readHdr();return {options:JSON.stringify(u.dvOpts),scene:RF.State.serialize(u.store.scene),state:{dist:u.dvAnim.dist,t:u.dvAnim.t,total:u.dvAnim.total},identical:hdr.length===window.mgBefore.length&&hdr.every((v,i)=>v===window.mgBefore[i]),off:!u.dvAnim.gameMode&&!u.dvAnim.game};});
   ok('MG exit restores normal options, camera state, saved scene and exact HDR',restored.off&&restored.options===before.options&&restored.scene===before.scene&&JSON.stringify(restored.state)===JSON.stringify(before.state)&&restored.identical,{before,restored});
+  // GAME-LEAK (H1): the saved profile never takes a game's overrides. A game with no owner change leaves the stored profile at the pre-game base.
+  const lsA=await page.evaluate(()=>localStorage.getItem('flux/driveView')),base=JSON.parse(before.options),savedA=lsA===null?{}:JSON.parse(lsA);
+  const badA=Object.keys(savedA).filter(k=>JSON.stringify(savedA[k])!==JSON.stringify(base[k]));
+  ok('MG game with no owner change writes no game overrides to the saved profile (wetness absent, oncoming/trafficLogic at base)',badA.length===0&&!('wetness' in savedA),{badA,lsA});
+  // Owner change inside a game: it is saved, the overlay is not, and exit keeps the change while still restoring everything else.
+  await page.click('[data-game=toggle]');await page.click('[data-game=start]');
+  await page.evaluate(()=>RF.SpecUI.setDV(RF.UI,'fpsCounter',true));
+  await page.click('[data-game=exit]');
+  const second=await page.evaluate(()=>{const u=RF.UI,ls=localStorage.getItem('flux/driveView');return {options:JSON.stringify(u.dvOpts),ls:ls===null?null:JSON.parse(ls),base:u.dvBase===undefined?'undefined':(u.dvBase===null?'null':'set'),gameMode:u.dvAnim.gameMode};});
+  const expectB=JSON.stringify(Object.assign(JSON.parse(before.options),{fpsCounter:true}));
+  ok('MG owner change made in a game is saved, game overlay is not (oncoming/trafficLogic/wetness at base), exit restores the rest',second.ls!==null&&second.ls.fpsCounter===true&&second.ls.oncoming===false&&second.ls.trafficLogic===true&&!('wetness' in second.ls)&&second.options===expectB&&second.base==='null'&&!second.gameMode,{second,expectB});
   ok('MG no page errors',errors.length===0,errors);
  }finally{await browser.close();}
  console.log(fails?fails+' FAILED':'all MG minigame page checks passed');process.exitCode=fails?1:0;
