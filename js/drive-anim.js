@@ -1635,7 +1635,9 @@ void main() {
     pl.addEventListener('change', () => setDV(ui, 'powerlines', pl.value)); bar.append(pl);
     // POWERLINES: wire albedo, a tuning value (see registry powerlineReflectance). Shown with the power lines control; the registry hides it while power lines are off.
     const pr = E('input', { type: 'range', min: 0.02, max: 0.6, step: 0.01, 'data-anim': 'powerline-reflectance', 'aria-label': 'Wire reflectance', title: 'Wire reflectance (tuning, not measured): how much light a power wire scatters. Only with power lines on.' });
-    pr.addEventListener('change', () => setDV(ui, 'powerlineReflectance', +pr.value)); bar.append(pr);
+    const prl = E('span', { class: 'anim-speed' }, 'wire reflectance'), prv = E('span', { class: 'anim-speed', 'data-anim': 'powerline-reflectance-value', 'aria-live': 'off' });
+    pr.addEventListener('input', () => { prv.textContent = (+pr.value).toFixed(2); });
+    pr.addEventListener('change', () => setDV(ui, 'powerlineReflectance', +pr.value)); bar.append(E('span', { style: 'white-space:nowrap' }, prl, pr, prv));   // one unit: the label, slider and readout never wrap apart
     // random scenery: the seed (same seed = same road), how dense, and the US centre line (double solid yellow, or the broken line of a passing zone)
     const sd = E('input', { type: 'number', min: 0, max: 99999, step: 1, 'data-anim': 'seed', 'aria-label': 'Scenery seed', title: 'Seed of the random scenery: the same number gives the same road', class: 'anim-seed' }); sd.addEventListener('change', () => setDV(ui, 'seed', Math.max(0, Math.min(99999, Math.round(+sd.value || 0)))));
     const dice = btn('dice', 'A new random seed', () => setDV(ui, 'seed', (Date.now() * 2654435761 >>> 0) % 100000), '⚄');
@@ -1871,7 +1873,7 @@ void main() {
     ui.driveBar.querySelector('[data-anim="speed"]').value = o.speed; speedLabel(ui);
     for (const [k] of CLASSES) { const b = V.bar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
     { const sel = V.bar.querySelector('[data-anim="powerlines"]'); if (sel) sel.value = o.powerlines === 'on' ? 'on' : 'off'; }
-    { const sl = V.bar.querySelector('[data-anim="powerline-reflectance"]'); if (sl) sl.value = String(o.powerlineReflectance === undefined ? 0.12 : o.powerlineReflectance); }
+    { const pv = o.powerlineReflectance === undefined ? 0.22 : o.powerlineReflectance, sl = V.bar.querySelector('[data-anim="powerline-reflectance"]'); if (sl) sl.value = String(pv); const rv = V.bar.querySelector('[data-anim="powerline-reflectance-value"]'); if (rv) rv.textContent = (+pv).toFixed(2); }
     V.bar.querySelector('[data-anim="traffic-density"]').value = o.trafficDensity === undefined ? 1 : o.trafficDensity;
     V.scatGainEl.value = Math.log2(Math.min(4, Math.max(0.25, +o.scatterGain || 1)));
     V.bar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));

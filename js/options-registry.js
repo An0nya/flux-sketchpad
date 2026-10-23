@@ -568,7 +568,7 @@
     {
       // POWERLINES: wire albedo (diffuse reflectance, tuning, not measured). materials(look) in js/drive.js reads it, so the CPU table and the GPU table both change at runtime.
       id: 'powerlineReflectance', kind: 'profile', type: 'number', values: { min: 0.02, max: 0.60, step: 0.01 },
-      default: 0.12, label: 'wire reflectance',
+      default: 0.22, label: 'wire reflectance',
       control: '[data-anim="powerline-reflectance"]', where: 'more', query: null,
       group: 'scenery', cost: 'free',
       owner: ['js/drive.js', 'js/drive-anim.js', 'js/spec-ui.js'],

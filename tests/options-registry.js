@@ -54,7 +54,7 @@ const FROZEN_OLD_DV_DEF = {
   reflectiveClothing: 'mix',
   posts: true,
   powerlines: 'off',   // POWERLINES: new option (default off), not a default change; added to the frozen copy like lampCone
-  powerlineReflectance: 0.12,   // POWERLINES: new option (wire albedo), not a default change of an existing key
+  powerlineReflectance: 0.22,   // POWERLINES: new option (wire albedo), not a default change of an existing key
   veg: true,
   obstacle: false,
   rpm: true,

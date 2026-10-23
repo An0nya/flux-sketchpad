@@ -203,7 +203,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `reflectiveClothing` | reflective clothing | profile | More | "mix" | needs `peoplePresent` [none] |
 | `posts` | posts | profile | More | true | - |
 | `powerlines` | power lines | profile | More | "off" | - |
-| `powerlineReflectance` | wire reflectance | profile | More | 0.12 | needs `powerlinesOn` [hidden] |
+| `powerlineReflectance` | wire reflectance | profile | More | 0.22 | needs `powerlinesOn` [hidden] |
 | `veg` | trees | profile | More | true | - |
 | `obstacle` | crates | profile | More | false | - |
 | `rpm` | road studs | profile | More | true | - |

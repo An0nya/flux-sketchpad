@@ -56,7 +56,7 @@ const dump = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'owner-toug
     ok('2 powerlines on: wire pixels exist and differ from off', r.wirePixels >= 20 && r.diffOnVsOff > 0, { wirePixels: r.wirePixels, diffOnVsOff: r.diffOnVsOff });
     ok('3 wire brightness ordered L(0.04) < L(0.12) < L(0.40)', r.mean.r04 < r.mean.r12 && r.mean.r12 < r.mean.r40, r.mean);
     const cpu = await page.evaluate(() => { const M = (v) => RF.Drive.materials({ RL: 0.2, ambient: 0, powerlineReflectance: v }); return [M(0.04).wire.rho[0], M(0.40).wire.rho[0], M(undefined).wire.rho[0]]; });
-    ok('4 CPU material table carries the option (rho 0.04, 0.40, fallback)', cpu[0] === 0.04 && cpu[1] === 0.40 && cpu[2] === 0.12, cpu);
+    ok('4 CPU material table carries the option (rho 0.04, 0.40, fallback = default 0.22)', cpu[0] === 0.04 && cpu[1] === 0.40 && cpu[2] === 0.22, cpu);
     console.log(fails ? `FAILED ${fails}` : 'ALL PASS');
   } catch (e) { console.log('[FAIL] exception ' + (e.stack || e)); fails++; }
   finally { await browser.close(); }
