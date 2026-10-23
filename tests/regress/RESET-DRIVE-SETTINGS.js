@@ -55,6 +55,7 @@ const KEYS_KEEP = ['flux/driveMore', 'flux/driveAirAdv', 'flux/driveHaloAdv', 'f
   if (SHOTS) await page.locator('.result-pane > .pane-head').screenshot({ path: path.join(SHOTS, 'after-solvecache-bar.png') });
 
   // ---- 3. first click only arms the confirm step; the saved key must still exist
+  await page.evaluate(() => { const d = document.getElementById('ab-reset-drive').closest('details'); if (d) d.open = true; });   // the button lives in the Solve cache disclosure (closed by default)
   await page.locator('#ab-reset-drive').click();
   const armedText = await page.locator('#ab-reset-drive').textContent();
   ok('R1 first click arms confirm step', /Reset all drive options to defaults\?/.test(armedText), armedText);

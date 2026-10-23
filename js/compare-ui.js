@@ -115,7 +115,8 @@
       location.href = location.pathname;
     });
     resetDrive.id = 'ab-reset-drive';
-    bar.append(pinBtn, openBtn, unpinBtn, el('span', { id: 'ab-pin-note', role: 'status' }), prefs, resetDrive, el('span', { id: 'ab-cache-status', role: 'status' })); document.querySelector('.result-pane > .pane-head').append(bar);
+    prefs.append(resetDrive);   // inside the Solve cache disclosure: closed by default, so the Drive canvas layout (and every pinned frame) is unchanged
+    bar.append(pinBtn, openBtn, unpinBtn, el('span', { id: 'ab-pin-note', role: 'status' }), prefs, el('span', { id: 'ab-cache-status', role: 'status' })); document.querySelector('.result-pane > .pane-head').append(bar);
     const spec = el('select', { id: 'ab-spec', 'aria-label': 'Comparison preset' }, el('option', { value: '' }, 'B’s saved spec'), ...Object.entries(RF.Spec.PRESETS).map(([k, p]) => el('option', { value: k }, p.label)));
     const rays = el('input', { id: 'ab-rays', type: 'number', value: 300000, min: 100, max: 20000000, step: 10000, 'aria-label': 'Comparison rays' });
     const refreshBtn = el('button', { type: 'button', id: 'ab-refresh' }, 'Refresh comparison'), stop = el('button', { type: 'button', id: 'ab-stop', hidden: true }, 'Stop comparison'), close = el('button', { type: 'button', id: 'ab-close' }, 'Close');
