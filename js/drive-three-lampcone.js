@@ -16,10 +16,17 @@
    Not done (see report): analytic ray-cone chord; scene-depth occlusion (the pass would sample the depth texture of the target it draws into: a feedback loop).
    Units: the target is cd/m^2-scale, the same convention as the lamp halo (lamp-halo header). Tuning values are the owner's to judge by eye. */
 import * as T from '../vendor/three/three.module.min.js';
-import { LAMP_DIST, kindOfLamp } from './lamp-dist.js';
+import { LAMP_DIST, kindOfLamp, GAMMA } from './lamp-dist.js';
 import { lampsOf, SODIUM_TINT, LED_TINT, SODIUM_LM, LED_LM } from './drive-three-lamphalo.js';
 const D = globalThis.RF.Drive;
 export const LAMP_CONE_MAX = 8, LAMP_CONE_STEPS = 8, LAMP_CONE_G = 0.6, LAMP_CONE_SMAX = 300;   // lamps, steps per lamp, HG g, far limit (m)
+// LAMP-CONE-OBJECTS: cone-only profile. The table is multiplied by exp(-(gamma/CONE_W_G)^CONE_W_P) per gamma row, on a COPY (the shared
+// table in lamp-dist.js is untouched: the sprite and the road light read it). Effect on class III sodium: peak moves 65 -> 40 deg from nadir,
+// value at 80 deg is about 10 percent of that peak, zero at 85 (the table's own cutoff), and a flux-normalising factor k (about 1.56) keeps the
+// solid-angle total unchanged. TUNING, owner's call by eye.
+export const CONE_W_G = 70, CONE_W_P = 4;
+// Object depth: drive-three-objects.js and drive-three-models.js write gl_FragDepth = min(0.99999, t / 5000), t = ray distance (metres).
+export const OBJ_DEPTH_RANGE = 5000;
 const TAB_LEN = 480;   // 475 values (19 gamma x 25 phi) packed 4 per vec4: 120 uniform vectors, the same packing as the road table (drive-three-shaders.js:20)
 
 const VERT = 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }';
@@ -67,8 +74,19 @@ void main() {
   gl_FragColor = vec4(acc, 1.0);
 }`;
 
+// LAMP-CONE-OBJECTS: the object-pass variant. Reads the object target's colour (uObj) and depth (uDepth, t/5000) and adds the cone integral
+// up to each object's own distance. Pixels with alpha < 0.5 (sky, road-only, glowing objects) pass through unchanged.
+// Built from FRAG by string replacement: each replacement must hit exactly once (asserted in setup()).
+const FRAG_OBJ_PARTS = [
+  ['void main() {', 'uniform sampler2D uObj, uDepth;\nvoid main() {\n  vec4 base = texelFetch(uObj, ivec2(gl_FragCoord.xy), 0);\n  float tObj = texelFetch(uDepth, ivec2(gl_FragCoord.xy), 0).r * ' + OBJ_DEPTH_RANGE.toFixed(1) + ';\n  if (base.a < 0.5) { gl_FragColor = base; return; }'],
+  ['sb = ' + LAMP_CONE_SMAX.toFixed(1) + ';', 'sb = min(' + LAMP_CONE_SMAX.toFixed(1) + ', tObj);'],
+  ['gl_FragColor = vec4(acc, 1.0);', 'gl_FragColor = vec4(base.rgb + acc, base.a);'],
+];
+const FRAG_OBJ = (() => { let f = FRAG; for (const [a, b] of FRAG_OBJ_PARTS) { if (f.split(a).length !== 2) throw Error('FRAG_OBJ: pattern not unique: ' + a.slice(0, 40)); f = f.replace(a, b); } return f; })();
+
 export function createLampCone(renderer) {
   let mat = null, mesh = null, scene = null, camera = null, last = { on: 0, count: 0, sigma: 0, lamps: [] };
+  let objMat = null, objScene = null, objTarget = null;
   const tabCache = new Map();
   function setup() {
     const ones = (n, mk) => Array.from({ length: n }, mk);
@@ -84,17 +102,35 @@ export function createLampCone(renderer) {
     });
     mesh = new T.Mesh(new T.PlaneGeometry(2, 2), mat); mesh.frustumCulled = false;
     scene = new T.Scene(); scene.add(mesh); camera = new T.Camera();
+    // Object-pass material: shares every uniform object with the ground pass (same lamp list, same table, same sigma), adds the two samplers.
+    objMat = new T.ShaderMaterial({
+      uniforms: Object.assign({}, mat.uniforms, { uObj: { value: null }, uDepth: { value: null } }),
+      vertexShader: VERT, fragmentShader: FRAG_OBJ, depthTest: false, depthWrite: false, transparent: false, blending: T.NoBlending,
+    });
+    objScene = new T.Scene(); objScene.add(new T.Mesh(new T.PlaneGeometry(2, 2), objMat));
   }
   function tableFor(cls, kind) {
     const key = cls + '/' + kind;
-    if (!tabCache.has(key)) { const f = new Float32Array(TAB_LEN); f.set(LAMP_DIST.classes[cls][kind]); tabCache.set(key, f); }
+    if (!tabCache.has(key)) {
+      const f = new Float32Array(TAB_LEN); f.set(LAMP_DIST.classes[cls][kind]);
+      // Flux normalisation: k keeps the solid-angle total sum(I sin gamma) unchanged, so the narrower lobe is brighter near nadir, not dimmer overall.
+      let num = 0, den = 0;
+      for (let gi = 0; gi < GAMMA.length; gi++) {
+        const w = Math.exp(-Math.pow(GAMMA[gi] / CONE_W_G, CONE_W_P)), sn = Math.sin(GAMMA[gi] * Math.PI / 180);
+        let a = 0; for (let pj = 0; pj < 25; pj++) a += f[gi * 25 + pj] / 25;
+        num += a * sn; den += a * w * sn;
+      }
+      const k = den > 0 ? num / den : 1;
+      for (let gi = 0; gi < GAMMA.length; gi++) { const w = k * Math.exp(-Math.pow(GAMMA[gi] / CONE_W_G, CONE_W_P)); for (let pj = 0; pj < 25; pj++) f[gi * 25 + pj] *= w; }
+      tabCache.set(key, f);
+    }
     return tabCache.get(key);
   }
   // The lamps this frame: street heads in front of the eye, nearest LAMP_CONE_MAX. Fills the uniforms; returns the list (for tests).
   function build(p, world, sigma) {
     const eye = p.eye || [-2, 0.37, 1.2];
     const cls = p.lampClass || 'III', kind = kindOfLamp(p.lampKind), lampLm = kind === 'led' ? LED_LM : SODIUM_LM;
-    const tint = kind === 'led' ? LED_TINT() : SODIUM_TINT();
+    const tint = kind === 'led' ? LED_TINT() : SODIUM_TINT();   // (tint and lumens unchanged by the cone-only profile)
     const cand = [];
     for (const L of lampsOf(world.objects)) {
       if (L.kind !== 'street' || !L.street) continue;
@@ -124,12 +160,30 @@ export function createLampCone(renderer) {
       last = { on: 1, count: 0, sigma, lamps: [] };
       if (!(sigma > 0)) return;   // clear air: no mist, so no cone
       if (!mat) setup();
-      last.lamps = build(p, world, sigma); last.count = last.lamps.length;
+      last.lamps = build(p, world, sigma); last.count = last.lamps.length; last.objects = false;
       if (!last.count) return;
       const ac = renderer.autoClear; renderer.autoClear = false;
       renderer.setRenderTarget(target); renderer.render(scene, camera);
       renderer.autoClear = ac;
       renderer.resetState(); renderer.setRenderTarget(target);
+    },
+    // LAMP-CONE-OBJECTS: after the objects are drawn into the object target (drive-three.js render), add the cone to object pixels up to each
+    // object's own distance. Leaves the bound target as it was for off / no-lamp frames (no GL change), so the off frame stays byte-identical.
+    drawObjects(p, src) {
+      if (p.lampCone !== 'on' || !last.on || !(last.sigma > 0) || !last.count || !objMat) return;
+      if (globalThis.__lcoSkipObjects) return;   // TEST-ONLY hook (reproduces the pre-fix object path for before shots); remove before merge
+      const W = src.width, H = src.height;
+      if (!objTarget || objTarget.width !== W || objTarget.height !== H) {
+        if (objTarget) objTarget.dispose();
+        objTarget = new T.WebGLRenderTarget(W, H, { type: T.FloatType, depthBuffer: false, minFilter: T.NearestFilter, magFilter: T.NearestFilter });
+      }
+      mat.uniforms.size.value.set(W, H);   // shared with objMat; the ground pass sets it again next frame
+      objMat.uniforms.uObj.value = src.texture; objMat.uniforms.uDepth.value = src.depthTexture;
+      const ac = renderer.autoClear; renderer.autoClear = false;
+      renderer.setRenderTarget(objTarget); renderer.render(objScene, camera);
+      renderer.autoClear = ac;
+      last.objects = true;
+      return objTarget;
     },
     state() { return last; },
     // Cost hook (test only): GPU ms per draw of this pass with n lamps (timer query on a scratch target). Call after a frame with lampCone on.
