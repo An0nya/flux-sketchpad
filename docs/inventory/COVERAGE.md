@@ -201,3 +201,6 @@ Gate tests that depend on the junction crosser (OBJECTS.md P6/P7, which ignore o
 - `node tests/gate.js --full --list` -> 40 names (18 `node:` + 22 page). `node tests/gate.js --touched --list` was not needed (docs/ and .md map to `[]`, gate.js MAP, so a docs-only branch selects nothing).
 - `docs/inventory/scripts/options-scan.js` for the option x test matrix; the MAP/unmapped computation is `eval` of the `const MAP = [...]` literal in tests/gate.js applied to `ls js/*.js` (inline in this doc's generation, 6 lines).
 - Known limits: regex-based; fixture/bench/tools directories excluded; a test that sets an option through a helper whose argument is not the literal key (e.g. a loop over keys) is missed (possible false "none").
+
+## Known failing (2026-10-22)
+- `tests/regress/MG-minigame.js` check "MG exit restores normal options, camera state, saved scene and exact HDR": the HDR part fails on main before and after the game-options-leak fix (options, scene and state parts pass). A standalone replay of the same steps with a settled layout gives a byte-identical HDR, so the suspect is the test's 390 px mobile round trip, not the product (inference from one repro, GAME-LEAK report). Not yet fixed; do not loosen the check, fix the harness or prove the cause.
