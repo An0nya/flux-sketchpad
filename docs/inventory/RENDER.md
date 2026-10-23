@@ -74,19 +74,22 @@ Counts (declared / textual / reachable); limit 16:
 | program | plain | lit (+atlas same) | plain + table | lit + table (+atlas same) |
 |---|---|---|---|---|
 | FLAT ground | 6 / 6 / 6 | 7 / 7 / 7 | 12 / 12 / 12 | 13 / 13 / 13 |
-| TOUGE ribbon | 9 / 8 / 5 | 10 / 9 / 6 | 15 / 14 / 5 | 16 / 15 / 6 |
+| TOUGE ribbon (main has no `inScatter`: until TOUGE-AIR-RIBBON) | 9 / 8 / 5 | 10 / 9 / 6 | 15 / 14 / 5 | 16 / 15 / 6 |
+| TOUGE ribbon after TOUGE-AIR-RIBBON (`inScatter` in main, `tableSource(src, false)`) | 9 / 8 / 8 | 10 / 9 / 9 | 12 / 11 / 11 | 13 / 12 / **12** (measured on the GPU: 13 declared, 12 active, links; the halo textures count since ELEV-B2) |
 | FLAT objects | 9 / 8 / 8 | 10 / 9 / 9 | 15 / 14 / 14 | 16 / 15 / **15** |
-| TOUGE objects | 12 / 11 / 11 | 13 / 12 / 12 | 18 / 17 / **17** | 19 / 18 / **18** |
+| TOUGE objects | 12 / 11 / 11 | 13 / 12 / 12 | 18 / 17 / **17** (measured on the GPU, ANGLE Metal, 2026-10-23: link failure) | 19 / 18 / **18** (measured: link failure) |
+| TOUGE objects after TOUGE-AIR (`tableSource(src, false)`: no `scatBankB0..2`) | | | 15 / 14 / 14 | 16 / 15 / **15** (measured: links) |
 | FLAT mesh car | 7 / 5 / 5 | 8 / 6 / 6 | 13 / 11 / 11 | 14 / 12 / 12 |
-| TOUGE mesh car | 10 / 8 / 8 | 11 / 9 / 9 | 16 / 14 / 14 | 17 / 15 / **15** |
+| TOUGE mesh car | 10 / 8 / 8 | 11 / 9 / 9 | 16 / 14 / 14 | 17 / 15 / **15** (measured 15; 12 after TOUGE-AIR) |
 | table pass | 6 / 5 / - | 7 / 6 / - | - | - |
 | halo pass | 1-2 | | | |
 
 (Mesh car rows use the real fragment template sliced out of js/drive-three-models.js by the script. `bodyMap` is declared there but never read, so it does not count as reachable; `marks` is unreachable in objects and mesh cars. Mesh cars on the pass with table + lighting sit at 15 reachable: one under the limit.)
 
 Reading the table (INFERRED):
+- **TOUGE-AIR (measured 2026-10-23, real GPU): the failing program IS the pass instanced-object program with the table (18 active: passDepth, passShadow0, passShadow1, beam, materials, otherBeam, haloTex, haloPolarTex, haloPolarTex2, scatBank0-2, scatBankB0-2, materialMap, sdfNodes, treeCard; `marks` dropped by the compiler). The pass programs now compile the table without the B bank set: 15.** The probe counts samplers kept in ANGLE's translated (Metal) source via `WEBGL_debug_shaders`; it agrees with this table's reachable column in every program but the mesh car (reachable 15, measured 15) and the ribbon (6-9 measured, the passDepth name drops out of the table-mode ribbon).
 - **On the pass, instanced objects with the air beam in table mode need 17-18 samplers: over 16.** Without the table they need 11-12. This is the first program to overflow with the air beam, not the ribbon. The ribbon's main never reads the table banks or the halo textures, so it needs 5-6 on main.
-- A ribbon variant that called both `inScatter` (table) and `haloScatter` would need 6 + 3 halo + 6 table = 15 reachable (declared 16): one sampler from the limit. Checked with `git show` (no checkout): BOTH touge-halo branches (exp/touge-halo and feat/touge-halo-elev) add only `haloScatter` to the ribbon main (drive-touge-three.js:51 on each), so on them the ribbon needs 9, not 15. If the owner's crash was on one of those branches or on main, the program over the limit is the instanced-object program (17-18) and not the ribbon.
+- TOUGE-AIR-RIBBON: the ribbon now calls both `inScatter` (table) and `haloScatter`: 12 active / 13 declared with the blend set compiled out (3 banks, not 6; the 15 estimate below was for the 6-bank text). Pass object 15 and mesh car 12 are unchanged by it. Uniform rows (script upper bound, `uniforms.mjs`): ribbon lit+atlas+table 856, object 862 (limit 1024; no link failure on any program; the actual compiler-kept count was not measured). A ribbon variant that called both `inScatter` (table, 6 banks) and `haloScatter` would have needed 6 + 3 halo + 6 table = 15 reachable (declared 16). Checked with `git show` (no checkout): BOTH touge-halo branches (exp/touge-halo and feat/touge-halo-elev) add only `haloScatter` to the ribbon main (drive-touge-three.js:51 on each), so on them the ribbon needs 9, not 15. If the owner's crash was on one of those branches or on main, the program over the limit is the instanced-object program (17-18) and not the ribbon.
 - The flat objects program with table + traffic lighting is at 15 of 16: one more sampler anywhere in `withLighting`, the table or the ground prefix breaks FLAT too.
 - Always-compiled-in samplers that exist for features that may be off: the three halo textures (every ground-prefix program), the three `scatBankB*` fade banks (every table program). Folding the six `scatBank*` into one `sampler2DArray` (as `materialMap` already is) or compiling the B banks only when `scatterCycleFade` is on would give 5 back to every table program.
 - Feature cost in samplers (differences in the table above): lit extras +1 (`otherBeam`); table +6; halo +3 (always); pass +3; objects +3; mesh car +1.

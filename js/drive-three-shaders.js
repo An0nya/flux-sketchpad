@@ -308,7 +308,7 @@ ${atlas ? OTHER_ATLAS : OTHER_LEGACY}` + 'float wetLobe')
 // same single-scatter integrand as inScatter (scalar; lampRGB multiplies at lookup). The lookup gives the cumulative value at a
 // distance, interpolated in log d between edges 0.5 m .. 120 m. Direct mode never sees this text: tableSource() is applied only when
 // the table is on, so the direct shader strings stay byte-identical. CPU twin: scatterTableBins / scatterTableAt in js/drive.js.
-const TABLE_DECL = `uniform int scatMode;   // 1 = table mode: inScatter reads the table (SD1)
+const TABLE_HEAD = `uniform int scatMode;   // 1 = table mode: inScatter reads the table (SD1)
 uniform sampler2D scatBank0, scatBank1, scatBank2;   // bins 0-3, 4-7, 8-11 (RGBA), at the table's resolution
 uniform vec2 scatUV;   // 1 / (pixels of the target this pass draws): gl_FragCoord * scatUV is the table texture coordinate
 // SM: the lookup takes its three texels as arguments, so the cycle crossfade can read a second bank set with the same code.
@@ -328,7 +328,8 @@ float tableC(float d) {
   vec2 uv=gl_FragCoord.xy*scatUV;
   return tableCBanks(d, texture(scatBank0,uv), texture(scatBank1,uv), texture(scatBank2,uv));
 }
-// SM: cycle blend. scatFade 1 mixes the lookup of bank set A (scatBank0..2) and bank set B (scatBankB0..2) by scatFract; 0 reads A alone.
+`;
+const TABLE_BLEND = `// SM: cycle blend. scatFade 1 mixes the lookup of bank set A (scatBank0..2) and bank set B (scatBankB0..2) by scatFract; 0 reads A alone.
 uniform sampler2D scatBankB0, scatBankB1, scatBankB2;
 uniform float scatFade, scatFract;
 float tableCMix(float d) {
@@ -336,7 +337,11 @@ float tableCMix(float d) {
   vec2 uv=gl_FragCoord.xy*scatUV;
   return mix(tableC(d), tableCBanks(d, texture(scatBankB0,uv), texture(scatBankB1,uv), texture(scatBankB2,uv)), scatFract);
 }
-vec3 inScatterDirect(vec3 dir,float sEnd,float jit);
+`;
+// TOUGE-AIR: the same lookup without the cycle-blend bank set. The pass objects need it: with scatBankB0..2 they link 18 samplers (limit 16).
+const TABLE_NOBLEND = `float tableCMix(float d) { return tableC(d); }
+`;
+const TABLE_TAIL = `vec3 inScatterDirect(vec3 dir,float sEnd,float jit);
 // SF2: scatGain multiplies the lookup only (table mode); it never enters the table, so it does not rebuild it.
 uniform float scatGain;
 vec3 inScatter(vec3 dir,float sEnd,float jit) { return scatMode==1 ? tableCMix(min(sEnd,scatSMax))*lampRGB*scatGain : inScatterDirect(dir,sEnd,jit); }
@@ -379,9 +384,11 @@ void main() {
 `;
 const DIRECT_HEAD = 'vec3 inScatter(vec3 dir,float sEnd,float jit) {';
 // Table mode for a lit shader source: the direct in-scatter becomes the table lookup. Sources without the direct function pass through.
-export function tableSource(source) {
+// blend false (TOUGE-AIR, the pass programs): the second bank set and its mix are left out, so scatBankB0..2, scatFade and scatFract do not exist in the program.
+// blend true gives exactly the text this function always gave.
+export function tableSource(source, blend = true) {
   if (!source.includes(DIRECT_HEAD)) return source;
-  return source.replace(DIRECT_HEAD, TABLE_DECL + DIRECT_HEAD.replace('inScatter(', 'inScatterDirect('));
+  return source.replace(DIRECT_HEAD, TABLE_HEAD + (blend ? TABLE_BLEND : TABLE_NOBLEND) + TABLE_TAIL + DIRECT_HEAD.replace('inScatter(', 'inScatterDirect('));
 }
 // The table pass: the ground prefix (shading of the same look, lit or not) and the bin integrals in place of main.
 export function tablePassSource(source) {

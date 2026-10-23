@@ -28,7 +28,7 @@ function analyse(src0){
 }
 const variants=[];for(const extras of [false,true])for(const atlas of (extras?[false,true]:[false]))for(const table of [false,true])variants.push({extras,atlas,table});
 const tag=v=>`${v.extras?'lit':'plain'}${v.atlas?'+atlas':''}${v.table?'+table':''}`;
-const lighten=(base,v)=>{let s=v.extras?S.withLighting(base,v.atlas):base;if(v.table)s=S.tableSource(s);return s};
+const lighten=(base,v)=>{let s=v.extras?S.withLighting(base,v.atlas):base;if(v.table)s=S.tableSource(s,!v.noBlend);return s};
 const ground=S.ground;const prefix=ground.slice(0,ground.indexOf('vec4 roadFrame'));
 let body=ground.slice(ground.indexOf('vec3 surface('),ground.indexOf('void main()'));
 body=body.replace('vec4 f=roadFrame(p.xy);','vec4 f=roadUV;').replace('n=vec3(0,0,1);','n=normalize(roadNormal);');
@@ -36,6 +36,8 @@ body=body.replace('vec4 f=roadFrame(p.xy);','vec4 f=roadUV;').replace('n=vec3(0,
 const ribbonMain=`void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
  vec3 c=surface(worldPoint,v,t,max(.003,dot(v,normalize(roadNormal))));
  if(sigma>0.0){float T=exp(-sigma*t); c=c*T+ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(v.z)*8.0))*(1.0-T);}
+ if(scatterSteps>0) c+=inScatter(-v,t<5000.0?t:1e20,scatterJitter());   // TOUGE-AIR-RIBBON
+ if(haloOn>0) c+=haloScatter(t<5000.0?t:1e20);   // TOUGE-ELEV B2 (was missing from this copy)
  gl_FragColor=vec4(c,1);
  gl_FragDepth=min(.99999,t/5000.0); }`;
 const ribbon=prefix+'varying vec3 worldPoint, roadNormal; varying vec4 roadUV;\n'+body+ribbonMain;
@@ -48,10 +50,10 @@ const carBase=lighting+tpl;
 const rows=[];
 for(const v of variants){
   rows.push(['FLAT ground (full-screen)',tag(v),analyse(lighten(S.ground,v))]);
-  rows.push(['TOUGE ribbon',tag(v),analyse(touge.passShader(lighten(ribbon,v)))]);
+  rows.push(['TOUGE ribbon',tag(v),analyse(touge.passShader(lighten(ribbon,{...v,noBlend:true})))]);
   rows.push(['FLAT object (instanced)',tag(v),analyse(lighten(obj.objectFragment,v))]);
-  rows.push(['TOUGE object (instanced)',tag(v),analyse(touge.passShader(lighten(obj.objectFragment,v)))]);
+  rows.push(['TOUGE object (instanced)',tag(v),analyse(touge.passShader(lighten(obj.objectFragment,{...v,noBlend:true})))]);
   rows.push(['FLAT mesh car',tag(v),analyse(lighten(carBase,v))]);
-  rows.push(['TOUGE mesh car',tag(v),analyse(touge.passShader(lighten(carBase,v)))]);
+  rows.push(['TOUGE mesh car',tag(v),analyse(touge.passShader(lighten(carBase,{...v,noBlend:true})))]);
 }
 for(const r of rows)console.log(r[0].padEnd(28),r[1].padEnd(16),'declared',r[2].declared,'textual',r[2].textual,'reachable',r[2].reachable,'not-reachable:',r[2].unusedReach.join(','));

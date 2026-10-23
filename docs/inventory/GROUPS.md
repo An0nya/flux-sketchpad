@@ -144,7 +144,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `scatterCycle` | beam cycle | profile | advanced air beam | 0 | needs `air` [hidden], `tableMode` [disabled], `cacheOn` [disabled] |
 | `scatterBinCounts` | slice samples (debug) | profile | advanced air beam | "" | needs `air` [hidden], `tableModeHidden` [hidden] |
 | `scatterQuality` | air beam quality (written by the air level) | profile | no control | "steps" | needs `air` [hidden], `tableModeHidden` [hidden] |
-| `scatterCycleFade` | cycle blend | profile | advanced air beam | "off" | needs `air` [hidden], `tableMode` [disabled], `cacheOn` [disabled], `cycle8` [hidden] |
+| `scatterCycleFade` | cycle blend | profile | advanced air beam | "off" | needs `air` [hidden], `tableMode` [disabled], `cacheOn` [disabled], `cycle8` [hidden]; ignored when `mountainPassBlend` [none] |
 | `scatterNearFadeRange` | beam near fade | profile | advanced air beam | "medium" | needs `air` [hidden], `tableMode` [disabled] |
 | `scatterNearBias` | near-eye sampling | profile | advanced air beam | 0 | needs `air` [hidden], `tableModeHidden` [hidden] |
 | `scatterGain` | air beam gain | profile | advanced halo | 1 | needs `tableModeTip` [none] |
