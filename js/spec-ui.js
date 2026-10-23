@@ -1031,7 +1031,7 @@
       else if (k === 'airLevel') { b.value = RF.Drive.airLevelOf(o); }
       else if (k === 'scatter') { const L = scatLevels(o), j = Math.max(0, L.indexOf(+o.scatter || 0)); [...b.options].forEach((op, i) => { op.textContent = 'air beam: ' + SCAT_NAMES[i] + (o.scatterMode === 'table' && i > 0 ? ' (' + L[i] + ')' : ''); }); b.value = String(j); b.hidden = visIndex(o.visibility) === 0; }
       else if (k === 'lampHalos') { b.value = o.lampHalos === 'on' ? 'on' : 'off'; }
-      else if (k === 'lampCone') { b.value = o.lampCone === 'on' ? 'on' : 'off'; }
+      else if (k === 'lampCone') { b.value = o.lampCone === 'on' ? 'on' : 'off'; b.hidden = visIndex(o.visibility) === 0; }
       else if (k === 'lampClass') { b.value = ['II', 'III', 'IV', 'V'].includes(o.lampClass) ? o.lampClass : 'III'; }
       else if (k === 'lampRoad') { b.value = o.lampRoad === 'table' ? 'table' : 'off'; }
       else if (k === 'trafficHalo') { const j = Math.max(0, HALO_LEVELS.indexOf(+o.trafficHalo || 0)); b.value = String(HALO_LEVELS[j]); b.hidden = visIndex(o.visibility) === 0; }

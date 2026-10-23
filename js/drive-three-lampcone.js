@@ -11,7 +11,7 @@
      - rMin = D.SCAT.rMin (the lamp's own size, as the air beam uses).
    Geometry (the cone is the table's own shape, not a separate surface):
      - the ray is clipped to the slab 0 <= z <= lamp height: the road plane below, the lamp's horizontal above (no light above the lamp's horizontal).
-     - inside the slab the ray is sampled at LAMP_CONE_STEPS geometric midpoints. The table is zero beyond the cutoff (edge 85 deg sodium, 80 deg LED),
+     - inside the slab the ray is sampled at LAMP_CONE_STEPS equiangular midpoints about the lamp (see the shader). The table is zero beyond the cutoff (edge 85 deg sodium, 80 deg LED),
        so points outside the cone add nothing. The cone's outer edge is therefore soft by construction (the table's own fall-off).
    Not done (see report): analytic ray-cone chord; scene-depth occlusion (the pass would sample the depth texture of the target it draws into: a feedback loop).
    Units: the target is cd/m^2-scale, the same convention as the lamp halo (lamp-halo header). Tuning values are the owner's to judge by eye. */
@@ -48,16 +48,20 @@ void main() {
     if (abs(ray.z) < 1e-6) { if (eyeP.z < 0.0 || eyeP.z > L.z) continue; }
     else { float s0 = (0.0 - eyeP.z) / ray.z, s1 = (L.z - eyeP.z) / ray.z; sa = max(sa, min(s0, s1)); sb = min(sb, max(s0, s1)); }
     if (sb <= sa) continue;
-    float q = pow(sb / sa, 1.0 / ${LAMP_CONE_STEPS.toFixed(1)});
+    // Equiangular sampling about the lamp (Kulla & Fajardo 2012): samples are uniform in the angle the segment subtends at the lamp, so the 1/r^2 peak
+    // near the closest approach is resolved; ds / r^2 = dtheta / h exactly, so the 1/r^2 factor drops out of the sample weight.
+    vec3 D = L - eyeP; float t0 = dot(D, ray); float h = max(sqrt(max(dot(D, D) - t0 * t0, 0.0)), rMin);
+    float ta = atan((sa - t0) / h), tb = atan((sb - t0) / h), dth = (tb - ta) / ${LAMP_CONE_STEPS.toFixed(1)};
     for (int k = 0; k < ${LAMP_CONE_STEPS}; k++) {
-      float a = sa * pow(q, float(k)), b = a * q, s = sqrt(a * b), ds = b - a;
+      float th = ta + (float(k) + 0.5) * dth;
+      float s = t0 + h * tan(th);
       vec3 v = eyeP + s * ray - L; float r2 = dot(v, v), r = sqrt(r2);
       if (r <= 0.0 || v.z >= 0.0) continue;
       float I = coneI(v, cSt[i]) * cScale[i];
       if (I <= 0.0) continue;
       float cs = dot(v / r, -ray);   // scattering angle: 1 = light travelling straight at the eye
       float p = (1.0 - gHG * gHG) / (4.0 * 3.14159265 * pow(1.0 + gHG * gHG - 2.0 * gHG * cs, 1.5));
-      acc += sigma * p * I / max(r2, rMin * rMin) * exp(-sigma * (r + s)) * ds * cTint[i];
+      acc += sigma * p * I * exp(-sigma * (r + s)) * dth / h * cTint[i];
     }
   }
   gl_FragColor = vec4(acc, 1.0);
