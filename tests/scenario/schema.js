@@ -1,7 +1,6 @@
 // Scenario schema: a small hand validator with no dependencies. Used by tests/scenario/run.js and tests/scenario-node.js.
 // A scenario is a JSON file that sets up one drive-view situation. See tests/scenario/README.md for the fields.
-// The option keys are checked against the UI's own list: DV_DEF in js/spec-ui.js plus every key the UI passes to setDV.
-// js/spec-ui.js needs the DOM, so Node cannot load it; DV_DEF is read from its source text instead (one line, checked below).
+// The option keys are checked against the UI's own list: DV_DEF (generated from js/options-registry.js) plus every key the UI passes to setDV.
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const ROOT = path.join(__dirname, '..', '..');
 const SCENES = ['road', 'forest', 'city'];
@@ -15,13 +14,15 @@ const ENUMS = { scatterMode: ['direct', 'table'], scatterRes: ['half', 'full'], 
 
 class ScenarioError extends Error {}
 
-// DV_DEF is one line in js/spec-ui.js: "  const DV_DEF = { ... };"
+// DV_DEF is generated from the option registry (js/options-registry.js, a dependency-free classic script):
+// run it in a fresh context and ask it for the defaults.
 function readDvDefaults(root = ROOT) {
-  const src = fs.readFileSync(path.join(root, 'js', 'spec-ui.js'), 'utf8');
-  const m = src.match(/const DV_DEF = (\{.*\});/);
-  if (!m) throw new Error('scenario schema: could not find "const DV_DEF = {...};" on one line in js/spec-ui.js (it moved or changed shape; update readDvDefaults)');
-  const defs = vm.runInNewContext('(' + m[1] + ')');
-  if (!defs || typeof defs.wet !== 'boolean') throw new Error('scenario schema: DV_DEF did not parse as expected');
+  const file = path.join(root, 'js', 'options-registry.js');
+  const sandbox = {};
+  vm.runInNewContext(fs.readFileSync(file, 'utf8'), sandbox, { filename: file });
+  if (!sandbox.RF || !sandbox.RF.Options) throw new Error('scenario schema: js/options-registry.js did not define RF.Options');
+  const defs = sandbox.RF.Options.defaults();
+  if (!defs || typeof defs.wet !== 'boolean') throw new Error('scenario schema: the registry defaults did not look as expected');
   return defs;
 }
 
