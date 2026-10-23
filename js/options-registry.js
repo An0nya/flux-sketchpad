@@ -48,7 +48,7 @@
     'onDist', 'preDist', 'onKcd', 'RL', 'ambient', 'smooth', 'res', 'fov'];
 
   // ---- where the code enforces a rule (file, a snippet to search for, approximate line at main 251f801)
-  const SPEC = 'js/spec-ui.js', ANIM = 'js/drive-anim.js', DRIVE = 'js/drive.js', THREE = 'js/drive-three.js';
+  const SPEC = 'js/spec-ui.js', ANIM = 'js/drive-anim.js', DRIVE = 'js/drive.js', THREE = 'js/drive-three.js', TOUGE = 'js/drive-touge.js';
 
   // ---- the shared rules. A condition is { opt, eq | ne | gt | in } on an option value, { ctx, eq } on the render context
   // (renderer: 'gpu' | 'cpu', preset: 'us' | 'ece'), or { any: [...] } / { all: [...] }. Missing eq/ne/gt/in means "truthy".
@@ -72,6 +72,8 @@
       at: { file: DRIVE, fn: 'function haloN', line: 819 } },
     coneOn: { cond: { opt: 'lampCone', eq: 'on' }, why: 'the cone gain only scales the lamp cone (lampCone on)', effect: 'hidden',
       at: { file: SPEC, fn: "o.lampCone !== 'on'", line: 1034 } },
+    powerlinesOn: { cond: { opt: 'powerlines', eq: 'on' }, why: 'the wire reflectance only changes the power wires (powerlines on; the open-road wild chunk and the pass build them only then)', effect: 'hidden',
+      at: { file: TOUGE, fn: "flags.powerlines === 'on'", line: 119 } },
     trafficBeamsLight: { cond: { opt: 'trafficBeams', eq: true }, why: 'road light from other cars only exists with traffic beams on', effect: 'none',
       at: { file: ANIM, fn: 'const lightRangeOf', line: 23 } },
     symmetricOncoming: { cond: { all: [{ opt: 'onMode', eq: 'symmetric' }, { opt: 'oncoming', eq: true }] }, why: 'symmetric oncoming traffic only', effect: 'tooltip',
@@ -562,6 +564,17 @@
       group: 'scenery', cost: 'scene-regenerate',
       owner: ['js/drive-scenes.js', 'js/drive-anim.js', 'js/drive-touge.js'],
       tests: ['PL1-powerlines', 'PL2-powerlines-pass'],
+    },
+    {
+      // POWERLINES: wire albedo (diffuse reflectance, tuning, not measured). materials(look) in js/drive.js reads it, so the CPU table and the GPU table both change at runtime.
+      id: 'powerlineReflectance', kind: 'profile', type: 'number', values: { min: 0.02, max: 0.60, step: 0.01 },
+      default: 0.12, label: 'wire reflectance',
+      control: '[data-anim="powerline-reflectance"]', where: 'more', query: null,
+      group: 'scenery', cost: 'free',
+      owner: ['js/drive.js', 'js/drive-anim.js', 'js/spec-ui.js'],
+      requires: [need('powerlinesOn')],
+      tests: ['PL3-powerlines-reflectance'],
+      note: 'Tuning value, not measured. Changes the wire material only: poles, road and the rest of the scene are unchanged.',
     },
     {
       id: 'veg', kind: 'profile', type: 'bool', values: null,

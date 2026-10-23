@@ -230,6 +230,7 @@ export function create(canvas, gl, onModelsReady) {
     const vg = p.src.verge; set('vergeWidth', vg[1] || 1.5); u.verge.value.set(D.MAT_KEYS.indexOf(vg[0]), D.MAT_KEYS.indexOf(vg[2] || vg[0]));
     const materials = D.materials(look), width = D.MAT_KEYS.length;
     D.MAT_KEYS.forEach((k, i) => { const m = materials[k]; materialData.set(m.rho, i * 4); materialData.set(m.emit || [0, 0, 0], (3 * width + i) * 4); materialData.set(m.retro || [0, 0, 0], (width + i) * 4); materialData.set(m.gloss ? [m.gloss.a, m.gloss.F0, 0, 0] : [0, 0, 0, 0], (2 * width + i) * 4); }); materialTexture.needsUpdate = true;
+    materialTexture.needsUpdate = true;   // the table is rewritten every render (the wire albedo is a live option); without this the GPU keeps the old rows
     const marks = world.markings || p.src.markings.map(m => m.pat ? { ...m, pat: { ...m.pat, s0: m.pat.s0 - dist % m.pat.period, s1: m.pat.s1 - dist % m.pat.period } } : m);
     if (marks.length > 128) throw Error('too many ground markings'); set('nMark', marks.length);
     const skips = marks.find(m => m.skip)?.skip || []; if (skips.length > 16) throw Error('too many marking openings'); set('nSkip', skips.length); skips.forEach((q, i) => u.skip.value[i].fromArray(q));

@@ -54,6 +54,7 @@ const FROZEN_OLD_DV_DEF = {
   reflectiveClothing: 'mix',
   posts: true,
   powerlines: 'off',   // POWERLINES: new option (default off), not a default change; added to the frozen copy like lampCone
+  powerlineReflectance: 0.12,   // POWERLINES: new option (wire albedo), not a default change of an existing key
   veg: true,
   obstacle: false,
   rpm: true,
@@ -105,7 +106,7 @@ const FROZEN_OLD_DV_DEF = {
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();
-ok('frozen copy has 90 keys (+ powerlines, POWERLINES, new option default off) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 90, Object.keys(FROZEN_OLD_DV_DEF).length);
+ok('frozen copy has 91 keys (+ powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 91, Object.keys(FROZEN_OLD_DV_DEF).length);
 let equal = true, why = null;
 try { assert.deepStrictEqual(gen, FROZEN_OLD_DV_DEF); } catch (e) { equal = false; why = String(e.message).split('\n').slice(0, 12).join(' | '); }
 ok('generated defaults deep-equal the old DV_DEF (values and types)', equal, why);

@@ -34,7 +34,7 @@
   // wet: the wet look of a material, applied by materials() at road wetness W (see wetMaterial). Its presence is what makes a material take the wet sheen (SHEEN_IDS).
   // streak: the material also takes the streak from our own beam and the street lamps (OWN_STREAK_IDS). Concrete has the reflection sheen only, as before.
   // POWERLINES: wire diffuse reflectance is a TUNING value, not measured. Owner idea: a smooth coated wire reflects more (try 0.12 here).
-  const POWERLINE_WIRE_RHO = 0.04;
+  const POWERLINE_WIRE_RHO = 0.12;
   const MAT_DEF = {
     'asphalt': { name: 'asphalt', rho: [0.10, 0.10, 0.10], gloss: { a: 0.5, F0: 0.04 }, wet: { rho: [0.05, 0.05, 0.05], gloss: { a: 0.09, F0: 0.02 } }, streak: true },
     'gravel': { name: 'gravel shoulder', rho: [0.22, 0.21, 0.19] },
@@ -114,6 +114,8 @@
       out[k] = r;
     }
     if (W > 0) for (const k of MAT_KEYS) if (MAT_DEF[k].wet) out[k] = wetMaterial(out[k], MAT_DEF[k].wet, W, !!look.wetSheen);
+    // POWERLINES: the wire albedo is the option powerlineReflectance (registry). The constant is only the fallback for a look without it.
+    if (out.wire) { const R = typeof look.powerlineReflectance === 'number' ? look.powerlineReflectance : POWERLINE_WIRE_RHO; out.wire = { ...out.wire, rho: [R, R, R] }; }
     return out;
   }
 
