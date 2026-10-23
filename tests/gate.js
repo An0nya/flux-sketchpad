@@ -37,6 +37,7 @@ const MAP = [
   [/^js\/lamp-dist\.js$/, ['LHS1-lamp-halos', 'LDR1-lamp-road']], [/^tests\/regress\/LDR1-lamp-road\.js$/, ['LDR1-lamp-road']],
   [/^js\/options-registry\.js$/, ['ui', 'nodeAll', 'node:drive-controls2', 'node:scenario-node']],   // OPTION-REGISTRY: the defaults of every option; tests/options-registry.js and options-migration.js are in NODE
   [/^index\.html$/, ['ui']], [/^tests\/load\.js$/, ['nodeAll']],
+  [/^js\/compare-ui\.js$/, ['RESET-DRIVE-SETTINGS', 'AB-compare']], [/^css\/app\.css$/, ['ui', 'RESET-DRIVE-SETTINGS']],   // RESET-DRIVE-SETTINGS: the reset button lives in the A/B solve-cache bar; its CSS is the spec-mode gate
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];
 const NOT_TESTS = ['gate', 'load', 'serve'];
