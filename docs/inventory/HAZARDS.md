@@ -30,6 +30,7 @@ Terms, defined once: a *fragment shader* is the small GPU program run for every 
 
 ## H4. The pass silently drops features whose controls stay visible
 - **What (OBSERVED)**: no halo on the pass (`!p.touge`, js/drive-three.js:295), no air-beam or halo term in the ribbon's own `main` (js/drive-touge-three.js:48-52 vs the flat main at drive-three-shaders.js:231-232), no people (drive-scenes.js:176), no leafy foliage / tree impostors (drive-three-objects.js:172,211), `scene`/`wild` overridden (drive-anim.js:33). The controls for all of these stay enabled (spec-ui.js sync loop 1012-1051 has no pass test; the only pass test in spec-ui is the scene select, :921,1014). The air hold still waits for a halo that is never built (drive-anim.js:2333).
+- **TOUGE-AIR addition (OBSERVED 2026-10-23)**: on the pass the air-beam table (`scatterMode` table) no longer crashes the object program, but the cycle blend (`scatterCycleFade`) is ignored there (the second bank set is compiled out to stay under 16 samplers) and the control stays enabled; the air beam lights objects only, never the road (ribbon has no `inScatter`).
 - **Interacts**: `mountainPass` x `trafficHalo`, `haloQuality`, `scatter`, `scatterMode`, `people`, `leafyFoliage`, `scene`, `wild`.
 - **Seam**: option registry `requires`/`conflicts` fields with a "greyed because: not available on the mountain pass" rule (DESIGN.md), fed by a per-road-type capability list.
 

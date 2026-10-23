@@ -46,13 +46,14 @@ export function create(canvas, gl, onModelsReady) {
   const halo = haloPass(renderer, u);   // SL: the traffic scatter table (built only when look.trafficHalo is on)
   const lampCone = createLampCone(renderer);   // LAMP-CONE-MIST: lit cone of mist under each street lamp (option lampCone; off or clear air = no change)
   const lampHalo = createLampHalo(renderer, u);   // LAMP-HALO-SPRITES: glare veil on lit lamps (option lampHalos; off = no change)
-  function shading(material, enabled, mountain = false, table = false) {
+  // blend (TOUGE-AIR): false leaves the table's cycle-blend bank set out of the program (the pass objects need that to stay at 15 samplers, see RENDER.md section 4).
+  function shading(material, enabled, mountain = false, table = false, blend = true) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
-    const atlas = atlasOn && enabled;
-    if (material.userData.p2 === enabled && material.userData.tg === mountain && material.userData.tbl === table && material.userData.at === atlas) return;
+    const atlas = atlasOn && enabled, bl = table ? blend : true;   // blend only changes the text when the table is on
+    if (material.userData.p2 === enabled && material.userData.tg === mountain && material.userData.tbl === table && material.userData.at === atlas && material.userData.bl === bl) return;
     let source = enabled ? withLighting(material.userData.baseFragment, atlas) : material.userData.baseFragment;
-    if (table) source = tableSource(source);
-    material.fragmentShader = mountain ? passShader(source) : source; material.userData.tg = mountain; material.userData.tbl = table;
+    if (table) source = tableSource(source, blend);
+    material.fragmentShader = mountain ? passShader(source) : source; material.userData.tg = mountain; material.userData.tbl = table; material.userData.bl = bl;
     material.userData.p2 = enabled; material.userData.at = atlas; material.needsUpdate = true;
   }
   // SD1 table pre-pass (look.scatterMode 'table'): three banks of four bins at the table's resolution, optional separable blur, then the lit passes read them.
@@ -194,7 +195,7 @@ export function create(canvas, gl, onModelsReady) {
     else {
       const ph = advanceCycle(dist), i0 = Math.floor(ph) % TAB_VERSIONS; fract = ph - Math.floor(ph);
       shownIndex = nearestValid(i0);
-      if (look.scatterCycleFade === 'on' && valid.length >= 2) { const j = nearestValid((i0 + 1) % TAB_VERSIONS); if (j >= 0 && j !== shownIndex) blendIndex = j; }
+      if (look.scatterCycleFade === 'on' && !p.touge && valid.length >= 2) { const j = nearestValid((i0 + 1) % TAB_VERSIONS); if (j >= 0 && j !== shownIndex) blendIndex = j; }
     }
     tabFrame++;
     const shown = shownIndex < 0 ? null : slots[shownIndex], blend = blendIndex < 0 ? null : slots[blendIndex];
@@ -320,7 +321,7 @@ export function create(canvas, gl, onModelsReady) {
     atlasState() { const n = u.nTraffic.value; return { on: atlasOn, beams: atlasPacked ? atlasPacked.count : 0, nTraffic: n, cars: litCars.slice(0, n), idx: Array.from({ length: n }, (_, i) => u.trafficBeamIdx.value[i >> 2].getComponent(i & 3)), tints: atlasPacked ? Array.from({ length: atlasPacked.count }, (_, i) => u.beamTint.value[i].toArray().slice(0, 3)) : [] }; },
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
-      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn);
+      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1, blendOn = !p.touge; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn, false);   // TOUGE-AIR: blendOn false = no cycle-blend banks on the pass (blendOn is re-read for the objects below)
       u.scatUV.value.set(1 / p.w, 1 / p.h); u.haloUV.value.set(1 / p.w, 1 / p.h); if (tableOn) runTable(p, extras, dist);
       if (!p.airHold) halo.build(p, world); else u.haloOn.value = 0;   // TOUGE-ELEV B2: touge frames build the halo too (lamps in the car frame, B1)   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
       renderer.resetState();
@@ -336,7 +337,7 @@ export function create(canvas, gl, onModelsReady) {
       gl.blitFramebuffer(0, 0, p.w, p.h, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, gl.NEAREST);
       if (objectDestination) {
         if (!objectTarget || objectTarget.width !== p.w * ss || objectTarget.height !== p.h * ss) { if (objectTarget) objectTarget.dispose(); objectTarget = new T.WebGLRenderTarget(p.w * ss, p.h * ss, { type: T.FloatType, depthTexture: new T.DepthTexture(p.w * ss, p.h * ss, T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
-        u.scatUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); u.haloUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge, tableOn); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
+        u.scatUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); u.haloUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge, tableOn, blendOn); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
         lampCone.drawObjects(p, objectTarget);   // LAMP-CONE-OBJECTS: cone added to object pixels up to their distance; leaves the target bound for the blit
         if (failure) throw Error(failure);
         const src = gl.getParameter(gl.FRAMEBUFFER_BINDING); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, objectDestination);
