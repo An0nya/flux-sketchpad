@@ -108,7 +108,14 @@
     const enabled = el('input', { id: 'ab-cache', type: 'checkbox' }), timed = el('input', { id: 'ab-cache-timed', type: 'checkbox' }); enabled.checked = cache.enabled(); timed.checked = cache.timedEnabled();
     const force = el('button', { id: 'ab-resolve', type: 'button' }, 'Re-solve anyway'), clear = el('button', { id: 'ab-cache-clear', type: 'button' }, 'Clear solve cache');
     prefs.append(el('label', {}, enabled, ' Reuse identical solves in this browser'), el('label', {}, timed, ' Also cache time-dependent / uncertain solvers (all worker solvers)'), el('p', { class: 'note' }, 'All worker solvers require the second opt-in: source inspection cannot prove that a helper never uses a clock. Page solvers with clock, random, budget or delegation references also count as uncertain (including progress-only clocks). Cached surfaces: at most 40 entries / 32 MiB; least recently used removed first. Preferences apply in this browser immediately.'), force, clear);
-    bar.append(pinBtn, openBtn, unpinBtn, el('span', { id: 'ab-pin-note', role: 'status' }), prefs, el('span', { id: 'ab-cache-status', role: 'status' })); document.querySelector('.result-pane > .pane-head').append(bar);
+    // Reset drive settings (spec mode only, CSS in css/app.css): clears the saved drive options (flux/driveView) and reloads with a plain URL.
+    // Not ?reset: that also turns on safe mode. The other saved UI state (scene, beam library, layout keys) is left alone.
+    const resetDrive = RF.Panels.confirmButton('Reset drive settings', 'Reset all drive options to defaults?', () => {
+      try { localStorage.removeItem('flux/driveView'); } catch (e) { id('ab-cache-status').textContent = 'Could not clear drive settings: ' + e.message; return; }
+      location.href = location.pathname;
+    });
+    resetDrive.id = 'ab-reset-drive';
+    bar.append(pinBtn, openBtn, unpinBtn, el('span', { id: 'ab-pin-note', role: 'status' }), prefs, resetDrive, el('span', { id: 'ab-cache-status', role: 'status' })); document.querySelector('.result-pane > .pane-head').append(bar);
     const spec = el('select', { id: 'ab-spec', 'aria-label': 'Comparison preset' }, el('option', { value: '' }, 'B’s saved spec'), ...Object.entries(RF.Spec.PRESETS).map(([k, p]) => el('option', { value: k }, p.label)));
     const rays = el('input', { id: 'ab-rays', type: 'number', value: 300000, min: 100, max: 20000000, step: 10000, 'aria-label': 'Comparison rays' });
     const refreshBtn = el('button', { type: 'button', id: 'ab-refresh' }, 'Refresh comparison'), stop = el('button', { type: 'button', id: 'ab-stop', hidden: true }, 'Stop comparison'), close = el('button', { type: 'button', id: 'ab-close' }, 'Close');

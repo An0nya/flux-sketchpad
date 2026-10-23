@@ -570,6 +570,9 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 /* A/B comparison is opt-in; the ordinary Result canvas keeps its own layout. */
 .ab-tools { display:flex; gap:6px; flex-wrap:wrap; padding:5px 10px; align-items:center; }
 .ab-tools details { margin-left:auto; max-width:420px; font-size:12px; }
+/* Reset drive settings: shown only in spec mode (body.mode-D, set by ui.setMode) */
+#ab-reset-drive { display:none; font-size:12px; }
+body.mode-D #ab-reset-drive { display:inline-block; }
 .ab-tools details[open] { flex-basis:100%; max-width:none; }
 .ab-tools details label { display:block; margin:6px 0; }
 #ab-dialog { width:min(1100px, 94vw); max-height:90vh; overflow:auto; color:var(--text, #ddd); background:var(--panel, #171d27); border:1px solid #607087; border-radius:8px; padding:16px; }
