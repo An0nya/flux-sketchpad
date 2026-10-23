@@ -48,6 +48,7 @@ export function surface(u) {
 void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
  vec3 c=surface(worldPoint,v,t,max(.003,dot(v,normalize(roadNormal))));
  if(sigma>0.0){float T=exp(-sigma*t); c=c*T+ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(v.z)*8.0))*(1.0-T);}
+ if(haloOn>0) c+=haloScatter(t<5000.0?t:1e20);   // TOUGE-ELEV B2: the traffic halo, read at the ribbon's surface distance (as the ground does)
  gl_FragColor=vec4(c,1);
  gl_FragDepth=min(.99999,t/5000.0); }
 `;

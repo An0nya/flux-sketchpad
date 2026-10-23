@@ -2336,7 +2336,8 @@ void main() {
   const AIR_HOLD_FRAMES = 2;
   function airTick() {
     const o = V.info ? V.info.o : {};
-    if (!(V.three && (o.scatterMode === 'table' || o.trafficHalo))) { V.airSeq = null; V.airHold = false; return; }
+    // TOUGE-ELEV B2: a touge frame's halo alone does not arm the air hold (table mode still does)
+    if (!(V.three && (o.scatterMode === 'table' || (o.trafficHalo && !(V.p && V.p.touge))))) { V.airSeq = null; V.airHold = false; return; }
     const n = V.airSeq ? V.airSeq.n + 1 : 1;
     V.airSeq = { n }; V.airHold = n <= AIR_HOLD_FRAMES;
     V.airStatus = n === AIR_HOLD_FRAMES ? 'compiling air-beam shaders…' : 'preparing air beam…';
