@@ -322,7 +322,14 @@ export function create(canvas, gl, onModelsReady) {
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
       const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1, blendOn = !p.touge; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn, false);   // TOUGE-AIR: blendOn false = no cycle-blend banks on the pass (blendOn is re-read for the objects below)
-      u.scatUV.value.set(1 / p.w, 1 / p.h); u.haloUV.value.set(1 / p.w, 1 / p.h); if (tableOn) runTable(p, extras, dist);
+      u.scatUV.value.set(1 / p.w, 1 / p.h); u.haloUV.value.set(1 / p.w, 1 / p.h); if (tableOn) {
+        // TOUGE-AIR-RIBBON: the table pre-pass builds a level car-frame ray, so it must see the car-frame eye and lamps; on a pass frame the uniforms hold the world-aligned
+        // (rotated) copies for the lit passes. Swap the unrotated values (p.eye, p.lamps) in for the table only, then put back what was there. No `touge` test: on a flat frame the
+        // values written are the ones already in the uniforms, so flat output is unchanged.
+        const kept = { eye: u.eye.value.clone(), lamp: u.lamp.value.map((q) => q.clone()) };
+        u.eye.value.fromArray(p.eye || [-2, .37, 1.2]); u.lamp.value.forEach((q, i) => { if (i < p.lamps.length) q.fromArray(p.lamps[i]); });
+        try { runTable(p, extras, dist); } finally { u.eye.value.copy(kept.eye); u.lamp.value.forEach((q, i) => q.copy(kept.lamp[i])); }
+      }
       if (!p.airHold) halo.build(p, world); else u.haloOn.value = 0;   // TOUGE-ELEV B2: touge frames build the halo too (lamps in the car frame, B1)   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
