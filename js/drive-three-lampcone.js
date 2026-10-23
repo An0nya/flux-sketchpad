@@ -32,7 +32,7 @@ const TAB_LEN = 480;   // 475 values (19 gamma x 25 phi) packed 4 per vec4: 120 
 const VERT = 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }';
 const FRAG = `
 uniform vec2 size; uniform float tanH; uniform int nLamp; uniform vec3 eyeP;
-uniform float sigma, rMin, gHG;
+uniform float sigma, rMin, gHG, gain, reach;
 uniform vec3 cLamp[${LAMP_CONE_MAX}]; uniform vec2 cSt[${LAMP_CONE_MAX}]; uniform vec3 cTint[${LAMP_CONE_MAX}]; uniform float cScale[${LAMP_CONE_MAX}];
 uniform vec4 coneTab4[120];
 float tabAt(int k) { int q = k / 4; vec4 v = coneTab4[q]; int c = k - 4 * q; return c == 0 ? v.x : (c == 1 ? v.y : (c == 2 ? v.z : v.w)); }
@@ -51,7 +51,7 @@ void main() {
   for (int i = 0; i < ${LAMP_CONE_MAX}; i++) {
     if (i >= nLamp) break;
     vec3 L = cLamp[i];
-    float sa = 0.5, sb = ${LAMP_CONE_SMAX.toFixed(1)};
+    float sa = 0.5, sb = min(${LAMP_CONE_SMAX.toFixed(1)}, reach > 0.0 ? reach : ${LAMP_CONE_SMAX.toFixed(1)});
     if (abs(ray.z) < 1e-6) { if (eyeP.z < 0.0 || eyeP.z > L.z) continue; }
     else { float s0 = (0.0 - eyeP.z) / ray.z, s1 = (L.z - eyeP.z) / ray.z; sa = max(sa, min(s0, s1)); sb = min(sb, max(s0, s1)); }
     if (sb <= sa) continue;
@@ -71,29 +71,29 @@ void main() {
       acc += sigma * p * I * exp(-sigma * (r + s)) * dth / h * cTint[i];
     }
   }
-  gl_FragColor = vec4(acc, 1.0);
+  gl_FragColor = vec4(acc * gain, 1.0);
 }`;
 
 // LAMP-CONE-OBJECTS: the object-pass variant. Reads the object target's colour (uObj) and depth (uDepth, t/5000) and adds the cone integral
 // up to each object's own distance. Pixels with alpha < 0.5 (sky, road-only, glowing objects) pass through unchanged.
 // Built from FRAG by string replacement: each replacement must hit exactly once (asserted in setup()).
 const FRAG_OBJ_PARTS = [
-  ['void main() {', 'uniform sampler2D uObj, uDepth;\nvoid main() {\n  vec4 base = texelFetch(uObj, ivec2(gl_FragCoord.xy), 0);\n  float tObj = texelFetch(uDepth, ivec2(gl_FragCoord.xy), 0).r * ' + OBJ_DEPTH_RANGE.toFixed(1) + ';\n  if (base.a < 0.5) { gl_FragColor = base; return; }'],
-  ['sb = ' + LAMP_CONE_SMAX.toFixed(1) + ';', 'sb = min(' + LAMP_CONE_SMAX.toFixed(1) + ', tObj);'],
-  ['gl_FragColor = vec4(acc, 1.0);', 'gl_FragColor = vec4(base.rgb + acc, base.a);'],
+  ['void main() {', 'uniform sampler2D uObj, uDepth; uniform float objCap;\nvoid main() {\n  vec4 base = texelFetch(uObj, ivec2(gl_FragCoord.xy), 0);\n  float tObj = objCap > 0.0 ? objCap : texelFetch(uDepth, ivec2(gl_FragCoord.xy), 0).r * ' + OBJ_DEPTH_RANGE.toFixed(1) + ';\n  if (base.a < 0.5) { gl_FragColor = base; return; }'],
+  ['sb = min(' + LAMP_CONE_SMAX.toFixed(1) + ', reach > 0.0 ? reach : ' + LAMP_CONE_SMAX.toFixed(1) + ');', 'sb = min(min(' + LAMP_CONE_SMAX.toFixed(1) + ', reach > 0.0 ? reach : ' + LAMP_CONE_SMAX.toFixed(1) + '), tObj);'],
+  ['gl_FragColor = vec4(acc * gain, 1.0);', 'gl_FragColor = vec4(base.rgb + acc * gain, base.a);'],
 ];
 const FRAG_OBJ = (() => { let f = FRAG; for (const [a, b] of FRAG_OBJ_PARTS) { if (f.split(a).length !== 2) throw Error('FRAG_OBJ: pattern not unique: ' + a.slice(0, 40)); f = f.replace(a, b); } return f; })();
 
 export function createLampCone(renderer) {
   let mat = null, mesh = null, scene = null, camera = null, last = { on: 0, count: 0, sigma: 0, lamps: [] };
-  let objMat = null, objScene = null, objTarget = null;
+  let objMat = null, objScene = null, objTarget = null, objOn = true, lastSrc = null;
   const tabCache = new Map();
   function setup() {
     const ones = (n, mk) => Array.from({ length: n }, mk);
     mat = new T.ShaderMaterial({
       uniforms: {
         size: { value: new T.Vector2(1, 1) }, tanH: { value: 0 }, nLamp: { value: 0 }, eyeP: { value: new T.Vector3() },
-        sigma: { value: 0 }, rMin: { value: 0.3 }, gHG: { value: LAMP_CONE_G },
+        sigma: { value: 0 }, rMin: { value: 0.3 }, gHG: { value: LAMP_CONE_G }, gain: { value: 1 }, reach: { value: 0 },
         cLamp: { value: ones(LAMP_CONE_MAX, () => new T.Vector3()) }, cSt: { value: ones(LAMP_CONE_MAX, () => new T.Vector2()) },
         cTint: { value: ones(LAMP_CONE_MAX, () => new T.Vector3()) }, cScale: { value: new Float32Array(LAMP_CONE_MAX) },
         coneTab4: { value: new Float32Array(TAB_LEN) },
@@ -104,7 +104,7 @@ export function createLampCone(renderer) {
     scene = new T.Scene(); scene.add(mesh); camera = new T.Camera();
     // Object-pass material: shares every uniform object with the ground pass (same lamp list, same table, same sigma), adds the two samplers.
     objMat = new T.ShaderMaterial({
-      uniforms: Object.assign({}, mat.uniforms, { uObj: { value: null }, uDepth: { value: null } }),
+      uniforms: Object.assign({}, mat.uniforms, { uObj: { value: null }, uDepth: { value: null }, objCap: { value: 0 } }),
       vertexShader: VERT, fragmentShader: FRAG_OBJ, depthTest: false, depthWrite: false, transparent: false, blending: T.NoBlending,
     });
     objScene = new T.Scene(); objScene.add(new T.Mesh(new T.PlaneGeometry(2, 2), objMat));
@@ -143,7 +143,7 @@ export function createLampCone(renderer) {
     const U = mat.uniforms;
     U.size.value.set(p.w, p.h); U.tanH.value = Math.tan(p.hfov * Math.PI / 360);
     U.eyeP.value.set(eye[0], eye[1], eye[2]); U.sigma.value = sigma;
-    U.rMin.value = D.SCAT.rMin; U.gHG.value = LAMP_CONE_G;
+    U.rMin.value = D.SCAT.rMin; U.gHG.value = LAMP_CONE_G; U.gain.value = p.lampConeGain != null ? +p.lampConeGain : 1;   // LAMP-CONE-OBJECTS gain: brightness only
     U.coneTab4.value = tableFor(cls, kind);
     near.forEach(({ L }, i) => {
       U.cLamp.value[i].set(L.x, L.y, L.z); U.cSt.value[i].set(L.street[0], L.street[1]);
@@ -171,19 +171,37 @@ export function createLampCone(renderer) {
     // object's own distance. Leaves the bound target as it was for off / no-lamp frames (no GL change), so the off frame stays byte-identical.
     drawObjects(p, src) {
       if (p.lampCone !== 'on' || !last.on || !(last.sigma > 0) || !last.count || !objMat) return;
-      if (globalThis.__lcoSkipObjects) return;   // TEST-ONLY hook (reproduces the pre-fix object path for before shots); remove before merge
+      if (!objOn) return;   // test switch (drive-three.js hook lampConeObjects): off = the pre-fix frame. Production never sets it; default on.
       const W = src.width, H = src.height;
       if (!objTarget || objTarget.width !== W || objTarget.height !== H) {
         if (objTarget) objTarget.dispose();
         objTarget = new T.WebGLRenderTarget(W, H, { type: T.FloatType, depthBuffer: false, minFilter: T.NearestFilter, magFilter: T.NearestFilter });
       }
       mat.uniforms.size.value.set(W, H);   // shared with objMat; the ground pass sets it again next frame
-      objMat.uniforms.uObj.value = src.texture; objMat.uniforms.uDepth.value = src.depthTexture;
+      objMat.uniforms.uObj.value = src.texture; objMat.uniforms.uDepth.value = src.depthTexture; lastSrc = src;
       const ac = renderer.autoClear; renderer.autoClear = false;
       renderer.setRenderTarget(objTarget); renderer.render(objScene, camera);
       renderer.autoClear = ac;
       last.objects = true;
       return objTarget;
+    },
+    // Test hooks (inert in production: nothing calls them except the test hook in drive-three.js).
+    setObjects(on) { objOn = !!on; return objOn; },
+    setReach(n) { if (mat) mat.uniforms.reach.value = n > 0 ? n : 0; return n; },
+    setCap(t) { if (objMat) objMat.uniforms.objCap.value = t > 0 ? t : 0; return t; },
+    // Cost of the object-pass draw alone (GPU timer query, scratch target). Call after a frame with lampCone on and the objects drawn.
+    async timeObjects(gl, repeats = 8) {
+      const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2'); if (!ext) return { gpuMs: null, reason: 'timer extension unavailable' };
+      if (!objMat || !lastSrc) return { gpuMs: null, reason: 'no object-pass frame yet' };
+      if (gl.getQuery(ext.TIME_ELAPSED_EXT, gl.CURRENT_QUERY)) return { gpuMs: null, reason: 'another timer is active' };
+      const W = lastSrc.width, H = lastSrc.height;
+      const scratch = new T.WebGLRenderTarget(W, H, { type: T.FloatType, depthBuffer: false, minFilter: T.NearestFilter, magFilter: T.NearestFilter });
+      const query = gl.createQuery(); mat.uniforms.size.value.set(W, H); objMat.uniforms.uObj.value = lastSrc.texture; objMat.uniforms.uDepth.value = lastSrc.depthTexture;
+      renderer.resetState(); renderer.setRenderTarget(scratch); const ac = renderer.autoClear; renderer.autoClear = false;
+      gl.beginQuery(ext.TIME_ELAPSED_EXT, query); for (let i = 0; i < repeats; i++) renderer.render(objScene, camera); gl.endQuery(ext.TIME_ELAPSED_EXT);
+      renderer.autoClear = ac; renderer.setRenderTarget(null); renderer.resetState(); gl.flush(); scratch.dispose();
+      for (let i = 0; i < 300; i++) { await new Promise((r) => setTimeout(r, 10)); if (gl.getParameter(ext.GPU_DISJOINT_EXT)) { gl.deleteQuery(query); return { gpuMs: null, reason: 'disjoint GPU timer' }; } if (gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE)) { const ns = gl.getQueryParameter(query, gl.QUERY_RESULT); gl.deleteQuery(query); return { gpuMs: ns / 1e6 / repeats, repeats, W, H }; } }
+      gl.deleteQuery(query); return { gpuMs: null, reason: 'timer timeout' };
     },
     state() { return last; },
     // Cost hook (test only): GPU ms per draw of this pass with n lamps (timer query on a scratch target). Call after a frame with lampCone on.
