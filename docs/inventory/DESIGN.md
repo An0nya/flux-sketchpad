@@ -1,4 +1,13 @@
-# DESIGN: an option registry (proposal only, nothing here is built)
+# DESIGN: an option registry
+
+**Status (2026-10-22, feat/option-registry): steps 1, 3 (data only), 6 (frozen defaults only) and 11 (OPTIONS.md columns) are built; the rest is not.** What exists and where it differs from the proposal below:
+- **Step 1 done** in `js/options-registry.js` (classic script, loaded after core.js; `RF.Options`; also `require()`-able). 87 `profile` entries equal the old `DV_DEF` (tests/options-registry.js holds a frozen copy of the literal) plus 12 entries that are NOT in `DV_DEF` (`extra`, `derived`, `session`, `game`). The entry fields follow section 2 with these differences: `kind` replaces `scope` (`profile | extra | derived | session | game`); `where` records where the control sits today; `group` is the proposal in GROUPS.md; `cost` uses the classes `free | per-frame-gpu | table-rebuild | scene-regenerate | recompile | renderer-swap | cpu-still | worker`; `requires`/`ignoredWhen`/`conflicts` are lists of named rules (`RULES`) that carry the condition, a plain reason, the UI effect today and the code location (checked by a test); `defaultHistory` replaces `since` and `migration`. Not built: `query` (only `?halobins` is recorded), `unavailableOn`, `budget`, `bundle` semantics (members listed, no `derive()`).
+- **Step 3 as data only:** `RF.Options.unmet(id, opts, ctx)` is a pure function that lists unmet rules; nothing in the UI or renderer calls it yet (step 4).
+- **Step 6 partly:** only the frozen-defaults part (H2): `RF.Options.migrateProfile` and `defaultsVersion`. The long migration line in `dvOpts()` (SF2, GI2, TL2, onKcd, wetness, glare) was left in place; storing only changed keys (step 8) was not built.
+- **Step 11 partly:** OPTIONS.md columns id, kind, group, cost class, default, requires, owner and a rules table are generated (`scripts/gen-options-docs.js`), as is a GROUPS.md listing. The gate MAP is still hand-written.
+- Steps 2, 4, 5, 7, 8, 9, 10 are not started.
+
+*The rest of this file is the original proposal, unchanged.*
 
 Generated 2026-10-22 on branch docs/inventory (base main f52ed8a). A proposal for the owner to accept, change or reject. It rests on the facts in OPTIONS.md, HAZARDS.md and RENDER.md; the hazard numbers (H1..H15) point there.
 

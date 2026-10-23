@@ -1,6 +1,6 @@
 # docs/inventory
 
-Read-only inventory of the drive view (2026-10-22, base main f52ed8a). Start with HAZARDS.md.
+Inventory of the drive view (written 2026-10-22, base main f52ed8a; the option registry landed on feat/option-registry the same day). Start with HAZARDS.md. The option list now lives in `js/options-registry.js`; OPTIONS.md and GROUPS.md are partly generated from it.
 
 | file | what |
 |---|---|
@@ -10,7 +10,8 @@ Read-only inventory of the drive view (2026-10-22, base main f52ed8a). Start wit
 | RENDER.md | passes, programs, sampler/uniform counts, cache keys, frame-budget machinery |
 | COVERAGE.md | option x test matrix, curated gate vs MAP, pedestrian-dependent pins |
 | HAZARDS.md | 15 ranked cross-cutting hazards with evidence and the seam that would remove each |
-| DESIGN.md | proposal: option registry schema, dependency display, generation, incremental steps |
-| scripts/ | Node-only helpers that produced the counts (read js/ and tests/, change nothing): `reach.mjs`, `uniforms.mjs` (shader samplers and uniform rows), `options-scan.js` (option readers and tests) |
+| GROUPS.md | proposal for grouping the drive controls (top layer, advanced, duplicates, presets), plus a generated listing from the registry |
+| DESIGN.md | the registry design; steps 1, 3 (as data), 6 (defaults only) and 11 (OPTIONS.md columns) are built, see its Status block |
+| scripts/ | Node-only helpers that produced the counts (read js/ and tests/, change nothing): `reach.mjs`, `uniforms.mjs` (shader samplers and uniform rows), `options-scan.js` (option readers and tests), `gen-options-docs.js` (regenerates the registry columns of OPTIONS.md and the GROUPS.md listing from js/options-registry.js; `--check` reports a stale file) |
 
 Labels used throughout: OBSERVED = read at the cited file:line or computed by a command; INFERRED = deduced, not run. No browser test was run.
