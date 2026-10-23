@@ -109,7 +109,9 @@ async function runOne(browser, s, port, dv) {
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     // the stored drive view the page reads on load: defaults, the scenario's options, its top-level fields and the fixed setup flags
-    const stored = Object.assign({}, dv, SETUP_FLAGS, s.options, { scene: s.scene, seed: s.seed, speed: s.speed });
+    // A scenario is an explicit set of choices, so the profile is stamped with the current defaults version: without it the loader
+    // would take a whole-object profile for an old save and move tiles false / gpuRenderer false / glare dry to the current defaults.
+    const stored = Object.assign({}, dv, SETUP_FLAGS, s.options, { scene: s.scene, seed: s.seed, speed: s.speed, defaultsVersion: require('../../js/options-registry.js').DEFAULTS_VERSION });
     await page.addInitScript((json) => { try { localStorage.setItem('flux/driveView', json); } catch (e) { /* ignore */ } }, JSON.stringify(stored));
     await page.goto('http://127.0.0.1:' + port + '/index.html');
     await page.waitForFunction(() => window.RF?.UI?.loadScene, null, { timeout: 60000 });
