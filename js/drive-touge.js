@@ -113,6 +113,25 @@
       obs.push({ k: 'cyl', x: q.p[0], y: q.p[1], z0: 0, z1: .83, r: .06, mat: 'sign-back', cls: 'rail' });
       if (flags.posts !== false) for (const face of [-1, 1]) obs.push({ k: 'disc', x: q.p[0] + face * .08 * q.t[0], y: q.p[1] + face * .08 * q.t[1], z: .86, r: .065, nx: face * q.t[0], ny: face * q.t[1], nz: 0, mat: 'reflector-white', sub: true, cls: 'post' });
     }
+    // POWERLINES on the pass (opt-in, default off: nothing below runs). Poles sit at absolute route positions every 60 m (same pattern as the
+    // open road), on the reflector side of the road. Each pole and each wire end takes the road height at its own position, so the wires follow
+    // the grade and the bank. Wires are built from those lifted 3D ends and tougePlaced, so lift() does not add the height a second time.
+    if (flags.powerlines === 'on') {
+      const POLE = 9, ATT = 8.6, SAG = 0.6, N = 8, WIRE_R = 0.03, OFF = -p.lane / 2 - 1.2;   // ATT, SAG, WIRE_R: tuning values
+      for (let S = Math.floor((dist - 80) / 60) * 60 + 20; S <= hi + 60; S += 60) {
+        const r = S - dist, q = A.at(r, OFF);
+        obs.push({ k: 'cyl', x: q.p[0], y: q.p[1], r: .13, z0: A.height(r, OFF), z1: A.height(r, OFF) + POLE, mat: 'pole', cls: 'powerline', tougePlaced: true });
+      }
+      for (let S = Math.floor((dist - 80) / 60) * 60 + 20; S <= hi; S += 60) for (const dy of [-.35, .35]) {
+        const r0 = S - dist, off = OFF + dy, zA = A.height(r0, off) + ATT, zB = A.height(r0 + 60, off) + ATT;
+        const P = (t) => { const q = A.at(r0 + 60 * t, off); return [q.p[0], q.p[1], zA * (1 - t) + zB * t - 4 * SAG * t * (1 - t)]; };
+        for (let j = 0; j < N; j++) {
+          const a = P(j / N), b = P((j + 1) / N), d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(d[0], d[1], d[2]);
+          const c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+          obs.push({ k: 'cyl', x: c[0], y: c[1], z0: c[2] - L / 2, z1: c[2] + L / 2, r: WIRE_R, axis: d.map((v) => v / L), mat: 'wire', cls: 'powerline', tougePlaced: true });
+        }
+      }
+    }
     const treeStep=18/Math.max(.5,Math.min(3,p.src.tiles.density || 1.5)/1.5);
     if (flags.veg !== false) for (let s = Math.floor((dist - 10) / treeStep) * treeStep; s < hi; s += treeStep) {
       K.tree(s - dist, 1.5 * p.lane + 6 + 3 * Math.sin(s), { h: 9 + 2 * Math.cos(s), id: 'pass-tree:' + s });

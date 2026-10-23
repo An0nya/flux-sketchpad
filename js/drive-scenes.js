@@ -410,6 +410,21 @@
       const a = actors[actors.length - 1]; a.len = graze ? 0 : Math.abs(a.off0 - (edge(side) - side * a.into));
     }
     k.O.push(...vergeFoliage(ctx, o));
+    // POWERLINES (opt-in, default off: nothing below runs and no random numbers are drawn). Poles 7 m off the right edge every 60 m,
+    // two conductors per span, each span 8 straight segments on a parabolic sag. Chunk-local s: spans start at 20, 80, ..., 260 and
+    // end at 320, which is the next chunk's 20, so every span is emitted once and the chain is continuous across chunks.
+    if (o.powerlines === 'on') {
+      const off = k.edgeR - 7, POLE = 9, ATT = 8.6, SAG = 0.6, N = 8, WIRE_R = 0.03;   // all tuning values
+      for (let s = 20; s < 300; s += 60) k.add({ k: 'cyl', x: s, y: off, r: 0.13, z0: 0, z1: POLE, mat: 'pole', cls: 'powerline' });
+      for (let s0 = 20; s0 < 300; s0 += 60) for (const dy of [-0.35, 0.35]) {
+        const P = (t) => [s0 + 60 * t, off + dy, ATT - 4 * SAG * t * (1 - t)];
+        for (let j = 0; j < N; j++) {
+          const a = P(j / N), b = P((j + 1) / N), d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(d[0], d[1], d[2]);
+          const c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+          k.add({ k: 'cyl', x: c[0], y: c[1], z0: c[2] - L / 2, z1: c[2] + L / 2, r: WIRE_R, axis: d.map((v) => v / L), mat: 'wire', cls: 'powerline' });
+        }
+      }
+    }
     return { objects: k.O, actors, markings, verge: ['gravel', 1.6, 'grass'] };
   }
   // build a scene by name: ctx { Lw (lane width m), A (RF.Road.arc or null), us (US markings), seed }, o { people, animals, signs, posts, veg (false = leave
