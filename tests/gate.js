@@ -34,6 +34,7 @@ const MAP = [
   [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']],
   [/^js\/drive-scenes\.js$/, ['render', 'ui', 'nodeAll']],   // REFLECTIVE-CLOTHING: pedestrians are built here; the RC test is a new regress file, picked up automatically
   [/^js\/drive-three-lamphalo\.js$/, ['LHS1-lamp-halos']], [/^js\/drive-three\.js$/, ['LHS1-lamp-halos']],
+  [/^js\/drive-three-lampcone\.js$/, ['LCM1-lamp-cone']], [/^tests\/regress\/LCM1-lamp-cone\.js$/, ['LCM1-lamp-cone']],
   [/^js\/lamp-dist\.js$/, ['LHS1-lamp-halos', 'LDR1-lamp-road']], [/^tests\/regress\/LDR1-lamp-road\.js$/, ['LDR1-lamp-road']],
   [/^js\/options-registry\.js$/, ['ui', 'nodeAll', 'node:drive-controls2', 'node:scenario-node']],   // OPTION-REGISTRY: the defaults of every option; tests/options-registry.js and options-migration.js are in NODE
   [/^index\.html$/, ['ui']], [/^tests\/load\.js$/, ['nodeAll']],

@@ -234,6 +234,16 @@
       note: 'GPU only; the CPU renderer ignores it.',
     },
     {
+      id: 'lampCone', kind: 'profile', type: 'enum', values: ['off', 'on'],
+      default: 'off', label: 'lamp cone (mist)',
+      control: '[data-dv="lampCone"]', where: 'more', query: null,
+      group: 'street-lamps', cost: 'per-frame-gpu',
+      owner: ['js/drive-anim.js', 'js/drive-three-lampcone.js', 'js/drive-three.js'],
+      requires: [need('gpu'), need('lampsPresent'), need('air')],
+      tests: [],
+      note: 'GPU only; the CPU renderer ignores it. Needs visibility set (mist): clear air draws no cone. Single scattering off each street lamp, g 0.6 (assumption); no scene occlusion.',
+    },
+    {
       id: 'lampClass', kind: 'profile', type: 'enum', values: ['II', 'III', 'IV', 'V'],
       default: 'III', label: 'lamp class',
       control: '[data-dv="lampClass"]', where: 'more', query: null,

@@ -17,6 +17,7 @@ Render terms used (first use): a **fragment shader** is the small program the GP
       4. Halo table pass(es) `halo.build` (drive-three-halo.js:162): not on the pass, not on air-hold frames (drive-three.js:295).
       5. Ground pass into `target` (half-float RGBA + depth, p.w x p.h): flat = one full-screen quad `mat`; pass = lamp shadow depth renders (2 x 2048x1024) + ribbon + sky.
       6. Lamp halo sprites `lampHalo.draw` (:299), additive, into the same target.
+      6b. Lamp cone (LAMP-CONE-MIST, opt-in) `lampCone.draw`, additive, after the halo; returns before any GL state change unless lampCone is 'on' and visibility is set. Cache: post pass, no key (draws every frame).
       7. Blit `target` to texture A of the compose stage (`gl.blitFramebuffer`, :305).
       8. Objects pass: `objectView.update` (drive-three-objects.js:168) then render of instanced objects and mesh cars into `objectTarget` (float RGBA + depth, p.w x ss by p.h x ss) (:307-309); blit (LINEAR if ss > 1) to texture O (:311).
    2. Compose (raw WebGL2, `FS_COMPOSE` :814): A + O + pattern layer array B + asphalt grain -> HDR target.
@@ -41,6 +42,7 @@ CPU alternative (`gpuRenderer` off or GPU failed): `objects()` (:743) -> `D.rend
 | table blur | drive-three.js:59 | `tableBlurSource` | 1 |
 | halo table pass | drive-three-halo.js:126 | THEAD + legacy/atlas other-beam + screen/polar main | 4 |
 | lamp halo sprite | drive-three-lamphalo.js:76 | own, no samplers | 1 |
+| lamp cone (mist, opt-in lampCone) | drive-three-lampcone.js (draw after lamp halo, drive-three.js) | own program, no samplers; uniforms: 8 lamps x (vec3 pos, vec2 street, vec3 tint, float scale), 120 vec4 table, ~6 scalars (text count, INFERRED, not run through the scripts) | 1 |
 | compose / bright / reduce / blur / final | drive-anim.js:814-870 (raw GL, `P.*`) | `FS_*` | 5 |
 
 `renderer.info.programs.length` is exposed as `programCount()` (drive-three.js:286) and used by the first-open timeline (drive-anim.js:2375). The mounting of variants is the "state leak" surface described in section 5: `shading()` keeps its own cache flags on each material (`userData.p2/tg/tbl/at`, drive-three.js:49).
