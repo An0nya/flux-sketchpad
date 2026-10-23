@@ -21,6 +21,8 @@ const FROZEN_OLD_DV_DEF = {
   scatter: 0,
   trafficHalo: 0,
   lampHalos: 'off',
+  lampCone: 'off',   // LAMP-CONE-MIST: a new option (not a default change): added to the frozen copy so the check holds
+  lampConeGain: 1,   // LAMP-CONE-OBJECTS: a new option (not a default change), added to the frozen copy as lampCone was
   lampClass: 'III',
   lampRoad: 'off',
   haloBins: 24,
@@ -102,7 +104,7 @@ const FROZEN_OLD_DV_DEF = {
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();
-ok('frozen copy has 87 keys', Object.keys(FROZEN_OLD_DV_DEF).length === 87, Object.keys(FROZEN_OLD_DV_DEF).length);
+ok('frozen copy has 89 keys (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 89, Object.keys(FROZEN_OLD_DV_DEF).length);
 let equal = true, why = null;
 try { assert.deepStrictEqual(gen, FROZEN_OLD_DV_DEF); } catch (e) { equal = false; why = String(e.message).split('\n').slice(0, 12).join(' | '); }
 ok('generated defaults deep-equal the old DV_DEF (values and types)', equal, why);
