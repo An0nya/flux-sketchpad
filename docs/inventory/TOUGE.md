@@ -26,7 +26,7 @@ Consequence (OBSERVED from the above): with the GPU off, `mountainPass` is true 
 | drive-three.js:265 | `p.touge` | per-traffic-lamp pitch `trafficPitch[i]` from the surface grade |
 | drive-three.js:293 | always | `shading(pass.material, extras, true, tableOn)`: the ribbon material gets `passShader()` text patches (3 extra samplers) |
 | drive-three.js:294 | NOT gated | air-beam table pre-pass `runTable` still runs on the pass in table mode (cost), built in the FLAT car frame with the flat ground prefix (`tablePassSource(ground)` has no passShader) |
-| drive-three.js:295 | `!p.touge` | **traffic halo is not built; `haloOn = 0` silently**; the UI keeps the halo controls |
+| drive-three.js:297 | `!p.airHold` | traffic halo is built on the pass too (TOUGE-ELEV-B2, TILT); `haloOn = 0` only on air-hold frames (SN). Was `!p.touge` before 0fed388 |
 | drive-three.js:298 | `p.touge` | the full-screen analytic ground `scene` is replaced by `pass.update(world.A,dist); pass.shadows(renderer); pass.scene`: a 191 x 11 ribbon mesh (2 m stations, -35 m to ~+347 m; drive-touge-three.js:75) plus a sky quad, and two 2048x1024 depth renders from the lamps (shadows) |
 | drive-three.js:299 | any | lamp-halo sprite pass `lampHalo.draw(p, world, target)` runs on the pass too (INFERRED: no `touge` test in drive-three-lamphalo.js; its projection uses the flat camera maths, so placement on grades is unverified) |
 | drive-three.js:308 | `!!p.touge` | every object material is re-shaded with `mountain = true` (passShader: +3 samplers, rotated frames, depth compare) |
@@ -34,7 +34,7 @@ Consequence (OBSERVED from the above): with the GPU off, `mountainPass` is true 
 | drive-three-objects.js:172, 211 | `!p.touge` | detailed trees, impostor cards, leafy foliage are skipped on the pass |
 | drive-three-objects.js:206 | `p.touge` | culling bounds computed in the car frame (`carFromWorld`) |
 | drive-three-objects.js:217 | `p.touge` | `aTie` carries surface gradient (`passSlope`) instead of box tie ranks |
-| drive-touge-three.js (whole file) | - | ribbon fragment = ground prefix + `surface()` body + its OWN `main()`; **that main has no `inScatter(...)` and no `haloScatter(...)` call** (compare drive-three-shaders.js:231-232 in the flat main) |
+| drive-touge-three.js (whole file) | - | ribbon fragment = ground prefix + `surface()` body + its OWN `main()`; that main calls `haloScatter` (drive-touge-three.js:51, TOUGE-ELEV-B2) and **no `inScatter(...)`** (compare drive-three-shaders.js:231-232 in the flat main). The sky quad (drive-touge-three.js:64, TOUGE-SKY-VEIL) uses the ground prefix and calls `haloScatter(1e20)` when `haloOn` (120 m saturation, reads only `gl_FragCoord`) |
 
 Direct consequence (OBSERVED by reading; the render itself was not run): on the pass the air beam (direct or table) and the traffic halo are never added to the ground, only to objects (objectFragment drive-three-objects.js:115-116, mesh cars drive-three-models.js:27-28). In table mode the table is built (cost) for the benefit of objects only.
 
@@ -77,7 +77,7 @@ Direct consequence (OBSERVED by reading; the render itself was not run): on the 
 
 | feature | on the pass | evidence |
 |---|---|---|
-| traffic halo (`trafficHalo`, haloQuality...) | ON on feat/touge-halo-tilt (TOUGE-ELEV B1/B2, not on main). TILT (TOUGE-HALO-TILT): each source's axis is its own world beam (cos/sin of its trafficPitch, drive-three.js:265 formula) rotated by our carFromWorld, elevation kept as hDir.z (drive-three-halo.js toCarFrame, TMAIN `local`). Off-tilt A/B hook: globalThis.HALO_TILT_OFF. Main still reads drive-three.js:295 `if (!p.touge && !p.airHold)` | drive-three-halo.js:126-140; drive-three.js:295 (main); tests/regress/TOUGE-HALO-TILT.js |
+| traffic halo (`trafficHalo`, haloQuality...) | ON on feat/touge-halo-tilt (TOUGE-ELEV B1/B2, not on main). TILT (TOUGE-HALO-TILT): each source's axis is its own world beam (cos/sin of its trafficPitch, drive-three.js:265 formula) rotated by our carFromWorld, elevation kept as hDir.z (drive-three-halo.js toCarFrame, TMAIN `local`). Off-tilt A/B hook: globalThis.HALO_TILT_OFF. Main reads drive-three.js:297 `if (!p.airHold)` (halo on the pass since 0fed388), and the sky quad gets the same veil (TOUGE-SKY-VEIL) | drive-three-halo.js:126-140; drive-three.js:295 (main); tests/regress/TOUGE-HALO-TILT.js |
 | air beam, direct (`scatter` > 0, direct) | not drawn on the ground ribbon (no `inScatter` in the ribbon main); drawn on objects | drive-touge-three.js:48-52 vs drive-three-shaders.js:231 (INFERRED effect) |
 | air beam, table | table pass runs in the flat frame (eye already rotated, ray basis level: INFERRED mismatch of roughly the grade/bank angle, as reports/TOUGE-survey.md item 2); `tableKey` has no attitude term (drive-three.js:105-109, OBSERVED) so cached versions are not invalidated as attitude changes | |
 | click probe / hover readout | reads the CPU flat still (`ensureCpuStill`, ui.js:1047; spec-ui.js:1077): on the pass it reports a flat road scene | OBSERVED code path; INFERRED wrong numbers (reports/TOUGE-survey.md item 3) |
@@ -92,7 +92,7 @@ Direct consequence (OBSERVED by reading; the render itself was not run): on the 
 | CPU renderer | flat pass, explicit notice | drive-anim.js:2182 |
 | worker threads (`mt`) | off | drive-anim.js:1264 |
 | first-open timeline | no pass compile marks; passShader variants and the shadow passes are not covered by the hold | survey item 6 |
-| gate mapping | `js/drive-touge-three.js` and `js/drive-touge.js` have NO entry in tests/gate.js MAP on main (OBSERVED: MAP regexes cover `drive-three(-objects\|-models)?`, `drive-three-.*`, not `drive-touge*`), so any commit touching them makes `--touched` fall back to the full gate (reports/TOUGE-ELEV-B.md fixed this on its branch only) | tests/gate.js MAP |
+| gate mapping | `js/drive-touge-three.js` is mapped (TOUGE-ELEV-B, TOUGE-SKY-VEIL); `js/drive-touge.js` still has NO entry in tests/gate.js MAP (OBSERVED: MAP regexes cover `drive-three(-objects\|-models)?`, `drive-three-.*`, not `drive-touge*`), so any commit touching them makes `--touched` fall back to the full gate (reports/TOUGE-ELEV-B.md fixed this on its branch only) | tests/gate.js MAP |
 
 ## 3. The road-frame interface the pass uses (OBSERVED)
 
@@ -139,15 +139,17 @@ So on main, and on both halo branches, the program that overflows with the air b
 
 | gap | status |
 |---|---|
-| halo not built on the pass | open on main (OBSERVED drive-three.js:295); fix on feat/touge-halo-elev, carried into feat/touge-halo-tilt (not merged) |
-| ribbon has no air-beam or halo term | open (OBSERVED) |
+| halo not built on the pass | closed on main 0fed388 (drive-three.js:297) |
+| ribbon and sky: halo term | closed: the ribbon main (ELEV-B2) and the sky quad (TOUGE-SKY-VEIL, drive-touge-three.js:64) both call `haloScatter` when `haloOn`. Air-beam (`inScatter`) term on ribbon and sky: still open (OBSERVED) |
+| sky quad cost | open (INFERRED, not timed): the halo lookup now runs on every sky pixel, including the ones the ribbon covers (the sky is drawn first with depth test off). Drawing it after the ribbon with depth test on would cull them; that needs its own hash proof |
+| `flags.y` on objects | = `ob.glow`, set only for raised road studs (drive-scenes.js:147-150). Trees and foliage are not flagged; `flags.y > 0` skips the air beam and halo on that object (drive-three-objects.js:114-117) (OBSERVED) |
 | halo axis level in our frame (no per-car pitch) | closed on feat/touge-halo-tilt (TOUGE-HALO-TILT: the axis carries the car's own pitch, elevation in hDir.z). Air-beam TABLE still uses the flat ray basis (INFERRED mismatch, open) |
 | `tableKey` has no attitude term | closed on feat/touge-halo-tilt: our attitude pitch and roll (quantized 0.05 deg) are in the key on touge; flat is a constant. Note: tableKey guards the air-beam table only; the halo rebuilds every frame (no halo cache) |
 | click probe reads flat CPU still | open (OBSERVED path) |
 | AFS/cornering ignore grade and bank | open |
 | lampRoad/lampClass need `street` on pass lamps | open (INFERRED) |
 | sampler overflow with air beam table on the pass objects | open (INFERRED) |
-| drive-touge*.js not mapped in the gate | open (OBSERVED) |
+| drive-touge*.js not mapped in the gate | partly closed: drive-touge-three.js is mapped; drive-touge.js is still not (OBSERVED) |
 | air-hold armed by `trafficHalo` on a frame that never builds a halo | open (OBSERVED drive-anim.js:2333) |
 | `p.A` is unset on the pass (`V.p.A` undefined; the route exists only as `world.A`) | OBSERVED by reports/TOUGE-ELEV-A.md; any consumer of `p.A` on the pass gets undefined |
 | CPU fallback is flat by design | documented (drive-anim.js:2182) |

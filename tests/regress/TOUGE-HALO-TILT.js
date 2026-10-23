@@ -14,7 +14,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const errors = [];
 const crypto = require('crypto');
-const PIN_FLAT = 'b1d5d4b18067ffb4', PIN_EQUAL = 'f73730821efb1e75';   // base b0a37ea, scene region y>=140, 912x373 PNG
+const PIN_FLAT = 'b1d5d4b18067ffb4', PIN_EQUAL = 'c93885d2e890d8c2';   // scene region y>=140, 912x373 PNG. PIN_EQUAL was f73730821efb1e75 (base b0a37ea, main 0fed388 still gives it); re-baselined by TOUGE-SKY-VEIL: the sky now takes the halo veil on halo-on touge frames. Cause proven: f73730821efb1e75 reproduces with the sky term switched off.
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
   const open = async () => {
