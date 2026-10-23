@@ -555,6 +555,15 @@
       tests: [],
     },
     {
+      // POWERLINES (opt-in): wires between roadside poles on the open road. Off = no powerline objects, no random draws; scene byte-identical.
+      id: 'powerlines', kind: 'profile', type: 'enum', values: ['off', 'on'],
+      default: 'off', label: 'power lines',
+      control: '[data-anim="powerlines"]', where: 'more', query: null,
+      group: 'scenery', cost: 'scene-regenerate',
+      owner: ['js/drive-scenes.js', 'js/drive-anim.js'],
+      tests: ['PL1-powerlines'],
+    },
+    {
       id: 'veg', kind: 'profile', type: 'bool', values: null,
       default: true, label: 'trees',
       control: '[data-anim="c-veg"]', where: 'more', query: null,

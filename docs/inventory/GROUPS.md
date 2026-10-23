@@ -90,7 +90,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `halo` | Traffic halo | 7 | 0 | 2 | 0 | 5 | 0 | 0 |
 | `street-lamps` | Street lamps | 6 | 0 | 6 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 15 | 0 | 12 | 0 | 0 | 1 | 2 |
-| `scenery` | Scenery and objects | 11 | 0 | 11 | 0 | 0 | 0 | 0 |
+| `scenery` | Scenery and objects | 12 | 0 | 12 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
 | `exposure` | Exposure and eye | 4 | 1 | 3 | 0 | 0 | 0 | 0 |
 | `performance` | Speed and quality | 7 | 0 | 6 | 0 | 0 | 0 | 1 |
@@ -202,6 +202,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `signs` | signs | profile | More | true | - |
 | `reflectiveClothing` | reflective clothing | profile | More | "mix" | needs `peoplePresent` [none] |
 | `posts` | posts | profile | More | true | - |
+| `powerlines` | power lines | profile | More | "off" | - |
 | `veg` | trees | profile | More | true | - |
 | `obstacle` | crates | profile | More | false | - |
 | `rpm` | road studs | profile | More | true | - |

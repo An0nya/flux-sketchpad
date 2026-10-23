@@ -79,6 +79,8 @@
     'cp-5': { name: 'clothing: beige', rho: [0.5, 0.45, 0.33] },
     'cp-6': { name: 'clothing: brick red', rho: [0.2, 0.03, 0.03] },
     'cp-7': { name: 'clothing: sky blue', rho: [0.2, 0.3, 0.45] },
+    // POWERLINES (opt-in): dark wire, diffuse reflectance is a TUNING value, not measured. Appended last so existing material ids do not move.
+    'wire': { name: 'power wire', rho: [0.04, 0.04, 0.04] },
   };
   const MAT_KEYS = Object.keys(MAT_DEF), MAT_ID = {};
   MAT_KEYS.forEach((k, i) => { MAT_ID[k] = i; });
