@@ -38,7 +38,8 @@ function tintOf(K, fallback) {
   if (!c || !(lum(c) > 0)) c = fallback;
   const Y = lum(c); return c.map((v) => Math.max(0, v) / Y);
 }
-const SODIUM_TINT = () => tintOf(2000, [1, 0.5, 0.14]), LED_TINT = () => tintOf(4000, [1, 0.94, 0.86]);
+export const SODIUM_TINT = () => tintOf(2000, [1, 0.5, 0.14]);
+export const LED_TINT = () => tintOf(4000, [1, 0.94, 0.86]);
 
 const VERT = 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }';
 const FRAG = `
@@ -60,7 +61,7 @@ void main() {
 }`;
 
 // The lamp list: street-lamp heads (drive-anim.js ~562 'ell', mat lamp-head) and signal discs that are lit (drive-scenes.js signal(), emit non-null).
-function lampsOf(objects) {
+export function lampsOf(objects) {
   const out = [];
   for (const ob of objects || []) {
     if (!ob || !ob.emit) continue;

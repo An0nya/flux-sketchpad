@@ -5,6 +5,7 @@ import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
 import { haloPass, haloLookup, HALO_EDGES } from './drive-three-halo.js';
 import { createLampHalo } from './drive-three-lamphalo.js';
+import { createLampCone } from './drive-three-lampcone.js';
 import { LAMP_DIST, kindOfLamp } from './lamp-dist.js';   // LAMP-DIST: the shared lamp distribution (also registers RF.LampDist for the CPU renderer)
 import { TABLE_BUDGET_MS, bandRows, smoothMsPerRow, tableStatus, fillFraction, tableBadge, fadeRangeName, fadeRangeOf, scatterGainOf, cyclePhase } from './table-pace.js';
 const D = globalThis.RF.Drive;
@@ -27,6 +28,7 @@ export function create(canvas, gl, onModelsReady) {
   renderer.setClearColor(0x000000, 1); renderer.setRenderTarget(null); renderer.resetState();
   renderer.outputColorSpace = T.LinearSRGBColorSpace; renderer.toneMapping = T.NoToneMapping;
   let failure = '', target, objectTarget, beamRef, beamTexture, otherRef, otherTexture;
+  let depthCopy = null;   // LAMP-CONE-OBJECTS test readback helper (objectBuffers), created on first use
   // BA5: the per-car beam atlas. atlasOn picks the shader variant (shading and tableShading read it); the atlas is repacked only when the pool changes.
   let atlasOn = false, atlasTexture = null, atlasPacked = null, atlasKey = null, atlasLuts = null;
   const litCars = [];   // BA5 test hook: the car id behind each traffic source this frame
@@ -42,6 +44,7 @@ export function create(canvas, gl, onModelsReady) {
   const pass = surface(u);
   const camera = new T.Camera(), objectView = objects(renderer, u, onModelsReady);
   const halo = haloPass(renderer, u);   // SL: the traffic scatter table (built only when look.trafficHalo is on)
+  const lampCone = createLampCone(renderer);   // LAMP-CONE-MIST: lit cone of mist under each street lamp (option lampCone; off or clear air = no change)
   const lampHalo = createLampHalo(renderer, u);   // LAMP-HALO-SPRITES: glare veil on lit lamps (option lampHalos; off = no change)
   function shading(material, enabled, mountain = false, table = false) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
@@ -281,6 +284,31 @@ export function create(canvas, gl, onModelsReady) {
     version: T.REVISION,
     // SL2 test hook: the halo quads drawn for the last frame (0 = off, or no lamp on screen)
     lampHaloState() { return lampHalo.state(); },
+    lampConeState() { return lampCone.state(); },
+    lampConeTime(gl, n, repeats) { return lampCone.time(gl, n, repeats); },
+    // LAMP-CONE-OBJECTS test hooks (inert in production: nothing calls them outside tests). lampConeObjects(false) = pre-fix frame; lampConeCap(t) forces the
+    // object-pass distance to t metres (0 = use depth); lampConeTimeObjects = GPU ms of the object-pass draw; objectBuffers = last object frame, read back.
+    lampConeObjects(on) { return lampCone.setObjects(on); },
+    lampConeCap(t) { return lampCone.setCap(t); },
+    lampConeReach(n) { return lampCone.setReach(n); },   // measurement only: caps the cone's integral to n metres in both passes (0 = off, the shipped behaviour)
+    lampConeTimeObjects(gl, repeats) { return lampCone.timeObjects(gl, repeats); },
+    objectBuffers() {
+      if (!objectTarget) return null;
+      const W = objectTarget.width, H = objectTarget.height;
+      const col = new Float32Array(W * H * 4); renderer.readRenderTargetPixels(objectTarget, 0, 0, W, H, col);
+      if (!depthCopy) {
+        depthCopy = { scene: new T.Scene(), camera: new T.Camera(), mesh: null };
+        depthCopy.mesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: { tDepth: { value: null } },
+          vertexShader: 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }',
+          fragmentShader: 'uniform sampler2D tDepth; void main(){ gl_FragColor = vec4(texelFetch(tDepth, ivec2(gl_FragCoord.xy), 0).r * 5000.0, 0.0, 0.0, 1.0); }', depthTest: false, depthWrite: false }));
+        depthCopy.scene.add(depthCopy.mesh);
+      }
+      const dt = new T.WebGLRenderTarget(W, H, { type: T.FloatType, depthBuffer: false, minFilter: T.NearestFilter, magFilter: T.NearestFilter });
+      depthCopy.mesh.material.uniforms.tDepth.value = objectTarget.depthTexture;
+      renderer.setRenderTarget(dt); renderer.render(depthCopy.scene, depthCopy.camera); renderer.setRenderTarget(null); renderer.resetState();
+      const t = new Float32Array(W * H * 4); renderer.readRenderTargetPixels(dt, 0, 0, W, H, t); dt.dispose();
+      return { W, H, rgba: col, t };   // t is the .x channel of each pixel group: object distance in metres (depth * 5000)
+    },
     timeLampHalo(repeats) { return lampHalo.time(gl, repeats); },
     haloState() { return { drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length }; },
     haloProbe(sx, sy) { return halo.probe(sx, sy); }, lampHaloProbe(eye) { return lampHalo.probe(eye); }, lampHaloStreetLamps() { return lampHalo.streetLamps(); }, haloSources() { return halo.sources; }, haloBeamAt(i, x, y, z) { const L = halo.sources[i]; return D.trafficAt ? D.trafficAt(L, null, x, y, z) : null; },
@@ -298,7 +326,8 @@ export function create(canvas, gl, onModelsReady) {
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
-      lampHalo.draw(p, world, target);   // LAMP-HALO-SPRITES: additive veil into the frame target, before the blit (no-op unless lampHalos is 'on')
+      lampHalo.draw(p, world, target);
+      lampCone.draw(p, world, target);   // LAMP-CONE-MIST: additive in-scatter cone, after the halo (no-op unless lampCone is 'on' and visibility is set)   // LAMP-HALO-SPRITES: additive veil into the frame target, before the blit (no-op unless lampHalos is 'on')
       set('passDepth', target.depthTexture);
       if (failure) throw Error(failure);
       // CPU textures use row zero = top; three's target uses row zero = bottom.
@@ -308,6 +337,7 @@ export function create(canvas, gl, onModelsReady) {
       if (objectDestination) {
         if (!objectTarget || objectTarget.width !== p.w * ss || objectTarget.height !== p.h * ss) { if (objectTarget) objectTarget.dispose(); objectTarget = new T.WebGLRenderTarget(p.w * ss, p.h * ss, { type: T.FloatType, depthTexture: new T.DepthTexture(p.w * ss, p.h * ss, T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
         u.scatUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); u.haloUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge, tableOn); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
+        lampCone.drawObjects(p, objectTarget);   // LAMP-CONE-OBJECTS: cone added to object pixels up to their distance; leaves the target bound for the blit
         if (failure) throw Error(failure);
         const src = gl.getParameter(gl.FRAMEBUFFER_BINDING); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, objectDestination);
         gl.blitFramebuffer(0, 0, p.w * ss, p.h * ss, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, ss > 1 ? gl.LINEAR : gl.NEAREST);

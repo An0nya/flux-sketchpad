@@ -88,7 +88,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `surface` | Road surface | 7 | 0 | 4 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
 | `halo` | Traffic halo | 7 | 0 | 2 | 0 | 5 | 0 | 0 |
-| `street-lamps` | Street lamps | 4 | 0 | 4 | 0 | 0 | 0 | 0 |
+| `street-lamps` | Street lamps | 6 | 0 | 6 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 15 | 0 | 12 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 11 | 0 | 11 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
@@ -167,6 +167,8 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | option | label | kind | sits in | default | needs / ignored / conflicts |
 |---|---|---|---|---|---|
 | `lampHalos` | lamp halos | profile | More | "off" | needs `gpu` [tooltip] |
+| `lampCone` | lamp cone (mist) | profile | More | "off" | needs `gpu` [tooltip], `lampsPresent` [none], `air` [hidden] |
+| `lampConeGain` | cone gain | profile | More | 1 | needs `coneOn` [hidden] |
 | `lampClass` | lamp class | profile | More | "III" | needs `lampDistUsed` [none] |
 | `lampRoad` | road lamp light | profile | More | "off" | needs `lampsPresent` [none] |
 | `streetLamps` | street lamps | profile | More | "sodium" | needs `tilesOrPass` [disabled] |
