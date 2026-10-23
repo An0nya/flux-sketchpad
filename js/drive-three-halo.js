@@ -56,7 +56,9 @@ void main() {
   vec3 acc = vec3(0.0);
   for (int i = 0; i < ${HALO_PER_DRAW}; i++) {
     if (i >= nHalo) break;
-    vec3 lamp = hLamp[i].xyz, tint = hTint[i].rgb; vec2 dir = hDir[i].xy; float Wt = hLamp[i].w;
+    // TILT: hDir.xy is the unit horizontal heading, hDir.z the beam's elevation (sin) in the car frame (0 = level, as before). The beam frame is
+    // fwd = (dir*ce, se), lat = (-dir.y, dir.x, 0), up = (-se*dir, ce) with ce = sqrt(1-se*se); at se 0 the three dots below are the old ones exactly.
+    vec3 lamp = hLamp[i].xyz, tint = hTint[i].rgb; vec2 dir = hDir[i].xy; float se = hDir[i].z, ce = sqrt(max(1.0 - se * se, 0.0)); float Wt = hLamp[i].w;
     tbeam = int(hTint[i].w + 0.5);
     // Each bin is cut into 6 x haloP log-spaced cells and this draw takes every haloP-th one, starting at haloSub: haloP draws (additive) make up the full
     // sum, each with a loop of 6. A lamp near the eye needs it: along a ray that passes close to it, 1/r^2, the phase function and the beam's cone entry all
@@ -67,7 +69,7 @@ void main() {
       float sa = lo * pow(qq, float(m * haloP + haloSub)), sb = sa * qq, s = sqrt(sa * sb), ds = sb - sa;
       vec3 d = haloEye + s * ray - lamp; float r2 = dot(d, d); if (r2 <= 0.0) continue;
       float r = sqrt(r2);
-      vec3 local = vec3(dot(d.xy, dir), dot(d.xy, vec2(-dir.y, dir.x)), d.z);
+      vec3 local = vec3(dot(d, vec3(dir * ce, se)), dot(d, vec3(-dir.y, dir.x, 0.0)), dot(d, vec3(-se * dir, ce)));
       if (local.x <= 0.0) continue;
       float I = Wt * otherIntensity(local);
       if (I <= 0.0) continue;
@@ -123,9 +125,19 @@ export function haloPolarPick(p, eye, q, tanH) {
 }
 // TOUGE-ELEV B1: a touge frame projects the ribbon in the car frame (vertex carFromWorld*(position-eye), eye = p.eye), so a source in world
 // coordinates maps through carFromWorld (Matrix3, column-major). The direction keeps its horizontal part and is renormalised. Distances are unchanged.
-export function toCarFrame(traffic, m) {
+// TILT: each source's beam is its own car's world direction, horizontal heading (nx, ny) scaled by cos(p) plus elevation sin(p), where p is the
+// trafficPitch of drive-three.js (atan(grade * heading . road tangent) at the source). The full vector goes through carFromWorld, so the car-frame
+// elevation is p + our pitch (on a uniform slope, opposite headings, that is 0: level, as before). Both the world-frame elevation and our roll are kept.
+// HALO_TILT_OFF (timing A/B only) reproduces the old frames exactly: p = 0 and the car-frame elevation is dropped.
+export function toCarFrame(traffic, m, A) {
   const e = m.elements, mul = (v) => [e[0] * v[0] + e[3] * v[1] + e[6] * v[2], e[1] * v[0] + e[4] * v[1] + e[7] * v[2], e[2] * v[0] + e[5] * v[1] + e[8] * v[2]];
-  return traffic.map((q) => { const P = mul([q.x, q.y, q.z]), d = mul([q.nx, q.ny, 0]), n = Math.hypot(d[0], d[1]) || 1; return { ...q, x: P[0], y: P[1], z: P[2], nx: d[0] / n, ny: d[1] / n }; });
+  const off = !!globalThis.HALO_TILT_OFF;
+  return traffic.map((q) => {
+    let b = [q.nx, q.ny, 0];
+    if (!off) { const f = A.frame(q.x, q.y), sf = A.surface(f.s, f.off), p = Math.atan(sf.grade * (q.nx * f.t[0] + q.ny * f.t[1])); b = [q.nx * Math.cos(p), q.ny * Math.cos(p), Math.sin(p)]; }
+    const P = mul([q.x, q.y, q.z]), d = mul(b), n = Math.hypot(d[0], d[1]) || 1;
+    return { ...q, x: P[0], y: P[1], z: P[2], nx: d[0] / n, ny: d[1] / n, nz: off ? 0 : d[2] };
+  });
 }
 export function haloPass(renderer, u) {
   const scene = new T.Scene(), camera = new T.Camera(), geo = new T.PlaneGeometry(2, 2);
@@ -173,7 +185,7 @@ export function haloPass(renderer, u) {
       const look = p.look || {}, wantN = look.haloBins != null ? +look.haloBins : HALO_URL_N;
       if (wantN !== HALO_REQ) setHaloBins(wantN);
       u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1;
-      const eye = p.eye || [-2, 0.37, 1.2], traffic = p.touge ? toCarFrame(D.trafficSources(world.objects, eye, p, world.A), u.carFromWorld.value) : D.trafficSources(world.objects, eye, p, world.A);   // TOUGE-ELEV B1: touge lamps into the car frame the ribbon projects in
+      const eye = p.eye || [-2, 0.37, 1.2], traffic = p.touge ? toCarFrame(D.trafficSources(world.objects, eye, p, world.A), u.carFromWorld.value, world.A) :D.trafficSources(world.objects, eye, p, world.A);   // TOUGE-ELEV B1: touge lamps into the car frame the ribbon projects in
       if (!traffic.length) return 0;
       halo.sources = traffic;   // test hook: the sources the table was built from (beam, tint, axis)
       const pool = p.trafficPool, atlas = !!(pool && pool.entries.length && traffic.some((q) => q.beam));
@@ -213,7 +225,7 @@ export function haloPass(renderer, u) {
       const timing = !!globalThis.SL_HALO_TIMING; if (timing) { renderer.getContext().finish(); } const t0 = timing ? performance.now() : 0;   // test hook: wall time of the table pass, synchronised by a 1-pixel readback
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
       const setPolarU = (mp, q, P, j, pk) => {
-        hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, 0, 0); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
+        hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
         Object.assign(mp.uniforms, {
           hLamp: { value: hLamp }, hDir: { value: hDir }, hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
           haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
@@ -233,7 +245,7 @@ export function haloPass(renderer, u) {
           if (polarSet.has(q)) return;   // HDX6/HDX7: a polar lamp is in its own table, not this one
           const P = i < HALO_REFINE && q.L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;   // SL_HALO_SUB: test override (cost comparison)
           for (let j = 0; j < P; j++) {
-            hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, 0, 0); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
+            hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
             Object.assign(m.uniforms, {
               hLamp: { value: hLamp }, hDir: { value: hDir }, hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
               haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
@@ -260,7 +272,7 @@ export function haloPass(renderer, u) {
       u.haloTex.value = rt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = globalThis.HALO_TABLE_ONLY ? 0 : 1;
       if (plan[0]) { const pk = plan[0].pk; u.haloPolarOn.value = 1; u.haloPolarTex.value = ensurePolar(0).texture; u.haloPolarF.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); u.haloPolarN.value.set(HALO_POL_TH, HALO_POL_R); }
       if (plan[1]) { const pk = plan[1].pk; u.haloPolarOn2.value = 1; u.haloPolarTex2.value = ensurePolar(1).texture; u.haloPolarF2.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarRange2.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); }
-      halo.drawn = used.length; halo.lamps = used.map((q) => ({ lamp: [q.L.x, q.L.y, q.L.z], w: q.L.w, nx: q.L.nx, ny: q.L.ny, idx: q.idx, hasBeam: !!q.L.beam }));
+      halo.drawn = used.length; halo.lamps = used.map((q) => ({ lamp: [q.L.x, q.L.y, q.L.z], w: q.L.w, nx: q.L.nx, ny: q.L.ny, nz: q.L.nz || 0, idx: q.idx, hasBeam: !!q.L.beam }));
       return halo.drawn;
     },
     // Test hook: the six bins of the cell nearest to NDC (sx, sy) in [-1, 1], read back from the GPU table (RGB per bin).

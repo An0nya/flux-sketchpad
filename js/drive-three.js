@@ -102,10 +102,12 @@ export function create(canvas, gl, onModelsReady) {
   const lutIds = new WeakMap(); let lutSeq = 0;
   const lutId = (l) => { if (!l) return 0; if (!lutIds.has(l)) lutIds.set(l, ++lutSeq); return lutIds.get(l); };
   const quant = (x, step) => Math.round((x || 0) / step), DEG05 = 0.05 * Math.PI / 180;
-  function tableKey(p, extras, look, tw, th, sig) {
+  // TILT: att is our attitude on a touge frame (null on flat): its pitch and roll are part of the key, so a cached table is not reused across grades. Flat: a constant.
+  function tableKey(p, extras, look, tw, th, sig, att) {
     return JSON.stringify([(p.lamps || []).map((l) => l.map((v) => quant(v, 1e-4))), quant(p.yaw, DEG05), quant(p.pitch, DEG05), quant(p.cornerLeft, DEG05), quant(p.cornerRight, DEG05),
       !!p.afs, !!p.lampPitch, !!p.corneringLamps, lutId(p.lut), (p.lampRGB || [1, 1, 1]).map((v) => quant(v, 1e-4)), look.visibility, quant(p.hfov, DEG05), p.w, p.h,
-      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps']);
+      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps',
+      att ? [quant(att.pitch, DEG05), quant(att.roll, DEG05)] : 0]);
   }
   const newBank = () => [0, 1, 2].map(() => new T.WebGLRenderTarget(tabSize.w, tabSize.h, { type: T.HalfFloatType, depthBuffer: false }));
   function dropAll() {
@@ -140,7 +142,7 @@ export function create(canvas, gl, onModelsReady) {
     }
     if (tableShading(extras)) compilePending = true;
     const compiling = compilePending; compilePending = false;
-    const key = tableKey(p, extras, look, tw, th, sig);
+    const key = tableKey(p, extras, look, tw, th, sig, p.touge && dist != null ? globalThis.RF.Touge.attitude(dist) : null);
     const tblSteps = Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48)), tblBinN = D.binCountsFor(tblSteps, look.scatterNearBias, look.scatterBinCounts, look.scatterQuality);
     // NE3: a valid slice override or near sampling on turns on the per-slice counts (tableBias); empty or invalid with it off is the old path.
     const tblPer = !!D.parseBinCounts(look.scatterBinCounts) || !!D.qualityCounts(look.scatterQuality) || +look.scatterNearBias > 0;
