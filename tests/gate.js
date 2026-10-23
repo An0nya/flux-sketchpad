@@ -15,7 +15,7 @@ const JOBS = +val('--jobs', 3), BASE = val('--base', 'main'), WALL_MS = +val('--
 const PW = process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright';
 
 // ---- the curated gate -------------------------------------------------------------------------------------------------
-const NODE = ['all', 'regress-node', 'scatter-table', 'scatter-table-pace', 'scatter', 'scatter-fade-gain', 'fog', 'wetness', 'wet-ggx', 'foliage', 'beams', 'beam-atlas', 'traffic-beams', 'tl-traffic-taper', 'pass-parity', 'scene-digest', 'scenery-params', 'tile-options'];
+const NODE = ['all', 'regress-node', 'scatter-table', 'scatter-table-pace', 'scatter', 'scatter-fade-gain', 'fog', 'wetness', 'wet-ggx', 'foliage', 'beams', 'beam-atlas', 'traffic-beams', 'tl-traffic-taper', 'pass-parity', 'scene-digest', 'scenery-params', 'tile-options', 'options-registry', 'options-migration', 'options-docs'];
 const PAGE_PAR = ['SB1-studs-everywhere', 'OV-scene-details', 'CD-controls-dedupe', 'UX2-drive-ux', 'DC-drive-controls', 'DW-drive-wheel', 'PM-pass-mesh', 'PP-pass-parity', 'P2-drive-lighting', 'WG-wet-ggx', 'WT-wetness', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'SF-silhouette-fade', 'SF1-car-silhouette', 'BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'TL2-traffic-light-range'];
 const PAGE_SOLO = ['P1-drive-three', 'SE-table-pacing'];   // P1 needs the real GPU; SE measures per-frame ms
 const GROUPS = {
@@ -29,12 +29,14 @@ const GROUPS = {
 // First match wins per changed file; every match contributes (union). A changed js/ file with no match => full gate.
 const MAP = [
   [/^js\/drive-three-shaders\.js$/, ['render', 'ui']], [/^js\/drive-three(-objects|-models)?\.js$/, ['render', 'ui']],
-  [/^js\/ui\.js$/, ['ui']], [/^js\/drive-anim\.js$/, ['render', 'ui', 'nodeAll']], [/^js\/spec-ui\.js$/, ['ui', 'scatter', 'beams']],
+  [/^js\/ui\.js$/, ['ui']], [/^js\/drive-anim\.js$/, ['render', 'ui', 'nodeAll']], [/^js\/spec-ui\.js$/, ['ui', 'scatter', 'beams', 'node:options-migration']],
   [/^js\/drive\.js$/, ['render', 'nodeAll']], [/^js\/table-pace\.js$/, ['scatter']], [/^js\/beam-atlas\.js$/, ['beams']],
   [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']],
   [/^js\/drive-scenes\.js$/, ['render', 'ui', 'nodeAll']],   // REFLECTIVE-CLOTHING: pedestrians are built here; the RC test is a new regress file, picked up automatically
   [/^js\/drive-three-lamphalo\.js$/, ['LHS1-lamp-halos']], [/^js\/drive-three\.js$/, ['LHS1-lamp-halos']],
   [/^js\/lamp-dist\.js$/, ['LHS1-lamp-halos', 'LDR1-lamp-road']], [/^tests\/regress\/LDR1-lamp-road\.js$/, ['LDR1-lamp-road']],
+  [/^js\/options-registry\.js$/, ['ui', 'nodeAll', 'node:drive-controls2', 'node:scenario-node']],   // OPTION-REGISTRY: the defaults of every option; tests/options-registry.js and options-migration.js are in NODE
+  [/^index\.html$/, ['ui']], [/^tests\/load\.js$/, ['nodeAll']],
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];
 const NOT_TESTS = ['gate', 'load', 'serve'];
@@ -50,7 +52,8 @@ function plan() {
   const picked = new Set(); let unmapped = [];
   for (const f of files) {
     const t = /^tests\/regress\/(.+)\.js$/.exec(f), n = /^tests\/([^/]+)\.js$/.exec(f);
-    if (t) { if (!KNOWN_FAILING.includes(t[1])) picked.add(t[1]); continue; }   // known-failing tests never run by --touched either (new regress files are picked up automatically) if (n) { if (!NOT_TESTS.includes(n[1])) picked.add('node:' + n[1]); continue; }   // gate.js itself and loaders are not tests (picking gate.js ran a nested full gate)
+    if (t) { if (!KNOWN_FAILING.includes(t[1])) picked.add(t[1]); continue; }   // known-failing tests never run by --touched either (new regress files are picked up automatically)
+    if (n && !NOT_TESTS.includes(n[1])) { picked.add('node:' + n[1]); continue; }   // a changed Node test runs itself; gate.js, load.js and serve.js are not tests (picking gate.js ran a nested full gate), load.js is in MAP
     let hit = false; for (const [re, gs] of MAP) if (re.test(f)) { hit = true; for (const g of gs) (GROUPS[g] || [g]).forEach((x) => picked.add(x)); }
     if (!hit && /^(js|css|index\.html)/.test(f)) unmapped.push(f);
   }

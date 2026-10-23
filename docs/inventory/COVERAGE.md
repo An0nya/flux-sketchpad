@@ -8,12 +8,14 @@ OBSERVED = counted by command (commands in the Method section). INFERRED = deduc
 | thing | count | how |
 |---|---|---|
 | page tests in tests/regress/ | 143 | `ls tests/regress \| wc -l` |
-| node tests in tests/*.js (minus gate, load, serve) | 96 | `ls tests/*.js` minus 3; 7 of them are `*-page.js` helpers loaded by page tests |
-| curated gate (`node tests/gate.js --full --list`) | 40 = 18 node + 22 page | prints 40 names |
+| node tests in tests/*.js (minus gate, load, serve) | 99 (96 at f52ed8a, +3 option-registry tests) | `ls tests/*.js` minus 3; 7 of them are `*-page.js` helpers loaded by page tests |
+| curated gate (`node tests/gate.js --full --list`) | 43 = 21 node + 22 page (was 40; +options-registry, options-migration, options-docs) | prints 43 names |
 | regress page tests NOT in the curated gate | 121 of 143 | set difference |
 | `KNOWN_FAILING` in code | 1 (NE-state-leak) | tests/gate.js:42; the header comment (gate.js:10) lists 9 names as "known-failing, NOT in the gate" - the code list is shorter, but those 9 are simply absent from the curated lists |
-| `js/` files with a `MAP` entry in tests/gate.js | 16 of 74 | regexes from the MAP literal applied to `ls js` |
+| `js/` files with a `MAP` entry in tests/gate.js | 17 of 75 (js/options-registry.js added) | regexes from the MAP literal applied to `ls js` |
 | `js/` files with NO MAP entry (a change makes `--touched` run the FULL gate) | 58 | same |
+
+**Status (feat/option-registry, 2026-10-22):** `--touched` now also runs a changed `tests/<name>.js` Node test (that branch of `plan()` was inside a `//` comment before, so a changed Node test never ran by itself); `index.html` and `tests/load.js` have MAP entries (`ui`, `nodeAll`) so touching them no longer forces the full gate; `js/options-registry.js` maps to `ui`, `nodeAll`, drive-controls2 and scenario-node. Counts below are from f52ed8a except where marked.
 
 **`--touched` is not a subset of `--full`.** MAP entries name tests directly (e.g. `LHS1-lamp-halos`, `LDR1-lamp-road`, `TOUGE-ELEV-B` on its branch) that are absent from the curated `--full` list, so a lamp-halo change runs LHS1 but a plain `--full` never does. Two lists decide what "the gate" means: the curated list and the MAP.
 

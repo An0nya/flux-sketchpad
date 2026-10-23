@@ -15,11 +15,10 @@ const EYE = [-2.0, 0.37, 1.2];
 const carsOf = (opts, dist, t) => A.trafficCars(A.source('road', 3.5, false, {}, opts), dist, t).map((c) => ({ id: c.id, kind: c.kind, rel: c.rel, off: c.off }));
 const idsOf = (list) => list.map((c) => c.id);
 
-// 1. option defaults, read from the shipped DV_DEF (spec-ui.js is a DOM module, so the literal is evaluated, not required)
+// 1. option defaults, from the registry that generates DV_DEF (js/options-registry.js is dependency-free, so it is required)
 const specUI = read('js/spec-ui.js');
-const dvDefText = specUI.match(/const DV_DEF = (\{[^;]*\});/);
-ok('DV_DEF literal found in js/spec-ui.js', !!dvDefText);
-const DV_DEF = new Function('return ' + dvDefText[1])();
+const DV_DEF = require('../js/options-registry.js').defaults();
+ok('DV_DEF is generated from the registry in js/spec-ui.js', /const DV_DEF = RF\.Options\.defaults\(\);/.test(specUI));
 ok('option defaults: fov 60, trafficRange 400, no dolly key', DV_DEF.fov === 60 && DV_DEF.trafficRange === 400 && !('dolly' in DV_DEF), { fov: DV_DEF.fov, trafficRange: DV_DEF.trafficRange, hasDolly: 'dolly' in DV_DEF });
 
 // 2. stored settings from main still load: the merge dvOpts() does, and the merged values drive the scene

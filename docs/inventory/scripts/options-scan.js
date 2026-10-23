@@ -1,7 +1,7 @@
 // Usage (repo root): node tests/gate.js --full --list > /tmp/gate.txt; node docs/inventory/scripts/options-scan.js /tmp/gate.txt /tmp/reads.json
 // Per DV_DEF option: reader files/lines (js/) and test files that set it. See docs/inventory/OPTIONS.md 'Method'.
 const fs=require('fs'),path=require('path');
-const DV=eval('('+fs.readFileSync('js/spec-ui.js','utf8').split('\n')[839].match(/const DV_DEF = (\{.*\});/)[1]+')');
+const DV=require(path.resolve('js/options-registry.js')).defaults();   // DV_DEF is generated from the registry
 const dvKeys=Object.keys(DV);const GENERIC=new Set(['scene','seed','speed','res','tex','mt','wild','density','fov','ev','smooth','samples','playing','wet','view','glare','cline','scatter','ambient','tiles']);
 const extra=['airLevel','haloQuality','wetness','deerBehaviour','ownLow','ownHigh','scatterTableSteps','view','pedStop','lampRule'];
 const keys=dvKeys.concat(extra);
