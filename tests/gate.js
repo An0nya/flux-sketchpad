@@ -32,7 +32,8 @@ const MAP = [
   [/^js\/ui\.js$/, ['ui']], [/^js\/drive-anim\.js$/, ['render', 'ui', 'nodeAll']], [/^js\/spec-ui\.js$/, ['ui', 'scatter', 'beams', 'node:options-migration']],
   [/^js\/drive\.js$/, ['render', 'nodeAll']], [/^js\/table-pace\.js$/, ['scatter']], [/^js\/beam-atlas\.js$/, ['beams']],
   [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']], [/^js\/drive-touge-three\.js$/, ['TOUGE-ELEV-B', 'TOUGE-SKY-VEIL']], [/^js\/drive-three-halo\.js$/, ['TOUGE-HALO-TILT']],
-  [/^js\/drive-scenes\.js$/, ['render', 'ui', 'nodeAll', 'PL1-powerlines']],   // REFLECTIVE-CLOTHING: pedestrians are built here; the RC test is a new regress file, picked up automatically
+  [/^js\/drive-scenes\.js$/, ['render', 'ui', 'nodeAll', 'PL1-powerlines']],
+  [/^js\/drive-touge\.js$/, ['PL2-powerlines-pass']],   // REFLECTIVE-CLOTHING: pedestrians are built here; the RC test is a new regress file, picked up automatically
   [/^js\/drive-three-lamphalo\.js$/, ['LHS1-lamp-halos']], [/^js\/drive-three\.js$/, ['LHS1-lamp-halos']],
   [/^js\/drive-three-lampcone\.js$/, ['LCM1-lamp-cone']], [/^tests\/regress\/LCM1-lamp-cone\.js$/, ['LCM1-lamp-cone']],
   [/^js\/lamp-dist\.js$/, ['LHS1-lamp-halos', 'LDR1-lamp-road']], [/^tests\/regress\/LDR1-lamp-road\.js$/, ['LDR1-lamp-road']],

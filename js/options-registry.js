@@ -560,8 +560,8 @@
       default: 'off', label: 'power lines',
       control: '[data-anim="powerlines"]', where: 'more', query: null,
       group: 'scenery', cost: 'scene-regenerate',
-      owner: ['js/drive-scenes.js', 'js/drive-anim.js'],
-      tests: ['PL1-powerlines'],
+      owner: ['js/drive-scenes.js', 'js/drive-anim.js', 'js/drive-touge.js'],
+      tests: ['PL1-powerlines', 'PL2-powerlines-pass'],
     },
     {
       id: 'veg', kind: 'profile', type: 'bool', values: null,
