@@ -900,13 +900,20 @@
     const patch = name === 'off' ? { scatter: 0 } : RF.Drive.airLevelBundle(name);
     if (!patch) return;
     if (name !== 'off' && visIndex(dvOpts(ui).visibility) === 0) patch.visibility = VIS_LEVELS[1];   // a level in clear air would show no beam: start from the light haze (3 km); 'off' never touches the haze
-    Object.assign(dvOpts(ui), patch);
-    try { localStorage.setItem('flux/driveView', JSON.stringify(ui.dvOpts)); } catch (e) { /* ignore */ }
+    Object.assign(dvOpts(ui), patch); if (ui.dvBase) Object.assign(ui.dvBase, patch);
+    persistDV(ui);
     ui.redrawSpec();
+  }
+  // While a minigame runs, ui.dvBase is the options as they were at game start. The live object also holds the game's overlay,
+  // so the saved profile is written from dvBase (base plus the owner's own changes), never from the live object (GAME-LEAK, H1).
+  // 'playing' is game state (the game pauses on entry and restores it on exit), so it is not carried into the base.
+  function persistDV(ui) {
+    try { localStorage.setItem('flux/driveView', JSON.stringify(ui.dvBase || ui.dvOpts)); } catch (e) { /* ignore */ }
   }
   function setDV(ui, k, v) {
     dvOpts(ui)[k] = v;
-    try { localStorage.setItem('flux/driveView', JSON.stringify(ui.dvOpts)); } catch (e) { /* ignore */ }
+    if (ui.dvBase && k !== 'playing') ui.dvBase[k] = v;
+    persistDV(ui);
     ui.redrawSpec();
   }
   const fmtL = (x) => x >= 100 ? Math.round(x) + '' : x >= 10 ? x.toFixed(0) : x >= 1 ? x.toFixed(1) : x >= 0.1 ? x.toFixed(2) : x.toPrecision(2);
@@ -1220,7 +1227,7 @@
     box.append(el('span', { class: 'btn-pair' }, wt));
   }
 
-  RF.SpecUI = { dvOpts, streams, previewFF, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, roadReadout, drawDrive, driveReadout, editorOverlay, readout, leftTools, COL,
+  RF.SpecUI = { dvOpts, setDV, streams, previewFF, refineButton, section, render, update, evalAt, drawFarField, drawFarFieldPreview, itemAt, showCard, hideCard, rowText, roadModel, drawRoad, roadReadout, drawDrive, driveReadout, editorOverlay, readout, leftTools, COL,
     // LAZYCPU hooks. forceCpuStill = true paints the CPU still on every redraw (tests that compare the CPU picture); cpuStillRenders() counts CPU renders; ensureCpuStill(ui) renders on demand.
     forceCpuStill: false, cpuStillRenders: () => cpuStillRenders, ensureCpuStill };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
