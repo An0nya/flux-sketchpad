@@ -1,4 +1,80 @@
-# GROUPS: proposed groups for the drive controls
+# GROUPS: a proposal for organising the drive controls
+
+Written 2026-10-22 on feat/option-registry. **Nothing in the UI was moved or hidden.** The `group` field in `js/options-registry.js` records this proposal (so the generated listing at the bottom stays in step with the code), and you can change any of it by editing one word per option and re-running `node docs/inventory/scripts/gen-options-docs.js`. Labels: OBSERVED = read in the code or the running page; PROPOSAL = my suggestion, your call.
+
+## 1. How the controls are organised today (OBSERVED)
+
+- **Toolbar (always visible, 4 option controls plus Game):** the scene select (which also holds "mountain pass"), the speed slider, Drive / pause, Game, and glare. A "More" button sits at the end of this row.
+- **More (a collapsed panel; about 95 elements carry a data attribute in the page I counted, which includes the beam library and file widgets):** everything else, in the order the code happened to add it: road shape, road surface (wet road, wet sheen, streak model), air (visibility, air beam level), lamp halos / lamp class / road lamp light, traffic halo and halo quality, oncoming headlamps, view angle, supersampling, exposure (mode, EV), oncoming and preceding traffic, then the two collapsed sub-groups below, then route tiles, clothing, high beam, the object switches, traffic and renderer switches, resolution, seed and density, beam library.
+- **Two collapsed groups inside More**, each remembering open or closed: "advanced air beam" (steps, method, resolution, blur, cache, cycle, near fade, near sampling, a debug text box) and "advanced halo" (bins, table divisor, polar mode, polar lamps, gain; the air-beam gain slider sits here too, although it belongs to the air beam).
+- **Spec > Road sidebar (not the drive bar):** marking reflectivity RL, oncoming intensity in kcd, beam smoothing.
+- **No control at all:** 14 registry entries are changed only by tests, by other options, or never (listed in section 5).
+
+There are two presets today, and they are the pattern to copy (section 4): **air beam level** and **halo quality**.
+
+## 2. Proposed groups
+
+"Top layer" = I suggest it stays visible without opening More. "Advanced" = I suggest it is hidden until asked for (a collapsed section, like the two that exist). Counts are options, not controls.
+
+| group | what it is for | members | top layer | advanced / can be hidden |
+|---|---|---|---|---|
+| **Camera and playback** `view` | where you look from and whether it moves | playing, speed, fov | playing, speed | fov |
+| **Road and route** `road` | what road you are driving | scene, mountainPass (a value of the scene select), tiles, cline, seed, density, tileCache; wild, res (no control) | scene (+ pass) | tiles, tileCache, cline, seed, density |
+| **Road surface** `surface` | how wet and shiny the road is | wetness (the dry / damp / wet button), wetSheen, wetModel, surfaceSheen, RL (sidebar); wet, tex (no control) | wetness | wetSheen, wetModel, surfaceSheen, RL |
+| **Fog and air beam** `air` | the haze and the visible beam in it | visibility, airLevel; then the advanced air beam: scatter, scatterMode, scatterRes, scatterBlur, scatterCache, scatterCycle, scatterCycleFade, scatterNearFadeRange, scatterNearBias, scatterBinCounts, scatterGain; scatterQuality (written by airLevel) | visibility | all of the advanced air beam; keep airLevel as the one dropdown |
+| **Traffic halo** `halo` | the glow around oncoming lamps in fog | haloQuality, trafficHalo; haloBins, haloDiv, haloPolar, haloPolarLamps, haloGain | haloQuality (or fold into the air group) | everything except haloQuality |
+| **Street lamps** `street-lamps` | lamps along the road and their glow | streetLamps, lampHalos, lampClass, lampRoad | streetLamps | lampHalos, lampClass, lampRoad |
+| **Traffic** `traffic` | other cars, how they behave, how much they light | oncoming, preceding, onMode, trafficDensity, trafficLogic, safeGap, trafficBeams, trafficRange, trafficLightRange, trafficNearest, trafficShuffle, trafficOutIds; onKcd (sidebar); onDist, preDist (no control) | oncoming, preceding | onMode, onKcd, safeGap, trafficRange, trafficLightRange, trafficNearest, trafficShuffle and its list |
+| **Scenery and objects** `scenery` | what stands beside the road | people, animals, signs, posts, veg, obstacle, rpm, reflectiveClothing, leafyFoliage, detailedModels, deerBehaviour | none (one row of switches) | reflectiveClothing, leafyFoliage, detailedModels, deerBehaviour |
+| **Our lamp** `own-lamp` | the car's own beam and how it moves | ownLow, ownHigh, high (session), afs, corneringLamps, lampPitch, smooth (sidebar) | high beam | all the rest |
+| **Exposure and eye** `exposure` | how the picture is brightened and the eye modelled | expMode, ev (three buttons), glare, ambient | glare, ev | expMode, ambient |
+| **Speed and quality** `performance` | how hard the page works | gpuRenderer, samples, simCeiling, dynamicResolution, minFps, mt; frameTargetMs (written by minFps) | none | all |
+| **Panels and layout** `diagnostics` | badges and layout switches, not part of the scene | fpsCounter, debugTimings, sceneDetails, fitControls, largeCard | none | all |
+| **Internal** `internal` | state the code keeps, with no user control | scatterNearFade, scatterTableSteps, view, pedStop, lampRule, gameOptions | none | never shown |
+
+The full member list, with where each control sits today, its default and what it needs, is generated at the bottom of this file.
+
+## 3. Things that are the same thing twice, or nearly (OBSERVED)
+
+| pair | what is going on | suggestion |
+|---|---|---|
+| `airLevel` and `scatter` (+ 8 more) | the level dropdown writes `scatter`, mode, resolution, blur, cache, cycle, near fade, near sampling and quality together; the individual controls stay and the dropdown reads "custom" when they disagree | keep the level in the top layer, the individual ones advanced (already so) |
+| `haloQuality` and `trafficHalo` + 5 | the same pattern. `trafficHalo` itself is outside the advanced group and also exists inside the preset | move `trafficHalo` into the advanced halo group or drop it from the top |
+| `wet` and `wetness` | `wet` is a leftover true/false mirror of `wetness > 0`; one reader still uses `wet` directly | retire `wet` after that reader moves (not done here) |
+| `scatterNearFade` and `scatterNearFadeRange` | old on/off replaced by short / medium / long; stored value is converted at load | leave as is, internal |
+| `minFps` and `frameTargetMs` | the second is computed from the first | one control already; keep `frameTargetMs` internal |
+| `scene` `mountainPass` `tiles` | three ways to say "which road": the scene select writes `mountainPass` for the pass, and `tiles` turns the route on or off | one "road" control with the three values plus a route switch; owner's call |
+| `ev`, `evm`, `evp` | one option, three buttons | fine; just one row in the proposal |
+| `onMode` and `onKcd` | `onKcd` only matters in manual mode, and lives in a different place (sidebar) | show it next to `onMode` only when manual is picked |
+| `trafficShuffle`, `ownLow`, `ownHigh` | three ways to pick a saved beam, for traffic and for our car | one "beams" sub-group in Our lamp or Traffic |
+| `fitControls`, `largeCard`, `fpsCounter`, `debugTimings`, `sceneDetails` | layout and diagnostic switches next to scene switches | their own group (above), hidden by default |
+
+## 4. The preset pattern, and where it could be used again
+
+How the two existing presets work (OBSERVED, `RF.Drive.airLevelBundle`, `haloLevelBundle`, `airLevelOf`, `haloLevelOf` in js/drive.js):
+
+1. One dropdown with named levels (halo quality: off / low / medium / ultra; air beam: off / baseline / low / medium / high / max).
+2. Picking a level writes a fixed bundle of the detailed options in one go (one save, one redraw).
+3. The detailed options sit in a collapsed "advanced" group that remembers open or closed.
+4. The dropdown's shown value is computed from the detailed options, and reads **custom** when they match no level, so hand editing never lies.
+5. The dropdown itself is never saved; only the detailed options are. The registry marks these as `kind: 'derived'` and lists the bundle's members.
+
+PROPOSAL, same pattern for (each would be a new derived entry, none exists yet): **street lighting** (streetLamps + lampHalos + lampClass + lampRoad: off / basic / detailed); **road surface** (wetness + wetSheen + wetModel: dry / damp / wet / wet + streaks); **quality** (samples + simCeiling + dynamicResolution + minFps: fast / balanced / sharp); **traffic** (oncoming + preceding + trafficDensity + trafficLogic + trafficBeams + trafficHalo: none / light / realistic). A preset that needs another option on to work (the halo bundle sets `trafficHalo` but not `trafficBeams`, so "medium" can show nothing) should list that prerequisite, which the registry's `requires` is meant for.
+
+## 5. Options with no control (OBSERVED)
+
+`wet` (legacy), `tex`, `wild`, `res`, `onDist`, `preDist`, `frameTargetMs` (derived), `scatterQuality` (written by the air level), `scatterNearFade` (legacy), and the test-only `scatterTableSteps`, `view`, `pedStop`, `lampRule`; plus the game overlay `gameOptions`. `tex` and `wild` are saved and read, but nothing in the UI changes them (no control found by grep of js/); whether they should get one or be removed is your call. `onDist` and `preDist` are read only by the old CPU still picture and have no test.
+
+## 6. What the rules mean for grouping
+
+Whole groups are conditional, which is the argument for hiding rather than greying: the whole **Fog and air beam** and **Traffic halo** groups do nothing while visibility is "clear" (today they are hidden then); most of the **advanced air beam** does nothing unless the method is "table"; **Traffic halo** needs "traffic beams" on and nothing says so (HAZARDS H6); the pass ignores air beam, halo and people options (H4); **street lamp** options need tiles or the pass. The registry records each of these as a named rule with the file where the code enforces it (see OPTIONS.md, "Rules the registry declares"), so a group header could one day say "greyed because: ..." without anyone re-deriving it.
+
+## 7. What I did not decide (questions for you)
+
+- Whether the top layer should be a short list of presets (air, road surface, traffic, quality) or a short list of the real options above. The registry supports either.
+- Whether `scatterGain` should move to the air group (its home) from the halo group (where it sits now). I left it where it is.
+- Whether options that nothing can change (`tex`, `wild`, `onDist`, `preDist`) should get controls or be deleted from the saved profile.
+- The sidebar rows (RL, onKcd, smooth) live in Spec > Road, a different panel. I grouped them by meaning; moving them is a UI decision.
 
 ## Registry listing (generated)
 
