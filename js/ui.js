@@ -41,6 +41,18 @@
     try { ui.driveRescued = localStorage.getItem('flux/driveView') !== null; localStorage.removeItem('flux/driveView'); } catch (e) { /* no storage: nothing to clear */ }
     if (ui.driveRescued) console.info('saved drive settings cleared (rescue URL)');
   }
+  // SHARE-PRESET: #preset=<name> (js/share-presets.js) replaces the saved drive settings, then boot opens Spec mode on the drive view.
+  // The hash is cleared at once so a reload does not apply the preset again over later changes.
+  ui.presetBoot = null;
+  const presetName = !driveRescue && RF.SharePresets ? RF.SharePresets.fromHash(location.hash) : null;
+  if (presetName) {
+    if (!RF.SharePresets.get(presetName)) console.warn('unknown preset "' + presetName + '": nothing applied');
+    else {
+      try { RF.SharePresets.apply(presetName, localStorage); ui.presetBoot = presetName; console.info('preset "' + presetName + '" applied: saved drive settings replaced'); }
+      catch (e) { console.warn('preset "' + presetName + '" not applied: ' + e.message); }
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* no history API: the hash stays */ }
+    }
+  }
   ui.bootPending = true;
   function bootMark(on) { try { if (on) localStorage.setItem(BOOT_KEY, '1'); else localStorage.removeItem(BOOT_KEY); } catch (e) { /* ignore */ } }
   function leaveSafe() { ui.safeMode = false; const b = document.getElementById('safe-banner'); if (b) b.hidden = true; }
@@ -2074,6 +2086,7 @@
     if (RF.CompareUI) RF.CompareUI.init(ui);
     ui.hist = RF.History.create(100); ui.hist.reset(RF.History.intent(ui.store.scene)); updateUndoButtons();   // history doesn't survive a reload
     ui.setMode(scene.mode, true);
+    if (ui.presetBoot) { ui.setMode('D', true); ui.setDisplay('drive'); }   // SHARE-PRESET: Spec mode, drive display (after setMode, which opens D on its far-field view)
     setTimeout(() => { ui.fit(ui.fitMode || 'all'); ui.refreshPanels(); ui.requestRun(false); }, 0);
   }
   function safeBoot() {
