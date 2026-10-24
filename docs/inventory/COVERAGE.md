@@ -206,3 +206,5 @@ Gate tests that depend on the junction crosser (OBJECTS.md P6/P7, which ignore o
 
 ## Known failing (2026-10-22)
 - `tests/regress/MG-minigame.js` check "MG exit restores normal options, camera state, saved scene and exact HDR": the HDR part fails on main before and after the game-options-leak fix (options, scene and state parts pass). A standalone replay of the same steps with a settled layout gives a byte-identical HDR, so the suspect is the test's 390 px mobile round trip, not the product (inference from one repro, GAME-LEAK report). Not yet fixed; do not loosen the check, fix the harness or prove the cause.
+
+- SHARE-PRESET (2026-10-23): `tests/share-presets.js` covers `js/share-presets.js` (preset keys and values legal; apply() writes flux/driveView; unknown name writes nothing; #reset/#safe beat #preset). The boot code in `js/ui.js` (SHARE-PRESET block) is DOM code and is covered only by the real-browser check in the report.
