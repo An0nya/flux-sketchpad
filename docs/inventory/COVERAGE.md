@@ -17,7 +17,7 @@ OBSERVED = counted by command (commands in the Method section). INFERRED = deduc
 
 **Status (feat/option-registry, 2026-10-22):** `--touched` now also runs a changed `tests/<name>.js` Node test (that branch of `plan()` was inside a `//` comment before, so a changed Node test never ran by itself); `index.html` and `tests/load.js` have MAP entries (`ui`, `nodeAll`) so touching them no longer forces the full gate; `js/options-registry.js` maps to `ui`, `nodeAll`, drive-controls2 and scenario-node. Counts below are from f52ed8a except where marked.
 
-**`--touched` is not a subset of `--full`.** MAP entries name tests directly (e.g. `LHS1-lamp-halos`, `LDR1-lamp-road`, `TOUGE-ELEV-B` on its branch) that are absent from the curated `--full` list, so a lamp-halo change runs LHS1 but a plain `--full` never does. Two lists decide what "the gate" means: the curated list and the MAP.
+**`--touched` is not a subset of `--full`.** MAP entries name tests directly (e.g. `LDR1-lamp-road`, `TOUGE-ELEV-B` on its branch) that are absent from the curated `--full` list, so a lamp-halo change (the sprite was removed in Brief U; LHS1 and BF were deleted) ran LHS1 but a plain `--full` never does. Two lists decide what "the gate" means: the curated list and the MAP.
 
 Drive-related `js/` files with no MAP entry (OBSERVED): js/beam-quality.js, js/beam-store.js, js/beams.js, js/drive-game.js, js/drive-models-glsl.js, js/drive-models.js, js/drive-touge-three.js, js/drive-touge.js, js/drive-worker.js, js/ideal-beam.js, js/road.js, js/scene-details.js, js/sealed-beam-source.js, js/spec.js, js/starter-lamps.js. Every one of them, if edited, triggers "unmapped changed files, running the full gate". All 58 unmapped files: js/beam-quality.js, js/beam-store.js, js/beams.js, js/checks1.js, js/checks2.js, js/checks3.js, js/compare-ui.js, js/compare-worker.js, js/compare.js, js/controller.js, js/core.js, js/drive-game.js, js/drive-models-glsl.js, js/drive-models.js, js/drive-touge-three.js, js/drive-touge.js, js/drive-worker.js, js/engine.js, js/eurobeat.js, js/exports.js, js/farfield.js, js/feasibility.js, js/geometry.js, js/gpu-trace.js, js/history.js, js/ideal-beam.js, js/input.js, js/layout.js, js/lenses.js, js/manufacturability-ui.js, js/manufacturability.js, js/modeA.js, js/modeB.js, js/modes.js, js/panels.js, js/photometry.js, js/preview-worker.js, js/profile.js, js/render-gl.js, js/render.js, js/render2d.js, js/road.js, js/scene-details.js, js/sealed-beam-source.js, js/solve-cache.js, js/solve-worker.js, js/solver-constellation.js, js/solver-env.js, js/solver-host.js, js/solver-pool-worker.js, js/solver-pool.js, js/solver-spoke.js, js/solver.js, js/solvers.js, js/source.js, js/spec.js, js/starter-lamps.js, js/state.js.
 
@@ -35,7 +35,6 @@ Drive-related `js/` files with no MAP entry (OBSERVED): js/beam-quality.js, js/b
 | `visibility` | 17 | node:fog, FG-fog, SC-beam-scatter, SD-scatter-table, SE-table-pacing, SF-silhouette-fade, node:scatter-fade-gain, node:scatter-table-pace, node:scatter-table, node:scatter | node:near-eye-bins, HDX7-halo-levels, NE5-air-beam, SG1-far-car-fog, SL-traffic-halo, node:scenario-node ... +1 |
 | `scatter` | 7 | SC-beam-scatter, SF-silhouette-fade, SF1-car-silhouette | DD-dropdowns, NE5-air-beam, SG1-far-car-fog, SL-traffic-halo |
 | `trafficHalo` | 6 | **none** | node:halo-levels, DD-dropdowns, HDX7-halo-levels, SL-traffic-halo, UX3-safe-reset-fps, node:traffic-halo |
-| `lampHalos` | 2 | **none** | LHS1-lamp-halos, BF-lamp-halo-over-objects (BF: veil over the object layer, occlusion by lamp-head visibility) |
 | `lampClass` | 1 | **none** | LDR1-lamp-road |
 | `lampRoad` | 1 | **none** | LDR1-lamp-road |
 | `haloBins` | 2 | **none** | node:halo-levels, HDX7-halo-levels |
@@ -141,7 +140,7 @@ Headline (OBSERVED): the whole traffic-halo family (trafficHalo, haloBins, haloD
 |---|---|---|
 | air beam, direct and table | SC-beam-scatter, SD-scatter-table, SE-table-pacing, SF-silhouette-fade, SF1-car-silhouette, FG-fog, node:scatter, scatter-table, scatter-table-pace, scatter-fade-gain | NE5-air-beam, NE-near-eye, NE-state-leak (open), SM-cycle-distance, SN-air-defer, TL-first-open |
 | traffic halo | node:traffic-beams (beam side only) | SL-traffic-halo, HDX7-halo-levels, node:traffic-halo, node:halo-levels (names in tests/) |
-| lamp halos / lamp road | - | LHS1-lamp-halos, BF-lamp-halo-over-objects, LDR1-lamp-road (reachable only via MAP rules on drive-three-lamphalo.js, drive-three.js, lamp-dist.js) |
+| lamp road | - | LDR1-lamp-road (reachable only via MAP rules on drive-three.js, lamp-dist.js); the lamp-halo sprite, LHS1 and BF were removed in Brief U |
 | wetness / sheen / GGX | WT-wetness, WG-wet-ggx, node:wetness, wet-ggx | - |
 | traffic beams / library | BT-traffic-beams, BA5-gpu-atlas, BA-beam-library-gpu, node:beams, beam-atlas, traffic-beams | BA-beam-library, BB-*, BI-beam-indexeddb |
 | traffic light range | TL2-traffic-light-range, node:tl-traffic-taper | - |

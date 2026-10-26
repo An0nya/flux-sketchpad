@@ -16,7 +16,6 @@
       visibility: 3000,
       scatter: 0,
       trafficHalo: 4,
-      lampHalos: "off",
       lampCone: "on",
       lampConeGain: 1,
       lampClass: "II",

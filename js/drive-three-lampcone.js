@@ -14,10 +14,32 @@
      - inside the slab the ray is sampled at LAMP_CONE_STEPS equiangular midpoints about the lamp (see the shader). The table is zero beyond the cutoff (edge 85 deg sodium, 80 deg LED),
        so points outside the cone add nothing. The cone's outer edge is therefore soft by construction (the table's own fall-off).
    Not done (see report): analytic ray-cone chord; scene-depth occlusion (the pass would sample the depth texture of the target it draws into: a feedback loop).
-   Units: the target is cd/m^2-scale, the same convention as the lamp halo (lamp-halo header). Tuning values are the owner's to judge by eye. */
+   Units: the target is cd/m^2-scale (headlamp emit I/(pi r^2) in drive-scenes.js is cd/m^2; inference, not checked against a photometric measurement). Tuning values are the owner's to judge by eye. */
 import * as T from '../vendor/three/three.module.min.js';
 import { LAMP_DIST, kindOfLamp, GAMMA } from './lamp-dist.js';
-import { lampsOf, SODIUM_TINT, LED_TINT, SODIUM_LM, LED_LM } from './drive-three-lamphalo.js';
+// The street-lamp list, lumens and tints (moved here from the removed lamp-halo sprite, Brief U; the cone is their only reader).
+// sodium lamp flux 9000 lm: verified (Philips SON-T 100 W datasheet). LED lamp 55 W at 75 lm/W = 4125 lm (LA County equivalency row, verified).
+// tints: sodium 2000 K, LED 4000 K via RF.CCT.cctToRGB (chromaticity only, normalised to luminance 1).
+export const SODIUM_LM = 9000, LED_LM = 55 * 75;
+const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+function tintOf(K, fallback) {
+  let c = null;
+  try { c = globalThis.RF && RF.CCT && RF.CCT.cctToRGB ? RF.CCT.cctToRGB(K, 0) : null; } catch (e) { c = null; }
+  if (!c || !(lum(c) > 0)) c = fallback;
+  const Y = lum(c); return c.map((v) => Math.max(0, v) / Y);
+}
+export const SODIUM_TINT = () => tintOf(2000, [1, 0.5, 0.14]);
+export const LED_TINT = () => tintOf(4000, [1, 0.94, 0.86]);
+// The lamp list: street-lamp heads (drive-anim.js ~562 'ell', mat lamp-head) and lit signal discs (drive-scenes.js signal(), emit non-null). The cone uses the street heads only.
+export function lampsOf(objects) {
+  const out = [];
+  for (const ob of objects || []) {
+    if (!ob || !ob.emit) continue;
+    if (ob.cls === 'street-lamp' && ob.mat === 'lamp-head') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'street', emit: ob.emit, street: ob.street || null });
+    else if (ob.cls === 'signal' && ob.k === 'disc') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'signal', emit: ob.emit });
+  }
+  return out;
+}
 const D = globalThis.RF.Drive;
 export const LAMP_CONE_MAX = 8, LAMP_CONE_STEPS = 8, LAMP_CONE_G = 0.6, LAMP_CONE_SMAX = 300;   // lamps, steps per lamp, HG g, far limit (m)
 // LAMP-CONE-OBJECTS: cone-only profile. The table is multiplied by exp(-(gamma/CONE_W_G)^CONE_W_P) per gamma row, on a COPY (the shared
@@ -153,7 +175,7 @@ export function createLampCone(renderer) {
     return near.map(({ L, r }) => ({ x: L.x, y: L.y, z: L.z, r: +r.toFixed(2) }));
   }
   return {
-    // Called once per frame by drive-three.js after lampHalo.draw, before the blit. Off or clear air: returns with no GL state change.
+    // Called once per frame by drive-three.js before the blit. Off or clear air: returns with no GL state change.
     draw(p, world, target) {
       if (p.lampCone !== 'on') { last = { on: 0, count: 0, sigma: 0, lamps: [] }; return; }
       const sigma = D.sigmaOf(p.look || {});

@@ -24,7 +24,7 @@ async function open(p) {
   await page.setViewportSize({ width: 1920, height: 1400 }); await sleep(1500);
   await page.evaluate(() => {
     const u = RF.UI, D = RF.DriveAnim;
-    Object.assign(u.dvOpts, { scene: 'road', gpuRenderer: true, detailedModels: true, deerBehaviour: false, animals: false, people: false, trafficLogic: false, oncoming: false, preceding: false, lampHalos: 'off', lampRoad: 'off', lampClass: 'III', wet: false, wetSheen: false, visibility: null, scatter: 0, trafficHalo: 0, expMode: 'fixed', ev: 1, dynamicResolution: false, glare: 'off', onMode: 'generic', tiles: true, streetLamps: 'sodium' });
+    Object.assign(u.dvOpts, { scene: 'road', gpuRenderer: true, detailedModels: true, deerBehaviour: false, animals: false, people: false, trafficLogic: false, oncoming: false, preceding: false, lampRoad: 'off', lampClass: 'III', wet: false, wetSheen: false, visibility: null, scatter: 0, trafficHalo: 0, expMode: 'fixed', ev: 1, dynamicResolution: false, glare: 'off', onMode: 'generic', tiles: true, streetLamps: 'sodium' });
     const tile = Array.from({ length: 160 }, (_, k) => D.roadTile(7, k)).find((t) => t.kind === 'urban');
     Object.assign(u.dvAnim, { view: 'anim', dist: tile.s0 + 55, t: 2, playing: false });
     u.redrawSpec();

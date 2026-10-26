@@ -1,6 +1,6 @@
 // GS1 page checks: the one glare path (Brief U; the glareSources option is gone). Urban tile at night, sodium street lamps, glare on, GPU drive renderer.
 //  1. every source feeds the veil: the frame lists street lamps as sources (the former 'all'), each with an rgb; no select (data-dv=glareSources) exists.
-//  2. a saved profile that still holds glareSources is migrated: the key is dropped on load (RF.Options.migrateProfile), and a stale key left in dvOpts changes nothing (bytes).
+//  2. a saved profile that still holds glareSources or lampHalos (the retired lamp-halo sprite) is migrated: the key is dropped on load (RF.Options.migrateProfile), and a stale key left in dvOpts changes nothing (bytes).
 //  3. colour: the glare-on frame minus the glare-off frame is warm (sodium): more red than blue summed over the pixels glare added (a white veil would give equal red and blue).
 //  4. glare off: no veil, no sources needed: the frame has no added light (diff to itself is nil) and glare on adds light only (no pixel gets darker).
 // Run: python3 tests/serve.py <port> ; PLAYWRIGHT=... node tests/regress/GS1-glare-sources.js <port> [mainPort]   (env SHOTS=<dir> saves the frames)
@@ -53,12 +53,12 @@ const nSrc = (page) => page.evaluate(() => (RF.DriveAnim._.V.frameGlare || []).l
     ok('GS1 the sodium street lamps carry their tint [1, 0.43, 0.1]', srcs.some((q) => Math.abs(q[4] - 1) < 1e-3 && Math.abs(q[5] - 0.43) < 1e-3 && Math.abs(q[6] - 0.1) < 1e-3), JSON.stringify(srcs.slice(0, 2)));
     const ui = await page.evaluate(() => !!document.querySelector('[data-dv="glareSources"]'));
     ok('GS1 there is no glareSources select', !ui);
-    const mig = await page.evaluate(() => RF.Options.migrateProfile({ glareSources: 'all', ev: 1 }).profile);
-    ok('GS1 a saved glareSources is dropped on load, other keys kept', !('glareSources' in mig) && mig.ev === 1, JSON.stringify(mig));
-    await page.evaluate(() => { RF.UI.dvOpts.glareSources = 'oncoming'; RF.UI.redrawSpec(); }); await sleep(1000);
+    const mig = await page.evaluate(() => RF.Options.migrateProfile({ glareSources: 'all', lampHalos: 'on', ev: 1 }).profile);
+    ok('GS1 a saved glareSources / lampHalos is dropped on load, other keys kept', !('glareSources' in mig) && !('lampHalos' in mig) && mig.ev === 1, JSON.stringify(mig));
+    await page.evaluate(() => { RF.UI.dvOpts.glareSources = 'oncoming'; RF.UI.dvOpts.lampHalos = 'on'; RF.UI.redrawSpec(); }); await sleep(1000);
     const f1 = await frame(page);
-    ok('GS1 a stale glareSources key in the options change nothing (bytes)', sha(f0) === sha(f1), sha(f0).slice(0, 12) + ' vs ' + sha(f1).slice(0, 12));
-    await page.evaluate(() => { delete RF.UI.dvOpts.glareSources; });
+    ok('GS1 stale glareSources / lampHalos keys in the options change nothing (bytes)', sha(f0) === sha(f1), sha(f0).slice(0, 12) + ' vs ' + sha(f1).slice(0, 12));
+    await page.evaluate(() => { delete RF.UI.dvOpts.glareSources; delete RF.UI.dvOpts.lampHalos; });
     // colour of the added light: canvas pixels, glare on vs off, same pose
     const px = async (glare) => { await page.evaluate((g) => { RF.UI.dvOpts.glare = g; RF.UI.redrawSpec(); }, glare); await sleep(1200); return page.evaluate(() => { RF.DriveAnim._.frame(); return Array.from(RF.DriveAnim._.readCanvas()); }); };
     const on = await px('dry'), off = await px('off');

@@ -40,8 +40,8 @@
   const RF = root.RF || (root.RF = {});
 
   // Options removed from the build. A saved profile may still hold them; load drops the key so a stale value can never matter (Brief U:
-  // glareSources = every source now glares).
-  const RETIRED_KEYS = ['glareSources'];
+  // glareSources = every source now glares; lampHalos = the lamp-halo sprite is gone, the lamp cone is the only street-lamp haze).
+  const RETIRED_KEYS = ['glareSources', 'lampHalos'];
   const DEFAULTS_VERSION = 1;   // the defaults generation this build writes into a saved profile (profile.defaultsVersion)
 
   // A profile saved before versioning holds every key that existed when it was saved, because setDV wrote the whole object.
@@ -99,7 +99,7 @@
       at: { file: ANIM, fn: '"street-lamps"]\').disabled', line: 1881 } },
     lampsPresent: { cond: { all: [{ opt: 'streetLamps', ne: 'off' }, { any: [{ opt: 'tiles', eq: true }, { opt: 'mountainPass', eq: true }] }] }, why: 'needs street lamps in the scene (tiles or pass, lamps not off)', effect: 'none',
       at: { file: ANIM, fn: 'lamps: o.streetLamps', line: 57 } },
-    lampDistUsed: { cond: { any: [{ opt: 'lampHalos', eq: 'on' }, { opt: 'lampRoad', eq: 'table' }] }, why: 'used only by lamp halos or road lamp light', effect: 'none',
+    lampDistUsed: { cond: { opt: 'streetLamps', ne: 'off' }, why: 'the table sizes the street lamps\' glare, the lamp cone and the road lamp light, so it matters only with street lamps on', effect: 'none',
       at: { file: THREE, fn: 'lampRoadOn.value', line: 275 } },
     usRoad: { cond: { ctx: 'preset', eq: 'us' }, why: 'US road preset only (the centre line differs)', effect: 'disabled',
       at: { file: ANIM, fn: 'cl.disabled = !I.us', line: 1888 } },
@@ -230,16 +230,6 @@
       note: 'haloN() is 0 unless trafficBeams, air and trafficHalo > 0 (silent no-op otherwise). GPU only.',
     },
     {
-      id: 'lampHalos', kind: 'profile', type: 'enum', values: ['off', 'on'],
-      default: 'off', label: 'lamp halos',
-      control: '[data-dv="lampHalos"]', where: 'more', query: null,
-      group: 'street-lamps', cost: 'per-frame-gpu',
-      owner: ['js/drive-anim.js'],
-      requires: [need('gpu')],
-      tests: [],
-      note: 'GPU only; the CPU renderer ignores it.',
-    },
-    {
       id: 'lampCone', kind: 'profile', type: 'enum', values: ['off', 'on'],
       default: 'off', label: 'lamp cone (mist)',
       control: '[data-dv="lampCone"]', where: 'more', query: null,
@@ -267,7 +257,7 @@
       owner: ['js/drive-anim.js'],
       requires: [need('lampDistUsed')],
       tests: [],
-      note: 'Free until lamp halos or road lamp light uses it.',
+      note: 'Sizes the street lamps\' glare (D.glareSources via lampEyeCd), the lamp cone and the road lamp light.',
     },
     {
       id: 'lampRoad', kind: 'profile', type: 'enum', values: ['off', 'table'],

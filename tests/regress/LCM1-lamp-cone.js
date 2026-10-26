@@ -28,7 +28,9 @@ async function open(p) {
   // indices stop matching objectBuffers). Test-only style; the drawing-buffer size is unchanged.
   await page.evaluate(() => {
     const u = RF.UI, D = RF.DriveAnim;
-    Object.assign(u.dvOpts, { scene: 'road', gpuRenderer: true, detailedModels: true, deerBehaviour: false, animals: false, people: false, trafficLogic: false, oncoming: false, preceding: false, lampHalos: 'off', lampCone: 'off', wet: false, wetSheen: false, visibility: null, scatter: 0, trafficHalo: 0, lampClass: 'III', lampRoad: 'off', streetLamps: 'sodium', tiles: true });
+    // Brief U (step B): the test page's default glare is 'rain', and since B every street lamp feeds that veil, which dilutes the gain ratio below (median 1.813 -> 1.791).
+    // The check is about the cone's own gain, so glare is set off here explicitly; with it off the ratio is the main-build 1.813 again.
+    Object.assign(u.dvOpts, { scene: 'road', gpuRenderer: true, detailedModels: true, deerBehaviour: false, animals: false, people: false, trafficLogic: false, oncoming: false, preceding: false, lampCone: 'off', glare: 'off', wet: false, wetSheen: false, visibility: null, scatter: 0, trafficHalo: 0, lampClass: 'III', lampRoad: 'off', streetLamps: 'sodium', tiles: true });
     const tile = Array.from({ length: 160 }, (_, k) => D.roadTile(7, k)).find((t) => t.kind === 'urban');
     Object.assign(u.dvAnim, { view: 'anim', dist: tile.s0 + 55, t: 2, playing: false });
     u.redrawSpec();

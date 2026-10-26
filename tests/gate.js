@@ -15,10 +15,10 @@ const JOBS = +val('--jobs', 3), BASE = val('--base', 'main'), WALL_MS = +val('--
 const PW = process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright';
 
 // ---- the curated gate -------------------------------------------------------------------------------------------------
-const NODE = ['all', 'regress-node', 'scatter-table', 'scatter-table-pace', 'scatter', 'scatter-fade-gain', 'fog', 'wetness', 'wet-ggx', 'foliage', 'beams', 'beam-atlas', 'traffic-beams', 'tl-traffic-taper', 'pass-parity', 'deer-tilt', 'scene-digest', 'scenery-params', 'tile-options', 'options-registry', 'options-migration', 'options-docs', 'share-presets', 'sampler-budget'];
+const NODE = ['all', 'regress-node', 'glare-all', 'scatter-table', 'scatter-table-pace', 'scatter', 'scatter-fade-gain', 'fog', 'wetness', 'wet-ggx', 'foliage', 'beams', 'beam-atlas', 'traffic-beams', 'tl-traffic-taper', 'pass-parity', 'deer-tilt', 'scene-digest', 'scenery-params', 'tile-options', 'options-registry', 'options-migration', 'options-docs', 'share-presets', 'sampler-budget'];
 const PAGE_PAR = ['SB1-studs-everywhere', 'OV-scene-details', 'CD-controls-dedupe', 'UX2-drive-ux', 'DC-drive-controls', 'DW-drive-wheel', 'PM-pass-mesh', 'PP-pass-parity', 'P2-drive-lighting', 'WG-wet-ggx', 'WT-wetness', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'SF-silhouette-fade', 'SF1-car-silhouette', 'BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'TL2-traffic-light-range',
   // FULL-COVERAGE (owner 2026-10-27): these used to run only via the --touched map, and 4 of them sat stale on main after a change in another file. Agents: --full is for merge checkpoints only; use --touched.
-  'TOUGE-AIR', 'TOUGE-AIR-RIBBON', 'TOUGE-SKY-VEIL', 'TOUGE-HALO-TILT', 'TOUGE-ELEV-B', 'LHS1-lamp-halos', 'BF-lamp-halo-over-objects', 'LCM1-lamp-cone', 'GS1-glare-sources', 'BJ1-shadow-cache', 'BJ2-halo-table-pin'];
+  'TOUGE-AIR', 'TOUGE-AIR-RIBBON', 'TOUGE-SKY-VEIL', 'TOUGE-HALO-TILT', 'TOUGE-ELEV-B', 'LCM1-lamp-cone', 'GS1-glare-sources', 'BJ1-shadow-cache', 'BJ2-halo-table-pin'];
 const PAGE_SOLO = ['P1-drive-three', 'SE-table-pacing', 'AC-air-cache-generations'];   // P1 needs the real GPU; SE measures per-frame ms; AC sizes its budget from the measured ms per row
 const GROUPS = {
   render: ['P1-drive-three', 'P2-drive-lighting', 'PM-pass-mesh', 'PP-pass-parity', 'WT-wetness', 'WG-wet-ggx', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'SE-table-pacing', 'SF-silhouette-fade', 'SF1-car-silhouette', 'BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'TL2-traffic-light-range', 'SB1-studs-everywhere', 'OV-scene-details'],
@@ -32,16 +32,16 @@ const GROUPS = {
 const MAP = [
   [/^js\/drive-three-shaders\.js$/, ['render', 'ui', 'node:sampler-budget']], [/^js\/drive-three(-objects|-models)?\.js$/, ['render', 'ui', 'PL3-powerlines-reflectance']],
   [/^js\/ui\.js$/, ['ui']], [/^js\/drive-anim\.js$/, ['render', 'ui', 'nodeAll', 'PL3-powerlines-reflectance', 'GS1-glare-sources']], [/^js\/spec-ui\.js$/, ['ui', 'scatter', 'beams', 'node:options-migration', 'PL3-powerlines-reflectance']],
-  [/^js\/drive\.js$/, ['render', 'nodeAll', 'PL3-powerlines-reflectance']], [/^js\/table-pace\.js$/, ['scatter']], [/^js\/beam-atlas\.js$/, ['beams']],
+  [/^js\/drive\.js$/, ['render', 'nodeAll', 'PL3-powerlines-reflectance', 'GS1-glare-sources']], [/^js\/table-pace\.js$/, ['scatter']], [/^js\/beam-atlas\.js$/, ['beams']],
   [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']], [/^js\/drive-touge-three\.js$/, ['TOUGE-ELEV-B', 'TOUGE-SKY-VEIL', 'TOUGE-AIR', 'TOUGE-AIR-RIBBON', 'BJ1-shadow-cache']], [/^js\/drive-three-halo\.js$/, ['TOUGE-HALO-TILT', 'BJ2-halo-table-pin']],
   [/^js\/drive-scenes\.js$/, ['render', 'ui', 'nodeAll', 'PL1-powerlines']],
-  [/^js\/drive-touge\.js$/, ['PL2-powerlines-pass']],   // REFLECTIVE-CLOTHING: pedestrians are built here; the RC test is a new regress file, picked up automatically
-  [/^js\/drive-three-lamphalo\.js$/, ['LHS1-lamp-halos', 'BF-lamp-halo-over-objects']], [/^js\/drive-three\.js$/, ['LHS1-lamp-halos', 'BF-lamp-halo-over-objects', 'TOUGE-AIR', 'TOUGE-AIR-RIBBON', 'AC-air-cache-generations']],
-  [/^tests\/regress\/BF-lamp-halo-over-objects\.js$/, ['BF-lamp-halo-over-objects']],
+  [/^js\/drive-touge\.js$/, ['PL2-powerlines-pass', 'node:glare-all']],   // REFLECTIVE-CLOTHING: pedestrians are built here; the RC test is a new regress file, picked up automatically
+  [/^js\/drive-three-lamphalo\.js$/, ['LCM1-lamp-cone']],   // deleted in Brief U (kept so the deletion is not an unmapped change: the cone took its exports)
+  [/^js\/drive-three\.js$/, ['LCM1-lamp-cone', 'TOUGE-AIR', 'TOUGE-AIR-RIBBON', 'AC-air-cache-generations']],
   [/^js\/drive-three-lampcone\.js$/, ['LCM1-lamp-cone']], [/^tests\/regress\/LCM1-lamp-cone\.js$/, ['LCM1-lamp-cone']],
   [/^js\/drive-models\.js$/, ['node:deer-tilt', 'node:pass-parity', 'node:scene-digest', 'PM-pass-mesh', 'PP-pass-parity']], [/^tests\/deer-tilt\.js$/, ['node:deer-tilt']],   // DEER-TILT (Brief T)
   [/^tests\/regress\/GS1-glare-sources\.js$/, ['GS1-glare-sources']],
-  [/^js\/lamp-dist\.js$/, ['LHS1-lamp-halos', 'LDR1-lamp-road']], [/^tests\/regress\/LDR1-lamp-road\.js$/, ['LDR1-lamp-road']],
+  [/^js\/lamp-dist\.js$/, ['LCM1-lamp-cone', 'LDR1-lamp-road', 'GS1-glare-sources', 'node:glare-all']], [/^tests\/regress\/LDR1-lamp-road\.js$/, ['LDR1-lamp-road']],
   [/^js\/options-registry\.js$/, ['ui', 'nodeAll', 'node:drive-controls2', 'node:scenario-node']],   // OPTION-REGISTRY: the defaults of every option; tests/options-registry.js and options-migration.js are in NODE
   [/^js\/share-presets\.js$/, ['ui', 'node:share-presets']],   // SHARE-PRESET: #preset=<name> links; tests/share-presets.js
   [/^index\.html$/, ['ui']], [/^tests\/load\.js$/, ['nodeAll']],

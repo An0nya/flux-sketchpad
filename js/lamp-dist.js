@@ -1,4 +1,4 @@
-/* LAMP-DIST: one street-luminaire light-distribution table, I(gamma, phi), shared by the glare sprite (drive-three-lamphalo.js),
+/* LAMP-DIST: one street-luminaire light-distribution table, I(gamma, phi), shared by the glare sources (drive.js lampEyeCd), the lamp cone (drive-three-lampcone.js),
    the CPU road lighting (drive.js pointLights) and the GPU road lighting (drive-three-shaders.js light loop).
    Dependency-free on purpose: the CPU renderer must not import the GPU module.
 
@@ -87,6 +87,7 @@ export function distAt(cls, kind, gDeg, phiDeg) {
 }
 
 // Sprite value: the table, with the 4 percent floor between the edge and horizontal (zero above horizontal).
+// (Brief U: the lamp-halo sprite that used this floor is gone; kept, unused, for the record.)
 export function spriteDistAt(cls, kind, gDeg, phiDeg) {
   if (!(gDeg <= 90)) return 0;
   return Math.max(distAt(cls, kind, gDeg, phiDeg), SPRITE_DIST_FLOOR_FRAC * LAMP_DIST.peak[cls + '/' + kind]);
