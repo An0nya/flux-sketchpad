@@ -167,6 +167,7 @@
         const p=at(arguments[0],arguments[1]),opt=(m==='person'?arguments[3]:arguments[2])||{};
         for(let i=first;i<O.length;i++){O[i].detailPart=m;O[i].modelId=opt.id||m+':'+arguments[0]+':'+arguments[1];}
         O[first].detail={kind:m,x:p.x,y:p.y,yaw:p.yaw+(opt.turn||0),face:opt.face||1,gait:opt.gait||0,dir:opt.dir||[1,0],ptype:m==='person'?arguments[2]:null,h:m==='tree'?O[first].z1/.55:0,bound:!!opt.bound,motion:opt.motion,attention:opt.attention,id:opt.id||m+':'+arguments[0]+':'+arguments[1],birch:!!opt.birch};
+        if (m==='deer' && opt.normal) O[first].detail.normal=opt.normal;   // pass: the terrain normal (route frame), the detailed deer model tilts its body to it (drive-models.js build)
         if (m==='person' && O[first].pedMats) O[first].detail = Object.assign({}, O[first].detail, { pedMats: O[first].pedMats });   // only pedestrians carry the key (other classes keep their old shape)
       }
       return result;

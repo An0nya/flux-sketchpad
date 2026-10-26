@@ -141,7 +141,7 @@
     if (flags.animals !== false) for (const c of crestDeer(dist)) {
       // Behaviour on: the flat scenes' deer model, attention and bolt (tauOf is the activate clock; -1 = still grazing). Off: the original standing deer.
       const att = deerOn ? D.Models.deerAttention(seedOf(p) + ':' + c.id, tauOf ? tauOf('@' + c.id) : -1) : null, bolting = !!att && att.state === 'bolt', d = bolting ? Math.max(0, att.elapsed - att.bolt) * 3.8 : 0;
-      K.deer(c.rel, .35 + c.side * d, deerOn ? { id: c.id, attention: att, face: bolting ? -1 : 1, motion: D.Models.locomotion('deer', d, 3.8, bolting, 'bound') } : { id: c.id });
+      K.deer(c.rel, .35 + c.side * d, deerOn ? { id: c.id, attention: att, normal: A.touge ? A.surface(c.rel, .35 + c.side * d).normal : undefined, face: bolting ? -1 : 1, motion: D.Models.locomotion('deer', d, 3.8, bolting, 'bound') } : { id: c.id });
     }
     if (p.src.tiles.lamps !== 'off') for (const c of lampSpots(dist, seedOf(p))) {
       const b = c.side < 0 ? -p.lane / 2 - 1 : 1.5 * p.lane + 1, head = b - c.side * .8, pole = K.at(c.rel, b), hd = K.at(c.rel, head), mid = K.at(c.rel, (b + head) / 2);

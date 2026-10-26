@@ -57,6 +57,7 @@ Direct consequence (OBSERVED by reading; the render itself was not run): on the 
 | drive-anim.js:759 | `tiles.mountain` | `activate` uses `Touge.activate` (crest-deer clocks) |
 | drive-anim.js:1167-1168 | `p.touge` | frameSources: `Touge.world` + `Touge.glareSources` (line-of-sight aware) instead of `D.glareSources` |
 | drive-anim.js:1233 | `V.p.touge` | same for the drawn frame |
+| drive-touge.js world() (deer) | `A.touge` | Brief T: crest deer get `normal: A.surface(...).normal`; drive-models.js build() tilts the detailed deer body to it (flat: no normal, unchanged). The primitive (non-detailed) deer is not tilted |
 | drive-anim.js:1264 | `o.mountainPass` | CPU worker threads off |
 | drive-anim.js:1368 | `tiles.mountain` | camera uses the logic path (speed follows bends) even with trafficLogic off |
 | drive-anim.js:1794, 1809 | mountain | tile label shows grade; speed label shows actual |

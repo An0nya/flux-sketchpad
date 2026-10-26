@@ -56,7 +56,11 @@
   }
   function build(kind, o) {
     o=o||{};const nodes=[],eyes=[],yaw=(o.yaw||0)+(kind==='person'?Math.atan2((o.dir||[1,0])[1],(o.dir||[1,0])[0]):0),c=Math.cos(yaw),s=Math.sin(yaw),F=o.face||1;
-    const point=p=>[c*p[0]-s*p[1],s*p[0]+c*p[1],p[2]], id=k=>D.MAT_KEYS.indexOf(k);
+    const yawPoint=p=>[c*p[0]-s*p[1],s*p[0]+c*p[1],p[2]];
+    // Terrain tilt (the deer on the pass, o.normal = unit surface normal in the route frame): rotate the whole body about the anchor so its up axis becomes the normal
+    // (Rodrigues, axis z x n). The ellipsoids keep yaw-only axes (the node format has no pitch), so only the node positions tilt: an approximation, fine for pass slopes.
+    let tilt=null;if(kind==='deer'&&o.normal){const n=o.normal,ax=[-n[1],n[0],0],sn=Math.hypot(ax[0],ax[1]),cs=n[2];if(sn>1e-6){const k=[ax[0]/sn,ax[1]/sn,0];tilt=v=>{const d=k[0]*v[0]+k[1]*v[1],cr=[k[1]*v[2],-k[0]*v[2],k[0]*v[1]-k[1]*v[0]];return[v[0]*cs+cr[0]*sn+k[0]*d*(1-cs),v[1]*cs+cr[1]*sn+k[1]*d*(1-cs),v[2]*cs+cr[2]*sn];};}}
+    const point=tilt?p=>tilt(yawPoint(p)):yawPoint, id=k=>D.MAT_KEYS.indexOf(k);
     const ell=(p,r,m,angle=0)=>{p=point(p);nodes.push([...p,0,...r,1,0,0,angle,id(m)]);};
     const cap=(a,b,r,m)=>{a=point(a);b=point(b);nodes.push([...a,r,...b,0,0,0,0,id(m)]);};
     const attention=o.attention;let eyeNormal=null;
