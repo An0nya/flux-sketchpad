@@ -1,9 +1,8 @@
-// GS1 page checks: glareSources wired live (Brief T item 1). Urban tile at night, sodium street lamps, glare on, GPU drive renderer.
-//  1. default (option unset) equals explicit 'oncoming' (bytes): the default call is exactly the old one. If a main port is given (argv[3]),
-//     the default frame also equals the main build's frame byte for byte.
-//  2. 'all' lists more glare sources than 'oncoming' (street lamps join), and changes the frame (the veil differs).
-//  3. off after on: 'oncoming' again equals the first frame (bytes).
-//  4. the select (data-dv=glareSources) is in the More panel and reads back the stored value.
+// GS1 page checks: the one glare path (Brief U; the glareSources option is gone). Urban tile at night, sodium street lamps, glare on, GPU drive renderer.
+//  1. every source feeds the veil: the frame lists street lamps as sources (the former 'all'), each with an rgb; no select (data-dv=glareSources) exists.
+//  2. a saved profile that still holds glareSources is migrated: the key is dropped on load (RF.Options.migrateProfile), and a stale key left in dvOpts changes nothing (bytes).
+//  3. colour: the glare-on frame minus the glare-off frame is warm (sodium): more red than blue summed over the pixels glare added (a white veil would give equal red and blue).
+//  4. glare off: no veil, no sources needed: the frame has no added light (diff to itself is nil) and glare on adds light only (no pixel gets darker).
 // Run: python3 tests/serve.py <port> ; PLAYWRIGHT=... node tests/regress/GS1-glare-sources.js <port> [mainPort]   (env SHOTS=<dir> saves the frames)
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const crypto = require('crypto'), fs = require('fs'), path = require('path');
@@ -24,8 +23,7 @@ async function open(p) {
   await page.setViewportSize({ width: 1920, height: 1400 }); await sleep(1500);
   await page.evaluate(() => {
     const u = RF.UI, D = RF.DriveAnim;
-    Object.assign(u.dvOpts, { scene: 'road', gpuRenderer: true, detailedModels: true, deerBehaviour: false, animals: false, people: false, trafficLogic: false, oncoming: false, preceding: false, lampHalos: 'off', wet: false, wetSheen: false, visibility: null, scatter: 0, trafficHalo: 0, expMode: 'fixed', ev: 1, dynamicResolution: false, samples: '1', glare: 'dry', onMode: 'generic', tiles: true, streetLamps: 'sodium' });
-    delete u.dvOpts.glareSources;
+    Object.assign(u.dvOpts, { scene: 'road', gpuRenderer: true, detailedModels: true, deerBehaviour: false, animals: false, people: false, trafficLogic: false, oncoming: false, preceding: false, wet: false, wetSheen: false, visibility: null, scatter: 0, trafficHalo: 0, expMode: 'fixed', ev: 1, dynamicResolution: false, samples: '1', glare: 'dry', onMode: 'generic', tiles: true, streetLamps: 'sodium' });
     const tile = Array.from({ length: 160 }, (_, k) => D.roadTile(7, k)).find((t) => t.kind === 'urban');
     Object.assign(u.dvAnim, { view: 'anim', dist: tile.s0 + 55, t: 2, playing: false });
     u.redrawSpec();
@@ -39,7 +37,6 @@ const frame = async (page) => {
   await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sl-drive', '1'));
   return page.locator('canvas[data-sl-drive="1"]').screenshot();
 };
-const setGS = (page, v) => page.evaluate((v) => { if (v === undefined) { delete RF.UI.dvOpts.glareSources; RF.UI.redrawSpec(); } else RF.DriveAnim._.V.setOwn('glareSources', v); }, v).then(() => sleep(1000));
 const nSrc = (page) => page.evaluate(() => (RF.DriveAnim._.V.frameGlare || []).length);
 
 (async () => {
@@ -51,23 +48,28 @@ const nSrc = (page) => page.evaluate(() => (RF.DriveAnim._.V.frameGlare || []).l
     console.log('GPU: ' + rs);
     ok('GS1 GPU renderer is on', (await page.evaluate(() => RF.DriveAnim.stats().renderer)) === 'three');
     const f0 = await frame(page), n0 = await nSrc(page);
-    await setGS(page, 'oncoming');
+    const srcs = await page.evaluate(() => (RF.DriveAnim._.V.frameGlare || []).map((q) => q.map((v) => +v.toFixed(3))));
+    ok('GS1 street lamps are glare sources by default (no option)', n0 > 0 && srcs.every((q) => q.length === 7), n0 + ' sources');
+    ok('GS1 the sodium street lamps carry their tint [1, 0.43, 0.1]', srcs.some((q) => Math.abs(q[4] - 1) < 1e-3 && Math.abs(q[5] - 0.43) < 1e-3 && Math.abs(q[6] - 0.1) < 1e-3), JSON.stringify(srcs.slice(0, 2)));
+    const ui = await page.evaluate(() => !!document.querySelector('[data-dv="glareSources"]'));
+    ok('GS1 there is no glareSources select', !ui);
+    const mig = await page.evaluate(() => RF.Options.migrateProfile({ glareSources: 'all', ev: 1 }).profile);
+    ok('GS1 a saved glareSources is dropped on load, other keys kept', !('glareSources' in mig) && mig.ev === 1, JSON.stringify(mig));
+    await page.evaluate(() => { RF.UI.dvOpts.glareSources = 'oncoming'; RF.UI.redrawSpec(); }); await sleep(1000);
     const f1 = await frame(page);
-    ok("GS1 unset equals explicit 'oncoming' (bytes)", sha(f0) === sha(f1), sha(f0).slice(0, 12) + ' vs ' + sha(f1).slice(0, 12));
-    if (mainPort) {
-      M = await open(mainPort); const fm = await frame(M.page);
-      ok('GS1 default frame equals the main build (bytes)', sha(fm) === sha(f0), sha(fm).slice(0, 12) + ' vs ' + sha(f0).slice(0, 12));
-    }
-    await setGS(page, 'all');
-    const f2 = await frame(page), n2 = await nSrc(page);
-    ok("GS1 'all' lists more glare sources than 'oncoming'", n2 > n0, n0 + ' -> ' + n2);
-    ok("GS1 'all' changes the frame", sha(f2) !== sha(f0));
-    const ui = await page.evaluate(() => { const s = document.querySelector('[data-dv="glareSources"]'); return s ? { value: s.value, inMore: !!s.closest('.drive-more') } : null; });
-    ok("GS1 select (data-dv=glareSources) is in the More panel and reads 'all'", !!(ui && ui.inMore && ui.value === 'all'), JSON.stringify(ui));
-    await setGS(page, 'oncoming');
-    const f3 = await frame(page);
-    ok("GS1 'oncoming' after 'all' equals the first frame (bytes)", sha(f3) === sha(f0), sha(f3).slice(0, 12) + ' vs ' + sha(f0).slice(0, 12));
-    if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); fs.writeFileSync(path.join(SHOTS, 'glare-oncoming.png'), f0); fs.writeFileSync(path.join(SHOTS, 'glare-all.png'), f2); }
+    ok('GS1 a stale glareSources key in the options change nothing (bytes)', sha(f0) === sha(f1), sha(f0).slice(0, 12) + ' vs ' + sha(f1).slice(0, 12));
+    await page.evaluate(() => { delete RF.UI.dvOpts.glareSources; });
+    // colour of the added light: canvas pixels, glare on vs off, same pose
+    const px = async (glare) => { await page.evaluate((g) => { RF.UI.dvOpts.glare = g; RF.UI.redrawSpec(); }, glare); await sleep(1200); return page.evaluate(() => { RF.DriveAnim._.frame(); return Array.from(RF.DriveAnim._.readCanvas()); }); };
+    const on = await px('dry'), off = await px('off');
+    let dr = 0, dg = 0, db = 0, darker = 0, added = 0; for (let i = 0; i < on.length; i += 4) { const a = on[i] - off[i], g = on[i + 1] - off[i + 1], b = on[i + 2] - off[i + 2]; if (a < -1 || g < -1 || b < -1) darker++; if (a > 0 || g > 0 || b > 0) { added++; dr += Math.max(0, a); dg += Math.max(0, g); db += Math.max(0, b); } }
+    ok('GS1 glare on adds light and never darkens a pixel', added > 0 && darker === 0, 'added px ' + added + ', darker ' + darker);
+    ok('GS1 the added glare is warm (sodium): red sum > green sum > blue sum', dr > dg && dg > db, 'R ' + dr + ' G ' + dg + ' B ' + db);
+    await page.evaluate(() => { RF.UI.dvOpts.glare = 'dry'; RF.UI.redrawSpec(); }); await sleep(1200);
+    const f2 = await frame(page);
+    ok('GS1 glare back on equals the first frame (bytes)', sha(f2) === sha(f0), sha(f2).slice(0, 12) + ' vs ' + sha(f0).slice(0, 12));
+    if (mainPort) { M = await open(mainPort); const fm = await frame(M.page); ok('GS1 (info) the main build differs: its default glare was headlamps only', sha(fm) !== sha(f0), sha(fm).slice(0, 12) + ' vs ' + sha(f0).slice(0, 12)); }
+    if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); fs.writeFileSync(path.join(SHOTS, 'glare.png'), f0); }
     ok('GS1 no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   } catch (e) {
     ok('GS1 ran to completion', false, String(e && e.message || e));

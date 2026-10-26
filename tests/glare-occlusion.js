@@ -12,7 +12,8 @@
     const precBody = (y) => ({ k: 'box', x: 18, y, z0: 0.25, z1: 1.4, hx: 2.2, hy: 0.9, yaw: 0, traffic: 'pre', mat: 'car-paint' });
     const preTail = [0.1, 1.4].map((y) => ({ k: 'disc', taillamp: true, traffic: 'pre', x: 15.79, y: 0.75 + (y - 0.75), z: 0.78, nx: -1, ny: 0, nz: 0, r: 0.1, emit: [1, 0.03, 0.015], mat: 'lamp-head' }));
     const scene = (extra) => [onBody, ...oncomingLamps, ...extra];
-    const nSrc = (objs) => D.glareSources(objs, EYE).length;
+    // Brief U: every lamp is a glare source now, so count the headlamps' sources only: the objects are still all the occluders
+    const nSrc = (objs) => D.glareSources(objs.filter((o) => o.headlamp), EYE, objs).length;
 
     const a = nSrc(scene([]));
     ok('occlusion (a): nothing between -> both oncoming lamps are glare sources', a === 2, 'sources ' + a);
@@ -23,8 +24,8 @@
     const c = nSrc(scene([precBody(0.75 + 3), ...preTail.map((t) => Object.assign({}, t, { y: t.y + 3 }))]));
     ok('occlusion (c): preceding car offset 3 m sideways -> both lamps back', c === 2, 'sources ' + c);
 
-    // (d) the preceding car's own taillamps are not hidden by their own body. Taillamps are not glare sources (headlamp only),
-    // so this checks the occlusion test directly, with a control: the self-hit rule (minT) is what keeps them visible.
+    // (d) the preceding car's own taillamps are not hidden by their own body. Taillamps are glare sources too since Brief U, but
+    // this checks the occlusion test directly, with a control: the self-hit rule (minT) is what keeps them visible.
     const pre = [precBody(0.75), ...preTail];
     const tailVisible = preTail.every((t) => !D.occluded([t.x, t.y, t.z], EYE, pre));
     ok('occlusion (d): the preceding car\'s own taillamps are not occluded by their own body', tailVisible);

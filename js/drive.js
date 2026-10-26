@@ -765,12 +765,12 @@
     return false;
   }
   // occluders: the opaque objects of the same frame (default: objects themselves). A lamp hidden from the eye contributes nothing.
-  // GLARE-ALL (option glareSources): opts.mode 'oncoming' (default, the headlamps only, unchanged) | 'all'.
-  // 'all' adds, through the same loop: preceding cars' tail lamps, lit signal heads (emit set), and opts.lights (street lamps, see lampEyeCd).
+  // GLARE (Brief U: one path): every lamp that can glare goes through glareSources: headlamps, preceding cars' tail lamps, lit signal heads (emit set), and opts.lights
+  // (street lamps, see lampEyeCd). Each is sized by its own candela toward the eye (E = cd cos / r^2) and carries its colour (sourceRGB).
   // Signal and tail emitters take their candela from the brightest emit channel (the channel that carries the intensity in the scene builders:
   // red for a tail, the lit colour's channel for a signal). That is a choice, not a photometric measurement. Headlamps keep emit[0].
-  // Cap 32: 'all' sorts by eye illuminance (brightest first); 'oncoming' keeps the scene order, as before.
-  function glareEmitter(ob, mode) { return !!ob.headlamp || (mode === 'all' && (!!ob.taillamp || (ob.cls === 'signal' && !!ob.emit))); }
+  // Cap 32, brightest (by eye illuminance) first. (The former glareSources option, 'oncoming' = headlamps only, is gone.)
+  function glareEmitter(ob) { return !!ob.headlamp || !!ob.taillamp || (ob.cls === 'signal' && !!ob.emit); }
   // Candela toward the eye from one street lamp: its cd, times the lamp-dist road factor I(gamma, phi) when the lamp has a street direction
   // (same factor as lampRoadF in drive-three-shaders.js and drive.js lampRoadF). gamma is measured from straight down, in the frame the lamp and eye share.
   function lampEyeCd(L, eye, opts) {
@@ -792,25 +792,24 @@
     return m > 0 ? [Math.max(0, +c[0] || 0) / m, Math.max(0, +c[1] || 0) / m, Math.max(0, +c[2] || 0) / m] : [1, 1, 1];
   }
   function glareSources(objects, eye, occluders, opts) {
-    eye = eye || [-2, 0.37, 1.2]; const out = [], occ = occluders || objects, mode = opts && opts.mode === 'all' ? 'all' : 'oncoming';
-    for (const ob of objects) if (mode === 'oncoming' ? ob.headlamp : glareEmitter(ob, mode)) {
+    eye = eye || [-2, 0.37, 1.2]; const out = [], occ = occluders || objects;
+    for (const ob of objects) if (glareEmitter(ob)) {
       const dx = ob.x - eye[0], dy = ob.y - eye[1], dz = ob.z - eye[2], rr = Math.hypot(dx, dy, dz);
       if (dx <= 0 || !(rr > 0)) continue;
       if (occluded([ob.x, ob.y, ob.z], eye, occ)) continue;
       const cos = Math.max(0, -(dx * ob.nx + dy * ob.ny) / rr);
       const cd = ob.eyeCd === undefined ? (ob.headlamp ? ob.emit[0] : Math.max(...ob.emit)) * Math.PI * ob.r * ob.r * Math.pow(cos, ob.emitPow || 1) : ob.eyeCd;
-      if (mode === 'all' && !(cd > 0)) continue;      // 'oncoming' keeps every headlamp it always kept
+      if (!(cd > 0)) continue;
       out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr), ...sourceRGB(ob.emit)]);
     }
-    if (mode === 'all') for (const L of opts.lights || []) {
+    for (const L of (opts && opts.lights) || []) {
       const dx = L.x - eye[0], dy = L.y - eye[1], dz = L.z - eye[2], rr = Math.hypot(dx, dy, dz);
       if (dx <= 0 || !(rr > 0)) continue;
       const cd = L.eyeCd === undefined ? lampEyeCd(L, eye, opts) : L.eyeCd;
       if (!(cd > 0) || !lightVisible(L, eye, occ)) continue;
       out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr), ...sourceRGB(L.rgb)]);   // L.rgb: the lamp kind's tint (sodium / LED), set where the lights are made
     }
-    if (mode === 'all') return out.sort((a, b) => b[3] - a[3]).slice(0, 32);
-    return out.slice(0, 32);
+    return out.sort((a, b) => b[3] - a[3]).slice(0, 32);
   }
   function veilAt(dir, sources) {
     let L = 0; for (const q of sources || []) { const theta = Math.max(1, Math.acos(Math.max(-1, Math.min(1, dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]))) / D2R); L += 10 * q[3] / (theta * theta); } return L;

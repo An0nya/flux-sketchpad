@@ -8,7 +8,7 @@ Render terms used (first use): a **fragment shader** is the small program the GP
 ## 1. What one GPU frame does, in order (OBSERVED, drive-anim.js `frame()` 1206-1246, `draw()` 928-963, drive-three.js `render()` 291-314)
 
 1. `airTick()` / `tableStrip()` (drive-anim.js:2331-2358): first-open air deferral. `resolutionPrepare()` (:1009): if the dynamic scale changed, `prepare(layout())` rebuilds sizes.
-2. CPU world build: `activate` (:758), `placedObjects`/`tileWorld` (:372, :512) or `Touge.world` (drive-touge.js:105); `glareSources` (:1233).
+2. CPU world build: `activate` (:758), `placedObjects`/`tileWorld` (:372, :512) or `Touge.world` (drive-touge.js:105); `glareSources` (:1233). One glare path (Brief U): headlamps, tail lamps, lit signals and street lamps all go through `D.glareSources` as `[dx,dy,dz,E,r,g,b]` (cap 32, brightest first; rgb max channel 1); the CPU tonemap (`veilRGBAt`) and the GPU final pass (`uSources` + `uSrcRGB`, 32 vec4 + 32 vec3) add `veil = E * rgb`. `RF.LampDist` (js/lamp-dist.js, a module) must be loaded first: index.html and tests/load.js do it.
 3. `V.gl.draw(f)` (:928):
    1. `f.groundGPU` = `V.three.render(p, world, dist, T.A.f, T.O.f, ss)` (drive-three.js:291):
       1. `update(p, world, dist)` (:215): uploads every uniform (lamps, lights, markings, traffic, atlas, lamp-road table).

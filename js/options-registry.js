@@ -39,6 +39,9 @@
   'use strict';
   const RF = root.RF || (root.RF = {});
 
+  // Options removed from the build. A saved profile may still hold them; load drops the key so a stale value can never matter (Brief U:
+  // glareSources = every source now glares).
+  const RETIRED_KEYS = ['glareSources'];
   const DEFAULTS_VERSION = 1;   // the defaults generation this build writes into a saved profile (profile.defaultsVersion)
 
   // A profile saved before versioning holds every key that existed when it was saved, because setDV wrote the whole object.
@@ -275,15 +278,6 @@
       requires: [need('lampsPresent')],
       tests: [],
       note: 'Uniform plus a 480-float table upload when on. CPU and GPU.',
-    },
-    {
-      id: 'glareSources', kind: 'extra', type: 'enum', values: ['oncoming', 'all'],
-      default: undefined, label: 'glare sources',
-      control: '[data-dv="glareSources"]', where: 'more', query: null,
-      group: 'street-lamps', cost: 'per-frame-gpu',
-      owner: ['js/drive.js', 'js/drive-touge.js', 'js/drive-anim.js', 'js/spec-ui.js'],
-      tests: ['node:glare-all'],
-      note: "Undefined or 'oncoming' = headlamps only, as before. 'all' adds street lamps, preceding tail lamps and lit signal heads to the veil and adaptation sources (cap 32, brightest first). Wired (Brief T): drive-anim.js glareOpts() builds the opts for the flat frame, the pass (RF.Touge.glareSources) and the exposure path; the street lamps are the frame world's .lights. spec-ui.js passes it to the CPU still (no street lamps there, so tail lamps and signals only). Default passes no opts: the old call, byte-identical.",
     },
     {
       id: 'haloBins', kind: 'profile', type: 'enum', values: [4, 6, 8, 12, 16, 24, 32],
@@ -1178,7 +1172,8 @@
   //   - the defaultsVersion stamp is removed from the returned profile (the live options object never carries it);
   //   - a profile without a stamp is migrated only if it is a whole-object save (it holds the LEGACY_SIGNATURE keys);
   //   - a key whose saved value equals a superseded default takes the current default; any other value is kept;
-  //   - keys the registry does not know are kept untouched.
+  //   - RETIRED_KEYS (options removed from the build) are dropped;
+  //   - other keys the registry does not know are kept untouched.
   // `cfg` ({ options, signature, current }) exists so tests can run the logic against a made-up registry.
   function migrateProfile(raw, cfg) {
     const c = cfg || {};
@@ -1187,6 +1182,7 @@
     const profile = Object.assign({}, raw);
     const stamped = typeof raw.defaultsVersion === 'number' && isFinite(raw.defaultsVersion);
     delete profile.defaultsVersion;
+    for (const k of RETIRED_KEYS) delete profile[k];
     const fromVersion = stamped ? raw.defaultsVersion : 0;
     const changed = [];
     if (fromVersion >= current || (!stamped && !hasAll(raw, signature))) return { profile, changed, fromVersion };
@@ -1227,6 +1223,6 @@
     return out;
   }
 
-  RF.Options = { DEFAULTS_VERSION, LEGACY_SIGNATURE, GROUPS, RULES, OPTIONS, byId, defaults, migrateProfile, serialize, holds, unmet };
+  RF.Options = { DEFAULTS_VERSION, RETIRED_KEYS, LEGACY_SIGNATURE, GROUPS, RULES, OPTIONS, byId, defaults, migrateProfile, serialize, holds, unmet };
   if (typeof module === 'object' && module && module.exports) module.exports = RF.Options;   // require() in Node tests
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -11,6 +11,8 @@ function load(extra) {
     if (!fs.existsSync(p)) continue;
     vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename: p });
   }
+  // js/lamp-dist.js is an ES module (index.html loads it with type=module); D.glareSources needs RF.LampDist for every street lamp, so load its text as a classic script here
+  if (!globalThis.RF.LampDist) { const p = path.join(ROOT, 'js', 'lamp-dist.js'); vm.runInThisContext(fs.readFileSync(p, 'utf8').replace(/^export /gm, ''), { filename: p }); }
   return globalThis.RF;
 }
 module.exports = { load, ROOT, FILES };

@@ -1176,8 +1176,8 @@ void main() {
     V.framePlaced = occ;      // scene details: the hazard list reads this (pointer only)
     return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), eyeOf(p), occ, glareOpts(info().o, occW));
   }
-  // GLARE-ALL (option glareSources): undefined unless 'all', so the default call is exactly the old one. world = the frame's tile/pass world (its .lights are the street lamps).
-  function glareOpts(o, world) { return o.glareSources === 'all' ? { mode: 'all', lights: (world && world.lights) || [], lampClass: o.lampClass, lampKind: o.streetLamps } : undefined; }
+  // GLARE (Brief U): one path, every source. opts carry the street lamps (world.lights) and their class/kind; the lights' rgb is the lamp kind's tint. world = the frame's tile/pass world.
+  function glareOpts(o, world) { return { lights: (world && world.lights) || [], lampClass: o.lampClass, lampKind: o.streetLamps }; }
   function exposure(sources) {
     const I = info(), o = I.o;
     if (o.expMode === 'auto' && V.kAuto) return V.kAuto;

@@ -191,20 +191,20 @@
       const L=cd/(Math.PI*ob.r*ob.r*cosine);ob.eyeCd=cd;ob.emit=[L*tint[0],L*tint[1],.93*L*tint[2]];ob.emitPow=1;
     }
   }
-  // Same function as the flat scenes (D.glareSources, opts as there: mode 'oncoming' | 'all', lights, lampClass, lampKind). Visibility and cd are decided
+  // Same function as the flat scenes (D.glareSources, opts as there: lights, lampClass, lampKind; every glare source, Brief U). Visibility and cd are decided
   // here in the world frame (terrain, occluders, lamp-dist gamma from world z-up); D.glareSources then sees car-frame copies.
   function glareSources(obs,dist,A,opts){
-    const a=attitude(dist),axes=[a.forward,a.left,a.up],eye=apply(axes,[-2,.37,1.2]),sources=[],mode=opts&&opts.mode==='all'?'all':'oncoming';   // eye and obs are both world frame here
-    for(const ob of obs)if(D.glareEmitter(ob,mode) && !blocked(A,eye,[ob.x,ob.y,ob.z]) && !D.occluded([ob.x,ob.y,ob.z],eye,obs)){
+    opts=opts||{};
+    const a=attitude(dist),axes=[a.forward,a.left,a.up],eye=apply(axes,[-2,.37,1.2]),sources=[];   // eye and obs are both world frame here
+    for(const ob of obs)if(D.glareEmitter(ob) && !blocked(A,eye,[ob.x,ob.y,ob.z]) && !D.occluded([ob.x,ob.y,ob.z],eye,obs)){
       const p=[ob.x,ob.y,ob.z],q=axes.map(v=>dot(p,v)),n=axes.map(v=>dot([ob.nx,ob.ny,ob.nz||0],v));sources.push({...ob,x:q[0],y:q[1],z:q[2],nx:n[0],ny:n[1],nz:n[2]});
     }
-    if(mode!=='all')return D.glareSources(sources,[-2,.37,1.2]);
     const lights=[];
     for(const L of opts.lights||[]){
       if(blocked(A,eye,[L.x,L.y,L.z])||!D.lightVisible(L,eye,obs))continue;
       const q=axes.map(v=>dot([L.x,L.y,L.z],v));lights.push({...L,x:q[0],y:q[1],z:q[2],eyeCd:D.lampEyeCd(L,eye,opts)});
     }
-    return D.glareSources(sources,[-2,.37,1.2],undefined,{mode,lights,lampClass:opts.lampClass,lampKind:opts.lampKind});
+    return D.glareSources(sources,[-2,.37,1.2],undefined,{lights,lampClass:opts.lampClass,lampKind:opts.lampKind});
   }
   function eyeLux(p, car) {
     const A=p.A, q=A.surface(car.rel,car.off,1.1), a=attitude(A.dist), axis=[a.forward,a.left,a.up], dot=(v,w)=>v.reduce((s,x,i)=>s+x*w[i],0);
