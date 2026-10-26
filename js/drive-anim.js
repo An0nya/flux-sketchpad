@@ -42,7 +42,7 @@
     const mix = (k) => (Math.imul((+opts.seed || 0) | 0, 2654435761) ^ Math.imul(k + 1, 0x9E3779B1)) >>> 0, chunks = new Map();
     const src = { wild: true, lane, markings: D.laneMarkings(lane, { us, broken }), verge: ['gravel', 1.6, 'grass'], chunk(k) {
       let c = chunks.get(k); if (!c) { c = D.wildChunk({ Lw: lane, us, seed: mix(k), density: opts.density === undefined ? 1.5 : +opts.density, broken, reflectiveClothing: opts.reflectiveClothing }, flags); chunks.set(k, c); if (chunks.size > 8) chunks.delete(chunks.keys().next().value); } return c;
-    }, pedMode: opts.reflectiveClothing };
+    }, pedMode: opts.reflectiveClothing, pedSeed: opts.seed };
     src.objects = src.chunk(0).objects; return trafficSource(src, opts);
   }
   // Traffic has its own stream of the scenery RNG: switching a class off never moves another class. Constant speeds (m/s) keep spacing steady.
@@ -509,6 +509,9 @@
     return ped === undefined ? sig : sig === undefined ? ped : Math.min(sig, ped);
   }
   // A frame's markings stay in route coordinates, objects and light positions use the very same route transform.
+  // SEEDED-KINDS: the junction and city crossers ask the scene builder for a seeded kind (person() resolves it); PED_FIXED_KINDS restores the old fixed 'dark'.
+  const PED_SEED = (seed) => (globalThis.PED_FIXED_KINDS === true ? undefined : seed);   // the walkers' clothes follow the user seed; PED_FIXED_KINDS restores the old (scene seed) draw
+  const CROSSER_KIND = () => (globalThis.PED_FIXED_KINDS === true ? 'dark' : 'seeded');
   function tileWorld(p, dist, t, tauOf) {
     if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t, tauOf);
     const src = p.src, cfg = src.tiles, lane = p.lane, A = tileRoute(cfg.seed, dist, !!cfg.groundCache), edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
@@ -529,7 +532,7 @@
           for (let s = c0 + 0.3; s < c1 - 0.3; s += 1) paint(s, 0.5, b, b + 3);
           paint(c0 + 0.3, c1 - c0 - 0.6, side < 0 ? edgeR - 5 : edgeL + 4.6, side < 0 ? edgeR - 4.6 : edgeL + 5);
         }
-        const K = D.kit({ Lw: lane, A: null, rand: () => 0.5 });
+        const K = D.kit({ Lw: lane, A: null, rand: () => 0.5, foliageSeed: PED_SEED(cfg.seed) });
         for (const s of [c0 - 1, c1 + 1]) for (const b of [edgeR - 0.8, edgeL + 0.8]) if (cfg.flags.posts !== false) K.post(s, b);
         if (cfg.flags.signs !== false) K.sign(c0 - 10, edgeR - 1.5, 'yellow', { w: 0.7 });
         K.add({ k: 'cyl', x: c1 + 1, y: edgeR - 1, r: 0.07, z0: 0, z1: 5.8, mat: 'pole', cls: 'signal' });
@@ -546,7 +549,7 @@
         // A deterministic crossing during red, with a fresh actor each cycle. This does not control the car or other traffic.
         if (cfg.flags.people !== false && sig.lit === 'red') {
           const w = crossingPose(lane, edgeR, sig.phase);
-          K.person(c0 - 2.5, w.off, 'dark', { dir: [0, 1], gait: w.gait, motion: w.motion });
+          K.person(c0 - 2.5, w.off, CROSSER_KIND(), { dir: [0, 1], gait: w.gait, motion: w.motion, id: globalThis.PED_FIXED_KINDS === true ? undefined : 'junction:' + tile.k });   // a stable id per junction (the walker counter restarts at 0 every frame and would give every junction the same draw)
         }
         for (const ob of K.O) { const n = move(Object.assign({}, ob), ob, ob.x, A); n.tile = tile.k; extra.push(n); }
       }
@@ -568,8 +571,8 @@
       if (tile.kind === 'urban' && cfg.flags.people !== false) {
         const ev = pedCrossing(cfg.seed, tile.k, Math.floor(t / PED.cycle));
         if (ev && t >= ev.start && t < ev.end && ev.s - dist > -65 && ev.s - dist < CULL) {
-          const w = pedCrossingPose(lane, ev, t), K = D.kit({ Lw: lane, A: null, rand: () => 0.5, reflectiveClothing: cfg.pedMode });
-          K.person(ev.s - dist, w.off, 'dark', { dir: [0, w.dir], gait: w.gait, motion: w.motion, id: 'cross:' + tile.k + ':' + ev.start });
+          const w = pedCrossingPose(lane, ev, t), K = D.kit({ Lw: lane, A: null, rand: () => 0.5, reflectiveClothing: cfg.pedMode, foliageSeed: PED_SEED(cfg.seed) });
+          K.person(ev.s - dist, w.off, CROSSER_KIND(), { dir: [0, w.dir], gait: w.gait, motion: w.motion, id: 'cross:' + tile.k + ':' + ev.start });
           for (const ob of K.O) extra.push(move(Object.assign({}, ob), ob, ob.x, A));
         }
       }
@@ -629,7 +632,7 @@
   function place(src, dist, A, tauOf, skip, deerBehaviour) {
     const out = [];
     if (src.chunk) {
-      const k0 = Math.floor((dist - 6) / PERIOD), K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5, reflectiveClothing: src.pedMode });
+      const k0 = Math.floor((dist - 6) / PERIOD), K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5, reflectiveClothing: src.pedMode, foliageSeed: PED_SEED(src.pedSeed) });
       for (let k = k0 - 1; k <= k0 + 1; k++) {
         const base = k * PERIOD, ch = src.chunk(k);
         if (k >= k0) for (const ob of ch.objects) { const rel = ob.x + base - dist; if (rel >= -6 && rel <= CULL) { const n = move(Object.assign({}, ob), ob, rel, A); if (!skip || !skip(n)) out.push(n); } }
@@ -1954,7 +1957,7 @@ void main() {
     V.act.clear(); V.flash = flashState(); V.fkey = ''; V.last = 0; ui.redrawSpec();
   }
   function gameObjects(g, world, lane) {
-    const A = world.A, K = D.kit({ Lw: lane || V.p.lane, A: null, rand: () => 0.5, reflectiveClothing: ((info() && info().o) || {}).reflectiveClothing });
+    const A = world.A, K = D.kit({ Lw: lane || V.p.lane, A: null, rand: () => 0.5, reflectiveClothing: ((info() && info().o) || {}).reflectiveClothing, foliageSeed: PED_SEED(((info() && info().o) || {}).seed) });
     for (const h of g.hazards) if (g.rules !== 'legacy' || !h.resolved) {
       const ps = RF.DriveGame.pose(g, h, g.t, D.Models.deerEnabled(V.p)), first = K.O.length, rel = ps.s - g.x;
       if (h.kind === 'deer') K.deer(rel, ps.off, { face: h.side > 0 ? 1 : -1, gait: ps.gait, motion:ps.motion, attention:ps.attention });

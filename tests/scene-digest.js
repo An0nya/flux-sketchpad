@@ -19,12 +19,16 @@ const CASES = [['road-static', 'road', { wild: false }], ['road-wild', 'road', {
 // SEEDED-KINDS (Brief S): the road, city and forest walkers ask for kind 'seeded' and person() draws dark or light (PED_LIGHT_SHARE) from a hash, so 19 of 24 changed
 // (the five other road-wild pins kept their values; road-wild@11@tiles95 moved). Cause: the walker kinds from the hash, not positions.
 // Proof: with globalThis.PED_FIXED_KINDS = true the build is the pre-change one and all 24 digests equal the PINS that were there before this change.
+// SEEDED-KINDS wiring (Brief T item 2): the tile-world kits in drive-anim.js (junction, city crosser, wild chunk walkers, minigame hazards) now pass foliageSeed = the user seed,
+// and the junction/city crossers ask for kind 'seeded' (junction crosser also gets a per-tile id). 10 of 24 moved: road-wild@7 tiles95/400 and every tiles95/tiles400 row at seed 11
+// (static, wild, forest, city); every 'off' row and every seed-7 row of the other scenes kept its pin (their kits already got the seed 7). Proof: with globalThis.PED_FIXED_KINDS = true
+// (which also restores the old seed and the fixed 'dark' crossers) all 24 digests of this build equal the 24 digests of the previous build (e51c4bc) with the flag on.
 const PINS = {
   'road-static@7@tiles95': '8b380cf09f961522',
   'road-static@7@tiles400': '7766027dea5dc65a',
   'road-static@7@off': '7c19c32a0c28c6ac',
-  'road-wild@7@tiles95': 'cd69e4e0171e3792',
-  'road-wild@7@tiles400': '897cbc8e1effeb6e',
+  'road-wild@7@tiles95': '3837f4a8265388ae',
+  'road-wild@7@tiles400': '78a1f4fa844bf31c',
   'road-wild@7@off': '52d7698a66a3c969',
   'forest@7@tiles95': '4e8b202c45ec67cb',
   'forest@7@tiles400': 'ee145d7816e387c3',
@@ -32,17 +36,17 @@ const PINS = {
   'city@7@tiles95': 'c2ff6f6e654f0594',
   'city@7@tiles400': 'ee19e88f7d859ad2',
   'city@7@off': 'cbe760abb2f3c39c',
-  'road-static@11@tiles95': 'a06781866ac79860',
-  'road-static@11@tiles400': 'd9c96beaec40c19b',
+  'road-static@11@tiles95': '3c2935013e25e449',
+  'road-static@11@tiles400': 'caa3016457e7a738',
   'road-static@11@off': '806b7ab545de6e62',
-  'road-wild@11@tiles95': 'fb65b2fd1edba515',
-  'road-wild@11@tiles400': 'c6d7e11a65ed26b1',
+  'road-wild@11@tiles95': '53e57b28119e904f',
+  'road-wild@11@tiles400': 'b8d7c6719dcb0978',
   'road-wild@11@off': 'a613818373b10e52',
-  'forest@11@tiles95': '61810c8958323eb4',
-  'forest@11@tiles400': '694df983ffb040e6',
+  'forest@11@tiles95': '2d8145e78adc63ab',
+  'forest@11@tiles400': 'cb52ec44fb8e09e8',
   'forest@11@off': 'aa88a28a085b08e2',
-  'city@11@tiles95': '7a3157697551b3c2',
-  'city@11@tiles400': '92f970de44309cbc',
+  'city@11@tiles95': '6ed26a3e05b01e70',
+  'city@11@tiles400': '709578607a3e0f43',
   'city@11@off': '7c47cd06f8a533b2',
 };
 
