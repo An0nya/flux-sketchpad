@@ -16,15 +16,17 @@ const VIEW_FLAGS = { people: true, animals: true, signs: true, posts: true, veg:
 // PED-CLOTHING-MODES: the people column counts every cls 'person' object. The strip and shoe-reflector pieces (box, hivis-tape) of a dark walker are built inside
 // person() with cls 'person', so they are counted with the walker. Checked on road-wild@95: the 8 added objects are all box pieces; the walker bodies (8) and the
 // distinct walkers (2) equal main's. Re-pinned people only: road-wild 8->16 (@95), 4->8 (@400); road-static 12->16; forest 8->12; city 16->24; pass unchanged.
+// PED-STRIP-SHARE (Brief T item 3, owner 2026-10-26): mix puts strips on ~12% of non-vest walkers (was 50%), so fewer strip/shoe pieces are counted. Only the people column of the
+// 8 flat rows moved, every one down (pass unchanged: no people). Proof: with globalThis.PED_FIXED_KINDS = true (restores 0.5) the previous pins (16/8/16/16/12/12/24/24) all match.
 const PINS = {
-  'road-wild@95': [41, 20, 4, 9, 9, 16, 61, 3],
-  'road-wild@400': [41, 20, 0, 12, 18, 8, 64, 3],
-  'road-static@95': [51, 24, 6, 9, 18, 16, 36, 3],
-  'road-static@400': [51, 24, 6, 12, 18, 16, 36, 3],
-  'forest@95': [51, 12, 2, 9, 27, 12, 695, 3],
-  'forest@400': [51, 12, 2, 12, 27, 12, 695, 3],
-  'city@95': [51, 0, 4, 9, 9, 24, 0, 3],
-  'city@400': [51, 0, 4, 12, 9, 24, 0, 3],
+  'road-wild@95': [41, 20, 4, 9, 9, 8, 61, 3],
+  'road-wild@400': [41, 20, 0, 12, 18, 4, 64, 3],
+  'road-static@95': [51, 24, 6, 9, 18, 12, 36, 3],
+  'road-static@400': [51, 24, 6, 12, 18, 12, 36, 3],
+  'forest@95': [51, 12, 2, 9, 27, 8, 695, 3],
+  'forest@400': [51, 12, 2, 12, 27, 8, 695, 3],
+  'city@95': [51, 0, 4, 9, 9, 16, 0, 3],
+  'city@400': [51, 0, 4, 12, 9, 16, 0, 3],
   'pass@95': [51, 80, 2, 6, 9, 0, 108, 3],
   'pass@400': [52, 80, 4, 3, 0, 0, 108, 3],
 };
