@@ -866,14 +866,14 @@ void main() {
   o = vec4(s / norm * uScale, 1.0);
 }`;
   const FS_FINAL = `#version 300 es
-precision highp float; uniform sampler2D uHdr, uGlare; uniform vec2 uSize; uniform float uK, uFlip, uGl, uVeil, uTanH, uTanV; uniform int uNS; uniform vec4 uSources[32]; out vec4 o;
+precision highp float; uniform sampler2D uHdr, uGlare; uniform vec2 uSize; uniform float uK, uFlip, uGl, uVeil, uTanH, uTanV; uniform int uNS; uniform vec4 uSources[32]; uniform vec3 uSrcRGB[32]; out vec4 o;
 vec3 aces(vec3 x) { x = max(x, 0.0); return min((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 1.0); }
 vec3 srgb(vec3 c) { return mix(12.92 * c, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 void main() {
   vec2 uv = gl_FragCoord.xy / uSize; uv.y = 1.0 - uv.y; if (uFlip > 0.5) uv.x = 1.0 - uv.x;
   vec3 dir = normalize(vec3(1.0, -(2.0 * uv.x - 1.0) * uTanH, (1.0 - 2.0 * uv.y) * uTanV));
-  float veil = 0.0;
-  if (uVeil > 0.0) for (int i = 0; i < 32; i++) { if (i >= uNS) break; float theta = max(1.0, degrees(acos(clamp(dot(dir, uSources[i].xyz), -1.0, 1.0)))); veil += 10.0 * uSources[i].w / (theta * theta); }
+  vec3 veil = vec3(0.0);
+  if (uVeil > 0.0) for (int i = 0; i < 32; i++) { if (i >= uNS) break; float theta = max(1.0, degrees(acos(clamp(dot(dir, uSources[i].xyz), -1.0, 1.0)))); veil += 10.0 * uSources[i].w / (theta * theta) * uSrcRGB[i]; }
   vec3 lin = (texture(uHdr, uv).rgb + uVeil * veil) * uK + (uGl > 0.0 ? texture(uGlare, uv).rgb : vec3(0.0));
   o = vec4(srgb(aces(lin)), 1.0);
 }`;
@@ -962,7 +962,7 @@ void main() {
         const tGlare = timing ? performance.now() : 0;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, R.cw, R.ch);
         use(P.fin, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: f.glare > 0 ? 1 : 0, uVeil: f.veil || 0, uTanH: tanH, uTanV: tanV });
-        const sources = f.sources || [], sa = new Float32Array(128); sources.slice(0, 32).forEach((q, i) => sa.set(q, i * 4)); gl.uniform1i(P.fin.u.uNS, Math.min(32, sources.length)); gl.uniform4fv(P.fin.u['uSources[0]'], sa);
+        const sources = f.sources || [], sa = new Float32Array(128); const sc = new Float32Array(96); sources.slice(0, 32).forEach((q, i) => { sa.set(q.slice(0, 4), i * 4); sc.set([q[4] === undefined ? 1 : q[4], q[5] === undefined ? 1 : q[5], q[6] === undefined ? 1 : q[6]], i * 3); }); gl.uniform1i(P.fin.u.uNS, Math.min(32, sources.length)); gl.uniform4fv(P.fin.u['uSources[0]'], sa); gl.uniform3fv(P.fin.u['uSrcRGB[0]'], sc);   // BRIEF-U: per-source rgb (veil = E * rgb)
         bindTex(0, 'hdr', P.fin.u.uHdr); bindTex(1, 'acc', P.fin.u.uGlare); gl.drawArrays(gl.TRIANGLES, 0, 3);
         if (timing) Object.assign(timing, { composeMs: tCompose - t0, glareMs: tGlare - tCompose, finalVeilMs: performance.now() - tGlare });
       },

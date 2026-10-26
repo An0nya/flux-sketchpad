@@ -784,6 +784,13 @@
   }
   // A street lamp is visible from the eye unless an opaque object between them hides it (same test as a headlamp).
   function lightVisible(L, eye, occ) { return !occluded([L.x, L.y, L.z], eye, occ); }
+  // BRIEF-U colour: a source's emission colour, scaled so its brightest channel is 1 (the same convention that takes a source's candela from its brightest
+  // channel, above). veil = E * rgb: a white source is [1, 1, 1] and gives exactly the old achromatic veil. Missing or all-zero emit: white.
+  function sourceRGB(c) {
+    if (!c || c.length < 3) return [1, 1, 1];
+    const m = Math.max(+c[0] || 0, +c[1] || 0, +c[2] || 0);
+    return m > 0 ? [Math.max(0, +c[0] || 0) / m, Math.max(0, +c[1] || 0) / m, Math.max(0, +c[2] || 0) / m] : [1, 1, 1];
+  }
   function glareSources(objects, eye, occluders, opts) {
     eye = eye || [-2, 0.37, 1.2]; const out = [], occ = occluders || objects, mode = opts && opts.mode === 'all' ? 'all' : 'oncoming';
     for (const ob of objects) if (mode === 'oncoming' ? ob.headlamp : glareEmitter(ob, mode)) {
@@ -793,20 +800,24 @@
       const cos = Math.max(0, -(dx * ob.nx + dy * ob.ny) / rr);
       const cd = ob.eyeCd === undefined ? (ob.headlamp ? ob.emit[0] : Math.max(...ob.emit)) * Math.PI * ob.r * ob.r * Math.pow(cos, ob.emitPow || 1) : ob.eyeCd;
       if (mode === 'all' && !(cd > 0)) continue;      // 'oncoming' keeps every headlamp it always kept
-      out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr)]);
+      out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr), ...sourceRGB(ob.emit)]);
     }
     if (mode === 'all') for (const L of opts.lights || []) {
       const dx = L.x - eye[0], dy = L.y - eye[1], dz = L.z - eye[2], rr = Math.hypot(dx, dy, dz);
       if (dx <= 0 || !(rr > 0)) continue;
       const cd = L.eyeCd === undefined ? lampEyeCd(L, eye, opts) : L.eyeCd;
       if (!(cd > 0) || !lightVisible(L, eye, occ)) continue;
-      out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr)]);
+      out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr), ...sourceRGB(L.rgb)]);   // L.rgb: the lamp kind's tint (sodium / LED), set where the lights are made
     }
     if (mode === 'all') return out.sort((a, b) => b[3] - a[3]).slice(0, 32);
     return out.slice(0, 32);
   }
   function veilAt(dir, sources) {
     let L = 0; for (const q of sources || []) { const theta = Math.max(1, Math.acos(Math.max(-1, Math.min(1, dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]))) / D2R); L += 10 * q[3] / (theta * theta); } return L;
+  }
+  // Per-channel veil: the same sum as veilAt, each source weighted by its rgb (q[4..6]; a source without them is white). veilAt stays the scalar (E only): adaptation and the readouts use it.
+  function veilRGBAt(dir, sources) {
+    let r = 0, g = 0, b = 0; for (const q of sources || []) { const theta = Math.max(1, Math.acos(Math.max(-1, Math.min(1, dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]))) / D2R), w = 10 * q[3] / (theta * theta); r += w * (q[4] === undefined ? 1 : q[4]); g += w * (q[5] === undefined ? 1 : q[5]); b += w * (q[6] === undefined ? 1 : q[6]); } return [r, g, b];
   }
   // Visible beam in fog: single in-scatter off the own lamps (SC1). Opt-in: look.scatter = steps (0 or absent = off), and only with a finite look.visibility.
   // Along the eye ray (unit dir, from the eye) out to sEnd (capped at S_MAX): sum over steps of sigma · p(θ) · E(P) · T_light · T_view · ds, with
@@ -1100,9 +1111,9 @@
     const vs = veilStrength(opt.glare), sources = opt.sources || [], tanH = Math.tan((res.hfov || 60) * D2R / 2), tanV = tanH * h / w;
     if (opt.mode === 'adapt') { const white = L_REF / Math.pow(2, opt.ev || 0) + vs * veilAt([1, 0, 0], sources); ex.k = 1 / white; ex.white = white; }
     for (let q = 0; q < n; q++) {
-      let veil = 0;
-      if (vs && sources.length) { const dy = -(2 * (q % w + 0.5) / w - 1) * tanH, dz = (1 - 2 * (Math.floor(q / w) + 0.5) / h) * tanV, rr = Math.hypot(1, dy, dz); veil = vs * veilAt([1 / rr, dy / rr, dz / rr], sources); }
-      for (let c = 0; c < 3; c++) lin[3 * q + c] = (res.rgb[3 * q + c] + veil) * ex.k;
+      let veil = [0, 0, 0];
+      if (vs && sources.length) { const dy = -(2 * (q % w + 0.5) / w - 1) * tanH, dz = (1 - 2 * (Math.floor(q / w) + 0.5) / h) * tanV, rr = Math.hypot(1, dy, dz), v = veilRGBAt([1 / rr, dy / rr, dz / rr], sources); veil = [vs * v[0], vs * v[1], vs * v[2]]; }
+      for (let c = 0; c < 3; c++) lin[3 * q + c] = (res.rgb[3 * q + c] + veil[c]) * ex.k;
     }
     const gl = glareStrength(opt.glare);
     if (gl > 0) {
@@ -1119,5 +1130,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { glareEmitter, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { glareEmitter, sourceRGB, veilRGBAt, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
