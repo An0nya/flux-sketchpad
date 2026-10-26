@@ -35,7 +35,7 @@ Drive-related `js/` files with no MAP entry (OBSERVED): js/beam-quality.js, js/b
 | `visibility` | 17 | node:fog, FG-fog, SC-beam-scatter, SD-scatter-table, SE-table-pacing, SF-silhouette-fade, node:scatter-fade-gain, node:scatter-table-pace, node:scatter-table, node:scatter | node:near-eye-bins, HDX7-halo-levels, NE5-air-beam, SG1-far-car-fog, SL-traffic-halo, node:scenario-node ... +1 |
 | `scatter` | 7 | SC-beam-scatter, SF-silhouette-fade, SF1-car-silhouette | DD-dropdowns, NE5-air-beam, SG1-far-car-fog, SL-traffic-halo |
 | `trafficHalo` | 6 | **none** | node:halo-levels, DD-dropdowns, HDX7-halo-levels, SL-traffic-halo, UX3-safe-reset-fps, node:traffic-halo |
-| `lampHalos` | 1 | **none** | LHS1-lamp-halos |
+| `lampHalos` | 2 | **none** | LHS1-lamp-halos, BF-lamp-halo-over-objects (BF: veil over the object layer, occlusion by lamp-head visibility) |
 | `lampClass` | 1 | **none** | LDR1-lamp-road |
 | `lampRoad` | 1 | **none** | LDR1-lamp-road |
 | `haloBins` | 2 | **none** | node:halo-levels, HDX7-halo-levels |
@@ -141,7 +141,7 @@ Headline (OBSERVED): the whole traffic-halo family (trafficHalo, haloBins, haloD
 |---|---|---|
 | air beam, direct and table | SC-beam-scatter, SD-scatter-table, SE-table-pacing, SF-silhouette-fade, SF1-car-silhouette, FG-fog, node:scatter, scatter-table, scatter-table-pace, scatter-fade-gain | NE5-air-beam, NE-near-eye, NE-state-leak (open), SM-cycle-distance, SN-air-defer, TL-first-open |
 | traffic halo | node:traffic-beams (beam side only) | SL-traffic-halo, HDX7-halo-levels, node:traffic-halo, node:halo-levels (names in tests/) |
-| lamp halos / lamp road | - | LHS1-lamp-halos, LDR1-lamp-road (reachable only via MAP rules on drive-three-lamphalo.js, drive-three.js, lamp-dist.js) |
+| lamp halos / lamp road | - | LHS1-lamp-halos, BF-lamp-halo-over-objects, LDR1-lamp-road (reachable only via MAP rules on drive-three-lamphalo.js, drive-three.js, lamp-dist.js) |
 | wetness / sheen / GGX | WT-wetness, WG-wet-ggx, node:wetness, wet-ggx | - |
 | traffic beams / library | BT-traffic-beams, BA5-gpu-atlas, BA-beam-library-gpu, node:beams, beam-atlas, traffic-beams | BA-beam-library, BB-*, BI-beam-indexeddb |
 | traffic light range | TL2-traffic-light-range, node:tl-traffic-taper | - |

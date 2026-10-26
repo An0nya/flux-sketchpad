@@ -60,6 +60,47 @@ void main() {
   gl_FragColor = vec4(acc, 1.0);
 }`;
 
+// LAMP-HALO-OVER-OBJECTS (Brief F): the object-layer variant. Drawn after the object pass, into its own float target, so the veil lies over the composed
+// result (objects at any depth, and the ground between them): out = ob.rgb + S + (1 - ob.a) * ground, which is the old composed frame plus S.
+// Every lamp's term is multiplied by its visibility: the fraction of 5 depth taps at the lamp head's pixel whose object depth is >= the lamp distance - 0.5 m
+// (nothing in front of the head). Blending is NoBlending: the colour is read from the source and written whole (no float blend needed, alpha kept).
+const VIS_TAPS = 5, VIS_MARGIN = 0.5, VIS_OFFS = [[0, 0], [1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]];
+const FRAG_OBJ = `
+uniform sampler2D uCol, uDep; uniform vec2 uObjSize; uniform vec2 lampPx[${LAMP_HALO_MAX}]; uniform float lampRd[${LAMP_HALO_MAX}]; uniform float tapOv[${VIS_TAPS}];
+uniform float tanH; uniform int nLamp; uniform float kVeil;
+uniform vec3 lampDir[${LAMP_HALO_MAX}]; uniform vec3 lampCE[${LAMP_HALO_MAX}]; uniform float lampTh[${LAMP_HALO_MAX}];
+float visOf(int i) {
+  vec2 c = lampPx[i];
+  if (c.x < 0.0 || c.y < 0.0 || c.x >= uObjSize.x || c.y >= uObjSize.y) return 1.0;   // head off the target: nothing to test, full veil
+  float n = 0.0;
+  for (int k = 0; k < ${VIS_TAPS}; k++) {
+    vec2 o = vec2(0.0);
+    if (k == 1) o = vec2(${VIS_OFFS[1][0].toFixed(1)}, ${VIS_OFFS[1][1].toFixed(1)});
+    else if (k == 2) o = vec2(${VIS_OFFS[2][0].toFixed(1)}, ${VIS_OFFS[2][1].toFixed(1)});
+    else if (k == 3) o = vec2(${VIS_OFFS[3][0].toFixed(1)}, ${VIS_OFFS[3][1].toFixed(1)});
+    else if (k == 4) o = vec2(${VIS_OFFS[4][0].toFixed(1)}, ${VIS_OFFS[4][1].toFixed(1)});
+    ivec2 q = clamp(ivec2(floor(c + o)), ivec2(0), ivec2(uObjSize) - 1);
+    float d = tapOv[k] > 0.0 ? tapOv[k] : texelFetch(uDep, q, 0).r * 5000.0;   // depth texture = distance / 5000 m (same as drive-three-lampcone.js OBJ_DEPTH_RANGE)
+    if (d >= lampRd[i] - ${VIS_MARGIN.toFixed(1)}) n += 1.0;
+  }
+  return n / ${VIS_TAPS.toFixed(1)};
+}
+void main() {
+  vec4 base = texelFetch(uCol, ivec2(gl_FragCoord.xy), 0);
+  vec2 pix = gl_FragCoord.xy / uObjSize * 2.0 - 1.0;
+  vec3 ray = normalize(vec3(1.0, -pix.x * tanH, pix.y * tanH * uObjSize.y / uObjSize.x));
+  vec3 acc = vec3(0.0);
+  for (int i = 0; i < ${LAMP_HALO_MAX}; i++) {
+    if (i >= nLamp) break;
+    float th = degrees(acos(clamp(dot(ray, lampDir[i]), -1.0, 1.0)));
+    if (th > lampTh[i]) continue;
+    float w = 1.0 - smoothstep(0.5 * lampTh[i], lampTh[i], th);
+    th = max(th, ${LAMP_HALO_THETA_MIN.toFixed(1)});
+    acc += lampCE[i] * (kVeil / (th * th)) * w * visOf(i);
+  }
+  gl_FragColor = vec4(base.rgb + acc, base.a);
+}`;
+
 // The lamp list: street-lamp heads (drive-anim.js ~562 'ell', mat lamp-head) and signal discs that are lit (drive-scenes.js signal(), emit non-null).
 export function lampsOf(objects) {
   const out = [];
@@ -73,6 +114,8 @@ export function lampsOf(objects) {
 
 export function createLampHalo(renderer, u) {
   let mat = null, mesh = null, scene = null, camera = null, lastState = { count: 0, lamps: [], kind: '', on: 0 }, fail = '', lastArgs = null, scratch = null;
+  let objMat = null, objScene = null, objTarget = null, pending = null, overObjects = true;   // Brief F: object-layer pass (see FRAG_OBJ)
+  const tapOv = new Float32Array(VIS_TAPS);   // test hook: >0 replaces the depth of tap k (metres); 0 = read the depth
   function setup() {
     mat = new T.ShaderMaterial({
       uniforms: { size: { value: new T.Vector2(1, 1) }, tanH: { value: 0 }, nLamp: { value: 0 }, kVeil: { value: K_VEIL }, lampDir: { value: Array.from({ length: LAMP_HALO_MAX }, () => new T.Vector3()) }, lampCE: { value: Array.from({ length: LAMP_HALO_MAX }, () => new T.Vector3()) }, lampTh: { value: new Float32Array(LAMP_HALO_MAX) } },
@@ -80,6 +123,13 @@ export function createLampHalo(renderer, u) {
     });
     mesh = new T.Mesh(new T.PlaneGeometry(2, 2), mat); mesh.frustumCulled = false;
     scene = new T.Scene(); scene.add(mesh); camera = new T.Camera();
+    // Object-layer material: shares the lamp list uniforms with the ground material (same objects, so one build() feeds both), adds the colour and depth samplers.
+    objMat = new T.ShaderMaterial({
+      uniforms: Object.assign({}, mat.uniforms, { uCol: { value: null }, uDep: { value: null }, uObjSize: { value: new T.Vector2(1, 1) },
+        lampPx: { value: Array.from({ length: LAMP_HALO_MAX }, () => new T.Vector2()) }, lampRd: { value: new Float32Array(LAMP_HALO_MAX) }, tapOv: { value: tapOv } }),
+      vertexShader: VERT, fragmentShader: FRAG_OBJ, depthTest: false, depthWrite: false, transparent: false, blending: T.NoBlending,
+    });
+    objScene = new T.Scene(); objScene.add(new T.Mesh(new T.PlaneGeometry(2, 2), objMat));
   }
   // Build the lamp list for this frame from the eye the shader reads (u.eye) and the objects the frame draws. Returns the list (for tests).
   function build(p, world, eyeIn) {
@@ -116,12 +166,15 @@ export function createLampHalo(renderer, u) {
   }
   return {
     // Called once per frame by drive-three.js, after the ground pass and before the blit. Off: returns with no state change.
-    draw(p, world, target) {
+    // opts.objects = true: the frame has an object pass, so the veil is drawn over the object layer by drawObjects (Brief F), not into the ground.
+    draw(p, world, target, opts) {
+      pending = null;
       if (p.lampHalos !== 'on') { lastState = { count: 0, lamps: [], kind: '', on: 0 }; return; }
       lastArgs = { p, world };
       try {
         const near = build(p, world);
         if (!near.length) { lastState.on = 1; return; }
+        if (opts && opts.objects && overObjects) { pending = near; return; }
         mat.uniforms.size.value.set(p.w, p.h);
         const ac = renderer.autoClear; renderer.autoClear = false;
         renderer.setRenderTarget(target); renderer.render(scene, camera);
@@ -129,7 +182,33 @@ export function createLampHalo(renderer, u) {
         renderer.resetState(); renderer.setRenderTarget(target);
       } catch (e) { fail = String(e && e.message || e); throw e; }
     },
+    // Brief F: after the object pass (and the cone's object draw, if it ran), add the veil to the object layer: colour from `colour`, depth from
+    // `depth` (the object target). Writes into its own target and leaves it bound for the object blit. Returns the target, or null (nothing drawn).
+    drawObjects(colour, depth) {
+      const near = pending; pending = null;
+      if (!near || !near.length || !objMat) return null;
+      const W = depth.width, H = depth.height;
+      if (!objTarget || objTarget.width !== W || objTarget.height !== H) {
+        if (objTarget) objTarget.dispose();
+        objTarget = new T.WebGLRenderTarget(W, H, { type: T.FloatType, depthBuffer: false, minFilter: T.NearestFilter, magFilter: T.NearestFilter });
+      }
+      const U = objMat.uniforms;
+      U.uCol.value = colour.texture; U.uDep.value = depth.depthTexture; U.uObjSize.value.set(W, H);
+      const px = [];
+      near.forEach((c, i) => { const x = (c.sx + 1) / 2 * W, y = (c.sy + 1) / 2 * H; U.lampPx.value[i].set(x, y); U.lampRd.value[i] = c.r; px.push([+x.toFixed(1), +y.toFixed(1)]); });
+      lastState.objPx = px;
+      const ac = renderer.autoClear; renderer.autoClear = false;
+      renderer.resetState(); renderer.setRenderTarget(objTarget); renderer.render(objScene, camera);
+      renderer.autoClear = ac; renderer.resetState(); renderer.setRenderTarget(objTarget);
+      return objTarget;
+    },
     state() { return lastState; },
+    // Brief F test hooks (inert in production: nothing calls them). setOverObjects(false) = the pre-fix frame (veil in the ground, hidden by any object).
+    // setTapOverride([d0..d4]) replaces the depth of each tap (metres; 0 = read the depth). Pass null to clear.
+    setOverObjects(on) { overObjects = !!on; return overObjects; },
+    setTapOverride(arr) { for (let k = 0; k < VIS_TAPS; k++) tapOv[k] = arr && arr[k] > 0 ? arr[k] : 0; return Array.from(tapOv); },
+    // the object-layer output of the last frame that drew it (linear, float): base + veil. Read by the test; the screenshot is tone-mapped and bloomed.
+    output() { return objTarget; },
     // LAMP-HALO-CONE test hooks: the lamp list for a given eye position (no draw; the last frame's eye otherwise), and the street lamp heads in the current world.
     probe(eye) { if (!lastArgs) return null; return build(lastArgs.p, lastArgs.world, eye).map((c) => ({ r: c.r, g: c.gam, I: c.I, E: c.E, thMax: c.thMax })); },
     streetLamps() { return lastArgs ? lampsOf(lastArgs.world.objects).filter((l) => l.kind === 'street').map((l) => ({ x: l.x, y: l.y, z: l.z })) : []; },

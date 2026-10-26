@@ -330,6 +330,11 @@ export function create(canvas, gl, onModelsReady) {
     // SL2 test hook: the halo quads drawn for the last frame (0 = off, or no lamp on screen)
     lampHaloState() { return lampHalo.state(); },
     lampConeState() { return lampCone.state(); },
+    // Brief F test hooks: lampHaloOverObjects(false) = pre-fix frame (veil in the ground); lampHaloTapOverride([d0..d4]) = tap depths in metres (null clears)
+    lampHaloOverObjects(on) { return lampHalo.setOverObjects(on); },
+    lampHaloTapOverride(arr) { return lampHalo.setTapOverride(arr); },
+    // the object-layer halo output of the last frame (linear float RGBA, bottom-left origin like objectBuffers); null if it did not draw
+    lampHaloLinear() { const t = lampHalo.output(); if (!t) return null; const W = t.width, H = t.height, rgba = new Float32Array(W * H * 4); renderer.readRenderTargetPixels(t, 0, 0, W, H, rgba); return { W, H, rgba }; },
     lampConeTime(gl, n, repeats) { return lampCone.time(gl, n, repeats); },
     // LAMP-CONE-OBJECTS test hooks (inert in production: nothing calls them outside tests). lampConeObjects(false) = pre-fix frame; lampConeCap(t) forces the
     // object-pass distance to t metres (0 = use depth); lampConeTimeObjects = GPU ms of the object-pass draw; objectBuffers = last object frame, read back.
@@ -378,7 +383,7 @@ export function create(canvas, gl, onModelsReady) {
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
-      lampHalo.draw(p, world, target);
+      lampHalo.draw(p, world, target, { objects: !!objectDestination });   // Brief F: with an object pass the veil is drawn over the object layer below, not into the ground
       lampCone.draw(p, world, target);   // LAMP-CONE-MIST: additive in-scatter cone, after the halo (no-op unless lampCone is 'on' and visibility is set)   // LAMP-HALO-SPRITES: additive veil into the frame target, before the blit (no-op unless lampHalos is 'on')
       set('passDepth', target.depthTexture);
       if (failure) throw Error(failure);
@@ -389,7 +394,8 @@ export function create(canvas, gl, onModelsReady) {
       if (objectDestination) {
         if (!objectTarget || objectTarget.width !== p.w * ss || objectTarget.height !== p.h * ss) { if (objectTarget) objectTarget.dispose(); objectTarget = new T.WebGLRenderTarget(p.w * ss, p.h * ss, { type: T.FloatType, depthTexture: new T.DepthTexture(p.w * ss, p.h * ss, T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
         u.scatUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); u.haloUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge, tableOn); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
-        lampCone.drawObjects(p, objectTarget);   // LAMP-CONE-OBJECTS: cone added to object pixels up to their distance; leaves the target bound for the blit
+        const coneOut = lampCone.drawObjects(p, objectTarget);   // LAMP-CONE-OBJECTS: cone added to object pixels up to their distance; leaves the target bound for the blit
+        lampHalo.drawObjects(coneOut || objectTarget, objectTarget);   // LAMP-HALO-OVER-OBJECTS (Brief F): veil over the object layer, after the cone; leaves its target bound for the blit (no-op without lamps)
         if (failure) throw Error(failure);
         const src = gl.getParameter(gl.FRAMEBUFFER_BINDING); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, objectDestination);
         gl.blitFramebuffer(0, 0, p.w * ss, p.h * ss, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, ss > 1 ? gl.LINEAR : gl.NEAREST);
