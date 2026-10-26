@@ -36,6 +36,8 @@ CPU alternative (`gpuRenderer` off or GPU failed): `objects()` (:743) -> `D.rend
 | ground (flat, full-screen) | drive-three.js:40 `mat` | `ground` (drive-three-shaders.js:8-240) + `withLighting` if `extras` + `tableSource` if table | extras {off,on} x atlas {off,on (only with extras)} x table {off,on} = 6 |
 | ribbon (pass terrain) | drive-touge-three.js:58 | ground prefix + `surface()` body + own main, then the same transforms + `passShader` | 6 |
 | sky (pass) | drive-touge-three.js:63 | tiny | 1 |
+
+<!-- BRIEF J: halo table march (drive-three-halo.js TMAIN) skips a lamp when its bin [lo, hi] is behind the lamp's forward plane at both ends: local.x is linear along the ray and the LUT is read only after `local.x <= 0` (no output change). Pinned by tests/regress/BJ2-halo-table-pin.js (table texels + frames). -->
 | shadow depth (pass) | drive-touge-three.js:59 | tiny | 1 |
 
 <!-- BRIEF J: shadow depth renders are skipped when their inputs are unchanged. Key (drive-touge-three.js shadows()): the ribbon version (geomVer, moved by update() when a stored position/normal/uv value changes), nLamp, all lamp vectors, carFromWorld. Covered by tests/regress/BJ1-shadow-cache.js. Lamp-only and pitch-only changes are not in that test. -->

@@ -68,6 +68,11 @@ void main() {
     // fwd = (dir*ce, se), lat = (-dir.y, dir.x, 0), up = (-se*dir, ce) with ce = sqrt(1-se*se); at se 0 the three dots below are the old ones exactly.
     vec3 lamp = hLamp[i].xyz, tint = hTint[i].rgb; vec2 dir = hDir[i].xy; float se = hDir[i].z, ce = sqrt(max(1.0 - se * se, 0.0)); float Wt = hLamp[i].w;
     tbeam = int(hTint[i].w + 0.5);
+    // BRIEF J: the bin [lo, hi] lies entirely behind this lamp's forward plane when both ends do: local.x = dot(d, fwd) is linear along the ray, so every
+    // sample of the march below would hit the test local.x <= 0.0 and add nothing (the beam LUT is read only after that test). Skip the march. The -1e-3 margin keeps
+    // float rounding from flipping a sample near the plane, so the table is identical to the march it skips.
+    vec3 fw = vec3(dir * ce, se);
+    if (max(dot(haloEye + lo * ray - lamp, fw), dot(haloEye + hi * ray - lamp, fw)) < -1e-3) continue;
     // Each bin is cut into 6 x haloP log-spaced cells and this draw takes every haloP-th one, starting at haloSub: haloP draws (additive) make up the full
     // sum, each with a loop of 6. A lamp near the eye needs it: along a ray that passes close to it, 1/r^2, the phase function and the beam's cone entry all
     // vary over a metre or less, far less than a 6-step cell (1-4 m), so 6 steps alias, and the table shimmers as a close car's lamps move (measured: 24 steps
@@ -218,7 +223,7 @@ export function haloPass(renderer, u) {
     polar: null,   // HDX6: the polar lamp (centre px, radius px, log step) or null
     polarNote: null,   // HDX6: why the polar table is off this frame, when SL_HALO_POLAR is set
     ms: 0,         // table pass wall time (1-pixel readback sync), only when globalThis.SL_HALO_TIMING is set (test hook)
-    get table() { return rt; }, get tab() { return tab; },
+    get table() { return rt; }, get cumTable() { return cumRt; }, get tab() { return tab; },   // BRIEF J: cumTable = the table the lookup reads (test hook haloTableBytes)
     // Build the table for this frame and point the lookup at it. Call before the ground pass. Off: haloOn 0, nothing drawn.
     build(p, world) {
       halo.drawn = 0; halo.lamps = []; halo.passes = 0; u.haloOn.value = 0; halo.sources = null;

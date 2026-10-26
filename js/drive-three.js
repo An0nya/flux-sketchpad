@@ -334,6 +334,8 @@ export function create(canvas, gl, onModelsReady) {
     lampHaloOverObjects(on) { return lampHalo.setOverObjects(on); },
     lampHaloTapOverride(arr) { return lampHalo.setTapOverride(arr); },
     // the object-layer halo output of the last frame (linear float RGBA, bottom-left origin like objectBuffers); null if it did not draw
+    // BRIEF J test hooks (read-only): haloTableBytes('bin'|'cum') = the halo table as read back (w, h, type, base64 of the raw texels); shadowStats() = shadow pass counters.
+    haloTableBytes(which) { const t = which === 'cum' ? halo.cumTable : halo.table; if (!t) return null; const n = t.width * t.height * 4, f = t.texture.type === T.FloatType, buf = f ? new Float32Array(n) : new Uint16Array(n); renderer.readRenderTargetPixels(t, 0, 0, t.width, t.height, buf); const b = new Uint8Array(buf.buffer); let str = ''; for (let i = 0; i < b.length; i++) str += String.fromCharCode(b[i]); return { w: t.width, h: t.height, type: f ? 'float' : 'half', b64: btoa(str) }; },
     shadowStats() { return pass.shadowStats(); },
     lampHaloLinear() { const t = lampHalo.output(); if (!t) return null; const W = t.width, H = t.height, rgba = new Float32Array(W * H * 4); renderer.readRenderTargetPixels(t, 0, 0, W, H, rgba); return { W, H, rgba }; },
     lampConeTime(gl, n, repeats) { return lampCone.time(gl, n, repeats); },
