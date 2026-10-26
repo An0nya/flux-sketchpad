@@ -35,7 +35,7 @@
 
   // ---------------------------------------------------------------- building blocks
   // PED-CLOTHING-MODES (replaces REFLECTIVE-CLOTHING's off/some/all). One mode for every pedestrian, resolved in person(), the only place a walker's
-  // kind and clothing are chosen. none = no vests, no strips. mix = the scene's own vests, plus small strips and shoe reflectors on a seeded half of the
+  // kind and clothing are chosen. none = no vests, no strips. mix = the scene's own vests, plus small strips and shoe reflectors on a seeded ~12% (PED_STRIP_SHARE) of the
   // non-vest walkers. small = no vests, every non-vest walker has strips and shoe reflectors. vest = every walker wears the full vest.
   // Saved values: off -> mix, some -> mix, all -> small. Unset or unknown -> mix (the default).
   const PED_MODES = ['none', 'mix', 'small', 'vest'];
@@ -54,6 +54,7 @@
   // test targets); the vest mode still makes every walker a vest. PED_LIGHT_SHARE is a TUNING value, not a measured share of bright clothing.
   // globalThis.PED_FIXED_KINDS = true restores the old fixed kinds (RC's data part needs its one vest at 95 m).
   const PED_LIGHT_SHARE = 0.3;
+  const PED_STRIP_SHARE = 0.12;       // mix mode: share of non-vest walkers with reflective strips (owner 2026-10-26: rare, was 0.5). TUNING value, not a measured share. globalThis.PED_FIXED_KINDS restores 0.5.
   const seededOr = (fixed) => (globalThis.PED_FIXED_KINDS === true ? fixed : 'seeded');
   const pedKind = (it) => (globalThis.PED_FIXED_KINDS === true && it.fixed) || it.kind;
   function kit(ctx) {
@@ -113,7 +114,7 @@
         const shade = (base, salt, n) => PED_PALETTE[base + Math.floor(unitOf(seed, pid, salt) * n)];
         const torsoMat = vest ? 'hivis' : kind === 'light' ? shade(4, 'torso', 4) : shade(0, 'torso', 4);
         const legsMat = vest ? 'cloth-dark' : shade(0, 'legs', 4);
-        const strips = !vest && (mode === 'small' || (mode === 'mix' && unitOf(seed, pid, 'strip') < 0.5));
+        const strips = !vest && (mode === 'small' || (mode === 'mix' && unitOf(seed, pid, 'strip') < (globalThis.PED_FIXED_KINDS === true ? 0.5 : PED_STRIP_SHARE)));
         const p = at(s, off), dr = (o && o.dir) || [1, 0], G = (o && o.gait) || 0;
         let legsFirst = null;
         for (const dy of [-0.1, 0.1]) { const q = at(s + dr[0] * G * Math.sign(dy), off + dy + dr[1] * G * Math.sign(dy)); const ob = add({ k: 'cyl', x: q.x, y: q.y, r: 0.085, z0: 0, z1: 0.85, mat: legsMat }); legsFirst = legsFirst || ob; }
