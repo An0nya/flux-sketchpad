@@ -23,7 +23,7 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha1').update(b).digest('hex').slice(0, 16);
-const PIN = { flatOff: 'aebd2efecedf013b', flatDirect: '20b772fd22a494fb', flatTable: '4ae1db90b4e48d2b', passOff: '63f8badcba9151b0', passDirect: 'c61ed72727ebe7b3' };
+const PIN = { flatOff: 'aebd2efecedf013b', flatDirect: '20b772fd22a494fb', flatTable: '4ae1db90b4e48d2b', passOff: '63f8badcba9151b0', passDirect: '52d3bb530057cdd2' };   // REVIEW B4 (2026-10-26): c61ed72727ebe7b3 -> 52d3bb530057cdd2, cause: the pass sky now adds our own in-scatter (proved: removing only that line gives c61ed72727ebe7b3 again)
 const DEFAULT_FADE = 'medium';   // registry default of scatterNearFadeRange: set in BASE so the NOFADE rows do not leak into later shots
 const LIT_FLOOR = 60000, RATIO_TOL = 0.06, L1_TOL = 0.06;
 const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, ambient: 0, samples: '1', visibility: 60, scatter: 0, scatterMode: 'direct', scatterCache: 'off', scatterCycle: 1, scatterCycleFade: 'off', trafficHalo: 0, scatterNearFadeRange: DEFAULT_FADE };

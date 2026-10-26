@@ -64,10 +64,12 @@ void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
   const mesh = new T.Mesh(geometry, material); mesh.frustumCulled = false; scene.add(mesh);
   // TOUGE-SKY-VEIL: the sky gets the same halo veil as the far ground. haloScatter(1e20) saturates at 120 m and reads only gl_FragCoord, so no view ray is needed.
   // The sky fragment reuses the ground prefix (ambient, tanH, size, screen and the halo tables are declared there); halo off = the old ambient-only colour.
-  const skyFragment = prefix + 'uniform mat3 worldFromCar;void main(){vec3 ray=worldFromCar*normalize(vec3(1,-screen.x*tanH,screen.y*tanH*size.y/size.x));vec3 c=vec3(ambient*.012*(1.0+.8*max(0.0,1.0-abs(ray.z)*8.0)));if(haloOn>0) c+=haloScatter(1e20);gl_FragColor=vec4(c,1);}';
+  // REVIEW B4: the sky also gets our own air beam (direct or table lookup, saturating at S_MAX like the flat sky), or lit cliffs and trees stand out against a black sky in haze.
+  // worldFromCar is declared by passShader, which drive-three.js applies to this material (shading(..., mountain = true)) along with the table text.
+  const skyFragment = prefix + 'void main(){vec3 ray=worldFromCar*normalize(vec3(1,-screen.x*tanH,screen.y*tanH*size.y/size.x));vec3 c=vec3(ambient*.012*(1.0+.8*max(0.0,1.0-abs(ray.z)*8.0)));if(scatterSteps>0) c+=inScatter(ray,1e20,scatterJitter());if(haloOn>0) c+=haloScatter(1e20);gl_FragColor=vec4(c,1);}';
   const skyMaterial = new T.ShaderMaterial({ uniforms: u, vertexShader: 'varying vec2 screen;void main(){screen=position.xy;gl_Position=vec4(position.xy,.999999,1);}', fragmentShader: skyFragment, depthTest: false, depthWrite: false });
   const sky = new T.Mesh(new T.PlaneGeometry(2,2), skyMaterial); sky.frustumCulled = false; sky.renderOrder = -1; scene.add(sky);
-  return { scene, camera, material,
+  return { scene, camera, material, skyMaterial,
     shadows(renderer){
       const eye=u.eye.value.clone(),size=u.size.value.clone(),tan=u.tanH.value;
       u.size.value.set(2048,1024);u.tanH.value=1.2;

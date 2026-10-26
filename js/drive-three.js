@@ -106,12 +106,11 @@ export function create(canvas, gl, onModelsReady) {
   const lutIds = new WeakMap(); let lutSeq = 0;
   const lutId = (l) => { if (!l) return 0; if (!lutIds.has(l)) lutIds.set(l, ++lutSeq); return lutIds.get(l); };
   const quant = (x, step) => Math.round((x || 0) / step), DEG05 = 0.05 * Math.PI / 180;
-  // TILT: att is our attitude on a touge frame (null on flat): its pitch and roll are part of the key, so a cached table is not reused across grades. Flat: a constant.
-  function tableKey(p, extras, look, tw, th, sig, att) {
+  // The table is built in the car frame (TOUGE-AIR-RIBBON: car-frame eye, lamps and ray), so our grade and roll on the pass never enter it and are not in the key.
+  function tableKey(p, extras, look, tw, th, sig) {
     return JSON.stringify([(p.lamps || []).map((l) => l.map((v) => quant(v, 1e-4))), quant(p.yaw, DEG05), quant(p.pitch, DEG05), quant(p.cornerLeft, DEG05), quant(p.cornerRight, DEG05),
       !!p.afs, !!p.lampPitch, !!p.corneringLamps, lutId(p.lut), (p.lampRGB || [1, 1, 1]).map((v) => quant(v, 1e-4)), look.visibility, quant(p.hfov, DEG05), p.w, p.h,
-      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps',
-      att ? [quant(att.pitch, DEG05), quant(att.roll, DEG05)] : 0]);
+      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps']);
   }
   const newBank = () => [0, 1, 2].map(() => new T.WebGLRenderTarget(tabSize.w, tabSize.h, { type: T.HalfFloatType, depthBuffer: false }));
   function dropAll() {
@@ -146,7 +145,7 @@ export function create(canvas, gl, onModelsReady) {
     }
     if (tableShading(extras)) compilePending = true;
     const compiling = compilePending; compilePending = false;
-    const key = tableKey(p, extras, look, tw, th, sig, p.touge && dist != null ? globalThis.RF.Touge.attitude(dist) : null);
+    const key = tableKey(p, extras, look, tw, th, sig);
     const tblSteps = Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48)), tblBinN = D.binCountsFor(tblSteps, look.scatterNearBias, look.scatterBinCounts, look.scatterQuality);
     // NE3: a valid slice override or near sampling on turns on the per-slice counts (tableBias); empty or invalid with it off is the old path.
     const tblPer = !!D.parseBinCounts(look.scatterBinCounts) || !!D.qualityCounts(look.scatterQuality) || +look.scatterNearBias > 0;
@@ -322,7 +321,7 @@ export function create(canvas, gl, onModelsReady) {
     atlasState() { const n = u.nTraffic.value; return { on: atlasOn, beams: atlasPacked ? atlasPacked.count : 0, nTraffic: n, cars: litCars.slice(0, n), idx: Array.from({ length: n }, (_, i) => u.trafficBeamIdx.value[i >> 2].getComponent(i & 3)), tints: atlasPacked ? Array.from({ length: atlasPacked.count }, (_, i) => u.beamTint.value[i].toArray().slice(0, 3)) : [] }; },
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
-      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1, blendOn = !p.touge; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn, false);   // TOUGE-AIR: blendOn false = no cycle-blend banks on the pass (blendOn is re-read for the objects below)
+      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1, blendOn = !p.touge; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn, false); shading(pass.skyMaterial, extras, true, tableOn, false);   // TOUGE-AIR: blendOn false = no cycle-blend banks on the pass (blendOn is re-read for the objects below)
       u.scatUV.value.set(1 / p.w, 1 / p.h); u.haloUV.value.set(1 / p.w, 1 / p.h); if (tableOn) {
         // TOUGE-AIR-RIBBON: the table pre-pass builds a level car-frame ray, so it must see the car-frame eye and lamps; on a pass frame the uniforms hold the world-aligned
         // (rotated) copies for the lit passes. Swap the unrotated values (p.eye, p.lamps) in for the table only, then put back what was there. No `touge` test: on a flat frame the

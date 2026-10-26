@@ -17,7 +17,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha1').update(b).digest('hex').slice(0, 16);
 const TEXT_PINS = { 'plain': '735d6fcb271f366e', 'lit': '583d6d40c21be702', 'lit+atlas': '7b8f49fc12e6d9c6' };
-const PIN = { flatOff: 'aebd2efecedf013b', flatDirect: '20b772fd22a494fb', flatTable: '4ae1db90b4e48d2b', passOff: '63f8badcba9151b0', passDirect: 'c61ed72727ebe7b3' };
+const PIN = { flatOff: 'aebd2efecedf013b', flatDirect: '20b772fd22a494fb', flatTable: '4ae1db90b4e48d2b', passOff: '63f8badcba9151b0', passDirect: '52d3bb530057cdd2' };   // REVIEW B4 (2026-10-26): c61ed72727ebe7b3 -> 52d3bb530057cdd2, cause: the pass sky now adds our own in-scatter (proved: removing only that line gives c61ed72727ebe7b3 again)
 const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, ambient: 0, samples: '1', visibility: 60, scatter: 0, scatterMode: 'direct', scatterCache: 'off', scatterCycle: 1, scatterCycleFade: 'off', trafficHalo: 0 };
 const T = { scatter: 16, scatterMode: 'table' };
 (async () => {
