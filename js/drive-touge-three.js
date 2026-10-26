@@ -41,7 +41,7 @@ export function passShader(source, vertex = false) {
 export function surface(u) {
   const geometry = new T.BufferGeometry(), scene = new T.Scene(), camera = new T.Camera();
   const prefix = ground.slice(0, ground.indexOf('vec4 roadFrame'));
-  let body = ground.slice(ground.indexOf('vec3 surface('), ground.indexOf('void main()'));
+  let body = ground.slice(ground.indexOf('uniform sampler2D marks;'), ground.indexOf('void main()'));   // B14: starts at the `marks` declaration (just before surface())
   body = body.replace('vec4 f=roadFrame(p.xy);', 'vec4 f=roadUV;').replace('n=vec3(0,0,1);', 'n=normalize(roadNormal);');
   body = body.replace('int(verge.y)', 'off>1.5*lane+2.2 ? 20 : int(verge.y)');
   const fragment = prefix + 'varying vec3 worldPoint, roadNormal; varying vec4 roadUV;\n' + body + `

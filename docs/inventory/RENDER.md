@@ -54,11 +54,12 @@ CPU alternative (`gpuRenderer` off or GPU failed): `objects()` (:743) -> `D.rend
 | sampler | declared in | feature that owns it | always compiled in? |
 |---|---|---|---|
 | `beam` | ground prefix (drive-three-shaders.js:11) | our low/high beam LUT | yes |
-| `materials`, `marks` | ground prefix | material table, marking table | yes (`marks` is declared but unreachable in objects/mesh cars) |
+| `materials` | ground prefix | material table | yes |
+| `marks` | just before `surface()` in `ground` (B14: no longer in the shared prefix) | marking table | ground and ribbon mains only; objects, mesh cars and the table pass do not declare it |
 | `otherBeam` | `withLighting` (:283+) | traffic beams / oncoming beam table, or the BA5 atlas | only in `extras` variants (trafficBeams, lampPitch, afs, corneringLamps, yaw, pitch) |
-| `haloTex`, `haloPolarTex`, `haloPolarTex2` | ground prefix (:43,46,80) | traffic halo table, polar table, second polar table | **yes, in every program built from the ground prefix, whether or not `trafficHalo` is on** |
-| `scatBank0..2` | `TABLE_DECL` (:311) | air beam table mode, current version | in table variants (`scatMode` on) |
-| `scatBankB0..2` | `TABLE_DECL` (:332) | air beam table cycle blend (`scatterCycleFade`) | in table variants, **even with the fade off** |
+| `haloTex`, `haloPolarTex` (sampler2DArray, B10) | ground prefix | traffic halo table; both polar tables as layers 0 and 1 of one array | **yes, in every program built from the ground prefix, whether or not `trafficHalo` is on** (2 samplers, was 3) |
+| `scatBanks` (sampler2DArray, 3 layers, B10) | `TABLE_HEAD` | air beam table mode, current version (layer k = bins 4k..4k+3) | in table variants (`scatMode` on) |
+| `scatBanksB` (sampler2DArray, 3 layers, B10) | `TABLE_BLEND` | air beam table cycle blend (`scatterCycleFade`) | in table variants, **even with the fade off** (1 sampler, was 3) |
 | `passDepth`, `passShadow0`, `passShadow1` | `passShader` (drive-touge-three.js:4) | mountain pass terrain depth and lamp shadows | pass variants |
 | `materialMap` (sampler2DArray), `sdfNodes`, `treeCard` | objectFragment (drive-three-objects.js:14-16, drive-models-glsl.js:4-5) | per-object material maps, SDF actors, tree cards | objects only |
 | `bodyMap` | drive-three-models.js:16 | mesh car body map | mesh cars only |
@@ -69,7 +70,9 @@ CPU alternative (`gpuRenderer` off or GPU failed): `objects()` (:743) -> `D.rend
 
 Method (reproducible): `docs/inventory/scripts/reach.mjs`. It loads the repo's own shader strings (`ground`, `withLighting`, `tableSource`, `passShader`, `objectFragment` imported from js/), assembles each variant exactly as `shading()` does, strips comments, splits top-level GLSL functions by brace matching, walks the call graph from `main`, and counts `uniform sampler*` names that are (a) declared, (b) mentioned outside their declaration ("textual"), (c) mentioned in code reachable from `main` ("reachable"). A real GLSL compiler counts what it keeps active, which is at most "textual" and most likely close to "reachable" (it drops dead functions); neither was measured. All of these are ShaderMaterial (three.js prepends its own matrix and camera uniforms, which add no samplers for these shaders; OBSERVED by the material constructors) and there are no `#if` guards (grep: 0 in all shader files), so a variant is whatever text the string replacements produce.
 
-Counts (declared / textual / reachable); limit 16:
+**B10/B14 (2026-10-26), MEASURED by `node docs/inventory/scripts/uniforms.mjs` (declared / reachable, text count; the script now builds the pass programs WITH the cycle blend):** the six table banks are two 3-layer array textures, the two polar tables are one 2-layer array, and `marks` is declared only in the ground and ribbon mains. Worst program: TOUGE object lit + table = **13 / 13** (was 16 / 15 with the blend left out). FLAT object lit + table 10 / 10 (was 16 / 15). FLAT ground lit + table 8 / 8 (was 13 / 13). TOUGE ribbon lit + table 10 / 9 (was 13 / 12). The tables below are the BEFORE numbers, kept for the history.
+
+Counts (declared / textual / reachable), BEFORE B10; limit 16:
 
 | program | plain | lit (+atlas same) | plain + table | lit + table (+atlas same) |
 |---|---|---|---|---|
