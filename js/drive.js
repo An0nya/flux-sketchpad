@@ -765,15 +765,44 @@
     return false;
   }
   // occluders: the opaque objects of the same frame (default: objects themselves). A lamp hidden from the eye contributes nothing.
-  function glareSources(objects, eye, occluders) {
-    eye = eye || [-2, 0.37, 1.2]; const out = [], occ = occluders || objects;
-    for (const ob of objects) if (ob.headlamp) {
+  // GLARE-ALL (option glareSources): opts.mode 'oncoming' (default, the headlamps only, unchanged) | 'all'.
+  // 'all' adds, through the same loop: preceding cars' tail lamps, lit signal heads (emit set), and opts.lights (street lamps, see lampEyeCd).
+  // Signal and tail emitters take their candela from the brightest emit channel (the channel that carries the intensity in the scene builders:
+  // red for a tail, the lit colour's channel for a signal). That is a choice, not a photometric measurement. Headlamps keep emit[0].
+  // Cap 32: 'all' sorts by eye illuminance (brightest first); 'oncoming' keeps the scene order, as before.
+  function glareEmitter(ob, mode) { return !!ob.headlamp || (mode === 'all' && (!!ob.taillamp || (ob.cls === 'signal' && !!ob.emit))); }
+  // Candela toward the eye from one street lamp: its cd, times the lamp-dist road factor I(gamma, phi) when the lamp has a street direction
+  // (same factor as lampRoadF in drive-three-shaders.js and drive.js lampRoadF). gamma is measured from straight down, in the frame the lamp and eye share.
+  function lampEyeCd(L, eye, opts) {
+    const st = L.street || L.lampStreet;      // lampStreet: the pass's copy (drive-touge.js), kept off `street` so the pass renderer's lampRoad path is unchanged
+    if (!st) return L.cd;
+    const LD = globalThis.RF && RF.LampDist;
+    if (!LD) throw new Error('lampEyeCd: RF.LampDist is not loaded');
+    const vx = eye[0] - L.x, vy = eye[1] - L.y, vz = eye[2] - L.z, rr = Math.hypot(vx, vy, vz);
+    const g = Math.acos(Math.max(-1, Math.min(1, -vz / rr))) * 180 / Math.PI;
+    return L.cd * LD.roadFactorAt((opts && opts.lampClass) || 'III', LD.kindOfLamp(opts && opts.lampKind), g, LD.phiOf(st, [vx, vy]));
+  }
+  // A street lamp is visible from the eye unless an opaque object between them hides it (same test as a headlamp).
+  function lightVisible(L, eye, occ) { return !occluded([L.x, L.y, L.z], eye, occ); }
+  function glareSources(objects, eye, occluders, opts) {
+    eye = eye || [-2, 0.37, 1.2]; const out = [], occ = occluders || objects, mode = opts && opts.mode === 'all' ? 'all' : 'oncoming';
+    for (const ob of objects) if (mode === 'oncoming' ? ob.headlamp : glareEmitter(ob, mode)) {
       const dx = ob.x - eye[0], dy = ob.y - eye[1], dz = ob.z - eye[2], rr = Math.hypot(dx, dy, dz);
       if (dx <= 0 || !(rr > 0)) continue;
       if (occluded([ob.x, ob.y, ob.z], eye, occ)) continue;
-      const cos = Math.max(0, -(dx * ob.nx + dy * ob.ny) / rr), cd = ob.eyeCd === undefined ? ob.emit[0] * Math.PI * ob.r * ob.r * Math.pow(cos, ob.emitPow || 1) : ob.eyeCd;
+      const cos = Math.max(0, -(dx * ob.nx + dy * ob.ny) / rr);
+      const cd = ob.eyeCd === undefined ? (ob.headlamp ? ob.emit[0] : Math.max(...ob.emit)) * Math.PI * ob.r * ob.r * Math.pow(cos, ob.emitPow || 1) : ob.eyeCd;
+      if (mode === 'all' && !(cd > 0)) continue;      // 'oncoming' keeps every headlamp it always kept
       out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr)]);
     }
+    if (mode === 'all') for (const L of opts.lights || []) {
+      const dx = L.x - eye[0], dy = L.y - eye[1], dz = L.z - eye[2], rr = Math.hypot(dx, dy, dz);
+      if (dx <= 0 || !(rr > 0)) continue;
+      const cd = L.eyeCd === undefined ? lampEyeCd(L, eye, opts) : L.eyeCd;
+      if (!(cd > 0) || !lightVisible(L, eye, occ)) continue;
+      out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr)]);
+    }
+    if (mode === 'all') return out.sort((a, b) => b[3] - a[3]).slice(0, 32);
     return out.slice(0, 32);
   }
   function veilAt(dir, sources) {
@@ -1090,5 +1119,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { glareEmitter, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
