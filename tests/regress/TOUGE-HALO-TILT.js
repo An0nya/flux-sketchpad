@@ -14,7 +14,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const errors = [];
 const crypto = require('crypto');
-const PIN_FLAT = 'b1d5d4b18067ffb4', PIN_EQUAL = 'c93885d2e890d8c2';   // scene region y>=140, 912x373 PNG. PIN_EQUAL was f73730821efb1e75 (base b0a37ea, main 0fed388 still gives it); re-baselined by TOUGE-SKY-VEIL: the sky now takes the halo veil on halo-on touge frames. Cause proven: f73730821efb1e75 reproduces with the sky term switched off.
+const PIN_FLAT = 'b1d5d4b18067ffb4', PIN_EQUAL = '51727377c14f45d3';   // REVIEW integ 2026-10-26: c93885d2e890d8c2 -> 51727377c14f45d3, cause: B6 shadow normal (proved: the old hash returns with only the B6 line reverted).   // scene region y>=140, 912x373 PNG. PIN_EQUAL was f73730821efb1e75 (base b0a37ea, main 0fed388 still gives it); re-baselined by TOUGE-SKY-VEIL: the sky now takes the halo veil on halo-on touge frames. Cause proven: f73730821efb1e75 reproduces with the sky term switched off.
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
   const open = async () => {
@@ -49,7 +49,9 @@ const PIN_FLAT = 'b1d5d4b18067ffb4', PIN_EQUAL = 'c93885d2e890d8c2';   // scene 
       const V = RF.DriveAnim._.V, P = RF.Touge, p = V.p, a = P.attitude(dd), world = P.world(p, dd, 0), W = RF.Drive.trafficSources(world.objects, p.eye, p, world.A);
       const q = W.map((q) => ({ q, d: Math.hypot(q.x - p.eye[0], q.y - p.eye[1], q.z - p.eye[2]) })).sort((x, y) => x.d - y.d)[0].q;
       const f = world.A.frame(q.x, q.y), sf = world.A.surface(f.s, f.off), pt = Math.atan(sf.grade * (q.nx * f.t[0] + q.ny * f.t[1]));
-      const b = [q.nx * Math.cos(pt), q.ny * Math.cos(pt), Math.sin(pt)], n = a.up;   // their beam, world; our up = carFromWorld row z
+      let b = [q.nx * Math.cos(pt), q.ny * Math.cos(pt), Math.sin(pt)], n = a.up;   // their beam, world; our up = carFromWorld row z
+      // ROLL (REVIEW integ 2026-10-26): the beam forward is the grade-carrying heading projected onto the road plane under the car (drive-three-halo.js toCarFrame), so a banked car's beam carries its roll
+      if (sf.normal) { const sn = sf.normal, dir = q.nx * f.t[0] + q.ny * f.t[1], H = [q.nx, q.ny, sf.grade * dir], hn = H[0] * sn[0] + H[1] * sn[1] + H[2] * sn[2], F = [H[0] - sn[0] * hn, H[1] - sn[1] * hn, H[2] - sn[2] * hn], fl = Math.hypot(...F) || 1; b = F.map((v) => v / fl); }
       const expected = n[0] * b[0] + n[1] * b[1] + n[2] * b[2];
       const s = V.three.haloState();
       return { on: s.on, nz: s.lamps[0].nz, expected, ourPitch: a.pitch, carPitch: pt, roll: a.roll, sinSum: Math.sin(a.pitch + pt) };
@@ -60,7 +62,7 @@ const PIN_FLAT = 'b1d5d4b18067ffb4', PIN_EQUAL = 'c93885d2e890d8c2';   // scene 
     ok('dip: nearest lamp axis elevation is the full rotation (within 1e-3) and points down', Math.abs(dip.nz - dip.expected) < 1e-3 && dip.nz < -0.05, { nz: dip.nz, expected: dip.expected });
     ok('valley: nearest lamp axis elevation is the full rotation (within 1e-3) and points up', Math.abs(valley.nz - valley.expected) < 1e-3 && valley.nz > 0.02, { nz: valley.nz, expected: valley.expected });
     ok('equal grades: axis is level (|nz| < 0.002)', Math.abs(equal.nz) < 0.002, { nz: equal.nz });
-    ok('dip nz is within 0.02 of sin(our pitch + their pitch) (the gap is our bank, roll ' + (dip.roll * 180 / Math.PI).toFixed(2) + ' deg)', Math.abs(dip.nz - dip.sinSum) < 0.02, { nz: dip.nz, sinSum: dip.sinSum });
+    ok('dip nz is within 0.03 of sin(our pitch + their pitch) (rough cross-check: the gap is our bank and, since ROLL, their bank; was 0.02 before ROLL), roll ' + (dip.roll * 180 / Math.PI).toFixed(2) + ' deg)', Math.abs(dip.nz - dip.sinSum) < 0.03, { nz: dip.nz, sinSum: dip.sinSum });
     // (2) pixels: tilt on vs tilt off (the old frames) at the same station
     const dipOn = await shot(page, 1332, false), dipOff = await shot(page, 1332, true);
     const valOn = await shot(page, 1028, false), valOff = await shot(page, 1028, true);

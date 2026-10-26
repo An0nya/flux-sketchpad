@@ -15,8 +15,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const errors = [];
 const sha = (b) => crypto.createHash('sha1').update(b).digest('hex').slice(0, 16);
-const PIN_PASS_OFF = '1df27fae2210614c', PIN_AMBIENT_OFF = '65a7dd08bf6a8747', PIN_FLAT_OFF = 'e0bda83bb1da9572', PIN_FLAT_ON = '852ef5c2cf48809d';
-const PIN_PASS_ON = '1a41ccf6b756c86d';   // branch sky-veil frame (main's halo-on frame is 6e4191c6af587594)
+// REVIEW integ 2026-10-26: PIN_PASS_OFF 1df27fae2210614c -> 2182d30171a7951b and PIN_AMBIENT_OFF 65a7dd08bf6a8747 -> 94a75ecaba63c384, cause B6 shadow normal (proved by reverting only that line); PIN_PASS_ON 1a41ccf6b756c86d -> 2f8d8419c8e42866, cause ROLL (b0ae354da282f1bf with B6 reverted, so ROLL alone moves it) + B6.
+const PIN_PASS_OFF = '2182d30171a7951b', PIN_AMBIENT_OFF = '94a75ecaba63c384', PIN_FLAT_OFF = 'e0bda83bb1da9572', PIN_FLAT_ON = '852ef5c2cf48809d';
+const PIN_PASS_ON = '2f8d8419c8e42866';   // branch sky-veil frame (main's halo-on frame is 6e4191c6af587594)
 const SKY_STEP_MAX = 12;                  // pinned: main 25.0, branch 8.8 (median over columns of the largest adjacent-row luminance step)
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
