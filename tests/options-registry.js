@@ -20,7 +20,7 @@ const FROZEN_OLD_DV_DEF = {
   visibility: null,
   scatter: 0,
   trafficHalo: 0,
-  lampCone: 'off',   // LAMP-CONE-MIST: a new option (not a default change): added to the frozen copy so the check holds
+  lampCone: 'auto',   // LAMP-CONE-MIST added it (default 'off'); Brief U (D) changed the default to 'auto' on purpose (owner 2026-10-27: cone on whenever street lamps and visibility are on), with a defaultHistory entry and DEFAULTS_VERSION 2
   lampConeGain: 1,   // LAMP-CONE-OBJECTS: a new option (not a default change), added to the frozen copy as lampCone was
   lampClass: 'III',
   lampRoad: 'off',

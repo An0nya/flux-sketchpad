@@ -177,6 +177,14 @@ const setO = (page, k, v) => page.evaluate(([k, v]) => RF.DriveAnim._.V.setOwn(k
     // 5. option select in More
     const ui = await page.evaluate(() => { const s = document.querySelector('[data-dv="lampCone"]'); return s ? { value: s.value, inMore: !!s.closest('.drive-more') } : null; });
     ok('LCM1 option select (data-dv=lampCone) is in the More panel', !!(ui && ui.inMore), JSON.stringify(ui));
+    // 6. Brief U (D): the default is 'auto' = on whenever street lamps are on and visibility is set; an explicit 'off' is the user's and wins.
+    //    The resolved value is V.p.lampCone (what the GPU pass reads); lampConeState().on is whether the pass drew.
+    const cs = () => page.evaluate(() => ({ p: RF.DriveAnim._.V.p.lampCone, on: RF.DriveAnim._.V.three.lampConeState().on, opt: RF.UI.dvOpts.lampCone }));
+    await page.evaluate(() => { delete RF.UI.dvOpts.lampCone; RF.UI.dvOpts.streetLamps = 'sodium'; }); await setO(page, 'visibility', 1000);
+    const dAuto = await cs(); ok("LCM1 default (lampCone unset), street lamps on, visibility 1000: the cone is on", dAuto.p === 'on' && dAuto.on === 1, JSON.stringify(dAuto));
+    await setO(page, 'lampCone', 'off'); const dOff = await cs(); ok("LCM1 explicit 'off' wins over the auto default", dOff.p === 'off' && dOff.on === 0, JSON.stringify(dOff));
+    await setO(page, 'lampCone', 'auto'); await setO(page, 'visibility', null); const dClear = await cs(); ok("LCM1 auto in clear air: no cone", dClear.p === 'off' && dClear.on === 0, JSON.stringify(dClear));
+    await setO(page, 'visibility', 1000); await setO(page, 'streetLamps', 'off'); const dNoLamps = await cs(); ok("LCM1 auto with street lamps off: no cone", dNoLamps.p === 'off', JSON.stringify(dNoLamps));
     ok('LCM1 no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
     await A.browser.close();
   } catch (e) {

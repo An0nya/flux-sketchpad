@@ -814,6 +814,15 @@
   function veilAt(dir, sources) {
     let L = 0; for (const q of sources || []) { const theta = Math.max(1, Math.acos(Math.max(-1, Math.min(1, dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]))) / D2R); L += 10 * q[3] / (theta * theta); } return L;
   }
+  // Brief U (D): is the lamp cone on for these options? lampCone is 'auto' (the default; also an unset value), 'off' or 'on'. 'auto' = on whenever street lamps are on and the air
+  // has a visibility; an explicit 'off' or 'on' is the user's choice and wins. The one place that decides it (drive-anim.js V.p, spec-ui.js); the cone itself still draws nothing in clear air.
+  function lampConeOn(o) {
+    if (!o) return false;
+    if (o.lampCone === 'on') return true;
+    if (o.lampCone === 'off') return false;
+    const v = +o.visibility;
+    return !!o.streetLamps && o.streetLamps !== 'off' && v > 0 && v < Infinity;
+  }
   // Per-channel veil: the same sum as veilAt, each source weighted by its rgb (q[4..6]; a source without them is white). veilAt stays the scalar (E only): adaptation and the readouts use it.
   function veilRGBAt(dir, sources) {
     let r = 0, g = 0, b = 0; for (const q of sources || []) { const theta = Math.max(1, Math.acos(Math.max(-1, Math.min(1, dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]))) / D2R), w = 10 * q[3] / (theta * theta); r += w * (q[4] === undefined ? 1 : q[4]); g += w * (q[5] === undefined ? 1 : q[5]); b += w * (q[6] === undefined ? 1 : q[6]); } return [r, g, b];
@@ -1129,5 +1138,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { glareEmitter, sourceRGB, veilRGBAt, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

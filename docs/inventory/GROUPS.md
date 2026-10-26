@@ -166,7 +166,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 
 | option | label | kind | sits in | default | needs / ignored / conflicts |
 |---|---|---|---|---|---|
-| `lampCone` | lamp cone (mist) | profile | More | "off" | needs `gpu` [tooltip], `lampsPresent` [none], `air` [hidden] |
+| `lampCone` | lamp cone (mist) | profile | More | "auto" | needs `gpu` [tooltip], `lampsPresent` [none], `air` [hidden] |
 | `lampConeGain` | cone gain | profile | More | 1 | needs `coneOn` [hidden] |
 | `lampClass` | lamp class | profile | More | "III" | needs `lampDistUsed` [none] |
 | `lampRoad` | road lamp light | profile | More | "off" | needs `lampsPresent` [none] |

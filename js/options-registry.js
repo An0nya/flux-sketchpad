@@ -42,7 +42,7 @@
   // Options removed from the build. A saved profile may still hold them; load drops the key so a stale value can never matter (Brief U:
   // glareSources = every source now glares; lampHalos = the lamp-halo sprite is gone, the lamp cone is the only street-lamp haze).
   const RETIRED_KEYS = ['glareSources', 'lampHalos'];
-  const DEFAULTS_VERSION = 1;   // the defaults generation this build writes into a saved profile (profile.defaultsVersion)
+  const DEFAULTS_VERSION = 2;   // the defaults generation this build writes into a saved profile (profile.defaultsVersion)
 
   // A profile saved before versioning holds every key that existed when it was saved, because setDV wrote the whole object.
   // These are the 18 keys of the first release (commit e323553); a profile that has them all is such a whole-object save.
@@ -73,8 +73,8 @@
       at: { file: DRIVE, fn: 'function haloN', line: 819 } },
     haloOn: { cond: { opt: 'trafficHalo', gt: 0 }, why: 'there is no halo to modify while traffic halo is off', effect: 'none',
       at: { file: DRIVE, fn: 'function haloN', line: 819 } },
-    coneOn: { cond: { opt: 'lampCone', eq: 'on' }, why: 'the cone gain only scales the lamp cone (lampCone on)', effect: 'hidden',
-      at: { file: SPEC, fn: "o.lampCone !== 'on'", line: 1034 } },
+    coneOn: { cond: { any: [{ opt: 'lampCone', eq: 'on' }, { all: [{ opt: 'lampCone', ne: 'off' }, { opt: 'streetLamps', ne: 'off' }, { opt: 'visibility', ne: null }] }] }, why: 'the cone gain only scales the lamp cone (lampCone on, or auto with street lamps on and a visibility set)', effect: 'hidden',
+      at: { file: SPEC, fn: 'RF.Drive.lampConeOn(o)', line: 1033 } },
     powerlinesOn: { cond: { opt: 'powerlines', eq: 'on' }, why: 'the wire reflectance only changes the power wires (powerlines on; the open-road wild chunk and the pass build them only then)', effect: 'hidden',
       at: { file: TOUGE, fn: "flags.powerlines === 'on'", line: 119 } },
     trafficBeamsLight: { cond: { opt: 'trafficBeams', eq: true }, why: 'road light from other cars only exists with traffic beams on', effect: 'none',
@@ -230,14 +230,18 @@
       note: 'haloN() is 0 unless trafficBeams, air and trafficHalo > 0 (silent no-op otherwise). GPU only.',
     },
     {
-      id: 'lampCone', kind: 'profile', type: 'enum', values: ['off', 'on'],
-      default: 'off', label: 'lamp cone (mist)',
+      id: 'lampCone', kind: 'profile', type: 'enum', values: ['auto', 'off', 'on'],
+      default: 'auto', label: 'lamp cone (mist)',
+      defaultHistory: [
+        { since: 0, value: 'off', date: '2026-10-22', commit: '303d9be' },
+        { since: 2, value: 'auto', date: '2026-10-27', commit: '00e6c83' },   // Brief U; 00e6c83 = the commit this change sits on (a commit cannot name itself)
+      ],
       control: '[data-dv="lampCone"]', where: 'more', query: null,
       group: 'street-lamps', cost: 'per-frame-gpu',
       owner: ['js/drive-anim.js', 'js/drive-three-lampcone.js', 'js/drive-three.js'],
       requires: [need('gpu'), need('lampsPresent'), need('air')],
       tests: [],
-      note: 'GPU only; the CPU renderer ignores it. Needs visibility set (mist): clear air draws no cone. Single scattering off each street lamp, g 0.6 (assumption); no scene occlusion.',
+      note: "GPU only; the CPU renderer ignores it. 'auto' (default, Brief U) = on whenever street lamps are on and visibility is set (RF.Drive.lampConeOn); 'off' and 'on' are the user's explicit choice. The cone is the only way street lamps light the haze (the lamp-halo sprite is gone). Clear air draws no cone. Single scattering off each street lamp, g 0.6 (assumption); no scene occlusion.",
     },
     {
       id: 'lampConeGain', kind: 'profile', type: 'enum', values: [0.25, 0.5, 1, 1.5, 2],

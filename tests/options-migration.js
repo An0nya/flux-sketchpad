@@ -15,11 +15,11 @@ const DEF = Opt.defaults();
 
 // ---- the history the registry holds (derived from git log of js/spec-ui.js, first-parent main, see the report)
 const histKeys = Opt.OPTIONS.filter((e) => e.defaultHistory).map((e) => e.id).sort();
-ok('the registry seeds default history only for tiles, glare, gpuRenderer, reflectiveClothing', J(histKeys) === J(['glare', 'gpuRenderer', 'reflectiveClothing', 'tiles']), histKeys);
+ok('the registry seeds default history only for tiles, glare, gpuRenderer, lampCone (Brief U), reflectiveClothing', J(histKeys) === J(['glare', 'gpuRenderer', 'lampCone', 'reflectiveClothing', 'tiles']), histKeys);
 ok('every history entry names the commit and date it comes from', Opt.OPTIONS.filter((e) => e.defaultHistory).every((e) => e.defaultHistory.every((h) => /^[0-9a-f]{7}$/.test(h.commit) && /^2026-\d\d-\d\d$/.test(h.date))));
 const histOf = (id) => Opt.byId[id].defaultHistory.map((h) => h.value);
-ok('glare history is 0.3, dry, off; tiles false, true; gpuRenderer false, true; reflectiveClothing off, mix',
-  J(histOf('glare')) === J([0.3, 'dry', 'off']) && J(histOf('tiles')) === J([false, true]) && J(histOf('gpuRenderer')) === J([false, true]) && J(histOf('reflectiveClothing')) === J(['off', 'mix']));
+ok('glare history is 0.3, dry, off; tiles false, true; gpuRenderer false, true; reflectiveClothing off, mix; lampCone off, auto',
+  J(histOf('glare')) === J([0.3, 'dry', 'off']) && J(histOf('tiles')) === J([false, true]) && J(histOf('gpuRenderer')) === J([false, true]) && J(histOf('reflectiveClothing')) === J(['off', 'mix']) && J(histOf('lampCone')) === J(['off', 'auto']));
 
 // ---- fixtures. A whole-object save from the old app: every key at the default it had then.
 const real = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/drive-controls-fixtures/drive-view-main-58bccea.json'), 'utf8'));   // a real save from main 58bccea
@@ -130,6 +130,20 @@ try {
   RF.SpecUI.dvOpts(freshUI());
   ok('view "still" rewrite stores the stamp as well', JSON.parse(store[KEY]).defaultsVersion === Opt.DEFAULTS_VERSION && JSON.parse(store[KEY]).view === 'anim');
 } finally { delete globalThis.localStorage; }
+
+// ---- Brief U (D): lampCone 'off' was the default until DEFAULTS_VERSION 2; 'auto' since. A version-1 save at 'off' is the old default and moves to 'auto';
+// a current-version save at 'off' is the user's explicit choice and stays; 'on' is a choice in any version; retired keys are dropped.
+{
+  const v1 = Opt.migrateProfile(Object.assign(oldDefaults(), { lampCone: 'off', defaultsVersion: 1 })), v1on = Opt.migrateProfile(Object.assign(oldDefaults(), { lampCone: 'on', defaultsVersion: 1 }));
+  ok("lampCone: a version-1 profile holding the old default 'off' takes 'auto'", v1.profile.lampCone === 'auto' && v1.changed.includes('lampCone'), v1.changed);
+  ok("lampCone: a version-1 profile that chose 'on' keeps it", v1on.profile.lampCone === 'on' && !v1on.changed.includes('lampCone'));
+  const cur = Opt.migrateProfile(Object.assign(oldDefaults(), { lampCone: 'off', defaultsVersion: Opt.DEFAULTS_VERSION }));
+  ok("lampCone: a current-version profile at 'off' is an explicit choice and stays 'off'", cur.profile.lampCone === 'off' && cur.changed.length === 0);
+  const ret = Opt.migrateProfile(Object.assign(oldDefaults(), { glareSources: 'all', lampHalos: 'on', defaultsVersion: Opt.DEFAULTS_VERSION }));
+  ok('retired keys glareSources and lampHalos are dropped on load', !('glareSources' in ret.profile) && !('lampHalos' in ret.profile));
+  const O = { streetLamps: 'sodium', visibility: 1000 }, lcOn = (o) => RF.Drive.lampConeOn(Object.assign({}, O, o));
+  ok("lampConeOn: auto/unset = on with street lamps and a visibility; off in clear air or with lamps off; explicit off and on win", lcOn({}) && lcOn({ lampCone: 'auto' }) && !lcOn({ visibility: null }) && !lcOn({ streetLamps: 'off' }) && !lcOn({ lampCone: 'off' }) && lcOn({ lampCone: 'on', visibility: null }));
+}
 
 console.log(fails ? fails + ' of ' + n + ' options-migration checks FAILED' : 'all ' + n + ' options-migration checks passed');
 process.exit(fails ? 1 : 0);
