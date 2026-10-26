@@ -3,6 +3,8 @@
 // and the frame at four poses, and the polar-table frame, on the MG2-default-lamp scene with the halo on.
 // The pins were measured before the change (main d20fe9d plus BRIEF J item 1, which does not touch the table) with the same hook: no pin moved.
 // Hashes are of the raw half-float texels (haloTableBytes) and of the clip PNG (y 140, 912x373), as tests/regress/BJ1-shadow-cache.js.
+// E2 part 2 (2026-10-27): pass lamp heads now carry their street direction, so the lamp cone (default 'auto' = on in mist) draws on a pass frame for the first time and adds light to the
+// pass frames (2 pass frame pins moved, valley 1028 and equal 1084; the bin and cum tables, the dip frame and the flat frame did not). The test sets lampCone 'off' so it keeps pinning the halo table; the old pins are the proof: with the cone off they are reproduced as they were.
 // Run: python3 tests/serve.py <port>, then PLAYWRIGHT=... node tests/regress/BJ2-halo-table-pin.js <port>
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
@@ -30,7 +32,7 @@ const errors = [];
     await page.evaluate((s) => RF.UI.loadScene(RF.State.deserialize(s), 'BJ2-halo-table-pin'), scene);
     await page.addScriptTag({ url: '/tests/drive-three-page.js' }); await page.addScriptTag({ url: '/tests/touge-page.js' });
     await page.evaluate(() => TGPage.ready()); await sleep(1500);
-    await page.evaluate(() => { const V = RF.DriveAnim._.V; for (const [k, v] of Object.entries({ trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1' })) V.setOwn(k, v); });
+    await page.evaluate(() => { const V = RF.DriveAnim._.V; for (const [k, v] of Object.entries({ trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1', lampCone: 'off' })) V.setOwn(k, v); });
     const capture = async (d, extra) => {
       if (extra) await page.evaluate(extra);
       await page.evaluate(async (dd) => { globalThis.HALO_TILT_OFF = false; RF.UI.dvAnim.dist = dd; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1200)); }, d);

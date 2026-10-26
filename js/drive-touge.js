@@ -147,8 +147,11 @@
       const b = c.side < 0 ? -p.lane / 2 - 1 : 1.5 * p.lane + 1, head = b - c.side * .8, pole = K.at(c.rel, b), hd = K.at(c.rel, head), mid = K.at(c.rel, (b + head) / 2);
       obs.push({ k: 'cyl', x: pole.x, y: pole.y, r: .065, z0: 0, z1: 7, mat: 'pole', cls: 'street-lamp' });
       obs.push({ k: 'box', x: mid.x, y: mid.y, hx: .08, hy: Math.abs(b - head) / 2, z0: 6.9, z1: 7, yaw: mid.yaw, mat: 'pole', cls: 'street-lamp' });
-      obs.push({ k: 'ell', x: hd.x, y: hd.y, z: 6.9, rx: .3, ry: .18, rz: .05, mat: 'lamp-head', emit: lampRGB.map(v => 9000 * v), cls: 'street-lamp' });
-      lights.push({ x: hd.x, y: hd.y, z: 6.85 + A.height(c.rel, head), cd: 900, rgb: lampRGB, lampStreet: [c.side * Math.sin(hd.yaw), -c.side * Math.cos(hd.yaw)] });
+      // E2 part 2: the head OBJECT carries its street side (world, horizontal: the arm direction, as the flat heads get from roadSide in drive-anim.js move()), so the lamp cone
+      // can draw (lampsOf needs ob.street). It stays off the `lights` entry below, which keeps lampStreet: setting `street` there would switch on the pass lampRoad path.
+      const street = [c.side * Math.sin(hd.yaw), -c.side * Math.cos(hd.yaw)];
+      obs.push({ k: 'ell', x: hd.x, y: hd.y, z: 6.9, rx: .3, ry: .18, rz: .05, mat: 'lamp-head', emit: lampRGB.map(v => 9000 * v), cls: 'street-lamp', street });
+      lights.push({ x: hd.x, y: hd.y, z: 6.85 + A.height(c.rel, head), cd: 900, rgb: lampRGB, lampStreet: street });
     }
     for(let k=Math.floor((dist-80)/200);k<=Math.floor((dist+240)/200);k++){
       const rel=k*200+65-dist;if(rel< -10 || rel>300)continue;

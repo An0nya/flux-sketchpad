@@ -49,12 +49,14 @@ export const LAMP_CONE_MAX = 8, LAMP_CONE_STEPS = 8, LAMP_CONE_G = 0.6, LAMP_CON
 export const CONE_W_G = 70, CONE_W_P = 4;
 // Object depth: drive-three-objects.js and drive-three-models.js write gl_FragDepth = min(0.99999, t / 5000), t = ray distance (metres).
 export const OBJ_DEPTH_RANGE = 5000;
+export const PASS_HEAD_Z = 6.9;   // drive-touge.js: the lamp-head ellipsoid's z before lift()
 const TAB_LEN = 480;   // 475 values (19 gamma x 25 phi) packed 4 per vec4: 120 uniform vectors, the same packing as the road table (drive-three-shaders.js:20)
 
 const VERT = 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }';
 const FRAG = `
 uniform vec2 size; uniform float tanH; uniform int nLamp; uniform vec3 eyeP;
 uniform float sigma, rMin, gHG, gain, reach;
+uniform mat3 coneR; uniform float cFloor[${LAMP_CONE_MAX}];   // E2 part 2: coneR = world-from-car (identity on a flat frame), cFloor = the road height under each lamp (0 on a flat frame)
 uniform vec3 cLamp[${LAMP_CONE_MAX}]; uniform vec2 cSt[${LAMP_CONE_MAX}]; uniform vec3 cTint[${LAMP_CONE_MAX}]; uniform float cScale[${LAMP_CONE_MAX}];
 uniform vec4 coneTab4[120];
 float tabAt(int k) { int q = k / 4; vec4 v = coneTab4[q]; int c = k - 4 * q; return c == 0 ? v.x : (c == 1 ? v.y : (c == 2 ? v.z : v.w)); }
@@ -68,14 +70,14 @@ float coneI(vec3 v, vec2 st) {
 }
 void main() {
   vec2 pix = gl_FragCoord.xy / size * 2.0 - 1.0;
-  vec3 ray = normalize(vec3(1.0, -pix.x * tanH, pix.y * tanH * size.y / size.x));   // the halo pass's view ray
+  vec3 ray = coneR * normalize(vec3(1.0, -pix.x * tanH, pix.y * tanH * size.y / size.x));   // the halo pass's view ray (E2 part 2: turned into the world frame on the pass, where lamps and eye are world; coneR is the identity on a flat frame)
   vec3 acc = vec3(0.0);
   for (int i = 0; i < ${LAMP_CONE_MAX}; i++) {
     if (i >= nLamp) break;
     vec3 L = cLamp[i];
     float sa = 0.5, sb = min(${LAMP_CONE_SMAX.toFixed(1)}, reach > 0.0 ? reach : ${LAMP_CONE_SMAX.toFixed(1)});
-    if (abs(ray.z) < 1e-6) { if (eyeP.z < 0.0 || eyeP.z > L.z) continue; }
-    else { float s0 = (0.0 - eyeP.z) / ray.z, s1 = (L.z - eyeP.z) / ray.z; sa = max(sa, min(s0, s1)); sb = min(sb, max(s0, s1)); }
+    if (abs(ray.z) < 1e-6) { if (eyeP.z < cFloor[i] || eyeP.z > L.z) continue; }
+    else { float s0 = (cFloor[i] - eyeP.z) / ray.z, s1 = (L.z - eyeP.z) / ray.z; sa = max(sa, min(s0, s1)); sb = min(sb, max(s0, s1)); }
     if (sb <= sa) continue;
     // Equiangular sampling about the lamp (Kulla & Fajardo 2012): samples are uniform in the angle the segment subtends at the lamp, so the 1/r^2 peak
     // near the closest approach is resolved; ds / r^2 = dtheta / h exactly, so the 1/r^2 factor drops out of the sample weight.
@@ -118,6 +120,7 @@ export function createLampCone(renderer) {
         sigma: { value: 0 }, rMin: { value: 0.3 }, gHG: { value: LAMP_CONE_G }, gain: { value: 1 }, reach: { value: 0 },
         cLamp: { value: ones(LAMP_CONE_MAX, () => new T.Vector3()) }, cSt: { value: ones(LAMP_CONE_MAX, () => new T.Vector2()) },
         cTint: { value: ones(LAMP_CONE_MAX, () => new T.Vector3()) }, cScale: { value: new Float32Array(LAMP_CONE_MAX) },
+        coneR: { value: new T.Matrix3() }, cFloor: { value: new Float32Array(LAMP_CONE_MAX) },
         coneTab4: { value: new Float32Array(TAB_LEN) },
       },
       vertexShader: VERT, fragmentShader: FRAG, depthTest: false, depthWrite: false, transparent: true, blending: T.AdditiveBlending,
@@ -149,14 +152,18 @@ export function createLampCone(renderer) {
     return tabCache.get(key);
   }
   // The lamps this frame: street heads in front of the eye, nearest LAMP_CONE_MAX. Fills the uniforms; returns the list (for tests).
-  function build(p, world, sigma) {
-    const eye = p.eye || [-2, 0.37, 1.2];
+  // E2 part 2: on a pass frame `fr` = { eye, carFromWorld, worldFromCar } (drive-three.js uniforms: the world-aligned eye and the two Matrix3). Lamps and the street vector stay
+  // in the world frame (as lift() leaves them); only the view ray is turned (coneR in the shader), so gamma is measured from the WORLD down and the vertical slab is the real
+  // one. The eye-relative cull below is done in the car frame, the frame the screen is in. fr null = a flat frame: identity matrix, floor 0, the old path.
+  function build(p, world, sigma, fr) {
+    const eye = fr ? [fr.eye.x, fr.eye.y, fr.eye.z] : (p.eye || [-2, 0.37, 1.2]);
     const cls = p.lampClass || 'III', kind = kindOfLamp(p.lampKind), lampLm = kind === 'led' ? LED_LM : SODIUM_LM;
     const tint = kind === 'led' ? LED_TINT() : SODIUM_TINT();   // (tint and lumens unchanged by the cone-only profile)
     const cand = [];
     for (const L of lampsOf(world.objects)) {
       if (L.kind !== 'street' || !L.street) continue;
-      const d = [L.x - eye[0], L.y - eye[1], L.z - eye[2]], r = Math.hypot(d[0], d[1], d[2]);
+      let d = [L.x - eye[0], L.y - eye[1], L.z - eye[2]]; const r = Math.hypot(d[0], d[1], d[2]);
+      if (fr) { const e = fr.carFromWorld.elements; d = [e[0] * d[0] + e[3] * d[1] + e[6] * d[2], e[1] * d[0] + e[4] * d[1] + e[7] * d[2], e[2] * d[0] + e[5] * d[1] + e[8] * d[2]]; }   // car frame
       if (d[0] < 1 || r < 0.5) continue;   // behind the eye, or at it
       cand.push({ L, r });
     }
@@ -165,24 +172,26 @@ export function createLampCone(renderer) {
     const U = mat.uniforms;
     U.size.value.set(p.w, p.h); U.tanH.value = Math.tan(p.hfov * Math.PI / 360);
     U.eyeP.value.set(eye[0], eye[1], eye[2]); U.sigma.value = sigma;
+    if (fr) U.coneR.value.copy(fr.worldFromCar); else U.coneR.value.identity();
     U.rMin.value = D.SCAT.rMin; U.gHG.value = LAMP_CONE_G; U.gain.value = p.lampConeGain != null ? +p.lampConeGain : 1;   // LAMP-CONE-OBJECTS gain: brightness only
     U.coneTab4.value = tableFor(cls, kind);
     near.forEach(({ L }, i) => {
       U.cLamp.value[i].set(L.x, L.y, L.z); U.cSt.value[i].set(L.street[0], L.street[1]);
       U.cTint.value[i].set(tint[0], tint[1], tint[2]); U.cScale.value[i] = lampLm / 1000;
+      U.cFloor.value[i] = fr ? L.z - PASS_HEAD_Z : 0;   // the pass head is PASS_HEAD_Z above the road under it (lift() put the road height in z)
     });
     U.nLamp.value = near.length;
     return near.map(({ L, r }) => ({ x: L.x, y: L.y, z: L.z, r: +r.toFixed(2) }));
   }
   return {
     // Called once per frame by drive-three.js before the blit. Off or clear air: returns with no GL state change.
-    draw(p, world, target) {
+    draw(p, world, target, fr) {
       if (p.lampCone !== 'on') { last = { on: 0, count: 0, sigma: 0, lamps: [] }; return; }
       const sigma = D.sigmaOf(p.look || {});
       last = { on: 1, count: 0, sigma, lamps: [] };
       if (!(sigma > 0)) return;   // clear air: no mist, so no cone
       if (!mat) setup();
-      last.lamps = build(p, world, sigma); last.count = last.lamps.length; last.objects = false;
+      last.lamps = build(p, world, sigma, fr || null); last.count = last.lamps.length; last.objects = false;
       if (!last.count) return;
       const ac = renderer.autoClear; renderer.autoClear = false;
       renderer.setRenderTarget(target); renderer.render(scene, camera);
@@ -234,7 +243,7 @@ export function createLampCone(renderer) {
       if (gl.getQuery(ext.TIME_ELAPSED_EXT, gl.CURRENT_QUERY)) return { gpuMs: null, reason: 'another timer is active' };
       const U = mat.uniforms, have = U.nLamp.value;
       const dup = Math.min(n, LAMP_CONE_MAX);
-      for (let i = have; i < dup; i++) { U.cLamp.value[i].copy(U.cLamp.value[have - 1]); U.cSt.value[i].copy(U.cSt.value[have - 1]); U.cTint.value[i].copy(U.cTint.value[have - 1]); U.cScale.value[i] = U.cScale.value[have - 1]; }
+      for (let i = have; i < dup; i++) { U.cLamp.value[i].copy(U.cLamp.value[have - 1]); U.cSt.value[i].copy(U.cSt.value[have - 1]); U.cTint.value[i].copy(U.cTint.value[have - 1]); U.cScale.value[i] = U.cScale.value[have - 1]; U.cFloor.value[i] = U.cFloor.value[have - 1]; }
       U.nLamp.value = dup;
       const size = U.size.value;
       const scratch = new T.WebGLRenderTarget(size.x, size.y, { type: T.HalfFloatType, depthBuffer: false });

@@ -376,7 +376,7 @@ export function create(canvas, gl, onModelsReady) {
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
-      lampCone.draw(p, world, target);   // LAMP-CONE-MIST: additive in-scatter cone before the blit (no-op unless the lamp cone is on and visibility is set)
+      lampCone.draw(p, world, target, p.touge ? { eye: u.eye.value, carFromWorld: u.carFromWorld.value, worldFromCar: u.worldFromCar.value } : null);   // LAMP-CONE-MIST: additive in-scatter cone before the blit (no-op unless the lamp cone is on and visibility is set)
       set('passDepth', target.depthTexture);
       if (failure) throw Error(failure);
       // CPU textures use row zero = top; three's target uses row zero = bottom.

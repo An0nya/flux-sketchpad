@@ -6,6 +6,8 @@
 // same halo pose are byte-identical to the pre-tilt base (pinned hashes, measured on base b0a37ea via git archive).
 // Poses are the road geometry of MG2-default-lamp at these stations (found by a scan, see the report): dip d=1332 (us -3.05 deg, car -1.38 deg),
 // valley d=1028 (us -3.05, car +5.68), equal d=1084 (us -5.71, car +5.68, car 43 m), with the halo bins reaching 120 m.
+// E2 part 2 (2026-10-27): pass lamp heads now carry their street direction, so the lamp cone (default 'auto' = on in mist) draws on a pass frame for the first time and moved the touge pin(s) of this test
+// (PIN_EQUAL). The touge page here sets lampCone 'off' so the pins are about the halo, as before; the old pin is the proof. The flat page is left on the default: its pin did not move with the cone drawing (flat frames are identical).
 // Run: python3 tests/serve.py <port>, then PLAYWRIGHT=... node tests/regress/TOUGE-HALO-TILT.js <port>
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const fs = require('fs'), path = require('path');
@@ -43,7 +45,7 @@ const PIN_FLAT = 'cad1ecc09b3d711e', PIN_EQUAL = 'c6a2fdc3619e9657';   // REVIEW
   }, buf.toString('base64'));
   try {
     const page = await open();
-    await setOpts(page, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16 });
+    await setOpts(page, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, lampCone: 'off' });
     // (1) axis elevation, nearest lamp, three poses
     const axis = async (d) => page.evaluate(async (dd) => {
       RF.UI.dvAnim.dist = dd; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1200));
