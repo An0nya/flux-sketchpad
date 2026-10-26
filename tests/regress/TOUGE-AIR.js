@@ -1,3 +1,4 @@
+// REVIEW-C integ 2026-10-26: halo lookup now reads 4 knots from a prefix-summed table (shader text changed on purpose; halo-on frames differ from main by <= 2/255, agent-measured on 4 poses). Moved: TEXT_PINS plain/lit/lit+atlas 735d6fcb271f366e/583d6d40c21be702/7b8f49fc12e6d9c6 -> ef2b9e069354ff4a/05150d64f23f89ed/e177a47091528b30 (the table text includes the halo lookup).
 // TOUGE-AIR: the air beam in table mode no longer crashes the mountain pass. The pass object program linked 18 samplers with the table (limit 16)
 // because the table declared a second bank set (scatBankB0..2, the cycle blend) in every program; the pass programs now leave that set out (15).
 // Checks: (1) text pins: the flat table shader text is byte-identical to main (sha1 of tableSource for plain / lit / lit+atlas, measured on main a62026d);
@@ -16,7 +17,7 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha1').update(b).digest('hex').slice(0, 16);
-const TEXT_PINS = { 'plain': '735d6fcb271f366e', 'lit': '583d6d40c21be702', 'lit+atlas': '7b8f49fc12e6d9c6' };
+const TEXT_PINS = { 'plain': 'ef2b9e069354ff4a', 'lit': '05150d64f23f89ed', 'lit+atlas': 'e177a47091528b30' };
 const PIN = { flatOff: 'aebd2efecedf013b', flatDirect: '20b772fd22a494fb', flatTable: '4ae1db90b4e48d2b', passOff: '56f9dbe5248ce7e0', passDirect: '82394e38742fa84b' };   // REVIEW integ 2026-10-26: passOff 63f8badcba9151b0 -> 56f9dbe5248ce7e0 and passDirect 52d3bb530057cdd2 -> 82394e38742fa84b, cause: B6 (shadow normal n instead of dFdx in the lamp loop): proved, the old hash returns with only that line reverted   // REVIEW B4 (2026-10-26): c61ed72727ebe7b3 -> 52d3bb530057cdd2, cause: the pass sky now adds our own in-scatter (proved: removing only that line gives c61ed72727ebe7b3 again)
 const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, ambient: 0, samples: '1', visibility: 60, scatter: 0, scatterMode: 'direct', scatterCache: 'off', scatterCycle: 1, scatterCycleFade: 'off', trafficHalo: 0 };
 const T = { scatter: 16, scatterMode: 'table' };

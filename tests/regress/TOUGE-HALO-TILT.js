@@ -1,3 +1,4 @@
+// REVIEW-C integ 2026-10-26: halo lookup now reads 4 knots from a prefix-summed table (shader text changed on purpose; halo-on frames differ from main by <= 2/255, agent-measured on 4 poses). Moved: PIN_FLAT b1d5d4b18067ffb4 -> fd6166c47fb95091, PIN_EQUAL 51727377c14f45d3 -> c6a2fdc3619e9657 (halo-on frames).
 // TOUGE-HALO-TILT: each oncoming car's halo axis carries that car's own pitch, in our car frame (hDir.z = elevation).
 // Checks: (1) the nearest halo lamp's axis elevation matches an independent calculation (their beam direction, cos/sin of their trafficPitch,
 // rotated by OUR carFromWorld, z kept), with the right sign; (2) pixels move the expected way: a beam pitched down (dip) lights less of the frame,
@@ -14,7 +15,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const errors = [];
 const crypto = require('crypto');
-const PIN_FLAT = 'b1d5d4b18067ffb4', PIN_EQUAL = '51727377c14f45d3';   // REVIEW integ 2026-10-26: c93885d2e890d8c2 -> 51727377c14f45d3, cause: B6 shadow normal (proved: the old hash returns with only the B6 line reverted).   // scene region y>=140, 912x373 PNG. PIN_EQUAL was f73730821efb1e75 (base b0a37ea, main 0fed388 still gives it); re-baselined by TOUGE-SKY-VEIL: the sky now takes the halo veil on halo-on touge frames. Cause proven: f73730821efb1e75 reproduces with the sky term switched off.
+const PIN_FLAT = 'fd6166c47fb95091', PIN_EQUAL = 'c6a2fdc3619e9657';   // REVIEW integ 2026-10-26: c93885d2e890d8c2 -> 51727377c14f45d3, cause: B6 shadow normal (proved: the old hash returns with only the B6 line reverted).   // scene region y>=140, 912x373 PNG. PIN_EQUAL was f73730821efb1e75 (base b0a37ea, main 0fed388 still gives it); re-baselined by TOUGE-SKY-VEIL: the sky now takes the halo veil on halo-on touge frames. Cause proven: f73730821efb1e75 reproduces with the sky term switched off.
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
   const open = async () => {

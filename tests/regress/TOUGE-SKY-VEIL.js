@@ -1,3 +1,4 @@
+// REVIEW-C integ 2026-10-26: halo lookup now reads 4 knots from a prefix-summed table (shader text changed on purpose; halo-on frames differ from main by <= 2/255, agent-measured on 4 poses). Moved: PIN_PASS_ON 2f8d8419c8e42866 -> 23e7528f03291d77, PIN_FLAT_ON 852ef5c2cf48809d -> cfd4feefa3934c71 (both halo-on frames).
 // TOUGE-SKY-VEIL: on the mountain pass, the sky gets the same traffic-halo veil as the far ground (it was black next to a lit cliff, so the
 // cliff and trees read as silhouettes against it). The sky quad now adds haloScatter at the far distance (saturated at 120 m, no view ray needed).
 // Checks: (1) pass, fog on, oncoming car near (d=750), halo off = main (pin); (2) ambient up, halo off = main (pin); (3) flat road halo off and
@@ -16,8 +17,8 @@ const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.l
 const errors = [];
 const sha = (b) => crypto.createHash('sha1').update(b).digest('hex').slice(0, 16);
 // REVIEW integ 2026-10-26: PIN_PASS_OFF 1df27fae2210614c -> 2182d30171a7951b and PIN_AMBIENT_OFF 65a7dd08bf6a8747 -> 94a75ecaba63c384, cause B6 shadow normal (proved by reverting only that line); PIN_PASS_ON 1a41ccf6b756c86d -> 2f8d8419c8e42866, cause ROLL (b0ae354da282f1bf with B6 reverted, so ROLL alone moves it) + B6.
-const PIN_PASS_OFF = '2182d30171a7951b', PIN_AMBIENT_OFF = '94a75ecaba63c384', PIN_FLAT_OFF = 'e0bda83bb1da9572', PIN_FLAT_ON = '852ef5c2cf48809d';
-const PIN_PASS_ON = '2f8d8419c8e42866';   // branch sky-veil frame (main's halo-on frame is 6e4191c6af587594)
+const PIN_PASS_OFF = '2182d30171a7951b', PIN_AMBIENT_OFF = '94a75ecaba63c384', PIN_FLAT_OFF = 'e0bda83bb1da9572', PIN_FLAT_ON = 'cfd4feefa3934c71';
+const PIN_PASS_ON = '23e7528f03291d77';   // branch sky-veil frame (main's halo-on frame is 6e4191c6af587594)
 const SKY_STEP_MAX = 12;                  // pinned: main 25.0, branch 8.8 (median over columns of the largest adjacent-row luminance step)
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
