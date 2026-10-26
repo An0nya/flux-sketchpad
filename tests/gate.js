@@ -31,7 +31,7 @@ const MAP = [
   [/^js\/drive-three-shaders\.js$/, ['render', 'ui', 'node:sampler-budget']], [/^js\/drive-three(-objects|-models)?\.js$/, ['render', 'ui', 'PL3-powerlines-reflectance']],
   [/^js\/ui\.js$/, ['ui']], [/^js\/drive-anim\.js$/, ['render', 'ui', 'nodeAll', 'PL3-powerlines-reflectance', 'GS1-glare-sources']], [/^js\/spec-ui\.js$/, ['ui', 'scatter', 'beams', 'node:options-migration', 'PL3-powerlines-reflectance']],
   [/^js\/drive\.js$/, ['render', 'nodeAll', 'PL3-powerlines-reflectance']], [/^js\/table-pace\.js$/, ['scatter']], [/^js\/beam-atlas\.js$/, ['beams']],
-  [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']], [/^js\/drive-touge-three\.js$/, ['TOUGE-ELEV-B', 'TOUGE-SKY-VEIL', 'TOUGE-AIR', 'TOUGE-AIR-RIBBON']], [/^js\/drive-three-halo\.js$/, ['TOUGE-HALO-TILT']],
+  [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']], [/^js\/drive-touge-three\.js$/, ['TOUGE-ELEV-B', 'TOUGE-SKY-VEIL', 'TOUGE-AIR', 'TOUGE-AIR-RIBBON', 'BJ1-shadow-cache']], [/^js\/drive-three-halo\.js$/, ['TOUGE-HALO-TILT']],
   [/^js\/drive-scenes\.js$/, ['render', 'ui', 'nodeAll', 'PL1-powerlines']],
   [/^js\/drive-touge\.js$/, ['PL2-powerlines-pass']],   // REFLECTIVE-CLOTHING: pedestrians are built here; the RC test is a new regress file, picked up automatically
   [/^js\/drive-three-lamphalo\.js$/, ['LHS1-lamp-halos', 'BF-lamp-halo-over-objects']], [/^js\/drive-three\.js$/, ['LHS1-lamp-halos', 'BF-lamp-halo-over-objects', 'TOUGE-AIR', 'TOUGE-AIR-RIBBON', 'AC-air-cache-generations']],

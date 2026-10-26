@@ -69,13 +69,22 @@ void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
   const skyFragment = prefix + 'void main(){vec3 ray=worldFromCar*normalize(vec3(1,-screen.x*tanH,screen.y*tanH*size.y/size.x));vec3 c=vec3(ambient*.012*(1.0+.8*max(0.0,1.0-abs(ray.z)*8.0)));if(scatterSteps>0) c+=inScatter(ray,1e20,scatterJitter());if(haloOn>0) c+=haloScatter(1e20);gl_FragColor=vec4(c,1);}';
   const skyMaterial = new T.ShaderMaterial({ uniforms: u, vertexShader: 'varying vec2 screen;void main(){screen=position.xy;gl_Position=vec4(position.xy,.999999,1);}', fragmentShader: skyFragment, depthTest: false, depthWrite: false });
   const sky = new T.Mesh(new T.PlaneGeometry(2,2), skyMaterial); sky.frustumCulled = false; sky.renderOrder = -1; scene.add(sky);
-  return { scene, camera, material, skyMaterial,
+  const stat={ms:0,runs:0,skips:0};   // BRIEF J: shadow-pass counters (timing hook + skip count), read by shadowStats()
+  let geomVer=0, shKey=null;   // BRIEF J: geomVer moves when update() changes a stored ribbon value; shKey = the inputs of the last shadow render
+  return { scene, camera, material, skyMaterial, shadowStats(){return {...stat};},
     shadows(renderer){
+      // BRIEF J: the depth maps read only the lamp eyes (u.lamp, nLamp), carFromWorld and the ribbon position (eye, tanH, size are set here).
+      // Same inputs as the last render = the maps already hold that depth, so the two renders are skipped. The texture assignments stay unconditional.
+      const L=u.lamp.value, cfw=u.carFromWorld.value.elements, key=[geomVer,u.nLamp.value,...L.flatMap(q=>[q.x,q.y,q.z]),...cfw].join(',');
+      if(key===shKey){stat.skips++;u.passShadow0.value=shadows[0].depthTexture;u.passShadow1.value=shadows[1].depthTexture;return;}
+      // BRIEF J (timing hook, test only): SL_SHADOW_TIMING makes the call wall-timed (finish-synced); off = no cost. stat.ms/runs read by shadowStats().
+      const timing=!!globalThis.SL_SHADOW_TIMING; if(timing) renderer.getContext().finish(); const t0=timing?performance.now():0;
       const eye=u.eye.value.clone(),size=u.size.value.clone(),tan=u.tanH.value;
       u.size.value.set(2048,1024);u.tanH.value=1.2;
       for(let i=0;i<2;i++){u.eye.value.copy(u.lamp.value[Math.min(i,u.nLamp.value-1)]);renderer.setRenderTarget(shadows[i]);renderer.render(shadowScene,camera);}
       u.eye.value.copy(eye);u.size.value.copy(size);u.tanH.value=tan;
       u.passShadow0.value=shadows[0].depthTexture;u.passShadow1.value=shadows[1].depthTexture;
+      shKey=key; stat.runs++; if(timing){renderer.getContext().finish(); stat.ms+=performance.now()-t0;}
     },
     update(A, dist) {
       const lane=A.lane, offsets=[-75,-18,-lane/2-2.3,-lane/2-2.2,-lane/2,0,1.5*lane,1.5*lane+2.2,1.5*lane+2.3,25,70];
@@ -87,13 +96,17 @@ void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
         const idx=[];for(let i=0;i<rows-1;i++)for(let j=0;j<cols-1;j++){const a=i*cols+j,b=a+cols;idx.push(a,b,a+1,a+1,b,b+1);}geometry.setIndex(idx);
       }
       const pos=geometry.attributes.position.array,normals=geometry.attributes.normal.array,uv=geometry.attributes.routeUV.array;
+      // BRIEF J: the ribbon is rewritten every frame, but its version only moves when a stored value does (exact compare after float32 rounding).
+      // shadows() keys its skip on this version, so a still frame reuses the depth maps. Unchanged data = no GPU upload either (same bytes).
+      let changed=false;
+      const put=(arr,at,src,n)=>{for(let c=0;c<n;c++){const v=Math.fround(src[c]);if(arr[at+c]!==v){arr[at+c]=v;changed=true;}}};
       for(let i=0;i<rows;i++)for(let j=0;j<cols;j++){
         const s=start+i*2-dist,station=s+dist,tile=globalThis.RF.Touge.tile(0,Math.floor(station/200)),u=station-tile.s0;
         const fade=Math.max(0,Math.min(1,(u-15)/35,(185-u)/35)),limit=tile.curvature ? 70*(1-fade)+.7/Math.abs(tile.curvature)*fade : 75;
         const off=tile.curvature>0?Math.min(offsets[j],limit):tile.curvature<0?Math.max(offsets[j],-limit):offsets[j],q=A.surface(s,off),k=i*cols+j,t=A.at(s).t;
-        pos.set(q.p,k*3);normals.set(q.normal,k*3);uv.set([s,off,...t],k*4);
+        put(pos,k*3,q.p,3);put(normals,k*3,q.normal,3);put(uv,k*4,[s,off,...t],4);
       }
-      for(const key of ['position','normal','routeUV'])geometry.attributes[key].needsUpdate=true;
+      if(changed){geomVer++;for(const key of ['position','normal','routeUV'])geometry.attributes[key].needsUpdate=true;}
     },
     dispose(){geometry.dispose();material.dispose();shadowMaterial.dispose();shadows.forEach(q=>q.dispose());sky.geometry.dispose();skyMaterial.dispose();}
   };

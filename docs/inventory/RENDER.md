@@ -37,6 +37,8 @@ CPU alternative (`gpuRenderer` off or GPU failed): `objects()` (:743) -> `D.rend
 | ribbon (pass terrain) | drive-touge-three.js:58 | ground prefix + `surface()` body + own main, then the same transforms + `passShader` | 6 |
 | sky (pass) | drive-touge-three.js:63 | tiny | 1 |
 | shadow depth (pass) | drive-touge-three.js:59 | tiny | 1 |
+
+<!-- BRIEF J: shadow depth renders are skipped when their inputs are unchanged. Key (drive-touge-three.js shadows()): the ribbon version (geomVer, moved by update() when a stored position/normal/uv value changes), nLamp, all lamp vectors, carFromWorld. Covered by tests/regress/BJ1-shadow-cache.js. Lamp-only and pitch-only changes are not in that test. -->
 | instanced objects | drive-three-objects.js:163 (one material per material-key bucket, same text) | `objectFragment` or `leafyFragment` + same transforms | (2) x 6 x {flat, pass} = 24 |
 | mesh cars | drive-three-models.js:107 | ground prefix + own main | 6 x {flat, pass} |
 | table pre-pass | drive-three.js:56 | `tablePassSource(ground)` or lit version | 3 (plain, lit, lit+atlas) |

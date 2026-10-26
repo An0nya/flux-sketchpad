@@ -334,6 +334,7 @@ export function create(canvas, gl, onModelsReady) {
     lampHaloOverObjects(on) { return lampHalo.setOverObjects(on); },
     lampHaloTapOverride(arr) { return lampHalo.setTapOverride(arr); },
     // the object-layer halo output of the last frame (linear float RGBA, bottom-left origin like objectBuffers); null if it did not draw
+    shadowStats() { return pass.shadowStats(); },
     lampHaloLinear() { const t = lampHalo.output(); if (!t) return null; const W = t.width, H = t.height, rgba = new Float32Array(W * H * 4); renderer.readRenderTargetPixels(t, 0, 0, W, H, rgba); return { W, H, rgba }; },
     lampConeTime(gl, n, repeats) { return lampCone.time(gl, n, repeats); },
     // LAMP-CONE-OBJECTS test hooks (inert in production: nothing calls them outside tests). lampConeObjects(false) = pre-fix frame; lampConeCap(t) forces the
