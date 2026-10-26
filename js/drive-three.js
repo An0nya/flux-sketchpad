@@ -27,6 +27,22 @@ export function create(canvas, gl, onModelsReady) {
   renderer.setClearColor(0x000000, 1); renderer.setRenderTarget(null); renderer.resetState();
   renderer.outputColorSpace = T.LinearSRGBColorSpace; renderer.toneMapping = T.NoToneMapping;
   let failure = '', target, objectTarget, beamRef, beamTexture, otherRef, otherTexture;
+  // Test readback: a render target's depth texture as ray distance in metres (depth * 5000), RGBA Float32 (.x holds it).
+  function readDepthMetres(rt) {
+    const W = rt.width, H = rt.height;
+      if (!depthCopy) {
+        depthCopy = { scene: new T.Scene(), camera: new T.Camera(), mesh: null };
+        depthCopy.mesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: { tDepth: { value: null } },
+          vertexShader: 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }',
+          fragmentShader: 'uniform sampler2D tDepth; void main(){ gl_FragColor = vec4(texelFetch(tDepth, ivec2(gl_FragCoord.xy), 0).r * 5000.0, 0.0, 0.0, 1.0); }', depthTest: false, depthWrite: false }));
+        depthCopy.scene.add(depthCopy.mesh);
+      }
+      const dt = new T.WebGLRenderTarget(W, H, { type: T.FloatType, depthBuffer: false, minFilter: T.NearestFilter, magFilter: T.NearestFilter });
+      depthCopy.mesh.material.uniforms.tDepth.value = rt.depthTexture;
+      renderer.setRenderTarget(dt); renderer.render(depthCopy.scene, depthCopy.camera); renderer.setRenderTarget(null); renderer.resetState();
+      const t = new Float32Array(W * H * 4); renderer.readRenderTargetPixels(dt, 0, 0, W, H, t); dt.dispose();
+    return t;
+  }
   let depthCopy = null;   // LAMP-CONE-OBJECTS test readback helper (objectBuffers), created on first use
   // BA5: the per-car beam atlas. atlasOn picks the shader variant (shading and tableShading read it); the atlas is repacked only when the pool changes.
   let atlasOn = false, atlasTexture = null, atlasPacked = null, atlasKey = null, atlasLuts = null;
@@ -334,23 +350,16 @@ export function create(canvas, gl, onModelsReady) {
     // object-pass distance to t metres (0 = use depth); lampConeTimeObjects = GPU ms of the object-pass draw; objectBuffers = last object frame, read back.
     lampConeObjects(on) { return lampCone.setObjects(on); },
     lampConeCap(t) { return lampCone.setCap(t); },
+    lampConeDepth(m) { return lampCone.setDepthMode(m); },   // CD test hook: 'off' = the pre-CD frame (no scene-depth limit), 'on' = limit on flat frames too, 'auto' (default) = pass frames only
     lampConeReach(n) { return lampCone.setReach(n); },   // measurement only: caps the cone's integral to n metres in both passes (0 = off, the shipped behaviour)
     lampConeTimeObjects(gl, repeats) { return lampCone.timeObjects(gl, repeats); },
+    // CD test hook: the scene (ground-pass) target's depth as ray distance in metres (depth * 5000), row 0 = bottom as the target; null before the first frame. { W, H, t: Float32Array(W*H) (.x of each rgba group)}
+    sceneDepth() { if (!target) return null; const t = readDepthMetres(target); const W = target.width, H = target.height, o = new Float32Array(W * H); for (let i = 0; i < W * H; i++) o[i] = t[4 * i]; return { W, H, t: o }; },
     objectBuffers() {
       if (!objectTarget) return null;
       const W = objectTarget.width, H = objectTarget.height;
       const col = new Float32Array(W * H * 4); renderer.readRenderTargetPixels(objectTarget, 0, 0, W, H, col);
-      if (!depthCopy) {
-        depthCopy = { scene: new T.Scene(), camera: new T.Camera(), mesh: null };
-        depthCopy.mesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: { tDepth: { value: null } },
-          vertexShader: 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }',
-          fragmentShader: 'uniform sampler2D tDepth; void main(){ gl_FragColor = vec4(texelFetch(tDepth, ivec2(gl_FragCoord.xy), 0).r * 5000.0, 0.0, 0.0, 1.0); }', depthTest: false, depthWrite: false }));
-        depthCopy.scene.add(depthCopy.mesh);
-      }
-      const dt = new T.WebGLRenderTarget(W, H, { type: T.FloatType, depthBuffer: false, minFilter: T.NearestFilter, magFilter: T.NearestFilter });
-      depthCopy.mesh.material.uniforms.tDepth.value = objectTarget.depthTexture;
-      renderer.setRenderTarget(dt); renderer.render(depthCopy.scene, depthCopy.camera); renderer.setRenderTarget(null); renderer.resetState();
-      const t = new Float32Array(W * H * 4); renderer.readRenderTargetPixels(dt, 0, 0, W, H, t); dt.dispose();
+      const t = readDepthMetres(objectTarget);
       return { W, H, rgba: col, t };   // t is the .x channel of each pixel group: object distance in metres (depth * 5000)
     },
     haloState() { return { drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length }; },

@@ -13,7 +13,14 @@
      - the ray is clipped to the slab 0 <= z <= lamp height: the road plane below, the lamp's horizontal above (no light above the lamp's horizontal).
      - inside the slab the ray is sampled at LAMP_CONE_STEPS equiangular midpoints about the lamp (see the shader). The table is zero beyond the cutoff (edge 85 deg sodium, 80 deg LED),
        so points outside the cone add nothing. The cone's outer edge is therefore soft by construction (the table's own fall-off).
-   Not done (see report): analytic ray-cone chord; scene-depth occlusion (the pass would sample the depth texture of the target it draws into: a feedback loop).
+   Scene-depth limit (CD, pass frames): each eye ray's march ends at min(far limit, distance to the scene surface at that pixel), so a lamp behind a crest of the road adds no cone light in front of the crest.
+     The ground pass draws into `target`, which also holds the depth texture it must read (a feedback loop if it sampled that while drawing into it). So on a pass frame the scene depth is first BLITTED
+     (gl.blitFramebuffer, depth bit) into a second depth texture, and the cone, drawn straight into `target` as before (same additive blend), reads the copy. Depth convention: the pass ribbon writes
+     gl_FragDepth = min(.99999, t / 5000), t = the metres from the (world) eye to the surface (drive-touge-three.js), the same eye and the same unit ray this shader marches (s is metres along the unit
+     ray), so tScene = depth * OBJ_DEPTH_RANGE needs no projection inverse. A flat frame writes no depth (the ground quad has depthWrite false, the target's depth stays at its clear value 1 = 5000 m,
+     beyond the 300 m march), so the limit cannot change a flat frame; flat frames keep the old shader and draw (no blit, no cost). Test switch lampConeDepth('off'|'on'|'auto') (drive-three.js):
+     auto = pass frames only (default); on forces the depth path on flat frames (the test uses it to prove the flat frame is the same); off = the pre-CD frame.
+   Not done (see report): analytic ray-cone chord.
    Units: the target is cd/m^2-scale (headlamp emit I/(pi r^2) in drive-scenes.js is cd/m^2; inference, not checked against a photometric measurement). Tuning values are the owner's to judge by eye. */
 import * as T from '../vendor/three/three.module.min.js';
 import { LAMP_DIST, kindOfLamp, GAMMA } from './lamp-dist.js';
@@ -53,7 +60,7 @@ export const PASS_HEAD_Z = 6.9;   // drive-touge.js: the lamp-head ellipsoid's z
 const TAB_LEN = 480;   // 475 values (19 gamma x 25 phi) packed 4 per vec4: 120 uniform vectors, the same packing as the road table (drive-three-shaders.js:20)
 
 const VERT = 'void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }';
-const FRAG = `
+const FRAG_BASE = `
 uniform vec2 size; uniform float tanH; uniform int nLamp; uniform vec3 eyeP;
 uniform float sigma, rMin, gHG, gain, reach;
 uniform mat3 coneR; uniform float cFloor[${LAMP_CONE_MAX}];   // E2 part 2: coneR = world-from-car (identity on a flat frame), cFloor = the road height under each lamp (0 on a flat frame)
@@ -97,6 +104,12 @@ void main() {
   }
   gl_FragColor = vec4(acc * gain, 1.0);
 }`;
+// CD: the ground-pass variant. Same text, plus the scene depth (uSceneDepth, t/5000) limiting each ray's far end. Built by string replacement like FRAG_OBJ (each pattern must hit exactly once).
+const FRAG_PARTS = [
+  ['void main() {', 'uniform sampler2D uSceneDepth;\nvoid main() {\n  float tScene = texelFetch(uSceneDepth, ivec2(gl_FragCoord.xy), 0).r * ' + OBJ_DEPTH_RANGE.toFixed(1) + ';'],
+  ['sb = min(' + LAMP_CONE_SMAX.toFixed(1) + ', reach > 0.0 ? reach : ' + LAMP_CONE_SMAX.toFixed(1) + ');', 'sb = min(min(' + LAMP_CONE_SMAX.toFixed(1) + ', reach > 0.0 ? reach : ' + LAMP_CONE_SMAX.toFixed(1) + '), tScene);'],
+];
+const FRAG_DEPTH = (() => { let f = FRAG_BASE; for (const [a, b] of FRAG_PARTS) { if (f.split(a).length !== 2) throw Error('FRAG: pattern not unique: ' + a.slice(0, 40)); f = f.replace(a, b); } return f; })();
 
 // LAMP-CONE-OBJECTS: the object-pass variant. Reads the object target's colour (uObj) and depth (uDepth, t/5000) and adds the cone integral
 // up to each object's own distance. Pixels with alpha < 0.5 (sky, road-only, glowing objects) pass through unchanged.
@@ -106,11 +119,12 @@ const FRAG_OBJ_PARTS = [
   ['sb = min(' + LAMP_CONE_SMAX.toFixed(1) + ', reach > 0.0 ? reach : ' + LAMP_CONE_SMAX.toFixed(1) + ');', 'sb = min(min(' + LAMP_CONE_SMAX.toFixed(1) + ', reach > 0.0 ? reach : ' + LAMP_CONE_SMAX.toFixed(1) + '), tObj);'],
   ['gl_FragColor = vec4(acc * gain, 1.0);', 'gl_FragColor = vec4(base.rgb + acc * gain, base.a);'],
 ];
-const FRAG_OBJ = (() => { let f = FRAG; for (const [a, b] of FRAG_OBJ_PARTS) { if (f.split(a).length !== 2) throw Error('FRAG_OBJ: pattern not unique: ' + a.slice(0, 40)); f = f.replace(a, b); } return f; })();
+const FRAG_OBJ = (() => { let f = FRAG_BASE; for (const [a, b] of FRAG_OBJ_PARTS) { if (f.split(a).length !== 2) throw Error('FRAG_OBJ: pattern not unique: ' + a.slice(0, 40)); f = f.replace(a, b); } return f; })();
 
 export function createLampCone(renderer) {
   let mat = null, mesh = null, scene = null, camera = null, last = { on: 0, count: 0, sigma: 0, lamps: [] };
   let objMat = null, objScene = null, objTarget = null, objOn = true, lastSrc = null;
+  let depthMat = null, depthScene = null, depthRT = null, lastDepthTarget = null, depthMode = 'auto';   // CD: the depth-limited ground pass and the copy of the scene depth it reads
   const tabCache = new Map();
   function setup() {
     const ones = (n, mk) => Array.from({ length: n }, mk);
@@ -123,10 +137,16 @@ export function createLampCone(renderer) {
         coneR: { value: new T.Matrix3() }, cFloor: { value: new Float32Array(LAMP_CONE_MAX) },
         coneTab4: { value: new Float32Array(TAB_LEN) },
       },
-      vertexShader: VERT, fragmentShader: FRAG, depthTest: false, depthWrite: false, transparent: true, blending: T.AdditiveBlending,
+      vertexShader: VERT, fragmentShader: FRAG_BASE, depthTest: false, depthWrite: false, transparent: true, blending: T.AdditiveBlending,
     });
     mesh = new T.Mesh(new T.PlaneGeometry(2, 2), mat); mesh.frustumCulled = false;
     scene = new T.Scene(); scene.add(mesh); camera = new T.Camera();
+    // CD: the depth-limited ground pass: the same blend as `mat`, reading uSceneDepth (a copy of the scene target's depth, see draw()).
+    depthMat = new T.ShaderMaterial({
+      uniforms: Object.assign({}, mat.uniforms, { uSceneDepth: { value: null } }),
+      vertexShader: VERT, fragmentShader: FRAG_DEPTH, depthTest: false, depthWrite: false, transparent: true, blending: T.AdditiveBlending,
+    });
+    depthScene = new T.Scene(); depthScene.add(new T.Mesh(new T.PlaneGeometry(2, 2), depthMat));
     // Object-pass material: shares every uniform object with the ground pass (same lamp list, same table, same sigma), adds the two samplers.
     objMat = new T.ShaderMaterial({
       uniforms: Object.assign({}, mat.uniforms, { uObj: { value: null }, uDepth: { value: null }, objCap: { value: 0 } }),
@@ -150,6 +170,20 @@ export function createLampCone(renderer) {
       tabCache.set(key, f);
     }
     return tabCache.get(key);
+  }
+  // CD: copy the scene target's depth into depthRT's depth texture (a depth blit: the cone then draws into the target while reading the copy). Leaves `target` bound.
+  function copyDepth(target) {
+    const gl = renderer.getContext(), W = target.width, H = target.height;
+    if (!depthRT || depthRT.width !== W || depthRT.height !== H) {
+      if (depthRT) { depthRT.depthTexture.dispose(); depthRT.dispose(); }
+      depthRT = new T.WebGLRenderTarget(W, H, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(W, H, T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter });
+    }
+    renderer.setRenderTarget(target); const src = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+    renderer.setRenderTarget(depthRT); const dst = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, dst);
+    gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
+    renderer.resetState(); renderer.setRenderTarget(target);
+    depthMat.uniforms.uSceneDepth.value = depthRT.depthTexture;
   }
   // The lamps this frame: street heads in front of the eye, nearest LAMP_CONE_MAX. Fills the uniforms; returns the list (for tests).
   // E2 part 2: on a pass frame `fr` = { eye, carFromWorld, worldFromCar } (drive-three.js uniforms: the world-aligned eye and the two Matrix3). Lamps and the street vector stay
@@ -194,10 +228,14 @@ export function createLampCone(renderer) {
       last.lamps = build(p, world, sigma, fr || null); last.count = last.lamps.length; last.objects = false;
       if (!last.count) return;
       const ac = renderer.autoClear; renderer.autoClear = false;
-      renderer.setRenderTarget(target); renderer.render(scene, camera);
+      const limited = !!target.depthTexture && (depthMode === 'on' || (depthMode === 'auto' && !!fr));
+      last.depthLimited = limited; lastDepthTarget = limited ? target : null;
+      if (limited) { copyDepth(target); renderer.setRenderTarget(target); renderer.render(depthScene, camera); }
+      else { renderer.setRenderTarget(target); renderer.render(scene, camera); }
       renderer.autoClear = ac;
       renderer.resetState(); renderer.setRenderTarget(target);
     },
+    setDepthMode(m) { depthMode = m === 'on' || m === 'off' ? m : 'auto'; return depthMode; },   // test hook: see the header
     // LAMP-CONE-OBJECTS: after the objects are drawn into the object target (drive-three.js render), add the cone to object pixels up to each
     // object's own distance. Leaves the bound target as it was for off / no-lamp frames (no GL change), so the off frame stays byte-identical.
     drawObjects(p, src) {
@@ -249,10 +287,17 @@ export function createLampCone(renderer) {
       const scratch = new T.WebGLRenderTarget(size.x, size.y, { type: T.HalfFloatType, depthBuffer: false });
       const query = gl.createQuery();
       renderer.resetState(); renderer.setRenderTarget(scratch); const ac = renderer.autoClear; renderer.autoClear = false;
-      gl.beginQuery(ext.TIME_ELAPSED_EXT, query); for (let i = 0; i < repeats; i++) renderer.render(scene, camera); gl.endQuery(ext.TIME_ELAPSED_EXT);
+      // CD: on a depth-limited frame the timed work is what draw() runs: the depth blit, then the cone draw (into the scratch target; the blend is the same).
+      const useD = !!last.depthLimited && !!lastDepthTarget;
+      gl.beginQuery(ext.TIME_ELAPSED_EXT, query);
+      for (let i = 0; i < repeats; i++) {
+        if (useD) { copyDepth(lastDepthTarget); renderer.setRenderTarget(scratch); renderer.render(depthScene, camera); }
+        else renderer.render(scene, camera);
+      }
+      gl.endQuery(ext.TIME_ELAPSED_EXT);
       renderer.autoClear = ac; renderer.setRenderTarget(null); renderer.resetState(); gl.flush();
       U.nLamp.value = have; scratch.dispose();
-      for (let i = 0; i < 300; i++) { await new Promise((r) => setTimeout(r, 10)); if (gl.getParameter(ext.GPU_DISJOINT_EXT)) { gl.deleteQuery(query); return { gpuMs: null, reason: 'disjoint GPU timer', n: dup }; } if (gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE)) { const gpuMs = gl.getQueryParameter(query, gl.QUERY_RESULT) / 1e6 / repeats; gl.deleteQuery(query); return { gpuMs, repeats, n: dup, dupFrom: have }; } }
+      for (let i = 0; i < 300; i++) { await new Promise((r) => setTimeout(r, 10)); if (gl.getParameter(ext.GPU_DISJOINT_EXT)) { gl.deleteQuery(query); return { gpuMs: null, reason: 'disjoint GPU timer', n: dup }; } if (gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE)) { const gpuMs = gl.getQueryParameter(query, gl.QUERY_RESULT) / 1e6 / repeats; gl.deleteQuery(query); return { gpuMs, repeats, n: dup, dupFrom: have, depthPath: useD }; } }
       gl.deleteQuery(query); return { gpuMs: null, reason: 'timer timeout', n: dup };
     },
   };
