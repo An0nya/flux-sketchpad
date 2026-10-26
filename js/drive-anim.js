@@ -1167,12 +1167,14 @@ void main() {
   }
   function frameSources(dist, t) {
     let p = V.p; if (p.src.tiles) p = Object.assign({}, p, { A: p.src.tiles.mountain ? RF.Touge.route(dist,p.lane,!!p.touge) : tileRoute(p.src.tiles.seed, dist) });
-    if(p.touge){const world=RF.Touge.world(p,dist,t);return RF.Touge.glareSources(world.objects,dist,world.A);}
+    if(p.touge){const world=RF.Touge.world(p,dist,t);return RF.Touge.glareSources(world.objects,dist,world.A,glareOpts(info().o,world));}
     // occluders: the whole frame (world + traffic), as the rendered frame sees it, so a car or building between lamp and eye hides the lamp
-    const tauOf = tauFor(V.act, t), occ = p.src.tiles ? tileWorld(V.p, dist, t, tauOf).objects : placedObjects(p, dist, t, tauOf);
+    const tauOf = tauFor(V.act, t), occW = p.src.tiles ? tileWorld(V.p, dist, t, tauOf) : null, occ = occW ? occW.objects : placedObjects(p, dist, t, tauOf);
     V.framePlaced = occ;      // scene details: the hazard list reads this (pointer only)
-    return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), eyeOf(p), occ);
+    return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), eyeOf(p), occ, glareOpts(info().o, occW));
   }
+  // GLARE-ALL (option glareSources): undefined unless 'all', so the default call is exactly the old one. world = the frame's tile/pass world (its .lights are the street lamps).
+  function glareOpts(o, world) { return o.glareSources === 'all' ? { mode: 'all', lights: (world && world.lights) || [], lampClass: o.lampClass, lampKind: o.streetLamps } : undefined; }
   function exposure(sources) {
     const I = info(), o = I.o;
     if (o.expMode === 'auto' && V.kAuto) return V.kAuto;
@@ -1232,7 +1234,7 @@ void main() {
     adaptSS(t1 - t0);
     if (!V.three) V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
-    const sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A) : D.glareSources(V.src.tiles ? placed.objects : placed, eyeOf(V.p));
+    const gOpts = glareOpts(o, placed), sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A,gOpts) : D.glareSources(V.src.tiles ? placed.objects : placed, eyeOf(V.p), undefined, gOpts);
     V.frameGlare = sources; V.framePlaced = placed;      // scene details reads these (pointers only)
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
     const draw = { profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };

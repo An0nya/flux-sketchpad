@@ -1,7 +1,7 @@
 // GLARE-ALL (option glareSources): what the veil and adaptation see under 'oncoming' (default, headlamps only) and 'all'.
 // Real functions: RF.Drive.glareSources, RF.Drive.lampEyeCd, RF.Drive.lightVisible, RF.Drive.veilAt (drive.js), RF.LampDist (lamp-dist.js).
 // Run alone: node tests/glare-all.js  (exits 1 on failure). Registered as node:glare-all in options-registry.js.
-// Not covered here: the pass path through RF.Touge.glareSources (see the report), and the live wiring: drive-anim.js and spec-ui.js do not pass opts yet.
+// Not covered here: the pass path through RF.Touge.glareSources (see the report), and the live wiring: see tests/regress/GS1-glare-sources.js.
 (function (root) {
   function run(RF, ok) {
     const D = RF.Drive, EYE = [-2, 0.37, 1.2], LD = RF.LampDist;

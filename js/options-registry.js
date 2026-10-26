@@ -279,11 +279,11 @@
     {
       id: 'glareSources', kind: 'extra', type: 'enum', values: ['oncoming', 'all'],
       default: undefined, label: 'glare sources',
-      control: 'none', where: 'none', query: null,
+      control: '[data-dv="glareSources"]', where: 'more', query: null,
       group: 'street-lamps', cost: 'per-frame-gpu',
-      owner: ['js/drive.js', 'js/drive-touge.js', 'js/drive-anim.js'],
+      owner: ['js/drive.js', 'js/drive-touge.js', 'js/drive-anim.js', 'js/spec-ui.js'],
       tests: ['node:glare-all'],
-      note: "Undefined or 'oncoming' = headlamps only, as before. 'all' adds street lamps, preceding tail lamps and lit signal heads to the veil and adaptation sources (cap 32, brightest first). No control and no caller passes it yet: drive-anim.js and spec-ui.js still call glareSources without opts.",
+      note: "Undefined or 'oncoming' = headlamps only, as before. 'all' adds street lamps, preceding tail lamps and lit signal heads to the veil and adaptation sources (cap 32, brightest first). Wired (Brief T): drive-anim.js glareOpts() builds the opts for the flat frame, the pass (RF.Touge.glareSources) and the exposure path; the street lamps are the frame world's .lights. spec-ui.js passes it to the CPU still (no street lamps there, so tail lamps and signals only). Default passes no opts: the old call, byte-identical.",
     },
     {
       id: 'haloBins', kind: 'profile', type: 'enum', values: [4, 6, 8, 12, 16, 24, 32],
