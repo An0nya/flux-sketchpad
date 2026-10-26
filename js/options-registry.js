@@ -279,6 +279,15 @@
       note: 'Uniform plus a 480-float table upload when on. CPU and GPU.',
     },
     {
+      id: 'glareSources', kind: 'extra', type: 'enum', values: ['oncoming', 'all'],
+      default: undefined, label: 'glare sources',
+      control: 'none', where: 'none', query: null,
+      group: 'street-lamps', cost: 'per-frame-gpu',
+      owner: ['js/drive.js', 'js/drive-touge.js', 'js/drive-anim.js'],
+      tests: ['node:glare-all'],
+      note: "Undefined or 'oncoming' = headlamps only, as before. 'all' adds street lamps, preceding tail lamps and lit signal heads to the veil and adaptation sources (cap 32, brightest first). No control and no caller passes it yet: drive-anim.js and spec-ui.js still call glareSources without opts.",
+    },
+    {
       id: 'haloBins', kind: 'profile', type: 'enum', values: [4, 6, 8, 12, 16, 24, 32],
       default: 24, label: 'halo bins',
       control: '[data-dv="haloBins"]', where: 'halo-advanced', query: 'halobins',
