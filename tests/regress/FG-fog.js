@@ -6,9 +6,13 @@ const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node
 const crypto = require('crypto');
 const port = +(process.argv[2] || 8984), baseline = process.argv.includes('--baseline');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Brief U (D): lampCone is set 'off' in this file's pages (here and in the P1 parity run). Its default is now 'auto' = on in mist, and the cone adds light in fog (so fog is no
+// longer darker than clear: measured clear 33.65 vs dense 37.58 mean luminance) and the CPU renderer cannot draw it (P1 parity fails). Both checks are about the fog's own extinction.
 // sha256 of the drive canvas PNG on main cbcb340 with the UX2 start and wet, wetSheen off, visibility absent (set by --baseline).
 // PED-CLOTHING-MODES: people off in this session (walkers' clothes changed in every mode). The pin is main b38c628's clear frame with people off, equal to the new build with people off (full sha256). With people on, the old pin f195e8c7... no longer matches.
-const OLD_CLEAR = process.env.FG_OLD_CLEAR || 'aac7889105ba1d4cb0f6991f275a68bdb7cad1165c4f60d6a507cb3b07061e4a';
+// Brief U (A+B): every lamp is now a glare source and carries its colour, so the page's default glare ('rain', UX2 scene with an oncoming car, preceding car and street lamps in view) draws a coloured veil from them.
+// PROOF the old pin is only moved by that: the same build with D.glareSources patched back to its old body (headlamps only, 4-tuples) and lampCone off reproduces the old hash (checked 2026-10-27 for this file: the clear pin aac78891..., FG and SC). Old pin: aac7889105ba1d4cb0f6991f275a68bdb7cad1165c4f60d6a507cb3b07061e4a.
+const OLD_CLEAR = process.env.FG_OLD_CLEAR || '23802573b0df27b77165d0439a0b94da0ec421eb9f8ab0435417c9e5a435058a';
 const LEVELS = ['clear', 'haze', 'mist', 'fog', 'dense'];
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
@@ -26,7 +30,7 @@ async function session(browser, errors) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto('http://127.0.0.1:' + port + '/index.html'); await page.waitForFunction(() => window.RF?.UI?.loadScene, null, { timeout: 60000 });
   await page.addScriptTag({ url: '/tests/regress/UX2-drive-ux.js' }); await page.evaluate(() => UX2Page.ready()); await sleep(1500);
-  await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, people: false }); if (RF.UI.dvOpts.visibility !== undefined) RF.UI.dvOpts.visibility = null; RF.UI.redrawSpec(); });
+  await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, people: false, lampCone: 'off' }); if (RF.UI.dvOpts.visibility !== undefined) RF.UI.dvOpts.visibility = null; RF.UI.redrawSpec(); });
   const capture = async (label) => {
     await sleep(2500);
     const state = await page.evaluate(() => { const s = RF.DriveAnim.stats(); return { renderer: s.renderer, gpuFailure: s.gpuFailure || '', btn: (document.querySelector('[data-dv="visibility"]') || {}).value || '' }; });
@@ -69,7 +73,7 @@ async function session(browser, errors) {
     const fs = require('fs'), path = require('path');
     await p2.evaluate((text) => RF.UI.loadScene(RF.State.deserialize(text), 'P1 fixture'), fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp.json'), 'utf8'));
     await p2.addScriptTag({ url: '/tests/drive-three-page.js' });
-    const result = await p2.evaluate((p) => P1Page.run(p, { visibility: 200 }), port);
+    const result = await p2.evaluate((p) => P1Page.run(p, { visibility: 200, lampCone: 'off' }), port);
     ok('FG CPU/GPU parity under fog (P1 checks, visibility 200)', result.pass, 'checks ' + result.checks.length + ', failed ' + result.checks.filter((c) => !c.pass).map((c) => c.name).join('; '));
     ok('FG no page errors (parity session)', errs2.length === 0, JSON.stringify(errs2.slice(0, 3)));
     await ctx2.close();

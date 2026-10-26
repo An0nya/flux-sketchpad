@@ -7,7 +7,9 @@ const port = +(process.argv[2] || 8984);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // sha256 of the drive canvas PNG on main 465e41c (no visibility, no scatter): the same value FG-fog pins.
 // PED-CLOTHING-MODES: people off (walkers' clothes changed in every mode). Pin = main b38c628's clear frame with people off (the FG-fog pin, aac78891...), equal to the new build with people off.
-const OLD_CLEAR = process.env.FG_OLD_CLEAR || 'aac7889105ba1d4cb0f6991f275a68bdb7cad1165c4f60d6a507cb3b07061e4a';
+// Brief U (A+B): every lamp is now a glare source and carries its colour, so the page's default glare ('rain', UX2 scene with an oncoming car, preceding car and street lamps in view) draws a coloured veil from them.
+// PROOF the old pin is only moved by that: the same build with D.glareSources patched back to its old body (headlamps only, 4-tuples) and lampCone off reproduces the old hash (checked 2026-10-27 for this file: the clear pin aac78891...). Old pin: aac7889105ba1d4cb0f6991f275a68bdb7cad1165c4f60d6a507cb3b07061e4a. lampCone is off in this page (Brief U D: the default is 'auto' = on in mist, which the CPU cannot draw, so the P1 parity run needs it off).
+const OLD_CLEAR = process.env.FG_OLD_CLEAR || '23802573b0df27b77165d0439a0b94da0ec421eb9f8ab0435417c9e5a435058a';
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
   return page.evaluate(async (b64) => {
@@ -27,7 +29,7 @@ async function meanLuma(page, png) {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     await page.goto('http://127.0.0.1:' + port + '/index.html'); await page.waitForFunction(() => window.RF?.UI?.loadScene, null, { timeout: 60000 });
     await page.addScriptTag({ url: '/tests/regress/UX2-drive-ux.js' }); await page.evaluate(() => UX2Page.ready()); await sleep(1500);
-    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, visibility: null, scatter: 0, people: false }); RF.UI.redrawSpec(); });
+    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, visibility: null, scatter: 0, people: false, lampCone: 'off' }); RF.UI.redrawSpec(); });
     const state = async () => page.evaluate(() => {
       const s = RF.DriveAnim.stats(), b = document.querySelector('[data-dv="scatter"]');
       return { renderer: s.renderer, gpuFailure: s.gpuFailure || '', btn: b ? (b.options ? b.options[b.selectedIndex].textContent.trim() : b.textContent.trim()) : '', hidden: b ? b.hidden : null };   // DD: air beam steps is a select
@@ -68,7 +70,7 @@ async function meanLuma(page, png) {
     await p2.goto('http://localhost:' + port + '/index.html'); await p2.waitForFunction(() => window.RF && RF.UI && RF.UI.loadScene);
     await p2.evaluate((text) => RF.UI.loadScene(RF.State.deserialize(text), 'P1 fixture'), fs2.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp.json'), 'utf8'));
     await p2.addScriptTag({ url: '/tests/drive-three-page.js' });
-    const result = await p2.evaluate((p) => P1Page.run(p, { visibility: 200, scatter: 8 }), port);
+    const result = await p2.evaluate((p) => P1Page.run(p, { visibility: 200, scatter: 8, lampCone: 'off' }), port);
     ok('SC CPU/GPU parity with the beam on (P1 checks, visibility 200, 8 steps)', result.pass, 'checks ' + result.checks.length + ', failed ' + result.checks.filter((c) => !c.pass).map((c) => c.name).join('; '));
     ok('SC no page errors (parity session)', errs2.length === 0, JSON.stringify(errs2.slice(0, 3)));
     await ctx2.close();

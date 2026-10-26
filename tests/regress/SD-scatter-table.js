@@ -1,5 +1,6 @@
 // SD page checks: the air-beam scatter table on the GPU drive renderer (look.scatterMode 'table'), next to the direct in-scatter.
 // Run (worktree): python3 tests/serve.py 8991  then  PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/SD-scatter-table.js 8991
+// Brief U: lampCone is set off here: the lamp cone (default 'auto' = on in mist) adds light the table comparison is not about. The direct-mode pin below moved for Brief U's glare change only (see DIRECT16).
 // Direct mode must hash to the main baseline (DIRECT16, captured on main 0f47b41 with the same recipe). Exits 1 on any failure.
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const crypto = require('crypto');
@@ -9,7 +10,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // used to show the CPU still beneath it. With the CPU still skipped while the GPU view shows, that column shows the page background.
 // The GL frame itself is unchanged. Before (main 0f47b41 / pre-LAZYCPU): f7eba2f98a72...5d9d. After: fb9a713b4bf3...98f.
 // PED-CLOTHING-MODES: people off (walkers' clothes changed in every mode). Pin = main b38c628's direct frame with people off, equal to the new build with people off (full sha256). With people on the old pin fb9a713b... no longer matches.
-const DIRECT16 = process.env.SD_DIRECT16 || 'b1da94564d4c891b419083e3c209ee4224d8ace9be0529e6462d5ebd6e3ac309';
+// Brief U (A+B): every lamp is now a glare source and carries its colour, so the page's default glare ('rain', UX2 scene with an oncoming car, preceding car and street lamps in view) draws a coloured veil from them.
+// PROOF the old pin is only moved by that: the same build with D.glareSources patched back to its old body (headlamps only, 4-tuples) and lampCone off reproduces the old hash (checked 2026-10-27 for this file: b1da9456..., with lampCone off). Old pin: b1da94564d4c891b419083e3c209ee4224d8ace9be0529e6462d5ebd6e3ac309.
+const DIRECT16 = process.env.SD_DIRECT16 || '35206d78c55cc305fa36f2b34e1f1e6d34875bbfc9a62781b73587c9235e666e';
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
   return page.evaluate(async (b64) => {
@@ -32,7 +35,7 @@ async function meanLuma(page, png) {
     // SE2 pacing: with the cache on a table fills over frames; wait until no version is pending before measuring (the cap guards a stall).
     const settle = () => page.evaluate(() => { let n = 0; while (RF.UI.dvOpts.scatterMode === 'table' && globalThis.SD_SCATTER.cache && globalThis.SD_SCATTER.pending > 0 && n < 4000) { RF.DriveAnim._.frame(); n++; } return n; });
     const frame = async (label, opts) => {
-      await page.evaluate((o) => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, people: false, visibility: 200, scatter: 16, scatterMode: 'direct', scatterRes: undefined, scatterBlur: 'off', scatterTableSteps: undefined, scatterNearFadeRange: 'off', ...o }); RF.UI.redrawSpec(); }, opts);
+      await page.evaluate((o) => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, people: false, visibility: 200, lampCone: 'off', scatter: 16, scatterMode: 'direct', scatterRes: undefined, scatterBlur: 'off', scatterTableSteps: undefined, scatterNearFadeRange: 'off', ...o }); RF.UI.redrawSpec(); }, opts);
       await sleep(2500); await settle();
       const st = await page.evaluate(() => { const s = RF.DriveAnim.stats(); return { renderer: s.renderer, gpuFailure: s.gpuFailure || '' }; });
       await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sc-drive', '1'));

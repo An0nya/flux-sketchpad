@@ -44,11 +44,12 @@ const MAP = [
   [/^js\/lamp-dist\.js$/, ['LCM1-lamp-cone', 'LDR1-lamp-road', 'GS1-glare-sources', 'node:glare-all']], [/^tests\/regress\/LDR1-lamp-road\.js$/, ['LDR1-lamp-road']],
   [/^js\/options-registry\.js$/, ['ui', 'nodeAll', 'node:drive-controls2', 'node:scenario-node']],   // OPTION-REGISTRY: the defaults of every option; tests/options-registry.js and options-migration.js are in NODE
   [/^js\/share-presets\.js$/, ['ui', 'node:share-presets']],   // SHARE-PRESET: #preset=<name> links; tests/share-presets.js
+  [/^tests\/drive-three-page\.js$/, ['P1-drive-three', 'FG-fog', 'SC-beam-scatter']],
   [/^index\.html$/, ['ui']], [/^tests\/load\.js$/, ['nodeAll']],
   [/^js\/compare-ui\.js$/, ['RESET-DRIVE-SETTINGS', 'AB-compare']], [/^css\/app\.css$/, ['ui', 'RESET-DRIVE-SETTINGS']],   // RESET-DRIVE-SETTINGS: the reset button lives in the A/B solve-cache bar; its CSS is the spec-mode gate
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];
-const NOT_TESTS = ['gate', 'load', 'serve'];
+const NOT_TESTS = ['gate', 'load', 'serve', 'drive-three-page'];   // drive-three-page.js is the browser-side helper of P1/FG/SC (Brief U: it gained the lampCone argument), not a Node test; it is in MAP
 // NE5: open, reproducible-in-order checks we have not explained. Run by hand with --only; never in the gate.
 const KNOWN_FAILING = ['NE-state-leak'];
 // ---- plan -------------------------------------------------------------------------------------------------------------

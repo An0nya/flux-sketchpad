@@ -13,7 +13,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Before (LAZYCPU): dry 26104b34d5d8066816b7828b8c93737189079d78340b9c74f9cb86c7dfa8f5f5, wet 44a8d9ef6bd4f6a0cfd602403274f95c3a30fb06eed56f7892dc83b962042e3c.
 // PED-CLOTHING-MODES: people are off in this session (walkers' clothes changed in every mode). The pins are main b38c628's frames with people off,
 // captured on main and equal to the new build with people off (full sha256 of the PNG). With people on, the old pins are f8ce6e90... / a4aa8a8c... and no longer match.
-const OLD = { dry: '8eb4e35ccda362c43f749ba920f616b3dd255b61bf6461a1f2f44378666fa879', wet: '1f69234ee88e1ec3938d2730daacdc3f35a2629665f0b654053ebfa0b177adc0' };
+// Brief U (A+B): every lamp is now a glare source and carries its colour, so the page's default glare ('rain', UX2 scene with an oncoming car, preceding car and street lamps in view) draws a coloured veil from them.
+// PROOF the old pin is only moved by that: the same build with D.glareSources patched back to its old body (headlamps only, 4-tuples) and lampCone off reproduces the old hash (checked 2026-10-27 for this file: dry 8eb4e35c... and wet 1f69234e..., both). A alone (colour only) already moves them (dry e7793d6c..., wet 6290e9e2...); B moves them again.
+// Old pins (main 4da6016): dry 8eb4e35ccda362c43f749ba920f616b3dd255b61bf6461a1f2f44378666fa879, wet 1f69234ee88e1ec3938d2730daacdc3f35a2629665f0b654053ebfa0b177adc0.
+const OLD = { dry: '733d190e70bf74259f4b70bf24c35242dacdd05b05dfd544d818e8e658bcdb8b', wet: 'daedeaec17e4f1c889a1c46dd3e18ab4ea2e5a474786d96298ad0fffdea1540b' };
 
 // Two contexts. The legacy-seeded one only checks the loaded option (no frame: a page that starts wet and then goes dry keeps a
 // residue that depends on the start, measured on main as well, so the frame checks start from a fresh dry load).
