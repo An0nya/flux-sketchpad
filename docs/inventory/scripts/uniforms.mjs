@@ -7,6 +7,7 @@ const S=await import(R+'drive-three-shaders.js');
 let touge,obj,halo;
 try{touge=await import(R+'drive-touge-three.js')}catch(e){console.log('touge import fail',e.message.slice(0,120))}
 try{obj=await import(R+'drive-three-objects.js')}catch(e){console.log('obj import fail',e.message.slice(0,160))}
+try{halo=await import(R+'drive-three-halo.js')}catch(e){console.log('halo import fail',e.message.slice(0,160))}
 function samplers(src){ // declared sampler names and whether statically referenced beyond declaration
   const names=new Map();
   for(const m of src.matchAll(/uniform\s+(?:(?:lowp|mediump|highp)\s+)?(sampler\w+)\s+([^;]+);/g)){
@@ -39,6 +40,8 @@ if(touge){
     try{add('FLAT leafy '+tag(v),lighten(obj.leafyFragment,v));}catch(e){rows.push({label:'FLAT leafy '+tag(v),err:e.message.slice(0,100)})}}}
 }
 for(const v of [{extras:false,atlas:false},{extras:true,atlas:false},{extras:true,atlas:true}]){add('TABLE pass '+(v.extras?'lit':'plain')+(v.atlas?'+atlas':''),S.tablePassSource(v.extras?S.withLighting(S.ground,v.atlas):S.ground));}
+// E2: the traffic halo table pass (drive-three-halo.js), every variant: legacy / atlas beam, screen / polar, without / with the crest-occlusion height map (+1 sampler).
+if(halo)for(const atlas of [false,true])for(const polar of [false,true])for(const occ of [false,true])add('HALO table '+(atlas?'atlas':'legacy')+(polar?'+polar':'')+(occ?'+crest':''),halo.haloTableSource(atlas,polar,occ));
 add('BLUR',S.tableBlurSource);
 for(const r of rows)console.log(JSON.stringify(r));
 // ---- mesh car program (drive-three-models.js: lighting + own decls) and uniform-vector estimate

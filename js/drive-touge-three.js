@@ -38,6 +38,8 @@ export function passShader(source, vertex = false) {
   s = s.replace('if(!(t>1e-4 && t<5000.0))discard;vec3 p=eye+t*ray;', 'n=basis*n; ray=originalRay; v=-ray; if(!(t>1e-4 && t<5000.0))discard;vec3 p=eye+t*ray;');
   return s;
 }
+// E2: the height map's depth: the ribbon's highest point is 0, its lowest CREST_DEPTH, a cleared texel 1 (read by drive-three-halo.js crestOcc).
+export const CREST_DEPTH = 0.999, CREST_SIZE = 1024;
 export function surface(u) {
   const geometry = new T.BufferGeometry(), scene = new T.Scene(), camera = new T.Camera();
   const prefix = ground.slice(0, ground.indexOf('vec4 roadFrame'));
@@ -70,6 +72,9 @@ void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
   const skyMaterial = new T.ShaderMaterial({ uniforms: u, vertexShader: 'varying vec2 screen;void main(){screen=position.xy;gl_Position=vec4(position.xy,.999999,1);}', fragmentShader: skyFragment, depthTest: false, depthWrite: false });
   const sky = new T.Mesh(new T.PlaneGeometry(2,2), skyMaterial); sky.frustumCulled = false; sky.renderOrder = -1; scene.add(sky);
   const stat={ms:0,runs:0,skips:0};   // BRIEF J: shadow-pass counters (timing hook + skip count), read by shadowStats()
+  // E2 crest occlusion: a top-down orthographic height map of the ribbon (world xy -> highest z), a float depth texture. Rendered only when asked (option crestOcclusion on), and only when the ribbon's
+  // stored values moved since the last render (geomVer, as the lamp shadow maps). The depth test keeps the highest surface per texel (z is written as depth, higher = nearer); no float blending is needed.
+  const crest={tq:[],rt:null,scene:null,mat:null,ver:-1,box:new T.Vector4(),z:new T.Vector2(),runs:0,skips:0,ms:0};
   let geomVer=0, shKey=null;   // BRIEF J: geomVer moves when update() changes a stored ribbon value; shKey = the inputs of the last shadow render
   return { scene, camera, material, skyMaterial, shadowStats(){return {...stat};},
     shadows(renderer){
@@ -86,6 +91,45 @@ void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
       u.passShadow0.value=shadows[0].depthTexture;u.passShadow1.value=shadows[1].depthTexture;
       shKey=key; stat.runs++; if(timing){renderer.getContext().finish(); stat.ms+=performance.now()-t0;}
     },
+    heightMap(renderer){
+      if(!geometry.attributes.position)return null;
+      if(!crest.rt){
+        crest.rt=new T.WebGLRenderTarget(CREST_SIZE,CREST_SIZE,{depthTexture:new T.DepthTexture(CREST_SIZE,CREST_SIZE,T.FloatType),depthBuffer:true,minFilter:T.NearestFilter,magFilter:T.NearestFilter});
+        crest.mat=new T.ShaderMaterial({uniforms:{cBox:{value:crest.box},cZ:{value:crest.z}},side:T.DoubleSide,depthTest:true,depthWrite:true,
+          vertexShader:'uniform vec4 cBox; varying float vZ; void main(){ vZ=position.z; gl_Position=vec4((position.xy-cBox.xy)*cBox.zw*2.0-1.0,0.0,1.0); }',
+          fragmentShader:`uniform vec2 cZ; varying float vZ; void main(){ gl_FragDepth=${CREST_DEPTH.toFixed(3)}*(1.0-(vZ-cZ.x)/cZ.y); gl_FragColor=vec4(0.0); }`});
+        crest.scene=new T.Scene();const m=new T.Mesh(geometry,crest.mat);m.frustumCulled=false;crest.scene.add(m);
+      }
+      if(crest.ver!==geomVer){
+        const timing=!!globalThis.SL_HALO_TIMING; if(timing)renderer.getContext().finish(); const t0=timing?performance.now():0;
+        const a=geometry.attributes.position.array; let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,z0=Infinity,z1=-Infinity;
+        for(let i=0;i<a.length;i+=3){const x=a[i],y=a[i+1],z=a[i+2];if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;if(z<z0)z0=z;if(z>z1)z1=z;}
+        x0-=.5;y0-=.5;x1+=.5;y1+=.5;
+        crest.box.set(x0,y0,1/(x1-x0),1/(y1-y0)); crest.z.set(z0,Math.max(z1-z0,1e-3));
+        const tqx=globalThis.SL_HALO_TQ?renderer.getContext().getExtension('EXT_disjoint_timer_query_webgl2'):null,g=tqx?renderer.getContext():null; let tq=null;   // test hook: GPU timer query around the height-map render (tqPoll)
+        if(tqx&&!g.getQuery(tqx.TIME_ELAPSED_EXT,g.CURRENT_QUERY)){tq=g.createQuery();g.beginQuery(tqx.TIME_ELAPSED_EXT,tq);}
+        renderer.setRenderTarget(crest.rt); renderer.render(crest.scene,camera); renderer.setRenderTarget(null);
+        if(tq){g.endQuery(tqx.TIME_ELAPSED_EXT);crest.tq.push(tq);}
+        crest.ver=geomVer; crest.runs++; if(timing){renderer.readRenderTargetPixels(crest.rt,0,0,1,1,new Uint8Array(4)); crest.ms+=performance.now()-t0;}
+      } else crest.skips++;
+      return {texture:crest.rt.depthTexture,box:crest.box,z:crest.z};
+    },
+    // Test hook (inert in production): the height map's z at up to 64 world xy points (null where the map is empty or outside its box), read back through a tiny float render.
+    crestProbe(renderer,pts){
+      if(!crest.rt||crest.ver<0)return null; const n=Math.min(pts.length,64);
+      if(!crest.probe){
+        crest.probe={rt:new T.WebGLRenderTarget(64,1,{type:T.FloatType,depthBuffer:false,minFilter:T.NearestFilter,magFilter:T.NearestFilter}),scene:new T.Scene(),cam:new T.Camera(),
+          mat:new T.ShaderMaterial({uniforms:{h:{value:null},cBox:{value:crest.box},cZ:{value:crest.z},pp:{value:Array.from({length:64},()=>new T.Vector2())}},depthTest:false,depthWrite:false,vertexShader:'void main(){gl_Position=vec4(position.xy,0.0,1.0);}',
+            fragmentShader:`uniform sampler2D h; uniform vec4 cBox; uniform vec2 cZ; uniform vec2 pp[64]; void main(){ vec2 uv=(pp[int(gl_FragCoord.x)]-cBox.xy)*cBox.zw; float z=-1e9;
+              if(uv.x>=0.0&&uv.y>=0.0&&uv.x<=1.0&&uv.y<=1.0){float d=texture2D(h,uv).r; if(d<1.0)z=cZ.x+(1.0-d/${CREST_DEPTH.toFixed(3)})*cZ.y;} gl_FragColor=vec4(z,0.0,0.0,1.0); }`})};
+        crest.probe.scene.add(new T.Mesh(new T.PlaneGeometry(2,2),crest.probe.mat));
+      }
+      const P=crest.probe; P.mat.uniforms.h.value=crest.rt.depthTexture; for(let i=0;i<n;i++)P.mat.uniforms.pp.value[i].set(pts[i][0],pts[i][1]);
+      renderer.setRenderTarget(P.rt); renderer.render(P.scene,P.cam); const out=new Float32Array(64*4); renderer.readRenderTargetPixels(P.rt,0,0,64,1,out); renderer.setRenderTarget(null);
+      return Array.from({length:n},(_,i)=>out[i*4]<-1e8?null:out[i*4]);
+    },
+    crestTqPoll(renderer){const g=renderer.getContext(),x=g.getExtension('EXT_disjoint_timer_query_webgl2'),out=[];if(!x)return out;const keep=[],dis=g.getParameter(x.GPU_DISJOINT_EXT);for(const q of crest.tq){if(g.getQueryParameter(q,g.QUERY_RESULT_AVAILABLE)){if(!dis)out.push(g.getQueryParameter(q,g.QUERY_RESULT)/1e6);g.deleteQuery(q);}else keep.push(q);}crest.tq=keep;return out;},   // test hook: finished GPU ms of the height-map renders
+    crestStats(){return {runs:crest.runs,skips:crest.skips,ms:crest.ms,box:crest.box.toArray(),z:crest.z.toArray(),size:CREST_SIZE};},
     update(A, dist) {
       const lane=A.lane, offsets=[-75,-18,-lane/2-2.3,-lane/2-2.2,-lane/2,0,1.5*lane,1.5*lane+2.2,1.5*lane+2.3,25,70];
       const start=Math.floor((dist-35)/2)*2, rows=191, cols=offsets.length, count=rows*cols;
@@ -108,6 +152,6 @@ void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
       }
       if(changed){geomVer++;for(const key of ['position','normal','routeUV'])geometry.attributes[key].needsUpdate=true;}
     },
-    dispose(){geometry.dispose();material.dispose();shadowMaterial.dispose();shadows.forEach(q=>q.dispose());sky.geometry.dispose();skyMaterial.dispose();}
+    dispose(){if(crest.rt){crest.rt.dispose();crest.mat.dispose();}geometry.dispose();material.dispose();shadowMaterial.dispose();shadows.forEach(q=>q.dispose());sky.geometry.dispose();skyMaterial.dispose();}
   };
 }

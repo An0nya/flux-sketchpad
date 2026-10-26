@@ -354,7 +354,10 @@ export function create(canvas, gl, onModelsReady) {
       return { W, H, rgba: col, t };   // t is the .x channel of each pixel group: object distance in metres (depth * 5000)
     },
     haloState() { return { drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length }; },
-    haloProbe(sx, sy) { return halo.probe(sx, sy); }, haloSources() { return halo.sources; }, haloBeamAt(i, x, y, z) { const L = halo.sources[i]; return D.trafficAt ? D.trafficAt(L, null, x, y, z) : null; },
+    haloTqPoll() { return halo.tqPoll(); }, crestTqPoll() { return pass.crestTqPoll(renderer); },   // test hook: GPU ms of the halo table draws (set globalThis.SL_HALO_TQ first)
+    crestProbe(pts) { return pass.crestProbe(renderer, pts); },   // E2 test hook: the height map's z at world xy points
+    crestState() { return { occ: halo.occ, ...pass.crestStats() }; },   // E2 test hook: the height map's bounds and render counts; occ = the table used it this frame
+        haloProbe(sx, sy) { return halo.probe(sx, sy); }, haloSources() { return halo.sources; }, haloBeamAt(i, x, y, z) { const L = halo.sources[i]; return D.trafficAt ? D.trafficAt(L, null, x, y, z) : null; },
     haloLookup(bins, d) { return haloLookup(bins, d, halo.edges); }, haloEdges() { return halo.edges.slice(); },
     programCount() { return renderer.info.programs ? renderer.info.programs.length : -1; },
     // BB3 test hook: the lamp tint currently in the lampRGB uniform (what the GPU lights with)
@@ -372,7 +375,10 @@ export function create(canvas, gl, onModelsReady) {
         u.eye.value.fromArray(p.eye || [-2, .37, 1.2]); u.lamp.value.forEach((q, i) => { if (i < p.lamps.length) q.fromArray(p.lamps[i]); });
         try { runTable(p, extras, dist); } finally { u.eye.value.copy(kept.eye); u.lamp.value.forEach((q, i) => q.copy(kept.lamp[i])); }
       }
-      if (!p.airHold) halo.build(p, world); else u.haloOn.value = 0;   // TOUGE-ELEV B2: touge frames build the halo too (lamps in the car frame, B1)   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
+      // E2 crest occlusion (option crestOcclusion 'on', pass frames with a halo): the ribbon is brought up to date and its height map rendered BEFORE the table is built (update() otherwise runs after it, a frame late).
+      // Off: nothing here runs, the table pass is the old text and the frame is byte-identical.
+      let occ = null; if (p.touge && !p.airHold && p.look && p.look.crestOcclusion === 'on' && D.haloN(p)) { pass.update(world.A, dist); occ = pass.heightMap(renderer); if (occ) occ = { ...occ, wfc: u.worldFromCar.value }; }
+      if (!p.airHold) halo.build(p, world, occ); else u.haloOn.value = 0;   // TOUGE-ELEV B2: touge frames build the halo too (lamps in the car frame, B1)   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);

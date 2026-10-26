@@ -15,4 +15,7 @@ ok('SB: marks is declared only in ground and ribbon programs', withNames.filter(
 const worst = rows.find((r) => r.label === 'TOUGE object lit+table');
 ok('SB: the pass object program with table + lighting has the blend set (scatBanksB) and fits (13)', !!worst && /scatBanksB/.test(worst.names) && worst.declared <= 13, worst && worst.declared);
 ok('SB: every table program has both array samplers', withNames.filter((r) => /\+table$/.test(r.label)).every((r) => /\bscatBanks\b/.test(r.names) && /scatBanksB/.test(r.names)));
+// E2: the halo table pass has rows now (docs/inventory/scripts/uniforms.mjs); the crest-occlusion variant adds exactly one sampler (crestH) and only in those variants.
+const haloRows = rows.filter((r) => /^HALO table/.test(r.label)), plain = haloRows.filter((r) => !/\+crest$/.test(r.label));
+ok('SB: halo table rows exist (8) and each +crest variant declares exactly one more sampler (crestH) than its plain twin, all <= 13', haloRows.length === 8 && plain.length === 4 && plain.every((r) => { const t = haloRows.find((q) => q.label === r.label + '+crest'); return t && t.declared === r.declared + 1 && / crestH\b/.test(' ' + t.names) && !/crestH/.test(r.names) && t.declared <= 13; }), haloRows.map((r) => r.label + ':' + r.declared).join(' '));
 console.log(fails ? fails + ' FAILED' : 'all sampler-budget checks passed'); process.exitCode = fails ? 1 : 0;

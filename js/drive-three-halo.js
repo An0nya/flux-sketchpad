@@ -12,6 +12,7 @@
      branch, so toggling never changes shader text. */
 import * as T from '../vendor/three/three.module.min.js';
 import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS, HALO_MAX } from './drive-three-shaders.js';
+import { CREST_DEPTH } from './drive-touge-three.js';
 const D = globalThis.RF.Drive;
 export const HALO_MAXL = 16, HALO_PER_DRAW = 1, HALO_BIN_STEPS = 6, HALO_MIN_W = 96, HALO_MIN_H = 54, HALO_DIV = 8, HALO_DIV_FEW = 4, HALO_FEW = 4, HALO_SUB = 4, HALO_REFINE = 4, HALO_NEAR = 45;
 // HDX6 polar table (SL_HALO_POLAR): 512 angles x 64 log-radii for the nearest lamp in front; 24 bins side by side = 12288 texels wide (under MAX_TEXTURE_SIZE 16384).
@@ -97,12 +98,36 @@ void main() {
 }
 `;
 // HDX6: the polar pass is the same bin integrand, but each texel is a polar sample about the nearest lamp's projection (pixels), not a screen cell.
-const TMAIN_POLAR = TMAIN.replace(
+const polarOf = (main) => main.replace(
   "  ivec2 px = ivec2(gl_FragCoord.xy); int W = int(haloTab.x), tile = px.x / W, cx = px.x - tile * W;\n  vec2 uv = (vec2(float(cx), float(px.y)) + 0.5) / haloTab, screen = uv * 2.0 - 1.0;\n",
   "  ivec2 px = ivec2(gl_FragCoord.xy); int W = int(haloPolarN.x), tile = px.x / W, cx = px.x - tile * W;\n" +
   "  float ang = (float(cx) + 0.5) / haloPolarN.x * 6.28318530718, rho = exp(haloPolarRange.x + (float(px.y) + 0.5) * haloPolarRange.y);\n" +
   "  vec2 screen = (haloPolarC + rho * vec2(cos(ang), sin(ang))) / size * 2.0 - 1.0;\n");
+const TMAIN_POLAR = polarOf(TMAIN);
 if (TMAIN_POLAR === TMAIN) throw new Error('HDX6: polar pass text not replaced');
+// E2 (crest occlusion, option crestOcclusion, mountain pass only): a top-down height map of the pass ribbon (drive-touge-three.js heightMap) is sampled at 3 points along lamp -> sample;
+// a sample whose line to the lamp passes under the ribbon's surface adds nothing. +1 sampler (crestH), only in these variants: with the option off the old text above is what compiles
+// (variants are built on first use), so the off pass is byte-identical. Lamp and sample are car-frame; the map is world xy (the car is the world origin on the pass, so world = worldFromCar * car).
+// The map keeps ONE height per texel (the highest): where a hairpin's bands overlap in xy, the upper leg can shadow the lower one. Known limit (reports/E.md option 2).
+export const CREST_EPS = 0.3, CREST_TAPS = 3;   // m of ribbon height above the line before it counts as blocking; points along the line (t = k / (taps + 1))
+const OCC_DECL = `uniform sampler2D crestH; uniform mat3 crestWFC; uniform vec4 crestBox; uniform vec2 crestZ;   // height map (depth texture), world-from-car, (x0, y0, 1/w, 1/h), (zmin, zrange)
+bool crestOcc(vec3 a, vec3 b) {
+  vec3 A = crestWFC * a, B = crestWFC * b;
+  for (int k = 1; k <= ${CREST_TAPS}; k++) {
+    vec3 q = mix(A, B, float(k) / ${(CREST_TAPS + 1).toFixed(1)}); vec2 uv = (q.xy - crestBox.xy) * crestBox.zw;
+    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) continue;   // outside the ribbon's box: nothing there
+    float d = texture2D(crestH, uv).r; if (d >= 1.0) continue;   // cleared texel: no ribbon
+    if (crestZ.x + (1.0 - d / ${CREST_DEPTH.toFixed(3)}) * crestZ.y > q.z + ${CREST_EPS.toFixed(2)}) return true;
+  }
+  return false;
+}
+`;
+const OCC_HIT = '      float cs = -dot(d, ray) / r, p =';
+if (TMAIN.split(OCC_HIT).length !== 2) throw new Error('E2: crest occlusion hook not found once in the table pass');
+const TMAIN_OCC = TMAIN.replace(OCC_HIT, '      if (crestOcc(lamp, haloEye + s * ray)) continue;\n' + OCC_HIT), TMAIN_POLAR_OCC = polarOf(TMAIN_OCC);
+if (TMAIN_OCC === TMAIN || TMAIN_POLAR_OCC === TMAIN_POLAR || TMAIN_POLAR_OCC === TMAIN_OCC) throw new Error('E2: crest occlusion pass text not built');
+// The table pass fragment text for a variant (also read by the sampler-budget script).
+export function haloTableSource(atlas, polar = false, occ = false) { return THEAD + (occ ? OCC_DECL : '') + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (occ ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN)); }
 const HAL_CONV = (c) => (c === 'B' ? 1 : c === 'S' ? 2 : 0);
 const half = (T.DataUtils && T.DataUtils.fromHalfFloat) || ((h) => { const e = (h >> 10) & 31, m = h & 1023, sg = h & 0x8000 ? -1 : 1; return e === 0 ? sg * Math.pow(2, -14) * (m / 1024) : e === 31 ? (m ? NaN : sg * Infinity) : sg * Math.pow(2, e - 15) * (1 + m / 1024); });
 
@@ -169,12 +194,13 @@ export function toCarFrame(traffic, m, A) {
 }
 export function haloPass(renderer, u) {
   const scene = new T.Scene(), camera = new T.Camera(), geo = new T.PlaneGeometry(2, 2);
-  const mk = (atlas, polar = false) => new T.ShaderMaterial({
-    uniforms: {}, vertexShader: TVERT, fragmentShader: THEAD + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (polar ? TMAIN_POLAR : TMAIN),
+  const mk = (atlas, polar = false, occ = false) => new T.ShaderMaterial({
+    uniforms: {}, vertexShader: TVERT, fragmentShader: haloTableSource(atlas, polar, occ),
     blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.OneFactor, blendDst: T.OneFactor, blendSrcAlpha: T.ZeroFactor, blendDstAlpha: T.OneFactor,
     depthTest: false, depthWrite: false,
   });
   const mats = [mk(false), mk(true)], matsP = [mk(false, true), mk(true, true)];   // matsP: HDX6 polar pass materials
+  const occMats = new Map(); const occMat = (atlas, polar) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0); if (!occMats.has(k)) occMats.set(k, mk(atlas, polar, true)); return occMats.get(k); };   // E2: crest-occlusion variants, compiled on first use (option off never builds them)
   const cumMat = new T.ShaderMaterial({ uniforms: { src: { value: null }, cumW: { value: 1 }, cumN: { value: 1 } }, vertexShader: TVERT, fragmentShader: TCUM, blending: T.NoBlending, depthTest: false, depthWrite: false });   // PREFIX pass
   const mesh = new T.Mesh(geo, mats[0]); mesh.frustumCulled = false; scene.add(mesh);
   // rt: the bin table (what probe() reads). cumRt: its prefix sums across tiles (what the lookup reads). Both are sized alike.
@@ -222,12 +248,14 @@ export function haloPass(renderer, u) {
     msPolar: 0,    // HDX6: polar pass wall time (SL_HALO_TIMING only), 0 when off
     polar: null,   // HDX6: the polar lamp (centre px, radius px, log step) or null
     polarNote: null,   // HDX6: why the polar table is off this frame, when SL_HALO_POLAR is set
+    tqPending: [],   // test hook: GPU timer queries not yet read (SL_HALO_TQ)
+    tqPoll() { const g = renderer.getContext(), x = g.getExtension('EXT_disjoint_timer_query_webgl2'), out = []; if (!x) return out; const keep = []; const dis = g.getParameter(x.GPU_DISJOINT_EXT); for (const q of halo.tqPending) { if (g.getQueryParameter(q, g.QUERY_RESULT_AVAILABLE)) { if (!dis) out.push(g.getQueryParameter(q, g.QUERY_RESULT) / 1e6); g.deleteQuery(q); } else keep.push(q); } halo.tqPending = keep; return out; },   // test hook: finished GPU ms of the table draws, in frame order (disjoint = dropped)
     ms: 0,         // table pass wall time (1-pixel readback sync), only when globalThis.SL_HALO_TIMING is set (test hook)
     get table() { return rt; }, get cumTable() { return cumRt; }, get tab() { return tab; },   // BRIEF J: cumTable = the table the lookup reads (test hook haloTableBytes)
     // Build the table for this frame and point the lookup at it. Call before the ground pass. Off: haloOn 0, nothing drawn.
-    build(p, world) {
+    build(p, world, occ = null) {
       halo.drawn = 0; halo.lamps = []; halo.passes = 0; u.haloOn.value = 0; halo.sources = null;
-      u.haloPolarOn.value = 0; u.haloPolarOn2.value = 0; halo.msPolar = 0; halo.polar = null; halo.polars = [];   // HDX6, HDX7
+      u.haloPolarOn.value = 0; u.haloPolarOn2.value = 0; halo.msPolar = 0; halo.polar = null; halo.polars = []; halo.occ = false;   // HDX6, HDX7; E2: crest occlusion used this frame
       const N = D.haloN(p); if (!N) return 0;
       // HDX7: the look's halo settings. Bins: a count (clamped to 4..32; HALO_REQ keeps the ask). Divisor: 0 = the lamp-count rule. Gain: 1 = as computed.
       const look = p.look || {}, wantN = look.haloBins != null ? +look.haloBins : HALO_URL_N;
@@ -271,6 +299,8 @@ export function haloPass(renderer, u) {
       haloEdgesFor(Math.hypot(used[0].L.x - eye[0], used[0].L.y - eye[1], used[0].L.z - eye[2]), edgesV); halo.edges = edgesV.slice(0, HALO_BINS);
       ensure(p, used.length, look.haloDiv);
       const timing = !!globalThis.SL_HALO_TIMING; if (timing) { renderer.getContext().finish(); } const t0 = timing ? performance.now() : 0;   // test hook: wall time of the table pass, synchronised by a 1-pixel readback
+      const useOcc = !!(occ && p.touge); halo.occ = useOcc;   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
+      const occU = (mm) => { if (useOcc) Object.assign(mm.uniforms, { crestH: { value: occ.texture }, crestWFC: { value: occ.wfc }, crestBox: { value: occ.box }, crestZ: { value: occ.z } }); };
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
       const setPolarU = (mp, q, P, j, pk) => {
         hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
@@ -284,9 +314,13 @@ export function haloPass(renderer, u) {
           beamMeta: { value: u.beamMeta.value }, beamGrid: { value: u.beamGrid.value }, beamTint: { value: u.beamTint.value },
           haloPolarC: { value: new T.Vector2(pk.C[0], pk.C[1]) }, haloPolarRange: { value: new T.Vector2(Math.log(HALO_POL_MIN_PX), pk.dL) }, haloPolarN: { value: new T.Vector2(HALO_POL_TH, HALO_POL_R) },
         });
+        occU(mp);
       };
+      // Test hook (inert unless globalThis.SL_HALO_TQ is set): a GPU timer query around every draw of the table (screen + polar + prefix), results collected by tqPoll().
+      const tqx = globalThis.SL_HALO_TQ ? renderer.getContext().getExtension('EXT_disjoint_timer_query_webgl2') : null; let tq = null;
+      if (tqx) { const g = renderer.getContext(); if (!g.getQuery(tqx.TIME_ELAPSED_EXT, g.CURRENT_QUERY)) { tq = g.createQuery(); g.beginQuery(tqx.TIME_ELAPSED_EXT, tq); } }
       try {
-        renderer.autoClear = false; const m = atlas ? mats[1] : mats[0];
+        renderer.autoClear = false; const m = useOcc ? occMat(atlas, false) : atlas ? mats[1] : mats[0];
         renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m;
         // The nearest HALO_REFINE lamps within HALO_NEAR metres are drawn in HALO_SUB sub-passes (24 steps per bin); the rest in one (6).
         used.forEach((q, i) => {
@@ -303,6 +337,7 @@ export function haloPass(renderer, u) {
               otherConvention: { value: legacy ? HAL_CONV(legacy.conv) : 0 },
               beamMeta: { value: u.beamMeta.value }, beamGrid: { value: u.beamGrid.value }, beamTint: { value: u.beamTint.value },
             });
+            occU(m);
             renderer.render(scene, camera); halo.passes++;
           }
         });
@@ -310,14 +345,14 @@ export function haloPass(renderer, u) {
         // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
-          const tp = timing ? performance.now() : 0, rp = ensurePolar(si), mp = matsP[atlas ? 1 : 0];
+          const tp = timing ? performance.now() : 0, rp = ensurePolar(si), mp = useOcc ? occMat(atlas, true) : matsP[atlas ? 1 : 0];
           const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;
           renderer.setRenderTarget(rp.bin); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
           for (let j = 0; j < P; j++) for (const q of s.lamps) { setPolarU(mp, q, P, j, s.pk); renderer.render(scene, camera); halo.passes++; }
           prefix(rp.bin.texture, rp.cum, HALO_POL_TH, rp.layer);
           if (timing) { renderer.setRenderTarget(rp.cum, rp.layer); renderer.readRenderTargetPixels(rp.cum, 0, 0, 1, 1, new Uint16Array(4)); halo.msPolar += performance.now() - tp; }
         });
-      } finally { renderer.autoClear = ac; renderer.setClearColor(cc, ca); renderer.setRenderTarget(null); }
+      } finally { renderer.autoClear = ac; renderer.setClearColor(cc, ca); renderer.setRenderTarget(null); if (tq) { const g = renderer.getContext(); g.endQuery(tqx.TIME_ELAPSED_EXT); halo.tqPending.push(tq); } }
       if (timing) { renderer.readRenderTargetPixels(cumRt, 0, 0, 1, 1, new Uint16Array(4)); halo.ms = performance.now() - t0; }
       u.haloTex.value = cumRt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = globalThis.HALO_TABLE_ONLY ? 0 : 1;
       if (plan[0]) { const pk = plan[0].pk; u.haloPolarOn.value = 1; u.haloPolarTex.value = ensurePolar(0).cum.texture; u.haloPolarF.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); u.haloPolarN.value.set(HALO_POL_TH, HALO_POL_R); }
