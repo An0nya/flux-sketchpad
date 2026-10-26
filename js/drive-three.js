@@ -92,6 +92,10 @@ export function create(canvas, gl, onModelsReady) {
   };
   const probePx = new Uint16Array(4);
   const zeroTex = new T.DataTexture(new Float32Array(4), 1, 1, T.RGBAFormat, T.FloatType); zeroTex.magFilter = zeroTex.minFilter = T.NearestFilter; zeroTex.needsUpdate = true;
+  // REVIEW (vanishing objects): object groups copy `u` when they are created ({...uniforms} in drive-three-objects.js / drive-three-models.js), so a key first set()
+  // later is missing from them: the cycle-blend samplers then sit on texture unit 0 next to a different texture type and WebGL rejects the whole instanced draw.
+  // Declare every late uniform here, before any group exists.
+  set('scatBankB0', zeroTex); set('scatBankB1', zeroTex); set('scatBankB2', zeroTex); set('scatFade', 0); set('scatFract', 0);
   // Test hooks (tests/regress/SE-table-pacing.js): texels of a slot bank (half-float Uint16 words, GL row order, bottom row first), and a
   // scissor check on the spare: rows below the fill's row must hold texels, rows at or above it must be empty.
   tabStats.readVersion = (v, b) => { const t = slots[v][b], out = new Uint16Array(t.width * t.height * 4); renderer.readRenderTargetPixels(t, 0, 0, t.width, t.height, out); return out; };
