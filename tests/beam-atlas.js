@@ -1,3 +1,4 @@
+// REVIEW-D integ 2026-10-26: B10 packs both polar halo tables into one sampler2DArray (haloPolarBin/haloPolarT take a layer, not a sampler) and B14 moves `uniform sampler2D marks` out of the shared prefix to surface(); the text diff vs 5079676 is exactly those lines (ground and pass diffs identical), GPU frame pins unchanged. Moved: c0925ddbe976974a, 02c3f5c5d9919bb4, 9deedc2ec1e5e8c8, 454ea36e3e88a4f0 -> 192c9a834eaf7fc5, f70552a64e52fb08, 70491566a8ab3a88, 788980098647e046.
 // REVIEW-C integ 2026-10-26: halo lookup now reads 4 knots from a prefix-summed table (shader text changed on purpose; halo-on frames differ from main by <= 2/255, agent-measured on 4 poses). Moved: withLighting/touge text pins eada3a08e2cfcae7, 02eafb816a6166fa, f870e59d654ecf27, 3d66f72f67cdcf42 -> c0925ddbe976974a, 02c3f5c5d9919bb4, 9deedc2ec1e5e8c8, 454ea36e3e88a4f0.
 // BA5 node checks for the GPU beam atlas (js/beam-atlas.js) and its shader text: packing, resampling and the car pick. Node, no browser:
 //   node tests/beam-atlas.js   (exits 1 on any failure)
@@ -24,13 +25,13 @@ const stripHalo = (t) => t.replace(/\/\/ SL: the traffic scatter table[\s\S]*?re
 const full = S.withLighting(S.ground), pass = TOUGE.passShader(full);
 // LAMP-DIST (lampRoad, road lamp light): the table declarations, helper and the factor in the light loop are added to the ground text. Stripping exactly that addition gives main's text again (the lampRoad-off text differs from main only by the uniform declarations and the 1.0 factor, which the frames never see: LHS1/LDR1 off equal main by bytes).
 const stripLampRoad = (t) => t.replace(/\/\/ LAMP-DIST: road lamp light[\s\S]*?return I\/159\.1549;\n}\n/, '').replace('float fl=lampRoadOn==1 ? lampRoadF(-d,lightStreet[i]) : 1.0; ', '').replace('*light[i].w*fl*max', '*light[i].w*max');
-ok('withLighting(ground) minus the halo lookup and the LAMP-DIST addition equals main 7ee9c65 outside the halo declarations (HDX3 changed haloE[24] and the bin-tile width, which sit outside the stripped lookup)', hash(stripHalo(stripLampRoad(full))) === 'c0925ddbe976974a', hash(stripHalo(stripLampRoad(full))));
+ok('withLighting(ground) minus the halo lookup and the LAMP-DIST addition equals main 7ee9c65 outside the halo declarations (HDX3 changed haloE[24] and the bin-tile width, which sit outside the stripped lookup)', hash(stripHalo(stripLampRoad(full))) === '192c9a834eaf7fc5', hash(stripHalo(stripLampRoad(full))));
 // REVIEW integ 2026-10-26: the two touge pass text pins moved 7d5e2eca9819fac7 -> 02eafb816a6166fa and 49467e5f786efba6 -> 3d66f72f67cdcf42, cause: B6 shadow-normal line in passShader (shader text; both pass with B6 reverted)
-ok('touge pass minus the halo lookup and the LAMP-DIST addition equals main 7ee9c65', hash(TOUGE.passShader(stripHalo(stripLampRoad(full)))) === '02c3f5c5d9919bb4', hash(TOUGE.passShader(stripHalo(stripLampRoad(full)))));
+ok('touge pass minus the halo lookup and the LAMP-DIST addition equals main 7ee9c65', hash(TOUGE.passShader(stripHalo(stripLampRoad(full)))) === 'f70552a64e52fb08', hash(TOUGE.passShader(stripHalo(stripLampRoad(full)))));
 // re-pinned 2026-10-22 (LAMP-DIST): the full text now carries the lampRoad addition (stripLampRoad above removes it). Was d56a86cda19e6b46.
-ok('withLighting(ground) with the halo lookup is pinned (SL)', hash(full) === '9deedc2ec1e5e8c8', hash(full));
+ok('withLighting(ground) with the halo lookup is pinned (SL)', hash(full) === '70491566a8ab3a88', hash(full));
 // re-pinned 2026-10-22 (LAMP-DIST): as above. Was 6404d07768852b9d.
-ok('touge pass with the halo lookup is pinned (SL)', hash(pass) === '454ea36e3e88a4f0', hash(pass));
+ok('touge pass with the halo lookup is pinned (SL)', hash(pass) === '788980098647e046', hash(pass));
 ok('atlas variant reads the atlas and the per-lamp tint', S.withLighting(S.ground, true).includes('otint*otherIntensity(local)') && S.withLighting(S.ground, true).includes('trafficBeamIdx[i>>2][i&3]'));
 ok('touge pass patches the atlas loop spelling', TOUGE.passShader(S.withLighting(S.ground, true)).includes('cos(trafficPitch[i])') && TOUGE.passShader(S.withLighting(S.ground, true)).includes('r+=rho*otint*otherIntensity(local)'));
 
