@@ -182,7 +182,7 @@ Each rule is one condition on other options (or on the render context), with the
 | `coneOn` | (lampCone = "on" or (lampCone is not "off" and streetLamps is not "off" and visibility is not null)) | the cone gain only scales the lamp cone (lampCone on, or auto with street lamps on and a visibility set) | hidden | `spec-ui.js RF.Drive.lampConeOn(o) ~L1033` | lampConeGain |
 | `powerlinesOn` | powerlines = "on" | the wire reflectance only changes the power wires (powerlines on; the open-road wild chunk and the pass build them only then) | hidden | `drive-touge.js flags.powerlines === 'on' ~L119` | powerlineReflectance |
 | `trafficBeamsLight` | trafficBeams = true | road light from other cars only exists with traffic beams on | none | `drive-anim.js const lightRangeOf ~L23` | trafficLightRange, trafficNearest |
-| `symmetricOncoming` | (onMode = "symmetric" and oncoming = true) | symmetric oncoming traffic only | tooltip | `drive-anim.js Symmetric traffic only ~L1536` | trafficShuffle |
+| `symmetricOncoming` | (onMode in ["symmetric","high-dip"] and oncoming = true) | symmetric or high-then-dip oncoming traffic only | tooltip | `drive-anim.js Symmetric and high-then-dip traffic ~L1536` | trafficShuffle |
 | `shuffleLibrary` | trafficShuffle = "library" | only read when traffic beams come from the library | none | `drive-anim.js o.trafficShuffle !== 'library' ~L1541` | trafficOutIds |
 | `manualMode` | onMode = "manual" | manual oncoming mode only | none | `spec-ui.js Manual mode only ~L601` | onKcd |
 | `wetOn` | wetness > 0 (or legacy wet) | needs a damp or wet road | disabled | `spec-ui.js wetnessOf(o) > 0 ~L1025` | wetSheen, wetModel |
