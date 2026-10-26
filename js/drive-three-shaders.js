@@ -54,27 +54,29 @@ vec3 haloBin(int k, vec2 pc, vec2 f, vec2 tab) {
   return g0.y*(g0.x*texture(haloTex,vec2(x0*inv,h0.y/tab.y)).rgb+g1.x*texture(haloTex,vec2(x1*inv,h0.y/tab.y)).rgb)
        + g1.y*(g0.x*texture(haloTex,vec2(x0*inv,h1.y/tab.y)).rgb+g1.x*texture(haloTex,vec2(x1*inv,h1.y/tab.y)).rgb);
 }
-// HDX7: the monotone cubic Hermite over the running totals Cc at the bin knots (Fritsch-Carlson, linear C, log d). Shared by the screen table and the polar table.
-vec3 haloCurve(vec3 Cc[32], float dd) {
-  if(dd<=haloE[0]) return Cc[0]*log(dd/0.5)/log(haloE[0]/0.5);   // bin 0: log d from 0.5 m (C(0.5)=0)
-  int s=0; for(int k=0;k<31;k++) if(k<haloNu-1 && dd>haloE[k]) s=k;   // segment s: knots s..s+1 bracket dd
+// HDX7: the monotone cubic Hermite over the running totals at the bin knots (Fritsch-Carlson, linear C, log d). Shared by the screen table and the polar table.
+// PREFIX: the running totals come from the cumulative table (a prefix sum across the bin tiles, drive-three-halo.js), so the caller reads four knots, not all bins:
+// K0 = Cc[max(s-1,0)], K1 = Cc[s], K2 = Cc[s+1], K3 = Cc[min(s+2,haloNu-1)], for the segment s that brackets dd (haloSeg).
+int haloSeg(float dd) { int s=0; for(int k=0;k<31;k++) if(k<haloNu-1 && dd>haloE[k]) s=k; return s; }   // segment s: knots s..s+1 bracket dd
+vec3 haloCurve(int s, vec3 K0, vec3 K1, vec3 K2, vec3 K3, float dd) {
+  if(dd<=haloE[0]) return K1*log(dd/0.5)/log(haloE[0]/0.5);   // bin 0: log d from 0.5 m (C(0.5)=0); s is 0 here, so K1 = Cc[0]
   float h=haloH;
-  int sm=max(s-1,0), sn=min(s+1,haloNu-2);
-  vec3 dS=(Cc[s+1]-Cc[s])/h, dP=(Cc[sm+1]-Cc[sm])/h, dN=(Cc[sn+1]-Cc[sn])/h;
+  vec3 Cm=(s>=1) ? K1 : K2;             // Cc[sm+1], sm = max(s-1,0)
+  vec3 Cn=(s+1<=haloNu-2) ? K2 : K1;    // Cc[sn], sn = min(s+1,haloNu-2)
+  vec3 dS=(K2-K1)/h, dP=(Cm-K0)/h, dN=(K3-Cn)/h;
   vec3 mP=vec3(0.0), mN=vec3(0.0);
   vec3 ab=dP*dS, ms=step(vec3(1e-30),ab); mP=ms*2.0*ab/mix(vec3(1.0),dP+dS,ms);   // harmonic mean where the slopes agree in sign, else 0
   vec3 ab2=dS*dN, ms2=step(vec3(1e-30),ab2); mN=ms2*2.0*ab2/mix(vec3(1.0),dS+dN,ms2);
   vec3 mA=(s==0 ? dS : mP), mB=(s==haloNu-2 ? dS : mN);
   float t=(log(dd)-log(haloE[s]))/h, t2=t*t, t3=t2*t;
-  return (2.0*t3-3.0*t2+1.0)*Cc[s] + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*Cc[s+1] + (t3-t2)*h*mB;
+  return (2.0*t3-3.0*t2+1.0)*K1 + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*K2 + (t3-t2)*h*mB;
 }
 vec3 haloScatterScr(float d) {
   if(haloOn==0 || d<=0.5) return vec3(0.0);
   vec2 p=gl_FragCoord.xy*haloUV*haloTab-0.5, pc=floor(p), f=p-pc;
   float dd=min(d,120.0);
-  vec3 Cc[32]; vec3 C=vec3(0.0);   // running total at each bin's upper edge (knots)
-  for(int k=0;k<32;k++) { if(k>=haloNu) break; C+=haloBin(k,pc,f,haloTab); Cc[k]=C; }
-  return haloCurve(Cc, dd);
+  int s=haloSeg(dd), i0=max(s-1,0), i3=min(s+2,haloNu-1);
+  return haloCurve(s, haloBin(i0,pc,f,haloTab), haloBin(s,pc,f,haloTab), haloBin(s+1,pc,f,haloTab), haloBin(i3,pc,f,haloTab), dd);   // 4 cumulative reads
 }
 uniform float haloGain;   // HDX7: the look's halo gain (1 = as computed; the multiply is exact at 1)
 uniform int haloPolarOn2; uniform sampler2D haloPolarTex2; uniform vec2 haloPolarF2, haloPolarRange2;   // HDX7: the second polar table (per-lamp: the nearest car's other lamp)
@@ -93,9 +95,8 @@ vec3 haloPolarT(float d, sampler2D tx, vec2 F, vec2 rng) {
   float ia = fract(th / 6.28318530718) * haloPolarN.x - 0.5;
   float ja = (log(max(length(q), 0.25)) - rng.x) / rng.y - 0.5;
   float dd = min(d, 120.0);
-  vec3 Cc[32]; vec3 C = vec3(0.0);
-  for(int k=0;k<32;k++) { if(k>=haloNu) break; C += haloPolarBin(tx, k, ia, ja); Cc[k] = C; }
-  return haloCurve(Cc, dd);
+  int s = haloSeg(dd), i0 = max(s-1,0), i3 = min(s+2,haloNu-1);
+  return haloCurve(s, haloPolarBin(tx,i0,ia,ja), haloPolarBin(tx,s,ia,ja), haloPolarBin(tx,s+1,ia,ja), haloPolarBin(tx,i3,ia,ja), dd);
 }
 vec3 haloPolar(float d) {
   if(haloOn==0 || haloPolarOn==0 || d<=0.5) return vec3(0.0);

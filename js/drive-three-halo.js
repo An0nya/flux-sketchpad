@@ -39,6 +39,14 @@ export function haloEdgesFor(D, out = new Array(HALO_BINS)) {   // HDX3: the edg
 }
 
 const TVERT = `void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+// PREFIX (Task 1): the cumulative table. Texel (tile k, cell c) = the sum of the bin texels at cell c over tiles 0..k. The shader reads four knots of it, not all bins.
+const TCUM = `uniform sampler2D src; uniform float cumW; uniform int cumN;
+void main() {
+  ivec2 px = ivec2(gl_FragCoord.xy); int W = int(cumW), tile = px.x / W, cx = px.x - tile * W; vec3 acc = vec3(0.0);
+  for (int k = 0; k < ${HALO_MAX}; k++) { if (k > tile || k >= cumN) break; acc += texelFetch(src, ivec2(k * W + cx, px.y), 0).rgb; }
+  gl_FragColor = vec4(acc, 1.0);
+}
+`;
 const THEAD = `uniform vec4 hLamp[${HALO_PER_DRAW}], hDir[${HALO_PER_DRAW}], hTint[${HALO_PER_DRAW}], hLat[${HALO_PER_DRAW}], hUp[${HALO_PER_DRAW}];
 uniform vec3 haloEye; uniform vec2 size, haloTab; uniform int nHalo, otherConvention;
 uniform int haloP, haloSub;   // sub-pass haloSub of haloP (see the loop)
@@ -162,8 +170,10 @@ export function haloPass(renderer, u) {
     depthTest: false, depthWrite: false,
   });
   const mats = [mk(false), mk(true)], matsP = [mk(false, true), mk(true, true)];   // matsP: HDX6 polar pass materials
+  const cumMat = new T.ShaderMaterial({ uniforms: { src: { value: null }, cumW: { value: 1 }, cumN: { value: 1 } }, vertexShader: TVERT, fragmentShader: TCUM, blending: T.NoBlending, depthTest: false, depthWrite: false });   // PREFIX pass
   const mesh = new T.Mesh(geo, mats[0]); mesh.frustumCulled = false; scene.add(mesh);
-  let rt = null, tab = [0, 0], tabClamp = null; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
+  // rt: the bin table (what probe() reads). cumRt: its prefix sums across tiles (what the lookup reads). Both are sized alike.
+  let rt = null, cumRt = null, tab = [0, 0], tabClamp = null; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
   const arr = () => Array.from({ length: HALO_PER_DRAW }, () => new T.Vector4());
   const hLamp = arr(), hDir = arr(), hTint = arr(), hLat = arr(), hUp = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(120); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
   // ROLL: the source's surface basis for the beam (w = 1 when present; 0 = the level-road formulas in the shader).
@@ -173,14 +183,22 @@ export function haloPass(renderer, u) {
     // HDX7: the table is HALO_N tiles side by side, so one tile may be at most maxTextureSize / HALO_N cells wide (at 1920 px and divisor 1.4 it is not, at 24 bins).
     const cap = Math.floor(renderer.capabilities.maxTextureSize / HALO_N); tabClamp = tw > cap ? { asked: tw, used: cap } : null; if (tw > cap) tw = cap;
     const key = tw + 'x' + th + 'x' + HALO_N;
-    if (!rts.has(key)) { if (rts.size > 3) { for (const r of rts.values()) r.dispose(); rts.clear(); } rts.set(key, new T.WebGLRenderTarget(tw * HALO_N, th, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false })); }
-    rt = rts.get(key); tab = [tw, th]; tabV.set(tw, th);
+    const opt = { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false };
+    if (!rts.has(key)) { if (rts.size > 3) { for (const r of rts.values()) { r.bin.dispose(); r.cum.dispose(); } rts.clear(); } rts.set(key, { bin: new T.WebGLRenderTarget(tw * HALO_N, th, opt), cum: new T.WebGLRenderTarget(tw * HALO_N, th, opt) }); }
+    const e = rts.get(key); rt = e.bin; cumRt = e.cum; tab = [tw, th]; tabV.set(tw, th);
   };
   const prts = [], prtNs = [];   // HDX6: the polar tables (HALO_POL_R rows, HALO_N bins side by side); HDX7: one target per table, rebuilt when the bin count changes
+  // Each polar table has a bin target (drawn into) and a prefix target (read by the lookup). Returns { bin, cum }.
   const ensurePolar = (si = 0) => {
-    if (!prts[si] || prtNs[si] !== HALO_N) { if (prts[si]) prts[si].dispose(); prts[si] = new T.WebGLRenderTarget(HALO_POL_TH * HALO_N, HALO_POL_R, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false }); prtNs[si] = HALO_N; }
+    if (!prts[si] || prtNs[si] !== HALO_N) {
+      if (prts[si]) { prts[si].bin.dispose(); prts[si].cum.dispose(); }
+      const opt = { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false };
+      prts[si] = { bin: new T.WebGLRenderTarget(HALO_POL_TH * HALO_N, HALO_POL_R, opt), cum: new T.WebGLRenderTarget(HALO_POL_TH * HALO_N, HALO_POL_R, opt) }; prtNs[si] = HALO_N;
+    }
     return prts[si];
   };
+  // PREFIX pass: src (bin texels, tiles of width W) -> dst (running totals). Full-target quad, no blending.
+  const prefix = (src, dst, W) => { cumMat.uniforms.src.value = src; cumMat.uniforms.cumW.value = W; cumMat.uniforms.cumN.value = HALO_N; renderer.setRenderTarget(dst); mesh.material = cumMat; renderer.render(scene, camera); };
   const halo = {
     edges: HALO_EDGES.slice(1),   // this frame's bin upper edges (page-test hook)
     polars: [],   // HDX7: one entry per polar table this frame ({ lamps, C, rho, dL })
@@ -275,20 +293,22 @@ export function haloPass(renderer, u) {
             renderer.render(scene, camera); halo.passes++;
           }
         });
-        // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass.
+        prefix(rt.texture, cumRt, tab[0]);   // PREFIX: the screen table's running totals
+        // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
           const tp = timing ? performance.now() : 0, rp = ensurePolar(si), mp = matsP[atlas ? 1 : 0];
           const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;
-          renderer.setRenderTarget(rp); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
+          renderer.setRenderTarget(rp.bin); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
           for (let j = 0; j < P; j++) for (const q of s.lamps) { setPolarU(mp, q, P, j, s.pk); renderer.render(scene, camera); halo.passes++; }
-          if (timing) { renderer.readRenderTargetPixels(rp, 0, 0, 1, 1, new Uint16Array(4)); halo.msPolar += performance.now() - tp; }
+          prefix(rp.bin.texture, rp.cum, HALO_POL_TH);
+          if (timing) { renderer.readRenderTargetPixels(rp.cum, 0, 0, 1, 1, new Uint16Array(4)); halo.msPolar += performance.now() - tp; }
         });
       } finally { renderer.autoClear = ac; renderer.setClearColor(cc, ca); renderer.setRenderTarget(null); }
-      if (timing) { renderer.readRenderTargetPixels(rt, 0, 0, 1, 1, new Uint16Array(4)); halo.ms = performance.now() - t0; }
-      u.haloTex.value = rt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = globalThis.HALO_TABLE_ONLY ? 0 : 1;
-      if (plan[0]) { const pk = plan[0].pk; u.haloPolarOn.value = 1; u.haloPolarTex.value = ensurePolar(0).texture; u.haloPolarF.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); u.haloPolarN.value.set(HALO_POL_TH, HALO_POL_R); }
-      if (plan[1]) { const pk = plan[1].pk; u.haloPolarOn2.value = 1; u.haloPolarTex2.value = ensurePolar(1).texture; u.haloPolarF2.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarRange2.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); }
+      if (timing) { renderer.readRenderTargetPixels(cumRt, 0, 0, 1, 1, new Uint16Array(4)); halo.ms = performance.now() - t0; }
+      u.haloTex.value = cumRt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = globalThis.HALO_TABLE_ONLY ? 0 : 1;
+      if (plan[0]) { const pk = plan[0].pk; u.haloPolarOn.value = 1; u.haloPolarTex.value = ensurePolar(0).cum.texture; u.haloPolarF.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); u.haloPolarN.value.set(HALO_POL_TH, HALO_POL_R); }
+      if (plan[1]) { const pk = plan[1].pk; u.haloPolarOn2.value = 1; u.haloPolarTex2.value = ensurePolar(1).cum.texture; u.haloPolarF2.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarRange2.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); }
       halo.drawn = used.length; halo.lamps = used.map((q) => ({ lamp: [q.L.x, q.L.y, q.L.z], w: q.L.w, nx: q.L.nx, ny: q.L.ny, nz: q.L.nz || 0, idx: q.idx, hasBeam: !!q.L.beam }));
       return halo.drawn;
     },
