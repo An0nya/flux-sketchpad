@@ -17,11 +17,11 @@ const PW = process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules
 // ---- the curated gate -------------------------------------------------------------------------------------------------
 const NODE = ['all', 'regress-node', 'scatter-table', 'scatter-table-pace', 'scatter', 'scatter-fade-gain', 'fog', 'wetness', 'wet-ggx', 'foliage', 'beams', 'beam-atlas', 'traffic-beams', 'tl-traffic-taper', 'pass-parity', 'scene-digest', 'scenery-params', 'tile-options', 'options-registry', 'options-migration', 'options-docs', 'share-presets'];
 const PAGE_PAR = ['SB1-studs-everywhere', 'OV-scene-details', 'CD-controls-dedupe', 'UX2-drive-ux', 'DC-drive-controls', 'DW-drive-wheel', 'PM-pass-mesh', 'PP-pass-parity', 'P2-drive-lighting', 'WG-wet-ggx', 'WT-wetness', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'SF-silhouette-fade', 'SF1-car-silhouette', 'BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'TL2-traffic-light-range'];
-const PAGE_SOLO = ['P1-drive-three', 'SE-table-pacing'];   // P1 needs the real GPU; SE measures per-frame ms
+const PAGE_SOLO = ['P1-drive-three', 'SE-table-pacing', 'AC-air-cache-generations'];   // P1 needs the real GPU; SE measures per-frame ms; AC sizes its budget from the measured ms per row
 const GROUPS = {
   render: ['P1-drive-three', 'P2-drive-lighting', 'PM-pass-mesh', 'PP-pass-parity', 'WT-wetness', 'WG-wet-ggx', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'SE-table-pacing', 'SF-silhouette-fade', 'SF1-car-silhouette', 'BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'TL2-traffic-light-range', 'SB1-studs-everywhere', 'OV-scene-details'],
   ui: ['CD-controls-dedupe', 'UX2-drive-ux', 'DC-drive-controls', 'DW-drive-wheel', 'CPU-FALLBACK-PAUSE'],
-  scatter: ['SC-beam-scatter', 'SD-scatter-table', 'SE-table-pacing', 'SF-silhouette-fade', 'SF1-car-silhouette', 'FG-fog', 'node:scatter', 'node:scatter-table', 'node:scatter-table-pace', 'node:scatter-fade-gain', 'node:fog'],
+  scatter: ['SC-beam-scatter', 'SD-scatter-table', 'SE-table-pacing', 'AC-air-cache-generations', 'SF-silhouette-fade', 'SF1-car-silhouette', 'FG-fog', 'node:scatter', 'node:scatter-table', 'node:scatter-table-pace', 'node:scatter-fade-gain', 'node:fog'],
   beams: ['BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'P1-drive-three', 'node:beams', 'node:beam-atlas', 'node:traffic-beams'],
   wet: ['WT-wetness', 'WG-wet-ggx', 'node:wetness', 'node:wet-ggx'],
   nodeAll: NODE.map((n) => 'node:' + n),
@@ -34,7 +34,7 @@ const MAP = [
   [/^js\/(cct|source-presets)\.js$/, ['nodeAll', 'beams']], [/^js\/drive-three-.*\.js$/, ['render']], [/^js\/drive-touge-three\.js$/, ['TOUGE-ELEV-B', 'TOUGE-SKY-VEIL', 'TOUGE-AIR', 'TOUGE-AIR-RIBBON']], [/^js\/drive-three-halo\.js$/, ['TOUGE-HALO-TILT']],
   [/^js\/drive-scenes\.js$/, ['render', 'ui', 'nodeAll', 'PL1-powerlines']],
   [/^js\/drive-touge\.js$/, ['PL2-powerlines-pass']],   // REFLECTIVE-CLOTHING: pedestrians are built here; the RC test is a new regress file, picked up automatically
-  [/^js\/drive-three-lamphalo\.js$/, ['LHS1-lamp-halos']], [/^js\/drive-three\.js$/, ['LHS1-lamp-halos', 'TOUGE-AIR', 'TOUGE-AIR-RIBBON']],
+  [/^js\/drive-three-lamphalo\.js$/, ['LHS1-lamp-halos']], [/^js\/drive-three\.js$/, ['LHS1-lamp-halos', 'TOUGE-AIR', 'TOUGE-AIR-RIBBON', 'AC-air-cache-generations']],
   [/^js\/drive-three-lampcone\.js$/, ['LCM1-lamp-cone']], [/^tests\/regress\/LCM1-lamp-cone\.js$/, ['LCM1-lamp-cone']],
   [/^js\/lamp-dist\.js$/, ['LHS1-lamp-halos', 'LDR1-lamp-road']], [/^tests\/regress\/LDR1-lamp-road\.js$/, ['LDR1-lamp-road']],
   [/^js\/options-registry\.js$/, ['ui', 'nodeAll', 'node:drive-controls2', 'node:scenario-node']],   // OPTION-REGISTRY: the defaults of every option; tests/options-registry.js and options-migration.js are in NODE
