@@ -27,6 +27,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
 
   // (1) data
   const data = await page.evaluate(() => {
+    globalThis.PED_FIXED_KINDS = true;   // SEEDED-KINDS: the road list's one vest at 95 m needs the fixed kind (default is seeded, no vest)
     const build = (m) => RF.Drive.buildScene('road', { Lw: 3.5, A: null, us: true, seed: 7, reflectiveClothing: m }, { people: true, animals: false, signs: false, posts: false, veg: false }).objects;
     const isVest = (o) => typeof o.mat === 'function' && String(o.mat).includes('hivis');
     const isStrip = (o) => o.mat === 'hivis-tape';
@@ -40,6 +41,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     res.sameSeedRepeats = mats(out.mix) === mats(out.mixAgain);
     res.offIsMix = mats(out.off) === mats(out.mix); res.unsetIsMix = mats(out.unset) === mats(out.mix);
     res.allIsSmall = mats(out.all) === mats(out.small);
+    globalThis.PED_FIXED_KINDS = false;
     return res;
   });
   console.log('data: ' + JSON.stringify(data));

@@ -16,31 +16,34 @@ const CASES = [['road-static', 'road', { wild: false }], ['road-wild', 'road', {
 // PED-STRIPS-SDF: 22 of 24 changed (road-wild off unchanged; 'off' rows changed too, the walkers are in them). Cause: mix and small walkers now carry
 // tape. The detailed (SDF) model draws torso bands, cuffs, shin bands and shoe patches, and the primitive torso bands replace the two back strips. none and vest
 // are unchanged. Proof: with every cls 'person' object left out, all 24 digests equal main f52ed8a (checked in scratch, people on and off).
+// SEEDED-KINDS (Brief S): the road, city and forest walkers ask for kind 'seeded' and person() draws dark or light (PED_LIGHT_SHARE) from a hash, so 19 of 24 changed
+// (the five other road-wild pins kept their values; road-wild@11@tiles95 moved). Cause: the walker kinds from the hash, not positions.
+// Proof: with globalThis.PED_FIXED_KINDS = true the build is the pre-change one and all 24 digests equal the PINS that were there before this change.
 const PINS = {
-  'road-static@7@tiles95': 'ab67e7b6e25b9cbf',
-  'road-static@7@tiles400': '4016c6e5ed689358',
-  'road-static@7@off': 'c50d9a8d4e55c248',
+  'road-static@7@tiles95': '8b380cf09f961522',
+  'road-static@7@tiles400': '7766027dea5dc65a',
+  'road-static@7@off': '7c19c32a0c28c6ac',
   'road-wild@7@tiles95': 'cd69e4e0171e3792',
   'road-wild@7@tiles400': '897cbc8e1effeb6e',
   'road-wild@7@off': '52d7698a66a3c969',
-  'forest@7@tiles95': '9abd05f429731329',
-  'forest@7@tiles400': 'f887d4bb312a2eaa',
-  'forest@7@off': '9dd957d63f1499ad',
-  'city@7@tiles95': '614f519c8f9a2437',
-  'city@7@tiles400': '03c3388d27e2f6c1',
-  'city@7@off': '227b99bb5e94dd14',
-  'road-static@11@tiles95': '5de1a0aa7bcf809f',
-  'road-static@11@tiles400': '12b6830ff207f23b',
-  'road-static@11@off': 'c50d9a8d4e55c248',
-  'road-wild@11@tiles95': 'dbfe95af9eb43c7f',
+  'forest@7@tiles95': '4e8b202c45ec67cb',
+  'forest@7@tiles400': 'ee145d7816e387c3',
+  'forest@7@off': 'a64c40c9a16136c0',
+  'city@7@tiles95': 'c2ff6f6e654f0594',
+  'city@7@tiles400': 'ee19e88f7d859ad2',
+  'city@7@off': 'cbe760abb2f3c39c',
+  'road-static@11@tiles95': 'a06781866ac79860',
+  'road-static@11@tiles400': 'd9c96beaec40c19b',
+  'road-static@11@off': '806b7ab545de6e62',
+  'road-wild@11@tiles95': 'fb65b2fd1edba515',
   'road-wild@11@tiles400': 'c6d7e11a65ed26b1',
   'road-wild@11@off': 'a613818373b10e52',
-  'forest@11@tiles95': 'c17f3f61effb5fa1',
-  'forest@11@tiles400': '522a02f78b643639',
-  'forest@11@off': '9dd957d63f1499ad',
-  'city@11@tiles95': '4feade3518ecb8a4',
-  'city@11@tiles400': '4dc05b3cc1c95545',
-  'city@11@off': '227b99bb5e94dd14',
+  'forest@11@tiles95': '61810c8958323eb4',
+  'forest@11@tiles400': '694df983ffb040e6',
+  'forest@11@off': 'aa88a28a085b08e2',
+  'city@11@tiles95': '7a3157697551b3c2',
+  'city@11@tiles400': '92f970de44309cbc',
+  'city@11@off': '7c47cd06f8a533b2',
 };
 
 // one object's identity: every field a builder sets that decides where it is and what it is

@@ -49,6 +49,13 @@
     for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
     h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d) >>> 0; h ^= h >>> 12; return (h >>> 0) / 4294967296;
   }
+  // SEEDED-KINDS: scene lists and the walker draws ask for kind 'seeded' instead of a fixed 'dark' or 'hivis'. person() then resolves it from a hash of
+  // (seed, walker id): 'light' with probability PED_LIGHT_SHARE, else 'dark'. Hi-vis is never drawn, only asked for by name (the minigame's hazards, the
+  // test targets); the vest mode still makes every walker a vest. PED_LIGHT_SHARE is a TUNING value, not a measured share of bright clothing.
+  // globalThis.PED_FIXED_KINDS = true restores the old fixed kinds (RC's data part needs its one vest at 95 m).
+  const PED_LIGHT_SHARE = 0.3;
+  const seededOr = (fixed) => (globalThis.PED_FIXED_KINDS === true ? fixed : 'seeded');
+  const pedKind = (it) => (globalThis.PED_FIXED_KINDS === true && it.fixed) || it.kind;
   function kit(ctx) {
     const O = [], R = ctx.rand, Lw = ctx.Lw, edgeR = -Lw / 2, edgeL = 1.5 * Lw;
     const at = (s, off) => { if (ctx.A) { const q = ctx.A.at(s, off); return { x: q.p[0], y: q.p[1], yaw: Math.atan2(q.t[1], q.t[0]) }; } return { x: s, y: off, yaw: 0 }; };
@@ -95,11 +102,12 @@
         for (const [a, b, g] of [[-0.1, 0.4, 1], [0.1, 0.4, -1], [-0.1, -0.4, -1], [0.1, -0.4, 1]]) { const q = L(a, b + g * G); add({ k: 'cyl', x: q[0], y: q[1], r: 0.04, z0: 0, z1: 0.65, mat: 'fur' }); }
         for (const side of [-0.05, 0.05]) { if(B&&up<=.15)continue; const e = L(-0.31, -.82-.2*(1-up) + side); add({ k: 'disc', x: e[0], y: e[1], z: B?.38+1.14*up:1.52, r: B?.0065:.013, nx: -Math.cos(angle), ny: -Math.sin(angle), nz: 0, eyeFalloff:B?8:0, sub: true, mat: 'eyeshine' }); }
       },
-      // a pedestrian: 'dark' clothes | 'hivis' vest with tape | 'light' clothes. The kind is the scene's (or the caller's) request; the mode decides what is built.
+      // a pedestrian: 'dark' clothes | 'hivis' vest with tape | 'light' clothes | 'seeded' (the mode's pool: dark or light, see PED_LIGHT_SHARE). The kind is the scene's (or the caller's) request; the mode decides what is built.
       // o (a walker, drive-anim.js): dir [along, across] the unit direction of travel, gait = how far the legs swing (m), id = a stable key for this walker
       // (the minigame's hazard id, drive-anim's walker id); without one, the kit counts its walkers. The id is what colour and strips hash on, not the position.
       person(s, off, kind, o) {
-        const mode = pedMode(ctx.reflectiveClothing), seed = ctx.seed | 0, pid = o && o.id != null ? String(o.id) : (ctx.pedSalt || '') + (pedN++);
+        const mode = pedMode(ctx.reflectiveClothing), seed = (ctx.foliageSeed ?? ctx.seed) | 0, pid = o && o.id != null ? String(o.id) : (ctx.pedSalt || '') + (pedN++);
+        if (kind === undefined || kind === 'seeded') kind = unitOf(seed, pid, 'kind') < PED_LIGHT_SHARE ? 'light' : 'dark';
         const vest = mode === 'vest' || (mode === 'mix' && kind === 'hivis');       // full vest: the scene's hivis kind in mix, every walker in vest
         kind = vest ? 'hivis' : kind === 'light' ? 'light' : 'dark';
         const shade = (base, salt, n) => PED_PALETTE[base + Math.floor(unitOf(seed, pid, salt) * n)];
@@ -202,7 +210,7 @@
       posts: { from: 25, to: 280, step: 50, edge: 'R', d: 0.9 },
       signs: [{ s: 115, edge: 'R', d: 2.0, color: 'yellow', opts: { w: 0.8, h: 0.8 } }],
       deer: { list: [{ s: 48, edge: 'R', d: 3.2 }, { s: 88, edge: 'L', d: 3.0 }, { s: 130, edge: 'L', d: 5.5 }], rate: 1 },
-      people: { list: [{ s: 70, edge: 'R', d: 1.4, kind: 'dark' }, { s: 40, edge: 'L', d: 1.3, kind: 'hivis' }], rate: 1 },
+      people: { list: [{ s: 70, edge: 'R', d: 1.4, kind: 'seeded', fixed: 'dark' }, { s: 40, edge: 'L', d: 1.3, kind: 'seeded', fixed: 'hivis' }], rate: 1 },
       backdrop: null,
       verge: ['gravel', 1.0, 'leaves'],
       urbanMarks: false,
@@ -214,9 +222,9 @@
       parked: [{ from: 20, to: 160, step: 11, stepRand: 9, edge: 'R', d: 1.3, extra: 0, sShift: 0 }, { from: 30, to: 140, step: 17, stepRand: 10, edge: 'L', d: 1.3, extra: 0.9, sShift: 5 }],
       signs: [{ s: 75, edge: 'R', d: 1.0, color: 'white', opts: { w: 0.6, h: 0.8, z0: 2.0 } }, { s: 135, edge: 'R', d: 1.0, color: 'green', opts: { w: 1.4, h: 0.7, z0: 2.3 } }],
       // the two walkers that stood in the lanes go to the right-hand pavement when the animated view asks (kerbPeople); the still scene keeps them in the lanes
-      people: { list: [{ s: 48, edge: 'R', d: 3.0, kind: 'dark', when: 'kerb' }, { s: 50, edge: 'R', d: 3.0, kind: 'hivis', when: 'kerb' },
-        { s: 48, edge: null, d: 0.3, kind: 'dark', when: 'lane' }, { s: 48.4, edge: null, d: -1.4, kind: 'hivis', when: 'lane' },
-        { s: 46, edge: 'L', d: 1.5, kind: 'light' }, { s: 92, edge: 'R', d: 2.0, kind: 'dark' }], rate: 1 },
+      people: { list: [{ s: 48, edge: 'R', d: 3.0, kind: 'seeded', fixed: 'dark', when: 'kerb' }, { s: 50, edge: 'R', d: 3.0, kind: 'seeded', fixed: 'hivis', when: 'kerb' },
+        { s: 48, edge: null, d: 0.3, kind: 'seeded', fixed: 'dark', when: 'lane' }, { s: 48.4, edge: null, d: -1.4, kind: 'seeded', fixed: 'hivis', when: 'lane' },
+        { s: 46, edge: 'L', d: 1.5, kind: 'light' }, { s: 92, edge: 'R', d: 2.0, kind: 'seeded', fixed: 'dark' }], rate: 1 },
       deer: { list: [{ s: 110, edge: 'L', d: 2.2 }], rate: 1 },
       verge: ['concrete', 3.0, 'concrete'],
       urbanMarks: true,
@@ -271,8 +279,8 @@
   function peopleStage(ctx, k, P, o) {
     if (!o.people) return;
     const Q = P.people, keep = keepRate(Q.rate, ctx.seed, SCENERY_SALT.person), where = ctx.kerbPeople ? 'kerb' : 'lane'; let n = 0;
-    for (const it of Q.list) { if (it.when && it.when !== where) continue; if (emit(k, keep, () => k.person(it.s, placeAt(k, it), it.kind))) n++; }
-    extras(ctx, k, Q.rate, n, SCENERY_SALT.personExtra, (xk, xr) => { const s = 30 + 250 * xr(), edge = xr() < 0.5 ? 'R' : 'L', kind = ['dark', 'hivis', 'light'][Math.floor(xr() * 3)]; xk.person(s, placeAt(xk, { edge, d: 0.6 + 4 * xr() }), kind); });
+    for (const it of Q.list) { if (it.when && it.when !== where) continue; if (emit(k, keep, () => k.person(it.s, placeAt(k, it), pedKind(it)))) n++; }
+    extras(ctx, k, Q.rate, n, SCENERY_SALT.personExtra, (xk, xr) => { const s = 30 + 250 * xr(), edge = xr() < 0.5 ? 'R' : 'L', kind = ['dark', seededOr('hivis'), 'light'][Math.floor(xr() * 3)]; xk.person(s, placeAt(xk, { edge, d: 0.6 + 4 * xr() }), kind); });
   }
   // the wall of a building, windows on the face seen from the road (the old city builder's closure, moved out unchanged)
   function cityWindow({ u, z, face }, seed) {
@@ -332,7 +340,7 @@
         const k = kit(ctx), us = ctx.us;
         for (let s = 20; s < 300; s += 50) { k.post(s, k.edgeR - 0.9); k.post(s + 25, k.edgeL + 0.9); }          // delineators: white right, white left (EU: red-white; plain here)
         if (o.signs) { k.sign(95, k.edgeR - 2.2, 'green', { w: 1.8, h: 1.0 }); k.sign(150, k.edgeL + 2.0, 'yellow', { w: 0.8, h: 0.8 }); k.sign(215, k.edgeR - 2.0, 'white', { w: 0.7, h: 0.9 }); }
-        if (o.people) { k.person(55, k.edgeR - 1.6, 'dark'); k.person(95, k.edgeL + 1.4, 'hivis'); k.person(32, k.edgeL + 1.2, 'light'); }
+        if (o.people) { k.person(55, k.edgeR - 1.6, seededOr('dark')); k.person(95, k.edgeL + 1.4, seededOr('hivis')); k.person(32, k.edgeL + 1.2, 'light'); }
         if (o.animals) { k.deer(70, k.edgeL + 3.5); k.deer(125, k.edgeR - 4); }
         for (let s = 10; s < 300; s += 17) { k.bush(s, k.edgeR - 4.5 - 3 * ctx.rand(), 0.6 + 0.5 * ctx.rand()); k.bush(s + 5, k.edgeL + 4.5 + 3 * ctx.rand(), 0.6 + 0.5 * ctx.rand()); }
         return { objects: k.O, markings: D.laneMarkings(ctx.Lw, { us }), verge: ['gravel', 1.6, 'grass'] };
@@ -400,7 +408,7 @@
     // walkers and deer: where they start, where they head, how fast. Poses come from drive-anim.js (they move from the moment the car is ~110 m away)
     const edge = (side) => (side > 0 ? k.edgeL : k.edgeR);
     if (o.people) for (let i = 0, n = Math.round((0.8 + 1.6 * R()) * Math.min(1.5, dn)); i < n; i++) {
-      const side = R() < 0.5 ? 1 : -1, kind = ['dark', 'dark', 'hivis', 'light'][Math.floor(R() * 4)], s0 = 30 + R() * 250, spd = 0.9 + 0.7 * R();
+      const side = R() < 0.5 ? 1 : -1, kind = ['dark', 'dark', seededOr('hivis'), 'light'][Math.floor(R() * 4)], s0 = 30 + R() * 250, spd = 0.9 + 0.7 * R();
       if (R() < 0.35) actors.push({ id: 'p' + i, kind: 'person', ptype: kind, mode: 'cross', s0, off0: edge(side) + side * (0.6 + 1.4 * R()), ds: 0, doff: -side, spd, len: 1.5 * Lw + 2 * (0.6 + 1.4) + 0.5 });
       else { const dir = R() < 0.5 ? 1 : -1; actors.push({ id: 'p' + i, kind: 'person', ptype: kind, mode: 'along', s0, off0: edge(side) + side * (0.8 + 2.4 * R()), ds: dir, doff: 0, spd, len: 90 }); }
     }
