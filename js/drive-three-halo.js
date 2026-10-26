@@ -39,7 +39,7 @@ export function haloEdgesFor(D, out = new Array(HALO_BINS)) {   // HDX3: the edg
 }
 
 const TVERT = `void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`;
-const THEAD = `uniform vec4 hLamp[${HALO_PER_DRAW}], hDir[${HALO_PER_DRAW}], hTint[${HALO_PER_DRAW}];
+const THEAD = `uniform vec4 hLamp[${HALO_PER_DRAW}], hDir[${HALO_PER_DRAW}], hTint[${HALO_PER_DRAW}], hLat[${HALO_PER_DRAW}], hUp[${HALO_PER_DRAW}];
 uniform vec3 haloEye; uniform vec2 size, haloTab; uniform int nHalo, otherConvention;
 uniform int haloP, haloSub;   // sub-pass haloSub of haloP (see the loop)
 uniform float haloEdges[${HALO_MAX}];   // the upper edge of each bin (HDX7: HALO_MAX slots, the first HALO_BINS in use)
@@ -69,7 +69,10 @@ void main() {
       float sa = lo * pow(qq, float(m * haloP + haloSub)), sb = sa * qq, s = sqrt(sa * sb), ds = sb - sa;
       vec3 d = haloEye + s * ray - lamp; float r2 = dot(d, d); if (r2 <= 0.0) continue;
       float r = sqrt(r2);
-      vec3 local = vec3(dot(d, vec3(dir * ce, se)), dot(d, vec3(-dir.y, dir.x, 0.0)), dot(d, vec3(-se * dir, ce)));
+      // ROLL: a touge source carries its own surface basis (lat = n x fwd, up = n, car frame; flag w = 1). Flag 0 keeps the level-road formulas exactly.
+      vec3 lat3 = vec3(-dir.y, dir.x, 0.0), up3 = vec3(-se * dir, ce);
+      if (hLat[i].w > 0.5) { lat3 = hLat[i].xyz; up3 = hUp[i].xyz; }
+      vec3 local = vec3(dot(d, vec3(dir * ce, se)), dot(d, lat3), dot(d, up3));
       if (local.x <= 0.0) continue;
       float I = Wt * otherIntensity(local);
       if (I <= 0.0) continue;
@@ -133,10 +136,22 @@ export function toCarFrame(traffic, m, A) {
   const e = m.elements, mul = (v) => [e[0] * v[0] + e[3] * v[1] + e[6] * v[2], e[1] * v[0] + e[4] * v[1] + e[7] * v[2], e[2] * v[0] + e[5] * v[1] + e[8] * v[2]];
   const off = !!globalThis.HALO_TILT_OFF;
   return traffic.map((q) => {
-    let b = [q.nx, q.ny, 0];
-    if (!off) { const f = A.frame(q.x, q.y), sf = A.surface(f.s, f.off), p = Math.atan(sf.grade * (q.nx * f.t[0] + q.ny * f.t[1])); b = [q.nx * Math.cos(p), q.ny * Math.cos(p), Math.sin(p)]; }
-    const P = mul([q.x, q.y, q.z]), d = mul(b), n = Math.hypot(d[0], d[1]) || 1;
-    return { ...q, x: P[0], y: P[1], z: P[2], nx: d[0] / n, ny: d[1] / n, nz: off ? 0 : d[2] };
+    let b = [q.nx, q.ny, 0], F = null, L = null, U = null;
+    if (!off) {
+      const f = A.frame(q.x, q.y), sf = A.surface(f.s, f.off), dir = q.nx * f.t[0] + q.ny * f.t[1], p = Math.atan(sf.grade * dir);
+      b = [q.nx * Math.cos(p), q.ny * Math.cos(p), Math.sin(p)];
+      // ROLL: the beam's surface basis. H = heading with its grade, projected onto the road plane: F = unit(H - n (H.n)), up = n, left = n x F.
+      // On zero bank the projection is the identity and F equals b's direction; on a bank, F is the road-tilted forward and carries the roll.
+      if (sf.normal) {
+        const n = sf.normal, H = [q.nx, q.ny, sf.grade * dir], hn = H[0] * n[0] + H[1] * n[1] + H[2] * n[2];
+        const Fv = [H[0] - n[0] * hn, H[1] - n[1] * hn, H[2] - n[2] * hn], fl = Math.hypot(Fv[0], Fv[1], Fv[2]) || 1;
+        F = Fv.map((v) => v / fl); U = n; L = [n[1] * F[2] - n[2] * F[1], n[2] * F[0] - n[0] * F[2], n[0] * F[1] - n[1] * F[0]];
+      }
+    }
+    const P = mul([q.x, q.y, q.z]), d = mul(F || b), n = Math.hypot(d[0], d[1]) || 1;
+    const o = { ...q, x: P[0], y: P[1], z: P[2], nx: d[0] / n, ny: d[1] / n, nz: off ? 0 : d[2] };
+    if (F) { o.lat = mul(L); o.up = mul(U); }
+    return o;
   });
 }
 export function haloPass(renderer, u) {
@@ -150,7 +165,9 @@ export function haloPass(renderer, u) {
   const mesh = new T.Mesh(geo, mats[0]); mesh.frustumCulled = false; scene.add(mesh);
   let rt = null, tab = [0, 0], tabClamp = null; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
   const arr = () => Array.from({ length: HALO_PER_DRAW }, () => new T.Vector4());
-  const hLamp = arr(), hDir = arr(), hTint = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(120); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
+  const hLamp = arr(), hDir = arr(), hTint = arr(), hLat = arr(), hUp = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(120); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
+  // ROLL: the source's surface basis for the beam (w = 1 when present; 0 = the level-road formulas in the shader).
+  const setBasis = (L) => { if (L.lat) { hLat[0].set(L.lat[0], L.lat[1], L.lat[2], 1); hUp[0].set(L.up[0], L.up[1], L.up[2], 0); } else { hLat[0].set(0, 0, 0, 0); hUp[0].set(0, 0, 0, 0); } };
   const ensure = (p, n, divOv) => {
     let [tw, th] = haloTableSize(p.w, p.h, n, divOv);
     // HDX7: the table is HALO_N tiles side by side, so one tile may be at most maxTextureSize / HALO_N cells wide (at 1920 px and divisor 1.4 it is not, at 24 bins).
@@ -225,9 +242,9 @@ export function haloPass(renderer, u) {
       const timing = !!globalThis.SL_HALO_TIMING; if (timing) { renderer.getContext().finish(); } const t0 = timing ? performance.now() : 0;   // test hook: wall time of the table pass, synchronised by a 1-pixel readback
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
       const setPolarU = (mp, q, P, j, pk) => {
-        hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
+        hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
         Object.assign(mp.uniforms, {
-          hLamp: { value: hLamp }, hDir: { value: hDir }, hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
+          hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
           haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
           haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
           sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) },
@@ -245,9 +262,9 @@ export function haloPass(renderer, u) {
           if (polarSet.has(q)) return;   // HDX6/HDX7: a polar lamp is in its own table, not this one
           const P = i < HALO_REFINE && q.L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;   // SL_HALO_SUB: test override (cost comparison)
           for (let j = 0; j < P; j++) {
-            hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
+            hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
             Object.assign(m.uniforms, {
-              hLamp: { value: hLamp }, hDir: { value: hDir }, hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
+              hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
               haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
               haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
               sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) },
