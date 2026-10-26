@@ -8,7 +8,7 @@ void main() { screen = position.xy; gl_Position = vec4(position.xy, 0.0, 1.0); }
 export const ground = `
 precision highp float;
 precision highp int;
-uniform sampler2D beam, materials, marks;
+uniform sampler2D beam, materials;
 uniform vec4 lutInfo;
 uniform vec2 lutSize, size;
 uniform vec3 eye, lamp[2], lampRGB;
@@ -43,7 +43,8 @@ uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js S
 uniform int haloOn; uniform sampler2D haloTex; uniform vec2 haloUV, haloTab;   // haloUV: 1 / pixels of the target this pass draws; haloTab: cells per tile
 uniform float haloE[32];   // the upper edge of each bin (HDX3; HALO_EDGES in drive-three-halo.js). HDX7: 32 slots, the first haloNu in use
 uniform int haloNu; uniform float haloH;   // HDX7: bins in use (4..32) and the knot step ln(240)/haloNu (0.22836 at 24): runtime, so no recompile
-uniform int haloPolarOn; uniform sampler2D haloPolarTex; uniform vec2 haloPolarF, haloPolarSz, haloPolarRange, haloPolarN;   // HDX6: centre as a fraction of the view, view px (see haloPolar below)
+// B10: both polar tables are layers of ONE array texture (layer 0 = nearest lamp's table, layer 1 = the second), one sampler instead of two.
+uniform int haloPolarOn; uniform sampler2DArray haloPolarTex; uniform vec2 haloPolarF, haloPolarSz, haloPolarRange, haloPolarN;   // HDX6: centre as a fraction of the view, view px (see haloPolar below)
 // Cubic B-spline read of one bin tile in 4 bilinear fetches (the linear trick: B-spline weights are all positive, so two taps per axis are exact). It
 // removes the cell-grid stairs plain bilinear leaves on a sharp-edged glow. Tap centres are clamped inside the tile, so no bin bleeds into its neighbour.
 vec3 haloBin(int k, vec2 pc, vec2 f, vec2 tab) {
@@ -79,35 +80,35 @@ vec3 haloScatterScr(float d) {
   return haloCurve(s, haloBin(i0,pc,f,haloTab), haloBin(s,pc,f,haloTab), haloBin(s+1,pc,f,haloTab), haloBin(i3,pc,f,haloTab), dd);   // 4 cumulative reads
 }
 uniform float haloGain;   // HDX7: the look's halo gain (1 = as computed; the multiply is exact at 1)
-uniform int haloPolarOn2; uniform sampler2D haloPolarTex2; uniform vec2 haloPolarF2, haloPolarRange2;   // HDX7: the second polar table (per-lamp: the nearest car's other lamp)
+uniform int haloPolarOn2; uniform vec2 haloPolarF2, haloPolarRange2;   // HDX7: the second polar table (per-lamp: the nearest car's other lamp)
 // HDX6: a lamp's own table, polar about the lamp's projection. Texel (x = bin * nT + angle index, y = log-radius index).
-vec3 haloPolarBin(sampler2D tx, int k, float ia, float ja) {
+vec3 haloPolarBin(int layer, int k, float ia, float ja) {
   float nT = haloPolarN.x, nR = haloPolarN.y, ia0 = floor(ia), ja0 = floor(ja), fa = ia - ia0, fb = ja - ja0;
   float xa = float(k) * nT + mod(ia0, nT), xb = float(k) * nT + mod(ia0 + 1.0, nT);
   float ya = clamp(ja0, 0.0, nR - 1.0), yb = clamp(ja0 + 1.0, 0.0, nR - 1.0);
-  vec3 v00 = texelFetch(tx, ivec2(int(xa), int(ya)), 0).rgb, v10 = texelFetch(tx, ivec2(int(xb), int(ya)), 0).rgb;
-  vec3 v01 = texelFetch(tx, ivec2(int(xa), int(yb)), 0).rgb, v11 = texelFetch(tx, ivec2(int(xb), int(yb)), 0).rgb;
+  vec3 v00 = texelFetch(haloPolarTex, ivec3(int(xa), int(ya), layer), 0).rgb, v10 = texelFetch(haloPolarTex, ivec3(int(xb), int(ya), layer), 0).rgb;
+  vec3 v01 = texelFetch(haloPolarTex, ivec3(int(xa), int(yb), layer), 0).rgb, v11 = texelFetch(haloPolarTex, ivec3(int(xb), int(yb), layer), 0).rgb;
   return mix(mix(v00, v10, fa), mix(v01, v11, fa), fb);
 }
-vec3 haloPolarT(float d, sampler2D tx, vec2 F, vec2 rng) {
+vec3 haloPolarT(float d, int layer, vec2 F, vec2 rng) {
   vec2 q = (gl_FragCoord.xy * haloUV - F) * haloPolarSz;   // view px: the objects pass may render at ss x the view size, haloUV is per pass
   float th = dot(q, q) > 0.0 ? atan(q.y, q.x) : 0.0;
   float ia = fract(th / 6.28318530718) * haloPolarN.x - 0.5;
   float ja = (log(max(length(q), 0.25)) - rng.x) / rng.y - 0.5;
   float dd = min(d, 120.0);
   int s = haloSeg(dd), i0 = max(s-1,0), i3 = min(s+2,haloNu-1);
-  return haloCurve(s, haloPolarBin(tx,i0,ia,ja), haloPolarBin(tx,s,ia,ja), haloPolarBin(tx,s+1,ia,ja), haloPolarBin(tx,i3,ia,ja), dd);
+  return haloCurve(s, haloPolarBin(layer,i0,ia,ja), haloPolarBin(layer,s,ia,ja), haloPolarBin(layer,s+1,ia,ja), haloPolarBin(layer,i3,ia,ja), dd);
 }
 vec3 haloPolar(float d) {
   if(haloOn==0 || haloPolarOn==0 || d<=0.5) return vec3(0.0);
-  return haloPolarT(d, haloPolarTex, haloPolarF, haloPolarRange);
+  return haloPolarT(d, 0, haloPolarF, haloPolarRange);
 }
 // HDX6: the screen table plus, when a polar table is on, the nearest lamp's polar table (the two add; the lamp is in one of them, never both).
 // HDX7: a second polar table adds the same way; the sum is multiplied by the look's gain.
 vec3 haloScatter(float d) {
   vec3 r = haloScatterScr(d);
   if(haloPolarOn!=0) r += haloPolar(d);
-  if(haloPolarOn2!=0 && haloOn!=0 && d>0.5) r += haloPolarT(d, haloPolarTex2, haloPolarF2, haloPolarRange2);
+  if(haloPolarOn2!=0 && haloOn!=0 && d>0.5) r += haloPolarT(d, 1, haloPolarF2, haloPolarRange2);
   return r * haloGain;
 }
 varying vec2 screen;
@@ -202,6 +203,8 @@ vec4 roadFrame(vec2 p) {
     if(dd<best) { best=dd; ans=vec4(z.x+u,dot(e,vec2(-t.y,t.x)),t); }
   } return ans;
 }
+// B14: marks is read only by surface() (ground and ribbon mains), so it is declared here, outside the shared prefix: object, mesh-car and table programs do not link it.
+uniform sampler2D marks;
 vec3 surface(vec3 p,vec3 v,float t,float sinB) {
   vec4 f=roadFrame(p.xy); float s=f.x, off=f.y; vec2 normal=vec2(-f.w,f.z);
   float hw=max(t*tanH/size.x,1e-4), hl=hw/max(sinB,0.003), hh=max(length(v.xy),1e-12);
@@ -283,7 +286,7 @@ const LOOP_ATLAS = `  for(int i=0;i<64;i++) { if(i>=nTraffic) break; vec3 d=p-tr
 `;
 export function withLighting(source, atlas = false) {
   if (!source.includes('float intensity(vec3 d) {') || !source.includes('  for(int i=0;i<2;i++)')) throw Error('P2 shared shading prefix changed');
-  return source.replace('uniform sampler2D beam, materials, marks;\n', `uniform sampler2D beam, materials, marks, otherBeam;
+  return source.replace('uniform sampler2D beam, materials;\n', `uniform sampler2D beam, materials, otherBeam;
 uniform vec4 otherLutInfo;
 uniform vec2 otherLutSize, trafficDir[64];
 uniform vec4 trafficLamp[64];
@@ -310,7 +313,7 @@ ${atlas ? OTHER_ATLAS : OTHER_LEGACY}` + 'float wetLobe')
 // distance, interpolated in log d between edges 0.5 m .. 120 m. Direct mode never sees this text: tableSource() is applied only when
 // the table is on, so the direct shader strings stay byte-identical. CPU twin: scatterTableBins / scatterTableAt in js/drive.js.
 const TABLE_HEAD = `uniform int scatMode;   // 1 = table mode: inScatter reads the table (SD1)
-uniform sampler2D scatBank0, scatBank1, scatBank2;   // bins 0-3, 4-7, 8-11 (RGBA), at the table's resolution
+uniform sampler2DArray scatBanks;   // B10: one 3-layer array, layer 0/1/2 = bins 0-3, 4-7, 8-11 (RGBA), at the table's resolution (was three sampler2D)
 uniform vec2 scatUV;   // 1 / (pixels of the target this pass draws): gl_FragCoord * scatUV is the table texture coordinate
 // SM: the lookup takes its three texels as arguments, so the cycle crossfade can read a second bank set with the same code.
 float tableCBanks(float d, vec4 a, vec4 b, vec4 c) {
@@ -327,19 +330,20 @@ float tableCBanks(float d, vec4 a, vec4 b, vec4 c) {
 }
 float tableC(float d) {
   vec2 uv=gl_FragCoord.xy*scatUV;
-  return tableCBanks(d, texture(scatBank0,uv), texture(scatBank1,uv), texture(scatBank2,uv));
+  return tableCBanks(d, texture(scatBanks,vec3(uv,0.0)), texture(scatBanks,vec3(uv,1.0)), texture(scatBanks,vec3(uv,2.0)));
 }
 `;
-const TABLE_BLEND = `// SM: cycle blend. scatFade 1 mixes the lookup of bank set A (scatBank0..2) and bank set B (scatBankB0..2) by scatFract; 0 reads A alone.
-uniform sampler2D scatBankB0, scatBankB1, scatBankB2;
+const TABLE_BLEND = `// SM: cycle blend. scatFade 1 mixes the lookup of bank set A (scatBanks) and bank set B (scatBanksB) by scatFract; 0 reads A alone. B10: each set is one 3-layer array.
+uniform sampler2DArray scatBanksB;
 uniform float scatFade, scatFract;
 float tableCMix(float d) {
   if(scatFade<0.5) return tableC(d);
   vec2 uv=gl_FragCoord.xy*scatUV;
-  return mix(tableC(d), tableCBanks(d, texture(scatBankB0,uv), texture(scatBankB1,uv), texture(scatBankB2,uv)), scatFract);
+  return mix(tableC(d), tableCBanks(d, texture(scatBanksB,vec3(uv,0.0)), texture(scatBanksB,vec3(uv,1.0)), texture(scatBanksB,vec3(uv,2.0))), scatFract);
 }
 `;
-// TOUGE-AIR: the same lookup without the cycle-blend bank set. The pass objects need it: with scatBankB0..2 they link 18 samplers (limit 16).
+// TOUGE-AIR: the same lookup without the cycle-blend bank set (blend=false). B10: no program needs this any more (with the banks packed the blend set costs one sampler,
+// and the pass blends); kept for the text pin and as the way to leave the set out.
 const TABLE_NOBLEND = `float tableCMix(float d) { return tableC(d); }
 `;
 const TABLE_TAIL = `vec3 inScatterDirect(vec3 dir,float sEnd,float jit);
@@ -385,7 +389,7 @@ void main() {
 `;
 const DIRECT_HEAD = 'vec3 inScatter(vec3 dir,float sEnd,float jit) {';
 // Table mode for a lit shader source: the direct in-scatter becomes the table lookup. Sources without the direct function pass through.
-// blend false (TOUGE-AIR, the pass programs): the second bank set and its mix are left out, so scatBankB0..2, scatFade and scatFract do not exist in the program.
+// blend false: the second bank set and its mix are left out, so scatBanksB, scatFade and scatFract do not exist in the program (B10: nothing passes false now).
 // blend true gives exactly the text this function always gave.
 export function tableSource(source, blend = true) {
   if (!source.includes(DIRECT_HEAD)) return source;
@@ -396,14 +400,15 @@ export function tablePassSource(source) {
   return source.slice(0, source.indexOf('vec4 roadFrame')) + TABLE_MAIN;
 }
 // Separable Gaussian over the table (radius 6 texels), one axis per pass. sig 0 copies.
-export const tableBlurSource = `uniform sampler2D src;
+// B10: src is a 1- or 3-layer array (the banks are layers of one array target); srcLayer picks the layer.
+export const tableBlurSource = `uniform sampler2DArray src;
 uniform vec2 texel, dirTexel;
-uniform float sig;
+uniform float sig, srcLayer;
 void main() {
   vec2 uv=gl_FragCoord.xy*texel;
-  if(sig<=0.0) { gl_FragColor=texture(src,uv); return; }
+  if(sig<=0.0) { gl_FragColor=texture(src,vec3(uv,srcLayer)); return; }
   vec4 acc=vec4(0.0); float wsum=0.0;
-  for(int i=-6;i<=6;i++) { float w=exp(-0.5*float(i*i)/(sig*sig)); acc+=w*texture(src,uv+float(i)*dirTexel*texel); wsum+=w; }
+  for(int i=-6;i<=6;i++) { float w=exp(-0.5*float(i*i)/(sig*sig)); acc+=w*texture(src,vec3(uv+float(i)*dirTexel*texel,srcLayer)); wsum+=w; }
   gl_FragColor=acc/wsum;
 }
 `;

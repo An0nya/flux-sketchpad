@@ -69,6 +69,8 @@ Terms, defined once: a *fragment shader* is the small GPU program run for every 
 - **Interacts**: all `scatter*`, `halo*`, `wet*`, `fov`, `visibility`, `expMode`.
 - **Seam**: option registry `cost` class (free uniform / table rebuild / ground rebuild / scene regenerate): keys are derived from the class instead of hand-listed.
 
+> B10/B14 (2026-10-26): H3 and H12 are closed on the sampler side. The table banks (6 samplers) are two array textures, the polar tables one array, `marks` is out of the object programs; the worst program is 13 of 16 (TOUGE object, lit + table, blend on) and the pass blends the cycle again. Uniform rows are unchanged. See RENDER.md section 4.
+
 ## H12. Two near-limits: flat objects at 15/16 samplers, and uniform rows already hit the 1024 cap once
 - **What (INFERRED + one OBSERVED crash)**: flat objects with table + traffic lighting need 15 of 16 samplers. Uniform rows are estimated at 788-864 of 1024 for the worst programs; commit 5f9d514 records "FRAGMENT shader uniforms exceed MAX_FRAGMENT_UNIFORM_VECTORS (1024)" when the lamp-road table took one row per float. `light[64]`, `reflection[64]`, `lightRGB[64]`, `reflectionRGB[64]`, `lightStreet[64]` are 320 rows by themselves.
 - **Interacts**: any new lit feature (every new array lands in the shared ground text and so in every program family).

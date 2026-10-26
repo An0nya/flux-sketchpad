@@ -30,7 +30,7 @@ const variants=[];for(const extras of [false,true])for(const atlas of (extras?[f
 const tag=v=>`${v.extras?'lit':'plain'}${v.atlas?'+atlas':''}${v.table?'+table':''}`;
 const lighten=(base,v)=>{let s=v.extras?S.withLighting(base,v.atlas):base;if(v.table)s=S.tableSource(s,!v.noBlend);return s};
 const ground=S.ground;const prefix=ground.slice(0,ground.indexOf('vec4 roadFrame'));
-let body=ground.slice(ground.indexOf('vec3 surface('),ground.indexOf('void main()'));
+let body=ground.slice(ground.indexOf('uniform sampler2D marks;'),ground.indexOf('void main()'));
 body=body.replace('vec4 f=roadFrame(p.xy);','vec4 f=roadUV;').replace('n=vec3(0,0,1);','n=normalize(roadNormal);');
 // the real ribbon main, copied from drive-touge-three.js
 const ribbonMain=`void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
@@ -50,10 +50,10 @@ const carBase=lighting+tpl;
 const rows=[];
 for(const v of variants){
   rows.push(['FLAT ground (full-screen)',tag(v),analyse(lighten(S.ground,v))]);
-  rows.push(['TOUGE ribbon',tag(v),analyse(touge.passShader(lighten(ribbon,{...v,noBlend:true})))]);
+  rows.push(['TOUGE ribbon',tag(v),analyse(touge.passShader(lighten(ribbon,v)))]);
   rows.push(['FLAT object (instanced)',tag(v),analyse(lighten(obj.objectFragment,v))]);
-  rows.push(['TOUGE object (instanced)',tag(v),analyse(touge.passShader(lighten(obj.objectFragment,{...v,noBlend:true})))]);
+  rows.push(['TOUGE object (instanced)',tag(v),analyse(touge.passShader(lighten(obj.objectFragment,v)))]);
   rows.push(['FLAT mesh car',tag(v),analyse(lighten(carBase,v))]);
-  rows.push(['TOUGE mesh car',tag(v),analyse(touge.passShader(lighten(carBase,{...v,noBlend:true})))]);
+  rows.push(['TOUGE mesh car',tag(v),analyse(touge.passShader(lighten(carBase,v)))]);
 }
 for(const r of rows)console.log(r[0].padEnd(28),r[1].padEnd(16),'declared',r[2].declared,'textual',r[2].textual,'reachable',r[2].reachable,'not-reachable:',r[2].unusedReach.join(','));

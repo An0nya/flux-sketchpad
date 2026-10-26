@@ -41,7 +41,7 @@ const D16 = { scatter: 16 }, T16 = { scatter: 16, scatterMode: 'table' }, NOFADE
           if (!this.getProgramParameter(prog, this.LINK_STATUS)) window.__linkFail.push(String(this.getProgramInfoLog(prog)).slice(0, 120));
           let raw = ''; for (const s of this.getAttachedShaders(prog) || []) if (this.getShaderParameter(s, this.SHADER_TYPE) === this.FRAGMENT_SHADER) raw = this.getShaderSource(s);
           let n = 0; for (const m of raw.matchAll(/uniform\s+(?:(?:lowp|mediump|highp)\s+)?sampler\w+\s+([^;]+);/g)) n += m[1].split(',').length;
-          window.__progs.push({ n, ribbonTable: /roadNormal/.test(raw) && /scatBank0/.test(raw) });
+          window.__progs.push({ n, ribbonTable: /roadNormal/.test(raw) && /scatBanks\b/.test(raw) });
         } catch (e) {}
       };
     });
@@ -97,7 +97,7 @@ const D16 = { scatter: 16 }, T16 = { scatter: 16, scatterMode: 'table' }, NOFADE
     const pp = await shot(pass, 'pp', { ...T16, scatterCache: 'on', scatterCycle: 8, scatterCycleFade: 'on', trafficHalo: 16 });
     ok('(4) pass + table + cache 8 + blend on + halo (the air presets) renders on the GPU, no link failure', pp.st.touge && !pp.st.fail && pp.st.link === 0, pp);
     const progs = await pass.evaluate(() => window.__progs);
-    ok('(4) every linked program declares <= 16 samplers; the pass ribbon with the table <= 13', progs.every((q) => q.n <= 16) && progs.filter((q) => q.ribbonTable).every((q) => q.n <= 13) && progs.some((q) => q.ribbonTable), { max: Math.max(...progs.map((q) => q.n)), ribbon: progs.filter((q) => q.ribbonTable).map((q) => q.n) });
+    ok('(4) every linked program declares <= 13 samplers (B10; was <= 16); the pass ribbon with the table <= 13', progs.every((q) => q.n <= 13) && progs.filter((q) => q.ribbonTable).every((q) => q.n <= 13) && progs.some((q) => q.ribbonTable), { max: Math.max(...progs.map((q) => q.n)), ribbon: progs.filter((q) => q.ribbonTable).map((q) => q.n) });
     const p1 = await shot(pass, 'p1', {});
     ok('(3) pass off after on equals the first off', p1.h === p0.h && !p1.st.fail, p1); await pass.close();
   } catch (e) { ok('no exception', false, String(e)); }
