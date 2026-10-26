@@ -352,7 +352,10 @@
     const plain = [], byPick = new Map();
     for (const ob of out) { if (!ob.headlamp) continue; const pk = D.trafficPickOf(p, ob.traffic); if (!pk) plain.push(ob); else { if (!byPick.has(pk)) byPick.set(pk, []); byPick.get(pk).push(ob); } }
     D.Headlamp.apply(plain, base);
-    for (const [pk, obs] of byPick) { D.Headlamp.apply(obs, { ...base, lut: pk.lut, conv: pk.conv }); for (const ob of obs) ob.emit = ob.emit.map((v, i) => v * pk.tint[i]); }
+    for (const [pk, obs] of byPick) {
+      if (base.mode === 'high-dip') { D.Headlamp.apply(obs, { ...base, lut: pk.lut, conv: pk.conv, pickLow: true, tint: pk.tint }); continue; }   // HB: the colour tints the low half only; apply does it
+      D.Headlamp.apply(obs, { ...base, lut: pk.lut, conv: pk.conv }); for (const ob of obs) ob.emit = ob.emit.map((v, i) => v * pk.tint[i]);
+    }
   }
   function trafficObjects(src, cars, A, p) {
     const out = [];
@@ -1540,7 +1543,7 @@ void main() {
   // BT: the shuffle pool: the saved LOW beams not ticked out of 'use in traffic' (all by default), sorted by id so the same beam set
   // always gives the same picks. Built-in samples are not in it, so they cannot reshuffle cars when they load late. The GPU renderer
   // never gets a pool (its atlas comes later), so it keeps the built-in beam for every car. null = no pool (built-in only).
-  const SHUFFLE_TIP = 'Each car gets one saved low beam from the library, with its own colour and intensity. Symmetric traffic only.';
+  const SHUFFLE_TIP = 'Each car gets one saved low beam from the library, with its own colour and intensity. Symmetric and high-then-dip traffic.';
   const SHUFFLE_MANY_TIP = 'More than ' + 16 + ' saved beams in traffic: the GPU renderer keeps the built-in beam for every car. Untick some under "use in traffic".';
   const shuffleTip = (o) => { const pool = poolOfBeams(libLoad(), o, false, beamRGB); return V.three && pool && pool.entries.length > RF.BeamAtlas.MAX_BEAMS ? SHUFFLE_MANY_TIP : SHUFFLE_TIP; };
   // a beam with no saved colour is neutral (not our lamp's tint: the owner's rule is that a car's beam sets its colour)

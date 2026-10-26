@@ -313,7 +313,7 @@ export function create(canvas, gl, onModelsReady) {
     set('pitch', p.pitch || 0); set('yaw', p.yaw || 0); u.cornering.value.set(p.cornerLeft || 0,p.cornerRight || 0);
     const traffic = p.trafficBeams ? D.trafficSources(world.objects, p.eye, p, world.A) : []; set('nTraffic', traffic.length);
     // BA5: a symmetric-mode car with a pool pick reads its beam from the atlas. No pool, or any other mode: the single table, as before.
-    const pool = traffic.length ? p.trafficPool : null, atlas = !!(pool && pool.entries.length && traffic.some(q => q.beam));
+    const pool = D.trafficAtlasPool(p, traffic), atlas = !!pool;   // HB: high-dip always packs the atlas (pool + built-in low + built-in high)
     atlasOn = atlas;
     if (atlas) {
       atlasFor(pool);
@@ -329,7 +329,7 @@ export function create(canvas, gl, onModelsReady) {
         if(p.touge){const f=world.A.frame(q.x,q.y),a=world.A.surface(f.s,f.off);u.trafficPitch.value[i]=Math.atan(a.grade*(q.nx*f.t[0]+q.ny*f.t[1]));
         }
         u.trafficLamp.value[i].set(q.x, q.y, q.z, q.w); u.trafficDir.value[i].set(q.nx, q.ny);
-        if (atlas) u.trafficBeamIdx.value[i >> 2].setComponent(i & 3, D.trafficPickIndexOf(p, q.car));
+        if (atlas) u.trafficBeamIdx.value[i >> 2].setComponent(i & 3, q.idx !== undefined ? q.idx : D.trafficPickIndexOf(p, q.car));   // HB: a high-dip source carries its slot
         litCars[i] = q.car;
       });
     }

@@ -264,12 +264,12 @@ export function haloPass(renderer, u) {
       const eye = p.eye || [-2, 0.37, 1.2], traffic = p.touge ? toCarFrame(D.trafficSources(world.objects, eye, p, world.A), u.carFromWorld.value, world.A) :D.trafficSources(world.objects, eye, p, world.A);   // TOUGE-ELEV B1: touge lamps into the car frame the ribbon projects in
       if (!traffic.length) return 0;
       halo.sources = traffic;   // test hook: the sources the table was built from (beam, tint, axis)
-      const pool = p.trafficPool, atlas = !!(pool && pool.entries.length && traffic.some((q) => q.beam));
+      const atlas = !!D.trafficAtlasPool(p, traffic);   // HB: the same test as drive-three.js
       const tanH = Math.tan(p.hfov * Math.PI / 360), sig = D.sigmaOf(p.look || {}), legacy = atlas ? null : D.trafficBeam(p);
       const ranked = traffic.map((L, i) => ({ L, i, d: Math.hypot(L.x - eye[0], L.y - eye[1], L.z - eye[2]) })).sort((a, b) => a.d - b.d || a.i - b.i).slice(0, Math.min(N, HALO_MAXL));
       const used = [];
       for (const { L } of ranked) {
-        const idx = atlas ? D.trafficPickIndexOf(p, L.car) : 0;
+        const idx = atlas ? (L.idx !== undefined ? L.idx : D.trafficPickIndexOf(p, L.car)) : 0;   // HB: a high-dip source carries its atlas slot
         if (atlas && idx < 0) continue;   // a car with no pool pick has no atlas beam: the CPU twin would use the built-in table (not in the atlas)
         const tn = atlas ? u.beamTint.value[idx] : null;
         used.push({ L, idx, tint: [tn ? tn.x : 1, tn ? tn.y : 1, tn ? tn.z : 1] });

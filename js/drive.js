@@ -520,6 +520,8 @@
     const u = Math.max(0, Math.min(1, (distance - at) / 8 + 0.5));
     return { forgetful, at, high: forgetful ? 1 : u * u * (3 - 2 * u) };
   }
+  // HB: the one place a car's high-beam fraction f is asked: eye glare, pass glare, road light and the halo all call this with the lamp-to-eye distance (m).
+  const dipFraction = (seed, carId, dist) => dipState(seed === undefined ? 7 : seed, carId === undefined ? 'still' : carId, dist).high;
   // Auto high beam (AH). Camera-sensor style: what the sensor sees in the frame decides, a hold timer brings the high beam back.
   // Tuning values (not survey data): 400 m / 20 deg for oncoming headlamps, 200 m for preceding tail lamps in our lane or the next,
   // 30 km/h, 2 s hold before returning to high. The sensor and the step are pure, so the node test drives them directly.
@@ -573,11 +575,19 @@
       hvFast(forward, left, dz, o.mode === 'symmetric' && o.lut && o.hasDesign !== false ? o.conv || 'A' : 'A'); const h = HV0, v = HV1;
       if (o.mode === 'manual') return Math.max(0, o.kcd === undefined ? 30 : o.kcd) * 500 * Math.pow(forward / Math.hypot(dx, dy, dz), 8);
       if (o.mode === 'high') return Headlamp.generic(h, v, true);
-      if (o.mode === 'high-dip') {
-        const f = dipState(o.seed === undefined ? 7 : o.seed, ob.traffic === undefined ? 'still' : ob.traffic, Math.hypot(dx, dy, dz)).high;
-        return f * Headlamp.generic(h, v, true) + (1 - f) * Headlamp.generic(h, v, false);
-      }
+      if (o.mode === 'high-dip') { const P = Headlamp.dipParts(ob, o); return P.low + P.high; }
       return o.mode !== 'generic' && o.lut && o.lut.data && o.hasDesign !== false ? lutAt(o.lut, h, v) : Headlamp.generic(h, v, false);
+    },
+    // HB: the two halves of a high-then-dip lamp toward the eye: the car's low beam (its library pick when o.pickLow, else the generic low) times
+    // (1 - f), and the generic high times f, f = dipFraction at the lamp-to-eye distance.
+    dipParts(ob, o) {
+      const eye = o.eye || [-2, 0.37, 1.2], dx = eye[0] - ob.x, dy = eye[1] - ob.y, dz = eye[2] - ob.z, forward = dx * ob.nx + dy * ob.ny, left = -dx * ob.ny + dy * ob.nx;
+      if (!(forward > 0)) return { f: 0, low: 0, high: 0 };
+      const f = dipFraction(o.seed, ob.traffic, Math.hypot(dx, dy, dz));
+      hvFast(forward, left, dz, 'A'); const high = f * Headlamp.generic(HV0, HV1, true);
+      if (!o.pickLow) return { f, low: (1 - f) * Headlamp.generic(HV0, HV1, false), high };
+      hvFast(forward, left, dz, o.conv || 'A');
+      return { f, low: (1 - f) * lutAt(o.lut, HV0, HV1), high };
     },
     apply(objects, o) {
       // Test table availability once per frame, never scan it per lamp.
@@ -586,7 +596,11 @@
         const cd = Headlamp.cd(ob, o), e = o.eye || [-2, 0.37, 1.2], dx = e[0] - ob.x, dy = e[1] - ob.y, dz = e[2] - ob.z;
         const cos = Math.max(1e-6, (dx * ob.nx + dy * ob.ny) / Math.hypot(dx, dy, dz));
         // Renderer applies one cosine to emitter luminance. Cancel it: cd is already toward the eye.
-        const L = cd / (Math.PI * ob.r * ob.r * cos); ob.emit = [L, L, 0.93 * L]; ob.emitPow = 1; ob.eyeCd = cd;
+        let L = cd / (Math.PI * ob.r * ob.r * cos); ob.emit = [L, L, 0.93 * L]; ob.emitPow = 1; ob.eyeCd = cd;
+        if (o.mode === 'high-dip' && o.tint && cd > 0) {   // HB: the car's colour tints its low half only, as the road-light split does
+          const P = Headlamp.dipParts(ob, o);
+          ob.emit = ob.emit.map((v, i) => v * (P.low * o.tint[i] + P.high) / cd);
+        }
       }
       return objects;
     }
@@ -634,9 +648,43 @@
   // the other modes light cars with the generic lamp, so the shuffle has nothing to change there.
   // BA5: the pool index of a car's beam (-1 for built-in). The GPU atlas uses this same index, so CPU and GPU agree on every car.
   function trafficPickIndexOf(p, carId) {
-    const pool = p && p.trafficPool, mode = p && p.src && p.src.traffic && p.src.traffic.onMode;
-    if (!pool || mode !== 'symmetric' || !pool.entries.length) return -1;
+    const mode = p && p.src && p.src.traffic && p.src.traffic.onMode, pool = mode === 'high-dip' ? dipPoolOf(p) : p && p.trafficPool;   // HB: high-dip shuffles its low beams exactly as symmetric does
+    if (!pool || (mode !== 'symmetric' && mode !== 'high-dip') || !pool.entries.length) return -1;
     return weightedPick(p.src.traffic.seed, carId, pool.entries, pool.weights);
+  }
+  // HB: oncoming high beams. In high-dip a car's lamp is its low beam (library pick, else the built-in low) blended with the built-in high by f (dipFraction).
+  // Road light and the halo are linear in the beam and every source carries a weight, so the blend is two sources: the low half at w(1-f) and the high half at w f
+  // (a half with weight 0 is dropped, so a car fully on one beam keeps one source). The two built-in tables are made on the atlas grid (256 cells over 180 degrees,
+  // so the atlas resample is exact) and the CPU reads these same tables, so CPU and GPU see one beam. The atlas holds 16 beams: with more than 14 in the pool,
+  // high-dip drops the shuffle and uses the built-in low (the same on CPU and GPU).
+  const DIP_POOL_MAX = 14, DIP_STEP = 180 / 256;
+  let dipTabs;
+  function dipTables() {
+    if (!dipTabs) { const mk = (high) => lutFrom((h, v) => Headlamp.generic(h, v, high), { win: [-90, 90, -90, 90], step: DIP_STEP }); dipTabs = { low: mk(false), high: mk(true) }; }
+    return dipTabs;
+  }
+  const highDipOn = (p) => !!(p && p.src && p.src.traffic && p.src.traffic.onMode === 'high-dip');
+  const dipPoolOf = (p) => { const pool = p && p.trafficPool; return pool && pool.entries && pool.entries.length && pool.entries.length <= DIP_POOL_MAX ? pool : null; };
+  // The beams the GPU atlas packs for high-dip: the pool, then the built-in low (cars with no pick) and the built-in high. Slot numbers are the atlas indices.
+  let dipAtlasMemo = null;
+  function dipAtlasPool(p) {
+    const pool = dipPoolOf(p), T = dipTables(), n = pool ? pool.entries.length : 0;
+    if (dipAtlasMemo && dipAtlasMemo.src === pool && dipAtlasMemo.pool.entries[n] && dipAtlasMemo.pool.entries[n].lut === T.low) return dipAtlasMemo.pool;
+    const out = { entries: (pool ? pool.entries : []).concat([{ id: 'dip-low', lut: T.low, conv: 'A', tint: [1, 1, 1] }, { id: 'dip-high', lut: T.high, conv: 'A', tint: [1, 1, 1] }]),
+      weights: null, key: JSON.stringify(['dip', pool ? pool.key : null, pool ? pool.weights || null : null]), lowSlot: n, highSlot: n + 1 };
+    dipAtlasMemo = { src: pool, pool: out }; return out;
+  }
+  // The pool the GPU packs into its atlas for this frame, or null for the single table. symmetric: the shuffle pool when some car has a pick (as before); high-dip: always.
+  function trafficAtlasPool(p, traffic) {
+    if (highDipOn(p)) return traffic.length ? dipAtlasPool(p) : null;
+    const pool = traffic.length ? p.trafficPool : null; return pool && pool.entries.length && traffic.some(q => q.beam) ? pool : null;
+  }
+  function dipSplit(q, w, isHead, p, eye) {
+    const pk = trafficPickOf(p, q.car), T = dipTables(), A = dipAtlasPool(p), out = [];
+    const f = isHead ? dipFraction(p.src.traffic.seed, q.car, Math.hypot(q.x - eye[0], q.y - eye[1], q.z - eye[2])) : 0;
+    if (f > 0) out.push(Object.assign({}, q, { w: w * f, beam: { lut: T.high, conv: 'A' }, idx: A.highSlot }));   // the high half: no pick tint (cloned before the low half is written onto q)
+    if (f < 1) out.unshift(Object.assign(q, { w: w * (1 - f), beam: pk ? { lut: pk.lut, conv: pk.conv } : { lut: T.low, conv: 'A' }, idx: pk ? trafficPickIndexOf(p, q.car) : A.lowSlot }, pk ? { tint: pk.tint } : {}));
+    return out;
   }
   function trafficPickOf(p, carId) {
     const i = trafficPickIndexOf(p, carId);
@@ -663,13 +711,15 @@
         const x = ob.x + nx * shift, y = ob.y + ny * shift, rf = p && p.touge && A ? A.frame(x, y) : null;
         return { x, y, z: rf ? 0.68 + A.height(rf.s, rf.off) : 0.68, nx, ny, car: id };
       });
-      cars.push({ d, sources });
+      cars.push({ d, sources, head: heads.length > 0 });
     }
     cars.sort((a, b) => a.d - b.d);
     const R = lim.range, dCut = cars.length > lim.cars ? cars[lim.cars].d : R;
+    const hd = highDipOn(p);
     return cars.slice(0, lim.cars).flatMap(c => {
       const w = (1 - smooth01(TAPER_START * R, R, c.d)) * smooth01(0, TAPER_BAND, dCut - c.d);
-      return w > 0 ? c.sources.map(q => Object.assign(q, { w }, trafficBeamFields(p, q.car))) : [];
+      if (!(w > 0)) return [];
+      return hd ? c.sources.flatMap(q => dipSplit(q, w, c.head, p, eye)) : c.sources.map(q => Object.assign(q, { w }, trafficBeamFields(p, q.car)));
     });
   }
   // Generic static lamps at the existing mounting points: 400 cd on the selected side, 55° outboard.
@@ -1138,5 +1188,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

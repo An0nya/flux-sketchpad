@@ -185,13 +185,18 @@
     for(const ob of obs)if(ob.headlamp){
       const pk=D.trafficPickOf(p,ob.traffic), tint=pk&&pk.tint?pk.tint:[1,1,1];   // BT: this car's own beam and colour, when the shuffle gives it one
       const f=A.frame(ob.x,ob.y),q=A.surface(f.s,f.off),dir=ob.nx*f.t[0]+ob.ny*f.t[1],forward=unit([ob.nx,ob.ny,q.grade*dir]),left=unit(cross(q.normal,forward)),d=eye.map((v,i)=>v-[ob.x,ob.y,ob.z][i]),local=[dot(d,forward),dot(d,left),dot(d,q.normal)];
-      const cosine=Math.max(1e-6,local[0]/Math.hypot(...d));let cd=0;
+      const cosine=Math.max(1e-6,local[0]/Math.hypot(...d));let cd=0,hiCd=0;
       if(local[0]>0 && !blocked(A,eye,[ob.x,ob.y,ob.z])){
         if(tr.onMode==='manual')cd=Math.max(0,tr.onKcd)*500*cosine**8;
         else if(tr.onMode==='symmetric' && hasDesign)cd=pk?D.beamAt(pk.lut,pk.conv,...local):D.beamAt(p.lowLut||p.lut,p.conv||'A',...local);
+        else if(tr.onMode==='high-dip'){   // HB: the pass had no dip at all here (it fell to the generic low); same split as Headlamp.dipParts, in the surface frame
+          const f=D.dipFraction(tr.seed,ob.traffic,Math.hypot(...d));D.hvFast(...local,'A');const [h,v]=D.hv();
+          hiCd=f*D.Headlamp.generic(h,v,true);cd=hiCd+(1-f)*(pk?D.beamAt(pk.lut,pk.conv,...local):D.Headlamp.generic(h,v,false));
+        }
         else{D.hvFast(...local,'A');const [h,v]=D.hv();cd=D.Headlamp.generic(h,v,tr.onMode==='high');}
       }
-      const L=cd/(Math.PI*ob.r*ob.r*cosine);ob.eyeCd=cd;ob.emit=[L*tint[0],L*tint[1],.93*L*tint[2]];ob.emitPow=1;
+      const L=cd/(Math.PI*ob.r*ob.r*cosine),tm=tr.onMode==='high-dip'&&cd>0?tint.map(t=>((cd-hiCd)*t+hiCd)/cd):tint;   // HB: the car's colour tints the low half only
+      ob.eyeCd=cd;ob.emit=[L*tm[0],L*tm[1],.93*L*tm[2]];ob.emitPow=1;
     }
   }
   // Same function as the flat scenes (D.glareSources, opts as there: lights, lampClass, lampKind; every glare source, Brief U). Visibility and cd are decided
