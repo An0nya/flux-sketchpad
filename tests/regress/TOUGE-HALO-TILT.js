@@ -15,7 +15,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const errors = [];
 const crypto = require('crypto');
-const PIN_FLAT = 'fd6166c47fb95091', PIN_EQUAL = 'c6a2fdc3619e9657';   // REVIEW integ 2026-10-26: c93885d2e890d8c2 -> 51727377c14f45d3, cause: B6 shadow normal (proved: the old hash returns with only the B6 line reverted).   // scene region y>=140, 912x373 PNG. PIN_EQUAL was f73730821efb1e75 (base b0a37ea, main 0fed388 still gives it); re-baselined by TOUGE-SKY-VEIL: the sky now takes the halo veil on halo-on touge frames. Cause proven: f73730821efb1e75 reproduces with the sky term switched off.
+// FLAT-PEDS re-pin 2026-10-26 (overnight integration): flat-road pin(s) moved by pedestrian scene content, not by the halo/sky (bisected with --only, alone): clean through wave-2 e51c4bc, moved by T 228686b (drive-anim walkers seeded); identical on main d20fe9d and on Brief J's branch. Pass pins unchanged. Moved: fd6166c47fb95091 -> cad1ecc09b3d711e.
+const PIN_FLAT = 'cad1ecc09b3d711e', PIN_EQUAL = 'c6a2fdc3619e9657';   // REVIEW integ 2026-10-26: c93885d2e890d8c2 -> 51727377c14f45d3, cause: B6 shadow normal (proved: the old hash returns with only the B6 line reverted).   // scene region y>=140, 912x373 PNG. PIN_EQUAL was f73730821efb1e75 (base b0a37ea, main 0fed388 still gives it); re-baselined by TOUGE-SKY-VEIL: the sky now takes the halo veil on halo-on touge frames. Cause proven: f73730821efb1e75 reproduces with the sky term switched off.
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
   const open = async () => {
