@@ -118,6 +118,19 @@ function run(RF, ok) {
   ok('BT1 pass: a same-table pool gives identical eyeCd on each pass headlamp', passSame.length === passBuilt.length && passBuilt.every((o, i) => Math.abs(passSame[i].eyeCd - o.eyeCd) < 1e-9));
   const passHalo = passLamps({ trafficPool: { entries: [{ id: 'h', lut, conv: 'A', tint: D.unitTint(RF.CCT.cctToRGB(3200)) }], weights: null } });
   ok('BT2 pass: a 3200 K pooled beam tints each pass headlamp warm (blue/red emit under 0.3); the built-in is not (over 0.9)', passHalo.length > 0 && passHalo.every(o => o.emit[2] / o.emit[0] < 0.3) && passBuilt.every(o => o.emit[2] / o.emit[0] > 0.9), { halo: passHalo.slice(0, 1).map(o => +(o.emit[2] / o.emit[0]).toFixed(3)) });
+  // 8. B11 flat-road glare tint. Proven cause of the current behaviour: applyTrafficHeadlamps (drive-anim.js) runs Headlamp.apply with the
+  // constant [L,L,.93L] for cars with no pick, and multiplies each picked car's emit by pk.tint afterwards. So the flat road is already tinted per car.
+  // Probe (2026-10-26): 3200 K pick gives blue/red 0.181 = 0.93 x 0.194; no pool gives 0.93. This section pins that behaviour.
+  const flatSrc = A.source('road', 3.5, true, { people: false, animals: false, signs: false, posts: false, veg: false, obstacle: false, rpm: false }, { oncoming: true, preceding: true, seed: 7 });
+  const flatCars = A._.trafficCars(flatSrc, 215, 8);
+  const flatLamps = (extra) => A._.trafficObjects(flatSrc, flatCars, null, Object.assign({ src: flatSrc, lowLut: lut, conv: 'A' }, extra)).filter(o => o.headlamp && o.emit);
+  const flatRB = (o) => o.emit[2] / o.emit[0];
+  const flatBuilt = flatLamps({});
+  const flatWarm = flatLamps({ trafficPool: { entries: [{ id: 'h', lut, conv: 'A', tint: pairTint(3200) }], weights: null } });
+  const flatNeutral = flatLamps({ trafficPool: { entries: [{ id: 'n', lut, conv: 'A', tint: [1, 1, 1] }], weights: null } });
+  ok('BT2 flat road: a 3200 K pooled beam tints each oncoming headlamp warm (blue/red under 0.3); the built-in is not (over 0.9)', flatBuilt.length > 0 && flatWarm.length === flatBuilt.length && flatWarm.every(o => flatRB(o) < 0.3) && flatBuilt.every(o => flatRB(o) > 0.9), { built: flatBuilt.slice(0, 2).map(o => +flatRB(o).toFixed(3)), warm: flatWarm.slice(0, 2).map(o => +flatRB(o).toFixed(3)) });
+  // negative control: a neutral-tint pick on the flat road gives emit identical to the built-in (no pool at all)
+  ok('BT2 flat road: a neutral-tint pick gives emit identical to no pool (byte-equal per lamp)', flatNeutral.length === flatBuilt.length && flatBuilt.every((o, i) => o.emit.every((v, k) => v === flatNeutral[i].emit[k])));
 }
 module.exports = { run };
 if (require.main === module) {

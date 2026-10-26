@@ -12,7 +12,7 @@ export function passShader(source, vertex = false) {
       float depth=i==0 ? texture2D(passShadow0,suv).r : texture2D(passShadow1,suv).r;
       vec2 cell=(floor(suv*vec2(2048,1024))+.5)/vec2(2048,1024);
       vec3 sr=worldFromCar*normalize(vec3(1,-(cell.x*2.0-1.0)*1.2,(cell.y*2.0-1.0)*.6));
-      vec3 pn=normalize(cross(dFdx(p),dFdy(p)));float den=dot(sr,pn), expected=dot(d,pn)/den;
+      float den=dot(sr,n), expected=dot(d,n)/den;   // B6: n is shade()'s parameter; dFdx/dFdy here sat in non-uniform flow (undefined)
       if(abs(den)>.000001 && expected>0.0 && expected/5000.0>depth+0.00003)continue;
     }
     float I=intensity(d)`);
