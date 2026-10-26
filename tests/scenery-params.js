@@ -66,6 +66,9 @@ function same(a, b) {
 function run(RFload, ok) {
   RF_DRIVE = RFload.Drive;
   const D = RF_DRIVE, F = D.generateScenery;
+  // SEEDED-KINDS (Brief S): the legacy builders above hard-code the old fixed kinds ('dark', 'hivis'), so the oracle compares with globalThis.PED_FIXED_KINDS on.
+  // The seeded default is checked in tests/ped-kinds.js. The flag is switched off again after the two oracle checks.
+  globalThis.PED_FIXED_KINDS = true;
   // 1. oracle: both sets, all flag combinations, seeds, kerb and lane, two lane widths, US centre line
   const bad = [];
   let n = 0;
@@ -83,6 +86,7 @@ function run(RFload, ok) {
   const viaBuilder = [];
   for (const name of ['forest', 'city']) { const ctx = { Lw: 3.5, A: null, us: false, seed: 7, kerbPeople: true, rand: D.rng(7) }; const legacy = name === 'forest' ? legacyForest(Object.assign({}, ctx, { rand: D.rng(7) }), { people: true, animals: true, signs: true }) : legacyCity(Object.assign({}, ctx, { rand: D.rng(7) }), { people: true, animals: true, signs: true }); const got = D.scenes[name].build(Object.assign({}, ctx, { rand: D.rng(7) }), { people: true, animals: true, signs: true }); const d = same(legacy, got); if (d) viaBuilder.push(name + ': ' + d.slice(0, 120)); }
   ok('SP2 oracle via the public builder: SCENES.forest.build and SCENES.city.build equal the old builders', viaBuilder.length === 0, viaBuilder.join(' | ') || 'both equal');
+  globalThis.PED_FIXED_KINDS = false;
 
   // 2. rates: each class is compared with the default output, class by class (the rest must come out identical)
   const base = { people: true, animals: true, signs: true }, seed = 7;
