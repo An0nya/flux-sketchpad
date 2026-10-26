@@ -72,10 +72,13 @@ export function create(canvas, gl, onModelsReady) {
   // with jitter seeds 0..7 (tableSeed) and shows the valid ones in rotation. Counters: globalThis.SD_SCATTER.
   // SE2 pacing and swap: with the cache on, a version is filled in horizontal bands (scissor rows) into one SPARE bank over frames, paced by
   // TABLE_BUDGET_MS. When the spare is complete (blur applied) it swaps into its slot. The slot's previous contents stay shown until then
-  // (the previous valid version). A slot never filled shows nothing: scatter term 0 (no stall). A key change restarts the fill at slot 0 and
-  // keeps the old slots shown; a size change drops everything.
-  const TAB_VERSIONS = 8, tabStats = globalThis.SD_SCATTER = { recomputes: 0, skips: 0, valid: 0, cycle: 0, cache: false, shown: 0, fills: 0, pending: 0, wanted: 1, rowsDone: 0, rowsTotal: 0, lastMs: NaN, meanMs: NaN, msPerRow: 0, budgetMs: TABLE_BUDGET_MS, compileMs: NaN, compiles: 0, frames: 0, showingZero: true };
+  // (the previous valid version). A slot never filled shows nothing: scatter term 0 (no stall). A key change restarts the fill at slot 0; the old slots
+  // stay shown until a slot of the new generation finishes (then only the newest generation is shown, see AC below); a size change drops everything.
+  const TAB_VERSIONS = 8, tabStats = globalThis.SD_SCATTER = { recomputes: 0, skips: 0, valid: 0, cycle: 0, cache: false, shown: 0, fills: 0, pending: 0, wanted: 1, rowsDone: 0, rowsTotal: 0, lastMs: NaN, meanMs: NaN, msPerRow: 0, budgetMs: TABLE_BUDGET_MS, compileMs: NaN, compiles: 0, frames: 0, showingZero: true, gen: 0, shownGen: 0, slotGen: [], syncs: 0, dropped: 0, kept: 0 };
   let slots = [], slotValid = [], spare = null, tabTmp = null, tabSize = '', tabKey = null, fillIdx = 0, tabFrame = 0, fill = null, compilePending = false;
+  // GEN (AC): gen = the key generation (+1 per key change); slotGen[i] = the generation slot i was built for; lastDrawn = the bank last written (sync target); staleDrops = fills dropped in a row.
+  let gen = 0, slotGen = [], lastDrawn = null, staleDrops = 0, drawn = 0;
+  const PROBE_EVERY = 8, STALE_DROPS = 2;   // B8: a readback every 8th drawn frame; GEN: after 2 drops in a row the next fill is never dropped (bounded lag under a swivel)
   // SM: the cycle phase in [0, 8) advances with the distance travelled (cyclePhase), once per displayed frame; t and dist are the last frame's.
   const cyc = { phase: 0, t: NaN, dist: NaN };
   const advanceCycle = (dist) => {
@@ -86,11 +89,17 @@ export function create(canvas, gl, onModelsReady) {
     return cyc.phase;
   };
   // SM: the version at slot k, or the nearest valid one (k first, then k +/- 1, ...); -1 when no version is valid.
-  const nearestValid = (k) => {
-    for (let d = 0; d < TAB_VERSIONS; d++) for (const i of [(k + d) % TAB_VERSIONS, (k - d + TAB_VERSIONS) % TAB_VERSIONS]) if (slotValid[i] && slots[i]) return i;
+  const nearestValid = (k, ok) => {
+    for (let d = 0; d < TAB_VERSIONS; d++) for (const i of [(k + d) % TAB_VERSIONS, (k - d + TAB_VERSIONS) % TAB_VERSIONS]) if (ok(i)) return i;
     return -1;
   };
   const probePx = new Uint16Array(4);
+  // GEN: a copy of every uniform value (textures stay shared), so a fill that outlives a key change keeps drawing with the pose it started with.
+  const snapV = (v) => v && v.isTexture ? v : v && v.clone ? v.clone() : ArrayBuffer.isView(v) ? v.slice() : Array.isArray(v) ? v.map(snapV) : v;
+  const snapU = () => { const o = {}; for (const k in u) o[k] = snapV(u[k].value); return o; };
+  const withU = (snap, fn) => { const live = {}; for (const k in snap) if (u[k]) { live[k] = u[k].value; u[k].value = snap[k]; } try { fn(); } finally { for (const k in live) u[k].value = live[k]; } };
+  // B8: wait for the GPU to finish what was drawn (one texel read of the last bank written); only the probe frames pay this.
+  const syncGpu = (bank) => { if (bank) { renderer.readRenderTargetPixels(bank[2], 0, 0, 1, 1, probePx); tabStats.syncs++; } };
   const zeroTex = new T.DataTexture(new Float32Array(4), 1, 1, T.RGBAFormat, T.FloatType); zeroTex.magFilter = zeroTex.minFilter = T.NearestFilter; zeroTex.needsUpdate = true;
   // REVIEW (vanishing objects): object groups copy `u` when they are created ({...uniforms} in drive-three-objects.js / drive-three-models.js), so a key first set()
   // later is missing from them: the cycle-blend samplers then sit on texture unit 0 next to a different texture type and WebGL rejects the whole instanced draw.
@@ -120,11 +129,11 @@ export function create(canvas, gl, onModelsReady) {
   function dropAll() {
     const dispose = (b) => b && b.forEach((t) => t.dispose());
     slots.forEach(dispose); dispose(spare); if (tabTmp) tabTmp.dispose();
-    slots = []; slotValid = []; spare = null; tabTmp = null; tabKey = null; fillIdx = 0; fill = null;
+    slots = []; slotValid = []; slotGen = []; spare = null; tabTmp = null; tabKey = null; fillIdx = 0; fill = null; lastDrawn = null; staleDrops = 0;
   }
   // Rows [y0, y0 + rows) of the three banks for one seed (whole = the full target, no scissor, as before SE2).
   function drawRows(bank, seed, y0, rows, tw, whole) {
-    set('tableSeed', seed);
+    set('tableSeed', seed); lastDrawn = bank;
     for (let b = 0; b < 3; b++) {
       set('tableBank', b); renderer.setRenderTarget(bank[b]);
       if (whole) renderer.setScissorTest(false); else { renderer.setScissorTest(true); renderer.setScissor(0, y0, tw, rows); }
@@ -140,6 +149,15 @@ export function create(canvas, gl, onModelsReady) {
       blurU.src.value = tabTmp.texture; blurU.dirTexel.value.set(0, 1); renderer.setRenderTarget(bank[b]); renderer.render(blurScene, camera);
     }
   }
+  // AC generations (pseudocode; the code is in runTable):
+  //   gen = counter, +1 on every key change; slotGen[i] = the gen slot i was built for; fill = { slot, seed, gen, key, snap (uniform copy), row, ... }
+  //   on key change: gen++, fillIdx = 0;
+  //     if a fill is running and (fill.row >= th/2, or 2 fills were dropped in a row, or SD_GEN_OFF is off) keep it: it finishes under fill.key / fill.gen
+  //       (its bands are drawn with fill.snap, the uniforms of its start frame, so the finished version is one pose, not a mix)
+  //     else drop it. The next fill always starts from the newest key.
+  //   on finish: slots[fill.slot] = bank, slotGen[fill.slot] = fill.gen, fillIdx++ only if fill.gen == gen (a stale finish does not count for the new key)
+  //   show: shownGen = max slotGen over valid slots; shown and blend slots both come from shownGen only (steady pose: all 8 carry gen, so = before)
+  //   B8 timing: GPU wait (1 texel read) only on probe frames = every 8th drawn frame, the last band of a version, a compile, or while msPerRow is unknown; msPerRow updates on those only.
   function runTable(p, extras, dist) {
     const look = p.look, f = look.scatterRes === 'full' ? 1 : look.scatterRes === 'quarter' ? 0.25 : 0.5, tw = Math.max(1, Math.round(p.w * f)), th = Math.max(1, Math.round(p.h * f));
     const sig = look.scatterBlur === 'mid' ? 1.5 : look.scatterBlur === 'strong' ? 3 : 0;
@@ -148,6 +166,7 @@ export function create(canvas, gl, onModelsReady) {
       dropAll(); tabSize = { w: tw, h: th, key: tw + 'x' + th }; tabTmp = new T.WebGLRenderTarget(tw, th, { type: T.HalfFloatType, depthBuffer: false });
     }
     if (tableShading(extras)) compilePending = true;
+    const GEN = !globalThis.SD_GEN_OFF, litKey = tabMesh.material.userData.lit;   // SD_GEN_OFF: test switch, restores main's drop and slot choice
     const compiling = compilePending; compilePending = false;
     const key = tableKey(p, extras, look, tw, th, sig);
     const tblSteps = Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48)), tblBinN = D.binCountsFor(tblSteps, look.scatterNearBias, look.scatterBinCounts, look.scatterQuality);
@@ -157,48 +176,60 @@ export function create(canvas, gl, onModelsReady) {
     set('tableH', th); set('tableSteps', tblSteps); set('tableBias', tblPer ? 1 : 0); set('tableBinN', tblBinN); tabStats.binN = tblBinN.slice(); tabStats.bias = tblPer ? 1 : 0; tabStats.override = !!D.parseBinCounts(look.scatterBinCounts); tabStats.quality = look.scatterQuality || 'steps'; tabStats.size = [tw, th];
     { const fr = fadeRangeOf(look); set('tableFade', fr ? 1 : 0); set('tableFadeS0', fr ? fr[0] : 1); set('tableFadeS1', fr ? fr[1] : 10); }
     const budget = Number.isFinite(globalThis.SD_TABLE_BUDGET_MS) ? globalThis.SD_TABLE_BUDGET_MS : TABLE_BUDGET_MS; tabStats.budgetMs = budget;
-    const t0 = performance.now();
+    let t0 = performance.now(), probe = false;
     let bank = null, rows = 0, finished = false;
     if (!cache) {
       // Cache off: the single version is rendered whole every frame, as before SE2.
       tabKey = key; if (!slots[0]) slots[0] = newBank();
-      bank = slots[0]; drawRows(bank, 0, 0, th, tw, true); blurBank(bank, tw, th, sig);
-      slotValid[0] = true; fillIdx = 1; rows = th; tabStats.recomputes++;
+      bank = slots[0]; probe = compiling || drawn++ % PROBE_EVERY === 0 || !(tabStats.msPerRow > 0); if (probe) { syncGpu(lastDrawn); t0 = performance.now(); }
+      drawRows(bank, 0, 0, th, tw, true); blurBank(bank, tw, th, sig);
+      slotValid[0] = true; slotGen[0] = gen; fillIdx = 1; rows = th; tabStats.recomputes++;
     } else {
-      if (!tabKey || key !== tabKey) { tabKey = key; fillIdx = 0; fill = null; }
-      if (fillIdx < wanted) {
+      if (!tabKey || key !== tabKey) {
+        tabKey = key; gen++; fillIdx = 0;
+        // a fill past half its rows (or the third in a row, so a steady swivel still finishes one) finishes with its own pose and generation; otherwise it is dropped
+        if (fill && GEN && (fill.row >= th / 2 || staleDrops >= STALE_DROPS) && fill.lit === litKey) tabStats.kept++;
+        else { if (fill) { staleDrops++; tabStats.dropped++; } fill = null; }
+      }
+      if (fillIdx < wanted || fill) {
         if (!spare) spare = newBank();
-        if (!fill) fill = { row: 0, ms: 0, seed: fillIdx };
+        if (!fill) fill = { row: 0, ms: 0, seed: fillIdx, slot: fillIdx, gen, key, lit: litKey, sig, snap: snapU() };
         bank = spare;
         rows = bandRows(budget, tabStats.msPerRow, th - fill.row);
-        drawRows(bank, fill.seed, fill.row, rows, tw, false);
+        finished = fill.row + rows >= th;
+        probe = drawn++ % PROBE_EVERY === 0 || compiling || finished || !(tabStats.msPerRow > 0);
+        if (probe) { syncGpu(lastDrawn); t0 = performance.now(); }
+        if (fill.key !== key) withU(fill.snap, () => drawRows(bank, fill.seed, fill.row, rows, tw, false)); else drawRows(bank, fill.seed, fill.row, rows, tw, false);
         fill.row += rows;
-        if (fill.row >= th) { blurBank(bank, tw, th, sig); finished = true; }
+        if (finished) blurBank(bank, tw, th, fill.sig);
       } else tabStats.skips++;
     }
-    // Sync: read one texel of the last bank written, so the timer covers the GPU work that was submitted.
+    // B8: sync (one texel read) only on probe frames, so the timer covers the GPU work; the other frames skip the CPU-GPU wait and cost msPerRow * rows.
     let ms = NaN;
-    if (rows > 0) { renderer.readRenderTargetPixels(bank[2], 0, 0, 1, 1, probePx); ms = performance.now() - t0; }
+    if (rows > 0 && probe) { syncGpu(bank); ms = performance.now() - t0; }
     if (compiling && rows > 0) { tabStats.compileMs = ms; tabStats.compiles++; }
-    else if (rows > 0 && !finished) tabStats.msPerRow = smoothMsPerRow(tabStats.msPerRow, ms, rows);
-    if (cache && fill) fill.ms += ms;
-    if (!cache && rows > 0) tabStats.lastMs = ms;
+    else if (probe && rows > 0 && !finished) tabStats.msPerRow = smoothMsPerRow(tabStats.msPerRow, ms, rows);
+    if (cache && fill) fill.ms += probe ? ms : rows * tabStats.msPerRow;
+    if (!cache && rows > 0 && probe) tabStats.lastMs = ms;
     if (cache && finished) {
-      // the finished spare swaps into its slot; the slot's old bank becomes the next spare
-      const verMs = fill.ms, old = slots[fillIdx];
-      slots[fillIdx] = spare; spare = old || null; slotValid[fillIdx] = true; fillIdx++; fill = null;
+      // the finished spare swaps into its slot (the slot it was started for); the slot's old bank becomes the next spare
+      const verMs = fill.ms, old = slots[fill.slot];
+      slots[fill.slot] = spare; spare = old || null; slotValid[fill.slot] = true; slotGen[fill.slot] = fill.gen; if (fill.gen === gen) fillIdx++; fill = null; staleDrops = 0;
       tabStats.recomputes++; tabStats.fills++; tabStats.lastMs = verMs;
       tabStats.meanMs = tabStats.fills === 1 ? verMs : tabStats.meanMs + (verMs - tabStats.meanMs) / tabStats.fills;
     } else if (!cache) tabStats.fills = tabStats.recomputes;
     // Show: no valid slot yet = zero scatter term. Cycle off: the valid slots in rotation per frame (as before SM), or slot 0.
     // SM cycle 8: the version at the distance phase (nearest valid), and with cycle blend on the next version too, mixed by the phase's fraction.
-    const valid = []; for (let i = 0; i < wanted; i++) if (slotValid[i] && slots[i]) valid.push(i);
+    // GEN: only the newest generation that has a finished slot is shown (never a mix of poses); GEN off = every valid slot, as on main.
+    let shownGen = -1; for (let i = 0; i < wanted; i++) if (slotValid[i] && slots[i] && slotGen[i] > shownGen) shownGen = slotGen[i];
+    const okSlot = (i) => !!(slotValid[i] && slots[i] && (!GEN || slotGen[i] === shownGen));
+    const valid = []; for (let i = 0; i < wanted; i++) if (okSlot(i)) valid.push(i);
     let shownIndex = -1, blendIndex = -1, fract = 0;
     if (cycle === 1) { cyc.t = cyc.dist = NaN; shownIndex = valid.length ? valid[tabFrame % valid.length] : -1; }
     else {
       const ph = advanceCycle(dist), i0 = Math.floor(ph) % TAB_VERSIONS; fract = ph - Math.floor(ph);
-      shownIndex = nearestValid(i0);
-      if (look.scatterCycleFade === 'on' && !p.touge && valid.length >= 2) { const j = nearestValid((i0 + 1) % TAB_VERSIONS); if (j >= 0 && j !== shownIndex) blendIndex = j; }
+      shownIndex = nearestValid(i0, okSlot);
+      if (look.scatterCycleFade === 'on' && !p.touge && valid.length >= 2) { const j = nearestValid((i0 + 1) % TAB_VERSIONS, okSlot); if (j >= 0 && j !== shownIndex) blendIndex = j; }
     }
     tabFrame++;
     const shown = shownIndex < 0 ? null : slots[shownIndex], blend = blendIndex < 0 ? null : slots[blendIndex];
@@ -207,7 +238,7 @@ export function create(canvas, gl, onModelsReady) {
     set('scatFade', blend ? 1 : 0); set('scatFract', fract);
     tabStats.frames++;
     const doneN = cache ? fillIdx : 1;
-    Object.assign(tabStats, { showingZero: shownIndex < 0, shown: shownIndex, blend: blendIndex, phase: cycle === 1 ? NaN : cyc.phase, fract: blend ? fract : NaN, cache, cycle: cycle === 1 ? 0 : cycle, wanted, valid: doneN, pending: Math.max(0, wanted - doneN),
+    Object.assign(tabStats, { gen, shownGen, slotGen: slotGen.slice(), showingZero: shownIndex < 0, shown: shownIndex, blend: blendIndex, phase: cycle === 1 ? NaN : cyc.phase, fract: blend ? fract : NaN, cache, cycle: cycle === 1 ? 0 : cycle, wanted, valid: doneN, pending: Math.max(0, wanted - doneN),
       rowsDone: fill ? fill.row : (cache ? 0 : th), rowsTotal: th, status: cache ? tableStatus(fillIdx, wanted) : null,
       fraction: fillFraction(fillIdx, wanted, fill ? fill.row : 0, th), badge: tableBadge(cache, fillIdx, wanted, tabStats.lastMs) + (cycle === 1 ? '' : ' · phase ' + cyc.phase.toFixed(2) + (blend ? ' · blend ' + fract.toFixed(2) : '')) });
   }
