@@ -124,3 +124,4 @@ Shots (overnight-shots/SR/, all from the GPU view, 846 x 476):
 - Sky shot and a straight-road car at 250 m: not made.
 - The range's effect on the image (is 250 m haze visible): an observation from the shots only; not judged by Anya.
 - Cell counts at 400 falling below full at the crest pose: observation, not explained.
+- Owner 2026-10-27: minimum raised to 50 m (follow-up commit).

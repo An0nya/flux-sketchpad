@@ -372,7 +372,7 @@
       note: 'Log scale slider, 1e-4 to 100. In fast mode a lamp stops being drawn where its best case in-scatter per metre of ray (sigma x the largest phase value x the beam\'s peak candela / r^2 x exp(-sigma r)) is below this. Higher = a smaller drawn region, a bigger change to the picture. The starting value is a first guess from shots (reports/SC.md), for the owner to set by eye.',
     },
     {
-      id: 'scatterRange', kind: 'profile', type: 'number', values: { min: 10, max: 400, step: 5 },
+      id: 'scatterRange', kind: 'profile', type: 'number', values: { min: 50, max: 400, step: 5 },
       default: 120, label: 'scatter range (m)',
       control: '[data-anim="scatter-range"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',

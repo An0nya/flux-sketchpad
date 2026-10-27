@@ -886,8 +886,8 @@
   // weight = b_k − a_k. Measured (scratch, SC1): log beats s² spacing on the beam's peaked integrand, and the jitter-mean is unbiased to ~6 % at 8 steps,
   // but ONE jitter value scatters ±35 to 95 % per pixel at 8 steps (16 steps: ±15 to 30 %). So 8 steps is a noisy, cheap setting, not a converged one.
   const SCAT = { S_MAX: 120, gFwd: 0.7, gBack: -0.4, wFwd: 0.7, rMin: 0.3 };   // tunables, one table (rMin: m, the lamp's own size; the point model is not valid inside it)
-  // SR (look.scatterRange, m): the far limit of every scatter integral and lookup. Absent or invalid = SCAT.S_MAX (120), so old scenes trace the same. Clamped to 10..400.
-  const SCAT_RANGE = { min: 10, max: 400 };
+  // SR (look.scatterRange, m): the far limit of every scatter integral and lookup. Absent or invalid = SCAT.S_MAX (120), so old scenes trace the same. Clamped to 50..400.
+  const SCAT_RANGE = { min: 50, max: 400 };
   function scatRangeOf(look) { const r = +(look && look.scatterRange); return r > 0 ? Math.min(SCAT_RANGE.max, Math.max(SCAT_RANGE.min, r)) : SCAT.S_MAX; }
   const hgPhase = (g, c) => (1 - g * g) / (4 * Math.PI * Math.pow(1 + g * g - 2 * g * c, 1.5));
   function scatterPhase(c) { return SCAT.wFwd * hgPhase(SCAT.gFwd, c) + (1 - SCAT.wFwd) * hgPhase(SCAT.gBack, c); }

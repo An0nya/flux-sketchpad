@@ -1682,7 +1682,7 @@ void main() {
     ce.addEventListener('change', () => setDV(ui, 'scatterCullEps', Math.pow(10, +ce.value)));
     (ui.haloAdvBody || bar).append(ce); V.cullEpsEl = ce;
     // SR scatter range: linear slider, 10 to 400 m, in the advanced halo group. The table and every in-scatter integral read it; nothing to rebuild by hand.
-    const rg = E('input', { type: 'range', min: 10, max: 400, step: 5, 'data-anim': 'scatter-range', 'aria-label': 'Scatter range (m)', title: 'How far the air glow reaches, in metres: the in-scatter sums, the traffic halo table and the sky. 120 is the old fixed value. Above 120, air past 120 m carries light (oncoming beams in the haze at 250 m).' });
+    const rg = E('input', { type: 'range', min: 50, max: 400, step: 5, 'data-anim': 'scatter-range', 'aria-label': 'Scatter range (m)', title: 'How far the air glow reaches, in metres: the in-scatter sums, the traffic halo table and the sky. 120 is the old fixed value. Above 120, air past 120 m carries light (oncoming beams in the haze at 250 m).' });
     rg.addEventListener('change', () => setDV(ui, 'scatterRange', +rg.value));
     (ui.haloAdvBody || bar).append(rg); V.rangeEl = rg;
     btn('reset-flashes', 'Start the count again (each driver counts once above 1 lx at their eye)', () => { V.flash = flashState(); V.flashLab.textContent = 'oncoming drivers above 1 lx: 0'; }, 'reset count');
@@ -1893,7 +1893,7 @@ void main() {
     V.bar.querySelector('[data-anim="traffic-density"]').value = o.trafficDensity === undefined ? 1 : o.trafficDensity;
     V.scatGainEl.value = Math.log2(Math.min(4, Math.max(0.25, +o.scatterGain || 1)));
     V.cullEpsEl.value = Math.log10(Math.min(100, Math.max(1e-4, +o.scatterCullEps || 0.05))); V.cullEpsEl.hidden = o.scatterCull !== 'fast' || o.visibility == null;
-    V.rangeEl.value = String(Math.min(400, Math.max(10, +o.scatterRange || 120))); V.rangeEl.hidden = o.visibility == null;
+    V.rangeEl.value = String(Math.min(400, Math.max(50, +o.scatterRange || 120))); V.rangeEl.hidden = o.visibility == null;
     V.bar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));
     V.bar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
     V.bar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));

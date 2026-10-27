@@ -7,10 +7,10 @@ const { load, ROOT } = require('./load.js');
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 (async () => {
   const RF = load(); const D = RF.Drive;
-  // 1. scatRangeOf: absent, 120 and junk are 120; 300 is 300; the range is clamped to 10..400
+  // 1. scatRangeOf: absent, 120 and junk are 120; 300 is 300; the range is clamped to 50..400
   const R = (v) => D.scatRangeOf({ scatterRange: v });
   ok('SR range: absent, invalid or 120 read as 120 (the old S_MAX)', D.scatRangeOf({}) === 120 && D.scatRangeOf(undefined) === 120 && R('x') === 120 && R(120) === 120 && R('120') === 120 && D.SCAT.S_MAX === 120);
-  ok('SR range: 300 stays 300, 1000 clamps to 400, 2 clamps to 10', R(300) === 300 && R(1000) === 400 && R(2) === 10, [R(300), R(1000), R(2)]);
+  ok('SR range: 300 stays 300, 1000 clamps to 400, 2 clamps to 50', R(300) === 300 && R(1000) === 400 && R(2) === 50, [R(300), R(1000), R(2)]);
   // 2. the 12-bin table: the default look and an explicit 120 give the same bins, byte for byte
   const lamps = [[0, -0.7, 0.65], [0, 0.7, 0.65]], lut = D.lutFrom((h, v) => D.Headlamp.generic(h, v, false));
   const base = { eye: D.eyeFor(), lamps, lut, conv: 'A', lampRGB: [1, 1, 1] };
