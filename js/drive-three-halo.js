@@ -20,15 +20,19 @@ export const HALO_MAXL = 16, HALO_PER_DRAW = 1, HALO_BIN_STEPS = 6, HALO_MIN_W =
 export const AUTO_NEAR_M = 8, AUTO_FAR_M = 12;   // SP: haloPolar auto: no lamp-centred table inside 8 m, the full share beyond 12 m, smoothstep between
 export const HALO_POL_TH = 512, HALO_POL_R = 64, HALO_POL_MIN_PX = 0.25, HALO_POL_MIN_X = 1, HALO_POL_MAX = 4;   // min radius px; min x m ahead; max |NDC| of the centre
 // One lamp per draw, 6 steps: a shader loop of 6 (it was 3 lamps x 6 = 18; Safari is suspected to stall compiling long loops). More draws, same pixels.
-// HDX3: 24 log-uniform bins from 0.5 to 120 m (edge k = 0.5 * 240^((k+1)/24)); the first entry is the origin, the last is D.SCAT.S_MAX.
+// HDX3: 24 log-uniform bins from 0.5 to 120 m (edge k = 0.5 * 240^((k+1)/24)); the first entry is the origin, the last is the range.
+// SR: the range is look.scatterRange (D.scatRangeOf, default 120 = D.SCAT.S_MAX): edge k = 0.5 * (2R)^((k+1)/n), last edge R, knot step ln(2R)/n.
 // The fixed edges replace the adaptive edges (HDX2: adaptive bin 0 = [0.5, 0.45 D] was the near-field overshoot). The shader's lookup assumes this log-uniform spacing.
 // HDX7: the bin count is a runtime setting (HALO_N, 4..32). The shaders size their arrays to HALO_MAX and read the count from a uniform (haloNu), so a change
 // needs no recompile. ?halobins=N sets the start value; an out-of-range value clamps and HALO_REQ keeps what was asked, so the UI can show the clamp.
 export const HALO_MIN = 4;
-export let HALO_N = 24, HALO_REQ = 24, HALO_EDGES = [], HALO_BINS = 0;
-export function haloEdgesOf(n) { const e = [0, ...Array.from({ length: n }, (_, k) => 0.5 * Math.pow(240, (k + 1) / n))]; e[n] = 120; return e; }
-export function haloStepOf(n) { return n === 24 ? 0.22836 : Math.log(240) / n; }   // the knot step in ln d: 0.22836 at 24, as the shader always had it
+export let HALO_N = 24, HALO_REQ = 24, HALO_EDGES = [], HALO_BINS = 0, HALO_RANGE = 120;   // HALO_RANGE: SR, the far edge in m (120 = as before)
+export function haloEdgesOf(n, R = HALO_RANGE) { const e = [0, ...Array.from({ length: n }, (_, k) => 0.5 * Math.pow(2 * R, (k + 1) / n))]; e[n] = R; return e; }
+export function haloStepOf(n, R = HALO_RANGE) { return n === 24 && R === 120 ? 0.22836 : Math.log(2 * R) / n; }   // the knot step in ln d: 0.22836 at 24 and 120 m, as the shader always had it
 export function setHaloBins(req) { const r = +req || 24, n = Math.min(HALO_MAX, Math.max(HALO_MIN, Math.round(r))); HALO_REQ = r; HALO_N = n; HALO_EDGES = haloEdgesOf(n); HALO_BINS = n; return n; }
+// SR: the far edge the table and its culling use this frame. Test control (SL_SR_GPU_CONTROL) replaces the look's value on the GPU side only, see scatRangeGpu.
+export function setHaloRange(R) { HALO_RANGE = R; HALO_EDGES = haloEdgesOf(HALO_N, R); }
+export function scatRangeGpu(look) { return globalThis.SL_SR_GPU_CONTROL || D.scatRangeOf(look); }
 setHaloBins(new URLSearchParams(globalThis.location ? location.search : '').get('halobins') ?? 24);
 const HALO_URL_N = HALO_N;   // HDX7: the bin count from the page URL (the default when the look sets none)
 // The upper edge of each bin for a nearest lamp at distance D. The cumulative glow along a ray rises steeply up to the lamp's own distance and is flat after it;
@@ -246,7 +250,7 @@ export function haloPass(renderer, u) {
   // rt: the bin table (what probe() reads). cumRt: its prefix sums across tiles (what the lookup reads). Both are sized alike.
   let rt = null, cumRt = null, tab = [0, 0], tabClamp = null; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
   const arr = () => Array.from({ length: HALO_PER_DRAW }, () => new T.Vector4());
-  const hLamp = arr(), hDir = arr(), hTint = arr(), hLat = arr(), hUp = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(120); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
+  const hLamp = arr(), hDir = arr(), hTint = arr(), hLat = arr(), hUp = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(HALO_RANGE); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
   // ROLL: the source's surface basis for the beam (w = 1 when present; 0 = the level-road formulas in the shader).
   const setBasis = (L) => { if (L.lat) { hLat[0].set(L.lat[0], L.lat[1], L.lat[2], 1); hUp[0].set(L.up[0], L.up[1], L.up[2], 0); } else { hLat[0].set(0, 0, 0, 0); hUp[0].set(0, 0, 0, 0); } };
   const ensure = (p, n, divOv) => {
@@ -315,6 +319,7 @@ export function haloPass(renderer, u) {
       // HDX7: the look's halo settings. Bins: a count (clamped to 4..32; HALO_REQ keeps the ask). Divisor: 0 = the lamp-count rule. Gain: 1 = as computed.
       const look = p.look || {}, wantN = look.haloBins != null ? +look.haloBins : HALO_URL_N;
       if (wantN !== HALO_REQ) setHaloBins(wantN);
+      const rangeG = scatRangeGpu(look); if (rangeG !== HALO_RANGE) setHaloRange(rangeG);   // SR: the table's far edge (look.scatterRange)
       u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1;
       const eye = p.eye || [-2, 0.37, 1.2], traffic = p.touge ? toCarFrame(D.trafficSources(world.objects, eye, p, world.A), u.carFromWorld.value, world.A) :D.trafficSources(world.objects, eye, p, world.A);   // TOUGE-ELEV B1: touge lamps into the car frame the ribbon projects in
       if (!traffic.length) return 0;

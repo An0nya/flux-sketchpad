@@ -886,13 +886,16 @@
   // weight = b_k − a_k. Measured (scratch, SC1): log beats s² spacing on the beam's peaked integrand, and the jitter-mean is unbiased to ~6 % at 8 steps,
   // but ONE jitter value scatters ±35 to 95 % per pixel at 8 steps (16 steps: ±15 to 30 %). So 8 steps is a noisy, cheap setting, not a converged one.
   const SCAT = { S_MAX: 120, gFwd: 0.7, gBack: -0.4, wFwd: 0.7, rMin: 0.3 };   // tunables, one table (rMin: m, the lamp's own size; the point model is not valid inside it)
+  // SR (look.scatterRange, m): the far limit of every scatter integral and lookup. Absent or invalid = SCAT.S_MAX (120), so old scenes trace the same. Clamped to 10..400.
+  const SCAT_RANGE = { min: 10, max: 400 };
+  function scatRangeOf(look) { const r = +(look && look.scatterRange); return r > 0 ? Math.min(SCAT_RANGE.max, Math.max(SCAT_RANGE.min, r)) : SCAT.S_MAX; }
   const hgPhase = (g, c) => (1 - g * g) / (4 * Math.PI * Math.pow(1 + g * g - 2 * g * c, 1.5));
   function scatterPhase(c) { return SCAT.wFwd * hgPhase(SCAT.gFwd, c) + (1 - SCAT.wFwd) * hgPhase(SCAT.gBack, c); }
   // per-pixel jitter in [0, 1): a hash of the integer pixel coordinates only (no time term), so frames are repeatable and banding is broken up
   function scatterJitter(x, y) { let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1); h = Math.imul(h ^ (h >>> 15), 0x85ebca6b); h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
   // Returns [r, g, b] in cd/m² (the caller weights by the sample's k). LUT zero outside its window, so lamp-behind rays get nothing.
   function inScatter(o, dir, sEnd, jit, steps) {
-    const out = [0, 0, 0], sig = sigmaOf(o.look || {}), N = steps | 0, s1 = Math.min(sEnd, SCAT.S_MAX);
+    const out = [0, 0, 0], sig = sigmaOf(o.look || {}), N = steps | 0, s1 = Math.min(sEnd, scatRangeOf(o.look));
     if (!(sig > 0) || !(N > 0) || !(s1 > 0)) return out;
     const eye = o.eye, lamps = o.lamps || [], lc = o.lampRGB || [1, 1, 1], dx = dir[0], dy = dir[1], dz = dir[2];
     const s0 = Math.min(1, s1 / 4), q = Math.pow(s1 / s0, 1 / N);
@@ -924,7 +927,7 @@
   function trafficHalo(ray, sEnd, sources, N, p, jit) {
     const out = [0, 0, 0], n = N | 0, sig = sigmaOf((p && p.look) || {}), eye = (p && p.eye) || [-2, 0.37, 1.2];
     if (!(sig > 0) || !(n > 0) || !(sEnd > 0) || !sources || !sources.length) return out;
-    const rx = ray[0], ry = ray[1], rz = ray[2], cap = Math.min(sEnd, SCAT.S_MAX), J = jit == null ? 0.5 : jit;
+    const rx = ray[0], ry = ray[1], rz = ray[2], cap = Math.min(sEnd, scatRangeOf(p && p.look)), J = jit == null ? 0.5 : jit;
     const near = sources.map((L, i) => ({ L, i, d: Math.hypot(L.x - eye[0], L.y - eye[1], L.z - eye[2]) })).sort((a, b) => a.d - b.d || a.i - b.i).slice(0, n);
     const beam = p && p.src && near.some(q => !q.L.beam) ? trafficBeam(p) : null;
     for (const { L } of near) {
@@ -949,7 +952,7 @@
   // from 0.5 m to S_MAX; segment 0 is [0, 0.5 m] (linear), the rest log-spaced. Unlike inScatter (which starts at s0 = min(1, S/4)), the
   // table integrates from 0, so near-eye scatter is included. The per-bin sample count is round(steps / K), at least 1.
   const TABLE = { K: 12, near: 0.5 };
-  const tableEdge = (k) => TABLE.near * Math.pow(SCAT.S_MAX / TABLE.near, k / (TABLE.K - 1));   // k = 0..K-1; edge K-1 = S_MAX
+  const tableEdge = (k, S = SCAT.S_MAX) => TABLE.near * Math.pow(S / TABLE.near, k / (TABLE.K - 1));   // k = 0..K-1; edge K-1 = S (the range; SCAT.S_MAX unless look.scatterRange)
   // SE3 near-eye fade (look.scatterNearFade, default 'on' in table mode): the integrand is weighted by smoothstep(1 m, 10 m, s).
   // Classic script, so the constants are copies of SCAT_FADE_S0 / SCAT_FADE_S1 in js/table-pace.js (the shader reads that file).
   // SF2 fade range (look.scatterNearFadeRange): copies of FADE_RANGES in js/table-pace.js. Saved scatterNearFade: on = medium, off = none.
@@ -1036,7 +1039,7 @@
   // The counts the table pass uses (CPU twin and GPU). Precedence: valid debug text > quality preset > near sampling / global steps.
   function binCountsFor(steps, bias, s, quality) { return parseBinCounts(s) || qualityCounts(quality) || tableBinSteps(steps, bias); }
   function scatterTableBins(o, dir, jit, steps) {
-    const lk = o.look || {}, sig = sigmaOf(lk), counts = binCountsFor(steps, lk.scatterNearBias, lk.scatterBinCounts, lk.scatterQuality), bins = new Float64Array(TABLE.K);
+    const lk = o.look || {}, sig = sigmaOf(lk), counts = binCountsFor(steps, lk.scatterNearBias, lk.scatterBinCounts, lk.scatterQuality), bins = new Float64Array(TABLE.K), S = scatRangeOf(lk);
     if (!(sig > 0)) return bins;
     const fr = nearFadeRangeOf(o.look || {});
     const eye = o.eye, lamps = o.lamps || [], dx = dir[0], dy = dir[1], dz = dir[2];
@@ -1053,7 +1056,7 @@
       return Number.isFinite(f) ? f : 0;
     };
     for (let k = 0; k < TABLE.K; k++) {
-      const hi = tableEdge(k), lo = k === 0 ? 0 : tableEdge(k - 1), nk = counts[k];
+      const hi = tableEdge(k, S), lo = k === 0 ? 0 : tableEdge(k - 1, S), nk = counts[k];
       let acc = 0;
       for (let m = 0; m < nk; m++) {
         if (k === 0) { const ds = hi / nk, s = (m + jit) * ds; acc += integrand(s) * ds; }
@@ -1065,11 +1068,11 @@
   }
   // Cumulative value at distance d: linear from 0 to C_0 at the first edge, then linear in log d between edges; clamped beyond S_MAX.
   // gain (SF2, look.scatterGain via scatterGainOf) multiplies the lookup only; default 1.
-  function scatterTableAt(bins, d, gain = 1) {
+  function scatterTableAt(bins, d, gain = 1, S = SCAT.S_MAX) {
     if (!(d > 0)) return 0;
     let C = 0, prevE = 0, prevC = 0;
     for (let k = 0; k < TABLE.K; k++) {
-      C += bins[k]; const e = tableEdge(k);
+      C += bins[k]; const e = tableEdge(k, S);
       if (d <= e) return gain * (k === 0 ? C * d / e : prevC + (C - prevC) * Math.log(d / prevE) / Math.log(e / prevE));
       prevE = e; prevC = C;
     }
@@ -1188,5 +1191,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { scatRangeOf, SCAT_RANGE, glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

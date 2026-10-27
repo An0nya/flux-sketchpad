@@ -75,7 +75,7 @@ vec3 haloCurve(int s, vec3 K0, vec3 K1, vec3 K2, vec3 K3, float dd) {
 vec3 haloScatterScr(float d) {
   if(haloOn==0 || d<=0.5) return vec3(0.0);
   vec2 p=gl_FragCoord.xy*haloUV*haloTab-0.5, pc=floor(p), f=p-pc;
-  float dd=min(d,120.0);
+  float dd=min(d,scatSMax);
   int s=haloSeg(dd), i0=max(s-1,0), i3=min(s+2,haloNu-1);
   return haloCurve(s, haloBin(i0,pc,f,haloTab), haloBin(s,pc,f,haloTab), haloBin(s+1,pc,f,haloTab), haloBin(i3,pc,f,haloTab), dd);   // 4 cumulative reads
 }
@@ -104,7 +104,7 @@ vec3 haloPolarT(float d, int layer, vec2 F, vec2 rng) {
     if(haloBand.y < 3.14) ia = clamp(ia, 0.0, haloPolarN.x - 1.0);
   }
   float ja = (log(max(length(q), 0.25)) - rng.x) / rng.y - 0.5;
-  float dd = min(d, 120.0);
+  float dd = min(d, scatSMax);
   int s = haloSeg(dd), i0 = max(s-1,0), i3 = min(s+2,haloNu-1);
   return bw * haloCurve(s, haloPolarBin(layer,i0,ia,ja), haloPolarBin(layer,s,ia,ja), haloPolarBin(layer,s+1,ia,ja), haloPolarBin(layer,i3,ia,ja), dd);
 }
@@ -330,7 +330,7 @@ float tableCBanks(float d, vec4 a, vec4 b, vec4 c) {
   float C=0.0, prevC=0.0, prevE=0.0;
   for(int k=0;k<12;k++) {
     float bin=k<4 ? a[k] : (k<8 ? b[k-4] : c[k-8]);
-    float e=0.5*pow(240.0,float(k)/11.0);
+    float e=0.5*pow(2.0*scatSMax,float(k)/11.0);
     C+=bin;
     if(d<=e) return k==0 ? C*d/e : mix(prevC,C,log(d/prevE)/log(e/prevE));
     prevC=C; prevE=e;
@@ -385,7 +385,7 @@ void main() {
   for(int j=0;j<4;j++) {
     int k=tableBank*4+j;
     int nk=tableBias==0 ? n : tableBinN[k];
-    float hi=0.5*pow(240.0,float(k)/11.0), lo=k==0 ? 0.0 : 0.5*pow(240.0,float(k-1)/11.0);
+    float hi=0.5*pow(2.0*scatSMax,float(k)/11.0), lo=k==0 ? 0.0 : 0.5*pow(2.0*scatSMax,float(k-1)/11.0);
     float acc=0.0;
     for(int m=0;m<64;m++) { if(m>=nk) break;   // NE4: constant bound 64 (was 32); the per-slice cap, the parser clamp and the presets all stop at 64
       if(k==0) { float ds=hi/float(nk), s=(float(m)+jit)*ds; acc+=tableIntegrand(ray,s)*ds; }

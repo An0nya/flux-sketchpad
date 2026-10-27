@@ -372,6 +372,16 @@
       note: 'Log scale slider, 1e-4 to 100. In fast mode a lamp stops being drawn where its best case in-scatter per metre of ray (sigma x the largest phase value x the beam\'s peak candela / r^2 x exp(-sigma r)) is below this. Higher = a smaller drawn region, a bigger change to the picture. The starting value is a first guess from shots (reports/SC.md), for the owner to set by eye.',
     },
     {
+      id: 'scatterRange', kind: 'profile', type: 'number', values: { min: 10, max: 400, step: 5 },
+      default: 120, label: 'scatter range (m)',
+      control: '[data-anim="scatter-range"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'per-frame-gpu',
+      owner: ['js/drive.js', 'js/drive-anim.js', 'js/drive-three-halo.js', 'js/drive-three-shaders.js', 'js/spec-ui.js'],
+      requires: [need('air')],
+      tests: ['node:scatter-range', 'SR-scatter-range'],
+      note: 'Far limit, in metres, of every air-scatter integral and table lookup: the in-scatter sums (CPU drive.js inScatter, trafficHalo, the 12-bin table), the traffic halo table (its last edge and log step follow the range; the slice count stays haloBins), the flat and touge sky, and the shader lookups (a uniform, so the slider never recompiles). 120 is the old fixed value and is byte-identical to it. Above 120 the air past 120 m now carries light: a car 250 m out on a straight shows its beam in the haze. Costs table-pass time with the distance (see reports/SR.md).'
+    },
+    {
       id: 'scatterMode', kind: 'profile', type: 'enum', values: ['direct', 'table'],
       default: 'direct', label: 'air beam method',
       control: '[data-dv="scatterMode"]', where: 'air-advanced', query: null,

@@ -3,7 +3,7 @@ import * as T from '../vendor/three/three.module.min.js';
 import { vertex, ground, withLighting, tableSource, tablePassSource, tableBlurSource } from './drive-three-shaders.js';
 import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
-import { haloPass, haloLookup, HALO_EDGES } from './drive-three-halo.js';
+import { haloPass, haloLookup, HALO_EDGES, scatRangeGpu } from './drive-three-halo.js';
 import { createLampCone } from './drive-three-lampcone.js';
 import { LAMP_DIST, kindOfLamp } from './lamp-dist.js';   // LAMP-DIST: the shared lamp distribution (also registers RF.LampDist for the CPU renderer)
 import { TABLE_BUDGET_MS, bandRows, smoothMsPerRow, tableStatus, fillFraction, tableBadge, fadeRangeName, fadeRangeOf, scatterGainOf, cyclePhase } from './table-pace.js';
@@ -283,7 +283,7 @@ export function create(canvas, gl, onModelsReady) {
     p.lamps.forEach((l, i) => u.lamp.value[i].fromArray(l));
     u.lampRGB.value.fromArray(p.lampRGB || [1, 1, 1]);
     set('convention', p.conv === 'B' ? 1 : p.conv === 'S' ? 2 : 0); set('tanH', Math.tan(p.hfov * Math.PI / 360));
-    set('lane', p.lane); set('sigma', D.sigmaOf(look)); set('scatterSteps', D.sigmaOf(look) > 0 && look.scatter > 0 ? Math.round(look.scatter) : 0); set('scatGain', scatterGainOf(look)); set('scatMode', D.sigmaOf(look) > 0 && look.scatter > 0 && look.scatterMode === 'table' && !p.airHold ? 1 : 0); set('scatGFwd', D.SCAT.gFwd); set('scatGBack', D.SCAT.gBack); set('scatWFwd', D.SCAT.wFwd); set('scatRMin', D.SCAT.rMin); set('scatSMax', D.SCAT.S_MAX); set('ambient', look.ambient || 0); set('wetness', D.wetnessOf(look)); set('sheen', D.wetnessOf(look) > 0 && look.wetSheen ? 1 : 0); set('wetModel', look.wetModel === 'ggx' ? 1 : 0);
+    set('lane', p.lane); set('sigma', D.sigmaOf(look)); set('scatterSteps', D.sigmaOf(look) > 0 && look.scatter > 0 ? Math.round(look.scatter) : 0); set('scatGain', scatterGainOf(look)); set('scatMode', D.sigmaOf(look) > 0 && look.scatter > 0 && look.scatterMode === 'table' && !p.airHold ? 1 : 0); set('scatGFwd', D.SCAT.gFwd); set('scatGBack', D.SCAT.gBack); set('scatWFwd', D.SCAT.wFwd); set('scatRMin', D.SCAT.rMin); set('scatSMax', scatRangeGpu(look)); set('ambient', look.ambient || 0); set('wetness', D.wetnessOf(look)); set('sheen', D.wetnessOf(look) > 0 && look.wetSheen ? 1 : 0); set('wetModel', look.wetModel === 'ggx' ? 1 : 0);
     set('distance', dist); set('grain', look.grain && (p.src.tiles || (D.wetnessOf(look) > 0 && look.wetSheen)) ? 0.4 * (D.wetnessOf(look) > 0 ? 0.5 : 1) : 0);
     const vg = p.src.verge; set('vergeWidth', vg[1] || 1.5); u.verge.value.set(D.MAT_KEYS.indexOf(vg[0]), D.MAT_KEYS.indexOf(vg[2] || vg[0]));
     const materials = D.materials(look), width = D.MAT_KEYS.length;
@@ -362,7 +362,7 @@ export function create(canvas, gl, onModelsReady) {
       const t = readDepthMetres(objectTarget);
       return { W, H, rgba: col, t };   // t is the .x channel of each pixel group: object distance in metres (depth * 5000)
     },
-    haloState() { return { drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length }; },
+    haloState() { return { drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length, edges: halo.edges.slice() }; },   // SR: edges = this frame's bin upper edges (test hook)
     haloTqPoll() { return halo.tqPoll(); }, crestTqPoll() { return pass.crestTqPoll(renderer); },   // test hook: GPU ms of the halo table draws (set globalThis.SL_HALO_TQ first)
     crestProbe(pts) { return pass.crestProbe(renderer, pts); },   // E2 test hook: the height map's z at world xy points
     crestState() { return { occ: halo.occ, ...pass.crestStats() }; },   // E2 test hook: the height map's bounds and render counts; occ = the table used it this frame
