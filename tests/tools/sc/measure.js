@@ -36,8 +36,18 @@ const median = (a) => { const s = a.slice().sort((x, y) => x - y); return s.leng
       const [mode, eps] = m.split(':'); await setOpts({ haloBins: bins, scatterCull: mode, ...(eps ? { scatterCullEps: +eps } : {}) });
       await page.evaluate(async (dd) => { globalThis.SL_HALO_TQ = true; RF.UI.dvAnim.dist = dd; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1500)); RF.DriveAnim._.V.three.haloTqPoll(); }, d);
       const r = await page.evaluate(async () => { const T = RF.DriveAnim._.V.three, ms = []; for (let i = 0; i < 40; i++) { RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 90)); ms.push(...T.haloTqPoll()); } await new Promise((r) => setTimeout(r, 400)); ms.push(...T.haloTqPoll()); const st = T.haloState(); return { ms, lamps: st.lamps.map((l) => l.cull), passes: st.passes, tab: st.tab, drawn: st.drawn }; });
+      // whole 3D render call (every pass incl. the lookups), one GPU timer query around V.three.render: the halo's own query is skipped while this one is open
+      const whole = await page.evaluate(async () => {
+        const V = RF.DriveAnim._.V, T = V.three, g = V.canvas.getContext('webgl2'), x = g.getExtension('EXT_disjoint_timer_query_webgl2'); if (!x) return [];
+        globalThis.SL_HALO_TQ = false; const pend = [], orig = T.render, ms = [];
+        T.render = function (...a) { const q = g.createQuery(); g.beginQuery(x.TIME_ELAPSED_EXT, q); try { return orig.apply(this, a); } finally { g.endQuery(x.TIME_ELAPSED_EXT); pend.push(q); } };
+        const poll = () => { const keep = [], dis = g.getParameter(x.GPU_DISJOINT_EXT); for (const q of pend) { if (g.getQueryParameter(q, g.QUERY_RESULT_AVAILABLE)) { if (!dis) ms.push(g.getQueryParameter(q, g.QUERY_RESULT) / 1e6); g.deleteQuery(q); } else keep.push(q); } pend.length = 0; pend.push(...keep); };
+        for (let i = 0; i < 40; i++) { RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 90)); poll(); }
+        await new Promise((r) => setTimeout(r, 400)); poll(); T.render = orig; globalThis.SL_HALO_TQ = true; return ms;
+      });
+      const wwarm = whole.slice(Math.min(8, Math.floor(whole.length / 3)));
       const warm = r.ms.slice(Math.min(8, Math.floor(r.ms.length / 3))), cells = r.lamps.reduce((a, l) => a + (l ? l.cells : 0), 0), full = r.lamps.reduce((a, l) => a + (l ? l.full : 0), 0);
-      const row = { bins, pose: name, mode: m, n: warm.length, msMedian: median(warm), msMin: warm.length ? Math.min(...warm) : null, msMax: warm.length ? Math.max(...warm) : null, passes: r.passes, tab: r.tab, cells: mode === 'off' ? null : cells, full: mode === 'off' ? null : full, lamps: r.lamps.map((l) => l && { k0: l.k0, k1: l.k1, rect: l.rect, cells: l.cells, radius: l.radius, table: l.table }) };
+      const row = { bins, pose: name, mode: m, n: warm.length, wholeMsMedian: median(wwarm), wholeN: wwarm.length, msMedian: median(warm), msMin: warm.length ? Math.min(...warm) : null, msMax: warm.length ? Math.max(...warm) : null, passes: r.passes, tab: r.tab, cells: mode === 'off' ? null : cells, full: mode === 'off' ? null : full, lamps: r.lamps.map((l) => l && { k0: l.k0, k1: l.k1, rect: l.rect, cells: l.cells, radius: l.radius, table: l.table }) };
       console.log(JSON.stringify(row)); fs.appendFileSync(out, JSON.stringify(row) + '\n');
       if (SHOTS) {
         fs.mkdirSync(SHOTS, { recursive: true });

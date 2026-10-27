@@ -36,7 +36,7 @@ const SKY_STEP_MAX = 12;                  // pinned: main 25.0, branch 8.8 (medi
     return page;
   };
   const setBase = (page, extra) => page.evaluate((o) => { const V = RF.DriveAnim._.V; for (const [k, v] of Object.entries(o)) V.setOwn(k, v); },
-    Object.assign({ trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, samples: '1' }, extra));
+    Object.assign({ trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, samples: '1', haloPolar: 'off' }, extra));   // SP: haloPolar off pinned explicitly (the default is auto since SP); the pins hold with off
   const shot = async (page, dist, halo) => {
     await page.evaluate(async ([d, h]) => { RF.DriveAnim._.V.setOwn('trafficHalo', h); RF.UI.dvAnim.dist = d; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1200)); }, [dist, halo]);
     return page.screenshot({ clip: { x: 0, y: 140, width: 912, height: 373 } });

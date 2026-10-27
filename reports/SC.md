@@ -104,3 +104,73 @@ Table = the cumulative table the lookup reads (half floats decoded). Frame = 8-b
 - Visibility other than 300 m, bins other than 24 and 32, divisors other than the auto rule, AFS, high-dip traffic (HB-high-dip-gpu is run by --only, see below), more than 2 lamps in the table.
 - The conservative bound was proven by brute force on random lamps (1.32 million lit samples, 0 outside), not by an algebraic proof. The control (rect shrunk by 2 cells) fails on 308,899 samples, so the check can see a wrong cull.
 - The saving on the tight poses was not checked on the owner's machine; headless numbers only.
+
+---
+
+# SP: lamp-centred table auto mode
+
+## SP: what was built
+`haloPolar` gains **auto** (new default). New option `haloPolarBand` (64x16 | 128x32 | 512x64, default 128x32) so the owner can judge the table size by eye (brief: "owner judges").
+- Distance rule: the merged table (one table between the nearest car's two lamps) while the nearest lamp is more than 12 m from the eye; share = smoothstep(8, 12, d) in between; no table inside 8 m. `AUTO_NEAR_M` and `AUTO_FAR_M` in drive-three-halo.js.
+- Band, not disc: the table covers only the angles about the beam's top edge (derivation below), at the chosen size. Texel angle = centre - half width + (x + 0.5)/nT x 2 half width. The screen table carries every other angle.
+- No double counting: the lamps of the band table are drawn in BOTH tables. The polar table holds the lamp's whole integral over its band; the lookup weights it with `share x (1 - smoothstep(hw - fade, hw, |angle - centre|))` and returns 0 outside the band. The screen table is drawn with a new 'split' shader variant that scales each cell by `1 - share x (the same edge weight at the cell centre's angle about the table centre)`. The two weights add to 1, so the lamp is counted once. The split variant also **skips the 24-step march** for cells where the screen share is under 1e-4 (inside the band): measured, this took the auto 128x32 cost at 20 m from +1.04 ms to +0.67 ms over off.
+- New shader variants ('band' for the polar pass, 'split' for the screen pass) are built on first use (the E2 pattern), so off / merged / perlamp compile the same table text as before. The lookup (drive-three-shaders.js haloPolarT) gained one branch behind `haloBandOn` and a multiply by 1.0 for the old modes, plus one uniform line; drive-three.js declares the two uniforms.
+- Polar targets are now sized per mode (512x64 for off / merged / perlamp, the band size for auto); a size change rebuilds them.
+- SP.3 (lookup fetches), OBSERVED by reading the code: the polar lookup already reads the prefix-summed table: `haloCurve` takes 4 knots and each knot is 4 `texelFetch` = 16 fetches per fragment per table, not 96 (the F2.3.1 running totals are in; B10/REVIEW-C did it). Nothing to change; outside the band the lookup now returns before any fetch.
+
+### The band: what I chose (derived per frame, not a constant)
+- For each lamp the beam's top edge = per sampled H column, the highest LUT row at 5% of the peak or more (`beamExtent.top`, 12 columns). Those directions go through the beam's convention (A, B or S), the lamp's own basis (tilt and roll included), out to 5, 15, 40 and 100 m, are projected to the screen, and their angles about the table centre are covered by the smallest arc. Padded by 0.2 rad (11.5 deg) each side; **at least 45 deg each side (90 deg total, the owner's estimate)**; over 150 deg each side it becomes the whole circle. Edge fade 0.35 rad (20 deg).
+- OBSERVED values for the placed oncoming car (centre angle in screen degrees, y up, atan2 convention; half width): 40 m: -102 deg, 75.7 deg (a 128 deg arc, so 151 deg total); 20 m: -153 deg, 45 deg (arc 37, floored at 90 deg total); 14 m: -164 deg, 45; 12 m: -166 deg, 45; 10 m: -168 deg, 45; 8 m: -169 deg, 45. So close in it sits at about 165-170 deg below the horizontal to the left and is the 90 deg floor; at 40 m it opens to 151 deg. The owner's "roughly 120-180 deg about the lamp's projection" matches where the centre sits (about 150-170 deg) at 14-20 m.
+- INFERRED: the floor decides the width at close range. The measured arc (7-37 deg) is the spread of the sampled top-edge directions of one beam, which is narrow; the owner's 90 deg is wider on purpose (the edge fade needs room). Nothing here tests whether 90 deg is the right width; she judges from the shots.
+
+## SP measurements (OBSERVED)
+Same machine, canvas, counting and caveats as the SC measurements (Apple M4 via ANGLE Metal, 846x476, 24 bins, 2 lamps, exact culling on). Table-pass GPU ms (screen + prefix + polar), median of 36 frames; the whole 3D render call GPU ms in brackets (one timer query around V.three.render, so it includes every lookup).
+| mode | 40 m | 20 m | 12 m | 10 m | 8 m | 5 m |
+|---|---|---|---|---|---|---|
+| off | 4.65 (8.58) | 3.92 (7.69) | 3.48 (7.02) | 3.28 (7.06) | 3.02 (6.86) | 2.38 (6.08) |
+| merged | 6.54 (11.22) | 5.77 (9.92) | 5.06 (9.53) | 4.83 (9.29) | 4.62 (9.10) | 4.07 (8.79) |
+| perlamp | 6.93 (11.90) | 6.03 (11.10) | 5.45 (10.49) | 5.22 (10.28) | 4.98 (10.22) | 4.69 (9.68) |
+| auto512 | 10.45 (14.36) | 9.11 (12.31) | 8.19 (11.78) | 7.94 (11.38) | 7.43 (10.97) | 2.40 (5.84) |
+| auto128 | 5.22 (8.82) | 4.59 (8.21) | 4.12 (7.63) | 4.11 (7.56) | 3.78 (7.62) | 2.44 (5.99) |
+| auto64 | 4.59 (8.46) | 4.03 (7.90) | 3.69 (7.38) | 3.65 (7.23) | 3.37 (7.01) | 2.40 (5.92) |
+
+Draw passes per frame (d40..d5): off 8,8,8,8,8,8; merged 8,8,8,8,8,8; perlamp 8,8,8,8,8,8; auto512 16,16,16,16,16,8; auto128 16,16,16,16,16,8; auto64 16,16,16,16,16,8
+- OBSERVED (differences from the table, off as the base): auto 128x32 costs +0.57 to +0.83 ms (12-25%) at 40-8 m and nothing at 5 m (no table, byte-identical frame; 2.44 vs 2.38 ms is noise). Merged (the whole circle at 512x64, the old mode) costs +1.6 to +1.9 ms, per-lamp +1.9 to +2.3 ms. Auto 64x16 costs -0.1 to +0.4 ms. Auto 512x64 costs +4.4 to +5.8 ms: the same table as merged, but the lamps are also drawn in the screen table.
+- OBSERVED: whole-render GPU ms follows the table ms (auto 128x32 at 20 m: 8.21 vs off 7.69), so the changed lookup costs no measurable frame time beyond the table. Not measured: whole-render ms at other resolutions or on a phone.
+- OBSERVED: merged is cheaper than per-lamp here (5.77 vs 6.03 ms at 20 m, the owner's statement holds, by a small margin); "usable on a phone" is not tested. The unavoidable cost of the band is that the lamps are drawn twice (16 draws, not 8); the 'split' early-out recovers part of it. Drawing the screen share only outside the band (an SC rectangle for the screen draw) is not done.
+
+## SP: band sizes tried (shots in overnight-shots/SC/, 20 m, SP_crop20.png = the five variants magnified 3x, SP_size_*.png = the full frames)
+- 512x64 (the whole-circle table's size, band only): clean top edge.
+- 128x32: visibly the same edge; a slightly blocky left-lamp core. Mean frame step vs 512x64: 0.120 levels (a few pixels near the lamp differ by up to 159).
+- 64x16: the top edge is still sharp but the left lamp core shows a bright rectangle (the coarse radial rows near the lamp). Mean step vs 512x64: 0.486, max 163.
+- auto 128x32 vs the whole-circle merged frame: mean step 0.258, max 221 (a few pixels). The merged whole-circle table shows radial spokes above the beam (aliasing; the owner saw it); auto does not, because outside the band the screen table carries the lamp.
+- Frame difference auto vs off (SP_diff_off_auto128.png, red = auto darker, blue = auto brighter, x6): confined to the beams' upper edges and a small patch by the lamps. The edge is sharper than the screen table's 4-pixel cells can draw it; that is the table's purpose. A dark sliver between the two beams, just above the beam edge, is the sharper edge, not a seam: I checked it is outside the band's weight (the same pixels equal off).
+- Not judged: which size to ship. I set 128x32 as the default only because it is the middle option.
+
+## SP: gates and pins
+- `node tests/regress/SP-polar-auto.js`: 12 checks, all pass: a band table at 40, 20, 14 m (share 1, 128x32, both lamps in it); in the fade at 10 m; at 5 m no table and the frame is **byte-identical to haloPolar off**; fade sweep 13 -> 7 m in 0.25 m steps: the frame-to-frame step of auto (max 1.68 levels) equals off's (1.68) (WEAK evidence: the polar table changes little of the frame, so this cannot see a small pop; the share itself is continuous by construction: smoothstep, values printed in the test); all three sizes build; off / merged / perlamp keep their whole-circle tables and report no band.
+- **off / merged / perlamp unchanged (OBSERVED, A/B):** I extracted the SC commit 0ccd43f (`git archive`, no checkout) and ran the same script on both trees: frames, bin table bytes and cum table bytes at 5 distances (40, 20, 12, 10, 5 m) x 3 modes = 15 configurations, **0 differ**.
+- Pins that moved, with causes. **Frame pins: none moved.** The shader-text pins moved because the lookup text changed on purpose:
+  - tests/beam-atlas.js (4 pins) 192c9a834eaf7fc5 -> 2177a7e74aabf37f, f70552a64e52fb08 -> 23c1a51e463ee6c6, 70491566a8ab3a88 -> 56448753b8be54b3, 788980098647e046 -> 83f7105c60878209; tests/regress/TOUGE-AIR.js (3 text pins) 282a872bc9a49a3a -> 2b3417497e504fc2, e9f5d7be75a10e76 -> dcaa54d3b4c40589, c82b6cb939f2683d -> 00cbfbad6582de64. Cause: the band branch in haloPolarT and one uniform line in drive-three-shaders.js. Proof (OBSERVED): I reversed exactly that edit in memory (string inverse) and the same hashing code gives all seven OLD pins back; with the edit it gives the new ones. The script is in the session scratchpad, the result is written next to each pin.
+- Tests that relied on the default now get `auto`: BJ2-halo-table-pin, TOUGE-HALO-TILT (two setOpts), E2-crest-occlusion, BJ1-shadow-cache and TOUGE-SKY-VEIL now set `haloPolar: 'off'` explicitly (STANDARDS 2.2e). Their frame and table pins are unchanged and hold with off (the default-auto runs moved them: 5 + 2 + 2 + 1 + 2 failures; the off runs pass with the old hashes). The orchestrator's --full may find more tests that ride on the default; the ones in the touched gate and the other halo / pass tests I ran by hand are done. This is a pin of the old behaviour, not a re-baseline.
+- Default change: haloPolar 'off' -> 'auto' with a defaultHistory entry and DEFAULTS_VERSION 3. A saved whole-object profile from before this at 'off' moves to 'auto'; one at merged / perlamp keeps its choice (tests/options-migration.js has a check for both). The halo quality presets (low / medium / ultra) set haloPolar explicitly (off / merged / perlamp) and are unchanged.
+
+## Decisions for Anya
+1. **Default haloPolar is now auto** (the brief). Saved profiles at the old default 'off' follow it to auto. A profile where she deliberately chose 'off' before this build is indistinguishable and moves too (the registry's standard behaviour).
+2. **Auto table size default 128x32** (middle of the three she asked me to compare); `haloPolarBand` is the control. Hidden unless haloPolar is auto.
+3. **Band floor 90 deg total, fade 20 deg, padding 11.5 deg**: my choices around her "about 90 deg".
+4. **fast culling default eps 0.05** (SC): a zero-change floor, not a saving, at the 96-100 m poses; 0.1 is where the saving starts and where the crest pose changes a lot.
+5. **Exact is the default** (the brief's conditional, met).
+
+## Not verified (SP)
+- Judging the look: the sizes, the 90 deg floor and the 12 / 8 m fade are for the owner's eyes; I looked at the 20 m crops only (and the other distances' frames exist in overnight-shots/SC/SP_auto_*.png; I did not study them one by one).
+- The fade at 12 -> 8 m by eye in motion (only frames and a frame-difference sweep).
+- Hairpin, crest and dip poses with auto (the SC poses were run for culling only); per-lamp-table car banked on a hairpin (roll) with a band; two cars (the table is for the nearest car only, as before).
+- High-dip traffic (HB-high-dip-gpu is in the --only run below). Phones, Safari, and the CPU renderer (the option is GPU only).
+- The edge-weight partition near the table centre: the two lamps are about 25 px from the centre at 20 m and the screen share is sampled at 4-pixel cells, so the sum of the two shares is only approximately 1 within about one cell-angle of the band edge. I saw no seam in the shots (the dark sliver is the sharper edge, above). A radial ramp near the centre was tried and changed nothing visible, so it is not in.
+- Table build cost at other bin counts (32) and visibility values for auto (SC rows have 32 bins; SP rows are 24 only).
+
+## Test results (OBSERVED, pasted)
+- SC commit, `node tests/gate.js --touched`: `59 tests, 0 not clean, 580s`. Extra, `--only HB-high-dip-gpu,TOUGE-SKY-VEIL,TOUGE-ELEV-B,TOUGE-AIR,TOUGE-AIR-RIBBON,BJ1-shadow-cache`: `6 tests, 0 not clean, 141s`.
+- SP commit, `node tests/gate.js --touched`: `65 tests, 0 not clean, 881s`. Extra, `--only HB-high-dip-gpu,TOUGE-AIR-RIBBON,TOUGE-ELEV-B,...`: HB-high-dip-gpu, TOUGE-AIR-RIBBON `exit 0`; BJ1-shadow-cache and TOUGE-SKY-VEIL `exit 0` after their `haloPolar: 'off'` line; LCM1-lamp-cone, CD-lampcone-depth, E2-pass-lamp-cone `3 tests, 0 not clean, 58s`.
+- I did not run `--full` (the orchestrator does).

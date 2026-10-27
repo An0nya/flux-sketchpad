@@ -26,7 +26,8 @@ const FROZEN_OLD_DV_DEF = {
   lampRoad: 'off',
   haloBins: 24,
   haloDiv: 0,
-  haloPolar: 'off',
+  haloPolar: 'auto',   // SP: default changed from 'off' on purpose (owner 2026-10-26: auto), with a defaultHistory entry and DEFAULTS_VERSION 3
+  haloPolarBand: '128x32',   // SP: new option (not a default change); registry position: after haloPolar
   haloPolarLamps: 2,
   haloGain: 1,
   crestOcclusion: 'off',   // E2: new option (not a default change); registry position: after haloGain
@@ -108,7 +109,7 @@ const FROZEN_OLD_DV_DEF = {
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();
-ok('frozen copy has 93 keys (SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 93, Object.keys(FROZEN_OLD_DV_DEF).length);
+ok('frozen copy has 94 keys (SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 94, Object.keys(FROZEN_OLD_DV_DEF).length);
 let equal = true, why = null;
 try { assert.deepStrictEqual(gen, FROZEN_OLD_DV_DEF); } catch (e) { equal = false; why = String(e.message).split('\n').slice(0, 12).join(' | '); }
 ok('generated defaults deep-equal the old DV_DEF (values and types)', equal, why);

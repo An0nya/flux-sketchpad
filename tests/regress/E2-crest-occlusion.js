@@ -40,7 +40,7 @@ const errors = [];
   const px = (page, buf) => page.evaluate(async (b64) => { const im = new Image(); im.src = 'data:image/png;base64,' + b64; await im.decode(); const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(im, 0, 0); return { w: c.width, h: c.height, d: Array.from(g.getImageData(0, 0, c.width, c.height).data) }; }, buf.toString('base64'));
   const rowLum = (A, y0, y1) => { let s = 0, n = 0; for (let y = y0; y < y1; y++) for (let x = 0; x < A.w; x++) { const i = 4 * (y * A.w + x); s += A.d[i] + A.d[i + 1] + A.d[i + 2]; n += 3; } return s / n; };
   const diff = (A, B) => { let n = 0, max = 0; for (let i = 0; i < A.d.length; i += 4) { let m = 0; for (let c = 0; c < 3; c++) m = Math.max(m, Math.abs(A.d[i + c] - B.d[i + c])); if (m) { n++; if (m > max) max = m; } } return { changed: n, max }; };
-  const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 300, trafficHalo: 16, lampCone: 'off', streetLamps: 'off', animals: false, expMode: 'fixed', ev: 1, dynamicResolution: false };
+  const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 300, trafficHalo: 16, haloPolar: 'off', lampCone: 'off', streetLamps: 'off', animals: false, expMode: 'fixed', ev: 1, dynamicResolution: false };
   try {
     const page = await open();
     await setOpts(page, { ...BASE, crestOcclusion: 'on' });

@@ -32,7 +32,7 @@ const errors = [];
     await page.evaluate((s) => RF.UI.loadScene(RF.State.deserialize(s), 'BJ2-halo-table-pin'), scene);
     await page.addScriptTag({ url: '/tests/drive-three-page.js' }); await page.addScriptTag({ url: '/tests/touge-page.js' });
     await page.evaluate(() => TGPage.ready()); await sleep(1500);
-    await page.evaluate(() => { const V = RF.DriveAnim._.V; for (const [k, v] of Object.entries({ trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1', lampCone: 'off' })) V.setOwn(k, v); });
+    await page.evaluate(() => { const V = RF.DriveAnim._.V; for (const [k, v] of Object.entries({ trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1', lampCone: 'off', haloPolar: 'off' })   /* SP: haloPolar off pinned explicitly (the default is auto since SP); the pins below are unchanged and hold with off */) V.setOwn(k, v); });
     const capture = async (d, extra) => {
       if (extra) await page.evaluate(extra);
       await page.evaluate(async (dd) => { globalThis.HALO_TILT_OFF = false; RF.UI.dvAnim.dist = dd; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1200)); }, d);

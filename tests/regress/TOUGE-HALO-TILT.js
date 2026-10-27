@@ -45,7 +45,7 @@ const PIN_FLAT = 'cad1ecc09b3d711e', PIN_EQUAL = 'c6a2fdc3619e9657';   // REVIEW
   }, buf.toString('base64'));
   try {
     const page = await open();
-    await setOpts(page, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, lampCone: 'off' });
+    await setOpts(page, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, lampCone: 'off', haloPolar: 'off' });   // SP: haloPolar off pinned explicitly (the default is auto since SP; this test pins the screen table, and the old pins hold with off)
     // (1) axis elevation, nearest lamp, three poses
     const axis = async (d) => page.evaluate(async (dd) => {
       RF.UI.dvAnim.dist = dd; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1200));
@@ -78,7 +78,7 @@ const PIN_FLAT = 'cad1ecc09b3d711e', PIN_EQUAL = 'c6a2fdc3619e9657';   // REVIEW
     ok('equal grades: tilt on and off are byte-identical', eqOn.equals(eqOff), { on: crypto.createHash('sha256').update(eqOn).digest('hex').slice(0, 16), off: crypto.createHash('sha256').update(eqOff).digest('hex').slice(0, 16) });
     // (3) pins: flat road and the equal-grade touge frame match the pre-tilt base (flat: no touge; the pins are the base's hashes)
     const pageFlat = await open();
-    await setOpts(pageFlat, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, mountainPass: false });
+    await setOpts(pageFlat, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, mountainPass: false, haloPolar: 'off' });   // SP: haloPolar off pinned explicitly, as above
     const flat = await shot(pageFlat, 60, false), touge = await pageFlat.evaluate(() => !!RF.DriveAnim._.V.p.touge);
     const hf = crypto.createHash('sha256').update(flat).digest('hex').slice(0, 16);
     ok('flat road frame is byte-identical to the base (pin ' + PIN_FLAT + ')', hf === PIN_FLAT && !touge, { hash: hf });

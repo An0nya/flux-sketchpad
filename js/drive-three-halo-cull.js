@@ -18,9 +18,14 @@ export function beamExtent(data, rowOff, stride, g, size) {
     if (v !== 0 && v === v) { if (x < i0) i0 = x; if (x > i1) i1 = x; if (y < j0) j0 = y; if (y > j1) j1 = y; if (v > max) max = v; }
   }
   if (i1 < 0) return null;
+  // SP: the beam's top edge, for the lamp-centred table's band: per sampled column the highest row at 5% of the peak or more, as (H, V) degrees. Not used by the cull bound.
+  const top = [], thr = 0.05 * max, stepX = Math.max(1, Math.ceil((i1 - i0 + 1) / 12));
+  for (let x = i0; x <= i1; x += stepX) {
+    for (let y = size[1] - 1; y >= 0; y--) if (data[(rowOff + y) * stride + x] >= thr) { top.push([g[0] + (x + 0.5) / g[2], g[1] + (y + 0.5) / g[3]]); break; }
+  }
   const sH = 1 / g[2], sV = 1 / g[3], eH = 0.02 * sH + 1e-3, eV = 0.02 * sV + 1e-3;   // a hair for float32 and for the degrees conversion
   const span = (a0, s, i0_, i1_, n, e) => [a0 + (Math.max(i0_ - 1, 0) + 0.5) * s - e, a0 + (Math.min(i1_ + 1, n - 1) + 0.5) * s + e];   // f in [i0 - 1, i1 + 1], inside [0, size - 1]; degrees = a0 + (f + 0.5) * step
-  return { h: span(g[0], sH, i0, i1, size[0], eH), v: span(g[1], sV, j0, j1, size[1], eV), max };
+  return { h: span(g[0], sH, i0, i1, size[0], eH), v: span(g[1], sV, j0, j1, size[1], eV), max, top };
 }
 
 const nrm = (n) => { const l = Math.hypot(n[0], n[1], n[2]) || 1; return [n[0] / l, n[1] / l, n[2] / l]; };
@@ -146,4 +151,35 @@ export function litBound(view, clips) {
     if (rect[0] > rect[1] || rect[2] > rect[3]) return none;
   }
   return { empty: false, k0, k1, rect, dmin, dmax };
+}
+
+// SP: the angle range about a lamp-centred table's centre that holds the beam's top edge (the sharp edge the table is for). Each lamp's top-edge directions (beamExtent.top, local
+// direction by the beam's convention) are carried out to a few distances, projected to the screen, and their angles about the table centre C (px, y up) are covered by the smallest arc.
+// items: [{ pos, basis, conv, top }]; view: { eye, tanH, w, h }. Returns { ac (centre angle, rad, atan2 convention), hw (half width), fade (edge fade, rad), n (points used), arcDeg (the arc before padding) }.
+// Padded by BAND_PAD; at least BAND_MIN_HW; past BAND_FULL_HW it is the whole circle (hw = pi, no fade: the old table). Distances along each direction: BAND_DIST metres.
+export const BAND_PAD = 0.2, BAND_MIN_HW = Math.PI / 4, BAND_FULL_HW = 2.6, BAND_FADE = 0.35, BAND_DIST = [5, 15, 40, 100];
+export function polarBand(items, view, C) {
+  const E = view.eye, ang = [], aspect = view.h / view.w, full = { ac: Math.PI, hw: Math.PI, fade: 0, n: 0, arcDeg: 360 };
+  for (const it of items) for (const [h, v] of it.top || []) {
+    const H = h * DEG, V = v * DEG; let a, b, c;
+    if (it.conv === 2) { const th = Math.tan(H), tv = Math.tan(V); a = 1 / Math.sqrt(1 + th * th + tv * tv); b = th * a; c = tv * a; }
+    else if (it.conv === 1) { b = Math.sin(H); a = Math.cos(H) * Math.cos(V); c = Math.cos(H) * Math.sin(V); }
+    else { a = Math.cos(V) * Math.cos(H); b = Math.cos(V) * Math.sin(H); c = Math.sin(V); }
+    const lx = a, ly = -b, lz = c, B = it.basis, d = [0, 1, 2].map((i) => B.f[i] * lx + B.l[i] * ly + B.u[i] * lz);
+    for (const t of BAND_DIST) {
+      const X = it.pos[0] + t * d[0] - E[0], Y = it.pos[1] + t * d[1] - E[1], Z = it.pos[2] + t * d[2] - E[2];
+      if (!(X > 0.3)) continue;
+      const px = ((-Y / (X * view.tanH) + 1) / 2) * view.w - C[0], py = ((Z / (X * view.tanH * aspect) + 1) / 2) * view.h - C[1];
+      if (px * px + py * py > 1e-6) ang.push(Math.atan2(py, px));
+    }
+  }
+  if (ang.length < 2) return full;
+  ang.sort((x, y) => x - y);
+  let gap = ang[0] + 2 * Math.PI - ang[ang.length - 1], at = 0;   // the largest empty gap; the arc starts after it
+  for (let i = 1; i < ang.length; i++) if (ang[i] - ang[i - 1] > gap) { gap = ang[i] - ang[i - 1]; at = i; }
+  const arc = 2 * Math.PI - gap, start = ang[at];
+  let hw = Math.max(BAND_MIN_HW, arc / 2 + BAND_PAD), ac = start + arc / 2;
+  ac = ac - 2 * Math.PI * Math.floor((ac + Math.PI) / (2 * Math.PI));
+  if (hw >= BAND_FULL_HW) return { ...full, n: ang.length, arcDeg: arc / DEG };
+  return { ac, hw, fade: Math.min(BAND_FADE, hw / 2), n: ang.length, arcDeg: arc / DEG };
 }

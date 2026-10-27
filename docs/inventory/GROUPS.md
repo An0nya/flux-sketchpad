@@ -87,7 +87,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `road` | Road and route | 9 | 2 | 5 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 7 | 0 | 4 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 10 | 0 | 2 | 0 | 8 | 0 | 0 |
+| `halo` | Traffic halo | 11 | 0 | 2 | 0 | 9 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 15 | 0 | 12 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
@@ -157,7 +157,8 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `trafficHalo` | traffic halo | profile | More | 0 | needs `air` [hidden], `trafficBeamsOn` [none] |
 | `haloBins` | halo bins | profile | advanced halo | 24 | needs `air` [hidden], `haloOn` [none] |
 | `haloDiv` | halo table divisor | profile | advanced halo | 0 | needs `air` [hidden], `haloOn` [none] |
-| `haloPolar` | halo polar | profile | advanced halo | "off" | needs `air` [hidden], `haloOn` [none] |
+| `haloPolar` | halo polar | profile | advanced halo | "auto" | needs `air` [hidden], `haloOn` [none] |
+| `haloPolarBand` | auto polar table size | profile | advanced halo | "128x32" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `polarAuto` [none] |
 | `haloPolarLamps` | halo polar lamps | profile | advanced halo | 2 | needs `air` [hidden], `haloOn` [none] |
 | `haloGain` | halo gain | profile | advanced halo | 1 | needs `air` [hidden], `haloOn` [none] |
 | `crestOcclusion` | crest occlusion | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |

@@ -42,7 +42,7 @@
   // Options removed from the build. A saved profile may still hold them; load drops the key so a stale value can never matter (Brief U:
   // glareSources = every source now glares; lampHalos = the lamp-halo sprite is gone, the lamp cone is the only street-lamp haze).
   const RETIRED_KEYS = ['glareSources', 'lampHalos'];
-  const DEFAULTS_VERSION = 2;   // the defaults generation this build writes into a saved profile (profile.defaultsVersion)
+  const DEFAULTS_VERSION = 3;   // the defaults generation this build writes into a saved profile (profile.defaultsVersion)
 
   // A profile saved before versioning holds every key that existed when it was saved, because setDV wrote the whole object.
   // These are the 18 keys of the first release (commit e323553); a profile that has them all is such a whole-object save.
@@ -121,6 +121,8 @@
       at: { file: ANIM, fn: 'opts.mountainPass', line: 33 } },
     mountainPassAir: { cond: { opt: 'mountainPass', eq: true }, why: 'the pass air beam table still uses the flat basis (HAZARDS H4); the traffic halo now renders on the pass (TOUGE-ELEV B, per-car tilt)', effect: 'none',
       at: { file: THREE, fn: '!p.airHold', line: 297 } },
+    polarAuto: { cond: { opt: 'haloPolar', eq: 'auto' }, why: 'only read when the lamp-centred table is on auto', effect: 'none',
+      at: { file: 'js/drive-three-halo.js', fn: "pmode === 'auto'", line: 335 } },
     cullFast: { cond: { opt: 'scatterCull', eq: 'fast' }, why: 'only read when oncoming in-scatter culling is fast (exact never uses a threshold)', effect: 'none',
       at: { file: 'js/drive-three-halo.js', fn: "cullMode === 'fast'", line: 365 } },
     passHalo: { cond: { opt: 'mountainPass', eq: true }, why: 'mountain pass only: the occluder is the pass ribbon; on the flat road the option does nothing', effect: 'none',
@@ -298,13 +300,28 @@
       note: '0 = auto.',
     },
     {
-      id: 'haloPolar', kind: 'profile', type: 'enum', values: ['off', 'merged', 'perlamp'],
-      default: 'off', label: 'halo polar',
+      id: 'haloPolar', kind: 'profile', type: 'enum', values: ['auto', 'off', 'merged', 'perlamp'],
+      default: 'auto', label: 'halo polar',
+      defaultHistory: [
+        { since: 0, value: 'off', date: '2026-10-22', commit: '303d9be' },
+        { since: 3, value: 'auto', date: '2026-10-26', commit: '0ccd43f' },   // SP; 0ccd43f = the commit this change sits on (a commit cannot name itself)
+      ],
       control: '[data-dv="haloPolar"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js'],
       requires: [need('air'), need('haloOn')],
-      tests: [],
+      tests: ['node:scatter-cull', 'SP-polar-auto'],
+      note: "auto (default since SP): the merged table while the nearest oncoming lamp is more than 12 m from the eye, faded out between 12 and 8 m (share = smoothstep(8, 12, d)), none inside 8 m; the table covers only an angle band about the beam's top edge, at the size set by haloPolarBand, and the screen volume carries every other angle. off / merged / perlamp are unchanged (whole circle, 512 x 64).",
+    },
+    {
+      id: 'haloPolarBand', kind: 'profile', type: 'enum', values: ['64x16', '128x32', '512x64'],
+      default: '128x32', label: 'auto polar table size',
+      control: '[data-dv="haloPolarBand"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'table-rebuild',
+      owner: ['js/spec-ui.js', 'js/drive-anim.js', 'js/drive-three-halo.js'],
+      requires: [need('gpu'), need('air'), need('haloOn'), need('polarAuto')],
+      tests: ['SP-polar-auto'],
+      note: 'Angles x radii of the lamp-centred table in haloPolar auto (the band, not the whole circle). 512x64 is the size of the whole-circle tables; the smaller sizes are the proposal. The owner picks by eye. Changing it rebuilds the polar targets.',
     },
     {
       id: 'haloPolarLamps', kind: 'profile', type: 'enum', values: [1, 2],

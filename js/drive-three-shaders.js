@@ -80,6 +80,7 @@ vec3 haloScatterScr(float d) {
   return haloCurve(s, haloBin(i0,pc,f,haloTab), haloBin(s,pc,f,haloTab), haloBin(s+1,pc,f,haloTab), haloBin(i3,pc,f,haloTab), dd);   // 4 cumulative reads
 }
 uniform float haloGain;   // HDX7: the look's halo gain (1 = as computed; the multiply is exact at 1)
+uniform int haloBandOn; uniform vec4 haloBand;   // SP: band mode (haloPolar auto) for the first polar table: (centre angle, half width, edge fade, share). Off = the whole circle, as before
 uniform int haloPolarOn2; uniform vec2 haloPolarF2, haloPolarRange2;   // HDX7: the second polar table (per-lamp: the nearest car's other lamp)
 // HDX6: a lamp's own table, polar about the lamp's projection. Texel (x = bin * nT + angle index, y = log-radius index).
 vec3 haloPolarBin(int layer, int k, float ia, float ja) {
@@ -93,11 +94,19 @@ vec3 haloPolarBin(int layer, int k, float ia, float ja) {
 vec3 haloPolarT(float d, int layer, vec2 F, vec2 rng) {
   vec2 q = (gl_FragCoord.xy * haloUV - F) * haloPolarSz;   // view px: the objects pass may render at ss x the view size, haloUV is per pass
   float th = dot(q, q) > 0.0 ? atan(q.y, q.x) : 0.0;
-  float ia = fract(th / 6.28318530718) * haloPolarN.x - 0.5;
+  float ia = fract(th / 6.28318530718) * haloPolarN.x - 0.5, bw = 1.0;
+  if(haloBandOn != 0 && layer == 0) {   // SP: the table holds only the angles in [centre - half width, centre + half width]; outside it the screen table carries this lamp (it was built with the complementary share)
+    float rel = th - haloBand.x; rel -= 6.28318530718 * floor((rel + 3.14159265359) / 6.28318530718);
+    float ar = abs(rel);
+    if(ar > haloBand.y) return vec3(0.0);
+    bw = haloBand.w * (haloBand.z > 0.0 ? 1.0 - smoothstep(haloBand.y - haloBand.z, haloBand.y, ar) : 1.0);
+    ia = (rel + haloBand.y) / (2.0 * haloBand.y) * haloPolarN.x - 0.5;
+    if(haloBand.y < 3.14) ia = clamp(ia, 0.0, haloPolarN.x - 1.0);
+  }
   float ja = (log(max(length(q), 0.25)) - rng.x) / rng.y - 0.5;
   float dd = min(d, 120.0);
   int s = haloSeg(dd), i0 = max(s-1,0), i3 = min(s+2,haloNu-1);
-  return haloCurve(s, haloPolarBin(layer,i0,ia,ja), haloPolarBin(layer,s,ia,ja), haloPolarBin(layer,s+1,ia,ja), haloPolarBin(layer,i3,ia,ja), dd);
+  return bw * haloCurve(s, haloPolarBin(layer,i0,ia,ja), haloPolarBin(layer,s,ia,ja), haloPolarBin(layer,s+1,ia,ja), haloPolarBin(layer,i3,ia,ja), dd);
 }
 vec3 haloPolar(float d) {
   if(haloOn==0 || haloPolarOn==0 || d<=0.5) return vec3(0.0);

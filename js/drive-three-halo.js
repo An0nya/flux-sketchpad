@@ -13,10 +13,11 @@
 import * as T from '../vendor/three/three.module.min.js';
 import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS, HALO_MAX } from './drive-three-shaders.js';
 import { CREST_DEPTH } from './drive-touge-three.js';
-import { beamExtent, coneClip, ballClip, fastRadius, litBound } from './drive-three-halo-cull.js';
+import { beamExtent, coneClip, ballClip, fastRadius, litBound, polarBand } from './drive-three-halo-cull.js';
 const D = globalThis.RF.Drive;
 export const HALO_MAXL = 16, HALO_PER_DRAW = 1, HALO_BIN_STEPS = 6, HALO_MIN_W = 96, HALO_MIN_H = 54, HALO_DIV = 8, HALO_DIV_FEW = 4, HALO_FEW = 4, HALO_SUB = 4, HALO_REFINE = 4, HALO_NEAR = 45;
 // HDX6 polar table (SL_HALO_POLAR): 512 angles x 64 log-radii for the nearest lamp in front; 24 bins side by side = 12288 texels wide (under MAX_TEXTURE_SIZE 16384).
+export const AUTO_NEAR_M = 8, AUTO_FAR_M = 12;   // SP: haloPolar auto: no lamp-centred table inside 8 m, the full share beyond 12 m, smoothstep between
 export const HALO_POL_TH = 512, HALO_POL_R = 64, HALO_POL_MIN_PX = 0.25, HALO_POL_MIN_X = 1, HALO_POL_MAX = 4;   // min radius px; min x m ahead; max |NDC| of the centre
 // One lamp per draw, 6 steps: a shader loop of 6 (it was 3 lamps x 6 = 18; Safari is suspected to stall compiling long loops). More draws, same pixels.
 // HDX3: 24 log-uniform bins from 0.5 to 120 m (edge k = 0.5 * 240^((k+1)/24)); the first entry is the origin, the last is D.SCAT.S_MAX.
@@ -127,8 +128,28 @@ const OCC_HIT = '      float cs = -dot(d, ray) / r, p =';
 if (TMAIN.split(OCC_HIT).length !== 2) throw new Error('E2: crest occlusion hook not found once in the table pass');
 const TMAIN_OCC = TMAIN.replace(OCC_HIT, '      if (crestOcc(lamp, haloEye + s * ray)) continue;\n' + OCC_HIT), TMAIN_POLAR_OCC = polarOf(TMAIN_OCC);
 if (TMAIN_OCC === TMAIN || TMAIN_POLAR_OCC === TMAIN_POLAR || TMAIN_POLAR_OCC === TMAIN_OCC) throw new Error('E2: crest occlusion pass text not built');
-// The table pass fragment text for a variant (also read by the sampler-budget script).
-export function haloTableSource(atlas, polar = false, occ = false) { return THEAD + (occ ? OCC_DECL : '') + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (occ ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN)); }
+// SP (haloPolar auto): the lamp-centred table covers only an angle band about its centre (haloBandA = centre angle, half width, edge fade, share), and the screen table is built with the
+// complementary share for the lamps the polar table carries, so the two sum to the lamp's whole contribution (the lookup weights the polar table with the same numbers, drive-three-shaders.js haloPolarT).
+// 'band' (polar pass): the angle of a texel runs over the band, not the circle. 'split' (screen pass): this lamp's cell is scaled by 1 - share * edge weight at the cell centre's angle about the table centre.
+// Built on first use, so off / merged / perlamp compile the texts above unchanged.
+const BAND_DECL = 'uniform vec4 haloBandA;\n';
+const BAND_ANG = 'float ang = (float(cx) + 0.5) / haloPolarN.x * 6.28318530718,', SPLIT_TAIL = '  gl_FragColor = vec4(acc, 1.0);';
+const SPLIT_HEAD = '  vec3 acc = vec3(0.0);\n', SPLIT_HEAD_CODE = `  vec3 acc = vec3(0.0);
+  float swt;   // the screen table's share of this lamp at this cell: 1 - share * (the band's edge weight at the cell centre's angle about the table centre)
+  { vec2 sq = (vec2(float(cx) + 0.5, float(px.y) + 0.5) / haloTab) * size - haloPolarC; float sth = dot(sq, sq) > 0.0 ? atan(sq.y, sq.x) : 0.0, srel = sth - haloBandA.x;
+    srel -= 6.28318530718 * floor((srel + 3.14159265359) / 6.28318530718); float sar = abs(srel);
+    float swb = sar > haloBandA.y ? 0.0 : (haloBandA.z > 0.0 ? 1.0 - smoothstep(haloBandA.y - haloBandA.z, haloBandA.y, sar) : 1.0);
+    swt = 1.0 - haloBandA.w * swb; }
+  if (swt < 1e-4) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }   // the band table carries this cell entirely: skip the march
+`;
+const SPLIT_CODE = '  acc *= swt;\n';
+if (TMAIN_POLAR.split(BAND_ANG).length !== 2 || TMAIN.split(SPLIT_TAIL).length !== 2 || TMAIN.split(SPLIT_HEAD).length !== 2) throw new Error('SP: band hooks not found once in the table pass');
+const bandText = (t) => t.replace(BAND_ANG, 'float ang = haloBandA.x - haloBandA.y + (float(cx) + 0.5) / haloPolarN.x * 2.0 * haloBandA.y,'), splitText = (t) => t.replace(SPLIT_HEAD, SPLIT_HEAD_CODE).replace(SPLIT_TAIL, SPLIT_CODE + SPLIT_TAIL);
+// The table pass fragment text for a variant (also read by the sampler-budget script). variant: '' (the tables above), 'band' (polar) or 'split' (screen).
+export function haloTableSource(atlas, polar = false, occ = false, variant = '') {
+  const main = occ ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN);
+  return THEAD + (variant ? BAND_DECL : '') + (occ ? OCC_DECL : '') + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (variant === 'band' ? bandText(main) : variant === 'split' ? splitText(main) : main);
+}
 const HAL_CONV = (c) => (c === 'B' ? 1 : c === 'S' ? 2 : 0);
 const half = (T.DataUtils && T.DataUtils.fromHalfFloat) || ((h) => { const e = (h >> 10) & 31, m = h & 1023, sg = h & 0x8000 ? -1 : 1; return e === 0 ? sg * Math.pow(2, -14) * (m / 1024) : e === 31 ? (m ? NaN : sg * Infinity) : sg * Math.pow(2, e - 15) * (1 + m / 1024); });
 
@@ -156,14 +177,14 @@ export function haloLookup(bins, d, edges = HALO_EDGES.slice(1)) {
 }
 // HDX6: the nearest lamp's projection on the screen, the inverse of the eye ray in TMAIN (pixels, y up, as gl_FragCoord). Null when the lamp is not
 // clearly in front (behind, or nearly level with the eye) or its centre is far off-screen (|NDC| > HALO_POL_MAX): the screen table keeps it then.
-export function haloPolarPick(p, eye, q, tanH) {
+export function haloPolarPick(p, eye, q, tanH, nR = HALO_POL_R) {
   const W = p.w, H = p.h, r = [q.L.x - eye[0], q.L.y - eye[1], q.L.z - eye[2]];
   if (!(r[0] > HALO_POL_MIN_X)) return null;
   const sx = -r[1] / (r[0] * tanH), sy = r[2] * W / (r[0] * tanH * H);
   if (Math.abs(sx) > HALO_POL_MAX || Math.abs(sy) > HALO_POL_MAX) return null;
   const C = [(sx + 1) * W / 2, (sy + 1) * H / 2];
   const rho = Math.max(...[[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => Math.hypot(x - C[0], y - C[1])));   // the farthest corner: every screen pixel is inside
-  return { C, rho, dL: (Math.log(rho) - Math.log(HALO_POL_MIN_PX)) / HALO_POL_R, sx, sy };
+  return { C, rho, dL: (Math.log(rho) - Math.log(HALO_POL_MIN_PX)) / nR, sx, sy };
 }
 // TOUGE-ELEV B1: a touge frame projects the ribbon in the car frame (vertex carFromWorld*(position-eye), eye = p.eye), so a source in world
 // coordinates maps through carFromWorld (Matrix3, column-major). The direction keeps its horizontal part and is renormalised. Distances are unchanged.
@@ -195,12 +216,13 @@ export function toCarFrame(traffic, m, A) {
 }
 export function haloPass(renderer, u) {
   const scene = new T.Scene(), camera = new T.Camera(), geo = new T.PlaneGeometry(2, 2);
-  const mk = (atlas, polar = false, occ = false) => new T.ShaderMaterial({
-    uniforms: {}, vertexShader: TVERT, fragmentShader: haloTableSource(atlas, polar, occ),
+  const mk = (atlas, polar = false, occ = false, variant = '') => new T.ShaderMaterial({
+    uniforms: {}, vertexShader: TVERT, fragmentShader: haloTableSource(atlas, polar, occ, variant),
     blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.OneFactor, blendDst: T.OneFactor, blendSrcAlpha: T.ZeroFactor, blendDstAlpha: T.OneFactor,
     depthTest: false, depthWrite: false,
   });
   const mats = [mk(false), mk(true)], matsP = [mk(false, true), mk(true, true)];   // matsP: HDX6 polar pass materials
+  const varMats = new Map(); const varMat = (atlas, polar, occ, variant) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + (occ ? 4 : 0) + variant; if (!varMats.has(k)) varMats.set(k, mk(atlas, polar, occ, variant)); return varMats.get(k); };   // SP: band / split variants, compiled on first use
   const occMats = new Map(); const occMat = (atlas, polar) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0); if (!occMats.has(k)) occMats.set(k, mk(atlas, polar, true)); return occMats.get(k); };   // E2: crest-occlusion variants, compiled on first use (option off never builds them)
   const cumMat = new T.ShaderMaterial({ uniforms: { src: { value: null }, cumW: { value: 1 }, cumN: { value: 1 } }, vertexShader: TVERT, fragmentShader: TCUM, blending: T.NoBlending, depthTest: false, depthWrite: false });   // PREFIX pass
   const mesh = new T.Mesh(geo, mats[0]); mesh.frustumCulled = false; scene.add(mesh);
@@ -238,6 +260,7 @@ export function haloPass(renderer, u) {
   };
   // SC: the non-zero extent of a lamp's beam (drive-three-halo-cull.js beamExtent), read from the texture the shader reads, so it is the shader's own data. Cached per texel array
   // (a new atlas pack is a new array), so a beam is scanned once when its atlas is built, not per frame. null = the beam is all zero (nothing to light); unknown = unbounded.
+  const basisOf = (q) => { const L = q.L, se = L.nz || 0, ce = Math.sqrt(Math.max(1 - se * se, 0)); return L.lat ? { f: [L.nx * ce, L.ny * ce, se], l: L.lat, u: L.up } : { f: [L.nx * ce, L.ny * ce, se], l: [-L.ny, L.nx, 0], u: [-se * L.nx, -se * L.ny, ce] }; };   // the shader's local axes (TMAIN)
   const extCache = new WeakMap();
   const beamExtentOf = (idx, legacy) => {
     const tex = u.otherBeam.value, img = tex && tex.image; if (!img || !img.data) return { e: { h: [-1e3, 1e3], v: [-1e3, 1e3], max: Infinity }, conv: 0, scale: 1 };
@@ -248,21 +271,22 @@ export function haloPass(renderer, u) {
     if (!per.has(key)) { const e = beamExtent(img.data, row0, img.width, g, size); per.set(key, e ? { e, conv, scale } : null); }
     return per.get(key);
   };
-  const prts = [], prtNs = [];   // HDX6: the polar tables (HALO_POL_R rows, HALO_N bins side by side); HDX7: one target per table, rebuilt when the bin count changes
+  const prts = [], prtNs = []; let polarArrDim = '';   // HDX6: the polar tables (HALO_POL_R rows, HALO_N bins side by side); HDX7: one target per table, rebuilt when the bin count changes
   // B10: the prefix (cum) targets of both polar tables are the two layers of ONE array target, read through one sampler2DArray (haloPolarTex; layer = table index).
   //   pseudocode: cumArr = array target (W x R x 2, half float, Nearest), rebuilt when HALO_N changes; table si: bin (2D, drawn into) -> prefix -> cumArr layer si
   let polarArr = null, polarArrN = 0;
   // Each polar table has a bin target (drawn into) and a layer of the shared prefix array (read by the lookup). Returns { bin, cum (the array target), layer }.
-  const ensurePolar = (si = 0) => {
-    if (!polarArr || polarArrN !== HALO_N) {
+  const ensurePolar = (si = 0, nT = HALO_POL_TH, nR = HALO_POL_R) => {   // SP: nT x nR is 512 x 64 for off / merged / perlamp; haloPolar auto passes its band size (a size change rebuilds the targets)
+    const dim = nT + 'x' + nR;
+    if (!polarArr || polarArrN !== HALO_N || polarArrDim !== dim) {
       if (polarArr) polarArr.dispose();
-      polarArr = new T.WebGLArrayRenderTarget(HALO_POL_TH * HALO_N, HALO_POL_R, 2, { type: T.HalfFloatType, format: T.RGBAFormat, depthBuffer: false }); polarArrN = HALO_N;
+      polarArr = new T.WebGLArrayRenderTarget(nT * HALO_N, nR, 2, { type: T.HalfFloatType, format: T.RGBAFormat, depthBuffer: false }); polarArrN = HALO_N; polarArrDim = dim;
       polarArr.texture.minFilter = polarArr.texture.magFilter = T.NearestFilter; polarArr.texture.generateMipmaps = false;
     }
-    if (!prts[si] || prtNs[si] !== HALO_N) {
+    if (!prts[si] || prtNs[si] !== HALO_N + dim) {
       if (prts[si]) prts[si].bin.dispose();
       const opt = { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false };
-      prts[si] = { bin: new T.WebGLRenderTarget(HALO_POL_TH * HALO_N, HALO_POL_R, opt), layer: si }; prtNs[si] = HALO_N;
+      prts[si] = { bin: new T.WebGLRenderTarget(nT * HALO_N, nR, opt), layer: si }; prtNs[si] = HALO_N + dim;
     }
     return { bin: prts[si].bin, cum: polarArr, layer: si };
   };
@@ -286,7 +310,7 @@ export function haloPass(renderer, u) {
     // Build the table for this frame and point the lookup at it. Call before the ground pass. Off: haloOn 0, nothing drawn.
     build(p, world, occ = null) {
       halo.drawn = 0; halo.lamps = []; halo.passes = 0; u.haloOn.value = 0; halo.sources = null; halo.cull = null;
-      u.haloPolarOn.value = 0; u.haloPolarOn2.value = 0; halo.msPolar = 0; halo.polar = null; halo.polars = []; halo.occ = false;   // HDX6, HDX7; E2: crest occlusion used this frame
+      u.haloPolarOn.value = 0; u.haloPolarOn2.value = 0; u.haloBandOn.value = 0; halo.msPolar = 0; halo.polar = null; halo.polars = []; halo.occ = false;   // HDX6, HDX7; E2: crest occlusion used this frame
       const N = D.haloN(p); if (!N) return 0;
       // HDX7: the look's halo settings. Bins: a count (clamped to 4..32; HALO_REQ keeps the ask). Divisor: 0 = the lamp-count rule. Gain: 1 = as computed.
       const look = p.look || {}, wantN = look.haloBins != null ? +look.haloBins : HALO_URL_N;
@@ -310,22 +334,34 @@ export function haloPass(renderer, u) {
       // the nearest car, one or two), merged (one table centred between the car's two lamps, both lamps drawn into it).
       const pmode = globalThis.SL_HALO_POLAR && (!look.haloPolar || look.haloPolar === 'off') ? 'perlamp' : (look.haloPolar || 'off');
       const plamps = look.haloPolarLamps === 1 ? 1 : 2;
-      const plan = [];   // [{ lamps: [q, ...], pk }], one polar table each
-      if (pmode !== 'off') {
-        if (renderer.capabilities.maxTextureSize < HALO_POL_TH * HALO_N) halo.polarNote = 'polar width ' + HALO_POL_TH * HALO_N + ' over maxTextureSize ' + renderer.capabilities.maxTextureSize;
+      // SP: haloPolar 'auto' = the merged table (below) while the nearest lamp is more than AUTO_FAR_M from the eye, faded out between AUTO_FAR_M and AUTO_NEAR_M (share = smoothstep(8, 12, d)), none
+      // inside AUTO_NEAR_M, and the table covers only a band of angles about the beam's top edge (polarBand), at a reduced size (look.haloPolarBand, nT x nR). The screen table carries the rest.
+      const autoM = pmode === 'auto', dNear = Math.hypot(used[0].L.x - eye[0], used[0].L.y - eye[1], used[0].L.z - eye[2]), share = autoM ? Math.min(1, Math.max(0, (dNear - AUTO_NEAR_M) / (AUTO_FAR_M - AUTO_NEAR_M))) : 1, wd = share * share * (3 - 2 * share);
+      const bres = /^(\d+)x(\d+)$/.exec(String(globalThis.SL_HALO_BAND || look.haloPolarBand || '128x32')) || ['', '128', '32'], pol = autoM ? { nT: +bres[1], nR: +bres[2] } : { nT: HALO_POL_TH, nR: HALO_POL_R };
+      const plan = [];   // [{ lamps: [q, ...], pk, band }], one polar table each
+      if (pmode !== 'off' && !(autoM && !(wd > 0))) {
+        if (renderer.capabilities.maxTextureSize < pol.nT * HALO_N) halo.polarNote = 'polar width ' + pol.nT * HALO_N + ' over maxTextureSize ' + renderer.capabilities.maxTextureSize;
         else {
           const first = used[0], second = plamps === 2 ? used.slice(1).find((q) => q.L.car !== undefined && q.L.car === first.L.car) : null;   // the nearest car's other lamp
-          if (pmode === 'merged' && second) {
+          if ((pmode === 'merged' || autoM) && second) {
             const mid = { x: (first.L.x + second.L.x) / 2, y: (first.L.y + second.L.y) / 2, z: (first.L.z + second.L.z) / 2 };
-            const pk = haloPolarPick(p, eye, { L: mid }, tanH);
+            const pk = haloPolarPick(p, eye, { L: mid }, tanH, pol.nR);
             if (pk) plan.push({ lamps: [first, second], pk }); else halo.polarNote = 'merged centre not clearly in front: screen table';
+          } else if (autoM) {
+            const pk = haloPolarPick(p, eye, first, tanH, pol.nR);
+            if (pk) plan.push({ lamps: [first], pk }); else halo.polarNote = 'nearest lamp not clearly in front or off-screen: screen table';
           } else {
             for (const q of (second ? [first, second] : [first])) { const pk = haloPolarPick(p, eye, q, tanH); if (pk) plan.push({ lamps: [q], pk }); else halo.polarNote = 'nearest lamp not clearly in front or off-screen: screen table'; }
           }
         }
       }
+      if (autoM && !(wd > 0)) halo.polarNote = 'auto: nearest lamp within ' + AUTO_NEAR_M + ' m, screen table only';
+      if (autoM) for (const s of plan) {   // the band: where this table's lamps' beam top edges fall on the screen, about the table centre
+        const items = s.lamps.map((q) => { const ext = beamExtentOf(q.idx, legacy); return ext && { pos: [q.L.x, q.L.y, q.L.z], basis: basisOf(q), conv: ext.conv, top: ext.e.top }; }).filter(Boolean);
+        s.band = { ...polarBand(items, { eye, tanH, w: p.w, h: p.h }, s.pk.C), wd, dNear, nT: pol.nT, nR: pol.nR };
+      }
       const polarSet = new Set(plan.flatMap((s) => s.lamps));
-      halo.polars = plan.map((s) => ({ lamps: s.lamps.map((q) => [q.L.x, q.L.y, q.L.z]), C: s.pk.C, rho: s.pk.rho, dL: s.pk.dL }));
+      halo.polars = plan.map((s) => ({ lamps: s.lamps.map((q) => [q.L.x, q.L.y, q.L.z]), C: s.pk.C, rho: s.pk.rho, dL: s.pk.dL, band: s.band || null }));
       halo.polar = plan.length ? { lamp: [plan[0].lamps[0].L.x, plan[0].lamps[0].L.y, plan[0].lamps[0].L.z], C: plan[0].pk.C, rho: plan[0].pk.rho, dL: plan[0].pk.dL } : null;
       haloEdgesFor(Math.hypot(used[0].L.x - eye[0], used[0].L.y - eye[1], used[0].L.z - eye[2]), edgesV); halo.edges = edgesV.slice(0, HALO_BINS);
       ensure(p, used.length, look.haloDiv);
@@ -343,8 +379,9 @@ export function haloPass(renderer, u) {
           otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
           otherConvention: { value: legacy ? HAL_CONV(legacy.conv) : 0 },
           beamMeta: { value: u.beamMeta.value }, beamGrid: { value: u.beamGrid.value }, beamTint: { value: u.beamTint.value },
-          haloPolarC: { value: new T.Vector2(pk.C[0], pk.C[1]) }, haloPolarRange: { value: new T.Vector2(Math.log(HALO_POL_MIN_PX), pk.dL) }, haloPolarN: { value: new T.Vector2(HALO_POL_TH, HALO_POL_R) },
+          haloPolarC: { value: new T.Vector2(pk.C[0], pk.C[1]) }, haloPolarRange: { value: new T.Vector2(Math.log(HALO_POL_MIN_PX), pk.dL) }, haloPolarN: { value: new T.Vector2(pol.nT, pol.nR) },
         });
+        if (pk.band) mp.uniforms.haloBandA = { value: new T.Vector4(pk.band.ac, pk.band.hw, pk.band.fade, pk.band.wd) };   // SP
         occU(mp);
       };
       // Test hook (inert unless globalThis.SL_HALO_TQ is set): a GPU timer query around every draw of the table (screen + polar + prefix), results collected by tqPoll().
@@ -360,7 +397,7 @@ export function haloPass(renderer, u) {
         cullPlan = { lamps: [] };
         const boundOf = (q, screen) => {   // litBound for this lamp: the cone clip (the forward plane and the beam's non-zero angles), plus the fast ball
           const key = (screen ? 's' : 'p'); let b = bounds.get(q); if (b && b[key]) return b[key]; if (!b) bounds.set(q, b = {});
-          const L = q.L, ext = beamExtentOf(q.idx, legacy), se = L.nz || 0, ce = Math.sqrt(Math.max(1 - se * se, 0)), basis = L.lat ? { f: [L.nx * ce, L.ny * ce, se], l: L.lat, u: L.up } : { f: [L.nx * ce, L.ny * ce, se], l: [-L.ny, L.nx, 0], u: [-se * L.nx, -se * L.ny, ce] };
+          const L = q.L, ext = beamExtentOf(q.idx, legacy), basis = basisOf(q);
           const lp = [L.x, L.y, L.z], clips = [ext ? coneClip(lp, basis, ext.e, ext.conv) : null]; let radius = Infinity;
           if (cullMode === 'fast' && ext) {
             let mp = 0; for (let i = 0; i <= 64; i++) { const c = -1 + i / 32, ph = (g, c) => (1 - g * g) / (4 * Math.PI * Math.pow(1 + g * g - 2 * g * c, 1.5)); mp = Math.max(mp, D.SCAT.wFwd * ph(D.SCAT.gFwd, c) + (1 - D.SCAT.wFwd) * ph(D.SCAT.gBack, c)); }
@@ -373,16 +410,20 @@ export function haloPass(renderer, u) {
       const cellsOf = (b, nW, nH, rect) => b.empty ? 0 : (b.k1 - b.k0 + 1) * (rect ? (rect[1] - rect[0] + 1) * (rect[3] - rect[2] + 1) : nW * nH);
       try {
         renderer.autoClear = false; const m = useOcc ? occMat(atlas, false) : atlas ? mats[1] : mats[0];
+        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? varMat(atlas, false, useOcc, 'split') : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
         renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m;
         // The nearest HALO_REFINE lamps within HALO_NEAR metres are drawn in HALO_SUB sub-passes (24 steps per bin); the rest in one (6).
         used.forEach((q, i) => {
-          if (polarSet.has(q)) return;   // HDX6/HDX7: a polar lamp is in its own table, not this one
+          const split = bandPlan && polarSet.has(q);   // SP: a band table's lamp is in both tables
+          if (polarSet.has(q) && !split) return;   // HDX6/HDX7: a polar lamp is in its own table, not this one
           const bd = cullPlan ? cullPlan.boundOf(q, true) : null;   // SC: this lamp's slices and cells (null = the whole table, as before)
           if (bd) { cstat.set(q, { k0: bd.k0, k1: bd.k1, rect: bd.rect, cells: cellsOf(bd, tab[0], tab[1], bd.rect), full: tab[0] * tab[1] * HALO_N, radius: bd.radius, table: 'screen' }); if (bd.empty) return; }
           const P = i < HALO_REFINE && q.L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;   // SL_HALO_SUB: test override (cost comparison)
+          const mm = split ? splitM : m; mesh.material = mm;
           for (let j = 0; j < P; j++) {
             hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
-            Object.assign(m.uniforms, {
+            if (split) Object.assign(mm.uniforms, { haloBandA: { value: new T.Vector4(bandPlan.band.ac, bandPlan.band.hw, bandPlan.band.fade, bandPlan.band.wd) }, haloPolarC: { value: new T.Vector2(bandPlan.pk.C[0], bandPlan.pk.C[1]) } });
+            Object.assign(mm.uniforms, {
               hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
               haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
               haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
@@ -391,8 +432,8 @@ export function haloPass(renderer, u) {
               otherConvention: { value: legacy ? HAL_CONV(legacy.conv) : 0 },
               beamMeta: { value: u.beamMeta.value }, beamGrid: { value: u.beamGrid.value }, beamTint: { value: u.beamTint.value },
             });
-            occU(m);
-            if (bd) drawBound(m, bd.k0, bd.k1, bd.rect, tab[0], tab[1]); else renderer.render(scene, camera);
+            occU(mm);
+            if (bd) drawBound(mm, bd.k0, bd.k1, bd.rect, tab[0], tab[1]); else renderer.render(scene, camera);
             halo.passes++;
           }
         });
@@ -400,26 +441,26 @@ export function haloPass(renderer, u) {
         // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
-          const tp = timing ? performance.now() : 0, rp = ensurePolar(si), mp = useOcc ? occMat(atlas, true) : matsP[atlas ? 1 : 0];
+          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = s.band ? varMat(atlas, true, useOcc, 'band') : useOcc ? occMat(atlas, true) : matsP[atlas ? 1 : 0];
           const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;
           renderer.setRenderTarget(rp.bin); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
           for (let j = 0; j < P; j++) for (const q of s.lamps) {
             const bd = cullPlan ? cullPlan.boundOf(q, false) : null;   // SC: the slices this lamp can light (the full angular extent of the tile, for now)
-            if (bd) { cstat.set(q, { k0: bd.k0, k1: bd.k1, rect: null, cells: cellsOf(bd, HALO_POL_TH, HALO_POL_R, null), full: HALO_POL_TH * HALO_POL_R * HALO_N, radius: bd.radius, table: 'polar' }); if (bd.empty) continue; }
-            setPolarU(mp, q, P, j, s.pk);
-            if (bd) drawBound(mp, bd.k0, bd.k1, null, HALO_POL_TH, HALO_POL_R); else renderer.render(scene, camera);
+            if (bd) { cstat.set(q, { k0: bd.k0, k1: bd.k1, rect: null, cells: cellsOf(bd, pol.nT, pol.nR, null), full: pol.nT * pol.nR * HALO_N, radius: bd.radius, table: 'polar' }); if (bd.empty) continue; }
+            setPolarU(mp, q, P, j, s.band ? { ...s.pk, band: s.band } : s.pk);
+            if (bd) drawBound(mp, bd.k0, bd.k1, null, pol.nT, pol.nR); else renderer.render(scene, camera);
             halo.passes++;
           }
-          prefix(rp.bin.texture, rp.cum, HALO_POL_TH, rp.layer);
+          prefix(rp.bin.texture, rp.cum, pol.nT, rp.layer);
           if (timing) { renderer.setRenderTarget(rp.cum, rp.layer); renderer.readRenderTargetPixels(rp.cum, 0, 0, 1, 1, new Uint16Array(4)); halo.msPolar += performance.now() - tp; }
         });
       } finally { renderer.autoClear = ac; renderer.setClearColor(cc, ca); renderer.setRenderTarget(null); if (tq) { const g = renderer.getContext(); g.endQuery(tqx.TIME_ELAPSED_EXT); halo.tqPending.push(tq); } }
       if (timing) { renderer.readRenderTargetPixels(cumRt, 0, 0, 1, 1, new Uint16Array(4)); halo.ms = performance.now() - t0; }
       u.haloTex.value = cumRt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = globalThis.HALO_TABLE_ONLY ? 0 : 1;
-      if (plan[0]) { const pk = plan[0].pk; u.haloPolarOn.value = 1; u.haloPolarTex.value = ensurePolar(0).cum.texture; u.haloPolarF.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); u.haloPolarN.value.set(HALO_POL_TH, HALO_POL_R); }
-      if (plan[1]) { const pk = plan[1].pk; u.haloPolarOn2.value = 1; u.haloPolarTex.value = ensurePolar(1).cum.texture; u.haloPolarF2.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarRange2.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); }
+      if (plan[0]) { const pk = plan[0].pk; u.haloPolarOn.value = 1; u.haloPolarTex.value = ensurePolar(0, pol.nT, pol.nR).cum.texture; u.haloPolarF.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); u.haloPolarN.value.set(pol.nT, pol.nR); if (plan[0].band) { const b = plan[0].band; u.haloBandOn.value = 1; u.haloBand.value.set(b.ac, b.hw, b.fade, b.wd); } }
+      if (plan[1]) { const pk = plan[1].pk; u.haloPolarOn2.value = 1; u.haloPolarTex.value = ensurePolar(1, pol.nT, pol.nR).cum.texture; u.haloPolarF2.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarRange2.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); }
       if (cullPlan) halo.cull = { mode: cullMode, eps: cullEps, lamps: used.map((q) => cstat.get(q) || null) };
-      halo.drawn = used.length; halo.lamps = used.map((q) => ({ lamp: [q.L.x, q.L.y, q.L.z], w: q.L.w, nx: q.L.nx, ny: q.L.ny, nz: q.L.nz || 0, idx: q.idx, hasBeam: !!q.L.beam, cull: cstat.get(q) || null }));
+      halo.drawn = used.length; halo.lamps = used.map((q) => ({ lamp: [q.L.x, q.L.y, q.L.z], w: q.L.w, nx: q.L.nx, ny: q.L.ny, nz: q.L.nz || 0, idx: q.idx, hasBeam: !!q.L.beam, cull: cstat.get(q) || null, band: polarSet.has(q) ? (plan.find((s) => s.lamps.includes(q)) || {}).band || null : null }));
       return halo.drawn;
     },
     // Test hook: the six bins of the cell nearest to NDC (sx, sy) in [-1, 1], read back from the GPU table (RGB per bin).

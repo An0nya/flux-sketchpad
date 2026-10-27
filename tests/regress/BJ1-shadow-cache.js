@@ -26,7 +26,7 @@ const errors = [];
     await page.evaluate((s) => RF.UI.loadScene(RF.State.deserialize(s), 'BJ1-shadow-cache'), scene);
     await page.addScriptTag({ url: '/tests/drive-three-page.js' }); await page.addScriptTag({ url: '/tests/touge-page.js' });
     await page.evaluate(() => TGPage.ready()); await sleep(1500);
-    await page.evaluate(() => { const V = RF.DriveAnim._.V; for (const [k, v] of Object.entries({ trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1' })) V.setOwn(k, v); });
+    await page.evaluate(() => { const V = RF.DriveAnim._.V; for (const [k, v] of Object.entries({ trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1', haloPolar: 'off' })) V.setOwn(k, v); });   // SP: haloPolar off pinned explicitly (the default is auto since SP); the pin holds with off
     const stats = () => page.evaluate(() => RF.DriveAnim._.V.three.shadowStats());
     // one frame at dist d; returns the screenshot and the shadow counters before and after the frame
     const frame = async (d) => {

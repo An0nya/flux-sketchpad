@@ -15,7 +15,7 @@ const DEF = Opt.defaults();
 
 // ---- the history the registry holds (derived from git log of js/spec-ui.js, first-parent main, see the report)
 const histKeys = Opt.OPTIONS.filter((e) => e.defaultHistory).map((e) => e.id).sort();
-ok('the registry seeds default history only for tiles, glare, gpuRenderer, lampCone (Brief U), reflectiveClothing', J(histKeys) === J(['glare', 'gpuRenderer', 'lampCone', 'reflectiveClothing', 'tiles']), histKeys);
+ok('the registry seeds default history only for tiles, glare, gpuRenderer, haloPolar (SP: off -> auto), lampCone (Brief U), reflectiveClothing', J(histKeys) === J(['glare', 'gpuRenderer', 'haloPolar', 'lampCone', 'reflectiveClothing', 'tiles']), histKeys);
 ok('every history entry names the commit and date it comes from', Opt.OPTIONS.filter((e) => e.defaultHistory).every((e) => e.defaultHistory.every((h) => /^[0-9a-f]{7}$/.test(h.commit) && /^2026-\d\d-\d\d$/.test(h.date))));
 const histOf = (id) => Opt.byId[id].defaultHistory.map((h) => h.value);
 ok('glare history is 0.3, dry, off; tiles false, true; gpuRenderer false, true; reflectiveClothing off, mix; lampCone off, auto',
@@ -56,6 +56,11 @@ const userChoice = () => Object.assign({}, DEF, { tiles: false, gpuRenderer: fal
   ok('a short profile (a test seed or a hand edit, not a whole-object save) is kept as written', sparse.profile.tiles === false && sparse.profile.glare === 'dry' && sparse.changed.length === 0);
   const newer = Opt.migrateProfile(Object.assign(oldDefaults(), { defaultsVersion: Opt.DEFAULTS_VERSION + 5 }));
   ok('a profile written by a newer build is left alone', newer.profile.tiles === false && newer.changed.length === 0);
+}
+// SP: haloPolar 'off' was the default until DEFAULTS_VERSION 3; 'auto' since. A whole-object save from before that at 'off' is the old default and moves to 'auto'; a current-version profile at 'off' is a choice.
+{
+  const old = Opt.migrateProfile(Object.assign(oldDefaults(), { haloPolar: 'off' })), cur = Opt.migrateProfile(Object.assign(oldDefaults(), { haloPolar: 'off', defaultsVersion: Opt.DEFAULTS_VERSION })), keep = Opt.migrateProfile(Object.assign(oldDefaults(), { haloPolar: 'merged' }));
+  ok('haloPolar: an old whole-object save at off moves to auto; a current-version off stays; a chosen merged stays', old.profile.haloPolar === 'auto' && cur.profile.haloPolar === 'off' && keep.profile.haloPolar === 'merged', { old: old.profile.haloPolar, cur: cur.profile.haloPolar, keep: keep.profile.haloPolar });
 }
 // 4. unknown keys
 {
