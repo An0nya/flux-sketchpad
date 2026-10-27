@@ -1641,18 +1641,27 @@ void main() {
     const pl = E('select', { 'data-anim': 'powerlines', 'aria-label': 'Power lines along the road', title: 'Dark wires between roadside poles. Visible only where a headlamp beam (ours or oncoming) lights them. Off: scene unchanged.' });
     for (const [value, label] of [['off', 'power lines off'], ['on', 'power lines on']]) pl.append(E('option', { value }, label));
     pl.addEventListener('change', () => setDV(ui, 'powerlines', pl.value)); bar.append(pl);
+    // LBL: a slider with its name and live value, one unit (the name, slider and readout never wrap apart). fmt formats the option's value; toReal turns the slider position
+    // into it (a log slider: 10^v). Returns the slider; slider._box is the unit (append, hide that), slider._show(value) refreshes the readout after a programmatic set and should be
+    // given the stored value, since a log slider's position snaps to its step (0.05 sits at 10^-1.25 = 0.056) and the readout must say what is in use.
+    const labelled = (input, name, fmt, toReal = (v) => v) => {
+      const out = E('output', { class: 'anim-speed', 'data-anim': input.getAttribute('data-anim') + '-value', 'aria-live': 'off' });
+      input._show = (real) => { out.textContent = fmt(real === undefined ? toReal(+input.value) : +real); };
+      input.addEventListener('input', () => input._show());
+      input._box = E('span', { class: 'drive-slider' },E('span', { class: 'anim-speed' }, name), input, out);
+      return input;
+    };
+    const sig2 = (x) => String(+x.toPrecision(2));   // 2 significant figures, no trailing zeros (0.0001, 0.056, 18)
     // POWERLINES: wire albedo, a tuning value (see registry powerlineReflectance). Shown with the power lines control; the registry hides it while power lines are off.
-    const pr = E('input', { type: 'range', min: 0.02, max: 0.6, step: 0.01, 'data-anim': 'powerline-reflectance', 'aria-label': 'Wire reflectance', title: 'Wire reflectance (tuning, not measured): how much light a power wire scatters. Only with power lines on.' });
-    const prl = E('span', { class: 'anim-speed' }, 'wire reflectance'), prv = E('span', { class: 'anim-speed', 'data-anim': 'powerline-reflectance-value', 'aria-live': 'off' });
-    pr.addEventListener('input', () => { prv.textContent = (+pr.value).toFixed(2); });
-    pr.addEventListener('change', () => setDV(ui, 'powerlineReflectance', +pr.value)); bar.append(E('span', { style: 'white-space:nowrap' }, prl, pr, prv));   // one unit: the label, slider and readout never wrap apart
+    const pr = labelled(E('input', { type: 'range', min: 0.02, max: 0.6, step: 0.01, 'data-anim': 'powerline-reflectance', 'aria-label': 'Wire reflectance', title: 'Wire reflectance (tuning, not measured): how much light a power wire scatters. Only with power lines on.' }), 'wire reflectance', (v) => v.toFixed(2));
+    pr.addEventListener('change', () => setDV(ui, 'powerlineReflectance', +pr.value)); bar.append(pr._box);
     // random scenery: the seed (same seed = same road), how dense, and the US centre line (double solid yellow, or the broken line of a passing zone)
     const sd = E('input', { type: 'number', min: 0, max: 99999, step: 1, 'data-anim': 'seed', 'aria-label': 'Scenery seed', title: 'Seed of the random scenery: the same number gives the same road', class: 'anim-seed' }); sd.addEventListener('change', () => setDV(ui, 'seed', Math.max(0, Math.min(99999, Math.round(+sd.value || 0)))));
     const dice = btn('dice', 'A new random seed', () => setDV(ui, 'seed', (Date.now() * 2654435761 >>> 0) % 100000), '⚄');
-    const dn = E('input', { type: 'range', min: 0.5, max: 3, step: 0.5, 'data-anim': 'density', 'aria-label': 'Scenery density', title: 'How much roadside scenery (1 = about the fixed scenery)' }); dn.addEventListener('change', () => setDV(ui, 'density', +dn.value));
+    const dn = labelled(E('input', { type: 'range', min: 0.5, max: 3, step: 0.5, 'data-anim': 'density', 'aria-label': 'Scenery density', title: 'How much roadside scenery (1 = about the fixed scenery)' }), 'scenery density', (v) => v + '×'); dn.addEventListener('change', () => setDV(ui, 'density', +dn.value));
     btn('cline', 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)', () => setDV(ui, 'cline', info().o.cline === 'broken' ? 'solid' : 'broken'), 'centre');
-    bar.append(sd, dice, dn);
-    const td = E('input', { type: 'range', min: 0, max: 3, step: 0.5, 'data-anim': 'traffic-density', 'aria-label': 'Traffic density', title: 'Cars per 300 m in each enabled lane. Traffic logic off: oncoming 50 km/h, preceding 40 km/h. On: IDM speeds and signals.' }); td.addEventListener('change', () => setDV(ui, 'trafficDensity', +td.value));
+    bar.append(sd, dice, dn._box);
+    const td = labelled(E('input', { type: 'range', min: 0, max: 3, step: 0.5, 'data-anim': 'traffic-density', 'aria-label': 'Traffic density', title: 'Cars per 300 m in each enabled lane. Traffic logic off: oncoming 50 km/h, preceding 40 km/h. On: IDM speeds and signals.' }), 'traffic density', (v) => v + ' cars / 300 m'); td.addEventListener('change', () => setDV(ui, 'trafficDensity', +td.value));
     V.flashLab = E('span', { class: 'anim-speed', 'data-anim': 'flashes' });
     // traffic range: how far away traffic cars are drawn. Pop-in happens at this edge. Lamps, scenery and pedestrians keep CULL (230 m).
     const trRange = E('select', { 'data-anim': 'traffic-range', 'aria-label': 'Traffic range', title: 'How far away traffic cars are drawn. Cars pop in at the edge of this range. Street lamps, scenery and pedestrians keep their own 230 m range.' });
@@ -1673,18 +1682,18 @@ void main() {
     V.trafficList.addEventListener('change', () => setDV(ui, 'trafficOutIds', [...V.trafficList.querySelectorAll('input[type=checkbox]')].filter(c => !c.checked).map(c => c.dataset.id)));
     bar.append(V.shuf, V.trafficList);
     // SF2 gain: log-scale slider (2^v, 0.25 to 4). Table lookup only; never rebuilds the table.
-    const gs = E('input', { type: 'range', min: -2, max: 2, step: 0.25, 'data-anim': 'scatter-gain', 'aria-label': 'Air beam gain (table mode)', title: 'Multiplies the table lookup (air beam table mode only). 1 = as computed; log scale, 0.25 to 4. Does not rebuild the table.' });
+    const gs = labelled(E('input', { type: 'range', min: -2, max: 2, step: 0.25, 'data-anim': 'scatter-gain', 'aria-label': 'Air beam gain (table mode)', title: 'Multiplies the table lookup (air beam table mode only). 1 = as computed; log scale, 0.25 to 4. Does not rebuild the table.' }), 'air beam gain', (g) => '×' + sig2(g), (v) => Math.pow(2, v));
     gs.addEventListener('change', () => setDV(ui, 'scatterGain', Math.pow(2, +gs.value)));
-    bar.append(E('span', { class: 'anim-speed' }, 'traffic'), td, V.flashLab);
-    (ui.haloAdvBody || bar).append(gs); V.scatGainEl = gs;   // HDX7: the air beam gain joins the advanced halo group (same element, same id-less data-anim)
+    bar.append(td._box, V.flashLab);
+    (ui.haloAdvBody || bar).append(gs._box); V.scatGainEl = gs;   // HDX7: the air beam gain joins the advanced halo group (same element, same id-less data-anim)
     // SC fast culling threshold: log-scale slider (10^v, 1e-4 to 100). Read only in fast mode; the frame uses it every build, nothing to rebuild.
-    const ce = E('input', { type: 'range', min: -4, max: 2, step: 0.25, 'data-anim': 'scatter-cull-eps', 'aria-label': 'Oncoming in-scatter culling threshold (fast mode)', title: 'Fast culling only: a lamp stops lighting air where its best case in-scatter per metre of ray is under this. Log scale, 1e-4 to 100; higher culls more and changes the picture more.' });
+    const ce = labelled(E('input', { type: 'range', min: -4, max: 2, step: 0.25, 'data-anim': 'scatter-cull-eps', 'aria-label': 'Oncoming in-scatter culling threshold (fast mode)', title: 'Fast culling only: a lamp stops lighting air where its best case in-scatter per metre of ray is under this. Log scale, 1e-4 to 100; higher culls more and changes the picture more.' }), 'fast cull threshold', sig2, (v) => Math.pow(10, v));
     ce.addEventListener('change', () => setDV(ui, 'scatterCullEps', Math.pow(10, +ce.value)));
-    (ui.haloAdvBody || bar).append(ce); V.cullEpsEl = ce;
-    // SR scatter range: linear slider, 10 to 400 m, in the advanced halo group. The table and every in-scatter integral read it; nothing to rebuild by hand.
-    const rg = E('input', { type: 'range', min: 50, max: 400, step: 5, 'data-anim': 'scatter-range', 'aria-label': 'Scatter range (m)', title: 'How far the air glow reaches, in metres: the in-scatter sums, the traffic halo table and the sky. 120 is the old fixed value. Above 120, air past 120 m carries light (oncoming beams in the haze at 250 m).' });
+    (ui.haloAdvBody || bar).append(ce._box); V.cullEpsEl = ce;
+    // SR scatter range: linear slider, 50 to 400 m, in the advanced halo group. The table and every in-scatter integral read it; nothing to rebuild by hand.
+    const rg = labelled(E('input', { type: 'range', min: 50, max: 400, step: 5, 'data-anim': 'scatter-range', 'aria-label': 'Scatter range (m)', title: 'How far the air glow reaches, in metres: the in-scatter sums, the traffic halo table and the sky. 120 is the old fixed value. Above 120, air past 120 m carries light (oncoming beams in the haze at 250 m).' }), 'scatter range', (v) => v + ' m');
     rg.addEventListener('change', () => setDV(ui, 'scatterRange', +rg.value));
-    (ui.haloAdvBody || bar).append(rg); V.rangeEl = rg;
+    (ui.haloAdvBody || bar).append(rg._box); V.rangeEl = rg;
     btn('reset-flashes', 'Start the count again (each driver counts once above 1 lx at their eye)', () => { V.flash = flashState(); V.flashLab.textContent = 'oncoming drivers above 1 lx: 0'; }, 'reset count');
     // BA2 own beams: the low beam (our design, or a saved low beam; a saved LOW beam also changes symmetric-mode traffic) and
     // the high beam (generic, or a saved high beam that replaces the generic one when the high switch is on).
@@ -1889,11 +1898,12 @@ void main() {
     ui.driveBar.querySelector('[data-anim="speed"]').value = o.speed; speedLabel(ui);
     for (const [k] of CLASSES) { const b = V.bar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
     { const sel = V.bar.querySelector('[data-anim="powerlines"]'); if (sel) sel.value = o.powerlines === 'on' ? 'on' : 'off'; }
-    { const pv = o.powerlineReflectance === undefined ? 0.22 : o.powerlineReflectance, sl = V.bar.querySelector('[data-anim="powerline-reflectance"]'); if (sl) sl.value = String(pv); const rv = V.bar.querySelector('[data-anim="powerline-reflectance-value"]'); if (rv) rv.textContent = (+pv).toFixed(2); }
-    V.bar.querySelector('[data-anim="traffic-density"]').value = o.trafficDensity === undefined ? 1 : o.trafficDensity;
-    V.scatGainEl.value = Math.log2(Math.min(4, Math.max(0.25, +o.scatterGain || 1)));
-    V.cullEpsEl.value = Math.log10(Math.min(100, Math.max(1e-4, +o.scatterCullEps || 0.05))); V.cullEpsEl.hidden = o.scatterCull !== 'fast' || o.visibility == null;
-    V.rangeEl.value = String(Math.min(400, Math.max(50, +o.scatterRange || 120))); V.rangeEl.hidden = o.visibility == null;
+    { const pv = o.powerlineReflectance === undefined ? 0.22 : o.powerlineReflectance, sl = V.bar.querySelector('[data-anim="powerline-reflectance"]'); if (sl) { sl.value = String(pv); sl._show(); } }
+    { const t = V.bar.querySelector('[data-anim="traffic-density"]'); t.value = o.trafficDensity === undefined ? 1 : o.trafficDensity; t._show(); }
+    { const g = Math.min(4, Math.max(0.25, +o.scatterGain || 1)); V.scatGainEl.value = Math.log2(g); V.scatGainEl._show(g); }
+    { const e = Math.min(100, Math.max(1e-4, +o.scatterCullEps || 0.05)); V.cullEpsEl.value = Math.log10(e); V.cullEpsEl._show(e); }
+    V.cullEpsEl.hidden = V.cullEpsEl._box.hidden = o.scatterCull !== 'fast' || o.visibility == null;   // LBL: the unit hides with the slider, so no orphan name
+    V.rangeEl.value = String(Math.min(400, Math.max(50, +o.scatterRange || 120))); V.rangeEl._show(); V.rangeEl.hidden = V.rangeEl._box.hidden = o.visibility == null;
     V.bar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));
     V.bar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
     V.bar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
@@ -1915,7 +1925,7 @@ void main() {
     V.tileLab.hidden = !o.tiles;
     const wd = o.wild && o.scene === 'road';        // forest and city keep their existing scenery
     V.bar.querySelector('[data-anim="seed"]').value = o.seed; V.bar.querySelector('[data-anim="seed"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest'))); V.bar.querySelector('[data-anim="dice"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest')));
-    V.bar.querySelector('[data-anim="density"]').value = o.density; V.bar.querySelector('[data-anim="density"]').disabled = !(wd || (o.leafyFoliage && (o.scene === 'forest' || o.scene === 'road')));
+    V.bar.querySelector('[data-anim="density"]').value = o.density; V.bar.querySelector('[data-anim="density"]')._show(); V.bar.querySelector('[data-anim="density"]').disabled = !(wd || (o.leafyFoliage && (o.scene === 'forest' || o.scene === 'road')));
     const cl = V.bar.querySelector('[data-anim="cline"]'); cl.disabled = !I.us; cl.textContent = o.cline === 'broken' && I.us ? 'centre: broken' : 'centre: solid'; cl.setAttribute('aria-pressed', String(o.cline === 'broken' && I.us));
     cl.title = I.us ? 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)' : 'Only on the US presets (the EU presets already have a dashed centre line)';
     for (const k of ['rpm']) V.bar.querySelector('[data-anim="c-' + k + '"]').disabled = false;   // SB1: studs on every scene, the pass included
