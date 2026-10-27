@@ -30,6 +30,8 @@ const FROZEN_OLD_DV_DEF = {
   haloPolarLamps: 2,
   haloGain: 1,
   crestOcclusion: 'off',   // E2: new option (not a default change); registry position: after haloGain
+  scatterCull: 'exact',   // SC: new option (not a default change); default exact on purpose, it draws the identical table
+  scatterCullEps: 0.05,   // SC: new option, the fast-mode threshold
   scatterMode: 'direct',
   scatterRes: 'half',
   scatterBlur: 'off',
@@ -106,7 +108,7 @@ const FROZEN_OLD_DV_DEF = {
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();
-ok('frozen copy has 91 keys (E2 + crestOcclusion, new); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 91, Object.keys(FROZEN_OLD_DV_DEF).length);
+ok('frozen copy has 93 keys (SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 93, Object.keys(FROZEN_OLD_DV_DEF).length);
 let equal = true, why = null;
 try { assert.deepStrictEqual(gen, FROZEN_OLD_DV_DEF); } catch (e) { equal = false; why = String(e.message).split('\n').slice(0, 12).join(' | '); }
 ok('generated defaults deep-equal the old DV_DEF (values and types)', equal, why);
