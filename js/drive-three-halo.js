@@ -12,7 +12,6 @@
      branch, so toggling never changes shader text. */
 import * as T from '../vendor/three/three.module.min.js';
 import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS, HALO_MAX } from './drive-three-shaders.js';
-import { CREST_DEPTH } from './drive-touge-three.js';
 import { beamExtent, coneClip, ballClip, fastRadius, litBound, polarBand } from './drive-three-halo-cull.js';
 const D = globalThis.RF.Drive;
 export const HALO_MAXL = 16, HALO_PER_DRAW = 1, HALO_BIN_STEPS = 6, HALO_MIN_W = 96, HALO_MIN_H = 54, HALO_DIV = 8, HALO_DIV_FEW = 4, HALO_FEW = 4, HALO_SUB = 4, HALO_REFINE = 4, HALO_NEAR = 45;
@@ -114,16 +113,16 @@ if (TMAIN_POLAR === TMAIN) throw new Error('HDX6: polar pass text not replaced')
 // E2 (crest occlusion, option crestOcclusion, mountain pass only): a top-down height map of the pass ribbon (drive-touge-three.js heightMap) is sampled at 3 points along lamp -> sample;
 // a sample whose line to the lamp passes under the ribbon's surface adds nothing. +1 sampler (crestH), only in these variants: with the option off the old text above is what compiles
 // (variants are built on first use), so the off pass is byte-identical. Lamp and sample are car-frame; the map is world xy (the car is the world origin on the pass, so world = worldFromCar * car).
-// The map keeps ONE height per texel (the highest): where a hairpin's bands overlap in xy, the upper leg can shadow the lower one. Known limit (reports/E.md option 2).
+// The map keeps ONE height per texel, the nearest leg's (by |off| to its own centre line, as A.frame): between two hairpin legs it holds a step at the halfway line, as the CPU blocked() does.
 export const CREST_EPS = 0.3, CREST_TAPS = 3;   // m of ribbon height above the line before it counts as blocking; points along the line (t = k / (taps + 1))
-const OCC_DECL = `uniform sampler2D crestH; uniform mat3 crestWFC; uniform vec4 crestBox; uniform vec2 crestZ;   // height map (depth texture), world-from-car, (x0, y0, 1/w, 1/h), (zmin, zrange)
+const OCC_DECL = `uniform sampler2D crestH; uniform mat3 crestWFC; uniform vec4 crestBox; uniform vec2 crestZ;   // height map (red = z - zmin + 1, 0 = none), world-from-car, (x0, y0, 1/w, 1/h), (zmin, zrange)
 bool crestOcc(vec3 a, vec3 b) {
   vec3 A = crestWFC * a, B = crestWFC * b;
   for (int k = 1; k <= ${CREST_TAPS}; k++) {
     vec3 q = mix(A, B, float(k) / ${(CREST_TAPS + 1).toFixed(1)}); vec2 uv = (q.xy - crestBox.xy) * crestBox.zw;
     if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) continue;   // outside the ribbon's box: nothing there
-    float d = texture2D(crestH, uv).r; if (d >= 1.0) continue;   // cleared texel: no ribbon
-    if (crestZ.x + (1.0 - d / ${CREST_DEPTH.toFixed(3)}) * crestZ.y > q.z + ${CREST_EPS.toFixed(2)}) return true;
+    float r = texture2D(crestH, uv).r; if (r < 0.5) continue;   // cleared texel: no ribbon
+    if (crestZ.x + r - 1.0 > q.z + ${CREST_EPS.toFixed(2)}) return true;
   }
   return false;
 }

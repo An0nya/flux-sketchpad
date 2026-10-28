@@ -1,6 +1,6 @@
 // E2 part 1: crest / cliff occlusion of the oncoming in-scatter on the mountain pass (option crestOcclusion, default off; GPU, pass only).
 // The traffic-halo table pass (drive-three-halo.js) tests 3 points along each lamp -> air-sample line against a top-down height map of the pass ribbon (drive-touge-three.js heightMap).
-// Checks: (1) the height map matches the true terrain height A.surface(s, off) on the road (|off| <= 5) within 0.1 m at three poses, a hairpin among them (this pins the xy box, the z decode and
+// Checks: (1) the height map matches the true terrain height A.surface(s, off) on the road (|off| <= 5) within 0.1 m at four poses, the hairpin approach and the hairpin among them; (1b) at the hairpin approach no GPU-only blocks vs RF.Touge.blocked (this pins the xy box, the z decode and
 // the orientation); (2) a car just behind a crest (pose d 140, the car 96 m ahead, 4 m below us; the CPU blocked() says its lamp is hidden, its lamps ARE in the halo sources) lights the air
 // below the crest line with the option off and does not with it on (frame luminance and the rows under the crest line), while the sky above the line is unchanged; (3) NEGATIVE CONTROL: a car in
 // plain view (d 1350, 50 m, nothing between) gives the same frame on and off within 2 levels, so a sign or rotation error cannot pass as "occlusion works"; (4) option off: no height-map render,
@@ -48,7 +48,7 @@ const errors = [];
     // (1) height map against the terrain
     const probe = await page.evaluate(async () => {
       const res = [];
-      for (const d of [140, 700, 1300]) {
+      for (const d of [140, 600, 700, 1300]) {
         RF.UI.dvAnim.dist = d; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1500));
         const V = RF.DriveAnim._.V, w = RF.Touge.world(V.p, d, 0), A = w.A, pts = [], truth = [];
         for (let s = -20; s <= 300; s += 17) for (const off of [-1.5, 0, 2.2, 5]) { const q = A.surface(s, off); pts.push([q.p[0], q.p[1]]); truth.push(q.p[2]); }
@@ -58,7 +58,22 @@ const errors = [];
       }
       return res;
     });
-    ok('height map equals the terrain on the road within 0.1 m at 3 poses (d 140, 700 hairpin, 1300), every point inside the map (road columns only: |off| <= 5, the ribbon has a column at -4.15 and the next at -18)', probe.every((r) => r.n === r.pts && r.maxErr < 0.1), probe);
+    ok('height map equals the terrain on the road within 0.1 m at 4 poses (d 140, 600 hairpin approach, 700 hairpin, 1300), every point inside the map (road columns only: |off| <= 5, the ribbon has a column at -4.15 and the next at -18)', probe.every((r) => r.n === r.pts && r.maxErr < 0.1), probe);
+    // (1b) hairpin approach (d 600, a car on the hairpin 50 m ahead): the GPU test must never block a lamp -> air line the CPU blocked() leaves open. Before the nearest-leg map
+    // (10-28) the other leg's 25-70 m terrain band read 41-45 m over our 0-2 m road and 190 of 1764 lines were GPU-only blocks. The GPU blocks fewer than the CPU (3 taps, 0.3 m eps vs 64 taps, 0.02 m).
+    await car(page, 50); await pose(page, 600);
+    const hp = await page.evaluate(() => {
+      const V = RF.DriveAnim._.V, p = V.p, d = 600, w = RF.Touge.world(p, d, 0), A = w.A, src = RF.Drive.trafficSources(w.objects, p.eye, p, w.A); if (!src.length) return { sources: 0 };
+      const L = [src[0].x, src[0].y, src[0].z], air = [], taps = [];
+      for (let s = -5; s <= 200; s += 5) for (let off = -40; off <= 40; off += 4) for (const h of [1, 3]) { const q = A.surface(s, off); air.push([q.p[0], q.p[1], q.p[2] + h]); }
+      for (const P of air) for (let k = 1; k <= 3; k++) taps.push(L.map((x, i) => x + (P[i] - x) * k / 4));
+      const z = []; for (let i = 0; i < taps.length; i += 64) z.push(...(V.three.crestProbe(taps.slice(i, i + 64).map((t) => [t[0], t[1]])) || []));
+      let n = 0, gpu = 0, gpuOnly = 0;
+      air.forEach((P, ai) => { if (Math.hypot(P[0] - L[0], P[1] - L[1]) < 2) return; n++;
+        const g = [0, 1, 2].some((k) => z[ai * 3 + k] !== null && z[ai * 3 + k] !== undefined && z[ai * 3 + k] > taps[ai * 3 + k][2] + .3); if (g) { gpu++; if (!RF.Touge.blocked(A, L, P)) gpuOnly++; } });
+      return { sources: src.length, occ: V.three.crestState().occ, n, gpu, gpuOnly, probed: z.length };
+    });
+    ok('hairpin approach (d 600): the map blocks lamp -> air lines (more than 500 of them) and none that the CPU blocked() leaves open', hp.occ === true && hp.probed === 3 * 1764 && hp.gpu > 500 && hp.gpuOnly === 0, hp);
     // (2) car just behind a crest
     await car(page, 96); await pose(page, 140);
     const pre = await page.evaluate(() => {
