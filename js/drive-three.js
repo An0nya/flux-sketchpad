@@ -362,7 +362,7 @@ export function create(canvas, gl, onModelsReady) {
       const t = readDepthMetres(objectTarget);
       return { W, H, rgba: col, t };   // t is the .x channel of each pixel group: object distance in metres (depth * 5000)
     },
-    haloState() { return { drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length, edges: halo.edges.slice() }; },   // SR: edges = this frame's bin upper edges (test hook)
+    haloState() { return { jit: halo.jit || false, blur: halo.blur || 0, dblur: halo.dblur || 0, drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length, edges: halo.edges.slice() }; },   // SR: edges = this frame's bin upper edges (test hook)
     haloTqPoll() { return halo.tqPoll(); }, crestTqPoll() { return pass.crestTqPoll(renderer); },   // test hook: GPU ms of the halo table draws (set globalThis.SL_HALO_TQ first)
     crestProbe(pts) { return pass.crestProbe(renderer, pts); },   // E2 test hook: the height map's z at world xy points
     crestState() { return { occ: halo.occ, ...pass.crestStats() }; },   // E2 test hook: the height map's bounds and render counts; occ = the table used it this frame
