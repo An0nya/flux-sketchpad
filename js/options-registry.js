@@ -1037,7 +1037,7 @@
       control: '[data-anim="speed"]', where: 'toolbar', query: null,
       group: 'view', cost: 'free',
       owner: ['js/drive-anim.js'],
-      tests: [],
+      tests: ['SPEED0-stop'],
       note: 'Quiet writes (no redraw) from the slider. 0 = stopped while traffic keeps moving (the benches step at 5 km/h when stopped). The game keeps its own 5-130 range.',
     },
     {

@@ -10,7 +10,17 @@
 //  (5) SM effect: the map agrees with the CPU line-of-sight test (RF.Touge.blocked) on >= 95% of air points inside it, at 4 poses.
 //  (6) SM road: shadows on the road with cleared maps change the frame no more than a redraw does; all-blocked maps (SL_SM_BLOCK) remove the oncoming road light (so it is in view and
 //      the road reads the maps); real maps leave no salt-noise acne (isolated darkened px < 5% of the darkened ones; few darkened px where the lamp sees the road = no acne).
-//  (7) Off again: no cone lamps, no maps, the ribbon text is the old one. (8) No page errors.
+//  (7) Off again: no cone lamps, no maps, the ribbon text is the old one.
+//  (8) SM1b objects (trafficShadowObjects): with objects on, map texels only ever get nearer than the ribbon-only map (never farther), and > 1000 of them do (trees, rails at d 560 rel 80);
+//      off repeats the ribbon-only map byte for byte; a still frame with objects on skips the map redraw (the casters' version moves only with the instance data).
+//  (9) SM3 PCF (trafficShadowSoft): for each of off / 2x2 / 3x3, cleared maps change the road no more than a redraw, all-blocked maps darken > 1000 px, real maps (objects on, poses d 450/650/700 rel 25:
+//      a 10-28 scan of MG2 found road shadows only there, 61-94 px each) darken > 50 px with < 5% isolated;
+//      2x2 differs from the hard test somewhere (the option does something).
+//  (10) New values: medium blur runs the 3 x 3 pattern (blur 2, jit ':3') and its total halo lies between light and heavy. OPEN (10-28 probe, MG2 d 600, 16 bins): jittered totals
+//      fall with the pattern size (no blur 72221, light 2x2 72068, medium 3x3 65730, heavy 4x4 55794) while blur without jitter moves them ~1% (even 67294, even+medium 68245),
+//      so the loss rides the larger jitter patterns, not the blur (contradicts IL's silhouette inference). Not gated as unbiased until that is understood. Polar 64x64, table 1/1.8 and
+//      map 512x1024 are what the frame uses. (11) No page errors.
+// The checks against the CPU line of sight (5, 6) keep objects off: RF.Touge.blocked knows only the terrain.
 // CPSM_PRINT=1 prints the numbers, CPSM_SHOTS=dir saves frames.
 // Run: python3 tests/serve.py <port>, then PLAYWRIGHT=... node tests/regress/CPSM-cone-shadow.js <port>
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
@@ -20,7 +30,7 @@ const fx = (n) => fs.readFileSync(path.join(__dirname, '../fixtures/' + n), 'utf
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const errors = [];
-const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 300, trafficHalo: 16, haloPolar: 'off', lampCone: 'off', streetLamps: 'off', animals: false, expMode: 'fixed', ev: 1, dynamicResolution: false, crestOcclusion: 'off', haloBins: 8, mountainPass: true, onMode: 'symmetric', haloConePass: 'off', trafficShadows: 'off' };
+const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 300, trafficHalo: 16, haloPolar: 'off', lampCone: 'off', streetLamps: 'off', animals: false, expMode: 'fixed', ev: 1, dynamicResolution: false, crestOcclusion: 'off', haloBins: 8, mountainPass: true, onMode: 'symmetric', haloConePass: 'off', trafficShadows: 'off', trafficShadowObjects: 'off', trafficShadowSoft: 'off' };
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
   const open = async (scene) => {
@@ -49,7 +59,9 @@ const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, vi
   // The halo of settings o: (frame with o) - (frame with o and trafficHalo 0, drawn just before).
   const DBG = {};
   // A warm-up frame first: an option in the ground cache key rebuilds on its first frame, and that frame's object layer can miss lit objects (seen 10-28: 44 reflector / lamp-head px black).
-  const haloSum = async (page, o, tag) => { await frame(page, { ...o, trafficHalo: 16 }); const none = await lumOf(page, await frame(page, { ...o, trafficHalo: 0 }, tag && tag + '-none')), A = await lumOf(page, await frame(page, { ...o, trafficHalo: 16 }, tag)); let s = 0, big = 0, bigS = 0; const bb = [1e9, 1e9, -1, -1];
+  // The frame still depends on its history (10-28 probe: even-8 gave 44968 then 35326 in one page), so a sum counts once two consecutive measurements agree within 1% (up to 5).
+  const haloSum = async (page, o, tag) => { let prev = null; for (let k = 0; k < 5; k++) { const v = await haloSum1(page, o, tag); if (prev !== null && Math.abs(v / prev - 1) <= 0.01) return v; prev = v; } return prev; };
+  const haloSum1 = async (page, o, tag) => { await frame(page, { ...o, trafficHalo: 16 }); const none = await lumOf(page, await frame(page, { ...o, trafficHalo: 0 }, tag && tag + '-none')), A = await lumOf(page, await frame(page, { ...o, trafficHalo: 16 }, tag)); let s = 0, big = 0, bigS = 0; const bb = [1e9, 1e9, -1, -1];
     for (let i = 0; i < A.L.length; i++) { const d = Math.max(0, A.L[i] - none.L[i]); s += d; if (d > 40) { big++; bigS += d; const x = i % A.w, y = (i / A.w) | 0; bb[0] = Math.min(bb[0], x); bb[1] = Math.min(bb[1], y); bb[2] = Math.max(bb[2], x); bb[3] = Math.max(bb[3], y); } }
     if (tag) DBG[tag] = { big, bigS: Math.round(bigS), bb }; return Math.round(s); };
   const st = (page) => page.evaluate(() => { const t = RF.DriveAnim._.V.three; return { cone: t.coneState(), sm: t.smState(), drawn: t.haloState().drawn }; });
@@ -112,7 +124,33 @@ const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, vi
     }
     const sRoad = await st(page);
     ok('SM road: cleared maps change the frame no more than a redraw (+200 px); all-blocked maps darken > 1000 px (the oncoming road light is in view and the road reads the maps); real maps leave salt-noise acne on < 5% of the px they darken', sRoad.sm.road && clrN <= redrawN + 200 && nblk > 1000 && iso <= 0.05 * Math.max(nd, 20), { redrawPx: redrawN, clearedRoadPx: clrN, darkenedPx: nd, isolated: iso, blockedPx: nblk, perPose });
-    await frame(page, { trafficShadows: 'off', haloConePass: 'off' }); const sOff = await st(page);
+    // ---- (8) SM1b objects
+    POSE = { d: 560, rel: 80 }; const mapOf = async (o) => { await frame(page, { trafficShadows: '1', ...o }); return page.evaluate(() => { const m = RF.DriveAnim._.V.three.smRead(0); return m ? Array.from(m.t) : null; }); };
+    const mOff = await mapOf({ trafficShadowObjects: 'off' }), mOn = await mapOf({ trafficShadowObjects: 'on' }), mOff2 = await mapOf({ trafficShadowObjects: 'off' });
+    let nearer = 0, farther = 0, offDiff = 0; for (let i = 0; i < mOn.length; i++) { const dd = mOn[i] - mOff[i]; if (dd < -0.5) nearer++; else if (dd > 0.5) farther++; if (mOff[i] !== mOff2[i]) offDiff++; }
+    await frame(page, { trafficShadowObjects: 'on' }); const k0 = (await st(page)).sm.stat; await page.evaluate(() => RF.DriveAnim._.frame()); const k1 = (await st(page)).sm.stat;
+    ok('SM1b objects: texels only get nearer (> 1000, none farther), objects off repeats the ribbon-only map exactly, a still frame skips the map redraw', nearer > 1000 && farther === 0 && offDiff === 0 && k1.skips > k0.skips && k1.runs === k0.runs, { nearer, farther, offDiff, runs: [k0.runs, k1.runs], skips: [k0.skips, k1.skips] });
+    // ---- (9) SM3 PCF: identity, blocked control and acne per mode
+    const pcf = {}; let hard = null;
+    for (const soft of ['off', '2x2', '3x3']) {
+      POSE = { d: 600, rel: 90 }; await page.evaluate(() => { globalThis.SL_SM_CLEAR = true; }); await L({ trafficShadows: '1', trafficShadowObjects: 'off', trafficShadowSoft: soft, trafficShadowRoad: 'off' });
+      const a = await L({ trafficShadowRoad: 'off' }), a2 = await L({ trafficShadowRoad: 'off' }), c = await L({ trafficShadowRoad: 'on' }); await page.evaluate(() => { globalThis.SL_SM_CLEAR = false; });
+      await page.evaluate(() => { globalThis.SL_SM_BLOCK = true; }); const blk = await L({ trafficShadowRoad: 'on' }); await page.evaluate(() => { globalThis.SL_SM_BLOCK = false; });
+      let nb = 0; for (let i = 0; i < blk.L.length; i++) if (a.L[i] - blk.L[i] > 4) nb++;
+      let n1 = 0, i1 = 0; const real = [];
+      for (const [d, rel] of [[450, 25], [650, 25], [700, 25]]) { POSE = { d, rel }; const off = await L({ trafficShadowRoad: 'off', trafficShadowObjects: 'on' }), on = await L({ trafficShadowRoad: 'on' }); real.push(on); const dark = new Uint8Array(on.L.length); for (let i = 0; i < dark.length; i++) if (off.L[i] - on.L[i] > 4) { dark[i] = 1; n1++; }
+        const W = on.w; for (let y = 1; y < on.h - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; if (dark[i] && !dark[i - 1] && !dark[i + 1] && !dark[i - W] && !dark[i + W]) i1++; } }
+      let vsHard = null; if (soft === 'off') hard = real; else { vsHard = 0; for (let k = 0; k < real.length; k++) for (let i = 0; i < real[k].L.length; i++) if (Math.abs(real[k].L[i] - hard[k].L[i]) > 2) vsHard++; }
+      pcf[soft] = { redraw: diffN(a, a2), cleared: diffN(a2, c), blocked: nb, darkened: n1, isolated: i1, vsHard };
+    }
+    ok('SM3 PCF: per mode, cleared maps = a redraw (+200 px), all-blocked maps darken > 1000 px, isolated darkened px <= max(5%, 25) (a distant post shadow is 1 px wide: inference); real (object) shadows darken > 50 px; 2x2 differs from hard', Object.values(pcf).every((q) => q.cleared <= q.redraw + 200 && q.blocked > 1000 && q.darkened > 50 && q.isolated <= Math.max(0.05 * q.darkened, 25)) && pcf['2x2'].vsHard > 0, pcf);
+    await frame(page, { trafficShadowObjects: 'off' });
+    // ---- (10) new values
+    POSE = { d: 600, rel: 90 }; const base10 = { trafficShadows: 'off', haloBins: 16, haloJitter: 'jittered' };
+    const light = await haloSum(page, { ...base10, haloBlur: 'light' }), heavy = await haloSum(page, { ...base10, haloBlur: 'heavy' }), medium = await haloSum(page, { ...base10, haloBlur: 'medium' }), hm = (await page.evaluate(() => RF.DriveAnim._.V.three.haloState()));
+    await frame(page, { haloBlur: 'light', haloPolar: 'auto', haloPolarBand: '64x64', haloDiv: 1.8, trafficShadows: '1', shadowRes: '512x1024' }); const h10 = await page.evaluate(() => { const t = RF.DriveAnim._.V.three, h = t.haloState(), s = t.smState(); return { div: h.div, band: h.pol && h.pol[0] && h.pol[0].band ? h.pol[0].band.nT + 'x' + h.pol[0].band.nR : null, res: s.res }; });
+    ok('new values: medium blur = 3 x 3 pattern, total halo between light and heavy (2% slack; see header); polar 64x64, table 1/1.8 and map 512x1024 are what the frame uses', hm.blur === 2 && /:3$/.test(hm.jit) && medium >= Math.min(light, heavy) * 0.98 && medium <= Math.max(light, heavy) * 1.02 && h10.div === 1.8 && h10.band === '64x64' && h10.res[0] === 512 && h10.res[1] === 1024, { light, medium, heavy, blur: hm.blur, jit: hm.jit, ...h10 });
+    await frame(page, { trafficShadows: 'off', haloConePass: 'off', haloPolar: 'off' }); const sOff = await st(page);
     ok('off again: no cone lamps, no maps, the ribbon is the old text', sOff.cone.lamps.length === 0 && !sOff.sm.cars && !sOff.sm.road, { cone: sOff.cone.lamps.length, sm: sOff.sm.cars, road: sOff.sm.road });
     await page.close();
   } catch (e) { errors.push(String(e && e.stack || e)); }
