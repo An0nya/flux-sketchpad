@@ -87,7 +87,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `road` | Road and route | 9 | 2 | 5 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 7 | 0 | 4 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 16 | 0 | 2 | 0 | 14 | 0 | 0 |
+| `halo` | Traffic halo | 21 | 0 | 2 | 0 | 19 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 15 | 0 | 12 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
@@ -166,6 +166,11 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `haloJitterAmount` | halo jitter amount | profile | advanced halo | 1 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloBlur` | halo blur | profile | advanced halo | "auto" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloDepthBlur` | halo depth blur | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloConePass` | cone pass | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloConeAngle` | cone pass angle | profile | advanced halo | 30 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `trafficShadows` | traffic shadows | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |
+| `shadowRes` | traffic shadow map size | profile | advanced halo | "1024x512" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |
+| `trafficShadowRoad` | traffic shadows on the road | profile | advanced halo | "on" | needs `gpu` [tooltip], `passHalo` [none] |
 | `scatterCull` | oncoming in-scatter culling | profile | advanced halo | "exact" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `scatterCullEps` | culling threshold (fast) | profile | advanced halo | 0.05 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `cullFast` [none] |
 | `scatterRange` | scatter range (m) | profile | advanced halo | 120 | needs `air` [hidden] |

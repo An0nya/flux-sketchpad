@@ -77,7 +77,7 @@ void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
   // (drive-touge.js blocked()), so at a hairpin each leg's 25-70 m terrain band no longer stamps its height over the other leg's road (it held 41-45 m over a 0-2 m road, 10-28 probe).
   const crest={tq:[],rt:null,scene:null,mat:null,ver:-1,box:new T.Vector4(),z:new T.Vector2(),runs:0,skips:0,ms:0};
   let geomVer=0, shKey=null;   // BRIEF J: geomVer moves when update() changes a stored ribbon value; shKey = the inputs of the last shadow render
-  return { scene, camera, material, skyMaterial, shadowStats(){return {...stat};},
+  return { scene, camera, material, skyMaterial, geometry, get geomVer(){return geomVer;}, shadowStats(){return {...stat};},   // SM: the ribbon and its version (drive-three-shadowmaps.js renders it per car)
     shadows(renderer){
       // BRIEF J: the depth maps read only the lamp eyes (u.lamp, nLamp), carFromWorld and the ribbon position (eye, tanH, size are set here).
       // Same inputs as the last render = the maps already hold that depth, so the two renders are skipped. The texture assignments stay unconditional.

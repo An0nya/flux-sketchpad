@@ -13,6 +13,7 @@
 import * as T from '../vendor/three/three.module.min.js';
 import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS, HALO_MAX } from './drive-three-shaders.js';
 import { beamExtent, coneClip, ballClip, fastRadius, litBound, polarBand } from './drive-three-halo-cull.js';
+import { SM_DECL, SM_MAX, SM_RES } from './drive-three-shadowmaps.js';
 const D = globalThis.RF.Drive;
 export const HALO_MAXL = 16, HALO_PER_DRAW = 1, HALO_BIN_STEPS = 6, HALO_MIN_W = 96, HALO_MIN_H = 54, HALO_DIV = 8, HALO_DIV_FEW = 4, HALO_FEW = 4, HALO_SUB = 4, HALO_REFINE = 4, HALO_NEAR = 45;
 // HDX6 polar table (SL_HALO_POLAR): 512 angles x 64 log-radii for the nearest lamp in front; 24 bins side by side = 12288 texels wide (under MAX_TEXTURE_SIZE 16384).
@@ -25,6 +26,7 @@ export const HALO_POL_TH = 512, HALO_POL_R = 64, HALO_POL_MIN_PX = 0.25, HALO_PO
 // HDX7: the bin count is a runtime setting (HALO_N, 4..32). The shaders size their arrays to HALO_MAX and read the count from a uniform (haloNu), so a change
 // needs no recompile. ?halobins=N sets the start value; an out-of-range value clamps and HALO_REQ keeps what was asked, so the UI can show the clamp.
 export const HALO_MIN = 4;
+export const CP_ANGLE = 30, CP_FADE = 15;   // CP: haloConeAngle default (deg between the beam axis and the line to our eye) and the fade width above it
 export let HALO_N = 24, HALO_REQ = 24, HALO_EDGES = [], HALO_BINS = 0, HALO_RANGE = 120;   // HALO_RANGE: SR, the far edge in m (120 = as before)
 export function haloEdgesOf(n, R = HALO_RANGE) { const e = [0, ...Array.from({ length: n }, (_, k) => 0.5 * Math.pow(2 * R, (k + 1) / n))]; e[n] = R; return e; }
 export function haloStepOf(n, R = HALO_RANGE) { return n === 24 && R === 120 ? 0.22836 : Math.log(2 * R) / n; }   // the knot step in ln d: 0.22836 at 24 and 120 m, as the shader always had it
@@ -130,7 +132,7 @@ if (TMAIN_POLAR === TMAIN) throw new Error('HDX6: polar pass text not replaced')
 // (variants are built on first use), so the off pass is byte-identical. Lamp and sample are car-frame; the map is world xy (the car is the world origin on the pass, so world = worldFromCar * car).
 // The map keeps ONE height per texel, the nearest leg's (by |off| to its own centre line, as A.frame): between two hairpin legs it holds a step at the halfway line, as the CPU blocked() does.
 export const CREST_EPS = 0.3, CREST_TAPS = 3;   // m of ribbon height above the line before it counts as blocking; points along the line (t = k / (taps + 1))
-const OCC_DECL = `uniform sampler2D crestH; uniform mat3 crestWFC; uniform vec4 crestBox; uniform vec2 crestZ;   // height map (red = z - zmin + 1, 0 = none), world-from-car, (x0, y0, 1/w, 1/h), (zmin, zrange)
+export const OCC_DECL = `uniform sampler2D crestH; uniform mat3 crestWFC; uniform vec4 crestBox; uniform vec2 crestZ;   // height map (red = z - zmin + 1, 0 = none), world-from-car, (x0, y0, 1/w, 1/h), (zmin, zrange)
 bool crestOcc(vec3 a, vec3 b) {
   vec3 A = crestWFC * a, B = crestWFC * b;
   for (int k = 1; k <= ${CREST_TAPS}; k++) {
@@ -178,9 +180,11 @@ const jitText = (main, jit) => {
   const t = main.replace(JIT_MID, `sb = sa * qq, s = sa * pow(qq, (${ph} + 0.5 + ${nz}) / ${(N * N).toFixed(1)}), ds = sb - sa;`); if (t === main) throw new Error('IL: jitter text not built');
   return 'uniform float haloJitAmt;\n' + t;
 };
-export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false) {
-  const main = occ ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN), body = variant === 'band' ? bandText(main) : variant === 'split' ? splitText(main) : main;
-  return THEAD + (variant ? BAND_DECL : '') + (occ ? OCC_DECL : '') + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (jit ? jitText(body, jit) : body);
+// SM (option trafficShadows): a sample the lamp's car map says the lamp cannot see adds nothing (drive-three-shadowmaps.js smLit; smM = this draw's map, -1 none). Same hook as crestOcc; off compiles the texts above.
+const smText = (t) => { const r = t.replace(OCC_HIT, '      if (!smLit(smM, haloEye + s * ray)) continue;\n' + OCC_HIT); if (r === t) throw new Error('SM: hook not found'); return r; };
+export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false) {
+  const main = occ ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN), body0 = variant === 'band' ? bandText(main) : variant === 'split' ? splitText(main) : main, body = sm ? smText(body0) : body0;
+  return THEAD + (variant ? BAND_DECL : '') + (occ ? OCC_DECL : '') + (sm ? SM_DECL + 'uniform int smM;\n' : '') + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (jit ? jitText(body, jit) : body);
 }
 const HAL_CONV = (c) => (c === 'B' ? 1 : c === 'S' ? 2 : 0);
 const half = (T.DataUtils && T.DataUtils.fromHalfFloat) || ((h) => { const e = (h >> 10) & 31, m = h & 1023, sg = h & 0x8000 ? -1 : 1; return e === 0 ? sg * Math.pow(2, -14) * (m / 1024) : e === 31 ? (m ? NaN : sg * Infinity) : sg * Math.pow(2, e - 15) * (1 + m / 1024); });
@@ -248,17 +252,17 @@ export function toCarFrame(traffic, m, A) {
 }
 export function haloPass(renderer, u) {
   const scene = new T.Scene(), camera = new T.Camera(), geo = new T.PlaneGeometry(2, 2);
-  const mk = (atlas, polar = false, occ = false, variant = '', jit = false) => new T.ShaderMaterial({
-    uniforms: {}, vertexShader: TVERT, fragmentShader: haloTableSource(atlas, polar, occ, variant, jit),
+  const mk = (atlas, polar = false, occ = false, variant = '', jit = false, sm = false) => new T.ShaderMaterial({
+    uniforms: sm ? { smTex: u.smTex, smE: u.smE, smF: u.smF, smL: u.smL, smU: u.smU, smP: u.smP, smRes: u.smRes, smM: { value: -1 } } : {}, vertexShader: TVERT, fragmentShader: haloTableSource(atlas, polar, occ, variant, jit, sm),
     blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.OneFactor, blendDst: T.OneFactor, blendSrcAlpha: T.ZeroFactor, blendDstAlpha: T.OneFactor,
     depthTest: false, depthWrite: false,
   });
   const mats = [mk(false), mk(true)], matsP = [mk(false, true), mk(true, true)];   // matsP: HDX6 polar pass materials
   const varMats = new Map(); const varMat = (atlas, polar, occ, variant) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + (occ ? 4 : 0) + variant; if (!varMats.has(k)) varMats.set(k, mk(atlas, polar, occ, variant)); return varMats.get(k); };   // SP: band / split variants, compiled on first use
   const occMats = new Map(); const occMat = (atlas, polar) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0); if (!occMats.has(k)) occMats.set(k, mk(atlas, polar, true)); return occMats.get(k); };   // E2: crest-occlusion variants, compiled on first use (option off never builds them)
-  const jitMats = new Map(); const pick = (atlas, polar, occ, variant, jit) => {   // IL: jit off = exactly the materials the code picked before; on = its own variants, compiled on first use
-    if (!jit) return variant ? varMat(atlas, polar, occ, variant) : occ ? occMat(atlas, polar) : (polar ? matsP : mats)[atlas ? 1 : 0];
-    const k = [atlas, polar, occ, variant, jit].join(); if (!jitMats.has(k)) jitMats.set(k, mk(atlas, polar, occ, variant, jit)); return jitMats.get(k);
+  const jitMats = new Map(); const pick = (atlas, polar, occ, variant, jit, sm = false) => {   // IL: jit off = exactly the materials the code picked before; on = its own variants, compiled on first use (SM: likewise)
+    if (!jit && !sm) return variant ? varMat(atlas, polar, occ, variant) : occ ? occMat(atlas, polar) : (polar ? matsP : mats)[atlas ? 1 : 0];
+    const k = [atlas, polar, occ, variant, jit, sm].join(); if (!jitMats.has(k)) jitMats.set(k, mk(atlas, polar, occ, variant, jit, sm)); return jitMats.get(k);
   };
   let blurMat = null; const blurTmp = new Map();   // IL: the bin blur pass and its scratch targets (one per source target), built on first use
   const blurBins = (srcRt, W, r, rd = 0) => {   // rows, columns (r), then depth (rd); ping-pong with a scratch target, srcRt holds the result
@@ -352,7 +356,8 @@ export function haloPass(renderer, u) {
     ms: 0,         // table pass wall time (1-pixel readback sync), only when globalThis.SL_HALO_TIMING is set (test hook)
     get table() { return rt; }, get cumTable() { return cumRt; }, get tab() { return tab; },   // BRIEF J: cumTable = the table the lookup reads (test hook haloTableBytes)
     // Build the table for this frame and point the lookup at it. Call before the ground pass. Off: haloOn 0, nothing drawn.
-    build(p, world, occ = null) {
+    build(p, world, occ = null, sm = null) {
+      halo.cone = null; halo.sm = null; halo.smCars = null;   // CP, SM
       halo.drawn = 0; halo.lamps = []; halo.passes = 0; u.haloOn.value = 0; halo.sources = null; halo.cull = null;
       u.haloPolarOn.value = 0; u.haloPolarOn2.value = 0; u.haloBandOn.value = 0; halo.msPolar = 0; halo.polar = null; halo.polars = []; halo.occ = false; halo.jit = false; halo.blur = 0; halo.dblur = 0;   // HDX6, HDX7; E2: crest occlusion used this frame
       const N = D.haloN(p); if (!N) return 0;
@@ -374,6 +379,43 @@ export function haloPass(renderer, u) {
         const tn = atlas ? u.beamTint.value[idx] : null;
         used.push({ L, idx, tint: [tn ? tn.x : 1, tn ? tn.y : 1, tn ? tn.z : 1] });
       }
+      // SM (option trafficShadows, pass frames): one depth map per car, nearest cars first (drive-three-shadowmaps.js). Eye = the midpoint of the car's lamps here, axes = its beam's,
+      // field = the beam's non-zero extent + 2 deg (at most 60 H, 35 V). sm (drive-three.js) renders them; smCars: car id -> map index. Off: nothing runs, the texts are the old ones.
+      const smK = p.touge && sm && look.trafficShadows && look.trafficShadows !== 'off' ? (look.trafficShadows === 'all' ? SM_MAX : Math.min(SM_MAX, Math.max(0, Math.round(+look.trafficShadows) || 0))) : 0;
+      let smCars = null;
+      if (smK) {
+        const cars = [];
+        for (const q of used) { const id = q.L.car; if (id === undefined || cars.some((c) => c.id === id)) continue; if (cars.length >= smK) break; cars.push({ id, lamps: used.filter((o) => o.L.car === id) }); }
+        const DG = Math.PI / 180, list = cars.map((c) => {
+          const n = c.lamps.length, at = [0, 1, 2].map((k) => c.lamps.reduce((a, o) => a + [o.L.x, o.L.y, o.L.z][k], 0) / n), b = basisOf(c.lamps[0]);
+          let hd = 0, vd = 0; for (const o of c.lamps) { const ext = beamExtentOf(o.idx, legacy); if (ext) { hd = Math.max(hd, Math.abs(ext.e.h[0]), Math.abs(ext.e.h[1])); vd = Math.max(vd, Math.abs(ext.e.v[0]), Math.abs(ext.e.v[1])); } }
+          hd = Math.min(60, hd + 2); vd = Math.min(35, vd + 2);
+          return { eye: at, f: b.f, l: b.l, u: b.u, tanH: Math.tan(hd * DG), tanV: Math.min(1.2, Math.tan(vd * DG) / Math.cos(hd * DG)) };   // tanV / cos H: an elevation at the edge azimuth sits higher on a flat map
+        });
+        if (list.length) { sm.render(list, SM_RES[look.shadowRes] || SM_RES['1024x512']); smCars = new Map(cars.map((c, i) => [c.id, i])); }
+      }
+      halo.sm = smCars ? { cars: [...smCars.keys()], maps: smCars.size } : null; halo.smCars = smCars;
+      const useSm = !!smCars, smOf = (q) => (smCars && q.L.car !== undefined && smCars.has(q.L.car) ? smCars.get(q.L.car) : -1);
+      // CP (option haloConePass 1 | 2): the nearest lamps whose beam we see side-on go to the cone pass (drive-three-beamcone.js) with share w = smoothstep over the angle between the beam
+      // axis and the line to our eye (from haloConeAngle to haloConeAngle + CP_FADE deg; haloConeAngle 0 = share 1 for any angle); this table keeps W * (1 - w), and a lamp with w = 1 leaves it.
+      // Done before the polar plan, so a lamp-centred table never carries a lamp the cone pass has. Off: `used` is untouched.
+      const coneK = String(look.haloConePass) === '2' ? 2 : String(look.haloConePass) === '1' ? 1 : 0, cone = [];
+      if (coneK) {
+        const a0 = look.haloConeAngle === undefined ? CP_ANGLE : +look.haloConeAngle;
+        for (const q of used) {
+          if (cone.length >= coneK) break;
+          const b = basisOf(q), dx = eye[0] - q.L.x, dy = eye[1] - q.L.y, dz = eye[2] - q.L.z, dl = Math.hypot(dx, dy, dz) || 1;
+          const ang = Math.acos(Math.max(-1, Math.min(1, (b.f[0] * dx + b.f[1] * dy + b.f[2] * dz) / dl))) * 180 / Math.PI;
+          const t = a0 <= 0 ? 1 : Math.max(0, Math.min(1, (ang - a0) / CP_FADE)), w = t * t * (3 - 2 * t);
+          if (!(w > 0)) continue;
+          const ext = beamExtentOf(q.idx, legacy); if (!ext) continue;   // an all-zero beam lights nothing
+          const cc = coneClip([q.L.x, q.L.y, q.L.z], b, ext.e, ext.conv); if (!cc) continue;
+          cone.push({ q, w, ang, basis: b, planes: cc.planes });
+        }
+        for (const c of cone) { const i = used.indexOf(c.q), Wt = c.q.L.w === undefined ? 1 : c.q.L.w; c.W = Wt * c.w; if (c.w >= 1 - 1e-4) used.splice(i, 1); else used[i] = { ...c.q, L: { ...c.q.L, w: Wt * (1 - c.w) } }; }
+      }
+      halo.cone = cone.length ? { lamps: cone.map((c) => ({ pos: [c.q.L.x, c.q.L.y, c.q.L.z], w: c.W, share: c.w, angle: c.ang, tint: c.q.tint, idx: c.q.idx, basis: c.basis, planes: c.planes, sm: smOf(c.q) })),
+        atlas, eye: eye.slice(), tanH, sigma: sig, rMin: D.SCAT.rMin, gF: D.SCAT.gFwd, gB: D.SCAT.gBack, wF: D.SCAT.wFwd, range: HALO_RANGE, gain: look.haloGain != null ? +look.haloGain : 1, flat: !p.touge, sm: useSm, occ: occ && p.touge && !useSm ? occ : null } : null;
       if (!used.length) return 0;
       // HDX7 polar plan. SL_HALO_POLAR (test hook) = one polar table for the nearest lamp, as HDX6. look.haloPolar: off, perlamp (a table per lamp of
       // the nearest car, one or two), merged (one table centred between the car's two lamps, both lamps drawn into it).
@@ -430,7 +472,7 @@ export function haloPass(renderer, u) {
           haloPolarC: { value: new T.Vector2(pk.C[0], pk.C[1]) }, haloPolarRange: { value: new T.Vector2(Math.log(HALO_POL_MIN_PX), pk.dL) }, haloPolarN: { value: new T.Vector2(pol.nT, pol.nR) },
         });
         if (pk.band) mp.uniforms.haloBandA = { value: new T.Vector4(pk.band.ac, pk.band.hw, pk.band.fade, pk.band.wd) };   // SP
-        occU(mp);
+        occU(mp); if (useSm) mp.uniforms.smM.value = smOf(q);
       };
       // Test hook (inert unless globalThis.SL_HALO_TQ is set): a GPU timer query around every draw of the table (screen + polar + prefix), results collected by tqPoll().
       const tqx = globalThis.SL_HALO_TQ ? renderer.getContext().getExtension('EXT_disjoint_timer_query_webgl2') : null; let tq = null;
@@ -457,8 +499,8 @@ export function haloPass(renderer, u) {
       }
       const cellsOf = (b, nW, nH, rect) => b.empty ? 0 : (b.k1 - b.k0 + 1) * (rect ? (rect[1] - rect[0] + 1) * (rect[3] - rect[2] + 1) : nW * nH);
       try {
-        renderer.autoClear = false; const m = pick(atlas, false, useOcc, '', jit);
-        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? pick(atlas, false, useOcc, 'split', jit) : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
+        renderer.autoClear = false; const m = pick(atlas, false, useOcc, '', jit, useSm);
+        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm) : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
         renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m;
         // The nearest HALO_REFINE lamps within HALO_NEAR metres are drawn in HALO_SUB sub-passes (24 steps per bin); the rest in one (6).
         used.forEach((q, i) => {
@@ -480,7 +522,7 @@ export function haloPass(renderer, u) {
               otherConvention: { value: legacy ? HAL_CONV(legacy.conv) : 0 },
               beamMeta: { value: u.beamMeta.value }, beamGrid: { value: u.beamGrid.value }, beamTint: { value: u.beamTint.value },
             });
-            occU(mm);
+            occU(mm); if (useSm) mm.uniforms.smM.value = smOf(q);   // SM: this lamp's car map
             if (bd) drawBound(mm, bd.k0, bd.k1, bd.rect, tab[0], tab[1]); else renderer.render(scene, camera);
             halo.passes++;
           }
@@ -490,7 +532,7 @@ export function haloPass(renderer, u) {
         // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
-          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit);
+          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit, useSm);
           const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;
           renderer.setRenderTarget(rp.bin); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
           for (let j = 0; j < P; j++) for (const q of s.lamps) {

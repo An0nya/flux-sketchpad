@@ -5,6 +5,8 @@ import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
 import { haloPass, haloLookup, HALO_EDGES, scatRangeGpu } from './drive-three-halo.js';
 import { createLampCone } from './drive-three-lampcone.js';
+import { createBeamCone } from './drive-three-beamcone.js';   // CP: side-on oncoming lamps marched per pixel (option haloConePass)
+import { smUniforms, createTrafficMaps, SM_DECL, SM_ROAD } from './drive-three-shadowmaps.js';   // SM: one depth map per oncoming car (options trafficShadows, shadowRes, trafficShadowRoad)
 import { LAMP_DIST, kindOfLamp } from './lamp-dist.js';   // LAMP-DIST: the shared lamp distribution (also registers RF.LampDist for the CPU renderer)
 import { TABLE_BUDGET_MS, bandRows, smoothMsPerRow, tableStatus, fillFraction, tableBadge, fadeRangeName, fadeRangeOf, scatterGainOf, cyclePhase } from './table-pace.js';
 const D = globalThis.RF.Drive;
@@ -46,6 +48,7 @@ export function create(canvas, gl, onModelsReady) {
   let depthCopy = null;   // LAMP-CONE-OBJECTS test readback helper (objectBuffers), created on first use
   // BA5: the per-car beam atlas. atlasOn picks the shader variant (shading and tableShading read it); the atlas is repacked only when the pool changes.
   let atlasOn = false, atlasTexture = null, atlasPacked = null, atlasKey = null, atlasLuts = null;
+  const smOn = (p) => !!(p.touge && p.trafficBeams && p.look && p.look.trafficShadows && p.look.trafficShadows !== 'off');   // SM: maps only on pass frames (the ribbon is the caster)
   const litCars = [];   // BA5 test hook: the car id behind each traffic source this frame
   renderer.debug.onShaderError = (g, program, vs, fs) => { failure = [g.getProgramInfoLog(program), g.getShaderInfoLog(vs), g.getShaderInfoLog(fs)].filter(Boolean).join(' '); console.error('GPU drive shader: ' + failure); };
   const u = {}, set = (k, v) => { if (u[k]) u[k].value = v; else u[k] = { value: v }; };
@@ -56,18 +59,25 @@ export function create(canvas, gl, onModelsReady) {
   set('materials', materialTexture); set('marks', markTexture);
   const mat = new T.ShaderMaterial({ uniforms: u, vertexShader: vertex, fragmentShader: ground, depthTest: false, depthWrite: false });
   const scene = new T.Scene(), mesh = new T.Mesh(new T.PlaneGeometry(2, 2), mat); mesh.frustumCulled = false; scene.add(mesh);
+  Object.assign(u, smUniforms());   // SM: shared by the halo table, the cone pass and the ribbon (programs that do not declare them ignore them)
   const pass = surface(u);
   const camera = new T.Camera(), objectView = objects(renderer, u, onModelsReady);
   const halo = haloPass(renderer, u);   // SL: the traffic scatter table (built only when look.trafficHalo is on)
   const lampCone = createLampCone(renderer);   // LAMP-CONE-MIST: lit cone of mist under each street lamp (option lampCone; off or clear air = no change)
+  const beamCone = createBeamCone(renderer, u, { smTex: u.smTex, smE: u.smE, smF: u.smF, smL: u.smL, smU: u.smU, smP: u.smP, smRes: u.smRes });   // CP
+  const trafficMaps = createTrafficMaps(renderer, u);   // SM
   // blend: false leaves the table's cycle-blend bank set out of the program. B10: nothing passes false now; the banks are packed into two array samplers, so the pass blends too (RENDER.md section 4).
-  function shading(material, enabled, mountain = false, table = false, blend = true) {
+  // SM3 (smr): the ribbon's traffic loop skips a lamp whose car map says it cannot see this point (drive-three-shadowmaps.js smRoad). Pass + lighting only; otherwise the text is unchanged.
+  const SM_LOOP = 'if(NoL<=0.0) continue;\n    vec3 local=vec3(forward';
+  const smRoadText = (s) => { if (s.split(SM_LOOP).length !== 2) return s; const nl = s.indexOf('\n') + 1; return (s.slice(0, nl) + SM_DECL + SM_ROAD + s.slice(nl)).replace(SM_LOOP, 'if(NoL<=0.0) continue; if(smRoad(i,p,n)) continue;\n    vec3 local=vec3(forward'); };
+  function shading(material, enabled, mountain = false, table = false, blend = true, smr = false) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
-    const atlas = atlasOn && enabled, bl = table ? blend : true;   // blend only changes the text when the table is on
-    if (material.userData.p2 === enabled && material.userData.tg === mountain && material.userData.tbl === table && material.userData.at === atlas && material.userData.bl === bl) return;
+    const atlas = atlasOn && enabled, bl = table ? blend : true, sr = !!(smr && mountain && enabled);   // blend only changes the text when the table is on
+    if (material.userData.p2 === enabled && material.userData.tg === mountain && material.userData.tbl === table && material.userData.at === atlas && material.userData.bl === bl && !!material.userData.smr === sr) return;
     let source = enabled ? withLighting(material.userData.baseFragment, atlas) : material.userData.baseFragment;
     if (table) source = tableSource(source, blend);
     material.fragmentShader = mountain ? passShader(source) : source; material.userData.tg = mountain; material.userData.tbl = table; material.userData.bl = bl;
+    if (sr) material.fragmentShader = smRoadText(material.fragmentShader); material.userData.smr = sr;
     material.userData.p2 = enabled; material.userData.at = atlas; material.needsUpdate = true;
   }
   // SD1 table pre-pass (look.scatterMode 'table'): three banks of four bins at the table's resolution, optional separable blur, then the lit passes read them.
@@ -362,6 +372,8 @@ export function create(canvas, gl, onModelsReady) {
       const t = readDepthMetres(objectTarget);
       return { W, H, rgba: col, t };   // t is the .x channel of each pixel group: object distance in metres (depth * 5000)
     },
+    coneState() { return { ...beamCone.state(), programs: beamCone.programs() }; },   // CP test hook: the lamps handed over this frame (pos, W * share, share, angle)
+    smState() { const n = halo.sm ? halo.sm.maps : 0; return { maps: Array.from({ length: n }, (_, i) => ({ e: u.smE.value[i].toArray(), f: u.smF.value[i].toArray(), l: u.smL.value[i].toArray(), u: u.smU.value[i].toArray(), p: u.smP.value[i].toArray() })), res: u.smRes.value.toArray(), cars: halo.sm, stat: { ...trafficMaps.stat }, smOf: u.smOf.value.slice(0, 4).map((v) => v.toArray()), road: !!pass.material.userData.smr }; }, smRead(m) { return trafficMaps.read(m); },   // SM test hooks
     haloState() { return { jit: halo.jit || false, blur: halo.blur || 0, dblur: halo.dblur || 0, drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length, edges: halo.edges.slice() }; },   // SR: edges = this frame's bin upper edges (test hook)
     haloTqPoll() { return halo.tqPoll(); }, crestTqPoll() { return pass.crestTqPoll(renderer); },   // test hook: GPU ms of the halo table draws (set globalThis.SL_HALO_TQ first)
     crestProbe(pts) { return pass.crestProbe(renderer, pts); },   // E2 test hook: the height map's z at world xy points
@@ -375,7 +387,7 @@ export function create(canvas, gl, onModelsReady) {
     atlasState() { const n = u.nTraffic.value; return { on: atlasOn, beams: atlasPacked ? atlasPacked.count : 0, nTraffic: n, cars: litCars.slice(0, n), idx: Array.from({ length: n }, (_, i) => u.trafficBeamIdx.value[i >> 2].getComponent(i & 3)), tints: atlasPacked ? Array.from({ length: atlasPacked.count }, (_, i) => u.beamTint.value[i].toArray().slice(0, 3)) : [] }; },
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
-      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn); shading(pass.skyMaterial, extras, true, tableOn);   // B10: the pass blends too (the banks are packed, see uniforms.mjs)
+      const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn, true, smOn(p) && (p.look || {}).trafficShadowRoad !== 'off'); shading(pass.skyMaterial, extras, true, tableOn);   // B10: the pass blends too (the banks are packed, see uniforms.mjs)
       u.scatUV.value.set(1 / p.w, 1 / p.h); u.haloUV.value.set(1 / p.w, 1 / p.h); if (tableOn) {
         // TOUGE-AIR-RIBBON: the table pre-pass builds a level car-frame ray, so it must see the car-frame eye and lamps; on a pass frame the uniforms hold the world-aligned
         // (rotated) copies for the lit passes. Swap the unrotated values (p.eye, p.lamps) in for the table only, then put back what was there. No `touge` test: on a flat frame the
@@ -387,11 +399,15 @@ export function create(canvas, gl, onModelsReady) {
       // E2 crest occlusion (option crestOcclusion 'on', pass frames with a halo): the ribbon is brought up to date and its height map rendered BEFORE the table is built (update() otherwise runs after it, a frame late).
       // Off: nothing here runs, the table pass is the old text and the frame is byte-identical.
       let occ = null; if (p.touge && !p.airHold && p.look && p.look.crestOcclusion === 'on' && D.haloN(p)) { pass.update(world.A, dist); occ = pass.heightMap(renderer); if (occ) occ = { ...occ, wfc: u.worldFromCar.value }; }
-      if (!p.airHold) halo.build(p, world, occ); else u.haloOn.value = 0;   // TOUGE-ELEV B2: touge frames build the halo too (lamps in the car frame, B1)   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
+      // SM: the maps need the ribbon up to date before the table is built (as E2). sm = null (off, flat frames): the table is the old one.
+      let sm = null; if (smOn(p) && !p.airHold && D.haloN(p)) { pass.update(world.A, dist); sm = { render: (list, res) => trafficMaps.render(pass.geometry, u.carFromWorld.value, pass.geomVer, list, res) }; }
+      if (!p.airHold) halo.build(p, world, occ, sm); else { u.haloOn.value = 0; halo.cone = null; halo.smCars = null; }
+      for (let i = 0; i < 64; i++) { const c = halo.smCars && i < u.nTraffic.value ? halo.smCars.get(litCars[i]) : undefined; u.smOf.value[i >> 2].setComponent(i & 3, c === undefined ? 0 : c + 1); }   // SM3: traffic lamp -> its car's map (by car id)   // TOUGE-ELEV B2: touge frames build the halo too (lamps in the car frame, B1)   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
       lampCone.draw(p, world, target, p.touge ? { eye: u.eye.value, carFromWorld: u.carFromWorld.value, worldFromCar: u.worldFromCar.value } : null);   // LAMP-CONE-MIST: additive in-scatter cone before the blit (no-op unless the lamp cone is on and visibility is set)
+      beamCone.draw(halo.cone, target);   // CP: the side-on lamps the table handed over (no-op when none)
       set('passDepth', target.depthTexture);
       if (failure) throw Error(failure);
       // CPU textures use row zero = top; three's target uses row zero = bottom.
@@ -401,7 +417,8 @@ export function create(canvas, gl, onModelsReady) {
       if (objectDestination) {
         if (!objectTarget || objectTarget.width !== p.w * ss || objectTarget.height !== p.h * ss) { if (objectTarget) objectTarget.dispose(); objectTarget = new T.WebGLRenderTarget(p.w * ss, p.h * ss, { type: T.FloatType, depthTexture: new T.DepthTexture(p.w * ss, p.h * ss, T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
         u.scatUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); u.haloUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge, tableOn); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
-        lampCone.drawObjects(p, objectTarget);   // LAMP-CONE-OBJECTS: cone added to object pixels up to their distance; leaves the target bound for the blit
+        const lcObj = lampCone.drawObjects(p, objectTarget);   // LAMP-CONE-OBJECTS: cone added to object pixels up to their distance; leaves the target bound for the blit
+        beamCone.drawObjects(lcObj || objectTarget, objectTarget.depthTexture);   // CP: the same for the cone-pass lamps (its own target, left bound; no-op when none)
         if (failure) throw Error(failure);
         const src = gl.getParameter(gl.FRAMEBUFFER_BINDING); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, objectDestination);
         gl.blitFramebuffer(0, 0, p.w * ss, p.h * ss, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, ss > 1 ? gl.LINEAR : gl.NEAREST);

@@ -35,6 +35,11 @@ const FROZEN_OLD_DV_DEF = {
   haloJitterAmount: 1,
   haloBlur: 'auto',
   haloDepthBlur: 'off',
+  haloConePass: 'off',   // CP + SM: new options (not default changes); registry position: after haloDepthBlur
+  haloConeAngle: 30,
+  trafficShadows: 'off',
+  shadowRes: '1024x512',
+  trafficShadowRoad: 'on',
   scatterCull: 'exact',   // SC: new option (not a default change); default exact on purpose, it draws the identical table
   scatterCullEps: 0.05,   // SC: new option, the fast-mode threshold
   scatterRange: 120,   // SR: new option, the scatter range in m (120 = the old fixed value)
@@ -114,7 +119,7 @@ const FROZEN_OLD_DV_DEF = {
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();
-ok('frozen copy has 99 keys (IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 99, Object.keys(FROZEN_OLD_DV_DEF).length);
+ok('frozen copy has 104 keys (CP + SM: haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, new); (99 with IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 104, Object.keys(FROZEN_OLD_DV_DEF).length);
 let equal = true, why = null;
 try { assert.deepStrictEqual(gen, FROZEN_OLD_DV_DEF); } catch (e) { equal = false; why = String(e.message).split('\n').slice(0, 12).join(' | '); }
 ok('generated defaults deep-equal the old DV_DEF (values and types)', equal, why);
