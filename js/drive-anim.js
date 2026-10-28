@@ -311,6 +311,8 @@
   function cameraStep(src, camera, dt, t) {
     const desired = Math.max(0, src.traffic.speed / 3.6);
     if (!src.traffic.logic && !(src.tiles && src.tiles.mountain)) return Object.assign({}, camera, { x: camera.x + desired * dt, v: desired });
+    // Slider 0 (stopped): brake at IDM's comfortable rate to a full stop. idmAcceleration floors v0 at 0.1 m/s (traffic needs that), which would leave us creeping.
+    if (desired <= 0) { const v = Math.max(0, camera.v - IDM.b * dt); return Object.assign({}, camera, { x: camera.x + 0.5 * (camera.v + v) * dt, v, a: dt > 0 ? (v - camera.v) / dt : 0 }); }
     trafficCars(src, camera.x, t);
     let leader = null;
     if (src.traffic.logic && src.traffic.preceding) for (const c of src.traffic.state ? src.traffic.state.cars : []) {
@@ -1154,6 +1156,7 @@ void main() {
     return true;
   }
   const info = () => V.info;
+  const kmhOf = () => { const v = +info().o.speed; return Number.isFinite(v) ? v : 50; };   // 0 is a real speed (stopped, traffic still moves): never '|| 50'
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
     const I = info(), o = I.o, pool = trafficPoolOf(o), W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, o.ownLow, o.ownHigh, lampTintOf(I, ownBeams(o)).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
@@ -1226,7 +1229,7 @@ void main() {
     V.p.pitch = o.lampPitch && st.pitch ? st.pitch.angle : 0;
     V.cameraMs = 0; V.p.profile = profiling ? {} : null;
     if (had && !V.three) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
-    V.src.traffic.speed = +info().o.speed || 50; pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
+    V.src.traffic.speed = kmhOf(); pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
     const placed = (V.src.tiles ? tileWorld : placedObjects)(V.p, st.dist, st.t, tauFor(V.act, st.t));
     if (st.game) {
       const mask = V.p.hazardMask = new Uint8Array(W * V.p.h);
@@ -1294,7 +1297,7 @@ void main() {
     const started = performance.now(); resolutionPrepare();
     const trafficMs = V.cameraMs || 0; V.cameraMs = 0;
     const st = S(V.ui), n = Wk.list.length, ss = ssNow(), th = Math.ceil(V.p.h / 16), K = n > 1 ? Math.min(th, 4 * n) : 1; Wk.seq++;
-    V.src.traffic.speed = +info().o.speed || 50; pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
+    V.src.traffic.speed = kmhOf(); pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
     const b = Wk.busy = { seq: Wk.seq, started: started - trafficMs, trafficMs, dist: st.dist, t: st.t, sent: performance.now(), done: 0, next: 0, K, ss, speed: V.src.traffic.speed, traffic: V.src.traffic.logic ? trafficCars(V.src, st.dist, st.t) : null, act: [...V.act], parts: [] };
     b.sent = performance.now(); b.placementMs = b.sent - started; b.dispatchMs = 0;
     for (let i = 0; i < n && b.next < K && Wk.busy === b; i++) sendJob(i, b);
@@ -1360,9 +1363,9 @@ void main() {
     advanceCamera(st, dt); sendFrame();
   }
   function advanceCamera(st, dt) {
-    const start = performance.now(), speed = (+info().o.speed || 50) / 3.6, oldV = st.game ? st.game.v : st.camera ? st.camera.v : V.src.traffic.logic ? Math.min(speed, speedLimit(V.src, st.dist)) : speed;
+    const start = performance.now(), speed = kmhOf() / 3.6, oldV = st.game ? st.game.v : st.camera ? st.camera.v : V.src.traffic.logic ? Math.min(speed, speedLimit(V.src, st.dist)) : speed;
     advanceCameraInner(st, dt);
-    const newV = st.game ? st.game.v : st.camera ? st.camera.v : (+info().o.speed || 50) / 3.6;
+    const newV = st.game ? st.game.v : st.camera ? st.camera.v : kmhOf() / 3.6;
     // Game mode: a stall (dt is not clamped for the game clock) must not snap the lamps, so lighting and pitch see at most 0.25 s.
     const ldt = st.game ? Math.min(dt, 0.25) : dt;
     st.lighting = lightingSubsteps(st.lighting, V.src, st.dist, newV, ldt, !!info().o.afs, !!info().o.corneringLamps);
@@ -1374,7 +1377,7 @@ void main() {
       RF.DriveGame.step(st.game, dt, V.p.lane, V.p); st.total += st.game.x - st.dist; st.dist = st.game.x; st.t = st.game.t; st.camera = { x: st.dist, v: st.game.v };
       if (st.game.done) st.playing = false; return;
     }
-    const speed = (+info().o.speed || 50) / 3.6;
+    const speed = kmhOf() / 3.6;
     if (!V.src.traffic.logic && !(V.src.tiles && V.src.tiles.mountain)) { st.total += speed * dt; st.dist += speed * dt; st.t += dt; st.camera = null; return; }
     V.src.traffic.speed = speed * 3.6;
     let left = dt;
@@ -1394,7 +1397,7 @@ void main() {
         if (drawn === false) { Wk.afterFrame = null; st.dist = d0; st.t = t0s; st.playing = was; V.flash = flashes; V.src.traffic.state = traffic; flashText(); resolve(null); return; }
         if (i === Math.floor(n / 5)) { resetStats(); mid = performance.now(); }       // the first fifth is warm-up (worker start, JIT)
         if (i++ >= n) { V.gl.sync(); const ms = (performance.now() - mid) / (n - Math.floor(n / 5)); Wk.afterFrame = null; st.dist = d0; st.t = t0s; st.playing = was; V.flash = flashes; V.src.traffic.state = traffic; flashText(); resolve(Object.assign({ n, msPerFrame: ms, workers: Wk.list.length }, stats())); return; }
-        st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); sendFrame();
+        st.dist += 0.5; st.t += 0.5 / (Math.max(5, kmhOf()) / 3.6); sendFrame();
       };
       Wk.afterFrame = step; step(); void t0;
     });
@@ -1591,7 +1594,7 @@ void main() {
     document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.bar.hidden && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
     btn('fit-controls', 'Compact spacing for the wrapping drive controls. Off uses wider spacing.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
-    const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed. Mountain pass always slows for bends; traffic logic adds road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
+    const sp = E('input', { type: 'range', min: 0, max: 130, step: 1, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed, 0 = stopped (traffic keeps moving). Mountain pass always slows for bends; traffic logic adds road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
     const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
     const speedBox = E('span', { class: 'drive-speed' }); speedBox.append(sp, lab);
     primary.querySelector('[data-dv=scene]').after(speedBox);
@@ -1875,7 +1878,7 @@ void main() {
   function autoUrban(seed, dist) { return roadTile(seed, Math.floor(dist / TILE_LEN)).kind === 'urban'; }
   function autoUrbanInput(src, dist) { return !!(src && src.tiles && !src.tiles.mountain && autoUrban(src.tiles.seed, dist)); }
   // the sensor's speed: the actual car speed when the camera runs (traffic logic, pass); the slider is only the fallback
-  function autoSpeedKmh(st, slider) { return st.camera ? st.camera.v * 3.6 : (+slider || 50); }
+  function autoSpeedKmh(st, slider) { return st.camera ? st.camera.v * 3.6 : Number.isFinite(+slider) ? +slider : 50; }
   // One Auto step per frame, on the sim clock (st.t). Flips the beam only on a change; the readout is refreshed only then.
   function autoTick(ui, st) {
     const A = V.autoSt || (V.autoSt = { high: true, timer: 0, reason: 'clear' }), o = info().o, p = V.p;
@@ -2095,7 +2098,7 @@ void main() {
       root.addEventListener('blur', suspend); document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); });
       V.gameStatus = E('div', { 'data-game': 'status', role: 'status' }); V.gameCard = E('div', { 'data-game': 'card', class: 'game-card', hidden: '' });
       box.append(E('strong', {}, 'REACH > UNIFORMITY · game'), E('div', { class: 'game-setup' }, E('label', {}, 'km/h ', speed), wet, E('label', {}, 'seed ', seed), E('label', {}, reseed, ' new each run'), lamp, acceleration, rules, E('label', {}, clearLane, ' Wait for clear lane'), musicWrap, start, exit, pause, brake), V.gameStatus, V.gameCard, E('small', {}, 'Five hazards. Hold to brake; release to recover with the chosen acceleration. After a stop, hazards leave the road before recovery (at least 2 s). Gentle acceleration returns to speed at 2.5 m/s². Uncheck Wait for clear lane or choose Original rules for the previous resume. Game flavour, not legal advice.'));
-      V.cv.parentElement.append(box); speed.value = info().o.speed; seed.value = info().o.seed; wet.value = D.wetnessOf(info().o) > 0 ? 'wet' : 'dry';
+      V.cv.parentElement.append(box); speed.value = Math.max(5, kmhOf()); seed.value = info().o.seed; wet.value = D.wetnessOf(info().o) > 0 ? 'wet' : 'dry';
     }
     if (V.notice) V.notice.hidden = !V.why || (st.gameMode && !V.lost);
     V.gameBar.hidden = !st.gameMode; V.gameBar.classList.toggle('running', !!st.game && !st.game.done); mount(ui);
@@ -2488,7 +2491,7 @@ void main() {
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
   function bench(n) {
     const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, flashes = V.flash, traffic = V.src.traffic.state; V.src.traffic.state = copyTraffic(traffic); V.flash = flashState(); resetStats(); const t0 = performance.now();
-    for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
+    for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / (Math.max(5, kmhOf()) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
   RF.DriveAnim = { timeline: () => TL.events, frameMsSummary, simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,

@@ -1032,13 +1032,13 @@
       tests: [],
     },
     {
-      id: 'speed', kind: 'profile', type: 'int', values: { min: 5, max: 130, step: 5 },
+      id: 'speed', kind: 'profile', type: 'int', values: { min: 0, max: 130, step: 1 },
       default: 50, label: 'speed (km/h)',
       control: '[data-anim="speed"]', where: 'toolbar', query: null,
       group: 'view', cost: 'free',
       owner: ['js/drive-anim.js'],
       tests: [],
-      note: 'Quiet writes (no redraw) from the slider.',
+      note: 'Quiet writes (no redraw) from the slider. 0 = stopped while traffic keeps moving (the benches step at 5 km/h when stopped). The game keeps its own 5-130 range.',
     },
     {
       id: 'oncoming', kind: 'profile', type: 'bool', values: null,
