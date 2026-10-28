@@ -173,10 +173,10 @@ const JIT_MID = 'sb = sa * qq, s = sqrt(sa * sb), ds = sb - sa;';
 if (TMAIN.split(JIT_MID).length !== 2) throw new Error('IL: step midpoint not found once in the table pass');
 // 'jittered': the noise is a fixed random fraction (jittered stratified sampling), hashed from cell, slice and step, so the offsets no longer repeat on a regular grid: a narrow
 // beam's beads break up into grain the blur merges. Fixed per cell (no frame index), so a still frame does not flicker. haloJitAmt (uniform) scales it; 'interleaved' = amount 0.
-// jit = 'interleaved' | 'jittered', optionally ':4' for the 4 x 4 pattern.
+// jit = 'interleaved' | 'jittered', optionally ':3' or ':4' for the 3 x 3 (medium blur) or 4 x 4 (heavy) pattern. 3 is not a power of two, so it takes a modulo, not a mask.
 const JIT_NOISE = 'float(((uint(cx) * 1973u + uint(px.y) * 9277u + uint(tile) * 26699u + uint(m) * 31337u) * 1274126177u >> 16) & 65535u) / 65536.0';
 const jitText = (main, jit) => {
-  const N = /:4$/.test(jit) ? 4 : 2, ph = `float((cx & ${N - 1}) + ${N} * (px.y & ${N - 1}))`, nz = /^jittered/.test(jit) ? `haloJitAmt * (${JIT_NOISE} - 0.5)` : '0.0';
+  const N = /:4$/.test(jit) ? 4 : /:3$/.test(jit) ? 3 : 2, ph = N === 3 ? 'float((cx % 3) + 3 * (px.y % 3))' : `float((cx & ${N - 1}) + ${N} * (px.y & ${N - 1}))`, nz = /^jittered/.test(jit) ? `haloJitAmt * (${JIT_NOISE} - 0.5)` : '0.0';
   const t = main.replace(JIT_MID, `sb = sa * qq, s = sa * pow(qq, (${ph} + 0.5 + ${nz}) / ${(N * N).toFixed(1)}), ds = sb - sa;`); if (t === main) throw new Error('IL: jitter text not built');
   return 'uniform float haloJitAmt;\n' + t;
 };
@@ -383,17 +383,18 @@ export function haloPass(renderer, u) {
       // SM (option trafficShadows, pass frames): one depth map per car, nearest cars first (drive-three-shadowmaps.js). Eye = the midpoint of the car's lamps here, axes = its beam's,
       // field = the beam's non-zero extent + 2 deg (at most 60 H, 35 V). sm (drive-three.js) renders them; smCars: car id -> map index. Off: nothing runs, the texts are the old ones.
       const smK = p.touge && sm && look.trafficShadows && look.trafficShadows !== 'off' ? (look.trafficShadows === 'all' ? SM_MAX : Math.min(SM_MAX, Math.max(0, Math.round(+look.trafficShadows) || 0))) : 0;
+      const smRes = SM_RES[look.shadowRes] || SM_RES['1024x512'], smCap = Math.max(1, Math.floor((renderer.capabilities.maxTextureSize || 4096) / smRes[1]));   // the maps stack vertically in one texture: never taller than the GPU allows (fewer maps, nearest kept)
       let smCars = null;
       if (smK) {
         const cars = [];
-        for (const q of used) { const id = q.L.car; if (id === undefined || cars.some((c) => c.id === id)) continue; if (cars.length >= smK) break; cars.push({ id, lamps: used.filter((o) => o.L.car === id) }); }
+        for (const q of used) { const id = q.L.car; if (id === undefined || cars.some((c) => c.id === id)) continue; if (cars.length >= Math.min(smK, smCap)) break; cars.push({ id, lamps: used.filter((o) => o.L.car === id) }); }
         const DG = Math.PI / 180, list = cars.map((c) => {
           const n = c.lamps.length, at = [0, 1, 2].map((k) => c.lamps.reduce((a, o) => a + [o.L.x, o.L.y, o.L.z][k], 0) / n), b = basisOf(c.lamps[0]);
           let hd = 0, vd = 0; for (const o of c.lamps) { const ext = beamExtentOf(o.idx, legacy); if (ext) { hd = Math.max(hd, Math.abs(ext.e.h[0]), Math.abs(ext.e.h[1])); vd = Math.max(vd, Math.abs(ext.e.v[0]), Math.abs(ext.e.v[1])); } }
           hd = Math.min(60, hd + 2); vd = Math.min(35, vd + 2);
           return { eye: at, f: b.f, l: b.l, u: b.u, tanH: Math.tan(hd * DG), tanV: Math.min(1.2, Math.tan(vd * DG) / Math.cos(hd * DG)) };   // tanV / cos H: an elevation at the edge azimuth sits higher on a flat map
         });
-        if (list.length) { sm.render(list, SM_RES[look.shadowRes] || SM_RES['1024x512']); smCars = new Map(cars.map((c, i) => [c.id, i])); }
+        if (list.length) { sm.render(list, smRes); smCars = new Map(cars.map((c, i) => [c.id, i])); }
       }
       halo.sm = smCars ? { cars: [...smCars.keys()], maps: smCars.size } : null; halo.smCars = smCars;
       const useSm = !!smCars, smOf = (q) => (smCars && q.L.car !== undefined && smCars.has(q.L.car) ? smCars.get(q.L.car) : -1);
@@ -462,7 +463,7 @@ export function haloPass(renderer, u) {
       const timing = !!globalThis.SL_HALO_TIMING; if (timing) { renderer.getContext().finish(); } const t0 = timing ? performance.now() : 0;   // test hook: wall time of the table pass, synchronised by a 1-pixel readback
       const nearSub = [1, 2, 4].includes(+look.haloNearSub) ? +look.haloNearSub : HALO_SUB;   // AT: sub-passes for lamps within HALO_NEAR (4 = as before)
       const useOcc = !!(occ && p.touge); halo.occ = useOcc; const jm = look.haloJitter === 'interleaved' || look.haloJitter === 'jittered' ? look.haloJitter : '', hb = look.haloBlur || 'auto';   // IL: sampling mode; blur auto = light when sampling is on, else off
-      const blurR = hb === 'heavy' ? 3 : hb === 'light' || (hb === 'auto' && jm) ? 1 : 0, jit = jm ? jm + (blurR === 3 ? ':4' : '') : '', jitAmt = Math.max(0, Math.min(1, look.haloJitterAmount === undefined ? 1 : +look.haloJitterAmount));
+      const blurR = hb === 'heavy' ? 3 : hb === 'medium' ? 2 : hb === 'light' || (hb === 'auto' && jm) ? 1 : 0, jit = jm ? jm + (blurR === 3 ? ':4' : blurR === 2 ? ':3' : '') : '', jitAmt = Math.max(0, Math.min(1, look.haloJitterAmount === undefined ? 1 : +look.haloJitterAmount));
       const blurD = look.haloDepthBlur === 'heavy' ? 2 : look.haloDepthBlur === 'light' ? 1 : 0;   // IL: depth blur, independent of the rest
       halo.jit = jit; halo.blur = blurR; halo.dblur = blurD;   // IL: interleaved sampling   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
       const occU = (mm) => { if (useOcc) Object.assign(mm.uniforms, { crestH: { value: occ.texture }, crestWFC: { value: occ.wfc }, crestBox: { value: occ.box }, crestZ: { value: occ.z } }); if (jit) mm.uniforms.haloJitAmt = { value: jitAmt }; };   // IL: the jitter amount rides along

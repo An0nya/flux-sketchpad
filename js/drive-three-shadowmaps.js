@@ -6,7 +6,7 @@
    Off (trafficShadows off): nothing here is built or drawn, and the shader texts that read it are never compiled. */
 import * as T from '../vendor/three/three.module.min.js';
 export const SM_MAX = 8, SM_DEPTH = 5000;
-export const SM_RES = { '512x256': [512, 256], '1024x512': [1024, 512], '2048x1024': [2048, 1024] };
+export const SM_RES = { '512x256': [512, 256], '512x512': [512, 512], '512x1024': [512, 1024], '1024x512': [1024, 512], '1024x1024': [1024, 1024], '2048x1024': [2048, 1024] };   // taller maps: the road is grazing, so vertical texels cover the most road
 // Air test: true = the lamp of map m sees point P (car frame). Outside the map (behind its eye, off its edges) = lit, as without maps. Bias 0.3 m + 1.5% of the distance:
 // air samples are not surfaces, but air just above a grazing road shares a texel with the road; the distance term keeps that layer lit.
 export const SM_DECL = `uniform sampler2D smTex; uniform vec3 smE[${SM_MAX}], smF[${SM_MAX}], smL[${SM_MAX}], smU[${SM_MAX}]; uniform vec4 smP[${SM_MAX}]; uniform vec2 smRes;   // smP: (tanH, tanV, first row, -)
@@ -19,26 +19,39 @@ bool smLit(int m, vec3 P) {
   return r <= dm * ${SM_DEPTH.toFixed(1)} + 0.3 + 0.015 * r;
 }
 `;
-// SM3 surface test (the ribbon's traffic loop): the pass's own-lamp trick against acne. The distance the map's TEXEL-CENTRE ray travels to this fragment's plane is compared with the
-// stored distance, so a surface does not shadow itself where one texel spans metres of grazing road. pw, nw: world point and normal (the pass shades in world); i: the traffic lamp.
-export const SM_ROAD = `uniform vec4 smOf[16];   // per traffic lamp: its map index + 1 (0 = no map)
-bool smRoad(int i, vec3 pw, vec3 nw) {
-  int m = int(smOf[i >> 2][i & 3] + 0.5) - 1; if (m < 0) return false;
-  vec3 P = carFromWorld * pw, N = carFromWorld * nw, v = P - smE[m]; float x = dot(v, smF[m]); if (x <= 0.05) return false;
-  vec2 uv = vec2(-dot(v, smL[m]) / (x * smP[m].x), dot(v, smU[m]) / (x * smP[m].y)) * 0.5 + 0.5;
-  if (uv.x < 0.0 || uv.y < 0.0 || uv.x >= 1.0 || uv.y >= 1.0) return false;
-  vec2 c = floor(uv * smRes) + 0.5, nd = c / smRes * 2.0 - 1.0;
-  float dm = texelFetch(smTex, ivec2(c) + ivec2(0, int(smP[m].z)), 0).r;
+// SM3 surface test (the ribbon's traffic loop): returns the shadowed fraction 0..1 of this traffic lamp at a road point. pw, nw: world point and normal (the pass shades in world); i: the traffic lamp.
+// Per texel, the distance the map's TEXEL-CENTRE ray travels to this fragment's plane is compared with the stored distance, so a surface does not shadow itself where one texel spans
+// metres of grazing road. Normal offset (Holbert 2011): the point is first lifted off its surface by SM_NO texel footprints at its distance, so a texel holding the next face over at a crease
+// (road edge -> verge -> bank) no longer reads as a blocker (the sawtooth). smSoft (option trafficShadowSoft): 0 one texel, 1 a 2 x 2 bilinear PCF (percentage-closer filtering), 2 a 3 x 3 tent.
+export const SM_NO = 1.5;
+export const SM_ROAD = `uniform vec4 smOf[16]; uniform int smSoft;   // smOf: per traffic lamp, its map index + 1 (0 = no map)
+float smTap(int m, vec3 v, vec3 N, ivec2 c) {
+  vec2 nd = (vec2(c) + 0.5) / smRes * 2.0 - 1.0;
+  float dm = texelFetch(smTex, c + ivec2(0, int(smP[m].z)), 0).r;
   vec3 sr = normalize(smF[m] - nd.x * smP[m].x * smL[m] + nd.y * smP[m].y * smU[m]);
-  float den = dot(sr, N); if (abs(den) < 1e-6) return false;
+  float den = dot(sr, N); if (abs(den) < 1e-6) return 0.0;
   float ex = dot(v, N) / den;
-  return ex > 0.0 && ex > dm * ${SM_DEPTH.toFixed(1)} + 0.15;
+  return ex > 0.0 && ex > dm * ${SM_DEPTH.toFixed(1)} + 0.15 ? 1.0 : 0.0;
+}
+float smRoadF(int i, vec3 pw, vec3 nw) {
+  int m = int(smOf[i >> 2][i & 3] + 0.5) - 1; if (m < 0) return 0.0;
+  vec3 P = carFromWorld * pw, N = carFromWorld * nw, v = P - smE[m]; float x = dot(v, smF[m]); if (x <= 0.05) return 0.0;
+  v += N * (${SM_NO.toFixed(2)} * x * 2.0 * max(smP[m].x / smRes.x, smP[m].y / smRes.y)); x = dot(v, smF[m]); if (x <= 0.05) return 0.0;
+  vec2 uv = vec2(-dot(v, smL[m]) / (x * smP[m].x), dot(v, smU[m]) / (x * smP[m].y)) * 0.5 + 0.5;
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x >= 1.0 || uv.y >= 1.0) return 0.0;
+  ivec2 hi = ivec2(smRes) - 1;
+  if (smSoft == 0) return smTap(m, v, N, clamp(ivec2(uv * smRes), ivec2(0), hi));
+  vec2 f = uv * smRes - 0.5; ivec2 b = ivec2(floor(f)); vec2 w = f - floor(f); float s = 0.0;
+  if (smSoft == 1) { for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < 2; dx++) s += smTap(m, v, N, clamp(b + ivec2(dx, dy), ivec2(0), hi)) * (dx == 0 ? 1.0 - w.x : w.x) * (dy == 0 ? 1.0 - w.y : w.y); return s; }
+  ivec2 c0 = clamp(ivec2(uv * smRes), ivec2(0), hi);
+  for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) s += smTap(m, v, N, clamp(c0 + ivec2(dx, dy), ivec2(0), hi)) * float((2 - abs(dx)) * (2 - abs(dy))) / 16.0;
+  return s;
 }
 `;
 // The uniforms every reader shares (one set of objects: the halo table, the cone pass and the ribbon all point at these).
 export function smUniforms() {
   const v3 = () => Array.from({ length: SM_MAX }, () => new T.Vector3());
-  return { smTex: { value: null }, smE: { value: v3() }, smF: { value: v3() }, smL: { value: v3() }, smU: { value: v3() }, smP: { value: Array.from({ length: SM_MAX }, () => new T.Vector4(1, 1, 0, 0)) }, smRes: { value: new T.Vector2(1, 1) }, smOf: { value: Array.from({ length: 16 }, () => new T.Vector4()) } };
+  return { smTex: { value: null }, smE: { value: v3() }, smF: { value: v3() }, smL: { value: v3() }, smU: { value: v3() }, smP: { value: Array.from({ length: SM_MAX }, () => new T.Vector4(1, 1, 0, 0)) }, smRes: { value: new T.Vector2(1, 1) }, smOf: { value: Array.from({ length: 16 }, () => new T.Vector4()) }, smSoft: { value: 1 } };
 }
 // The map renderer. list: [{ eye, f, l, u, tanH, tanV }] (car frame), nearest car first. geometry: the pass ribbon (world positions); cfw: carFromWorld (Matrix3); ver: the ribbon's version.
 // objs (SM1b, null = ribbon only): { scene, ver, view(m, row, W, H, cfw) } from the objects module, drawn into the same map after the ribbon.

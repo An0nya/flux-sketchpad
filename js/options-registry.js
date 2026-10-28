@@ -290,7 +290,7 @@
       note: '?halobins=N seeds a module value that this stored key overrides at the first halo build.',
     },
     {
-      id: 'haloDiv', kind: 'profile', type: 'enum', values: [0, 4, 2, 1.4],
+      id: 'haloDiv', kind: 'profile', type: 'enum', values: [0, 4, 2.8, 2, 1.8, 1.4],
       default: 0, label: 'halo table divisor',
       control: '[data-dv="haloDiv"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'table-rebuild',
@@ -314,7 +314,7 @@
       note: "auto (default since SP): the merged table while the nearest oncoming lamp is more than 12 m from the eye, faded out between 12 and 8 m (share = smoothstep(8, 12, d)), none inside 8 m; the table covers only an angle band about the beam's top edge, at the size set by haloPolarBand, and the screen volume carries every other angle. off / merged / perlamp are unchanged (whole circle, 512 x 64).",
     },
     {
-      id: 'haloPolarBand', kind: 'profile', type: 'enum', values: ['64x16', '128x32', '512x64'],
+      id: 'haloPolarBand', kind: 'profile', type: 'enum', values: ['64x16', '64x64', '128x32', '128x64', '256x48', '256x64', '512x16', '512x64'],
       default: '128x32', label: 'auto polar table size',
       control: '[data-dv="haloPolarBand"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'table-rebuild',
@@ -372,7 +372,7 @@
       note: "Scales the per-cell noise of halo sampling 'jittered' (0 = the plain interleaved offsets, 1 = the whole quarter-step). A uniform: no recompile.",
     },
     {
-      id: 'haloBlur', kind: 'profile', type: 'enum', values: ['auto', 'off', 'light', 'heavy'],
+      id: 'haloBlur', kind: 'profile', type: 'enum', values: ['auto', 'off', 'light', 'medium', 'heavy'],
       default: 'auto', label: 'halo blur',
       control: '[data-dv="haloBlur"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
@@ -442,7 +442,7 @@
       note: "GPU only, mountain pass only. One depth map per oncoming car (nearest first, up to 8 for 'all'), rendered from the midpoint of its lamps along its beam, the ribbon and (trafficShadowObjects on) the object proxies cast. The traffic-halo table and the cone pass skip air the map hides; with trafficShadowRoad on the ribbon's traffic lighting does too. One float target, maps stacked, distance / 5000.",
     },
     {
-      id: 'shadowRes', kind: 'profile', type: 'enum', values: ['512x256', '1024x512', '2048x1024'],
+      id: 'shadowRes', kind: 'profile', type: 'enum', values: ['512x256', '512x512', '512x1024', '1024x512', '1024x1024', '2048x1024'],
       default: '1024x512', label: 'traffic shadow map size',
       control: '[data-dv="shadowRes"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
@@ -470,6 +470,16 @@
       requires: [need('gpu'), need('passHalo')],
       tests: ['CPSM-cone-shadow'],
       note: "SM1b. With trafficShadows on: the object proxies (rails, trees, proxy cars) are drawn into the maps after the ribbon, so air and road behind them get none of that car's light. Emissive and glow proxies do not cast; detailed mesh cars do not cast; only proxies the frame keeps for our own view are drawn. Off: the maps hold the ribbon only.",
+    },
+    {
+      id: 'trafficShadowSoft', kind: 'profile', type: 'enum', values: ['off', '2x2', '3x3'],
+      default: '2x2', label: 'traffic road shadow softening',
+      control: '[data-dv="trafficShadowSoft"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'per-frame-gpu',
+      owner: ['js/spec-ui.js', 'js/drive-three.js', 'js/drive-three-shadowmaps.js'],
+      requires: [need('gpu'), need('passHalo')],
+      tests: ['CPSM-cone-shadow'],
+      note: "With trafficShadows and trafficShadowRoad on: how the ribbon's road test reads the map. off = one texel (hard, stepped edges); 2x2 = bilinear percentage-closer filtering (PCF: the yes/no answers of 4 texels averaged); 3x3 = a 9-texel tent. All three use the normal offset (the point lifted 1.5 texel footprints off its surface), which removes the crease sawtooth.",
     },
     {
       id: 'scatterCull', kind: 'profile', type: 'enum', values: ['off', 'exact', 'fast'],
