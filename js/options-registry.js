@@ -398,7 +398,7 @@
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three-halo.js', 'js/drive-three-beamcone.js', 'js/drive-three.js'],
       requires: [need('gpu'), need('air'), need('haloOn')],
-      tests: [],
+      tests: ['CPSM-cone-shadow'],
       note: "GPU only. The nearest 1 or 2 oncoming lamps seen side-on leave the traffic-halo table and are marched per pixel along the part of each eye ray inside their beam's cone (drive-three-beamcone.js), ground and object layers. Hand-over by angle (haloConeAngle) with a 15 deg fade; the table keeps W * (1 - share). Off: no pass, the table is the old one.",
     },
     {
@@ -408,7 +408,7 @@
       group: 'halo', cost: 'free',
       owner: ['js/drive-anim.js', 'js/drive-three-halo.js'],
       requires: [need('gpu'), need('air'), need('haloOn')],
-      tests: [],
+      tests: ['CPSM-cone-shadow'],
       note: 'Degrees between an oncoming beam axis and the line to our eye above which the cone pass takes the lamp (full share 15 deg higher). 0 = the nearest lamps always go to the cone pass. No recompile.',
     },
     {
@@ -418,7 +418,7 @@
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three-shadowmaps.js', 'js/drive-three-halo.js', 'js/drive-three.js', 'js/drive-touge-three.js'],
       requires: [need('gpu'), need('air'), need('haloOn'), need('passHalo')],
-      tests: [],
+      tests: ['CPSM-cone-shadow'],
       note: "GPU only, mountain pass only. One depth map per oncoming car (nearest first, up to 8 for 'all'), rendered from the midpoint of its lamps along its beam, ribbon only (objects do not cast yet). The traffic-halo table and the cone pass skip air the map hides; with trafficShadowRoad on the ribbon's traffic lighting does too. One float target, maps stacked, distance / 5000.",
     },
     {
@@ -428,7 +428,7 @@
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three-shadowmaps.js'],
       requires: [need('gpu'), need('air'), need('haloOn'), need('passHalo')],
-      tests: [],
+      tests: ['CPSM-cone-shadow'],
       note: 'Texels per traffic shadow map. Only read with trafficShadows on.',
     },
     {
@@ -438,7 +438,7 @@
       group: 'halo', cost: 'recompile',
       owner: ['js/spec-ui.js', 'js/drive-three.js', 'js/drive-three-shadowmaps.js'],
       requires: [need('gpu'), need('passHalo')],
-      tests: [],
+      tests: ['CPSM-cone-shadow'],
       note: "With trafficShadows on: the ribbon's oncoming-lamp lighting reads the same maps (texel-centre ray against the fragment's plane, no acne). Ribbon only: the pass object program is at the 13-sampler cap. Off or maps off: the ribbon text is the old one.",
     },
     {

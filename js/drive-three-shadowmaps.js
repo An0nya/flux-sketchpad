@@ -59,12 +59,14 @@ export function createTrafficMaps(renderer, U) {
       const cc = renderer.getClearColor(new T.Color()), ca = renderer.getClearAlpha(), ac = renderer.autoClear; renderer.autoClear = false; renderer.setClearColor(new T.Color(1, 0, 0), 1);
       mU.carFromWorld.value = cfw; const ce = cfw.elements; mU.mOffMax.value = globalThis.SL_SM_OFFMAX || 1e9;   // SL_SM_OFFMAX: probe control (casters limited to |offset| <= this many m from their leg's centre line)
       list.forEach((m, i) => {
-        const key = [ver, W, H, mU.mOffMax.value, ...m.eye, ...m.f, ...m.l, ...m.u, m.tanH, m.tanV, ...ce].join(',');
+        const clr = !!globalThis.SL_SM_CLEAR || !!globalThis.SL_SM_BLOCK, blk = !!globalThis.SL_SM_BLOCK, key = [ver, W, H, mU.mOffMax.value, clr, blk, ...m.eye, ...m.f, ...m.l, ...m.u, m.tanH, m.tanV, ...ce].join(',');
         U.smE.value[i].fromArray(m.eye); U.smF.value[i].fromArray(m.f); U.smL.value[i].fromArray(m.l); U.smU.value[i].fromArray(m.u); U.smP.value[i].set(m.tanH, m.tanV, i * H, 0);
         if (keys[i] === key) { stat.skips++; return; }
         mU.mEye.value.fromArray(m.eye); mU.mF.value.fromArray(m.f); mU.mL.value.fromArray(m.l); mU.mU.value.fromArray(m.u); mU.mTan.value.set(m.tanH, m.tanV);
         rt.viewport.set(0, i * H, W, H); rt.scissor.set(0, i * H, W, H); rt.scissorTest = true;
-        renderer.setRenderTarget(rt); renderer.clear(true, true, false); renderer.render(scene, camera);
+        if (blk) renderer.setClearColor(new T.Color(0, 0, 0), 1);
+        renderer.setRenderTarget(rt); renderer.clear(true, true, false); if (!clr) renderer.render(scene, camera);   // test controls: SL_SM_CLEAR maps cleared to 'nothing in the way', SL_SM_BLOCK to 'everything in the way' (0 m)
+        if (blk) renderer.setClearColor(new T.Color(1, 0, 0), 1);
         keys[i] = key; stat.runs++;
       });
       rt.viewport.set(0, 0, W, H * K); rt.scissor.set(0, 0, W, H * K); rt.scissorTest = false;
