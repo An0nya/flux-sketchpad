@@ -162,7 +162,7 @@ function mapText(source) {
 }
 export function objects(renderer, uniforms, onModelsReady) {
   const scene = new T.Scene(), camera = new T.Camera(), groups = new Map(), maps = new Map();
-  const mapScene = new T.Scene(), omU = { omEye: { value: new T.Vector3() }, omEyeW: { value: new T.Vector3() }, omF: { value: new T.Vector3() }, omL: { value: new T.Vector3() }, omU: { value: new T.Vector3() }, omTan: { value: new T.Vector2(1, 1) }, omRes: { value: new T.Vector2(1, 1) }, omRow: { value: 0 } }; let ver = 0;   // SM1b
+  const mapScene = new T.Scene(), omU = { omEye: { value: new T.Vector3() }, omEyeW: { value: new T.Vector3() }, omF: { value: new T.Vector3() }, omL: { value: new T.Vector3() }, omU: { value: new T.Vector3() }, omTan: { value: new T.Vector2(1, 1) }, omRes: { value: new T.Vector2(1, 1) }, omRow: { value: 0 } }; let ver = 0, lastHash = -1;   // SM1b
   const models=modelMeshes(scene,uniforms,onModelsReady);let nodeTexture=null,nodeData=null,card=null;const prototype={actors:0,nearTrees:0,farTrees:0,leafPrimitives:0,proxyPrimitives:0,proxyTriangles:0};
   const zero = new T.DataArrayTexture(new Uint8Array(6), 1, 1, 6); zero.format=T.RedFormat;zero.needsUpdate=true;
   const fields={aCenter:3,aShape:4,aPose:4,aBounds:4,aEmit:4,aPlane:4,aTie:4,aMat:3,aFlags:4};
@@ -248,7 +248,11 @@ export function objects(renderer, uniforms, onModelsReady) {
         });for(const a of Object.values(g.attrs))a.needsUpdate=true;
       }
       for(const [key,g] of groups) if(!g.mesh.count){drop(g);groups.delete(key);const map=maps.get(key);if(map){map.tex.dispose();maps.delete(key);}}
-      ver++;
+      // SM1b: the casters' version moves only when the instance data (or the SDF nodes) changed, so a still frame keeps its maps (the map key holds this).
+      let h = 2166136261; const mix = (arr, n) => { const u32 = new Uint32Array(arr.buffer, arr.byteOffset, n); for (let i = 0; i < n; i++) h = Math.imul(h ^ u32[i], 16777619); };
+      for (const g of groups.values()) { h = Math.imul(h ^ g.mesh.count, 16777619); for (const [name, n] of Object.entries(fields)) mix(g.attrs[name].array, g.mesh.count * n); }
+      if (sdfs.length) mix(nodeData, sdfs.length * D.Models.MAX_NODES * 12);
+      if (h !== lastHash) { lastHash = h; ver++; }
       prototype.proxyPrimitives=count;prototype.proxyTriangles=count*2;
       return count;
     },
