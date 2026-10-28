@@ -87,7 +87,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `road` | Road and route | 9 | 2 | 5 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 7 | 0 | 4 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 21 | 0 | 2 | 0 | 19 | 0 | 0 |
+| `halo` | Traffic halo | 23 | 0 | 2 | 0 | 21 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 15 | 0 | 12 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
@@ -166,6 +166,8 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `haloJitterAmount` | halo jitter amount | profile | advanced halo | 1 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloBlur` | halo blur | profile | advanced halo | "auto" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloDepthBlur` | halo depth blur | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloAutoRange` | halo table auto range | profile | advanced halo | "4-8" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloNearSub` | halo near quality | profile | advanced halo | 4 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloConePass` | cone pass | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloConeAngle` | cone pass angle | profile | advanced halo | 30 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `trafficShadows` | traffic shadows | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |

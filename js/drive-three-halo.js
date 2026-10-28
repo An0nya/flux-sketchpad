@@ -292,6 +292,7 @@ export function haloPass(renderer, u) {
     cgeo.attributes.position.needsUpdate = true; cgeo.setDrawRange(0, 6 * n); cmesh.material = m; renderer.render(cscene, camera);
   };
   // rt: the bin table (what probe() reads). cumRt: its prefix sums across tiles (what the lookup reads). Both are sized alike.
+  let autoFew = false;   // AT: the auto rule's state (hysteresis)
   let rt = null, cumRt = null, tab = [0, 0], tabClamp = null; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
   const arr = () => Array.from({ length: HALO_PER_DRAW }, () => new T.Vector4());
   const hLamp = arr(), hDir = arr(), hTint = arr(), hLat = arr(), hUp = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(HALO_RANGE); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
@@ -396,6 +397,7 @@ export function haloPass(renderer, u) {
       }
       halo.sm = smCars ? { cars: [...smCars.keys()], maps: smCars.size } : null; halo.smCars = smCars;
       const useSm = !!smCars, smOf = (q) => (smCars && q.L.car !== undefined && smCars.has(q.L.car) ? smCars.get(q.L.car) : -1);
+      const nRule = used.length;   // AT: the table-size rule counts every lamp, the cone pass's too, so a hand-over cannot flip the resolution mid-bend
       // CP (option haloConePass 1 | 2): the nearest lamps whose beam we see side-on go to the cone pass (drive-three-beamcone.js) with share w = smoothstep over the angle between the beam
       // axis and the line to our eye (from haloConeAngle to haloConeAngle + CP_FADE deg; haloConeAngle 0 = share 1 for any angle); this table keeps W * (1 - w), and a lamp with w = 1 leaves it.
       // Done before the polar plan, so a lamp-centred table never carries a lamp the cone pass has. Off: `used` is untouched.
@@ -451,8 +453,14 @@ export function haloPass(renderer, u) {
       halo.polars = plan.map((s) => ({ lamps: s.lamps.map((q) => [q.L.x, q.L.y, q.L.z]), C: s.pk.C, rho: s.pk.rho, dL: s.pk.dL, band: s.band || null }));
       halo.polar = plan.length ? { lamp: [plan[0].lamps[0].L.x, plan[0].lamps[0].L.y, plan[0].lamps[0].L.z], C: plan[0].pk.C, rho: plan[0].pk.rho, dL: plan[0].pk.dL } : null;
       haloEdgesFor(Math.hypot(used[0].L.x - eye[0], used[0].L.y - eye[1], used[0].L.z - eye[2]), edgesV); halo.edges = edgesV.slice(0, HALO_BINS);
-      ensure(p, used.length, look.haloDiv);
+      // AT (halo table auto): the lamp-count rule (few lamps -> the finer divisor) with hysteresis (back to the coarser one only at HALO_FEW + 2 lamps, so 4 <-> 5 does not flicker),
+      // between the divisors of look.haloAutoRange ('4-8' = the old rule). A fixed haloDiv bypasses all of it.
+      const ar = /^([\d.]+)-([\d.]+)$/.exec(String(look.haloAutoRange || '4-8')) || ['', '4', '8'];
+      if (nRule <= HALO_FEW) autoFew = true; else if (nRule >= HALO_FEW + 2) autoFew = false;
+      const divAuto = +look.haloDiv > 0 ? +look.haloDiv : (autoFew ? +ar[1] : +ar[2]); halo.div = divAuto;
+      ensure(p, used.length, divAuto);
       const timing = !!globalThis.SL_HALO_TIMING; if (timing) { renderer.getContext().finish(); } const t0 = timing ? performance.now() : 0;   // test hook: wall time of the table pass, synchronised by a 1-pixel readback
+      const nearSub = [1, 2, 4].includes(+look.haloNearSub) ? +look.haloNearSub : HALO_SUB;   // AT: sub-passes for lamps within HALO_NEAR (4 = as before)
       const useOcc = !!(occ && p.touge); halo.occ = useOcc; const jm = look.haloJitter === 'interleaved' || look.haloJitter === 'jittered' ? look.haloJitter : '', hb = look.haloBlur || 'auto';   // IL: sampling mode; blur auto = light when sampling is on, else off
       const blurR = hb === 'heavy' ? 3 : hb === 'light' || (hb === 'auto' && jm) ? 1 : 0, jit = jm ? jm + (blurR === 3 ? ':4' : '') : '', jitAmt = Math.max(0, Math.min(1, look.haloJitterAmount === undefined ? 1 : +look.haloJitterAmount));
       const blurD = look.haloDepthBlur === 'heavy' ? 2 : look.haloDepthBlur === 'light' ? 1 : 0;   // IL: depth blur, independent of the rest
@@ -508,7 +516,7 @@ export function haloPass(renderer, u) {
           if (polarSet.has(q) && !split) return;   // HDX6/HDX7: a polar lamp is in its own table, not this one
           const bd = cullPlan ? cullPlan.boundOf(q, true) : null;   // SC: this lamp's slices and cells (null = the whole table, as before)
           if (bd) { cstat.set(q, { k0: bd.k0, k1: bd.k1, rect: bd.rect, cells: cellsOf(bd, tab[0], tab[1], bd.rect), full: tab[0] * tab[1] * HALO_N, radius: bd.radius, table: 'screen' }); if (bd.empty) return; }
-          const P = i < HALO_REFINE && q.L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;   // SL_HALO_SUB: test override (cost comparison)
+          const P = i < HALO_REFINE && q.L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || nearSub) : 1;   // SL_HALO_SUB: test override (cost comparison); AT: look.haloNearSub
           const mm = split ? splitM : m; mesh.material = mm;
           for (let j = 0; j < P; j++) {
             hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
@@ -533,7 +541,7 @@ export function haloPass(renderer, u) {
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
           const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit, useSm);
-          const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || HALO_SUB) : 1;
+          const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || nearSub) : 1;
           renderer.setRenderTarget(rp.bin); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
           for (let j = 0; j < P; j++) for (const q of s.lamps) {
             const bd = cullPlan ? cullPlan.boundOf(q, false) : null;   // SC: the slices this lamp can light (the full angular extent of the tile, for now)
