@@ -439,7 +439,7 @@
       owner: ['js/spec-ui.js', 'js/drive-three-shadowmaps.js', 'js/drive-three-halo.js', 'js/drive-three.js', 'js/drive-touge-three.js'],
       requires: [need('gpu'), need('air'), need('haloOn'), need('passHalo')],
       tests: ['CPSM-cone-shadow'],
-      note: "GPU only, mountain pass only. One depth map per oncoming car (nearest first, up to 8 for 'all'), rendered from the midpoint of its lamps along its beam, ribbon only (objects do not cast yet). The traffic-halo table and the cone pass skip air the map hides; with trafficShadowRoad on the ribbon's traffic lighting does too. One float target, maps stacked, distance / 5000.",
+      note: "GPU only, mountain pass only. One depth map per oncoming car (nearest first, up to 8 for 'all'), rendered from the midpoint of its lamps along its beam, the ribbon and (trafficShadowObjects on) the object proxies cast. The traffic-halo table and the cone pass skip air the map hides; with trafficShadowRoad on the ribbon's traffic lighting does too. One float target, maps stacked, distance / 5000.",
     },
     {
       id: 'shadowRes', kind: 'profile', type: 'enum', values: ['512x256', '1024x512', '2048x1024'],
@@ -460,6 +460,16 @@
       requires: [need('gpu'), need('passHalo')],
       tests: ['CPSM-cone-shadow'],
       note: "With trafficShadows on: the ribbon's oncoming-lamp lighting reads the same maps (texel-centre ray against the fragment's plane, no acne). Ribbon only: the pass object program is at the 13-sampler cap. Off or maps off: the ribbon text is the old one.",
+    },
+    {
+      id: 'trafficShadowObjects', kind: 'profile', type: 'enum', values: ['on', 'off'],
+      default: 'on', label: 'objects cast traffic shadows',
+      control: '[data-dv="trafficShadowObjects"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'per-frame-gpu',
+      owner: ['js/spec-ui.js', 'js/drive-three.js', 'js/drive-three-objects.js', 'js/drive-three-shadowmaps.js'],
+      requires: [need('gpu'), need('passHalo')],
+      tests: ['CPSM-cone-shadow'],
+      note: "SM1b. With trafficShadows on: the object proxies (rails, trees, proxy cars) are drawn into the maps after the ribbon, so air and road behind them get none of that car's light. Emissive and glow proxies do not cast; detailed mesh cars do not cast; only proxies the frame keeps for our own view are drawn. Off: the maps hold the ribbon only.",
     },
     {
       id: 'scatterCull', kind: 'profile', type: 'enum', values: ['off', 'exact', 'fast'],

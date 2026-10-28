@@ -87,7 +87,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `road` | Road and route | 9 | 2 | 5 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 7 | 0 | 4 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 23 | 0 | 2 | 0 | 21 | 0 | 0 |
+| `halo` | Traffic halo | 24 | 0 | 2 | 0 | 22 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 15 | 0 | 12 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
@@ -173,6 +173,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `trafficShadows` | traffic shadows | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |
 | `shadowRes` | traffic shadow map size | profile | advanced halo | "1024x512" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |
 | `trafficShadowRoad` | traffic shadows on the road | profile | advanced halo | "on" | needs `gpu` [tooltip], `passHalo` [none] |
+| `trafficShadowObjects` | objects cast traffic shadows | profile | advanced halo | "on" | needs `gpu` [tooltip], `passHalo` [none] |
 | `scatterCull` | oncoming in-scatter culling | profile | advanced halo | "exact" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `scatterCullEps` | culling threshold (fast) | profile | advanced halo | 0.05 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `cullFast` [none] |
 | `scatterRange` | scatter range (m) | profile | advanced halo | 120 | needs `air` [hidden] |

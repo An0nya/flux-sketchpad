@@ -87,6 +87,7 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `trafficShadows` | profile | halo | per-frame-gpu | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] | spec-ui.js, drive-three-shadowmaps.js, drive-three-halo.js, drive-three.js, drive-touge-three.js | - | - | - | - | - | - | - |
 | `shadowRes` | profile | halo | per-frame-gpu | "1024x512" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] | spec-ui.js, drive-three-shadowmaps.js | - | - | - | - | - | - | - |
 | `trafficShadowRoad` | profile | halo | recompile | "on" | needs `gpu` [tooltip], `passHalo` [none] | spec-ui.js, drive-three.js, drive-three-shadowmaps.js | - | - | - | - | - | - | - |
+| `trafficShadowObjects` | profile | halo | per-frame-gpu | "on" | needs `gpu` [tooltip], `passHalo` [none] | spec-ui.js, drive-three.js, drive-three-objects.js, drive-three-shadowmaps.js | - | - | - | - | - | - | - |
 | `scatterCull` | profile | halo | per-frame-gpu | "exact" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] | spec-ui.js, drive-anim.js, drive-three-halo.js, drive-three-halo-cull.js | - | - | - | - | - | - | - |
 | `scatterCullEps` | profile | halo | free | 0.05 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `cullFast` [none] | drive-anim.js, drive-three-halo.js | - | - | - | - | - | - | - |
 | `scatterRange` | profile | halo | per-frame-gpu | 120 | needs `air` [hidden] | drive.js, drive-anim.js, drive-three-halo.js, drive-three-shaders.js, spec-ui.js | - | - | - | - | - | - | - |
@@ -202,7 +203,7 @@ Each rule is one condition on other options (or on the render context), with the
 | `manualMode` | onMode = "manual" | manual oncoming mode only | none | `spec-ui.js Manual mode only ~L601` | onKcd |
 | `wetOn` | wetness > 0 (or legacy wet) | needs a damp or wet road | disabled | `spec-ui.js wetnessOf(o) > 0 ~L1025` | wetSheen, wetModel |
 | `wetSheenOn` | wetSheen = true | needs wet sheen on | disabled | `spec-ui.js o.wetSheen) ~L1026` | wetModel |
-| `gpu` | context renderer = "gpu" | GPU drive view only; the CPU renderer ignores it | tooltip | `spec-ui.js GPU drive view only ~L938` | lampCone, haloPolarBand, crestOcclusion, haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, haloAutoRange, haloNearSub, haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, scatterCull, scatterCullEps |
+| `gpu` | context renderer = "gpu" | GPU drive view only; the CPU renderer ignores it | tooltip | `spec-ui.js GPU drive view only ~L938` | lampCone, haloPolarBand, crestOcclusion, haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, haloAutoRange, haloNearSub, haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, trafficShadowObjects, scatterCull, scatterCullEps |
 | `cpuRenderer` | context renderer = "cpu" | the worker threads render the CPU view; the GPU view ignores them | none | `drive-anim.js const want = !V.three ~L1264` | mt |
 | `tilesOn` | tiles = true | needs route tiles on (the pass does not allow it) | disabled | `drive-anim.js "tile-cache"]').disabled = !o.tiles ~L1880` | tileCache |
 | `tilesOrPass` | (tiles = true or mountainPass = true) | needs route tiles or the mountain pass | disabled | `drive-anim.js "street-lamps"]').disabled ~L1881` | streetLamps |
@@ -219,7 +220,7 @@ Each rule is one condition on other options (or on the render context), with the
 | `mountainPassAir` | mountainPass = true | the pass air beam table still uses the flat basis (HAZARDS H4); the traffic halo now renders on the pass (TOUGE-ELEV B, per-car tilt) | none | `drive-three.js !p.airHold ~L297` | scatter, scatterMode |
 | `polarAuto` | haloPolar = "auto" | only read when the lamp-centred table is on auto | none | `drive-three-halo.js pmode === 'auto' ~L335` | haloPolarBand |
 | `cullFast` | scatterCull = "fast" | only read when oncoming in-scatter culling is fast (exact never uses a threshold) | none | `drive-three-halo.js cullMode === 'fast' ~L492` | scatterCullEps |
-| `passHalo` | mountainPass = true | mountain pass only: the occluder is the pass ribbon; on the flat road the option does nothing | none | `drive-three.js p.look.crestOcclusion === 'on' ~L378` | crestOcclusion, trafficShadows, shadowRes, trafficShadowRoad |
+| `passHalo` | mountainPass = true | mountain pass only: the occluder is the pass ribbon; on the flat road the option does nothing | none | `drive-three.js p.look.crestOcclusion === 'on' ~L378` | crestOcclusion, trafficShadows, shadowRes, trafficShadowRoad, trafficShadowObjects |
 | `mountainPassPeople` | mountainPass = true | the pass builds no people | none | `drive-scenes.js FEATURE_PRESETS ~L172` | people |
 | `cityScene` | scene = "city" | leafy foliage is ignored in the city | none | `drive-anim.js name === 'road' \|\| name === 'forest' ~L35` | leafyFoliage |
 <!-- END GENERATED rules -->

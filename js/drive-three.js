@@ -400,7 +400,8 @@ export function create(canvas, gl, onModelsReady) {
       // Off: nothing here runs, the table pass is the old text and the frame is byte-identical.
       let occ = null; if (p.touge && !p.airHold && p.look && p.look.crestOcclusion === 'on' && D.haloN(p)) { pass.update(world.A, dist); occ = pass.heightMap(renderer); if (occ) occ = { ...occ, wfc: u.worldFromCar.value }; }
       // SM: the maps need the ribbon up to date before the table is built (as E2). sm = null (off, flat frames): the table is the old one.
-      let sm = null; if (smOn(p) && !p.airHold && D.haloN(p)) { pass.update(world.A, dist); sm = { render: (list, res) => trafficMaps.render(pass.geometry, u.carFromWorld.value, pass.geomVer, list, res) }; }
+      let sm = null, objDone = false; if (smOn(p) && !p.airHold && D.haloN(p)) { pass.update(world.A, dist); const oc = objectDestination && p.look.trafficShadowObjects !== 'off'; if (oc) { objectView.update(p, world.objects, ss); objDone = true; }   // SM1b: this frame's instances, before the maps
+        sm = { render: (list, res) => trafficMaps.render(pass.geometry, u.carFromWorld.value, pass.geomVer, list, res, oc ? objectView.casters : null) }; }
       if (!p.airHold) halo.build(p, world, occ, sm); else { u.haloOn.value = 0; halo.cone = null; halo.smCars = null; }
       for (let i = 0; i < 64; i++) { const c = halo.smCars && i < u.nTraffic.value ? halo.smCars.get(litCars[i]) : undefined; u.smOf.value[i >> 2].setComponent(i & 3, c === undefined ? 0 : c + 1); }   // SM3: traffic lamp -> its car's map (by car id)   // TOUGE-ELEV B2: touge frames build the halo too (lamps in the car frame, B1)   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
       renderer.resetState();
@@ -416,7 +417,7 @@ export function create(canvas, gl, onModelsReady) {
       gl.blitFramebuffer(0, 0, p.w, p.h, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, gl.NEAREST);
       if (objectDestination) {
         if (!objectTarget || objectTarget.width !== p.w * ss || objectTarget.height !== p.h * ss) { if (objectTarget) objectTarget.dispose(); objectTarget = new T.WebGLRenderTarget(p.w * ss, p.h * ss, { type: T.FloatType, depthTexture: new T.DepthTexture(p.w * ss, p.h * ss, T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
-        u.scatUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); u.haloUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge, tableOn); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
+        u.scatUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); u.haloUV.value.set(1 / (p.w * ss), 1 / (p.h * ss)); if (!objDone) objectView.update(p, world.objects, ss); objectView.scene.traverse(ob => { if (ob.material) shading(ob.material, extras, !!p.touge, tableOn); }); objectView.mask(false); renderer.setRenderTarget(objectTarget); renderer.setClearColor(0, 0); renderer.render(objectView.scene, objectView.camera);
         const lcObj = lampCone.drawObjects(p, objectTarget);   // LAMP-CONE-OBJECTS: cone added to object pixels up to their distance; leaves the target bound for the blit
         beamCone.drawObjects(lcObj || objectTarget, objectTarget.depthTexture);   // CP: the same for the cone-pass lamps (its own target, left bound; no-op when none)
         if (failure) throw Error(failure);

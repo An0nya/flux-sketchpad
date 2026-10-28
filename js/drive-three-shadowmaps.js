@@ -1,5 +1,5 @@
 /* SM (options trafficShadows, shadowRes, trafficShadowRoad): one depth map per oncoming car, so air (and road) its lamps cannot see gets none of their light.
-   Pass frames only: the casters are the pass ribbon (SM1a). Objects (guardrails, trees, cars) are not casters yet (SM1b, deferred: they are analytic proxies drawn per pixel).
+   Pass frames only: the casters are the pass ribbon (SM1a) and, with trafficShadowObjects on, the object proxies (SM1b: guardrails, trees, proxy cars; the objects module draws them, see its casters).
    Storage: ONE float red target, the maps stacked vertically (map m = rows m*resH .. (m+1)*resH-1), a viewport per map. Colour = distance / 5000 (the project's one depth unit,
    as the ribbon and objects write), cleared to 1.0 = nothing in the way; the depth buffer keeps the nearest surface. R32F is not filterable here: texelFetch only.
    A map looks along its car's beam: eye = the midpoint of the car's lamps, axes = the beam's (fwd, lat, up) in OUR car frame (the halo's frame), uv = (-lat/fwd / tanH, up/fwd / tanV) * .5 + .5.
@@ -41,6 +41,7 @@ export function smUniforms() {
   return { smTex: { value: null }, smE: { value: v3() }, smF: { value: v3() }, smL: { value: v3() }, smU: { value: v3() }, smP: { value: Array.from({ length: SM_MAX }, () => new T.Vector4(1, 1, 0, 0)) }, smRes: { value: new T.Vector2(1, 1) }, smOf: { value: Array.from({ length: 16 }, () => new T.Vector4()) } };
 }
 // The map renderer. list: [{ eye, f, l, u, tanH, tanV }] (car frame), nearest car first. geometry: the pass ribbon (world positions); cfw: carFromWorld (Matrix3); ver: the ribbon's version.
+// objs (SM1b, null = ribbon only): { scene, ver, view(m, row, W, H, cfw) } from the objects module, drawn into the same map after the ribbon.
 export function createTrafficMaps(renderer, U) {
   let rt = null, dim = '', keys = [];
   const mU = { carFromWorld: { value: null }, mEye: { value: new T.Vector3() }, mF: { value: new T.Vector3() }, mL: { value: new T.Vector3() }, mU: { value: new T.Vector3() }, mTan: { value: new T.Vector2() }, mOffMax: { value: 1e9 } };
@@ -51,7 +52,7 @@ export function createTrafficMaps(renderer, U) {
   const stat = { runs: 0, skips: 0, maps: 0, ms: 0 };
   return {
     stat,
-    render(geometry, cfw, ver, list, res) {
+    render(geometry, cfw, ver, list, res, objs = null) {
       const [W, H] = res, K = Math.max(1, list.length), d = W + 'x' + H + 'x' + K;
       if (!rt || dim !== d) { if (rt) rt.dispose(); rt = new T.WebGLRenderTarget(W, H * K, { type: T.FloatType, format: T.RedFormat, depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); dim = d; keys = []; }
       if (!mesh || mesh.geometry !== geometry) { if (mesh) scene.remove(mesh); mesh = new T.Mesh(geometry, mat); mesh.frustumCulled = false; scene.add(mesh); }
@@ -59,13 +60,13 @@ export function createTrafficMaps(renderer, U) {
       const cc = renderer.getClearColor(new T.Color()), ca = renderer.getClearAlpha(), ac = renderer.autoClear; renderer.autoClear = false; renderer.setClearColor(new T.Color(1, 0, 0), 1);
       mU.carFromWorld.value = cfw; const ce = cfw.elements; mU.mOffMax.value = globalThis.SL_SM_OFFMAX || 1e9;   // SL_SM_OFFMAX: probe control (casters limited to |offset| <= this many m from their leg's centre line)
       list.forEach((m, i) => {
-        const clr = !!globalThis.SL_SM_CLEAR || !!globalThis.SL_SM_BLOCK, blk = !!globalThis.SL_SM_BLOCK, key = [ver, W, H, mU.mOffMax.value, clr, blk, ...m.eye, ...m.f, ...m.l, ...m.u, m.tanH, m.tanV, ...ce].join(',');
+        const clr = !!globalThis.SL_SM_CLEAR || !!globalThis.SL_SM_BLOCK, blk = !!globalThis.SL_SM_BLOCK, key = [ver, objs ? objs.ver : '-', W, H, mU.mOffMax.value, clr, blk, ...m.eye, ...m.f, ...m.l, ...m.u, m.tanH, m.tanV, ...ce].join(',');
         U.smE.value[i].fromArray(m.eye); U.smF.value[i].fromArray(m.f); U.smL.value[i].fromArray(m.l); U.smU.value[i].fromArray(m.u); U.smP.value[i].set(m.tanH, m.tanV, i * H, 0);
         if (keys[i] === key) { stat.skips++; return; }
         mU.mEye.value.fromArray(m.eye); mU.mF.value.fromArray(m.f); mU.mL.value.fromArray(m.l); mU.mU.value.fromArray(m.u); mU.mTan.value.set(m.tanH, m.tanV);
         rt.viewport.set(0, i * H, W, H); rt.scissor.set(0, i * H, W, H); rt.scissorTest = true;
         if (blk) renderer.setClearColor(new T.Color(0, 0, 0), 1);
-        renderer.setRenderTarget(rt); renderer.clear(true, true, false); if (!clr) renderer.render(scene, camera);   // test controls: SL_SM_CLEAR maps cleared to 'nothing in the way', SL_SM_BLOCK to 'everything in the way' (0 m)
+        renderer.setRenderTarget(rt); renderer.clear(true, true, false); if (!clr) { renderer.render(scene, camera); if (objs) { objs.view(m, i * H, W, H, cfw); renderer.render(objs.scene, camera); } }   // test controls: SL_SM_CLEAR maps cleared to 'nothing in the way', SL_SM_BLOCK to 'everything in the way' (0 m)
         if (blk) renderer.setClearColor(new T.Color(1, 0, 0), 1);
         keys[i] = key; stat.runs++;
       });

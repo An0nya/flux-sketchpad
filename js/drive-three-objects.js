@@ -3,6 +3,7 @@ import * as T from '../vendor/three/three.module.min.js';
 import { sdf } from './drive-models-glsl.js';
 import { modelMeshes, bakeTree } from './drive-three-models.js';
 import { ground } from './drive-three-shaders.js';
+import { passShader } from './drive-touge-three.js';
 const D = globalThis.RF.Drive;
 const objectVertex = `
 attribute vec3 aCenter; attribute vec4 aShape, aPose, aBounds, aEmit, aPlane, aTie; attribute vec3 aMat; attribute vec4 aFlags;
@@ -133,8 +134,35 @@ export const leafyFragment = objectFragment.replace(
    if(tip>mix(2.0,mix(1.05,.65,edge),filterLeaf))discard;
   `);
 
+// SM1b (option trafficShadowObjects): the proxies cast into the traffic shadow maps. Same instances, a second mesh per group with a map program:
+// the vertex bounds each instance in the map's view (exact sphere tangents per axis), the fragment is the pass object text with the camera ray swapped for the map's
+// pixel ray, and it writes distance / 5000 and returns before any shading. Emissive and glow instances (lamp lenses) do not cast. Built and compiled only when drawn.
+const mapVertex = `
+attribute vec3 aCenter; attribute vec4 aShape, aPose, aBounds, aEmit, aPlane, aTie; attribute vec3 aMat; attribute vec4 aFlags;
+uniform mat3 carFromWorld; uniform vec3 omEye, omF, omL, omU; uniform vec2 omTan, omRes;
+flat varying vec3 center; flat varying vec4 shape, pose, emission, planes, ties; flat varying vec3 matInfo; flat varying vec2 flags,lod; flat varying float order;
+vec2 ext(float x, float y, float R) { float d = length(vec2(x, y)); if (d <= R) return vec2(-1e3, 1e3); float c = atan(y, x), a = asin(R / d); return vec2(c - a < -1.55 ? -1e3 : tan(c - a), c + a > 1.55 ? 1e3 : tan(c + a)); }
+void main() { center=aCenter; shape=aShape; pose=aPose; emission=aEmit; planes=aPlane; ties=aTie; matInfo=aMat; flags=aFlags.xy;lod=aFlags.zw; order=aMat.z;
+ vec3 v = carFromWorld * aCenter - omEye; float R = length(aShape.xyz) * 1.02 + 0.05, x = dot(v, omF);
+ if (x + R <= 0.5 || aFlags.y > 0.0 || aEmit.w >= 0.0) { gl_Position = vec4(2, 2, 2, 1); return; }
+ vec2 ex = ext(x, dot(v, omL), R), ey = ext(x, dot(v, omU), R), px = 4.0 / omRes;
+ vec4 b = clamp(vec4(-ex.y / omTan.x - px.x, -ex.x / omTan.x + px.x, ey.x / omTan.y - px.y, ey.y / omTan.y + px.y), -1.01, 1.01);
+ if (b.x >= 1.0 || b.y <= -1.0 || b.z >= 1.0 || b.w <= -1.0) { gl_Position = vec4(2, 2, 2, 1); return; }
+ gl_Position = vec4(mix(b.xz, b.yw, position.xy + 0.5), 0, 1); }
+`;
+function mapText(source) {
+  let s = passShader(source);
+  const swaps = [
+    ['void main() {\n if(lod.y', 'uniform vec3 omEyeW, omF, omL, omU; uniform vec2 omTan, omRes; uniform float omRow;\n#define eye omEyeW\nvoid main() {\n if(lod.y'],
+    ['vec2 pixelScreen=gl_FragCoord.xy/(size*samples)*2.0-1.0;\n vec3 ray=normalize(vec3(1,-pixelScreen.x*tanH,pixelScreen.y*tanH*size.y/size.x)),', 'vec2 pixelScreen=(gl_FragCoord.xy-vec2(0.0,omRow))/omRes*2.0-1.0;\n vec3 ray=normalize(omF-pixelScreen.x*omTan.x*omL+pixelScreen.y*omTan.y*omU),'],
+    ['if(t/5000.0>texture2D(passDepth,gl_FragCoord.xy/(size*samples)).r+0.000002)discard;', 'if(t<0.5)discard;{float dm=min(.99999,t/5000.0);gl_FragDepth=dm;gl_FragColor=vec4(dm,0.0,0.0,1.0);return;}'],
+  ];
+  for (const [a, b] of swaps) { if (!s.includes(a)) throw Error('SM1b: object text changed near ' + a.slice(0, 40)); s = s.replace(a, b); }
+  return s;
+}
 export function objects(renderer, uniforms, onModelsReady) {
   const scene = new T.Scene(), camera = new T.Camera(), groups = new Map(), maps = new Map();
+  const mapScene = new T.Scene(), omU = { omEye: { value: new T.Vector3() }, omEyeW: { value: new T.Vector3() }, omF: { value: new T.Vector3() }, omL: { value: new T.Vector3() }, omU: { value: new T.Vector3() }, omTan: { value: new T.Vector2(1, 1) }, omRes: { value: new T.Vector2(1, 1) }, omRow: { value: 0 } }; let ver = 0;   // SM1b
   const models=modelMeshes(scene,uniforms,onModelsReady);let nodeTexture=null,nodeData=null,card=null;const prototype={actors:0,nearTrees:0,farTrees:0,leafPrimitives:0,proxyPrimitives:0,proxyTriangles:0};
   const zero = new T.DataArrayTexture(new Uint8Array(6), 1, 1, 6); zero.format=T.RedFormat;zero.needsUpdate=true;
   const fields={aCenter:3,aShape:4,aPose:4,aBounds:4,aEmit:4,aPlane:4,aTie:4,aMat:3,aFlags:4};
@@ -154,14 +182,15 @@ export function objects(renderer, uniforms, onModelsReady) {
     const tex=new T.DataArrayTexture(data,w,h,6);tex.format=T.RedFormat;tex.needsUpdate=true;
     cached={tex,extent:mapExtent,mode,signKind};maps.set(cacheKey,cached);return cached;
   }
+  function drop(g){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();if(g.mapMesh){mapScene.remove(g.mapMesh);g.mapMesh.dispose();g.mapMesh.material.dispose();}}
   function group(key, count, map, leafy) {
     let g=groups.get(key);if(g && g.capacity>=count)return g;
-    if(g){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();}
+    if(g)drop(g);
     const capacity=Math.max(16,2**Math.ceil(Math.log2(count))),geometry=new T.PlaneGeometry(1,1),attrs={};
     for(const [name,n]of Object.entries(fields)){attrs[name]=new T.InstancedBufferAttribute(new Float32Array(n*capacity),n).setUsage(T.DynamicDrawUsage);geometry.setAttribute(name,attrs[name]);}
     const local={...uniforms,materialMap:{value:map?map.tex:zero},mapExtent:{value:map?map.extent:new T.Vector3(1,0,1)},mapped:{value:map?map.mode:0},signKind:{value:map?map.signKind:0},maskMode:{value:0},samples:{value:1},detailed:{value:false},sdfNodes:{value:null},treeCard:{value:null}};
     const material=new T.ShaderMaterial({uniforms:local,vertexShader:objectVertex,fragmentShader:leafy?leafyFragment:objectFragment,depthTest:true,depthWrite:true,depthFunc:T.LessDepth});
-    const mesh=new T.InstancedMesh(geometry,material,capacity);mesh.frustumCulled=false;scene.add(mesh);g={mesh,attrs,capacity,uniforms:local};groups.set(key,g);return g;
+    const mesh=new T.InstancedMesh(geometry,material,capacity);mesh.frustumCulled=false;scene.add(mesh);g={mesh,attrs,capacity,uniforms:local,leafy,mapMesh:null};groups.set(key,g);return g;
   }
   return {
     scene,camera,
@@ -218,12 +247,27 @@ export function objects(renderer, uniforms, onModelsReady) {
           for(const [name,v]of Object.entries(values))g.attrs[name].array.set(v,i*fields[name]);
         });for(const a of Object.values(g.attrs))a.needsUpdate=true;
       }
-      for(const [key,g] of groups) if(!g.mesh.count){scene.remove(g.mesh);g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();groups.delete(key);const map=maps.get(key);if(map){map.tex.dispose();maps.delete(key);}}
+      for(const [key,g] of groups) if(!g.mesh.count){drop(g);groups.delete(key);const map=maps.get(key);if(map){map.tex.dispose();maps.delete(key);}}
+      ver++;
       prototype.proxyPrimitives=count;prototype.proxyTriangles=count*2;
       return count;
     },
     prototype,models,
+    // SM1b: the casters for one map. view: eye and axes in the car frame (cfw: carFromWorld), row: the map's first row in the stacked target.
+    casters: {
+      get ver() { return ver; },
+      scene: mapScene,
+      view(m, row, W, H, cfw) {
+        omU.omEye.value.fromArray(m.eye); omU.omEyeW.value.fromArray(m.eye).applyMatrix3(cfw.clone().transpose()); omU.omF.value.fromArray(m.f); omU.omL.value.fromArray(m.l); omU.omU.value.fromArray(m.u);
+        omU.omTan.value.set(m.tanH, m.tanV); omU.omRes.value.set(W, H); omU.omRow.value = row;
+        for (const g of groups.values()) {
+          if (!g.mapMesh) { const mat = new T.ShaderMaterial({ uniforms: { ...g.uniforms, ...omU, maskMode: { value: 0 } }, vertexShader: mapVertex, fragmentShader: mapText(g.leafy ? leafyFragment : objectFragment), depthTest: true, depthWrite: true, depthFunc: T.LessDepth, side: T.DoubleSide });
+            g.mapMesh = new T.InstancedMesh(g.mesh.geometry, mat, g.capacity); g.mapMesh.frustumCulled = false; mapScene.add(g.mapMesh); }
+          g.mapMesh.count = g.mesh.count;
+        }
+      },
+    },
     mask(on){models.mask(on);for(const g of groups.values())g.uniforms.maskMode.value=typeof on==='number'?on:on?1:0;},
-    dispose(){models.dispose();if(nodeTexture)nodeTexture.dispose();if(card)card.dispose();for(const g of groups.values()){g.mesh.geometry.dispose();g.mesh.dispose();g.mesh.material.dispose();}for(const m of maps.values())m.tex.dispose();zero.dispose();groups.clear();maps.clear();},
+    dispose(){models.dispose();if(nodeTexture)nodeTexture.dispose();if(card)card.dispose();for(const g of groups.values())drop(g);for(const m of maps.values())m.tex.dispose();zero.dispose();groups.clear();maps.clear();},
   };
 }
