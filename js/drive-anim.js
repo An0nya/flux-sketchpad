@@ -1630,6 +1630,13 @@ void main() {
     btn('leafy-foliage', 'Prototype leaf detail and low verge bushes. Uses trees/vegetation and scenery density. GPU adds leaf cutouts; CPU keeps solid bushes.', () => setDV(ui, 'leafyFoliage', !info().o.leafyFoliage), 'Leafy foliage');
     btn('gpu-renderer', 'Render the animated road on the GPU; HTTP required. Off keeps the CPU reference.', () => { if (V.gpuFailure && info().o.gpuRenderer) { V.gpuFailure = ''; V.gpuTries = 0; say(''); labels(ui); ui.redrawSpec(); } else setDV(ui, 'gpuRenderer', !info().o.gpuRenderer); }, 'GPU drive renderer');      // failed while ON: a click retries the GPU
     btn('fps-counter', 'Small frame-rate badge; no sampled trace profiling.', () => setDV(ui, 'fpsCounter', !info().o.fpsCounter), 'FPS');
+    // STATE DUMP (owner 10-29): save this spot as a JSON file; load one back (paused there). Performance > Debug.
+    const stateMsg = E('span', { class: 'anim-speed', 'data-anim': 'state-msg', role: 'status' });
+    const stateIn = E('input', { type: 'file', accept: '.json,application/json', 'data-anim': 'state-file', 'aria-label': 'Load a state file', hidden: '' });
+    stateIn.addEventListener('change', () => { const f = stateIn.files && stateIn.files[0]; stateIn.value = ''; if (!f) return; fileToText(f).then((txt) => { let d; try { d = JSON.parse(txt); } catch (e) { stateMsg.textContent = 'Not JSON: ' + e.message; return; } stateMsg.textContent = loadState(ui, d, setDV); }, (e) => { stateMsg.textContent = 'Could not read the file: ' + e; }); });
+    btn('save-state', 'Download everything needed to come back to this spot: every option, position and time, where on the road, the Details readouts, the nearest cars, renderer and screen. For bug reports and repros.', () => { const d = stateDump(ui), w = d.where || {}; downloadBeams(d, 'flux-state-' + String(w.tileKind || w.road || 'road').replace(/[^\w-]+/g, '') + '-' + Math.round(w.dist || 0) + 'm.json'); stateMsg.textContent = 'Saved.'; }, 'save state');
+    btn('load-state', 'Load a saved state file: every option and the position, paused there. It replaces your current settings. Traffic logic cars restart from the seed at that spot, so they come back close, not exact.', () => stateIn.click(), 'load state');
+    bar.append(stateIn, stateMsg);
     btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
     btn('scene-details', 'Live numbers about the scene in a small panel: own car, oncoming traffic, glare, hazards, range and lamp. Refreshes about 4 times a second; off costs nothing.', () => setDV(ui, 'sceneDetails', !info().o.sceneDetails), 'Scene details');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
@@ -2320,6 +2327,56 @@ void main() {
       hazardsOn: people || animals, hazards, reach, lamp: 'built-in',
     };
   }
+  // STATE DUMP (owner 10-29): Performance > Debug saves what is needed to come back to this spot (options, pose, where, readouts) as a
+  // JSON file, and loads one back. Loading sets the exact saved values, with no migrateProfile default swap: a repro must not drift.
+  // Keys this build does not know are dropped and listed; keys the file lacks take the current default and are listed. Traffic logic
+  // (IDM) cars depend on their history, so a load starts a fresh seeded stream at the saved spot: scripted traffic comes back exactly,
+  // IDM traffic only approximately. `where`, `readouts`, `cars` and `env` are for reading; a load uses only `options` and `pose`.
+  const STATE_KIND = 'flux-state', STATE_VERSION = 1;
+  const plain = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
+  function whereAt(o, dist) {
+    const k = Math.floor(dist / TILE_LEN), w = { dist, tileIndex: k, tileLen: TILE_LEN, seed: (+o.seed || 0) | 0 };   // one seed drives scenery, tiles and traffic
+    if (o.mountainPass) { const pr = RF.Touge.profile(dist); Object.assign(w, { road: 'mountain pass', tileKind: RF.Touge.tile(0, k).kind, gradePct: 100 * pr.grade, bankPct: 100 * RF.Touge.bank(dist) }); }
+    else if (o.tiles) Object.assign(w, { road: 'tiles', tileKind: roadTile(w.seed, k).kind });
+    else Object.assign(w, { road: o.scene || 'road', lapLen: PERIOD, lap: Math.floor(dist / PERIOD), inLap: dist - PERIOD * Math.floor(dist / PERIOD) });
+    return w;
+  }
+  function stateDump(ui) {
+    const o = ui.dvOpts || {}, st = S(ui), safe = (f) => { try { return f(); } catch (e) { return { error: String(e && e.message || e) }; } };
+    return {
+      kind: STATE_KIND, version: STATE_VERSION, saved: new Date().toISOString(), defaultsVersion: RF.Options.DEFAULTS_VERSION,
+      options: plain(o),
+      changed: safe(() => { const d = RF.Options.defaults(), c = {}; for (const k of Object.keys(o)) if (JSON.stringify(o[k]) !== JSON.stringify(d[k])) c[k] = plain(o[k]); return c; }),
+      pose: plain({ dist: st.dist, t: st.t, total: st.total, playing: !!st.playing, camera: st.camera || null }),
+      where: safe(() => whereAt(o, st.dist || 0)),
+      readouts: safe(() => detailsSnapshot().rows.filter((r) => !r.na).map((r) => ({ id: r.id, label: r.label, shown: r.shown }))),
+      cars: safe(() => ((V.flash && V.flash.cars) || []).map((c) => ({ kind: c.kind, x: c.x, y: c.y, v: c.v, dx: c.x - st.dist })).sort((a, b) => Math.abs(a.dx) - Math.abs(b.dx)).slice(0, 8)),
+      env: safe(() => { const z = size(), L = ui.driveLayout || {}; return { renderer: stats().renderer, sim: [z.W, z.H], css: [Math.round(z.cssW), Math.round(z.cssH)], dpr: z.dpr, scale: z.scale, layout: L.mode || null, stacked: !!L.tall, userAgent: typeof navigator === 'object' ? navigator.userAgent : '' }; }),
+    };
+  }
+  // Pure: a parsed dump -> { opts, pose, ignored, missing } or { error }. opts is the whole option set (defaults under the saved values).
+  function readState(dump) {
+    if (!dump || typeof dump !== 'object' || dump.kind !== STATE_KIND) return { error: 'Not a Flux state file (no "kind": "' + STATE_KIND + '").' };
+    if (!(dump.version <= STATE_VERSION)) return { error: 'State file version ' + dump.version + ' is newer than this build reads (' + STATE_VERSION + ').' };
+    const saved = dump.options && typeof dump.options === 'object' ? dump.options : {}, d = RF.Options.defaults(), opts = Object.assign({}, d), ignored = [], missing = [];
+    for (const k of Object.keys(saved)) { if (k === 'defaultsVersion') continue; if (k in d && !RF.Options.RETIRED_KEYS.includes(k)) opts[k] = plain(saved[k]); else ignored.push(k); }
+    for (const k of Object.keys(d)) if (!(k in saved)) missing.push(k);
+    const p = dump.pose || {}, num = (v) => (Number.isFinite(+v) ? +v : 0);
+    return { opts, pose: { dist: num(p.dist), t: num(p.t), total: num(p.total), camera: p.camera && typeof p.camera === 'object' ? plain(p.camera) : null }, ignored, missing };
+  }
+  // Applies a parsed dump, paused at the saved spot. Returns the message for the Debug row.
+  function loadState(ui, dump, setDV) {
+    if (ui.dvBase) return 'Leave the game before loading a state.';
+    const r = readState(dump); if (r.error) return r.error;
+    Object.assign(ui.dvOpts, r.opts);
+    const st = S(ui); Object.assign(st, { dist: r.pose.dist, t: r.pose.t, total: r.pose.total, camera: r.pose.camera, lighting: null, pitch: null, acceleration: 0 });
+    if (V.src && V.src.traffic) V.src.traffic.state = null;   // a fresh seeded stream at the saved spot
+    V.peaks = null;
+    setDV(ui, 'playing', false);   // one save of the whole set, then the redraw
+    const w = dump.where || {}, list = (a) => a.slice(0, 6).join(', ') + (a.length > 6 ? ' +' + (a.length - 6) : '');
+    return 'Loaded: ' + [w.road, w.tileKind, Math.round(r.pose.dist) + ' m'].filter(Boolean).join(' · ') + '. Paused.'
+      + (r.ignored.length ? ' Not in this build (dropped): ' + list(r.ignored) + '.' : '') + (r.missing.length ? ' Not in the file (default): ' + list(r.missing) + '.' : '');
+  }
   function detailsSnapshot() {
     const s = detailState(), M = RF.SceneDetails;
     return { t: performance.now(), rows: M.METRICS.map((m) => { const na = m.applies(s), value = na ? null : m.read(s); return { id: m.id, group: m.group, label: m.label, unit: m.unit, na, value, shown: M.display(m, value, na) }; }) };
@@ -2513,7 +2570,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / (Math.max(5, kmhOf()) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { timeline: () => TL.events, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { timeline: () => TL.events, stateDump, readState, loadState, STATE_KIND, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
