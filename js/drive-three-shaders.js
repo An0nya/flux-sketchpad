@@ -36,6 +36,7 @@ uniform float sigma;   // fog extinction per metre (look.visibility: 3.912 / V);
 float fogT(float d) { return sigma>0.0 ? exp(-sigma*d) : 1.0; }   // transmittance over a light path (drive.js fogD)
 uniform int scatterSteps;   // in-scatter steps (look.scatter; 0 = off; only with sigma>0). drive.js inScatter is the CPU twin
 uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js SCAT
+uniform float haloSMax;   // OHR: the oncoming table's far edge (look.haloRange, else scatterRange); our own beam keeps scatSMax
 // SL: the traffic scatter table (js/drive-three-halo.js). A screen-space table (1/8 of the view, six tiles side by side) holds, per cell, the oncoming
 // lamps' single-scatter integral over six distance bins whose edges follow the nearest lamp (fixed ladder 8, 14, 22, 34, 60, 120 m when it is far). haloScatter(d) sums the bins up to the fragment's
 // own end distance d (ground hit, object eye distance, sky = 120 m), interpolated in log d like tableC, so the lit air in FRONT of a surface adds to it and the
@@ -75,7 +76,7 @@ vec3 haloCurve(int s, vec3 K0, vec3 K1, vec3 K2, vec3 K3, float dd) {
 vec3 haloScatterScr(float d) {
   if(haloOn==0 || d<=0.5) return vec3(0.0);
   vec2 p=gl_FragCoord.xy*haloUV*haloTab-0.5, pc=floor(p), f=p-pc;
-  float dd=min(d,scatSMax);
+  float dd=min(d,haloSMax);
   int s=haloSeg(dd), i0=max(s-1,0), i3=min(s+2,haloNu-1);
   return haloCurve(s, haloBin(i0,pc,f,haloTab), haloBin(s,pc,f,haloTab), haloBin(s+1,pc,f,haloTab), haloBin(i3,pc,f,haloTab), dd);   // 4 cumulative reads
 }
@@ -104,7 +105,7 @@ vec3 haloPolarT(float d, int layer, vec2 F, vec2 rng) {
     if(haloBand.y < 3.14) ia = clamp(ia, 0.0, haloPolarN.x - 1.0);
   }
   float ja = (log(max(length(q), 0.25)) - rng.x) / rng.y - 0.5;
-  float dd = min(d, scatSMax);
+  float dd = min(d, haloSMax);
   int s = haloSeg(dd), i0 = max(s-1,0), i3 = min(s+2,haloNu-1);
   return bw * haloCurve(s, haloPolarBin(layer,i0,ia,ja), haloPolarBin(layer,s,ia,ja), haloPolarBin(layer,s+1,ia,ja), haloPolarBin(layer,i3,ia,ja), dd);
 }
@@ -147,6 +148,7 @@ float wetGGX(vec3 d,vec3 v,vec3 n) {
   float rr=length(d); vec3 l=d/rr, h=normalize(l+v);
   float NoV=dot(n,v), NoL=dot(n,l);
   if(NoV<=0.0 || NoL<=0.0) return 0.0;
+  if(n.z<=0.7) return 0.0;   // GGXV (10-29): no water film on faces steeper than ~45 deg (box and kerb sides); the CPU sheen is road-plane only (drive.js nz === 1). Sloped pass road keeps it
   const float a=0.25, b=0.05;
   vec3 pt=v-n*NoV; vec3 t=length(pt)>1e-6 ? normalize(pt) : vec3(1.0,0.0,0.0), bt=cross(n,t);
   float ht=dot(h,t), hb=dot(h,bt), hn=dot(h,n);

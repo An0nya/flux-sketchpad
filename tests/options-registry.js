@@ -20,32 +20,34 @@ const FROZEN_OLD_DV_DEF = {
   visibility: null,
   scatter: 0,
   trafficHalo: 0,
+  haloCars: 4,   // OHC (10-29): new option (cars that scatter), not a default change
+  haloRange: 250,   // OHR (10-29): new option (oncoming scatter range), not a default change
   lampCone: 'auto',   // LAMP-CONE-MIST added it (default 'off'); Brief U (D) changed the default to 'auto' on purpose (owner 2026-10-27: cone on whenever street lamps and visibility are on), with a defaultHistory entry and DEFAULTS_VERSION 2
-  lampConeGain: 1,   // LAMP-CONE-OBJECTS: a new option (not a default change), added to the frozen copy as lampCone was
+  lampConeGain: 0.5,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 1). Earlier: LAMP-CONE-OBJECTS: a new option (not a default change), added to the frozen copy as lampCone was
   lampClass: 'III',
   lampRoad: 'off',
-  haloBins: 24,
-  haloDiv: 0,
-  haloPolar: 'auto',   // SP: default changed from 'off' on purpose (owner 2026-10-26: auto), with a defaultHistory entry and DEFAULTS_VERSION 3
+  haloBins: 12,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 24).
+  haloDiv: 2.8,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 0).
+  haloPolar: 'off',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'auto'). Earlier: SP: default changed from 'off' on purpose (owner 2026-10-26: auto), with a defaultHistory entry and DEFAULTS_VERSION 3
   haloPolarBand: '128x32',   // SP: new option (not a default change); registry position: after haloPolar
   haloPolarLamps: 2,
-  haloGain: 1,
+  haloGain: 0.25,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 1).
   crestOcclusion: 'off',   // E2: new option (not a default change); registry position: after haloGain
-  haloJitter: 'off',   // IL: new options (not default changes); registry position: after crestOcclusion
-  haloJitterAmount: 1,
-  haloBlur: 'auto',
-  haloDepthBlur: 'off',
+  haloJitter: 'jittered',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'off'). Earlier: IL: new options (not default changes); registry position: after crestOcclusion
+  haloJitterAmount: 0.25,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 1).
+  haloBlur: 'light',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'auto').
+  haloDepthBlur: 'light',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'off').
   haloAutoRange: '4-8',   // AT: new options (not default changes); registry position: after haloDepthBlur
-  haloNearSub: 4,
-  haloConePass: 'off',   // CP + SM: new options (not default changes); registry position: after haloDepthBlur
+  haloNearSub: 1,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 4).
+  haloConePass: '2',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'off'). Earlier: CP + SM: new options (not default changes); registry position: after haloDepthBlur
   haloConeAngle: 30,
-  trafficShadows: 'off',
-  shadowRes: '1024x512',
+  trafficShadows: 'all',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'off').
+  shadowRes: '512x512',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was '1024x512').
   trafficShadowRoad: 'on',
   trafficShadowObjects: 'on',   // SM1b: new option (not a default change)
-  trafficShadowSoft: '2x2',   // SM3 PCF: new option (not a default change)
-  scatterCull: 'exact',   // SC: new option (not a default change); default exact on purpose, it draws the identical table
-  scatterCullEps: 0.05,   // SC: new option, the fast-mode threshold
+  trafficShadowSoft: 'off',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was '2x2'). Earlier: SM3 PCF: new option (not a default change)
+  scatterCull: 'fast',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'exact'). Earlier: SC: new option (not a default change); default exact on purpose, it draws the identical table
+  scatterCullEps: 0.001,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 0.05). Earlier: SC: new option, the fast-mode threshold
   scatterRange: 120,   // SR: new option, the scatter range in m (120 = the old fixed value)
   scatterMode: 'direct',
   scatterRes: 'half',
@@ -58,10 +60,10 @@ const FROZEN_OLD_DV_DEF = {
   scatterNearFade: 'on',
   scatterNearFadeRange: 'medium',
   scatterNearBias: 0,
-  scatterGain: 1,
+  scatterGain: 0.5,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 1).
   wetSheen: false,
-  wetModel: 'legacy',
-  expMode: 'fixed',
+  wetModel: 'ggx',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'legacy').
+  expMode: 'adapt',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'fixed').
   ev: 1,
   glare: 'off',
   onMode: 'symmetric',
@@ -70,7 +72,7 @@ const FROZEN_OLD_DV_DEF = {
   signs: true,
   reflectiveClothing: 'mix',
   posts: true,
-  powerlines: 'off',   // POWERLINES: new option (default off), not a default change; added to the frozen copy like lampCone
+  powerlines: 'on',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'off'). Earlier: POWERLINES: new option (default off), not a default change; added to the frozen copy like lampCone
   powerlineReflectance: 0.22,   // POWERLINES: new option (wire albedo), not a default change of an existing key
   veg: true,
   obstacle: false,
@@ -82,11 +84,11 @@ const FROZEN_OLD_DV_DEF = {
   largeCard: true,
   seed: 7,
   density: 1.5,
-  trafficDensity: 1,
+  trafficDensity: 0.5,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 1).
   trafficLogic: false,
   safeGap: true,
   tiles: true,
-  tileCache: false,
+  tileCache: true,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was false).
   mountainPass: false,
   gpuRenderer: true,
   trafficBeams: false,
@@ -94,7 +96,7 @@ const FROZEN_OLD_DV_DEF = {
   lampPitch: false,
   afs: false,
   corneringLamps: false,
-  fpsCounter: false,
+  fpsCounter: true,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was false).
   sceneDetails: false,
   debugTimings: false,
   dynamicResolution: false,
@@ -114,8 +116,8 @@ const FROZEN_OLD_DV_DEF = {
   fov: 60,
   leafyFoliage: false,
   detailedModels: false,
-  trafficRange: 400,
-  trafficLightRange: '150',
+  trafficRange: 250,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 400).
+  trafficLightRange: '250',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was '150').
   trafficNearest: '8',
   simCeiling: 'high',
   minFps: 30,
@@ -123,13 +125,13 @@ const FROZEN_OLD_DV_DEF = {
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();
-ok('frozen copy has 108 keys (SM3 PCF: trafficShadowSoft, new); (107 with SM1b: trafficShadowObjects, new); (106 with AT: haloAutoRange, haloNearSub, new); (104 with CP + SM: haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, new); (99 with IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 108, Object.keys(FROZEN_OLD_DV_DEF).length);
+ok('frozen copy has 110 keys (OHC + OHR: haloCars, haloRange, new); (108 with SM3 PCF: trafficShadowSoft, new); (107 with SM1b: trafficShadowObjects, new); (106 with AT: haloAutoRange, haloNearSub, new); (104 with CP + SM: haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, new); (99 with IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 110, Object.keys(FROZEN_OLD_DV_DEF).length);
 let equal = true, why = null;
 try { assert.deepStrictEqual(gen, FROZEN_OLD_DV_DEF); } catch (e) { equal = false; why = String(e.message).split('\n').slice(0, 12).join(' | '); }
 ok('generated defaults deep-equal the old DV_DEF (values and types)', equal, why);
 ok('same key order as the old literal (saved JSON keeps its order)', JSON.stringify(Object.keys(gen)) === JSON.stringify(Object.keys(FROZEN_OLD_DV_DEF)));
 const typeDiff = Object.keys(FROZEN_OLD_DV_DEF).filter((k) => typeof gen[k] !== typeof FROZEN_OLD_DV_DEF[k] || (gen[k] === null) !== (FROZEN_OLD_DV_DEF[k] === null));
-ok('string/number/null types preserved (samples "1", trafficLightRange "150", visibility null)', typeDiff.length === 0 && gen.samples === '1' && gen.trafficLightRange === '150' && gen.trafficNearest === '8' && gen.visibility === null, typeDiff);
+ok('string/number/null types preserved (samples "1", trafficLightRange "250", visibility null)', typeDiff.length === 0 && gen.samples === '1' && gen.trafficLightRange === '250' && gen.trafficNearest === '8' && gen.visibility === null, typeDiff);
 const g1 = Opt.defaults(), g2 = Opt.defaults();
 ok('each defaults() call returns its own trafficOutIds array', g1.trafficOutIds !== g2.trafficOutIds && Array.isArray(g1.trafficOutIds));
 const profileIds = Opt.OPTIONS.filter((e) => e.kind === 'profile').map((e) => e.id);
@@ -152,7 +154,7 @@ const rangeBad = Opt.OPTIONS.filter((e) => e.kind === 'profile' && (e.type === '
 ok('every ranged number default is inside its range', rangeBad.length === 0, rangeBad);
 ok('derived/session/game entries have no stored default except session "high"', Opt.OPTIONS.filter((e) => e.kind === 'derived' || e.kind === 'game' || e.kind === 'extra').every((e) => e.default === undefined));
 const bundleBad = Opt.OPTIONS.filter((e) => e.bundle && e.bundle.some((b) => !(b in Opt.byId)));
-ok('every bundle member is a declared option', bundleBad.length === 0 && Opt.OPTIONS.filter((e) => e.bundle).length === 2, bundleBad.map((e) => e.id));
+ok('every bundle member is a declared option', bundleBad.length === 0 && Opt.OPTIONS.filter((e) => e.bundle).length === 3, bundleBad.map((e) => e.id));
 
 // ---- rules: shape, referenced options, and the cited code location
 const ruleNames = Object.keys(Opt.RULES);

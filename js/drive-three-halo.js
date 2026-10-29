@@ -34,6 +34,8 @@ export function setHaloBins(req) { const r = +req || 24, n = Math.min(HALO_MAX, 
 // SR: the far edge the table and its culling use this frame. Test control (SL_SR_GPU_CONTROL) replaces the look's value on the GPU side only, see scatRangeGpu.
 export function setHaloRange(R) { HALO_RANGE = R; HALO_EDGES = haloEdgesOf(HALO_N, R); }
 export function scatRangeGpu(look) { return globalThis.SL_SR_GPU_CONTROL || D.scatRangeOf(look); }
+// OHR: the oncoming table's own range (look.haloRange, 0 = follow scatterRange). The test control still drives both sides.
+export function haloRangeGpu(look) { return globalThis.SL_SR_GPU_CONTROL || D.haloRangeOf(look); }
 setHaloBins(new URLSearchParams(globalThis.location ? location.search : '').get('halobins') ?? 24);
 const HALO_URL_N = HALO_N;   // HDX7: the bin count from the page URL (the default when the look sets none)
 // The upper edge of each bin for a nearest lamp at distance D. The cumulative glow along a ray rises steeply up to the lamp's own distance and is flat after it;
@@ -366,8 +368,8 @@ export function haloPass(renderer, u) {
       // HDX7: the look's halo settings. Bins: a count (clamped to 4..32; HALO_REQ keeps the ask). Divisor: 0 = the lamp-count rule. Gain: 1 = as computed.
       const look = p.look || {}, wantN = look.haloBins != null ? +look.haloBins : HALO_URL_N;
       if (wantN !== HALO_REQ) setHaloBins(wantN);
-      const rangeG = scatRangeGpu(look); if (rangeG !== HALO_RANGE) setHaloRange(rangeG);   // SR: the table's far edge (look.scatterRange)
-      u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1;
+      const rangeG = haloRangeGpu(look); if (rangeG !== HALO_RANGE) setHaloRange(rangeG);   // SR/OHR: the table's far edge (look.haloRange, else scatterRange)
+      u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1; u.haloSMax.value = HALO_RANGE;
       const eye = p.eye || [-2, 0.37, 1.2], traffic = p.touge ? toCarFrame(D.trafficSources(world.objects, eye, p, world.A), u.carFromWorld.value, world.A) :D.trafficSources(world.objects, eye, p, world.A);   // TOUGE-ELEV B1: touge lamps into the car frame the ribbon projects in
       if (!traffic.length) return 0;
       halo.sources = traffic;   // test hook: the sources the table was built from (beam, tint, axis)

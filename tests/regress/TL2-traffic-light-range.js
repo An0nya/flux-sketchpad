@@ -32,7 +32,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const r = document.querySelector('[data-anim=traffic-light-range]'), n = document.querySelector('[data-anim=traffic-nearest]');
       return r && n && { range: [...r.options].map((o) => o.value), rangeValue: r.value, near: [...n.options].map((o) => o.value), nearValue: n.value, inBar: !!r.closest('.drive-tools') };
     });
-    ok('TL2 both selects are in the drive bar, with 150/250/400/cars and 8/16/32', !!sel && sel.range.join() === '150,250,400,cars' && sel.near.join() === '8,16,32' && sel.inBar, sel);
+    ok('TL2 both selects are in the drive bar, with 150/160/250/400/cars (160: OHR range row, 10-29) and 8/16/32', !!sel && sel.range.join() === '150,160,250,400,cars' && sel.near.join() === '8,16,32' && sel.inBar, sel);
     ok('TL2 defaults: light 150 m, nearest 8 cars', !!sel && sel.rangeValue === '150' && sel.nearValue === '8');
     await page.waitForFunction(() => TL.V().three || TL.V().gpuFailure, null, { timeout: 120000 }).catch(() => {});   // the GPU module loads async
     await frame();

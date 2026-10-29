@@ -1,4 +1,4 @@
-// DD: heavy Drive options with 3+ values are dropdowns (air beam steps, beam blur, traffic halo, beam near fade). Choosing a value applies once.
+// DD: heavy Drive options with 3+ values are dropdowns (air beam steps, beam blur, oncoming scatter cars and quality, beam near fade). Choosing a value applies once.
 // Beam res and beam cycle (two values each) stay buttons; their apply waits 500 ms after the last click. Saved values round-trip through reload, ?reset clears them.
 // Run:  python3 tests/serve.py <port> &  PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/DD-dropdowns.js <port>
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
@@ -22,14 +22,16 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
 
     await boot('/index.html');
     // 1. Each converted option is a select with the right values; res and cycle stay buttons.
-    const want = { scatter: ['0', '1', '2', '3'], trafficHalo: ['0', '4', '8', '16'], scatterBlur: ['off', 'mid', 'strong'], scatterNearFadeRange: ['off', 'short', 'medium', 'long'] };
+    // OHQ (10-29): trafficHalo is an on/off button now; the oncoming scatter cars and quality are the selects.
+    const want = { scatter: ['0', '1', '2', '3'], haloCars: ['1', '2', '4', '8'], haloQuality: ['low', 'medium', 'high', 'xhigh', 'max', 'custom'], scatterBlur: ['off', 'mid', 'strong'], scatterNearFadeRange: ['off', 'short', 'medium', 'long'] };
     for (const k of Object.keys(want)) {
       const s = await page.evaluate((key) => { const e = document.querySelector('[data-dv="' + key + '"]'); return e ? e.tagName : 'missing'; }, k);
       const got = await opt(k);
       ok('DD ' + k + ' is a select with values ' + want[k].join(', '), s === 'SELECT' && JSON.stringify(got.values) === JSON.stringify(want[k]), s + ' ' + JSON.stringify(got.values));
     }
     const tags = await page.evaluate(() => ['scatterRes', 'scatterCycle'].map((k) => { const e = document.querySelector('[data-dv="' + k + '"]'); return e ? e.tagName : 'missing'; }));
-    ok('DD beam res and beam cycle stay buttons', tags.every((t) => t === 'BUTTON'), tags.join(','));
+    // Stale since NE4 (d910019): beam res became a 3-value select (half / full / quarter); this unmapped test was not in the gate, so it went unnoticed until 10-29.
+    ok('DD beam res is a select (NE4), beam cycle stays a button', tags[0] === 'SELECT' && tags[1] === 'BUTTON', tags.join(','));
 
     // 2. Air on, table mode, cache on: the controls are live. Count redraws (setDV calls redrawSpec once per apply).
     await setOpts({ visibility: 200, scatterMode: 'table', scatterCache: 'on', scatter: 0, trafficHalo: 0, scatterBlur: 'off', scatterNearFadeRange: 'medium', scatterRes: 'half', scatterCycle: 0 });
@@ -40,21 +42,18 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
     let r0 = await redraws();
     await pick('scatter', '2'); await sleep(700);
     ok('DD air beam: one choice applies once (table 32)', (await redraws()) - r0 === 1 && (await opts('scatter')) === 32, (await redraws()) - r0 + ' redraw(s), scatter ' + (await opts('scatter')));
-    r0 = await redraws(); await pick('trafficHalo', '8'); await sleep(700);
-    ok('DD traffic halo: one choice applies once (8)', (await redraws()) - r0 === 1 && (await opts('trafficHalo')) === 8, (await redraws()) - r0 + ' redraw(s), halo ' + (await opts('trafficHalo')));
+    r0 = await redraws(); await pick('haloCars', '2'); await sleep(700);
+    ok('DD oncoming scatter cars: one choice applies once (2)', (await redraws()) - r0 === 1 && (await opts('haloCars')) === 2, (await redraws()) - r0 + ' redraw(s), cars ' + (await opts('haloCars')));
+    r0 = await redraws(); await pick('haloQuality', 'high'); await sleep(700);   // OHQ: a level writes ~22 keys in one save and one redraw (setDVMany)
+    ok('DD oncoming scatter quality: one level applies once (high, 24 bins)', (await redraws()) - r0 === 1 && (await opts('haloBins')) === 24, (await redraws()) - r0 + ' redraw(s), bins ' + (await opts('haloBins')));
     r0 = await redraws(); await pick('scatterBlur', 'strong'); await sleep(700);
     ok('DD beam blur: one choice applies once (strong)', (await redraws()) - r0 === 1 && (await opts('scatterBlur')) === 'strong', (await redraws()) - r0 + ' redraw(s)');
     r0 = await redraws(); await pick('scatterNearFadeRange', 'long'); await sleep(700);
     ok('DD near fade: one choice applies once (long)', (await redraws()) - r0 === 1 && (await opts('scatterNearFadeRange')) === 'long', (await redraws()) - r0 + ' redraw(s)');
 
-    // 4. Beam res: three quick clicks (half to full to half to full). The label moves at once; the apply waits 500 ms after the last click.
-    r0 = await redraws();
-    await page.evaluate(() => { const b = document.querySelector('button[data-dv="scatterRes"]'); for (let i = 0; i < 3; i++) b.click(); });
-    const resLabel = await btnLabel('scatterRes'), resEarly = (await redraws()) - r0, resValEarly = await opts('scatterRes');
-    ok('DD beam res: label moves at once', resLabel === 'beam res: full', resLabel);
-    ok('DD beam res: nothing applied inside the 500 ms window', resEarly === 0 && resValEarly === 'half', 'redraws ' + resEarly + ', stored ' + resValEarly);
-    await sleep(800);
-    ok('DD beam res: one apply after the last click', (await redraws()) - r0 === 1 && (await opts('scatterRes')) === 'full', (await redraws()) - r0 + ' redraw(s), stored ' + (await opts('scatterRes')));
+    // 4. Beam res: a select since NE4 (d910019; this section clicked it as a debounced button and went stale unnoticed). One choice applies once.
+    r0 = await redraws(); await pick('scatterRes', 'full'); await sleep(700);
+    ok('DD beam res: one choice applies once (full)', (await redraws()) - r0 === 1 && (await opts('scatterRes')) === 'full', (await redraws()) - r0 + ' redraw(s), stored ' + (await opts('scatterRes')));
 
     // 5. Beam cycle: one click is 0 to 8; the apply waits 500 ms.
     r0 = await redraws();
@@ -66,9 +65,9 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
 
     // 6. Saved values round-trip through reload.
     await boot('/index.html'); await sleep(800);
-    const back = { scatter: await opt('scatter'), trafficHalo: await opt('trafficHalo'), scatterBlur: await opt('scatterBlur'), scatterNearFadeRange: await opt('scatterNearFadeRange') };
-    ok('DD saved values reload into the selects', back.scatter.value === '2' && back.trafficHalo.value === '8' && back.scatterBlur.value === 'strong' && back.scatterNearFadeRange.value === 'long', JSON.stringify(back));
-    ok('DD saved beam res and cycle reload too', (await btnLabel('scatterRes')) === 'beam res: full' && (await btnLabel('scatterCycle')) === 'beam cycle: 8');
+    const back = { scatter: await opt('scatter'), haloQuality: await opt('haloQuality'), scatterBlur: await opt('scatterBlur'), scatterNearFadeRange: await opt('scatterNearFadeRange') };
+    ok('DD saved values reload into the selects', back.scatter.value === '2' && back.haloQuality.value === 'high' && back.scatterBlur.value === 'strong' && back.scatterNearFadeRange.value === 'long', JSON.stringify(back));
+    ok('DD saved beam res and cycle reload too', (await opt('scatterRes')).value === 'full' && (await btnLabel('scatterCycle')) === 'beam cycle: 8');
 
     // 7. ?reset clears them.
     // ?reset loads without the UX2 lamp-trace helper (it turns on safe mode; UX3 checks the same way): read the saved key and the live options.

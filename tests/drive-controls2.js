@@ -19,12 +19,12 @@ const idsOf = (list) => list.map((c) => c.id);
 const specUI = read('js/spec-ui.js');
 const DV_DEF = require('../js/options-registry.js').defaults();
 ok('DV_DEF is generated from the registry in js/spec-ui.js', /const DV_DEF = RF\.Options\.defaults\(\);/.test(specUI));
-ok('option defaults: fov 60, trafficRange 400, no dolly key', DV_DEF.fov === 60 && DV_DEF.trafficRange === 400 && !('dolly' in DV_DEF), { fov: DV_DEF.fov, trafficRange: DV_DEF.trafficRange, hasDolly: 'dolly' in DV_DEF });
+ok('option defaults: fov 60, trafficRange 250 (OHQ medium, 10-29; was 400), no dolly key', DV_DEF.fov === 60 && DV_DEF.trafficRange === 250 && !('dolly' in DV_DEF), { fov: DV_DEF.fov, trafficRange: DV_DEF.trafficRange, hasDolly: 'dolly' in DV_DEF });
 
 // 2. stored settings from main still load: the merge dvOpts() does, and the merged values drive the scene
 const merged = Object.assign({}, DV_DEF, storedMain);
-ok('stored main settings: fov 45 kept, new keys take defaults', merged.fov === 45 && merged.trafficRange === 400 && merged.ev === 2.5 && merged.seed === 19, { fov: merged.fov, trafficRange: merged.trafficRange, ev: merged.ev, seed: merged.seed });
-ok('stored main settings: traffic window of the merged settings is 400 m', A.source('road', 3.5, false, {}, merged).traffic.cull === 400);
+ok('stored main settings: fov 45 kept, new keys take defaults', merged.fov === 45 && merged.trafficRange === 250 && merged.ev === 2.5 && merged.seed === 19, { fov: merged.fov, trafficRange: merged.trafficRange, ev: merged.ev, seed: merged.seed });
+ok('stored main settings: traffic window of the merged settings is 250 m (the default since 10-29)', A.source('road', 3.5, false, {}, merged).traffic.cull === 250);
 
 // 3. traffic range 230 reproduces main's car list exactly (ids, kinds, rel, off), for every recorded case
 const WRONG = process.env.DC_WRONG_RANGE ? +process.env.DC_WRONG_RANGE : 230;
