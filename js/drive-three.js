@@ -399,7 +399,8 @@ export function create(canvas, gl, onModelsReady) {
       }
       // E2 crest occlusion (option crestOcclusion 'on', pass frames with a halo): the ribbon is brought up to date and its height map rendered BEFORE the table is built (update() otherwise runs after it, a frame late).
       // Off: nothing here runs, the table pass is the old text and the frame is byte-identical.
-      let occ = null; if (p.touge && !p.airHold && p.look && p.look.crestOcclusion === 'on' && D.haloN(p)) { pass.update(world.A, dist); occ = pass.heightMap(renderer); if (occ) occ = { ...occ, wfc: u.worldFromCar.value }; }
+      // SMF: with traffic shadows on, the height map is built too: it is the fallback test for cars that get no map (past the trafficShadows count or the map cap), whatever crestOcclusion says.
+      let occ = null; if (p.touge && !p.airHold && p.look && (p.look.crestOcclusion === 'on' || (p.look.trafficShadows && p.look.trafficShadows !== 'off')) && D.haloN(p)) { pass.update(world.A, dist); occ = pass.heightMap(renderer); if (occ) occ = { ...occ, wfc: u.worldFromCar.value }; }
       // SM: the maps need the ribbon up to date before the table is built (as E2). sm = null (off, flat frames): the table is the old one.
       let sm = null, objDone = false; if (smOn(p) && !p.airHold && D.haloN(p)) { pass.update(world.A, dist); const oc = objectDestination && p.look.trafficShadowObjects !== 'off'; if (oc) { objectView.update(p, world.objects, ss); objDone = true; }   // SM1b: this frame's instances, before the maps
         sm = { render: (list, res) => trafficMaps.render(pass.geometry, u.carFromWorld.value, pass.geomVer, list, res, oc ? objectView.casters : null) }; }

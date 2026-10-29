@@ -61,9 +61,11 @@ void main() {
   float tObj = texelFetch(uDepth, ivec2(gl_FragCoord.xy), 0).r * ${CP_DEPTH.toFixed(1)};
   gl_FragColor = vec4(base.rgb + coneMarch(viewRay(gl_FragCoord.xy), tObj), base.a);
 }`;
-// atlas: per-lamp beams from the atlas; sm: the shadow-map test; occDecl: the E2 crest test's text (drive-three-halo.js OCC_DECL), when crestOcclusion is on and SM is off.
+// atlas: per-lamp beams from the atlas; sm: the shadow-map test; occDecl: the E2 crest test's text (drive-three-halo.js OCC_DECL), when the frame has the height map.
+// SMF: with both, the crest test is the fallback for a lamp whose car has no map (cSm 0), as the table.
 export function coneSource(atlas, main, sm = false, occDecl = '') {
-  const hook = (sm ? '      if (!smLit(int(cSm[i] + 0.5) - 1, P)) continue;\n' : '') + (occDecl ? '      if (crestOcc(L, P)) continue;\n' : '');
+  const hook = sm && occDecl ? '      if (cSm[i] > 0.5 ? !smLit(int(cSm[i] + 0.5) - 1, P) : crestOcc(L, P)) continue;\n'
+    : (sm ? '      if (!smLit(int(cSm[i] + 0.5) - 1, P)) continue;\n' : '') + (occDecl ? '      if (crestOcc(L, P)) continue;\n' : '');
   const m = MARCH.replace('      //HOOK\n', hook); if (m === MARCH) throw Error('CP: hook not found');
   return HEAD + (sm ? SM_DECL : '') + occDecl + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + m + main;
 }

@@ -181,9 +181,10 @@ const jitText = (main, jit) => {
   return 'uniform float haloJitAmt;\n' + t;
 };
 // SM (option trafficShadows): a sample the lamp's car map says the lamp cannot see adds nothing (drive-three-shadowmaps.js smLit; smM = this draw's map, -1 none). Same hook as crestOcc; off compiles the texts above.
-const smText = (t) => { const r = t.replace(OCC_HIT, '      if (!smLit(smM, haloEye + s * ray)) continue;\n' + OCC_HIT); if (r === t) throw new Error('SM: hook not found'); return r; };
+// SMF: with both on, the crest test is the fallback for a lamp whose car has no map (smM -1), so a mapped car is tested once, by its map.
+const smText = (t, occ) => { const r = t.replace(OCC_HIT, (occ ? '      if (smM >= 0 ? !smLit(smM, haloEye + s * ray) : crestOcc(lamp, haloEye + s * ray)) continue;\n' : '      if (!smLit(smM, haloEye + s * ray)) continue;\n') + OCC_HIT); if (r === t) throw new Error('SM: hook not found'); return r; };
 export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false) {
-  const main = occ ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN), body0 = variant === 'band' ? bandText(main) : variant === 'split' ? splitText(main) : main, body = sm ? smText(body0) : body0;
+  const main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN), body0 = variant === 'band' ? bandText(main) : variant === 'split' ? splitText(main) : main, body = sm ? smText(body0, occ) : body0;
   return THEAD + (variant ? BAND_DECL : '') + (occ ? OCC_DECL : '') + (sm ? SM_DECL + 'uniform int smM;\n' : '') + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (jit ? jitText(body, jit) : body);
 }
 const HAL_CONV = (c) => (c === 'B' ? 1 : c === 'S' ? 2 : 0);
@@ -418,7 +419,7 @@ export function haloPass(renderer, u) {
         for (const c of cone) { const i = used.indexOf(c.q), Wt = c.q.L.w === undefined ? 1 : c.q.L.w; c.W = Wt * c.w; if (c.w >= 1 - 1e-4) used.splice(i, 1); else used[i] = { ...c.q, L: { ...c.q.L, w: Wt * (1 - c.w) } }; }
       }
       halo.cone = cone.length ? { lamps: cone.map((c) => ({ pos: [c.q.L.x, c.q.L.y, c.q.L.z], w: c.W, share: c.w, angle: c.ang, tint: c.q.tint, idx: c.q.idx, basis: c.basis, planes: c.planes, sm: smOf(c.q) })),
-        atlas, eye: eye.slice(), tanH, sigma: sig, rMin: D.SCAT.rMin, gF: D.SCAT.gFwd, gB: D.SCAT.gBack, wF: D.SCAT.wFwd, range: HALO_RANGE, gain: look.haloGain != null ? +look.haloGain : 1, flat: !p.touge, sm: useSm, occ: occ && p.touge && !useSm ? occ : null } : null;
+        atlas, eye: eye.slice(), tanH, sigma: sig, rMin: D.SCAT.rMin, gF: D.SCAT.gFwd, gB: D.SCAT.gBack, wF: D.SCAT.wFwd, range: HALO_RANGE, gain: look.haloGain != null ? +look.haloGain : 1, flat: !p.touge, sm: useSm, occ: occ && p.touge ? occ : null } : null;
       if (!used.length) return 0;
       // HDX7 polar plan. SL_HALO_POLAR (test hook) = one polar table for the nearest lamp, as HDX6. look.haloPolar: off, perlamp (a table per lamp of
       // the nearest car, one or two), merged (one table centred between the car's two lamps, both lamps drawn into it).
