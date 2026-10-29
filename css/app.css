@@ -658,8 +658,7 @@ body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { 
 .dl-pane, .dl-sub { display: flex; flex-direction: column; gap: 12px; }
 .dl-grp { display: flex; flex-direction: column; gap: 6px; }
 .dl-grp > h4 { margin: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dl-faint); font-weight: 600; }
-.dl-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.drive-fit .dl-row { gap: 4px; }
+.dl-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .dl-row > * { max-width: 100%; min-width: 0; }
 .dl-row > details { flex: 1 0 100%; }
 .dl-row > details > summary { cursor: pointer; color: var(--dl-dim); padding: 4px 0; border-top: 1px dashed var(--dl-line); }
@@ -699,8 +698,9 @@ body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { 
 .dl-tall:has(.dl-left[data-open=false]) .dl-strip { display: none; }
 .dl-tall:has(.dl-left[data-open=false]) .dl-stage { flex: 1 1 0; aspect-ratio: auto; }
 .dl-tall .dl-sep { display: none; }
-.dl-tall .dl-strip .drive-speed input[type=range] { width: 80px; }
-.dl-tall .dl-strip .drive-speed { flex-wrap: wrap; white-space: normal; min-width: 0; max-width: 100%; }   /* phones: 'set · actual' wraps instead of widening the page */
+.dl-tall .dl-strip .drive-speed { order: -1; flex: 1 0 100%; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }   /* phones (owner 10-29): the speed slider gets its own row */
+.dl-tall .dl-strip .drive-speed input[type=range] { flex: 1 1 auto; width: auto; min-width: 0; }
+.dl-tall .dl-strip .drive-speed .anim-speed { flex: none; min-width: 17ch; text-align: right; font-variant-numeric: tabular-nums; }   /* room for '130 km/h · actual 130': the slider does not move when actual appears */
 .dl-tall .dl-strip { overflow-x: hidden; }
 .drive-tools.dl.dl-tall .dl-tabs > button { padding: 5px 8px; }
 .dl-tall .dl-top [data-anim=play] { order: 5; margin-left: auto; }   /* phones: Drive on the right, next to the large-view button (right thumb) */

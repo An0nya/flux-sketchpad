@@ -41,7 +41,7 @@
 
   // Options removed from the build. A saved profile may still hold them; load drops the key so a stale value can never matter (Brief U:
   // glareSources = every source now glares; lampHalos = the lamp-halo sprite is gone, the lamp cone is the only street-lamp haze).
-  const RETIRED_KEYS = ['glareSources', 'lampHalos'];
+  const RETIRED_KEYS = ['glareSources', 'lampHalos', 'fitControls'];   // fitControls: removed 10-29 (the layout shell made it dead; its 4 px row gap is now the default)
   const DEFAULTS_VERSION = 4;   // the defaults generation this build writes into a saved profile (profile.defaultsVersion)
 
   // A profile saved before versioning holds every key that existed when it was saved, because setDV wrote the whole object.
@@ -915,14 +915,6 @@
       conflicts: [need('mtBlockers')],
       tests: [],
       note: 'Silently single thread when blocked (drive-anim.js want gate).',
-    },
-    {
-      id: 'fitControls', kind: 'profile', type: 'bool', values: null,
-      default: true, label: 'fit controls',
-      control: '[data-anim="fit-controls"]', where: 'more', query: null,
-      group: 'diagnostics', cost: 'free',
-      owner: ['js/drive-anim.js'],
-      tests: ['CD-controls-dedupe', 'UX2-drive-ux'],
     },
     {
       id: 'largeCard', kind: 'profile', type: 'bool', values: null,

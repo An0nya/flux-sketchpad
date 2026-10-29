@@ -1601,7 +1601,6 @@ void main() {
     // High beam (H key or this button): session state on V, not saved prefs, so it is off on every reload
     btn('high-beam', 'High beam (H) cycles Off, On, Auto. Auto dips for oncoming headlamps, preceding tail lamps, urban tiles and under 30 km/h, then returns to high after 2 s clear. Off by default; not saved across reloads.', () => cycleHigh(ui), 'high beam');
     document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.ui.driveBar.hasAttribute('data-noanim') && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
-    btn('fit-controls', 'Compact spacing for the wrapping drive controls. Off uses wider spacing.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
     // UI step C: how the panels share the host (js/drive-layout.js modeOf). auto: push on a big host, overlay on a small one.
     const pm = E('select', { 'data-anim': 'panel-mode', 'aria-label': 'Panels', title: 'How the controls share the drive view. Push: beside the picture (the canvas shrinks). Overlay: floating over a full-size picture, collapsed until a grab bar opens them. Auto: push when the view is at least 940 x 420, overlay when smaller. Phones always stack.' });
@@ -1885,7 +1884,7 @@ void main() {
     const st = S(ui), o = info().o, lab = ui.driveBar.querySelector('[data-anim=speedlab]');
     if (!lab) return;
     const actual = st.camera && (o.trafficLogic || o.mountainPass) && st.view === 'anim' ? st.camera.v * 3.6 : o.speed;
-    lab.textContent = o.speed + ' km/h' + (Math.abs(actual - o.speed) >= 0.5 ? ' · actual ' + actual.toFixed(1) + ' km/h' : '');
+    lab.textContent = o.speed + ' km/h' + (Math.abs(actual - o.speed) >= 1 ? ' · actual ' + Math.round(actual) : '');   // whole km/h (owner 10-29: one decimal was noise and made the label jump)
   }
   // the high-beam switch: V.high is the live state; the minigame's game object follows it so a hazard resolves with the switch as it is then
   // The high-beam switch cycles Off, On, Auto. V.high is always the beam as lit now (the LUT and the minigame read it);
@@ -1936,7 +1935,7 @@ void main() {
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
     V.ui.driveBar.querySelector('[data-anim="canvas-shape"]').value = ['3:4', 'square'].includes(o.canvasShape) ? o.canvasShape : 'wide';
     V.ui.driveBar.querySelector('[data-anim="panel-mode"]').value = ['push', 'overlay'].includes(o.panelMode) ? o.panelMode : 'auto';
-    for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
+    for (const [name, key] of [['large-card', 'largeCard']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
     ui.driveBar.toggleAttribute('data-noanim', !(sup && (st.view === 'anim' || st.popout)));   // UI step C: hides the .dl-anim controls (they left V.bar for the tabs)
     const run = st.playing && (st.view === 'anim' || st.popout), pb = ui.driveBar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ Pause' : '▶ Drive'; pb.setAttribute('aria-pressed', String(run));
     ui.driveBar.querySelector('[data-anim="speed"]').value = o.speed; speedLabel(ui);
@@ -2202,7 +2201,6 @@ void main() {
   }
   function mount(ui) {
     const st = S(ui), host = st.popout && V.popStage ? V.popStage : (V.cv ? V.cv.parentElement : null); if (!host) return;
-    host.classList.toggle('drive-fit', info().o.fitControls !== false);
     for (const e of [ui.driveBar, document.querySelector('[data-reset=heat]')]) if (e && e.parentElement !== host) host.append(e);
     const L = ui.driveLayout;
     if (L) for (const e of [V.canvas, V.notice, host.querySelector('.drive-readout')]) if (e && e.parentElement !== L.stage) L.stage.append(e);

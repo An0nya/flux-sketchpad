@@ -27,7 +27,7 @@
     ['performance', null, 'Resolution', [an('resolution'), an('dynamic-resolution'), an('min-fps'), dv('samples')]],
     ['performance', null, 'Renderer', [an('gpu-renderer'), ...C(['mt']), an('tile-cache')]],
     ['performance', null, 'Debug', [an('save-state'), an('load-state'), an('state-file'), an('state-msg')]],
-    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), an('fps-counter'), an('fit-controls'), an('large-card')]],
+    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), an('fps-counter'), an('large-card')]],
     ['details', null, '', [an('scene-details'), an('scene-details-panel')]],
     ['timings', null, '', [an('debug-timings'), an('perf-readout')]],
   ];
@@ -68,8 +68,8 @@
     L.left = E('div', { class: 'dl-panel dl-left', 'data-open': 'true' });
     L.right = E('div', { class: 'dl-panel dl-right', 'data-open': 'true' });
     L.staging = E('div', { class: 'dl-staging', hidden: '' });   // where creators append; place() empties it
-    const grab = (side) => { const g = E('button', { type: 'button', class: 'dl-grab', 'data-dl-grab': side, 'aria-label': side === 'left' ? 'Show or hide the controls' : 'Show or hide details and timings' }); g.addEventListener('click', () => toggle(ui, side)); return g; };
-    const tabRow = (list, cls, attr, pick) => { const row = E('div', { class: cls, role: 'tablist' }); for (const [id, label] of list) { const b = E('button', { type: 'button', role: 'tab', [attr]: id }, label); b.addEventListener('click', () => pick(id)); row.append(b); } return row; };
+    const grab = (side) => { const g = E('button', { type: 'button', class: 'dl-grab', 'data-dl-grab': side, 'aria-label': side === 'left' ? 'Show or hide the controls' : 'Show or hide details and timings' }); g.addEventListener('click', () => { toggle(ui, side); wake(ui); }); return g; };
+    const tabRow = (list, cls, attr, pick) => { const row = E('div', { class: cls, role: 'tablist' }); for (const [id, label] of list) { const b = E('button', { type: 'button', role: 'tab', [attr]: id }, label); b.addEventListener('click', () => { pick(id); wake(ui); }); row.append(b); } return row; };
     L.tabs = tabRow(TABS, 'dl-tabs', 'data-dl-tab', (id) => select(ui, { tab: id }));
     L.rtabs = tabRow(TABS.filter(([id]) => RIGHT.includes(id)), 'dl-tabs', 'data-dl-rtab', (id) => select(ui, { rtab: id }));
     L.subRow = tabRow(SUBS, 'dl-seg', 'data-dl-sub', (id) => select(ui, { sub: id }));
@@ -116,6 +116,7 @@
     for (const c of containers(L)) for (const e of [...c.children]) if (!e.matches('.drive-primary, .drive-anim-tools, .dl-top, .dl-strip, .dl-body, .dl-staging, [data-dl-ignore]')) put(L.other.row, e);
     L.other.hidden = !L.other.row.children.length;
     layout(ui);
+    if (!L.woke) { L.woke = true; setTimeout(() => wake(ui), 0); }   // a stored Details/Timings tab opens with its readout on (after this draw, not inside it)
   }
   // the containers the creators append into: the staging div, the spec-ui primary row, the drive-anim bar
   const containers = (L) => [L.staging, ...L.root.querySelectorAll('.drive-primary, .drive-anim-tools'), L.root].filter(Boolean);
@@ -147,6 +148,17 @@
     const L = ui.driveLayout; Object.assign(L.state, patch);
     for (const k of Object.keys(patch)) save(KEY[k], patch[k]);
     show(ui);
+  }
+  // Details and Timings switch their readout on when their tab is opened (owner 10-29: on a phone they opened empty). Only ever on: the
+  // switch inside the tab still turns it off. Timings runs the sampled profiler while on. Only a click (tab or grab bar) and the first
+  // placement wake; reveal() and select() from code do not, so a caller that opens a tab to press the switch gets what it pressed.
+  const WAKE = { details: 'sceneDetails', timings: 'debugTimings' };
+  function wake(ui) {
+    const L = ui.driveLayout, o = ui.dvOpts, set = RF.SpecUI && RF.SpecUI.setDV; if (!L || !o || !set) return;
+    for (const [id, key] of Object.entries(WAKE)) {
+      const p = L.panes[id], panel = p && p.closest('.dl-panel');
+      if (p && !p.hidden && panel && panel.getAttribute('data-open') === 'true' && !o[key]) set(ui, key, true);
+    }
   }
   // reveal: the tab (and sub-tab) holding a control, so it can be seen and clicked (tests, and any caller that points at a control)
   function reveal(ui, selector) {

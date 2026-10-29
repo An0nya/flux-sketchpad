@@ -75,8 +75,9 @@
         if(state==='running'){document.querySelector('[data-game=start]').click();await sleep(250);ok('UX2 game is actually running '+popout,!!u.dvAnim.game&&!u.dvAnim.game.done&&u.dvAnim.playing);}
         if(state==='scorecard'){u.dvOpts.largeCard=false;u.dvAnim.game.done=true;u.dvAnim.playing=false;u.redrawSpec();await settle();}
         if(state!=='drive')ok('UX2 Exit game label '+state+' '+popout,game.textContent==='Exit game');
-        for(const open of [false,true])for(const fit of [true,false]) {
-          DL.setOpen(u,'left',open);DL.setOpen(u,'right',open);u.dvOpts.fitControls=fit;u.redrawSpec();await settle();D.layoutControls(u);await settle();
+        for(const open of [false,true])for(const fit of [true]) {   // fit controls retired 10-29: one spacing
+
+          DL.setOpen(u,'left',open);DL.setOpen(u,'right',open);u.redrawSpec();await settle();D.layoutControls(u);await settle();
           const m=measure();layouts.push({popout,state,open,fit,...m});
           ok('UX2 no toolbar overlap '+innerWidth+' '+JSON.stringify({popout,state,open,fit}),m.collisions.length===0&&m.clipped.length===0&&m.within&&m.debugIn,m);
           ok('UX2 nothing covers the picture in push or stack '+JSON.stringify({popout,state,open,fit,mode:m.mode}),m.inStage&&m.covered===0,{mode:m.mode,picture:m.picture,stage:m.stage});
@@ -108,7 +109,7 @@
     ok('UX3 large opens above collapsed result panel',u.dvAnim.popout&&rect(a.V.pop).top===0&&document.elementFromPoint(2,2).closest('.drive-popout')===a.V.pop);
     D.closePop(u);document.querySelector('.result-pane').classList.add('expanded');await settle();
     ok('UX2 fixture trace stays stable throughout the layout matrix',u.run.ctx===trace&&!u.solving);
-    Object.assign(u.dvOpts,{fpsCounter:false,debugTimings:false,fitControls:true});u.redrawSpec();await settle();
+    Object.assign(u.dvOpts,{fpsCounter:false,debugTimings:false});u.redrawSpec();await settle();
     ok('UX2 both readouts can be switched off',a.V.fpsLab.hidden&&a.V.perfLab.hidden);
     u.dvAnim.view='still';u.dvAnim.playing=true;u.redrawSpec();ok('UX2 legacy still view becomes paused animation',u.dvAnim.view==='anim'&&!u.dvAnim.playing&&!a.V.canvas.hidden);play.click();ok('UX2 Drive resumes the migrated paused view',u.dvAnim.view==='anim'&&u.dvAnim.playing&&!a.V.canvas.hidden);play.click();
     Object.assign(u.dvOpts,{fpsCounter:true,debugTimings:true});u.redrawSpec();DL.reveal(u,'[data-anim=debug-timings]');await settle();

@@ -18,46 +18,43 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
       await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 180000 });
       await page.evaluate((txt) => { RF.UI.loadScene(RF.State.deserialize(txt), 'UX1 fixture'); RF.UI.setMode('D'); }, scene);
       await page.waitForFunction(() => { const u = RF.UI; return !u.solving && u.run && u.run.ctx.done && u.spec && u.spec.ctx === u.run.ctx && u.spec.full && u.spec.ev; }, null, { timeout: 180000 });
-      await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvOpts, { mt: false, fitControls: true, scene: 'road', speed: 50, tiles: false, oncoming: false, preceding: false, trafficDensity: 0, trafficLogic: false }); u.redrawSpec(); });
+      await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvOpts, { mt: false, scene: 'road', speed: 50, tiles: false, oncoming: false, preceding: false, trafficDensity: 0, trafficLogic: false }); u.redrawSpec(); });
     };
-    await page.evaluate(() => localStorage.removeItem('flux/driveMore')); await ready();
+    await page.evaluate(() => localStorage.removeItem('flux/driveTab')); await ready();
     // QOL1's first-visit 'Getting started' card is fixed over the drive bar at 360 px and would intercept clicks; dismiss it as a first-time user would.
     await page.evaluate(() => { if (!document.getElementById('first-guide').hidden) document.getElementById('guide-close').click(); });
-    const more = page.locator('.drive-more');
-    const advanced = async (selector) => { await more.evaluate(e => e.open = true); await page.locator(selector).click(); await more.evaluate(e => e.open = false); };
-    ok('UX1 More starts collapsed', !await more.evaluate((e) => e.open));
+    // UI step C (10-29): the More panel is gone; controls live in the layout shell's tabs. RF.DriveLayout.reveal opens the tab holding one.
+    const reveal = (selector) => page.evaluate((s) => RF.DriveLayout.reveal(RF.UI, s), selector);
+    const advanced = async (selector) => { await reveal(selector); await page.locator(selector).click(); };
+    ok('UX1 shell starts on the Lighting tab', await page.evaluate(() => RF.UI.driveLayout.state.tab === 'lighting'));
     await page.evaluate(() => { RF.UI.dvAnim.playing = false; RF.UI.redrawSpec(); }); // paused animation is the fixed picture
     const controls = await page.evaluate(() => [...document.querySelectorAll('.drive-tools button,.drive-tools input,.drive-tools select,.drive-extras button,.drive-extras input,.drive-extras select,[data-anim=popout]')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game));
-    ok('UX1 all distinct drive options remain after dedupe', ['scene','shape','wet','wetSheen','onMode','expMode','evm','ev','evp','glare','oncoming','preceding','popout','tiles','toggle','play','fit-controls','large-card','speed','traffic-logic','gap','street-lamps','c-people','c-animals','c-signs','c-posts','c-veg','c-obstacle','c-rpm','c-tex','c-wild','c-mt','seed','dice','density','cline','traffic-density','reset-flashes'].every((k) => controls.includes(k)), controls);
+    ok('UX1 all distinct drive options remain after dedupe', ['scene','shape','wetness','wetSheen','onMode','expMode','evm','ev','evp','glare','oncoming','preceding','popout','tiles','toggle','play','large-card','speed','traffic-logic','gap','street-lamps','c-people','c-animals','c-signs','c-posts','c-veg','c-obstacle','c-rpm','c-tex','c-wild','c-mt','seed','dice','density','cline','traffic-density','reset-flashes'].every((k) => controls.includes(k)), controls);
     for (const width of [360, 390, 430, 1500]) {
       await page.setViewportSize({ width, height: 950 });
       await page.evaluate(() => { RF.UI.setPane('result', 'activate'); document.querySelector('.result-pane').classList.add('expanded'); RF.UI.redrawSpec(); });
       for (const popout of [false, true]) {
         if (popout) await advanced('[data-anim=popout]');
-        const layout = await page.evaluate(() => {
-          const bar = RF.UI.driveBar, p = bar.querySelector('.drive-primary'), r = bar.getBoundingClientRect(), c = [...p.children].map((e) => e.getBoundingClientRect());
-          return { left: r.left, right: r.right, width: innerWidth, rowHeight: p.getBoundingClientRect().height, spread: Math.max(...c.map((e) => e.top)) - Math.min(...c.map((e) => e.top)), closed: !bar.querySelector('details').open, extraVisible: RF.UI.driveExtras.querySelector('[data-dv=shape]').checkVisibility(), fits: p.scrollWidth <= p.clientWidth + 1, primary: [...p.querySelectorAll('button,input,select')].map((e) => e.dataset.dv || e.dataset.anim || e.dataset.game) };
-        });
-        ok('UX1 wrapping primary controls fit, extras collapsed ' + width + (popout ? ' large' : ' inline'), layout.left >= 0 && layout.right <= width && layout.fits && layout.closed && !layout.extraVisible && ['scene','speed','toggle','glare','play'].every((k) => layout.primary.includes(k)), layout);
-        await page.locator('.drive-more > summary').click(); await page.waitForTimeout(150);   // the <details> toggle event un-hides the extras a task later
-        ok('UX1 More exposes extras ' + width + (popout ? ' large' : ' inline'), await page.locator('[data-dv=shape]').isVisible() && await page.locator('[data-anim=traffic-logic]').isVisible());
-        if (shots) await page.screenshot({ path: path.join(shots, width + (popout ? '-large' : '-inline') + '-more.png') });
-        await page.locator('.drive-more > summary').click();
+        // layout collisions and clipping are UX2's job (measure()); here: the shell fits the viewport and a tab control can be reached
+        const layout = await page.evaluate(() => { const r = RF.UI.driveBar.getBoundingClientRect(); return { left: r.left, right: r.right, width: innerWidth }; });
+        ok('UX1 shell fits the viewport ' + width + (popout ? ' large' : ' inline'), layout.left >= -0.5 && layout.right <= width + 0.5, layout);
+        await reveal('[data-anim=traffic-logic]'); await page.waitForTimeout(150);
+        ok('UX1 a tab control is reachable ' + width + (popout ? ' large' : ' inline'), await page.locator('[data-anim=traffic-logic]').isVisible());
+        if (shots) await page.screenshot({ path: path.join(shots, width + (popout ? '-large' : '-inline') + '-tabs.png') });
         if (popout) await advanced('[data-anim=popout]');
       }
     }
-    await page.setViewportSize({ width: 1500, height: 950 }); await page.locator('.drive-more > summary').click();
-    await page.waitForFunction(() => localStorage.getItem('flux/driveMore') === 'true');
+    await page.setViewportSize({ width: 1500, height: 950 }); await page.evaluate(() => RF.DriveLayout.select(RF.UI, { tab: 'performance' }));
     await page.reload(); await ready();
-    ok('UX1 More remembers open across reload', await more.evaluate((e) => e.open));
+    ok('UX1 the open tab is remembered across reload', await page.evaluate(() => RF.UI.driveLayout.state.tab === 'performance'));
     await page.evaluate(() => { RF.UI.dvAnim.playing = false; RF.UI.redrawSpec(); });
-    await more.evaluate(e => e.open = true); await page.locator('[data-anim=traffic-logic]').click();
+    await reveal('[data-anim=traffic-logic]'); await page.locator('[data-anim=traffic-logic]').click();
     const speed = await page.evaluate(() => {
       const a = RF.DriveAnim._, st = a.S(RF.UI); a.advanceCamera(st, .05); a.frame(); const initial = st.camera.v * 3.6;
       RF.UI.dvOpts.speed = 130; st.camera = null; a.advanceCamera(st, .05); a.frame();
-      return { initial, limited: st.camera.v * 3.6, label: RF.UI.driveBar.querySelector('[data-anim=speedlab]').textContent, aim: RF.UI.driveExtras.querySelector('[data-dv-aim]').textContent };
+      return { initial, limited: st.camera.v * 3.6, label: RF.UI.driveBar.querySelector('[data-anim=speedlab]').textContent, aim: RF.UI.driveBar.querySelector('[data-dv-aim]').textContent };
     });
-    ok('UX1 toggling logic starts at speed; actual limit appears by slider', Math.abs(speed.initial - 50) < .01 && Math.abs(speed.limited - 80) < .01 && /130 km\/h.*actual 80\.0 km\/h/.test(speed.label), speed);
+    ok('UX1 toggling logic starts at speed; actual limit appears by slider', Math.abs(speed.initial - 50) < .01 && Math.abs(speed.limited - 80) < .01 && /130 km\/h · actual 80$/.test(speed.label), speed);
     ok('UX1 drive bar names the aim used by both beams', /Our beam \+ symmetric oncoming: aimed per/.test(speed.aim), speed.aim);
     await page.locator('[data-game=toggle]').click();
     ok('UX1 lane-clear setting defaults on', await page.locator('[data-game=clear-lane]').isChecked());
