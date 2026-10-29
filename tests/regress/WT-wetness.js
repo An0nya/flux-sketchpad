@@ -22,7 +22,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // UI step C (2026-10-29): re-baselined for the drive layout shell. The element screenshot holds the bars that overlay the canvas top (overlay mode in this
 // small pane), which changed look; the render itself is unchanged: in overlay mode the canvas is the old size, and a headless BT probe gave readCanvas
 // hashes identical to HEAD 0e77d52 before and after a traffic shuffle (brief REVIEW-2026-10-28-presets.md, step C).
-const OLD = { dry: '6b1c4e956c20bdcc26c9af80ad005246b296fab71f18b2a1807dd69f93e10916', wet: 'f5fb83fe9bd6cab53372a9f37785558dd2013527d2d6804cf7899864d91d956b' };   // before UI step C: dry a7c3f110..., wet f1801595...; before SPEED0: dry 733d190e..., wet daedeaec...
+// OVL-RIGHT (2026-10-29): re-baselined: wide overlay moved the collapsed right panel (Details | Timings) to the right edge and lets both
+// panels shrink in a small host; the element screenshot holds those panels. Proof: with only those 3 CSS lines reverted the OLD pin passes.
+const OLD = { dry: 'cace27ad4c7ff4a6cae302763773620afa622d9bed9831da13aeab58175f38dd', wet: '002588da98eb79065ec43b1e73d676ca2f6e5ade5fcd32aa49befc21936263f1' };   // before OVL-RIGHT: dry 6b1c4e95, wet f5fb83fe; before UI step C: dry a7c3f110..., wet f1801595...; before SPEED0: dry 733d190e..., wet daedeaec...
 
 // Two contexts. The legacy-seeded one only checks the loaded option (no frame: a page that starts wet and then goes dry keeps a
 // residue that depends on the start, measured on main as well, so the frame checks start from a fresh dry load).

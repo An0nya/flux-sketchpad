@@ -13,7 +13,7 @@
   // Performance > Other); the game dock keeps the picture; phones keep the dialog bars clear of the 96 px browser-chrome band.
   function measure() {
     const u=RF.UI, L=u.driveLayout, bar=u.driveBar, bounds=rect(bar), host=RF.DriveAnim._.V.canvas.parentElement;
-    const bars=[L.top,L.strip], inBars=bars.flatMap(b=>[...b.querySelectorAll('button,input,select,summary')].filter(visible)), controls=inBars;
+    const bars=[L.top,L.strip], inBars=bars.flatMap(b=>[...b.querySelectorAll('button,input,select,summary')].filter(e=>visible(e)&&shown(e).height>1)), controls=inBars;   // on screen only: the closed sheet clips the strip below its first row (10-29)
     const collisions=[];
     for(let i=0;i<controls.length;i++)for(let j=i+1;j<controls.length;j++)if(overlaps(rect(controls[i]),rect(controls[j])))collisions.push([controls[i].outerHTML.slice(0,120),controls[j].outerHTML.slice(0,120)]);
     const guide=document.getElementById('first-guide'),guideOpen=!document.querySelector('.drive-popout')?[guide]:[];   // GS: first-visit guide (skipped under the full-viewport popout)
@@ -31,7 +31,7 @@
     return { width:innerWidth, touch:matchMedia('(pointer: coarse)').matches, mobile:mobile(), mode, toolbar:bounds, render, stage, collisions, clipped,
       picture, game:card, gameOverlap, gameBelow:!card||card.top>=render.bottom-1, popout:pop?rect(pop):null,
       expand:visible(corner)&&!controls.some(e=>overlaps(rect(e),rect(corner))),
-      safe:!pop||!matchMedia('(pointer: coarse)').matches||[...pop.querySelectorAll('.dl-top,.dl-strip,.reset-view,.drive-below')].filter(visible).every(e=>rect(e).bottom<=innerHeight-96+1),
+      safe:!pop||!matchMedia('(pointer: coarse)').matches||[...pop.querySelectorAll('.dl-top,.dl-strip,.reset-view,.drive-below')].filter(visible).every(e=>shown(e).bottom<=innerHeight-96+1),
       within:bounds.left>=0&&bounds.right<=innerWidth+1, inStage:mode==='overlay'||(picture.left>=stage.left-1&&picture.right<=stage.right+1&&picture.top>=stage.top-1&&picture.bottom<=stage.bottom+1),
       covered:covered.length, unplaced:RF.DriveLayout.unplaced(u),
       debugIn:!visible(perf)||!!perf.closest('[data-dl-pane=timings]'),
@@ -75,16 +75,17 @@
         if(state==='running'){document.querySelector('[data-game=start]').click();await sleep(250);ok('UX2 game is actually running '+popout,!!u.dvAnim.game&&!u.dvAnim.game.done&&u.dvAnim.playing);}
         if(state==='scorecard'){u.dvOpts.largeCard=false;u.dvAnim.game.done=true;u.dvAnim.playing=false;u.redrawSpec();await settle();}
         if(state!=='drive')ok('UX2 Exit game label '+state+' '+popout,game.textContent==='Exit game');
-        for(const open of [false,true])for(const fit of [true,false]) {
-          DL.setOpen(u,'left',open);DL.setOpen(u,'right',open);u.dvOpts.fitControls=fit;u.redrawSpec();await settle();D.layoutControls(u);await settle();
+        for(const open of [false,true])for(const fit of [true]) {   // fit controls retired 10-29: one spacing
+
+          DL.setOpen(u,'left',open);DL.setOpen(u,'right',open);u.redrawSpec();await settle();D.layoutControls(u);await settle();
           const m=measure();layouts.push({popout,state,open,fit,...m});
           ok('UX2 no toolbar overlap '+innerWidth+' '+JSON.stringify({popout,state,open,fit}),m.collisions.length===0&&m.clipped.length===0&&m.within&&m.debugIn,m);
           ok('UX2 nothing covers the picture in push or stack '+JSON.stringify({popout,state,open,fit,mode:m.mode}),m.inStage&&m.covered===0,{mode:m.mode,picture:m.picture,stage:m.stage});
           ok('UX3 expand reachable, clear of the bar controls '+JSON.stringify({popout,state,open,fit}),m.expand);
           ok('UX3 game dock preserves the actual picture '+JSON.stringify({popout,state,open,fit}),m.gameBelow&&m.gameOverlap<=.20,{game:m.game,render:m.render,picture:m.picture,overlap:m.gameOverlap,below:m.gameBelow});
           if(popout)ok('UX3 full viewport overlay and toolbar clearance '+JSON.stringify({state,open,fit}),m.popout.left===0&&m.popout.top===0&&Math.abs(m.popout.right-innerWidth)<1&&Math.abs(m.popout.bottom-innerHeight)<1&&m.safe,m.popout);
-          // the strip stows with the panel in the stacked layout; in a game the anim bar's controls (oncoming headlamps, high beam) hide, as V.bar did
-          const stowed=m.mode==='stack'&&!open, gaming=state!=='drive', want=['scene','play','toggle',...(stowed?[]:['oncoming','preceding','speed','glare','ev',...(gaming?[]:['traffic-beams','high-beam'])])];
+          // stacked (10-29 bottom sheet): closed keeps the strip's first row, the speed slider; in a game the anim bar's controls (oncoming headlamps, high beam) hide, as V.bar did
+          const stowed=m.mode==='stack'&&!open, gaming=state!=='drive', want=['scene','play','toggle',...(stowed?['speed']:['oncoming','preceding','speed','glare','ev',...(gaming?[]:['traffic-beams','high-beam'])])];
           ok('UX2 top bar and strip hold only the driving controls',m.primary.length===want.length&&want.every(k=>m.primary.includes(k)),{got:m.primary,want});
           if(open&&state==='drive')ok('UX2 every control is placed in a tab and reachable',m.unplaced.length===0&&['wetness','wetSheen','onMode'].every(k=>DL.reveal(u,'[data-dv='+k+']')&&visible(u.driveBar.querySelector('[data-dv='+k+']')))&&['tiles','gpu-renderer','fps-counter','debug-timings'].every(k=>DL.reveal(u,'[data-anim='+k+']')&&visible(u.driveBar.querySelector('[data-anim='+k+']'))),m.unplaced);
         }
@@ -108,10 +109,25 @@
     ok('UX3 large opens above collapsed result panel',u.dvAnim.popout&&rect(a.V.pop).top===0&&document.elementFromPoint(2,2).closest('.drive-popout')===a.V.pop);
     D.closePop(u);document.querySelector('.result-pane').classList.add('expanded');await settle();
     ok('UX2 fixture trace stays stable throughout the layout matrix',u.run.ctx===trace&&!u.solving);
-    Object.assign(u.dvOpts,{fpsCounter:false,debugTimings:false,fitControls:true});u.redrawSpec();await settle();
+    Object.assign(u.dvOpts,{fpsCounter:false,debugTimings:false});u.redrawSpec();await settle();
     ok('UX2 both readouts can be switched off',a.V.fpsLab.hidden&&a.V.perfLab.hidden);
     u.dvAnim.view='still';u.dvAnim.playing=true;u.redrawSpec();ok('UX2 legacy still view becomes paused animation',u.dvAnim.view==='anim'&&!u.dvAnim.playing&&!a.V.canvas.hidden);play.click();ok('UX2 Drive resumes the migrated paused view',u.dvAnim.view==='anim'&&u.dvAnim.playing&&!a.V.canvas.hidden);play.click();
     Object.assign(u.dvOpts,{fpsCounter:true,debugTimings:true});u.redrawSpec();DL.reveal(u,'[data-anim=debug-timings]');await settle();
+    // OVERLAY (owner bug 10-29): on a wide host the right panel (Details | Timings) sits at the right edge, not next to the controls
+    if(!u.driveLayout.tall){ const prev=u.dvOpts.panelMode; RF.SpecUI.setDV(u,'panelMode','overlay'); DL.setOpen(u,'left',true); DL.setOpen(u,'right',true); await settle();
+      const L=u.driveLayout, r=rect(L.right), b=rect(L.root), l=rect(L.left);
+      ok('UX2 overlay: the right panel sits at the right edge '+innerWidth,L.mode==='overlay'&&Math.abs(r.right-b.right)<=1.5&&r.left>=l.right-1&&l.left>=b.left-1,{right:r,root:b,left:l,mode:L.mode});
+      RF.SpecUI.setDV(u,'panelMode',prev); await settle(); }
+    // ANIMATE UI (10-29): with the option on, a panel or sheet move is a transition (mid-way between its ends at 90 ms of 200), and the canvas
+    // re-render is held (L.hold) until it ends; with it off, the move is instant. Wide hosts move the left panel, tall hosts the sheet.
+    { const L=u.driveLayout, at=()=>L.tall?L.sheet.getBoundingClientRect().top:L.left.getBoundingClientRect().width, move=(open)=>{ if(L.tall)DL.setSheet(u,open?DL.detents(u)[0][0]:'closed'); else DL.setOpen(u,'left',open); };
+      move(true); await sleep(450); u.dvOpts.animateUI=true; u.redrawSpec(); await settle(); await sleep(300);
+      const a0=at(); move(false); await sleep(90); const mid=at(), hold=!!L.hold; await sleep(450); const a1=at(), held=!!L.hold;
+      ok('UX2 animate UI: the move is a transition and the re-render waits for its end '+innerWidth,L.root.classList.contains('dl-animate')&&Math.abs(mid-a0)>2&&Math.abs(mid-a1)>2&&hold&&!held,{a0,mid,a1,hold,held,tall:L.tall});
+      move(true); await sleep(450); u.dvOpts.animateUI=false; u.redrawSpec(); await settle();
+      const b0=at(); move(false); await settle(); const b1=at();
+      ok('UX2 animate UI off: the move is instant '+innerWidth,!L.root.classList.contains('dl-animate')&&Math.abs(b1-b0)>2&&!L.hold,{b0,b1});
+      move(true); await settle(); }
     // Leave a heavy-scene screenshot with the Timings tab shown and both readouts enabled.
     await sleep(700);window.scrollTo({top:0,behavior:'instant'});await settle();
     return {pass:checks.every(c=>c.pass),checks,layouts,viewport:[innerWidth,innerHeight],renderer:D.stats().renderer};

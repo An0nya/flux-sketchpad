@@ -89,8 +89,9 @@
       ok('CD large view preserves pause and position', !u.dvAnim.playing && u.dvAnim.dist === frozen.dist && u.dvAnim.t === frozen.t);
       for (const popout of [false, true]) {
         if (popout) D.openPop(u);
-        for (const open of [false, true]) for (const fit of [true, false]) {
-          RF.DriveLayout.setOpen(u, 'left', open); u.dvOpts.fitControls = fit; u.redrawSpec(); await settle(); D.layoutControls(u); await settle();
+        for (const open of [false, true]) for (const fit of [true]) {   // fit controls retired 10-29: one spacing
+
+          RF.DriveLayout.setOpen(u, 'left', open); u.redrawSpec(); await settle(); D.layoutControls(u); await settle();
           const m = UX2Page.measure(); layouts.push({ popout, open, fit, ...m });
           ok('CD no overlap at ' + innerWidth + ' ' + JSON.stringify({ popout, open, fit }), m.collisions.length === 0 && m.clipped.length === 0 && m.within && m.debugIn && m.inStage && m.covered === 0, m);   // UI step C: UX2Page.measure's shell invariants
         }

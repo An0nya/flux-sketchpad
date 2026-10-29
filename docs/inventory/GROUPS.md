@@ -268,8 +268,8 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 
 | option | label | kind | sits in | default | needs / ignored / conflicts |
 |---|---|---|---|---|---|
-| `fitControls` | fit controls | profile | More | true | - |
 | `largeCard` | large scorecard | profile | More | true | - |
+| `animateUI` | animate UI | profile | More | false | - |
 | `panelMode` | panels | profile | More | "auto" | - |
 | `canvasShape` | canvas | profile | More | "wide" | - |
 | `fpsCounter` | FPS badge | profile | More | true | - |

@@ -56,7 +56,6 @@
       tex: true,
       wild: true,
       mt: true,
-      fitControls: true,
       largeCard: true,
       seed: 7,
       density: 3,

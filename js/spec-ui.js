@@ -1024,7 +1024,7 @@
       bar.append(adv);
       // UI (10-29, step C): the controls go into the layout shell (js/drive-layout.js): its staging div is where every creator appends
       // (ui.driveExtras, the old More panel's name), and place() moves each control to its tab. The bar is the shell's root.
-      const L = RF.DriveLayout.build(ui, bar), staged = [...bar.children].filter((c) => !c.matches('.dl-top,.dl-strip,.dl-body,.dl-staging'));
+      const L = RF.DriveLayout.build(ui, bar), staged = [...bar.children].filter((c) => !c.matches('.dl-top,.dl-strip,.dl-body,.dl-sheet,.dl-staging'));
       L.staging.append(...staged); ui.driveExtras = L.staging;
       wrap.append(bar);
       const ro = el('div', { class: 'drive-readout' }); wrap.append(ro);

@@ -43,7 +43,7 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
     await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 180000 });
     await page.evaluate(() => { RF.SolverHost.setRecovery(true); RF.UI.setMode('D'); });
     await page.waitForFunction(() => { const ui = RF.UI; return !ui.solving && ui.run && ui.run.ctx.done && ui.spec && ui.spec.ctx === ui.run.ctx && ui.spec.full && ui.spec.ev; }, null, { timeout: 180000 });
-    await page.evaluate(() => { RF.UI.setDisplay('drive'); Object.assign(RF.UI.dvOpts, { scene: 'road', fitControls: true, largeCard: true, mt: true, gpuRenderer: false }); RF.UI.redrawSpec(); });
+    await page.evaluate(() => { RF.UI.setDisplay('drive'); Object.assign(RF.UI.dvOpts, { scene: 'road', largeCard: true, mt: true, gpuRenderer: false }); RF.UI.redrawSpec(); });
     await page.evaluate(() => { const a = RF.DriveAnim._; a.S(RF.UI).view = 'anim'; a.S(RF.UI).playing = false; a.V.pinSS = 1; RF.UI.redrawSpec(); });
     const hasGL = await page.evaluate(() => !!RF.DriveAnim._.V.gl);
     ok('RB Drive has WebGL2 float targets (required for these loss tests)', hasGL);
@@ -122,13 +122,12 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
     // OFF options remain available and recovery preference persists; do not hang a worker with recovery OFF.
     const off = await page.evaluate(() => {
       if (RF.UI.dvAnim.popout) RF.DriveAnim.closePop(RF.UI);
-      const b = document.querySelector('[data-anim=fit-controls]'); b.click();
       document.querySelector('[data-anim=large-card]').click();
       const box = document.querySelector('[aria-label="Automatic recovery"]'); box.checked = false; box.dispatchEvent(new Event('change'));
-      return { fit: RF.UI.dvOpts.fitControls, large: RF.UI.dvOpts.largeCard, stored: JSON.parse(localStorage.getItem('flux/driveView')), recovery: RF.SolverHost.recovery(), recoveryStored: localStorage.getItem('flux/recovery'), fitClass: RF.DriveAnim._.V.canvas.parentElement.classList.contains('drive-fit') };
+      return { large: RF.UI.dvOpts.largeCard, stored: JSON.parse(localStorage.getItem('flux/driveView')), recovery: RF.SolverHost.recovery(), recoveryStored: localStorage.getItem('flux/recovery') };   // fit controls retired 10-29
     });
-    ok('RB old layout/end card/recovery behavior stays reachable and persisted', off.fit === false && off.large === false && off.stored.fitControls === false && off.stored.largeCard === false && !off.recovery && off.recoveryStored === '0' && !off.fitClass, off);
-    await page.evaluate(() => { RF.SolverHost.setRecovery(true); RF.UI.dvOpts.fitControls = true; RF.UI.dvOpts.largeCard = true; RF.UI.redrawSpec(); });
+    ok('RB old layout/end card/recovery behavior stays reachable and persisted', off.large === false && off.stored.largeCard === false && !off.recovery && off.recoveryStored === '0', off);
+    await page.evaluate(() => { RF.SolverHost.setRecovery(true); RF.UI.dvOpts.largeCard = true; RF.UI.redrawSpec(); });
     // Force restore failure; the old CPU still remains usable and the popout is removed.
     await page.evaluate(() => { RF.DriveAnim.openPop(RF.UI); __rbExt = RF.DriveAnim._.V.gl.gl.getExtension('WEBGL_lose_context'); __rbExt.loseContext(); });
     await page.waitForFunction(() => RF.DriveAnim._.V.lost);

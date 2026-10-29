@@ -18,7 +18,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // UI step C (2026-10-29): re-baselined for the drive layout shell. The element screenshot holds the bars that overlay the canvas top (overlay mode in this
 // small pane), which changed look; the render itself is unchanged: in overlay mode the canvas is the old size, and a headless BT probe gave readCanvas
 // hashes identical to HEAD 0e77d52 before and after a traffic shuffle (brief REVIEW-2026-10-28-presets.md, step C).
-const DIRECT16 = process.env.SD_DIRECT16 || '14a5e025b2b760813fb0777c68aded4ae9d8d2e8d6ef61cb506ceab58b4e18a4';   // before UI step C: 883d5915...; before SPEED0: 35206d78...
+// OVL-RIGHT (2026-10-29): re-baselined: wide overlay moved the collapsed right panel (Details | Timings) to the right edge and lets both
+// panels shrink in a small host; the element screenshot holds those panels. Proof: with only those 3 CSS lines reverted the OLD pin passes.
+const DIRECT16 = process.env.SD_DIRECT16 || '011cb57875673c226c308094a3826fd3b81ae5158a8294900b1ac416479c5a6b';   // before OVL-RIGHT: 14a5e025...; before UI step C: 883d5915...; before SPEED0: 35206d78...
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
   return page.evaluate(async (b64) => {

@@ -12,7 +12,7 @@ async function ready(page) {
   await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 180000 });
   await page.evaluate((txt) => { RF.UI.loadScene(RF.State.deserialize(txt), 'PS fixture'); RF.UI.setMode('D'); }, scene);
   await page.waitForFunction(() => { const u = RF.UI; return !u.solving && u.run && u.run.ctx.done && u.spec && u.spec.ctx === u.run.ctx && u.spec.full && u.spec.ev; }, null, { timeout: 180000 });
-  await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvOpts, { mt: false, fitControls: true, scene: 'road', speed: 50, tiles: false, oncoming: false, preceding: false, trafficDensity: 0, trafficLogic: false }); u.redrawSpec(); });
+  await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvOpts, { mt: false, scene: 'road', speed: 50, tiles: false, oncoming: false, preceding: false, trafficDensity: 0, trafficLogic: false }); u.redrawSpec(); });
 }
 // Starts playback from the paused animation and waits for the first rendered frame.
 async function startAnimation(page) {

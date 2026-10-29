@@ -26,7 +26,8 @@
     ['performance', null, 'Exposure', [dv('expMode'), dv('evm'), dv('evp')]],
     ['performance', null, 'Resolution', [an('resolution'), an('dynamic-resolution'), an('min-fps'), dv('samples')]],
     ['performance', null, 'Renderer', [an('gpu-renderer'), ...C(['mt']), an('tile-cache')]],
-    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), an('fps-counter'), an('fit-controls'), an('large-card')]],
+    ['performance', null, 'Debug', [an('save-state'), an('load-state'), an('state-file'), an('state-msg')]],
+    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), an('fps-counter'), an('large-card'), an('animate-ui')]],
     ['details', null, '', [an('scene-details'), an('scene-details-panel')]],
     ['timings', null, '', [an('debug-timings'), an('perf-readout')]],
   ];
@@ -67,8 +68,8 @@
     L.left = E('div', { class: 'dl-panel dl-left', 'data-open': 'true' });
     L.right = E('div', { class: 'dl-panel dl-right', 'data-open': 'true' });
     L.staging = E('div', { class: 'dl-staging', hidden: '' });   // where creators append; place() empties it
-    const grab = (side) => { const g = E('button', { type: 'button', class: 'dl-grab', 'data-dl-grab': side, 'aria-label': side === 'left' ? 'Show or hide the controls' : 'Show or hide details and timings' }); g.addEventListener('click', () => toggle(ui, side)); return g; };
-    const tabRow = (list, cls, attr, pick) => { const row = E('div', { class: cls, role: 'tablist' }); for (const [id, label] of list) { const b = E('button', { type: 'button', role: 'tab', [attr]: id }, label); b.addEventListener('click', () => pick(id)); row.append(b); } return row; };
+    const grab = (side) => { const g = E('button', { type: 'button', class: 'dl-grab', 'data-dl-grab': side, 'aria-label': side === 'left' ? 'Show or hide the controls' : 'Show or hide details and timings' }); g.addEventListener('click', () => { toggle(ui, side); wake(ui); }); return g; };
+    const tabRow = (list, cls, attr, pick) => { const row = E('div', { class: cls, role: 'tablist' }); for (const [id, label] of list) { const b = E('button', { type: 'button', role: 'tab', [attr]: id }, label); b.addEventListener('click', () => { pick(id); wake(ui); }); row.append(b); } return row; };
     L.tabs = tabRow(TABS, 'dl-tabs', 'data-dl-tab', (id) => select(ui, { tab: id }));
     L.rtabs = tabRow(TABS.filter(([id]) => RIGHT.includes(id)), 'dl-tabs', 'data-dl-rtab', (id) => select(ui, { rtab: id }));
     L.subRow = tabRow(SUBS, 'dl-seg', 'data-dl-sub', (id) => select(ui, { sub: id }));
@@ -79,7 +80,14 @@
     L.other = group(L, 'performance', null, 'Other');
     L.left.append(grab('left'), L.tabs, L.content); L.right.append(grab('right'), L.rtabs, L.rcontent);
     L.body = E('div', { class: 'dl-body' }, L.left, L.stage, L.right);
-    bar.append(L.top, L.strip, L.body, L.staging);
+    // BOTTOM SHEET (owner 10-29, tall hosts only): the strip and the controls panel ride in a sheet dragged by its handle between detents
+    L.handle = E('button', { type: 'button', class: 'dl-handle', 'data-dl-handle': '', 'aria-label': 'Controls drawer: drag to resize, press to open or close, arrow keys step through sizes' });
+    L.reserve = E('div', { class: 'dl-reserve', 'aria-hidden': 'true' });   // measures --dl-bottom (the phone browser's bottom toolbar reserve, css)
+    L.sheet = E('div', { class: 'dl-sheet', 'data-dl-sheet': '' }, L.handle, L.reserve);
+    bar.append(L.top, L.strip, L.body, L.sheet, L.staging);
+    sheetDrag(ui, L);
+    // the detents are px from the host's size: a host that changes height (the game dock, the large view, a rotated phone) re-places the sheet
+    if (typeof ResizeObserver === 'function') { let k = ''; new ResizeObserver(() => { const n = bar.clientWidth + 'x' + bar.clientHeight; if (n !== k && L.tall && !L.dragging && ui.driveLayout) { k = n; sheetLayout(ui); } }).observe(bar); }
     L.state = { tab: load(KEY.tab, 'lighting'), sub: load(KEY.sub, 'oncoming'), rtab: load(KEY.rtab, 'details') };
     ui.driveLayout = L; return L;
   }
@@ -112,9 +120,10 @@
     }
     if (L.panes.performance.lastElementChild !== L.other) L.panes.performance.append(L.other);
     const fps = find(an('fps-readout')); if (fps) put(L.stage, fps);
-    for (const c of containers(L)) for (const e of [...c.children]) if (!e.matches('.drive-primary, .drive-anim-tools, .dl-top, .dl-strip, .dl-body, .dl-staging, [data-dl-ignore]')) put(L.other.row, e);
+    for (const c of containers(L)) for (const e of [...c.children]) if (!e.matches('.drive-primary, .drive-anim-tools, .dl-top, .dl-strip, .dl-body, .dl-sheet, .dl-staging, [data-dl-ignore]')) put(L.other.row, e);
     L.other.hidden = !L.other.row.children.length;
     layout(ui);
+    if (!L.woke) { L.woke = true; setTimeout(() => wake(ui), 0); }   // a stored Details/Timings tab opens with its readout on (after this draw, not inside it)
   }
   // the containers the creators append into: the staging div, the spec-ui primary row, the drive-anim bar
   const containers = (L) => [L.staging, ...L.root.querySelectorAll('.drive-primary, .drive-anim-tools'), L.root].filter(Boolean);
@@ -128,7 +137,17 @@
     L.root.classList.toggle('dl-tall', !!L.tall); L.root.classList.toggle('dl-wide', !L.tall);
     const mode = L.mode || 'push'; L.root.classList.toggle('dl-overlay', mode === 'overlay'); L.root.classList.toggle('dl-push', mode === 'push');
     for (const side of ['left', 'right']) { const v = load(openKey(side, mode), null); (side === 'left' ? L.left : L.right).setAttribute('data-open', String(v === null ? openDefault(side, mode, L.w || 0) : v === 'true')); }
-    L.shape = shapeOf(ui.dvOpts && ui.dvOpts.canvasShape, !!L.tall, L.left.getAttribute('data-open') === 'true'); L.root.setAttribute('data-shape', L.shape);
+    L.shape = shapeOf(ui.dvOpts && ui.dvOpts.canvasShape, !!L.tall, L.left.getAttribute('data-open') === 'true');
+    if (L.tall) { put(L.sheet, L.strip); put(L.sheet, L.left); sheetLayout(ui); }
+    else { if (L.strip.parentElement !== L.root || L.strip.previousElementSibling !== L.top) L.top.after(L.strip); if (L.left.parentElement !== L.body) L.body.prepend(L.left); L.root.classList.remove('dl-sheet-push', 'dl-sheet-overlay'); }
+    L.root.setAttribute('data-shape', L.shape);
+    // ANIMATE UI (owner 10-29, option animateUI, default off; reduced motion wins): a CSS class turns the transitions on. When the layout
+    // changes under it, hold the canvas re-render for the transition (drive-anim previews the old frame), then re-render once.
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches, anim = !!(ui.dvOpts && ui.dvOpts.animateUI) && !reduce;
+    L.root.classList.toggle('dl-animate', anim);
+    const sig = [L.tall, mode, L.left.getAttribute('data-open'), L.right.getAttribute('data-open'), L.sheetAt, L.shape].join('|');
+    if (anim && L.sig && sig !== L.sig && !L.dragging) { L.hold = true; clearTimeout(L.holdT); L.holdT = setTimeout(() => { L.hold = false; if (ui.redrawSpec) ui.redrawSpec(); }, ANIM_MS + 40); }
+    L.sig = sig;
     for (const id of RIGHT) put(L.tall ? L.content : L.rcontent, L.panes[id]);
     for (const id of TABS.map((t) => t[0])) if (!RIGHT.includes(id)) put(L.content, L.panes[id]);
     show(ui);
@@ -147,6 +166,17 @@
     for (const k of Object.keys(patch)) save(KEY[k], patch[k]);
     show(ui);
   }
+  // Details and Timings switch their readout on when their tab is opened (owner 10-29: on a phone they opened empty). Only ever on: the
+  // switch inside the tab still turns it off. Timings runs the sampled profiler while on. Only a click (tab or grab bar) and the first
+  // placement wake; reveal() and select() from code do not, so a caller that opens a tab to press the switch gets what it pressed.
+  const WAKE = { details: 'sceneDetails', timings: 'debugTimings' };
+  function wake(ui) {
+    const L = ui.driveLayout, o = ui.dvOpts, set = RF.SpecUI && RF.SpecUI.setDV; if (!L || !o || !set) return;
+    for (const [id, key] of Object.entries(WAKE)) {
+      const p = L.panes[id], panel = p && p.closest('.dl-panel');
+      if (p && !p.hidden && panel && panel.getAttribute('data-open') === 'true' && !o[key]) set(ui, key, true);
+    }
+  }
   // reveal: the tab (and sub-tab) holding a control, so it can be seen and clicked (tests, and any caller that points at a control)
   function reveal(ui, selector) {
     const L = ui.driveLayout; if (!L) return false;
@@ -159,16 +189,93 @@
   }
   function setOpen(ui, side, open) {
     const L = ui.driveLayout, p = side === 'left' ? L.left : L.right;
+    if (L.tall && side === 'left') { if ((L.sheetAt !== 'closed') !== open) { if (open) { const n = detents(ui).map((x) => x[0]); setSheet(ui, n.includes(L.lastOpen) ? L.lastOpen : n[0]); } else { L.lastOpen = L.sheetAt; setSheet(ui, 'closed'); } } return; }   // tall: the sheet is the left panel
     if ((p.getAttribute('data-open') === 'true') === open) return;
     p.setAttribute('data-open', String(open)); save(openKey(side, L.mode || 'push'), open); layout(ui);   // the shape can follow the panel (3:4 stacked)
     if (ui.redrawSpec) ui.redrawSpec();      // the stage changed size: the canvas refits
   }
   const toggle = (ui, side) => setOpen(ui, side, (side === 'left' ? ui.driveLayout.left : ui.driveLayout.right).getAttribute('data-open') !== 'true');
+  // ---- bottom sheet (tall hosts). Detents are named by the canvas shape whose bottom edge the sheet top meets: wide (the biggest sheet),
+  // square, 3:4, and closed (handle + the strip's first row). Push: the stage ends at the sheet top and the detent IS the canvas shape (closed = 3:4).
+  // Overlay: the canvas keeps its shape at full size and the sheet floats over it, slightly transparent. The detent is remembered per mode.
+  const ANIM_MS = 200;   // matches the transitions in css/app.css (.dl-animate)
+  const SHEET_MIN = 80, sheetKey = (m) => 'flux/driveSheet:' + m, DETENTS = ['wide', 'square', '3:4', 'closed'];
+  const sheetModeOf = (pref) => (pref === 'overlay' ? 'overlay' : 'push');   // auto stacks as push (the old stacked layout)
+  // detents for a tall host: [[name, sheet top y]] by y, top first. A shape whose canvas would leave the sheet under SHEET_MIN px is skipped.
+  function detentsFor(H, W, topH, closedY) {
+    const y = { wide: topH + W * 9 / 16, square: topH + W, '3:4': topH + W * 4 / 3, closed: closedY };
+    return DETENTS.filter((n) => n === 'closed' || y[n] <= closedY - SHEET_MIN).map((n) => [n, Math.round(y[n])]);
+  }
+  function detents(ui) {
+    const L = ui.driveLayout, H = L.root.clientHeight, W = L.root.clientWidth, topH = L.top.offsetHeight;
+    // closed shows the handle and the strip's first row (the speed slider on a phone); the rest of the strip is under the screen edge
+    const sp = L.strip.querySelector('.drive-speed'), first = sp && sp.offsetParent ? sp.getBoundingClientRect().bottom - L.strip.getBoundingClientRect().top + (parseFloat(getComputedStyle(L.strip).paddingBottom) || 0) + 2 : L.strip.offsetHeight;   // + 2: border and sub-pixel rounding (measured 2 px short at 360x950)   // the strip's own bottom pad; closed hides the other rows (.dl-sheet-closed)
+    return detentsFor(H, W, topH, H - L.reserve.offsetHeight - L.handle.offsetHeight - Math.round(first));   // closed keeps the speed row above the browser's bottom toolbar
+  }
+  function sheetLayout(ui) {
+    const L = ui.driveLayout, o = ui.dvOpts || {}, m = sheetModeOf(o.panelMode), d = detents(ui), names = d.map((x) => x[0]);
+    L.sheetMode = m; L.root.classList.toggle('dl-sheet-push', m === 'push'); L.root.classList.toggle('dl-sheet-overlay', m === 'overlay');
+    let at = load(sheetKey(m), m === 'overlay' ? 'closed' : SHAPES[o.canvasShape] ? o.canvasShape : 'wide');
+    if (m === 'push' && at !== 'closed' && SHAPES[o.canvasShape]) at = o.canvasShape;   // the shape setting and the sheet agree
+    if (!names.includes(at)) at = names.includes('wide') && at !== 'closed' ? names[0] : 'closed';
+    L.sheetAt = at; L.left.setAttribute('data-open', String(at !== 'closed')); L.root.classList.toggle('dl-sheet-closed', at === 'closed');
+    L.shape = m === 'push' ? (at === 'closed' ? '3:4' : at) : shapeOf(o.canvasShape, false, false);
+    if (!L.dragging) setSheetY(L, d.find((x) => x[0] === at)[1]);
+    L.root.style.setProperty('--dl-top-h', L.top.offsetHeight + 'px');
+  }
+  const setSheetY = (L, y) => { L.sheetY = y; L.root.style.setProperty('--dl-sheet-y', y + 'px'); };
+  // a detent chosen (drag release, tap, keys, or code): push sets the canvas shape for real (saved), overlay only moves the sheet
+  function setSheet(ui, name) {
+    const L = ui.driveLayout, o = ui.dvOpts || {}, m = sheetModeOf(o.panelMode);
+    save(sheetKey(m), name);
+    if (m === 'push' && name !== 'closed' && o.canvasShape !== name && RF.SpecUI) { RF.SpecUI.setDV(ui, 'canvasShape', name); layout(ui); }
+    else { layout(ui); if (ui.redrawSpec) ui.redrawSpec(); }
+    if (name !== 'closed') wake(ui);
+  }
+  // pointer drag on the handle: the sheet follows the finger; release snaps to the nearest detent, or one further for a flick.
+  // A press that moves under 6 px is a tap: open (to the last open detent, else the biggest) or close.
+  function sheetDrag(ui, L) {
+    let g = null;
+    L.handle.addEventListener('pointerdown', (e) => {
+      if (!L.tall) return; e.preventDefault(); try { L.handle.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or ended pointer: drag without capture */ }
+      g = { id: e.pointerId, y0: L.sheetY, py: e.clientY, moved: false, d: detents(ui), hist: [[performance.now(), e.clientY]] };
+    });
+    L.handle.addEventListener('pointermove', (e) => {
+      if (!g || e.pointerId !== g.id) return; const dy = e.clientY - g.py;
+      if (!g.moved && Math.abs(dy) < 6) return;
+      if (!g.moved) { g.moved = true; L.dragging = true; L.root.classList.add('dl-dragging'); }
+      const lo = g.d[0][1], hi = g.d[g.d.length - 1][1]; setSheetY(L, Math.max(lo, Math.min(hi, g.y0 + dy)));
+      g.hist.push([performance.now(), e.clientY]); if (g.hist.length > 6) g.hist.shift();
+      if (L.onDrag) L.onDrag(ui);
+    });
+    const end = (e) => {
+      if (!g || e.pointerId !== g.id) return; const was = g; g = null;
+      if (!was.moved) { tapSheet(ui); return; }
+      L.dragging = false; L.root.classList.remove('dl-dragging');
+      // velocity over the last 100 ms (px/ms). Slow: the nearest detent. A flick (> 0.6 px/ms): the next detent past the sheet in its direction.
+      const now = performance.now(), h = was.hist.filter((x) => now - x[0] <= 100), [t0, y0] = h.length > 1 ? h[0] : was.hist[0], dt = now - t0, v = dt > 0 ? (e.clientY - y0) / dt : 0, y = L.sheetY;
+      let best = was.d[0]; for (const x of was.d) if (Math.abs(x[1] - y) < Math.abs(best[1] - y)) best = x;
+      if (Math.abs(v) > 0.6) { const next = v > 0 ? was.d.find((x) => x[1] > y + 1) : [...was.d].reverse().find((x) => x[1] < y - 1); if (next) best = next; }
+      setSheet(ui, best[0]);
+    };
+    L.handle.addEventListener('pointerup', end); L.handle.addEventListener('pointercancel', end);
+    L.handle.addEventListener('click', (e) => { if (e.detail === 0) tapSheet(ui); });   // keyboard Enter/Space (pointer taps are handled on pointerup)
+    L.handle.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return; e.preventDefault();
+      const d = detents(ui), i = d.findIndex((x) => x[0] === L.sheetAt), j = Math.max(0, Math.min(d.length - 1, i + (e.key === 'ArrowUp' ? -1 : 1)));
+      if (j !== i) setSheet(ui, d[j][0]);
+    });
+  }
+  function tapSheet(ui) {
+    const L = ui.driveLayout;
+    if (L.sheetAt !== 'closed') { L.lastOpen = L.sheetAt; setSheet(ui, 'closed'); return; }
+    const names = detents(ui).map((x) => x[0]); setSheet(ui, names.includes(L.lastOpen) ? L.lastOpen : names[0]);
+  }
   // the stage's box in css px relative to an element (the CPU still is painted into it); null when the shell is not laid out
   function stageBox(ui, el) {
     const L = ui.driveLayout; if (!L || !el || !L.root.isConnected || L.root.parentElement !== el.parentElement) return null;
     const s = L.stage.getBoundingClientRect(), r = el.getBoundingClientRect();
     return s.width > 0 && s.height > 0 ? { x: s.left - r.left, y: s.top - r.top, w: s.width, h: s.height } : null;
   }
-  RF.DriveLayout = { LAYOUT, TOP, STRIP, TABS, SUBS, isTall, modeOf, openDefault, PUSH_MIN, RIGHT_MIN, SHAPES, shapeOf, aspectOf, build, place, layout, select, reveal, setOpen, unplaced, stageBox };
+  RF.DriveLayout = { ANIM_MS, LAYOUT, TOP, STRIP, TABS, SUBS, isTall, modeOf, openDefault, PUSH_MIN, RIGHT_MIN, SHAPES, shapeOf, aspectOf, build, place, layout, select, reveal, setOpen, unplaced, stageBox, DETENTS, SHEET_MIN, detentsFor, detents, setSheet, sheetModeOf };
 })(typeof window !== 'undefined' ? window : globalThis);

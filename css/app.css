@@ -658,8 +658,7 @@ body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { 
 .dl-pane, .dl-sub { display: flex; flex-direction: column; gap: 12px; }
 .dl-grp { display: flex; flex-direction: column; gap: 6px; }
 .dl-grp > h4 { margin: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dl-faint); font-weight: 600; }
-.dl-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.drive-fit .dl-row { gap: 4px; }
+.dl-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .dl-row > * { max-width: 100%; min-width: 0; }
 .dl-row > details { flex: 1 0 100%; }
 .dl-row > details > summary { cursor: pointer; color: var(--dl-dim); padding: 4px 0; border-top: 1px dashed var(--dl-line); }
@@ -683,28 +682,50 @@ body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { 
 .dl-overlay > :is(.dl-top, .dl-strip), .dl-overlay .dl-panel { position: relative; z-index: 2; }   /* the body stays static, so the stage's box is the whole shell */
 .dl-overlay > :is(.dl-top, .dl-strip) { background: rgba(7, 11, 16, .82); }
 .dl-overlay .dl-body { pointer-events: none; }
+.dl-overlay.dl-wide .dl-right { margin-left: auto; }   /* owner 10-29: the stage left the row, so nothing pushed Details/Timings to the right edge */
+.dl-overlay.dl-wide .dl-left { flex: 0 1 290px; width: auto; min-width: 0; } .dl-overlay.dl-wide .dl-right { flex: 0 1 250px; width: auto; min-width: 0; }   /* a small host: both panels shrink to share it instead of running off the edge */
+.dl-overlay.dl-wide .dl-panel[data-open=false] { flex: 0 0 12px; }
 .dl-overlay .dl-panel { background: rgba(7, 11, 16, .9); }
 .dl-overlay .dl-content { background: transparent; }
 .dl-overlay .dl-panel[data-open=false] { background: transparent; border-color: transparent; }
-/* tall: the stage under the top bar at 16:9, then the strip, then one panel with every tab; the grab bar stows strip and panel */
+/* tall: the top bar, the stage under it, and a bottom sheet (handle, strip, the panel with every tab) whose top is --dl-sheet-y (js sets it
+   from the detent or the finger). Push: the stage ends at the sheet top. Overlay: the stage runs to the bottom and the sheet floats over it. */
+.dl-sheet { display: none; }
 .dl-tall .dl-body { display: contents; }
-.dl-tall .dl-top { order: 0; } .dl-tall .dl-stage { order: 1; flex: none; aspect-ratio: 16 / 9; }
-.dl-tall[data-shape=square] .dl-stage { aspect-ratio: 1; } .dl-tall[data-shape='3:4'] .dl-stage { aspect-ratio: 3 / 4; }   /* canvas shape: the stacked stage follows it */
-.dl-tall .dl-strip { order: 2; border-top: 1px solid var(--dl-line); gap: 4px; padding: 6px 8px; }
-.dl-tall .dl-left { order: 3; flex: 1 1 0; padding-top: 14px; }
+.dl-tall .dl-top { position: relative; z-index: 3; }
+.dl-tall .dl-stage { position: absolute; left: 0; right: 0; top: var(--dl-top-h, 40px); height: max(0px, calc(var(--dl-sheet-y, 100%) - var(--dl-top-h, 40px))); overflow: hidden; }
+.dl-tall.dl-sheet-overlay .dl-stage { height: auto; bottom: 0; }
+.dl-tall .dl-sheet { display: flex; flex-direction: column; position: absolute; left: 0; right: 0; top: var(--dl-sheet-y, 60%); bottom: 0; z-index: 2; pointer-events: auto; overflow: hidden;
+  background: var(--dl-panel); border-top: 1px solid var(--dl-line); border-radius: 12px 12px 0 0; }
+.dl-tall.dl-sheet-overlay .dl-sheet { background: color-mix(in srgb, var(--dl-panel) 85%, transparent); }   /* owner 10-29: a little see-through, no blur */
+.drive-tools.dl .dl-handle { flex: none; width: 100%; height: 24px; min-height: 24px; padding: 0; border: 0; border-radius: 12px 12px 0 0; background: transparent; touch-action: none; cursor: grab; display: flex; align-items: center; justify-content: center; }
+.dl-handle::after { content: ''; width: 40px; height: 4px; border-radius: 2px; background: #2c3a46; }
+.dl-handle:hover::after, .dl-handle:focus-visible::after, .dl-dragging .dl-handle::after { background: var(--dl-dim); }
+.dl-dragging .dl-handle { cursor: grabbing; }
+.dl-tall .dl-sheet > .dl-strip { flex: none; border-top: 0; gap: 4px; padding: 0 8px 6px; background: transparent; }
+.dl-tall .dl-sheet > .dl-left { flex: 1 1 0; min-height: 0; overflow: auto; border: 0; background: transparent; padding-top: 0; }
+.dl-tall .dl-left > .dl-grab { display: none; }
+.dl-tall.dl-sheet-closed .dl-sheet > .dl-strip > :not(.drive-speed) { display: none; }   /* closed: only the speed row, even where the sheet runs on under the browser toolbar */
+.dl-reserve { position: absolute; left: 0; top: 0; width: 0; height: var(--dl-bottom, 0px); visibility: hidden; pointer-events: none; }
+.dl-tall .dl-sheet > .dl-left > .dl-content { padding-bottom: var(--dl-bottom, 0px); }   /* the last controls scroll clear of the toolbar */
 .dl-tall .dl-right { display: none; }
-.dl-tall .dl-grab { left: 0; right: 0; top: 0; height: 14px; }
-.dl-tall .dl-grab::after { height: 4px; width: 44px; }
-.dl-tall .dl-left[data-open=false] { flex: none; height: 14px; padding: 0; }
-.dl-tall:has(.dl-left[data-open=false]) .dl-strip { display: none; }
-.dl-tall:has(.dl-left[data-open=false]) .dl-stage { flex: 1 1 0; aspect-ratio: auto; }
 .dl-tall .dl-sep { display: none; }
-.dl-tall .dl-strip .drive-speed input[type=range] { width: 80px; }
-.dl-tall .dl-strip .drive-speed { flex-wrap: wrap; white-space: normal; min-width: 0; max-width: 100%; }   /* phones: 'set · actual' wraps instead of widening the page */
+.dl-tall .dl-strip .drive-speed { order: -1; flex: 1 0 100%; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }   /* phones (owner 10-29): the speed slider gets its own row */
+.dl-tall .dl-strip .drive-speed input[type=range] { flex: 1 1 auto; width: auto; min-width: 0; }
+.dl-tall .dl-strip .drive-speed .anim-speed { flex: none; min-width: 17ch; text-align: right; font-variant-numeric: tabular-nums; }   /* room for '130 km/h · actual 130': the slider does not move when actual appears */
 .dl-tall .dl-strip { overflow-x: hidden; }
 .drive-tools.dl.dl-tall .dl-tabs > button { padding: 5px 8px; }
 .dl-tall .dl-top [data-anim=play] { order: 5; margin-left: auto; }   /* phones: Drive on the right, next to the large-view button (right thumb) */
 .dl-tall .dl-top > * { order: 1; }
+.dl-tall .dl-top { flex-wrap: nowrap; padding-right: 44px; } .dl-tall .dl-top [data-dv=scene] { flex: 1 1 auto; min-width: 0; width: 0; }   /* phones: one top row (the scene picker gives way); the right pad clears the large-view button */
+/* ANIMATE UI (owner 10-29, option animateUI; js adds .dl-animate only when reduced motion is off). 200 ms = ANIM_MS in drive-layout.js.
+   The canvas does not animate itself: drive-anim previews the last frame in the moving stage and re-renders when the move ends. */
+.dl-animate .dl-panel, .dl-animate .dl-stage { transition: width 200ms cubic-bezier(.2, .8, .2, 1), height 200ms cubic-bezier(.2, .8, .2, 1), flex-basis 200ms cubic-bezier(.2, .8, .2, 1); }   /* flex-basis: overlay panels size by it */
+.dl-animate.dl-tall .dl-sheet { transition: top 200ms cubic-bezier(.2, .8, .2, 1); }
+.dl-animate.dl-dragging :is(.dl-sheet, .dl-stage) { transition: none; }   /* the finger leads; the snap after it animates */
+.dl-animate .dl-pane:not([hidden]), .dl-animate .dl-sub:not([hidden]) { animation: dl-fade 150ms ease-out; }
+@keyframes dl-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .dl-animate *, .dl-animate { transition: none !important; animation: none !important; } }
 /* readouts that moved: the fps chip on the stage corner, the timings and details as tab content */
 .dl-stage > .drive-fps { top: auto; bottom: 8px; right: 8px; border-radius: 4px; }
 .dl-stage > .drive-notice { top: 8px; }
@@ -746,7 +767,7 @@ figure.map > .drive-below:has(> .drive-game:not([hidden])) { flex-shrink: 1; max
   body.mode-D:has(.canvas-wrap.drive) { height: auto; overflow: auto; }
   .result-pane:not(.phone-hidden):not(.collapsed):has(.canvas-wrap.drive) { height: auto !important; display: flex !important; }
   .result-pane:not(.phone-hidden):not(.collapsed):has(.canvas-wrap.drive) > figure.map { display: flex !important; flex: none; }
-  .result-pane figure.map > .canvas-wrap.drive { flex: none; height: max(520px, calc(100dvh - 120px)); min-height: 520px; }   /* UI step C: the tall layout's stage, strip and tabs fit; the tabs scroll inside */
+  .result-pane figure.map > .canvas-wrap.drive { flex: none; height: max(520px, calc(100dvh - var(--dl-reserve, 120px))); min-height: 520px; }   /* the tall layout's stage and bottom sheet fill this; --dl-reserve = the app chrome above it */
   .dp-stage { min-height: 320px; }
   figure.map > .drive-below:has(> .drive-game:not([hidden])) { max-height: none; overflow: visible; }
   .drive-tools.dl :is(button,select) { min-height: 32px; }
@@ -754,6 +775,11 @@ figure.map > .drive-below:has(> .drive-game:not([hidden])) { flex-shrink: 1; max
 @media (pointer: coarse) {
   figure.map > .drive-below:has(> .drive-game:not([hidden])) { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
   .drive-popout { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
+  /* owner 10-29 (dead space): with the bottom sheet the large view runs to the screen bottom, under the browser's see-through toolbar; the
+     sheet's content scrolls clear of it (--dl-bottom) and closed keeps the speed row above it. The 96 px stays while the game panel shows. */
+  .drive-popout:has(.dl-tall):not(:has(.drive-game:not([hidden]))) { padding-bottom: 0; }
+  .drive-popout .dl-tall { --dl-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
+  .drive-popout:has(.drive-game:not([hidden])) .dl-tall { --dl-bottom: 0px; }
 }
 /* Touch laptops/tablets keep their desktop columns, but rows must grow with More. */
 @media (min-width: 761px) and (pointer: coarse) {

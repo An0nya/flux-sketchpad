@@ -41,7 +41,7 @@
 
   // Options removed from the build. A saved profile may still hold them; load drops the key so a stale value can never matter (Brief U:
   // glareSources = every source now glares; lampHalos = the lamp-halo sprite is gone, the lamp cone is the only street-lamp haze).
-  const RETIRED_KEYS = ['glareSources', 'lampHalos'];
+  const RETIRED_KEYS = ['glareSources', 'lampHalos', 'fitControls'];   // fitControls: removed 10-29 (the layout shell made it dead; its 4 px row gap is now the default)
   const DEFAULTS_VERSION = 4;   // the defaults generation this build writes into a saved profile (profile.defaultsVersion)
 
   // A profile saved before versioning holds every key that existed when it was saved, because setDV wrote the whole object.
@@ -917,20 +917,21 @@
       note: 'Silently single thread when blocked (drive-anim.js want gate).',
     },
     {
-      id: 'fitControls', kind: 'profile', type: 'bool', values: null,
-      default: true, label: 'fit controls',
-      control: '[data-anim="fit-controls"]', where: 'more', query: null,
-      group: 'diagnostics', cost: 'free',
-      owner: ['js/drive-anim.js'],
-      tests: ['CD-controls-dedupe', 'UX2-drive-ux'],
-    },
-    {
       id: 'largeCard', kind: 'profile', type: 'bool', values: null,
       default: true, label: 'large scorecard',
       control: '[data-anim="large-card"]', where: 'more', query: null,
       group: 'diagnostics', cost: 'free',
       owner: ['js/drive-anim.js'],
       tests: ['UX2-drive-ux'],
+    },
+    {
+      id: 'animateUI', kind: 'profile', type: 'bool', values: null,
+      default: false, label: 'animate UI',
+      control: '[data-anim="animate-ui"]', where: 'more', query: null,
+      group: 'diagnostics', cost: 'free',
+      owner: ['js/drive-layout.js', 'css/app.css'],
+      tests: ['UX2-drive-ux'],
+      note: 'Owner 10-29: panels, sheet, tab switch animate (~200 ms); off by default; prefers-reduced-motion forces off. The canvas previews during a move and re-renders once at the end.',
     },
     {
       id: 'panelMode', kind: 'profile', type: 'enum', values: ['auto', 'push', 'overlay'],
