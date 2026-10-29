@@ -15,7 +15,7 @@ const JOBS = +val('--jobs', 3), BASE = val('--base', 'main'), WALL_MS = +val('--
 const PW = process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright';
 
 // ---- the curated gate -------------------------------------------------------------------------------------------------
-const NODE = ['all', 'regress-node', 'glare-all', 'scatter-table', 'scatter-table-pace', 'scatter', 'scatter-fade-gain', 'fog', 'wetness', 'wet-ggx', 'foliage', 'beams', 'beam-atlas', 'traffic-beams', 'tl-traffic-taper', 'pass-parity', 'deer-tilt', 'scene-digest', 'scenery-params', 'tile-options', 'options-registry', 'options-migration', 'options-docs', 'share-presets', 'sampler-budget', 'high-dip', 'scatter-cull'];
+const NODE = ['all', 'regress-node', 'glare-all', 'scatter-table', 'scatter-table-pace', 'scatter', 'scatter-fade-gain', 'fog', 'wetness', 'wet-ggx', 'foliage', 'beams', 'beam-atlas', 'traffic-beams', 'tl-traffic-taper', 'pass-parity', 'deer-tilt', 'scene-digest', 'scenery-params', 'tile-options', 'options-registry', 'options-migration', 'options-docs', 'share-presets', 'sampler-budget', 'high-dip', 'scatter-cull', 'canvas-shape'];
 const PAGE_PAR = ['SB1-studs-everywhere', 'OV-scene-details', 'CD-controls-dedupe', 'UX2-drive-ux', 'DC-drive-controls', 'DW-drive-wheel', 'PM-pass-mesh', 'PP-pass-parity', 'P2-drive-lighting', 'WG-wet-ggx', 'WT-wetness', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'SF-silhouette-fade', 'SF1-car-silhouette', 'BT-traffic-beams', 'BA5-gpu-atlas', 'BA-beam-library-gpu', 'TL2-traffic-light-range',
   // FULL-COVERAGE (owner 2026-10-27): these used to run only via the --touched map, and 4 of them sat stale on main after a change in another file. Agents: --full is for merge checkpoints only; use --touched.
   'TOUGE-AIR', 'TOUGE-AIR-RIBBON', 'TOUGE-SKY-VEIL', 'TOUGE-HALO-TILT', 'TOUGE-ELEV-B', 'LCM1-lamp-cone', 'GS1-glare-sources', 'BJ1-shadow-cache', 'BJ2-halo-table-pin', 'E2-pass-lamp-cone', 'E2-crest-occlusion', 'CD-lampcone-depth', 'HB-high-dip-gpu', 'SCULL-scatter-cull', 'SP-polar-auto', 'CPSM-cone-shadow', 'SPEED0-stop'];
@@ -45,18 +45,23 @@ const MAP = [
   [/^js\/options-registry\.js$/, ['ui', 'nodeAll', 'node:drive-controls2', 'node:scenario-node']],   // OPTION-REGISTRY: the defaults of every option; tests/options-registry.js and options-migration.js are in NODE
   [/^js\/share-presets\.js$/, ['ui', 'node:share-presets']],   // SHARE-PRESET: #preset=<name> links; tests/share-presets.js
   [/^tests\/drive-three-page\.js$/, ['P1-drive-three', 'FG-fog', 'SC-beam-scatter']],
-  [/^index\.html$/, ['ui']], [/^tests\/load\.js$/, ['nodeAll']],
+  [/^index\.html$/, ['ui']], [/^js\/drive-layout\.js$/, ['ui', 'render', 'nodeAll']],   // UI step C: the drive layout shell moves every drive control and sizes the canvas
+  [/^tests\/load\.js$/, ['nodeAll']],
   [/^js\/compare-ui\.js$/, ['RESET-DRIVE-SETTINGS', 'AB-compare']], [/^css\/app\.css$/, ['ui', 'RESET-DRIVE-SETTINGS']],   // RESET-DRIVE-SETTINGS: the reset button lives in the A/B solve-cache bar; its CSS is the spec-mode gate
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];
-const NOT_TESTS = ['gate', 'load', 'serve', 'drive-three-page'];   // drive-three-page.js is the browser-side helper of P1/FG/SC (Brief U: it gained the lampCone argument), not a Node test; it is in MAP
+const NOT_TESTS = ['gate', 'load', 'serve', 'drive-three-page', 'pinned-defaults'];   // drive-three-page.js is the browser-side helper of P1/FG/SC (Brief U: it gained the lampCone argument), not a Node test; it is in MAP
 // NE5: open, reproducible-in-order checks we have not explained. Run by hand with --only; never in the gate.
 const KNOWN_FAILING = ['NE-state-leak'];
 // ---- plan -------------------------------------------------------------------------------------------------------------
 const sh = (...a) => { try { return execFileSync(a[0], a.slice(1), { cwd: root, encoding: 'utf8' }).trim(); } catch (e) { return ''; } };
 function plan() {
   if (val('--only')) return val('--only').split(',').map((n) => n.startsWith('node:') ? n : (fs.existsSync(path.join(root, 'tests', n + '.js')) && !fs.existsSync(path.join(root, 'tests/regress', n + '.js')) ? 'node:' + n : n));
-  const full = [...NODE.map((n) => 'node:' + n), ...PAGE_PAR, ...PAGE_SOLO];
+  const exists = (x) => x.startsWith('node:') ? fs.existsSync(path.join(root, 'tests', x.slice(5) + '.js')) : fs.existsSync(path.join(root, 'tests/regress', x + '.js'));
+  const curated = [...NODE.map((n) => 'node:' + n), ...PAGE_PAR, ...PAGE_SOLO];
+  // FULL-COVERAGE 2 (10-29): --full also runs every test the MAP names, so a test reachable only via --touched cannot be skipped at a merge (4 were: CPU-FALLBACK-PAUSE, PL3, drive-controls2, scenario-node).
+  const mapped = [...new Set(MAP.flatMap(([, gs]) => gs.flatMap((g) => GROUPS[g] || [g])))].filter((x) => !curated.includes(x) && !KNOWN_FAILING.includes(x) && exists(x));
+  const full = curated.concat(mapped);
   if (!has('--touched')) return full;
   const files = new Set([...sh('git', 'diff', '--name-only', BASE + '...HEAD').split('\n'), ...sh('git', 'diff', '--name-only', 'HEAD').split('\n'), ...sh('git', 'ls-files', '--others', '--exclude-standard').split('\n')].filter(Boolean));
   const picked = new Set(); let unmapped = [];

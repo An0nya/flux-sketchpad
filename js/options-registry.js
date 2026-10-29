@@ -42,7 +42,7 @@
   // Options removed from the build. A saved profile may still hold them; load drops the key so a stale value can never matter (Brief U:
   // glareSources = every source now glares; lampHalos = the lamp-halo sprite is gone, the lamp cone is the only street-lamp haze).
   const RETIRED_KEYS = ['glareSources', 'lampHalos'];
-  const DEFAULTS_VERSION = 3;   // the defaults generation this build writes into a saved profile (profile.defaultsVersion)
+  const DEFAULTS_VERSION = 4;   // the defaults generation this build writes into a saved profile (profile.defaultsVersion)
 
   // A profile saved before versioning holds every key that existed when it was saved, because setDV wrote the whole object.
   // These are the 18 keys of the first release (commit e323553); a profile that has them all is such a whole-object save.
@@ -227,13 +227,33 @@
     },
     {
       id: 'trafficHalo', kind: 'profile', type: 'enum', values: [0, 4, 8, 16],
-      default: 0, label: 'traffic halo',
+      default: 0, label: 'oncoming headlamp scatter',
       control: '[data-dv="trafficHalo"]', where: 'more', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/drive.js', 'js/spec-ui.js', 'js/drive-anim.js'],
       requires: [need('air'), need('trafficBeamsOn')],
       tests: [],
-      note: 'haloN() is 0 unless trafficBeams, air and trafficHalo > 0 (silent no-op otherwise). GPU only.',
+      note: 'The on/off of the oncoming headlamp scatter (was the traffic halo lamp count). The button writes 16 (on) or 0; an old 4 or 8 still reads as on and caps the lamps (RF.Drive.haloN). The count is haloCars. haloN() is 0 unless trafficBeams, air and trafficHalo > 0 (silent no-op otherwise). GPU and CPU.',
+    },
+    {
+      id: 'haloCars', kind: 'profile', type: 'enum', values: [1, 2, 4, 8],
+      default: 4, label: 'oncoming scatter cars',
+      control: '[data-dv="haloCars"]', where: 'more', query: null,
+      group: 'halo', cost: 'per-frame-gpu',
+      owner: ['js/drive.js', 'js/spec-ui.js', 'js/drive-anim.js'],
+      requires: [need('air'), need('haloOn')],
+      tests: ['node:halo-levels'],
+      note: 'OHC (10-29): how many of the nearest oncoming cars scatter (2 lamps each); RF.Drive.haloN caps the total at 16 lamps, so 8 cars is the most. Absent (old looks) = no car cap. Pinned to 8 in tests/pinned-defaults.js (the old 16-lamp behaviour).',
+    },
+    {
+      id: 'haloRange', kind: 'profile', type: 'enum', values: [0, 120, 160, 250, 400],
+      default: 250, label: 'oncoming scatter range (m)',
+      control: '[data-dv="haloRange"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'per-frame-gpu',
+      owner: ['js/drive.js', 'js/drive-three-halo.js', 'js/drive-three-shaders.js', 'js/spec-ui.js', 'js/drive-anim.js'],
+      requires: [need('air'), need('haloOn')],
+      tests: ['node:halo-levels'],
+      note: 'OHR (10-29): the far limit of the oncoming headlamp scatter (CPU trafficHalo, the GPU table edges and its lookup clamp haloSMax), split from scatterRange, which is now our own air beam only. 0 = follow scatterRange (the old shared range; pinned to 0 in tests). Clamped to 50..400 (RF.Drive.haloRangeOf).',
     },
     {
       id: 'lampCone', kind: 'profile', type: 'enum', values: ['auto', 'off', 'on'],
@@ -251,7 +271,11 @@
     },
     {
       id: 'lampConeGain', kind: 'profile', type: 'enum', values: [0.25, 0.5, 1, 1.5, 2],
-      default: 1, label: 'cone gain',
+      default: 0.5, label: 'cone gain',
+      defaultHistory: [
+        { since: 0, value: 1, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 0.5, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="lampConeGain"]', where: 'more', query: null,
       group: 'street-lamps', cost: 'free',
       owner: ['js/spec-ui.js', 'js/drive-three-lampcone.js'],
@@ -281,7 +305,11 @@
     },
     {
       id: 'haloBins', kind: 'profile', type: 'enum', values: [4, 6, 8, 12, 16, 24, 32],
-      default: 24, label: 'halo bins',
+      default: 12, label: 'halo bins',
+      defaultHistory: [
+        { since: 0, value: 24, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 12, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="haloBins"]', where: 'halo-advanced', query: 'halobins',
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js'],
@@ -291,7 +319,11 @@
     },
     {
       id: 'haloDiv', kind: 'profile', type: 'enum', values: [0, 4, 2.8, 2, 1.8, 1.4],
-      default: 0, label: 'halo table divisor',
+      default: 2.8, label: 'halo table divisor',
+      defaultHistory: [
+        { since: 0, value: 0, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 2.8, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="haloDiv"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'table-rebuild',
       owner: ['js/spec-ui.js'],
@@ -301,10 +333,11 @@
     },
     {
       id: 'haloPolar', kind: 'profile', type: 'enum', values: ['auto', 'off', 'merged', 'perlamp'],
-      default: 'auto', label: 'halo polar',
+      default: 'off', label: 'halo polar',
       defaultHistory: [
         { since: 0, value: 'off', date: '2026-10-22', commit: '303d9be' },
         { since: 3, value: 'auto', date: '2026-10-26', commit: '0ccd43f' },   // SP; 0ccd43f = the commit this change sits on (a commit cannot name itself)
+        { since: 4, value: 'off', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
       ],
       control: '[data-dv="haloPolar"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
@@ -334,7 +367,11 @@
     },
     {
       id: 'haloGain', kind: 'profile', type: 'enum', values: [0.25, 0.5, 1, 2, 4],
-      default: 1, label: 'halo gain',
+      default: 0.25, label: 'halo gain',
+      defaultHistory: [
+        { since: 0, value: 1, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 0.25, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="haloGain"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'free',
       owner: ['js/spec-ui.js'],
@@ -353,7 +390,11 @@
     },
     {
       id: 'haloJitter', kind: 'profile', type: 'enum', values: ['off', 'interleaved', 'jittered'],
-      default: 'off', label: 'halo sampling',
+      default: 'jittered', label: 'halo sampling',
+      defaultHistory: [
+        { since: 0, value: 'off', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 'jittered', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="haloJitter"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three-halo.js'],
@@ -363,7 +404,11 @@
     },
     {
       id: 'haloJitterAmount', kind: 'profile', type: 'number', values: { min: 0, max: 1, step: 0.05 },
-      default: 1, label: 'halo jitter amount',
+      default: 0.25, label: 'halo jitter amount',
+      defaultHistory: [
+        { since: 0, value: 1, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 0.25, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-anim="halo-jitter-amount"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'free',
       owner: ['js/drive-anim.js', 'js/drive-three-halo.js'],
@@ -373,7 +418,11 @@
     },
     {
       id: 'haloBlur', kind: 'profile', type: 'enum', values: ['auto', 'off', 'light', 'medium', 'heavy'],
-      default: 'auto', label: 'halo blur',
+      default: 'light', label: 'halo blur',
+      defaultHistory: [
+        { since: 0, value: 'auto', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 'light', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="haloBlur"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three-halo.js'],
@@ -383,7 +432,11 @@
     },
     {
       id: 'haloDepthBlur', kind: 'profile', type: 'enum', values: ['off', 'light', 'heavy'],
-      default: 'off', label: 'halo depth blur',
+      default: 'light', label: 'halo depth blur',
+      defaultHistory: [
+        { since: 0, value: 'off', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 'light', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="haloDepthBlur"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three-halo.js'],
@@ -403,7 +456,11 @@
     },
     {
       id: 'haloNearSub', kind: 'profile', type: 'enum', values: [4, 2, 1],
-      default: 4, label: 'halo near quality',
+      default: 1, label: 'halo near quality',
+      defaultHistory: [
+        { since: 0, value: 4, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 1, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="haloNearSub"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three-halo.js'],
@@ -413,7 +470,11 @@
     },
     {
       id: 'haloConePass', kind: 'profile', type: 'enum', values: ['off', '1', '2'],
-      default: 'off', label: 'cone pass',
+      default: '2', label: 'cone pass',
+      defaultHistory: [
+        { since: 0, value: 'off', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: '2', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="haloConePass"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three-halo.js', 'js/drive-three-beamcone.js', 'js/drive-three.js'],
@@ -433,7 +494,11 @@
     },
     {
       id: 'trafficShadows', kind: 'profile', type: 'enum', values: ['off', '1', '2', '3', 'all'],
-      default: 'off', label: 'traffic shadows',
+      default: 'all', label: 'traffic shadows',
+      defaultHistory: [
+        { since: 0, value: 'off', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 'all', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="trafficShadows"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three-shadowmaps.js', 'js/drive-three-halo.js', 'js/drive-three.js', 'js/drive-touge-three.js'],
@@ -443,7 +508,11 @@
     },
     {
       id: 'shadowRes', kind: 'profile', type: 'enum', values: ['512x256', '512x512', '512x1024', '1024x512', '1024x1024', '2048x1024'],
-      default: '1024x512', label: 'traffic shadow map size',
+      default: '512x512', label: 'traffic shadow map size',
+      defaultHistory: [
+        { since: 0, value: '1024x512', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: '512x512', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="shadowRes"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three-shadowmaps.js'],
@@ -473,7 +542,11 @@
     },
     {
       id: 'trafficShadowSoft', kind: 'profile', type: 'enum', values: ['off', '2x2', '3x3'],
-      default: '2x2', label: 'traffic road shadow softening',
+      default: 'off', label: 'traffic road shadow softening',
+      defaultHistory: [
+        { since: 0, value: '2x2', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 'off', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="trafficShadowSoft"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-three.js', 'js/drive-three-shadowmaps.js'],
@@ -483,7 +556,11 @@
     },
     {
       id: 'scatterCull', kind: 'profile', type: 'enum', values: ['off', 'exact', 'fast'],
-      default: 'exact', label: 'oncoming in-scatter culling',
+      default: 'fast', label: 'oncoming in-scatter culling',
+      defaultHistory: [
+        { since: 0, value: 'exact', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 'fast', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="scatterCull"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js', 'js/drive-anim.js', 'js/drive-three-halo.js', 'js/drive-three-halo-cull.js'],
@@ -493,7 +570,11 @@
     },
     {
       id: 'scatterCullEps', kind: 'profile', type: 'number', values: { min: 1e-4, max: 100, step: 'log10 0.25' },
-      default: 0.05, label: 'culling threshold (fast)',
+      default: 0.001, label: 'culling threshold (fast)',
+      defaultHistory: [
+        { since: 0, value: 0.05, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 0.001, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-anim="scatter-cull-eps"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'free',
       owner: ['js/drive-anim.js', 'js/drive-three-halo.js'],
@@ -622,7 +703,11 @@
     },
     {
       id: 'scatterGain', kind: 'profile', type: 'number', values: { min: 0.25, max: 4, step: 'log2 0.25' },
-      default: 1, label: 'air beam gain',
+      default: 0.5, label: 'air beam gain',
+      defaultHistory: [
+        { since: 0, value: 1, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 0.5, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-anim="scatter-gain"]', where: 'halo-advanced', query: null,
       group: 'air', cost: 'free',
       owner: ['js/drive-anim.js', 'js/spec-ui.js'],
@@ -644,7 +729,11 @@
     },
     {
       id: 'wetModel', kind: 'profile', type: 'enum', values: ['legacy', 'ggx'],
-      default: 'legacy', label: 'streak model',
+      default: 'ggx', label: 'streak model',
+      defaultHistory: [
+        { since: 0, value: 'legacy', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 'ggx', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="wetModel"]', where: 'more', query: null,
       group: 'surface', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js'],
@@ -655,7 +744,11 @@
     },
     {
       id: 'expMode', kind: 'profile', type: 'enum', values: ['fixed', 'auto', 'adapt'],
-      default: 'fixed', label: 'exposure mode',
+      default: 'adapt', label: 'exposure mode',
+      defaultHistory: [
+        { since: 0, value: 'fixed', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 'adapt', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-dv="expMode"]', where: 'more', query: null,
       group: 'exposure', cost: 'cpu-still',
       owner: ['js/drive-anim.js', 'js/spec-ui.js'],
@@ -747,7 +840,11 @@
     {
       // POWERLINES (opt-in): wires between roadside poles on the open road. Off = no powerline objects, no random draws; scene byte-identical.
       id: 'powerlines', kind: 'profile', type: 'enum', values: ['off', 'on'],
-      default: 'off', label: 'power lines',
+      default: 'on', label: 'power lines',
+      defaultHistory: [
+        { since: 0, value: 'off', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 'on', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-anim="powerlines"]', where: 'more', query: null,
       group: 'scenery', cost: 'scene-regenerate',
       owner: ['js/drive-scenes.js', 'js/drive-anim.js', 'js/drive-touge.js'],
@@ -836,6 +933,24 @@
       tests: ['UX2-drive-ux'],
     },
     {
+      id: 'panelMode', kind: 'profile', type: 'enum', values: ['auto', 'push', 'overlay'],
+      default: 'auto', label: 'panels',
+      control: '[data-anim="panel-mode"]', where: 'more', query: null,
+      group: 'diagnostics', cost: 'free',
+      owner: ['js/drive-anim.js', 'js/drive-layout.js'],
+      tests: ['UX2-drive-ux'],
+      note: 'UI step C (owner 10-29): how the Drive panels share the host. push: the controls sit beside the picture and the canvas shrinks. overlay: the bars and panels float over a full-size canvas (panels start collapsed). auto: push when the host is at least 940 x 420 css px, overlay below that.',
+    },
+    {
+      id: 'canvasShape', kind: 'profile', type: 'enum', values: ['wide', '3:4', 'square'],
+      default: 'wide', label: 'canvas',
+      control: '[data-anim="canvas-shape"]', where: 'more', query: null,
+      group: 'diagnostics', cost: 'per-frame-gpu',
+      owner: ['js/drive-anim.js', 'js/drive-layout.js'],
+      tests: ['UX2-drive-ux'],
+      note: 'UI step C (owner 10-29): the drive picture shape, every layout. 3:4 and square keep the wide view vertical field of view and crop the sides (hfovFor); the sim ceiling is a pixel budget (the area of a 16:9 frame that wide), so they cost no more pixels. Stacked (phone) with the panel open, 3:4 shows as square. The CPU recovery still stays 16:9.',
+    },
+    {
       id: 'seed', kind: 'profile', type: 'int', values: { min: 0, max: 99999, step: 1 },
       default: 7, label: 'scenery seed',
       control: '[data-anim="seed"], [data-anim="dice"]', where: 'more', query: null,
@@ -856,7 +971,11 @@
     },
     {
       id: 'trafficDensity', kind: 'profile', type: 'number', values: { min: 0, max: 3, step: 0.5 },
-      default: 1, label: 'traffic density',
+      default: 0.5, label: 'traffic density',
+      defaultHistory: [
+        { since: 0, value: 1, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 0.5, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-anim="traffic-density"]', where: 'more', query: null,
       group: 'traffic', cost: 'scene-regenerate',
       owner: ['js/drive-anim.js'],
@@ -896,7 +1015,11 @@
     },
     {
       id: 'tileCache', kind: 'profile', type: 'bool', values: null,
-      default: false, label: 'cache ground',
+      default: true, label: 'cache ground',
+      defaultHistory: [
+        { since: 0, value: false, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: true, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-anim="tile-cache"]', where: 'more', query: null,
       group: 'road', cost: 'free',
       owner: ['js/drive-anim.js'],
@@ -973,7 +1096,11 @@
     },
     {
       id: 'fpsCounter', kind: 'profile', type: 'bool', values: null,
-      default: false, label: 'FPS badge',
+      default: true, label: 'FPS badge',
+      defaultHistory: [
+        { since: 0, value: false, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: true, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-anim="fps-counter"]', where: 'more', query: null,
       group: 'diagnostics', cost: 'free',
       owner: ['js/drive-anim.js'],
@@ -1154,16 +1281,24 @@
       note: 'Mesh cars, far tree cards and facade styles are GPU-only.',
     },
     {
-      id: 'trafficRange', kind: 'profile', type: 'enum', values: [230, 400, 600, 800],
-      default: 400, label: 'traffic range',
+      id: 'trafficRange', kind: 'profile', type: 'enum', values: [160, 230, 250, 400, 600, 800],
+      default: 250, label: 'traffic range',
+      defaultHistory: [
+        { since: 0, value: 400, date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: 250, date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-anim="traffic-range"]', where: 'more', query: null,
       group: 'traffic', cost: 'scene-regenerate',
       owner: ['js/drive-anim.js'],
       tests: ['DC-drive-controls'],
     },
     {
-      id: 'trafficLightRange', kind: 'profile', type: 'enum', values: ['150', '250', '400', 'cars'],
-      default: '150', label: 'traffic light range',
+      id: 'trafficLightRange', kind: 'profile', type: 'enum', values: ['150', '160', '250', '400', 'cars'],
+      default: '250', label: 'traffic light range',
+      defaultHistory: [
+        { since: 0, value: '150', date: '2026-10-29', commit: '78fe76a' },   // the default at 78fe76a (tests/pinned-defaults.js)
+        { since: 4, value: '250', date: '2026-10-29', commit: '5dadaa7' },   // OHQ/UI (10-29): owner's new defaults (oncoming scatter medium + UI pass); 5dadaa7 = the commit this change sits on
+      ],
       control: '[data-anim="traffic-light-range"]', where: 'more', query: null,
       group: 'traffic', cost: 'per-frame-gpu',
       owner: ['js/drive-anim.js'],
@@ -1295,14 +1430,24 @@
       note: 'Never stored. Picking a level writes the bundle (RF.Drive.airLevelBundle); the shown value is RF.Drive.airLevelOf(o), custom when hand-edited.',
     },
     {
-      id: 'haloQuality', kind: 'derived', type: 'enum', values: ['off', 'low', 'medium', 'ultra', 'custom'],
-      default: undefined, label: 'halo quality',
+      id: 'haloQuality', kind: 'derived', type: 'enum', values: ['low', 'medium', 'high', 'xhigh', 'max', 'custom'],
+      default: undefined, label: 'oncoming scatter quality',
       control: '[data-dv="haloQuality"]', where: 'more', query: null,
       group: 'halo', cost: 'per-frame-gpu',
       owner: [],
-      bundle: ['trafficHalo', 'haloBins', 'haloDiv', 'haloPolar', 'haloPolarLamps', 'haloGain'],
+      bundle: ['haloCars', 'haloBins', 'haloDiv', 'haloJitter', 'haloJitterAmount', 'haloBlur', 'haloDepthBlur', 'haloPolar', 'haloPolarBand', 'haloNearSub', 'haloConePass', 'haloConeAngle', 'trafficShadows', 'shadowRes', 'trafficShadowRoad', 'trafficShadowObjects', 'trafficShadowSoft', 'scatterCull', 'scatterCullEps', 'crestOcclusion', 'haloRange', 'trafficRange', 'trafficLightRange'],
       tests: [],
-      note: 'Never stored. Picking a level writes the bundle (RF.Drive.haloLevelBundle); it sets trafficHalo but not trafficBeams (H6).',
+      note: 'Never stored. Picking a level writes the bundle (RF.Drive.haloLevelBundle, one save); the shown value is RF.Drive.haloLevelOf(o). It never sets trafficHalo (the on/off) or haloGain, and ignores the three range keys when matching (the range row is its own knob).',
+    },
+    {
+      id: 'haloRangeRow', kind: 'derived', type: 'enum', values: ['160', '250', '400', '800', 'custom'],
+      default: undefined, label: 'oncoming range',
+      control: '[data-dv="haloRangeRow"]', where: 'more', query: null,
+      group: 'halo', cost: 'scene-regenerate',
+      owner: [],
+      bundle: ['trafficRange', 'trafficLightRange', 'haloRange'],
+      tests: [],
+      note: 'Never stored. Sets car spawn, their road light and the oncoming scatter range together (800 = spawn 800, light as far as cars spawn, scatter 400). custom when the three differ from every row.',
     },
     {
       id: 'high', kind: 'session', type: 'enum', values: ['off', 'on', 'auto'],
@@ -1334,6 +1479,9 @@
   function defaults() {
     const o = {};
     for (const e of OPTIONS) if (e.kind === 'profile') o[e.id] = clone(e.default);
+    // PIN: test control (tests/pinned-defaults.js, loaded by tests/serve.py): the pinned values replace the defaults of the options they list.
+    const pin = typeof globalThis !== 'undefined' && globalThis.SL_PINNED_DEFAULTS;
+    if (pin) for (const k of Object.keys(pin)) if (k in o) o[k] = clone(pin[k]);
     return o;
   }
 

@@ -66,9 +66,9 @@
     checks.length = 0;
     // P1.ready materializes the defaults before M1.ready modifies any options.
     await P1Page.ready(); ok('FO Leafy foliage defaults off', RF.UI.dvOpts.leafyFoliage === false);
-    const u = await ready(port), more = u.driveBar.querySelector('.drive-more'); more.open = true; RF.DriveAnim.layoutControls(u);
+    const u = await ready(port), layoutOk = RF.DriveLayout.reveal(u, '[data-anim=leafy-foliage]');   // UI step C: Scene > Objects (was More)
     const buttons = document.querySelectorAll('[data-anim=leafy-foliage]'), button = buttons[0];
-    ok('FO exactly one Leafy foliage control in More', buttons.length === 1 && u.driveExtras.contains(button) && button.textContent === 'Leafy foliage');
+    ok('FO exactly one Leafy foliage control, in Scene > Objects', layoutOk && buttons.length === 1 && !!button.closest('[data-dl-pane=scene]') && button.textContent === 'Leafy foliage');
     button.click(); ok('FO actual control enables prototype and source bushes', u.dvOpts.leafyFoliage && a().V.p.leafyFoliage && a().V.src.objects.some(o => o.foliage) && button.getAttribute('aria-pressed') === 'true');
     const density = document.querySelector('[data-anim=density]'), count = a().V.src.objects.filter(o => o.foliage).length;
     density.value = '3'; density.dispatchEvent(new Event('change', { bubbles: true }));

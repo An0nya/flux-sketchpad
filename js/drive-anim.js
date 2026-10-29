@@ -17,9 +17,9 @@
   const RF = root.RF || (root.RF = {}), D = RF.Drive;
   const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, ANIM_SCENES = { road: 1, forest: 1, city: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
   // Traffic-car window (m), owner option 'trafficRange'. CULL above is still the window for scenery, street lamps, crossings and actors.
-  const TRAFFIC_RANGES = [230, 400, 600, 800], trafficCullOf = (v) => (TRAFFIC_RANGES.includes(+v) ? +v : 400);
+  const TRAFFIC_RANGES = [160, 230, 250, 400, 600, 800], trafficCullOf = (v) => (TRAFFIC_RANGES.includes(+v) ? +v : 400);
   // TL2: road-light range (m) and nearest-car count. 'cars' = as far as cars spawn (the traffic range). Never beyond the traffic range.
-  const LIGHT_RANGES = ['150', '250', '400', 'cars'], LIGHT_CARS = ['8', '16', '32'];
+  const LIGHT_RANGES = ['150', '160', '250', '400', 'cars'], LIGHT_CARS = ['8', '16', '32'];
   const lightRangeOf = (o) => { const cull = trafficCullOf(o.trafficRange), v = String(o.trafficLightRange); return Math.min(v === 'cars' ? cull : LIGHT_RANGES.includes(v) ? +v : 150, cull); };
   const lightCarsOf = (o) => (LIGHT_CARS.includes(String(o.trafficNearest)) ? +o.trafficNearest : 8);
   // The camera eye: the fixed EYE, carried on the frame (drive.js eyeFor). Every consumer goes through here.
@@ -992,10 +992,15 @@ void main() {
     return { minFps: fps, frameTargetMs: 1000 / fps };
   }
   // sim size for a canvas cssW css px wide at dpr: min(ceiling, backing width), floored at MIN_SIM, then the dynamic scale; even sizes
-  function simSize(ceiling, cssW, dpr, scale) {
-    const baseW = Math.max(MIN_SIM, Math.min(ceiling, Math.round(cssW * dpr))) & ~1, W = Math.max(160, Math.round(baseW * scale)) & ~1;
-    return { baseW, W, H: Math.round(W * 9 / 16) & ~1 };
+  // aspect = canvas width / height (16/9 = the wide view; the canvas shape option, js/drive-layout.js aspectOf). The ceiling is a pixel budget: the
+  // area of a 16:9 frame ceiling px wide, so a square or 3:4 canvas costs no more pixels than the wide one at the same level.
+  function simSize(ceiling, cssW, dpr, scale, aspect = 16 / 9) {
+    const k = Math.sqrt(aspect * 9 / 16), capW = Math.round(ceiling * k), minW = Math.min(capW, Math.round(MIN_SIM * k));   // the floor scales with the budget too
+    const baseW = Math.max(minW, Math.min(capW, Math.round(cssW * dpr))) & ~1, W = Math.max(160, Math.round(baseW * scale)) & ~1;
+    return { baseW, W, H: Math.round(W / aspect) & ~1 };
   }
+  // CANVAS SHAPE: a narrower canvas keeps the wide view's VERTICAL field of view and crops the sides (fov is the wide view's horizontal angle)
+  function hfovFor(fov, aspect = 16 / 9) { return Math.abs(aspect - 16 / 9) < 1e-9 ? fov : 2 * Math.atan(Math.tan(fov * Math.PI / 360) * (9 / 16) * aspect) * 180 / Math.PI; }
   const RES_SCALES = [1, 0.85, 0.7, 0.55, 0.4, 0.3];
   const BOUNCE_MS = 30000, HOLD_MS = 30000, HOLD_MAX_MS = 240000;       // a step-down within BOUNCE_MS of a step-up doubles the wait before the next step-up (30 s, 60 s .. 240 s); BOUNCE_MS without a bounce resets it
   const resolutionState = () => ({ scale: 1, index: 0, slow: 0, fast: 0, cooldown: 0, average: 0, clock: 0, upAt: -1e9, holdUntil: 0, hold: 0 });
@@ -1064,12 +1069,16 @@ void main() {
   };
 
   function size() {                                           // → { cssW, cssH, dpr, W, H } for the container the canvas lives in
-    const par = V.canvas.parentElement, bw = par.clientWidth, bh = par.clientHeight, dpr = Math.min(2, root.devicePixelRatio || 1);
+    // UI step C: the canvas sits in the layout stage; while the shell is hidden (the Result pane not expanded) the stage has no box, so the host
+    // (the pane's canvas-wrap or the large view's stage) sizes it, as before the layout
+    let par = V.canvas.parentElement; if (!(par.clientWidth && par.clientHeight)) par = par.closest('.canvas-wrap, .dp-stage') || par;
+    const bw = par.clientWidth, bh = par.clientHeight, dpr = Math.min(2, root.devicePixelRatio || 1);
     // the sim width ceiling is the owner's selected level, the same for every scene and mode (it used to be a per-scene cap: 640 tiles/wet, 960 forest/city, 1600 otherwise)
-    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16;
+    const aspect = V.ui && RF.DriveLayout ? RF.DriveLayout.aspectOf(V.ui) : 16 / 9;   // the canvas shape (wide, 3:4, square)
+    const cssW = Math.max(16, Math.min(bw, bh * aspect)), cssH = cssW / aspect;
     const scale = V.info && V.info.o.dynamicResolution && !V.pinSS ? (V.resolution || resolutionState()).scale : 1;
-    const sim = simSize(simCeiling(V.info && V.info.o), cssW, dpr, scale);
-    return { cssW, cssH, dpr, W: sim.W, H: sim.H, baseW: sim.baseW, scale, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
+    const sim = simSize(simCeiling(V.info && V.info.o), cssW, dpr, scale, aspect);
+    return { cssW, cssH, dpr, aspect, W: sim.W, H: sim.H, baseW: sim.baseW, scale, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
   }
   function ensureCanvas() {
     if (V.lost || V.glFailed) return false;
@@ -1159,7 +1168,7 @@ void main() {
   const kmhOf = () => { const v = +info().o.speed; return Number.isFinite(v) ? v : 50; };   // 0 is a real speed (stopped, traffic still moves): never '|| 50'
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, pool = trafficPoolOf(o), W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, o.ownLow, o.ownHigh, lampTintOf(I, ownBeams(o)).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
+    const I = info(), o = I.o, pool = trafficPoolOf(o), W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, hfovFor(o.fov, sz.aspect), simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, o.ownLow, o.ownHigh, lampTintOf(I, ownBeams(o)).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     if (V.shuf) V.shuf.title = shuffleTip(o);   // the tooltip follows the renderer, every frame
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o)]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, powerlines: o.powerlines, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, reflectiveClothing: o.reflectiveClothing, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: D.wetnessOf(o) > 0 }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
@@ -1167,7 +1176,7 @@ void main() {
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
     const own = ownBeams(o), tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
-    V.p = { w: W, h: H, hfov: o.fov, eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
+    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || (D.wetnessOf(o) > 0 && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g); if (!TL.cur) tlOpen('rebuild'); tlMark(V.three ? 'ground (GPU path, drawn per frame)' : 'ground built (CPU)', V.three ? null : { groundMs: V.g.ms });
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1204,7 +1213,7 @@ void main() {
   }
   function exposureLabel(k) {
     V.white = 1 / k;
-    const I = info(), o = I.o, b = V.ui.driveExtras && V.ui.driveExtras.querySelector('[data-dv="ev"]');
+    const I = info(), o = I.o, b = V.ui.driveBar && V.ui.driveBar.querySelector('[data-dv="ev"]');
     if (o.expMode === 'adapt' && b) b.textContent = 'EV ' + (o.ev >= 0 ? '+' : '−') + Math.abs(o.ev).toFixed(1) + ' · white ' + V.white.toPrecision(3) + ' cd/m²';
     return k;
   }
@@ -1246,7 +1255,7 @@ void main() {
     const gOpts = glareOpts(o, placed), sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A,gOpts) : D.glareSources(V.src.tiles ? placed.objects : placed, eyeOf(V.p), undefined, gOpts);
     V.frameGlare = sources; V.framePlaced = placed;      // scene details reads these (pointers only)
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
-    const draw = { profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
+    const draw = { profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: V.p.A, objects: placed, ...(V.src.cross ? fixedIntersection(V.src, st.dist) : {}) }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }
     const tlB = TL.cur ? tlBefore() : null;
     try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
@@ -1346,7 +1355,7 @@ void main() {
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], y0) : y0, had ? Math.max(pb[1], y1) : y1); V.band = [y0, y1];
     const t2 = performance.now();
     const sources = frameSources(b.dist, b.t), sourceEnd = performance.now(), glProfile = profileOn() ? {} : null;
-    V.gl.draw({ profile: glProfile, hfov: o.fov, eye: eyeOf(V.p), pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), b.t, b.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
+    V.gl.draw({ profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), b.t, b.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
     if (!contextReady()) return;
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
@@ -1587,22 +1596,30 @@ void main() {
 
   function bars(ui, setDV) {
     if (V.bar) return V.bar;
-    const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveBar.querySelector('.drive-primary'), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
+    const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveExtras, btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
     btn('play', 'Drive / pause: Pause freezes distance and time', () => { const current = S(ui); current.playing = !current.playing; if (current.playing && V.gpuFailure && V.gpuNote) say(V.gpuNote); setDV(ui, 'playing', current.playing); });   // drops the "Paused:" half of the GPU notice once driving again
     // High beam (H key or this button): session state on V, not saved prefs, so it is off on every reload
     btn('high-beam', 'High beam (H) cycles Off, On, Auto. Auto dips for oncoming headlamps, preceding tail lamps, urban tiles and under 30 km/h, then returns to high after 2 s clear. Off by default; not saved across reloads.', () => cycleHigh(ui), 'high beam');
-    document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.bar.hidden && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
+    document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.ui.driveBar.hasAttribute('data-noanim') && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
     btn('fit-controls', 'Compact spacing for the wrapping drive controls. Off uses wider spacing.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
+    // UI step C: how the panels share the host (js/drive-layout.js modeOf). auto: push on a big host, overlay on a small one.
+    const pm = E('select', { 'data-anim': 'panel-mode', 'aria-label': 'Panels', title: 'How the controls share the drive view. Push: beside the picture (the canvas shrinks). Overlay: floating over a full-size picture, collapsed until a grab bar opens them. Auto: push when the view is at least 940 x 420, overlay when smaller. Phones always stack.' });
+    for (const [value, label] of [['auto', 'panels: auto'], ['push', 'panels: push'], ['overlay', 'panels: overlay']]) pm.append(E('option', { value }, label));
+    pm.addEventListener('change', () => setDV(ui, 'panelMode', pm.value)); bar.append(pm);
+    // CANVAS SHAPE (owner 10-29): wide, 3:4 or square, in every layout. Portrait shapes keep the wide vertical field of view and crop the sides.
+    const cs = E('select', { 'data-anim': 'canvas-shape', 'aria-label': 'Canvas shape', title: 'Shape of the drive picture. Wide: 16:9, letterboxed. 3:4 and square keep the wide view\'s vertical angle and crop the sides (a narrower view; the view angle setting still applies). On a phone with the controls open, 3:4 shows as square.' });
+    for (const [value, label] of [['wide', 'canvas: wide'], ['3:4', 'canvas: 3:4'], ['square', 'canvas: square']]) cs.append(E('option', { value }, label));
+    cs.addEventListener('change', () => setDV(ui, 'canvasShape', cs.value)); bar.append(cs);
     const sp = E('input', { type: 'range', min: 0, max: 130, step: 1, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed, 0 = stopped (traffic keeps moving). Mountain pass always slows for bends; traffic logic adds road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
     const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
     const speedBox = E('span', { class: 'drive-speed' }); speedBox.append(sp, lab);
-    primary.querySelector('[data-dv=scene]').after(speedBox);
+    primary.append(speedBox);   // UI step C: staged; the layout puts it in the strip
     primary.append(bar.querySelector('[data-anim=play]'));
     btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off uses scripted traffic; Mountain pass curve speeds remain active.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
     for (const [name, key, label, title] of [
-      ['traffic-beams', 'trafficBeams', 'traffic beams', 'Nearest cars (8 by default, see traffic light range and nearest cars) cast low beams onto road and objects, fading out toward the range. CPU uses full-frame tracing.'],
+      ['traffic-beams', 'trafficBeams', 'oncoming headlamps', 'Nearest cars (8 by default, see traffic light range and nearest cars) cast low beams onto road and objects, fading out toward the range. CPU uses full-frame tracing.'],
       ['surface-sheen', 'surfaceSheen', 'lit surface sheen', 'Up to eight lit sign/bright faces add wet streaks from integrated returned luminance and area.'],
       ['afs', 'afs', 'AFS', 'Adaptive front-lighting: low beam swivels into tiled bends, up to 15 degrees.'],
       ['cornering-lamps', 'corneringLamps', 'cornering lamps', 'Wide separate lamps fade into tight bends below 40 km/h. Generic study, not measured lamp photometry.'],
@@ -1640,6 +1657,12 @@ void main() {
     ambient.addEventListener('change', () => setDV(ui, 'ambient', +ambient.value)); bar.append(ambient);
     V.tileLab = E('span', { class: 'anim-speed', 'data-anim': 'tile-status', 'aria-live': 'off' }); bar.append(V.tileLab);
     for (const [k, txt, title] of CLASSES) btn('c-' + k, title, () => setDV(ui, k, !info().o[k]), txt);
+    // UI (10-29): one click turns on every scene-content feature (crates excepted: an obstacle, not scenery). Read off the owner's list; one save, one redraw.
+    const ENABLE_ALL = { detailedModels: true, trafficLogic: true, trafficBeams: true, surfaceSheen: true, lampPitch: true, deerBehaviour: true, leafyFoliage: true, tiles: true, posts: true, signs: true, animals: true, rpm: true, powerlines: 'on' };
+    btn('enable-all', 'Turn on every scene feature: detailed models, traffic logic, traffic beams, lit surface sheen, lamp pitch, deer behaviour, leafy foliage, tiles, posts, signs, deer, road studs and power lines. Crates stay as they are.', () => {
+      const o = info().o; if (!o.trafficLogic) st.camera = null; if (!o.lampPitch) { st.pitch = null; st.acceleration = 0; }
+      RF.SpecUI.setDVMany(ui, Object.assign({}, ENABLE_ALL));
+    }, 'enable all');
     // POWERLINES (opt-in): wires between roadside poles, lit only where a beam reaches them. Off = the scene is unchanged.
     const pl = E('select', { 'data-anim': 'powerlines', 'aria-label': 'Power lines along the road', title: 'Dark wires between roadside poles. Visible only where a headlamp beam (ours or oncoming) lights them. Off: scene unchanged.' });
     for (const [value, label] of [['off', 'power lines off'], ['on', 'power lines on']]) pl.append(E('option', { value }, label));
@@ -1672,7 +1695,7 @@ void main() {
     trRange.addEventListener('change', () => setDV(ui, 'trafficRange', +trRange.value)); bar.append(trRange);
     // TL2: how far the road light from other cars reaches (it fades out toward this range, so nothing pops), and how many nearest cars cast it.
     const lrRange = E('select', { 'data-anim': 'traffic-light-range', 'aria-label': 'Traffic light range', title: 'How far the road light from other cars reaches. It fades out smoothly toward the edge, so nothing pops. Larger costs more frame time. As far as cars spawn = the traffic range above.' });
-    for (const [v, t] of [['150', 'light 150 m'], ['250', 'light 250 m'], ['400', 'light 400 m'], ['cars', 'light as far as cars spawn']]) lrRange.append(E('option', { value: v }, t));
+    for (const [v, t] of [['150', 'light 150 m'], ['160', 'light 160 m'], ['250', 'light 250 m'], ['400', 'light 400 m'], ['cars', 'light as far as cars spawn']]) lrRange.append(E('option', { value: v }, t));
     lrRange.addEventListener('change', () => setDV(ui, 'trafficLightRange', lrRange.value)); bar.append(lrRange);
     const lrCars = E('select', { 'data-anim': 'traffic-nearest', 'aria-label': 'Nearest cars with traffic light', title: 'How many of the nearest cars cast road light. Each car has two lamps. 16 and 32 cost more frame time.' });
     for (const n of ['8', '16', '32']) lrCars.append(E('option', { value: n }, 'nearest ' + n + ' cars'));
@@ -1688,21 +1711,21 @@ void main() {
     const gs = labelled(E('input', { type: 'range', min: -2, max: 2, step: 0.25, 'data-anim': 'scatter-gain', 'aria-label': 'Air beam gain (table mode)', title: 'Multiplies the table lookup (air beam table mode only). 1 = as computed; log scale, 0.25 to 4. Does not rebuild the table.' }), 'air beam gain', (g) => '×' + sig2(g), (v) => Math.pow(2, v));
     gs.addEventListener('change', () => setDV(ui, 'scatterGain', Math.pow(2, +gs.value)));
     bar.append(td._box, V.flashLab);
-    (ui.haloAdvBody || bar).append(gs._box); V.scatGainEl = gs;   // HDX7: the air beam gain joins the advanced halo group (same element, same id-less data-anim)
+    (ui.airAdvBody || bar).append(gs._box); V.scatGainEl = gs;   // OHQ (10-29): the air beam gain sits in the advanced air beam group (was the advanced halo group, HDX7) (same element, same id-less data-anim)
     // SC fast culling threshold: log-scale slider (10^v, 1e-4 to 100). Read only in fast mode; the frame uses it every build, nothing to rebuild.
     const ce = labelled(E('input', { type: 'range', min: -4, max: 2, step: 0.25, 'data-anim': 'scatter-cull-eps', 'aria-label': 'Oncoming in-scatter culling threshold (fast mode)', title: 'Fast culling only: a lamp stops lighting air where its best case in-scatter per metre of ray is under this. Log scale, 1e-4 to 100; higher culls more and changes the picture more.' }), 'fast cull threshold', sig2, (v) => Math.pow(10, v));
     ce.addEventListener('change', () => setDV(ui, 'scatterCullEps', Math.pow(10, +ce.value)));
     (ui.haloAdvBody || bar).append(ce._box); V.cullEpsEl = ce;
-    // SR scatter range: linear slider, 50 to 400 m, in the advanced halo group. The table and every in-scatter integral read it; nothing to rebuild by hand.
-    const rg = labelled(E('input', { type: 'range', min: 50, max: 400, step: 5, 'data-anim': 'scatter-range', 'aria-label': 'Scatter range (m)', title: 'How far the air glow reaches, in metres: the in-scatter sums, the traffic halo table and the sky. 120 is the old fixed value. Above 120, air past 120 m carries light (oncoming beams in the haze at 250 m).' }), 'scatter range', (v) => v + ' m');
+    // SR scatter range: linear slider, 50 to 400 m, in the advanced air beam group. Our own air beam reads it; the oncoming scatter has its own range (haloRange, 0 = follow this).
+    const rg = labelled(E('input', { type: 'range', min: 50, max: 400, step: 5, 'data-anim': 'scatter-range', 'aria-label': 'Air beam range (m)', title: 'How far our own air beam glows, in metres: its in-scatter sums, table and the sky. The oncoming headlamp scatter follows it only when its own range is set to same as air beam. 120 is the old fixed value.' }), 'air beam range', (v) => v + ' m');
     rg.addEventListener('change', () => setDV(ui, 'scatterRange', +rg.value));
-    (ui.haloAdvBody || bar).append(rg._box); V.rangeEl = rg;
+    (ui.airAdvBody || bar).append(rg._box); V.rangeEl = rg;
     // IL: the noise of halo sampling 'jittered' (0 = plain interleaved offsets, 1 = the whole quarter-step); shown only in jittered mode.
-    const ja = labelled(E('input', { type: 'range', min: 0, max: 1, step: 0.05, 'data-anim': 'halo-jitter-amount', 'aria-label': 'Halo jitter amount', title: 'How much random offset jittered halo sampling adds inside each sample slot: 0 is the plain interleaved pattern, 1 the whole slot. More breaks up beads into finer grain.' }), 'jitter amount', (v) => (+v).toFixed(2));
+    const ja = labelled(E('input', { type: 'range', min: 0, max: 1, step: 0.05, 'data-anim': 'halo-jitter-amount', 'aria-label': 'Scatter jitter amount', title: 'How much random offset jittered scatter sampling adds inside each sample slot: 0 is the plain interleaved pattern, 1 the whole slot. More breaks up beads into finer grain.' }), 'jitter amount', (v) => (+v).toFixed(2));
     ja.addEventListener('change', () => setDV(ui, 'haloJitterAmount', +ja.value));
     (ui.haloAdvBody || bar).append(ja._box); V.jitAmtEl = ja;
     // CP: the angle above which an oncoming lamp moves from the halo table to the cone pass (deg between its beam axis and the line to our eye; 0 = always). Shown with the cone pass on.
-    const ca = labelled(E('input', { type: 'range', min: 0, max: 90, step: 1, 'data-anim': 'halo-cone-angle', 'aria-label': 'Cone pass angle (deg)', title: 'An oncoming lamp whose beam we see at more than this angle off its axis is drawn by the cone pass instead of the halo table (faded in over 15 degrees). 0: the nearest lamps always use the cone pass.' }), 'cone pass angle', (v) => v + '°');
+    const ca = labelled(E('input', { type: 'range', min: 0, max: 90, step: 1, 'data-anim': 'halo-cone-angle', 'aria-label': 'Cone pass angle (deg)', title: 'An oncoming lamp whose beam we see at more than this angle off its axis is drawn by the cone pass instead of the scatter table (faded in over 15 degrees). 0: the nearest lamps always use the cone pass.' }), 'cone pass angle', (v) => v + '°');
     ca.addEventListener('change', () => setDV(ui, 'haloConeAngle', +ca.value));
     (ui.haloAdvBody || bar).append(ca._box); V.coneAngEl = ca;
     btn('reset-flashes', 'Start the count again (each driver counts once above 1 lx at their eye)', () => { V.flash = flashState(); V.flashLab.textContent = 'oncoming drivers above 1 lx: 0'; }, 'reset count');
@@ -1758,12 +1781,13 @@ void main() {
       downloadBeams(obj, parsed.length === 1 ? 'beam.json' : 'beams.json'); V.beamMsg.textContent = 'Downloaded ' + parsed.length + ' beam' + (parsed.length === 1 ? '' : 's') + '.';
     }, 'export');
     V.fillOwn = () => { fillOwn(); V.libVer = LIB.ver; }; V.fillOwn();
-    bar.append(E('span', { class: 'anim-speed' }, 'beam'), ownLow, ownHigh, fileIn, V.beamMsg);
+    bar.append(E('span', { class: 'anim-speed', 'data-dl': 'beam-label' }, 'beam'), ownLow, ownHigh, fileIn, V.beamMsg);
     // BB2 library manager: one row per saved beam (rename, delete), and clear all (two clicks)
     V.setOwn = (k, v) => setDV(ui, k, v);
     V.mgr = E('details', { class: 'beam-manager', 'data-anim': 'beam-manager', style: 'flex-basis:100%' }, E('summary', {}, 'library'));
     V.mgr.addEventListener('toggle', () => { if (V.mgr.open) ensureBuiltins(); });
     bar.append(V.mgr); renderManager();
+    for (const e of bar.children) e.classList.add('dl-anim');   // UI step C: the controls the anim gating hides (play and speed sit in the strip, never hidden)
     V.bar = bar; return bar;
   }
   // BB2: the library rows. Rename and delete change the library in memory first and then the stored copy; a failed store says so.
@@ -1846,7 +1870,7 @@ void main() {
     tiles.addEventListener('click', () => setDV(ui, 'tiles', !info().o.tiles));
     const game = E('button', { type: 'button', class: 'toggle', 'data-game': 'toggle', 'aria-pressed': 'false', title: 'Reach > uniformity: five hazards, hold Space or Brake. Game scoring, not legal advice.' }, 'Game');
     game.addEventListener('click', () => toggleGame(ui));
-    const primary = tb.querySelector('.drive-primary'); primary.querySelector('.drive-speed') ? primary.querySelector('.drive-speed').after(game) : primary.querySelector('[data-dv=scene]').after(game);
+    ui.driveExtras.append(game);   // UI step C: the layout puts it in the top bar
     ui.driveExtras.append(tiles);
   }
   function speedLabel(ui) {
@@ -1894,55 +1918,57 @@ void main() {
     for (const b of q('[data-anim="popout"]')) { const label = st.popout ? 'Close large view' : 'Large view'; b.setAttribute('aria-pressed', String(st.popout)); b.setAttribute('aria-label', label); b.title = label; b.disabled = !sup; b.textContent = st.popout ? '⤡' : '⤢'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
-    V.bar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
-    const hb = V.bar.querySelector('[data-anim="high-beam"]'), mode = V.highMode || 'off';
+    V.ui.driveBar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
+    const hb = V.ui.driveBar.querySelector('[data-anim="high-beam"]'), mode = V.highMode || 'off';
     hb.setAttribute('aria-pressed', String(!!V.high)); hb.dataset.state = mode;
     hb.textContent = mode === 'auto' ? 'high beam: auto (' + (V.autoSt ? V.autoSt.reason : 'clear') + ')' : 'high beam: ' + mode;
-    for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['scene-details', 'sceneDetails'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
-    V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
-    V.bar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
-    V.bar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
+    for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['scene-details', 'sceneDetails'], ['dynamic-resolution', 'dynamicResolution']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
+    V.ui.driveBar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
+    V.ui.driveBar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
+    V.ui.driveBar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
-    for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
-    V.bar.hidden = !(sup && (st.view === 'anim' || st.popout));
+    V.ui.driveBar.querySelector('[data-anim="canvas-shape"]').value = ['3:4', 'square'].includes(o.canvasShape) ? o.canvasShape : 'wide';
+    V.ui.driveBar.querySelector('[data-anim="panel-mode"]').value = ['push', 'overlay'].includes(o.panelMode) ? o.panelMode : 'auto';
+    for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
+    ui.driveBar.toggleAttribute('data-noanim', !(sup && (st.view === 'anim' || st.popout)));   // UI step C: hides the .dl-anim controls (they left V.bar for the tabs)
     const run = st.playing && (st.view === 'anim' || st.popout), pb = ui.driveBar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ Pause' : '▶ Drive'; pb.setAttribute('aria-pressed', String(run));
     ui.driveBar.querySelector('[data-anim="speed"]').value = o.speed; speedLabel(ui);
-    for (const [k] of CLASSES) { const b = V.bar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
-    { const sel = V.bar.querySelector('[data-anim="powerlines"]'); if (sel) sel.value = o.powerlines === 'on' ? 'on' : 'off'; }
-    { const pv = o.powerlineReflectance === undefined ? 0.22 : o.powerlineReflectance, sl = V.bar.querySelector('[data-anim="powerline-reflectance"]'); if (sl) { sl.value = String(pv); sl._show(); } }
-    { const t = V.bar.querySelector('[data-anim="traffic-density"]'); t.value = o.trafficDensity === undefined ? 1 : o.trafficDensity; t._show(); }
+    for (const [k] of CLASSES) { const b = V.ui.driveBar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
+    { const sel = V.ui.driveBar.querySelector('[data-anim="powerlines"]'); if (sel) sel.value = o.powerlines === 'on' ? 'on' : 'off'; }
+    { const pv = o.powerlineReflectance === undefined ? 0.22 : o.powerlineReflectance, sl = V.ui.driveBar.querySelector('[data-anim="powerline-reflectance"]'); if (sl) { sl.value = String(pv); sl._show(); } }
+    { const t = V.ui.driveBar.querySelector('[data-anim="traffic-density"]'); t.value = o.trafficDensity === undefined ? 1 : o.trafficDensity; t._show(); }
     { const g = Math.min(4, Math.max(0.25, +o.scatterGain || 1)); V.scatGainEl.value = Math.log2(g); V.scatGainEl._show(g); }
     { const e = Math.min(100, Math.max(1e-4, +o.scatterCullEps || 0.05)); V.cullEpsEl.value = Math.log10(e); V.cullEpsEl._show(e); }
     V.cullEpsEl.hidden = V.cullEpsEl._box.hidden = o.scatterCull !== 'fast' || o.visibility == null;   // LBL: the unit hides with the slider, so no orphan name
     V.rangeEl.value = String(Math.min(400, Math.max(50, +o.scatterRange || 120))); V.rangeEl._show(); V.rangeEl.hidden = V.rangeEl._box.hidden = o.visibility == null;
     V.jitAmtEl.value = String(o.haloJitterAmount === undefined ? 1 : +o.haloJitterAmount); V.jitAmtEl._show(); V.jitAmtEl.hidden = V.jitAmtEl._box.hidden = o.visibility == null || o.haloJitter !== 'jittered';
     V.coneAngEl.value = String(o.haloConeAngle === undefined ? 30 : +o.haloConeAngle); V.coneAngEl._show(); V.coneAngEl.hidden = V.coneAngEl._box.hidden = o.visibility == null || !['1', '2'].includes(String(o.haloConePass));
-    V.bar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));
-    V.bar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
-    V.bar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
+    V.ui.driveBar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));
+    V.ui.driveBar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
+    V.ui.driveBar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
     if (V.fillOwn && V.libVer !== LIB.ver) V.fillOwn();
     if (V.shuf) { V.shuf.value = o.trafficShuffle === 'library' ? 'library' : 'off'; V.shuf.title = shuffleTip(o); }
     if (V.trafficList) for (const c of V.trafficList.querySelectorAll('input[type=checkbox]')) c.checked = !(Array.isArray(o.trafficOutIds) && o.trafficOutIds.includes(c.dataset.id));
     if (V.nameIn) V.nameIn.placeholder = beamDefaultName(info());
-    if (V.fillOwn) { V.bar.querySelector('[data-anim="own-low"]').value = o.ownLow && o.ownLow !== 'design' && libFind(o.ownLow, 'low') ? o.ownLow : 'design'; V.bar.querySelector('[data-anim="own-high"]').value = o.ownHigh && o.ownHigh !== 'generic' && libFind(o.ownHigh, 'high') ? o.ownHigh : 'generic'; }
+    if (V.fillOwn) { V.ui.driveBar.querySelector('[data-anim="own-low"]').value = o.ownLow && o.ownLow !== 'design' && libFind(o.ownLow, 'low') ? o.ownLow : 'design'; V.ui.driveBar.querySelector('[data-anim="own-high"]').value = o.ownHigh && o.ownHigh !== 'generic' && libFind(o.ownHigh, 'high') ? o.ownHigh : 'generic'; }
     if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0);
     const trafficOn = o.oncoming || o.preceding;
     if (V.flashLab) V.flashLab.hidden = !trafficOn;
-    V.bar.querySelector('[data-anim="reset-flashes"]').hidden = !trafficOn;
-    V.bar.querySelector('[data-anim="traffic-logic"]').setAttribute('aria-pressed', String(!!o.trafficLogic));
-    V.bar.querySelector('[data-anim="gap"]').setAttribute('aria-pressed', String(o.safeGap !== false)); V.bar.querySelector('[data-anim="gap"]').disabled = !!o.trafficLogic;
-    V.bar.querySelector('[data-anim="tile-cache"]').setAttribute('aria-pressed', String(!!o.tileCache)); V.bar.querySelector('[data-anim="tile-cache"]').disabled = !o.tiles;
-    V.bar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.bar.querySelector('[data-anim="street-lamps"]').disabled = !(o.tiles || o.mountainPass);
+    V.ui.driveBar.querySelector('[data-anim="reset-flashes"]').hidden = !trafficOn;
+    V.ui.driveBar.querySelector('[data-anim="traffic-logic"]').setAttribute('aria-pressed', String(!!o.trafficLogic));
+    V.ui.driveBar.querySelector('[data-anim="gap"]').setAttribute('aria-pressed', String(o.safeGap !== false)); V.ui.driveBar.querySelector('[data-anim="gap"]').disabled = !!o.trafficLogic;
+    V.ui.driveBar.querySelector('[data-anim="tile-cache"]').setAttribute('aria-pressed', String(!!o.tileCache)); V.ui.driveBar.querySelector('[data-anim="tile-cache"]').disabled = !o.tiles;
+    V.ui.driveBar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.ui.driveBar.querySelector('[data-anim="street-lamps"]').disabled = !(o.tiles || o.mountainPass);
     if (V.reflSel) V.reflSel.value = RF.Drive.pedMode(o.reflectiveClothing);
-    V.bar.querySelector('[data-anim="ambient"]').value = String(o.ambient || 0);
+    V.ui.driveBar.querySelector('[data-anim="ambient"]').value = String(o.ambient || 0);
     V.tileLab.hidden = !o.tiles;
     const wd = o.wild && o.scene === 'road';        // forest and city keep their existing scenery
-    V.bar.querySelector('[data-anim="seed"]').value = o.seed; V.bar.querySelector('[data-anim="seed"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest'))); V.bar.querySelector('[data-anim="dice"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest')));
-    V.bar.querySelector('[data-anim="density"]').value = o.density; V.bar.querySelector('[data-anim="density"]')._show(); V.bar.querySelector('[data-anim="density"]').disabled = !(wd || (o.leafyFoliage && (o.scene === 'forest' || o.scene === 'road')));
-    const cl = V.bar.querySelector('[data-anim="cline"]'); cl.disabled = !I.us; cl.textContent = o.cline === 'broken' && I.us ? 'centre: broken' : 'centre: solid'; cl.setAttribute('aria-pressed', String(o.cline === 'broken' && I.us));
+    V.ui.driveBar.querySelector('[data-anim="seed"]').value = o.seed; V.ui.driveBar.querySelector('[data-anim="seed"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest'))); V.ui.driveBar.querySelector('[data-anim="dice"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest')));
+    V.ui.driveBar.querySelector('[data-anim="density"]').value = o.density; V.ui.driveBar.querySelector('[data-anim="density"]')._show(); V.ui.driveBar.querySelector('[data-anim="density"]').disabled = !(wd || (o.leafyFoliage && (o.scene === 'forest' || o.scene === 'road')));
+    const cl = V.ui.driveBar.querySelector('[data-anim="cline"]'); cl.disabled = !I.us; cl.textContent = o.cline === 'broken' && I.us ? 'centre: broken' : 'centre: solid'; cl.setAttribute('aria-pressed', String(o.cline === 'broken' && I.us));
     cl.title = I.us ? 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)' : 'Only on the US presets (the EU presets already have a dashed centre line)';
-    for (const k of ['rpm']) V.bar.querySelector('[data-anim="c-' + k + '"]').disabled = false;   // SB1: studs on every scene, the pass included
-    const mb = V.bar.querySelector('[data-anim="c-mt"]'); mb.disabled = typeof Worker === 'undefined' || !!Wk.failed; if (Wk.failed) mb.title = V.why;
+    for (const k of ['rpm']) V.ui.driveBar.querySelector('[data-anim="c-' + k + '"]').disabled = false;   // SB1: studs on every scene, the pass included
+    const mb = V.ui.driveBar.querySelector('[data-anim="c-mt"]'); mb.disabled = typeof Worker === 'undefined' || !!Wk.failed; if (Wk.failed) mb.title = V.why;
   }
 
   // ---------------------------------------------------------------- Reach > uniformity (all state is local to this view)
@@ -2102,7 +2128,7 @@ void main() {
     }
     if (V.notice) V.notice.hidden = !V.why || (st.gameMode && !V.lost);
     V.gameBar.hidden = !st.gameMode; V.gameBar.classList.toggle('running', !!st.game && !st.game.done); mount(ui);
-    if (st.gameMode) V.bar.hidden = true;
+    if (st.gameMode) ui.driveBar.setAttribute('data-noanim', '');
     musicSync(ui);
     const toggle = info().toolbar.querySelector('[data-game="toggle"]'); if (toggle) { toggle.setAttribute('aria-pressed', String(!!st.gameMode)); toggle.textContent = st.gameMode ? 'Exit game' : 'Game'; }
     // Freeze run inputs and the underlying toolbar; exit restores the owner's preferences in memory.
@@ -2142,7 +2168,7 @@ void main() {
     };
     document.addEventListener('keydown', V.onKey, true);
     if (root.ResizeObserver) { V.ro = new ResizeObserver(() => { if (S(ui).popout) { ui.redrawSpec(); } }); V.ro.observe(stage); }
-    mount(ui); close.focus(); ui.redrawSpec();
+    mount(ui); (pop.querySelector('[data-anim=popout]') || close).focus(); ui.redrawSpec();   // UI step C: the header is hidden; focus lands on the large-view button (top right), which closes it
   }
   function closePop(ui) {
     const st = S(ui); if (!st.popout) return; st.popout = false; V.cardPop = false;
@@ -2154,37 +2180,30 @@ void main() {
     const b = saved && saved.focus && saved.focus.isConnected && saved.focus !== document.body ? saved.focus : document.querySelector('[data-anim="popout"]'); if (b) b.focus({ preventScroll: true });
     if (saved) root.scrollTo({ left: saved.x, top: saved.y, behavior: 'instant' }); V.popScroll = null;
   }
-  // More and debug are ordinary page content on phones; desktop keeps the overlay.
-  const mobileControls = () => root.matchMedia('(max-width: 760px), (pointer: coarse)').matches;
-  function layoutControls(ui, scroll) {
-    const st = S(ui), host = st.popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement;
-    if (!host || !ui.driveExtras) return;
-    const mobile = mobileControls(), more = ui.driveBar.querySelector('.drive-more');
+  // UI step C: the layout shell (js/drive-layout.js) owns placement. layoutControls puts the readouts in their tabs, keeps the game bar
+  // under the host, and lets the shell pick wide or tall from the host's size.
+  function layoutControls(ui) {
+    const st = S(ui), host = st.popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement, L = ui.driveLayout;
+    if (!host || !L) return;
     if (!V.below) V.below = E('div', { class: 'drive-below' });
     if (host.nextElementSibling !== V.below) host.after(V.below);
     V.below.hidden = !st.popout && ui.display !== 'drive';
-    const extrasHost = mobile ? V.below : more;
-    if (ui.driveExtras.parentElement !== extrasHost) extrasHost.append(ui.driveExtras);
-    ui.driveExtras.hidden = !more.open;
-    if (V.perfLab && V.perfLab.parentElement !== (mobile ? V.below : host)) (mobile ? V.below : host).append(V.perfLab);
     if (V.gameBar && V.gameBar.parentElement !== V.below) V.below.prepend(V.gameBar);
-    if (V.fpsLab && V.fpsLab.parentElement !== host) host.append(V.fpsLab);
-    const h = ui.driveBar.getBoundingClientRect().height;
-    host.style.setProperty('--drive-toolbar-bottom', (h + 8) + 'px');
-    host.style.setProperty('--drive-extra-height', Math.max(40, host.clientHeight - h - 16) + 'px');
-    if (mobile && scroll && more.open) requestAnimationFrame(() => ui.driveExtras.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    if (V.perfLab && V.perfLab.parentElement !== L.panes.timings) L.panes.timings.append(V.perfLab);
+    if (V.fpsLab && V.fpsLab.parentElement !== L.stage) L.stage.append(V.fpsLab);
+    RF.DriveLayout.place(ui);
   }
   function mount(ui) {
     const st = S(ui), host = st.popout && V.popStage ? V.popStage : (V.cv ? V.cv.parentElement : null); if (!host) return;
     host.classList.toggle('drive-fit', info().o.fitControls !== false);
-    for (const e of [V.canvas, ui.driveBar, V.notice, document.querySelector('[data-reset=heat]')]) if (e && e.parentElement !== host) host.append(e);
-    const primary = ui.driveBar.querySelector('.drive-primary');
-    for (const selector of ['[data-dv=scene]', '.drive-speed', '[data-anim=play]', '[data-game=toggle]', '[data-dv=glare]', '.drive-more']) {
-      const e = primary.querySelector(selector); if (e && primary.lastElementChild !== e) primary.append(e);
-    }
+    for (const e of [ui.driveBar, document.querySelector('[data-reset=heat]')]) if (e && e.parentElement !== host) host.append(e);
+    const L = ui.driveLayout;
+    if (L) for (const e of [V.canvas, V.notice, host.querySelector('.drive-readout')]) if (e && e.parentElement !== L.stage) L.stage.append(e);
     if (!V.controlsRO && root.ResizeObserver) {
-      V.controlsRO = new ResizeObserver(() => layoutControls(ui)); V.controlsRO.observe(ui.driveBar);
-      const query = root.matchMedia('(max-width: 760px), (pointer: coarse)'); query.addEventListener('change', () => { layoutControls(ui); ui.redrawSpec(); });
+      // the host decides wide or tall; the stage's size is the canvas size, so a change refits the picture
+      let last = '';
+      V.controlsRO = new ResizeObserver(() => { const s = L.stage, k = s.clientWidth + 'x' + s.clientHeight; layoutControls(ui); if (k !== last) { last = k; if (V.ui) ui.redrawSpec(); } });
+      V.controlsRO.observe(L.stage); V.controlsRO.observe(ui.driveBar);
     }
     layoutControls(ui);
   }
@@ -2327,7 +2346,7 @@ void main() {
     if (!detailsOn()) { detailsSync(false); return; }
     detailsSample();
     const snap = V.detailsSnap = detailsSnapshot();
-    const host = S(V.ui).popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement;
+    const L = V.ui.driveLayout, host = L ? L.panes.details : null;   // UI step C: the Details tab
     if (!host) return;
     detailsRender(snap);
     if (V.detailsEl.parentElement !== host) host.append(V.detailsEl);
@@ -2494,7 +2513,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / (Math.max(5, kmhOf()) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { timeline: () => TL.events, frameMsSummary, simCeiling, simSize, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { timeline: () => TL.events, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

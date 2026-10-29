@@ -56,7 +56,7 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
     }
     ok('TL debugTimings is off: no readout text in the page', !(await page.evaluate(() => document.body.innerText.includes('first-open timeline'))));
     // turn debugTimings on through the drive toolbar; the label refreshes on the next sync
-    await page.evaluate(() => { const d = document.querySelector('details.drive-more'); if (d) d.open = true; }); await sleep(300);   // the debug toggle lives in the closed "more" disclosure
+    await page.evaluate(() => RF.DriveLayout.reveal(RF.UI, '[data-anim=debug-timings]')); await sleep(300);   // UI step C: the debug toggle lives in the Timings tab
     await page.click('[data-anim="debug-timings"]'); await sleep(1200);
     const shown = await page.evaluate(() => document.body.innerText.includes('first-open timeline'));
     ok('TL with debugTimings on, the readout appears in the drive area', shown);

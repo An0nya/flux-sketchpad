@@ -16,16 +16,16 @@ const ok = (n,c,d) => { console.log((c?'[PASS] ':'[FAIL] ')+n+(d?' — '+JSON.st
     await page.waitForFunction(()=>!RF.UI.solving,null,{timeout:180000});
     await page.evaluate(s=>{RF.UI.loadScene(RF.State.deserialize(s),'P0 fixture');RF.UI.setMode('D');},fs.readFileSync(path.join(__dirname,'../fixtures/MG2-default-lamp.json'),'utf8'));
     await page.waitForFunction(()=>{const u=RF.UI;return !u.solving&&u.run&&u.run.ctx.done&&u.spec&&u.spec.ctx===u.run.ctx&&u.spec.full&&u.spec.ev;},null,{timeout:180000});
-    await page.evaluate(()=>{const u=RF.UI;u.setDisplay('drive');u.setPane('result','activate');Object.assign(u.dvAnim||(u.dvAnim={}),{view:'anim',playing:false});Object.assign(u.dvOpts,{mt:false,gpuRenderer:false,scene:'city',wet:true,wetSheen:true,oncoming:true,preceding:true,trafficLogic:true});u.redrawSpec();document.querySelector('.drive-more').open=true;RF.DriveAnim._.V.pinSS=1;});
+    await page.evaluate(()=>{const u=RF.UI;u.setDisplay('drive');u.setPane('result','activate');Object.assign(u.dvAnim||(u.dvAnim={}),{view:'anim',playing:false});Object.assign(u.dvOpts,{mt:false,gpuRenderer:false,scene:'city',wet:true,wetSheen:true,oncoming:true,preceding:true,trafficLogic:true});u.redrawSpec();RF.DriveLayout.reveal(u,'[data-anim=debug-timings]');RF.DriveAnim._.V.pinSS=1;});
     ok('P0 defaults off, min 30 fps (33.3 ms target), ceiling High',await page.evaluate(()=>!RF.UI.dvOpts.fpsCounter&&!RF.UI.dvOpts.dynamicResolution&&RF.UI.dvOpts.minFps===30&&Math.abs(RF.UI.dvOpts.frameTargetMs-1000/30)<1e-9&&RF.UI.dvOpts.simCeiling==='high'));
-    await page.locator('[data-anim=fps-counter]').click();
+    await (await page.evaluate((x)=>RF.DriveLayout.reveal(RF.UI,x),'[data-anim=fps-counter]'),page.locator('[data-anim=fps-counter]')).click();
     ok('P0 counter remembered in drive preferences',await page.evaluate(()=>RF.UI.dvOpts.fpsCounter&&JSON.parse(localStorage.getItem('flux/driveView')).fpsCounter));
-    await page.locator('[data-anim=debug-timings]').click();
+    await (await page.evaluate((x)=>RF.DriveLayout.reveal(RF.UI,x),'[data-anim=debug-timings]'),page.locator('[data-anim=debug-timings]')).click();
     ok('P0 debug timings remembered separately',await page.evaluate(()=>RF.UI.dvOpts.debugTimings&&JSON.parse(localStorage.getItem('flux/driveView')).debugTimings));
     const parity=await page.evaluate(()=>{const u=RF.UI,a=RF.DriveAnim._;const draw=on=>{u.dvOpts.debugTimings=on;u.redrawSpec();a.frame();return {cpu:new Float32Array(a.V.rgba),canvas:a.readCanvas()};};const off=draw(false),on=draw(true);return {cpu:off.cpu.every((v,i)=>v===on.cpu[i]),canvas:off.canvas.every((v,i)=>v===on.canvas[i]),stats:RF.DriveAnim.stats()};});
     ok('P0 profiler preserves CPU and canvas pixels',parity.cpu&&parity.canvas);
     ok('P0 stats exposes sampled trace and CPU GL breakdown',parity.stats.lastFrame&&parity.stats.breakdown.sampledRays>0&&parity.stats.breakdown.gpuMs===null&&parity.stats.breakdown.components.finalVeilMs.ms>=0,parity.stats.breakdown);
-    await page.locator('[data-anim=dynamic-resolution]').click();
+    await (await page.evaluate((x)=>RF.DriveLayout.reveal(RF.UI,x),'[data-anim=dynamic-resolution]'),page.locator('[data-anim=dynamic-resolution]')).click();
     ok('P0 resolution preference remembered',await page.evaluate(()=>JSON.parse(localStorage.getItem('flux/driveView')).dynamicResolution===true));
     const scales=await page.evaluate(()=>{const D=RF.DriveAnim,a=D._,u=RF.UI;const full=a.V.p.w;a.V.pinSS=0;a.V.resolution={...D.resolutionState(),index:2,scale:0.7};a.frame();const small=a.V.p.w;a.V.pinSS=1;a.frame();const pin=a.V.p.w;a.V.pinSS=0;u.dvOpts.dynamicResolution=false;u.redrawSpec();return {full,small,pin,restored:a.V.p.w};});
     ok('P0 render integration reduces dimensions, pinSS and off restore',scales.small<scales.full&&scales.pin===scales.full&&scales.restored===scales.full,scales);
@@ -35,7 +35,7 @@ const ok = (n,c,d) => { console.log((c?'[PASS] ':'[FAIL] ')+n+(d?' — '+JSON.st
     for(const width of [1900,390]) {
       await page.setViewportSize({width,height:width===390?844:1050});
       await page.evaluate(()=>{RF.UI.dvOpts.mt=false;RF.UI.dvAnim.playing=false;RF.UI.setPane('result','activate');RF.DriveAnim.openPop(RF.UI);RF.UI.redrawSpec();});
-      const fit=await page.evaluate(()=>{const a=RF.DriveAnim._,r=a.V.perfLab.getBoundingClientRect(),h=a.V.canvas.parentElement.getBoundingClientRect(),p=RF.UI.driveBar.querySelector('.drive-primary');return {mounted:a.V.perfLab.parentElement===(matchMedia('(max-width: 760px), (pointer: coarse)').matches?a.V.below:a.V.canvas.parentElement),visible:!a.V.perfLab.hidden,inside:r.left>=h.left-1&&r.right<=h.right+1,width:r.width,host:h.width,primary:p.clientWidth,scroll:p.scrollWidth,overflow:getComputedStyle(p).overflowX};});
+      const fit=await page.evaluate(()=>{const a=RF.DriveAnim._,r=a.V.perfLab.getBoundingClientRect(),h=a.V.canvas.parentElement.getBoundingClientRect(),p=RF.UI.driveLayout.strip;RF.DriveLayout.reveal(RF.UI,'[data-anim=perf-readout]');return {mounted:!!a.V.perfLab.closest('[data-dl-pane=timings]'),visible:!a.V.perfLab.hidden,inside:(()=>{const q=a.V.perfLab.getBoundingClientRect(),b=RF.UI.driveBar.getBoundingClientRect();return q.left>=b.left-1&&q.right<=b.right+1;})(),width:r.width,host:h.width,primary:p.clientWidth,scroll:p.scrollWidth,overflow:getComputedStyle(p).overflowX};});
       ok('P0 counter and toolbar fit '+width,fit.mounted&&fit.visible&&fit.inside&&fit.primary>0&&fit.scroll<=fit.primary+1,fit);
       await page.evaluate(()=>RF.DriveAnim.closePop(RF.UI));
     }

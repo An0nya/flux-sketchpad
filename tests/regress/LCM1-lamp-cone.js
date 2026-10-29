@@ -175,8 +175,8 @@ const setO = (page, k, v) => page.evaluate(([k, v]) => RF.DriveAnim._.V.setOwn(k
       } else ok('LCM1 depth probe has object pixels at 5..60 m', false, 'none');
     }
     // 5. option select in More
-    const ui = await page.evaluate(() => { const s = document.querySelector('[data-dv="lampCone"]'); return s ? { value: s.value, inMore: !!s.closest('.drive-more') } : null; });
-    ok('LCM1 option select (data-dv=lampCone) is in the More panel', !!(ui && ui.inMore), JSON.stringify(ui));
+    const ui = await page.evaluate(() => { const s = document.querySelector('[data-dv="lampCone"]'); return s ? { value: s.value, inMore: !!s.closest('[data-dl-subpane=lamps]') } : null; });
+    ok('LCM1 option select (data-dv=lampCone) is in Lighting > Lamps', !!(ui && ui.inMore), JSON.stringify(ui));
     // 6. Brief U (D): the default is 'auto' = on whenever street lamps are on and visibility is set; an explicit 'off' is the user's and wins.
     //    The resolved value is V.p.lampCone (what the GPU pass reads); lampConeState().on is whether the pass drew.
     const cs = () => page.evaluate(() => ({ p: RF.DriveAnim._.V.p.lampCone, on: RF.DriveAnim._.V.three.lampConeState().on, opt: RF.UI.dvOpts.lampCone }));

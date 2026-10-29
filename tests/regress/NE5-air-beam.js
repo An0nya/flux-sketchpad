@@ -28,8 +28,8 @@ const WANT = { baseline: ['half', 'strong'], low: ['half', 'strong'], medium: ['
     // 1. the top dropdown and the group
     const levels = await page.evaluate(() => [...document.querySelector('[data-dv="airLevel"]').options].map((o) => o.value));
     ok('NE5 top dropdown: values off, baseline, low, medium, high, max, custom', JSON.stringify(levels) === JSON.stringify(['off', 'baseline', 'low', 'medium', 'high', 'max', 'custom']), JSON.stringify(levels));
-    const grp = await page.evaluate(() => { const d = document.querySelector('details.drive-air-adv'); return d ? { open: d.open, inside: !!d.closest('details.drive-more'), has: ['scatter', 'scatterMode', 'scatterRes', 'scatterBlur', 'scatterCache', 'scatterCycle', 'scatterNearFadeRange', 'scatterNearBias', 'scatterBinCounts'].filter((k) => d.querySelector('[data-dv="' + k + '"]')).length } : null; });
-    ok('NE5 advanced group: present, collapsed by default, inside More, holds the 9 advanced controls', !!grp && grp.open === false && grp.inside && grp.has === 9, JSON.stringify(grp));
+    const grp = await page.evaluate(() => { const d = document.querySelector('details.drive-air-adv'); return d ? { open: d.open, inside: !!d.closest('[data-dl-subpane=ours]'), has: ['scatter', 'scatterMode', 'scatterRes', 'scatterBlur', 'scatterCache', 'scatterCycle', 'scatterNearFadeRange', 'scatterNearBias', 'scatterBinCounts'].filter((k) => d.querySelector('[data-dv="' + k + '"]')).length } : null; });
+    ok('NE5 advanced group: present, collapsed by default, in Lighting > Ours, holds the 9 advanced controls', !!grp && grp.open === false && grp.inside && grp.has === 9, JSON.stringify(grp));
     const scQ = await page.evaluate(() => !!document.querySelector('[data-dv="scatterQuality"]'));
     ok('NE5 the quality select has no control of its own (the top dropdown writes it)', scQ === false);
     await page.evaluate(() => { document.querySelector('details.drive-air-adv').open = true; }); await sleep(300);
@@ -80,7 +80,7 @@ const WANT = { baseline: ['half', 'strong'], low: ['half', 'strong'], medium: ['
     // 7. screenshots (before ?reset: the reset load does not show the drive More panel) (only when asked): More open, the group collapsed, then expanded
     if (process.env.NE5_SHOTS) {
       fs.mkdirSync(process.env.NE5_SHOTS, { recursive: true });
-      await page.evaluate(() => { document.querySelector('details.drive-more').open = true; document.querySelector('details.drive-air-adv').open = false; }); await sleep(800);
+      await page.evaluate(() => { RF.DriveLayout.reveal(RF.UI, '[data-dv=airLevel]'); document.querySelector('details.drive-air-adv').open = false; }); await sleep(800);
       await page.screenshot({ path: path.join(process.env.NE5_SHOTS, 'NE5-air-beam-collapsed-headless.png'), fullPage: false });
       await page.evaluate(() => { document.querySelector('details.drive-air-adv').open = true; }); await sleep(800);
       await page.screenshot({ path: path.join(process.env.NE5_SHOTS, 'NE5-air-beam-expanded-headless.png'), fullPage: false });

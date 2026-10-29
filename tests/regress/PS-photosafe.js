@@ -16,9 +16,7 @@ async function ready(page) {
 }
 // Starts playback from the paused animation and waits for the first rendered frame.
 async function startAnimation(page) {
-  await page.locator('.drive-more').evaluate((e) => { e.open = true; });
   if (!await page.evaluate(() => RF.UI.dvAnim.playing)) await page.locator('[data-anim=play]').click();
-  await page.locator('.drive-more').evaluate((e) => { e.open = false; });
   await page.waitForFunction(() => RF.UI.dvAnim.playing && RF.DriveAnim.renderedGlare() !== null, null, { timeout: 60000 });
   await page.waitForTimeout(300);
 }

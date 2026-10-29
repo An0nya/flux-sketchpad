@@ -1,5 +1,6 @@
-// HDX7 page checks: the traffic halo quality presets on the GPU drive renderer (fog 60, one oncoming car about 35 m away, as SL-traffic-halo).
-//  1. low, medium, ultra each apply: bins 6 / 16 / 24, polar tables 0 / 1 / 2 (per lamp of the nearest car), and the frame changes from halo off;
+// HDX7 / OHQ page checks: the oncoming headlamp scatter quality levels on the GPU drive renderer (fog 60, one oncoming car about 35 m away, as SL-traffic-halo).
+//  1. low, medium, high, xhigh, max each apply (OHQ, 10-29): bins 6 / 12 / 24 / 32 / 32, no polar table at low and medium, one or more (auto) above,
+//     the select reads back the level, and the frame changes from scatter off. A level never turns the scatter on (trafficHalo stays as set);
 //  2. the preset round-trips through the saved drive view (localStorage flux/driveView) and the select reads back the level;
 //  3. the table never exceeds the GPU texture width: N tiles x cells per tile <= MAX_TEXTURE_SIZE at 912, 1378 and 1920 px canvases (preset high);
 //     and a forced narrow case (divisor 1.4, 32 bins) reports the clamp;
@@ -47,26 +48,29 @@ async function frame(page) {
       return lampDist();
     };
     const dA = await place(35); ok('HDX7 fixture: an oncoming lamp pair at about 35 m (fog 60)', dA !== null && Math.abs(dA - 35) < 6, 'lamp distance ' + (dA === null ? 'none' : dA.toFixed(1)));
-    await setQuality('off'); await sleep(400);
+    await setOpt('trafficHalo', 0); await sleep(400);
     const offPng = await frame(page); const offState = await haloState();
-    ok('HDX7 quality off: no halo table', offState.on === 0 && offState.passes === 0, JSON.stringify({ on: offState.on, passes: offState.passes }));
-    const expect = { low: [6, 0], medium: [16, 1], ultra: [24, 2] };
+    ok('HDX7 scatter off: no table', offState.on === 0 && offState.passes === 0, JSON.stringify({ on: offState.on, passes: offState.passes }));
+    await setQuality('low'); const offStill = await page.evaluate(() => +RF.UI.dvOpts.trafficHalo);
+    ok('OHQ picking a level with the scatter off leaves it off', offStill === 0, 'trafficHalo ' + offStill);
+    await setOpt('trafficHalo', 16); await sleep(800);
+    const expect = { low: [6, 0], medium: [12, 0], high: [24, 1], xhigh: [32, 1], max: [32, 1] };   // [bins, polar tables at least (exactly 0 for low and medium)]
     const hashes = {};
-    for (const name of ['low', 'medium', 'ultra']) {
+    for (const name of ['low', 'medium', 'high', 'xhigh', 'max']) {
       await setQuality(name);
       const s = await haloState(), png = await frame(page), [bins, polars] = expect[name];
       hashes[name] = sha(png);
       const sel = await page.evaluate(() => document.querySelector('[data-dv="haloQuality"]').value);
-      ok('HDX7 preset ' + name + ': bins ' + bins + ', polar tables ' + polars, s.bins === bins && s.polars === polars && s.on === 1 && sel === name,
+      ok('OHQ preset ' + name + ': bins ' + bins + ', polar tables ' + (polars ? '>= ' + polars : '0'), s.bins === bins && (polars ? s.polars >= polars : s.polars === 0) && s.on === 1 && sel === name,
         JSON.stringify({ bins: s.bins, polars: s.polars, on: s.on, passes: s.passes, tab: s.tab, polarNote: s.polarNote, select: sel }));
       ok('HDX7 preset ' + name + ': the frame differs from halo off', hashes[name] !== sha(offPng));
     }
     const saved = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem('flux/driveView') || '{}'); } catch (e) { return {}; } });
-    ok('HDX7 round trip: the saved drive view holds the high preset keys', saved.haloBins === 24 && saved.haloPolar === 'perlamp' && saved.haloPolarLamps === 2 && +saved.trafficHalo === 16, JSON.stringify({ haloBins: saved.haloBins, haloPolar: saved.haloPolar, haloPolarLamps: saved.haloPolarLamps, trafficHalo: saved.trafficHalo }));
+    ok('OHQ round trip: the saved drive view holds the max preset keys', saved.haloBins === 32 && saved.haloPolar === 'auto' && saved.haloPolarBand === '256x64' && saved.shadowRes === '2048x1024' && saved.haloCars === 8 && +saved.trafficHalo === 16, JSON.stringify({ haloBins: saved.haloBins, haloPolar: saved.haloPolar, haloPolarLamps: saved.haloPolarLamps, trafficHalo: saved.trafficHalo }));
     // 3. texture width at three canvas widths (high = 24 bins), then a forced narrow case
     for (const W of [912, 1378, 1920]) {
       await page.setViewportSize({ width: W, height: 1000 }); await sleep(1500);
-      await setQuality('ultra'); await sleep(600);
+      await setQuality('high'); await sleep(600);
       const s = await haloState(), pw_ = await page.evaluate(() => RF.DriveAnim._.V.p.w);
       ok('HDX7 texture width at canvas ' + W + ' px (24 bins): tile x bins <= ' + maxTex, s.tab && s.tab[0] * s.bins <= maxTex && s.bins === 24, JSON.stringify({ canvasW: pw_, tab: s.tab, width: s.tab && s.tab[0] * s.bins, clamp: s.tabClamp }));
     }
@@ -75,10 +79,10 @@ async function frame(page) {
     ok('HDX7 forced narrow table (divisor 1.4, 32 bins): width fits and the clamp is reported when it binds', sN.tab && sN.tab[0] * sN.bins <= maxTex && (sN.tabClamp === null || sN.tabClamp.used === sN.tab[0]), JSON.stringify({ bins: sN.bins, tab: sN.tab, width: sN.tab && sN.tab[0] * sN.bins, clamp: sN.tabClamp }));
     await setOpt('haloDiv', 0); await setOpt('haloBins', 24); await sleep(600);
     // 4. gain
-    await setQuality('ultra'); await setOpt('haloGain', 1); const g1 = await frame(page);
+    await setQuality('high'); await setOpt('haloGain', 1); const g1 = await frame(page);
     await setOpt('haloGain', 4); await sleep(500); const g4 = await frame(page);
     ok('HDX7 halo gain x4 changes the frame against x1', sha(g1) !== sha(g4));
-    await setQuality('off');
+    await setOpt('trafficHalo', 0);
     ok('HDX7 no page errors', errors.length === 0, JSON.stringify(errors.slice(0, 3)));
   } finally { await browser.close(); }
   const fails = checks.filter((c) => !c.pass).length;

@@ -32,9 +32,9 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     const hOff = await hashNow();
 
     // 2. toggle on from the bar: pressed state, panel with one row per registry metric
-    await page.evaluate(() => { const u = RF.UI; u.driveBar.querySelector('.drive-more').open = true; RF.DriveAnim.layoutControls(u); });
-    const inMore = await page.evaluate(() => { const c = [...document.querySelectorAll('[data-anim=scene-details]')]; return { count: c.length, inMore: c.length === 1 && !!c[0].closest('.drive-more, .drive-extras') }; });
-    ok('OV the toggle is reachable exactly once, inside More', inMore.count === 1 && inMore.inMore, inMore);
+    await page.evaluate(() => { RF.DriveLayout.reveal(RF.UI, '[data-anim=scene-details]'); });   // UI step C: the toggle lives in the Details tab (was More)
+    const inMore = await page.evaluate(() => { const c = [...document.querySelectorAll('[data-anim=scene-details]')]; return { count: c.length, inMore: c.length === 1 && !!c[0].closest('[data-dl-pane=details]') && c[0].checkVisibility() }; });
+    ok('OV the toggle is reachable exactly once, in the Details tab', inMore.count === 1 && inMore.inMore, inMore);
     await page.locator('[data-anim=scene-details]').click();
     await page.waitForFunction(() => !!document.querySelector('.drive-details'), null, { timeout: 5000 }).catch(() => {});
     const on = await page.evaluate(() => ({
@@ -117,7 +117,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     await page.locator('[data-anim=high-beam]').click();              // on -> auto
     await page.locator('[data-anim=high-beam]').click();              // auto -> off (back to the state the frame hash used)
     // 6. toggle off: panel removed, timer cleared, API empty
-    await page.evaluate(() => { const u = RF.UI; u.driveBar.querySelector('.drive-more').open = true; RF.DriveAnim.layoutControls(u); });
+    await page.evaluate(() => { RF.DriveLayout.reveal(RF.UI, '[data-anim=scene-details]'); });
     await page.locator('[data-anim=scene-details]').click();
     await page.waitForTimeout(400);
     const off = await page.evaluate(() => ({

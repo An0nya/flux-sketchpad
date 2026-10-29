@@ -9,6 +9,8 @@
 // E2 part 2 (2026-10-27): pass lamp heads now carry their street direction, so the lamp cone (default 'auto' = on in mist) draws on a pass frame for the first time and moved the touge pin(s) of this test
 // (PIN_EQUAL). The touge page here sets lampCone 'off' so the pins are about the halo, as before; the old pin is the proof. The flat page is left on the default: its pin did not move with the cone drawing (flat frames are identical).
 // Run: python3 tests/serve.py <port>, then PLAYWRIGHT=... node tests/regress/TOUGE-HALO-TILT.js <port>
+// UI step C (2026-10-29): the frame is the drive canvas pinned at page 0,0 (was the page region y >= 140, which sat on the canvas only while the large view had
+// its 30 px header; the layout shell dropped it and the region moved off the picture). Pins below re-baselined for that capture (old -> new: cad1ecc0 -> 95fb939b, c6a2fdc3 -> e5efe912); the halo tables (bin, cum) still match.
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const fs = require('fs'), path = require('path');
 const port = +(process.argv[2] || 8806);
@@ -18,7 +20,7 @@ const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.l
 const errors = [];
 const crypto = require('crypto');
 // FLAT-PEDS re-pin 2026-10-26 (overnight integration): flat-road pin(s) moved by pedestrian scene content, not by the halo/sky (bisected with --only, alone): clean through wave-2 e51c4bc, moved by T 228686b (drive-anim walkers seeded); identical on main d20fe9d and on Brief J's branch. Pass pins unchanged. Moved: fd6166c47fb95091 -> cad1ecc09b3d711e.
-const PIN_FLAT = 'cad1ecc09b3d711e', PIN_EQUAL = 'c6a2fdc3619e9657';   // REVIEW integ 2026-10-26: c93885d2e890d8c2 -> 51727377c14f45d3, cause: B6 shadow normal (proved: the old hash returns with only the B6 line reverted).   // scene region y>=140, 912x373 PNG. PIN_EQUAL was f73730821efb1e75 (base b0a37ea, main 0fed388 still gives it); re-baselined by TOUGE-SKY-VEIL: the sky now takes the halo veil on halo-on touge frames. Cause proven: f73730821efb1e75 reproduces with the sky term switched off.
+const PIN_FLAT = '95fb939bc359f7e6', PIN_EQUAL = 'e5efe9125289a148';   // REVIEW integ 2026-10-26: c93885d2e890d8c2 -> 51727377c14f45d3, cause: B6 shadow normal (proved: the old hash returns with only the B6 line reverted).   // scene region y>=140, 912x373 PNG. PIN_EQUAL was f73730821efb1e75 (base b0a37ea, main 0fed388 still gives it); re-baselined by TOUGE-SKY-VEIL: the sky now takes the halo veil on halo-on touge frames. Cause proven: f73730821efb1e75 reproduces with the sky term switched off.
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
   const open = async () => {
@@ -35,7 +37,7 @@ const PIN_FLAT = 'cad1ecc09b3d711e', PIN_EQUAL = 'c6a2fdc3619e9657';   // REVIEW
   const setOpts = (page, o) => page.evaluate((o) => { const V = RF.DriveAnim._.V; for (const [k, v] of Object.entries(o)) V.setOwn(k, v); }, o);
   const shot = async (page, d, off) => {
     await page.evaluate(async ([dd, o]) => { globalThis.HALO_TILT_OFF = o; RF.UI.dvAnim.dist = dd; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1200)); }, [d, off]);
-    return page.screenshot({ clip: { x: 0, y: 140, width: 912, height: 373 } });
+    return (await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas; Object.assign(c.style, { position: 'fixed', left: '0px', top: '0px', margin: '0px', zIndex: '99999' }); }), page.screenshot({ clip: { x: 0, y: 0, width: 912, height: 373 } }));
   };
   const lum = (page, buf) => page.evaluate(async (b64) => {
     const im = new Image(); im.src = 'data:image/png;base64,' + b64; await im.decode();

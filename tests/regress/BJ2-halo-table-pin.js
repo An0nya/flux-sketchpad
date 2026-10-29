@@ -6,6 +6,8 @@
 // E2 part 2 (2026-10-27): pass lamp heads now carry their street direction, so the lamp cone (default 'auto' = on in mist) draws on a pass frame for the first time and adds light to the
 // pass frames (2 pass frame pins moved, valley 1028 and equal 1084; the bin and cum tables, the dip frame and the flat frame did not). The test sets lampCone 'off' so it keeps pinning the halo table; the old pins are the proof: with the cone off they are reproduced as they were.
 // Run: python3 tests/serve.py <port>, then PLAYWRIGHT=... node tests/regress/BJ2-halo-table-pin.js <port>
+// UI step C (2026-10-29): the frame is the drive canvas pinned at page 0,0 (was the page region y >= 140, which sat on the canvas only while the large view had
+// its 30 px header; the layout shell dropped it and the region moved off the picture). Pins below re-baselined for that capture (old -> new: 576735c5 -> b9356772, 5e0d737e -> b3162339, c6a2fdc3 -> e5efe912, cad1ecc0 -> 95fb939b, 4deb111a -> 33b9dd76); the halo tables (bin, cum) still match.
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const port = +(process.argv[2] || 8806);
@@ -14,12 +16,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex').slice(0, 16);
 const PINS = {
-  pass_dip_1332: { bin: 'f6361435f0dcf102', cum: 'd09ccdda1e8f166a', png: '576735c50d58f552' },
-  pass_valley_1028: { bin: '7374948aa7eceeaa', cum: '13b552847533c3a2', png: '5e0d737e154d1d13' },
-  pass_equal_1084: { bin: '897c6b545fd2b54a', cum: '559b193507546741', png: 'c6a2fdc3619e9657' },
-  flat_60: { bin: '48d585c9b5b15896', cum: '02718250e175607f', png: 'cad1ecc09b3d711e' },
+  pass_dip_1332: { bin: 'f6361435f0dcf102', cum: 'd09ccdda1e8f166a', png: 'b93567722039b519' },
+  pass_valley_1028: { bin: '7374948aa7eceeaa', cum: '13b552847533c3a2', png: 'b31623392f5962fd' },
+  pass_equal_1084: { bin: '897c6b545fd2b54a', cum: '559b193507546741', png: 'e5efe9125289a148' },
+  flat_60: { bin: '48d585c9b5b15896', cum: '02718250e175607f', png: '95fb939bc359f7e6' },
 };
-const POLAR_PNG = '4deb111a494386f6';   // dip frame with the HDX6 polar table (SL_HALO_POLAR); its bin table is not used, so only the frame is pinned
+const POLAR_PNG = '33b9dd7651760cd6';   // dip frame with the HDX6 polar table (SL_HALO_POLAR); its bin table is not used, so only the frame is pinned
 const errors = [];
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
@@ -36,7 +38,7 @@ const errors = [];
     const capture = async (d, extra) => {
       if (extra) await page.evaluate(extra);
       await page.evaluate(async (dd) => { globalThis.HALO_TILT_OFF = false; RF.UI.dvAnim.dist = dd; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1200)); }, d);
-      const shot = await page.screenshot({ clip: { x: 0, y: 140, width: 912, height: 373 } });
+      const shot = await (await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas; Object.assign(c.style, { position: 'fixed', left: '0px', top: '0px', margin: '0px', zIndex: '99999' }); }), page.screenshot({ clip: { x: 0, y: 0, width: 912, height: 373 } }));
       const t = await page.evaluate(() => { const T = RF.DriveAnim._.V.three; const b = T.haloTableBytes('bin'), c = T.haloTableBytes('cum'); return { bin: b && b.b64, cum: c && c.b64, touge: !!RF.DriveAnim._.V.p.touge, on: T.haloState().on }; });
       return { png: sha(shot), bin: t.bin ? sha(Buffer.from(t.bin, 'base64')) : null, cum: t.cum ? sha(Buffer.from(t.cum, 'base64')) : null, touge: t.touge, on: t.on };
     };

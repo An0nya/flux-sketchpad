@@ -8,6 +8,8 @@
 // The threshold is a cut between two measured values, not a physical constant. Positive control: run on a main archive; (4) and (6) must fail.
 // Pins: sha1 of the 912x373 PNG clip at y=140 (the same clip as TOUGE-HALO-TILT), samples '1', real GPU (Apple M4, Metal), measured 2026-10-23 on
 // main 0fed388 (git archive) and this branch. Run: python3 tests/serve.py <port>, then PLAYWRIGHT=... node tests/regress/TOUGE-SKY-VEIL.js <port>
+// UI step C (2026-10-29): the frame is the drive canvas pinned at page 0,0 (was the page region y >= 140, which sat on the canvas only while the large view had
+// its 30 px header; the layout shell dropped it and the region moved off the picture). Pins below re-baselined for that capture (old -> new: 2182d301 -> 15e3263e, 94a75eca -> 46680ba4, 3791c6a0 -> eacb3d61, 53f2a81f -> 21718f45, 23e7528f -> 2e0f21a9); the halo tables (bin, cum) still match.
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const port = +(process.argv[2] || 8806);
@@ -18,8 +20,8 @@ const errors = [];
 const sha = (b) => crypto.createHash('sha1').update(b).digest('hex').slice(0, 16);
 // REVIEW integ 2026-10-26: PIN_PASS_OFF 1df27fae2210614c -> 2182d30171a7951b and PIN_AMBIENT_OFF 65a7dd08bf6a8747 -> 94a75ecaba63c384, cause B6 shadow normal (proved by reverting only that line); PIN_PASS_ON 1a41ccf6b756c86d -> 2f8d8419c8e42866, cause ROLL (b0ae354da282f1bf with B6 reverted, so ROLL alone moves it) + B6.
 // FLAT-PEDS re-pin 2026-10-26 (overnight integration): flat-road pin(s) moved by pedestrian scene content, not by the halo/sky (bisected with --only, alone): S 1a410c9 (seeded walker kinds) first moves them (G d51aedb alone clean), T then moves them again; identical on main d20fe9d and on Brief J's branch. Pass pins unchanged. Moved: e0bda83bb1da9572, cfd4feefa3934c71 -> 3791c6a03764a100, 53f2a81fed077f0e.
-const PIN_PASS_OFF = '2182d30171a7951b', PIN_AMBIENT_OFF = '94a75ecaba63c384', PIN_FLAT_OFF = '3791c6a03764a100', PIN_FLAT_ON = '53f2a81fed077f0e';
-const PIN_PASS_ON = '23e7528f03291d77';   // branch sky-veil frame (main's halo-on frame is 6e4191c6af587594)
+const PIN_PASS_OFF = '15e3263efed66317', PIN_AMBIENT_OFF = '46680ba4fe8e164d', PIN_FLAT_OFF = 'eacb3d61116d4dda', PIN_FLAT_ON = '21718f45d8984c61';
+const PIN_PASS_ON = '2e0f21a9853b050a';   // branch sky-veil frame (main's halo-on frame is 6e4191c6af587594)
 const SKY_STEP_MAX = 12;                  // pinned: main 25.0, branch 8.8 (median over columns of the largest adjacent-row luminance step)
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
@@ -39,7 +41,7 @@ const SKY_STEP_MAX = 12;                  // pinned: main 25.0, branch 8.8 (medi
     Object.assign({ trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, samples: '1', haloPolar: 'off' }, extra));   // SP: haloPolar off pinned explicitly (the default is auto since SP); the pins hold with off
   const shot = async (page, dist, halo) => {
     await page.evaluate(async ([d, h]) => { RF.DriveAnim._.V.setOwn('trafficHalo', h); RF.UI.dvAnim.dist = d; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1200)); }, [dist, halo]);
-    return page.screenshot({ clip: { x: 0, y: 140, width: 912, height: 373 } });
+    return (await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas; Object.assign(c.style, { position: 'fixed', left: '0px', top: '0px', margin: '0px', zIndex: '99999' }); }), page.screenshot({ clip: { x: 0, y: 0, width: 912, height: 373 } }));
   };
   const skyline = (page, buf) => page.evaluate(async (b64) => {
     const im = new Image(); im.src = 'data:image/png;base64,' + b64; await im.decode();

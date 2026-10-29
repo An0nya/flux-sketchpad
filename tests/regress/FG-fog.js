@@ -15,7 +15,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // SPEED0 (2026-10-28): re-baselined for the speed slider's new range (min 0 step 1, was 5/5). The drive toolbar overlays the canvas, so its element screenshot holds the slider
 // thumb, which moves at the same 50 km/h. PROOF: the same frame with the old vs new min/step differs in 68 px, all inside the slider's box (x 174-189, y 10-25 of the canvas;
 // slider at x 148-233, y 6-30), and restoring the old range gives 0 px; with the slider line reverted, the old pins pass (WT, FG, SC, SD). The render is unchanged.
-const OLD_CLEAR = process.env.FG_OLD_CLEAR || 'b72a6a1eefeb3e0b587a09762c586535ee7418ae22a80d94d2c72977b464a276';   // before SPEED0: 23802573...
+// UI step C (2026-10-29): re-baselined for the drive layout shell. The element screenshot holds the bars that overlay the canvas top (overlay mode in this
+// small pane), which changed look; the render itself is unchanged: in overlay mode the canvas is the old size, and a headless BT probe gave readCanvas
+// hashes identical to HEAD 0e77d52 before and after a traffic shuffle (brief REVIEW-2026-10-28-presets.md, step C).
+const OLD_CLEAR = process.env.FG_OLD_CLEAR || '0517faf060ca81de0ba695ad4bc8ed4cba5e2916f7f3cb08d1fcd7e7b038fc62';   // before UI step C: b72a6a1e...; before SPEED0: 23802573...
 const LEVELS = ['clear', 'haze', 'mist', 'fog', 'dense'];
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
@@ -51,7 +54,7 @@ async function session(browser, errors) {
     const clear = await capture('clear');
     if (baseline) { console.log('BASELINE clear=' + clear.hash + ' renderer=' + clear.state.renderer); await s.context.close(); return; }
     ok('FG GPU renderer is on (no GPU failure)', clear.state.renderer === 'three' && !clear.state.gpuFailure, JSON.stringify(clear.state));
-    ok('FG clear frame equals the main baseline (GPU, visibility off)', OLD_CLEAR ? clear.hash === OLD_CLEAR : false, OLD_CLEAR ? clear.hash.slice(0, 12) : 'OLD_CLEAR not set');
+    ok('FG clear frame equals the main baseline (GPU, visibility off)', OLD_CLEAR ? clear.hash === OLD_CLEAR : false, OLD_CLEAR ? clear.hash : 'OLD_CLEAR not set');   // full hash printed: a re-pin copies it
     const frames = [clear];
     for (let i = 1; i < LEVELS.length; i++) { await page.evaluate((v) => { const s = document.querySelector('[data-dv="visibility"]'); s.value = v; s.dispatchEvent(new Event('change')); }, LEVELS[i]); frames.push(await capture(LEVELS[i])); }
     const labels = frames.map((f) => f.state.btn);

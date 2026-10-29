@@ -889,6 +889,8 @@
   // SR (look.scatterRange, m): the far limit of every scatter integral and lookup. Absent or invalid = SCAT.S_MAX (120), so old scenes trace the same. Clamped to 50..400.
   const SCAT_RANGE = { min: 50, max: 400 };
   function scatRangeOf(look) { const r = +(look && look.scatterRange); return r > 0 ? Math.min(SCAT_RANGE.max, Math.max(SCAT_RANGE.min, r)) : SCAT.S_MAX; }
+  // OHR (10-29): the oncoming scatter's own range (look.haloRange, m), split from our own air beam's scatterRange. 0 or absent = follow scatRangeOf (the old shared range).
+  function haloRangeOf(look) { const r = +(look && look.haloRange); return r > 0 ? Math.min(SCAT_RANGE.max, Math.max(SCAT_RANGE.min, r)) : scatRangeOf(look); }
   const hgPhase = (g, c) => (1 - g * g) / (4 * Math.PI * Math.pow(1 + g * g - 2 * g * c, 1.5));
   function scatterPhase(c) { return SCAT.wFwd * hgPhase(SCAT.gFwd, c) + (1 - SCAT.wFwd) * hgPhase(SCAT.gBack, c); }
   // per-pixel jitter in [0, 1): a hash of the integer pixel coordinates only (no time term), so frames are repeatable and banding is broken up
@@ -923,11 +925,17 @@
   // peak, so 8 equiangular cells landed on the unlit side and the per-jitter value swung by 10^7 (measured, SL1). Log spacing swings ~6x per jitter, the same
   // kind of noise as inScatter (SC1). Samples beyond the lamp are kept: a lamp aimed away still lights the air past it.
   const HALO = { steps: 8 };
-  function haloN(o) { const look = (o && o.look) || {}, n = +look.trafficHalo; return o && o.trafficBeams && sigmaOf(look) > 0 && n > 0 ? Math.min(16, Math.round(n)) : 0; }
+  // OHC (10-29): look.haloCars = how many cars scatter (2 lamps each), capped at 16 lamps. trafficHalo is the on/off (on = 16); an old 4 or 8 still caps the lamps.
+  // haloCars absent (old looks, Node tests) = no car cap, so trafficHalo alone sets the count as before.
+  function haloN(o) {
+    const look = (o && o.look) || {}, n = +look.trafficHalo, cars = +look.haloCars;
+    if (!(o && o.trafficBeams && sigmaOf(look) > 0 && n > 0)) return 0;
+    return Math.min(16, Math.round(n), cars > 0 ? 2 * Math.round(cars) : 16);
+  }
   function trafficHalo(ray, sEnd, sources, N, p, jit) {
     const out = [0, 0, 0], n = N | 0, sig = sigmaOf((p && p.look) || {}), eye = (p && p.eye) || [-2, 0.37, 1.2];
     if (!(sig > 0) || !(n > 0) || !(sEnd > 0) || !sources || !sources.length) return out;
-    const rx = ray[0], ry = ray[1], rz = ray[2], cap = Math.min(sEnd, scatRangeOf(p && p.look)), J = jit == null ? 0.5 : jit;
+    const rx = ray[0], ry = ray[1], rz = ray[2], cap = Math.min(sEnd, haloRangeOf(p && p.look)), J = jit == null ? 0.5 : jit;
     const near = sources.map((L, i) => ({ L, i, d: Math.hypot(L.x - eye[0], L.y - eye[1], L.z - eye[2]) })).sort((a, b) => a.d - b.d || a.i - b.i).slice(0, n);
     const beam = p && p.src && near.some(q => !q.L.beam) ? trafficBeam(p) : null;
     for (const { L } of near) {
@@ -1019,20 +1027,27 @@
     }
     return 'custom';
   }
-  // HDX7: the traffic halo quality presets (owner, 2026-10-22). Derived like airLevelOf: the options equal to one preset's bundle are that level, else 'custom'.
-  // Defaults for a look that sets none: 24 bins, divisor auto (0), polar off, 2 polar lamps, gain 1. Only the traffic halo on counts; off is 'off'.
+  // OHQ (owner, 10-29): the oncoming headlamp scatter quality presets, low..max. Derived like airLevelOf: options equal to one level's bundle are that level, else 'custom'.
+  // A level never sets trafficHalo (the on/off) or haloGain. The range keys (spawn, light, scatter range) are written by a level but not compared: the range row
+  // is its own knob, so moving it does not turn the level 'custom'. Every level: jittered sampling, a shadow map per car (road + objects), cone pass 2, crest off.
+  const HALO_EVERY = { haloJitter: 'jittered', trafficShadows: 'all', trafficShadowRoad: 'on', trafficShadowObjects: 'on', haloConePass: '2', haloConeAngle: 30, haloNearSub: 1, crestOcclusion: 'off' };
+  const HALO_RANGE_KEYS = ['haloRange', 'trafficRange', 'trafficLightRange'];
+  const lvl = (o) => Object.assign({}, HALO_EVERY, o);
   const HALO_LEVELS_B = {
-    low: { trafficHalo: 16, haloBins: 6, haloDiv: 4, haloPolar: 'off', haloPolarLamps: 1, haloGain: 1 },
-    medium: { trafficHalo: 16, haloBins: 16, haloDiv: 4, haloPolar: 'merged', haloPolarLamps: 2, haloGain: 1 },
-    ultra: { trafficHalo: 16, haloBins: 24, haloDiv: 4, haloPolar: 'perlamp', haloPolarLamps: 2, haloGain: 1 },
+    low: lvl({ haloCars: 2, haloBins: 6, haloDiv: 2, haloJitterAmount: 0.25, haloBlur: 'light', haloDepthBlur: 'light', haloPolar: 'off', scatterCull: 'fast', scatterCullEps: 0.01, shadowRes: '512x512', trafficShadowSoft: 'off', haloRange: 160, trafficRange: 160, trafficLightRange: '160' }),
+    medium: lvl({ haloCars: 4, haloBins: 12, haloDiv: 2.8, haloJitterAmount: 0.25, haloBlur: 'light', haloDepthBlur: 'light', haloPolar: 'off', scatterCull: 'fast', scatterCullEps: 0.001, shadowRes: '512x512', trafficShadowSoft: 'off', haloRange: 250, trafficRange: 250, trafficLightRange: '250' }),
+    high: lvl({ haloCars: 8, haloBins: 24, haloDiv: 1.8, haloJitterAmount: 0.25, haloBlur: 'light', haloDepthBlur: 'light', haloPolar: 'auto', haloPolarBand: '64x64', scatterCull: 'fast', scatterCullEps: 0.001, shadowRes: '512x512', trafficShadowSoft: '2x2', haloRange: 400, trafficRange: 400, trafficLightRange: '400' }),
+    xhigh: lvl({ haloCars: 8, haloBins: 32, haloDiv: 1.4, haloJitterAmount: 1, haloBlur: 'light', haloDepthBlur: 'light', haloPolar: 'auto', haloPolarBand: '128x64', scatterCull: 'exact', shadowRes: '1024x1024', trafficShadowSoft: '3x3', haloRange: 400, trafficRange: 800, trafficLightRange: 'cars' }),
+    max: lvl({ haloCars: 8, haloBins: 32, haloDiv: 1.4, haloJitterAmount: 0.25, haloBlur: 'off', haloDepthBlur: 'light', haloPolar: 'auto', haloPolarBand: '256x64', scatterCull: 'exact', shadowRes: '2048x1024', trafficShadowSoft: '3x3', haloRange: 400, trafficRange: 800, trafficLightRange: 'cars' }),
   };
-  const HALO_DEFAULTS = { trafficHalo: 0, haloBins: 24, haloDiv: 0, haloPolar: 'off', haloPolarLamps: 2, haloGain: 1 };
+  // A key a look does not set reads as its registry default (RF.Options, loaded first; the pin applies in tests). Fallback table for a bare Node load.
+  const HALO_DEFAULTS = { haloBins: 24, haloDiv: 0, haloPolar: 'auto', haloPolarBand: '128x32', haloCars: 8, haloJitter: 'off', haloJitterAmount: 1, haloBlur: 'auto', haloDepthBlur: 'off', haloNearSub: 4, haloConePass: 'off', haloConeAngle: 30, trafficShadows: 'off', shadowRes: '1024x512', trafficShadowRoad: 'on', trafficShadowObjects: 'on', trafficShadowSoft: '2x2', scatterCull: 'exact', scatterCullEps: 0.05, crestOcclusion: 'off' };
   function haloLevelBundle(name) { return Object.prototype.hasOwnProperty.call(HALO_LEVELS_B, name) ? Object.assign({}, HALO_LEVELS_B[name]) : null; }
   function haloLevelOf(o) {
-    if (!(Number(o && o.trafficHalo) > 0)) return 'off';
+    const d = RF.Options && RF.Options.defaults ? RF.Options.defaults() : {}, v = (k) => (o && o[k] != null ? o[k] : k in d ? d[k] : HALO_DEFAULTS[k]);
     for (const name of Object.keys(HALO_LEVELS_B)) {
       const b = HALO_LEVELS_B[name];
-      if (Object.keys(b).every((k) => (typeof b[k] === 'number' ? (Number(o[k] == null ? HALO_DEFAULTS[k] : o[k]) === b[k]) : String(o[k] == null ? HALO_DEFAULTS[k] : o[k]) === b[k]))) return name;
+      if (Object.keys(b).every((k) => HALO_RANGE_KEYS.includes(k) || (typeof b[k] === 'number' ? Number(v(k)) === b[k] : String(v(k)) === b[k]))) return name;
     }
     return 'custom';
   }
@@ -1191,5 +1206,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { scatRangeOf, SCAT_RANGE, glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { scatRangeOf, haloRangeOf, SCAT_RANGE, glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, HALO_RANGE_KEYS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

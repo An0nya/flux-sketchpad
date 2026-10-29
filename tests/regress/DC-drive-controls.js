@@ -35,14 +35,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     ok('view angle: select in the drive bar offers 30; starts at 60', !!fov && fov.values.includes('30') && fov.value === '60' && fov.inBar, fov);
     ok('view angle: one copy on the page (no sidebar duplicate)', (await page.evaluate(() => document.querySelectorAll('[data-dv=fov]').length)) === 1);
     await settle();
-    const shot60 = await canvasShot('dc-fov-60.png');   // More closed: the expanded bar would cover the canvas
-    // the view angle and traffic range live under "More": open it the way a user does, choose 30, then close it again
-    await page.evaluate(() => { const m = document.querySelector('.drive-more'); if (!m.open) m.querySelector('summary').click(); });
+    const shot60 = await canvasShot('dc-fov-60.png');
+    // UI step C: the view angle lives in Performance > View: open that tab the way a user does, choose 30
+    await page.evaluate(() => RF.DriveLayout.reveal(RF.UI, 'select[data-dv=fov]'));
     await sleep(300);
     await page.selectOption('select[data-dv=fov]', '30');
     await page.waitForFunction(() => RF.DriveAnim._.V.p.hfov === 30, null, { timeout: 30000 });
     await page.evaluate(() => window.DC.frame());
-    await page.evaluate(() => { const m = document.querySelector('.drive-more'); if (m.open) m.querySelector('summary').click(); });
     await sleep(300); await settle();
     const shot30 = await canvasShot('dc-fov-30.png');
     ok('view angle 30 is selected and the view is re-rendered at 30°', await page.evaluate(() => RF.DriveAnim._.V.p.hfov === 30));
@@ -64,7 +63,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await count(400);
 
     // 3. fixed eye: no dolly control; the view angle moves the lens, not the eye
-    await page.evaluate(() => { const m = document.querySelector('.drive-more'); if (!m.open) m.querySelector('summary').click(); });
+    await page.evaluate(() => RF.DriveLayout.reveal(RF.UI, 'select[data-dv=fov]'));
     await sleep(300);
     ok('no telephoto dolly button in the drive bar', (await page.evaluate(() => !document.querySelector('[data-anim=telephoto-dolly]'))));
     const eye = () => page.evaluate(() => RF.DriveAnim._.V.p.eye.slice());

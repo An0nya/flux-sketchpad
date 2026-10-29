@@ -92,12 +92,12 @@ const ok = (name, yes, detail) => { console.log((yes ? '[PASS] ' : '[FAIL] ') + 
       await page.click('[data-tab=result]');   // phone layout shows one pane at a time: the Drive controls live in Result
       await page.evaluate(() => { const p = document.querySelector('.result-pane'); if (p) p.classList.add('expanded'); RF.UI.redrawSpec(); });
       const fit = await page.evaluate(async () => {
-        const top = document.querySelector('.drive-primary'), more = document.querySelector('.drive-more'), bottom = RF.UI.driveExtras, game = document.querySelector('[data-game=toggle]');
-        more.open = false;
+        // UI step C: the top bar (with Game) sits above the strip and the tab panel; the tabs replace the More panel
+        const L = RF.UI.driveLayout, top = L.top, bottom = L.left, game = document.querySelector('[data-game=toggle]');
+        RF.DriveLayout.setOpen(RF.UI, 'left', true);
         game.scrollIntoView({ block: 'nearest', inline: 'end' });
         const t = top.getBoundingClientRect(), y0 = scrollY, r = game.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-        more.open = true; await new Promise((r) => setTimeout(r, 150)); const b = bottom.getBoundingClientRect(), dy = y0 - scrollY;   // document coordinates: opening More may shift the scroll. The <details> toggle event un-hides the extras a task later
-         more.open = false;
+        const b = bottom.getBoundingClientRect(), dy = y0 - scrollY;
         return { top: [t.top, t.bottom], bottom: [b.top - dy, b.bottom - dy], gameHit: hit === game, within: r.left >= 0 && r.right <= innerWidth, scroll: top.scrollWidth <= top.clientWidth + 1 };
       });
       ok('RB full Drive controls do not overlap at ' + width + ' px; Game can be clicked', fit.top[1] <= fit.bottom[0] && fit.gameHit && fit.within && fit.scroll, fit);

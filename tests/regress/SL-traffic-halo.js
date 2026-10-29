@@ -43,18 +43,19 @@ async function planes(page, a, b) {
     await page.waitForFunction(() => RF.DriveAnim.stats().renderer === 'three' || RF.DriveAnim.stats().gpuFailure, null, { timeout: 120000 }).catch(() => {});
     const st0 = await page.evaluate(() => ({ renderer: RF.DriveAnim.stats().renderer, gpuFailure: RF.DriveAnim.stats().gpuFailure || '' }));
     ok('SL GPU renderer is on (no GPU failure)', st0.renderer === 'three' && !st0.gpuFailure, JSON.stringify(st0));
-    // DD: the traffic halo is a select now; "click" steps it to the next option.
-    const btn = () => page.evaluate(() => { const b = document.querySelector('[data-dv="trafficHalo"]'); return b ? { text: b.options ? b.options[b.selectedIndex].textContent.trim() : b.textContent.trim(), hidden: b.hidden } : null; });
+    // OHQ (10-29): the oncoming headlamp scatter is an on/off button (was the traffic halo select off / 4 / 8 / 16).
+    const btn = () => page.evaluate(() => { const b = document.querySelector('[data-dv="trafficHalo"]'); return b ? { text: b.textContent.trim(), hidden: b.hidden, pressed: b.getAttribute('aria-pressed'), disabled: b.disabled } : null; });
     const setOpt = (k, v) => page.evaluate(([k, v]) => RF.DriveAnim._.V.setOwn(k, v), [k, v]);
     const haloState = () => page.evaluate(() => RF.DriveAnim._.V.three.haloState());
     await setOpt('trafficBeams', true); await setOpt('oncoming', true); await setOpt('preceding', false); await setOpt('seed', 1);
     // 1. button
     const clearBtn = await btn(); ok('SL clear air: the traffic halo button is hidden', clearBtn && clearBtn.hidden === true, JSON.stringify(clearBtn));
     await setOpt('visibility', 60); await sleep(800);
-    const b0 = await btn(); ok('SL fog 60: the traffic halo button shows, off', b0 && b0.hidden === false && b0.text === 'traffic halo: off', JSON.stringify(b0));
-    const labels = [b0.text];
-    for (let i = 0; i < 3; i++) { await page.evaluate(() => { const s = document.querySelector('[data-dv="trafficHalo"]'); s.selectedIndex = (s.selectedIndex + 1) % s.options.length; s.dispatchEvent(new Event('change', { bubbles: true })); }); labels.push((await btn()).text); }
-    ok('SL the traffic halo button cycles off, 4, 8, 16', labels.join(' | ') === 'traffic halo: off | traffic halo: 4 | traffic halo: 8 | traffic halo: 16', labels.join(' | '));
+    const b0 = await btn(); ok('SL fog 60: the scatter button shows, off', b0 && b0.hidden === false && b0.text === 'oncoming headlamp scatter' && b0.pressed === 'false' && !b0.disabled, JSON.stringify(b0));
+    const click = () => page.evaluate(() => document.querySelector('[data-dv="trafficHalo"]').click());
+    await click(); const b1 = await btn(), v1 = await page.evaluate(() => +RF.UI.dvOpts.trafficHalo);
+    await click(); const b2 = await btn(), v2 = await page.evaluate(() => +RF.UI.dvOpts.trafficHalo);
+    ok('SL the scatter button toggles on (16) and off (0)', b1.pressed === 'true' && v1 === 16 && b2.pressed === 'false' && v2 === 0, JSON.stringify({ b1: b1.pressed, v1, b2: b2.pressed, v2 }));
     await setOpt('trafficHalo', 0); await sleep(600);
     // Put the first lamp pair at a given distance: advance the drive distance (the oncoming car is a world object that we approach)
     const lampDist = async () => { const s = await haloState(); const e = await page.evaluate(() => RF.DriveAnim._.V.p.eye); return s.lamps.length ? s.lamps[0].lamp[0] - e[0] : null; };

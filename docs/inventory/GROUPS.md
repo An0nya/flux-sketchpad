@@ -87,14 +87,14 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `road` | Road and route | 9 | 2 | 5 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 7 | 0 | 4 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 25 | 0 | 2 | 0 | 23 | 0 | 0 |
+| `halo` | Traffic halo | 28 | 0 | 4 | 0 | 24 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 15 | 0 | 12 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
 | `exposure` | Exposure and eye | 4 | 1 | 3 | 0 | 0 | 0 | 0 |
 | `performance` | Speed and quality | 7 | 0 | 6 | 0 | 0 | 0 | 1 |
-| `diagnostics` | Panels and layout | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
+| `diagnostics` | Panels and layout | 7 | 0 | 7 | 0 | 0 | 0 | 0 |
 | `internal` | Internal (no control) | 6 | 0 | 0 | 0 | 0 | 0 | 6 |
 
 #### Camera and playback (`view`)
@@ -114,7 +114,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `seed` | scenery seed | profile | More | 7 | needs `seedUsed` [disabled] |
 | `density` | scenery density | profile | More | 1.5 | needs `densityUsed` [disabled] |
 | `tiles` | route tiles | profile | More | true | - |
-| `tileCache` | cache ground | profile | More | false | needs `tilesOn` [disabled] |
+| `tileCache` | cache ground | profile | More | true | needs `tilesOn` [disabled] |
 | `mountainPass` | mountain pass (scene select) | profile | toolbar | false | - |
 | `cline` | centre line | profile | More | "solid" | needs `usRoad` [disabled] |
 | `res` | still picture width | profile | no control | 640 | - |
@@ -125,7 +125,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 |---|---|---|---|---|---|
 | `wet` | wet (legacy mirror of wetness) | profile | no control | false | - |
 | `wetSheen` | wet sheen | profile | More | false | needs `wetOn` [disabled] |
-| `wetModel` | streak model | profile | More | "legacy" | needs `wetOn` [disabled], `wetSheenOn` [disabled] |
+| `wetModel` | streak model | profile | More | "ggx" | needs `wetOn` [disabled], `wetSheenOn` [disabled] |
 | `tex` | road texture | profile | no control | true | - |
 | `surfaceSheen` | lit surface sheen | profile | More | false | - |
 | `RL` | marking reflectivity RL | profile | Spec > Road sidebar | 200 | - |
@@ -147,45 +147,48 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `scatterCycleFade` | cycle blend | profile | advanced air beam | "off" | needs `air` [hidden], `tableMode` [disabled], `cacheOn` [disabled], `cycle8` [hidden] |
 | `scatterNearFadeRange` | beam near fade | profile | advanced air beam | "medium" | needs `air` [hidden], `tableMode` [disabled] |
 | `scatterNearBias` | near-eye sampling | profile | advanced air beam | 0 | needs `air` [hidden], `tableModeHidden` [hidden] |
-| `scatterGain` | air beam gain | profile | advanced halo | 1 | needs `tableModeTip` [none] |
+| `scatterGain` | air beam gain | profile | advanced halo | 0.5 | needs `tableModeTip` [none] |
 | `airLevel` | air beam level | derived | More | (derived) | - |
 
 #### Traffic halo (`halo`)
 
 | option | label | kind | sits in | default | needs / ignored / conflicts |
 |---|---|---|---|---|---|
-| `trafficHalo` | traffic halo | profile | More | 0 | needs `air` [hidden], `trafficBeamsOn` [none] |
-| `haloBins` | halo bins | profile | advanced halo | 24 | needs `air` [hidden], `haloOn` [none] |
-| `haloDiv` | halo table divisor | profile | advanced halo | 0 | needs `air` [hidden], `haloOn` [none] |
-| `haloPolar` | halo polar | profile | advanced halo | "auto" | needs `air` [hidden], `haloOn` [none] |
+| `trafficHalo` | oncoming headlamp scatter | profile | More | 0 | needs `air` [hidden], `trafficBeamsOn` [none] |
+| `haloCars` | oncoming scatter cars | profile | More | 4 | needs `air` [hidden], `haloOn` [none] |
+| `haloRange` | oncoming scatter range (m) | profile | advanced halo | 250 | needs `air` [hidden], `haloOn` [none] |
+| `haloBins` | halo bins | profile | advanced halo | 12 | needs `air` [hidden], `haloOn` [none] |
+| `haloDiv` | halo table divisor | profile | advanced halo | 2.8 | needs `air` [hidden], `haloOn` [none] |
+| `haloPolar` | halo polar | profile | advanced halo | "off" | needs `air` [hidden], `haloOn` [none] |
 | `haloPolarBand` | auto polar table size | profile | advanced halo | "128x32" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `polarAuto` [none] |
 | `haloPolarLamps` | halo polar lamps | profile | advanced halo | 2 | needs `air` [hidden], `haloOn` [none] |
-| `haloGain` | halo gain | profile | advanced halo | 1 | needs `air` [hidden], `haloOn` [none] |
+| `haloGain` | halo gain | profile | advanced halo | 0.25 | needs `air` [hidden], `haloOn` [none] |
 | `crestOcclusion` | crest occlusion | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |
-| `haloJitter` | halo sampling | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
-| `haloJitterAmount` | halo jitter amount | profile | advanced halo | 1 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
-| `haloBlur` | halo blur | profile | advanced halo | "auto" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
-| `haloDepthBlur` | halo depth blur | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloJitter` | halo sampling | profile | advanced halo | "jittered" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloJitterAmount` | halo jitter amount | profile | advanced halo | 0.25 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloBlur` | halo blur | profile | advanced halo | "light" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloDepthBlur` | halo depth blur | profile | advanced halo | "light" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloAutoRange` | halo table auto range | profile | advanced halo | "4-8" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
-| `haloNearSub` | halo near quality | profile | advanced halo | 4 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
-| `haloConePass` | cone pass | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloNearSub` | halo near quality | profile | advanced halo | 1 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloConePass` | cone pass | profile | advanced halo | "2" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloConeAngle` | cone pass angle | profile | advanced halo | 30 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
-| `trafficShadows` | traffic shadows | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |
-| `shadowRes` | traffic shadow map size | profile | advanced halo | "1024x512" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |
+| `trafficShadows` | traffic shadows | profile | advanced halo | "all" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |
+| `shadowRes` | traffic shadow map size | profile | advanced halo | "512x512" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `passHalo` [none] |
 | `trafficShadowRoad` | traffic shadows on the road | profile | advanced halo | "on" | needs `gpu` [tooltip], `passHalo` [none] |
 | `trafficShadowObjects` | objects cast traffic shadows | profile | advanced halo | "on" | needs `gpu` [tooltip], `passHalo` [none] |
-| `trafficShadowSoft` | traffic road shadow softening | profile | advanced halo | "2x2" | needs `gpu` [tooltip], `passHalo` [none] |
-| `scatterCull` | oncoming in-scatter culling | profile | advanced halo | "exact" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
-| `scatterCullEps` | culling threshold (fast) | profile | advanced halo | 0.05 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `cullFast` [none] |
+| `trafficShadowSoft` | traffic road shadow softening | profile | advanced halo | "off" | needs `gpu` [tooltip], `passHalo` [none] |
+| `scatterCull` | oncoming in-scatter culling | profile | advanced halo | "fast" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `scatterCullEps` | culling threshold (fast) | profile | advanced halo | 0.001 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `cullFast` [none] |
 | `scatterRange` | scatter range (m) | profile | advanced halo | 120 | needs `air` [hidden] |
-| `haloQuality` | halo quality | derived | More | (derived) | - |
+| `haloQuality` | oncoming scatter quality | derived | More | (derived) | - |
+| `haloRangeRow` | oncoming range | derived | More | (derived) | - |
 
 #### Street lamps (`street-lamps`)
 
 | option | label | kind | sits in | default | needs / ignored / conflicts |
 |---|---|---|---|---|---|
 | `lampCone` | lamp cone (mist) | profile | More | "auto" | needs `gpu` [tooltip], `lampsPresent` [none], `air` [hidden] |
-| `lampConeGain` | cone gain | profile | More | 1 | needs `coneOn` [hidden] |
+| `lampConeGain` | cone gain | profile | More | 0.5 | needs `coneOn` [hidden] |
 | `lampClass` | lamp class | profile | More | "III" | needs `lampDistUsed` [none] |
 | `lampRoad` | road lamp light | profile | More | "off" | needs `lampsPresent` [none] |
 | `streetLamps` | street lamps | profile | More | "sodium" | needs `tilesOrPass` [disabled] |
@@ -197,7 +200,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `trafficShuffle` | traffic beams source | profile | More | "off" | needs `symmetricOncoming` [tooltip] |
 | `trafficOutIds` | beams left out of traffic | profile | More | [] | needs `shuffleLibrary` [none] |
 | `onMode` | oncoming headlamps | profile | More | "symmetric" | - |
-| `trafficDensity` | traffic density | profile | More | 1 | - |
+| `trafficDensity` | traffic density | profile | More | 0.5 | - |
 | `trafficLogic` | traffic logic | profile | More | false | - |
 | `safeGap` | gap guard | profile | More | true | conflicts `trafficLogicOn` [disabled] |
 | `trafficBeams` | traffic beams | profile | More | false | - |
@@ -206,8 +209,8 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `onDist` | oncoming distance (CPU still) | profile | no control | 80 | - |
 | `preDist` | preceding distance (CPU still) | profile | no control | 50 | - |
 | `onKcd` | oncoming intensity (kcd) | profile | Spec > Road sidebar | 30 | needs `manualMode` [none] |
-| `trafficRange` | traffic range | profile | More | 400 | - |
-| `trafficLightRange` | traffic light range | profile | More | "150" | needs `trafficBeamsLight` [none] |
+| `trafficRange` | traffic range | profile | More | 250 | - |
+| `trafficLightRange` | traffic light range | profile | More | "250" | needs `trafficBeamsLight` [none] |
 | `trafficNearest` | nearest cars with traffic light | profile | More | "8" | needs `trafficBeamsLight` [none] |
 
 #### Scenery and objects (`scenery`)
@@ -219,7 +222,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `signs` | signs | profile | More | true | - |
 | `reflectiveClothing` | reflective clothing | profile | More | "mix" | needs `peoplePresent` [none] |
 | `posts` | posts | profile | More | true | - |
-| `powerlines` | power lines | profile | More | "off" | - |
+| `powerlines` | power lines | profile | More | "on" | - |
 | `powerlineReflectance` | wire reflectance | profile | More | 0.22 | needs `powerlinesOn` [hidden] |
 | `veg` | trees | profile | More | true | - |
 | `obstacle` | crates | profile | More | false | - |
@@ -244,7 +247,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 
 | option | label | kind | sits in | default | needs / ignored / conflicts |
 |---|---|---|---|---|---|
-| `expMode` | exposure mode | profile | More | "fixed" | - |
+| `expMode` | exposure mode | profile | More | "adapt" | - |
 | `ev` | exposure value | profile | More | 1 | - |
 | `glare` | glare | profile | toolbar | "off" | - |
 | `ambient` | ambient light (lx) | profile | More | 0 | - |
@@ -267,7 +270,9 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 |---|---|---|---|---|---|
 | `fitControls` | fit controls | profile | More | true | - |
 | `largeCard` | large scorecard | profile | More | true | - |
-| `fpsCounter` | FPS badge | profile | More | false | - |
+| `panelMode` | panels | profile | More | "auto" | - |
+| `canvasShape` | canvas | profile | More | "wide" | - |
+| `fpsCounter` | FPS badge | profile | More | true | - |
 | `sceneDetails` | scene details panel | profile | More | false | - |
 | `debugTimings` | debug timings | profile | More | false | - |
 

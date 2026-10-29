@@ -15,7 +15,8 @@ const DEF = Opt.defaults();
 
 // ---- the history the registry holds (derived from git log of js/spec-ui.js, first-parent main, see the report)
 const histKeys = Opt.OPTIONS.filter((e) => e.defaultHistory).map((e) => e.id).sort();
-ok('the registry seeds default history only for tiles, glare, gpuRenderer, haloPolar (SP: off -> auto), lampCone (Brief U), reflectiveClothing', J(histKeys) === J(['glare', 'gpuRenderer', 'haloPolar', 'lampCone', 'reflectiveClothing', 'tiles']), histKeys);
+// OHQ/UI (10-29): + the 25 owner default changes at DEFAULTS_VERSION 4 (oncoming scatter medium, UI pass).
+ok('the registry seeds default history only for tiles, glare, gpuRenderer, haloPolar (SP), lampCone (Brief U), reflectiveClothing and the 10-29 changes', J(histKeys) === J(['expMode', 'fpsCounter', 'glare', 'gpuRenderer', 'haloBins', 'haloBlur', 'haloConePass', 'haloDepthBlur', 'haloDiv', 'haloGain', 'haloJitter', 'haloJitterAmount', 'haloNearSub', 'haloPolar', 'lampCone', 'lampConeGain', 'powerlines', 'reflectiveClothing', 'scatterCull', 'scatterCullEps', 'scatterGain', 'shadowRes', 'tileCache', 'tiles', 'trafficDensity', 'trafficLightRange', 'trafficRange', 'trafficShadowSoft', 'trafficShadows', 'wetModel']), histKeys);
 ok('every history entry names the commit and date it comes from', Opt.OPTIONS.filter((e) => e.defaultHistory).every((e) => e.defaultHistory.every((h) => /^[0-9a-f]{7}$/.test(h.commit) && /^2026-\d\d-\d\d$/.test(h.date))));
 const histOf = (id) => Opt.byId[id].defaultHistory.map((h) => h.value);
 ok('glare history is 0.3, dry, off; tiles false, true; gpuRenderer false, true; reflectiveClothing off, mix; lampCone off, auto',
@@ -60,7 +61,10 @@ const userChoice = () => Object.assign({}, DEF, { tiles: false, gpuRenderer: fal
 // SP: haloPolar 'off' was the default until DEFAULTS_VERSION 3; 'auto' since. A whole-object save from before that at 'off' is the old default and moves to 'auto'; a current-version profile at 'off' is a choice.
 {
   const old = Opt.migrateProfile(Object.assign(oldDefaults(), { haloPolar: 'off' })), cur = Opt.migrateProfile(Object.assign(oldDefaults(), { haloPolar: 'off', defaultsVersion: Opt.DEFAULTS_VERSION })), keep = Opt.migrateProfile(Object.assign(oldDefaults(), { haloPolar: 'merged' }));
-  ok('haloPolar: an old whole-object save at off moves to auto; a current-version off stays; a chosen merged stays', old.profile.haloPolar === 'auto' && cur.profile.haloPolar === 'off' && keep.profile.haloPolar === 'merged', { old: old.profile.haloPolar, cur: cur.profile.haloPolar, keep: keep.profile.haloPolar });
+  // OHQ (10-29): the default went back to 'off' at version 4 (medium level), so an old save at off already holds today's default.
+  ok('haloPolar: an old whole-object save at off stays off (the default again since v4); a current-version off stays; a chosen merged stays', old.profile.haloPolar === 'off' && cur.profile.haloPolar === 'off' && keep.profile.haloPolar === 'merged', { old: old.profile.haloPolar, cur: cur.profile.haloPolar, keep: keep.profile.haloPolar });
+  const v3 = Opt.migrateProfile(Object.assign(oldDefaults(), { haloPolar: 'auto', defaultsVersion: 3 })), v3pick = Opt.migrateProfile(Object.assign(oldDefaults(), { haloPolar: 'perlamp', defaultsVersion: 3 }));
+  ok('haloPolar: a version-3 save at auto (its default then) moves to off; a version-3 perlamp stays', v3.profile.haloPolar === 'off' && v3pick.profile.haloPolar === 'perlamp', { v3: v3.profile.haloPolar, pick: v3pick.profile.haloPolar });
 }
 // 4. unknown keys
 {
