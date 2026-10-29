@@ -30,13 +30,14 @@ async function checkWidth(browser, width, height) {
       const vis = e => !!e && !e.hidden && e.checkVisibility() && e.getBoundingClientRect().height > 0;
       const guide = document.getElementById('first-guide'), got = document.getElementById('guide-close');
       const bar = RF.UI.driveBar;
-      const controls = bar && vis(bar) ? [...bar.querySelectorAll('.drive-primary button,.drive-primary input,.drive-primary select,.drive-primary summary')].filter(e => !e.closest('.drive-extras') && vis(e)) : [];
+      const controls = bar && vis(bar) ? [...bar.querySelectorAll('.dl-top :is(button,input,select,summary)')].filter(e => vis(e)) : [];
       const pack = e => { const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
       return { vw: innerWidth, vh: innerHeight, guideVisible: vis(guide), guide: pack(guide), guideTop: getComputedStyle(guide).top, guideShown: shown(guide),
         got: vis(got) ? { rect: pack(got), shown: shown(got) } : null,
         top: vis(document.querySelector('.topbar')) ? { rect: pack(document.querySelector('.topbar')), shown: shown(document.querySelector('.topbar')) } : null,
         tabs: vis(document.getElementById('pane-tabs')) ? { rect: pack(document.getElementById('pane-tabs')), shown: shown(document.getElementById('pane-tabs')) } : null,
-        bar: vis(bar) ? { rect: pack(bar), shown: shown(bar) } : null,
+        bar: (() => { const cs = vis(bar) ? [...RF.UI.driveLayout.top.children].filter(vis) : []; if (!cs.length) return null;   // UI step C: 'drive bar' = the box around the top bar's controls (its right end is padding for the corner button)
+          const u = cs.map(pack).reduce((a, r) => ({ left: Math.min(a.left, r.left), top: Math.min(a.top, r.top), right: Math.max(a.right, r.right), bottom: Math.max(a.bottom, r.bottom) })); return { rect: u, shown: u }; })(),
         controls: controls.map(e => { const s = shown(e); const cx = (s.left + s.right) / 2, cy = (s.top + s.bottom) / 2; const hit = document.elementFromPoint(cx, cy); return { label: (e.dataset.dv || e.dataset.anim || e.dataset.game || e.textContent || e.tagName).trim().slice(0, 24), area: Math.max(0, s.right - s.left) * Math.max(0, s.bottom - s.top), cx, cy, inView: cx >= 0 && cy >= 0 && cx <= innerWidth && cy <= innerHeight, hitOk: !!hit && e.contains(hit), hitTag: hit ? (hit.id || hit.className || hit.tagName).toString().slice(0, 40) : 'null' }; }) };
     });
     const o = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;

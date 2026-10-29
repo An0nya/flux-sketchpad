@@ -19,7 +19,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // SPEED0 (2026-10-28): re-baselined for the speed slider's new range (min 0 step 1, was 5/5). The drive toolbar overlays the canvas, so its element screenshot holds the slider
 // thumb, which moves at the same 50 km/h. PROOF: the same frame with the old vs new min/step differs in 68 px, all inside the slider's box (x 174-189, y 10-25 of the canvas;
 // slider at x 148-233, y 6-30), and restoring the old range gives 0 px; with the slider line reverted, the old pins pass (WT, FG, SC, SD). The render is unchanged.
-const OLD = { dry: 'a7c3f1103f9af068e91f86236e18ea7081888c2e4fe35ef5f3172324172ab53a', wet: 'f1801595a3ee6c9c35e23fd4c71f853adddd6eb9142749a54f40c16a76a9927a' };   // before SPEED0: dry 733d190e..., wet daedeaec...
+// UI step C (2026-10-29): re-baselined for the drive layout shell. The element screenshot holds the bars that overlay the canvas top (overlay mode in this
+// small pane), which changed look; the render itself is unchanged: in overlay mode the canvas is the old size, and a headless BT probe gave readCanvas
+// hashes identical to HEAD 0e77d52 before and after a traffic shuffle (brief REVIEW-2026-10-28-presets.md, step C).
+const OLD = { dry: '6b1c4e956c20bdcc26c9af80ad005246b296fab71f18b2a1807dd69f93e10916', wet: 'f5fb83fe9bd6cab53372a9f37785558dd2013527d2d6804cf7899864d91d956b' };   // before UI step C: dry a7c3f110..., wet f1801595...; before SPEED0: dry 733d190e..., wet daedeaec...
 
 // Two contexts. The legacy-seeded one only checks the loaded option (no frame: a page that starts wet and then goes dry keeps a
 // residue that depends on the start, measured on main as well, so the frame checks start from a fresh dry load).
@@ -72,8 +75,8 @@ async function session(browser) {
       toDry.state.wetness === 0 && toDry.state.label.endsWith('dry') && toDamp.state.wetness === 0.4 && toDamp.state.label.endsWith('damp') && toWet.state.wetness === 1 && toWet.state.label.endsWith('wet'),
       [toDry.state.label, toDamp.state.label, toWet.state.label]);
     report('WT GPU renderer active at every step with no shader failure', [toDry, toDamp, toWet].every(r => r.state.renderer === 'three' && !r.state.gpuFailure), [toDry.state, toDamp.state, toWet.state]);
-    report('WT dry frame equals the pre-change dry hash', toDry.hash === OLD.dry, { got: toDry.hash.slice(0, 16), want: OLD.dry.slice(0, 16) });
-    report('WT wet frame equals the pre-change wet hash', toWet.hash === OLD.wet, { got: toWet.hash.slice(0, 16), want: OLD.wet.slice(0, 16) });
+    report('WT dry frame equals the pre-change dry hash', toDry.hash === OLD.dry, { got: toDry.hash, want: OLD.dry.slice(0, 16) });   // full got: a re-pin copies it
+    report('WT wet frame equals the pre-change wet hash', toWet.hash === OLD.wet, { got: toWet.hash, want: OLD.wet.slice(0, 16) });
     report('WT damp frame differs from dry and from wet', toDamp.hash !== toDry.hash && toDamp.hash !== toWet.hash, { damp: toDamp.hash.slice(0, 16) });
     report('WT no page or console errors', errors.length === 0, errors.slice(0, 3));
   } finally { await browser.close(); }

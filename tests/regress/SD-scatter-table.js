@@ -15,7 +15,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // SPEED0 (2026-10-28): re-baselined for the speed slider's new range (min 0 step 1, was 5/5). The drive toolbar overlays the canvas, so its element screenshot holds the slider
 // thumb, which moves at the same 50 km/h. PROOF: the same frame with the old vs new min/step differs in 68 px, all inside the slider's box (x 174-189, y 10-25 of the canvas;
 // slider at x 148-233, y 6-30), and restoring the old range gives 0 px; with the slider line reverted, the old pins pass (WT, FG, SC, SD). The render is unchanged.
-const DIRECT16 = process.env.SD_DIRECT16 || '883d591544bb3fcd2a49703b99ac910906475d46f2ecef377bfcbeb020d32101';   // before SPEED0: 35206d78...
+// UI step C (2026-10-29): re-baselined for the drive layout shell. The element screenshot holds the bars that overlay the canvas top (overlay mode in this
+// small pane), which changed look; the render itself is unchanged: in overlay mode the canvas is the old size, and a headless BT probe gave readCanvas
+// hashes identical to HEAD 0e77d52 before and after a traffic shuffle (brief REVIEW-2026-10-28-presets.md, step C).
+const DIRECT16 = process.env.SD_DIRECT16 || '14a5e025b2b760813fb0777c68aded4ae9d8d2e8d6ef61cb506ceab58b4e18a4';   // before UI step C: 883d5915...; before SPEED0: 35206d78...
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
   return page.evaluate(async (b64) => {
@@ -47,7 +50,7 @@ async function meanLuma(page, png) {
     };
     const direct = await frame('direct 16', { scatterMode: 'direct' });
     ok('SD GPU renderer is on (no GPU failure)', direct.st.renderer === 'three' && !direct.st.gpuFailure, JSON.stringify(direct.st));
-    ok('SD direct mode: the frame equals the main baseline (DIRECT16)', direct.hash === DIRECT16, direct.hash.slice(0, 12));
+    ok('SD direct mode: the frame equals the main baseline (DIRECT16)', direct.hash === DIRECT16, direct.hash);   // full hash printed: a re-pin copies it
     const table = await frame('table 48 half', { scatterMode: 'table', scatter: 48, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off' });
     ok('SD table mode renders on the GPU without failure', table.st.renderer === 'three' && !table.st.gpuFailure, JSON.stringify(table.st));
     ok('SD table frame differs from the direct frame', table.hash !== direct.hash, table.hash.slice(0, 12) + ' vs ' + direct.hash.slice(0, 12));
@@ -58,7 +61,7 @@ async function meanLuma(page, png) {
     ok('SD full-res vs half-res: mean luminance within 10 percent', Math.abs(full.luma / table.luma - 1) < 0.1, 'half ' + table.luma.toFixed(3) + ' full ' + full.luma.toFixed(3));
     ok('SD no NaN or empty frames (mean luminance finite and above zero in every table frame)', [table, blur, full].every((f) => Number.isFinite(f.luma) && f.luma > 0));
     const back = await frame('direct 16 again', { scatterMode: 'direct' });
-    ok('SD back to direct: the frame equals the baseline again', back.hash === DIRECT16, back.hash.slice(0, 12));
+    ok('SD back to direct: the frame equals the baseline again', back.hash === DIRECT16, back.hash);
     // SD2 cache: the table is redrawn only when its key changes; cycle 8 shows eight jitter versions in rotation.
     // The car moves 0.6 m per frame (the key does not depend on distance, so a straight drive must not redraw the table).
     const counters = () => page.evaluate(() => ({ ...globalThis.SD_SCATTER }));

@@ -12,7 +12,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // SPEED0 (2026-10-28): re-baselined for the speed slider's new range (min 0 step 1, was 5/5). The drive toolbar overlays the canvas, so its element screenshot holds the slider
 // thumb, which moves at the same 50 km/h. PROOF: the same frame with the old vs new min/step differs in 68 px, all inside the slider's box (x 174-189, y 10-25 of the canvas;
 // slider at x 148-233, y 6-30), and restoring the old range gives 0 px; with the slider line reverted, the old pins pass (WT, FG, SC, SD). The render is unchanged.
-const OLD_CLEAR = process.env.FG_OLD_CLEAR || 'b72a6a1eefeb3e0b587a09762c586535ee7418ae22a80d94d2c72977b464a276';   // before SPEED0: 23802573...
+// UI step C (2026-10-29): re-baselined for the drive layout shell. The element screenshot holds the bars that overlay the canvas top (overlay mode in this
+// small pane), which changed look; the render itself is unchanged: in overlay mode the canvas is the old size, and a headless BT probe gave readCanvas
+// hashes identical to HEAD 0e77d52 before and after a traffic shuffle (brief REVIEW-2026-10-28-presets.md, step C).
+const OLD_CLEAR = process.env.FG_OLD_CLEAR || '0517faf060ca81de0ba695ad4bc8ed4cba5e2916f7f3cb08d1fcd7e7b038fc62';   // before UI step C: b72a6a1e...; before SPEED0: 23802573...
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
   return page.evaluate(async (b64) => {
@@ -47,7 +50,7 @@ async function meanLuma(page, png) {
     // 1. clear air: the button is hidden and the frame is the main baseline
     const clear = await capture('clear');
     ok('SC GPU renderer is on (no GPU failure)', clear.st.renderer === 'three' && !clear.st.gpuFailure, JSON.stringify(clear.st));
-    ok('SC clear air: the frame equals the main baseline (button off, visibility off)', clear.hash === OLD_CLEAR, clear.hash.slice(0, 12));
+    ok('SC clear air: the frame equals the main baseline (button off, visibility off)', clear.hash === OLD_CLEAR, clear.hash);   // full hash printed: a re-pin copies it
     ok('SC clear air: the air beam button is hidden', clear.st.hidden === true, JSON.stringify(clear.st));
     // 2. fog 200: three clicks on the air button (clear, haze, mist, fog), then the beam button shows
     await page.evaluate(() => { const s = document.querySelector('[data-dv="visibility"]'); s.value = 'fog'; s.dispatchEvent(new Event('change')); });   // NE5: haze is a select (was three clicks)

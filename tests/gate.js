@@ -45,7 +45,8 @@ const MAP = [
   [/^js\/options-registry\.js$/, ['ui', 'nodeAll', 'node:drive-controls2', 'node:scenario-node']],   // OPTION-REGISTRY: the defaults of every option; tests/options-registry.js and options-migration.js are in NODE
   [/^js\/share-presets\.js$/, ['ui', 'node:share-presets']],   // SHARE-PRESET: #preset=<name> links; tests/share-presets.js
   [/^tests\/drive-three-page\.js$/, ['P1-drive-three', 'FG-fog', 'SC-beam-scatter']],
-  [/^index\.html$/, ['ui']], [/^tests\/load\.js$/, ['nodeAll']],
+  [/^index\.html$/, ['ui']], [/^js\/drive-layout\.js$/, ['ui', 'render', 'nodeAll']],   // UI step C: the drive layout shell moves every drive control and sizes the canvas
+  [/^tests\/load\.js$/, ['nodeAll']],
   [/^js\/compare-ui\.js$/, ['RESET-DRIVE-SETTINGS', 'AB-compare']], [/^css\/app\.css$/, ['ui', 'RESET-DRIVE-SETTINGS']],   // RESET-DRIVE-SETTINGS: the reset button lives in the A/B solve-cache bar; its CSS is the spec-mode gate
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];

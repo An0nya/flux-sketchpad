@@ -933,6 +933,15 @@
       tests: ['UX2-drive-ux'],
     },
     {
+      id: 'panelMode', kind: 'profile', type: 'enum', values: ['auto', 'push', 'overlay'],
+      default: 'auto', label: 'panels',
+      control: '[data-anim="panel-mode"]', where: 'more', query: null,
+      group: 'diagnostics', cost: 'free',
+      owner: ['js/drive-anim.js', 'js/drive-layout.js'],
+      tests: ['UX2-drive-ux'],
+      note: 'UI step C (owner 10-29): how the Drive panels share the host. push: the controls sit beside the picture and the canvas shrinks. overlay: the bars and panels float over a full-size canvas (panels start collapsed). auto: push when the host is at least 940 x 420 css px, overlay below that.',
+    },
+    {
       id: 'seed', kind: 'profile', type: 'int', values: { min: 0, max: 99999, step: 1 },
       default: 7, label: 'scenery seed',
       control: '[data-anim="seed"], [data-anim="dice"]', where: 'more', query: null,

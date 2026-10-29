@@ -1004,14 +1004,12 @@
       btn('glare', 'Eye scatter + contrast-reducing Stiles–Holladay veil: off / dry-low / dry / rain. Round Gaussian scales, capped bright input. Visual approximation, not a calibrated eye/weather model.', () => { const i = DV_GLARE.findIndex((g) => g[0] === RF.Drive.glareLevel(dvOpts(ui).glare)); setDV(ui, 'glare', DV_GLARE[(i + 1) % DV_GLARE.length][0]); });
       btn('oncoming', 'Traffic in the oncoming lane with headlamps on (manual intensity: Spec → Road)', () => setDV(ui, 'oncoming', !dvOpts(ui).oncoming));
       btn('preceding', 'Traffic ahead in our lane, with tail lamps, plates and red reflectors', () => setDV(ui, 'preceding', !dvOpts(ui).preceding));
-      const primary = el('div', { class: 'drive-primary' }), more = el('details', { class: 'drive-more' }), extras = el('div', { class: 'drive-extras', id: 'drive-extras', role: 'region', 'aria-label': 'More drive settings' });
-      more.append(el('summary', { 'aria-controls': 'drive-extras' }, 'More'), extras);
       // NE5: the air beam steps, method, res, blur, cache, cycle, near fade, near sampling and the slice text sit in a collapsed group
       // inside More. It remembers open or closed, as More does.
       const adv = el('details', { class: 'drive-air-adv', 'data-dv-group': 'air-advanced' }, el('summary', { 'aria-controls': 'drive-air-adv-body' }, 'advanced air beam'));
       const advBody = el('div', { class: 'drive-air-adv-body', id: 'drive-air-adv-body' });
       adv.append(advBody); ui.airAdvBody = advBody;
-      for (const k of ['scatter', 'scatterMode', 'scatterRes', 'scatterBlur', 'scatterCache', 'scatterCycle', 'scatterNearFadeRange', 'scatterNearBias']) { const c = bar.querySelector('[data-dv="' + k + '"]'); if (c) advBody.append(c); }
+      for (const k of ['scatter', 'scatterMode', 'scatterRes', 'scatterBlur', 'scatterCache', 'scatterCycle', 'scatterCycleFade', 'scatterNearFadeRange', 'scatterNearBias']) { const c = bar.querySelector('[data-dv="' + k + '"]'); if (c) advBody.append(c); }
       advBody.append(binIn, binTotal, binHint);
       // HDX7: the traffic halo's advanced group (a collapsed details, remembered like the air beam's). The air beam gain (scatterGain) joins it from drive-anim.
       const haloAdv = el('details', { class: 'drive-halo-adv', 'data-dv-group': 'halo-advanced' }, el('summary', { 'aria-controls': 'drive-halo-adv-body' }, 'advanced oncoming scatter'));
@@ -1024,10 +1022,10 @@
       try { adv.open = localStorage.getItem('flux/driveAirAdv') === 'true'; } catch (e) { /* ignore */ }
       adv.addEventListener('toggle', () => { try { localStorage.setItem('flux/driveAirAdv', String(adv.open)); } catch (e) { /* ignore */ } });
       bar.append(adv);
-      for (const control of [...bar.children]) (control.matches('[data-dv=scene],[data-dv=glare]') ? primary : extras).append(control);   // NE5: airLevel stays in More: the primary row sits over the drive canvas and the byte-identity checks read those pixels
-      try { more.open = localStorage.getItem('flux/driveMore') === 'true'; } catch (e) { /* ignore */ }
-      more.addEventListener('toggle', () => { if (RF.DriveAnim) RF.DriveAnim.layoutControls(ui, more.open); try { localStorage.setItem('flux/driveMore', String(more.open)); } catch (e) { /* ignore */ } });
-      ui.driveExtras = extras; primary.append(more); bar.append(primary);
+      // UI (10-29, step C): the controls go into the layout shell (js/drive-layout.js): its staging div is where every creator appends
+      // (ui.driveExtras, the old More panel's name), and place() moves each control to its tab. The bar is the shell's root.
+      const L = RF.DriveLayout.build(ui, bar), staged = [...bar.children].filter((c) => !c.matches('.dl-top,.dl-strip,.dl-body,.dl-staging'));
+      L.staging.append(...staged); ui.driveExtras = L.staging;
       wrap.append(bar);
       const ro = el('div', { class: 'drive-readout' }); wrap.append(ro);
       cv.addEventListener('mousemove', (e) => {
@@ -1041,7 +1039,7 @@
     }
     const o = dvOpts(ui), rv = rvOpts(ui), tm = ui.driveShown && ui.driveShown.tm;
     const pend = ui.dvPending || {}, ov = (k) => (k in pend ? pend[k] : o[k]);   // DD: a debounced button shows its pending value at once
-    for (const b of new Set([...bar.querySelectorAll('[data-dv]'), ...ui.driveExtras.querySelectorAll('[data-dv]')])) {
+    for (const b of new Set([...bar.querySelectorAll('[data-dv]'), ...[]])) {
       const k = b.dataset.dv;
       if (k === 'scene') b.value = o.mountainPass ? '__pass' : o.scene;
       else if (k === 'onMode') b.value = o.onMode;
@@ -1102,16 +1100,17 @@
     const rd = roadModel(ui);
     if (rd) {
       const road = rd.mdl.road;
-      let aim = ui.driveExtras.querySelector('[data-dv-aim]');
+      let aim = ui.driveBar.querySelector('[data-dv-aim]');
       if (!aim) { aim = el('span', { class: 'drive-aim', 'data-dv-aim': '' }); ui.driveExtras.append(aim); }
       const aimText = road.aim === 'manual' ? 'manual road aim ' + road.aimPct + '%' : 'aimed per ' + (md(ui).preset || 'Spec judge').replace(/-/g, ' ').toUpperCase();
       aim.textContent = 'Our beam + symmetric oncoming: ' + aimText;
       aim.title = 'Lookup shift H ' + rd.sh[0].toFixed(3) + '°, V ' + rd.sh[1].toFixed(3) + '°; fine far field with wide-field fallback. Both lamps use this same aimed lookup.';
-      const symmetric = ui.driveExtras.querySelector('[data-dv=onMode] option[value=symmetric]');
+      const symmetric = ui.driveBar.querySelector('[data-dv=onMode] option[value=symmetric]');
       symmetric.textContent = 'oncoming: our design · ' + aimText;
-      ui.driveExtras.querySelector('[data-dv=oncoming]').title = 'Oncoming lamps: ' + o.onMode + (o.onMode === 'symmetric' ? ' · ' + aimText : '') + '. Lamp selection in More.';
-      if (o.onMode === 'symmetric') ui.driveExtras.querySelector('[data-dv=oncoming]').textContent = 'oncoming · ' + aimText;
+      ui.driveBar.querySelector('[data-dv=oncoming]').title = 'Oncoming lamps: ' + o.onMode + (o.onMode === 'symmetric' ? ' · ' + aimText : '') + '. Lamp selection in Lighting > Oncoming.';
+      // UI step C: the strip button stays 'oncoming'; the aim is in its title and in Lighting > Oncoming
     }
+    RF.DriveLayout.place(ui);
   }
   // Result → Drive: what the driver sees. The beam lookup, the scene and the render are cached; exposure only redoes the tone map.
   // ---------------------------------------------------------------- the CPU driver's-eye still (LAZYCPU)
@@ -1138,12 +1137,14 @@
     return { D, mirrored };
   }
   // Where the still sits in the canvas box (no canvas write, so reading it cannot clear the canvas).
-  function stillPlace(D, w, h, mirrored) {
-    const W = D.res.w, H = D.res.h, sc = Math.min(w / W, h / H);
-    return { ox: (w - W * sc) / 2, oy: (h - H * sc) / 2, sc, flip: mirrored };
+  // UI step C: in the Drive layout the picture sits in the stage between the panels; b = the stage box in the canvas (null = the whole canvas)
+  function stillPlace(D, w, h, mirrored, b) {
+    const W = D.res.w, H = D.res.h, bx = b ? b.x : 0, by = b ? b.y : 0, bw = b ? b.w : w, bh = b ? b.h : h, sc = Math.min(bw / W, bh / H);
+    return { ox: bx + (bw - W * sc) / 2, oy: by + (bh - H * sc) / 2, sc, flip: mirrored };
   }
+  const stageOf = (ui, cv) => (RF.DriveLayout ? RF.DriveLayout.stageBox(ui, cv) : null);
   function paintStill(ui, box, ctx, D, mirrored) {
-    const W = D.res.w, H = D.res.h, p = stillPlace(D, box.w, box.h, mirrored), ox = p.ox, oy = p.oy, sc = p.sc;
+    const W = D.res.w, H = D.res.h, p = stillPlace(D, box.w, box.h, mirrored, stageOf(ui, document.getElementById('heat-canvas'))), ox = p.ox, oy = p.oy, sc = p.sc;
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     if (mirrored) { ctx.save(); ctx.translate(ox + W * sc, oy); ctx.scale(-sc, sc); ctx.drawImage(D.img, 0, 0); ctx.restore(); } else ctx.drawImage(D.img, ox, oy, W * sc, H * sc);
     ui.driveShown = { res: D.res, tm: D.tm, ox, oy, sc, flip: mirrored };
@@ -1167,7 +1168,7 @@
     const rd = roadModel(ui), cv = document.getElementById('heat-canvas');
     if (!rd || !cv) return null;
     const { D, mirrored } = cpuStill(ui, rd, dvOpts(ui), rvOpts(ui));
-    const r = cv.getBoundingClientRect(), p = stillPlace(D, r.width, r.height, mirrored);
+    const r = cv.getBoundingClientRect(), p = stillPlace(D, r.width, r.height, mirrored, stageOf(ui, cv));
     ui.driveShown = { res: D.res, tm: D.tm, ox: p.ox, oy: p.oy, sc: p.sc, flip: mirrored };
     return ui.driveShown;
   }

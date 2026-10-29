@@ -1064,7 +1064,10 @@ void main() {
   };
 
   function size() {                                           // → { cssW, cssH, dpr, W, H } for the container the canvas lives in
-    const par = V.canvas.parentElement, bw = par.clientWidth, bh = par.clientHeight, dpr = Math.min(2, root.devicePixelRatio || 1);
+    // UI step C: the canvas sits in the layout stage; while the shell is hidden (the Result pane not expanded) the stage has no box, so the host
+    // (the pane's canvas-wrap or the large view's stage) sizes it, as before the layout
+    let par = V.canvas.parentElement; if (!(par.clientWidth && par.clientHeight)) par = par.closest('.canvas-wrap, .dp-stage') || par;
+    const bw = par.clientWidth, bh = par.clientHeight, dpr = Math.min(2, root.devicePixelRatio || 1);
     // the sim width ceiling is the owner's selected level, the same for every scene and mode (it used to be a per-scene cap: 640 tiles/wet, 960 forest/city, 1600 otherwise)
     const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16;
     const scale = V.info && V.info.o.dynamicResolution && !V.pinSS ? (V.resolution || resolutionState()).scale : 1;
@@ -1204,7 +1207,7 @@ void main() {
   }
   function exposureLabel(k) {
     V.white = 1 / k;
-    const I = info(), o = I.o, b = V.ui.driveExtras && V.ui.driveExtras.querySelector('[data-dv="ev"]');
+    const I = info(), o = I.o, b = V.ui.driveBar && V.ui.driveBar.querySelector('[data-dv="ev"]');
     if (o.expMode === 'adapt' && b) b.textContent = 'EV ' + (o.ev >= 0 ? '+' : '−') + Math.abs(o.ev).toFixed(1) + ' · white ' + V.white.toPrecision(3) + ' cd/m²';
     return k;
   }
@@ -1587,22 +1590,26 @@ void main() {
 
   function bars(ui, setDV) {
     if (V.bar) return V.bar;
-    const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveBar.querySelector('.drive-primary'), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
+    const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveExtras, btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
     btn('play', 'Drive / pause: Pause freezes distance and time', () => { const current = S(ui); current.playing = !current.playing; if (current.playing && V.gpuFailure && V.gpuNote) say(V.gpuNote); setDV(ui, 'playing', current.playing); });   // drops the "Paused:" half of the GPU notice once driving again
     // High beam (H key or this button): session state on V, not saved prefs, so it is off on every reload
     btn('high-beam', 'High beam (H) cycles Off, On, Auto. Auto dips for oncoming headlamps, preceding tail lamps, urban tiles and under 30 km/h, then returns to high after 2 s clear. Off by default; not saved across reloads.', () => cycleHigh(ui), 'high beam');
-    document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.bar.hidden && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
+    document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.ui.driveBar.hasAttribute('data-noanim') && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
     btn('fit-controls', 'Compact spacing for the wrapping drive controls. Off uses wider spacing.', () => setDV(ui, 'fitControls', info().o.fitControls === false), 'fit controls');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
+    // UI step C: how the panels share the host (js/drive-layout.js modeOf). auto: push on a big host, overlay on a small one.
+    const pm = E('select', { 'data-anim': 'panel-mode', 'aria-label': 'Panels', title: 'How the controls share the drive view. Push: beside the picture (the canvas shrinks). Overlay: floating over a full-size picture, collapsed until a grab bar opens them. Auto: push when the view is at least 940 x 420, overlay when smaller. Phones always stack.' });
+    for (const [value, label] of [['auto', 'panels: auto'], ['push', 'panels: push'], ['overlay', 'panels: overlay']]) pm.append(E('option', { value }, label));
+    pm.addEventListener('change', () => setDV(ui, 'panelMode', pm.value)); bar.append(pm);
     const sp = E('input', { type: 'range', min: 0, max: 130, step: 1, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Target speed, 0 = stopped (traffic keeps moving). Mountain pass always slows for bends; traffic logic adds road limits and queues' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); speedLabel(ui); });
     const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
     const speedBox = E('span', { class: 'drive-speed' }); speedBox.append(sp, lab);
-    primary.querySelector('[data-dv=scene]').after(speedBox);
+    primary.append(speedBox);   // UI step C: staged; the layout puts it in the strip
     primary.append(bar.querySelector('[data-anim=play]'));
     btn('traffic-logic', 'IDM car following and red/yellow stops. Cars turn at junctions and yield to oncoming traffic. Speed targets the lower of slider and road limit; actual speed appears when different. Off uses scripted traffic; Mountain pass curve speeds remain active.', () => { st.camera = null; setDV(ui, 'trafficLogic', !info().o.trafficLogic); }, 'traffic logic');
     btn('gap', 'Remove a preceding car at max(25 m, 2 seconds of our current speed); the seeded stream supplies the next car ahead. Off = original traffic without a gap guard.', () => setDV(ui, 'safeGap', info().o.safeGap === false), 'gap guard');
     for (const [name, key, label, title] of [
-      ['traffic-beams', 'trafficBeams', 'traffic beams', 'Nearest cars (8 by default, see traffic light range and nearest cars) cast low beams onto road and objects, fading out toward the range. CPU uses full-frame tracing.'],
+      ['traffic-beams', 'trafficBeams', 'oncoming headlamps', 'Nearest cars (8 by default, see traffic light range and nearest cars) cast low beams onto road and objects, fading out toward the range. CPU uses full-frame tracing.'],
       ['surface-sheen', 'surfaceSheen', 'lit surface sheen', 'Up to eight lit sign/bright faces add wet streaks from integrated returned luminance and area.'],
       ['afs', 'afs', 'AFS', 'Adaptive front-lighting: low beam swivels into tiled bends, up to 15 degrees.'],
       ['cornering-lamps', 'corneringLamps', 'cornering lamps', 'Wide separate lamps fade into tight bends below 40 km/h. Generic study, not measured lamp photometry.'],
@@ -1764,12 +1771,13 @@ void main() {
       downloadBeams(obj, parsed.length === 1 ? 'beam.json' : 'beams.json'); V.beamMsg.textContent = 'Downloaded ' + parsed.length + ' beam' + (parsed.length === 1 ? '' : 's') + '.';
     }, 'export');
     V.fillOwn = () => { fillOwn(); V.libVer = LIB.ver; }; V.fillOwn();
-    bar.append(E('span', { class: 'anim-speed' }, 'beam'), ownLow, ownHigh, fileIn, V.beamMsg);
+    bar.append(E('span', { class: 'anim-speed', 'data-dl': 'beam-label' }, 'beam'), ownLow, ownHigh, fileIn, V.beamMsg);
     // BB2 library manager: one row per saved beam (rename, delete), and clear all (two clicks)
     V.setOwn = (k, v) => setDV(ui, k, v);
     V.mgr = E('details', { class: 'beam-manager', 'data-anim': 'beam-manager', style: 'flex-basis:100%' }, E('summary', {}, 'library'));
     V.mgr.addEventListener('toggle', () => { if (V.mgr.open) ensureBuiltins(); });
     bar.append(V.mgr); renderManager();
+    for (const e of bar.children) e.classList.add('dl-anim');   // UI step C: the controls the anim gating hides (play and speed sit in the strip, never hidden)
     V.bar = bar; return bar;
   }
   // BB2: the library rows. Rename and delete change the library in memory first and then the stored copy; a failed store says so.
@@ -1852,7 +1860,7 @@ void main() {
     tiles.addEventListener('click', () => setDV(ui, 'tiles', !info().o.tiles));
     const game = E('button', { type: 'button', class: 'toggle', 'data-game': 'toggle', 'aria-pressed': 'false', title: 'Reach > uniformity: five hazards, hold Space or Brake. Game scoring, not legal advice.' }, 'Game');
     game.addEventListener('click', () => toggleGame(ui));
-    const primary = tb.querySelector('.drive-primary'); primary.querySelector('.drive-speed') ? primary.querySelector('.drive-speed').after(game) : primary.querySelector('[data-dv=scene]').after(game);
+    ui.driveExtras.append(game);   // UI step C: the layout puts it in the top bar
     ui.driveExtras.append(tiles);
   }
   function speedLabel(ui) {
@@ -1900,55 +1908,56 @@ void main() {
     for (const b of q('[data-anim="popout"]')) { const label = st.popout ? 'Close large view' : 'Large view'; b.setAttribute('aria-pressed', String(st.popout)); b.setAttribute('aria-label', label); b.title = label; b.disabled = !sup; b.textContent = st.popout ? '⤡' : '⤢'; }
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     if (!V.bar) return;
-    V.bar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
-    const hb = V.bar.querySelector('[data-anim="high-beam"]'), mode = V.highMode || 'off';
+    V.ui.driveBar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
+    const hb = V.ui.driveBar.querySelector('[data-anim="high-beam"]'), mode = V.highMode || 'off';
     hb.setAttribute('aria-pressed', String(!!V.high)); hb.dataset.state = mode;
     hb.textContent = mode === 'auto' ? 'high beam: auto (' + (V.autoSt ? V.autoSt.reason : 'clear') + ')' : 'high beam: ' + mode;
-    for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['scene-details', 'sceneDetails'], ['dynamic-resolution', 'dynamicResolution']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
-    V.bar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
-    V.bar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
-    V.bar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
+    for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['scene-details', 'sceneDetails'], ['dynamic-resolution', 'dynamicResolution']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
+    V.ui.driveBar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
+    V.ui.driveBar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
+    V.ui.driveBar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
-    for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.bar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
-    V.bar.hidden = !(sup && (st.view === 'anim' || st.popout));
+    V.ui.driveBar.querySelector('[data-anim="panel-mode"]').value = ['push', 'overlay'].includes(o.panelMode) ? o.panelMode : 'auto';
+    for (const [name, key] of [['fit-controls', 'fitControls'], ['large-card', 'largeCard']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
+    ui.driveBar.toggleAttribute('data-noanim', !(sup && (st.view === 'anim' || st.popout)));   // UI step C: hides the .dl-anim controls (they left V.bar for the tabs)
     const run = st.playing && (st.view === 'anim' || st.popout), pb = ui.driveBar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ Pause' : '▶ Drive'; pb.setAttribute('aria-pressed', String(run));
     ui.driveBar.querySelector('[data-anim="speed"]').value = o.speed; speedLabel(ui);
-    for (const [k] of CLASSES) { const b = V.bar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
-    { const sel = V.bar.querySelector('[data-anim="powerlines"]'); if (sel) sel.value = o.powerlines === 'on' ? 'on' : 'off'; }
-    { const pv = o.powerlineReflectance === undefined ? 0.22 : o.powerlineReflectance, sl = V.bar.querySelector('[data-anim="powerline-reflectance"]'); if (sl) { sl.value = String(pv); sl._show(); } }
-    { const t = V.bar.querySelector('[data-anim="traffic-density"]'); t.value = o.trafficDensity === undefined ? 1 : o.trafficDensity; t._show(); }
+    for (const [k] of CLASSES) { const b = V.ui.driveBar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
+    { const sel = V.ui.driveBar.querySelector('[data-anim="powerlines"]'); if (sel) sel.value = o.powerlines === 'on' ? 'on' : 'off'; }
+    { const pv = o.powerlineReflectance === undefined ? 0.22 : o.powerlineReflectance, sl = V.ui.driveBar.querySelector('[data-anim="powerline-reflectance"]'); if (sl) { sl.value = String(pv); sl._show(); } }
+    { const t = V.ui.driveBar.querySelector('[data-anim="traffic-density"]'); t.value = o.trafficDensity === undefined ? 1 : o.trafficDensity; t._show(); }
     { const g = Math.min(4, Math.max(0.25, +o.scatterGain || 1)); V.scatGainEl.value = Math.log2(g); V.scatGainEl._show(g); }
     { const e = Math.min(100, Math.max(1e-4, +o.scatterCullEps || 0.05)); V.cullEpsEl.value = Math.log10(e); V.cullEpsEl._show(e); }
     V.cullEpsEl.hidden = V.cullEpsEl._box.hidden = o.scatterCull !== 'fast' || o.visibility == null;   // LBL: the unit hides with the slider, so no orphan name
     V.rangeEl.value = String(Math.min(400, Math.max(50, +o.scatterRange || 120))); V.rangeEl._show(); V.rangeEl.hidden = V.rangeEl._box.hidden = o.visibility == null;
     V.jitAmtEl.value = String(o.haloJitterAmount === undefined ? 1 : +o.haloJitterAmount); V.jitAmtEl._show(); V.jitAmtEl.hidden = V.jitAmtEl._box.hidden = o.visibility == null || o.haloJitter !== 'jittered';
     V.coneAngEl.value = String(o.haloConeAngle === undefined ? 30 : +o.haloConeAngle); V.coneAngEl._show(); V.coneAngEl.hidden = V.coneAngEl._box.hidden = o.visibility == null || !['1', '2'].includes(String(o.haloConePass));
-    V.bar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));
-    V.bar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
-    V.bar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
+    V.ui.driveBar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));
+    V.ui.driveBar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
+    V.ui.driveBar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
     if (V.fillOwn && V.libVer !== LIB.ver) V.fillOwn();
     if (V.shuf) { V.shuf.value = o.trafficShuffle === 'library' ? 'library' : 'off'; V.shuf.title = shuffleTip(o); }
     if (V.trafficList) for (const c of V.trafficList.querySelectorAll('input[type=checkbox]')) c.checked = !(Array.isArray(o.trafficOutIds) && o.trafficOutIds.includes(c.dataset.id));
     if (V.nameIn) V.nameIn.placeholder = beamDefaultName(info());
-    if (V.fillOwn) { V.bar.querySelector('[data-anim="own-low"]').value = o.ownLow && o.ownLow !== 'design' && libFind(o.ownLow, 'low') ? o.ownLow : 'design'; V.bar.querySelector('[data-anim="own-high"]').value = o.ownHigh && o.ownHigh !== 'generic' && libFind(o.ownHigh, 'high') ? o.ownHigh : 'generic'; }
+    if (V.fillOwn) { V.ui.driveBar.querySelector('[data-anim="own-low"]').value = o.ownLow && o.ownLow !== 'design' && libFind(o.ownLow, 'low') ? o.ownLow : 'design'; V.ui.driveBar.querySelector('[data-anim="own-high"]').value = o.ownHigh && o.ownHigh !== 'generic' && libFind(o.ownHigh, 'high') ? o.ownHigh : 'generic'; }
     if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0);
     const trafficOn = o.oncoming || o.preceding;
     if (V.flashLab) V.flashLab.hidden = !trafficOn;
-    V.bar.querySelector('[data-anim="reset-flashes"]').hidden = !trafficOn;
-    V.bar.querySelector('[data-anim="traffic-logic"]').setAttribute('aria-pressed', String(!!o.trafficLogic));
-    V.bar.querySelector('[data-anim="gap"]').setAttribute('aria-pressed', String(o.safeGap !== false)); V.bar.querySelector('[data-anim="gap"]').disabled = !!o.trafficLogic;
-    V.bar.querySelector('[data-anim="tile-cache"]').setAttribute('aria-pressed', String(!!o.tileCache)); V.bar.querySelector('[data-anim="tile-cache"]').disabled = !o.tiles;
-    V.bar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.bar.querySelector('[data-anim="street-lamps"]').disabled = !(o.tiles || o.mountainPass);
+    V.ui.driveBar.querySelector('[data-anim="reset-flashes"]').hidden = !trafficOn;
+    V.ui.driveBar.querySelector('[data-anim="traffic-logic"]').setAttribute('aria-pressed', String(!!o.trafficLogic));
+    V.ui.driveBar.querySelector('[data-anim="gap"]').setAttribute('aria-pressed', String(o.safeGap !== false)); V.ui.driveBar.querySelector('[data-anim="gap"]').disabled = !!o.trafficLogic;
+    V.ui.driveBar.querySelector('[data-anim="tile-cache"]').setAttribute('aria-pressed', String(!!o.tileCache)); V.ui.driveBar.querySelector('[data-anim="tile-cache"]').disabled = !o.tiles;
+    V.ui.driveBar.querySelector('[data-anim="street-lamps"]').value = o.streetLamps || 'sodium'; V.ui.driveBar.querySelector('[data-anim="street-lamps"]').disabled = !(o.tiles || o.mountainPass);
     if (V.reflSel) V.reflSel.value = RF.Drive.pedMode(o.reflectiveClothing);
-    V.bar.querySelector('[data-anim="ambient"]').value = String(o.ambient || 0);
+    V.ui.driveBar.querySelector('[data-anim="ambient"]').value = String(o.ambient || 0);
     V.tileLab.hidden = !o.tiles;
     const wd = o.wild && o.scene === 'road';        // forest and city keep their existing scenery
-    V.bar.querySelector('[data-anim="seed"]').value = o.seed; V.bar.querySelector('[data-anim="seed"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest'))); V.bar.querySelector('[data-anim="dice"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest')));
-    V.bar.querySelector('[data-anim="density"]').value = o.density; V.bar.querySelector('[data-anim="density"]')._show(); V.bar.querySelector('[data-anim="density"]').disabled = !(wd || (o.leafyFoliage && (o.scene === 'forest' || o.scene === 'road')));
-    const cl = V.bar.querySelector('[data-anim="cline"]'); cl.disabled = !I.us; cl.textContent = o.cline === 'broken' && I.us ? 'centre: broken' : 'centre: solid'; cl.setAttribute('aria-pressed', String(o.cline === 'broken' && I.us));
+    V.ui.driveBar.querySelector('[data-anim="seed"]').value = o.seed; V.ui.driveBar.querySelector('[data-anim="seed"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest'))); V.ui.driveBar.querySelector('[data-anim="dice"]').disabled = !(wd || trafficOn || o.tiles || (o.leafyFoliage && (o.scene === 'road' || o.scene === 'forest')));
+    V.ui.driveBar.querySelector('[data-anim="density"]').value = o.density; V.ui.driveBar.querySelector('[data-anim="density"]')._show(); V.ui.driveBar.querySelector('[data-anim="density"]').disabled = !(wd || (o.leafyFoliage && (o.scene === 'forest' || o.scene === 'road')));
+    const cl = V.ui.driveBar.querySelector('[data-anim="cline"]'); cl.disabled = !I.us; cl.textContent = o.cline === 'broken' && I.us ? 'centre: broken' : 'centre: solid'; cl.setAttribute('aria-pressed', String(o.cline === 'broken' && I.us));
     cl.title = I.us ? 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)' : 'Only on the US presets (the EU presets already have a dashed centre line)';
-    for (const k of ['rpm']) V.bar.querySelector('[data-anim="c-' + k + '"]').disabled = false;   // SB1: studs on every scene, the pass included
-    const mb = V.bar.querySelector('[data-anim="c-mt"]'); mb.disabled = typeof Worker === 'undefined' || !!Wk.failed; if (Wk.failed) mb.title = V.why;
+    for (const k of ['rpm']) V.ui.driveBar.querySelector('[data-anim="c-' + k + '"]').disabled = false;   // SB1: studs on every scene, the pass included
+    const mb = V.ui.driveBar.querySelector('[data-anim="c-mt"]'); mb.disabled = typeof Worker === 'undefined' || !!Wk.failed; if (Wk.failed) mb.title = V.why;
   }
 
   // ---------------------------------------------------------------- Reach > uniformity (all state is local to this view)
@@ -2108,7 +2117,7 @@ void main() {
     }
     if (V.notice) V.notice.hidden = !V.why || (st.gameMode && !V.lost);
     V.gameBar.hidden = !st.gameMode; V.gameBar.classList.toggle('running', !!st.game && !st.game.done); mount(ui);
-    if (st.gameMode) V.bar.hidden = true;
+    if (st.gameMode) ui.driveBar.setAttribute('data-noanim', '');
     musicSync(ui);
     const toggle = info().toolbar.querySelector('[data-game="toggle"]'); if (toggle) { toggle.setAttribute('aria-pressed', String(!!st.gameMode)); toggle.textContent = st.gameMode ? 'Exit game' : 'Game'; }
     // Freeze run inputs and the underlying toolbar; exit restores the owner's preferences in memory.
@@ -2148,7 +2157,7 @@ void main() {
     };
     document.addEventListener('keydown', V.onKey, true);
     if (root.ResizeObserver) { V.ro = new ResizeObserver(() => { if (S(ui).popout) { ui.redrawSpec(); } }); V.ro.observe(stage); }
-    mount(ui); close.focus(); ui.redrawSpec();
+    mount(ui); (pop.querySelector('[data-anim=popout]') || close).focus(); ui.redrawSpec();   // UI step C: the header is hidden; focus lands on the large-view button (top right), which closes it
   }
   function closePop(ui) {
     const st = S(ui); if (!st.popout) return; st.popout = false; V.cardPop = false;
@@ -2160,37 +2169,30 @@ void main() {
     const b = saved && saved.focus && saved.focus.isConnected && saved.focus !== document.body ? saved.focus : document.querySelector('[data-anim="popout"]'); if (b) b.focus({ preventScroll: true });
     if (saved) root.scrollTo({ left: saved.x, top: saved.y, behavior: 'instant' }); V.popScroll = null;
   }
-  // More and debug are ordinary page content on phones; desktop keeps the overlay.
-  const mobileControls = () => root.matchMedia('(max-width: 760px), (pointer: coarse)').matches;
-  function layoutControls(ui, scroll) {
-    const st = S(ui), host = st.popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement;
-    if (!host || !ui.driveExtras) return;
-    const mobile = mobileControls(), more = ui.driveBar.querySelector('.drive-more');
+  // UI step C: the layout shell (js/drive-layout.js) owns placement. layoutControls puts the readouts in their tabs, keeps the game bar
+  // under the host, and lets the shell pick wide or tall from the host's size.
+  function layoutControls(ui) {
+    const st = S(ui), host = st.popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement, L = ui.driveLayout;
+    if (!host || !L) return;
     if (!V.below) V.below = E('div', { class: 'drive-below' });
     if (host.nextElementSibling !== V.below) host.after(V.below);
     V.below.hidden = !st.popout && ui.display !== 'drive';
-    const extrasHost = mobile ? V.below : more;
-    if (ui.driveExtras.parentElement !== extrasHost) extrasHost.append(ui.driveExtras);
-    ui.driveExtras.hidden = !more.open;
-    if (V.perfLab && V.perfLab.parentElement !== (mobile ? V.below : host)) (mobile ? V.below : host).append(V.perfLab);
     if (V.gameBar && V.gameBar.parentElement !== V.below) V.below.prepend(V.gameBar);
-    if (V.fpsLab && V.fpsLab.parentElement !== host) host.append(V.fpsLab);
-    const h = ui.driveBar.getBoundingClientRect().height;
-    host.style.setProperty('--drive-toolbar-bottom', (h + 8) + 'px');
-    host.style.setProperty('--drive-extra-height', Math.max(40, host.clientHeight - h - 16) + 'px');
-    if (mobile && scroll && more.open) requestAnimationFrame(() => ui.driveExtras.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    if (V.perfLab && V.perfLab.parentElement !== L.panes.timings) L.panes.timings.append(V.perfLab);
+    if (V.fpsLab && V.fpsLab.parentElement !== L.stage) L.stage.append(V.fpsLab);
+    RF.DriveLayout.place(ui);
   }
   function mount(ui) {
     const st = S(ui), host = st.popout && V.popStage ? V.popStage : (V.cv ? V.cv.parentElement : null); if (!host) return;
     host.classList.toggle('drive-fit', info().o.fitControls !== false);
-    for (const e of [V.canvas, ui.driveBar, V.notice, document.querySelector('[data-reset=heat]')]) if (e && e.parentElement !== host) host.append(e);
-    const primary = ui.driveBar.querySelector('.drive-primary');
-    for (const selector of ['[data-dv=scene]', '.drive-speed', '[data-anim=play]', '[data-game=toggle]', '[data-dv=glare]', '.drive-more']) {
-      const e = primary.querySelector(selector); if (e && primary.lastElementChild !== e) primary.append(e);
-    }
+    for (const e of [ui.driveBar, document.querySelector('[data-reset=heat]')]) if (e && e.parentElement !== host) host.append(e);
+    const L = ui.driveLayout;
+    if (L) for (const e of [V.canvas, V.notice, host.querySelector('.drive-readout')]) if (e && e.parentElement !== L.stage) L.stage.append(e);
     if (!V.controlsRO && root.ResizeObserver) {
-      V.controlsRO = new ResizeObserver(() => layoutControls(ui)); V.controlsRO.observe(ui.driveBar);
-      const query = root.matchMedia('(max-width: 760px), (pointer: coarse)'); query.addEventListener('change', () => { layoutControls(ui); ui.redrawSpec(); });
+      // the host decides wide or tall; the stage's size is the canvas size, so a change refits the picture
+      let last = '';
+      V.controlsRO = new ResizeObserver(() => { const s = L.stage, k = s.clientWidth + 'x' + s.clientHeight; layoutControls(ui); if (k !== last) { last = k; if (V.ui) ui.redrawSpec(); } });
+      V.controlsRO.observe(L.stage); V.controlsRO.observe(ui.driveBar);
     }
     layoutControls(ui);
   }
@@ -2333,7 +2335,7 @@ void main() {
     if (!detailsOn()) { detailsSync(false); return; }
     detailsSample();
     const snap = V.detailsSnap = detailsSnapshot();
-    const host = S(V.ui).popout && V.popStage ? V.popStage : V.cv && V.cv.parentElement;
+    const L = V.ui.driveLayout, host = L ? L.panes.details : null;   // UI step C: the Details tab
     if (!host) return;
     detailsRender(snap);
     if (V.detailsEl.parentElement !== host) host.append(V.detailsEl);

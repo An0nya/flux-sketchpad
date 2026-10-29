@@ -31,12 +31,12 @@
       if (u.dvAnim.popout) D.closePop(u);
       Object.assign(u.dvOpts, { scene: 'road', mountainPass: false, tiles: false, wild: false, gpuRenderer: false, mt: false, trafficLogic: false, oncoming: false, preceding: false, people: true, animals: true, signs: true, expMode: 'fixed', onMode: 'symmetric', glare: 'off', wet: true, wetSheen: false, detailedModels: false, dynamicResolution: false, fpsCounter: false, debugTimings: false });
       Object.assign(u.dvAnim, { view: 'anim', playing: false, dist: 0, total: 0, t: 0 }); u.rvOpts.shape = 'straight'; u.redrawSpec(); await settle();
-      const trace = u.run.ctx, opticalScene = RF.State.serialize(u.store.scene), more = u.driveBar.querySelector('.drive-more');
+      const trace = u.run.ctx, opticalScene = RF.State.serialize(u.store.scene);
       const all = selector => [...new Set([...u.driveBar.querySelectorAll(selector), ...u.driveExtras.querySelectorAll(selector)])];
       const get = selector => all(selector)[0];
       ok('CD no static-mode control or duplicate class switches', !document.querySelector('[data-anim=animate],[data-dv=people],[data-dv=animals],[data-dv=signs],[data-anim=mountain-pass]'));
-      more.open = true; D.layoutControls(u); await settle();
       for (const [key, selector] of Object.entries(oldOptions)) {
+        RF.DriveLayout.reveal(u, selector); await settle();   // UI step C: each control sits in its own tab (was all in More)
         const controls = all(selector);
         ok('CD former static option reachable exactly once: ' + key, controls.length === 1 && controls[0].checkVisibility() && !controls[0].disabled, selector);
       }
@@ -81,7 +81,7 @@
         ok('CD saved ' + view + ' preference loads paused without losing settings', u.dvAnim.view === 'anim' && !u.dvAnim.playing && u.dvAnim.dist === 17 && u.dvAnim.t === 3 && !V.canvas.hidden && u.dvOpts.ev === 2.5 && u.dvOpts.seed === 19 && stored.view === 'anim' && stored.playing === false);
       }
       const play = get('[data-anim=play]');
-      more.open = false; D.layoutControls(u); play.click(); await sleep(600);
+      D.layoutControls(u); play.click(); await sleep(600);
       ok('CD Play advances distance and time', u.dvAnim.playing && u.dvAnim.dist > 17 && u.dvAnim.t > 3 && JSON.parse(localStorage.getItem('flux/driveView')).playing === true);
       play.click(); await settle(); const frozen = { dist: u.dvAnim.dist, t: u.dvAnim.t }; await sleep(500);
       ok('CD Pause freezes distance and time with renderer visible', !u.dvAnim.playing && u.dvAnim.dist === frozen.dist && u.dvAnim.t === frozen.t && !V.canvas.hidden && !D.stats().running && JSON.parse(localStorage.getItem('flux/driveView')).playing === false, frozen);
@@ -90,13 +90,13 @@
       for (const popout of [false, true]) {
         if (popout) D.openPop(u);
         for (const open of [false, true]) for (const fit of [true, false]) {
-          more.open = open; u.dvOpts.fitControls = fit; u.redrawSpec(); await settle(); D.layoutControls(u); await settle();
+          RF.DriveLayout.setOpen(u, 'left', open); u.dvOpts.fitControls = fit; u.redrawSpec(); await settle(); D.layoutControls(u); await settle();
           const m = UX2Page.measure(); layouts.push({ popout, open, fit, ...m });
-          ok('CD no overlap at ' + innerWidth + ' ' + JSON.stringify({ popout, open, fit }), m.collisions.length === 0 && m.clipped.length === 0 && m.wrap && m.extrasFit && m.within && m.below && m.debugBelow, m);
+          ok('CD no overlap at ' + innerWidth + ' ' + JSON.stringify({ popout, open, fit }), m.collisions.length === 0 && m.clipped.length === 0 && m.within && m.debugIn && m.inStage && m.covered === 0, m);   // UI step C: UX2Page.measure's shell invariants
         }
         if (popout) D.closePop(u);
       }
-      more.open = false; D.layoutControls(u);
+      D.layoutControls(u);
       ok('CD original optical scene remains unchanged and round-trips', RF.State.serialize(u.store.scene) === opticalScene && RF.State.serialize(RF.State.deserialize(opticalScene)) === opticalScene && u.run.ctx === trace && !u.solving);
       ok('CD no console errors during migration and interactions', errors.length === 0, errors);
       return { pass: checks.every(c => c.pass), checks, layouts, oldOptions, viewport: [innerWidth, innerHeight] };
