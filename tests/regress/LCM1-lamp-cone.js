@@ -45,7 +45,7 @@ async function frame(page, name) {
   for (let i = 0; i < 12; i++) {
     await sleep(1200);
     await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sl-drive', '1'));
-    const dims = await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas; Object.assign(c.style, { position: 'fixed', left: '0px', top: '0px', margin: '0px', zIndex: '99999' }); RF.UI.driveBar.style.zIndex = '99999'; RF.UI.driveLayout.stage.style.zIndex = '99999'; return [c.width, c.height]; });   // UI step C: the canvas sits in the layout shell and (overlay mode) its stage, each a stacking context under the floating bars: lift both
+    const dims = await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas; Object.assign(c.style, { position: 'fixed', left: '0px', top: '0px', margin: '0px', zIndex: '99999' }); return [c.width, c.height]; });
     b = await page.screenshot({ clip: { x: 0, y: 0, width: dims[0], height: dims[1] } });
     const h = sha(b); if (h === prev) break; prev = h;
   }

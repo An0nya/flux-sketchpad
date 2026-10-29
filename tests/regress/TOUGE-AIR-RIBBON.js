@@ -16,6 +16,8 @@
 // Pass DIRECT is no longer equal to main (the ribbon is lit now: the TOUGE-AIR pin abd1716ffbc3cbe5 was re-baselined to c61ed72727ebe7b3; cause: ribbon in-scatter; the old hash
 // reproduces on exp/touge-air 9495055, where the ribbon main has no inScatter).
 // Pins: sha1 of the 912x513 clip at y=140, samples '1', real GPU (Apple M4, Metal), 2026-10-23. Run: python3 tests/serve.py <port>, then node tests/regress/TOUGE-AIR-RIBBON.js <port>
+// UI step C (2026-10-29): the frame is the drive canvas pinned at page 0,0 (was the page region y >= 140, which sat on the canvas only while the large view had
+// its 30 px header; the layout shell dropped it and the region moved off the picture). Pins below re-baselined for that capture (old -> new: 115fb318 -> dfc80ab3, 3266a5da -> 62d70c92, f77ebc71 -> fee8105e, 56f9dbe5 -> bf839917, 82394e38 -> faa17959); the halo tables (bin, cum) still match.
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const port = +(process.argv[2] || 8808);
@@ -24,7 +26,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha1').update(b).digest('hex').slice(0, 16);
 // FLAT-PEDS re-pin 2026-10-26 (overnight integration): the 3 flat pins moved twice from pedestrian scene content, not from the air beam: S 1a410c9 (seeded walker kinds) alone gives fb1d593fb29629fd/3c9e451ffd49640b/2a15ef2c7aa258b3 (== wave-2 main e51c4bc; G d51aedb alone is clean, so D/G did not move them), then T 228686b (drive-anim walkers seeded) gives the values below. Pass pins unchanged (no pedestrians on the pass). Moved: aebd2efecedf013b, 20b772fd22a494fb, 4ae1db90b4e48d2b -> 115fb31893469501, 3266a5da9b5cf2d9, f77ebc71307f9284.
-const PIN = { flatOff: '115fb31893469501', flatDirect: '3266a5da9b5cf2d9', flatTable: 'f77ebc71307f9284', passOff: '56f9dbe5248ce7e0', passDirect: '82394e38742fa84b' };   // REVIEW integ 2026-10-26: passOff 63f8badcba9151b0 -> 56f9dbe5248ce7e0 and passDirect 52d3bb530057cdd2 -> 82394e38742fa84b, cause: B6 (shadow normal n instead of dFdx in the lamp loop): proved, the old hash returns with only that line reverted   // REVIEW B4 (2026-10-26): c61ed72727ebe7b3 -> 52d3bb530057cdd2, cause: the pass sky now adds our own in-scatter (proved: removing only that line gives c61ed72727ebe7b3 again)
+const PIN = { flatOff: 'dfc80ab335bcccd5', flatDirect: '62d70c92cf4d3128', flatTable: 'fee8105ea61877f0', passOff: 'bf839917bac17c7f', passDirect: 'faa1795930af7149' };   // REVIEW integ 2026-10-26: passOff 63f8badcba9151b0 -> 56f9dbe5248ce7e0 and passDirect 52d3bb530057cdd2 -> 82394e38742fa84b, cause: B6 (shadow normal n instead of dFdx in the lamp loop): proved, the old hash returns with only that line reverted   // REVIEW B4 (2026-10-26): c61ed72727ebe7b3 -> 52d3bb530057cdd2, cause: the pass sky now adds our own in-scatter (proved: removing only that line gives c61ed72727ebe7b3 again)
 const DEFAULT_FADE = 'medium';   // registry default of scatterNearFadeRange: set in BASE so the NOFADE rows do not leak into later shots
 const LIT_FLOOR = 60000, RATIO_TOL = 0.06, L1_TOL = 0.06;
 const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, ambient: 0, samples: '1', visibility: 60, scatter: 0, scatterMode: 'direct', scatterCache: 'off', scatterCycle: 1, scatterCycleFade: 'off', trafficHalo: 0, scatterNearFadeRange: DEFAULT_FADE };
@@ -57,7 +59,7 @@ const D16 = { scatter: 16 }, T16 = { scatter: 16, scatterMode: 'table' }, NOFADE
   const shot = async (page, name, o, dist = 750) => {
     await page.evaluate(async ([o, dist]) => { const V = RF.DriveAnim._.V; for (const [k, v] of Object.entries(o)) V.setOwn(k, v); RF.UI.dvAnim.dist = dist; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 4000)); }, [{ ...BASE, ...o }, dist]);
     const st = await page.evaluate(() => ({ touge: !!RF.DriveAnim._.V.p.touge, fail: RF.DriveAnim._.V.gpuFailure || null, link: window.__linkFail.length }));
-    const buf = await page.screenshot({ clip: { x: 0, y: 140, width: 912, height: 513 } });
+    const buf = await (await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas; Object.assign(c.style, { position: 'fixed', left: '0px', top: '0px', margin: '0px', zIndex: '99999' }); }), page.screenshot({ clip: { x: 0, y: 0, width: 912, height: 513 } }));
     await page.evaluate(async ([name, b64]) => { const bm = await createImageBitmap(await fetch('data:image/png;base64,' + b64).then((r) => r.blob())); const c = new OffscreenCanvas(bm.width, bm.height), x = c.getContext('2d'); x.drawImage(bm, 0, 0); window.__f[name] = x.getImageData(0, 0, bm.width, bm.height).data; }, [name, buf.toString('base64')]);
     return { h: sha(buf), st };
   };

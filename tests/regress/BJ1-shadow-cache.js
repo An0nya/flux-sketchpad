@@ -6,6 +6,8 @@
 //   (4) the first frame at 1332 matches the pre-change hash (pinned: the same frame on main before BRIEF J item 1, measured with the same clip).
 // Not covered here: a lamp-only change or a pitch-only change at the same dist (the key includes them; no page control moves them alone).
 // Run: python3 tests/serve.py <port>, then PLAYWRIGHT=... node tests/regress/BJ1-shadow-cache.js <port>
+// UI step C (2026-10-29): the frame is the drive canvas pinned at page 0,0 (was the page region y >= 140, which sat on the canvas only while the large view had
+// its 30 px header; the layout shell dropped it and the region moved off the picture). Pins below re-baselined for that capture (old -> new: 576735c5 -> b9356772); the halo tables (bin, cum) still match.
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const port = +(process.argv[2] || 8806);
@@ -13,7 +15,7 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex').slice(0, 16);
-const PIN_DIP = '576735c50d58f552';   // BRIEF J: pass_dip_1332 on main d20fe9d (clip y 140, 912x373), before the skip; unchanged after
+const PIN_DIP = 'b93567722039b519';   // BRIEF J: pass_dip_1332 on main d20fe9d (clip y 140, 912x373), before the skip; unchanged after
 const errors = [];
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
@@ -33,7 +35,7 @@ const errors = [];
       const a = await stats();
       await page.evaluate(async (dd) => { RF.UI.dvAnim.dist = dd; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1200)); }, d);
       const b = await stats();
-      const shot = await page.screenshot({ clip: { x: 0, y: 140, width: 912, height: 373 } });
+      const shot = await (await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas; Object.assign(c.style, { position: 'fixed', left: '0px', top: '0px', margin: '0px', zIndex: '99999' }); }), page.screenshot({ clip: { x: 0, y: 0, width: 912, height: 373 } }));
       return { shot, sha: sha(shot), runs: b.runs - a.runs, skips: b.skips - a.skips };
     };
     const touge = await page.evaluate(() => !!RF.DriveAnim._.V.p.touge);

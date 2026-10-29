@@ -623,7 +623,7 @@ body.mode-D #ab-reset-drive { display:inline-block; }
 /* UI step C (10-29): the Drive layout shell (js/drive-layout.js). Wide: top, strip, then left panel | stage | right panel.
    Tall: top, stage, strip, panel. Panels are near-black to blend with the letterbox. */
 .drive-tools.dl { --dl-panel: #070b10; --dl-panel2: #0d141b; --dl-line: #1a242e; --dl-ink: #e5edf1; --dl-dim: #8d9da9; --dl-faint: #5f707c;
-  position: absolute; inset: 0; z-index: 3; flex-direction: column; flex-wrap: nowrap; gap: 0; align-items: stretch; pointer-events: none; background: #000; color: var(--dl-ink); font-size: 12px; white-space: normal; }
+  position: absolute; inset: 0; z-index: auto; flex-direction: column; flex-wrap: nowrap; gap: 0; align-items: stretch; pointer-events: none; background: #000; color: var(--dl-ink); font-size: 12px; white-space: normal; }
 body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { display: flex; }
 .drive-tools.dl :is(button, select) { min-height: 26px; padding: 2px 8px; font-size: 12px; background: var(--dl-panel2); border: 1px solid var(--dl-line); border-radius: 6px; color: var(--dl-ink); pointer-events: auto; }
 .drive-tools.dl select { background: #080d12; max-width: 100%; }
@@ -645,7 +645,7 @@ body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { 
 .dl-wide .dl-panel[data-open=false] { width: 12px; }
 .dl-panel[data-open=false] > :not(.dl-grab) { display: none; }
 /* folder tabs: the selected tab joins the content under it */
-.dl-tabs { display: flex; gap: 2px; padding: 8px 8px 0; border-bottom: 1px solid var(--dl-line); flex: none; overflow-x: auto; }
+.dl-tabs { display: flex; gap: 2px; padding: 8px 8px 0; border-bottom: 1px solid var(--dl-line); flex: none; overflow-x: auto; overflow-y: hidden; }   /* overflow-x alone makes y auto too, and the selected tab's -1px join scrolled it */
 .drive-tools.dl .dl-tabs > button { border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: transparent; color: var(--dl-dim); padding: 5px 11px; margin-bottom: -1px; min-height: 0; }
 .drive-tools.dl .dl-tabs > button:hover { color: var(--dl-ink); background: #0b1117; }
 .drive-tools.dl .dl-tabs > button[aria-selected=true] { background: var(--dl-panel2); color: var(--dl-ink); border-color: var(--dl-line); border-bottom-color: var(--dl-panel2); }
@@ -677,8 +677,10 @@ body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { 
 .dl-wide .dl-panel[data-open=false] > .dl-grab { left: 0; right: auto; }
 /* overlay (small wide hosts, or the panels option): the stage is the whole host, as before step C; the bars and panels float over it,
    translucent, and the body between the panels passes clicks through to the picture */
-.dl-overlay .dl-stage { position: absolute; inset: 0; z-index: 0; }
-.dl-overlay > :is(.dl-top, .dl-strip), .dl-overlay .dl-panel { position: relative; z-index: 1; }   /* the body stays static, so the stage's box is the whole shell */
+/* no z-index on the shell or the stage: neither makes a stacking context, so the canvas stacks with the page as it did before the shell (the pass tests pin
+   it at 0,0 with a high z-index and screenshot it). The bars and panels sit above the canvas (.drive-gl z-index 1) at 2. */
+.dl-overlay .dl-stage { position: absolute; inset: 0; }
+.dl-overlay > :is(.dl-top, .dl-strip), .dl-overlay .dl-panel { position: relative; z-index: 2; }   /* the body stays static, so the stage's box is the whole shell */
 .dl-overlay > :is(.dl-top, .dl-strip) { background: rgba(7, 11, 16, .82); }
 .dl-overlay .dl-body { pointer-events: none; }
 .dl-overlay .dl-panel { background: rgba(7, 11, 16, .9); }
@@ -698,6 +700,8 @@ body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { 
 .dl-tall:has(.dl-left[data-open=false]) .dl-stage { flex: 1 1 0; aspect-ratio: auto; }
 .dl-tall .dl-sep { display: none; }
 .dl-tall .dl-strip .drive-speed input[type=range] { width: 80px; }
+.dl-tall .dl-strip .drive-speed { flex-wrap: wrap; white-space: normal; min-width: 0; max-width: 100%; }   /* phones: 'set · actual' wraps instead of widening the page */
+.dl-tall .dl-strip { overflow-x: hidden; }
 .drive-tools.dl.dl-tall .dl-tabs > button { padding: 5px 8px; }
 .dl-tall .dl-top [data-anim=play] { order: 5; margin-left: auto; }   /* phones: Drive on the right, next to the large-view button (right thumb) */
 .dl-tall .dl-top > * { order: 1; }
