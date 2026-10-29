@@ -217,5 +217,16 @@ for (const e of Opt.OPTIONS) if (e.defaultHistory) {
 ok('default histories end at the current default and are ordered', histBad.length === 0, histBad);
 ok('DEFAULTS_VERSION is an integer >= 1', Number.isInteger(Opt.DEFAULTS_VERSION) && Opt.DEFAULTS_VERSION >= 1);
 
+// PIN: the test control behind tests/pinned-defaults.js. A pinned value wins for the options it lists, other options keep their
+// live default, an unknown key is ignored, and the pin covers only registry ids (so a typo there cannot pin nothing silently).
+{
+  const live = Opt.defaults(), file = read('tests/pinned-defaults.js'), m = /SL_PINNED_DEFAULTS = (\{[\s\S]*\});/.exec(file), pinned = m ? JSON.parse(m[1]) : null;
+  globalThis.SL_PINNED_DEFAULTS = { haloGain: 4, notAnOption: 1 }; const withPin = Opt.defaults(); delete globalThis.SL_PINNED_DEFAULTS;
+  ok('PIN: a pinned value replaces the default; other options keep theirs; unknown keys are ignored', withPin.haloGain === 4 && !('notAnOption' in withPin) && JSON.stringify({ ...withPin, haloGain: live.haloGain }) === JSON.stringify(live), { haloGain: withPin.haloGain });
+  ok('PIN: defaults() is unchanged once the pin is removed', JSON.stringify(Opt.defaults()) === JSON.stringify(live));
+  const unknown = pinned ? Object.keys(pinned).filter((k) => !Opt.byId[k] || Opt.byId[k].kind !== 'profile') : ['(file did not parse)'];
+  ok('PIN: tests/pinned-defaults.js parses and lists only profile options of the registry', !!pinned && unknown.length === 0, unknown);
+}
+
 console.log(fails ? fails + ' of ' + n + ' options-registry checks FAILED' : 'all ' + n + ' options-registry checks passed');
 process.exit(fails ? 1 : 0);

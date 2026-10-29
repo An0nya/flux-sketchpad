@@ -49,14 +49,18 @@ const MAP = [
   [/^js\/compare-ui\.js$/, ['RESET-DRIVE-SETTINGS', 'AB-compare']], [/^css\/app\.css$/, ['ui', 'RESET-DRIVE-SETTINGS']],   // RESET-DRIVE-SETTINGS: the reset button lives in the A/B solve-cache bar; its CSS is the spec-mode gate
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];
-const NOT_TESTS = ['gate', 'load', 'serve', 'drive-three-page'];   // drive-three-page.js is the browser-side helper of P1/FG/SC (Brief U: it gained the lampCone argument), not a Node test; it is in MAP
+const NOT_TESTS = ['gate', 'load', 'serve', 'drive-three-page', 'pinned-defaults'];   // drive-three-page.js is the browser-side helper of P1/FG/SC (Brief U: it gained the lampCone argument), not a Node test; it is in MAP
 // NE5: open, reproducible-in-order checks we have not explained. Run by hand with --only; never in the gate.
 const KNOWN_FAILING = ['NE-state-leak'];
 // ---- plan -------------------------------------------------------------------------------------------------------------
 const sh = (...a) => { try { return execFileSync(a[0], a.slice(1), { cwd: root, encoding: 'utf8' }).trim(); } catch (e) { return ''; } };
 function plan() {
   if (val('--only')) return val('--only').split(',').map((n) => n.startsWith('node:') ? n : (fs.existsSync(path.join(root, 'tests', n + '.js')) && !fs.existsSync(path.join(root, 'tests/regress', n + '.js')) ? 'node:' + n : n));
-  const full = [...NODE.map((n) => 'node:' + n), ...PAGE_PAR, ...PAGE_SOLO];
+  const exists = (x) => x.startsWith('node:') ? fs.existsSync(path.join(root, 'tests', x.slice(5) + '.js')) : fs.existsSync(path.join(root, 'tests/regress', x + '.js'));
+  const curated = [...NODE.map((n) => 'node:' + n), ...PAGE_PAR, ...PAGE_SOLO];
+  // FULL-COVERAGE 2 (10-29): --full also runs every test the MAP names, so a test reachable only via --touched cannot be skipped at a merge (4 were: CPU-FALLBACK-PAUSE, PL3, drive-controls2, scenario-node).
+  const mapped = [...new Set(MAP.flatMap(([, gs]) => gs.flatMap((g) => GROUPS[g] || [g])))].filter((x) => !curated.includes(x) && !KNOWN_FAILING.includes(x) && exists(x));
+  const full = curated.concat(mapped);
   if (!has('--touched')) return full;
   const files = new Set([...sh('git', 'diff', '--name-only', BASE + '...HEAD').split('\n'), ...sh('git', 'diff', '--name-only', 'HEAD').split('\n'), ...sh('git', 'ls-files', '--others', '--exclude-standard').split('\n')].filter(Boolean));
   const picked = new Set(); let unmapped = [];

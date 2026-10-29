@@ -1334,6 +1334,9 @@
   function defaults() {
     const o = {};
     for (const e of OPTIONS) if (e.kind === 'profile') o[e.id] = clone(e.default);
+    // PIN: test control (tests/pinned-defaults.js, loaded by tests/serve.py): the pinned values replace the defaults of the options they list.
+    const pin = typeof globalThis !== 'undefined' && globalThis.SL_PINNED_DEFAULTS;
+    if (pin) for (const k of Object.keys(pin)) if (k in o) o[k] = clone(pin[k]);
     return o;
   }
 
