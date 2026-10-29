@@ -81,6 +81,7 @@ const FROZEN_OLD_DV_DEF = {
   wild: true,
   mt: true,
   largeCard: true,
+  animateUI: false,   // 10-29: new key, UI animations (default off)
   panelMode: 'auto',   // UI step C (10-29): new key, the layout shell's push/overlay choice
   canvasShape: 'wide',   // UI step C (10-29): new key, the drive picture shape
   seed: 7,
@@ -126,7 +127,7 @@ const FROZEN_OLD_DV_DEF = {
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();
-ok('frozen copy has 111 keys (10-29: fitControls retired); (112 with UI step C: canvasShape, new); (111 with UI step C: panelMode, new); (110 with OHC + OHR: haloCars, haloRange, new); (108 with SM3 PCF: trafficShadowSoft, new); (107 with SM1b: trafficShadowObjects, new); (106 with AT: haloAutoRange, haloNearSub, new); (104 with CP + SM: haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, new); (99 with IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 111, Object.keys(FROZEN_OLD_DV_DEF).length);
+ok('frozen copy has 112 keys (10-29: animateUI, new); (111 with 10-29: fitControls retired); (112 with UI step C: canvasShape, new); (111 with UI step C: panelMode, new); (110 with OHC + OHR: haloCars, haloRange, new); (108 with SM3 PCF: trafficShadowSoft, new); (107 with SM1b: trafficShadowObjects, new); (106 with AT: haloAutoRange, haloNearSub, new); (104 with CP + SM: haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, new); (99 with IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 112, Object.keys(FROZEN_OLD_DV_DEF).length);
 let equal = true, why = null;
 try { assert.deepStrictEqual(gen, FROZEN_OLD_DV_DEF); } catch (e) { equal = false; why = String(e.message).split('\n').slice(0, 12).join(' | '); }
 ok('generated defaults deep-equal the old DV_DEF (values and types)', equal, why);

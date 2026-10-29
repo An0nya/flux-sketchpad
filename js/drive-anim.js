@@ -1602,6 +1602,7 @@ void main() {
     // High beam (H key or this button): session state on V, not saved prefs, so it is off on every reload
     btn('high-beam', 'High beam (H) cycles Off, On, Auto. Auto dips for oncoming headlamps, preceding tail lamps, urban tiles and under 30 km/h, then returns to high after 2 s clear. Off by default; not saved across reloads.', () => cycleHigh(ui), 'high beam');
     document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.ui.driveBar.hasAttribute('data-noanim') && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
+    btn('animate-ui', 'Animate the panels, the bottom sheet and tab switches (about 200 ms). The picture previews during a move and re-renders once at the end. Off by default; your system\'s reduce-motion setting always wins.', () => setDV(ui, 'animateUI', !info().o.animateUI), 'animate UI');
     btn('large-card', 'Open the large Drive view when a game scorecard ends in the inline pane. Off keeps the inline card.', () => setDV(ui, 'largeCard', info().o.largeCard === false), 'large scorecard');
     // UI step C: how the panels share the host (js/drive-layout.js modeOf). auto: push on a big host, overlay on a small one.
     const pm = E('select', { 'data-anim': 'panel-mode', 'aria-label': 'Panels', title: 'How the controls share the drive view. Push: beside the picture (the canvas shrinks). Overlay: floating over a full-size picture, collapsed until a grab bar opens them. Auto: push when the view is at least 940 x 420, overlay when smaller. Phones always stack.' });
@@ -1936,7 +1937,7 @@ void main() {
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
     V.ui.driveBar.querySelector('[data-anim="canvas-shape"]').value = ['3:4', 'square'].includes(o.canvasShape) ? o.canvasShape : 'wide';
     V.ui.driveBar.querySelector('[data-anim="panel-mode"]').value = ['push', 'overlay'].includes(o.panelMode) ? o.panelMode : 'auto';
-    for (const [name, key] of [['large-card', 'largeCard']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(o[key] !== false));
+    for (const [name, key] of [['large-card', 'largeCard'], ['animate-ui', 'animateUI']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(key === 'animateUI' ? !!o[key] : o[key] !== false));   // animateUI is off by default
     ui.driveBar.toggleAttribute('data-noanim', !(sup && (st.view === 'anim' || st.popout)));   // UI step C: hides the .dl-anim controls (they left V.bar for the tabs)
     const run = st.playing && (st.view === 'anim' || st.popout), pb = ui.driveBar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ Pause' : '▶ Drive'; pb.setAttribute('aria-pressed', String(run));
     ui.driveBar.querySelector('[data-anim="speed"]').value = o.speed; speedLabel(ui);
@@ -2208,20 +2209,23 @@ void main() {
     if (!V.controlsRO && root.ResizeObserver) {
       // the host decides wide or tall; the stage's size is the canvas size, so a change refits the picture
       let last = '';
-      V.controlsRO = new ResizeObserver(() => { const s = L.stage, k = s.clientWidth + 'x' + s.clientHeight; if (L.dragging) { previewFit(); return; } layoutControls(ui); if (k !== last) { last = k; if (V.ui) ui.redrawSpec(); } });   // a sheet drag previews; its release re-renders
+      V.controlsRO = new ResizeObserver(() => { const s = L.stage, k = s.clientWidth + 'x' + s.clientHeight; if (L.dragging || L.hold) { previewFit(); return; } layoutControls(ui); if (k !== last) { last = k; if (V.ui) ui.redrawSpec(); } });   // a sheet drag previews; its release re-renders
       V.controlsRO.observe(L.stage); V.controlsRO.observe(ui.driveBar);
     }
     if (L) L.onDrag = previewFit;
     layoutControls(ui);
   }
-  // BOTTOM SHEET drag (owner 10-29): while the stage changes size under a finger nothing re-renders; the last frame is scaled to the stage
-  // height and centred. Every shape keeps the wide view's vertical angle, so this IS the new framing (sides cropped, or missing when it widens)
-  // at the old resolution. Push only: in overlay the stage does not change. The release re-renders.
+  // While the stage changes size under a finger (sheet drag) or in an animation (animateUI, L.hold) nothing re-renders; the last frame is
+  // re-placed. Tall push: scaled to the stage height and centred; every shape keeps the wide view's vertical angle, so this IS the new framing
+  // (sides cropped, or missing when it widens) at the old resolution. Elsewhere (a side panel opening): scaled to fit, the shape unchanged.
+  // The release, or the end of the animation, re-renders.
   function previewFit() {
-    const c = V.canvas, L = V.ui && V.ui.driveLayout; if (!c || !L || L.sheetMode !== 'push' || c.parentElement !== L.stage) return;
+    const c = V.canvas, L = V.ui && V.ui.driveLayout; if (!c || !L || c.parentElement !== L.stage) return;
     const cs = c.style, w0 = parseFloat(cs.width), h0 = parseFloat(cs.height); if (!(w0 > 0 && h0 > 0)) return;
-    const bw = L.stage.clientWidth, bh = L.stage.clientHeight, h = Math.max(1, Math.min(bh, bw * 4 / 3)), w = h * w0 / h0;
-    cs.width = w + 'px'; cs.height = h + 'px'; cs.left = (bw - w) / 2 + 'px'; cs.top = (bh - h) / 2 + 'px';
+    const bw = L.stage.clientWidth, bh = L.stage.clientHeight; if (!(bw > 0 && bh > 0)) return;
+    let h; if (L.tall && L.sheetMode === 'push') h = Math.max(1, Math.min(bh, bw * 4 / 3)); else if (L.tall) return; else h = Math.min(bh, bw * h0 / w0);
+    const w = h * w0 / h0, top = L.tall ? (bh - h) / 2 : (bh - h) / 2;
+    cs.width = w + 'px'; cs.height = h + 'px'; cs.left = (bw - w) / 2 + 'px'; cs.top = top + 'px';
   }
 
   // The optional ES module is loaded only on HTTP; the classic CPU app still opens from file://.

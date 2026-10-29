@@ -925,6 +925,15 @@
       tests: ['UX2-drive-ux'],
     },
     {
+      id: 'animateUI', kind: 'profile', type: 'bool', values: null,
+      default: false, label: 'animate UI',
+      control: '[data-anim="animate-ui"]', where: 'more', query: null,
+      group: 'diagnostics', cost: 'free',
+      owner: ['js/drive-layout.js', 'css/app.css'],
+      tests: ['UX2-drive-ux'],
+      note: 'Owner 10-29: panels, sheet, tab switch animate (~200 ms); off by default; prefers-reduced-motion forces off. The canvas previews during a move and re-renders once at the end.',
+    },
+    {
       id: 'panelMode', kind: 'profile', type: 'enum', values: ['auto', 'push', 'overlay'],
       default: 'auto', label: 'panels',
       control: '[data-anim="panel-mode"]', where: 'more', query: null,

@@ -113,6 +113,16 @@
     ok('UX2 both readouts can be switched off',a.V.fpsLab.hidden&&a.V.perfLab.hidden);
     u.dvAnim.view='still';u.dvAnim.playing=true;u.redrawSpec();ok('UX2 legacy still view becomes paused animation',u.dvAnim.view==='anim'&&!u.dvAnim.playing&&!a.V.canvas.hidden);play.click();ok('UX2 Drive resumes the migrated paused view',u.dvAnim.view==='anim'&&u.dvAnim.playing&&!a.V.canvas.hidden);play.click();
     Object.assign(u.dvOpts,{fpsCounter:true,debugTimings:true});u.redrawSpec();DL.reveal(u,'[data-anim=debug-timings]');await settle();
+    // ANIMATE UI (10-29): with the option on, a panel or sheet move is a transition (mid-way between its ends at 90 ms of 200), and the canvas
+    // re-render is held (L.hold) until it ends; with it off, the move is instant. Wide hosts move the left panel, tall hosts the sheet.
+    { const L=u.driveLayout, at=()=>L.tall?L.sheet.getBoundingClientRect().top:L.left.getBoundingClientRect().width, move=(open)=>{ if(L.tall)DL.setSheet(u,open?DL.detents(u)[0][0]:'closed'); else DL.setOpen(u,'left',open); };
+      move(true); await sleep(450); u.dvOpts.animateUI=true; u.redrawSpec(); await settle(); await sleep(300);
+      const a0=at(); move(false); await sleep(90); const mid=at(), hold=!!L.hold; await sleep(450); const a1=at(), held=!!L.hold;
+      ok('UX2 animate UI: the move is a transition and the re-render waits for its end '+innerWidth,L.root.classList.contains('dl-animate')&&Math.abs(mid-a0)>2&&Math.abs(mid-a1)>2&&hold&&!held,{a0,mid,a1,hold,held,tall:L.tall});
+      move(true); await sleep(450); u.dvOpts.animateUI=false; u.redrawSpec(); await settle();
+      const b0=at(); move(false); await settle(); const b1=at();
+      ok('UX2 animate UI off: the move is instant '+innerWidth,!L.root.classList.contains('dl-animate')&&Math.abs(b1-b0)>2&&!L.hold,{b0,b1});
+      move(true); await settle(); }
     // Leave a heavy-scene screenshot with the Timings tab shown and both readouts enabled.
     await sleep(700);window.scrollTo({top:0,behavior:'instant'});await settle();
     return {pass:checks.every(c=>c.pass),checks,layouts,viewport:[innerWidth,innerHeight],renderer:D.stats().renderer};

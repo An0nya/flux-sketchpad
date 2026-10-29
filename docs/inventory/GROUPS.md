@@ -94,7 +94,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
 | `exposure` | Exposure and eye | 4 | 1 | 3 | 0 | 0 | 0 | 0 |
 | `performance` | Speed and quality | 7 | 0 | 6 | 0 | 0 | 0 | 1 |
-| `diagnostics` | Panels and layout | 6 | 0 | 6 | 0 | 0 | 0 | 0 |
+| `diagnostics` | Panels and layout | 7 | 0 | 7 | 0 | 0 | 0 | 0 |
 | `internal` | Internal (no control) | 6 | 0 | 0 | 0 | 0 | 0 | 6 |
 
 #### Camera and playback (`view`)
@@ -269,6 +269,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | option | label | kind | sits in | default | needs / ignored / conflicts |
 |---|---|---|---|---|---|
 | `largeCard` | large scorecard | profile | More | true | - |
+| `animateUI` | animate UI | profile | More | false | - |
 | `panelMode` | panels | profile | More | "auto" | - |
 | `canvasShape` | canvas | profile | More | "wide" | - |
 | `fpsCounter` | FPS badge | profile | More | true | - |

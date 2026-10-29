@@ -712,6 +712,14 @@ body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { 
 .dl-tall .dl-top [data-anim=play] { order: 5; margin-left: auto; }   /* phones: Drive on the right, next to the large-view button (right thumb) */
 .dl-tall .dl-top > * { order: 1; }
 .dl-tall .dl-top { flex-wrap: nowrap; padding-right: 44px; } .dl-tall .dl-top [data-dv=scene] { flex: 1 1 auto; min-width: 0; width: 0; }   /* phones: one top row (the scene picker gives way); the right pad clears the large-view button */
+/* ANIMATE UI (owner 10-29, option animateUI; js adds .dl-animate only when reduced motion is off). 200 ms = ANIM_MS in drive-layout.js.
+   The canvas does not animate itself: drive-anim previews the last frame in the moving stage and re-renders when the move ends. */
+.dl-animate .dl-panel, .dl-animate .dl-stage { transition: width 200ms cubic-bezier(.2, .8, .2, 1), height 200ms cubic-bezier(.2, .8, .2, 1); }
+.dl-animate.dl-tall .dl-sheet { transition: top 200ms cubic-bezier(.2, .8, .2, 1); }
+.dl-animate.dl-dragging :is(.dl-sheet, .dl-stage) { transition: none; }   /* the finger leads; the snap after it animates */
+.dl-animate .dl-pane:not([hidden]), .dl-animate .dl-sub:not([hidden]) { animation: dl-fade 150ms ease-out; }
+@keyframes dl-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .dl-animate *, .dl-animate { transition: none !important; animation: none !important; } }
 /* readouts that moved: the fps chip on the stage corner, the timings and details as tab content */
 .dl-stage > .drive-fps { top: auto; bottom: 8px; right: 8px; border-radius: 4px; }
 .dl-stage > .drive-notice { top: 8px; }

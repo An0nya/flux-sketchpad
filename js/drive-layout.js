@@ -27,7 +27,7 @@
     ['performance', null, 'Resolution', [an('resolution'), an('dynamic-resolution'), an('min-fps'), dv('samples')]],
     ['performance', null, 'Renderer', [an('gpu-renderer'), ...C(['mt']), an('tile-cache')]],
     ['performance', null, 'Debug', [an('save-state'), an('load-state'), an('state-file'), an('state-msg')]],
-    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), an('fps-counter'), an('large-card')]],
+    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), an('fps-counter'), an('large-card'), an('animate-ui')]],
     ['details', null, '', [an('scene-details'), an('scene-details-panel')]],
     ['timings', null, '', [an('debug-timings'), an('perf-readout')]],
   ];
@@ -140,6 +140,13 @@
     if (L.tall) { put(L.sheet, L.strip); put(L.sheet, L.left); sheetLayout(ui); }
     else { if (L.strip.parentElement !== L.root || L.strip.previousElementSibling !== L.top) L.top.after(L.strip); if (L.left.parentElement !== L.body) L.body.prepend(L.left); L.root.classList.remove('dl-sheet-push', 'dl-sheet-overlay'); }
     L.root.setAttribute('data-shape', L.shape);
+    // ANIMATE UI (owner 10-29, option animateUI, default off; reduced motion wins): a CSS class turns the transitions on. When the layout
+    // changes under it, hold the canvas re-render for the transition (drive-anim previews the old frame), then re-render once.
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches, anim = !!(ui.dvOpts && ui.dvOpts.animateUI) && !reduce;
+    L.root.classList.toggle('dl-animate', anim);
+    const sig = [L.tall, mode, L.left.getAttribute('data-open'), L.right.getAttribute('data-open'), L.sheetAt, L.shape].join('|');
+    if (anim && L.sig && sig !== L.sig && !L.dragging) { L.hold = true; clearTimeout(L.holdT); L.holdT = setTimeout(() => { L.hold = false; if (ui.redrawSpec) ui.redrawSpec(); }, ANIM_MS + 40); }
+    L.sig = sig;
     for (const id of RIGHT) put(L.tall ? L.content : L.rcontent, L.panes[id]);
     for (const id of TABS.map((t) => t[0])) if (!RIGHT.includes(id)) put(L.content, L.panes[id]);
     show(ui);
@@ -190,6 +197,7 @@
   // ---- bottom sheet (tall hosts). Detents are named by the canvas shape whose bottom edge the sheet top meets: wide (the biggest sheet),
   // square, 3:4, and closed (handle + the strip's first row). Push: the stage ends at the sheet top and the detent IS the canvas shape (closed = 3:4).
   // Overlay: the canvas keeps its shape at full size and the sheet floats over it, slightly transparent. The detent is remembered per mode.
+  const ANIM_MS = 200;   // matches the transitions in css/app.css (.dl-animate)
   const SHEET_MIN = 80, sheetKey = (m) => 'flux/driveSheet:' + m, DETENTS = ['wide', 'square', '3:4', 'closed'];
   const sheetModeOf = (pref) => (pref === 'overlay' ? 'overlay' : 'push');   // auto stacks as push (the old stacked layout)
   // detents for a tall host: [[name, sheet top y]] by y, top first. A shape whose canvas would leave the sheet under SHEET_MIN px is skipped.
@@ -268,5 +276,5 @@
     const s = L.stage.getBoundingClientRect(), r = el.getBoundingClientRect();
     return s.width > 0 && s.height > 0 ? { x: s.left - r.left, y: s.top - r.top, w: s.width, h: s.height } : null;
   }
-  RF.DriveLayout = { LAYOUT, TOP, STRIP, TABS, SUBS, isTall, modeOf, openDefault, PUSH_MIN, RIGHT_MIN, SHAPES, shapeOf, aspectOf, build, place, layout, select, reveal, setOpen, unplaced, stageBox, DETENTS, SHEET_MIN, detentsFor, detents, setSheet, sheetModeOf };
+  RF.DriveLayout = { ANIM_MS, LAYOUT, TOP, STRIP, TABS, SUBS, isTall, modeOf, openDefault, PUSH_MIN, RIGHT_MIN, SHAPES, shapeOf, aspectOf, build, place, layout, select, reveal, setOpen, unplaced, stageBox, DETENTS, SHEET_MIN, detentsFor, detents, setSheet, sheetModeOf };
 })(typeof window !== 'undefined' ? window : globalThis);
