@@ -13,7 +13,7 @@
   // Performance > Other); the game dock keeps the picture; phones keep the dialog bars clear of the 96 px browser-chrome band.
   function measure() {
     const u=RF.UI, L=u.driveLayout, bar=u.driveBar, bounds=rect(bar), host=RF.DriveAnim._.V.canvas.parentElement;
-    const bars=[L.top,L.strip], inBars=bars.flatMap(b=>[...b.querySelectorAll('button,input,select,summary')].filter(visible)), controls=inBars;
+    const bars=[L.top,L.strip], inBars=bars.flatMap(b=>[...b.querySelectorAll('button,input,select,summary')].filter(e=>visible(e)&&shown(e).height>1)), controls=inBars;   // on screen only: the closed sheet clips the strip below its first row (10-29)
     const collisions=[];
     for(let i=0;i<controls.length;i++)for(let j=i+1;j<controls.length;j++)if(overlaps(rect(controls[i]),rect(controls[j])))collisions.push([controls[i].outerHTML.slice(0,120),controls[j].outerHTML.slice(0,120)]);
     const guide=document.getElementById('first-guide'),guideOpen=!document.querySelector('.drive-popout')?[guide]:[];   // GS: first-visit guide (skipped under the full-viewport popout)
@@ -31,7 +31,7 @@
     return { width:innerWidth, touch:matchMedia('(pointer: coarse)').matches, mobile:mobile(), mode, toolbar:bounds, render, stage, collisions, clipped,
       picture, game:card, gameOverlap, gameBelow:!card||card.top>=render.bottom-1, popout:pop?rect(pop):null,
       expand:visible(corner)&&!controls.some(e=>overlaps(rect(e),rect(corner))),
-      safe:!pop||!matchMedia('(pointer: coarse)').matches||[...pop.querySelectorAll('.dl-top,.dl-strip,.reset-view,.drive-below')].filter(visible).every(e=>rect(e).bottom<=innerHeight-96+1),
+      safe:!pop||!matchMedia('(pointer: coarse)').matches||[...pop.querySelectorAll('.dl-top,.dl-strip,.reset-view,.drive-below')].filter(visible).every(e=>shown(e).bottom<=innerHeight-96+1),
       within:bounds.left>=0&&bounds.right<=innerWidth+1, inStage:mode==='overlay'||(picture.left>=stage.left-1&&picture.right<=stage.right+1&&picture.top>=stage.top-1&&picture.bottom<=stage.bottom+1),
       covered:covered.length, unplaced:RF.DriveLayout.unplaced(u),
       debugIn:!visible(perf)||!!perf.closest('[data-dl-pane=timings]'),
@@ -84,8 +84,8 @@
           ok('UX3 expand reachable, clear of the bar controls '+JSON.stringify({popout,state,open,fit}),m.expand);
           ok('UX3 game dock preserves the actual picture '+JSON.stringify({popout,state,open,fit}),m.gameBelow&&m.gameOverlap<=.20,{game:m.game,render:m.render,picture:m.picture,overlap:m.gameOverlap,below:m.gameBelow});
           if(popout)ok('UX3 full viewport overlay and toolbar clearance '+JSON.stringify({state,open,fit}),m.popout.left===0&&m.popout.top===0&&Math.abs(m.popout.right-innerWidth)<1&&Math.abs(m.popout.bottom-innerHeight)<1&&m.safe,m.popout);
-          // the strip stows with the panel in the stacked layout; in a game the anim bar's controls (oncoming headlamps, high beam) hide, as V.bar did
-          const stowed=m.mode==='stack'&&!open, gaming=state!=='drive', want=['scene','play','toggle',...(stowed?[]:['oncoming','preceding','speed','glare','ev',...(gaming?[]:['traffic-beams','high-beam'])])];
+          // stacked (10-29 bottom sheet): closed keeps the strip's first row, the speed slider; in a game the anim bar's controls (oncoming headlamps, high beam) hide, as V.bar did
+          const stowed=m.mode==='stack'&&!open, gaming=state!=='drive', want=['scene','play','toggle',...(stowed?['speed']:['oncoming','preceding','speed','glare','ev',...(gaming?[]:['traffic-beams','high-beam'])])];
           ok('UX2 top bar and strip hold only the driving controls',m.primary.length===want.length&&want.every(k=>m.primary.includes(k)),{got:m.primary,want});
           if(open&&state==='drive')ok('UX2 every control is placed in a tab and reachable',m.unplaced.length===0&&['wetness','wetSheen','onMode'].every(k=>DL.reveal(u,'[data-dv='+k+']')&&visible(u.driveBar.querySelector('[data-dv='+k+']')))&&['tiles','gpu-renderer','fps-counter','debug-timings'].every(k=>DL.reveal(u,'[data-anim='+k+']')&&visible(u.driveBar.querySelector('[data-anim='+k+']'))),m.unplaced);
         }

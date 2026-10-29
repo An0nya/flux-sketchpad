@@ -1078,7 +1078,8 @@ void main() {
     const cssW = Math.max(16, Math.min(bw, bh * aspect)), cssH = cssW / aspect;
     const scale = V.info && V.info.o.dynamicResolution && !V.pinSS ? (V.resolution || resolutionState()).scale : 1;
     const sim = simSize(simCeiling(V.info && V.info.o), cssW, dpr, scale, aspect);
-    return { cssW, cssH, dpr, aspect, W: sim.W, H: sim.H, baseW: sim.baseW, scale, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
+    const Ly = V.ui && V.ui.driveLayout, pinTop = !!(Ly && Ly.tall && Ly.sheetMode === 'overlay');   // phone overlay: the sheet covers the bottom, so the picture sits at the top
+    return { cssW, cssH, dpr, aspect, W: sim.W, H: sim.H, baseW: sim.baseW, scale, left: (bw - cssW) / 2, top: pinTop ? 0 : (bh - cssH) / 2 };
   }
   function ensureCanvas() {
     if (V.lost || V.glFailed) return false;
@@ -2207,10 +2208,20 @@ void main() {
     if (!V.controlsRO && root.ResizeObserver) {
       // the host decides wide or tall; the stage's size is the canvas size, so a change refits the picture
       let last = '';
-      V.controlsRO = new ResizeObserver(() => { const s = L.stage, k = s.clientWidth + 'x' + s.clientHeight; layoutControls(ui); if (k !== last) { last = k; if (V.ui) ui.redrawSpec(); } });
+      V.controlsRO = new ResizeObserver(() => { const s = L.stage, k = s.clientWidth + 'x' + s.clientHeight; if (L.dragging) { previewFit(); return; } layoutControls(ui); if (k !== last) { last = k; if (V.ui) ui.redrawSpec(); } });   // a sheet drag previews; its release re-renders
       V.controlsRO.observe(L.stage); V.controlsRO.observe(ui.driveBar);
     }
+    if (L) L.onDrag = previewFit;
     layoutControls(ui);
+  }
+  // BOTTOM SHEET drag (owner 10-29): while the stage changes size under a finger nothing re-renders; the last frame is scaled to the stage
+  // height and centred. Every shape keeps the wide view's vertical angle, so this IS the new framing (sides cropped, or missing when it widens)
+  // at the old resolution. Push only: in overlay the stage does not change. The release re-renders.
+  function previewFit() {
+    const c = V.canvas, L = V.ui && V.ui.driveLayout; if (!c || !L || L.sheetMode !== 'push' || c.parentElement !== L.stage) return;
+    const cs = c.style, w0 = parseFloat(cs.width), h0 = parseFloat(cs.height); if (!(w0 > 0 && h0 > 0)) return;
+    const bw = L.stage.clientWidth, bh = L.stage.clientHeight, h = Math.max(1, Math.min(bh, bw * 4 / 3)), w = h * w0 / h0;
+    cs.width = w + 'px'; cs.height = h + 'px'; cs.left = (bw - w) / 2 + 'px'; cs.top = (bh - h) / 2 + 'px';
   }
 
   // The optional ES module is loaded only on HTTP; the classic CPU app still opens from file://.
