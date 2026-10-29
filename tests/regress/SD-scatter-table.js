@@ -12,7 +12,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // PED-CLOTHING-MODES: people off (walkers' clothes changed in every mode). Pin = main b38c628's direct frame with people off, equal to the new build with people off (full sha256). With people on the old pin fb9a713b... no longer matches.
 // Brief U (A+B): every lamp is now a glare source and carries its colour, so the page's default glare ('rain', UX2 scene with an oncoming car, preceding car and street lamps in view) draws a coloured veil from them.
 // PROOF the old pin is only moved by that: the same build with D.glareSources patched back to its old body (headlamps only, 4-tuples) and lampCone off reproduces the old hash (checked 2026-10-27 for this file: b1da9456..., with lampCone off). Old pin: b1da94564d4c891b419083e3c209ee4224d8ace9be0529e6462d5ebd6e3ac309.
-const DIRECT16 = process.env.SD_DIRECT16 || '35206d78c55cc305fa36f2b34e1f1e6d34875bbfc9a62781b73587c9235e666e';
+// SPEED0 (2026-10-28): re-baselined for the speed slider's new range (min 0 step 1, was 5/5). The drive toolbar overlays the canvas, so its element screenshot holds the slider
+// thumb, which moves at the same 50 km/h. PROOF: the same frame with the old vs new min/step differs in 68 px, all inside the slider's box (x 174-189, y 10-25 of the canvas;
+// slider at x 148-233, y 6-30), and restoring the old range gives 0 px; with the slider line reverted, the old pins pass (WT, FG, SC, SD). The render is unchanged.
+const DIRECT16 = process.env.SD_DIRECT16 || '883d591544bb3fcd2a49703b99ac910906475d46f2ecef377bfcbeb020d32101';   // before SPEED0: 35206d78...
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
   return page.evaluate(async (b64) => {

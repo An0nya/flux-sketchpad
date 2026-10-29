@@ -16,7 +16,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Brief U (A+B): every lamp is now a glare source and carries its colour, so the page's default glare ('rain', UX2 scene with an oncoming car, preceding car and street lamps in view) draws a coloured veil from them.
 // PROOF the old pin is only moved by that: the same build with D.glareSources patched back to its old body (headlamps only, 4-tuples) and lampCone off reproduces the old hash (checked 2026-10-27 for this file: dry 8eb4e35c... and wet 1f69234e..., both). A alone (colour only) already moves them (dry e7793d6c..., wet 6290e9e2...); B moves them again.
 // Old pins (main 4da6016): dry 8eb4e35ccda362c43f749ba920f616b3dd255b61bf6461a1f2f44378666fa879, wet 1f69234ee88e1ec3938d2730daacdc3f35a2629665f0b654053ebfa0b177adc0.
-const OLD = { dry: '733d190e70bf74259f4b70bf24c35242dacdd05b05dfd544d818e8e658bcdb8b', wet: 'daedeaec17e4f1c889a1c46dd3e18ab4ea2e5a474786d96298ad0fffdea1540b' };
+// SPEED0 (2026-10-28): re-baselined for the speed slider's new range (min 0 step 1, was 5/5). The drive toolbar overlays the canvas, so its element screenshot holds the slider
+// thumb, which moves at the same 50 km/h. PROOF: the same frame with the old vs new min/step differs in 68 px, all inside the slider's box (x 174-189, y 10-25 of the canvas;
+// slider at x 148-233, y 6-30), and restoring the old range gives 0 px; with the slider line reverted, the old pins pass (WT, FG, SC, SD). The render is unchanged.
+const OLD = { dry: 'a7c3f1103f9af068e91f86236e18ea7081888c2e4fe35ef5f3172324172ab53a', wet: 'f1801595a3ee6c9c35e23fd4c71f853adddd6eb9142749a54f40c16a76a9927a' };   // before SPEED0: dry 733d190e..., wet daedeaec...
 
 // Two contexts. The legacy-seeded one only checks the loaded option (no frame: a page that starts wet and then goes dry keeps a
 // residue that depends on the start, measured on main as well, so the frame checks start from a fresh dry load).
