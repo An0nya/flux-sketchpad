@@ -82,7 +82,8 @@
     L.body = E('div', { class: 'dl-body' }, L.left, L.stage, L.right);
     // BOTTOM SHEET (owner 10-29, tall hosts only): the strip and the controls panel ride in a sheet dragged by its handle between detents
     L.handle = E('button', { type: 'button', class: 'dl-handle', 'data-dl-handle': '', 'aria-label': 'Controls drawer: drag to resize, press to open or close, arrow keys step through sizes' });
-    L.sheet = E('div', { class: 'dl-sheet', 'data-dl-sheet': '' }, L.handle);
+    L.reserve = E('div', { class: 'dl-reserve', 'aria-hidden': 'true' });   // measures --dl-bottom (the phone browser's bottom toolbar reserve, css)
+    L.sheet = E('div', { class: 'dl-sheet', 'data-dl-sheet': '' }, L.handle, L.reserve);
     bar.append(L.top, L.strip, L.body, L.sheet, L.staging);
     sheetDrag(ui, L);
     // the detents are px from the host's size: a host that changes height (the game dock, the large view, a rotated phone) re-places the sheet
@@ -208,8 +209,8 @@
   function detents(ui) {
     const L = ui.driveLayout, H = L.root.clientHeight, W = L.root.clientWidth, topH = L.top.offsetHeight;
     // closed shows the handle and the strip's first row (the speed slider on a phone); the rest of the strip is under the screen edge
-    const sp = L.strip.querySelector('.drive-speed'), first = sp && sp.offsetParent ? sp.getBoundingClientRect().bottom - L.strip.getBoundingClientRect().top + 3 : L.strip.offsetHeight;   // + 3 < the strip's 4 px row gap: the second row stays fully under the edge
-    return detentsFor(H, W, topH, H - L.handle.offsetHeight - Math.round(first));
+    const sp = L.strip.querySelector('.drive-speed'), first = sp && sp.offsetParent ? sp.getBoundingClientRect().bottom - L.strip.getBoundingClientRect().top + (parseFloat(getComputedStyle(L.strip).paddingBottom) || 0) + 2 : L.strip.offsetHeight;   // + 2: border and sub-pixel rounding (measured 2 px short at 360x950)   // the strip's own bottom pad; closed hides the other rows (.dl-sheet-closed)
+    return detentsFor(H, W, topH, H - L.reserve.offsetHeight - L.handle.offsetHeight - Math.round(first));   // closed keeps the speed row above the browser's bottom toolbar
   }
   function sheetLayout(ui) {
     const L = ui.driveLayout, o = ui.dvOpts || {}, m = sheetModeOf(o.panelMode), d = detents(ui), names = d.map((x) => x[0]);
@@ -217,7 +218,7 @@
     let at = load(sheetKey(m), m === 'overlay' ? 'closed' : SHAPES[o.canvasShape] ? o.canvasShape : 'wide');
     if (m === 'push' && at !== 'closed' && SHAPES[o.canvasShape]) at = o.canvasShape;   // the shape setting and the sheet agree
     if (!names.includes(at)) at = names.includes('wide') && at !== 'closed' ? names[0] : 'closed';
-    L.sheetAt = at; L.left.setAttribute('data-open', String(at !== 'closed'));
+    L.sheetAt = at; L.left.setAttribute('data-open', String(at !== 'closed')); L.root.classList.toggle('dl-sheet-closed', at === 'closed');
     L.shape = m === 'push' ? (at === 'closed' ? '3:4' : at) : shapeOf(o.canvasShape, false, false);
     if (!L.dragging) setSheetY(L, d.find((x) => x[0] === at)[1]);
     L.root.style.setProperty('--dl-top-h', L.top.offsetHeight + 'px');

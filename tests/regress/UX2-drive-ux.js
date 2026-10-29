@@ -113,6 +113,11 @@
     ok('UX2 both readouts can be switched off',a.V.fpsLab.hidden&&a.V.perfLab.hidden);
     u.dvAnim.view='still';u.dvAnim.playing=true;u.redrawSpec();ok('UX2 legacy still view becomes paused animation',u.dvAnim.view==='anim'&&!u.dvAnim.playing&&!a.V.canvas.hidden);play.click();ok('UX2 Drive resumes the migrated paused view',u.dvAnim.view==='anim'&&u.dvAnim.playing&&!a.V.canvas.hidden);play.click();
     Object.assign(u.dvOpts,{fpsCounter:true,debugTimings:true});u.redrawSpec();DL.reveal(u,'[data-anim=debug-timings]');await settle();
+    // OVERLAY (owner bug 10-29): on a wide host the right panel (Details | Timings) sits at the right edge, not next to the controls
+    if(!u.driveLayout.tall){ const prev=u.dvOpts.panelMode; RF.SpecUI.setDV(u,'panelMode','overlay'); DL.setOpen(u,'left',true); DL.setOpen(u,'right',true); await settle();
+      const L=u.driveLayout, r=rect(L.right), b=rect(L.root), l=rect(L.left);
+      ok('UX2 overlay: the right panel sits at the right edge '+innerWidth,L.mode==='overlay'&&Math.abs(r.right-b.right)<=1.5&&r.left>=l.right-1&&l.left>=b.left-1,{right:r,root:b,left:l,mode:L.mode});
+      RF.SpecUI.setDV(u,'panelMode',prev); await settle(); }
     // ANIMATE UI (10-29): with the option on, a panel or sheet move is a transition (mid-way between its ends at 90 ms of 200), and the canvas
     // re-render is held (L.hold) until it ends; with it off, the move is instant. Wide hosts move the left panel, tall hosts the sheet.
     { const L=u.driveLayout, at=()=>L.tall?L.sheet.getBoundingClientRect().top:L.left.getBoundingClientRect().width, move=(open)=>{ if(L.tall)DL.setSheet(u,open?DL.detents(u)[0][0]:'closed'); else DL.setOpen(u,'left',open); };
