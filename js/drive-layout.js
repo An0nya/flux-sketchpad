@@ -26,7 +26,7 @@
     ['performance', null, 'Exposure', [dv('expMode'), dv('evm'), dv('evp')]],
     ['performance', null, 'Resolution', [an('resolution'), an('dynamic-resolution'), an('min-fps'), dv('samples')]],
     ['performance', null, 'Renderer', [an('gpu-renderer'), ...C(['mt']), an('tile-cache')]],
-    ['performance', null, 'View', [dv('fov'), an('panel-mode'), an('fps-counter'), an('fit-controls'), an('large-card')]],
+    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), an('fps-counter'), an('fit-controls'), an('large-card')]],
     ['details', null, '', [an('scene-details'), an('scene-details-panel')]],
     ['timings', null, '', [an('debug-timings'), an('perf-readout')]],
   ];
@@ -50,6 +50,11 @@
   // float over a full-size canvas. A pushed host under 1180 wide starts with the right panel collapsed; overlay starts with both collapsed.
   const PUSH_MIN = { w: 940, h: 420 }, RIGHT_MIN = 1180;
   const modeOf = (pref, w, h, tall) => (tall ? 'stack' : pref === 'push' || pref === 'overlay' ? pref : w >= PUSH_MIN.w && h >= PUSH_MIN.h ? 'push' : 'overlay');
+  // CANVAS SHAPE (owner 10-29, every layout): wide 16:9 (default), 3:4 or square. Portrait shapes keep the wide view's vertical field of view and
+  // crop the sides (drive-anim.js hfovFor). Stacked with the panel open, 3:4 becomes square (one zoom step; owner OK), so the tabs keep room.
+  const SHAPES = { wide: 16 / 9, '3:4': 3 / 4, square: 1 };
+  const shapeOf = (pref, tall, open) => { const s = SHAPES[pref] ? pref : 'wide'; return s === '3:4' && tall && open ? 'square' : s; };
+  function aspectOf(ui) { const L = ui.driveLayout; return SHAPES[L && L.shape ? L.shape : shapeOf(ui.dvOpts && ui.dvOpts.canvasShape, false, false)]; }
   const openDefault = (side, mode, w) => (mode === 'overlay' ? false : side === 'left' || mode === 'stack' || w >= RIGHT_MIN);
 
   // build: the skeleton, once, inside the bar. Returns the parts; ui.driveLayout keeps them.
@@ -123,6 +128,7 @@
     L.root.classList.toggle('dl-tall', !!L.tall); L.root.classList.toggle('dl-wide', !L.tall);
     const mode = L.mode || 'push'; L.root.classList.toggle('dl-overlay', mode === 'overlay'); L.root.classList.toggle('dl-push', mode === 'push');
     for (const side of ['left', 'right']) { const v = load(openKey(side, mode), null); (side === 'left' ? L.left : L.right).setAttribute('data-open', String(v === null ? openDefault(side, mode, L.w || 0) : v === 'true')); }
+    L.shape = shapeOf(ui.dvOpts && ui.dvOpts.canvasShape, !!L.tall, L.left.getAttribute('data-open') === 'true'); L.root.setAttribute('data-shape', L.shape);
     for (const id of RIGHT) put(L.tall ? L.content : L.rcontent, L.panes[id]);
     for (const id of TABS.map((t) => t[0])) if (!RIGHT.includes(id)) put(L.content, L.panes[id]);
     show(ui);
@@ -154,7 +160,7 @@
   function setOpen(ui, side, open) {
     const L = ui.driveLayout, p = side === 'left' ? L.left : L.right;
     if ((p.getAttribute('data-open') === 'true') === open) return;
-    p.setAttribute('data-open', String(open)); save(openKey(side, L.mode || 'push'), open);
+    p.setAttribute('data-open', String(open)); save(openKey(side, L.mode || 'push'), open); layout(ui);   // the shape can follow the panel (3:4 stacked)
     if (ui.redrawSpec) ui.redrawSpec();      // the stage changed size: the canvas refits
   }
   const toggle = (ui, side) => setOpen(ui, side, (side === 'left' ? ui.driveLayout.left : ui.driveLayout.right).getAttribute('data-open') !== 'true');
@@ -164,5 +170,5 @@
     const s = L.stage.getBoundingClientRect(), r = el.getBoundingClientRect();
     return s.width > 0 && s.height > 0 ? { x: s.left - r.left, y: s.top - r.top, w: s.width, h: s.height } : null;
   }
-  RF.DriveLayout = { LAYOUT, TOP, STRIP, TABS, SUBS, isTall, modeOf, openDefault, PUSH_MIN, RIGHT_MIN, build, place, layout, select, reveal, setOpen, unplaced, stageBox };
+  RF.DriveLayout = { LAYOUT, TOP, STRIP, TABS, SUBS, isTall, modeOf, openDefault, PUSH_MIN, RIGHT_MIN, SHAPES, shapeOf, aspectOf, build, place, layout, select, reveal, setOpen, unplaced, stageBox };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -942,6 +942,15 @@
       note: 'UI step C (owner 10-29): how the Drive panels share the host. push: the controls sit beside the picture and the canvas shrinks. overlay: the bars and panels float over a full-size canvas (panels start collapsed). auto: push when the host is at least 940 x 420 css px, overlay below that.',
     },
     {
+      id: 'canvasShape', kind: 'profile', type: 'enum', values: ['wide', '3:4', 'square'],
+      default: 'wide', label: 'canvas',
+      control: '[data-anim="canvas-shape"]', where: 'more', query: null,
+      group: 'diagnostics', cost: 'per-frame-gpu',
+      owner: ['js/drive-anim.js', 'js/drive-layout.js'],
+      tests: ['UX2-drive-ux'],
+      note: 'UI step C (owner 10-29): the drive picture shape, every layout. 3:4 and square keep the wide view vertical field of view and crop the sides (hfovFor); the sim ceiling is a pixel budget (the area of a 16:9 frame that wide), so they cost no more pixels. Stacked (phone) with the panel open, 3:4 shows as square. The CPU recovery still stays 16:9.',
+    },
+    {
       id: 'seed', kind: 'profile', type: 'int', values: { min: 0, max: 99999, step: 1 },
       default: 7, label: 'scenery seed',
       control: '[data-anim="seed"], [data-anim="dice"]', where: 'more', query: null,

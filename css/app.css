@@ -687,6 +687,7 @@ body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { 
 /* tall: the stage under the top bar at 16:9, then the strip, then one panel with every tab; the grab bar stows strip and panel */
 .dl-tall .dl-body { display: contents; }
 .dl-tall .dl-top { order: 0; } .dl-tall .dl-stage { order: 1; flex: none; aspect-ratio: 16 / 9; }
+.dl-tall[data-shape=square] .dl-stage { aspect-ratio: 1; } .dl-tall[data-shape='3:4'] .dl-stage { aspect-ratio: 3 / 4; }   /* canvas shape: the stacked stage follows it */
 .dl-tall .dl-strip { order: 2; border-top: 1px solid var(--dl-line); gap: 4px; padding: 6px 8px; }
 .dl-tall .dl-left { order: 3; flex: 1 1 0; padding-top: 14px; }
 .dl-tall .dl-right { display: none; }
