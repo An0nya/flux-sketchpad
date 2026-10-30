@@ -212,7 +212,7 @@
       if(blocked(A,eye,[L.x,L.y,L.z])||!D.lightVisible(L,eye,obs))continue;
       const q=axes.map(v=>dot([L.x,L.y,L.z],v));lights.push({...L,x:q[0],y:q[1],z:q[2],eyeCd:D.lampEyeCd(L,eye,opts)});
     }
-    return D.glareSources(sources,[-2,.37,1.2],undefined,{lights,lampClass:opts.lampClass,lampKind:opts.lampKind});
+    return D.glareSources(sources,[-2,.37,1.2],undefined,{lights,lampClass:opts.lampClass,lampKind:opts.lampKind,wetVeil:opts.wetVeil,wetness:opts.wetness,wetSheen:opts.wetSheen});   // wetVeil (4-N) passes through, as in the flat scenes
   }
   function eyeLux(p, car) {
     const A=p.A, q=A.surface(car.rel,car.off,1.1), a=attitude(A.dist), axis=[a.forward,a.left,a.up], dot=(v,w)=>v.reduce((s,x,i)=>s+x*w[i],0);

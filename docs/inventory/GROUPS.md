@@ -83,11 +83,11 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
-| `view` | Camera and playback | 3 | 2 | 1 | 0 | 0 | 0 | 0 |
+| `view` | Camera and playback | 4 | 3 | 1 | 0 | 0 | 0 | 0 |
 | `road` | Road and route | 9 | 2 | 5 | 0 | 0 | 0 | 2 |
-| `surface` | Road surface | 7 | 0 | 4 | 0 | 0 | 1 | 2 |
+| `surface` | Road surface | 8 | 0 | 5 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 28 | 0 | 4 | 0 | 24 | 0 | 0 |
+| `halo` | Traffic halo | 30 | 0 | 4 | 0 | 26 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 15 | 0 | 12 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
@@ -102,6 +102,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | option | label | kind | sits in | default | needs / ignored / conflicts |
 |---|---|---|---|---|---|
 | `playing` | drive / pause | profile | toolbar | false | - |
+| `driveScrub` | time scrubber | profile | toolbar | false | - |
 | `speed` | speed (km/h) | profile | toolbar | 50 | - |
 | `fov` | view angle | profile | More | 60 | - |
 
@@ -123,6 +124,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 
 | option | label | kind | sits in | default | needs / ignored / conflicts |
 |---|---|---|---|---|---|
+| `wetVeil` | wet-road reflections in the glare veil | profile | More | false | needs `wetOn` [disabled], `wetSheenOn` [disabled] |
 | `wet` | wet (legacy mirror of wetness) | profile | no control | false | - |
 | `wetSheen` | wet sheen | profile | More | false | needs `wetOn` [disabled] |
 | `wetModel` | streak model | profile | More | "ggx" | needs `wetOn` [disabled], `wetSheenOn` [disabled] |
@@ -168,6 +170,8 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `haloJitterAmount` | halo jitter amount | profile | advanced halo | 0.25 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloBlur` | halo blur | profile | advanced halo | "light" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloDepthBlur` | halo depth blur | profile | advanced halo | "light" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloLampWin` | lamp-window steps | profile | advanced halo | "off" | ignored when `crossingRefineOn` [none] |
+| `haloCrossingRefine` | crossing-bin refinement | profile | advanced halo | 0 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloAutoRange` | halo table auto range | profile | advanced halo | "4-8" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloNearSub` | halo near quality | profile | advanced halo | 1 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloConePass` | cone pass | profile | advanced halo | "2" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |

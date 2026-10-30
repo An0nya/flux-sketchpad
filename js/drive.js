@@ -843,6 +843,15 @@
   }
   function glareSources(objects, eye, occluders, opts) {
     eye = eye || [-2, 0.37, 1.2]; const out = [], occ = occluders || objects;
+    // le-chonk (backlog 4-N, option wetVeil): also emit each lamp mirrored in the road plane (z -> -z), weighted by wetness x Fresnel at grazing,
+    // so the glare veil gains the wet-road streak below the horizon. Mirrors are not occlusion-tested (v1: the streak can peek past a crest).
+    const wetVeil = !!(opts && opts.wetVeil && +opts.wetness > 0 && opts.wetSheen);
+    const mirrorOf = (x, y, z, cd, rgb) => {
+      const mx = x - eye[0], my = y - eye[1], mz = -z - eye[2], rr = Math.hypot(mx, my, mz);
+      if (mx <= 0 || !(rr > 0)) return;
+      const dz = mz / rr, f = (0.02 + 0.98 * Math.pow(1 - Math.min(1, Math.abs(dz)), 5)) * (+opts.wetness || 0);
+      out.push([mx / rr, my / rr, mz / rr, cd * mx / rr / (rr * rr) * f, ...rgb]);
+    };
     for (const ob of objects) if (glareEmitter(ob)) {
       const dx = ob.x - eye[0], dy = ob.y - eye[1], dz = ob.z - eye[2], rr = Math.hypot(dx, dy, dz);
       if (dx <= 0 || !(rr > 0)) continue;
@@ -850,14 +859,18 @@
       const cos = Math.max(0, -(dx * ob.nx + dy * ob.ny) / rr);
       const cd = ob.eyeCd === undefined ? (ob.headlamp ? ob.emit[0] : Math.max(...ob.emit)) * Math.PI * ob.r * ob.r * Math.pow(cos, ob.emitPow || 1) : ob.eyeCd;
       if (!(cd > 0)) continue;
-      out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr), ...sourceRGB(ob.emit)]);
+      const rgb = sourceRGB(ob.emit);
+      out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr), ...rgb]);
+      if (wetVeil) mirrorOf(ob.x, ob.y, ob.z, cd, rgb);
     }
     for (const L of (opts && opts.lights) || []) {
       const dx = L.x - eye[0], dy = L.y - eye[1], dz = L.z - eye[2], rr = Math.hypot(dx, dy, dz);
       if (dx <= 0 || !(rr > 0)) continue;
       const cd = L.eyeCd === undefined ? lampEyeCd(L, eye, opts) : L.eyeCd;
       if (!(cd > 0) || !lightVisible(L, eye, occ)) continue;
-      out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr), ...sourceRGB(L.rgb)]);   // L.rgb: the lamp kind's tint (sodium / LED), set where the lights are made
+      const rgb = sourceRGB(L.rgb);   // L.rgb: the lamp kind's tint (sodium / LED), set where the lights are made
+      out.push([dx / rr, dy / rr, dz / rr, cd * dx / rr / (rr * rr), ...rgb]);
+      if (wetVeil) mirrorOf(L.x, L.y, L.z, cd, rgb);
     }
     return out.sort((a, b) => b[3] - a[3]).slice(0, 32);
   }

@@ -27,7 +27,7 @@
     ['performance', null, 'Resolution', [an('resolution'), an('dynamic-resolution'), an('min-fps'), dv('samples')]],
     ['performance', null, 'Renderer', [an('gpu-renderer'), ...C(['mt']), an('tile-cache')]],
     ['performance', null, 'Debug', [an('save-state'), an('load-state'), an('state-file'), an('state-msg')]],
-    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), an('fps-counter'), an('large-card'), an('animate-ui')]],
+    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), dv('driveScrub'), an('scrub'), an('scrub-lab'), an('fps-counter'), an('large-card'), an('animate-ui')]],
     ['details', null, '', [an('scene-details'), an('scene-details-panel')]],
     ['timings', null, '', [an('debug-timings'), an('perf-readout')]],
   ];

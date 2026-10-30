@@ -41,7 +41,9 @@ run('multi-part optics + multi-emitter (tests/optics-parts.js)', ['tests/optics-
 run('watching a solve: worker previews (tests/preview.js)', ['tests/preview.js']);
 run('road model + IIHS metrics (tests/road.js)', ['tests/road.js']);
 run('beam quality report (tests/beam-quality.js)', ['tests/beam-quality.js']);
+run('le-chonk scrubber + wet veil options (tests/le-chonk-scrub-veil.js)', ['tests/le-chonk-scrub-veil.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
+run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
 run('driver\'s-eye view (tests/drive.js)', ['tests/drive.js']);
 run('detailed models prototype (tests/models-proto.js)', ['tests/models-proto.js']);
 run('leafy foliage prototype (tests/foliage.js)', ['tests/foliage.js']);

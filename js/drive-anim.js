@@ -1169,15 +1169,17 @@ void main() {
   const kmhOf = () => { const v = +info().o.speed; return Number.isFinite(v) ? v : 50; };   // 0 is a real speed (stopped, traffic still moves): never '|| 50'
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
-    const I = info(), o = I.o, pool = trafficPoolOf(o), W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, hfovFor(o.fov, sz.aspect), simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, o.ownLow, o.ownHigh, lampTintOf(I, ownBeams(o)).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
+    const I = info(), o = I.o, pool = trafficPoolOf(o), W = sz.W, H = sz.H, ownNow = ownBeams(o);
+    const ownLowKey = o.ownLow && o.ownLow !== 'design' ? (ownNow.low ? 'R:' + ownNow.lowId : 'U:' + o.ownLow) : o.ownLow, ownHighKey = o.ownHigh && o.ownHigh !== 'generic' ? (ownNow.high ? 'R:' + ownNow.highId : 'U:' + o.ownHigh) : o.ownHigh;
+    const key = JSON.stringify([I.groundKey, W, H, hfovFor(o.fov, sz.aspect), simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, ownLowKey, ownHighKey, lampTintOf(I, ownNow).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     if (V.shuf) V.shuf.title = shuffleTip(o);   // the tooltip follows the renderer, every frame
     const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.tileCache, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o)]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, powerlines: o.powerlines, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, reflectiveClothing: o.reflectiveClothing, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: D.wetnessOf(o) > 0 }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
-    const own = ownBeams(o), tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
-    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
+    const own = ownNow, tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
+    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloLampWin: o.haloLampWin, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloCrossingRefine: o.haloCrossingRefine, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!(o.mountainPass && V.three) };
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || (D.wetnessOf(o) > 0 && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g); if (!TL.cur) tlOpen('rebuild'); tlMark(V.three ? 'ground (GPU path, drawn per frame)' : 'ground built (CPU)', V.three ? null : { groundMs: V.g.ms });
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1193,7 +1195,7 @@ void main() {
     return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), eyeOf(p), occ, glareOpts(info().o, occW));
   }
   // GLARE (Brief U): one path, every source. opts carry the street lamps (world.lights) and their class/kind; the lights' rgb is the lamp kind's tint. world = the frame's tile/pass world.
-  function glareOpts(o, world) { return { lights: (world && world.lights) || [], lampClass: o.lampClass, lampKind: o.streetLamps }; }
+  function glareOpts(o, world) { return { lights: (world && world.lights) || [], lampClass: o.lampClass, lampKind: o.streetLamps, wetVeil: !!o.wetVeil, wetness: D.wetnessOf(o), wetSheen: !!o.wetSheen }; }   // wetVeil (4-N): glareSources mirrors the lamps in the road when on
   function exposure(sources) {
     const I = info(), o = I.o;
     if (o.expMode === 'auto' && V.kAuto) return V.kAuto;
@@ -1482,6 +1484,7 @@ void main() {
       } catch (e) { LIB.builtins = []; LIB.biState = 'unavailable'; }
       LIB.ver++;
       if (V.fillOwn) V.fillOwn();
+      if (V.p) prepare(layout());   // a built-in beam that arrives late changes the resolved LUT: rebuild the picture (the cache key now carries the resolved id)
     })();
     return LIB.bi;
   }
@@ -1574,7 +1577,7 @@ void main() {
   // The beams the options pick: null = built-in (our design for low, generic for high)
   function ownBeams(o) {
     const lo = o.ownLow && o.ownLow !== 'design' ? libFind(o.ownLow, 'low') : null, hi = o.ownHigh && o.ownHigh !== 'generic' ? libFind(o.ownHigh, 'high') : null;
-    return { low: lo ? lo.lut : null, high: hi ? hi.lut : null, lowColour: lo ? lo.colour : null, highColour: hi ? hi.colour : null };
+    return { low: lo ? lo.lut : null, high: hi ? hi.lut : null, lowId: lo ? lo.id : null, highId: hi ? hi.id : null, lowColour: lo ? lo.colour : null, highColour: hi ? hi.colour : null };
   }
   // BB3: the lamp tint the picture uses. While the high switch is on, a saved high beam's colour wins if it has one; otherwise the
   // saved low beam's colour; a beam with no colour (old or imported file) lights with the current source's tint (fromSource).
@@ -1599,6 +1602,24 @@ void main() {
     if (V.bar) return V.bar;
     const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), primary = ui.driveExtras, btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
     btn('play', 'Drive / pause: Pause freezes distance and time', () => { const current = S(ui); current.playing = !current.playing; if (current.playing && V.gpuFailure && V.gpuNote) say(V.gpuNote); setDV(ui, 'playing', current.playing); });   // drops the "Paused:" half of the GPU notice once driving again
+    // le-chonk (backlog 6-L, option driveScrub): trailing-60 s time slider, hidden while the option is off. Dragging pauses and re-poses t only
+    // (dist unchanged); the traffic stream re-seeds deterministically from (dist, t), so the same place + time replays the same cars.
+    const scrub = E('input', { type: 'range', 'data-anim': 'scrub', min: '0', max: '100', step: '0.05', value: '0', hidden: '', 'aria-label': 'Scrub time', title: 'Scrub time back over the last 60 s. Pauses and re-poses; traffic replays deterministically for the same place and time.' });
+    const scrubLab = E('output', { class: 'anim-speed', 'data-anim': 'scrub-lab', 'aria-live': 'off' });   // 6-L: the value the thumb sits at, since the slider itself carries no numbers
+    const scrubLabel = () => { const off = +scrub.max - +scrub.value; scrubLab.textContent = off > 0.05 ? '-' + off.toFixed(1) + ' s' : 'now'; };   // behind the newest frame in the window
+    const scrubWindow = (st) => { scrub.max = String(Math.max(1, st.t)); scrub.min = String(Math.max(0, st.t - 60)); scrub.value = String(st.t); };   // 6-L: the trailing-60 s window, from the drive clock now. Labels() only runs on an option change, so without a refresh at drag start the window went stale after the first second of driving (measured 10-30: still [0,1] at t=30) and a scrub could only reach 1 s back
+    scrub.addEventListener('pointerdown', () => { scrub._drag = true; scrubWindow(S(ui)); scrubLab.textContent = 'now'; });
+    const scrubEnd = () => { scrub._drag = false; };
+    scrub.addEventListener('pointerup', scrubEnd); scrub.addEventListener('pointercancel', scrubEnd);
+    scrub.addEventListener('input', () => {
+      if (!info().o.driveScrub) return;
+      const st = S(ui);
+      if (st.playing) setDV(ui, 'playing', false);
+      st.t = +scrub.value; st.camera = null; scrubLabel();
+      if (V.src && V.src.traffic) V.src.traffic.state = null;   // a fresh seeded stream at the scrubbed spot, like a state load
+      if (ui.redrawSpec) ui.redrawSpec();
+    });
+    bar.append(scrub, scrubLab);
     // High beam (H key or this button): session state on V, not saved prefs, so it is off on every reload
     btn('high-beam', 'High beam (H) cycles Off, On, Auto. Auto dips for oncoming headlamps, preceding tail lamps, urban tiles and under 30 km/h, then returns to high after 2 s clear. Off by default; not saved across reloads.', () => cycleHigh(ui), 'high beam');
     document.addEventListener('keydown', (e) => { if (/^h$/i.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && V.bar && !V.ui.driveBar.hasAttribute('data-noanim') && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); cycleHigh(ui); } });
@@ -1746,12 +1767,20 @@ void main() {
       V.trafficList.replaceChildren(E('summary', {}, 'use in traffic'), ...libLoad().filter(e => e.beamKind === 'low').map(e => E('label', {}, E('input', { type: 'checkbox', checked: !out.includes(e.id), 'data-id': e.id }), ' ' + beamLabel(e))));
     };
     const fillOwn = () => {
-      const keep = { l: info() && info().o.ownLow, h: info() && info().o.ownHigh };
+      const keep = { l: info() && info().o.ownLow, h: info() && info().o.ownHigh }, lo = libFind(keep.l, 'low'), hi = libFind(keep.h, 'high');
+      const pendingLow = !lo && keep.l && keep.l !== 'design', pendingHigh = !hi && keep.h && keep.h !== 'generic';
       ownLow.replaceChildren(E('option', { value: 'design' }, 'our design'), ...libAll().filter(e => e.beamKind === 'low').map(e => E('option', { value: e.id }, beamLabel(e))));
       ownHigh.replaceChildren(E('option', { value: 'generic' }, 'generic high'), ...libAll().filter(e => e.beamKind === 'high').map(e => E('option', { value: e.id }, beamLabel(e))));
+      const biLabel = (id) => String(id).startsWith('builtin:') ? (LIB.biState === 'unavailable' ? 'built-in beam (unavailable)' : 'built-in beam (loading...)') : 'unavailable beam: ' + id;
+      if (pendingLow) ownLow.append(E('option', { value: keep.l }, biLabel(keep.l)));
+      if (pendingHigh) ownHigh.append(E('option', { value: keep.h }, biLabel(keep.h)));
       if (String(keep.l || '').startsWith('builtin:') || String(keep.h || '').startsWith('builtin:')) ensureBuiltins();
-      ownLow.value = libFind(keep.l, 'low') || keep.l === 'design' || !keep.l ? (keep.l || 'design') : 'design';
-      ownHigh.value = libFind(keep.h, 'high') || keep.h === 'generic' || !keep.h ? (keep.h || 'generic') : 'generic';
+      ownLow.value = lo ? keep.l : pendingLow ? keep.l : 'design';
+      ownHigh.value = hi ? keep.h : pendingHigh ? keep.h : 'generic';
+      if (V.beamMsg) {
+        if (pendingLow || pendingHigh) V.beamMsg.textContent = 'Beam reference' + (pendingLow && pendingHigh ? 's' : '') + ' not resolved' + (pendingLow ? ': low ' + keep.l : '') + (pendingLow && pendingHigh ? '; ' : '') + (pendingHigh ? 'high ' + keep.h : '') + '.';
+        else if (/^Beam reference/.test(V.beamMsg.textContent)) V.beamMsg.textContent = 'Beam reference resolved.';
+      }
       renderTrafficList();
       renderManager();
     };
@@ -1940,6 +1969,8 @@ void main() {
     for (const [name, key] of [['large-card', 'largeCard'], ['animate-ui', 'animateUI']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(key === 'animateUI' ? !!o[key] : o[key] !== false));   // animateUI is off by default
     ui.driveBar.toggleAttribute('data-noanim', !(sup && (st.view === 'anim' || st.popout)));   // UI step C: hides the .dl-anim controls (they left V.bar for the tabs)
     const run = st.playing && (st.view === 'anim' || st.popout), pb = ui.driveBar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ Pause' : '▶ Drive'; pb.setAttribute('aria-pressed', String(run));
+    { const sc = ui.driveBar.querySelector('[data-anim="scrub"]'), sl = ui.driveBar.querySelector('[data-anim="scrub-lab"]'); if (sc) { sc.hidden = !o.driveScrub; if (sl) sl.hidden = !o.driveScrub;   // 6-L scrubber: trailing 60 s window
+        if (o.driveScrub && !sc._drag) { sc.max = String(Math.max(1, st.t)); sc.min = String(Math.max(0, st.t - 60)); sc.value = String(st.t); if (sl) sl.textContent = 'now'; } } }   // 6-L: labels() refreshes it too (same window), so a fresh Drive starts at 'now'
     ui.driveBar.querySelector('[data-anim="speed"]').value = o.speed; speedLabel(ui);
     for (const [k] of CLASSES) { const b = V.ui.driveBar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
     { const sel = V.ui.driveBar.querySelector('[data-anim="powerlines"]'); if (sel) sel.value = o.powerlines === 'on' ? 'on' : 'off'; }
@@ -1958,7 +1989,7 @@ void main() {
     if (V.shuf) { V.shuf.value = o.trafficShuffle === 'library' ? 'library' : 'off'; V.shuf.title = shuffleTip(o); }
     if (V.trafficList) for (const c of V.trafficList.querySelectorAll('input[type=checkbox]')) c.checked = !(Array.isArray(o.trafficOutIds) && o.trafficOutIds.includes(c.dataset.id));
     if (V.nameIn) V.nameIn.placeholder = beamDefaultName(info());
-    if (V.fillOwn) { V.ui.driveBar.querySelector('[data-anim="own-low"]').value = o.ownLow && o.ownLow !== 'design' && libFind(o.ownLow, 'low') ? o.ownLow : 'design'; V.ui.driveBar.querySelector('[data-anim="own-high"]').value = o.ownHigh && o.ownHigh !== 'generic' && libFind(o.ownHigh, 'high') ? o.ownHigh : 'generic'; }
+    if (V.fillOwn) { const loS = V.ui.driveBar.querySelector('[data-anim="own-low"]'), hiS = V.ui.driveBar.querySelector('[data-anim="own-high"]'); loS.value = o.ownLow && [...loS.options].some(x => x.value === o.ownLow) ? o.ownLow : 'design'; hiS.value = o.ownHigh && [...hiS.options].some(x => x.value === o.ownHigh) ? o.ownHigh : 'generic'; }
     if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0);
     const trafficOn = o.oncoming || o.preceding;
     if (V.flashLab) V.flashLab.hidden = !trafficOn;
@@ -2387,9 +2418,18 @@ void main() {
     if (V.src && V.src.traffic) V.src.traffic.state = null;   // a fresh seeded stream at the saved spot
     V.peaks = null;
     setDV(ui, 'playing', false);   // one save of the whole set, then the redraw
+    if (V.fillOwn) V.fillOwn();   // a saved library / built-in beam must be fetched and shown, not left as the design fallback
     const w = dump.where || {}, list = (a) => a.slice(0, 6).join(', ') + (a.length > 6 ? ' +' + (a.length - 6) : '');
+    // BA2/glm5.2: name the beam fallback the silent drop causes, so a photometric repro does not silently measure the design lamp.
+    // ownLow is our low beam (and, in onMode 'symmetric', the oncoming cars' beam); ownHigh is our high beam. Both are kind 'extra',
+    // so a workspace predating the readState 'extra'-keep fix (main 6541ccf) drops them and falls back to 'design' / 'generic'.
+    const beamFall = [], beamPending = [];
+    if (r.ignored.includes('ownLow')) beamFall.push('low beam fell back to our design' + (r.opts.onMode === 'symmetric' ? ' (oncoming traffic too)' : ''));
+    if (r.ignored.includes('ownHigh')) beamFall.push('high beam fell back to generic');
+    if (r.opts.ownLow && r.opts.ownLow !== 'design' && !libFind(r.opts.ownLow, 'low')) beamPending.push('low ' + r.opts.ownLow + (String(r.opts.ownLow).startsWith('builtin:') ? ' (loading)' : ' (unresolved)'));
+    if (r.opts.ownHigh && r.opts.ownHigh !== 'generic' && !libFind(r.opts.ownHigh, 'high')) beamPending.push('high ' + r.opts.ownHigh + (String(r.opts.ownHigh).startsWith('builtin:') ? ' (loading)' : ' (unresolved)'));
     return 'Loaded: ' + [w.road, w.tileKind, Math.round(r.pose.dist) + ' m'].filter(Boolean).join(' · ') + '. Paused.'
-      + (r.ignored.length ? ' Not in this build (dropped): ' + list(r.ignored) + '.' : '') + (r.missing.length ? ' Not in the file (default): ' + list(r.missing) + '.' : '');
+      + (r.ignored.length ? ' Not in this build (dropped): ' + list(r.ignored) + '.' : '') + (beamFall.length ? ' ' + beamFall.join('; ') + '.' : '') + (beamPending.length ? ' Beam reference loading: ' + beamPending.join('; ') + '.' : '') + (r.missing.length ? ' Not in the file (default): ' + list(r.missing) + '.' : '');
   }
   function detailsSnapshot() {
     const s = detailState(), M = RF.SceneDetails;
