@@ -2372,7 +2372,8 @@ void main() {
     if (!dump || typeof dump !== 'object' || dump.kind !== STATE_KIND) return { error: 'Not a Flux state file (no "kind": "' + STATE_KIND + '").' };
     if (!(dump.version <= STATE_VERSION)) return { error: 'State file version ' + dump.version + ' is newer than this build reads (' + STATE_VERSION + ').' };
     const saved = dump.options && typeof dump.options === 'object' ? dump.options : {}, d = RF.Options.defaults(), opts = Object.assign({}, d), ignored = [], missing = [];
-    for (const k of Object.keys(saved)) { if (k === 'defaultsVersion') continue; if (k in d && !RF.Options.RETIRED_KEYS.includes(k)) opts[k] = plain(saved[k]); else ignored.push(k); }
+    const known = (k) => { const e = RF.Options.byId[k]; return !RF.Options.RETIRED_KEYS.includes(k) && (k in d || !!(e && e.kind === 'extra')); };   // 'extra' options (ownLow, wetness, ...) have no default but are saved: keep them
+    for (const k of Object.keys(saved)) { if (k === 'defaultsVersion') continue; if (known(k)) opts[k] = plain(saved[k]); else ignored.push(k); }
     for (const k of Object.keys(d)) if (!(k in saved)) missing.push(k);
     const p = dump.pose || {}, num = (v) => (Number.isFinite(+v) ? +v : 0);
     return { opts, pose: { dist: num(p.dist), t: num(p.t), total: num(p.total), camera: p.camera && typeof p.camera === 'object' ? plain(p.camera) : null }, ignored, missing };
