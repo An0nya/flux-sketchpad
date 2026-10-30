@@ -19,6 +19,13 @@ const r = A.readState(file);
 ok('SD unknown key dropped and listed', r.ignored.includes('notARealKey') && !('notARealKey' in r.opts), r.ignored);
 ok('SD missing key takes the default and is listed', r.missing.includes(keys[keys.length - 1]) && JSON.stringify(r.opts[keys[keys.length - 1]]) === JSON.stringify(d[keys[keys.length - 1]]), r.missing);
 if (stale) ok('SD exact values: an old default is NOT swapped for the new one (' + stale.id + ')', JSON.stringify(r.opts[stale.id]) === JSON.stringify(stale.defaultHistory[0].value), r.opts[stale.id]);
+// 'extra' options are not in defaults() but are part of the state: a saved own beam must survive the load (10-30: ownLow,
+// wetness and deerBehaviour were dropped as "ignored", so a loaded pose silently used the scene's lamp)
+const extra = { ownLow: 'builtin:sqm-samples.json:4', wetness: 0.4, deerBehaviour: true };
+const fx = JSON.parse(JSON.stringify(dump)); Object.assign(fx.options, extra); const rx = A.readState(fx);
+ok('SD extra options kept (ownLow, wetness, deerBehaviour)', Object.keys(extra).every((k) => rx.opts[k] === extra[k] && !rx.ignored.includes(k)), { ignored: rx.ignored });
+ok('SD extra options absent from the file are not listed as missing', !rx.missing.some((k) => O.byId[k] && O.byId[k].kind === 'extra'), rx.missing);
+ok('SD derived/game/session keys still dropped', O.OPTIONS.filter((e) => ['derived', 'game', 'session'].includes(e.kind)).every((e) => { const f = JSON.parse(JSON.stringify(dump)); f.options[e.id] = 1; const q = A.readState(f); return !(e.id in q.opts) || e.id in d; }));
 ok('SD wrong kind is refused', !!A.readState({ kind: 'beam' }).error && !!A.readState(null).error);
 ok('SD newer version is refused', !!A.readState({ kind: A.STATE_KIND, version: 99 }).error);
 // load: options replaced, pose restored, paused, one setDV call
