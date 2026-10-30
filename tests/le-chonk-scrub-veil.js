@@ -10,7 +10,7 @@ for (const id of ['driveScrub', 'wetVeil']) {
   ok(id + ' declared exactly once', hits.length === 1, hits.length);
   ok(id + ' is a profile bool default false', hits.length === 1 && hits[0].kind === 'profile' && hits[0].type === 'bool' && hits[0].default === false, hits[0] && { kind: hits[0].kind, type: hits[0].type, def: hits[0].default });
   ok(id + ' in defaults() as false', O.defaults()[id] === false, O.defaults()[id]);
-  ok(id + ' control selector unique', id !== 'driveScrub' || hits[0].control === '[data-anim="scrub"]', hits[0] && hits[0].control);
+  ok(id + ' control declared once', hits.length === 1 && typeof hits[0].control === 'string', hits[0] && hits[0].control);   // control string normalized to [data-dv=...] by the 10-30 RN landing; the drive-bar slider itself stays [data-anim="scrub"] in drive-anim.js bars()
 }
 ok('wetVeil requires wet + wetSheen (rule names exist)', (O.byId.wetVeil.requires || []).every((r) => O.RULES[r.rule]), (O.byId.wetVeil.requires || []).map((r) => r.rule));
 

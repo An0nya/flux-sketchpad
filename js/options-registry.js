@@ -486,6 +486,16 @@
       note: 'Reference-quality quadrature for the one depth bin where an oncoming ray crosses the lamp\'s forward plane: 512 or 2048 log steps replace that bin\'s six; the other bins keep the shipped schedule. 2048 matched a 262144-point reference within 0.013% at the valley cell, but costs about 15x the table samples. Takes precedence over haloLampWin. GPU side only.',
     },
     {
+      id: 'haloRefineNeighbour', kind: 'profile', type: 'enum', values: ['off', 'on'],
+      default: 'off', label: 'refine eye-side neighbour bin',
+      control: '[data-dv="haloRefineNeighbour"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'table-rebuild',
+      owner: ['js/spec-ui.js', 'js/drive-three-halo.js'],
+      requires: [need('gpu'), need('air'), need('haloOn'), need('crossingRefineOn')],
+      tests: ['node:halo-refine-neighbour'],
+      note: 'With crossing-bin refinement on: refine that bin\'s eye-side neighbour as well. The trigger depth is pinned at the lamp\'s forward-plane crossing while the glow centroid slides toward the eye as the ray\'s closest approach grows, so the bin holding the light is usually the next one nearer: at the valley pose (D=199 m) the dominant bin was one nearer in 24/30 rows, always exactly one, and refining only the crossing bin left it byte-identical to the shipped six steps. About twice the refinement cost. GPU side only.',
+    },
+    {
       id: 'haloAutoRange', kind: 'profile', type: 'enum', values: ['4-8', '2-4', '2-8', '1.4-2'],
       default: '4-8', label: 'halo table auto range',
       control: '[data-dv="haloAutoRange"]', where: 'halo-advanced', query: null,
