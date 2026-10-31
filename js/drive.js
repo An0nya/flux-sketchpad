@@ -85,6 +85,8 @@
     'cp-7': { name: 'clothing: sky blue', rho: [0.2, 0.3, 0.45] },
     // POWERLINES (opt-in): dark wire, diffuse reflectance is a TUNING value, not measured. Appended last so existing material ids do not move.
     'wire': { name: 'power wire', rho: [POWERLINE_WIRE_RHO, POWERLINE_WIRE_RHO, POWERLINE_WIRE_RHO] },
+     // CREAK: appended, ids above do not move. Calm water: dark, low-rho, tight gloss (F0 0.06); wet = same (a creek is always wet).
+    'water': { name: 'creek water', rho: [0.015, 0.04, 0.075], gloss: { a: 0.04, F0: 0.06 }, wet: { rho: [0.012, 0.03, 0.06], gloss: { a: 0.03, F0: 0.06 } } },
   };
   const MAT_KEYS = Object.keys(MAT_DEF), MAT_ID = {};
   MAT_KEYS.forEach((k, i) => { MAT_ID[k] = i; });

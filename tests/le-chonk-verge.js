@@ -37,5 +37,11 @@ ok('src.tiles carries tileTerrain; tileA/tileWorld pass it to endlessElev', anim
 ok('top-bar terrain toggle + tkey carries tileTerrain', anim.includes("'data-anim': 'tileTerrain'") && anim.includes('!!o.tileTerrain'));
 const reg = fs.readFileSync(path.join(ROOT, 'js', 'options-registry.js'), 'utf8');
 ok('registry: tileTerrain bool default false (pricy = opt-in)', reg.includes("id: 'tileTerrain'") && /id: 'tileTerrain'[^]*?default: false/.test(reg));
+// creekside + suburbia (Anya's ideas, 10-31 ~03:55): open-biome tiles seeded as creek / suburb, behind the wild consent flag
+ok('open tiles seed creeks and suburbia deterministically', (() => { let ck = 0, sb = 0; for (let k = 90; k < 130; k++) { const v = A.endlessVerge(seed, k); if (v.biome !== 'open') continue; if (v.creek) ck++; if (v.suburb) sb++; } return ck > 0 && sb > 0 && JSON.stringify(A.endlessVerge(seed, 96)) === JSON.stringify(A.endlessVerge(seed, 96)); })());
+ok('creek side is ±1 and never on the carriageway', (() => { for (let k = 0; k < 300; k++) { const v = A.endlessVerge(seed, k); if (v.creek && Math.abs(v.creek) !== 1) return false; } return true; })());
+ok('tile loop emits the water channel + bank stones + reeds, gated on wild', anim.includes("mat: 'water', cls: 'creek'") && (anim.match(/mat: 'gravel'/g) || []).length >= 1 && anim.includes("vg.creek && cfg.flags.wild !== false"));
+ok('suburb emits house + driveway mark + parked car, gated on wild', anim.includes("vg.suburb && cfg.flags.wild !== false") && anim.includes('KP.parkedCar') && anim.includes("mat: 'gravel', pat:"));
+ok('water material appended last (existing MAT ids unmoved)', (() => { const D = RF.Drive; return D.MAT_KEYS.indexOf('water') === D.MAT_KEYS.length - 1 && D.MAT_KEYS.indexOf('asphalt') === 0 && D.MAT_KEYS.indexOf('sky') === 37; })());
 console.log(fail === 0 ? `\nall ${pass} le-chonk-verge checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);

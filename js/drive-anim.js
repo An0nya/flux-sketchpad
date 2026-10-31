@@ -482,11 +482,15 @@
   function endlessVerge(seed, k) {   // §2-endless verge: per-tile scenery descriptor for the tile loop — biome-specific props with a ramp blending across biome-block boundaries
     const biome = endlessBiome(seed, Math.floor(k / 16) * 16), R = D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(k + 1, 0xC2B2AE35)) >>> 0);
     const ramp = k % 16 === 15 ? 0.4 : k % 16 === 0 ? 0.6 : 1;
-    const v = { biome, ramp, trees: 0, rocks: 0, buildings: 0, fence: false, rail: false };
+    const v = { biome, ramp, trees: 0, rocks: 0, buildings: 0, fence: false, rail: false, creek: 0, suburb: false };
     if (biome === 'forest') v.trees = Math.round((2 + 2 * R()) * ramp);
     if (biome === 'mountain') { v.rocks = Math.round((2 + 2 * R()) * ramp); v.rail = true; }
     if (biome === 'city') v.buildings = Math.round((1 + R()) * ramp);
-    if (biome === 'open') v.fence = ramp > 0.5;
+    if (biome === 'open') {   // open verge content: fence, plus seeded creekside / suburbia tiles
+      v.fence = ramp > 0.5;
+      if (R() < 0.22 * ramp) v.creek = R() < 0.5 ? -1 : 1;   // a creek runs beside the road on one side
+      else if (R() < 0.18) v.suburb = true;   // suburbia: a house + driveway + parked car
+    }
     return v;
   }
   function endlessTile(seed, k) {
@@ -626,6 +630,18 @@
       if (vg.rocks > 0 && cfg.flags.wild !== false) for (let i = 0; i < vg.rocks; i++) { const u = 15 + KR() * 170, sd = KR() < 0.5 ? -1 : 1, q = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 2 - 4 * KR() : edgeL + 2 + 4 * KR()), r = 0.5 + KR(); KP.add({ k: 'ell', x: q.p[0], y: q.p[1], z: r * 0.4, rx: r, ry: r * 0.8, rz: r * 0.5, mat: 'gravel' }); }   // mountain verge: boulders
       if (vg.buildings > 0 && cfg.flags.wild !== false) for (let i = 0; i < vg.buildings; i++) { const u = 10 + KR() * 60, sd = KR() < 0.5 ? -1 : 1, q = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 9 - 5 * KR() : edgeL + 9 + 5 * KR()); KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: 0, z1: 8 + 14 * KR(), hx: 10 + 12 * KR(), hy: 6 + 4 * KR(), yaw: Math.atan2(q.t[1], q.t[0]), mat: 'wall' }); }   // city verge: frontage
       if (vg.fence && cfg.flags.wild !== false) for (let u = 4; u < 200; u += 8) for (const sd of [-1, 1]) { const q = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 1.2 : edgeL + 1.2); KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: 0.85, z1: 1.05, hx: 4, hy: 0.05, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'concrete' }); }   // open verge: fence
+      if (vg.creek && cfg.flags.wild !== false) {   // creekside: sunken water channel beside the road, bank stones, reeds
+        const wOff = vg.creek < 0 ? edgeR - 5.2 : edgeL + 5.2, q = A.at(tile.s0 + 100 - dist, wOff);
+        KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: -1.2, z1: -0.15, hx: 100, hy: 2.2, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'water', cls: 'creek' });
+        for (let i = 0; i < 3; i++) { const u = 20 + KR() * 160, r = 0.4 + KR() * 0.5, bq = A.at(tile.s0 + u - dist, wOff + (vg.creek < 0 ? 1.6 : -1.6)); KP.add({ k: 'ell', x: bq.p[0], y: bq.p[1], z: r * 0.35, rx: r, ry: r * 0.8, rz: r * 0.5, mat: 'gravel' }); }
+        for (let i = 0; i < 4; i++) { const u = 10 + KR() * 180, r = 0.25 + KR() * 0.3, rq = A.at(tile.s0 + u - dist, wOff + (vg.creek < 0 ? -1.4 : 1.4) * (0.5 + KR())); KP.add({ k: 'ell', x: rq.p[0], y: rq.p[1], z: r, rx: r * 0.5, ry: r * 0.5, rz: r * 1.8, mat: 'foliage' }); }
+      }
+      if (vg.suburb && cfg.flags.wild !== false) {   // suburbia: house, gravel driveway to the road, parked car
+        const sd = KR() < 0.5 ? -1 : 1, hOff = sd < 0 ? edgeR - 9 - 4 * KR() : edgeL + 9 + 4 * KR(), u = 30 + KR() * 140, q = A.at(tile.s0 + u - dist, hOff), hgt = 4.5 + 2.5 * KR();
+        KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: 0, z1: hgt, hx: 8 + 4 * KR(), hy: 6, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'wall-light' });
+        marks.push({ o0: sd < 0 ? edgeR - 1 : hOff, o1: sd < 0 ? hOff : edgeL + 1, mat: 'gravel', pat: { s0: tile.s0 + u - 6 - dist, s1: tile.s0 + u + 2 - dist, period: 1e9, on: 8 } });
+        KP.parkedCar(tile.s0 + u - 12 - dist, sd < 0 ? edgeR - 2.2 : edgeL + 2.2);
+      }
       for (const ob of KP.O) extra.push(move(Object.assign({}, ob), ob, ob.x, A));
     }
       if (mid < -110 || mid > CULL + 110) continue;
