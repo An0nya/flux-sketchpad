@@ -54,5 +54,13 @@ ok('js/spec-ui.js has the control', /dvSelect\('haloWidthStep'/.test(ui));
 ok('js/spec-ui.js syncs the control', /k === 'haloWidthStep'/.test(ui));
 ok('the look projection carries the option', /haloWidthStep: o\.haloWidthStep/.test(fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8')));
 
+// the material picker must take the width: with it ON the fast path (the pre-built materials) must not be used
+{
+  const src = fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8');
+  ok('the material picker takes the width', /const pick = \([^)]*widthStep = 0\)/.test(src));
+  ok('the material picker does not take the fast path when the width is on', /!jit && !sm && !lw && !refine && !moment && !widthStep/.test(src));
+  ok('every material pick passes the width', (src.match(/pick\(atlas,[^)]*widthStep\)/g) || []).length >= 3);
+}
+
 console.log(fails ? `\n${fails} of ${n} checks FAILED` : `\nall ${n} checks passed`);
 process.exit(fails ? 1 : 0);

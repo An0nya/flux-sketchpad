@@ -94,7 +94,7 @@ ok('RN: lw and nb are mutually exclusive in the source (P1c wins, as before)', !
   ok('spec-ui: the control is disabled unless the crossing refinement is on', /k === 'haloRefineNeighbour'[\s\S]{0,220}b\.disabled = !\+o\.haloCrossingRefine/.test(ui));
   ok('spec-ui: it is in BOTH picture-cache keys, next to haloCrossingRefine', (ui.match(/o\.haloCrossingRefine, o\.haloRefineNeighbour/g) || []).length === 2, (ui.match(/o\.haloCrossingRefine, o\.haloRefineNeighbour/g) || []).length);
   const d3 = fs.readFileSync(path.join(ROOT, 'js', 'drive-three.js'), 'utf8');
-  ok('drive-three: haloState() exposes nb, so a page test can read it (the gap P1c has)', d3.includes('cross: halo.cross || 0, nb: halo.nb || 0,'));
+  ok('drive-three: haloState() exposes nb, so a page test can read it (the gap P1c has)', d3.includes('nb: halo.nb || 0'));   // frenchie: anchor on the key, not on adjacency — the haloWidthStep landing inserted `width:` between cross and nb and broke the old exact string; the intent (nb is exposed) is unchanged
 }
 
 console.log(n + ' checks, ' + fails + ' failed');

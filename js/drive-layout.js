@@ -24,7 +24,7 @@
     ['scene', null, 'Traffic', [an('traffic-logic'), an('gap'), an('traffic-density'), an('traffic-range'), an('flashes'), an('reset-flashes')]],
     ['scene', null, 'Our car', [an('afs'), an('cornering-lamps'), an('lamp-pitch')]],
     ['performance', null, 'Exposure', [dv('expMode'), dv('evm'), dv('evp')]],
-    ['performance', null, 'Resolution', [an('resolution'), an('dynamic-resolution'), an('min-fps'), dv('samples')]],
+    ['performance', null, 'Resolution', [an('resolution'), an('dynamic-resolution'), an('min-fps'), an('quality-governor'), dv('samples')]],   // 3-P: the governor select sits with the other frame-time controls
     ['performance', null, 'Renderer', [an('gpu-renderer'), ...C(['mt']), an('tile-cache')]],
     ['performance', null, 'Debug', [an('save-state'), an('load-state'), an('state-file'), an('state-msg')]],
     ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), dv('driveScrub'), an('scrub'), an('scrub-lab'), an('fps-counter'), an('large-card'), an('animate-ui')]],

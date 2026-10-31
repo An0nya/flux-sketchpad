@@ -76,5 +76,6 @@ run('saveable beams: format, checksum, grid, bundle, synthetic (tests/beams.js)'
 run('BA5 GPU beam atlas: packing, shader text, pick equality (tests/beam-atlas.js)', ['tests/beam-atlas.js']);
 run('scene details: registry and metric maths (tests/scene-details.js)', ['tests/scene-details.js']);
 run('option round-trip: every profile option survives dump -> read, extras survive, loadState writes back (tests/option-roundtrip.js)', ['tests/option-roundtrip.js']); // glm5.2 (step5-preview open item #1)
+run('quality governor option: shed state machine + wiring, default off (tests/frenchie-quality-governor.js)', ['tests/frenchie-quality-governor.js']); // frenchie (backlog 3-P)
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

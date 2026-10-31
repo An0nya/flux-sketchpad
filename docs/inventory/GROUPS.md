@@ -93,7 +93,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
 | `exposure` | Exposure and eye | 4 | 1 | 3 | 0 | 0 | 0 | 0 |
-| `performance` | Speed and quality | 7 | 0 | 6 | 0 | 0 | 0 | 1 |
+| `performance` | Speed and quality | 8 | 0 | 7 | 0 | 0 | 0 | 1 |
 | `diagnostics` | Panels and layout | 7 | 0 | 7 | 0 | 0 | 0 | 0 |
 | `internal` | Internal (no control) | 6 | 0 | 0 | 0 | 0 | 0 | 6 |
 
@@ -273,6 +273,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `simCeiling` | resolution ceiling | profile | More | "high" | - |
 | `minFps` | minimum frame rate | profile | More | 30 | needs `dynResOn` [none] |
 | `samples` | supersampling | profile | More | "1" | - |
+| `qualityGovernor` | quality governor | profile | More | "off" | - |
 
 #### Panels and layout (`diagnostics`)
 

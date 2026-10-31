@@ -394,8 +394,8 @@ export function haloPass(renderer, u) {
   const mats = [mk(false), mk(true)], matsP = [mk(false, true), mk(true, true)];   // matsP: HDX6 polar pass materials
   const varMats = new Map(); const varMat = (atlas, polar, occ, variant, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + (occ ? 4 : 0) + variant + ':' + refine; if (!varMats.has(k)) varMats.set(k, mk(atlas, polar, occ, variant, false, false, 0, refine)); return varMats.get(k); };   // SP: band / split variants, compiled on first use
   const occMats = new Map(); const occMat = (atlas, polar, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + ':' + refine; if (!occMats.has(k)) occMats.set(k, mk(atlas, polar, true, '', false, false, 0, refine)); return occMats.get(k); };   // E2: crest-occlusion variants, compiled on first use (option off never builds them)
-  const jitMats = new Map(); const pick = (atlas, polar, occ, variant, jit, sm = false, lw = 0, refine = 0, nb = false, moment = 0) => {   // IL: jit off = exactly the materials the code picked before; on = its own variants, compiled on first use (SM: likewise); LW likewise; P3 (moment) likewise
-    if (!jit && !sm && !lw && !refine && !moment) return variant ? varMat(atlas, polar, occ, variant) : occ ? occMat(atlas, polar) : (polar ? matsP : mats)[atlas ? 1 : 0];
+  const jitMats = new Map(); const pick = (atlas, polar, occ, variant, jit, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0) => {   // IL: jit off = exactly the materials the code picked before; on = its own variants, compiled on first use (SM: likewise); LW likewise; P3 (moment) likewise; WIDTH likewise
+    if (!jit && !sm && !lw && !refine && !moment && !widthStep) return variant ? varMat(atlas, polar, occ, variant) : occ ? occMat(atlas, polar) : (polar ? matsP : mats)[atlas ? 1 : 0];
     const k = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep].join(); if (!jitMats.has(k)) jitMats.set(k, mk(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep)); return jitMats.get(k);
   };
   let blurMat = null; const blurTmp = new Map();   // IL: the bin blur pass and its scratch targets (one per source target), built on first use
@@ -647,8 +647,8 @@ export function haloPass(renderer, u) {
       }
       const cellsOf = (b, nW, nH, rect) => b.empty ? 0 : (b.k1 - b.k0 + 1) * (rect ? (rect[1] - rect[0] + 1) * (rect[3] - rect[2] + 1) : nW * nH);
       try {
-        renderer.autoClear = false; const m = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, halo.moment);
-        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, halo.moment) : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
+        renderer.autoClear = false; const m = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, halo.moment, widthStep);
+        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, halo.moment, widthStep) : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
         renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m;
         // The nearest HALO_REFINE lamps within HALO_NEAR metres are drawn in HALO_SUB sub-passes (24 steps per bin); the rest in one (6).
         used.forEach((q, i) => {
@@ -680,7 +680,7 @@ export function haloPass(renderer, u) {
         // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
-          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit, useSm, lwK, refineN, nbN, halo.moment);
+          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit, useSm, lwK, refineN, nbN, halo.moment, widthStep);
           const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || nearSub) : 1;
           renderer.setRenderTarget(rp.bin); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
           for (let j = 0; j < P; j++) for (const q of s.lamps) {

@@ -192,6 +192,7 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `gameOptions` | game | internal | free | (overlay) | - | - | - | - | - | - | - | - | - |
 | `trafficSubTick` | profile | halo | free | "off" | - | spec-ui.js, drive-anim.js | - | - | - | - | - | - | - |
 | `haloWidthStep` | profile | halo | table-rebuild | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] | spec-ui.js, drive-three-halo.js | - | - | - | - | - | - | - |
+| `qualityGovernor` | profile | performance | free | "off" | - | drive-anim.js, spec-ui.js, drive-layout.js | - | - | - | - | - | - | - |
 <!-- END GENERATED option-table -->
 
 DV_DEF keys with no row above (script check): none.
@@ -206,7 +207,7 @@ Each rule is one condition on other options (or on the render context), with the
 | `air` | visibility is not null | needs air: visibility must not be clear | hidden | `spec-ui.js visIndex(o.visibility) === 0 ~L1063` | scatter, trafficHalo, haloCars, haloRange, lampCone, haloBins, haloDiv, haloPolar, haloPolarBand, haloPolarLamps, haloGain, crestOcclusion, haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, haloCrossingRefine, haloRefineNeighbour, haloMoment, haloAutoRange, haloNearSub, haloConePass, haloConeAngle, trafficShadows, shadowRes, scatterCull, scatterCullEps, scatterRange, scatterMode, scatterRes, scatterBlur, scatterCache, scatterCycle, scatterBinCounts, scatterQuality, scatterCycleFade, scatterNearFadeRange, scatterNearBias, haloWidthStep |
 | `tableMode` | scatterMode = "table" | table mode only (air beam method = table) | disabled | `spec-ui.js o.scatterMode !== 'table' ~L873` | scatterRes, scatterBlur, scatterCache, scatterCycle, scatterCycleFade, scatterNearFadeRange |
 | `tableModeHidden` | scatterMode = "table" | table mode only (air beam method = table) | hidden | `spec-ui.js o.scatterMode !== 'table' ~L873` | scatterBinCounts, scatterQuality, scatterNearBias |
-| `tableModeTip` | scatterMode = "table" | multiplies the table lookup, which only exists in table mode | none | `drive-anim.js Air beam gain (table mode) ~L1783` | scatterGain |
+| `tableModeTip` | scatterMode = "table" | multiplies the table lookup, which only exists in table mode | none | `drive-anim.js Air beam gain (table mode) ~L1838` | scatterGain |
 | `cacheOn` | scatterCache = "on" | needs the beam cache on | disabled | `spec-ui.js o.scatterCache !== 'on' ~L1105` | scatterCycle, scatterCycleFade |
 | `cycle8` | scatterCycle = 8 | shown with the beam cycle at 8 | hidden | `spec-ui.js k === 'scatterCycleFade' ~L1106` | scatterCycleFade |
 | `trafficBeamsOn` | trafficBeams = true | the halo is lit by traffic beams; with them off it is a silent no-op | none | `drive.js function haloN ~L943` | trafficHalo |
@@ -214,24 +215,24 @@ Each rule is one condition on other options (or on the render context), with the
 | `coneOn` | (lampCone = "on" or (lampCone is not "off" and streetLamps is not "off" and visibility is not null)) | the cone gain only scales the lamp cone (lampCone on, or auto with street lamps on and a visibility set) | hidden | `spec-ui.js RF.Drive.lampConeOn(o) ~L1064` | lampConeGain |
 | `powerlinesOn` | powerlines = "on" | the wire reflectance only changes the power wires (powerlines on; the open-road wild chunk and the pass build them only then) | hidden | `drive-touge.js flags.powerlines === 'on' ~L119` | powerlineReflectance |
 | `trafficBeamsLight` | trafficBeams = true | road light from other cars only exists with traffic beams on | none | `drive-anim.js const lightRangeOf ~L23` | trafficLightRange, trafficNearest |
-| `symmetricOncoming` | (onMode in ["symmetric","high-dip"] and oncoming = true) | symmetric or high-then-dip oncoming traffic only | tooltip | `drive-anim.js Symmetric and high-then-dip traffic ~L1606` | trafficShuffle |
-| `shuffleLibrary` | trafficShuffle = "library" | only read when traffic beams come from the library | none | `drive-anim.js o.trafficShuffle !== 'library' ~L1611` | trafficOutIds |
+| `symmetricOncoming` | (onMode in ["symmetric","high-dip"] and oncoming = true) | symmetric or high-then-dip oncoming traffic only | tooltip | `drive-anim.js Symmetric and high-then-dip traffic ~L1657` | trafficShuffle |
+| `shuffleLibrary` | trafficShuffle = "library" | only read when traffic beams come from the library | none | `drive-anim.js o.trafficShuffle !== 'library' ~L1662` | trafficOutIds |
 | `manualMode` | onMode = "manual" | manual oncoming mode only | none | `spec-ui.js Manual mode only ~L601` | onKcd |
 | `wetOn` | wetness > 0 (or legacy wet) | needs a damp or wet road | disabled | `spec-ui.js wetnessOf(o) > 0 ~L1056` | wetVeil, wetSheen, wetModel |
 | `wetSheenOn` | wetSheen = true | needs wet sheen on | disabled | `spec-ui.js o.wetSheen) ~L1056` | wetVeil, wetModel |
 | `gpu` | context renderer = "gpu" | GPU drive view only; the CPU renderer ignores it | tooltip | `spec-ui.js GPU drive view only ~L938` | lampCone, haloPolarBand, crestOcclusion, haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, haloCrossingRefine, haloRefineNeighbour, haloMoment, haloAutoRange, haloNearSub, haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, trafficShadowObjects, trafficShadowSoft, scatterCull, scatterCullEps, haloWidthStep |
-| `cpuRenderer` | context renderer = "cpu" | the worker threads render the CPU view; the GPU view ignores them | none | `drive-anim.js const want = !V.three ~L1333` | mt |
-| `tilesOn` | tiles = true | needs route tiles on (the pass does not allow it) | disabled | `drive-anim.js "tile-cache"]').disabled = !o.tiles ~L2035` | endlessRoad, tileCache |
-| `tilesOrPass` | (tiles = true or mountainPass = true) | needs route tiles or the mountain pass | disabled | `drive-anim.js "street-lamps"]').disabled ~L2036` | streetLamps |
+| `cpuRenderer` | context renderer = "cpu" | the worker threads render the CPU view; the GPU view ignores them | none | `drive-anim.js const want = !V.three ~L1375` | mt |
+| `tilesOn` | tiles = true | needs route tiles on (the pass does not allow it) | disabled | `drive-anim.js "tile-cache"]').disabled = !o.tiles ~L2103` | endlessRoad, tileCache |
+| `tilesOrPass` | (tiles = true or mountainPass = true) | needs route tiles or the mountain pass | disabled | `drive-anim.js "street-lamps"]').disabled ~L2104` | streetLamps |
 | `lampsPresent` | (streetLamps is not "off" and (tiles = true or mountainPass = true)) | needs street lamps in the scene (tiles or pass, lamps not off) | none | `drive-anim.js lamps: o.streetLamps ~L57` | lampCone, lampRoad |
 | `lampDistUsed` | streetLamps is not "off" | the table sizes the street lamps' glare, the lamp cone and the road lamp light, so it matters only with street lamps on | none | `drive-three.js lampRoadOn.value ~L350` | lampClass |
-| `usRoad` | context preset = "us" | US road preset only (the centre line differs) | disabled | `drive-anim.js cl.disabled = !I.us ~L2043` | cline |
-| `seedUsed` | ((wild = true and scene = "road") or oncoming = true or preceding = true or tiles = true or (leafyFoliage = true and scene in ["road","forest"])) | random scenery, traffic, tiles or leafy foliage must be present | disabled | `drive-anim.js "seed"]').disabled ~L2041` | seed |
-| `densityUsed` | ((wild = true and scene = "road") or (leafyFoliage = true and scene in ["road","forest"])) | random road scenery or leafy foliage must be present | disabled | `drive-anim.js "density"]').disabled ~L2042` | density |
+| `usRoad` | context preset = "us" | US road preset only (the centre line differs) | disabled | `drive-anim.js cl.disabled = !I.us ~L2111` | cline |
+| `seedUsed` | ((wild = true and scene = "road") or oncoming = true or preceding = true or tiles = true or (leafyFoliage = true and scene in ["road","forest"])) | random scenery, traffic, tiles or leafy foliage must be present | disabled | `drive-anim.js "seed"]').disabled ~L2109` | seed |
+| `densityUsed` | ((wild = true and scene = "road") or (leafyFoliage = true and scene in ["road","forest"])) | random road scenery or leafy foliage must be present | disabled | `drive-anim.js "density"]').disabled ~L2110` | density |
 | `peoplePresent` | people = true | clothing only applies to pedestrians | none | `drive-scenes.js ctx.reflectiveClothing ~L102` | reflectiveClothing |
-| `dynResOn` | dynamicResolution = true | used only while dynamic resolution is on | none | `drive-anim.js if (!o.dynamicResolution ~L1069` | frameTargetMs, minFps |
-| `trafficLogicOn` | trafficLogic = true | the gap guard is part of the original traffic; traffic logic has its own spacing | disabled | `drive-anim.js "gap"]').disabled ~L2034` | safeGap |
-| `mtBlockers` | (mountainPass = true or trafficBeams = true or trafficShuffle = "library" or surfaceSheen = true or lampPitch = true or afs = true or corneringLamps = true) | these options force a single thread (no error shown) | none | `drive-anim.js const want = !V.three ~L1333` | mt |
+| `dynResOn` | dynamicResolution = true | used only while dynamic resolution is on | none | `drive-anim.js if (!o.dynamicResolution ~L1102` | frameTargetMs, minFps |
+| `trafficLogicOn` | trafficLogic = true | the gap guard is part of the original traffic; traffic logic has its own spacing | disabled | `drive-anim.js "gap"]').disabled ~L2102` | safeGap |
+| `mtBlockers` | (mountainPass = true or trafficBeams = true or trafficShuffle = "library" or surfaceSheen = true or lampPitch = true or afs = true or corneringLamps = true) | these options force a single thread (no error shown) | none | `drive-anim.js const want = !V.three ~L1375` | mt |
 | `mountainPassScene` | mountainPass = true | the pass overrides scene to road and wild to off | none | `drive-anim.js opts.mountainPass ~L33` | scene, wild, leafyFoliage |
 | `mountainPassAir` | mountainPass = true | the pass air beam table still uses the flat basis (HAZARDS H4); the traffic halo now renders on the pass (TOUGE-ELEV B, per-car tilt) | none | `drive-three.js !p.airHold ~L297` | scatter, scatterMode |
 | `polarAuto` | haloPolar = "auto" | only read when the lamp-centred table is on auto | none | `drive-three-halo.js pmode === 'auto' ~L549` | haloPolarBand |
