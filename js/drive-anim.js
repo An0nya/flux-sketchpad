@@ -1217,7 +1217,7 @@ void main() {
     const ownLowKey = o.ownLow && o.ownLow !== 'design' ? (ownNow.low ? 'R:' + ownNow.lowId : 'U:' + o.ownLow) : o.ownLow, ownHighKey = o.ownHigh && o.ownHigh !== 'generic' ? (ownNow.high ? 'R:' + ownNow.highId : 'U:' + o.ownHigh) : o.ownHigh;
     const key = JSON.stringify([I.groundKey, W, H, hfovFor(o.fov, sz.aspect), simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, ownLowKey, ownHighKey, lampTintOf(I, ownNow).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     if (V.shuf) V.shuf.title = shuffleTip(o);   // the tooltip follows the renderer, every frame
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.trafficMarkers, !!o.tileCache, !!o.tiles && !!o.endlessRoad, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o)]]);
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.trafficMarkers, !!o.tileCache, !!o.tiles && !!o.endlessRoad, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o), o.lampRule]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, powerlines: o.powerlines, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, reflectiveClothing: o.reflectiveClothing, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, trafficMarkers: !!o.trafficMarkers, endlessRoad: !!o.endlessRoad, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: D.wetnessOf(o) > 0 }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
@@ -1657,9 +1657,9 @@ void main() {
     scrub.addEventListener('pointerup', scrubEnd); scrub.addEventListener('pointercancel', scrubEnd);
     scrub.addEventListener('input', () => {
       if (!info().o.driveScrub) return;
-      const st = S(ui);
-      if (st.playing) setDV(ui, 'playing', false);
-      st.t = +scrub.value; st.camera = null; scrubLabel();
+      const st = S(ui), v = +scrub.value;   // frenchie: read the thumb before setDV — the redraw re-syncs scrub.value to st.t when no drag is active (labels, below), which made keyboard/programmatic input a silent no-op
+      if (st.playing) { st.playing = false; setDV(ui, 'playing', false); }   // frenchie: pause the live animation too; setDV alone only stores the option (S() reads it once), so the drive kept playing after a scrub
+      st.t = v; st.camera = null; scrubLabel();
       if (V.src && V.src.traffic) V.src.traffic.state = null;   // a fresh seeded stream at the scrubbed spot, like a state load
       if (ui.redrawSpec) ui.redrawSpec();
     });

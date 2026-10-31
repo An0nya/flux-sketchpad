@@ -182,10 +182,11 @@ for (const [name, r] of Object.entries(Opt.RULES)) {
   const f = path.join(ROOT, r.at.file);
   if (!fs.existsSync(f)) { staleCite.push(name + ': no file ' + r.at.file); continue; }
   const lines = fs.readFileSync(f, 'utf8').split('\n');
-  const lo = Math.max(0, r.at.line - 1 - 120), hi = Math.min(lines.length, r.at.line + 120);
+  // a citation is only useful if it points near the code: +-25 lines, not the +-120 this check used to allow (a rule with effect 'disabled' must also actually disable something there)
+  const lo = Math.max(0, r.at.line - 1 - 25), hi = Math.min(lines.length, r.at.line + 25);
   if (!lines.slice(lo, hi).some((l) => l.includes(r.at.fn))) staleCite.push(name + ': "' + r.at.fn + '" not within 120 lines of ' + r.at.file + ':' + r.at.line);
 }
-ok('every rule citation (file, snippet, approximate line) still matches the code', staleCite.length === 0, staleCite);
+ok('every rule citation (file, snippet, approximate line) still matches the code, within 25 lines', staleCite.length === 0, staleCite);
 // unmet() under the default profile: a few facts the OPTIONS.md inventory states
 const U = (id, o, ctx) => Opt.unmet(id, Object.assign({}, gen, o || {}), ctx || { renderer: 'gpu', preset: 'us' }).map((x) => x.rule);
 ok('unmet(): with clear air the beam and halo controls report "air"', U('scatterRes').includes('air') && U('trafficHalo').includes('air') && U('haloGain').includes('air') && !U('visibility').length);
