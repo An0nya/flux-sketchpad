@@ -87,7 +87,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `road` | Road and route | 10 | 2 | 6 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 8 | 0 | 5 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 33 | 0 | 4 | 0 | 29 | 0 | 0 |
+| `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 16 | 0 | 13 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
@@ -190,6 +190,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `haloQuality` | oncoming scatter quality | derived | More | (derived) | - |
 | `haloRangeRow` | oncoming range | derived | More | (derived) | - |
 | `trafficSubTick` | traffic sub-tick interpolation | profile | advanced halo | "off" | - |
+| `haloWidthStep` | scatter width-driven steps | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 
 #### Street lamps (`street-lamps`)
 

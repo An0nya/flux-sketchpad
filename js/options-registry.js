@@ -1558,6 +1558,16 @@
       tests: ['node:traffic-subtick'],
       note: 'The traffic is stepped at 20 Hz (IDM.dt = 0.05 s), so the drawn cars - and the oncoming scatter table built from their lamp positions - jump every 0.05 s: a staircase at 20 Hz, whatever the closing speed. With this on, the drawn pose is interpolated between the last two steps; the simulation stays on the 20 Hz tick, so the physics is unchanged. Measured on the valley state: the oncoming car took 10 distinct positions in 50 frames at 100 Hz (5 frames each) with it off and 46 with it on, and the halo brightness in the picture changed on 46 of 50 frames instead of 11.',
     },
+    {
+      id: 'haloWidthStep', kind: 'profile', type: 'enum', values: ['off', '1', '0.5', '0.25'],
+      default: 'off', label: 'scatter width-driven steps',
+      control: '[data-dv="haloWidthStep"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'table-rebuild',
+      owner: ['js/spec-ui.js', 'js/drive-three-halo.js'],
+      requires: [need('gpu'), need('air'), need('haloOn')],
+      tests: ['node:halo-width-step'],
+      note: 'A per-bin sample count from the bin\'s width, so the samples spread evenly in depth: the shipped six are log-spaced, which leaves the far bins sampled metres apart. The count is ceil(width/step), so the whole table costs about range/step samples (513 at 0.5 m, 3.6x the shipped 144). Measured on the JS replica against a 32768-point dense reference over 24 rows through the lamp\'s cell: the shipped ladder swings -98.9% to +275% per ray, 0.5 m gives max 10.9% / median 0.07%, 0.25 m gives max 1.79% / median 0.04%. The crossing-bin refinement wins when both are on. GPU drive view only.',
+    },
   ];
 
   // ---- functions (pure)

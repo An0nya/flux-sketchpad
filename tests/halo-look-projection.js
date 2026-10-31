@@ -23,16 +23,19 @@ const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
 const a = anim.indexOf('look: {'), b = anim.indexOf('}, src:', a);
 ok('the look projection literal is found once', a > 0 && b > a, { a, b });
 const lit = anim.slice(a, b);
-const re = (id) => new RegExp('(^|[{,\\s])' + id + ': o\\.' + id + '(?=[,}\\s])');
-const proj = (id) => re(id).test(lit);
+// a projected option carries its own key AND its value is derived from o.<id> (plain `o.id`, or a boolean like
+// `o.trafficSubTick === 'on'`). A key present with a constant/other value would still be a wiring bug.
+const projIn = (s, id) => { const m = new RegExp('(^|[{,\\s])' + id + ': ([^,}]*)').exec(s); return !!m && m[2].indexOf('o.' + id) >= 0; };
+const proj = (id) => projIn(lit, id);
 
-// 3. every non-derived halo option must carry its own key, as `o.<id>`.
+// 3. every non-derived halo option must be projected.
 for (const o of halo) ok('projected key present: ' + o.id, proj(o.id));
 // 4. the option that was inert, named so a regression is unmistakable.
 ok('haloMoment is projected (the option that silently did nothing)', proj('haloMoment'));
 
-// 5. positive control: drop one real key from the literal and show the detector fails, then passes on the original.
-ok('positive control: the detector fails when a key is removed', !re('haloMoment').test(lit.replace('haloMoment: o.haloMoment,', '')));
+// 5. positive controls: the detector fails when the key is removed, and when the key is present but points elsewhere.
+ok('positive control: the detector fails when a key is removed', !projIn(lit.replace('haloMoment: o.haloMoment,', ''), 'haloMoment'));
+ok('positive control: the detector fails when the value does not read the option', !projIn(lit.replace('haloMoment: o.haloMoment,', 'haloMoment: 1,'), 'haloMoment'));
 ok('positive control: the detector passes on the untouched literal', proj('haloMoment'));
 
 console.log(n + ' checks, ' + fails + ' failed');
