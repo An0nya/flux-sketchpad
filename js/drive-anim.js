@@ -54,7 +54,7 @@
     src.traffic.onMode = o.onMode || (o.onKcd === undefined ? 'symmetric' : 'manual'); src.traffic.onKcd = o.onKcd === undefined ? 30 : +o.onKcd;
     src.traffic.logic = !!o.trafficLogic; src.traffic.pedStop = o.pedStop !== false; src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
     if (o.tiles) src.markings = D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });
-    if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, endless: !!o.endlessRoad, preset: o.endlessPreset || 'off', density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
+    if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, endless: !!o.endlessRoad, preset: o.endlessPreset || 'off', terrain: !!o.tileTerrain, density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
     for (const kind of ['oncoming', 'preceding']) {   // both models always (a few objects each): a car of a kind switched off this frame must not throw (models[kind] undefined -> 'not iterable' -> sticky CPU fallback)
       const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
       K.car(0, 0, kind === 'oncoming' ? { face: -1, lamps: 'head', kcd: +o.onKcd || 30, markers: !!o.trafficMarkers } : { face: 1, lamps: 'tail', markers: !!o.trafficMarkers }); src.traffic.models[kind] = K.O;
@@ -442,7 +442,7 @@
   // tileA: the tile road's route A; under elevatedView (p.touge pipeline on, not the pass) it goes through
   // RF.Touge.elevate with height 0, so the 3D pipeline renders it flat. Legacy: the plain 2D tileRoute.
   const tileA = (p, dist) => { const A2 = tileRoute(p.src.tiles.seed, dist, undefined, p.src.tiles.endless ? endlessTile : null);
-    if (p.touge && !p.src.tiles.mountain) return p.src.tiles.endless ? RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed, p.src.tiles.preset)) : RF.Touge.elevate(A2, dist, p.lane, false);
+    if (p.touge && !p.src.tiles.mountain) return p.src.tiles.endless ? RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain)) : RF.Touge.elevate(A2, dist, p.lane, false);
     return A2; };   // elevatedView: endless tiles ride the biome elevation (rolling hills / pass grades); plain tiles stay flat (height 0)
   // §2-endless elevation (rolling hills / forested pass): a seeded grade walk, one grade per 16-tile biome block
   // (mountain ±2–6%, open/forest ±0.5–1.5% rolling, city flat), lap-periodic like the pass so z(s) is O(1).
@@ -455,21 +455,39 @@
     return (R() < 0.5 ? -1 : 1) * (preset === 'forested-pass' ? 0.01 + 0.015 * R() : preset === 'rolling-hills' ? 0.008 + 0.012 * R() : 0.005 + 0.01 * R());   // open/forest: rolling
   }
   const RAMP = 100;   // vertical-curve ramp at biome-block boundaries (m), like the pass's parabolas
-  function endlessElev(seed, preset = 'off') {   // -> fn(absS) absolute elevation, deterministic in (seed, s, preset); cumulative table extends lazily
-    const ck = seed + '|' + preset; if (endlessElevCache.has(ck)) return endlessElevCache.get(ck);
+  function endlessElev(seed, preset = 'off', terrain = false) {   // -> fn(absS, off) absolute elevation, deterministic in (seed, s, preset); cumulative table extends lazily. terrain=true adds coarse verge undulation beyond the carriageway (opt-in via tileTerrain); the road stays on the pure grade walk
+    const verge = (s, off) => {   // off-aware term: 0 on the carriageway, pass-like falloff + seeded noise beyond the edges
+      const edge = 0.75 * 3.5 + 2.2, a = Math.abs(off);
+      if (a <= edge) return 0;
+      const fall = off < 0 ? Math.max(-24, (off + edge) * 3) : Math.min(24, (off - edge) * 0.9);
+      const n = Math.sin((Math.floor(s / 20) * 12.9898 + Math.floor(off / 6) * 78.233 + seed * 3.7) * 43758.5453) * 0.5;
+      return fall + n * Math.min(1, (a - edge) / 4) * 1.2;
+    };
+    const ck = seed + '|' + preset + '|' + (terrain ? 1 : 0); if (endlessElevCache.has(ck)) return endlessElevCache.get(ck);
     const g = [], cum = [0];   // g[b] = block grade; within a block the grade ramps g[b-1]->g[b] over the first RAMP m and g[b]->g[b+1] over the last
     const blockZ = (b) => RAMP * (g[b - 1 < 0 ? 0 : b - 1] + g[b]) / 2 + (ENDLESS_BLOCK - 2 * RAMP) * g[b] + RAMP * (g[b] + g[b + 1]) / 2;
     const ensure = (b) => { while (g.length <= b + 1) { const i = g.length; g.push(endlessGrade(seed, i, preset)); if (i > 0) cum[i] = cum[i - 1] + blockZ(i - 1); } };
     ensure(1);
-    const fn = (s) => {
+    const zAt = (s) => {
       const b = Math.max(0, Math.floor(s / ENDLESS_BLOCK)); ensure(b);
       const u = s - b * ENDLESS_BLOCK, g0 = g[b], gP = g[b - 1 < 0 ? 0 : b - 1], gN = g[b + 1];
       if (u < RAMP) { const t = u / RAMP, gt = gP + (g0 - gP) * t; return cum[b] + gP * u + (g0 - gP) * u * u / (2 * RAMP); }
       if (u > ENDLESS_BLOCK - RAMP) { const w = u - (ENDLESS_BLOCK - RAMP), t = w / RAMP, gt = g0 + (gN - g0) * t; return cum[b] + RAMP * (gP + g0) / 2 + (ENDLESS_BLOCK - 2 * RAMP) * g0 + g0 * w + (gN - g0) * w * w / (2 * RAMP); }
       return cum[b] + RAMP * (gP + g0) / 2 + g0 * (u - RAMP);
     };
+    const fn = (s, off) => { const z = zAt(s); return terrain && off ? z + verge(s, off) : z; };
     endlessElevCache.set(ck, fn);
     return fn;
+  }
+  function endlessVerge(seed, k) {   // §2-endless verge: per-tile scenery descriptor for the tile loop — biome-specific props with a ramp blending across biome-block boundaries
+    const biome = endlessBiome(seed, Math.floor(k / 16) * 16), R = D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(k + 1, 0xC2B2AE35)) >>> 0);
+    const ramp = k % 16 === 15 ? 0.4 : k % 16 === 0 ? 0.6 : 1;
+    const v = { biome, ramp, trees: 0, rocks: 0, buildings: 0, fence: false, rail: false };
+    if (biome === 'forest') v.trees = Math.round((2 + 2 * R()) * ramp);
+    if (biome === 'mountain') { v.rocks = Math.round((2 + 2 * R()) * ramp); v.rail = true; }
+    if (biome === 'city') v.buildings = Math.round((1 + R()) * ramp);
+    if (biome === 'open') v.fence = ramp > 0.5;
+    return v;
   }
   function endlessTile(seed, k) {
     const biome = endlessBiome(seed, k), t = endlessTileRaw(seed, k, biome);
@@ -588,21 +606,26 @@
   const CROSSER_KIND = () => (globalThis.PED_FIXED_KINDS === true ? 'dark' : 'seeded');
   function tileWorld(p, dist, t, tauOf) {
     if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t, tauOf);
-    const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? endlessTile : null), A = (p.touge && !cfg.mountain) ? (cfg.endless ? RF.Touge.elevate(A0, dist, lane, true, endlessElev(cfg.seed, cfg.preset)) : RF.Touge.elevate(A0, dist, lane, false)) : A0, edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
+    const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? endlessTile : null), A = (p.touge && !cfg.mountain) ? (cfg.endless ? RF.Touge.elevate(A0, dist, lane, true, endlessElev(cfg.seed, cfg.preset, !!cfg.terrain)) : RF.Touge.elevate(A0, dist, lane, false)) : A0, edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
     const pp = Object.assign({}, p, { A });
     // Street lights can reach foliage outside our beam: keep it for actual per-point shading.
     const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' && !p.detailedModels ? dimFoliage(pp) : null, D.Models.deerEnabled(p)).concat(trafficObjects(src, trafficCars(src, dist, t), A, pp));
     for (const tile of A.tiles) {
       const mid = tile.s0 + 100 - dist, junction = tile.kind === 'intersection' || tile.kind === 't-junction', bp = tile.props || null;   // §2-endless: per-tile props (biome), null on the shipped road
-    if (cfg.preset === 'forested-pass' && tile.biome === 'mountain') {   // preset: guardrails along both edges of mountain blocks (cls 'rail' rides the slope in lift)
+    if (tile.biome === 'mountain' && cfg.flags.posts !== false) {   // mountain guardrails — consent toggle: the posts feature flag; cls 'rail' rides the slope in lift
       for (let u = 0; u < 200; u += 8) for (const sd of [-1, 1]) { const off = sd < 0 ? edgeR - 0.7 : edgeL + 0.7, q = A.at(tile.s0 + u - dist, off); extra.push({ k: 'box', x: q.p[0], y: q.p[1], z0: .62, z1: .9, hx: 4.05, hy: .065, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'sign-back', cls: 'rail' }, { k: 'cyl', x: q.p[0], y: q.p[1], z0: 0, z1: .83, r: .06, mat: 'sign-back', cls: 'rail' }); }
     }
-    if (bp && (bp.deer > 0 || bp.bushes > 0 || tile.biome === 'open' || (cfg.preset === 'forested-pass' && tile.biome === 'mountain'))) {   // §2-endless: biome props; forested-pass adds verge on mountain blocks
+    const vg = endlessVerge(cfg.seed, tile.k);   // §2-endless verge: biome props + boundary ramp
+    if (cfg.flags.veg !== false && bp && (bp.deer > 0 || bp.bushes > 0 || vg.biome === 'open' || vg.biome === 'mountain' || vg.biome === 'forest' || vg.biome === 'city')) {   // §2-endless: biome props — consent toggles: bushes/trees need veg, deer animals, signs signs
       const KR = D.rng((Math.imul(cfg.seed | 0, 2654435761) ^ Math.imul(tile.k + 1, 0x27D4EB2F)) >>> 0), KP = D.kit({ Lw: lane, A: null, rand: KR, foliageSeed: PED_SEED(cfg.seed) });
-      const nBush = (bp ? bp.bushes : 0) + (cfg.preset === 'forested-pass' && (tile.biome === 'mountain' || tile.biome === 'forest') ? 3 : 0);   // forested-pass: denser verge
+      const nBush = (bp ? bp.bushes : 0) + (cfg.preset === 'forested-pass' && (vg.biome === 'mountain' || vg.biome === 'forest') ? 3 : 0);   // forested-pass: denser verge
       for (let i = 0; i < nBush; i++) { const u = 20 + KR() * 160, sd = KR() < 0.5 ? -1 : 1; KP.bush(tile.s0 + u - dist, sd < 0 ? edgeR - 2.5 - 3 * KR() : edgeL + 2.5 + 3 * KR(), 0.6 + 0.6 * KR()); }   // hills fix: never in a lane — the edgeL branch used to subtract, landing on the road
-      if (bp.deer > 0 && KR() < bp.deer) { const sd = KR() < 0.5 ? -1 : 1; KP.deer(tile.s0 + 40 + KR() * 120 - dist, sd < 0 ? edgeR - 3.5 : edgeL + 3.5); }
-      if (tile.biome === 'open' && KR() < 0.5) KP.sign(tile.s0 + 60 + KR() * 80 - dist, KR() < 0.5 ? edgeR - 2.2 : edgeL + 2.0, 'green', { w: 1.8, h: 1.0 });
+      if (bp.deer > 0 && cfg.flags.animals !== false && KR() < bp.deer) { const sd = KR() < 0.5 ? -1 : 1; KP.deer(tile.s0 + 40 + KR() * 120 - dist, sd < 0 ? edgeR - 3.5 : edgeL + 3.5); }
+      if (vg.biome === 'open' && cfg.flags.signs !== false && KR() < 0.5) KP.sign(tile.s0 + 60 + KR() * 80 - dist, KR() < 0.5 ? edgeR - 2.2 : edgeL + 2.0, 'green', { w: 1.8, h: 1.0 });
+      if (vg.trees > 0 && cfg.flags.veg !== false) for (let i = 0; i < vg.trees; i++) { const u = 10 + KR() * 180, sd = KR() < 0.5 ? -1 : 1; KP.tree(tile.s0 + u - dist, sd < 0 ? edgeR - 6 - 8 * KR() : edgeL + 6 + 8 * KR(), { birch: KR() < 0.5 }); }   // forest verge: trees
+      if (vg.rocks > 0 && cfg.flags.wild !== false) for (let i = 0; i < vg.rocks; i++) { const u = 15 + KR() * 170, sd = KR() < 0.5 ? -1 : 1, q = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 2 - 4 * KR() : edgeL + 2 + 4 * KR()), r = 0.5 + KR(); KP.add({ k: 'ell', x: q.p[0], y: q.p[1], z: r * 0.4, rx: r, ry: r * 0.8, rz: r * 0.5, mat: 'gravel' }); }   // mountain verge: boulders
+      if (vg.buildings > 0 && cfg.flags.wild !== false) for (let i = 0; i < vg.buildings; i++) { const u = 10 + KR() * 60, sd = KR() < 0.5 ? -1 : 1, q = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 9 - 5 * KR() : edgeL + 9 + 5 * KR()); KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: 0, z1: 8 + 14 * KR(), hx: 10 + 12 * KR(), hy: 6 + 4 * KR(), yaw: Math.atan2(q.t[1], q.t[0]), mat: 'wall' }); }   // city verge: frontage
+      if (vg.fence && cfg.flags.wild !== false) for (let u = 4; u < 200; u += 8) for (const sd of [-1, 1]) { const q = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 1.2 : edgeL + 1.2); KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: 0.85, z1: 1.05, hx: 4, hy: 0.05, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'concrete' }); }   // open verge: fence
       for (const ob of KP.O) extra.push(move(Object.assign({}, ob), ob, ob.x, A));
     }
       if (mid < -110 || mid > CULL + 110) continue;
@@ -1118,6 +1141,21 @@ void main() {
   ];
   const SHED_KEYS = [...new Set(SHED_LEVELS.flatMap((l) => Object.keys(l)))];
   const shedPatch = (level) => Object.assign({}, ...SHED_LEVELS.slice(0, Math.max(0, Math.min(level, SHED_LEVELS.length))));
+  // 3-LOD (option distanceLod): level-of-detail by distance — a static profile that CAPS the existing distance
+  // knobs (never adds a pass), min() with the user's own values so a lower user setting always wins. off = no patch,
+  // byte-identical. Applied in prepare() like the shed overlay (keys are disjoint from SHED_KEYS), so skey/tkey/
+  // look/ground-key all see the capped values. Scope: frenchie/S3LOD-SCOPE.md.
+  const LOD_LEVELS = {
+    low:    { haloRange: 160, scatterRange: 100, trafficRange: 230, cullEps: 4 },
+    medium: { haloRange: 120, scatterRange: 80,  trafficRange: 160, cullEps: 16 },
+    high:   { haloRange: 0,   scatterRange: 50,  trafficRange: 160, cullEps: 64 },
+  };
+  const LOD_KEYS = ['haloRange', 'scatterRange', 'trafficRange', 'scatterCullEps'];
+  const lodPatch = (o) => {
+    const L = LOD_LEVELS[o && o.distanceLod]; if (!L) return null;
+    return { haloRange: Math.min(+o.haloRange || 0, L.haloRange), scatterRange: Math.min(+o.scatterRange || 120, L.scatterRange),
+             trafficRange: Math.min(+o.trafficRange || 250, L.trafficRange), scatterCullEps: Math.min((+o.scatterCullEps || 0.001) * L.cullEps, 100) };
+  };
   const shedState = () => ({ index: 0, slow: 0, fast: 0, cooldown: 0, average: 0, clock: 0, upAt: -1e9, holdUntil: 0, hold: 0 });
   function shedStep(state, ms, opts) {
     const o = opts || {}, s = Object.assign(shedState(), state), target = Number.isFinite(+o.target) && +o.target > 0 ? +o.target : 33;
@@ -1171,7 +1209,7 @@ void main() {
     }
     if ((o.fpsCounter || o.debugTimings) && now - (V.perfLabelAt || 0) >= 500) { V.perfLabelAt = now; perfLabel(); }
   }
-  const V = { ui: null, cv: null, info: null, gl: null, canvas: null, pop: null, g: null, gkey: '', src: null, skey: '', lut: null, rgba: null, band: [0, 0], frames: 0, raf: 0, last: 0, times: [], cpu: { obj: 0, up: 0, gl: 0, n: 0 }, kAuto: null, why: '', act: new Map(), shed: null, shedLevel: 0, shedBase: null, shedApplied: 0 };   // 3-P: shedLevel/shedBase/shedApplied are the governor's live state; null/0 = option off = no overlay
+  const V = { ui: null, cv: null, info: null, gl: null, canvas: null, pop: null, g: null, gkey: '', src: null, skey: '', lut: null, rgba: null, band: [0, 0], frames: 0, raf: 0, last: 0, times: [], cpu: { obj: 0, up: 0, gl: 0, n: 0 }, kAuto: null, why: '', act: new Map(), shed: null, shedLevel: 0, shedBase: null, shedApplied: 0, lodBase: null };   // 3-P/3-LOD live overlay state; null = options off = no overlay   // 3-P: shedLevel/shedBase/shedApplied are the governor's live state; null/0 = option off = no overlay
   function S(ui) {
     const o = ui.dvOpts || {};
     const st = ui.dvAnim || (ui.dvAnim = { view: o.view || 'anim', playing: o.playing === true, popout: false, dist: 0, total: 0, t: 0 });
@@ -1293,6 +1331,10 @@ void main() {
     // 3-P (qualityGovernor): shed overlay on the live options for this picture. Restore the remembered base first, so
     // nothing persists between prepares; only the shed keys are managed. With the option off (default) the level is 0
     // and V.shedBase stays unset — the path is a no-op, byte-identical to before.
+    if (V.lodBase) Object.assign(o, V.lodBase);
+    const lod = lodPatch(o);
+    if (lod) { if (!V.lodBase) V.lodBase = LOD_KEYS.reduce((a, k) => (a[k] = o[k], a), {}); Object.assign(o, lod); }
+    else V.lodBase = null;
     if (V.shedBase) Object.assign(o, V.shedBase);
     if (o.qualityGovernor === 'on' && V.shedLevel > 0) { if (!V.shedBase) V.shedBase = SHED_KEYS.reduce((a, k) => (a[k] = o[k], a), {}); Object.assign(o, shedPatch(V.shedLevel)); }
     else V.shedBase = null;
@@ -1300,13 +1342,13 @@ void main() {
     const ownLowKey = o.ownLow && o.ownLow !== 'design' ? (ownNow.low ? 'R:' + ownNow.lowId : 'U:' + o.ownLow) : o.ownLow, ownHighKey = o.ownHigh && o.ownHigh !== 'generic' ? (ownNow.high ? 'R:' + ownNow.highId : 'U:' + o.ownHigh) : o.ownHigh;
     const key = JSON.stringify([I.groundKey, W, H, hfovFor(o.fov, sz.aspect), simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, ownLowKey, ownHighKey, lampTintOf(I, ownNow).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     if (V.shuf) V.shuf.title = shuffleTip(o);   // the tooltip follows the renderer, every frame
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.trafficMarkers, !!o.tileCache, !!o.tiles && !!o.endlessRoad, o.tiles ? o.endlessPreset : 'off', !!o.elevatedView, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o)]]);
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.trafficMarkers, !!o.tileCache, !!o.tiles && !!o.endlessRoad, o.tiles ? o.endlessPreset : 'off', !!o.tileTerrain, !!o.elevatedView, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o), o.lampRule]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, powerlines: o.powerlines, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, reflectiveClothing: o.reflectiveClothing, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, trafficMarkers: !!o.trafficMarkers, endlessRoad: !!o.endlessRoad, elevatedView: !!o.elevatedView, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: D.wetnessOf(o) > 0 }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
     const own = ownNow, tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
-    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloLampWin: o.haloLampWin, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloCrossingRefine: o.haloCrossingRefine, haloRefineNeighbour: o.haloRefineNeighbour, haloMoment: o.haloMoment, haloWidthStep: o.haloWidthStep, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient, trafficSubTick: o.trafficSubTick === 'on', qualityGovernor: o.qualityGovernor === 'on' }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!((o.mountainPass || o.elevatedView) && V.three), mountainPass: !!o.mountainPass };   // elevatedView: every scene through the 3D touge route (flat = height 0), legacy 2D path as fallback
+    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloLampWin: o.haloLampWin, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloCrossingRefine: o.haloCrossingRefine, haloRefineNeighbour: o.haloRefineNeighbour, haloMoment: o.haloMoment, haloWidthStep: o.haloWidthStep, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient, trafficSubTick: o.trafficSubTick === 'on', qualityGovernor: o.qualityGovernor === 'on', distanceLod: o.distanceLod || 'off' }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!((o.mountainPass || o.elevatedView) && V.three), mountainPass: !!o.mountainPass };   // elevatedView: every scene through the 3D touge route (flat = height 0), legacy 2D path as fallback
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || (D.wetnessOf(o) > 0 && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g); if (!TL.cur) tlOpen('rebuild'); tlMark(V.three ? 'ground (GPU path, drawn per frame)' : 'ground built (CPU)', V.three ? null : { groundMs: V.g.ms });
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1577,6 +1619,13 @@ void main() {
   const LIB = { items: [], msg: '', ver: 0, seq: 0, storeOk: null, hydrated: false };
   const libEntry = (parsed, id, persisted) => ({ id, name: parsed.name, beamKind: parsed.beamKind, conv: parsed.conv, lut: RF.Beams.toLut(parsed), colour: parsed.colour || null, persisted: !!persisted, coarse: !!parsed.coarse });
   // BB3: the name in the picker, with the colour temperature when the beam has one; BI1: coarse beams say so
+  const ownBeamReadout = (o) => {
+    const own = ownBeams(o), hi = !!V.high, id = hi ? o.ownHigh : o.ownLow, e = hi ? libFind(id, 'high') : libFind(id, 'low');
+    if (e && e.name) return e.name;
+    if (!id || id === 'design' || id === 'generic') return hi ? 'generic' : 'our design';
+    if (String(id).startsWith('builtin:')) { const b = String(id).split(':'); return (b[1] || 'built-in').replace(/\.json$/, '') + ' #' + (b[2] || ''); }
+    return String(id);
+  };
   const beamLabel = (e) => e.name + (e.colour && Number.isFinite(e.colour.cct) ? ' (' + Math.round(e.colour.cct) + ' K)' : '') + (e.coarse ? ' (coarse 0.25 deg)' : '') + (e.builtin ? ' (built-in)' : (e.persisted ? '' : ' (session)'));
   // BB3: the colour a saved design carries: the lamp tint in use (rgb), plus the source's kelvin when it has one
   const sourceColour = (I) => { const c = { rgb: I.lampRGB.slice() }; if (Number.isFinite(I.lampCct) && I.lampCct >= 1000 && I.lampCct <= 20000) c.cct = I.lampCct; return c; };
@@ -1800,6 +1849,9 @@ void main() {
     const qg = E('select', { 'data-anim': 'quality-governor', 'aria-label': 'Quality governor', title: 'Quality governor (3-P): when frames run slower than the min-fps target, shed the most expensive per-frame features step by step (near-lamp sub-passes, supersampling, cone pass, shadow softening and count, blurs, sheen, shadow-map size), restoring them with headroom as frames recover. The shed values are applied per frame and restored afterwards; your own settings are untouched. Off (default) changes nothing.' });
     for (const [value, label] of [['off', 'quality governor: off'], ['on', 'quality governor: on']]) qg.append(E('option', { value }, label));
     qg.addEventListener('change', () => setDV(ui, 'qualityGovernor', qg.value)); bar.append(qg);
+    const ld = E('select', { 'data-anim': 'distance-lod', 'aria-label': 'Distance LOD', title: 'Distance LOD (3-LOD): cap the distance-detail knobs (halo range, air-scatter range, traffic range, scatter culling) to a fixed profile — low/medium/high. Your own lower settings always win; off (default) changes nothing.' });
+    for (const [value, label] of [['off', 'distance LOD: off'], ['low', 'distance LOD: low'], ['medium', 'distance LOD: medium'], ['high', 'distance LOD: high']]) ld.append(E('option', { value }, label));
+    ld.addEventListener('change', () => setDV(ui, 'distanceLod', ld.value)); bar.append(ld);
     V.fpsLab = E('output', { class: 'drive-fps', 'data-anim': 'fps-readout', 'aria-live': 'off', hidden: '' });
     V.perfLab = E('output', { class: 'drive-perf', 'data-anim': 'perf-readout', 'aria-live': 'off', hidden: '' });
     btn('tile-cache', 'Reuse beam-lit ground samples across route tiles. Moving markings, grain and street lights still update each frame. Animation with tiles only.', () => setDV(ui, 'tileCache', !info().o.tileCache), 'cache ground');
@@ -2050,6 +2102,9 @@ void main() {
     for (const v of ['off', 'rolling-hills', 'forested-pass']) preset.append(E('option', { value: v }, v));
     preset.addEventListener('change', () => setDV(ui, 'endlessPreset', preset.value));
     ui.driveExtras.append(preset);   // endlessPreset select
+    const terr = E('button', { type: 'button', class: 'toggle', 'data-anim': 'tileTerrain', 'aria-pressed': 'false', title: 'Terrain skirts on endless tile roads (opt-in, pricy): with endless road + 3D route on, the ground beyond the carriageway undulates (falloff + coarse noise). Off: the verge follows the plain grade walk.' }, 'terrain');
+    terr.addEventListener('click', () => setDV(ui, 'tileTerrain', !info().o.tileTerrain));
+    ui.driveExtras.append(terr);   // tileTerrain toggle
   }
   function speedLabel(ui) {
     if (!ui.driveBar) return;
@@ -2095,6 +2150,7 @@ void main() {
   function labels(ui) {
     const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
     for (const b of q('[data-anim="popout"]')) { const label = st.popout ? 'Close large view' : 'Large view'; b.setAttribute('aria-pressed', String(st.popout)); b.setAttribute('aria-label', label); b.title = label; b.disabled = !sup; b.textContent = st.popout ? '⤡' : '⤢'; }
+    for (const l of q('[data-dl="beam-label"]')) l.textContent = 'beam: ' + ownBeamReadout(o);
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     for (const b of q('[data-anim="endlessRoad"]')) { b.setAttribute('aria-pressed', String(!!o.endlessRoad)); b.disabled = !o.tiles; }
     for (const b of q('[data-anim="elevatedView"]')) b.setAttribute('aria-pressed', String(!!o.elevatedView));
@@ -2108,6 +2164,7 @@ void main() {
     V.ui.driveBar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
     V.ui.driveBar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
     V.ui.driveBar.querySelector('[data-anim="quality-governor"]').value = o.qualityGovernor === 'on' ? 'on' : 'off';   // 3-P
+    V.ui.driveBar.querySelector('[data-anim="distance-lod"]').value = ['off', 'low', 'medium', 'high'].includes(o.distanceLod) ? o.distanceLod : 'off';   // 3-LOD
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
     V.ui.driveBar.querySelector('[data-anim="canvas-shape"]').value = ['3:4', 'square'].includes(o.canvasShape) ? o.canvasShape : 'wide';
     V.ui.driveBar.querySelector('[data-anim="panel-mode"]').value = ['push', 'overlay'].includes(o.panelMode) ? o.panelMode : 'auto';
@@ -2770,7 +2827,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / (Math.max(5, kmhOf()) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { timeline: () => TL.events, stateDump, readState, loadState, STATE_KIND, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, shedState, shedStep, shedPatch, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, endlessTile, endlessBiome, endlessElev, endlessGrade, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { timeline: () => TL.events, stateDump, readState, loadState, STATE_KIND, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, shedState, shedStep, shedPatch, lodPatch, LOD_LEVELS, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, endlessTile, endlessBiome, endlessElev, endlessGrade, endlessVerge, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

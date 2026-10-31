@@ -84,7 +84,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
 | `view` | Camera and playback | 4 | 3 | 1 | 0 | 0 | 0 | 0 |
-| `road` | Road and route | 12 | 2 | 8 | 0 | 0 | 0 | 2 |
+| `road` | Road and route | 13 | 2 | 9 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 8 | 0 | 5 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
 | `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
@@ -93,7 +93,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
 | `exposure` | Exposure and eye | 4 | 1 | 3 | 0 | 0 | 0 | 0 |
-| `performance` | Speed and quality | 8 | 0 | 7 | 0 | 0 | 0 | 1 |
+| `performance` | Speed and quality | 9 | 0 | 8 | 0 | 0 | 0 | 1 |
 | `diagnostics` | Panels and layout | 7 | 0 | 7 | 0 | 0 | 0 | 0 |
 | `internal` | Internal (no control) | 6 | 0 | 0 | 0 | 0 | 0 | 6 |
 
@@ -120,6 +120,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `mountainPass` | mountain pass (scene select) | profile | toolbar | false | - |
 | `elevatedView` | 3D route pipeline for every scene (prototype) | profile | More | false | needs `gpu` [tooltip] |
 | `endlessPreset` | endless road preset (prototype) | profile | More | "off" | needs `tiles` [undefined] |
+| `tileTerrain` | terrain skirts on endless tile roads (opt-in, pricy) | profile | More | false | needs `tiles` [undefined] |
 | `cline` | centre line | profile | More | "solid" | needs `usRoad` [disabled] |
 | `res` | still picture width | profile | no control | 640 | - |
 
@@ -276,6 +277,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `minFps` | minimum frame rate | profile | More | 30 | needs `dynResOn` [none] |
 | `samples` | supersampling | profile | More | "1" | - |
 | `qualityGovernor` | quality governor | profile | More | "off" | - |
+| `distanceLod` | distance LOD | profile | More | "off" | - |
 
 #### Panels and layout (`diagnostics`)
 

@@ -35,7 +35,7 @@ ok('shedPrepare is defined next to resolutionPrepare', /function shedPrepare\(\)
 ok('look projection carries qualityGovernor', anim.includes("qualityGovernor: o.qualityGovernor === 'on'"));
 ok('drive bar has the [data-anim="quality-governor"] select with a change -> setDV', /data-anim': 'quality-governor'/.test(anim) && /qg\.addEventListener\('change', \(\) => setDV\(ui, 'qualityGovernor', qg\.value\)\)/.test(anim));
 ok('labels() syncs the select', anim.includes("[data-anim=\"quality-governor\"]').value = o.qualityGovernor === 'on' ? 'on' : 'off'"));
-ok('both spec-ui picture-cache keys carry o.qualityGovernor', (ui.match(/o\.haloWidthStep, o\.qualityGovernor\]\)/g) || []).length === 2, (ui.match(/o\.haloWidthStep, o\.qualityGovernor\]\)/g) || []).length);
+ok('both spec-ui picture-cache keys carry o.qualityGovernor', (ui.match(/o\.qualityGovernor[,)\]]/g) || []).length === 2, (ui.match(/o\.qualityGovernor[,)\]]/g) || []).length);
 ok('drive-layout Resolution pane lists the control', lay.includes("an('quality-governor')"));
 
 console.log(n + ' checks, ' + fails + ' failed');

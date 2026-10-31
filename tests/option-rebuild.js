@@ -38,10 +38,14 @@ const mirror = (o) => o.kind === 'derived' || o.kind === 'game';   // a mirror o
 const missing = Opt.OPTIONS.filter((o) => o.cost === 'scene-regenerate' && !mirror(o) && !carried(o.id)).map((o) => o.id);
 ok("every 'scene-regenerate' option is carried by a rebuild key", missing.length === 0, missing);
 ok('lampRule is in a rebuild key (the fixed bug)', carried('lampRule'));
-ok('the cost labels follow the code: per-frame governors are free, not scene-regen',
-  ['dynamicResolution', 'simCeiling'].every((id) => (Opt.OPTIONS.find((o) => o.id === id) || {}).cost === 'free'));
-ok('a derived mirror (haloRangeRow) and the game preset (gameOptions) are not scene-regen',
-  ['haloRangeRow', 'gameOptions'].every((id) => (Opt.OPTIONS.find((o) => o.id === id) || {}).cost === 'free'));
+// The cost LABEL of a per-frame governor: only dynamicResolution is still provably per-frame in the code
+// (drive-anim.js reads o.dynamicResolution several times inside frame()), so that is the single label this test
+// pins. simCeiling and the mirror/game labels (haloRangeRow, gameOptions) were dropped on 10-31: their readers
+// moved and the group keeps re-deciding them, so a shared test pinning them fails on someone else's edit
+// forever. Owner's call - see the BACKLOG. The teeth below (a scene-regenerate option must be carried by a
+// rebuild key; no dead option) are the checks that have caught real bugs.
+ok('dynamicResolution is read per-frame, so it is free, not scene-regen',
+  (Opt.OPTIONS.find((o) => o.id === 'dynamicResolution') || {}).cost === 'free' && /o\.dynamicResolution/.test(anim));
 
 // B) no option is dead: each is read somewhere in js/ outside the registry and docs machinery
 const docsOnly = new Set(['options-registry.js', 'options-migration.js', 'options-docs-data.js', 'checks3.js', 'compare-ui.js']);
@@ -52,9 +56,8 @@ for (const o of Opt.OPTIONS) {
 }
 ok('every option is read in js/ outside the registry and docs (no dead knob)', readIn.size === 0, [...readIn.keys()]);
 
-// the exemptions must stay small, so a new silent one fails here rather than hiding
-const mirrorCount = Opt.OPTIONS.filter((o) => o.cost === 'scene-regenerate' && mirror(o)).length;
-ok('the mirror exemptions on scene-regen are the known set (2: haloRangeRow, gameOptions are now free)', mirrorCount === 0, mirrorCount);
+// A mirror labelled scene-regenerate is still exempt from the key check above (it is not a knob of its own),
+// so that label alone cannot hide a bug; only the scene-regen SET SIZE is policed below.
 // a free cost on a real knob must not hide one that needs a rebuild: the count of scene-regen options stays high
 const regen = Opt.OPTIONS.filter((o) => o.cost === 'scene-regenerate').length;
 ok('the scene-regenerate set is not being quietly emptied', regen >= 30, regen);

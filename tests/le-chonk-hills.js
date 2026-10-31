@@ -31,7 +31,7 @@ ok('attitude(A) uses the route height (nonzero pitch on a grade)', (() => { let 
 ok('attitude(flat) still identity', RF.Touge.attitude(1000, false).pitch === 0);
 // OFF: plain tiles under elevatedView stay flat (no heightFn)
 const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
-ok('tileA: endless tiles get heightFn, plain tiles stay flat(0)', anim.includes('RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed, p.src.tiles.preset))') && anim.includes('RF.Touge.elevate(A2, dist, p.lane, false)'));
+ok('tileA: endless tiles get heightFn, plain tiles stay flat(0)', anim.includes('RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain))') && anim.includes('RF.Touge.elevate(A2, dist, p.lane, false)'));
 ok('whereAt reports gradePct for endless+elevatedView', anim.includes('w.gradePct = +(100 * (h(dist + 50) - h(dist - 50)) / 100)'));
 ok('attitude callers pass the route A', fs.readFileSync(path.join(ROOT, 'js', 'drive-three.js'), 'utf8').includes('attitude(dist, world.A ? world.A.touge : true, world.A)'));
 
