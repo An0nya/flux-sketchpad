@@ -70,13 +70,16 @@ ok('RN: lw and nb are mutually exclusive in the source (P1c wins, as before)', !
   ok('the last in-use edge is HALO_RANGE', v[F.HALO_BINS - 1] === R, { last: v[F.HALO_BINS - 1], HALO_RANGE: R });
   ok('the slot just past it is the HALO_RANGE fill, so the last tile\'s rnHi equals its own hi', v[F.HALO_BINS] === R, v[F.HALO_BINS]);
   ok('edges ascend, so widening the upper bound adds exactly the eye-side neighbour', v.slice(0, F.HALO_BINS).every((x, i) => i === 0 || x > v[i - 1]));
-  // The trap: edgesV is filled once at haloPass construction (HALO_RANGE = 120) and setHaloRange rebuilds only
-  // HALO_EDGES, so the slot past the in-use bins keeps the OLD range. Without max(..., hi) the last tile's rnHi would
-  // sit below its own hi and the crossing bin would stop refining. Lock the trap so the guard cannot be "simplified" away.
+  // The trap that WAS here: edgesV is filled once at haloPass construction (HALO_RANGE = 120) and setHaloRange
+  // rebuilds only HALO_EDGES, so the slot past the in-use bins kept the OLD range. Without max(..., hi) the last tile's
+  // rnHi sat below its own hi and the crossing bin stopped refining.
+  // step5-preview fixed it at the source 10-30 (haloEdgesFor now fills its whole output array), so the check below
+  // moved from "the tail is stale" to "the tail follows the range". The max(..., hi) guard stays: harmless, and it
+  // keeps the trigger correct for any other padded reader.
   F.setHaloRange(250);
-  const stale = new Array(F.HALO_MAX).fill(120);
-  F.haloEdgesFor(199, stale);
-  ok('a range change leaves the slot past the in-use bins stale (why rnHi needs the max)', stale[F.HALO_BINS - 1] === 250 && stale[F.HALO_BINS] === 120, { lastEdge: stale[F.HALO_BINS - 1], pastEnd: stale[F.HALO_BINS] });
+  const tail = new Array(F.HALO_MAX).fill(120);
+  F.haloEdgesFor(199, tail);
+  ok('after a range change the slot past the in-use bins follows it (source fix, no longer stale)', tail[F.HALO_BINS - 1] === 250 && tail[F.HALO_BINS] === 250, { lastEdge: tail[F.HALO_BINS - 1], pastEnd: tail[F.HALO_BINS] });
   F.setHaloRange(R);
 }
 
@@ -87,7 +90,7 @@ ok('RN: lw and nb are mutually exclusive in the source (P1c wins, as before)', !
   ok('registry: defaults() carries it as off', Opt.defaults().haloRefineNeighbour === 'off');
   ok('registry: it is gated on gpu, air, haloOn and crossingRefineOn (inert unless P1c is on)', ['gpu', 'air', 'haloOn', 'crossingRefineOn'].every((r) => e.requires.some((q) => q.rule === r)), e.requires.map((q) => q.rule));
   const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
-  ok('spec-ui: the control is built and joined to the advanced group', ui.includes("dvSelect('haloRefineNeighbour'") && /data-dv-group/.test(ui) && ui.includes("'haloCrossingRefine', 'haloRefineNeighbour', 'haloPolar'"));
+  ok('spec-ui: the control is built and joined to the advanced group', ui.includes("dvSelect('haloRefineNeighbour'") && /data-dv-group/.test(ui) && ui.includes("'haloCrossingRefine', 'haloRefineNeighbour', 'haloMoment', 'haloPolar'"));
   ok('spec-ui: the control is disabled unless the crossing refinement is on', /k === 'haloRefineNeighbour'[\s\S]{0,220}b\.disabled = !\+o\.haloCrossingRefine/.test(ui));
   ok('spec-ui: it is in BOTH picture-cache keys, next to haloCrossingRefine', (ui.match(/o\.haloCrossingRefine, o\.haloRefineNeighbour/g) || []).length === 2, (ui.match(/o\.haloCrossingRefine, o\.haloRefineNeighbour/g) || []).length);
   const d3 = fs.readFileSync(path.join(ROOT, 'js', 'drive-three.js'), 'utf8');

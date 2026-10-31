@@ -56,7 +56,7 @@
     const m = { id: root.id, x: root.x, y: root.y, z, yaw: root.yaw, face: root.face, grade: surf.grade, normal: surf.normal };
     const B = D.Models.carBasis(m), F = m.face === -1 ? -1 : 1, yaw = m.yaw + (F === -1 ? Math.PI : 0), c = Math.cos(yaw), s = Math.sin(yaw);
     const end = ((ob.x - m.x) * Math.cos(m.yaw) + (ob.y - m.y) * Math.sin(m.yaw)) * F > 0 ? 1 : -1;
-    const type = ob.mat === 'plate' ? 'plate' : ob.mat === 'reflector-red' ? 'reflector' : ob.headlamp ? 'head' : 'tail';
+    const type = ob.mat === 'plate' ? 'plate' : ob.mat === 'reflector-red' ? 'reflector' : ob.mat === 'marker-amber' || ob.mat === 'marker-red' ? 'marker' : ob.headlamp ? 'head' : 'tail';   // §5-M
     const side = type === 'plate' ? 0 : Math.sign(-(ob.x - m.x) * s + (ob.y - m.y) * c);
     const mt = D.Models.meshMount(m.id, end, type, side);
     if (!mt) return null;

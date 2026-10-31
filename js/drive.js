@@ -59,6 +59,8 @@
     'sign-back': { name: 'sign back / post', rho: [0.2, 0.2, 0.2] },
     'reflector-white': { name: 'post reflector', rho: [0.4, 0.4, 0.4], retro: [600, 600, 600] },
     'reflector-red': { name: 'red reflector', rho: [0.1, 0.01, 0.01], retro: [200, 6, 6] },
+    'marker-amber': { name: 'amber side marker', rho: [0.5, 0.3, 0.02], retro: [40, 22, 2] },
+    'marker-red': { name: 'red side marker', rho: [0.2, 0.01, 0.01], retro: [120, 5, 3] },
     'rpm-white': { name: 'pavement marker (white)', rho: [0.4, 0.4, 0.4], retro: [80, 80, 80] },
     'rpm-yellow': { name: 'pavement marker (yellow)', rho: [0.5, 0.38, 0.08], retro: [70, 52, 3] },
     'wall': { name: 'building wall', rho: [0.22, 0.19, 0.16] },
@@ -820,7 +822,7 @@
   // Signal and tail emitters take their candela from the brightest emit channel (the channel that carries the intensity in the scene builders:
   // red for a tail, the lit colour's channel for a signal). That is a choice, not a photometric measurement. Headlamps keep emit[0].
   // Cap 32, brightest (by eye illuminance) first. (The former glareSources option, 'oncoming' = headlamps only, is gone.)
-  function glareEmitter(ob) { return !!ob.headlamp || !!ob.taillamp || (ob.cls === 'signal' && !!ob.emit); }
+  function glareEmitter(ob) { return !!ob.headlamp || !!ob.taillamp || !!ob.markerLamp || (ob.cls === 'signal' && !!ob.emit); }   // §5-M: side markers join the veil (glareSources), not the halo table (heads/tails only)
   // Candela toward the eye from one street lamp: its cd, times the lamp-dist road factor I(gamma, phi) when the lamp has a street direction
   // (same factor as lampRoadF in drive-three-shaders.js and drive.js lampRoadF). gamma is measured from straight down, in the frame the lamp and eye share.
   function lampEyeCd(L, eye, opts) {

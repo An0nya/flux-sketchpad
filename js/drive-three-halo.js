@@ -44,7 +44,9 @@ const HALO_URL_N = HALO_N;   // HDX7: the bin count from the page URL (the defau
 // ON an edge, and every edge moves continuously with D. Blended to the fixed ladder as the car gets far (55-75 m), where it was already steady.
 const ADAPT = [0.45, 0.7, 0.85, 1.0, 1.6];
 export function haloEdgesFor(D, out = new Array(HALO_BINS)) {   // HDX3: the edges are fixed (D no longer moves them)
-  for (let i = 0; i < HALO_BINS; i++) out[i] = HALO_EDGES[i + 1];
+  const n = Math.min(HALO_BINS, out.length);   // step5-preview (qwen3.8max RN §5): the tail past the in-use bins is filled too, so a reader past HALO_BINS sees the true continuation instead of the stale range edgesV was built with. Only the in-use slots change
+  for (let i = 0; i < n; i++) out[i] = HALO_EDGES[i + 1];
+  for (let i = n; i < out.length; i++) out[i] = HALO_EDGES[HALO_BINS];
   return out;
 }
 
@@ -98,9 +100,9 @@ const TVERT = `void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 // PREFIX (Task 1): the cumulative table. Texel (tile k, cell c) = the sum of the bin texels at cell c over tiles 0..k. The shader reads four knots of it, not all bins.
 const TCUM = `uniform sampler2D src; uniform float cumW; uniform int cumN;
 void main() {
-  ivec2 px = ivec2(gl_FragCoord.xy); int W = int(cumW), tile = px.x / W, cx = px.x - tile * W; vec3 acc = vec3(0.0);
-  for (int k = 0; k < ${HALO_MAX}; k++) { if (k > tile || k >= cumN) break; acc += texelFetch(src, ivec2(k * W + cx, px.y), 0).rgb; }
-  gl_FragColor = vec4(acc, 1.0);
+  ivec2 px = ivec2(gl_FragCoord.xy); int W = int(cumW), tile = px.x / W, cx = px.x - tile * W; vec3 acc = vec3(0.0); float accM = 0.0;   // P3/glm5.2: alpha carries the first moment (glow-weighted depth sum) for mean-placement
+  for (int k = 0; k < ${HALO_MAX}; k++) { if (k > tile || k >= cumN) break; vec4 t = texelFetch(src, ivec2(k * W + cx, px.y), 0); acc += t.rgb; accM += t.a; }
+  gl_FragColor = vec4(acc, accM);
 }
 `;
 // IL (options haloJitter, haloJitterAmount, haloBlur): BLUR pass on the bin texels, before the running totals (so its cost does not grow with the bin count). Separable: run
@@ -111,11 +113,11 @@ void main() {
 // last slice are dropped and the rest renormalised. bR 0 = a plain copy (used to land the result in the source target).
 const TBLUR = `uniform sampler2D src; uniform float bW; uniform int bR, bV;
 void main() {
-  ivec2 px = ivec2(gl_FragCoord.xy), sz = textureSize(src, 0); int W = int(bW), tile = px.x / W, cx = px.x - tile * W; vec3 acc = vec3(0.0); float ws = 0.0;
+  ivec2 px = ivec2(gl_FragCoord.xy), sz = textureSize(src, 0); int W = int(bW), tile = px.x / W, cx = px.x - tile * W; vec3 acc = vec3(0.0); float ws = 0.0, accM = 0.0;   // P3/glm5.2: blur the moment with the same tent
   for (int o = -3; o <= 3; o++) { if (o < -bR || o > bR) continue; float w = float(bR + 1 - abs(o));
     if (bV == 2 && (tile + o < 0 || tile + o >= sz.x / W)) continue;
-    ivec2 q = bV == 2 ? ivec2((tile + o) * W + cx, px.y) : bV == 1 ? ivec2(px.x, clamp(px.y + o, 0, sz.y - 1)) : ivec2(tile * W + clamp(cx + o, 0, W - 1), px.y); acc += w * texelFetch(src, q, 0).rgb; ws += w; }
-  gl_FragColor = vec4(acc / ws, 1.0);
+    ivec2 q = bV == 2 ? ivec2((tile + o) * W + cx, px.y) : bV == 1 ? ivec2(px.x, clamp(px.y + o, 0, sz.y - 1)) : ivec2(tile * W + clamp(cx + o, 0, W - 1), px.y); vec4 t = texelFetch(src, q, 0); acc += w * t.rgb; accM += w * t.a; ws += w; }
+  gl_FragColor = vec4(acc / ws, accM / ws);
 }
 `;
 const THEAD = `uniform vec4 hLamp[${HALO_PER_DRAW}], hDir[${HALO_PER_DRAW}], hTint[${HALO_PER_DRAW}], hLat[${HALO_PER_DRAW}], hUp[${HALO_PER_DRAW}];
@@ -267,11 +269,23 @@ const jitText = (main, jit) => {
 // SM (option trafficShadows): a sample the lamp's car map says the lamp cannot see adds nothing (drive-three-shadowmaps.js smLit; smM = this draw's map, -1 none). Same hook as crestOcc; off compiles the texts above.
 // SMF: with both on, the crest test is the fallback for a lamp whose car has no map (smM -1), so a mapped car is tested once, by its map.
 const smText = (t, occ) => { const hook = occ ? '      if (smM >= 0 ? !smLit(smM, haloEye + s * ray) : crestOcc(lamp, haloEye + s * ray)) continue;\n' : '      if (!smLit(smM, haloEye + s * ray)) continue;\n', r = t.split(OCC_HIT).join(hook + OCC_HIT); if (r === t) throw new Error('SM: hook not found'); return r; };
-export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false) {
+// P3 (option haloMoment): the table pass writes the first moment (the glow-weighted depth sum) into the free alpha channel, so the lookup can place
+// each bin's mass at its mean depth instead of its upper edge. off compiles the shipped text unchanged (no surgery); on rewrites the march to split the
+// scalar weight, declares accM, writes vec4(acc, accM), and scales accM with the share. The LW window runs the same march body, so the global rewrites hit
+// both copies. P3 is ignoredWhile crossingRefine is on, so the crossing variant is never built here (the surgery guards on !refine too).
+const momentText = (body) => body
+  .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* s\) \* ds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds; acc += w * tint; accM += s * w;')   // every copy of the march (the ladder and the LW window)
+  .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* rs\) \* rds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * rs) * rds; acc += w * tint; accM += rs * w;')   // P3+RN: the crossing-refined ladder (crossText renames s→rs, ds→rds)
+  .replace(/vec3 acc = vec3\(0\.0\);/g, 'vec3 acc = vec3(0.0); float accM = 0.0;')
+  .replace(/vec4\(acc, 1\.0\)/g, 'vec4(acc, accM)')
+  .replace('vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)')   // the split early-out: no march here, so no moment
+  .replace(/acc \*= swt;/g, 'acc *= swt; accM *= swt;');   // the share scales the moment too
+export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0) {
   const main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN), raw = refine ? crossText(main, refine, nb) : main;
   const body0 = variant === 'band' ? bandText(raw) : variant === 'split' ? splitText(raw) : raw, body = sm ? smText(body0, occ) : body0;
   const withLw = lw > 0 && !refine ? lwText(body, occ, sm) : body;
-  return THEAD + (variant ? BAND_DECL : '') + (occ ? OCC_DECL : '') + (sm ? SM_DECL + 'uniform int smM;\n' : '') + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (jit ? jitText(withLw, jit) : withLw);
+  const withMoment = moment ? momentText(withLw) : withLw;   // P3: the surgery runs on the moment variant (composes with refine now); off is the shipped text byte-for-byte
+  return THEAD + (variant ? BAND_DECL : '') + (occ ? OCC_DECL : '') + (sm ? SM_DECL + 'uniform int smM;\n' : '') + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (jit ? jitText(withMoment, jit) : withMoment);
 }
 const HAL_CONV = (c) => (c === 'B' ? 1 : c === 'S' ? 2 : 0);
 const half = (T.DataUtils && T.DataUtils.fromHalfFloat) || ((h) => { const e = (h >> 10) & 31, m = h & 1023, sg = h & 0x8000 ? -1 : 1; return e === 0 ? sg * Math.pow(2, -14) * (m / 1024) : e === 31 ? (m ? NaN : sg * Infinity) : sg * Math.pow(2, e - 15) * (1 + m / 1024); });
@@ -282,12 +296,26 @@ export function haloTableSize(w, h, lamps = 99, divOv = 0) { const div = globalT
 // The CPU twin of the lookup in the shader (haloScatter): bins is the six bins, each [r, g, b]; d metres. Used by the page test to read the GPU table.
 // HDX3 lookup (mirrors haloScatter in drive-three-shaders.js): C at each bin's upper edge is the running sum; bin 0 is log d from 0.5 m with C(0.5)=0;
 // beyond the first edge, a monotone cubic Hermite (Fritsch-Carlson) in (log d, C) through the knots (the edges). Works for any ascending edges.
-export function haloLookup(bins, d, edges = HALO_EDGES.slice(1)) {
+export function haloLookup(bins, d, edges = HALO_EDGES.slice(1), moment) {
   if (!(d > 0.5)) return [0, 0, 0];
   const n = HALO_BINS, dd = Math.min(d, edges[n - 1]), Cc = [];
   let C = [0, 0, 0];
   for (let k = 0; k < n; k++) { C = [C[0] + bins[k][0], C[1] + bins[k][1], C[2] + bins[k][2]]; Cc.push(C); }
   if (dd <= edges[0]) { const f = Math.log(dd / 0.5) / Math.log(edges[0] / 0.5); return Cc[0].map((v) => v * f); }
+  if (moment) {   // P3/glm5.2: monotone Hermite (Fritsch-Carlson PCHIP) through the means, the CPU twin of the GPU haloCurveP3H
+    const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const mean = (k) => { const m = bins[k], w = lum(m[0], m[1], m[2]); return w > 1e-9 ? (m[3] || 0) / w : (k > 0 ? (edges[k - 1] + edges[k]) / 2 : edges[0] / 2); };   // bin k's mass mean; fallback to the bin midpoint
+    const x = []; for (let k = 0; k < n; k++) x.push(Math.log(Math.max(mean(k), 0.5)));   // knot x = log(mean_k)
+    const y = Cc, h = [], sl = [];
+    for (let k = 0; k < n - 1; k++) { h.push(x[k + 1] - x[k]); sl.push([0, 1, 2].map((c) => (y[k + 1][c] - y[k][c]) / h[k])); }
+    const m = (k) => {   // knot slope; Fritsch-Carlson: zero where neighbouring segments disagree in sign, else the weighted harmonic mean
+      if (k === 0) return sl[0]; if (k === n - 1) return sl[n - 2];
+      return [0, 1, 2].map((c) => { const a = sl[k - 1][c], b = sl[k][c]; if (a * b <= 0) return 0; const w1 = 2 * h[k] + h[k - 1], w2 = h[k] + 2 * h[k - 1]; return (w1 + w2) / (w1 / a + w2 / b); });
+    };
+    let s = 0; for (let k = 0; k < n - 1; k++) if (dd > Math.exp(x[k])) s = k;   // segment s: means s..s+1 bracket dd
+    const lx = Math.log(dd), t = (lx - x[s]) / h[s], t2 = t * t, t3 = t2 * t, mA = m(s), mB = m(s + 1), hh = h[s];
+    return [0, 1, 2].map((c) => (2 * t3 - 3 * t2 + 1) * y[s][c] + (t3 - 2 * t2 + t) * hh * mA[c] + (-2 * t3 + 3 * t2) * y[s + 1][c] + (t3 - t2) * hh * mB[c]);
+  }
   const x = edges.map(Math.log), y = Cc, h = [], sl = [];
   for (let k = 0; k < n - 1; k++) { h.push(x[k + 1] - x[k]); sl.push([0, 1, 2].map((c) => (y[k + 1][c] - y[k][c]) / h[k])); }
   const m = (k) => {   // knot slope; Fritsch-Carlson: zero where neighbouring segments disagree in sign, else the weighted harmonic mean
@@ -339,17 +367,17 @@ export function toCarFrame(traffic, m, A) {
 }
 export function haloPass(renderer, u) {
   const scene = new T.Scene(), camera = new T.Camera(), geo = new T.PlaneGeometry(2, 2);
-  const mk = (atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false) => new T.ShaderMaterial({
-    uniforms: sm ? { smTex: u.smTex, smE: u.smE, smF: u.smF, smL: u.smL, smU: u.smU, smP: u.smP, smRes: u.smRes, smM: { value: -1 } } : {}, vertexShader: TVERT, fragmentShader: haloTableSource(atlas, polar, occ, variant, jit, sm, lw, refine, nb),
-    blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.OneFactor, blendDst: T.OneFactor, blendSrcAlpha: T.ZeroFactor, blendDstAlpha: T.OneFactor,
+  const mk = (atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0) => new T.ShaderMaterial({
+    uniforms: sm ? { smTex: u.smTex, smE: u.smE, smF: u.smF, smL: u.smL, smU: u.smU, smP: u.smP, smRes: u.smRes, smM: { value: -1 } } : {}, vertexShader: TVERT, fragmentShader: haloTableSource(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment),
+    blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.OneFactor, blendDst: T.OneFactor, blendSrcAlpha: moment ? T.OneFactor : T.ZeroFactor, blendDstAlpha: T.OneFactor,   // P3/glm5.2: alpha accumulates additively (the first moment) only on the moment variant; off keeps the shipped discard
     depthTest: false, depthWrite: false,
   });
   const mats = [mk(false), mk(true)], matsP = [mk(false, true), mk(true, true)];   // matsP: HDX6 polar pass materials
   const varMats = new Map(); const varMat = (atlas, polar, occ, variant, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + (occ ? 4 : 0) + variant + ':' + refine; if (!varMats.has(k)) varMats.set(k, mk(atlas, polar, occ, variant, false, false, 0, refine)); return varMats.get(k); };   // SP: band / split variants, compiled on first use
   const occMats = new Map(); const occMat = (atlas, polar, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + ':' + refine; if (!occMats.has(k)) occMats.set(k, mk(atlas, polar, true, '', false, false, 0, refine)); return occMats.get(k); };   // E2: crest-occlusion variants, compiled on first use (option off never builds them)
-  const jitMats = new Map(); const pick = (atlas, polar, occ, variant, jit, sm = false, lw = 0, refine = 0, nb = false) => {   // IL: jit off = exactly the materials the code picked before; on = its own variants, compiled on first use (SM: likewise); LW likewise
-    if (!jit && !sm && !lw && !refine) return variant ? varMat(atlas, polar, occ, variant) : occ ? occMat(atlas, polar) : (polar ? matsP : mats)[atlas ? 1 : 0];
-    const k = [atlas, polar, occ, variant, jit, sm, lw, refine, nb].join(); if (!jitMats.has(k)) jitMats.set(k, mk(atlas, polar, occ, variant, jit, sm, lw, refine, nb)); return jitMats.get(k);
+  const jitMats = new Map(); const pick = (atlas, polar, occ, variant, jit, sm = false, lw = 0, refine = 0, nb = false, moment = 0) => {   // IL: jit off = exactly the materials the code picked before; on = its own variants, compiled on first use (SM: likewise); LW likewise; P3 (moment) likewise
+    if (!jit && !sm && !lw && !refine && !moment) return variant ? varMat(atlas, polar, occ, variant) : occ ? occMat(atlas, polar) : (polar ? matsP : mats)[atlas ? 1 : 0];
+    const k = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment].join(); if (!jitMats.has(k)) jitMats.set(k, mk(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment)); return jitMats.get(k);
   };
   let blurMat = null; const blurTmp = new Map();   // IL: the bin blur pass and its scratch targets (one per source target), built on first use
   const blurBins = (srcRt, W, r, rd = 0) => {   // rows, columns (r), then depth (rd); ping-pong with a scratch target, srcRt holds the result
@@ -453,7 +481,7 @@ export function haloPass(renderer, u) {
       const look = p.look || {}, wantN = look.haloBins != null ? +look.haloBins : HALO_URL_N;
       if (wantN !== HALO_REQ) setHaloBins(wantN);
       const rangeG = haloRangeGpu(look); if (rangeG !== HALO_RANGE) setHaloRange(rangeG);   // SR/OHR: the table's far edge (look.haloRange, else scatterRange)
-      u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1; u.haloSMax.value = HALO_RANGE;
+      u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1; u.haloSMax.value = HALO_RANGE; u.haloMoment.value = look.haloMoment === 'on' ? 1 : 0;   // P3/glm5.2: mean-placement (0 = shipped edges)
       const eye = p.eye || [-2, 0.37, 1.2], traffic = p.touge ? toCarFrame(D.trafficSources(world.objects, eye, p, world.A), u.carFromWorld.value, world.A) :D.trafficSources(world.objects, eye, p, world.A);   // TOUGE-ELEV B1: touge lamps into the car frame the ribbon projects in
       if (!traffic.length) return 0;
       halo.sources = traffic;   // test hook: the sources the table was built from (beam, tint, axis)
@@ -552,10 +580,10 @@ export function haloPass(renderer, u) {
       const useOcc = !!(occ && p.touge); halo.occ = useOcc; const jm = look.haloJitter === 'interleaved' || look.haloJitter === 'jittered' ? look.haloJitter : '', hb = look.haloBlur || 'auto';   // IL: sampling mode; blur auto = light when sampling is on, else off
       const blurR = hb === 'heavy' ? 3 : hb === 'medium' ? 2 : hb === 'light' || (hb === 'auto' && jm) ? 1 : 0, jit = jm ? jm + (blurR === 3 ? ':4' : blurR === 2 ? ':3' : '') : '', jitAmt = Math.max(0, Math.min(1, look.haloJitterAmount === undefined ? 1 : +look.haloJitterAmount));
       const blurD = look.haloDepthBlur === 'heavy' ? 2 : look.haloDepthBlur === 'light' ? 1 : 0;   // IL: depth blur, independent of the rest
-      const refineN = [512, 2048].includes(+look.haloCrossingRefine) ? +look.haloCrossingRefine : 0;   // P1c: the crossing bin's extra steps (0 = the shipped six)
+      const refineN = [32, 64, 128, 256, 512, 2048].includes(+look.haloCrossingRefine) ? +look.haloCrossingRefine : 0;   // P1c: the crossing bin's extra steps (0 = the shipped six; 32..2048 = the refined ladder's cell count)
       const lwRaw = look.haloLampWin, lwK = refineN ? 0 : lwRaw === 'off' || lwRaw === undefined || lwRaw === null || lwRaw === 0 ? 0 : Math.max(4, Math.min(96, Math.round(+lwRaw || 0)));   // LW: window steps per bin (0 = the old 6-step ladder); P1c wins if both are on
       const nbN = refineN > 0 && look.haloRefineNeighbour === 'on';   // RN: widen P1c's trigger to the crossing bin's eye-side neighbour (inert unless P1c is on)
-      halo.lw = lwK; halo.cross = refineN; halo.nb = nbN ? 1 : 0;   // LW: the lamp-window schedule used this frame (0 = off); RN: 1 = the neighbour bin is refined too
+      halo.lw = lwK; halo.cross = refineN; halo.nb = nbN ? 1 : 0; halo.moment = look.haloMoment === 'on' ? 1 : 0;   // LW: the lamp-window schedule used this frame (0 = off); RN: 1 = the neighbour bin is refined too; P3/glm5.2: mean-placement on
       halo.jit = jit; halo.blur = blurR; halo.dblur = blurD;   // IL: interleaved sampling   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
       const occU = (mm) => { if (useOcc) Object.assign(mm.uniforms, { crestH: { value: occ.texture }, crestWFC: { value: occ.wfc }, crestBox: { value: occ.box }, crestZ: { value: occ.z } }); if (jit) mm.uniforms.haloJitAmt = { value: jitAmt }; };   // IL: the jitter amount rides along
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
@@ -599,8 +627,8 @@ export function haloPass(renderer, u) {
       }
       const cellsOf = (b, nW, nH, rect) => b.empty ? 0 : (b.k1 - b.k0 + 1) * (rect ? (rect[1] - rect[0] + 1) * (rect[3] - rect[2] + 1) : nW * nH);
       try {
-        renderer.autoClear = false; const m = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN);
-        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN) : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
+        renderer.autoClear = false; const m = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, halo.moment);
+        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, halo.moment) : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
         renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m;
         // The nearest HALO_REFINE lamps within HALO_NEAR metres are drawn in HALO_SUB sub-passes (24 steps per bin); the rest in one (6).
         used.forEach((q, i) => {
@@ -632,7 +660,7 @@ export function haloPass(renderer, u) {
         // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
-          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit, useSm, lwK, refineN, nbN);
+          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit, useSm, lwK, refineN, nbN, halo.moment);
           const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || nearSub) : 1;
           renderer.setRenderTarget(rp.bin); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
           for (let j = 0; j < P; j++) for (const q of s.lamps) {
@@ -662,7 +690,7 @@ export function haloPass(renderer, u) {
       const bins = [];
       for (let k = 0; k < HALO_BINS; k++) {
         const px = new Uint16Array(4); renderer.readRenderTargetPixels(rt, k * tw + cx, cy, 1, 1, px);
-        bins.push([half(px[0]), half(px[1]), half(px[2])]);
+        bins.push([half(px[0]), half(px[1]), half(px[2]), half(px[3])]);   // P3/glm5.2: alpha = the first moment
       }
       return bins;
     },

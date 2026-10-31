@@ -42,6 +42,7 @@ const FROZEN_OLD_DV_DEF = {
   haloLampWin: 'off',   // step5-preview (LW): new option (not a default change); registry position: after haloDepthBlur, before haloAutoRange
   haloCrossingRefine: 0,   // minimaxai (P1c): new option (not a default change); registry position: after haloLampWin, before haloAutoRange
   haloRefineNeighbour: 'off',   // qwen3.8max (RN): new option (not a default change); registry position: after haloCrossingRefine, before haloAutoRange
+  haloMoment: 'off',   // glm5.2 (P3): new option (not a default change); registry position: after haloRefineNeighbour, before haloAutoRange
   haloAutoRange: '4-8',   // AT: new options (not default changes); registry position: after haloDepthBlur
   haloNearSub: 1,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 4).
   haloConePass: '2',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'off'). Earlier: CP + SM: new options (not default changes); registry position: after haloDepthBlur
@@ -113,6 +114,7 @@ const FROZEN_OLD_DV_DEF = {
   speed: 50,
   oncoming: false,
   preceding: false,
+  trafficMarkers: false,   // le-chonk 10-30 (5-M): new option (not a default change); registry position: after preceding
   onDist: 80,
   preDist: 50,
   onKcd: 30,
@@ -132,7 +134,7 @@ const FROZEN_OLD_DV_DEF = {
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();
-ok('frozen copy has 117 keys (qwen3.8max 10-30: haloRefineNeighbour, new option default off); (116 with le-chonk 10-30: driveScrub + wetVeil, new); (114 with minimaxai (P1c) + haloCrossingRefine, new option default off); (10-29: animateUI, new); (111 with 10-29: fitControls retired); (112 with UI step C: canvasShape, new); (111 with UI step C: panelMode, new); (110 with OHC + OHR: haloCars, haloRange, new); (108 with SM3 PCF: trafficShadowSoft, new); (107 with SM1b: trafficShadowObjects, new); (106 with AT: haloAutoRange, haloNearSub, new); (104 with CP + SM: haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, new); (99 with IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (113 with step5-preview (LW) + haloLampWin, new option default off); (114 with minimaxai (P1c) + haloCrossingRefine, new option default off); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 117, Object.keys(FROZEN_OLD_DV_DEF).length);
+ok('frozen copy has 119 keys (le-chonk 10-30 5-M: trafficMarkers, new option default off); (118 with glm5.2 10-30: haloMoment, new option default off); (117 with qwen3.8max 10-30: haloRefineNeighbour, new option default off); (116 with le-chonk 10-30: driveScrub + wetVeil, new); (114 with minimaxai (P1c) + haloCrossingRefine, new option default off); (10-29: animateUI, new); (111 with 10-29: fitControls retired); (112 with UI step C: canvasShape, new); (111 with UI step C: panelMode, new); (110 with OHC + OHR: haloCars, haloRange, new); (108 with SM3 PCF: trafficShadowSoft, new); (107 with SM1b: trafficShadowObjects, new); (106 with AT: haloAutoRange, haloNearSub, new); (104 with CP + SM: haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, new); (99 with IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (113 with step5-preview (LW) + haloLampWin, new option default off); (114 with minimaxai (P1c) + haloCrossingRefine, new option default off); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 119, Object.keys(FROZEN_OLD_DV_DEF).length);
 let equal = true, why = null;
 try { assert.deepStrictEqual(gen, FROZEN_OLD_DV_DEF); } catch (e) { equal = false; why = String(e.message).split('\n').slice(0, 12).join(' | '); }
 ok('generated defaults deep-equal the old DV_DEF (values and types)', equal, why);

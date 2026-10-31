@@ -124,9 +124,9 @@
     polarAuto: { cond: { opt: 'haloPolar', eq: 'auto' }, why: 'only read when the lamp-centred table is on auto', effect: 'none',
       at: { file: 'js/drive-three-halo.js', fn: "pmode === 'auto'", line: 478 } },   // step5-preview (LW): was 335, the window block above moved it
     crossingRefineOn: { cond: { opt: 'haloCrossingRefine', gt: 0 }, why: 'the crossing-bin refinement replaces the lamp-window schedule in the same bin', effect: 'none',
-      at: { file: 'js/drive-three-halo.js', fn: 'const refineN = [512, 2048].includes', line: 541 } },
+      at: { file: 'js/drive-three-halo.js', fn: 'const refineN = [32, 64, 128, 256, 512, 2048].includes', line: 583 } },
     cullFast: { cond: { opt: 'scatterCull', eq: 'fast' }, why: 'only read when oncoming in-scatter culling is fast (exact never uses a threshold)', effect: 'none',
-      at: { file: 'js/drive-three-halo.js', fn: "cullMode === 'fast'", line: 492 } },
+      at: { file: 'js/drive-three-halo.js', fn: "cullMode === 'fast'", line: 619 } },
     passHalo: { cond: { opt: 'mountainPass', eq: true }, why: 'mountain pass only: the occluder is the pass ribbon; on the flat road the option does nothing', effect: 'none',
       at: { file: THREE, fn: "p.look.crestOcclusion === 'on'", line: 378 } },
     mountainPassPeople: { cond: { opt: 'mountainPass', eq: true }, why: 'the pass builds no people', effect: 'none',
@@ -476,14 +476,14 @@
       note: 'step5-preview fix for the oncoming halo banding: the bin that catches a lamp\'s crossing also samples a lamp-centred window (s0 = the lamp\'s closest-approach depth on this cell\'s ray), K log steps over [max(lo, s0 - 24), s0 + 0.75] plus 3 stubs a side, instead of the six log steps that are ~7-8 m apart where the whole glow sits (step5-preview, drive-three-halo.js LW_*). off = the old schedule, byte for byte; no UI control yet (set it from a state file), GPU side only.',
     },
     {
-      id: 'haloCrossingRefine', kind: 'profile', type: 'enum', values: [0, 512, 2048],
+      id: 'haloCrossingRefine', kind: 'profile', type: 'enum', values: [0, 32, 64, 128, 256, 512, 2048],
       default: 0, label: 'crossing-bin refinement',
       control: '[data-dv="haloCrossingRefine"]', where: 'halo-advanced', query: null,
       group: 'halo', cost: 'table-rebuild',
       owner: ['js/spec-ui.js', 'js/drive-three-halo.js'],
       requires: [need('gpu'), need('air'), need('haloOn')],
       tests: ['node:halo-crossing-refine'],
-      note: 'Reference-quality quadrature for the one depth bin where an oncoming ray crosses the lamp\'s forward plane: 512 or 2048 log steps replace that bin\'s six; the other bins keep the shipped schedule. 2048 matched a 262144-point reference within 0.013% at the valley cell, but costs about 15x the table samples. Takes precedence over haloLampWin. GPU side only.',
+      note: 'Reference-quality quadrature for the one depth bin where an oncoming ray crosses the lamp\'s forward plane: 32 to 2048 log steps replace that bin\'s six; the other bins keep the shipped schedule. 2048 matched a 262144-point reference within 0.013% at the valley cell, but costs about 15x the table samples. Takes precedence over haloLampWin. GPU side only.',
     },
     {
       id: 'haloRefineNeighbour', kind: 'profile', type: 'enum', values: ['off', 'on'],
@@ -494,6 +494,17 @@
       requires: [need('gpu'), need('air'), need('haloOn'), need('crossingRefineOn')],
       tests: ['node:halo-refine-neighbour'],
       note: 'With crossing-bin refinement on: refine that bin\'s eye-side neighbour as well. The trigger depth is pinned at the lamp\'s forward-plane crossing while the glow centroid slides toward the eye as the ray\'s closest approach grows, so the bin holding the light is usually the next one nearer: at the valley pose (D=199 m) the dominant bin was one nearer in 24/30 rows, always exactly one, and refining only the crossing bin left it byte-identical to the shipped six steps. About twice the refinement cost. GPU side only.',
+    },
+    {
+      id: 'haloMoment', kind: 'profile', type: 'enum', values: ['off', 'on'],
+      default: 'off', label: 'halo first-moment bins',
+      control: '[data-dv="haloMoment"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'table-rebuild',
+      owner: ['js/spec-ui.js', 'js/drive-three-halo.js', 'js/drive-three-shaders.js'],
+      requires: [need('gpu'), need('air'), need('haloOn')],
+      ignoredWhen: [need('crossingRefineOn')],
+      tests: ['node:halo-moment'],
+      note: 'glm5.2: each bin\'s glow mass is placed at its glow-weighted mean depth (the first moment rides in the table\'s free alpha channel) instead of the bin edge, removing the steady dim step at bin edges that the lamp window (P1) leaves. Off = the old edge knots, byte for byte (the table text is unchanged); on = mean-depth knots (a step at the mean). Pairs with the lamp window; ignored when crossing refinement is on (the crossing variant is not moment-aware). GPU side only; the CPU twin mirrors it. Prototype: the step at the mean leaves a hard step at each bin\'s mean; a smooth Hermite-over-means is the planned upgrade.',
     },
     {
       id: 'haloAutoRange', kind: 'profile', type: 'enum', values: ['4-8', '2-4', '2-8', '1.4-2'],
@@ -1238,6 +1249,15 @@
       tests: [
         'BA5-gpu-atlas', 'BT-traffic-beams', 'CD-controls-dedupe', 'SF1-car-silhouette', 'node:regress-node',
       ],
+    },
+    {
+      id: 'trafficMarkers', kind: 'profile', type: 'bool', values: null,
+      default: false, label: 'side marker lamps on traffic cars',
+      control: '[data-dv="trafficMarkers"]', where: 'more', query: null,
+      group: 'traffic', cost: 'scene-regenerate',
+      owner: ['js/drive-scenes.js', 'js/drive-anim.js', 'js/drive.js', 'js/drive-three-models.js', 'js/drive-touge.js', 'js/spec-ui.js'],
+      tests: ['node:le-chonk-markers'],
+      note: 'le-chonk (backlog 5-M): traffic cars also carry ECE-style side markers — amber at the front corners, red at the rear — as small emitters. They join the glare veil (glareEmitter) but NOT the halo table (heads/tails only), so the 16-lamp halo cap is untouched. Off: cars are exactly as before (scene digest unchanged).',
     },
     {
       id: 'onDist', kind: 'profile', type: 'number', values: null,

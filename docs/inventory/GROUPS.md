@@ -87,9 +87,9 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `road` | Road and route | 9 | 2 | 5 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 8 | 0 | 5 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 31 | 0 | 4 | 0 | 27 | 0 | 0 |
+| `halo` | Traffic halo | 32 | 0 | 4 | 0 | 28 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
-| `traffic` | Traffic | 15 | 0 | 12 | 0 | 0 | 1 | 2 |
+| `traffic` | Traffic | 16 | 0 | 13 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
 | `exposure` | Exposure and eye | 4 | 1 | 3 | 0 | 0 | 0 | 0 |
@@ -173,6 +173,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `haloLampWin` | lamp-window steps | profile | advanced halo | "off" | ignored when `crossingRefineOn` [none] |
 | `haloCrossingRefine` | crossing-bin refinement | profile | advanced halo | 0 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloRefineNeighbour` | refine eye-side neighbour bin | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `crossingRefineOn` [none] |
+| `haloMoment` | halo first-moment bins | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none]; ignored when `crossingRefineOn` [none] |
 | `haloAutoRange` | halo table auto range | profile | advanced halo | "4-8" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloNearSub` | halo near quality | profile | advanced halo | 1 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloConePass` | cone pass | profile | advanced halo | "2" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
@@ -211,6 +212,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `trafficBeams` | traffic beams | profile | More | false | - |
 | `oncoming` | oncoming traffic | profile | More | false | - |
 | `preceding` | preceding traffic | profile | More | false | - |
+| `trafficMarkers` | side marker lamps on traffic cars | profile | More | false | - |
 | `onDist` | oncoming distance (CPU still) | profile | no control | 80 | - |
 | `preDist` | preceding distance (CPU still) | profile | no control | 50 | - |
 | `onKcd` | oncoming intensity (kcd) | profile | Spec > Road sidebar | 30 | needs `manualMode` [none] |

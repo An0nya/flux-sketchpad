@@ -66,6 +66,7 @@ export function modelMeshes(scene,uniforms,onReady) {
               }
             }
             parts.mounts[end+':'+type+':'+side]=m;}
+          for(const end of [-1,1])for(const side of [-1,1])parts.mounts[end+':marker:'+side]=mount(end,side*.86,end>0?config.lamp-.08:config.tail-.10,true);   // §5-M side markers ride the body side, optional (model may lack the surface)
           for(const end of [-1,1]){
             const m=parts.mounts[end+':plate:0'];m.bodyNormal=m.n;m.n=[end,0,0];const n=new T.Vector3(...m.n),t=new T.Vector3(-n.y,n.x,0).normalize(),up=new T.Vector3().crossVectors(n,t),centre=new T.Vector3(...m.p);let lift=0;
             for(const y of [-.26,0,.26])for(const z of [-.076,0,.076]){const q=centre.clone().addScaledVector(t,y).addScaledVector(up,z);ray.set(q.clone().addScaledVector(n,3),n.clone().negate());const hit=ray.intersectObject(mesh)[0];if(hit)lift=Math.max(lift,hit.point.clone().sub(q).dot(n)+.003);}
@@ -87,7 +88,7 @@ export function modelMeshes(scene,uniforms,onReady) {
       if(!assets)return obs;const roots=new Map();for(const ob of obs)if(ob.detailPart==='car'&&ob.detail)roots.set(ob.modelId,ob.detail);
       const out=[];state.mounts=[];
       for(const ob of obs){const m=roots.get(ob.modelId);if(!m||ob.detailPart!=='car'){out.push(ob);continue;}if(ob.k!=='disc'){if(ob.detail)out.push({...ob,k:'mesh-car'});continue;}
-        const a=D.Models.stableId(m.id)%assets.length,F=m.face===-1?-1:1,yaw=m.yaw+(F===-1?Math.PI:0),c=Math.cos(yaw),s=Math.sin(yaw),end=ob.meshKey?+ob.meshKey.split(':')[0]:((ob.x-m.x)*Math.cos(m.yaw)+(ob.y-m.y)*Math.sin(m.yaw))*F>0?1:-1,type=ob.mat==='plate'?'plate':ob.mat==='reflector-red'?'reflector':ob.headlamp?'head':'tail',side=ob.meshKey?+ob.meshKey.split(':')[2]:type==='plate'?0:Math.sign(-(ob.x-m.x)*s+(ob.y-m.y)*c),mount=assets[a].mounts[ob.meshKey||(end+':'+type+':'+side)];
+        const a=D.Models.stableId(m.id)%assets.length,F=m.face===-1?-1:1,yaw=m.yaw+(F===-1?Math.PI:0),c=Math.cos(yaw),s=Math.sin(yaw),end=ob.meshKey?+ob.meshKey.split(':')[0]:((ob.x-m.x)*Math.cos(m.yaw)+(ob.y-m.y)*Math.sin(m.yaw))*F>0?1:-1,type=ob.mat==='plate'?'plate':ob.mat==='reflector-red'?'reflector':ob.mat==='marker-amber'||ob.mat==='marker-red'?'marker':ob.headlamp?'head':'tail',side=ob.meshKey?+ob.meshKey.split(':')[2]:type==='plate'?0:Math.sign(-(ob.x-m.x)*s+(ob.y-m.y)*c),mount=assets[a].mounts[ob.meshKey||(end+':'+type+':'+side)];if(!mount){out.push(ob);continue;}   // §5-M: a marker mount may be absent on some body styles
         // meshKey (CR2, drive-touge.js meshLamp) is the kit classification of a lamp that was already moved onto its mount: a rear mount can sit forward of the origin, so position alone would pick the wrong end.
         // Pass cars (m.normal): the mesh is tilted by D.Models.carBasis (same as update()), so mounts go through the same basis. Flat cars: unchanged.
         const B=m.normal?D.Models.carBasis(m):null,P=mount.p,N=mount.n;

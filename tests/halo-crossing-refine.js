@@ -23,7 +23,7 @@ for (const [k, args] of Object.entries({ off: [false, false, false, '', false, f
   ok('P1c off: the ' + k + ' table pass text is byte-identical to the pre-P1c build', F.haloTableSource(...args) === FIX[k]);
 
 // 2. ON builds a distinct variant: the crossing bin gets N steps, the ordinary ladder stays, and the LW window does not double-count it.
-for (const n of [512, 2048]) {
+for (const n of [32, 64, 128, 256, 512, 2048]) {
   const t = F.haloTableSource(false, false, false, '', false, false, 0, n);
   ok('P1c ' + n + ': the crossing bin has its own step count', t.includes('int rn = ' + n + ' / haloP;') && t.includes('bool crossingBin = sCross >= lo && sCross <= hi;'));
   ok('P1c ' + n + ': the ordinary and crossing sample bodies are both present', (t.match(/vec3 d = haloEye \+ s \* ray - lamp;/g) || []).length === 1 && (t.match(/vec3 d = haloEye \+ rs \* ray - lamp;/g) || []).length === 1);
@@ -43,7 +43,7 @@ for (const n of [512, 2048]) {
 // 4. The registry entry: declared once, default off, GPU-only rule attached.
 {
   const Opt = require(path.join(ROOT, 'js', 'options-registry.js')), e = Opt.OPTIONS.find((x) => x.id === 'haloCrossingRefine');
-  ok('registry: haloCrossingRefine is declared once, default off, with 512 and 2048', !!e && e.default === 0 && e.values.join(',') === '0,512,2048' && e.type === 'enum');
+  ok('registry: haloCrossingRefine is declared once, default off, with 32 to 2048', !!e && e.default === 0 && e.values.join(',') === '0,32,64,128,256,512,2048' && e.type === 'enum');
   ok('registry: defaults() carries it as off', Opt.defaults().haloCrossingRefine === 0);
   ok('registry: haloLampWin is ignored while the crossing refinement is on', e && e.requires.some((r) => r.rule === 'gpu') && Opt.OPTIONS.find((x) => x.id === 'haloLampWin').ignoredWhen.some((r) => r.rule === 'crossingRefineOn'));
 }

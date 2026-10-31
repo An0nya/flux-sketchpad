@@ -37,6 +37,7 @@ float fogT(float d) { return sigma>0.0 ? exp(-sigma*d) : 1.0; }   // transmittan
 uniform int scatterSteps;   // in-scatter steps (look.scatter; 0 = off; only with sigma>0). drive.js inScatter is the CPU twin
 uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js SCAT
 uniform float haloSMax;   // OHR: the oncoming table's far edge (look.haloRange, else scatterRange); our own beam keeps scatSMax
+uniform int haloMoment;   // P3/glm5.2: 1 = place each bin's mass at its glow-weighted mean depth (step at the mean); 0 = the shipped edge knots
 // SL: the traffic scatter table (js/drive-three-halo.js). A screen-space table (1/8 of the view, six tiles side by side) holds, per cell, the oncoming
 // lamps' single-scatter integral over six distance bins whose edges follow the nearest lamp (fixed ladder 8, 14, 22, 34, 60, 120 m when it is far). haloScatter(d) sums the bins up to the fragment's
 // own end distance d (ground hit, object eye distance, sky = 120 m), interpolated in log d like tableC, so the lit air in FRONT of a surface adds to it and the
@@ -73,11 +74,54 @@ vec3 haloCurve(int s, vec3 K0, vec3 K1, vec3 K2, vec3 K3, float dd) {
   float t=(log(dd)-log(haloE[s]))/h, t2=t*t, t3=t2*t;
   return (2.0*t3-3.0*t2+1.0)*K1 + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*K2 + (t3-t2)*h*mB;
 }
+// P3/glm5.2: the first-moment variant. The table's alpha carries the glow-weighted depth sum, so each bin's mass is placed at its mean depth
+// (a step at the mean) instead of its upper edge. haloBin4 reads all four channels; haloCurveP3 steps at mean = (K2.a-K1.a)/lum(K2.rgb-K1.rgb).
+float haloLum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+vec4 haloBin4(int k, vec2 pc, vec2 f, vec2 tab) {
+  vec2 f2=f*f, f3=f2*f, w0=(1.0-f)*(1.0-f)*(1.0-f)/6.0, w1=(3.0*f3-6.0*f2+4.0)/6.0, w2=(-3.0*f3+3.0*f2+3.0*f+1.0)/6.0, w3=f3/6.0;
+  vec2 g0=w0+w1, g1=w2+w3, h0=pc-1.0+w1/g0, h1=pc+1.0+w3/g1;
+  h0=clamp(h0+0.5,vec2(0.5),tab-0.5); h1=clamp(h1+0.5,vec2(0.5),tab-0.5);
+  float x0=(float(k)*tab.x+h0.x), x1=(float(k)*tab.x+h1.x), inv=1.0/(tab.x*float(haloNu));
+  return g0.y*(g0.x*texture(haloTex,vec2(x0*inv,h0.y/tab.y)).rgba+g1.x*texture(haloTex,vec2(x1*inv,h0.y/tab.y)).rgba)
+       + g1.y*(g0.x*texture(haloTex,vec2(x0*inv,h1.y/tab.y)).rgba+g1.x*texture(haloTex,vec2(x1*inv,h1.y/tab.y)).rgba);
+}
+// P3/glm5.2: the Fritsch-Carlson (PCHIP) knot slope for non-uniform spacing. a = left secant (over hL), b = right secant (over hR).
+// Zero where the secants disagree in sign (local extremum → flat); else the weighted harmonic mean. Per-channel, div-safe.
+vec3 haloPchipSlope(vec3 a, vec3 b, float hL, float hR) {
+  vec3 ab = a * b, slope = vec3(0.0);
+  if (ab.x > 1e-30) { float w1 = 2.0*hR + hL, w2 = hR + 2.0*hL; slope.x = (w1+w2)/(w1/a.x + w2/b.x); }
+  if (ab.y > 1e-30) { float w1 = 2.0*hR + hL, w2 = hR + 2.0*hL; slope.y = (w1+w2)/(w1/a.y + w2/b.y); }
+  if (ab.z > 1e-30) { float w1 = 2.0*hR + hL, w2 = hR + 2.0*hL; slope.z = (w1+w2)/(w1/a.z + w2/b.z); }
+  return slope;
+}
+// P3/glm5.2: the smooth first-moment variant. A monotone cubic Hermite (Fritsch-Carlson PCHIP) through the glow-weighted means
+// instead of the bin edges, so each bin's mass is placed at its mean without the hard step. K0..K3 = Cc[s-1..s+2] (RGBA);
+// the means come from the alpha channel (the first moment). dd is in bin s+1: m0 < edge[s] < dd, dd <= edge[s+1] < m2.
+vec3 haloCurveP3H(int s, vec4 K0, vec4 K1, vec4 K2, vec4 K3, float dd) {
+  if(dd<=haloE[0]) return K1.rgb*log(dd/0.5)/log(haloE[0]/0.5);
+  float lum1 = haloLum(K1.rgb-K0.rgb), lum2 = haloLum(K2.rgb-K1.rgb), lum3 = haloLum(K3.rgb-K2.rgb);
+  float m0 = max(lum1 > 1e-30 ? (K1.a-K0.a)/lum1 : haloE[max(s-1,0)], 0.5);   // mean of bin s
+  float m1 = max(lum2 > 1e-30 ? (K2.a-K1.a)/lum2 : haloE[s], 0.5);            // mean of bin s+1 (the bin holding dd)
+  float m2 = max(lum3 > 1e-30 ? (K3.a-K2.a)/lum3 : haloE[min(s+1,haloNu-1)], 0.5);  // mean of bin s+2
+  float lx0 = log(m0), lx1 = log(m1), lx2 = log(m2);
+  vec3 d01 = (K2.rgb - K1.rgb) / max(lx1 - lx0, 1e-30);   // secant of [m0, m1]
+  vec3 d12 = (K3.rgb - K2.rgb) / max(lx2 - lx1, 1e-30);   // secant of [m1, m2]
+  bool lower = dd < m1;   // dd is in [m0, m1] or [m1, m2]
+  float x0 = lower ? lx0 : lx1, x1 = lower ? lx1 : lx2, h = x1 - x0;
+  vec3 Y0 = lower ? K1.rgb : K2.rgb, Y1 = lower ? K2.rgb : K3.rgb;
+  vec3 dS = lower ? d01 : d12;   // this segment's secant
+  vec3 pchip = haloPchipSlope(d01, d12, lx1-lx0, lx2-lx1);   // the interior knot slope (at m1)
+  vec3 mA = lower ? dS : pchip;   // left knot: one-sided at the outer boundary, PCHIP at the interior
+  vec3 mB = lower ? pchip : dS;   // right knot: PCHIP at the interior, one-sided at the outer boundary
+  float t = (log(dd) - x0) / h, t2 = t*t, t3 = t2*t;
+  return (2.0*t3-3.0*t2+1.0)*Y0 + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*Y1 + (t3-t2)*h*mB;
+}
 vec3 haloScatterScr(float d) {
   if(haloOn==0 || d<=0.5) return vec3(0.0);
   vec2 p=gl_FragCoord.xy*haloUV*haloTab-0.5, pc=floor(p), f=p-pc;
   float dd=min(d,haloSMax);
   int s=haloSeg(dd), i0=max(s-1,0), i3=min(s+2,haloNu-1);
+  if(haloMoment!=0) return haloCurveP3H(s, haloBin4(i0,pc,f,haloTab), haloBin4(s,pc,f,haloTab), haloBin4(s+1,pc,f,haloTab), haloBin4(i3,pc,f,haloTab), dd);   // P3/glm5.2: 4 cumulative RGBA reads, monotone Hermite through the means
   return haloCurve(s, haloBin(i0,pc,f,haloTab), haloBin(s,pc,f,haloTab), haloBin(s+1,pc,f,haloTab), haloBin(i3,pc,f,haloTab), dd);   // 4 cumulative reads
 }
 uniform float haloGain;   // HDX7: the look's halo gain (1 = as computed; the multiply is exact at 1)
