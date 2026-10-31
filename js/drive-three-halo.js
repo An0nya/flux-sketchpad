@@ -258,6 +258,7 @@ const bandText = (t) => t.replace(BAND_ANG, 'float ang = haloBandA.x - haloBandA
 // (N 2, or 4 with heavy blur); ds is unchanged, so each sample still stands for its whole step (stratified, unbiased). Applied last, so it composes with the polar, occlusion,
 // band and split texts; off compiles the texts above unchanged.
 const JIT_MID = 'sb = sa * qq, s = sqrt(sa * sb), ds = sb - sa;';
+const JIT_MID_W = 's = 0.5 * (sa + sb), ds = sb - sa;';   // WIDTH: the width ladder's midpoint line (jittered the same way, so jitter + widthStep composes)
 if (TMAIN.split(JIT_MID).length !== 2) throw new Error('IL: step midpoint not found once in the table pass');
 // 'jittered': the noise is a fixed random fraction (jittered stratified sampling), hashed from cell, slice and step, so the offsets no longer repeat on a regular grid: a narrow
 // beam's beads break up into grain the blur merges. Fixed per cell (no frame index), so a still frame does not flicker. haloJitAmt (uniform) scales it; 'interleaved' = amount 0.
@@ -265,7 +266,9 @@ if (TMAIN.split(JIT_MID).length !== 2) throw new Error('IL: step midpoint not fo
 const JIT_NOISE = 'float(((uint(cx) * 1973u + uint(px.y) * 9277u + uint(tile) * 26699u + uint(m) * 31337u) * 1274126177u >> 16) & 65535u) / 65536.0';
 const jitText = (main, jit) => {
   const N = /:4$/.test(jit) ? 4 : /:3$/.test(jit) ? 3 : 2, ph = N === 3 ? 'float((cx % 3) + 3 * (px.y % 3))' : `float((cx & ${N - 1}) + ${N} * (px.y & ${N - 1}))`, nz = /^jittered/.test(jit) ? `haloJitAmt * (${JIT_NOISE} - 0.5)` : '0.0';
-  const t = main.replace(JIT_MID, `sb = sa * qq, s = sa * pow(qq, (${ph} + 0.5 + ${nz}) / ${(N * N).toFixed(1)}), ds = sb - sa;`); if (t === main) throw new Error('IL: jitter text not built');
+  let t = main.replace(JIT_MID, `sb = sa * qq, s = sa * pow(qq, (${ph} + 0.5 + ${nz}) / ${(N * N).toFixed(1)}), ds = sb - sa;`);   // the log-spaced ladder
+  t = t.replace(JIT_MID_W, `s = sa + (sb - sa) * ((${ph} + 0.5 + ${nz}) / ${(N * N).toFixed(1)}), ds = sb - sa;`);   // WIDTH: the width ladder's midpoint, jittered the same way (no-op when widthStep is off: JIT_MID_W is absent)
+  if (t === main) throw new Error('IL: jitter text not built');
   return 'uniform float haloJitAmt;\n' + t;
 };
 // SM (option trafficShadows): a sample the lamp's car map says the lamp cannot see adds nothing (drive-three-shadowmaps.js smLit; smM = this draw's map, -1 none). Same hook as crestOcc; off compiles the texts above.

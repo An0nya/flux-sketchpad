@@ -502,9 +502,8 @@
       group: 'halo', cost: 'table-rebuild',
       owner: ['js/spec-ui.js', 'js/drive-three-halo.js', 'js/drive-three-shaders.js'],
       requires: [need('gpu'), need('air'), need('haloOn')],
-      ignoredWhen: [need('crossingRefineOn')],
       tests: ['node:halo-moment'],
-      note: 'glm5.2: each bin\'s glow mass is placed at its glow-weighted mean depth (the first moment rides in the table\'s free alpha channel) instead of the bin edge, removing the steady dim step at bin edges that the lamp window (P1) leaves. Off = the old edge knots, byte for byte (the table text is unchanged); on = mean-depth knots (a step at the mean). Pairs with the lamp window; ignored when crossing refinement is on (the crossing variant is not moment-aware). GPU side only; the CPU twin mirrors it. Prototype: the step at the mean leaves a hard step at each bin\'s mean; a smooth Hermite-over-means is the planned upgrade.',
+      note: 'glm5.2: each bin\'s glow mass is placed at its glow-weighted mean depth (the first moment rides in the table\'s free alpha channel) instead of the bin edge, removing the steady dim step at bin edges that the lamp window (P1) leaves. Off = the old edge knots, byte for byte (the table text is unchanged); on = mean-depth knots (a step at the mean). Pairs with the lamp window; composes with crossing refinement (the crossing variant is moment-aware via the second regex). GPU side only; the CPU twin mirrors it. Prototype: the step at the mean leaves a hard step at each bin\'s mean; a smooth Hermite-over-means is the planned upgrade.',
     },
     {
       id: 'haloAutoRange', kind: 'profile', type: 'enum', values: ['4-8', '2-4', '2-8', '1.4-2'],
@@ -1124,6 +1123,16 @@
       note: 'le-chonk (Anya 10-30: reuse the touge route pipeline for ALL scenes, flat ones included, legacy fallback kept): with this on, every GPU drive frame routes through RF.Touge (route/elevate adds A.height/A.surface) — flat scenes and non-pass tile roads get height 0 and render flat through the same 3D pipeline, the pass keeps its real terrain. Pass furniture (guardrails, powerlines) stays pass-only; attitude is identity when flat. CPU renderer and OFF keep the legacy 2D path (fallback). Scene presets with their own elevation profiles (forested pass, rolling hills) plug in at RF.Touge.elevate.',
     },
     {
+      id: 'endlessPreset', kind: 'profile', type: 'enum', values: ['off', 'rolling-hills', 'forested-pass'],
+      default: 'off', label: 'endless road preset (prototype)',
+      control: '[data-anim="endlessPreset"]', where: 'more', query: null,
+      group: 'road', cost: 'scene-regenerate',
+      owner: ['js/drive-anim.js'],
+      requires: [need('tiles')],
+      tests: ['node:le-chonk-presets'],
+      note: 'le-chonk (10-30, Anya wants to author presets): elevation/verge preset for the endless biome road; acts only with endlessRoad + elevatedView (GPU pipeline). off: the seeded biome walk as shipped. rolling-hills: gentler grades (mountain ±2–4%, rolling ±0.8–2%). forested-pass: pass-grade mountain blocks (±4–8%) with guardrails along both edges and a denser forest verge. New presets = a grade profile in endlessGrade + props in the tile loop; the elevation itself plugs in at RF.Touge.elevate heightFn.',
+    },
+    {
       id: 'gpuRenderer', kind: 'profile', type: 'bool', values: null,
       default: true, label: 'GPU drive renderer',
       control: '[data-anim="gpu-renderer"]', where: 'more', query: null,
@@ -1580,6 +1589,16 @@
       owner: [],
       tests: [],
       note: 'st.gameOptions in drive-anim.js: the minigame overlay (mountainPass, scene, tiles, wild, seed, speed, wetness, people, animals, ...). Never saved; dropped on exit (game-options-leak fix).',
+    },
+    {
+      id: 'qualityGovernor', kind: 'profile', type: 'enum', values: ['off', 'on'],
+      default: 'off', label: 'quality governor',
+      control: '[data-anim="quality-governor"]', where: 'more', query: null,
+      group: 'performance', cost: 'free',
+      owner: ['js/drive-anim.js', 'js/spec-ui.js', 'js/drive-layout.js'],
+      requires: [],
+      tests: ['node:frenchie-quality-governor'],
+      note: 'frenchie (backlog 3-P): when frames run slower than the min-fps target, shed per-frame features step by step (near-lamp sub-passes, supersampling, cone pass, shadow softening and count, blurs, sheen, shadow-map size) and restore them with headroom, same governor shape as dynamic resolution. The shed values are applied per frame in prepare() (so every cache key sees them) and restored afterwards — your own settings are untouched; while a shed is active, changes to a shed key are overridden until it lifts. Off (default) changes nothing. Scope: frenchie/S3P-SCOPE.md.',
     },
   ];
 

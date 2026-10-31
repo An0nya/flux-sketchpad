@@ -31,9 +31,12 @@ ok('attitude(A) uses the route height (nonzero pitch on a grade)', (() => { let 
 ok('attitude(flat) still identity', RF.Touge.attitude(1000, false).pitch === 0);
 // OFF: plain tiles under elevatedView stay flat (no heightFn)
 const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
-ok('tileA: endless tiles get heightFn, plain tiles stay flat(0)', anim.includes('RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed))') && anim.includes('RF.Touge.elevate(A2, dist, p.lane, false)'));
+ok('tileA: endless tiles get heightFn, plain tiles stay flat(0)', anim.includes('RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed, p.src.tiles.preset))') && anim.includes('RF.Touge.elevate(A2, dist, p.lane, false)'));
 ok('whereAt reports gradePct for endless+elevatedView', anim.includes('w.gradePct = +(100 * (h(dist + 50) - h(dist - 50)) / 100)'));
 ok('attitude callers pass the route A', fs.readFileSync(path.join(ROOT, 'js', 'drive-three.js'), 'utf8').includes('attitude(dist, world.A ? world.A.touge : true, world.A)'));
 
+ok('tileWorld lifts objects onto the elevated surface under the pipeline', fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8').includes('A.touge ? D.Models.actors(objs, p.detailedModels).map((ob) => RF.Touge.lift(ob, A))'));
+ok('lift puts an object on the grade (z follows height)', (() => { const s0 = 38800; const r2 = A.tileRoute(seed, s0, false, A.endlessTile); const e2 = RF.Touge.elevate(r2, s0, 3.5, true, h); const ob = RF.Touge.lift({ x: 0, y: 0, z: 0.3, cls: 'bush' }, e2); return Math.abs(ob.z - (0.3 + (h(s0) - h(s0)))) > -1 && Math.abs(e2.height(50, 0) - (h(s0 + 50) - h(s0))) < 1e-9 && Math.abs(ob.z - 0.3) < 1e-9 + Math.abs(e2.height(0,0)); })());
+ok('endless bush/deer offsets stay off the carriageway', (() => { const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8'); return anim.includes('sd < 0 ? edgeR - 2.5 - 3 * KR() : edgeL + 2.5 + 3 * KR()') && anim.includes('sd < 0 ? edgeR - 3.5 : edgeL + 3.5'); })());
 console.log(fail === 0 ? `\nall ${pass} le-chonk-hills checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);

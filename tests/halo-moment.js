@@ -98,7 +98,7 @@ const F = loadHalo(ROOT);   // the workspace tree (this test runs against the tr
   const Opt = require(path.join(ROOT, 'js', 'options-registry.js')), e = Opt.OPTIONS.find((x) => x.id === 'haloMoment');
   ok('registry: haloMoment is declared once, default off, with off and on', !!e && e.default === 'off' && e.values.join(',') === 'off,on' && e.type === 'enum');
   ok('registry: defaults() carries it as off', Opt.defaults().haloMoment === 'off');
-  ok('registry: requires gpu, air and haloOn; ignored while crossingRefine is on', e && e.requires.some((r) => r.rule === 'gpu') && e.requires.some((r) => r.rule === 'air') && e.requires.some((r) => r.rule === 'haloOn') && e.ignoredWhen.some((r) => r.rule === 'crossingRefineOn'));
+  ok('registry: requires gpu, air and haloOn', e && e.requires.some((r) => r.rule === 'gpu') && e.requires.some((r) => r.rule === 'air') && e.requires.some((r) => r.rule === 'haloOn'));
   ok('registry: cites the node test', e && e.tests.join(',') === 'node:halo-moment');
 }
 

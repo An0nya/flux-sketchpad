@@ -46,6 +46,7 @@ run('le-chonk side marker lamps option (tests/le-chonk-markers.js)', ['tests/le-
 run('le-chonk endless biome road prototype (tests/le-chonk-endless.js)', ['tests/le-chonk-endless.js']);
 run('le-chonk elevatedView 3D-route prototype (tests/le-chonk-elevated.js)', ['tests/le-chonk-elevated.js']);
 run('le-chonk endless biome elevation (tests/le-chonk-hills.js)', ['tests/le-chonk-hills.js']);
+run('le-chonk endless road presets (tests/le-chonk-presets.js)', ['tests/le-chonk-presets.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
 run('every halo option is projected into the renderer (tests/halo-look-projection.js)', ['tests/halo-look-projection.js']); // nemotron (inert-option guard)
@@ -74,5 +75,6 @@ run('SB2 wet sheen from studs and paint: source admission, caps, paint gloss, GP
 run('saveable beams: format, checksum, grid, bundle, synthetic (tests/beams.js)', ['tests/beams.js']);
 run('BA5 GPU beam atlas: packing, shader text, pick equality (tests/beam-atlas.js)', ['tests/beam-atlas.js']);
 run('scene details: registry and metric maths (tests/scene-details.js)', ['tests/scene-details.js']);
+run('quality governor option: shed state machine + wiring, default off (tests/frenchie-quality-governor.js)', ['tests/frenchie-quality-governor.js']); // frenchie (backlog 3-P)
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

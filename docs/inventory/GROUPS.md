@@ -84,7 +84,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
 | `view` | Camera and playback | 4 | 3 | 1 | 0 | 0 | 0 | 0 |
-| `road` | Road and route | 11 | 2 | 7 | 0 | 0 | 0 | 2 |
+| `road` | Road and route | 12 | 2 | 8 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 8 | 0 | 5 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
 | `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
@@ -93,7 +93,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
 | `exposure` | Exposure and eye | 4 | 1 | 3 | 0 | 0 | 0 | 0 |
-| `performance` | Speed and quality | 7 | 0 | 6 | 0 | 0 | 0 | 1 |
+| `performance` | Speed and quality | 8 | 0 | 7 | 0 | 0 | 0 | 1 |
 | `diagnostics` | Panels and layout | 7 | 0 | 7 | 0 | 0 | 0 | 0 |
 | `internal` | Internal (no control) | 6 | 0 | 0 | 0 | 0 | 0 | 6 |
 
@@ -119,6 +119,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `tileCache` | cache ground | profile | More | true | needs `tilesOn` [disabled] |
 | `mountainPass` | mountain pass (scene select) | profile | toolbar | false | - |
 | `elevatedView` | 3D route pipeline for every scene (prototype) | profile | More | false | needs `gpu` [tooltip] |
+| `endlessPreset` | endless road preset (prototype) | profile | More | "off" | needs `tiles` [undefined] |
 | `cline` | centre line | profile | More | "solid" | needs `usRoad` [disabled] |
 | `res` | still picture width | profile | no control | 640 | - |
 
@@ -175,7 +176,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `haloLampWin` | lamp-window steps | profile | advanced halo | "off" | ignored when `crossingRefineOn` [none] |
 | `haloCrossingRefine` | crossing-bin refinement | profile | advanced halo | 0 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloRefineNeighbour` | refine eye-side neighbour bin | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `crossingRefineOn` [none] |
-| `haloMoment` | halo first-moment bins | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none]; ignored when `crossingRefineOn` [none] |
+| `haloMoment` | halo first-moment bins | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloAutoRange` | halo table auto range | profile | advanced halo | "4-8" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloNearSub` | halo near quality | profile | advanced halo | 1 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloConePass` | cone pass | profile | advanced halo | "2" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
@@ -274,6 +275,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `simCeiling` | resolution ceiling | profile | More | "high" | - |
 | `minFps` | minimum frame rate | profile | More | 30 | needs `dynResOn` [none] |
 | `samples` | supersampling | profile | More | "1" | - |
+| `qualityGovernor` | quality governor | profile | More | "off" | - |
 
 #### Panels and layout (`diagnostics`)
 

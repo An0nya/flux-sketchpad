@@ -43,6 +43,14 @@ ok('WIDTH + P1c: the width uniform is declared (the width ladder runs in the non
 ok('WIDTH + P1c: the crossing ladder is intact (the crossing bin uses the refined ladder)', both.includes('crossingBin') && both.includes('int rn = 512 / haloP;'));
 ok('WIDTH + P1c: the width ladder is present (the non-crossing bins use the width ladder)', both.includes('ceil(bw /') && both.includes('float bw = hi - lo;'));
 
+// 3b. the width ladder composes with jitter (the shipped default): jitText must find the width ladder's midpoint too
+const jw = F.haloTableSource(false, false, false, '', 'jittered', false, 0, 0, false, 0, 0.25);
+ok('WIDTH + jitter: the table builds (jitText finds the width ladder midpoint)', !jw.includes('s = 0.5 * (sa + sb)') && jw.includes('haloJitAmt') && jw.includes('s = sa + (sb - sa) *'));
+const jwc = F.haloTableSource(false, false, false, '', 'jittered', false, 0, 512, true, 0, 0.25);
+ok('WIDTH + jitter + P1c: the composition builds with jitter too', jwc.includes('haloJitAmt') && jwc.includes('crossingBin') && jwc.includes('s = sa + (sb - sa) *'));
+const jwt = F.haloTableSource(false, false, false, '', 'jittered', false, 0, 512, true, 1, 0.25);
+ok('WIDTH + jitter + P1c + moment: the triple composition builds with jitter too', jwt.includes('haloJitAmt') && jwt.includes('float accM = 0.0;') && jwt.includes('s = sa + (sb - sa) *'));
+
 // 4. the option is declared once, default off, with a control and a test
 const reg = fs.readFileSync(path.join(ROOT, 'js', 'options-registry.js'), 'utf8'), ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
 ok('the option is declared exactly once in the registry', (reg.match(/id: 'haloWidthStep'/g) || []).length === 1);
