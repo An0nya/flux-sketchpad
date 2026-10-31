@@ -49,6 +49,7 @@ run('le-chonk endless biome elevation (tests/le-chonk-hills.js)', ['tests/le-cho
 run('le-chonk endless road presets (tests/le-chonk-presets.js)', ['tests/le-chonk-presets.js']);
 run('le-chonk endless tile verge + consent toggles (tests/le-chonk-verge.js)', ['tests/le-chonk-verge.js']);
 run('le-chonk endless generator sweep, 120 seeds (tests/le-chonk-endless-sweep.js)', ['tests/le-chonk-endless-sweep.js']);
+run('halo-family cache-key detector (tests/halo-cache-keys.js)', ['tests/halo-cache-keys.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
 run('haloMoment: each bin mean is clamped into its own bin, so a nearly-empty bin cannot throw an interior knot (tests/halo-moment-clamp.js)', ['tests/halo-moment-clamp.js']); // step5-preview (P3 mean clamp)

@@ -79,7 +79,11 @@ function optionTable() {
   for (const e of Opt.OPTIONS) {
     const h = hand[e.id] || {};
     const cells = [code(e.id), e.kind, e.group, e.cost, esc(defaultText(e)), esc(rulesText(e)), esc(ownerText(e))]
-      .concat(HAND_HEAD.map((k) => (h[k] === undefined || h[k] === '' ? '-' : h[k])));
+      .concat(HAND_HEAD.map((k) => {
+        if (k.startsWith('tests') && Array.isArray(e.tests) && e.tests.length && (h[k] === undefined || h[k] === '' || h[k] === '-')) return e.tests.map((t) => (t.startsWith('node:') ? '`tests/' + t.slice(5) + '.js`' : '`' + t + '`')).join(', ');   // empty hand cell: derive from the registry's tests: field (qwen 20.1)
+        if (h[k] !== undefined && h[k] !== '') return h[k];
+        return '-';
+      }));
     out.push('| ' + cells.join(' | ') + ' |');
   }
   out.push(END);

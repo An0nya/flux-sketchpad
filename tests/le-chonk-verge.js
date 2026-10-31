@@ -49,5 +49,10 @@ ok('city verge buildings get window boxes on the road face, behind wild', anim.i
 ok('viaduct piers on steep mountain blocks (>3.5% grade), behind wild', anim.includes("cls: 'pier'") && anim.includes("Math.abs(endlessGrade(cfg.seed, Math.floor(tile.k / 16), cfg.preset)) > 0.035"));
 ok('direction-sign chevron glyph behind signs', anim.includes("KP.sign(gs, go, 'green'") && anim.includes("mat: 'white-paint' }); }   // direction sign + white chevron glyph"));
 ok('pier z span reaches past the verge falloff (z0 -14)', anim.includes("z0: -14, z1: 0.05, mat: 'concrete', cls: 'pier'"));
+// next tile batch (10-31 ~05:00): W-look double-beam rails, suburb facade windows, kilometer posts
+ok('guardrail is a double beam (two stacked boxes) behind posts', (anim.match(/cls: 'rail' }/g) || []).length >= 1 && anim.includes("z0: .34, z1: .5") && anim.includes("z0: .62, z1: .9"));
+ok('suburb houses get facade windows, behind wild', anim.includes('suburb facade windows') && anim.includes("mat: KR() < 0.3 ? 'win-warm' : 'win-dark'"));
+ok('kilometer post every 1000 m on endless tiles at the right edge', anim.includes("tile.s0 % 1000 === 0") && anim.includes("edgeR - 1.6") && anim.includes("z0: 0, z1: 1.1, r: 0.05, mat: 'pole'"));
+ok('km post gated on endless + signs flag', anim.includes('cfg.endless && cfg.flags.signs !== false && tile.s0 % 1000 === 0'));
 console.log(fail === 0 ? `\nall ${pass} le-chonk-verge checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);
