@@ -7,7 +7,7 @@ function run(RF, ok) {
   const SEED = 7, PERIOD = 1600;
   const pass = (o) => {
     const src = A.source('road', 3.5, true, { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: true, rpm: true }, { mountainPass: true, streetLamps: o.lamps || 'sodium', seed: SEED, oncoming: true, preceding: true, trafficDensity: 2, cline: o.cline });
-    return { src, lane: 3.5, us: true, touge: true, lut: D.lutFrom(() => 30000), conv: 'A', look: { RL: 0.2, ambient: 0 }, detailedModels: !!o.detailed, deerBehaviour: !!o.deer, lamps: [[0, 0.7, 0.7]] };
+    return { src, lane: 3.5, us: true, touge: true, mountainPass: true, lut: D.lutFrom(() => 30000), conv: 'A', look: { RL: 0.2, ambient: 0 }, detailedModels: !!o.detailed, deerBehaviour: !!o.deer, lamps: [[0, 0.7, 0.7]] };
   };
   const world = (p, dist, tauOf) => P.world(p, dist, 0, tauOf);
   const lamps = (w) => w.objects.filter(o => o.cls === 'street-lamp' && o.k === 'cyl');

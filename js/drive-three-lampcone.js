@@ -23,7 +23,7 @@
    Not done (see report): analytic ray-cone chord.
    Units: the target is cd/m^2-scale (headlamp emit I/(pi r^2) in drive-scenes.js is cd/m^2; inference, not checked against a photometric measurement). Tuning values are the owner's to judge by eye. */
 import * as T from '../vendor/three/three.module.min.js';
-import { LAMP_DIST, kindOfLamp, GAMMA } from './lamp-dist.js';
+import { LAMP_DIST, kindOfLamp, GAMMA, signalDist } from './lamp-dist.js';
 // The street-lamp list, lumens and tints (moved here from the removed lamp-halo sprite, Brief U; the cone is their only reader).
 // sodium lamp flux 9000 lm: verified (Philips SON-T 100 W datasheet). LED lamp 55 W at 75 lm/W = 4125 lm (LA County equivalency row, verified).
 // tints: sodium 2000 K, LED 4000 K via RF.CCT.cctToRGB (chromaticity only, normalised to luminance 1).
@@ -43,12 +43,17 @@ export function lampsOf(objects) {
   for (const ob of objects || []) {
     if (!ob || !ob.emit) continue;
     if (ob.cls === 'street-lamp' && ob.mat === 'lamp-head') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'street', emit: ob.emit, street: ob.street || null });
-    else if (ob.cls === 'signal' && ob.k === 'disc') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'signal', emit: ob.emit });
+    else if (ob.cls === 'signal' && ob.k === 'disc') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'signal', emit: ob.emit, st: [ob.nx || 0, ob.ny || 0] });   // frenchie (signalConesOn): the face normal is the cone axis slot
   }
   return out;
 }
 const D = globalThis.RF.Drive;
 export const LAMP_CONE_MAX = 8, LAMP_CONE_STEPS = 8, LAMP_CONE_G = 0.6, LAMP_CONE_SMAX = 300;   // lamps, steps per lamp, HG g, far limit (m)
+// frenchie (signalConesOn): the lit signal lamps of a frame's objects (pure — node-testable), nearest-first is done by the caller.
+export function signalConeLamps(objects, on) {
+  if (!on) return [];
+  return lampsOf(objects).filter((L) => L.kind === 'signal' && L.emit && L.st);
+}
 // LAMP-CONE-OBJECTS: cone-only profile. The table is multiplied by exp(-(gamma/CONE_W_G)^CONE_W_P) per gamma row, on a COPY (the shared
 // table in lamp-dist.js is untouched: the sprite and the road light read it). Effect on class III sodium: peak moves 65 -> 40 deg from nadir,
 // value at 80 deg is about 10 percent of that peak, zero at 85 (the table's own cutoff), and a flux-normalising factor k (about 1.56) keeps the
@@ -154,6 +159,16 @@ export function createLampCone(renderer) {
     });
     objScene = new T.Scene(); objScene.add(new T.Mesh(new T.PlaneGeometry(2, 2), objMat));
   }
+  // frenchie (signalConesOn): the signal table packed 4-per-vec4 like the street table (TAB_LEN floats -> 120 vec4)
+  let sigTab4Cache = null;
+  function signalTab4() {
+    if (sigTab4Cache) return sigTab4Cache;
+    const f = signalDist(), v = [];
+    for (let q = 0; q < TAB_LEN / 4; q++) v.push(new T.Vector4(f[q * 4], f[q * 4 + 1], f[q * 4 + 2], f[q * 4 + 3]));
+    sigTab4Cache = v; return v;
+  }
+  function sigLampByPos(world, x, y, z) { return lampsOf(world.objects).find((L) => L.kind === 'signal' && Math.abs(L.x - x) < 1e-6 && Math.abs(L.y - y) < 1e-6 && Math.abs(L.z - z) < 1e-6); }
+
   function tableFor(cls, kind) {
     const key = cls + '/' + kind;
     if (!tabCache.has(key)) {
@@ -215,7 +230,20 @@ export function createLampCone(renderer) {
       U.cFloor.value[i] = fr ? L.z - PASS_HEAD_Z : 0;   // the pass head is PASS_HEAD_Z above the road under it (lift() put the road height in z)
     });
     U.nLamp.value = near.length;
-    return near.map(({ L, r }) => ({ x: L.x, y: L.y, z: L.z, r: +r.toFixed(2) }));
+    // frenchie (signalConesOn): the volumetric signal cones — a second lamp list for the second draw (below), same uniforms refilled
+    const sigOn = !!(p.look && p.look.signalConesOn);
+    const sigCand = [];
+    if (sigOn) for (const L of signalConeLamps(world.objects, true)) {
+      let d = [L.x - eye[0], L.y - eye[1], L.z - eye[2]]; const r = Math.hypot(d[0], d[1], d[2]);
+      if (fr) { const e = fr.carFromWorld.elements; d = [e[0] * d[0] + e[3] * d[1] + e[6] * d[2], e[1] * d[0] + e[4] * d[1] + e[7] * d[2], e[2] * d[0] + e[5] * d[1] + e[8] * d[2]]; }
+      if (d[0] < 1 || r < 0.5) continue;
+      sigCand.push({ L, r });
+    }
+    sigCand.sort((a, b) => a.r - b.r);
+    const sigNear = sigCand.slice(0, LAMP_CONE_MAX);
+    const sigList = sigNear.map(({ L, r }) => ({ x: L.x, y: L.y, z: L.z, r: +r.toFixed(2), kind: 'signal' }));
+    last.signals = sigList;
+    return Object.assign(near.map(({ L, r }) => ({ x: L.x, y: L.y, z: L.z, r: +r.toFixed(2) })), { signals: sigList });
   }
   return {
     // Called once per frame by drive-three.js before the blit. Off or clear air: returns with no GL state change.
@@ -226,12 +254,30 @@ export function createLampCone(renderer) {
       if (!(sigma > 0)) return;   // clear air: no mist, so no cone
       if (!mat) setup();
       last.lamps = build(p, world, sigma, fr || null); last.count = last.lamps.length; last.objects = false;
-      if (!last.count) return;
+      if (!last.count && !(last.signals && last.signals.length)) return;   // frenchie (signalConesOn): signal-only frames draw too
       const ac = renderer.autoClear; renderer.autoClear = false;
       const limited = !!target.depthTexture && (depthMode === 'on' || (depthMode === 'auto' && !!fr));
       last.depthLimited = limited; lastDepthTarget = limited ? target : null;
       if (limited) { copyDepth(target); renderer.setRenderTarget(target); renderer.render(depthScene, camera); }
       else { renderer.setRenderTarget(target); renderer.render(scene, camera); }
+      // frenchie (signalConesOn): second draw for the lit signal heads — same shader, the signal table + per-lamp face normal/tint/scale. OFF: last.signals is empty, no GL change.
+      if (last.signals && last.signals.length) {
+        const U2 = mat.uniforms;
+        U2.coneTab4.value = signalTab4();
+        last.signals.forEach(({ x, y, z }, i) => {
+          const L = sigLampByPos(world, x, y, z);
+          U2.cLamp.value[i].set(x, y, z);
+          U2.cSt.value[i].set(L ? L.st[0] : 0, L ? L.st[1] : 1);
+          const em = L && L.emit ? L.emit : [1, 1, 1];
+          const mx = Math.max(em[0], em[1], em[2]) || 1;
+          U2.cTint.value[i].set(em[0] / mx, em[1] / mx, em[2] / mx);
+          U2.cScale.value[i] = mx / 1000;                      // cd per 1000 lm convention; emit cols are luminance-like (qwen P1-b units caveat)
+          U2.cFloor.value[i] = fr ? z - PASS_HEAD_Z : z;        // the slab top = the lamp's own height
+        });
+        U2.nLamp.value = last.signals.length;
+        renderer.render(scene, camera);
+        U2.coneTab4.value = tableFor(p.lampClass || 'III', kindOfLamp(p.lampKind));   // restore for the object pass / next frame's build
+      }
       renderer.autoClear = ac;
       renderer.resetState(); renderer.setRenderTarget(target);
     },

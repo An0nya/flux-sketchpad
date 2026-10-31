@@ -24,13 +24,13 @@ ok('CPU: wetEff floor is 0 unless dryStreaks is on (OFF: wetEff === wetW)', drv.
 ok('CPU: the three streak sites use wetEff, general wetW untouched elsewhere', (drv.match(/\* wetEff/g) || []).length === 3 && drv.includes('sheen = wetEff > 0 && look.wetSheen'));
 ok('CPU: wetVeil gate + mirror weight use the dry floor too', drv.includes('Math.max(+opts.wetness || 0, opts.dryStreaks ? 0.25 : 0) > 0') && (drv.match(/Math\.max\(\+opts\.wetness \|\| 0, opts\.dryStreaks \? 0\.25 : 0\)/g) || []).length === 2);
 ok('GPU: wetness uniform = max(true wetness, floor) and sheen gate follows wetEff', three.includes('const wetEff = Math.max(D.wetnessOf(look), look.dryStreaks === true ? 0.25 : 0); set(\'wetness\', wetEff); set(\'sheen\', wetEff > 0 && look.wetSheen ? 1 : 0);'));
-ok('GPU: the wetness uniform feeds ONLY the two streak terms in the ground shader (grain keeps true wetness)', (shaders.match(/wetness/g) || []).length === 3 && three.includes('D.wetnessOf(look) > 0 ? 0.5 : 1'));   // decl + 2 uses
+ok('GPU: the wetness uniform feeds ONLY the two streak terms in the ground shader (grain keeps true wetness)', (shaders.match(/export const ground = `([\s\S]*?)`;/)[1].match(/\bwetness\b/g) || []).length === 3 && three.includes('D.wetnessOf(look) > 0 ? 0.5 : 1'));   // decl + 2 uses
 ok('GPU-path gates (drive-anim 875/1369) go through sheenOn, which includes the dry floor', (anim.match(/sheenOn\(/g) || []).length === 2 && anim.includes('const sheenOn = (o) => (D.wetnessOf(o) > 0 || o.dryStreaks === true) && !!o.wetSheen;'));
 ok('glareOpts carries dryStreaks to the CPU veil', anim.includes('dryStreaks: o.dryStreaks === true };'));
 
 // 3. wiring: look key, cache keys, layout
 ok('look projection carries dryStreaks', anim.includes("dryStreaks: o.dryStreaks === true }"));
-ok('both spec-ui picture-cache keys carry o.dryStreaks', (ui.match(/o\.distanceLod, o\.dryStreaks\]\)/g) || []).length === 2);
+ok('both spec-ui picture-cache keys carry o.dryStreaks', ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.dryStreaks')).length === 2);
 ok('drive-layout Wet road row lists the control', lay.includes("dv('dryStreaks')"));
 
 // 4. behaviour, executed: the CPU wetEff maths with the real helpers

@@ -77,7 +77,7 @@ function run(RF, ok) {
   // 4. the mountain pass: built-in frames unchanged vs main a9cb102 (pass at 150, 280, 400 m; traffic beams off and on)
   const PASS_BASE = { '280-off': '54d1b91c8cfc44b0', '280-on': '54d1b91c8cfc44b0', '150-off': 'b950b06455a96654', '150-on': '0e1a6132d5f7726c', '400-off': 'c8defeb8372962a9', '400-on': '45ff8554ec990861' };
   const psrc = A.source('road', 3.5, true, { people: true, animals: true, signs: true, posts: true, veg: true, obstacle: true, rpm: true }, { mountainPass: true, streetLamps: 'sodium', seed: 7, oncoming: true, preceding: true, trafficLogic: false, onKcd: undefined });
-  const pp = { src: psrc, lane: 3.5, us: true, touge: true, lut, lowLut: lut, conv: 'A', look: { RL: 0.2, ambient: 0 }, detailedModels: false, deerBehaviour: false, lamps: [[0, 0.7, 0.7]], eye: [-2, 0.37, 1.2], w: 160, h: 90, hfov: 60, ss: 1 };
+  const pp = { src: psrc, lane: 3.5, us: true, touge: true, mountainPass: true, lut, lowLut: lut, conv: 'A', look: { RL: 0.2, ambient: 0 }, detailedModels: false, deerBehaviour: false, lamps: [[0, 0.7, 0.7]], eye: [-2, 0.37, 1.2], w: 160, h: 90, hfov: 60, ss: 1 };
   const passHashes = {};
   for (const dist of [280, 150, 400]) for (const on of [false, true]) {
     const world = RF.Touge.world(pp, dist, 0);

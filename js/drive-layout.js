@@ -14,17 +14,18 @@
     ['lighting', 'oncoming', 'Oncoming lamps', [dv('onMode'), '[data-dv-aim]', an('traffic-shuffle'), an('traffic-beam-list'), an('traffic-light-range'), an('traffic-nearest')]],
     ['lighting', 'ours', 'Air beam', [dv('airLevel'), '.drive-air-adv']],
     ['lighting', 'ours', 'Our beams', [an('own-low'), an('own-high'), '[data-dl=beam-label]', an('beam-name'), an('save-grid'), an('save-design'), an('import-beam'), an('export-beams'), an('beam-file'), an('beam-status'), an('beam-manager')]],
-    ['lighting', 'lamps', 'Street lamps', [an('street-lamps'), dv('lampClass'), dv('lampRoad'), dv('lampCone'), dv('lampConeGain')]],
+    ['lighting', 'lamps', 'Street lamps', [an('street-lamps'), dv('lampClass'), dv('lampRoad'), dv('lampCone'), dv('lampConeGain')], dv('trafficLighting')],
+    // frenchie: trafficLighting preset select sits with the lamp controls
     ['lighting', 'lamps', 'Ambient', [an('ambient')]],
     ['lighting', 'glare', 'Wet road', [dv('wetSheen'), dv('wetModel'), dv('dryStreaks'), an('surface-sheen')]],   // frenchie: dryStreaks sits with the wet-road controls
     ['lighting', 'glare', 'Power lines', [an('powerline-reflectance')]],
     ['scene', null, 'Weather and air', [dv('wetness'), dv('visibility')]],
     ['scene', null, 'Objects', [an('enable-all'), ...C(['posts', 'signs', 'people', 'animals', 'veg', 'obstacle', 'rpm']), an('detailed-models'), an('leafy-foliage'), an('deer-behaviour'), an('powerlines'), an('reflective-clothing')]],
     ['scene', null, 'Road', [dv('shape'), an('tiles'), an('tile-status'), ...C(['wild']), an('seed'), an('dice'), an('density'), an('cline'), ...C(['tex'])]],
-    ['scene', null, 'Traffic', [an('traffic-logic'), an('gap'), an('traffic-density'), an('traffic-range'), an('flashes'), an('reset-flashes')]],
+    ['scene', null, 'Traffic', [an('traffic-logic'), an('gap'), an('traffic-density'), an('traffic-range'), an('flashes'), an('reset-flashes'), dv('signalConesOn')]],   // frenchie: signalConesOn lives with traffic
     ['scene', null, 'Our car', [an('afs'), an('cornering-lamps'), an('lamp-pitch')]],
     ['performance', null, 'Exposure', [dv('expMode'), dv('evm'), dv('evp')]],
-    ['performance', null, 'Resolution', [an('resolution'), an('dynamic-resolution'), an('min-fps'), an('quality-governor'), an('distance-lod'), dv('samples')]],   // 3-P/3-LOD: governor + distance-LOD selects sit with the other frame-time controls   // 3-P: the governor select sits with the other frame-time controls
+    ['performance', null, 'Resolution', [an('resolution'), an('dynamic-resolution'), an('min-fps'), an('quality-governor'), an('distance-lod'), an('heat-shimmer'), dv('samples')]],   // 3-P/3-LOD/heatShimmer selects sit with the frame-time controls   // 3-P/3-LOD: governor + distance-LOD selects sit with the other frame-time controls   // 3-P: the governor select sits with the other frame-time controls
     ['performance', null, 'Renderer', [an('gpu-renderer'), ...C(['mt']), an('tile-cache')]],
     ['performance', null, 'Debug', [an('save-state'), an('load-state'), an('state-file'), an('state-msg')]],
     ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), dv('driveScrub'), an('scrub'), an('scrub-lab'), an('fps-counter'), an('large-card'), an('animate-ui')]],

@@ -84,12 +84,12 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
 | `view` | Camera and playback | 4 | 3 | 1 | 0 | 0 | 0 | 0 |
-| `road` | Road and route | 13 | 2 | 9 | 0 | 0 | 0 | 2 |
-| `surface` | Road surface | 9 | 0 | 6 | 0 | 0 | 1 | 2 |
+| `road` | Road and route | 14 | 2 | 10 | 0 | 0 | 0 | 2 |
+| `surface` | Road surface | 10 | 0 | 7 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
 | `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
-| `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
-| `traffic` | Traffic | 16 | 0 | 13 | 0 | 0 | 1 | 2 |
+| `street-lamps` | Street lamps | 6 | 0 | 6 | 0 | 0 | 0 | 0 |
+| `traffic` | Traffic | 17 | 0 | 14 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
 | `exposure` | Exposure and eye | 4 | 1 | 3 | 0 | 0 | 0 | 0 |
@@ -121,6 +121,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `elevatedView` | 3D route pipeline for every scene (prototype) | profile | More | false | needs `gpu` [tooltip] |
 | `endlessPreset` | endless road preset (prototype) | profile | More | "off" | needs `tiles` [undefined] |
 | `tileTerrain` | terrain skirts on endless tile roads (opt-in, pricy) | profile | More | false | needs `tiles` [undefined] |
+| `multilaneRoad` | 2+2 highway on tile roads (drive view only) | profile | More | false | needs `tiles` [undefined] |
 | `cline` | centre line | profile | More | "solid" | needs `usRoad` [disabled] |
 | `res` | still picture width | profile | no control | 640 | - |
 
@@ -137,6 +138,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `RL` | marking reflectivity RL | profile | Spec > Road sidebar | 200 | - |
 | `wetness` | road: dry / damp / wet | extra | More | (unset) | - |
 | `dryStreaks` | dry-pavement streaks | profile | More | false | - |
+| `heatShimmer` | heat shimmer | profile | More | "off" | - |
 
 #### Fog and air beam (`air`)
 
@@ -205,6 +207,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `lampClass` | lamp class | profile | More | "III" | needs `lampDistUsed` [none] |
 | `lampRoad` | road lamp light | profile | More | "off" | needs `lampsPresent` [none] |
 | `streetLamps` | street lamps | profile | More | "sodium" | needs `tilesOrPass` [disabled] |
+| `trafficLighting` | traffic lighting | profile | More | "off" | - |
 
 #### Traffic (`traffic`)
 
@@ -226,6 +229,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `trafficRange` | traffic range | profile | More | 250 | - |
 | `trafficLightRange` | traffic light range | profile | More | "250" | needs `trafficBeamsLight` [none] |
 | `trafficNearest` | nearest cars with traffic light | profile | More | "8" | needs `trafficBeamsLight` [none] |
+| `signalConesOn` | signal cones | profile | More | false | - |
 
 #### Scenery and objects (`scenery`)
 

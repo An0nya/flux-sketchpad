@@ -11,7 +11,7 @@ function run(RF, ok) {
     { mountainPass: true, streetLamps: 'sodium', seed: 7, oncoming: true, preceding: true, trafficDensity: 2 });
   // A zero LUT: positions do not depend on it; trafficLight() only reads lut.data.
   const lut = { data: new Float32Array(4) };
-  const off = { src, lane: 3.5, touge: true, detailedModels: false, lut, lowLut: lut };
+  const off = { src, lane: 3.5, touge: true, mountainPass: true, detailedModels: false, lut, lowLut: lut };
   const on = { ...off, detailedModels: true };
   const isCarDisc = ob => ob.detailPart === 'car' && ob.k === 'disc';
   // Key = kind | material | part | car id, plus the occurrence index among objects with that key (the car kit order is fixed, so the key is stable across the gate).

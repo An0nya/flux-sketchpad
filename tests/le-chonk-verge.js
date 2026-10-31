@@ -54,5 +54,9 @@ ok('guardrail is a double beam (two stacked boxes) behind posts', (anim.match(/c
 ok('suburb houses get facade windows, behind wild', anim.includes('suburb facade windows') && anim.includes("mat: KR() < 0.3 ? 'win-warm' : 'win-dark'"));
 ok('kilometer post every 1000 m on endless tiles at the right edge', anim.includes("tile.s0 % 1000 === 0") && anim.includes("edgeR - 1.6") && anim.includes("z0: 0, z1: 1.1, r: 0.05, mat: 'pole'"));
 ok('km post gated on endless + signs flag', anim.includes('cfg.endless && cfg.flags.signs !== false && tile.s0 % 1000 === 0'));
+// catalogue #6 fence posts+rails (detailedModels) + per-biome lamp styles (10-31 ~15:20)
+ok('fence: posts + two rails behind detailedModels, thin box otherwise', anim.includes("if (p.detailedModels) {   // catalogue #6") && anim.includes("z0: 0.95, z1: 1.03") && anim.includes("z0: 0.55, z1: 0.62") && anim.includes("z0: 0.85, z1: 1.05"));
+ok('per-biome lamp styles: mast/cobra/low in ENDLESS_PROPS and the lamp loop scales with hgt', anim.includes("lampStyle: 'mast'") && anim.includes("lampStyle: 'low'") && anim.includes("hgt = lampStyle === 'mast' ? 9 : lampStyle === 'low' ? 6 : 7") && anim.includes("z1: hgt, mat: 'pole'"));
+ok('lamp head + light height follow hgt', anim.includes("z: hgt - 0.1") && anim.includes("z: hgt - 0.15, cd: 900"));
 console.log(fail === 0 ? `\nall ${pass} le-chonk-verge checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);

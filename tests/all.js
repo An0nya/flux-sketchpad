@@ -50,8 +50,11 @@ run('le-chonk endless road presets (tests/le-chonk-presets.js)', ['tests/le-chon
 run('le-chonk endless tile verge + consent toggles (tests/le-chonk-verge.js)', ['tests/le-chonk-verge.js']);
 run('le-chonk endless generator sweep, 120 seeds (tests/le-chonk-endless-sweep.js)', ['tests/le-chonk-endless-sweep.js']);
 run('halo-family cache-key detector (tests/halo-cache-keys.js)', ['tests/halo-cache-keys.js']);
+run('le-chonk multilane highway phase 0 (tests/le-chonk-multilane.js)', ['tests/le-chonk-multilane.js']);
+run('le-chonk render-level ON-vs-OFF diff (tests/le-chonk-render-diff.js)', ['tests/le-chonk-render-diff.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
+run('every option with a control has one on the page, and every control on the page is an option (tests/control-map.js)', ['tests/control-map.js']); // step5-preview (the shared id -> selector map)
 run('haloMoment: each bin mean is clamped into its own bin, so a nearly-empty bin cannot throw an interior knot (tests/halo-moment-clamp.js)', ['tests/halo-moment-clamp.js']); // step5-preview (P3 mean clamp)
 run('option rebuild: a cost that says scene-regenerate is carried by a rebuild key, and no option is dead (tests/option-rebuild.js)', ['tests/option-rebuild.js']); // step5-preview (open sweep)
 run('the drive bar beam label is a live readout of the beam in use (tests/step5-beam-readout.js)', ['tests/step5-beam-readout.js']); // step5-preview (wishlist §6)
@@ -85,5 +88,8 @@ run('option round-trip: every profile option survives dump -> read, extras survi
 run('quality governor option: shed state machine + wiring, default off (tests/frenchie-quality-governor.js)', ['tests/frenchie-quality-governor.js']); // frenchie (backlog 3-P)
 run('distance LOD option: profile caps + wiring, default off (tests/frenchie-distance-lod.js)', ['tests/frenchie-distance-lod.js']); // frenchie (backlog 3 LOD)
 run('dry-pavement streaks option: gates + weights, default off (tests/frenchie-dry-streaks.js)', ['tests/frenchie-dry-streaks.js']); // frenchie (Anya 10-31 dryStreaks)
+run('heat shimmer option (GPU only): splice + wiring, default off (tests/frenchie-heat-shimmer.js)', ['tests/frenchie-heat-shimmer.js']); // frenchie (backlog heat shimmer, ACTIVE per Anya)
+run('signal cones option: visor geometry when on, OFF byte-identical, no glare double-count (tests/frenchie-signal-cones.js)', ['tests/frenchie-signal-cones.js']); // frenchie (backlog 5 signal cones)
+run('traffic-lighting presets: registry, valid preset maps, OFF writes nothing (tests/frenchie-traffic-lighting.js)', ['tests/frenchie-traffic-lighting.js']); // frenchie (backlog 5 presets)
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

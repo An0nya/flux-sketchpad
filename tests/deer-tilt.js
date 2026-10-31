@@ -13,7 +13,7 @@ function run(RF, ok) {
   ok('DT1 the body stays rigid (axis length kept)', Math.abs(Math.hypot(dy(tilted), dz(tilted), tilted.nodes[0] - tilted.nodes[12]) - Math.hypot(dy(flat), dz(flat), 0)) < 1e-4);
   // the pass: crest deer are SDF bodies and at least one stands on sloped ground
   const src = RF.DriveAnim.source('road', 3.5, true, { people: false, animals: true, signs: false, posts: false, veg: false, obstacle: false, rpm: false }, { mountainPass: true, streetLamps: 'sodium', seed: 7 });
-  const lut = { data: new Float32Array(4) }, p = { src, lane: 3.5, touge: true, detailedModels: true, lut, lowLut: lut };
+  const lut = { data: new Float32Array(4) }, p = { src, lane: 3.5, touge: true, mountainPass: true, detailedModels: true, lut, lowLut: lut };
   let deer = 0, sloped = 0;
   for (let dist = 60; dist < 1300; dist += 20) {
     const w = RF.Touge.world(p, dist, 0), A = RF.Touge.route(dist, 3.5, true);
@@ -24,7 +24,7 @@ function run(RF, ok) {
   let differ = 0, compared = 0;
   for (let dist = 60; dist < 1300; dist += 20) {
     const a = dn(RF.Touge.world(p, dist, 0)); if (!a.length) continue;
-    const b = dn(RF.Touge.world({ ...p, touge: false }, dist, 0)); compared += a.length; if (a.join('|') !== b.join('|')) differ++;
+    const b = dn(RF.Touge.world({ ...p, touge: false, mountainPass: false }, dist, 0)); compared += a.length; if (a.join('|') !== b.join('|')) differ++;
   }
   ok('DT1 pass world: deer node data differs from the flat-route build of the same pose', compared > 0 && differ > 0, { compared, differ });
   ok('DT1 pass: crest deer are built as SDF bodies', deer > 0, { deer });

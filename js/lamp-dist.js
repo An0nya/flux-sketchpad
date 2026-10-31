@@ -24,6 +24,28 @@
 */
 
 export const GAMMA = Array.from({ length: 19 }, (_, i) => i * 5);
+// frenchie (10-31, backlog 5 signal cones): a traffic-signal distribution table, same 19x25 shape. The cone axis is
+// HORIZONTAL along phi=0 (the signal face normal, supplied as the street vector st); gamma is still from nadir, so the
+// angle from the axis is theta = acos(sin(gamma)*cos(phi)). I = gaussian in theta, half-angle SIGNAL_HALF_ANGLE,
+// zero beyond 2x that (a visor). Flux-normalised over the sphere like the street tables.
+export const SIGNAL_HALF_ANGLE = 15;
+let SIGNAL_DIST = null;
+export function signalDist() {
+  if (SIGNAL_DIST) return SIGNAL_DIST;
+  const f = new Float64Array(NG * NP);
+  for (let gi = 0; gi < NG; gi++) for (let pj = 0; pj < NP; pj++) {
+    const g = GAMMA[gi] * Math.PI / 180, ph = PHI[pj] * Math.PI / 180;
+    const c = Math.sin(g) * Math.cos(ph);                      // cos of the angle from the horizontal axis
+    const th = Math.acos(Math.max(-1, Math.min(1, c))) * 180 / Math.PI;
+    f[gi * NP + pj] = th <= 2 * SIGNAL_HALF_ANGLE ? Math.exp(-0.5 * Math.pow(th / SIGNAL_HALF_ANGLE, 2)) : 0;
+  }
+  // flux normalisation: keep sum(I sin gamma) as the street tables do, so the cone is not dimmer overall
+  let tot = 0; for (let gi = 0; gi < NG; gi++) { const sn = Math.sin(GAMMA[gi] * Math.PI / 180); let a = 0; for (let pj = 0; pj < NP; pj++) a += f[gi * NP + pj] / NP; tot += a * sn; }
+  const k = tot > 0 ? (Math.PI * 2 / 19 / 25) / tot * 1 : 1;   // scale so the mean is ~1 like the street tables' units
+  for (let i = 0; i < f.length; i++) f[i] *= k;
+  SIGNAL_DIST = f; return f;
+}
+
 export const PHI = Array.from({ length: 25 }, (_, j) => j * 15);
 export const NG = GAMMA.length, NP = PHI.length;
 export const CLASSES = ['II', 'III', 'IV', 'V'];
@@ -109,3 +131,4 @@ export function phiOf(st, v) {
 // Set when this module is loaded (drive-three.js imports it, so it is loaded with the GPU drive view).
 globalThis.RF = globalThis.RF || {};
 globalThis.RF.LampDist = { LAMP_DIST, distAt, spriteDistAt, roadFactorAt, kindOfLamp, phiOf, I_REF_KLM };
+  if (typeof RF !== 'undefined' && RF) { RF.LampDist.SIGNAL_HALF_ANGLE = SIGNAL_HALF_ANGLE; RF.LampDist.signalDist = signalDist; }   // frenchie (signal cones)

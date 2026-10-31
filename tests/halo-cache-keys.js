@@ -25,6 +25,15 @@ const missing = family.filter((id) => !new RegExp('o\\.' + id + '\\b').test(expr
 ok(`all ${family.length} halo-family options are in groundKey (missing: ${missing.join(', ') || 'none'})`, missing.length === 0);
 ok('qwen 20.1 regression: haloMoment and haloWidthStep are in groundKey', /o\.haloMoment\b/.test(expr) && /o\.haloWidthStep\b/.test(expr));
 ok('conditional refine pair (haloCrossingRefine/haloRefineNeighbour) carried in groundKey', /o\.haloCrossingRefine/.test(expr) && /o\.haloRefineNeighbour/.test(expr));
+// glm5.2 (qwen3.8max §20.1 strengthened): the spec-ui drive picture key (the `key` literal, not groundKey) is the OTHER
+// picture-cache key. A halo option in groundKey but missing here would pass the groundKey check yet serve a stale
+// drive still when toggled alone. Assert the same family is in both keys.
+const pk2 = spec.match(/mirrored = dm\.traffic === 'LHT', key = JSON\.stringify\((\[[\s\S]*?\])\);/);
+ok('spec-ui drive picture key (the key literal) found', !!pk2);
+const picExpr = pk2 ? pk2[1] : '';
+const missingPic = family.filter((id) => !new RegExp('o\\.' + id + '\\b').test(picExpr) && !(id === 'trafficSubTick' && /\bSUBTICK\b/.test(picKey)) && !ALLOW.includes(id));
+ok(`all ${family.length} halo-family options are in the spec-ui drive picture key too (missing: ${missingPic.join(', ') || 'none'})`, missingPic.length === 0);
+ok('qwen 20.1 regression: haloMoment and haloWidthStep are in the spec-ui drive picture key', /o\.haloMoment\b/.test(picExpr) && /o\.haloWidthStep\b/.test(picExpr));
 // the two picture-cache keys embed groundKey: drive-anim picture key + adaptation key
 const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
 ok('drive-anim picture key embeds I.groundKey', /const key = JSON\.stringify\(\[I\.groundKey/.test(anim));

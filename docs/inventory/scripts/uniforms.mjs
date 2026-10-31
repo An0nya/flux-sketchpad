@@ -9,6 +9,8 @@ try{touge=await import(R+'drive-touge-three.js')}catch(e){console.log('touge imp
 try{obj=await import(R+'drive-three-objects.js')}catch(e){console.log('obj import fail',e.message.slice(0,160))}
 try{halo=await import(R+'drive-three-halo.js')}catch(e){console.log('halo import fail',e.message.slice(0,160))}
 function samplers(src){ // declared sampler names and whether statically referenced beyond declaration
+  // P3-M2/glm5.2: strip #ifdef HALO_M2 blocks (the second-moment sampler is only compiled in when moment2 is on, via material.defines; OFF = shipped text, 13 samplers)
+  src = src.replace(/^#ifdef HALO_M2\n[\s\S]*?^#endif\n/gm, '');
   const names=new Map();
   for(const m of src.matchAll(/uniform\s+(?:(?:lowp|mediump|highp)\s+)?(sampler\w+)\s+([^;]+);/g)){
     for(const n of m[2].split(',')){const nm=n.trim().replace(/\[.*\]/,'');names.set(nm,m[1])}}

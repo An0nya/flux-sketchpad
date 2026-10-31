@@ -285,6 +285,17 @@ const momentText = (body) => body
   .replace(/vec4\(acc, 1\.0\)/g, 'vec4(acc, accM)')
   .replace('vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)')   // the split early-out: no march here, so no moment
   .replace(/acc \*= swt;/g, 'acc *= swt; accM *= swt;');   // the share scales the moment too
+// P3-M2 (option haloMoment 'moment2'): the second-moment table pass. Same march body, but accumulates Σw·s² (the second moment of depth)
+// instead of the RGB tint and the first moment. Writes vec4(accM2,0,0,0) so the lookup can compute Var[s] = E[s²] − E[s]² and place the bin's
+// mass via a log-normal CDF. The main table (haloTex) still carries accM (the first moment, for the mean), so this is a SECOND march pass over
+// the same lamps — doubles the march cost, but only when moment2 is on (default off). The polar tables stay on the shipped edge knots (no second moment).
+const moment2Text = (body) => body
+  .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* s\) \* ds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds; accM2 += s * s * w;')   // every copy of the march (the ladder and the LW window): split the scalar weight, accumulate s²·w
+  .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* rs\) \* rds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * rs) * rds; accM2 += rs * rs * w;')   // P3-M2+RN: the crossing-refined ladder
+  .replace(/vec3 acc = vec3\(0\.0\);/g, 'float accM2 = 0.0;')
+  .replace(/vec4\(acc, 1\.0\)/g, 'vec4(accM2, 0.0, 0.0, 0.0)')
+  .replace('vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)')   // the split early-out: no march here, so no moment
+  .replace(/acc \*= swt;/g, 'accM2 *= swt;');   // the share scales the second moment too
 // WIDTH (option haloWidthStep): a per-bin sample count from the bin's WIDTH, so the samples spread evenly in DEPTH (the shipped six are log-spaced, which
 // leaves the far bins sampled metres apart). The count is ceil(width / step), so the whole table costs about range/step samples instead of 6 per bin.
 // Off compiles the shipped text byte-for-byte. The crossing-bin refinement (P1c) wins when both are on: it targets one bin, this one targets every bin.
@@ -303,7 +314,7 @@ export function haloTableSource(atlas, polar = false, occ = false, variant = '',
   const main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN), useWidth = widthStep > 0, raw = refine ? crossText(main, refine, nb, widthStep) : (useWidth ? widthText(main) : main);
   const body0 = variant === 'band' ? bandText(raw) : variant === 'split' ? splitText(raw) : raw, body = sm ? smText(body0, occ) : body0;
   const withLw = lw > 0 && !refine ? lwText(body, occ, sm) : body;
-  const withMoment = moment ? momentText(withLw) : withLw;   // P3: the surgery runs on the moment variant (composes with refine now); off is the shipped text byte-for-byte
+  const withMoment = moment === 3 ? moment2Text(withLw) : moment ? momentText(withLw) : withLw;   // P3: the surgery runs on the moment variant (composes with refine now); off is the shipped text byte-for-byte. M2 (moment=3): the second-moment march (accM2 instead of accM)
   return THEAD + (useWidth ? 'uniform float haloWidthStep;\n' : '') + (variant ? BAND_DECL : '') + (occ ? OCC_DECL : '') + (sm ? SM_DECL + 'uniform int smM;\n' : '') + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (jit ? jitText(withMoment, jit) : withMoment);
 }
 const HAL_CONV = (c) => (c === 'B' ? 1 : c === 'S' ? 2 : 0);
@@ -315,12 +326,31 @@ export function haloTableSize(w, h, lamps = 99, divOv = 0) { const div = globalT
 // The CPU twin of the lookup in the shader (haloScatter): bins is the six bins, each [r, g, b]; d metres. Used by the page test to read the GPU table.
 // HDX3 lookup (mirrors haloScatter in drive-three-shaders.js): C at each bin's upper edge is the running sum; bin 0 is log d from 0.5 m with C(0.5)=0;
 // beyond the first edge, a monotone cubic Hermite (Fritsch-Carlson) in (log d, C) through the knots (the edges). Works for any ascending edges.
-export function haloLookup(bins, d, edges = HALO_EDGES.slice(1), moment) {
+export function haloLookup(bins, d, edges = HALO_EDGES.slice(1), moment, m2) {
   if (!(d > 0.5)) return [0, 0, 0];
   const n = HALO_BINS, dd = Math.min(d, edges[n - 1]), Cc = [];
   let C = [0, 0, 0];
   for (let k = 0; k < n; k++) { C = [C[0] + bins[k][0], C[1] + bins[k][1], C[2] + bins[k][2]]; Cc.push(C); }
   if (dd <= edges[0]) { const f = Math.log(dd / 0.5) / Math.log(edges[0] / 0.5); return Cc[0].map((v) => v * f); }
+  if (moment === 'moment2') {   // P3-M2/glm5.2: the log-normal second-moment CDF lookup (CPU twin of the GPU haloCurveP3M2)
+    const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const erf = (x) => { const t = 1 / (1 + 0.3275911 * Math.abs(x)); const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return x >= 0 ? y : -y; };   // A&S 7.1.26 (matches the GPU)
+    const phi = (z) => 0.5 * (1 + erf(z * 0.70710678));
+    let bk = 0; for (let k = 0; k < n; k++) if (dd > edges[k]) bk = k + 1;   // bin bk holds dd (past edges[bk-1])
+    bk = Math.min(bk, n - 1);
+    const lo = bk > 0 ? edges[bk - 1] : 0.5, hi = edges[bk];
+    const w = lum(bins[bk][0], bins[bk][1], bins[bk][2]);
+    const mean = w > 1e-9 ? Math.min(hi, Math.max(lo, (bins[bk][3] || 0) / w)) : (lo + hi) / 2;   // mean of bin bk, clamped into its own bin
+    const accM2 = (m2 && m2[bk]) || 0;   // second moment of bin bk (Σw·s²)
+    const varS = w > 1e-9 ? Math.max(accM2 / w - mean * mean, 0) : 0;   // Var[s] = E[s²] − E[s]²
+    const k0 = Math.max(0, bk - 1), k1 = bk;   // Cc[k0] = cumulative at lo, Cc[k1] = cumulative at hi
+    if (varS < 1e-30) { const u = Math.min(1, Math.max(0, (dd - lo) / Math.max(hi - lo, 1e-9))); return [Cc[k0][0] + u * (Cc[k1][0] - Cc[k0][0]), Cc[k0][1] + u * (Cc[k1][1] - Cc[k0][1]), Cc[k0][2] + u * (Cc[k1][2] - Cc[k0][2])]; }   // degenerate (no spread): linear interp, monotone
+    const sigma2 = Math.log(1 + varS / (mean * mean)), sigma = Math.sqrt(sigma2), mu = Math.log(mean) - sigma2 * 0.5;   // log-normal moment match
+    const zLo = (Math.log(lo) - mu) / sigma, zHi = (Math.log(hi) - mu) / sigma, zD = (Math.log(dd) - mu) / sigma;
+    const cLo = phi(zLo), cHi = phi(zHi), cD = phi(zD);
+    const u = Math.min(1, Math.max(0, (cD - cLo) / Math.max(cHi - cLo, 1e-30)));   // the renormalized log-normal CDF within the bin; monotone by construction
+    return [Cc[k0][0] + u * (Cc[k1][0] - Cc[k0][0]), Cc[k0][1] + u * (Cc[k1][1] - Cc[k0][1]), Cc[k0][2] + u * (Cc[k1][2] - Cc[k0][2])];
+  }
   if (moment) {   // P3/glm5.2: monotone Hermite (Fritsch-Carlson PCHIP) through the means, the CPU twin of the GPU haloCurveP3H
     const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
     // step5-preview (with qwen3.8max's clamp fix for the GPU P3H): a bin's mean clamped into its own bin, and the fallback
@@ -328,7 +358,13 @@ export function haloLookup(bins, d, edges = HALO_EDGES.slice(1), moment) {
     const mean = (k) => { const m = bins[k], w = lum(m[0], m[1], m[2]), lo = k > 0 ? edges[k - 1] : 0.5, hi = edges[k];
       const raw = w > 1e-9 ? (m[3] || 0) / w : (lo + hi) / 2;
       return Math.min(hi, Math.max(lo, raw)); };
-    const x = []; for (let k = 0; k < n; k++) x.push(Math.log(Math.max(mean(k), 0.5)));   // knot x = log(mean_k)
+    const means = []; for (let k = 0; k < n; k++) means.push(mean(k));   // precompute the means (L2d blends them)
+    const x = []; for (let k = 0; k < n; k++) x.push(Math.log(Math.max(means[k], 0.5)));   // knot x = log(mean_k)
+    if (moment === 'blend') {   // P3-L2d/glm5.2: blend each mean toward its bin's upper edge by w = sin²(πu), u = dd's within-bin depth
+      let sb = -1; for (let k = 0; k < n; k++) if (dd > edges[k]) sb = k;   // bin sb+1 holds dd (sb = -1 = bin 0)
+      const lo = sb >= 0 ? edges[sb] : 0.5, hi = edges[Math.min(sb + 1, n - 1)], u = (dd - lo) / Math.max(hi - lo, 1e-9), w = Math.sin(Math.PI * u) ** 2;
+      for (let k = 0; k < n; k++) x[k] = Math.log(Math.max(means[k] + w * (edges[k] - means[k]), 0.5));   // knot x = log(mix(mean, edge, w))
+    }
     for (let k = 1; k < n; k++) if (!(x[k] > x[k - 1])) x[k] = x[k - 1] + 1e-9;   // two means on one edge: keep the knot strictly increasing
     const y = Cc, h = [], sl = [];
     for (let k = 0; k < n - 1; k++) { h.push(x[k + 1] - x[k]); sl.push([0, 1, 2].map((c) => (y[k + 1][c] - y[k][c]) / h[k])); }
@@ -433,6 +469,7 @@ export function haloPass(renderer, u) {
   // rt: the bin table (what probe() reads). cumRt: its prefix sums across tiles (what the lookup reads). Both are sized alike.
   let autoFew = false;   // AT: the auto rule's state (hysteresis)
   let rt = null, cumRt = null, tab = [0, 0], tabClamp = null; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
+  let rt2 = null, cumRt2 = null;   // P3-M2/glm5.2: the second-moment render targets (created lazily when haloMoment is 'moment2')
   const arr = () => Array.from({ length: HALO_PER_DRAW }, () => new T.Vector4());
   const hLamp = arr(), hDir = arr(), hTint = arr(), hLat = arr(), hUp = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(HALO_RANGE); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
   // ROLL: the source's surface basis for the beam (w = 1 when present; 0 = the level-road formulas in the shader).
@@ -443,7 +480,7 @@ export function haloPass(renderer, u) {
     const cap = Math.floor(renderer.capabilities.maxTextureSize / HALO_N); tabClamp = tw > cap ? { asked: tw, used: cap } : null; if (tw > cap) tw = cap;
     const key = tw + 'x' + th + 'x' + HALO_N;
     const opt = { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false };
-    if (!rts.has(key)) { if (rts.size > 3) { for (const r of rts.values()) { r.bin.dispose(); r.cum.dispose(); } rts.clear(); } rts.set(key, { bin: new T.WebGLRenderTarget(tw * HALO_N, th, opt), cum: new T.WebGLRenderTarget(tw * HALO_N, th, opt) }); }
+    if (!rts.has(key)) { if (rts.size > 3) { for (const r of rts.values()) { r.bin.dispose(); r.cum.dispose(); if (r.m2bin) r.m2bin.dispose(); if (r.m2cum) r.m2cum.dispose(); } rts.clear(); } rts.set(key, { bin: new T.WebGLRenderTarget(tw * HALO_N, th, opt), cum: new T.WebGLRenderTarget(tw * HALO_N, th, opt) }); }
     const e = rts.get(key); rt = e.bin; cumRt = e.cum; tab = [tw, th]; tabV.set(tw, th);
   };
   // SC: the non-zero extent of a lamp's beam (drive-three-halo-cull.js beamExtent), read from the texture the shader reads, so it is the shader's own data. Cached per texel array
@@ -505,7 +542,7 @@ export function haloPass(renderer, u) {
       const look = p.look || {}, wantN = look.haloBins != null ? +look.haloBins : HALO_URL_N;
       if (wantN !== HALO_REQ) setHaloBins(wantN);
       const rangeG = haloRangeGpu(look); if (rangeG !== HALO_RANGE) setHaloRange(rangeG);   // SR/OHR: the table's far edge (look.haloRange, else scatterRange)
-      u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1; u.haloSMax.value = HALO_RANGE; u.haloMoment.value = look.haloMoment === 'on' ? 1 : 0;   // P3/glm5.2: mean-placement (0 = shipped edges)
+      u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1; u.haloSMax.value = HALO_RANGE; u.haloMoment.value = look.haloMoment === 'on' ? 1 : look.haloMoment === 'blend' ? 2 : look.haloMoment === 'moment2' ? 3 : 0;   // P3/glm5.2: mean-placement (0 = shipped edges, 1 = Hermite through means, 2 = L2d sin² blend, 3 = log-normal second-moment CDF)
       const eye = p.eye || [-2, 0.37, 1.2], traffic = p.touge ? toCarFrame(D.trafficSources(world.objects, eye, p, world.A), u.carFromWorld.value, world.A) :D.trafficSources(world.objects, eye, p, world.A);   // TOUGE-ELEV B1: touge lamps into the car frame the ribbon projects in
       if (!traffic.length) return 0;
       halo.sources = traffic;   // test hook: the sources the table was built from (beam, tint, axis)
@@ -608,7 +645,7 @@ export function haloPass(renderer, u) {
       const lwRaw = look.haloLampWin, lwK = refineN ? 0 : lwRaw === 'off' || lwRaw === undefined || lwRaw === null || lwRaw === 0 ? 0 : Math.max(4, Math.min(96, Math.round(+lwRaw || 0)));   // LW: window steps per bin (0 = the old 6-step ladder); P1c wins if both are on
       const nbN = refineN > 0 && look.haloRefineNeighbour === 'on';
       const widthStep = (['1', '0.5', '0.25'].includes(String(look.haloWidthStep)) ? +look.haloWidthStep : 0);   // WIDTH: the target sample spacing in metres (0 = the shipped six per bin); composes with P1c (the crossing bin uses the refined ladder, the other bins use the width ladder)   // RN: widen P1c's trigger to the crossing bin's eye-side neighbour (inert unless P1c is on)
-      halo.lw = lwK; halo.cross = refineN; halo.nb = nbN ? 1 : 0; halo.moment = look.haloMoment === 'on' ? 1 : 0; halo.width = widthStep;   // LW: the lamp-window schedule used this frame (0 = off); RN: 1 = the neighbour bin is refined too; P3/glm5.2: mean-placement on
+      halo.lw = lwK; halo.cross = refineN; halo.nb = nbN ? 1 : 0; halo.moment = look.haloMoment === 'on' ? 1 : look.haloMoment === 'blend' ? 2 : look.haloMoment === 'moment2' ? 3 : 0; halo.width = widthStep;   // LW: the lamp-window schedule used this frame (0 = off); RN: 1 = the neighbour bin is refined too; P3/glm5.2: mean-placement (0/1/2/3 = off/Hermite/L2d/log-normal CDF)
       halo.jit = jit; halo.blur = blurR; halo.dblur = blurD;   // IL: interleaved sampling   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
       const occU = (mm) => { if (useOcc) Object.assign(mm.uniforms, { crestH: { value: occ.texture }, crestWFC: { value: occ.wfc }, crestBox: { value: occ.box }, crestZ: { value: occ.z } }); if (jit) mm.uniforms.haloJitAmt = { value: jitAmt }; };   // IL: the jitter amount rides along
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
@@ -652,8 +689,8 @@ export function haloPass(renderer, u) {
       }
       const cellsOf = (b, nW, nH, rect) => b.empty ? 0 : (b.k1 - b.k0 + 1) * (rect ? (rect[1] - rect[0] + 1) * (rect[3] - rect[2] + 1) : nW * nH);
       try {
-        renderer.autoClear = false; const m = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, halo.moment, widthStep);
-        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, halo.moment, widthStep) : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
+        renderer.autoClear = false; const mainMoment = halo.moment === 3 ? 1 : halo.moment; const m = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, mainMoment, widthStep);   // P3-M2: when moment2 is on, the main table still carries accM (moment=1); the second-moment table (moment=3) is built below
+        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, mainMoment, widthStep) : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
         renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m;
         // The nearest HALO_REFINE lamps within HALO_NEAR metres are drawn in HALO_SUB sub-passes (24 steps per bin); the rest in one (6).
         used.forEach((q, i) => {
@@ -682,6 +719,42 @@ export function haloPass(renderer, u) {
         });
         if (blurR || blurD) blurBins(rt, tab[0], blurR, blurD);   // IL
         prefix(rt.texture, cumRt, tab[0]);   // PREFIX: the screen table's running totals
+        // P3-M2/glm5.2: the second-moment march (Σw·s²). Same lamps, same culling, same sub-passes as the main march, but a different material
+        // (moment2Text) and render target (rt2). Doubles the march cost, but only when haloMoment is 'moment2' (default off). The polar tables
+        // stay on the shipped edge knots (no second moment), so this is the screen table only.
+        if (halo.moment === 3) {
+          const m2 = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, 3, widthStep);
+          const splitM2 = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, 3, widthStep) : null;
+          const e2 = rts.get(key); if (!e2.m2bin) { e2.m2bin = new T.WebGLRenderTarget(tw * HALO_N, th, opt); e2.m2cum = new T.WebGLRenderTarget(tw * HALO_N, th, opt); }
+          rt2 = e2.m2bin; cumRt2 = e2.m2cum;
+          renderer.setRenderTarget(rt2); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m2;
+          used.forEach((q, i) => {
+            const split = bandPlan && polarSet.has(q);
+            if (polarSet.has(q) && !split) return;
+            const bd = cullPlan ? cullPlan.boundOf(q, true) : null;
+            if (bd) { if (bd.empty) return; }
+            const P = i < HALO_REFINE && q.L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || nearSub) : 1;
+            const mm = split ? splitM2 : m2; mesh.material = mm;
+            for (let j = 0; j < P; j++) {
+              hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
+              if (split) Object.assign(mm.uniforms, { haloBandA: { value: new T.Vector4(bandPlan.band.ac, bandPlan.band.hw, bandPlan.band.fade, bandPlan.band.wd) }, haloPolarC: { value: new T.Vector2(bandPlan.pk.C[0], bandPlan.pk.C[1]) } });
+              Object.assign(mm.uniforms, {
+                hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
+                haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
+                haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
+                sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
+                otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
+                otherConvention: { value: legacy ? HAL_CONV(legacy.conv) : 0 },
+                beamMeta: { value: u.beamMeta.value }, beamGrid: { value: u.beamGrid.value }, beamTint: { value: u.beamTint.value },
+              });
+              occU(mm); if (useSm) mm.uniforms.smM.value = smOf(q);
+              if (bd) drawBound(mm, bd.k0, bd.k1, bd.rect, tab[0], tab[1]); else renderer.render(scene, camera);
+              halo.passes++;
+            }
+          });
+          if (blurR || blurD) blurBins(rt2, tab[0], blurR, blurD);
+          prefix(rt2.texture, cumRt2, tab[0]);
+        }
         // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
@@ -701,7 +774,7 @@ export function haloPass(renderer, u) {
         });
       } finally { renderer.autoClear = ac; renderer.setClearColor(cc, ca); renderer.setRenderTarget(null); if (tq) { const g = renderer.getContext(); g.endQuery(tqx.TIME_ELAPSED_EXT); halo.tqPending.push(tq); } }
       if (timing) { renderer.readRenderTargetPixels(cumRt, 0, 0, 1, 1, new Uint16Array(4)); halo.ms = performance.now() - t0; }
-      u.haloTex.value = cumRt.texture; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = globalThis.HALO_TABLE_ONLY ? 0 : 1;
+      u.haloTex.value = cumRt.texture; u.haloM2Tex.value = cumRt2 ? cumRt2.texture : null; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = globalThis.HALO_TABLE_ONLY ? 0 : 1;   // P3-M2/glm5.2: bind the second-moment table when moment2 is on
       if (plan[0]) { const pk = plan[0].pk; u.haloPolarOn.value = 1; u.haloPolarTex.value = ensurePolar(0, pol.nT, pol.nR).cum.texture; u.haloPolarF.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarSz.value.set(p.w, p.h); u.haloPolarRange.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); u.haloPolarN.value.set(pol.nT, pol.nR); if (plan[0].band) { const b = plan[0].band; u.haloBandOn.value = 1; u.haloBand.value.set(b.ac, b.hw, b.fade, b.wd); } }
       if (plan[1]) { const pk = plan[1].pk; u.haloPolarOn2.value = 1; u.haloPolarTex.value = ensurePolar(1, pol.nT, pol.nR).cum.texture; u.haloPolarF2.value.set(pk.C[0] / p.w, pk.C[1] / p.h); u.haloPolarRange2.value.set(Math.log(HALO_POL_MIN_PX), pk.dL); }
       if (cullPlan) halo.cull = { mode: cullMode, eps: cullEps, lamps: used.map((q) => cstat.get(q) || null) };

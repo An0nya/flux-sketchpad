@@ -37,16 +37,16 @@ ok('HALO_REFINE is 4 bins and HALO_NEAR is 45 m', H.HALO_REFINE === 4 && H.HALO_
   ok('the default 1 is in the accepted set', ACCEPT.includes(+e.default), e.default);
 }
 
-// 4. the wiring: the clamp appears once, and the sub-pass count it produces reaches BOTH draw paths (the
-//    screen table and the polar/cone path). A third path added later without it would render the near lamps at
-//    a different quality than the option says.
+// 4. the wiring: the clamp appears once, and the sub-pass count it produces reaches EVERY draw path (the
+//    screen table, the polar/cone path, and the P3-M2 second-moment march). A path added later without it would
+//    render the near lamps at a different quality than the option says.
 {
   const clamps = (SRC.match(/\[1, 2, 4\]\.includes\(\+look\.haloNearSub\)/g) || []).length;
   const uses = (SRC.match(/\(globalThis\.SL_HALO_SUB \|\| nearSub\)/g) || []).length;
   ok('the nearSub clamp appears exactly once', clamps === 1, clamps);
-  ok('the sub-pass count reaches both draw paths', uses === 2, uses);
-  ok('both draw paths gate it on HALO_NEAR metres ahead', (SRC.match(/< HALO_NEAR \? \(globalThis\.SL_HALO_SUB \|\| nearSub\) : 1/g) || []).length === 2
-    && (SRC.match(/L\.x - eye\[0\] < HALO_NEAR/g) || []).length === 2, uses);
+  ok('the sub-pass count reaches every draw path', uses === 3, uses);
+  ok('every draw path gates it on HALO_NEAR metres ahead', (SRC.match(/< HALO_NEAR \? \(globalThis\.SL_HALO_SUB \|\| nearSub\) : 1/g) || []).length === 3
+    && (SRC.match(/L\.x - eye\[0\] < HALO_NEAR/g) || []).length === 3, uses);
 }
 
 // 5. defaultHistory: the first recorded default is the "as before" value and the last is the live one, so the

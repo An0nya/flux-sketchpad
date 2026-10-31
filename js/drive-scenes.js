@@ -148,10 +148,13 @@
         if (o.lamps === 'head' && o.kcd === undefined) D.Headlamp.apply(O.slice(first), { mode: 'generic' });
       },
       // a traffic-signal head facing the approaching car at (s, off, z), one lamp lit: 'red' | 'green'
-      signal(s, off, z, lit) {
+      signal(s, off, z, lit, cone) {   // frenchie (signalConesOn): cone = add the side-profile visor slab, so the head reads as a hooded signal from the side
         const p = at(s, off), c = Math.cos(p.yaw), sn = Math.sin(p.yaw), cols = { red: [1.2e4, 300, 200], amber: [1.2e4, 5e3, 100], green: [200, 8000, 3500] }, dz = { red: 0.34, amber: 0, green: -0.34 };
         add({ k: 'box', x: p.x, y: p.y, z0: z - 0.55, z1: z + 0.55, hx: 0.17, hy: 0.19, yaw: p.yaw, mat: 'pole' });
-        for (const key of ['red', 'amber', 'green']) add({ k: 'disc', x: p.x - 0.18 * c, y: p.y - 0.18 * sn, z: z + dz[key], r: 0.1, nx: -c, ny: -sn, nz: 0, mat: 'pole', emitPow: 2, emit: key === lit ? cols[key] : null });
+        for (const key of ['red', 'amber', 'green']) {
+          if (cone) add({ k: 'box', x: p.x - 0.24 * c, y: p.y - 0.24 * sn, z0: z + dz[key] + 0.085, z1: z + dz[key] + 0.145, hx: 0.075, hy: 0.135, yaw: p.yaw, mat: 'pole' });   // frenchie (signalConesOn): per-lamp hood above the disc, projecting forward past the face — a real visor; a face-wide slab here would occlude the lit lamp (qwen P0)
+          add({ k: 'disc', x: p.x - 0.18 * c, y: p.y - 0.18 * sn, z: z + dz[key], r: 0.1, nx: -c, ny: -sn, nz: 0, mat: 'pole', emitPow: 2, emit: key === lit ? cols[key] : null });
+        }
       },
       parkedCar(s, off) { this.car(s, off, { face: 1 }); },
       // a raised pavement marker: a small retroreflecting face toward the car, standing on the road. glow: it adds light to the ground pixel instead of covering it

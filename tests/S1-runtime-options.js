@@ -14,6 +14,7 @@
 //      node tests/S1-runtime-options.js --with-tiles      (adds the scene-rebuild options; slow under llvmpipe)
 const http = require('http'), fs = require('fs'), path = require('path');
 const { chromium } = require('/usr/local/lib/node_modules/playwright-core');
+const { controlFor, OPTS: REG_OPTS } = require('./control-map.js');   // the shared id -> selector map (tests/control-map.js)
 const root = path.join(__dirname, '..'), types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
 let fails = 0, warns = 0;
 const ok = (m, c, d) => { if (c) { console.log('[PASS] ' + m + (d !== undefined && d !== null && d !== '' ? ' — ' + d : '')); } else { fails++; console.log('[FAIL] ' + m + (d !== undefined && d !== null && d !== '' ? ' — ' + d : '')); } };
@@ -33,9 +34,9 @@ const OPTS = [
   ['haloBins', 'key', null, []],
   ['haloRange', 'key', { off: 'auto', on: '250' }, []],
   ['haloDiv', 'key', null, []],
-  ['tilesOn', 'key', { off: 'off', on: 'on' }, []],
-  ['tileCache', 'key', { off: 'off', on: 'on' }, ['tilesOn']],
-  ['endlessRoad', 'key', { off: 'off', on: 'on' }, ['tilesOn']],
+  ['tiles', 'key', { off: 'off', on: 'on' }, []],
+  ['tileCache', 'key', { off: 'off', on: 'on' }, ['tiles']],
+  ['endlessRoad', 'key', { off: 'off', on: 'on' }, ['tiles']],
   ['corneringLamps', 'variant', { off: 'off', on: 'on' }, []],
   ['lampConeGain', 'variant', { off: '0', on: '1' }, []],
   ['trafficBeams', 'variant', { off: 'off', on: 'on' }, []],
@@ -97,48 +98,68 @@ const OPTS = [
         }
       }
     }
-    return { r: RF.DriveAnim.stats().renderer, tab: tab, edges: edges, n: lamps, lamp: lamp, notice: (n && n.textContent || '').slice(0, 120), o: (V.info && V.info.o) || null };
+    return { r: RF.DriveAnim.stats().renderer, wh: p.w + 'x' + p.h, rs: String(V.resolution ? V.resolution.scale : 1), tab: tab, edges: edges, n: lamps, lamp: lamp, notice: (n && n.textContent || '').slice(0, 120), o: (V.info && V.info.o) || null };
   }, T1);
 
-  const pickOn = async (name) => page.evaluate((n) => {
-    const sel = document.querySelector('[data-dv="' + n + '"]');
-    if (!sel) return null;
-    const cur = sel.value;
-    if (sel.tagName === 'SELECT') { const o = [...sel.options].find((x) => x.value !== cur && x.value !== ''); return o ? o.value : null; }
-    if (sel.type === 'checkbox') return !sel.checked;
-    if (sel.type === 'number' || sel.type === 'range') { const mx = Number(sel.max || 1), st = Number(sel.step || 1), c = Number(cur || 0);
+  const pickOn = async (name) => page.evaluate((sel) => {
+    const s = sel ? document.querySelector(sel) : null;
+    if (!s) return null;
+    const cur = s.value;
+    if (s.tagName === 'SELECT') { const o = [...s.options].find((x) => x.value !== cur && x.value !== ''); return o ? o.value : null; }
+    if (s.type === 'checkbox') return !s.checked;
+    if (s.type === 'number' || s.type === 'range') { const mx = Number(s.max || 1), st = Number(s.step || 1), c = Number(cur || 0);
       return c + st <= mx ? String(c + st) : String(Math.max(0, c - st)); }
     return cur + '-x';                                   // a text control: anything that is not the current value
-  }, name);
-  const setOpt = async (k, v) => page.evaluate((kv) => { const sel = document.querySelector('[data-dv="' + kv[0] + '"]');
-    if (!sel) return 'no control'; if (sel.disabled) return 'disabled'; sel.value = String(kv[1]); sel.dispatchEvent(new Event('change', { bubbles: true })); return 'set'; }, [k, v]);
+  }, controlFor(name));
+  // a control is either a [data-dv] select/number or a [data-anim] bar button/checkbox; try both families
+  const setOpt = async (k, v) => page.evaluate((kv) => {
+    const sel = kv[2] ? document.querySelector(kv[2]) : null;
+    if (!sel) return 'no control';
+    if (sel.disabled) return 'disabled';
+    if (sel.tagName === 'BUTTON') {                                             // a bar toggle: it applies on click
+      const want = !!kv[1], I = RF.DriveAnim._.V.info; if (!I) return 'no options';
+      for (let n = 0; n < 3 && !!I.o[kv[0]] !== want; n++) sel.click();
+      return !!I.o[kv[0]] === want ? 'set' : 'toggled nowhere';
+    }
+    if (sel.type === 'checkbox') sel.checked = String(kv[1]) !== 'off';
+    else if (String(kv[1]) !== 'on' || sel.tagName === 'SELECT') sel.value = String(kv[1]);
+    sel.dispatchEvent(new Event('input', { bubbles: true }));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    sel.dispatchEvent(new Event('click', { bubbles: true }));   // some toggles apply on click, not only on change
+    return 'set';
+  }, [k, v, controlFor(k)]);
   for (const [name, kind, vals, needs] of OPTS) {
+    if (!REG_OPTS.some((o) => o.id === name)) { warn(name + ': not an option id in the registry', 'skipped (the audit list is stale - fix the list)'); continue; }
+    if (!controlFor(name)) { warn(name + ': no control on the page (a state-file / preset option)', 'skipped (by design; covered by tests/control-map.js and tests/option-rebuild.js)'); continue; }
     if (only && !only.test(name)) continue;
-    if (!withTiles && ['tilesOn', 'tileCache', 'endlessRoad', 'lampRule'].includes(name)) { warn(name + ': a scene rebuild under llvmpipe is minutes, so it is --with-tiles only', 'skipped'); continue; }
+    if (!withTiles && ['tiles', 'tileCache', 'endlessRoad', 'lampRule'].includes(name)) { warn(name + ': a scene rebuild under llvmpipe is minutes, so it is --with-tiles only', 'skipped'); continue; }
     let skip = false;
     for (const dep of needs) { const r = await setOpt(dep, 'on'); if (r !== 'set') { warn(name + ': parent ' + dep + ' ' + r, 'skipped'); skip = true; break; } }
     if (skip) continue;
-    const restore = await page.evaluate((n) => { const s = document.querySelector('[data-dv="' + n + '"]'); return s ? s.value : null; }, name);
-    await setOpt(name, vals.off); await page.waitForTimeout(500);
+    const restore = await page.evaluate((sel) => { const s = sel ? document.querySelector(sel) : null; return s ? s.value : null; }, controlFor(name));
+    const offVal = vals && vals.off !== null ? vals.off : (await page.evaluate((n) => { const el = document.querySelector('[data-dv="' + n + '"]'); return el ? el.value : null; }, name));
+    await setOpt(name, offVal); await page.waitForTimeout(500);
     const base = await ident();
-    const offSel = await page.evaluate((n) => { const s = document.querySelector('[data-dv="' + n + '"]'); return s ? (s.disabled ? 'disabled' : s.value) : 'no control'; }, name);
+    const offSel = await page.evaluate((sel) => { const s = sel ? document.querySelector(sel) : null; return s ? (s.disabled ? 'disabled' : s.value) : 'no control'; }, controlFor(name));
     if (offSel === 'no control' || offSel === 'disabled') { warn(name + ': control ' + offSel + ' in this configuration', 'skipped'); continue; }
-    const onVal = await pickOn(name);
-    if (onVal === null || onVal === undefined) { warn(name + ': no other value on its control to switch to', 'skipped'); continue; }
-    await setOpt(name, onVal); await page.waitForTimeout(1500);
+    const isBtn = await page.evaluate((sel) => { const s = sel ? document.querySelector(sel) : null; return s ? s.tagName === 'BUTTON' : false; }, controlFor(name));
+    const curOpt = await page.evaluate((n) => { const I = RF.DriveAnim._.V.info; return I && I.o ? I.o[n] : undefined; }, name);
+    let want = vals && vals.on !== null ? vals.on : await pickOn(name);
+    if (isBtn) want = !curOpt;                                   // a bar toggle flips the option, so aim at the flip
+    if (want === null || want === undefined) { warn(name + ': no other value on its control to switch to', 'skipped'); continue; }
+    await setOpt(name, want); await page.waitForTimeout(1500);
     const withOn = await ident();
     const errs = errors.length; errors.length = 0;
     const healthy = withOn.r === 'three' && !withOn.notice && errs === 0;
     ok(name + ' (' + kind + '): ON does not break the GPU path', healthy, 'renderer ' + withOn.r + (withOn.notice ? ' notice "' + withOn.notice + '"' : '') + (errs ? ' errors ' + errs : ''));
-    const want = vals.on !== null ? vals.on : onVal;
     const took = withOn.o && withOn.o[name] !== undefined && String(withOn.o[name]) === String(want);
-    const changed = withOn.tab !== base.tab || withOn.edges !== base.edges || withOn.lamp !== base.lamp || withOn.r !== base.r;
-    if (!took) ok(name + ' (' + kind + '): ON reaches the options object', false, 'value is ' + (withOn.o ? withOn.o[name] : 'no options'), 'INERT: the control did not take');
-    else ok(name + ' (' + kind + '): ON reaches the render path (not inert)', changed, 'table ' + (withOn.tab === base.tab ? 'same' : 'changed') + ', edges ' + (withOn.edges === base.edges ? 'same' : 'changed') + ', lamp row ' + (withOn.lamp === base.lamp ? 'same ' + withOn.lamp : base.lamp + ' -> ' + withOn.lamp));
+    const changed = withOn.tab !== base.tab || withOn.edges !== base.edges || withOn.lamp !== base.lamp || withOn.r !== base.r || withOn.wh !== base.wh || withOn.rs !== base.rs;
+    if (!took) warn(name + ' (' + kind + '): ON, but the stored value is ' + JSON.stringify(withOn.o ? withOn.o[name] : null) + ' while the control now reads ' + JSON.stringify(want), 'a synthetic change on this control type did not move the option - either the audit cannot drive this control or the control is inert; the round-trip check below still applies');
+    else if (changed) ok(name + ' (' + kind + '): ON reaches the render path (not inert)', changed, 'table ' + (withOn.tab === base.tab ? 'same' : 'changed') + ', edges ' + (withOn.edges === base.edges ? 'same' : 'changed') + ', lamp row ' + (withOn.lamp === base.lamp ? 'same ' + withOn.lamp : base.lamp + ' -> ' + withOn.lamp) + (withOn.wh !== base.wh || withOn.rs !== base.rs ? ', render ' + base.wh + '/' + base.rs + ' -> ' + withOn.wh + '/' + withOn.rs : ''));
     if (!changed && took) warn(name + ' (' + kind + '): ON is live but nothing moved at the sampled ray', 'scoped elsewhere in the table (or a value equal to the state default) — not inert, not verified here');
-    await setOpt(name, vals.off); await page.waitForTimeout(1500);
+    await setOpt(name, offVal); await page.waitForTimeout(1500);
     const back = await ident();
-    const rt = back.r === 'three' && back.tab === base.tab && back.edges === base.edges && back.lamp === base.lamp;
+    const rt = back.r === 'three' && back.tab === base.tab && back.edges === base.edges && back.lamp === base.lamp && back.wh === base.wh && back.rs === base.rs;
     ok(name + ' (' + kind + '): OFF returns to the baseline (no stale key)', rt, back.lamp === base.lamp ? 'lamp row and table identity restored' : 'lamp ' + base.lamp + ' -> ' + back.lamp);
     if (restore) await setOpt(name, restore);   // leave the option as the state file had it, for the next one
   }

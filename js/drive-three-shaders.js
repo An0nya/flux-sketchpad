@@ -37,7 +37,7 @@ float fogT(float d) { return sigma>0.0 ? exp(-sigma*d) : 1.0; }   // transmittan
 uniform int scatterSteps;   // in-scatter steps (look.scatter; 0 = off; only with sigma>0). drive.js inScatter is the CPU twin
 uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js SCAT
 uniform float haloSMax;   // OHR: the oncoming table's far edge (look.haloRange, else scatterRange); our own beam keeps scatSMax
-uniform int haloMoment;   // P3/glm5.2: 1 = place each bin's mass at its glow-weighted mean depth (step at the mean); 0 = the shipped edge knots
+uniform int haloMoment;   // P3/glm5.2: 1 = place each bin's mass at its glow-weighted mean depth (Hermite through the means); 2 = L2d sin² blend (means blended toward the upper edges by w=sin²(πu)); 0 = the shipped edge knots
 // SL: the traffic scatter table (js/drive-three-halo.js). A screen-space table (1/8 of the view, six tiles side by side) holds, per cell, the oncoming
 // lamps' single-scatter integral over six distance bins whose edges follow the nearest lamp (fixed ladder 8, 14, 22, 34, 60, 120 m when it is far). haloScatter(d) sums the bins up to the fragment's
 // own end distance d (ground hit, object eye distance, sky = 120 m), interpolated in log d like tableC, so the lit air in FRONT of a surface adds to it and the
@@ -116,12 +116,80 @@ vec3 haloCurveP3H(int s, vec4 K0, vec4 K1, vec4 K2, vec4 K3, float dd) {
   float t = (log(dd) - x0) / h, t2 = t*t, t3 = t2*t;
   return (2.0*t3-3.0*t2+1.0)*Y0 + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*Y1 + (t3-t2)*h*mB;
 }
+// P3-L2d/glm5.2: the sin² blend variant. Same as haloCurveP3H but each mean is blended toward its bin's upper edge by
+// w = sin²(πu), u = dd's normalized within-bin depth (bin s+1 holds dd). w=0 at both bin edges (knots = means, as P3H),
+// w=1 at mid-bin (knots = edges, as shipped). Pinned at both edges and continuous across them. A zero-new-data fallback
+// (~20-25% better than shipped, does not fully fix either field — see glm5.3flash/KNOT-LAWS.md).
+vec3 haloCurveP3L2d(int s, vec4 K0, vec4 K1, vec4 K2, vec4 K3, float dd) {
+  if(dd<=haloE[0]) return K1.rgb*log(dd/0.5)/log(haloE[0]/0.5);
+  float lum1 = haloLum(K1.rgb-K0.rgb), lum2 = haloLum(K2.rgb-K1.rgb), lum3 = haloLum(K3.rgb-K2.rgb);
+  float m0 = clamp(lum1 > 1e-30 ? (K1.a-K0.a)/lum1 : haloE[max(s-1,0)], haloE[max(s-1,0)], haloE[s]);
+  float m1 = clamp(lum2 > 1e-30 ? (K2.a-K1.a)/lum2 : haloE[s], haloE[s], haloE[min(s+1,haloNu-1)]);
+  float m2 = clamp(lum3 > 1e-30 ? (K3.a-K2.a)/lum3 : haloE[min(s+1,haloNu-1)], haloE[min(s+1,haloNu-1)], haloE[min(s+2,haloNu-1)]);
+  float u = clamp((dd - haloE[s]) / max(haloE[min(s+1,haloNu-1)] - haloE[s], 1e-30), 0.0, 1.0);   // dd's normalized within-bin depth
+  float sw = sin(3.14159265 * u); sw = sw * sw;   // sin²(πu): 0 at both edges, 1 at mid-bin
+  m0 = mix(m0, haloE[s], sw);   // blend each mean toward its bin's upper edge
+  m1 = mix(m1, haloE[min(s+1,haloNu-1)], sw);
+  m2 = mix(m2, haloE[min(s+2,haloNu-1)], sw);
+  float lx0 = log(m0), lx1 = log(m1), lx2 = log(m2);
+  vec3 d01 = (K2.rgb - K1.rgb) / max(lx1 - lx0, 1e-30);
+  vec3 d12 = (K3.rgb - K2.rgb) / max(lx2 - lx1, 1e-30);
+  bool lower = dd < m1;
+  float x0 = lower ? lx0 : lx1, x1 = lower ? lx1 : lx2, h = max(x1 - x0, 1e-9);
+  vec3 Y0 = lower ? K1.rgb : K2.rgb, Y1 = lower ? K2.rgb : K3.rgb;
+  vec3 dS = lower ? d01 : d12;
+  vec3 pchip = haloPchipSlope(d01, d12, lx1-lx0, lx2-lx1);
+  vec3 mA = lower ? dS : pchip;
+  vec3 mB = lower ? pchip : dS;
+  float t = (log(dd) - x0) / h, t2 = t*t, t3 = t2*t;
+  return (2.0*t3-3.0*t2+1.0)*Y0 + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*Y1 + (t3-t2)*h*mB;
+}
+// P3-M2/glm5.2: the second-moment CDF lookup is behind #ifdef HALO_M2 so the haloM2Tex sampler is only declared when moment2 is on
+// (material.defines.HALO_M2 = 1), keeping the static sampler count at 13 (the budget). uniforms.mjs strips the block for the count.
+#ifdef HALO_M2
+uniform sampler2D haloM2Tex;   // the second-moment table (Σw·s² per bin, for the log-normal CDF lookup)
+// erf (Abramowitz & Stegun 7.1.26, max error 1.5e-7) and the standard normal CDF Φ(z) = ½(1+erf(z/√2)). 5 FMA + 1 exp + 1 abs.
+float haloErf(float x) { float t=1.0/(1.0+0.3275911*abs(x)); float y=1.0-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*exp(-x*x); return x>=0.0?y:-y; }
+float haloPhi(float z) { return 0.5*(1.0+haloErf(z*0.70710678)); }
+// the second-moment table read (same B-spline as haloBin4, but from haloM2Tex). R = Σw·s² (the second moment of depth).
+vec4 haloBin4M2(int k, vec2 pc, vec2 f, vec2 tab) {
+  vec2 f2=f*f, f3=f2*f, w0=(1.0-f)*(1.0-f)*(1.0-f)/6.0, w1=(3.0*f3-6.0*f2+4.0)/6.0, w2=(-3.0*f3+3.0*f2+3.0*f+1.0)/6.0, w3=f3/6.0;
+  vec2 g0=w0+w1, g1=w2+w3, h0=pc-1.0+w1/g0, h1=pc+1.0+w3/g1;
+  h0=clamp(h0+0.5,vec2(0.5),tab-0.5); h1=clamp(h1+0.5,vec2(0.5),tab-0.5);
+  float x0=(float(k)*tab.x+h0.x), x1=(float(k)*tab.x+h1.x), inv=1.0/(tab.x*float(haloNu));
+  return g0.y*(g0.x*texture(haloM2Tex,vec2(x0*inv,h0.y/tab.y)).rgba+g1.x*texture(haloM2Tex,vec2(x1*inv,h0.y/tab.y)).rgba)
+       + g1.y*(g0.x*texture(haloM2Tex,vec2(x0*inv,h1.y/tab.y)).rgba+g1.x*texture(haloM2Tex,vec2(x1*inv,h1.y/tab.y)).rgba);
+}
+// the log-normal second-moment CDF lookup. Each bin's mass is placed via a renormalized log-normal CDF between the bin's pins,
+// using the bin's own (mean, variance) from the first and second moments. mean = accM/Σw (from haloTex alpha); var = accM2/Σw − mean²
+// (from haloM2Tex). σ²=ln(1+var/mean²), μ=ln(mean)−σ²/2 (moment match). u=(Φ(z(dd))−Φ(z(lo)))/(Φ(z(hi))−Φ(z(lo))), z=(ln d−μ)/σ.
+// Monotone by construction (the CDF is monotone), so the clamp/strictly-increasing-knots guard the Hermite needs is retired
+// (the black-rows / 7500×-spike class of bugs cannot recur). ~6-8× better than shipped (allAbs 0.048/0.069 vs 0.388/0.411).
+vec3 haloCurveP3M2(int s, vec4 K0, vec4 K1, vec4 K2, vec4 K3, vec4 M0, vec4 M1, vec4 M2, vec4 M3, float dd) {
+  if(dd<=haloE[0]) return K1.rgb*log(dd/0.5)/log(haloE[0]/0.5);
+  float lum2 = haloLum(K2.rgb-K1.rgb);
+  float mean = clamp(lum2 > 1e-30 ? (K2.a-K1.a)/lum2 : haloE[s], haloE[s], haloE[min(s+1,haloNu-1)]);   // mean of bin s+1 (the bin holding dd), clamped into its own bin
+  float accM2 = M2.r - M1.r;   // second moment of bin s+1 (Σw·s²)
+  float var = lum2 > 1e-30 ? max(accM2/lum2 - mean*mean, 0.0) : 0.0;   // Var[s] = E[s²] − E[s]²
+  if(var < 1e-30) { float u = clamp((dd-haloE[s])/max(haloE[min(s+1,haloNu-1)]-haloE[s],1e-30),0.0,1.0); return K1.rgb+u*(K2.rgb-K1.rgb); }   // degenerate (no spread): linear interp, monotone
+  float sigma2 = log(1.0+var/(mean*mean)), sigma = sqrt(sigma2), mu = log(mean)-sigma2*0.5;   // log-normal moment match
+  float lo=haloE[s], hi=haloE[min(s+1,haloNu-1)];
+  float zLo=(log(lo)-mu)/sigma, zHi=(log(hi)-mu)/sigma, zD=(log(dd)-mu)/sigma;
+  float cLo=haloPhi(zLo), cHi=haloPhi(zHi), cD=haloPhi(zD);
+  float u = clamp((cD-cLo)/max(cHi-cLo,1e-30), 0.0, 1.0);   // the renormalized log-normal CDF within the bin; monotone by construction
+  return K1.rgb + u*(K2.rgb-K1.rgb);
+}
+#endif
 vec3 haloScatterScr(float d) {
   if(haloOn==0 || d<=0.5) return vec3(0.0);
   vec2 p=gl_FragCoord.xy*haloUV*haloTab-0.5, pc=floor(p), f=p-pc;
   float dd=min(d,haloSMax);
   int s=haloSeg(dd), i0=max(s-1,0), i3=min(s+2,haloNu-1);
-  if(haloMoment!=0) return haloCurveP3H(s, haloBin4(i0,pc,f,haloTab), haloBin4(s,pc,f,haloTab), haloBin4(s+1,pc,f,haloTab), haloBin4(i3,pc,f,haloTab), dd);   // P3/glm5.2: 4 cumulative RGBA reads, monotone Hermite through the means
+  if(haloMoment==1) return haloCurveP3H(s, haloBin4(i0,pc,f,haloTab), haloBin4(s,pc,f,haloTab), haloBin4(s+1,pc,f,haloTab), haloBin4(i3,pc,f,haloTab), dd);   // P3/glm5.2: 4 cumulative RGBA reads, monotone Hermite through the means
+  if(haloMoment==2) return haloCurveP3L2d(s, haloBin4(i0,pc,f,haloTab), haloBin4(s,pc,f,haloTab), haloBin4(s+1,pc,f,haloTab), haloBin4(i3,pc,f,haloTab), dd);   // P3-L2d/glm5.2: sin² blend (means toward edges), zero-new-data fallback
+#ifdef HALO_M2
+  if(haloMoment==3) return haloCurveP3M2(s, haloBin4(i0,pc,f,haloTab), haloBin4(s,pc,f,haloTab), haloBin4(s+1,pc,f,haloTab), haloBin4(i3,pc,f,haloTab), haloBin4M2(i0,pc,f,haloTab), haloBin4M2(s,pc,f,haloTab), haloBin4M2(s+1,pc,f,haloTab), haloBin4M2(i3,pc,f,haloTab), dd);   // P3-M2/glm5.2: log-normal CDF (second moment), 4+4 cumulative reads
+#endif
   return haloCurve(s, haloBin(i0,pc,f,haloTab), haloBin(s,pc,f,haloTab), haloBin(s+1,pc,f,haloTab), haloBin(i3,pc,f,haloTab), dd);   // 4 cumulative reads
 }
 uniform float haloGain;   // HDX7: the look's halo gain (1 = as computed; the multiply is exact at 1)
@@ -339,6 +407,18 @@ const LOOP_ATLAS = `  for(int i=0;i<64;i++) { if(i>=nTraffic) break; vec3 d=p-tr
     r+=rho*otint*otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w*fogT(sqrt(r2));
   }
 `;
+// frenchie (option heatShimmer, GPU only — Anya 10-31: the CPU renderer is a legacy fallback and ignores it):
+// splices a grazing-angle vertical ray wobble into the ground main() when the option is on. OFF keeps the
+// shipped text byte-for-byte (tests/frenchie-heat-shimmer.js pins that `ground` itself carries no shimmer).
+export function withShimmer(source) {
+  const RAY = 'vec3 ray=normalize(vec3(1.0,-screen.x*tanH,screen.y*tanH*size.y/size.x));';
+  const UNI = 'uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance, wetModel, wetness;';
+  if (source.split(RAY).length !== 2 || source.split(UNI).length !== 2) throw Error('ground shader markers changed');
+  return source
+    .replace(UNI, UNI + ' uniform float shimmerAmp, shimmerT;')
+    .replace(RAY, RAY + `
+  if (shimmerAmp>0.0) { float g=clamp(1.0+ray.z*6.0,0.0,1.0); float n=fract(sin(dot(floor(screen*vec2(240.0,120.0))+vec2(0.0,shimmerT*9.0),vec2(12.9898,78.233)))*43758.5453); ray=normalize(ray+vec3(0.0,(n-0.5)*2.0*shimmerAmp*g,0.0)); }`);
+}
 export function withLighting(source, atlas = false) {
   if (!source.includes('float intensity(vec3 d) {') || !source.includes('  for(int i=0;i<2;i++)')) throw Error('P2 shared shading prefix changed');
   return source.replace('uniform sampler2D beam, materials;\n', `uniform sampler2D beam, materials, otherBeam;
