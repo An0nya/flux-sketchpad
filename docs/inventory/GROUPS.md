@@ -85,7 +85,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 |---|---|---|---|---|---|---|---|---|
 | `view` | Camera and playback | 4 | 3 | 1 | 0 | 0 | 0 | 0 |
 | `road` | Road and route | 13 | 2 | 9 | 0 | 0 | 0 | 2 |
-| `surface` | Road surface | 8 | 0 | 5 | 0 | 0 | 1 | 2 |
+| `surface` | Road surface | 9 | 0 | 6 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
 | `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
@@ -136,6 +136,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `surfaceSheen` | lit surface sheen | profile | More | false | - |
 | `RL` | marking reflectivity RL | profile | Spec > Road sidebar | 200 | - |
 | `wetness` | road: dry / damp / wet | extra | More | (unset) | - |
+| `dryStreaks` | dry-pavement streaks | profile | More | false | - |
 
 #### Fog and air beam (`air`)
 

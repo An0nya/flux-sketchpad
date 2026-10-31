@@ -43,5 +43,11 @@ ok('creek side is ±1 and never on the carriageway', (() => { for (let k = 0; k 
 ok('tile loop emits the water channel + bank stones + reeds, gated on wild', anim.includes("mat: 'water', cls: 'creek'") && (anim.match(/mat: 'gravel'/g) || []).length >= 1 && anim.includes("vg.creek && cfg.flags.wild !== false"));
 ok('suburb emits house + driveway mark + parked car, gated on wild', anim.includes("vg.suburb && cfg.flags.wild !== false") && anim.includes('KP.parkedCar') && anim.includes("mat: 'gravel', pat:"));
 ok('water material appended last (existing MAT ids unmoved)', (() => { const D = RF.Drive; return D.MAT_KEYS.indexOf('water') === D.MAT_KEYS.length - 1 && D.MAT_KEYS.indexOf('asphalt') === 0 && D.MAT_KEYS.indexOf('sky') === 37; })());
+// tile detail builds (10-31 ~04:20, catalogue #1/#2/#4/#9 cheap versions)
+ok('detailed lamp head behind detailedModels (housing + lens)', anim.includes("if (p.detailedModels)") && (anim.match(/mat: 'lamp-head'/g) || []).length >= 2);
+ok('city verge buildings get window boxes on the road face, behind wild', anim.includes("mat: KR() < 0.22 ? 'win-warm' : KR() < 0.3 ? 'win-cool' : 'win-dark'") && anim.includes('toward = sd < 0 ? 1 : -1'));
+ok('viaduct piers on steep mountain blocks (>3.5% grade), behind wild', anim.includes("cls: 'pier'") && anim.includes("Math.abs(endlessGrade(cfg.seed, Math.floor(tile.k / 16), cfg.preset)) > 0.035"));
+ok('direction-sign chevron glyph behind signs', anim.includes("KP.sign(gs, go, 'green'") && anim.includes("mat: 'white-paint' }); }   // direction sign + white chevron glyph"));
+ok('pier z span reaches past the verge falloff (z0 -14)', anim.includes("z0: -14, z1: 0.05, mat: 'concrete', cls: 'pier'"));
 console.log(fail === 0 ? `\nall ${pass} le-chonk-verge checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);

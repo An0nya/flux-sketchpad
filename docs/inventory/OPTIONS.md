@@ -197,6 +197,7 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `gameOptions` | game | internal | scene-regenerate | (overlay) | - | - | - | - | - | - | - | - | - |
 | `qualityGovernor` | profile | performance | free | "off" | - | drive-anim.js, spec-ui.js, drive-layout.js | - | - | - | - | - | - | - |
 | `distanceLod` | profile | performance | free | "off" | - | drive-anim.js, spec-ui.js, drive-layout.js | - | - | - | - | - | - | - |
+| `dryStreaks` | profile | surface | per-frame-gpu | false | - | drive.js, drive-anim.js, drive-three.js, spec-ui.js, drive-layout.js | - | - | - | - | - | - | - |
 <!-- END GENERATED option-table -->
 
 DV_DEF keys with no row above (script check): none.

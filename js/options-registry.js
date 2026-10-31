@@ -1620,6 +1620,16 @@
       tests: ['node:frenchie-distance-lod'],
       note: 'frenchie (backlog 3 "level of detail by distance"): cap the distance-detail knobs to a fixed profile — haloRange 160/120/0, scatterRange 100/80/50, trafficRange 230/160/160, scatterCullEps x4/x16/x64 for low/medium/high. min() with your own values, so a lower setting you made always wins; applied per picture in prepare() (all cache keys see it). While a level is active, changes to those four knobs are overridden until it lifts. Off (default) changes nothing. Scope: frenchie/S3LOD-SCOPE.md.',
     },
+    {
+      id: 'dryStreaks', kind: 'profile', type: 'bool',
+      default: false, label: 'dry-pavement streaks',
+      control: '[data-dv="dryStreaks"]', where: 'more', query: null,
+      group: 'surface', cost: 'per-frame-gpu',
+      owner: ['js/drive.js', 'js/drive-anim.js', 'js/drive-three.js', 'js/spec-ui.js', 'js/drive-layout.js'],
+      requires: [],
+      tests: ['node:frenchie-dry-streaks'],
+      note: 'frenchie (Anya 10-31, IRL note: even dry pavement can be reflective enough for streaks): with wetSheen on, the streak/reflection weight uses max(wetness, 0.25) instead of wetness — CPU (drive.js streak sites + wetVeil) and GPU (the wetness uniform, which feeds only the ground shader\'s two streak terms) both. Road darkening/grain keep the true wetness. Off (default) = wetEff === wetness = byte-identical. Dry floor 0.25 is a starting point — Anya\'s call.',
+    },
   ];
 
   // ---- functions (pure)

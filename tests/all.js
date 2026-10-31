@@ -83,5 +83,6 @@ run('scene details: registry and metric maths (tests/scene-details.js)', ['tests
 run('option round-trip: every profile option survives dump -> read, extras survive, loadState writes back (tests/option-roundtrip.js)', ['tests/option-roundtrip.js']); // glm5.2 (step5-preview open item #1)
 run('quality governor option: shed state machine + wiring, default off (tests/frenchie-quality-governor.js)', ['tests/frenchie-quality-governor.js']); // frenchie (backlog 3-P)
 run('distance LOD option: profile caps + wiring, default off (tests/frenchie-distance-lod.js)', ['tests/frenchie-distance-lod.js']); // frenchie (backlog 3 LOD)
+run('dry-pavement streaks option: gates + weights, default off (tests/frenchie-dry-streaks.js)', ['tests/frenchie-dry-streaks.js']); // frenchie (Anya 10-31 dryStreaks)
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

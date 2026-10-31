@@ -291,7 +291,7 @@
     // view path: the samples' radiance gathered since r0..b0 is seen through T = exp(-sig t); airlight fills the rest with the sky value at that direction (glow: T only)
     const veil = (t, rayDz, k, r0, g0, b0, glow) => { const T = Math.exp(-sig * t), A = glow ? 0 : skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(rayDz) * 8)) * (1 - T) * k; LR = r0 + T * (LR - r0) + A; LG = g0 + T * (LG - g0) + A; LB = b0 + T * (LB - b0) + A; };       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
     const traffic = o.trafficBeams ? trafficSources(objs, eye, o) : [], otherBeam = traffic.length ? trafficBeam(o) : null, pitch = o.pitch || 0;
-    const pointLights = o.pointLights || [], crossings = o.crossings || [], wetW = wetnessOf(look), sheen = wetW > 0 && look.wetSheen, reflections = sheen ? reflectionSources(objs, o).concat(pointLights) : [];
+    const pointLights = o.pointLights || [], crossings = o.crossings || [], wetW = wetnessOf(look), wetEff = Math.max(wetW, look.dryStreaks === true ? 0.25 : 0), sheen = wetEff > 0 && look.wetSheen, reflections = sheen ? reflectionSources(objs, o).concat(pointLights) : [];
     // LAMP-DIST (option lampRoad 'table'): the street-lamp pool is the shared distribution table, relative to its lower-hemisphere mean. Off: lampRoadOn is false and nothing below changes.
     const lampRoadOn = o.lampRoad === 'table' && !!(globalThis.RF && RF.LampDist), lampRoadF = (L, vx, vy, vz) => { const rr = Math.hypot(vx, vy, vz), g = Math.acos(Math.max(-1, Math.min(1, -vz / rr))) * 180 / PI; return RF.LampDist.roadFactorAt(o.lampClass || 'III', RF.LampDist.kindOfLamp(o.lampKind), g, RF.LampDist.phiOf(L.street, [vx, vy])); };
     const delta0 = 2 * tanH / w;                                              // radians per pixel
@@ -371,7 +371,7 @@
             r += m.rho[0] * L.rgb[0] * e; g += m.rho[1] * L.rgb[1] * e; b += m.rho[2] * L.rgb[2] * e;
           }
           if (sheen && SHEEN_IDS.includes(m.id)) for (const L of reflections) {
-            const v = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz) * wetW * fogD(L.x - px, L.y - py, L.z - pz); r += v * L.rgb[0]; g += v * L.rgb[1]; b += v * L.rgb[2];
+            const v = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz) * wetEff * fogD(L.x - px, L.y - py, L.z - pz); r += v * L.rgb[0]; g += v * L.rgb[1]; b += v * L.rgb[2];
           }
           LR += k * (a[q] + r * lc[0]); LG += k * (a[q + 1] + g * lc[1]); LB += k * (a[q + 2] + b * lc[2]); return;
         }
@@ -389,7 +389,7 @@
         r += rho[0] * L.rgb[0] * e; g += rho[1] * L.rgb[1] * e; b += rho[2] * L.rgb[2] * e;
       }
       if (!staticBuild && sheen && nz === 1 && SHEEN_IDS.includes(m.id)) for (const L of reflections) {
-        const a = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz) * wetW * fogD(L.x - px, L.y - py, L.z - pz); r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
+        const a = L.cd * lobe(L.x - px, L.y - py, L.z - pz, vx, vy, vz) * wetEff * fogD(L.x - px, L.y - py, L.z - pz); r += a * L.rgb[0]; g += a * L.rgb[1]; b += a * L.rgb[2];
       }
       for (const L of traffic) {
         const dx = px - L.x, dy = py - L.y, dz = pz - L.z, r2 = dx * dx + dy * dy + dz * dz;
@@ -402,7 +402,7 @@
         if (!(NoL > 0)) continue;
         if (preA) { const a = dx / rr, b = -dy / rr, c = dz / rr; if (c < sv0 || c > sv1 || a <= 0 || b > a * th1 || b < a * th0) continue; }
         const I = ownBeamAt(o, dx, dy, dz, L[1]) * fogD(dx, dy, dz); if (!(I > 0)) continue;
-        if (sheen && nz === 1 && OWN_STREAK_IDS.includes(m.id)) { const a = I * lobe(-dx, -dy, -dz, vx, vy, vz) * wetW; r += a; g += a; b += a; }
+        if (sheen && nz === 1 && OWN_STREAK_IDS.includes(m.id)) { const a = I * lobe(-dx, -dy, -dz, vx, vy, vz) * wetEff; r += a; g += a; b += a; }
         const Ep = I / r2;                                                    // E⊥, lux square to the beam
         const d = Ep * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
         if (m.gloss && NoV > 0) {
@@ -849,11 +849,11 @@
     eye = eye || [-2, 0.37, 1.2]; const out = [], occ = occluders || objects;
     // le-chonk (backlog 4-N, option wetVeil): also emit each lamp mirrored in the road plane (z -> -z), weighted by wetness x Fresnel at grazing,
     // so the glare veil gains the wet-road streak below the horizon. Mirrors are not occlusion-tested (v1: the streak can peek past a crest).
-    const wetVeil = !!(opts && opts.wetVeil && +opts.wetness > 0 && opts.wetSheen);
+    const wetVeil = !!(opts && opts.wetVeil && Math.max(+opts.wetness || 0, opts.dryStreaks ? 0.25 : 0) > 0 && opts.wetSheen);   // frenchie (dryStreaks): dry floor
     const mirrorOf = (x, y, z, cd, rgb) => {
       const mx = x - eye[0], my = y - eye[1], mz = -z - eye[2], rr = Math.hypot(mx, my, mz);
       if (mx <= 0 || !(rr > 0)) return;
-      const dz = mz / rr, f = (0.02 + 0.98 * Math.pow(1 - Math.min(1, Math.abs(dz)), 5)) * (+opts.wetness || 0);
+      const dz = mz / rr, f = (0.02 + 0.98 * Math.pow(1 - Math.min(1, Math.abs(dz)), 5)) * Math.max(+opts.wetness || 0, opts.dryStreaks ? 0.25 : 0);   // frenchie (dryStreaks): dry floor
       out.push([mx / rr, my / rr, mz / rr, cd * mx / rr / (rr * rr) * f, ...rgb]);
     };
     for (const ob of objects) if (glareEmitter(ob)) {

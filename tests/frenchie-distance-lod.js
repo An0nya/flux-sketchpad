@@ -30,7 +30,7 @@ ok('LOD keys are disjoint from the governor shed keys (no interaction)', (() => 
 ok('drive bar has the [data-anim="distance-lod"] select with change -> setDV', /data-anim': 'distance-lod'/.test(anim) && /ld\.addEventListener\('change', \(\) => setDV\(ui, 'distanceLod', ld\.value\)\)/.test(anim));
 ok('labels() syncs the select', anim.includes("[data-anim=\"distance-lod\"]').value = ['off', 'low', 'medium', 'high'].includes(o.distanceLod)"));
 ok('look projection carries distanceLod', anim.includes("distanceLod: o.distanceLod || 'off'"));
-ok('both spec-ui picture-cache keys carry o.distanceLod', (ui.match(/o\.qualityGovernor, o\.distanceLod\]\)/g) || []).length === 2, (ui.match(/o\.qualityGovernor, o\.distanceLod\]\)/g) || []).length);
+ok('both spec-ui picture-cache keys carry o.distanceLod', (ui.match(/o\.distanceLod[,)\]]/g) || []).length === 2, (ui.match(/o\.distanceLod[,)\]]/g) || []).length);
 ok('drive-layout Resolution pane lists the control', lay.includes("an('distance-lod')"));
 
 console.log(n + ' checks, ' + fails + ' failed');

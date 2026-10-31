@@ -16,7 +16,7 @@
     ['lighting', 'ours', 'Our beams', [an('own-low'), an('own-high'), '[data-dl=beam-label]', an('beam-name'), an('save-grid'), an('save-design'), an('import-beam'), an('export-beams'), an('beam-file'), an('beam-status'), an('beam-manager')]],
     ['lighting', 'lamps', 'Street lamps', [an('street-lamps'), dv('lampClass'), dv('lampRoad'), dv('lampCone'), dv('lampConeGain')]],
     ['lighting', 'lamps', 'Ambient', [an('ambient')]],
-    ['lighting', 'glare', 'Wet road', [dv('wetSheen'), dv('wetModel'), an('surface-sheen')]],
+    ['lighting', 'glare', 'Wet road', [dv('wetSheen'), dv('wetModel'), dv('dryStreaks'), an('surface-sheen')]],   // frenchie: dryStreaks sits with the wet-road controls
     ['lighting', 'glare', 'Power lines', [an('powerline-reflectance')]],
     ['scene', null, 'Weather and air', [dv('wetness'), dv('visibility')]],
     ['scene', null, 'Objects', [an('enable-all'), ...C(['posts', 'signs', 'people', 'animals', 'veg', 'obstacle', 'rpm']), an('detailed-models'), an('leafy-foliage'), an('deer-behaviour'), an('powerlines'), an('reflective-clothing')]],
