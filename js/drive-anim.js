@@ -80,6 +80,10 @@
   }
   // IDM: Treiber, Hennecke & Helbing (2000), Phys. Rev. E 62, 1805. SI units; s is bumper-to-bumper.
   const IDM = { T: 1.5, s0: 2, a: 1, b: 1.5, delta: 4, length: 4.4, dt: 0.05 };
+  // TSUB: the traffic is stepped at 20 Hz (IDM.dt = 0.05), so the drawn cars - and the oncoming scatter table built from their lamp
+  // positions - jump every 0.05 s: a staircase at 20 Hz, whatever the closing speed. With the option on, the drawn pose is interpolated
+  // between the last two steps (the simulation stays on the 20 Hz tick). Off by default: the picture is unchanged.
+  let SUBTICK = false;
   function idmAcceleration(v, dv, s, v0, params) {
     const q = Object.assign({}, IDM, params), star = q.s0 + Math.max(0, v * q.T + v * dv / (2 * Math.sqrt(q.a * q.b)));
     return q.a * (1 - Math.pow(v / Math.max(0.1, v0), q.delta) - (s === Infinity ? 0 : Math.pow(star / Math.max(0.01, s), 2)));
@@ -334,13 +338,20 @@
     const tick = Math.floor((t - st.epoch) / IDM.dt + 1e-8);
     for (; st.tick < tick; st.tick++) {
       const time = st.epoch + (st.tick + 1) * IDM.dt, f = t === st.time ? 1 : (time - st.time) / (t - st.time), own = st.dist + (dist - st.dist) * f;
+      if (SUBTICK) st.prevX = new Map(st.cars.map((c) => [c.id, c.x]));   // TSUB: the positions before this step, to interpolate from
       seedTraffic(src, st, own, time, false); advanceTraffic(src, st, own, time);
     }
     st.time = t; st.dist = dist;
     const cars = [];
+    // TSUB: the traffic pose is stepped at 20 Hz; with the option on, the drawn pose is interpolated between the last two steps.
+    // frac runs 0 (just after a tick: the pose is the previous tick's, the usual one-tick render lag) to 1 (the next tick's pose).
+    // A car without a predecessor (newly seeded) and a turning car keep their tick pose.
+    const frac = SUBTICK ? Math.max(0, Math.min(1, (t - (st.epoch + st.tick * IDM.dt)) / IDM.dt)) : 0;
     for (const c of st.cars) {
       if (!tr[c.kind]) continue;
-      const pose = c.turn ? turnPose(c, t) : { x: c.x, off: 0, yaw: 0 }, rel = pose.x - dist;
+      let cx = c.x;
+      if (SUBTICK && frac > 0 && !c.turn && st.prevX && st.prevX.has(c.id)) { const px = st.prevX.get(c.id); cx = px + (c.x - px) * frac; }
+      const pose = c.turn ? turnPose(c, t) : { x: cx, off: 0, yaw: 0 }, rel = pose.x - dist;
       if (rel < -6 || rel > (tr.cull || CULL)) continue;
       cars.push({ id: c.id, kind: c.kind, rel, off: (c.kind === 'oncoming' ? src.lane : 0) + pose.off, yaw: pose.yaw, v: c.v, turning: !!c.turn });
     }
@@ -430,7 +441,36 @@
   function endlessTileRaw(seed, k, biome) { const t = roadTile(seed, k, ENDLESS_WEIGHTS[biome]); t.biome = biome; return t; }   // the per-biome pick before the chaining rules
   // tileA: the tile road's route A; under elevatedView (p.touge pipeline on, not the pass) it goes through
   // RF.Touge.elevate with height 0, so the 3D pipeline renders it flat. Legacy: the plain 2D tileRoute.
-  const tileA = (p, dist) => { const A2 = tileRoute(p.src.tiles.seed, dist, undefined, p.src.tiles.endless ? endlessTile : null); return (p.touge && !p.src.tiles.mountain) ? RF.Touge.elevate(A2, dist, p.lane, false) : A2; };
+  const tileA = (p, dist) => { const A2 = tileRoute(p.src.tiles.seed, dist, undefined, p.src.tiles.endless ? endlessTile : null);
+    if (p.touge && !p.src.tiles.mountain) return p.src.tiles.endless ? RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed)) : RF.Touge.elevate(A2, dist, p.lane, false);
+    return A2; };   // elevatedView: endless tiles ride the biome elevation (rolling hills / pass grades); plain tiles stay flat (height 0)
+  // §2-endless elevation (rolling hills / forested pass): a seeded grade walk, one grade per 16-tile biome block
+  // (mountain ±2–6%, open/forest ±0.5–1.5% rolling, city flat), lap-periodic like the pass so z(s) is O(1).
+  const ENDLESS_BLOCK = 16 * 200;   // one biome block = 16 tiles = 3.2 km
+  const endlessElevCache = new Map();
+  function endlessGrade(seed, b) {   // grade (rise/run) of biome block b, seeded from the block's biome
+    const biome = endlessBiome(seed, b * 16), R = D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(b + 1, 0x9E3779B1)) >>> 0);
+    if (biome === 'mountain') return (R() < 0.5 ? -1 : 1) * (0.02 + 0.04 * R());
+    if (biome === 'city') return 0;
+    return (R() < 0.5 ? -1 : 1) * (0.005 + 0.01 * R());   // open/forest: gentle rolling
+  }
+  const RAMP = 100;   // vertical-curve ramp at biome-block boundaries (m), like the pass's parabolas
+  function endlessElev(seed) {   // -> fn(absS) absolute elevation, deterministic in (seed, s); cumulative table extends lazily
+    if (endlessElevCache.has(seed)) return endlessElevCache.get(seed);
+    const g = [], cum = [0];   // g[b] = block grade; within a block the grade ramps g[b-1]->g[b] over the first RAMP m and g[b]->g[b+1] over the last
+    const blockZ = (b) => RAMP * (g[b - 1 < 0 ? 0 : b - 1] + g[b]) / 2 + (ENDLESS_BLOCK - 2 * RAMP) * g[b] + RAMP * (g[b] + g[b + 1]) / 2;
+    const ensure = (b) => { while (g.length <= b + 1) { const i = g.length; g.push(endlessGrade(seed, i)); if (i > 0) cum[i] = cum[i - 1] + blockZ(i - 1); } };
+    ensure(1);
+    const fn = (s) => {
+      const b = Math.max(0, Math.floor(s / ENDLESS_BLOCK)); ensure(b);
+      const u = s - b * ENDLESS_BLOCK, g0 = g[b], gP = g[b - 1 < 0 ? 0 : b - 1], gN = g[b + 1];
+      if (u < RAMP) { const t = u / RAMP, gt = gP + (g0 - gP) * t; return cum[b] + gP * u + (g0 - gP) * u * u / (2 * RAMP); }
+      if (u > ENDLESS_BLOCK - RAMP) { const w = u - (ENDLESS_BLOCK - RAMP), t = w / RAMP, gt = g0 + (gN - g0) * t; return cum[b] + RAMP * (gP + g0) / 2 + (ENDLESS_BLOCK - 2 * RAMP) * g0 + g0 * w + (gN - g0) * w * w / (2 * RAMP); }
+      return cum[b] + RAMP * (gP + g0) / 2 + g0 * (u - RAMP);
+    };
+    endlessElevCache.set(seed, fn);
+    return fn;
+  }
   function endlessTile(seed, k) {
     const biome = endlessBiome(seed, k), t = endlessTileRaw(seed, k, biome);
     if (biome === 'mountain' && k > 0) {   // switchbacks: a curve answers the previous curve with the opposite sign
@@ -548,7 +588,7 @@
   const CROSSER_KIND = () => (globalThis.PED_FIXED_KINDS === true ? 'dark' : 'seeded');
   function tileWorld(p, dist, t, tauOf) {
     if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t, tauOf);
-    const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? endlessTile : null), A = (p.touge && !cfg.mountain) ? RF.Touge.elevate(A0, dist, lane, false) : A0, edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
+    const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? endlessTile : null), A = (p.touge && !cfg.mountain) ? (cfg.endless ? RF.Touge.elevate(A0, dist, lane, true, endlessElev(cfg.seed)) : RF.Touge.elevate(A0, dist, lane, false)) : A0, edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
     const pp = Object.assign({}, p, { A });
     // Street lights can reach foliage outside our beam: keep it for actual per-point shading.
     const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' && !p.detailedModels ? dimFoliage(pp) : null, D.Models.deerEnabled(p)).concat(trafficObjects(src, trafficCars(src, dist, t), A, pp));
@@ -1206,6 +1246,7 @@ void main() {
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
     const I = info(), o = I.o, pool = trafficPoolOf(o), W = sz.W, H = sz.H, ownNow = ownBeams(o);
+    SUBTICK = o.trafficSubTick === 'on';
     const ownLowKey = o.ownLow && o.ownLow !== 'design' ? (ownNow.low ? 'R:' + ownNow.lowId : 'U:' + o.ownLow) : o.ownLow, ownHighKey = o.ownHigh && o.ownHigh !== 'generic' ? (ownNow.high ? 'R:' + ownNow.highId : 'U:' + o.ownHigh) : o.ownHigh;
     const key = JSON.stringify([I.groundKey, W, H, hfovFor(o.fov, sz.aspect), simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, ownLowKey, ownHighKey, lampTintOf(I, ownNow).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     if (V.shuf) V.shuf.title = shuffleTip(o);   // the tooltip follows the renderer, every frame
@@ -1215,7 +1256,7 @@ void main() {
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
     const own = ownNow, tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
-    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloLampWin: o.haloLampWin, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloCrossingRefine: o.haloCrossingRefine, haloRefineNeighbour: o.haloRefineNeighbour, haloMoment: o.haloMoment, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!((o.mountainPass || o.elevatedView) && V.three), mountainPass: !!o.mountainPass };   // elevatedView: every scene through the 3D touge route (flat = height 0), legacy 2D path as fallback
+    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloLampWin: o.haloLampWin, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloCrossingRefine: o.haloCrossingRefine, haloRefineNeighbour: o.haloRefineNeighbour, haloMoment: o.haloMoment, haloWidthStep: o.haloWidthStep, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient, trafficSubTick: o.trafficSubTick === 'on' }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!((o.mountainPass || o.elevatedView) && V.three), mountainPass: !!o.mountainPass };   // elevatedView: every scene through the 3D touge route (flat = height 0), legacy 2D path as fallback
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || (D.wetnessOf(o) > 0 && o.wetSheen) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g); if (!TL.cur) tlOpen('rebuild'); tlMark(V.three ? 'ground (GPU path, drawn per frame)' : 'ground built (CPU)', V.three ? null : { groundMs: V.g.ms });
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1942,7 +1983,7 @@ void main() {
     if (tb.querySelector('[data-game="toggle"]')) return;
     const tiles = E('button', { type: 'button', class: 'toggle', 'data-anim': 'tiles', title: 'Seeded route: straights, bends, intersections, T-junctions and lit urban sections. Off = the original constant road. Animation only; traces at 640 × 360.' }, 'tiles');
     tiles.addEventListener('click', () => setDV(ui, 'tiles', !info().o.tiles));
-    const endless = E('button', { type: 'button', class: 'toggle', 'data-anim': 'endlessRoad', 'aria-pressed': 'false', title: 'Endless biome road (prototype): tiles come from a seeded biome walk — open / forest / city / mountain — with sensible chaining (no loops, switchbacks in the mountains) and per-biome lamps, traffic density, speed, deer and signs. Needs route tiles. Off: the uniform tile pick, exactly as before.' }, 'biomes');
+    const endless = E('button', { type: 'button', class: 'toggle', 'data-anim': 'endlessRoad', 'aria-pressed': 'false', title: 'Endless biome road (prototype) — ON: route tiles come from a seeded biome walk (open / forest / city / mountain, one biome per 3.2 km) with sensible chaining (no loops, switchbacks in the mountains) and per-biome lamps, traffic density, speed, deer and signs. The status line names the current biome. Needs route tiles (ON by default). OFF: the uniform tile pick, exactly as before.' }, 'endless road');
     endless.addEventListener('click', () => setDV(ui, 'endlessRoad', !info().o.endlessRoad));
     const game = E('button', { type: 'button', class: 'toggle', 'data-game': 'toggle', 'aria-pressed': 'false', title: 'Reach > uniformity: five hazards, hold Space or Brake. Game scoring, not legal advice.' }, 'Game');
     game.addEventListener('click', () => toggleGame(ui));
@@ -2427,7 +2468,8 @@ void main() {
   function whereAt(o, dist) {
     const k = Math.floor(dist / TILE_LEN), w = { dist, tileIndex: k, tileLen: TILE_LEN, seed: (+o.seed || 0) | 0 };   // one seed drives scenery, tiles and traffic
     if (o.mountainPass) { const pr = RF.Touge.profile(dist); Object.assign(w, { road: 'mountain pass', tileKind: RF.Touge.tile(0, k).kind, gradePct: 100 * pr.grade, bankPct: 100 * RF.Touge.bank(dist) }); }
-    else if (o.tiles) Object.assign(w, { road: 'tiles', tileKind: roadTile(w.seed, k).kind });
+    else if (o.tiles) { const et = o.endlessRoad ? endlessTile(w.seed, k) : null; Object.assign(w, { road: 'tiles', tileKind: et ? et.kind + ' · ' + et.biome : roadTile(w.seed, k).kind });   // §2-endless: the readout names the biome too
+      if (o.endlessRoad && o.elevatedView) { const h = endlessElev(w.seed); w.gradePct = +(100 * (h(dist + 50) - h(dist - 50)) / 100).toFixed(1); } }
     else Object.assign(w, { road: o.scene || 'road', lapLen: PERIOD, lap: Math.floor(dist / PERIOD), inLap: dist - PERIOD * Math.floor(dist / PERIOD) });
     return w;
   }
@@ -2670,7 +2712,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / (Math.max(5, kmhOf()) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { timeline: () => TL.events, stateDump, readState, loadState, STATE_KIND, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, endlessTile, endlessBiome, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { timeline: () => TL.events, stateDump, readState, loadState, STATE_KIND, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, endlessTile, endlessBiome, endlessElev, endlessGrade, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

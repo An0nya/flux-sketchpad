@@ -37,10 +37,11 @@ for (const step of [1, 0.5, 0.25]) {
   ok('WIDTH ' + step + ': the march body is unchanged (one sample body)', (t.match(/vec3 d = haloEye \+ s \* ray - lamp;/g) || []).length === 1);
 }
 
-// 3. the crossing-bin refinement wins when both are on (the width ladder is not built then)
+// 3. the width ladder composes with P1c: the crossing bin uses the refined ladder, the other bins use the width ladder
 const both = F.haloTableSource(false, false, false, '', false, false, 0, 512, true, 0, 0.25);
-ok('WIDTH + P1c: the crossing refinement wins (the width ladder is not built)', !both.includes('uniform float haloWidthStep;') && both.includes('int rn = 512 / haloP;'));
-ok('WIDTH + P1c: the crossing ladder is intact', both.includes('crossingBin') && both.includes('haloP') && !both.includes('ceil(bw /'));
+ok('WIDTH + P1c: the width uniform is declared (the width ladder runs in the non-crossing bins)', both.includes('uniform float haloWidthStep;'));
+ok('WIDTH + P1c: the crossing ladder is intact (the crossing bin uses the refined ladder)', both.includes('crossingBin') && both.includes('int rn = 512 / haloP;'));
+ok('WIDTH + P1c: the width ladder is present (the non-crossing bins use the width ladder)', both.includes('ceil(bw /') && both.includes('float bw = hi - lo;'));
 
 // 4. the option is declared once, default off, with a control and a test
 const reg = fs.readFileSync(path.join(ROOT, 'js', 'options-registry.js'), 'utf8'), ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');

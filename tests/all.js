@@ -45,8 +45,10 @@ run('le-chonk scrubber + wet veil options (tests/le-chonk-scrub-veil.js)', ['tes
 run('le-chonk side marker lamps option (tests/le-chonk-markers.js)', ['tests/le-chonk-markers.js']);
 run('le-chonk endless biome road prototype (tests/le-chonk-endless.js)', ['tests/le-chonk-endless.js']);
 run('le-chonk elevatedView 3D-route prototype (tests/le-chonk-elevated.js)', ['tests/le-chonk-elevated.js']);
+run('le-chonk endless biome elevation (tests/le-chonk-hills.js)', ['tests/le-chonk-hills.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
+run('every halo option is projected into the renderer (tests/halo-look-projection.js)', ['tests/halo-look-projection.js']); // nemotron (inert-option guard)
 run('driver\'s-eye view (tests/drive.js)', ['tests/drive.js']);
 run('detailed models prototype (tests/models-proto.js)', ['tests/models-proto.js']);
 run('leafy foliage prototype (tests/foliage.js)', ['tests/foliage.js']);

@@ -176,10 +176,12 @@ ${MARCH}
 // 6-step bin, so the shipped quadrature either misses it or lands on it: the table pulses as the lamp moves. This builds a separate shader variant that
 // replaces that bin's six steps with 512 or 2048 log-spaced steps. The ordinary bins keep the shipped schedule, so the option changes only the crossing bin.
 const CROSS_HEAD = '    float qq = pow(hi / lo, 1.0 / float(' + HALO_BIN_STEPS + ' * haloP));\n', CROSS_TAIL = '\n    }\n  }\n  gl_FragColor = vec4(acc, 1.0);';
-const crossText = (main, n, nb = false) => {
+const crossText = (main, n, nb = false, widthStep = 0) => {
   const a = main.indexOf(CROSS_HEAD), b = main.indexOf(CROSS_TAIL, a);
   if (a < 0 || b < 0) throw new Error('P1c: crossing-bin loop not found');
-  const loop = main.slice(a, b + '\n    }'.length), bodyAt = loop.indexOf('      vec3 d = '), bodyEnd = loop.lastIndexOf('\n    }');
+  let loop = main.slice(a, b + '\n    }'.length);
+  if (widthStep > 0) loop = loop.replace(WIDTH_LADDER_OLD, WIDTH_LADDER_NEW);   // WIDTH: the non-crossing bins use the width-driven ladder, the crossing bin uses the refined ladder below
+  const bodyAt = loop.indexOf('      vec3 d = '), bodyEnd = loop.lastIndexOf('\n    }');
   if (bodyAt < 0 || bodyEnd < bodyAt) throw new Error('P1c: crossing-bin sample body not found');
   const body = loop.slice(bodyAt, bodyEnd).replace(/\bds\b/g, 'rds').replace(/\bs\b/g, 'rs');
   const refined = '    float fwdDot = dot(ray, fw);\n    float sCross = abs(fwdDot) > 1e-7 ? dot(lamp - haloEye, fw) / fwdDot : -1.0;\n'
@@ -272,7 +274,7 @@ const smText = (t, occ) => { const hook = occ ? '      if (smM >= 0 ? !smLit(smM
 // P3 (option haloMoment): the table pass writes the first moment (the glow-weighted depth sum) into the free alpha channel, so the lookup can place
 // each bin's mass at its mean depth instead of its upper edge. off compiles the shipped text unchanged (no surgery); on rewrites the march to split the
 // scalar weight, declares accM, writes vec4(acc, accM), and scales accM with the share. The LW window runs the same march body, so the global rewrites hit
-// both copies. P3 is ignoredWhile crossingRefine is on, so the crossing variant is never built here (the surgery guards on !refine too).
+// both copies. P3 composes with crossing refinement now (the crossing variant is moment-aware via the second regex below).
 const momentText = (body) => body
   .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* s\) \* ds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds; acc += w * tint; accM += s * w;')   // every copy of the march (the ladder and the LW window)
   .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* rs\) \* rds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * rs) * rds; acc += w * tint; accM += rs * w;')   // P3+RN: the crossing-refined ladder (crossText renames s→rs, ds→rds)
@@ -295,7 +297,7 @@ const WIDTH_LADDER_NEW = `    float bw = hi - lo;
       float sa = lo + bw * float(m) / float(nk), sb = lo + bw * float(m + 1) / float(nk), s = 0.5 * (sa + sb), ds = sb - sa;`;
 const widthText = (body) => { if (!body.includes(WIDTH_LADDER_OLD)) throw new Error('WIDTH: the ordinary ladder not found once'); return body.replace(WIDTH_LADDER_OLD, WIDTH_LADDER_NEW); };
 export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0) {
-  const main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN), useWidth = !refine && widthStep > 0, raw = refine ? crossText(main, refine, nb) : (useWidth ? widthText(main) : main);
+  const main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN), useWidth = widthStep > 0, raw = refine ? crossText(main, refine, nb, widthStep) : (useWidth ? widthText(main) : main);
   const body0 = variant === 'band' ? bandText(raw) : variant === 'split' ? splitText(raw) : raw, body = sm ? smText(body0, occ) : body0;
   const withLw = lw > 0 && !refine ? lwText(body, occ, sm) : body;
   const withMoment = moment ? momentText(withLw) : withLw;   // P3: the surgery runs on the moment variant (composes with refine now); off is the shipped text byte-for-byte
@@ -602,7 +604,7 @@ export function haloPass(renderer, u) {
       const refineN = [32, 64, 128, 256, 512, 2048].includes(+look.haloCrossingRefine) ? +look.haloCrossingRefine : 0;   // P1c: the crossing bin's extra steps (0 = the shipped six; 32..2048 = the refined ladder's cell count)
       const lwRaw = look.haloLampWin, lwK = refineN ? 0 : lwRaw === 'off' || lwRaw === undefined || lwRaw === null || lwRaw === 0 ? 0 : Math.max(4, Math.min(96, Math.round(+lwRaw || 0)));   // LW: window steps per bin (0 = the old 6-step ladder); P1c wins if both are on
       const nbN = refineN > 0 && look.haloRefineNeighbour === 'on';
-      const widthStep = refineN ? 0 : (['1', '0.5', '0.25'].includes(String(look.haloWidthStep)) ? +look.haloWidthStep : 0);   // WIDTH: the target sample spacing in metres (0 = the shipped six per bin); P1c wins when both are on   // RN: widen P1c's trigger to the crossing bin's eye-side neighbour (inert unless P1c is on)
+      const widthStep = (['1', '0.5', '0.25'].includes(String(look.haloWidthStep)) ? +look.haloWidthStep : 0);   // WIDTH: the target sample spacing in metres (0 = the shipped six per bin); composes with P1c (the crossing bin uses the refined ladder, the other bins use the width ladder)   // RN: widen P1c's trigger to the crossing bin's eye-side neighbour (inert unless P1c is on)
       halo.lw = lwK; halo.cross = refineN; halo.nb = nbN ? 1 : 0; halo.moment = look.haloMoment === 'on' ? 1 : 0; halo.width = widthStep;   // LW: the lamp-window schedule used this frame (0 = off); RN: 1 = the neighbour bin is refined too; P3/glm5.2: mean-placement on
       halo.jit = jit; halo.blur = blurR; halo.dblur = blurD;   // IL: interleaved sampling   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
       const occU = (mm) => { if (useOcc) Object.assign(mm.uniforms, { crestH: { value: occ.texture }, crestWFC: { value: occ.wfc }, crestBox: { value: occ.box }, crestZ: { value: occ.z } }); if (jit) mm.uniforms.haloJitAmt = { value: jitAmt }; };   // IL: the jitter amount rides along

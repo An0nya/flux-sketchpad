@@ -1438,6 +1438,26 @@
       tests: [],
       note: 'Objects trace cost x4 at 2.',
     },
+    {
+      id: 'haloWidthStep', kind: 'profile', type: 'enum', values: ['off', '1', '0.5', '0.25'],
+      default: 'off', label: 'halo width-driven samples',
+      control: '[data-dv="haloWidthStep"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'table-rebuild',
+      owner: ['js/spec-ui.js', 'js/drive-three-halo.js'],
+      requires: [need('gpu'), need('air'), need('haloOn')],
+      tests: ['node:halo-width-step'],
+      note: 'minimax: each bin gets a sample count from its own width, so the samples spread evenly in depth (the shipped six are log-spaced, which leaves far bins sampled metres apart). 1 m, 0.5 m or 0.25 m: more samples, a slower table. Off by default. Mutually exclusive with crossing refinement (P1c wins when both are on).',
+    },
+    {
+      id: 'trafficSubTick', kind: 'profile', type: 'enum', values: ['off', 'on'],
+      default: 'off', label: 'traffic sub-tick interpolation',
+      control: '[data-dv="trafficSubTick"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'free',
+      owner: ['js/spec-ui.js', 'js/drive-anim.js'],
+      requires: [],
+      tests: ['node:traffic-subtick'],
+      note: 'The traffic is stepped at 20 Hz (IDM.dt = 0.05 s), so the drawn cars - and the oncoming scatter table built from their lamp positions - jump every 0.05 s: a staircase at 20 Hz, whatever the closing speed. With this on, the drawn pose is interpolated between the last two steps; the simulation stays on the 20 Hz tick, so the physics is unchanged.',
+    },
     // ---- saved options that DV_DEF does not declare, derived dropdowns, session and game state (never added to DV_DEF)
     {
       id: 'wetness', kind: 'extra', type: 'number', values: { min: 0, max: 1, step: 'cycles 0 / 0.4 / 1' },
