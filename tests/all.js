@@ -43,8 +43,10 @@ run('road model + IIHS metrics (tests/road.js)', ['tests/road.js']);
 run('beam quality report (tests/beam-quality.js)', ['tests/beam-quality.js']);
 run('le-chonk scrubber + wet veil options (tests/le-chonk-scrub-veil.js)', ['tests/le-chonk-scrub-veil.js']);
 run('le-chonk side marker lamps option (tests/le-chonk-markers.js)', ['tests/le-chonk-markers.js']);
+run('le-chonk endless biome road prototype (tests/le-chonk-endless.js)', ['tests/le-chonk-endless.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
+run('haloMoment: each bin mean is clamped into its own bin, so a nearly-empty bin cannot throw an interior knot (tests/halo-moment-clamp.js)', ['tests/halo-moment-clamp.js']); // step5-preview (P3 mean clamp)
 run('driver\'s-eye view (tests/drive.js)', ['tests/drive.js']);
 run('detailed models prototype (tests/models-proto.js)', ['tests/models-proto.js']);
 run('leafy foliage prototype (tests/foliage.js)', ['tests/foliage.js']);

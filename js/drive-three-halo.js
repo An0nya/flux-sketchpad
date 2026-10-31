@@ -304,8 +304,13 @@ export function haloLookup(bins, d, edges = HALO_EDGES.slice(1), moment) {
   if (dd <= edges[0]) { const f = Math.log(dd / 0.5) / Math.log(edges[0] / 0.5); return Cc[0].map((v) => v * f); }
   if (moment) {   // P3/glm5.2: monotone Hermite (Fritsch-Carlson PCHIP) through the means, the CPU twin of the GPU haloCurveP3H
     const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    const mean = (k) => { const m = bins[k], w = lum(m[0], m[1], m[2]); return w > 1e-9 ? (m[3] || 0) / w : (k > 0 ? (edges[k - 1] + edges[k]) / 2 : edges[0] / 2); };   // bin k's mass mean; fallback to the bin midpoint
+    // step5-preview (with qwen3.8max's clamp fix for the GPU P3H): a bin's mean clamped into its own bin, and the fallback
+    // already inside it, so nearly-empty bins cannot throw a knot across the curve (the black rows / 7500x spike).
+    const mean = (k) => { const m = bins[k], w = lum(m[0], m[1], m[2]), lo = k > 0 ? edges[k - 1] : 0.5, hi = edges[k];
+      const raw = w > 1e-9 ? (m[3] || 0) / w : (lo + hi) / 2;
+      return Math.min(hi, Math.max(lo, raw)); };
     const x = []; for (let k = 0; k < n; k++) x.push(Math.log(Math.max(mean(k), 0.5)));   // knot x = log(mean_k)
+    for (let k = 1; k < n; k++) if (!(x[k] > x[k - 1])) x[k] = x[k - 1] + 1e-9;   // two means on one edge: keep the knot strictly increasing
     const y = Cc, h = [], sl = [];
     for (let k = 0; k < n - 1; k++) { h.push(x[k + 1] - x[k]); sl.push([0, 1, 2].map((c) => (y[k + 1][c] - y[k][c]) / h[k])); }
     const m = (k) => {   // knot slope; Fritsch-Carlson: zero where neighbouring segments disagree in sign, else the weighted harmonic mean

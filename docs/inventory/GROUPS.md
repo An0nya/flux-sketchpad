@@ -84,10 +84,10 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
 | `view` | Camera and playback | 4 | 3 | 1 | 0 | 0 | 0 | 0 |
-| `road` | Road and route | 9 | 2 | 5 | 0 | 0 | 0 | 2 |
+| `road` | Road and route | 10 | 2 | 6 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 8 | 0 | 5 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 32 | 0 | 4 | 0 | 28 | 0 | 0 |
+| `halo` | Traffic halo | 33 | 0 | 4 | 0 | 29 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 16 | 0 | 13 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
@@ -115,6 +115,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `seed` | scenery seed | profile | More | 7 | needs `seedUsed` [disabled] |
 | `density` | scenery density | profile | More | 1.5 | needs `densityUsed` [disabled] |
 | `tiles` | route tiles | profile | More | true | - |
+| `endlessRoad` | endless biomes | profile | More | false | needs `tilesOn` [disabled] |
 | `tileCache` | cache ground | profile | More | true | needs `tilesOn` [disabled] |
 | `mountainPass` | mountain pass (scene select) | profile | toolbar | false | - |
 | `cline` | centre line | profile | More | "solid" | needs `usRoad` [disabled] |
@@ -173,7 +174,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `haloLampWin` | lamp-window steps | profile | advanced halo | "off" | ignored when `crossingRefineOn` [none] |
 | `haloCrossingRefine` | crossing-bin refinement | profile | advanced halo | 0 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloRefineNeighbour` | refine eye-side neighbour bin | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `crossingRefineOn` [none] |
-| `haloMoment` | halo first-moment bins | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none]; ignored when `crossingRefineOn` [none] |
+| `haloMoment` | halo first-moment bins | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloAutoRange` | halo table auto range | profile | advanced halo | "4-8" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloNearSub` | halo near quality | profile | advanced halo | 1 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloConePass` | cone pass | profile | advanced halo | "2" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
@@ -183,6 +184,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `trafficShadowRoad` | traffic shadows on the road | profile | advanced halo | "on" | needs `gpu` [tooltip], `passHalo` [none] |
 | `trafficShadowObjects` | objects cast traffic shadows | profile | advanced halo | "on" | needs `gpu` [tooltip], `passHalo` [none] |
 | `trafficShadowSoft` | traffic road shadow softening | profile | advanced halo | "off" | needs `gpu` [tooltip], `passHalo` [none] |
+| `trafficSubTick` | traffic sub-tick interpolation | profile | advanced halo | "off" | - |
 | `scatterCull` | oncoming in-scatter culling | profile | advanced halo | "fast" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `scatterCullEps` | culling threshold (fast) | profile | advanced halo | 0.001 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `cullFast` [none] |
 | `scatterRange` | scatter range (m) | profile | advanced halo | 120 | needs `air` [hidden] |

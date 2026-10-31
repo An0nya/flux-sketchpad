@@ -54,6 +54,8 @@ const F = loadHalo(ROOT);   // the workspace tree (this test runs against the tr
   ok('table: ON splits the march (float w) and accumulates the moment (accM += s * w)', /float w = sigma/.test(on) && /accM \+= s \* w;/.test(on));
   const onSplit = F.haloTableSource(false, false, false, 'split', false, false, 0, 0, 0, 1);
   ok('table: ON split scales the moment with the share (accM *= swt) and zeroes the early-out alpha', /accM \*= swt;/.test(onSplit) && /vec4\(0\.0, 0\.0, 0\.0, 0\.0\)/.test(onSplit));
+  const onCross = F.haloTableSource(false, false, false, '', false, false, 0, 512, true, 1);   // P3+RN: crossing-refined + moment
+  ok('table: ON + crossing refinement composes (the refined ladder accumulates accM += rs * w)', /accM \+= rs \* w;/.test(onCross) && /float accM = 0\.0;/.test(onCross) && /vec4\(acc, accM\);/.test(onCross));
   ok('table: the blend sums source alpha on the moment variant (OneFactor when moment), not discards it (ZeroFactor when off)', /blendSrcAlpha:\s*moment \? T\.OneFactor : T\.ZeroFactor/.test(fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8')));
 }
 
@@ -93,12 +95,12 @@ const F = loadHalo(ROOT);   // the workspace tree (this test runs against the tr
   ok('cpu twin: OFF does not step at the mean (the Hermite is smooth there)', Math.abs(offAfter[0] - offBefore[0]) < 0.5, { offBefore: offBefore[0], offAfter: offAfter[0] });
 }
 
-// 4. The registry entry: declared once, default off, GPU/air/haloOn required, ignored while P1c is on.
+// 4. The registry entry: declared once, default off, GPU/air/haloOn required, composes with crossing refinement.
 {
   const Opt = require(path.join(ROOT, 'js', 'options-registry.js')), e = Opt.OPTIONS.find((x) => x.id === 'haloMoment');
   ok('registry: haloMoment is declared once, default off, with off and on', !!e && e.default === 'off' && e.values.join(',') === 'off,on' && e.type === 'enum');
   ok('registry: defaults() carries it as off', Opt.defaults().haloMoment === 'off');
-  ok('registry: requires gpu, air and haloOn; ignored while crossingRefine is on', e && e.requires.some((r) => r.rule === 'gpu') && e.requires.some((r) => r.rule === 'air') && e.requires.some((r) => r.rule === 'haloOn') && e.ignoredWhen.some((r) => r.rule === 'crossingRefineOn'));
+  ok('registry: requires gpu, air and haloOn; composes with crossingRefine (no ignoredWhen)', e && e.requires.some((r) => r.rule === 'gpu') && e.requires.some((r) => r.rule === 'air') && e.requires.some((r) => r.rule === 'haloOn') && !e.ignoredWhen);
   ok('registry: cites the node test', e && e.tests.join(',') === 'node:halo-moment');
 }
 

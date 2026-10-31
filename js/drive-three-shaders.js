@@ -100,14 +100,14 @@ vec3 haloPchipSlope(vec3 a, vec3 b, float hL, float hR) {
 vec3 haloCurveP3H(int s, vec4 K0, vec4 K1, vec4 K2, vec4 K3, float dd) {
   if(dd<=haloE[0]) return K1.rgb*log(dd/0.5)/log(haloE[0]/0.5);
   float lum1 = haloLum(K1.rgb-K0.rgb), lum2 = haloLum(K2.rgb-K1.rgb), lum3 = haloLum(K3.rgb-K2.rgb);
-  float m0 = max(lum1 > 1e-30 ? (K1.a-K0.a)/lum1 : haloE[max(s-1,0)], 0.5);   // mean of bin s
-  float m1 = max(lum2 > 1e-30 ? (K2.a-K1.a)/lum2 : haloE[s], 0.5);            // mean of bin s+1 (the bin holding dd)
-  float m2 = max(lum3 > 1e-30 ? (K3.a-K2.a)/lum3 : haloE[min(s+1,haloNu-1)], 0.5);  // mean of bin s+2
+  float m0 = clamp(lum1 > 1e-30 ? (K1.a-K0.a)/lum1 : haloE[max(s-1,0)], haloE[max(s-1,0)], haloE[s]);   // mean of bin s, clamped into its own bin
+  float m1 = clamp(lum2 > 1e-30 ? (K2.a-K1.a)/lum2 : haloE[s], haloE[s], haloE[min(s+1,haloNu-1)]);       // mean of bin s+1 (the bin holding dd)
+  float m2 = clamp(lum3 > 1e-30 ? (K3.a-K2.a)/lum3 : haloE[min(s+1,haloNu-1)], haloE[min(s+1,haloNu-1)], haloE[min(s+2,haloNu-1)]);  // mean of bin s+2
   float lx0 = log(m0), lx1 = log(m1), lx2 = log(m2);
   vec3 d01 = (K2.rgb - K1.rgb) / max(lx1 - lx0, 1e-30);   // secant of [m0, m1]
   vec3 d12 = (K3.rgb - K2.rgb) / max(lx2 - lx1, 1e-30);   // secant of [m1, m2]
   bool lower = dd < m1;   // dd is in [m0, m1] or [m1, m2]
-  float x0 = lower ? lx0 : lx1, x1 = lower ? lx1 : lx2, h = x1 - x0;
+  float x0 = lower ? lx0 : lx1, x1 = lower ? lx1 : lx2, h = max(x1 - x0, 1e-9);   // step5-preview: clamped means can still coincide; a zero-width segment would NaN the Hermite basis
   vec3 Y0 = lower ? K1.rgb : K2.rgb, Y1 = lower ? K2.rgb : K3.rgb;
   vec3 dS = lower ? d01 : d12;   // this segment's secant
   vec3 pchip = haloPchipSlope(d01, d12, lx1-lx0, lx2-lx1);   // the interior knot slope (at m1)
