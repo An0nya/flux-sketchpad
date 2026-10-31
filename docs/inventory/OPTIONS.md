@@ -97,7 +97,6 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `trafficShadowRoad` | profile | halo | recompile | "on" | needs `gpu` [tooltip], `passHalo` [none] | spec-ui.js, drive-three.js, drive-three-shadowmaps.js | - | - | - | - | - | - | - |
 | `trafficShadowObjects` | profile | halo | per-frame-gpu | "on" | needs `gpu` [tooltip], `passHalo` [none] | spec-ui.js, drive-three.js, drive-three-objects.js, drive-three-shadowmaps.js | - | - | - | - | - | - | - |
 | `trafficShadowSoft` | profile | halo | per-frame-gpu | "off" | needs `gpu` [tooltip], `passHalo` [none] | spec-ui.js, drive-three.js, drive-three-shadowmaps.js | - | - | - | - | - | - | - |
-| `trafficSubTick` | profile | halo | free | "off" | - | spec-ui.js, drive-anim.js | - | - | - | - | - | - | - |
 | `scatterCull` | profile | halo | per-frame-gpu | "fast" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] | spec-ui.js, drive-anim.js, drive-three-halo.js, drive-three-halo-cull.js | - | - | - | - | - | - | - |
 | `scatterCullEps` | profile | halo | free | 0.001 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `cullFast` [none] | drive-anim.js, drive-three-halo.js | - | - | - | - | - | - | - |
 | `scatterRange` | profile | halo | per-frame-gpu | 120 | needs `air` [hidden] | drive.js, drive-anim.js, drive-three-halo.js, drive-three-shaders.js, spec-ui.js | - | - | - | - | - | - | - |
@@ -191,6 +190,7 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `haloRangeRow` | derived | halo | free | (derived) | - | - | - | - | - | - | - | - | - |
 | `high` | session | own-lamp | table-rebuild | "off" (session) | - | - | - | - | - | - | - | - | - |
 | `gameOptions` | game | internal | free | (overlay) | - | - | - | - | - | - | - | - | - |
+| `trafficSubTick` | profile | halo | free | "off" | - | spec-ui.js, drive-anim.js | - | - | - | - | - | - | - |
 <!-- END GENERATED option-table -->
 
 DV_DEF keys with no row above (script check): none.

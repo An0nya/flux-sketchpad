@@ -51,8 +51,7 @@ const FROZEN_OLD_DV_DEF = {
   shadowRes: '512x512',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was '1024x512').
   trafficShadowRoad: 'on',
   trafficShadowObjects: 'on',   // SM1b: new option (not a default change)
-  trafficShadowSoft: 'off',
-  trafficSubTick: 'off',   // minimaxai (TSUB): new option (not a default change); registry position: after trafficShadowSoft, before scatterCull   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was '2x2'). Earlier: SM3 PCF: new option (not a default change)
+  trafficShadowSoft: 'off',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was '2x2'). Earlier: SM3 PCF: new option (not a default change)
   scatterCull: 'fast',   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 'exact'). Earlier: SC: new option (not a default change); default exact on purpose, it draws the identical table
   scatterCullEps: 0.001,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was 0.05). Earlier: SC: new option, the fast-mode threshold
   scatterRange: 120,   // SR: new option, the scatter range in m (120 = the old fixed value)
@@ -132,7 +131,9 @@ const FROZEN_OLD_DV_DEF = {
   trafficNearest: '8',
   simCeiling: 'high',
   minFps: 30,
-  samples: '1',};
+  samples: '1',
+  trafficSubTick: 'off',   // minimaxai (TSUB): new option (not a default change); registry position: at the END of the list
+};
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();

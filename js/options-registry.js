@@ -616,16 +616,6 @@
       note: "With trafficShadows and trafficShadowRoad on: how the ribbon's road test reads the map. off = one texel (hard, stepped edges); 2x2 = bilinear percentage-closer filtering (PCF: the yes/no answers of 4 texels averaged); 3x3 = a 9-texel tent. All three use the normal offset (the point lifted 1.5 texel footprints off its surface), which removes the crease sawtooth.",
     },
     {
-      id: 'trafficSubTick', kind: 'profile', type: 'enum', values: ['off', 'on'],
-      default: 'off', label: 'traffic sub-tick interpolation',
-      control: '[data-dv="trafficSubTick"]', where: 'halo-advanced', query: null,
-      group: 'halo', cost: 'free',
-      owner: ['js/spec-ui.js', 'js/drive-anim.js'],
-      requires: [],
-      tests: ['node:traffic-subtick'],
-      note: 'The traffic is stepped at 20 Hz (IDM.dt = 0.05 s), so the drawn cars - and the oncoming scatter table built from their lamp positions - jump every 0.05 s: a staircase at 20 Hz, whatever the closing speed. With this on, the drawn pose is interpolated between the last two steps; the simulation stays on the 20 Hz tick, so the physics is unchanged. Measured on the valley state: the oncoming car took 10 distinct positions in 50 frames at 100 Hz (5 frames each) with it off and 46 with it on, and the halo brightness in the picture changed on 46 of 50 frames instead of 11.',
-    },
-    {
       id: 'scatterCull', kind: 'profile', type: 'enum', values: ['off', 'exact', 'fast'],
       default: 'fast', label: 'oncoming in-scatter culling',
       defaultHistory: [
@@ -1557,6 +1547,16 @@
       owner: [],
       tests: [],
       note: 'st.gameOptions in drive-anim.js: the minigame overlay (mountainPass, scene, tiles, wild, seed, speed, wetness, people, animals, ...). Never saved; dropped on exit (game-options-leak fix).',
+    },
+    {
+      id: 'trafficSubTick', kind: 'profile', type: 'enum', values: ['off', 'on'],
+      default: 'off', label: 'traffic sub-tick interpolation',
+      control: '[data-dv="trafficSubTick"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'free',
+      owner: ['js/spec-ui.js', 'js/drive-anim.js'],
+      requires: [],
+      tests: ['node:traffic-subtick'],
+      note: 'The traffic is stepped at 20 Hz (IDM.dt = 0.05 s), so the drawn cars - and the oncoming scatter table built from their lamp positions - jump every 0.05 s: a staircase at 20 Hz, whatever the closing speed. With this on, the drawn pose is interpolated between the last two steps; the simulation stays on the 20 Hz tick, so the physics is unchanged. Measured on the valley state: the oncoming car took 10 distinct positions in 50 frames at 100 Hz (5 frames each) with it off and 46 with it on, and the halo brightness in the picture changed on 46 of 50 frames instead of 11.',
     },
   ];
 

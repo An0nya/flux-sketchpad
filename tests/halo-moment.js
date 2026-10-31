@@ -63,9 +63,9 @@ const F = loadHalo(ROOT);   // the workspace tree (this test runs against the tr
 //    tree from /workspace (the host copy without P3) and compare over a sweep of depths. The moment
 //    param is additive: undefined / 0 take the shipped path; a truthy value takes the step-at-mean.
 {
-  const WS = '/workspace';   // the shared tree (shipped, no P3) — the OFF baseline
+  const WS = process.env.FLUX_SHIPPED_TREE || '/workspace';   // the pre-P3 shipped tree — the OFF baseline. Overridable so a host checkout can point at it; do NOT relativize to __dirname (that would make the baseline the same tree as the code under test and silently skip the assertion).
   const hasShipped = fs.existsSync(path.join(WS, 'js', 'drive-three-halo.js'));
-  const shW = fs.readFileSync(path.join(WS, 'js', 'drive-three-shaders.js'), 'utf8');
+  const shW = hasShipped ? fs.readFileSync(path.join(WS, 'js', 'drive-three-shaders.js'), 'utf8') : '';   // qwen3.8max: guard the read — on the host /workspace may not exist
   const shippedHasMoment = /uniform int haloMoment;/.test(shW);
   let shipped = null;
   if (hasShipped && !shippedHasMoment) shipped = loadHaloFresh(WS);   // only if /workspace is the pre-P3 build

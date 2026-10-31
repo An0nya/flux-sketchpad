@@ -184,12 +184,12 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `trafficShadowRoad` | traffic shadows on the road | profile | advanced halo | "on" | needs `gpu` [tooltip], `passHalo` [none] |
 | `trafficShadowObjects` | objects cast traffic shadows | profile | advanced halo | "on" | needs `gpu` [tooltip], `passHalo` [none] |
 | `trafficShadowSoft` | traffic road shadow softening | profile | advanced halo | "off" | needs `gpu` [tooltip], `passHalo` [none] |
-| `trafficSubTick` | traffic sub-tick interpolation | profile | advanced halo | "off" | - |
 | `scatterCull` | oncoming in-scatter culling | profile | advanced halo | "fast" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `scatterCullEps` | culling threshold (fast) | profile | advanced halo | 0.001 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `cullFast` [none] |
 | `scatterRange` | scatter range (m) | profile | advanced halo | 120 | needs `air` [hidden] |
 | `haloQuality` | oncoming scatter quality | derived | More | (derived) | - |
 | `haloRangeRow` | oncoming range | derived | More | (derived) | - |
+| `trafficSubTick` | traffic sub-tick interpolation | profile | advanced halo | "off" | - |
 
 #### Street lamps (`street-lamps`)
 

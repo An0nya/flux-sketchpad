@@ -74,5 +74,6 @@ run('SB2 wet sheen from studs and paint: source admission, caps, paint gloss, GP
 run('saveable beams: format, checksum, grid, bundle, synthetic (tests/beams.js)', ['tests/beams.js']);
 run('BA5 GPU beam atlas: packing, shader text, pick equality (tests/beam-atlas.js)', ['tests/beam-atlas.js']);
 run('scene details: registry and metric maths (tests/scene-details.js)', ['tests/scene-details.js']);
+run('option round-trip: every profile option survives dump -> read, extras survive, loadState writes back (tests/option-roundtrip.js)', ['tests/option-roundtrip.js']); // glm5.2 (step5-preview open item #1)
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

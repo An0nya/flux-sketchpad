@@ -58,3 +58,26 @@ ok('the mirror exemptions on scene-regen are the known set (2: haloRangeRow, gam
 // a free cost on a real knob must not hide one that needs a rebuild: the count of scene-regen options stays high
 const regen = Opt.OPTIONS.filter((o) => o.cost === 'scene-regenerate').length;
 ok('the scene-regenerate set is not being quietly emptied', regen >= 30, regen);
+
+// A third sweep: no non-free option may be named nowhere. A bundle mirror (kind 'derived': airLevel, haloQuality)
+// is exempt - it is never stored and only ever *writes* a bundle - but every member of that bundle must itself be
+// plumbed, which is the check that actually matters for them.
+const RENDER = ['drive.js', 'drive-three.js', 'drive-three-shaders.js', 'drive-three-halo.js', 'drive-three-objects.js',
+  'drive-three-beamcone.js', 'drive-three-shadowmaps.js', 'drive-three-halo-cull.js', 'drive-scenes.js', 'drive-models.js',
+  'drive-anim.js'].map((f) => [f, fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')]);
+const helperRe = /airLevel|haloLevel|qualityCounts|scatLevels|lightRangeOf|lightCarsOf|wetnessOf|capGlare|glareOpts/;
+const keyLineOf = (id) => jsFiles.some((f) => fs.readFileSync(path.join(ROOT, 'js', f), 'utf8').split('\n')
+  .some((l) => /\w*[Kk]ey\w*\s*[=:]|gkey|tkey|skey/.test(l) && l.indexOf(id) >= 0));
+const plumbed = (id) => RENDER.some(([f, s]) => s.indexOf(id) >= 0) || helperRe.test(RENDER.map((r) => r[1]).join('')) && RENDER.some(([f, s]) => s.indexOf(id) >= 0) || keyLineOf(id);
+const mirrorKind = (o) => o.kind === 'derived' || o.kind === 'game';
+const silent = Opt.OPTIONS.filter((o) => o.cost !== 'free' && !mirrorKind(o) && !plumbed(o.id)).map((o) => o.id + ' (' + o.cost + ')');
+ok('no non-free option is named nowhere (render code, a derived helper, or a cache key)', silent.length === 0, silent);
+const bundleOpts = Opt.OPTIONS.filter((o) => Array.isArray(o.bundle) && o.bundle.length);
+const deadMembers = [];
+for (const o of bundleOpts) for (const m of o.bundle) {
+  if (!Opt.OPTIONS.some((x) => x.id === m)) { deadMembers.push(o.id + ' -> unknown member ' + m); continue; }
+  if (mirrorKind(Opt.OPTIONS.find((x) => x.id === m))) continue;
+  if (!plumbed(m)) deadMembers.push(o.id + ' -> ' + m + ' is not plumbed');
+}
+ok('every bundle member of a derived option is itself plumbed', deadMembers.length === 0, deadMembers);
+ok('the bundle mirrors are the known set (airLevel, haloQuality, haloRangeRow)', bundleOpts.map((o) => o.id).sort().join(',') === 'airLevel,haloQuality,haloRangeRow', bundleOpts.map((o) => o.id));
