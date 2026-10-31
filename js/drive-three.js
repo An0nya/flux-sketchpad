@@ -316,7 +316,7 @@ export function create(canvas, gl, onModelsReady) {
     }
     u.eye.value.fromArray(p.eye || [-2,.37,1.2]);
     if (p.touge) {
-      const a = globalThis.RF.Touge.attitude(dist), [f,l,n] = [a.forward,a.left,a.up];
+      const a = globalThis.RF.Touge.attitude(dist, world.A ? world.A.touge : true), [f,l,n] = [a.forward,a.left,a.up];   // elevatedView flat scenes: no pitch/roll
       u.worldFromCar.value.set(f[0],l[0],n[0],f[1],l[1],n[1],f[2],l[2],n[2]); u.carFromWorld.value.copy(u.worldFromCar.value).transpose();
       u.eye.value.applyMatrix3(u.worldFromCar.value); u.lamp.value.forEach((q,i) => { if(i<p.lamps.length)q.applyMatrix3(u.worldFromCar.value); });
     } else u.carFromWorld.value.identity();   // flat frames: a pass frame earlier in the session must not leave its rotation behind
@@ -375,7 +375,7 @@ export function create(canvas, gl, onModelsReady) {
     },
     coneState() { return { ...beamCone.state(), programs: beamCone.programs() }; },   // CP test hook: the lamps handed over this frame (pos, W * share, share, angle)
     smState() { const n = halo.sm ? halo.sm.maps : 0; return { maps: Array.from({ length: n }, (_, i) => ({ e: u.smE.value[i].toArray(), f: u.smF.value[i].toArray(), l: u.smL.value[i].toArray(), u: u.smU.value[i].toArray(), p: u.smP.value[i].toArray() })), res: u.smRes.value.toArray(), cars: halo.sm, stat: { ...trafficMaps.stat }, smOf: u.smOf.value.slice(0, 4).map((v) => v.toArray()), road: !!pass.material.userData.smr }; }, smRead(m) { return trafficMaps.read(m); },   // SM test hooks
-    haloState() { return { div: halo.div || 0, jit: halo.jit || false, blur: halo.blur || 0, dblur: halo.dblur || 0, lw: halo.lw || 0, cross: halo.cross || 0, width: halo.width || 0, nb: halo.nb || 0, moment: halo.moment || 0, drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length, pol: halo.polars, edges: halo.edges.slice() }; },   // SR: edges = this frame's bin upper edges (test hook)
+    haloState() { return { div: halo.div || 0, jit: halo.jit || false, blur: halo.blur || 0, dblur: halo.dblur || 0, lw: halo.lw || 0, cross: halo.cross || 0, nb: halo.nb || 0, moment: halo.moment || 0, drawn: halo.drawn, lamps: halo.lamps, passes: halo.passes, tab: halo.tab, on: u.haloOn.value, ms: halo.ms, msPolar: halo.msPolar, polar: halo.polar, polarNote: halo.polarNote, bins: halo.edges.length, tabClamp: halo.tabClamp, polars: halo.polars.length, pol: halo.polars, edges: halo.edges.slice() }; },   // SR: edges = this frame's bin upper edges (test hook)
     haloTqPoll() { return halo.tqPoll(); }, crestTqPoll() { return pass.crestTqPoll(renderer); },   // test hook: GPU ms of the halo table draws (set globalThis.SL_HALO_TQ first)
     crestProbe(pts) { return pass.crestProbe(renderer, pts); },   // E2 test hook: the height map's z at world xy points
     crestState() { return { occ: halo.occ, ...pass.crestStats() }; },   // E2 test hook: the height map's bounds and render counts; occ = the table used it this frame

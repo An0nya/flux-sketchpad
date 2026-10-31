@@ -31,9 +31,12 @@
     const z = profile(s).z + bank(s) * off, right = -lane / 2 - 2.2, left = 1.5 * lane + 2.2;
     return z + (off < right ? Math.max(-32, (off - right) * 3) : off > left ? Math.min(32, (off - left) * .9) : 0);
   }
-  function route(dist, lane, elevated = true) {
-    const A = RF.DriveAnim.tileRoute(0, dist, false, tile), z0 = profile(dist).z;
-    A.touge = elevated; A.dist = dist; A.lane = lane;
+  // elevate(A, ...): attach the 3D surface (height/grade/bank/normals) to ANY route A — the pass's own tile route,
+  // a tile road (endless biomes), or a flat scene's arc. elevated=false gives height 0 everywhere (flat scenes through
+  // the same pipeline, per Anya 10-30: the touge route pipeline for all scenes, legacy flat fallback when off/CPU).
+  function elevate(A, dist, lane, elevated) {
+    const z0 = profile(dist).z;
+    A.touge = !!elevated; A.dist = dist; A.lane = lane;
     A.height = (s, off = 0) => elevated ? terrain(s + dist, off, lane) - z0 : 0;
     A.surface = (s, off = 0, height = 0) => {
       const q = A.at(s, off), z = A.height(s, off), eps = .05;
@@ -43,8 +46,12 @@
     };
     return A;
   }
+  function route(dist, lane, elevated = true) {
+    return elevate(RF.DriveAnim.tileRoute(0, dist, false, tile), dist, lane, elevated);
+  }
   // Spatial smoothing across a 2.8 m wheelbase: deterministic when seeking and identical at any frame rate.
-  function attitude(dist) {
+  function attitude(dist, elevated = true) {
+    if (!elevated) return { pitch: 0, roll: 0, forward: [1, 0, 0], left: [0, 1, 0], up: [0, 0, 1] };   // flat road through the 3D pipeline: no pitch/roll
     const pitch = Math.atan((profile(dist + 1.4).z - profile(dist - 1.4).z) / 2.8), roll = Math.atan((bank(dist - 1.4) + 2 * bank(dist) + bank(dist + 1.4)) / 4);
     const c = Math.cos(pitch), s = Math.sin(pitch), a = Math.cos(roll), b = Math.sin(roll);
     return { pitch, roll, forward: [c, 0, s], left: [-s * b, a, c * b], up: [-s * a, -b, c * a] };
@@ -103,9 +110,9 @@
     return out;
   }
   function world(p, dist, t, tauOf) {
-    const A = route(dist, p.lane, !!p.touge), K = D.kit({ Lw: p.lane, A, rand: D.rng(701) }), obs = [], flags = p.src.tiles.flags;
+    const A = route(dist, p.lane, !!p.mountainPass), K = D.kit({ Lw: p.lane, A, rand: D.rng(701) }), obs = [], flags = p.src.tiles.flags, pass = !!p.mountainPass;   // pass=false (elevatedView on a flat/tile road): 3D route flat (height 0), no pass furniture
     const lo = Math.floor((dist - 10) / 8) * 8, hi = dist + 300;
-    for (let s = lo; s <= hi; s += 8) {
+    for (let s = lo; pass && s <= hi; s += 8) {   // pass furniture only on the pass (elevatedView reuses the pipeline flat)
       const rel = s - dist, off = -p.lane / 2 - 1.2;
       // Short W-beam proxies follow the tangent; reflector plates face both approaches.
       const q = A.at(rel, off), yaw = Math.atan2(q.t[1], q.t[0]);
@@ -116,7 +123,7 @@
     // POWERLINES on the pass (opt-in, default off: nothing below runs). Poles sit at absolute route positions every 60 m (same pattern as the
     // open road), on the reflector side of the road. Each pole and each wire end takes the road height at its own position, so the wires follow
     // the grade and the bank. Wires are built from those lifted 3D ends and tougePlaced, so lift() does not add the height a second time.
-    if (flags.powerlines === 'on') {
+    if (pass && flags.powerlines === 'on') {   // pass furniture only on the pass
       const POLE = 9, ATT = 8.6, SAG = 0.6, N = 8, WIRE_R = 0.03, OFF = -p.lane / 2 - 1.2;   // ATT, SAG, WIRE_R: tuning values
       for (let S = Math.floor((dist - 80) / 60) * 60 + 20; S <= hi + 60; S += 60) {
         const r = S - dist, q = A.at(r, OFF);
@@ -181,7 +188,7 @@
     return false;
   }
   function trafficLight(obs,A,p){
-    const a=attitude(A.dist),eye=apply([a.forward,a.left,a.up],[-2,.37,1.2]),tr=p.src.traffic,hasDesign=p.lut.data.some(v=>v>0);
+    const a=attitude(A.dist, A.touge),eye=apply([a.forward,a.left,a.up],[-2,.37,1.2]),tr=p.src.traffic,hasDesign=p.lut.data.some(v=>v>0);
     for(const ob of obs)if(ob.headlamp){
       const pk=D.trafficPickOf(p,ob.traffic), tint=pk&&pk.tint?pk.tint:[1,1,1];   // BT: this car's own beam and colour, when the shuffle gives it one
       const f=A.frame(ob.x,ob.y),q=A.surface(f.s,f.off),dir=ob.nx*f.t[0]+ob.ny*f.t[1],forward=unit([ob.nx,ob.ny,q.grade*dir]),left=unit(cross(q.normal,forward)),d=eye.map((v,i)=>v-[ob.x,ob.y,ob.z][i]),local=[dot(d,forward),dot(d,left),dot(d,q.normal)];
@@ -203,7 +210,7 @@
   // here in the world frame (terrain, occluders, lamp-dist gamma from world z-up); D.glareSources then sees car-frame copies.
   function glareSources(obs,dist,A,opts){
     opts=opts||{};
-    const a=attitude(dist),axes=[a.forward,a.left,a.up],eye=apply(axes,[-2,.37,1.2]),sources=[];   // eye and obs are both world frame here
+    const a=attitude(dist, A.touge),axes=[a.forward,a.left,a.up],eye=apply(axes,[-2,.37,1.2]),sources=[];   // eye and obs are both world frame here
     for(const ob of obs)if(D.glareEmitter(ob) && !blocked(A,eye,[ob.x,ob.y,ob.z]) && !D.occluded([ob.x,ob.y,ob.z],eye,obs)){
       const p=[ob.x,ob.y,ob.z],q=axes.map(v=>dot(p,v)),n=axes.map(v=>dot([ob.nx,ob.ny,ob.nz||0],v));sources.push({...ob,x:q[0],y:q[1],z:q[2],nx:n[0],ny:n[1],nz:n[2]});
     }
@@ -215,7 +222,7 @@
     return D.glareSources(sources,[-2,.37,1.2],undefined,{lights,lampClass:opts.lampClass,lampKind:opts.lampKind,wetVeil:opts.wetVeil,wetness:opts.wetness,wetSheen:opts.wetSheen});   // wetVeil (4-N) passes through, as in the flat scenes
   }
   function eyeLux(p, car) {
-    const A=p.A, q=A.surface(car.rel,car.off,1.1), a=attitude(A.dist), axis=[a.forward,a.left,a.up], dot=(v,w)=>v.reduce((s,x,i)=>s+x*w[i],0);
+    const A=p.A, q=A.surface(car.rel,car.off,1.1), a=attitude(A.dist, A.touge), axis=[a.forward,a.left,a.up], dot=(v,w)=>v.reduce((s,x,i)=>s+x*w[i],0);
     let E=0;
     for(const lamp of p.lamps){const L=[0,0,0];for(let j=0;j<3;j++)for(let i=0;i<3;i++)L[j]+=lamp[i]*axis[i][j];
       const d=q.p.map((x,i)=>x-L[i]), r2=dot(d,d), local=axis.map(v=>dot(d,v)), incidence=(d[0]*q.t[0]+d[1]*q.t[1]+d[2]*q.t[2])/Math.sqrt(r2*(1+q.grade*q.grade));
@@ -225,5 +232,5 @@
       if(!blocked)E+=D.ownBeamAt(p,...local,lamp[1])*incidence/r2;
     }return E;
   }
-  RF.Touge = { curvature: s => RF.DriveAnim.curvatureAt({ tiles: { mountain: true } }, s), glareSources, blocked, eyeLux, PERIOD, curves, kinds, tile, profile, bank, terrain, route, attitude, lift, world, activate, crestDeer, lampSpots };
+  RF.Touge = { elevate, curvature: s => RF.DriveAnim.curvatureAt({ tiles: { mountain: true } }, s), glareSources, blocked, eyeLux, PERIOD, curves, kinds, tile, profile, bank, terrain, route, attitude, lift, world, activate, crestDeer, lampSpots };
 })(typeof self !== 'undefined' ? self : globalThis);

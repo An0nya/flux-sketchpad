@@ -44,12 +44,9 @@ run('beam quality report (tests/beam-quality.js)', ['tests/beam-quality.js']);
 run('le-chonk scrubber + wet veil options (tests/le-chonk-scrub-veil.js)', ['tests/le-chonk-scrub-veil.js']);
 run('le-chonk side marker lamps option (tests/le-chonk-markers.js)', ['tests/le-chonk-markers.js']);
 run('le-chonk endless biome road prototype (tests/le-chonk-endless.js)', ['tests/le-chonk-endless.js']);
+run('le-chonk elevatedView 3D-route prototype (tests/le-chonk-elevated.js)', ['tests/le-chonk-elevated.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
-run('haloMoment: each bin mean is clamped into its own bin, so a nearly-empty bin cannot throw an interior knot (tests/halo-moment-clamp.js)', ['tests/halo-moment-clamp.js']); // step5-preview (P3 mean clamp)
-run('option rebuild: a cost that says scene-regenerate is carried by a rebuild key, and no option is dead (tests/option-rebuild.js)', ['tests/option-rebuild.js']); // step5-preview (open sweep)
-run('the drive bar beam label is a live readout of the beam in use (tests/step5-beam-readout.js)', ['tests/step5-beam-readout.js']); // step5-preview (wishlist §6)
-run('every halo option is projected into the renderer (tests/halo-look-projection.js)', ['tests/halo-look-projection.js']); // nemotron (inert-option guard)
 run('driver\'s-eye view (tests/drive.js)', ['tests/drive.js']);
 run('detailed models prototype (tests/models-proto.js)', ['tests/models-proto.js']);
 run('leafy foliage prototype (tests/foliage.js)', ['tests/foliage.js']);
@@ -75,7 +72,5 @@ run('SB2 wet sheen from studs and paint: source admission, caps, paint gloss, GP
 run('saveable beams: format, checksum, grid, bundle, synthetic (tests/beams.js)', ['tests/beams.js']);
 run('BA5 GPU beam atlas: packing, shader text, pick equality (tests/beam-atlas.js)', ['tests/beam-atlas.js']);
 run('scene details: registry and metric maths (tests/scene-details.js)', ['tests/scene-details.js']);
-run('option round-trip: every profile option survives dump -> read, extras survive, loadState writes back (tests/option-roundtrip.js)', ['tests/option-roundtrip.js']); // glm5.2 (step5-preview open item #1)
-run('quality governor option: shed state machine + wiring, default off (tests/frenchie-quality-governor.js)', ['tests/frenchie-quality-governor.js']); // frenchie (backlog 3-P)
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

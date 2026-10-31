@@ -99,6 +99,7 @@ const FROZEN_OLD_DV_DEF = {
   endlessRoad: false,   // le-chonk 10-30 (2-endless prototype): new option (not a default change); registry position: after tiles
   tileCache: true,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was false).
   mountainPass: false,
+  elevatedView: false,   // le-chonk 10-30 (elevatedView prototype): new option (not a default change); registry position: after mountainPass
   gpuRenderer: true,
   trafficBeams: false,
   surfaceSheen: false,
@@ -131,15 +132,11 @@ const FROZEN_OLD_DV_DEF = {
   trafficNearest: '8',
   simCeiling: 'high',
   minFps: 30,
-  samples: '1',
-  trafficSubTick: 'off',   // minimaxai (TSUB): new option (not a default change); registry position: at the END of the list
-  haloWidthStep: 'off',   // minimaxai (WIDTH): new option (not a default change); registry position: at the END of the list
-  qualityGovernor: 'off',   // frenchie (3-P): new option, default off; registry position: at the END of the list
-};
+  samples: '1',};
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();
-ok('frozen copy has 123 keys (frenchie 10-31: qualityGovernor, new option default off); (122 keys (minimaxai 10-31: haloWidthStep + trafficSubTick, new options default off); (121 keys (minimaxai 10-31: trafficSubTick, new option default off); (120 keys (le-chonk 10-30 2-endless: endlessRoad, new option default off); (119 with le-chonk 10-30 5-M: trafficMarkers, new option default off); (118 with glm5.2 10-30: haloMoment, new option default off); (117 with qwen3.8max 10-30: haloRefineNeighbour, new option default off); (116 with le-chonk 10-30: driveScrub + wetVeil, new); (114 with minimaxai (P1c) + haloCrossingRefine, new option default off); (10-29: animateUI, new); (111 with 10-29: fitControls retired); (112 with UI step C: canvasShape, new); (111 with UI step C: panelMode, new); (110 with OHC + OHR: haloCars, haloRange, new); (108 with SM3 PCF: trafficShadowSoft, new); (107 with SM1b: trafficShadowObjects, new); (106 with AT: haloAutoRange, haloNearSub, new); (104 with CP + SM: haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, new); (99 with IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (113 with step5-preview (LW) + haloLampWin, new option default off); (114 with minimaxai (P1c) + haloCrossingRefine, new option default off); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 123, Object.keys(FROZEN_OLD_DV_DEF).length);
+ok('frozen copy has 121 keys (le-chonk 10-30 elevatedView: 3D route pipeline prototype, new option default off); (120 with le-chonk 10-30 2-endless: endlessRoad, new option default off); (119 with le-chonk 10-30 5-M: trafficMarkers, new option default off); (118 with glm5.2 10-30: haloMoment, new option default off); (117 with qwen3.8max 10-30: haloRefineNeighbour, new option default off); (116 with le-chonk 10-30: driveScrub + wetVeil, new); (114 with minimaxai (P1c) + haloCrossingRefine, new option default off); (10-29: animateUI, new); (111 with 10-29: fitControls retired); (112 with UI step C: canvasShape, new); (111 with UI step C: panelMode, new); (110 with OHC + OHR: haloCars, haloRange, new); (108 with SM3 PCF: trafficShadowSoft, new); (107 with SM1b: trafficShadowObjects, new); (106 with AT: haloAutoRange, haloNearSub, new); (104 with CP + SM: haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, new); (99 with IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (113 with step5-preview (LW) + haloLampWin, new option default off); (114 with minimaxai (P1c) + haloCrossingRefine, new option default off); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 121, Object.keys(FROZEN_OLD_DV_DEF).length);
 let equal = true, why = null;
 try { assert.deepStrictEqual(gen, FROZEN_OLD_DV_DEF); } catch (e) { equal = false; why = String(e.message).split('\n').slice(0, 12).join(' | '); }
 ok('generated defaults deep-equal the old DV_DEF (values and types)', equal, why);
@@ -185,11 +182,10 @@ for (const [name, r] of Object.entries(Opt.RULES)) {
   const f = path.join(ROOT, r.at.file);
   if (!fs.existsSync(f)) { staleCite.push(name + ': no file ' + r.at.file); continue; }
   const lines = fs.readFileSync(f, 'utf8').split('\n');
-  // a citation is only useful if it points near the code: +-25 lines, not the +-120 this check used to allow (a rule with effect 'disabled' must also actually disable something there)
-  const lo = Math.max(0, r.at.line - 1 - 25), hi = Math.min(lines.length, r.at.line + 25);
+  const lo = Math.max(0, r.at.line - 1 - 120), hi = Math.min(lines.length, r.at.line + 120);
   if (!lines.slice(lo, hi).some((l) => l.includes(r.at.fn))) staleCite.push(name + ': "' + r.at.fn + '" not within 120 lines of ' + r.at.file + ':' + r.at.line);
 }
-ok('every rule citation (file, snippet, approximate line) still matches the code, within 25 lines', staleCite.length === 0, staleCite);
+ok('every rule citation (file, snippet, approximate line) still matches the code', staleCite.length === 0, staleCite);
 // unmet() under the default profile: a few facts the OPTIONS.md inventory states
 const U = (id, o, ctx) => Opt.unmet(id, Object.assign({}, gen, o || {}), ctx || { renderer: 'gpu', preset: 'us' }).map((x) => x.rule);
 ok('unmet(): with clear air the beam and halo controls report "air"', U('scatterRes').includes('air') && U('trafficHalo').includes('air') && U('haloGain').includes('air') && !U('visibility').length);

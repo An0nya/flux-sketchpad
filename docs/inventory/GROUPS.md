@@ -84,16 +84,16 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
 | `view` | Camera and playback | 4 | 3 | 1 | 0 | 0 | 0 | 0 |
-| `road` | Road and route | 10 | 2 | 6 | 0 | 0 | 0 | 2 |
+| `road` | Road and route | 11 | 2 | 7 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 8 | 0 | 5 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
+| `halo` | Traffic halo | 32 | 0 | 4 | 0 | 28 | 0 | 0 |
 | `street-lamps` | Street lamps | 5 | 0 | 5 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 16 | 0 | 13 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
 | `exposure` | Exposure and eye | 4 | 1 | 3 | 0 | 0 | 0 | 0 |
-| `performance` | Speed and quality | 8 | 0 | 7 | 0 | 0 | 0 | 1 |
+| `performance` | Speed and quality | 7 | 0 | 6 | 0 | 0 | 0 | 1 |
 | `diagnostics` | Panels and layout | 7 | 0 | 7 | 0 | 0 | 0 | 0 |
 | `internal` | Internal (no control) | 6 | 0 | 0 | 0 | 0 | 0 | 6 |
 
@@ -115,9 +115,10 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `seed` | scenery seed | profile | More | 7 | needs `seedUsed` [disabled] |
 | `density` | scenery density | profile | More | 1.5 | needs `densityUsed` [disabled] |
 | `tiles` | route tiles | profile | More | true | - |
-| `endlessRoad` | endless biomes | profile | More | false | needs `tilesOn` [disabled] |
+| `endlessRoad` | endless biome road (prototype) | profile | More | false | needs `tilesOn` [disabled] |
 | `tileCache` | cache ground | profile | More | true | needs `tilesOn` [disabled] |
 | `mountainPass` | mountain pass (scene select) | profile | toolbar | false | - |
+| `elevatedView` | 3D route pipeline for every scene (prototype) | profile | More | false | needs `gpu` [tooltip] |
 | `cline` | centre line | profile | More | "solid" | needs `usRoad` [disabled] |
 | `res` | still picture width | profile | no control | 640 | - |
 
@@ -174,7 +175,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `haloLampWin` | lamp-window steps | profile | advanced halo | "off" | ignored when `crossingRefineOn` [none] |
 | `haloCrossingRefine` | crossing-bin refinement | profile | advanced halo | 0 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloRefineNeighbour` | refine eye-side neighbour bin | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none], `crossingRefineOn` [none] |
-| `haloMoment` | halo first-moment bins | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
+| `haloMoment` | halo first-moment bins | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none]; ignored when `crossingRefineOn` [none] |
 | `haloAutoRange` | halo table auto range | profile | advanced halo | "4-8" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloNearSub` | halo near quality | profile | advanced halo | 1 | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 | `haloConePass` | cone pass | profile | advanced halo | "2" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
@@ -189,8 +190,6 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `scatterRange` | scatter range (m) | profile | advanced halo | 120 | needs `air` [hidden] |
 | `haloQuality` | oncoming scatter quality | derived | More | (derived) | - |
 | `haloRangeRow` | oncoming range | derived | More | (derived) | - |
-| `trafficSubTick` | traffic sub-tick interpolation | profile | advanced halo | "off" | - |
-| `haloWidthStep` | scatter width-driven steps | profile | advanced halo | "off" | needs `gpu` [tooltip], `air` [hidden], `haloOn` [none] |
 
 #### Street lamps (`street-lamps`)
 
@@ -273,7 +272,6 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `simCeiling` | resolution ceiling | profile | More | "high" | - |
 | `minFps` | minimum frame rate | profile | More | 30 | needs `dynResOn` [none] |
 | `samples` | supersampling | profile | More | "1" | - |
-| `qualityGovernor` | quality governor | profile | More | "off" | - |
 
 #### Panels and layout (`diagnostics`)
 
