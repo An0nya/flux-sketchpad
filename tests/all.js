@@ -22,6 +22,21 @@ const run = (label, args) => {
   }
 };
 for (const d of ['js', 'tests']) for (const f of fs.readdirSync(path.join(root, d))) if (f.endsWith('.js')) run('syntax ' + d + '/' + f, ['--check', path.join(d, f)]);
+// minimaxai (10-31, reviewed glm5.2 11-01, qwen3.8max P2 11-01): the sweep above parses each .js under the COMMONJS goal, but for a .js
+// whose import/export appears before the error, `node --check` reports success whatever is below it — so the sweep never effectively
+// parsed the 13 ES-module files in js/ (the entire GPU renderer). That happened for real: a stray ')' in js/drive-touge-three.js (the BA5
+// traffic-pitch rewrite) passed this sweep and broke the GPU renderer's dynamic import, so every model's drive view silently fell back to
+// the CPU renderer. Parse the js/ files as modules too: a .mjs copy under the same goal the browser uses. Test-only; no app file changes.
+{
+  const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'flux-esm-syntax-'));
+  try {
+    for (const f of fs.readdirSync(path.join(root, 'js'))) if (f.endsWith('.js')) {
+      const copy = path.join(tmp, f.replace(/\.js$/, '') + '.mjs');
+      fs.copyFileSync(path.join(root, 'js', f), copy);
+      run('syntax (module) js/' + f, ['--check', copy]);
+    }
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
 run('checks (tests/headless.js)', ['tests/headless.js']);
 run('undo/redo (tests/history.js)', ['tests/history.js']);
 run('metrics (tests/metrics.js)', ['tests/metrics.js']);
@@ -52,9 +67,12 @@ run('le-chonk endless generator sweep, 120 seeds (tests/le-chonk-endless-sweep.j
 run('halo-family cache-key detector (tests/halo-cache-keys.js)', ['tests/halo-cache-keys.js']);
 run('le-chonk multilane highway phase 0 (tests/le-chonk-multilane.js)', ['tests/le-chonk-multilane.js']);
 run('le-chonk render-level ON-vs-OFF diff (tests/le-chonk-render-diff.js)', ['tests/le-chonk-render-diff.js']);
+run('le-chonk endless tunnel tiles (tests/le-chonk-tunnel.js)', ['tests/le-chonk-tunnel.js']);
+run('le-chonk endless level crossings (tests/le-chonk-crossing.js)', ['tests/le-chonk-crossing.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
 run('every option with a control has one on the page, and every control on the page is an option (tests/control-map.js)', ['tests/control-map.js']); // step5-preview (the shared id -> selector map)
+run('ignoredWhen rules are honoured where they say they are: the controlled option does not move the render while the rule holds, and does when it does not (tests/ignored-when.js)', ['tests/ignored-when.js']); // step5-preview (the behavioural ignoredWhen check)
 run('haloMoment: each bin mean is clamped into its own bin, so a nearly-empty bin cannot throw an interior knot (tests/halo-moment-clamp.js)', ['tests/halo-moment-clamp.js']); // step5-preview (P3 mean clamp)
 run('option rebuild: a cost that says scene-regenerate is carried by a rebuild key, and no option is dead (tests/option-rebuild.js)', ['tests/option-rebuild.js']); // step5-preview (open sweep)
 run('the drive bar beam label is a live readout of the beam in use (tests/step5-beam-readout.js)', ['tests/step5-beam-readout.js']); // step5-preview (wishlist §6)
@@ -91,5 +109,6 @@ run('dry-pavement streaks option: gates + weights, default off (tests/frenchie-d
 run('heat shimmer option (GPU only): splice + wiring, default off (tests/frenchie-heat-shimmer.js)', ['tests/frenchie-heat-shimmer.js']); // frenchie (backlog heat shimmer, ACTIVE per Anya)
 run('signal cones option: visor geometry when on, OFF byte-identical, no glare double-count (tests/frenchie-signal-cones.js)', ['tests/frenchie-signal-cones.js']); // frenchie (backlog 5 signal cones)
 run('traffic-lighting presets: registry, valid preset maps, OFF writes nothing (tests/frenchie-traffic-lighting.js)', ['tests/frenchie-traffic-lighting.js']); // frenchie (backlog 5 presets)
+run('touge shader anchors guarded (rep throws on moved anchor; no bare .replace outside helper) — tests/frenchie-touge-anchors.js', ['tests/frenchie-touge-anchors.js']); // frenchie (pool 4)
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

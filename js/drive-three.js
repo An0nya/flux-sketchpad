@@ -71,9 +71,11 @@ export function create(canvas, gl, onModelsReady) {
   const SM_LOOP = 'if(NoL<=0.0) continue;\n    vec3 local=vec3(forward';
   const smRoadText = (s) => { if (s.split(SM_LOOP).length !== 2) return s; const nl = s.indexOf('\n') + 1; const ACC = 'otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w'; if (s.split(ACC).length !== 2) throw Error('SM3: traffic accumulation text changed');
     return (s.slice(0, nl) + SM_DECL + SM_ROAD + s.slice(nl)).replace(SM_LOOP, 'if(NoL<=0.0) continue; float smVis=1.0-smRoadF(i,p,n); if(smVis<=0.0) continue;\n    vec3 local=vec3(forward').replace(ACC, ACC + '*smVis'); };   // smVis: the lit fraction (PCF)
+  let haloM2 = false;   // glm5.3flash review fix: the HALO_M2 define must reach EVERY program that embeds the scatter lookup (objects, pass, table pre-pass), not just the ground quad
   function shading(material, enabled, mountain = false, table = false, blend = true, smr = false) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
     const atlas = atlasOn && enabled, bl = table ? blend : true, sr = !!(smr && mountain && enabled);   // blend only changes the text when the table is on
+    if (!!material.userData.m2d !== haloM2) { material.defines = material.defines || {}; if (haloM2) material.defines.HALO_M2 = 1; else delete material.defines.HALO_M2; material.userData.m2d = haloM2; material.needsUpdate = true; }   // glm5.3flash review fix: the M2 lookup is #ifdef'd into every scatter-embedding program
     if (material.userData.p2 === enabled && material.userData.tg === mountain && material.userData.tbl === table && material.userData.at === atlas && material.userData.bl === bl && !!material.userData.smr === sr) return;
     let source = enabled ? withLighting(material.userData.baseFragment, atlas) : material.userData.baseFragment;
     if (table) source = tableSource(source, blend);
@@ -89,6 +91,7 @@ export function create(canvas, gl, onModelsReady) {
   const blurScene = new T.Scene(); blurMesh.frustumCulled = false; blurScene.add(blurMesh);
   function tableShading(extras) {
     const key = (extras ? 'lit' : 'plain') + (extras && atlasOn ? '-atlas' : '');
+    if (!!tabMesh.material.userData.m2d !== haloM2) { tabMesh.material.defines = tabMesh.material.defines || {}; if (haloM2) tabMesh.material.defines.HALO_M2 = 1; else delete tabMesh.material.defines.HALO_M2; tabMesh.material.userData.m2d = haloM2; tabMesh.material.needsUpdate = true; }   // glm5.3flash review fix: the pre-pass decodes the table for every lit pass — it must take the same curve
     if (tabMesh.material.userData.lit === key) return false;
     tabMesh.material.fragmentShader = tablePassSource(extras ? withLighting(ground, atlasOn) : ground); tabMesh.material.userData.lit = key; tabMesh.material.needsUpdate = true; return true;
   }
@@ -298,7 +301,7 @@ export function create(canvas, gl, onModelsReady) {
     set('distance', dist); set('grain', look.grain && (p.src.tiles || (D.wetnessOf(look) > 0 && look.wetSheen)) ? 0.4 * (D.wetnessOf(look) > 0 ? 0.5 : 1) : 0);
     const shimAmp = look.heatShimmer === 'high' ? 0.0025 : look.heatShimmer === 'low' ? 0.0008 : 0;   // frenchie (heatShimmer, GPU only): recompile the ground program only when the on/off state flips; OFF = shipped text
     if (!!mat.userData.shim !== (shimAmp > 0)) { mat.fragmentShader = shimAmp > 0 ? withShimmer(ground) : ground; mat.userData.shim = shimAmp > 0; mat.needsUpdate = true; }
-    const m2On = look.haloMoment === 'moment2';   // P3-M2/glm5.2: recompile the ground program when moment2 flips; OFF = the #ifdef HALO_M2 blocks are stripped (shipped text, 13 samplers); ON = the blocks are compiled in (14 samplers, under the 16 limit)
+    const m2On = look.haloMoment === 'moment2'; haloM2 = m2On;   // P3-M2/glm5.2: recompile the ground program when moment2 flips; OFF = the #ifdef HALO_M2 blocks are stripped (shipped text, 13 samplers); ON = the blocks are compiled in (14 samplers, under the 16 limit)
     if (!!mat.userData.m2 !== m2On) { mat.defines = mat.defines || {}; if (m2On) mat.defines.HALO_M2 = 1; else delete mat.defines.HALO_M2; mat.userData.m2 = m2On; mat.needsUpdate = true; }
     set('shimmerAmp', shimAmp); set('shimmerT', (performance.now() * 0.001) % 512);
     const vg = p.src.verge; set('vergeWidth', vg[1] || 1.5); u.verge.value.set(D.MAT_KEYS.indexOf(vg[0]), D.MAT_KEYS.indexOf(vg[2] || vg[0]));

@@ -2,12 +2,20 @@
 import * as T from '../vendor/three/three.module.min.js';
 import { ground } from './drive-three-shaders.js';
 const uniforms = `uniform mat3 worldFromCar, carFromWorld; uniform sampler2D passDepth, passShadow0, passShadow1; uniform float trafficPitch[64];\n`;
+// frenchie (open pool 4): guarded shader-anchor replace — a REQUIRED anchor that moved throws instead of
+// silently no-oping (the failure mode behind qwen's 16-anchor break and nemotron's wetLobe patch). Anchors
+// that legitimately exist in only some composed sources (ground-only functions on object shaders) pass
+// optional=true and keep today's exact passthrough when absent.
+export const repHits = { n: 0 };
+export function rep(s, anchor, repl, optional) { const n = anchor instanceof RegExp ? (s.match(new RegExp(anchor.source, (anchor.flags || '').includes('g') ? anchor.flags : (anchor.flags || '') + 'g')) || []).length : s.split(anchor).length - 1; if (n === 0 && optional) return s; if (n !== 1) throw new Error('touge shader anchor moved (' + n + 'x): ' + String(anchor).slice(0, 48)); repHits.n++; return s.replace(anchor, repl); }
+
 export function passShader(source, vertex = false) {
   if (vertex) return source;
+  repHits.n = 0;
   let s = uniforms + source;
-  s = s.replace('float cornerIntensity(vec3 d,vec3 origin) {', 'float cornerIntensity(vec3 d,vec3 origin) { d=carFromWorld*d; origin=carFromWorld*origin;');
-  s = s.replace('float intensity(vec3 d) {', 'float intensity(vec3 d) { d=carFromWorld*d;');
-  s = s.replace('float I=intensity(d)', `vec3 sd=carFromWorld*d; float st=length(d); vec2 suv=vec2(-sd.y/1.2,sd.z/.6)/sd.x*.5+.5;
+  s = rep(s, 'float cornerIntensity(vec3 d,vec3 origin) {', 'float cornerIntensity(vec3 d,vec3 origin) { d=carFromWorld*d; origin=carFromWorld*origin;', true);
+  s = rep(s, 'float intensity(vec3 d) {', 'float intensity(vec3 d) { d=carFromWorld*d;', true);
+  s = rep(s, 'float I=intensity(d)', `vec3 sd=carFromWorld*d; float st=length(d); vec2 suv=vec2(-sd.y/1.2,sd.z/.6)/sd.x*.5+.5;
     if(sd.x>0.0 && all(greaterThanEqual(suv,vec2(0))) && all(lessThanEqual(suv,vec2(1)))) {
       float depth=i==0 ? texture2D(passShadow0,suv).r : texture2D(passShadow1,suv).r;
       vec2 cell=(floor(suv*vec2(2048,1024))+.5)/vec2(2048,1024);
@@ -15,27 +23,28 @@ export function passShader(source, vertex = false) {
       float den=dot(sr,n), expected=dot(d,n)/den;   // B6: n is shade()'s parameter; dFdx/dFdy here sat in non-uniform flow (undefined)
       if(abs(den)>.000001 && expected>0.0 && expected/5000.0>depth+0.00003)continue;
     }
-    float I=intensity(d)`);
+    float I=intensity(d)`, true);
   // BA5: the traffic loop has two spellings: the legacy one-table text and the atlas text (per-lamp tint 'otint'). Both get the pitch.
   const loopCall = /r\+=rho\*(vec3\(1,1,0\.93\)|otint)\*otherIntensity\(local\)/;
   if (!loopCall.test(s) && s.includes('otherIntensity(local)')) throw Error('BA5 touge pass: traffic loop text changed');   // no traffic loop (the plain pass material) is fine
-  s = s.replace(loopCall, (m, tint) => `float cp=cos(trafficPitch[i]),sp=sin(trafficPitch[i]);local=vec3(cp*local.x+sp*local.z,local.y,cp*local.z-sp*local.x);
-    r+=rho*${tint}*otherIntensity(local)`);
-  s = s.replace('float wetLobe(vec3 d,vec3 v) {', `float wetLobe(vec3 d,vec3 v,vec3 normal) {
+  s = rep(s, loopCall, (m, tint) => `float cp=cos(trafficPitch[i]),sp=sin(trafficPitch[i]);local=vec3(cp*local.x+sp*local.z,local.y,cp*local.z-sp*local.x);
+    r+=rho*${tint}*otherIntensity(local)`, true);
+  s = rep(rep(rep(s, 'float wetLobe(vec3 d,vec3 v) {', `float wetLobe(vec3 d,vec3 v,vec3 normal) {
     vec3 x=normalize(vec3(normal.z,0,-normal.x)), y=cross(normal,x);
-    d=vec3(dot(d,x),dot(d,y),dot(d,normal));v=vec3(dot(v,x),dot(v,y),dot(v,normal));`)
-    .replace('wetLobe(reflection[i].xyz-p,v)', 'wetLobe(reflection[i].xyz-p,v,n)').replace('wetLobe(-d,v)', 'wetLobe(-d,v,n)');
+    d=vec3(dot(d,x),dot(d,y),dot(d,normal));v=vec3(dot(v,x),dot(v,y),dot(v,normal));`, true),
+    'wetLobe(reflection[i].xyz-p,v)', 'wetLobe(reflection[i].xyz-p,v,n)', true), 'wetLobe(-d,v)', 'wetLobe(-d,v,n)', true);
   // Analytic proxies retain their actual-world rays; only the camera projection changes.
-  s = s.replace('n=vec3(0,0,1), v=-ray;', 'n=vec3(0,0,1), v=-ray; ray=worldFromCar*ray; v=-ray;');
-  s = s.replace('if(ray.z<0.0 && t>=-eye.z/ray.z)discard;', 'if(t/5000.0>texture2D(passDepth,gl_FragCoord.xy/(size*samples)).r+0.000002)discard;');
+  s = rep(s, 'n=vec3(0,0,1), v=-ray;', 'n=vec3(0,0,1), v=-ray; ray=worldFromCar*ray; v=-ray;', true);
+  s = rep(s, 'if(ray.z<0.0 && t>=-eye.z/ray.z)discard;', 'if(t/5000.0>texture2D(passDepth,gl_FragCoord.xy/(size*samples)).r+0.000002)discard;', true);
   // In pass mode aTie carries surface gradients for rigid car/rail primitives (old tie ranks are unused).
-  s = s.replace('vec3 o=eye-center; float ca=', `vec3 o=eye-center;
+  s = rep(s, 'vec3 o=eye-center; float ca=', `vec3 o=eye-center;
  vec3 bx=normalize(vec3(1,0,ties.x)), by=normalize(vec3(-ties.x*ties.y,1,ties.y)), bz=normalize(cross(bx,by)); by=cross(bz,bx);
  mat3 basis=mat3(bx,by,bz); vec3 originalRay=ray;
  o=vec3(dot(o,bx),dot(o,by),dot(o,bz)); ray=vec3(dot(ray,bx),dot(ray,by),dot(ray,bz));
- float ca=`);
-  s = s.replace('if(abs(pose.x)<1e-8) hit=', 'if(false) hit=');
-  s = s.replace('if(!(t>1e-4 && t<5000.0))discard;vec3 p=eye+t*ray;', 'n=basis*n; ray=originalRay; v=-ray; if(!(t>1e-4 && t<5000.0))discard;vec3 p=eye+t*ray;');
+ float ca=`, true);
+  s = rep(s, 'if(abs(pose.x)<1e-8) hit=', 'if(false) hit=', true);
+  s = rep(s, 'if(!(t>1e-4 && t<5000.0))discard;vec3 p=eye+t*ray;', 'n=basis*n; ray=originalRay; v=-ray; if(!(t>1e-4 && t<5000.0))discard;vec3 p=eye+t*ray;', true);
+  if (repHits.n < 4) throw new Error('touge pass: only ' + repHits.n + ' shader anchors matched — source family changed');
   return s;
 }
 // E2: the height map's red channel holds z - zmin + 1 (so a cleared texel, 0, means no ribbon); its depth is |off| / CREST_OFF_MAX, so the nearest leg wins (read by drive-three-halo.js crestOcc).
@@ -44,8 +53,8 @@ export function surface(u) {
   const geometry = new T.BufferGeometry(), scene = new T.Scene(), camera = new T.Camera();
   const prefix = ground.slice(0, ground.indexOf('vec4 roadFrame'));
   let body = ground.slice(ground.indexOf('uniform sampler2D marks;'), ground.indexOf('void main()'));   // B14: starts at the `marks` declaration (just before surface())
-  body = body.replace('vec4 f=roadFrame(p.xy);', 'vec4 f=roadUV;').replace('n=vec3(0,0,1);', 'n=normalize(roadNormal);');
-  body = body.replace('int(verge.y)', 'off>1.5*lane+2.2 ? 20 : int(verge.y)');
+  body = rep(rep(body, 'vec4 f=roadFrame(p.xy);', 'vec4 f=roadUV;', true), 'n=vec3(0,0,1);', 'n=normalize(roadNormal);', true);
+  body = rep(body, 'int(verge.y)', 'off>1.5*lane+2.2 ? 20 : int(verge.y)', true);
   const fragment = prefix + 'varying vec3 worldPoint, roadNormal; varying vec4 roadUV;\n' + body + `
 void main() { vec3 v=normalize(eye-worldPoint); float t=length(eye-worldPoint);
  vec3 c=surface(worldPoint,v,t,max(.003,dot(v,normalize(roadNormal))));

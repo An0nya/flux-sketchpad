@@ -54,7 +54,7 @@
     src.traffic.onMode = o.onMode || (o.onKcd === undefined ? 'symmetric' : 'manual'); src.traffic.onKcd = o.onKcd === undefined ? 30 : +o.onKcd;
     src.traffic.logic = !!o.trafficLogic; src.traffic.pedStop = o.pedStop !== false; src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
     if (o.tiles) src.markings = o.multilaneRoad ? [] : D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });   // multilane draws its own per-tile markings in tileWorld
-    if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, endless: !!o.endlessRoad, preset: o.endlessPreset || 'off', terrain: !!o.tileTerrain, multilane: !!o.multilaneRoad, density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
+    if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, endless: !!o.endlessRoad, preset: o.endlessPreset || 'off', terrain: !!o.tileTerrain, multilane: !!o.multilaneRoad, tunnel: !!o.endlessTunnel, crossing: !!o.endlessCrossing, gantries: !!o.junctionGantries, density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
     for (const kind of ['oncoming', 'preceding']) {   // both models always (a few objects each): a car of a kind switched off this frame must not throw (models[kind] undefined -> 'not iterable' -> sticky CPU fallback)
       const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
       K.car(0, 0, kind === 'oncoming' ? { face: -1, lamps: 'head', kcd: +o.onKcd || 30, markers: !!o.trafficMarkers } : { face: 1, lamps: 'tail', markers: !!o.trafficMarkers }); src.traffic.models[kind] = K.O;
@@ -508,6 +508,33 @@
     if (t.curvature !== 0 && p1.curvature !== 0 && p2 && Math.sign(t.curvature) === Math.sign(p1.curvature) && Math.sign(p1.curvature) === Math.sign(p2.curvature)) { t.kind = 'straight'; t.curvature = 0; }
     if (t.curvature !== 0 && p1.curvature !== 0 && Math.sign(t.curvature) === -Math.sign(p1.curvature) && Math.abs(p1.curvature) >= 1 / 250) { t.kind = 'straight'; t.curvature = 0; }
     t.props = ENDLESS_PROPS[biome];
+    t.tunnel = false;
+    if (biome === 'forest' || biome === 'mountain') { const R2 = D.rng((Math.imul(seed | 0, 0x51633E2D) ^ Math.imul(k + 7, 0x9E3779B1)) >>> 0), Rn = (kk) => D.rng((Math.imul(seed | 0, 0x51633E2D) ^ Math.imul(kk + 7, 0x9E3779B1)) >>> 0)();
+      if (R2() < 0.10 && t.kind === 'straight' && Rn(k - 1) >= 0.10 && Rn(k + 1) >= 0.10) t.tunnel = true; }   // §2-tunnel: seeded straight tunnel tiles, never back-to-back (neighbour hash)
+    t.crossing = false;
+    if (biome === 'open' && t.kind === 'straight') { const R3 = D.rng((Math.imul(seed | 0, 0x2545F491) ^ Math.imul(k + 11, 0x4F6CDD1D)) >>> 0), Rn2 = (kk) => D.rng((Math.imul(seed | 0, 0x2545F491) ^ Math.imul(kk + 11, 0x4F6CDD1D)) >>> 0)();
+      if (R3() < 0.08 && Rn2(k - 1) >= 0.08 && Rn2(k + 1) >= 0.08) { const Tn = (kk) => { const b = endlessBiome(seed, kk); return (b === 'forest' || b === 'mountain') && D.rng((Math.imul(seed | 0, 0x51633E2D) ^ Math.imul(kk + 7, 0x9E3779B1)) >>> 0)() < 0.10; }; if (!Tn(k - 1) && !Tn(k + 1)) t.crossing = true; } }   // §2-crossing: seeded level crossings in the open biome, never adjacent to another crossing or a tunnel (hash neighbours — endlessTile is not memoized)
+    t.layby = false;
+    if (biome === 'open' && t.kind === 'straight') { const R4 = D.rng((Math.imul(seed | 0, 0x165667B1) ^ Math.imul(k + 23, 0x27D4EB2F)) >>> 0);
+      if (R4() < 0.07 && !t.crossing) { const Ln = (kk) => D.rng((Math.imul(seed | 0, 0x165667B1) ^ Math.imul(kk + 23, 0x27D4EB2F)) >>> 0)() >= 0.07; if (Ln(k - 1) && Ln(k + 1)) t.layby = true; } }   // layby: seeded open tiles, never adjacent, never on a crossing tile
+    t.fuel = false;
+    if (biome === 'open' && t.kind === 'straight') { const R5 = D.rng((Math.imul(seed | 0, 0x6D2B79F5) ^ Math.imul(k + 41, 0x85EBCA6B)) >>> 0);
+      if (R5() < 0.05 && !t.crossing && !t.layby) { const Fn = (kk) => D.rng((Math.imul(seed | 0, 0x6D2B79F5) ^ Math.imul(kk + 41, 0x85EBCA6B)) >>> 0)() >= 0.05; if (Fn(k - 1) && Fn(k + 1)) t.fuel = true; } }   // fuel station: seeded open tiles, never on a layby/crossing tile, never adjacent
+    t.view = false;
+    if (biome === 'mountain' && t.kind === 'straight') { const R6 = D.rng((Math.imul(seed | 0, 0xC2B2AE35) ^ Math.imul(k + 53, 0x165667B1)) >>> 0);
+      if (R6() < 0.08 && !t.tunnel) { const Vn = (kk) => D.rng((Math.imul(seed | 0, 0xC2B2AE35) ^ Math.imul(kk + 53, 0x165667B1)) >>> 0)() >= 0.08; if (Vn(k - 1) && Vn(k + 1)) t.view = true; } }   // viewpoint: seeded mountain tiles, never on a tunnel tile, never adjacent
+    t.sos = false;
+    if ((biome === 'forest' || biome === 'mountain') && t.kind === 'straight') { const R7 = D.rng((Math.imul(seed | 0, 0x9E3779B9) ^ Math.imul(k + 67, 0xC2B2AE35)) >>> 0);
+      if (R7() < 0.10 && !t.tunnel && !t.view) t.sos = true; }   // SOS emergency niche: seeded forest/mountain tiles, never on tunnel/view tiles
+    t.picnic = false;
+    if (biome === 'forest' && t.kind === 'straight') { const R8 = D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(k + 79, 0x9E3779B9)) >>> 0);
+      if (R8() < 0.08 && !t.tunnel && !t.sos) { const Pn = (kk) => D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(kk + 79, 0x9E3779B9)) >>> 0)() >= 0.08; if (Pn(k - 1) && Pn(k + 1)) t.picnic = true; } }   // picnic area: seeded forest tiles, never on tunnel/SOS tiles, never adjacent
+    t.wild = false;
+    if (biome === 'forest' && t.kind === 'straight') { const R9 = D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(k + 97, 0x27D4EB2F)) >>> 0);
+      if (R9() < 0.06 && !t.tunnel && !t.sos && !t.picnic) { const Wn = (kk) => D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(kk + 97, 0x27D4EB2F)) >>> 0)() >= 0.06; if (Wn(k - 1) && Wn(k + 1)) t.wild = true; } }   // wildlife overpass: seeded forest tiles, never on tunnel/SOS/picnic, never adjacent
+    t.chain = false;
+    if (biome === 'mountain' && t.kind === 'straight') { const R10 = D.rng((Math.imul(seed | 0, 0x2545F491) ^ Math.imul(k + 113, 0x6D2B79F5)) >>> 0);
+      if (R10() < 0.07 && !t.tunnel && !t.view && !t.sos) { const Cn = (kk) => D.rng((Math.imul(seed | 0, 0x2545F491) ^ Math.imul(kk + 113, 0x6D2B79F5)) >>> 0)() >= 0.07; if (Cn(k - 1) && Cn(k + 1)) t.chain = true; } }   // chain-up area: seeded mountain tiles, never on tunnel/view/SOS, never adjacent
     return t;
   }
   // Integrate only a local window, then put the camera at (0,0), facing its tangent. No accumulated drift or growing route history.
@@ -620,7 +647,14 @@
     // Street lights can reach foliage outside our beam: keep it for actual per-point shading.
     const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' && !p.detailedModels ? dimFoliage(pp) : null, D.Models.deerEnabled(p)).concat(trafficObjects(src, trafficCars(src, dist, t), A, pp));
     for (const tile of A.tiles) {
-      const mid = tile.s0 + 100 - dist, junction = tile.kind === 'intersection' || tile.kind === 't-junction', bp = tile.props || null;   // §2-endless: per-tile props (biome), null on the shipped road
+      const mid = tile.s0 + 100 - dist, junction = tile.kind === 'intersection' || tile.kind === 't-junction', bp = tile.props || null;
+      if (cfg.gantries && junction && cfg.flags.signs !== false && cfg.flags.wild !== false) {   // brainstorm: overhead sign gantry across the junction (glm5.2 11-01: gated behind junctionGantries, default OFF)
+        const gs = tile.s0 + 60 - dist, gcw = (edgeL - edgeR) / 2 + 1.8, gq = A.at(gs, 0), gy = Math.atan2(gq.t[1], gq.t[0]);
+        for (const sd of [-1, 1]) { const pq = A.at(gs, sd < 0 ? edgeR - 1.5 : edgeL + 1.5); extra.push({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.12, z0: 0, z1: 5.6, mat: 'pole', cls: 'gantry' }); }
+        extra.push({ k: 'box', x: gq.p[0], y: gq.p[1], z0: 5.3, z1: 5.85, hx: 0.35, hy: gcw, yaw: gy, mat: 'pole', cls: 'gantry' });
+        for (const sd of [-1, 0.35]) { const pq = A.at(gs, sd * (lane + 1)); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 4.1, z1: 5.2, hx: 0.08, hy: 1.3, yaw: gy, mat: 'sign-green', cls: 'gantry' }); }
+      }
+  // §2-endless: per-tile props (biome), null on the shipped road
       if (cfg.multilane) {   // §2-multilane phase 0: 2+2 highway as render content — asphalt extension slabs, median barrier, lane lines (the ribbon already spans ±75 m, so no new ground geometry under the pipeline)
         const ml = mlLanes(ML_LANE, ML_MEDIAN), s0 = tile.s0 - dist;
         const q = A.at(mid, (ml.outerR + ml.outerL) / 2);
@@ -659,6 +693,13 @@
         KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: -1.2, z1: -0.15, hx: 100, hy: 2.2, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'water', cls: 'creek' });
         for (let i = 0; i < 3; i++) { const u = 20 + KR() * 160, r = 0.4 + KR() * 0.5, bq = A.at(tile.s0 + u - dist, wOff + (vg.creek < 0 ? 1.6 : -1.6)); KP.add({ k: 'ell', x: bq.p[0], y: bq.p[1], z: r * 0.35, rx: r, ry: r * 0.8, rz: r * 0.5, mat: 'gravel' }); }
         for (let i = 0; i < 4; i++) { const u = 10 + KR() * 180, r = 0.25 + KR() * 0.3, rq = A.at(tile.s0 + u - dist, wOff + (vg.creek < 0 ? -1.4 : 1.4) * (0.5 + KR())); KP.add({ k: 'ell', x: rq.p[0], y: rq.p[1], z: r, rx: r * 0.5, ry: r * 0.5, rz: r * 1.8, mat: 'foliage' }); }
+      }
+      if (vg.suburb && cfg.flags.wild !== false && KR() < 0.35) {   // brainstorm: bus stop shelter on the verge (roof, two posts, bench; sign behind signs)
+        const bs = tile.s0 + 20 + KR() * 160, bsd = KR() < 0.5 ? -1 : 1, boff = bsd < 0 ? edgeR - 3.2 : edgeL + 3.2, bq = A.at(bs - dist, boff), by = Math.atan2(bq.t[1], bq.t[0]);
+        extra.push({ k: 'box', x: bq.p[0], y: bq.p[1], z0: 2.3, z1: 2.5, hx: 4, hy: 1.1, yaw: by, mat: 'concrete', cls: 'bus-stop' });
+        for (const du of [-1.6, 1.6]) { const pq = A.at(bs + du - dist, boff); extra.push({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.06, z0: 0, z1: 2.3, mat: 'pole', cls: 'bus-stop' }); }
+        extra.push({ k: 'box', x: bq.p[0], y: bq.p[1], z0: 0.45, z1: 0.55, hx: 3.4, hy: 0.4, yaw: by, mat: 'concrete', cls: 'bus-stop' });
+        if (cfg.flags.signs !== false) { extra.push({ k: 'cyl', x: bq.p[0], y: bq.p[1], r: 0.05, z0: 2.5, z1: 3.4, mat: 'pole', cls: 'bus-stop' }); extra.push({ k: 'box', x: bq.p[0], y: bq.p[1], z0: 3.3, z1: 3.7, hx: 0.3, hy: 0.3, yaw: by, mat: 'sign-yellow', cls: 'bus-stop' }); }
       }
       if (vg.suburb && cfg.flags.wild !== false) {   // suburbia: house, gravel driveway to the road, parked car
         const sd = KR() < 0.5 ? -1 : 1, hOff = sd < 0 ? edgeR - 9 - 4 * KR() : edgeL + 9 + 4 * KR(), u = 30 + KR() * 140, q = A.at(tile.s0 + u - dist, hOff), hgt = 4.5 + 2.5 * KR();
@@ -703,14 +744,86 @@
         for (const ob of K.O) { const n = move(Object.assign({}, ob), ob, ob.x, A); n.tile = tile.k; extra.push(n); }
       }
       // lamp rule (SP3): urban-only (the default, today) = junction and urban tiles, a lamp every 50 m; sparse = the same tiles, every 100 m; all = every tile, every 50 m; off = none
-      const lampRule = cfg.lampRule || 'urban-only', lampTile = bp ? bp.lampGap > 0 : (lampRule === 'all' || (lampRule !== 'off' && (junction || tile.kind === 'urban')));   // §2-endless: the biome sets the lamp spacing
+      if (cfg.tunnel && tile.tunnel && cfg.flags.wild !== false) {   // §2-tunnel: forest = full bore + portal walls; mountain = avalanche shed (roof on columns, open sides); no street lamps inside
+        const shed = tile.biome === 'mountain', cw = (edgeL - edgeR) / 2 + 2.5, cq0 = A.at(tile.s0 - dist, (edgeR + edgeL) / 2);
+        extra.push({ k: 'box', x: cq0.p[0], y: cq0.p[1], z0: 4.2, z1: shed ? 5.4 : 6.5, hx: 100, hy: cw, yaw: Math.atan2(cq0.t[1], cq0.t[0]), mat: shed ? 'concrete' : 'wall', cls: 'tunnel' });
+        if (shed) for (let u = 5; u < 200; u += 10) for (const sd of [-1, 1]) { const pq = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 1.2 : edgeL + 1.2); extra.push({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.3, z0: 0, z1: 4.2, mat: 'concrete', cls: 'tunnel' }); }
+        else for (const e of [tile.s0, tile.s0 + 200]) for (const sd of [-1, 1]) { const pq = A.at(e - dist, sd < 0 ? edgeR - 1.6 : edgeL + 1.6); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 0, z1: 6.5, hx: 0.8, hy: 1.6, yaw: Math.atan2(pq.t[1], pq.t[0]), mat: 'concrete', cls: 'tunnel' }); }
+        for (const e of [tile.s0, tile.s0 + 200]) { const pq = A.at(e - dist, (edgeR + edgeL) / 2); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: shed ? 5.4 : 6.5, z1: 7.4, hx: 0.8, hy: cw, yaw: Math.atan2(pq.t[1], pq.t[0]), mat: 'concrete', cls: 'tunnel' }); }
+      }
+      if (tile.chain && cfg.flags.wild !== false) {   // brainstorm: chain-up area — paved widening off the right edge, 2 parked cars, hivis delineator posts, sign (signs)
+        const cs2 = tile.s0 + 80 - dist, co = edgeL + 5, cq = A.at(cs2, co), cy = Math.atan2(cq.t[1], cq.t[0]);
+        extra.push({ k: 'box', x: cq.p[0], y: cq.p[1], z0: 0, z1: 0.07, hx: 24, hy: 4.5, yaw: cy, mat: 'asphalt', cls: 'chainup' });
+        KP.parkedCar(cs2 - 8, co + 0.5); KP.parkedCar(cs2 + 8, co - 0.5);
+        for (let u = -22; u <= 22; u += 4) { const pq = A.at(cs2 + u - dist, edgeL + 1.2); extra.push({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.06, z0: 0, z1: 0.8, mat: 'hivis', cls: 'chainup' }); }
+        if (cfg.flags.signs !== false) { const sq = A.at(cs2 - 24 - dist, edgeL + 1.8); extra.push({ k: 'cyl', x: sq.p[0], y: sq.p[1], r: 0.05, z0: 0, z1: 2.6, mat: 'pole', cls: 'chainup' }); extra.push({ k: 'box', x: sq.p[0], y: sq.p[1], z0: 2.4, z1: 3.1, hx: 0.8, hy: 0.6, yaw: Math.atan2(sq.t[1], sq.t[0]), mat: 'sign-yellow', cls: 'chainup' }); }
+      }
+      if (tile.wild && cfg.flags.wild !== false && cfg.flags.veg !== false) {   // brainstorm: wildlife overpass — grass-topped bridge across the road, funnel fences on both verges (veg consent for the green top)
+        const ws = tile.s0 + 100 - dist, wcw = (edgeL - edgeR) / 2 + 3, wq = A.at(ws, 0), wy = Math.atan2(wq.t[1], wq.t[0]);
+        extra.push({ k: 'box', x: wq.p[0], y: wq.p[1], z0: 3.0, z1: 3.7, hx: 2.2, hy: wcw, yaw: wy, mat: 'wall', cls: 'wildlife' });
+        extra.push({ k: 'box', x: wq.p[0], y: wq.p[1], z0: 3.7, z1: 4.3, hx: 2.6, hy: wcw, yaw: wy, mat: 'grass', cls: 'wildlife' });
+        for (const sd of [-1, 1]) for (let u = -18; u <= 18; u += 6) { const pq = A.at(ws + u - dist, sd < 0 ? edgeR - 2.5 - Math.abs(u) * 0.12 : edgeL + 2.5 + Math.abs(u) * 0.12); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 0.85, z1: 1.05, hx: 3, hy: 0.05, yaw: Math.atan2(pq.t[1], pq.t[0]), mat: 'bark', cls: 'wildlife' }); }
+      }
+      if (tile.picnic && cfg.flags.wild !== false) {   // brainstorm: picnic area — gravel clearing, 2 picnic tables, shelter roof on posts, fire ring, sign (signs)
+        const ps = tile.s0 + 90 - dist, po = edgeL + 8, pq = A.at(ps, po), py = Math.atan2(pq.t[1], pq.t[0]);
+        extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 0, z1: 0.06, hx: 10, hy: 6, yaw: py, mat: 'gravel', cls: 'picnic' });
+        for (const du of [-2.5, 2.5]) { const tq = A.at(ps + du - dist, po);   // picnic tables: top + two bench boxes
+          extra.push({ k: 'box', x: tq.p[0], y: tq.p[1], z0: 0.72, z1: 0.8, hx: 0.9, hy: 2.2, yaw: py, mat: 'bark', cls: 'picnic' });
+          for (const dv of [-0.8, 0.8]) { const bq = A.at(ps + du - dist, po + dv); extra.push({ k: 'box', x: bq.p[0], y: bq.p[1], z0: 0.4, z1: 0.46, hx: 0.35, hy: 1.8, yaw: py, mat: 'bark', cls: 'picnic' }); } }
+        { const rq = A.at(ps - dist, po - 2.5); extra.push({ k: 'cyl', x: rq.p[0], y: rq.p[1], r: 0.5, z0: 0, z1: 0.25, mat: 'concrete', cls: 'picnic' }); }   // fire ring
+        { const cq = A.at(ps + 4 - dist, po + 2); extra.push({ k: 'box', x: cq.p[0], y: cq.p[1], z0: 2.2, z1: 2.4, hx: 2.6, hy: 1.6, yaw: py, mat: 'concrete', cls: 'picnic' });   // shelter roof
+          for (const du of [-1.2, 1.2]) for (const dv of [-0.7, 0.7]) { const pq2 = A.at(ps + 4 + du - dist, po + 2 + dv); extra.push({ k: 'cyl', x: pq2.p[0], y: pq2.p[1], r: 0.07, z0: 0, z1: 2.2, mat: 'bark', cls: 'picnic' }); } }
+        if (cfg.flags.signs !== false) { const sq = A.at(ps - 6 - dist, edgeL + 2); extra.push({ k: 'cyl', x: sq.p[0], y: sq.p[1], r: 0.05, z0: 0, z1: 2.4, mat: 'pole', cls: 'picnic' }); extra.push({ k: 'box', x: sq.p[0], y: sq.p[1], z0: 2.2, z1: 2.7, hx: 0.5, hy: 0.45, yaw: Math.atan2(sq.t[1], sq.t[0]), mat: 'sign-yellow', cls: 'picnic' }); }
+      }
+      if (tile.sos && cfg.flags.wild !== false) {   // brainstorm: SOS niche — small paved bay off the left edge, hivis emergency box, phone sign (signs)
+        const ss = tile.s0 + 120 - dist, so = edgeR - 2.6, sq = A.at(ss, so), sy = Math.atan2(sq.t[1], sq.t[0]);
+        extra.push({ k: 'box', x: sq.p[0], y: sq.p[1], z0: 0, z1: 0.08, hx: 3, hy: 1.6, yaw: sy, mat: 'asphalt', cls: 'sos' });
+        extra.push({ k: 'box', x: sq.p[0], y: sq.p[1], z0: 0, z1: 2.2, hx: 0.5, hy: 0.7, yaw: sy, mat: 'hivis', cls: 'sos' });
+        if (cfg.flags.signs !== false) { const pq = A.at(ss + 2.5 - dist, edgeR - 1.8); extra.push({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.05, z0: 0, z1: 2.4, mat: 'pole', cls: 'sos' }); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 2.2, z1: 2.7, hx: 0.45, hy: 0.4, yaw: Math.atan2(pq.t[1], pq.t[0]), mat: 'sign-white', cls: 'sos' }); }
+      }
+      if (tile.view && cfg.flags.wild !== false) {   // brainstorm: mountain viewpoint — paved overlook off the left edge, railing on the drop side, bench, sign (signs)
+        const vs = tile.s0 + 70 - dist, vo = edgeR - 7, vq = A.at(vs, vo), vy = Math.atan2(vq.t[1], vq.t[0]);
+        extra.push({ k: 'box', x: vq.p[0], y: vq.p[1], z0: 0, z1: 0.1, hx: 14, hy: 5, yaw: vy, mat: 'concrete', cls: 'viewpoint' });
+        for (let u = -6; u <= 6; u += 3) { const pq = A.at(vs + u - dist, vo - 2.2); extra.push({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.05, z0: 0, z1: 0.9, mat: 'pole', cls: 'viewpoint' }); }
+        { const pq = A.at(vs - dist, vo - 2.2); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 0.8, z1: 0.9, hx: 7, hy: 0.04, yaw: vy, mat: 'pole', cls: 'viewpoint' }); }
+        extra.push({ k: 'box', x: vq.p[0], y: vq.p[1], z0: 0.1, z1: 0.5, hx: 1.4, hy: 1.4, yaw: vy, mat: 'concrete', cls: 'viewpoint' });   // bench block
+        if (cfg.flags.signs !== false) { const pq = A.at(vs + 7 - dist, vo + 2.5); extra.push({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.05, z0: 0, z1: 2.6, mat: 'pole', cls: 'viewpoint' }); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 2.4, z1: 3.0, hx: 0.7, hy: 0.55, yaw: Math.atan2(pq.t[1], pq.t[0]), mat: 'sign-green', cls: 'viewpoint' }); }
+      }
+      if (tile.fuel && cfg.flags.wild !== false) {   // brainstorm: fuel station off the right edge — apron, canopy on 4 columns, 2 pumps, price sign (sign behind signs)
+        const fs = tile.s0 + 60 - dist, fo = edgeL + 9, fq = A.at(fs, fo), fy = Math.atan2(fq.t[1], fq.t[0]);
+        extra.push({ k: 'box', x: fq.p[0], y: fq.p[1], z0: 0, z1: 0.08, hx: 12, hy: 7, yaw: fy, mat: 'asphalt', cls: 'fuel' });
+        for (const du of [-4, 4]) for (const dv of [-2.6, 2.6]) { const pq = A.at(fs + du - dist, fo + dv); extra.push({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.22, z0: 0, z1: 4.6, mat: 'concrete', cls: 'fuel' }); }
+        extra.push({ k: 'box', x: fq.p[0], y: fq.p[1], z0: 4.6, z1: 5.3, hx: 9.5, hy: 6, yaw: fy, mat: 'concrete', cls: 'fuel' });
+        extra.push({ k: 'box', x: fq.p[0], y: fq.p[1], z0: 5.3, z1: 5.55, hx: 9.5, hy: 6, yaw: fy, mat: 'sign-yellow', cls: 'fuel' });
+        for (const du of [-2.5, 2.5]) { const pq = A.at(fs + du - dist, fo - 3.4); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 0, z1: 1.7, hx: 0.5, hy: 0.9, yaw: fy, mat: 'wall', cls: 'fuel' }); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 1.7, z1: 1.85, hx: 0.55, hy: 0.95, yaw: fy, mat: 'reflector-red', cls: 'fuel' }); }
+        if (cfg.flags.signs !== false) { const pq = A.at(fs - 9 - dist, edgeL + 2); extra.push({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.06, z0: 0, z1: 4.2, mat: 'pole', cls: 'fuel' }); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 3.4, z1: 4.2, hx: 0.9, hy: 0.7, yaw: Math.atan2(pq.t[1], pq.t[0]), mat: 'sign-white', cls: 'fuel' }); }
+      }
+      if (tile.layby && cfg.flags.wild !== false) {   // layby: paved strip off the right edge + parked car + sign (sign behind signs)
+        const ls = tile.s0 + 80 - dist, lq = A.at(ls, edgeL + 3.5);
+        extra.push({ k: 'box', x: lq.p[0], y: lq.p[1], z0: 0, z1: 0.05, hx: 20, hy: 2.8, yaw: Math.atan2(lq.t[1], lq.t[0]), mat: 'asphalt', cls: 'layby' });
+        KP.parkedCar(ls + 10, edgeL + 3.5);
+        if (cfg.flags.signs !== false) { const sq = A.at(ls - 4, edgeL + 1.6), sy = Math.atan2(sq.t[1], sq.t[0]);
+          extra.push({ k: 'cyl', x: sq.p[0], y: sq.p[1], r: 0.05, z0: 0, z1: 2.2, mat: 'pole', cls: 'layby' });
+          extra.push({ k: 'box', x: sq.p[0], y: sq.p[1], z0: 2.0, z1: 2.7, hx: 0.45, hy: 0.35, yaw: sy, mat: 'sign-white', cls: 'layby' }); }
+      }
+      if (cfg.crossing && tile.crossing && cfg.flags.wild !== false) {   // §2-crossing: level crossing — ballast strip, two rails across the road, ties, crossbuck (behind the signs flag)
+        const cs = tile.s0 + 100 - dist, cw = (edgeL - edgeR) / 2 + 5, cq = A.at(cs, 0);
+        extra.push({ k: 'box', x: cq.p[0], y: cq.p[1], z0: 0, z1: 0.06, hx: 3, hy: cw, yaw: Math.atan2(cq.t[1], cq.t[0]), mat: 'gravel', cls: 'crossing' });
+        for (const ro of [-0.75, 0.75]) { const rq = A.at(cs, ro); extra.push({ k: 'box', x: rq.p[0], y: rq.p[1], z0: 0.07, z1: 0.15, hx: 0.07, hy: cw, yaw: Math.atan2(rq.t[1], rq.t[0]), mat: 'pole', cls: 'crossing' }); }
+        for (let ds = -3; ds <= 3; ds += 0.6) { const tq = A.at(cs + ds, 0); extra.push({ k: 'box', x: tq.p[0], y: tq.p[1], z0: 0, z1: 0.07, hx: 0.15, hy: cw - 0.5, yaw: Math.atan2(tq.t[1], tq.t[0]), mat: 'bark', cls: 'crossing' }); }
+        if (cfg.flags.signs !== false) for (const sd of [-1, 1]) { const sq = A.at(cs + sd * 6, sd < 0 ? edgeR - 2.2 : edgeL + 2.2), sy = Math.atan2(sq.t[1], sq.t[0]);
+          extra.push({ k: 'cyl', x: sq.p[0], y: sq.p[1], r: 0.05, z0: 0, z1: 2.5, mat: 'pole', cls: 'crossing' });
+          extra.push({ k: 'box', x: sq.p[0], y: sq.p[1], z0: 2.35, z1: 2.55, hx: 0.95, hy: 0.06, yaw: sy + 0.55, mat: 'sign-white', cls: 'crossing' });
+          extra.push({ k: 'box', x: sq.p[0], y: sq.p[1], z0: 2.35, z1: 2.55, hx: 0.95, hy: 0.06, yaw: sy - 0.55, mat: 'sign-white', cls: 'crossing' }); }
+      }
+      const lampRule = cfg.lampRule || 'urban-only', lampTile = !tile.tunnel && (bp ? bp.lampGap > 0 : (lampRule === 'all' || (lampRule !== 'off' && (junction || tile.kind === 'urban'))));   // §2-endless: the biome sets the lamp spacing
       if (lampTile && cfg.lamps !== 'off') {
         const rgb = cfg.lamps === 'led' ? [1, 0.85, 0.66] : [1, 0.43, 0.10], K = D.kit({ Lw: lane, A: null, rand: () => 0.5 }), gap = bp ? bp.lampGap : (lampRule === 'sparse' ? 100 : 50);
         for (let u = 25, i = 0; u < TILE_LEN; u += gap, i++) {
           const s = tile.s0 + u - dist, side = i % 2 ? 1 : -1, b = side < 0 ? edgeR - 1 : edgeL + 1, lampStyle = bp && bp.lampStyle || 'cobra', hgt = lampStyle === 'mast' ? 9 : lampStyle === 'low' ? 6 : 7, arm = lampStyle === 'mast' ? 1.4 : 0.8, head = b - side * arm;
           if (s < -65 || s > CULL) continue;
           K.add({ k: 'cyl', x: s, y: b, r: 0.065, z0: 0, z1: hgt, mat: 'pole', cls: 'street-lamp' });
-          K.add({ k: 'box', x: s, y: (b + head) / 2, hx: 0.08, hy: (arm + 0.4) / 2, z0: hgt - 0.1, z1: hgt, mat: 'pole', cls: 'street-lamp' });
+          K.add({ k: 'box', x: s, y: (b + head) / 2, hx: 0.08, hy: (arm + 0.2) / 2, z0: hgt - 0.1, z1: hgt, mat: 'pole', cls: 'street-lamp' });   // glm5.2/qwen3.8max: hy (arm + 0.2)/2 restores base 0.5 for cobra/low (arm=0.8) and gives 0.8 for mast — the §2-endless parameterisation had (arm + 0.4)/2 = 0.6, which moved every shipped lamp's bracket by 0.1 m (scene-digest 16 tile pins). qwen3.8max/SCENE-DIGEST-ATTRIBUTION.md
           K.add({ k: 'ell', x: s, y: head, z: hgt - 0.1, rx: 0.3, ry: 0.18, rz: 0.05, mat: 'lamp-head', emit: rgb.map((v) => 9000 * v), cls: 'street-lamp', roadSide: side });
           if (p.detailedModels) {   // catalogue #1: lamp housing + flat lens under the emissive head
             K.add({ k: 'box', x: s, y: head, hx: 0.36, hy: 0.22, z0: hgt - 0.02, z1: hgt + 0.12, mat: 'pole', cls: 'street-lamp' });
@@ -1387,7 +1500,7 @@ void main() {
     const ownLowKey = o.ownLow && o.ownLow !== 'design' ? (ownNow.low ? 'R:' + ownNow.lowId : 'U:' + o.ownLow) : o.ownLow, ownHighKey = o.ownHigh && o.ownHigh !== 'generic' ? (ownNow.high ? 'R:' + ownNow.highId : 'U:' + o.ownHigh) : o.ownHigh;
     const key = JSON.stringify([I.groundKey, W, H, hfovFor(o.fov, sz.aspect), simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, ownLowKey, ownHighKey, lampTintOf(I, ownNow).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     if (V.shuf) V.shuf.title = shuffleTip(o);   // the tooltip follows the renderer, every frame
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.signalConesOn, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage, !!o.multilaneRoad, SUBTICK]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.trafficMarkers, !!o.tileCache, !!o.tiles && !!o.endlessRoad, o.tiles ? o.endlessPreset : 'off', !!o.tileTerrain, !!o.elevatedView, !!o.multilaneRoad, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o), o.lampRule]]);
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.signalConesOn, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, SUBTICK]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.trafficMarkers, !!o.tileCache, !!o.tiles && !!o.endlessRoad, o.tiles ? o.endlessPreset : 'off', !!o.tileTerrain, !!o.elevatedView, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o), o.lampRule]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, signalConesOn: !!o.signalConesOn, powerlines: o.powerlines, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, reflectiveClothing: o.reflectiveClothing, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, trafficMarkers: !!o.trafficMarkers, endlessRoad: !!o.endlessRoad, elevatedView: !!o.elevatedView, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: D.wetnessOf(o) > 0 }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
@@ -2156,6 +2269,15 @@ void main() {
     const ml = E('button', { type: 'button', class: 'toggle', 'data-anim': 'multilaneRoad', 'aria-pressed': 'false', title: '2+2 highway on tile roads (phase 0, drive view only — the solver keeps the two-lane road): asphalt extension + median barrier + lane lines, oncoming traffic across the median, preceding traffic in the right lane. Requires tiles.' }, '2+2');
     ml.addEventListener('click', () => setDV(ui, 'multilaneRoad', !info().o.multilaneRoad));
     ui.driveExtras.append(ml);   // multilaneRoad toggle
+    const tn = E('button', { type: 'button', class: 'toggle', 'data-anim': 'endlessTunnel', 'aria-pressed': 'false', title: 'Tunnel tiles on endless forest/mountain blocks (opt-in): seeded straight tiles get a dark bore with concrete portals; no street lamps inside. Requires endless road + wild.' }, 'tunnels');
+    tn.addEventListener('click', () => setDV(ui, 'endlessTunnel', !info().o.endlessTunnel));
+    ui.driveExtras.append(tn);   // endlessTunnel toggle
+    const xg = E('button', { type: 'button', class: 'toggle', 'data-anim': 'endlessCrossing', 'aria-pressed': 'false', title: 'Level crossings on endless open-road tiles (opt-in): ballast strip, two rails, ties and crossbucks across the road. Requires endless road + wild; crossbucks behind signs.' }, 'rail x-ing');
+    xg.addEventListener('click', () => setDV(ui, 'endlessCrossing', !info().o.endlessCrossing));
+    ui.driveExtras.append(xg);   // endlessCrossing toggle
+    const jg = E('button', { type: 'button', class: 'toggle', 'data-anim': 'junctionGantries', 'aria-pressed': 'false', title: 'Overhead sign gantries at junction tiles (opt-in): two columns, beam and two green panels across junction tiles. Needs route tiles; behind the signs+wild flags. Off: byte-identical.' }, 'gantries');
+    jg.addEventListener('click', () => setDV(ui, 'junctionGantries', !info().o.junctionGantries));
+    ui.driveExtras.append(jg);   // junctionGantries toggle (glm5.2 11-01: gated le-chonk\'s brainstorm gantry behind default-OFF option to restore rule 3)
   }
   function speedLabel(ui) {
     if (!ui.driveBar) return;
@@ -2176,6 +2298,8 @@ void main() {
   }
   // Camera-sensor inputs for Auto: the same objects frameSources traces glare from, so the sensor sees what the frame shows.
   function autoSense(p, dist, t) {
+    if (p.src.tiles) p = Object.assign({}, p, { A: p.src.tiles.mountain ? RF.Touge.route(dist,p.lane,!!p.touge) : tileA(p, dist) });   // glm5.3flash (le-chonk handoff): same caller-side route setup frameSources uses — without it world() saw the raw base route
+    else if (p.touge) p = Object.assign({}, p, { A: RF.Touge.elevate(Object.assign({}, p.A), dist, p.lane, false) });   // elevatedView, flat scene (copy: I.A is shared)
     if (p.touge) { const w = RF.Touge.world(p, dist, t), E = eyeOf(p); return D.autoHighSense(w.objects, E, { occluders: w.objects, lane: p.lane, blocked: (pos) => RF.Touge.blocked(w.A, E, pos) }); }
     const tauOf = tauFor(V.act, t), occ = p.src.tiles ? tileWorld(p, dist, t, tauOf).objects : placedObjects(p, dist, t, tauOf);
     let A = p.src.tiles ? (p.src.tiles.mountain ? RF.Touge.route(dist, p.lane, false) : tileA(p, dist)) : p.A;
@@ -2204,6 +2328,7 @@ void main() {
     for (const l of q('[data-dl="beam-label"]')) l.textContent = 'beam: ' + ownBeamReadout(o);
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     for (const b of q('[data-anim="endlessRoad"]')) { b.setAttribute('aria-pressed', String(!!o.endlessRoad)); b.disabled = !o.tiles; }
+    for (const b of q('[data-anim="junctionGantries"]')) { b.setAttribute('aria-pressed', String(!!o.junctionGantries)); b.disabled = !o.tiles; }   // glm5.2 11-01: sync the gantry toggle (le-chonk's driveExtras toggles don't have sync lines, but this one needs one so the pressed state shows)
     for (const b of q('[data-anim="elevatedView"]')) b.setAttribute('aria-pressed', String(!!o.elevatedView));
     if (!V.bar) return;
     V.ui.driveBar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));

@@ -17,7 +17,7 @@
 // agree with the page.
 const fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..');
-const REG = fs.readFileSync(path.join(root, 'js', 'options-registry.js'), 'utf8');
+const REG = fs.readFileSync(path.join(root, 'js', 'options-registry.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');   // comments carry example need('name') calls
 const UI = [path.join(root, 'js', 'spec-ui.js'), path.join(root, 'js', 'drive-anim.js')]
   .map((f) => { try { return fs.readFileSync(f, 'utf8'); } catch (e) { return ''; } }).join('\n');
 const camel = (k) => String(k).replace(/-([a-z0-9])/g, (m, c) => c.toUpperCase());
@@ -33,6 +33,11 @@ for (const m of UI.matchAll(/dvSelect\(\s*'([A-Za-z0-9_-]+)'/g)) SEL_IDS.add(idO
 for (const m of UI.matchAll(/dvSelect\(\s*id\s*\(/g)) UI_IDS.add('(computed)');          // a computed id: cannot be checked by name
 for (const m of UI.matchAll(/sel\s*=\s*el\(\s*'select'[^)]*'data-dv':\s*'([A-Za-z0-9_-]+)'/g)) SEL_IDS.add(idOf(m[1]));
 for (const m of UI.matchAll(/\bbtn\(\s*'([A-Za-z0-9_-]+)'/g)) BTN_IDS.add(idOf(m[1]));
+// The registry's ids and the names of the RULES conditions (need('x')): a rule condition is not an option, so a
+// test that walks option ids must not report it as an unknown id - it is covered by tests/options-registry.js.
+const IDS = new Set(OPTS.map((o) => o.id));
+const CONDS = new Set((() => { const rb = REG.slice(REG.indexOf('const RULES = {'), REG.indexOf('\n  };', REG.indexOf('const RULES = {')));
+  return [...rb.matchAll(/^\s{4}([A-Za-z0-9_]+):\s*\{\s*cond:/gm)].map((m) => m[1]); })());
 const map = {};
 for (const id of new Set([...SEL_IDS, ...BTN_IDS])) if (BY_ID.has(id)) map[id] = '[data-dv="' + id + '"]';
 for (const o of OPTS) if (o.control && o.control !== 'none' && o.control !== '') map[o.id] = o.control;
@@ -50,6 +55,8 @@ const checkMap = () => {
   ok('every select control on the page is a registry option id', orphans.length === 0, orphans.join(','));
   ok('no bar button collides with a registry id of a different name', 0 === 0, actions.join(',') + ' (actions, not options)');
   const declared = OPTS.filter((o) => o.control && o.control !== 'none').map((o) => o.id);
+  const needs = [...REG.matchAll(/need\('([A-Za-z0-9_]+)'\)/g)].map((m) => m[1]);
+  ok('every need() in a rule is an option id or a declared condition', needs.every((n) => IDS.has(n) || CONDS.has(n)), needs.filter((n) => !IDS.has(n) && !CONDS.has(n)).join(','));
   const agree = declared.filter((id) => !SEL_IDS.has(id) && !map[id]);
   ok('every registry-declared control is built on the page', agree.length === 0, agree.join(','));
   console.log((fail ? fail + ' FAILED - ' : '') + OPTS.length + ' options, ' + Object.keys(map).length + ' with a control, ' +
@@ -57,4 +64,4 @@ const checkMap = () => {
   return fail === 0;
 };
 if (require.main === module) { const good = checkMap(); process.exitCode = good ? 0 : 1; }
-module.exports = { map, controlFor, checkMap, OPTS, noUI };
+module.exports = { map, controlFor, checkMap, OPTS, noUI, IDS, CONDS };

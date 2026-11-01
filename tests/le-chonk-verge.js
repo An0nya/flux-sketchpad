@@ -58,5 +58,32 @@ ok('km post gated on endless + signs flag', anim.includes('cfg.endless && cfg.fl
 ok('fence: posts + two rails behind detailedModels, thin box otherwise', anim.includes("if (p.detailedModels) {   // catalogue #6") && anim.includes("z0: 0.95, z1: 1.03") && anim.includes("z0: 0.55, z1: 0.62") && anim.includes("z0: 0.85, z1: 1.05"));
 ok('per-biome lamp styles: mast/cobra/low in ENDLESS_PROPS and the lamp loop scales with hgt', anim.includes("lampStyle: 'mast'") && anim.includes("lampStyle: 'low'") && anim.includes("hgt = lampStyle === 'mast' ? 9 : lampStyle === 'low' ? 6 : 7") && anim.includes("z1: hgt, mat: 'pole'"));
 ok('lamp head + light height follow hgt', anim.includes("z: hgt - 0.1") && anim.includes("z: hgt - 0.15, cd: 900"));
+// brainstorm batch: junction gantry + suburb bus stop (10-31 ~19:55)
+ok('gantry: columns + beam + two green panels over junction tiles, behind the junctionGantries option (glm5.2 11-01) + signs+wild', anim.includes("cls: 'gantry'") && (anim.match(/cls: 'gantry'/g) || []).length >= 3 && anim.includes('if (cfg.gantries && junction && cfg.flags.signs !== false && cfg.flags.wild !== false)') && anim.includes('for (const sd of [-1, 1]) { const pq = A.at(gs,'));
+ok('bus stop: roof + posts + bench in suburb tiles (35%), sign behind signs, behind wild', anim.includes("cls: 'bus-stop'") && anim.includes('KR() < 0.35') && anim.includes('if (vg.suburb && cfg.flags.wild !== false && KR() < 0.35)'));
+// brainstorm: SOS niches (10-31 ~20:30)
+let sosN = 0, sosBad = 0;
+for (let seed = 1; seed <= 60; seed++) for (let k = 0; k < 300; k++) { const t = A.endlessTile(seed, k);
+  if (t.sos) { sosN++; if (t.kind !== 'straight' || (t.biome !== 'forest' && t.biome !== 'mountain') || t.tunnel || t.view) sosBad++; } }
+ok('SOS niches: seeded forest/mountain straight tiles, never on tunnel/view', sosN > 30 && sosBad === 0, { sosN, sosBad });
+ok('SOS builds bay + hivis box + phone sign (signs), behind wild', anim.includes("if (tile.sos && cfg.flags.wild !== false)") && (anim.match(/cls: 'sos'/g) || []).length >= 4 && anim.includes("mat: 'hivis', cls: 'sos'"));
+// brainstorm: forest picnic areas (10-31 ~20:45)
+let picN = 0, picAdj = 0, picBad = 0;
+for (let seed = 1; seed <= 60; seed++) for (let k = 1; k < 300; k++) { const t = A.endlessTile(seed, k), p = A.endlessTile(seed, k - 1);
+  if (t.picnic) { picN++; if (p.picnic || A.endlessTile(seed, k + 1).picnic) picAdj++; if (t.kind !== 'straight' || t.biome !== 'forest' || t.tunnel || t.sos) picBad++; } }
+ok('picnic areas: seeded forest straight tiles, never adjacent, never on tunnel/SOS', picN > 15 && picAdj === 0 && picBad === 0, { picN, picAdj, picBad });
+ok('picnic builds clearing + 2 tables + fire ring + shelter + sign (signs), behind wild', anim.includes("if (tile.picnic && cfg.flags.wild !== false)") && (anim.match(/cls: 'picnic'/g) || []).length >= 8);
+// brainstorm: wildlife overpasses (10-31 ~21:00)
+let wN = 0, wAdj = 0, wBad = 0;
+for (let seed = 1; seed <= 60; seed++) for (let k = 1; k < 300; k++) { const t = A.endlessTile(seed, k), p = A.endlessTile(seed, k - 1);
+  if (t.wild) { wN++; if (p.wild || A.endlessTile(seed, k + 1).wild) wAdj++; if (t.kind !== 'straight' || t.biome !== 'forest' || t.tunnel || t.sos || t.picnic) wBad++; } }
+ok('wildlife overpasses: seeded forest straight tiles, never adjacent, never on tunnel/SOS/picnic', wN > 12 && wAdj === 0 && wBad === 0, { wN, wAdj, wBad });
+ok('overpass builds wall+grass deck across the road + funnel fences, behind wild+veg', anim.includes("if (tile.wild && cfg.flags.wild !== false && cfg.flags.veg !== false)") && (anim.match(/cls: 'wildlife'/g) || []).length >= 3 && anim.includes("mat: 'grass', cls: 'wildlife'"));
+// brainstorm: mountain chain-up areas (10-31 ~21:15)
+let cN = 0, cAdj = 0, cBad = 0;
+for (let seed = 1; seed <= 60; seed++) for (let k = 1; k < 300; k++) { const t = A.endlessTile(seed, k), p = A.endlessTile(seed, k - 1);
+  if (t.chain) { cN++; if (p.chain || A.endlessTile(seed, k + 1).chain) cAdj++; if (t.kind !== 'straight' || t.biome !== 'mountain' || t.tunnel || t.view || t.sos) cBad++; } }
+ok('chain-up areas: seeded mountain straight tiles, never adjacent, never on tunnel/view/SOS', cN > 12 && cAdj === 0 && cBad === 0, { cN, cAdj, cBad });
+ok('chain-up builds paved widening + 2 parked cars + hivis delineators + sign (signs), behind wild', anim.includes("if (tile.chain && cfg.flags.wild !== false)") && (anim.match(/cls: 'chainup'/g) || []).length >= 4 && anim.includes("KP.parkedCar(cs2 - 8, co + 0.5)"));
 console.log(fail === 0 ? `\nall ${pass} le-chonk-verge checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);

@@ -84,13 +84,13 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
 | `view` | Camera and playback | 4 | 3 | 1 | 0 | 0 | 0 | 0 |
-| `road` | Road and route | 14 | 2 | 10 | 0 | 0 | 0 | 2 |
+| `road` | Road and route | 16 | 2 | 12 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 10 | 0 | 7 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
 | `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
 | `street-lamps` | Street lamps | 6 | 0 | 6 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 17 | 0 | 14 | 0 | 0 | 1 | 2 |
-| `scenery` | Scenery and objects | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
+| `scenery` | Scenery and objects | 14 | 0 | 14 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
 | `exposure` | Exposure and eye | 4 | 1 | 3 | 0 | 0 | 0 | 0 |
 | `performance` | Speed and quality | 9 | 0 | 8 | 0 | 0 | 0 | 1 |
@@ -122,6 +122,8 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `endlessPreset` | endless road preset (prototype) | profile | More | "off" | needs `tiles` [undefined] |
 | `tileTerrain` | terrain skirts on endless tile roads (opt-in, pricy) | profile | More | false | needs `tiles` [undefined] |
 | `multilaneRoad` | 2+2 highway on tile roads (drive view only) | profile | More | false | needs `tiles` [undefined] |
+| `endlessTunnel` | tunnel tiles on endless forest/mountain blocks | profile | More | false | needs `tiles` [undefined], `endlessRoad` [undefined] |
+| `endlessCrossing` | level crossings on endless open-road tiles | profile | More | false | needs `tiles` [undefined], `endlessRoad` [undefined] |
 | `cline` | centre line | profile | More | "solid" | needs `usRoad` [disabled] |
 | `res` | still picture width | profile | no control | 640 | - |
 
@@ -245,6 +247,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `veg` | trees | profile | More | true | - |
 | `obstacle` | crates | profile | More | false | - |
 | `rpm` | road studs | profile | More | true | - |
+| `junctionGantries` | overhead sign gantries at junction tiles | profile | More | false | needs `tiles` [undefined] |
 | `leafyFoliage` | leafy foliage | profile | More | false | ignored when `mountainPassScene` [none], `cityScene` [none] |
 | `detailedModels` | detailed models | profile | More | false | - |
 | `deerBehaviour` | deer behaviour | extra | More | (unset) | - |

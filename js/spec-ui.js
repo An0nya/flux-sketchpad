@@ -1201,7 +1201,8 @@
     driveTools(ui, cv);
     ctx.setTransform(box.dpr, 0, 0, box.dpr, 0, 0); ctx.fillStyle = '#05060a'; ctx.fillRect(0, 0, box.w, box.h);
     const cap = document.getElementById('right-caption'), cb = document.getElementById('colorbar'); cb.innerHTML = '';
-    cap.textContent = 'Drive · what the driver sees · ' + RF.Drive.scenes[o.scene].label.toLowerCase() + ' · ' + (rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' m $1') + ' bend') + ' · ' + wetLabel(RF.Drive.wetnessOf(o));
+    const dscene = RF.Drive.scenes[o.scene];
+    cap.textContent = 'Drive · what the driver sees · ' + (dscene ? dscene.label.toLowerCase() : 'pass') + ' · ' + (rv.shape === 'straight' ? 'straight' : rv.shape.replace(/([RL])$/, ' m $1') + ' bend') + ' · ' + wetLabel(RF.Drive.wetnessOf(o));
     if (!rd) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px system-ui'; ctx.fillText('The drive view appears when the trace has been judged.', 14, 80); return; }
     const road = rd.mdl.road, mirrored = dm.traffic === 'LHT';
     const lazy = skipStill(ui, o);

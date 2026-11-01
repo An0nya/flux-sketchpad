@@ -35,7 +35,7 @@ const PINS = {
 function plan(RF, scene, extra) {
   const D = RF.Drive, A = RF.DriveAnim;
   const src = A.source(scene, 3.5, false, VIEW_FLAGS, Object.assign({ tiles: true, wild: true, seed: 7, oncoming: true, preceding: true, trafficDensity: 2 }, extra));
-  return { w: 96, h: 54, hfov: 60, lamps: [[0, -0.7, 0.65], [0, 0.7, 0.65]], lut: D.lutFrom((h, v) => D.Headlamp.generic(h, v, false)), conv: 'A', lane: 3.5, look: { wet: false, wetSheen: false, RL: 0.2, ambient: 0.05 }, src };
+  return { w: 96, h: 54, hfov: 60, lamps: [[0, -0.7, 0.65], [0, 0.7, 0.65]], lut: D.lutFrom((h, v) => D.Headlamp.generic(h, v, false)), conv: 'A', lane: 3.5, look: { wet: false, wetSheen: false, RL: 0.2, ambient: 0.05 }, src, mountainPass: !!extra.mountainPass };   // glm5.2 11-01: Touge.world checks p.mountainPass (not src.tiles.mountain) to gate pass furniture; the real app sets it at drive-anim.js:1499, the test's plan() must too or the pass scene loses its posts/rails
 }
 // the counts for one scene at one distance (t = 2, as the other Node tests use)
 function counts(RF, name, dist) {

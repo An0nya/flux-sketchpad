@@ -14,7 +14,7 @@
 //      node tests/S1-runtime-options.js --with-tiles      (adds the scene-rebuild options; slow under llvmpipe)
 const http = require('http'), fs = require('fs'), path = require('path');
 const { chromium } = require('/usr/local/lib/node_modules/playwright-core');
-const { controlFor, OPTS: REG_OPTS } = require('./control-map.js');   // the shared id -> selector map (tests/control-map.js)
+const { controlFor, IDS, CONDS } = require('./control-map.js');   // the shared id -> selector map, the registry ids and the rule conditions (tests/control-map.js)
 const root = path.join(__dirname, '..'), types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
 let fails = 0, warns = 0;
 const ok = (m, c, d) => { if (c) { console.log('[PASS] ' + m + (d !== undefined && d !== null && d !== '' ? ' — ' + d : '')); } else { fails++; console.log('[FAIL] ' + m + (d !== undefined && d !== null && d !== '' ? ' — ' + d : '')); } };
@@ -44,6 +44,11 @@ const OPTS = [
   ['wetVeil', 'variant', { off: 'off', on: 'on' }, ['wetOn', 'wetSheenOn']],
   ['dynamicResolution', 'key', { off: 'off', on: 'on' }, []],
   ['mtBlockers', 'variant', { off: 'off', on: 'on' }, []],
+  // le-chonk's scene-regenerate landings (group 'endless'), added 10-31: each is a bar toggle or bar select
+  // (so the audit drives it by clicking, not by a value-set) and each rebuilds the road scene when it takes.
+  ['endlessRoad', 'scene', null, []], ['elevatedView', 'scene', null, []], ['endlessPreset', 'scene', null, []],
+  ['tileTerrain', 'scene', null, []], ['multilaneRoad', 'scene', null, []], ['endlessTunnel', 'scene', null, []],
+  ['endlessCrossing', 'scene', null, []],
   ['lampRule', 'key', { off: 'urban', on: 'rural' }, ['tilesOn']],
 ];
 (async () => {
@@ -51,13 +56,13 @@ const OPTS = [
   const withTiles = process.argv.includes('--with-tiles');   // the tile options force a scene rebuild: seconds on a GPU, minutes under llvmpipe
   const server = http.createServer((q, r) => { const f = path.join(root, decodeURIComponent(q.url.split('?')[0]).replace(/\/$/, '/index.html'));
     fs.readFile(f, (e, d) => { if (e) { r.writeHead(404); r.end(); return; } r.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream' }); r.end(d); }); });
-  await new Promise((ok2) => server.listen(8090, '127.0.0.1', ok2));
+  await new Promise((ok2) => server.listen(8123, '127.0.0.1', ok2));
   const browser = await chromium.launch({ executablePath: '/usr/bin/chromium-browser', args: ['--no-sandbox', '--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 200)));
   await page.addInitScript(() => { localStorage.setItem('flux/photosafeNotice', 'dismissed'); localStorage.setItem('flux/guideSeen', '1'); });
-  await page.goto('http://127.0.0.1:8090/index.html');
+  await page.goto('http://127.0.0.1:8123/index.html');
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store, null, { timeout: 90000 });
   await page.evaluate(() => { document.querySelector('button[data-mode="D"]').click(); document.querySelector('button[data-disp="drive"]').click(); });
   await page.waitForFunction(() => RF.DriveAnim && RF.DriveAnim._ && RF.DriveAnim._.V && RF.DriveAnim._.V.p, null, { timeout: 90000 });
@@ -98,7 +103,7 @@ const OPTS = [
         }
       }
     }
-    return { r: RF.DriveAnim.stats().renderer, wh: p.w + 'x' + p.h, rs: String(V.resolution ? V.resolution.scale : 1), tab: tab, edges: edges, n: lamps, lamp: lamp, notice: (n && n.textContent || '').slice(0, 120), o: (V.info && V.info.o) || null };
+    return { r: RF.DriveAnim.stats().renderer, wh: p.w + 'x' + p.h, rs: String(V.resolution ? V.resolution.scale : 1), skey: String(V.skey || ''), akey: String(V.akey || ''), tab: tab, edges: edges, n: lamps, lamp: lamp, notice: (n && n.textContent || '').slice(0, 120), o: (V.info && V.info.o) || null };
   }, T1);
 
   const pickOn = async (name) => page.evaluate((sel) => {
@@ -129,7 +134,8 @@ const OPTS = [
     return 'set';
   }, [k, v, controlFor(k)]);
   for (const [name, kind, vals, needs] of OPTS) {
-    if (!REG_OPTS.some((o) => o.id === name)) { warn(name + ': not an option id in the registry', 'skipped (the audit list is stale - fix the list)'); continue; }
+    if (CONDS.has(name)) { warn(name + ': a RULES condition, not an option', 'skipped - rule conditions are covered by tests/options-registry.js and tests/ignored-when.js'); continue; }
+    if (!IDS.has(name)) { warn(name + ': not an option id in the registry', 'skipped (the audit list is stale - fix the list)'); continue; }
     if (!controlFor(name)) { warn(name + ': no control on the page (a state-file / preset option)', 'skipped (by design; covered by tests/control-map.js and tests/option-rebuild.js)'); continue; }
     if (only && !only.test(name)) continue;
     if (!withTiles && ['tiles', 'tileCache', 'endlessRoad', 'lampRule'].includes(name)) { warn(name + ': a scene rebuild under llvmpipe is minutes, so it is --with-tiles only', 'skipped'); continue; }
@@ -153,13 +159,13 @@ const OPTS = [
     const healthy = withOn.r === 'three' && !withOn.notice && errs === 0;
     ok(name + ' (' + kind + '): ON does not break the GPU path', healthy, 'renderer ' + withOn.r + (withOn.notice ? ' notice "' + withOn.notice + '"' : '') + (errs ? ' errors ' + errs : ''));
     const took = withOn.o && withOn.o[name] !== undefined && String(withOn.o[name]) === String(want);
-    const changed = withOn.tab !== base.tab || withOn.edges !== base.edges || withOn.lamp !== base.lamp || withOn.r !== base.r || withOn.wh !== base.wh || withOn.rs !== base.rs;
+    const changed = withOn.tab !== base.tab || withOn.edges !== base.edges || withOn.lamp !== base.lamp || withOn.r !== base.r || withOn.wh !== base.wh || withOn.rs !== base.rs || withOn.skey !== base.skey || withOn.akey !== base.akey;
     if (!took) warn(name + ' (' + kind + '): ON, but the stored value is ' + JSON.stringify(withOn.o ? withOn.o[name] : null) + ' while the control now reads ' + JSON.stringify(want), 'a synthetic change on this control type did not move the option - either the audit cannot drive this control or the control is inert; the round-trip check below still applies');
-    else if (changed) ok(name + ' (' + kind + '): ON reaches the render path (not inert)', changed, 'table ' + (withOn.tab === base.tab ? 'same' : 'changed') + ', edges ' + (withOn.edges === base.edges ? 'same' : 'changed') + ', lamp row ' + (withOn.lamp === base.lamp ? 'same ' + withOn.lamp : base.lamp + ' -> ' + withOn.lamp) + (withOn.wh !== base.wh || withOn.rs !== base.rs ? ', render ' + base.wh + '/' + base.rs + ' -> ' + withOn.wh + '/' + withOn.rs : ''));
+    else if (changed) ok(name + ' (' + kind + '): ON reaches the render path (not inert)', changed, 'table ' + (withOn.tab === base.tab ? 'same' : 'changed') + ', edges ' + (withOn.edges === base.edges ? 'same' : 'changed') + '; scene key ' + (withOn.skey === base.skey ? 'same' : 'MOVED') + ', act key ' + (withOn.akey === base.akey ? 'same' : 'MOVED') + ', lamp row ' + (withOn.lamp === base.lamp ? 'same ' + withOn.lamp : base.lamp + ' -> ' + withOn.lamp) + (withOn.wh !== base.wh || withOn.rs !== base.rs ? ', render ' + base.wh + '/' + base.rs + ' -> ' + withOn.wh + '/' + withOn.rs : ''));
     if (!changed && took) warn(name + ' (' + kind + '): ON is live but nothing moved at the sampled ray', 'scoped elsewhere in the table (or a value equal to the state default) — not inert, not verified here');
     await setOpt(name, offVal); await page.waitForTimeout(1500);
     const back = await ident();
-    const rt = back.r === 'three' && back.tab === base.tab && back.edges === base.edges && back.lamp === base.lamp && back.wh === base.wh && back.rs === base.rs;
+    const rt = back.r === 'three' && back.tab === base.tab && back.edges === base.edges && back.lamp === base.lamp && back.wh === base.wh && back.rs === base.rs && back.skey === base.skey && back.akey === base.akey;
     ok(name + ' (' + kind + '): OFF returns to the baseline (no stale key)', rt, back.lamp === base.lamp ? 'lamp row and table identity restored' : 'lamp ' + base.lamp + ' -> ' + back.lamp);
     if (restore) await setOpt(name, restore);   // leave the option as the state file had it, for the next one
   }

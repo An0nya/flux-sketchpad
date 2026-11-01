@@ -116,7 +116,11 @@
     return out;
   }
   function world(p, dist, t, tauOf) {
-    const A = route(dist, p.lane, !!p.mountainPass), K = D.kit({ Lw: p.lane, A, rand: D.rng(701) }), obs = [], flags = p.src.tiles.flags, pass = !!p.mountainPass;   // pass=false (elevatedView on a flat/tile road): 3D route flat (height 0), no pass furniture
+    // glm5.3flash (le-chonk handoff): honour a caller-supplied 3D route — frameSources/countFlashes build one
+    // (route/tileA/elevate, always with .height); the old code rebuilt a FLAT route and discarded it, so glare
+    // sources and autoSense saw flat terrain while the picture showed hills (qwen3.8max's flag). A raw I.A arc
+    // has no .height, so it still takes the fallback — hand-built test p's are unchanged.
+    const A = (p.A && p.A.height) ? p.A : route(dist, p.lane, !!p.mountainPass), K = D.kit({ Lw: p.lane, A, rand: D.rng(701) }), obs = [], flags = p.src.tiles.flags, pass = !!p.mountainPass;   // pass=false (elevatedView on a flat/tile road): no pass furniture; the route itself is the caller's when supplied
     const lo = Math.floor((dist - 10) / 8) * 8, hi = dist + 300;
     for (let s = lo; pass && s <= hi; s += 8) {   // pass furniture only on the pass (elevatedView reuses the pipeline flat)
       const rel = s - dist, off = -p.lane / 2 - 1.2;

@@ -278,24 +278,25 @@ const smText = (t, occ) => { const hook = occ ? '      if (smM >= 0 ? !smLit(smM
 // each bin's mass at its mean depth instead of its upper edge. off compiles the shipped text unchanged (no surgery); on rewrites the march to split the
 // scalar weight, declares accM, writes vec4(acc, accM), and scales accM with the share. The LW window runs the same march body, so the global rewrites hit
 // both copies. P3 composes with crossing refinement now (the crossing variant is moment-aware via the second regex below).
-const momentText = (body) => body
+const MOMENT_MARCH = 'acc += sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds * tint;';   // glm5.3flash review canary: the primary march accumulation line (always present, the non-crossing bins); if a future march-body edit moves it, momentText/moment2Text would silently no-op and produce a table that declares accM/accM2 but never accumulates it
+const momentText = (body) => { if (!body.includes(MOMENT_MARCH)) throw new Error('momentText: march accumulation line not found; the regex anchor moved'); return body
   .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* s\) \* ds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds; acc += w * tint; accM += s * w;')   // every copy of the march (the ladder and the LW window)
   .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* rs\) \* rds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * rs) * rds; acc += w * tint; accM += rs * w;')   // P3+RN: the crossing-refined ladder (crossText renames s→rs, ds→rds)
   .replace(/vec3 acc = vec3\(0\.0\);/g, 'vec3 acc = vec3(0.0); float accM = 0.0;')
   .replace(/vec4\(acc, 1\.0\)/g, 'vec4(acc, accM)')
   .replace('vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)')   // the split early-out: no march here, so no moment
-  .replace(/acc \*= swt;/g, 'acc *= swt; accM *= swt;');   // the share scales the moment too
+  .replace(/acc \*= swt;/g, 'acc *= swt; accM *= swt;'); };   // the share scales the moment too
 // P3-M2 (option haloMoment 'moment2'): the second-moment table pass. Same march body, but accumulates Σw·s² (the second moment of depth)
 // instead of the RGB tint and the first moment. Writes vec4(accM2,0,0,0) so the lookup can compute Var[s] = E[s²] − E[s]² and place the bin's
 // mass via a log-normal CDF. The main table (haloTex) still carries accM (the first moment, for the mean), so this is a SECOND march pass over
 // the same lamps — doubles the march cost, but only when moment2 is on (default off). The polar tables stay on the shipped edge knots (no second moment).
-const moment2Text = (body) => body
+const moment2Text = (body) => { if (!body.includes(MOMENT_MARCH)) throw new Error('moment2Text: march accumulation line not found; the regex anchor moved'); return body
   .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* s\) \* ds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds; accM2 += s * s * w;')   // every copy of the march (the ladder and the LW window): split the scalar weight, accumulate s²·w
   .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* rs\) \* rds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * rs) * rds; accM2 += rs * rs * w;')   // P3-M2+RN: the crossing-refined ladder
   .replace(/vec3 acc = vec3\(0\.0\);/g, 'float accM2 = 0.0;')
   .replace(/vec4\(acc, 1\.0\)/g, 'vec4(accM2, 0.0, 0.0, 0.0)')
   .replace('vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)')   // the split early-out: no march here, so no moment
-  .replace(/acc \*= swt;/g, 'accM2 *= swt;');   // the share scales the second moment too
+  .replace(/acc \*= swt;/g, 'accM2 *= swt;'); };   // the share scales the second moment too
 // WIDTH (option haloWidthStep): a per-bin sample count from the bin's WIDTH, so the samples spread evenly in DEPTH (the shipped six are log-spaced, which
 // leaves the far bins sampled metres apart). The count is ceil(width / step), so the whole table costs about range/step samples instead of 6 per bin.
 // Off compiles the shipped text byte-for-byte. The crossing-bin refinement (P1c) wins when both are on: it targets one bin, this one targets every bin.
@@ -725,7 +726,7 @@ export function haloPass(renderer, u) {
         if (halo.moment === 3) {
           const m2 = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, 3, widthStep);
           const splitM2 = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, 3, widthStep) : null;
-          const e2 = rts.get(key); if (!e2.m2bin) { e2.m2bin = new T.WebGLRenderTarget(tw * HALO_N, th, opt); e2.m2cum = new T.WebGLRenderTarget(tw * HALO_N, th, opt); }
+          const e2 = rts.get(tab[0] + 'x' + tab[1] + 'x' + HALO_N); if (!e2.m2bin) { const opt2 = { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false }; e2.m2bin = new T.WebGLRenderTarget(tab[0] * HALO_N, tab[1], opt2); e2.m2cum = new T.WebGLRenderTarget(tab[0] * HALO_N, tab[1], opt2); }   // glm5.3flash review fix: key/tw/th/opt are local to ensure() — rebuild the key from tab (the clamped dims the allocator used) and a local opt
           rt2 = e2.m2bin; cumRt2 = e2.m2cum;
           renderer.setRenderTarget(rt2); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m2;
           used.forEach((q, i) => {
@@ -754,6 +755,7 @@ export function haloPass(renderer, u) {
           });
           if (blurR || blurD) blurBins(rt2, tab[0], blurR, blurD);
           prefix(rt2.texture, cumRt2, tab[0]);
+          { const px = new Uint16Array(4 * 8); renderer.readRenderTargetPixels(cumRt2, 0, 0, 8, 1, px); halo.m2dbg = Array.from(px.slice(0, 16)).map((v) => +v.toFixed(1)); const px2 = new Uint16Array(4); renderer.readRenderTargetPixels(cumRt, 0, 0, 1, 1, px2); halo.m1dbg = Array.from(px2).map((v) => +v.toFixed(1)); }   // glm5.3flash review instrumentation: first cells of the M2 cumulative + M1 cumulative
         }
         // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {

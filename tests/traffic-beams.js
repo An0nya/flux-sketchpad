@@ -83,6 +83,9 @@ function run(RF, ok) {
     const world = RF.Touge.world(pp, dist, 0);
     passHashes[dist + (on ? '-on' : '-off')] = sha(D.render({ ...pp, scene: { objects: world.objects, markings: [], verge: ['grass', 1.5, 'grass'] }, trafficBeams: on }).rgb);
   }
+  // TB_CAPTURE=1 prints the six pass-frame hashes as a ready-to-paste PASS_BASE literal (AGENTS.md point 23; same
+  // convention as SD_CAPTURE / SB_CAPTURE). Env-guarded and additive: unset, this does nothing.
+  if (process.env.TB_CAPTURE) console.log('CAPTURE PASS_BASE = { ' + Object.keys(passHashes).map((k) => "'" + k + "': '" + passHashes[k] + "'").join(', ') + ' };');
   for (const k of Object.keys(PASS_BASE)) ok('BT1 pass CPU frame unchanged vs main: ' + k, passHashes[k] === PASS_BASE[k], { got: passHashes[k], want: PASS_BASE[k] });
 
   // 5. BT2 the car itself: its headlamps carry its own beam colour. A 3200 K car is warmer (emit blue/red) than a 6500 K car.

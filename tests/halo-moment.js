@@ -57,6 +57,10 @@ const F = loadHalo(ROOT);   // the workspace tree (this test runs against the tr
   const onSplit = F.haloTableSource(false, false, false, 'split', false, false, 0, 0, 0, 1);
   ok('table: ON split scales the moment with the share (accM *= swt) and zeroes the early-out alpha', /accM \*= swt;/.test(onSplit) && /vec4\(0\.0, 0\.0, 0\.0, 0\.0\)/.test(onSplit));
   ok('table: the blend sums source alpha on the moment variant (OneFactor when moment), not discards it (ZeroFactor when off)', /blendSrcAlpha:\s*moment \? T\.OneFactor : T\.ZeroFactor/.test(fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8')));
+  // glm5.3flash review canary: momentText/moment2Text throw if the march accumulation line moves (prevents a silent no-op that would produce a table declaring accM/accM2 but never accumulating it)
+  const haloSrc = fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8');
+  ok('canary: momentText has the MOMENT_MARCH guard (throws on anchor move)', /const MOMENT_MARCH = 'acc \+= sigma/.test(haloSrc) && /momentText: march accumulation line not found/.test(haloSrc));
+  ok('canary: moment2Text has the same MOMENT_MARCH guard', /moment2Text: march accumulation line not found/.test(haloSrc));
 }
 
 // 3. The CPU twin haloLookup: OFF (no moment) is the shipped Hermite, byte for byte. Load the shipped
