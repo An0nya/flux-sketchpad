@@ -353,8 +353,9 @@ export function withWetBounceHalo(main) {
 export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0, wb = false) {
   let main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN);
   if (wb && moment !== 3) main = withWetBounceHalo(main);   // frenchie (wetBounce): mirrored oncoming lamps in the table march; moment2+wb is skipped (wbNote)
+  if (sm) main = smText(main, occ);   // the shadow-map hook goes in BEFORE crossText copies the march body (and renames s -> rs in the copy); after it, the refined copy read an undeclared s (11-02: refine + shadow map failed to compile and hung the page)
   const useWidth = widthStep > 0, raw = refine ? crossText(main, refine, nb, widthStep) : (useWidth ? widthText(main) : main);
-  const body0 = variant === 'band' ? bandText(raw) : variant === 'split' ? splitText(raw) : raw, body = sm ? smText(body0, occ) : body0;
+  const body = variant === 'band' ? bandText(raw) : variant === 'split' ? splitText(raw) : raw;
   const withLw = lw > 0 && !refine ? lwText(body, occ, sm) : body;
   const withMoment = moment === 3 ? moment2Text(withLw) : moment ? momentText(withLw) : withLw;   // P3: the surgery runs on the moment variant (composes with refine now); off is the shipped text byte-for-byte. M2 (moment=3): the second-moment march (accM2 instead of accM)
   return THEAD + (useWidth ? 'uniform float haloWidthStep;\n' : '') + (variant ? BAND_DECL : '') + (occ ? OCC_DECL : '') + (sm ? SM_DECL + 'uniform int smM;\n' : '') + (atlas ? ATLAS_HEAD + OTHER_ATLAS : 'int tbeam = 0;\n' + OTHER_LEGACY) + (jit ? jitText(withMoment, jit) : withMoment);

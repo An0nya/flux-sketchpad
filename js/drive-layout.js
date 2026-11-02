@@ -14,7 +14,7 @@
     ['lighting', 'oncoming', 'Oncoming lamps', [dv('onMode'), '[data-dv-aim]', an('traffic-shuffle'), an('traffic-beam-list'), an('traffic-light-range'), an('traffic-nearest')]],
     ['lighting', 'ours', 'Air beam', [dv('airLevel'), '.drive-air-adv']],
     ['lighting', 'ours', 'Our beams', [an('own-low'), an('own-high'), '[data-dl=beam-label]', an('beam-name'), an('save-grid'), an('save-design'), an('import-beam'), an('export-beams'), an('beam-file'), an('beam-status'), an('beam-manager')]],
-    ['lighting', 'lamps', 'Street lamps', [an('street-lamps'), dv('lampClass'), dv('lampRoad'), dv('lampCone'), dv('lampConeGain')], dv('trafficLighting')],
+    ['lighting', 'lamps', 'Street lamps', [an('street-lamps'), dv('lampClass'), dv('lampRoad'), dv('lampCone'), dv('lampConeGain'), dv('trafficLighting')]],
     // frenchie: trafficLighting preset select sits with the lamp controls
     ['lighting', 'lamps', 'Ambient', [an('ambient')]],
     ['lighting', 'glare', 'Wet road', [dv('wetSheen'), dv('wetModel'), dv('dryStreaks'), dv('wetBounce'), an('surface-sheen')]],   // frenchie: dryStreaks + wetBounce sit with the wet-road controls
@@ -28,7 +28,12 @@
     ['performance', null, 'Resolution', [an('resolution'), an('dynamic-resolution'), an('min-fps'), an('quality-governor'), an('distance-lod'), an('heat-shimmer'), dv('samples')]],   // 3-P/3-LOD/heatShimmer selects sit with the frame-time controls   // 3-P/3-LOD: governor + distance-LOD selects sit with the other frame-time controls   // 3-P: the governor select sits with the other frame-time controls
     ['performance', null, 'Renderer', [an('gpu-renderer'), ...C(['mt']), an('tile-cache')]],
     ['performance', null, 'Debug', [an('save-state'), an('load-state'), an('state-file'), an('state-msg')]],
-    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), dv('driveScrub'), an('scrub'), an('scrub-lab'), an('fps-counter'), an('large-card'), an('animate-ui')]],
+    ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), dv('driveScrub'), an('scrub'), an('scrub-lab'), an('fps-counter'), an('large-card'), an('animate-ui'), an('imperial-units')]],
+    // owner 11-02: the prototype controls that had no row (they sat in Performance > Other). Placed so they can be tried; each still needs testing
+    // and integration into its proper group before the "Prototype" label comes off
+    ['scene', null, 'Prototype: endless road (needs testing; most need route tiles on)', [an('endlessRoad'), an('elevatedView'), an('endlessPreset'), an('endlessPresetCustom'), an('tileTerrain'), an('multilaneRoad'), an('endlessTunnel'), an('endlessCrossing'), an('junctionGantries'), an('yawSmooth')]],
+    ['scene', null, 'Prototype: cabin and drift (needs testing)', [an('cabinView'), an('cabinStyle'), an('cabinLight'), an('driftMode'), an('driftDynamics'), an('driftAfs'), an('driftCabin')]],
+    ['lighting', 'glare', 'Prototype: extras (needs testing)', [dv('wetVeil'), dv('trafficMarkers')]],
     ['details', null, '', [an('scene-details'), an('scene-details-panel')]],
     ['timings', null, '', [an('debug-timings'), an('perf-readout')]],
   ];
