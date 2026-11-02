@@ -234,6 +234,7 @@
           if (pts3.some((p) => !p)) continue;
         } else {
           tile = Solver.tileModel(T, src, { P, S0: S, Z, flat: true, apCov });
+          if (!tile.ok) continue;   // glm5.2 (T6b F3): tileModel can return {ok:false} (reflected ray misses target); guard prevents NaN sigma in surface info
         }
         if (!pts3.every((p) => Geo.envInside(env, p, 1e-9) && V.dist(p, S) >= keep * (1 - 1e-9)) || !Geo.envInside(env, P, 1e-9)) continue;
         built = { P, pts3, di, tile };

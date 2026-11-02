@@ -47,6 +47,9 @@ const OPTS = [
   // le-chonk's scene-regenerate landings (group 'endless'), added 10-31: each is a bar toggle or bar select
   // (so the audit drives it by clicking, not by a value-set) and each rebuilds the road scene when it takes.
   ['endlessRoad', 'scene', null, []], ['elevatedView', 'scene', null, []], ['endlessPreset', 'scene', null, []],
+  // the 10-31/11-01 landings after my first sweep: le-chonk's cabin/yaw/junction set and frenchie's two GPU options
+  ['junctionGantries', 'scene', null, []], ['cabinView', 'variant', null, []], ['driftMode', 'scene', null, []],
+  ['yawSmooth', 'scene', null, []], ['cabinLight', 'scene', null, []], ['dryStreaks', 'variant', null, []], ['heatShimmer', 'variant', null, []],
   ['tileTerrain', 'scene', null, []], ['multilaneRoad', 'scene', null, []], ['endlessTunnel', 'scene', null, []],
   ['endlessCrossing', 'scene', null, []],
   ['lampRule', 'key', { off: 'urban', on: 'rural' }, ['tilesOn']],
@@ -56,13 +59,14 @@ const OPTS = [
   const withTiles = process.argv.includes('--with-tiles');   // the tile options force a scene rebuild: seconds on a GPU, minutes under llvmpipe
   const server = http.createServer((q, r) => { const f = path.join(root, decodeURIComponent(q.url.split('?')[0]).replace(/\/$/, '/index.html'));
     fs.readFile(f, (e, d) => { if (e) { r.writeHead(404); r.end(); return; } r.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream' }); r.end(d); }); });
-  await new Promise((ok2) => server.listen(8123, '127.0.0.1', ok2));
+  await new Promise((ok2) => server.listen(0, '127.0.0.1', ok2));   // an ephemeral port: a fixed one is taken by another model's run
+  const port = server.address().port;
   const browser = await chromium.launch({ executablePath: '/usr/bin/chromium-browser', args: ['--no-sandbox', '--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 200)));
   await page.addInitScript(() => { localStorage.setItem('flux/photosafeNotice', 'dismissed'); localStorage.setItem('flux/guideSeen', '1'); });
-  await page.goto('http://127.0.0.1:8123/index.html');
+  await page.goto('http://127.0.0.1:' + port + '/index.html');
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store, null, { timeout: 90000 });
   await page.evaluate(() => { document.querySelector('button[data-mode="D"]').click(); document.querySelector('button[data-disp="drive"]').click(); });
   await page.waitForFunction(() => RF.DriveAnim && RF.DriveAnim._ && RF.DriveAnim._.V && RF.DriveAnim._.V.p, null, { timeout: 90000 });

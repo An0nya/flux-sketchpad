@@ -219,8 +219,8 @@
     if (!RF.nodeEnv) return { pass: null, detail: 'Source scan needs file access — run headless (node tests/headless.js). The in-page engine uses only the seeded counter-based stream.', metrics: {} };
     const { fs, path, root: rootDir } = RF.nodeEnv;
     const hits = [];
-    const walk = (d) => { for (const f of fs.readdirSync(d)) { if (f.startsWith('.')) continue; const p = path.join(d, f); if (d === path.join(rootDir, 'vendor', 'three') && ['three.core.min.js', 'three.module.min.js'].includes(f)) continue; const s = fs.statSync(p); if (s.isDirectory()) walk(p); else if (/\.(js|html|css|md|json)$/.test(f) && fs.readFileSync(p, 'utf8').includes(needle)) hits.push(path.relative(rootDir, p)); } };
-    walk(rootDir);
+    const walk = (d, root) => { for (const f of fs.readdirSync(d)) { if (f.startsWith('.')) continue; const p = path.join(d, f); if (d === path.join(rootDir, 'vendor', 'three') && ['three.core.min.js', 'three.module.min.js'].includes(f)) continue; const s = fs.statSync(p); if (s.isDirectory()) { if (!root || ['css', 'design', 'docs', 'examples', 'js', 'samples', 'solvers', 'tests', 'tools', 'vendor'].includes(f)) walk(p, false); } else if ((root ? /\.(js|html|css)$/ : /\.(js|html|css|md|json)$/).test(f) && fs.readFileSync(p, 'utf8').includes(needle)) hits.push(path.relative(rootDir, p)); } };   // glm5.2 11-01: at the root, only walk app dirs and scan .js/.html/.css — skip model/host folders and root-level .md/.json (workspace artifacts, not application source)
+    walk(rootDir, true);
     return { pass: hits.length === 0, detail: hits.length ? 'Found in: ' + hits.join(', ') : 'Scanned application .js/.html/.css/.md/.json files (two pinned three.js files excluded): 0 occurrences.', metrics: {} };
   }, { headlessOnly: true });
   add(24, 'Performance: 10,000 rays × ≥200 surfaces × 3 bounces with occlusion (< 500 ms, target 200 ms)', () => {

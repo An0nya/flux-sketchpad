@@ -117,6 +117,7 @@
       let hMax = r * 0.5; while (hMax > r * 1e-4 && !fits(hMax)) hMax *= 0.9;
       if (!fits(hMax)) continue;
       const mU = Solver.tileModel(T, src, { P, S0: S, Z, flat: true, apCov: [1 / 3, 0, 1 / 3], ref });
+      if (!mU.ok) continue;   // glm5.2 (T6b F2): tileModel can return {ok:false} (reflected ray misses target); guard prevents NaN sigma in scale range
       cands.push({ r, P, ref, hMax, sA1: mU.sigmaA, sS: mU.sigmaS });
     }
     if (!cands.length) { out.reasons.push(m1Miss(scene) || 'No facet of useful size fits the envelope along this direction.'); return out; }

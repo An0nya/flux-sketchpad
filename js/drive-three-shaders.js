@@ -417,7 +417,42 @@ export function withShimmer(source) {
   return source
     .replace(UNI, UNI + ' uniform float shimmerAmp, shimmerT;')
     .replace(RAY, RAY + `
-  if (shimmerAmp>0.0) { float g=clamp(1.0+ray.z*6.0,0.0,1.0); float n=fract(sin(dot(floor(screen*vec2(240.0,120.0))+vec2(0.0,shimmerT*9.0),vec2(12.9898,78.233)))*43758.5453); ray=normalize(ray+vec3(0.0,(n-0.5)*2.0*shimmerAmp*g,0.0)); }`);
+  if (shimmerAmp>0.0) { float g=clamp(1.0+ray.z*6.0,0.0,1.0); float n=fract(sin(dot(floor(screen*vec2(240.0,120.0))+vec2(0.0,shimmerT*1.5)   // frenchie 11-01 (minimax F3): slow scroll — at *9.0 the cells re-randomised every frame (blocky static),vec2(12.9898,78.233)))*43758.5453); ray=normalize(ray+vec3(0.0,(n-0.5)*2.0*shimmerAmp*g,0.0)); }`);
+}
+
+// frenchie (wetBounce, 4-O): splice the road-mirrored own lamps into inScatter's march. OFF = the shipped text, byte-identical
+// (the caller only applies this when look.wetBounce is on, like withShimmer). The block carries its own uniforms, so nothing
+// else in the shader changes. Mirror: lampM[i] = (x, y, -z) of lamp[i]; the beam is read toward the reflected direction
+// (vec3(d.x,d.y,-d.z)) and weighted per point by the grazing Fresnel (0.02+0.98*(1-|dz|/r)^5)*wetU — the wetVeil mirrorOf law.
+export function withWetBounce(source) {
+  const DECL = 'vec3 inScatter(vec3 dir,float sEnd,float jit) {';
+  const LOOP = '      acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;\n    }\n  }\n  return acc;\n}';
+  const SURF = '  }\n  return r*lampRGB;\n}';   // the surface() own-lamp loop tail (4-O ext B: the mirrors paint surfaces too)
+  if (source.split(DECL).length !== 2 || source.split(LOOP).length !== 2 || source.split(SURF).length !== 2) throw Error('inScatter/surface markers changed (wetBounce)');
+  const uni = 'uniform vec3 lampM[2]; uniform int nLampM; uniform float wetU;\n';
+  const block = `      for(int i=0;i<2;i++) { if(i>=nLampM) break;
+        vec3 d=P-lampM[i]; float r2=dot(d,d); if(r2<=0.0) continue; float r=sqrt(r2);
+        float I=beamI(vec3(d.x,d.y,-d.z),lampM[i]); if(I<=0.0) continue;
+        float w=(0.02+0.98*pow(1.0-abs(d.z)/r,5.0))*wetU; if(w<=0.0) continue;
+        float cs=-dot(d,dir)/r, p=scatWFwd*hgP(scatGFwd,cs)+(1.0-scatWFwd)*hgP(scatGBack,cs);
+        float E=I*w/max(r2,scatRMin*scatRMin);
+        acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;
+      }
+    }
+  return acc;
+}`;
+  const surf = `  }
+  for(int i=0;i<2;i++) { if(i>=nLampM) break; vec3 d=p-lampM[i]; float r2=dot(d,d); if(r2<=0.0) continue; float rr=sqrt(r2), NoL=-dot(d,n)/rr; if(NoL<=0.0) continue;
+    float w=(0.02+0.98*pow(1.0-abs(d.z)/rr,5.0))*wetU; if(w<=0.0) continue;
+    float I=intensity(vec3(d.x,d.y,-d.z))*fogT(rr)*w; if(I<=0.0) continue;
+    float Ep=I/r2; r+=rho*Ep*NoL/PI + retro*Ep;
+  }
+  return r*lampRGB;
+}`;
+  return uni + source   // frenchie: uniforms at the very top — object fragments define surface() before inScatter, so the DECL prepend would land after first use
+    .replace(DECL, DECL)
+    .replace(LOOP, '      acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;\n    }\n' + block)
+    .replace(SURF, surf);
 }
 export function withLighting(source, atlas = false) {
   if (!source.includes('float intensity(vec3 d) {') || !source.includes('  for(int i=0;i<2;i++)')) throw Error('P2 shared shading prefix changed');

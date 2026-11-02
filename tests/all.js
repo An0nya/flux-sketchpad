@@ -43,6 +43,7 @@ run('metrics (tests/metrics.js)', ['tests/metrics.js']);
 run('layout (tests/layout.js)', ['tests/layout.js']);
 run('attribution (tests/attribution.js)', ['tests/attribution.js']);
 run('photometry (tests/photometry.js)', ['tests/photometry.js']);
+run('CCT checks (tests/cct.js)', ['tests/cct.js']);   // nemotron 11-01: was run by no gate (name-confused with cct-defaults.js, a different file)
 run('CCT defaults per preset (tests/cct-defaults.js)', ['tests/cct-defaults.js']);
 run('duv: manual green/magenta tint, byte-identical at 0 (tests/duv.js)', ['tests/duv.js']);
 run('auto-high (tests/auto-high.js)', ['tests/auto-high.js']);
@@ -65,17 +66,41 @@ run('le-chonk endless road presets (tests/le-chonk-presets.js)', ['tests/le-chon
 run('le-chonk endless tile verge + consent toggles (tests/le-chonk-verge.js)', ['tests/le-chonk-verge.js']);
 run('le-chonk endless generator sweep, 120 seeds (tests/le-chonk-endless-sweep.js)', ['tests/le-chonk-endless-sweep.js']);
 run('halo-family cache-key detector (tests/halo-cache-keys.js)', ['tests/halo-cache-keys.js']);
+run('cache-key coverage detector: every picture-affecting option is in at least one cache key (tests/cache-key-coverage.js)', ['tests/cache-key-coverage.js']);
+run('catch-and-ignore block audit: every SILENT catch is exempted (tests/catch-ignore-audit.js)', ['tests/catch-ignore-audit.js']);
+run('option-plumbing completeness: registry, UI control, look projection, node test, gate registration (tests/option-plumbing.js)', ['tests/option-plumbing.js']);
+// glm5.2 (qwen3.8max orphan-tests recommendation): 11 green sub-second node suites that nothing ran
+run('AFS substeps (tests/afs-substeps.js)', ['tests/afs-substeps.js']);
+run('AHB fix (tests/ahb-fix.js)', ['tests/ahb-fix.js']);
+run('beam store (tests/beam-store.js)', ['tests/beam-store.js']);
+run('cycle phase (tests/cycle-phase.js)', ['tests/cycle-phase.js']);
+run('deer bolt animation (tests/deer-bolt-anim.js)', ['tests/deer-bolt-anim.js']);
+run('flux CLI (tests/flux-cli.js)', ['tests/flux-cli.js']);
+run('halo edges tail (tests/halo-edges-tail.js)', ['tests/halo-edges-tail.js']);
+run('high beam (tests/high-beam.js)', ['tests/high-beam.js']);
+run('near eye bins (tests/near-eye-bins.js)', ['tests/near-eye-bins.js']);
+run('ped kinds (tests/ped-kinds.js)', ['tests/ped-kinds.js']);
+run('traffic halo (tests/traffic-halo.js)', ['tests/traffic-halo.js']);
+// nemotron 11-01: 4 declared node: tests run by NOTHING -- not NODE, not all.js, not the gate MAP, not any require (found while settling why option-plumbing is red)
+run('halo levels (tests/halo-levels.js)', ['tests/halo-levels.js']);
+run('scatter range (tests/scatter-range.js)', ['tests/scatter-range.js']);
+run('halo width step (tests/halo-width-step.js)', ['tests/halo-width-step.js']);
+run('traffic sub-tick (tests/traffic-subtick.js)', ['tests/traffic-subtick.js']);
 run('le-chonk multilane highway phase 0 (tests/le-chonk-multilane.js)', ['tests/le-chonk-multilane.js']);
 run('le-chonk render-level ON-vs-OFF diff (tests/le-chonk-render-diff.js)', ['tests/le-chonk-render-diff.js']);
 run('le-chonk endless tunnel tiles (tests/le-chonk-tunnel.js)', ['tests/le-chonk-tunnel.js']);
 run('le-chonk endless level crossings (tests/le-chonk-crossing.js)', ['tests/le-chonk-crossing.js']);
+run('le-chonk cabin view + drift mode (tests/le-chonk-cabin.js)', ['tests/le-chonk-cabin.js']);
+run('le-chonk yaw smoothing (tests/le-chonk-yaw.js)', ['tests/le-chonk-yaw.js']);
+run('le-chonk imperial units (tests/le-chonk-units.js)', ['tests/le-chonk-units.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
 run('every option with a control has one on the page, and every control on the page is an option (tests/control-map.js)', ['tests/control-map.js']); // step5-preview (the shared id -> selector map)
 run('ignoredWhen rules are honoured where they say they are: the controlled option does not move the render while the rule holds, and does when it does not (tests/ignored-when.js)', ['tests/ignored-when.js']); // step5-preview (the behavioural ignoredWhen check)
 run('haloMoment: each bin mean is clamped into its own bin, so a nearly-empty bin cannot throw an interior knot (tests/halo-moment-clamp.js)', ['tests/halo-moment-clamp.js']); // step5-preview (P3 mean clamp)
 run('option rebuild: a cost that says scene-regenerate is carried by a rebuild key, and no option is dead (tests/option-rebuild.js)', ['tests/option-rebuild.js']); // step5-preview (open sweep)
-run('the drive bar beam label is a live readout of the beam in use (tests/step5-beam-readout.js)', ['tests/step5-beam-readout.js']); // step5-preview (wishlist §6)
+run('the drive bar beam label is a live readout of the beam in use (tests/step5-beam-readout.js)', ['tests/step5-beam-readout.js']);
+run('driftDynamics: the opposite-lock angle lags with the tyre relaxation and is capped at 8 degrees, and OFF is the raw angle (tests/step5-drift-dynamics.js)', ['tests/step5-drift-dynamics.js']); // step5-preview (wishlist §6)
 run('every halo option is projected into the renderer (tests/halo-look-projection.js)', ['tests/halo-look-projection.js']); // nemotron (inert-option guard)
 run('driver\'s-eye view (tests/drive.js)', ['tests/drive.js']);
 run('detailed models prototype (tests/models-proto.js)', ['tests/models-proto.js']);
@@ -109,6 +134,8 @@ run('dry-pavement streaks option: gates + weights, default off (tests/frenchie-d
 run('heat shimmer option (GPU only): splice + wiring, default off (tests/frenchie-heat-shimmer.js)', ['tests/frenchie-heat-shimmer.js']); // frenchie (backlog heat shimmer, ACTIVE per Anya)
 run('signal cones option: visor geometry when on, OFF byte-identical, no glare double-count (tests/frenchie-signal-cones.js)', ['tests/frenchie-signal-cones.js']); // frenchie (backlog 5 signal cones)
 run('traffic-lighting presets: registry, valid preset maps, OFF writes nothing (tests/frenchie-traffic-lighting.js)', ['tests/frenchie-traffic-lighting.js']); // frenchie (backlog 5 presets)
+run('wet-road bounce (4-O): OFF byte-identical, ON marches mirrored own lamps, keys carry it (tests/frenchie-wet-bounce.js)', ['tests/frenchie-wet-bounce.js']); // frenchie
+run('halo shader anchors guarded via hrep, composed variants pinned (tests/frenchie-halo-anchors.js)', ['tests/frenchie-halo-anchors.js']); // frenchie
 run('touge shader anchors guarded (rep throws on moved anchor; no bare .replace outside helper) — tests/frenchie-touge-anchors.js', ['tests/frenchie-touge-anchors.js']); // frenchie (pool 4)
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

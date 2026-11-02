@@ -83,10 +83,10 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
-| `view` | Camera and playback | 4 | 3 | 1 | 0 | 0 | 0 | 0 |
-| `road` | Road and route | 16 | 2 | 12 | 0 | 0 | 0 | 2 |
+| `view` | Camera and playback | 13 | 3 | 10 | 0 | 0 | 0 | 0 |
+| `road` | Road and route | 17 | 2 | 13 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 10 | 0 | 7 | 0 | 0 | 1 | 2 |
-| `air` | Fog and air beam | 14 | 0 | 2 | 10 | 1 | 0 | 1 |
+| `air` | Fog and air beam | 15 | 0 | 3 | 10 | 1 | 0 | 1 |
 | `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
 | `street-lamps` | Street lamps | 6 | 0 | 6 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 17 | 0 | 14 | 0 | 0 | 1 | 2 |
@@ -103,6 +103,15 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 |---|---|---|---|---|---|
 | `playing` | drive / pause | profile | toolbar | false | - |
 | `driveScrub` | time scrubber | profile | toolbar | false | - |
+| `cabinView` | in-cabin view (dashboard + windshield frame over the drive render) | profile | More | false | - |
+| `driftMode` | drift mode (easter egg): opposite-lock yaw on bends | profile | More | false | needs `tiles` [undefined] |
+| `driftDynamics` | drift dynamics: lag and cap the drift angle (needs drift mode) | profile | More | false | needs `tiles` [undefined] |
+| `driftAfs` | drift AFS: aim the beam along the road, not the nose (needs drift mode) | profile | More | false | needs `tiles` [undefined] |
+| `yawSmooth` | smooth camera yaw on curved tiles (lookahead-averaged tangent) | profile | More | false | needs `tiles` [undefined] |
+| `cabinStyle` | cabin dashboard style (cabin view) | profile | More | "modern" | needs `cabinView` [undefined] |
+| `driftCabin` | drift cabin: rotate the cockpit overlay with the car yaw (needs drift mode) | profile | More | false | needs `tiles` [undefined], `cabinView` [undefined] |
+| `cabinLight` | cabin light (dome + stray-light veil; dims the road render ~18%) | profile | More | false | - |
+| `imperialUnits` | imperial units (speed readouts in mph) | profile | More | false | - |
 | `speed` | speed (km/h) | profile | toolbar | 50 | - |
 | `fov` | view angle | profile | More | 60 | - |
 
@@ -120,6 +129,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `mountainPass` | mountain pass (scene select) | profile | toolbar | false | - |
 | `elevatedView` | 3D route pipeline for every scene (prototype) | profile | More | false | needs `gpu` [tooltip] |
 | `endlessPreset` | endless road preset (prototype) | profile | More | "off" | needs `tiles` [undefined] |
+| `endlessPresetCustom` | custom endless preset JSON (used when endlessPreset = custom) | profile | More | "" | needs `tiles` [undefined] |
 | `tileTerrain` | terrain skirts on endless tile roads (opt-in, pricy) | profile | More | false | needs `tiles` [undefined] |
 | `multilaneRoad` | 2+2 highway on tile roads (drive view only) | profile | More | false | needs `tiles` [undefined] |
 | `endlessTunnel` | tunnel tiles on endless forest/mountain blocks | profile | More | false | needs `tiles` [undefined], `endlessRoad` [undefined] |
@@ -160,6 +170,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `scatterNearBias` | near-eye sampling | profile | advanced air beam | 0 | needs `air` [hidden], `tableModeHidden` [hidden] |
 | `scatterGain` | air beam gain | profile | advanced halo | 0.5 | needs `tableModeTip` [none] |
 | `airLevel` | air beam level | derived | More | (derived) | - |
+| `wetBounce` | wet-road bounce (own beam mirrored into the fog) | profile | More | false | - |
 
 #### Traffic halo (`halo`)
 

@@ -72,10 +72,14 @@
     if (!enginep) enginep = (async () => {
       const files = new Set((root.RF_SOLVER_ENV || []).map((f) => 'js/' + f + '.js'));
       for (const f of ['solver-env', 'solve-worker', 'solver-pool', 'solver-pool-worker', 'gpu-trace', 'solver-host', 'solve-cache']) files.add('js/' + f + '.js');
-      for (const s of document.scripts) if (s.src) files.add(s.src);
+      // same-origin scripts are fingerprinted by content (any edit invalidates the cache); cross-origin scripts
+      // (e.g. GoatCounter) contribute only their URL as a stable sentinel — fetching them fails on CORS, and a
+      // third-party script changing its content is not a cache event for us (its URL changing is)
+      const cross = [];
+      for (const s of document.scripts) if (s.src) { try { if (new URL(s.src, document.baseURI).origin === location.origin) files.add(s.src); else cross.push(s.src); } catch (e) { cross.push(s.src); } }
       const srcs = await Promise.all([...files].sort().map(async (f) => { const r = await fetch(new URL(f, document.baseURI), { cache: 'no-store' }); if (!r.ok) throw new Error('cannot fingerprint ' + f); return [f, await r.text()]; }));
-      return hash(srcs);
-    })();
+      return hash(srcs.concat(cross.sort().map((u) => [u, u])));
+    })().catch((e) => { enginep = null; throw e; });   // a failed fingerprint can retry instead of memoizing the rejection
     return enginep;
   }
   async function keyOf(r, engine, host) {

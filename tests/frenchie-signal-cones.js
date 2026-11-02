@@ -109,7 +109,7 @@ ok('lamp-dist exports signalDist + SIGNAL_HALF_ANGLE (15 deg)', !!LD.signalDist 
   ok('signalConeLamps exported and pure-gated on the option', /export function signalConeLamps\(objects, on\)/.test(lc) && /if \(!on\) return \[\];/.test(lc));
   ok('build() collects signals only when look.signalConesOn', /p\.look && p\.look\.signalConesOn/.test(lc));
   ok('draw() signal pass is skipped when the list is empty (OFF byte-identical GL)', /if \(last\.signals && last\.signals\.length\)/.test(lc));
-  ok('drive-anim look carries signalConesOn', /signalConesOn: !!o\.signalConesOn \}, src:/.test(fs.readFileSync(path.join(ROOT, 'js/drive-anim.js'), 'utf8')));
+  ok('drive-anim look carries signalConesOn', /signalConesOn: !!o\.signalConesOn/.test(fs.readFileSync(path.join(ROOT, 'js/drive-anim.js'), 'utf8')));   // append-safe (line-based)
   ok('registry note mentions the volumetric pass', /Volumetric cone in haze ships too/.test(fs.readFileSync(path.join(ROOT, 'js/options-registry.js'), 'utf8')));
 }
 

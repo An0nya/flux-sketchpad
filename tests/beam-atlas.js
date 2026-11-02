@@ -12,8 +12,8 @@ const ROOT = path.join(__dirname, '..');
 if (!RF.BeamAtlas) vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'js', 'beam-atlas.js'), 'utf8'), { filename: 'js/beam-atlas.js' });
 const A = RF.BeamAtlas, D = RF.Drive;
 const hash = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-// the shader modules are ES modules: strip the export/import keywords and evaluate them as plain code
-const esm = (file, extra, names) => new Function(...Object.keys(extra || {}), fs.readFileSync(path.join(ROOT, 'js', file), 'utf8').replace(/^import .*$/mg, '').replace(/^export /mg, '') + '\nreturn { ' + names.join(', ') + ' };')(...Object.values(extra || {}));
+// the shader modules are ES modules: shared strip-and-evaluate helper (tests/esm.js; qwen's offer, glm5.2-greenlit 11-01)
+const { esm } = require('./esm.js');
 let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : '  ' + JSON.stringify(detail))); if (!cond) fails++; };
 
 // 0. shader text (BA5b): the atlas-off text is main's, byte for byte, so the CPU-equal GPU frames are untouched

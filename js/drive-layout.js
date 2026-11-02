@@ -17,7 +17,7 @@
     ['lighting', 'lamps', 'Street lamps', [an('street-lamps'), dv('lampClass'), dv('lampRoad'), dv('lampCone'), dv('lampConeGain')], dv('trafficLighting')],
     // frenchie: trafficLighting preset select sits with the lamp controls
     ['lighting', 'lamps', 'Ambient', [an('ambient')]],
-    ['lighting', 'glare', 'Wet road', [dv('wetSheen'), dv('wetModel'), dv('dryStreaks'), an('surface-sheen')]],   // frenchie: dryStreaks sits with the wet-road controls
+    ['lighting', 'glare', 'Wet road', [dv('wetSheen'), dv('wetModel'), dv('dryStreaks'), dv('wetBounce'), an('surface-sheen')]],   // frenchie: dryStreaks + wetBounce sit with the wet-road controls
     ['lighting', 'glare', 'Power lines', [an('powerline-reflectance')]],
     ['scene', null, 'Weather and air', [dv('wetness'), dv('visibility')]],
     ['scene', null, 'Objects', [an('enable-all'), ...C(['posts', 'signs', 'people', 'animals', 'veg', 'obstacle', 'rpm']), an('detailed-models'), an('leafy-foliage'), an('deer-behaviour'), an('powerlines'), an('reflective-clothing')]],

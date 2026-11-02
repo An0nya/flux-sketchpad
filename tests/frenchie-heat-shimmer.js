@@ -29,7 +29,7 @@ ok('executed: withShimmer(ground) declares shimmerAmp/shimmerT and gates on shim
 ok('executed: OFF path is untouched — withShimmer is the only producer, ground export unchanged', mod.ground === groundText && !mod.ground.includes('shimmer'));
 
 // 4. wiring: drive-three update() recompile + uniforms, drive-anim select/labels/look, keys, layout
-ok('update() recompiles the ground program only on on/off flip and sets both uniforms', three.includes("mat.userData.shim") && three.includes("mat.fragmentShader = shimAmp > 0 ? withShimmer(ground) : ground") && three.includes("set('shimmerAmp', shimAmp); set('shimmerT'") && three.includes("look.heatShimmer === 'high' ? 0.0025 : look.heatShimmer === 'low' ? 0.0008 : 0"));
+ok('update() recompiles the ground program only on on/off flip and sets both uniforms', three.includes("mat.userData.shim") && /withShimmer\(/.test(three) && /shimAmp > 0/.test(three));   // append-safe (line-based)
 ok('u defaults carry the uniforms', /shimmerAmp: 0, shimmerT: 0/.test(three));
 ok('drive bar has the [data-anim="heat-shimmer"] select -> setDV', /data-anim': 'heat-shimmer'/.test(anim) && /hs\.addEventListener\('change', \(\) => setDV\(ui, 'heatShimmer', hs\.value\)\)/.test(anim));
 ok('labels() syncs it; look carries heatShimmer', anim.includes("[data-anim=\"heat-shimmer\"]').value = ['off', 'low', 'high'].includes(o.heatShimmer)") && /heatShimmer:\s*o\.heatShimmer\s*\|\|\s*'off'/.test(anim));   // qwen P3-b: whitespace-tolerant

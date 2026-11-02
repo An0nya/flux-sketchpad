@@ -119,7 +119,7 @@
     }
     if (W > 0) for (const k of MAT_KEYS) if (MAT_DEF[k].wet) out[k] = wetMaterial(out[k], MAT_DEF[k].wet, W, !!look.wetSheen);
     // POWERLINES: the wire albedo is the option powerlineReflectance (registry). The constant is only the fallback for a look without it.
-    if (out.wire) { const R = typeof look.powerlineReflectance === 'number' ? look.powerlineReflectance : POWERLINE_WIRE_RHO; out.wire = { ...out.wire, rho: [R, R, R] }; }
+    if (out.wire) { const R = typeof look.powerlineReflectance === 'number' ? Math.min(0.60, Math.max(0.02, look.powerlineReflectance)) : POWERLINE_WIRE_RHO; out.wire = { ...out.wire, rho: [R, R, R] }; }   // frenchie 11-02 (qwen T10-F1 completion): clamp at consumption — state files bypass the slider display clamp (drive-anim.js:2614); registry range 0.02..0.60
     return out;
   }
 
@@ -412,6 +412,16 @@
           const s = D * F * G1(NoL) * G1(NoV) / (4 * NoV) * Ep; r += s; g += s; b += s;
         }
         if (m.retro) { const q = Ep * (rscale === undefined ? 1 : rscale) * (eyeFalloff ? Math.pow(NoL,eyeFalloff) : 1); r += m.retro[0] * q; g += m.retro[1] * q; b += m.retro[2] * q; }
+      }
+      // frenchie (wetBounce, 4-O ext B): the own lamps mirrored in the road plane also paint surfaces (the road itself is skipped by NoL<=0 — the mirror is under it)
+      const wb = o.look && o.look.wetBounce ? +o.look.wetness || 0 : 0;
+      if (wb > 0) for (let i = 0; i < nl; i++) {
+        const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz + L[2], r2 = dx * dx + dy * dy + dz * dz; if (!(r2 > 0)) continue;
+        const rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
+        if (!(NoL > 0)) continue;
+        const wf = wetBounceW(dz, rr, wb); if (!(wf > 0)) continue;
+        const I = ownBeamAt(o, dx, dy, -dz, L[1]) * fogD(dx, dy, dz) * wf; if (!(I > 0)) continue;
+        const d = I / r2 * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
       }
       LR += k * r * lc[0]; LG += k * g * lc[1]; LB += k * b * lc[2];
     }
@@ -910,6 +920,9 @@
   function haloRangeOf(look) { const r = +(look && look.haloRange); return r > 0 ? Math.min(SCAT_RANGE.max, Math.max(SCAT_RANGE.min, r)) : scatRangeOf(look); }
   const hgPhase = (g, c) => (1 - g * g) / (4 * Math.PI * Math.pow(1 + g * g - 2 * g * c, 1.5));
   function scatterPhase(c) { return SCAT.wFwd * hgPhase(SCAT.gFwd, c) + (1 - SCAT.wFwd) * hgPhase(SCAT.gBack, c); }
+  // frenchie (wetBounce, 4-O): grazing-Fresnel weight of a road-mirrored own lamp at a march point, same law as the wetVeil mirrorOf
+  // (drive.js ~:856): Schlick with cos = |dz|/r, times wetness. dz/r -> 1 (head-on) gives 0.02*wet, grazing (dz=0) gives wet.
+  function wetBounceW(dz, r, wet) { const c = Math.min(1, Math.abs(dz) / r); return (0.02 + 0.98 * Math.pow(1 - c, 5)) * wet; }
   // per-pixel jitter in [0, 1): a hash of the integer pixel coordinates only (no time term), so frames are repeatable and banding is broken up
   function scatterJitter(x, y) { let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1); h = Math.imul(h ^ (h >>> 15), 0x85ebca6b); h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
   // Returns [r, g, b] in cd/m² (the caller weights by the sample's k). LUT zero outside its window, so lamp-behind rays get nothing.
@@ -927,6 +940,19 @@
         const r = Math.sqrt(r2), I = ownBeamAt(o, qx, qy, qz, L[1]);
         if (!(I > 0)) continue;
         const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I / Math.max(r2, SCAT.rMin * SCAT.rMin);   // point-lamp 1/r² is capped inside rMin (a ray through the lamp itself would diverge)
+        const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Tv * ds;
+        if (!Number.isFinite(v)) continue;
+        out[0] += v * lc[0]; out[1] += v * lc[1]; out[2] += v * lc[2];
+      }
+      // frenchie (wetBounce): the own lamps mirrored in the road plane (z -> -z), weighted per point by wetBounceW; the beam is read
+      // toward the reflected direction (-qz), so the mirror cannot disagree with the direct beam about where the light goes.
+      const wb = o.look && o.look.wetBounce ? +o.look.wetness || 0 : 0;
+      if (wb > 0) for (let i = 0; i < lamps.length; i++) {
+        const L = lamps[i], qx = px - L[0], qy = py - L[1], qz = pz + L[2], r2 = qx * qx + qy * qy + qz * qz;
+        if (!(r2 > 0)) continue;
+        const r = Math.sqrt(r2), w = wetBounceW(qz, r, wb), I = ownBeamAt(o, qx, qy, -qz, L[1]);
+        if (!(I > 0) || !(w > 0)) continue;
+        const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I * w / Math.max(r2, SCAT.rMin * SCAT.rMin);
         const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Tv * ds;
         if (!Number.isFinite(v)) continue;
         out[0] += v * lc[0]; out[1] += v * lc[1]; out[2] += v * lc[2];
@@ -968,6 +994,17 @@
         const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Tv * w;
         if (!Number.isFinite(v)) continue;
         out[0] += v * tint[0]; out[1] += v * tint[1]; out[2] += v * tint[2];
+        // frenchie (wetBounce, 4-O ext A): the oncoming lamp mirrored in the road plane — beam read toward the reflected point, march/r/phase at the mirror, Fresnel weight
+        const wb = p && p.look && p.look.wetBounce ? +p.look.wetness || 0 : 0;
+        if (wb > 0) {
+          const Im = trafficAt(L, beam, Px, Py, -Pz); if (!(Im > 0)) continue;
+          const qz = Pz + L.z, q2 = dx * dx + dy * dy + qz * qz; if (!(q2 > 0)) continue;
+          const qr = Math.sqrt(q2), wf = wetBounceW(qz, qr, wb);
+          if (!(wf > 0)) continue;
+          const cq = -(dx * rx + dy * ry + qz * rz) / qr, Eq = Im * wf / Math.max(q2, SCAT.rMin * SCAT.rMin);
+          const vv = sig * scatterPhase(cq) * Eq * Math.exp(-sig * qr) * Tv * w;
+          if (Number.isFinite(vv)) { out[0] += vv * tint[0]; out[1] += vv * tint[1]; out[2] += vv * tint[2]; }
+        }
       }
     }
     return out;
@@ -1084,6 +1121,17 @@
         if (!(I > 0)) continue;
         const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I / Math.max(r2, SCAT.rMin * SCAT.rMin);
         f += sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Math.exp(-sig * s) * (fr ? nearFadeW(s, fr[0], fr[1]) : 1);
+      }
+      // frenchie (wetBounce): road-plane mirrors of the own lamps, same per-point Fresnel weight as inScatter above
+      const wb = lk.wetBounce ? +lk.wetness || 0 : 0;
+      if (wb > 0) for (let i = 0; i < lamps.length; i++) {
+        const L = lamps[i], qx = px - L[0], qy = py - L[1], qz = pz + L[2], r2 = qx * qx + qy * qy + qz * qz;
+        if (!(r2 > 0)) continue;
+        const r = Math.sqrt(r2), w = wetBounceW(qz, r, wb), I = ownBeamAt(o, qx, qy, -qz, L[1]);
+        if (!(I > 0) || !(w > 0)) continue;
+        const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I * w / Math.max(r2, SCAT.rMin * SCAT.rMin);
+        const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Math.exp(-sig * s) * (fr ? nearFadeW(s, fr[0], fr[1]) : 1);
+        if (Number.isFinite(v)) f += v;
       }
       return Number.isFinite(f) ? f : 0;
     };
@@ -1223,5 +1271,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { scatRangeOf, haloRangeOf, SCAT_RANGE, glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, HALO_RANGE_KEYS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetBounceW, inScatter, scatterTableBins, scatRangeOf, haloRangeOf, SCAT_RANGE, glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, HALO_RANGE_KEYS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -54,7 +54,9 @@
     src.traffic.onMode = o.onMode || (o.onKcd === undefined ? 'symmetric' : 'manual'); src.traffic.onKcd = o.onKcd === undefined ? 30 : +o.onKcd;
     src.traffic.logic = !!o.trafficLogic; src.traffic.pedStop = o.pedStop !== false; src.traffic.safeGap = o.safeGap !== false; src.traffic.speed = o.speed === undefined ? 50 : +o.speed;
     if (o.tiles) src.markings = o.multilaneRoad ? [] : D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });   // multilane draws its own per-tile markings in tileWorld
-    if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, endless: !!o.endlessRoad, preset: o.endlessPreset || 'off', terrain: !!o.tileTerrain, multilane: !!o.multilaneRoad, tunnel: !!o.endlessTunnel, crossing: !!o.endlessCrossing, gantries: !!o.junctionGantries, density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
+    // highway-loop preset implies the 2+2 render cross-section (the multilaneRoad option itself is untouched)
+    // gantry-loop preset implies the gantries (the junctionGantries option itself is untouched)
+    if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, endless: !!o.endlessRoad, preset: o.endlessPreset || 'off', custom: o.endlessPreset === 'custom' ? parseCustomPreset(o.endlessPresetCustom) : null, terrain: !!o.tileTerrain, multilane: !!o.multilaneRoad || !!(LOOP_MULTILANE[o.endlessPreset || 'off']), tunnel: !!o.endlessTunnel, crossing: !!o.endlessCrossing, yawSmooth: !!o.yawSmooth, driftMode: !!o.driftMode, gantries: !!o.junctionGantries || o.endlessPreset === 'gantry-loop', density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
     for (const kind of ['oncoming', 'preceding']) {   // both models always (a few objects each): a car of a kind switched off this frame must not throw (models[kind] undefined -> 'not iterable' -> sticky CPU fallback)
       const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
       K.car(0, 0, kind === 'oncoming' ? { face: -1, lamps: 'head', kcd: +o.onKcd || 30, markers: !!o.trafficMarkers } : { face: 1, lamps: 'tail', markers: !!o.trafficMarkers }); src.traffic.models[kind] = K.O;
@@ -437,25 +439,54 @@
   const ENDLESS_PROPS = { open: { lampGap: 100, lampStyle: 'mast', density: 1, speed: 80, deer: 0.5, bushes: 2 }, forest: { lampGap: 0, lampStyle: 'cobra', density: 0.6, speed: 60, deer: 1, bushes: 4 }, city: { lampGap: 50, lampStyle: 'cobra', density: 2, speed: 50, deer: 0, bushes: 0 }, mountain: { lampGap: 0, lampStyle: 'low', density: 0.4, speed: 40, deer: 0.2, bushes: 2 } };   // lampStyle: open gets 9 m masts, city the 7 m cobra, mountain low 6 m (where lamps exist)
   // every kind must be named: pickKind counts an unnamed kind as weight 1
   const ENDLESS_WEIGHTS = { open: { straight: 3, '250R': 1, '250L': 1, '150R': 0.5, '150L': 0.5, intersection: 0, 't-junction': 0, urban: 0 }, forest: { straight: 3, '250R': 1, '250L': 1, '150R': 0, '150L': 0, intersection: 0, 't-junction': 0, urban: 0 }, city: { urban: 3, straight: 2, intersection: 0.7, 't-junction': 0.5, '250R': 0, '250L': 0, '150R': 0, '150L': 0 }, mountain: { straight: 1, '150R': 1, '150L': 1, '250R': 0, '250L': 0, intersection: 0, 't-junction': 0, urban: 0 } };
-  function endlessBiome(seed, k) { return ENDLESS_BIOMES[Math.floor(D.rng((Math.imul(seed | 0, 0x9E3779B1) ^ Math.imul(Math.floor(k / 16) + 1, 0x85EBCA6B)) >>> 0)() * ENDLESS_BIOMES.length) % ENDLESS_BIOMES.length]; }
-  function endlessTileRaw(seed, k, biome) { const t = roadTile(seed, k, ENDLESS_WEIGHTS[biome]); t.biome = biome; return t; }   // the per-biome pick before the chaining rules
+  // Anya 11-01 (preset loops): preset '<biome>-loop' forces one biome for the whole road (a continuous loop of that road
+  // type, like a scene pick); 'switchbacks' = mountain; 'custom' reads the user JSON (endlessPresetCustom). 'off' and the
+  // elevation presets keep the seeded biome walk byte-for-byte.
+  const LOOP_BIOME = { 'open-loop': 'open', 'forest-loop': 'forest', 'city-loop': 'city', 'mountain-loop': 'mountain', switchbacks: 'mountain', 'highway-loop': 'open', 'gantry-loop': 'city', 'toll-loop': 'open', 'vms-loop': 'open' };   // highway-loop = open dual carriageway (multilane render implied)
+  const LOOP_MULTILANE = { 'highway-loop': true, 'toll-loop': true };   // toll plaza needs the 2+2 cross-section
+const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 }, 'toll-loop': { speed: 90 }, switchbacks: { speed: 50, deer: 0.8 }, 'city-loop': { speed: 50, lampGap: 40, lampStyle: 'cobra', bushes: 4 }, 'gantry-loop': { speed: 60 }, 'mountain-loop': { speed: 60, deer: 0.8 } };   // per-loop sensible props; custom preset props still win
+  function parseCustomPreset(txt) {   // user preset JSON: { biome?, mix?, weights?, grade?, tunnel?, crossing?, layby?, fuel? } — validated per key; unparsable -> null (= off)
+    if (!txt || typeof txt !== 'string') return null;
+    let j; try { j = JSON.parse(txt); } catch (e) { return null; }
+    if (!j || typeof j !== 'object') return null;
+    const out = {};
+    if (j.biome && ENDLESS_BIOMES.includes(j.biome)) out.biome = j.biome;
+    if (j.mix && typeof j.mix === 'object') { const m = {}; for (const b of ENDLESS_BIOMES) { const w = +j.mix[b]; if (Number.isFinite(w) && w >= 0) m[b] = Math.min(1, w); } if (Object.keys(m).length) out.mix = m; }
+    if (j.weights && typeof j.weights === 'object') { const w = {}; for (const k2 of Object.keys(ENDLESS_WEIGHTS.open)) { const v = +j.weights[k2]; if (Number.isFinite(v) && v >= 0) w[k2] = Math.min(10, v); } if (Object.keys(w).length) out.weights = w; }
+    if (Array.isArray(j.grade) && j.grade.length === 2) { const [a, b] = j.grade.map(Number); if ([a, b].every(Number.isFinite) && Math.abs(a) <= 0.12 && Math.abs(b) <= 0.12) out.grade = [Math.min(a, b), Math.max(a, b)]; }
+    else if (j.grade && typeof j.grade === 'object') { const g = {}; for (const bm of ['open', 'forest', 'city', 'mountain']) { const r = j.grade[bm]; if (Array.isArray(r) && r.length === 2) { const [a, b] = r.map(Number); if ([a, b].every(Number.isFinite)) { const lo = Math.min(0.12, Math.abs(Math.min(a, b))), hi = Math.min(0.12, Math.abs(Math.max(a, b))); g[bm] = [Math.min(lo, hi), Math.max(lo, hi)]; } } } if (Object.keys(g).length) out.gradeBiome = g; }   // per-biome grade ranges, clamped like the global range
+    for (const f of ['tunnel', 'crossing', 'layby', 'fuel', 'works', 'toll', 'vms']) { const v = +j[f]; if (Number.isFinite(v)) out[f] = Math.min(0.5, Math.max(0, v)); }
+    if (j.props && typeof j.props === 'object') { const pr = {}; if (Number.isFinite(+j.props.speed)) pr.speed = Math.min(130, Math.max(30, +j.props.speed)); if (Number.isFinite(+j.props.density)) pr.density = Math.min(3, Math.max(0, +j.props.density)); if (Number.isFinite(+j.props.lampGap)) pr.lampGap = Math.min(400, Math.max(0, +j.props.lampGap)); if (['mast', 'cobra', 'low'].includes(j.props.lampStyle)) pr.lampStyle = j.props.lampStyle; if (Number.isFinite(+j.props.deer)) pr.deer = Math.min(1, Math.max(0, +j.props.deer)); if (Number.isFinite(+j.props.bushes)) pr.bushes = Math.min(8, Math.max(0, +j.props.bushes)); if (Object.keys(pr).length) out.props = pr; }
+    return Object.keys(out).length ? out : null;
+  }
+  function endlessBiome(seed, k, preset = 'off', custom = null) {
+    if (preset && LOOP_BIOME[preset]) return LOOP_BIOME[preset];
+    if (preset === 'custom' && custom) {
+      if (custom.biome) return custom.biome;
+      if (custom.mix) { const r = D.rng((Math.imul(seed | 0, 0x9E3779B1) ^ Math.imul(Math.floor(k / 16) + 1, 0x85EBCA6B)) >>> 0)(); let acc = 0; for (const b of ENDLESS_BIOMES) { acc += custom.mix[b] || 0; if (r < acc) return b; } return 'open'; }
+    }
+    return ENDLESS_BIOMES[Math.floor(D.rng((Math.imul(seed | 0, 0x9E3779B1) ^ Math.imul(Math.floor(k / 16) + 1, 0x85EBCA6B)) >>> 0)() * ENDLESS_BIOMES.length) % ENDLESS_BIOMES.length]; }
+  const SWITCHBACK_WEIGHTS = { straight: 0.25, '250R': 0.1, '250L': 0.1, '150R': 4, '150L': 4, intersection: 0, 't-junction': 0, urban: 0 };   // switchbacks preset: hairpin-heavy
+  function endlessTileRaw(seed, k, biome, custom = null, preset = 'off') { const t = roadTile(seed, k, (custom && custom.weights) || (preset === 'switchbacks' ? SWITCHBACK_WEIGHTS : ENDLESS_WEIGHTS[biome])); t.biome = biome; return t; }   // the per-biome pick before the chaining rules (custom weights override)
   // tileA: the tile road's route A; under elevatedView (p.touge pipeline on, not the pass) it goes through
   // RF.Touge.elevate with height 0, so the 3D pipeline renders it flat. Legacy: the plain 2D tileRoute.
-  const tileA = (p, dist) => { const A2 = tileRoute(p.src.tiles.seed, dist, undefined, p.src.tiles.endless ? endlessTile : null);
-    if (p.touge && !p.src.tiles.mountain) return p.src.tiles.endless ? RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain)) : RF.Touge.elevate(A2, dist, p.lane, false);
+  const tileA = (p, dist) => { const A2 = tileRoute(p.src.tiles.seed, dist, undefined, p.src.tiles.endless ? ((s2, k2) => endlessTile(s2, k2, p.src.tiles.preset, p.src.tiles.custom)) : null);
+    if (p.touge && !p.src.tiles.mountain) return p.src.tiles.endless ? RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom)) : RF.Touge.elevate(A2, dist, p.lane, false);
     return A2; };   // elevatedView: endless tiles ride the biome elevation (rolling hills / pass grades); plain tiles stay flat (height 0)
   // §2-endless elevation (rolling hills / forested pass): a seeded grade walk, one grade per 16-tile biome block
   // (mountain ±2–6%, open/forest ±0.5–1.5% rolling, city flat), lap-periodic like the pass so z(s) is O(1).
   const ENDLESS_BLOCK = 16 * 200;   // one biome block = 16 tiles = 3.2 km
   const endlessElevCache = new Map();
-  function endlessGrade(seed, b, preset = 'off') {   // grade (rise/run) of biome block b, seeded from the block's biome; the preset sets the magnitudes
-    const biome = endlessBiome(seed, b * 16), R = D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(b + 1, 0x9E3779B1)) >>> 0);
+  function endlessGrade(seed, b, preset = 'off', custom = null) {   // grade (rise/run) of biome block b, seeded from the block's biome; the preset sets the magnitudes
+    const biome = endlessBiome(seed, b * 16, preset, custom), R = D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(b + 1, 0x9E3779B1)) >>> 0);
+    if (preset === 'custom' && custom && custom.gradeBiome && custom.gradeBiome[biome]) { const g = custom.gradeBiome[biome]; return (R() < 0.5 ? -1 : 1) * (g[0] + (g[1] - g[0]) * R()); }   // custom per-biome grade range wins
+    if (preset === 'custom' && custom && custom.grade) return (R() < 0.5 ? -1 : 1) * (custom.grade[0] + (custom.grade[1] - custom.grade[0]) * R());   // custom grade range
     if (biome === 'mountain') return (R() < 0.5 ? -1 : 1) * (preset === 'forested-pass' ? 0.04 + 0.04 * R() : preset === 'rolling-hills' ? 0.02 + 0.02 * R() : 0.02 + 0.04 * R());
     if (biome === 'city') return 0;
     return (R() < 0.5 ? -1 : 1) * (preset === 'forested-pass' ? 0.01 + 0.015 * R() : preset === 'rolling-hills' ? 0.008 + 0.012 * R() : 0.005 + 0.01 * R());   // open/forest: rolling
   }
   const RAMP = 100;   // vertical-curve ramp at biome-block boundaries (m), like the pass's parabolas
-  function endlessElev(seed, preset = 'off', terrain = false) {   // -> fn(absS, off) absolute elevation, deterministic in (seed, s, preset); cumulative table extends lazily. terrain=true adds coarse verge undulation beyond the carriageway (opt-in via tileTerrain); the road stays on the pure grade walk
+  function endlessElev(seed, preset = 'off', terrain = false, custom = null) {   // -> fn(absS, off) absolute elevation, deterministic in (seed, s, preset, custom); cumulative table extends lazily. terrain=true adds coarse verge undulation beyond the carriageway (opt-in via tileTerrain); the road stays on the pure grade walk
     const verge = (s, off) => {   // off-aware term: 0 on the carriageway, pass-like falloff + seeded noise beyond the edges
       const edge = 0.75 * 3.5 + 2.2, a = Math.abs(off);
       if (a <= edge) return 0;
@@ -463,10 +494,10 @@
       const n = Math.sin((Math.floor(s / 20) * 12.9898 + Math.floor(off / 6) * 78.233 + seed * 3.7) * 43758.5453) * 0.5;
       return fall + n * Math.min(1, (a - edge) / 4) * 1.2;
     };
-    const ck = seed + '|' + preset + '|' + (terrain ? 1 : 0); if (endlessElevCache.has(ck)) return endlessElevCache.get(ck);
+    const ck = seed + '|' + preset + '|' + (terrain ? 1 : 0) + '|' + JSON.stringify(custom || 0); if (endlessElevCache.has(ck)) return endlessElevCache.get(ck);
     const g = [], cum = [0];   // g[b] = block grade; within a block the grade ramps g[b-1]->g[b] over the first RAMP m and g[b]->g[b+1] over the last
     const blockZ = (b) => RAMP * (g[b - 1 < 0 ? 0 : b - 1] + g[b]) / 2 + (ENDLESS_BLOCK - 2 * RAMP) * g[b] + RAMP * (g[b] + g[b + 1]) / 2;
-    const ensure = (b) => { while (g.length <= b + 1) { const i = g.length; g.push(endlessGrade(seed, i, preset)); if (i > 0) cum[i] = cum[i - 1] + blockZ(i - 1); } };
+    const ensure = (b) => { while (g.length <= b + 1) { const i = g.length; g.push(endlessGrade(seed, i, preset, custom)); if (i > 0) cum[i] = cum[i - 1] + blockZ(i - 1); } };
     ensure(1);
     const zAt = (s) => {
       const b = Math.max(0, Math.floor(s / ENDLESS_BLOCK)); ensure(b);
@@ -479,8 +510,8 @@
     endlessElevCache.set(ck, fn);
     return fn;
   }
-  function endlessVerge(seed, k) {   // §2-endless verge: per-tile scenery descriptor for the tile loop — biome-specific props with a ramp blending across biome-block boundaries
-    const biome = endlessBiome(seed, Math.floor(k / 16) * 16), R = D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(k + 1, 0xC2B2AE35)) >>> 0);
+  function endlessVerge(seed, k, preset = 'off', custom = null) {   // §2-endless verge: per-tile scenery descriptor for the tile loop — biome-specific props with a ramp blending across biome-block boundaries
+    const biome = endlessBiome(seed, Math.floor(k / 16) * 16, preset, custom), R = D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(k + 1, 0xC2B2AE35)) >>> 0);
     const ramp = k % 16 === 15 ? 0.4 : k % 16 === 0 ? 0.6 : 1;
     const v = { biome, ramp, trees: 0, rocks: 0, buildings: 0, fence: false, rail: false, creek: 0, suburb: false };
     if (biome === 'forest') v.trees = Math.round((2 + 2 * R()) * ramp);
@@ -488,7 +519,7 @@
     if (biome === 'city') v.buildings = Math.round((1 + R()) * ramp);
     if (biome === 'open') {   // open verge content: fence, plus seeded creekside / suburbia tiles
       v.fence = ramp > 0.5;
-      if (R() < 0.22 * ramp) v.creek = R() < 0.5 ? -1 : 1;   // a creek runs beside the road on one side
+      if (preset === 'culvert-loop' || R() < 0.22 * ramp) v.creek = R() < 0.5 ? -1 : 1;   // a creek runs beside the road on one side (culvert-loop: every open tile)
       else if (R() < 0.18) v.suburb = true;   // suburbia: a house + driveway + parked car
     }
     return v;
@@ -498,25 +529,26 @@
     const h = lane / 2;
     return { h, right: -lane, med0: h, med1: h + median, medC: h + median / 2, onc0: lane + median, onc1: 2 * lane + median, oncMid: h + median + lane, outerR: -(h + lane), outerL: h + median + 2 * lane };
   }
-  function endlessTile(seed, k) {
-    const biome = endlessBiome(seed, k), t = endlessTileRaw(seed, k, biome);
+  function endlessTile(seed, k, preset = 'off', custom = null) {
+    const biome = endlessBiome(seed, k, preset, custom), t = endlessTileRaw(seed, k, biome, custom, preset);
     if (biome === 'mountain' && k > 0) {   // switchbacks: a curve answers the previous curve with the opposite sign
-      const p = endlessTileRaw(seed, k - 1, endlessBiome(seed, k - 1));
+      const p = endlessTileRaw(seed, k - 1, endlessBiome(seed, k - 1, preset, custom), custom, preset);
       if (p.curvature !== 0 && t.kind !== 'straight') { t.kind = p.curvature > 0 ? '150R' : '150L'; t.curvature = (t.kind.endsWith('L') ? 1 : -1) / 150; }
     }
-    const p1 = endlessTileRaw(seed, k - 1, endlessBiome(seed, k - 1)), p2 = k > 1 ? endlessTileRaw(seed, k - 2, endlessBiome(seed, k - 2)) : null;   // no-loop window
+    const p1 = endlessTileRaw(seed, k - 1, endlessBiome(seed, k - 1, preset, custom), custom, preset), p2 = k > 1 ? endlessTileRaw(seed, k - 2, endlessBiome(seed, k - 2, preset, custom), custom, preset) : null;   // no-loop window
+    const relax = preset === 'switchbacks';   // switchbacks preset: the mountain rule above already forces alternation, so the no-loop flattening would only fight the hairpins
     if (t.curvature !== 0 && p1.curvature !== 0 && p2 && Math.sign(t.curvature) === Math.sign(p1.curvature) && Math.sign(p1.curvature) === Math.sign(p2.curvature)) { t.kind = 'straight'; t.curvature = 0; }
-    if (t.curvature !== 0 && p1.curvature !== 0 && Math.sign(t.curvature) === -Math.sign(p1.curvature) && Math.abs(p1.curvature) >= 1 / 250) { t.kind = 'straight'; t.curvature = 0; }
-    t.props = ENDLESS_PROPS[biome];
+    if (t.curvature !== 0 && p1.curvature !== 0 && Math.sign(t.curvature) === -Math.sign(p1.curvature) && Math.abs(p1.curvature) >= 1 / 250 && !(relax && Math.abs(t.curvature) >= 1 / 150)) { t.kind = 'straight'; t.curvature = 0; }
+    t.props = Object.assign({}, ENDLESS_PROPS[biome], LOOP_PROPS[preset] || {}, custom && custom.props);   // loop preset props, then custom preset props win (speed cap, density, lamps, deer, bushes)
     t.tunnel = false;
     if (biome === 'forest' || biome === 'mountain') { const R2 = D.rng((Math.imul(seed | 0, 0x51633E2D) ^ Math.imul(k + 7, 0x9E3779B1)) >>> 0), Rn = (kk) => D.rng((Math.imul(seed | 0, 0x51633E2D) ^ Math.imul(kk + 7, 0x9E3779B1)) >>> 0)();
-      if (R2() < 0.10 && t.kind === 'straight' && Rn(k - 1) >= 0.10 && Rn(k + 1) >= 0.10) t.tunnel = true; }   // §2-tunnel: seeded straight tunnel tiles, never back-to-back (neighbour hash)
+      if (R2() < (custom && custom.tunnel != null ? custom.tunnel : 0.10) && t.kind === 'straight' && Rn(k - 1) >= 0.10 && Rn(k + 1) >= 0.10) t.tunnel = true; }   // §2-tunnel: seeded straight tunnel tiles, never back-to-back (neighbour hash)
     t.crossing = false;
     if (biome === 'open' && t.kind === 'straight') { const R3 = D.rng((Math.imul(seed | 0, 0x2545F491) ^ Math.imul(k + 11, 0x4F6CDD1D)) >>> 0), Rn2 = (kk) => D.rng((Math.imul(seed | 0, 0x2545F491) ^ Math.imul(kk + 11, 0x4F6CDD1D)) >>> 0)();
-      if (R3() < 0.08 && Rn2(k - 1) >= 0.08 && Rn2(k + 1) >= 0.08) { const Tn = (kk) => { const b = endlessBiome(seed, kk); return (b === 'forest' || b === 'mountain') && D.rng((Math.imul(seed | 0, 0x51633E2D) ^ Math.imul(kk + 7, 0x9E3779B1)) >>> 0)() < 0.10; }; if (!Tn(k - 1) && !Tn(k + 1)) t.crossing = true; } }   // §2-crossing: seeded level crossings in the open biome, never adjacent to another crossing or a tunnel (hash neighbours — endlessTile is not memoized)
+      if (R3() < (custom && custom.crossing != null ? custom.crossing : 0.08) && Rn2(k - 1) >= (custom && custom.crossing != null ? custom.crossing : 0.08) && Rn2(k + 1) >= (custom && custom.crossing != null ? custom.crossing : 0.08)) { const Tn = (kk) => { const b = endlessBiome(seed, kk); return (b === 'forest' || b === 'mountain') && D.rng((Math.imul(seed | 0, 0x51633E2D) ^ Math.imul(kk + 7, 0x9E3779B1)) >>> 0)() < 0.10; }; if (!Tn(k - 1) && !Tn(k + 1)) t.crossing = true; } }   // §2-crossing: seeded level crossings in the open biome, never adjacent to another crossing or a tunnel (hash neighbours — endlessTile is not memoized)
     t.layby = false;
     if (biome === 'open' && t.kind === 'straight') { const R4 = D.rng((Math.imul(seed | 0, 0x165667B1) ^ Math.imul(k + 23, 0x27D4EB2F)) >>> 0);
-      if (R4() < 0.07 && !t.crossing) { const Ln = (kk) => D.rng((Math.imul(seed | 0, 0x165667B1) ^ Math.imul(kk + 23, 0x27D4EB2F)) >>> 0)() >= 0.07; if (Ln(k - 1) && Ln(k + 1)) t.layby = true; } }   // layby: seeded open tiles, never adjacent, never on a crossing tile
+      if (R4() < (custom && custom.layby != null ? custom.layby : 0.07) && !t.crossing) { const Ln = (kk) => D.rng((Math.imul(seed | 0, 0x165667B1) ^ Math.imul(kk + 23, 0x27D4EB2F)) >>> 0)() >= 0.07; if (Ln(k - 1) && Ln(k + 1)) t.layby = true; } }   // layby: seeded open tiles, never adjacent, never on a crossing tile
     t.fuel = false;
     if (biome === 'open' && t.kind === 'straight') { const R5 = D.rng((Math.imul(seed | 0, 0x6D2B79F5) ^ Math.imul(k + 41, 0x85EBCA6B)) >>> 0);
       if (R5() < 0.05 && !t.crossing && !t.layby) { const Fn = (kk) => D.rng((Math.imul(seed | 0, 0x6D2B79F5) ^ Math.imul(kk + 41, 0x85EBCA6B)) >>> 0)() >= 0.05; if (Fn(k - 1) && Fn(k + 1)) t.fuel = true; } }   // fuel station: seeded open tiles, never on a layby/crossing tile, never adjacent
@@ -532,9 +564,35 @@
     t.wild = false;
     if (biome === 'forest' && t.kind === 'straight') { const R9 = D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(k + 97, 0x27D4EB2F)) >>> 0);
       if (R9() < 0.06 && !t.tunnel && !t.sos && !t.picnic) { const Wn = (kk) => D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(kk + 97, 0x27D4EB2F)) >>> 0)() >= 0.06; if (Wn(k - 1) && Wn(k + 1)) t.wild = true; } }   // wildlife overpass: seeded forest tiles, never on tunnel/SOS/picnic, never adjacent
+    t.vms = false;
+    if ((biome === 'open' || biome === 'city') && t.kind === 'straight') { const R13 = D.rng((Math.imul(seed | 0, 0x9E3779B9) ^ Math.imul(k + 167, 0x27D4EB2F)) >>> 0), Vn2 = (kk) => D.rng((Math.imul(seed | 0, 0x9E3779B9) ^ Math.imul(kk + 167, 0x27D4EB2F)) >>> 0)() >= (custom && custom.vms != null ? custom.vms : 0.04);
+      if (R13() < (custom && custom.vms != null ? custom.vms : 0.04) && !t.crossing && !t.layby && !t.fuel && !t.works && !t.toll && Vn2(k - 1) && Vn2(k + 1)) t.vms = true; }   // VMS gantry: seeded open/city straights, never on other feature tiles, never adjacent
+    t.toll = false;
+    if (biome === 'open' && t.kind === 'straight') { const R12 = D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(k + 149, 0x1B873593)) >>> 0), Tn = (kk) => D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(kk + 149, 0x1B873593)) >>> 0)() >= (custom && custom.toll != null ? custom.toll : 0.04);
+      if (R12() < (custom && custom.toll != null ? custom.toll : 0.04) && !t.crossing && !t.layby && !t.fuel && !t.works && Tn(k - 1) && Tn(k + 1)) t.toll = true; }   // toll plaza: seeded open straights (needs the multilane cross-section to render), never on other feature tiles, never adjacent
+    t.works = false;
+    if ((biome === 'open' || biome === 'city') && t.kind === 'straight') { const R11 = D.rng((Math.imul(seed | 0, 0x1B873593) ^ Math.imul(k + 131, 0x85EBCA6B)) >>> 0), Wn = (kk) => D.rng((Math.imul(seed | 0, 0x1B873593) ^ Math.imul(kk + 131, 0x85EBCA6B)) >>> 0)() >= (custom && custom.works != null ? custom.works : 0.06);
+      if (R11() < (custom && custom.works != null ? custom.works : 0.06) && !t.crossing && !t.layby && !t.fuel && Wn(k - 1) && Wn(k + 1)) t.works = true; }   // roadworks zone: seeded open/city straight tiles, never on crossing/layby/fuel, never adjacent
     t.chain = false;
     if (biome === 'mountain' && t.kind === 'straight') { const R10 = D.rng((Math.imul(seed | 0, 0x2545F491) ^ Math.imul(k + 113, 0x6D2B79F5)) >>> 0);
       if (R10() < 0.07 && !t.tunnel && !t.view && !t.sos) { const Cn = (kk) => D.rng((Math.imul(seed | 0, 0x2545F491) ^ Math.imul(kk + 113, 0x6D2B79F5)) >>> 0)() >= 0.07; if (Cn(k - 1) && Cn(k + 1)) t.chain = true; } }   // chain-up area: seeded mountain tiles, never on tunnel/view/SOS, never adjacent
+    // Anya 11-01 (feature loops): preset '<feature>-loop' forces that feature on EVERY eligible tile (a test loop),
+    // skipping the seeded probability and adjacency gaps. Eligibility (biome + straight) is unchanged; the per-feature
+    // options/flags (endlessTunnel, endlessCrossing, junctionGantries, signs/wild consent) still gate rendering.
+    if (t.kind === 'straight') {
+      if (preset === 'tunnel-loop' && (biome === 'forest' || biome === 'mountain')) t.tunnel = true;
+      if (preset === 'crossing-loop' && biome === 'open') t.crossing = true;
+      if (preset === 'layby-loop' && biome === 'open') t.layby = true;
+      if (preset === 'fuel-loop' && biome === 'open') t.fuel = true;
+      if (preset === 'viewpoint-loop' && biome === 'mountain') t.view = true;
+      if (preset === 'sos-loop' && (biome === 'forest' || biome === 'mountain')) t.sos = true;
+      if (preset === 'picnic-loop' && biome === 'forest') t.picnic = true;
+      if (preset === 'wildlife-loop' && biome === 'forest') t.wild = true;
+      if (preset === 'chainup-loop' && biome === 'mountain') t.chain = true;
+      if (preset === 'works-loop' && (biome === 'open' || biome === 'city')) t.works = true;
+      if (preset === 'toll-loop' && biome === 'open') t.toll = true;
+      if (preset === 'vms-loop' && (biome === 'open' || biome === 'city')) t.vms = true;
+    }
     return t;
   }
   // Integrate only a local window, then put the camera at (0,0), facing its tangent. No accumulated drift or growing route history.
@@ -640,9 +698,45 @@
   // SEEDED-KINDS: the junction and city crossers ask the scene builder for a seeded kind (person() resolves it); PED_FIXED_KINDS restores the old fixed 'dark'.
   const PED_SEED = (seed) => (globalThis.PED_FIXED_KINDS === true ? undefined : seed);   // the walkers' clothes follow the user seed; PED_FIXED_KINDS restores the old (scene seed) draw
   const CROSSER_KIND = () => (globalThis.PED_FIXED_KINDS === true ? 'dark' : 'seeded');
+  // yawSmooth (opt-in, default OFF): the arc tangent jumps where a bend's curve section starts, so the camera yaw
+  // snaps on corner entry/exit. A lookahead-averaged tangent rounds that over ~44 m (the smoothed tangent at s
+  // equals the raw tangent ~14 m ahead). Render-only: the wrapper delegates frame/surface/tiles to the real arc.
+  function smoothArc(A, look = 36, back = 8) {
+    const SA = Object.create(A);
+    SA.at = (s, off) => {
+      let tx = 0, ty = 0;
+      for (let d = -back; d <= look; d += 4) { const q = A.at(s + d, 0); tx += q.t[0]; ty += q.t[1]; }
+      const l = Math.hypot(tx, ty) || 1, t = [tx / l, ty / l], p0 = A.at(s, 0).p, o = off || 0;
+      return { p: [p0[0] - o * t[1], p0[1] + o * t[0]], t, s };
+    };
+    return SA;
+  }
+  // driftDynamics (opt-in, default OFF): the drift angle is applied instantly today, so it snaps on corner entry —
+  // the same class of artefact yawSmooth exists to remove. Real body slip builds as the tyres develop force (a
+  // relaxation length of ~0.3 m, i.e. a few hundred ms at road speed), so with this on the angle ramps to its target
+  // with a ~0.3 s time constant and is clamped at DRIFT_CAP. OFF: the raw angle, byte for byte.
+  const DRIFT_CAP = 8 * Math.PI / 180, DRIFT_TAU = 0.3;
+  function relaxDrift(cur, tgt, dt) {
+    const d = Math.max(0, Math.min(0.1, dt || 0));   // one frame is one step: a stall or a scrub cannot fling the angle
+    const t = cur === undefined || cur === null ? tgt : cur + (tgt - cur) * (1 - Math.exp(-d / DRIFT_TAU));
+    return Math.max(-DRIFT_CAP, Math.min(DRIFT_CAP, t));
+  }
+  // driftMode camera rotation: rotate the render arc by the opposite-lock angle (render-only; solver/traffic untouched)
+  function rotArc(A, ang) {
+    if (!ang) return A;
+    const SA = Object.create(A), c = Math.cos(ang), sn = Math.sin(ang);
+    SA.at = (s, off) => { const q = A.at(s, off); return { p: [q.p[0] * c - q.p[1] * sn, q.p[0] * sn + q.p[1] * c], t: [q.t[0] * c - q.t[1] * sn, q.t[0] * sn + q.t[1] * c], s: q.s }; };
+    return SA;
+  }
   function tileWorld(p, dist, t, tauOf) {
     if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t, tauOf);
-    const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? endlessTile : null), A = (p.touge && !cfg.mountain) ? (cfg.endless ? RF.Touge.elevate(A0, dist, lane, true, endlessElev(cfg.seed, cfg.preset, !!cfg.terrain)) : RF.Touge.elevate(A0, dist, lane, false)) : A0, edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
+    const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? ((s2, k2) => endlessTile(s2, k2, cfg.preset, cfg.custom)) : null), edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
+    let A1 = (p.touge && !cfg.mountain) ? (cfg.endless ? RF.Touge.elevate(A0, dist, lane, true, endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom)) : RF.Touge.elevate(A0, dist, lane, false)) : A0;
+    if (cfg.driftMode) {   // opposite-lock camera yaw on bends: rotate the render arc by the drift angle (traffic/solver keep the true arc via their own path)
+      const tk = A1.tiles && A1.tiles.find((t2) => dist >= t2.s0 && dist < t2.s0 + 200);
+      if (tk && tk.curvature) A1 = rotArc(A1, cfg.driftMode && cfg.driftDynamics && cfg.driftA !== undefined ? cfg.driftA : -tk.curvature * Math.pow((cfg.driftKmh || 80) / 130, 2) * 8);
+    }
+    const A = cfg.yawSmooth ? smoothArc(A1) : A1;
     const pp = Object.assign({}, p, { A });
     // Street lights can reach foliage outside our beam: keep it for actual per-point shading.
     const obs = place(src, dist, A, tauOf, cfg.lamps === 'off' && !p.detailedModels ? dimFoliage(pp) : null, D.Models.deerEnabled(p)).concat(trafficObjects(src, trafficCars(src, dist, t), A, pp));
@@ -666,12 +760,12 @@
         line(-ml.h, 0.12, 'white-paint', true); line(ml.oncMid, 0.12, 'white-paint', true);   // dashed lane lines (own/right, between oncoming lanes)
       }
     const KR = D.rng((Math.imul(cfg.seed | 0, 2654435761) ^ Math.imul(tile.k + 1, 0x27D4EB2F)) >>> 0), KP = D.kit({ Lw: lane, A: null, rand: KR, foliageSeed: PED_SEED(cfg.seed) });   // KR/KP declared before the first KP user (piers/km posts) — TDZ fix 10-31
-    if (cfg.endless && tile.biome === 'mountain' && cfg.flags.wild !== false && Math.abs(endlessGrade(cfg.seed, Math.floor(tile.k / 16), cfg.preset)) > 0.035) for (let i = 0; i < 2; i++) { const u = 40 + i * 120, sd = i ? 1 : -1, pq = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 1.5 : edgeL + 1.5); KP.add({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.55, z0: -14, z1: 0.05, mat: 'concrete', cls: 'pier' }); }   // viaduct piers on steep blocks (catalogue #9), down past the verge falloff
+    if (cfg.endless && tile.biome === 'mountain' && cfg.flags.wild !== false && Math.abs(endlessGrade(cfg.seed, Math.floor(tile.k / 16), cfg.preset, cfg.custom)) > 0.035) for (let i = 0; i < 2; i++) { const u = 40 + i * 120, sd = i ? 1 : -1, pq = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 1.5 : edgeL + 1.5); KP.add({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.55, z0: -14, z1: 0.05, mat: 'concrete', cls: 'pier' }); }   // viaduct piers on steep blocks (catalogue #9), down past the verge falloff
     if (tile.biome === 'mountain' && cfg.flags.posts !== false) {   // mountain guardrails — consent toggle: the posts feature flag; cls 'rail' rides the slope in lift
       for (let u = 0; u < 200; u += 8) for (const sd of [-1, 1]) { const off = sd < 0 ? edgeR - 0.7 : edgeL + 0.7, q = A.at(tile.s0 + u - dist, off); extra.push({ k: 'box', x: q.p[0], y: q.p[1], z0: .62, z1: .9, hx: 4.05, hy: .065, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'sign-back', cls: 'rail' }, { k: 'box', x: q.p[0], y: q.p[1], z0: .34, z1: .5, hx: 4.05, hy: .055, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'sign-back', cls: 'rail' }, { k: 'cyl', x: q.p[0], y: q.p[1], z0: 0, z1: .83, r: .06, mat: 'sign-back', cls: 'rail' }); }   // double-beam rail (catalogue #3 cheap: two stacked beams read as a W-profile at distance)
     }
     if (cfg.endless && cfg.flags.signs !== false && tile.s0 % 1000 === 0) { const q = A.at(tile.s0 - dist, edgeR - 1.6); KP.add({ k: 'cyl', x: q.p[0], y: q.p[1], z0: 0, z1: 1.1, r: 0.05, mat: 'pole' }); KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: 0.75, z1: 1.05, hx: 0.28, hy: 0.03, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'white-paint' }); }   // kilometer post (catalogue), right edge, behind signs
-    const vg = endlessVerge(cfg.seed, tile.k);   // §2-endless verge: biome props + boundary ramp
+    const vg = endlessVerge(cfg.seed, tile.k, cfg.preset, cfg.custom);   // §2-endless verge: biome props + boundary ramp
     if (cfg.flags.veg !== false && bp && (bp.deer > 0 || bp.bushes > 0 || vg.biome === 'open' || vg.biome === 'mountain' || vg.biome === 'forest' || vg.biome === 'city')) {   // §2-endless: biome props — consent toggles: bushes/trees need veg, deer animals, signs signs
       const nBush = (bp ? bp.bushes : 0) + (cfg.preset === 'forested-pass' && (vg.biome === 'mountain' || vg.biome === 'forest') ? 3 : 0);   // forested-pass: denser verge
       for (let i = 0; i < nBush; i++) { const u = 20 + KR() * 160, sd = KR() < 0.5 ? -1 : 1; KP.bush(tile.s0 + u - dist, sd < 0 ? edgeR - 2.5 - 3 * KR() : edgeL + 2.5 + 3 * KR(), 0.6 + 0.6 * KR()); }   // hills fix: never in a lane — the edgeL branch used to subtract, landing on the road
@@ -688,6 +782,11 @@
           KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: 0.95, z1: 1.03, hx: 4, hy: 0.04, yaw, mat: 'concrete' });
           KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: 0.55, z1: 0.62, hx: 4, hy: 0.04, yaw, mat: 'concrete' });
         } else KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: 0.85, z1: 1.05, hx: 4, hy: 0.05, yaw, mat: 'concrete' }); }   // open verge: fence
+      if (vg.creek && tile.biome === 'open' && tile.kind === 'straight' && cfg.flags.wild !== false && D.rng((Math.imul(cfg.seed | 0, 0x9E3779B9) ^ Math.imul(tile.k + 131, 0x85EBCA6B)) >>> 0)() < 0.35) {   // brainstorm: culvert — the creek crosses under the road here: water strip + parapets
+        const xs = tile.s0 + 100 - dist, xw = (edgeL - edgeR) / 2 + 1.5, xq = A.at(xs, 0), xy = Math.atan2(xq.t[1], xq.t[0]);
+        extra.push({ k: 'box', x: xq.p[0], y: xq.p[1], z0: -0.6, z1: 0.02, hx: 5, hy: xw, yaw: xy, mat: 'water', cls: 'culvert' });
+        for (const sd of [-1, 1]) { const pq = A.at(xs, sd < 0 ? edgeR - 0.4 : edgeL + 0.4); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 0, z1: 0.9, hx: 5, hy: 0.25, yaw: xy, mat: 'concrete', cls: 'culvert' }); }
+      }
       if (vg.creek && cfg.flags.wild !== false) {   // creekside: sunken water channel beside the road, bank stones, reeds
         const wOff = vg.creek < 0 ? edgeR - 5.2 : edgeL + 5.2, q = A.at(tile.s0 + 100 - dist, wOff);
         KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: -1.2, z1: -0.15, hx: 100, hy: 2.2, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'water', cls: 'creek' });
@@ -805,6 +904,38 @@
         if (cfg.flags.signs !== false) { const sq = A.at(ls - 4, edgeL + 1.6), sy = Math.atan2(sq.t[1], sq.t[0]);
           extra.push({ k: 'cyl', x: sq.p[0], y: sq.p[1], r: 0.05, z0: 0, z1: 2.2, mat: 'pole', cls: 'layby' });
           extra.push({ k: 'box', x: sq.p[0], y: sq.p[1], z0: 2.0, z1: 2.7, hx: 0.45, hy: 0.35, yaw: sy, mat: 'sign-white', cls: 'layby' }); }
+      }
+      if (tile.works && cfg.flags.wild !== false && cfg.flags.signs !== false) {   // roadworks zone (brainstorm, consent-gated): cone taper narrowing the right lane + works sign at entry + hivis barrier
+        const ws = tile.s0 + 40 - dist;
+        if (cfg.flags.signs !== false) { const sq = A.at(ws - 6, edgeL + 1.6), sy = Math.atan2(sq.t[1], sq.t[0]);   // entry sign on the left verge
+          extra.push({ k: 'cyl', x: sq.p[0], y: sq.p[1], r: 0.05, z0: 0, z1: 2.4, mat: 'pole', cls: 'works' });
+          extra.push({ k: 'box', x: sq.p[0], y: sq.p[1], z0: 2.1, z1: 2.8, hx: 0.5, hy: 0.4, yaw: sy, mat: 'sign-yellow', cls: 'works' }); }
+        for (let u = 0; u < 14; u++) {   // cone taper: every 8 m, easing from the right edge toward the lane centre
+          const cs = ws + u * 8, taper = u / 13, co = edgeR + 0.9 + (lane * 0.55) * taper, cq = A.at(cs, co), cy = Math.atan2(cq.t[1], cq.t[0]);
+          extra.push({ k: 'cyl', x: cq.p[0], y: cq.p[1], r: 0.16, z0: 0, z1: 0.7, mat: 'hivis', cls: 'works-cone' });
+          extra.push({ k: 'box', x: cq.p[0], y: cq.p[1], z0: 0.32, z1: 0.46, hx: 0.17, hy: 0.05, yaw: cy, mat: 'white-paint', cls: 'works-cone' }); }
+        const bs = ws + 100, bq = A.at(bs, edgeR + 0.9 + lane * 0.55 * 0.8);
+        extra.push({ k: 'box', x: bq.p[0], y: bq.p[1], z0: 0, z1: 0.9, hx: 6, hy: 0.5, yaw: Math.atan2(bq.t[1], bq.t[0]), mat: 'hivis', cls: 'works' });   // barrier across the narrowed lane
+      }
+      if (tile.toll && cfg.multilane && cfg.flags.wild !== false && cfg.flags.signs !== false) {   // toll plaza (brainstorm, consent-gated, 2+2 only): canopy on columns across both carriageways + booth boxes at the lane centres + sign
+        const ts = tile.s0 + 60 - dist, ml = mlLanes();
+        const tc = A.at(ts, (ml.outerR + ml.outerL) / 2), ty = Math.atan2(tc.t[1], tc.t[0]);
+        extra.push({ k: 'box', x: tc.p[0], y: tc.p[1], z0: 5.2, z1: 6.0, hx: (ml.outerL - ml.outerR) / 2 + 1.5, hy: 1.2, yaw: ty, mat: 'concrete', cls: 'toll' });   // canopy roof
+        for (const co of [ml.outerR + 0.8, ml.outerL - 0.8]) { const cc = A.at(ts, co); extra.push({ k: 'cyl', x: cc.p[0], y: cc.p[1], r: 0.18, z0: 0, z1: 5.2, mat: 'pole', cls: 'toll' }); }   // columns
+        for (const bc of [ml.right + 1.85, ml.medC, ml.oncMid]) { const bq = A.at(ts + 2, bc), by = Math.atan2(bq.t[1], bq.t[0]);   // booths on own right lane, median, oncoming lane
+          extra.push({ k: 'box', x: bq.p[0], y: bq.p[1], z0: 0, z1: 2.6, hx: 1.1, hy: 1.4, yaw: by, mat: 'wall-light', cls: 'toll' });
+          extra.push({ k: 'box', x: bq.p[0], y: bq.p[1], z0: 2.6, z1: 3.0, hx: 1.2, hy: 1.5, yaw: by, mat: 'sign-green', cls: 'toll' }); }
+        const sq = A.at(ts - 8, edgeL + 1.6), sy = Math.atan2(sq.t[1], sq.t[0]);
+        extra.push({ k: 'cyl', x: sq.p[0], y: sq.p[1], r: 0.05, z0: 0, z1: 2.4, mat: 'pole', cls: 'toll' });
+        extra.push({ k: 'box', x: sq.p[0], y: sq.p[1], z0: 2.1, z1: 2.8, hx: 0.5, hy: 0.4, yaw: sy, mat: 'sign-green', cls: 'toll' });
+      }
+      if (tile.vms && cfg.flags.signs !== false && cfg.flags.wild !== false) {   // VMS gantry (brainstorm, consent-gated): two columns + beam over the road + dark sign face with amber legend
+        const vs = tile.s0 + 70 - dist, span = (edgeL - edgeR) / 2 + 2.2;
+        for (const co of [edgeR - 1.2, edgeL + 1.2]) { const cc = A.at(vs, co); extra.push({ k: 'cyl', x: cc.p[0], y: cc.p[1], r: 0.14, z0: 0, z1: 5.6, mat: 'pole', cls: 'vms' }); }
+        const bc = A.at(vs, 0), by = Math.atan2(bc.t[1], bc.t[0]);
+        extra.push({ k: 'box', x: bc.p[0], y: bc.p[1], z0: 5.0, z1: 5.7, hx: span, hy: 0.35, yaw: by, mat: 'wall', cls: 'vms' });   // gantry beam
+        extra.push({ k: 'box', x: bc.p[0], y: bc.p[1], z0: 3.4, z1: 5.0, hx: span * 0.8, hy: 1.7, yaw: by, mat: 'sign-back', cls: 'vms' });   // sign housing
+        extra.push({ k: 'box', x: bc.p[0], y: bc.p[1], z0: 3.6, z1: 4.8, hx: span * 0.72, hy: 1.5, yaw: by, mat: 'sign-yellow', cls: 'vms' });   // amber legend face
       }
       if (cfg.crossing && tile.crossing && cfg.flags.wild !== false) {   // §2-crossing: level crossing — ballast strip, two rails across the road, ties, crossbuck (behind the signs flag)
         const cs = tile.s0 + 100 - dist, cw = (edgeL - edgeR) / 2 + 5, cq = A.at(cs, 0);
@@ -1289,13 +1420,13 @@ void main() {
   // options are shed, so a step never triggers a scene or table rebuild. haloJitter is deliberately NOT shed (it is
   // a banding mitigation). Scope: frenchie/S3P-SCOPE.md.
   const SHED_LEVELS = [
-    { haloNearSub: 1 },
     { samples: '1' },                                   // supersampling 2->1: up to 4x the object trace on the CPU/worker paths (no-op on the pure GPU path)
     { haloConePass: 'off' },
     { trafficShadows: '2', trafficShadowSoft: 'off' },
     { haloDepthBlur: 'off', scatterBlur: 'off' },
     { haloBlur: 'off', surfaceSheen: false, lampCone: 'off' },
     { shadowRes: '512x256' },
+    { haloNearSub: 1 },                                 // frenchie 11-01 (minimax F4): shed LAST — the near-field sub-pass is where the halo's own error is largest (measured 6x), so it must be the final sacrifice, not the first
   ];
   const SHED_KEYS = [...new Set(SHED_LEVELS.flatMap((l) => Object.keys(l)))];
   const shedPatch = (level) => Object.assign({}, ...SHED_LEVELS.slice(0, Math.max(0, Math.min(level, SHED_LEVELS.length))));
@@ -1304,15 +1435,21 @@ void main() {
   // byte-identical. Applied in prepare() like the shed overlay (keys are disjoint from SHED_KEYS), so skey/tkey/
   // look/ground-key all see the capped values. Scope: frenchie/S3LOD-SCOPE.md.
   const LOD_LEVELS = {
-    low:    { haloRange: 160, scatterRange: 100, trafficRange: 230, cullEps: 4 },
-    medium: { haloRange: 120, scatterRange: 80,  trafficRange: 160, cullEps: 16 },
-    high:   { haloRange: 0,   scatterRange: 50,  trafficRange: 160, cullEps: 64 },
+    // frenchie 11-01 (minimax F2 + F2b): haloRange is NOT capped — capping it truncates the oncoming halo's LOOK AND re-phases
+    // the sample ladder (measured: 'high' removed 85-97% of a car's halo at 161-190 m; the shipped range knob itself swings
+    // the halo 3-16x because the ladder is rebuilt from the range). Neither is haloBins capped any more: the GPU's bin edges
+    // haloEdgesOf(n,R) depend on n, so changing the bin count re-phases the grid the same way. The halo's cost is LOD'd via
+    // the CAR count instead (haloCars) — fewer lamps marched, no sample position moves.
+    low:    { scatterRange: 100, trafficRange: 230, cullEps: 4,  cars: 4 },
+    medium: { scatterRange: 80,  trafficRange: 160, cullEps: 16, cars: 2 },
+    high:   { scatterRange: 50,  trafficRange: 160, cullEps: 64, cars: 1 },
   };
-  const LOD_KEYS = ['haloRange', 'scatterRange', 'trafficRange', 'scatterCullEps'];
+  const LOD_KEYS = ['scatterRange', 'trafficRange', 'scatterCullEps', 'haloCars'];
   const lodPatch = (o) => {
     const L = LOD_LEVELS[o && o.distanceLod]; if (!L) return null;
-    return { haloRange: Math.min(+o.haloRange || 0, L.haloRange), scatterRange: Math.min(+o.scatterRange || 120, L.scatterRange),
-             trafficRange: Math.min(+o.trafficRange || 250, L.trafficRange), scatterCullEps: Math.min((+o.scatterCullEps || 0.001) * L.cullEps, 100) };
+    return { scatterRange: Math.min(+o.scatterRange || 120, L.scatterRange),
+             trafficRange: Math.min(+o.trafficRange || 250, L.trafficRange), scatterCullEps: Math.min((+o.scatterCullEps || 0.001) * L.cullEps, 100),
+             haloCars: Math.max(1, Math.min(Math.round(+o.haloCars) || 4, L.cars)) };
   };
   const shedState = () => ({ index: 0, slow: 0, fast: 0, cooldown: 0, average: 0, clock: 0, upAt: -1e9, holdUntil: 0, hold: 0 });
   function shedStep(state, ms, opts) {
@@ -1400,7 +1537,8 @@ void main() {
   function ensureCanvas() {
     if (V.lost || V.glFailed) return false;
     if (V.canvas) return !!V.gl;
-    const c = document.createElement('canvas'); c.className = 'drive-gl'; c.setAttribute('aria-label', 'Animated drive view'); c.setAttribute('role', 'img');
+    const c = document.createElement('canvas'); c.className = 'drive-gl'; c.setAttribute('aria-label', 'Animated drive view')
+    const cabin = document.createElement('canvas'); cabin.className = 'drive-cabin'; cabin.setAttribute('aria-hidden', 'true'); V.cabin = cabin;   // Anya-approved in-cabin overlay (cabinView, default OFF): dashboard + windshield frame over the render; c.setAttribute('role', 'img');
     c.addEventListener('webglcontextlost', contextLost);
     c.addEventListener('webglcontextrestored', contextRestored);
     if (!TL.cur) tlOpen('load');   // GL built outside a click (Drive on load): the load event times it
@@ -1483,6 +1621,7 @@ void main() {
   }
   const info = () => V.info;
   const kmhOf = () => { const v = +info().o.speed; return Number.isFinite(v) ? v : 50; };   // 0 is a real speed (stopped, traffic still moves): never '|| 50'
+  const fmtSpeed = (kmh) => (info().o.imperialUnits ? Math.round(kmh * 0.621371) + ' mph' : Math.round(kmh) + ' km/h');   // imperialUnits (opt-in, display-only): stored speeds stay km/h
   // everything the picture depends on except the scenery classes and the car's position
   function prepare(sz) {
     const I = info(), o = I.o, pool = trafficPoolOf(o), W = sz.W, H = sz.H, ownNow = ownBeams(o);
@@ -1491,22 +1630,28 @@ void main() {
     // and V.shedBase stays unset — the path is a no-op, byte-identical to before.
     if (V.lodBase) Object.assign(o, V.lodBase);
     const lod = lodPatch(o);
-    if (lod) { if (!V.lodBase) V.lodBase = LOD_KEYS.reduce((a, k) => (a[k] = o[k], a), {}); Object.assign(o, lod); }
+    if (lod) {
+      if (!V.lodBase) V.lodBase = LOD_KEYS.reduce((a, k) => (a[k] = o[k], a), {});
+      // frenchie 11-01 (minimax F5): a knob edited while the level is active is the user's new base, not an override to destroy —
+      // re-capture it (value differs from both the captured base and the patch we last applied) before re-applying the patch.
+      for (const k of LOD_KEYS) if (o[k] !== V.lodBase[k] && o[k] !== (V.lodApplied || {})[k]) V.lodBase[k] = o[k];
+      Object.assign(o, lod); V.lodApplied = lod;
+    }
     else V.lodBase = null;
     if (V.shedBase) Object.assign(o, V.shedBase);
     if (o.qualityGovernor === 'on' && V.shedLevel > 0) { if (!V.shedBase) V.shedBase = SHED_KEYS.reduce((a, k) => (a[k] = o[k], a), {}); Object.assign(o, shedPatch(V.shedLevel)); }
     else V.shedBase = null;
     SUBTICK = o.trafficSubTick === 'on';
     const ownLowKey = o.ownLow && o.ownLow !== 'design' ? (ownNow.low ? 'R:' + ownNow.lowId : 'U:' + o.ownLow) : o.ownLow, ownHighKey = o.ownHigh && o.ownHigh !== 'generic' ? (ownNow.high ? 'R:' + ownNow.highId : 'U:' + o.ownHigh) : o.ownHigh;
-    const key = JSON.stringify([I.groundKey, W, H, hfovFor(o.fov, sz.aspect), simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, ownLowKey, ownHighKey, lampTintOf(I, ownNow).rgb, pool && pool.key]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
+    const key = JSON.stringify([I.groundKey, W, H, hfovFor(o.fov, sz.aspect), simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, ownLowKey, ownHighKey, lampTintOf(I, ownNow).rgb, pool && pool.key, o.wetBounce]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     if (V.shuf) V.shuf.title = shuffleTip(o);   // the tooltip follows the renderer, every frame
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.signalConesOn, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, SUBTICK]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.trafficMarkers, !!o.tileCache, !!o.tiles && !!o.endlessRoad, o.tiles ? o.endlessPreset : 'off', !!o.tileTerrain, !!o.elevatedView, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o), o.lampRule]]);
-    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, signalConesOn: !!o.signalConesOn, powerlines: o.powerlines, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, reflectiveClothing: o.reflectiveClothing, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, trafficMarkers: !!o.trafficMarkers, endlessRoad: !!o.endlessRoad, elevatedView: !!o.elevatedView, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: D.wetnessOf(o) > 0 }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.signalConesOn, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, !!o.driftMode, !!o.driftDynamics, !!o.driftAfs, !!o.driftCabin, !!o.yawSmooth, !!o.cabinLight, o.tiles ? o.endlessPresetCustom || '' : '', SUBTICK]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.trafficMarkers, !!o.tileCache, !!o.tiles && !!o.endlessRoad, o.tiles ? o.endlessPreset : 'off', o.tiles ? o.endlessPresetCustom || '' : '', !!o.tileTerrain, !!o.elevatedView, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, !!o.yawSmooth, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o), o.lampRule]]);
+    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, signalConesOn: !!o.signalConesOn, powerlines: o.powerlines, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, reflectiveClothing: o.reflectiveClothing, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, trafficMarkers: !!o.trafficMarkers, trafficLighting: o.trafficLighting, endlessRoad: !!o.endlessRoad, elevatedView: !!o.elevatedView, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: D.wetnessOf(o) > 0 }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
     const own = ownNow, tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
-    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloLampWin: o.haloLampWin, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloCrossingRefine: o.haloCrossingRefine, haloRefineNeighbour: o.haloRefineNeighbour, haloMoment: o.haloMoment, haloWidthStep: o.haloWidthStep, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient, trafficSubTick: o.trafficSubTick === 'on', qualityGovernor: o.qualityGovernor === 'on', distanceLod: o.distanceLod || 'off', dryStreaks: o.dryStreaks === true, heatShimmer: o.heatShimmer || 'off', signalConesOn: !!o.signalConesOn }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!((o.mountainPass || o.elevatedView) && V.three), mountainPass: !!o.mountainPass };   // elevatedView: every scene through the 3D touge route (flat = height 0), legacy 2D path as fallback
+    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloLampWin: o.haloLampWin, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloCrossingRefine: o.haloCrossingRefine, haloRefineNeighbour: o.haloRefineNeighbour, haloMoment: o.haloMoment, haloWidthStep: o.haloWidthStep, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient, trafficSubTick: o.trafficSubTick === 'on', qualityGovernor: o.qualityGovernor === 'on', distanceLod: o.distanceLod || 'off', dryStreaks: o.dryStreaks === true, heatShimmer: o.heatShimmer || 'off', signalConesOn: !!o.signalConesOn, wetBounce: o.wetBounce === true }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!((o.mountainPass || o.elevatedView) && V.three), mountainPass: !!o.mountainPass };   // elevatedView: every scene through the 3D touge route (flat = height 0), legacy 2D path as fallback
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || sheenOn(o) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g); if (!TL.cur) tlOpen('rebuild'); tlMark(V.three ? 'ground (GPU path, drawn per frame)' : 'ground built (CPU)', V.three ? null : { groundMs: V.g.ms });
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1555,6 +1700,66 @@ void main() {
     V.avg = V.avg === undefined ? ms : V.avg * 0.9 + ms * 0.1;       // a smoothed cost: one slow frame (a big object passing) must not drop the edges to hard 1-sample for a long while
     if (V.p.w <= 1100) { if ((V.ss || 2) === 2 && V.avg > 18) { V.ss = 1; V.calm = 0; } else if (V.ss === 1 && V.avg < 8) { if (++V.calm > 20) V.ss = 2; } else V.calm = 0; }
   }
+  // cabinView overlay: dashboard + windshield frame + gauges drawn over the GL canvas; absent (zero render cost)
+  // when off. Styles: 'modern' (two round binnacle gauges), 'miata' (NA tombstone binnacle), 'digital80s' (segment digits).
+  // cabinLight adds a lit dome + a stray-light veil over the windshield AND dims the render exposure (see frame()).
+  function drawCabin(V, on, style, light, kmh, yaw) {   // yaw: driftCabin rotates the overlay to match the car's yaw (looking out the side window)
+    const cv = V.cabin; if (!cv) return;
+    if (!on) { if (cv.parentNode) cv.parentNode.removeChild(cv); cv.width = 0; return; }
+    const gl = V.canvas; if (!gl || !gl.parentNode) return;
+    if (!cv.parentNode) gl.parentNode.appendChild(cv);
+    const dpr = Math.min(2, window.devicePixelRatio || 1), w = gl.clientWidth, h = gl.clientHeight;
+    if (!w || !h) return;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height);
+    const W2 = cv.width, H2 = cv.height, k = W2 / 1920;   // design at 1920 wide
+    if (yaw) { x.save(); x.translate(W2 / 2, H2 / 2); x.rotate(-yaw); x.translate(-W2 / 2, -H2 / 2); }   // the cockpit yaws with the car, the driver's eyes stay on the road
+    if (light) {   // stray cabin light: veil over the windshield area (the render is also dimmed 18% in frame())
+      const vg = x.createLinearGradient(0, 0, 0, H2 * 0.75);
+      vg.addColorStop(0, 'rgba(255,244,214,0.10)'); vg.addColorStop(1, 'rgba(255,244,214,0.02)');
+      x.fillStyle = vg; x.fillRect(0, 0, W2, H2 * 0.75);
+      x.fillStyle = 'rgba(255,248,225,0.95)'; x.beginPath(); x.arc(W2 * 0.5, 30 * k, 14 * k, 0, 7); x.fill();   // dome light
+    }
+    x.fillStyle = 'rgba(8,10,14,0.96)';
+    x.beginPath();   // dashboard band
+    x.moveTo(0, H2); x.lineTo(0, H2 - 190 * k); x.quadraticCurveTo(W2 * 0.5, H2 - 260 * k, W2, H2 - 190 * k); x.lineTo(W2, H2); x.closePath(); x.fill();
+    x.fillStyle = 'rgba(8,10,14,0.95)';   // A-pillars + roof bar
+    x.beginPath(); x.moveTo(0, 0); x.lineTo(W2 * 0.16, 0); x.lineTo(W2 * 0.07, H2 * 0.62); x.lineTo(0, H2 * 0.5); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(W2, 0); x.lineTo(W2 * 0.84, 0); x.lineTo(W2 * 0.93, H2 * 0.62); x.lineTo(W2, H2 * 0.5); x.closePath(); x.fill();
+    x.fillRect(0, 0, W2, 26 * k);
+    // gauges — speed is functional (kmh); tach + fuel are plausible stand-ins derived from speed
+    const cx = W2 * 0.5, gy = H2 - 150 * k, r = 105 * k, rpm = Math.min(1, kmh / 220) * 0.9 + 0.05;
+    const face = (gx, gr, frac, label, val, col) => {
+      x.fillStyle = style === 'digital80s' ? 'rgba(4,12,8,0.92)' : 'rgba(14,18,26,0.95)';
+      x.beginPath(); x.arc(gx, gy, gr, 0, 7); x.fill();
+      x.strokeStyle = 'rgba(140,160,190,0.35)'; x.lineWidth = 2 * k; x.beginPath(); x.arc(gx, gy, gr, 0, 7); x.stroke();
+      if (style === 'digital80s') {   // 80s digital: segment-style digits
+        x.fillStyle = col; x.font = `bold ${Math.round(gr * 0.5)}px monospace`; x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillText(val, gx, gy - gr * 0.05); x.font = `${Math.round(gr * 0.16)}px monospace`; x.fillStyle = 'rgba(255,160,60,0.8)'; x.fillText(label, gx, gy + gr * 0.5);
+      } else {   // analog needle
+        x.strokeStyle = 'rgba(200,215,235,0.25)'; x.lineWidth = 2 * k;
+        for (let i = 0; i <= 10; i++) { const a = Math.PI * 0.75 + (i / 10) * Math.PI * 1.5; x.beginPath(); x.moveTo(gx + Math.cos(a) * gr * 0.82, gy + Math.sin(a) * gr * 0.82); x.lineTo(gx + Math.cos(a) * gr * 0.95, gy + Math.sin(a) * gr * 0.95); x.stroke(); }
+        const a = Math.PI * 0.75 + frac * Math.PI * 1.5;
+        x.strokeStyle = col; x.lineWidth = 3.5 * k; x.beginPath(); x.moveTo(gx, gy); x.lineTo(gx + Math.cos(a) * gr * 0.8, gy + Math.sin(a) * gr * 0.8); x.stroke();
+        x.fillStyle = col; x.font = `${Math.round(gr * 0.2)}px monospace`; x.textAlign = 'center'; x.fillText(val, gx, gy + gr * 0.45);
+      }
+    };
+    if (style === 'miata') {   // NA Miata: tombstone binnacle — rounded-top housing, two big gauges
+      x.fillStyle = 'rgba(12,14,18,0.97)';
+      x.beginPath(); x.moveTo(cx - 320 * k, H2); x.lineTo(cx - 320 * k, gy - 60 * k); x.quadraticCurveTo(cx, gy - 190 * k, cx + 320 * k, gy - 60 * k); x.lineTo(cx + 320 * k, H2); x.closePath(); x.fill();
+      x.strokeStyle = 'rgba(120,140,170,0.25)'; x.lineWidth = 2 * k; x.stroke();
+      face(cx - 150 * k, 110 * k, kmh / 260, info().o.imperialUnits ? 'mph' : 'km/h', info().o.imperialUnits ? Math.round(kmh * 0.621371) : Math.round(kmh), '#ffb050');
+      face(cx + 150 * k, 110 * k, rpm, 'x1000rpm', (rpm * 8).toFixed(1), '#ffb050');
+    } else {
+      x.fillStyle = 'rgba(16,20,28,0.9)'; x.fillRect(cx - 300 * k, gy - 85 * k, 600 * k, 60 * k);   // binnacle hump
+      face(cx - 150 * k, r, kmh / 260, info().o.imperialUnits ? 'mph' : 'km/h', info().o.imperialUnits ? Math.round(kmh * 0.621371) : Math.round(kmh), style === 'digital80s' ? '#ff5a26' : '#9fd0ff');
+      face(cx + 150 * k, r, rpm, 'rpm', (rpm * 8).toFixed(1), style === 'digital80s' ? '#ff5a26' : '#9fd0ff');
+    }
+    x.fillStyle = 'rgba(255,120,90,0.9)'; x.beginPath(); x.arc(cx - 260 * k, gy - 20 * k, 5 * k, 0, 7); x.fill();   // fuel tell-tale
+    x.strokeStyle = 'rgba(120,140,170,0.25)'; x.lineWidth = 2 * k;
+    x.beginPath(); x.moveTo(0, H2 - 190 * k); x.quadraticCurveTo(W2 * 0.5, H2 - 260 * k, W2, H2 - 190 * k); x.stroke();
+    if (yaw) x.restore();
+  }
   // one frame at S.dist
   function frame() {
     if (!contextReady()) return;
@@ -1564,12 +1769,26 @@ void main() {
     const t0 = performance.now(); resolutionPrepare(); shedPrepare(); V.p.airHold = !!V.airHold;
     const ui = V.ui, st = S(ui), I = info(), o = I.o, W = V.p.w, pb = V.band, had = pb[1] > pb[0], profiling = profileOn(), trafficMs = V.cameraMs || 0;
     V.p.yaw = o.afs && st.lighting ? st.lighting.yaw : 0;
+    if (o.driftMode) {   // Anya-permitted prototype (default OFF): opposite-lock drift yaw on bends — render-level only, solver untouched (one frame of lag via last frame's placed world)
+      const w0 = V.framePlaced, tl = w0 && w0.A && w0.A.tiles && w0.A.tiles.find((t2) => st.dist >= t2.s0 && st.dist < t2.s0 + 200);
+      const lag = o.driftDynamics || o.driftAfs || o.driftCabin;   // all three drift options read one lagged angle, so the arc, the lamp and the cabin cannot disagree
+      if (lag) {
+        const raw = tl && tl.curvature ? -tl.curvature * Math.pow(kmhOf() / 130, 2) * 8 : 0;
+        const dt = V.driftT === undefined ? 0 : Math.max(0, st.t - V.driftT);
+        V.driftA = relaxDrift(V.driftA, raw, dt); V.driftT = st.t;
+      } else V.driftA = undefined;
+      // the lamp swivel: the shader rotates the beam by -yaw while the arc rotation is +A, so these signs are the compensation, not an amplification
+      V.p.yaw += lag && V.driftA !== undefined ? V.driftA * (o.driftAfs ? 1 : 2.6 / 8) : (tl && tl.curvature ? -tl.curvature * Math.pow(kmhOf() / 130, 2) * 2.6 : 0);   // opposite lock scales with curvature and speed²
+    }
+    drawCabin(V, o.cabinView && (st.popout || ui.display === 'drive'), o.cabinStyle || 'modern', !!o.cabinLight, kmhOf(), o.driftCabin ? (V.driftA || 0) : 0);
     V.p.cornerLeft = o.corneringLamps && st.lighting ? st.lighting.left : 0;
     V.p.cornerRight = o.corneringLamps && st.lighting ? st.lighting.right : 0;
     V.p.pitch = o.lampPitch && st.pitch ? st.pitch.angle : 0;
     V.cameraMs = 0; V.p.profile = profiling ? {} : null;
     if (had && !V.three) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
     V.src.traffic.speed = kmhOf(); pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
+    if (o.driftMode && V.src.tiles) V.src.tiles.driftKmh = kmhOf();   // drift arc rotation reads the live speed
+    if (V.src.tiles) V.src.tiles.driftA = V.driftA;   // driftDynamics (default OFF): the lagged angle for tileWorld; undefined leaves the raw angle in place
     const placed = (V.src.tiles ? tileWorld : placedObjects)(V.p, st.dist, st.t, tauFor(V.act, st.t));
     if (st.game) {
       const mask = V.p.hazardMask = new Uint8Array(W * V.p.h);
@@ -1584,6 +1803,7 @@ void main() {
     if (!V.three) V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
     const t2 = performance.now();
     const gOpts = glareOpts(o, placed), sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A,gOpts) : D.glareSources(V.src.tiles ? placed.objects : placed, eyeOf(V.p), undefined, gOpts);
+    if (o.cabinLight) sources.push([1, 0, 0.02, 0.2, 1, 0.95, 0.8]);   // cabinLight: interior stray light as a forward glare source — adapt/auto exposure dims through the existing veil path (measured ~17% at glare=rain); manual EV and glare=off unaffected, by design
     V.frameGlare = sources; V.framePlaced = placed;      // scene details reads these (pointers only)
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
     const draw = { profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
@@ -1994,6 +2214,7 @@ void main() {
     btn('save-state', 'Download everything needed to come back to this spot: every option, position and time, where on the road, the Details readouts, the nearest cars, renderer and screen. For bug reports and repros.', () => { const d = stateDump(ui), w = d.where || {}; downloadBeams(d, 'flux-state-' + String(w.tileKind || w.road || 'road').replace(/[^\w-]+/g, '') + '-' + Math.round(w.dist || 0) + 'm.json'); stateMsg.textContent = 'Saved.'; }, 'save state');
     btn('load-state', 'Load a saved state file: every option and the position, paused there. It replaces your current settings. Traffic logic cars restart from the seed at that spot, so they come back close, not exact.', () => stateIn.click(), 'load state');
     bar.append(stateIn, stateMsg);
+    btn('imperial-units', 'Imperial units (opt-in): speed readouts show mph instead of km/h. Display-only; stored speeds stay km/h. Rarely changed, so it lives here in Performance, not the top bar.', () => setDV(ui, 'imperialUnits', !info().o.imperialUnits), 'mph');
     btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
     btn('scene-details', 'Live numbers about the scene in a small panel: own car, oncoming traffic, glare, hazards, range and lamp. Refreshes about 4 times a second; off costs nothing.', () => setDV(ui, 'sceneDetails', !info().o.sceneDetails), 'Scene details');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
@@ -2260,7 +2481,10 @@ void main() {
     elev.addEventListener('click', () => setDV(ui, 'elevatedView', !info().o.elevatedView));
     ui.driveExtras.append(elev);   // elevatedView toggle
     const preset = E('select', { 'data-anim': 'endlessPreset', title: 'Endless road preset (prototype) — needs route tiles + endless road + 3D route. off: the seeded biome walk as shipped. rolling-hills: gentler grades. forested-pass: pass-grade mountain blocks with guardrails and a dense forest verge.' });
-    for (const v of ['off', 'rolling-hills', 'forested-pass']) preset.append(E('option', { value: v }, v));
+    for (const v of ['off', 'rolling-hills', 'forested-pass', 'open-loop', 'forest-loop', 'city-loop', 'mountain-loop', 'switchbacks', 'highway-loop', 'gantry-loop', 'tunnel-loop', 'crossing-loop', 'layby-loop', 'fuel-loop', 'viewpoint-loop', 'sos-loop', 'picnic-loop', 'wildlife-loop', 'chainup-loop', 'culvert-loop', 'works-loop', 'toll-loop', 'vms-loop', 'custom']) preset.append(E('option', { value: v }, v));
+    const pCust = E('input', { type: 'text', 'data-anim': 'endlessPresetCustom', size: 18, spellcheck: 'false', placeholder: 'custom JSON', title: 'Custom endless preset (used when the preset is "custom"): {"biome":"city"} or {"mix":{"open":0.7,"mountain":0.3},"weights":{"straight":5},"grade":[0.01,0.04],"tunnel":0.2}. Saved with the state dump like every option.' });
+    pCust.addEventListener('change', () => setDV(ui, 'endlessPresetCustom', pCust.value));
+    ui.driveExtras.append(pCust);   // endlessPresetCustom input
     preset.addEventListener('change', () => setDV(ui, 'endlessPreset', preset.value));
     ui.driveExtras.append(preset);   // endlessPreset select
     const terr = E('button', { type: 'button', class: 'toggle', 'data-anim': 'tileTerrain', 'aria-pressed': 'false', title: 'Terrain skirts on endless tile roads (opt-in, pricy): with endless road + 3D route on, the ground beyond the carriageway undulates (falloff + coarse noise). Off: the verge follows the plain grade walk.' }, 'terrain');
@@ -2275,6 +2499,30 @@ void main() {
     const xg = E('button', { type: 'button', class: 'toggle', 'data-anim': 'endlessCrossing', 'aria-pressed': 'false', title: 'Level crossings on endless open-road tiles (opt-in): ballast strip, two rails, ties and crossbucks across the road. Requires endless road + wild; crossbucks behind signs.' }, 'rail x-ing');
     xg.addEventListener('click', () => setDV(ui, 'endlessCrossing', !info().o.endlessCrossing));
     ui.driveExtras.append(xg);   // endlessCrossing toggle
+    const cb = E('button', { type: 'button', class: 'toggle', 'data-anim': 'cabinView', 'aria-pressed': 'false', title: 'In-cabin view (opt-in): dashboard + windshield frame over the drive render. The plain camera stays the default.' }, 'cabin');
+    cb.addEventListener('click', () => setDV(ui, 'cabinView', !info().o.cabinView));
+    ui.driveExtras.append(cb);   // cabinView toggle
+    const dc = E('button', { type: 'button', class: 'toggle', 'data-anim': 'driftCabin', 'aria-pressed': 'false', title: 'Drift cabin (needs drift mode and the cabin view): rotate the cockpit overlay to match the car yaw, as if looking out the side window' });
+    dc.addEventListener('click', () => setDV(ui, 'driftCabin', !info().o.driftCabin));
+    ui.driveExtras.append(dc);   // driftCabin toggle
+    const da = E('button', { type: 'button', class: 'toggle', 'data-anim': 'driftAfs', 'aria-pressed': 'false', title: 'Drift AFS (needs drift mode): aim the beam along the road instead of the nose - in a slide the beam is what tells you where you are going' });
+    da.addEventListener('click', () => setDV(ui, 'driftAfs', !info().o.driftAfs));
+    ui.driveExtras.append(da);   // driftAfs toggle
+    const dd = E('button', { type: 'button', class: 'toggle', 'data-anim': 'driftDynamics', 'aria-pressed': 'false', title: 'Drift dynamics (needs drift mode): the opposite-lock angle ramps in over ~0.3 s instead of snapping, and is capped at 8 degrees' });
+    dd.addEventListener('click', () => setDV(ui, 'driftDynamics', !info().o.driftDynamics));
+    ui.driveExtras.append(dd);   // driftDynamics toggle
+    const dm = E('button', { type: 'button', class: 'toggle', 'data-anim': 'driftMode', 'aria-pressed': 'false', title: 'Drift mode (easter egg, opt-in): opposite-lock yaw on bends, scaling with speed. Render-level only; the plain drive stays the default.' }, 'drift');
+    dm.addEventListener('click', () => setDV(ui, 'driftMode', !info().o.driftMode));
+    ui.driveExtras.append(dm);   // driftMode toggle
+    const cst = E('select', { 'data-anim': 'cabinStyle', title: 'Cabin dashboard style (cabin view): modern round gauges, NA Miata tombstone, or 80s digital' }, ...['modern', 'miata', 'digital80s'].map((v) => E('option', { value: v }, v)));
+    cst.addEventListener('change', () => setDV(ui, 'cabinStyle', cst.value));
+    ui.driveExtras.append(cst);   // cabinStyle select
+    const cl = E('button', { type: 'button', class: 'toggle', 'data-anim': 'cabinLight', 'aria-pressed': 'false', title: 'Cabin light (opt-in): dome light + stray-light veil over the windshield, and the road render is dimmed ~18% — demonstrates how cabin light reduces road visibility.' }, 'cabin light');
+    cl.addEventListener('click', () => setDV(ui, 'cabinLight', !info().o.cabinLight));
+    ui.driveExtras.append(cl);   // cabinLight toggle
+    const ys = E('button', { type: 'button', class: 'toggle', 'data-anim': 'yawSmooth', 'aria-pressed': 'false', title: 'Smooth camera yaw on curved tiles (opt-in): lookahead-averaged tangent eases the yaw snap at corner entry/exit. Render-only; default off keeps the shipped view.' }, 'yaw smooth');
+    ys.addEventListener('click', () => setDV(ui, 'yawSmooth', !info().o.yawSmooth));
+    ui.driveExtras.append(ys);   // yawSmooth toggle
     const jg = E('button', { type: 'button', class: 'toggle', 'data-anim': 'junctionGantries', 'aria-pressed': 'false', title: 'Overhead sign gantries at junction tiles (opt-in): two columns, beam and two green panels across junction tiles. Needs route tiles; behind the signs+wild flags. Off: byte-identical.' }, 'gantries');
     jg.addEventListener('click', () => setDV(ui, 'junctionGantries', !info().o.junctionGantries));
     ui.driveExtras.append(jg);   // junctionGantries toggle (glm5.2 11-01: gated le-chonk\'s brainstorm gantry behind default-OFF option to restore rule 3)
@@ -2284,7 +2532,7 @@ void main() {
     const st = S(ui), o = info().o, lab = ui.driveBar.querySelector('[data-anim=speedlab]');
     if (!lab) return;
     const actual = st.camera && (o.trafficLogic || o.mountainPass) && st.view === 'anim' ? st.camera.v * 3.6 : o.speed;
-    lab.textContent = o.speed + ' km/h' + (Math.abs(actual - o.speed) >= 1 ? ' · actual ' + Math.round(actual) : '');   // whole km/h (owner 10-29: one decimal was noise and made the label jump)
+    lab.textContent = fmtSpeed(o.speed) + (Math.abs(actual - o.speed) >= 1 ? ' · actual ' + fmtSpeed(actual) : '');   // whole units (owner 10-29: one decimal was noise and made the label jump)
   }
   // the high-beam switch: V.high is the live state; the minigame's game object follows it so a hazard resolves with the switch as it is then
   // The high-beam switch cycles Off, On, Auto. V.high is always the beam as lit now (the LUT and the minigame read it);
@@ -2328,6 +2576,17 @@ void main() {
     for (const l of q('[data-dl="beam-label"]')) l.textContent = 'beam: ' + ownBeamReadout(o);
     for (const b of q('[data-anim="tiles"]')) b.setAttribute('aria-pressed', String(!!o.tiles));
     for (const b of q('[data-anim="endlessRoad"]')) { b.setAttribute('aria-pressed', String(!!o.endlessRoad)); b.disabled = !o.tiles; }
+    for (const b of q('[data-anim="cabinView"]')) b.setAttribute('aria-pressed', String(!!o.cabinView));
+    for (const b of q('[data-anim="driftMode"]')) b.setAttribute('aria-pressed', String(!!o.driftMode));
+    for (const b of q('[data-anim="driftDynamics"]')) b.setAttribute('aria-pressed', String(!!o.driftDynamics));
+    for (const b of q('[data-anim="driftAfs"]')) b.setAttribute('aria-pressed', String(!!o.driftAfs));
+    for (const b of q('[data-anim="driftCabin"]')) b.setAttribute('aria-pressed', String(!!o.driftCabin));
+    for (const b of q('[data-anim="yawSmooth"]')) b.setAttribute('aria-pressed', String(!!o.yawSmooth));
+    for (const b of q('[data-anim="cabinLight"]')) b.setAttribute('aria-pressed', String(!!o.cabinLight));
+    for (const b of q('[data-anim="imperial-units"]')) b.setAttribute('aria-pressed', String(!!o.imperialUnits));
+    for (const s2 of q('[data-anim="endlessPresetCustom"]')) s2.value = o.endlessPresetCustom || '';
+    for (const s2 of q('[data-anim="endlessPreset"]')) s2.value = o.endlessPreset || 'off';
+    for (const s2 of q('[data-anim="cabinStyle"]')) s2.value = o.cabinStyle || 'modern';
     for (const b of q('[data-anim="junctionGantries"]')) { b.setAttribute('aria-pressed', String(!!o.junctionGantries)); b.disabled = !o.tiles; }   // glm5.2 11-01: sync the gantry toggle (le-chonk's driveExtras toggles don't have sync lines, but this one needs one so the pressed state shows)
     for (const b of q('[data-anim="elevatedView"]')) b.setAttribute('aria-pressed', String(!!o.elevatedView));
     if (!V.bar) return;
@@ -2353,14 +2612,14 @@ void main() {
     ui.driveBar.querySelector('[data-anim="speed"]').value = o.speed; speedLabel(ui);
     for (const [k] of CLASSES) { const b = V.ui.driveBar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
     { const sel = V.ui.driveBar.querySelector('[data-anim="powerlines"]'); if (sel) sel.value = o.powerlines === 'on' ? 'on' : 'off'; }
-    { const pv = o.powerlineReflectance === undefined ? 0.22 : o.powerlineReflectance, sl = V.ui.driveBar.querySelector('[data-anim="powerline-reflectance"]'); if (sl) { sl.value = String(pv); sl._show(); } }
+    { const pv = Math.min(0.60, Math.max(0.02, o.powerlineReflectance === undefined ? 0.22 : +o.powerlineReflectance)), sl = V.ui.driveBar.querySelector('[data-anim="powerline-reflectance"]'); if (sl) { sl.value = String(pv); sl._show(); } }
     { const t = V.ui.driveBar.querySelector('[data-anim="traffic-density"]'); t.value = o.trafficDensity === undefined ? 1 : o.trafficDensity; t._show(); }
     { const g = Math.min(4, Math.max(0.25, +o.scatterGain || 1)); V.scatGainEl.value = Math.log2(g); V.scatGainEl._show(g); }
     { const e = Math.min(100, Math.max(1e-4, +o.scatterCullEps || 0.05)); V.cullEpsEl.value = Math.log10(e); V.cullEpsEl._show(e); }
     V.cullEpsEl.hidden = V.cullEpsEl._box.hidden = o.scatterCull !== 'fast' || o.visibility == null;   // LBL: the unit hides with the slider, so no orphan name
     V.rangeEl.value = String(Math.min(400, Math.max(50, +o.scatterRange || 120))); V.rangeEl._show(); V.rangeEl.hidden = V.rangeEl._box.hidden = o.visibility == null;
     V.jitAmtEl.value = String(o.haloJitterAmount === undefined ? 1 : +o.haloJitterAmount); V.jitAmtEl._show(); V.jitAmtEl.hidden = V.jitAmtEl._box.hidden = o.visibility == null || o.haloJitter !== 'jittered';
-    V.coneAngEl.value = String(o.haloConeAngle === undefined ? 30 : +o.haloConeAngle); V.coneAngEl._show(); V.coneAngEl.hidden = V.coneAngEl._box.hidden = o.visibility == null || !['1', '2'].includes(String(o.haloConePass));
+    V.coneAngEl.value = String(Math.min(90, Math.max(0, o.haloConeAngle === undefined ? 30 : +o.haloConeAngle))); V.coneAngEl._show(); V.coneAngEl.hidden = V.coneAngEl._box.hidden = o.visibility == null || !['1', '2'].includes(String(o.haloConePass));
     V.ui.driveBar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));
     V.ui.driveBar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
     V.ui.driveBar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
@@ -2489,7 +2748,7 @@ void main() {
     if (!V.gameStatus) return;
     const hits = g.results.filter((r) => r.hit).length, passes = g.results.length - hits, mean = g.reactions.length ? (g.reactions.reduce((a, b) => a + b, 0) / g.reactions.length).toFixed(2) + ' s' : 'not measured';
     const ticket = RF.DriveGame.score({ verdict: g.verdict, flashes: g.flashes }).tickets, last = g.results[g.results.length - 1];
-    V.gameStatus.textContent = (g.done ? 'Run ended' : g.resume !== null ? g.clearLane && g.rules !== 'legacy' ? 'Waiting for clear lane · release Brake to resume' : 'Release Brake · cruise resumes after 2 s' : g.brake ? 'BRAKING' : g.acceleration === 'gentle' && g.v < g.speed / 3.6 - .01 ? 'Accelerating gently' : 'Hold Space or Brake') + ' · ' + (g.v * 3.6).toFixed(1) + ' km/h · ' + g.results.length + '/5 resolved';
+    V.gameStatus.textContent = (g.done ? 'Run ended' : g.resume !== null ? g.clearLane && g.rules !== 'legacy' ? 'Waiting for clear lane · release Brake to resume' : 'Release Brake · cruise resumes after 2 s' : g.brake ? 'BRAKING' : g.acceleration === 'gentle' && g.v < g.speed / 3.6 - .01 ? 'Accelerating gently' : 'Hold Space or Brake') + ' · ' + (g.v * 3.6).toFixed(1) + (info().o.imperialUnits ? ' mph' : ' km/h') + ' · ' + g.results.length + '/5 resolved';
     V.gameCard.hidden = !g.done;
     if (g.done) {
       V.gameBar.classList.remove('running'); musicSync(V.ui);
@@ -2497,7 +2756,7 @@ void main() {
       V.gameBar.querySelector('[data-game="brake"]').hidden = true; V.gameBar.querySelector('[data-game="pause"]').hidden = true;
       for (const e of V.gameBar.querySelectorAll('input,select')) e.disabled = false;
       const repair = g.results.reduce((sum, r) => sum + r.repair, 0);
-      V.gameCard.textContent = 'GAME SCORECARD — ' + (g.reason || (g.results.some((r) => r.conscience) ? 'Person hit: run lost · conscience cost 100' : last && last.lost ? last.tier : 'Run complete')) + '\nHazards seen: ' + g.seen + ' / ' + g.spawned + ' · mean reaction: ' + mean + ' (' + g.reactions.length + ' measured presses)\nHits: ' + hits + ' · passes: ' + passes + ' · flashed ' + g.flashes + ' cops: $' + ticket + '\nLamp Spec verdict: ' + g.verdict.toUpperCase() + (g.verdict === 'unsure' || g.verdict === 'empty' ? ' (compliance not established)' : '') + ' · repair bands total: $' + repair + '\n' + g.results.map((r) => '#' + r.id + ' ' + r.kind + ': ' + (r.hit ? r.speed.toFixed(1) + ' km/h impact · ' + r.damage + ' $' + r.repair + ' · liability ' + r.liability.toFixed(1) + ' (' + Math.round(r.mitigation * 100) + '% mitigation) · ' + r.tier : 'pass')).join('\n') + '\nAbsolute reach beats foreground width. Earlier light buys braking distance.\nGame flavour, not legal advice. 1500 kg energy proxy; costs and liability are invented game bands.';
+      V.gameCard.textContent = 'GAME SCORECARD — ' + (g.reason || (g.results.some((r) => r.conscience) ? 'Person hit: run lost · conscience cost 100' : last && last.lost ? last.tier : 'Run complete')) + '\nHazards seen: ' + g.seen + ' / ' + g.spawned + ' · mean reaction: ' + mean + ' (' + g.reactions.length + ' measured presses)\nHits: ' + hits + ' · passes: ' + passes + ' · flashed ' + g.flashes + ' cops: $' + ticket + '\nLamp Spec verdict: ' + g.verdict.toUpperCase() + (g.verdict === 'unsure' || g.verdict === 'empty' ? ' (compliance not established)' : '') + ' · repair bands total: $' + repair + '\n' + g.results.map((r) => '#' + r.id + ' ' + r.kind + ': ' + (r.hit ? r.speed.toFixed(1) + (info().o.imperialUnits ? ' mph' : ' km/h') + ' impact · ' + r.damage + ' $' + r.repair + ' · liability ' + r.liability.toFixed(1) + ' (' + Math.round(r.mitigation * 100) + '% mitigation) · ' + r.tier : 'pass')).join('\n') + '\nAbsolute reach beats foreground width. Earlier light buys braking distance.\nGame flavour, not legal advice. 1500 kg energy proxy; costs and liability are invented game bands.';
       const restart = V.gameBar.querySelector('[data-game="start"]'); restart.hidden = false; restart.textContent = 'Run again'; V.gameBar.querySelector('[data-game="exit"]').hidden = false;
     }
   }
@@ -3006,7 +3265,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / (Math.max(5, kmhOf()) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { timeline: () => TL.events, stateDump, readState, loadState, STATE_KIND, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, shedState, shedStep, shedPatch, lodPatch, LOD_LEVELS, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, endlessTile, endlessBiome, endlessElev, endlessGrade, endlessVerge, mlLanes, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { parseCustomPreset, endlessBiome, timeline: () => TL.events, stateDump, readState, relaxDrift, loadState, STATE_KIND, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, shedState, shedStep, shedPatch, lodPatch, LOD_LEVELS, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, endlessTile, endlessBiome, endlessElev, endlessGrade, endlessVerge, mlLanes, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

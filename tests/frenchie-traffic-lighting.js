@@ -9,7 +9,7 @@ const O = require(path.join(ROOT, 'js/options-registry.js'));
 const opt = O.OPTIONS.find((o) => o.id === 'trafficLighting');
 
 ok('registry: trafficLighting declared once, enum, default off, group street-lamps, cost scene-regenerate', !!opt && opt.type === 'enum' && opt.default === 'off' && opt.group === 'street-lamps' && opt.cost === 'scene-regenerate' && opt.control === '[data-dv="trafficLighting"]', opt && { def: opt.default, group: opt.group });
-ok('registry: entry is at the END of OPTIONS', O.OPTIONS[O.OPTIONS.length - 1].id === 'trafficLighting');
+ok('registry: entry is in the tail of OPTIONS (after signalConesOn; later options may append past it)', O.OPTIONS.findIndex((x) => x.id === 'trafficLighting') > O.OPTIONS.findIndex((x) => x.id === 'signalConesOn'));   // append-safe
 ok('values: off + 5 presets', !!opt && opt.values.join(',') === 'off,sodium-urban,led-urban,sodium-all,led-sparse,no-lamps', opt && opt.values);
 
 // preset map: every written value is a valid member of the target option's enum

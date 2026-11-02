@@ -101,11 +101,21 @@ const FROZEN_OLD_DV_DEF = {
   mountainPass: false,
   elevatedView: false,   // le-chonk 10-30 (elevatedView prototype): new option (not a default change); registry position: after mountainPass
   endlessPreset: 'off',   // le-chonk 10-30 (endless road preset): new option (not a default change)
+  endlessPresetCustom: '',   // le-chonk 11-01 (custom endless preset JSON): new option, default empty
   tileTerrain: false,   // le-chonk 10-31 (terrain skirts opt-in): new option, default off
   multilaneRoad: false,   // le-chonk 10-31 (2+2 highway phase 0, drive view only): new option, default off
   endlessTunnel: false,   // le-chonk 10-31 (tunnel tiles, opt-in): new option, default off
   endlessCrossing: false,   // le-chonk 10-31 (level crossings, opt-in): new option, default off
   junctionGantries: false,   // glm5.2 11-01 (junction gantries, opt-in): new option, default off; gated le-chonk's brainstorm gantry behind default-OFF option to restore rule 3 (consent flags default ON)
+  cabinView: false,   // le-chonk 10-31 (in-cabin overlay, Anya-approved): new option, default off
+  driftMode: false,   // le-chonk 10-31 (drift easter egg, Anya-permitted): new option, default off
+  driftDynamics: false,   // step5-preview 11-01 (drift dynamics): new option, default off; host landing reconciled by le-chonk
+  driftAfs: false,   // step5-preview 11-01 (drift AFS headlamps): new option, default off; host landing reconciled by le-chonk
+  yawSmooth: false,   // le-chonk 10-31 (yaw smoothing, opt-in): new option, default off
+  cabinStyle: 'modern',   // le-chonk 10-31 (cabin dashboard styles, wishlist): new option, default 'modern'
+  driftCabin: false,   // step5-preview 11-01 (drift cabin lean): new option, default off; host landing reconciled by le-chonk
+  cabinLight: false,   // le-chonk 10-31 (cabin light demo, opt-in): new option, default off
+  imperialUnits: false,   // le-chonk 10-31 (imperial units, display-only): new option, default off
   gpuRenderer: true,
   trafficBeams: false,
   surfaceSheen: false,
@@ -147,11 +157,13 @@ const FROZEN_OLD_DV_DEF = {
   heatShimmer: 'off',   // frenchie (10-31 heatShimmer): new option, default off; registry position: at the END of the list
   signalConesOn: false,   // frenchie (10-31 signalConesOn): new option, default off; registry position: at the END of the list
   trafficLighting: 'off',   // frenchie (10-31 trafficLighting): preset option, default off; registry position: at the END of the list
+  wetBounce: false,   // frenchie (11-01 wetBounce, 4-O): own-beam road bounce, default off; registry position: at the END of the list
 };
 
 // ---- 1. DV_DEF equality
 const gen = Opt.defaults();
-ok('frozen copy has 135 keys (glm5.2 11-01: junctionGantries, new option default off); (134 keys (le-chonk 10-31: endlessCrossing, new option default off); (133 keys (le-chonk 10-31: endlessTunnel, new option default off); (132 keys (frenchie 10-31: trafficLighting, default off); (131 keys (frenchie 10-31: signalConesOn, new option default off); (130 keys (frenchie 10-31: heatShimmer, new option default off); (129 keys (le-chonk 10-31: multilaneRoad, new option default off); (128 keys (frenchie 10-31: dryStreaks, new option default off); (127 keys (le-chonk 10-31: tileTerrain, new option default off); (126 keys (frenchie 10-31: distanceLod, new option default off); (125 keys (le-chonk 10-30: endlessPreset, new option default off); (124 keys (frenchie 10-31: qualityGovernor, new option default off); (123 keys (le-chonk 10-30 elevatedView: 3D route pipeline prototype, new option default off); (120 with le-chonk 10-30 2-endless: endlessRoad, new option default off); (119 with le-chonk 10-30 5-M: trafficMarkers, new option default off); (118 with glm5.2 10-30: haloMoment, new option default off); (117 with qwen3.8max 10-30: haloRefineNeighbour, new option default off); (116 with le-chonk 10-30: driveScrub + wetVeil, new); (114 with minimaxai (P1c) + haloCrossingRefine, new option default off); (10-29: animateUI, new); (111 with 10-29: fitControls retired); (112 with UI step C: canvasShape, new); (111 with UI step C: panelMode, new); (110 with OHC + OHR: haloCars, haloRange, new); (108 with SM3 PCF: trafficShadowSoft, new); (107 with SM1b: trafficShadowObjects, new); (106 with AT: haloAutoRange, haloNearSub, new); (104 with CP + SM: haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, new); (99 with IL + haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, new); (95 with SR + scatterRange, new); (94 with SP + haloPolarBand, new); (93 with SC + scatterCull and scatterCullEps, new); (91 with E2 + crestOcclusion, new); (113 with step5-preview (LW) + haloLampWin, new option default off); (114 with minimaxai (P1c) + haloCrossingRefine, new option default off); (90 after Brief U (91 before Brief U removed lampHalos; + powerlines, POWERLINES, new option default off; + powerlineReflectance, new) (87 on main 251f801 + lampCone (LAMP-CONE-MIST) + lampConeGain (LAMP-CONE-OBJECTS), both new options, not default changes)', Object.keys(FROZEN_OLD_DV_DEF).length === 135, Object.keys(FROZEN_OLD_DV_DEF).length);
+ok('frozen copy key count tracks the live registry profile count (glm5.2 T10-F4: derived, not hand-bumped; fails if a profile option is added without extending FROZEN_OLD_DV_DEF)',
+  Object.keys(FROZEN_OLD_DV_DEF).length === Opt.OPTIONS.filter((e) => e.kind === 'profile').length, Object.keys(FROZEN_OLD_DV_DEF).length + ' vs live ' + Opt.OPTIONS.filter((e) => e.kind === 'profile').length);
 let equal = true, why = null;
 try { assert.deepStrictEqual(gen, FROZEN_OLD_DV_DEF); } catch (e) { equal = false; why = String(e.message).split('\n').slice(0, 12).join(' | '); }
 ok('generated defaults deep-equal the old DV_DEF (values and types)', equal, why);

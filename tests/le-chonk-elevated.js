@@ -35,5 +35,8 @@ const tg = fs.readFileSync(path.join(ROOT, 'js', 'drive-touge.js'), 'utf8');
 ok('drive-touge: world() gates pass furniture + terrain on mountainPass', tg.includes('pass = !!p.mountainPass') && tg.includes('route(dist, p.lane, !!p.mountainPass)') && tg.includes('for (let s = lo; pass && s <= hi; s += 8)'));
 ok('drive-touge: attitude(dist, false) identity', tg.includes('if (!elevated) return { pitch: 0, roll: 0'));
 
+// 11-01 ~04:10 (frenchie's open elevated item): lane studs (cls 'rpm') ride the grade like cars/rails - lift() sets passSlope for them
+ok('lift() gives cls rpm the passSlope (studs tilt with the grade on elevated endless roads)', tg.includes("ob.cls === 'rail' || ob.cls === 'rpm'") && tg.includes('passSlope'));
+
 console.log(fail === 0 ? `\nall ${pass} le-chonk-elevated checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);

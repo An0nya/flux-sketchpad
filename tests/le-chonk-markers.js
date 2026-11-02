@@ -2,10 +2,13 @@
 // OFF: the car kit is byte-identical to before (no marker objects, same digest inputs). ON: 4 marker
 // discs per car (amber front corners, red rear), materials exist, glareEmitter() covers them (veil),
 // and the halo source filter (heads/tails only) keeps them out of the 16-lamp halo table.
+// 11-01 ~04:00 (Anya decision, FMVSS 108 / ECE R48): side marker lamps emit only when the car's lamps are on
 const fs = require('fs'), path = require('path');
+const src = fs.readFileSync(path.join(path.join(__dirname, '..'), 'js', 'drive-scenes.js'), 'utf8');
 const ROOT = path.join(__dirname, '..');
 let pass = 0, fail = 0;
 function ok(name, cond, extra) { if (cond) { pass++; console.log('[PASS] ' + name); } else { fail++; console.log('[FAIL] ' + name + (extra !== undefined ? ' — ' + JSON.stringify(extra) : '')); } }
+ok('marker lamps emit gated on o.lamps (parked cars with lights off stay dark; retro term untouched)', src.includes("emit: o.lamps ? [26, 15, 1.6] : null") && src.includes("emit: o.lamps ? [22, 1.2, 0.6] : null") && src.includes("'marker-amber'"));
 const { load } = require('./load.js');
 const RF = load(ROOT);
 const D = RF.Drive, O = RF.Options;

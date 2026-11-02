@@ -144,7 +144,7 @@
         if (o.lamps === 'tail') for (const b of [-0.7, 0.7]) face(-F * 2.21, [-nF[0], -nF[1]], b, 0.78, lampR, 'lamp-head', { taillamp: true, emitPow: 2, emit: ((I) => { const Lm = I / (Math.PI * lampR * lampR); return [Lm, 0.03 * Lm, 0.015 * Lm]; })(o.tailCd || 80) });
         face(F * 2.21, nF, 0, 0.55, 0.15, 'plate'); face(-F * 2.21, [-nF[0], -nF[1]], 0, 0.55, 0.15, 'plate');
         for (const b of [-0.7, 0.7]) face(-F * 2.21, [-nF[0], -nF[1]], b, 0.62, 0.035, 'reflector-red');
-        if (o.markers) for (const b of [-0.88, 0.88]) { face(F * 2.0, nF, b, 0.60, 0.028, 'marker-amber', { markerLamp: true, emitPow: 6, emit: [26, 15, 1.6] }); face(-F * 2.0, [-nF[0], -nF[1]], b, 0.64, 0.028, 'marker-red', { markerLamp: true, emitPow: 3, emit: [22, 1.2, 0.6] }); }   // §5-M side marker lamps: amber front corners, red rear (veil-only, not halo sources)
+        if (o.markers) for (const b of [-0.88, 0.88]) { face(F * 2.0, nF, b, 0.60, 0.028, 'marker-amber', { markerLamp: true, emitPow: 6, emit: o.lamps ? [26, 15, 1.6] : null }); face(-F * 2.0, [-nF[0], -nF[1]], b, 0.64, 0.028, 'marker-red', { markerLamp: true, emitPow: 3, emit: o.lamps ? [22, 1.2, 0.6] : null }); }   // §5-M side marker lamps: amber front corners, red rear (veil-only, not halo sources); per FMVSS 108 / ECE R48 they are LAMPS - they emit only when the car's position lamps are on (Anya 11-01), so parked cars with lights off stay dark; the retroreflective response stays
         if (o.lamps === 'head' && o.kcd === undefined) D.Headlamp.apply(O.slice(first), { mode: 'generic' });
       },
       // a traffic-signal head facing the approaching car at (s, off, z), one lamp lit: 'red' | 'green'

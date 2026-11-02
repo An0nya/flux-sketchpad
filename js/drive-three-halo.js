@@ -15,6 +15,12 @@ import { ATLAS_HEAD, OTHER_LEGACY, OTHER_ATLAS, HALO_MAX } from './drive-three-s
 import { beamExtent, coneClip, ballClip, fastRadius, litBound, polarBand } from './drive-three-halo-cull.js';
 import { SM_DECL, SM_MAX, SM_RES } from './drive-three-shadowmaps.js';
 const D = globalThis.RF.Drive;
+// frenchie (pool item 4, halo half): guarded replace, same semantics as rep() in drive-touge-three.js — a string anchor must occur
+// exactly once, a RegExp at least once (global regexes may match many); anything else throws instead of silently composing stale text.
+export function hrep(s, anchor, repl, optional = false) {
+  if (anchor instanceof RegExp) { const flags = (anchor.flags || '').includes('g') ? anchor.flags : (anchor.flags || '') + 'g'; const n = (s.match(new RegExp(anchor.source, flags)) || []).length; if (n === 0) { if (optional) return s; throw Error('halo anchor missed (hrep): ' + String(anchor).slice(0, 80)); } return s.replace(anchor, repl); }
+  const n = s.split(anchor).length - 1; if (n === 0) { if (optional) return s; throw Error('halo anchor missed (hrep): ' + anchor.slice(0, 80)); } if (n !== 1 && !optional) throw Error('halo anchor count ' + n + ' (hrep): ' + anchor.slice(0, 80)); return s.replace(anchor, repl);   // optional sites keep the shipped first-occurrence semantics
+}
 export const HALO_MAXL = 16, HALO_PER_DRAW = 1, HALO_BIN_STEPS = 6, HALO_MIN_W = 96, HALO_MIN_H = 54, HALO_DIV = 8, HALO_DIV_FEW = 4, HALO_FEW = 4, HALO_SUB = 4, HALO_REFINE = 4, HALO_NEAR = 45;
 // HDX6 polar table (SL_HALO_POLAR): 512 angles x 64 log-radii for the nearest lamp in front; 24 bins side by side = 12288 texels wide (under MAX_TEXTURE_SIZE 16384).
 export const AUTO_NEAR_M = 8, AUTO_FAR_M = 12;   // SP: haloPolar auto: no lamp-centred table inside 8 m, the full share beyond 12 m, smoothstep between
@@ -92,8 +98,8 @@ const lwText = (body, occ, sm) => {   // LW: the uniform rides with the variant,
   if (body.includes('uniform float haloLampW;')) return body;
   const lines = []; if (occ || sm) { if (body.includes(SM_LINES[0])) lines.push(SM_LINES[0]); else if (body.includes(OCC_LINE)) lines.push(OCC_LINE); else if (body.includes(SM_LINES[1])) lines.push(SM_LINES[1]); }
   const blk = LW_BLOCK(lines), t2 = body.includes(LW_TAIL2);
-  if (t2) return 'uniform float haloLampW;\n' + body.replace(LW_TAIL2, '    }\n' + blk + '  }\n  acc *= swt;\n  gl_FragColor');
-  if (body.includes(LW_TAIL1)) return 'uniform float haloLampW;\n' + body.replace(LW_TAIL1, '    }\n' + blk + '  }\n  gl_FragColor');
+  if (t2) return 'uniform float haloLampW;\n' + hrep(body, LW_TAIL2, '    }\n' + blk + '  }\n  acc *= swt;\n  gl_FragColor');
+  if (body.includes(LW_TAIL1)) return 'uniform float haloLampW;\n' + hrep(body, LW_TAIL1, '    }\n' + blk + '  }\n  gl_FragColor');
   throw new Error('LW: table pass tail not found once'); };
 
 const TVERT = `void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`;
@@ -180,10 +186,10 @@ const crossText = (main, n, nb = false, widthStep = 0) => {
   const a = main.indexOf(CROSS_HEAD), b = main.indexOf(CROSS_TAIL, a);
   if (a < 0 || b < 0) throw new Error('P1c: crossing-bin loop not found');
   let loop = main.slice(a, b + '\n    }'.length);
-  if (widthStep > 0) loop = loop.replace(WIDTH_LADDER_OLD, WIDTH_LADDER_NEW);   // WIDTH: the non-crossing bins use the width-driven ladder, the crossing bin uses the refined ladder below
+  if (widthStep > 0) loop = hrep(loop, WIDTH_LADDER_OLD, WIDTH_LADDER_NEW);   // WIDTH: the non-crossing bins use the width-driven ladder, the crossing bin uses the refined ladder below
   const bodyAt = loop.indexOf('      vec3 d = '), bodyEnd = loop.lastIndexOf('\n    }');
   if (bodyAt < 0 || bodyEnd < bodyAt) throw new Error('P1c: crossing-bin sample body not found');
-  const body = loop.slice(bodyAt, bodyEnd).replace(/\bds\b/g, 'rds').replace(/\bs\b/g, 'rs');
+  const body = hrep(hrep(loop.slice(bodyAt, bodyEnd), /\bds\b/g, 'rds'), /\bs\b/g, 'rs');
   const refined = '    float fwdDot = dot(ray, fw);\n    float sCross = abs(fwdDot) > 1e-7 ? dot(lamp - haloEye, fw) / fwdDot : -1.0;\n'
     // RN (option haloRefineNeighbour): widen the trigger to [lo, the next bin's far edge], so the bin that holds the
     // light is refined too. sCross is pinned at the lamp's forward-plane crossing (~the lamp depth) while the glow
@@ -206,7 +212,7 @@ const crossText = (main, n, nb = false, widthStep = 0) => {
   return main.slice(0, a) + refined + main.slice(b + '\n    }'.length);
 };
 // HDX6: the polar pass is the same bin integrand, but each texel is a polar sample about the nearest lamp's projection (pixels), not a screen cell.
-const polarOf = (main) => main.replace(
+const polarOf = (main) => hrep(main,
   "  ivec2 px = ivec2(gl_FragCoord.xy); int W = int(haloTab.x), tile = px.x / W, cx = px.x - tile * W;\n  vec2 uv = (vec2(float(cx), float(px.y)) + 0.5) / haloTab, screen = uv * 2.0 - 1.0;\n",
   "  ivec2 px = ivec2(gl_FragCoord.xy); int W = int(haloPolarN.x), tile = px.x / W, cx = px.x - tile * W;\n" +
   "  float ang = (float(cx) + 0.5) / haloPolarN.x * 6.28318530718, rho = exp(haloPolarRange.x + (float(px.y) + 0.5) * haloPolarRange.y);\n" +
@@ -234,7 +240,7 @@ const OCC_HIT = '      float cs = -dot(d, ray) / r, p =';
 // LW: the occlusion lines as the hooks insert them, so lwText can put the same line in the window's copy of the march (E2 / SM + LW together).
 const OCC_LINE = '      if (crestOcc(lamp, haloEye + s * ray)) continue;', SM_LINES = ['      if (smM >= 0 ? !smLit(smM, haloEye + s * ray) : crestOcc(lamp, haloEye + s * ray)) continue;', '      if (!smLit(smM, haloEye + s * ray)) continue;'];
 if (TMAIN.split(OCC_HIT).length !== 2) throw new Error('E2: crest occlusion hook not found once in the table pass');
-const TMAIN_OCC = TMAIN.replace(OCC_HIT, '      if (crestOcc(lamp, haloEye + s * ray)) continue;\n' + OCC_HIT), TMAIN_POLAR_OCC = polarOf(TMAIN_OCC);
+const TMAIN_OCC = hrep(TMAIN, OCC_HIT, '      if (crestOcc(lamp, haloEye + s * ray)) continue;\n' + OCC_HIT), TMAIN_POLAR_OCC = polarOf(TMAIN_OCC);
 if (TMAIN_OCC === TMAIN || TMAIN_POLAR_OCC === TMAIN_POLAR || TMAIN_POLAR_OCC === TMAIN_OCC) throw new Error('E2: crest occlusion pass text not built');
 // SP (haloPolar auto): the lamp-centred table covers only an angle band about its centre (haloBandA = centre angle, half width, edge fade, share), and the screen table is built with the
 // complementary share for the lamps the polar table carries, so the two sum to the lamp's whole contribution (the lookup weights the polar table with the same numbers, drive-three-shaders.js haloPolarT).
@@ -252,7 +258,8 @@ const SPLIT_HEAD = '  vec3 acc = vec3(0.0);\n', SPLIT_HEAD_CODE = `  vec3 acc = 
 `;
 const SPLIT_CODE = '  acc *= swt;\n';
 if (TMAIN_POLAR.split(BAND_ANG).length !== 2 || TMAIN.split(SPLIT_TAIL).length !== 2 || TMAIN.split(SPLIT_HEAD).length !== 2) throw new Error('SP: band hooks not found once in the table pass');
-const bandText = (t) => t.replace(BAND_ANG, 'float ang = haloBandA.x - haloBandA.y + (float(cx) + 0.5) / haloPolarN.x * 2.0 * haloBandA.y,'), splitText = (t) => t.replace(SPLIT_HEAD, SPLIT_HEAD_CODE).replace(SPLIT_TAIL, SPLIT_CODE + SPLIT_TAIL);
+const bandText = (t) => hrep(t, BAND_ANG, 'float ang = haloBandA.x - haloBandA.y + (float(cx) + 0.5) / haloPolarN.x * 2.0 * haloBandA.y,', true),   // frenchie (pool 4): band runs on the polar text only; absent elsewhere as before
+  splitText = (t) => hrep(hrep(t, SPLIT_HEAD, SPLIT_HEAD_CODE, true), SPLIT_TAIL, SPLIT_CODE + SPLIT_TAIL, true);   // split-only anchors, as before
 // The table pass fragment text for a variant (also read by the sampler-budget script). variant: '' (the tables above), 'band' (polar) or 'split' (screen).
 // IL: the sample inside each step moves from the log midpoint (fraction 0.5) to (phase + 0.5 + amount * (noise - 0.5)) / N^2, phase = the cell's place in an N x N block
 // (N 2, or 4 with heavy blur); ds is unchanged, so each sample still stands for its whole step (stratified, unbiased). Applied last, so it composes with the polar, occlusion,
@@ -266,8 +273,8 @@ if (TMAIN.split(JIT_MID).length !== 2) throw new Error('IL: step midpoint not fo
 const JIT_NOISE = 'float(((uint(cx) * 1973u + uint(px.y) * 9277u + uint(tile) * 26699u + uint(m) * 31337u) * 1274126177u >> 16) & 65535u) / 65536.0';
 const jitText = (main, jit) => {
   const N = /:4$/.test(jit) ? 4 : /:3$/.test(jit) ? 3 : 2, ph = N === 3 ? 'float((cx % 3) + 3 * (px.y % 3))' : `float((cx & ${N - 1}) + ${N} * (px.y & ${N - 1}))`, nz = /^jittered/.test(jit) ? `haloJitAmt * (${JIT_NOISE} - 0.5)` : '0.0';
-  let t = main.replace(JIT_MID, `sb = sa * qq, s = sa * pow(qq, (${ph} + 0.5 + ${nz}) / ${(N * N).toFixed(1)}), ds = sb - sa;`);   // the log-spaced ladder
-  t = t.replace(JIT_MID_W, `s = sa + (sb - sa) * ((${ph} + 0.5 + ${nz}) / ${(N * N).toFixed(1)}), ds = sb - sa;`);   // WIDTH: the width ladder's midpoint, jittered the same way (no-op when widthStep is off: JIT_MID_W is absent)
+  let t = hrep(main, JIT_MID, `sb = sa * qq, s = sa * pow(qq, (${ph} + 0.5 + ${nz}) / ${(N * N).toFixed(1)}), ds = sb - sa;`, true);   // the log-spaced ladder
+  t = hrep(t, JIT_MID_W, `s = sa + (sb - sa) * ((${ph} + 0.5 + ${nz}) / ${(N * N).toFixed(1)}), ds = sb - sa;`, true);   // WIDTH: the width ladder's midpoint, jittered the same way (no-op when widthStep is off: JIT_MID_W is absent)
   if (t === main) throw new Error('IL: jitter text not built');
   return 'uniform float haloJitAmt;\n' + t;
 };
@@ -279,24 +286,24 @@ const smText = (t, occ) => { const hook = occ ? '      if (smM >= 0 ? !smLit(smM
 // scalar weight, declares accM, writes vec4(acc, accM), and scales accM with the share. The LW window runs the same march body, so the global rewrites hit
 // both copies. P3 composes with crossing refinement now (the crossing variant is moment-aware via the second regex below).
 const MOMENT_MARCH = 'acc += sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds * tint;';   // glm5.3flash review canary: the primary march accumulation line (always present, the non-crossing bins); if a future march-body edit moves it, momentText/moment2Text would silently no-op and produce a table that declares accM/accM2 but never accumulates it
-const momentText = (body) => { if (!body.includes(MOMENT_MARCH)) throw new Error('momentText: march accumulation line not found; the regex anchor moved'); return body
-  .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* s\) \* ds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds; acc += w * tint; accM += s * w;')   // every copy of the march (the ladder and the LW window)
-  .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* rs\) \* rds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * rs) * rds; acc += w * tint; accM += rs * w;')   // P3+RN: the crossing-refined ladder (crossText renames s→rs, ds→rds)
-  .replace(/vec3 acc = vec3\(0\.0\);/g, 'vec3 acc = vec3(0.0); float accM = 0.0;')
-  .replace(/vec4\(acc, 1\.0\)/g, 'vec4(acc, accM)')
-  .replace('vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)')   // the split early-out: no march here, so no moment
-  .replace(/acc \*= swt;/g, 'acc *= swt; accM *= swt;'); };   // the share scales the moment too
+const momentText = (body) => { if (!body.includes(MOMENT_MARCH)) throw new Error('momentText: march accumulation line not found; the regex anchor moved'); let t = body;   // frenchie (pool 4): each anchor guarded via hrep
+  t = hrep(t, /acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* s\) \* ds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds; acc += w * tint; accM += s * w;', true);   // every copy of the march (the ladder and the LW window)
+  t = hrep(t, /acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* rs\) \* rds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * rs) * rds; acc += w * tint; accM += rs * w;', true);   // P3+RN: the crossing-refined ladder (crossText renames s→rs, ds→rds)
+  t = hrep(t, /vec3 acc = vec3\(0\.0\);/g, 'vec3 acc = vec3(0.0); float accM = 0.0;');
+  t = hrep(t, /vec4\(acc, 1\.0\)/g, 'vec4(acc, accM)');
+  t = hrep(t, 'vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)', true)   // split-only early-out: absent in the plain body;   // the split early-out: no march here, so no moment
+  t = hrep(t, /acc \*= swt;/g, 'acc *= swt; accM *= swt;', true); return t; };   // split-only share   // the share scales the moment too
 // P3-M2 (option haloMoment 'moment2'): the second-moment table pass. Same march body, but accumulates Σw·s² (the second moment of depth)
 // instead of the RGB tint and the first moment. Writes vec4(accM2,0,0,0) so the lookup can compute Var[s] = E[s²] − E[s]² and place the bin's
 // mass via a log-normal CDF. The main table (haloTex) still carries accM (the first moment, for the mean), so this is a SECOND march pass over
 // the same lamps — doubles the march cost, but only when moment2 is on (default off). The polar tables stay on the shipped edge knots (no second moment).
-const moment2Text = (body) => { if (!body.includes(MOMENT_MARCH)) throw new Error('moment2Text: march accumulation line not found; the regex anchor moved'); return body
-  .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* s\) \* ds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds; accM2 += s * s * w;')   // every copy of the march (the ladder and the LW window): split the scalar weight, accumulate s²·w
-  .replace(/acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* rs\) \* rds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * rs) * rds; accM2 += rs * rs * w;')   // P3-M2+RN: the crossing-refined ladder
-  .replace(/vec3 acc = vec3\(0\.0\);/g, 'float accM2 = 0.0;')
-  .replace(/vec4\(acc, 1\.0\)/g, 'vec4(accM2, 0.0, 0.0, 0.0)')
-  .replace('vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)')   // the split early-out: no march here, so no moment
-  .replace(/acc \*= swt;/g, 'accM2 *= swt;'); };   // the share scales the second moment too
+const moment2Text = (body) => { if (!body.includes(MOMENT_MARCH)) throw new Error('moment2Text: march accumulation line not found; the regex anchor moved'); let t = body;   // frenchie (pool 4): each anchor guarded via hrep
+  t = hrep(t, /acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* s\) \* ds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds; accM2 += s * s * w;', true)   // every copy of the march (the ladder and the LW window): split the scalar weight, accumulate s²·w
+  t = hrep(t, /acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* rs\) \* rds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * rs) * rds; accM2 += rs * rs * w;', true)   // P3-M2+RN: the crossing-refined ladder
+  t = hrep(t, /vec3 acc = vec3\(0\.0\);/g, 'float accM2 = 0.0;')
+  t = hrep(t, /vec4\(acc, 1\.0\)/g, 'vec4(accM2, 0.0, 0.0, 0.0)')
+  t = hrep(t, 'vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)', true)   // split-only early-out: absent in the plain body   // the split early-out: no march here, so no moment
+  t = hrep(t, /acc \*= swt;/g, 'accM2 *= swt;', true); return t; };   // split-only share   // the share scales the second moment too
 // WIDTH (option haloWidthStep): a per-bin sample count from the bin's WIDTH, so the samples spread evenly in DEPTH (the shipped six are log-spaced, which
 // leaves the far bins sampled metres apart). The count is ceil(width / step), so the whole table costs about range/step samples instead of 6 per bin.
 // Off compiles the shipped text byte-for-byte. The crossing-bin refinement (P1c) wins when both are on: it targets one bin, this one targets every bin.
@@ -310,9 +317,43 @@ const WIDTH_LADDER_NEW = `    float bw = hi - lo;
       if (m >= nk) break;
       if (haloP > 1 && (m % haloP) != haloSub) continue;
       float sa = lo + bw * float(m) / float(nk), sb = lo + bw * float(m + 1) / float(nk), s = 0.5 * (sa + sb), ds = sb - sa;`;
-const widthText = (body) => { if (!body.includes(WIDTH_LADDER_OLD)) throw new Error('WIDTH: the ordinary ladder not found once'); return body.replace(WIDTH_LADDER_OLD, WIDTH_LADDER_NEW); };
-export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0) {
-  const main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN), useWidth = widthStep > 0, raw = refine ? crossText(main, refine, nb, widthStep) : (useWidth ? widthText(main) : main);
+const widthText = (body) => { if (!body.includes(WIDTH_LADDER_OLD)) throw new Error('WIDTH: the ordinary ladder not found once'); return hrep(body, WIDTH_LADDER_OLD, WIDTH_LADDER_NEW); };
+// frenchie (wetBounce, 4-O ext A): guarded splice of the road-mirrored oncoming lamp into the table march (TMAIN).
+// OFF = the shipped text, byte-identical (the caller applies this only when look.wetBounce && wetness>0, and not for
+// the moment2 variant — halo.wbNote says so). The mirror block rides the per-lamp loop's scope: lampM = (x, y, -z),
+// se -> -se, touge basis z-negated, beam read in the mirrored frame, weighted by the grazing Fresnel * wetU (the
+// wetVeil mirrorOf law, same as withWetBounce in drive-three-shaders.js).
+export function withWetBounceHalo(main) {
+  const TAIL = '    }\n  }\n  gl_FragColor = vec4(acc, 1.0);\n}';
+  const MAIN = 'void main() {';
+  if (main.split(TAIL).length !== 2 || main.split(MAIN).length !== 2) throw Error('halo TMAIN markers changed (wetBounce)');
+  const MIRROR = `    if (wetU > 0.0) {
+      vec3 lampM = vec3(lamp.x, lamp.y, -lamp.z); float seM = -se, ceM = sqrt(max(1.0 - seM * seM, 0.0));
+      vec3 fwM = vec3(dir * ceM, seM);
+      if (max(dot(haloEye + lo * ray - lampM, fwM), dot(haloEye + hi * ray - lampM, fwM)) >= -1e-3)
+      for (int m = 0; m < ${HALO_BIN_STEPS}; m++) {
+        float sa = lo * pow(qq, float(m * haloP + haloSub)), sb = sa * qq, s = sqrt(sa * sb), ds = sb - sa;
+        vec3 d = haloEye + s * ray - lampM; float r2 = dot(d, d); if (r2 <= 0.0) continue;
+        float r = sqrt(r2);
+        vec3 lat3M = vec3(-dir.y, dir.x, 0.0), up3M = vec3(-seM * dir, ceM);
+        if (hLat[i].w > 0.5) { lat3M = vec3(hLat[i].x, hLat[i].y, -hLat[i].z); up3M = vec3(hUp[i].x, hUp[i].y, -hUp[i].z); }
+        vec3 local = vec3(dot(d, fwM), dot(d, lat3M), dot(d, up3M));
+        if (local.x <= 0.0) continue;
+        float I = Wt * otherIntensity(local); if (I <= 0.0) continue;
+        float w = (0.02 + 0.98 * pow(1.0 - abs(d.z) / r, 5.0)) * wetU; if (w <= 0.0) continue;
+        float cs = -dot(d, ray) / r, p = haloWFwd * hgP(haloGFwd, cs) + (1.0 - haloWFwd) * hgP(haloGBack, cs);
+        acc += sigma * p * I * w / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds * tint;
+      }
+    }
+  }
+  gl_FragColor = vec4(acc, 1.0);
+}`;
+  return hrep(hrep(main, MAIN, 'uniform float wetU;\n' + MAIN), TAIL, MIRROR);
+}
+export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0, wb = false) {
+  let main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN);
+  if (wb && moment !== 3) main = withWetBounceHalo(main);   // frenchie (wetBounce): mirrored oncoming lamps in the table march; moment2+wb is skipped (wbNote)
+  const useWidth = widthStep > 0, raw = refine ? crossText(main, refine, nb, widthStep) : (useWidth ? widthText(main) : main);
   const body0 = variant === 'band' ? bandText(raw) : variant === 'split' ? splitText(raw) : raw, body = sm ? smText(body0, occ) : body0;
   const withLw = lw > 0 && !refine ? lwText(body, occ, sm) : body;
   const withMoment = moment === 3 ? moment2Text(withLw) : moment ? momentText(withLw) : withLw;   // P3: the surgery runs on the moment variant (composes with refine now); off is the shipped text byte-for-byte. M2 (moment=3): the second-moment march (accM2 instead of accM)
@@ -428,17 +469,17 @@ export function toCarFrame(traffic, m, A) {
 }
 export function haloPass(renderer, u) {
   const scene = new T.Scene(), camera = new T.Camera(), geo = new T.PlaneGeometry(2, 2);
-  const mk = (atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0) => new T.ShaderMaterial({
-    uniforms: Object.assign(sm ? { smTex: u.smTex, smE: u.smE, smF: u.smF, smL: u.smL, smU: u.smU, smP: u.smP, smRes: u.smRes, smM: { value: -1 } } : {}, widthStep > 0 ? { haloWidthStep: { value: widthStep } } : {}), vertexShader: TVERT, fragmentShader: haloTableSource(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep),
+  const mk = (atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0, wb = false) => new T.ShaderMaterial({
+    uniforms: Object.assign(sm ? { smTex: u.smTex, smE: u.smE, smF: u.smF, smL: u.smL, smU: u.smU, smP: u.smP, smRes: u.smRes, smM: { value: -1 } } : {}, widthStep > 0 ? { haloWidthStep: { value: widthStep } } : {}, wb ? { wetU: { value: 0 } } : {}), vertexShader: TVERT, fragmentShader: haloTableSource(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb),
     blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.OneFactor, blendDst: T.OneFactor, blendSrcAlpha: moment ? T.OneFactor : T.ZeroFactor, blendDstAlpha: T.OneFactor,   // P3/glm5.2: alpha accumulates additively (the first moment) only on the moment variant; off keeps the shipped discard
     depthTest: false, depthWrite: false,
   });
   const mats = [mk(false), mk(true)], matsP = [mk(false, true), mk(true, true)];   // matsP: HDX6 polar pass materials
   const varMats = new Map(); const varMat = (atlas, polar, occ, variant, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + (occ ? 4 : 0) + variant + ':' + refine; if (!varMats.has(k)) varMats.set(k, mk(atlas, polar, occ, variant, false, false, 0, refine)); return varMats.get(k); };   // SP: band / split variants, compiled on first use
   const occMats = new Map(); const occMat = (atlas, polar, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + ':' + refine; if (!occMats.has(k)) occMats.set(k, mk(atlas, polar, true, '', false, false, 0, refine)); return occMats.get(k); };   // E2: crest-occlusion variants, compiled on first use (option off never builds them)
-  const jitMats = new Map(); const pick = (atlas, polar, occ, variant, jit, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0) => {   // IL: jit off = exactly the materials the code picked before; on = its own variants, compiled on first use (SM: likewise); LW likewise; P3 (moment) likewise; WIDTH likewise
-    if (!jit && !sm && !lw && !refine && !moment && !widthStep) return variant ? varMat(atlas, polar, occ, variant) : occ ? occMat(atlas, polar) : (polar ? matsP : mats)[atlas ? 1 : 0];
-    const k = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep].join(); if (!jitMats.has(k)) jitMats.set(k, mk(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep)); return jitMats.get(k);
+  const jitMats = new Map(); const pick = (atlas, polar, occ, variant, jit, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0, wb = false) => {   // IL: jit off = exactly the materials the code picked before; on = its own variants, compiled on first use (SM: likewise); LW likewise; P3 (moment) likewise; WIDTH likewise
+    if (!wb && !jit && !sm && !lw && !refine && !moment && !widthStep) return variant ? varMat(atlas, polar, occ, variant) : occ ? occMat(atlas, polar) : (polar ? matsP : mats)[atlas ? 1 : 0];
+    const k = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb].join(); if (!jitMats.has(k)) jitMats.set(k, mk(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb)); return jitMats.get(k);
   };
   let blurMat = null; const blurTmp = new Map();   // IL: the bin blur pass and its scratch targets (one per source target), built on first use
   const blurBins = (srcRt, W, r, rd = 0) => {   // rows, columns (r), then depth (rd); ping-pong with a scratch target, srcRt holds the result
@@ -581,7 +622,7 @@ export function haloPass(renderer, u) {
       // Done before the polar plan, so a lamp-centred table never carries a lamp the cone pass has. Off: `used` is untouched.
       const coneK = String(look.haloConePass) === '2' ? 2 : String(look.haloConePass) === '1' ? 1 : 0, cone = [];
       if (coneK) {
-        const a0 = look.haloConeAngle === undefined ? CP_ANGLE : +look.haloConeAngle;
+        const a0 = Math.min(90, Math.max(0, look.haloConeAngle === undefined ? CP_ANGLE : +look.haloConeAngle));   // frenchie 11-02 (qwen T10-F1 completion): clamp at the CONSUMPTION site too — a loaded state file bypasses the slider's display clamp (drive-anim.js:2621); registry range 0..90
         for (const q of used) {
           if (cone.length >= coneK) break;
           const b = basisOf(q), dx = eye[0] - q.L.x, dy = eye[1] - q.L.y, dz = eye[2] - q.L.z, dl = Math.hypot(dx, dy, dz) || 1;
@@ -647,14 +688,15 @@ export function haloPass(renderer, u) {
       const nbN = refineN > 0 && look.haloRefineNeighbour === 'on';
       const widthStep = (['1', '0.5', '0.25'].includes(String(look.haloWidthStep)) ? +look.haloWidthStep : 0);   // WIDTH: the target sample spacing in metres (0 = the shipped six per bin); composes with P1c (the crossing bin uses the refined ladder, the other bins use the width ladder)   // RN: widen P1c's trigger to the crossing bin's eye-side neighbour (inert unless P1c is on)
       halo.lw = lwK; halo.cross = refineN; halo.nb = nbN ? 1 : 0; halo.moment = look.haloMoment === 'on' ? 1 : look.haloMoment === 'blend' ? 2 : look.haloMoment === 'moment2' ? 3 : 0; halo.width = widthStep;   // LW: the lamp-window schedule used this frame (0 = off); RN: 1 = the neighbour bin is refined too; P3/glm5.2: mean-placement (0/1/2/3 = off/Hermite/L2d/log-normal CDF)
-      halo.jit = jit; halo.blur = blurR; halo.dblur = blurD;   // IL: interleaved sampling   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
+      halo.jit = jit; halo.blur = blurR; halo.dblur = blurD;   // IL: interleaved sampling
+      halo.wb = look.wetBounce === true && +look.wetness > 0 ? 1 : 0; halo.wbNote = look.wetBounce === true && +look.wetness > 0 && halo.moment === 3 ? 'moment2: wet bounce skipped in the table' : null;   // frenchie (wetBounce)   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
       const occU = (mm) => { if (useOcc) Object.assign(mm.uniforms, { crestH: { value: occ.texture }, crestWFC: { value: occ.wfc }, crestBox: { value: occ.box }, crestZ: { value: occ.z } }); if (jit) mm.uniforms.haloJitAmt = { value: jitAmt }; };   // IL: the jitter amount rides along
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
       const setPolarU = (mp, q, P, j, pk) => {
         hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
         Object.assign(mp.uniforms, {
           hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
-          haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
+          haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 },
           haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
           sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
           otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
@@ -690,8 +732,8 @@ export function haloPass(renderer, u) {
       }
       const cellsOf = (b, nW, nH, rect) => b.empty ? 0 : (b.k1 - b.k0 + 1) * (rect ? (rect[1] - rect[0] + 1) * (rect[3] - rect[2] + 1) : nW * nH);
       try {
-        renderer.autoClear = false; const mainMoment = halo.moment === 3 ? 1 : halo.moment; const m = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, mainMoment, widthStep);   // P3-M2: when moment2 is on, the main table still carries accM (moment=1); the second-moment table (moment=3) is built below
-        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, mainMoment, widthStep) : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
+        renderer.autoClear = false; const mainMoment = halo.moment === 3 ? 1 : halo.moment; const m = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, mainMoment, widthStep, !!halo.wb);   // P3-M2: when moment2 is on, the main table still carries accM (moment=1); the second-moment table (moment=3) is built below
+        const bandPlan = plan[0] && plan[0].band ? plan[0] : null, splitM = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, mainMoment, widthStep, !!halo.wb) : null;   // SP: in auto, the table's lamps are also drawn in the screen table with the complementary share
         renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m;
         // The nearest HALO_REFINE lamps within HALO_NEAR metres are drawn in HALO_SUB sub-passes (24 steps per bin); the rest in one (6).
         used.forEach((q, i) => {
@@ -706,7 +748,7 @@ export function haloPass(renderer, u) {
             if (split) Object.assign(mm.uniforms, { haloBandA: { value: new T.Vector4(bandPlan.band.ac, bandPlan.band.hw, bandPlan.band.fade, bandPlan.band.wd) }, haloPolarC: { value: new T.Vector2(bandPlan.pk.C[0], bandPlan.pk.C[1]) } });
             Object.assign(mm.uniforms, {
               hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
-              haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
+              haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 },
               haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
               sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
               otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
@@ -724,8 +766,8 @@ export function haloPass(renderer, u) {
         // (moment2Text) and render target (rt2). Doubles the march cost, but only when haloMoment is 'moment2' (default off). The polar tables
         // stay on the shipped edge knots (no second moment), so this is the screen table only.
         if (halo.moment === 3) {
-          const m2 = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, 3, widthStep);
-          const splitM2 = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, 3, widthStep) : null;
+          const m2 = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, 3, widthStep, false);   // moment2 carries no mirror (wbNote)
+          const splitM2 = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, 3, widthStep, false) : null;
           const e2 = rts.get(tab[0] + 'x' + tab[1] + 'x' + HALO_N); if (!e2.m2bin) { const opt2 = { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false }; e2.m2bin = new T.WebGLRenderTarget(tab[0] * HALO_N, tab[1], opt2); e2.m2cum = new T.WebGLRenderTarget(tab[0] * HALO_N, tab[1], opt2); }   // glm5.3flash review fix: key/tw/th/opt are local to ensure() — rebuild the key from tab (the clamped dims the allocator used) and a local opt
           rt2 = e2.m2bin; cumRt2 = e2.m2cum;
           renderer.setRenderTarget(rt2); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m2;
@@ -741,7 +783,7 @@ export function haloPass(renderer, u) {
               if (split) Object.assign(mm.uniforms, { haloBandA: { value: new T.Vector4(bandPlan.band.ac, bandPlan.band.hw, bandPlan.band.fade, bandPlan.band.wd) }, haloPolarC: { value: new T.Vector2(bandPlan.pk.C[0], bandPlan.pk.C[1]) } });
               Object.assign(mm.uniforms, {
                 hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
-                haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin },
+                haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 },
                 haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
                 sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
                 otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
@@ -760,7 +802,7 @@ export function haloPass(renderer, u) {
         // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
-          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit, useSm, lwK, refineN, nbN, halo.moment, widthStep);
+          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit, useSm, lwK, refineN, nbN, halo.moment, widthStep, !!halo.wb && halo.moment !== 3);
           const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || nearSub) : 1;
           renderer.setRenderTarget(rp.bin); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
           for (let j = 0; j < P; j++) for (const q of s.lamps) {

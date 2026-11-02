@@ -1,6 +1,6 @@
 /* Opt-in Drive ground renderer. CPU objects and the established display passes share its WebGL context. */
 import * as T from '../vendor/three/three.module.min.js';
-import { vertex, ground, withLighting, withShimmer, tableSource, tablePassSource, tableBlurSource } from './drive-three-shaders.js';
+import { vertex, ground, withLighting, withShimmer, withWetBounce, tableSource, tablePassSource, tableBlurSource } from './drive-three-shaders.js';
 import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
 import { haloPass, haloLookup, HALO_EDGES, scatRangeGpu } from './drive-three-halo.js';
@@ -52,7 +52,7 @@ export function create(canvas, gl, onModelsReady) {
   const litCars = [];   // BA5 test hook: the car id behind each traffic source this frame
   renderer.debug.onShaderError = (g, program, vs, fs) => { failure = [g.getProgramInfoLog(program), g.getShaderInfoLog(vs), g.getShaderInfoLog(fs)].filter(Boolean).join(' '); console.error('GPU drive shader: ' + failure); };
   const u = {}, set = (k, v) => { if (u[k]) u[k].value = v; else u[k] = { value: v }; };
-  for (const [k, v] of Object.entries({ lightStreet: array(64, T.Vector2), lampRoadOn: 0, lampDistTab4: new Float32Array(480), otherBeam: null, beamMeta: array(16, T.Vector4), beamGrid: array(16, T.Vector4), beamTint: array(16, T.Vector4), trafficBeamIdx: array(16, T.Vector4), otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(64, T.Vector2), trafficLamp: array(64, T.Vector4), nTraffic: 0, otherConvention: 0, pitch: 0, yaw: 0, sigma: 0, scatterSteps: 0, scatMode: 0, scatUV: new T.Vector2(1, 1), haloOn: 0, haloE: [8, 14, 22, 34, 60, 120], haloNu: 24, haloH: 0.22836, haloGain: 1, haloSMax: 120, haloMoment: 0,   /* P3/glm5.2: mean-placement (0 = shipped edges) */ haloPolarOn2: 0, haloBandOn: 0, haloBand: new T.Vector4(0, Math.PI, 0, 1), haloPolarF2: new T.Vector2(), haloPolarRange2: new T.Vector2(), haloTex: null, haloM2Tex: null,   /* P3-M2/glm5.2: the second-moment table (Σw·s² per bin, for the log-normal CDF lookup) */ haloPolarOn: 0, haloPolarTex: null, haloPolarC: new T.Vector2(), haloPolarF: new T.Vector2(), haloPolarSz: new T.Vector2(1, 1), haloPolarRange: new T.Vector2(), haloPolarN: new T.Vector2(1, 1), haloUV: new T.Vector2(1, 1), haloTab: new T.Vector2(48, 27), scatBanks: null, tableBank: 0, tableSteps: 48, tableH: 1, tableSeed: 0, tableFade: 1, tableFadeS0: 1, tableFadeS1: 10, tableBias: 0, tableBinN: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],scatGain: 1, scatGFwd: 0, scatGBack: 0, scatWFwd: 0, scatRMin: 0, scatSMax: 0, cornering: new T.Vector2(), beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, wetModel: 0, grain: 0, wetness: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2(), shimmerAmp: 0, shimmerT: 0 })) set(k, v);   // heatShimmer uniforms (declared only in the withShimmer variant)
+  for (const [k, v] of Object.entries({ lightStreet: array(64, T.Vector2), lampRoadOn: 0, lampDistTab4: new Float32Array(480), otherBeam: null, beamMeta: array(16, T.Vector4), beamGrid: array(16, T.Vector4), beamTint: array(16, T.Vector4), trafficBeamIdx: array(16, T.Vector4), otherLutInfo: new T.Vector4(), otherLutSize: new T.Vector2(), trafficDir: array(64, T.Vector2), trafficLamp: array(64, T.Vector4), nTraffic: 0, otherConvention: 0, pitch: 0, yaw: 0, sigma: 0, scatterSteps: 0, scatMode: 0, scatUV: new T.Vector2(1, 1), haloOn: 0, haloE: [8, 14, 22, 34, 60, 120], haloNu: 24, haloH: 0.22836, haloGain: 1, haloSMax: 120, haloMoment: 0,   /* P3/glm5.2: mean-placement (0 = shipped edges) */ haloPolarOn2: 0, haloBandOn: 0, haloBand: new T.Vector4(0, Math.PI, 0, 1), haloPolarF2: new T.Vector2(), haloPolarRange2: new T.Vector2(), haloTex: null, haloM2Tex: null,   /* P3-M2/glm5.2: the second-moment table (Σw·s² per bin, for the log-normal CDF lookup) */ haloPolarOn: 0, haloPolarTex: null, haloPolarC: new T.Vector2(), haloPolarF: new T.Vector2(), haloPolarSz: new T.Vector2(1, 1), haloPolarRange: new T.Vector2(), haloPolarN: new T.Vector2(1, 1), haloUV: new T.Vector2(1, 1), haloTab: new T.Vector2(48, 27), scatBanks: null, tableBank: 0, tableSteps: 48, tableH: 1, tableSeed: 0, tableFade: 1, tableFadeS0: 1, tableFadeS1: 10, tableBias: 0, tableBinN: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],scatGain: 1, scatGFwd: 0, scatGBack: 0, scatWFwd: 0, scatRMin: 0, scatSMax: 0, cornering: new T.Vector2(), beam: null, materials: null, marks: null, lutInfo: new T.Vector4(), lutSize: new T.Vector2(), size: new T.Vector2(), eye: new T.Vector3(-2, 0.37, 1.2), lamp: array(2, T.Vector3), lampM: array(2, T.Vector3), lampRGB: new T.Vector3(1, 1, 1), nLamp: 0, nLampM: 0, wetU: 0, convention: 0, nMark: 0, nPart: 0, nLight: 0, nReflection: 0, nSkip: 0, nCross: 0, part: array(16, T.Vector4), partShape: array(16, T.Vector4), light: array(64, T.Vector4), reflection: array(64, T.Vector4), lightRGB: array(64, T.Vector3), reflectionRGB: array(64, T.Vector3), skip: array(16, T.Vector2), crossing: array(16, T.Vector4), tanH: 1, lane: 3.5, vergeWidth: 1.5, ambient: 0, sheen: 0, wetModel: 0, grain: 0, wetness: 0, distance: 0, verge: new T.Vector2(), arc: new T.Vector2(), shimmerAmp: 0, shimmerT: 0 })) set(k, v);   // heatShimmer uniforms (declared only in the withShimmer variant)
   set('worldFromCar', new T.Matrix3()); set('carFromWorld', new T.Matrix3()); set('passDepth', null); set('passShadow0',null); set('passShadow1',null); set('trafficPitch',new Float32Array(64));
   const materialData = new Float32Array(D.MAT_KEYS.length * 4 * 4), markData = new Float32Array(128 * 4 * 2);
   const materialTexture = texture(materialData, D.MAT_KEYS.length, 4), markTexture = texture(markData, 128, 2);
@@ -76,24 +76,28 @@ export function create(canvas, gl, onModelsReady) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
     const atlas = atlasOn && enabled, bl = table ? blend : true, sr = !!(smr && mountain && enabled);   // blend only changes the text when the table is on
     if (!!material.userData.m2d !== haloM2) { material.defines = material.defines || {}; if (haloM2) material.defines.HALO_M2 = 1; else delete material.defines.HALO_M2; material.userData.m2d = haloM2; material.needsUpdate = true; }   // glm5.3flash review fix: the M2 lookup is #ifdef'd into every scatter-embedding program
-    if (material.userData.p2 === enabled && material.userData.tg === mountain && material.userData.tbl === table && material.userData.at === atlas && material.userData.bl === bl && !!material.userData.smr === sr) return;
+    const wbNow = !!(lastLook && lastLook.wetBounce && D.wetnessOf(lastLook) > 0);   // frenchie (wetBounce): ext B also paints objects, so every world material carries the mirror loop
+    if (material.userData.p2 === enabled && material.userData.tg === mountain && material.userData.tbl === table && material.userData.at === atlas && material.userData.bl === bl && !!material.userData.smr === sr && !!material.userData.wb === wbNow) return;
     let source = enabled ? withLighting(material.userData.baseFragment, atlas) : material.userData.baseFragment;
+    if (wbNow) source = withWetBounce(source);   // frenchie (wetBounce): surface mirror loop (the road skips it by NoL<=0, objects take it)
     if (table) source = tableSource(source, blend);
     material.fragmentShader = mountain ? passShader(source) : source; material.userData.tg = mountain; material.userData.tbl = table; material.userData.bl = bl;
     if (sr) material.fragmentShader = smRoadText(material.fragmentShader); material.userData.smr = sr;
-    material.userData.p2 = enabled; material.userData.at = atlas; material.needsUpdate = true;
+    material.userData.p2 = enabled; material.userData.at = atlas; material.userData.wb = wbNow; material.needsUpdate = true;
   }
   // SD1 table pre-pass (look.scatterMode 'table'): three banks of four bins at the table's resolution, optional separable blur, then the lit passes read them.
+  let lastLook = null;   // frenchie (wetBounce)
   const tabMesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: u, vertexShader: vertex, fragmentShader: tablePassSource(ground), depthTest: false, depthWrite: false }));
   const tabScene = new T.Scene(); tabMesh.frustumCulled = false; tabScene.add(tabMesh);
   const blurU = { src: { value: null }, texel: { value: new T.Vector2(1, 1) }, dirTexel: { value: new T.Vector2(1, 0) }, sig: { value: 0 }, srcLayer: { value: 0 } };
   const blurMesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: blurU, vertexShader: vertex, fragmentShader: tableBlurSource, depthTest: false, depthWrite: false }));
   const blurScene = new T.Scene(); blurMesh.frustumCulled = false; blurScene.add(blurMesh);
   function tableShading(extras) {
-    const key = (extras ? 'lit' : 'plain') + (extras && atlasOn ? '-atlas' : '');
+    const wbOn = !!(lastLook && lastLook.wetBounce && D.wetnessOf(lastLook) > 0);   // frenchie (wetBounce): the table pass marches the mirrors too; key suffix makes the flip rebuild the program
+    const key = (extras ? 'lit' : 'plain') + (extras && atlasOn ? '-atlas' : '') + (wbOn ? '-wb' : '');
     if (!!tabMesh.material.userData.m2d !== haloM2) { tabMesh.material.defines = tabMesh.material.defines || {}; if (haloM2) tabMesh.material.defines.HALO_M2 = 1; else delete tabMesh.material.defines.HALO_M2; tabMesh.material.userData.m2d = haloM2; tabMesh.material.needsUpdate = true; }   // glm5.3flash review fix: the pre-pass decodes the table for every lit pass — it must take the same curve
     if (tabMesh.material.userData.lit === key) return false;
-    tabMesh.material.fragmentShader = tablePassSource(extras ? withLighting(ground, atlasOn) : ground); tabMesh.material.userData.lit = key; tabMesh.material.needsUpdate = true; return true;
+    tabMesh.material.fragmentShader = tablePassSource(wbOn ? withWetBounce(extras ? withLighting(ground, atlasOn) : ground) : (extras ? withLighting(ground, atlasOn) : ground)); tabMesh.material.userData.lit = key; tabMesh.material.needsUpdate = true; return true;
   }
   // SD2 cache (look.scatterCache 'on'): the table is redrawn only when its key changes (the lamp pose quantised to 0.05 degrees and
   // 1e-4 m, the beam LUT identity, lamp colour, visibility, fov, size, eye, steps, res, blur, lit, near fade). Cycle 8 keeps eight versions
@@ -154,7 +158,7 @@ export function create(canvas, gl, onModelsReady) {
   function tableKey(p, extras, look, tw, th, sig) {
     return JSON.stringify([(p.lamps || []).map((l) => l.map((v) => quant(v, 1e-4))), quant(p.yaw, DEG05), quant(p.pitch, DEG05), quant(p.cornerLeft, DEG05), quant(p.cornerRight, DEG05),
       !!p.afs, !!p.lampPitch, !!p.corneringLamps, lutId(p.lut), (p.lampRGB || [1, 1, 1]).map((v) => quant(v, 1e-4)), look.visibility, quant(p.hfov, DEG05), p.w, p.h,
-      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps']);
+      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, !!look.wetBounce, quant(+look.wetness || 0, 1e-4), look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps']);
   }
   // B10 (pseudocode; the code is below and in runTable):
   //   a bank = ONE array render target (w x h x 3 layers, half float, Linear like the old 2D targets): layer b holds table bank b
@@ -291,16 +295,21 @@ export function create(canvas, gl, onModelsReady) {
   }
   function update(p, world, dist) {
     const lut = p.lut, look = p.look, A = world.A || p.A;
+    lastLook = look;   // frenchie (wetBounce): tableShading reads the wet-bounce state from the last update
     if (beamRef !== lut) { if (beamTexture) beamTexture.dispose(); beamRef = lut; beamTexture = texture(lut.data, lut.nh, lut.nv, T.RedFormat); set('beam', beamTexture); }
     u.lutInfo.value.set(lut.h0, lut.v0, lut.step, 0); u.lutSize.value.set(lut.nh, lut.nv); u.size.value.set(p.w, p.h);
+    const wbOn = !!(look.wetBounce && D.wetnessOf(look) > 0);   // frenchie (wetBounce, GPU twin of the CPU march): road-plane mirrors of the own lamps; OFF = shipped shader text
     set('nLamp', p.lamps.length); if (p.lamps.length > 2) throw Error('more than two own lamps');
     p.lamps.forEach((l, i) => u.lamp.value[i].fromArray(l));
+    set('nLampM', wbOn ? p.lamps.length : 0); p.lamps.forEach((l, i) => u.lampM.value[i].fromArray([l[0], l[1], -l[2]])); set('wetU', wbOn ? D.wetnessOf(look) : 0);   // frenchie (wetBounce): road-plane mirrors (z -> -z) + wetness
     u.lampRGB.value.fromArray(p.lampRGB || [1, 1, 1]);
     set('convention', p.conv === 'B' ? 1 : p.conv === 'S' ? 2 : 0); set('tanH', Math.tan(p.hfov * Math.PI / 360));
     set('lane', p.lane); set('sigma', D.sigmaOf(look)); set('scatterSteps', D.sigmaOf(look) > 0 && look.scatter > 0 ? Math.round(look.scatter) : 0); set('scatGain', scatterGainOf(look)); set('scatMode', D.sigmaOf(look) > 0 && look.scatter > 0 && look.scatterMode === 'table' && !p.airHold ? 1 : 0); set('scatGFwd', D.SCAT.gFwd); set('scatGBack', D.SCAT.gBack); set('scatWFwd', D.SCAT.wFwd); set('scatRMin', D.SCAT.rMin); set('scatSMax', scatRangeGpu(look)); set('ambient', look.ambient || 0); const wetEff = Math.max(D.wetnessOf(look), look.dryStreaks === true ? 0.25 : 0); set('wetness', wetEff); set('sheen', wetEff > 0 && look.wetSheen ? 1 : 0); set('wetModel', look.wetModel === 'ggx' ? 1 : 0);   // frenchie (dryStreaks): the wetness uniform feeds only the two streak terms in the ground shader; dry floor 0.25
     set('distance', dist); set('grain', look.grain && (p.src.tiles || (D.wetnessOf(look) > 0 && look.wetSheen)) ? 0.4 * (D.wetnessOf(look) > 0 ? 0.5 : 1) : 0);
     const shimAmp = look.heatShimmer === 'high' ? 0.0025 : look.heatShimmer === 'low' ? 0.0008 : 0;   // frenchie (heatShimmer, GPU only): recompile the ground program only when the on/off state flips; OFF = shipped text
-    if (!!mat.userData.shim !== (shimAmp > 0)) { mat.fragmentShader = shimAmp > 0 ? withShimmer(ground) : ground; mat.userData.shim = shimAmp > 0; mat.needsUpdate = true; }
+    const shimOn = shimAmp > 0, baseSrc = shimOn ? withShimmer(ground) : ground;   // frenchie (wetBounce): compose over the shimmer variant so the two flips cannot overwrite each other
+    if (!!mat.userData.shim !== shimOn) { mat.fragmentShader = baseSrc; mat.userData.shim = shimOn; mat.needsUpdate = true; }
+    if (!!mat.userData.wb !== wbOn || !!mat.userData.shim !== shimOn) { mat.fragmentShader = wbOn ? withWetBounce(baseSrc) : baseSrc; mat.userData.wb = wbOn; mat.needsUpdate = true; }
     const m2On = look.haloMoment === 'moment2'; haloM2 = m2On;   // P3-M2/glm5.2: recompile the ground program when moment2 flips; OFF = the #ifdef HALO_M2 blocks are stripped (shipped text, 13 samplers); ON = the blocks are compiled in (14 samplers, under the 16 limit)
     if (!!mat.userData.m2 !== m2On) { mat.defines = mat.defines || {}; if (m2On) mat.defines.HALO_M2 = 1; else delete mat.defines.HALO_M2; mat.userData.m2 = m2On; mat.needsUpdate = true; }
     set('shimmerAmp', shimAmp); set('shimmerT', (performance.now() * 0.001) % 512);
@@ -392,6 +401,7 @@ export function create(canvas, gl, onModelsReady) {
     programCount() { return renderer.info.programs ? renderer.info.programs.length : -1; },
     // BB3 test hook: the lamp tint currently in the lampRGB uniform (what the GPU lights with)
     lampUniform() { return u.lampRGB && u.lampRGB.value ? u.lampRGB.value.toArray() : null; },
+    tableUniforms() { return { steps: u.tableSteps ? u.tableSteps.value : null, h: u.tableH ? u.tableH.value : null, bias: u.tableBias ? u.tableBias.value : null }; },   // step5-preview: an inert read-only test hook so tests/ignored-when.js can measure the scatter/scatterMode ignoredWhen rules (the pass air beam keeps the flat basis)
     // BA5 test hook: what the GPU got this frame: whether the atlas is on, the beam count, each lit source's atlas index, and the tints
     atlasState() { const n = u.nTraffic.value; return { on: atlasOn, beams: atlasPacked ? atlasPacked.count : 0, nTraffic: n, cars: litCars.slice(0, n), idx: Array.from({ length: n }, (_, i) => u.trafficBeamIdx.value[i >> 2].getComponent(i & 3)), tints: atlasPacked ? Array.from({ length: atlasPacked.count }, (_, i) => u.beamTint.value[i].toArray().slice(0, 3)) : [] }; },
     render(p, world, dist, destination, objectDestination, ss = 1) {

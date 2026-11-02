@@ -84,7 +84,7 @@
     if (n.z0 !== undefined) { n.z0 += z; n.z1 += z; }
     // M2 sphere-cluster trees and SDF actors stay upright; all roots use the same surface.
     let surf = null;
-    if (ob.traffic || ob.cls === 'rail') { const q = A.surface(f.s,f.off), t = A.at(f.s).t; surf = q; n.passSlope = [q.grade*t[0]-q.bank*t[1],q.grade*t[1]+q.bank*t[0],0,0]; }
+    if (ob.traffic || ob.cls === 'rail' || ob.cls === 'rpm') { const q = A.surface(f.s,f.off), t = A.at(f.s).t; surf = q; n.passSlope = [q.grade*t[0]-q.bank*t[1],q.grade*t[1]+q.bank*t[0],0,0]; }   // rpm = lane studs: tilt with the grade like cars and rails (frenchie's open elevated item: cateyes/studs on grades)
     // Cars on the pass carry the road normal and grade, so the GPU mesh car can sit on the surface (drive-three-models.js update).
     if (n.detail) n.detail = { ...n.detail, z: (n.detail.z || 0) + z, ...(surf && ob.traffic ? { normal: surf.normal, grade: surf.grade } : {}) };
     if (root && ob.k === 'disc' && ob.detailPart === 'car') { const L = meshLamp(ob, root, A); if (L) return { ...n, ...L }; }

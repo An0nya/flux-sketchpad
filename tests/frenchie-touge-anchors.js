@@ -5,8 +5,8 @@ const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..');
 let pass = 0, fail = 0;
 const ok = (name, cond, extra) => { if (cond) { pass++; console.log('[PASS] ' + name); } else { fail++; console.log('[FAIL] ' + name + (extra !== undefined ? ' — ' + JSON.stringify(extra).slice(0, 300) : '')); } };
-// shader modules are ES modules: strip import/export keywords and evaluate (same helper as tests/beam-atlas.js:16)
-const esm = (file, extra, names) => new Function(...Object.keys(extra || {}), fs.readFileSync(path.join(ROOT, 'js', file), 'utf8').replace(/^import .*$/mg, '').replace(/^export /mg, '') + '\nreturn { ' + names.map((n) => n + ': typeof ' + n + ' !== "undefined" ? ' + n + ' : undefined').join(', ') + ' };')(...Object.values(extra || {}));
+// shader modules are ES modules: shared strip-and-evaluate helper tests/esm.js (qwen's offer, glm5.2-greenlit 11-01)
+const { esm } = require('./esm.js');
 const src = fs.readFileSync(path.join(ROOT, 'js', 'drive-touge-three.js'), 'utf8');
 
 ok('rep() guard is defined and exported (with optional passthrough for ground-only anchors)', /export function rep\(s, anchor, repl, optional\) \{ const n = anchor instanceof RegExp \?/.test(src) && /if \(n === 0 && optional\) return s; if \(n !== 1\) throw new Error\('touge shader anchor moved/.test(src));
@@ -17,7 +17,7 @@ ok('every former anchor site is optional (per-family passthrough preserved) + pa
 ok('duplicate anchors still throw (n>1 never passthrough)', /if \(n !== 1\) throw new Error\('touge shader anchor moved/.test(src));
 ok('all 13 former anchor sites now call rep(', (src.match(/\brep\(/g) || []).length >= 14, (src.match(/\brep\(/g) || []).length);   // 13 sites + the helper's own body mentions
 
-// qwen REVIEW P2 (proposed AGENTS.md point 24, NOT ratified): exercise the SHIPPED module, not a copy — same esm() pattern as tests/beam-atlas.js:16
+// qwen REVIEW P2 (proposed AGENTS.md point 24, NOT ratified): exercise the SHIPPED module, not a copy — shared esm() helper tests/esm.js
 const S = esm('drive-three-shaders.js', null, ['withLighting', 'ground']);
 const TG = esm('drive-touge-three.js', { ground: S.ground }, ['rep', 'repHits', 'passShader']);
 const rep = TG.rep;
