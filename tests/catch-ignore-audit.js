@@ -96,6 +96,10 @@ function classify(body, tryBody, varName) {
 // 448→449). bodySig is the trimmed catch body, stable across line shifts.
 // Each entry: { file, bodySig, why }
 const EXEMPT = [
+  // solve-cache.js:79 — glm5.2 T7 F1 fix (11-01 ~23:55): a script URL that fails `new URL(s.src, baseURI)` is treated as cross-origin
+  // and pushed as a sentinel — the fingerprint then falls back to URL-only for that entry, exactly the intended behaviour.
+  // Not data-affecting: it only widens the hash inputs. Exempted per Claude host result 11-02 ~02:05 (frenchie, 11-02 ~01:00).
+  { file: 'solve-cache.js', bodySig: 'cross.push(s.src);', why: 'engineVersion(): unparseable script src is classified cross-origin and hashed as a URL sentinel — deliberate fallback, not a swallowed error.' },
   // history.js — changedControls skips a control that throws on get()
   { file: 'history.js', bodySig: 'continue;', why: 'changedControls: if c.get() throws, the control is skipped in the diff display. Not data-affecting — only the change-description list is incomplete. The control itself still works.' },
   // solve-worker.js — GPU init fallback + preview drop
