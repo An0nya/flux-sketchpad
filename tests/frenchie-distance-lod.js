@@ -26,10 +26,10 @@ ok('F5: a knob edited mid-level is re-captured as the new base (not destroyed on
 ok('scatterCullEps multiplier is clamped at the registry max (100)', A.lodPatch({ distanceLod: 'high', haloRange: 400, scatterRange: 400, trafficRange: 800, scatterCullEps: 50 }).scatterCullEps === 100);
 
 // 3. wiring: overlay in prepare(), control, labels sync, look key, exports, cache keys, layout
-ok('prepare() applies the LOD overlay with base restore (off = no-op)', anim.includes('if (V.lodBase) Object.assign(o, V.lodBase);') && anim.includes('const lod = lodPatch(o);') && anim.includes('else V.lodBase = null;'));
+ok('prepare() applies the LOD overlay with base restore (off = no-op)', anim.includes('if (V.lodBase) { for (const k of LOD_KEYS)') && anim.includes('Object.assign(o, V.lodBase);') && anim.includes('const lod = lodPatch(o);') && anim.includes('else { V.lodBase = null; V.lodOver = null; }'));
 ok('LOD keys are disjoint from the governor shed keys (no interaction)', (() => { const shed = anim.match(/const SHED_KEYS = \[[^\]]*\]/)[0]; return !['haloRange', 'scatterRange', 'trafficRange', 'scatterCullEps'].some((k) => shed.includes(k)); })());
-ok('drive bar has the [data-anim="distance-lod"] select with change -> setDV', /data-anim': 'distance-lod'/.test(anim) && /ld\.addEventListener\('change', \(\) => setDV\(ui, 'distanceLod', ld\.value\)\)/.test(anim));
-ok('labels() syncs the select', anim.includes("[data-anim=\"distance-lod\"]').value = ['off', 'low', 'medium', 'high'].includes(o.distanceLod)"));
+ok('drive bar has the [data-anim="distance-lod"] select with change -> setDV', /data-anim': 'distance-lod'/.test(anim) && /ld\.addEventListener\('change', \(\) => \{ V\.lodOver = null; setDV\(ui, 'distanceLod', ld\.value\); \}\)/.test(anim));
+ok('labels() syncs the select', anim.includes("ldEl.value = ['off', 'low', 'medium', 'high'].includes(o.distanceLod)"));
 ok('look projection carries distanceLod', anim.includes("distanceLod: o.distanceLod || 'off'"));
 ok('both spec-ui picture-cache keys carry o.distanceLod', (ui.match(/o\.distanceLod[,)\]]/g) || []).length === 2, (ui.match(/o\.distanceLod[,)\]]/g) || []).length);
 ok('drive-layout Resolution pane lists the control', lay.includes("an('distance-lod')"));

@@ -72,7 +72,7 @@
       const shift = dist + (kind === 'oncoming' ? 1 : -1) * TRAFFIC_SPEED[kind] * t;
       for (let k = Math.floor((shift - 6) / gap); k <= Math.floor((shift + cull) / gap); k++) {
         const R = D.rng((Math.imul(tr.seed, 2654435761) ^ Math.imul(k, 0x9E3779B1) ^ (kind === 'oncoming' ? 0x51ED270B : 0x165667B1)) >>> 0);
-        if (src.tiles && src.tiles.endless) { const bt = endlessTile(tr.seed, k); if (R() > (bt.props ? bt.props.density : 1)) continue; }   // §2-endless: biome density (city busy, mountain sparse)
+        if (src.tiles && src.tiles.endless) { const bt = tileOf(src, k); if (R() > (bt.props ? bt.props.density : 1)) continue; }   // §2-endless: biome density (B5: read the rendered tile, preset/custom included) (city busy, mountain sparse)
         const rel = (k + 0.2 + 0.6 * R()) * gap - shift;
         const min = kind === 'preceding' && tr.safeGap ? Math.max(25, 2 * tr.speed / 3.6) : -6;
         if (rel >= min && rel <= cull) { const ml = src.tiles && src.tiles.multilane ? mlLanes(ML_LANE, ML_MEDIAN) : null; out.push({ id: kind + ':' + k, kind, rel, off: kind === 'oncoming' ? (ml ? ml.onc0 : src.lane) : (ml && (k & 1) ? ml.right : 0) }); }   // §2-multilane: oncoming in the first lane across the median, preceding alternating own/right lane
@@ -110,7 +110,7 @@
   function speedLimit(src, x) {
     if (src.tiles && src.tiles.mountain) return Math.min(80 / 3.6, curveSpeed(curvatureAt(src, x)));
     if (!src.tiles) return 80 / 3.6;
-    const tile = src.tiles.endless ? endlessTile(src.tiles.seed, Math.floor(x / TILE_LEN)) : roadTile(src.tiles.seed, Math.floor(x / TILE_LEN));
+    const tile = tileOf(src, Math.floor(x / TILE_LEN));
     const cap = tile.props ? tile.props.speed : 80;   // §2-endless: the biome caps the speed (mountain 40, city 50, ...)
     return Math.min(isJunction(tile) || tile.kind === 'urban' ? 50 : tile.curvature ? 60 : 80, cap) / 3.6;
   }
@@ -119,7 +119,7 @@
     if (!src.tiles || src.tiles.mountain) return null;
     const dir = car.kind === 'oncoming' ? -1 : 1, k0 = Math.floor(car.x / TILE_LEN); let best = null;
     for (let k = k0 - 2; k <= k0 + 2; k++) {
-      const tile = roadTile(src.tiles.seed, k); if (!isJunction(tile)) continue;
+      const tile = tileOf(src, k); if (!isJunction(tile)) continue;   // B5: endless junctions, not the default walk's
       const line = tile.s0 + 100 + dir * (-src.lane - 5.7), gap = dir * (line - car.x) - IDM.length / 2;
       if (gap >= -1e-7 && (!best || gap < best.gap)) best = { tile, line, gap, lit: signalState(tile, t).lit };
     }
@@ -252,7 +252,7 @@
     if (car.route && car.x <= car.route.mid + 10) return car.route;
     const k0 = Math.floor(car.x / TILE_LEN);
     for (let k = k0; k <= k0 + 3; k++) {
-      const tile = roadTile(src.tiles.seed, k), mid = tile.s0 + 100;
+      const tile = tileOf(src, k), mid = tile.s0 + 100;   // B5
       if (!isJunction(tile) || mid - 3 < car.x - 1e-7) continue;
       let hash = src.traffic.seed ^ Math.imul(k + 1, 0x85EBCA6B);
       for (let i = 0; i < car.id.length; i++) hash = Math.imul(hash ^ car.id.charCodeAt(i), 16777619);
@@ -677,7 +677,7 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
     };
     const cur = Math.floor(t / PED.cycle);
     for (let k = k0 - 2; k <= k0 + 3; k++) {
-      const tile = roadTile(tc.seed, k);
+      const tile = tileOf(src, k);   // B5: ped crossings on the rendered tile
       if (tile.kind === 'urban') for (const cyc of [cur, cur + 1]) {
         const ev = pedCrossing(tc.seed, k, cyc);
         if (ev) consider(ev.s, ev.start - lead, ev.start + (2 * src.lane + 1.4) / PED.speed + PED.clear);
@@ -1445,6 +1445,7 @@ void main() {
     high:   { scatterRange: 50,  trafficRange: 160, cullEps: 64, cars: 1 },
   };
   const LOD_KEYS = ['scatterRange', 'trafficRange', 'scatterCullEps', 'haloCars'];
+  const LOD_LABEL = { scatterRange: 'air-beam range', trafficRange: 'spawn/light range', scatterCullEps: 'cull eps', haloCars: 'halo cars' };   // B1+B8
   const lodPatch = (o) => {
     const L = LOD_LEVELS[o && o.distanceLod]; if (!L) return null;
     return { scatterRange: Math.min(+o.scatterRange || 120, L.scatterRange),
@@ -1628,16 +1629,17 @@ void main() {
     // 3-P (qualityGovernor): shed overlay on the live options for this picture. Restore the remembered base first, so
     // nothing persists between prepares; only the shed keys are managed. With the option off (default) the level is 0
     // and V.shedBase stays unset — the path is a no-op, byte-identical to before.
-    if (V.lodBase) Object.assign(o, V.lodBase);
+    // frenchie 11-01 (minimax F5) + B1+B8 (Anya 11-04, nemo review 07:33): a knob edited while the level is active is the user's
+    // new base — AND an override (the cap lifts for that knob until the level changes). Re-capture BEFORE the restore: after it,
+    // o[k] === V.lodBase[k] always, so the test never fires (F5 was dead on the live tree; the !==applied guard keeps pre-restore safe).
+    if (V.lodBase) { for (const k of LOD_KEYS) if (o[k] !== V.lodBase[k] && o[k] !== (V.lodApplied || {})[k]) { V.lodBase[k] = o[k]; (V.lodOver = V.lodOver || {})[k] = true; } Object.assign(o, V.lodBase); }
     const lod = lodPatch(o);
     if (lod) {
       if (!V.lodBase) V.lodBase = LOD_KEYS.reduce((a, k) => (a[k] = o[k], a), {});
-      // frenchie 11-01 (minimax F5): a knob edited while the level is active is the user's new base, not an override to destroy —
-      // re-capture it (value differs from both the captured base and the patch we last applied) before re-applying the patch.
-      for (const k of LOD_KEYS) if (o[k] !== V.lodBase[k] && o[k] !== (V.lodApplied || {})[k]) V.lodBase[k] = o[k];
+      for (const k of Object.keys(V.lodOver || {})) if (k in lod) delete lod[k];   // B1+B8: overridden knobs keep the user's value
       Object.assign(o, lod); V.lodApplied = lod;
     }
-    else V.lodBase = null;
+    else { V.lodBase = null; V.lodOver = null; }
     if (V.shedBase) Object.assign(o, V.shedBase);
     if (o.qualityGovernor === 'on' && V.shedLevel > 0) { if (!V.shedBase) V.shedBase = SHED_KEYS.reduce((a, k) => (a[k] = o[k], a), {}); Object.assign(o, shedPatch(V.shedLevel)); }
     else V.shedBase = null;
@@ -2230,7 +2232,7 @@ void main() {
     qg.addEventListener('change', () => setDV(ui, 'qualityGovernor', qg.value)); bar.append(qg);
     const ld = E('select', { 'data-anim': 'distance-lod', 'aria-label': 'Distance LOD', title: 'Distance LOD (3-LOD): cap the distance-detail knobs (halo range, air-scatter range, traffic range, scatter culling) to a fixed profile — low/medium/high. Your own lower settings always win; off (default) changes nothing.' });
     for (const [value, label] of [['off', 'distance LOD: off'], ['low', 'distance LOD: low'], ['medium', 'distance LOD: medium'], ['high', 'distance LOD: high']]) ld.append(E('option', { value }, label));
-    ld.addEventListener('change', () => setDV(ui, 'distanceLod', ld.value)); bar.append(ld);
+    ld.addEventListener('change', () => { V.lodOver = null; setDV(ui, 'distanceLod', ld.value); }); bar.append(ld);   // B1+B8: a new LOD level lowers all the knobs again
     const hs = E('select', { 'data-anim': 'heat-shimmer', 'aria-label': 'Heat shimmer', title: 'Heat shimmer (GPU only): grazing-angle wobble of the far road, scrolling with time. low/high = amplitude. Night scenes are dark up there, so expect little; dusk/dawn shows it. Off (default) = shipped shader, byte-identical.' });
     for (const [value, label] of [['off', 'heat shimmer: off'], ['low', 'heat shimmer: low'], ['high', 'heat shimmer: high']]) hs.append(E('option', { value }, label));
     hs.addEventListener('change', () => setDV(ui, 'heatShimmer', hs.value)); bar.append(hs);
@@ -2464,7 +2466,7 @@ void main() {
     if (!V.flash) V.flash = flashState();
     countFlashes(V.flash, V.p, dist, t); flashText();
     speedLabel(V.ui);
-    if (V.tileLab && V.src.tiles) { const tile = V.src.tiles.mountain ? RF.Touge.tile(0,Math.floor(dist/TILE_LEN)) : roadTile(V.src.tiles.seed, Math.floor(dist / TILE_LEN)); V.tileLab.textContent = (V.src.tiles.mountain ? 'Mountain pass · ' + (100*RF.Touge.profile(dist).grade).toFixed(1) + '% · ' : '') + tile.kind + (['intersection', 't-junction'].includes(tile.kind) ? ' · ' + signalState(tile, t).lit : ''); }
+    if (V.tileLab && V.src.tiles) { const tile = V.src.tiles.mountain ? RF.Touge.tile(0,Math.floor(dist/TILE_LEN)) : tileOf(V.src, Math.floor(dist / TILE_LEN)); V.tileLab.textContent = (V.src.tiles.mountain ? 'Mountain pass · ' + (100*RF.Touge.profile(dist).grade).toFixed(1) + '% · ' : '') + tile.kind + (['intersection', 't-junction'].includes(tile.kind) ? ' · ' + signalState(tile, t).lit : ''); }   // B5: readout uses the rendered tile V.tileLab.textContent = (V.src.tiles.mountain ? 'Mountain pass · ' + (100*RF.Touge.profile(dist).grade).toFixed(1) + '% · ' : '') + tile.kind + (['intersection', 't-junction'].includes(tile.kind) ? ' · ' + signalState(tile, t).lit : ''); }
   }
   function topButtons(ui, tb, setDV) {
     if (tb.querySelector('[data-game="toggle"]')) return;
@@ -2556,8 +2558,10 @@ void main() {
   }
   // the sensor's road input: the current tile is an urban tile (junctions do not count). The mountain pass has no
   // urban tiles, and its seed would otherwise be read through the default road generator, so the pass is excluded.
-  function autoUrban(seed, dist) { return roadTile(seed, Math.floor(dist / TILE_LEN)).kind === 'urban'; }
-  function autoUrbanInput(src, dist) { return !!(src && src.tiles && !src.tiles.mountain && autoUrban(src.tiles.seed, dist)); }
+  function tileOf(src, k) { return src.tiles.endless ? endlessTile(src.tiles.seed, k, src.tiles.preset, src.tiles.custom) : roadTile(src.tiles.seed, k); }   // B5: the tile the renderer sees at k (endless preset/custom included) — signals, peds, density, speed limits must read the same tile or they act on phantom junctions
+  function autoUrban(src, dist) { const t = (src && src.tiles) ? src : { tiles: { seed: src } };   // B5: src or bare seed (tests/ahb-fix calls it with a seed)
+    return tileOf(t, Math.floor(dist / TILE_LEN)).kind === 'urban'; }
+  function autoUrbanInput(src, dist) { return !!(src && src.tiles && !src.tiles.mountain && autoUrban(src, dist)); }
   // the sensor's speed: the actual car speed when the camera runs (traffic logic, pass); the slider is only the fallback
   function autoSpeedKmh(st, slider) { return st.camera ? st.camera.v * 3.6 : Number.isFinite(+slider) ? +slider : 50; }
   // One Auto step per frame, on the sim clock (st.t). Flips the beam only on a change; the readout is refreshed only then.
@@ -2599,7 +2603,9 @@ void main() {
     V.ui.driveBar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
     V.ui.driveBar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
     V.ui.driveBar.querySelector('[data-anim="quality-governor"]').value = o.qualityGovernor === 'on' ? 'on' : 'off';   // 3-P
-    V.ui.driveBar.querySelector('[data-anim="distance-lod"]').value = ['off', 'low', 'medium', 'high'].includes(o.distanceLod) ? o.distanceLod : 'off';   // 3-LOD
+    { const ldEl = V.ui.driveBar.querySelector('[data-anim="distance-lod"]'); ldEl.value = ['off', 'low', 'medium', 'high'].includes(o.distanceLod) ? o.distanceLod : 'off';   // 3-LOD
+      if (!ldEl._t0) ldEl._t0 = ldEl.title; const ov = V.lodOver ? Object.keys(V.lodOver) : [];   // B1+B8: the LOD tooltip names what the user overrode
+      ldEl.title = ldEl._t0 + (ov.length ? ' — overridden by you: ' + ov.map((k) => LOD_LABEL[k] || k).join(', ') : ''); }
     V.ui.driveBar.querySelector('[data-anim="heat-shimmer"]').value = ['off', 'low', 'high'].includes(o.heatShimmer) ? o.heatShimmer : 'off';   // heatShimmer
     if (V.perfLab) { V.perfLab.hidden = !o.debugTimings || !(st.view === 'anim' || st.popout); V.fpsLab.hidden = !o.fpsCounter || !(st.view === 'anim' || st.popout); perfLabel(); }
     V.ui.driveBar.querySelector('[data-anim="canvas-shape"]').value = ['3:4', 'square'].includes(o.canvasShape) ? o.canvasShape : 'wide';
@@ -2618,9 +2624,11 @@ void main() {
     { const e = Math.min(100, Math.max(1e-4, +o.scatterCullEps || 0.05)); V.cullEpsEl.value = Math.log10(e); V.cullEpsEl._show(e); }
     V.cullEpsEl.hidden = V.cullEpsEl._box.hidden = o.scatterCull !== 'fast' || o.visibility == null;   // LBL: the unit hides with the slider, so no orphan name
     V.rangeEl.value = String(Math.min(400, Math.max(50, +o.scatterRange || 120))); V.rangeEl._show(); V.rangeEl.hidden = V.rangeEl._box.hidden = o.visibility == null;
+    if (!V.rangeEl._t0) V.rangeEl._t0 = V.rangeEl.title;   // B1+B8: say a binding cap in the tooltip (LOD off / overridden: title unchanged)
+    V.rangeEl.title = V.rangeEl._t0 + (V.lodBase && !V.lodOver?.scatterRange && V.lodBase.scatterRange > +o.scatterRange ? ' — capped to ' + Math.round(+o.scatterRange) + ' m by distanceLod ' + o.distanceLod : '');
     V.jitAmtEl.value = String(o.haloJitterAmount === undefined ? 1 : +o.haloJitterAmount); V.jitAmtEl._show(); V.jitAmtEl.hidden = V.jitAmtEl._box.hidden = o.visibility == null || o.haloJitter !== 'jittered';
     V.coneAngEl.value = String(Math.min(90, Math.max(0, o.haloConeAngle === undefined ? 30 : +o.haloConeAngle))); V.coneAngEl._show(); V.coneAngEl.hidden = V.coneAngEl._box.hidden = o.visibility == null || !['1', '2'].includes(String(o.haloConePass));
-    V.ui.driveBar.querySelector('[data-anim="traffic-range"]').value = String(trafficCullOf(o.trafficRange));
+    { const tr = V.ui.driveBar.querySelector('[data-anim="traffic-range"]'); tr.value = String(trafficCullOf(o.trafficRange)); if (!tr._t0) tr._t0 = tr.title; tr.title = tr._t0 + (V.lodBase && !V.lodOver?.trafficRange && V.lodBase.trafficRange > trafficCullOf(o.trafficRange) ? ' — capped to ' + trafficCullOf(o.trafficRange) + ' m by distanceLod ' + o.distanceLod : ''); }   // B1+B8
     V.ui.driveBar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';
     V.ui.driveBar.querySelector('[data-anim="traffic-nearest"]').value = String(lightCarsOf(o));
     if (V.fillOwn && V.libVer !== LIB.ver) V.fillOwn();

@@ -1936,7 +1936,7 @@
     if (RF.SolverHost) RF.SolverHost.restore().then(() => {
       let want = null; try { want = localStorage.getItem('flux/solverChoice'); } catch (e) { /* ignore */ }
       if (want && !ui.store.scene.solve && RF.Solvers.get(want)) ui.store.scene.solve = { id: want };
-      if (ui.rebuildWaiting && !ui.safeMode) ui.generateA(true);
+      if (!ui.safeMode && (ui.rebuildWaiting || (ui.store.autoA && RF.State.allSurfaces(ui.store.scene).length === 0))) ui.generateA(true);
       renderSolverBox();
     });
     // Scene: Reset view = the view the app opens with; Setup = show the edit handles here too
