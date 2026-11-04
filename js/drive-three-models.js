@@ -66,7 +66,7 @@ export function modelMeshes(scene,uniforms,onReady) {
               }
             }
             parts.mounts[end+':'+type+':'+side]=m;}
-          for(const end of [-1,1])for(const side of [-1,1])parts.mounts[end+':marker:'+side]=mount(end,side*.86,end>0?config.lamp-.08:config.tail-.10,true);   // §5-M side markers ride the body side, optional (model may lack the surface)
+          for(const end of [-1,1])for(const side of [-1,1]){const mz=end>0?config.lamp-.08:config.tail-.10;let mm=null;for(let my=.86;my>=.5&&!mm;my-=.06)mm=mount(end,side*my,mz,true);parts.mounts[end+':marker:'+side]=mm;}   // §5-M side markers ride the body side, optional; B2: scan inward from |y|=.86 so a narrower body still catches the ray instead of leaving the marker detached
           for(const end of [-1,1]){
             const m=parts.mounts[end+':plate:0'];m.bodyNormal=m.n;m.n=[end,0,0];const n=new T.Vector3(...m.n),t=new T.Vector3(-n.y,n.x,0).normalize(),up=new T.Vector3().crossVectors(n,t),centre=new T.Vector3(...m.p);let lift=0;
             for(const y of [-.26,0,.26])for(const z of [-.076,0,.076]){const q=centre.clone().addScaledVector(t,y).addScaledVector(up,z);ray.set(q.clone().addScaledVector(n,3),n.clone().negate());const hit=ray.intersectObject(mesh)[0];if(hit)lift=Math.max(lift,hit.point.clone().sub(q).dot(n)+.003);}

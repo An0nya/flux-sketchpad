@@ -1281,6 +1281,16 @@
       note: 'le-chonk (10-31, Anya: demonstrate how cabin light reduces road visibility): dome light + veil in the cabinView overlay, and a forward glare source [1,0,0.02,0.2,...] pushed into the sources so the EXISTING glare/veil path dims adapt/auto exposure (measured ~17% at glare=rain; glare=off or manual EV: no effect, by design). In skey. Default OFF: byte-identical.',
     },
     {
+      id: 'cabinFovFrame', kind: 'profile', type: 'bool', values: null,
+      default: false, label: 'cabin frame tracks FOV (windshield narrows at wide view, widens at telephoto)',
+      control: '[data-anim="cabinFovFrame"]', where: 'more', query: null,
+      group: 'view', cost: 'free',
+      owner: ['js/drive-anim.js'],
+      requires: [need('cabinView')],
+      tests: [],
+      note: 'ayrton (11-04, Anya): the windshield A-pillars and roof bar interpolate their screen fractions by the view-angle setting (30-90°). At the 60° default the fractions are exactly the originals; wide FOV narrows the frame (more road), narrow FOV widens it. Overlay only, no render change. Default OFF: fixed fractions as before.',
+    },
+    {
       id: 'imperialUnits', kind: 'profile', type: 'bool', values: null,
       default: false, label: 'imperial units (speed readouts in mph)',
       control: '[data-anim="imperial-units"]', where: 'more', query: null,   // control lives in the Performance/Debug bar (btn helper), not the top extras crowd

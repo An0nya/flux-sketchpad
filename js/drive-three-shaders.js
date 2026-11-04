@@ -417,7 +417,8 @@ export function withShimmer(source) {
   return source
     .replace(UNI, UNI + ' uniform float shimmerAmp, shimmerT;')
     .replace(RAY, RAY + `
-  if (shimmerAmp>0.0) { float g=clamp(1.0+ray.z*6.0,0.0,1.0); float n=fract(sin(dot(floor(screen*vec2(240.0,120.0))+vec2(0.0,shimmerT*1.5)   // frenchie 11-01 (minimax F3): slow scroll — at *9.0 the cells re-randomised every frame (blocky static),vec2(12.9898,78.233)))*43758.5453); ray=normalize(ray+vec3(0.0,(n-0.5)*2.0*shimmerAmp*g,0.0)); }`);
+  if (shimmerAmp>0.0) {   // B6 shimmer-comment: the F3 note moved off the code line — a // mid-expression truncated it and the shader never compiled
+    float g=clamp(1.0+ray.z*6.0,0.0,1.0); float n=fract(sin(dot(floor(screen*vec2(240.0,120.0))+vec2(0.0,shimmerT*1.5),vec2(12.9898,78.233)))*43758.5453); ray=normalize(ray+vec3(0.0,(n-0.5)*2.0*shimmerAmp*g,0.0)); }`);
 }
 
 // frenchie (wetBounce, 4-O): splice the road-mirrored own lamps into inScatter's march. OFF = the shipped text, byte-identical

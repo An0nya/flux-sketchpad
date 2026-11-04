@@ -160,6 +160,7 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `cabinStyle` | profile | view | free | "modern" | needs `cabinView` [none] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-cabin.js` |
 | `driftCabin` | profile | view | per-frame-gpu | false | needs `tiles` [none], `cabinView` [none] | drive-anim.js | - | - | - | - | - | - | `tests/step5-drift-dynamics.js` |
 | `cabinLight` | profile | view | scene-regenerate | false | - | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-cabin.js` |
+| `cabinFovFrame` | profile | view | free | false | needs `cabinView` [none] | drive-anim.js | - | - | - | - | - | - | - |
 | `imperialUnits` | profile | view | free | false | - | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-units.js` |
 | `gpuRenderer` | profile | performance | renderer-swap | true | - | drive-anim.js | boolean | js/drive-anim.js:1601 button | On with a failure: button shows data-failed; clicking clears failure and retries (js/drive-anim.js:1601). file: protocol forces fallback (js/drive-anim.js:2154). Off disables dozens of GPU-only options silently (halos, lampHalos, meshes) | Renderer swap (dispose/create three) | none | drive-anim:1601/1855/2137/2148(8) spec-ui:1103/1107(2) | T/drive-three-page:12 T/p2-drive-lighting-page:10 R/BA5-gpu-atlas[G]:75 R/BT-traffic-beams[G]:76 R/CPU-FALLBACK-PAUSE:22 R/CT-cct:23 R/D1-drive-anim-2:21 R/D2-drive-worker:24 ... (+4) |
 | `trafficBeams` | profile | traffic | recompile | false | - | drive-anim.js, drive.js | boolean | js/drive-anim.js:1592-1597 loop | Gate for trafficHalo (haloN) and the lit shader variant (extras, drive-three.js:293); forces non-CPU-ground path and disables worker trace | Per-frame GPU; shader variant | none | drive-anim:687/695/1151/1159(6) drive-three:250/293(2) drive:283/697/812/819(4) | T/p2-drive-lighting-page:56 T/p2-drive-lighting:16 R/BA5-gpu-atlas[G]:28 R/BT-traffic-beams[G]:25 R/FO-foliage:27 R/HDX7-halo-levels:37 R/SL-traffic-halo:50 T/tl-traffic-taper[G]:7 ... (+2) |
@@ -266,7 +267,7 @@ Each rule is one condition on other options (or on the render context), with the
 | `mountainPassPeople` | mountainPass = true | the pass builds no people | none | `drive-scenes.js FEATURE_PRESETS ~L172` | people |
 | `cityScene` | scene = "city" | leafy foliage is ignored in the city | none | `drive-anim.js name === 'road' \|\| name === 'forest' ~L35` | leafyFoliage |
 | `endlessRoad` | endlessRoad = true | needs the endless biome road on (tunnels and crossings are seeded into endless tiles) | none | `drive-anim.js o.endlessRoad ? endlessTile ~L3024` | endlessTunnel, endlessCrossing |
-| `cabinView` | cabinView = true | needs the in-cabin view on (the dashboard style and drift cabin ride on its overlay) | none | `drive-anim.js drawCabin(V, o.cabinView ~L1783` | cabinStyle, driftCabin |
+| `cabinView` | cabinView = true | needs the in-cabin view on (the dashboard style and drift cabin ride on its overlay) | none | `drive-anim.js drawCabin(V, o.cabinView ~L1783` | cabinStyle, driftCabin, cabinFovFrame |
 <!-- END GENERATED rules -->
 
 ## Options locked behind other options (OBSERVED from the sync loops spec-ui.js:1012-1051 and drive-anim.js:1845-1892, unless marked)

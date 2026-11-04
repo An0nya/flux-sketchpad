@@ -115,6 +115,7 @@ const FROZEN_OLD_DV_DEF = {
   cabinStyle: 'modern',   // le-chonk 10-31 (cabin dashboard styles, wishlist): new option, default 'modern'
   driftCabin: false,   // step5-preview 11-01 (drift cabin lean): new option, default off; host landing reconciled by le-chonk
   cabinLight: false,   // le-chonk 10-31 (cabin light demo, opt-in): new option, default off
+  cabinFovFrame: false,   // ayrton 11-04 (cabin frame tracks FOV, Anya): new option, default off
   imperialUnits: false,   // le-chonk 10-31 (imperial units, display-only): new option, default off
   gpuRenderer: true,
   trafficBeams: false,

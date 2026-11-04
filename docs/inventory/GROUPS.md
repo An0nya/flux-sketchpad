@@ -83,7 +83,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
-| `view` | Camera and playback | 13 | 3 | 10 | 0 | 0 | 0 | 0 |
+| `view` | Camera and playback | 14 | 3 | 11 | 0 | 0 | 0 | 0 |
 | `road` | Road and route | 17 | 2 | 13 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 10 | 0 | 7 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 15 | 0 | 3 | 10 | 1 | 0 | 1 |
@@ -111,6 +111,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `cabinStyle` | cabin dashboard style (cabin view) | profile | More | "modern" | needs `cabinView` [none] |
 | `driftCabin` | drift cabin: rotate the cockpit overlay with the car yaw (needs drift mode) | profile | More | false | needs `tiles` [none], `cabinView` [none] |
 | `cabinLight` | cabin light (dome + stray-light veil; dims the road render ~18%) | profile | More | false | - |
+| `cabinFovFrame` | cabin frame tracks FOV (windshield narrows at wide view, widens at telephoto) | profile | More | false | needs `cabinView` [none] |
 | `imperialUnits` | imperial units (speed readouts in mph) | profile | More | false | - |
 | `speed` | speed (km/h) | profile | toolbar | 50 | - |
 | `fov` | view angle | profile | More | 60 | - |

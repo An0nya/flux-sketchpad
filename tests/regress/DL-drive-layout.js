@@ -55,7 +55,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         ['anim', 'endlessRoad'], ['anim', 'elevatedView'], ['anim', 'endlessPreset'], ['anim', 'endlessPresetCustom'],
         ['anim', 'tileTerrain'], ['anim', 'multilaneRoad'], ['anim', 'endlessTunnel'], ['anim', 'endlessCrossing'],
         ['anim', 'junctionGantries'], ['anim', 'yawSmooth'],
-        ['anim', 'cabinView'], ['anim', 'cabinStyle'], ['anim', 'cabinLight'],
+        ['anim', 'cabinView'], ['anim', 'cabinStyle'], ['anim', 'cabinLight'], ['anim', 'cabinFovFrame'],
         ['anim', 'driftMode'], ['anim', 'driftDynamics'], ['anim', 'driftAfs'], ['anim', 'driftCabin'],
         ['dv', 'wetVeil'], ['dv', 'trafficMarkers'], ['dv', 'trafficLighting'],
         ['anim', 'imperial-units'],

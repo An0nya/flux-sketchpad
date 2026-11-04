@@ -13,6 +13,9 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   await page.waitForFunction(()=>{const u=RF.UI;return !u.solving&&u.run&&u.run.ctx.done&&u.spec&&u.spec.ctx===u.run.ctx&&u.spec.full&&u.spec.ev;},null,{timeout:180000});
   await page.evaluate(()=>{RF.UI.setDisplay('drive');RF.UI.setPane('result','activate');});
   ok('MG2 mode defaults OFF',await page.evaluate(()=>!RF.UI.dvAnim.gameMode));
+  // Let the drive layout settle first, as MG does: the canvas is 650x366 until then and 658x370 after, so a
+  // baseline taken early compares two different pictures (MG's GAME-LEAK diagnosis).
+  await page.waitForTimeout(1500);await page.evaluate(()=>{RF.UI.redrawSpec();window.dispatchEvent(new Event('resize'));});await page.waitForTimeout(1500);
   const before=await page.evaluate(()=>{const u=RF.UI,_=RF.DriveAnim._;Object.assign(u.dvOpts,{scene:'road',tiles:false,trafficLogic:true,oncoming:false,preceding:false,mt:true,seed:7,speed:50});Object.assign(u.dvAnim,{view:'anim',playing:false,dist:40,t:3,total:40,camera:{x:40,v:10}});u.redrawSpec();_.V.pinSS=1;_.frame();window.mgBefore=Array.from(_.readHdr());return {options:JSON.stringify(u.dvOpts),scene:RF.State.serialize(u.store.scene),state:{dist:u.dvAnim.dist,t:u.dvAnim.t,total:u.dvAnim.total},size:[_.V.gl.cw,_.V.gl.ch]};});
   await page.click('[data-game=toggle]');
   ok('MG2 visible rules default; original rules selectable',await page.evaluate(()=>document.querySelector('[data-game=rules]').value==='visible'&&!!document.querySelector('[data-game=rules] option[value=legacy]')));
@@ -46,6 +49,8 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   ok('MG person-hit end card includes statistics, Spec verdict, tickets and teaching point',end.lost&&end.visible&&/run lost/.test(end.card)&&/mean reaction/.test(end.card)&&/Spec verdict/.test(end.card)&&/cops/.test(end.card)&&/Absolute reach beats foreground width/.test(end.card),end);
   if(shots)await page.screenshot({path:shots+'/end-card.png'});
   await page.setViewportSize({width:1500,height:950});await page.waitForTimeout(250);
+  // The 390px round trip leaves the drive canvas unsettled for a moment; settle it so the exit frame is compared at the same size as the baseline (as MG does).
+  await page.waitForTimeout(1500);await page.evaluate(()=>{RF.UI.redrawSpec();window.dispatchEvent(new Event('resize'));});await page.waitForTimeout(1500);
   ok('MG end card leaves a clickable Exit game (the toolbar button sits under the card)',await page.evaluate(()=>{const b=document.querySelector('[data-game=exit]');if(!b||b.hidden)return false;const r=b.getBoundingClientRect(),e=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return e===b;}));
   const cardFit=await page.evaluate(()=>{const c=document.querySelector('[data-game=card]'),p=c.closest('.drive-below');p.scrollTop=p.scrollHeight;const r=p.getBoundingClientRect(),host=p.parentElement.getBoundingClientRect(),tail=c.lastChild;return {fits:r.top>=host.top&&r.bottom<=host.bottom+1&&r.bottom<=innerHeight,scrollable:p.scrollHeight>=p.clientHeight,atBottom:p.scrollTop+p.clientHeight>=p.scrollHeight-1};});
   ok('MG2 desktop end card dock is within viewport; its last line is scroll-reachable',cardFit.fits&&cardFit.scrollable&&cardFit.atBottom,cardFit);

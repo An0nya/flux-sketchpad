@@ -1705,7 +1705,7 @@ void main() {
   // cabinView overlay: dashboard + windshield frame + gauges drawn over the GL canvas; absent (zero render cost)
   // when off. Styles: 'modern' (two round binnacle gauges), 'miata' (NA tombstone binnacle), 'digital80s' (segment digits).
   // cabinLight adds a lit dome + a stray-light veil over the windshield AND dims the render exposure (see frame()).
-  function drawCabin(V, on, style, light, kmh, yaw) {   // yaw: driftCabin rotates the overlay to match the car's yaw (looking out the side window)
+  function drawCabin(V, on, style, light, kmh, yaw, fov) {   // yaw: driftCabin rotates the overlay to match the car's yaw (looking out the side window). fov: cabinFovFrame (ayrton, Anya 11-04)
     const cv = V.cabin; if (!cv) return;
     if (!on) { if (cv.parentNode) cv.parentNode.removeChild(cv); cv.width = 0; return; }
     const gl = V.canvas; if (!gl || !gl.parentNode) return;
@@ -1725,9 +1725,13 @@ void main() {
     x.fillStyle = 'rgba(8,10,14,0.96)';
     x.beginPath();   // dashboard band
     x.moveTo(0, H2); x.lineTo(0, H2 - 190 * k); x.quadraticCurveTo(W2 * 0.5, H2 - 260 * k, W2, H2 - 190 * k); x.lineTo(W2, H2); x.closePath(); x.fill();
+    // cabinFovFrame (ayrton, Anya 11-04): the windshield frame narrows at wide FOV (more road visible) and widens at
+    // narrow FOV (telephoto). Interpolated from the 60° design default; at fov 60 the fractions are exactly the originals.
+    const fovF = fov && fov !== 60 ? Math.max(0.5, Math.min(1.5, 60 / fov)) : 1;   // 90° → 0.667 (narrower), 30° → 2 (wider), capped
+    const pT = 0.16 / fovF, pM = 0.07 / fovF;   // pillar top/mid fractions (original 0.16/0.07 at fov 60)
     x.fillStyle = 'rgba(8,10,14,0.95)';   // A-pillars + roof bar
-    x.beginPath(); x.moveTo(0, 0); x.lineTo(W2 * 0.16, 0); x.lineTo(W2 * 0.07, H2 * 0.62); x.lineTo(0, H2 * 0.5); x.closePath(); x.fill();
-    x.beginPath(); x.moveTo(W2, 0); x.lineTo(W2 * 0.84, 0); x.lineTo(W2 * 0.93, H2 * 0.62); x.lineTo(W2, H2 * 0.5); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(0, 0); x.lineTo(W2 * pT, 0); x.lineTo(W2 * pM, H2 * 0.62); x.lineTo(0, H2 * 0.5); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(W2, 0); x.lineTo(W2 * (1 - pT), 0); x.lineTo(W2 * (1 - pM), H2 * 0.62); x.lineTo(W2, H2 * 0.5); x.closePath(); x.fill();
     x.fillRect(0, 0, W2, 26 * k);
     // gauges — speed is functional (kmh); tach + fuel are plausible stand-ins derived from speed
     const cx = W2 * 0.5, gy = H2 - 150 * k, r = 105 * k, rpm = Math.min(1, kmh / 220) * 0.9 + 0.05;
@@ -1782,7 +1786,7 @@ void main() {
       // the lamp swivel: the shader rotates the beam by -yaw while the arc rotation is +A, so these signs are the compensation, not an amplification
       V.p.yaw += lag && V.driftA !== undefined ? V.driftA * (o.driftAfs ? 1 : 2.6 / 8) : (tl && tl.curvature ? -tl.curvature * Math.pow(kmhOf() / 130, 2) * 2.6 : 0);   // opposite lock scales with curvature and speed²
     }
-    drawCabin(V, o.cabinView && (st.popout || ui.display === 'drive'), o.cabinStyle || 'modern', !!o.cabinLight, kmhOf(), o.driftCabin ? (V.driftA || 0) : 0);
+    drawCabin(V, o.cabinView && (st.popout || ui.display === 'drive'), o.cabinStyle || 'modern', !!o.cabinLight, kmhOf(), o.driftCabin ? (V.driftA || 0) : 0, o.cabinFovFrame ? o.fov : 0);
     V.p.cornerLeft = o.corneringLamps && st.lighting ? st.lighting.left : 0;
     V.p.cornerRight = o.corneringLamps && st.lighting ? st.lighting.right : 0;
     V.p.pitch = o.lampPitch && st.pitch ? st.pitch.angle : 0;
@@ -2522,6 +2526,9 @@ void main() {
     const cl = E('button', { type: 'button', class: 'toggle', 'data-anim': 'cabinLight', 'aria-pressed': 'false', title: 'Cabin light (opt-in): dome light + stray-light veil over the windshield, and the road render is dimmed ~18% — demonstrates how cabin light reduces road visibility.' }, 'cabin light');
     cl.addEventListener('click', () => setDV(ui, 'cabinLight', !info().o.cabinLight));
     ui.driveExtras.append(cl);   // cabinLight toggle
+    const cff = E('button', { type: 'button', class: 'toggle', 'data-anim': 'cabinFovFrame', 'aria-pressed': 'false', title: 'Cabin frame tracks FOV (opt-in, needs cabin view): the windshield A-pillars narrow at wide view-angle and widen at telephoto, matching what the camera sees. Off: fixed fractions as before.' }, 'fov frame');
+    cff.addEventListener('click', () => setDV(ui, 'cabinFovFrame', !info().o.cabinFovFrame));
+    ui.driveExtras.append(cff);   // cabinFovFrame toggle (ayrton 11-04)
     const ys = E('button', { type: 'button', class: 'toggle', 'data-anim': 'yawSmooth', 'aria-pressed': 'false', title: 'Smooth camera yaw on curved tiles (opt-in): lookahead-averaged tangent eases the yaw snap at corner entry/exit. Render-only; default off keeps the shipped view.' }, 'yaw smooth');
     ys.addEventListener('click', () => setDV(ui, 'yawSmooth', !info().o.yawSmooth));
     ui.driveExtras.append(ys);   // yawSmooth toggle
@@ -2587,6 +2594,7 @@ void main() {
     for (const b of q('[data-anim="driftCabin"]')) b.setAttribute('aria-pressed', String(!!o.driftCabin));
     for (const b of q('[data-anim="yawSmooth"]')) b.setAttribute('aria-pressed', String(!!o.yawSmooth));
     for (const b of q('[data-anim="cabinLight"]')) b.setAttribute('aria-pressed', String(!!o.cabinLight));
+    for (const b of q('[data-anim="cabinFovFrame"]')) { b.setAttribute('aria-pressed', String(!!o.cabinFovFrame)); b.disabled = !o.cabinView; }   // ayrton 11-04: cabinFovFrame needs cabinView
     for (const b of q('[data-anim="imperial-units"]')) b.setAttribute('aria-pressed', String(!!o.imperialUnits));
     for (const s2 of q('[data-anim="endlessPresetCustom"]')) s2.value = o.endlessPresetCustom || '';
     for (const s2 of q('[data-anim="endlessPreset"]')) s2.value = o.endlessPreset || 'off';

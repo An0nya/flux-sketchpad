@@ -27,6 +27,14 @@ const mod = require(path.join(ROOT, 'js', 'drive-three-shaders.js'));
 const spliced = mod.withShimmer(mod.ground);
 ok('executed: withShimmer(ground) declares shimmerAmp/shimmerT and gates on shimmerAmp>0', spliced.includes('uniform float shimmerAmp, shimmerT;') && spliced.includes('if (shimmerAmp>0.0)') && spliced.includes('ray=normalize(ray+vec3(0.0,(n-0.5)*2.0*shimmerAmp*g,0.0))'));
 ok('executed: OFF path is untouched — withShimmer is the only producer, ground export unchanged', mod.ground === groundText && !mod.ground.includes('shimmer'));
+// B6 shimmer-comment (spilett 11-04): with // comments stripped, the spliced source must balance —
+// a // mid-expression truncated the shimmer line and the shader never compiled (GPU drop-to-CPU).
+{
+  const stripC = (s) => s.split('\n').map((l) => { const i = l.indexOf('//'); return i >= 0 ? l.slice(0, i) : l; }).join('\n');
+  const bal = (s) => { s = stripC(s); let q = 0, b = 0; for (const c of s) { if (c === '(') q++; if (c === ')') q--; if (c === '{') b++; if (c === '}') b--; } return q + b; };
+  ok('executed: withShimmer(ground) balances after comment-strip (B6 shimmer-comment)', bal(spliced) === 0);
+  ok('executed: withWetBounce(withShimmer(ground)) balances after comment-strip (B6 shimmer-comment)', bal(mod.withWetBounce(spliced)) === 0);
+}
 
 // 4. wiring: drive-three update() recompile + uniforms, drive-anim select/labels/look, keys, layout
 ok('update() recompiles the ground program only on on/off flip and sets both uniforms', three.includes("mat.userData.shim") && /withShimmer\(/.test(three) && /shimAmp > 0/.test(three));   // append-safe (line-based)
