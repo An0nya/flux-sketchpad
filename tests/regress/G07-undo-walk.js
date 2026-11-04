@@ -24,7 +24,22 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   const S = () => page.evaluate(() => ({ n: RF.UI.store.scene.modeC.profile.length, past: RF.UI.hist.past.length }));
   const r = await page.evaluate(() => { const b = document.getElementById('left-canvas').getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; });
   const s0 = await S();
-  for (let i = 0; i < 4; i++) { await page.mouse.click(r.x + r.w * (0.2 + 0.1 * i), r.y + r.h * 0.85); await page.waitForTimeout(900); }
+  // The profile editor's tap hit-test takes a handle within 11 px (curve mode: node/mid) and then only
+  // SELECTS it — no point and no history entry (js/ui.js:1116/1119). The app's own hint says "tap empty
+  // space to add a point" (js/ui.js:895), so a fixed tap grid can land on a handle and silently lose a
+  // tap: the spots are chosen clear of the handles the app reports (canvas-local coordinates).
+  const spots = await page.evaluate(() => {
+    const ui = RF.UI, b = document.getElementById('left-canvas').getBoundingClientRect(), hs = ui.profHandles || [];
+    const clear = (lx, ly) => hs.every(h => Math.hypot(h.x - lx, h.y - ly) > 16);
+    const out = [];
+    for (let ky = 0; ky < 20 && out.length < 4; ky++) for (let kx = 0; kx < 60 && out.length < 4; kx++) {
+      const lx = b.width * (0.04 + 0.015 * kx), ly = b.height * (0.95 - 0.03 * ky);
+      if (clear(lx, ly) && out.every(o => Math.hypot(o.lx - lx, o.ly - ly) > 40)) out.push({ lx, ly });
+    }
+    return out.map(o => ({ x: b.left + o.lx, y: b.top + o.ly }));
+  });
+  ok('four tap spots clear of the profile handles', spots.length === 4, JSON.stringify(spots.map(s => [Math.round(s.x), Math.round(s.y)])));
+  for (const sp of spots) { await page.mouse.click(sp.x, sp.y); await page.waitForTimeout(900); }
   await idle(); const s1 = await S();
   ok('4 slow taps add 4 profile points (' + s0.n + ' -> ' + s1.n + ')', s1.n === s0.n + 4);
   const trail = [];

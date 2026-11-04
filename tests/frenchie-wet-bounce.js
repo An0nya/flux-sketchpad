@@ -111,6 +111,35 @@ ok('gate + all registered', fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'u
   ok('moment2 + wb skips the mirror (documented wbNote)', !m2.includes('lampM'));
   let threw = false; try { H.withWetBounceHalo('void main() { gl_FragColor = vec4(0.0); }'); } catch (e) { threw = /markers/.test(e.message); }
   ok('withWetBounceHalo throws on moved markers', threw);
+  // 11-03 brace-balance guard: qwen's M4 compile detector found wb=true left ONE brace unclosed
+  // (COMPILE fragment ERROR 0:132 — the mirror block replaced TAIL's three closes with two). Brace
+  // balance is a text property, so this catches the class in node with no GL. Full variant sweep, 2 s.
+  const depth = (s) => { let d = 0; for (const c of s) { if (c === '{') d++; else if (c === '}') d--; } return d; };
+  const vVariants = ['', 'band', 'split'], vJits = [false, 'interleaved', 'jittered'];
+  let vBad = [], vN = 0;
+  for (const atlas of [false, true]) for (const polar of [false, true]) for (const occ of [false, true])
+    for (const variant of vVariants) for (const jit of vJits) for (const sm of [false, true])
+      for (const lw of [0, 1]) for (const refine of [0, 32, 512, 2048]) for (const nb of [false, true])
+        for (const moment of [0, 1, 2, 3]) for (const widthStep of [0, 4]) for (const wb of [false, true]) {
+          const a = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb];
+          let t; try { t = H.haloTableSource(...a); } catch (e) { vBad.push(a.join(',') + ' THROW ' + e.message); continue; }
+          vN++;
+          const d = depth(t); if (d !== 0) vBad.push(a.join(',') + ' depth ' + d);
+          const code = t.replace(/\/\/[^\n]*/g, '');   // strip line comments first, or the walker matches words inside comments
+          {   // 11-03 qwen M4 (corrected): the failure is SCOPE, not presence — a textual "decl exists" check passes the sm/refine combos the driver rejects. Walk brace scopes: every qq/qqM use needs a decl in an open enclosing scope.
+            const stack = [new Set()], re = /for\s*\(\s*int\s+(\w+)\s*=|float\s+qqM\s*=|float\s+qq\s*=|\bqqM\b|\bqq\b|if\s*\(\s*(?:m == 0 && )?wetU|[{}]/g; let m, pendingLoop = null;
+            while ((m = re.exec(code))) {
+              if (/^for\s*\(\s*int\s+\w+\s*=/.test(m[0])) pendingLoop = m[1];   // 11-03: the for-int loop var belongs to the loop body scope
+              else if (m[0] === '{') { const sc = new Set(); if (pendingLoop) { sc.add(pendingLoop); pendingLoop = null; } stack.push(sc); }
+              else if (m[0] === '}') { if (stack.length > 1) stack.pop(); pendingLoop = null; }
+              else if (/^if\s*\(\s*(?:m == 0 && )?wetU/.test(m[0])) { if (!stack.some((s) => s.has('m'))) { vBad.push(a.join(',') + ' MIRROR if outside any open for-m scope (m undeclared there — the m==0 guard must stay inside the loop)'); break; } }   // 11-03: consume the token; only fail when no for-m scope is open
+              else if (/^float\s+qqM\s*=/.test(m[0])) stack[stack.length - 1].add('qqM');
+              else if (/^float\s+qq\s*=/.test(m[0])) stack[stack.length - 1].add('qq');
+              else if (!stack.some((s) => s.has(m[0]))) { vBad.push(a.join(',') + ' ' + m[0] + ' used outside any open declaring scope (qwen M4 0:127/0:171)'); break; }
+            }
+          }
+        }
+  ok('haloTableSource brace-balanced and qq/qqM scope-declared over the full variant space incl. wb=true (36,864 combos)', vN === 36864 && vBad.length === 0, vBad.slice(0, 3));
   // withWetBounce now also splices the surface loop (ext B)
   const S = require(path.join(ROOT, 'js/drive-three-shaders.js'));
   const g = S.ground, wb = S.withWetBounce(g);

@@ -9,6 +9,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
   page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (m) => { if (m.type() === 'error' && !/404/.test(m.text())) errors.push(m.text()); });
   await page.addInitScript(() => { try { localStorage.clear(),localStorage.setItem('flux/driveMore','true'); } catch (e) { /* ignore */ } });
+  const rv = (sel) => page.evaluate((s) => (window.RF && RF.DriveLayout ? RF.DriveLayout.reveal(RF.UI, s) : false), sel);   // 11-03 lead #2 (glm5.2 recipe): flux/driveMore is dead; drive-bar controls live in tabs — assert-reveal the control's tab before interacting
   await page.goto('http://localhost:' + port + '/index.html');
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
   await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 150000 });
@@ -39,10 +40,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok('workers\' frames = the page\'s own trace: 8 frames over the drive, worst HDR difference ' + par.worst, par.worst === 0 && par.n > 1e5, par.n + ' values, ' + par.workers + ' workers');
   // 3. the switch: off → no workers, the page traces itself and the animation goes on; on → workers again
   await page.evaluate(() => { RF.UI.dvAnim.playing = true; RF.UI.redrawSpec(); }); await sleep(1500);
-  await page.click('[data-anim="c-mt"]'); await sleep(1500);
+  if (!await rv('[data-anim="c-mt"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="c-mt"]'); await page.click('[data-anim="c-mt"]'); await sleep(1500);
   const w2 = await wk(), adv2 = await advances(2500);
   ok('threads off: no workers, switch up, frames still drawn (' + adv2 + ' in 2.5 s)', w2.n === 0 && w2.pressed === 'false' && adv2 >= 2, JSON.stringify(w2));
-  await page.click('[data-anim="c-mt"]'); await sleep(2500);
+  if (!await rv('[data-anim="c-mt"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="c-mt"]'); await page.click('[data-anim="c-mt"]'); await sleep(2500);
   const w3 = await wk(), adv3 = await advances(2000);
   ok('threads on again: workers are back and drawing', w3.n >= 1 && w3.pressed === 'true' && adv3 >= 3, JSON.stringify(w3) + ', ' + adv3 + ' frames');
   // 4. forest and city use animation

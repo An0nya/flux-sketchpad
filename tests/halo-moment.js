@@ -67,7 +67,7 @@ const F = loadHalo(ROOT);   // the workspace tree (this test runs against the tr
 //    tree from /workspace (the host copy without P3) and compare over a sweep of depths. The moment
 //    param is additive: undefined / 0 take the shipped path; a truthy value takes the step-at-mean.
 {
-  const WS = '/workspace';   // the shared tree (shipped, no P3) — the OFF baseline
+  const WS = path.join(__dirname, '..');   // the shared tree (shipped, no P3) — the OFF baseline
   const hasShipped = fs.existsSync(path.join(WS, 'js', 'drive-three-halo.js'));
   const shW = fs.readFileSync(path.join(WS, 'js', 'drive-three-shaders.js'), 'utf8');
   const shippedHasMoment = /uniform int haloMoment;/.test(shW);

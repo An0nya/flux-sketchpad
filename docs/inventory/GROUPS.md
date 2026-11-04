@@ -104,12 +104,12 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `playing` | drive / pause | profile | toolbar | false | - |
 | `driveScrub` | time scrubber | profile | toolbar | false | - |
 | `cabinView` | in-cabin view (dashboard + windshield frame over the drive render) | profile | More | false | - |
-| `driftMode` | drift mode (easter egg): opposite-lock yaw on bends | profile | More | false | needs `tiles` [undefined] |
-| `driftDynamics` | drift dynamics: lag and cap the drift angle (needs drift mode) | profile | More | false | needs `tiles` [undefined] |
-| `driftAfs` | drift AFS: aim the beam along the road, not the nose (needs drift mode) | profile | More | false | needs `tiles` [undefined] |
-| `yawSmooth` | smooth camera yaw on curved tiles (lookahead-averaged tangent) | profile | More | false | needs `tiles` [undefined] |
-| `cabinStyle` | cabin dashboard style (cabin view) | profile | More | "modern" | needs `cabinView` [undefined] |
-| `driftCabin` | drift cabin: rotate the cockpit overlay with the car yaw (needs drift mode) | profile | More | false | needs `tiles` [undefined], `cabinView` [undefined] |
+| `driftMode` | drift mode (easter egg): opposite-lock yaw on bends | profile | More | false | needs `tiles` [none] |
+| `driftDynamics` | drift dynamics: lag and cap the drift angle (needs drift mode) | profile | More | false | needs `tiles` [none] |
+| `driftAfs` | drift AFS: aim the beam along the road, not the nose (needs drift mode) | profile | More | false | needs `tiles` [none] |
+| `yawSmooth` | smooth camera yaw on curved tiles (lookahead-averaged tangent) | profile | More | false | needs `tiles` [none] |
+| `cabinStyle` | cabin dashboard style (cabin view) | profile | More | "modern" | needs `cabinView` [none] |
+| `driftCabin` | drift cabin: rotate the cockpit overlay with the car yaw (needs drift mode) | profile | More | false | needs `tiles` [none], `cabinView` [none] |
 | `cabinLight` | cabin light (dome + stray-light veil; dims the road render ~18%) | profile | More | false | - |
 | `imperialUnits` | imperial units (speed readouts in mph) | profile | More | false | - |
 | `speed` | speed (km/h) | profile | toolbar | 50 | - |
@@ -128,12 +128,12 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `tileCache` | cache ground | profile | More | true | needs `tilesOn` [disabled] |
 | `mountainPass` | mountain pass (scene select) | profile | toolbar | false | - |
 | `elevatedView` | 3D route pipeline for every scene (prototype) | profile | More | false | needs `gpu` [tooltip] |
-| `endlessPreset` | endless road preset (prototype) | profile | More | "off" | needs `tiles` [undefined] |
-| `endlessPresetCustom` | custom endless preset JSON (used when endlessPreset = custom) | profile | More | "" | needs `tiles` [undefined] |
-| `tileTerrain` | terrain skirts on endless tile roads (opt-in, pricy) | profile | More | false | needs `tiles` [undefined] |
-| `multilaneRoad` | 2+2 highway on tile roads (drive view only) | profile | More | false | needs `tiles` [undefined] |
-| `endlessTunnel` | tunnel tiles on endless forest/mountain blocks | profile | More | false | needs `tiles` [undefined], `endlessRoad` [undefined] |
-| `endlessCrossing` | level crossings on endless open-road tiles | profile | More | false | needs `tiles` [undefined], `endlessRoad` [undefined] |
+| `endlessPreset` | endless road preset (prototype) | profile | More | "off" | needs `tiles` [none] |
+| `endlessPresetCustom` | custom endless preset JSON (used when endlessPreset = custom) | profile | More | "" | needs `tiles` [none] |
+| `tileTerrain` | terrain skirts on endless tile roads (opt-in, pricy) | profile | More | false | needs `tiles` [none] |
+| `multilaneRoad` | 2+2 highway on tile roads (drive view only) | profile | More | false | needs `tiles` [none] |
+| `endlessTunnel` | tunnel tiles on endless forest/mountain blocks | profile | More | false | needs `tiles` [none], `endlessRoad` [none] |
+| `endlessCrossing` | level crossings on endless open-road tiles | profile | More | false | needs `tiles` [none], `endlessRoad` [none] |
 | `cline` | centre line | profile | More | "solid" | needs `usRoad` [disabled] |
 | `res` | still picture width | profile | no control | 640 | - |
 
@@ -258,7 +258,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `veg` | trees | profile | More | true | - |
 | `obstacle` | crates | profile | More | false | - |
 | `rpm` | road studs | profile | More | true | - |
-| `junctionGantries` | overhead sign gantries at junction tiles | profile | More | false | needs `tiles` [undefined] |
+| `junctionGantries` | overhead sign gantries at junction tiles | profile | More | false | needs `tiles` [none] |
 | `leafyFoliage` | leafy foliage | profile | More | false | ignored when `mountainPassScene` [none], `cityScene` [none] |
 | `detailedModels` | detailed models | profile | More | false | - |
 | `deerBehaviour` | deer behaviour | extra | More | (unset) | - |

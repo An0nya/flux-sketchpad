@@ -68,7 +68,7 @@
   function build(ui, bar) {
     if (ui.driveLayout) return ui.driveLayout;
     bar.classList.add('dl');
-    const L = { root: bar, panes: {}, subs: {}, groups: new Map() };
+    const L = { root: bar, panes: {}, subs: {}, groups: new Map(), noWake: false };   // noWake: a caller revealed a tab and claimed that choice, so the deferred first-placement wake must not auto-enable its readout on top of it
     L.top = E('div', { class: 'dl-top' }); L.strip = E('div', { class: 'dl-strip', role: 'toolbar', 'aria-label': 'Drive' });
     L.stage = E('div', { class: 'dl-stage' });
     L.left = E('div', { class: 'dl-panel dl-left', 'data-open': 'true' });
@@ -129,7 +129,7 @@
     for (const c of containers(L)) for (const e of [...c.children]) if (!e.matches('.drive-primary, .drive-anim-tools, .dl-top, .dl-strip, .dl-body, .dl-sheet, .dl-staging, [data-dl-ignore]')) put(L.other.row, e);
     L.other.hidden = !L.other.row.children.length;
     layout(ui);
-    if (!L.woke) { L.woke = true; setTimeout(() => wake(ui), 0); }   // a stored Details/Timings tab opens with its readout on (after this draw, not inside it)
+    if (!L.woke) { L.woke = true; setTimeout(() => { if (!L.noWake) wake(ui); }, 0); }   // a stored Details/Timings tab opens with its readout on (after this draw, not inside it); a caller that revealed a tab in the meantime claimed that choice, so its switch stays as the caller left it (P0: the click must turn it on, not off)
   }
   // the containers the creators append into: the staging div, the spec-ui primary row, the drive-anim bar
   const containers = (L) => [L.staging, ...L.root.querySelectorAll('.drive-primary, .drive-anim-tools'), L.root].filter(Boolean);
@@ -186,6 +186,9 @@
   // reveal: the tab (and sub-tab) holding a control, so it can be seen and clicked (tests, and any caller that points at a control)
   function reveal(ui, selector) {
     const L = ui.driveLayout; if (!L) return false;
+    L.noWake = true;   // this caller picked that tab to reach a control in it, so the deferred first-placement wake must not auto-enable the readout on top of the caller's choice (reveal() and select() from code do not wake)
+    if (ui.layoutGrid) ui.layoutGrid();   // a viewport resize fires layoutGrid via ResizeObserver (async); reveal can run before it, leaving the grid — and the drive bar's host — stale (UX1: 430→1500 inline left the host at 355 px instead of ~880)
+    layout(ui);   // the drive layout follows the host's size: stale tall/mode left the panel in the wrong state
     const e = L.root.querySelector(selector) || document.querySelector(selector); if (!e) return false;
     const pane = e.closest('[data-dl-pane]'), sub = e.closest('[data-dl-subpane]');
     if (pane) { const id = pane.getAttribute('data-dl-pane'); select(ui, RIGHT.includes(id) && !L.tall ? { rtab: id } : { tab: id }); if (RIGHT.includes(id)) setOpen(ui, 'right', true); else setOpen(ui, 'left', true); }

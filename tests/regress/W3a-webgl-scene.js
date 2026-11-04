@@ -51,7 +51,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     for (const id of ['scene-canvas', 'surface-canvas']) {
       const s = await snap(id), d = await diff(id, id);
       const info = await page.evaluate((id) => { const i = RF.RenderGL.info(document.getElementById(id)); return i && { nRay: i.nRay, vis: i.canvas.style.display }; }, id);
-      ok(scene + ' f=' + focal + ' fit=' + fit + ' ' + id + ': GL on, drawn by WebGL (' + (info ? info.nRay + ' ray segments' : 'no renderer') + ')', s.gl && !(await page.evaluate(() => RF.RenderGL.failure())), JSON.stringify(info));
+      // The Optics view of a scene with no optical surfaces has nothing to draw: js/render.js takes the GL path only when the draw model has polys
+      // (otherwise it hides the underlay and the 2D canvas says "No optical surfaces yet"), so there is no renderer to find there.
+      const empty = id === 'surface-canvas' && !(await page.evaluate(() => RF.UI.model && RF.UI.model.polys.length));
+      ok(scene + ' f=' + focal + ' fit=' + fit + ' ' + id + ': GL on, ' + (empty ? 'nothing to draw (no optical surfaces): no underlay, no GL failure' : 'drawn by WebGL (' + (info ? info.nRay + ' ray segments' : 'no renderer') + ')'), empty ? !s.gl && !(await page.evaluate(() => RF.RenderGL.failure())) : s.gl && !(await page.evaluate(() => RF.RenderGL.failure())), JSON.stringify(info));
       ok(scene + ' f=' + focal + ' fit=' + fit + ' ' + id + ': matches the Canvas 2D picture (mean |diff| ' + d.mean.toFixed(2) + '/255, ' + d.bigPct.toFixed(2) + ' % of pixels off by > 40)', d.mean < 4 && d.bigPct < 4);
     }
   }

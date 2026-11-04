@@ -41,7 +41,15 @@ function pageTag() { RF.DriveAnim._.V.canvas.setAttribute('data-sh-drive', '1');
 
 // The element screenshot paints whatever sits over the canvas (the toolbar, the readouts), so hide those for the capture and restore after.
 function pageHide(on) {
-  const V = RF.DriveAnim._.V, host = V.canvas.parentElement, els = new Set([RF.UI.driveBar, RF.UI.driveExtras]);
+  const V = RF.DriveAnim._.V, host = V.canvas.parentElement, els = new Set();
+  // nemo 11-03: the drive layout stages the GL canvas INSIDE the drive bar (.drive-tools > .dl-body > .dl-stage >
+  // canvas) and `visibility` inherits, so hiding driveBar hid the canvas itself and every capture timed out
+  // ("element is not visible"; SH 1 FAILED of 1 — gpuq nemo-20261103-100416-c952 diag: barHoldsCanvas true,
+  // self "block/hidden/op1", rect 476x268 non-empty, popStage false). Hide the largest subtrees that do NOT hold the
+  // canvas instead: the same overlays, minus the canvas' own ancestors. A driveBar that does not hold the canvas is
+  // hidden whole, exactly as before.
+  const covers = (e) => { if (!e || e === V.canvas) return; if (!e.contains || !e.contains(V.canvas)) { els.add(e); return; } for (const k of e.children) covers(k); };
+  covers(RF.UI.driveBar); covers(RF.UI.driveExtras);
   for (const e of host.children) if (e !== V.canvas) els.add(e);
   for (const e of els) {
     if (!e) continue;
@@ -49,6 +57,27 @@ function pageHide(on) {
     else if (e.dataset.shVis !== undefined) { e.style.visibility = e.dataset.shVis; delete e.dataset.shVis; }
   }
   return els.size;
+}
+
+// nemo 11-03: why a capture failed. Self-contained (Playwright serializes each page function alone, like the others here).
+// Reports the tagged canvas' box, its own and every ancestor's display/visibility/height, the popout stage, and whether
+// the two UI elements pageHide() hides are ancestors of the canvas (which would hide it too).
+function pageCaptureDiag() {
+  const V = RF.DriveAnim._.V, tagged = document.querySelector('canvas[data-sh-drive="1"]'), c = tagged || V.canvas;
+  const r = c ? c.getBoundingClientRect() : null, cs = c ? getComputedStyle(c) : null, chain = [];
+  for (let e = c && c.parentElement; e && e !== document.documentElement && chain.length < 8; e = e.parentElement) {
+    const s = getComputedStyle(e), b = e.getBoundingClientRect();
+    chain.push((e.tagName + '.' + (typeof e.className === 'string' ? e.className : '')).slice(0, 44) + ' ' + s.display + '/' + s.visibility + '/' + Math.round(b.height) + 'h');
+  }
+  const holds = (x) => !!(x && c && x.contains && x.contains(c));
+  return {
+    tagged: !!tagged, isVCanvas: c === V.canvas,
+    rect: r ? [Math.round(r.width), Math.round(r.height), Math.round(r.top), Math.round(r.left)] : null,
+    self: cs ? cs.display + '/' + cs.visibility + '/op' + cs.opacity : null,
+    popStage: !!V.popStage, parent: c && c.parentElement ? String(c.parentElement.className).slice(0, 44) : null,
+    barHoldsCanvas: holds(RF.UI.driveBar), extrasHoldCanvas: holds(RF.UI.driveExtras),
+    hiddenNow: document.querySelectorAll('[data-sh-vis]').length, ancestors: chain
+  };
 }
 
 // name: a library id or label. Finds it in the own-low or own-high select and fires its change handler.
@@ -95,6 +124,12 @@ async function pass(page, s) {
     await page.evaluate(pageTag);
     await page.evaluate(pageHide, true);
     try { out[wanted.get(f)] = { frame: f, png: await page.locator('canvas[data-sh-drive="1"]').screenshot() }; }
+    catch (e) {
+      // nemo 11-03: name the cause instead of handing SH a bare actionability stack. Runs before the finally restores
+      // visibility, so the dump describes the state the screenshot actually saw.
+      const d = await page.evaluate(pageCaptureDiag).catch((e2) => String(e2 && e2.message || e2));
+      throw new Error(s.name + ': frame ' + f + ' capture failed — ' + String((e && e.message) || e).split('\n')[0] + ' | diag ' + JSON.stringify(d));
+    }
     finally { await page.evaluate(pageHide, false); }
   }
   return out;

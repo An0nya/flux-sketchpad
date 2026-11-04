@@ -107,7 +107,7 @@ export function create(canvas, gl, onModelsReady) {
   // (the previous valid version). A slot never filled shows nothing: scatter term 0 (no stall). A key change restarts the fill at slot 0; the old slots
   // stay shown until a slot of the new generation finishes (then only the newest generation is shown, see AC below); a size change drops everything.
   const TAB_VERSIONS = 8, tabStats = globalThis.SD_SCATTER = { recomputes: 0, skips: 0, valid: 0, cycle: 0, cache: false, shown: 0, fills: 0, pending: 0, wanted: 1, rowsDone: 0, rowsTotal: 0, lastMs: NaN, meanMs: NaN, msPerRow: 0, budgetMs: TABLE_BUDGET_MS, compileMs: NaN, compiles: 0, frames: 0, showingZero: true, gen: 0, shownGen: 0, slotGen: [], syncs: 0, dropped: 0, kept: 0 };
-  let slots = [], slotValid = [], spare = null, tabTmp = null, tabSize = '', tabKey = null, fillIdx = 0, tabFrame = 0, fill = null, compilePending = false;
+  let slots = [], slotValid = [], spare = null, tabTmp = null, tabSize = '', tabKey = null, prevCache = null, fillIdx = 0, tabFrame = 0, fill = null, compilePending = false;
   // GEN (AC): gen = the key generation (+1 per key change); slotGen[i] = the generation slot i was built for; lastDrawn = the bank last written (sync target); staleDrops = fills dropped in a row.
   let gen = 0, slotGen = [], lastDrawn = null, staleDrops = 0, drawn = 0;
   const PROBE_EVERY = 8, STALE_DROPS = 2;   // B8: a readback every 8th drawn frame; GEN: after 2 drops in a row the next fill is never dropped (bounded lag under a swivel)
@@ -204,6 +204,8 @@ export function create(canvas, gl, onModelsReady) {
     const look = p.look, f = look.scatterRes === 'full' ? 1 : look.scatterRes === 'quarter' ? 0.25 : 0.5, tw = Math.max(1, Math.round(p.w * f)), th = Math.max(1, Math.round(p.h * f));
     const sig = look.scatterBlur === 'mid' ? 1.5 : look.scatterBlur === 'strong' ? 3 : 0;
     const cache = look.scatterCache === 'on', cycle = cache && look.scatterCycle === 8 ? TAB_VERSIONS : 1, wanted = cycle;
+    if (prevCache !== null && prevCache !== cache) { if (!cache) { dropAll(); tabSize = ''; } }
+    prevCache = cache;
     if (tabSize === '' || tabSize.key !== tw + 'x' + th) {
       dropAll(); tabSize = { w: tw, h: th, key: tw + 'x' + th }; tabTmp = new T.WebGLArrayRenderTarget(tw, th, 1, { type: T.HalfFloatType, depthBuffer: false }); tabTmp.texture.minFilter = tabTmp.texture.magFilter = T.LinearFilter; tabTmp.texture.generateMipmaps = false;
     }

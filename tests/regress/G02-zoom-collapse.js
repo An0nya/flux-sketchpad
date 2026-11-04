@@ -6,6 +6,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
 (async () => {
   const browser = await pw.chromium.launch(), page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
+  await page.addInitScript(() => { try { localStorage.clear(); localStorage.setItem('flux/guideSeen', '1'); } catch (e) { /* ignore */ } });   // clear saved state but keep the "Getting started" guide dismissed so it does not intercept clicks (js/ui.js:2054)
   await page.goto('http://localhost:' + port + '/index.html');
   await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
   await page.reload();

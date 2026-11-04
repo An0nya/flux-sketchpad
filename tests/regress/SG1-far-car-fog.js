@@ -10,7 +10,8 @@
 // Run: python3 tests/serve.py 8996 & echo $! > pidfile; PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/SG1-far-car-fog.js 8996; kill $(cat pidfile)
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
-const port = +(process.argv[2] || 8996), R_CAR = 60, PIN = process.env.SG1_PIN || '75132428';
+// RE-PIN 11-03 (murchison, maston cluster handoff per cyrus 16:55, rule 23): PIN was 75132428 (the main baseline, byte-identical clear air). Cause: the accumulated renderer landings 10-30 -> 11-03 moved the clear-air HDR off main; it then moved ONCE more when G1 started injecting pinned-defaults into the lane (got 509598c0 pre-G1 -> 6bb8075a post-G1) and is stable at 6bb8075a across the 11-03b list and my run. All functional checks (mesh car, body/fog ratio, table-vs-direct, NaN) pass.
+const port = +(process.argv[2] || 8996), R_CAR = 60, PIN = process.env.SG1_PIN || '6bb8075a';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 (async () => {

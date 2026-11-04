@@ -12,7 +12,8 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex').slice(0, 16);
-const PIN_FLAT_CONE = '59d1bc8161539e9a';   // flat urban frame (F2 pose, seed 7), haze 1000, sodium lamps, cone on (3 lamps drawn); same on 5d3047b and on this branch
+// RE-PIN 11-03 (murchison halo/cone sweep, rule 23): was 59d1bc8161539e9a. Cause: cone-lamp-dedupe (2x cone removed, cone:3 restored - identical new hash in CD-lampcone-depth, tree 675cb281736d) + the catalogue #1 lens render + accumulated halo landings.
+const PIN_FLAT_CONE = '88770bcdc693c5ef';   // flat urban frame (F2 pose, seed 7), haze 1000, sodium lamps, cone on (3 lamps drawn); measured on the base 5d3047b
 const errors = [];
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });

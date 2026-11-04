@@ -15,7 +15,8 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex').slice(0, 16);
-const PIN_CREST_OFF = '2325e0a834dbbdf0', PIN_FLAT = 'a6a815aa706bc634';   // measured on the base 5d3047b with this test's own poses (E2_PRINT=1)
+// RE-PIN 11-03 (murchison halo/cone sweep, rule 23): were 2325e0a834dbbdf0 / a6a815aa706bc634 (measured on the base 5d3047b with this test's own poses, E2_PRINT=1). Cause: the accumulated halo renderer landings (wetBounce-era through qq v2 + shader-slots + m0-guard) - NOT the cone dedupe: this test sets lampCone 'off' and both hashes were byte-identical pre/post dedupe (measured, runs murchison-...-102332-9545 vs -121608-691b). All functional checks green (crest on/off luminance, occ:false with option off, flat runs:0).
+const PIN_CREST_OFF = '38e1617030a68e25', PIN_FLAT = 'e5fd50e77243dd57';   // measured on the base 5d3047b with this test's own poses (E2_PRINT=1)
 const errors = [];
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });

@@ -19,6 +19,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     return page;
   };
   const page = await open({ width: 1500, height: 950 });
+  const rv = (sel) => page.evaluate((s) => (window.RF && RF.DriveLayout ? RF.DriveLayout.reveal(RF.UI, s) : false), sel);   // 11-03 lead #2 (glm5.2 recipe): flux/driveMore is dead; drive-bar controls live in tabs — assert-reveal the control's tab before interacting
   ok('page identifies as the Flux app on port ' + port + ' (RF.UI, RF.DriveAnim)', await page.evaluate((p) => !!(RF.UI && RF.DriveAnim && RF.Drive.render) && location.port === String(p), port));
   const frames = () => page.evaluate(() => RF.DriveAnim.stats().frames), dist = () => page.evaluate(() => RF.UI.dvAnim.dist), running = () => page.evaluate(() => RF.DriveAnim.stats().running);
   const gpu = await page.evaluate(() => { const c = document.createElement('canvas'), g = c.getContext('webgl2'); return !!g && !!g.getExtension('EXT_color_buffer_float'); });
@@ -30,16 +31,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok('default: paused animation, canvas shown, Play off', st.view === 'anim' && st.gl && !st.playing && st.btn === 'false', JSON.stringify(st));
 
   // 2. animate: frames advance, distance advances, canvas sits over the still picture
-  await page.click('[data-anim="play"]'); await sleep(2500);
+  if (!await rv('[data-anim="play"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="play"]'); await page.click('[data-anim="play"]'); await sleep(2500);
   let f0 = await frames(), d0 = await dist(); await sleep(1000); let f1 = await frames(), d1 = await dist();
   ok('animate: frames keep coming (' + (f1 - f0) + ' in 1 s) and the car moves (' + (d1 - d0).toFixed(1) + ' m at 50 km/h)', f1 - f0 >= 5 && d1 > d0 + 5, 'speed ' + await page.evaluate(() => RF.UI.dvOpts.speed));
   const geo = await page.evaluate(() => { const g = document.querySelector('.drive-gl').getBoundingClientRect(), w = document.getElementById('heat-canvas').getBoundingClientRect(); return { gl: [g.left, g.top, g.right, g.bottom], wrap: [w.left, w.top, w.right, w.bottom], ratio: g.width / g.height }; });
   ok('animated canvas is 16:9 and inside the drive canvas box', Math.abs(geo.ratio - 16 / 9) < 0.02 && geo.gl[0] >= geo.wrap[0] - 1 && geo.gl[2] <= geo.wrap[2] + 1 && geo.gl[1] >= geo.wrap[1] - 1 && geo.gl[3] <= geo.wrap[3] + 1, JSON.stringify(geo));
 
   // 3. pause / play, speed
-  await page.click('[data-anim="play"]'); await sleep(400); f0 = await frames(); d0 = await dist(); await sleep(800); f1 = await frames(); d1 = await dist();
+  if (!await rv('[data-anim="play"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="play"]'); await page.click('[data-anim="play"]'); await sleep(400); f0 = await frames(); d0 = await dist(); await sleep(800); f1 = await frames(); d1 = await dist();
   ok('pause: no frames and no movement for 0.8 s, loop stopped', f1 === f0 && d1 === d0 && !(await running()));
-  await page.click('[data-anim="play"]'); await sleep(300);
+  if (!await rv('[data-anim="play"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="play"]'); await page.click('[data-anim="play"]'); await sleep(300);
   const rate = async (kmh) => { await page.evaluate((v) => { const s = document.querySelector('[data-anim="speed"]'); s.value = v; s.dispatchEvent(new Event('input')); }, kmh); await sleep(200); const a = await dist(), t0 = Date.now(); await sleep(1000); const b = await dist(), t1 = Date.now(); return ((b - a + (b < a ? RF_PERIOD : 0)) / ((t1 - t0) / 1000)) * 3.6; };
   const RF_PERIOD = await page.evaluate(() => RF.DriveAnim.PERIOD);
   const r30 = await rate(30), r90 = await rate(90);
@@ -73,16 +74,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const cnt = (cls) => page.evaluate((cls) => RF.DriveAnim._.V.src.objects.filter((o) => (o.cls || '') === cls).length, cls);
   await page.evaluate(() => { window.__still = 0; if (!RF.Drive.__spied) { RF.Drive.__spied = true; const f = RF.Drive.render; RF.Drive.render = function (o) { if (!o.layer && !(o.scene && o.scene.objects && o.scene.objects.length === 0)) window.__still++; return f.apply(this, arguments); }; } });
   const all = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length), posts = await cnt('post'), crates0 = await cnt('obstacle');
-  await page.click('[data-anim="c-posts"]'); await sleep(500); const noPosts = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length);
+  if (!await rv('[data-anim="c-posts"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="c-posts"]'); await page.click('[data-anim="c-posts"]'); await sleep(500); const noPosts = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length);
   ok('posts toggle: only the delineator posts go (' + all + ' → ' + noPosts + ' objects)', posts > 0 && noPosts === all - posts && (await cnt('post')) === 0);
-  await page.click('[data-anim="c-posts"]'); await page.click('[data-anim="c-obstacle"]'); await sleep(500);
+  if (!await rv('[data-anim="c-posts"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="c-posts"]'); await page.click('[data-anim="c-posts"]'); if (!await rv('[data-anim="c-obstacle"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="c-obstacle"]'); await page.click('[data-anim="c-obstacle"]'); await sleep(500);
   ok('crates toggle: off by default, on adds crates', crates0 === 0 && (await cnt('obstacle')) >= 2, 'crates ' + (await cnt('obstacle')));
-  await page.click('[data-anim="c-obstacle"]'); await sleep(300); await page.click('[data-anim="c-veg"]'); await sleep(300); await page.click('[data-anim="c-veg"]'); await sleep(300);
+  if (!await rv('[data-anim="c-obstacle"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="c-obstacle"]'); await page.click('[data-anim="c-obstacle"]'); await sleep(300); if (!await rv('[data-anim="c-veg"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="c-veg"]'); await page.click('[data-anim="c-veg"]'); await sleep(300); if (!await rv('[data-anim="c-veg"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="c-veg"]'); await page.click('[data-anim="c-veg"]'); await sleep(300);
   ok('posts, trees and crates are animation-only: toggling them did not re-render the still picture', (await page.evaluate(() => window.__still)) === 0, 'still renders ' + await page.evaluate(() => window.__still));
-  for (const k of ['signs', 'people', 'animals', 'veg']) { const before = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length + (RF.DriveAnim._.V.src.chunk ? RF.DriveAnim._.V.src.chunk(0).actors.length : 0)); await page.click('[data-anim="c-' + k + '"]'); await sleep(300); const after = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length + (RF.DriveAnim._.V.src.chunk ? RF.DriveAnim._.V.src.chunk(0).actors.length : 0)); ok('toggle ' + k + ' changes the scenery (' + before + ' → ' + after + ' objects)', after < before); await page.click('[data-anim="c-' + k + '"]'); await sleep(200); }
+  for (const k of ['signs', 'people', 'animals', 'veg']) { const before = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length + (RF.DriveAnim._.V.src.chunk ? RF.DriveAnim._.V.src.chunk(0).actors.length : 0)); if (!await rv('[data-anim="c-' + k + '"]')) throw new Error('11-03 reveal failed (control missing/moved): c-' + k); await page.click('[data-anim="c-' + k + '"]'); await sleep(300); const after = await page.evaluate(() => RF.DriveAnim._.V.src.objects.length + (RF.DriveAnim._.V.src.chunk ? RF.DriveAnim._.V.src.chunk(0).actors.length : 0)); ok('toggle ' + k + ' changes the scenery (' + before + ' → ' + after + ' objects)', after < before); if (!await rv('[data-anim="c-' + k + '"]')) throw new Error('11-03 reveal failed (control missing/moved): c-' + k); await page.click('[data-anim="c-' + k + '"]'); await sleep(200); }
 
   // 6. the large view
-  await page.click('[data-anim="popout"]'); await sleep(2500);
+  if (!await rv('[data-anim="popout"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="popout"]'); await page.click('[data-anim="popout"]'); await sleep(2500);
   const pop = await page.evaluate(() => { const R = (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }, p = document.querySelector('.drive-popout'), wc = document.querySelector('.work-col'), sb = document.getElementById('sidebar'), g = document.querySelector('.drive-gl'); return { pop: R(p), work: R(wc), side: R(sb), gl: R(g), glParent: g.parentElement.className, st: RF.UI.dvAnim, focus: document.activeElement.className, bar: document.querySelector('.drive-tools').parentElement.className, vw: innerWidth, vh: innerHeight }; });
   ok('popout fills the viewport above the sidebar', Math.abs(pop.pop[0]) < 1 && Math.abs(pop.pop[1]) < 1 && Math.abs(pop.pop[2] - pop.vw) < 1 && Math.abs(pop.pop[3] - pop.vh) < 1, JSON.stringify({ pop: pop.pop, side: pop.side }));
   ok('popout holds the animated canvas and the toolbar, bigger than the pane\'s', pop.glParent.split(' ')[0] === 'dp-stage' && pop.bar.split(' ')[0] === 'dp-stage' && (pop.gl[2] - pop.gl[0]) > 800, 'canvas ' + Math.round(pop.gl[2] - pop.gl[0]) + ' px wide');
@@ -98,9 +99,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const back = await page.evaluate(() => ({ pop: !!document.querySelector('.drive-popout'), parent: document.querySelector('.drive-gl').parentElement.className, bar: document.querySelector('.drive-tools').parentElement.className, st: RF.UI.dvAnim.popout, focus: document.activeElement.dataset.anim }));
   ok('Esc closes it, canvas and toolbar go back to the pane, focus returns to the large button', !back.pop && /canvas-wrap/.test(back.parent) && /canvas-wrap/.test(back.bar) && !back.st && back.focus === 'popout', JSON.stringify(back));
   f0 = await frames(); await sleep(700); f1 = await frames(); ok('after closing, the pane animates again', f1 > f0);
-  await page.click('[data-anim="popout"]'); await sleep(1200); await page.click('.dp-close'); await sleep(600);
+  if (!await rv('[data-anim="popout"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="popout"]'); await page.click('[data-anim="popout"]'); await sleep(1200); await page.click('.dp-close'); await sleep(600);
   ok('the close button closes it too', !(await page.evaluate(() => !!document.querySelector('.drive-popout'))));
-  await page.click('[data-anim="popout"]'); await sleep(1200); await setVis('hidden'); await sleep(400); f0 = await frames(); await sleep(600); f1 = await frames();
+  if (!await rv('[data-anim="popout"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="popout"]'); await page.click('[data-anim="popout"]'); await sleep(1200); await setVis('hidden'); await sleep(400); f0 = await frames(); await sleep(600); f1 = await frames();
   ok('popout open in a hidden tab: frames stop', f1 === f0, f0 + ' → ' + f1); await setVis('visible'); await sleep(800);
   await page.evaluate(() => RF.UI.setMode('A')); await sleep(800);
   ok('leaving Spec mode closes the popout', !(await page.evaluate(() => !!document.querySelector('.drive-popout'))));
@@ -110,7 +111,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate(() => { const st = RF.UI.dvAnim; st.view = 'anim'; st.playing = true; RF.UI.redrawSpec(); }); await sleep(800);
   await page.evaluate(() => { window.__n = 0; const f = RF.Drive.render; RF.Drive.render = function (o) { if (!o.layer && !(o.scene && o.scene.objects && o.scene.objects.length === 0)) window.__n++; return f.apply(this, arguments); }; }); await sleep(2000);
   ok('while animating, the whole-picture renderer is not called per frame', (await page.evaluate(() => window.__n)) === 0, 'calls ' + await page.evaluate(() => window.__n));
-  await page.click('[data-anim="play"]'); await sleep(800); f0 = await frames(); await sleep(600); f1 = await frames();
+  if (!await rv('[data-anim="play"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="play"]'); await page.click('[data-anim="play"]'); await sleep(800); f0 = await frames(); await sleep(600); f1 = await frames();
   ok('pause: loop stopped, animated canvas stays visible', f1 === f0 && await page.evaluate(() => !document.querySelector('.drive-gl').hidden && RF.UI.dvAnim.view === 'anim' && !RF.UI.dvAnim.playing));
 
   // 8. parity: an animated frame against the whole picture of the same displaced world (the still renderer)
@@ -138,7 +139,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     ok('GL frame = the shader\'s sum in plain JS (composeCPU), ' + cfg.shape, r.glVsCpu < 5e-3, 'worst relative ' + r.glVsCpu.toExponential(1));
   }
   // 8b. the tone map on the GPU against RF.Drive.tonemap on the same HDR picture (the large view, where the canvas and the trace are the same size)
-  await page.evaluate(() => { RF.UI.dvAnim.view = 'anim'; RF.UI.dvAnim.playing = false; RF.UI.redrawSpec(); }); await sleep(500); await page.click('[data-anim="popout"]'); await sleep(2500);
+  await page.evaluate(() => { RF.UI.dvAnim.view = 'anim'; RF.UI.dvAnim.playing = false; RF.UI.redrawSpec(); }); await sleep(500); if (!await rv('[data-anim="popout"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="popout"]'); await page.click('[data-anim="popout"]'); await sleep(2500);
   for (const gl of [0, 0.3, 1]) {
     const r = await page.evaluate(async (gl) => {
       const ui = RF.UI; ui.dvOpts.glare = gl; ui.dvOpts.ev = 1; ui.dvOpts.expMode = 'fixed'; ui.dvAnim.playing = false; ui.redrawSpec(); await new Promise((r) => setTimeout(r, 1200));

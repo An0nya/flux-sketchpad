@@ -9,6 +9,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
   page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (m) => { if (m.type() === 'error' && !/404/.test(m.text())) errors.push(m.text()); });
   await page.addInitScript(() => { try { localStorage.clear(),localStorage.setItem('flux/driveMore','true'); } catch (e) { /* ignore */ } });
+  const rv = (sel) => page.evaluate((s) => (window.RF && RF.DriveLayout ? RF.DriveLayout.reveal(RF.UI, s) : false), sel);   // 11-03 lead #2 (glm5.2 recipe): flux/driveMore is dead; drive-bar controls live in tabs — assert-reveal the control's tab before interacting
   await page.goto('http://localhost:' + port + '/index.html');
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
   await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 150000 });
@@ -33,7 +34,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await setTex(true);
   // 3. seed: the same seed gives the same scenery, another seed another; typing in the field does it
   const sig = () => page.evaluate(() => JSON.stringify(RF.DriveAnim._.V.src.chunk(1).objects.map((o) => [o.k, +o.x.toFixed(2), +o.y.toFixed(2)]).slice(0, 40)));
-  const s7 = await sig(); await page.fill('[data-anim="seed"]', '8'); await page.press('[data-anim="seed"]', 'Enter'); await sleep(800); const s8 = await sig(); await page.fill('[data-anim="seed"]', '7'); await page.press('[data-anim="seed"]', 'Enter'); await sleep(800); const s7b = await sig();
+  const s7 = await sig(); await page.evaluate(() => { RF.UI.dvOpts.oncoming = true; RF.UI.redrawSpec(); }); await sleep(600);   // 11-03: the seed field is disabled unless traffic/tiles/wild-road (drive-anim.js:2643) and this test sets tiles=false — enable traffic so the fill can act
+  if (!await rv('[data-anim="seed"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="seed"]'); await page.fill('[data-anim="seed"]', '8'); if (!await rv('[data-anim="seed"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="seed"]'); await page.press('[data-anim="seed"]', 'Enter'); await sleep(800); const s8 = await sig(); if (!await rv('[data-anim="seed"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="seed"]'); await page.fill('[data-anim="seed"]', '7'); if (!await rv('[data-anim="seed"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="seed"]'); await page.press('[data-anim="seed"]', 'Enter'); await sleep(800); const s7b = await sig();
   ok('seed field: 7 → 8 changes the scenery, back to 7 restores it exactly; the seed is remembered', s7 !== s8 && s7 === s7b && await page.evaluate(() => JSON.parse(localStorage.getItem('flux/driveView')).seed === 7));
   // 4. markers are in the scenery, lit by the beam (they appear in the object layer) and cover nothing
   await page.evaluate(() => { RF.UI.dvOpts.rpm = true; RF.UI.redrawSpec(); }); await sleep(1000);
@@ -48,7 +50,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // 6. US: the broken centre line option (the US preset's real passing-zone marking) gives the ground a moving stripe
   const preset0 = await page.evaluate(() => RF.UI.store.scene.modeD.preset); await page.evaluate(() => { RF.UI.store.scene.modeD.preset = 'fmvss-lb2m'; RF.UI.dvOpts.cline = 'solid'; RF.UI.dvAnim.playing = false; RF.UI.redrawSpec(); }); await sleep(1500);
   const solid = await page.evaluate(() => ({ pat: RF.DriveAnim._.V.g.pat, dis: document.querySelector('[data-anim="cline"]').disabled }));
-  await page.click('[data-anim="cline"]'); await sleep(1500);
+  if (!await rv('[data-anim="cline"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="cline"]'); await page.click('[data-anim="cline"]'); await sleep(1500);
   const brk = await page.evaluate(() => ({ pat: RF.DriveAnim._.V.g.pat, B: !!RF.DriveAnim._.V.g.B, mat: RF.DriveAnim._.V.src.markings.filter((m) => m.pat).map((m) => m.mat) }));
   ok('US preset: default centre line is double solid (no stripe layer); the option gives one broken yellow line with a moving stripe layer', solid.pat === null && !solid.dis && brk.pat && brk.pat.period === 12 && brk.B && brk.mat.join() === 'yellow-paint', JSON.stringify(brk));
   await page.evaluate((p) => { RF.UI.store.scene.modeD.preset = p; RF.UI.dvOpts.cline = 'solid'; RF.UI.redrawSpec(); }, preset0); await sleep(1000);

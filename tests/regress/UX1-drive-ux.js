@@ -54,7 +54,7 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
       RF.UI.dvOpts.speed = 130; st.camera = null; a.advanceCamera(st, .05); a.frame();
       return { initial, limited: st.camera.v * 3.6, label: RF.UI.driveBar.querySelector('[data-anim=speedlab]').textContent, aim: RF.UI.driveBar.querySelector('[data-dv-aim]').textContent };
     });
-    ok('UX1 toggling logic starts at speed; actual limit appears by slider', Math.abs(speed.initial - 50) < .01 && Math.abs(speed.limited - 80) < .01 && /130 km\/h · actual 80$/.test(speed.label), speed);
+    ok('UX1 toggling logic starts at speed; actual limit appears by slider', Math.abs(speed.initial - 50) < .01 && Math.abs(speed.limited - 80) < .01 && /130 km\/h · actual 80 km\/h$/.test(speed.label), speed);
     ok('UX1 drive bar names the aim used by both beams', /Our beam \+ symmetric oncoming: aimed per/.test(speed.aim), speed.aim);
     await page.locator('[data-game=toggle]').click();
     ok('UX1 lane-clear setting defaults on', await page.locator('[data-game=clear-lane]').isChecked());

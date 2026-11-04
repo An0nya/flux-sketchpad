@@ -576,6 +576,7 @@ body.solving .canvas-wrap:has(> #heat-canvas)::after { content: 'solving…'; po
 #ab-reset-drive { display:none; font-size:12px; }
 body.mode-D #ab-reset-drive { display:inline-block; }
 .ab-tools details[open] { flex-basis:100%; max-width:none; }
+.ab-tools details:not([open]) > :not(summary) { display: none; }   /* a closed Solve cache disclosure hides its labels, note and buttons (they rendered despite open:false, overflowing the result pane) */
 .ab-tools details label { display:block; margin:6px 0; }
 #ab-dialog { width:min(1100px, 94vw); max-height:90vh; overflow:auto; color:var(--text, #ddd); background:var(--panel, #171d27); border:1px solid #607087; border-radius:8px; padding:16px; }
 #ab-dialog::backdrop { background:#0009; }

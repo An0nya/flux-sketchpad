@@ -9,6 +9,7 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
   try {
     const page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
     page.on('pageerror', (e) => errors.push(String(e))); await page.addInitScript(() => localStorage.clear());
+  const rv = (sel) => page.evaluate((s) => (window.RF && RF.DriveLayout ? RF.DriveLayout.reveal(RF.UI, s) : false), sel);   // 11-03 lead #2 (glm5.2 recipe): flux/driveMore is dead; drive-bar controls live in tabs — assert-reveal the control's tab before interacting
     await page.goto('http://localhost:' + port + '/index.html');
     await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
     const identity = await page.evaluate((p) => !!RF.UI && location.port === String(p), port); ok('DP RF.UI and expected port', identity); if (!identity) throw Error('wrong page');
@@ -16,10 +17,10 @@ let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ')
     const fixture = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp.json'), 'utf8');
     await page.evaluate((s) => { RF.UI.loadScene(RF.State.deserialize(s), 'DP fixture'); RF.UI.setMode('D'); }, fixture);
     await page.waitForFunction(() => { const u = RF.UI; return !u.solving && u.run && u.run.ctx.done && u.spec && u.spec.ctx === u.run.ctx && u.spec.full && u.spec.ev; }, null, { timeout: 180000 });
-    await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false }); Object.assign(u.dvOpts, { mt: false, tiles: true, seed: 7, scene: 'road', oncoming: true, preceding: true, trafficDensity: 2 }); u.redrawSpec(); document.querySelector('.drive-more').open = true; RF.DriveAnim._.V.pinSS = 2; });
+    await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false }); Object.assign(u.dvOpts, { mt: false, gpuRenderer: false, tiles: true, seed: 7, scene: 'road', oncoming: true, preceding: true, trafficDensity: 2 }); u.redrawSpec(); RF.DriveAnim._.V.pinSS = 2; });
     const saved = await page.evaluate(() => RF.State.serialize(RF.UI.store.scene));
     ok('DP cache defaults off', await page.locator('[data-anim=tile-cache]').getAttribute('aria-pressed') === 'false');
-    await page.locator('[data-anim=tile-cache]').click();
+    if (!await rv('[data-anim=tile-cache]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim=tile-cache]'); await page.locator('[data-anim=tile-cache]').click();
     ok('DP cache toggle enables persisted view preference', await page.evaluate(() => RF.UI.dvOpts.tileCache === true && JSON.parse(localStorage.getItem('flux/driveView')).tileCache === true && !!RF.DriveAnim._.V.src.tiles.groundCache));
     for (const kind of ['150R', 'intersection', 't-junction', 'urban']) {
       const result = await page.evaluate(async (kind) => {

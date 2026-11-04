@@ -12,6 +12,7 @@ const load = async (page) => {
 const lay = (page) => page.evaluate(() => ({ mode: RF.UI.store.scene.mode, l: JSON.stringify(RF.UI.layout), ed: document.querySelector('.editor-pane').className, rs: document.querySelector('.result-pane').className }));
 (async () => {
   const browser = await pw.chromium.launch(), page = await browser.newPage({ viewport: { width: 1500, height: 950 } }); page.on('pageerror', (e) => ok('no page error', false, String(e)));
+  await page.addInitScript(() => { try { localStorage.setItem('flux/guideSeen', '1'); } catch (e) { /* ignore */ } });   // dismiss the "Getting started" guide so it does not intercept clicks (js/ui.js:2054)
   await load(page);
   ok('page identifies as Flux, Paint mode', (await lay(page)).mode === 'A');
   await page.evaluate(() => { const l = RF.UI.layout; l.split = 0.55; l.rowSplit = 0.4; l.collapsed.optics = true; RF.UI.layoutGrid(); localStorage.setItem('flux/layout', JSON.stringify(l)); }); await page.waitForTimeout(500);

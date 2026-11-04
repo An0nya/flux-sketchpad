@@ -38,7 +38,14 @@ ok('spec-ui select exists and applies the map via setDV', ui.includes("dvSelect(
 ok('label sync recomputes the match (trafficLightingOf)', ui.includes("else if (k === 'trafficLighting') { b.value = RF.Options.trafficLightingOf(o); }"));
 ok('both picture-cache keys carry it', ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.trafficLighting')).length === 2);
 const lay = fs.readFileSync(path.join(ROOT, 'js/drive-layout.js'), 'utf8');
-ok('layout row carries the control', lay.includes("dv('trafficLighting')"));
+// 11-02 merge-review follow-up (qwen): the old whole-text includes() passed even when the selector sat
+// as an ignored 5th row element (place() drops it) — assert the EXECUTED row shape instead
+require(path.join(ROOT, 'js', 'drive-layout.js'));   // IIFE: sets globalThis.RF.DriveLayout
+const layRows = globalThis.RF && RF.DriveLayout ? RF.DriveLayout.LAYOUT : null;
+ok('every LAYOUT row has exactly 4 elements [tab, sub, title, sels] (a 5th is silently dropped by place())', !!layRows && layRows.every((r) => Array.isArray(r) && r.length === 4), layRows && layRows.filter((r) => r.length !== 4).map((r) => [r.length, r[2]]));
+const lampsRow = layRows ? layRows.find((r) => r[2] === 'Street lamps') : null;
+ok('Street lamps row carries trafficLighting INSIDE its selector list', !!lampsRow && lampsRow[3].includes('[data-dv="trafficLighting"]'), lampsRow && lampsRow[3]);
+ok('raw Street lamps row text ends with the selector list closed (]], not ], dv(...))', /\['lighting', 'lamps', 'Street lamps', \[.*\]\],\s*$/.test(lay.split('\n').find((l) => l.includes("'Street lamps'")) || ''));
 ok('gate + all registered', fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'utf8').includes("'frenchie-traffic-lighting'") && fs.readFileSync(path.join(ROOT, 'tests/all.js'), 'utf8').includes('frenchie-traffic-lighting'));
 
 console.log('\n' + pass + ' checks, ' + fail + ' failed');

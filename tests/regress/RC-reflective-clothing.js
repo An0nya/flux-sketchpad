@@ -59,6 +59,10 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   // Node layout: 12 floats per node, material id in slot 11. A person has 15 nodes without tape and 23 with (8 tape nodes: 2 torso bands,
   // 2 forearm cuffs, 2 shin bands, 2 shoe patches). MAX_NODES is 32.
   const det = await page.evaluate(() => {
+    // The same clothing share as the data half above (PED_FIXED_KINDS -> strip share 0.5). Without it this half
+    // builds with the app default (PED_STRIP_SHARE 0.12), where seed 7 puts the tape on nobody, so the two
+    // halves of the test disagree about who wears it (js/drive-scenes.js:57/117).
+    globalThis.PED_FIXED_KINDS = true;
     const D = RF.Drive, tape = D.MAT_KEYS.indexOf('hivis-tape');
     const build = (m, on) => D.Models.actors(D.buildScene('road', { Lw: 3.5, A: null, us: true, seed: 7, reflectiveClothing: m }, { people: true, animals: false, signs: false, posts: false, veg: false }).objects, on);   // the detailed swap is actors() (what drive-anim's source() calls)
     const persons = (objs) => objs.filter((o) => o.k === 'sdf' && o.cls === 'person').map((o) => {
@@ -70,6 +74,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     for (const m of ['none', 'mix', 'small', 'vest']) out[m] = persons(build(m, true));
     out.smallOff = persons(build('small', false));
     out.smallOnAgain = persons(build('small', true));
+    globalThis.PED_FIXED_KINDS = false;
     return out;
   });
   console.log('detailed: ' + JSON.stringify(det));

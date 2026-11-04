@@ -17,7 +17,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // hashes identical to HEAD 0e77d52 before and after a traffic shuffle (brief REVIEW-2026-10-28-presets.md, step C).
 // OVL-RIGHT (2026-10-29): re-baselined: wide overlay moved the collapsed right panel (Details | Timings) to the right edge and lets both
 // panels shrink in a small host; the element screenshot holds those panels. Proof: with only those 3 CSS lines reverted the OLD pin passes.
-const OLD_CLEAR = process.env.FG_OLD_CLEAR || '9c6980768743c538cf430b81476f2a9a0cf7403713509593f2d923c96808297d';   // before OVL-RIGHT: 0517faf0...; before UI step C: b72a6a1e...; before SPEED0: 23802573...
+// RE-PIN 11-03 (murchison, maston cluster handoff per cyrus 16:55, rule 23): was 9c6980768743c538... (the FG value; set at the OVL-RIGHT re-baseline). Cause: the accumulated renderer landings 10-30 -> 11-03, through qq v2 + shader-slots; FG and SC measure the SAME clear frame and get the SAME new hash (ab13dbfc...) - one pin, two tests. Values byte-identical across Claude's 11-03b list and my run on the current tree (stable; NOT moved by m0-guard or cone-dedupe - measured pre/post). NOTE: the separate CPU/GPU-parity FAIL (8 buildings sub-checks) is nemo's C4 / le-chonk's P1 item - untouched here.
+const OLD_CLEAR = process.env.FG_OLD_CLEAR || 'ab13dbfc24c6a070c202b2e2aec4da280647af5c2d4ef81ba57c3f33811b083e';   // before OVL-RIGHT: 0517faf0...; before UI step C: b72a6a1e...; before SPEED0: 23802573...
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
   return page.evaluate(async (b64) => {

@@ -13,7 +13,7 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   await page.waitForFunction(()=>{const u=RF.UI;return !u.solving&&u.run&&u.run.ctx.done&&u.spec&&u.spec.ctx===u.run.ctx&&u.spec.full&&u.spec.ev;},null,{timeout:180000});
   await page.evaluate(()=>{RF.UI.setDisplay('drive');RF.UI.setPane('result','activate');});
   ok('MG2 mode defaults OFF',await page.evaluate(()=>!RF.UI.dvAnim.gameMode));
-  const before=await page.evaluate(()=>{const u=RF.UI,_=RF.DriveAnim._;Object.assign(u.dvOpts,{scene:'road',tiles:false,trafficLogic:true,oncoming:false,preceding:false,mt:true,seed:7,speed:50});Object.assign(u.dvAnim,{view:'anim',playing:false,dist:40,t:3,total:40,camera:{x:40,v:10}});u.redrawSpec();_.V.pinSS=1;_.frame();window.mgBefore=Array.from(_.readHdr());return {options:JSON.stringify(u.dvOpts),scene:RF.State.serialize(u.store.scene),state:{dist:u.dvAnim.dist,t:u.dvAnim.t,total:u.dvAnim.total}};});
+  const before=await page.evaluate(()=>{const u=RF.UI,_=RF.DriveAnim._;Object.assign(u.dvOpts,{scene:'road',tiles:false,trafficLogic:true,oncoming:false,preceding:false,mt:true,seed:7,speed:50});Object.assign(u.dvAnim,{view:'anim',playing:false,dist:40,t:3,total:40,camera:{x:40,v:10}});u.redrawSpec();_.V.pinSS=1;_.frame();window.mgBefore=Array.from(_.readHdr());return {options:JSON.stringify(u.dvOpts),scene:RF.State.serialize(u.store.scene),state:{dist:u.dvAnim.dist,t:u.dvAnim.t,total:u.dvAnim.total},size:[_.V.gl.cw,_.V.gl.ch]};});
   await page.click('[data-game=toggle]');
   ok('MG2 visible rules default; original rules selectable',await page.evaluate(()=>document.querySelector('[data-game=rules]').value==='visible'&&!!document.querySelector('[data-game=rules] option[value=legacy]')));
   await page.fill('[data-game=speed]','75');await page.selectOption('[data-game=wet]','wet');await page.uncheck('[data-game=reseed]');await page.fill('[data-game=seed]','19');await page.click('[data-game=start]');
@@ -50,8 +50,18 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   const cardFit=await page.evaluate(()=>{const c=document.querySelector('[data-game=card]'),p=c.closest('.drive-below');p.scrollTop=p.scrollHeight;const r=p.getBoundingClientRect(),host=p.parentElement.getBoundingClientRect(),tail=c.lastChild;return {fits:r.top>=host.top&&r.bottom<=host.bottom+1&&r.bottom<=innerHeight,scrollable:p.scrollHeight>=p.clientHeight,atBottom:p.scrollTop+p.clientHeight>=p.scrollHeight-1};});
   ok('MG2 desktop end card dock is within viewport; its last line is scroll-reachable',cardFit.fits&&cardFit.scrollable&&cardFit.atBottom,cardFit);
   await page.click('[data-game=exit]');
-  const restored=await page.evaluate(()=>{const u=RF.UI,_=RF.DriveAnim._;_.frame();const hdr=_.readHdr();return {options:JSON.stringify(u.dvOpts),scene:RF.State.serialize(u.store.scene),state:{dist:u.dvAnim.dist,t:u.dvAnim.t,total:u.dvAnim.total},identical:hdr.length===window.mgBefore.length&&hdr.every((v,i)=>v===window.mgBefore[i]),off:!u.dvAnim.gameMode&&!u.dvAnim.game};});
-  ok('MG exit restores normal options, camera state, saved scene and exact HDR',restored.off&&restored.options===before.options&&restored.scene===before.scene&&JSON.stringify(restored.state)===JSON.stringify(before.state)&&restored.identical,{before,restored});
+  // Two HDRs can only be compared at the same canvas size: the renderer sizes the HDR with the canvas, and the
+  // 390px round trip leaves the canvas at another size for a while. Wait for the baseline's size to come back.
+  // The drive canvas is sized by its parent (js/drive-anim.js:1527-1528) and the 390px round trip leaves the
+  // layout at another size (658x370 at the baseline, 844x475 after the exit), so the two HDRs have different
+  // lengths and can never be equal. Pin the stage to the baseline's size for the comparison, then let the
+  // layout have it back.
+  await page.evaluate(s=>{const c=RF.DriveAnim._.V.canvas;for(const e of new Set([c.parentElement,c.closest('.canvas-wrap, .dp-stage')].filter(Boolean))){e.dataset.mgFlex=e.style.flex;e.dataset.mgW=e.style.width;e.dataset.mgH=e.style.height;e.style.flex='none';e.style.width=s[0]+'px';e.style.height=s[1]+'px';}window.dispatchEvent(new Event('resize'));},before.size);
+  await page.waitForTimeout(800);await page.evaluate(()=>{RF.UI.redrawSpec();window.dispatchEvent(new Event('resize'));});await page.waitForTimeout(800);
+  const sameSize=await page.waitForFunction(s=>{const g=RF.DriveAnim._.V.gl;return g.cw===s[0]&&g.ch===s[1];},before.size,{timeout:15000}).then(()=>true).catch(()=>false);
+  const restored=await page.evaluate(ss=>{const u=RF.UI,_=RF.DriveAnim._;_.frame();const hdr=_.readHdr();return {options:JSON.stringify(u.dvOpts),scene:RF.State.serialize(u.store.scene),state:{dist:u.dvAnim.dist,t:u.dvAnim.t,total:u.dvAnim.total},identical:hdr.length===window.mgBefore.length&&hdr.every((v,i)=>v===window.mgBefore[i]),off:!u.dvAnim.gameMode&&!u.dvAnim.game,size:[_.V.gl.cw,_.V.gl.ch],len:hdr.length,sameSize:ss};},sameSize);
+  await page.evaluate(()=>{const c=RF.DriveAnim._.V.canvas;for(const e of new Set([c.parentElement,c.closest('.canvas-wrap, .dp-stage')].filter(Boolean))){e.style.flex=e.dataset.mgFlex||'';e.style.width=e.dataset.mgW||'';e.style.height=e.dataset.mgH||'';}window.dispatchEvent(new Event('resize'));});
+  ok('MG exit restores normal options, camera state, saved scene and exact HDR',restored.off&&restored.options===before.options&&restored.scene===before.scene&&JSON.stringify(restored.state)===JSON.stringify(before.state)&&restored.identical&&restored.sameSize,{before,restored});
   // Compare the actual default and saved high-beam LUTs on identical frozen targets through GPU composition/readback.
   // MG2-test: real moving encounters (spawn, route, street lamps, oncoming glare, paired frames) instead of a frozen lane-centre target; mean over seeds.
   const reach=async(name)=>{

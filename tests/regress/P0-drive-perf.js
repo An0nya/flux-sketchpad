@@ -21,7 +21,7 @@ const ok = (n,c,d) => { console.log((c?'[PASS] ':'[FAIL] ')+n+(d?' — '+JSON.st
     await (await page.evaluate((x)=>RF.DriveLayout.reveal(RF.UI,x),'[data-anim=fps-counter]'),page.locator('[data-anim=fps-counter]')).click();
     ok('P0 counter remembered in drive preferences',await page.evaluate(()=>RF.UI.dvOpts.fpsCounter&&JSON.parse(localStorage.getItem('flux/driveView')).fpsCounter));
     await (await page.evaluate((x)=>RF.DriveLayout.reveal(RF.UI,x),'[data-anim=debug-timings]'),page.locator('[data-anim=debug-timings]')).click();
-    ok('P0 debug timings remembered separately',await page.evaluate(()=>RF.UI.dvOpts.debugTimings&&JSON.parse(localStorage.getItem('flux/driveView')).debugTimings));
+    ok('P0 debug timings remembered separately',await page.evaluate(()=>RF.UI.dvOpts.debugTimings&&JSON.parse(localStorage.getItem('flux/driveView')).debugTimings),await page.evaluate(()=>{const s=localStorage.getItem('flux/driveView');return {opt:RF.UI.dvOpts.debugTimings,stored:s?JSON.parse(s).debugTimings:null,revealClaimsTab:!!RF.UI.driveLayout.noWake};}));
     const parity=await page.evaluate(()=>{const u=RF.UI,a=RF.DriveAnim._;const draw=on=>{u.dvOpts.debugTimings=on;u.redrawSpec();a.frame();return {cpu:new Float32Array(a.V.rgba),canvas:a.readCanvas()};};const off=draw(false),on=draw(true);return {cpu:off.cpu.every((v,i)=>v===on.cpu[i]),canvas:off.canvas.every((v,i)=>v===on.canvas[i]),stats:RF.DriveAnim.stats()};});
     ok('P0 profiler preserves CPU and canvas pixels',parity.cpu&&parity.canvas);
     ok('P0 stats exposes sampled trace and CPU GL breakdown',parity.stats.lastFrame&&parity.stats.breakdown.sampledRays>0&&parity.stats.breakdown.gpuMs===null&&parity.stats.breakdown.components.finalVeilMs.ms>=0,parity.stats.breakdown);

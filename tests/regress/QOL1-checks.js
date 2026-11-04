@@ -31,7 +31,7 @@ else window.qol1Checks = async function (mode, expectedPort) {
       document.querySelector('#preset-confirm .primary').click(); await wait(() => ui.store.scene.name === (name === 'starter-low' ? 'Starter low beam' : 'Starter high beam'));
       await wait(() => ui.run && ui.run.ctx.done && ui.spec && ui.spec.ctx === ui.run.ctx && ui.spec.full);
       ui.setDisplay('drive'); ui.setPane('result', 'activate'); await wait(() => RF.DriveAnim._.V.info && ui.driveShown);
-      ok(name + ' loads saved optics and renders Drive without solving', ui.store.scene.groups.A.surfaces.length > 0 && !ui.solveSeq && ui.driveShown.res.rgb.some(v => v > 0), { facets: ui.store.scene.groups.A.surfaces.length, verdict: ui.spec.ev.verdict });
+      ok(name + ' loads saved optics and renders Drive without solving', ui.store.scene.groups.A.surfaces.length > 0 && !ui.solveSeq && !!ui.driveShown && !!ui.driveShown.res && !!ui.driveShown.res.rgb && ui.driveShown.res.rgb.some(v => v > 0), { facets: ui.store.scene.groups.A.surfaces.length, verdict: (ui.spec && ui.spec.ev && ui.spec.ev.verdict) });
     }
     const original = await RF.StarterLamps.load('starter-low'); ui.loadScene(original.scene, 'QOL1 player low'); await wait(() => ui.run && ui.run.ctx.done && ui.spec && ui.spec.ctx === ui.run.ctx && ui.spec.full); ui.setDisplay('drive');
     const before = RF.State.serialize(ui.store.scene); document.querySelector('[data-game=toggle]').click();

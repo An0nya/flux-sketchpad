@@ -4,8 +4,9 @@
 // the traffic range select at density 3 on the road scene shows more cars at 600 m than at 230 m; the eye stays fixed at 45 and 60 (the telephoto
 // dolly was removed, so there is no dolly button); no page or console errors (favicon.ico 404 ignored).
 const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync('npm root -g').toString().trim() + '/playwright'));
+const os = require('os');
 const port = +(process.argv[2] || 8943);
-const REPORTS = process.env.DC_REPORTS || '/Users/anya/Projects/flux-sketchpad/.claude/briefs/reports';
+const REPORTS = process.env.DC_REPORTS || os.tmpdir();
 let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : '  — ' + JSON.stringify(detail))); if (!cond) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {

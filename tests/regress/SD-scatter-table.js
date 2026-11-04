@@ -20,7 +20,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // hashes identical to HEAD 0e77d52 before and after a traffic shuffle (brief REVIEW-2026-10-28-presets.md, step C).
 // OVL-RIGHT (2026-10-29): re-baselined: wide overlay moved the collapsed right panel (Details | Timings) to the right edge and lets both
 // panels shrink in a small host; the element screenshot holds those panels. Proof: with only those 3 CSS lines reverted the OLD pin passes.
-const DIRECT16 = process.env.SD_DIRECT16 || '011cb57875673c226c308094a3826fd3b81ae5158a8294900b1ac416479c5a6b';   // before OVL-RIGHT: 14a5e025...; before UI step C: 883d5915...; before SPEED0: 35206d78...
+// RE-PIN 11-03 (murchison, maston cluster handoff per cyrus 16:55, rule 23): was 011cb57875673c22... (captured on main 0f47b41; set at the OVL-RIGHT re-baseline). Cause: the accumulated renderer landings 10-30 -> 11-03 (first failing in the 11-03 approval run), through qq v2 + shader-slots. Values byte-identical across Claude's 11-03b list and my run on the current tree (stable; NOT moved by m0-guard or cone-dedupe - measured pre/post). Both the DIRECT16 and back-to-direct checks use this constant; 23/25 checks pass.
+const DIRECT16 = process.env.SD_DIRECT16 || '2fb1b862caba5ec79a73f0603cef8f0b19602ddf25b01f48072d8e457fe65872';   // RE-PIN 11-04 (le-chonk, C4 fix): was e257d967... (murchison's 11-03 re-pin); cause: objects.js:86 facade-edge constant restored to wall-light/wall — buildings in frame move. Got-value from gate run le-chonk-20261103-173934-dc93 (patched tree).
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
   return page.evaluate(async (b64) => {

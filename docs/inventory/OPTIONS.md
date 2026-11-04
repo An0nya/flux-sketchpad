@@ -145,20 +145,20 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `tileCache` | profile | road | free | true | needs `tilesOn` [disabled] | drive-anim.js | boolean | js/drive-anim.js:1615 button | Disabled unless o.tiles (js/drive-anim.js:1880) - note the street-lamp control also allows the pass but this one does not | Free (reuses ground samples) | none | drive-anim:57/1153/1154/1615(5) | T/drive-perf:34 T/drive-polish:7 T/fog[G]:19 R/DP-drive-polish:21 T/scatter[G]:20 T/wet-ggx[G]:13 T/wetness[G]:14 |
 | `mountainPass` | profile | road | scene-regenerate | false | - | drive-anim.js | boolean | js/spec-ui.js:921 (scene select value '__pass') | Rendered as pass only when also V.three: p.touge = mountainPass && V.three (js/drive-anim.js:1159); CPU fallback is flat and says so (js/drive-anim.js:2182). See TOUGE.md | Scene regenerate + different render path | none | drive-anim:33/35/57/1048(14) spec-ui:921/1014(2) | T/ahb-fix:29 T/drive-touge:30 T/game-curves:40 R/CD-controls-dedupe[G]:37 R/SB1-studs-everywhere[G]:22 T/scene-snapshot:41 T/touge-page:34 |
 | `elevatedView` | profile | road | scene-regenerate | false | needs `gpu` [tooltip] | drive-anim.js, drive-touge.js, drive-three.js | - | - | - | - | - | - | `tests/le-chonk-elevated.js` |
-| `endlessPreset` | profile | road | scene-regenerate | "off" | needs `tiles` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-presets.js` |
-| `endlessPresetCustom` | profile | road | scene-regenerate | "" | needs `tiles` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-presets.js` |
-| `tileTerrain` | profile | road | scene-regenerate | false | needs `tiles` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-verge.js` |
-| `multilaneRoad` | profile | road | scene-regenerate | false | needs `tiles` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-multilane.js` |
-| `endlessTunnel` | profile | road | scene-regenerate | false | needs `tiles` [undefined], `endlessRoad` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-tunnel.js` |
-| `endlessCrossing` | profile | road | scene-regenerate | false | needs `tiles` [undefined], `endlessRoad` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-crossing.js` |
-| `junctionGantries` | profile | scenery | scene-regenerate | false | needs `tiles` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/scene-digest.js` |
+| `endlessPreset` | profile | road | scene-regenerate | "off" | needs `tiles` [none] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-presets.js` |
+| `endlessPresetCustom` | profile | road | scene-regenerate | "" | needs `tiles` [none] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-presets.js` |
+| `tileTerrain` | profile | road | scene-regenerate | false | needs `tiles` [none] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-verge.js` |
+| `multilaneRoad` | profile | road | scene-regenerate | false | needs `tiles` [none] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-multilane.js` |
+| `endlessTunnel` | profile | road | scene-regenerate | false | needs `tiles` [none], `endlessRoad` [none] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-tunnel.js` |
+| `endlessCrossing` | profile | road | scene-regenerate | false | needs `tiles` [none], `endlessRoad` [none] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-crossing.js` |
+| `junctionGantries` | profile | scenery | scene-regenerate | false | needs `tiles` [none] | drive-anim.js | - | - | - | - | - | - | `tests/scene-digest.js` |
 | `cabinView` | profile | view | free | false | - | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-cabin.js` |
-| `driftMode` | profile | view | scene-regenerate | false | needs `tiles` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-cabin.js` |
-| `driftDynamics` | profile | view | scene-regenerate | false | needs `tiles` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/step5-drift-dynamics.js` |
-| `driftAfs` | profile | view | scene-regenerate | false | needs `tiles` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/step5-drift-dynamics.js` |
-| `yawSmooth` | profile | view | scene-regenerate | false | needs `tiles` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-yaw.js` |
-| `cabinStyle` | profile | view | free | "modern" | needs `cabinView` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-cabin.js` |
-| `driftCabin` | profile | view | per-frame-gpu | false | needs `tiles` [undefined], `cabinView` [undefined] | drive-anim.js | - | - | - | - | - | - | `tests/step5-drift-dynamics.js` |
+| `driftMode` | profile | view | scene-regenerate | false | needs `tiles` [none] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-cabin.js` |
+| `driftDynamics` | profile | view | scene-regenerate | false | needs `tiles` [none] | drive-anim.js | - | - | - | - | - | - | `tests/step5-drift-dynamics.js` |
+| `driftAfs` | profile | view | scene-regenerate | false | needs `tiles` [none] | drive-anim.js | - | - | - | - | - | - | `tests/step5-drift-dynamics.js` |
+| `yawSmooth` | profile | view | scene-regenerate | false | needs `tiles` [none] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-yaw.js` |
+| `cabinStyle` | profile | view | free | "modern" | needs `cabinView` [none] | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-cabin.js` |
+| `driftCabin` | profile | view | per-frame-gpu | false | needs `tiles` [none], `cabinView` [none] | drive-anim.js | - | - | - | - | - | - | `tests/step5-drift-dynamics.js` |
 | `cabinLight` | profile | view | scene-regenerate | false | - | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-cabin.js` |
 | `imperialUnits` | profile | view | free | false | - | drive-anim.js | - | - | - | - | - | - | `tests/le-chonk-units.js` |
 | `gpuRenderer` | profile | performance | renderer-swap | true | - | drive-anim.js | boolean | js/drive-anim.js:1601 button | On with a failure: button shows data-failed; clicking clears failure and retries (js/drive-anim.js:1601). file: protocol forces fallback (js/drive-anim.js:2154). Off disables dozens of GPU-only options silently (halos, lampHalos, meshes) | Renderer swap (dispose/create three) | none | drive-anim:1601/1855/2137/2148(8) spec-ui:1103/1107(2) | T/drive-three-page:12 T/p2-drive-lighting-page:10 R/BA5-gpu-atlas[G]:75 R/BT-traffic-beams[G]:76 R/CPU-FALLBACK-PAUSE:22 R/CT-cct:23 R/D1-drive-anim-2:21 R/D2-drive-worker:24 ... (+4) |
@@ -246,6 +246,7 @@ Each rule is one condition on other options (or on the render context), with the
 | `gpu` | context renderer = "gpu" | GPU drive view only; the CPU renderer ignores it | tooltip | `spec-ui.js GPU drive view only ~L949` | lampCone, haloPolarBand, crestOcclusion, haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, haloCrossingRefine, haloRefineNeighbour, haloMoment, haloAutoRange, haloNearSub, haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, trafficShadowObjects, trafficShadowSoft, scatterCull, scatterCullEps, elevatedView, haloWidthStep |
 | `cpuRenderer` | context renderer = "cpu" | the worker threads render the CPU view; the GPU view ignores them | none | `drive-anim.js const want = !V.three ~L1861` | mt |
 | `tilesOn` | tiles = true | needs route tiles on (the pass does not allow it) | disabled | `drive-anim.js "tile-cache"]').disabled = !o.tiles ~L2661` | endlessRoad, tileCache |
+| `tiles` | tiles = true | needs route tiles on (the prototype endless-road, drift and cabin options are silent no-ops without tiles) | none | `drive-anim.js if (o.tiles) src.tiles ~L59` | endlessPreset, endlessPresetCustom, tileTerrain, multilaneRoad, endlessTunnel, endlessCrossing, junctionGantries, driftMode, driftDynamics, driftAfs, yawSmooth, driftCabin |
 | `tilesOrPass` | (tiles = true or mountainPass = true) | needs route tiles or the mountain pass | disabled | `drive-anim.js "street-lamps"]').disabled ~L2662` | streetLamps |
 | `lampsPresent` | (streetLamps is not "off" and (tiles = true or mountainPass = true)) | needs street lamps in the scene (tiles or pass, lamps not off) | none | `drive-anim.js lamps: o.streetLamps ~L59` | lampCone, lampRoad |
 | `lampDistUsed` | streetLamps is not "off" | the table sizes the street lamps' glare, the lamp cone and the road lamp light, so it matters only with street lamps on | none | `drive-three.js lampRoadOn.value ~L367` | lampClass |
@@ -264,6 +265,8 @@ Each rule is one condition on other options (or on the render context), with the
 | `passHalo` | mountainPass = true | mountain pass only: the occluder is the pass ribbon; on the flat road the option does nothing | none | `drive-three.js p.look.crestOcclusion === 'on' ~L378` | crestOcclusion, trafficShadows, shadowRes, trafficShadowRoad, trafficShadowObjects, trafficShadowSoft |
 | `mountainPassPeople` | mountainPass = true | the pass builds no people | none | `drive-scenes.js FEATURE_PRESETS ~L172` | people |
 | `cityScene` | scene = "city" | leafy foliage is ignored in the city | none | `drive-anim.js name === 'road' \|\| name === 'forest' ~L35` | leafyFoliage |
+| `endlessRoad` | endlessRoad = true | needs the endless biome road on (tunnels and crossings are seeded into endless tiles) | none | `drive-anim.js o.endlessRoad ? endlessTile ~L3024` | endlessTunnel, endlessCrossing |
+| `cabinView` | cabinView = true | needs the in-cabin view on (the dashboard style and drift cabin ride on its overlay) | none | `drive-anim.js drawCabin(V, o.cabinView ~L1783` | cabinStyle, driftCabin |
 <!-- END GENERATED rules -->
 
 ## Options locked behind other options (OBSERVED from the sync loops spec-ui.js:1012-1051 and drive-anim.js:1845-1892, unless marked)

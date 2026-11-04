@@ -3,7 +3,7 @@
 // 2. Every registry entry is well formed, and every citation in it (rule locations, controls, owners, tests) points at something real.
 // To change a default on purpose: edit the registry, add a defaultHistory entry (see js/options-registry.js), and update FROZEN_OLD_DV_DEF
 // here in the same commit with the reason. Never edit FROZEN_OLD_DV_DEF to make a failing run pass without that.
-const fs = require('fs'), path = require('path'), assert = require('assert');
+const fs = require('fs'), path = require('path'), os = require('os'), assert = require('assert');
 const ROOT = path.join(__dirname, '..');
 const Opt = require('../js/options-registry.js');
 let fails = 0, n = 0;
@@ -200,6 +200,25 @@ const condOpts = (c) => c.any ? [].concat(...c.any.map(condOpts)) : c.all ? [].c
 const used = new Set();
 for (const e of Opt.OPTIONS) for (const k of ['requires', 'ignoredWhen', 'conflicts']) for (const r of e[k] || []) used.add(r.rule);
 ok('every rule is used by at least one option', ruleNames.every((r) => used.has(r)), ruleNames.filter((r) => !used.has(r)));
+// the reverse (a need() names a rule RULES does not define) once made unmet() throw for 16 options: need('tiles')/'endlessRoad'/'cabinView'
+// named rules absent from RULES, so holds(undefined,...) threw TypeError. Every used rule name must resolve.
+const missingRule = [];
+for (const r of used) if (!(r in Opt.RULES)) missingRule.push(r);
+ok('every need()/ignoredWhen()/conflicts rule name is defined in RULES (unmet() must not throw)', missingRule.length === 0, missingRule);
+// positive control: the 13 options that used to throw now resolve under the default profile without error
+const fixedOpts = ['endlessPreset','endlessPresetCustom','tileTerrain','multilaneRoad','endlessTunnel','endlessCrossing','junctionGantries','driftMode','driftDynamics','driftAfs','yawSmooth','cabinStyle','driftCabin'];
+const threw = [];
+for (const id of fixedOpts) { try { Opt.unmet(id, Object.assign({}, gen)); } catch (e) { threw.push(id + ': ' + e.message); } }
+ok('unmet() resolves every prototype endless/drift/cabin option without throwing (the need(tiles/endlessRoad/cabinView) fix)', threw.length === 0, threw);
+// the runtime guard (rule 15): need() itself throws a NAMED error on an unknown rule name, so a future typo fails
+// at module load with the bad name in the message, not a misleading TypeError deep in unmet()/holds(). Positive
+// control: a registry copy with a bad need('typoRuleXYZ') must throw naming that rule.
+const guardProbe = path.join(os.tmpdir(), 'need-guard-probe.js');
+fs.writeFileSync(guardProbe, read('js/options-registry.js').replace("requires: [need('symmetricOncoming')]", "requires: [need('typoRuleXYZ')]"));
+let guardMsg = null;
+try { require(guardProbe); } catch (e) { guardMsg = e.message; }
+fs.unlinkSync(guardProbe);
+ok('need() throws a named error on an unknown rule (rule 15 loud failure)', /unknown rule .typoRuleXYZ./.test(guardMsg), guardMsg);
 const unknownOpt = [];
 for (const [name, r] of Object.entries(Opt.RULES)) for (const o of condOpts(r.cond)) if (!(o in Opt.byId)) unknownOpt.push(name + '->' + o);
 ok('rule conditions only name declared options', unknownOpt.length === 0, unknownOpt);

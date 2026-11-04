@@ -59,8 +59,6 @@
     'sign-back': { name: 'sign back / post', rho: [0.2, 0.2, 0.2] },
     'reflector-white': { name: 'post reflector', rho: [0.4, 0.4, 0.4], retro: [600, 600, 600] },
     'reflector-red': { name: 'red reflector', rho: [0.1, 0.01, 0.01], retro: [200, 6, 6] },
-    'marker-amber': { name: 'amber side marker', rho: [0.5, 0.3, 0.02], retro: [40, 22, 2] },
-    'marker-red': { name: 'red side marker', rho: [0.2, 0.01, 0.01], retro: [120, 5, 3] },
     'rpm-white': { name: 'pavement marker (white)', rho: [0.4, 0.4, 0.4], retro: [80, 80, 80] },
     'rpm-yellow': { name: 'pavement marker (yellow)', rho: [0.5, 0.38, 0.08], retro: [70, 52, 3] },
     'wall': { name: 'building wall', rho: [0.22, 0.19, 0.16] },
@@ -87,6 +85,9 @@
     'wire': { name: 'power wire', rho: [POWERLINE_WIRE_RHO, POWERLINE_WIRE_RHO, POWERLINE_WIRE_RHO] },
      // CREAK: appended, ids above do not move. Calm water: dark, low-rho, tight gloss (F0 0.06); wet = same (a creek is always wet).
     'water': { name: 'creek water', rho: [0.015, 0.04, 0.075], gloss: { a: 0.04, F0: 0.06 }, wet: { rho: [0.012, 0.03, 0.06], gloss: { a: 0.03, F0: 0.06 } } },
+    // M1: appended last so the ids of every material above do not move (drive.js:91-92 keys ids off Object.keys order).
+    'marker-amber': { name: 'amber side marker', rho: [0.5, 0.3, 0.02], retro: [40, 22, 2] },
+    'marker-red': { name: 'red side marker', rho: [0.2, 0.01, 0.01], retro: [120, 5, 3] },
   };
   const MAT_KEYS = Object.keys(MAT_DEF), MAT_ID = {};
   MAT_KEYS.forEach((k, i) => { MAT_ID[k] = i; });

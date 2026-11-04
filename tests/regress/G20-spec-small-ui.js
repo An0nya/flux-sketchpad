@@ -6,6 +6,7 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
 (async () => {
   const browser = await pw.chromium.launch(), page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
+  const rv = (sel) => page.evaluate((s) => (window.RF && RF.DriveLayout ? RF.DriveLayout.reveal(RF.UI, s) : false), sel);   // 11-03 lead #2 (glm5.2 recipe): flux/driveMore is dead; drive-bar controls live in tabs — assert-reveal the control's tab before interacting
   await page.addInitScript(() => { try { localStorage.clear(); } catch (e) { /* ignore */ } });
   await page.goto('http://localhost:' + port + '/index.html');
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
@@ -23,6 +24,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   // 2. exposure buttons
   await page.evaluate(() => { RF.UI.setPane('result', 'expand'); RF.UI.setDisplay('drive'); }); await page.waitForTimeout(1500);   // the drive toolbar shows only while the Result pane is expanded (B4b)
   const t = await page.evaluate(() => ({ evm: document.querySelector('[data-dv="evm"]').title, evp: document.querySelector('[data-dv="evp"]').title, ev0: RF.UI.dvOpts.ev }));
+  if (!await rv('[data-dv="evp"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv="evp"]');   // the exposure buttons sit in the performance tab (js/drive-layout.js:27); expanding the Result pane above does not select it
+  if (await page.evaluate(() => { const b = document.querySelector('[data-dv="evp"]'); return !!(b && b.disabled); })) throw new Error('11-03 disabled gate: [data-dv="evp"] is disabled at click time');
   await page.click('[data-dv="evp"]'); await page.waitForTimeout(500);
   const step = (await page.evaluate(() => RF.UI.dvOpts.ev)) - t.ev0;
   ok('exposure + button title matches its step (' + step + ' EV)', step === 1 ? /one stop/i.test(t.evp) : /half a stop/i.test(t.evp), t.evp);

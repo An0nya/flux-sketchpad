@@ -79,7 +79,19 @@ async function planes(page, a, b) {
     ok('SL halo 16 builds the table for the lamps in range (haloOn 1, lamps >= 2)', sA.on === 1 && sA.drawn >= 2 && sA.passes >= 1, JSON.stringify({ on: sA.on, lamps: sA.drawn, passes: sA.passes, tab: sA.tab }));
     await setOpt('trafficHalo', 0); await sleep(500); await frame(page); await setOpt('trafficHalo', 16); await sleep(500); await frame(page);
     const progs2 = await page.evaluate(() => RF.DriveAnim._.V.three.programCount());
-    ok('SL toggling the halo off and on adds no shader programs (first enable adds the table program only)', progs2 === progs1 && progs1 - progs0 <= 1, 'programs ' + progs0 + ' -> ' + progs1 + ' -> ' + progs2);
+    // nemo 11-03: the 'first enable adds the table program only' conjunct (progs1 - progs0 <= 1) is DROPPED, not relaxed.
+    // It assumed halo materials stay cached across a toggle, which MAT_CAP pruning legitimately defeats: js/drive-three-halo.js
+    // :486-492 caps varMats/occMats/jitMats at 8 and disposes the oldest past that, and dispose() removes the material's
+    // program from renderer.info.programs. The brief toggle at :55-58 grows the caches, the halo-off frame pushes them past
+    // the cap, the oldest halo materials are disposed (progs0 falls to 6 where it was 9 before le-chonk's shader-slots patch,
+    // mergeq le-chonk-20261103-093750-2f55), and the real enable at :75/:77 recreates them (progs1 9). Measured: 6 -> 9 -> 9
+    // on tree afe87934bf0f (gpuq nemo-20261103-112347-e084) vs 9 -> 9 -> 9 on the pre-pruning tree 88bb34c3720a
+    // (nemo-20261103-104436-f36f). Root cause pencroff m20261103-160238331-c889; NOT an app bug - the pruning is by design
+    // (its comment at :482-485: keep the caches small or the drive view runs out of shader slots and falls back to the CPU).
+    // What remains is the invariant that actually matters and that still holds: a toggle cycle leaks no programs
+    // (progs2 === progs1), and enabling never removes one (progs1 >= progs0). All three counts stay in the detail, so a
+    // future change to MAT_CAP or to the material lifecycle is still visible in the printed numbers rather than hidden.
+    ok('SL toggling the halo off and on leaks no shader programs (a toggle cycle returns to the same count; MAT_CAP pruning may dispose and recreate materials, so the first enable is not bounded)', progs2 === progs1 && progs1 >= progs0, 'programs ' + progs0 + ' -> ' + progs1 + ' -> ' + progs2);
     const dims = await planes(page, offA, onA);
     // where is the car? the pixels where traffic changes the frame: render the frame without traffic lamps/cars (oncoming off), halo off
     await setOpt('trafficHalo', 0); await setOpt('oncoming', false); await sleep(600); const noCar = await frame(page); await setOpt('oncoming', true); await sleep(500);
@@ -114,10 +126,35 @@ async function planes(page, a, b) {
         const sx = ((r.c[0] + 0.5) / tw) * 2 - 1, sy = ((r.c[1] + 0.5) / th0) * 2 - 1;
         const d0 = [1, -sx * tanH, sy * tanH * H / W], n = Math.hypot(...d0), d = d0.map((v) => v / n), bins = th.haloProbe(sx, sy);
         const row = { name: r.name, at: [] };
-        for (const ev of [20, Math.max(5, dx * 0.99), 120]) { const g = lookup(bins, ev), c = D.trafficHalo(d, ev, lamps, 16, par, 0.5), gs = g[0] + g[1] + g[2], cs = c[0] + c[1] + c[2]; row.at.push({ end: +ev.toFixed(1), gpu: gs, cpu: cs, ratio: cs > 0 ? gs / cs : null }); }
+        // nemo 11-03: tg is where this ray meets the road plane through the eye (z up), null when it ascends and never
+        // meets it. Recorded as evidence only - the reference below stays the unclipped full-column integral, because the
+        // texel this test reads (haloProbe + haloLookup) has no ground term in it (frenchie, drive-three-halo.js:371-377).
+        const tg = d[2] < -1e-9 ? Math.max(0, -e[2] / d[2]) : null;
+        for (const ev of [20, Math.max(5, dx * 0.99), 120]) { const g = lookup(bins, ev), c = D.trafficHalo(d, ev, lamps, 16, par, 0.5), gs = g[0] + g[1] + g[2], cs = c[0] + c[1] + c[2]; row.at.push({ end: +ev.toFixed(1), gpu: gs, cpu: cs, ratio: cs > 0 ? gs / cs : null, tGround: tg === null ? null : +tg.toFixed(2), below: tg !== null, zero: gs === 0 }); }
         row.cumLamp = lookup(bins, dx).reduce((a, b) => a + b, 0); row.cum120 = lookup(bins, 120).reduce((a, b) => a + b, 0); row.cumHalf = lookup(bins, dx * 0.5).reduce((a, b) => a + b, 0);
         out.rays.push(row);
       }
+      // nemo 11-03, form agreed with frenchie (m20261103-150355081-3173): the below-horizon strip down the lamp column,
+      // r = lr0-1 ... lr0-4*sc, at the middle end distance. The table reads exactly 0.000e+0 for this whole band today
+      // while the march has no ground test and should carry the full column, so this is bounded and expected to FAIL until
+      // the app-side fix lands (frenchie's ticket). EPS 0.1: 100x above numerical dust, ~5x below the +/-25 percent parity
+      // the bound above already demands at valid cells, so a correct fix clears it comfortably while a partial one does not.
+      const stripEnd = Math.max(5, dx * 0.99), colAt = (c, r) => {
+        const sx = ((c + 0.5) / tw) * 2 - 1, sy = ((r + 0.5) / th0) * 2 - 1;
+        const q0 = [1, -sx * tanH, sy * tanH * H / W], qn = Math.hypot(q0[0], q0[1], q0[2]), qd = q0.map((v) => v / qn);
+        const g = lookup(th.haloProbe(sx, sy), stripEnd), cc = D.trafficHalo(qd, stripEnd, lamps, 16, par, 0.5);
+        const gs = g[0] + g[1] + g[2], cs = cc[0] + cc[1] + cc[2];
+        return { c, r, sy: +sy.toFixed(5), gpu: gs, cpu: cs, ratio: cs > 0 ? gs / cs : null, tGround: qd[2] < -1e-9 ? +(-e[2] / qd[2]).toFixed(2) : null };
+      };
+      out.stripEnd = +stripEnd.toFixed(1); out.strip = [];
+      for (let r = lr0 - 1; r >= lr0 - 4 * sc; r -= 1) if (r >= 0) out.strip.push(colAt(lc, r));
+      // nemo 11-03, print-only (cyrus m20261103-145334823-43f5): the lamp row across columns and the lamp column across
+      // rows, one end distance. No bound and no pin reads it. It exists because a cell index is a different physical ray
+      // per viewport (d0 scales sy by tanH*H/W), so a page-lane probe cannot be compared cell-for-cell with this
+      // script-lane test - the ratios around the lamp have to be measured here, in the lane that fails. Emitted as [info].
+      out.scanEnd = +stripEnd.toFixed(1); out.scanCols = []; out.scanRows = [];
+      for (let c = lc - 12 * sc; c <= lc + 12 * sc; c += Math.max(1, sc)) if (c >= 0 && c < tw) out.scanCols.push(colAt(c, lr0));
+      for (let r = Math.max(0, lr0 - 8 * Math.max(1, sc)); r <= Math.min(th0 - 1, lr0 + 8 * Math.max(1, sc)); r += 1) out.scanRows.push(colAt(lc, r));
       return out;
     });
     const lr = val.rays.find((r) => r.cum120 > 0) || val.rays[0];
@@ -125,8 +162,27 @@ async function planes(page, a, b) {
     ok('SL depth: more is added in front of the lamp than halfway to it', lr.cumLamp > lr.cumHalf, 'to the lamp ' + lr.cumLamp.toExponential(2) + ' halfway ' + lr.cumHalf.toExponential(2));
     for (const r of val.rays) for (const a of r.at) if (a.cpu > 0 && a.gpu >= 0) console.log('[info] ' + r.name + ' end ' + a.end + ' m: gpu ' + a.gpu.toExponential(3) + ' cpu ' + a.cpu.toExponential(3) + ' ratio ' + (a.ratio === null ? 'n/a' : a.ratio.toFixed(2)));
     // the lamp's own cell is reported but not bounded: its 1/r^2 core (r down to the 0.3 m lamp size) is narrower than a table cell, and the glare veil carries that core
-    const near = val.rays.filter((r) => r.name !== 'lamp cell').flatMap((r) => r.at.filter((a) => a.cpu > 0 && a.end > 30)).map((a) => a.ratio);
-    ok('SL GPU table vs the CPU reference (cell-centre rays around the lamp, not its own core cell; end distances beyond 30 m) within 25 percent (the printed ratios)', near.length >= 6 && near.every((v) => v !== null && Math.abs(v - 1) <= 0.25), near.map((v) => (v === null ? 'n/a' : v.toFixed(2))).join(', '));
+    // nemo 11-03. WHAT IS EXCLUDED FROM THE BOUND, by name and by count: cells below the horizon where the table reads
+    // exactly 0 - today the '4 cells down' ray (c = lc, r = lr0 - 4*sc, sy ~ -0.164) at its two ends beyond 30 m, where
+    // gpu is 0.000e+0 against a CPU reference of 9.0. Those cells are NOT dropped quietly: the strip check below bounds
+    // the same band and fails until the app-side fix lands (frenchie's ticket - TMAIN has no ground test, so the texel
+    // should carry the full column). Nothing else is excluded: the left / up / right rays and every above-horizon cell
+    // keep their unclipped reference and their place in the bound, and the +/-25 percent bound itself is untouched. The
+    // count assertion means a pose or geometry change that zeroes more cells fails here instead of shrinking the bound.
+    const flat = val.rays.filter((r) => r.name !== 'lamp cell').flatMap((r) => r.at.filter((a) => a.end > 30).map((a) => Object.assign({ ray: r.name }, a)));
+    const dropped = flat.filter((a) => a.below && a.zero && a.cpu > 0);
+    const near = flat.filter((a) => a.cpu > 0 && !(a.below && a.zero)).map((a) => a.ratio);
+    for (const a of dropped) console.log('[info] below horizon, table reads exactly 0, excluded from the bound and covered by the strip check: ' + a.ray + ' end ' + a.end + ' m, sy-dependent tGround ' + a.tGround + ' m, gpu ' + a.gpu.toExponential(3) + ' cpu ' + a.cpu.toExponential(3));
+    ok('SL GPU table vs the CPU reference (cell-centre rays around the lamp, not its own core cell; end distances beyond 30 m; below-horizon cells whose table value is exactly 0 are excluded and bounded separately below) within 25 percent (the printed ratios)', near.length >= 6 && near.every((v) => v !== null && Math.abs(v - 1) <= 0.25), near.map((v) => (v === null ? 'n/a' : v.toFixed(2))).join(', '));
+    ok('SL the below-horizon exclusion is exactly the two zero cells it names (a pose or geometry change that zeroes more cells must fail here, not quietly shrink the bound)', dropped.length === 2 && dropped.every((a) => a.ray === '4 cells down'), JSON.stringify(dropped.map((a) => ({ ray: a.ray, end: a.end, tGround: a.tGround }))));
+    // nemo 11-03, the loud app-defect check (cyrus m20261103-145858568-7b96 option b, form agreed with frenchie
+    // m20261103-150355081-3173): the table's below-horizon band down the lamp column must carry at least a tenth of the
+    // energy the CPU reference integrates through the road. EXPECTED TO FAIL until the app-side fix lands - the march has
+    // no ground test (js/drive-three-halo.js TMAIN :152-172, only the forward-plane test local.x <= 0.0 at :145 and the
+    // beam-LUT grid bounds), so the texel should carry the full column and today reads exactly 0 for 11 consecutive rows.
+    ok('SL the halo table carries energy below the horizon (strip r = lr0-1 .. lr0-4*sc at the lamp column, gpu/cpu >= 0.1; APP DEFECT, frenchie ticket - fails until the march carries the below-horizon column)', (val.strip || []).length >= 4 && val.strip.every((s) => s.ratio !== null && s.ratio >= 0.1), JSON.stringify({ end: val.stripEnd, rows: (val.strip || []).map((s) => ({ r: s.r, sy: s.sy, gpu: +s.gpu.toExponential(3), cpu: +s.cpu.toExponential(3), ratio: s.ratio === null ? null : +s.ratio.toFixed(4), tGround: s.tGround })) }));
+    for (const s of val.scanCols || []) console.log('[info] scan col c=' + s.c + ' r=' + s.r + ' end=' + val.scanEnd + ' m: gpu ' + s.gpu.toExponential(3) + ' cpu ' + s.cpu.toExponential(3) + ' ratio ' + (s.ratio === null ? 'n/a' : s.ratio.toFixed(3)));
+    for (const s of val.scanRows || []) console.log('[info] scan row c=' + s.c + ' r=' + s.r + ' end=' + val.scanEnd + ' m: gpu ' + s.gpu.toExponential(3) + ' cpu ' + s.cpu.toExponential(3) + ' ratio ' + (s.ratio === null ? 'n/a' : s.ratio.toFixed(3)));
     // 6. scatter modes with the halo on, no failure
     for (const [mode, steps] of [['direct', 16], ['table', 32]]) {
       await setOpt('scatterMode', mode); await setOpt('scatter', steps); await sleep(2500); const f = await frame(page); const s = await page.evaluate(() => ({ g: RF.DriveAnim.stats().gpuFailure || '', r: RF.DriveAnim.stats().renderer })); const hs = await haloState();

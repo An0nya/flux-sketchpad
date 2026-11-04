@@ -17,7 +17,8 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex').slice(0, 16);
-const PIN_FLAT_CONE = '59d1bc8161539e9a';   // = E2-pass-lamp-cone's pin: flat urban frame, cone on, 3 lamps; the CD change must not move it
+// RE-PIN 11-03 (murchison halo/cone sweep, rule 23): was 59d1bc8161539e9a. Cause: cone-lamp-dedupe (landed 14:47, js/drive-three-lampcone.js 9c87758d->3a4ebaef) removed the 2x cone - catalogue #1's emissive lens had doubled every luminaire in lampsOf, so cone:6 -> cone:3 restored (probe murchison-20261103-104935-697b); the residual vs the 5d3047b base is the catalogue #1 housing+lens render (le-chonk, approved 10-31) plus the accumulated halo landings.
+const PIN_FLAT_CONE = '88770bcdc693c5ef';   // = E2-pass-lamp-cone's pin: flat urban frame, cone on, 3 lamps; the CD change must not move it
 const CREST_BASE_SUM = 74555;   // added light (sum over pixels and channels of on - off) at the CREST pose on the base 6c9313e, 5563 pixels changed
 const errors = [];
 (async () => {

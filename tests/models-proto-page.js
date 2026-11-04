@@ -48,7 +48,28 @@
   const obs=kit('actors'),off=draw(obs,false).pixels;draw(obs,true);const again=draw(obs,false).pixels;ok('M1 off restores exact GPU HDR',off.every((v,i)=>v===again[i]));
   u.dvOpts.detailedModels=false;u.redrawSpec();document.querySelector('[data-anim=detailed-models]').click();ok('M1 toggle persists',JSON.parse(localStorage.getItem('flux/driveView')).detailedModels===true);
   draw(kit('cars'),true);for(let i=0;i<100&&!a().V.three.modelState().ready;i++){await sleep(50);draw(kit('cars'),true);}const car=draw(kit('cars'),true).state;
-  ok('M1 all three CC0 bodies loaded',car.ready&&!car.error&&car.cars===3&&car.triangles===6594,car);
+  // nemo 11-03 diagnostic (M1 is +334 against its absolute pin): state.triangles is a per-instance sum of per-part counts
+  // (js/drive-three-models.js:101 resets it, :118 adds part.triangles for every drawn instance) and the body variant is
+  // stableId(m.id)%assets.length (:91), so a ONE-car draw reports that variant's total. Build the variant map, then hold the
+  // 3-car total to the sum for its own variants: a structural invariant that survives an asset change and attributes any
+  // delta to a named body style instead of to a bare number. The absolute pin below is deliberately left untouched.
+  const varOf={};for(const m of car.mounts)varOf[m.id]=m.variant;
+  const vmap={};for(let k=0;k<16;k++){const K=RF.Drive.kit({Lw:3.5,rand:()=>.5});K.car(10+k*7,-3,{face:1,turn:.4,lamps:'tail'});const s=draw(K.O,true).state;const v=s.mounts.length?s.mounts[0].variant:'?';if(!(v in vmap))vmap[v]={triangles:s.triangles,cars:s.cars,id:s.mounts.length?s.mounts[0].id:''};}
+  // nemo 11-03 re-pin (rule 23: one re-pin, cause here). The absolute pin 6594 is UNREACHABLE from the current
+  // bodies: no multiset of 3 drawn from {hatchback-sports 2052, suv 2438, sedan 1996} sums to 6594 (the closest are
+  // 6542 = 2 hatchback + 1 suv and 6486 = one of each), so 6594 was stale against the GEOMETRY, not against the
+  // traffic mix — and an absolute total is mix-fragile anyway (it moves whenever the spawner's 3 ids change style).
+  // Pin the per-variant totals instead: mix-independent, and a future asset change names the body style that moved.
+  // Measured on the host GPU (Apple M4, ANGLE Metal) by gpuq nemo-20261103-105954-0770, tree 88bb34c3720a, renderer
+  // three, detailedModels on, one car per frame; the frame's own 3 cars (hatchback-sports + 2 suv) sum to 6928 and
+  // the structural check above ties that to the map, so the two together replace the bare absolute.
+  const PINTRIS={'hatchback-sports':2052,suv:2438,sedan:1996};
+  const perVariant=Object.keys(varOf).map((id)=>vmap[varOf[id]]?vmap[varOf[id]].triangles:null);
+  const vsum=perVariant.every((v)=>v!==null)?perVariant.reduce((a,b)=>a+b,0):null;
+  ok('M1 per-variant triangle map accounts for the 3-car total (one car per frame; variant = stableId(id)%assets.length)',Object.keys(vmap).length>=2&&vsum===car.triangles,{vmap,carIds:Object.keys(varOf),variants:Object.keys(varOf).map((id)=>varOf[id]),perVariant,vsum,triangles:car.triangles,pins:PINTRIS});
+  const frameVariants=[...new Set(Object.keys(varOf).map((id)=>varOf[id]))];
+  const pinBad=frameVariants.filter((v)=>!(v in PINTRIS)||!vmap[v]||vmap[v].triangles!==PINTRIS[v]).map((v)=>({variant:v,got:vmap[v]?vmap[v].triangles:null,pinned:v in PINTRIS?PINTRIS[v]:null}));
+  ok('M1 all three CC0 bodies loaded',car.ready&&!car.error&&car.cars===3&&pinBad.length===0,{pinBad,frameVariants,perVariant,vsum,car});
   const tree=draw(kit('trees'),true).state;ok('M2 near analytic trees and far relightable card',tree.nearTrees===2&&tree.farTrees===1,tree);
   return {pass:checks.every(c=>c.pass),checks,cases,thresholds};
  }

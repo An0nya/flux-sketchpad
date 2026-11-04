@@ -3,9 +3,10 @@
 //   python3 tests/serve.py 8944   (background)
 //   PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/RS-resolution.js 8944
 // Screenshots go to RS_OUT (default: the RS report folder).
-const fs = require('fs'), path = require('path');
+const fs = require('fs'), path = require('path'), os = require('os');
 const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync('npm root -g').toString().trim() + '/playwright'));
-const port = +(process.argv[2] || 8944), OUT = process.env.RS_OUT || '/Users/anya/Projects/flux-sketchpad/.claude/briefs/reports';
+// 11-03 ayrton: OUT defaults to the OS temp dir so the test is host-safe (no hardcoded Mac path); RS_OUT still overrides for the owner.
+const port = +(process.argv[2] || 8944), OUT = process.env.RS_OUT || os.tmpdir();
 let fails = 0;
 const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ') + n + (d !== undefined ? ' — ' + JSON.stringify(d) : '')); if (!c) fails++; };
 const LEVELS = { low: 640, medium: 960, high: 1600, ultra: 2560, native: 3840 };
@@ -24,7 +25,9 @@ const LEVELS = { low: 640, medium: 960, high: 1600, ultra: 2560, native: 3840 };
     await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 180000 });
     await page.evaluate((s) => { RF.UI.loadScene(RF.State.deserialize(s), 'RS fixture'); RF.UI.setMode('D'); }, fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp.json'), 'utf8'));
     await page.waitForFunction(() => { const u = RF.UI; return !u.solving && u.run && u.run.ctx.done && u.spec && u.spec.ctx === u.run.ctx && u.spec.full && u.spec.ev; }, null, { timeout: 180000 });
-    await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false }); Object.assign(u.dvOpts, { mt: false, scene: 'road', wet: false, wetSheen: false, tiles: false }); u.redrawSpec(); document.querySelector('.drive-more').open = true; });
+    await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate'); Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false }); Object.assign(u.dvOpts, { mt: false, scene: 'road', wet: false, wetSheen: false, tiles: false }); u.redrawSpec(); });
+    // 11-03 ayrton (lead #2, glm5.2 recipe): flux/driveMore is dead since the 10-29 layout refactor; the resolution/min-fps/dynamic-resolution controls live in the Performance > Resolution tab, so assert-reveal the tab before interacting.
+    const rv = (sel) => page.evaluate((s) => (window.RF && RF.DriveLayout ? RF.DriveLayout.reveal(RF.UI, s) : false), sel);
 
     // 1. the selector and the min-fps choice exist, with the default High and 30 fps
     const sel = await page.evaluate(() => { const r = document.querySelector('[data-anim=resolution]'), m = document.querySelector('[data-anim=min-fps]'); return { res: r && [...r.options].map((o) => o.value), resVal: r && r.value, fps: m && [...m.options].map((o) => o.value), fpsVal: m && m.value }; });
@@ -33,6 +36,7 @@ const LEVELS = { low: 640, medium: 960, high: 1600, ultra: 2560, native: 3840 };
 
     // 2. each level sets the sim width to min(ceiling, canvas backing width), with no resize, on the road scene
     const table = [];
+    if (!await rv('[data-anim=resolution]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim=resolution]');
     for (const level of Object.keys(LEVELS)) {
       await page.locator('[data-anim=resolution]').selectOption(level);
       await page.evaluate(() => RF.UI.redrawSpec());
@@ -45,12 +49,14 @@ const LEVELS = { low: 640, medium: 960, high: 1600, ultra: 2560, native: 3840 };
     console.log('RS_TABLE ' + JSON.stringify(table));
 
     // 3. min fps is stored as minFps and frameTargetMs = 1000 / minFps
+    if (!await rv('[data-anim=min-fps]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim=min-fps]');
     await page.locator('[data-anim=min-fps]').selectOption('60');
     const fps = await page.evaluate(() => ({ minFps: RF.UI.dvOpts.minFps, ft: RF.UI.dvOpts.frameTargetMs, stored: JSON.parse(localStorage.getItem('flux/driveView')).minFps }));
     ok('RS min 60 fps stores minFps 60 and frameTargetMs 1000/60', fps.minFps === 60 && Math.abs(fps.ft - 1000 / 60) < 1e-9 && fps.stored === 60, fps);
 
     // 4. dynamic resolution + min 60 fps under a 6x CPU throttle steps the scale down; the ceiling stays High
     await page.locator('[data-anim=resolution]').selectOption('high');
+    if (!await rv('[data-anim=dynamic-resolution]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim=dynamic-resolution]');
     await page.locator('[data-anim=dynamic-resolution]').click();
     const cdp = await page.context().newCDPSession(page);
     await page.evaluate(() => { RF.DriveAnim._.V.pinSS = 0; RF.DriveAnim.resetStats(); RF.UI.dvAnim.playing = true; RF.UI.redrawSpec(); });
@@ -72,19 +78,16 @@ const LEVELS = { low: 640, medium: 960, high: 1600, ultra: 2560, native: 3840 };
     await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { scene: 'road', wet: true, wetSheen: true, tiles: false }); RF.DriveAnim.openPop(RF.UI); RF.UI.redrawSpec(); });
     await page.waitForTimeout(800);
     console.log('RS_POPOUT canvasPx ' + JSON.stringify(await page.evaluate(() => RF.DriveAnim.stats().canvasPx)));
+    if (!await rv('[data-anim=resolution]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim=resolution]');
     for (const level of ['low', 'ultra']) {
       await page.locator('[data-anim=resolution]').selectOption(level);
       await page.evaluate(() => { RF.DriveAnim._.V.pinSS = 1; RF.UI.redrawSpec(); });
       await page.waitForTimeout(1500);
-      // element screenshot of the visible drive canvas (its backing-store pixels), then a sips crop of the upper-central band
+      // 11-03 ayrton: crop the upper-central band with page.screenshot({clip}) (host-safe; the old sips crop was Mac-only). The popout toolbar covers roughly the top fifth of the canvas, so the band starts below it.
       const el = page.locator('canvas.drive-gl:visible').first();
-      const dims = await el.evaluate((c) => ({ w: c.width, h: c.height }));
-      const full = path.join(OUT, 'rs-wetsheen-' + level + '-full.tmp.png'), crop = path.join(OUT, 'rs-wetsheen-' + level + '.png');
-      fs.writeFileSync(full, await el.screenshot());
-      // the popout toolbar covers roughly the top fifth of the canvas, so the band starts below it
-const cw = Math.round(dims.w * 0.6), ch = Math.round(dims.h * 0.4), ox = Math.round(dims.w * 0.2), oy = Math.round(dims.h * 0.22);
-      require('child_process').execFileSync('sips', ['-c', String(ch), String(cw), '--cropOffset', String(oy), String(ox), full, '--out', crop]);
-      fs.unlinkSync(full);
+      const bbox = await el.boundingBox();
+      const crop = path.join(OUT, 'rs-wetsheen-' + level + '.png');
+      await page.screenshot({ clip: { x: bbox.x + bbox.width * 0.2, y: bbox.y + bbox.height * 0.22, width: bbox.width * 0.6, height: bbox.height * 0.4 }, path: crop });
       await page.evaluate(() => { RF.DriveAnim._.V.pinSS = 0; });
     }
     console.log('RS_SHOTS ' + path.join(OUT, 'rs-wetsheen-low.png') + ' ' + path.join(OUT, 'rs-wetsheen-ultra.png'));

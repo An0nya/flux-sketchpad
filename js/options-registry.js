@@ -95,6 +95,8 @@
       at: { file: ANIM, fn: 'const want = !V.three', line: 1861 } },
     tilesOn: { cond: { opt: 'tiles', eq: true }, why: 'needs route tiles on (the pass does not allow it)', effect: 'disabled',
       at: { file: ANIM, fn: '"tile-cache"]\').disabled = !o.tiles', line: 2661 } },
+    tiles: { cond: { opt: 'tiles', eq: true }, why: 'needs route tiles on (the prototype endless-road, drift and cabin options are silent no-ops without tiles)', effect: 'none',
+      at: { file: ANIM, fn: 'if (o.tiles) src.tiles', line: 59 } },
     tilesOrPass: { cond: { any: [{ opt: 'tiles', eq: true }, { opt: 'mountainPass', eq: true }] }, why: 'needs route tiles or the mountain pass', effect: 'disabled',
       at: { file: ANIM, fn: '"street-lamps"]\').disabled', line: 2662 } },
     lampsPresent: { cond: { all: [{ opt: 'streetLamps', ne: 'off' }, { any: [{ opt: 'tiles', eq: true }, { opt: 'mountainPass', eq: true }] }] }, why: 'needs street lamps in the scene (tiles or pass, lamps not off)', effect: 'none',
@@ -133,9 +135,15 @@
       at: { file: 'js/drive-scenes.js', fn: 'FEATURE_PRESETS', line: 172 } },
     cityScene: { cond: { opt: 'scene', eq: 'city' }, why: 'leafy foliage is ignored in the city', effect: 'none',
       at: { file: ANIM, fn: "name === 'road' || name === 'forest'", line: 35 } },
+    endlessRoad: { cond: { opt: 'endlessRoad', eq: true }, why: 'needs the endless biome road on (tunnels and crossings are seeded into endless tiles)', effect: 'none',
+      at: { file: ANIM, fn: 'o.endlessRoad ? endlessTile', line: 3024 } },
+    cabinView: { cond: { opt: 'cabinView', eq: true }, why: 'needs the in-cabin view on (the dashboard style and drift cabin ride on its overlay)', effect: 'none',
+      at: { file: ANIM, fn: 'drawCabin(V, o.cabinView', line: 1783 } },
   };
   // need('air', { effect: 'tooltip' }) returns a copy of a rule, optionally with the UI effect overridden.
-  const need = (name, over) => Object.assign({ rule: name }, RULES[name], over || {});
+  // Throws a named error if `name` is not in RULES: a typo'd need('tiles') once made every option using it a
+  // cond-less object, so unmet() -> holds(undefined) threw a misleading TypeError far from the cause (rule 15).
+  const need = (name, over) => { if (!(name in RULES)) throw new Error('need(): unknown rule "' + name + '" (not in RULES; add it or fix the name)'); return Object.assign({ rule: name }, RULES[name], over || {}); };
 
   // ---- the proposed groups (docs/inventory/GROUPS.md explains them)
   const GROUPS = {

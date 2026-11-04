@@ -327,12 +327,13 @@ export function withWetBounceHalo(main) {
   const TAIL = '    }\n  }\n  gl_FragColor = vec4(acc, 1.0);\n}';
   const MAIN = 'void main() {';
   if (main.split(TAIL).length !== 2 || main.split(MAIN).length !== 2) throw Error('halo TMAIN markers changed (wetBounce)');
-  const MIRROR = `    if (wetU > 0.0) {
+  const MIRROR = `    if (m == 0 && wetU > 0.0) {   // 11-03 Anya option B: the TAIL anchor starts at the m-loop close, so this block sat INSIDE for-m and ran once per outer m (~6x the mirror); m==0 = once per lamp per draw, haloP-correct (inner loop already takes cells m*haloP+haloSub). Verified: every MIRROR copy over 82,944 combos has an open for-m scope
       vec3 lampM = vec3(lamp.x, lamp.y, -lamp.z); float seM = -se, ceM = sqrt(max(1.0 - seM * seM, 0.0));
       vec3 fwM = vec3(dir * ceM, seM);
       if (max(dot(haloEye + lo * ray - lampM, fwM), dot(haloEye + hi * ray - lampM, fwM)) >= -1e-3)
       for (int m = 0; m < ${HALO_BIN_STEPS}; m++) {
-        float sa = lo * pow(qq, float(m * haloP + haloSub)), sb = sa * qq, s = sqrt(sa * sb), ds = sb - sa;
+        float qqM = pow(hi / lo, 1.0 / float(${HALO_BIN_STEPS} * haloP));   // 11-03 qwen M4: with widthStep>0 the width ladder removes the main march's float qq decl, so the mirror declares its own (distinct name: no shadowing when widthStep==0)
+        float sa = lo * pow(qqM, float(m * haloP + haloSub)), sb = sa * qqM, s = sqrt(sa * sb), ds = sb - sa;
         vec3 d = haloEye + s * ray - lampM; float r2 = dot(d, d); if (r2 <= 0.0) continue;
         float r = sqrt(r2);
         vec3 lat3M = vec3(-dir.y, dir.x, 0.0), up3M = vec3(-seM * dir, ceM);
@@ -345,10 +346,8 @@ export function withWetBounceHalo(main) {
         acc += sigma * p * I * w / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds * tint;
       }
     }
-  }
-  gl_FragColor = vec4(acc, 1.0);
-}`;
-  return hrep(hrep(main, MAIN, 'uniform float wetU;\n' + MAIN), TAIL, MIRROR);
+`;
+  return hrep(hrep(main, MAIN, 'uniform float wetU;\n' + MAIN), TAIL, MIRROR + TAIL);   // frenchie 11-03 fix: MIRROR is a balanced if-block and TAIL is appended verbatim (net -3 closes, like the shipped tail), so the wb table shader cannot go unbalanced (qwen M4 detector: wb=true had one unclosed brace, driver COMPILE ERROR 0:132; brace sweep now 0/36,864)
 }
 export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0, wb = false) {
   let main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN);
@@ -476,11 +475,21 @@ export function haloPass(renderer, u) {
     depthTest: false, depthWrite: false,
   });
   const mats = [mk(false), mk(true)], matsP = [mk(false, true), mk(true, true)];   // matsP: HDX6 polar pass materials
-  const varMats = new Map(); const varMat = (atlas, polar, occ, variant, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + (occ ? 4 : 0) + variant + ':' + refine; if (!varMats.has(k)) varMats.set(k, mk(atlas, polar, occ, variant, false, false, 0, refine)); return varMats.get(k); };   // SP: band / split variants, compiled on first use
-  const occMats = new Map(); const occMat = (atlas, polar, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + ':' + refine; if (!occMats.has(k)) occMats.set(k, mk(atlas, polar, true, '', false, false, 0, refine)); return occMats.get(k); };   // E2: crest-occlusion variants, compiled on first use (option off never builds them)
+  // PRUNE (minimaxai patch, reviewed le-chonk): every distinct option combination makes a new ShaderMaterial -> a new
+  // three.js program, and three.js releases a program only when its material is disposed. The three caches below were
+  // never pruned, so a session that touches the halo options leaves one program per combination behind (measured: 37 for
+  // one pass through the option values; the option axes span 40,320 combinations), and a phone with a low program limit
+  // then runs out of shader slots - the drive view falls back to the CPU renderer. Keep the caches small: past MAT_CAP,
+  // dispose the oldest entries (insertion order; the key in use was just created or returned, so it is never the oldest
+  // while in use). The cap sits above the largest per-frame working set (m, splitM, m2, splitM2 and up to two polar
+  // materials = 6), so a frame never disposes a material it is about to render.
+  const MAT_CAP = 8;
+  const pruneMats = (map) => { while (map.size > MAT_CAP) { const it = map.keys().next(); if (it.done) break; const m = map.get(it.value); map.delete(it.value); if (m && m.dispose) m.dispose(); } };
+  const varMats = new Map(); const varMat = (atlas, polar, occ, variant, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + (occ ? 4 : 0) + variant + ':' + refine; if (!varMats.has(k)) { varMats.set(k, mk(atlas, polar, occ, variant, false, false, 0, refine)); pruneMats(varMats); } return varMats.get(k); };   // SP: band / split variants, compiled on first use
+  const occMats = new Map(); const occMat = (atlas, polar, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + ':' + refine; if (!occMats.has(k)) { occMats.set(k, mk(atlas, polar, true, '', false, false, 0, refine)); pruneMats(occMats); } return occMats.get(k); };   // E2: crest-occlusion variants, compiled on first use (option off never builds them)
   const jitMats = new Map(); const pick = (atlas, polar, occ, variant, jit, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0, wb = false) => {   // IL: jit off = exactly the materials the code picked before; on = its own variants, compiled on first use (SM: likewise); LW likewise; P3 (moment) likewise; WIDTH likewise
     if (!wb && !jit && !sm && !lw && !refine && !moment && !widthStep) return variant ? varMat(atlas, polar, occ, variant) : occ ? occMat(atlas, polar) : (polar ? matsP : mats)[atlas ? 1 : 0];
-    const k = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb].join(); if (!jitMats.has(k)) jitMats.set(k, mk(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb)); return jitMats.get(k);
+    const k = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb].join(); if (!jitMats.has(k)) { jitMats.set(k, mk(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb)); pruneMats(jitMats); } return jitMats.get(k);
   };
   let blurMat = null; const blurTmp = new Map();   // IL: the bin blur pass and its scratch targets (one per source target), built on first use
   const blurBins = (srcRt, W, r, rd = 0) => {   // rows, columns (r), then depth (rd); ping-pong with a scratch target, srcRt holds the result

@@ -8,6 +8,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   try {
     const page=await browser.newPage({viewport:{width:1500,height:950}}),errors=[];page.on('pageerror',e=>errors.push(String(e)));
     await page.addInitScript(()=>(localStorage.clear(),localStorage.setItem('flux/driveMore','true')));await page.goto('http://localhost:'+port+'/index.html');
+  const rv = (sel) => page.evaluate((s) => (window.RF && RF.DriveLayout ? RF.DriveLayout.reveal(RF.UI, s) : false), sel);   // 11-03 lead #2 (glm5.2 recipe): flux/driveMore is dead; drive-bar controls live in tabs — assert-reveal the control's tab before interacting
     await page.waitForFunction(()=>window.RF&&RF.UI&&RF.UI.store&&RF.SolverHost&&!RF.SolverHost.loading(),null,{timeout:60000});
     const identity=await page.evaluate(p=>!!RF.UI&&!!RF.DriveAnim&&location.port===String(p),port);ok('Flux page and port '+port,identity);if(!identity)throw Error('wrong page');
     await page.waitForFunction(()=>!RF.UI.solving,null,{timeout:150000});await page.evaluate(()=>RF.UI.setMode('D'));
@@ -15,13 +16,13 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     await page.evaluate(()=>{RF.UI.setDisplay('drive');RF.UI.setPane('result','activate');});await sleep(700);
     const saved=await page.evaluate(()=>RF.State.serialize(RF.UI.store.scene));
     ok('traffic logic starts off for existing behaviour',await page.evaluate(()=>RF.UI.dvOpts.trafficLogic===false));
-    await page.evaluate(()=>{const u=RF.UI;Object.assign(u.dvOpts,{scene:'road',tiles:true,mt:true,seed:7,trafficDensity:3,oncoming:true,preceding:true,safeGap:true,speed:50,glare:'off'});Object.assign(u.dvAnim,{view:'anim',playing:false,dist:40,t:0});u.redrawSpec();RF.DriveAnim._.V.pinSS=1;RF.DriveAnim._.frame();window.d6Before=RF.DriveAnim._.readHdr();});
-    await page.click('[data-anim="traffic-logic"]');await sleep(150);
+    await page.evaluate(()=>{const u=RF.UI;Object.assign(u.dvOpts,{scene:'road',tiles:true,mt:true,gpuRenderer:false,seed:7,trafficDensity:3,oncoming:true,preceding:true,safeGap:true,speed:50,glare:'off'});Object.assign(u.dvAnim,{view:'anim',playing:false,dist:40,t:0});u.redrawSpec();RF.DriveAnim._.V.pinSS=1;RF.DriveAnim._.frame();window.d6Before=RF.DriveAnim._.readHdr();});
+    if (!await rv('[data-anim="traffic-logic"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="traffic-logic"]'); await page.click('[data-anim="traffic-logic"]');await sleep(150);
     ok('toggle enables IDM, persists, and replaces the old gap guard',await page.evaluate(()=>RF.UI.dvOpts.trafficLogic&&RF.DriveAnim._.V.src.traffic.logic&&document.querySelector('[data-anim="traffic-logic"]').getAttribute('aria-pressed')==='true'&&document.querySelector('[data-anim="gap"]').disabled&&JSON.parse(localStorage.getItem('flux/driveView')).trafficLogic));
-    await page.click('[data-anim="traffic-logic"]');await sleep(150);
+    if (!await rv('[data-anim="traffic-logic"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="traffic-logic"]'); await page.click('[data-anim="traffic-logic"]');await sleep(150);
     const off=await page.evaluate(()=>{const _=RF.DriveAnim._;_.frame();const out=_.readHdr();let worst=0;for(let i=0;i<out.length;i++)worst=Math.max(worst,Math.abs(out[i]-window.d6Before[i]));return {worst,logic:_.V.src.traffic.logic,gapDisabled:document.querySelector('[data-anim="gap"]').disabled};});
     ok('OFF restores the exact pre-toggle HDR and the D5 gap guard',!off.logic&&!off.gapDisabled&&off.worst===0,JSON.stringify(off));
-    await page.click('[data-anim="traffic-logic"]');
+    if (!await rv('[data-anim="traffic-logic"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="traffic-logic"]'); await page.click('[data-anim="traffic-logic"]');
     const signal=await page.evaluate(async()=>{
       const u=RF.UI,A=RF.DriveAnim,_=A._;Object.assign(u.dvOpts,{tiles:true,trafficLogic:true,speed:5});u.redrawSpec();
       const src=_.V.src;src.traffic.speed=5;const tile=Array.from({length:100},(_,k)=>A.roadTile(7,k)).find(t=>t.kind==='intersection'),clock=(50-tile.phase)%50,own=tile.s0-100;
@@ -59,9 +60,9 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     });
     ok('seeded car follows a turn (forced 30 km/h camera path: a forced 130 km/h path outruns every car, D6b has no speed-driven turns)',!!stream.turn&&stream.speed===30&&!stream.fail,JSON.stringify(stream));
     if(shots)await page.screenshot({path:shots+'/junction-departure.png'});
-    for(const key of ['oncoming','preceding']){await page.click('[data-dv="'+key+'"]');await sleep(120);}
+    for(const key of ['oncoming','preceding']){if(!await rv('[data-dv="'+key+'"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv='+key+']');await page.click('[data-dv="'+key+'"]');await sleep(120);}
     ok('both lane toggles off suppress all traffic with logic enabled',await page.evaluate(()=>{const _=RF.DriveAnim._,u=RF.UI;return RF.DriveAnim.trafficCars(_.V.src,u.dvAnim.dist,u.dvAnim.t).length===0;}));
-    await page.click('[data-dv="oncoming"]');await page.click('[data-dv="preceding"]');
+    if (!await rv('[data-dv="oncoming"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv="oncoming"]'); await page.click('[data-dv="oncoming"]');if (!await rv('[data-dv="preceding"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv="preceding"]'); await page.click('[data-dv="preceding"]');
     const start=await page.evaluate(()=>{const u=RF.UI;u.dvAnim.playing=true;u.redrawSpec();return {d:u.dvAnim.dist,n:u.dvAnimFrames};});await sleep(1600);
     ok('live worker animation advances with logic enabled',await page.evaluate(s=>RF.UI.dvAnim.dist>s.d&&RF.UI.dvAnimFrames>s.n&&RF.DriveAnim.stats().workers>0&&!RF.DriveAnim.stats().mtFail,start));
     await page.evaluate(()=>{RF.UI.dvAnim.playing=false;RF.UI.redrawSpec();});

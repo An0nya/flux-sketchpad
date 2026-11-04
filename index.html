@@ -213,7 +213,18 @@
     el.textContent = 'The app failed to start: a script did not load (RF.UI missing). Open the browser console for the file name. No HTTP server is needed — index.html runs from file://.';
   }
 </script>
-<!-- visit counter, same cookieless GoatCounter as an0nya.github.io; count.js skips localhost and file:// -->
-<script data-goatcounter="https://an0nya.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<!-- visit counter, same cookieless GoatCounter as an0nya.github.io; count.js skips localhost and file://, and on those
+     the script is now not even fetched: the bare fetch fails (404/blocked) on test machines and its console error was the
+     ONLY failure of the "no page/console errors" check in 11+ page tests (host run 11-03; gpuq probe
+     cyrus-20261103-094622-9d6d: the only bad resource of 124). Deployed behaviour (real hostname) is unchanged. -->
+<script>
+  (function () {
+    var h = location.hostname;
+    if (location.protocol === 'file:' || h === 'localhost' || h === '' || h === '[::1]' || /^127\./.test(h) || /^0\./.test(h)) return;
+    var s = document.createElement('script'); s.async = true; s.src = '//gc.zgo.at/count.js';
+    s.setAttribute('data-goatcounter', 'https://an0nya.goatcounter.com/count');
+    document.head.appendChild(s);
+  })();
+</script>
 </body>
 </html>

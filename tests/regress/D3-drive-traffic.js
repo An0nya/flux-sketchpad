@@ -10,6 +10,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.addInitScript(() => (localStorage.clear(),localStorage.setItem('flux/driveMore','true')));
+  const rv = (sel) => page.evaluate((s) => (window.RF && RF.DriveLayout ? RF.DriveLayout.reveal(RF.UI, s) : false), sel);   // 11-03 lead #2 (glm5.2 recipe): flux/driveMore is dead; drive-bar controls live in tabs — assert-reveal the control's tab before interacting
     await page.goto('http://localhost:' + port + '/index.html');
     await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
     ok('Flux page identity and port ' + port, await page.evaluate((p) => !!RF.UI && !!RF.DriveAnim && location.port === String(p), port));
@@ -19,7 +20,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.evaluate(() => RF.UI.setDisplay('drive')); await sleep(1000);
     const saved = await page.evaluate(() => RF.State.serialize(RF.UI.store.scene));
     await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { seed: 7, trafficDensity: 2, glare: 0.3, mt: true, gpuRenderer: false }); Object.assign(RF.UI.dvAnim, { view: 'anim', playing: false, popout: false, dist: 0, total: 0, t: 0 }); RF.UI.redrawSpec(); }); await sleep(700);
-    await page.click('[data-dv="oncoming"]'); await page.click('[data-dv="preceding"]'); await sleep(700);
+    if (!await rv('[data-dv="oncoming"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv="oncoming"]'); await page.click('[data-dv="oncoming"]'); if (!await rv('[data-dv="preceding"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv="preceding"]'); await page.click('[data-dv="preceding"]'); await sleep(700);
     const toggles = await page.evaluate(() => { const D = RF.DriveAnim, s = RF.UI.dvAnim; return { cars: D.trafficCars(D._.V.src, s.dist, s.t), pressed: ['oncoming', 'preceding'].every((k) => document.querySelector('[data-dv="' + k + '"]').getAttribute('aria-pressed') === 'true'), emit: D.placedObjects(D._.V.p, s.dist, s.t).filter((o) => o.traffic && o.emit).map((o) => o.emit) }; });
     ok('existing toolbar buttons add both traffic lanes and their emitters while paused', toggles.pressed && toggles.cars.some((c) => c.kind === 'oncoming') && toggles.cars.some((c) => c.kind === 'preceding') && toggles.emit.length >= 4, JSON.stringify(toggles.cars));
     // Compare actual worker-rendered HDR pixels to the main-thread frames at identical positions and clocks.
@@ -39,7 +40,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     ok('existing tone-map glare changes the traffic picture', glare > 0, 'canvas absolute byte difference ' + glare);
     // Controlled beam for the UI count: 1k cd puts >1 lx at a 30 m eye; black puts 0. No dependence on whichever solver booted.
-    await page.click('[data-anim="reset-flashes"]');
+    if (!await rv('[data-anim="reset-flashes"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="reset-flashes"]'); await page.click('[data-anim="reset-flashes"]');
     const count = await page.evaluate(() => {
       const D = RF.DriveAnim, _ = D._, s = RF.UI.dvAnim, old = _.V.p.lut, car = D.trafficCars(_.V.src, 0, 0).find((c) => c.kind === 'oncoming');
       s.dist = car.rel - 30; s.t = 0; _.V.p.lut = RF.Drive.lutFrom(() => 0); _.frame(); const dark = _.V.flash.n;
@@ -47,21 +48,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       return { dark, lit, label };
     });
     ok('drive bar counts an illuminated oncoming driver once, not once per frame', count.dark === 0 && count.lit === 1 && /above 1 lx: 1$/.test(count.label), JSON.stringify(count));
-    await page.click('[data-anim="reset-flashes"]');
+    if (!await rv('[data-anim="reset-flashes"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="reset-flashes"]'); await page.click('[data-anim="reset-flashes"]');
     ok('reset count clears the displayed total', await page.textContent('[data-anim="flashes"]') === 'oncoming drivers above 1 lx: 0');
     await page.locator('[data-anim="traffic-density"]').evaluate((e) => { e.value = '0'; e.dispatchEvent(new Event('change', { bubbles: true })); }); await sleep(500);
     ok('density zero removes animated traffic without changing the lane toggles', await page.evaluate(() => !RF.DriveAnim.trafficCars(RF.DriveAnim._.V.src, RF.UI.dvAnim.dist, RF.UI.dvAnim.t).length && RF.UI.dvOpts.oncoming && RF.UI.dvOpts.preceding));
     await page.locator('[data-anim="traffic-density"]').evaluate((e) => { e.value = '2'; e.dispatchEvent(new Event('change', { bubbles: true })); }); await sleep(500);
-    await page.click('[data-dv="oncoming"]'); await sleep(400);
+    if (!await rv('[data-dv="oncoming"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv="oncoming"]'); await page.click('[data-dv="oncoming"]'); await sleep(400);
     ok('oncoming off removes only its lane', await page.evaluate(() => { const cs = RF.DriveAnim.trafficCars(RF.DriveAnim._.V.src, 0, 0); return cs.length > 0 && cs.every((c) => c.kind === 'preceding'); }));
-    await page.click('[data-dv="preceding"]'); await sleep(400);
+    if (!await rv('[data-dv="preceding"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv="preceding"]'); await page.click('[data-dv="preceding"]'); await sleep(400);
     ok('both off restores the traffic-free animation', await page.evaluate(() => !RF.DriveAnim.placedObjects(RF.DriveAnim._.V.p, 0, 0).some((o) => o.traffic)));
-    await page.click('[data-dv="oncoming"]'); await page.click('[data-dv="preceding"]'); await sleep(400);
-    await page.click('[data-anim="play"]'); await sleep(2500);
+    if (!await rv('[data-dv="oncoming"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv="oncoming"]'); await page.click('[data-dv="oncoming"]'); if (!await rv('[data-dv="preceding"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv="preceding"]'); await page.click('[data-dv="preceding"]'); await sleep(400);
+    if (!await rv('[data-anim="play"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="play"]'); await page.click('[data-anim="play"]'); await sleep(2500);
     const before = await page.evaluate(() => ({ d: RF.UI.dvAnim.dist, n: RF.UI.dvAnimFrames })); await sleep(1500);
     ok('traffic animation continues on workers with fresh frames', await page.evaluate((b) => RF.UI.dvAnim.dist > b.d && RF.UI.dvAnimFrames > b.n && RF.DriveAnim.stats().workers > 0 && !RF.DriveAnim.stats().mtFail, before));
-    await page.click('[data-anim="play"]'); await sleep(500);
-    if (shots) { require('fs').mkdirSync(shots, { recursive: true }); await page.screenshot({ path: shots + '/traffic-pane.png' }); await page.click('[data-anim="popout"]'); await sleep(600); await page.screenshot({ path: shots + '/traffic-large.png' }); await page.keyboard.press('Escape'); }
+    if (!await rv('[data-anim="play"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="play"]'); await page.click('[data-anim="play"]'); await sleep(500);
+    if (shots) { require('fs').mkdirSync(shots, { recursive: true }); await page.screenshot({ path: shots + '/traffic-pane.png' }); if (!await rv('[data-anim="popout"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="popout"]'); await page.click('[data-anim="popout"]'); await sleep(600); await page.screenshot({ path: shots + '/traffic-large.png' }); await page.keyboard.press('Escape'); }
     ok('traffic controls leave the saved optical scene unchanged', saved === await page.evaluate(() => RF.State.serialize(RF.UI.store.scene)));
     ok('no page errors', errors.length === 0, errors.join(' | '));
   } finally { await browser.close(); }

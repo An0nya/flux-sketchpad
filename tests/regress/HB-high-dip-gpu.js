@@ -12,7 +12,8 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex').slice(0, 16);
-const PIN = { generic: process.env.HB_PIN_GENERIC || 'b174292239daf5d3', high: process.env.HB_PIN_HIGH || 'b174292239daf5d3' };
+// RE-PIN 11-03 (murchison halo/cone sweep, rule 23): were b174292239daf5d3 / b174292239daf5d3 (base-era, HB_PRINT). Cause: accumulated halo landings - NOT the cone dedupe (BASE sets lampCone 'off'; hash byte-identical pre/post dedupe, runs -102332-4306 vs -121726-f30c). Crest + library-pool checks green post-G1.
+const PIN = { generic: process.env.HB_PIN_GENERIC || '19ca63f3dd0de53f', high: process.env.HB_PIN_HIGH || '19ca63f3dd0de53f' };
 const errors = [];
 (async () => {
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });

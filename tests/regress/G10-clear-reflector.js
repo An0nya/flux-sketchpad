@@ -15,8 +15,14 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
   const st = () => page.evaluate(() => { const s = RF.UI.store; return { n: s.scene.groups.A.surfaces.length, dirty: s.dirty.has('A'), auto: s.autoA, past: RF.UI.hist.past.length, foot: (document.querySelector('#min-row .tile.facets b') || {}).textContent || null }; });
   const settle = async () => { await page.waitForTimeout(400); await page.waitForFunction(() => !RF.UI.solving, null, { timeout: 150000 }); await page.waitForTimeout(1500); };
   await page.evaluate(() => RF.UI.setMode('A')); await settle();
+  // 11-03: a fresh boot leaves the default reflector unsolved — loadScene keeps saved A geometry authoritative (js/ui.js:174)
+  // and the default scene ships groups.A.surfaces empty (js/state.js), so nothing dirties A and auto-solve never arms
+  // (host run cyrus-20261103-093613-b5e2: n:0 dirty:false auto:true). Solve explicitly via Rebuild, as a first-run user would.
+  await page.evaluate(() => document.getElementById('btn-generate-top').click());
+  await page.waitForFunction(() => RF.UI.store.scene.groups.A.surfaces.length > 0, null, { timeout: 120000 });
+  await settle();
   const s0 = await st(); ok('setup: a solved reflector, footer shows its facets', s0.n > 0 && /^\d+ \/ /.test(s0.foot || '') && !/^0 \//.test(s0.foot), JSON.stringify(s0));
-  await page.evaluate(() => { const b = [...document.querySelectorAll('#group-list .item')].find((i) => /Mode A|reflector|Paint/i.test(i.textContent) && i.querySelector('button.danger')).querySelector('button.danger'); b.click(); b.click(); });
+  await page.evaluate(() => { const it = [...document.querySelectorAll('#group-list .item')].find((i) => /Mode A|reflector|Paint/i.test(i.textContent) && i.querySelector('button.danger')); if (!it) throw new Error('G10: no Mode A #group-list item with a clear button — reflector unsolved?'); const b = it.querySelector('button.danger'); b.click(); b.click(); });
   await settle();
   const s1 = await st(); ok('clear empties the reflector, footer shows 0 facets, one history entry', s1.n === 0 && /^0 \//.test(s1.foot || '') && s1.past === s0.past + 1, JSON.stringify(s1));
   await page.evaluate(() => { const c = RF.UI.store.scene.source.pos; RF.UI.store.scene.source.pos = [c[0] + 0.5, c[1], c[2]]; RF.UI.store.invalidate(['A']); RF.UI.afterChange(); }); await settle();

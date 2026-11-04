@@ -25,7 +25,7 @@ const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pa
     const fog = JSON.parse(fs.readFileSync(path.join(scen.OUT_DIR, 'forest-fog200-beam.json'), 'utf8'));
     ok('forest-fog200-beam: the beam options are recorded in the output', fog.options.visibility === 200 && fog.options.scatter === 16 && fog.options.scatterMode === 'direct', JSON.stringify(fog.options));
     ok('the runner returned one output per scenario', outs.length === 2);
-  } catch (e) { ok('SH page run completed', false, String(e && e.stack || e).slice(0, 400)); }
+  } catch (e) { ok('SH page run completed', false, String((e && e.message) || e).slice(0, 700) + (e && e.stack ? ' | at ' + String(e.stack).split('\n').slice(1, 3).join(' ').trim().slice(0, 160) : '')); }   // nemo 11-03: the message carries the capture diagnostic (tests/scenario/browser.js pageCaptureDiag); 400 chars of stack head did not
   const fails = checks.filter((c) => !c.pass).length;
   console.log(fails ? fails + ' FAILED of ' + checks.length : 'all ' + checks.length + ' SH page checks passed');
   process.exitCode = fails ? 1 : 0;

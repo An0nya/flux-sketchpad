@@ -9,6 +9,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try {
     const page = await browser.newPage({ viewport: { width: 1500, height: 950 } }), errors = [];
     page.on('pageerror', (e) => errors.push(String(e))); await page.addInitScript(() => (localStorage.clear(),localStorage.setItem('flux/driveMore','true')));
+  const rv = (sel) => page.evaluate((s) => (window.RF && RF.DriveLayout ? RF.DriveLayout.reveal(RF.UI, s) : false), sel);   // 11-03 lead #2 (glm5.2 recipe): flux/driveMore is dead; drive-bar controls live in tabs — assert-reveal the control's tab before interacting
     await page.goto('http://localhost:' + port + '/index.html');
     await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store && RF.SolverHost && !RF.SolverHost.loading(), null, { timeout: 60000 });
     const identity = await page.evaluate((p) => !!RF.UI && !!RF.DriveAnim && location.port === String(p), port);
@@ -21,7 +22,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     ok('traffic off hides flash count and reset; gap guard is default-on', await page.evaluate(() => ['flashes','reset-flashes'].every((k) => getComputedStyle(document.querySelector('[data-anim="'+k+'"]')).display === 'none') && RF.UI.dvOpts.safeGap && document.querySelector('[data-anim="gap"]').getAttribute('aria-pressed') === 'true'));
     // Save the actual old-path image, then exercise the UI and compare after returning to the same position.
     await page.evaluate(() => { RF.DriveAnim._.frame(); window.d4OffHdr = RF.DriveAnim._.readHdr(); });
-    await page.click('[data-anim="tiles"]'); await sleep(500);
+    if (!await rv('[data-anim="tiles"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="tiles"]'); await page.click('[data-anim="tiles"]'); await sleep(500);
     ok('tiles button enables a seeded route and its controls without touching the still scene', await page.evaluate(() => RF.UI.dvOpts.tiles && RF.DriveAnim._.V.src.tiles && RF.DriveAnim._.V.p.w === 640 && !document.querySelector('[data-anim="street-lamps"]').disabled && getComputedStyle(document.querySelector('[data-anim="street-lamps"]')).pointerEvents === 'auto' && document.querySelector('[data-anim="tiles"]').getAttribute('aria-pressed') === 'true'));
     const parity = await page.evaluate(async () => {
       const D = RF.DriveAnim, _ = D._, u = RF.UI; let worst = 0, n = 0, workers = true, rgbError = 0;
@@ -39,14 +40,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.evaluate(() => { const u=RF.UI; Object.assign(u.dvOpts,{scene:'road',oncoming:false,preceding:false}); Object.assign(u.dvAnim,{dist:40,t:0,playing:false}); u.redrawSpec(); });
     const lights = [];
     for (const mode of ['off','sodium','led']) {
-      await page.selectOption('[data-anim="street-lamps"]', mode); await sleep(150);
+      if (!await rv('[data-anim="street-lamps"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim=street-lamps]'); await page.selectOption('[data-anim="street-lamps"]', mode); await sleep(150);
       lights.push(await page.evaluate(() => { const _=RF.DriveAnim._; _.frame(); return { mode:RF.UI.dvOpts.streetLamps, lights:RF.DriveAnim.tileWorld(_.V.p,40,0).lights.length, hdr:Array.from(_.readHdr()).reduce((s,x,i)=>s+(i%4===3?0:x),0) }; }));
     }
     ok('lamp selector removes light sources, adds warm ones, then changes colour', lights[0].lights===0 && lights[1].lights>0 && lights[2].lights>0 && lights[1].hdr!==lights[2].hdr && lights[0].hdr!==lights[1].hdr, JSON.stringify(lights));
-    await page.click('[data-anim="tiles"]'); await sleep(300);
+    if (!await rv('[data-anim="tiles"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="tiles"]'); await page.click('[data-anim="tiles"]'); await sleep(300);
     const restored = await page.evaluate(() => { const _=RF.DriveAnim._; _.frame(); const a=_.readHdr(); let worst=0; for(let i=0;i<a.length;i++) worst=Math.max(worst,Math.abs(a[i]-window.d4OffHdr[i])); return {worst,tiles:!!_.V.src.tiles}; });
     ok('tiles OFF restores the exact pre-toggle HDR picture', !restored.tiles && restored.worst===0, JSON.stringify(restored));
-    await page.click('[data-dv="preceding"]'); await sleep(150);
+    if (!await rv('[data-dv="preceding"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-dv="preceding"]'); await page.click('[data-dv="preceding"]'); await sleep(150);
     ok('traffic on shows counter/reset', await page.evaluate(() => ['flashes','reset-flashes'].every((k)=>!document.querySelector('[data-anim="'+k+'"]').hidden)));
     const guard = await page.evaluate(async () => {
       const u=RF.UI,D=RF.DriveAnim,_=D._; const tr=_.V.src.traffic; tr.safeGap=false; let car, d0=0; for (; d0<2000 && !car; d0+=20) car=D.trafficCars(_.V.src,d0,0).find((c)=>c.kind==='preceding'); tr.safeGap=true; u.dvAnim.dist=d0-20+car.rel-10; u.dvAnim.t=0; _.frame();
@@ -56,15 +57,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await _.frameMT(u.dvAnim.dist,0); return {guarded,speed:_.V.src.traffic.speed,failed:D.stats().mtFail};
     });
     ok('gap guard applies at a would-be close pass; live speed input reaches workers', guard.guarded && guard.speed===130 && !guard.failed, JSON.stringify(guard));
-    await page.click('[data-anim="gap"]'); await sleep(150);
+    if (!await rv('[data-anim="gap"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="gap"]'); await page.click('[data-anim="gap"]'); await sleep(150);
     ok('gap guard off restores the original close car', await page.evaluate(() => RF.UI.dvOpts.safeGap===false && RF.DriveAnim.trafficCars(RF.DriveAnim._.V.src,RF.UI.dvAnim.dist,0).some((c)=>c.kind==='preceding'&&c.rel<25)));
-    await page.click('[data-anim="gap"]'); await page.click('[data-anim="tiles"]');
+    if (!await rv('[data-anim="gap"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="gap"]'); await page.click('[data-anim="gap"]'); if (!await rv('[data-anim="tiles"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="tiles"]'); await page.click('[data-anim="tiles"]');
     await page.evaluate(() => { const u=RF.UI; Object.assign(u.dvOpts,{speed:50,oncoming:true,preceding:true}); Object.assign(u.dvAnim,{dist:199.5,t:10,playing:true}); u.redrawSpec(); }); await sleep(1000);
     const progress = await page.evaluate(() => ({d:RF.UI.dvAnim.dist,n:RF.UI.dvAnimFrames})); await sleep(1500);
     ok('fresh worker frames continue across tile boundaries with traffic', await page.evaluate((b)=>RF.UI.dvAnim.dist>b.d && RF.UI.dvAnimFrames>b.n && RF.DriveAnim.stats().workers>0 && !RF.DriveAnim.stats().mtFail,progress));
     await page.evaluate(() => { RF.UI.dvAnim.playing=false; RF.UI.redrawSpec(); });
     if (shots) {
-      require('fs').mkdirSync(shots,{recursive:true}); await page.click('[data-anim="popout"]'); await sleep(300);
+      require('fs').mkdirSync(shots,{recursive:true}); if (!await rv('[data-anim="popout"]')) throw new Error('11-03 reveal failed (control missing/moved): [data-anim="popout"]'); await page.click('[data-anim="popout"]'); await sleep(300);
       for (const kind of ['straight','250R','150L','intersection','t-junction','urban']) {
         await page.evaluate((kind) => { const D=RF.DriveAnim,u=RF.UI,tile=Array.from({length:160},(_,k)=>D.roadTile(7,k)).find((t)=>t.kind===kind); Object.assign(u.dvAnim,{dist:tile.s0+60,t:(50-tile.phase)%50,playing:false}); u.redrawSpec(); },kind);
         await page.screenshot({path:shots+'/'+kind+'.png'});

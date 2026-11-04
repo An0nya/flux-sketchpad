@@ -21,7 +21,7 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   ok('yellow close car clears red; distant car stops within braking bound',yellow[0].commit&&yellow[0].x>yellow[0].line&&!yellow[1].commit&&yellow[1].v<.05&&yellow.every(c=>c.maxDec<=3.5+1e-7),yellow);
   for(const side of [-1,1]){
    const result=await page.evaluate(async side=>{
-    const A=RF.DriveAnim,_=A._,u=RF.UI;Object.assign(u.dvOpts,{scene:'road',tiles:true,trafficLogic:true,seed:6,speed:50,oncoming:true,preceding:true,trafficDensity:1,mt:true,glare:'off'});Object.assign(u.dvAnim,{view:'anim',playing:false});u.redrawSpec();_.V.pinSS=1;
+    const A=RF.DriveAnim,_=A._,u=RF.UI;Object.assign(u.dvOpts,{scene:'road',tiles:true,trafficLogic:true,seed:6,speed:50,oncoming:true,preceding:true,trafficDensity:1,mt:true,gpuRenderer:false,glare:'off'});Object.assign(u.dvAnim,{view:'anim',playing:false});u.redrawSpec();_.V.pinSS=1;
     const src=_.V.src,tile=Array.from({length:100},(_,k)=>A.roadTile(6,k)).find(q=>q.kind==='t-junction'&&q.side===side),clock=(24-tile.phase+50)%50,own=tile.s0,route={k:tile.k,mid:tile.s0+100,start:tile.s0+97,side,take:true};
     const state={cars:[{id:'preceding:turn',kind:'preceding',x:route.start,v:0,route},{id:'oncoming:yield',kind:'oncoming',x:route.mid+30,v:50/3.6}]};
     A.advanceTraffic(src,state,own,clock);const held=side<0||!state.cars.find(c=>c.kind==='preceding').turn;

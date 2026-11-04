@@ -39,10 +39,20 @@ export const SODIUM_TINT = () => tintOf(2000, [1, 0.5, 0.14]);
 export const LED_TINT = () => tintOf(4000, [1, 0.94, 0.86]);
 // The lamp list: street-lamp heads (drive-anim.js ~562 'ell', mat lamp-head) and lit signal discs (drive-scenes.js signal(), emit non-null). The cone uses the street heads only.
 export function lampsOf(objects) {
-  const out = [];
+  const out = [], seen = new Set();
   for (const ob of objects || []) {
     if (!ob || !ob.emit) continue;
-    if (ob.cls === 'street-lamp' && ob.mat === 'lamp-head') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'street', emit: ob.emit, street: ob.street || null });
+    if (ob.cls === 'street-lamp' && ob.mat === 'lamp-head') {
+      // murchison (cone 2x fix, probe murchison-20261103-104935-697b): catalogue #1's emissive lens (drive-anim.js:959, behind detailedModels, default ON)
+      // sits at the SAME x/y as the original head, so each physical luminaire entered this list twice and the cone summed both (cScale is kind-based,
+      // the shader adds per entry) -> exactly 2x the intended mist brightness on default flat/tile scenes. Keep the FIRST entry = the original head =
+      // the pin-era lamp (objects are ordered original-then-lens). detailedModels off -> no pairs, list unchanged; signals (other branch) and the pass
+      // world (no catalogue there) unaffected; the lens VISUAL is untouched because rendering does not read this list.
+      const key = ob.x + ',' + ob.y;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'street', emit: ob.emit, street: ob.street || null });
+    }
     else if (ob.cls === 'signal' && ob.k === 'disc') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'signal', emit: ob.emit, st: [ob.nx || 0, ob.ny || 0] });   // frenchie (signalConesOn): the face normal is the cone axis slot
   }
   return out;

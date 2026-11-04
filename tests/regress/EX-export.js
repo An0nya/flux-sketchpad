@@ -11,6 +11,7 @@ const ok = (name, pass, detail) => { console.log((pass ? '[PASS] ' : '[FAIL] ') 
   const browser = await pw.chromium.launch({ channel: 'chromium', args: ['--enable-unsafe-webgpu'] });
   try {
     const page = await browser.newPage({ acceptDownloads: true }), errors = []; page.on('pageerror', e => errors.push(String(e)));
+    await page.addInitScript(() => { try { localStorage.setItem('flux/guideSeen', '1'); } catch (e) { /* ignore */ } });   // dismiss the "Getting started" guide so it does not intercept clicks (js/ui.js:2054)
     await page.goto('http://127.0.0.1:' + port + '/index.html');
     await page.waitForFunction(() => window.RF && RF.UI && RF.Panels.initExports);
     ok('EX correct initialized page and port', await page.evaluate(p => !!RF.UI && location.port === String(p), port));

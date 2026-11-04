@@ -1,4 +1,4 @@
-// AM checks: tiles on by default in a fresh browser; the ambient-light control lives in the drive More controls
+// AM checks: tiles on by default in a fresh browser; the ambient-light control lives in the drive Lighting > Lamps group
 // (and is no longer in the sidebar); a stored {"tiles":false} still wins; ambient changes the rendered frame.
 // Run: node tests/regress/AM-ambient-tiles.js 8945   (server: python3 tests/serve.py 8945)
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
@@ -29,12 +29,17 @@ const readState = page => page.evaluate(() => {
     tiles: RF.UI.dvOpts ? RF.UI.dvOpts.tiles : 'dvOpts not built',
     tilesPressed: tilesBtn ? tilesBtn.getAttribute('aria-pressed') : 'no button',
     ambientInDriveExtras: !!amb && RF.UI.driveExtras.contains(amb),
+    ambientGroup: amb && amb.closest('[data-dl-group]') ? amb.closest('[data-dl-group]').getAttribute('data-dl-group') : null,
+    ambientSub: amb && amb.closest('[data-dl-subpane]') ? amb.closest('[data-dl-subpane]').getAttribute('data-dl-subpane') : null,
+    ambientVisible: !!amb && amb.getClientRects().length > 0,
     ambientOptions: amb ? [...amb.options].map(o => o.value) : [],
     ambientValue: amb ? amb.value : null,
     sidebarHasAmbientRow: document.body.textContent.includes('Drive view: ambient light'),
   };
 });
 
+// The ambient select sits in the drive Lighting > Lamps group. reveal() opens the tab and sub-tab that hold it, so it can be seen and clicked.
+const revealAmbient = page => page.evaluate(() => RF.DriveLayout.reveal(RF.UI, 'select[data-anim="ambient"]'));
 // Set the ambient select (as a user would: change its value, fire change), let the drive redraw, then read mean frame luminance.
 async function setAmbient(page, value) {
   await page.evaluate(value => { const s = document.querySelector('select[data-anim="ambient"]'); s.value = value; s.dispatchEvent(new Event('change')); }, value);
@@ -59,7 +64,8 @@ const meanFrame = page => page.evaluate(async () => {
     let p = await openPage(browser, null); context = p.context;
     let s = await readState(p.page);
     ok('AM fresh browser: tiles on by default', s.tiles === true && s.tilesPressed === 'true', s);
-    ok('AM ambient control is in the drive More controls', s.ambientInDriveExtras && JSON.stringify(s.ambientOptions) === '["0","0.2","5"]', s);
+    await revealAmbient(p.page); await sleep(200); s = await readState(p.page);
+    ok('AM ambient control is in the drive Lighting > Lamps group and is visible', s.ambientGroup === 'lighting/lamps/Ambient' && s.ambientSub === 'lamps' && s.ambientVisible && JSON.stringify(s.ambientOptions) === '["0","0.2","5"]', s);
     ok('AM ambient control default is None (0)', s.ambientValue === '0', s);
     ok('AM sidebar no longer has the ambient row', !s.sidebarHasAmbientRow, s);
     ok('AM fresh browser: no console/page errors', p.errors.length === 0, p.errors);

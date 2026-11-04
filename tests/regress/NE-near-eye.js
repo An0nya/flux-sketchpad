@@ -7,7 +7,7 @@ const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node
 const crypto = require('crypto');
 const port = +(process.argv[2] || 8993);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const DIRECT16 = process.env.SD_DIRECT16 || 'f7eba2f98a72dbcc4cf058c7b164699108772cf3fad4034411c4d59f915b5d9d';
+const DIRECT16 = process.env.SD_DIRECT16 || '93e124328b606a6adbb72064281b4d5f25a813dd74068028cca295604d604bb3';   // re-pinned 11-04 (frenchie, NE step-2): NE's frame includes the lamp cone where SD's excludes it, so cone-dedupe moved the hash (murchison's recipe diff)
 const TABLE48_MAIN = process.env.NE_TABLE48_MAIN || '';
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 async function meanLuma(page, png) {
@@ -39,7 +39,7 @@ async function meanLuma(page, png) {
     };
     const direct = await frame('direct 16', { scatterMode: 'direct' });
     ok('NE GPU renderer is on (no GPU failure)', direct.st.renderer === 'three' && !direct.st.gpuFailure, JSON.stringify(direct.st));
-    ok('NE direct mode: the frame equals the SD DIRECT16 baseline', direct.hash === DIRECT16, direct.hash.slice(0, 12));
+    ok('NE direct mode: the frame equals the SD DIRECT16 baseline', direct.hash === DIRECT16, direct.hash);   // full hash printed: a re-pin copies it (SD:56 pattern)
     const sel = () => page.evaluate(() => { const s = document.querySelector('[data-dv="scatterNearBias"]'); return s ? { tag: s.tagName, hidden: s.hidden, values: [...s.options].map((o) => o.value) } : null; });
     const selDirect = await sel();
     ok('NE select: scatterNearBias is a SELECT with values 0 and 1', !!selDirect && selDirect.tag === 'SELECT' && JSON.stringify(selDirect.values) === '["0","1"]', JSON.stringify(selDirect));

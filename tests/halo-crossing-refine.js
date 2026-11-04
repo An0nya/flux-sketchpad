@@ -38,6 +38,11 @@ for (const n of [32, 64, 128, 256, 512, 2048]) {
   ok('P1c: jitter still moves the ordinary ladder sample', jit.includes('haloJitAmt'));
   ok('P1c: the crest hook reaches both sample bodies', (occ.match(/if \(crestOcc\(lamp, haloEye \+ (?:s|rs) \* ray\)\) continue;/g) || []).length === 2);
   ok('P1c: the shadow-map hook reaches both sample bodies', (sm.match(/if \(smM >= 0 \? !smLit\(smM, haloEye \+ (?:s|rs) \* ray\) : crestOcc/g) || []).length === 2);
+  // 11-02 (host 8b553f4): crossText renames s->rs in the refined copy, so the hooks there MUST read rs.
+  // A bare s in the refined scope is an undeclared identifier (the bug that hung the page with refine+shadow map).
+  // The (?:s|rs) checks above accept the broken text; these strict ones do not (broken tree: rs count 0).
+  ok('P1c: the refined copy crest hook reads the renamed rs (not bare s)', (occ.match(/crestOcc\(lamp, haloEye \+ rs \* ray\)/g) || []).length === 1);
+  ok('P1c: the refined copy shadow-map hook reads the renamed rs (not bare s)', (sm.match(/smLit\(smM, haloEye \+ rs \* ray\)/g) || []).length === 1);
 }
 
 // 4. The registry entry: declared once, default off, GPU-only rule attached.
