@@ -35,7 +35,8 @@ ok('existing asphalt entry has NO s field (absent = today)', !('s' in D.MAT_DEF.
 {
   const rs = Opt.OPTIONS.filter((e) => e.id === 'roadSurfaces'), ru = Opt.OPTIONS.filter((e) => e.id === 'roadSurface');
   ok('roadSurfaces registered once, bool, default false', rs.length === 1 && rs[0].type === 'bool' && rs[0].default === false);
-  ok('roadSurface registered once, enum, default stock', ru.length === 1 && ru[0].type === 'enum' && ru[0].default === 'stock' && ru[0].values.join(',') === 'stock,fresh,old,concrete');
+  // frenchie's landed kit (11-05) owns the declaration; tar-snake is in the approved enum
+  ok('roadSurface registered once, enum, default stock', ru.length === 1 && ru[0].type === 'enum' && ru[0].default === 'stock' && ru[0].values.join(',') === 'stock,fresh,old,concrete,tar-snake');
   ok('generated defaults carry roadSurfaces:false, roadSurface:"stock"', Opt.defaults().roadSurfaces === false && Opt.defaults().roadSurface === 'stock');
 }
 

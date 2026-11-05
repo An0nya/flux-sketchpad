@@ -1,9 +1,10 @@
 // PP: the pass with detailed models on. Claude: python3 tests/serve.py 8942; PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/PP-pass-parity.js 8942
 // Checks: no page or shader errors; traffic cars are detailed meshes when the toggle is on (and not when off); street lamps show in a stretch.
-// Screenshots: lamp stretch at night, and a detailed car on the pass, into the flux-sketchpad briefs reports folder.
+// Screenshots: lamp stretch at night, and a detailed car on the pass, into the workspace shots/pp folder (PP_SHOTS=<dir> overrides).
 const fs = require('fs'), path = require('path'), pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const port = +(process.argv[2] || 8942);
-const SHOTS = process.env.PP_SHOTS || '/Users/anya/Projects/flux-sketchpad/.claude/briefs/reports';
+const SHOTS = process.env.PP_SHOTS || path.join(__dirname, '../../shots/pp');
+fs.mkdirSync(SHOTS, { recursive: true });
 (async () => {
   const browser = await pw.chromium.launch({ channel: 'chromium', args: ['--use-angle=metal'] });
   let fails = 0;

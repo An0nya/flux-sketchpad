@@ -56,106 +56,109 @@ if (lut) {
 // ---- GPU twin: the splicer is guarded and OFF leaves the shipped text alone
 const esm = (file, extra, names) => new Function(...Object.keys(extra || {}), fs.readFileSync(path.join(ROOT, 'js', file), 'utf8').replace(/^import .*$/mg, '').replace(/^export /mg, '') + '\nreturn { ' + names.map((n) => n + ': typeof ' + n + ' !== "undefined" ? ' + n + ' : undefined').join(', ') + ' };')(...Object.values(extra || {}));
 const S = esm('drive-three-shaders.js', null, ['ground', 'withWetBounce', 'withShimmer']);
-ok('GPU: shipped ground text has no lampM (OFF = byte-identical)', !S.ground.includes('lampM'));
-const on = S.withWetBounce(S.ground);
-ok('GPU: withWetBounce splices the mirror march + own uniforms', on.includes('lampM[2]') && on.includes('nLampM') && on.includes('wetU') && on.includes('beamI(vec3(d.x,d.y,-d.z),lampM[i])'));
-ok('GPU: withWetBounce keeps the rest of inScatter intact', on.includes('acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;'));
-let threw = false; try { S.withWetBounce(S.ground.replace('vec3 inScatter', 'vec3 inScatX')); } catch (err) { threw = /markers changed/.test(err.message); }
-ok('GPU: withWetBounce throws on a moved marker (silent no-op impossible)', threw);
-const composed = S.withWetBounce(S.withShimmer(S.ground));
-ok('GPU: withWetBounce composes over withShimmer (both options on)', composed.includes('lampM[2]') && composed.includes('shimmerAmp'));
+(async () => {
+  ok('GPU: shipped ground text has no lampM (OFF = byte-identical)', !S.ground.includes('lampM'));
+  const on = S.withWetBounce(S.ground);
+  ok('GPU: withWetBounce splices the mirror march + own uniforms', on.includes('lampM[2]') && on.includes('nLampM') && on.includes('wetU') && on.includes('beamI(vec3(d.x,d.y,-d.z),lampM[i])'));
+  ok('GPU: withWetBounce keeps the rest of inScatter intact', on.includes('acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;'));
+  let threw = false; try { S.withWetBounce(S.ground.replace('vec3 inScatter', 'vec3 inScatX')); } catch (err) { threw = /markers changed/.test(err.message); }
+  ok('GPU: withWetBounce throws on a moved marker (silent no-op impossible)', threw);
+  const composed = S.withWetBounce(S.withShimmer(S.ground));
+  ok('GPU: withWetBounce composes over withShimmer (both options on)', composed.includes('lampM[2]') && composed.includes('shimmerAmp'));
 
-// ---- keys carry the option (all three picture keys) + look plumbing
-const spec = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
-const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
-const three = fs.readFileSync(path.join(ROOT, 'js', 'drive-three.js'), 'utf8');
-ok('keys: spec-ui drive key + groundKey carry o.wetBounce', (spec.match(/o\.wetBounce\b/g) || []).length >= 2);
-ok('keys: drive-anim picture key carries o.wetBounce', /o\.wetBounce\b/.test(anim.match(/const key = JSON\.stringify\(\[I\.groundKey[\s\S]*?\]\)/)[0]));
-ok('look: V.p.look carries wetBounce from the option', /wetBounce: o\.wetBounce === true/.test(anim));
-ok('GPU table: tableKey carries look.wetBounce + wetness (the table rebuilds on toggle)', /!!look\.wetBounce/.test(three) && /quant\(\+look\.wetness/.test(three));
-ok('GPU: uniforms lampM/nLampM/wetU declared; per-frame fill mirrors z -> -z', /lampM: array\(2, T\.Vector3\)/.test(three) && /fromArray\(\[l\[0\], l\[1\], -l\[2\]\]\)/.test(three));
-ok('GPU: recompile only on the on/off flip (userData.wb), OFF = shipped text', /mat\.userData\.wb/.test(three) && /withWetBounce\(baseSrc\)/.test(three));
-ok('CPU: inScatter + scatterTableBins both gate on look.wetBounce && wetness > 0', (fs.readFileSync(path.join(ROOT, 'js', 'drive.js'), 'utf8').match(/o\.look\.wetBounce|lk\.wetBounce/g) || []).length >= 2);
+  // ---- keys carry the option (all three picture keys) + look plumbing
+  const spec = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
+  const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
+  const three = fs.readFileSync(path.join(ROOT, 'js', 'drive-three.js'), 'utf8');
+  ok('keys: spec-ui drive key + groundKey carry o.wetBounce', (spec.match(/o\.wetBounce\b/g) || []).length >= 2);
+  ok('keys: drive-anim picture key carries o.wetBounce', /o\.wetBounce\b/.test(anim.match(/const key = JSON\.stringify\(\[I\.groundKey[\s\S]*?\]\)/)[0]));
+  ok('look: V.p.look carries wetBounce from the option', /wetBounce: o\.wetBounce === true/.test(anim));
+  ok('GPU table: tableKey carries look.wetBounce + wetness (the table rebuilds on toggle)', /!!look\.wetBounce/.test(three) && /quant\(\+look\.wetness/.test(three));
+  ok('GPU: uniforms lampM/nLampM/wetU declared; per-frame fill mirrors z -> -z', /lampM: array\(2, T\.Vector3\)/.test(three) && /fromArray\(\[l\[0\], l\[1\], -l\[2\]\]\)/.test(three));
+  ok('GPU: recompile only on the on/off flip (userData.wb), OFF = shipped text', /mat\.userData\.wb/.test(three) && /withWetBounce\(baseSrc\)/.test(three));
+  ok('CPU: inScatter + scatterTableBins both gate on look.wetBounce && wetness > 0', (fs.readFileSync(path.join(ROOT, 'js', 'drive.js'), 'utf8').match(/o\.look\.wetBounce|lk\.wetBounce/g) || []).length >= 2);
 
-ok('gate + all registered', fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'utf8').includes("'frenchie-wet-bounce'") && fs.readFileSync(path.join(ROOT, 'tests/all.js'), 'utf8').includes('frenchie-wet-bounce'));
+  ok('gate + all registered', fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'utf8').includes("'frenchie-wet-bounce'") && fs.readFileSync(path.join(ROOT, 'tests/all.js'), 'utf8').includes('frenchie-wet-bounce'));
 
 
-// ---- 4-O extension: oncoming beams in the air (trafficHalo) + painted beam on surfaces ----
-{
-  const src = { x: 0, y: 200, z: 0.8, beam: { lut, conv: 'A' }, tint: [1, 1, 1], nx: 0, ny: -1, nz: 0 };   // an oncoming lamp 200 m ahead
-  const lookBase = { visibility: 60, trafficBeams: true, trafficHalo: 16, wetness: 0.8, scatter: 16 };
-  const ray = [0, 1, 0.02];
-  const off = D.trafficHalo(ray, 400, [src], 16, { look: { ...lookBase } }, 0.5);
-  const on = D.trafficHalo(ray, 400, [src], 16, { look: { ...lookBase, wetBounce: true } }, 0.5);
-  const sum = (v) => v[0] + v[1] + v[2];
-  ok('trafficHalo: wetBounce ON adds mirrored oncoming light', sum(on) > sum(off));
-  const dry = D.trafficHalo(ray, 400, [src], 16, { look: { ...lookBase, wetBounce: true, wetness: 0 } }, 0.5);
-  ok('trafficHalo: ON at wetness 0 === OFF', sum(dry) === sum(off));
-  const unset = D.trafficHalo(ray, 400, [src], 16, { look: { ...lookBase, wetBounce: false } }, 0.5);
-  ok('trafficHalo: OFF === option-unset', sum(unset) === sum(off));
-  // the mirror term must vanish when the eye ray is below the road (mirror above it): ray pointing down
-  const down = D.trafficHalo([0, 1, -0.5], 400, [src], 16, { look: { ...lookBase, wetBounce: true } }, 0.5);
-  const downOff = D.trafficHalo([0, 1, -0.5], 400, [src], 16, { look: { ...lookBase } }, 0.5);
-  ok('trafficHalo: downward ray gains only the (small) mirror term', sum(down) >= sum(downOff));
-}
-{
-  // GPU halo splicer
-  const H = require(path.join(ROOT, 'js/drive-three-halo.js'));   // require(esm), Node >=22
-  const off = H.haloTableSource(false);
-  ok('haloTableSource OFF byte-identical (no wetU/lampM)', !off.includes('wetU') && !off.includes('lampM'));
-  const on = H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 0, 0, true);
-  ok('halo wb variant splices the mirror march', on.includes('uniform float wetU, kSurf;') && on.includes('lampM') && on.includes('-lamp.z'));
-  const onP = H.haloTableSource(false, true, false, '', false, false, 0, 0, false, 0, 0, true);
-  ok('polar variant + wb splices too', onP.includes('lampM'));
-  const m2 = H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 3, 0, true);
-  ok('moment2 + wb skips the mirror (documented wbNote)', !m2.includes('lampM'));
-  let threw = false; try { H.withWetBounceHalo('void main() { gl_FragColor = vec4(0.0); }'); } catch (e) { threw = /markers/.test(e.message); }
-  ok('withWetBounceHalo throws on moved markers', threw);
-  // 11-03 brace-balance guard: qwen's M4 compile detector found wb=true left ONE brace unclosed
-  // (COMPILE fragment ERROR 0:132 — the mirror block replaced TAIL's three closes with two). Brace
-  // balance is a text property, so this catches the class in node with no GL. Full variant sweep, 2 s.
-  const depth = (s) => { let d = 0; for (const c of s) { if (c === '{') d++; else if (c === '}') d--; } return d; };
-  const vVariants = ['', 'band', 'split'], vJits = [false, 'interleaved', 'jittered'];
-  let vBad = [], vN = 0;
-  for (const atlas of [false, true]) for (const polar of [false, true]) for (const occ of [false, true])
-    for (const variant of vVariants) for (const jit of vJits) for (const sm of [false, true])
-      for (const lw of [0, 1]) for (const refine of [0, 32, 512, 2048]) for (const nb of [false, true])
-        for (const moment of [0, 1, 2, 3]) for (const widthStep of [0, 4]) for (const wb of [false, true]) {
-          const a = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb];
-          let t; try { t = H.haloTableSource(...a); } catch (e) { vBad.push(a.join(',') + ' THROW ' + e.message); continue; }
-          vN++;
-          const d = depth(t); if (d !== 0) vBad.push(a.join(',') + ' depth ' + d);
-          const code = t.replace(/\/\/[^\n]*/g, '');   // strip line comments first, or the walker matches words inside comments
-          {   // 11-03 qwen M4 (corrected): the failure is SCOPE, not presence — a textual "decl exists" check passes the sm/refine combos the driver rejects. Walk brace scopes: every qq/qqM use needs a decl in an open enclosing scope.
-            const stack = [new Set()], re = /for\s*\(\s*int\s+(\w+)\s*=|float\s+qqM\s*=|float\s+qq\s*=|\bqqM\b|\bqq\b|if\s*\(\s*(?:m == 0 && )?wetU|[{}]/g; let m, pendingLoop = null;
-            while ((m = re.exec(code))) {
-              if (/^for\s*\(\s*int\s+\w+\s*=/.test(m[0])) pendingLoop = m[1];   // 11-03: the for-int loop var belongs to the loop body scope
-              else if (m[0] === '{') { const sc = new Set(); if (pendingLoop) { sc.add(pendingLoop); pendingLoop = null; } stack.push(sc); }
-              else if (m[0] === '}') { if (stack.length > 1) stack.pop(); pendingLoop = null; }
-              else if (/^if\s*\(\s*(?:m == 0 && )?wetU/.test(m[0])) { if (!stack.some((s) => s.has('m'))) { vBad.push(a.join(',') + ' MIRROR if outside any open for-m scope (m undeclared there — the m==0 guard must stay inside the loop)'); break; } }   // 11-03: consume the token; only fail when no for-m scope is open
-              else if (/^float\s+qqM\s*=/.test(m[0])) stack[stack.length - 1].add('qqM');
-              else if (/^float\s+qq\s*=/.test(m[0])) stack[stack.length - 1].add('qq');
-              else if (!stack.some((s) => s.has(m[0]))) { vBad.push(a.join(',') + ' ' + m[0] + ' used outside any open declaring scope (qwen M4 0:127/0:171)'); break; }
+  // ---- 4-O extension: oncoming beams in the air (trafficHalo) + painted beam on surfaces ----
+  {
+    const src = { x: 0, y: 200, z: 0.8, beam: { lut, conv: 'A' }, tint: [1, 1, 1], nx: 0, ny: -1, nz: 0 };   // an oncoming lamp 200 m ahead
+    const lookBase = { visibility: 60, trafficBeams: true, trafficHalo: 16, wetness: 0.8, scatter: 16 };
+    const ray = [0, 1, 0.02];
+    const off = D.trafficHalo(ray, 400, [src], 16, { look: { ...lookBase } }, 0.5);
+    const on = D.trafficHalo(ray, 400, [src], 16, { look: { ...lookBase, wetBounce: true } }, 0.5);
+    const sum = (v) => v[0] + v[1] + v[2];
+    ok('trafficHalo: wetBounce ON adds mirrored oncoming light', sum(on) > sum(off));
+    const dry = D.trafficHalo(ray, 400, [src], 16, { look: { ...lookBase, wetBounce: true, wetness: 0 } }, 0.5);
+    ok('trafficHalo: ON at wetness 0 === OFF', sum(dry) === sum(off));
+    const unset = D.trafficHalo(ray, 400, [src], 16, { look: { ...lookBase, wetBounce: false } }, 0.5);
+    ok('trafficHalo: OFF === option-unset', sum(unset) === sum(off));
+    // the mirror term must vanish when the eye ray is below the road (mirror above it): ray pointing down
+    const down = D.trafficHalo([0, 1, -0.5], 400, [src], 16, { look: { ...lookBase, wetBounce: true } }, 0.5);
+    const downOff = D.trafficHalo([0, 1, -0.5], 400, [src], 16, { look: { ...lookBase } }, 0.5);
+    ok('trafficHalo: downward ray gains only the (small) mirror term', sum(down) >= sum(downOff));
+  }
+  {
+    // GPU halo splicer
+    const H = await import('file://' + path.join(ROOT, 'js', 'drive-three-halo.js'));   // dynamic import: host node 25.8 cannot require() the ESM file (pencroff 11-05 02:09Z)
+    const off = H.haloTableSource(false);
+    ok('haloTableSource OFF byte-identical (no wetU/lampM)', !off.includes('wetU') && !off.includes('lampM'));
+    const on = H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 0, 0, true);
+    ok('halo wb variant splices the mirror march', on.includes('uniform float wetU, kSurf;') && on.includes('lampM') && on.includes('-lamp.z'));
+    const onP = H.haloTableSource(false, true, false, '', false, false, 0, 0, false, 0, 0, true);
+    ok('polar variant + wb splices too', onP.includes('lampM'));
+    const m2 = H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 3, 0, true);
+    ok('moment2 + wb skips the mirror (documented wbNote)', !m2.includes('lampM'));
+    let threw = false; try { H.withWetBounceHalo('void main() { gl_FragColor = vec4(0.0); }'); } catch (e) { threw = /markers/.test(e.message); }
+    ok('withWetBounceHalo throws on moved markers', threw);
+    // 11-03 brace-balance guard: qwen's M4 compile detector found wb=true left ONE brace unclosed
+    // (COMPILE fragment ERROR 0:132 — the mirror block replaced TAIL's three closes with two). Brace
+    // balance is a text property, so this catches the class in node with no GL. Full variant sweep, 2 s.
+    const depth = (s) => { let d = 0; for (const c of s) { if (c === '{') d++; else if (c === '}') d--; } return d; };
+    const vVariants = ['', 'band', 'split'], vJits = [false, 'interleaved', 'jittered'];
+    let vBad = [], vN = 0;
+    for (const atlas of [false, true]) for (const polar of [false, true]) for (const occ of [false, true])
+      for (const variant of vVariants) for (const jit of vJits) for (const sm of [false, true])
+        for (const lw of [0, 1]) for (const refine of [0, 32, 512, 2048]) for (const nb of [false, true])
+          for (const moment of [0, 1, 2, 3]) for (const widthStep of [0, 4]) for (const wb of [false, true]) {
+            const a = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb];
+            let t; try { t = H.haloTableSource(...a); } catch (e) { vBad.push(a.join(',') + ' THROW ' + e.message); continue; }
+            vN++;
+            const d = depth(t); if (d !== 0) vBad.push(a.join(',') + ' depth ' + d);
+            const code = t.replace(/\/\/[^\n]*/g, '');   // strip line comments first, or the walker matches words inside comments
+            {   // 11-03 qwen M4 (corrected): the failure is SCOPE, not presence — a textual "decl exists" check passes the sm/refine combos the driver rejects. Walk brace scopes: every qq/qqM use needs a decl in an open enclosing scope.
+              const stack = [new Set()], re = /for\s*\(\s*int\s+(\w+)\s*=|float\s+qqM\s*=|float\s+qq\s*=|\bqqM\b|\bqq\b|if\s*\(\s*(?:m == 0 && )?wetU|[{}]/g; let m, pendingLoop = null;
+              while ((m = re.exec(code))) {
+                if (/^for\s*\(\s*int\s+\w+\s*=/.test(m[0])) pendingLoop = m[1];   // 11-03: the for-int loop var belongs to the loop body scope
+                else if (m[0] === '{') { const sc = new Set(); if (pendingLoop) { sc.add(pendingLoop); pendingLoop = null; } stack.push(sc); }
+                else if (m[0] === '}') { if (stack.length > 1) stack.pop(); pendingLoop = null; }
+                else if (/^if\s*\(\s*(?:m == 0 && )?wetU/.test(m[0])) { if (!stack.some((s) => s.has('m'))) { vBad.push(a.join(',') + ' MIRROR if outside any open for-m scope (m undeclared there — the m==0 guard must stay inside the loop)'); break; } }   // 11-03: consume the token; only fail when no for-m scope is open
+                else if (/^float\s+qqM\s*=/.test(m[0])) stack[stack.length - 1].add('qqM');
+                else if (/^float\s+qq\s*=/.test(m[0])) stack[stack.length - 1].add('qq');
+                else if (!stack.some((s) => s.has(m[0]))) { vBad.push(a.join(',') + ' ' + m[0] + ' used outside any open declaring scope (qwen M4 0:127/0:171)'); break; }
+              }
             }
           }
-        }
-  ok('haloTableSource brace-balanced and qq/qqM scope-declared over the full variant space incl. wb=true (36,864 combos)', vN === 36864 && vBad.length === 0, vBad.slice(0, 3));
-  // withWetBounce now also splices the surface loop (ext B)
-  const S = require(path.join(ROOT, 'js/drive-three-shaders.js'));
-  const g = S.ground, wb = S.withWetBounce(g);
-  ok('withWetBounce splices inScatter + surface loops', (wb.match(/lampM\[i\]/g) || []).length === 3 && wb.includes('intensity(vec3(d.x,d.y,-d.z))'));
-  ok('ground OFF still clean', !g.includes('lampM'));
-  const lit = S.withWetBounce(S.withLighting(S.ground, false));
-  ok('lit variant + wb splices both loops', (lit.match(/lampM\[i\]/g) || []).length === 3);
-  const tab = S.withWetBounce(S.tablePassSource(S.withLighting(S.ground, true)));
-  ok('table pass + wb splices both loops', (tab.match(/lampM\[i\]/g) || []).length === 3);
-}
-{
-  // CPU shade mirror (ext B): textual twin check + the shared Fresnel law at a grazing point
-  const src = fs.readFileSync(path.join(ROOT, 'js/drive.js'), 'utf8');
-  ok('shade() mirror loop present, gated on look.wetBounce + wetness', /wetBounce, 4-O ext B/.test(src) && /const wb = o\.look && o\.look\.wetBounce \? \+o\.look\.wetness/.test(src));
-  ok('trafficHalo mirror present, beam read at the reflected point', /trafficAt\(L, beam, Px, Py, -Pz\)/.test(src));
-  ok('surface weight uses the shared wetBounceW law', D.wetBounceW(0.1, 10, 0.8) > D.wetBounceW(9, 10, 0.8));
-}
-console.log('\n' + pass + ' checks, ' + fail + ' failed');
-process.exit(fail ? 1 : 0);
+    ok('haloTableSource brace-balanced and qq/qqM scope-declared over the full variant space incl. wb=true (36,864 combos)', vN === 36864 && vBad.length === 0, vBad.slice(0, 3));
+    // withWetBounce now also splices the surface loop (ext B)
+    const S = await import('file://' + path.join(ROOT, 'js', 'drive-three-shaders.js'));
+    const g = S.ground, wb = S.withWetBounce(g);
+    ok('withWetBounce splices inScatter + surface loops', (wb.match(/lampM\[i\]/g) || []).length === 3 && wb.includes('intensity(vec3(d.x,d.y,-d.z))'));
+    ok('ground OFF still clean', !g.includes('lampM'));
+    const lit = S.withWetBounce(S.withLighting(S.ground, false));
+    ok('lit variant + wb splices both loops', (lit.match(/lampM\[i\]/g) || []).length === 3);
+    const tab = S.withWetBounce(S.tablePassSource(S.withLighting(S.ground, true)));
+    ok('table pass + wb splices both loops', (tab.match(/lampM\[i\]/g) || []).length === 3);
+  }
+  {
+    // CPU shade mirror (ext B): textual twin check + the shared Fresnel law at a grazing point
+    const src = fs.readFileSync(path.join(ROOT, 'js/drive.js'), 'utf8');
+    ok('shade() mirror loop present, gated on look.wetBounce + wetness', /wetBounce, 4-O ext B/.test(src) && /const wb = o\.look && o\.look\.wetBounce \? \+o\.look\.wetness/.test(src));
+    ok('trafficHalo mirror present, beam read at the reflected point', /trafficAt\(L, beam, Px, Py, -Pz\)/.test(src));
+    ok('surface weight uses the shared wetBounceW law', D.wetBounceW(0.1, 10, 0.8) > D.wetBounceW(9, 10, 0.8));
+  }
+  console.log('\n' + pass + ' checks, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+
+})().catch((e) => { console.error(e); process.exit(1); });
