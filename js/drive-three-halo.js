@@ -699,14 +699,14 @@ export function haloPass(renderer, u) {
       const widthStep = (['1', '0.5', '0.25'].includes(String(look.haloWidthStep)) ? +look.haloWidthStep : 0);   // WIDTH: the target sample spacing in metres (0 = the shipped six per bin); composes with P1c (the crossing bin uses the refined ladder, the other bins use the width ladder)   // RN: widen P1c's trigger to the crossing bin's eye-side neighbour (inert unless P1c is on)
       halo.lw = lwK; halo.cross = refineN; halo.nb = nbN ? 1 : 0; halo.moment = look.haloMoment === 'on' ? 1 : look.haloMoment === 'blend' ? 2 : look.haloMoment === 'moment2' ? 3 : 0; halo.width = widthStep;   // LW: the lamp-window schedule used this frame (0 = off); RN: 1 = the neighbour bin is refined too; P3/glm5.2: mean-placement (0/1/2/3 = off/Hermite/L2d/log-normal CDF)
       halo.jit = jit; halo.blur = blurR; halo.dblur = blurD;   // IL: interleaved sampling
-      halo.wb = look.wetBounce === true && +look.wetness > 0 ? 1 : 0; halo.wbNote = look.wetBounce === true && +look.wetness > 0 && halo.moment === 3 ? 'moment2: wet bounce skipped in the table' : null;   // frenchie (wetBounce)   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
+      halo.wb = look.wetBounce === true && D.wetnessOf(look) > 0 ? 1 : 0; halo.wbNote = look.wetBounce === true && D.wetnessOf(look) > 0 && halo.moment === 3 ? 'moment2: wet bounce skipped in the table' : null;   // frenchie (wetBounce)   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
       const occU = (mm) => { if (useOcc) Object.assign(mm.uniforms, { crestH: { value: occ.texture }, crestWFC: { value: occ.wfc }, crestBox: { value: occ.box }, crestZ: { value: occ.z } }); if (jit) mm.uniforms.haloJitAmt = { value: jitAmt }; };   // IL: the jitter amount rides along
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
       const setPolarU = (mp, q, P, j, pk) => {
         hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
         Object.assign(mp.uniforms, {
           hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
-          haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 }, kSurf: { value: D.surfKOf(look) },
+          haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? D.wetnessOf(look) : 0 }, kSurf: { value: D.surfKOf(look) },
           haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
           sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
           otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
@@ -758,7 +758,7 @@ export function haloPass(renderer, u) {
             if (split) Object.assign(mm.uniforms, { haloBandA: { value: new T.Vector4(bandPlan.band.ac, bandPlan.band.hw, bandPlan.band.fade, bandPlan.band.wd) }, haloPolarC: { value: new T.Vector2(bandPlan.pk.C[0], bandPlan.pk.C[1]) } });
             Object.assign(mm.uniforms, {
               hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
-              haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 }, kSurf: { value: D.surfKOf(look) },
+              haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? D.wetnessOf(look) : 0 }, kSurf: { value: D.surfKOf(look) },
               haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
               sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
               otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
@@ -793,7 +793,7 @@ export function haloPass(renderer, u) {
               if (split) Object.assign(mm.uniforms, { haloBandA: { value: new T.Vector4(bandPlan.band.ac, bandPlan.band.hw, bandPlan.band.fade, bandPlan.band.wd) }, haloPolarC: { value: new T.Vector2(bandPlan.pk.C[0], bandPlan.pk.C[1]) } });
               Object.assign(mm.uniforms, {
                 hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
-                haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 }, kSurf: { value: D.surfKOf(look) },
+                haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? D.wetnessOf(look) : 0 }, kSurf: { value: D.surfKOf(look) },
                 haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
                 sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
                 otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },

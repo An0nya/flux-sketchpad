@@ -420,7 +420,7 @@
         if (m.retro) { const q = Ep * (rscale === undefined ? 1 : rscale) * (eyeFalloff ? Math.pow(NoL,eyeFalloff) : 1); r += m.retro[0] * q; g += m.retro[1] * q; b += m.retro[2] * q; }
       }
       // frenchie (wetBounce, 4-O ext B): the own lamps mirrored in the road plane also paint surfaces (the road itself is skipped by NoL<=0 — the mirror is under it)
-      const wb = o.look && o.look.wetBounce ? +o.look.wetness || 0 : 0;
+      const wb = o.look && o.look.wetBounce ? wetnessOf(o.look) : 0;
       if (wb > 0) for (let i = 0; i < nl; i++) {
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz + L[2], r2 = dx * dx + dy * dy + dz * dz; if (!(r2 > 0)) continue;
         const rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
@@ -865,11 +865,11 @@
     eye = eye || [-2, 0.37, 1.2]; const out = [], occ = occluders || objects;
     // le-chonk (backlog 4-N, option wetVeil): also emit each lamp mirrored in the road plane (z -> -z), weighted by wetness x Fresnel at grazing,
     // so the glare veil gains the wet-road streak below the horizon. Mirrors are not occlusion-tested (v1: the streak can peek past a crest).
-    const wetVeil = !!(opts && opts.wetVeil && Math.max(+opts.wetness || 0, opts.dryStreaks ? 0.25 : 0) > 0 && opts.wetSheen);   // frenchie (dryStreaks): dry floor
+    const wetVeil = !!(opts && opts.wetVeil && Math.max(+opts.wetness || 0, opts.dryStreaks ? dryStreakFloorOf(opts) : 0) > 0 && opts.wetSheen);   // frenchie (dryStreaks): dry floor
     const mirrorOf = (x, y, z, cd, rgb) => {
       const mx = x - eye[0], my = y - eye[1], mz = -z - eye[2], rr = Math.hypot(mx, my, mz);
       if (mx <= 0 || !(rr > 0)) return;
-      const dz = mz / rr, f = (0.02 + 0.98 * Math.pow(1 - Math.min(1, Math.abs(dz)), 5)) * Math.max(+opts.wetness || 0, opts.dryStreaks ? 0.25 : 0);   // frenchie (dryStreaks): dry floor
+      const dz = mz / rr, f = (0.02 + 0.98 * Math.pow(1 - Math.min(1, Math.abs(dz)), 5)) * Math.max(+opts.wetness || 0, opts.dryStreaks ? dryStreakFloorOf(opts) : 0);   // frenchie (dryStreaks): dry floor
       out.push([mx / rr, my / rr, mz / rr, cd * mx / rr / (rr * rr) * f, ...rgb]);
     };
     for (const ob of objects) if (glareEmitter(ob)) {
@@ -952,7 +952,7 @@
       }
       // frenchie (wetBounce): the own lamps mirrored in the road plane (z -> -z), weighted per point by wetBounceW; the beam is read
       // toward the reflected direction (-qz), so the mirror cannot disagree with the direct beam about where the light goes.
-      const wb = o.look && o.look.wetBounce ? +o.look.wetness || 0 : 0;
+      const wb = o.look && o.look.wetBounce ? wetnessOf(o.look) : 0;
       if (wb > 0) for (let i = 0; i < lamps.length; i++) {
         const L = lamps[i], qx = px - L[0], qy = py - L[1], qz = pz + L[2], r2 = qx * qx + qy * qy + qz * qz;
         if (!(r2 > 0)) continue;
@@ -994,14 +994,14 @@
       for (let k = 0; k < N; k++) {
         const a = s0 * Math.pow(q, k), s = a * Math.pow(q, J), w = a * q - a, Tv = Math.exp(-sig * s);
         const Px = eye[0] + s * rx, Py = eye[1] + s * ry, Pz = eye[2] + s * rz;
-        const I = trafficAt(L, beam, Px, Py, Pz); if (!(I > 0)) continue;
-        const dx = Px - L.x, dy = Py - L.y, dz = Pz - L.z, r2 = dx * dx + dy * dy + dz * dz; if (!(r2 > 0)) continue;
-        const r = Math.sqrt(r2), cos = -(dx * rx + dy * ry + dz * rz) / r, E = I / Math.max(r2, SCAT.rMin * SCAT.rMin);
-        const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Tv * w;
-        if (!Number.isFinite(v)) continue;
-        out[0] += v * tint[0]; out[1] += v * tint[1]; out[2] += v * tint[2];
+        const I = trafficAt(L, beam, Px, Py, Pz), dx = Px - L.x, dy = Py - L.y, dz = Pz - L.z, r2 = dx * dx + dy * dy + dz * dz;
+        if (I > 0 && r2 > 0) {   // the direct term gates only itself: the mirror below is lit where the direct beam is not (above an oncoming low beam's cut-off)
+          const r = Math.sqrt(r2), cos = -(dx * rx + dy * ry + dz * rz) / r, E = I / Math.max(r2, SCAT.rMin * SCAT.rMin);
+          const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Tv * w;
+          if (Number.isFinite(v)) { out[0] += v * tint[0]; out[1] += v * tint[1]; out[2] += v * tint[2]; }
+        }
         // frenchie (wetBounce, 4-O ext A): the oncoming lamp mirrored in the road plane — beam read toward the reflected point, march/r/phase at the mirror, Fresnel weight
-        const wb = p && p.look && p.look.wetBounce ? +p.look.wetness || 0 : 0;
+        const wb = p && p.look && p.look.wetBounce ? wetnessOf(p.look) : 0;
         if (wb > 0) {
           const Im = trafficAt(L, beam, Px, Py, -Pz); if (!(Im > 0)) continue;
           const qz = Pz + L.z, q2 = dx * dx + dy * dy + qz * qz; if (!(q2 > 0)) continue;
@@ -1129,7 +1129,7 @@
         f += sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Math.exp(-sig * s) * (fr ? nearFadeW(s, fr[0], fr[1]) : 1);
       }
       // frenchie (wetBounce): road-plane mirrors of the own lamps, same per-point Fresnel weight as inScatter above
-      const wb = lk.wetBounce ? +lk.wetness || 0 : 0;
+      const wb = lk.wetBounce ? wetnessOf(lk) : 0;
       if (wb > 0) for (let i = 0; i < lamps.length; i++) {
         const L = lamps[i], qx = px - L[0], qy = py - L[1], qz = pz + L[2], r2 = qx * qx + qy * qy + qz * qz;
         if (!(r2 > 0)) continue;

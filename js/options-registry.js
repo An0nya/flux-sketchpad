@@ -1659,7 +1659,7 @@
     },
     // ---- saved options that DV_DEF does not declare, derived dropdowns, session and game state (never added to DV_DEF)
     {
-      id: 'wetness', kind: 'extra', type: 'number', values: { min: 0, max: 1, step: 'cycles 0 / 0.4 / 1' },
+      id: 'wetness', kind: 'extra', type: 'number', values: { min: 0, max: 1, step: 'cycles 0 / 0.3 / 0.6 / 1 (dry, damp, wet, standing)' },
       default: undefined, label: 'road: dry / damp / wet',
       control: '[data-dv="wetness"]', where: 'more', query: null,
       group: 'surface', cost: 'per-frame-gpu',
