@@ -517,15 +517,19 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
     };
     const ck = seed + '|' + preset + '|' + (terrain ? 1 : 0) + '|' + JSON.stringify(custom || 0); if (endlessElevCache.has(ck)) return endlessElevCache.get(ck);
     const g = [], cum = [0];   // g[b] = block grade; within a block the grade ramps g[b-1]->g[b] over the first RAMP m and g[b]->g[b+1] over the last
-    const blockZ = (b) => RAMP * (g[b - 1 < 0 ? 0 : b - 1] + g[b]) / 2 + (ENDLESS_BLOCK - 2 * RAMP) * g[b] + RAMP * (g[b] + g[b + 1]) / 2;
+    // one vertical curve per block edge, centred on it: the last RAMP m of block b ramp g[b] -> (g[b]+g[b+1])/2 and the first RAMP m of
+    // block b+1 carry on to g[b+1], so the grade is continuous at the edge (both halves used to ramp the full g[b] -> g[b+1], and the
+    // slope snapped back to g[b] at every edge: a 2-9 % grade kink every 3.2 km)
+    const mid = (b) => (g[b - 1 < 0 ? 0 : b - 1] + g[b]) / 2;
+    const blockZ = (b) => RAMP * (mid(b) + g[b]) / 2 + (ENDLESS_BLOCK - 2 * RAMP) * g[b] + RAMP * (g[b] + mid(b + 1)) / 2;
     const ensure = (b) => { while (g.length <= b + 1) { const i = g.length; g.push(endlessGrade(seed, i, preset, custom)); if (i > 0) cum[i] = cum[i - 1] + blockZ(i - 1); } };
     ensure(1);
     const zAt = (s) => {
       const b = Math.max(0, Math.floor(s / ENDLESS_BLOCK)); ensure(b);
-      const u = s - b * ENDLESS_BLOCK, g0 = g[b], gP = g[b - 1 < 0 ? 0 : b - 1], gN = g[b + 1];
-      if (u < RAMP) { const t = u / RAMP, gt = gP + (g0 - gP) * t; return cum[b] + gP * u + (g0 - gP) * u * u / (2 * RAMP); }
-      if (u > ENDLESS_BLOCK - RAMP) { const w = u - (ENDLESS_BLOCK - RAMP), t = w / RAMP, gt = g0 + (gN - g0) * t; return cum[b] + RAMP * (gP + g0) / 2 + (ENDLESS_BLOCK - 2 * RAMP) * g0 + g0 * w + (gN - g0) * w * w / (2 * RAMP); }
-      return cum[b] + RAMP * (gP + g0) / 2 + g0 * (u - RAMP);
+      const u = s - b * ENDLESS_BLOCK, g0 = g[b], m0 = mid(b), m1 = mid(b + 1);
+      if (u < RAMP) return cum[b] + m0 * u + (g0 - m0) * u * u / (2 * RAMP);
+      if (u > ENDLESS_BLOCK - RAMP) { const w = u - (ENDLESS_BLOCK - RAMP); return cum[b] + RAMP * (m0 + g0) / 2 + (ENDLESS_BLOCK - 2 * RAMP) * g0 + g0 * w + (m1 - g0) * w * w / (2 * RAMP); }
+      return cum[b] + RAMP * (m0 + g0) / 2 + g0 * (u - RAMP);
     };
     const fn = (s, off) => { const z = zAt(s); return terrain && off ? z + verge(s, off) : z; };
     endlessElevCache.set(ck, fn);
