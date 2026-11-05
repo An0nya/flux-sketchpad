@@ -181,3 +181,13 @@ ok('negative control: a non-existent option is not in any key (detector would ca
   !dummyInAny, !dummyInAny ? '' : 'false positive — dummy found in a key');
 
 console.log(`\ncache-key coverage: ${pictureAffecting.length} picture-affecting options, ${Object.keys(EXEMPT).length} exempt, ${missing.length} missing`);
+
+// ---- road surfaces: drive.js surfKOf / dryStreakFloorOf read roadSurfaces + roadSurface, and both feed the
+// CPU animation frame and the ground texture, so the drive-anim frame key and groundKey must carry them
+// (the CPU still key already did).
+{
+  const ANIM_KEY = extractBracket(driveAnim, 'const key = JSON.stringify(');
+  const rs = (k) => inKey(k, 'roadSurfaces') && inKey(k, 'roadSurface');
+  ok('roadSurfaces + roadSurface are in the CPU still key, groundKey and the drive-anim frame key', rs(SPEC_KEY) && rs(GROUND_KEY) && ANIM_KEY.length > 100 && rs(ANIM_KEY),
+    JSON.stringify({ spec: rs(SPEC_KEY), ground: rs(GROUND_KEY), anim: ANIM_KEY.length > 100 && rs(ANIM_KEY) }));
+}
