@@ -8,7 +8,7 @@
 //   node tests/ignored-when.js                # the registry shape checks + the table-class rules
 //   node tests/ignored-when.js --with-scenes  # also the scene-rebuild rules (mountainPass / city), slow
 const fs = require('fs'), http = require('http'), path = require('path');
-const { chromium } = require('/usr/local/lib/node_modules/playwright-core');
+const { chromium } = require(process.env.PLAYWRIGHT || '/usr/local/lib/node_modules/playwright-core');   // PLAYWRIGHT (set by tests/gate.js) first, like tests/regress/*; the fallback is the sealed VM's install
 const REG_PATH = path.join(__dirname, '..', 'js', 'options-registry.js');
 const root = path.join(__dirname, '..'), types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
 let fail = 0, pass = 0;
@@ -36,7 +36,7 @@ const RUN_SCENES = process.argv.includes('--with-scenes');
     fs.readFile(f, (e, d) => { if (e) { r.writeHead(404); r.end(); return; } r.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream' }); r.end(d); }); });
   await new Promise((ok2) => server.listen(0, '127.0.0.1', ok2));   // an ephemeral port: a fixed one is taken by another model's run
   const port = server.address().port;
-  const browser = await chromium.launch({ executablePath: '/usr/bin/chromium-browser', args: ['--no-sandbox', '--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT ? {} : { executablePath: '/usr/bin/chromium-browser' }), args: ['--no-sandbox', '--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.on('pageerror', (e) => console.log('PAGEERROR', String(e).slice(0, 200)));
   await page.addInitScript(() => { localStorage.setItem('flux/photosafeNotice', 'dismissed'); localStorage.setItem('flux/guideSeen', '1'); });

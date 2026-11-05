@@ -13,7 +13,7 @@
 //      node tests/S1-runtime-options.js --only 'haloLampWin|tilesOn'
 //      node tests/S1-runtime-options.js --with-tiles      (adds the scene-rebuild options; slow under llvmpipe)
 const http = require('http'), fs = require('fs'), path = require('path');
-const { chromium } = require('/usr/local/lib/node_modules/playwright-core');
+const { chromium } = require(process.env.PLAYWRIGHT || '/usr/local/lib/node_modules/playwright-core');   // PLAYWRIGHT (set by tests/gate.js) first, like tests/regress/*; the fallback is the sealed VM's install
 const { controlFor, IDS, CONDS } = require('./control-map.js');   // the shared id -> selector map, the registry ids and the rule conditions (tests/control-map.js)
 const root = path.join(__dirname, '..'), types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
 let fails = 0, warns = 0;
@@ -61,7 +61,7 @@ const OPTS = [
     fs.readFile(f, (e, d) => { if (e) { r.writeHead(404); r.end(); return; } r.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream' }); r.end(d); }); });
   await new Promise((ok2) => server.listen(0, '127.0.0.1', ok2));   // an ephemeral port: a fixed one is taken by another model's run
   const port = server.address().port;
-  const browser = await chromium.launch({ executablePath: '/usr/bin/chromium-browser', args: ['--no-sandbox', '--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT ? {} : { executablePath: '/usr/bin/chromium-browser' }), args: ['--no-sandbox', '--use-gl=angle', '--use-angle=gl', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 200)));
