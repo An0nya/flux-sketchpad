@@ -31,10 +31,10 @@ const ok = (n, c, d) => { if (c) { pass++; console.log('[PASS] ' + n); } else { 
     splitMoment: sha(H.haloTableSource(false, false, false, 'split', false, false, 0, 0, false, 1)),
     jitLw: sha(H.haloTableSource(false, false, false, '', true, false, 8)),
     refineWs: sha(H.haloTableSource(false, false, false, '', false, false, 0, 32, true, 0, 0.5)),
-    moment2WbOff: sha(H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 3, 0, true)),
+    moment2Wb: sha(H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 3, 0, true)),
     wbPlain: sha(H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 0, 0, true)),
   };
-  const want = {"plain": "d454860887a09754", "atlas": "ded4067cc6bf5eca", "polar": "118349c73e0e71d9", "occ": "00dcdb352415f8db", "polarOccWb": "4cc86a979f2b5eb9"   /* road-surfaces */   /* B3 c(W)=W^2 */, "band": "f9292fe256ce53e8", "splitMoment": "974c603cbe6b21fd", "jitLw": "84b2d366648d0a87", "refineWs": "4b9fd375575cb9f2", "moment2WbOff": "ccd399f180bdb109", "wbPlain": "0002dfc358f486e3"   /* road-surfaces */   /* B3 c(W)=W^2 */};;
+  const want = {"plain": "d454860887a09754", "atlas": "ded4067cc6bf5eca", "polar": "118349c73e0e71d9", "occ": "00dcdb352415f8db", "polarOccWb": "4cc86a979f2b5eb9"   /* road-surfaces */   /* B3 c(W)=W^2 */, "band": "f9292fe256ce53e8", "splitMoment": "974c603cbe6b21fd", "jitLw": "84b2d366648d0a87", "refineWs": "4b9fd375575cb9f2", "moment2Wb": "2b8b0396c1680eed"   /* re-pin: moment2+wb now marches the mirror into accM2 (was ccd399f180bdb109, mirror skipped) */, "wbPlain": "0002dfc358f486e3"   /* road-surfaces */   /* B3 c(W)=W^2 */};;
   for (const [k, v] of Object.entries(want)) ok('pin ' + k, pins[k] === v, pins[k] + ' != ' + v);
   // (appended 11-02) qwen T10-F1 completion: consumption-site clamps for ranged options whose display clamp lives elsewhere.
   {
