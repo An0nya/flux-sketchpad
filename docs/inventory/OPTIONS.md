@@ -268,7 +268,7 @@ Each rule is one condition on other options (or on the render context), with the
 | `mountainPassAir` | mountainPass = true | the pass air beam table still uses the flat basis (HAZARDS H4); the traffic halo now renders on the pass (TOUGE-ELEV B, per-car tilt) | none | `drive-three.js !p.airHold ~L307` | scatter, scatterMode |
 | `polarAuto` | haloPolar = "auto" | only read when the lamp-centred table is on auto | none | `drive-three-halo.js pmode === 'auto' ~L605` | haloPolarBand |
 | `crossingRefineOn` | haloCrossingRefine > 0 | the crossing-bin refinement replaces the lamp-window schedule in the same bin | none | `drive-three-halo.js const refineN = [32, 64, 128, 256, 512, 2048].includes ~L583` | haloLampWin, haloRefineNeighbour |
-| `cullFast` | scatterCull = "fast" | only read when oncoming in-scatter culling is fast (exact never uses a threshold) | none | `drive-three-halo.js cullMode === 'fast' ~L619` | scatterCullEps |
+| `cullFast` | scatterCull = "fast" | only read when oncoming in-scatter culling is fast (exact never uses a threshold) | none | `drive-three-halo.js cullMode === 'fast' ~L741` | scatterCullEps |
 | `passHalo` | mountainPass = true | mountain pass only: the occluder is the pass ribbon; on the flat road the option does nothing | none | `drive-three.js p.look.crestOcclusion === 'on' ~L378` | crestOcclusion, trafficShadows, shadowRes, trafficShadowRoad, trafficShadowObjects, trafficShadowSoft |
 | `mountainPassPeople` | mountainPass = true | the pass builds no people | none | `drive-scenes.js FEATURE_PRESETS ~L172` | people |
 | `cityScene` | scene = "city" | leafy foliage is ignored in the city | none | `drive-anim.js name === 'road' \|\| name === 'forest' ~L35` | leafyFoliage |

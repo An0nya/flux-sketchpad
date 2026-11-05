@@ -32,10 +32,10 @@ ok('registry: tests lists node:frenchie-crest-bounce', !!wp && wp.tests.includes
 
 // ---- wiring: control, label handler, cache key, look projection, glare opts
 ok('spec-ui: button + label handler', has(spec, "btn('wetBouncePlane',") && has(spec, "k === 'wetBouncePlane'"));
-ok('drive-anim: cache key carries o.wetBouncePlane', has(anim, 'o.wetBounce, o.wetBouncePlane]);'));
+ok('drive-anim: cache key carries o.wetBouncePlane', has(anim, 'o.wetBounce, o.wetBouncePlane, !!o.roadSurfaces'));   // review 11-05: roadSurfaces appended after wetBouncePlane
 ok('drive-anim: look literal carries wetBouncePlane', has(anim, 'wetBouncePlane: o.wetBouncePlane === true,'));
 ok('drive-anim: glareOpts passes A + wetBouncePlane', has(anim, 'A: world && world.A, wetBouncePlane: o.wetBouncePlane === true'));
-ok('drive-touge: glare wrapper passes A + wetBouncePlane', has(touge, 'wetBouncePlane:opts.wetBouncePlane,A}'));
+ok('drive-touge: glare wrapper passes A + wetBouncePlane', has(touge, 'wetBouncePlane:opts.wetBouncePlane,dryStreaks'));   // review 11-05: dryStreaks/roadSurfaces inserted between wetBouncePlane and A
 ok('gate.js: node:frenchie-crest-bounce registered in 4 MAP spots', cnt(gate, 'node:frenchie-crest-bounce') === 4);
 
 // ---- GPU own-lamp site (drive-three.js)

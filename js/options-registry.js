@@ -128,7 +128,7 @@
     crossingRefineOn: { cond: { opt: 'haloCrossingRefine', gt: 0 }, why: 'the crossing-bin refinement replaces the lamp-window schedule in the same bin', effect: 'none',
       at: { file: 'js/drive-three-halo.js', fn: 'const refineN = [32, 64, 128, 256, 512, 2048].includes', line: 583 } },
     cullFast: { cond: { opt: 'scatterCull', eq: 'fast' }, why: 'only read when oncoming in-scatter culling is fast (exact never uses a threshold)', effect: 'none',
-      at: { file: 'js/drive-three-halo.js', fn: "cullMode === 'fast'", line: 619 } },
+      at: { file: 'js/drive-three-halo.js', fn: "cullMode === 'fast'", line: 741 } },
     passHalo: { cond: { opt: 'mountainPass', eq: true }, why: 'mountain pass only: the occluder is the pass ribbon; on the flat road the option does nothing', effect: 'none',
       at: { file: THREE, fn: "p.look.crestOcclusion === 'on'", line: 378 } },
     mountainPassPeople: { cond: { opt: 'mountainPass', eq: true }, why: 'the pass builds no people', effect: 'none',
