@@ -94,7 +94,7 @@
       const R = D.rng((Math.imul(tr.seed, 2654435761) ^ Math.imul(k, 0x9E3779B1) ^ 0xA1B2C3D4) >>> 0);   // own hash salt (distinct from oncoming/preceding)
       const rel = (k + 0.2 + 0.6 * R()) * gap - shift;   // rel < 0: behind us (shift > k*gap)
       if (rel >= -6 || rel <= -MIRROR_CULL) continue;
-      const laneOff = src.tiles && src.tiles.multilane ? (k & 1 ? 3.5 : 0) : 0;   // multilane: alternating own/overtaking lane (same pattern as preceding)
+      const laneOff = src.tiles && src.tiles.multilane && (k & 1) ? mlLanes(ML_LANE, ML_MEDIAN).right : 0;   // multilane: alternating own / right lane (same pattern as preceding); the median is to our left
       const distance = -rel, bearingDeg = Math.atan2(laneOff, distance) * 180 / Math.PI;   // bearing off rear centre: 0 = directly behind, + = left
       const cd = MIRROR_KCD * Math.max(0.1, 1 - distance / MIRROR_CULL);   // fade with distance (atmospheric + cull)
       out.push({ id: 'mirror:' + k, distance, bearing: bearingDeg, candela: cd });
