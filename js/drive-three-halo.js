@@ -286,12 +286,14 @@ const smText = (t, occ) => { const hook = occ ? '      if (smM >= 0 ? !smLit(smM
 // scalar weight, declares accM, writes vec4(acc, accM), and scales accM with the share. The LW window runs the same march body, so the global rewrites hit
 // both copies. P3 composes with crossing refinement now (the crossing variant is moment-aware via the second regex below).
 const MOMENT_MARCH = 'acc += sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds * tint;';   // glm5.3flash review canary: the primary march accumulation line (always present, the non-crossing bins); if a future march-body edit moves it, momentText/moment2Text would silently no-op and produce a table that declares accM/accM2 but never accumulates it
+const MIRROR_MARCH_RE = /acc \+= sigma \* p \* I \* w \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* (r?s)\) \* (r?ds) \* tint;/g;   // the wetBounce mirror's accumulation (withWetBounceHalo); $1/$2 = s/ds, or rs/rds in the crossing-refined copy
 const momentText = (body) => { if (!body.includes(MOMENT_MARCH)) throw new Error('momentText: march accumulation line not found; the regex anchor moved'); let t = body;   // frenchie (pool 4): each anchor guarded via hrep
   t = hrep(t, /acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* s\) \* ds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds; acc += w * tint; accM += s * w;', true);   // every copy of the march (the ladder and the LW window)
   t = hrep(t, /acc \+= sigma \* p \* I \/ max\(r2, haloRMin \* haloRMin\) \* exp\(-sigma \* r\) \* exp\(-sigma \* rs\) \* rds \* tint;/g, 'float w = sigma * p * I / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * rs) * rds; acc += w * tint; accM += rs * w;', true);   // P3+RN: the crossing-refined ladder (crossText renames s→rs, ds→rds)
   t = hrep(t, /vec3 acc = vec3\(0\.0\);/g, 'vec3 acc = vec3(0.0); float accM = 0.0;');
   t = hrep(t, /vec4\(acc, 1\.0\)/g, 'vec4(acc, accM)');
   t = hrep(t, 'vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)', true)   // split-only early-out: absent in the plain body;   // the split early-out: no march here, so no moment
+  t = hrep(t, MIRROR_MARCH_RE, '{ float wm = sigma * p * I * w / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * $1) * $2; acc += wm * tint; accM += $1 * wm; }', true);   // the wetBounce mirror march (present only with wb)
   t = hrep(t, /acc \*= swt;/g, 'acc *= swt; accM *= swt;', true); return t; };   // split-only share   // the share scales the moment too
 // P3-M2 (option haloMoment 'moment2'): the second-moment table pass. Same march body, but accumulates Σw·s² (the second moment of depth)
 // instead of the RGB tint and the first moment. Writes vec4(accM2,0,0,0) so the lookup can compute Var[s] = E[s²] − E[s]² and place the bin's
@@ -303,6 +305,7 @@ const moment2Text = (body) => { if (!body.includes(MOMENT_MARCH)) throw new Erro
   t = hrep(t, /vec3 acc = vec3\(0\.0\);/g, 'float accM2 = 0.0;')
   t = hrep(t, /vec4\(acc, 1\.0\)/g, 'vec4(accM2, 0.0, 0.0, 0.0)')
   t = hrep(t, 'vec4(0.0, 0.0, 0.0, 1.0)', 'vec4(0.0, 0.0, 0.0, 0.0)', true)   // split-only early-out: absent in the plain body   // the split early-out: no march here, so no moment
+  t = hrep(t, MIRROR_MARCH_RE, 'accM2 += $1 * $1 * sigma * p * I * w / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * $1) * $2;', true);   // the wetBounce mirror march: same lamp set as the first-moment table
   t = hrep(t, /acc \*= swt;/g, 'accM2 *= swt;', true); return t; };   // split-only share   // the share scales the second moment too
 // WIDTH (option haloWidthStep): a per-bin sample count from the bin's WIDTH, so the samples spread evenly in DEPTH (the shipped six are log-spaced, which
 // leaves the far bins sampled metres apart). The count is ceil(width / step), so the whole table costs about range/step samples instead of 6 per bin.
@@ -319,8 +322,8 @@ const WIDTH_LADDER_NEW = `    float bw = hi - lo;
       float sa = lo + bw * float(m) / float(nk), sb = lo + bw * float(m + 1) / float(nk), s = 0.5 * (sa + sb), ds = sb - sa;`;
 const widthText = (body) => { if (!body.includes(WIDTH_LADDER_OLD)) throw new Error('WIDTH: the ordinary ladder not found once'); return hrep(body, WIDTH_LADDER_OLD, WIDTH_LADDER_NEW); };
 // frenchie (wetBounce, 4-O ext A): guarded splice of the road-mirrored oncoming lamp into the table march (TMAIN).
-// OFF = the shipped text, byte-identical (the caller applies this only when look.wetBounce && wetness>0, and not for
-// the moment2 variant — halo.wbNote says so). The mirror block rides the per-lamp loop's scope: lampM = (x, y, -z),
+// OFF = the shipped text, byte-identical (the caller applies this only when look.wetBounce && wetness>0; the
+// moment variants fold the mirror's accumulation into accM / accM2 via MIRROR_MARCH_RE). The mirror block rides the per-lamp loop's scope: lampM = (x, y, -z),
 // se -> -se, touge basis z-negated, beam read in the mirrored frame, weighted by the grazing Fresnel * wetU (the
 // wetVeil mirrorOf law, same as withWetBounce in drive-three-shaders.js).
 export function withWetBounceHalo(main) {
@@ -351,7 +354,7 @@ export function withWetBounceHalo(main) {
 }
 export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0, wb = false) {
   let main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN);
-  if (wb && moment !== 3) main = globalThis.HALO_WB_PLANE ? withBouncePlaneHalo(withWetBounceHalo(main)) : withWetBounceHalo(main);   // frenchie (wetBounce): mirrored oncoming lamps in the table march; moment2+wb is skipped (wbNote); crest Ladder A plane variant when HALO_WB_PLANE
+  if (wb) main = globalThis.HALO_WB_PLANE ? withBouncePlaneHalo(withWetBounceHalo(main)) : withWetBounceHalo(main);   // wetBounce: mirrored lamps in the table march; momentText/moment2Text fold the mirror into accM/accM2 too (review 0142865: every table carries the mirror, no moment2 skip); crest Ladder A plane variant when HALO_WB_PLANE
   if (sm) main = smText(main, occ);   // the shadow-map hook goes in BEFORE crossText copies the march body (and renames s -> rs in the copy); after it, the refined copy read an undeclared s (11-02: refine + shadow map failed to compile and hung the page)
   const useWidth = widthStep > 0, raw = refine ? crossText(main, refine, nb, widthStep) : (useWidth ? widthText(main) : main);
   const body = variant === 'band' ? bandText(raw) : variant === 'split' ? splitText(raw) : raw;
@@ -702,7 +705,7 @@ export function haloPass(renderer, u) {
       const widthStep = (['1', '0.5', '0.25'].includes(String(look.haloWidthStep)) ? +look.haloWidthStep : 0);   // WIDTH: the target sample spacing in metres (0 = the shipped six per bin); composes with P1c (the crossing bin uses the refined ladder, the other bins use the width ladder)   // RN: widen P1c's trigger to the crossing bin's eye-side neighbour (inert unless P1c is on)
       halo.lw = lwK; halo.cross = refineN; halo.nb = nbN ? 1 : 0; halo.moment = look.haloMoment === 'on' ? 1 : look.haloMoment === 'blend' ? 2 : look.haloMoment === 'moment2' ? 3 : 0; halo.width = widthStep;   // LW: the lamp-window schedule used this frame (0 = off); RN: 1 = the neighbour bin is refined too; P3/glm5.2: mean-placement (0/1/2/3 = off/Hermite/L2d/log-normal CDF)
       halo.jit = jit; halo.blur = blurR; halo.dblur = blurD;   // IL: interleaved sampling
-      halo.wb = look.wetBounce === true && D.wetnessOf(look) > 0 ? 1 : 0; halo.wbNote = look.wetBounce === true && D.wetnessOf(look) > 0 && halo.moment === 3 ? 'moment2: wet bounce skipped in the table' : null; globalThis.HALO_WB_PLANE = halo.wb === 1 && look.wetBouncePlane === true;   // frenchie (crest Ladder A): plane-mirror variant of the table MIRROR block   // frenchie (wetBounce)   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
+      halo.wb = look.wetBounce === true && D.wetnessOf(look) > 0 ? 1 : 0; halo.wbNote = null; globalThis.HALO_WB_PLANE = halo.wb === 1 && look.wetBouncePlane === true;   // every table (first moment, second moment, polar) carries the mirror (review 0142865: no moment2 skip)   // frenchie (crest Ladder A): plane-mirror variant of the table MIRROR block   // frenchie (wetBounce)   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
       const occU = (mm) => { if (useOcc) Object.assign(mm.uniforms, { crestH: { value: occ.texture }, crestWFC: { value: occ.wfc }, crestBox: { value: occ.box }, crestZ: { value: occ.z } }); if (jit) mm.uniforms.haloJitAmt = { value: jitAmt }; };   // IL: the jitter amount rides along
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
       const setPolarU = (mp, q, P, j, pk) => {
@@ -779,8 +782,8 @@ export function haloPass(renderer, u) {
         // (moment2Text) and render target (rt2). Doubles the march cost, but only when haloMoment is 'moment2' (default off). The polar tables
         // stay on the shipped edge knots (no second moment), so this is the screen table only.
         if (halo.moment === 3) {
-          const m2 = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, 3, widthStep, false);   // moment2 carries no mirror (wbNote)
-          const splitM2 = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, 3, widthStep, false) : null;
+          const m2 = pick(atlas, false, useOcc, '', jit, useSm, lwK, refineN, nbN, 3, widthStep, !!halo.wb);   // same lamp set (mirror included) as the first-moment table
+          const splitM2 = bandPlan ? pick(atlas, false, useOcc, 'split', jit, useSm, lwK, refineN, nbN, 3, widthStep, !!halo.wb) : null;
           const e2 = rts.get(tab[0] + 'x' + tab[1] + 'x' + HALO_N); if (!e2.m2bin) { const opt2 = { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter, depthBuffer: false }; e2.m2bin = new T.WebGLRenderTarget(tab[0] * HALO_N, tab[1], opt2); e2.m2cum = new T.WebGLRenderTarget(tab[0] * HALO_N, tab[1], opt2); }   // glm5.3flash review fix: key/tw/th/opt are local to ensure() — rebuild the key from tab (the clamped dims the allocator used) and a local opt
           rt2 = e2.m2bin; cumRt2 = e2.m2cum;
           renderer.setRenderTarget(rt2); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = m2;
@@ -815,7 +818,7 @@ export function haloPass(renderer, u) {
         // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
-          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit, useSm, lwK, refineN, nbN, halo.moment, widthStep, !!halo.wb && halo.moment !== 3);
+          const tp = timing ? performance.now() : 0, rp = ensurePolar(si, pol.nT, pol.nR), mp = pick(atlas, true, useOcc, s.band ? 'band' : '', jit, useSm, lwK, refineN, nbN, halo.moment === 3 ? 1 : halo.moment, widthStep, !!halo.wb);   // polar tables are first-moment light tables (moment2 -> 1, as the screen table)
           const P = s.lamps[0].L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || nearSub) : 1;
           renderer.setRenderTarget(rp.bin); renderer.setClearColor(0x000000, 0); renderer.clear(); mesh.material = mp;
           for (let j = 0; j < P; j++) for (const q of s.lamps) {

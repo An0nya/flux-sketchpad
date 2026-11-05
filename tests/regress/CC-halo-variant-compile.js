@@ -63,7 +63,7 @@ const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pa
       const VALS = {
         atlas: [false, true], polar: [false, true], occ: [false, true], variant: ['', 'band', 'split'],
         jit: [false, 'lamp', 'row', 'bin', 'both'], sm: [false, true], lw: [0, 4, 8, 16, 32, 64],
-        refine: [0, 4, 16, 64, 512, 2048], nb: [false, true], moment: [0, 1, 2],
+        refine: [0, 4, 16, 64, 512, 2048], nb: [false, true], moment: [0, 1, 2, 3],
         widthStep: [0, 1, 2, 3], wb: [false, true],
       };
       const DEF = { atlas: false, polar: false, occ: false, variant: '', jit: false, sm: false, lw: 0, refine: 0, nb: false, moment: 0, widthStep: 0, wb: false };

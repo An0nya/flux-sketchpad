@@ -114,7 +114,14 @@ const S = esm('drive-three-shaders.js', null, ['ground', 'withWetBounce', 'withS
     const onP = H.haloTableSource(false, true, false, '', false, false, 0, 0, false, 0, 0, true);
     ok('polar variant + wb splices too', onP.includes('lampM'));
     const m2 = H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 3, 0, true);
-    ok('moment2 + wb skips the mirror (documented wbNote)', !m2.includes('lampM'));
+    ok('moment2 + wb marches the mirror into accM2 (same lamp set as the first-moment table)', m2.includes('lampM') && /accM2 \+= s \* s \* sigma \* p \* I \* w/.test(m2) && !/\bacc \+=/.test(m2));
+    const m2r = H.haloTableSource(false, false, false, '', false, false, 8, 16, true, 3, 1, true);
+    ok('moment2 + wb + crossing refine: no acc left in the second-moment text (it would not compile)', !/\bacc\b/.test(m2r) && /accM2 \+= rs \* rs \* sigma \* p \* I \* w/.test(m2r));
+    const m1 = H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 1, 0, true);
+    ok('moment + wb folds the mirror into accM', m1.includes('lampM') && /accM \+= s \* wm/.test(m1));
+    const HS = fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8');
+    const polarPick = (HS.match(/mp = pick\([^\n]*\);/) || [''])[0];
+    ok('polar table pick maps moment2 to the first moment and keeps wb', /halo\.moment === 3 \? 1 : halo\.moment/.test(polarPick) && /!!halo\.wb\)/.test(polarPick), polarPick);
     let threw = false; try { H.withWetBounceHalo('void main() { gl_FragColor = vec4(0.0); }'); } catch (e) { threw = /markers/.test(e.message); }
     ok('withWetBounceHalo throws on moved markers', threw);
     // 11-03 brace-balance guard: qwen's M4 compile detector found wb=true left ONE brace unclosed
