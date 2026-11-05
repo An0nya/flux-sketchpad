@@ -73,7 +73,7 @@ const S = esm('drive-three-shaders.js', null, ['ground', 'withWetBounce', 'withS
   ok('keys: spec-ui drive key + groundKey carry o.wetBounce', (spec.match(/o\.wetBounce\b/g) || []).length >= 2);
   ok('keys: drive-anim picture key carries o.wetBounce', /o\.wetBounce\b/.test(anim.match(/const key = JSON\.stringify\(\[I\.groundKey[\s\S]*?\]\)/)[0]));
   ok('look: V.p.look carries wetBounce from the option', /wetBounce: o\.wetBounce === true/.test(anim));
-  ok('GPU table: tableKey carries look.wetBounce + wetness (the table rebuilds on toggle)', /!!look\.wetBounce/.test(three) && /quant\(\+look\.wetness/.test(three));
+  ok('GPU table: tableKey carries look.wetBounce + wetness only while it is on (the table rebuilds on toggle, not on every wetness change with the bounce off)', /!!look\.wetBounce/.test(three) && /look\.wetBounce \? quant\(D\.wetnessOf\(look\)/.test(three));
   ok('GPU: uniforms lampM/nLampM/wetU declared; per-frame fill mirrors z -> -z', /lampM: array\(2, T\.Vector3\)/.test(three) && /fromArray\(\[l\[0\], l\[1\], -l\[2\]\]\)/.test(three));
   ok('GPU: recompile only on the on/off flip (userData.wb), OFF = shipped text', /mat\.userData\.wb/.test(three) && /withWetBounce\(baseSrc\)/.test(three));
   ok('CPU: inScatter + scatterTableBins both gate on look.wetBounce && wetness > 0', (fs.readFileSync(path.join(ROOT, 'js', 'drive.js'), 'utf8').match(/o\.look\.wetBounce|lk\.wetBounce/g) || []).length >= 2);
@@ -98,6 +98,11 @@ const S = esm('drive-three-shaders.js', null, ['ground', 'withWetBounce', 'withS
     const down = D.trafficHalo([0, 1, -0.5], 400, [src], 16, { look: { ...lookBase, wetBounce: true } }, 0.5);
     const downOff = D.trafficHalo([0, 1, -0.5], 400, [src], 16, { look: { ...lookBase } }, 0.5);
     ok('trafficHalo: downward ray gains only the (small) mirror term', sum(down) >= sum(downOff));
+    // the mirror term must not be gated by the DIRECT beam: a hard cut-off beam (nothing above horizontal) lights the air above the lamp only
+    // via the road mirror, so on a rising ray (every sample above the lamp) the direct term is 0 and the bounce alone must show
+    const cut = { ...src, beam: { lut: D.lutFrom((h, v) => (v < -0.5 ? 20000 : 0)), conv: 'A' } }, up = [0, 1, 0.02];
+    const cutOff = D.trafficHalo(up, 400, [cut], 16, { look: { ...lookBase } }, 0.5), cutOn = D.trafficHalo(up, 400, [cut], 16, { look: { ...lookBase, wetBounce: true } }, 0.5);
+    ok('trafficHalo: hard cut-off beam, rising ray: direct 0, wetBounce adds the mirror anyway', sum(cutOff) === 0 && sum(cutOn) > 0, { off: sum(cutOff), on: sum(cutOn) });
   }
   {
     // GPU halo splicer
@@ -154,7 +159,7 @@ const S = esm('drive-three-shaders.js', null, ['ground', 'withWetBounce', 'withS
   {
     // CPU shade mirror (ext B): textual twin check + the shared Fresnel law at a grazing point
     const src = fs.readFileSync(path.join(ROOT, 'js/drive.js'), 'utf8');
-    ok('shade() mirror loop present, gated on look.wetBounce + wetness', /wetBounce, 4-O ext B/.test(src) && /const wb = o\.look && o\.look\.wetBounce \? \+o\.look\.wetness/.test(src));
+    ok('shade() mirror loop present, gated on look.wetBounce + wetness', /wetBounce, 4-O ext B/.test(src) && /const wb = o\.look && o\.look\.wetBounce \? wetnessOf\(o\.look\)/.test(src));
     ok('trafficHalo mirror present, beam read at the reflected point', /trafficAt\(L, beam, Px, Py, -Pz\)/.test(src));
     ok('surface weight uses the shared wetBounceW law', D.wetBounceW(0.1, 10, 0.8) > D.wetBounceW(9, 10, 0.8));
   }

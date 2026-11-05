@@ -592,15 +592,16 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
     t.wild = false;
     if (biome === 'forest' && t.kind === 'straight') { const R9 = D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(k + 97, 0x27D4EB2F)) >>> 0);
       if (R9() < 0.06 && !t.tunnel && !t.sos && !t.picnic) { const Wn = (kk) => D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(kk + 97, 0x27D4EB2F)) >>> 0)() >= 0.06; if (Wn(k - 1) && Wn(k + 1)) t.wild = true; } }   // wildlife overpass: seeded forest tiles, never on tunnel/SOS/picnic, never adjacent
-    t.vms = false;
-    if ((biome === 'open' || biome === 'city') && t.kind === 'straight') { const R13 = D.rng((Math.imul(seed | 0, 0x9E3779B9) ^ Math.imul(k + 167, 0x27D4EB2F)) >>> 0), Vn2 = (kk) => D.rng((Math.imul(seed | 0, 0x9E3779B9) ^ Math.imul(kk + 167, 0x27D4EB2F)) >>> 0)() >= (custom && custom.vms != null ? custom.vms : 0.04);
-      if (R13() < (custom && custom.vms != null ? custom.vms : 0.04) && !t.crossing && !t.layby && !t.fuel && !t.works && !t.toll && Vn2(k - 1) && Vn2(k + 1)) t.vms = true; }   // VMS gantry: seeded open/city straights, never on other feature tiles, never adjacent
-    t.toll = false;
-    if (biome === 'open' && t.kind === 'straight') { const R12 = D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(k + 149, 0x1B873593)) >>> 0), Tn = (kk) => D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(kk + 149, 0x1B873593)) >>> 0)() >= (custom && custom.toll != null ? custom.toll : 0.04);
-      if (R12() < (custom && custom.toll != null ? custom.toll : 0.04) && !t.crossing && !t.layby && !t.fuel && !t.works && Tn(k - 1) && Tn(k + 1)) t.toll = true; }   // toll plaza: seeded open straights (needs the multilane cross-section to render), never on other feature tiles, never adjacent
+    // order matters: works, then toll, then vms, so each '!t.<feature>' exclusivity check reads a field already decided this call
     t.works = false;
     if ((biome === 'open' || biome === 'city') && t.kind === 'straight') { const R11 = D.rng((Math.imul(seed | 0, 0x1B873593) ^ Math.imul(k + 131, 0x85EBCA6B)) >>> 0), Wn = (kk) => D.rng((Math.imul(seed | 0, 0x1B873593) ^ Math.imul(kk + 131, 0x85EBCA6B)) >>> 0)() >= (custom && custom.works != null ? custom.works : 0.06);
       if (R11() < (custom && custom.works != null ? custom.works : 0.06) && !t.crossing && !t.layby && !t.fuel && Wn(k - 1) && Wn(k + 1)) t.works = true; }   // roadworks zone: seeded open/city straight tiles, never on crossing/layby/fuel, never adjacent
+    t.toll = false;
+    if (biome === 'open' && t.kind === 'straight') { const R12 = D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(k + 149, 0x1B873593)) >>> 0), Tn = (kk) => D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(kk + 149, 0x1B873593)) >>> 0)() >= (custom && custom.toll != null ? custom.toll : 0.04);
+      if (R12() < (custom && custom.toll != null ? custom.toll : 0.04) && !t.crossing && !t.layby && !t.fuel && !t.works && Tn(k - 1) && Tn(k + 1)) t.toll = true; }   // toll plaza: seeded open straights (needs the multilane cross-section to render), never on other feature tiles, never adjacent
+    t.vms = false;
+    if ((biome === 'open' || biome === 'city') && t.kind === 'straight') { const R13 = D.rng((Math.imul(seed | 0, 0x9E3779B9) ^ Math.imul(k + 167, 0x27D4EB2F)) >>> 0), Vn2 = (kk) => D.rng((Math.imul(seed | 0, 0x9E3779B9) ^ Math.imul(kk + 167, 0x27D4EB2F)) >>> 0)() >= (custom && custom.vms != null ? custom.vms : 0.04);
+      if (R13() < (custom && custom.vms != null ? custom.vms : 0.04) && !t.crossing && !t.layby && !t.fuel && !t.works && !t.toll && Vn2(k - 1) && Vn2(k + 1)) t.vms = true; }   // VMS gantry: seeded open/city straights, never on other feature tiles, never adjacent
     t.chain = false;
     if (biome === 'mountain' && t.kind === 'straight') { const R10 = D.rng((Math.imul(seed | 0, 0x2545F491) ^ Math.imul(k + 113, 0x6D2B79F5)) >>> 0);
       if (R10() < 0.07 && !t.tunnel && !t.view && !t.sos) { const Cn = (kk) => D.rng((Math.imul(seed | 0, 0x2545F491) ^ Math.imul(kk + 113, 0x6D2B79F5)) >>> 0)() >= 0.07; if (Cn(k - 1) && Cn(k + 1)) t.chain = true; } }   // chain-up area: seeded mountain tiles, never on tunnel/view/SOS, never adjacent
@@ -1705,7 +1706,7 @@ void main() {
     return D.glareSources(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A, p), eyeOf(p), occ, glareOpts(info().o, occW));
   }
   // GLARE (Brief U): one path, every source. opts carry the street lamps (world.lights) and their class/kind; the lights' rgb is the lamp kind's tint. world = the frame's tile/pass world.
-  function glareOpts(o, world) { return { lights: (world && world.lights) || [], lampClass: o.lampClass, lampKind: o.streetLamps, wetVeil: !!o.wetVeil, wetness: D.wetnessOf(o), wetSheen: !!o.wetSheen, A: world && world.A, wetBouncePlane: o.wetBouncePlane === true, dryStreaks: o.dryStreaks === true }; }   // wetVeil (4-N): glareSources mirrors the lamps in the road when on; frenchie (dryStreaks): dry floor for the veil
+  function glareOpts(o, world) { return { lights: (world && world.lights) || [], lampClass: o.lampClass, lampKind: o.streetLamps, wetVeil: !!o.wetVeil, wetness: D.wetnessOf(o), wetSheen: !!o.wetSheen, A: world && world.A, wetBouncePlane: o.wetBouncePlane === true, dryStreaks: o.dryStreaks === true, roadSurfaces: o.roadSurfaces === true, roadSurface: o.roadSurface }; }   // roadSurfaces/roadSurface: the veil mirrors take the same dry floor (dryStreakFloorOf) as the road they reflect off   // wetVeil (4-N): glareSources mirrors the lamps in the road when on; frenchie (dryStreaks): dry floor for the veil
   function exposure(sources) {
     const I = info(), o = I.o;
     if (o.expMode === 'auto' && V.kAuto) return V.kAuto;

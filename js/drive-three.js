@@ -158,7 +158,7 @@ export function create(canvas, gl, onModelsReady) {
   function tableKey(p, extras, look, tw, th, sig) {
     return JSON.stringify([(p.lamps || []).map((l) => l.map((v) => quant(v, 1e-4))), quant(p.yaw, DEG05), quant(p.pitch, DEG05), quant(p.cornerLeft, DEG05), quant(p.cornerRight, DEG05),
       !!p.afs, !!p.lampPitch, !!p.corneringLamps, lutId(p.lut), (p.lampRGB || [1, 1, 1]).map((v) => quant(v, 1e-4)), look.visibility, quant(p.hfov, DEG05), p.w, p.h,
-      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, !!look.wetBounce, quant(+look.wetness || 0, 1e-4), look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps']);
+      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, !!look.wetBounce, look.wetBounce ? quant(D.wetnessOf(look), 1e-4) : 0, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps']);
   }
   // B10 (pseudocode; the code is below and in runTable):
   //   a bank = ONE array render target (w x h x 3 layers, half float, Linear like the old 2D targets): layer b holds table bank b
@@ -312,9 +312,9 @@ export function create(canvas, gl, onModelsReady) {
     set('distance', dist); set('grain', look.grain && (p.src.tiles || (D.wetnessOf(look) > 0 && look.wetSheen)) ? 0.4 * (D.wetnessOf(look) > 0 ? 0.5 : 1) : 0);
     const shimAmp = look.heatShimmer === 'high' ? 0.0025 : look.heatShimmer === 'low' ? 0.0008 : 0;   // frenchie (heatShimmer, GPU only): recompile the ground program only when the on/off state flips; OFF = shipped text
     const shimOn = shimAmp > 0, baseSrc = shimOn ? withShimmer(ground) : ground;   // frenchie (wetBounce): compose over the shimmer variant so the two flips cannot overwrite each other
-    if (!!mat.userData.shim !== shimOn) { mat.fragmentShader = baseSrc; mat.userData.shim = shimOn; mat.needsUpdate = true; }
     const wpOn = wbOn && look.wetBouncePlane === true;   // frenchie (crest Ladder A): plane-mirror shader variant; OFF = shipped wetBounce text
-    if (!!mat.userData.wb !== wbOn || !!mat.userData.shim !== shimOn || !!mat.userData.wp !== wpOn) { mat.fragmentShader = wpOn ? withBouncePlane(withWetBounce(baseSrc)) : wbOn ? withWetBounce(baseSrc) : baseSrc; mat.userData.wb = wbOn; mat.userData.wp = wpOn; mat.needsUpdate = true; }
+    // one check for all flips: a separate shim-first check (as before) reset fragmentShader to baseSrc and left userData.wb true, dropping the wetBounce loop on a shimmer flip
+    if (!!mat.userData.wb !== wbOn || !!mat.userData.shim !== shimOn || !!mat.userData.wp !== wpOn) { mat.fragmentShader = wpOn ? withBouncePlane(withWetBounce(baseSrc)) : wbOn ? withWetBounce(baseSrc) : baseSrc; mat.userData.wb = wbOn; mat.userData.shim = shimOn; mat.userData.wp = wpOn; mat.needsUpdate = true; }
     const m2On = look.haloMoment === 'moment2'; haloM2 = m2On;   // P3-M2/glm5.2: recompile the ground program when moment2 flips; OFF = the #ifdef HALO_M2 blocks are stripped (shipped text, 13 samplers); ON = the blocks are compiled in (14 samplers, under the 16 limit)
     if (!!mat.userData.m2 !== m2On) { mat.defines = mat.defines || {}; if (m2On) mat.defines.HALO_M2 = 1; else delete mat.defines.HALO_M2; mat.userData.m2 = m2On; mat.needsUpdate = true; }
     set('shimmerAmp', shimAmp); set('shimmerT', (performance.now() * 0.001) % 512);
