@@ -158,7 +158,7 @@ export function create(canvas, gl, onModelsReady) {
   function tableKey(p, extras, look, tw, th, sig) {
     return JSON.stringify([(p.lamps || []).map((l) => l.map((v) => quant(v, 1e-4))), quant(p.yaw, DEG05), quant(p.pitch, DEG05), quant(p.cornerLeft, DEG05), quant(p.cornerRight, DEG05),
       !!p.afs, !!p.lampPitch, !!p.corneringLamps, lutId(p.lut), (p.lampRGB || [1, 1, 1]).map((v) => quant(v, 1e-4)), look.visibility, quant(p.hfov, DEG05), p.w, p.h,
-      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, !!look.wetBounce, look.wetBounce ? quant(D.wetnessOf(look), 1e-4) : 0, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps']);
+      (p.eye || []).map((v) => quant(v, 1e-4)), p.conv, !!look.wetBounce, look.wetBounce ? quant(D.wetnessOf(look), 1e-4) : 0, look.wetBounce ? quant(D.surfKOf(look), 1e-4) : 0, look.scatter, look.scatterTableSteps, look.scatterRes, look.scatterBlur, !!extras, tw, th, sig, fadeRangeName(look), +look.scatterNearBias > 0 ? 1 : 0, look.scatterBinCounts || '', look.scatterQuality || 'steps']);
   }
   // B10 (pseudocode; the code is below and in runTable):
   //   a bank = ONE array render target (w x h x 3 layers, half float, Linear like the old 2D targets): layer b holds table bank b
