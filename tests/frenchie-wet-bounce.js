@@ -73,6 +73,11 @@ const S = esm('drive-three-shaders.js', null, ['ground', 'withWetBounce', 'withS
   ok('keys: spec-ui drive key + groundKey carry o.wetBounce', (spec.match(/o\.wetBounce\b/g) || []).length >= 2);
   ok('keys: drive-anim picture key carries o.wetBounce', /o\.wetBounce\b/.test(anim.match(/const key = JSON\.stringify\(\[I\.groundKey[\s\S]*?\]\)/)[0]));
   ok('look: V.p.look carries wetBounce from the option', /wetBounce: o\.wetBounce === true/.test(anim));
+  ok('GPU table: tableKey carries the road-surface k only while wetBounce is on (the in-scatter mirror is scaled by kSurf)', /look\.wetBounce \? quant\(D\.surfKOf\(look\)/.test(three));
+  {   // executed: surfKOf moves with roadSurfaces/roadSurface, so a key without it would serve a stale table
+    const base = { ...Opt.defaults(), wetBounce: true, wetness: 0.6 }, a = D.surfKOf({ ...base, roadSurfaces: true, roadSurface: 'old' }), b = D.surfKOf({ ...base, roadSurfaces: false });
+    ok('executed: surfKOf differs between a road surface and stock', a !== b, { a, b });
+  }
   ok('GPU table: tableKey carries look.wetBounce + wetness only while it is on (the table rebuilds on toggle, not on every wetness change with the bounce off)', /!!look\.wetBounce/.test(three) && /look\.wetBounce \? quant\(D\.wetnessOf\(look\)/.test(three));
   ok('GPU: uniforms lampM/nLampM/wetU declared; per-frame fill mirrors z -> -z', /lampM: array\(2, T\.Vector3\)/.test(three) && /fromArray\(\[l\[0\], l\[1\], -l\[2\]\]\)/.test(three));
   ok('GPU: recompile only on the on/off flip (userData.wb), OFF = shipped text', /mat\.userData\.wb/.test(three) && /withWetBounce\(baseSrc\)/.test(three));
