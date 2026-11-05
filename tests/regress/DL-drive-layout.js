@@ -18,7 +18,8 @@
 const path = require('path'), fs = require('fs');
 const pw = require(process.env.PLAYWRIGHT || (require('child_process').execSync('npm root -g').toString().trim() + '/playwright'));
 const port = +(process.argv[2] || 8845);
-const SHOT = path.join(__dirname, 'DL-scene-tab.png');
+const SHOT = path.join(__dirname, '..', 'shots', 'DL-scene-tab.png');   // tests/shots/ is gitignored: a run must not dirty the tree (this PNG was committed, 495 KB, rewritten every run)
+require('fs').mkdirSync(path.dirname(SHOT), { recursive: true });
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : '  — ' + JSON.stringify(detail))); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
