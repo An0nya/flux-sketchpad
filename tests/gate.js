@@ -62,15 +62,16 @@ const NOT_TESTS = ['gate', 'load', 'serve', 'drive-three-page', 'pinned-defaults
 const KNOWN_FAILING = ['NE-state-leak'];
 // ---- plan -------------------------------------------------------------------------------------------------------------
 const sh = (...a) => { try { return execFileSync(a[0], a.slice(1), { cwd: root, encoding: 'utf8' }).trim(); } catch (e) { return ''; } };
-function plan() {
-  if (val('--only')) return val('--only').split(',').map((n) => n.startsWith('node:') ? n : (fs.existsSync(path.join(root, 'tests', n + '.js')) && !fs.existsSync(path.join(root, 'tests/regress', n + '.js')) ? 'node:' + n : n));
+// plan(o): o = { only, touched, base } (defaults: this process's argv). Exported so tests/runner/* select exactly what the gate selects.
+function plan(o = { only: val('--only'), touched: has('--touched'), base: BASE }) {
+  if (o.only) return o.only.split(',').map((n) => n.startsWith('node:') ? n : (fs.existsSync(path.join(root, 'tests', n + '.js')) && !fs.existsSync(path.join(root, 'tests/regress', n + '.js')) ? 'node:' + n : n));
   const exists = (x) => x.startsWith('node:') ? fs.existsSync(path.join(root, 'tests', x.slice(5) + '.js')) : fs.existsSync(path.join(root, 'tests/regress', x + '.js'));
   const curated = [...NODE.map((n) => 'node:' + n), ...PAGE_PAR, ...PAGE_SOLO];
   // FULL-COVERAGE 2 (10-29): --full also runs every test the MAP names, so a test reachable only via --touched cannot be skipped at a merge (4 were: CPU-FALLBACK-PAUSE, PL3, drive-controls2, scenario-node).
   const mapped = [...new Set(MAP.flatMap(([, gs]) => gs.flatMap((g) => GROUPS[g] || [g])))].filter((x) => !curated.includes(x) && !KNOWN_FAILING.includes(x) && exists(x));
   const full = curated.concat(mapped);
-  if (!has('--touched')) return full;
-  const files = new Set([...sh('git', 'diff', '--name-only', BASE + '...HEAD').split('\n'), ...sh('git', 'diff', '--name-only', 'HEAD').split('\n'), ...sh('git', 'ls-files', '--others', '--exclude-standard').split('\n')].filter(Boolean));
+  if (!o.touched) return full;
+  const files = new Set([...sh('git', 'diff', '--name-only', (o.base || BASE) + '...HEAD').split('\n'), ...sh('git', 'diff', '--name-only', 'HEAD').split('\n'), ...sh('git', 'ls-files', '--others', '--exclude-standard').split('\n')].filter(Boolean));
   const picked = new Set(); let unmapped = [];
   for (const f of files) {
     const t = /^tests\/regress\/(.+)\.js$/.exec(f), n = /^tests\/([^/]+)\.js$/.exec(f);
@@ -99,7 +100,8 @@ function runOne(name, port) {
   });
 }
 async function pool(items, n, fn) { const res = []; let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const it = items[i++]; const r = await fn(it); res.push(r); console.log(`${r.name} exit ${r.code} fails ${r.fails} ${r.s}s`); } })); return res; }
-(async () => {
+module.exports = { NODE, PAGE_PAR, PAGE_SOLO, GROUPS, MAP, NOT_TESTS, KNOWN_FAILING, plan };   // read by tests/runner/* (the node --test / @playwright/test adapters)
+if (require.main === module) (async () => {
   const tests = plan(); if (has('--list')) { console.log(tests.join('\n')); return; }
   const solo = tests.filter((t) => PAGE_SOLO.includes(t)), par = tests.filter((t) => !PAGE_SOLO.includes(t));
   const needsPage = tests.some((t) => !t.startsWith('node:')); let server = null, port = 0;
