@@ -122,7 +122,13 @@ Other:
     keep `haloMoment: on` only if FLIP says it earns its cost.
   - `trafficSubTick` should default to on.
 
-## 6. Build briefs (none started; ready to hand out)
+## 6. Build briefs (ready to hand out; B1 and B2 partly done)
+
+Started before the credit ran out:
+- **B2:** `claude/build-test-runner` (5 commits feb825e..10e5060; see its `tests/RUNNER.md`).
+  - Not yet run: the native specs, the adapter under playwright test, the workflow, webkit.
+  - Keep the self-hosted Mac job off until a separate runner user exists.
+- **B1:** `claude/build-image-tolerance` (78019ea, work in progress). It has a PNG codec, a FLIP port and the tolerance compare; no tests are converted yet.
 
 Common preamble for every brief:
 - **Branch:** start from `claude/exciting-brown-9x0vlq` (a branch name or a full sha, not a short hash). Push one new branch per brief; the owner merges.
