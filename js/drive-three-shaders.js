@@ -13,7 +13,7 @@ uniform vec4 lutInfo;
 uniform vec2 lutSize, size;
 uniform vec3 eye, lamp[2], lampRGB;
 uniform int nLamp, convention, nMark, nPart, nLight, nReflection, nSkip, nCross;
-uniform vec4 part[16], partShape[16], light[64], reflection[64];
+uniform vec4 part[64], partShape[64], light[64], reflection[64];   // route-parts-64 (frenchie 11-04): 16 was a chosen bound, not a driver limit
 uniform vec3 lightRGB[64], reflectionRGB[64];
 // LAMP-DIST: road lamp light = point light x the shared distribution (js/lamp-dist.js, 19 x 25 grid, row-major gi*25+pj, cd per klm), relative to 1000/(2 pi).
 // v = lamp -> point; gamma from straight down; phi from the lamp's street side lightStreet[i]. Off (lampRoadOn 0): the factor is 1.0, the same arithmetic as before.
@@ -28,8 +28,8 @@ float lampRoadF(vec3 v, vec2 st) {
   return I/159.1549;
 }
 uniform vec2 skip[16];
-uniform vec4 crossing[16];
-uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance, wetModel, wetness;
+uniform vec4 crossing[64];   // route-parts-64 (frenchie 11-04)
+uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance, wetModel, wetness, kSurf;
 uniform vec2 verge;
 uniform vec2 arc;
 uniform float sigma;   // fog extinction per metre (look.visibility: 3.912 / V); 0 = off
@@ -319,7 +319,8 @@ vec4 roadFrame(vec2 p) {
     float R=arc.x, sg=arc.y, a=atan(p.x,R-sg*p.y); return vec4(a*R,sg*(R-length(vec2(p.x,p.y-sg*R))),cos(a),sg*sin(a));
   }
   float best=1e30; vec4 ans=vec4(p,1,0);
-  for(int i=0;i<16;i++) { if(i>=nPart) break; vec4 q=part[i], z=partShape[i]; float ca=cos(q.z), sn=sin(q.z); vec2 d=p-q.xy;
+  // route-parts-64 (frenchie 11-04): loop bound 16 -> 64, nPart-bounded so cost is unchanged
+  for(int i=0;i<64;i++) { if(i>=nPart) break; vec4 q=part[i], z=partShape[i]; float ca=cos(q.z), sn=sin(q.z); vec2 d=p-q.xy;
     float lx=dot(d,vec2(ca,sn)), ly=dot(d,vec2(-sn,ca)); float u=q.w!=0.0 ? atan(q.w*lx,1.0-q.w*ly)/q.w : lx;
     u=clamp(u,i==0 ? -1e5 : 0.0,i==nPart-1 ? 1e5 : z.y); float b=q.z+q.w*u; vec2 t=vec2(cos(b),sin(b));
     vec2 pos=q.xy+(q.w!=0.0 ? vec2(sin(b)-sn,ca-cos(b))/q.w : u*vec2(ca,sn)); vec2 e=p-pos; float dd=dot(e,e);
@@ -339,7 +340,8 @@ vec3 surface(vec3 p,vec3 v,float t,float sinB) {
     r+=c*shade(p,n,v,int(m.z)); rest-=c;
   }
   float e0=-lane/2.0, e1=1.5*lane;
-  for(int i=0;i<16;i++) { if(i>=nCross) break; vec4 c=crossing[i]; float a=longitudinal(s,hl,vec4(c.x,c.y,1e9,c.y-c.x))*coverage(off,ho,c.z,c.w); if(a>0.0) { r+=a*rest*shade(p,n,v,0); rest*=1.0-a; } }
+  // route-parts-64 (frenchie 11-04): loop bound 16 -> 64
+  for(int i=0;i<64;i++) { if(i>=nCross) break; vec4 c=crossing[i]; float a=longitudinal(s,hl,vec4(c.x,c.y,1e9,c.y-c.x))*coverage(off,ho,c.z,c.w); if(a>0.0) { r+=a*rest*shade(p,n,v,0); rest*=1.0-a; } }
   if(rest>0.0) {
     r+=rest*coverage(off,ho,e0,e1)*shade(p,n,v,0);
     r+=rest*(coverage(off,ho,e0-vergeWidth,e0)+coverage(off,ho,e1,e1+vergeWidth))*shade(p,n,v,int(verge.x));
@@ -412,7 +414,7 @@ const LOOP_ATLAS = `  for(int i=0;i<64;i++) { if(i>=nTraffic) break; vec3 d=p-tr
 // shipped text byte-for-byte (tests/frenchie-heat-shimmer.js pins that `ground` itself carries no shimmer).
 export function withShimmer(source) {
   const RAY = 'vec3 ray=normalize(vec3(1.0,-screen.x*tanH,screen.y*tanH*size.y/size.x));';
-  const UNI = 'uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance, wetModel, wetness;';
+  const UNI = 'uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance, wetModel, wetness, kSurf;';
   if (source.split(RAY).length !== 2 || source.split(UNI).length !== 2) throw Error('ground shader markers changed');
   return source
     .replace(UNI, UNI + ' uniform float shimmerAmp, shimmerT;')
@@ -434,7 +436,7 @@ export function withWetBounce(source) {
   const block = `      for(int i=0;i<2;i++) { if(i>=nLampM) break;
         vec3 d=P-lampM[i]; float r2=dot(d,d); if(r2<=0.0) continue; float r=sqrt(r2);
         float I=beamI(vec3(d.x,d.y,-d.z),lampM[i]); if(I<=0.0) continue;
-        float w=(0.02+0.98*pow(1.0-abs(d.z)/r,5.0))*wetU; if(w<=0.0) continue;
+        float w=(0.02+0.98*pow(1.0-abs(d.z)/r,5.0))*wetU*wetU*kSurf; if(w<=0.0) continue;   // B3 c(W)=W^2 (Anya 11-04): asphalt roughness follows wetness (r loop)
         float cs=-dot(d,dir)/r, p=scatWFwd*hgP(scatGFwd,cs)+(1.0-scatWFwd)*hgP(scatGBack,cs);
         float E=I*w/max(r2,scatRMin*scatRMin);
         acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;
@@ -444,7 +446,7 @@ export function withWetBounce(source) {
 }`;
   const surf = `  }
   for(int i=0;i<2;i++) { if(i>=nLampM) break; vec3 d=p-lampM[i]; float r2=dot(d,d); if(r2<=0.0) continue; float rr=sqrt(r2), NoL=-dot(d,n)/rr; if(NoL<=0.0) continue;
-    float w=(0.02+0.98*pow(1.0-abs(d.z)/rr,5.0))*wetU; if(w<=0.0) continue;
+    float w=(0.02+0.98*pow(1.0-abs(d.z)/rr,5.0))*wetU*wetU*kSurf; if(w<=0.0) continue;   // B3 c(W)=W^2 (Anya 11-04): asphalt roughness follows wetness (rr loop)
     float I=intensity(vec3(d.x,d.y,-d.z))*fogT(rr)*w; if(I<=0.0) continue;
     float Ep=I/r2; r+=rho*Ep*NoL/PI + retro*Ep;
   }

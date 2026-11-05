@@ -17,18 +17,6 @@ const loadHalo = (file) => {
   vm.runInThisContext(src + '\nglobalThis.__fw = { haloTableSource, haloLookup, HALO_EDGES };', { filename: file + '/halo.js' });
   return g.__fw;
 };
-// Load in a FRESH context (so a second tree can be loaded without redeclaring top-level consts).
-// RF (set up by load()) is copied in so the halo source's `globalThis.RF.Drive` resolves.
-const loadHaloFresh = (file) => {
-  const ctx = vm.createContext({ RF: globalThis.RF, URLSearchParams, location: null });
-  const sh = fs.readFileSync(path.join(file, 'js', 'drive-three-shaders.js'), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '');
-  vm.runInContext(sh, ctx, { filename: file + '/shaders.js' });
-  const src = fs.readFileSync(path.join(file, 'js', 'drive-three-halo.js'), 'utf8')
-    .replace(/^import .*$/gm, '').replace(/^export /gm, '')
-    .replace("const D = globalThis.RF.Drive;", "const D = globalThis.RF.Drive; const T = { DataUtils: null }; const SM_DECL = '';");
-  vm.runInContext(src + '\nthis.__fw = { haloTableSource, haloLookup, HALO_EDGES };', ctx, { filename: file + '/halo.js' });
-  return ctx.__fw;
-};
 load();
 const F = loadHalo(ROOT);   // the workspace tree (this test runs against the tree it lives in)
 
@@ -63,34 +51,36 @@ const F = loadHalo(ROOT);   // the workspace tree (this test runs against the tr
   ok('canary: moment2Text has the same MOMENT_MARCH guard', /moment2Text: march accumulation line not found/.test(haloSrc));
 }
 
-// 3. The CPU twin haloLookup: OFF (no moment) is the shipped Hermite, byte for byte. Load the shipped
-//    tree from /workspace (the host copy without P3) and compare over a sweep of depths. The moment
-//    param is additive: undefined / 0 take the shipped path; a truthy value takes the step-at-mean.
+// 3. The CPU twin haloLookup: OFF (no moment) is the shipped Hermite. The moment param is additive:
+//    undefined / 0 take the shipped path; a truthy value takes the Hermite through the means.
+//    REMOVED (top, 11-04, cyrus's rule-9 task): the shipped-baseline comparison that loaded a second,
+//    pre-P3 tree and asserted OFF equalled its Hermite. P3 shipped long ago, so no pre-P3 tree exists
+//    anywhere to compare against (tests/baselines/ carries no drive-three-halo.js), and the old code
+//    hard-coded the live tree's absolute path (the literal .harness/mergeq.mjs greps for), so the gate
+//    flagged this file as reading
+//    the LIVE tree instead of the staged patch (it also read it unconditionally, waiting on no guard).
+//    The comparison was already inert; what is kept below is the half with teeth: OFF is additive
+//    (undefined and 0 are byte-identical) and ON is a smooth monotone ramp.
 {
-  const WS = path.join(__dirname, '..');   // the shared tree (shipped, no P3) — the OFF baseline
-  const hasShipped = fs.existsSync(path.join(WS, 'js', 'drive-three-halo.js'));
-  const shW = fs.readFileSync(path.join(WS, 'js', 'drive-three-shaders.js'), 'utf8');
-  const shippedHasMoment = /uniform int haloMoment;/.test(shW);
-  let shipped = null;
-  if (hasShipped && !shippedHasMoment) shipped = loadHaloFresh(WS);   // only if /workspace is the pre-P3 build
   const edges = F.HALO_EDGES.slice(1);
   // a fixture: one mid bin (10) carries all the glow, at its midpoint (mean clearly inside the bin); the rest is dark.
   // Uses the test context's own edges (which run to ~120, the default haloSMax), not the 250 m state-pose edges.
   const kBin = 10, meanK = (edges[kBin - 1] + edges[kBin]) / 2;
   const bins = Array.from({ length: 24 }, (_, k) => (k === kBin ? [1, 1, 1, meanK] : [0, 0, 0, 0]));   // [r,g,b,moment]
   const ddSweep = [edges[kBin - 1] + 0.01, meanK - 2, meanK - 0.001, meanK + 0.001, meanK + 2, edges[kBin] - 0.01];
-  let offEqShipped = true, offVsOn = false;
+  let offAdditive = true, offVsOn = false;
   for (const dd of ddSweep) {
     const off = F.haloLookup(bins.map((b) => b.slice(0, 3)), dd, edges);          // no moment → shipped Hermite
+    const off0 = F.haloLookup(bins.map((b) => b.slice(0, 3)), dd, edges, 0);      // moment = 0 → the same shipped path
     const on = F.haloLookup(bins, dd, edges, 1);                                  // moment → Hermite through the means
-    if (shipped) { const w = shipped.haloLookup(bins.map((b) => b.slice(0, 3)), dd, edges); offEqShipped = offEqShipped && w[0] === off[0] && w[1] === off[1] && w[2] === off[2]; }
+    if (off[0] !== off0[0] || off[1] !== off0[1] || off[2] !== off0[2]) offAdditive = false;
     if (Math.abs(on[0] - off[0]) > 1e-9 || Math.abs(on[1] - off[1]) > 1e-9) offVsOn = true;   // ON differs from OFF somewhere
   }
   // ON is smooth at the mean (the Hermite ramps, no hard step) and monotone (PCHIP never overshoots)
   const before = F.haloLookup(bins, meanK - 0.001, edges, 1), after = F.haloLookup(bins, meanK + 0.001, edges, 1);
   const onSmooth = Math.abs(after[0] - before[0]) < 0.5;   // the Hermite is C1 continuous: no jump at the mean
   let onMono = true, prevOn = -1; for (const dd of [...ddSweep].sort((a, b) => a - b)) { const v = F.haloLookup(bins, dd, edges, 1); if (v[0] < prevOn - 1e-9) onMono = false; prevOn = v[0]; }
-  ok('cpu twin: OFF (no moment) is byte-identical to the shipped Hermite' + (shipped ? '' : ' (skipped: /workspace already has P3)'), !shipped || offEqShipped, { offEqShipped });
+  ok('cpu twin: OFF is the shipped path — undefined and 0 take it byte-for-byte (additive moment param)', offAdditive, { offAdditive });
   ok('cpu twin: ON (moment) differs from OFF somewhere in the bin', offVsOn);
   ok('cpu twin: ON is smooth at the mean (the Hermite ramps, no hard step)', onSmooth, { before: before[0], after: after[0], meanK });
   ok('cpu twin: ON is monotone (PCHIP never overshoots across the sweep)', onMono);

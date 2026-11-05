@@ -17,9 +17,9 @@
     ['lighting', 'lamps', 'Street lamps', [an('street-lamps'), dv('lampClass'), dv('lampRoad'), dv('lampCone'), dv('lampConeGain'), dv('trafficLighting')]],
     // frenchie: trafficLighting preset select sits with the lamp controls
     ['lighting', 'lamps', 'Ambient', [an('ambient')]],
-    ['lighting', 'glare', 'Wet road', [dv('wetSheen'), dv('wetModel'), dv('dryStreaks'), dv('wetBounce'), an('surface-sheen')]],   // frenchie: dryStreaks + wetBounce sit with the wet-road controls
+    ['lighting', 'glare', 'Wet road', [dv('wetSheen'), dv('wetModel'), dv('dryStreaks'), dv('wetBounce'), dv('roadSurfaces'), dv('roadSurface'), an('surface-sheen')]],   // frenchie: dryStreaks + wetBounce sit with the wet-road controls
     ['lighting', 'glare', 'Power lines', [an('powerline-reflectance')]],
-    ['scene', null, 'Weather and air', [dv('wetness'), dv('visibility')]],
+    ['scene', null, 'Weather and air', [dv('wetness'), dv('wetnessSlider'), dv('visibility')]],
     ['scene', null, 'Objects', [an('enable-all'), ...C(['posts', 'signs', 'people', 'animals', 'veg', 'obstacle', 'rpm']), an('detailed-models'), an('leafy-foliage'), an('deer-behaviour'), an('powerlines'), an('reflective-clothing')]],
     ['scene', null, 'Road', [dv('shape'), an('tiles'), an('tile-status'), ...C(['wild']), an('seed'), an('dice'), an('density'), an('cline'), ...C(['tex'])]],
     ['scene', null, 'Traffic', [an('traffic-logic'), an('gap'), an('traffic-density'), an('traffic-range'), an('flashes'), an('reset-flashes'), dv('signalConesOn')]],   // frenchie: signalConesOn lives with traffic
@@ -32,7 +32,7 @@
     // owner 11-02: the prototype controls that had no row (they sat in Performance > Other). Placed so they can be tried; each still needs testing
     // and integration into its proper group before the "Prototype" label comes off
     ['scene', null, 'Prototype: endless road (needs testing; most need route tiles on)', [an('endlessRoad'), an('elevatedView'), an('endlessPreset'), an('endlessPresetCustom'), an('tileTerrain'), an('multilaneRoad'), an('endlessTunnel'), an('endlessCrossing'), an('junctionGantries'), an('yawSmooth')]],
-    ['scene', null, 'Prototype: cabin and drift (needs testing)', [an('cabinView'), an('cabinStyle'), an('cabinLight'), an('cabinFovFrame'), an('driftMode'), an('driftDynamics'), an('driftAfs'), an('driftCabin')]],
+    ['scene', null, 'Prototype: cabin and drift (needs testing)', [an('cabinView'), an('cabinStyle'), an('cabinLight'), an('cabinFovFrame'), an('cabinDigitalRedesign'), an('cabinWetnessSlider'), an('cabinMirror'), an('driftMode'), an('driftDynamics'), an('driftAfs'), an('driftCabin')]],
     ['lighting', 'glare', 'Prototype: extras (needs testing)', [dv('wetVeil'), dv('trafficMarkers')]],
     ['details', null, '', [an('scene-details'), an('scene-details-panel')]],
     ['timings', null, '', [an('debug-timings'), an('perf-readout')]],
@@ -186,7 +186,7 @@
   // reveal: the tab (and sub-tab) holding a control, so it can be seen and clicked (tests, and any caller that points at a control)
   function reveal(ui, selector) {
     const L = ui.driveLayout; if (!L) return false;
-    L.noWake = true;   // this caller picked that tab to reach a control in it, so the deferred first-placement wake must not auto-enable the readout on top of the caller's choice (reveal() and select() from code do not wake)
+    L.noWake = true;   // this caller picked that tab to reach a control in it, so the deferred first-placement wake must not auto-enable the readout on top of the caller's choice (reveal() and select() from code do not wake); it is never cleared, so this reads as a latch for the whole L, not a per-reveal choice
     if (ui.layoutGrid) ui.layoutGrid();   // a viewport resize fires layoutGrid via ResizeObserver (async); reveal can run before it, leaving the grid — and the drive bar's host — stale (UX1: 430→1500 inline left the host at 355 px instead of ~880)
     layout(ui);   // the drive layout follows the host's size: stale tall/mode left the panel in the wrong state
     const e = L.root.querySelector(selector) || document.querySelector(selector); if (!e) return false;

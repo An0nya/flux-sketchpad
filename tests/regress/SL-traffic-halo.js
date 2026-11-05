@@ -1,3 +1,9 @@
+// STATUS (nemo, 11-04; marker for neb's gate-census bucketing): deliberately NOT wired into any gate lane —
+// not an accidental orphan, and not in the gate.js:10 known-failing prefix list either. It fails 3 checks on the
+// live tree from an OPEN APP DEFECT: below-horizon traffic halos down the lamp column (frenchie's ticket; the
+// agreed form is in mail m20261103-150355081-3173 and the 'frenchie's ticket' notes in the checks below).
+// Wiring it today would block every halo-path landing. PLAN: wire it when frenchie's below-horizon march fix
+// lands (nemo/frenchie own the wiring). Ad-hoc runs: gate.js --only SL-traffic-halo. Landed 11-03 via mergeq b184/5760.
 // SL page checks: the traffic scatter table on the GPU drive renderer (look.trafficHalo off / 4 / 8 / 16, air only). Fog 60 and 200, one oncoming car.
 // The halo is a screen-space TABLE read by the ground, sky and object shaders at their own depth (js/drive-three-halo.js), not a sprite. Checks:
 //  1. the button hides in clear air, shows in fog, cycles off, 4, 8, 16;

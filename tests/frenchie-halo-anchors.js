@@ -32,7 +32,7 @@ const pins = {
   moment2WbOff: sha(H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 3, 0, true)),
   wbPlain: sha(H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 0, 0, true)),
 };
-const want = {"plain": "d454860887a09754", "atlas": "ded4067cc6bf5eca", "polar": "118349c73e0e71d9", "occ": "00dcdb352415f8db", "polarOccWb": "a6850a2f7d28f944", "band": "f9292fe256ce53e8", "splitMoment": "974c603cbe6b21fd", "jitLw": "84b2d366648d0a87", "refineWs": "4b9fd375575cb9f2", "moment2WbOff": "ccd399f180bdb109", "wbPlain": "f5c4bfb0785ab76d"};;
+const want = {"plain": "d454860887a09754", "atlas": "ded4067cc6bf5eca", "polar": "118349c73e0e71d9", "occ": "00dcdb352415f8db", "polarOccWb": "4cc86a979f2b5eb9"   /* road-surfaces */   /* B3 c(W)=W^2 */, "band": "f9292fe256ce53e8", "splitMoment": "974c603cbe6b21fd", "jitLw": "84b2d366648d0a87", "refineWs": "4b9fd375575cb9f2", "moment2WbOff": "ccd399f180bdb109", "wbPlain": "0002dfc358f486e3"   /* road-surfaces */   /* B3 c(W)=W^2 */};;
 for (const [k, v] of Object.entries(want)) ok('pin ' + k, pins[k] === v, pins[k] + ' != ' + v);
 // (appended 11-02) qwen T10-F1 completion: consumption-site clamps for ranged options whose display clamp lives elsewhere.
 {

@@ -116,6 +116,8 @@ const FROZEN_OLD_DV_DEF = {
   driftCabin: false,   // step5-preview 11-01 (drift cabin lean): new option, default off; host landing reconciled by le-chonk
   cabinLight: false,   // le-chonk 10-31 (cabin light demo, opt-in): new option, default off
   cabinFovFrame: false,   // ayrton 11-04 (cabin frame tracks FOV, Anya): new option, default off
+  cabinMirror: false,   // ayrton 11-04 (rear mirrors, Anya): new option, default off
+  cabinDigitalRedesign: false,   // ayrton 11-04 (80s digital redesign, Anya): new option, default off
   imperialUnits: false,   // le-chonk 10-31 (imperial units, display-only): new option, default off
   gpuRenderer: true,
   trafficBeams: false,
@@ -158,6 +160,8 @@ const FROZEN_OLD_DV_DEF = {
   heatShimmer: 'off',   // frenchie (10-31 heatShimmer): new option, default off; registry position: at the END of the list
   signalConesOn: false,   // frenchie (10-31 signalConesOn): new option, default off; registry position: at the END of the list
   trafficLighting: 'off',   // frenchie (10-31 trafficLighting): preset option, default off; registry position: at the END of the list
+  roadSurfaces: false,   // frenchie (11-04, Anya item 4): new option default off
+  roadSurface: 'stock',   // frenchie (11-04): new option default stock
   wetBounce: false,   // frenchie (11-01 wetBounce, 4-O): own-beam road bounce, default off; registry position: at the END of the list
 };
 

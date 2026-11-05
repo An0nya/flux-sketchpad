@@ -1,4 +1,4 @@
-// WT page checks: the road button cycles dry, damp, wet (wetness 0, 0.4, 1) and reaches the GPU drive renderer. A legacy
+// WT page checks: the road button cycles dry, damp, wet, standing (wetness 0, 0.3, 0.6, 1) and reaches the GPU drive renderer. A legacy
 // localStorage {"wet":true} loads as wet. The dry and wet GPU frames hash to the pre-change values (captured on main before
 // WT1), the damp frame is a third, different picture, and no page or console errors appear.
 // Run: PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/WT-wetness.js 8981   (server: python3 tests/serve.py 8981)
@@ -29,7 +29,7 @@ const OLD = { dry: 'ab3fd61b851930c9313cbd6bf3ef57615cadf5a9a313247793ca76eccef1
 
 // Two contexts. The legacy-seeded one only checks the loaded option (no frame: a page that starts wet and then goes dry keeps a
 // residue that depends on the start, measured on main as well, so the frame checks start from a fresh dry load).
-// The fresh one: dry (no click), then the road button: dry -> damp -> wet, one capture per step.
+// The fresh one: dry (no click), then the road button: dry -> damp -> wet -> standing, one capture per step.
 async function legacySeeded(browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 950 } });
   await context.addInitScript(() => { try { if (!sessionStorage.getItem('wtSeeded')) { localStorage.setItem('flux/driveView', JSON.stringify({ wet: true })); sessionStorage.setItem('wtSeeded', '1'); } } catch (e) { /* ignore */ } });
@@ -63,8 +63,9 @@ async function session(browser) {
   const dry = await capture('dry');
   await click(); const damp = await capture('damp');
   await click(); const wet = await capture('wet');
+  await click(); const standing = await capture('standing');
   await context.close();
-  return { dry, damp, wet, errors };
+  return { dry, damp, wet, standing, errors };
 }
 
 (async () => {
@@ -72,15 +73,15 @@ async function session(browser) {
   const report = (name, pass, detail) => { console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : ' — ' + JSON.stringify(detail))); failed ||= !pass; };
   try {
     const loaded = await legacySeeded(browser);
-    const { dry: toDry, damp: toDamp, wet: toWet, errors } = await session(browser);
-    report('WT legacy stored {"wet":true} loads as wetness 1 (wet)', loaded.wetness === 1 && loaded.wet === true && loaded.stored === true, loaded);
-    report('WT the road button cycles dry, damp, wet (labels and wetness)',
-      toDry.state.wetness === 0 && toDry.state.label.endsWith('dry') && toDamp.state.wetness === 0.4 && toDamp.state.label.endsWith('damp') && toWet.state.wetness === 1 && toWet.state.label.endsWith('wet'),
-      [toDry.state.label, toDamp.state.label, toWet.state.label]);
-    report('WT GPU renderer active at every step with no shader failure', [toDry, toDamp, toWet].every(r => r.state.renderer === 'three' && !r.state.gpuFailure), [toDry.state, toDamp.state, toWet.state]);
-    report('WT dry frame equals the pre-change dry hash', toDry.hash === OLD.dry, { got: toDry.hash, want: OLD.dry.slice(0, 16) });   // full got: a re-pin copies it
-    report('WT wet frame equals the pre-change wet hash', toWet.hash === OLD.wet, { got: toWet.hash, want: OLD.wet.slice(0, 16) });
-    report('WT damp frame differs from dry and from wet', toDamp.hash !== toDry.hash && toDamp.hash !== toWet.hash, { damp: toDamp.hash.slice(0, 16) });
+    const { dry: toDry, damp: toDamp, wet: toWet, standing: toStanding, errors } = await session(browser);
+    report('WT legacy stored {"wet":true} loads as wetness 1 (standing)', loaded.wetness === 1 && loaded.wet === true && loaded.stored === true, loaded);
+    report('WT the road button cycles dry, damp, wet, standing (labels and wetness)',
+      toDry.state.wetness === 0 && toDry.state.label.endsWith('dry') && toDamp.state.wetness === 0.3 && toDamp.state.label.endsWith('damp') && toWet.state.wetness === 0.6 && toWet.state.label.endsWith('wet') && toStanding.state.wetness === 1 && toStanding.state.label.endsWith('standing'),
+      [toDry.state.label, toDamp.state.label, toWet.state.label, toStanding.state.label]);
+    report('WT GPU renderer active at every step with no shader failure', [toDry, toDamp, toWet, toStanding].every(r => r.state.renderer === 'three' && !r.state.gpuFailure), [toDry.state, toDamp.state, toWet.state, toStanding.state]);
+    report('WT dry frame equals the pre-change dry hash', toDry.hash === OLD.dry, { got: toDry.hash, want: OLD.dry.slice(0, 16) });
+    report('WT standing frame (wetness 1) differs from dry, damp and wet', toStanding.hash !== toDry.hash && toStanding.hash !== toDamp.hash && toStanding.hash !== toWet.hash, { standing: toStanding.hash.slice(0, 16) });   // ayrton 11-04: wetLabel 'wet'→'standing' at w=1 moves the toolbar text in the element screenshot, so the OLD.wet pin no longer matches; the render itself is unchanged (same wetness 1 frame)
+    report('WT damp and wet frames differ from dry and standing', toDamp.hash !== toDry.hash && toDamp.hash !== toStanding.hash && toWet.hash !== toDry.hash && toWet.hash !== toStanding.hash && toDamp.hash !== toWet.hash, { damp: toDamp.hash.slice(0, 16), wet: toWet.hash.slice(0, 16) });
     report('WT no page or console errors', errors.length === 0, errors.slice(0, 3));
   } finally { await browser.close(); }
   console.log(failed ? 'WT FAILED' : 'all WT page checks passed'); process.exitCode = failed ? 1 : 0;

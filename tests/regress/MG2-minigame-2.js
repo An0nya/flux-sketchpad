@@ -32,10 +32,13 @@ let fails=0;const ok=(name,cond,detail)=>{console.log((cond?'[PASS] ':'[FAIL] ')
   // Static hazard is close only for the visibility probe. Move it farther away before testing real held input.
   await page.evaluate(()=>{const u=RF.UI,g=u.dvAnim.game;g.hazards[0].s0=g.x+150;u.dvAnim.playing=true;u.redrawSpec();});
   await page.waitForTimeout(180);await page.keyboard.down('Space');await page.waitForTimeout(250);
+  // The brake's deceleration only happens in the game's advance, which runs on the drive's rAF tick; a busy main thread
+  // can leave 250 ms with no tick, so game.v is still exactly 75/3.6 here although braking works. Wait for the braking tick.
+  const braked=await page.waitForFunction(()=>RF.UI.dvAnim.game.v<75/3.6,null,{timeout:5000}).then(()=>true).catch(()=>false);
   const held=await page.evaluate(()=>({v:RF.UI.dvAnim.game.v,b:RF.UI.dvAnim.game.brake,reactions:RF.UI.dvAnim.game.reactions.slice()}));await page.keyboard.up('Space');
   const released=await page.evaluate(()=>({v:RF.UI.dvAnim.game.v,b:RF.UI.dvAnim.game.brake}));await page.waitForTimeout(180);
   const coast=await page.evaluate(()=>RF.UI.dvAnim.game.v);
-  ok('MG Space holds braking, reaction measured once; release coasts',held.b&&held.v<75/3.6&&held.reactions.length===1&&held.reactions[0]>=0&&!released.b&&Math.abs(coast-released.v)<1e-8,{held,released,coast});
+  ok('MG Space holds braking, reaction measured once; release coasts',held.b&&held.v<75/3.6&&held.reactions.length===1&&held.reactions[0]>=0&&!released.b&&Math.abs(coast-released.v)<1e-8,{held,released,coast,braked});
   const button=page.locator('[data-game=brake]');const rect=await button.boundingBox();await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();
   ok('MG pointer hold brakes',await page.evaluate(()=>RF.UI.dvAnim.game.brake));await page.mouse.up();ok('MG pointer release clears brake',!await page.evaluate(()=>RF.UI.dvAnim.game.brake));
   await page.setViewportSize({width:390,height:844});await page.evaluate(()=>RF.UI.setPane('result','activate'));await page.waitForTimeout(250);

@@ -91,6 +91,7 @@ const EXEMPT = {
   cabinView:       'Pure 2D overlay canvas (dashboard, binnacle, A-pillars) drawn over the GL canvas; read directly from o.cabinView each frame (drive-anim.js:1612). The 3D render and cached resources are untouched.',
   cabinStyle:      'Overlay-only (cabinView dashboard style: modern/miata/digital80s); drawn by drawCabin from o.cabinStyle each frame, zero render change — same class as cabinView (drive-anim.js drawCabin)',
   cabinFovFrame:   'Overlay-only (cabinView windshield frame tracks FOV); drawn by drawCabin from o.fov each frame, zero render change — same class as cabinView/cabinStyle (drive-anim.js drawCabin)',
+  cabinDigitalRedesign: 'Overlay-only (cabinView 80s digital redesign); drawn by drawCabin from o.cabinDigitalRedesign each frame, zero render change — same class as cabinView/cabinStyle/cabinFovFrame (drive-anim.js drawCabin)',
   imperialUnits:   'Display-only units toggle (km/h -> mph in labels/gauges); read via fmtSpeed each frame, never enters the render or any cached resource (drive-anim.js fmtSpeed)',
 
   // ---- B: not picture-affecting ----

@@ -19,10 +19,10 @@ ok('registry: note carries the weak-effect + conservation caveats', /weak/.test(
 ok('defaults() carries wetBounce false', Opt.defaults().wetBounce === false);
 
 // ---- executed: the weight law (Schlick at grazing, same as the wetVeil mirrorOf)
-ok('executed: wetBounceW head-on (dz=r) = 0.02*wet', Math.abs(D.wetBounceW(1, 1, 0.4) - 0.02 * 0.4) < 1e-12);
-ok('executed: wetBounceW grazing (dz=0) = wet', Math.abs(D.wetBounceW(0, 1, 0.4) - 0.4) < 1e-12);
+ok('executed: wetBounceW head-on (dz=r) = 0.02*wet^2 (B3 c(W)=W^2)', Math.abs(D.wetBounceW(1, 1, 0.4) - 0.02 * 0.16) < 1e-12);
+ok('executed: wetBounceW grazing (dz=0) = wet^2 (B3 c(W)=W^2)', Math.abs(D.wetBounceW(0, 1, 0.4) - 0.16) < 1e-12);
 ok('executed: wetBounceW monotone in |dz|/r', D.wetBounceW(0.2, 1, 1) > D.wetBounceW(0.5, 1, 1) && D.wetBounceW(0.5, 1, 1) > D.wetBounceW(0.9, 1, 1));
-ok('executed: wetBounceW scales with wetness and is 0 on dry road', D.wetBounceW(0, 1, 0) === 0 && Math.abs(D.wetBounceW(0, 1, 1) - 1) < 1e-12);
+ok('executed: wetBounceW c(W)=W^2 — W=1 standing water near-mirror (1), W=0.6 -> 0.36, dry road 0', D.wetBounceW(0, 1, 0) === 0 && Math.abs(D.wetBounceW(0, 1, 1) - 1) < 1e-12 && Math.abs(D.wetBounceW(0, 1, 0.6) - 0.36) < 1e-12);   // B3 c(W)=W^2
 
 // ---- executed: the CPU march (inScatter) — OFF identical, ON adds the mirror term
 const mkO = (wetBounce, wetness) => ({
@@ -104,7 +104,7 @@ ok('gate + all registered', fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'u
   const off = H.haloTableSource(false);
   ok('haloTableSource OFF byte-identical (no wetU/lampM)', !off.includes('wetU') && !off.includes('lampM'));
   const on = H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 0, 0, true);
-  ok('halo wb variant splices the mirror march', on.includes('uniform float wetU;') && on.includes('lampM') && on.includes('-lamp.z'));
+  ok('halo wb variant splices the mirror march', on.includes('uniform float wetU, kSurf;') && on.includes('lampM') && on.includes('-lamp.z'));
   const onP = H.haloTableSource(false, true, false, '', false, false, 0, 0, false, 0, 0, true);
   ok('polar variant + wb splices too', onP.includes('lampM'));
   const m2 = H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 3, 0, true);

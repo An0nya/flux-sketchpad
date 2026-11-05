@@ -136,6 +136,7 @@ run('signal cones option: visor geometry when on, OFF byte-identical, no glare d
 run('traffic-lighting presets: registry, valid preset maps, OFF writes nothing (tests/frenchie-traffic-lighting.js)', ['tests/frenchie-traffic-lighting.js']); // frenchie (backlog 5 presets)
 run('wet-road bounce (4-O): OFF byte-identical, ON marches mirrored own lamps, keys carry it (tests/frenchie-wet-bounce.js)', ['tests/frenchie-wet-bounce.js']); // frenchie
 run('halo shader anchors guarded via hrep, composed variants pinned (tests/frenchie-halo-anchors.js)', ['tests/frenchie-halo-anchors.js']); // frenchie
+run('road surfaces physics option: k(s)/floor laws, OFF byte-identical, wiring, keys (tests/frenchie-road-surfaces.js)', ['tests/frenchie-road-surfaces.js']); // frenchie (Anya item 4, ROAD-SURFACES §7 resolved)
 run('touge shader anchors guarded (rep throws on moved anchor; no bare .replace outside helper) — tests/frenchie-touge-anchors.js', ['tests/frenchie-touge-anchors.js']); // frenchie (pool 4)
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

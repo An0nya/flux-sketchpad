@@ -83,9 +83,9 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
-| `view` | Camera and playback | 14 | 3 | 11 | 0 | 0 | 0 | 0 |
+| `view` | Camera and playback | 16 | 3 | 13 | 0 | 0 | 0 | 0 |
 | `road` | Road and route | 17 | 2 | 13 | 0 | 0 | 0 | 2 |
-| `surface` | Road surface | 10 | 0 | 7 | 0 | 0 | 1 | 2 |
+| `surface` | Road surface | 13 | 0 | 10 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 15 | 0 | 3 | 10 | 1 | 0 | 1 |
 | `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
 | `street-lamps` | Street lamps | 6 | 0 | 6 | 0 | 0 | 0 | 0 |
@@ -112,6 +112,8 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `driftCabin` | drift cabin: rotate the cockpit overlay with the car yaw (needs drift mode) | profile | More | false | needs `tiles` [none], `cabinView` [none] |
 | `cabinLight` | cabin light (dome + stray-light veil; dims the road render ~18%) | profile | More | false | - |
 | `cabinFovFrame` | cabin frame tracks FOV (windshield narrows at wide view, widens at telephoto) | profile | More | false | needs `cabinView` [none] |
+| `cabinMirror` | rear-view mirrors (headlamp glow of following cars in the cabin A-pillars + veil contribution) | profile | More | false | needs `cabinView` [none] |
+| `cabinDigitalRedesign` | 80s digital redesign (flat 300ZX-style LCD panel for the digital80s style) | profile | More | false | needs `cabinView` [none] |
 | `imperialUnits` | imperial units (speed readouts in mph) | profile | More | false | - |
 | `speed` | speed (km/h) | profile | toolbar | 50 | - |
 | `fov` | view angle | profile | More | 60 | - |
@@ -150,8 +152,11 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `surfaceSheen` | lit surface sheen | profile | More | false | - |
 | `RL` | marking reflectivity RL | profile | Spec > Road sidebar | 200 | - |
 | `wetness` | road: dry / damp / wet | extra | More | (unset) | - |
+| `cabinWetnessSlider` | wetness slider (continuous 0-1 with damp/wet/standing-water marks) | extra | More | (unset) | - |
 | `dryStreaks` | dry-pavement streaks | profile | More | false | - |
 | `heatShimmer` | heat shimmer | profile | More | "off" | - |
+| `roadSurfaces` | road surfaces (per-surface smoothness physics) | profile | More | false | - |
+| `roadSurface` | road surface | profile | More | "stock" | needs `roadSurfacesOn` [disabled] |
 
 #### Fog and air beam (`air`)
 

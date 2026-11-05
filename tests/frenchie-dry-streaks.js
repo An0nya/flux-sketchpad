@@ -20,10 +20,10 @@ ok('registry: default false in DV_DEF', Opt.defaults().dryStreaks === false);
 ok('registry: tests entry', JSON.stringify(e.tests) === '["node:frenchie-dry-streaks"]');
 
 // 2. OFF = byte-identical: with dryStreaks off/absent the floor is 0, so wetEff === wetness exactly
-ok('CPU: wetEff floor is 0 unless dryStreaks is on (OFF: wetEff === wetW)', drv.includes('wetEff = Math.max(wetW, look.dryStreaks === true ? 0.25 : 0)'));
+ok('CPU: wetEff floor is 0 unless dryStreaks is on (OFF: wetEff === wetW)', drv.includes('wetEff = Math.max(wetW, look.dryStreaks === true ? dryStreakFloorOf(look) : 0)'));
 ok('CPU: the three streak sites use wetEff, general wetW untouched elsewhere', (drv.match(/\* wetEff/g) || []).length === 3 && drv.includes('sheen = wetEff > 0 && look.wetSheen'));
 ok('CPU: wetVeil gate + mirror weight use the dry floor too', drv.includes('Math.max(+opts.wetness || 0, opts.dryStreaks ? 0.25 : 0) > 0') && (drv.match(/Math\.max\(\+opts\.wetness \|\| 0, opts\.dryStreaks \? 0\.25 : 0\)/g) || []).length === 2);
-ok('GPU: wetness uniform = max(true wetness, floor) and sheen gate follows wetEff', three.includes('const wetEff = Math.max(D.wetnessOf(look), look.dryStreaks === true ? 0.25 : 0); set(\'wetness\', wetEff); set(\'sheen\', wetEff > 0 && look.wetSheen ? 1 : 0);'));
+ok('GPU: wetness uniform = max(true wetness, floor) and sheen gate follows wetEff', three.includes('const wetEff = Math.max(D.wetnessOf(look), look.dryStreaks === true ? D.dryStreakFloorOf(look) : 0); set(\'wetness\', wetEff); set(\'sheen\', wetEff > 0 && look.wetSheen ? 1 : 0);'));
 ok('GPU: the wetness uniform feeds ONLY the two streak terms in the ground shader (grain keeps true wetness)', (shaders.match(/export const ground = `([\s\S]*?)`;/)[1].match(/\bwetness\b/g) || []).length === 3 && three.includes('D.wetnessOf(look) > 0 ? 0.5 : 1'));   // decl + 2 uses
 ok('GPU-path gates (drive-anim 875/1369) go through sheenOn, which includes the dry floor', (anim.match(/sheenOn\(/g) || []).length === 2 && anim.includes('const sheenOn = (o) => (D.wetnessOf(o) > 0 || o.dryStreaks === true) && !!o.wetSheen;'));
 ok('glareOpts carries dryStreaks to the CPU veil', anim.includes('dryStreaks: o.dryStreaks === true };'));
@@ -35,7 +35,7 @@ ok('drive-layout Wet road row lists the control', lay.includes("dv('dryStreaks')
 
 // 4. behaviour, executed: the CPU wetEff maths with the real helpers
 const D = globalThis.RF.Drive;
-const wetEffOf = (look) => Math.max(D.wetnessOf(look), look.dryStreaks === true ? 0.25 : 0);
+const wetEffOf = (look) => Math.max(D.wetnessOf(look), look.dryStreaks === true ? D.dryStreakFloorOf(look) : 0);
 ok('executed: dry (wetness 0) + dryStreaks on -> wetEff 0.25; off -> 0 (byte-identical)', wetEffOf({ wetness: 0, dryStreaks: true }) === 0.25 && wetEffOf({ wetness: 0 }) === 0 && wetEffOf({ wetness: 0, dryStreaks: false }) === 0);
 ok('executed: wet road never lowered by the floor (max, not override)', wetEffOf({ wetness: 0.8, dryStreaks: true }) === 0.8);
 

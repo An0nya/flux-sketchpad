@@ -41,9 +41,9 @@
         ok('CD former static option reachable exactly once: ' + key, controls.length === 1 && controls[0].checkVisibility() && !controls[0].disabled, selector);
       }
       // Invoke the actual controls and check that they change their shared option.
-      // WT: the road button cycles dry, damp, wet (wetness 1 -> 0 -> 0.4 -> 1), so it is checked as a cycle, not a toggle
-      { const L = [0, 0.4, 1], before = RF.Drive.wetnessOf(u.dvOpts), next = L[(L.indexOf(before) + 1) % 3]; get(oldOptions.wet).click();
-        ok('CD merged control works: wet cycles dry, damp, wet', RF.Drive.wetnessOf(u.dvOpts) === next && get(oldOptions.wet).getAttribute('aria-pressed') === String(next > 0), [before, next]);
+      // WT: the road button cycles dry, damp, wet, standing (wetness 0, 0.3, 0.6, 1), so it is checked as a cycle, not a toggle
+      { const L = [0, 0.3, 0.6, 1], before = RF.Drive.wetnessOf(u.dvOpts), next = L[(L.indexOf(before) + 1) % 4]; get(oldOptions.wet).click();
+        ok('CD merged control works: wet cycles dry, damp, wet, standing', RF.Drive.wetnessOf(u.dvOpts) === next && get(oldOptions.wet).getAttribute('aria-pressed') === String(next > 0), [before, next]);
         get(oldOptions.wet).click(); get(oldOptions.wet).click(); }
       for (const key of ['wetSheen', 'oncoming', 'preceding']) {
         const before = u.dvOpts[key]; get(oldOptions[key]).click();

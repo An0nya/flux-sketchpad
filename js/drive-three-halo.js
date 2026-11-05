@@ -341,13 +341,13 @@ export function withWetBounceHalo(main) {
         vec3 local = vec3(dot(d, fwM), dot(d, lat3M), dot(d, up3M));
         if (local.x <= 0.0) continue;
         float I = Wt * otherIntensity(local); if (I <= 0.0) continue;
-        float w = (0.02 + 0.98 * pow(1.0 - abs(d.z) / r, 5.0)) * wetU; if (w <= 0.0) continue;
+        float w = (0.02 + 0.98 * pow(1.0 - abs(d.z) / r, 5.0)) * wetU * wetU * kSurf; if (w <= 0.0) continue;   // B3 c(W)=W^2 (Anya 11-04): road mirror roughness follows wetness, standing water near-mirror
         float cs = -dot(d, ray) / r, p = haloWFwd * hgP(haloGFwd, cs) + (1.0 - haloWFwd) * hgP(haloGBack, cs);
         acc += sigma * p * I * w / max(r2, haloRMin * haloRMin) * exp(-sigma * r) * exp(-sigma * s) * ds * tint;
       }
     }
 `;
-  return hrep(hrep(main, MAIN, 'uniform float wetU;\n' + MAIN), TAIL, MIRROR + TAIL);   // frenchie 11-03 fix: MIRROR is a balanced if-block and TAIL is appended verbatim (net -3 closes, like the shipped tail), so the wb table shader cannot go unbalanced (qwen M4 detector: wb=true had one unclosed brace, driver COMPILE ERROR 0:132; brace sweep now 0/36,864)
+  return hrep(hrep(main, MAIN, 'uniform float wetU, kSurf;\n' + MAIN), TAIL, MIRROR + TAIL);   // frenchie 11-03 fix: MIRROR is a balanced if-block and TAIL is appended verbatim (net -3 closes, like the shipped tail), so the wb table shader cannot go unbalanced (qwen M4 detector: wb=true had one unclosed brace, driver COMPILE ERROR 0:132; brace sweep now 0/36,864)
 }
 export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0, wb = false) {
   let main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN);
@@ -706,7 +706,7 @@ export function haloPass(renderer, u) {
         hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
         Object.assign(mp.uniforms, {
           hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
-          haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 },
+          haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 }, kSurf: { value: D.surfKOf(look) },
           haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
           sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
           otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
@@ -758,7 +758,7 @@ export function haloPass(renderer, u) {
             if (split) Object.assign(mm.uniforms, { haloBandA: { value: new T.Vector4(bandPlan.band.ac, bandPlan.band.hw, bandPlan.band.fade, bandPlan.band.wd) }, haloPolarC: { value: new T.Vector2(bandPlan.pk.C[0], bandPlan.pk.C[1]) } });
             Object.assign(mm.uniforms, {
               hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
-              haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 },
+              haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 }, kSurf: { value: D.surfKOf(look) },
               haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
               sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
               otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },
@@ -793,7 +793,7 @@ export function haloPass(renderer, u) {
               if (split) Object.assign(mm.uniforms, { haloBandA: { value: new T.Vector4(bandPlan.band.ac, bandPlan.band.hw, bandPlan.band.fade, bandPlan.band.wd) }, haloPolarC: { value: new T.Vector2(bandPlan.pk.C[0], bandPlan.pk.C[1]) } });
               Object.assign(mm.uniforms, {
                 hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
-                haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 },
+                haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 }, kSurf: { value: D.surfKOf(look) },
                 haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
                 sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
                 otherBeam: { value: u.otherBeam.value }, otherLutInfo: { value: u.otherLutInfo.value }, otherLutSize: { value: u.otherLutSize.value },

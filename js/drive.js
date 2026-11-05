@@ -98,8 +98,13 @@
   // Road wetness W in 0..1: look.wetness when given, else the legacy boolean look.wet (true = 1, the old wet road).
   // Fog: look.visibility in metres; off = Infinity, null or 0. Koschmieder: extinction sigma = 3.912 / V per metre.
   function sigmaOf(look) { const v = look && +look.visibility; return v > 0 && v < Infinity ? 3.912 / v : 0; }
+  // road-surfaces (Anya item 4, ROAD-SURFACES.md): per-surface smoothness s (spec §2); undefined s = today's implicit asphalt
+  const SURF_S = { fresh: 0.35, old: 0.22, concrete: 0.30, 'tar-snake': 0.50 };
+  function surfSOf(look) { return look && look.roadSurfaces === true && look.roadSurface ? SURF_S[look.roadSurface] : undefined; }
+  function surfKOf(look) { const s = surfSOf(look); return s === undefined ? 1 : 0.4 + 0.6 * s; }   // k(s) = 0.4+0.6s (spec §1)
+  function dryStreakFloorOf(look) { const s = surfSOf(look); return s === undefined ? 0.25 : 0.10 * s; }   // d0*s, d0=0.10 (spec §1, §7.2)
   function wetnessOf(look) { if (look.wetness !== undefined) { const w = +look.wetness; return w > 0 ? Math.min(w, 1) : 0; } return look.wet ? 1 : 0; }
-  const wetnessLevels = { dry: 0, damp: 0.4, wet: 1 };     // the three levels the road button cycles through (spec-ui)
+  const wetnessLevels = { dry: 0, damp: 0.3, wet: 0.6, standing: 1.0 };     // the four levels the road button cycles through; slider detents match (spec-ui, Anya §7: c=W² gives 0.09/0.36/1.0)
   // One material at road wetness W. W = 1 assigns the wet values exactly (the old wet look, byte for byte). 0 < W < 1 blends: rho linearly,
   // gloss alpha in log space, F0 linearly. A material with no dry gloss (paint) takes its wet gloss only at W = 1 with the sheen on; below that
   // its wetness shows only as the sheen weight (W, applied in render).
@@ -292,7 +297,7 @@
     // view path: the samples' radiance gathered since r0..b0 is seen through T = exp(-sig t); airlight fills the rest with the sky value at that direction (glow: T only)
     const veil = (t, rayDz, k, r0, g0, b0, glow) => { const T = Math.exp(-sig * t), A = glow ? 0 : skyL * (1 + 0.8 * Math.max(0, 1 - Math.abs(rayDz) * 8)) * (1 - T) * k; LR = r0 + T * (LR - r0) + A; LG = g0 + T * (LG - g0) + A; LB = b0 + T * (LB - b0) + A; };       // ambient lx on diffuse surfaces; a faint sky, ~0.01 cd/m² per lx
     const traffic = o.trafficBeams ? trafficSources(objs, eye, o) : [], otherBeam = traffic.length ? trafficBeam(o) : null, pitch = o.pitch || 0;
-    const pointLights = o.pointLights || [], crossings = o.crossings || [], wetW = wetnessOf(look), wetEff = Math.max(wetW, look.dryStreaks === true ? 0.25 : 0), sheen = wetEff > 0 && look.wetSheen, reflections = sheen ? reflectionSources(objs, o).concat(pointLights) : [];
+    const pointLights = o.pointLights || [], crossings = o.crossings || [], wetW = wetnessOf(look), wetEff = Math.max(wetW, look.dryStreaks === true ? dryStreakFloorOf(look) : 0), sheen = wetEff > 0 && look.wetSheen, reflections = sheen ? reflectionSources(objs, o).concat(pointLights) : [];
     // LAMP-DIST (option lampRoad 'table'): the street-lamp pool is the shared distribution table, relative to its lower-hemisphere mean. Off: lampRoadOn is false and nothing below changes.
     const lampRoadOn = o.lampRoad === 'table' && !!(globalThis.RF && RF.LampDist), lampRoadF = (L, vx, vy, vz) => { const rr = Math.hypot(vx, vy, vz), g = Math.acos(Math.max(-1, Math.min(1, -vz / rr))) * 180 / PI; return RF.LampDist.roadFactorAt(o.lampClass || 'III', RF.LampDist.kindOfLamp(o.lampKind), g, RF.LampDist.phiOf(L.street, [vx, vy])); };
     const delta0 = 2 * tanH / w;                                              // radians per pixel
@@ -420,7 +425,7 @@
         const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz + L[2], r2 = dx * dx + dy * dy + dz * dz; if (!(r2 > 0)) continue;
         const rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
         if (!(NoL > 0)) continue;
-        const wf = wetBounceW(dz, rr, wb); if (!(wf > 0)) continue;
+        const wf = wetBounceW(dz, rr, wb, o.look); if (!(wf > 0)) continue;
         const I = ownBeamAt(o, dx, dy, -dz, L[1]) * fogD(dx, dy, dz) * wf; if (!(I > 0)) continue;
         const d = I / r2 * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
       }
@@ -923,7 +928,7 @@
   function scatterPhase(c) { return SCAT.wFwd * hgPhase(SCAT.gFwd, c) + (1 - SCAT.wFwd) * hgPhase(SCAT.gBack, c); }
   // frenchie (wetBounce, 4-O): grazing-Fresnel weight of a road-mirrored own lamp at a march point, same law as the wetVeil mirrorOf
   // (drive.js ~:856): Schlick with cos = |dz|/r, times wetness. dz/r -> 1 (head-on) gives 0.02*wet, grazing (dz=0) gives wet.
-  function wetBounceW(dz, r, wet) { const c = Math.min(1, Math.abs(dz) / r); return (0.02 + 0.98 * Math.pow(1 - c, 5)) * wet; }
+  function wetBounceW(dz, r, wet, look) { const c = Math.min(1, Math.abs(dz) / r); return (0.02 + 0.98 * Math.pow(1 - c, 5)) * wet * wet * surfKOf(look); }   // B3 c(W)=W^2 x k(s) (road-surfaces): k=1 when roadSurfaces OFF/stock
   // per-pixel jitter in [0, 1): a hash of the integer pixel coordinates only (no time term), so frames are repeatable and banding is broken up
   function scatterJitter(x, y) { let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1); h = Math.imul(h ^ (h >>> 15), 0x85ebca6b); h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
   // Returns [r, g, b] in cd/m² (the caller weights by the sample's k). LUT zero outside its window, so lamp-behind rays get nothing.
@@ -951,7 +956,7 @@
       if (wb > 0) for (let i = 0; i < lamps.length; i++) {
         const L = lamps[i], qx = px - L[0], qy = py - L[1], qz = pz + L[2], r2 = qx * qx + qy * qy + qz * qz;
         if (!(r2 > 0)) continue;
-        const r = Math.sqrt(r2), w = wetBounceW(qz, r, wb), I = ownBeamAt(o, qx, qy, -qz, L[1]);
+        const r = Math.sqrt(r2), w = wetBounceW(qz, r, wb, o.look), I = ownBeamAt(o, qx, qy, -qz, L[1]);
         if (!(I > 0) || !(w > 0)) continue;
         const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I * w / Math.max(r2, SCAT.rMin * SCAT.rMin);
         const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Tv * ds;
@@ -1000,7 +1005,7 @@
         if (wb > 0) {
           const Im = trafficAt(L, beam, Px, Py, -Pz); if (!(Im > 0)) continue;
           const qz = Pz + L.z, q2 = dx * dx + dy * dy + qz * qz; if (!(q2 > 0)) continue;
-          const qr = Math.sqrt(q2), wf = wetBounceW(qz, qr, wb);
+          const qr = Math.sqrt(q2), wf = wetBounceW(qz, qr, wb, p.look);
           if (!(wf > 0)) continue;
           const cq = -(dx * rx + dy * ry + qz * rz) / qr, Eq = Im * wf / Math.max(q2, SCAT.rMin * SCAT.rMin);
           const vv = sig * scatterPhase(cq) * Eq * Math.exp(-sig * qr) * Tv * w;
@@ -1128,7 +1133,7 @@
       if (wb > 0) for (let i = 0; i < lamps.length; i++) {
         const L = lamps[i], qx = px - L[0], qy = py - L[1], qz = pz + L[2], r2 = qx * qx + qy * qy + qz * qz;
         if (!(r2 > 0)) continue;
-        const r = Math.sqrt(r2), w = wetBounceW(qz, r, wb), I = ownBeamAt(o, qx, qy, -qz, L[1]);
+        const r = Math.sqrt(r2), w = wetBounceW(qz, r, wb, lk), I = ownBeamAt(o, qx, qy, -qz, L[1]);
         if (!(I > 0) || !(w > 0)) continue;
         const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I * w / Math.max(r2, SCAT.rMin * SCAT.rMin);
         const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Math.exp(-sig * s) * (fr ? nearFadeW(s, fr[0], fr[1]) : 1);
@@ -1272,5 +1277,5 @@
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { wetBounceW, inScatter, scatterTableBins, scatRangeOf, haloRangeOf, SCAT_RANGE, glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, HALO_RANGE_KEYS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { wetBounceW, surfSOf, surfKOf, dryStreakFloorOf, inScatter, scatterTableBins, scatRangeOf, haloRangeOf, SCAT_RANGE, glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, HALO_RANGE_KEYS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

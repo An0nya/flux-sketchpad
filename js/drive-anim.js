@@ -80,6 +80,27 @@
     }
     return out;
   }
+  // ayrton 11-04 (Anya: rear mirrors): a mirror-local generator for following cars BEHIND us. Deterministic, own cull
+  // (~100 m, shorter than the forward 230 m), produces only (bearing, distance, candela) tuples consumed by the mirror
+  // rects and the glare veil. Zero world coupling: no K.car model, no trafficCars() kind, no IDM. Gated on traffic
+  // (oncoming || preceding): no followers when traffic is off. The bearing is degrees off the rear centre (0 = directly
+  // behind, + = to our left, - = our right); the candela is a plausible low-beam headlamp intensity scaled by distance.
+  const MIRROR_CULL = 100, MIRROR_KCD = 30;   // cull range (m) and headlamp candela (low beam, symmetric)
+  function mirrorCars(src, dist, t) {
+    const tr = src && src.traffic; if (!tr || !tr.density) return [];
+    if (!tr.oncoming && !tr.preceding) return [];   // gated on traffic: no followers when traffic is off
+    const gap = PERIOD / tr.density, shift = dist - TRAFFIC_SPEED.preceding * t, out = [];   // following cars travel at preceding speed (same direction as us, slower)
+    for (let k = Math.floor((shift - MIRROR_CULL) / gap); k <= Math.floor((shift - 6) / gap); k++) {
+      const R = D.rng((Math.imul(tr.seed, 2654435761) ^ Math.imul(k, 0x9E3779B1) ^ 0xA1B2C3D4) >>> 0);   // own hash salt (distinct from oncoming/preceding)
+      const rel = (k + 0.2 + 0.6 * R()) * gap - shift;   // rel < 0: behind us (shift > k*gap)
+      if (rel >= -6 || rel <= -MIRROR_CULL) continue;
+      const laneOff = src.tiles && src.tiles.multilane ? (k & 1 ? 3.5 : 0) : 0;   // multilane: alternating own/overtaking lane (same pattern as preceding)
+      const distance = -rel, bearingDeg = Math.atan2(laneOff, distance) * 180 / Math.PI;   // bearing off rear centre: 0 = directly behind, + = left
+      const cd = MIRROR_KCD * Math.max(0.1, 1 - distance / MIRROR_CULL);   // fade with distance (atmospheric + cull)
+      out.push({ id: 'mirror:' + k, distance, bearing: bearingDeg, candela: cd });
+    }
+    return out;
+  }
   // IDM: Treiber, Hennecke & Helbing (2000), Phys. Rev. E 62, 1805. SI units; s is bumper-to-bumper.
   const IDM = { T: 1.5, s0: 2, a: 1, b: 1.5, delta: 4, length: 4.4, dt: 0.05 };
   // TSUB: the traffic is stepped at 20 Hz (IDM.dt = 0.05), so the drawn cars - and the oncoming scatter table built from their lamp
@@ -1647,13 +1668,13 @@ void main() {
     const ownLowKey = o.ownLow && o.ownLow !== 'design' ? (ownNow.low ? 'R:' + ownNow.lowId : 'U:' + o.ownLow) : o.ownLow, ownHighKey = o.ownHigh && o.ownHigh !== 'generic' ? (ownNow.high ? 'R:' + ownNow.highId : 'U:' + o.ownHigh) : o.ownHigh;
     const key = JSON.stringify([I.groundKey, W, H, hfovFor(o.fov, sz.aspect), simCeiling(o), I.us && o.cline === 'broken', !!o.tiles, !!V.three, !!o.trafficBeams, lightRangeOf(o), lightCarsOf(o), !!o.surfaceSheen, !!o.lampPitch, !!o.afs, !!o.corneringLamps, I.lampRGB, !!V.high, ownLowKey, ownHighKey, lampTintOf(I, ownNow).rgb, pool && pool.key, o.wetBounce]);     // V.high: the switch changes the lamp table; own beams (BA2) change it too, so the cached ground and picture rows are rebuilt
     if (V.shuf) V.shuf.title = shuffleTip(o);   // the tooltip follows the renderer, every frame
-    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.signalConesOn, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, !!o.driftMode, !!o.driftDynamics, !!o.driftAfs, !!o.driftCabin, !!o.yawSmooth, !!o.cabinLight, o.tiles ? o.endlessPresetCustom || '' : '', SUBTICK]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.trafficMarkers, !!o.tileCache, !!o.tiles && !!o.endlessRoad, o.tiles ? o.endlessPreset : 'off', o.tiles ? o.endlessPresetCustom || '' : '', !!o.tileTerrain, !!o.elevatedView, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, !!o.yawSmooth, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o), o.lampRule]]);
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.reflectiveClothing, o.posts, o.powerlines, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline, !!o.signalConesOn, !!o.tiles, !!o.mountainPass, !!o.leafyFoliage, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, !!o.driftMode, !!o.driftDynamics, !!o.driftAfs, !!o.driftCabin, !!o.yawSmooth, !!o.cabinLight, o.tiles ? o.endlessPresetCustom || '' : '', SUBTICK, !!o.cabinMirror]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.onMode, o.trafficDensity, o.trafficRange, o.safeGap, !!o.trafficLogic, !!o.trafficMarkers, !!o.tileCache, !!o.tiles && !!o.endlessRoad, o.tiles ? o.endlessPreset : 'off', o.tiles ? o.endlessPresetCustom || '' : '', !!o.tileTerrain, !!o.elevatedView, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, !!o.yawSmooth, o.tiles && [o.streetLamps, o.tex, D.wetnessOf(o), o.lampRule]]);
     if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, signalConesOn: !!o.signalConesOn, powerlines: o.powerlines, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { leafyFoliage: !!o.leafyFoliage, reflectiveClothing: o.reflectiveClothing, wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, onMode: o.onMode, trafficDensity: o.trafficDensity, trafficRange: o.trafficRange, safeGap: o.safeGap, trafficLogic: !!o.trafficLogic, trafficMarkers: !!o.trafficMarkers, trafficLighting: o.trafficLighting, endlessRoad: !!o.endlessRoad, elevatedView: !!o.elevatedView, speed: o.speed, mountainPass: !!o.mountainPass, tiles: !!o.tiles, tileCache: !!o.tileCache, streetLamps: o.streetLamps, tex: o.tex, wet: D.wetnessOf(o) > 0 }]; const old = V.src; V.src = source.apply(null, V.srcArgs); if (old && old.traffic.logic && o.trafficLogic && old.traffic.seed === V.src.traffic.seed && old.traffic.density === V.src.traffic.density && !!old.tiles === !!V.src.tiles) V.src.traffic.state = old.traffic.state; V.skey = tkey; if ((old && old.traffic.logic) || V.src.traffic.logic) Wk.busy = null; }
     const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity, !!o.trafficLogic]);
     if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
     V.renderScale = sz.scale || 1;
     const own = ownNow, tint = lampTintOf(I, own), baseLow = own.low || I.lut(), pickedLut = V.high && own.high ? combineCached(baseLow, own.high) : D.withHigh(baseLow, !!V.high);
-    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloLampWin: o.haloLampWin, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloCrossingRefine: o.haloCrossingRefine, haloRefineNeighbour: o.haloRefineNeighbour, haloMoment: o.haloMoment, haloWidthStep: o.haloWidthStep, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient, trafficSubTick: o.trafficSubTick === 'on', qualityGovernor: o.qualityGovernor === 'on', distanceLod: o.distanceLod || 'off', dryStreaks: o.dryStreaks === true, heatShimmer: o.heatShimmer || 'off', signalConesOn: !!o.signalConesOn, wetBounce: o.wetBounce === true }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!((o.mountainPass || o.elevatedView) && V.three), mountainPass: !!o.mountainPass };   // elevatedView: every scene through the 3D touge route (flat = height 0), legacy 2D path as fallback
+    V.p = { w: W, h: H, hfov: hfovFor(o.fov, sz.aspect), eye: D.eyeFor(), lampCone: D.lampConeOn(o) ? 'on' : 'off', lampConeGain: o.lampConeGain, lampKind: o.streetLamps, lampClass: o.lampClass, lampRoad: o.lampRoad, lamps: I.rd.mdl.lamps, lut: pickedLut, lowLut: baseLow, conv: I.conv, lampRGB: tint.rgb, A: I.A,lane: I.rd.laneDrive, trafficBeams: !!o.trafficBeams, trafficPool: pool, lightRange: lightRangeOf(o), lightCars: lightCarsOf(o), surfaceSheen: !!o.surfaceSheen, afs: !!o.afs, corneringLamps: !!o.corneringLamps, yaw: o.afs && S(V.ui).lighting ? S(V.ui).lighting.yaw : 0, cornerLeft: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.left : 0, cornerRight: o.corneringLamps && S(V.ui).lighting ? S(V.ui).lighting.right : 0, lampPitch: !!o.lampPitch, pitch: o.lampPitch && S(V.ui).pitch ? S(V.ui).pitch.angle : 0, look: { wet: D.wetnessOf(o) > 0, wetness: D.wetnessOf(o), wetSheen: o.wetSheen, powerlineReflectance: o.powerlineReflectance, wetModel: o.wetModel, visibility: o.visibility, scatter: o.scatter, trafficHalo: o.trafficHalo, haloCars: o.haloCars, haloRange: o.haloRange, haloBins: o.haloBins, haloDiv: o.haloDiv, haloPolar: o.haloPolar, haloPolarBand: o.haloPolarBand, haloPolarLamps: o.haloPolarLamps, crestOcclusion: o.crestOcclusion, haloJitter: o.haloJitter, haloJitterAmount: o.haloJitterAmount, haloLampWin: o.haloLampWin, haloBlur: o.haloBlur, haloDepthBlur: o.haloDepthBlur, haloAutoRange: o.haloAutoRange, haloNearSub: o.haloNearSub, haloCrossingRefine: o.haloCrossingRefine, haloRefineNeighbour: o.haloRefineNeighbour, haloMoment: o.haloMoment, haloWidthStep: o.haloWidthStep, haloConePass: o.haloConePass, haloConeAngle: o.haloConeAngle, trafficShadows: o.trafficShadows, shadowRes: o.shadowRes, trafficShadowRoad: o.trafficShadowRoad, trafficShadowObjects: o.trafficShadowObjects, trafficShadowSoft: o.trafficShadowSoft, scatterCull: o.scatterCull, scatterCullEps: o.scatterCullEps, scatterRange: o.scatterRange, haloGain: o.haloGain, scatterMode: o.scatterMode, scatterRes: o.scatterRes, scatterBlur: o.scatterBlur, scatterTableSteps: o.scatterTableSteps, scatterCache: o.scatterCache, scatterCycle: o.scatterCycle, scatterBinCounts: o.scatterBinCounts, scatterQuality: o.scatterQuality, scatterCycleFade: o.scatterCycleFade, scatterNearFade: o.scatterNearFade, scatterNearFadeRange: o.scatterNearFadeRange, scatterNearBias: o.scatterNearBias, scatterGain: o.scatterGain, grain: o.tex !== false, RL: o.RL / 1000, ambient: o.ambient, trafficSubTick: o.trafficSubTick === 'on', qualityGovernor: o.qualityGovernor === 'on', distanceLod: o.distanceLod || 'off', dryStreaks: o.dryStreaks === true, heatShimmer: o.heatShimmer || 'off', signalConesOn: !!o.signalConesOn, wetBounce: o.wetBounce === true, roadSurfaces: o.roadSurfaces === true, roadSurface: o.roadSurface || 'stock' }, src: V.src, us:I.us, leafyFoliage: !!o.leafyFoliage, detailedModels: !!o.detailedModels, deerBehaviour: D.Models.deerEnabled(o), touge: !!((o.mountainPass || o.elevatedView) && V.three), mountainPass: !!o.mountainPass };   // elevatedView: every scene through the 3D touge route (flat = height 0), legacy 2D path as fallback
     if (V.gkey !== key || V.rdRef !== I.rd) {
       V.g = V.three || V.src.cross || o.tiles || sheenOn(o) || o.trafficBeams || o.surfaceSheen || o.lampPitch || o.afs || o.corneringLamps ? { A: new Float32Array(3 * W * H), layers: [], ms: 0 } : ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g); if (!TL.cur) tlOpen('rebuild'); tlMark(V.three ? 'ground (GPU path, drawn per frame)' : 'ground built (CPU)', V.three ? null : { groundMs: V.g.ms });
       V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
@@ -1705,7 +1726,7 @@ void main() {
   // cabinView overlay: dashboard + windshield frame + gauges drawn over the GL canvas; absent (zero render cost)
   // when off. Styles: 'modern' (two round binnacle gauges), 'miata' (NA tombstone binnacle), 'digital80s' (segment digits).
   // cabinLight adds a lit dome + a stray-light veil over the windshield AND dims the render exposure (see frame()).
-  function drawCabin(V, on, style, light, kmh, yaw, fov) {   // yaw: driftCabin rotates the overlay to match the car's yaw (looking out the side window). fov: cabinFovFrame (ayrton, Anya 11-04)
+  function drawCabin(V, on, style, light, kmh, yaw, fov, mirrors) {   // yaw: driftCabin rotates the overlay to match the car's yaw (looking out the side window). fov: cabinFovFrame (ayrton, Anya 11-04). mirrors: rear-view mirror cars (ayrton 11-04, Anya)
     const cv = V.cabin; if (!cv) return;
     if (!on) { if (cv.parentNode) cv.parentNode.removeChild(cv); cv.width = 0; return; }
     const gl = V.canvas; if (!gl || !gl.parentNode) return;
@@ -1756,6 +1777,29 @@ void main() {
       x.strokeStyle = 'rgba(120,140,170,0.25)'; x.lineWidth = 2 * k; x.stroke();
       face(cx - 150 * k, 110 * k, kmh / 260, info().o.imperialUnits ? 'mph' : 'km/h', info().o.imperialUnits ? Math.round(kmh * 0.621371) : Math.round(kmh), '#ffb050');
       face(cx + 150 * k, 110 * k, rpm, 'x1000rpm', (rpm * 8).toFixed(1), '#ffb050');
+    } else if (style === 'digital80s' && info().o.cabinDigitalRedesign) {   // ayrton 11-04, Anya: true 300ZX-style 80s digital dash — flat panel, NO dial rings
+      const dg = '#00ff66', dgD = 'rgba(0,255,102,0.15)';   // monochrome green LCD on black
+      const pw = 700 * k, ph = 120 * k, px = cx - pw / 2, py = gy - 80 * k;
+      x.fillStyle = 'rgba(2,8,4,0.95)'; x.fillRect(px, py, pw, ph);   // flat rectangular panel — no rings
+      x.strokeStyle = 'rgba(0,255,102,0.3)'; x.lineWidth = 1.5 * k; x.strokeRect(px, py, pw, ph);
+      // speed = large boxed LCD numerals, top-centre
+      const sv = info().o.imperialUnits ? Math.round(kmh * 0.621371) : Math.round(kmh);
+      x.fillStyle = dg; x.font = `bold ${Math.round(48 * k)}px monospace`; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText(String(sv), cx, py + 38 * k);
+      x.font = `${Math.round(14 * k)}px monospace`; x.fillStyle = dgD; x.fillText(info().o.imperialUnits ? 'MPH' : 'KM/H', cx, py + 70 * k);
+      // fuel = thin vertical bar, far left (drawCabin has no fuel signal; fixed near-full as a plausible stand-in, like the existing tach)
+      const fbX = px + 18 * k, fbY = py + 15 * k, fbH = 70 * k, fbW = 8 * k, fuelF = 0.85;
+      x.strokeStyle = dgD; x.lineWidth = 1 * k; x.strokeRect(fbX, fbY, fbW, fbH);
+      x.fillStyle = dg; x.fillRect(fbX, fbY + fbH * (1 - fuelF), fbW, fbH * fuelF);
+      x.font = `${Math.round(8 * k)}px monospace`; x.fillStyle = dgD; x.textAlign = 'center'; x.fillText('F', fbX + fbW / 2, fbY - 6 * k);
+      // tach = horizontal bar graph across the bottom, lit segments (0-8 x1000 rpm)
+      const tbY = py + ph - 22 * k, tbX = px + 40 * k, tbW = pw - 80 * k, tbH = 10 * k, segs = 8, lit = Math.round(rpm * segs);
+      for (let i = 0; i < segs; i++) { x.fillStyle = i < lit ? (i >= segs - 2 ? '#ff3030' : dg) : dgD; x.fillRect(tbX + i * (tbW / segs) + 1 * k, tbY, (tbW / segs) - 2 * k, tbH); }
+      x.font = `${Math.round(8 * k)}px monospace`; x.fillStyle = dgD; x.textAlign = 'left'; x.fillText('0', tbX, tbY + tbH + 10 * k); x.textAlign = 'right'; x.fillText('8', tbX + tbW, tbY + tbH + 10 * k);
+      x.textAlign = 'center'; x.fillText('x1000 RPM', tbX + tbW / 2, tbY + tbH + 10 * k);
+      // tiny warning glyphs
+      x.font = `${Math.round(9 * k)}px monospace`; x.fillStyle = dgD; x.textAlign = 'right';
+      x.fillText('FUEL', px + pw - 12 * k, py + 14 * k); x.fillText('BATT', px + pw - 12 * k, py + 26 * k);
     } else {
       x.fillStyle = 'rgba(16,20,28,0.9)'; x.fillRect(cx - 300 * k, gy - 85 * k, 600 * k, 60 * k);   // binnacle hump
       face(cx - 150 * k, r, kmh / 260, info().o.imperialUnits ? 'mph' : 'km/h', info().o.imperialUnits ? Math.round(kmh * 0.621371) : Math.round(kmh), style === 'digital80s' ? '#ff5a26' : '#9fd0ff');
@@ -1764,6 +1808,28 @@ void main() {
     x.fillStyle = 'rgba(255,120,90,0.9)'; x.beginPath(); x.arc(cx - 260 * k, gy - 20 * k, 5 * k, 0, 7); x.fill();   // fuel tell-tale
     x.strokeStyle = 'rgba(120,140,170,0.25)'; x.lineWidth = 2 * k;
     x.beginPath(); x.moveTo(0, H2 - 190 * k); x.quadraticCurveTo(W2 * 0.5, H2 - 260 * k, W2, H2 - 190 * k); x.stroke();
+    // ayrton 11-04 (Anya: rear mirrors): headlamp glow of following cars in the cabin A-pillars. Each mirror is a small
+    // dark rectangle on the A-pillar; the glow is positioned by relative bearing (0 = directly behind, + = left, - = right).
+    // A directly-behind car (bearing 0) appears in BOTH mirrors (as it does in reality); off-centre cars appear in the
+    // mirror on their side only. The glow brightness scales with candela (distance-faded). No rects when mirrors is null/empty.
+    if (mirrors && mirrors.length) {
+      const mW = 48 * k, mH = 20 * k, mY = H2 * 0.18;   // mirror rect size and vertical position (upper A-pillar area)
+      for (const side of [-1, 1]) {   // -1 = left mirror, +1 = right mirror
+        const mX = side < 0 ? W2 * pM * 0.5 : W2 - W2 * pM * 0.5 - mW;   // tucked into the A-pillar
+        x.fillStyle = 'rgba(4,6,10,0.9)'; x.fillRect(mX, mY, mW, mH);
+        x.strokeStyle = 'rgba(80,90,110,0.4)'; x.lineWidth = 1 * k; x.strokeRect(mX, mY, mW, mH);
+        for (const mc of mirrors) {
+          if (side < 0 && mc.bearing < 0) continue;   // left mirror: bearing >= 0 (directly behind and to our left)
+          if (side > 0 && mc.bearing > 0) continue;   // right mirror: bearing <= 0 (directly behind and to our right)
+          const frac = Math.max(0, Math.min(1, 0.5 + mc.bearing / 60 * side * -0.5));   // bearing -60..+60 maps across the mirror
+          const gx = mX + frac * mW, glow = Math.min(1, mc.candela / MIRROR_KCD);
+          const gr = Math.max(2 * k, glow * 10 * k);
+          const g = x.createRadialGradient(gx, mY + mH / 2, 0, gx, mY + mH / 2, gr);
+          g.addColorStop(0, `rgba(255,240,200,${0.7 * glow})`); g.addColorStop(1, 'rgba(255,240,200,0)');
+          x.fillStyle = g; x.beginPath(); x.arc(gx, mY + mH / 2, gr, 0, 7); x.fill();
+        }
+      }
+    }
     if (yaw) x.restore();
   }
   // one frame at S.dist
@@ -1786,7 +1852,8 @@ void main() {
       // the lamp swivel: the shader rotates the beam by -yaw while the arc rotation is +A, so these signs are the compensation, not an amplification
       V.p.yaw += lag && V.driftA !== undefined ? V.driftA * (o.driftAfs ? 1 : 2.6 / 8) : (tl && tl.curvature ? -tl.curvature * Math.pow(kmhOf() / 130, 2) * 2.6 : 0);   // opposite lock scales with curvature and speed²
     }
-    drawCabin(V, o.cabinView && (st.popout || ui.display === 'drive'), o.cabinStyle || 'modern', !!o.cabinLight, kmhOf(), o.driftCabin ? (V.driftA || 0) : 0, o.cabinFovFrame ? o.fov : 0);
+    const _mc = o.cabinMirror && o.cabinView ? mirrorCars(V.src, st.dist, st.t) : null;
+    drawCabin(V, o.cabinView && (st.popout || ui.display === 'drive'), o.cabinStyle || 'modern', !!o.cabinLight, kmhOf(), o.driftCabin ? (V.driftA || 0) : 0, o.cabinFovFrame ? o.fov : 0, _mc);
     V.p.cornerLeft = o.corneringLamps && st.lighting ? st.lighting.left : 0;
     V.p.cornerRight = o.corneringLamps && st.lighting ? st.lighting.right : 0;
     V.p.pitch = o.lampPitch && st.pitch ? st.pitch.angle : 0;
@@ -1810,6 +1877,11 @@ void main() {
     const t2 = performance.now();
     const gOpts = glareOpts(o, placed), sources = V.p.touge ? RF.Touge.glareSources(placed.objects,st.dist,placed.A,gOpts) : D.glareSources(V.src.tiles ? placed.objects : placed, eyeOf(V.p), undefined, gOpts);
     if (o.cabinLight) sources.push([1, 0, 0.02, 0.2, 1, 0.95, 0.8]);   // cabinLight: interior stray light as a forward glare source — adapt/auto exposure dims through the existing veil path (measured ~17% at glare=rain); manual EV and glare=off unaffected, by design
+    if (_mc) for (const mc of _mc) {   // ayrton 11-04 (Anya: rear mirrors): following-car headlamps reflected in the rear-view mirrors contribute to the glare veil. The direction is the MIRROR VIRTUAL-IMAGE bearing (~45° off forward), NOT the raw behind bearing — veilAt weights 10·q[3]/θ² from forward dir=[1,0,0], so a raw behind source (θ≈180°) would be silently inert. The mirror reflects the behind-light forward into the driver's eye at ~45° off axis. Intensity = eyeLux = candela / distance² × reflectance (~0.4 day).
+      const reflectance = 0.4, eyeLux = mc.candela * 1000 / (mc.distance * mc.distance) * reflectance;   // candela is in kcd here; ×1000 for cd
+      const sgn = mc.bearing >= 0 ? 1 : -1, ang = sgn * (45 + Math.abs(mc.bearing) * 0.5) * Math.PI / 180;   // virtual-image angle off forward: ~45° + |bearing|/2, sign = side (symmetric L/R — pencroff review)
+      sources.push([Math.cos(ang), Math.sin(ang), 0.02, eyeLux, 1, 0.95, 0.8]);   // warm-white headlamp tint, same RGB as cabinLight
+    }
     V.frameGlare = sources; V.framePlaced = placed;      // scene details reads these (pointers only)
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
     const draw = { profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
@@ -2529,6 +2601,15 @@ void main() {
     const cff = E('button', { type: 'button', class: 'toggle', 'data-anim': 'cabinFovFrame', 'aria-pressed': 'false', title: 'Cabin frame tracks FOV (opt-in, needs cabin view): the windshield A-pillars narrow at wide view-angle and widen at telephoto, matching what the camera sees. Off: fixed fractions as before.' }, 'fov frame');
     cff.addEventListener('click', () => setDV(ui, 'cabinFovFrame', !info().o.cabinFovFrame));
     ui.driveExtras.append(cff);   // cabinFovFrame toggle (ayrton 11-04)
+    const cdr = E('button', { type: 'button', class: 'toggle', 'data-anim': 'cabinDigitalRedesign', 'aria-pressed': 'false', title: '80s digital redesign (opt-in, needs cabin view + digital80s style): replaces the round-gauge silhouette with a flat 300ZX-style LCD panel — boxed speed numerals, bar-graph tach, vertical fuel bar, monochrome green. Only affects the digital80s style.' }, '80s redesign');
+    cdr.addEventListener('click', () => setDV(ui, 'cabinDigitalRedesign', !info().o.cabinDigitalRedesign));
+    ui.driveExtras.append(cdr);   // cabinDigitalRedesign toggle (ayrton 11-04)
+    const cws = E('button', { type: 'button', class: 'toggle', 'data-anim': 'cabinWetnessSlider', 'aria-pressed': 'false', title: 'Wetness slider (opt-in): replaces the dry/damp/wet/standing cycle button with a continuous 0-1 slider with damp (0.3), wet (0.6) and standing-water (1.0) marks. Same wetness option; finer control for tuning reflectance.' }, 'wetness slider');
+    cws.addEventListener('click', () => setDV(ui, 'cabinWetnessSlider', !info().o.cabinWetnessSlider));
+    ui.driveExtras.append(cws);   // cabinWetnessSlider toggle (ayrton 11-04)
+    const cmr = E('button', { type: 'button', class: 'toggle', 'data-anim': 'cabinMirror', 'aria-pressed': 'false', title: 'Rear-view mirrors (opt-in, needs cabin view): headlamp glow of following cars shown in the cabin A-pillar mirrors, plus a veil contribution from the reflected light. Gated on traffic (oncoming || preceding).' }, 'rear mirrors');
+    cmr.addEventListener('click', () => setDV(ui, 'cabinMirror', !info().o.cabinMirror));
+    ui.driveExtras.append(cmr);   // cabinMirror toggle (ayrton 11-04)
     const ys = E('button', { type: 'button', class: 'toggle', 'data-anim': 'yawSmooth', 'aria-pressed': 'false', title: 'Smooth camera yaw on curved tiles (opt-in): lookahead-averaged tangent eases the yaw snap at corner entry/exit. Render-only; default off keeps the shipped view.' }, 'yaw smooth');
     ys.addEventListener('click', () => setDV(ui, 'yawSmooth', !info().o.yawSmooth));
     ui.driveExtras.append(ys);   // yawSmooth toggle
@@ -2595,6 +2676,9 @@ void main() {
     for (const b of q('[data-anim="yawSmooth"]')) b.setAttribute('aria-pressed', String(!!o.yawSmooth));
     for (const b of q('[data-anim="cabinLight"]')) b.setAttribute('aria-pressed', String(!!o.cabinLight));
     for (const b of q('[data-anim="cabinFovFrame"]')) { b.setAttribute('aria-pressed', String(!!o.cabinFovFrame)); b.disabled = !o.cabinView; }   // ayrton 11-04: cabinFovFrame needs cabinView
+    for (const b of q('[data-anim="cabinDigitalRedesign"]')) { b.setAttribute('aria-pressed', String(!!o.cabinDigitalRedesign)); b.disabled = !o.cabinView; }   // ayrton 11-04: cabinDigitalRedesign needs cabinView
+    for (const b of q('[data-anim="cabinWetnessSlider"]')) b.setAttribute('aria-pressed', String(!!o.cabinWetnessSlider));   // ayrton 11-04: cabinWetnessSlider sync
+    for (const b of q('[data-anim="cabinMirror"]')) { b.setAttribute('aria-pressed', String(!!o.cabinMirror)); b.disabled = !o.cabinView; }   // ayrton 11-04: cabinMirror sync (needs cabinView)
     for (const b of q('[data-anim="imperial-units"]')) b.setAttribute('aria-pressed', String(!!o.imperialUnits));
     for (const s2 of q('[data-anim="endlessPresetCustom"]')) s2.value = o.endlessPresetCustom || '';
     for (const s2 of q('[data-anim="endlessPreset"]')) s2.value = o.endlessPreset || 'off';
@@ -3281,7 +3365,7 @@ void main() {
     for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / (Math.max(5, kmhOf()) / 3.6); frame(); }
     V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
   }
-  RF.DriveAnim = { parseCustomPreset, endlessBiome, timeline: () => TL.events, stateDump, readState, relaxDrift, loadState, STATE_KIND, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, shedState, shedStep, shedPatch, lodPatch, LOD_LEVELS, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, endlessTile, endlessBiome, endlessElev, endlessGrade, endlessVerge, mlLanes, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
+  RF.DriveAnim = { parseCustomPreset, endlessBiome, timeline: () => TL.events, stateDump, readState, relaxDrift, loadState, STATE_KIND, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, shedState, shedStep, shedPatch, lodPatch, LOD_LEVELS, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, endlessTile, endlessBiome, endlessElev, endlessGrade, endlessVerge, mlLanes, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, mirrorCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
     _: { V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -139,6 +139,8 @@
       at: { file: ANIM, fn: 'o.endlessRoad ? endlessTile', line: 3024 } },
     cabinView: { cond: { opt: 'cabinView', eq: true }, why: 'needs the in-cabin view on (the dashboard style and drift cabin ride on its overlay)', effect: 'none',
       at: { file: ANIM, fn: 'drawCabin(V, o.cabinView', line: 1783 } },
+    roadSurfacesOn: { cond: { opt: 'roadSurfaces', eq: true }, why: 'needs road surfaces on (the per-surface smoothness physics gate)', effect: 'disabled',
+      at: { file: SPEC, fn: 'b.disabled = !o.roadSurfaces', line: 1072 } },
   };
   // need('air', { effect: 'tooltip' }) returns a copy of a rule, optionally with the UI effect overridden.
   // Throws a named error if `name` is not in RULES: a typo'd need('tiles') once made every option using it a
@@ -1291,6 +1293,26 @@
       note: 'ayrton (11-04, Anya): the windshield A-pillars and roof bar interpolate their screen fractions by the view-angle setting (30-90°). At the 60° default the fractions are exactly the originals; wide FOV narrows the frame (more road), narrow FOV widens it. Overlay only, no render change. Default OFF: fixed fractions as before.',
     },
     {
+      id: 'cabinMirror', kind: 'profile', type: 'bool', values: null,
+      default: false, label: 'rear-view mirrors (headlamp glow of following cars in the cabin A-pillars + veil contribution)',
+      control: '[data-anim="cabinMirror"]', where: 'more', query: null,
+      group: 'view', cost: 'free',
+      owner: ['js/drive-anim.js'],
+      requires: [need('cabinView')],
+      tests: [],
+      note: 'ayrton (11-04, Anya): rear-view mirrors showing the headlamp glow of following cars behind us. A mirror-local generator (deterministic, own cull ~100 m) produces (bearing, distance, candela) tuples consumed only by the mirror rects and the glare veil. Gated on traffic (oncoming || preceding): no followers when traffic is off. The veil contribution uses the mirror virtual-image direction (~45° off forward), not the raw behind bearing, so veilAt weights it properly. Default OFF: no mirrors, no generator, zero world coupling.'
+    },
+    {
+      id: 'cabinDigitalRedesign', kind: 'profile', type: 'bool', values: null,
+      default: false, label: '80s digital redesign (flat 300ZX-style LCD panel for the digital80s style)',
+      control: '[data-anim="cabinDigitalRedesign"]', where: 'more', query: null,
+      group: 'view', cost: 'free',
+      owner: ['js/drive-anim.js'],
+      requires: [need('cabinView')],
+      tests: [],
+      note: 'ayrton (11-04, Anya: true 80s digital redesign): replaces the round-gauge silhouette of the digital80s style with a flat 300ZX-style LCD panel — boxed speed numerals, horizontal bar-graph tach, vertical fuel bar, monochrome green. Only affects the digital80s cabinStyle; modern/miata untouched. Overlay only, no render change. Default OFF: round gauges as before.',
+    },
+    {
       id: 'imperialUnits', kind: 'profile', type: 'bool', values: null,
       default: false, label: 'imperial units (speed readouts in mph)',
       control: '[data-anim="imperial-units"]', where: 'more', query: null,   // control lives in the Performance/Debug bar (btn helper), not the top extras crowd
@@ -1648,6 +1670,16 @@
       note: 'Absent until the first click; clamped to 0..1 at load; readers use RF.Drive.wetnessOf and tolerate undefined. The minigame leaves it behind (H1, fixed on this base by the overlay).',
     },
     {
+      id: 'cabinWetnessSlider', kind: 'extra', type: 'bool', values: null,
+      default: undefined, label: 'wetness slider (continuous 0-1 with damp/wet/standing-water marks)',
+      control: '[data-anim="cabinWetnessSlider"]', where: 'more', query: null,
+      group: 'surface', cost: 'free',
+      owner: ['js/spec-ui.js', 'js/drive-anim.js'],
+      requires: [],
+      tests: [],
+      note: 'ayrton (11-04, Anya §7): replaces the dry/damp/wet/standing cycle button with a continuous 0-1 range slider. Detents at damp (0.3), wet (0.6) and standing (1.0) per Anya §7 (c=W²: 0.09/0.36/1.0; measured in-mask 1.45×/2.20×/3.09×, nemo job 34da). Same wetness option key; the legacy wet boolean mirror stays in sync. Default OFF: cycle button as before.'
+    },
+    {
       id: 'deerBehaviour', kind: 'extra', type: 'bool', values: null,
       default: undefined, label: 'deer behaviour',
       control: '[data-anim="deer-behaviour"]', where: 'more', query: null,
@@ -1818,6 +1850,26 @@
       requires: [],
       tests: ['node:frenchie-traffic-lighting'],
       note: 'frenchie (backlog 5 "Traffic-lighting presets"): one dropdown that applies a street-lighting preset by writing the existing knobs (streetLamps/lampClass/lampRule, see TRAFFIC_LIGHTING). off (default) writes nothing and leaves the individual controls alone; changing a knob by hand re-syncs this select to off. The scene rebuilds via the underlying knobs.',
+    },
+    {
+      id: 'roadSurfaces', kind: 'profile', type: 'bool', values: null,
+      default: false, label: 'road surfaces (per-surface smoothness physics)',
+      control: '[data-dv="roadSurfaces"]', where: 'more', query: null,
+      group: 'surface', cost: 'per-frame-gpu',
+      owner: ['js/options-registry.js', 'js/drive.js', 'js/drive-anim.js', 'js/drive-three.js', 'js/drive-three-shaders.js', 'js/drive-three-halo.js', 'js/spec-ui.js', 'js/drive-layout.js'],
+      requires: [],
+      tests: ['node:frenchie-road-surfaces'],
+      note: 'frenchie (Anya item 4; nemo/ROAD-SURFACES.md §7 RESOLVED 11-04 22:23Z): OFF = byte-identical. ON + roadSurface != stock: smoothness s drives k(s)=0.4+0.6s on the landed c(W)=W^2 wetBounce weight and the dryStreaks floor d0*s (d0=0.10). Visual textures are the le-chonk lane; sheen unification is a separate kit.'
+    },
+    {
+      id: 'roadSurface', kind: 'profile', type: 'enum', values: ['stock', 'fresh', 'old', 'concrete', 'tar-snake'],
+      default: 'stock', label: 'road surface',
+      control: '[data-dv="roadSurface"]', where: 'more', query: null,
+      group: 'surface', cost: 'per-frame-gpu',
+      owner: ['js/options-registry.js', 'js/drive.js', 'js/drive-anim.js', 'js/drive-three.js', 'js/drive-three-shaders.js', 'js/drive-three-halo.js', 'js/spec-ui.js', 'js/drive-layout.js'],
+      requires: [need('roadSurfacesOn')],
+      tests: ['node:frenchie-road-surfaces'],
+      note: 'frenchie (ROAD-SURFACES §2/§7.5): surface for the scene road while roadSurfaces is ON; stock = today implicit asphalt (k=1, 0.25 floor). s: fresh 0.35, old 0.22, concrete 0.30, tar-snake 0.50.'
     },
     {
       id: 'wetBounce', kind: 'profile', type: 'bool', values: null,

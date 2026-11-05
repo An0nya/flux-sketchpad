@@ -639,6 +639,7 @@ body.mode-D .canvas-wrap.drive > .drive-tools.dl, .dp-stage > .drive-tools.dl { 
 .dl-top { padding-right: 44px; }   /* the pane's corner button (large view) sits top right */
 .dl-strip .anim-speed, .dl-strip .drive-speed { font: 12px ui-monospace, Menlo, monospace; color: var(--dl-dim); text-shadow: none; }
 .dl-strip .drive-speed { flex-wrap: nowrap; white-space: nowrap; }
+.dl-strip .drive-speed .anim-speed { min-width: 17ch; text-align: right; font-variant-numeric: tabular-nums; }   /* room for '130 km/h · actual 130': the slider does not move when actual appears (nicholl QOL1 audit, ayrton 11-04; mirrors the .dl-tall rule at :718) */
 .dl-sep { width: 1px; align-self: stretch; background: var(--dl-line); margin: 0 2px; }
 .dl-body { flex: 1 1 0; display: flex; min-height: 0; }
 .dl-stage { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; pointer-events: none; }
