@@ -756,7 +756,7 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
   }
   function tileWorld(p, dist, t, tauOf) {
     if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t, tauOf);
-    const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? ((s2, k2) => endlessTile(s2, k2, cfg.preset, cfg.custom)) : null), edgeR = -lane / 2, edgeL = 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
+    const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? ((s2, k2) => endlessTile(s2, k2, cfg.preset, cfg.custom)) : null), mlx = cfg.multilane ? mlLanes(ML_LANE, ML_MEDIAN) : null, edgeR = mlx ? mlx.outerR : -lane / 2, edgeL = mlx ? mlx.outerL : 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
     let A1 = (p.touge && !cfg.mountain) ? (cfg.endless ? RF.Touge.elevate(A0, dist, lane, true, endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom)) : RF.Touge.elevate(A0, dist, lane, false)) : A0;
     if (cfg.driftMode) {   // opposite-lock camera yaw on bends: rotate the render arc by the drift angle (traffic/solver keep the true arc via their own path)
       const tk = A1.tiles && A1.tiles.find((t2) => dist >= t2.s0 && dist < t2.s0 + 200);
