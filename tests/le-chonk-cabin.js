@@ -18,7 +18,7 @@ ok('driftMode: opposite-lock on lamps (p.yaw) AND camera (rotArc on the render a
 // behaviour: drift yaw sign/magnitude on a bend vs straight, via the same formula the frame uses
 const A = RF.DriveAnim;
 const D = RF.Drive;
-const bend = A.endlessTile(7, 7), straight = A.endlessTile(7, 4);
+let bend = null, straight = null; for (let k = 0; k < 60 && !(bend && straight); k++) { const t = A.endlessTile(7, k); if (t.curvature && !bend) bend = t; if (!t.curvature && !straight) straight = t; }   // B11: tile kinds shifted when the tight-S clause was dropped, so pick them by kind
 const drift = (tile, kmh) => tile.curvature ? -tile.curvature * Math.pow(kmh / 130, 2) * 2.6 : 0;
 ok('drift yaw is opposite-lock (sign opposite the bend) and grows with speed; zero on straights', drift(bend, 100) * bend.curvature < 0 && Math.abs(drift(bend, 120)) > Math.abs(drift(bend, 60)) && drift(straight, 120) === 0, JSON.stringify({ bend: bend.kind, d60: drift(bend, 60), d120: drift(bend, 120) }));
 for (const id of ['cabinStyle', 'cabinLight']) {

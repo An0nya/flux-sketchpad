@@ -454,8 +454,9 @@
   // §2-endless (prototype, behind `endlessRoad`, default OFF): biome tiles with coherent chaining, per-tile props.
   // Biome = one per 16-tile block (3.2 km), seeded — an endless walk through open/forest/city/mountain. Kinds per biome:
   // junctions only in city, switchbacks (a curve answers the previous curve with the opposite sign) in mountain, and a
-  // no-loop rule: never three same-sign curves in a row, no tight S (opposite curve right after a >=250 m curve) — so
-  // the road cannot circle back on itself. Deterministic in (seed, k); OFF (no recipe) is the shipped roadTile byte for byte.
+  // no-loop rule: never three same-sign curves in a row — so the road cannot circle back on itself. The old tight-S
+  // clause (opposite curve right after a >=250 m curve flattened) is dropped (B11): it matched every curve kind and only
+  // fought the mountain switchbacks, not loops. Deterministic in (seed, k); OFF (no recipe) = the shipped roadTile byte for byte.
   const ENDLESS_BIOMES = ['open', 'forest', 'city', 'mountain'];
   const ENDLESS_PROPS = { open: { lampGap: 100, lampStyle: 'mast', density: 1, speed: 80, deer: 0.5, bushes: 2 }, forest: { lampGap: 0, lampStyle: 'cobra', density: 0.6, speed: 60, deer: 1, bushes: 4 }, city: { lampGap: 50, lampStyle: 'cobra', density: 2, speed: 50, deer: 0, bushes: 0 }, mountain: { lampGap: 0, lampStyle: 'low', density: 0.4, speed: 40, deer: 0.2, bushes: 2 } };   // lampStyle: open gets 9 m masts, city the 7 m cobra, mountain low 6 m (where lamps exist)
   // every kind must be named: pickKind counts an unnamed kind as weight 1
@@ -567,9 +568,8 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
       if (p.curvature !== 0 && t.kind !== 'straight') { t.kind = p.curvature > 0 ? '150R' : '150L'; t.curvature = (t.kind.endsWith('L') ? 1 : -1) / 150; }
     }
     const p1 = endlessTileRaw(seed, k - 1, endlessBiome(seed, k - 1, preset, custom), custom, preset), p2 = k > 1 ? endlessTileRaw(seed, k - 2, endlessBiome(seed, k - 2, preset, custom), custom, preset) : null;   // no-loop window
-    const relax = preset === 'switchbacks';   // switchbacks preset: the mountain rule above already forces alternation, so the no-loop flattening would only fight the hairpins
     if (t.curvature !== 0 && p1.curvature !== 0 && p2 && Math.sign(t.curvature) === Math.sign(p1.curvature) && Math.sign(p1.curvature) === Math.sign(p2.curvature)) { t.kind = 'straight'; t.curvature = 0; }
-    if (t.curvature !== 0 && p1.curvature !== 0 && Math.sign(t.curvature) === -Math.sign(p1.curvature) && Math.abs(p1.curvature) >= 1 / 250 && !(relax && Math.abs(t.curvature) >= 1 / 150)) { t.kind = 'straight'; t.curvature = 0; }
+    // tight-S clause dropped (B11): it matched every curve kind (|c| >= 1/250), flattening all S-bends and fighting the mountain switchbacks
     t.props = Object.assign({}, ENDLESS_PROPS[biome], LOOP_PROPS[preset] || {}, custom && custom.props);   // loop preset props, then custom preset props win (speed cap, density, l
     t.surface = endlessSurface(seed, k, preset, custom);   // §road-surfaces: biome-block surface (Anya item 4 §7 set)amps, deer, bushes)
     t.tunnel = false;

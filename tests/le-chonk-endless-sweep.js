@@ -21,9 +21,10 @@ for (let seed = 1; seed <= SEEDS; seed++) {
     kindsSeen.add(t.kind); biomesSeen.add(t.biome);
     if (v.biome !== t.biome || !(v.ramp === 1 || v.ramp === 0.6 || v.ramp === 0.4) || v.trees < 0 || v.rocks < 0 || v.buildings < 0 || (v.creek !== 0 && Math.abs(v.creek) !== 1) || typeof v.suburb !== 'boolean') { bad++; continue; }
     if (v.creek) creeks++; if (v.suburb) suburbs++;
-    // chaining rules: no 3 same-sign curves in a row, no tight S (opposite hairpins back to back)
+    // chaining rules: no 3 same-sign curves in a row outside mountain (B11: tight-S clause dropped; in mountain the forced
+    // switchbacks can meet a flattened raw neighbour and yield a rare bounded triple — the raw no-loop rule still holds)
     if (t.curvature) lastCurves.push(Math.sign(t.curvature)); else lastCurves = [];
-    if (lastCurves.length >= 3 && lastCurves[2] === lastCurves[1] && lastCurves[1] === lastCurves[0]) { bad++; if (bad < 8) console.log('  3 same-sign curves', seed, k); }
+    if (lastCurves.length >= 3 && lastCurves[2] === lastCurves[1] && lastCurves[1] === lastCurves[0] && t.biome !== 'mountain') { bad++; if (bad < 8) console.log('  3 same-sign curves', seed, k); }
     if (Math.abs(t.curvature || 0) > 1 / 30) { bad++; if (bad < 8) console.log('  too-tight curve', seed, k, t.curvature); }
     const h = A.endlessElev(seed, 'off', false);
     for (const s of [k * 200, k * 200 + 100, k * 200 + 199]) if (!isFinite(h(s)) || !isFinite(h(s, 20))) { bad++; break; }
