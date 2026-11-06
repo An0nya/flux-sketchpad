@@ -1025,26 +1025,30 @@ const surfTexCPU = (s, off, mat) => {
     const hM = Math.max(Math.abs(hLo), Math.abs(hHi)) * D2R, vM = Math.max(Math.abs(vLo), Math.abs(vHi)) * D2R;
     return (lut._ceCone = { conv, c: Math.cos(hM) * Math.cos(vM) });   // cos of the circumscribed cone's half-angle
   }
-  function ceChord(eye, ray, L, c) {   // the s-interval where eye + s*ray is inside the cone about the beam axis (L.nx, L.ny, 0)
+  function ceChord(eye, ray, L, c) {   // the s-interval where eye + s*ray is inside the FORWARD cone about the beam axis (L.nx, L.ny, 0):
+    // dot(d, axis) >= c * |d| with d = point - lamp (the squared form is the double cone; the forward half-line dot(d,axis) >= 0
+    // cuts it to one interval, since the forward nappe is convex). Returns [sA, sB] or null.
     const ax = L.nx, ay = L.ny, Dx = L.x - eye[0], Dy = L.y - eye[1], Dz = L.z - eye[2];
     const wa = ray[0] * ax + ray[1] * ay, Da = Dx * ax + Dy * ay, wD = ray[0] * Dx + ray[1] * Dy + ray[2] * Dz, DD = Dx * Dx + Dy * Dy + Dz * Dz;
     const A = wa * wa - c * c, B = -2 * wa * Da + 2 * c * c * wD, C = Da * Da - c * c * DD;
-    if (Math.abs(A) < 1e-12) {   // linear: the ray runs along the cone's surface direction
-      if (Math.abs(B) < 1e-12) return C >= 0 ? [-1e9, 1e9] : null;
-      const t = -C / B; return B > 0 ? [t, 1e9] : [-1e9, t];
-    }
-    const f = (t) => A * t * t + B * t + C;
-    if (f(0) >= 0) {   // the eye is inside the cone: the chord is the root ahead of us (or the whole ray)
+    const f = (t) => A * t * t + B * t + C, g = (t) => wa * t - Da;
+    const segs = [];
+    if (Math.abs(A) > 1e-12) {
       const disc = B * B - 4 * A * C;
-      if (disc < 0) return A > 0 ? [-1e9, 1e9] : null;
-      const r = Math.sqrt(disc), sA = (-B - r) / (2 * A), sB = (-B + r) / (2 * A), lo = Math.min(sA, sB), hi = Math.max(sA, sB);
-      return A > 0 ? [lo, hi] : (sB > 0 ? [0, sB] : (sA > 0 ? [0, sA] : null));
+      if (disc < 0) { if (f(0) >= 0) segs.push([-1e9, 1e9]); }
+      else { const r = Math.sqrt(disc), lo = (-B - r) / (2 * A), hi = (-B + r) / (2 * A);
+        if (A > 0) segs.push([-1e9, Math.min(lo, hi)], [Math.max(lo, hi), 1e9]); else segs.push([Math.min(lo, hi), Math.max(lo, hi)]); }
+    } else if (Math.abs(B) > 1e-12) { const t = -C / B; segs.push(B > 0 ? [t, 1e9] : [-1e9, t]); }
+    else if (f(0) >= 0) segs.push([-1e9, 1e9]);
+    for (const [a, b] of segs) {
+      let lo = Math.max(a, 0), hi = b;
+      if (Math.abs(wa) > 1e-12) { const sF = Da / wa; if (wa > 0) lo = Math.max(lo, sF); else hi = Math.min(hi, sF); }
+      else if (Da > 0) continue;   // the ray runs parallel to the forward plane, on the lit side only when Da <= 0
+      if (hi > lo) { const m = (lo + hi) / 2; if (f(m) >= -1e-9 && g(m) >= -1e-9) return [lo, hi]; }
     }
-    const disc = B * B - 4 * A * C; if (disc < 0) return null;
-    const r = Math.sqrt(disc), sA = (-B - r) / (2 * A), sB = (-B + r) / (2 * A), lo = Math.min(sA, sB), hi = Math.max(sA, sB);
-    if (A > 0) return null;   // eye outside, opens up: inside between the roots only when C<0, contradicted by f(0)<0... keep safe:
-    return hi > 0 ? [Math.max(lo, 0), hi] : null;
+    return null;
   }
+
   function trafficHalo(ray, sEnd, sources, N, p, jit) {
     const out = [0, 0, 0], n = N | 0, sig = sigmaOf((p && p.look) || {}), eye = (p && p.eye) || [-2, 0.37, 1.2];
     if (!(sig > 0) || !(n > 0) || !(sEnd > 0) || !sources || !sources.length) return out;
