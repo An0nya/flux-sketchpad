@@ -51,7 +51,7 @@
         const src = source(scene, false), p = { ...params(src, false, 640, 360, wet), detailedModels };
         const world = { objects: RF.DriveAnim.placedObjects(p, 37.5, 2.7), A: null, markings: src.markings };
         const before = draw(p, world, old), after = draw(p, world);
-        ok('FO off frame bytes equal main 322d119 ' + [scene, wet, detailedModels].join('/'), bytesEqual(before.hdr, after.hdr) && bytesEqual(before.display, after.display));
+        ok('FO off frame bytes equal tree 572c171c4191 ' + [scene, wet, detailedModels].join('/'), bytesEqual(before.hdr, after.hdr) && bytesEqual(before.display, after.display));
         draw({ ...p, leafyFoliage: true }, world);
         const restored = draw(p, world);
         ok('FO off/on/off restores HDR and display bytes ' + [scene, wet, detailedModels].join('/'), bytesEqual(after.hdr, restored.hdr) && bytesEqual(after.display, restored.display));
@@ -105,6 +105,7 @@
     // A separate bright ambient silhouette probe verifies cutouts affect tree edges even above the low-beam cutoff.
     const src = source('forest', false), p = params(src, false);
     p.look = { ...p.look, ambient: 2 }; const world = { objects: RF.Drive.Models.tree({ x: 15, y: 0, h: 5, id: 'FO-edge' }), A: null, markings: src.markings };
+    const glErrBefore = a().V.gl.gl.getError(); // drain (nemo 93c1): localizes the 1282 to before/after this probe
     draw(p, world); const solid = a().V.three.masks(p, 1, true);
     draw({ ...p, leafyFoliage: true }, world); const cut = a().V.three.masks(p, 1, true);
     let holes = 0, edgeHoles = 0; const leafId = RF.Drive.MAT_KEYS.indexOf('foliage');
@@ -113,7 +114,11 @@
       if ([[-1, 0], [1, 0], [0, -1], [0, 1]].some(([dx, dy]) => x + dx >= 0 && x + dx < p.w && y + dy >= 0 && y + dy < p.h && solid[((y + dy) * p.w + x + dx) * 4] !== leafId)) edgeHoles++;
     }
     ok('FO leaf cutouts break the tree silhouette', holes > 0 && edgeHoles > 0, { holes, edgeHoles });
-    ok('FO no WebGL error after leaf shaders', a().V.gl.gl.getError() === 0);
+    // gl-error localization (nemo 93c1): getError() clears on read — glErrBefore was drained just before the
+    // cutout probe, so {code} = error raised inside the leaf/mask draws, {before} = error already pending
+    // from earlier phases (pre-existing). 1282 (INVALID_OPERATION) measured 7a28; culprit still open.
+    const glErrAfter = a().V.gl.gl.getError();
+    ok('FO no WebGL error after leaf shaders', glErrAfter === 0, { code: glErrAfter, before: glErrBefore });
     return { pass: checks.every(c => c.pass), checks: checks.slice() };
   }
   const median = values => { const v = values.slice().sort((a, b) => a - b), i = Math.floor(v.length / 2); return v.length ? v.length % 2 ? v[i] : (v[i - 1] + v[i]) / 2 : null; };
@@ -174,11 +179,15 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 if (typeof require !== 'undefined' && require.main === module) (async () => {
-  const fs = require('fs'), path = require('path'), cp = require('child_process');
+  const fs = require('fs'), path = require('path');
   const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
   const port = +(process.argv[2] || 8798), browser = await pw.chromium.launch({ channel: 'chromium' });
+  // Baselines: tests/baselines/572c171c4191/js/ — host export of the post-d280 tree (claude 1745; the dir is the
+  // GPU queue's tree id, not a git sha — the workspace isn't a repo; the three files are unchanged d280->v10->v11).
+  // Re-pin 11-05 (nemo 8342 cat A: 322d119 staleness confirmed, off/on/off invariance 8/8). No git fallback: page test,
+  // scan rejects spawning programs; a missing baseline throws loudly instead (rule 15).
   const sources = {}; for (const [key, file] of Object.entries({ renderer: 'drive-three', objects: 'drive-three-objects', shaders: 'drive-three-shaders' }))
-    sources[key] = cp.execFileSync('git', ['show', '322d119:js/' + file + '.js'], { cwd: path.join(__dirname, '../..'), encoding: 'utf8' });
+    sources[key] = fs.readFileSync(path.join(__dirname, '../baselines/572c171c4191/js', file + '.js'), 'utf8');
   let failed = false;
   try {
     for (const [width, height] of [[1600, 900], [428, 926]]) {

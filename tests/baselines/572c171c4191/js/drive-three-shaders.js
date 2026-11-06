@@ -1,0 +1,617 @@
+/* Linear luminance only. Formula reference: drive.js; display passes stay in drive-anim.js. */
+// HDX7: the halo bin count is a runtime uniform (haloNu); the shaders size their arrays for the maximum.
+export const HALO_MAX = 32;
+export const vertex = `
+varying vec2 screen;
+void main() { screen = position.xy; gl_Position = vec4(position.xy, 0.0, 1.0); }
+`;
+export const ground = `
+precision highp float;
+precision highp int;
+uniform sampler2D beam, materials;
+uniform vec4 lutInfo;
+uniform vec2 lutSize, size;
+uniform vec3 eye, lamp[2], lampRGB;
+uniform int nLamp, convention, nMark, nPart, nLight, nReflection, nSkip, nCross;
+uniform vec4 part[64], partShape[64], light[64], reflection[64];   // route-parts-64 (frenchie 11-04): 16 was a chosen bound, not a driver limit
+uniform vec3 lightRGB[64], reflectionRGB[64];
+// LAMP-DIST: road lamp light = point light x the shared distribution (js/lamp-dist.js, 19 x 25 grid, row-major gi*25+pj, cd per klm), relative to 1000/(2 pi).
+// v = lamp -> point; gamma from straight down; phi from the lamp's street side lightStreet[i]. Off (lampRoadOn 0): the factor is 1.0, the same arithmetic as before.
+uniform int lampRoadOn; uniform vec4 lampDistTab4[120]; uniform vec2 lightStreet[64];   // the 475-value table packed 4 per vec4 (one float uniform per slot would exceed MAX_FRAGMENT_UNIFORM_VECTORS)
+float lampTabAt(int k) { int q=k/4; vec4 v=lampDistTab4[q]; int c=k-4*q; return c==0?v.x:(c==1?v.y:(c==2?v.z:v.w)); }
+float lampRoadF(vec3 v, vec2 st) {
+  float rr=length(v); float g=degrees(acos(clamp(-v.z/rr,-1.0,1.0)));
+  float ph=degrees(atan(st.x*v.y-st.y*v.x, st.x*v.x+st.y*v.y)); if(ph<0.0) ph+=360.0;
+  float fg=clamp(g/5.0,0.0,17.999), fp=clamp(ph/15.0,0.0,23.999);
+  float ig=floor(fg), tg=fg-ig, ip=floor(fp), tp=fp-ip; int k=int(ig)*25+int(ip);
+  float I=(lampTabAt(k)*(1.0-tp)+lampTabAt(k+1)*tp)*(1.0-tg)+(lampTabAt(k+25)*(1.0-tp)+lampTabAt(k+26)*tp)*tg;
+  return I/159.1549;
+}
+uniform vec2 skip[16];
+uniform vec4 crossing[64];   // route-parts-64 (frenchie 11-04)
+uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance, wetModel, wetness, kSurf;
+uniform vec2 verge;
+uniform vec2 arc;
+uniform float sigma;   // fog extinction per metre (look.visibility: 3.912 / V); 0 = off
+float fogT(float d) { return sigma>0.0 ? exp(-sigma*d) : 1.0; }   // transmittance over a light path (drive.js fogD)
+uniform int scatterSteps;   // in-scatter steps (look.scatter; 0 = off; only with sigma>0). drive.js inScatter is the CPU twin
+uniform float scatGFwd, scatGBack, scatWFwd, scatRMin, scatSMax;   // drive.js SCAT
+uniform float haloSMax;   // OHR: the oncoming table's far edge (look.haloRange, else scatterRange); our own beam keeps scatSMax
+uniform int haloMoment;   // P3/glm5.2: 1 = place each bin's mass at its glow-weighted mean depth (Hermite through the means); 2 = L2d sin² blend (means blended toward the upper edges by w=sin²(πu)); 0 = the shipped edge knots
+// SL: the traffic scatter table (js/drive-three-halo.js). A screen-space table (1/8 of the view, six tiles side by side) holds, per cell, the oncoming
+// lamps' single-scatter integral over six distance bins whose edges follow the nearest lamp (fixed ladder 8, 14, 22, 34, 60, 120 m when it is far). haloScatter(d) sums the bins up to the fragment's
+// own end distance d (ground hit, object eye distance, sky = 120 m), interpolated in log d like tableC, so the lit air in FRONT of a surface adds to it and the
+// air BEHIND it does not. haloOn is a uniform: off costs one branch, and toggling never changes the shader text (no recompile).
+uniform int haloOn; uniform sampler2D haloTex; uniform vec2 haloUV, haloTab;   // haloUV: 1 / pixels of the target this pass draws; haloTab: cells per tile
+uniform float haloE[32];   // the upper edge of each bin (HDX3; HALO_EDGES in drive-three-halo.js). HDX7: 32 slots, the first haloNu in use
+uniform int haloNu; uniform float haloH;   // HDX7: bins in use (4..32) and the knot step ln(240)/haloNu (0.22836 at 24): runtime, so no recompile
+// B10: both polar tables are layers of ONE array texture (layer 0 = nearest lamp's table, layer 1 = the second), one sampler instead of two.
+uniform int haloPolarOn; uniform sampler2DArray haloPolarTex; uniform vec2 haloPolarF, haloPolarSz, haloPolarRange, haloPolarN;   // HDX6: centre as a fraction of the view, view px (see haloPolar below)
+// Cubic B-spline read of one bin tile in 4 bilinear fetches (the linear trick: B-spline weights are all positive, so two taps per axis are exact). It
+// removes the cell-grid stairs plain bilinear leaves on a sharp-edged glow. Tap centres are clamped inside the tile, so no bin bleeds into its neighbour.
+vec3 haloBin(int k, vec2 pc, vec2 f, vec2 tab) {
+  vec2 f2=f*f, f3=f2*f, w0=(1.0-f)*(1.0-f)*(1.0-f)/6.0, w1=(3.0*f3-6.0*f2+4.0)/6.0, w2=(-3.0*f3+3.0*f2+3.0*f+1.0)/6.0, w3=f3/6.0;
+  vec2 g0=w0+w1, g1=w2+w3, h0=pc-1.0+w1/g0, h1=pc+1.0+w3/g1;   // pc: texel index of the cell holding the fragment; taps land between texel centres
+  h0=clamp(h0+0.5,vec2(0.5),tab-0.5); h1=clamp(h1+0.5,vec2(0.5),tab-0.5);
+  float x0=(float(k)*tab.x+h0.x), x1=(float(k)*tab.x+h1.x), inv=1.0/(tab.x*float(haloNu));
+  return g0.y*(g0.x*texture(haloTex,vec2(x0*inv,h0.y/tab.y)).rgb+g1.x*texture(haloTex,vec2(x1*inv,h0.y/tab.y)).rgb)
+       + g1.y*(g0.x*texture(haloTex,vec2(x0*inv,h1.y/tab.y)).rgb+g1.x*texture(haloTex,vec2(x1*inv,h1.y/tab.y)).rgb);
+}
+// HDX7: the monotone cubic Hermite over the running totals at the bin knots (Fritsch-Carlson, linear C, log d). Shared by the screen table and the polar table.
+// PREFIX: the running totals come from the cumulative table (a prefix sum across the bin tiles, drive-three-halo.js), so the caller reads four knots, not all bins:
+// K0 = Cc[max(s-1,0)], K1 = Cc[s], K2 = Cc[s+1], K3 = Cc[min(s+2,haloNu-1)], for the segment s that brackets dd (haloSeg).
+int haloSeg(float dd) { int s=0; for(int k=0;k<31;k++) if(k<haloNu-1 && dd>haloE[k]) s=k; return s; }   // segment s: knots s..s+1 bracket dd
+vec3 haloCurve(int s, vec3 K0, vec3 K1, vec3 K2, vec3 K3, float dd) {
+  if(dd<=haloE[0]) return K1*log(dd/0.5)/log(haloE[0]/0.5);   // bin 0: log d from 0.5 m (C(0.5)=0); s is 0 here, so K1 = Cc[0]
+  float h=haloH;
+  vec3 Cm=(s>=1) ? K1 : K2;             // Cc[sm+1], sm = max(s-1,0)
+  vec3 Cn=(s+1<=haloNu-2) ? K2 : K1;    // Cc[sn], sn = min(s+1,haloNu-2)
+  vec3 dS=(K2-K1)/h, dP=(Cm-K0)/h, dN=(K3-Cn)/h;
+  vec3 mP=vec3(0.0), mN=vec3(0.0);
+  vec3 ab=dP*dS, ms=step(vec3(1e-30),ab); mP=ms*2.0*ab/mix(vec3(1.0),dP+dS,ms);   // harmonic mean where the slopes agree in sign, else 0
+  vec3 ab2=dS*dN, ms2=step(vec3(1e-30),ab2); mN=ms2*2.0*ab2/mix(vec3(1.0),dS+dN,ms2);
+  vec3 mA=(s==0 ? dS : mP), mB=(s==haloNu-2 ? dS : mN);
+  float t=(log(dd)-log(haloE[s]))/h, t2=t*t, t3=t2*t;
+  return (2.0*t3-3.0*t2+1.0)*K1 + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*K2 + (t3-t2)*h*mB;
+}
+// P3/glm5.2: the first-moment variant. The table's alpha carries the glow-weighted depth sum, so each bin's mass is placed at its mean depth
+// (a step at the mean) instead of its upper edge. haloBin4 reads all four channels; haloCurveP3 steps at mean = (K2.a-K1.a)/lum(K2.rgb-K1.rgb).
+float haloLum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+vec4 haloBin4(int k, vec2 pc, vec2 f, vec2 tab) {
+  vec2 f2=f*f, f3=f2*f, w0=(1.0-f)*(1.0-f)*(1.0-f)/6.0, w1=(3.0*f3-6.0*f2+4.0)/6.0, w2=(-3.0*f3+3.0*f2+3.0*f+1.0)/6.0, w3=f3/6.0;
+  vec2 g0=w0+w1, g1=w2+w3, h0=pc-1.0+w1/g0, h1=pc+1.0+w3/g1;
+  h0=clamp(h0+0.5,vec2(0.5),tab-0.5); h1=clamp(h1+0.5,vec2(0.5),tab-0.5);
+  float x0=(float(k)*tab.x+h0.x), x1=(float(k)*tab.x+h1.x), inv=1.0/(tab.x*float(haloNu));
+  return g0.y*(g0.x*texture(haloTex,vec2(x0*inv,h0.y/tab.y)).rgba+g1.x*texture(haloTex,vec2(x1*inv,h0.y/tab.y)).rgba)
+       + g1.y*(g0.x*texture(haloTex,vec2(x0*inv,h1.y/tab.y)).rgba+g1.x*texture(haloTex,vec2(x1*inv,h1.y/tab.y)).rgba);
+}
+// P3/glm5.2: the Fritsch-Carlson (PCHIP) knot slope for non-uniform spacing. a = left secant (over hL), b = right secant (over hR).
+// Zero where the secants disagree in sign (local extremum → flat); else the weighted harmonic mean. Per-channel, div-safe.
+vec3 haloPchipSlope(vec3 a, vec3 b, float hL, float hR) {
+  vec3 ab = a * b, slope = vec3(0.0);
+  if (ab.x > 1e-30) { float w1 = 2.0*hR + hL, w2 = hR + 2.0*hL; slope.x = (w1+w2)/(w1/a.x + w2/b.x); }
+  if (ab.y > 1e-30) { float w1 = 2.0*hR + hL, w2 = hR + 2.0*hL; slope.y = (w1+w2)/(w1/a.y + w2/b.y); }
+  if (ab.z > 1e-30) { float w1 = 2.0*hR + hL, w2 = hR + 2.0*hL; slope.z = (w1+w2)/(w1/a.z + w2/b.z); }
+  return slope;
+}
+// P3/glm5.2: the smooth first-moment variant. A monotone cubic Hermite (Fritsch-Carlson PCHIP) through the glow-weighted means
+// instead of the bin edges, so each bin's mass is placed at its mean without the hard step. K0..K3 = Cc[s-1..s+2] (RGBA);
+// the means come from the alpha channel (the first moment). dd is in bin s+1: m0 < edge[s] < dd, dd <= edge[s+1] < m2.
+vec3 haloCurveP3H(int s, vec4 K0, vec4 K1, vec4 K2, vec4 K3, float dd) {
+  if(dd<=haloE[0]) return K1.rgb*log(dd/0.5)/log(haloE[0]/0.5);
+  float lum1 = haloLum(K1.rgb-K0.rgb), lum2 = haloLum(K2.rgb-K1.rgb), lum3 = haloLum(K3.rgb-K2.rgb);
+  float m0 = clamp(lum1 > 1e-30 ? (K1.a-K0.a)/lum1 : haloE[max(s-1,0)], haloE[max(s-1,0)], haloE[s]);   // mean of bin s, clamped into its own bin
+  float m1 = clamp(lum2 > 1e-30 ? (K2.a-K1.a)/lum2 : haloE[s], haloE[s], haloE[min(s+1,haloNu-1)]);       // mean of bin s+1 (the bin holding dd)
+  float m2 = clamp(lum3 > 1e-30 ? (K3.a-K2.a)/lum3 : haloE[min(s+1,haloNu-1)], haloE[min(s+1,haloNu-1)], haloE[min(s+2,haloNu-1)]);  // mean of bin s+2
+  float lx0 = log(m0), lx1 = log(m1), lx2 = log(m2);
+  vec3 d01 = (K2.rgb - K1.rgb) / max(lx1 - lx0, 1e-30);   // secant of [m0, m1]
+  vec3 d12 = (K3.rgb - K2.rgb) / max(lx2 - lx1, 1e-30);   // secant of [m1, m2]
+  bool lower = dd < m1;   // dd is in [m0, m1] or [m1, m2]
+  float x0 = lower ? lx0 : lx1, x1 = lower ? lx1 : lx2, h = max(x1 - x0, 1e-9);   // step5-preview: clamped means can still coincide; a zero-width segment would NaN the Hermite basis
+  vec3 Y0 = lower ? K1.rgb : K2.rgb, Y1 = lower ? K2.rgb : K3.rgb;
+  vec3 dS = lower ? d01 : d12;   // this segment's secant
+  vec3 pchip = haloPchipSlope(d01, d12, lx1-lx0, lx2-lx1);   // the interior knot slope (at m1)
+  vec3 mA = lower ? dS : pchip;   // left knot: one-sided at the outer boundary, PCHIP at the interior
+  vec3 mB = lower ? pchip : dS;   // right knot: PCHIP at the interior, one-sided at the outer boundary
+  float t = (log(dd) - x0) / h, t2 = t*t, t3 = t2*t;
+  return (2.0*t3-3.0*t2+1.0)*Y0 + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*Y1 + (t3-t2)*h*mB;
+}
+// P3-L2d/glm5.2: the sin² blend variant. Same as haloCurveP3H but each mean is blended toward its bin's upper edge by
+// w = sin²(πu), u = dd's normalized within-bin depth (bin s+1 holds dd). w=0 at both bin edges (knots = means, as P3H),
+// w=1 at mid-bin (knots = edges, as shipped). Pinned at both edges and continuous across them. A zero-new-data fallback
+// (~20-25% better than shipped, does not fully fix either field — see glm5.3flash/KNOT-LAWS.md).
+vec3 haloCurveP3L2d(int s, vec4 K0, vec4 K1, vec4 K2, vec4 K3, float dd) {
+  if(dd<=haloE[0]) return K1.rgb*log(dd/0.5)/log(haloE[0]/0.5);
+  float lum1 = haloLum(K1.rgb-K0.rgb), lum2 = haloLum(K2.rgb-K1.rgb), lum3 = haloLum(K3.rgb-K2.rgb);
+  float m0 = clamp(lum1 > 1e-30 ? (K1.a-K0.a)/lum1 : haloE[max(s-1,0)], haloE[max(s-1,0)], haloE[s]);
+  float m1 = clamp(lum2 > 1e-30 ? (K2.a-K1.a)/lum2 : haloE[s], haloE[s], haloE[min(s+1,haloNu-1)]);
+  float m2 = clamp(lum3 > 1e-30 ? (K3.a-K2.a)/lum3 : haloE[min(s+1,haloNu-1)], haloE[min(s+1,haloNu-1)], haloE[min(s+2,haloNu-1)]);
+  float u = clamp((dd - haloE[s]) / max(haloE[min(s+1,haloNu-1)] - haloE[s], 1e-30), 0.0, 1.0);   // dd's normalized within-bin depth
+  float sw = sin(3.14159265 * u); sw = sw * sw;   // sin²(πu): 0 at both edges, 1 at mid-bin
+  m0 = mix(m0, haloE[s], sw);   // blend each mean toward its bin's upper edge
+  m1 = mix(m1, haloE[min(s+1,haloNu-1)], sw);
+  m2 = mix(m2, haloE[min(s+2,haloNu-1)], sw);
+  float lx0 = log(m0), lx1 = log(m1), lx2 = log(m2);
+  vec3 d01 = (K2.rgb - K1.rgb) / max(lx1 - lx0, 1e-30);
+  vec3 d12 = (K3.rgb - K2.rgb) / max(lx2 - lx1, 1e-30);
+  bool lower = dd < m1;
+  float x0 = lower ? lx0 : lx1, x1 = lower ? lx1 : lx2, h = max(x1 - x0, 1e-9);
+  vec3 Y0 = lower ? K1.rgb : K2.rgb, Y1 = lower ? K2.rgb : K3.rgb;
+  vec3 dS = lower ? d01 : d12;
+  vec3 pchip = haloPchipSlope(d01, d12, lx1-lx0, lx2-lx1);
+  vec3 mA = lower ? dS : pchip;
+  vec3 mB = lower ? pchip : dS;
+  float t = (log(dd) - x0) / h, t2 = t*t, t3 = t2*t;
+  return (2.0*t3-3.0*t2+1.0)*Y0 + (t3-2.0*t2+t)*h*mA + (-2.0*t3+3.0*t2)*Y1 + (t3-t2)*h*mB;
+}
+// P3-M2/glm5.2: the second-moment CDF lookup is behind #ifdef HALO_M2 so the haloM2Tex sampler is only declared when moment2 is on
+// (material.defines.HALO_M2 = 1), keeping the static sampler count at 13 (the budget). uniforms.mjs strips the block for the count.
+#ifdef HALO_M2
+uniform sampler2D haloM2Tex;   // the second-moment table (Σw·s² per bin, for the log-normal CDF lookup)
+// erf (Abramowitz & Stegun 7.1.26, max error 1.5e-7) and the standard normal CDF Φ(z) = ½(1+erf(z/√2)). 5 FMA + 1 exp + 1 abs.
+float haloErf(float x) { float t=1.0/(1.0+0.3275911*abs(x)); float y=1.0-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*exp(-x*x); return x>=0.0?y:-y; }
+float haloPhi(float z) { return 0.5*(1.0+haloErf(z*0.70710678)); }
+// the second-moment table read (same B-spline as haloBin4, but from haloM2Tex). R = Σw·s² (the second moment of depth).
+vec4 haloBin4M2(int k, vec2 pc, vec2 f, vec2 tab) {
+  vec2 f2=f*f, f3=f2*f, w0=(1.0-f)*(1.0-f)*(1.0-f)/6.0, w1=(3.0*f3-6.0*f2+4.0)/6.0, w2=(-3.0*f3+3.0*f2+3.0*f+1.0)/6.0, w3=f3/6.0;
+  vec2 g0=w0+w1, g1=w2+w3, h0=pc-1.0+w1/g0, h1=pc+1.0+w3/g1;
+  h0=clamp(h0+0.5,vec2(0.5),tab-0.5); h1=clamp(h1+0.5,vec2(0.5),tab-0.5);
+  float x0=(float(k)*tab.x+h0.x), x1=(float(k)*tab.x+h1.x), inv=1.0/(tab.x*float(haloNu));
+  return g0.y*(g0.x*texture(haloM2Tex,vec2(x0*inv,h0.y/tab.y)).rgba+g1.x*texture(haloM2Tex,vec2(x1*inv,h0.y/tab.y)).rgba)
+       + g1.y*(g0.x*texture(haloM2Tex,vec2(x0*inv,h1.y/tab.y)).rgba+g1.x*texture(haloM2Tex,vec2(x1*inv,h1.y/tab.y)).rgba);
+}
+// the log-normal second-moment CDF lookup. Each bin's mass is placed via a renormalized log-normal CDF between the bin's pins,
+// using the bin's own (mean, variance) from the first and second moments. mean = accM/Σw (from haloTex alpha); var = accM2/Σw − mean²
+// (from haloM2Tex). σ²=ln(1+var/mean²), μ=ln(mean)−σ²/2 (moment match). u=(Φ(z(dd))−Φ(z(lo)))/(Φ(z(hi))−Φ(z(lo))), z=(ln d−μ)/σ.
+// Monotone by construction (the CDF is monotone), so the clamp/strictly-increasing-knots guard the Hermite needs is retired
+// (the black-rows / 7500×-spike class of bugs cannot recur). ~6-8× better than shipped (allAbs 0.048/0.069 vs 0.388/0.411).
+vec3 haloCurveP3M2(int s, vec4 K0, vec4 K1, vec4 K2, vec4 K3, vec4 M0, vec4 M1, vec4 M2, vec4 M3, float dd) {
+  if(dd<=haloE[0]) return K1.rgb*log(dd/0.5)/log(haloE[0]/0.5);
+  float lum2 = haloLum(K2.rgb-K1.rgb);
+  float mean = clamp(lum2 > 1e-30 ? (K2.a-K1.a)/lum2 : haloE[s], haloE[s], haloE[min(s+1,haloNu-1)]);   // mean of bin s+1 (the bin holding dd), clamped into its own bin
+  float accM2 = M2.r - M1.r;   // second moment of bin s+1 (Σw·s²)
+  float var = lum2 > 1e-30 ? max(accM2/lum2 - mean*mean, 0.0) : 0.0;   // Var[s] = E[s²] − E[s]²
+  if(var < 1e-30) { float u = clamp((dd-haloE[s])/max(haloE[min(s+1,haloNu-1)]-haloE[s],1e-30),0.0,1.0); return K1.rgb+u*(K2.rgb-K1.rgb); }   // degenerate (no spread): linear interp, monotone
+  float sigma2 = log(1.0+var/(mean*mean)), sigma = sqrt(sigma2), mu = log(mean)-sigma2*0.5;   // log-normal moment match
+  float lo=haloE[s], hi=haloE[min(s+1,haloNu-1)];
+  float zLo=(log(lo)-mu)/sigma, zHi=(log(hi)-mu)/sigma, zD=(log(dd)-mu)/sigma;
+  float cLo=haloPhi(zLo), cHi=haloPhi(zHi), cD=haloPhi(zD);
+  float u = clamp((cD-cLo)/max(cHi-cLo,1e-30), 0.0, 1.0);   // the renormalized log-normal CDF within the bin; monotone by construction
+  return K1.rgb + u*(K2.rgb-K1.rgb);
+}
+#endif
+vec3 haloScatterScr(float d) {
+  if(haloOn==0 || d<=0.5) return vec3(0.0);
+  vec2 p=gl_FragCoord.xy*haloUV*haloTab-0.5, pc=floor(p), f=p-pc;
+  float dd=min(d,haloSMax);
+  int s=haloSeg(dd), i0=max(s-1,0), i3=min(s+2,haloNu-1);
+  if(haloMoment==1) return haloCurveP3H(s, haloBin4(i0,pc,f,haloTab), haloBin4(s,pc,f,haloTab), haloBin4(s+1,pc,f,haloTab), haloBin4(i3,pc,f,haloTab), dd);   // P3/glm5.2: 4 cumulative RGBA reads, monotone Hermite through the means
+  if(haloMoment==2) return haloCurveP3L2d(s, haloBin4(i0,pc,f,haloTab), haloBin4(s,pc,f,haloTab), haloBin4(s+1,pc,f,haloTab), haloBin4(i3,pc,f,haloTab), dd);   // P3-L2d/glm5.2: sin² blend (means toward edges), zero-new-data fallback
+#ifdef HALO_M2
+  if(haloMoment==3) return haloCurveP3M2(s, haloBin4(i0,pc,f,haloTab), haloBin4(s,pc,f,haloTab), haloBin4(s+1,pc,f,haloTab), haloBin4(i3,pc,f,haloTab), haloBin4M2(i0,pc,f,haloTab), haloBin4M2(s,pc,f,haloTab), haloBin4M2(s+1,pc,f,haloTab), haloBin4M2(i3,pc,f,haloTab), dd);   // P3-M2/glm5.2: log-normal CDF (second moment), 4+4 cumulative reads
+#endif
+  return haloCurve(s, haloBin(i0,pc,f,haloTab), haloBin(s,pc,f,haloTab), haloBin(s+1,pc,f,haloTab), haloBin(i3,pc,f,haloTab), dd);   // 4 cumulative reads
+}
+uniform float haloGain;   // HDX7: the look's halo gain (1 = as computed; the multiply is exact at 1)
+uniform int haloBandOn; uniform vec4 haloBand;   // SP: band mode (haloPolar auto) for the first polar table: (centre angle, half width, edge fade, share). Off = the whole circle, as before
+uniform int haloPolarOn2; uniform vec2 haloPolarF2, haloPolarRange2;   // HDX7: the second polar table (per-lamp: the nearest car's other lamp)
+// HDX6: a lamp's own table, polar about the lamp's projection. Texel (x = bin * nT + angle index, y = log-radius index).
+vec3 haloPolarBin(int layer, int k, float ia, float ja) {
+  float nT = haloPolarN.x, nR = haloPolarN.y, ia0 = floor(ia), ja0 = floor(ja), fa = ia - ia0, fb = ja - ja0;
+  float xa = float(k) * nT + mod(ia0, nT), xb = float(k) * nT + mod(ia0 + 1.0, nT);
+  float ya = clamp(ja0, 0.0, nR - 1.0), yb = clamp(ja0 + 1.0, 0.0, nR - 1.0);
+  vec3 v00 = texelFetch(haloPolarTex, ivec3(int(xa), int(ya), layer), 0).rgb, v10 = texelFetch(haloPolarTex, ivec3(int(xb), int(ya), layer), 0).rgb;
+  vec3 v01 = texelFetch(haloPolarTex, ivec3(int(xa), int(yb), layer), 0).rgb, v11 = texelFetch(haloPolarTex, ivec3(int(xb), int(yb), layer), 0).rgb;
+  return mix(mix(v00, v10, fa), mix(v01, v11, fa), fb);
+}
+vec3 haloPolarT(float d, int layer, vec2 F, vec2 rng) {
+  vec2 q = (gl_FragCoord.xy * haloUV - F) * haloPolarSz;   // view px: the objects pass may render at ss x the view size, haloUV is per pass
+  float th = dot(q, q) > 0.0 ? atan(q.y, q.x) : 0.0;
+  float ia = fract(th / 6.28318530718) * haloPolarN.x - 0.5, bw = 1.0;
+  if(haloBandOn != 0 && layer == 0) {   // SP: the table holds only the angles in [centre - half width, centre + half width]; outside it the screen table carries this lamp (it was built with the complementary share)
+    float rel = th - haloBand.x; rel -= 6.28318530718 * floor((rel + 3.14159265359) / 6.28318530718);
+    float ar = abs(rel);
+    if(ar > haloBand.y) return vec3(0.0);
+    bw = haloBand.w * (haloBand.z > 0.0 ? 1.0 - smoothstep(haloBand.y - haloBand.z, haloBand.y, ar) : 1.0);
+    ia = (rel + haloBand.y) / (2.0 * haloBand.y) * haloPolarN.x - 0.5;
+    if(haloBand.y < 3.14) ia = clamp(ia, 0.0, haloPolarN.x - 1.0);
+  }
+  float ja = (log(max(length(q), 0.25)) - rng.x) / rng.y - 0.5;
+  float dd = min(d, haloSMax);
+  int s = haloSeg(dd), i0 = max(s-1,0), i3 = min(s+2,haloNu-1);
+  return bw * haloCurve(s, haloPolarBin(layer,i0,ia,ja), haloPolarBin(layer,s,ia,ja), haloPolarBin(layer,s+1,ia,ja), haloPolarBin(layer,i3,ia,ja), dd);
+}
+vec3 haloPolar(float d) {
+  if(haloOn==0 || haloPolarOn==0 || d<=0.5) return vec3(0.0);
+  return haloPolarT(d, 0, haloPolarF, haloPolarRange);
+}
+// HDX6: the screen table plus, when a polar table is on, the nearest lamp's polar table (the two add; the lamp is in one of them, never both).
+// HDX7: a second polar table adds the same way; the sum is multiplied by the look's gain.
+vec3 haloScatter(float d) {
+  vec3 r = haloScatterScr(d);
+  if(haloPolarOn!=0) r += haloPolar(d);
+  if(haloPolarOn2!=0 && haloOn!=0 && d>0.5) r += haloPolarT(d, 1, haloPolarF2, haloPolarRange2);
+  return r * haloGain;
+}
+varying vec2 screen;
+const float PI = 3.141592653589793;
+float coverage(float a, float h, float lo, float hi) { return max(0.0, min(a+h,hi)-max(a-h,lo))/(2.0*h); }
+float integral(float x, vec4 p) { float u=x-p.x, n=floor(u/p.z); return n*p.w+min(u-n*p.z,p.w); }
+float longitudinal(float s, float h, vec4 p) { if(p.z==0.0) return 1.0; float a=max(s-h,p.x), b=min(s+h,p.y); return b>a ? (integral(b,p)-integral(a,p))/(2.0*h) : 0.0; }
+float intensity(vec3 d) {
+  vec3 q=normalize(d); float a=q.x, b=-q.y, c=q.z; vec2 hv;
+  if(convention==1) hv=vec2(asin(clamp(b,-1.0,1.0)),atan(c,a));
+  else if(convention==2) { if(a<=0.0) return 0.0; hv=atan(vec2(b,c)/a); }
+  else hv=vec2(atan(b,a),asin(clamp(c,-1.0,1.0)));
+  vec2 f=(degrees(hv)-lutInfo.xy)/lutInfo.z-0.5, base=floor(f), t=f-base;
+  if(any(lessThan(base,vec2(0)))||any(greaterThanEqual(base+1.0,lutSize))) return 0.0;
+  ivec2 k=ivec2(base);
+  return mix(mix(texelFetch(beam,k,0).r,texelFetch(beam,k+ivec2(1,0),0).r,t.x),mix(texelFetch(beam,k+ivec2(0,1),0).r,texelFetch(beam,k+ivec2(1,1),0).r,t.x),t.y);
+}
+float wetLobe(vec3 d,vec3 v) {
+  float rr=length(d); vec3 h=normalize(d/rr+v); float vl=max(length(v.xy),1e-12);
+  float along=dot(h.xy,v.xy)/vl, across=dot(h.xy,vec2(-v.y,v.x))/vl;
+  float F=0.02+0.98*pow(1.0-max(0.0,v.z),5.0);
+  return F*exp(-0.5*(pow(along/0.23,2.0)+pow(across/0.025,2.0)))*max(0.0,h.z)*4.0/(rr*rr);
+}
+// Anisotropic GGX wet sheen (look.wetModel 'ggx'); the same math as wetGGX in js/drive.js. Returns f*cos/r^2 per candela.
+// d = point -> light (unnormalised), v = point -> eye (unit), n = surface normal. Tangent T follows the view direction horizontal part.
+float wetGGX(vec3 d,vec3 v,vec3 n) {
+  float rr=length(d); vec3 l=d/rr, h=normalize(l+v);
+  float NoV=dot(n,v), NoL=dot(n,l);
+  if(NoV<=0.0 || NoL<=0.0) return 0.0;
+  if(n.z<=0.7) return 0.0;   // GGXV (10-29): no water film on faces steeper than ~45 deg (box and kerb sides); the CPU sheen is road-plane only (drive.js nz === 1). Sloped pass road keeps it
+  const float a=0.25, b=0.05;
+  vec3 pt=v-n*NoV; vec3 t=length(pt)>1e-6 ? normalize(pt) : vec3(1.0,0.0,0.0), bt=cross(n,t);
+  float ht=dot(h,t), hb=dot(h,bt), hn=dot(h,n);
+  float e=ht*ht/(a*a)+hb*hb/(b*b)+hn*hn, D=1.0/(PI*a*b*e*e);
+  float lt=dot(l,t), lb=dot(l,bt), vt=dot(v,t), vb=dot(v,bt);
+  float Lv=(sqrt(1.0+(a*a*vt*vt+b*b*vb*vb)/(NoV*NoV))-1.0)*0.5, Ll=(sqrt(1.0+(a*a*lt*lt+b*b*lb*lb)/(NoL*NoL))-1.0)*0.5;
+  float G=1.0/(1.0+Lv+Ll), VoH=dot(v,h), F=0.02+0.98*pow(1.0-max(0.0,VoH),5.0);
+  return D*F*G/(4.0*NoV*rr*rr);
+}
+vec3 shade(vec3 p,vec3 n,vec3 v,int id) {
+  vec3 rho=texelFetch(materials,ivec2(id,0),0).rgb, retro=texelFetch(materials,ivec2(id,1),0).rgb;
+  vec4 gloss=texelFetch(materials,ivec2(id,2),0); vec3 r=rho*ambient*(0.5+0.5*n.z)/PI;
+  float NoV=dot(n,v);
+  for(int i=0;i<64;i++) { if(i>=nLight) break; vec3 d=light[i].xyz-p; float r2=dot(d,d); float fl=lampRoadOn==1 ? lampRoadF(-d,lightStreet[i]) : 1.0; if(d.z>0.0 && r2>=0.01) r+=rho*lightRGB[i]*light[i].w*fl*max(0.0,dot(d,n))/(PI*r2*sqrt(r2))*fogT(sqrt(r2)); }
+  // wet sheen: 0 asphalt, 4 concrete, 5 white paint, 6 yellow paint (the order of MAT_DEF in drive.js; SB2 adds the paint ids, drive.js SHEEN_IDS)
+  if(sheen>0.0 && (id==0||id==4||id==5||id==6)) for(int i=0;i<64;i++) { if(i>=nReflection) break; r+=wetness*reflection[i].w*(wetModel>0.5 ? wetGGX(reflection[i].xyz-p,v,n) : wetLobe(reflection[i].xyz-p,v))*fogT(length(reflection[i].xyz-p))*reflectionRGB[i]; }
+  for(int i=0;i<2;i++) { if(i>=nLamp) break; vec3 d=p-lamp[i]; float r2=dot(d,d), rr=sqrt(r2), NoL=-dot(d,n)/rr; if(NoL<=0.0) continue;
+    float I=intensity(d); I*=fogT(rr); if(I<=0.0) continue;
+    if(sheen>0.0 && (id==0||id==5||id==6)) r+=vec3(wetness*I*(wetModel>0.5 ? wetGGX(-d,v,n) : wetLobe(-d,v)));
+    float Ep=I/r2; r+=rho*Ep*NoL/PI + retro*Ep;
+    if(gloss.x>0.0 && NoV>0.0) { vec3 l=-d/rr, h=normalize(l+v); float NoH=dot(n,h), VoH=dot(v,h), a2=gloss.x*gloss.x, den=NoH*NoH*(a2-1.0)+1.0;
+      float D=a2/(PI*den*den), F=gloss.y+(1.0-gloss.y)*pow(1.0-max(0.0,VoH),5.0), k=gloss.x/2.0;
+      r+=vec3(D*F*(NoL/(NoL*(1.0-k)+k))*(NoV/(NoV*(1.0-k)+k))/(4.0*NoV)*Ep);
+    }
+  }
+  return r*lampRGB;
+}
+// Visible beam in fog (SC2): single in-scatter off the own lamps. Same math as inScatter in js/drive.js (the CPU twin), one table of constants.
+// beamI is the lamp's intensity toward d; withLighting adds the cornering term to it for the object shaders (as it does in the lamp loop of surface).
+float beamI(vec3 d,vec3 origin) { return intensity(d); }
+float hgP(float g,float c) { return (1.0-g*g)/(4.0*PI*pow(1.0+g*g-2.0*g*c,1.5)); }
+// Per-pixel jitter: the same integer hash as scatterJitter in drive.js, on the pixel index (row 0 = top, as the CPU rows).
+float scatterJitter() { uint x=uint(gl_FragCoord.x), y=uint(size.y)-1u-uint(gl_FragCoord.y); uint h=(x*0x27d4eb2du)^(y*0x165667b1u); h=(h^(h>>15u))*0x85ebca6bu; h=(h^(h>>13u))*0xc2b2ae35u; h^=h>>16u; return float(h)/4294967296.0; }
+// dir: unit eye ray; sEnd: the surface's eye distance (or huge for sky), capped at scatSMax. Stratified log steps from s0 = min(1, s1/4) to s1.
+vec3 inScatter(vec3 dir,float sEnd,float jit) {
+  vec3 acc=vec3(0.0);
+  float s1=min(sEnd,scatSMax);
+  if(sigma<=0.0 || s1<=0.0) return acc;
+  float s0=min(1.0,s1*0.25), q=pow(s1/s0,1.0/float(scatterSteps));
+  for(int k=0;k<16;k++) { if(k>=scatterSteps) break;
+    float a=s0*pow(q,float(k)), b=a*q, s=a*pow(q,jit), ds=b-a, Tv=exp(-sigma*s);
+    vec3 P=eye+s*dir;
+    for(int i=0;i<2;i++) { if(i>=nLamp) break;
+      vec3 d=P-lamp[i]; float r2=dot(d,d); if(r2<=0.0) continue; float r=sqrt(r2);
+      float I=beamI(d,lamp[i]); if(I<=0.0) continue;
+      float cs=-dot(d,dir)/r, p=scatWFwd*hgP(scatGFwd,cs)+(1.0-scatWFwd)*hgP(scatGBack,cs);
+      float E=I/max(r2,scatRMin*scatRMin);
+      acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;
+    }
+  }
+  return acc;
+}
+vec4 roadFrame(vec2 p) {
+  if(nPart==0) {
+    if(arc.x==0.0) return vec4(p,1,0);
+    float R=arc.x, sg=arc.y, a=atan(p.x,R-sg*p.y); return vec4(a*R,sg*(R-length(vec2(p.x,p.y-sg*R))),cos(a),sg*sin(a));
+  }
+  float best=1e30; vec4 ans=vec4(p,1,0);
+  // route-parts-64 (frenchie 11-04): loop bound 16 -> 64, nPart-bounded so cost is unchanged
+  for(int i=0;i<64;i++) { if(i>=nPart) break; vec4 q=part[i], z=partShape[i]; float ca=cos(q.z), sn=sin(q.z); vec2 d=p-q.xy;
+    float lx=dot(d,vec2(ca,sn)), ly=dot(d,vec2(-sn,ca)); float u=q.w!=0.0 ? atan(q.w*lx,1.0-q.w*ly)/q.w : lx;
+    u=clamp(u,i==0 ? -1e5 : 0.0,i==nPart-1 ? 1e5 : z.y); float b=q.z+q.w*u; vec2 t=vec2(cos(b),sin(b));
+    vec2 pos=q.xy+(q.w!=0.0 ? vec2(sin(b)-sn,ca-cos(b))/q.w : u*vec2(ca,sn)); vec2 e=p-pos; float dd=dot(e,e);
+    if(dd<best) { best=dd; ans=vec4(z.x+u,dot(e,vec2(-t.y,t.x)),t); }
+  } return ans;
+}
+// B14: marks is read only by surface() (ground and ribbon mains), so it is declared here, outside the shared prefix: object, mesh-car and table programs do not link it.
+uniform sampler2D marks;
+uniform int roadId;   // §road-surfaces: the road band's material id (0 = asphalt, default; le-chonk sets it from look.roadMat)
+uniform int surfKind;   // §road-surfaces s2 (le-chonk): 0=stock asphalt, 1=fresh, 2=old, 3=concrete, 4=tar-snake; set with roadId, no MAT ids in GLSL
+float surfH(float n) { return fract(sin(n * 127.1) * 43758.5453); }   // cheap cell hash
+vec3 surfTex(vec3 base, float s, float off, int kind) {   // §road-surfaces s2: procedural per-surface texture (ROAD-SURFACES.md §3 cheapest-first, no assets); stock (kind 0) never calls this
+  float n1 = surfH(floor(s * 2.4) * 57.3 + floor(off * 2.4) * 13.7);    // fine grain
+  float n2 = surfH(floor(s * 0.31) * 91.7 + floor(off * 0.31) * 41.3);   // coarse cells
+  vec3 r = base * (0.9 + 0.2 * n1);                                      // rho jitter ±10%
+  if (kind == 3) { float j = fract(s / 5.0), d = min(j, 1.0 - j) * 5.0, aa = fwidth(s); r *= 1.0 - 0.35 * smoothstep(aa * 2.0, aa * 0.5, d); }   // concrete transverse joints ~5 m
+  if (kind == 4) { float seed = surfH(floor(s / 150.0) * 31.7), ph = s * 0.021 + seed * 6.2831 + off * 0.045, d = abs(sin(ph)), aa = fwidth(ph); r *= 1.0 - 0.5 * smoothstep(0.12 + aa, 0.05, d); }   // tar snakes: sinuous dark bands, per-tile seed
+  if (kind == 2) { float aa = fwidth(n2); r *= 1.0 - 0.4 * smoothstep(0.72 + aa, 0.9, n2); }   // old-asphalt cracks: coarse noise threshold
+  return r;
+}
+vec3 surface(vec3 p,vec3 v,float t,float sinB) {
+  vec4 f=roadFrame(p.xy); float s=f.x, off=f.y; vec2 normal=vec2(-f.w,f.z);
+  float hw=max(t*tanH/size.x,1e-4), hl=hw/max(sinB,0.003), hh=max(length(v.xy),1e-12);
+  float ho=length(vec2(hw*dot(normal,vec2(-v.y,v.x))/hh,hl*dot(normal,v.xy)/hh));
+  float rest=1.0; vec3 r=vec3(0), n=vec3(0,0,1);
+  for(int i=0;i<128;i++) { if(i>=nMark) break; vec4 m=texelFetch(marks,ivec2(i,0),0), pat=texelFetch(marks,ivec2(i,1),0); bool cut=false;
+    if(m.w>0.0) for(int j=0;j<16;j++) { if(j>=nSkip) break; if(s>skip[j].x && s<skip[j].y) cut=true; }
+    if(cut) continue; float c=coverage(off,ho,m.x,m.y)*longitudinal(s,hl,pat); if(c<=0.0) continue;
+    r+=c*shade(p,n,v,int(m.z)); rest-=c;
+  }
+  float e0=-lane/2.0, e1=1.5*lane;
+  // route-parts-64 (frenchie 11-04): loop bound 16 -> 64
+  for(int i=0;i<64;i++) { if(i>=nCross) break; vec4 c=crossing[i]; float a=longitudinal(s,hl,vec4(c.x,c.y,1e9,c.y-c.x))*coverage(off,ho,c.z,c.w); if(a>0.0) { r+=a*rest*shade(p,n,v,0); rest*=1.0-a; } }
+  if(rest>0.0) {
+    if(roadId>0) r+=rest*coverage(off,ho,e0,e1)*surfTex(shade(p,n,v,roadId),s,off,surfKind);   // §road-surfaces s2: procedural surface texture, roadId>0 only
+    else r+=rest*coverage(off,ho,e0,e1)*shade(p,n,v,roadId);   // stock asphalt (roadId 0): the shipped s1 call, expression unchanged (GPU FP codegen is hash-sensitive)
+    r+=rest*(coverage(off,ho,e0-vergeWidth,e0)+coverage(off,ho,e1,e1+vergeWidth))*shade(p,n,v,int(verge.x));
+    r+=rest*(coverage(off,ho,-1e9,e0-vergeWidth)+coverage(off,ho,e1+vergeWidth,1e9))*shade(p,n,v,int(verge.y));
+  }
+  if(grain>0.0 && off>e0-vergeWidth && off<e1+vergeWidth) {
+    float noise=0.0; for(int i=0;i<3;i++) { float scale=i==0?0.15:(i==1?0.6:2.4), weight=i==0?0.45:(i==1?0.35:0.2); float f=clamp((hl/scale-0.4)/0.8,0.0,1.0);
+      noise+=weight*(1.0-f*f*(3.0-2.0*f))*sin((s+distance)/scale*2.7+sin(off/scale*3.1))*sin(off/scale*2.3+0.7); }
+    r*=1.0+grain*noise;
+  } return r;
+}
+void main() {
+  vec3 ray=normalize(vec3(1.0,-screen.x*tanH,screen.y*tanH*size.y/size.x)); float t=ray.z < -1e-6 ? -eye.z/ray.z : 1e20;
+  vec3 r; if(t<5000.0) { r=surface(eye+t*ray,-ray,t,-ray.z); if(sigma>0.0) { float T=exp(-sigma*t); r=r*T+ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0))*(1.0-T); } }
+  else r=vec3(ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0)));
+  if(scatterSteps>0) r+=inScatter(ray,t<5000.0?t:1e20,scatterJitter());
+  if(haloOn>0) r+=haloScatter(t<5000.0?t:1e20);
+  gl_FragColor=vec4(r,1);
+}
+`;
+
+// Keep the original shader byte-for-byte when off: inactive branches can still change compiler rounding.
+// Objects import the same ground prefix. Apply here to their materials, without touching model code.
+// BA5: atlas = true reads each lamp's beam from the GPU atlas (beam-atlas.js) instead of the one otherBeam table.
+// atlas = false is main's text, byte for byte (pinned by tests/beam-atlas.js).
+const ATLAS_N = 16;
+export const ATLAS_HEAD = `uniform vec4 beamMeta[${ATLAS_N}], beamGrid[${ATLAS_N}], beamTint[${ATLAS_N}], trafficBeamIdx[${ATLAS_N}];
+int tbeam=0;
+vec3 otint=vec3(1.0,1.0,0.93);
+`;
+export const OTHER_LEGACY = `float otherIntensity(vec3 d) {
+  vec3 q=normalize(d); float a=q.x, b=-q.y, c=q.z; vec2 hv;
+  if(otherConvention==1) hv=vec2(asin(clamp(b,-1.0,1.0)),atan(c,a));
+  else if(otherConvention==2) { if(a<=0.0) return 0.0; hv=atan(vec2(b,c)/a); }
+  else hv=vec2(atan(b,a),asin(clamp(c,-1.0,1.0)));
+  vec2 f=(degrees(hv)-otherLutInfo.xy)/otherLutInfo.z-0.5, base=floor(f), t=f-base;
+  if(any(lessThan(base,vec2(0)))||any(greaterThanEqual(base+1.0,otherLutSize))) return 0.0;
+  ivec2 k=ivec2(base);
+  return mix(mix(texelFetch(otherBeam,k,0).r,texelFetch(otherBeam,k+ivec2(1,0),0).r,t.x),mix(texelFetch(otherBeam,k+ivec2(0,1),0).r,texelFetch(otherBeam,k+ivec2(1,1),0).r,t.x),t.y);
+}
+`;
+export const OTHER_ATLAS = `float otherIntensity(vec3 d) {
+  vec3 q=normalize(d); float a=q.x, b=-q.y, c=q.z; vec2 hv;
+  vec4 g=beamGrid[tbeam], m=beamMeta[tbeam], tn=beamTint[tbeam];
+  int conv=int(tn.w+0.5);
+  if(conv==1) hv=vec2(asin(clamp(b,-1.0,1.0)),atan(c,a));
+  else if(conv==2) { if(a<=0.0) return 0.0; hv=atan(vec2(b,c)/a); }
+  else hv=vec2(atan(b,a),asin(clamp(c,-1.0,1.0)));
+  vec2 f=(degrees(hv)-g.xy)*g.zw-0.5, base=floor(f), t=f-base;
+  if(any(lessThan(base,vec2(0)))||any(greaterThanEqual(base+1.0,m.yz))) return 0.0;
+  ivec2 k=ivec2(base)+ivec2(0,int(m.x+0.5));
+  return m.w*mix(mix(texelFetch(otherBeam,k,0).r,texelFetch(otherBeam,k+ivec2(1,0),0).r,t.x),mix(texelFetch(otherBeam,k+ivec2(0,1),0).r,texelFetch(otherBeam,k+ivec2(1,1),0).r,t.x),t.y);
+}
+`;
+const LOOP_LEGACY = `  for(int i=0;i<64;i++) { if(i>=nTraffic) break; vec3 d=p-trafficLamp[i].xyz; float r2=dot(d,d), forward=dot(d.xy,trafficDir[i]);
+    if(forward<=0.0 || r2<0.01) continue; float NoL=max(0.0,-dot(d,n)/sqrt(r2)); if(NoL<=0.0) continue;
+    vec3 local=vec3(forward,dot(d.xy,vec2(-trafficDir[i].y,trafficDir[i].x)),d.z);
+    r+=rho*vec3(1,1,0.93)*otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w*fogT(sqrt(r2));
+  }
+`;
+const LOOP_ATLAS = `  for(int i=0;i<64;i++) { if(i>=nTraffic) break; vec3 d=p-trafficLamp[i].xyz; float r2=dot(d,d), forward=dot(d.xy,trafficDir[i]);
+    if(forward<=0.0 || r2<0.01) continue; float NoL=max(0.0,-dot(d,n)/sqrt(r2)); if(NoL<=0.0) continue;
+    vec3 local=vec3(forward,dot(d.xy,vec2(-trafficDir[i].y,trafficDir[i].x)),d.z);
+    tbeam=int(trafficBeamIdx[i>>2][i&3]+0.5); otint=vec3(1.0,1.0,0.93)*beamTint[tbeam].rgb;
+    r+=rho*otint*otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w*fogT(sqrt(r2));
+  }
+`;
+// frenchie (option heatShimmer, GPU only — Anya 10-31: the CPU renderer is a legacy fallback and ignores it):
+// splices a grazing-angle vertical ray wobble into the ground main() when the option is on. OFF keeps the
+// shipped text byte-for-byte (tests/frenchie-heat-shimmer.js pins that `ground` itself carries no shimmer).
+export function withShimmer(source) {
+  const RAY = 'vec3 ray=normalize(vec3(1.0,-screen.x*tanH,screen.y*tanH*size.y/size.x));';
+  const UNI = 'uniform float tanH, lane, vergeWidth, ambient, sheen, grain, distance, wetModel, wetness, kSurf;';
+  if (source.split(RAY).length !== 2 || source.split(UNI).length !== 2) throw Error('ground shader markers changed');
+  return source
+    .replace(UNI, UNI + ' uniform float shimmerAmp, shimmerT;')
+    .replace(RAY, RAY + `
+  if (shimmerAmp>0.0) {   // B6 shimmer-comment: the F3 note moved off the code line — a // mid-expression truncated it and the shader never compiled
+    float g=clamp(1.0+ray.z*6.0,0.0,1.0); float n=fract(sin(dot(floor(screen*vec2(240.0,120.0))+vec2(0.0,shimmerT*1.5),vec2(12.9898,78.233)))*43758.5453); ray=normalize(ray+vec3(0.0,(n-0.5)*2.0*shimmerAmp*g,0.0)); }`);
+}
+
+// frenchie (wetBounce, 4-O): splice the road-mirrored own lamps into inScatter's march. OFF = the shipped text, byte-identical
+// (the caller only applies this when look.wetBounce is on, like withShimmer). The block carries its own uniforms, so nothing
+// else in the shader changes. Mirror: lampM[i] = (x, y, -z) of lamp[i]; the beam is read toward the reflected direction
+// (vec3(d.x,d.y,-d.z)) and weighted per point by the grazing Fresnel (0.02+0.98*(1-|dz|/r)^5)*wetU — the wetVeil mirrorOf law.
+export function withWetBounce(source) {
+  const DECL = 'vec3 inScatter(vec3 dir,float sEnd,float jit) {';
+  const LOOP = '      acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;\n    }\n  }\n  return acc;\n}';
+  const SURF = '  }\n  return r*lampRGB;\n}';   // the surface() own-lamp loop tail (4-O ext B: the mirrors paint surfaces too)
+  if (source.split(DECL).length !== 2 || source.split(LOOP).length !== 2 || source.split(SURF).length !== 2) throw Error('inScatter/surface markers changed (wetBounce)');
+  const uni = 'uniform vec3 lampM[2]; uniform int nLampM; uniform float wetU;\n';
+  const block = `      for(int i=0;i<2;i++) { if(i>=nLampM) break;
+        vec3 d=P-lampM[i]; float r2=dot(d,d); if(r2<=0.0) continue; float r=sqrt(r2);
+        float I=beamI(vec3(d.x,d.y,-d.z),lampM[i]); if(I<=0.0) continue;
+        float w=(0.02+0.98*pow(1.0-abs(d.z)/r,5.0))*wetU*wetU*kSurf; if(w<=0.0) continue;   // B3 c(W)=W^2 (Anya 11-04): asphalt roughness follows wetness (r loop)
+        float cs=-dot(d,dir)/r, p=scatWFwd*hgP(scatGFwd,cs)+(1.0-scatWFwd)*hgP(scatGBack,cs);
+        float E=I*w/max(r2,scatRMin*scatRMin);
+        acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;
+      }
+    }
+  return acc;
+}`;
+  const surf = `  }
+  for(int i=0;i<2;i++) { if(i>=nLampM) break; vec3 d=p-lampM[i]; float r2=dot(d,d); if(r2<=0.0) continue; float rr=sqrt(r2), NoL=-dot(d,n)/rr; if(NoL<=0.0) continue;
+    float w=(0.02+0.98*pow(1.0-abs(d.z)/rr,5.0))*wetU*wetU*kSurf; if(w<=0.0) continue;   // B3 c(W)=W^2 (Anya 11-04): asphalt roughness follows wetness (rr loop)
+    float I=intensity(vec3(d.x,d.y,-d.z))*fogT(rr)*w; if(I<=0.0) continue;
+    float Ep=I/r2; r+=rho*Ep*NoL/PI + retro*Ep;
+  }
+  return r*lampRGB;
+}`;
+  return uni + source   // frenchie: uniforms at the very top — object fragments define surface() before inScatter, so the DECL prepend would land after first use
+    .replace(DECL, DECL)
+    .replace(LOOP, '      acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;\n    }\n' + block)
+    .replace(SURF, surf);
+}
+// frenchie (crest Ladder A): plane-mirror variant of the withWetBounce text — input must already be withWetBounce-composed.
+// The beam read and the grazing Fresnel reflect about the per-lamp plane (lampM', lampN) instead of z -> -z.
+// With lampN = z-hat every replacement reduces exactly to the shipped text (d - 2*(d.z)*z-hat = (d.x,d.y,-d.z)).
+export function withBouncePlane(source) {
+  let t = source;
+  const UNI = 'uniform vec3 lampM[2]; uniform int nLampM; uniform float wetU;';
+  if (t.split(UNI).length !== 2) throw Error('withBouncePlane: lampM uniform decl not found once');
+  t = t.replace(UNI, UNI + ' uniform vec3 lampN[2];');
+  const pairs = [
+    ['float I=beamI(vec3(d.x,d.y,-d.z),lampM[i]);', 'float I=beamI(d-2.0*dot(d,lampN[i])*lampN[i],lampM[i]);'],
+    ['float I=intensity(vec3(d.x,d.y,-d.z))*fogT(rr)*w;', 'float I=intensity(d-2.0*dot(d,lampN[i])*lampN[i])*fogT(rr)*w;'],
+    ['abs(d.z)/r,5.0', 'abs(dot(d,lampN[i]))/r,5.0'],
+    ['abs(d.z)/rr,5.0', 'abs(dot(d,lampN[i]))/rr,5.0'],
+  ];
+  for (const [a, b] of pairs) { if (t.split(a).length !== 2) throw Error('withBouncePlane: anchor not found once: ' + a); t = t.replace(a, b); }
+  return t;
+}
+export function withLighting(source, atlas = false) {
+  if (!source.includes('float intensity(vec3 d) {') || !source.includes('  for(int i=0;i<2;i++)')) throw Error('P2 shared shading prefix changed');
+  return source.replace('uniform sampler2D beam, materials;\n', `uniform sampler2D beam, materials, otherBeam;
+uniform vec4 otherLutInfo;
+uniform vec2 otherLutSize, trafficDir[64];
+uniform vec4 trafficLamp[64];
+uniform int nTraffic, otherConvention;
+uniform float pitch, yaw;
+uniform vec2 cornering;
+` + (atlas ? ATLAS_HEAD : ''))
+    .replace('float intensity(vec3 d) {\n', 'float intensity(vec3 d) {\n' + `  if(yaw!=0.0) { float c=cos(yaw), s=sin(yaw); d.xy=vec2(c*d.x+s*d.y,c*d.y-s*d.x); }
+  if(pitch!=0.0) { float c=cos(pitch), s=sin(pitch); d=vec3(c*d.x+s*d.z,d.y,c*d.z-s*d.x); }
+`)
+    .replace('float I=intensity(d);', 'float I=intensity(d)+cornerIntensity(d,lamp[i]);')
+    .replace('float beamI(vec3 d,vec3 origin) { return intensity(d); }', 'float beamI(vec3 d,vec3 origin) { return intensity(d)+cornerIntensity(d,origin); }')
+    .replace('float wetLobe', `float cornerIntensity(vec3 d,vec3 origin) {
+  if((cornering.x==0.0 && cornering.y==0.0) || d.x<=0.0 || d.z>=0.0)return 0.0;
+  float h=atan(d.y,d.x), v=atan(d.z,length(d.xy)), rad=PI/180.0;
+  return 400.0*exp(-0.5*pow((v+6.0*rad)/(7.0*rad),2.0))*((origin.y>=0.0 ? cornering.x : 0.0)*exp(-0.5*pow((h-55.0*rad)/(22.0*rad),2.0))+(origin.y<0.0 ? cornering.y : 0.0)*exp(-0.5*pow((h+55.0*rad)/(22.0*rad),2.0)));
+}
+${atlas ? OTHER_ATLAS : OTHER_LEGACY}` + 'float wetLobe')
+    .replace('  for(int i=0;i<2;i++)', `${atlas ? LOOP_ATLAS : LOOP_LEGACY}` + '  for(int i=0;i<2;i++)');
+}
+
+// SD1 table (look.scatterMode 'table'). A pre-pass fills three RGBA half-float targets (banks) with 12 segment integrals of the
+// same single-scatter integrand as inScatter (scalar; lampRGB multiplies at lookup). The lookup gives the cumulative value at a
+// distance, interpolated in log d between edges 0.5 m .. 120 m. Direct mode never sees this text: tableSource() is applied only when
+// the table is on, so the direct shader strings stay byte-identical. CPU twin: scatterTableBins / scatterTableAt in js/drive.js.
+const TABLE_HEAD = `uniform int scatMode;   // 1 = table mode: inScatter reads the table (SD1)
+uniform sampler2DArray scatBanks;   // B10: one 3-layer array, layer 0/1/2 = bins 0-3, 4-7, 8-11 (RGBA), at the table's resolution (was three sampler2D)
+uniform vec2 scatUV;   // 1 / (pixels of the target this pass draws): gl_FragCoord * scatUV is the table texture coordinate
+// SM: the lookup takes its three texels as arguments, so the cycle crossfade can read a second bank set with the same code.
+float tableCBanks(float d, vec4 a, vec4 b, vec4 c) {
+  if(d<=0.0) return 0.0;
+  float C=0.0, prevC=0.0, prevE=0.0;
+  for(int k=0;k<12;k++) {
+    float bin=k<4 ? a[k] : (k<8 ? b[k-4] : c[k-8]);
+    float e=0.5*pow(2.0*scatSMax,float(k)/11.0);
+    C+=bin;
+    if(d<=e) return k==0 ? C*d/e : mix(prevC,C,log(d/prevE)/log(e/prevE));
+    prevC=C; prevE=e;
+  }
+  return C;
+}
+float tableC(float d) {
+  vec2 uv=gl_FragCoord.xy*scatUV;
+  return tableCBanks(d, texture(scatBanks,vec3(uv,0.0)), texture(scatBanks,vec3(uv,1.0)), texture(scatBanks,vec3(uv,2.0)));
+}
+`;
+const TABLE_BLEND = `// SM: cycle blend. scatFade 1 mixes the lookup of bank set A (scatBanks) and bank set B (scatBanksB) by scatFract; 0 reads A alone. B10: each set is one 3-layer array.
+uniform sampler2DArray scatBanksB;
+uniform float scatFade, scatFract;
+float tableCMix(float d) {
+  if(scatFade<0.5) return tableC(d);
+  vec2 uv=gl_FragCoord.xy*scatUV;
+  return mix(tableC(d), tableCBanks(d, texture(scatBanksB,vec3(uv,0.0)), texture(scatBanksB,vec3(uv,1.0)), texture(scatBanksB,vec3(uv,2.0))), scatFract);
+}
+`;
+// TOUGE-AIR: the same lookup without the cycle-blend bank set (blend=false). B10: no program needs this any more (with the banks packed the blend set costs one sampler,
+// and the pass blends); kept for the text pin and as the way to leave the set out.
+const TABLE_NOBLEND = `float tableCMix(float d) { return tableC(d); }
+`;
+const TABLE_TAIL = `vec3 inScatterDirect(vec3 dir,float sEnd,float jit);
+// SF2: scatGain multiplies the lookup only (table mode); it never enters the table, so it does not rebuild it.
+uniform float scatGain;
+vec3 inScatter(vec3 dir,float sEnd,float jit) { return scatMode==1 ? tableCMix(min(sEnd,scatSMax))*lampRGB*scatGain : inScatterDirect(dir,sEnd,jit); }
+`;
+const TABLE_MAIN = `uniform int tableBank, tableSteps, tableSeed;
+uniform int tableBias, tableBinN[12];   // NE: near-eye bias on; per-bin sample counts from RF.Drive.tableBinSteps (off: tableSteps formula)
+uniform float tableH;
+float tableJitter() { uint x=uint(gl_FragCoord.x), y=uint(tableH)-1u-uint(gl_FragCoord.y); uint h=(x*0x27d4eb2du)^(y*0x165667b1u)^(uint(tableSeed)*0x9e3779b9u); h=(h^(h>>15u))*0x85ebca6bu; h=(h^(h>>13u))*0xc2b2ae35u; h^=h>>16u; return float(h)/4294967296.0; }
+// SE3: near-eye fade. tableFade 1 weights the integrand by smoothstep(S0,S1,s) (0 = the SD table, unchanged).
+uniform float tableFade, tableFadeS0, tableFadeS1;   // SF2: the fade range (metres) is a uniform, set from look.scatterNearFadeRange
+float tableIntegrand(vec3 dir,float s) {
+  vec3 P=eye+s*dir; float f=0.0;
+  float w=mix(1.0,smoothstep(tableFadeS0,tableFadeS1,s),tableFade);
+  for(int i=0;i<2;i++) { if(i>=nLamp) break;
+    vec3 d=P-lamp[i]; float r2=dot(d,d); if(r2<=0.0) continue; float r=sqrt(r2);
+    float I=beamI(d,lamp[i]); if(I<=0.0) continue;
+    float cs=-dot(d,dir)/r, p=scatWFwd*hgP(scatGFwd,cs)+(1.0-scatWFwd)*hgP(scatGBack,cs);
+    float E=I/max(r2,scatRMin*scatRMin);
+    f+=sigma*p*E*exp(-sigma*r)*exp(-sigma*s)*w;
+  }
+  return f;
+}
+void main() {
+  vec3 ray=normalize(vec3(1.0,-screen.x*tanH,screen.y*tanH*size.y/size.x));
+  float jit=tableJitter(); int n=max(1,(tableSteps+6)/12);
+  vec4 outv=vec4(0.0);
+  for(int j=0;j<4;j++) {
+    int k=tableBank*4+j;
+    int nk=tableBias==0 ? n : tableBinN[k];
+    float hi=0.5*pow(2.0*scatSMax,float(k)/11.0), lo=k==0 ? 0.0 : 0.5*pow(2.0*scatSMax,float(k-1)/11.0);
+    float acc=0.0;
+    for(int m=0;m<64;m++) { if(m>=nk) break;   // NE4: constant bound 64 (was 32); the per-slice cap, the parser clamp and the presets all stop at 64
+      if(k==0) { float ds=hi/float(nk), s=(float(m)+jit)*ds; acc+=tableIntegrand(ray,s)*ds; }
+      else { float a=lo*pow(hi/lo,float(m)/float(nk)), b=lo*pow(hi/lo,float(m+1)/float(nk)), s=a*pow(b/a,jit); acc+=tableIntegrand(ray,s)*(b-a); }
+    }
+    outv[j]=acc;
+  }
+  gl_FragColor=outv;
+}
+`;
+const DIRECT_HEAD = 'vec3 inScatter(vec3 dir,float sEnd,float jit) {';
+// Table mode for a lit shader source: the direct in-scatter becomes the table lookup. Sources without the direct function pass through.
+// blend false: the second bank set and its mix are left out, so scatBanksB, scatFade and scatFract do not exist in the program (B10: nothing passes false now).
+// blend true gives exactly the text this function always gave.
+export function tableSource(source, blend = true) {
+  if (!source.includes(DIRECT_HEAD)) return source;
+  return source.replace(DIRECT_HEAD, TABLE_HEAD + (blend ? TABLE_BLEND : TABLE_NOBLEND) + TABLE_TAIL + DIRECT_HEAD.replace('inScatter(', 'inScatterDirect('));
+}
+// The table pass: the ground prefix (shading of the same look, lit or not) and the bin integrals in place of main.
+export function tablePassSource(source) {
+  return source.slice(0, source.indexOf('vec4 roadFrame')) + TABLE_MAIN;
+}
+// Separable Gaussian over the table (radius 6 texels), one axis per pass. sig 0 copies.
+// B10: src is a 1- or 3-layer array (the banks are layers of one array target); srcLayer picks the layer.
+export const tableBlurSource = `uniform sampler2DArray src;
+uniform vec2 texel, dirTexel;
+uniform float sig, srcLayer;
+void main() {
+  vec2 uv=gl_FragCoord.xy*texel;
+  if(sig<=0.0) { gl_FragColor=texture(src,vec3(uv,srcLayer)); return; }
+  vec4 acc=vec4(0.0); float wsum=0.0;
+  for(int i=-6;i<=6;i++) { float w=exp(-0.5*float(i*i)/(sig*sig)); acc+=w*texture(src,vec3(uv+float(i)*dirTexel*texel,srcLayer)); wsum+=w; }
+  gl_FragColor=acc/wsum;
+}
+`;

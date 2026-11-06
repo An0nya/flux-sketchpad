@@ -10,8 +10,8 @@
 // Run: python3 tests/serve.py 8996 & echo $! > pidfile; PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/SG1-far-car-fog.js 8996; kill $(cat pidfile)
 const fs = require('fs'), path = require('path');
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
-// RE-PIN 11-03 (murchison, maston cluster handoff per cyrus 16:55, rule 23): PIN was 75132428 (the main baseline, byte-identical clear air). Cause: the accumulated renderer landings 10-30 -> 11-03 moved the clear-air HDR off main; it then moved ONCE more when G1 started injecting pinned-defaults into the lane (got 509598c0 pre-G1 -> 6bb8075a post-G1) and is stable at 6bb8075a across the 11-03b list and my run. All functional checks (mesh car, body/fog ratio, table-vs-direct, NaN) pass.
-const port = +(process.argv[2] || 8996), R_CAR = 60, PIN = process.env.SG1_PIN || '6bb8075a';
+// RE-PIN 11-05 (harbert, post-material-id-fix pin hygiene per cyrus, rule 23): PIN was 6bb8075a (murchison's maston re-pin 11-03, stable through the 11-03b list and my 11-04 verification run -100918-99e9 predecessor). Cause: ayrton's GPU material-id fix (mergeq 0490, host 12:09Z: models.js tyres 29->31, glass 25->27, car-paint 28->30; objects.js mapped==5 30:27 etc.) corrects the mesh car's materials, which changes the far car's pixels in the air-clear frame (car px 828 -> 856); the previous value was recorded on the wrong-ids tree (hold 72d6). All 6 functional checks pass on the fixed tree (harbert-20261105-100918-99e9, objects 9785992b/models 92e205a3, tree 9878c2f1a5a6). History: 75132428 (main) -> 509598c0 (accumulated landings 10-30->11-03) -> 6bb8075a (G1 pinned-defaults lane) -> 6c05384c (material-id fix).
+const port = +(process.argv[2] || 8996), R_CAR = 60, PIN = process.env.SG1_PIN || '6c05384c';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pass }); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail ? ' — ' + detail : '')); };
 (async () => {

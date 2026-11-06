@@ -44,7 +44,7 @@ export function modelMeshes(scene,uniforms,onReady) {
             for(let i=0;i<pos.count;i+=3){const u=(uv.getX(i)+uv.getX(i+1)+uv.getX(i+2))/3,v=(uv.getY(i)+uv.getY(i+1)+uv.getY(i+2))/3,k=(Math.min(image.height-1,Math.max(0,Math.floor(v*image.height)))*image.width+Math.min(image.width-1,Math.max(0,Math.floor(u*image.width))))*4,r=pixels[k]/255,g=pixels[k+1]/255,b=pixels[k+2]/255,z=(pos.getZ(i)+pos.getZ(i+1)+pos.getZ(i+2))/3,x=(pos.getX(i)+pos.getX(i+1)+pos.getX(i+2))/3,y=(pos.getY(i)+pos.getY(i+1)+pos.getY(i+2))/3,neutral=Math.max(r,g,b)-Math.min(r,g,b)<.08;
               // Verified against the original atlas render: pale cyan = glass, neutral dark = rubber, wheel hubs / neutral trim = metal. Coloured panels = paint.
               const glass=r>.7&&g-r>.035&&b-r>.07,metal=Math.abs(r-g)<.035&&r>.7&&b-r<.12;
-              const id=wheel?(Math.max(r,g,b)<.32?29:20):glass?25:neutral&&Math.max(r,g,b)<.32?29:metal?20:28;ids.fill(id,i,i+3);
+              const id=wheel?(Math.max(r,g,b)<.32?31:20):glass?27:neutral&&Math.max(r,g,b)<.32?31:metal?20:30;ids.fill(id,i,i+3);
               // Remove Kenney's small octagonal white plate fixture; our regional rectangular sheeting replaces it on the bumper itself.
               if(!wheel&&metal&&Math.abs(x)>1.7&&Math.abs(y)<.38&&z<.6)plateTriangles.push(i);
             }

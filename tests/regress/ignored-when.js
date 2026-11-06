@@ -44,7 +44,7 @@ const RUN_SCENES = process.argv.includes('--with-scenes');
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store, null, { timeout: 90000 });
   await page.evaluate(() => { document.querySelector('button[data-mode="D"]').click(); document.querySelector('button[data-disp="drive"]').click(); });
   await page.waitForFunction(() => RF.DriveAnim && RF.DriveAnim._ && RF.DriveAnim._.V && RF.DriveAnim._.V.p, null, { timeout: 90000 });
-  await page.setInputFiles('[data-anim="state-file"]', '/workspace/step5-preview/states/state-lwoff.json');
+  await page.setInputFiles('[data-anim="state-file"]', path.join(root, 'tests', 'states', 'state-lwoff.json'));
   await page.evaluate(() => { const el = document.querySelector('[data-anim="own-low"]'); el.dispatchEvent(new Event('mousedown', { bubbles: true })); });
   try { await page.waitForFunction(() => { const el = document.querySelector('[data-anim="own-low"]'); return el && el.options.length > 1; }, null, { timeout: 180000 }); } catch (e) {}
   await page.evaluate(() => { const el = document.querySelector('[data-anim="own-low"]'), want = 'builtin:sqm-samples.json:4';
@@ -123,7 +123,7 @@ const RUN_SCENES = process.argv.includes('--with-scenes');
     if (metric === 'scene' && !RUN_SCENES) { skipped.push(key); continue; }
     // (a) the ignoring context: controlled forced, then controlled at its default
     const defVal = await page.evaluate((k) => { const el = document.querySelector('[data-dv="' + k + '"]') || document.querySelector('[data-anim="' + k + '"]'); return el ? (el.options && el.options.length ? el.options[0].value : 'off') : 'off'; }, id);
-    if (isPass(ignVal)) await loadState('/workspace/step5-preview/states/state-pass.json');
+    if (isPass(ignVal)) await loadState(path.join(root, 'tests', 'states', 'state-pass.json'));
     else await setOpts(Object.assign({}, BASE, { [ctrl]: ignVal, [id]: forced }));
     await setOpts(Object.assign({}, BASE, { [id]: forced })); await page.waitForTimeout(1800);
     const withOn = await ident(id);
@@ -133,7 +133,7 @@ const RUN_SCENES = process.argv.includes('--with-scenes');
       same(withOn, withDefault), withOn + ' vs ' + withDefault);
     // (b) the positive control: the controller elsewhere, the same forced vs default MUST differ
     const other = ctrl === 'scene' ? 'straight' : (ctrl === 'haloCrossingRefine' ? 0 : ignVal);
-    if (isPass(other)) await loadState('/workspace/step5-preview/states/state-pass.json');
+    if (isPass(other)) await loadState(path.join(root, 'tests', 'states', 'state-pass.json'));
     else await setOpts(Object.assign({}, BASE, { [ctrl]: other, [id]: forced }));
     await setOpts(Object.assign({}, BASE, { [id]: forced })); await page.waitForTimeout(1800);
     const ctlOn = await ident(id);

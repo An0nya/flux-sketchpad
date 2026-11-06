@@ -141,6 +141,8 @@
       at: { file: ANIM, fn: 'drawCabin(V, o.cabinView', line: 1783 } },
     roadSurfacesOn: { cond: { opt: 'roadSurfaces', eq: true }, why: 'needs road surfaces on (the per-surface smoothness physics gate)', effect: 'disabled',
       at: { file: SPEC, fn: 'b.disabled = !o.roadSurfaces', line: 1072 } },
+    wetBounceOn: { cond: { opt: 'wetBounce', eq: true }, why: 'needs the wet-road bounce on (the mirror only exists then)', effect: 'disabled',
+      at: { file: SPEC, fn: 'b.disabled = !(RF.Drive.wetnessOf(o) > 0)', line: 1072 } },
   };
   // need('air', { effect: 'tooltip' }) returns a copy of a rule, optionally with the UI effect overridden.
   // Throws a named error if `name` is not in RULES: a typo'd need('tiles') once made every option using it a
@@ -263,7 +265,7 @@
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/drive.js', 'js/spec-ui.js', 'js/drive-anim.js'],
       requires: [need('air'), need('trafficBeamsOn')],
-      tests: [],
+      tests: ['node:barbicane-trafficHalo'],
       note: 'The on/off of the oncoming headlamp scatter (was the traffic halo lamp count). The button writes 16 (on) or 0; an old 4 or 8 still reads as on and caps the lamps (RF.Drive.haloN). The count is haloCars. haloN() is 0 unless trafficBeams, air and trafficHalo > 0 (silent no-op otherwise). GPU and CPU.',
     },
     {
@@ -297,7 +299,7 @@
       group: 'street-lamps', cost: 'per-frame-gpu',
       owner: ['js/drive-anim.js', 'js/drive-three-lampcone.js', 'js/drive-three.js'],
       requires: [need('gpu'), need('lampsPresent'), need('air')],
-      tests: [],
+      tests: ['node:barbicane-lampCone'],
       note: "GPU only; the CPU renderer ignores it. 'auto' (default, Brief U) = on whenever street lamps are on and visibility is set (RF.Drive.lampConeOn); 'off' and 'on' are the user's explicit choice. The cone is the only way street lamps light the haze (the lamp-halo sprite is gone). Clear air draws no cone. Single scattering off each street lamp, g 0.6 (assumption); no scene occlusion.",
     },
     {
@@ -321,7 +323,7 @@
       group: 'street-lamps', cost: 'free',
       owner: ['js/drive-anim.js'],
       requires: [need('lampDistUsed')],
-      tests: [],
+      tests: ['node:barbicane-lampClass'],
       note: 'Sizes the street lamps\' glare (D.glareSources via lampEyeCd), the lamp cone and the road lamp light.',
     },
     {
@@ -331,7 +333,7 @@
       group: 'street-lamps', cost: 'per-frame-gpu',
       owner: ['js/drive-anim.js'],
       requires: [need('lampsPresent')],
-      tests: [],
+      tests: ['node:barbicane-lampRoad'],
       note: 'Uniform plus a 480-float table upload when on. CPU and GPU.',
     },
     {
@@ -345,7 +347,7 @@
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js'],
       requires: [need('air'), need('haloOn')],
-      tests: [],
+      tests: ['node:barbicane-haloBins'],
       note: '?halobins=N seeds a module value that this stored key overrides at the first halo build.',
     },
     {
@@ -359,7 +361,7 @@
       group: 'halo', cost: 'table-rebuild',
       owner: ['js/spec-ui.js'],
       requires: [need('air'), need('haloOn')],
-      tests: [],
+      tests: ['node:barbicane-haloDiv'],
       note: '0 = auto.',
     },
     {
@@ -394,7 +396,7 @@
       group: 'halo', cost: 'per-frame-gpu',
       owner: ['js/spec-ui.js'],
       requires: [need('air'), need('haloOn')],
-      tests: [],
+      tests: ['node:barbicane-haloPolarLamps'],
     },
     {
       id: 'haloGain', kind: 'profile', type: 'enum', values: [0.25, 0.5, 1, 2, 4],
@@ -407,7 +409,7 @@
       group: 'halo', cost: 'free',
       owner: ['js/spec-ui.js'],
       requires: [need('air'), need('haloOn')],
-      tests: [],
+      tests: ['node:barbicane-haloGain'],
     },
     {
       id: 'crestOcclusion', kind: 'profile', type: 'enum', values: ['off', 'on'],
@@ -650,7 +652,7 @@
       group: 'halo', cost: 'free',
       owner: ['js/drive-anim.js', 'js/drive-three-halo.js'],
       requires: [need('gpu'), need('air'), need('haloOn'), need('cullFast')],
-      tests: [],
+      tests: ['node:barbicane-scatterCullEps'],
       note: 'Log scale slider, 1e-4 to 100. In fast mode a lamp stops being drawn where its best case in-scatter per metre of ray (sigma x the largest phase value x the beam\'s peak candela / r^2 x exp(-sigma r)) is below this. Higher = a smaller drawn region, a bigger change to the picture. The starting value is a first guess from shots (reports/SC.md), for the owner to set by eye.',
     },
     {
@@ -720,7 +722,7 @@
       group: 'air', cost: 'table-rebuild',
       owner: ['js/drive-three.js', 'js/spec-ui.js'],
       requires: [need('air'), need('tableModeHidden')],
-      tests: [],
+      tests: ['node:barbicane-scatterBinCounts'],
       note: '12 comma-separated counts, or empty. A valid entry overrides the air beam level.',
     },
     {
@@ -730,7 +732,7 @@
       group: 'air', cost: 'table-rebuild',
       owner: ['js/drive-three.js', 'js/spec-ui.js'],
       requires: [need('air'), need('tableModeHidden')],
-      tests: [],
+      tests: ['node:barbicane-scatterQuality'],
       note: 'No control of its own; the air beam dropdown writes it (NE5).',
     },
     {
@@ -770,7 +772,7 @@
       group: 'air', cost: 'table-rebuild',
       owner: ['js/spec-ui.js', 'js/drive-three.js'],
       requires: [need('air'), need('tableModeHidden')],
-      tests: [],
+      tests: ['node:barbicane-scatterNearBias'],
     },
     {
       id: 'scatterGain', kind: 'profile', type: 'number', values: { min: 0.25, max: 4, step: 'log2 0.25' },
@@ -897,7 +899,7 @@
         { since: 0, value: 'off', date: '2026-10-22', commit: 'b38c628' },
         { since: 0, value: 'mix', date: '2026-10-22', commit: 'f52ed8a' },
       ],
-      tests: [],
+      tests: ['node:barbicane-reflectiveClothing'],
       note: 'Applied once in RF.Drive.kit person(); the junction crosser still ignores it (H8).',
     },
     {
@@ -906,7 +908,7 @@
       control: '[data-anim="c-posts"]', where: 'more', query: null,
       group: 'scenery', cost: 'scene-regenerate',
       owner: ['js/drive-anim.js'],
-      tests: [],
+      tests: ['node:barbicane-posts'],
     },
     {
       // POWERLINES (opt-in): wires between roadside poles on the open road. Off = no powerline objects, no random draws; scene byte-identical.
@@ -963,7 +965,7 @@
       control: 'none', where: 'none', query: null,
       group: 'surface', cost: 'free',
       owner: ['js/drive-anim.js'],
-      tests: [],
+      tests: ['node:barbicane-tex'],
       note: 'No control found. Read by drive-anim.js compose; zeroed by wetSheen.',
     },
     {
@@ -973,7 +975,7 @@
       group: 'road', cost: 'scene-regenerate',
       owner: ['js/drive-anim.js'],
       ignoredWhen: [need('mountainPassScene')],
-      tests: [],
+      tests: ['node:barbicane-wild'],
       note: 'No control found. Read by the scene builder; forced off on the pass.',
     },
     {
@@ -984,7 +986,7 @@
       owner: ['js/drive-anim.js'],
       requires: [need('cpuRenderer')],
       conflicts: [need('mtBlockers')],
-      tests: [],
+      tests: ['node:barbicane-mt'],
       note: 'Silently single thread when blocked (drive-anim.js want gate).',
     },
     {
@@ -1029,7 +1031,7 @@
       group: 'road', cost: 'scene-regenerate',
       owner: ['js/drive-anim.js'],
       requires: [need('seedUsed')],
-      tests: [],
+      tests: ['node:barbicane-seed'],
     },
     {
       id: 'density', kind: 'profile', type: 'number', values: { min: 0.5, max: 3, step: 0.5 },
@@ -1038,7 +1040,7 @@
       group: 'road', cost: 'scene-regenerate',
       owner: ['js/drive-anim.js'],
       requires: [need('densityUsed')],
-      tests: [],
+      tests: ['node:barbicane-density'],
       note: 'The pass still uses it for tree spacing even when the control is disabled.',
     },
     {
@@ -1059,7 +1061,7 @@
       control: '[data-anim="traffic-logic"]', where: 'more', query: null,
       group: 'traffic', cost: 'scene-regenerate',
       owner: ['js/drive-anim.js'],
-      tests: [],
+      tests: ['node:barbicane-trafficLogic'],
       note: 'Rebuilds traffic state and changes the camera speed model.',
     },
     {
@@ -1082,7 +1084,7 @@
         { since: 0, value: false, date: '2026-10-15', commit: 'f628861' },
         { since: 0, value: true, date: '2026-10-18', commit: '0f9b62c' },
       ],
-      tests: [],
+      tests: ['node:barbicane-tiles'],
       note: 'Animation only. Off is the original constant road.',
     },
 
@@ -1289,7 +1291,7 @@
       group: 'view', cost: 'free',
       owner: ['js/drive-anim.js'],
       requires: [need('cabinView')],
-      tests: [],
+      tests: ['node:barbicane-cabinFovFrame'],
       note: 'ayrton (11-04, Anya): the windshield A-pillars and roof bar interpolate their screen fractions by the view-angle setting (30-90°). At the 60° default the fractions are exactly the originals; wide FOV narrows the frame (more road), narrow FOV widens it. Overlay only, no render change. Default OFF: fixed fractions as before.',
     },
     {
@@ -1299,7 +1301,7 @@
       group: 'view', cost: 'free',
       owner: ['js/drive-anim.js'],
       requires: [need('cabinView')],
-      tests: [],
+      tests: ['node:barbicane-cabinMirror'],
       note: 'ayrton (11-04, Anya): rear-view mirrors showing the headlamp glow of following cars behind us. A mirror-local generator (deterministic, own cull ~100 m) produces (bearing, distance, candela) tuples consumed only by the mirror rects and the glare veil. Gated on traffic (oncoming || preceding): no followers when traffic is off. The veil contribution uses the mirror virtual-image direction (~45° off forward), not the raw behind bearing, so veilAt weights it properly. Default OFF: no mirrors, no generator, zero world coupling.'
     },
     {
@@ -1309,7 +1311,7 @@
       group: 'view', cost: 'free',
       owner: ['js/drive-anim.js'],
       requires: [need('cabinView')],
-      tests: [],
+      tests: ['node:barbicane-cabinDigitalRedesign'],
       note: 'ayrton (11-04, Anya: true 80s digital redesign): replaces the round-gauge silhouette of the digital80s style with a flat 300ZX-style LCD panel — boxed speed numerals, horizontal bar-graph tach, vertical fuel bar, monochrome green. Only affects the digital80s cabinStyle; modern/miata untouched. Overlay only, no render change. Default OFF: round gauges as before.',
     },
     {
@@ -1352,7 +1354,7 @@
       control: '[data-anim="surface-sheen"]', where: 'more', query: null,
       group: 'surface', cost: 'per-frame-gpu',
       owner: ['js/drive-anim.js'],
-      tests: [],
+      tests: ['node:barbicane-surfaceSheen'],
     },
     {
       id: 'lampPitch', kind: 'profile', type: 'bool', values: null,
@@ -1376,7 +1378,7 @@
       control: '[data-anim="cornering-lamps"]', where: 'more', query: null,
       group: 'own-lamp', cost: 'per-frame-gpu',
       owner: ['js/drive-anim.js'],
-      tests: [],
+      tests: ['node:barbicane-corneringLamps'],
     },
     {
       id: 'fpsCounter', kind: 'profile', type: 'bool', values: null,
@@ -1421,7 +1423,7 @@
       group: 'performance', cost: 'free',
       owner: ['js/drive-anim.js'],
       requires: [need('dynResOn')],
-      tests: [],
+      tests: ['node:barbicane-frameTargetMs'],
       note: 'Derived from minFps (RF.DriveAnim.fpsSettings); the old stored ms is mapped to the nearest minFps at load.',
     },
     {
@@ -1440,7 +1442,7 @@
       group: 'road', cost: 'scene-regenerate',
       owner: ['js/drive-anim.js'],
       requires: [need('usRoad')],
-      tests: [],
+      tests: ['node:barbicane-cline'],
     },
     {
       id: 'speed', kind: 'profile', type: 'int', values: { min: 0, max: 130, step: 1 },
@@ -1486,7 +1488,7 @@
       control: 'none', where: 'none', query: null,
       group: 'traffic', cost: 'cpu-still',
       owner: ['js/spec-ui.js'],
-      tests: [],
+      tests: ['node:barbicane-onDist'],
       note: 'No control and no test found. Read only by the CPU still scene (spec-ui.js).',
     },
     {
@@ -1495,7 +1497,7 @@
       control: 'none', where: 'none', query: null,
       group: 'traffic', cost: 'cpu-still',
       owner: ['js/spec-ui.js'],
-      tests: [],
+      tests: ['node:barbicane-preDist'],
       note: 'No control and no test found. Read only by the CPU still scene (spec-ui.js).',
     },
     {
@@ -1505,7 +1507,7 @@
       group: 'traffic', cost: 'free',
       owner: ['js/spec-ui.js', 'js/drive-anim.js'],
       requires: [need('manualMode')],
-      tests: [],
+      tests: ['node:barbicane-onKcd'],
       note: 'Still used to build the template car lamps when not manual.',
     },
     {
@@ -1524,7 +1526,7 @@
       control: '[data-anim="ambient"]', where: 'more', query: null,
       group: 'exposure', cost: 'free',
       owner: ['js/drive-anim.js', 'js/spec-ui.js'],
-      tests: [],
+      tests: ['node:barbicane-ambient'],
     },
     {
       id: 'smooth', kind: 'profile', type: 'enum', values: ['sharp', 'smooth', 'soft'],
@@ -1532,7 +1534,7 @@
       control: 'Spec > Road sidebar row', where: 'sidebar', query: null,
       group: 'own-lamp', cost: 'cpu-still',
       owner: ['js/spec-ui.js'],
-      tests: [],
+      tests: ['node:barbicane-smooth'],
       note: 'No test found.',
     },
     {
@@ -1541,7 +1543,7 @@
       control: 'none', where: 'none', query: null,
       group: 'road', cost: 'cpu-still',
       owner: ['js/spec-ui.js'],
-      tests: [],
+      tests: ['node:barbicane-res'],
       note: 'Width of the CPU still picture (spec-ui.js drawDrive). No control found.',
     },
     {
@@ -1615,7 +1617,7 @@
       control: '[data-anim="resolution"]', where: 'more', query: null,
       group: 'performance', cost: 'scene-regenerate',
       owner: ['js/drive-anim.js'],
-      tests: [],
+      tests: ['node:barbicane-simCeiling'],
       note: 'low 640, medium 960, high 1600, ultra 2560, native up to 3840.',
     },
     {
@@ -1625,7 +1627,7 @@
       group: 'performance', cost: 'free',
       owner: ['js/drive-anim.js'],
       requires: [need('dynResOn')],
-      tests: [],
+      tests: ['node:barbicane-minFps'],
       note: 'Written together with frameTargetMs.',
     },
     {
@@ -1634,7 +1636,7 @@
       control: '[data-dv="samples"]', where: 'more', query: null,
       group: 'performance', cost: 'per-frame-gpu',
       owner: ['js/drive-anim.js'],
-      tests: [],
+      tests: ['node:barbicane-samples'],
       note: 'Objects trace cost x4 at 2.',
     },
     {
@@ -1870,6 +1872,16 @@
       requires: [need('roadSurfacesOn')],
       tests: ['node:frenchie-road-surfaces'],
       note: 'frenchie (ROAD-SURFACES §2/§7.5): surface for the scene road while roadSurfaces is ON; stock = today implicit asphalt (k=1, 0.25 floor). s: fresh 0.35, old 0.22, concrete 0.30, tar-snake 0.50.'
+    },
+    {
+      id: 'wetBouncePlane', kind: 'profile', type: 'bool', values: null,
+      default: false, label: 'bounce off the local road plane (crest fix)',
+      control: '[data-dv="wetBouncePlane"]', where: 'more', query: null,
+      group: 'air', cost: 'table-rebuild',
+      owner: ['js/options-registry.js', 'js/drive.js', 'js/drive-anim.js', 'js/drive-touge.js', 'js/drive-three.js', 'js/drive-three-shaders.js', 'js/drive-three-halo.js', 'js/spec-ui.js'],
+      requires: [need('wetBounceOn')],
+      tests: ['node:frenchie-crest-bounce'],
+      note: 'frenchie (Anya crest bug; Ladder A green-lit by council 84cb 11-05, Anya ruling 7edc): OFF = shipped mirror (flat z=0 plane), byte-identical. ON: the wet-bounce/wetVeil mirrors reflect about the LOCAL ROAD PLANE at each lamp road-contact point, lampM′ = L - 2((L-C).n)n with n = A.surface normal (full grade+bank), instead of z -> -z about z=0; GPU own-lamp mirror computed in world frame after worldFromCar (nicholl FINDING 1). Flat road degenerates exactly to the shipped mirror. Valley-bottom residual documented; Ladder B (per-bounce-point) deferred.'
     },
     {
       id: 'wetBounce', kind: 'profile', type: 'bool', values: null,

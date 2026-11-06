@@ -1,0 +1,119 @@
+/* Opt-in articulated actors and analytic tree clusters. Poses are built once; CPU and GPU consume the same float32 nodes.
+ * Ellipsoids use a conservative distance bound, capsules an exact distance, polynomial smooth union. */
+(function(root){
+  'use strict';
+  const D=root.RF.Drive, MAX_NODES=32, STEPS=96, EPS=.002, BLEND=.045;
+  const clamp=x=>Math.max(0,Math.min(1,x)),fract=x=>x-Math.floor(x);
+  const GAITS={stand:{stride:1,duty:1,lift:0},walk:{stride:1.05,duty:.68,lift:.12},trot:{stride:1.65,duty:.52,lift:.19},bound:{stride:2.5,duty:.32,lift:.28}};
+  // Pure state machine: start and stop through walk; the caller can request a named gait.
+  function locomotion(kind,distance,speed,moving,requested) {
+    const target=GAITS[requested]?requested:kind==='person'?'walk':speed<1.7?'walk':speed<3.2?'trot':'bound';
+    const state=!moving?'stand':distance<.45?'walk':distance<.9&&target==='bound'?'trot':target;
+    return {state,distance,stride:GAITS[state].stride};
+  }
+  function foot(state,phase,offset) {
+    const g=GAITS[state]||GAITS.walk,q=fract(phase+offset),stance=q<g.duty;
+    if(state==='stand')return {x:0,z:.045,stance:true};
+    const t=(q-g.duty)/(1-g.duty),ease=t*t*(3-2*t);
+    return {x:stance?g.stride*(g.duty/2-q):g.stride*g.duty*(ease-.5),z:.045+(stance?0:g.lift*Math.sin(Math.PI*t)),stance};
+  }
+  // Two-link inverse kinematics in the limb plane; bend chooses the knee/hock side.
+  function knee(a,b,l1,l2,bend) {
+    const dx=b[0]-a[0],dz=b[2]-a[2],d=Math.max(.001,Math.hypot(dx,dz)),r=Math.min(d,l1+l2-.0001),along=(l1*l1-l2*l2+r*r)/(2*r),h=Math.sqrt(Math.max(0,l1*l1-along*along));
+    return [a[0]+dx/d*along+bend*(-dz/d)*h,a[1],a[2]+dz/d*along+bend*(dx/d)*h];
+  }
+  function stableId(value){let h=2166136261;for(const c of String(value)){h=Math.imul(h^c.charCodeAt(0),16777619);}return h>>>0;}
+  function tree(o){
+    const h=o.h||9,v=stableId(o.id||'tree')%3,out=[],x=o.x||0,y=o.y||0,tag={detailPart:'analytic-tree',treeId:o.id};
+    out.push({...tag,k:'cyl',x,y,r:h*.018,z0:0,z1:h*.65,mat:o.birch?'trunk-birch':'bark',cls:'veg',detail:{...o,variant:v}});
+    for(let i=0;i<6+v;i++){
+      const a=i*2.399+v*.7,r=h*(.125+.017*(i%3)),spread=h*(v===1?.13:.16),xx=x+Math.cos(a)*spread,yy=y+Math.sin(a)*spread,z=h*(.48+.045*i);
+      const dz=z-h*.37,L=Math.hypot(xx-x,yy-y,dz),cz=(z+h*.37)/2;out.push({...tag,k:'cyl',x:(x+xx)/2,y:(y+yy)/2,r:h*.007,z0:cz-L/2,z1:cz+L/2,axis:[(xx-x)/L,(yy-y)/L,dz/L],mat:o.birch?'trunk-birch':'bark',cls:'veg'});
+      out.push({...tag,k:'ell',x:xx,y:yy,z,rx:r,ry:r,rz:r,mat:'foliage',cls:'veg'});
+    }
+    return out;
+  }
+  function build(kind, o) {
+    o=o||{};const nodes=[],eyes=[],yaw=(o.yaw||0)+(kind==='person'?Math.atan2((o.dir||[1,0])[1],(o.dir||[1,0])[0]):0),c=Math.cos(yaw),s=Math.sin(yaw),F=o.face||1;
+    const point=p=>[c*p[0]-s*p[1],s*p[0]+c*p[1],p[2]], id=k=>D.MAT_KEYS.indexOf(k);
+    const ell=(p,r,m)=>{p=point(p);nodes.push([...p,0,...r,1,0,0,0,id(m)]);};
+    const cap=(a,b,r,m)=>{a=point(a);b=point(b);nodes.push([...a,r,...b,0,0,0,0,id(m)]);};
+    const legacy=(o.gait||0)/(kind==='deer'?.14:.11),state=o.motion?.state||(o.bound?'bound':Math.abs(legacy)>0?'walk':'stand'),settings=GAITS[state]||GAITS.walk;
+    const phase=o.motion?o.motion.distance/settings.stride:fract(legacy*.25),feet=[];
+    if(kind==='person') {
+      const torso=o.ptype==='light'?'cloth-light':o.ptype==='hivis'?'hivis':'cloth-dark';
+      ell([0,0,1.19],[.16,.21,.31],torso);cap([0,0,1.43],[0,0,1.55],.06,'skin');ell([.015,0,1.66],[.1,.095,.13],'skin');
+      for(const side of [-1,1]) {
+        const f=foot(state,phase,side===1?0:.5),hip=[0,side*.11,.89],ankle=[f.x,side*.11,f.z+.035],k=knee(hip,ankle,.43,.43,1);
+        cap(hip,k,.075,'cloth-dark');cap(k,ankle,.052,'cloth-dark');cap([f.x-.04,side*.11,f.z],[f.x+.12,side*.11,f.z],.045,'cloth-dark');feet.push({...f,p:point([f.x,side*.11,f.z])});
+        const swing=state==='stand'?0:Math.sin(2*Math.PI*(phase+(side===1?0:.5)))*.32,shoulder=[0,side*.23,1.4],elbow=[-swing*.55,side*.24,1.13],hand=[-.04-swing,side*.24,.9];
+        cap(shoulder,elbow,.06,torso);cap(elbow,hand,.045,torso);ell(hand,[.05,.045,.06],'skin');
+      }
+    } else if(kind==='deer') {
+      const bound=state==='bound',cycle=fract(phase),air=bound?Math.max(0,Math.sin((cycle-.3)/.7*Math.PI))*.20:0,flex=bound?Math.sin(cycle*2*Math.PI)*.07:0,z=air;
+      ell([0,F*.05,1.02+z],[.22,.53,.27],'fur');ell([0,-F*.36,1.02+z],[.205,.26,.34],'fur');ell([0,F*.37,1.01+z+flex],[.20,.26,.28],'fur');
+      cap([0,-F*.42,1.13+z],[-.025,-F*.65,1.39+z],.115,'fur');ell([-.03,-F*.77,1.42+z],[.095,.20,.115],'fur');
+      cap([-.07,-F*.84,1.4+z],[-.19,-F*.87,1.37+z],.065,'fur');
+      for(const side of [-1,1]) {
+        ell([side*.10,-F*(.69+side*.055),1.605+z],[.038,.063,.125],'fur');
+        for(const end of [-1,1]) {
+          const offset=bound?(end===-1?0:.16):state==='trot'?(side*end===1?0:.5):(side===1?0:.5)+(end===1?.25:0),f=foot(state,phase,offset),hip=[0,side*.13,.90+z+(end===1?flex:0)],ankle=[f.x,side*.13,f.z];
+          const hock=[f.x-(end===1?.11:.025),side*.13,f.z+.25],k=knee(hip,hock,.34,.34,end===1?-1:1),map=p=>[p[1],F*(end*.40-p[0]),p[2]];
+          cap(map(hip),map(k),end===1?.07:.055,'fur');cap(map(k),map(hock),.035,'fur');cap(map(hock),map(ankle),.021,'fur');ell(map(ankle),[.035,.05,.045],'tyre');feet.push({...f,p:point(map(ankle))});
+        }
+        eyes.push(point([-.145,-F*.81+side*.065,1.475+z]));
+      }
+      cap([0,F*.53,1.08+z],[0,F*.67,1.12+z],.045,'fur');cap([0,F*.57,1.065+z],[0,F*.66,1.095+z],.027,'cloth-light');
+    } else {
+      const h=o.h||9;
+      cap([0,0,0],[0,0,h*.72],.14,'bark');
+      for(let i=0;i<7;i++) {
+        const a=i*2.399,r=h*(.12+.025*(i%3)),z=h*(.46+.06*i),x=Math.cos(a)*r*.72,y=Math.sin(a)*r*.72;
+        cap([0,0,h*.40],[x,y,z],.065,'bark');ell([x,y,z],[r,r*.85,r*1.13],'foliage');
+      }
+    }
+    if(nodes.length>MAX_NODES)throw Error('model node limit');
+    // Rotated ellipsoids retain their local axes. Texel 3 stores cosine/sine once per pose.
+    for(const n of nodes){n[8]=Math.cos(yaw);n[9]=Math.sin(yaw);}
+    let lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
+    for(const n of nodes){const r=n[7]===1?Math.max(n[4],n[5],n[6]):n[3];for(let j=0;j<3;j++){lo[j]=Math.min(lo[j],n[j]-r,n[7]===0?n[4+j]-r:Infinity);hi[j]=Math.max(hi[j],n[j]+r,n[7]===0?n[4+j]+r:-Infinity);}}
+    const z=(lo[2]+hi[2])/2,r=Math.hypot(Math.max(Math.abs(lo[0]),Math.abs(hi[0])),Math.max(Math.abs(lo[1]),Math.abs(hi[1])),(hi[2]-lo[2])/2)+BLEND*nodes.length/4;
+    const data=new Float32Array(nodes.flat());for(let i=0;i<nodes.length;i++){data[i*12+2]-=z;if(data[i*12+7]===0)data[i*12+6]-=z;}
+    return {k:'sdf',x:o.x||0,y:o.y||0,z,r,nodes:data,nodeCount:nodes.length,mat:kind==='deer'?'fur':kind==='tree'?'foliage':'cloth-dark',cls:kind==='tree'?'veg':kind,ptype:o.ptype,state,phase,feet,eyes:eyes.map(p=>[p[0]+(o.x||0),p[1]+(o.y||0),p[2]]),gameHazard:o.gameHazard||0};
+  }
+  function cylinder(ob,ox,oy,oz,dx,dy,dz,tmax){
+    const A=ob.axis,p=[ox-ob.x,oy-ob.y,oz-(ob.z0+ob.z1)/2],d=[dx,dy,dz],half=(ob.z1-ob.z0)/2,pa=p.reduce((s,v,i)=>s+v*A[i],0),da=d.reduce((s,v,i)=>s+v*A[i],0),q=p.map((v,i)=>v-A[i]*pa),v=d.map((v,i)=>v-A[i]*da),a=v.reduce((s,n)=>s+n*n,0),b=q.reduce((s,n,i)=>s+2*n*v[i],0),c=q.reduce((s,n)=>s+n*n,0)-ob.r*ob.r;
+    let t=tmax,n=null;const disc=b*b-4*a*c;
+    if(a>1e-12&&disc>=0)for(const sign of [-1,1]){const h=(-b+sign*Math.sqrt(disc))/(2*a);if(h>1e-4&&h<t&&Math.abs(pa+h*da)<=half){t=h;n=q.map((x,i)=>(x+h*v[i])/ob.r);}}
+    if(Math.abs(da)>1e-12)for(const sign of [-1,1]){const h=(sign*half-pa)/da;if(h>1e-4&&h<t&&q.reduce((s,x,i)=>s+(x+h*v[i])**2,0)<=ob.r*ob.r){t=h;n=A.map(x=>sign*x);}}
+    return n?{t,n}:{t:Infinity};
+  }
+  let material=0;
+  function distance(ob,x,y,z) {
+    const a=ob.nodes;let best=1e20,bid=0;
+    for(let i=0;i<ob.nodeCount;i++) {
+      const k=i*12;let d;
+      if(a[k+7]===1){const px=x-a[k],py=y-a[k+1],pz=z-a[k+2],c=a[k+8],s=a[k+9];d=(Math.hypot((c*px+s*py)/a[k+4],(-s*px+c*py)/a[k+5],pz/a[k+6])-1)*Math.min(a[k+4],a[k+5],a[k+6]);}
+      else {const px=x-a[k],py=y-a[k+1],pz=z-a[k+2],bx=a[k+4]-a[k],by=a[k+5]-a[k+1],bz=a[k+6]-a[k+2],h=clamp((px*bx+py*by+pz*bz)/Math.max(1e-12,bx*bx+by*by+bz*bz));d=Math.hypot(px-bx*h,py-by*h,pz-bz*h)-a[k+3];}
+      if(d<best)bid=a[k+11];const h=Math.max(BLEND-Math.abs(best-d),0)/BLEND;best=Math.min(best,d)-h*h*BLEND*.25;
+    }
+    material=bid;return best;
+  }
+  function trace(ob,ox,oy,oz,dx,dy,dz,tmax) {
+    ox-=ob.x;oy-=ob.y;oz-=ob.z;const b=ox*dx+oy*dy+oz*dz,c=ox*ox+oy*oy+oz*oz-ob.r*ob.r,disc=b*b-c;
+    if(disc<0)return {t:Infinity,steps:0};let t=Math.max(.0001,-b-Math.sqrt(disc)),end=Math.min(tmax,-b+Math.sqrt(disc)),steps=0;
+    for(;steps<STEPS && t<end;steps++) {const d=distance(ob,ox+t*dx,oy+t*dy,oz+t*dz);if(d<EPS){const id=material,x=ox+t*dx,y=oy+t*dy,z=oz+t*dz,e=.001,n=[distance(ob,x+e,y,z)-distance(ob,x-e,y,z),distance(ob,x,y+e,z)-distance(ob,x,y-e,z),distance(ob,x,y,z+e)-distance(ob,x,y,z-e)],L=Math.hypot(...n)||1;return {t,n:n.map(v=>v/L),id,steps:steps+1};}t+=Math.max(d*.8,.0005);}
+    return {t:Infinity,steps};
+  }
+  function actors(obs,on) {
+    if(!on)return obs;const out=[];
+    for(const ob of obs) {
+      if(ob.detailPart==='tree'){if(ob.detail)out.push(...tree(ob.detail));continue;}
+      if(ob.detailPart!=='person' && ob.detailPart!=='deer'){out.push(ob);continue;}
+      if(!ob.detail)continue;const m=build(ob.detail.kind,{...ob.detail,x:ob.detail.x,y:ob.detail.y,gameHazard:ob.gameHazard});out.push(m);
+      for(const e of m.eyes)out.push({k:'disc',x:e[0],y:e[1],z:e[2],r:.013,nx:-Math.cos(ob.detail.yaw),ny:-Math.sin(ob.detail.yaw),nz:0,sub:true,mat:'eyeshine',cls:'deer',gameHazard:ob.gameHazard});
+    }
+    return out;
+  }
+  D.Models={TREE_COUNT:128,TREE_DISTANCE:140,build,distance,trace,cylinder,actors,tree,stableId,locomotion,foot,GAITS,MAX_NODES,STEPS,EPS,BLEND,material:()=>material};
+})(typeof self!=='undefined'?self:globalThis);

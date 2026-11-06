@@ -70,7 +70,7 @@ const OPTS = [
   await page.waitForFunction(() => window.RF && RF.UI && RF.UI.store, null, { timeout: 90000 });
   await page.evaluate(() => { document.querySelector('button[data-mode="D"]').click(); document.querySelector('button[data-disp="drive"]').click(); });
   await page.waitForFunction(() => RF.DriveAnim && RF.DriveAnim._ && RF.DriveAnim._.V && RF.DriveAnim._.V.p, null, { timeout: 90000 });
-  await page.setInputFiles('[data-anim="state-file"]', '/workspace/step5-preview/states/state-lwoff.json');
+  await page.setInputFiles('[data-anim="state-file"]', path.join(root, 'tests', 'states', 'state-lwoff.json'));
   await page.evaluate(() => { const el = document.querySelector('[data-anim="own-low"]'); el.dispatchEvent(new Event('mousedown', { bubbles: true })); });
   try { await page.waitForFunction(() => { const el = document.querySelector('[data-anim="own-low"]'); return el && el.options.length > 1; }, null, { timeout: 180000 }); } catch (e) { warn('the built-in beam list was late this run', String(e).slice(0, 60)); }
   await page.evaluate(() => { const el = document.querySelector('[data-anim="own-low"]'), want = 'builtin:sqm-samples.json:4';

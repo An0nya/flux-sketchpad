@@ -162,6 +162,7 @@ const FROZEN_OLD_DV_DEF = {
   trafficLighting: 'off',   // frenchie (10-31 trafficLighting): preset option, default off; registry position: at the END of the list
   roadSurfaces: false,   // frenchie (11-04, Anya item 4): new option default off
   roadSurface: 'stock',   // frenchie (11-04): new option default stock
+  wetBouncePlane: false,   // frenchie (11-05 crest Ladder A, Anya ruling 7edc): local-road-plane bounce mirror, new option, default off (registry position: before wetBounce, at the END of the list)
   wetBounce: false,   // frenchie (11-01 wetBounce, 4-O): own-beam road bounce, default off; registry position: at the END of the list
 };
 

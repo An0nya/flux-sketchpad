@@ -9,7 +9,9 @@ const fs = require('fs'), path = require('path'), pw = require(process.env.PLAYW
     await page.evaluate(txt => RF.UI.loadScene(RF.State.deserialize(txt), 'P2 fixture'), fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp.json'), 'utf8'));
     await page.addScriptTag({ url: '/tests/p2-drive-lighting-page.js' }); const result = await page.evaluate(p => P2Page.run(p), port);
     const base = {}, files = { cpu: 'js/drive.js', renderer: 'js/drive-three.js', objects: 'js/drive-three-objects.js', shaders: 'js/drive-three-shaders.js' };
-    for (const [k, file] of Object.entries(files)) base[k] = require('child_process').execFileSync('git', ['show', 'a95029b:' + file], { cwd: path.join(__dirname, '../..'), encoding: 'utf8' });
+    // Baselines: tests/baselines/a95029b/js/ — written by the host from the real repo (tests/baselines/README.md). No git
+    // fallback here: the script-lane approval scan rejects spawning programs, and a missing baseline must fail loudly.
+    for (const [k, file] of Object.entries(files)) { const p = path.join(__dirname, '../baselines/a95029b', file); base[k] = fs.readFileSync(p, 'utf8'); }
     result.baseProof = await page.evaluate(base => P2Page.baseProof(base), base);
     // GPU frames legitimately differ from a95029b since the QOL1 cylinder-precision fix (posts no longer falsely occlude
     // reflectors); the a95029b blob harness can't load newer object modules, so the GPU arm is informational now. P2-off GPU

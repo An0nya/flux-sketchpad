@@ -1,0 +1,301 @@
+/* state.js — the serialisable scene: defaults, surface groups, JSON save/load, localStorage,
+ * and whole-scene transforms used by the verification suite (scale, mirror, reorder).
+ *
+ * Everything the tracer needs is in `scene`; generated surfaces are stored too, so loading a file
+ * reproduces the exact grid without re-running any solver.                                     */
+(function (root) {
+  'use strict';
+  const RF = root.RF;
+  const { V } = RF;
+  const VERSION = 1;
+  const LS_KEY = 'faceted-reflector-demo/scene/v1';
+
+  function defaultPaint(res) {
+    // A wide beam with a brighter core: the kind of pattern a headlamp designer paints first.
+    const p = new Array(res * res).fill(0), c = (res - 1) / 2;
+    for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
+      const x = (i - c) / res, y = (j - c) / res;
+      const outer = (x / 0.28) ** 2 + (y / 0.12) ** 2 <= 1;
+      const inner = (x / 0.11) ** 2 + (y / 0.06) ** 2 <= 1;
+      p[j * res + i] = inner ? 1 : outer ? 0.45 : 0;
+    }
+    return p;
+  }
+
+  // The app's starting scene = the verification baseline with Anya's settings on top (2026-09-25;
+  // design/anya-default-scene-2026-09-25.json).  The checks and tests use testScene(): their expected
+  // values are derived for it, so changing what the app opens with must not move them.
+  function defaultScene() {
+    const s = testScene();
+    delete s.solve;                                      // the app opens with the preferred solver (Auto), not the checks' pin
+    Object.assign(s.source, { pos: [-36.58, -3.53, 13.58], axis: [-0.0086, 0.0052, 0.99995], w: 2, h: 2, power: 1885, preset: 'generic' });   // 2 × 2 mm, 150 cd/mm² LED on the back wall (was a 1 mm², 318 cd/mm² sketch LED until 10-04)
+    Object.assign(s.envelope, { center: [-32.05, -6.92, 40.47], half: [27.95, 52.59, 27.46], keepOut: 5 });
+    s.modeA.minDistance = 0; s.modeB.minDistance = 15;   // paint: let the solver use the whole envelope (Anya 09-30; 15 mm cost ~20% of the light); stamps keep the old 15 mm
+    Object.assign(s.target, { distance: 2000, size: 500, res: 100 });
+    Object.assign(s.sim, { rays: 500000, res: 100 });   // 50k was too few to see the beam resolve (~20 rays per painted cell)
+    Object.assign(s.modeA, { paint: defaultPaint(100), budget: 100 });
+    return s;
+  }
+  function testScene() {
+    return {
+      version: VERSION, units: 'mm', name: 'Headlamp sketch',
+      // the checks' expected values are the built-in solver's; pinned so the in-page suite runs the same solver as Node
+      // (since Auto became the default, a page with the worker bundle loaded threw "auto is asynchronous" in 14 checks)
+      solve: { id: 'spoke' },
+      source: {
+        kind: 'planar', shape: 'rect', pos: [0, 0, 0], axis: [0, 0, 1], roll: 0,
+        w: 2, h: 2, radius: 1, length: 4, power: 1000,
+        dist: 'lambertian', sigma: 30, halfAngle: 60,
+      },
+      envelope: { shape: 'box', center: [-20, 0, 27.5], half: [40, 45, 32.5], axis: 2, keepOut: 5 },   // LED clearance (hard, ≤ CLEAR_MAX)
+      target: { distance: 1000, size: 1000, tiltX: 0, tiltY: 0, res: 50, linked: true, aim: [1000, 0, 0] },
+      sim: { rays: 10000, res: 50, autoRes: false, bounces: 1, floor: 0.01, seed: 1, smoothing: false, view: 'total', surfaceView: 'shaded' },
+      mode: 'A',
+      modeA: { paint: defaultPaint(50), brush: { size: 3, strength: 1, erase: false, mode: 'raise' }, budget: 48, facetType: 'curved', reflectivity: 0.9, requiredFlux: 0, minDistance: 12 },   // minDistance: solver preference (was part of a 12 mm keep-out)
+      modeB: { stamps: [], selected: null, facetType: 'curved', defaultScale: 160, minDistance: 12 },
+      modeD: RF.Spec ? RF.Spec.defaults() : {},     // Spec mode: beam spec (points / zones / cut-off) + the paint as a secondary goal (js/spec.js)
+      modeC: {
+        profile: [], sweep: 'revolve', axisMode: 'aim', azSegments: 0, mirror: false, flipFacing: false, reverseAxis: false,
+        interaction: 'reflect', reflectivity: 0.9, ior: 1.49, fresnelT: 0.96, extrudeLength: 60,
+        preset: { kind: 'parabola', f: 12, rim: 45, n: 40, theta: 20, depth: 30 },
+      },
+      lenses: [],
+      emitters: [],                                 // more emitters beyond `source` (multi-LED optics): full source objects + id, enabled
+      groups: {
+        A: { label: 'Mode A reflector', enabled: true, surfaces: [] },
+        B: { label: 'Mode B stamps', enabled: true, surfaces: [] },
+        C: { label: 'Mode C profile', enabled: true, surfaces: [] },
+        L: { label: 'Lenses', enabled: true, surfaces: [] },
+        M: { label: 'Test / manual', enabled: true, surfaces: [] },
+      },
+      notices: [],
+    };
+  }
+
+  function allSurfaces(scene) {
+    const out = [];
+    for (const key of Object.keys(scene.groups)) {
+      const g = scene.groups[key];
+      if (!g.enabled) continue;
+      for (const s of g.surfaces) out.push(s);
+    }
+    return out;
+  }
+
+  // Merge a loaded object onto defaults (tolerates older / partial files).
+  function mergeDefaults(obj, def) {
+    if (Array.isArray(def) || def === null || typeof def !== 'object') return obj === undefined ? def : obj;
+    const out = {};
+    for (const k of Object.keys(def)) out[k] = mergeDefaults(obj ? obj[k] : undefined, def[k]);
+    if (obj && typeof obj === 'object') for (const k of Object.keys(obj)) if (!(k in out)) out[k] = obj[k];
+    return out;
+  }
+  // JSON has no Infinity: JSON.stringify writes null, and a facet's di = null means FLAT, so a collimating facet
+  // (di = ∞, a paraboloid) used to reload flat.  Write ±Infinity as ±1e308; geometry reads |di| ≥ 1e300 as ∞.
+  const INF_SAFE = (k, v) => (v === Infinity ? 1e308 : v === -Infinity ? -1e308 : v);
+  function serialize(scene) {
+    // Optional A/B metadata never makes a scene export carry a second large design.
+    const pin = scene.compareA, small = !pin || new TextEncoder().encode(JSON.stringify(pin, INF_SAFE)).byteLength <= 256 * 1024;
+    return JSON.stringify(scene, (k, v) => k === 'compareA' && !small ? undefined : INF_SAFE(k, v));
+  }
+  const CLEAR_MAX = 5;                                  // mm: the LED clearance control's range (package / dome)
+  // Schema check for a loaded scene (after the defaults are merged): whitelist the enums, require the arrays, clamp the
+  // numbers to the ranges their controls allow, drop malformed list entries, and throw a clear Error for anything that
+  // cannot be repaired.  loadLocal turns a throw into "start from defaults"; Open-from-disk reports it and keeps the old scene.
+  const SURFACE_TYPES = ['facet', 'plane', 'quad', 'parab', 'rev'];
+  function validate(sc) {
+    const bad = (path, why) => { throw new Error('bad scene: ' + path + ' ' + why); };
+    const isObj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+    const obj = (o, path) => { if (!isObj(o)) bad(path, 'must be an object'); return o; };
+    const arr = (o, path) => { if (!Array.isArray(o)) bad(path, 'must be a list'); return o; };
+    const oneOf = (o, k, list, path) => { if (!list.includes(o[k])) bad(path + '.' + k, 'must be one of ' + list.join(', ') + ' (got ' + JSON.stringify(o[k]) + ')'); };
+    const num = (o, k, lo, hi, path, int) => { const v = o[k]; if (typeof v !== 'number' || !isFinite(v)) bad(path + '.' + k, 'must be a finite number'); o[k] = Math.min(hi, Math.max(lo, int ? Math.round(v) : v)); };
+    const vec3 = (o, k, path) => { const v = o[k]; if (!Array.isArray(v) || v.length !== 3 || !v.every((x) => typeof x === 'number' && isFinite(x))) bad(path + '.' + k, 'must be 3 finite numbers'); };
+    const src = (o, path) => {
+      obj(o, path); oneOf(o, 'kind', ['point', 'planar', 'volume'], path); oneOf(o, 'shape', ['rect', 'disc', 'sphere', 'cylinder'], path); oneOf(o, 'dist', ['lambertian', 'gaussian', 'cone', 'isotropic'], path);
+      vec3(o, 'pos', path); vec3(o, 'axis', path); if (!(o.axis[0] || o.axis[1] || o.axis[2])) bad(path + '.axis', 'must not be the zero vector');
+      for (const k of ['w', 'h', 'radius', 'length', 'power']) num(o, k, 1e-6, 1e12, path);
+    };
+    oneOf(sc, 'mode', ['A', 'B', 'C', 'D'], 'scene');
+    src(obj(sc.source, 'source'), 'source');
+    const en = obj(sc.envelope, 'envelope'); oneOf(en, 'shape', ['box', 'cylinder', 'ellipsoid'], 'envelope'); vec3(en, 'center', 'envelope'); vec3(en, 'half', 'envelope');
+    for (let i = 0; i < 3; i++) en.half[i] = Math.max(1e-6, en.half[i]);
+    num(en, 'axis', 0, 2, 'envelope', true); num(en, 'keepOut', 0, CLEAR_MAX, 'envelope');
+    const t = obj(sc.target, 'target');
+    num(t, 'res', 10, 200, 'target', true); num(t, 'distance', 1e-6, 1e9, 'target'); num(t, 'size', 1e-6, 1e9, 'target'); num(t, 'tiltX', -89, 89, 'target'); num(t, 'tiltY', -89, 89, 'target');
+    const sm = obj(sc.sim, 'sim');
+    num(sm, 'rays', 100, 2e7, 'sim', true); num(sm, 'res', 10, 1000, 'sim', true); num(sm, 'bounces', 1, 16, 'sim', true); num(sm, 'floor', 0, 1, 'sim'); num(sm, 'seed', -2147483648, 2147483647, 'sim', true);
+    num(obj(sc.modeA, 'modeA'), 'budget', 1, 2000, 'modeA', true);
+    oneOf(obj(sc.modeA.brush, 'modeA.brush'), 'mode', ['raise', 'set', 'lower'], 'modeA.brush');
+    const keep = (list, path, ok) => { arr(list, path); return list.filter(ok); };
+    sc.modeB.stamps = keep(sc.modeB.stamps, 'modeB.stamps', isObj);
+    sc.modeC.profile = keep(sc.modeC.profile, 'modeC.profile', (p) => Array.isArray(p) && p.length >= 2 && isFinite(p[0]) && isFinite(p[1]) && typeof p[0] === 'number' && typeof p[1] === 'number');
+    { const cv = sc.modeC.curve;           // optional (curve editor); anything malformed is dropped, the profile points remain
+      if (cv !== undefined && !(isObj(cv) && Array.isArray(cv.nodes) && Array.isArray(cv.bulge) && cv.nodes.length >= 2 && cv.bulge.length === cv.nodes.length - 1 &&
+        cv.nodes.every((p) => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]) && typeof p[0] === 'number' && typeof p[1] === 'number') && cv.bulge.every((b) => typeof b === 'number' && isFinite(b)))) delete sc.modeC.curve; }
+    { const sh = sc.modeC.shell;           // optional (facet shell, js/profile.js); malformed = dropped (the plain profile remains), cells outside the grid or off the numbers are dropped
+      if (sh !== undefined) {
+        const fin = (x) => typeof x === 'number' && isFinite(x);
+        if (!(isObj(sh) && fin(sh.R) && sh.R > 0 && fin(sh.k) && fin(sh.zv) && fin(sh.r1) && sh.r1 > 0 && fin(sh.nRad) && fin(sh.nAng))) delete sc.modeC.shell;
+        else {
+          sh.on = !!sh.on; sh.nRad = Math.min(32, Math.max(1, Math.round(sh.nRad))); sh.nAng = Math.min(72, Math.max(3, Math.round(sh.nAng)));   // 32 x 72 = 2304 cells is ~1.8 MB saved (each cell is a saved surface): the most the browser's ~5 MB autosave can carry comfortably
+          const cells = {}, src0 = isObj(sh.cells) ? sh.cells : {};
+          for (const key of Object.keys(src0)) {
+            const m = /^(\d+):(\d+)$/.exec(key), c = src0[key];
+            if (!m || +m[1] >= sh.nRad || +m[2] >= sh.nAng || !isObj(c)) continue;
+            const o = {};
+            if (fin(c.dv) && c.dv) o.dv = Math.min(1000, Math.max(-1000, c.dv));
+            if (fin(c.dTheta) && c.dTheta) o.dTheta = Math.min(30, Math.max(-30, c.dTheta));
+            if (fin(c.dPhi) && c.dPhi) o.dPhi = Math.min(30, Math.max(-30, c.dPhi));
+            if (Object.keys(o).length) cells[key] = o;
+          }
+          sh.cells = cells;
+        }
+      } }
+    sc.lenses = keep(sc.lenses, 'lenses', (l) => isObj(l) && isObj(l.params));
+    sc.emitters = keep(sc.emitters, 'emitters', isObj); sc.emitters.forEach((e, i) => src(e, 'emitters[' + i + ']'));
+    obj(sc.groups, 'groups');
+    for (const k of Object.keys(sc.groups)) {
+      const g = obj(sc.groups[k], 'groups.' + k);
+      g.surfaces = keep(g.surfaces, 'groups.' + k + '.surfaces', (f) => isObj(f) && SURFACE_TYPES.includes(f.type) && (f.type === 'rev' || (Array.isArray(f.P) && f.P.length === 3 && f.P.every((x) => typeof x === 'number' && isFinite(x)))));
+    }
+    return sc;
+  }
+  function deserialize(str) {
+    const obj = typeof str === 'string' ? JSON.parse(str) : str;
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('not a scene object');
+    const sc = mergeDefaults(obj, defaultScene());
+    // 09-25: the old keep-out split into a hard LED clearance (≤ CLEAR_MAX, verified) + a per-solver minimum
+    // facet distance.  Older files keep their exact geometry: clearance = min(old, max), distance = the rest.
+    if (!obj.modeA || obj.modeA.minDistance === undefined) {
+      const k = Math.abs(+((obj.envelope && obj.envelope.keepOut) || 0)) || 0;
+      sc.envelope.keepOut = Math.min(k, CLEAR_MAX); sc.modeA.minDistance = sc.modeB.minDistance = k > CLEAR_MAX ? k : 0;
+    }
+    if (!obj.sim || obj.sim.res === undefined) sc.sim.res = sc.target.res;   // older files: sim grid = paint grid
+    // groups: keep loaded surfaces verbatim
+    if (obj.groups) for (const k of Object.keys(obj.groups)) sc.groups[k] = Object.assign({ label: k, enabled: true, surfaces: [] }, obj.groups[k]);
+    validate(sc);
+    if (!Array.isArray(sc.modeA.paint) || sc.modeA.paint.length !== sc.target.res * sc.target.res) sc.modeA.paint = defaultPaint(sc.target.res);
+    // spec-mode branch, first day: the R112 preset was written from memory (verified: false) and had wrong rows; swap in the regulation's
+    if (sc.modeD && sc.modeD.verified === false && RF.Spec) RF.Spec.applyPreset(sc.modeD, RF.Spec.PRESETS[sc.modeD.preset] ? sc.modeD.preset : 'ece-r112-b');
+    return sc;
+  }
+  function saveLocal(scene) {
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem(LS_KEY, serialize(scene)); return true; } catch (e) { return false; }
+  }
+  // An autosave that cannot be read is not "nothing saved": the next autosave would overwrite the only copy.  The raw text is
+  // kept under "<key>.bad" and loadError() says why (boot shows one notice); the caller still gets null and starts from defaults.
+  let lastLoadError = null;
+  function loadError() { return lastLoadError; }
+  function loadLocal() {
+    lastLoadError = null;
+    let s = null;
+    try {
+      if (typeof localStorage === 'undefined') return null;
+      s = localStorage.getItem(LS_KEY);
+      return s ? deserialize(s) : null;
+    } catch (e) {
+      if (s) {
+        let kept = false; try { localStorage.setItem(LS_KEY + '.bad', s); kept = true; } catch (e2) { /* storage full */ }
+        lastLoadError = { message: String((e && e.message) || e), kept, key: LS_KEY + '.bad' };
+      }
+      return null;
+    }
+  }
+  // Manual snapshot: its own key, so autosave (crash recovery) never overwrites it.
+  const SNAP_KEY = LS_KEY + '/snapshot';
+  function saveSnapshot(scene) {
+    try { localStorage.setItem(SNAP_KEY, serialize(scene)); localStorage.setItem(SNAP_KEY + '/t', String(Date.now())); return true; } catch (e) { return false; }
+  }
+  function loadSnapshot() { try { const s = localStorage.getItem(SNAP_KEY); return s ? deserialize(s) : null; } catch (e) { return null; } }
+  function snapshotTime() { try { const t = +localStorage.getItem(SNAP_KEY + '/t'); return t || null; } catch (e) { return null; } }
+  function clearLocal() { try { localStorage.removeItem(LS_KEY); } catch (e) { /* ignore */ } }
+
+  // ---------------------------------------------------------------- whole-scene transforms
+  // Apply fp (point map) and fv (direction map) and fl (length scale) to every geometric field.
+  function mapSurface(s, fp, fv, fl) {
+    const o = RF.U.deepCopy(s);
+    if (o.type === 'facet') {
+      o.P = fp(o.P); o.S0 = fp(o.S0); o.Z = fp(o.Z);
+      if (o.di !== null && o.di !== undefined && isFinite(o.di) && Math.abs(o.di) < 1e300) o.di = fl(o.di);
+      if (Array.isArray(o.vg)) o.vg = o.vg.map((v) => v / fl(1));   // vergence = 1/length
+      if (o.ax) o.ax = fv(o.ax);
+    }
+    if (o.type === 'plane') { o.P = fp(o.P); o.n = fv(o.n); }
+    if (o.clip) {
+      if (o.clip.pts3) o.clip.pts3 = o.clip.pts3.map(fp);
+      if (o.clip.ref) o.clip.ref = fv(o.clip.ref);
+      if (o.clip.hx !== undefined) { o.clip.hx = fl(o.clip.hx); o.clip.hy = fl(o.clip.hy); }
+      if (o.clip.r !== undefined) o.clip.r = fl(o.clip.r);
+    }
+    if (o.type === 'rev') {
+      o.O = fp(o.O); o.W = fv(o.W); if (o.ref) o.ref = fv(o.ref);
+      const g = o.seg;
+      for (const k of ['z0', 'z1', 'r0', 'r1', 'zc', 'R', 'rmax']) if (g[k] !== undefined) g[k] = fl(g[k]);
+    }
+    return o;
+  }
+  function mapScene(scene, fp, fv, fl) {
+    const sc = RF.U.deepCopy(scene);
+    const s = sc.source;
+    s.pos = fp(s.pos); s.axis = fv(s.axis);
+    s.w = fl(s.w); s.h = fl(s.h); s.radius = fl(s.radius); s.length = fl(s.length);
+    sc.envelope.center = fp(sc.envelope.center);
+    sc.envelope.half = sc.envelope.half.map((h) => Math.abs(fl(h)));
+    sc.envelope.keepOut = Math.abs(fl(sc.envelope.keepOut || 0));
+    sc.modeA.minDistance = Math.abs(fl(sc.modeA.minDistance || 0)); if (sc.modeB) sc.modeB.minDistance = Math.abs(fl(sc.modeB.minDistance || 0));   // lengths too
+    sc.target.distance = fl(sc.target.distance); sc.target.size = fl(sc.target.size);
+    sc.target.aim = fp(sc.target.aim);
+    for (const k of Object.keys(sc.groups)) sc.groups[k].surfaces = sc.groups[k].surfaces.map((x) => mapSurface(x, fp, fv, fl));
+    // design intent is geometry too: lens parameters, profile, stamps (u,v,scale), paint in u
+    const LEN = ['f', 'a', 'edge', 'tb', 'A', 'rc', 'hc', 'd'];
+    for (const L of sc.lenses) for (const k of LEN) if (typeof L.params[k] === 'number') L.params[k] = Math.abs(fl(L.params[k]));
+    const mc = sc.modeC;
+    mc.profile = mc.profile.map(([r, z]) => [Math.abs(fl(r)), fl(z)]);
+    if (mc.curve) mc.curve.nodes = mc.curve.nodes.map(([r, z]) => [Math.abs(fl(r)), fl(z)]);   // bulge is a ratio: unchanged
+    for (const k of ['f', 'rim', 'depth', 'a1']) if (typeof mc.preset[k] === 'number') mc.preset[k] = Math.abs(fl(mc.preset[k]));
+    if (mc.shell) {                                  // facet shell: lengths scale, vergence (1/m) scales inversely, angles stay; a mirror reverses the azimuth
+      const sh = mc.shell; sh.R = Math.abs(fl(sh.R)); sh.zv = fl(sh.zv); sh.r1 = Math.abs(fl(sh.r1));
+      const inv = fl(1) ? 1 / Math.abs(fl(1)) : 1, flip = !!mapScene.fu && mapScene.fu(1) < 0, cells = {};
+      for (const key of Object.keys(sh.cells || {})) {
+        const m = key.split(':'), c = Object.assign({}, sh.cells[key]);
+        if (c.dv) c.dv *= inv;
+        if (flip) { m[1] = sh.nAng - 1 - m[1]; if (c.dPhi) c.dPhi = -c.dPhi; }
+        cells[m[0] + ':' + m[1]] = c;
+      }
+      sh.cells = cells;
+    }
+    mc.extrudeLength = Math.abs(fl(mc.extrudeLength));
+    const fu = mapScene.fu || ((u) => fl(u));
+    for (const st of sc.modeB.stamps) { st.u = fu(st.u); st.v = fl(st.v); st.scale = Math.abs(fl(st.scale)); }
+    sc.modeB.defaultScale = Math.abs(fl(sc.modeB.defaultScale));
+    return sc;
+  }
+  // Scale every length about the world origin (the target stays on the +x throw axis).
+  function scaleScene(scene, k) { return mapScene(scene, (p) => V.mul(p, k), (v) => v.slice(), (l) => l * k); }
+  // Mirror across the world plane y = 0 (the target's u axis is −y, so the grid mirrors in u).
+  function mirrorSceneY(scene) {
+    const m = (p) => [p[0], -p[1], p[2]];
+    mapScene.fu = (u) => -u;                        // target u axis is −y: mirror flips u
+    let sc;
+    try { sc = mapScene(scene, m, m, (l) => l); } finally { mapScene.fu = null; }
+    sc.source.roll = -(sc.source.roll || 0);
+    const res = sc.target.res, p = sc.modeA.paint, q = p.slice();
+    for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) q[j * res + i] = p[j * res + (res - 1 - i)];
+    sc.modeA.paint = q;
+    return sc;
+  }
+  // Reverse the order of every surface list (order must not matter).
+  function reorderScene(scene) {
+    const sc = RF.U.deepCopy(scene);
+    const keys = Object.keys(sc.groups).reverse(), g = {};
+    for (const k of keys) { g[k] = sc.groups[k]; g[k].surfaces = g[k].surfaces.slice().reverse(); }
+    sc.groups = g;
+    return sc;
+  }
+
+  RF.State = { CLEAR_MAX,
+    VERSION, LS_KEY, defaultScene, testScene, defaultPaint, allSurfaces, serialize, deserialize,
+    saveLocal, loadLocal, loadError, clearLocal, saveSnapshot, loadSnapshot, snapshotTime, mapSurface, scaleScene, mirrorSceneY, reorderScene,
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);

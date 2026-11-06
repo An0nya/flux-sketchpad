@@ -351,7 +351,7 @@ export function withWetBounceHalo(main) {
 }
 export function haloTableSource(atlas, polar = false, occ = false, variant = '', jit = false, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0, wb = false) {
   let main = occ && !sm ? (polar ? TMAIN_POLAR_OCC : TMAIN_OCC) : (polar ? TMAIN_POLAR : TMAIN);
-  if (wb && moment !== 3) main = withWetBounceHalo(main);   // frenchie (wetBounce): mirrored oncoming lamps in the table march; moment2+wb is skipped (wbNote)
+  if (wb && moment !== 3) main = globalThis.HALO_WB_PLANE ? withBouncePlaneHalo(withWetBounceHalo(main)) : withWetBounceHalo(main);   // frenchie (wetBounce): mirrored oncoming lamps in the table march; moment2+wb is skipped (wbNote); crest Ladder A plane variant when HALO_WB_PLANE
   if (sm) main = smText(main, occ);   // the shadow-map hook goes in BEFORE crossText copies the march body (and renames s -> rs in the copy); after it, the refined copy read an undeclared s (11-02: refine + shadow map failed to compile and hung the page)
   const useWidth = widthStep > 0, raw = refine ? crossText(main, refine, nb, widthStep) : (useWidth ? widthText(main) : main);
   const body = variant === 'band' ? bandText(raw) : variant === 'split' ? splitText(raw) : raw;
@@ -445,7 +445,7 @@ export function haloPolarPick(p, eye, q, tanH, nR = HALO_POL_R) {
 // trafficPitch of drive-three.js (atan(grade * heading . road tangent) at the source). The full vector goes through carFromWorld, so the car-frame
 // elevation is p + our pitch (on a uniform slope, opposite headings, that is 0: level, as before). Both the world-frame elevation and our roll are kept.
 // HALO_TILT_OFF (timing A/B only) reproduces the old frames exactly: p = 0 and the car-frame elevation is dropped.
-export function toCarFrame(traffic, m, A) {
+export function toCarFrame(traffic, m, A, wp) {
   const e = m.elements, mul = (v) => [e[0] * v[0] + e[3] * v[1] + e[6] * v[2], e[1] * v[0] + e[4] * v[1] + e[7] * v[2], e[2] * v[0] + e[5] * v[1] + e[8] * v[2]];
   const off = !!globalThis.HALO_TILT_OFF;
   return traffic.map((q) => {
@@ -464,6 +464,7 @@ export function toCarFrame(traffic, m, A) {
     const P = mul([q.x, q.y, q.z]), d = mul(F || b), n = Math.hypot(d[0], d[1]) || 1;
     const o = { ...q, x: P[0], y: P[1], z: P[2], nx: d[0] / n, ny: d[1] / n, nz: off ? 0 : d[2] };
     if (F) { o.lat = mul(L); o.up = mul(U); }
+    if (!off && wp) { const f2 = A.frame(q.x, q.y), sf2 = A.surface(f2.s, f2.off), n = mul(sf2.normal || [0, 0, 1]), C = mul([q.x, q.y, A.height(f2.s, f2.off)]), d = (P[0] - C[0]) * n[0] + (P[1] - C[1]) * n[1] + (P[2] - C[2]) * n[2]; o.nrm = n; o.lampM = [P[0] - 2 * d * n[0], P[1] - 2 * d * n[1], P[2] - 2 * d * n[2]]; }   // frenchie (crest Ladder A): car-frame road plane at the lamp's contact point; wp = the option, so the OFF path pays nothing
     return o;
   });
 }
@@ -489,7 +490,7 @@ export function haloPass(renderer, u) {
   const occMats = new Map(); const occMat = (atlas, polar, refine = 0) => { const k = (atlas ? 1 : 0) + (polar ? 2 : 0) + ':' + refine; if (!occMats.has(k)) { occMats.set(k, mk(atlas, polar, true, '', false, false, 0, refine)); pruneMats(occMats); } return occMats.get(k); };   // E2: crest-occlusion variants, compiled on first use (option off never builds them)
   const jitMats = new Map(); const pick = (atlas, polar, occ, variant, jit, sm = false, lw = 0, refine = 0, nb = false, moment = 0, widthStep = 0, wb = false) => {   // IL: jit off = exactly the materials the code picked before; on = its own variants, compiled on first use (SM: likewise); LW likewise; P3 (moment) likewise; WIDTH likewise
     if (!wb && !jit && !sm && !lw && !refine && !moment && !widthStep) return variant ? varMat(atlas, polar, occ, variant) : occ ? occMat(atlas, polar) : (polar ? matsP : mats)[atlas ? 1 : 0];
-    const k = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb].join(); if (!jitMats.has(k)) { jitMats.set(k, mk(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb)); pruneMats(jitMats); } return jitMats.get(k);
+    const k = [atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb, globalThis.HALO_WB_PLANE ? 1 : 0].join(); if (!jitMats.has(k)) { jitMats.set(k, mk(atlas, polar, occ, variant, jit, sm, lw, refine, nb, moment, widthStep, wb)); pruneMats(jitMats); } return jitMats.get(k);
   };
   let blurMat = null; const blurTmp = new Map();   // IL: the bin blur pass and its scratch targets (one per source target), built on first use
   const blurBins = (srcRt, W, r, rd = 0) => {   // rows, columns (r), then depth (rd); ping-pong with a scratch target, srcRt holds the result
@@ -523,9 +524,10 @@ export function haloPass(renderer, u) {
   let rt = null, cumRt = null, tab = [0, 0], tabClamp = null; const rts = new Map();   // targets by size, so the lamp count crossing 4 never reallocates
   let rt2 = null, cumRt2 = null;   // P3-M2/glm5.2: the second-moment render targets (created lazily when haloMoment is 'moment2')
   const arr = () => Array.from({ length: HALO_PER_DRAW }, () => new T.Vector4());
-  const hLamp = arr(), hDir = arr(), hTint = arr(), hLat = arr(), hUp = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(HALO_RANGE); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
+  const hLamp = arr(), hDir = arr(), hTint = arr(), hLat = arr(), hUp = arr(), hNrm = arr(), hLampM = arr(), tabV = new T.Vector2(), edgesV = new Array(HALO_MAX).fill(HALO_RANGE); u.haloE.value = edgesV;   // one array: the table shader's hi/lo and the lookup read the same edges (HDX7: padded to HALO_MAX)
   // ROLL: the source's surface basis for the beam (w = 1 when present; 0 = the level-road formulas in the shader).
   const setBasis = (L) => { if (L.lat) { hLat[0].set(L.lat[0], L.lat[1], L.lat[2], 1); hUp[0].set(L.up[0], L.up[1], L.up[2], 0); } else { hLat[0].set(0, 0, 0, 0); hUp[0].set(0, 0, 0, 0); } };
+  const setPlane = (L) => { const n = L.nrm, m = L.lampM; hNrm[0].set(n ? n[0] : 0, n ? n[1] : 0, n ? n[2] : 0, n ? 1 : 0); hLampM[0].set(m ? m[0] : 0, m ? m[1] : 0, m ? m[2] : 0, m ? 1 : 0); };   // frenchie (crest Ladder A): the lamp's car-frame road plane (w = 1 when present; 0 = shader falls back to z-hat)
   const ensure = (p, n, divOv) => {
     let [tw, th] = haloTableSize(p.w, p.h, n, divOv);
     // HDX7: the table is HALO_N tiles side by side, so one tile may be at most maxTextureSize / HALO_N cells wide (at 1920 px and divisor 1.4 it is not, at 24 bins).
@@ -589,13 +591,14 @@ export function haloPass(renderer, u) {
       halo.cone = null; halo.sm = null; halo.smCars = null;   // CP, SM
       halo.drawn = 0; halo.lamps = []; halo.passes = 0; u.haloOn.value = 0; halo.sources = null; halo.cull = null; halo.cross = 0;
       u.haloPolarOn.value = 0; u.haloPolarOn2.value = 0; u.haloBandOn.value = 0; halo.msPolar = 0; halo.polar = null; halo.polars = []; halo.occ = false; halo.jit = false; halo.blur = 0; halo.dblur = 0;   // HDX6, HDX7; E2: crest occlusion used this frame
+      globalThis.HALO_WB_PLANE = (p.look && p.look.wetBounce === true && +p.look.wetness > 0 && p.look.wetBouncePlane === true) ? 1 : 0;   // frenchie (crest v11): set BEFORE any early return so the variant key always sees it
       const N = D.haloN(p); if (!N) return 0;
       // HDX7: the look's halo settings. Bins: a count (clamped to 4..32; HALO_REQ keeps the ask). Divisor: 0 = the lamp-count rule. Gain: 1 = as computed.
       const look = p.look || {}, wantN = look.haloBins != null ? +look.haloBins : HALO_URL_N;
       if (wantN !== HALO_REQ) setHaloBins(wantN);
       const rangeG = haloRangeGpu(look); if (rangeG !== HALO_RANGE) setHaloRange(rangeG);   // SR/OHR: the table's far edge (look.haloRange, else scatterRange)
       u.haloNu.value = HALO_N; u.haloH.value = haloStepOf(HALO_N); u.haloGain.value = look.haloGain != null ? +look.haloGain : 1; u.haloSMax.value = HALO_RANGE; u.haloMoment.value = look.haloMoment === 'on' ? 1 : look.haloMoment === 'blend' ? 2 : look.haloMoment === 'moment2' ? 3 : 0;   // P3/glm5.2: mean-placement (0 = shipped edges, 1 = Hermite through means, 2 = L2d sin² blend, 3 = log-normal second-moment CDF)
-      const eye = p.eye || [-2, 0.37, 1.2], traffic = p.touge ? toCarFrame(D.trafficSources(world.objects, eye, p, world.A), u.carFromWorld.value, world.A) :D.trafficSources(world.objects, eye, p, world.A);   // TOUGE-ELEV B1: touge lamps into the car frame the ribbon projects in
+      const eye = p.eye || [-2, 0.37, 1.2], traffic = p.touge ? toCarFrame(D.trafficSources(world.objects, eye, p, world.A), u.carFromWorld.value, world.A, !!(p.look && p.look.wetBouncePlane === true)) :D.trafficSources(world.objects, eye, p, world.A);   // TOUGE-ELEV B1: touge lamps into the car frame the ribbon projects in
       if (!traffic.length) return 0;
       halo.sources = traffic;   // test hook: the sources the table was built from (beam, tint, axis)
       const atlas = !!D.trafficAtlasPool(p, traffic);   // HB: the same test as drive-three.js
@@ -699,13 +702,13 @@ export function haloPass(renderer, u) {
       const widthStep = (['1', '0.5', '0.25'].includes(String(look.haloWidthStep)) ? +look.haloWidthStep : 0);   // WIDTH: the target sample spacing in metres (0 = the shipped six per bin); composes with P1c (the crossing bin uses the refined ladder, the other bins use the width ladder)   // RN: widen P1c's trigger to the crossing bin's eye-side neighbour (inert unless P1c is on)
       halo.lw = lwK; halo.cross = refineN; halo.nb = nbN ? 1 : 0; halo.moment = look.haloMoment === 'on' ? 1 : look.haloMoment === 'blend' ? 2 : look.haloMoment === 'moment2' ? 3 : 0; halo.width = widthStep;   // LW: the lamp-window schedule used this frame (0 = off); RN: 1 = the neighbour bin is refined too; P3/glm5.2: mean-placement (0/1/2/3 = off/Hermite/L2d/log-normal CDF)
       halo.jit = jit; halo.blur = blurR; halo.dblur = blurD;   // IL: interleaved sampling
-      halo.wb = look.wetBounce === true && +look.wetness > 0 ? 1 : 0; halo.wbNote = look.wetBounce === true && +look.wetness > 0 && halo.moment === 3 ? 'moment2: wet bounce skipped in the table' : null;   // frenchie (wetBounce)   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
+      halo.wb = look.wetBounce === true && +look.wetness > 0 ? 1 : 0; halo.wbNote = look.wetBounce === true && +look.wetness > 0 && halo.moment === 3 ? 'moment2: wet bounce skipped in the table' : null; globalThis.HALO_WB_PLANE = halo.wb === 1 && look.wetBouncePlane === true;   // frenchie (crest Ladder A): plane-mirror variant of the table MIRROR block   // frenchie (wetBounce)   // E2: crest occlusion (pass frames only; occ = the ribbon height map + the world-from-car matrix, drive-three.js)
       const occU = (mm) => { if (useOcc) Object.assign(mm.uniforms, { crestH: { value: occ.texture }, crestWFC: { value: occ.wfc }, crestBox: { value: occ.box }, crestZ: { value: occ.z } }); if (jit) mm.uniforms.haloJitAmt = { value: jitAmt }; };   // IL: the jitter amount rides along
       const ac = renderer.autoClear, cc = new T.Color(), ca = renderer.getClearAlpha(); renderer.getClearColor(cc);
       const setPolarU = (mp, q, P, j, pk) => {
-        hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
+        hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); setPlane(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
         Object.assign(mp.uniforms, {
-          hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
+          hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp }, hNrm: { value: hNrm }, hLampM: { value: hLampM },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
           haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 }, kSurf: { value: D.surfKOf(look) },
           haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
           sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
@@ -754,10 +757,10 @@ export function haloPass(renderer, u) {
           const P = i < HALO_REFINE && q.L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || nearSub) : 1;   // SL_HALO_SUB: test override (cost comparison); AT: look.haloNearSub
           const mm = split ? splitM : m; mesh.material = mm;
           for (let j = 0; j < P; j++) {
-            hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
+            hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); setPlane(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
             if (split) Object.assign(mm.uniforms, { haloBandA: { value: new T.Vector4(bandPlan.band.ac, bandPlan.band.hw, bandPlan.band.fade, bandPlan.band.wd) }, haloPolarC: { value: new T.Vector2(bandPlan.pk.C[0], bandPlan.pk.C[1]) } });
             Object.assign(mm.uniforms, {
-              hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
+              hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp }, hNrm: { value: hNrm }, hLampM: { value: hLampM },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
               haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 }, kSurf: { value: D.surfKOf(look) },
               haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
               sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
@@ -789,10 +792,10 @@ export function haloPass(renderer, u) {
             const P = i < HALO_REFINE && q.L.x - eye[0] < HALO_NEAR ? (globalThis.SL_HALO_SUB || nearSub) : 1;
             const mm = split ? splitM2 : m2; mesh.material = mm;
             for (let j = 0; j < P; j++) {
-              hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
+              hLamp[0].set(q.L.x, q.L.y, q.L.z, q.L.w === undefined ? 1 : q.L.w); hDir[0].set(q.L.nx, q.L.ny, q.L.nz || 0, 0); setBasis(q.L); setPlane(q.L); hTint[0].set(q.tint[0], q.tint[1], q.tint[2], q.idx);
               if (split) Object.assign(mm.uniforms, { haloBandA: { value: new T.Vector4(bandPlan.band.ac, bandPlan.band.hw, bandPlan.band.fade, bandPlan.band.wd) }, haloPolarC: { value: new T.Vector2(bandPlan.pk.C[0], bandPlan.pk.C[1]) } });
               Object.assign(mm.uniforms, {
-                hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
+                hLamp: { value: hLamp }, hDir: { value: hDir }, hLat: { value: hLat }, hUp: { value: hUp }, hNrm: { value: hNrm }, hLampM: { value: hLampM },hTint: { value: hTint }, nHalo: { value: 1 }, haloP: { value: P }, haloSub: { value: j }, haloTab: { value: tabV }, haloEdges: { value: edgesV },
                 haloEye: { value: new T.Vector3(eye[0], eye[1], eye[2]) }, haloRMin: { value: D.SCAT.rMin }, wetU: { value: halo.wb ? (+look.wetness || 0) : 0 }, kSurf: { value: D.surfKOf(look) },
                 haloGFwd: { value: D.SCAT.gFwd }, haloGBack: { value: D.SCAT.gBack }, haloWFwd: { value: D.SCAT.wFwd },
                 sigma: { value: sig }, tanH: { value: tanH }, size: { value: new T.Vector2(p.w, p.h) }, haloLampW: { value: lwK },
@@ -848,4 +851,23 @@ export function haloPass(renderer, u) {
     },
   };
   return halo;
+}
+
+
+// frenchie (crest Ladder A): plane-mirror variant of the MIRROR block — input must already be withWetBounceHalo-composed.
+// lampM comes from hLampM (precomputed car-frame mirror position), the beam/frame vectors reflect about the per-lamp
+// road normal nM = hNrm (fallback z-hat), and the grazing Fresnel uses dot(d, nM). With nM = z-hat every replacement
+// reduces exactly to the shipped z-negation.
+export function withBouncePlaneHalo(main) {
+  let t = main;
+  const pairs = [
+    ['void main() {', 'uniform vec4 hNrm[' + HALO_PER_DRAW + '], hLampM[' + HALO_PER_DRAW + '];\nvoid main() {'],
+    ['vec3 lampM = vec3(lamp.x, lamp.y, -lamp.z); float seM = -se, ceM = sqrt(max(1.0 - seM * seM, 0.0));', 'vec3 lampM = hLampM[i].w > 0.5 ? hLampM[i].xyz : vec3(lamp.x, lamp.y, -lamp.z); vec3 nM = hNrm[i].w > 0.5 ? hNrm[i].xyz : vec3(0.0, 0.0, 1.0); float ce0 = sqrt(max(1.0 - se * se, 0.0));'],
+    ['vec3 fwM = vec3(dir * ceM, seM);', 'vec3 fwM = vec3(dir * ce0, se); fwM = fwM - 2.0 * dot(fwM, nM) * nM;'],
+    ['vec3 lat3M = vec3(-dir.y, dir.x, 0.0), up3M = vec3(-seM * dir, ceM);', 'vec3 lat3M = vec3(-dir.y, dir.x, 0.0), up3M = vec3(se * dir, -ce0); lat3M = lat3M - 2.0 * dot(lat3M, nM) * nM; up3M = up3M - 2.0 * dot(up3M, nM) * nM;'],   // nemo review c974: pre-mirror the NEGATED up3 (shipped up3M = -reflect(up3, z-hat)); at nM=z-hat this is (se*dir, ce0) = shipped IEEE-exactly
+    ['if (hLat[i].w > 0.5) { lat3M = vec3(hLat[i].x, hLat[i].y, -hLat[i].z); up3M = vec3(hUp[i].x, hUp[i].y, -hUp[i].z); }', 'if (hLat[i].w > 0.5) { lat3M = hLat[i].xyz; up3M = hUp[i].xyz; lat3M = lat3M - 2.0 * dot(lat3M, nM) * nM; up3M = up3M - 2.0 * dot(up3M, nM) * nM; }'],
+    ['abs(d.z) / r, 5.0)) * wetU * wetU * kSurf', 'abs(dot(d, nM)) / r, 5.0)) * wetU * wetU * kSurf'],
+  ];
+  for (const [a, b] of pairs) t = hrep(t, a, b);   // hrep throws unless the anchor occurs exactly once
+  return t;
 }

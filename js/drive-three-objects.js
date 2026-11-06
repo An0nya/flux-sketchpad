@@ -94,17 +94,17 @@ void main() {
      else id=edge||(abs(p.z-zc)<0.12 && abs(coord)<0.25)?12:17;
    }
  } else if(mapped==4) id=((p.z>1.0 && p.z<1.06)||(p.z>1.26 && p.z<1.32))?16:15;
- else if(mapped==5) id=hf==5?28:25;
+ else if(mapped==5) id=hf==5?30:27;
  else if(mapped==1) {float z=(p.z-mapExtent.y)/max(1e-6,mapExtent.z-mapExtent.y);id=int(texture(materialMap,vec3(clamp(coord/mapExtent.x*0.5+0.5,0.0,1.0),clamp(z,0.0,1.0),float(hf))).r*255.0+0.5);}
  gl_FragDepth=min(0.99999,t/5000.0+(kind==1 && hf<4 ? ties[hf]*1e-8 : 0.0)+order*1e-10);
  if(detailed && mapped==2 && hf<4) {
    float style=lod.x;
    vec2 uv=vec2((coord+400.0)/2.6,p.z/3.2),f=fract(uv),aa=max(fwidth(uv),vec2(.001));
    if(style==1.0){f.x=fract(uv.x*2.0);aa.x*=2.0;}
-   if(style==2.0 && id==23)id=24;
+   if(style==2.0 && id==25)id=26;
    float panel=1.0-smoothstep(.008,.008+aa.x,min(f.x,1.0-f.x));
    float rail=1.0-smoothstep(.012,.012+aa.y,min(f.y,1.0-f.y));
-   if((id==26||id==27||id==25) && (abs(f.x-.5)<.014 || (style!=2.0 && abs(f.y-.52)<.012)))id=20;
+   if((id==28||id==29||id==27) && (abs(f.x-.5)<.014 || (style!=2.0 && abs(f.y-.52)<.012)))id=20;
    if(panel>.5 || rail>.5)id=20;
  }
  if(maskMode==2){gl_FragColor=vec4(float(id),coord,p.z,order);return;}

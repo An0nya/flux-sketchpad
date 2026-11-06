@@ -14,7 +14,8 @@ function run(RF,ok){
   ok('DA finite bounded articulated pose '+face+'/'+t+'/'+yaw,body.nodes.every(Number.isFinite)&&body.nodeCount<=M.MAX_NODES&&eyes.every(e=>e.r===.0065&&e.eyeFalloff===8&&e.gameHazard===1));
   if(t<0)ok('DA grazing removes eye discs',eyes.length===0);
  }
- const vm=require('vm'),execFileSync=require('child_process').execFileSync,base={RF:{Drive:{...D}}};vm.createContext(base);for(const f of ['drive-models','drive-scenes'])vm.runInContext(execFileSync('git',['show','68bc063:js/'+f+'.js'],{encoding:'utf8'}),base);
+ // Baselines: tests/baselines/68bc063/js/ (tests/baselines/README.md pattern; git show = missing-file fallback).
+ const vm=require('vm'),execFileSync=require('child_process').execFileSync,base={RF:{Drive:{...D}}};vm.createContext(base);for(const f of ['drive-models','drive-scenes']){const bp=require('path').join(__dirname,'baselines/68bc063/js',f+'.js');vm.runInContext(require('fs').existsSync(bp)?require('fs').readFileSync(bp,'utf8'):execFileSync('git',['show','68bc063:js/'+f+'.js'],{encoding:'utf8'}),base);}
  const B=base.RF.Drive;let identical=true;
  for(const face of [-1,1])for(const yaw of [0,.7,2.4])for(const state of ['stand','walk','trot','bound']){const opt={face,yaw,motion:{state,distance:1.3}},a=M.build('deer',opt),b=B.Models.build('deer',opt);if(JSON.stringify(Array.from(a.nodes))!==JSON.stringify(Array.from(b.nodes))||JSON.stringify(a.eyes)!==JSON.stringify(b.eyes))identical=false;}
  ok('DA behaviour OFF preserves base68bc063 detailed deer nodes and eyes',identical);

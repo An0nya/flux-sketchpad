@@ -93,6 +93,7 @@ run('le-chonk endless level crossings (tests/le-chonk-crossing.js)', ['tests/le-
 run('le-chonk cabin view + drift mode (tests/le-chonk-cabin.js)', ['tests/le-chonk-cabin.js']);
 run('le-chonk yaw smoothing (tests/le-chonk-yaw.js)', ['tests/le-chonk-yaw.js']);
 run('le-chonk imperial units (tests/le-chonk-units.js)', ['tests/le-chonk-units.js']);
+run('le-chonk road surfaces option (tests/le-chonk-surfaces.js)', ['tests/le-chonk-surfaces.js']);
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
 run('every option with a control has one on the page, and every control on the page is an option (tests/control-map.js)', ['tests/control-map.js']); // step5-preview (the shared id -> selector map)

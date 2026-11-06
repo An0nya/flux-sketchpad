@@ -62,7 +62,8 @@ function run(RF, ok) {
   ok('HID additive transforms scale arc dimensions and rotate gravity for main and extra emitters', scaled.source.length === src.length * 2 && scaled.source.arc.bow === src.arc.bow * 2 && scaled.emitters[0].arc.fwhm === src.arc.fwhm * 2 && scaled.source.arc.tubeLength === src.arc.tubeLength * 2 && scaled.emitters[0].arc.tubeRadius === src.arc.tubeRadius * 2 && mirror.source.arc.stripeAngle === -src.arc.stripeAngle && mirror.source.arc.up[2] === 1);
   // Compare the exact serialized output with the base implementation, not with hand-maintained snapshots.
   const base = '68bc063', original = { RF: Object.assign({}, RF), TextEncoder, console };
-  vm.runInNewContext(cp.execFileSync('git', ['show', base + ':js/state.js'], { encoding: 'utf8' }), original);
+  // Baselines: tests/baselines/<base>/js/ (tests/baselines/README.md pattern; git show = missing-file fallback).
+  { const bp = path.join(__dirname, 'baselines', base, 'js/state.js'); vm.runInNewContext(fs.existsSync(bp) ? fs.readFileSync(bp, 'utf8') : cp.execFileSync('git', ['show', base + ':js/state.js'], { encoding: 'utf8' }), original); }
   const before = original.RF.State, walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(dir, e.name)) : e.name.endsWith('.json') ? [path.join(dir, e.name)] : []);
   let files = 0;
   for (const file of [...walk(path.join(__dirname, '..', 'examples')), ...walk(path.join(__dirname, 'fixtures'))]) {
@@ -72,7 +73,7 @@ function run(RF, ok) {
   }
   ok('HID legacy round-trip scan includes examples/ and tests/fixtures/', files >= 13, files + ' scene files');
   // Legacy samplers retain their original exact floating-point output, including LED dome recycling.
-  const oldSource = { RF: Object.assign({}, RF) }; vm.runInNewContext(cp.execFileSync('git', ['show', base + ':js/source.js'], { encoding: 'utf8' }), oldSource);
+  const oldSource = { RF: Object.assign({}, RF) }; { const bp = path.join(__dirname, 'baselines', base, 'js/source.js'); vm.runInNewContext(fs.existsSync(bp) ? fs.readFileSync(bp, 'utf8') : cp.execFileSync('git', ['show', base + ':js/source.js'], { encoding: 'utf8' }), oldSource); }
   let same = true;
   for (const id of ['generic', 'hb3', 'h7', 'hb4', 'nichia519a-domed']) {
     const sc = RF.State.testScene(); SP.apply(sc.source, id); const a = S.makeSampler(sc.source), b = oldSource.RF.Source.makeSampler(sc.source);

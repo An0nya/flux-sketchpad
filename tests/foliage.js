@@ -21,7 +21,8 @@ function run(RF, ok) {
   ok('FO bushes grounded and .3–1.2 m tall', bounded);
   const sandbox = { RF: { ...RF, Drive: { ...D } } };
   vm.createContext(sandbox);
-  for (const file of ['drive-scenes', 'drive-anim']) vm.runInContext(cp.execFileSync('git', ['show', '322d119:js/' + file + '.js'], { encoding: 'utf8' }), sandbox);
+  // Baselines: tests/baselines/322d119/js/ — host-written from the real repo (tests/baselines/README.md); git show is only the missing-file fallback.
+  for (const file of ['drive-scenes', 'drive-anim']) { const bp = require('path').join(__dirname, 'baselines/322d119/js', file + '.js'); vm.runInContext(fs.existsSync(bp) ? fs.readFileSync(bp, 'utf8') : cp.execFileSync('git', ['show', '322d119:js/' + file + '.js'], { encoding: 'utf8' }), sandbox); }
   let identical = true, compared = 0, retained = true;
   const oldD = sandbox.RF.Drive, oldA = sandbox.RF.DriveAnim;
   for (const scene of ['road', 'forest', 'city']) for (const wild of [false, true]) for (const veg of [false, true]) {
@@ -42,7 +43,7 @@ function run(RF, ok) {
   const c = { Lw: 3.5, seed: 17, density: 1.5 };
   ok('FO buildScene off identical to main', ['road', 'forest', 'city'].every(s => encode(D.buildScene(s, c, { leafyFoliage: false, people: false })) === encode(oldD.buildScene(s, c, { people: false }))));
   // Verify the literal default shader, not just its output against another current renderer.
-  const current = fs.readFileSync('js/drive-three-objects.js', 'utf8'), base = cp.execFileSync('git', ['show', '322d119:js/drive-three-objects.js'], { encoding: 'utf8' });
+  const current = fs.readFileSync('js/drive-three-objects.js', 'utf8'), bp = require('path').join(__dirname, 'baselines/322d119/js/drive-three-objects.js'), base = fs.existsSync(bp) ? fs.readFileSync(bp, 'utf8') : cp.execFileSync('git', ['show', '322d119:js/drive-three-objects.js'], { encoding: 'utf8' });
   const shader = s => s.slice(s.indexOf('export const objectFragment'), s.indexOf('export function objects'));
   // FG2 added one view-path fog line to this fragment (off when sigma is 0). Strip exactly that line; everything else must match the pinned literal.
   const FOG_LINE = ' if(sigma>0.0){float T=exp(-sigma*t); color=color*T+vec3(flags.y>0.0?0.0:ambient*0.012*(1.0+0.8*max(0.0,1.0-abs(ray.z)*8.0))*(1.0-T));}\n';
@@ -50,8 +51,10 @@ function run(RF, ok) {
   const SCAT_LINE = ' if(scatterSteps>0 && flags.y<=0.0) color+=inScatter(ray,t,scatterJitter());\n';
   // SL added one traffic-scatter-table line after it (off when haloOn is 0). Strip that line too.
   const HALO_LINE = ' if(haloOn>0 && flags.y<=0.0) color+=haloScatter(t);\n';
-  const stripped = shader(current).split(FOG_LINE).join('').split(SCAT_LINE).join('').split(HALO_LINE).join('');
-  ok('FO default shader literal unchanged apart from the FG fog line, the SC scatter line and the SL traffic-scatter line', stripped.split('// Only leaf buckets')[0].trim() === shader(base).trim() && shader(current).split(FOG_LINE).length === 2 && shader(current).split(SCAT_LINE).length === 2 && shader(current).split(HALO_LINE).length === 2);
+  // The 11-05 material-id fix (ayrton, mergeq 0490) restored the original wall-light constants and annotated that line (harbert's root cause). Comment-only; strip the annotation suffix so the code compares against the pinned literal.
+  const ID_NOTE = '   // P1/C4 (harbert root cause): this case has always meant wall-light:wall (25/26 pre-marker-insert); the 10-30 marker insert renumbered 25/26 to road paint; M1\'s restore makes the ORIGINAL 26:25 correct again — do not shift this constant with the ids >=23.';
+  const stripped = shader(current).split(FOG_LINE).join('').split(SCAT_LINE).join('').split(HALO_LINE).join('').split(ID_NOTE).join('');
+  ok('FO default shader literal unchanged apart from the FG fog line, the SC scatter line, the SL traffic-scatter line and the 0490 id-fix annotation', stripped.split('// Only leaf buckets')[0].trim() === shader(base).trim() && shader(current).split(FOG_LINE).length === 2 && shader(current).split(SCAT_LINE).length === 2 && shader(current).split(HALO_LINE).length === 2);
 }
 module.exports = { run };
 if (require.main === module) {

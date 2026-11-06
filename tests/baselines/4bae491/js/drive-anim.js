@@ -1,0 +1,648 @@
+/* drive-anim.js — the animated Drive view: the car drives down the road, the scenery comes at it. Opt-in; the still view (drive.js) stays the default.
+ *
+ * No new photometric model. Everything the picture is made of still comes from RF.Drive.render (the beam lookup, the BRDFs, the materials):
+ *   ground   The car-frame geometry of the road never changes while the car drives (a straight road, or the constant-radius bends of RF.Road.arc), so the lit
+ *            ground is rendered ONCE (drive.js, no objects). Only the phase of patterned markings (the EU centre dashes) moves: that stripe is a second
+ *            render (the dash drawn solid minus the dash left out) that the compose shader fades by the stripe's coverage at s + dist, exactly as covLon does.
+ *   objects  Posts, signs, people, deer, trees, bushes, crates are placed relative to the car every frame (the scenery repeats every PERIOD metres) and
+ *            traced by RF.Drive.render in its `layer: 'objects'` mode: only the pixels they can touch, written as (luminance·coverage, coverage).
+ *   GPU      compose (objects over ground + dash) → glare (separable box blurs, the radii and weights of Drive.tonemap) → ACES + sRGB → the canvas.
+ * Frame = objects·(coverage) + (1 − coverage)·(ground + stripe·dash), then the same tone map. composeCPU() is that sum in plain JS (tests, parity).
+ * The ground and the objects are rendered at the "sim" size (the canvas, 640..1600 px wide); the canvas itself is css px × devicePixelRatio (≤ 2).
+ *
+ * Road frame as drive.js: x ahead of the lamps, y left, z up. The scenery is built on a straight road in (s, off) = (x, y); on a bend each piece is moved to
+ * A.at(s − dist, off) and turned with the tangent (ellipsoids keep their axes, as in the still view).                                                       */
+(function (root) {
+  'use strict';
+  const RF = root.RF || (root.RF = {}), D = RF.Drive;
+  const PERIOD = 300, EYE = [-2.0, 0.37, 1.2], MIN_SIM = 640, MAX_SIM = 1600, HEAVY_SIM = { forest: 960, city: 960 }, ANIM_SCENES = { road: 1, forest: 1, city: 1 }, ACT = 110, CULL = 230, TEX_WRAP = 76.8, TEX_AMP = 0.4;
+  const CLASSES = [['posts', 'posts', 'Delineator posts with reflectors'], ['signs', 'signs', 'Road signs (retroreflective sheeting)'], ['people', 'people', 'Pedestrians'], ['animals', 'deer', 'Deer, with retroreflecting eyes'], ['veg', 'trees', 'Trees and bushes at the roadside'], ['obstacle', 'crates', 'A dark crate on the road every 150 m (the hard target: 3 % reflectance, nothing retroreflective)'], ['rpm', 'studs', 'Raised reflective pavement markers on the centre and edge lines (random scenery only)'], ['tex', 'grain', 'Asphalt grain: a subtle texture on the road surface that moves with the drive'], ['mt', 'threads', 'Trace the objects on several CPU threads (Web Workers), so big scenes keep up. Off: this thread only. Needs the page served over http(s) (browsers block workers on file://)'], ['wild', 'random', 'Random scenery from a seed: denser, different every 300 m, walkers and deer that move. Off: the original fixed scenery, repeating every 300 m']];
+
+  // ---------------------------------------------------------------- CPU: scenery, ground, composition (pure; tests use these)
+  // the scenery on a straight road, in (s, off) coordinates
+  // opts (the view's settings; none = the original scenery, as the tests build it): { wild: random scenery from `seed` (chunks of PERIOD m, `density`), cline: 'broken' = a US passing-zone centre line }
+  function source(name, lane, us, flags, opts) {
+    const broken = !!(opts && us && opts.cline === 'broken');
+    if (!(opts && opts.wild) || name !== 'road') {
+      const sc = D.buildScene(name, { Lw: lane, A: null, us, seed: 7 }, flags), src = { objects: sc.objects, markings: sc.markings.map((m) => m.pat && m.pat.period >= 1e5 ? Object.assign({}, m, { pat: Object.assign({}, m.pat, { period: PERIOD }) }) : m), verge: sc.verge, lane };      // a crossing or stop line that is there once on the still road comes round every lap, like the buildings
+      if (broken && name === 'road') src.markings = D.laneMarkings(lane, { us, broken });
+      return trafficSource(src, opts);
+    }
+    const mix = (k) => (Math.imul((+opts.seed || 0) | 0, 2654435761) ^ Math.imul(k + 1, 0x9E3779B1)) >>> 0, chunks = new Map();
+    const src = { wild: true, lane, markings: D.laneMarkings(lane, { us, broken }), verge: ['gravel', 1.6, 'grass'], chunk(k) {
+      let c = chunks.get(k); if (!c) { c = D.wildChunk({ Lw: lane, us, seed: mix(k), density: opts.density === undefined ? 1.5 : +opts.density, broken }, flags); chunks.set(k, c); if (chunks.size > 8) chunks.delete(chunks.keys().next().value); } return c;
+    } };
+    src.objects = src.chunk(0).objects; return trafficSource(src, opts);
+  }
+  // Traffic has its own stream of the scenery RNG: switching a class off never moves another class. Constant speeds (m/s) keep spacing steady.
+  const TRAFFIC_SPEED = { oncoming: 50 / 3.6, preceding: 40 / 3.6 };
+  function trafficSource(src, opts) {
+    const o = opts || {}, dn = o.trafficDensity === undefined ? 1 : Math.max(0, Math.min(3, +o.trafficDensity || 0));
+    src.traffic = { seed: (+o.seed || 0) | 0, density: dn, oncoming: !!o.oncoming, preceding: !!o.preceding, models: {} };
+    for (const kind of ['oncoming', 'preceding']) if (src.traffic[kind]) {
+      const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
+      K.car(0, 0, kind === 'oncoming' ? { face: -1, lamps: 'head', kcd: +o.onKcd || 30 } : { face: 1, lamps: 'tail' }); src.traffic.models[kind] = K.O;
+    }
+    return src;
+  }
+  // One car in each seeded interval of road, then translated by its own travel and ours. Look up only the intervals in view: bounded work even after hours.
+  function trafficCars(src, dist, t) {
+    const tr = src.traffic, out = []; if (!tr || !tr.density) return out;
+    const gap = PERIOD / tr.density;
+    for (const kind of ['oncoming', 'preceding']) if (tr[kind]) {
+      const shift = dist + (kind === 'oncoming' ? 1 : -1) * TRAFFIC_SPEED[kind] * t;
+      for (let k = Math.floor((shift - 6) / gap); k <= Math.floor((shift + CULL) / gap); k++) {
+        const R = D.rng((Math.imul(tr.seed, 2654435761) ^ Math.imul(k, 0x9E3779B1) ^ (kind === 'oncoming' ? 0x51ED270B : 0x165667B1)) >>> 0);
+        const rel = (k + 0.2 + 0.6 * R()) * gap - shift;
+        if (rel >= -6 && rel <= CULL) out.push({ id: kind + ':' + k, kind, rel, off: kind === 'oncoming' ? src.lane : 0 });
+      }
+    }
+    return out;
+  }
+  // Rotate the whole car around its centre (including emitter normals), so it stays rigid on a bend.
+  function trafficObjects(src, cars, A) {
+    const out = [];
+    for (const car of cars) {
+      const q = A ? A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }, c = q.t[0], sn = q.t[1], yaw = Math.atan2(sn, c);
+      for (const ob of src.traffic.models[car.kind]) {
+        const n = Object.assign({}, ob, { x: q.p[0] + ob.x * c - ob.y * sn, y: q.p[1] + ob.x * sn + ob.y * c, bs: undefined, traffic: car.id });
+        if (ob.k === 'box') n.yaw = (ob.yaw || 0) + yaw;
+        if (ob.k === 'disc') { n.nx = ob.nx * c - ob.ny * sn; n.ny = ob.nx * sn + ob.ny * c; }
+        out.push(n);
+      }
+    }
+    return out;
+  }
+  const placedObjects = (p, dist, t, tauOf) => place(p.src, dist, p.A, tauOf, dimFoliage(p)).concat(trafficObjects(p.src, trafficCars(p.src, dist, t), p.A));
+  // Same eye illuminance as Road.model.lux: far-field intensity / distance² × incidence cosine. Driver faces back along their lane, eye 1.1 m up.
+  function eyeLux(p, car) {
+    const q = p.A ? p.A.at(car.rel, car.off) : { p: [car.rel, car.off], t: [1, 0] }; let E = 0;
+    for (const L of p.lamps) {
+      const dx = q.p[0] - L[0], dy = q.p[1] - L[1], dz = 1.1 - L[2], r2 = dx * dx + dy * dy + dz * dz, cos = (dx * q.t[0] + dy * q.t[1]) / Math.sqrt(r2);
+      if (!(cos > 0) || !(dx > 0)) continue;
+      D.hvFast(dx, dy, dz, p.conv || 'A'); E += D.lutAt(p.lut, D.hv()[0], D.hv()[1]) * cos / r2;
+    }
+    return E;
+  }
+  const flashState = () => ({ n: 0, seen: new Set() });
+  function countFlashes(state, p, dist, t) {
+    const cars = trafficCars(p.src, dist, t);
+    for (const car of cars) if (car.kind === 'oncoming' && car.rel > 0 && eyeLux(p, car) > 1 && !state.seen.has(car.id)) { state.seen.add(car.id); state.n++; }
+    // IDs behind this monotonically advancing stream can never return; keep only the small visible window.
+    if (p.src.traffic && p.src.traffic.density) {
+      const k0 = Math.floor((dist + TRAFFIC_SPEED.oncoming * t - 6) / (PERIOD / p.src.traffic.density));
+      for (const id of state.seen) if (+id.split(':')[1] < k0) state.seen.delete(id);
+    }
+    return state.n;
+  }
+  // a pose of a walker or deer `tau` s after it started moving: where it is along the road (s) and across it (off), and its leg swing
+  function actorPose(a, tau) {
+    const run = a.mode === 'graze' ? 0 : Math.max(0, tau - (a.delay || 0)), d = Math.min(a.spd * run, a.len), moving = run > 0 && d < a.len;
+    return { s: a.s0 + a.ds * d, off: a.off0 + a.doff * d, gait: moving ? (a.kind === 'deer' ? 0.14 : 0.11) * Math.sin(2 * Math.PI * (a.kind === 'deer' ? 1.4 : 1.8) * run) : 0 };
+  }
+  // the objects as the car at distance `dist` sees them (car frame). Every object appears once, at s ∈ [dist − 6, dist − 6 + PERIOD); A: RF.Road.arc or null
+  // ob copied to n, moved to `rel` m ahead of the car (on a bend: along the lane, turned with the tangent)
+  function move(n, ob, rel, A) {
+    n.bs = undefined;
+    if (A) {
+      const q = A.at(rel, ob.y), psi = Math.atan2(q.t[1], q.t[0]), c = Math.cos(psi), sn = Math.sin(psi);
+      n.x = q.p[0]; n.y = q.p[1];
+      if (ob.k === 'box') n.yaw = (ob.yaw || 0) + psi;
+      else if (ob.k === 'disc') { n.nx = ob.nx * c - ob.ny * sn; n.ny = ob.nx * sn + ob.ny * c; }
+    } else n.x = rel;
+    return n;
+  }
+  /* tauOf(id, rel0) → seconds since that walker/deer started moving (0 without it: they stand where they start). Random scenery: the chunks around the car, each object once */
+  function place(src, dist, A, tauOf, skip) {
+    const out = [];
+    if (src.chunk) {
+      const k0 = Math.floor((dist - 6) / PERIOD), K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
+      for (let k = k0 - 1; k <= k0 + 1; k++) {
+        const base = k * PERIOD, ch = src.chunk(k);
+        if (k >= k0) for (const ob of ch.objects) { const rel = ob.x + base - dist; if (rel >= -6 && rel <= CULL) { const n = move(Object.assign({}, ob), ob, rel, A); if (!skip || !skip(n)) out.push(n); } }
+        for (const a of ch.actors) {
+          const id = k + ':' + a.id, tau = tauOf ? tauOf(id, base + a.s0 - dist) : 0, ps = actorPose(a, tau), rel = base + ps.s - dist; if (rel < -6 || rel > CULL) continue;
+          const n0 = K.O.length;
+          if (a.kind === 'deer') K.deer(rel, ps.off, { face: a.side > 0 ? 1 : -1, gait: ps.gait }); else K.person(rel, ps.off, a.ptype, { dir: [a.ds, a.doff], gait: ps.gait });
+          for (let i = n0; i < K.O.length; i++) out.push(move(Object.assign({}, K.O[i]), K.O[i], K.O[i].x, A));
+        }
+      }
+      return out;
+    }
+    for (const ob of src.objects) { const n = move(Object.assign({}, ob), ob, ob.x - dist - Math.floor((ob.x - dist + 6) / PERIOD) * PERIOD, A); if (!skip || !skip(n)) out.push(n); }
+    return out;
+  }
+  const camOf = (p) => ({ w: p.w, h: p.h, hfov: p.hfov, eye: EYE, lamps: p.lamps, lut: p.lut, conv: p.conv, arc: p.A, lane: p.lane, look: p.look });
+  /* the lit ground: A = everything that does not move; each patterned marking (the dashes, a crossing, a stop line) is a layer: the markings that share one pattern are drawn solid and what they add over A is its B,
+   * which the compose shader fades by the pattern's coverage at s + dist. Lit paint adds linearly, so layers sum (where two overlap the sum is a little more than the still view's first-marking-wins: city's crossing over the dash).
+   * layers = [{ pat, B }] (at most MAX_PAT; more patterned markings than that stay in A as they are at dist 0); B and pat = the first layer's (null: nothing patterned)  */
+  const MAX_PAT = 4;
+  function ground(p) {
+    const cam = camOf(p), t0 = Date.now(), groups = new Map();
+    for (const m of p.src.markings) if (m.pat) { const k = JSON.stringify(m.pat); if (groups.has(k) || groups.size < MAX_PAT) (groups.get(k) || groups.set(k, []).get(k)).push(m); }
+    const moving = new Set([].concat(...groups.values())), stat = p.src.markings.filter((m) => !moving.has(m));
+    const A = D.render(Object.assign({ ss: 1, scene: { objects: [], markings: stat, verge: p.src.verge } }, cam)).rgb, layers = [];
+    for (const ms of groups.values()) {
+      const S = D.render(Object.assign({ ss: 1, scene: { objects: [], markings: stat.concat(ms.map((m) => Object.assign({}, m, { pat: null }))), verge: p.src.verge } }, cam)).rgb, B = new Float32Array(S.length);
+      for (let i = 0; i < S.length; i++) B[i] = S[i] - A[i];
+      layers.push({ pat: ms[0].pat, B });
+    }
+    return { A, B: layers.length ? layers[0].B : null, pat: layers.length ? layers[0].pat : null, layers, ms: Date.now() - t0 };
+  }
+  // the shader's per-pattern inputs at a drive distance: each pattern's phase is dist mod its own period
+  const patArgs = (g, dist) => g.layers.map((L) => ({ pat: L.pat, dist: dist % L.pat.period }));
+  // the objects at `dist`, rendered into rgba (4·w·h, cleared by the caller where it was written last); → rows [y0, y1) touched
+  /* Foliage and bark (reflectance ≤ 0.08, nothing retroreflective) the beam cannot reach is black on the screen whether or not it is traced, and the trees are what makes a
+   * dense roadside slow (huge ellipsoids). An upper bound of its luminance, from the beam's largest intensity over the object's bounding cube and the nearest distance, below
+   * 1e-3 cd/m² (a third of one 8-bit step at EV 0, black at any EV in range): not traced. Not with ambient light (it lights diffuse surfaces by itself).                       */
+  function dimFoliage(p) {
+    if (p.look && p.look.ambient > 0) return null;
+    return (n) => {
+      if (n.cls !== 'veg') return false;
+      D.boundOf(n); const b = n.bs, R = b[3], rho = typeof n.mat === 'string' && D.MAT_DEF[n.mat] ? Math.max(...D.MAT_DEF[n.mat].rho, 0.08) : 0.08; let I = 0;     // (birch bark reflects 0.45, not 0.08)
+      for (const L of p.lamps) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+        D.hvFast(b[0] + i * R - L[0], b[1] + j * R - L[1], b[2] + k * R - L[2], p.conv || 'A'); const q = D.lutAt(p.lut, D.hv()[0], D.hv()[1]); if (q > I) I = q;
+      }
+      if (!(I > 0)) return true;
+      const d = Math.max(Math.hypot(b[0] - p.lamps[0][0], b[1] - p.lamps[0][1], b[2] - p.lamps[0][2]) - R, 0.5);
+      return 3 * p.lamps.length * rho / Math.PI * I / (d * d) < 1e-3;
+    };
+  }
+  // tileRow(ty) → true: trace only these 16-px tile rows (a worker's share); the rows come back with .trows = the tile rows that were traced
+  function objects(p, dist, rgba, ss, tauOf, tileRow, placed, t) {
+    const r = D.render(Object.assign({ ss: ss || 2, layer: 'objects', tight: true, rgba, tileRow, scene: { objects: placed || placedObjects(p, dist, t || 0, tauOf), markings: [], verge: p.src.verge } }, camOf(p)));
+    r.rows.trows = r.trows; r.rows.TS = r.TS; return r.rows;
+  }
+  // walkers and deer start to move when the car is ACT m from where they stood: act = id → the clock (s) at that moment. Pure state, so every thread that sees the same frames keeps the same copy
+  const tauFor = (act, t) => (id) => { const t0 = act.get(id); return t0 === undefined ? 0 : t - t0; };
+  // start the walkers and deer the car has come within ACT m of (the page does this once per frame and hands the result to every thread, so they all pose the same actor the same way)
+  function activate(src, dist, t, act) {
+    if (!src.chunk) return;
+    const k0 = Math.floor((dist - 6) / PERIOD);
+    for (let k = k0 - 1; k <= k0 + 1; k++) for (const a of src.chunk(k).actors) { const id = k + ':' + a.id; if (!act.has(id) && k * PERIOD + a.s0 - dist <= ACT) act.set(id, t); }
+  }
+  function pruneAct(act, dist) { if (act.size > 80) { const k0 = Math.floor((dist - 6) / PERIOD); for (const id of act.keys()) if (+id.split(':')[0] < k0 - 2) act.delete(id); } }
+  /* The object trace of one worker thread (js/drive-worker.js; the page can run one too, tests do). It rebuilds the scenery itself from parameters (materials are functions: they cannot cross postMessage),
+   * and for every frame traces its share of the picture: tile rows ty with ty % n === i, packed into one Float32Array (the rows of each traced tile row, in order). Same code as the page's own trace, so the pixels are the same. */
+  function tracer() {
+    let p = null, rgba = null, prev = [], cfgId = 0, seq = -1, placed = null;
+    return {
+      cfg(m) {
+        const q = m.p; p = Object.assign({}, q, { A: m.arc ? RF.Road.arc(m.arc.R, m.arc.dir) : null }); p.src = source(m.src[0], m.src[1], m.src[2], m.src[3], m.src[4]);
+        rgba = new Float32Array(4 * p.w * p.h); prev = []; cfgId = m.id; seq = -1; placed = null;
+      },
+      // job m: { seq, dist, t, ss, act (id, clock pairs), c, K (the tile rows ty % K === c), ret (a buffer to reuse), wid }
+      job(m) {
+        const t0 = performance.now(), W = p.w, H = p.h, TS = 16;
+        for (const ty of prev) rgba.fill(0, ty * TS * W * 4, Math.min(H, (ty + 1) * TS) * W * 4);
+        if (m.seq !== seq) { seq = m.seq; placed = placedObjects(p, m.dist, m.t, tauFor(new Map(m.act), m.t)); }          // the scenery of this frame, placed once for all this thread's jobs
+        const rows = objects(p, m.dist, rgba, m.ss, null, m.K > 1 ? (ty) => ty % m.K === m.c : null, placed), tr = rows.trows;
+        let len = 0; for (const ty of tr) len += (Math.min(H, (ty + 1) * TS) - ty * TS) * W * 4;
+        const f = m.ret && m.ret.byteLength >= len * 4 ? new Float32Array(m.ret) : new Float32Array(len); let off = 0;
+        for (const ty of tr) { const a = ty * TS * W * 4, b = Math.min(H, (ty + 1) * TS) * W * 4; f.set(rgba.subarray(a, b), off); off += b - a; }
+        prev = tr;
+        return { type: 'rows', seq: m.seq, cfg: cfgId, wid: m.wid, c: m.c, trows: tr, buf: f.buffer, len, ms: performance.now() - t0 };
+      },
+    };
+  }
+  // coverage of a pixel's footprint [s − h, s + h] by the stripe pattern at s + dist (drive.js covLon with the pattern shifted)
+  const stripe = (pat, s, h) => D.covLon(s, h, pat);
+  // the sum the shader computes, in plain JS: rgb (cd/m²) of the whole picture at `dist`. g = ground(p), rgba = objects(...)'s buffer
+  function composeCPU(p, g, rgba, dist) {
+    const w = p.w, h = p.h, tanH = Math.tan(p.hfov * Math.PI / 360), tanV = tanH * h / w, d0 = 2 * tanH / w, A = p.A, out = new Float32Array(3 * w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const q = y * w + x, u = (x + 0.5) / w * 2 - 1, v = 1 - (y + 0.5) / h * 2; const ks = [];
+      if (g.layers && g.layers.length) {
+        let dx = 1, dy = -u * tanH, dz = v * tanV; const il = 1 / Math.hypot(dx, dy, dz); dx *= il; dy *= il; dz *= il;
+        if (dz < -1e-6) {
+          const tg = -EYE[2] / dz, px = EYE[0] + tg * dx, py = EYE[1] + tg * dy, s = A ? A.frame(px, py).s : px, hl = Math.max(0.5 * tg * d0, 1e-4) / Math.max(-dz, 0.003);
+          for (const L of g.layers) ks.push(stripe(L.pat, s + dist, hl));
+        }
+      }
+      const cov = rgba ? rgba[4 * q + 3] : 0;
+      for (let c = 0; c < 3; c++) { let gr = g.A[3 * q + c]; for (let j = 0; j < ks.length; j++) gr += ks[j] * g.layers[j].B[3 * q + c]; out[3 * q + c] = (rgba ? rgba[4 * q + c] : 0) + (1 - cov) * gr; }
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- GPU
+  const VS = `#version 300 es
+void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+  const FS_COMPOSE = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+uniform sampler2D uA, uO; uniform highp sampler2DArray uB; uniform vec2 uSize; uniform vec3 uEye; uniform float uTanH, uTanV, uDelta0, uR, uSg, uTex, uTexDist, uLw, uVw; uniform int uNP; uniform vec4 uPat[4]; uniform float uPd[4];
+out vec4 o;
+float F(float x, vec4 pt) { float u = x - pt.x; float n = floor(u / pt.z); return n * pt.w + min(u - n * pt.z, pt.w); }
+// asphalt grain: value noise in road coordinates (s along, off across), three scales (15 cm, 60 cm, 2.4 m), each faded out where a pixel's footprint F (m) is as big as its cells: no shimmer, same mean
+float hsh(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vn(vec2 c, float N) { vec2 i = floor(c), f = fract(c); f = f * f * (3.0 - 2.0 * f); float x0 = mod(i.x, N), x1 = mod(i.x + 1.0, N);
+  return mix(mix(hsh(vec2(x0, i.y)), hsh(vec2(x1, i.y)), f.x), mix(hsh(vec2(x0, i.y + 1.0)), hsh(vec2(x1, i.y + 1.0)), f.x), f.y); }
+float grain(float s, float off, float F) {
+  float a = 1.0 - smoothstep(0.4, 1.2, F / 0.15), b = 1.0 - smoothstep(0.4, 1.2, F / 0.6), c = 1.0 - smoothstep(0.4, 1.2, F / 2.4);
+  return 0.45 * a * (vn(vec2(s / 0.15, off / 0.15), 512.0) * 2.0 - 1.0) + 0.35 * b * (vn(vec2(s / 0.6, off / 0.6), 128.0) * 2.0 - 1.0) + 0.2 * c * (vn(vec2(s / 2.4, off / 2.4), 32.0) * 2.0 - 1.0);
+}
+void main() {
+  ivec2 ip = ivec2(gl_FragCoord.xy); vec3 g = texelFetch(uA, ip, 0).rgb; vec4 ob = texelFetch(uO, ip, 0);
+  if (uNP > 0 || uTex > 0.0) {
+    float u = gl_FragCoord.x / uSize.x * 2.0 - 1.0, v = 1.0 - gl_FragCoord.y / uSize.y * 2.0;
+    vec3 d = normalize(vec3(1.0, -u * uTanH, v * uTanV));
+    if (d.z < -1e-6) {
+      float tg = -uEye.z / d.z; vec3 P = uEye + tg * d; float s = P.x, off = P.y;
+      if (uR > 0.0) { float ry = P.y - uSg * uR; s = atan(P.x, -uSg * ry) * uR; float rr = length(vec2(P.x, ry)); off = uSg > 0.0 ? uR - rr : rr - uR; }
+      float h = max(0.5 * tg * uDelta0, 1e-4) / max(-d.z, 0.003);
+      for (int k = 0; k < 4; k++) { if (k >= uNP) break; vec4 pt = uPat[k]; float sw = s + uPd[k], a = max(sw - h, pt.x), b = min(sw + h, pt.y); if (b > a) g += (F(b, pt) - F(a, pt)) / (2.0 * h) * texelFetch(uB, ivec3(ip, k), 0).rgb; }
+      if (uTex > 0.0 && off > -0.5 * uLw - uVw && off < 1.5 * uLw + uVw) g *= max(0.25, 1.0 + uTex * grain(s + uTexDist, off, h));
+    }
+  }
+  o = vec4(ob.rgb + (1.0 - ob.a) * g, 1.0);
+}`;
+  const FS_BRIGHT = `#version 300 es
+precision highp float; uniform sampler2D uT; uniform float uK; uniform vec2 uSize; out vec4 o;
+void main() { vec3 c = texture(uT, gl_FragCoord.xy / uSize).rgb * uK - 1.0; o = vec4(max(c, 0.0), 1.0); }`;
+  const FS_BLUR = `#version 300 es
+precision highp float; uniform sampler2D uT; uniform vec2 uSize, uDir; uniform int uRad; uniform float uScale; out vec4 o;
+void main() { vec2 uv = gl_FragCoord.xy / uSize; vec3 s = vec3(0.0); for (int i = -uRad; i <= uRad; i++) s += texture(uT, uv + float(i) * uDir / uSize).rgb; o = vec4(s / float(2 * uRad + 1) * uScale, 1.0); }`;
+  const FS_FINAL = `#version 300 es
+precision highp float; uniform sampler2D uHdr, uGlare; uniform vec2 uSize; uniform float uK, uFlip, uGl; out vec4 o;
+vec3 aces(vec3 x) { x = max(x, 0.0); return min((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 1.0); }
+vec3 srgb(vec3 c) { return mix(12.92 * c, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+void main() {
+  vec2 uv = gl_FragCoord.xy / uSize; uv.y = 1.0 - uv.y; if (uFlip > 0.5) uv.x = 1.0 - uv.x;
+  vec3 lin = texture(uHdr, uv).rgb * uK + (uGl > 0.0 ? texture(uGlare, uv).rgb : vec3(0.0));
+  o = vec4(srgb(aces(lin)), 1.0);
+}`;
+
+  function makeGL(canvas) {
+    const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
+    if (!gl || !gl.getExtension('EXT_color_buffer_float')) return null;
+    const prog = (fs) => {
+      const p = gl.createProgram();
+      for (const [t, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fs]]) { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('drive-anim shader: ' + gl.getShaderInfoLog(s)); gl.attachShader(p, s); }
+      gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('drive-anim link: ' + gl.getProgramInfoLog(p));
+      const u = {}; for (let i = 0, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i < n; i++) { const a = gl.getActiveUniform(p, i); u[a.name] = gl.getUniformLocation(p, a.name); }
+      return { p, u };
+    };
+    const P = { compose: prog(FS_COMPOSE), bright: prog(FS_BRIGHT), blur: prog(FS_BLUR), fin: prog(FS_FINAL) };
+    gl.bindVertexArray(gl.createVertexArray());
+    const T = {};                                         // name → { t, f, w, h }
+    const mk = (name, w, h, ifmt, filter) => {
+      if (T[name]) { gl.deleteTexture(T[name].t); gl.deleteFramebuffer(T[name].f); }
+      const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 1, ifmt, w, h);
+      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+      const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+      T[name] = { t, f, w, h }; return T[name];
+    };
+    const use = (prog_, uni) => { gl.useProgram(prog_.p); for (const k in uni) { const v = uni[k], l = prog_.u[k]; if (l === undefined || l === null) continue; if (Array.isArray(v)) { if (v.length === 2) gl.uniform2fv(l, v); else if (v.length === 3) gl.uniform3fv(l, v); else gl.uniform4fv(l, v); } else if (Number.isInteger(v) && k === 'uRad') gl.uniform1i(l, v); else gl.uniform1f(l, v); } };
+    const bindTex = (unit, name, loc) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, T[name].t); gl.uniform1i(loc, unit); };
+    const R = {
+      gl, W: 0, H: 0, cw: 0, ch: 0,
+      // allocate for a sim size and a canvas size
+      resize(W, H, cw, ch) {
+        R.cw = cw; R.ch = ch; if (W === R.W && H === R.H) return false;
+        R.W = W; R.H = H; const hw = Math.max(1, W >> 1), hh = Math.max(1, H >> 1);
+        mk('A', W, H, gl.RGBA16F, gl.NEAREST); R.BL = 0; mk('O', W, H, gl.RGBA32F, gl.NEAREST); mk('hdr', W, H, gl.RGBA16F, gl.LINEAR);
+        for (const n of ['src', 'p', 'q', 'acc']) mk(n, hw, hh, gl.RGBA16F, gl.LINEAR);
+        gl.bindTexture(gl.TEXTURE_2D, T.O.t); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, W, H, gl.RGBA, gl.FLOAT, new Float32Array(4 * W * H));
+        return true;
+      },
+      setGround(g) {
+        const up = (name, rgb) => {
+          const W = R.W, H = R.H, a = new Float32Array(4 * W * H); if (rgb) for (let i = 0, n = W * H; i < n; i++) { a[4 * i] = rgb[3 * i]; a[4 * i + 1] = rgb[3 * i + 1]; a[4 * i + 2] = rgb[3 * i + 2]; }
+          gl.bindTexture(gl.TEXTURE_2D, T[name].t); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, W, H, gl.RGBA, gl.FLOAT, a);
+        };
+        up('A', g.A);
+        const n = Math.max(1, g.layers ? g.layers.length : 0);          // the stripe layers: one array texture, a layer each
+        if (R.BL < n) { if (T.Bt) gl.deleteTexture(T.Bt); T.Bt = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D_ARRAY, T.Bt); gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA16F, R.W, R.H, n); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D_ARRAY, k, v); R.BL = n; }
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, T.Bt);
+        (g.layers || []).forEach((L, i) => { const W = R.W, H = R.H, a = new Float32Array(4 * W * H); for (let j = 0, m = W * H; j < m; j++) { a[4 * j] = L.B[3 * j]; a[4 * j + 1] = L.B[3 * j + 1]; a[4 * j + 2] = L.B[3 * j + 2]; } gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, W, H, 1, gl.RGBA, gl.FLOAT, a); });
+      },
+      // upload rows [y0, y1) of the object layer (rgba: Float32Array 4·W·H)
+      setObjects(rgba, y0, y1) {
+        if (y1 <= y0) return; gl.bindTexture(gl.TEXTURE_2D, T.O.t);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, y0, R.W, y1 - y0, gl.RGBA, gl.FLOAT, rgba.subarray(y0 * R.W * 4, y1 * R.W * 4));
+      },
+      /* f: { cam: { tanH, hfov }, dist, A (arc|null), pat, k (exposure), glare (strength), flip } */
+      draw(f) {
+        const W = R.W, H = R.H, hw = T.src.w, hh = T.src.h, tanH = Math.tan(f.hfov * Math.PI / 360), tanV = tanH * H / W;
+        gl.disable(gl.BLEND);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, T.hdr.f); gl.viewport(0, 0, W, H);
+        const pats = f.pats || [], U = P.compose.u;
+        use(P.compose, { uSize: [W, H], uEye: EYE, uTanH: tanH, uTanV: tanV, uDelta0: 2 * tanH / W, uR: f.A ? f.A.R : 0, uSg: f.A ? f.A.sg : 0, uTex: f.tex || 0, uTexDist: f.texDist || 0, uLw: f.lane || 3.5, uVw: f.vw || 1.6 });
+        gl.uniform1i(U.uNP, pats.length); const pa = new Float32Array(16), pd = new Float32Array(4); pats.forEach((q, k) => { pa.set([q.pat.s0, q.pat.s1, q.pat.period, q.pat.on], 4 * k); pd[k] = q.dist; }); gl.uniform4fv(U['uPat[0]'], pa); gl.uniform1fv(U['uPd[0]'], pd);
+        bindTex(0, 'A', P.compose.u.uA); bindTex(2, 'O', P.compose.u.uO); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D_ARRAY, T.Bt); gl.uniform1i(P.compose.u.uB, 1);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (f.glare > 0) {
+          gl.viewport(0, 0, hw, hh);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, T.src.f); use(P.bright, { uK: f.k, uSize: [hw, hh] }); bindTex(0, 'hdr', P.bright.u.uT); gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, T.acc.f); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+          const levels = [[Math.max(1, Math.round(W / 220)), 0.012], [Math.max(2, Math.round(W / 70)), 0.010], [Math.max(3, Math.round(W / 22)), 0.008]];
+          const pass = (src, dst, dx, dy, rad, scale, add) => {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, T[dst].f); if (add) { gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); } else gl.disable(gl.BLEND);
+            use(P.blur, { uSize: [hw, hh], uDir: [dx, dy], uRad: rad, uScale: scale }); bindTex(0, src, P.blur.u.uT); gl.drawArrays(gl.TRIANGLES, 0, 3);
+          };
+          for (const [r, wt] of levels) { const rh = Math.max(1, Math.round(r / 2)); pass('src', 'p', 1, 0, rh, 1, false); pass('p', 'q', 0, 1, rh, 1, false); pass('q', 'p', 1, 0, rh, 1, false); pass('p', 'acc', 0, 1, rh, f.glare * wt, true); }
+          gl.disable(gl.BLEND);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, R.cw, R.ch);
+        use(P.fin, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: f.glare > 0 ? 1 : 0 });
+        bindTex(0, 'hdr', P.fin.u.uHdr); bindTex(1, 'acc', P.fin.u.uGlare); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      },
+      // the HDR sim image back on the CPU (tests): Float32Array 4·W·H, row 0 = top
+      readHdr() { const a = new Float32Array(4 * R.W * R.H); gl.bindFramebuffer(gl.FRAMEBUFFER, T.hdr.f); gl.readPixels(0, 0, R.W, R.H, gl.RGBA, gl.FLOAT, a); return a; },
+      readCanvas() { const a = new Uint8Array(4 * R.cw * R.ch); gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.readPixels(0, 0, R.cw, R.ch, gl.RGBA, gl.UNSIGNED_BYTE, a); return a; },
+      sync() { gl.bindFramebuffer(gl.FRAMEBUFFER, null); const a = new Uint8Array(4); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, a); },     // waits for the GPU (benchmarks)
+    };
+    return R;
+  }
+
+  // ---------------------------------------------------------------- the view: state, canvas, loop
+  const V = { ui: null, cv: null, info: null, gl: null, canvas: null, pop: null, g: null, gkey: '', src: null, skey: '', lut: null, rgba: null, band: [0, 0], frames: 0, raf: 0, last: 0, times: [], cpu: { obj: 0, up: 0, gl: 0, n: 0 }, kAuto: null, why: '', act: new Map() };
+  const S = (ui) => ui.dvAnim || (ui.dvAnim = { view: 'still', playing: true, popout: false, dist: 0, total: 0, t: 0 });
+  const supported = (o) => !!ANIM_SCENES[o.scene];
+  const visible = () => {
+    const ui = V.ui; if (!ui || !V.canvas || !V.info || typeof document === 'undefined') return false;
+    if (document.visibilityState === 'hidden') return false;
+    if (!V.canvas.isConnected || !V.canvas.getClientRects().length) return false;          // collapsed pane, display: none (the canvas itself, not its parent)
+    return S(ui).popout || (ui.display === 'drive' && ui.store.scene.mode === 'D');
+  };
+
+  function size() {                                           // → { cssW, cssH, dpr, W, H } for the container the canvas lives in
+    const par = V.canvas.parentElement, bw = par.clientWidth, bh = par.clientHeight, dpr = Math.min(2, root.devicePixelRatio || 1);
+    const cssW = Math.max(16, Math.min(bw, bh * 16 / 9)), cssH = cssW * 9 / 16, W = Math.max(MIN_SIM, Math.min(V.info && HEAVY_SIM[V.info.o.scene] || MAX_SIM, Math.round(cssW * dpr))) & ~1,       // the forest and the city fill the whole picture with objects: their trace is capped lower (the canvas is the same size, bilinear up)
+       H = Math.round(W * 9 / 16) & ~1;
+    return { cssW, cssH, dpr, W, H, left: (bw - cssW) / 2, top: (bh - cssH) / 2 };
+  }
+  function ensureCanvas() {
+    if (V.canvas) return true;
+    const c = document.createElement('canvas'); c.className = 'drive-gl'; c.setAttribute('aria-label', 'Animated drive view'); c.setAttribute('role', 'img');
+    V.gl = makeGL(c); if (!V.gl) { V.why = 'WebGL2 with float render targets is not available here'; return false; }
+    V.canvas = c; return true;
+  }
+  const info = () => V.info;
+  // everything the picture depends on except the scenery classes and the car's position
+  function prepare(sz) {
+    const I = info(), o = I.o, W = sz.W, H = sz.H, key = JSON.stringify([I.groundKey, W, H, I.us && o.cline === 'broken']);
+    const skey = JSON.stringify([o.scene, I.rd.laneDrive, I.us, o.people, o.animals, o.signs, o.posts, o.veg, o.obstacle, o.rpm, o.wild, o.seed, o.density, o.cline]), tkey = JSON.stringify([skey, o.oncoming, o.preceding, o.onKcd, o.trafficDensity]);
+    if (V.skey !== tkey || !V.src) { if (V.akey !== skey) V.act.clear(); V.akey = skey; V.srcArgs = [o.scene, I.rd.laneDrive, I.us, { people: o.people, animals: o.animals, signs: o.signs, posts: o.posts, veg: o.veg, obstacle: o.obstacle, rpm: o.rpm }, { wild: !!o.wild, seed: o.seed, density: o.density, cline: o.cline, oncoming: o.oncoming, preceding: o.preceding, onKcd: o.onKcd, trafficDensity: o.trafficDensity }]; V.src = source.apply(null, V.srcArgs); V.skey = tkey; }
+    const fkey = JSON.stringify([o.scene, o.seed, o.trafficDensity]);
+    if (V.fkey !== fkey) { V.flash = flashState(); V.fkey = fkey; }
+    V.p = { w: W, h: H, hfov: o.fov, lamps: I.rd.mdl.lamps, lut: I.lut(), conv: I.conv, A: I.A, lane: I.rd.laneDrive, look: { wet: o.wet, RL: o.RL / 1000, ambient: o.ambient }, src: V.src };
+    if (V.gkey !== key || V.rdRef !== I.rd) {
+      V.g = ground(V.p); V.gkey = key; V.rdRef = I.rd; V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr)); V.gl.setGround(V.g);
+      V.rgba = new Float32Array(4 * W * H); V.band = [0, H];                    // the object texture may hold an older picture: the next frame rewrites all of it
+    }
+    V.gl.resize(W, H, Math.round(sz.cssW * sz.dpr), Math.round(sz.cssH * sz.dpr));
+  }
+  function exposure() {
+    const I = info(), o = I.o;
+    if (o.expMode === 'auto' && V.kAuto) return V.kAuto;
+    return Math.pow(2, o.ev) / D.L_REF;
+  }
+  const ssNow = () => V.pinSS || (V.p.w > 1100 ? 1 : (V.ss || 2));
+  // samples per pixel for the objects: 2×2 where it is cheap; one while a big object is close (the cost is its area) and until things are calm again. ms = what the last frame's trace took
+  function adaptSS(ms) {
+    V.avg = V.avg === undefined ? ms : V.avg * 0.9 + ms * 0.1;       // a smoothed cost: one slow frame (a big object passing) must not drop the edges to hard 1-sample for a long while
+    if (V.p.w <= 1100) { if ((V.ss || 2) === 2 && V.avg > 18) { V.ss = 1; V.calm = 0; } else if (V.ss === 1 && V.avg < 8) { if (++V.calm > 20) V.ss = 2; } else V.calm = 0; }
+  }
+  // one frame at S.dist
+  function frame() {
+    const ui = V.ui, st = S(ui), I = info(), o = I.o, t0 = performance.now(), W = V.p.w, pb = V.band, had = pb[1] > pb[0];
+    if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are traced
+    pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
+    const rows = objects(V.p, st.dist, V.rgba, ssNow(), tauFor(V.act, st.t), null, null, st.t);
+    const t1 = performance.now();
+    adaptSS(t1 - t0);
+    V.gl.setObjects(V.rgba, had ? Math.min(pb[0], rows[0]) : rows[0], had ? Math.max(pb[1], rows[1]) : rows[1]); V.band = rows;      // upload the rows either frame touched
+    const t2 = performance.now();
+    V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, st.dist), A: I.A, k: exposure(), glare: +o.glare || 0, flip: I.mirrored, tex: o.tex ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane });
+    const t3 = performance.now(), c = V.cpu; c.obj += t1 - t0; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(t1 - t0); if (V.ring.length > 600) V.ring.shift();
+    flashLabel(st.dist, st.t); ui.dvAnimFrames = V.frames;
+  }
+
+  // ---------------------------------------------------------------- the object trace on worker threads
+  /* The trace is the whole cost of a frame (the GPU passes and the upload are < 1 ms), and every pixel is independent: n workers (js/drive-worker.js) each trace the tile rows ty % n === i of the same frame and send them
+   * back as one packed Float32Array (transferred, and returned to them with the next request, so nothing is allocated per frame). The page assembles the rows, uploads the touched band and draws with the dist the frame
+   * was traced at, so the objects, the dashes and the grain are always the same instant. One frame in flight at a time. Off (the "threads" switch), no Worker (file://), or a worker that fails: the page traces itself, as before.  */
+  const Wk = { list: [], cfgKey: '', lut: null, cfgId: 0, seq: 0, busy: null, failed: '', pool: [], forced: 0, afterFrame: null };
+  const nWorkers = () => Wk.forced || Math.max(1, Math.min(6, ((root.navigator && root.navigator.hardwareConcurrency) || 4) - 2));
+  function killWorkers() { for (const w of Wk.list) w.terminate(); Wk.list = []; Wk.cfgKey = ''; Wk.lut = null; Wk.busy = null; Wk.pool = []; }
+  function failWorkers(why) { killWorkers(); Wk.failed = String(why || 'worker error'); V.why = 'worker threads unavailable (' + Wk.failed.split('\n')[0].slice(0, 120) + '): the page traces the objects itself'; if (V.ui) { V.last = 0; if (V.info && V.bar) labels(V.ui); go(); } }
+  // true when this frame is traced on workers (they are started, or stopped, to match the switch)
+  function mt() {
+    const want = !Wk.failed && typeof Worker !== 'undefined' && !!V.info && V.info.o.mt !== false && Wk.forced !== -1, n = nWorkers();
+    if (!want) { if (Wk.list.length) killWorkers(); return false; }
+    if (Wk.list.length !== n) {
+      killWorkers();
+      try { for (let i = 0; i < n; i++) { const w = new Worker('js/drive-worker.js'); w.onmessage = (e) => onWorker(e.data); w.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); failWorkers(e && e.message); }; Wk.list.push(w); } }
+      catch (e) { failWorkers(e && e.message); return false; }
+    }
+    return true;
+  }
+  // tell the workers what the picture is made of (when that changes): the scenery's recipe, the camera, the beam
+  function workerCfg() {
+    const I = info(), p = V.p, key = JSON.stringify([V.skey, p.w, p.h, p.hfov, p.lane, p.conv, p.lamps, p.look, I.A && [I.A.R, I.A.dir]]);
+    if (key === Wk.cfgKey && Wk.lut === p.lut) return;
+    Wk.cfgKey = key; Wk.lut = p.lut; Wk.cfgId++; Wk.busy = null;           // a frame in flight belongs to the old picture: dropped when it arrives
+    const m = { type: 'cfg', id: Wk.cfgId, p: { w: p.w, h: p.h, hfov: p.hfov, lamps: p.lamps, lut: p.lut, conv: p.conv, lane: p.lane, look: p.look }, arc: I.A ? { R: I.A.R, dir: I.A.dir } : null, src: V.srcArgs };
+    for (const w of Wk.list) w.postMessage(m);
+  }
+  // the frame is cut into K jobs (tile rows ty % K === c); every worker gets one, and a worker that finishes gets the next: threads that run slower (efficiency cores, a busy machine) just do fewer
+  function sendFrame() {
+    const st = S(V.ui), n = Wk.list.length, ss = ssNow(), th = Math.ceil(V.p.h / 16), K = n > 1 ? Math.min(th, 4 * n) : 1; Wk.seq++;
+    pruneAct(V.act, st.dist); activate(V.src, st.dist, st.t, V.act);
+    const b = Wk.busy = { seq: Wk.seq, dist: st.dist, t: st.t, sent: performance.now(), done: 0, next: 0, K, ss, act: [...V.act], parts: [] };
+    for (let i = 0; i < n && b.next < K; i++) sendJob(i, b);
+  }
+  function sendJob(i, b) { const ret = Wk.pool.pop(); Wk.list[i].postMessage({ type: 'job', seq: b.seq, dist: b.dist, t: b.t, ss: b.ss, act: b.act, c: b.next++, K: b.K, ret, wid: i }, ret ? [ret] : []); }
+  function onWorker(d) {
+    if (!d) return;
+    if (d.type === 'err') { failWorkers(d.message); return; }
+    if (d.type !== 'rows') return;
+    const b = Wk.busy; if (!b || d.seq !== b.seq || d.cfg !== Wk.cfgId) { Wk.pool.push(d.buf); return; }       // an old picture
+    b.parts.push(d); b.done++;
+    if (b.next < b.K) sendJob(d.wid, b);
+    if (b.done === b.K) finishFrame(b);
+  }
+  // all the rows are in: assemble, upload what was touched, draw at the dist they were traced at
+  function finishFrame(b) {
+    Wk.busy = null; if (!V.gl || !V.canvas || !V.rgba || !V.ui) { for (const d of b.parts) Wk.pool.push(d.buf); return; }
+    const I = info(), o = I.o, W = V.p.w, H = V.p.h, TS = 16, t1 = performance.now(), pb = V.band, had = pb[1] > pb[0]; let y0 = H, y1 = 0;
+    if (had) V.rgba.fill(0, pb[0] * W * 4, pb[1] * W * 4);                       // last frame's rows go back to zero, then this frame's are copied in
+    for (const d of b.parts) {
+      const f = new Float32Array(d.buf, 0, d.len); let off = 0;
+      for (const ty of d.trows) { const a = ty * TS, e = Math.min(H, a + TS), n = (e - a) * W * 4; V.rgba.set(f.subarray(off, off + n), a * W * 4); off += n; if (a < y0) y0 = a; if (e > y1) y1 = e; }
+      Wk.pool.push(d.buf);
+    }
+    if (y1 <= y0) { y0 = 0; y1 = 0; }
+    V.gl.setObjects(V.rgba, had ? Math.min(pb[0], y0) : y0, had ? Math.max(pb[1], y1) : y1); V.band = [y0, y1];
+    const t2 = performance.now();
+    V.gl.draw({ hfov: o.fov, pats: patArgs(V.g, b.dist), A: I.A, k: exposure(), glare: +o.glare || 0, flip: I.mirrored, tex: o.tex ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
+    const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
+    c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
+    V.times.push(t3); if (V.times.length > 300) V.times.shift();
+    adaptSS(rt); flashLabel(b.dist, b.t); V.ui.dvAnimFrames = V.frames;
+    if (Wk.afterFrame) Wk.afterFrame(); else pump(t3, 14);
+  }
+  // advance the drive to `now` and ask for the next frame, unless one is out (called by the display's frame callback, and by a finished frame when the display has already waited `minGap` ms)
+  function pump(now, minGap) {
+    const ui = V.ui, st = S(ui); if (!V.raf || Wk.busy || !st.playing || now - (Wk.sentAt || 0) < minGap) return;
+    const dt = V.last ? Math.min(0.1, (now - V.last) / 1000) : 0; V.last = now; Wk.sentAt = now;
+    const v = (+info().o.speed || 50) / 3.6; st.total += v * dt; st.dist += v * dt; st.t += dt; sendFrame();
+  }
+  // n frames back to back on the workers (no display pacing), waiting for each: → a promise of { msPerFrame (fresh frames), ... stats }
+  function benchMT(n) {
+    return new Promise((resolve) => {
+      const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, was = st.playing, flashes = V.flash; if (!mt()) { resolve(null); return; }
+      st.playing = false; V.flash = flashState(); stop(); workerCfg(); resetStats(); const t0 = performance.now(); let i = 0, mid = 0;
+      const step = () => {
+        if (i === Math.floor(n / 5)) { resetStats(); mid = performance.now(); }       // the first fifth is warm-up (worker start, JIT)
+        if (i++ >= n) { V.gl.sync(); const ms = (performance.now() - mid) / (n - Math.floor(n / 5)); Wk.afterFrame = null; st.dist = d0; st.t = t0s; st.playing = was; V.flash = flashes; flashText(); resolve(Object.assign({ n, msPerFrame: ms, workers: Wk.list.length }, stats())); return; }
+        st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); sendFrame();
+      };
+      Wk.afterFrame = step; step(); void t0;
+    });
+  }
+  // one frame on the workers at a given dist (tests): → a promise, true when it was drawn
+  function frameMT(dist, t) { return new Promise((res) => { if (!mt()) { res(false); return; } workerCfg(); const st = S(V.ui); st.dist = dist; if (t !== undefined) st.t = t; Wk.afterFrame = () => { Wk.afterFrame = null; res(true); }; sendFrame(); }); }
+  function layout() {
+    const sz = size(), cs = V.canvas.style, cw = Math.round(sz.cssW * sz.dpr), ch = Math.round(sz.cssH * sz.dpr);
+    if (V.canvas.width !== cw || V.canvas.height !== ch) { V.canvas.width = cw; V.canvas.height = ch; }
+    cs.left = sz.left + 'px'; cs.top = sz.top + 'px'; cs.width = sz.cssW + 'px'; cs.height = sz.cssH + 'px'; return sz;
+  }
+  // the large view belongs to the Spec Result → Drive view: leave the mode or the display and it goes
+  const popValid = (ui) => ui.store && ui.store.scene.mode === 'D' && ui.display === 'drive';
+  function tick(t) {
+    V.raf = 0; const ui = V.ui, st = S(ui);
+    if (st.popout && !popValid(ui)) { closePop(ui); return; }
+    if (!visible() || !st.playing || !(st.view === 'anim' || st.popout)) { V.suspended = true; return; }
+    if (mt()) { workerCfg(); V.raf = requestAnimationFrame(tick); pump(t, 0); return; }
+    const dt = V.last ? Math.min(0.1, (t - V.last) / 1000) : 0; V.last = t;
+    const v = (+info().o.speed || 50) / 3.6; st.total += v * dt; st.dist += v * dt; st.t += dt;
+    V.times.push(t); if (V.times.length > 300) V.times.shift();
+    frame(); V.raf = requestAnimationFrame(tick);
+  }
+  function stop() { if (V.raf) { cancelAnimationFrame(V.raf); V.raf = 0; } V.last = 0; }
+  function go() { if (!V.raf && V.gl && visible() && S(V.ui).playing) { V.last = 0; V.raf = requestAnimationFrame(tick); } }
+
+  // ---------------------------------------------------------------- the controls
+  const E = (tag, attrs, ...kids) => { const e = document.createElement(tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); e.append(...kids); return e; };
+  function bars(ui, setDV) {
+    if (V.bar) return V.bar;
+    const st = S(ui), bar = E('div', { class: 'drive-anim-tools', 'data-anim': 'bar' }), btn = (k, title, fn, txt) => { const b = E('button', { type: 'button', class: 'toggle', 'data-anim': k, title }, txt || ''); b.addEventListener('click', fn); bar.append(b); return b; };
+    btn('play', 'Play / pause the drive', () => { st.playing = !st.playing; if (st.playing) { if (st.view !== 'anim') st.view = 'anim'; } ui.redrawSpec(); });
+    const sp = E('input', { type: 'range', min: 5, max: 130, step: 5, 'data-anim': 'speed', 'aria-label': 'Speed (km/h)', title: 'Speed of the drive' }); sp.addEventListener('input', () => { setDV(ui, 'speed', +sp.value, true); lab.textContent = sp.value + ' km/h'; });
+    const lab = E('span', { class: 'anim-speed', 'data-anim': 'speedlab' }); bar.append(sp, lab);
+    for (const [k, txt, title] of CLASSES) btn('c-' + k, title, () => setDV(ui, k, !info().o[k]), txt);
+    // random scenery: the seed (same seed = same road), how dense, and the US centre line (double solid yellow, or the broken line of a passing zone)
+    const sd = E('input', { type: 'number', min: 0, max: 99999, step: 1, 'data-anim': 'seed', 'aria-label': 'Scenery seed', title: 'Seed of the random scenery: the same number gives the same road', class: 'anim-seed' }); sd.addEventListener('change', () => setDV(ui, 'seed', Math.max(0, Math.min(99999, Math.round(+sd.value || 0)))));
+    const dice = btn('dice', 'A new random seed', () => setDV(ui, 'seed', (Date.now() * 2654435761 >>> 0) % 100000), '⚄');
+    const dn = E('input', { type: 'range', min: 0.5, max: 3, step: 0.5, 'data-anim': 'density', 'aria-label': 'Scenery density', title: 'How much roadside scenery (1 = about what the still view has)' }); dn.addEventListener('change', () => setDV(ui, 'density', +dn.value));
+    btn('cline', 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)', () => setDV(ui, 'cline', info().o.cline === 'broken' ? 'solid' : 'broken'), 'centre');
+    bar.append(sd, dice, dn);
+    const td = E('input', { type: 'range', min: 0, max: 3, step: 0.5, 'data-anim': 'traffic-density', 'aria-label': 'Traffic density', title: 'Cars per 300 m in each enabled lane. Oncoming: 50 km/h; preceding: 40 km/h.' }); td.addEventListener('change', () => setDV(ui, 'trafficDensity', +td.value));
+    V.flashLab = E('span', { class: 'anim-speed', 'data-anim': 'flashes' });
+    bar.append(E('span', { class: 'anim-speed' }, 'traffic'), td, V.flashLab);
+    btn('reset-flashes', 'Start the count again (each driver counts once above 1 lx at their eye)', () => { V.flash = flashState(); V.flashLab.textContent = 'oncoming drivers above 1 lx: 0'; }, 'reset count');
+    V.bar = bar; return bar;
+  }
+  function flashText() { if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0); }
+  function flashLabel(dist, t) {
+    if (!V.flash) V.flash = flashState();
+    countFlashes(V.flash, V.p, dist, t); flashText();
+  }
+  function topButtons(ui, tb, setDV) {                         // 'animate' and 'popout' go into the existing toolbar
+    if (tb.querySelector('[data-anim="animate"]')) return;
+    const a = E('button', { type: 'button', class: 'toggle', 'data-anim': 'animate', title: 'Animate: drive down the road. Off = the still picture.' }, 'animate'), p = E('button', { type: 'button', class: 'toggle', 'data-anim': 'popout', title: 'Show the drive view large, over the whole page except the sidebar (Esc closes)' }, '⤢ large');
+    a.addEventListener('click', () => { const st = S(ui); st.view = st.view === 'anim' ? 'still' : 'anim'; st.playing = true; ui.redrawSpec(); });
+    p.addEventListener('click', () => { S(ui).popout ? closePop(ui) : openPop(ui); });
+    tb.append(a, p);
+  }
+  function labels(ui) {
+    const st = S(ui), I = info(), o = I.o, sup = supported(o), q = (s) => document.querySelectorAll(s);
+    for (const b of q('[data-anim="animate"]')) { b.setAttribute('aria-pressed', String(st.view === 'anim')); b.disabled = !sup; b.title = sup ? 'Animate: drive down the road. Off = the still picture.' : 'Animation covers the open road, the forest road and the city street; the intersection stays still (its ground has about twenty patterned markings, a cross street and gaps in the centre line)'; }
+    for (const b of q('[data-anim="popout"]')) { b.setAttribute('aria-pressed', String(st.popout)); b.disabled = !sup; b.textContent = st.popout ? '✕ close' : '⤢ large'; }
+    if (!V.bar) return;
+    V.bar.hidden = !(sup && (st.view === 'anim' || st.popout));
+    const run = st.playing && (st.view === 'anim' || st.popout), pb = V.bar.querySelector('[data-anim="play"]'); pb.textContent = run ? '⏸ pause' : '▶ play'; pb.setAttribute('aria-pressed', String(run));
+    V.bar.querySelector('[data-anim="speed"]').value = o.speed; V.bar.querySelector('[data-anim="speedlab"]').textContent = o.speed + ' km/h';
+    for (const [k] of CLASSES) { const b = V.bar.querySelector('[data-anim="c-' + k + '"]'); b.setAttribute('aria-pressed', String(!!o[k])); }
+    V.bar.querySelector('[data-anim="traffic-density"]').value = o.trafficDensity === undefined ? 1 : o.trafficDensity;
+    if (V.flashLab) V.flashLab.textContent = 'oncoming drivers above 1 lx: ' + (V.flash ? V.flash.n : 0);
+    const trafficOn = o.oncoming || o.preceding;
+    const wd = o.wild && o.scene === 'road';        // the random scenery is the open road's; forest and city are fixed scenes that repeat every lap
+    V.bar.querySelector('[data-anim="seed"]').value = o.seed; V.bar.querySelector('[data-anim="seed"]').disabled = !(wd || trafficOn); V.bar.querySelector('[data-anim="dice"]').disabled = !(wd || trafficOn);
+    V.bar.querySelector('[data-anim="density"]').value = o.density; V.bar.querySelector('[data-anim="density"]').disabled = !wd;
+    const cl = V.bar.querySelector('[data-anim="cline"]'); cl.disabled = !I.us; cl.textContent = o.cline === 'broken' && I.us ? 'centre: broken' : 'centre: solid'; cl.setAttribute('aria-pressed', String(o.cline === 'broken' && I.us));
+    cl.title = I.us ? 'US roads: centre line double solid yellow (no passing) or one broken yellow line (passing zone: 3 m line, 9 m gap)' : 'Only on the US presets (the EU presets already have a dashed centre line)';
+    for (const k of ['rpm']) V.bar.querySelector('[data-anim="c-' + k + '"]').disabled = !wd;
+    const mb = V.bar.querySelector('[data-anim="c-mt"]'); mb.disabled = typeof Worker === 'undefined' || !!Wk.failed; if (Wk.failed) mb.title = V.why;
+  }
+
+  // ---------------------------------------------------------------- popout
+  function openPop(ui) {
+    const st = S(ui), host = document.querySelector('.work-col'); if (!host || st.popout) return;
+    const pop = E('div', { class: 'drive-popout', role: 'dialog', 'aria-label': 'Drive view, large' }), head = E('div', { class: 'dp-head' }, E('strong', {}, 'Drive view')), stage = E('div', { class: 'dp-stage' });
+    const close = E('button', { type: 'button', class: 'dp-close', title: 'Close (Esc)' }, '✕ Close'); close.addEventListener('click', () => closePop(ui)); head.append(E('span', { class: 'dp-hint' }, 'Esc closes'), close);
+    pop.append(head, stage); host.append(pop); V.pop = pop; V.popStage = stage; V.home = V.canvas ? V.canvas.parentElement : null;
+    st.popout = true; if (st.view !== 'anim') st.playing = false;          // opened from the still view: the same picture, large, paused
+    V.onKey = (e) => { if (e.key === 'Escape' && S(ui).popout) { e.preventDefault(); e.stopPropagation(); closePop(ui); } };
+    document.addEventListener('keydown', V.onKey, true);
+    if (root.ResizeObserver) { V.ro = new ResizeObserver(() => { if (S(ui).popout) { ui.redrawSpec(); } }); V.ro.observe(stage); }
+    mount(ui); close.focus(); ui.redrawSpec();
+  }
+  function closePop(ui) {
+    const st = S(ui); if (!st.popout) return; st.popout = false;
+    document.removeEventListener('keydown', V.onKey, true); if (V.ro) { V.ro.disconnect(); V.ro = null; }
+    if (V.pop) { V.pop.remove(); V.pop = null; V.popStage = null; }
+    if (st.view !== 'anim') st.playing = true;
+    mount(ui); const b = document.querySelector('[data-anim="popout"]'); if (b) b.focus(); ui.redrawSpec();
+  }
+  // the canvas and the tool bars live in the popout while it is open, in the pane otherwise
+  function mount(ui) {
+    const st = S(ui), host = st.popout && V.popStage ? V.popStage : (V.cv ? V.cv.parentElement : null); if (!host) return;
+    for (const e of [V.canvas, ui.driveBar, V.bar]) if (e && e.parentElement !== host) host.append(e);
+  }
+
+  // ---------------------------------------------------------------- hook from drawDrive
+  /* I: { rd, o (dvOpts), A (arc|null), mirrored, us, conv, lut () → the beam lookup, tm (the still picture's tone map), groundKey, setDV, toolbar } */
+  function sync(ui, cv, I) {
+    V.ui = ui; V.cv = cv; V.info = I; const st = S(ui);
+    if (st.popout && !popValid(ui)) closePop(ui);
+    topButtons(ui, I.toolbar, I.setDV); bars(ui, I.setDV);
+    if (!V.bar.parentElement) cv.parentElement.append(V.bar);
+    if (!st.popout) mount(ui);
+    if (!supported(I.o)) { if (st.popout) closePop(ui); st.view = 'still'; }
+    labels(ui);
+    const want = supported(I.o) && (st.view === 'anim' || st.popout);
+    if (!want) { stop(); killWorkers(); if (V.canvas) V.canvas.hidden = true; return; }
+    if (!ensureCanvas()) { st.view = 'still'; st.popout = false; labels(ui); return; }
+    V.canvas.hidden = false; mount(ui);
+    if (!visible()) { stop(); return; }
+    const sz = layout();
+    if (I.o.expMode === 'auto' && I.tm) { const ak = I.groundKey + '|' + I.o.ev; if (!V.kAuto || V.autoKey !== ak) { V.kAuto = I.tm.k; V.autoKey = ak; } } else V.kAuto = null;      // auto exposure would flicker as the scene moves: frozen at the still picture's
+    prepare(sz);
+    if (st.playing && mt()) workerCfg();      // playing on the workers: the loop draws the next frame
+    else frame();
+    if (st.playing) go(); else stop();
+  }
+  // a hidden tab stops the loop; showing it again redraws (which restarts it)
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (V.ui) { if (document.visibilityState === 'hidden') stop(); else if (V.info) { if (S(V.ui).popout && !popValid(V.ui)) closePop(V.ui); else V.ui.redrawSpec(); } } });
+
+  // ---------------------------------------------------------------- numbers for tests and the report
+  const pct = (a, q) => { if (!a || !a.length) return 0; const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * q))]; };
+  function stats() {
+    const t = V.times, iv = []; for (let i = 1; i < t.length; i++) iv.push(t[i] - t[i - 1]); iv.sort((a, b) => a - b);
+    const med = iv.length ? iv[iv.length >> 1] : 0, c = V.cpu;
+    return { frames: V.frames, running: !!V.raf, rafMedianMs: med, fps: med ? 1000 / med : 0, p95Ms: iv.length ? iv[Math.floor(iv.length * 0.95)] : 0, cpuObjMs: c.n ? c.obj / c.n : 0, cpuUploadMs: c.n ? c.up / c.n : 0, cpuGlMs: c.n ? c.gl / c.n : 0, sim: V.p && [V.p.w, V.p.h], canvasPx: V.gl && [V.gl.cw, V.gl.ch], groundMs: V.g && V.g.ms, objP95Ms: pct(V.ring, 0.95), objMaxMs: pct(V.ring, 1), workers: Wk.list.length, mtFail: Wk.failed, ss: V.pinSS || (V.p && V.p.w > 1100 ? 1 : (V.ss || 2)) };
+  }
+  function resetStats() { V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
+  // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
+  function bench(n) {
+    const ui = V.ui, st = S(ui), d0 = st.dist, t0s = st.t, flashes = V.flash; V.flash = flashState(); resetStats(); const t0 = performance.now();
+    for (let i = 0; i < n; i++) { st.dist += 0.5; st.t += 0.5 / ((+info().o.speed || 50) / 3.6); frame(); }
+    V.gl.sync(); const ms = (performance.now() - t0) / n; st.dist = d0; st.t = t0s; V.flash = flashes; flashText(); return Object.assign({ n, msPerFrame: ms }, stats());
+  }
+  RF.DriveAnim = { TRAFFIC_SPEED, trafficCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, bench, benchMT, closePop, openPop,
+    // test hooks
+    _: { V, S, Wk, frame, frameMT, mt, size, prepare, exposure, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
+})(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -15,12 +15,13 @@ const scene = fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [], ok = (name, pass, detail) => { checks.push(!!pass); console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); };
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex').slice(0, 16);
+// RE-PIN 11-05 (frenchie, rule 23 — last lander of js/drive-three-halo.js): png frame pins re-measured on the settled post-crest-bounce tree 572c171c4191 (gpuq 29a8, halo 9555e4c4) after landings d280/4dcf/39b2; bin+cum table pins ALL UNCHANGED (wetBouncePlane is OFF by default, table bytes identical)
 const PINS = {
 // RE-PIN 11-03 (murchison halo/cone sweep, rule 23): cum + png pins, bin pins ALL UNCHANGED (raw binned table identical - the change is localised to the cumulative stage: cum = prefix(bin), so identical bin with moved cum means the prefix pass/its inputs changed). Held at the 10-29 UI re-baseline (header: "the halo tables (bin, cum) still match"), first failing in the 11-03 approval run; values byte-identical across Claude's 11-03b list and my run (stable). Candidate for the cum move: the P3/haloMoment work landed in that window and touched cumMat/TCUM (qwen's REVIEW-haloMoment documents TCUM's alpha writes) - named as candidate, exact line-level proof NOT done (no base copy of drive-three-halo.js). pngs: equal/flat cross-agree with TOUGE-HALO-TILT's re-pin (same shared frames).
   pass_dip_1332: { bin: 'f6361435f0dcf102', cum: 'b4302018526c98c0', png: 'b93567722039b519' },
-  pass_valley_1028: { bin: '7374948aa7eceeaa', cum: 'ecbf172544844ff8', png: '8e771a02be0f9756' },
-  pass_equal_1084: { bin: '897c6b545fd2b54a', cum: '250831d3b2ad2abd', png: 'd670356f99cff27c' },
-  flat_60: { bin: '48d585c9b5b15896', cum: 'f13463e4fae167ab', png: 'fb80f2cd8fdd49fc' },
+  pass_valley_1028: { bin: '7374948aa7eceeaa', cum: 'ecbf172544844ff8', png: '5eb29b135e8456d5' },
+  pass_equal_1084: { bin: '897c6b545fd2b54a', cum: '250831d3b2ad2abd', png: 'f79a184be4c99bc8' },
+  flat_60: { bin: '48d585c9b5b15896', cum: 'f13463e4fae167ab', png: '95fb939bc359f7e6' },
 };
 const POLAR_PNG = '33b9dd7651760cd6';   // dip frame with the HDX6 polar table (SL_HALO_POLAR); its bin table is not used, so only the frame is pinned
 const errors = [];

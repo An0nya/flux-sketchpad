@@ -329,6 +329,18 @@ vec4 roadFrame(vec2 p) {
 }
 // B14: marks is read only by surface() (ground and ribbon mains), so it is declared here, outside the shared prefix: object, mesh-car and table programs do not link it.
 uniform sampler2D marks;
+uniform int roadId;   // §road-surfaces: the road band's material id (0 = asphalt, default; le-chonk sets it from look.roadMat)
+uniform int surfKind;   // §road-surfaces s2 (le-chonk): 0=stock asphalt, 1=fresh, 2=old, 3=concrete, 4=tar-snake; set with roadId, no MAT ids in GLSL
+float surfH(float n) { return fract(sin(n * 127.1) * 43758.5453); }   // cheap cell hash
+vec3 surfTex(vec3 base, float s, float off, int kind) {   // §road-surfaces s2: procedural per-surface texture (ROAD-SURFACES.md §3 cheapest-first, no assets); stock (kind 0) never calls this
+  float n1 = surfH(floor(s * 2.4) * 57.3 + floor(off * 2.4) * 13.7);    // fine grain
+  float n2 = surfH(floor(s * 0.31) * 91.7 + floor(off * 0.31) * 41.3);   // coarse cells
+  vec3 r = base * (0.9 + 0.2 * n1);                                      // rho jitter ±10%
+  if (kind == 3) { float j = fract(s / 5.0), d = min(j, 1.0 - j) * 5.0, aa = fwidth(s); r *= 1.0 - 0.35 * smoothstep(aa * 2.0, aa * 0.5, d); }   // concrete transverse joints ~5 m
+  if (kind == 4) { float seed = surfH(floor(s / 150.0) * 31.7), ph = s * 0.021 + seed * 6.2831 + off * 0.045, d = abs(sin(ph)), aa = fwidth(ph); r *= 1.0 - 0.5 * smoothstep(0.12 + aa, 0.05, d); }   // tar snakes: sinuous dark bands, per-tile seed
+  if (kind == 2) { float aa = fwidth(n2); r *= 1.0 - 0.4 * smoothstep(0.72 + aa, 0.9, n2); }   // old-asphalt cracks: coarse noise threshold
+  return r;
+}
 vec3 surface(vec3 p,vec3 v,float t,float sinB) {
   vec4 f=roadFrame(p.xy); float s=f.x, off=f.y; vec2 normal=vec2(-f.w,f.z);
   float hw=max(t*tanH/size.x,1e-4), hl=hw/max(sinB,0.003), hh=max(length(v.xy),1e-12);
@@ -343,7 +355,8 @@ vec3 surface(vec3 p,vec3 v,float t,float sinB) {
   // route-parts-64 (frenchie 11-04): loop bound 16 -> 64
   for(int i=0;i<64;i++) { if(i>=nCross) break; vec4 c=crossing[i]; float a=longitudinal(s,hl,vec4(c.x,c.y,1e9,c.y-c.x))*coverage(off,ho,c.z,c.w); if(a>0.0) { r+=a*rest*shade(p,n,v,0); rest*=1.0-a; } }
   if(rest>0.0) {
-    r+=rest*coverage(off,ho,e0,e1)*shade(p,n,v,0);
+    if(roadId>0) r+=rest*coverage(off,ho,e0,e1)*surfTex(shade(p,n,v,roadId),s,off,surfKind);   // §road-surfaces s2: procedural surface texture, roadId>0 only
+    else r+=rest*coverage(off,ho,e0,e1)*shade(p,n,v,roadId);   // stock asphalt (roadId 0): the shipped s1 call, expression unchanged (GPU FP codegen is hash-sensitive)
     r+=rest*(coverage(off,ho,e0-vergeWidth,e0)+coverage(off,ho,e1,e1+vergeWidth))*shade(p,n,v,int(verge.x));
     r+=rest*(coverage(off,ho,-1e9,e0-vergeWidth)+coverage(off,ho,e1+vergeWidth,1e9))*shade(p,n,v,int(verge.y));
   }
@@ -456,6 +469,23 @@ export function withWetBounce(source) {
     .replace(DECL, DECL)
     .replace(LOOP, '      acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;\n    }\n' + block)
     .replace(SURF, surf);
+}
+// frenchie (crest Ladder A): plane-mirror variant of the withWetBounce text — input must already be withWetBounce-composed.
+// The beam read and the grazing Fresnel reflect about the per-lamp plane (lampM', lampN) instead of z -> -z.
+// With lampN = z-hat every replacement reduces exactly to the shipped text (d - 2*(d.z)*z-hat = (d.x,d.y,-d.z)).
+export function withBouncePlane(source) {
+  let t = source;
+  const UNI = 'uniform vec3 lampM[2]; uniform int nLampM; uniform float wetU;';
+  if (t.split(UNI).length !== 2) throw Error('withBouncePlane: lampM uniform decl not found once');
+  t = t.replace(UNI, UNI + ' uniform vec3 lampN[2];');
+  const pairs = [
+    ['float I=beamI(vec3(d.x,d.y,-d.z),lampM[i]);', 'float I=beamI(d-2.0*dot(d,lampN[i])*lampN[i],lampM[i]);'],
+    ['float I=intensity(vec3(d.x,d.y,-d.z))*fogT(rr)*w;', 'float I=intensity(d-2.0*dot(d,lampN[i])*lampN[i])*fogT(rr)*w;'],
+    ['abs(d.z)/r,5.0', 'abs(dot(d,lampN[i]))/r,5.0'],
+    ['abs(d.z)/rr,5.0', 'abs(dot(d,lampN[i]))/rr,5.0'],
+  ];
+  for (const [a, b] of pairs) { if (t.split(a).length !== 2) throw Error('withBouncePlane: anchor not found once: ' + a); t = t.replace(a, b); }
+  return t;
 }
 export function withLighting(source, atlas = false) {
   if (!source.includes('float intensity(vec3 d) {') || !source.includes('  for(int i=0;i<2;i++)')) throw Error('P2 shared shading prefix changed');

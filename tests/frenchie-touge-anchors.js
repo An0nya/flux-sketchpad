@@ -31,7 +31,7 @@ ok('shipped rep counts RegExp anchors correctly (capture groups do not inflate t
 // output pins: guarded passShader must compose byte-identical pass text to the shipped replace chain (sha256/16)
 const crypto = require('crypto'); const h = (t) => crypto.createHash('sha256').update(t).digest('hex').slice(0, 16);
 const S2 = esm('drive-three-shaders.js', null, ['withLighting', 'ground', 'tablePassSource']);
-const pins = { ground: '72927c1d679b1c18', lit: '15276097a5485a83', litAtlas: '665d9fe885009184', table: 'f81eb0a07e27c18e'   /* road-surfaces */ };
+const pins = { ground: 'ef338bc6aa661b50', lit: '7e695effa77aac2e', litAtlas: 'bbbb1d26ca253f36', table: 'f81eb0a07e27c18e'   /* road-surfaces-s2 re-pin v2 (le-chonk 11-05, rule 23): surfKind + surfTex move ground/lit/litAtlas pass text (table untouched); derived on the patched tree */   /* road-surfaces-s1 re-pin (le-chonk 11-05, rule 23): uniform int roadId + shade(...,roadId) move ground/lit/litAtlas pass text; table unchanged; derived by frenchie 03:55Z */   /* road-surfaces */ };
 ok('shipped passShader output pinned byte-identical on all four composed sources (ground/lit/litAtlas/table)', Object.entries(pins).every(([k, pin]) => {
   const src = { ground: S2.ground, lit: S2.withLighting(S2.ground, false), litAtlas: S2.withLighting(S2.ground, true), table: S2.tablePassSource(S2.withLighting(S2.ground, false)) }[k];
   return h(TG.passShader(src)) === pin;

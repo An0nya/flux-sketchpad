@@ -86,7 +86,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `view` | Camera and playback | 16 | 3 | 13 | 0 | 0 | 0 | 0 |
 | `road` | Road and route | 17 | 2 | 13 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 13 | 0 | 10 | 0 | 0 | 1 | 2 |
-| `air` | Fog and air beam | 15 | 0 | 3 | 10 | 1 | 0 | 1 |
+| `air` | Fog and air beam | 16 | 0 | 4 | 10 | 1 | 0 | 1 |
 | `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
 | `street-lamps` | Street lamps | 6 | 0 | 6 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 17 | 0 | 14 | 0 | 0 | 1 | 2 |
@@ -176,6 +176,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `scatterNearBias` | near-eye sampling | profile | advanced air beam | 0 | needs `air` [hidden], `tableModeHidden` [hidden] |
 | `scatterGain` | air beam gain | profile | advanced halo | 0.5 | needs `tableModeTip` [none] |
 | `airLevel` | air beam level | derived | More | (derived) | - |
+| `wetBouncePlane` | bounce off the local road plane (crest fix) | profile | More | false | needs `wetBounceOn` [disabled] |
 | `wetBounce` | wet-road bounce (own beam mirrored into the fog) | profile | More | false | - |
 
 #### Traffic halo (`halo`)

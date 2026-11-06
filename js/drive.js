@@ -88,6 +88,11 @@
     // M1: appended last so the ids of every material above do not move (drive.js:91-92 keys ids off Object.keys order).
     'marker-amber': { name: 'amber side marker', rho: [0.5, 0.3, 0.02], retro: [40, 22, 2] },
     'marker-red': { name: 'red side marker', rho: [0.2, 0.01, 0.01], retro: [120, 5, 3] },
+    // ROAD-SURFACES (Anya item 4, nemo/ROAD-SURFACES.md §7 RESOLVED set; appended so the ids above never move). Each carries s (surface smoothness, §2); absent s = today's implicit behaviour, so roadSurfaces OFF stays byte-identical.
+    'asphalt-fresh': { name: 'fresh asphalt', rho: [0.09, 0.09, 0.09], gloss: { a: 0.50, F0: 0.02 }, wet: { rho: [0.045, 0.045, 0.045], gloss: { a: 0.09, F0: 0.02 } }, streak: true, s: 0.35 },
+    'asphalt-old': { name: 'old asphalt', rho: [0.13, 0.13, 0.13], gloss: { a: 0.55, F0: 0.02 }, wet: { rho: [0.07, 0.07, 0.07], gloss: { a: 0.12, F0: 0.02 } }, streak: true, s: 0.22 },
+    'concrete-road': { name: 'concrete road', rho: [0.27, 0.27, 0.26], gloss: { a: 0.60, F0: 0.02 }, wet: { rho: [0.19, 0.19, 0.18], gloss: { a: 0.15, F0: 0.02 } }, streak: true, s: 0.30 },
+    'tar-snake': { name: 'tar crack seal', rho: [0.05, 0.05, 0.05], gloss: { a: 0.30, F0: 0.02 }, wet: { rho: [0.03, 0.03, 0.03], gloss: { a: 0.06, F0: 0.02 } }, streak: true, s: 0.50 },
   };
   const MAT_KEYS = Object.keys(MAT_DEF), MAT_ID = {};
   MAT_KEYS.forEach((k, i) => { MAT_ID[k] = i; });
@@ -97,6 +102,16 @@
   const OWN_STREAK_IDS = MAT_KEYS.filter((k) => MAT_DEF[k].streak).map((k) => MAT_ID[k]);
   // Road wetness W in 0..1: look.wetness when given, else the legacy boolean look.wet (true = 1, the old wet road).
   // Fog: look.visibility in metres; off = Infinity, null or 0. Koschmieder: extinction sigma = 3.912 / V per metre.
+// §road-surfaces s2 CPU twin of the GLSL surfTex (same laws, JS hash); stock asphalt / no roadMat returns 1 (shipped weight)
+const surfTexCPU = (s, off, mat) => {
+  if (!mat || mat === 'asphalt') return 1;
+  const h = (n) => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
+  let f = 0.9 + 0.2 * h(Math.floor(s * 2.4) * 57.3 + Math.floor(off * 2.4) * 13.7);
+  if (mat === 'concrete-road') { const j = (s / 5) % 1, d = Math.min(j, 1 - j) * 5; f *= 1 - 0.35 * (d < 0.05 ? 1 : d < 0.15 ? (0.15 - d) / 0.1 : 0); }   // concrete joints ~5 m
+  if (mat === 'tar-snake') { const seed = h(Math.floor(s / 150) * 31.7), d = Math.abs(Math.sin(s * 0.021 + seed * 6.2831 + off * 0.045)); f *= 1 - 0.5 * (d < 0.05 ? 1 : d < 0.12 ? (0.12 - d) / 0.07 : 0); }   // tar snakes, per-tile seed
+  if (mat === 'asphalt-old') { const n2 = h(Math.floor(s * 0.31) * 91.7 + Math.floor(off * 0.31) * 41.3); f *= 1 - 0.4 * Math.max(0, Math.min(1, (n2 - 0.72) / 0.18)); }   // old-asphalt cracks
+  return f;
+};
   function sigmaOf(look) { const v = look && +look.visibility; return v > 0 && v < Infinity ? 3.912 / v : 0; }
   // road-surfaces (Anya item 4, ROAD-SURFACES.md): per-surface smoothness s (spec §2); undefined s = today's implicit asphalt
   const SURF_S = { fresh: 0.35, old: 0.22, concrete: 0.30, 'tar-snake': 0.50 };
@@ -420,13 +435,13 @@
         if (m.retro) { const q = Ep * (rscale === undefined ? 1 : rscale) * (eyeFalloff ? Math.pow(NoL,eyeFalloff) : 1); r += m.retro[0] * q; g += m.retro[1] * q; b += m.retro[2] * q; }
       }
       // frenchie (wetBounce, 4-O ext B): the own lamps mirrored in the road plane also paint surfaces (the road itself is skipped by NoL<=0 — the mirror is under it)
-      const wb = o.look && o.look.wetBounce ? +o.look.wetness || 0 : 0;
+      const wb = o.look && o.look.wetBounce ? +o.look.wetness || 0 : 0, wbp2 = wbPlanesOf(o);   // frenchie (crest Ladder A)
       if (wb > 0) for (let i = 0; i < nl; i++) {
-        const L = lamps[i], dx = px - L[0], dy = py - L[1], dz = pz + L[2], r2 = dx * dx + dy * dy + dz * dz; if (!(r2 > 0)) continue;
+        const L = lamps[i], M = wbp2 ? wbp2[i].m : [L[0], L[1], -L[2]], dx = px - M[0], dy = py - M[1], dz = pz - M[2], r2 = dx * dx + dy * dy + dz * dz; if (!(r2 > 0)) continue;
         const rr = Math.sqrt(r2), NoL = -(dx * nx + dy * ny + dz * nz) / rr;
         if (!(NoL > 0)) continue;
-        const wf = wetBounceW(dz, rr, wb, o.look); if (!(wf > 0)) continue;
-        const I = ownBeamAt(o, dx, dy, -dz, L[1]) * fogD(dx, dy, dz) * wf; if (!(I > 0)) continue;
+        const n2 = wbp2 ? wbp2[i].n : null, bz2 = n2 ? dx * n2[0] + dy * n2[1] + dz * n2[2] : dz, wf = wetBounceW(bz2, rr, wb, o.look); if (!(wf > 0)) continue;
+        const b2 = n2 ? [dx - 2 * bz2 * n2[0], dy - 2 * bz2 * n2[1], dz - 2 * bz2 * n2[2]] : [dx, dy, -dz], I = ownBeamAt(o, b2[0], b2[1], b2[2], L[1]) * fogD(dx, dy, dz) * wf; if (!(I > 0)) continue;
         const d = I / r2 * NoL / PI; r += rho[0] * d; g += rho[1] * d; b += rho[2] * d;
       }
       LR += k * r * lc[0]; LG += k * g * lc[1]; LB += k * b * lc[2];
@@ -439,7 +454,7 @@
       if (o.grain && off > -0.5 * Lw - vg[1] && off < 1.5 * Lw + vg[1]) kw *= o.grain(s, off, hl);
       // the pixel's footprint on the ground is hw wide across the ray and hl long along it: its half-extent in the offset direction (a bend's far lines run across the view, where hl counts)
       const hh = Math.hypot(vx, vy) || 1, ho = Math.hypot(hw * (nx * -vy + ny * vx) / hh, hl * (nx * vx + ny * vy) / hh);
-      let rest = 1, bestW = 0; GM = MAT_ID.asphalt;
+      let rest = 1, bestW = 0; const RM = M[o.roadMat] || M.asphalt, RID = MAT_ID[o.roadMat] || MAT_ID.asphalt; GM = RID;   // §road-surfaces: the road band's material comes from look.roadMat (default asphalt)
       for (let i = 0; i < marks.length; i++) {
         const mk = marks[i], c = covLat(off, ho, mk.o0, mk.o1); if (c <= 0) continue;
         if (mk.skip) { let cut = false; for (let q = 0; q < mk.skip.length; q++) if (s > mk.skip[q][0] && s < mk.skip[q][1]) { cut = true; break; } if (cut) continue; }
@@ -447,16 +462,17 @@
         shade(px, py, 0, 0, 0, 1, M[mk.mat], cl * kw, vx, vy, vz); rest -= cl; if (cl > bestW) { bestW = cl; GM = M[mk.mat].id; }
       }
       if (rest <= 0) return;
-      if (cross && s >= cross.s0 && s <= cross.s1) { shade(px, py, 0, 0, 0, 1, M.asphalt, rest * kw, vx, vy, vz); if (rest > bestW) GM = M.asphalt.id; return; }   // a cross street: pavement across every offset
+      if (cross && s >= cross.s0 && s <= cross.s1) { shade(px, py, 0, 0, 0, 1, RM, rest * kw, vx, vy, vz); if (rest > bestW) GM = RID; return; }   // a cross street: pavement across every offset
       for (const c of crossings) {
         const cl = covLon(s, hl, { s0: c.s0, s1: c.s1, period: 1e9, on: c.s1 - c.s0 }) * covLat(off, ho, c.o0, c.o1);
-        if (cl > 0) { shade(px, py, 0, 0, 0, 1, M.asphalt, cl * rest * kw, vx, vy, vz); rest *= 1 - cl; if (cl > bestW) { bestW = cl; GM = M.asphalt.id; } }
+        if (cl > 0) { shade(px, py, 0, 0, 0, 1, RM, cl * rest * kw, vx, vy, vz); rest *= 1 - cl; if (cl > bestW) { bestW = cl; GM = M.asphalt.id; } }
       }
       // the road, the two verge strips and what lies beyond them, each weighted by the share of the footprint it covers (no stair-steps along a long diagonal edge)
       const vw = vg[1] || 1.5, far = vg[2] || vg[0], INF = 1e9, e0 = -Lw / 2, e1 = 1.5 * Lw;
-      const bands = [['asphalt', e0, e1], [vg[0], e0 - vw, e0], [vg[0], e1, e1 + vw], [far, -INF, e0 - vw], [far, e1 + vw, INF]];
+      const bands = [[(o.roadMat || 'asphalt'), e0, e1], [vg[0], e0 - vw, e0], [vg[0], e1, e1 + vw], [far, -INF, e0 - vw], [far, e1 + vw, INF]];   // §road-surfaces: the road band takes look.roadMat (default asphalt)
       let tot = 0; for (let i = 0; i < 5; i++) tot += covLat(off, ho, bands[i][1], bands[i][2]);
-      for (let i = 0; i < 5; i++) { const c = covLat(off, ho, bands[i][1], bands[i][2]) / (tot || 1); if (c <= 0) continue; shade(px, py, 0, 0, 0, 1, M[bands[i][0]], c * rest * kw, vx, vy, vz); if (c * rest > bestW) { bestW = c * rest; GM = M[bands[i][0]].id; } }
+      for (let i = 0; i < 5; i++) { const c = covLat(off, ho, bands[i][1], bands[i][2]) / (tot || 1); if (c <= 0) continue; let w = c * rest * kw; if (i === 0 && o.roadMat && o.roadMat !== 'asphalt') w *= surfTexCPU(s, off, o.roadMat);   // §road-surfaces s2 CPU twin of the GLSL surfTex; stock asphalt keeps the shipped weight
+        shade(px, py, 0, 0, 0, 1, M[bands[i][0]], w, vx, vy, vz); if (c * rest > bestW) { bestW = c * rest; GM = M[bands[i][0]].id; } }
     }
     let sampleDepth = Infinity, sampleMat = MAT_ID.sky, covAcc = 0, hazardAcc = 0, eyeAcc = 0;
     // one ray through (fx, fy) in pixel units; adds weight k to the accumulators
@@ -867,7 +883,12 @@
     // so the glare veil gains the wet-road streak below the horizon. Mirrors are not occlusion-tested (v1: the streak can peek past a crest).
     const wetVeil = !!(opts && opts.wetVeil && Math.max(+opts.wetness || 0, opts.dryStreaks ? 0.25 : 0) > 0 && opts.wetSheen);   // frenchie (dryStreaks): dry floor
     const mirrorOf = (x, y, z, cd, rgb) => {
-      const mx = x - eye[0], my = y - eye[1], mz = -z - eye[2], rr = Math.hypot(mx, my, mz);
+      let mx = x - eye[0], my = y - eye[1], mz = -z - eye[2];
+      if (opts.wetBouncePlane && opts.A) {   // frenchie (crest Ladder A): mirror in the source's local road plane, not z=0
+        const f = opts.A.frame(x, y), sf = opts.A.surface(f.s, f.off), g = +sf.grade || 0, b = +sf.bank || 0, il = 1 / Math.hypot(g, b, 1), n = [-g * il, -b * il, il], d = z * n[2], L = [x - 2 * d * n[0], y - 2 * d * n[1], z - 2 * d * n[2]];
+        mx = L[0] - eye[0]; my = L[1] - eye[1]; mz = L[2] - eye[2];
+      }
+      const rr = Math.hypot(mx, my, mz);
       if (mx <= 0 || !(rr > 0)) return;
       const dz = mz / rr, f = (0.02 + 0.98 * Math.pow(1 - Math.min(1, Math.abs(dz)), 5)) * Math.max(+opts.wetness || 0, opts.dryStreaks ? 0.25 : 0);   // frenchie (dryStreaks): dry floor
       out.push([mx / rr, my / rr, mz / rr, cd * mx / rr / (rr * rr) * f, ...rgb]);
@@ -932,8 +953,14 @@
   // per-pixel jitter in [0, 1): a hash of the integer pixel coordinates only (no time term), so frames are repeatable and banding is broken up
   function scatterJitter(x, y) { let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1); h = Math.imul(h ^ (h >>> 15), 0x85ebca6b); h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
   // Returns [r, g, b] in cd/m² (the caller weights by the sample's k). LUT zero outside its window, so lamp-behind rays get nothing.
+  function wbPlanesOf(o) {   // frenchie (crest Ladder A): per-own-lamp road plane {n, m} in the CPU road frame (n = [-grade,-bank,1]/L at the lamp's (s,off), m = the mirrored lamp), cached on the frame object; null when the option is OFF
+    if (!o || !o.A || !o.lamps) return null;
+    if (o._wbPlanes && o._wbPlanes.A === o.A && o._wbPlanes.lamps === o.lamps) return o._wbPlanes.v;
+    const v = o.look && o.look.wetBouncePlane === true ? o.lamps.map((L) => { const f = o.A.frame(L[0], L[1]), sf = o.A.surface(f.s, f.off), g = +sf.grade || 0, b = +sf.bank || 0, il = 1 / Math.hypot(g, b, 1), n = [-g * il, -b * il, il], d = L[2] * n[2]; return { n, m: [L[0] - 2 * d * n[0], L[1] - 2 * d * n[1], L[2] - 2 * d * n[2]] }; }) : null;
+    o._wbPlanes = { A: o.A, lamps: o.lamps, v }; return v;
+  }
   function inScatter(o, dir, sEnd, jit, steps) {
-    const out = [0, 0, 0], sig = sigmaOf(o.look || {}), N = steps | 0, s1 = Math.min(sEnd, scatRangeOf(o.look));
+    const out = [0, 0, 0], sig = sigmaOf(o.look || {}), N = steps | 0, s1 = Math.min(sEnd, scatRangeOf(o.look)), wbp = wbPlanesOf(o);   // frenchie (crest Ladder A)
     if (!(sig > 0) || !(N > 0) || !(s1 > 0)) return out;
     const eye = o.eye, lamps = o.lamps || [], lc = o.lampRGB || [1, 1, 1], dx = dir[0], dy = dir[1], dz = dir[2];
     const s0 = Math.min(1, s1 / 4), q = Math.pow(s1 / s0, 1 / N);
@@ -954,9 +981,9 @@
       // toward the reflected direction (-qz), so the mirror cannot disagree with the direct beam about where the light goes.
       const wb = o.look && o.look.wetBounce ? +o.look.wetness || 0 : 0;
       if (wb > 0) for (let i = 0; i < lamps.length; i++) {
-        const L = lamps[i], qx = px - L[0], qy = py - L[1], qz = pz + L[2], r2 = qx * qx + qy * qy + qz * qz;
+        const L = lamps[i], M = wbp ? wbp[i].m : [L[0], L[1], -L[2]], qx = px - M[0], qy = py - M[1], qz = pz - M[2], r2 = qx * qx + qy * qy + qz * qz;
         if (!(r2 > 0)) continue;
-        const r = Math.sqrt(r2), w = wetBounceW(qz, r, wb, o.look), I = ownBeamAt(o, qx, qy, -qz, L[1]);
+        const r = Math.sqrt(r2), n = wbp ? wbp[i].n : null, bz = n ? qx * n[0] + qy * n[1] + qz * n[2] : qz, w = wetBounceW(bz, r, wb, o.look), b = n ? [qx - 2 * bz * n[0], qy - 2 * bz * n[1], qz - 2 * bz * n[2]] : [qx, qy, -qz], I = ownBeamAt(o, b[0], b[1], b[2], L[1]);
         if (!(I > 0) || !(w > 0)) continue;
         const cos = -(qx * dx + qy * dy + qz * dz) / r, E = I * w / Math.max(r2, SCAT.rMin * SCAT.rMin);
         const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Tv * ds;

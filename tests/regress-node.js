@@ -816,7 +816,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     // PED-CLOTHING-MODES: people are off in this comparison. The pedestrians' clothing colours are shuffled in every mode now, so the people-on frames cannot equal the old base (checked: this block passes with people off).
     const flagsNP = Object.assign({}, flags, { people: false });
     const vm = require('vm'), cp = require('child_process'), ctx = vm.createContext({ performance });
-    for (const f of ['core','road','drive','drive-scenes','drive-anim']) vm.runInContext(cp.execFileSync('git', ['show', '4bae491:js/'+f+'.js'], { encoding: 'utf8' }), ctx);
+    // Baselines: tests/baselines/4bae491/js/ — host-written from the real repo (tests/baselines/README.md); git show is only the missing-file fallback.
+    for (const f of ['core','road','drive','drive-scenes','drive-anim']) { const bp = require('path').join(__dirname, 'baselines/4bae491/js', f + '.js'); vm.runInContext(require('fs').existsSync(bp) ? require('fs').readFileSync(bp, 'utf8') : cp.execFileSync('git', ['show', '4bae491:js/'+f+'.js'], { encoding: 'utf8' }), ctx); }
     const old=ctx.RF.DriveAnim, oldD=ctx.RF.Drive; let identical=true, compared=0;
     for (const name of ['road','forest','city']) for (const bend of [null, RF.Road.arc(250,'right')]) for (const dist of [0,37.3,111.7]) for (const traffic of [false,true]) {
       const o={wild:true,seed:7,density:0.5,safeGap:false,tiles:false,onMode:'manual',oncoming:traffic,preceding:traffic,trafficRange:230}, now=Object.assign({},p,{w:96,h:54,A:bend,src:A.source(name,3.5,false,flagsNP,o)}), then=Object.assign({},now,{src:old.source(name,3.5,false,flagsNP,o)});
@@ -994,7 +995,8 @@ let fails = 0; const ok = (name, cond, detail) => { console.log((cond ? '[PASS] 
     ok('D6f seeded traffic visibly turns at a junction before being retired',!!turn&&departed,J(turn));
     // Compare against actual D6b base code, including raw objects and rendered HDR. Never an invented baseline.
     const vm=require('vm'),cp=require('child_process'),ctx=vm.createContext({console,performance});
-    for(const f of ['core','road','drive','drive-scenes','drive-anim'])vm.runInContext(cp.execFileSync('git',['show','2141222:js/'+f+'.js'],{encoding:'utf8'}),ctx);
+    // Baselines: tests/baselines/2141222/js/ (tests/baselines/README.md pattern; git show = missing-file fallback).
+    for(const f of ['core','road','drive','drive-scenes','drive-anim']){const bp=require('path').join(__dirname,'baselines/2141222/js',f+'.js');vm.runInContext(require('fs').existsSync(bp)?require('fs').readFileSync(bp,'utf8'):cp.execFileSync('git',['show','2141222:js/'+f+'.js'],{encoding:'utf8'}),ctx);}
     let identical=true, worlds=0;
     for(const tiles of [false,true])for(const safeGap of [false,true])for(const scene of ['road','forest','city']) for(const bend of [false,true]) {
       const opts={tiles,safeGap,trafficLogic:false,seed:7,speed:90,oncoming:true,preceding:true,onMode:'symmetric',trafficDensity:3,streetLamps:'off',trafficRange:230},p={w:64,h:36,hfov:60,lamps:[[0,0,.68]],lut:D.lutFrom(()=>1000),conv:'A',lane:3.5,look:{wet:false},A:bend?RF.Road.arc(250,'right'):null};
