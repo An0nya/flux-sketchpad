@@ -1893,6 +1893,17 @@
       tests: ['node:frenchie-wet-bounce'],
       note: 'frenchie (backlog 5, 4-O wet-road bounce; Anya opt-in 11-01): mirrors the own lamps in the road plane and marches them with the grazing-Fresnel weight (the same law as the wetVeil mirrorOf). Measured weak: ~0.2% of the scatter light at haze-3km/wet-0.4, only visible in dense fog on a wet road (frenchie/WET-BOUNCE-PROTO.md). Conservation caveat: the direct own-beam term is NOT attenuated by the road, so in fog the bounce adds energy the road also intercepted (bounded by Fresnel <= wetness).'
     },
+    {
+      id: 'haloConeEqui', kind: 'profile', type: 'enum', values: ['off', 'on'],
+      default: 'off', label: 'cone-clipped equiangular halo',
+      control: '[data-dv="haloConeEqui"]', where: 'halo-advanced', query: null,
+      group: 'halo', cost: 'table-rebuild',
+      owner: ['js/options-registry.js', 'js/spec-ui.js', 'js/drive-anim.js', 'js/drive-three-halo.js', 'js/drive-three.js', 'js/drive.js'],
+      requires: [need('air'), need('haloOn')],
+      ignoredWhen: [need('crossingRefineOn')],
+      tests: ['node:frenchie-halo-cone-equi'],
+      note: 'frenchie (B6, handoff section 5/6): the oncoming table march clips each lamp bin to its beam cone (the same planes the cull and the CP pass use, drive-three-halo-cull.js coneClip) and samples equiangularly about the lamp inside the clipped interval (Kulla & Fajardo: ds/r^2 = dtheta/h), so every sample lands in lit air and the 1/r^2 peak is resolved; CPU twin in drive.js trafficHalo. OFF = the shipped 6-step log ladder, byte-identical. With haloCrossingRefine on the refinement wins (ignoredWhen); with haloLampWin / haloWidthStep / haloJitter on this schedule replaces them (forced off at build).'
+    },
   ];
 
   // ---- functions (pure)

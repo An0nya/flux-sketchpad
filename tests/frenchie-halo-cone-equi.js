@@ -20,6 +20,7 @@ const anim = fs.readFileSync(path.join(ROOT, 'js/drive-anim.js'), 'utf8');
 const spec = fs.readFileSync(path.join(ROOT, 'js/spec-ui.js'), 'utf8');
 const haloSrc = fs.readFileSync(path.join(ROOT, 'js/drive-three-halo.js'), 'utf8');
 const gate = fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'utf8');
+const three = fs.readFileSync(path.join(ROOT, 'js/drive-three.js'), 'utf8');
 
 // ---- registry
 const ce = Opt.OPTIONS.find((x) => x.id === 'haloConeEqui');
@@ -79,6 +80,7 @@ const pOff = { look: { trafficHalo: 16, haloRange: 120, visibility: 3000 }, eye:
 const ray = [1, 0, 0];
 // trafficHalo is not exported; drive it through the exported scatter path is heavy — call the internal via a tiny eval hook instead:
 ok('drive.js: CPU CE march present in the source (functional parity is covered by the GPU A/B plan)', has(drv, 'for (let k = 0; k < CE_STEPS; k++)'));
+ok('drive-three: haloState() reports ce (probe hook)', has(three, 'width: halo.width || 0, ce: halo.ce || 0'));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exitCode = fail ? 1 : 0;
