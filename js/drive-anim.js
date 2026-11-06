@@ -72,8 +72,8 @@
       const shift = dist + (kind === 'oncoming' ? 1 : -1) * TRAFFIC_SPEED[kind] * t;
       for (let k = Math.floor((shift - 6) / gap); k <= Math.floor((shift + cull) / gap); k++) {
         const R = D.rng((Math.imul(tr.seed, 2654435761) ^ Math.imul(k, 0x9E3779B1) ^ (kind === 'oncoming' ? 0x51ED270B : 0x165667B1)) >>> 0);
-        const rDen = src.tiles && src.tiles.endless ? R() : 0, rel = (k + 0.2 + 0.6 * R()) * gap - shift;   // draw order unchanged: density draw, then position
-        if (src.tiles && src.tiles.endless) { const bt = tileOf(src, Math.floor((dist + rel) / TILE_LEN)); if (rDen > (bt.props ? bt.props.density : 1)) continue; }   // §2-endless: biome density of the tile the car is ON (city busy, mountain sparse)
+        if (src.tiles && src.tiles.endless) { const bt = tileOf(src, k); if (R() > (bt.props ? bt.props.density : 1)) continue; }   // §2-endless: biome density (B5: read the rendered tile, preset/custom included) (city busy, mountain sparse)
+        const rel = (k + 0.2 + 0.6 * R()) * gap - shift;
         const min = kind === 'preceding' && tr.safeGap ? Math.max(25, 2 * tr.speed / 3.6) : -6;
         if (rel >= min && rel <= cull) { const ml = src.tiles && src.tiles.multilane ? mlLanes(ML_LANE, ML_MEDIAN) : null; out.push({ id: kind + ':' + k, kind, rel, off: kind === 'oncoming' ? (ml ? ml.onc0 : src.lane) : (ml && (k & 1) ? ml.right : 0) }); }   // §2-multilane: oncoming in the first lane across the median, preceding alternating own/right lane
       }
