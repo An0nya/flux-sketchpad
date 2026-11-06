@@ -90,5 +90,7 @@ let cul = 0;
 for (let seed = 1; seed <= 60; seed++) for (let k = 0; k < 300; k++) { const t = A.endlessTile(seed, k), vg = A.endlessVerge(seed, k); if (vg.creek && t.biome === 'open' && t.kind === 'straight') cul++; }
 ok('culvert condition: creek tiles in the open biome only (seeded 35% at build time)', cul > 40, { cul });
 ok('culvert builds water strip across the road + parapets both edges, behind wild', anim.includes("cls: 'culvert'") && (anim.match(/cls: 'culvert'/g) || []).length >= 2 && anim.includes("mat: 'water', cls: 'culvert'") && anim.includes("vg.creek && tile.biome === 'open'"));
+// 11-06: §3.3 audit fix — negative tile indices: JS % keeps the sign, so k%16 was wrong for k<0
+ok('endlessVerge ramp wraps for negative k: k=-1 -> kk16=15 -> ramp 0.4, k=-16 -> kk16=0 -> ramp 0.6', A.endlessVerge(7, -1).ramp === 0.4 && A.endlessVerge(7, -16).ramp === 0.6 && A.endlessVerge(7, -17).ramp === 0.4, { r1: A.endlessVerge(7, -1).ramp, r16: A.endlessVerge(7, -16).ramp });
 console.log(fail === 0 ? `\nall ${pass} le-chonk-verge checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);
