@@ -1,8 +1,7 @@
 # Baselines: old versions of app files, as files
 
-Some tests compare today's code with an old commit's (`git show <sha>:js/<file>.js`). The VMs have no git and the
-workspace is not a repo, so those calls always failed there. These are the same files, written by the host from the
-real repo on 2026-11-03 (qwen3.8max's ask). Path: `tests/baselines/<sha>/js/<file>.js`.
+Some tests compare today's code with an old commit's (`git show <sha>:js/<file>.js`). Page tests can't use git (see below), so they read these. Before the git cutover the host wrote them; now a seat makes one
+from its clone and lands it, and an adult reviews it (AGENTS.md rule 29). Path: `tests/baselines/<sha>/js/<file>.js`.
 
 Read a baseline from here first and fall back to `git show` only if the file is missing. If neither works, the test
 should print a named SKIP that does not count as a failure (Claude, 11-03).
