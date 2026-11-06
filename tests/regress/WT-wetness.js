@@ -66,7 +66,9 @@ async function session(browser) {
   await click(); const wet = await capture('wet');
   await click(); const standing = await capture('standing');
   await context.close();
-  return { dry, damp, wet, standing, errors };
+  const cls = process.env.IMG_GPU_CLASS || await IMG.gpuClass(page);
+  const refCheck = IMG.checkRef({ test: 'WT-wetness', name: 'dry', png: dry.png, cls, pin: OLD.dry, tol: { flipMean: 0.005 } });
+  return { dry, damp, wet, standing, errors, refCheck };
 }
 
 (async () => {
@@ -74,19 +76,14 @@ async function session(browser) {
   const report = (name, pass, detail) => { console.log((pass ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : ' — ' + JSON.stringify(detail))); failed ||= !pass; };
   try {
     const loaded = await legacySeeded(browser);
-    const { dry: toDry, damp: toDamp, wet: toWet, standing: toStanding, errors } = await session(browser);
+    const { dry: toDry, damp: toDamp, wet: toWet, standing: toStanding, errors, refCheck } = await session(browser);
     report('WT legacy stored {"wet":true} loads as wetness 1 (standing)', loaded.wetness === 1 && loaded.wet === true && loaded.stored === true, loaded);
     report('WT the road button cycles dry, damp, wet, standing (labels and wetness)',
       toDry.state.wetness === 0 && toDry.state.label.endsWith('dry') && toDamp.state.wetness === 0.3 && toDamp.state.label.endsWith('damp') && toWet.state.wetness === 0.6 && toWet.state.label.endsWith('wet') && toStanding.state.wetness === 1 && toStanding.state.label.endsWith('standing'),
       [toDry.state.label, toDamp.state.label, toWet.state.label, toStanding.state.label]);
     report('WT GPU renderer active at every step with no shader failure', [toDry, toDamp, toWet, toStanding].every(r => r.state.renderer === 'three' && !r.state.gpuFailure), [toDry.state, toDamp.state, toWet.state, toStanding.state]);
     report('WT dry frame equals the pre-change dry hash', toDry.hash === OLD.dry, { got: toDry.hash, want: OLD.dry.slice(0, 16) });
-    // Tolerance comparison (B1)
-    {
-      const cls = process.env.IMG_GPU_CLASS || await IMG.gpuClass(page);
-      const refCheck = IMG.checkRef({ test: 'WT-wetness', name: 'dry', png: toDry.png, cls, pin: OLD.dry, tol: { flipMean: 0.005 } });
-      report('B1 WT dry frame within tolerance of its reference', refCheck.pass || refCheck.missing, refCheck.detail);
-    }
+    report('B1 WT dry frame within tolerance of its reference', refCheck.pass || refCheck.missing, refCheck.detail);
     report('WT standing frame (wetness 1) differs from dry, damp and wet', toStanding.hash !== toDry.hash && toStanding.hash !== toDamp.hash && toStanding.hash !== toWet.hash, { standing: toStanding.hash.slice(0, 16) });   // ayrton 11-04: wetLabel 'wet'→'standing' at w=1 moves the toolbar text in the element screenshot, so the OLD.wet pin no longer matches; the render itself is unchanged (same wetness 1 frame)
     report('WT damp and wet frames differ from dry and standing', toDamp.hash !== toDry.hash && toDamp.hash !== toStanding.hash && toWet.hash !== toDry.hash && toWet.hash !== toStanding.hash && toDamp.hash !== toWet.hash, { damp: toDamp.hash.slice(0, 16), wet: toWet.hash.slice(0, 16) });
     report('WT no page or console errors', errors.length === 0, errors.slice(0, 3));
