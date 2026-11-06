@@ -13,7 +13,7 @@ const ok = (name, cond, extra) => { if (cond) { pass++; console.log('[PASS] ' + 
 // ---- registry
 const entries = Opt.OPTIONS;
 const e = entries.find((x) => x.id === 'wetBounce');
-ok('registry: wetBounce exists, bool, default false, at the END of OPTIONS', !!e && e.type === 'bool' && e.default === false && entries[entries.length - 1].id === 'wetBounce', e && e.id);
+ok('registry: wetBounce exists, bool, default false; haloConeEqui is the LAST entry (11-06 B6; wetBounce was last before it)', !!e && e.type === 'bool' && e.default === false && entries[entries.length - 1].id === 'haloConeEqui' && entries[entries.length - 2].id === 'wetBounce', e && e.id);
 ok('registry: control selector + group + test named', !!e && e.control === '[data-dv="wetBounce"]' && e.group === 'air' && (e.tests || []).includes('node:frenchie-wet-bounce'));
 ok('registry: note carries the weak-effect + conservation caveats', /weak/.test(e.note) && /NOT attenuated/.test(e.note));
 ok('defaults() carries wetBounce false', Opt.defaults().wetBounce === false);

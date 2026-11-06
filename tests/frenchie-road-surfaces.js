@@ -24,7 +24,7 @@ ok('registry: roadSurfaces bool default false, surface group, control', !!rs && 
 ok('registry: roadSurface enum stock default, values, requires roadSurfacesOn', !!rsu && rsu.type === 'enum' && rsu.default === 'stock' && JSON.stringify(rsu.values) === JSON.stringify(['stock', 'fresh', 'old', 'concrete', 'tar-snake']) && /need\('roadSurfacesOn'\)/.test(rsu.requires.map((r) => JSON.stringify(r)).join(' ') + reg));
 ok('registry: RULES has roadSurfacesOn on roadSurfaces eq true', /roadSurfacesOn: \{ cond: \{ opt: 'roadSurfaces', eq: true \}/.test(reg));
 ok('defaults(): roadSurfaces false, roadSurface stock', Opt.defaults().roadSurfaces === false && Opt.defaults().roadSurface === 'stock');
-ok('registry: wetBounce still the LAST entry (its test pins that)', Opt.OPTIONS[Opt.OPTIONS.length - 1].id === 'wetBounce');
+ok('registry: haloConeEqui is the LAST entry (11-06 B6; wetBounce was last before it)', Opt.OPTIONS[Opt.OPTIONS.length - 1].id === 'haloConeEqui' && Opt.OPTIONS[Opt.OPTIONS.length - 2].id === 'wetBounce');
 
 // ---- laws (executed)
 ok('executed: surfSOf undefined when OFF or stock', D.surfSOf({}) === undefined && D.surfSOf({ roadSurfaces: true, roadSurface: 'stock' }) === undefined && D.surfSOf({ roadSurface: 'fresh' }) === undefined);
@@ -35,7 +35,7 @@ ok('executed: wetBounceW unchanged without a look (k=1) — W^2 law intact', Mat
 ok('executed: wetBounceW applies k(s) with a look', Math.abs(D.wetBounceW(0, 1, 1, { roadSurfaces: true, roadSurface: 'tar-snake' }) - 0.7) < 1e-12 && Math.abs(D.wetBounceW(0, 1, 0.4, { roadSurfaces: true, roadSurface: 'old' }) - 0.16 * 0.532) < 1e-12);
 
 // ---- wiring
-ok('CPU: all four wetBounceW callers pass a look (4th arg)', (drv.match(/wetBounceW\([^)]*,\s*(o\.look|p\.look|lk)\)/g) || []).length === 4);
+ok('CPU: all five wetBounceW callers pass a look (4th arg; the 5th is the B6 CE branch, 11-06)', (drv.match(/wetBounceW\([^)]*,\s*(o\.look|p\.look|lk)\)/g) || []).length === 5);
 ok('CPU: dryStreaks floor via dryStreakFloorOf', drv.includes('look.dryStreaks === true ? dryStreakFloorOf(look) : 0)'));
 ok('CPU: helpers exported on RF.Drive', drv.includes('RF.Drive = { wetBounceW, surfSOf, surfKOf, dryStreakFloorOf,'));
 ok('GPU: kSurf uniform default 1 and set from surfKOf(look)', three.includes('kSurf: 1,') && three.includes("set('kSurf', D.surfKOf(look))"));
