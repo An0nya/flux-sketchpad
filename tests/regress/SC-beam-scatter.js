@@ -3,6 +3,7 @@
 // The clear frame with the button absent must hash to the main baseline (OLD_CLEAR, the FG value). Exits 1 on any failure.
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const crypto = require('crypto'), fs = require('fs'), path = require('path');
+const IMG = require('../image/compare.js');
 const port = +(process.argv[2] || 8984);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // sha256 of the drive canvas PNG on main 465e41c (no visibility, no scatter): the same value FG-fog pins.
@@ -55,6 +56,12 @@ async function meanLuma(page, png) {
     const clear = await capture('clear');
     ok('SC GPU renderer is on (no GPU failure)', clear.st.renderer === 'three' && !clear.st.gpuFailure, JSON.stringify(clear.st));
     ok('SC clear air: the frame equals the main baseline (button off, visibility off)', clear.hash === OLD_CLEAR, clear.hash);   // full hash printed: a re-pin copies it
+    // Tolerance comparison (B1)
+    {
+      const cls = process.env.IMG_GPU_CLASS || await IMG.gpuClass(page);
+      const refCheck = IMG.checkRef({ test: 'SC-beam-scatter', name: 'clear', png: clear.png, cls, pin: OLD_CLEAR, tol: { flipMean: 0.005 } });
+      ok('B1 SC clear frame within tolerance of its reference', refCheck.pass || refCheck.missing, refCheck.detail);
+    }
     ok('SC clear air: the air beam button is hidden', clear.st.hidden === true, JSON.stringify(clear.st));
     // 2. fog 200: three clicks on the air button (clear, haze, mist, fog), then the beam button shows
     await page.evaluate(() => { const s = document.querySelector('[data-dv="visibility"]'); s.value = 'fog'; s.dispatchEvent(new Event('change')); });   // NE5: haze is a select (was three clicks)

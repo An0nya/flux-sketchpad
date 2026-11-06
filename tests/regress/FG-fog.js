@@ -4,6 +4,7 @@
 // The clear frame must hash to the main baseline (OLD_CLEAR below, set from the --baseline run). Exits 1 on any failure.
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const crypto = require('crypto');
+const IMG = require('../image/compare.js');
 const port = +(process.argv[2] || 8984), baseline = process.argv.includes('--baseline');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Brief U (D): lampCone is set 'off' in this file's pages (here and in the P1 parity run). Its default is now 'auto' = on in mist, and the cone adds light in fog (so fog is no
@@ -59,6 +60,11 @@ async function session(browser, errors) {
     if (baseline) { console.log('BASELINE clear=' + clear.hash + ' renderer=' + clear.state.renderer); await s.context.close(); return; }
     ok('FG GPU renderer is on (no GPU failure)', clear.state.renderer === 'three' && !clear.state.gpuFailure, JSON.stringify(clear.state));
     ok('FG clear frame equals the main baseline (GPU, visibility off)', OLD_CLEAR ? clear.hash === OLD_CLEAR : false, OLD_CLEAR ? clear.hash : 'OLD_CLEAR not set');   // full hash printed: a re-pin copies it
+    // Tolerance comparison (B1): replaces exact hash with FLIP-based reference check.
+    // When no reference exists for the current GPU class the check passes (missing); record one with REF_UPDATE=FG-fog node ...
+    const cls = process.env.IMG_GPU_CLASS || await IMG.gpuClass(page);
+    const refCheck = IMG.checkRef({ test: 'FG-fog', name: 'clear', png: clear.png, cls, pin: OLD_CLEAR, tol: { flipMean: 0.005 } });
+    ok('B1 FG clear frame within tolerance of its reference', refCheck.pass || refCheck.missing, refCheck.detail);
     const frames = [clear];
     for (let i = 1; i < LEVELS.length; i++) { await page.evaluate((v) => { const s = document.querySelector('[data-dv="visibility"]'); s.value = v; s.dispatchEvent(new Event('change')); }, LEVELS[i]); frames.push(await capture(LEVELS[i])); }
     const labels = frames.map((f) => f.state.btn);

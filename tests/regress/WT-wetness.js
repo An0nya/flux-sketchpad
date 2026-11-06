@@ -4,6 +4,7 @@
 // Run: PLAYWRIGHT=/Users/anya/Projects/agent-qa/node_modules/playwright node tests/regress/WT-wetness.js 8981   (server: python3 tests/serve.py 8981)
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const crypto = require('crypto');
+const IMG = require('../image/compare.js');
 const port = +(process.argv[2] || 8981);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Pre-change GPU frames: sha256 of the drive canvas PNG, captured on main (194bee9) with this file's launch (channel chromium) after the
@@ -80,6 +81,12 @@ async function session(browser) {
       [toDry.state.label, toDamp.state.label, toWet.state.label, toStanding.state.label]);
     report('WT GPU renderer active at every step with no shader failure', [toDry, toDamp, toWet, toStanding].every(r => r.state.renderer === 'three' && !r.state.gpuFailure), [toDry.state, toDamp.state, toWet.state, toStanding.state]);
     report('WT dry frame equals the pre-change dry hash', toDry.hash === OLD.dry, { got: toDry.hash, want: OLD.dry.slice(0, 16) });
+    // Tolerance comparison (B1)
+    {
+      const cls = process.env.IMG_GPU_CLASS || await IMG.gpuClass(page);
+      const refCheck = IMG.checkRef({ test: 'WT-wetness', name: 'dry', png: toDry.png, cls, pin: OLD.dry, tol: { flipMean: 0.005 } });
+      report('B1 WT dry frame within tolerance of its reference', refCheck.pass || refCheck.missing, refCheck.detail);
+    }
     report('WT standing frame (wetness 1) differs from dry, damp and wet', toStanding.hash !== toDry.hash && toStanding.hash !== toDamp.hash && toStanding.hash !== toWet.hash, { standing: toStanding.hash.slice(0, 16) });   // ayrton 11-04: wetLabel 'wet'→'standing' at w=1 moves the toolbar text in the element screenshot, so the OLD.wet pin no longer matches; the render itself is unchanged (same wetness 1 frame)
     report('WT damp and wet frames differ from dry and standing', toDamp.hash !== toDry.hash && toDamp.hash !== toStanding.hash && toWet.hash !== toDry.hash && toWet.hash !== toStanding.hash && toDamp.hash !== toWet.hash, { damp: toDamp.hash.slice(0, 16), wet: toWet.hash.slice(0, 16) });
     report('WT no page or console errors', errors.length === 0, errors.slice(0, 3));

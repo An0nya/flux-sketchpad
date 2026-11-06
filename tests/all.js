@@ -139,5 +139,6 @@ run('wet-road bounce (4-O): OFF byte-identical, ON marches mirrored own lamps, k
 run('halo shader anchors guarded via hrep, composed variants pinned (tests/frenchie-halo-anchors.js)', ['tests/frenchie-halo-anchors.js']); // frenchie
 run('road surfaces physics option: k(s)/floor laws, OFF byte-identical, wiring, keys (tests/frenchie-road-surfaces.js)', ['tests/frenchie-road-surfaces.js']); // frenchie (Anya item 4, ROAD-SURFACES §7 resolved)
 run('touge shader anchors guarded (rep throws on moved anchor; no bare .replace outside helper) — tests/frenchie-touge-anchors.js', ['tests/frenchie-touge-anchors.js']); // frenchie (pool 4)
+run('image tolerance self-test: FLIP, PNG, compare, known-bad control (tests/image/selftest.js)', ['tests/image/selftest.js']); // B1
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

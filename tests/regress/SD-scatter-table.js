@@ -4,6 +4,7 @@
 // Direct mode must hash to the main baseline (DIRECT16, captured on main 0f47b41 with the same recipe). Exits 1 on any failure.
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const crypto = require('crypto');
+const IMG = require('../image/compare.js');
 const port = +(process.argv[2] || 8991);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Re-baselined by LAZYCPU: the GPU canvas is 476.4 px wide at a fractional x, so its element screenshot's edge column (x=476)
@@ -49,11 +50,17 @@ async function meanLuma(page, png) {
       const st = await page.evaluate(() => { const s = RF.DriveAnim.stats(); return { renderer: s.renderer, gpuFailure: s.gpuFailure || '' }; });
       await page.evaluate(() => RF.DriveAnim._.V.canvas.setAttribute('data-sc-drive', '1'));
       const png = await page.locator('canvas[data-sc-drive="1"]').screenshot();
-      return { label, st, hash: crypto.createHash('sha256').update(png).digest('hex'), luma: await meanLuma(page, png) };
+      return { label, st, hash: crypto.createHash('sha256').update(png).digest('hex'), luma: await meanLuma(page, png), png };
     };
     const direct = await frame('direct 16', { scatterMode: 'direct' });
     ok('SD GPU renderer is on (no GPU failure)', direct.st.renderer === 'three' && !direct.st.gpuFailure, JSON.stringify(direct.st));
     ok('SD direct mode: the frame equals the main baseline (DIRECT16)', direct.hash === DIRECT16, direct.hash);   // full hash printed: a re-pin copies it
+    // Tolerance comparison (B1)
+    {
+      const cls = process.env.IMG_GPU_CLASS || await IMG.gpuClass(page);
+      const refCheck = IMG.checkRef({ test: 'SD-scatter-table', name: 'direct16', png: direct.png, cls, pin: DIRECT16, tol: { flipMean: 0.005 } });
+      ok('B1 SD direct frame within tolerance of its reference', refCheck.pass || refCheck.missing, refCheck.detail);
+    }
     const table = await frame('table 48 half', { scatterMode: 'table', scatter: 48, scatterTableSteps: 48, scatterRes: 'half', scatterBlur: 'off' });
     ok('SD table mode renders on the GPU without failure', table.st.renderer === 'three' && !table.st.gpuFailure, JSON.stringify(table.st));
     ok('SD table frame differs from the direct frame', table.hash !== direct.hash, table.hash.slice(0, 12) + ' vs ' + direct.hash.slice(0, 12));
