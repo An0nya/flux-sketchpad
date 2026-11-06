@@ -1,0 +1,44 @@
+<!doctype html>
+<!-- B1 dev A/B viewer: judge tolerance failures by eye. Not a gate.
+     Open in a browser (file:// works). Pick files via the <input>s, or set ?test=X&cls=Y to auto-load
+     tests/shots/imgdiff/<test>-<name>.<cls>.{test,ref,flip}.png. -->
+<html><head><meta charset="utf-8"><title>image A/B viewer</title>
+<style>body{margin:0;background:#111;color:#ddd;font:13px system-ui}h1{font-size:15px;margin:8px}
+.row{display:flex;gap:8px;align-items:center;padding:4px 8px;flex-wrap:wrap}
+img{max-width:49vw;image-rendering:auto}canvas{max-width:49vw}
+#wrap{position:relative;display:inline-block} #heat{position:absolute;inset:0;opacity:.85;mix-blend-mode:screen}
+button,input[type=file]{margin:2px}</style></head><body>
+<h1>image A/B viewer — <span id="t"></span></h1>
+<div class="row">reference <input type=file id=fr> test <input type=file id=ft> heatmap <input type=file id=fh>
+<button id=fl>flicker</button><label><input type=checkbox id=showheat checked> heatmap</label>
+<span id=info></span></div>
+<div class="row"><div id=wrap><img id=im><canvas id=heat style="display:none"></canvas></div>
+<img id=im2 title="reference" style="display:none"></div>
+<script>
+const $=id=>document.getElementById(id);
+const q=new URLSearchParams(location.search);
+function load(base,ext){ return fetch(base+ext).then(r=>r.ok?r.blob():null).catch(()=>null); }
+async function fromURL(){
+  const t=q.get('test'), c=q.get('cls'), n=q.get('name')||'';
+  if(!t||!c) return;
+  $('t').textContent=t+'/'+n+'/'+c;
+  const base='../shots/imgdiff/'+t+'-'+n+'.'+c;
+  const ref=await load(base,'.ref.png'), test=await load(base,'.test.png'), flip=await load(base,'.flip.png');
+  if(ref) $('im2').src=URL.createObjectURL(ref);
+  if(test) $('im').src=URL.createObjectURL(test);
+  if(flip){ const i=new Image(); i.onload=()=>{$('heat').style.display='block'; const cv=$('heat'); cv.width=i.width; cv.height=i.height; cv.getContext('2d').drawImage(i,0,0);}; i.src=URL.createObjectURL(flip); }
+  $('im2').style.display=ref?'block':'none';
+  $('info').textContent='loaded '+t+' (shots/imgdiff/)';
+}
+fromURL();
+for(const [id,img] of [['fr','im2'],['ft','im'],['fh',null]]) $(id).onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  if(id==='fh'){ const i=new Image(); i.onload=()=>{const cv=$('heat'); cv.width=i.width; cv.height=i.height; cv.getContext('2d').drawImage(i,0,0); cv.style.display='block';}; i.src=URL.createObjectURL(f); return; }
+  $(img).src=URL.createObjectURL(f); if(id==='fr') $(img).style.display='block';
+};
+let flick=null;
+$('fl').onclick=()=>{ if(flick){clearInterval(flick); flick=null; $('fl').textContent='flicker'; return;}
+  let s=false; flick=setInterval(()=>{ const a=$('im'), b=$('im2'); if(!a.src||!b.src) return; s=!s;
+    [a,b].forEach(x=>x.style.opacity=s?'0':'1'); },400); $('fl').textContent='stop'; };
+$('showheat').onchange=e=>{ $('heat').style.display=e.target.checked?'block':'none'; };
+</script></body></html>
