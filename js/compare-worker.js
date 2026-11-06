@@ -1,4 +1,5 @@
 /* Separate from the solver worker: comparison never interrupts a solve. */
+/* compare-worker: dedicated thread, leaves the main solver pool free for the user's design. */
 'use strict';
 importScripts('solver-env.js'); importScripts(...self.RF_SOLVER_ENV.map((f) => f + '.js'));
 importScripts('state.js', 'compare.js');
