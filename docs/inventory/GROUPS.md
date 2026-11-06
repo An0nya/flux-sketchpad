@@ -87,7 +87,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `road` | Road and route | 17 | 2 | 13 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 13 | 0 | 10 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 16 | 0 | 4 | 10 | 1 | 0 | 1 |
-| `halo` | Traffic halo | 34 | 0 | 4 | 0 | 30 | 0 | 0 |
+| `halo` | Traffic halo | 35 | 0 | 4 | 0 | 31 | 0 | 0 |
 | `street-lamps` | Street lamps | 6 | 0 | 6 | 0 | 0 | 0 | 0 |
 | `traffic` | Traffic | 17 | 0 | 14 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 14 | 0 | 14 | 0 | 0 | 0 | 0 |
@@ -217,6 +217,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `trafficSubTick` | traffic sub-tick interpolation | profile | advanced halo | "off" | - |
 | `haloQuality` | oncoming scatter quality | derived | More | (derived) | - |
 | `haloRangeRow` | oncoming range | derived | More | (derived) | - |
+| `haloConeEqui` | cone-clipped equiangular halo | profile | advanced halo | "off" | needs `air` [hidden], `haloOn` [none]; ignored when `crossingRefineOn` [none] |
 
 #### Street lamps (`street-lamps`)
 

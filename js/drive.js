@@ -1008,6 +1008,43 @@ const surfTexCPU = (s, off, mat) => {
     if (!(o && o.trafficBeams && sigmaOf(look) > 0 && n > 0)) return 0;
     return Math.min(16, Math.round(n), cars > 0 ? 2 * Math.round(cars) : 16);
   }
+  // CE (option haloConeEqui, B6) CPU twin: the beam cone's circumscribed half-angle from the LUT's non-zero extent (memoised on the lut
+  // object), and the chord of the eye ray with that cone. cos(angle from the beam axis) = cos(h)*cos(v), so the cone
+  // dot(d, axis) >= r * cos(hMax) * cos(vMax) contains every direction the LUT can return non-zero for (a safe superset: it may keep a
+  // little unlit air, it never cuts lit air). ceChord returns [sA, sB], or null when the ray never enters the cone.
+  const CE_STEPS = 16;
+  function ceConeOf(lut, conv) {
+    if (!lut || !lut.data) return null;
+    if (lut._ceCone && lut._ceCone.conv === conv) return lut._ceCone;
+    let i0 = 1e9, i1 = -1, j0 = 1e9, j1 = -1;
+    for (let y = 0; y < lut.nv; y++) for (let x = 0; x < lut.nh; x++) { const v = lut.data[y * lut.nh + x]; if (v !== 0 && v === v) { if (x < i0) i0 = x; if (x > i1) i1 = x; if (y < j0) j0 = y; if (y > j1) j1 = y; } }
+    if (i1 < 0) return (lut._ceCone = { conv, c: 0 });
+    const sH = lut.step, sV = lut.step, eH = 0.02 * sH + 1e-3, eV = 0.02 * sV + 1e-3;
+    const hLo = lut.h0 + Math.max(i0 - 1, 0) * sH - eH, hHi = lut.h0 + Math.min(i1 + 1, lut.nh - 1) * sH + eH;
+    const vLo = lut.v0 + Math.max(j0 - 1, 0) * sV - eV, vHi = lut.v0 + Math.min(j1 + 1, lut.nv - 1) * sV + eV;
+    const hM = Math.max(Math.abs(hLo), Math.abs(hHi)) * D2R, vM = Math.max(Math.abs(vLo), Math.abs(vHi)) * D2R;
+    return (lut._ceCone = { conv, c: Math.cos(hM) * Math.cos(vM) });   // cos of the circumscribed cone's half-angle
+  }
+  function ceChord(eye, ray, L, c) {   // the s-interval where eye + s*ray is inside the cone about the beam axis (L.nx, L.ny, 0)
+    const ax = L.nx, ay = L.ny, Dx = L.x - eye[0], Dy = L.y - eye[1], Dz = L.z - eye[2];
+    const wa = ray[0] * ax + ray[1] * ay, Da = Dx * ax + Dy * ay, wD = ray[0] * Dx + ray[1] * Dy + ray[2] * Dz, DD = Dx * Dx + Dy * Dy + Dz * Dz;
+    const A = wa * wa - c * c, B = -2 * wa * Da + 2 * c * c * wD, C = Da * Da - c * c * DD;
+    if (Math.abs(A) < 1e-12) {   // linear: the ray runs along the cone's surface direction
+      if (Math.abs(B) < 1e-12) return C >= 0 ? [-1e9, 1e9] : null;
+      const t = -C / B; return B > 0 ? [t, 1e9] : [-1e9, t];
+    }
+    const f = (t) => A * t * t + B * t + C;
+    if (f(0) >= 0) {   // the eye is inside the cone: the chord is the root ahead of us (or the whole ray)
+      const disc = B * B - 4 * A * C;
+      if (disc < 0) return A > 0 ? [-1e9, 1e9] : null;
+      const r = Math.sqrt(disc), sA = (-B - r) / (2 * A), sB = (-B + r) / (2 * A), lo = Math.min(sA, sB), hi = Math.max(sA, sB);
+      return A > 0 ? [lo, hi] : (sB > 0 ? [0, sB] : (sA > 0 ? [0, sA] : null));
+    }
+    const disc = B * B - 4 * A * C; if (disc < 0) return null;
+    const r = Math.sqrt(disc), sA = (-B - r) / (2 * A), sB = (-B + r) / (2 * A), lo = Math.min(sA, sB), hi = Math.max(sA, sB);
+    if (A > 0) return null;   // eye outside, opens up: inside between the roots only when C<0, contradicted by f(0)<0... keep safe:
+    return hi > 0 ? [Math.max(lo, 0), hi] : null;
+  }
   function trafficHalo(ray, sEnd, sources, N, p, jit) {
     const out = [0, 0, 0], n = N | 0, sig = sigmaOf((p && p.look) || {}), eye = (p && p.eye) || [-2, 0.37, 1.2];
     if (!(sig > 0) || !(n > 0) || !(sEnd > 0) || !sources || !sources.length) return out;
@@ -1017,7 +1054,41 @@ const surfTexCPU = (s, off, mat) => {
     for (const { L } of near) {
       if (!L.beam && !beam) continue;
       const s1 = cap, s0 = Math.min(1, s1 / 4); if (!(s1 > s0)) continue;
-      const N = HALO.steps, q = Math.pow(s1 / s0, 1 / N), tint = L.tint || [1, 1, 1];
+      const tint = L.tint || [1, 1, 1];
+      const ceOn = !!(p && p.look && p.look.haloConeEqui === 'on');   // CE (B6): cone-clipped equiangular march, CPU twin of the GPU table variant
+      if (ceOn) {
+        const bm0 = L.beam || beam, cone = bm0 && bm0.lut ? ceConeOf(bm0.lut, bm0.conv || 'A') : null;
+        if (!cone || !(cone.c > 0)) continue;
+        const chord = ceChord(eye, ray, L, cone.c); if (!chord) continue;
+        const ca = Math.max(s0, chord[0]), cb = Math.min(s1, chord[1]); if (!(cb > ca)) continue;
+        const Dx = L.x - eye[0], Dy = L.y - eye[1], Dz = L.z - eye[2];
+        const t0 = Dx * rx + Dy * ry + Dz * rz, hh = Math.max(Math.sqrt(Math.max(Dx * Dx + Dy * Dy + Dz * Dz - t0 * t0, 0)), SCAT.rMin);
+        const ta = Math.atan((ca - t0) / hh), tb = Math.atan((cb - t0) / hh), dth = (tb - ta) / CE_STEPS;
+        for (let k = 0; k < CE_STEPS; k++) {
+          const th = ta + (k + 0.5) * dth, ct = Math.cos(th), s = t0 + hh * Math.tan(th), w = hh / (ct * ct) * dth, Tv = Math.exp(-sig * s);
+          if (!(s > 0)) continue;
+          const Px = eye[0] + s * rx, Py = eye[1] + s * ry, Pz = eye[2] + s * rz;
+          const I = trafficAt(L, beam, Px, Py, Pz); if (!(I > 0)) continue;
+          const dx = Px - L.x, dy = Py - L.y, dz = Pz - L.z, r2 = dx * dx + dy * dy + dz * dz; if (!(r2 > 0)) continue;
+          const r = Math.sqrt(r2), cos = -(dx * rx + dy * ry + dz * rz) / r, E = I / Math.max(r2, SCAT.rMin * SCAT.rMin);
+          const v = sig * scatterPhase(cos) * E * Math.exp(-sig * r) * Tv * w;
+          if (!Number.isFinite(v)) continue;
+          out[0] += v * tint[0]; out[1] += v * tint[1]; out[2] += v * tint[2];
+          // frenchie (wetBounce, 4-O ext A): the oncoming lamp mirrored in the road plane, same as the ladder's loop below
+          const wb = p && p.look && p.look.wetBounce ? +p.look.wetness || 0 : 0;
+          if (wb > 0) {
+            const Im = trafficAt(L, beam, Px, Py, -Pz); if (!(Im > 0)) continue;
+            const qz = Pz + L.z, q2 = dx * dx + dy * dy + qz * qz; if (!(q2 > 0)) continue;
+            const qr = Math.sqrt(q2), wf = wetBounceW(qz, qr, wb, p.look);
+            if (!(wf > 0)) continue;
+            const cq = -(dx * rx + dy * ry + qz * rz) / qr, Eq = Im * wf / Math.max(q2, SCAT.rMin * SCAT.rMin);
+            const vv = sig * scatterPhase(cq) * Eq * Math.exp(-sig * qr) * Tv * w;
+            if (Number.isFinite(vv)) { out[0] += vv * tint[0]; out[1] += vv * tint[1]; out[2] += vv * tint[2]; }
+          }
+        }
+        continue;
+      }
+      const N = HALO.steps, q = Math.pow(s1 / s0, 1 / N);
       for (let k = 0; k < N; k++) {
         const a = s0 * Math.pow(q, k), s = a * Math.pow(q, J), w = a * q - a, Tv = Math.exp(-sig * s);
         const Px = eye[0] + s * rx, Py = eye[1] + s * ry, Pz = eye[2] + s * rz;
