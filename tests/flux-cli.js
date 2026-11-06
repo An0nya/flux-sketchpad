@@ -35,7 +35,7 @@ const cmp = run('compare', ex, dimFile, '--rays', '10000', '--spec', 'fmvss-ub2'
 check(Math.abs(cmp.b.metrics.lmWindow / cmp.a.metrics.lmWindow - 0.5) < 1e-8 && cmp.diff.find((r) => r.metric === 'peakCd').delta < 0, 'compare: halving source power halves window lumens, peak delta has correct sign', { a: cmp.a.metrics.lmWindow, b: cmp.b.metrics.lmWindow });
 check(cmp.a.specs['fmvss-ub2'].pass + cmp.a.specs['fmvss-ub2'].fail + cmp.a.specs['fmvss-ub2'].unsure === cmp.a.specs['fmvss-ub2'].rows.length, 'compare: preset counts agree with raw verdict rows');
 const multi = run('compare', ex, ex, '--rays', '3000', '--spec', 'fmvss-ub2,ece-r112-b');
-check(multi.specs.length === 2 && multi.diff.filter((r) => r.metric.endsWith('.verdict')).length === 2 && multi.diff.every((r) => r.delta === null || r.delta === 0), 'compare: multiple presets each produce a verdict and zero self-diff');
+check(multi.specs.length === 2 && multi.diff.filter((r) => r.metric.endsWith('.verdict')).length === 2 && multi.diff.every((r) => r.delta === null || r.delta === 0), 'compare: multiple presets each produce a verdict and zero self-diff', { specs: multi.specs.length, verdicts: multi.diff.filter((r) => r.metric.endsWith('.verdict')).length, bad: multi.diff.filter((r) => !(r.delta === null || r.delta === 0)).slice(0, 4) });
 let badCompare = false; try { execFileSync(process.execPath, [CLI, 'compare', ex, ex, '--spec', 'not-a-spec'], { cwd: ROOT, stdio: 'pipe' }); } catch (err) { badCompare = /unknown spec/.test(String(err.stderr)); }
 check(badCompare, 'compare: unknown presets fail loudly');
 // EX: exports use the same trace bins and writers as the page, including finite-screen scenes.
