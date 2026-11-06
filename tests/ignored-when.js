@@ -125,9 +125,11 @@ const RUN_SCENES = process.argv.includes('--with-scenes');
     const defVal = await page.evaluate((k) => { const el = document.querySelector('[data-dv="' + k + '"]') || document.querySelector('[data-anim="' + k + '"]'); return el ? (el.options && el.options.length ? el.options[0].value : 'off') : 'off'; }, id);
     if (isPass(ignVal)) await loadState(path.join(root, 'tests', 'states', 'state-pass.json'));   // rule 9
     else await setOpts(Object.assign({}, BASE, { [ctrl]: ignVal, [id]: forced }));
-    await setOpts(Object.assign({}, BASE, { [id]: forced })); await page.waitForTimeout(1800);
+    // claude: BASE carries haloCrossingRefine, so a bare setOpts(BASE, …) silently switches the controller off
+    // before the reads — only haloLampWin's rule noticed. Keep the controller at ignVal for non-pass rules.
+    await setOpts(Object.assign({}, BASE, isPass(ignVal) ? {} : { [ctrl]: ignVal }, { [id]: forced })); await page.waitForTimeout(1800);
     const withOn = await ident(id);
-    await setOpts(Object.assign({}, BASE, { [id]: defVal })); await page.waitForTimeout(1800);
+    await setOpts(Object.assign({}, BASE, isPass(ignVal) ? {} : { [ctrl]: ignVal }, { [id]: defVal })); await page.waitForTimeout(1800);
     const withDefault = await ident(id);
     ok('ignored: ' + id + ' with ' + ctrl + ' at ' + ignVal + ' does not move the identity (' + forced + ' vs ' + defVal + ')',
       same(withOn, withDefault), withOn + ' vs ' + withDefault);
@@ -135,9 +137,9 @@ const RUN_SCENES = process.argv.includes('--with-scenes');
     const other = ctrl === 'scene' ? 'straight' : (ctrl === 'haloCrossingRefine' ? 0 : ignVal);
     if (isPass(other)) await loadState(path.join(root, 'tests', 'states', 'state-pass.json'));   // rule 9
     else await setOpts(Object.assign({}, BASE, { [ctrl]: other, [id]: forced }));
-    await setOpts(Object.assign({}, BASE, { [id]: forced })); await page.waitForTimeout(1800);
+    await setOpts(Object.assign({}, BASE, isPass(other) ? {} : { [ctrl]: other }, { [id]: forced })); await page.waitForTimeout(1800);
     const ctlOn = await ident(id);
-    await setOpts(Object.assign({}, BASE, { [id]: defVal })); await page.waitForTimeout(1800);
+    await setOpts(Object.assign({}, BASE, isPass(other) ? {} : { [ctrl]: other }, { [id]: defVal })); await page.waitForTimeout(1800);
     const ctlDefault = await ident(id);
     // The positive control's job is to prove the "ignored" PASS above is not vacuous. If the forced value does
     // not move the identity even when the option is NOT ignored, this metric simply cannot see that option
