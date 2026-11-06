@@ -223,6 +223,10 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `roadSurface` | profile | surface | per-frame-gpu | "stock" | needs `roadSurfacesOn` [disabled] | options-registry.js, drive.js, drive-anim.js, drive-three.js, drive-three-shaders.js, drive-three-halo.js, spec-ui.js, drive-layout.js | - | - | - | - | - | - | `tests/frenchie-road-surfaces.js` |
 | `wetBouncePlane` | profile | air | table-rebuild | false | needs `wetBounceOn` [disabled] | options-registry.js, drive.js, drive-anim.js, drive-touge.js, drive-three.js, drive-three-shaders.js, drive-three-halo.js, spec-ui.js | - | - | - | - | - | - | `tests/frenchie-crest-bounce.js` |
 | `wetBounce` | profile | air | table-rebuild | false | - | drive.js, drive-anim.js, drive-three.js, drive-three-shaders.js, spec-ui.js | - | - | - | - | - | - | `tests/frenchie-wet-bounce.js` |
+<<<<<<< HEAD
+=======
+| `haloConeEqui` | profile | halo | table-rebuild | "off" | needs `air` [hidden], `haloOn` [none]; ignored when `crossingRefineOn` [none] | options-registry.js, spec-ui.js, drive-anim.js, drive-three-halo.js, drive-three.js, drive.js | - | - | - | - | - | - | `tests/frenchie-halo-cone-equi.js` |
+>>>>>>> 6961b2a (haloConeEqui: add o.haloConeEqui to both SPEC_KEY cache keys (pencroff review B1); regen docs (B2))
 <!-- END GENERATED option-table -->
 
 DV_DEF keys with no row above (script check): none.
