@@ -65,9 +65,10 @@ async function session(browser) {
   await click(); const damp = await capture('damp');
   await click(); const wet = await capture('wet');
   await click(); const standing = await capture('standing');
-  await context.close();
+  // B1 tolerance check: must run before context.close() since IMG.gpuClass needs the live page
   const cls = process.env.IMG_GPU_CLASS || await IMG.gpuClass(page);
   const refCheck = IMG.checkRef({ test: 'WT-wetness', name: 'dry', png: dry.png, cls, pin: OLD.dry, tol: { flipMean: 0.005 } });
+  await context.close();
   return { dry, damp, wet, standing, errors, refCheck };
 }
 
