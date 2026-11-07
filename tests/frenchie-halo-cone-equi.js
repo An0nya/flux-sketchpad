@@ -84,6 +84,30 @@ const ray = [1, 0, 0];
 ok('drive.js: CPU CE march present in the source (functional parity is covered by the GPU A/B plan)', has(drv, 'for (let k = 0; k < CE_STEPS; k++)'));
 ok('drive-three: haloState() reports ce (probe hook)', has(three, 'width: halo.width || 0, ce: halo.ce || 0'));
 
+// ---- functional: haloPass build() must not throw for off OR on (a TDZ on ceN before its declaration once broke EVERY GPU build,
+// option off included — CPSM-cone-shadow saw V.three null; source greps cannot catch that, so drive build() with a stub renderer)
+{
+  const T = await import('file://' + path.join(ROOT, 'vendor/three/three.module.min.js'));
+  const fakeTex = () => ({ image: { data: new Uint8Array(4 * 64 * 64), width: 64, height: 64 }, colorSpace: '' });
+  let renders = 0;
+  const renderer = { autoClear: true, capabilities: { maxTextureSize: 4096 }, getClearColor: (c) => c.set(0), getClearAlpha: () => 1, setClearColor: () => {}, setRenderTarget: () => {}, clear: () => {}, render: () => { renders++; }, getContext: () => ({ getExtension: () => null, finish: () => {} }), properties: { get: () => ({}) }, outputColorSpace: '', toneMapping: 0 };
+  const VEC2 = ['haloTab', 'haloPolarF', 'haloPolarRange', 'haloPolarN', 'otherLutSize'], VEC3 = ['otherLutInfo', 'haloNu', 'haloH', 'haloGain', 'haloSMax', 'haloE'];
+  const mkU = () => { const store = {}; return new Proxy({}, { get: (t, k) => { if (!(k in store)) store[k] = { value: k === 'otherBeam' ? fakeTex() : VEC2.includes(k) ? new T.Vector2() : VEC3.includes(k) ? new T.Vector3() : k === 'carFromWorld' ? new T.Matrix4() : null }; return store[k]; }, set: (t, k, v) => { store[k] = v; return true; } }); };
+  const lutB = { h0: -45, v0: -30, step: 0.5, nh: 180, nv: 120, data: new Float32Array(180 * 120).fill(0.5) };
+  const world = { objects: [{ traffic: 0, headlamp: true, x: 120, y: 1.4, z: -1.2, nx: -1, ny: 0, car: 0 }], A: null };
+  const baseLook = { trafficHalo: 16, haloRange: 120, visibility: 3000, haloPolar: 'off', haloJitter: '', haloLampWin: 'off', haloCrossingRefine: 0, haloMoment: 'off', haloWidthStep: 0, haloConePass: 0, haloConeAngle: 0, wetBounce: false, wetness: 0, scatterCull: 'off', sigma: 0.5, haloBlur: 0, haloDepthBlur: 0, haloDiv: 1, haloBins: 6, haloCars: 4, haloAutoRange: false, haloPolarLamps: 2, haloPolarBand: 0, haloRefineNeighbour: 0, haloNearSub: 1, haloGain: 1, touge: false, trafficShadows: 'off', shadowRes: '1024x512' };
+  const base = { w: 320, h: 180, hfov: 60, eye: [-2, 0.37, 1.2], lamps: [], conv: 'A', lut: lutB, lowLut: null, trafficBeams: true, src: null, lane: 0 };
+  let built = null;
+  for (const ce of ['off', 'on']) {
+    const u = mkU(); const halo = H.haloPass(renderer, u);
+    const p = Object.assign({}, base, { look: Object.assign({}, baseLook, { haloConeEqui: ce }) });
+    let err = null; try { halo.build(p, world, null, null); } catch (e) { err = e; }
+    ok('halo build() runs with haloConeEqui ' + ce + ' (no TDZ/throw; ce=' + (err ? 'threw' : halo.ce) + ')', !err && halo.ce === (ce === 'on' ? H.CE_STEPS : 0), err ? String(err).slice(0, 120) : 'passes ' + halo.passes);
+    if (ce === 'off') built = renders;
+  }
+  ok('halo build() ON draws more sub-steps than OFF (the equiangular schedule actually replaces the ladder)', renders > built, { off: built, on: renders });
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exitCode = fail ? 1 : 0;
 })();
