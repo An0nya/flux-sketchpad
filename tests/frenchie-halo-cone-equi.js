@@ -31,6 +31,7 @@ ok('registry: haloConeEqui is the LAST entry', Opt.OPTIONS[Opt.OPTIONS.length - 
 
 // ---- wiring
 ok('spec-ui: dvSelect + sync list + value branch', has(spec, "dvSelect('haloConeEqui'") && has(spec, "'haloLampWin', 'haloConeEqui', 'haloCrossingRefine'") && has(spec, "else if (k === 'haloConeEqui')"));
+ok('spec-ui: dvSelect gets option PAIRS + an onPick callback (nemo review: a bare [\'off\',\'on\'] renders garbage options and onPick(s) throws)', has(spec, "[['off', 'cone-clipped equiangular: off'], ['on', 'cone-clipped equiangular: on']], (s) => setDV(ui, 'haloConeEqui', s.value))"));
 ok('drive-anim: look literal carries haloConeEqui', has(anim, "haloConeEqui: o.haloConeEqui || 'off'"));
 ok('spec-ui: haloConeEqui in the drive picture cache keys (SPEC_KEY, both sites)', cnt(spec, 'o.haloConeEqui,') === 2);
 ok('gate.js: node:frenchie-halo-cone-equi registered (NODE + touched maps)', cnt(gate, 'node:frenchie-halo-cone-equi') >= 6);
