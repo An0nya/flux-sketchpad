@@ -126,7 +126,7 @@ const S = esm('drive-three-shaders.js', null, ['ground', 'withWetBounce', 'withS
     ok('moment + wb folds the mirror into accM', m1.includes('lampM') && /accM \+= s \* wm/.test(m1));
     const HS = fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8');
     const polarPick = (HS.match(/mp = pick\([^\n]*\);/) || [''])[0];
-    ok('polar table pick maps moment2 to the first moment and keeps wb', /halo\.moment === 3 \? 1 : halo\.moment/.test(polarPick) && /!!halo\.wb\)/.test(polarPick), polarPick);
+    ok('polar table pick maps moment2 to the first moment and keeps wb', /halo\.moment === 3 \? 1 : halo\.moment/.test(polarPick) && /!!halo\.wb(, ceN)?\)/.test(polarPick), polarPick);
     let threw = false; try { H.withWetBounceHalo('void main() { gl_FragColor = vec4(0.0); }'); } catch (e) { threw = /markers/.test(e.message); }
     ok('withWetBounceHalo throws on moved markers', threw);
     // 11-03 brace-balance guard: qwen's M4 compile detector found wb=true left ONE brace unclosed
