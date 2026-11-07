@@ -27,14 +27,14 @@ const ce = Opt.OPTIONS.find((x) => x.id === 'haloConeEqui');
 ok('registry: haloConeEqui enum off/on, default off, halo group, control, tests', !!ce && ce.type === 'enum' && JSON.stringify(ce.values) === '["off","on"]' && ce.default === 'off' && ce.group === 'halo' && ce.control === '[data-dv="haloConeEqui"]' && ce.tests.includes('node:frenchie-halo-cone-equi'));
 ok('registry: requires air + haloOn, ignoredWhen crossingRefineOn', !!ce && ce.requires.length === 2 && ce.requires.map((r) => r.rule).join() === 'air,haloOn' && ce.ignoredWhen.length === 1 && ce.ignoredWhen[0].rule === 'crossingRefineOn');
 ok('registry: defaults().haloConeEqui === off', Opt.defaults().haloConeEqui === 'off');
-ok('registry: haloConeEqui is the LAST entry', Opt.OPTIONS[Opt.OPTIONS.length - 1].id === 'haloConeEqui');
+ok('registry: haloConeEqui is registered (membership, not last-entry — a last-entry pin breaks the next appender, claude review 11-08)', Opt.OPTIONS.some((x) => x.id === 'haloConeEqui'));
 
 // ---- wiring
 ok('spec-ui: dvSelect + sync list + value branch', has(spec, "dvSelect('haloConeEqui'") && has(spec, "'haloLampWin', 'haloConeEqui', 'haloCrossingRefine'") && has(spec, "else if (k === 'haloConeEqui')"));
 ok('spec-ui: dvSelect gets option PAIRS + an onPick callback (nemo review: a bare [\'off\',\'on\'] renders garbage options and onPick(s) throws)', has(spec, "[['off', 'cone-clipped equiangular: off'], ['on', 'cone-clipped equiangular: on']], (s) => setDV(ui, 'haloConeEqui', s.value))"));
 ok('drive-anim: look literal carries haloConeEqui', has(anim, "haloConeEqui: o.haloConeEqui || 'off'"));
 ok('spec-ui: haloConeEqui in the drive picture cache keys (SPEC_KEY, both sites)', cnt(spec, 'o.haloConeEqui,') === 2);
-ok('gate.js: node:frenchie-halo-cone-equi registered (NODE + touched maps)', cnt(gate, 'node:frenchie-halo-cone-equi') >= 6);
+ok("registry: the option lists its suite in tests (the lander gates with the swarm copy of tests/gate.js, not the patch copy — claude 11-08, raised with Anya; node:all still runs this suite)", (ce.tests || []).includes('node:frenchie-halo-cone-equi') && cnt(gate, 'node:frenchie-halo-cone-equi') >= 6);
 
 // ---- GPU table text
 const H = await import('file://' + path.join(ROOT, 'js/drive-three-halo.js'));
@@ -62,9 +62,9 @@ ok('ON composes with first-moment (accM line in the CE body)', cnt(mom, 'accM +=
 ok('ON composes with the polar band table', pol.includes('haloBandA') && cnt(pol, 'vec3 d = haloEye + s * ray - lamp;') === 1);
 
 // ---- build wiring (source-level)
-ok('halo: build reads the option and forces lw/width/jit off (refine via refineEff)', has(haloSrc, "const ceN = look.haloConeEqui === 'on' ? CE_STEPS : 0;") && has(haloSrc, 'const lwRaw = ceN ? \'off\' : look.haloLampWin') && has(haloSrc, 'const refineEff = ceN ? 0 : refineN;') && has(haloSrc, 'const widthStep = ceN ? 0 :') && has(haloSrc, "const jm = ceN ? '' :"));
+ok('halo: build reads the option (refine wins per registry ignoredWhen) and forces lw/width/jit off', has(haloSrc, "const ceN = refineN ? 0 : look.haloConeEqui === 'on' ? CE_STEPS : 0;") && has(haloSrc, 'const lwRaw = ceN ? \'off\' : look.haloLampWin') && has(haloSrc, 'const refineEff = refineN;') && has(haloSrc, 'const widthStep = ceN ? 0 :') && has(haloSrc, "const jm = ceN ? '' :"));
 ok('halo: state + pick key carry ce', has(haloSrc, 'halo.ce = ceN;') && has(haloSrc, '!widthStep && !ce) return') && has(haloSrc, 'widthStep, wb, ce, globalThis.HALO_WB_PLANE'));
-ok('halo: setCone at all 3 lamp draws + hPl/hNPl in all 3 uniform blocks', cnt(haloSrc, 'setPlane(q.L); setCone(q, legacy);') === 3 && cnt(haloSrc, 'hPl: { value: hPlArr }, hNPl: hNPlU,') === 3);
+ok('halo: setCone guarded by ceN at all 3 lamp draws (OFF is zero-cost, cannot throw — claude review 11-08) + hPl/hNPl in all 3 uniform blocks', cnt(haloSrc, 'setPlane(q.L); if (ceN) setCone(q, legacy);') === 3 && cnt(haloSrc, 'hPl: { value: hPlArr }, hNPl: hNPlU,') === 3);
 ok('halo: setCone uses beamExtentOf + coneClip (the cull/CP planes)', has(haloSrc, 'coneClip([L.x, L.y, L.z], basisOf(q), ext.e, ext.conv)'));
 ok('halo: all 5 pick call sites pass ceN', cnt(haloSrc, ', ceN)') === 5);
 
@@ -89,23 +89,25 @@ ok('drive-three: haloState() reports ce (probe hook)', has(three, 'width: halo.w
 {
   const T = await import('file://' + path.join(ROOT, 'vendor/three/three.module.min.js'));
   const fakeTex = () => ({ image: { data: new Uint8Array(4 * 64 * 64), width: 64, height: 64 }, colorSpace: '' });
-  let renders = 0;
-  const renderer = { autoClear: true, capabilities: { maxTextureSize: 4096 }, getClearColor: (c) => c.set(0), getClearAlpha: () => 1, setClearColor: () => {}, setRenderTarget: () => {}, clear: () => {}, render: () => { renders++; }, getContext: () => ({ getExtension: () => null, finish: () => {} }), properties: { get: () => ({}) }, outputColorSpace: '', toneMapping: 0 };
+  let renders = 0, shaders = [];
+  const renderer = { autoClear: true, capabilities: { maxTextureSize: 4096 }, getClearColor: (c) => c.set(0), getClearAlpha: () => 1, setClearColor: () => {}, setRenderTarget: () => {}, clear: () => {}, render: (scene) => { renders++; const m = scene && scene.children && scene.children[0] && scene.children[0].material; if (m && m.fragmentShader) shaders.push(m.fragmentShader); }, getContext: () => ({ getExtension: () => null, finish: () => {} }), properties: { get: () => ({}) }, outputColorSpace: '', toneMapping: 0 };
   const VEC2 = ['haloTab', 'haloPolarF', 'haloPolarRange', 'haloPolarN', 'otherLutSize'], VEC3 = ['otherLutInfo', 'haloNu', 'haloH', 'haloGain', 'haloSMax', 'haloE'];
   const mkU = () => { const store = {}; return new Proxy({}, { get: (t, k) => { if (!(k in store)) store[k] = { value: k === 'otherBeam' ? fakeTex() : VEC2.includes(k) ? new T.Vector2() : VEC3.includes(k) ? new T.Vector3() : k === 'carFromWorld' ? new T.Matrix4() : null }; return store[k]; }, set: (t, k, v) => { store[k] = v; return true; } }); };
   const lutB = { h0: -45, v0: -30, step: 0.5, nh: 180, nv: 120, data: new Float32Array(180 * 120).fill(0.5) };
   const world = { objects: [{ traffic: 0, headlamp: true, x: 120, y: 1.4, z: -1.2, nx: -1, ny: 0, car: 0 }], A: null };
   const baseLook = { trafficHalo: 16, haloRange: 120, visibility: 3000, haloPolar: 'off', haloJitter: '', haloLampWin: 'off', haloCrossingRefine: 0, haloMoment: 'off', haloWidthStep: 0, haloConePass: 0, haloConeAngle: 0, wetBounce: false, wetness: 0, scatterCull: 'off', sigma: 0.5, haloBlur: 0, haloDepthBlur: 0, haloDiv: 1, haloBins: 6, haloCars: 4, haloAutoRange: false, haloPolarLamps: 2, haloPolarBand: 0, haloRefineNeighbour: 0, haloNearSub: 1, haloGain: 1, touge: false, trafficShadows: 'off', shadowRes: '1024x512' };
   const base = { w: 320, h: 180, hfov: 60, eye: [-2, 0.37, 1.2], lamps: [], conv: 'A', lut: lutB, lowLut: null, trafficBeams: true, src: null, lane: 0 };
-  let built = null;
-  for (const ce of ['off', 'on']) {
-    const u = mkU(); const halo = H.haloPass(renderer, u);
-    const p = Object.assign({}, base, { look: Object.assign({}, baseLook, { haloConeEqui: ce }) });
+  const run = (lookExtra) => { const u = mkU(); const halo = H.haloPass(renderer, u); const before = renders; shaders = [];
+    const p = Object.assign({}, base, { look: Object.assign({}, baseLook, lookExtra) });
     let err = null; try { halo.build(p, world, null, null); } catch (e) { err = e; }
-    ok('halo build() runs with haloConeEqui ' + ce + ' (no TDZ/throw; ce=' + (err ? 'threw' : halo.ce) + ')', !err && halo.ce === (ce === 'on' ? H.CE_STEPS : 0), err ? String(err).slice(0, 120) : 'passes ' + halo.passes);
-    if (ce === 'off') built = renders;
-  }
-  ok('halo build() ON draws more sub-steps than OFF (the equiangular schedule actually replaces the ladder)', renders > built, { off: built, on: renders });
+    return { err, halo, u, draws: renders - before, shaders }; };
+  const rOff = run({ haloConeEqui: 'off' });
+  ok('halo build() runs with haloConeEqui off (no TDZ/throw; ce=0)', !rOff.err && rOff.halo.ce === 0, rOff.err ? String(rOff.err).slice(0, 120) : 'passes ' + rOff.halo.passes);
+  const rOn = run({ haloConeEqui: 'on' });
+  ok('halo build() runs with haloConeEqui on (no TDZ/throw; ce=' + H.CE_STEPS + ')', !rOn.err && rOn.halo.ce === H.CE_STEPS, rOn.err ? String(rOn.err).slice(0, 120) : 'passes ' + rOn.halo.passes);
+  ok('halo build() ON draws the CE table (some pass carries hPl/hNPl and no log ladder) while OFF keeps the ladder and no hPl', rOn.shaders.some((x) => x.includes('hPl[') && !x.includes('float qq = pow')) && rOff.shaders.some((x) => x.includes('float qq = pow') && !x.includes('hPl[')) && !rOff.shaders.some((x) => x.includes('hPl[')), { on: rOn.shaders.length, off: rOff.shaders.length });
+  const rRef = run({ haloConeEqui: 'on', haloCrossingRefine: 128 });
+  ok('halo build(): crossingRefine wins over CE (registry ignoredWhen crossingRefineOn — ce=0, cross=128)', !rRef.err && rRef.halo.ce === 0 && rRef.halo.cross === 128, rRef.err ? String(rRef.err).slice(0, 120) : { ce: rRef.halo.ce, cross: rRef.halo.cross });
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

@@ -1059,7 +1059,7 @@ const surfTexCPU = (s, off, mat) => {
       if (!L.beam && !beam) continue;
       const s1 = cap, s0 = Math.min(1, s1 / 4); if (!(s1 > s0)) continue;
       const tint = L.tint || [1, 1, 1];
-      const ceOn = !!(p && p.look && p.look.haloConeEqui === 'on');   // CE (B6): cone-clipped equiangular march, CPU twin of the GPU table variant
+      const ceOn = !!(p && p.look && p.look.haloConeEqui === 'on') && !([32, 64, 128, 256, 512, 2048].includes(+p.look.haloCrossingRefine) && +p.look.haloCrossingRefine > 0);   // CE (B6): cone-clipped equiangular march, CPU twin of the GPU table variant; ignoredWhen crossingRefineOn (registry) — the refinement wins
       if (ceOn) {
         const bm0 = L.beam || beam, cone = bm0 && bm0.lut ? ceConeOf(bm0.lut, bm0.conv || 'A') : null;
         if (!cone || !(cone.c > 0)) continue;

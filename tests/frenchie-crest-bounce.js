@@ -27,7 +27,7 @@ const wp = Opt.OPTIONS.find((x) => x.id === 'wetBouncePlane');
 ok('registry: wetBouncePlane bool default false, air group, control', !!wp && wp.type === 'bool' && wp.default === false && wp.group === 'air' && wp.control === '[data-dv="wetBouncePlane"]');
 ok('registry: requires wetBounceOn + RULES entry', !!wp && wp.requires.length === 1 && wp.requires[0].rule === 'wetBounceOn' && has(reg, "wetBounceOn: { cond: { opt: 'wetBounce', eq: true }"));
 ok('registry: defaults().wetBouncePlane === false', Opt.defaults().wetBouncePlane === false);
-ok('registry: haloConeEqui is the LAST entry (11-06 B6; wetBounce was last before it)', Opt.OPTIONS[Opt.OPTIONS.length - 1].id === 'haloConeEqui' && Opt.OPTIONS[Opt.OPTIONS.length - 2].id === 'wetBounce');
+ok('registry: haloConeEqui is registered (membership, not last-entry — a last-entry pin breaks the next appender, claude review 11-08)', Opt.OPTIONS.some((x) => x.id === 'haloConeEqui'));
 ok('registry: tests lists node:frenchie-crest-bounce', !!wp && wp.tests.includes('node:frenchie-crest-bounce'));
 
 // ---- wiring: control, label handler, cache key, look projection, glare opts

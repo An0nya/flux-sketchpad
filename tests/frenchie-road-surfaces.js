@@ -24,7 +24,7 @@ ok('registry: roadSurfaces bool default false, surface group, control', !!rs && 
 ok('registry: roadSurface enum stock default, values, requires roadSurfacesOn', !!rsu && rsu.type === 'enum' && rsu.default === 'stock' && JSON.stringify(rsu.values) === JSON.stringify(['stock', 'fresh', 'old', 'concrete', 'tar-snake']) && /need\('roadSurfacesOn'\)/.test(rsu.requires.map((r) => JSON.stringify(r)).join(' ') + reg));
 ok('registry: RULES has roadSurfacesOn on roadSurfaces eq true', /roadSurfacesOn: \{ cond: \{ opt: 'roadSurfaces', eq: true \}/.test(reg));
 ok('defaults(): roadSurfaces false, roadSurface stock', Opt.defaults().roadSurfaces === false && Opt.defaults().roadSurface === 'stock');
-ok('registry: haloConeEqui is the LAST entry (11-06 B6; wetBounce was last before it)', Opt.OPTIONS[Opt.OPTIONS.length - 1].id === 'haloConeEqui' && Opt.OPTIONS[Opt.OPTIONS.length - 2].id === 'wetBounce');
+ok('registry: haloConeEqui is registered (membership, not last-entry — a last-entry pin breaks the next appender, claude review 11-08)', Opt.OPTIONS.some((x) => x.id === 'haloConeEqui'));
 
 // ---- laws (executed)
 ok('executed: surfSOf undefined when OFF or stock', D.surfSOf({}) === undefined && D.surfSOf({ roadSurfaces: true, roadSurface: 'stock' }) === undefined && D.surfSOf({ roadSurface: 'fresh' }) === undefined);
