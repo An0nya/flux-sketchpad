@@ -61,6 +61,7 @@ const MAP = [
   [/^js\/drive-game\.js$/, ['ui', 'nodeAll', 'node:minigame', 'node:minigame-2', 'node:game-curves']],   // frenchie (open pool 5): game mode was unmapped
   [/^js\/drive-three-(beamcone|shadowmaps|models-glsl)\.js$/, ['render', 'ui', 'nodeAll']],   // frenchie (open pool 5): the remaining drive-three modules
   [/^js\/(beams|compare|drive-models-glsl|exports|layout|render|road|scene-details|solve-cache|source|spec|state)\.js$/, ['ui', 'nodeAll', 'render']],   // frenchie (open pool 5): core data/spec/road modules were unmapped
+  [/^tests\/image\//, ['node:image/selftest', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'WT-wetness']],   // B1: the image-comparison library (compare/flip/png) was unmapped, so editing it ran no test; its node self-test plus the four page tests that call it
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];
 const NOT_TESTS = ['gate', 'load', 'serve', 'drive-three-page', 'pinned-defaults'];   // drive-three-page.js is the browser-side helper of P1/FG/SC (Brief U: it gained the lampCone argument), not a Node test; it is in MAP
