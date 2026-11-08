@@ -91,6 +91,7 @@ for (let seed = 1; seed <= 60; seed++) for (let k = 0; k < 300; k++) { const t =
 ok('culvert condition: creek tiles in the open biome only (seeded 35% at build time)', cul > 40, { cul });
 ok('culvert builds water strip across the road + parapets both edges, behind wild', anim.includes("cls: 'culvert'") && (anim.match(/cls: 'culvert'/g) || []).length >= 2 && anim.includes("mat: 'water', cls: 'culvert'") && anim.includes("vg.creek && tile.biome === 'open'"));
 // 11-06: §3.3 audit fix — negative tile indices: JS % keeps the sign, so k%16 was wrong for k<0
-ok('endlessVerge ramp wraps for negative k: k=-1 -> kk16=15 -> ramp 0.4, k=-16 -> kk16=0 -> ramp 0.6', A.endlessVerge(7, -1).ramp === 0.4 && A.endlessVerge(7, -16).ramp === 0.6 && A.endlessVerge(7, -17).ramp === 0.4, { r1: A.endlessVerge(7, -1).ramp, r16: A.endlessVerge(7, -16).ramp });
+// k=-16 is deliberately not asserted: -16 % 16 is -0 and -0 === 0, so even the unwrapped (buggy) code gave ramp 0.6 there. Only k = -1, -17, -33 (== 15 mod 16) tell fixed from buggy.
+ok('endlessVerge ramp wraps for negative k: k=-1, -17, -33 -> kk16=15 -> ramp 0.4 (unwrapped k%16 = -1 gave 1)', A.endlessVerge(7, -1).ramp === 0.4 && A.endlessVerge(7, -17).ramp === 0.4 && A.endlessVerge(7, -33).ramp === 0.4, { r1: A.endlessVerge(7, -1).ramp, r17: A.endlessVerge(7, -17).ramp, r33: A.endlessVerge(7, -33).ramp });
 console.log(fail === 0 ? `\nall ${pass} le-chonk-verge checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);
