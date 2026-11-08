@@ -60,8 +60,8 @@ const BASE = { trafficBeams: true, oncoming: true, preceding: false, seed: 1, vi
   // The halo of settings o: (frame with o) - (frame with o and trafficHalo 0, drawn just before).
   const DBG = {};
   // A warm-up frame first: an option in the ground cache key rebuilds on its first frame, and that frame's object layer can miss lit objects (seen 10-28: 44 reflector / lamp-head px black).
-  // The frame still depends on its history (10-28 probe: even-8 gave 44968 then 35326 in one page), so a sum counts once two consecutive measurements agree within 1% (up to 3).
-  const haloSum = async (page, o, tag) => { let prev = null; for (let k = 0; k < 3; k++) { const v = await haloSum1(page, o, tag); if (prev !== null && Math.abs(v / prev - 1) <= 0.01) return v; prev = v; } return prev; };
+  // The frame still depends on its history (10-28 probe: even-8 gave 44968 then 35326 in one page), so a sum counts once two consecutive measurements agree within 1% (up to 5); if none do, it warns and returns the last value.
+  const haloSum = async (page, o, tag) => { let prev = null; const vals = []; for (let k = 0; k < 5; k++) { const v = await haloSum1(page, o, tag); vals.push(v); if (prev !== null && Math.abs(v / prev - 1) <= 0.01) return v; prev = v; } console.log('[warn] haloSum did not converge for ' + tag + ' after 5: ' + vals.join(', ')); return prev; };
   const haloSum1 = async (page, o, tag) => { await frame(page, { ...o, trafficHalo: 16 }); const none = await lumOf(page, await frame(page, { ...o, trafficHalo: 0 }, tag && tag + '-none')), A = await lumOf(page, await frame(page, { ...o, trafficHalo: 16 }, tag)); let s = 0, big = 0, bigS = 0; const bb = [1e9, 1e9, -1, -1];
     for (let i = 0; i < A.L.length; i++) { const d = Math.max(0, A.L[i] - none.L[i]); s += d; if (d > 40) { big++; bigS += d; const x = i % A.w, y = (i / A.w) | 0; bb[0] = Math.min(bb[0], x); bb[1] = Math.min(bb[1], y); bb[2] = Math.max(bb[2], x); bb[3] = Math.max(bb[3], y); } }
     if (tag) DBG[tag] = { big, bigS: Math.round(bigS), bb }; return Math.round(s); };
