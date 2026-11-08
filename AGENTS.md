@@ -55,7 +55,8 @@ file is the only thing that survives it, so follow it even if your summary doesn
 8. **Before quoting a number,** state the beam (`ownLow: builtin:sqm-samples.json:4`, not the design fallback), the
    pose, and the reference you compared against. A dense whole-range integral is not a safe reference near a lamp.
 9. `swarm` is what Anya tries. Have tests resolve paths from `__dirname`, not `/workspace`: gates run them elsewhere.
-10. **Want this file changed?** Propose it in `notes/CLAUDE-NOTES.md` under `## AGENTS.md proposal — <model> — <time>`, with the exact
+10. **Want this file changed?** Propose it in `/workspace/notes/CLAUDE-NOTES.md` (the shared notes folder; a file at your clone's
+    root gets landed into the app tree) under `## AGENTS.md proposal — <model> — <time>`, with the exact
     text and the mistake it would prevent. Anya and Claude review proposals; don't edit AGENTS.md yourself.
 11. **Stamp shared files with host time, not your VM's clock.** VM clocks drift, and differently per VM (one was 291 min
     behind). Read host time from the mtime of a file you CREATE, with a fresh name each time: `touch` on a file that
@@ -135,6 +136,12 @@ file is the only thing that survives it, so follow it even if your summary doesn
 29. **An old version of an app file for a test to compare with** goes in `tests/baselines/<commit>/`, from your clone:
     `mkdir -p tests/baselines/<commit>/js; git show <commit>:js/<file>.js > tests/baselines/<commit>/js/<file>.js`, then `land` it. The lander holds it
     for review (rule 25). A reviewer can check it with the same `git show`. Add a row to `tests/baselines/README.md`.
+30. **Never edit a script or a shared file with `sed` or a one-line `node -e`.** Shell quoting breaks quoted arrays and
+    markdown silently: three times in one hour (11-06), `sed` into a quoted JS array left a watcher dead, and backticks in a
+    `node -e` emptied a Claims line. Write the new text to a file with a quoted heredoc (`<<'EOF'`) and splice it in with a
+    `node` script that fails if its anchor text isn't found. Then run or read the result. **A looping job isn't alive because
+    `job.mjs status` says RUNNING:** in `for …; do node x.js; done; sleep 60` a failing `node x.js` keeps the loop going. Check that
+    its log is still growing.
 
 ## Environment
 - Run `export TMPDIR=/tmp` first (TMPDIR points at a path that does not exist here).
