@@ -80,15 +80,19 @@ async function session(browser, errors) {
     const badge = await page.evaluate(() => (RF.DriveAnim._.V.fpsLab || {}).textContent || '');
     ok('FG FPS badge shows mean and p95 frame ms', / ms mean · [\d.]+ ms p95/.test(badge), JSON.stringify(badge));
     ok('FG no page errors (session 1)', errors.length === 0, JSON.stringify(errors.slice(0, 3)));
-    // CPU/GPU parity with fog on: the P1 checks with visibility 200 (same thresholds as P1)
-    // Run on the existing page (MG2 already solved by UX2Page.ready) — saves the second browser context + solve wait.
-    const errsBefore = errors.length;
-    await page.setViewportSize({ width: 1600, height: 900 });
-    await page.addScriptTag({ url: '/tests/drive-three-page.js' });
-    const result = await page.evaluate((p) => P1Page.run(p, { visibility: 200, lampCone: 'off' }), port);
-    ok('FG CPU/GPU parity under fog (P1 checks, visibility 200)', result.pass, 'checks ' + result.checks.length + ', failed ' + result.checks.filter((c) => !c.pass).map((c) => c.name).join('; '));
-    ok('FG no page errors (parity session)', errors.length === errsBefore, JSON.stringify(errors.slice(errsBefore, errsBefore + 3)));
     await s.context.close();
+    // CPU/GPU parity with fog on: the P1 checks with visibility 200 (same thresholds as P1)
+    const ctx2 = await browser.newContext({ viewport: { width: 1600, height: 900 } }), p2 = await ctx2.newPage(), errs2 = [];
+    p2.on('pageerror', (e) => errs2.push(String(e)));
+    await p2.addInitScript(() => localStorage.clear());
+    await p2.goto('http://localhost:' + port + '/index.html'); await p2.waitForFunction(() => window.RF && RF.UI && RF.UI.loadScene);
+    const fs = require('fs'), path = require('path');
+    await p2.evaluate((text) => RF.UI.loadScene(RF.State.deserialize(text), 'P1 fixture'), fs.readFileSync(path.join(__dirname, '../fixtures/MG2-default-lamp.json'), 'utf8'));
+    await p2.addScriptTag({ url: '/tests/drive-three-page.js' });
+    const result = await p2.evaluate((p) => P1Page.run(p, { visibility: 200, lampCone: 'off' }), port);
+    ok('FG CPU/GPU parity under fog (P1 checks, visibility 200)', result.pass, 'checks ' + result.checks.length + ', failed ' + result.checks.filter((c) => !c.pass).map((c) => c.name).join('; '));
+    ok('FG no page errors (parity session)', errs2.length === 0, JSON.stringify(errs2.slice(0, 3)));
+    await ctx2.close();
   } finally { await browser.close(); }
   const fails = checks.filter((c) => !c.pass).length;
   console.log(fails ? fails + ' FAILED of ' + checks.length : 'all ' + checks.length + ' FG page checks passed');
