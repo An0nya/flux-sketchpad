@@ -1,6 +1,6 @@
 // LDR-FLIP (Andersson et al. 2020, "FLIP: A Difference Evaluator for Alternating Images"), plain JS, no dependencies.
 // Ported from NVIDIA's reference implementation (github.com/NVlabs/flip, BSD-3-Clause: src/pytorch/flip_loss.py, same constants),
-// with the 2D filters split into exact separable passes. Checked once by the author against NVIDIA's reference outputs; that check is not in this repo (no NVIDIA images here), and selftest.js does not repeat it.
+// with the 2D filters split into exact separable passes. Commit f730c8d reports reproducing NVIDIA's published mean 0.159693; that check is not in this repo (no NVIDIA images here), and selftest.js does not repeat it.
 //   flip(ref, test, { ppd }) -> { map: Float32Array (w*h, 0..1), mean, p50, p95, p99, max, w, h }
 // ref/test: { w, h, data: RGBA bytes, sRGB }. Alpha is ignored. ppd = pixels per degree of visual angle; the default 67.02 is NVIDIA's
 // (a 0.7 m wide 4K monitor seen from 0.7 m). The value is a per-pixel perceived difference when flipping between the two images:
