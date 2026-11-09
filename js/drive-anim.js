@@ -498,7 +498,7 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
   // §2-endless elevation (rolling hills / forested pass): a seeded grade walk, one grade per 16-tile biome block
   // (mountain ±2–6%, open/forest ±0.5–1.5% rolling, city flat), lap-periodic like the pass so z(s) is O(1).
   const ENDLESS_BLOCK = 16 * 200;   // one biome block = 16 tiles = 3.2 km
-  const endlessElevCache = new Map();
+  const endlessElevCache = new Map(), ENDLESS_ELEV_MAX = 16;
   function endlessGrade(seed, b, preset = 'off', custom = null) {   // grade (rise/run) of biome block b, seeded from the block's biome; the preset sets the magnitudes
     const biome = endlessBiome(seed, b * 16, preset, custom), R = D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(b + 1, 0x9E3779B1)) >>> 0);
     if (preset === 'custom' && custom && custom.gradeBiome && custom.gradeBiome[biome]) { const g = custom.gradeBiome[biome]; return (R() < 0.5 ? -1 : 1) * (g[0] + (g[1] - g[0]) * R()); }   // custom per-biome grade range wins
@@ -523,6 +523,7 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
       return fall + n * Math.min(1, (a - edge) / 4) * 1.2;
     };
     const ck = seed + '|' + preset + '|' + (terrain ? 1 : 0) + '|' + JSON.stringify(custom || 0); if (endlessElevCache.has(ck)) return endlessElevCache.get(ck);
+    if (endlessElevCache.size >= ENDLESS_ELEV_MAX) endlessElevCache.delete(endlessElevCache.keys().next().value);   // bounded: one entry per edited custom preset would otherwise leak
     const g = [], cum = [0];   // g[b] = block grade; within a block the grade ramps g[b-1]->g[b] over the first RAMP m and g[b]->g[b+1] over the last
     // one vertical curve per block edge, centred on it: the last RAMP m of block b ramp g[b] -> (g[b]+g[b+1])/2 and the first RAMP m of
     // block b+1 carry on to g[b+1], so the grade is continuous at the edge (both halves used to ramp the full g[b] -> g[b+1], and the
@@ -561,13 +562,32 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
     const h = lane / 2;
     return { h, right: -lane, med0: h, med1: h + median, medC: h + median / 2, onc0: lane + median, onc1: 2 * lane + median, oncMid: h + median + lane, outerR: -(h + lane), outerL: h + median + 2 * lane };
   }
+  // endlessTile memo: (seed, k, preset, custom) -> the finished tile. Callers only read tiles. FIFO-bounded.
+  const ENDLESS_MEMO_MAX = 4096, endlessMemo = new Map(), customKeys = new WeakMap();
+  const customKeyOf = (c) => { if (!c) return ''; let s = customKeys.get(c); if (s === undefined) { s = JSON.stringify(c); customKeys.set(c, s); } return s; };
+  // The chaining rules read the ADJUSTED k-1 / k-2 tiles. A chain resets (raw neighbours) at k <= 0 and every ENDLESS_CHAIN_RESET
+  // tiles, so a tile depends on a bounded, query-order-independent window even when the weights allow no straights.
+  const ENDLESS_CHAIN_RESET = 256;
   function endlessTile(seed, k, preset = 'off', custom = null) {
-    const biome = endlessBiome(seed, k, preset, custom), t = endlessTileRaw(seed, k, biome, custom, preset);
-    if (biome === 'mountain' && k > 0) {   // switchbacks: a curve answers the previous curve with the opposite sign
-      const p = endlessTileRaw(seed, k - 1, endlessBiome(seed, k - 1, preset, custom), custom, preset);
-      if (p.curvature !== 0 && t.kind !== 'straight') { t.kind = p.curvature > 0 ? '150R' : '150L'; t.curvature = (t.kind.endsWith('L') ? 1 : -1) / 150; }
+    const ck = customKeyOf(custom), key = (seed | 0) + '|' + k + '|' + preset + '|' + ck, hit = endlessMemo.get(key);
+    if (hit) return hit;
+    const chained = k > 0 && k % ENDLESS_CHAIN_RESET !== 0;
+    if (chained) {   // fill the chain bottom-up so the neighbour lookups below hit the memo (no deep recursion)
+      let j = k - 1; const has = (i) => endlessMemo.has((seed | 0) + '|' + i + '|' + preset + '|' + ck);
+      while (j > 0 && j % ENDLESS_CHAIN_RESET !== 0 && !has(j)) j--;
+      for (let i = Math.max(j - 1, k - 2 - ENDLESS_CHAIN_RESET); i < k; i++) if (!has(i)) endlessTile(seed, i, preset, custom);
     }
-    const p1 = endlessTileRaw(seed, k - 1, endlessBiome(seed, k - 1, preset, custom), custom, preset), p2 = k > 1 ? endlessTileRaw(seed, k - 2, endlessBiome(seed, k - 2, preset, custom), custom, preset) : null;   // no-loop window
+    const t = endlessTileShaped(seed, k, preset, custom, chained);
+    endlessMemo.set(key, t); if (endlessMemo.size > ENDLESS_MEMO_MAX) endlessMemo.delete(endlessMemo.keys().next().value);
+    return t;
+  }
+  function endlessTileShaped(seed, k, preset, custom, chained) {
+    const biome = endlessBiome(seed, k, preset, custom), t = endlessTileRaw(seed, k, biome, custom, preset);
+    const prev = (i) => chained ? endlessTile(seed, i, preset, custom) : endlessTileRaw(seed, i, endlessBiome(seed, i, preset, custom), custom, preset);
+    const p1 = prev(k - 1), p2 = k > 1 ? prev(k - 2) : null;   // no-loop window (adjusted tiles when chained)
+    if (biome === 'mountain' && k > 0) {   // switchbacks: a curve answers the previous curve with the opposite sign
+      if (p1.curvature !== 0 && t.kind !== 'straight') { t.kind = p1.curvature > 0 ? '150R' : '150L'; t.curvature = (t.kind.endsWith('L') ? 1 : -1) / 150; }
+    }
     if (t.curvature !== 0 && p1.curvature !== 0 && p2 && Math.sign(t.curvature) === Math.sign(p1.curvature) && Math.sign(p1.curvature) === Math.sign(p2.curvature)) { t.kind = 'straight'; t.curvature = 0; }
     // tight-S clause dropped (B11): it matched every curve kind (|c| >= 1/250), flattening all S-bends and fighting the mountain switchbacks
     t.props = Object.assign({}, ENDLESS_PROPS[biome], LOOP_PROPS[preset] || {}, custom && custom.props);   // loop preset props, then custom preset props win (speed cap, density, l

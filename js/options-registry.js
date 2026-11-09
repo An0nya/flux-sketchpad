@@ -136,7 +136,7 @@
     cityScene: { cond: { opt: 'scene', eq: 'city' }, why: 'leafy foliage is ignored in the city', effect: 'none',
       at: { file: ANIM, fn: "name === 'road' || name === 'forest'", line: 35 } },
     endlessRoad: { cond: { opt: 'endlessRoad', eq: true }, why: 'needs the endless biome road on (tunnels and crossings are seeded into endless tiles)', effect: 'none',
-      at: { file: ANIM, fn: 'o.endlessRoad ? endlessTile', line: 3185 } },
+      at: { file: ANIM, fn: 'o.endlessRoad ? endlessTile', line: 3205 } },   // le-chonk 11-09: re-pointed for the combined tree
     cabinView: { cond: { opt: 'cabinView', eq: true }, why: 'needs the in-cabin view on (the dashboard style and drift cabin ride on its overlay)', effect: 'none',
       at: { file: ANIM, fn: 'drawCabin(V, o.cabinView', line: 1914 } },
     roadSurfacesOn: { cond: { opt: 'roadSurfaces', eq: true }, why: 'needs road surfaces on (the per-surface smoothness physics gate)', effect: 'disabled',
