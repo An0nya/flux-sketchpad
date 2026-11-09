@@ -5,6 +5,7 @@ const ROOT = path.join(__dirname, '..');
 let pass = 0, fail = 0;
 const ok = (name, cond, extra) => { if (cond) { pass++; console.log('[PASS] ' + name); } else { fail++; console.log('[FAIL] ' + name + (extra !== undefined ? ' — ' + JSON.stringify(extra) : '')); } };
 const { load } = require('./load.js');
+const { sceneKeyHas, sceneKeyHasAll } = require('./scene-key.js');
 const RF = load(ROOT);
 const A = RF.DriveAnim;
 
@@ -23,7 +24,7 @@ ok('src.tiles carries the preset', anim.includes("preset: o.endlessPreset || 'of
 ok('tileA/tileWorld pass the preset to endlessElev', anim.includes('endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom, p.src.tiles.axes)') && anim.includes('endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom, cfg.axes)'));
 ok('forested-pass adds guardrails on mountain blocks (cls rail)', anim.includes("tile.biome === 'mountain' && cfg.flags.posts !== false") && anim.includes("cls: 'rail'"));
 ok('forested-pass densifies the verge on mountain/forest', anim.includes("cfg.preset === 'forested-pass' && (vg.biome === 'mountain' || vg.biome === 'forest') ? 3 : 0"));
-ok('top-bar select exists + tkey carries the preset', anim.includes("'data-anim': 'endlessPreset'") && anim.includes("o.tiles ? o.endlessPreset : 'off'"));
+ok('top-bar select exists + tkey carries the preset', anim.includes("'data-anim': 'endlessPreset'") && sceneKeyHas(anim, ROOT, 'endlessPreset'));
 const reg = fs.readFileSync(path.join(ROOT, 'js', 'options-registry.js'), 'utf8');
 ok('registry: endlessPreset enum default off', reg.includes("id: 'endlessPreset'") && reg.includes("default: 'off', label: 'endless road preset"));
 // functional: a forested-pass mountain block renders rails through the pipeline
@@ -45,7 +46,7 @@ ok('parseCustomPreset exposed and validates: good JSON -> fields kept', !!cp && 
 ok('parseCustomPreset rejects/clamps: bad JSON -> null, out-of-range dropped/clamped', A2.parseCustomPreset('not json') === null && (A2.parseCustomPreset('{"grade":[5,9]}') || {}).grade === undefined && A2.parseCustomPreset('{"tunnel":9}').tunnel === 0.5);
 ok('custom biome loop: endlessTile(seed,k,"custom",{biome:"city"}) is city', A2.endlessTile(7, 5, 'custom', { biome: 'city' }).biome === 'city');
 ok('highway-loop implies the multilane render cross-section (multilaneRoad option untouched)', anim.includes("multilane: !!o.multilaneRoad || !!(LOOP_MULTILANE[o.endlessPreset || 'off'])") && anim.includes("'highway-loop': 'open'"));
-ok('wiring: cfg.custom from endlessPresetCustom when preset=custom; skey/tkey carry the JSON; select has loop values; input wired', anim.includes("custom: o.endlessPreset === 'custom' ? parseCustomPreset(o.endlessPresetCustom) : null") && anim.includes("o.tiles ? o.endlessPresetCustom || '' : '', SUBTICK") && anim.includes("'highway-loop', 'gantry-loop', 'tunnel-loop', 'crossing-loop', 'layby-loop', 'fuel-loop', 'viewpoint-loop', 'sos-loop', 'picnic-loop', 'wildlife-loop', 'chainup-loop', 'culvert-loop', 'works-loop', 'toll-loop', 'vms-loop', 'custom'") && anim.includes("'data-anim': 'endlessPresetCustom'"));
+ok('wiring: cfg.custom from endlessPresetCustom when preset=custom; skey/tkey carry the JSON; select has loop values; input wired', anim.includes("custom: o.endlessPreset === 'custom' ? parseCustomPreset(o.endlessPresetCustom) : null") && sceneKeyHas(anim, ROOT, 'endlessPresetCustom') && anim.includes("'highway-loop', 'gantry-loop', 'tunnel-loop', 'crossing-loop', 'layby-loop', 'fuel-loop', 'viewpoint-loop', 'sos-loop', 'picnic-loop', 'wildlife-loop', 'chainup-loop', 'culvert-loop', 'works-loop', 'toll-loop', 'vms-loop', 'custom'") && anim.includes("'data-anim': 'endlessPresetCustom'"));
 // 11-01 ~01:10 feature loops (Anya: presets to test each unique-geometry tile individually)
 const FLOOPS = [['tunnel-loop', 'tunnel', (b, t) => (b === 'forest' || b === 'mountain') && t.kind === 'straight'], ['crossing-loop', 'crossing', (b, t) => b === 'open' && t.kind === 'straight'], ['layby-loop', 'layby', (b, t) => b === 'open' && t.kind === 'straight'], ['fuel-loop', 'fuel', (b, t) => b === 'open' && t.kind === 'straight'], ['viewpoint-loop', 'view', (b, t) => b === 'mountain' && t.kind === 'straight'], ['sos-loop', 'sos', (b, t) => (b === 'forest' || b === 'mountain') && t.kind === 'straight'], ['picnic-loop', 'picnic', (b, t) => b === 'forest' && t.kind === 'straight'], ['wildlife-loop', 'wild', (b, t) => b === 'forest' && t.kind === 'straight'], ['chainup-loop', 'chain', (b, t) => b === 'mountain' && t.kind === 'straight'], ['works-loop', 'works', (b, t) => (b === 'open' || b === 'city') && t.kind === 'straight'], ['toll-loop', 'toll', (b, t) => b === 'open' && t.kind === 'straight'], ['vms-loop', 'vms', (b, t) => (b === 'open' || b === 'city') && t.kind === 'straight']];
 for (const [ps, flag, elig] of FLOOPS) {

@@ -4,6 +4,7 @@ const ROOT = path.join(__dirname, '..');
 let pass = 0, fail = 0;
 const ok = (name, cond, extra) => { if (cond) { pass++; console.log('[PASS] ' + name); } else { fail++; console.log('[FAIL] ' + name + (extra ? ' — ' + extra : '')); } };
 const { load } = require('./load.js');
+const { sceneKeyHas, sceneKeyHasAll } = require('./scene-key.js');
 const RF = load(ROOT);
 const A = RF.DriveAnim;
 const anim = fs.readFileSync(ROOT + '/js/drive-anim.js', 'utf8');
@@ -17,7 +18,7 @@ ok('never two tunnel tiles in a row', adjacent === 0, { adjacent });
 ok('OFF: tunnel flag is undefined without the option and src.tiles carries endlessTunnel', anim.includes('tunnel: !!o.endlessTunnel,') && anim.includes('t.tunnel = false;'));
 ok('tileWorld builds bore + portal walls (x4) + lintels (x2), gated on cfg.tunnel && tile.tunnel && wild', (anim.match(/cls: 'tunnel'/g) || []).length >= 3 && anim.includes("if (cfg.tunnel && tile.tunnel && cfg.flags.wild !== false)") && anim.includes("for (const e of [tile.s0, tile.s0 + 200]) for (const sd of [-1, 1])") && anim.includes("for (const e of [tile.s0, tile.s0 + 200]) { const pq"));
 ok('no street lamps inside tunnel tiles', anim.includes('lampTile = !tile.tunnel &&'));
-ok('wiring: skey/tkey/toggle', anim.includes('!!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, !!o.driftMode, !!o.driftDynamics, !!o.driftAfs, !!o.driftCabin, !!o.yawSmooth, !!o.cabinLight, o.tiles ? o.endlessPresetCustom || \'\' : \'\', SUBTICK') && anim.includes('!!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, !!o.yawSmooth, o.tiles') && anim.includes("'data-anim': 'endlessTunnel'"));
+ok('wiring: skey/tkey/toggle', sceneKeyHasAll(anim, ROOT, ['multilaneRoad','endlessTunnel','endlessCrossing','junctionGantries','driftMode','driftDynamics','driftAfs','driftCabin','yawSmooth','cabinLight','endlessPresetCustom']) && sceneKeyHasAll(anim, ROOT, ['multilaneRoad','endlessTunnel','endlessCrossing','junctionGantries','yawSmooth']) && anim.includes("'data-anim': 'endlessTunnel'"));
 ok('registry: endlessTunnel default false, requires tiles', (() => { const Opt = require(path.join(ROOT, 'js', 'options-registry.js')); const arr = Opt.OPTIONS || Opt; const e = arr.find((x) => x.id === 'endlessTunnel'); return e && e.default === false; })() || 'registry entry pending in proto (added at landing)');
 ok('mountain tunnel tiles are avalanche sheds (roof on columns, open sides); forest keeps the bore', anim.includes("const shed = tile.biome === 'mountain'") && anim.includes("mat: shed ? 'concrete' : 'wall'") && anim.includes("z1: shed ? 5.4 : 6.5") && anim.includes("for (let u = 5; u < 200; u += 10)"));
 // brainstorm: mountain viewpoints (10-31 ~20:15)
