@@ -21,20 +21,42 @@ const profile = Opt.OPTIONS.filter(o => o.kind === 'profile');
 // ---- read source files ----
 const specUi = fs.readFileSync(path.join(__dirname, '..', 'js', 'spec-ui.js'), 'utf8');
 const driveAnim = fs.readFileSync(path.join(__dirname, '..', 'js', 'drive-anim.js'), 'utf8');
-const gate = fs.readFileSync(path.join(__dirname, 'gate.js'), 'utf8');
 const lookTest = fs.readFileSync(path.join(__dirname, 'halo-look-projection.js'), 'utf8');
 const registry = fs.readFileSync(path.join(__dirname, '..', 'js', 'options-registry.js'), 'utf8');
 
-// ---- 1. registry entry declared exactly once ----
+// ---- 1. registry entry declared exactly once [KEEP: text] ----
+// neb 11-09 (item 2): KEEP-flagged — this text scan still catches something the behaviour check
+// below cannot: a stray SECOND mention of an id in the registry file (a comment or a dead block)
+// that never reaches the exported OPTIONS list. Whether the app is actually broken is decided by
+// the behaviour check, not by this one.
 const dupes = [];
 for (const o of profile) {
   const re = new RegExp("id:\\s*'" + o.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "'", 'g');
   const count = (registry.match(re) || []).length;
   if (count > 1) dupes.push({ id: o.id, count });
 }
-ok('every profile option is declared exactly once in the registry',
+ok('every profile option is declared exactly once in the registry [KEEP: text — catches stray mentions the export cannot show]',
   dupes.length === 0,
   dupes.length ? 'DUPLICATES: ' + dupes.map(d => `${d.id} (${d.count}×)`).join(', ') : `${profile.length} options, all unique`);
+
+// ---- 1b. every option id in the registry MODULE is unique (behaviour) ----
+// neb 11-09 (item 2): ask the registry module instead of reading its source. This covers every
+// option kind (profile, scene, runtime), not only the profile ones, and it sees what the app
+// actually gets.
+const dupIdsIn = (list) => {
+  const seen = new Map();
+  for (const o of list) seen.set(o.id, (seen.get(o.id) || 0) + 1);
+  return [...seen.entries()].filter(([, c]) => c > 1).map(([id, c]) => `${id} (${c}×)`);
+};
+const dupesModule = dupIdsIn(Opt.OPTIONS);
+ok('every option id in the registry module is unique (behaviour)',
+  dupesModule.length === 0,
+  dupesModule.length ? 'DUPLICATES: ' + dupesModule.join(', ') : `${Opt.OPTIONS.length} options in the module, all unique`);
+// negative control: the detector must flag a duplicated entry
+const dupProbe = dupIdsIn(Opt.OPTIONS.concat([Opt.OPTIONS[0]]));
+ok('negative control: a duplicated registry entry IS flagged (behaviour)',
+  dupProbe.some(x => x.startsWith(Opt.OPTIONS[0].id + ' (')),
+  dupProbe.length ? 'flagged: ' + dupProbe.join(', ') : 'NOT flagged (detector would miss it)');
 
 // ---- 2. UI control exists ----
 // The control field can be:
@@ -120,16 +142,28 @@ ok('every declared node: test file exists',
   missingTestFiles.length === 0,
   missingTestFiles.length ? 'MISSING: ' + missingTestFiles.join(', ') : `${nodeTestNames.size} node test files, all exist`);
 
-// ---- 5. node test registered in gate.js ----
-const gateNodeMatch = gate.match(/const NODE = \[([^\]]+)\]/);
-const gateNodeList = gateNodeMatch ? gateNodeMatch[1] : '';
-const notInGate = [];
-for (const n of nodeTestNames) {
-  if (!gateNodeList.includes("'" + n + "'")) notInGate.push(n);
-}
-ok('every declared node: test is registered in tests/gate.js NODE list',
-  notInGate.length === 0,
-  notInGate.length ? 'NOT IN GATE: ' + notInGate.join(', ') : `${nodeTestNames.size} node tests, all in gate`);
+// ---- 5. every declared node: test is in the gate's OWN PLAN (behaviour) ----
+// neb 11-09 (item 2): this used to read the NODE literal out of tests/gate.js as text. The gate is
+// a script, so the honest question is not "is the name spelled in the source" but "would the gate
+// run it" — so ASK the gate: `node tests/gate.js --list` prints the plan it would run. This is
+// strictly stronger (it also catches a name that is in the literal but that the plan drops) and it
+// cannot be fooled by a name in a comment. The old text version is gone on purpose: it asserted on
+// an implementation detail and caught nothing the plan does not.
+const { execFileSync } = require('child_process');
+let gatePlan = null, gateErr = '';
+try {
+  const out = execFileSync(process.execPath, [path.join(__dirname, 'gate.js'), '--list'], { encoding: 'utf8', cwd: path.join(__dirname, '..'), timeout: 60000 });
+  gatePlan = new Set(out.split('\n').map(s => s.trim()).filter(Boolean));
+} catch (e) { gateErr = String(e.message || e); }
+const notInGate = gatePlan ? [...nodeTestNames].filter(n => !gatePlan.has('node:' + n)) : [...nodeTestNames];
+ok("every declared node: test is in the gate's own plan (behaviour)",
+  gatePlan !== null && notInGate.length === 0,
+  gatePlan === null ? 'could not ask the gate: ' + gateErr : notInGate.length ? 'NOT IN GATE: ' + notInGate.join(', ') : `${nodeTestNames.size} node tests, all in the gate's plan`);
+// negative control: a name the gate does not plan must be flagged
+const missingProbe = gatePlan ? [...nodeTestNames, 'zz-fake-not-in-gate'].filter(n => !gatePlan.has('node:' + n)) : [];
+ok('negative control: a node test the gate does not plan IS flagged (behaviour)',
+  gatePlan !== null && missingProbe.includes('zz-fake-not-in-gate'),
+  gatePlan === null ? 'no plan (cannot probe)' : missingProbe.includes('zz-fake-not-in-gate') ? 'flagged: zz-fake-not-in-gate' : 'NOT flagged (detector would miss it)');
 
 // ---- 6. options with no tests field at all (informational) ----
 const noTests = profile.filter(o => !o.tests || o.tests.length === 0);
