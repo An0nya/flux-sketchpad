@@ -140,5 +140,6 @@ run('halo shader anchors guarded via hrep, composed variants pinned (tests/frenc
 run('road surfaces physics option: k(s)/floor laws, OFF byte-identical, wiring, keys (tests/frenchie-road-surfaces.js)', ['tests/frenchie-road-surfaces.js']); // frenchie (Anya item 4, ROAD-SURFACES §7 resolved)
 run('touge shader anchors guarded (rep throws on moved anchor; no bare .replace outside helper) — tests/frenchie-touge-anchors.js', ['tests/frenchie-touge-anchors.js']); // frenchie (pool 4)
 run('image tolerance self-test: FLIP, PNG, compare, known-bad control (tests/image/selftest.js)', ['tests/image/selftest.js']); // B1
+run('T1 GPU-module logic: MAT_KEYS, uniform bounds, hrep, variant state machine, haloTableSize, haloState (tests/t1-gpu-module.js)', ['tests/t1-gpu-module.js']); // T1
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
