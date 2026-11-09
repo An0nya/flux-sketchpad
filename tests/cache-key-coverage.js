@@ -92,6 +92,10 @@ const EXEMPT = {
   cabinStyle:      'Overlay-only (cabinView dashboard style: modern/miata/digital80s); drawn by drawCabin from o.cabinStyle each frame, zero render change — same class as cabinView (drive-anim.js drawCabin)',
   cabinFovFrame:   'Overlay-only (cabinView windshield frame tracks FOV); drawn by drawCabin from o.fov each frame, zero render change — same class as cabinView/cabinStyle (drive-anim.js drawCabin)',
   cabinDigitalRedesign: 'Overlay-only (cabinView 80s digital redesign); drawn by drawCabin from o.cabinDigitalRedesign each frame, zero render change — same class as cabinView/cabinStyle/cabinFovFrame (drive-anim.js drawCabin)',
+  cabinGaugeLight: 'Overlay-only (miata photo cabin gauge backlight); drawn by drawCabin -> RF.CabinMiata.draw from o.cabinGaugeLight each frame, zero render change — same class as cabinView/cabinStyle (js/cabin-miata.js)',
+  cabinOffsetX:    'Overlay-only (miata photo cabin hand placement); read by drawCabin -> RF.CabinMiata.draw each frame, zero render change (js/cabin-miata.js frameFor)',
+  cabinOffsetY:    'Overlay-only (miata photo cabin hand placement); read by drawCabin -> RF.CabinMiata.draw each frame, zero render change (js/cabin-miata.js frameFor)',
+  cabinZoom:       'Overlay-only (miata photo cabin debug zoom); read by drawCabin -> RF.CabinMiata.draw each frame, zero render change (js/cabin-miata.js frameFor)',
   imperialUnits:   'Display-only units toggle (km/h -> mph in labels/gauges); read via fmtSpeed each frame, never enters the render or any cached resource (drive-anim.js fmtSpeed)',
 
   // ---- B: not picture-affecting ----

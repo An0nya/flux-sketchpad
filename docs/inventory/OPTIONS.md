@@ -224,6 +224,10 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `wetBouncePlane` | profile | air | table-rebuild | false | needs `wetBounceOn` [disabled] | options-registry.js, drive.js, drive-anim.js, drive-touge.js, drive-three.js, drive-three-shaders.js, drive-three-halo.js, spec-ui.js | - | - | - | - | - | - | `tests/frenchie-crest-bounce.js` |
 | `wetBounce` | profile | air | table-rebuild | false | - | drive.js, drive-anim.js, drive-three.js, drive-three-shaders.js, spec-ui.js | - | - | - | - | - | - | `tests/frenchie-wet-bounce.js` |
 | `haloConeEqui` | profile | halo | table-rebuild | "off" | needs `air` [hidden], `haloOn` [none]; ignored when `crossingRefineOn` [none] | options-registry.js, spec-ui.js, drive-anim.js, drive-three-halo.js, drive-three.js, drive.js | - | - | - | - | - | - | `tests/frenchie-halo-cone-equi.js` |
+| `cabinGaugeLight` | profile | view | free | "off" | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
+| `cabinZoom` | profile | view | free | 1 | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
+| `cabinOffsetX` | profile | view | free | 0 | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
+| `cabinOffsetY` | profile | view | free | 0 | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
 <!-- END GENERATED option-table -->
 
 DV_DEF keys with no row above (script check): none.
@@ -253,17 +257,17 @@ Each rule is one condition on other options (or on the render context), with the
 | `wetSheenOn` | wetSheen = true | needs wet sheen on | disabled | `spec-ui.js o.wetSheen) ~L1061` | wetVeil, wetModel |
 | `gpu` | context renderer = "gpu" | GPU drive view only; the CPU renderer ignores it | tooltip | `spec-ui.js GPU drive view only ~L949` | lampCone, haloPolarBand, crestOcclusion, haloJitter, haloJitterAmount, haloBlur, haloDepthBlur, haloCrossingRefine, haloRefineNeighbour, haloMoment, haloAutoRange, haloNearSub, haloConePass, haloConeAngle, trafficShadows, shadowRes, trafficShadowRoad, trafficShadowObjects, trafficShadowSoft, scatterCull, scatterCullEps, elevatedView, haloWidthStep |
 | `cpuRenderer` | context renderer = "cpu" | the worker threads render the CPU view; the GPU view ignores them | none | `drive-anim.js const want = !V.three ~L1861` | mt |
-| `tilesOn` | tiles = true | needs route tiles on (the pass does not allow it) | disabled | `drive-anim.js "tile-cache"]').disabled = !o.tiles ~L2661` | endlessRoad, tileCache |
+| `tilesOn` | tiles = true | needs route tiles on (the pass does not allow it) | disabled | `drive-anim.js "tile-cache"]').disabled = !o.tiles ~L2797` | endlessRoad, tileCache |
 | `tiles` | tiles = true | needs route tiles on (the prototype endless-road, drift and cabin options are silent no-ops without tiles) | none | `drive-anim.js if (o.tiles) src.tiles ~L59` | endlessPreset, endlessPresetCustom, tileTerrain, multilaneRoad, endlessTunnel, endlessCrossing, junctionGantries, driftMode, driftDynamics, driftAfs, yawSmooth, driftCabin |
-| `tilesOrPass` | (tiles = true or mountainPass = true) | needs route tiles or the mountain pass | disabled | `drive-anim.js "street-lamps"]').disabled ~L2662` | streetLamps |
+| `tilesOrPass` | (tiles = true or mountainPass = true) | needs route tiles or the mountain pass | disabled | `drive-anim.js "street-lamps"]').disabled ~L2798` | streetLamps |
 | `lampsPresent` | (streetLamps is not "off" and (tiles = true or mountainPass = true)) | needs street lamps in the scene (tiles or pass, lamps not off) | none | `drive-anim.js lamps: o.streetLamps ~L59` | lampCone, lampRoad |
 | `lampDistUsed` | streetLamps is not "off" | the table sizes the street lamps' glare, the lamp cone and the road lamp light, so it matters only with street lamps on | none | `drive-three.js lampRoadOn.value ~L367` | lampClass |
-| `usRoad` | context preset = "us" | US road preset only (the centre line differs) | disabled | `drive-anim.js cl.disabled = !I.us ~L2669` | cline |
-| `seedUsed` | ((wild = true and scene = "road") or oncoming = true or preceding = true or tiles = true or (leafyFoliage = true and scene in ["road","forest"])) | random scenery, traffic, tiles or leafy foliage must be present | disabled | `drive-anim.js "seed"]').disabled ~L2667` | seed |
-| `densityUsed` | ((wild = true and scene = "road") or (leafyFoliage = true and scene in ["road","forest"])) | random road scenery or leafy foliage must be present | disabled | `drive-anim.js "density"]').disabled ~L2668` | density |
+| `usRoad` | context preset = "us" | US road preset only (the centre line differs) | disabled | `drive-anim.js cl.disabled = !I.us ~L2805` | cline |
+| `seedUsed` | ((wild = true and scene = "road") or oncoming = true or preceding = true or tiles = true or (leafyFoliage = true and scene in ["road","forest"])) | random scenery, traffic, tiles or leafy foliage must be present | disabled | `drive-anim.js "seed"]').disabled ~L2803` | seed |
+| `densityUsed` | ((wild = true and scene = "road") or (leafyFoliage = true and scene in ["road","forest"])) | random road scenery or leafy foliage must be present | disabled | `drive-anim.js "density"]').disabled ~L2804` | density |
 | `peoplePresent` | people = true | clothing only applies to pedestrians | none | `drive-scenes.js ctx.reflectiveClothing ~L102` | reflectiveClothing |
 | `dynResOn` | dynamicResolution = true | used only while dynamic resolution is on | none | `drive-anim.js if (!o.dynamicResolution ~L1498` | frameTargetMs, minFps |
-| `trafficLogicOn` | trafficLogic = true | the gap guard is part of the original traffic; traffic logic has its own spacing | disabled | `drive-anim.js "gap"]').disabled ~L2660` | safeGap |
+| `trafficLogicOn` | trafficLogic = true | the gap guard is part of the original traffic; traffic logic has its own spacing | disabled | `drive-anim.js "gap"]').disabled ~L2796` | safeGap |
 | `mtBlockers` | (mountainPass = true or trafficBeams = true or trafficShuffle = "library" or surfaceSheen = true or lampPitch = true or afs = true or corneringLamps = true) | these options force a single thread (no error shown) | none | `drive-anim.js const want = !V.three ~L1861` | mt |
 | `mountainPassScene` | mountainPass = true | the pass overrides scene to road and wild to off | none | `drive-anim.js opts.mountainPass ~L33` | scene, wild, leafyFoliage |
 | `mountainPassAir` | mountainPass = true | the pass air beam table still uses the flat basis (HAZARDS H4); the traffic halo now renders on the pass (TOUGE-ELEV B, per-car tilt) | none | `drive-three.js !p.airHold ~L307` | scatter, scatterMode |
@@ -273,10 +277,11 @@ Each rule is one condition on other options (or on the render context), with the
 | `passHalo` | mountainPass = true | mountain pass only: the occluder is the pass ribbon; on the flat road the option does nothing | none | `drive-three.js p.look.crestOcclusion === 'on' ~L378` | crestOcclusion, trafficShadows, shadowRes, trafficShadowRoad, trafficShadowObjects, trafficShadowSoft |
 | `mountainPassPeople` | mountainPass = true | the pass builds no people | none | `drive-scenes.js FEATURE_PRESETS ~L172` | people |
 | `cityScene` | scene = "city" | leafy foliage is ignored in the city | none | `drive-anim.js name === 'road' \|\| name === 'forest' ~L35` | leafyFoliage |
-| `endlessRoad` | endlessRoad = true | needs the endless biome road on (tunnels and crossings are seeded into endless tiles) | none | `drive-anim.js o.endlessRoad ? endlessTile ~L3024` | endlessTunnel, endlessCrossing |
-| `cabinView` | cabinView = true | needs the in-cabin view on (the dashboard style and drift cabin ride on its overlay) | none | `drive-anim.js drawCabin(V, o.cabinView ~L1783` | cabinStyle, driftCabin, cabinFovFrame, cabinMirror, cabinDigitalRedesign |
+| `endlessRoad` | endlessRoad = true | needs the endless biome road on (tunnels and crossings are seeded into endless tiles) | none | `drive-anim.js o.endlessRoad ? endlessTile ~L3185` | endlessTunnel, endlessCrossing |
+| `cabinView` | cabinView = true | needs the in-cabin view on (the dashboard style and drift cabin ride on its overlay) | none | `drive-anim.js drawCabin(V, o.cabinView ~L1914` | cabinStyle, driftCabin, cabinFovFrame, cabinMirror, cabinDigitalRedesign, cabinGaugeLight, cabinZoom, cabinOffsetX, cabinOffsetY |
 | `roadSurfacesOn` | roadSurfaces = true | needs road surfaces on (the per-surface smoothness physics gate) | disabled | `spec-ui.js b.disabled = !o.roadSurfaces ~L1072` | roadSurface |
 | `wetBounceOn` | wetBounce = true | needs the wet-road bounce on (the mirror only exists then) | disabled | `spec-ui.js b.disabled = !(RF.Drive.wetnessOf(o) > 0) ~L1072` | wetBouncePlane |
+| `cabinMiata` | cabinStyle = "miata" | only the miata photo cabin has backlit gauges | disabled | `drive-anim.js s2.disabled = !o.cabinView \|\| o.cabinStyle !== 'miata' ~L2715` | cabinGaugeLight, cabinZoom, cabinOffsetX, cabinOffsetY |
 <!-- END GENERATED rules -->
 
 ## Options locked behind other options (OBSERVED from the sync loops spec-ui.js:1012-1051 and drive-anim.js:1845-1892, unless marked)

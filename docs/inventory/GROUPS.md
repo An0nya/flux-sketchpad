@@ -83,7 +83,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
-| `view` | Camera and playback | 16 | 3 | 13 | 0 | 0 | 0 | 0 |
+| `view` | Camera and playback | 20 | 3 | 17 | 0 | 0 | 0 | 0 |
 | `road` | Road and route | 17 | 2 | 13 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 13 | 0 | 10 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 16 | 0 | 4 | 10 | 1 | 0 | 1 |
@@ -117,6 +117,10 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `imperialUnits` | imperial units (speed readouts in mph) | profile | More | false | - |
 | `speed` | speed (km/h) | profile | toolbar | 50 | - |
 | `fov` | view angle | profile | More | 60 | - |
+| `cabinGaugeLight` | gauge backlight (miata photo cabin) | profile | More | "off" | needs `cabinView` [none], `cabinMiata` [disabled] |
+| `cabinZoom` | cabin zoom (debug, miata photo cabin) | profile | More | 1 | needs `cabinView` [none], `cabinMiata` [disabled] |
+| `cabinOffsetX` | cabin offset x (miata photo cabin, fraction of the canvas width) | profile | More | 0 | needs `cabinView` [none], `cabinMiata` [disabled] |
+| `cabinOffsetY` | cabin offset y (miata photo cabin, fraction of the canvas height) | profile | More | 0 | needs `cabinView` [none], `cabinMiata` [disabled] |
 
 #### Road and route (`road`)
 

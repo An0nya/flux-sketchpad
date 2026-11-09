@@ -32,7 +32,7 @@
     // owner 11-02: the prototype controls that had no row (they sat in Performance > Other). Placed so they can be tried; each still needs testing
     // and integration into its proper group before the "Prototype" label comes off
     ['scene', null, 'Prototype: endless road (needs testing; most need route tiles on)', [an('endlessRoad'), an('elevatedView'), an('endlessPreset'), an('endlessPresetCustom'), an('tileTerrain'), an('multilaneRoad'), an('endlessTunnel'), an('endlessCrossing'), an('junctionGantries'), an('yawSmooth')]],
-    ['scene', null, 'Prototype: cabin and drift (needs testing)', [an('cabinView'), an('cabinStyle'), an('cabinLight'), an('cabinFovFrame'), an('cabinDigitalRedesign'), an('cabinWetnessSlider'), an('cabinMirror'), an('driftMode'), an('driftDynamics'), an('driftAfs'), an('driftCabin')]],
+    ['scene', null, 'Prototype: cabin and drift (needs testing)', [an('cabinView'), an('cabinStyle'), an('cabinLight'), an('cabinFovFrame'), an('cabinDigitalRedesign'), an('cabinWetnessSlider'), an('cabinMirror'), an('cabinGaugeLight'), '.cabin-zoom', '.cabin-offset', an('driftMode'), an('driftDynamics'), an('driftAfs'), an('driftCabin')]],
     ['lighting', 'glare', 'Prototype: extras (needs testing)', [dv('wetVeil'), dv('trafficMarkers')]],
     ['details', null, '', [an('scene-details'), an('scene-details-panel')]],
     ['timings', null, '', [an('debug-timings'), an('perf-readout')]],

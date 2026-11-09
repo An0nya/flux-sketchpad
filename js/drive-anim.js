@@ -1745,16 +1745,23 @@ void main() {
   // cabinView overlay: dashboard + windshield frame + gauges drawn over the GL canvas; absent (zero render cost)
   // when off. Styles: 'modern' (two round binnacle gauges), 'miata' (NA tombstone binnacle), 'digital80s' (segment digits).
   // cabinLight adds a lit dome + a stray-light veil over the windshield AND dims the render exposure (see frame()).
-  function drawCabin(V, on, style, light, kmh, yaw, fov, mirrors) {   // yaw: driftCabin rotates the overlay to match the car's yaw (looking out the side window). fov: cabinFovFrame (ayrton, Anya 11-04). mirrors: rear-view mirror cars (ayrton 11-04, Anya)
+  function drawCabin(V, on, style, light, kmh, yaw, fov, mirrors, oncoming) {   // yaw: driftCabin rotates the overlay to match the car's yaw (looking out the side window). fov: cabinFovFrame (ayrton, Anya 11-04). mirrors: rear-view mirror cars (ayrton 11-04, Anya). oncoming: lx at the eye from oncoming headlamps (miata photo dash glow)
     const cv = V.cabin; if (!cv) return;
     if (!on) { if (cv.parentNode) cv.parentNode.removeChild(cv); cv.width = 0; return; }
     const gl = V.canvas; if (!gl || !gl.parentNode) return;
     if (!cv.parentNode) gl.parentNode.appendChild(cv);
-    const dpr = Math.min(2, window.devicePixelRatio || 1), w = gl.clientWidth, h = gl.clientHeight;
+    const CM = RF.CabinMiata, photo = style === 'miata' && !!CM && CM.ready(() => { if (V.ui && !S(V.ui).playing && visible()) frame(); });   // cabinStyle 'miata' (Anya 11-08): the NA photo (js/cabin-miata.js); the vector tombstone below draws until it has loaded, or if it fails
+    const box = photo ? cv : gl;   // the photo sizes the buffer to the overlay's own box (CSS stretches it over the whole wrap) and maps itself onto the GL canvas inside it; the vector styles keep the GL size
+    const dpr = Math.min(2, window.devicePixelRatio || 1), w = box.clientWidth, h = box.clientHeight;
     if (!w || !h) return;
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
     const x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height);
     const W2 = cv.width, H2 = cv.height, k = W2 / 1920;   // design at 1920 wide
+    if (photo) {   // the NA photo: framed on the GL canvas by the view angle (always) and panned by driftCabin's yaw instead of rotated; night-lit by ambient + dome, live gauges (cabinGaugeLight), dark mirrors (cabinMirror glow), oncoming light on the dash top
+      const o = info().o, r0 = cv.getBoundingClientRect(), r1 = gl.getBoundingClientRect(), f = W2 / (r0.width || 1);
+      CM.draw(x, { W: W2, H: H2, gx: (r1.left - r0.left) * f, gy: (r1.top - r0.top) * f, gw: r1.width * f, gh: r1.height * f, hfov: V.p && V.p.hfov, yaw, zoom: +o.cabinZoom || 1, offset: [(+o.cabinOffsetX || 0) + (V.cabinDrag ? V.cabinDrag.dx : 0), (+o.cabinOffsetY || 0) + (V.cabinDrag ? V.cabinDrag.dy : 0)], ambient: +o.ambient || 0, dome: light, kmh, imperial: !!o.imperialUnits, gaugeLight: o.cabinGaugeLight, mirrors, mirrorKcd: MIRROR_KCD, oncoming: oncoming || 0 });
+      return;
+    }
     if (yaw) { x.save(); x.translate(W2 / 2, H2 / 2); x.rotate(-yaw); x.translate(-W2 / 2, -H2 / 2); }   // the cockpit yaws with the car, the driver's eyes stay on the road
     if (light) {   // stray cabin light: veil over the windshield area (the render is also dimmed 18% in frame())
       const vg = x.createLinearGradient(0, 0, 0, H2 * 0.75);
@@ -1872,7 +1879,6 @@ void main() {
       V.p.yaw += lag && V.driftA !== undefined ? V.driftA * (o.driftAfs ? 1 : 2.6 / 8) : (tl && tl.curvature ? -tl.curvature * Math.pow(kmhOf() / 130, 2) * 2.6 : 0);   // opposite lock scales with curvature and speed²
     }
     const _mc = o.cabinMirror && o.cabinView ? mirrorCars(V.src, st.dist, st.t) : null;
-    drawCabin(V, o.cabinView && (st.popout || ui.display === 'drive'), o.cabinStyle || 'modern', !!o.cabinLight, kmhOf(), o.driftCabin ? (V.driftA || 0) : 0, o.cabinFovFrame ? o.fov : 0, _mc);
     V.p.cornerLeft = o.corneringLamps && st.lighting ? st.lighting.left : 0;
     V.p.cornerRight = o.corneringLamps && st.lighting ? st.lighting.right : 0;
     V.p.pitch = o.lampPitch && st.pitch ? st.pitch.angle : 0;
@@ -1901,6 +1907,11 @@ void main() {
       const sgn = mc.bearing >= 0 ? 1 : -1, ang = sgn * (45 + Math.abs(mc.bearing) * 0.5) * Math.PI / 180;   // virtual-image angle off forward: ~45° + |bearing|/2, sign = side (symmetric L/R — pencroff review)
       sources.push([Math.cos(ang), Math.sin(ang), 0.02, eyeLux, 1, 0.95, 0.8]);   // warm-white headlamp tint, same RGB as cabinLight
     }
+    // cabinStyle 'miata' (Anya 11-08): oncoming headlamps light the dash top. Illuminance at the eye from the SAME glare path as the veil, run on the
+    // headlamps alone (no street lamps, tail or marker lamps, cabinLight or mirror sources; a preceding car's headlamps face away and give 0)
+    const _heads = o.cabinView && o.cabinStyle === 'miata' ? (V.src.tiles || V.p.touge ? placed.objects : placed).filter((ob) => ob.headlamp) : null, _hOpts = _heads && Object.assign({}, gOpts, { lights: [], wetVeil: false });
+    const _cabE = _heads && _heads.length ? (V.p.touge ? RF.Touge.glareSources(_heads, st.dist, placed.A, _hOpts) : D.glareSources(_heads, eyeOf(V.p), V.src.tiles ? placed.objects : placed, _hOpts)).reduce((e, q) => e + q[3], 0) : 0;
+    drawCabin(V, o.cabinView && (st.popout || ui.display === 'drive'), o.cabinStyle || 'modern', !!o.cabinLight, kmhOf(), o.driftCabin ? (V.driftA || 0) : 0, o.cabinFovFrame ? o.fov : 0, _mc, _cabE);   // after the sources: the miata dash glow reads this frame's oncoming light
     V.frameGlare = sources; V.framePlaced = placed;      // scene details reads these (pointers only)
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
     const draw = { profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
@@ -2629,6 +2640,32 @@ void main() {
     const cmr = E('button', { type: 'button', class: 'toggle', 'data-anim': 'cabinMirror', 'aria-pressed': 'false', title: 'Rear-view mirrors (opt-in, needs cabin view): headlamp glow of following cars shown in the cabin A-pillar mirrors, plus a veil contribution from the reflected light. Gated on traffic (oncoming || preceding).' }, 'rear mirrors');
     cmr.addEventListener('click', () => setDV(ui, 'cabinMirror', !info().o.cabinMirror));
     ui.driveExtras.append(cmr);   // cabinMirror toggle (ayrton 11-04)
+    const cgl = E('select', { 'data-anim': 'cabinGaugeLight', title: 'Gauge backlight (opt-in, needs the cabin view with the miata style): self-lit gauge markings and needles, plus a faint radio LCD and hazard-button glow. Off: the gauges are lit only by the cabin light level.' }, ...['off', 'dim', 'normal', 'bright'].map((v) => E('option', { value: v }, 'gauge light: ' + v)));
+    cgl.addEventListener('change', () => setDV(ui, 'cabinGaugeLight', cgl.value));
+    ui.driveExtras.append(cgl);   // cabinGaugeLight select (Anya 11-08, miata photo cabin)
+    const czr = E('input', { type: 'range', min: 0.5, max: 2, step: 0.05, value: 1, 'data-anim': 'cabinZoom', 'aria-label': 'Cabin zoom' }), czo = E('output', { class: 'anim-speed', 'data-anim': 'cabinZoom-value' }, '1.00×');
+    czr.addEventListener('input', () => { czo.textContent = (+czr.value).toFixed(2) + '×'; });
+    czr.addEventListener('change', () => setDV(ui, 'cabinZoom', +czr.value));
+    // cabinOffsetX/Y (Anya 11-08): move the photo cabin by hand. Unlock lets the overlay take the mouse (otherwise pointer-events stay none);
+    // a drag previews live (V.cabinDrag, redrawn when paused) and writes both options on release; -/+ nudge by 0.002 of the canvas; reset = 0
+    const eff = (i, k) => { const F = RF.CabinMiata && RF.CabinMiata.last && RF.CabinMiata.last.frame; return F ? F.offset[i] : +info().o[k] || 0; };   // the offset the picture shows (after the edge clamp)
+    const putOff = (k, v) => setDV(ui, k, Math.max(-0.5, Math.min(0.5, Math.round(v * 1000) / 1000)));
+    const offOf = (k) => +info().o[k] || 0, offTxt = () => 'x ' + offOf('cabinOffsetX').toFixed(3) + ' · y ' + offOf('cabinOffsetY').toFixed(3);
+    const cdl = E('button', { type: 'button', class: 'toggle', 'data-anim': 'cabinDragUnlock', 'aria-pressed': 'false', title: 'Unlock the photo cabin to drag it with the mouse (fine placement; saved as cabinOffsetX/Y). Lock again to click through it.' }, 'move cabin');
+    const nudge = (k, d, lab) => { const b = E('button', { type: 'button', class: 'icon', 'data-anim': k === 'cabinOffsetX' ? (d < 0 ? 'cabinOffsetX' : 'cabinOffsetX-plus') : (d < 0 ? 'cabinOffsetY' : 'cabinOffsetY-plus'), title: 'Nudge the photo cabin ' + lab + ' by 0.002 of the canvas' }, lab); b.addEventListener('click', () => putOff(k, eff(k === 'cabinOffsetX' ? 0 : 1, k) + d)); return b; };
+    const cor = E('button', { type: 'button', class: 'icon', 'data-anim': 'cabinOffsetReset', title: 'Reset the photo cabin offset to 0, 0' }, 'reset'), cov = E('output', { class: 'anim-speed', 'data-anim': 'cabinOffset-value' }, offTxt());
+    cor.addEventListener('click', () => { setDV(ui, 'cabinOffsetX', 0); setDV(ui, 'cabinOffsetY', 0); });
+    cdl.addEventListener('click', () => { dragOn(); V.cabinUnlocked = !V.cabinUnlocked; cdl.setAttribute('aria-pressed', String(V.cabinUnlocked)); if (V.cabin) { V.cabin.style.pointerEvents = V.cabinUnlocked ? 'auto' : ''; V.cabin.style.cursor = V.cabinUnlocked ? 'move' : ''; } });
+    const dragOn = () => {   // the drag handlers, attached to the overlay the first time it is unlocked
+      if (!V.cabin || V.cabin._drag) return; V.cabin._drag = true; const cv = V.cabin;
+      const redraw = () => { if (V.dragRaf) return; V.dragRaf = requestAnimationFrame(() => { V.dragRaf = 0; if (!S(ui).playing) frame(); }); };
+      cv.addEventListener('pointerdown', (e) => { if (!V.cabinUnlocked) return; const r = V.canvas.getBoundingClientRect(); V.cabinDrag = { x0: e.clientX, y0: e.clientY, w: r.width || 1, h: r.height || 1, dx: 0, dy: 0 }; cv.setPointerCapture(e.pointerId); e.preventDefault(); });
+      cv.addEventListener('pointermove', (e) => { const d = V.cabinDrag; if (!d) return; d.dx = (e.clientX - d.x0) / d.w; d.dy = (e.clientY - d.y0) / d.h; redraw(); });
+      const end = () => { const d = V.cabinDrag; if (!d) return; frame(); V.cabinDrag = null; putOff('cabinOffsetX', eff(0, 'cabinOffsetX')); putOff('cabinOffsetY', eff(1, 'cabinOffsetY')); };   // draw once with the drag, then keep what it showed
+      cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+    };
+    ui.driveExtras.append(E('span', { class: 'cabin-offset', title: 'Photo cabin placement (cabinOffsetX/Y, fractions of the canvas size): copy the values into the image descriptor once tuned' }, cdl, ' x', nudge('cabinOffsetX', -0.002, '−'), nudge('cabinOffsetX', 0.002, '+'), ' y', nudge('cabinOffsetY', -0.002, '−'), nudge('cabinOffsetY', 0.002, '+'), cor, ' ', cov));   // cabinOffsetX/Y controls (Anya 11-08)
+    ui.driveExtras.append(E('label', { class: 'cabin-zoom', title: 'Cabin zoom (debug, needs the cabin view with the miata style): multiplies the view-angle zoom of the photo cabin; 1 = the zoom the view angle gives. The image edge never shows, so zooming out stops where the photo runs out.' }, 'cabin zoom ', czr, czo));   // cabinZoom range (Anya 11-08, debug)
     const ys = E('button', { type: 'button', class: 'toggle', 'data-anim': 'yawSmooth', 'aria-pressed': 'false', title: 'Smooth camera yaw on curved tiles (opt-in): lookahead-averaged tangent eases the yaw snap at corner entry/exit. Render-only; default off keeps the shipped view.' }, 'yaw smooth');
     ys.addEventListener('click', () => setDV(ui, 'yawSmooth', !info().o.yawSmooth));
     ui.driveExtras.append(ys);   // yawSmooth toggle
@@ -2702,6 +2739,10 @@ void main() {
     for (const s2 of q('[data-anim="endlessPresetCustom"]')) s2.value = o.endlessPresetCustom || '';
     for (const s2 of q('[data-anim="endlessPreset"]')) s2.value = o.endlessPreset || 'off';
     for (const s2 of q('[data-anim="cabinStyle"]')) s2.value = o.cabinStyle || 'modern';
+    if (V.cabinUnlocked && (!o.cabinView || o.cabinStyle !== 'miata')) { V.cabinUnlocked = false; V.cabinDrag = null; if (V.cabin) { V.cabin.style.pointerEvents = ''; V.cabin.style.cursor = ''; } for (const b of q('[data-anim="cabinDragUnlock"]')) b.setAttribute('aria-pressed', 'false'); }   // relock: only the photo cabin moves
+    for (const b of q('[data-anim="cabinOffsetX"], [data-anim="cabinOffsetX-plus"], [data-anim="cabinOffsetY"], [data-anim="cabinOffsetY-plus"], [data-anim="cabinOffsetReset"], [data-anim="cabinOffset-value"], [data-anim="cabinDragUnlock"]')) { if (b.tagName === 'OUTPUT') b.textContent = 'x ' + (+o.cabinOffsetX || 0).toFixed(3) + ' · y ' + (+o.cabinOffsetY || 0).toFixed(3); else b.disabled = !o.cabinView || o.cabinStyle !== 'miata'; }   // cabinOffsetX/Y: readout + only the miata photo cabin moves
+    for (const r of q('[data-anim="cabinZoom"]')) { r.value = +o.cabinZoom || 1; r.disabled = !o.cabinView || o.cabinStyle !== 'miata'; const out = r.parentElement && r.parentElement.querySelector('[data-anim="cabinZoom-value"]'); if (out) out.textContent = (+r.value).toFixed(2) + '×'; }   // cabinZoom: only the miata photo cabin zooms
+    for (const s2 of q('[data-anim="cabinGaugeLight"]')) { s2.value = o.cabinGaugeLight || 'off'; s2.disabled = !o.cabinView || o.cabinStyle !== 'miata'; }   // cabinGaugeLight: only the miata photo cabin has backlit gauges
     for (const b of q('[data-anim="junctionGantries"]')) { b.setAttribute('aria-pressed', String(!!o.junctionGantries)); b.disabled = !o.tiles; }   // glm5.2 11-01: sync the gantry toggle (le-chonk's driveExtras toggles don't have sync lines, but this one needs one so the pressed state shows)
     for (const b of q('[data-anim="elevatedView"]')) b.setAttribute('aria-pressed', String(!!o.elevatedView));
     if (!V.bar) return;
