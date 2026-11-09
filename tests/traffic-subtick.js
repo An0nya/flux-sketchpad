@@ -166,30 +166,60 @@ const A = RF.DriveAnim;
 ok('the traffic model steps at 20 Hz', A.IDM.dt === 0.05, { dt: A.IDM.dt });
 const src = A.source('road', 3.5, false, {}, { trafficLogic: true, trafficDensity: 4, seed: 7, oncoming: true, preceding: true });
 const pose = (t) => A.trafficCars(src, 0, t).map((c) => c.rel.toFixed(6)).join(',');
+// The tick boundaries, from the first sample (the traffic model's epoch): 0.024, 0.074, 0.124.
+const TS = [0.024, 0.026, 0.049, 0.051, 0.074, 0.10, 0.124, 0.126];
+const snapshot = () => { const o = {}; for (const t of TS) o[t] = pose(t); return o; };
+const off = snapshot();
 // inside one tick (0.05 s) the drawn pose does not move; across a tick it does
-const inside = pose(0.024) === pose(0.026) && pose(0.026) === pose(0.049) && pose(0.049) === pose(0.051);
-const across = pose(0.024) !== pose(0.074) && pose(0.074) === pose(0.076);
+const inside = off[0.024] === off[0.026] && off[0.026] === off[0.049] && off[0.049] === off[0.051];
+const across = off[0.024] !== off[0.074];
 ok('with the option off the drawn pose is quantised to the 20 Hz tick', inside && across, { inside, across });
 const cars = A.trafficCars(src, 0, 0.074).length;
 ok('the traffic model produces cars to draw', cars > 0, { cars });
 
-// ---------------- 4. [KEEP: text] the option's own half, in the renderer ----------------
-// neb 11-10 (item 2): the ON half of this option is not observable from Node. SUBTICK is a module
-// local in js/drive-anim.js, set only inside prepare() (the GPU frame path), and RF.DriveAnim
-// exports no handle for it. Measured: js/drive-anim.js:1713 is the only assignment, and the
-// exported surface (RF.DriveAnim) has no SUBTICK and no V.p. So the ON wiring stays a source scan
-// until the renderer exposes it — flagged, with the reason, rather than silently kept.
-ok('js/drive-anim.js reads the option [KEEP: text — SUBTICK is set only in prepare(), the GPU frame path; not reachable from Node]',
-  /SUBTICK = o\.trafficSubTick === 'on';/.test(anim));
-ok('the step snapshot is taken only when the option is on [KEEP: text — same reason]',
-  /if \(SUBTICK\) st\.prevX = new Map/.test(anim));
-ok('the interpolation is applied only when the option is on [KEEP: text — same reason]',
+// ---------------- 4. the app: the ON behaviour, measured ----------------
+// neb 11-10 (item 2, after nicholl's review): I had KEEP-flagged the ON half as unreachable,
+// because SUBTICK is set inside prepare() — the GPU frame path. **That was wrong**: RF.DriveAnim
+// exports a test hook (RF.DriveAnim._) whose prepare() reads the options and flips SUBTICK
+// BEFORE it touches the GPU, so the option is reachable from Node. nicholl measured it first
+// (mail f416); I re-measured it independently and got the same numbers.
+//
+// The witness drives prepare() with a stubbed scene; it throws later, at the GPU/lamp step, and
+// the throw is caught. The guard against that ordering changing is the SHAPE of the assertions:
+// they are RELATIVE (the ON pose is compared with the OFF pose on the same source), never
+// absolute. If a future edit moved the SUBTICK assignment after the throw point, the ON pose
+// would equal the OFF pose and these checks would FAIL — not silently pass.
+const setMode = (mode) => {
+  const o = Object.assign({}, RF.Options.defaults(), { trafficSubTick: mode });
+  const V = A._.V;
+  V.info = { o, rd: { laneDrive: 3.5, us: true, mdl: { lamps: {} } }, us: true, groundKey: 'x', conv: {}, lampRGB: [0, 0, 0], lut: () => ({ baked: 1 }) };
+  try { A._.prepare({ W: 2, H: 2, cssW: 2, cssH: 2, dpr: 1, aspect: 1, scale: 1 }); } catch (e) { /* the GPU step throws; SUBTICK is already set */ }
+};
+setMode('on');
+const on = snapshot();
+setMode('off');
+const offAgain = snapshot();
+// a mid-tick instant: the tick ran at 0.074, the next at 0.124, so 0.10 is 52% between them
+ok('with the option on the drawn pose is interpolated between the ticks', on[0.10] !== off[0.10], { on: on[0.10], off: off[0.10] });
+ok('with the option on the pose at a tick boundary is still the tick pose', on[0.074] === off[0.074] && on[0.124] === off[0.124]);
+ok('with the option off again the drawn pose is the tick pose again', offAgain[0.10] === off[0.10] && offAgain[0.026] === off[0.026]);
+
+// ---------------- 5. [KEEP: text] the parts no behaviour can separate ----------------
+// neb 11-10 (item 2): after the ON half became a behaviour check (section 4), these are the only
+// text checks left. Each says why it cannot be a behaviour check:
+//   - the draw line's own SUBTICK guard is redundant today (the snapshot it guards is only taken
+//     when the option is on, so removing it changes nothing) — no behaviour can tell them apart;
+//     kept as a tripwire against a future edit that populates prevX unconditionally.
+//   - the interpolation's inner details (the tick pose as the base, the turning-car skip, the
+//     clamp) are single expressions inside one statement: with the option on, the drawn pose is
+//     the interpolated one, and each of those details cannot be singled out of it.
+ok('the interpolation is applied only when the option is on [KEEP: text — redundant with the snapshot guard; no behaviour separates them]',
   /if \(SUBTICK && frac > 0 && !c\.turn && st\.prevX && st\.prevX\.has\(c\.id\)\)/.test(anim));
-ok('the drawn position starts from the tick position [KEEP: text — same reason]',
+ok('the drawn position starts from the tick position [KEEP: text — one expression inside the interpolation; not separable]',
   /let cx = c\.x;/.test(anim));
-ok('turning cars keep their turn pose [KEEP: text — same reason]',
+ok('turning cars keep their turn pose [KEEP: text — a turning car only appears probabilistically in the test window]',
   /!c\.turn && st\.prevX/.test(anim));
-ok('the fraction is clamped to [0,1] [KEEP: text — same reason]',
+ok('the fraction is clamped to [0,1] [KEEP: text — one expression inside the interpolation; not separable]',
   /Math\.max\(0, Math\.min\(1, \(t - \(st\.epoch \+ st\.tick \* IDM\.dt\)\) \/ IDM\.dt\)\)/.test(anim));
 
 console.log(fails ? `\n${fails} of ${n} checks FAILED` : `\nall ${n} checks passed`);
