@@ -6,3 +6,7 @@
 # One suite per line; '#' starts a comment. Add a suite here when the gate cannot run without it.
 all
 runner-selftest
+# gate-coverage (neb, 11-09): the tripwire protects ITSELF. Measured today: a patch whose committed
+# tests/gate.js was a stale copy dropped 'gate-coverage' from NODE and nothing noticed - the suite simply
+# stopped running, which is the 37ab class one level down. With it here, losing it from NODE fails the gate loudly.
+gate-coverage

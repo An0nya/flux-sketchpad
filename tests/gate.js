@@ -63,6 +63,8 @@ const MAP = [
   [/^js\/(beams|compare|drive-models-glsl|exports|layout|render|road|scene-details|solve-cache|source|spec|state)\.js$/, ['ui', 'nodeAll', 'render']],   // frenchie (open pool 5): core data/spec/road modules were unmapped
   [/^js\/cabin-miata\.js$/, ['node:cabin-miata', 'node:le-chonk-cabin']], [/^img\/cabin\//, ['node:cabin-miata']],   // le-chonk 11-09: cabin module + assets
   [/^tests\/image\//, ['node:image/selftest', 'FG-fog', 'SC-beam-scatter', 'SD-scatter-table', 'WT-wetness']],   // B1: the image-comparison library (compare/flip/png) was unmapped, so editing it ran no test; its node self-test plus the four page tests that call it
+  [/^tests\/runner\/protected-suites\.txt$/, ['node:gate-coverage']],   // neb 11-09: a change to the protected list must run the tripwire that reads it; without this row the file maps to nothing, --touched resolves an EMPTY plan and the lander refuses the patch ('gate.js selected no tests' - my refused gid 1fe1)
+  [/^tests\/runner\//, ['node:runner-selftest']],   // neb 11-09: the gate's own selector + helpers (select/tags/node-suites/fail-lines/print) are unmapped; a change to them must run the selector's self-test
   [/^js\/endless-axis-config\.js$/, ['node:endless-axis-config', 'node:catch-ignore-audit']],   // endless-road-v2: pure node data logic; catch-ignore-audit rides along per spilett's rule (audit suites must not be narrowed away)
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
 ];
