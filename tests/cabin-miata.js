@@ -20,7 +20,7 @@ ok('registry: needs cabinView and the miata style', !!e && e.requires.length ===
 ok('DV_DEF carries cabinGaugeLight: off', Opt.defaults().cabinGaugeLight === 'off');
 ok('UI: select with a label per option, setDV on change, synced and disabled unless cabinView + miata', anim.includes("'data-anim': 'cabinGaugeLight'") && anim.includes("'gauge light: ' + v") && anim.includes("setDV(ui, 'cabinGaugeLight', cgl.value)") && anim.includes("s2.disabled = !o.cabinView || o.cabinStyle !== 'miata'"));
 ok('index.html loads js/cabin-miata.js before drive-anim.js', html.indexOf('js/cabin-miata.js') > 0 && html.indexOf('js/cabin-miata.js') < html.indexOf('js/drive-anim.js'));
-ok('gate: NODE registers this test and MAP routes js/cabin-miata.js to it', /'cabin-miata'\]/.test(gate) && gate.includes("[/^js\\/cabin-miata\\.js$/, ['node:cabin-miata'"));
+ok('gate: NODE registers this test and MAP routes js/cabin-miata.js to it (membership, not last — later appends follow rule 13)', /'cabin-miata'/.test(gate) && gate.includes("[/^js\\/cabin-miata\\.js$/, ['node:cabin-miata'"));
 ok('asset is a PNG under 1.5 MB when present (warn-and-pass while the host has not committed img/cabin/miata-wide.png — the photo cabin falls back to the vector tombstone by design)', (() => { const p = path.join(ROOT, M.SRC); if (!fs.existsSync(p)) { console.log('[warn] asset missing: ' + M.SRC + ' — photo cabin falls back to the vector tombstone until the host commits it'); return true; } const b = fs.readFileSync(p); return b.slice(1, 4).toString() === 'PNG' && b.length < 1.5e6; })());
 
 // ---- wiring in drive-anim
