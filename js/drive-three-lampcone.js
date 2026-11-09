@@ -38,9 +38,16 @@ function tintOf(K, fallback) {
 export const SODIUM_TINT = () => tintOf(2000, [1, 0.5, 0.14]);
 export const LED_TINT = () => tintOf(4000, [1, 0.94, 0.86]);
 // The lamp list: street-lamp heads (drive-anim.js ~562 'ell', mat lamp-head) and lit signal discs (drive-scenes.js signal(), emit non-null). The cone uses the street heads only.
+// B11 A3: lampsOf is called 2-3x per frame (cone pass + signalConeLamps) plus per sigLampByPos query over the same
+// world.objects, so the list is cached per objects array (WeakMap). Cached entries keep a live `src` reference and
+// expose emit/st through getters, so signal state flips still read live; only the array identity gates the cache.
+const lampsCache = new WeakMap();
 export function lampsOf(objects) {
+  if (!objects) return [];
+  const hit = lampsCache.get(objects);
+  if (hit) return hit;
   const out = [], seen = new Set();
-  for (const ob of objects || []) {
+  for (const ob of objects) {
     if (!ob || !ob.emit) continue;
     if (ob.cls === 'street-lamp' && ob.mat === 'lamp-head') {
       // murchison (cone 2x fix, probe murchison-20261103-104935-697b): catalogue #1's emissive lens (drive-anim.js:959, behind detailedModels, default ON)
@@ -51,10 +58,11 @@ export function lampsOf(objects) {
       const key = ob.x + ',' + ob.y;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'street', emit: ob.emit, street: ob.street || null });
+      out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'street', src: ob, get emit() { return ob.emit; }, street: ob.street || null });
     }
-    else if (ob.cls === 'signal' && ob.k === 'disc') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'signal', emit: ob.emit, st: [ob.nx || 0, ob.ny || 0] });   // frenchie (signalConesOn): the face normal is the cone axis slot
+    else if (ob.cls === 'signal' && ob.k === 'disc') out.push({ x: ob.x, y: ob.y, z: ob.z, kind: 'signal', src: ob, get emit() { return ob.emit; }, get st() { return [ob.nx || 0, ob.ny || 0]; } });   // frenchie (signalConesOn): the face normal is the cone axis slot
   }
+  lampsCache.set(objects, out);
   return out;
 }
 const D = globalThis.RF.Drive;

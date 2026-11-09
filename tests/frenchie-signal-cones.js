@@ -105,7 +105,7 @@ ok('lamp-dist exports signalDist + SIGNAL_HALF_ANGLE (15 deg)', !!LD.signalDist 
   kit.signal(100, 0, 5.25, 'red', true);
   const objs = kit.O;
   const lc = fs.readFileSync(path.join(ROOT, 'js/drive-three-lampcone.js'), 'utf8');
-  ok('lampsOf carries the signal face normal as st', /kind: 'signal', emit: ob\.emit, st: \[ob\.nx/.test(lc));
+  ok('lampsOf carries the signal face normal as st (live via the cached src getter, B11 A3)', /kind: 'signal', src: ob, get emit\(\) \{ return ob\.emit; \}, get st\(\) \{ return \[ob\.nx/.test(lc));
   ok('signalConeLamps exported and pure-gated on the option', /export function signalConeLamps\(objects, on\)/.test(lc) && /if \(!on\) return \[\];/.test(lc));
   ok('build() collects signals only when look.signalConesOn', /p\.look && p\.look\.signalConesOn/.test(lc));
   ok('draw() signal pass is skipped when the list is empty (OFF byte-identical GL)', /if \(last\.signals && last\.signals\.length\)/.test(lc));
