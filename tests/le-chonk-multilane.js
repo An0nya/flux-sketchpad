@@ -15,10 +15,16 @@ const ml = A.mlLanes(3.7, 3);
 const near = (a, b) => Math.abs(a - b) < 1e-9;
 ok('cross-section: own lane + right lane + 3 m median + 2 oncoming lanes', near(ml.h, 1.85) && near(ml.right, -3.7) && near(ml.med1 - ml.med0, 3) && near(ml.onc0, 6.7) && near(ml.onc1, 10.4) && near(ml.outerR, -5.55) && near(ml.outerL, 12.25));
 ok('oncoming first lane sits across the median (onc0 > med1)', ml.onc0 - ml.h > 3);
-ok('OFF: src.tiles.multilane is false/unset without the option and traffic off stays src.lane', anim.includes("multilane: !!o.multilaneRoad || !!(LOOP_MULTILANE[o.endlessPreset || 'off']),") && anim.includes("off: kind === 'oncoming' ? (ml ? ml.onc0 : src.lane) : (ml && (k & 1) ? ml.right : 0)"));
-ok('OFF: shipped lane markings kept (only multilaneRoad or a 2+2 loop preset empties them — B11: highway/toll-loop imply the cross-section, so they must clear the two-lane markings too)', anim.includes("(o.multilaneRoad || !!(LOOP_MULTILANE[o.endlessPreset || 'off'])) ? [] : D.laneMarkings("));
+// item 2 (behaviour, not text): build the real source and read its fields — a source-text grep here would pass even with the behaviour broken
+const mkOpts = (patch) => Object.assign({}, RF.Options.defaults(), { tiles: true, endlessRoad: true }, patch);
+const srcOf = (patch) => A.source('road', 3.5, false, {}, mkOpts(patch));
+ok('OFF: src.tiles.multilane false and shipped lane markings kept', (() => { const s = srcOf({ multilaneRoad: false, endlessPreset: 'off' }); return s.tiles && s.tiles.multilane === false && s.markings.length > 0; })());
+ok('ON (option): multilaneRoad empties markings + sets src.tiles.multilane', (() => { const s = srcOf({ multilaneRoad: true, endlessPreset: 'off' }); return s.markings.length === 0 && s.tiles.multilane === true; })());
+ok('B11-5: a 2+2 loop preset (highway-loop) also clears the two-lane markings and sets multilane', (() => { const s = srcOf({ multilaneRoad: false, endlessPreset: 'highway-loop' }); return s.markings.length === 0 && s.tiles.multilane === true; })());
+// KEEP (text): guards tileWorld's emitted ml-* object list — no cheap Node hook for the emitted objects
 ok('tileWorld draws asphalt slab + median barrier + 6 marking lines per tile when multilane', anim.includes("cls: 'ml-road'") && anim.includes('median barrier') && (anim.match(/line\(/g) || []).length >= 6);
 ok('median barrier + lines gated on cfg.multilane', anim.includes('if (cfg.multilane) {'));
+// KEEP (text): guards the cache-key wiring string, which stateDump does not expose as data
 ok('wiring: skey, tkey, src.tiles, top-bar toggle', anim.includes('!!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, !!o.driftMode, !!o.driftDynamics, !!o.driftAfs, !!o.driftCabin, !!o.yawSmooth, !!o.cabinLight, o.tiles ? o.endlessPresetCustom || \'\' : \'\', SUBTICK') && anim.includes('!!o.tileTerrain, !!o.elevatedView, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing') && anim.includes("'data-anim': 'multilaneRoad'"));   // skey/tkey grew the tunnel flag 10-31 ~17:20
 ok('registry: multilaneRoad default false, requires tiles, node test listed', (() => { const Opt = require(path.join(ROOT, 'js', 'options-registry.js')); const e = (Opt.OPTIONS || Opt).find ? (Opt.OPTIONS || Opt).find((x) => x.id === 'multilaneRoad') : null; return e && e.default === false && JSON.stringify(e.requires).includes('tiles') && e.tests.includes('node:le-chonk-multilane'); })());
 ok('no solver/scene-format touch: road.js and state version untouched by this feature', !/STATE_VERSION/.test(anim.slice(anim.indexOf('mlLanes'))) || true);   // source-level: the option never reaches the solver; see registry note
