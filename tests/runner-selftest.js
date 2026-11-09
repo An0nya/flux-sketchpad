@@ -46,5 +46,11 @@ ok('the solo page list was read from tests/gate.js', PAGE_SOLO.length > 0 && PAG
 const runnerFiles = fs.readdirSync(path.join(root, 'tests', 'runner')).filter((f) => f.endsWith('.js')).map((f) => path.join('tests', 'runner', f)).concat(['tests/runner-selftest.js']);
 const absolute = runnerFiles.filter((f) => /['"`]\/workspace\//.test(fs.readFileSync(path.join(root, f), 'utf8')));
 ok('no runner file hard-codes /workspace', absolute.length === 0, absolute.join(' '));
+// 8. the page env resolves the real playwright LAZILY: the module must load without it (the config, the tags and the
+// adapter require it even when the page deps are not installed), and only realPath() may fail - with a message that
+// names the fix. The child runs with the no-playwright preload, so this is true on a machine WITH playwright too.
+const lazy = run(['--require', './tests/runner/fixtures/no-playwright.js', 'tests/runner/fixtures/pw-env-lazy.js'], {});
+ok('the page env loads without the playwright package', lazy.code === 0 && /LOADED /.test(lazy.out), 'exit ' + lazy.code + ' · ' + (lazy.out.match(/^LOADED.*$/m) || [''])[0]);
+ok('the page env names the fix when the real package is missing', /ERROR .*npm i -D @playwright\/test/.test(lazy.out), (lazy.out.match(/^ERROR.*$/m) || [''])[0].slice(0, 120));
 console.log(fails ? `\n${fails} of ${passes + fails} FAILED` : `\nall ${passes} runner checks passed`);
 process.exit(fails ? 1 : 0);

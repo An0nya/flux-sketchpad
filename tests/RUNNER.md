@@ -9,7 +9,7 @@ exactly what it selects by asking it through its own `--list` output (see "Why t
     npx playwright test --config tests/pw/playwright.config.js --project=chromium --grep-invert @solo # page pool (adapter + native)
     npx playwright test --config tests/pw/playwright.config.js --project=chromium --grep @solo --workers=1
     GATE_TOUCHED=main ... / GATE_ONLY=a,b ...                  # gate's --touched / --only, for both runners
-    node tests/runner-selftest.js                             # the runner's own check (11 checks, browser-free)
+    node tests/runner-selftest.js                             # the runner's own check (13 checks, browser-free)
 No GPU: PW_GL=swiftshader (default off macOS) points each script's PLAYWRIGHT at tests/runner/pw-shim.js, which
 rewrites every chromium launch to SwiftShader. PW_BROWSER=webkit (webkit project) runs the same scripts on WebKit.
 
@@ -24,7 +24,8 @@ rewrites every chromium launch to SwiftShader. PW_BROWSER=webkit (webkit project
 - tests/pw/native/*.spec.js   native ports; the adapter skips a script when native/<name>.spec.js exists
 - tests/pw/playwright.config.js  the @playwright/test config (under tests/ so it can land; paths are relative to it)
 - tests/runner-selftest.js    the runner's own check: selection == the gate's --list, a run reports pass/fail, an empty
-                          selection fails loudly, the [FAIL] convention, no hard-coded /workspace
+                          selection fails loudly, the [FAIL] convention, no hard-coded /workspace, the page env
+                          resolving the real playwright lazily
 
 ## Why the CLI, not `require('../gate.js')`
 The lander replaces a patch's `tests/gate.js` with swarm's before it chooses and runs the tests (a patch never picks its
