@@ -125,6 +125,12 @@ function runOne(name, port) {
 async function pool(items, n, fn) { const res = []; let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const it = items[i++]; const r = await fn(it); res.push(r); console.log(`${r.name} exit ${r.code} fails ${r.fails} ${r.s}s`); } })); return res; }
 (async () => {
   const tests = plan();
+  // neb 11-10 (item 2): --list prints the UNION of the plan. A test that is also named in a MAP
+  // row stays in that union even if it has dropped out of node:all - so "is it in the plan?" is
+  // not the same question as "will node:all run it?". node:all is the NODE array alone
+  // (nodeAll: NODE.map(n => 'node:' + n)), so this mode prints exactly that set. It prints one
+  // name per line and nothing else, so a caller can parse it as a set.
+  if (has('--list-node-all')) { console.log(GROUPS.nodeAll.join('\n')); return; }
   if (DARK_PAGES.length) console.log('dark page tests, on disk but in NO gate set (not curated and not in the MAP) — ' + DARK_PAGES.length + ': ' + DARK_PAGES.join(', '));   // loud, not silent (rule 15): a test nobody selects is indistinguishable from a passing one; the spaces and brackets keep this line out of mergeq's name regex
   if (has('--list')) { console.log(tests.join('\n')); return; }
   const solo = tests.filter((t) => PAGE_SOLO.includes(t)), par = tests.filter((t) => !PAGE_SOLO.includes(t));

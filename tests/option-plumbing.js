@@ -145,23 +145,25 @@ ok('every declared node: test file exists',
   missingTestFiles.length === 0,
   missingTestFiles.length ? 'MISSING: ' + missingTestFiles.join(', ') : `${nodeTestNames.size} node test files, all exist`);
 
-// ---- 5. every declared node: test is in the gate's OWN PLAN (behaviour) ----
+// ---- 5. every declared node: test is run by node:all (behaviour) ----
 // neb 11-09 (item 2): this used to read the NODE literal out of tests/gate.js as text. The gate is
 // a script, so the honest question is not "is the name spelled in the source" but "would the gate
-// run it" — so ASK the gate: `node tests/gate.js --list` prints the plan it would run. This is
-// strictly stronger (it also catches a name that is in the literal but that the plan drops) and it
-// cannot be fooled by a name in a comment. The old text version is gone on purpose: it asserted on
-// an implementation detail and caught nothing the plan does not.
+// run it" — so ASK the gate. neb 11-10 (item 2, after nicholl's review of the barbicane-* batch):
+// it must be `--list-node-all`, NOT `--list`. `--list` prints the UNION of the plan, and a test
+// that is also named in a MAP row stays in that union even after it has dropped out of node:all
+// — measured: removing 'barbicane-onKcd' from the NODE array left the name in --list (the MAP row
+// still listed it) while node:all stopped running it, and the --list check stayed green.
+// node:all is the NODE array alone (nodeAll: NODE.map(n => 'node:' + n)), so ask for that set.
 const { execFileSync } = require('child_process');
 let gatePlan = null, gateErr = '';
 try {
-  const out = execFileSync(process.execPath, [path.join(__dirname, 'gate.js'), '--list'], { encoding: 'utf8', cwd: path.join(__dirname, '..'), timeout: 60000 });
+  const out = execFileSync(process.execPath, [path.join(__dirname, 'gate.js'), '--list-node-all'], { encoding: 'utf8', cwd: path.join(__dirname, '..'), timeout: 60000 });
   gatePlan = new Set(out.split('\n').map(s => s.trim()).filter(Boolean));
 } catch (e) { gateErr = String(e.message || e); }
 const notInGate = gatePlan ? [...nodeTestNames].filter(n => !gatePlan.has('node:' + n)) : [...nodeTestNames];
-ok("every declared node: test is in the gate's own plan (behaviour)",
+ok("every declared node: test is run by node:all (behaviour)",
   gatePlan !== null && notInGate.length === 0,
-  gatePlan === null ? 'could not ask the gate: ' + gateErr : notInGate.length ? 'NOT IN GATE: ' + notInGate.join(', ') : `${nodeTestNames.size} node tests, all in the gate's plan`);
+  gatePlan === null ? 'could not ask the gate: ' + gateErr : notInGate.length ? 'NOT IN node:all: ' + notInGate.join(', ') : `${nodeTestNames.size} node tests, all in node:all`);
 // negative control: a name the gate does not plan must be flagged
 const missingProbe = gatePlan ? [...nodeTestNames, 'zz-fake-not-in-gate'].filter(n => !gatePlan.has('node:' + n)) : [];
 ok('negative control: a node test the gate does not plan IS flagged (behaviour)',
