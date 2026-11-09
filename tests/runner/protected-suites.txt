@@ -1,0 +1,8 @@
+# Protected gate suites (neb, 11-09): suites that must ALWAYS be in the gate's resolved set.
+# These are the gate's own infrastructure - no option registry declares them, so nothing else would notice their loss.
+# 37ab (11-09): 'runner-selftest' was dropped from tests/gate.js's NODE list by a stale patch and the gate stayed GREEN:
+# the suite existed on disk, and every other signal (--list exit 0, the dark-page notice, the test counts) was unchanged.
+# The gate-coverage suite (tests/gate-coverage.js) fails loudly if any suite named here is selected by no gate set.
+# One suite per line; '#' starts a comment. Add a suite here when the gate cannot run without it.
+all
+runner-selftest
