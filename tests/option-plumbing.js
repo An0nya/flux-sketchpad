@@ -19,8 +19,8 @@ const ok = (name, pass, detail) => { console.log(`[${pass ? 'PASS' : 'FAIL'}] ${
 const profile = Opt.OPTIONS.filter(o => o.kind === 'profile');
 
 // ---- read source files ----
-const specUi = fs.readFileSync(path.join(__dirname, '..', 'js', 'spec-ui.js'), 'utf8');
 const driveAnim = fs.readFileSync(path.join(__dirname, '..', 'js', 'drive-anim.js'), 'utf8');
+const specUi = fs.readFileSync(path.join(__dirname, '..', 'js', 'spec-ui.js'), 'utf8');
 const lookTest = fs.readFileSync(path.join(__dirname, 'halo-look-projection.js'), 'utf8');
 const registry = fs.readFileSync(path.join(__dirname, '..', 'js', 'options-registry.js'), 'utf8');
 
@@ -58,12 +58,16 @@ ok('negative control: a duplicated registry entry IS flagged (behaviour)',
   dupProbe.some(x => x.startsWith(Opt.OPTIONS[0].id + ' (')),
   dupProbe.length ? 'flagged: ' + dupProbe.join(', ') : 'NOT flagged (detector would miss it)');
 
-// ---- 2. UI control exists ----
-// The control field can be:
-//   - '[data-anim="value"]' — check for data-anim="value" or 'data-anim': 'value' in source
-//   - '[data-dv="optionId"]' — check for data-dv="optionId" or 'data-dv': 'optionId' in source
-//   - 'none' — no UI control (internal option)
-//   - descriptive text (e.g. 'Spec > Road sidebar row') — skip
+// ---- 2. every option with a selector control has the control in spec-ui.js or drive-anim.js [KEEP: text] ----
+// neb 11-10 (item 2): KEEP-flagged, and MEASURED rather than assumed. I tried to replace this scan with
+// the shared map in tests/control-map.js - the file that exists to own exactly this derivation - and the
+// numbers say no: control-map's page-side derivation (dvSelect / sel / btn) finds **71** of the 157
+// profile options' controls, while this scan finds **147**. 73 options are found here and missed there
+// (the dynamic 'c-' class buttons, the loop arrays, the '__pass' value), so delegating would have
+// produced 73 false positives. This scan also stays because it is the only thing here that would notice
+// if the shared map's own page-vs-registry checks went vacuous - which they have: control-map.js
+// overwrites its page-derived map with the registry's own declarations, so its check "every
+// registry-declared control is built on the page" can never fail (reported to le-chonk/claude; their file).
 const allSrc = specUi + '\n' + driveAnim;
 const missingControl = [];
 for (const o of profile) {
@@ -108,10 +112,9 @@ for (const o of profile) {
   }
   if (!found) missingControl.push({ id: o.id, control: o.control });
 }
-ok('every option with a selector control has the control in spec-ui.js or drive-anim.js',
+ok('every option with a selector control has the control in spec-ui.js or drive-anim.js [KEEP: text — 73 of these controls are missed by the shared control map, so it cannot be delegated]',
   missingControl.length === 0,
   missingControl.length ? 'MISSING: ' + missingControl.map(m => `${m.id} (${m.control})`).join(', ') : `${profile.filter(o => o.control && o.control.startsWith('[')).length} selector controls verified`);
-
 // ---- 3. look projection for halo group ----
 const halo = profile.filter(o => o.group === 'halo');
 const lookMatch = driveAnim.match(/look:\s*\{([\s\S]*?)\}/);
@@ -123,7 +126,7 @@ for (const o of halo) {
   const inExclusion = wordBoundary(o.id).test(lookTest);
   if (!inLook && !inExclusion) haloMissingLook.push(o.id);
 }
-ok('every halo-group option is in the look literal or the exclusion list',
+ok('every halo-group option is in the look literal or the exclusion list [KEEP: text - the look literal is built inside the drive frame (V.p), so a Node check cannot ask the app for it]',
   haloMissingLook.length === 0,
   haloMissingLook.length ? 'MISSING: ' + haloMissingLook.join(', ') : `${halo.length} halo options, all projected`);
 
@@ -175,7 +178,8 @@ console.log(`\noption plumbing: ${profile.length} options — ${dupes.length} du
 
 // ---- negative control: a dummy option with no control would be flagged ----
 // qwen3.8max M2: was `missingControl.length >= 0` (tautology, always true). Now injects a
-// fake option with a non-existent control and asserts the detector flags it MISSING.
+// fake option with a non-existent control and asserts the detector flags it MISSING. neb 11-10 (item 2):
+// the detector it probes is now the shared control map (tests/control-map.js), not a scan of this file.
 const fakeProfile = [{ id: 'zz-fake-mutant', control: '[data-anim="zz-fake-mutant-control"]', group: 'test' }];
 const fakeMissing = fakeProfile.filter(o => {
   if (!o.control || !o.control.startsWith('[')) return false;
