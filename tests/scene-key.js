@@ -8,7 +8,13 @@ const fs = require('fs'), path = require('path');
 const sceneKeyHas = (anim, ROOT, opt) => {
   const ck = path.join(ROOT, 'js', 'cache-keys.js');
   if (fs.existsSync(ck)) {
-    try { const mod = require(ck); if (mod && mod.recipeOptions) return mod.recipeOptions('animScene').includes(opt); } catch (e) { /* fall through to text scan */ }
+    try {   // neb d31f: recipeOptions takes the recipe ARRAY (not a name); optionMap() is the name-keyed map
+      const mod = require(ck);
+      const ids = mod.optionMap ? mod.optionMap().animScene
+        : mod.RECIPES && mod.recipeOptions ? mod.recipeOptions(mod.RECIPES.animScene)
+        : mod.recipeOptions && mod.animScene ? mod.recipeOptions(mod.animScene) : null;
+      if (ids) return ids.includes(opt);
+    } catch (e) { /* fall through to text scan */ }
     const t = fs.readFileSync(ck, 'utf8'), i = t.search(/animScene\s*(?::|=)\s*\[/);
     if (i < 0) return false;
     const j = t.indexOf('[', i);
