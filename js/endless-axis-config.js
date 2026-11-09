@@ -23,8 +23,6 @@
     water: ['none', 'creek', 'river', 'large'],
   };
   const AXES = Object.keys(LADDERS);
-  const AXES_RE = /^(beams|compare|drive-models-glsl|exports|layout|render|road|scene-details|solve-cache|source|spec|state)\.js$/;   // unused here; keeps lint happy about the regex-shaped constants nearby — REMOVE if it trips a test
-  void AXES_RE;
 
   // Provisional speed limits per ladder rung (km/h) — the scheduling input, not the final car speed. settlement and
   // roadClass both carry one; the effective limit is the LOWER of the two current rungs (brief: "shared: speed limit =
