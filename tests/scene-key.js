@@ -5,7 +5,7 @@
 const fs = require('fs'), path = require('path');
 const sceneKeyHas = (anim, ROOT, opt) => {
   const ck = path.join(ROOT, 'js', 'cache-keys.js');
-  if (fs.existsSync(ck)) { const m = fs.readFileSync(ck, 'utf8').match(/animScene:\s*\[([\s\S]*?)\]/); return !!(m && m[1].includes(opt)); }
+  if (fs.existsSync(ck)) { const t = fs.readFileSync(ck, 'utf8'); const m = t.match(/animScene\s*(?::|=)\s*\[([\s\S]*?)\]/); return !!(m && m[1].includes(opt)); }   // inline (animScene: [) or named (var animScene = [) — frenchie 1c99
   for (const m of anim.matchAll(/skey\s*=\s*[^;]+;/g)) if (m[0].includes(opt)) return true;
   return false;
 };
