@@ -33,7 +33,7 @@ ok('bushes/trees gated on veg, deer on animals, signs on signs, rocks/buildings/
 ok('tileTerrain off: endlessElev height is off-independent (road + verge on the pure grade walk)', (() => { const h = A.endlessElev(seed, 'off', false); return h(5000, 0) === h(5000, 30) && h(5000, -30) === h(5000, 0); })());
 ok('tileTerrain on: verge varies with off beyond the carriageway, carriageway unchanged', (() => { const h = A.endlessElev(seed, 'off', true), h0 = A.endlessElev(seed, 'off', false); let varies = false; for (let s = 1000; s < 9000; s += 137) { if (h(s, 0) !== h0(s, 0)) return false; if (Math.abs(h(s, 12) - h(s, 0)) > 0.01 || Math.abs(h(s, -12) - h(s, 0)) > 0.01) varies = true; } return varies && h(5000, 2) === h0(5000, 2); })());
 ok('tileTerrain deterministic + cached per (seed, preset, terrain)', A.endlessElev(seed, 'off', true) === A.endlessElev(seed, 'off', true) && A.endlessElev(seed, 'off', true) !== A.endlessElev(seed, 'off', false));
-ok('src.tiles carries tileTerrain; tileA/tileWorld pass it to endlessElev', anim.includes('terrain: !!o.tileTerrain') && anim.includes('endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom)') && anim.includes('endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom)'));
+ok('src.tiles carries tileTerrain; tileA/tileWorld pass it to endlessElev', anim.includes('terrain: !!o.tileTerrain') && anim.includes('endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom, p.src.tiles.axes)') && anim.includes('endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom, cfg.axes)'));
 ok('top-bar terrain toggle + tkey carries tileTerrain', anim.includes("'data-anim': 'tileTerrain'") && anim.includes('!!o.tileTerrain'));
 const reg = fs.readFileSync(path.join(ROOT, 'js', 'options-registry.js'), 'utf8');
 ok('registry: tileTerrain bool default false (pricy = opt-in)', reg.includes("id: 'tileTerrain'") && /id: 'tileTerrain'[^]*?default: false/.test(reg));
@@ -46,7 +46,7 @@ ok('materials appended last, existing MAT ids unmoved (M1)', (() => { const D = 
 // tile detail builds (10-31 ~04:20, catalogue #1/#2/#4/#9 cheap versions)
 ok('detailed lamp head behind detailedModels (housing + lens)', anim.includes("if (p.detailedModels)") && (anim.match(/mat: 'lamp-head'/g) || []).length >= 2);
 ok('city verge buildings get window boxes on the road face, behind wild', anim.includes("mat: KR() < 0.22 ? 'win-warm' : KR() < 0.3 ? 'win-cool' : 'win-dark'") && anim.includes('toward = sd < 0 ? 1 : -1'));
-ok('viaduct piers on steep mountain blocks (>3.5% grade), behind wild', anim.includes("cls: 'pier'") && anim.includes("Math.abs(endlessGrade(cfg.seed, Math.floor(tile.k / 16), cfg.preset, cfg.custom)) > 0.035"));
+ok('viaduct piers on steep mountain blocks (>3.5% grade), behind wild', anim.includes("cls: 'pier'") && anim.includes("Math.abs(endlessGrade(cfg.seed, Math.floor(tile.k / 16), cfg.preset, cfg.custom, cfg.axes)) > 0.035"));
 ok('direction-sign chevron glyph behind signs', anim.includes("KP.sign(gs, go, 'green'") && anim.includes("mat: 'white-paint' }); }   // direction sign + white chevron glyph"));
 ok('pier z span reaches past the verge falloff (z0 -14)', anim.includes("z0: -14, z1: 0.05, mat: 'concrete', cls: 'pier'"));
 // next tile batch (10-31 ~05:00): W-look double-beam rails, suburb facade windows, kilometer posts

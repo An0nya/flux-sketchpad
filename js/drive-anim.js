@@ -56,7 +56,7 @@
     if (o.tiles) src.markings = (o.multilaneRoad || !!(LOOP_MULTILANE[o.endlessPreset || 'off'])) ? [] : D.laneMarkings(src.lane, { us: o.us, broken: o.us && o.cline === 'broken' });   // multilane (option or a 2+2 loop preset) draws its own per-tile markings in tileWorld — B11: the loop implication must clear the two-lane markings too
     // highway-loop preset implies the 2+2 render cross-section (the multilaneRoad option itself is untouched)
     // gantry-loop preset implies the gantries (the junctionGantries option itself is untouched)
-    if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, endless: !!o.endlessRoad, preset: o.endlessPreset || 'off', custom: o.endlessPreset === 'custom' ? parseCustomPreset(o.endlessPresetCustom) : null, terrain: !!o.tileTerrain, multilane: !!o.multilaneRoad || !!(LOOP_MULTILANE[o.endlessPreset || 'off']), tunnel: !!o.endlessTunnel, crossing: !!o.endlessCrossing, yawSmooth: !!o.yawSmooth, driftMode: !!o.driftMode, gantries: !!o.junctionGantries || o.endlessPreset === 'gantry-loop', density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null };
+    if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, endless: !!o.endlessRoad, preset: o.endlessPreset || 'off', custom: o.endlessPreset === 'custom' ? parseCustomPreset(o.endlessPresetCustom) : null, terrain: !!o.tileTerrain, multilane: !!o.multilaneRoad || !!(LOOP_MULTILANE[o.endlessPreset || 'off']), tunnel: !!o.endlessTunnel, crossing: !!o.endlessCrossing, yawSmooth: !!o.yawSmooth, driftMode: !!o.driftMode, gantries: !!o.junctionGantries || o.endlessPreset === 'gantry-loop', density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null, axes: o.endlessAxes || '' };   // endless-road-v2 (pencroff): the axes JSON string ('' = OFF = the legacy biome walk)
     for (const kind of ['oncoming', 'preceding']) {   // both models always (a few objects each): a car of a kind switched off this frame must not throw (models[kind] undefined -> 'not iterable' -> sticky CPU fallback)
       const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
       K.car(0, 0, kind === 'oncoming' ? { face: -1, lamps: 'head', kcd: +o.onKcd || 30, markers: !!o.trafficMarkers } : { face: 1, lamps: 'tail', markers: !!o.trafficMarkers }); src.traffic.models[kind] = K.O;
@@ -493,13 +493,14 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
   // tileA: the tile road's route A; under elevatedView (p.touge pipeline on, not the pass) it goes through
   // RF.Touge.elevate with height 0, so the 3D pipeline renders it flat. Legacy: the plain 2D tileRoute.
   const tileA = (p, dist) => { const A2 = tileRoute(p.src.tiles.seed, dist, undefined, p.src.tiles.endless ? ((s2, k2) => endlessTile(s2, k2, p.src.tiles.preset, p.src.tiles.custom)) : null);
-    if (p.touge && !p.src.tiles.mountain) return p.src.tiles.endless ? RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom)) : RF.Touge.elevate(A2, dist, p.lane, false);
+    if (p.touge && !p.src.tiles.mountain) return p.src.tiles.endless ? RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom, p.src.tiles.axes)) : RF.Touge.elevate(A2, dist, p.lane, false);
     return A2; };   // elevatedView: endless tiles ride the biome elevation (rolling hills / pass grades); plain tiles stay flat (height 0)
   // §2-endless elevation (rolling hills / forested pass): a seeded grade walk, one grade per 16-tile biome block
   // (mountain ±2–6%, open/forest ±0.5–1.5% rolling, city flat), lap-periodic like the pass so z(s) is O(1).
   const ENDLESS_BLOCK = 16 * 200;   // one biome block = 16 tiles = 3.2 km
   const endlessElevCache = new Map(), ENDLESS_ELEV_MAX = 16;
-  function endlessGrade(seed, b, preset = 'off', custom = null) {   // grade (rise/run) of biome block b, seeded from the block's biome; the preset sets the magnitudes
+  function endlessGrade(seed, b, preset = 'off', custom = null, axes = '') {   // grade (rise/run) of biome block b, seeded from the block's biome; the preset sets the magnitudes
+    if (axes) return RF.EndlessRelief.reliefGrade(seed, b, JSON.parse(axes));   // endless-road-v2 (pencroff): the relief axis decouples grade from biome
     const biome = endlessBiome(seed, b * 16, preset, custom), R = D.rng((Math.imul(seed | 0, 0x27D4EB2F) ^ Math.imul(b + 1, 0x9E3779B1)) >>> 0);
     if (preset === 'custom' && custom && custom.gradeBiome && custom.gradeBiome[biome]) { const g = custom.gradeBiome[biome]; return (R() < 0.5 ? -1 : 1) * (g[0] + (g[1] - g[0]) * R()); }   // custom per-biome grade range wins
     if (preset === 'custom' && custom && custom.grade) return (R() < 0.5 ? -1 : 1) * (custom.grade[0] + (custom.grade[1] - custom.grade[0]) * R());   // custom grade range
@@ -514,7 +515,7 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
     const u = R(); let acc = 0; for (const [s2, p] of w) { acc += p; if (u < acc) return s2; } return w[w.length - 1][0];
   }
   const RAMP = 100;   // vertical-curve ramp at biome-block boundaries (m), like the pass's parabolas
-  function endlessElev(seed, preset = 'off', terrain = false, custom = null) {   // -> fn(absS, off) absolute elevation, deterministic in (seed, s, preset, custom); cumulative table extends lazily. terrain=true adds coarse verge undulation beyond the carriageway (opt-in via tileTerrain); the road stays on the pure grade walk
+  function endlessElev(seed, preset = 'off', terrain = false, custom = null, axes = '') {   // -> fn(absS, off) absolute elevation, deterministic in (seed, s, preset, custom); cumulative table extends lazily. terrain=true adds coarse verge undulation beyond the carriageway (opt-in via tileTerrain); the road stays on the pure grade walk
     const verge = (s, off) => {   // off-aware term: 0 on the carriageway, pass-like falloff + seeded noise beyond the edges
       const edge = 0.75 * 3.5 + 2.2, a = Math.abs(off);
       if (a <= edge) return 0;
@@ -522,8 +523,14 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
       const n = Math.sin((Math.floor(s / 20) * 12.9898 + Math.floor(off / 6) * 78.233 + seed * 3.7) * 43758.5453) * 0.5;
       return fall + n * Math.min(1, (a - edge) / 4) * 1.2;
     };
-    const ck = seed + '|' + preset + '|' + (terrain ? 1 : 0) + '|' + JSON.stringify(custom || 0); if (endlessElevCache.has(ck)) return endlessElevCache.get(ck);
+    const ck = seed + '|' + preset + '|' + (terrain ? 1 : 0) + '|' + JSON.stringify(custom || 0) + '|' + (axes || ''); if (endlessElevCache.has(ck)) return endlessElevCache.get(ck);
     if (endlessElevCache.size >= ENDLESS_ELEV_MAX) endlessElevCache.delete(endlessElevCache.keys().next().value);   // bounded: one entry per edited custom preset would otherwise leak
+    if (axes) {   // endless-road-v2 (pencroff): the grade walk comes from RF.EndlessRelief, the verge term stays
+      const rf = RF.EndlessRelief.reliefHeightFn(seed, JSON.parse(axes));
+      const fn = (s, off) => { const z = rf(s); return terrain && off ? z + verge(s, off) : z; };
+      endlessElevCache.set(ck, fn);
+      return fn;
+    }
     const g = [], cum = [0];   // g[b] = block grade; within a block the grade ramps g[b-1]->g[b] over the first RAMP m and g[b]->g[b+1] over the last
     // one vertical curve per block edge, centred on it: the last RAMP m of block b ramp g[b] -> (g[b]+g[b+1])/2 and the first RAMP m of
     // block b+1 carry on to g[b+1], so the grade is continuous at the edge (both halves used to ramp the full g[b] -> g[b+1], and the
@@ -784,7 +791,7 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
   function tileWorld(p, dist, t, tauOf) {
     if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t, tauOf);
     const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? ((s2, k2) => endlessTile(s2, k2, cfg.preset, cfg.custom)) : null), mlx = cfg.multilane ? mlLanes(ML_LANE, ML_MEDIAN) : null, edgeR = mlx ? mlx.outerR : -lane / 2, edgeL = mlx ? mlx.outerL : 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
-    let A1 = (p.touge && !cfg.mountain) ? (cfg.endless ? RF.Touge.elevate(A0, dist, lane, true, endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom)) : RF.Touge.elevate(A0, dist, lane, false)) : A0;
+    let A1 = (p.touge && !cfg.mountain) ? (cfg.endless ? RF.Touge.elevate(A0, dist, lane, true, endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom, cfg.axes)) : RF.Touge.elevate(A0, dist, lane, false)) : A0;
     if (cfg.driftMode) {   // opposite-lock camera yaw on bends: rotate the render arc by the drift angle (traffic/solver keep the true arc via their own path)
       const tk = A1.tiles && A1.tiles.find((t2) => dist >= t2.s0 && dist < t2.s0 + 200);
       if (tk && tk.curvature) A1 = rotArc(A1, cfg.driftMode && cfg.driftDynamics && cfg.driftA !== undefined ? cfg.driftA : -tk.curvature * Math.pow((cfg.driftKmh || 80) / 130, 2) * 8);
@@ -813,7 +820,7 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
         line(-ml.h, 0.12, 'white-paint', true); line(ml.oncMid, 0.12, 'white-paint', true);   // dashed lane lines (own/right, between oncoming lanes)
       }
     const KR = D.rng((Math.imul(cfg.seed | 0, 2654435761) ^ Math.imul(tile.k + 1, 0x27D4EB2F)) >>> 0), KP = D.kit({ Lw: lane, A: null, rand: KR, foliageSeed: PED_SEED(cfg.seed) });   // KR/KP declared before the first KP user (piers/km posts) — TDZ fix 10-31
-    if (cfg.endless && tile.biome === 'mountain' && cfg.flags.wild !== false && Math.abs(endlessGrade(cfg.seed, Math.floor(tile.k / 16), cfg.preset, cfg.custom)) > 0.035) for (let i = 0; i < 2; i++) { const u = 40 + i * 120, sd = i ? 1 : -1, pq = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 1.5 : edgeL + 1.5); KP.add({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.55, z0: -14, z1: 0.05, mat: 'concrete', cls: 'pier' }); }   // viaduct piers on steep blocks (catalogue #9), down past the verge falloff
+    if (cfg.endless && tile.biome === 'mountain' && cfg.flags.wild !== false && Math.abs(endlessGrade(cfg.seed, Math.floor(tile.k / 16), cfg.preset, cfg.custom, cfg.axes)) > 0.035) for (let i = 0; i < 2; i++) { const u = 40 + i * 120, sd = i ? 1 : -1, pq = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 1.5 : edgeL + 1.5); KP.add({ k: 'cyl', x: pq.p[0], y: pq.p[1], r: 0.55, z0: -14, z1: 0.05, mat: 'concrete', cls: 'pier' }); }   // viaduct piers on steep blocks (catalogue #9), down past the verge falloff
     if (tile.biome === 'mountain' && cfg.flags.posts !== false) {   // mountain guardrails — consent toggle: the posts feature flag; cls 'rail' rides the slope in lift
       for (let u = 0; u < 200; u += 8) for (const sd of [-1, 1]) { const off = sd < 0 ? edgeR - 0.7 : edgeL + 0.7, q = A.at(tile.s0 + u - dist, off); extra.push({ k: 'box', x: q.p[0], y: q.p[1], z0: .62, z1: .9, hx: 4.05, hy: .065, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'sign-back', cls: 'rail' }, { k: 'box', x: q.p[0], y: q.p[1], z0: .34, z1: .5, hx: 4.05, hy: .055, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'sign-back', cls: 'rail' }, { k: 'cyl', x: q.p[0], y: q.p[1], z0: 0, z1: .83, r: .06, mat: 'sign-back', cls: 'rail' }); }   // double-beam rail (catalogue #3 cheap: two stacked beams read as a W-profile at distance)
     }
@@ -3203,7 +3210,7 @@ void main() {
     if (o.mountainPass) { const pr = RF.Touge.profile(dist); Object.assign(w, { road: 'mountain pass', tileKind: RF.Touge.tile(0, k).kind, gradePct: 100 * pr.grade, bankPct: 100 * RF.Touge.bank(dist) }); }
     else if (o.tiles) { const ps = o.endlessPreset || 'off', cp = ps === 'custom' ? parseCustomPreset(o.endlessPresetCustom) : null;   // the readout must see the same preset/custom as the render (was 2-of-4 args)
       const et = o.endlessRoad ? endlessTile(w.seed, k, ps, cp) : null; Object.assign(w, { road: 'tiles', tileKind: et ? et.kind + ' · ' + et.biome : roadTile(w.seed, k).kind });   // §2-endless: the readout names the biome too
-      if (o.endlessRoad && o.elevatedView) { const h = endlessElev(w.seed, ps, !!o.tileTerrain, cp); w.gradePct = +(100 * (h(dist + 50) - h(dist - 50)) / 100).toFixed(1); } }
+      if (o.endlessRoad && o.elevatedView) { const h = endlessElev(w.seed, ps, !!o.tileTerrain, cp, o.endlessAxes || ''); w.gradePct = +(100 * (h(dist + 50) - h(dist - 50)) / 100).toFixed(1); } }
     else Object.assign(w, { road: o.scene || 'road', lapLen: PERIOD, lap: Math.floor(dist / PERIOD), inLap: dist - PERIOD * Math.floor(dist / PERIOD) });
     return w;
   }

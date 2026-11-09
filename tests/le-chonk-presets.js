@@ -20,7 +20,7 @@ ok('tiles unchanged by the preset (roadTile/endlessTile identical)', (() => { fo
 // wiring
 const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
 ok('src.tiles carries the preset', anim.includes("preset: o.endlessPreset || 'off'"));
-ok('tileA/tileWorld pass the preset to endlessElev', anim.includes('endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom)') && anim.includes('endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom)'));
+ok('tileA/tileWorld pass the preset to endlessElev', anim.includes('endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom, p.src.tiles.axes)') && anim.includes('endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom, cfg.axes)'));
 ok('forested-pass adds guardrails on mountain blocks (cls rail)', anim.includes("tile.biome === 'mountain' && cfg.flags.posts !== false") && anim.includes("cls: 'rail'"));
 ok('forested-pass densifies the verge on mountain/forest', anim.includes("cfg.preset === 'forested-pass' && (vg.biome === 'mountain' || vg.biome === 'forest') ? 3 : 0"));
 ok('top-bar select exists + tkey carries the preset', anim.includes("'data-anim': 'endlessPreset'") && anim.includes("o.tiles ? o.endlessPreset : 'off'"));
