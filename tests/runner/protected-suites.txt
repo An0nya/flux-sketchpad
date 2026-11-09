@@ -10,3 +10,11 @@ runner-selftest
 # tests/gate.js was a stale copy dropped 'gate-coverage' from NODE and nothing noticed - the suite simply
 # stopped running, which is the 37ab class one level down. With it here, losing it from NODE fails the gate loudly.
 gate-coverage
+# The four Layer C promotions (neb, 11-10, at nicholl's request): pencroff's bee0 carried a STALE
+# whole-line copy of gate.js's NODE list, which dropped all four from the curated gate; the suite
+# files were on disk and nothing noticed - the 37ab class again. Found in review, fixed by
+# pencroff's cc52. With them here, a stale NODE line fails the gate loudly instead of landing quietly.
+car-rigid
+drive-touge
+node-route-parts-cap
+world-pA-repro
