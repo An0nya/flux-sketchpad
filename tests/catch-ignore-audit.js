@@ -106,6 +106,9 @@ const EXEMPT = [
   { file: 'solve-worker.js', bodySig: 'return;', why: 'try { p = previewMsg(...) } catch (e) { return; } — "a malformed preview is dropped": the preview is display-only, never affects the solve result. (The gpuInit .catch(() => {}) on line 50 is a Promise method, not a catch block — the extractor does not find it; gpuReady falls back to CPU traceAsync.)' },
   // drive-anim.js — parseCustomPreset: user JSON preset input, returns null (= off) on parse failure
   { file: 'drive-anim.js', bodySig: 'return null;', why: 'try { j = JSON.parse(txt); } catch (e) { return null; } — parseCustomPreset parses user-provided endless preset JSON. Invalid JSON returns null (= off), the validated default. The function is called from src.tiles.custom; a null result means no custom preset, same as "off". Not data-affecting — the endless road uses the seeded biome walk instead.' },
+  // endless-axis-config.js — safeJson: the endlessAxes settings JSON from storage or the scene tab.
+  // Unparsable JSON means 'all axes auto' (the validated default) — the same fail-soft species as parseCustomPreset above.
+  { file: 'endless-axis-config.js', bodySig: 'return {};', why: 'try { return JSON.parse(s); } catch (e) { return {}; } — safeJson parses user/stored endlessAxes settings. Invalid JSON returns {} which parse() fills with the all-auto defaults. Not data-affecting: the road falls back to the all-auto config; same species as drive-anim.js parseCustomPreset.' },
   // qwen3.8max review (B): the following 4 blocks were previously CONTROLLED via generic
   // comment-word patterns (gone, keep, none). Those patterns were removed because they
   // caused false negatives. These 4 are legitimate controlled catches — the comment
