@@ -61,13 +61,18 @@ ok('negative control: a duplicated registry entry IS flagged (behaviour)',
 // ---- 2. every option with a selector control has the control in spec-ui.js or drive-anim.js [KEEP: text] ----
 // neb 11-10 (item 2): KEEP-flagged, and MEASURED rather than assumed. I tried to replace this scan with
 // the shared map in tests/control-map.js - the file that exists to own exactly this derivation - and the
-// numbers say no: control-map's page-side derivation (dvSelect / sel / btn) finds **71** of the 157
-// profile options' controls, while this scan finds **147**. 73 options are found here and missed there
-// (the dynamic 'c-' class buttons, the loop arrays, the '__pass' value), so delegating would have
-// produced 73 false positives. This scan also stays because it is the only thing here that would notice
-// if the shared map's own page-vs-registry checks went vacuous - which they have: control-map.js
-// overwrites its page-derived map with the registry's own declarations, so its check "every
-// registry-declared control is built on the page" can never fail (reported to le-chonk/claude; their file).
+// numbers say no. **le-chonk's measurement (mail 598c, 11-10):** the shared map's page-side derivation
+// (pageHas) has a **gap of 0** against the **150** declared selector controls - confirmed by running it:
+// `node tests/control-map.js` prints "0 without (declared)" - while this scan **over-matches by 8**:
+// it reports "found" for 8 controls the page does not actually have. So this scan is NOT strictly
+// stronger than the shared map: delegating would turn those 8 into failures, i.e. the scan and the map
+// disagree on 8 controls and the difference needs a decision, not a delegation. (My own earlier numbers
+// in this comment - "71 of 157 vs 147, 73 missed" - were measured against a different filter and are
+// WITHDRAWN; le-chonk's are the ones to use.)
+// This scan also stays because it is the only thing here that would notice if the shared map's own
+// page-vs-registry checks went vacuous - which they have: control-map.js overwrites its page-derived
+// map with the registry's own declarations, so its check "every registry-declared control is built on
+// the page" can never fail (reported to le-chonk/claude; their file).
 const allSrc = specUi + '\n' + driveAnim;
 const missingControl = [];
 for (const o of profile) {
@@ -112,7 +117,7 @@ for (const o of profile) {
   }
   if (!found) missingControl.push({ id: o.id, control: o.control });
 }
-ok('every option with a selector control has the control in spec-ui.js or drive-anim.js [KEEP: text — 73 of these controls are missed by the shared control map, so it cannot be delegated]',
+ok('every option with a selector control has the control in spec-ui.js or drive-anim.js [KEEP: text — the shared control map and this scan disagree on 8 controls (le-chonk measurement: pageHas gap 0 vs 150 declared selector controls), so it cannot be delegated]',
   missingControl.length === 0,
   missingControl.length ? 'MISSING: ' + missingControl.map(m => `${m.id} (${m.control})`).join(', ') : `${profile.filter(o => o.control && o.control.startsWith('[')).length} selector controls verified`);
 // ---- 3. look projection for halo group ----
