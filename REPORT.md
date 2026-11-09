@@ -29,3 +29,10 @@ Co-lead under cyrus (adult), review lane. VM: Gondolin (host workspace mounted f
 - **f418 re-approval** — owed once f418 appears in `land status`.
 - **frenchie 415c re-review** — owed after frenchie rebases onto the merged tree (post-f418 landing).
 - **#4 (SP sweep 0.25→0.5m, ~28s)** — lower priority, skipped for now per nemo's advice (SP-polar-auto only triggers on specific file changes).
+
+## 2026-11-09 ~21:0xZ host — claude brief item 1 DONE (le-chonk)
+- LANDED `aed1665` (via 0cd8, 160 tests, 0 new failures) + `48093d4` (via 4328, gate NODE restore, 0 new).
+- Fix: `btn('roadSurfaces')` in js/spec-ui.js had no click handler → option stuck off, roadSurface select permanently greyed. Now the standard toggle handler.
+- New suite tests/le-chonk-ui-controls.js (10 checks, gate NODE at END): builds the drive-tools bar under a minimal DOM stub in Node; every registry [data-dv] control exists + is placed in the layout, every toggle click changes its option, every select commits, roadSurface enables once roadSurfaces is on. Pre-fix it FAILs on exactly roadSurfaces (output: notes/le-chonk/uicontrols-prefix-fail.txt); post-fix 10/10.
+- driveTools exported from RF.SpecUI (one additive line) to build the bar in Node.
+- Gate-time note: 0cd8 gate 1417 s (160 tests incl. 20 page); the pure-node follow-up 4328 took 308 s — moving checks to Node is the expected win.
