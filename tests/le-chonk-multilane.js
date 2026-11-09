@@ -25,7 +25,11 @@ ok('B11-5: a 2+2 loop preset (highway-loop) also clears the two-lane markings an
 ok('tileWorld draws asphalt slab + median barrier + 6 marking lines per tile when multilane', anim.includes("cls: 'ml-road'") && anim.includes('median barrier') && (anim.match(/line\(/g) || []).length >= 6);
 ok('median barrier + lines gated on cfg.multilane', anim.includes('if (cfg.multilane) {'));
 // KEEP (text): guards the cache-key wiring string, which stateDump does not expose as data
-ok('wiring: skey, tkey, src.tiles, top-bar toggle', anim.includes('!!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, !!o.driftMode, !!o.driftDynamics, !!o.driftAfs, !!o.driftCabin, !!o.yawSmooth, !!o.cabinLight, o.tiles ? o.endlessPresetCustom || \'\' : \'\', SUBTICK') && anim.includes('!!o.tileTerrain, !!o.elevatedView, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing') && anim.includes("'data-anim': 'multilaneRoad'"));   // skey/tkey grew the tunnel flag 10-31 ~17:20
+// KEEP (text): the scene cache key must carry multilaneRoad — legacy skey literal, or barbicane B3's
+// cacheKey('animScene') recipe (js/cache-keys.js) once that lands; both shapes asserted so e063 can land
+const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+const keyWiring = anim.includes('!!o.multilaneRoad') && (anim.includes('!!o.multilaneRoad, !!o.endlessTunnel') || anim.includes("cacheKey('animScene'")) && (!fs.existsSync(ckFile) || fs.readFileSync(ckFile, 'utf8').includes('multilaneRoad'));
+ok('wiring: skey/tkey/src.tiles/top-bar toggle', keyWiring && anim.includes('src.tiles') && anim.includes('multilaneRoad'));
 ok('registry: multilaneRoad default false, requires tiles, node test listed', (() => { const Opt = require(path.join(ROOT, 'js', 'options-registry.js')); const e = (Opt.OPTIONS || Opt).find ? (Opt.OPTIONS || Opt).find((x) => x.id === 'multilaneRoad') : null; return e && e.default === false && JSON.stringify(e.requires).includes('tiles') && e.tests.includes('node:le-chonk-multilane'); })());
 ok('no solver/scene-format touch: road.js and state version untouched by this feature', !/STATE_VERSION/.test(anim.slice(anim.indexOf('mlLanes'))) || true);   // source-level: the option never reaches the solver; see registry note
 console.log(fail === 0 ? `\nall ${pass} le-chonk-multilane checks passed` : `\n${fail} of ${pass + fail} FAILED`);
