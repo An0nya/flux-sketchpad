@@ -1,0 +1,13 @@
+{
+  "name": "flux-sketchpad",
+  "private": true,
+  "description": "Test tooling only; the app itself runs from file:// with no build step.",
+  "scripts": {
+    "test:node": "node tests/runner/node-suites.js",
+    "test:page": "playwright test",
+    "test:gate": "node tests/gate.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
