@@ -4,7 +4,6 @@ const ROOT = path.join(__dirname, '..');
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { if (c) { pass++; console.log('[PASS] ' + n); } else { fail++; console.log('[FAIL] ' + n + (x !== undefined ? ' ' + JSON.stringify(x) : '')); } };
 const lc = fs.readFileSync(path.join(ROOT, 'js/drive-three-lampcone.js'), 'utf8');
-ok('lampsOf has a WeakMap cache keyed on the objects array', /const lampsCache = new WeakMap\(\)/.test(lc) && /lampsCache\.get\(objects\)/.test(lc) && /lampsCache\.set\(objects, out\)/.test(lc));
 // functional: extract the cache + lampsOf source and run it standalone
 const i = lc.indexOf('const lampsCache = new WeakMap();');
 const j = lc.indexOf('const D = globalThis.RF.Drive;', i);
@@ -16,6 +15,8 @@ const objs = [
   { cls: 'signal', k: 'disc', x: 9, y: 0, z: 4, emit: false, nx: 1, ny: 0 },   // unlit: skipped, as before
 ];
 const a = lampsOf(objs), b = lampsOf(objs);
+// behaviour, not text (neb census 0efa): the cache is keyed on the ARRAY IDENTITY — same array -> same list, a copy -> a new list
+ok('cache keyed on objects-array identity', b === a && lampsOf(objs.slice()) !== a && lampsOf(objs) === a);
 ok('same array back on a repeat call (cache hit)', a === b && a.length === 2, { same: a === b, len: a.length });
 ok('street dedup by x,y kept', a.filter((L) => L.kind === 'street').length === 1);
 const sig = a.find((L) => L.kind === 'signal');
