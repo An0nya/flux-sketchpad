@@ -12,6 +12,9 @@ const three = fs.readFileSync(path.join(ROOT, 'js', 'drive-three.js'), 'utf8');
 const shaders = fs.readFileSync(path.join(ROOT, 'js', 'drive-three-shaders.js'), 'utf8');
 const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
 const lay = fs.readFileSync(path.join(ROOT, 'js', 'drive-layout.js'), 'utf8');
+const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
+const useCacheKey = ui.includes('cacheKey(');
 const e = Opt.OPTIONS.find((x) => x.id === 'dryStreaks');
 
 // 1. registry
@@ -31,7 +34,7 @@ ok('the touge pass veil carries dryStreaks + road surface too', require('fs').re
 
 // 3. wiring: look key, cache keys, layout
 ok('look projection carries dryStreaks', anim.includes("distanceLod: o.distanceLod || 'off', dryStreaks: o.dryStreaks === true,"));   // was matched only by glareOpts' text
-ok('both spec-ui picture-cache keys carry o.dryStreaks', ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.dryStreaks')).length === 2);
+ok('both spec-ui picture-cache keys carry o.dryStreaks', useCacheKey ? (ck.match(/'dryStreaks'/g) || []).length >= 2 : ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.dryStreaks')).length === 2);
 ok('drive-layout Wet road row lists the control', lay.includes("dv('dryStreaks')"));
 
 // 4. behaviour, executed: the CPU wetEff maths with the real helpers

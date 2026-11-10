@@ -15,6 +15,9 @@ const sh = fs.readFileSync(path.join(ROOT, 'js/drive-three-shaders.js'), 'utf8')
 const halo = fs.readFileSync(path.join(ROOT, 'js/drive-three-halo.js'), 'utf8');
 const anim = fs.readFileSync(path.join(ROOT, 'js/drive-anim.js'), 'utf8');
 const spec = fs.readFileSync(path.join(ROOT, 'js/spec-ui.js'), 'utf8');
+const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
+const useCacheKey = spec.includes('cacheKey(');
 const lay = fs.readFileSync(path.join(ROOT, 'js/drive-layout.js'), 'utf8');
 const gate = fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'utf8');
 
@@ -46,7 +49,7 @@ ok('halo: table program declares kSurf beside wetU; ext A multiplies by it', hal
 ok('halo: all three table uniform sets carry kSurf', (halo.match(/kSurf: \{ value: D\.surfKOf\(look\) \}/g) || []).length === 3);
 ok('drive-anim look carries roadSurfaces + roadSurface (rule 18 projection)', anim.includes('roadSurfaces: o.roadSurfaces === true, roadSurface: o.roadSurface || \'stock\''));
 ok('spec-ui: controls exist (btn + select) and sync (disabled without roadSurfaces)', spec.includes("btn('roadSurfaces'") && spec.includes("dvSelect('roadSurface'") && spec.includes("b.disabled = !o.roadSurfaces"));
-ok('spec-ui: spec picture key carries both options', /JSON\.stringify\(\[rd\.laneDrive, o\.scene, RF\.Drive\.wetnessOf\(o\), o\.wetSheen, o\.wetModel, !!o\.roadSurfaces, o\.roadSurface/.test(spec));
+ok('spec-ui: spec picture key carries both options', /JSON\.stringify\(\[rd\.laneDrive, o\.scene, RF\.Drive\.wetnessOf\(o\), o\.wetSheen, o\.wetModel, !!o\.roadSurfaces, o\.roadSurface/.test(spec) || (useCacheKey && (ck.match(/'roadSurfaces'/g)||[]).length >= 2 && (ck.match(/'roadSurface'/g)||[]).length >= 2));
 ok('drive-layout row lists both controls', lay.includes("dv('roadSurfaces'), dv('roadSurface')"));
 ok('gate: NODE + wet group + MAP entries select the new test', gate.includes("'frenchie-road-surfaces'") && gate.includes("'node:frenchie-road-surfaces'"));
 

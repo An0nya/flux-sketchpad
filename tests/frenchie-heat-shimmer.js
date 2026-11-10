@@ -11,6 +11,9 @@ const three = fs.readFileSync(path.join(ROOT, 'js', 'drive-three.js'), 'utf8');
 const shSrc = fs.readFileSync(path.join(ROOT, 'js', 'drive-three-shaders.js'), 'utf8');
 const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
 const lay = fs.readFileSync(path.join(ROOT, 'js', 'drive-layout.js'), 'utf8');
+const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
+const useCacheKey = ui.includes('cacheKey(');
 const e = Opt.OPTIONS.find((x) => x.id === 'heatShimmer');
 
 // 1. registry
@@ -41,7 +44,7 @@ ok('update() recompiles the ground program only on on/off flip and sets both uni
 ok('u defaults carry the uniforms', /shimmerAmp: 0, shimmerT: 0/.test(three));
 ok('drive bar has the [data-anim="heat-shimmer"] select -> setDV', /data-anim': 'heat-shimmer'/.test(anim) && /hs\.addEventListener\('change', \(\) => setDV\(ui, 'heatShimmer', hs\.value\)\)/.test(anim));
 ok('labels() syncs it; look carries heatShimmer', anim.includes("[data-anim=\"heat-shimmer\"]').value = ['off', 'low', 'high'].includes(o.heatShimmer)") && /heatShimmer:\s*o\.heatShimmer\s*\|\|\s*'off'/.test(anim));   // qwen P3-b: whitespace-tolerant
-ok('both spec-ui picture-cache keys carry o.heatShimmer', ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.heatShimmer')).length === 2);   // append-safe: any later option appended after heatShimmer must not break this
+ok('both spec-ui picture-cache keys carry o.heatShimmer', useCacheKey ? (ck.match(/'heatShimmer'/g) || []).length >= 2 : ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.heatShimmer')).length === 2);   // append-safe: any later option appended after heatShimmer must not break this
 ok('drive-layout row lists it', lay.includes("an('heat-shimmer')"));
 ok('CPU renderer (drive.js) never reads it (GPU-only per Anya)', !fs.readFileSync(path.join(ROOT, 'js', 'drive.js'), 'utf8').includes('heatShimmer'));   // qwen P3-a: the drive.js half is the real guarantee
 

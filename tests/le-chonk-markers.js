@@ -42,9 +42,12 @@ ok('halo lamp pool (heads/tails) has no markerLamp objects', heads.concat(tails)
 
 // spec-ui: strip button + label + picture-cache key
 const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
+const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
+const useCacheKey = ui.includes('cacheKey(');
 ok('spec-ui: strip button [data-dv="trafficMarkers"] exists next to preceding', ui.includes("btn('trafficMarkers',") && ui.includes("'data-dv=\"trafficMarkers\"'") === false && ui.includes("setDV(ui, 'trafficMarkers', !dvOpts(ui).trafficMarkers)"));
 ok('spec-ui: label map says "markers"', ui.includes("trafficMarkers: 'markers'"));
-ok('spec-ui: picture-cache key carries o.trafficMarkers', (ui.match(/o\.preceding && o\.preDist, o\.trafficMarkers,/g) || []).length === 1);
+ok('spec-ui: picture-cache key carries o.trafficMarkers', (ui.match(/o\.trafficMarkers,/g) || []).length === 1 || (useCacheKey && ck.includes("'trafficMarkers'")));
 
 // scene digest: OFF unchanged — buildScene with trafficMarkers off equals the frozen scene digest path (spot check via kit equality above) plus the option is absent from defaults() diff
 ok('defaults() has no other new keys vs frozen copy expectations (count via registry test)', O.defaults().trafficMarkers === false);

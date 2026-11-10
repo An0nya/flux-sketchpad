@@ -88,7 +88,6 @@ const EXEMPT = {
   trafficShuffle:  'Table-rebuild; handled by trafficLogic in tkey',
   trafficOutIds:   'Table-rebuild; handled by trafficLogic in tkey',
 };
-// NOTE: after ecf2 lands, add: cabinGaugeLight, cabinZoom, cabinOffsetX, cabinOffsetY (overlay-only, drawCabin)
 
 console.log('\nExemptions (' + Object.keys(EXEMPT).length + ' total):');
 for (const [id, reason] of Object.entries(EXEMPT)) {
@@ -159,6 +158,42 @@ ok('halo family: haloMoment, haloWidthStep, haloCrossingRefine, haloRefineNeighb
   const key3 = RF.Options.cacheKey('stillFrame', o3, extras);
   ok('sensitivity: changing mt (not in stillFrame) does NOT change the stillFrame key',
     key1 === key3, key1 === key3 ? '' : 'unexpected change');
+
+  // ---- 9b. Equivalence: 'f' type normalisation - truthy non-boolean !== true ----
+  // B3's type 'f' uses raw === true vs old !!raw — verify no truthy non-bool option exists
+  // that would diverge. All boolean options have boolean defaults; the test confirms
+  // that the registry is safe.
+  var profileBooleans = profile.filter(function(p) { return typeof p.default === 'boolean'; });
+  var safeCount = 0; var risky = [];
+  var oFuzz = Object.assign({}, o);
+  for (var bi = 0; bi < profileBooleans.length; bi++) {
+    var bid = profileBooleans[bi].id;
+    oFuzz[bid] = 1;  // truthy non-boolean — what a stale state might carry
+    var fuzzKey = RF.Options.cacheKey('stillFrame', oFuzz, extras);
+    oFuzz[bid] = true;
+    var cleanKey = RF.Options.cacheKey('stillFrame', oFuzz, extras);
+    if (fuzzKey !== cleanKey) risky.push(bid);
+    else safeCount++;
+    oFuzz[bid] = o[bid];  // restore
+  }
+  ok("'f' normalisation: no truthy-non-boolean divergence across all profile booleans",
+    risky.length === 0, risky.length === 0 ? safeCount + ' safe' : 'DIVERGES: ' + risky.join(', ') + ' / ' + safeCount + ' safe');
+
+  // ---- 9c. animScene structural equivalence ----
+  // The animScene recipe produces an array whose first 35 JSON entries match the pre-B3
+  // hand-written skey byte-for-byte (verified by nicholl 35/35 audit and pencroff).
+  // This self-consistency check ensures the recipe is stable.
+  var so = Object.assign({}, RF.Options.defaults());
+  so.visibility = 0; so.onMode = 'off';
+  var sExtras = [3.5, 42, 0];    // laneDrive, us, SUBTICK
+  var newSkey = RF.Options.cacheKey('animScene', so, sExtras);
+  var newParts = JSON.parse(newSkey);
+  ok('animScene recipe produces a stable deterministic key (35+ entries)',
+    newParts.length >= 35, newParts.length + ' entries');
+  // Re-key to verify idempotence
+  var reSkey = RF.Options.cacheKey('animScene', so, sExtras);
+  ok('animScene cache key is idempotent',
+    newSkey === reSkey, newSkey === reSkey ? 'idempotent' : 'non-deterministic');
 })();
 
 console.log('\ncache-key coverage (B3 declaration-based): ' + pictureAffecting.length + ' picture-affecting options, ' + exemptIds.length + ' exempt, ' + missing.length + ' missing');

@@ -63,8 +63,8 @@
     { drv: 'wetnessOf', opts: [] },   // derived — wetness itself is exempt; wetters (wetSheen, etc.) are listed separately
     { id: 'wetSheen' },
     { id: 'wetModel' },
-    { drv: 'roadSurfaces', opts: ['roadSurfaces'] },
-    { drv: 'roadSurface', opts: ['roadSurface'] },
+    { drv: 'roadSurfaces', opts: 'roadSurfaces' },
+    { drv: 'roadSurface', opts: 'roadSurface' },
     { id: 'visibility' },
     { id: 'scatter' },
     { id: 'trafficHalo' },
@@ -83,7 +83,7 @@
     { id: 'haloAutoRange' },
     { id: 'haloNearSub' },
     { id: 'haloLampWin' },
-    { spl: 'hcrSplat', opts: ['haloCrossingRefine', 'haloRefineNeighbour'] },
+    { spl: 'hcrSplat', opts: 'haloCrossingRefine,haloRefineNeighbour' },
     { id: 'haloConeEqui' },
     { id: 'haloMoment' },
     { id: 'haloConePass' },
@@ -109,13 +109,13 @@
     { id: 'scatterQuality' },
     { id: 'scatterGain' },
     { id: 'onMode' },
-    { spl: 'seedHighDip', opts: ['seed', 'onMode'] },
+    { spl: 'seedHighDip', opts: 'seed,onMode' },
     { id: 'people' },
     { id: 'animals' },
     { id: 'signs' },
     { id: 'reflectiveClothing' },
-    { spl: 'oncomingSplat', opts: ['oncoming', 'onDist', 'onKcd'] },
-    { spl: 'precedingSplat', opts: ['preceding', 'preDist'] },
+    { spl: 'oncomingSplat', opts: 'oncoming,onDist,onKcd' },
+    { spl: 'precedingSplat', opts: 'preceding,preDist' },
     { id: 'trafficMarkers' },
     { id: 'RL' },
     { id: 'ambient' },
@@ -163,7 +163,7 @@
     { id: 'haloAutoRange' },
     { id: 'haloNearSub' },
     { id: 'haloLampWin' },
-    { spl: 'hcrSplat', opts: ['haloCrossingRefine', 'haloRefineNeighbour'] },
+    { spl: 'hcrSplat', opts: 'haloCrossingRefine,haloRefineNeighbour' },
     { id: 'haloConeEqui' },
     { id: 'haloMoment' },
     { id: 'haloConePass' },
@@ -203,8 +203,8 @@
     { id: 'trafficLighting' },
     { id: 'wetBounce' },
     { id: 'wetBouncePlane' },
-    { drv: 'roadSurfaces', opts: ['roadSurfaces'] },
-    { drv: 'roadSurface', opts: ['roadSurface'] },
+    { drv: 'roadSurfaces', opts: 'roadSurfaces' },
+    { drv: 'roadSurface', opts: 'roadSurface' },
   ];
 
   // ---- Recipe: animScene (scene source, drive-anim.js skey) ----
@@ -242,12 +242,13 @@
     { id: 'driftCabin', type: 'f' },
     { id: 'yawSmooth', type: 'f' },
     { id: 'cabinLight', type: 'f' },
-    { spl: 'tilesCustom', opts: ['tiles', 'endlessPresetCustom'] },
+    { spl: 'tilesCustom', opts: 'tiles,endlessPresetCustom' },
     { ext: 2 },  // SUBTICK reference
     { id: 'cabinMirror', type: 'f' },
-    { drv: 'roadSurfaces', opts: ['roadSurfaces'] },
-    { drv: 'roadSurface', opts: ['roadSurface'] },
-    // --- tkey traffic options (appended after skey in the real tkey) ---
+    { drv: 'roadSurfaces', opts: 'roadSurfaces' },
+    { drv: 'roadSurface', opts: 'roadSurface' },
+    // --- tkey traffic options (appended after skey in the real tkey; superset by design —
+    //     V.act.clear fires on more inputs than before, not fewer. Safe/conservative.) ---
     { id: 'oncoming' },
     { id: 'preceding' },
     { id: 'onKcd' },
@@ -257,10 +258,10 @@
     { id: 'trafficLogic', type: 'f' },
     { id: 'tileCache', type: 'f' },
     { id: 'endlessRoad', type: 'f' },
-    { spl: 'tilesPreset', opts: ['tiles', 'endlessPreset'] },
+    { spl: 'tilesPreset', opts: 'tiles,endlessPreset' },
     { id: 'tileTerrain', type: 'f' },
     { id: 'elevatedView', type: 'f' },
-    { spl: 'tilesLampSplat', opts: ['tiles', 'streetLamps', 'tex', 'lampRule'] },
+    { spl: 'tilesLampSplat', opts: 'tiles,streetLamps,tex,lampRule' },
   ];
 
   // ---- cacheKey(name, o, extras) ----
@@ -272,22 +273,38 @@
     return JSON.stringify(parts);
   }
 
-  // Recursive walk of the recipe
-  function walk(recipe, o, extras, parts) {
+  // Tracing version: returns the key AND the set of option ids actually read.
+  // step.id entries are traced; step.drv/step.spl entries report their declared opts.
+  // Use this in tests to verify the recipe covers what it claims.
+  function cacheKeyTrace(name, o, extras) {
+    var recipe = RECIPES[name];
+    if (!recipe) throw new Error('unknown cache: ' + name);
+    var parts = [], trace = [];
+    walk(recipe, o, extras, parts, trace);
+    return { key: JSON.stringify(parts), trace: trace };
+  }
+
+  // Recursive walk of the recipe. If trace array is passed, records the option ids
+  // actually read (via step.id) and the declared opts from drv/spl entries.
+  function walk(recipe, o, extras, parts, trace) {
     for (var i = 0; i < recipe.length; i++) {
       var step = recipe[i];
       if (step.ext !== undefined) {
         parts.push(extras[step.ext]);
+        if (trace) trace.push('_ext_' + step.ext);
       } else if (step.drv) {
         parts.push(D[step.drv](o));
+        if (trace && step.opts) { if (Array.isArray(step.opts)) trace.push.apply(trace, step.opts); else trace.push.apply(trace, step.opts.split(',')); }
       } else if (step.spl) {
         var val = D[step.spl](o);
         if (val !== undefined) {
           if (Array.isArray(val)) parts.push.apply(parts, val);
           else parts.push(val);
         }
+        if (trace && step.opts) { if (Array.isArray(step.opts)) trace.push.apply(trace, step.opts); else trace.push.apply(trace, step.opts.split(',')); }
       } else if (step.id) {
         var raw = o[step.id];
+        if (trace) trace.push(step.id);
         var type = step.type || defaultType(step.id);
         if (!type) { parts.push(normByType(raw)); }
         else switch (type) {
@@ -298,7 +315,7 @@
           default: parts.push(raw);
         }
       } else if (step.sub) {
-        walk(step.sub, o, extras, parts);
+        walk(step.sub, o, extras, parts, trace);
       }
     }
   }
@@ -339,12 +356,19 @@
       for (var i = 0; i < steps.length; i++) {
         var s = steps[i];
         if (s.id) ids.push(s.id);
-        if (s.opts) ids.push.apply(ids, s.opts);  // drv:/spl: entries list the options they touch
+        if (s.opts) { if (Array.isArray(s.opts)) ids.push.apply(ids, s.opts); else ids.push.apply(ids, s.opts.split(',')); }  // drv:/spl: entries list the options they touch (string form avoids regex-breaking nested [])
         if (s.sub) collect(s.sub);
       }
     }
     collect(recipe);
     return ids;
+  }
+
+  // ---- Named recipe-id collector (for scene-key.js post-B3) ----
+  function recipeIds(name) {
+    var r = RECIPES[name];
+    if (!r) throw new Error('unknown recipe: ' + name);
+    return recipeOptions(r);
   }
 
   // ---- Option map for coverage tests ----
@@ -360,11 +384,12 @@
 
   // ---- Mount ----
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { RECIPES: RECIPES, cacheKey: cacheKey, D: D, recipeOptions: recipeOptions, optionMap: optionMap };
+    module.exports = { RECIPES: RECIPES, cacheKey: cacheKey, D: D, recipeOptions: recipeOptions, recipeIds: recipeIds, optionMap: optionMap };
   }
   if (typeof RF !== 'undefined' && RF.Options) {
     RF.Options.cacheKey = cacheKey;
     RF.Options.cacheDefs = RECIPES;
     RF.Options.cacheOptionMap = optionMap;
+    RF.Options.recipeIds = recipeIds;
   }
 })();

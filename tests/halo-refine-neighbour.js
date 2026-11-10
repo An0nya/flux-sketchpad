@@ -90,9 +90,12 @@ ok('RN: lw and nb are mutually exclusive in the source (P1c wins, as before)', !
   ok('registry: defaults() carries it as off', Opt.defaults().haloRefineNeighbour === 'off');
   ok('registry: it is gated on gpu, air, haloOn and crossingRefineOn (inert unless P1c is on)', ['gpu', 'air', 'haloOn', 'crossingRefineOn'].every((r) => e.requires.some((q) => q.rule === r)), e.requires.map((q) => q.rule));
   const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
+  const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+  const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
+  const useCacheKey = ui.includes('cacheKey(');
   ok('spec-ui: the control is built and joined to the advanced group', ui.includes("dvSelect('haloRefineNeighbour'") && /data-dv-group/.test(ui) && ui.includes("'haloCrossingRefine', 'haloRefineNeighbour', 'haloMoment', 'haloPolar'"));
   ok('spec-ui: the control is disabled unless the crossing refinement is on', /k === 'haloRefineNeighbour'[\s\S]{0,220}b\.disabled = !\+o\.haloCrossingRefine/.test(ui));
-  ok('spec-ui: it is in BOTH picture-cache keys, next to haloCrossingRefine', (ui.match(/o\.haloCrossingRefine, o\.haloRefineNeighbour/g) || []).length === 2, (ui.match(/o\.haloCrossingRefine, o\.haloRefineNeighbour/g) || []).length);
+  ok('spec-ui: it is in BOTH picture-cache keys, next to haloCrossingRefine', (ui.match(/o\.haloCrossingRefine, o\.haloRefineNeighbour/g) || []).length === 2 || (useCacheKey && (ck.match(/haloRefineNeighbour/g)||[]).length >= 2), (ui.match(/o\.haloCrossingRefine, o\.haloRefineNeighbour/g) || []).length);
   const d3 = fs.readFileSync(path.join(ROOT, 'js', 'drive-three.js'), 'utf8');
   ok('drive-three: haloState() exposes nb, so a page test can read it (the gap P1c has)', d3.includes('nb: halo.nb || 0'));   // frenchie: anchor on the key, not on adjacency — the haloWidthStep landing inserted `width:` between cross and nb and broke the old exact string; the intent (nb is exposed) is unchanged
 }

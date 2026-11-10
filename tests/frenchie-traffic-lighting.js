@@ -34,9 +34,12 @@ ok("'off' is not a preset (applying it writes no knobs)", !O.TRAFFIC_LIGHTING['o
 
 // UI wiring
 const ui = fs.readFileSync(path.join(ROOT, 'js/spec-ui.js'), 'utf8');
+const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
+const useCacheKey = ui.includes('cacheKey(');
 ok('spec-ui select exists and applies the map via setDV', ui.includes("dvSelect('trafficLighting'") && /TRAFFIC_LIGHTING\[v\]/.test(ui) && /for \(const k in w\) setDV\(ui, k, w\[k\]\)/.test(ui));
 ok('label sync recomputes the match (trafficLightingOf)', ui.includes("else if (k === 'trafficLighting') { b.value = RF.Options.trafficLightingOf(o); }"));
-ok('both picture-cache keys carry it', ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.trafficLighting')).length === 2);
+ok('both picture-cache keys carry it', useCacheKey ? (ck.match(/'trafficLighting'/g) || []).length >= 2 : ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.trafficLighting')).length === 2);
 const lay = fs.readFileSync(path.join(ROOT, 'js/drive-layout.js'), 'utf8');
 // 11-02 merge-review follow-up (qwen): the old whole-text includes() passed even when the selector sat
 // as an ignored 5th row element (place() drops it) — assert the EXECUTED row shape instead

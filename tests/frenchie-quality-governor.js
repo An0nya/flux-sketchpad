@@ -11,6 +11,9 @@ const reg = fs.readFileSync(path.join(ROOT, 'js', 'options-registry.js'), 'utf8'
 const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
 const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
 const lay = fs.readFileSync(path.join(ROOT, 'js', 'drive-layout.js'), 'utf8');
+const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
+const useCacheKey = ui.includes('cacheKey(');
 const e = Opt.OPTIONS.find((x) => x.id === 'qualityGovernor');
 
 // 1. registry: declared once, profile enum, default off, control, group, tests entry
@@ -35,7 +38,7 @@ ok('shedPrepare is defined next to resolutionPrepare', /function shedPrepare\(\)
 ok('look projection carries qualityGovernor', anim.includes("qualityGovernor: o.qualityGovernor === 'on'"));
 ok('drive bar has the [data-anim="quality-governor"] select with a change -> setDV', /data-anim': 'quality-governor'/.test(anim) && /qg\.addEventListener\('change', \(\) => setDV\(ui, 'qualityGovernor', qg\.value\)\)/.test(anim));
 ok('labels() syncs the select', anim.includes("[data-anim=\"quality-governor\"]').value = o.qualityGovernor === 'on' ? 'on' : 'off'"));
-ok('both spec-ui picture-cache keys carry o.qualityGovernor', (ui.match(/o\.qualityGovernor[,)\]]/g) || []).length === 2, (ui.match(/o\.qualityGovernor[,)\]]/g) || []).length);
+ok('both spec-ui picture-cache keys carry o.qualityGovernor', useCacheKey ? (ck.match(/'qualityGovernor'/g) || []).length >= 2 : (ui.match(/o\.qualityGovernor[,)\]]/g) || []).length === 2, useCacheKey ? (ck.match(/'qualityGovernor'/g) || []).length : (ui.match(/o\.qualityGovernor[,)\]]/g) || []).length);
 ok('drive-layout Resolution pane lists the control', lay.includes("an('quality-governor')"));
 
 console.log(n + ' checks, ' + fails + ' failed');

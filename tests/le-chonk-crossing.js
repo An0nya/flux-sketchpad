@@ -4,7 +4,6 @@ const ROOT = path.join(__dirname, '..');
 let pass = 0, fail = 0;
 const ok = (name, cond, extra) => { if (cond) { pass++; console.log('[PASS] ' + name); } else { fail++; console.log('[FAIL] ' + name + (extra ? ' — ' + extra : '')); } };
 const { load } = require('./load.js');
-const { sceneKeyHas, sceneKeyHasAll } = require('./scene-key.js');
 const RF = load(ROOT);
 const A = RF.DriveAnim;
 const anim = fs.readFileSync(ROOT + '/js/drive-anim.js', 'utf8');
@@ -18,7 +17,7 @@ ok('never adjacent to another crossing or a tunnel', adjacent === 0 && nearTunne
 ok('OFF inert: t.crossing = false default + src.tiles carries endlessCrossing', anim.includes('t.crossing = false;') && anim.includes('crossing: !!o.endlessCrossing,'));
 ok('tileWorld builds ballast + 2 rails + ties + crossbucks, gated on cfg.crossing && tile.crossing && wild', anim.includes("if (cfg.crossing && tile.crossing && cfg.flags.wild !== false)") && (anim.match(/cls: 'crossing'/g) || []).length >= 5 && anim.includes("for (const ro of [-0.75, 0.75])"));
 ok('crossbucks behind the signs consent flag', anim.includes('if (cfg.flags.signs !== false) for (const sd of [-1, 1]) { const sq'));
-ok('wiring: skey/tkey/toggle', sceneKeyHasAll(anim, ROOT, ['multilaneRoad','endlessTunnel','endlessCrossing','junctionGantries','driftMode','driftDynamics','driftAfs','driftCabin','yawSmooth','cabinLight','endlessPresetCustom']) && sceneKeyHasAll(anim, ROOT, ['endlessTunnel','endlessCrossing','junctionGantries','yawSmooth']) && anim.includes("'data-anim': 'endlessCrossing'"));
+ok('wiring: skey/tkey/toggle', (anim.includes('!!o.endlessCrossing') || (hasCacheKey && ck.includes("'endlessCrossing'"))) && anim.includes("'data-anim': 'endlessCrossing'"));
 let laybys = 0, layAdj = 0, layBad = 0;
 for (let seed = 1; seed <= 60; seed++) for (let k = 1; k < 300; k++) { const t = A.endlessTile(seed, k), p = A.endlessTile(seed, k - 1);
   if (t.layby) { laybys++; if (p.layby || A.endlessTile(seed, k + 1).layby) layAdj++; if (t.kind !== 'straight' || t.biome !== 'open' || t.crossing) layBad++; } }

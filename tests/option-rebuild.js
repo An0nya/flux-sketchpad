@@ -30,6 +30,9 @@ const srcArgs = (anim.match(/V\.srcArgs = (\[[\s\S]*?\]);/) || [])[1];
 const look = (anim.match(/look: \{([\s\S]*?)\};/) || [])[1];
 if (srcArgs) gates.push(srcArgs);
 if (look) gates.push(look);
+// B3: scan cache-keys.js recipes too, since cacheKey() replaced the old JSON.stringify literals
+const ckPath = path.join(ROOT, 'js', 'cache-keys.js');
+if (fs.existsSync(ckPath)) gates.push(fs.readFileSync(ckPath, 'utf8'));
 ok('the rebuild gate audit has its literals (tkey/skey/srcArgs/look and the ground key)', gates.length >= 4, gates.length);
 const carried = (id) => gates.some((g) => new RegExp('o\\.' + id + '\\b').test(g) || new RegExp('\\b' + id + '\\b').test(g));
 
@@ -70,7 +73,7 @@ const RENDER = ['drive.js', 'drive-three.js', 'drive-three-shaders.js', 'drive-t
   'drive-anim.js'].map((f) => [f, fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')]);
 const helperRe = /airLevel|haloLevel|qualityCounts|scatLevels|lightRangeOf|lightCarsOf|wetnessOf|capGlare|glareOpts/;
 const keyLineOf = (id) => jsFiles.some((f) => fs.readFileSync(path.join(ROOT, 'js', f), 'utf8').split('\n')
-  .some((l) => /\w*[Kk]ey\w*\s*[=:]|gkey|tkey|skey/.test(l) && l.indexOf(id) >= 0));
+  .some((l) => (/\w*[Kk]ey\w*\s*[=:]|gkey|tkey|skey/.test(l) || /\{ *(id|spl|drv):/.test(l)) && l.indexOf(id) >= 0));
 const plumbed = (id) => RENDER.some(([f, s]) => s.indexOf(id) >= 0) || helperRe.test(RENDER.map((r) => r[1]).join('')) && RENDER.some(([f, s]) => s.indexOf(id) >= 0) || keyLineOf(id);
 const mirrorKind = (o) => o.kind === 'derived' || o.kind === 'game';
 const silent = Opt.OPTIONS.filter((o) => o.cost !== 'free' && !mirrorKind(o) && !plumbed(o.id)).map((o) => o.id + ' (' + o.cost + ')');

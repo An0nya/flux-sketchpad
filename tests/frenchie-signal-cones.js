@@ -36,8 +36,10 @@ const src = RF.DriveAnim ? null : null;
 const glareText = fs.readFileSync(path.join(ROOT, 'js/drive.js'), 'utf8');
 ok('js/drive.js glare path never reads signalConesOn (no double-count possible)', !glareText.includes('signalConesOn'));
 const anim = fs.readFileSync(path.join(ROOT, 'js/drive-anim.js'), 'utf8');
+const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
 ok('drive-anim passes the flag only to K.signal call sites', (anim.match(/K\.signal\([^\n]*signalConesOn/g) || []).length === 2 && !/glareSources[\s\S]{0,200}signalConesOn/.test(anim));
-ok('skey carries the option (scene rebuilds on toggle)', /o\.signalConesOn, !!o\.tiles/.test(anim));
+ok('skey carries the option (scene rebuilds on toggle)', /o\.signalConesOn, !!o\.tiles/.test(anim) || (anim.includes("cacheKey('animScene'") && fs.existsSync(ckFile) && ck.includes("'signalConesOn'")));
 ok('flags literal carries it to the tile loop', /signalConesOn: !!o\.signalConesOn/.test(anim));
 
 // scene level: a tiles source with the flag on builds visors, off does not (executed, not grep)
@@ -56,9 +58,10 @@ ok('tiles cfg carries signalConesOn true/false through the source', countSig(wit
 
 // spec-ui + layout
 const ui = fs.readFileSync(path.join(ROOT, 'js/spec-ui.js'), 'utf8');
+const useCacheKey = ui.includes('cacheKey(');
 ok('spec-ui button exists', ui.includes("btn('signalConesOn'"));
 ok('spec-ui label map has it', ui.includes("signalConesOn: 'signal cones'"));
-ok('both picture-cache keys carry it', ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.signalConesOn')).length === 2);   // append-safe
+ok('both picture-cache keys carry it', useCacheKey ? (ck.match(/'signalConesOn'/g) || []).length >= 2 : ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.signalConesOn')).length === 2);   // append-safe: dual-shape for B3
 const lay = fs.readFileSync(path.join(ROOT, 'js/drive-layout.js'), 'utf8');
 ok('drive-layout Traffic row has the control', lay.includes("dv('signalConesOn')"));
 

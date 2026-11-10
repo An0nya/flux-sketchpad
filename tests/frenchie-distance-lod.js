@@ -10,6 +10,9 @@ const Opt = require(path.join(ROOT, 'js', 'options-registry.js'));
 const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
 const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
 const lay = fs.readFileSync(path.join(ROOT, 'js', 'drive-layout.js'), 'utf8');
+const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
+const useCacheKey = ui.includes('cacheKey(');
 const e = Opt.OPTIONS.find((x) => x.id === 'distanceLod');
 
 // 1. registry: declared once, profile enum, default off, control, group, tests entry
@@ -31,7 +34,7 @@ ok('LOD keys are disjoint from the governor shed keys (no interaction)', (() => 
 ok('drive bar has the [data-anim="distance-lod"] select with change -> setDV', /data-anim': 'distance-lod'/.test(anim) && /ld\.addEventListener\('change', \(\) => \{ V\.lodOver = null; setDV\(ui, 'distanceLod', ld\.value\); \}\)/.test(anim));
 ok('labels() syncs the select', anim.includes("ldEl.value = ['off', 'low', 'medium', 'high'].includes(o.distanceLod)"));
 ok('look projection carries distanceLod', anim.includes("distanceLod: o.distanceLod || 'off'"));
-ok('both spec-ui picture-cache keys carry o.distanceLod', (ui.match(/o\.distanceLod[,)\]]/g) || []).length === 2, (ui.match(/o\.distanceLod[,)\]]/g) || []).length);
+ok('both spec-ui picture-cache keys carry o.distanceLod', useCacheKey ? (ck.match(/'distanceLod'/g) || []).length >= 2 : (ui.match(/o\.distanceLod[,)\]]/g) || []).length === 2, useCacheKey ? (ck.match(/'distanceLod'/g) || []).length : (ui.match(/o\.distanceLod[,)\]]/g) || []).length);
 ok('drive-layout Resolution pane lists the control', lay.includes("an('distance-lod')"));
 
 console.log(n + ' checks, ' + fails + ' failed');
