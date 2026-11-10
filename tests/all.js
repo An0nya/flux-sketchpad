@@ -144,5 +144,6 @@ run('T1 GPU-module logic: MAT_KEYS, uniform bounds, hrep, variant state machine,
 run('cabin miata photo cabin (tests/cabin-miata.js)', ['tests/cabin-miata.js']);   // le-chonk 11-09 // B1
 run('T2 drive-anim: IDM invariants, idmStep, traffic/curve/AFS/sim constants, seeded long runs, LOD, export surface (tests/t2-drive-anim.js)', ['tests/t2-drive-anim.js']); // T2
 run('T4 optics/solver invariants: beams, ideal-beam, sealed-beam, solve-cache, solver, geometry, state (tests/t4-optics.js)', ['tests/t4-optics.js']); // T4
+run('lamp cone: the signal draw does not clobber the shared street cone uniforms (tests/lampcone-signal-restore.js)', ['tests/lampcone-signal-restore.js']); // nicholl 11-10 (the junction-village dark frame: signalConesOn zeroed the object cone light)
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

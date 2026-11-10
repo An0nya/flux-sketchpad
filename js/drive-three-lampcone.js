@@ -280,7 +280,16 @@ export function createLampCone(renderer) {
       else { renderer.setRenderTarget(target); renderer.render(scene, camera); }
       // frenchie (signalConesOn): second draw for the lit signal heads — same shader, the signal table + per-lamp face normal/tint/scale. OFF: last.signals is empty, no GL change.
       if (last.signals && last.signals.length) {
+        // nicholl fix: save the shared street cone uniforms so the signal draw does not pollute the object pass (or the next frame) with the signal lamp list; restored after the draw.
         const U2 = mat.uniforms;
+        const savedSignals = {
+          nLamp: U2.nLamp.value,
+          cLamp: U2.cLamp.value.map((q) => q.clone()),
+          cSt: U2.cSt.value.map((q) => q.clone()),
+          cTint: U2.cTint.value.map((q) => q.clone()),
+          cScale: Array.from(U2.cScale.value),
+          cFloor: Array.from(U2.cFloor.value),
+        };
         U2.coneTab4.value = signalTab4();
         last.signals.forEach(({ x, y, z }, i) => {
           const L = sigLampByPos(world, x, y, z);
@@ -294,6 +303,14 @@ export function createLampCone(renderer) {
         });
         U2.nLamp.value = last.signals.length;
         renderer.render(scene, camera);
+        U2.nLamp.value = savedSignals.nLamp;
+        for (let i = 0; i < LAMP_CONE_MAX; i++) {
+          U2.cLamp.value[i].copy(savedSignals.cLamp[i]);
+          U2.cSt.value[i].copy(savedSignals.cSt[i]);
+          U2.cTint.value[i].copy(savedSignals.cTint[i]);
+          U2.cScale.value[i] = savedSignals.cScale[i];
+          U2.cFloor.value[i] = savedSignals.cFloor[i];
+        }
         U2.coneTab4.value = tableFor(p.lampClass || 'III', kindOfLamp(p.lampKind));   // restore for the object pass / next frame's build
       }
       renderer.autoClear = ac;
@@ -337,6 +354,16 @@ export function createLampCone(renderer) {
       gl.deleteQuery(query); return { gpuMs: null, reason: 'timer timeout' };
     },
     state() { return last; },
+    _uniformsForTest() {
+      if (!mat) return null;
+      return {
+        nLamp: mat.uniforms.nLamp.value,
+        cLamp: mat.uniforms.cLamp.value.map((q) => ({ x: q.x, y: q.y, z: q.z })),
+        cSt: mat.uniforms.cSt.value.map((q) => ({ x: q.x, y: q.y })),
+        cScale: Array.from(mat.uniforms.cScale.value),
+        cFloor: Array.from(mat.uniforms.cFloor.value),
+      };
+    },
     // Cost hook (test only): GPU ms per draw of this pass with n lamps (timer query on a scratch target). Call after a frame with lampCone on.
     // If the scene has fewer than n lit street lamps, the last lamp's uniforms are repeated: the loop cost does not depend on which lamp it is.
     async time(gl, n, repeats = 8) {
