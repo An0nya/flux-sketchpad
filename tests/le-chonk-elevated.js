@@ -28,21 +28,15 @@ ok('attitude(pass) still real (elevated default true)', Math.abs(RF.Touge.attitu
 
 // OFF semantics in drive-anim: p.touge formula unchanged when elevatedView off — check the source text
 const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
-ok('drive-anim: p.touge = (mountainPass || elevatedView) && three — OFF reduces to shipped mountainPass && three', anim.includes('touge: !!((o.mountainPass || o.elevatedView) && V.three)'));
-  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
-ok('drive-anim: toggle built + synced + tkey/srcArgs carry elevatedView', anim.includes("'data-anim': 'elevatedView'") && anim.includes('[data-anim="elevatedView"]') && anim.includes('!!o.elevatedView,'));
-  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
-ok('drive-anim: tileA elevates tile routes under the pipeline (flat)', anim.includes('RF.Touge.elevate(A2, dist, p.lane, false)'));
-  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
+ok('drive-anim: p.touge = (mountainPass || elevatedView) && three — OFF reduces to shipped mountainPass && three', anim.includes('touge: !!((o.mountainPass || o.elevatedView) && V.three)'));  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
+ok('drive-anim: toggle built + synced + tkey/srcArgs carry elevatedView', anim.includes("'data-anim': 'elevatedView'") && anim.includes('[data-anim="elevatedView"]') && anim.includes('!!o.elevatedView,'));  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
+ok('drive-anim: tileA elevates tile routes under the pipeline (flat)', anim.includes('RF.Touge.elevate(A2, dist, p.lane, false)'));  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
 const tg = fs.readFileSync(path.join(ROOT, 'js', 'drive-touge.js'), 'utf8');
-ok('drive-touge: world() gates pass furniture + terrain on mountainPass', tg.includes('pass = !!p.mountainPass') && tg.includes('route(dist, p.lane, !!p.mountainPass)') && tg.includes('for (let s = lo; pass && s <= hi; s += 8)'));
-  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
-ok('drive-touge: attitude(dist, false) identity', tg.includes('if (!elevated) return { pitch: 0, roll: 0'));
-  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
+ok('drive-touge: world() gates pass furniture + terrain on mountainPass', tg.includes('pass = !!p.mountainPass') && tg.includes('route(dist, p.lane, !!p.mountainPass)') && tg.includes('for (let s = lo; pass && s <= hi; s += 8)'));  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
+ok('drive-touge: attitude(dist, false) identity', tg.includes('if (!elevated) return { pitch: 0, roll: 0'));  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
 
 // 11-01 ~04:10 (frenchie's open elevated item): lane studs (cls 'rpm') ride the grade like cars/rails - lift() sets passSlope for them
-ok('lift() gives cls rpm the passSlope (studs tilt with the grade on elevated endless roads)', tg.includes("ob.cls === 'rail' || ob.cls === 'rpm'") && tg.includes('passSlope'));
-  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
+ok('lift() gives cls rpm the passSlope (studs tilt with the grade on elevated endless roads)', tg.includes("ob.cls === 'rail' || ob.cls === 'rpm'") && tg.includes('passSlope'));  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
 
 console.log(fail === 0 ? `\nall ${pass} le-chonk-elevated checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);

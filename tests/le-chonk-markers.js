@@ -8,8 +8,7 @@ const src = fs.readFileSync(path.join(path.join(__dirname, '..'), 'js', 'drive-s
 const ROOT = path.join(__dirname, '..');
 let pass = 0, fail = 0;
 function ok(name, cond, extra) { if (cond) { pass++; console.log('[PASS] ' + name); } else { fail++; console.log('[FAIL] ' + name + (extra !== undefined ? ' — ' + JSON.stringify(extra) : '')); } }
-ok('marker lamps emit gated on o.lamps (parked cars with lights off stay dark; retro term untouched)', src.includes("emit: o.lamps ? [26, 15, 1.6] : null") && src.includes("emit: o.lamps ? [22, 1.2, 0.6] : null") && src.includes("'marker-amber'"));
-  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
+ok('marker lamps emit gated on o.lamps (parked cars with lights off stay dark; retro term untouched)', src.includes("emit: o.lamps ? [26, 15, 1.6] : null") && src.includes("emit: o.lamps ? [22, 1.2, 0.6] : null") && src.includes("'marker-amber'"));  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
 const { load } = require('./load.js');
 const RF = load(ROOT);
 const D = RF.Drive, O = RF.Options;
@@ -46,12 +45,9 @@ const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
 const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
 const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
 const useCacheKey = ui.includes('cacheKey(');
-ok('spec-ui: strip button [data-dv="trafficMarkers"] exists next to preceding', ui.includes("btn('trafficMarkers',") && ui.includes("'data-dv=\"trafficMarkers\"'") === false && ui.includes("setDV(ui, 'trafficMarkers', !dvOpts(ui).trafficMarkers)"));
-  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
-ok('spec-ui: label map says "markers"', ui.includes("trafficMarkers: 'markers'"));
-  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
-ok('spec-ui: picture-cache key carries o.trafficMarkers', (ui.match(/o\.trafficMarkers,/g) || []).length === 1 || (useCacheKey && ck.includes("'trafficMarkers'")));
-  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
+ok('spec-ui: strip button [data-dv="trafficMarkers"] exists next to preceding', ui.includes("btn('trafficMarkers',") && ui.includes("'data-dv=\"trafficMarkers\"'") === false && ui.includes("setDV(ui, 'trafficMarkers', !dvOpts(ui).trafficMarkers)"));  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
+ok('spec-ui: label map says "markers"', ui.includes("trafficMarkers: 'markers'"));  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
+ok('spec-ui: picture-cache key carries o.trafficMarkers', (ui.match(/o\.trafficMarkers,/g) || []).length === 1 || (useCacheKey && ck.includes("'trafficMarkers'")));  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
 
 // scene digest: OFF unchanged — buildScene with trafficMarkers off equals the frozen scene digest path (spot check via kit equality above) plus the option is absent from defaults() diff
 ok('defaults() has no other new keys vs frozen copy expectations (count via registry test)', O.defaults().trafficMarkers === false);

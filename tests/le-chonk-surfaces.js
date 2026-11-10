@@ -57,19 +57,14 @@ console.log(fails === 0 ? `all ${n} le-chonk-surfaces checks passed` : `${fails}
   const sh = fs.readFileSync(path.join(__dirname, '../js/drive-three-shaders.js'), 'utf8');
   ok('GPU surfTex helper + surfKind uniform declared once', (sh.match(/uniform int surfKind;/g) || []).length === 1 && (sh.match(/vec3 surfTex\(/g) || []).length === 1);
   ok('GPU road band: roadId>0 branch textures, else-branch is the exact shipped s1 call', /if\(roadId>0\) r\+=rest\*coverage\(off,ho,e0,e1\)\*surfTex\(shade\(p,n,v,roadId\),s,off,surfKind\);/.test(sh) && /else r\+=rest\*coverage\(off,ho,e0,e1\)\*shade\(p,n,v,roadId\);/.test(sh));
-  ok('GPU texture laws present: joints 5 m / tar per-tile seed / cracks threshold', sh.includes('fract(s / 5.0)') && sh.includes('floor(s / 150.0)') && sh.includes('kind == 2'));
-  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
+  ok('GPU texture laws present: joints 5 m / tar per-tile seed / cracks threshold', sh.includes('fract(s / 5.0)') && sh.includes('floor(s / 150.0)') && sh.includes('kind == 2'));  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
   const dt = fs.readFileSync(path.join(__dirname, '../js/drive-three.js'), 'utf8');
-  ok('drive-three sets surfKind from look.roadMat (no MAT ids)', dt.includes("set('surfKind', ({ 'asphalt-fresh': 1, 'asphalt-old': 2, 'concrete-road': 3, 'tar-snake': 4 })"));
-  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
+  ok('drive-three sets surfKind from look.roadMat (no MAT ids)', dt.includes("set('surfKind', ({ 'asphalt-fresh': 1, 'asphalt-old': 2, 'concrete-road': 3, 'tar-snake': 4 })"));  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
   const dr = fs.readFileSync(path.join(__dirname, '../js/drive.js'), 'utf8');
-  ok('CPU twin surfTexCPU at module level + road band uses look.roadMat', /const surfTexCPU =/.test(dr) && dr.includes("[(o.roadMat || 'asphalt'), e0, e1]"));
-  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
-  ok('CPU road-band weight modulated only for band 0, stock keeps shipped weight', dr.includes("let w = c * rest * kw; if (i === 0 && o.roadMat && o.roadMat !== 'asphalt') w *= surfTexCPU(s, off, o.roadMat);"));
-  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
+  ok('CPU twin surfTexCPU at module level + road band uses look.roadMat', /const surfTexCPU =/.test(dr) && dr.includes("[(o.roadMat || 'asphalt'), e0, e1]"));  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
+  ok('CPU road-band weight modulated only for band 0, stock keeps shipped weight', dr.includes("let w = c * rest * kw; if (i === 0 && o.roadMat && o.roadMat !== 'asphalt') w *= surfTexCPU(s, off, o.roadMat);"));  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
   ok('CPU stock path returns 1 (OFF byte-identical weight)', /if \(!mat \|\| mat === 'asphalt'\) return 1;/.test(dr));
-  ok('CPU/GPU laws agree on the three features', dr.includes('(s / 5) % 1') && dr.includes('Math.floor(s / 150)') && dr.includes("mat === 'asphalt-old'"));
-  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
+  ok('CPU/GPU laws agree on the three features', dr.includes('(s / 5) % 1') && dr.includes('Math.floor(s / 150)') && dr.includes("mat === 'asphalt-old'"));  // [KEEP: text — renderer/shader source literal; no Node hook for the emitted GLSL/CPU pass (same class as the KEEP-flagged ml-* emission)]
 }
 
 process.exit(fails === 0 ? 0 : 1);
