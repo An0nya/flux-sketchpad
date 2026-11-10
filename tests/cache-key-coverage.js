@@ -222,7 +222,11 @@ ok('halo family: haloMoment, haloWidthStep, haloCrossingRefine, haloRefineNeighb
   // We evaluate the same tail on our o so the guard sees the actual live key.
   // Find the tail array by bracket-matching after 'tkey = JSON.stringify([skey,'.
   var tailIdx = ANIM.indexOf('tkey = JSON.stringify([skey,');
-  if (tailIdx < 0) throw new Error('cannot find tkey expression');
+  if (tailIdx < 0) {
+    ok('live-key wiring guard: tail expression found', false,
+      'the live tkey expression moved — the guard cannot see the live key');
+    return;
+  }
   var open = ANIM.indexOf('[', tailIdx), depth = 0, tailExpr = '';
   for (var ji = open; ji < ANIM.length; ji++) {
     if (ANIM[ji] === '[') depth++;
