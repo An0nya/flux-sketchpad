@@ -57,6 +57,10 @@ const hwRural = T.trafficAt(5, 1, { settlement: 'rural', roadClass: 'dense-highw
 const hwCity  = T.trafficAt(5, 1, { settlement: 'city', roadClass: 'dense-highway' });
 ok('9 truckFraction: rural+highway > city+highway', hwRural.truckFraction > hwCity.truckFraction, { rural: hwRural.truckFraction, city: hwCity.truckFraction });
 
+// 9b. absolute anchor: city+dense-highway at seed=5,k=1 = truckFraction 0.15 (0.30*0.5, deterministic)
+const ta = T.trafficAt(5, 1, { settlement: 'city', roadClass: 'dense-highway' });
+ok('9b anchor: city+dense-highway → truckFraction=0.15, safeGapMul=1.5, onMode=signal', close(ta.truckFraction, 0.15) && close(ta.safeGapMul, 1.5) && ta.onMode === 'signal', ta);
+
 // 10. truckFraction ∈ [0,1]
 ok('10 truckFraction ∈ [0,1]', fHW.truckFraction >= 0 && fHW.truckFraction <= 1, fHW.truckFraction);
 

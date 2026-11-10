@@ -67,6 +67,10 @@ const fn = C.coverWaterAt(5, 10, { cover: 'forest', water: 'none' });
 const fr = C.coverWaterAt(5, 10, { cover: 'forest', water: 'river' });
 ok('10 water-foliage: trees near river ≥ trees dry (same seed)', fr.trees >= fn.trees, { dry: fn.trees, river: fr.trees });
 
+// 10b. absolute anchor: forest+river at seed=5,k=10 = trees 7, foliageDensity 1.275 (the multiplier bites)
+const fa = C.coverWaterAt(5, 10, { cover: 'forest', water: 'river' });
+ok('10b anchor: forest+river → trees=7, foliageDensity=1.275', fa.trees === 7 && close(fa.foliageDensity, 1.275), fa);
+
 // 11. fence logic: bare + grass get fence (default true), park + forest do not
 ok('11 fence: bare=true, grass=true, park=false, forest=false',
   C.coverWaterAt(1, 1, { cover: 'bare', water: 'none' }).fence === true
