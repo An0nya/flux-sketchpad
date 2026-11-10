@@ -215,12 +215,11 @@ ok('halo family: haloMoment, haloWidthStep, haloCrossingRefine, haloRefineNeighb
   var caches = ['stillFrame', 'ground', 'animScene'];
   var extraSets = { stillFrame: [3.5, 'straight', [255,255,255]], ground: [3.5, 'straight', [255,255,255]], animScene: [3.5, 42, 0] };
   // haloRefineNeighbour is a known-dead option: it only matters when haloCrossingRefine is ON.
-  // onDist/onKcd are dead when oncoming is OFF (oncomingSplat returns undefined).
-  // preDist is dead when preceding is OFF (precedingSplat returns undefined).
   // onMode is dead-flip: the { id:'onMode' } step emits the string, but off→on doesn't change
   //   the pure stillFrame key (onMode is only picture-affecting in 'high-dip'; see seedHighDip splat).
-  // These are all by design, not wiring defects.
-  var allowDead = ['haloRefineNeighbour', 'onDist', 'onKcd', 'preDist', 'onMode'];
+  // onDist/onKcd/preDist are NOW LIVE: the sweep sets oncoming=true, preceding=true, so the
+  //   oncomingSplat/precedingSplat emit them and flipping them must change the key.
+  var allowDead = ['haloRefineNeighbour', 'onMode'];
   var deadIds = [];
   var seenDead = {};
   for (var ci = 0; ci < caches.length; ci++) {
@@ -228,14 +227,17 @@ ok('halo family: haloMoment, haloWidthStep, haloCrossingRefine, haloRefineNeighb
     var ids = RF.Options.recipeIds(cName);
     var baseOpts = Object.assign({}, RF.Options.defaults());
     baseOpts.visibility = 0; baseOpts.onMode = 'off';
+    baseOpts.oncoming = true; baseOpts.preceding = true;   // make splats live so onDist/onKcd/preDist are genuinely sensitive
     var baseKey = RF.Options.cacheKey(cName, baseOpts, extraSets[cName]);
     for (var ii = 0; ii < ids.length; ii++) {
       var id = ids[ii];
       if (allowDead.indexOf(id) >= 0) continue;
       var alt = Object.assign({}, baseOpts);
-      // Flip the option: toggle booleans, increment numbers, swap strings
+      // Flip the option: toggle booleans, increment numbers, swap strings.
+      // Use baseOpts value (not defaults) so overrides like oncoming=true are flipped correctly.
       var def = RF.Options.defaults()[id];
-      if (typeof def === 'boolean') alt[id] = !def;
+      if (baseOpts[id] !== undefined && typeof baseOpts[id] === 'boolean') alt[id] = !baseOpts[id];
+      else if (typeof def === 'boolean') alt[id] = !def;
       else if (typeof def === 'number') alt[id] = (def || 0) + 1;
       else if (typeof def === 'string') alt[id] = def === 'off' ? 'on' : 'off';
       else continue;
