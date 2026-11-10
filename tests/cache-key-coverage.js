@@ -74,6 +74,7 @@ const EXEMPT = {
   panelMode:       'Diagnostics; UI layout',
   fpsCounter:      'Diagnostics; overlay',
   sceneDetails:    'Diagnostics; overlay',
+  endlessDetails:  'Diagnostics; overlay (display-only, zero render change)',
   debugTimings:    'Diagnostics; overlay',
   dynamicResolution: 'Performance; render scale',
   frameTargetMs:   'Performance; frame timing',
