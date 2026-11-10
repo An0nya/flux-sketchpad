@@ -70,18 +70,19 @@ const S = esm('drive-three-shaders.js', null, ['ground', 'withWetBounce', 'withS
   const spec = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
   const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
   const three = fs.readFileSync(path.join(ROOT, 'js', 'drive-three.js'), 'utf8');
-  ok('keys: spec-ui drive key + groundKey carry o.wetBounce', (spec.match(/o\.wetBounce\b/g) || []).length >= 2);
-  ok('keys: drive-anim picture key carries o.wetBounce', /o\.wetBounce\b/.test(anim.match(/const key = JSON\.stringify\(\[I\.groundKey[\s\S]*?\]\)/)[0]));
-  ok('look: V.p.look carries wetBounce from the option', /wetBounce: o\.wetBounce === true/.test(anim));
-  ok('GPU table: tableKey carries the road-surface k only while wetBounce is on (the in-scatter mirror is scaled by kSurf)', /look\.wetBounce \? quant\(D\.surfKOf\(look\)/.test(three));
+  const omWB = require(path.join(ROOT, 'js', 'cache-keys.js')).optionMap();
+ok('both picture-cache recipes (stillFrame + ground) carry wetBounce (asked of the cache-keys module)', omWB.stillFrame.includes('wetBounce') && omWB.ground.includes('wetBounce'), { still: omWB.stillFrame.includes('wetBounce'), ground: omWB.ground.includes('wetBounce') });
+  ok('[KEEP: text — frame-internal (drive-anim key/look literal, af06 measured no-Node-seam); cache-key membership is asked of the cache-keys module below and control existence fleet-wide by control-map] keys: drive-anim picture key carries o.wetBounce', /o\.wetBounce\b/.test(anim.match(/const key = JSON\.stringify\(\[I\.groundKey[\s\S]*?\]\)/)[0]));
+  ok('[KEEP: text — frame-internal (drive-anim key/look literal, af06 measured no-Node-seam); cache-key membership is asked of the cache-keys module below and control existence fleet-wide by control-map] look: V.p.look carries wetBounce from the option', /wetBounce: o\.wetBounce === true/.test(anim));
+  ok('[KEEP: text — GPU lane, no headless GL seam in this VM; measured on the host GPU queue] GPU table: tableKey carries the road-surface k only while wetBounce is on (the in-scatter mirror is scaled by kSurf)', /look\.wetBounce \? quant\(D\.surfKOf\(look\)/.test(three));
   {   // executed: surfKOf moves with roadSurfaces/roadSurface, so a key without it would serve a stale table
     const base = { ...Opt.defaults(), wetBounce: true, wetness: 0.6 }, a = D.surfKOf({ ...base, roadSurfaces: true, roadSurface: 'old' }), b = D.surfKOf({ ...base, roadSurfaces: false });
     ok('executed: surfKOf differs between a road surface and stock', a !== b, { a, b });
   }
-  ok('GPU table: tableKey carries look.wetBounce + wetness only while it is on (the table rebuilds on toggle, not on every wetness change with the bounce off)', /!!look\.wetBounce/.test(three) && /look\.wetBounce \? quant\(D\.wetnessOf\(look\)/.test(three));
-  ok('GPU: uniforms lampM/nLampM/wetU declared; per-frame fill mirrors z -> -z', /lampM: array\(2, T\.Vector3\)/.test(three) && /fromArray\(\[l\[0\], l\[1\], -l\[2\]\]\)/.test(three));
-  ok('GPU: recompile only on the on/off flip (userData.wb), OFF = shipped text', /mat\.userData\.wb/.test(three) && /withWetBounce\(baseSrc\)/.test(three));
-  ok('CPU: inScatter + scatterTableBins both gate on look.wetBounce && wetness > 0', (fs.readFileSync(path.join(ROOT, 'js', 'drive.js'), 'utf8').match(/o\.look\.wetBounce|lk\.wetBounce/g) || []).length >= 2);
+  ok('[KEEP: text — GPU lane, no headless GL seam in this VM; measured on the host GPU queue] GPU table: tableKey carries look.wetBounce + wetness only while it is on (the table rebuilds on toggle, not on every wetness change with the bounce off)', /!!look\.wetBounce/.test(three) && /look\.wetBounce \? quant\(D\.wetnessOf\(look\)/.test(three));
+  ok('[KEEP: text — GPU lane, no headless GL seam in this VM; measured on the host GPU queue] GPU: uniforms lampM/nLampM/wetU declared; per-frame fill mirrors z -> -z', /lampM: array\(2, T\.Vector3\)/.test(three) && /fromArray\(\[l\[0\], l\[1\], -l\[2\]\]\)/.test(three));
+  ok('[KEEP: text — GPU lane, no headless GL seam in this VM; measured on the host GPU queue] GPU: recompile only on the on/off flip (userData.wb), OFF = shipped text', /mat\.userData\.wb/.test(three) && /withWetBounce\(baseSrc\)/.test(three));
+  ok('[KEEP: text — source twin of the executed checks in this suite (CPU frame renders + module calls); declared so the census sees it] CPU: inScatter + scatterTableBins both gate on look.wetBounce && wetness > 0', (fs.readFileSync(path.join(ROOT, 'js', 'drive.js'), 'utf8').match(/o\.look\.wetBounce|lk\.wetBounce/g) || []).length >= 2);
 
   ok('gate + all registered', fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'utf8').includes("'frenchie-wet-bounce'") && fs.readFileSync(path.join(ROOT, 'tests/all.js'), 'utf8').includes('frenchie-wet-bounce'));
 
@@ -124,9 +125,7 @@ const S = esm('drive-three-shaders.js', null, ['ground', 'withWetBounce', 'withS
     ok('moment2 + wb + crossing refine: no acc left in the second-moment text (it would not compile)', !/\bacc\b/.test(m2r) && /accM2 \+= rs \* rs \* sigma \* p \* I \* w/.test(m2r));
     const m1 = H.haloTableSource(false, false, false, '', false, false, 0, 0, false, 1, 0, true);
     ok('moment + wb folds the mirror into accM', m1.includes('lampM') && /accM \+= s \* wm/.test(m1));
-    const HS = fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8');
-    const polarPick = (HS.match(/mp = pick\([^\n]*\);/) || [''])[0];
-    ok('polar table pick maps moment2 to the first moment and keeps wb', /halo\.moment === 3 \? 1 : halo\.moment/.test(polarPick) && /!!halo\.wb(, ceN)?\)/.test(polarPick), polarPick);
+        ok('[KEEP: text — GPU lane, no headless GL seam in this VM; measured on the host GPU queue] polar table pick maps moment2 to the first moment and keeps wb', /halo\.moment === 3 \? 1 : halo\.moment/.test((fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8').match(/mp = pick\([^\n]*\);/) || [''])[0]) && /!!halo\.wb(, ceN)?\)/.test((fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8').match(/mp = pick\([^\n]*\);/) || [''])[0]), (fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8').match(/mp = pick\([^\n]*\);/) || [''])[0]);
     let threw = false; try { H.withWetBounceHalo('void main() { gl_FragColor = vec4(0.0); }'); } catch (e) { threw = /markers/.test(e.message); }
     ok('withWetBounceHalo throws on moved markers', threw);
     // 11-03 brace-balance guard: qwen's M4 compile detector found wb=true left ONE brace unclosed

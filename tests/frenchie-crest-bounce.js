@@ -109,7 +109,10 @@ ok('OFF guards: drive-three OFF keeps the :306 car-frame lampM line untouched', 
 
 // ---- layout placement (UX2/DL require RF.DriveLayout.unplaced() empty for every control)
 const lay = fs.readFileSync(path.join(ROOT, 'js', 'drive-layout.js'), 'utf8');
-ok('drive-layout: wetBouncePlane placed in the Wet road row next to wetBounce', lay.includes("dv('wetBounce'), dv('wetBouncePlane'), dv('roadSurfaces')"));
+require(path.join(ROOT, 'js', 'drive-layout.js'));
+const layRowsCB = globalThis.RF.DriveLayout.LAYOUT;
+const wetRowCB = layRowsCB.find((r) => r[2] === 'Wet road');
+ok('drive-layout Wet road row carries wetBounce + wetBouncePlane (asked of the layout module)', !!wetRowCB && wetRowCB[3].includes('[data-dv="wetBounce"]') && wetRowCB[3].includes('[data-dv="wetBouncePlane"]'), wetRowCB && wetRowCB[3]);
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exitCode = fail ? 1 : 0;

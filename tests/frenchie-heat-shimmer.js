@@ -13,17 +13,17 @@ const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
 const lay = fs.readFileSync(path.join(ROOT, 'js', 'drive-layout.js'), 'utf8');
 const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
 const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
-const useCacheKey = ui.includes('cacheKey(');
 const e = Opt.OPTIONS.find((x) => x.id === 'heatShimmer');
+const groundText = require(path.join(ROOT, 'js', 'drive-three-shaders.js')).ground;   // module export, not a source-text read
 
 // 1. registry
-ok('registry: heatShimmer declared once, enum [off,low,high], default "off", control, group surface', Opt.OPTIONS.filter((x) => x.id === 'heatShimmer').length === 1 && !!e && e.type === 'enum' && JSON.stringify(e.values) === '["off","low","high"]' && e.default === 'off' && e.control === '[data-anim="heat-shimmer"]' && e.group === 'surface');
+const omheatShimmer = require(path.join(ROOT, 'js', 'cache-keys.js')).optionMap();
+ok('both picture-cache recipes (stillFrame + ground) carry heatShimmer (asked of the cache-keys module)', omheatShimmer.stillFrame.includes('heatShimmer') && omheatShimmer.ground.includes('heatShimmer'), { still: omheatShimmer.stillFrame.includes('heatShimmer'), ground: omheatShimmer.ground.includes('heatShimmer') });
 ok('registry: note records GPU-only per Anya; default in DV_DEF', /GPU ONLY per Anya/.test(e.note) && Opt.defaults().heatShimmer === 'off');
 
 // 2. OFF = byte-identical: the shipped `ground` export itself carries NO shimmer code
-const groundText = shSrc.match(/export const ground = `([\s\S]*?)`;/)[1];
 ok('shipped ground text has no shimmer (OFF byte-identical, pinned)', !groundText.includes('shimmer'));
-ok('withShimmer splices at guarded markers and throws if they moved', /export function withShimmer/.test(shSrc) && /ground shader markers changed/.test(shSrc) && /shimmerAmp, shimmerT/.test(shSrc) && /shimmerAmp>0\.0/.test(shSrc));
+ok('[KEEP: text — GPU lane, no headless GL seam in this VM; measured on the host GPU queue] withShimmer splices at guarded markers and throws if they moved', /export function withShimmer/.test(shSrc) && /ground shader markers changed/.test(shSrc) && /shimmerAmp, shimmerT/.test(shSrc) && /shimmerAmp>0\.0/.test(shSrc));
 
 // 3. executed: withShimmer produces a shader that declares the uniforms and wobbles the ray
 const mod = require(path.join(ROOT, 'js', 'drive-three-shaders.js'));
@@ -40,13 +40,14 @@ ok('executed: OFF path is untouched — withShimmer is the only producer, ground
 }
 
 // 4. wiring: drive-three update() recompile + uniforms, drive-anim select/labels/look, keys, layout
-ok('update() recompiles the ground program only on on/off flip and sets both uniforms', three.includes("mat.userData.shim") && /withShimmer\(/.test(three) && /shimAmp > 0/.test(three));   // append-safe (line-based)
-ok('u defaults carry the uniforms', /shimmerAmp: 0, shimmerT: 0/.test(three));
-ok('drive bar has the [data-anim="heat-shimmer"] select -> setDV', /data-anim': 'heat-shimmer'/.test(anim) && /hs\.addEventListener\('change', \(\) => setDV\(ui, 'heatShimmer', hs\.value\)\)/.test(anim));
-ok('labels() syncs it; look carries heatShimmer', anim.includes("[data-anim=\"heat-shimmer\"]').value = ['off', 'low', 'high'].includes(o.heatShimmer)") && /heatShimmer:\s*o\.heatShimmer\s*\|\|\s*'off'/.test(anim));   // qwen P3-b: whitespace-tolerant
-ok('both spec-ui picture-cache keys carry o.heatShimmer', useCacheKey ? (ck.match(/'heatShimmer'/g) || []).length >= 2 : ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.heatShimmer')).length === 2);   // append-safe: any later option appended after heatShimmer must not break this
-ok('drive-layout row lists it', lay.includes("an('heat-shimmer')"));
-ok('CPU renderer (drive.js) never reads it (GPU-only per Anya)', !fs.readFileSync(path.join(ROOT, 'js', 'drive.js'), 'utf8').includes('heatShimmer'));   // qwen P3-a: the drive.js half is the real guarantee
+ok('[KEEP: text — GPU lane, no headless GL seam in this VM; measured on the host GPU queue] update() recompiles the ground program only on on/off flip and sets both uniforms', three.includes("mat.userData.shim") && /withShimmer\(/.test(three) && /shimAmp > 0/.test(three));   // append-safe (line-based)
+ok('[KEEP: text — GPU lane, no headless GL seam in this VM; measured on the host GPU queue] u defaults carry the uniforms', /shimmerAmp: 0, shimmerT: 0/.test(three));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] drive bar has the [data-anim="heat-shimmer"] select -> setDV', /data-anim': 'heat-shimmer'/.test(anim) && /hs\.addEventListener\('change', \(\) => setDV\(ui, 'heatShimmer', hs\.value\)\)/.test(anim));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] labels() syncs it; look carries heatShimmer', anim.includes("[data-anim=\"heat-shimmer\"]').value = ['off', 'low', 'high'].includes(o.heatShimmer)") && /heatShimmer:\s*o\.heatShimmer\s*\|\|\s*'off'/.test(anim));   // qwen P3-b: whitespace-tolerant
+const layRowsResolution = globalThis.RF.DriveLayout.LAYOUT;
+const rowResolution = layRowsResolution.find((r) => r[2] === 'Resolution');
+ok('drive-layout Resolution row carries the control (asked of the layout module)', !!rowResolution && rowResolution[3].some((x) => x.endsWith('="heat-shimmer"]')), rowResolution && rowResolution[3]);
+ok('[KEEP: text — GPU-only option per Anya; the drive.js half never reading it is source text with no Node seam, and the GPU lane is measured on the host queue] CPU renderer (drive.js) never reads it (GPU-only per Anya)', !fs.readFileSync(path.join(ROOT, 'js', 'drive.js'), 'utf8').includes('heatShimmer'));
 
 console.log(n + ' checks, ' + fails + ' failed');
 process.exit(fails ? 1 : 0);

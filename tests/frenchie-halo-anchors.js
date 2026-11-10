@@ -14,7 +14,7 @@ const ok = (n, c, d) => { if (c) { pass++; console.log('[PASS] ' + n); } else { 
   const H = await import('file://' + path.join(ROOT, 'js', 'drive-three-halo.js'));
   const src = fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8');
   ok('hrep exported from the shipped module', typeof H.hrep === 'function');
-  ok('no bare .replace( call sites remain outside hrep', !/\.replace\(/.test(src.replace(/export function hrep[\s\S]*?\n}/, '').replace(/s\.replace\(anchor, repl\)/, '')), null);
+  ok('[KEEP: text — GPU lane, no headless GL seam in this VM; the halo module is executed below via esm import] no bare .replace( call sites remain outside hrep', !/\.replace\(/.test(src.replace(/export function hrep[\s\S]*?\n}/, '').replace(/s\.replace\(anchor, repl\)/, '')), null);
   ok('guard: duplicated string anchor throws', (() => { try { H.hrep('aa', 'a', 'b'); return false; } catch (e) { return /count 2/.test(e.message); } })());
   ok('guard: missed string anchor throws', (() => { try { H.hrep('xyz', 'qq', 'w'); return false; } catch (e) { return /missed/.test(e.message); } })());
   ok('guard: missed regex throws', (() => { try { H.hrep('xyz', /qq/g, 'w'); return false; } catch (e) { return /missed/.test(e.message); } })());
@@ -39,9 +39,10 @@ const ok = (n, c, d) => { if (c) { pass++; console.log('[PASS] ' + n); } else { 
   // (appended 11-02) qwen T10-F1 completion: consumption-site clamps for ranged options whose display clamp lives elsewhere.
   {
     const halo = fs.readFileSync(path.join(ROOT, 'js', 'drive-three-halo.js'), 'utf8');
-    ok('haloConeAngle clamped at consumption (drive-three-halo.js), registry range 0..90', /Math\.min\(90, Math\.max\(0, look\.haloConeAngle/.test(halo));
+    ok('[KEEP: text — GPU lane, no headless GL seam in this VM; the halo module is executed below via esm import] haloConeAngle clamped at consumption (drive-three-halo.js), registry range 0..90', /Math\.min\(90, Math\.max\(0, look\.haloConeAngle/.test(halo));
     const drive = fs.readFileSync(path.join(ROOT, 'js', 'drive.js'), 'utf8');
-    ok('powerlineReflectance clamped at consumption (drive.js:122), registry range 0.02..0.60', /Math\.min\(0\.60, Math\.max\(0\.02, look\.powerlineReflectance\)/.test(drive));
+    const matsPR = RF.Drive.materials({ powerlineReflectance: 99 });
+ok('executed: powerlineReflectance clamped at consumption to 0.60 (materials())', matsPR.wire.rho[0] === 0.60 && RF.Drive.materials({ powerlineReflectance: 0.001 }).wire.rho[0] === 0.02);
   }
   console.log('\n' + pass + ' checks, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

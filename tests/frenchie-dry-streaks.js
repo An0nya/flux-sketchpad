@@ -14,7 +14,6 @@ const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
 const lay = fs.readFileSync(path.join(ROOT, 'js', 'drive-layout.js'), 'utf8');
 const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
 const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
-const useCacheKey = ui.includes('cacheKey(');
 const e = Opt.OPTIONS.find((x) => x.id === 'dryStreaks');
 
 // 1. registry
@@ -23,19 +22,23 @@ ok('registry: default false in DV_DEF', Opt.defaults().dryStreaks === false);
 ok('registry: tests entry', JSON.stringify(e.tests) === '["node:frenchie-dry-streaks"]');
 
 // 2. OFF = byte-identical: with dryStreaks off/absent the floor is 0, so wetEff === wetness exactly
-ok('CPU: wetEff floor is 0 unless dryStreaks is on (OFF: wetEff === wetW)', drv.includes('wetEff = Math.max(wetW, look.dryStreaks === true ? dryStreakFloorOf(look) : 0)'));
-ok('CPU: the three streak sites use wetEff, general wetW untouched elsewhere', (drv.match(/\* wetEff/g) || []).length === 3 && drv.includes('sheen = wetEff > 0 && look.wetSheen'));
-ok('CPU: wetVeil gate + mirror weight use the dry floor too', drv.includes('Math.max(+opts.wetness || 0, opts.dryStreaks ? dryStreakFloorOf(opts) : 0) > 0') && (drv.match(/Math\.max\(\+opts\.wetness \|\| 0, opts\.dryStreaks \? dryStreakFloorOf\(opts\) : 0\)/g) || []).length === 2);   // the veil takes the road's floor (dryStreakFloorOf: 0.25 stock, 0.10*s with road surfaces), not a fixed 0.25
-ok('GPU: wetness uniform = max(true wetness, floor) and sheen gate follows wetEff', three.includes('const wetEff = Math.max(D.wetnessOf(look), look.dryStreaks === true ? D.dryStreakFloorOf(look) : 0); set(\'wetness\', wetEff); set(\'sheen\', wetEff > 0 && look.wetSheen ? 1 : 0);'));
-ok('GPU: the wetness uniform feeds ONLY the two streak terms in the ground shader (grain keeps true wetness)', (shaders.match(/export const ground = `([\s\S]*?)`;/)[1].match(/\bwetness\b/g) || []).length === 3 && three.includes('D.wetnessOf(look) > 0 ? 0.5 : 1'));   // decl + 2 uses
-ok('GPU-path gates (drive-anim 875/1369) go through sheenOn, which includes the dry floor', (anim.match(/sheenOn\(/g) || []).length === 2 && anim.includes('const sheenOn = (o) => (D.wetnessOf(o) > 0 || o.dryStreaks === true) && !!o.wetSheen;'));
-ok('glareOpts carries dryStreaks (and the road surface its floor depends on) to the CPU veil', anim.includes('dryStreaks: o.dryStreaks === true, roadSurfaces: o.roadSurfaces === true, roadSurface: o.roadSurface };'));   // merge: frenchie's crest work added A/wetBouncePlane between wetSheen and dryStreaks, so match from dryStreaks onward
-ok('the touge pass veil carries dryStreaks + road surface too', require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'drive-touge.js'), 'utf8').includes('dryStreaks:opts.dryStreaks,roadSurfaces:opts.roadSurfaces,roadSurface:opts.roadSurface'));
+ok('[KEEP: text — wetEff is inline frame arithmetic over the exported wetnessOf/dryStreakFloorOf; the executed checks in section 4 pin the law and the CPU frame renders in frenchie-road-surfaces/wet-bounce cover the pixels] CPU: wetEff floor is 0 unless dryStreaks is on (OFF: wetEff === wetW)', drv.includes('wetEff = Math.max(wetW, look.dryStreaks === true ? dryStreakFloorOf(look) : 0)'));
+ok('[KEEP: text — wetEff is inline frame arithmetic over the exported wetnessOf/dryStreakFloorOf; the executed checks in section 4 pin the law and the CPU frame renders in frenchie-road-surfaces/wet-bounce cover the pixels] CPU: the three streak sites use wetEff, general wetW untouched elsewhere', (drv.match(/\* wetEff/g) || []).length === 3 && drv.includes('sheen = wetEff > 0 && look.wetSheen'));
+ok('[KEEP: text — wetEff is inline frame arithmetic over the exported wetnessOf/dryStreakFloorOf; the executed checks in section 4 pin the law and the CPU frame renders in frenchie-road-surfaces/wet-bounce cover the pixels] CPU: wetVeil gate + mirror weight use the dry floor too', drv.includes('Math.max(+opts.wetness || 0, opts.dryStreaks ? dryStreakFloorOf(opts) : 0) > 0') && (drv.match(/Math\.max\(\+opts\.wetness \|\| 0, opts\.dryStreaks \? dryStreakFloorOf\(opts\) : 0\)/g) || []).length === 2);   // the veil takes the road's floor (dryStreakFloorOf: 0.25 stock, 0.10*s with road surfaces), not a fixed 0.25
+ok('[KEEP: text — GPU lane, no headless GL seam in this VM; host GPU queue measures the shader path] GPU: wetness uniform = max(true wetness, floor) and sheen gate follows wetEff', three.includes('const wetEff = Math.max(D.wetnessOf(look), look.dryStreaks === true ? D.dryStreakFloorOf(look) : 0); set(\'wetness\', wetEff); set(\'sheen\', wetEff > 0 && look.wetSheen ? 1 : 0);'));
+ok('[KEEP: text — GPU lane, no headless GL seam in this VM; host GPU queue measures the shader path] GPU: the wetness uniform feeds ONLY the two streak terms in the ground shader (grain keeps true wetness)', (shaders.match(/export const ground = `([\s\S]*?)`;/)[1].match(/\bwetness\b/g) || []).length === 3 && three.includes('D.wetnessOf(look) > 0 ? 0.5 : 1'));   // decl + 2 uses
+ok('[KEEP: text — look literal / glareOpts are frame-internal (af06 measured); option-plumbing carries the same declared KEEP] GPU-path gates (drive-anim 875/1369) go through sheenOn, which includes the dry floor', (anim.match(/sheenOn\(/g) || []).length === 2 && anim.includes('const sheenOn = (o) => (D.wetnessOf(o) > 0 || o.dryStreaks === true) && !!o.wetSheen;'));
+ok('[KEEP: text — look literal / glareOpts are frame-internal (af06 measured); option-plumbing carries the same declared KEEP] glareOpts carries dryStreaks (and the road surface its floor depends on) to the CPU veil', anim.includes('dryStreaks: o.dryStreaks === true, roadSurfaces: o.roadSurfaces === true, roadSurface: o.roadSurface };'));   // merge: frenchie's crest work added A/wetBouncePlane between wetSheen and dryStreaks, so match from dryStreaks onward
+ok('[KEEP: text — look literal / glareOpts are frame-internal (af06 measured); option-plumbing carries the same declared KEEP] the touge pass veil carries dryStreaks + road surface too', require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'drive-touge.js'), 'utf8').includes('dryStreaks:opts.dryStreaks,roadSurfaces:opts.roadSurfaces,roadSurface:opts.roadSurface'));
 
 // 3. wiring: look key, cache keys, layout
-ok('look projection carries dryStreaks', anim.includes("distanceLod: o.distanceLod || 'off', dryStreaks: o.dryStreaks === true,"));   // was matched only by glareOpts' text
-ok('both spec-ui picture-cache keys carry o.dryStreaks', useCacheKey ? (ck.match(/'dryStreaks'/g) || []).length >= 2 : ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.dryStreaks')).length === 2);
-ok('drive-layout Wet road row lists the control', lay.includes("dv('dryStreaks')"));
+ok('[KEEP: text — look literal / glareOpts are frame-internal (af06 measured); option-plumbing carries the same declared KEEP] look projection carries dryStreaks', anim.includes("distanceLod: o.distanceLod || 'off', dryStreaks: o.dryStreaks === true,"));   // was matched only by glareOpts' text
+const omDS = require(path.join(ROOT, 'js/cache-keys.js')).optionMap();
+ok('both picture-cache recipes (stillFrame + ground) carry dryStreaks (asked of the cache-keys module)', omDS.stillFrame.includes('dryStreaks') && omDS.ground.includes('dryStreaks'), { still: omDS.stillFrame.includes('dryStreaks'), ground: omDS.ground.includes('dryStreaks') });
+require(path.join(ROOT, 'js', 'drive-layout.js'));
+const layRowsDS = globalThis.RF.DriveLayout.LAYOUT;
+const wetRowDS = layRowsDS.find((r) => r[2] === 'Wet road');
+ok('drive-layout Wet road row lists the control (asked of the layout module)', !!wetRowDS && wetRowDS[3].includes('[data-dv="dryStreaks"]'), wetRowDS && wetRowDS[3]);
 
 // 4. behaviour, executed: the CPU wetEff maths with the real helpers
 const D = globalThis.RF.Drive;

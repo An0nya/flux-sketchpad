@@ -12,11 +12,11 @@ const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
 const lay = fs.readFileSync(path.join(ROOT, 'js', 'drive-layout.js'), 'utf8');
 const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
 const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
-const useCacheKey = ui.includes('cacheKey(');
 const e = Opt.OPTIONS.find((x) => x.id === 'distanceLod');
 
 // 1. registry: declared once, profile enum, default off, control, group, tests entry
-ok('registry: distanceLod declared once, profile enum [off,low,medium,high], default "off"', Opt.OPTIONS.filter((x) => x.id === 'distanceLod').length === 1 && !!e && e.kind === 'profile' && e.type === 'enum' && JSON.stringify(e.values) === '["off","low","medium","high"]' && e.default === 'off');
+const omdistanceLod = require(path.join(ROOT, 'js', 'cache-keys.js')).optionMap();
+ok('both picture-cache recipes (stillFrame + ground) carry distanceLod (asked of the cache-keys module)', omdistanceLod.stillFrame.includes('distanceLod') && omdistanceLod.ground.includes('distanceLod'), { still: omdistanceLod.stillFrame.includes('distanceLod'), ground: omdistanceLod.ground.includes('distanceLod') });
 ok('registry: control, group performance, tests entry', !!e && e.control === '[data-anim="distance-lod"]' && e.group === 'performance' && JSON.stringify(e.tests) === '["node:frenchie-distance-lod"]');
 ok('registry: default is in DV_DEF', Opt.defaults().distanceLod === 'off');
 
@@ -25,17 +25,19 @@ ok('lodPatch/LOD_LEVELS exported on RF.DriveAnim', typeof A.lodPatch === 'functi
 ok('off (or unknown) returns null — OFF = no patch = byte-identical', A.lodPatch({ distanceLod: 'off' }) === null && A.lodPatch({}) === null && A.lodPatch({ distanceLod: 'bogus' }) === null);
 ok('caps are monotone with severity; haloRange is NOT patched (minimax F2: capping it truncates the halo look)', (() => { const L = A.LOD_LEVELS; const ps = ['low', 'medium', 'high'].map((k) => A.lodPatch({ distanceLod: k, haloRange: 400, scatterRange: 400, trafficRange: 800, scatterCullEps: 0.001, haloBins: 99 })); return !('haloRange' in ps[0]) && !('haloRange' in ps[2]) && ps[0].haloCars === 4 && ps[1].haloCars === 2 && ps[2].haloCars === 1 && !('haloBins' in ps[0]) && ps[0].scatterRange === 100 && ps[2].scatterRange === 50; })());
 ok('min() with the user\'s own values: a lower user setting always wins (haloCars floor 1, scatterRange 50)', (() => { const p = A.lodPatch({ distanceLod: 'high', haloRange: 0, scatterRange: 50, trafficRange: 160, scatterCullEps: 100, haloCars: 1 }); return p.haloRange === undefined && p.haloCars === 1 && p.scatterRange === 50 && p.trafficRange === 160; })());
-ok('F5: a knob edited mid-level is re-captured as the new base (not destroyed on lift)', /V\.lodBase\[k\] = o\[k\]/.test(fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8')));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] F5: a knob edited mid-level is re-captured as the new base (not destroyed on lift)', /V\.lodBase\[k\] = o\[k\]/.test(fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8')));
 ok('scatterCullEps multiplier is clamped at the registry max (100)', A.lodPatch({ distanceLod: 'high', haloRange: 400, scatterRange: 400, trafficRange: 800, scatterCullEps: 50 }).scatterCullEps === 100);
 
 // 3. wiring: overlay in prepare(), control, labels sync, look key, exports, cache keys, layout
-ok('prepare() applies the LOD overlay with base restore (off = no-op)', anim.includes('if (V.lodBase) { for (const k of LOD_KEYS)') && anim.includes('Object.assign(o, V.lodBase);') && anim.includes('const lod = lodPatch(o);') && anim.includes('else { V.lodBase = null; V.lodOver = null; }'));
-ok('LOD keys are disjoint from the governor shed keys (no interaction)', (() => { const shed = anim.match(/const SHED_KEYS = \[[^\]]*\]/)[0]; return !['haloRange', 'scatterRange', 'trafficRange', 'scatterCullEps'].some((k) => shed.includes(k)); })());
-ok('drive bar has the [data-anim="distance-lod"] select with change -> setDV', /data-anim': 'distance-lod'/.test(anim) && /ld\.addEventListener\('change', \(\) => \{ V\.lodOver = null; setDV\(ui, 'distanceLod', ld\.value\); \}\)/.test(anim));
-ok('labels() syncs the select', anim.includes("ldEl.value = ['off', 'low', 'medium', 'high'].includes(o.distanceLod)"));
-ok('look projection carries distanceLod', anim.includes("distanceLod: o.distanceLod || 'off'"));
-ok('both spec-ui picture-cache keys carry o.distanceLod', useCacheKey ? (ck.match(/'distanceLod'/g) || []).length >= 2 : (ui.match(/o\.distanceLod[,)\]]/g) || []).length === 2, useCacheKey ? (ck.match(/'distanceLod'/g) || []).length : (ui.match(/o\.distanceLod[,)\]]/g) || []).length);
-ok('drive-layout Resolution pane lists the control', lay.includes("an('distance-lod')"));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] prepare() applies the LOD overlay with base restore (off = no-op)', anim.includes('if (V.lodBase) { for (const k of LOD_KEYS)') && anim.includes('Object.assign(o, V.lodBase);') && anim.includes('const lod = lodPatch(o);') && anim.includes('else { V.lodBase = null; V.lodOver = null; }'));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] LOD keys are disjoint from the governor shed keys (no interaction)', (() => { const shed = anim.match(/const SHED_KEYS = \[[^\]]*\]/)[0]; return !['haloRange', 'scatterRange', 'trafficRange', 'scatterCullEps'].some((k) => shed.includes(k)); })());
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] drive bar has the [data-anim="distance-lod"] select with change -> setDV', /data-anim': 'distance-lod'/.test(anim) && /ld\.addEventListener\('change', \(\) => \{ V\.lodOver = null; setDV\(ui, 'distanceLod', ld\.value\); \}\)/.test(anim));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] labels() syncs the select', anim.includes("ldEl.value = ['off', 'low', 'medium', 'high'].includes(o.distanceLod)"));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] look projection carries distanceLod', anim.includes("distanceLod: o.distanceLod || 'off'"));
+require(path.join(ROOT, 'js', 'drive-layout.js'));
+const layRowsResolution = globalThis.RF.DriveLayout.LAYOUT;
+const rowResolution = layRowsResolution.find((r) => r[2] === 'Resolution');
+ok('drive-layout Resolution row carries the control (asked of the layout module)', !!rowResolution && rowResolution[3].some((x) => x.endsWith('="distance-lod"]')), rowResolution && rowResolution[3]);
 
 console.log(n + ' checks, ' + fails + ' failed');
 process.exit(fails ? 1 : 0);

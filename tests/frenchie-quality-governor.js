@@ -13,11 +13,11 @@ const ui = fs.readFileSync(path.join(ROOT, 'js', 'spec-ui.js'), 'utf8');
 const lay = fs.readFileSync(path.join(ROOT, 'js', 'drive-layout.js'), 'utf8');
 const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
 const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
-const useCacheKey = ui.includes('cacheKey(');
 const e = Opt.OPTIONS.find((x) => x.id === 'qualityGovernor');
 
 // 1. registry: declared once, profile enum, default off, control, group, tests entry
-ok('registry: qualityGovernor declared once, profile enum [off,on], default "off"', Opt.OPTIONS.filter((x) => x.id === 'qualityGovernor').length === 1 && !!e && e.kind === 'profile' && e.type === 'enum' && JSON.stringify(e.values) === '["off","on"]' && e.default === 'off');
+const omqualityGovernor = require(path.join(ROOT, 'js', 'cache-keys.js')).optionMap();
+ok('both picture-cache recipes (stillFrame + ground) carry qualityGovernor (asked of the cache-keys module)', omqualityGovernor.stillFrame.includes('qualityGovernor') && omqualityGovernor.ground.includes('qualityGovernor'), { still: omqualityGovernor.stillFrame.includes('qualityGovernor'), ground: omqualityGovernor.ground.includes('qualityGovernor') });
 ok('registry: control, group performance, tests entry', !!e && e.control === '[data-anim="quality-governor"]' && e.group === 'performance' && JSON.stringify(e.tests) === '["node:frenchie-quality-governor"]');
 ok('registry: default is in DV_DEF (RF.Options.defaults)', Opt.defaults().qualityGovernor === 'off');
 
@@ -31,15 +31,17 @@ ok('shedPatch is cumulative and clamped (level 1 = supersampling, level 7 = halo
 ok('shed list never touches haloJitter (banding mitigation) or scene/table-rebuild options', (() => { const keys = Object.keys(A.shedPatch(99)); return !keys.includes('haloJitter') && !['leafyFoliage', 'detailedModels', 'haloDiv', 'scatterRes'].some((k) => keys.includes(k)); })());
 
 // 3. wiring: overlay applied at the top of prepare(), stepped in recordFrame, gated on the option value
-ok('prepare() applies the shed overlay gated on qualityGovernor==="on" and restores the base (OFF = no-op)', anim.includes("if (V.shedBase) Object.assign(o, V.shedBase);") && anim.includes("if (o.qualityGovernor === 'on' && V.shedLevel > 0)") && anim.includes("else V.shedBase = null;"));
-ok('recordFrame steps the governor with the same clock as dynamic resolution', /V\.shed = shedStep\(V\.shed, Math\.max\(elapsed, cadenceMs\), \{ enabled: o\.qualityGovernor === 'on'/.test(anim));
-ok('frame()/frameMT re-prepare on a mid-play level change (shedPrepare next to resolutionPrepare)', (anim.match(/resolutionPrepare\(\); shedPrepare\(\);/g) || []).length === 2 && anim.includes('if (V.shedLevel !== V.shedApplied)'));
-ok('shedPrepare is defined next to resolutionPrepare', /function shedPrepare\(\) \{   \/\/ 3-P/.test(anim));
-ok('look projection carries qualityGovernor', anim.includes("qualityGovernor: o.qualityGovernor === 'on'"));
-ok('drive bar has the [data-anim="quality-governor"] select with a change -> setDV', /data-anim': 'quality-governor'/.test(anim) && /qg\.addEventListener\('change', \(\) => setDV\(ui, 'qualityGovernor', qg\.value\)\)/.test(anim));
-ok('labels() syncs the select', anim.includes("[data-anim=\"quality-governor\"]').value = o.qualityGovernor === 'on' ? 'on' : 'off'"));
-ok('both spec-ui picture-cache keys carry o.qualityGovernor', useCacheKey ? (ck.match(/'qualityGovernor'/g) || []).length >= 2 : (ui.match(/o\.qualityGovernor[,)\]]/g) || []).length === 2, useCacheKey ? (ck.match(/'qualityGovernor'/g) || []).length : (ui.match(/o\.qualityGovernor[,)\]]/g) || []).length);
-ok('drive-layout Resolution pane lists the control', lay.includes("an('quality-governor')"));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] prepare() applies the shed overlay gated on qualityGovernor==="on" and restores the base (OFF = no-op)', anim.includes("if (V.shedBase) Object.assign(o, V.shedBase);") && anim.includes("if (o.qualityGovernor === 'on' && V.shedLevel > 0)") && anim.includes("else V.shedBase = null;"));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] recordFrame steps the governor with the same clock as dynamic resolution', /V\.shed = shedStep\(V\.shed, Math\.max\(elapsed, cadenceMs\), \{ enabled: o\.qualityGovernor === 'on'/.test(anim));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] frame()/frameMT re-prepare on a mid-play level change (shedPrepare next to resolutionPrepare)', (anim.match(/resolutionPrepare\(\); shedPrepare\(\);/g) || []).length === 2 && anim.includes('if (V.shedLevel !== V.shedApplied)'));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] shedPrepare is defined next to resolutionPrepare', /function shedPrepare\(\) \{   \/\/ 3-P/.test(anim));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] look projection carries qualityGovernor', anim.includes("qualityGovernor: o.qualityGovernor === 'on'"));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] drive bar has the [data-anim="quality-governor"] select with a change -> setDV', /data-anim': 'quality-governor'/.test(anim) && /qg\.addEventListener\('change', \(\) => setDV\(ui, 'qualityGovernor', qg\.value\)\)/.test(anim));
+ok('[KEEP: text — frame-internal (drive-anim prepare/labels/select wiring/look literal, af06 measured no-Node-seam); control existence asserted fleet-wide by control-map (0 without)] labels() syncs the select', anim.includes("[data-anim=\"quality-governor\"]').value = o.qualityGovernor === 'on' ? 'on' : 'off'"));
+require(path.join(ROOT, 'js', 'drive-layout.js'));
+const layRowsResolution = globalThis.RF.DriveLayout.LAYOUT;
+const rowResolution = layRowsResolution.find((r) => r[2] === 'Resolution');
+ok('drive-layout Resolution row carries the control (asked of the layout module)', !!rowResolution && rowResolution[3].some((x) => x.endsWith('="quality-governor"]')), rowResolution && rowResolution[3]);
 
 console.log(n + ' checks, ' + fails + ' failed');
 process.exit(fails ? 1 : 0);

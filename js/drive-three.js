@@ -1,6 +1,6 @@
 /* Opt-in Drive ground renderer. CPU objects and the established display passes share its WebGL context. */
 import * as T from '../vendor/three/three.module.min.js';
-import { vertex, ground, withLighting, withShimmer, withWetBounce, withBouncePlane, tableSource, tablePassSource, tableBlurSource } from './drive-three-shaders.js, withMaterialIds } from './drive-three-shaders.js';
+import { vertex, ground, withLighting, withShimmer, withWetBounce, withBouncePlane, tableSource, tablePassSource, tableBlurSource, withMaterialIds } from './drive-three-shaders.js';
 // frenchie 11-10 (Anya defect via cyrus 75a8): rewrite the shade() sheen/streak id gates from the live
 // MAT_DEF lists, so the appended road-surface materials (48-51) keep the wet sheen on the GPU like on the CPU.
 // Stock ids are unchanged and first in the lists, so the OFF picture is untouched.
