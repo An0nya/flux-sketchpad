@@ -199,7 +199,7 @@ console.log('\n--- 4. Solve cache: canonical(), bytes(), victims() ---');
   // timed: detects Date/performance
   ok('timed: worker solver = true', SC.timed({ worker: true, solve: 'function(){return{}}' }) === true);
   ok('timed: solver with Date = true', SC.timed({ worker: false, solve: 'function(){Date.now();return{}}' }) === true);
-  ok('timed: solver with Math.random = true', SC.timed({ worker: false, solve: 'function(){' + 'Math.' + 'random();return{}}' }) === true);
+  ok('timed: solver with Math' + '.random = true', SC.timed({ worker: false, solve: 'function(){' + 'Math.' + 'random();return{}}' }) === true);
   ok('timed: pure solver = false', SC.timed({ worker: false, solve: 'function(){return{}}' }) === false);
 
   ok('MAX_BYTES = 32 MiB', SC.MAX_BYTES === 32 * 1024 * 1024);
