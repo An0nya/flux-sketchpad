@@ -7,6 +7,9 @@ const { load } = require('./load.js');
 const RF = load(ROOT);
 const A = RF.DriveAnim;
 const anim = fs.readFileSync(ROOT + '/js/drive-anim.js', 'utf8');
+const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
+const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
+const hasCacheKey = anim.includes("cacheKey('animScene'");
 let crossings = 0, adjacent = 0, bad = 0, nearTunnel = 0;
 for (let seed = 1; seed <= 60; seed++) for (let k = 1; k < 300; k++) {
   const t = A.endlessTile(seed, k), p = A.endlessTile(seed, k - 1);
