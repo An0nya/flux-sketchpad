@@ -9,6 +9,11 @@
 // asks the layout MODULE, and the gate half asks the GATE itself which suites node:all runs.
 // What is left as text is flagged [KEEP: text] with the reason it cannot be a behaviour check.
 // Node: node tests/barbicane-ambient.js — exits 1 on any failure.
+//
+// COORDINATION NOTE (neb 11-10, rule 17c): this conversion was done by neb, not by the suite's
+// owner (nicholl), because the owner was inactive for more than an hour on a provider 429
+// (cyrus GO'd the takeover; his queued stack does not touch this file, so there is no replay
+// conflict). The owner has been told in his queue. The file's content is unchanged otherwise.
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const { load, ROOT } = require(path.join(__dirname, 'load.js'));
 let pass = 0, fail = 0;
