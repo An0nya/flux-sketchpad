@@ -30,17 +30,21 @@ ok('K.signal(cone=true) adds exactly three hoods (one per lamp)', added.length =
 const hoods = added.filter((o) => o.k === 'box' && o.hx === 0.075);
 ok('the extras are per-lamp hoods above each disc (NOT a face-wide slab, which qwen measured occluding the lit lamp)', hoods.length === 3, added.map((o) => o.k + ':' + o.hx).join(','));
 
-// executed: no glare double-count — glareEmitter path untouched, and a lit signal is one source either way
-const scenes = RF.Drive.buildScene('road', { Lw: 3.5, A: null, us: true, seed: 7 });
-const src = RF.DriveAnim ? null : null;
-const glareText = fs.readFileSync(path.join(ROOT, 'js/drive.js'), 'utf8');
-ok('js/drive.js glare path never reads signalConesOn (no double-count possible)', !glareText.includes('signalConesOn'));
+// executed: no glare double-count — measured via the module: a lit signal is one glare source with the
+// option on or off (frenchie 11-10, item 2: the old check grepped drive.js for the ABSENCE of the string)
+const kitG = RF.Drive.kit({ Lw: 3.5, A: null, rand: RF.Drive.rng(7) });
+kitG.signal(100, 0, 5.25, 'red', true);
+const gOn = RF.Drive.glareSources(kitG.O, [0, 0, 1.2], [], { signalConesOn: true });
+const gOff = RF.Drive.glareSources(kitG.O, [0, 0, 1.2], [], { signalConesOn: false });
+ok('glare: one source with the option on or off (no double-count, measured via RF.Drive.glareSources)', gOn.length === gOff.length && gOn.length > 0, { on: gOn.length, off: gOff.length });
 const anim = fs.readFileSync(path.join(ROOT, 'js/drive-anim.js'), 'utf8');
-const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
-const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
-ok('drive-anim passes the flag only to K.signal call sites', (anim.match(/K\.signal\([^\n]*signalConesOn/g) || []).length === 2 && !/glareSources[\s\S]{0,200}signalConesOn/.test(anim));
-ok('skey carries the option (scene rebuilds on toggle)', /o\.signalConesOn, !!o\.tiles/.test(anim) || (anim.includes("cacheKey('animScene'") && fs.existsSync(ckFile) && ck.includes("'signalConesOn'")));
-ok('flags literal carries it to the tile loop', /signalConesOn: !!o\.signalConesOn/.test(anim));
+// call-site placement is frame code, not askable from Node; the flag reaching the tile cfg is the executed
+// check below, and the no-double-count is measured above.
+ok('[KEEP: text — call-site placement is frame code; flag-reaches-tile-cfg is the executed check below] drive-anim passes the flag only to K.signal call sites', (anim.match(/K\.signal\([^\n]*signalConesOn/g) || []).length === 2 && !/glareSources[\s\S]{0,200}signalConesOn/.test(anim));
+const { sceneKeyHas } = require('./scene-key.js');
+ok('skey/animScene carries the option (scene rebuilds on toggle)', sceneKeyHas(anim, ROOT, 'signalConesOn'));
+// the flags literal is built inside the drive frame (af06 measured); the tiles cfg carrying it is executed below.
+ok('[KEEP: text — flags literal is frame-internal (af06 measured)] flags literal carries it to the tile loop', /signalConesOn: !!o\.signalConesOn/.test(anim));
 
 // scene level: a tiles source with the flag on builds visors, off does not (executed, not grep)
 const mk = (on) => {
@@ -56,18 +60,123 @@ const countSig = (t) => {
 };
 ok('tiles cfg carries signalConesOn true/false through the source', countSig(withOn) === true && countSig(withOff) === false, { on: countSig(withOn), off: countSig(withOff) });
 
-// spec-ui + layout
-const ui = fs.readFileSync(path.join(ROOT, 'js/spec-ui.js'), 'utf8');
-const useCacheKey = ui.includes('cacheKey(');
-ok('spec-ui button exists', ui.includes("btn('signalConesOn'"));
-ok('spec-ui label map has it', ui.includes("signalConesOn: 'signal cones'"));
-ok('both picture-cache keys carry it', useCacheKey ? (ck.match(/'signalConesOn'/g) || []).length >= 2 : ui.split('\n').filter((l) => l.includes('JSON.stringify') && l.includes('o.signalConesOn')).length === 2);   // append-safe: dual-shape for B3
-const lay = fs.readFileSync(path.join(ROOT, 'js/drive-layout.js'), 'utf8');
-ok('drive-layout Traffic row has the control', lay.includes("dv('signalConesOn')"));
+// spec-ui + layout — behaviour: drive the real control under a DOM stub (pattern of tests/traffic-subtick.js,
+// neb 11-10) and ask the cache-keys / layout modules (frenchie 11-10, item 2)
+const CK = require(path.join(ROOT, 'js', 'cache-keys.js'));
+const om = CK.optionMap();
+ok('both picture-cache recipes (stillFrame + ground) + animScene carry it', om.stillFrame.includes('signalConesOn') && om.ground.includes('signalConesOn') && om.animScene.includes('signalConesOn'), { still: om.stillFrame.includes('signalConesOn'), ground: om.ground.includes('signalConesOn'), scene: om.animScene.includes('signalConesOn') });
+const Layout = RF.DriveLayout;
+const sigRow = (Layout.LAYOUT || []).find((r) => (r[3] || []).some((s) => s === '[data-dv="signalConesOn"]'));
+ok('drive-layout has a row with the control (asked of the layout module)', !!sigRow, sigRow && { tab: sigRow[0], sub: sigRow[1], title: sigRow[2] });
 
-// OFF byte-identical: the visor add is guarded, the shipped signal() body unchanged when cone falsy
+const camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+function matches(e, sel) {
+  let tag = null; const attrs = []; let cls = null; let id = null; let rest = sel;
+  const tm = rest.match(/^[a-zA-Z][a-zA-Z0-9]*/); if (tm) { tag = tm[0].toUpperCase(); rest = rest.slice(tm[0].length); }
+  while (rest.length) {
+    if (rest[0] === '.') { const mm = rest.match(/^\.([^.#\[]+)/); if (!mm) return false; cls = (cls || []); cls.push(mm[1]); rest = rest.slice(mm[0].length); }
+    else if (rest[0] === '#') { const mm = rest.match(/^#([^.#\[]+)/); if (!mm) return false; id = mm[1]; rest = rest.slice(mm[0].length); }
+    else if (rest[0] === '[') { const mm = rest.match(/^\[([^\]=]+)(?:="([^"]*)")?\]/); if (!mm) return false; attrs.push([mm[1], mm[2]]); rest = rest.slice(mm[0].length); }
+    else return false;
+  }
+  if (tag && e.tagName !== tag) return false;
+  if (id && e.attrs.id !== id) return false;
+  if (cls && !cls.every((c) => (e.className || '').split(/\s+/).includes(c))) return false;
+  for (const [k, v] of attrs) { const val = e.attrs[k]; if (val === undefined) return false; if (v !== undefined && val !== v) return false; }
+  return true;
+}
+function queryAll(root, sel) {
+  const parts = sel.trim().split(/\s+/); let cur = [root];
+  for (const p of parts) {
+    const next = []; const seen = new Set();
+    const walk = (e) => { for (const c of e.children || []) { if (c.nodeType === 1 && !seen.has(c)) { seen.add(c); if (matches(c, p)) next.push(c); walk(c); } } };
+    for (const e of cur) walk(e); cur = next;
+  }
+  return cur;
+}
+const ALL_ELS = [];
+function mkEl(tag) {
+  const e = {
+    tagName: String(tag).toUpperCase(), nodeType: 1, children: [], attrs: {}, listeners: {},
+    style: {}, dataset: {}, value: '', disabled: false, hidden: false, textContent: '', className: '', parentElement: null,
+  };
+  const cl = {
+    add: (...c) => { const s = new Set((e.className || '').split(/\s+/).filter(Boolean)); c.forEach((x) => s.add(x)); e.className = [...s].join(' '); },
+    remove: (...c) => { const s = new Set((e.className || '').split(/\s+/).filter(Boolean)); c.forEach((x) => s.delete(x)); e.className = [...s].join(' '); },
+    contains: (c) => (e.className || '').split(/\s+/).includes(c),
+    toggle: (c, on) => { if (on === undefined) { if ((e.className || '').split(/\s+/).includes(c)) cl.remove(c); else cl.add(c); } else if (on) cl.add(c); else cl.remove(c); },
+  };
+  e.classList = cl;
+  const isDesc = (a, b) => { let x = b; while (x) { if (x === a) return true; x = x.parentElement; } return false; };
+  const detach = (k) => { if (isDesc(k, e)) return; if (k.parentElement) { const i = k.parentElement.children.indexOf(k); if (i >= 0) k.parentElement.children.splice(i, 1); } k.parentElement = e; };
+  e.append = (...kids) => { for (const k of kids) { if (k === null || k === undefined) continue; if (k.nodeType) { detach(k); e.children.push(k); } else e.children.push({ nodeType: 3, text: String(k) }); } };
+  e.appendChild = (k) => { e.append(k); return k; };
+  e.setAttribute = (k, v) => { e.attrs[k] = String(v); if (k.startsWith('data-')) e.dataset[camel(k.slice(5))] = String(v); };
+  e.getAttribute = (k) => e.attrs[k];
+  e.addEventListener = (t, fn) => { (e.listeners[t] = e.listeners[t] || []).push(fn); };
+  e.removeEventListener = () => {};
+  e.dispatch = (t, ev) => { for (const fn of e.listeners[t] || []) if (typeof fn === 'function') fn(ev || { target: e }); };
+  e.click = () => e.dispatch('click');
+  e.matches = (sel) => matches(e, sel);
+  e.closest = (sel) => { let x = e; while (x) { if (x.nodeType === 1 && matches(x, sel)) return x; x = x.parentElement; } return null; };
+  e.prepend = (...kids) => { for (const k of kids.reverse()) { if (k && k.nodeType) { detach(k); e.children.unshift(k); } } };
+  e.insertBefore = (k, ref) => { if (k && k.nodeType) { detach(k); const i = e.children.indexOf(ref); e.children.splice(i < 0 ? e.children.length : i, 0, k); } return k; };
+  e.remove = () => { if (e.parentElement) { const i = e.parentElement.children.indexOf(e); if (i >= 0) e.parentElement.children.splice(i, 1); e.parentElement = null; } };
+  e.replaceChildren = (...kids) => { e.children = []; e.append(...kids); };
+  e.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1440, bottom: 900, width: 1440, height: 900 });
+  e.after = () => {}; e.before = () => {};
+  e.focus = () => {}; e.blur = () => {};
+  Object.defineProperty(e, 'options', { get() { return e.children.filter((c) => c.nodeType === 1 && c.tagName === 'OPTION'); } });
+  Object.defineProperty(e, 'firstElementChild', { get() { return e.children.find((c) => c.nodeType === 1) || null; } });
+  Object.defineProperty(e, 'lastElementChild', { get() { const k = e.children.filter((c) => c.nodeType === 1); return k[k.length - 1] || null; } });
+  Object.defineProperty(e, 'previousElementSibling', { get() { if (!e.parentElement) return null; const i = e.parentElement.children.indexOf(e); return i > 0 ? e.parentElement.children[i - 1] : null; } });
+  Object.defineProperty(e, 'nextElementSibling', { get() { if (!e.parentElement) return null; const i = e.parentElement.children.indexOf(e); return i >= 0 ? e.parentElement.children[i + 1] : null; } });
+  Object.defineProperty(e, 'selectedIndex', { get() { return e.options.findIndex((x) => x.attrs.value === e.value); } });
+  e.clientWidth = 1440; e.clientHeight = 900; e.scrollHeight = 900;
+  e.innerHTML = ''; Object.defineProperty(e, 'innerHTML', { get: () => e._html || '', set: (v) => { e._html = v; if (v === '') e.children = []; } });
+  e.querySelector = (s) => queryAll(e, s)[0] || null;
+  e.querySelectorAll = (s) => queryAll(e, s);
+  ALL_ELS.push(e);
+  return e;
+}
+const body = mkEl('body');
+globalThis.document = {
+  createElement: mkEl,
+  createTextNode: (t) => ({ nodeType: 3, text: String(t) }),
+  body, activeElement: null,
+  getElementById: (id) => queryAll(body, '#' + id)[0] || null,
+  querySelector: (s) => queryAll(body, s)[0] || null,
+  querySelectorAll: (s) => queryAll(body, s),
+  addEventListener: () => {}, removeEventListener: () => {}, visibilityState: 'visible',
+};
+const lsMap = new Map();
+globalThis.localStorage = { getItem: (k) => (lsMap.has(k) ? lsMap.get(k) : null), setItem: (k, v) => lsMap.set(k, String(v)), removeItem: (k) => lsMap.delete(k) };
+const vm = require('vm');
+for (const f of ['panels', 'spec-ui']) {
+  const p = path.join(ROOT, 'js', f + '.js');
+  vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename: p });
+}
+const scene = RF.State.defaultScene();
+scene.mode = 'D';
+const ui = { store: { scene }, redrawSpec: () => {}, redraw: () => {} };
+const wrap = mkEl('div'); body.append(wrap);
+const cv = mkEl('canvas'); wrap.append(cv);
+RF.SpecUI.driveTools(ui, cv);
+const sigBtn = ALL_ELS.find((e) => e.attrs['data-dv'] === 'signalConesOn');
+ok('spec-ui button exists in the real bar', !!sigBtn, { found: !!sigBtn, tag: sigBtn && sigBtn.tagName });
+if (sigBtn) {
+  sigBtn.click();
+  ok('clicking it sets the option', RF.SpecUI.dvOpts(ui).signalConesOn === true, { v: RF.SpecUI.dvOpts(ui).signalConesOn });
+  ui.driveBar.append(sigBtn);
+  RF.SpecUI.driveTools(ui, cv);
+  ok('spec-ui label sync shows "signal cones" (the label follows the option)', sigBtn.textContent === 'signal cones', { text: sigBtn.textContent });
+}
+
+// OFF byte-identical: the hood add is guarded — the guard lives in scene-build code, not askable from Node;
+// the OFF path is proven behaviourally by the executed K.signal checks above (cone=false adds exactly the
+// shipped 4 objects) and the render ratio check below.
 const sc = fs.readFileSync(path.join(ROOT, 'js/drive-scenes.js'), 'utf8');
-ok('hood add is inside `if (cone)` (OFF path untouched)', /if \(cone\) add\(\{ k: 'box', x: p\.x - 0\.24/.test(sc));
+ok('[KEEP: text — guard is in scene-build code; OFF proven by the executed K.signal checks + render below] hood add is inside `if (cone)` (OFF path untouched)', /if \(cone\) add\(\{ k: 'box', x: p\.x - 0\.24/.test(sc));
 ok('gate + all registered', fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'utf8').includes("'frenchie-signal-cones'") && fs.readFileSync(path.join(ROOT, 'tests/all.js'), 'utf8').includes('frenchie-signal-cones'));
 
 // qwen P0 render check: the visor must not hide the lit lamp head-on. CPU render (node-only, fast), 3x3 window
@@ -104,16 +213,22 @@ ok('lamp-dist exports signalDist + SIGNAL_HALF_ANGLE (15 deg)', !!LD.signalDist 
   ok('signalDist: falls off with angle (g90p15 < g90p0)', at(90, 15) < at(90, 0) && at(90, 15) > 0);
 }
 {
+  // frenchie 11-10 (item 2): the lampcone module is requireable in Node (tests/lampcone-signal-restore.js
+  // drives it), so ask it instead of grepping its source.
   const kit = RF.Drive.kit({ Lw: 3.5, A: null, rand: RF.Drive.rng(7) });
   kit.signal(100, 0, 5.25, 'red', true);
   const objs = kit.O;
-  const lc = fs.readFileSync(path.join(ROOT, 'js/drive-three-lampcone.js'), 'utf8');
-  ok('lampsOf carries the signal face normal as st (live via the cached src getter, B11 A3)', /kind: 'signal', src: ob, get emit\(\) \{ return ob\.emit; \}, get st\(\) \{ return \[ob\.nx/.test(lc));
-  ok('signalConeLamps exported and pure-gated on the option', /export function signalConeLamps\(objects, on\)/.test(lc) && /if \(!on\) return \[\];/.test(lc));
-  ok('build() collects signals only when look.signalConesOn', /p\.look && p\.look\.signalConesOn/.test(lc));
-  ok('draw() signal pass is skipped when the list is empty (OFF byte-identical GL)', /if \(last\.signals && last\.signals\.length\)/.test(lc));
-  ok('drive-anim look carries signalConesOn', /signalConesOn: !!o\.signalConesOn/.test(fs.readFileSync(path.join(ROOT, 'js/drive-anim.js'), 'utf8')));   // append-safe (line-based)
-  ok('registry note mentions the volumetric pass', /Volumetric cone in haze ships too/.test(fs.readFileSync(path.join(ROOT, 'js/options-registry.js'), 'utf8')));
+  const lc = require(path.join(ROOT, 'js/drive-three-lampcone.js'));
+  const sigLamp = lc.lampsOf(objs).find((x) => x.kind === 'signal');
+  ok('lampsOf carries the signal face normal as st (asked of the module)', !!sigLamp && Array.isArray(sigLamp.st) && sigLamp.st.length === 2, sigLamp && { st: sigLamp.st });
+  ok('signalConeLamps is exported and pure-gated on the option (asked of the module)', typeof lc.signalConeLamps === 'function' && lc.signalConeLamps(objs, true).length > 0 && lc.signalConeLamps(objs, false).length === 0, { on: lc.signalConeLamps(objs, true).length, off: lc.signalConeLamps(objs, false).length });
+  // build()/draw() are closures inside createLampCone(renderer) — they need a GL renderer, no Node seam;
+  // the signal-list gating is behaviour-checked via signalConeLamps above and the uniform restore suite.
+  const lcSrc = fs.readFileSync(path.join(ROOT, 'js/drive-three-lampcone.js'), 'utf8');
+  ok('[KEEP: text — build()/draw() are closures inside createLampCone(renderer), GL-only; gating covered by signalConeLamps above] build() collects signals only when look.signalConesOn', /p\.look && p\.look\.signalConesOn/.test(lcSrc));
+  ok('[KEEP: text — GL-only closure as above] draw() signal pass is skipped when the list is empty (OFF byte-identical GL)', /if \(last\.signals && last\.signals\.length\)/.test(lcSrc));
+  ok('[KEEP: text — look literal is frame-internal (af06 measured)] drive-anim look carries signalConesOn', /signalConesOn: !!o\.signalConesOn/.test(anim));
+  ok('registry note mentions the volumetric pass', /Volumetric cone in haze ships too/.test(opt.note));
 }
 
 console.log('\n' + pass + ' checks, ' + fail + ' failed');

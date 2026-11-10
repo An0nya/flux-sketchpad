@@ -103,7 +103,7 @@ ok('math: CPU road-frame lampM\' follows the plane law (tilted, not the flat mir
 ok('math: CPU flat degenerates exactly', (() => { const d2 = 0.7, m2 = [80, -1.2, 0.7 - 2 * d2]; return m2[0] === 80 && m2[1] === -1.2 && m2[2] === -0.7; })());
 
 // ---- OFF behavior identity (source-level): every rewrite has the shipped fallback branch
-ok('OFF guards: shaders OFF path is the untouched withWetBounce text (no lampN in OFF)', !wbText.includes('lampN') && has(sh, 'export function withBouncePlane(source)'));
+ok('[KEEP: text — GPU lane: the shader source is GL-compiled, no headless GL seam in this VM; the OFF/CPU parity is executed in the math checks above and the suite\'s render checks] OFF guards: shaders OFF path is the untouched withWetBounce text (no lampN in OFF)', !wbText.includes('lampN') && has(sh, 'export function withBouncePlane(source)'));
 ok('OFF guards: halo OFF path keeps withWetBounceHalo when HALO_WB_PLANE is unset', has(haloSrc, ': withWetBounceHalo(main);'));
 ok('OFF guards: drive-three OFF keeps the :306 car-frame lampM line untouched', has(three, 'u.lampM.value[i].fromArray([l[0], l[1], -l[2]])'));
 

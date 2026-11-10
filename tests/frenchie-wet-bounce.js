@@ -169,10 +169,29 @@ const S = esm('drive-three-shaders.js', null, ['ground', 'withWetBounce', 'withS
     ok('table pass + wb splices both loops', (tab.match(/lampM\[i\]/g) || []).length === 3);
   }
   {
-    // CPU shade mirror (ext B): textual twin check + the shared Fresnel law at a grazing point
-    const src = fs.readFileSync(path.join(ROOT, 'js/drive.js'), 'utf8');
-    ok('shade() mirror loop present, gated on look.wetBounce + wetness', /wetBounce, 4-O ext B/.test(src) && /const wb = o\.look && o\.look\.wetBounce \? wetnessOf\(o\.look\)/.test(src));
-    ok('trafficHalo mirror present, beam read at the reflected point', /trafficAt\(L, beam, Px, Py, -Pz\)/.test(src));
+    // CPU shade mirror (ext B) — frenchie 11-10 (item 2): the two source greps are now a behaviour check:
+    // render the CPU frame with wetBounce on (wet road) vs off; the mirrors must change the picture, and
+    // OFF must be byte-identical to the option being absent.
+    const A = RF.DriveAnim;
+    const W = 96, H = 54;
+    const flags = { people: true, animals: true, signs: true, posts: true, powerlines: true, veg: true, obstacle: false };
+    const lamps = [[0, 0.7, 0.7], [0, -0.7, 0.7]];
+    const render = (look) => {
+      const src = A.source('road', 3.5, false, flags, { seed: 7, tiles: true, trafficDensity: 0, density: 1 });
+      const p = { w: W, h: H, hfov: 60, lamps, lut: D.lutFrom(() => 30000), conv: 'A', lane: 3.5, look, A: null, src };
+      const sc = A.tileWorld(p, 9740, 0);
+      const rgba = new Float32Array(4 * W * H);
+      D.render({ w: W, h: H, hfov: 60, eye: D.eyeFor(), lamps, lut: D.lutFrom(() => 30000), conv: 'A', lane: 3.5, arc: sc.A,
+        layer: 'frame', ss: 2, rgba, look, scene: { objects: sc.objects, markings: sc.markings, verge: src.verge } });
+      return rgba;
+    };
+    const pdiff = (x, y) => { let n = 0; for (let i = 0; i < x.length; i++) if (Math.abs(x[i] - y[i]) > 1e-6) n++; return n; };
+    const wet = { wetness: 0.8, wetBounce: false };
+    const picOff = render(Object.assign({}, wet));
+    const picAbsent = render({ wetness: 0.8 });
+    const picOn = render(Object.assign({}, wet, { wetBounce: true }));
+    ok('CPU: wetBounce OFF is byte-identical to the option absent (pixel diff 0)', pdiff(picOff, picAbsent) === 0, pdiff(picOff, picAbsent));
+    ok('CPU: the frame changes with wetBounce on (shade mirror + trafficHalo mirror live)', pdiff(picOff, picOn) > 100, pdiff(picOff, picOn));
     ok('surface weight uses the shared wetBounceW law', D.wetBounceW(0.1, 10, 0.8) > D.wetBounceW(9, 10, 0.8));
   }
   console.log('\n' + pass + ' checks, ' + fail + ' failed');

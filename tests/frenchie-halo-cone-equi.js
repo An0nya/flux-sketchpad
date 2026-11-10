@@ -18,9 +18,6 @@ const reg = fs.readFileSync(path.join(ROOT, 'js/options-registry.js'), 'utf8');
 const drv = fs.readFileSync(path.join(ROOT, 'js/drive.js'), 'utf8');
 const anim = fs.readFileSync(path.join(ROOT, 'js/drive-anim.js'), 'utf8');
 const spec = fs.readFileSync(path.join(ROOT, 'js/spec-ui.js'), 'utf8');
-const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
-const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
-const useCacheKey = spec.includes('cacheKey(');
 const haloSrc = fs.readFileSync(path.join(ROOT, 'js/drive-three-halo.js'), 'utf8');
 const gate = fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'utf8');
 const three = fs.readFileSync(path.join(ROOT, 'js/drive-three.js'), 'utf8');
@@ -36,7 +33,8 @@ ok('registry: haloConeEqui is registered (membership, not last-entry — a last-
 ok('spec-ui: dvSelect + sync list + value branch', has(spec, "dvSelect('haloConeEqui'") && has(spec, "'haloLampWin', 'haloConeEqui', 'haloCrossingRefine'") && has(spec, "else if (k === 'haloConeEqui')"));
 ok('spec-ui: dvSelect gets option PAIRS + an onPick callback (nemo review: a bare [\'off\',\'on\'] renders garbage options and onPick(s) throws)', has(spec, "[['off', 'cone-clipped equiangular: off'], ['on', 'cone-clipped equiangular: on']], (s) => setDV(ui, 'haloConeEqui', s.value))"));
 ok('drive-anim: look literal carries haloConeEqui', has(anim, "haloConeEqui: o.haloConeEqui || 'off'"));
-ok('spec-ui: haloConeEqui in the drive picture cache keys (SPEC_KEY, both sites)', cnt(spec, 'o.haloConeEqui,') === 2 || (useCacheKey && (ck.match(/'haloConeEqui'/g)||[]).length >= 2));
+const om = require(path.join(ROOT, 'js/cache-keys.js')).optionMap();
+ok('haloConeEqui in both picture-cache recipes (stillFrame + ground, asked of the cache-keys module)', om.stillFrame.includes('haloConeEqui') && om.ground.includes('haloConeEqui'), { still: om.stillFrame.includes('haloConeEqui'), ground: om.ground.includes('haloConeEqui') });
 ok("registry: the option lists its suite in tests (the lander gates with the swarm copy of tests/gate.js, not the patch copy — claude 11-08, raised with Anya; node:all still runs this suite)", (ce.tests || []).includes('node:frenchie-halo-cone-equi') && cnt(gate, 'node:frenchie-halo-cone-equi') >= 6);
 
 // ---- GPU table text
