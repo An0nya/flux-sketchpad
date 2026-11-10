@@ -6,6 +6,7 @@ let pass = 0, fail = 0;
 const ok = (name, cond, extra) => { if (cond) { pass++; console.log('[PASS] ' + name); } else { fail++; console.log('[FAIL] ' + name + (extra !== undefined ? ' — ' + JSON.stringify(extra) : '')); } };
 const { load } = require('./load.js');
 const RF = load(ROOT);
+const OPT = RF.Options;   // captured before the registry require below replaces RF.Options with a fresh object (no cache-key API)
 const A = RF.DriveAnim;
 
 const seed = 7;
@@ -25,9 +26,16 @@ const hasCacheKey = anim.includes("cacheKey('animScene'");
 ok('src.tiles carries the preset', (() => { const mk = (patch) => Object.assign({}, RF.Options.defaults(), { tiles: true, endlessRoad: true }, patch); return A.source('road', 3.5, false, {}, mk({ endlessPreset: 'highway-loop' })).tiles.preset === 'highway-loop'; })());
 ok('tileA/tileWorld pass the preset to endlessElev', anim.includes('endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom, p.src.tiles.axes)') && anim.includes('endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom, cfg.axes)'));  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
   // [KEEP: text — wiring literal; behaviour covered by the endlessElev/endlessTile checks in this file]
-ok('forested-pass adds guardrails on mountain blocks (cls rail)', anim.includes("tile.biome === 'mountain' && cfg.flags.posts !== false") && anim.includes("cls: 'rail'"));  // [KEEP: text — render-gate literal; pipeline behaviour checked by the tile walk in this file]
-ok('forested-pass densifies the verge on mountain/forest', anim.includes("cfg.preset === 'forested-pass' && (vg.biome === 'mountain' || vg.biome === 'forest') ? 3 : 0"));  // [KEEP: text — render-gate literal; verge density behaviour-checked in le-chonk-verge.js]
-ok('top-bar select exists + tkey carries the preset', anim.includes("'data-anim': 'endlessPreset'") && anim.includes("o.tiles ? o.endlessPreset : 'off'"));  // [KEEP: text — UI literal; control covered by le-chonk-ui-controls.js, key by sceneKeyHas('endlessPreset')]
+ok('forested-pass adds guardrails on mountain blocks (cls rail)', anim.includes("tile.biome === 'mountain' && cfg.flags.posts !== false") && anim.includes("cls: 'rail'"));
+  // [KEEP: text — render-gate literal; pipeline behaviour checked by the tile walk in this file]
+ok('forested-pass densifies the verge on mountain/forest', anim.includes("cfg.preset === 'forested-pass' && (vg.biome === 'mountain' || vg.biome === 'forest') ? 3 : 0"));
+  // [KEEP: text — render-gate literal; verge density behaviour-checked in le-chonk-verge.js]
+// the preset id moved from the app's hand-written tkey tail into the animScene recipe
+// (js/cache-keys.js, 202b): the recipe carries the tiles-gated preset value
+ok("top-bar select exists + the animScene recipe carries the preset",
+  anim.includes("'data-anim': 'endlessPreset'") &&
+  OPT.cacheDefs.animScene.some(s => s.spl === 'tilesPreset') &&
+  (() => { const o = Object.assign({}, OPT.defaults()); o.tiles = true; o.endlessPreset = 'rolling-hills'; const k1 = OPT.cacheKey('animScene', o, [3.5, 42, false]); o.endlessPreset = 'off'; return OPT.cacheKey('animScene', o, [3.5, 42, false]) !== k1; })());
 const reg = fs.readFileSync(path.join(ROOT, 'js', 'options-registry.js'), 'utf8');
 ok('registry: endlessPreset enum default off', (() => { const O = require(path.join(ROOT, 'js', 'options-registry.js')); const L = O.OPTIONS || O; const e = L.find((x) => x.id === 'endlessPreset'); return !!e && e.default === 'off' && e.type === 'enum'; })());
 // functional: a forested-pass mountain block renders rails through the pipeline

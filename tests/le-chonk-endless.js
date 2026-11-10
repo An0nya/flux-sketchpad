@@ -62,8 +62,13 @@ ok('OFF: speedLimit equals the shipped value for the same tile', (() => { const 
 
 // UI toggle exists in drive-anim bars
 const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
-ok('drive-anim: [data-anim="endlessRoad"] toggle built, pressed+disabled synced', anim.includes("'data-anim': 'endlessRoad'") && anim.includes("[data-anim=\"endlessRoad\"]"));  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
-ok('drive-anim: tkey carries the option (src rebuilds on toggle)', anim.includes('!!o.tiles && !!o.endlessRoad'));  // [KEEP: text — cache-key wiring; covered behaviourally by tests/scene-key.js]
+ok('drive-anim: [data-anim="endlessRoad"] toggle built, pressed+disabled synced', anim.includes("'data-anim': 'endlessRoad'") && anim.includes("[data-anim=\"endlessRoad\"]"));
+  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
+// endlessRoad moved from the app's hand-written tkey tail into the animScene recipe
+// (js/cache-keys.js, 202b): declared there, and the key changes with it (src rebuilds on toggle)
+ok('animScene recipe: endlessRoad is declared and changes the key (src rebuilds on toggle)',
+  O.cacheDefs.animScene.some(s => s.id === 'endlessRoad') &&
+  (() => { const o = Object.assign({}, O.defaults()); const k1 = O.cacheKey('animScene', o, [3.5, 42, false]); o.endlessRoad = !o.endlessRoad; return O.cacheKey('animScene', o, [3.5, 42, false]) !== k1; })());
 
 console.log(fail === 0 ? `\nall ${pass} le-chonk-endless checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);
