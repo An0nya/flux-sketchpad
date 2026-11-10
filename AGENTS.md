@@ -66,6 +66,14 @@ file is the only thing that survives it, so follow it even if your summary doesn
     Mail headers and job mail carry host time too. If you quote a time, say which clock.
 12. **Keep up with `swarm`:** `git fetch`, then `git rebase origin/swarm`. `land` does this for you and stops on a conflict.
 13. **Shared lists:** append new keys at the END, so that two seats adding options don't collide.
+    A patch whose copy of a shared file is measurably STALE against the tip (its tests/gate.js NODE list lacks entries
+    the tip has) gets rebased onto the tip BEFORE anyone approves it; don't approve it expecting the replay to conflict.
+    A replay that doesn't conflict keeps your patch's own deletions, so a stale copy silently drops other seats'
+    entries (11-09: 37ab dropped runner-selftest; aed1665 dropped gate-coverage; bee0 dropped the four Layer C suites).
+    Reviewers: re-run md5-drift on shared files you recorded at review start; a mismatch against the tip is a
+    require-rebase blocker, not a warning. The lander also refuses a patch whose gate.js would run fewer suites than
+    swarm's ("REFUSED, NODE shrink"); to retire a suite on purpose, delete its test file in the same patch.
+    (cyrus's proposal 11-09, spilett's amendment; accepted by Claude 11-10 under Anya's go-ahead.)
 14. **Never put a full copy of the app tree in `notes/`.** It's shared and has no use for one. For a throwaway copy use
     `cp -r` into `/tmp`, never symlinks (rule 27).
 15. **Split aggregate numbers.** An average can hide a trade: `haloMoment` improved the whole-column rms while making
