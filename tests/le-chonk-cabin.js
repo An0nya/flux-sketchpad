@@ -14,8 +14,11 @@ for (const id of ['cabinView', 'driftMode']) {
   ok('registry: ' + id + ' declared once, default false', !!m && m[1] === 'false' && reg.split("id: '" + id + "'").length === 2);
 }
 ok('cabinView is a pure overlay: drawCabin creates .drive-cabin only when on, removes when off; cabinView itself stays out of skey (cabinLight is the render-affecting one)', anim.includes('function drawCabin(V, on, style, light, kmh, yaw') && anim.includes("if (!on) { if (cv.parentNode) cv.parentNode.removeChild(cv); cv.width = 0; return; }") && !/o\.cabinView[^\n]*SUBTICK/.test(anim));
+  // [KEEP: text — cache-key wiring; covered behaviourally by tests/scene-key.js]
 ok('cabinView toggle wired', anim.includes("'data-anim': 'cabinView'") && anim.includes("setDV(ui, 'cabinView', !info().o.cabinView)"));
+  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
 ok('driftMode: opposite-lock on lamps (p.yaw) AND camera (rotArc on the render arc), speed^2 scaled, in skey; speedLimit/traffic cap untouched', anim.includes('V.p.yaw += lag && V.driftA !== undefined ? V.driftA * (o.driftAfs ? 1 : 2.6 / 8) : (tl && tl.curvature ? -tl.curvature * Math.pow(kmhOf() / 130, 2) * 2.6 : 0)') && anim.includes('rotArc(A1,') && anim.includes('cfg.driftKmh || 80') && anim.includes('V.src.tiles.driftKmh = kmhOf()') && sceneKeyHasAll(anim, ROOT, ['driftMode','driftDynamics','driftAfs','driftCabin','yawSmooth','cabinLight','endlessPresetCustom']) && !/speedLimit[\s\S]{0,80}drift/.test(anim));
+  // [KEEP: text — cache-key wiring; covered behaviourally by tests/scene-key.js]
 // behaviour: drift yaw sign/magnitude on a bend vs straight, via the same formula the frame uses
 const A = RF.DriveAnim;
 const D = RF.Drive;
@@ -27,11 +30,17 @@ for (const id of ['cabinStyle', 'cabinLight']) {
   ok('registry: ' + id + ' declared once, default ' + (id === 'cabinStyle' ? "'modern'" : 'false'), !!m && String(m[1]).trim() === (id === 'cabinStyle' ? "'modern'" : 'false') && reg.split("id: '" + id + "'").length === 2);
 }
 ok('cabinStyle enum lists modern/miata/digital80s with modern default, gated on cabinView', reg.includes("values: ['modern', 'miata', 'digital80s']") && reg.includes("requires: [need('cabinView')]"));
+  // [KEEP: text — registry declaration; the registry module is read directly in options-registry.js suite]
 ok('gauges: functional speed (kmhOf passed in), miata tombstone + digital80s branches in drawCabin', anim.includes('drawCabin(V, o.cabinView && (st.popout || ui.display === \'drive\'), o.cabinStyle || \'modern\', !!o.cabinLight, kmhOf(), o.driftCabin') && anim.includes("style === 'miata'") && anim.includes("style === 'digital80s'") && anim.includes("face(cx - 150 * k, 110 * k, kmh / 260, info().o.imperialUnits ? 'mph' : 'km/h'"));
+  // [KEEP: text — cache-key wiring; covered behaviourally by tests/scene-key.js]
 ok('cabinLight enters the existing glare path as a forward source (no hard exposure multiplier) and is in skey', anim.includes('if (o.cabinLight) sources.push([1, 0, 0.02, 0.2, 1, 0.95, 0.8])') && !(anim.match(/o\.cabinLight \? 0\.82/g) || []).length && sceneKeyHas(anim, ROOT, 'cabinLight'));
+  // [KEEP: text — cache-key wiring; covered behaviourally by tests/scene-key.js]
 ok('cabinStyle select + cabinLight toggle wired and synced', anim.includes("'data-anim': 'cabinStyle'") && anim.includes("setDV(ui, 'cabinLight', !info().o.cabinLight)") && anim.includes("s2.value = o.cabinStyle || 'modern'"));
+  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
 ok('cabinDigitalRedesign: option declared (default false, group view, needs cabinView) + flat-panel branch in drawCabin (ayrton 11-04)', reg.includes("id: 'cabinDigitalRedesign'") && reg.includes('cabinDigitalRedesign') && anim.includes("style === 'digital80s' && info().o.cabinDigitalRedesign") && anim.includes("'data-anim': 'cabinDigitalRedesign'") && anim.includes("'data-anim': 'cabinFovFrame'"));   // ayrton 11-04: the redesign branch is gated on the option; the button + sync are wired
+  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
 ok('cabinMirror: option declared (default false, group view, needs cabinView) + mirror-local generator + mirror rects + veil push + in skey (ayrton 11-04)', reg.includes("id: 'cabinMirror'") && reg.includes("need('cabinView')") && anim.includes('function mirrorCars(') && anim.includes('MIRROR_CULL') && anim.includes('if (mirrors && mirrors.length)') && anim.includes("'data-anim': 'cabinMirror'") && sceneKeyHas(anim, ROOT, 'cabinMirror'));   // ayrton 11-04: the mirror-local generator, the mirror rects in drawCabin, the veil source push, the button+sync, and the skey entry (after SUBTICK so existing skey substrings are preserved)
+  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
 ok('cabinMirror: mirrorCars exported + null src is safe (ayrton 11-04, nicholl review)', typeof A.mirrorCars === 'function' && A.mirrorCars(null, 0, 0).length === 0);   // null src -> empty, no crash
 { const mt = A.source('road', 3.5, false, { signs: true }, { seed: 7, tiles: true, endlessRoad: true, oncoming: true, preceding: true, trafficDensity: 3 });
   const ms = A.mirrorCars(mt, 100, 5); ok('cabinMirror: mirrorCars produces behind-cars (single-lane: bearing 0 visible in both mirrors)', ms.length > 0 && ms.every((m) => m.distance > 0 && m.distance <= 100 && typeof m.candela === 'number') && ms.some((m) => Math.abs(m.bearing) < 0.01), JSON.stringify(ms.slice(0, 2)));   // nicholl: bearing==0 was drawn in neither mirror before the fix

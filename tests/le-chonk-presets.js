@@ -22,13 +22,18 @@ const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
 const ckFile = path.join(ROOT, 'js', 'cache-keys.js');
 const ck = fs.existsSync(ckFile) ? fs.readFileSync(ckFile, 'utf8') : '';
 const hasCacheKey = anim.includes("cacheKey('animScene'");
-ok('src.tiles carries the preset', anim.includes("preset: o.endlessPreset || 'off'"));
+ok('src.tiles carries the preset', (() => { const mk = (patch) => Object.assign({}, RF.Options.defaults(), { tiles: true, endlessRoad: true }, patch); return A.source('road', 3.5, false, {}, mk({ endlessPreset: 'highway-loop' })).tiles.preset === 'highway-loop'; })());
 ok('tileA/tileWorld pass the preset to endlessElev', anim.includes('endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom, p.src.tiles.axes)') && anim.includes('endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom, cfg.axes)'));
+  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
+  // [KEEP: text — wiring literal; behaviour covered by the endlessElev/endlessTile checks in this file]
 ok('forested-pass adds guardrails on mountain blocks (cls rail)', anim.includes("tile.biome === 'mountain' && cfg.flags.posts !== false") && anim.includes("cls: 'rail'"));
+  // [KEEP: text — render-gate literal; pipeline behaviour checked by the tile walk in this file]
 ok('forested-pass densifies the verge on mountain/forest', anim.includes("cfg.preset === 'forested-pass' && (vg.biome === 'mountain' || vg.biome === 'forest') ? 3 : 0"));
+  // [KEEP: text — render-gate literal; verge density behaviour-checked in le-chonk-verge.js]
 ok('top-bar select exists + tkey carries the preset', anim.includes("'data-anim': 'endlessPreset'") && anim.includes("o.tiles ? o.endlessPreset : 'off'"));
+  // [KEEP: text — UI literal; control covered by le-chonk-ui-controls.js, key by sceneKeyHas('endlessPreset')]
 const reg = fs.readFileSync(path.join(ROOT, 'js', 'options-registry.js'), 'utf8');
-ok('registry: endlessPreset enum default off', reg.includes("id: 'endlessPreset'") && reg.includes("default: 'off', label: 'endless road preset"));
+ok('registry: endlessPreset enum default off', (() => { const O = require(path.join(ROOT, 'js', 'options-registry.js')); const L = O.OPTIONS || O; const e = L.find((x) => x.id === 'endlessPreset'); return !!e && e.default === 'off' && e.type === 'enum'; })());
 // functional: a forested-pass mountain block renders rails through the pipeline
 const e = A.tileRoute(seed, 38800, false, A.endlessTile);
 const eA = RF.Touge.elevate(e, 38800, 3.5, true, A.endlessElev(seed, 'forested-pass'));
@@ -48,7 +53,10 @@ ok('parseCustomPreset exposed and validates: good JSON -> fields kept', !!cp && 
 ok('parseCustomPreset rejects/clamps: bad JSON -> null, out-of-range dropped/clamped', A2.parseCustomPreset('not json') === null && (A2.parseCustomPreset('{"grade":[5,9]}') || {}).grade === undefined && A2.parseCustomPreset('{"tunnel":9}').tunnel === 0.5);
 ok('custom biome loop: endlessTile(seed,k,"custom",{biome:"city"}) is city', A2.endlessTile(7, 5, 'custom', { biome: 'city' }).biome === 'city');
 ok('highway-loop implies the multilane render cross-section (multilaneRoad option untouched)', anim.includes("multilane: !!o.multilaneRoad || !!(LOOP_MULTILANE[o.endlessPreset || 'off'])") && anim.includes("'highway-loop': 'open'"));
+  // [KEEP: text — cache-key wiring; covered behaviourally by tests/scene-key.js]
+  // [KEEP: text — LOOP_MULTILANE literal; implied cross-section behaviour-checked via src.tiles.multilane in le-chonk-multilane.js]
 ok('wiring: cfg.custom from endlessPresetCustom when preset=custom; skey/tkey carry the JSON; select has loop values; input wired', (anim.includes("o.tiles ? o.endlessPresetCustom || '' : '', SUBTICK") || (hasCacheKey && ck.includes("endlessPresetCustom"))) && anim.includes('custom: o.endlessPreset ===') && anim.includes("'highway-loop'") && anim.includes("'data-anim': 'endlessPresetCustom'"));
+  // [KEEP: text — wiring literal; key carriage is sceneKeyHas('endlessPresetCustom'), parsing is behaviour-checked below]
 // 11-01 ~01:10 feature loops (Anya: presets to test each unique-geometry tile individually)
 const FLOOPS = [['tunnel-loop', 'tunnel', (b, t) => (b === 'forest' || b === 'mountain') && t.kind === 'straight'], ['crossing-loop', 'crossing', (b, t) => b === 'open' && t.kind === 'straight'], ['layby-loop', 'layby', (b, t) => b === 'open' && t.kind === 'straight'], ['fuel-loop', 'fuel', (b, t) => b === 'open' && t.kind === 'straight'], ['viewpoint-loop', 'view', (b, t) => b === 'mountain' && t.kind === 'straight'], ['sos-loop', 'sos', (b, t) => (b === 'forest' || b === 'mountain') && t.kind === 'straight'], ['picnic-loop', 'picnic', (b, t) => b === 'forest' && t.kind === 'straight'], ['wildlife-loop', 'wild', (b, t) => b === 'forest' && t.kind === 'straight'], ['chainup-loop', 'chain', (b, t) => b === 'mountain' && t.kind === 'straight'], ['works-loop', 'works', (b, t) => (b === 'open' || b === 'city') && t.kind === 'straight'], ['toll-loop', 'toll', (b, t) => b === 'open' && t.kind === 'straight'], ['vms-loop', 'vms', (b, t) => (b === 'open' || b === 'city') && t.kind === 'straight']];
 for (const [ps, flag, elig] of FLOOPS) {
@@ -58,15 +66,23 @@ for (const [ps, flag, elig] of FLOOPS) {
 }
 ok('culvert-loop: every open verge tile has a creek', (() => { let n = 0, all = true; for (let k = 0; k < 300; k++) { const v = A2.endlessVerge(7, k, 'culvert-loop'); if (v.biome === 'open') { n++; if (!v.creek) all = false; } } return n > 10 && all; })());
 ok('vms-loop = open biome + vms forced on eligible tiles; render gated by signs+wild', anim.includes("'vms-loop': 'open'") && anim.includes("if (preset === 'vms-loop' && (biome === 'open' || biome === 'city')) t.vms = true") && anim.includes('if (tile.vms && cfg.flags.signs !== false && cfg.flags.wild !== false)'));
+  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
+  // [KEEP: text — loop-table literal; forced flag behaviour-checked by the per-loop walk in this file]
 ok('toll-loop = open biome + multilane implied + toll forced (options untouched)', anim.includes("'toll-loop': 'open'") && anim.includes("'highway-loop': true, 'toll-loop': true") && anim.includes("if (preset === 'toll-loop' && biome === 'open') t.toll = true"));
+  // [KEEP: text — loop-table literal; see the highway-loop note]
 ok('toll plaza renders only with the multilane cross-section + consent flags', anim.includes('if (tile.toll && cfg.multilane && cfg.flags.wild !== false && cfg.flags.signs !== false)'));
+  // [KEEP: text — render-gate literal; consent behaviour covered by the tile walk]
 ok('gantry-loop = city biome + gantries implied (option untouched)', anim.includes("'gantry-loop': 'city'") && anim.includes("gantries: !!o.junctionGantries || o.endlessPreset === 'gantry-loop'"));
+  // [KEEP: text — loop-table literal; gantry implication behaviour-checked by the per-loop walk]
 ok('select lists all feature loops', anim.includes("'tunnel-loop', 'crossing-loop', 'layby-loop', 'fuel-loop', 'viewpoint-loop', 'sos-loop', 'picnic-loop', 'wildlife-loop', 'chainup-loop', 'culvert-loop', 'works-loop', 'toll-loop'"));
+  // [KEEP: text — UI literal; select commits are covered by le-chonk-ui-controls.js]
 ok('off still probability-gated (no loop): tunnel flags appear but not on every eligible tile', (() => { let eligN = 0, setN = 0; for (let k = 0; k < 300; k++) { const t = A2.endlessTile(7, k); if ((t.biome === 'forest' || t.biome === 'mountain') && t.kind === 'straight') { eligN++; if (t.tunnel) setN++; } } return eligN > 20 && setN > 0 && setN < eligN; })());
 // 11-01 ~02:00: custom preset props override (speed cap / density / lamps per biome)
 ok('parseCustomPreset accepts props override with clamps', (() => { const c = A2.parseCustomPreset('{"props":{"speed":999,"density":-2,"lampGap":50,"lampStyle":"cobra","deer":0.7,"bushes":99}}'); return !!c && c.props.speed === 130 && c.props.density === 0 && c.props.lampGap === 50 && c.props.lampStyle === 'cobra' && c.props.deer === 0.7 && c.props.bushes === 8; })());
 ok('endlessTile applies custom props over the biome defaults; without custom, props are the biome defaults', (() => { const a = A2.endlessTile(7, 3, 'custom', { props: { speed: 110 } }), b = A2.endlessTile(7, 3); return a.props.speed === 110 && a.props.lampGap === b.props.lampGap && b.props.speed !== 110; })());
 ok('wiring: props merge line present', anim.includes('Object.assign({}, ENDLESS_PROPS[biome], LOOP_PROPS[preset] || {}, custom && custom.props)'));
+  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
+  // [KEEP: text — wiring literal; the merge is behaviour-checked by the custom-props checks above]
 // 11-01 ~02:40: switchbacks preset is hairpin-heavy (150R/150L dominate over straights)
 ok('switchbacks: hairpin-heavy (150s dominate, alternation intact) vs the seeded walk', (() => { let a = 0, b = 0, alt = 0, prev = 0; for (let k = 0; k < 400; k++) { const t = A2.endlessTile(7, k, 'switchbacks'); if (t.kind.startsWith('150')) { a++; if (prev && Math.sign(t.curvature) === -Math.sign(prev)) alt++; } prev = t.curvature; if (A2.endlessTile(7, k).kind.startsWith('150')) b++; } return a > 300 && a > b * 4; })());   // B11: tight-S clause dropped, so the seeded walk keeps more 150s (b 39->91); margin 4x not 8x road cannot circle
 ok('switchbacks relaxes only its own no-loop rules; off path byte-identical (same kinds as before)', (() => { let same = true; for (let k = 0; k < 300; k++) if (A2.endlessTile(7, k).kind !== A2.endlessTile(7, k, 'off').kind) same = false; return same; })());

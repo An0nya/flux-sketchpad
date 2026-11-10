@@ -14,8 +14,11 @@ const reg = fs.readFileSync(ROOT + '/js/options-registry.js', 'utf8');
 const m = reg.match(/id: 'yawSmooth'[\s\S]*?default: (\w+)/);
 ok('registry: yawSmooth declared once, default false', !!m && m[1] === 'false' && reg.split("id: 'yawSmooth'").length === 2);
 ok('smoothArc wraps the arc (Object.create delegation) and averages tangents over [-8, +36]', anim.includes('function smoothArc(A, look = 36, back = 8)') && anim.includes('Object.create(A)') && anim.includes('for (let d = -back; d <= look; d += 4)'));
+  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
 ok('OFF: A = A1 unchanged (no wrapper)', anim.includes('A = cfg.yawSmooth ? smoothArc(A1) : A1'));
+  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
 ok('wiring: src.tiles.yawSmooth, skey, tkey, toggle, aria sync', (anim.includes('!!o.yawSmooth') || (hasCacheKey && ck.includes("'yawSmooth'"))) && anim.includes("'data-anim': 'yawSmooth'") && anim.includes("q('[data-anim=\"yawSmooth\"]')"));
+  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
 // behaviour: seed 7, the 150R bend in tile k=7 starts ~40 m into the tile (abs s ~1440); at the join the raw tangent
 // snaps, the smoothed one is averaged over [-8, +36] so right after the join it lies strictly between 0 and raw.
 const mk = (ys) => { const src = A.source('road', 3.5, false, { wild: true, signs: true }, { seed: 7, tiles: true, endlessRoad: true, yawSmooth: ys }); return { w: 96, h: 54, hfov: 60, lamps: [], lut: D.lutFrom(() => 30000), conv: 'A', lane: 3.5, look: { RL: 0.2 }, A: null, src }; };

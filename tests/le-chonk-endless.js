@@ -28,6 +28,7 @@ const t0 = A.endlessTile(seed, 0), t0b = A.endlessTile(seed, 0);
 ok('ON: endlessTile deterministic in (seed, k) and carries biome+props', JSON.stringify(t0) === JSON.stringify(t0b) && !!t0.biome && !!t0.props && t0.s0 === 0 && typeof t0.curvature === 'number');
 const kinds = new Set(); for (let k = 0; k < 400; k++) { const t = A.endlessTile(seed, k); kinds.add(t.kind); }
 ok('ON: kinds stay inside the shipped TILE_KINDS', [...kinds].every((k) => A.TILE_KINDS.includes(k)), [...kinds]);
+  // [KEEP: text — source literal with no cheap Node hook; the behaviour it guards is covered by the behaviour checks in this file]
 
 // biomes: all four appear over 400 tiles, and biome is constant within a 16-tile block
 let biomes = new Set(); for (let k = 0; k < 400; k++) biomes.add(A.endlessBiome(seed, k));
@@ -63,7 +64,9 @@ ok('OFF: speedLimit equals the shipped value for the same tile', (() => { const 
 // UI toggle exists in drive-anim bars
 const anim = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
 ok('drive-anim: [data-anim="endlessRoad"] toggle built, pressed+disabled synced', anim.includes("'data-anim': 'endlessRoad'") && anim.includes("[data-anim=\"endlessRoad\"]"));
+  // [KEEP: text — UI-control literal; presence+behaviour covered by le-chonk-ui-controls.js / control-map pageMap]
 ok('drive-anim: tkey carries the option (src rebuilds on toggle)', anim.includes('!!o.tiles && !!o.endlessRoad'));
+  // [KEEP: text — cache-key wiring; covered behaviourally by tests/scene-key.js]
 
 console.log(fail === 0 ? `\nall ${pass} le-chonk-endless checks passed` : `\n${fail} of ${pass + fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);
