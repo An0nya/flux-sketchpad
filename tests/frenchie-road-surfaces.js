@@ -55,6 +55,32 @@ const picOn = render(Object.assign({}, wetLook, { roadSurfaces: true, roadSurfac
 ok('CPU: OFF is byte-identical to the option being absent (pixel diff 0)', pdiff(picOff, picAbsent) === 0, pdiff(picOff, picAbsent));
 ok('CPU: the frame changes when roadSurfaces is on with a non-stock surface (wetBounceW callers pass the look, dryStreaks floor applies)', pdiff(picOff, picOn) > 100, pdiff(picOff, picOn));
 ok('CPU: helpers exported on RF.Drive', ['wetBounceW', 'surfSOf', 'surfKOf', 'dryStreakFloorOf'].every((k) => typeof D[k] === 'function'));
+
+// frenchie 11-10 (Anya defect via cyrus 75a8, roadSurfaces x wetSheen): the GPU shade() sheen/streak gates were
+// hardcoded id lists that missed the appended road-surface mats (48-51) while the CPU gates on SHEEN_IDS —
+// with roadSurfaces ON the wet sheen vanished on the GPU. Fixed by withMaterialIds() rebuilding both gates
+// from the live MAT_DEF in drive-three.js. Here: compose the ground source through the module and assert the
+// gates now cover exactly the live lists (behaviour), plus the paired CPU render check cyrus asked for.
+const esm = (file, extra, names) => new Function(...Object.keys(extra || {}), fs.readFileSync(path.join(ROOT, 'js', file), 'utf8').replace(/^import .*$/mg, '').replace(/^export /mg, '') + '\nreturn { ' + names.map((n) => n + ': typeof ' + n + ' !== "undefined" ? ' + n + ' : undefined').join(', ') + ' };')(...Object.values(extra || {}));
+const SM = esm('drive-three-shaders.js', null, ['ground', 'withMaterialIds']);
+const composed = SM.withMaterialIds(SM.ground, RF.Drive.SHEEN_IDS, RF.Drive.OWN_STREAK_IDS);
+const gateIds = (src, marker) => { const m = src.match(new RegExp(marker + '\\(([^)]*)\\)')); return m ? m[1].split('||').map((x) => +x.replace('id==', '')) : null; };
+const sheenGate = gateIds(composed, 'if\\(sheen>0\\.0 && '), streakGate = gateIds(composed, 'if\\(sheen>0\\.0 && \\(id==0\\|\\|id==5\\|\\|id==6\\)\\) r', );
+ok('GPU (module-composed): the sheen gate covers exactly the live SHEEN_IDS', JSON.stringify(gateIds(composed, 'if\\(sheen>0\\.0 && ')) === JSON.stringify(RF.Drive.SHEEN_IDS), { gate: gateIds(composed, 'if\\(sheen>0\\.0 && '), live: RF.Drive.SHEEN_IDS });
+const streakM = composed.slice(composed.indexOf('r+=vec3(wetness*I') - 120).match(/\((id==\d+(?:\|\|id==\d+)*)\)\) r\+=vec3\(wetness\*I/);
+ok('GPU (module-composed): the streak gate covers exactly the live OWN_STREAK_IDS', !!streakM && JSON.stringify(streakM[1].split('||').map((x) => +x.replace('id==', ''))) === JSON.stringify(RF.Drive.OWN_STREAK_IDS), { gate: streakM && streakM[1], live: RF.Drive.OWN_STREAK_IDS });
+ok('GPU: the road-surface mats (48-51) are inside both gates now (the defect: they were in neither)', [48, 49, 50, 51].every((i) => RF.Drive.SHEEN_IDS.includes(i) && gateIds(composed, 'if\\(sheen>0\\.0 && ').includes(i)));
+ok('GPU: the stale hardcoded gates are gone from the composed source', !composed.includes('(id==0||id==4||id==5||id==6))') && !composed.includes('(id==0||id==5||id==6))'));
+ok('GPU: withMaterialIds throws if the gate markers move (mutation guard)', (() => { try { SM.withMaterialIds('void main(){}', [0], [0]); return false; } catch (e) { return /withMaterialIds/.test(e.message); } })());
+ok('CPU: SHEEN_IDS / OWN_STREAK_IDS exported on RF.Drive for the parity pin', Array.isArray(RF.Drive.SHEEN_IDS) && Array.isArray(RF.Drive.OWN_STREAK_IDS) && RF.Drive.SHEEN_IDS.includes(48) && RF.Drive.OWN_STREAK_IDS.includes(51));
+// paired regression check (cyrus 75a8): roadSurfaces ON + wetness > 0 + wetSheen ON must change the CPU frame
+// vs sheen off (the sheen paints the non-stock road band on the CPU); dry + sheen flag must change nothing.
+const sheenOn = render(Object.assign({}, wetLook, { roadSurfaces: true, roadSurface: 'concrete', wetness: 0.8, wetSheen: true }));
+const sheenOff = render(Object.assign({}, wetLook, { roadSurfaces: true, roadSurface: 'concrete', wetness: 0.8, wetSheen: false }));
+ok('paired: roadSurfaces ON + wetness 0.8 + wetSheen ON changes the frame vs sheen OFF (CPU sheen paints the road band)', pdiff(sheenOn, sheenOff) > 100, pdiff(sheenOn, sheenOff));
+const dryOn = render(Object.assign({}, wetLook, { roadSurfaces: true, roadSurface: 'concrete', wetness: 0, wetSheen: true, wetBounce: false, dryStreaks: false }));
+const dryOff = render(Object.assign({}, wetLook, { roadSurfaces: true, roadSurface: 'concrete', wetness: 0, wetSheen: false, wetBounce: false, dryStreaks: false }));
+ok('paired: dry road + sheen flag changes nothing (sheen is wetness-weighted)', pdiff(dryOn, dryOff) === 0, pdiff(dryOn, dryOff));
 // frenchie 11-10 (item 2, census): the six GPU/shader greps stay text, declared with the measured reason:
 // the kSurf uniform is set on the WebGL context inside the three.js render loop and the shader strings are
 // compiled on the GPU — no GL context and no browser in this VM (the GPU lane is measured on the host queue).

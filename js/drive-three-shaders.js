@@ -440,6 +440,14 @@ export function withShimmer(source) {
 // (the caller only applies this when look.wetBounce is on, like withShimmer). The block carries its own uniforms, so nothing
 // else in the shader changes. Mirror: lampM[i] = (x, y, -z) of lamp[i]; the beam is read toward the reflected direction
 // (vec3(d.x,d.y,-d.z)) and weighted per point by the grazing Fresnel (0.02+0.98*(1-|dz|/r)^5)*wetU — the wetVeil mirrorOf law.
+// frenchie 11-10: rebuild the shade() material-id gates from the live MAT_DEF lists (drive.js SHEEN_IDS /
+// OWN_STREAK_IDS). The gates shipped as hardcoded id lists and drifted once already (see the comment above).
+export function withMaterialIds(source, sheenIds, streakIds) {
+  const SHEEN = 'if(sheen>0.0 && (id==0||id==4||id==5||id==6))', STREAK = 'if(sheen>0.0 && (id==0||id==5||id==6))';
+  if (source.split(SHEEN).length !== 2 || source.split(STREAK).length !== 2) throw Error('sheen/streak id gates changed (withMaterialIds)');
+  const list = (ids) => 'if(sheen>0.0 && (' + ids.map((i) => 'id==' + i).join('||') + '))';
+  return source.replace(SHEEN, list(sheenIds)).replace(STREAK, list(streakIds));
+}
 export function withWetBounce(source) {
   const DECL = 'vec3 inScatter(vec3 dir,float sEnd,float jit) {';
   const LOOP = '      acc+=sigma*p*E*exp(-sigma*r)*Tv*ds*lampRGB;\n    }\n  }\n  return acc;\n}';

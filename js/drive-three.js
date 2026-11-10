@@ -1,6 +1,10 @@
 /* Opt-in Drive ground renderer. CPU objects and the established display passes share its WebGL context. */
 import * as T from '../vendor/three/three.module.min.js';
-import { vertex, ground, withLighting, withShimmer, withWetBounce, withBouncePlane, tableSource, tablePassSource, tableBlurSource } from './drive-three-shaders.js';
+import { vertex, ground, withLighting, withShimmer, withWetBounce, withBouncePlane, tableSource, tablePassSource, tableBlurSource } from './drive-three-shaders.js, withMaterialIds } from './drive-three-shaders.js';
+// frenchie 11-10 (Anya defect via cyrus 75a8): rewrite the shade() sheen/streak id gates from the live
+// MAT_DEF lists, so the appended road-surface materials (48-51) keep the wet sheen on the GPU like on the CPU.
+// Stock ids are unchanged and first in the lists, so the OFF picture is untouched.
+const GROUND = (globalThis.RF && RF.Drive && RF.Drive.SHEEN_IDS) ? withMaterialIds(ground, RF.Drive.SHEEN_IDS, RF.Drive.OWN_STREAK_IDS) : ground;
 import { passShader, surface } from './drive-touge-three.js';
 import { objects } from './drive-three-objects.js';
 import { haloPass, haloLookup, HALO_EDGES, scatRangeGpu } from './drive-three-halo.js';
@@ -57,7 +61,7 @@ export function create(canvas, gl, onModelsReady) {
   const materialData = new Float32Array(D.MAT_KEYS.length * 4 * 4), markData = new Float32Array(128 * 4 * 2);
   const materialTexture = texture(materialData, D.MAT_KEYS.length, 4), markTexture = texture(markData, 128, 2);
   set('materials', materialTexture); set('marks', markTexture);
-  const mat = new T.ShaderMaterial({ uniforms: u, vertexShader: vertex, fragmentShader: ground, depthTest: false, depthWrite: false });
+  const mat = new T.ShaderMaterial({ uniforms: u, vertexShader: vertex, fragmentShader: GROUND, depthTest: false, depthWrite: false });
   const scene = new T.Scene(), mesh = new T.Mesh(new T.PlaneGeometry(2, 2), mat); mesh.frustumCulled = false; scene.add(mesh);
   Object.assign(u, smUniforms());   // SM: shared by the halo table, the cone pass and the ribbon (programs that do not declare them ignore them)
   const pass = surface(u);
@@ -71,7 +75,7 @@ export function create(canvas, gl, onModelsReady) {
   const SM_LOOP = 'if(NoL<=0.0) continue;\n    vec3 local=vec3(forward';
   const smRoadText = (s) => { if (s.split(SM_LOOP).length !== 2) return s; const nl = s.indexOf('\n') + 1; const ACC = 'otherIntensity(local)*NoL/(PI*r2)*trafficLamp[i].w'; if (s.split(ACC).length !== 2) throw Error('SM3: traffic accumulation text changed');
     return (s.slice(0, nl) + SM_DECL + SM_ROAD + s.slice(nl)).replace(SM_LOOP, 'if(NoL<=0.0) continue; float smVis=1.0-smRoadF(i,p,n); if(smVis<=0.0) continue;\n    vec3 local=vec3(forward').replace(ACC, ACC + '*smVis'); };   // smVis: the lit fraction (PCF)
-  let haloM2 = false;   // glm5.3flash review fix: the HALO_M2 define must reach EVERY program that embeds the scatter lookup (objects, pass, table pre-pass), not just the ground quad
+  let haloM2 = false;   // glm5.3flash review fix: the HALO_M2 define must reach EVERY program that embeds the scatter lookup (objects, pass, table pre-pass), not just the GROUND quad
   function shading(material, enabled, mountain = false, table = false, blend = true, smr = false) {
     if (!material.userData.baseFragment) material.userData.baseFragment = material.fragmentShader;
     const atlas = atlasOn && enabled, bl = table ? blend : true, sr = !!(smr && mountain && enabled);   // blend only changes the text when the table is on
@@ -87,7 +91,7 @@ export function create(canvas, gl, onModelsReady) {
   }
   // SD1 table pre-pass (look.scatterMode 'table'): three banks of four bins at the table's resolution, optional separable blur, then the lit passes read them.
   let lastLook = null;   // frenchie (wetBounce)
-  const tabMesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: u, vertexShader: vertex, fragmentShader: tablePassSource(ground), depthTest: false, depthWrite: false }));
+  const tabMesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: u, vertexShader: vertex, fragmentShader: tablePassSource(GROUND), depthTest: false, depthWrite: false }));
   const tabScene = new T.Scene(); tabMesh.frustumCulled = false; tabScene.add(tabMesh);
   const blurU = { src: { value: null }, texel: { value: new T.Vector2(1, 1) }, dirTexel: { value: new T.Vector2(1, 0) }, sig: { value: 0 }, srcLayer: { value: 0 } };
   const blurMesh = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: blurU, vertexShader: vertex, fragmentShader: tableBlurSource, depthTest: false, depthWrite: false }));
@@ -97,7 +101,7 @@ export function create(canvas, gl, onModelsReady) {
     const key = (extras ? 'lit' : 'plain') + (extras && atlasOn ? '-atlas' : '') + (wbOn ? '-wb' : '');
     if (!!tabMesh.material.userData.m2d !== haloM2) { tabMesh.material.defines = tabMesh.material.defines || {}; if (haloM2) tabMesh.material.defines.HALO_M2 = 1; else delete tabMesh.material.defines.HALO_M2; tabMesh.material.userData.m2d = haloM2; tabMesh.material.needsUpdate = true; }   // glm5.3flash review fix: the pre-pass decodes the table for every lit pass — it must take the same curve
     if (tabMesh.material.userData.lit === key) return false;
-    tabMesh.material.fragmentShader = tablePassSource(wbOn ? withWetBounce(extras ? withLighting(ground, atlasOn) : ground) : (extras ? withLighting(ground, atlasOn) : ground)); tabMesh.material.userData.lit = key; tabMesh.material.needsUpdate = true; return true;
+    tabMesh.material.fragmentShader = tablePassSource(wbOn ? withWetBounce(extras ? withLighting(GROUND, atlasOn) : GROUND) : (extras ? withLighting(GROUND, atlasOn) : GROUND)); tabMesh.material.userData.lit = key; tabMesh.material.needsUpdate = true; return true;
   }
   // SD2 cache (look.scatterCache 'on'): the table is redrawn only when its key changes (the lamp pose quantised to 0.05 degrees and
   // 1e-4 m, the beam LUT identity, lamp colour, visibility, fov, size, eye, steps, res, blur, lit, near fade). Cycle 8 keeps eight versions
@@ -308,10 +312,10 @@ export function create(canvas, gl, onModelsReady) {
     set('convention', p.conv === 'B' ? 1 : p.conv === 'S' ? 2 : 0); set('tanH', Math.tan(p.hfov * Math.PI / 360));
     set('lane', p.lane); set('roadId', (p.look && p.look.roadMat && RF.Drive.MAT_KEYS.indexOf(p.look.roadMat)) || 0);   // §road-surfaces: road band material id (0 = asphalt, default)
     set('surfKind', ({ 'asphalt-fresh': 1, 'asphalt-old': 2, 'concrete-road': 3, 'tar-snake': 4 })[(p.look && p.look.roadMat) || ''] || 0);   // §road-surfaces s2: surface kind for surfTex (0 = stock)
-    set('sigma', D.sigmaOf(look)); set('scatterSteps', D.sigmaOf(look) > 0 && look.scatter > 0 ? Math.round(look.scatter) : 0); set('scatGain', scatterGainOf(look)); set('scatMode', D.sigmaOf(look) > 0 && look.scatter > 0 && look.scatterMode === 'table' && !p.airHold ? 1 : 0); set('scatGFwd', D.SCAT.gFwd); set('scatGBack', D.SCAT.gBack); set('scatWFwd', D.SCAT.wFwd); set('scatRMin', D.SCAT.rMin); set('scatSMax', scatRangeGpu(look)); set('ambient', look.ambient || 0); const wetEff = Math.max(D.wetnessOf(look), look.dryStreaks === true ? D.dryStreakFloorOf(look) : 0); set('wetness', wetEff); set('sheen', wetEff > 0 && look.wetSheen ? 1 : 0); set('kSurf', D.surfKOf(look)); set('wetModel', look.wetModel === 'ggx' ? 1 : 0);   // frenchie (dryStreaks): the wetness uniform feeds only the two streak terms in the ground shader; dry floor 0.25
+    set('sigma', D.sigmaOf(look)); set('scatterSteps', D.sigmaOf(look) > 0 && look.scatter > 0 ? Math.round(look.scatter) : 0); set('scatGain', scatterGainOf(look)); set('scatMode', D.sigmaOf(look) > 0 && look.scatter > 0 && look.scatterMode === 'table' && !p.airHold ? 1 : 0); set('scatGFwd', D.SCAT.gFwd); set('scatGBack', D.SCAT.gBack); set('scatWFwd', D.SCAT.wFwd); set('scatRMin', D.SCAT.rMin); set('scatSMax', scatRangeGpu(look)); set('ambient', look.ambient || 0); const wetEff = Math.max(D.wetnessOf(look), look.dryStreaks === true ? D.dryStreakFloorOf(look) : 0); set('wetness', wetEff); set('sheen', wetEff > 0 && look.wetSheen ? 1 : 0); set('kSurf', D.surfKOf(look)); set('wetModel', look.wetModel === 'ggx' ? 1 : 0);   // frenchie (dryStreaks): the wetness uniform feeds only the two streak terms in the GROUND shader; dry floor 0.25
     set('distance', dist); set('grain', look.grain && (p.src.tiles || (D.wetnessOf(look) > 0 && look.wetSheen)) ? 0.4 * (D.wetnessOf(look) > 0 ? 0.5 : 1) : 0);
     const shimAmp = look.heatShimmer === 'high' ? 0.0025 : look.heatShimmer === 'low' ? 0.0008 : 0;   // frenchie (heatShimmer, GPU only): recompile the ground program only when the on/off state flips; OFF = shipped text
-    const shimOn = shimAmp > 0, baseSrc = shimOn ? withShimmer(ground) : ground;   // frenchie (wetBounce): compose over the shimmer variant so the two flips cannot overwrite each other
+    const shimOn = shimAmp > 0, baseSrc = shimOn ? withShimmer(GROUND) : GROUND;   // frenchie (wetBounce): compose over the shimmer variant so the two flips cannot overwrite each other
     const wpOn = wbOn && look.wetBouncePlane === true;   // frenchie (crest Ladder A): plane-mirror shader variant; OFF = shipped wetBounce text
     // one check for all flips: a separate shim-first check (as before) reset fragmentShader to baseSrc and left userData.wb true, dropping the wetBounce loop on a shimmer flip
     if (!!mat.userData.wb !== wbOn || !!mat.userData.shim !== shimOn || !!mat.userData.wp !== wpOn) { mat.fragmentShader = wpOn ? withBouncePlane(withWetBounce(baseSrc)) : wbOn ? withWetBounce(baseSrc) : baseSrc; mat.userData.wb = wbOn; mat.userData.shim = shimOn; mat.userData.wp = wpOn; mat.needsUpdate = true; }
@@ -436,7 +440,7 @@ export function create(canvas, gl, onModelsReady) {
         sm = { render: (list, res) => trafficMaps.render(pass.geometry, u.carFromWorld.value, pass.geomVer, list, res, oc ? objectView.casters : null) }; }
       if (!p.airHold) halo.build(p, world, occ, sm); else { u.haloOn.value = 0; halo.cone = null; halo.smCars = null; }
       u.smSoft.value = { off: 0, '3x3': 2 }[(p.look || {}).trafficShadowSoft] ?? 1;   // SM3 PCF (option trafficShadowSoft, default 2x2)
-      for (let i = 0; i < 64; i++) { const c = halo.smCars && i < u.nTraffic.value ? halo.smCars.get(litCars[i]) : undefined; u.smOf.value[i >> 2].setComponent(i & 3, c === undefined ? 0 : c + 1); }   // SM3: traffic lamp -> its car's map (by car id)   // TOUGE-ELEV B2: touge frames build the halo too (lamps in the car frame, B1)   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the ground pass reads it (the pass view is skipped)
+      for (let i = 0; i < 64; i++) { const c = halo.smCars && i < u.nTraffic.value ? halo.smCars.get(litCars[i]) : undefined; u.smOf.value[i >> 2].setComponent(i & 3, c === undefined ? 0 : c + 1); }   // SM3: traffic lamp -> its car's map (by car id)   // TOUGE-ELEV B2: touge frames build the halo too (lamps in the car frame, B1)   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the GROUND pass reads it (the pass view is skipped)
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
