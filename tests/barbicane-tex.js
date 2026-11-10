@@ -19,8 +19,8 @@ ok('wiring: source() carries tex into src.tiles.grain', (() => {
   const on = RF.DriveAnim.source('road', 3.5, false, {}, { seed: 7, tiles: true });
   return off.tiles.grain === false && on.tiles.grain === true;
 })());
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-' + 'tex');
 })());
 

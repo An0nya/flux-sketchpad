@@ -50,8 +50,8 @@ ok('CPU: haloN called with sigma + beams check [KEEP: text — CPU halo lane]', 
 ok('CPU: trafficHalo exported on RF.Drive [KEEP: text — CPU halo lane]', drv.includes('trafficHalo') && drv.includes('haloN'));
 
 // ---- gate
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-trafficHalo');
 })());
 

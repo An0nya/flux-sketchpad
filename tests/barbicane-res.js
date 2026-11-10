@@ -15,8 +15,8 @@ ok('registry: default 640 [module]', o && o.default === 640);
 ok('registry: control none [module]', o && o.control === 'none');
 // KEEP: text [render-pipeline wiring — no headless behaviour seam]
 ok('drive-anim: referenced [KEEP: text — res constrains the internal render cell, unobservable headlessly]', /(^|[^a-zA-Z_])res(?![a-zA-Z_])/.test(anim));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-res');
 })());
 

@@ -20,8 +20,14 @@ ok('lane markings: broken -> single dashed yellow, solid -> double solid yellow 
   const off = D.laneMarkings(3.5, { us: false, broken: true }).filter((m) => m.mat === 'yellow-paint');
   return solid.length === 2 && broken.length === 1 && !!broken[0].pat && off.length === 0;
 })());
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+const A = RF.DriveAnim;
+ok('wiring: cline selects the broken centre-line path via source() [behaviour]', (() => {
+  const broken = A.source('road', 3.5, true, {}, { seed: 7, tiles: true, cline: 'broken' }).markings.filter((m) => m.mat === 'yellow-paint').length;
+  const solid  = A.source('road', 3.5, true, {}, { seed: 7, tiles: true, cline: 'solid' }).markings.filter((m) => m.mat === 'yellow-paint').length;
+  return broken === 1 && solid === 2;
+})());
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-cline');
 })());
 

@@ -13,8 +13,8 @@ ok('registry: exists, type enum, group street-lamps [module]', !!o && o.type ===
 ok('registry: default off [module]', o && o.default === 'off');
 // KEEP: text [own-lamp render lane (V.p slice projection), no headless behaviour seam]
 ok('drive-anim: in V.p projection [KEEP: text — own-lamp render lane, no headless behaviour seam]', /(^|[^a-zA-Z_])lampRoad(?![a-zA-Z_])/.test(anim));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-lampRoad');
 })());
 

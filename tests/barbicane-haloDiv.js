@@ -18,8 +18,8 @@ ok('registry: cost table-rebuild [module]', o && o.cost === 'table-rebuild');
 ok('drive-anim: in look projection [KEEP: text — GPU halo look-projection lane]', /(^|[^a-zA-Z_])haloDiv(?![a-zA-Z_])/.test(anim) && anim.includes('haloDiv: o.haloDiv'));
 // KEEP: text [GPU halo table lane]
 ok('drive-three-halo: consumed [KEEP: text — GPU halo table lane]', /(^|[^a-zA-Z_])haloDiv(?![a-zA-Z_])/.test(halo3) && halo3.includes('look.haloDiv'));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-haloDiv');
 })());
 

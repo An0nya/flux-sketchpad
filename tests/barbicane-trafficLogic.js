@@ -18,8 +18,8 @@ ok('wiring: source() carries trafficLogic into traffic state (default false, on 
     && A.source('road', 3.5, false, {}, { seed: 7, trafficLogic: true }).traffic.logic === true
     && A.source('road', 3.5, false, {}, { seed: 7, trafficLogic: false }).traffic.logic === false;
 })());
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-trafficLogic');
 })());
 

@@ -16,8 +16,8 @@ ok('behaviour: fpsSettings(minFps: 60) -> 60, frameTargetMs 1000/60 [behaviour]'
   const f = A.fpsSettings({ minFps: 60 });
   return f.minFps === 60 && f.frameTargetMs === 1000 / 60;
 })());
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-minFps');
 })());
 

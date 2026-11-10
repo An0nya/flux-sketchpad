@@ -23,8 +23,8 @@ ok('builder honours the preceding-car dist argument [behaviour]', (() => {
   return a.length === 2 && b.length === 2 && b[0] - a[0] === 40 && b[1] - a[1] === 40;
 })());
 ok('spec-ui: referenced [KEEP: text — option→buildScene lane is app-side, no headless seam]', /(^|[^a-zA-Z_])preDist(?![a-zA-Z_])/.test(spec));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-preDist');
 })());
 

@@ -16,8 +16,8 @@ ok('behaviour: nearestMinFps(50) -> 20 (1000/50=20), fpsSettings(frameTargetMs:5
   return A.nearestMinFps(50) === 20 && A.fpsSettings({ frameTargetMs: 50 }).minFps === 20
     && A.fpsSettings({ frameTargetMs: 33 }).minFps === 30;
 })());
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-frameTargetMs');
 })());
 

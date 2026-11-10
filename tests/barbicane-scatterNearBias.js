@@ -17,8 +17,8 @@ ok('registry: values [0, 1] [module]', o && o.values && o.values.length === 2 &&
 ok('drive-anim: in look projection [KEEP: text — GPU scatter look-projection lane]', /(^|[^a-zA-Z_])scatterNearBias(?![a-zA-Z_])/.test(anim) && anim.includes('scatterNearBias: o.scatterNearBias'));
 // KEEP: text [GPU scatter table lane]
 ok('drive-three: consumed [KEEP: text — GPU scatter table lane]', /(^|[^a-zA-Z_])scatterNearBias(?![a-zA-Z_])/.test(drive3) && drive3.includes('look.scatterNearBias'));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-scatterNearBias');
 })());
 

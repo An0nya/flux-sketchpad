@@ -16,8 +16,8 @@ ok('registry: cost per-frame-gpu [module]', o && o.cost === 'per-frame-gpu');
 ok('drive-anim: in V.p projection [KEEP: text — own-lamp render lane]', /(^|[^a-zA-Z_])lampCone(?![a-zA-Z_])/.test(anim) && anim.includes('lampCone: D.lampConeOn'));
 // KEEP: text [render-lane conservative fallback]
 ok('drive-anim: in conservative default [KEEP: text — own-lamp render lane]', anim.includes("lampCone: 'off'"));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-lampCone');
 })());
 

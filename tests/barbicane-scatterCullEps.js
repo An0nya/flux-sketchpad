@@ -22,8 +22,8 @@ ok('drive-anim: in look projection [KEEP: text — GPU cull threshold look-proje
 ok('drive-anim: LOD key [KEEP: text — GPU cull LOD lane]', /(^|[^a-zA-Z_])scatterCullEps(?![a-zA-Z_])/.test(anim) && anim.includes("'scatterCullEps'"));
 // KEEP: text [GPU halo table lane]
 ok('drive-three-halo: consumed [KEEP: text — GPU halo table lane]', /(^|[^a-zA-Z_])scatterCullEps(?![a-zA-Z_])/.test(halo3) && halo3.includes('look.scatterCullEps'));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-scatterCullEps');
 })());
 

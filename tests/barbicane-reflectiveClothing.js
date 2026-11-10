@@ -16,8 +16,8 @@ ok('wiring: source() carries reflectiveClothing into src.tiles.pedMode', (() => 
   return A.source('road', 3.5, false, {}, { seed: 7, tiles: true, reflectiveClothing: 'hivis' }).tiles.pedMode === 'hivis'
     && A.source('road', 3.5, false, {}, { seed: 7, tiles: true, reflectiveClothing: 'dark' }).tiles.pedMode === 'dark';
 })());
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-reflectiveClothing');
 })());
 

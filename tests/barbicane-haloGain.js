@@ -20,8 +20,8 @@ ok('drive-anim: in look projection [KEEP: text — GPU halo look-projection lane
 ok('drive-three-halo: consumed [KEEP: text — GPU halo table lane]', /(^|[^a-zA-Z_])haloGain(?![a-zA-Z_])/.test(halo3) && halo3.includes('look.haloGain'));
 // KEEP: text [CPU halo path — the level-vs-gain comment behaviour stays in review on the CPU renderer]
 ok('drive.js: comment says level never sets haloGain [KEEP: text — CPU halo lane]', /(^|[^a-zA-Z_])haloGain(?![a-zA-Z_])/.test(drive));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-haloGain');
 })());
 

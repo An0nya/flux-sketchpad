@@ -17,8 +17,8 @@ ok('registry: control [data-dv="scatterBinCounts"] [module]', o && o.control ===
 ok('drive-anim: in look projection [KEEP: text — GPU scatter look-projection lane]', /(^|[^a-zA-Z_])scatterBinCounts(?![a-zA-Z_])/.test(anim) && anim.includes('scatterBinCounts: o.scatterBinCounts'));
 // KEEP: text [GPU scatter-cache lane]
 ok('drive-three: cache key [KEEP: text — GPU scatter-cache lane]', /(^|[^a-zA-Z_])scatterBinCounts(?![a-zA-Z_])/.test(drive3) && drive3.includes('look.scatterBinCounts'));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-scatterBinCounts');
 })());
 

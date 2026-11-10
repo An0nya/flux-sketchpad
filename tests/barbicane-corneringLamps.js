@@ -16,8 +16,8 @@ ok('registry: default false [module]', o && o.default === false);
 ok('registry: control \'[data-anim="cornering-lamps"]\' [module]', o && o.control === "[data-anim=\"cornering-lamps\"]");
 // KEEP: text [own-lamp render path — V.high-lane lens logic, no headless behaviour seam]
 ok('drive-anim: referenced [KEEP: text — render-own-lamp lane, no headless behaviour seam]', /(^|[^a-zA-Z_])corneringLamps(?![a-zA-Z_])/.test(anim));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-' + 'corneringLamps');
 })());
 

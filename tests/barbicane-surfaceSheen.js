@@ -16,8 +16,8 @@ ok('registry: default false [module]', o && o.default === false);
 ok('registry: control \'[data-anim="surface-sheen"]\' [module]', o && o.control === "[data-anim=\"surface-sheen\"]");
 // KEEP: text [surface shader-sheen lane, no headless behaviour seam]
 ok('drive-anim: referenced [KEEP: text — surface-sheen render lane, no headless behaviour seam]', /(^|[^a-zA-Z_])surfaceSheen(?![a-zA-Z_])/.test(anim));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-' + 'surfaceSheen');
 })());
 

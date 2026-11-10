@@ -36,8 +36,8 @@ ok('behaviour: CLASSES carries [\'mt\', \'threads\'] [behaviour]', (() => { retu
 ok('drive-anim: mt control queried [data-anim="c-mt"] [KEEP: text — DOM lane]', anim.includes('[data-anim="c-mt"]'));
 
 // ---- gate
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-mt');
 })());
 

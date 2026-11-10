@@ -16,8 +16,8 @@ ok('registry: requires lampDistUsed [module]', o && o.requires && o.requires.len
 ok('drive-anim: in V.p projection [KEEP: text — own-lamp render lane]', /(^|[^a-zA-Z_])lampClass(?![a-zA-Z_])/.test(anim));
 // KEEP: text [glare-modulation lane]
 ok('drive-anim: in glareOpts [KEEP: text — own-lamp render lane]', /(^|[^a-zA-Z_])lampClass(?![a-zA-Z_])/.test(anim) && anim.includes('lampClass: o.lampClass'));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-lampClass');
 })());
 

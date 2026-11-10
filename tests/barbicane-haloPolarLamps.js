@@ -17,8 +17,8 @@ ok('registry: values [1, 2] [module]', o && o.values && o.values.length === 2 &&
 ok('drive-anim: in look projection [KEEP: text — GPU halo look-projection lane]', /(^|[^a-zA-Z_])haloPolarLamps(?![a-zA-Z_])/.test(anim) && anim.includes('haloPolarLamps: o.haloPolarLamps'));
 // KEEP: text [GPU halo table lane]
 ok('drive-three-halo: consumed [KEEP: text — GPU halo table lane]', /(^|[^a-zA-Z_])haloPolarLamps(?![a-zA-Z_])/.test(halo3) && halo3.includes('look.haloPolarLamps'));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-haloPolarLamps');
 })());
 

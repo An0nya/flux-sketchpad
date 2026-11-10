@@ -19,8 +19,8 @@ ok('behaviour: simCeiling(low->640, high->1600, odd->high, undefined->high) [beh
     && A.simCeiling() === 1600
     && A.SIM_CEILINGS.ultra === 2560 && A.SIM_CEILINGS.native === 3840;
 })());
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-simCeiling');
 })());
 

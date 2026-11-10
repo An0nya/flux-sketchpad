@@ -15,8 +15,8 @@ ok('registry: default 1 [module]', o && o.default === '1');
 ok('registry: control [data-dv="samples"] [module]', o && o.control === '[data-dv="samples"]');
 // KEEP: text [frame-time wiring — the samples ladder is read inside the render loop; no headless behaviour seam]
 ok('drive-anim: referenced [KEEP: text — V.ss/samples read in the frame path]', /(^|[^a-zA-Z_])samples(?![a-zA-Z_])/.test(anim));
-ok('gate: NODE registers this test [gate --list]', (() => {
-  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+ok('gate: NODE registers this test [gate --list-node-all]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list-node-all'], { encoding: 'utf8' });
   return out.includes('node:barbicane-samples');
 })());
 
