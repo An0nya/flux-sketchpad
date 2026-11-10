@@ -11,7 +11,7 @@ OBSERVED = counted by command (commands in the Method section). INFERRED = deduc
 | node tests in tests/*.js (minus gate, load, serve) | 99 (96 at f52ed8a, +3 option-registry tests) | `ls tests/*.js` minus 3; 7 of them are `*-page.js` helpers loaded by page tests |
 | curated gate (`node tests/gate.js --full --list`) | 43 = 21 node + 22 page (was 40; +options-registry, options-migration, options-docs) | prints 43 names |
 | regress page tests NOT in the curated gate | 121 of 143 | set difference |
-| `KNOWN_FAILING` in code | 1 (NE-state-leak) | tests/gate.js:42; the header comment (gate.js:10) lists 9 names as "known-failing, NOT in the gate" - the code list is shorter, but those 9 are simply absent from the curated lists |
+| `KNOWN_FAILING` in code | 0 (empty) | tests/gate.js:83 `const KNOWN_FAILING = []` — NE-state-leak was explained and pinned (ardan 11-09, landed 8474773) and wired into `PAGE_PAR`; the header comment (gate.js:10) still lists 9 names as "known-failing, NOT in the gate" - those 9 are simply absent from the curated lists |
 | `js/` files with a `MAP` entry in tests/gate.js | 17 of 75 (js/options-registry.js added) | regexes from the MAP literal applied to `ls js` |
 | `js/` files with NO MAP entry (a change makes `--touched` run the FULL gate) | 58 | same |
 
@@ -138,7 +138,7 @@ Headline (OBSERVED): the whole traffic-halo family (trafficHalo, haloBins, haloD
 
 | area | curated-gate tests | not in gate but exists |
 |---|---|---|
-| air beam, direct and table | SC-beam-scatter, SD-scatter-table, SE-table-pacing, SF-silhouette-fade, SF1-car-silhouette, FG-fog, node:scatter, scatter-table, scatter-table-pace, scatter-fade-gain | NE5-air-beam, NE-near-eye, NE-state-leak (open), SM-cycle-distance, SN-air-defer, TL-first-open |
+| air beam, direct and table | SC-beam-scatter, SD-scatter-table, SE-table-pacing, SF-silhouette-fade, SF1-car-silhouette, FG-fog, node:scatter, scatter-table, scatter-table-pace, scatter-fade-gain | NE5-air-beam, NE-near-eye, NE-state-leak, SM-cycle-distance, SN-air-defer, TL-first-open |
 | traffic halo | node:traffic-beams (beam side only) | SL-traffic-halo, HDX7-halo-levels, node:traffic-halo, node:halo-levels (names in tests/) |
 | lamp road | - | LDR1-lamp-road (reachable only via MAP rules on drive-three.js, lamp-dist.js); the lamp-halo sprite, LHS1 and BF were removed in Brief U |
 | wetness / sheen / GGX | WT-wetness, WG-wet-ggx, node:wetness, wet-ggx | - |
