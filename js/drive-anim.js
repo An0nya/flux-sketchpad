@@ -2621,6 +2621,23 @@ void main() {
     const pCust = E('input', { type: 'text', 'data-anim': 'endlessPresetCustom', size: 18, spellcheck: 'false', placeholder: 'custom JSON', title: 'Custom endless preset (used when the preset is "custom"): {"biome":"city"} or {"mix":{"open":0.7,"mountain":0.3},"weights":{"straight":5},"grade":[0.01,0.04],"tunnel":0.2}. Saved with the state dump like every option.' });
     pCust.addEventListener('change', () => setDV(ui, 'endlessPresetCustom', pCust.value));
     ui.driveExtras.append(pCust);   // endlessPresetCustom input
+    // endless-road-v2 (harbert, part 2): the axis settings UI — each of the five axes edits as a lo/hi pair of selects
+    // ('auto' + the ladder rungs: both auto = auto, lo===hi = fixed, lo<hi = auto-within; mapping in RF.EndlessAxes
+    // axisPair/axisFromPair so the node test checks it) plus a curviness input. Any change serializes the whole group
+    // into the endlessAxes option (JSON string; '' = all auto = the seeded walk, byte-identical OFF).
+    const axWrap = E('span', { 'data-anim': 'endlessAxes', title: 'Endless road axis settings: per axis auto, a fixed rung, or an auto-within range (lo/hi), plus how strongly the walk favours curves. Empty = all auto.' });
+    const AX = RF.EndlessAxes.AXES, axPairs = {};
+    const axCommit = () => { const pairs = {}; for (const a of AX) pairs[a] = axPairs[a]; setDV(ui, 'endlessAxes', RF.EndlessAxes.fromUi(pairs, curv.value)); };   // curv declared below (hoisted use inside the closure is fine: change fires after build)
+    for (const axis of AX) {
+      axPairs[axis] = { lo: null, hi: null };
+      const mk = (end) => { const s = E('select', { 'data-anim': 'endlessAxes_' + axis + end, 'aria-label': 'endless ' + axis + ' ' + end, title: 'Endless road ' + axis + ' axis, ' + (end === 'lo' ? 'lower' : 'upper') + ' bound: auto, or a rung of ' + RF.EndlessAxes.LADDERS[axis].join('/') }, E('option', { value: 'auto' }, 'auto'), ...RF.EndlessAxes.LADDERS[axis].map((r) => E('option', { value: r }, r)));
+        s.addEventListener('change', axCommit); axPairs[axis][end] = s; axWrap.append(s); return s; };
+      mk('lo'); mk('hi');
+    }
+    var curv = E('input', { type: 'number', 'data-anim': 'endlessCurviness', 'aria-label': 'endless road curviness', min: '0.25', max: '4', step: '0.05', title: 'Endless road curviness: how strongly the walk favours (>) or avoids (<) curved tiles, 0.25..4, 1 = neutral' });
+    curv.addEventListener('change', axCommit);
+    axWrap.append(curv);
+    ui.driveExtras.append(axWrap);   // endlessAxes axis-settings group (placed by drive-layout into the scene pane)
     preset.addEventListener('change', () => setDV(ui, 'endlessPreset', preset.value));
     ui.driveExtras.append(preset);   // endlessPreset select
     const terr = E('button', { type: 'button', class: 'toggle', 'data-anim': 'tileTerrain', 'aria-pressed': 'false', title: 'Terrain skirts on endless tile roads (opt-in, pricy): with endless road + 3D route on, the ground beyond the carriageway undulates (falloff + coarse noise). Off: the verge follows the plain grade walk.' }, 'terrain');
@@ -2765,6 +2782,11 @@ void main() {
     for (const b of q('[data-anim="cabinMirror"]')) { b.setAttribute('aria-pressed', String(!!o.cabinMirror)); b.disabled = !o.cabinView; }   // ayrton 11-04: cabinMirror sync (needs cabinView)
     for (const b of q('[data-anim="imperial-units"]')) b.setAttribute('aria-pressed', String(!!o.imperialUnits));
     for (const s2 of q('[data-anim="endlessPresetCustom"]')) s2.value = o.endlessPresetCustom || '';
+    {   // endless-road-v2 (harbert): sync the axis-settings group from the option (parse fail-soft, so a hand-edited bad JSON still shows something sane)
+      const cfg = RF.EndlessAxes.parse(o.endlessAxes || '');
+      for (const axis of RF.EndlessAxes.AXES) { const pr = RF.EndlessAxes.axisPair(cfg, axis); if (axPairs[axis]) { axPairs[axis].lo.value = pr.lo; axPairs[axis].hi.value = pr.hi; } }
+      for (const s2 of q('[data-anim="endlessCurviness"]')) s2.value = String(cfg.userCurviness);
+    }
     for (const s2 of q('[data-anim="endlessPreset"]')) s2.value = o.endlessPreset || 'off';
     for (const s2 of q('[data-anim="cabinStyle"]')) s2.value = o.cabinStyle || 'modern';
     if (V.cabinUnlocked && (!o.cabinView || o.cabinStyle !== 'miata')) { V.cabinUnlocked = false; V.cabinDrag = null; if (V.cabin) { V.cabin.style.pointerEvents = ''; V.cabin.style.cursor = ''; } for (const b of q('[data-anim="cabinDragUnlock"]')) b.setAttribute('aria-pressed', 'false'); }   // relock: only the photo cabin moves

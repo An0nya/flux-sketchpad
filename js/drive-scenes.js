@@ -341,7 +341,7 @@
 
   const SCENES = {
     road: {
-      label: 'Open road',
+      label: 'Open road (legacy)',   // endless-road-v2 (Anya): the four pre-tile scenes stay, labelled legacy
       build(ctx, o) {
         const k = kit(ctx), us = ctx.us;
         for (let s = 20; s < 300; s += 50) { k.post(s, k.edgeR - 0.9); k.post(s + 25, k.edgeL + 0.9); }          // delineators: white right, white left (EU: red-white; plain here)
@@ -353,11 +353,11 @@
       },
     },
     forest: {
-      label: 'Forest road',
+      label: 'Forest road (legacy)',
       build(ctx, o) { return generateScenery('forest', ctx, o, ctx.scenery); },
     },
     city: {
-      label: 'City street',
+      label: 'City street (legacy)',
       build(ctx, o) { return generateScenery('city', ctx, o, ctx.scenery); },
     },
   };

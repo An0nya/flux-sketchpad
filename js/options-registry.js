@@ -1157,6 +1157,16 @@
       note: 'le-chonk (11-01, Anya: configure and save presets): JSON for endlessPreset=custom — {"biome":"city"} or {"mix":{"open":0.7,"mountain":0.3},"weights":{"straight":5},"grade":[0.01,0.04],"tunnel":0.2,"props":{"speed":110,"density":0.8,"lampGap":50,"lampStyle":"cobra"}}. Validated per key in parseCustomPreset; invalid JSON falls back to off. Saved/loaded with the state dump like every profile option.',
     },
     {
+      id: 'endlessAxes', kind: 'profile', type: 'text', values: null,
+      default: '', label: 'endless road axis settings JSON (settlement/roadClass/relief/cover/water + userCurviness)',
+      control: '[data-anim="endlessAxes"]', where: 'more', query: null,
+      group: 'road', cost: 'scene-regenerate',
+      owner: ['js/endless-axis-config.js', 'js/drive-anim.js'],
+      requires: [need('tiles')],
+      tests: ['node:endless-axis-ui'],
+      note: 'harbert (11-10, Endless road v2 slice (a) part 2): per-axis settings for the endless tile road, consumed by js/endless-relief.js (pencroff) and js/endless-settlement-road.js (nemo) through RF.EndlessAxes.timeline/valueAt. JSON: {"settlement":"auto"|rung|{"min":rung,"max":rung}, ...five axes settlement/roadClass/relief/cover/water (ordered ladders in js/endless-axis-config.js), plus "userCurviness":0.25..4 (default 1) biasing tile-kind weights toward/away from curves. Empty string = all axes auto = the v1 seeded biome walk, byte-identical. Invalid JSON or unknown rungs fail soft to auto per axis (RF.EndlessAxes.parse); min>max swaps; fixed axes never leave their rung; relief never skips a rung. The scene-tab control edits each axis as a lo/hi pair of selects (lo===hi fixed, lo<hi auto-within, both auto = auto) plus a curviness input; mapping helpers axisPair/axisFromPair/fromUi live in js/endless-axis-config.js so the node test checks them without a DOM.',
+    },
+    {
       id: 'tileTerrain', kind: 'profile', type: 'bool', values: null,
       default: false, label: 'terrain skirts on endless tile roads (opt-in, pricy)',
       control: '[data-anim="tileTerrain"]', where: 'more', query: null,

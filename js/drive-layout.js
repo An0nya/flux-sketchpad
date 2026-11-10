@@ -31,7 +31,7 @@
     ['performance', null, 'View', [dv('fov'), an('canvas-shape'), an('panel-mode'), dv('driveScrub'), an('scrub'), an('scrub-lab'), an('fps-counter'), an('large-card'), an('animate-ui'), an('imperial-units')]],
     // owner 11-02: the prototype controls that had no row (they sat in Performance > Other). Placed so they can be tried; each still needs testing
     // and integration into its proper group before the "Prototype" label comes off
-    ['scene', null, 'Prototype: endless road (needs testing; most need route tiles on)', [an('endlessRoad'), an('elevatedView'), an('endlessPreset'), an('endlessPresetCustom'), an('tileTerrain'), an('multilaneRoad'), an('endlessTunnel'), an('endlessCrossing'), an('junctionGantries'), an('yawSmooth')]],
+    ['scene', null, 'Prototype: endless road (needs testing; most need route tiles on)', [an('endlessRoad'), an('elevatedView'), an('endlessPreset'), an('endlessPresetCustom'), an('endlessAxes'), an('tileTerrain'), an('multilaneRoad'), an('endlessTunnel'), an('endlessCrossing'), an('junctionGantries'), an('yawSmooth')]],
     ['scene', null, 'Prototype: cabin and drift (needs testing)', [an('cabinView'), an('cabinStyle'), an('cabinLight'), an('cabinFovFrame'), an('cabinDigitalRedesign'), an('cabinWetnessSlider'), an('cabinMirror'), an('cabinGaugeLight'), '.cabin-zoom', '.cabin-offset', an('driftMode'), an('driftDynamics'), an('driftAfs'), an('driftCabin')]],
     ['lighting', 'glare', 'Prototype: extras (needs testing)', [dv('wetVeil'), dv('trafficMarkers')]],
     ['details', null, '', [an('scene-details'), an('scene-details-panel')]],

@@ -102,6 +102,7 @@ const FROZEN_OLD_DV_DEF = {
   elevatedView: false,   // le-chonk 10-30 (elevatedView prototype): new option (not a default change); registry position: after mountainPass
   endlessPreset: 'off',   // le-chonk 10-30 (endless road preset): new option (not a default change)
   endlessPresetCustom: '',   // le-chonk 11-01 (custom endless preset JSON): new option, default empty
+  endlessAxes: '',   // harbert 11-10 (endless road axis settings JSON): new option, default empty = all axes auto
   tileTerrain: false,   // le-chonk 10-31 (terrain skirts opt-in): new option, default off
   multilaneRoad: false,   // le-chonk 10-31 (2+2 highway phase 0, drive view only): new option, default off
   endlessTunnel: false,   // le-chonk 10-31 (tunnel tiles, opt-in): new option, default off

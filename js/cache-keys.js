@@ -31,6 +31,8 @@
     hcrSplat: function (o) { return o.haloCrossingRefine ? [o.haloCrossingRefine, o.haloRefineNeighbour] : undefined; },
     // o.tiles ? o.endlessPresetCustom || '' : ''
     tilesCustom: function (o) { return o.tiles ? o.endlessPresetCustom || '' : ''; },
+    // o.tiles ? o.endlessAxes || '' : '' (harbert 11-10, endless-road-v2 part 2: the axis settings JSON; '' = OFF)
+    tilesAxes: function (o) { return o.tiles ? o.endlessAxes || '' : ''; },
     // o.tiles ? o.endlessPreset : 'off'
     tilesPreset: function (o) { return o.tiles ? o.endlessPreset : 'off'; },
     // o.tiles ? [o.streetLamps, o.tex, wetnessOf(o), o.lampRule] : undefined
@@ -243,6 +245,7 @@
     { id: 'yawSmooth', type: 'f' },
     { id: 'cabinLight', type: 'f' },
     { spl: 'tilesCustom', opts: 'tiles,endlessPresetCustom' },
+    { spl: 'tilesAxes', opts: 'tiles,endlessAxes' },
     { ext: 2 },  // SUBTICK reference
     { id: 'cabinMirror', type: 'f' },
     { drv: 'roadSurfaces', opts: 'roadSurfaces' },

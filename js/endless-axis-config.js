@@ -74,9 +74,11 @@
     return 'auto';
   }
   function parse(o) {
+    if (typeof o === 'string') o = safeJson(o);   // callers pass the raw option value: a JSON string, '' (OFF = all auto), or an object. Found by endless-axis-ui (part 2): parse('') clamped curviness to 0.25 because +'' is 0.
+    if (!o || typeof o !== 'object') o = {};
     const out = {};
-    for (const a of AXES) out[a] = parseAxis(a, o ? o[a] : undefined);
-    const c = +(o && o.userCurviness);
+    for (const a of AXES) out[a] = parseAxis(a, o[a]);
+    const c = +o.userCurviness;
     out.userCurviness = Number.isFinite(c) ? Math.min(4, Math.max(0.25, c)) : 1;
     return out;
   }
@@ -173,6 +175,35 @@
     return 'sharp';
   }
 
-  RF.EndlessAxes = { LADDERS, AXES, SPEED, parse, timeline, valueAt, styleAt, speedLimitAt, rangeOf, isFixed, isRange };
+  // --- axis UI mapping (part 2): the scene tab edits each axis as a PAIR of selects (lo, hi) over 'auto' + the ladder
+  // rungs, plus one curviness input. Semantics: both 'auto' -> auto; lo === hi -> fixed; lo < hi -> auto-within-{min,max}
+  // (inverted pairs swap, same as parse). axisPair() is the sync direction (config -> select values); axisFromPair() the
+  // commit direction (select values -> the axis's entry in the config object). Both are pure so the node test can check
+  // them without a DOM.
+  function axisPair(config, axis) {
+    const v = (config || {})[axis];
+    const ladder = LADDERS[axis];
+    if (isFixed(v)) return { lo: v, hi: v };
+    if (isRange(v)) return { lo: ladder.includes(v.min) ? v.min : 'auto', hi: ladder.includes(v.max) ? v.max : 'auto' };
+    return { lo: 'auto', hi: 'auto' };
+  }
+  function axisFromPair(axis, lo, hi) {
+    const ladder = LADDERS[axis];
+    const a = ladder.includes(lo) ? lo : 'auto', b = ladder.includes(hi) ? hi : 'auto';
+    if (a === 'auto' && b === 'auto') return 'auto';
+    if (a === 'auto' || b === 'auto') return 'auto';   // a half-set pair is not meaningful; auto wins (fail-soft, like parse)
+    return a === b ? a : (ladder.indexOf(a) <= ladder.indexOf(b) ? { min: a, max: b } : { min: b, max: a });
+  }
+  // The whole UI state -> the option's JSON string. curviness is clamped by parse anyway; keep the written value honest.
+  function fromUi(pairs, curviness) {
+    const cfg = {};
+    for (const axis of AXES) cfg[axis] = axisFromPair(axis, pairs[axis] && pairs[axis].lo, pairs[axis] && pairs[axis].hi);
+    const c = +curviness;
+    if (isFinite(c) && c !== 1) cfg.userCurviness = Math.min(4, Math.max(0.25, c));
+    const allAuto = AXES.every((a) => cfg[a] === 'auto');
+    return allAuto && cfg.userCurviness === undefined ? '' : JSON.stringify(cfg);   // all-auto serializes to '' (the OFF default)
+  }
+
+  RF.EndlessAxes = { LADDERS, AXES, SPEED, parse, timeline, valueAt, styleAt, speedLimitAt, rangeOf, isFixed, isRange, axisPair, axisFromPair, fromUi };
   if (typeof module === 'object' && module && module.exports) module.exports = RF.EndlessAxes;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

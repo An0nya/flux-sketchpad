@@ -931,8 +931,8 @@
       const btn = (k, title, fn) => { const b = el('button', { type: 'button', class: 'toggle', 'data-dv': k, title }); b.addEventListener('click', fn); bar.append(b); return b; };
       // DD: a heavy option with 3+ values is a select: one change, one apply. onPick reads s.value before it calls setDV (setDV re-syncs this select).
       const dvSelect = (k, aria, title, opts, onPick) => { const s = el('select', { 'data-dv': k, 'aria-label': aria, title }, ...opts.map(([v, t]) => el('option', { value: v }, t))); s.addEventListener('change', () => onPick(s)); bar.append(s); return s; };
-      const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road or a city street' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)), el('option', { value: '__pass', title: 'Prototype: grades, hairpins, banking. Needs the GPU drive renderer for elevation; the CPU stays flat.' }, 'Mountain pass (prototype)'));
-      sel.addEventListener('change', () => { const v = sel.value; if (v === '__pass') setDV(ui, 'mountainPass', true); else { if (dvOpts(ui).mountainPass) setDV(ui, 'mountainPass', false); setDV(ui, 'scene', v); } }); bar.append(sel);   // v read first: setDV re-syncs this select
+      const sel = el('select', { 'data-dv': 'scene', title: 'Where the beam is: an open road, a forest road or a city street' }, ...Object.keys(RF.Drive.scenes).filter((k) => !RF.Drive.scenes[k].hidden).map((k) => el('option', { value: k }, RF.Drive.scenes[k].label)), el('option', { value: '__pass', title: 'Prototype: grades, hairpins, banking. Needs the GPU drive renderer for elevation; the CPU stays flat.' }, 'Mountain pass (prototype)'), el('option', { value: '__endless', title: 'Endless road (prototype): a generated tile road whose settlement, road class, relief, cover and water are scheduled along the route. Sets tiles + endless road; the axis settings live in the scene tab.' }, 'Endless road (prototype)'));
+      sel.addEventListener('change', () => { const v = sel.value; if (v === '__pass') setDV(ui, 'mountainPass', true); else if (v === '__endless') { if (dvOpts(ui).mountainPass) setDV(ui, 'mountainPass', false); setDV(ui, 'tiles', true); setDV(ui, 'endlessRoad', true); } else { if (dvOpts(ui).mountainPass) setDV(ui, 'mountainPass', false); if (dvOpts(ui).endlessRoad) setDV(ui, 'endlessRoad', false); setDV(ui, 'scene', v); } }); bar.append(sel);   // v read first: setDV re-syncs this select; __endless sets tiles+endlessRoad (harbert 11-10, endless-road-v2 part 2)
       btn('shape', 'The road: straight, or an IIHS bend (shared with the Road view)', () => { const o = rvOpts(ui); setRV(ui, 'shape', RV_SHAPES[(RV_SHAPES.indexOf(o.shape) + 1) % RV_SHAPES.length]); });
       btn('wetness', 'Road surface, cycling dry, damp (a light wet film), wet (darker) and standing water (mirror-like)', () => cycleWetness(ui));
       // ayrton 11-04 (Anya: wetness slider): when cabinWetnessSlider is on, a range slider replaces the cycle button.
@@ -1063,7 +1063,7 @@
     const pend = ui.dvPending || {}, ov = (k) => (k in pend ? pend[k] : o[k]);   // DD: a debounced button shows its pending value at once
     for (const b of new Set([...bar.querySelectorAll('[data-dv]'), ...[]])) {
       const k = b.dataset.dv;
-      if (k === 'scene') b.value = o.mountainPass ? '__pass' : o.scene;
+      if (k === 'scene') b.value = o.mountainPass ? '__pass' : (o.endlessRoad && o.tiles ? '__endless' : o.scene);   // endless-road-v2 (harbert): the endless pick reflects tiles+endlessRoad
       else if (k === 'onMode') b.value = o.onMode;
       else if (k === 'fov') b.value = String(o.fov);
       else if (k === 'samples') b.value = ['1', '2', 'auto'].includes(String(o.samples)) ? String(o.samples) : '1';

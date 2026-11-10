@@ -101,6 +101,20 @@
       wetness: 0.4,
       deerBehaviour: true,
     },
+    // endless-road-v2 (harbert, part 2): the endless-road starter preset — tiles + endless road on, a rolling-to-hilly
+    // relief range and a mild curve bias; the five axis settings stay otherwise auto (the seeded walk decides).
+    'endless-road': {
+      scene: 'road',
+      tiles: true,
+      endlessRoad: true,
+      endlessPreset: 'off',
+      endlessAxes: '{"relief":{"min":"rolling","max":"hilly"},"userCurviness":1.25}',
+      elevatedView: true,
+      gpuRenderer: true,
+      seed: 7,
+      trafficDensity: 0.4,
+      streetLamps: 'sodium',
+    },
   };
   // The preset named by a #preset=<name> link, or null. #reset and #safe (anywhere in the hash) win over it.
   function fromHash(hash) {
