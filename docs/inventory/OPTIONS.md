@@ -229,6 +229,7 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `cabinZoom` | profile | view | free | 1 | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
 | `cabinOffsetX` | profile | view | free | 0 | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
 | `cabinOffsetY` | profile | view | free | 0 | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
+| `endlessDetails` | profile | diagnostics | free | false | - | drive-anim.js | - | - | - | - | - | - | `tests/endless-details.js` |
 <!-- END GENERATED option-table -->
 
 DV_DEF keys with no row above (script check): none.

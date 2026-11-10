@@ -2351,6 +2351,7 @@ void main() {
     btn('load-state', 'Load a saved state file: every option and the position, paused there. It replaces your current settings. Traffic logic cars restart from the seed at that spot, so they come back close, not exact.', () => stateIn.click(), 'load state');
     bar.append(stateIn, stateMsg);
     btn('imperial-units', 'Imperial units (opt-in): speed readouts show mph instead of km/h. Display-only; stored speeds stay km/h. Rarely changed, so it lives here in Performance, not the top bar.', () => setDV(ui, 'imperialUnits', !info().o.imperialUnits), 'mph');
+    btn('endless-details', 'Endless-road live numbers: settlement, road class, tile position, traffic params, beam, relief, cover, water, renderer. Refreshes about 4 times a second; off costs nothing.', () => setDV(ui, 'endlessDetails', !info().o.endlessDetails), 'Endless details');
     btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
     btn('scene-details', 'Live numbers about the scene in a small panel: own car, oncoming traffic, glare, hazards, range and lamp. Refreshes about 4 times a second; off costs nothing.', () => setDV(ui, 'sceneDetails', !info().o.sceneDetails), 'Scene details');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
@@ -2800,7 +2801,7 @@ void main() {
     const hb = V.ui.driveBar.querySelector('[data-anim="high-beam"]'), mode = V.highMode || 'off';
     hb.setAttribute('aria-pressed', String(!!V.high)); hb.dataset.state = mode;
     hb.textContent = mode === 'auto' ? 'high beam: auto (' + (V.autoSt ? V.autoSt.reason : 'clear') + ')' : 'high beam: ' + mode;
-    for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['scene-details', 'sceneDetails'], ['dynamic-resolution', 'dynamicResolution']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
+    for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['scene-details', 'sceneDetails'], ['endless-details', 'endlessDetails'], ['dynamic-resolution', 'dynamicResolution']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
     V.ui.driveBar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.ui.driveBar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
     V.ui.driveBar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
@@ -3147,6 +3148,7 @@ void main() {
     labels(ui); gameControls(ui);
     const want = supported(I.o) && (st.view === 'anim' || st.popout);
     detailsSync(want);
+    endlessDetailsSync(want);
     if (!want) { stop(); killWorkers(); if (V.canvas) V.canvas.hidden = true; return; }
     if (V.lost && !V.glFailed) { stop(); return; }
     if (!ensureCanvas()) { st.playing = false; if (V.canvas) V.canvas.hidden = true; if (st.popout) closePop(ui); labels(ui); return; }
@@ -3325,7 +3327,147 @@ void main() {
   const detailsStats = () => V.detailsSnap ? { t: V.detailsSnap.t, rows: V.detailsSnap.rows.map((r) => Object.assign({}, r)) } : null;
 
   // a hidden tab stops the loop; showing it again redraws (which restarts it)
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (V.ui) { if (document.visibilityState === 'hidden') { stop(); detailsPause(); } else if (V.info) { if (S(V.ui).popout && !popValid(V.ui)) closePop(V.ui); else V.ui.redrawSpec(); } } });
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (V.ui) { if (document.visibilityState === 'hidden') { stop(); detailsPause(); endlessDetailsPause(); } else if (V.info) { if (S(V.ui).popout && !popValid(V.ui)) closePop(V.ui); else V.ui.redrawSpec(); } } });
+
+  // ---------------------------------------------------------------- endless road details (like scene details, for endless-road data only)
+  const endlessDetailsOn = () => !!(V.info && V.info.o.endlessDetails);
+  // Data we can collect without advancing traffic, activating scenery or drawing anything.
+  function endlessDetailState() {
+    const I = info(), o = I.o, st = S(V.ui), p = V.p, dist = st.dist || 0;
+    const seed = (+o.seed || 0) | 0, TILE_LEN = 200, k = Math.floor(dist / TILE_LEN);
+    const settings = o.endlessAxes || '';
+    const onTiles = !!(o.tiles && o.endlessRoad);
+
+    // (1) roadClass + settlement
+    let settlement = 'n/a', roadClass = 'n/a', speedLimit = null;
+    if (onTiles && RF.EndlessSettlementRoad) {
+      const sr = RF.EndlessSettlementRoad.settlementRoadAt(seed, k, settings);
+      if (sr) { settlement = sr.settlement; roadClass = sr.roadClass; speedLimit = sr.speedLimit; }
+    }
+
+    // (2) tile position
+    const tilePos = { seed, k, dist };
+
+    // (3) traffic params
+    let traffic = null;
+    if (onTiles && RF.EndlessTraffic) {
+      traffic = RF.EndlessTraffic.trafficAt(seed, k, settings);
+    }
+
+    // (4) beam: yaw, pitch, wetness, scatter gain, high beam, own beam name
+    const beam = {
+      yaw: p ? p.yaw || 0 : 0,
+      pitch: p ? p.pitch || 0 : 0,
+      wetness: D.wetnessOf(o),
+      scatterGain: o.scatterGain,
+      highMode: V.highMode || 'off',
+      ownLow: o.ownLow || 'design',
+      ownHigh: o.ownHigh || 'generic',
+    };
+
+    // (5) cover + water
+    let coverWater = null;
+    if (onTiles && RF.EndlessCoverWater) {
+      coverWater = RF.EndlessCoverWater.coverWaterAt(seed, k, settings);
+    }
+
+    // (6) renderer + FPS
+    const s = stats();
+
+    return { onTiles, settlement, roadClass, speedLimit, tilePos, traffic, beam, coverWater, renderer: s.renderer, fps: s.fps };
+  }
+
+  function endlessDetailsRender(d) {
+    if (!V.endlessDetailsEl) {
+      const el = E('section', { class: 'drive-details', 'data-anim': 'endless-details-panel', 'aria-label': 'Endless road details' });
+      // section 1: road
+      const s1 = E('details', { class: 'dd-group' }, E('summary', {}, 'Road'),
+        E('div', { 'data-metric': 'ed-settlement' }, E('span', { class: 'dd-label' }, 'Settlement'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-roadclass' }, E('span', { class: 'dd-label' }, 'Road class'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-speedlimit' }, E('span', { class: 'dd-label' }, 'Speed limit'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-tilepos' }, E('span', { class: 'dd-label' }, 'Tile'), E('output', { class: 'dd-value' })));
+      el.append(s1);
+      // section 2: traffic
+      const s2 = E('details', { class: 'dd-group' }, E('summary', {}, 'Traffic'),
+        E('div', { 'data-metric': 'ed-onmode' }, E('span', { class: 'dd-label' }, 'On mode'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-safegap' }, E('span', { class: 'dd-label' }, 'Safe gap ×'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-truck' }, E('span', { class: 'dd-label' }, 'Truck frac'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-onkcd' }, E('span', { class: 'dd-label' }, 'On Kcd ms'), E('output', { class: 'dd-value' })));
+      el.append(s2);
+      // section 3: beam
+      const s3 = E('details', { class: 'dd-group' }, E('summary', {}, 'Beam'),
+        E('div', { 'data-metric': 'ed-ownlow' }, E('span', { class: 'dd-label' }, 'Own low'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-ownhigh' }, E('span', { class: 'dd-label' }, 'Own high'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-highmode' }, E('span', { class: 'dd-label' }, 'High mode'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-yaw' }, E('span', { class: 'dd-label' }, 'Yaw'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-pitch' }, E('span', { class: 'dd-label' }, 'Pitch'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-wetness' }, E('span', { class: 'dd-label' }, 'Wetness'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-scatter' }, E('span', { class: 'dd-label' }, 'Scatter gain'), E('output', { class: 'dd-value' })));
+      el.append(s3);
+      // section 4: cover + water
+      const s4 = E('details', { class: 'dd-group' }, E('summary', {}, 'Cover + water'),
+        E('div', { 'data-metric': 'ed-cover' }, E('span', { class: 'dd-label' }, 'Cover'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-water' }, E('span', { class: 'dd-label' }, 'Water'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-trees' }, E('span', { class: 'dd-label' }, 'Trees'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-bushes' }, E('span', { class: 'dd-label' }, 'Bushes'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-deer' }, E('span', { class: 'dd-label' }, 'Deer'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-fence' }, E('span', { class: 'dd-label' }, 'Fence'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-foliage' }, E('span', { class: 'dd-label' }, 'Foliage'), E('output', { class: 'dd-value' })));
+      el.append(s4);
+      // section 5: renderer
+      const s5 = E('details', { class: 'dd-group' }, E('summary', {}, 'Renderer'),
+        E('div', { 'data-metric': 'ed-renderer' }, E('span', { class: 'dd-label' }, 'Renderer'), E('output', { class: 'dd-value' })),
+        E('div', { 'data-metric': 'ed-fps' }, E('span', { class: 'dd-label' }, 'FPS'), E('output', { class: 'dd-value' })));
+      el.append(s5);
+      V.endlessDetailsEl = el;
+    }
+    const el = V.endlessDetailsEl;
+    const set = (id, v) => { const r = el.querySelector('[data-metric="' + id + '"]'); if (r) r.querySelector('.dd-value').textContent = v; };
+    const s = d.onTiles ? '' : ' (not on an endless road)';
+    set('ed-settlement', d.settlement + s);
+    set('ed-roadclass', d.roadClass + s);
+    set('ed-speedlimit', d.speedLimit !== null && d.speedLimit !== undefined ? String(d.speedLimit) + ' km/h' : s || 'n/a');
+    set('ed-tilepos', 'seed ' + d.tilePos.seed + ' k ' + d.tilePos.k + ' dist ' + Math.round(d.tilePos.dist) + ' m');
+    if (d.traffic) {
+      set('ed-onmode', d.traffic.onMode);
+      set('ed-safegap', d.traffic.safeGapMul.toFixed(2));
+      set('ed-truck', d.traffic.truckFraction.toFixed(3));
+      set('ed-onkcd', d.traffic.onKcdMs + ' ms');
+    } else { set('ed-onmode', s || 'n/a'); set('ed-safegap', s || 'n/a'); set('ed-truck', s || 'n/a'); set('ed-onkcd', s || 'n/a'); }
+    set('ed-ownlow', d.beam.ownLow);
+    set('ed-ownhigh', d.beam.ownHigh);
+    set('ed-highmode', d.beam.highMode);
+    set('ed-yaw', d.beam.yaw.toFixed(2) + ' rad');
+    set('ed-pitch', d.beam.pitch.toFixed(2) + ' rad');
+    set('ed-wetness', d.beam.wetness.toFixed(2));
+    set('ed-scatter', d.beam.scatterGain);
+    if (d.coverWater) {
+      set('ed-cover', d.coverWater.cover);
+      set('ed-water', d.coverWater.water);
+      set('ed-trees', String(d.coverWater.trees));
+      set('ed-bushes', String(d.coverWater.bushes));
+      set('ed-deer', d.coverWater.deer.toFixed(2));
+      set('ed-fence', String(d.coverWater.fence));
+      set('ed-foliage', d.coverWater.foliageDensity.toFixed(2));
+    } else { for (const id of ['ed-cover','ed-water','ed-trees','ed-bushes','ed-deer','ed-fence','ed-foliage']) set(id, s || 'n/a'); }
+    set('ed-renderer', d.renderer);
+    set('ed-fps', d.fps.toFixed(1) + ' fps');
+  }
+
+  function endlessDetailsPause() { if (V.endlessDetailsTimer) { clearInterval(V.endlessDetailsTimer); V.endlessDetailsTimer = 0; } }
+  function endlessDetailsTick() {
+    if (!endlessDetailsOn()) { endlessDetailsSync(false); return; }
+    const d = endlessDetailState();
+    const L = V.ui.driveLayout, host = L ? L.panes.details : null;
+    if (!host) return;
+    endlessDetailsRender(d);
+    if (V.endlessDetailsEl.parentElement !== host) host.append(V.endlessDetailsEl);
+  }
+  function endlessDetailsSync(run) {
+    if (run && endlessDetailsOn()) { if (!V.endlessDetailsTimer) V.endlessDetailsTimer = setInterval(endlessDetailsTick, DETAIL_MS); endlessDetailsTick(); return; }
+    endlessDetailsPause();
+    if (V.endlessDetailsEl) { V.endlessDetailsEl.remove(); V.endlessDetailsEl = null; }
+  }
 
   // ---------------------------------------------------------------- numbers for tests and the report
   const pct = (a, q) => { if (!a || !a.length) return 0; const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * q))]; };

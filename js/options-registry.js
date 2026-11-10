@@ -1917,6 +1917,14 @@
       note: 'frenchie (B6, handoff section 5/6): the oncoming table march clips each lamp bin to its beam cone (the same planes the cull and the CP pass use, drive-three-halo-cull.js coneClip) and samples equiangularly about the lamp inside the clipped interval (Kulla & Fajardo: ds/r^2 = dtheta/h), so every sample lands in lit air and the 1/r^2 peak is resolved; CPU twin in drive.js trafficHalo. OFF = the shipped 6-step log ladder, byte-identical. With haloCrossingRefine on the refinement wins (ignoredWhen); with haloLampWin / haloWidthStep / haloJitter on this schedule replaces them (forced off at build).'
     },
     {
+      id: 'endlessDetails', kind: 'profile', type: 'bool', values: null,
+      default: false, label: 'endless road details panel',
+      control: '[data-anim="endless-details"]', where: 'more', query: null,
+      group: 'diagnostics', cost: 'free',
+      owner: ['js/drive-anim.js'],
+      tests: ['node:endless-details'],
+    },
+    {
       id: 'cabinGaugeLight', kind: 'profile', type: 'enum', values: ['off', 'dim', 'normal', 'bright'],
       default: 'off', label: 'gauge backlight (miata photo cabin)',
       control: '[data-anim="cabinGaugeLight"]', where: 'more', query: null,

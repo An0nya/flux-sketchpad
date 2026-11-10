@@ -166,6 +166,7 @@ const FROZEN_OLD_DV_DEF = {
   wetBouncePlane: false,   // frenchie (11-05 crest Ladder A, Anya ruling 7edc): local-road-plane bounce mirror, new option, default off (registry position: before wetBounce, at the END of the list)
   wetBounce: false,   // frenchie (11-01 wetBounce, 4-O): own-beam road bounce, default off; registry position: at the END of the list
   haloConeEqui: 'off',   // frenchie (11-06 B6): cone-clipped equiangular oncoming halo, default off; registry position: at the END of the list
+  endlessDetails: false,   // top 11-10 (endless road details panel, display-only): new option, default off
   cabinGaugeLight: 'off',   // claude (11-08, Anya: photo NA Miata cabin): gauge backlight, new option, default off; registry position: at the END of the list
   cabinZoom: 1,   // claude (11-08, Anya: debug zoom for the photo cabin): multiplies the view-angle zoom, default 1 = neutral; registry position: at the END of the list
   cabinOffsetX: 0,   // claude (11-08, Anya: hand placement of the photo cabin), default 0; registry position: at the END of the list
