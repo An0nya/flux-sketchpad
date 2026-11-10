@@ -2782,9 +2782,9 @@ void main() {
     for (const b of q('[data-anim="cabinMirror"]')) { b.setAttribute('aria-pressed', String(!!o.cabinMirror)); b.disabled = !o.cabinView; }   // ayrton 11-04: cabinMirror sync (needs cabinView)
     for (const b of q('[data-anim="imperial-units"]')) b.setAttribute('aria-pressed', String(!!o.imperialUnits));
     for (const s2 of q('[data-anim="endlessPresetCustom"]')) s2.value = o.endlessPresetCustom || '';
-    {   // endless-road-v2 (harbert): sync the axis-settings group from the option (parse fail-soft, so a hand-edited bad JSON still shows something sane)
+    {   // endless-road-v2 (harbert): sync the axis-settings group from the option (parse fail-soft, so a hand-edited bad JSON still shows something sane). Looks the selects up by data-anim — axPairs lives inside driveTools' scope, not here (the SB1 page-test class: labels() runs before/without driveTools).
       const cfg = RF.EndlessAxes.parse(o.endlessAxes || '');
-      for (const axis of RF.EndlessAxes.AXES) { const pr = RF.EndlessAxes.axisPair(cfg, axis); if (axPairs[axis]) { axPairs[axis].lo.value = pr.lo; axPairs[axis].hi.value = pr.hi; } }
+      for (const axis of RF.EndlessAxes.AXES) { const pr = RF.EndlessAxes.axisPair(cfg, axis); for (const s2 of q('[data-anim="endlessAxes_' + axis + 'lo"]')) s2.value = pr.lo; for (const s2 of q('[data-anim="endlessAxes_' + axis + 'hi"]')) s2.value = pr.hi; }
       for (const s2 of q('[data-anim="endlessCurviness"]')) s2.value = String(cfg.userCurviness);
     }
     for (const s2 of q('[data-anim="endlessPreset"]')) s2.value = o.endlessPreset || 'off';

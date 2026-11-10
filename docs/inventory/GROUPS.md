@@ -84,7 +84,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | group | label | options | toolbar | More | advanced air | advanced halo | sidebar | no control |
 |---|---|---|---|---|---|---|---|---|
 | `view` | Camera and playback | 20 | 3 | 17 | 0 | 0 | 0 | 0 |
-| `road` | Road and route | 17 | 2 | 13 | 0 | 0 | 0 | 2 |
+| `road` | Road and route | 18 | 2 | 14 | 0 | 0 | 0 | 2 |
 | `surface` | Road surface | 13 | 0 | 10 | 0 | 0 | 1 | 2 |
 | `air` | Fog and air beam | 16 | 0 | 4 | 10 | 1 | 0 | 1 |
 | `halo` | Traffic halo | 35 | 0 | 4 | 0 | 31 | 0 | 0 |
@@ -137,6 +137,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `elevatedView` | 3D route pipeline for every scene (prototype) | profile | More | false | needs `gpu` [tooltip] |
 | `endlessPreset` | endless road preset (prototype) | profile | More | "off" | needs `tiles` [none] |
 | `endlessPresetCustom` | custom endless preset JSON (used when endlessPreset = custom) | profile | More | "" | needs `tiles` [none] |
+| `endlessAxes` | endless road axis settings JSON (settlement/roadClass/relief/cover/water + userCurviness) | profile | More | "" | needs `tiles` [none] |
 | `tileTerrain` | terrain skirts on endless tile roads (opt-in, pricy) | profile | More | false | needs `tiles` [none] |
 | `multilaneRoad` | 2+2 highway on tile roads (drive view only) | profile | More | false | needs `tiles` [none] |
 | `endlessTunnel` | tunnel tiles on endless forest/mountain blocks | profile | More | false | needs `tiles` [none], `endlessRoad` [none] |
