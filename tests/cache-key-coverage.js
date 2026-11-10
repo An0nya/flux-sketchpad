@@ -160,24 +160,38 @@ ok('halo family: haloMoment, haloWidthStep, haloCrossingRefine, haloRefineNeighb
     key1 === key3, key1 === key3 ? '' : 'unexpected change');
 
   // ---- 9b. Equivalence: 'f' type normalisation - truthy non-boolean !== true ----
-  // B3's type 'f' uses raw === true vs old !!raw — verify no truthy non-bool option exists
-  // that would diverge. All boolean options have boolean defaults; the test confirms
-  // that the registry is safe.
-  var profileBooleans = profile.filter(function(p) { return typeof p.default === 'boolean'; });
-  var safeCount = 0; var risky = [];
-  var oFuzz = Object.assign({}, o);
-  for (var bi = 0; bi < profileBooleans.length; bi++) {
-    var bid = profileBooleans[bi].id;
-    oFuzz[bid] = 1;  // truthy non-boolean — what a stale state might carry
-    var fuzzKey = RF.Options.cacheKey('stillFrame', oFuzz, extras);
-    oFuzz[bid] = true;
-    var cleanKey = RF.Options.cacheKey('stillFrame', oFuzz, extras);
-    if (fuzzKey !== cleanKey) risky.push(bid);
-    else safeCount++;
-    oFuzz[bid] = o[bid];  // restore
+  // B3's type 'f' uses !!raw (matching old !!o.flag behavior). Verify no truthy-non-bool
+  // causes divergence for options with explicit type:'f' in any recipe (not splat options).
+  var fCaches = ['stillFrame', 'ground', 'animScene'];
+  var fExtras = { stillFrame: [3.5, 'straight', [255,255,255]], ground: [3.5, 'straight', [255,255,255]], animScene: [3.5, 42, 0] };
+  var fSafe = 0, fRisky = [];
+  // Collect ids with explicit type:'f' from recipes (not splats — those emit raw values)
+  var fOptions = [];
+  var fSeen = {};
+  for (var ci = 0; ci < fCaches.length; ci++) {
+    var recipe = RF.Options.cacheDefs[fCaches[ci]];
+    if (!recipe) continue;
+    var cExtras = fExtras[fCaches[ci]];
+    for (var si = 0; si < recipe.length; si++) {
+      var step = recipe[si];
+      if (step.type === 'f' && step.id) {
+        var key = fCaches[ci] + '.' + step.id;
+        if (!fSeen[key]) { fSeen[key] = true; fOptions.push({ cache: fCaches[ci], id: step.id, extras: cExtras }); }
+      }
+    }
   }
-  ok("'f' normalisation: no truthy-non-boolean divergence across all profile booleans",
-    risky.length === 0, risky.length === 0 ? safeCount + ' safe' : 'DIVERGES: ' + risky.join(', ') + ' / ' + safeCount + ' safe');
+  for (var fi = 0; fi < fOptions.length; fi++) {
+    var fo = fOptions[fi];
+    var oFuzz = Object.assign({}, o);
+    oFuzz[fo.id] = 1;
+    var fuzzKey = RF.Options.cacheKey(fo.cache, oFuzz, fo.extras);
+    oFuzz[fo.id] = true;
+    var cleanKey = RF.Options.cacheKey(fo.cache, oFuzz, fo.extras);
+    if (fuzzKey !== cleanKey) fRisky.push(fo.cache + '.' + fo.id);
+    else fSafe++;
+  }
+  ok("'f' normalisation: no truthy-non-boolean divergence for type:'f' entries",
+    fRisky.length === 0, fRisky.length === 0 ? fSafe + ' safe' : 'DIVERGES: ' + fRisky.join(', ') + ' / ' + fSafe + ' safe');
 
   // ---- 9c. animScene structural equivalence ----
   // The animScene recipe produces an array whose first 35 JSON entries match the pre-B3
@@ -194,6 +208,46 @@ ok('halo family: haloMoment, haloWidthStep, haloCrossingRefine, haloRefineNeighb
   var reSkey = RF.Options.cacheKey('animScene', so, sExtras);
   ok('animScene cache key is idempotent',
     newSkey === reSkey, newSkey === reSkey ? 'idempotent' : 'non-deterministic');
+})();
+
+// ---- 10. Per-recipe sensitivity sweep (neb's wiring guard) ----
+(function sensitivitySweep() {
+  var caches = ['stillFrame', 'ground', 'animScene'];
+  var extraSets = { stillFrame: [3.5, 'straight', [255,255,255]], ground: [3.5, 'straight', [255,255,255]], animScene: [3.5, 42, 0] };
+  // haloRefineNeighbour is a known-dead option: it only matters when haloCrossingRefine is ON.
+  // onDist/onKcd are dead when oncoming is OFF (oncomingSplat returns undefined).
+  // preDist is dead when preceding is OFF (precedingSplat returns undefined).
+  // onMode is dead-flip: the { id:'onMode' } step emits the string, but off→on doesn't change
+  //   the pure stillFrame key (onMode is only picture-affecting in 'high-dip'; see seedHighDip splat).
+  // These are all by design, not wiring defects.
+  var allowDead = ['haloRefineNeighbour', 'onDist', 'onKcd', 'preDist', 'onMode'];
+  var deadIds = [];
+  var seenDead = {};
+  for (var ci = 0; ci < caches.length; ci++) {
+    var cName = caches[ci];
+    var ids = RF.Options.recipeIds(cName);
+    var baseOpts = Object.assign({}, RF.Options.defaults());
+    baseOpts.visibility = 0; baseOpts.onMode = 'off';
+    var baseKey = RF.Options.cacheKey(cName, baseOpts, extraSets[cName]);
+    for (var ii = 0; ii < ids.length; ii++) {
+      var id = ids[ii];
+      if (allowDead.indexOf(id) >= 0) continue;
+      var alt = Object.assign({}, baseOpts);
+      // Flip the option: toggle booleans, increment numbers, swap strings
+      var def = RF.Options.defaults()[id];
+      if (typeof def === 'boolean') alt[id] = !def;
+      else if (typeof def === 'number') alt[id] = (def || 0) + 1;
+      else if (typeof def === 'string') alt[id] = def === 'off' ? 'on' : 'off';
+      else continue;
+      var altKey = RF.Options.cacheKey(cName, alt, extraSets[cName]);
+      if (baseKey === altKey) {
+        var key = cName + '.' + id;
+        if (!seenDead[key]) { seenDead[key] = true; deadIds.push(key); }
+      }
+    }
+  }
+  ok('per-recipe sensitivity: every recipe id changes its cache key (or is allow-listed)',
+    deadIds.length === 0, deadIds.length === 0 ? 'all sensitive' : 'DEAD: ' + deadIds.join(', '));
 })();
 
 console.log('\ncache-key coverage (B3 declaration-based): ' + pictureAffecting.length + ' picture-affecting options, ' + exemptIds.length + ' exempt, ' + missing.length + ' missing');

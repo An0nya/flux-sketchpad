@@ -311,7 +311,7 @@
           case 'b': parts.push(!!raw); break;
           case 'n': parts.push(+raw || 0); break;
           case 's': parts.push(String(raw || '')); break;
-          case 'f': parts.push(raw === true); break;
+          case 'f': parts.push(!!raw); break;
           default: parts.push(raw);
         }
       } else if (step.sub) {
@@ -384,12 +384,13 @@
 
   // ---- Mount ----
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { RECIPES: RECIPES, cacheKey: cacheKey, D: D, recipeOptions: recipeOptions, recipeIds: recipeIds, optionMap: optionMap };
+    module.exports = { RECIPES: RECIPES, cacheKey: cacheKey, D: D, recipeOptions: recipeOptions, recipeIds: recipeIds, optionMap: optionMap, cacheKeyTrace: cacheKeyTrace };
   }
   if (typeof RF !== 'undefined' && RF.Options) {
     RF.Options.cacheKey = cacheKey;
     RF.Options.cacheDefs = RECIPES;
     RF.Options.cacheOptionMap = optionMap;
     RF.Options.recipeIds = recipeIds;
+    RF.Options.cacheKeyTrace = cacheKeyTrace;
   }
 })();
