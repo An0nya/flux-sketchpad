@@ -71,6 +71,7 @@ const MAP = [
   [/^js\/endless-axis-config\.js$/, ['node:endless-axis-config', 'node:catch-ignore-audit']],   // endless-road-v2: pure node data logic; catch-ignore-audit rides along per spilett's rule (audit suites must not be narrowed away)
   [/^js\/endless-relief\.js$/, ['node:endless-relief', 'node:catch-ignore-audit']],   // endless-road-v2: the relief axis (pencroff); consumes endless-axis-config, pure node data logic
   [/^js\/endless-settlement-road\.js$/, ['node:endless-settlement-road', 'node:catch-ignore-audit']],   // endless-road-v2: the settlement+road-class value-to-knob map (nemo); consumes endless-axis-config, pure node data logic
+  [/^js\/endless-cover-water\.js$/, ['node:endless-cover-water', 'node:catch-ignore-audit']],   // endless-road-v2: the cover+water axes (barbicane); consumes endless-axis-config, pure node data logic
   [/^(docs|\.claude)\//, []], [/\.md$/, []], [/^tests\/scenario\//, ['node:scenario-node']],
   [/^tests\/regress\/NE-state-leak\.js$/, ['NE-state-leak']],   // ardan 11-09: map the test file to itself - without this row --touched resolves an EMPTY plan for a change to it and the lander refuses the patch ('gate.js selected no tests'); now that it passes it is wired (PAGE_PAR) and out of KNOWN_FAILING
 ];
