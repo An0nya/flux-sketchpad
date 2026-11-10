@@ -1,19 +1,23 @@
 // barbicane (11-05) — cabinDigitalRedesign option test.
+// 11-10 nicholl (item-2 conversion): registry text-greps -> module reads; wiring -> KEEP (cabin overlay lane, no headless behaviour seam); gate -> gate --list.
 const path = require('path'), fs = require('fs');
 const { load, ROOT } = require(path.join(__dirname, 'load.js'));
 let pass = 0, fail = 0;
-const ok = (name, cond) => { if (cond) { pass++; console.log('[PASS] ' + name); } else { fail++; console.log('[FAIL] ' + name); } };
+const ok = (name, cond, extra) => { if (cond) { pass++; console.log('[PASS] ' + name); } else { fail++; console.log('[FAIL] ' + name + (extra !== undefined ? ' — ' + JSON.stringify(extra) : '')); } };
 load();
 const Opt = require(path.join(ROOT, 'js/options-registry.js'));
 const anim = fs.readFileSync(path.join(ROOT, 'js/drive-anim.js'), 'utf8');
-const gate = fs.readFileSync(path.join(ROOT, 'tests/gate.js'), 'utf8');
 
 const o = Opt.OPTIONS.find((x) => x.id === 'cabinDigitalRedesign');
-ok('registry: exists, type bool, group view', !!o && o.type === 'bool' && o.group === 'view');
-ok('registry: default', o && o.default === false);
-ok('registry: control', o && o.control === '[data-anim="cabinDigitalRedesign"]');
-ok('drive-anim: referenced', anim.includes('cabinDigitalRedesign'));
-ok('gate: NODE registers this test', gate.includes('barbicane-cabinDigitalRedesign'));
+ok('registry: exists, type bool, group view [module]', !!o && o.type === 'bool' && o.group === 'view');
+ok('registry: default false [module]', o && o.default === false);
+ok('registry: control [data-anim="cabinDigitalRedesign"] [module]', o && o.control === '[data-anim="cabinDigitalRedesign"]');
+// KEEP: text [cabin overlay lane, no headless behaviour seam]
+ok('drive-anim: referenced [KEEP: text — cabin overlay lane, no headless behaviour seam]', /(^|[^a-zA-Z_])cabinDigitalRedesign(?![a-zA-Z_])/.test(anim));
+ok('gate: NODE registers this test [gate --list]', (() => {
+  const out = require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tests', 'gate.js'), '--list'], { encoding: 'utf8' });
+  return out.includes('node:barbicane-cabinDigitalRedesign');
+})());
 
 console.log(pass + ' checks, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
