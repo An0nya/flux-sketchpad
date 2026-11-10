@@ -61,6 +61,22 @@ ok('9 truckFraction: rural+highway > city+highway', hwRural.truckFraction > hwCi
 const ta = T.trafficAt(5, 1, { settlement: 'city', roadClass: 'dense-highway' });
 ok('9b anchor: city+dense-highway → truckFraction=0.15, safeGapMul=1.5, onMode=signal', close(ta.truckFraction, 0.15) && close(ta.safeGapMul, 1.5) && ta.onMode === 'signal', ta);
 
+// 9c. absolute anchor sweep: all 6 roadClasses at seed=5,k=1,city (safeGapMul + truckFraction)
+const roadAnchors = [
+  { rc: 'dense-highway',  gap: 1.5, truck: 0.15 },
+  { rc: 'remote-highway', gap: 1.3, truck: 0.125 },
+  { rc: 'surface-2+2',    gap: 1.0, truck: 0.075 },
+  { rc: 'suburban-1+1',   gap: 0.8, truck: 0.04 },
+  { rc: 'two-lane',       gap: 0.9, truck: 0.05 },
+  { rc: 'street',         gap: 0.6, truck: 0.01 },
+];
+let anchorsOk = true;
+for (const a of roadAnchors) {
+  const r = T.trafficAt(5, 1, { settlement: 'city', roadClass: a.rc });
+  if (!close(r.safeGapMul, a.gap) || !close(r.truckFraction, a.truck)) anchorsOk = false;
+}
+ok('9c anchor sweep: all 6 roadClasses safeGapMul + truckFraction exact at seed=5,k=1,city', anchorsOk);
+
 // 10. truckFraction ∈ [0,1]
 ok('10 truckFraction ∈ [0,1]', fHW.truckFraction >= 0 && fHW.truckFraction <= 1, fHW.truckFraction);
 
@@ -74,8 +90,17 @@ ok('12 pedStop table',
   T.SETTLEMENT_PEDSTOP.city === true && T.SETTLEMENT_PEDSTOP.suburb === true
   && T.SETTLEMENT_PEDSTOP.rural === false && T.SETTLEMENT_PEDSTOP.wild === false);
 
-// 13. safeGapMul table: dense-highway=1.5, street=0.6
-ok('13 safeGapMul table', close(T.ROADCLASS_GAP['dense-highway'], 1.5) && close(T.ROADCLASS_GAP.street, 0.6));
+// 13. safeGapMul table: all 6 roadClass entries
+ok('13 safeGapMul table: all 6 entries',
+  close(T.ROADCLASS_GAP['dense-highway'], 1.5) && close(T.ROADCLASS_GAP['remote-highway'], 1.3)
+  && close(T.ROADCLASS_GAP['surface-2+2'], 1.0) && close(T.ROADCLASS_GAP['suburban-1+1'], 0.8)
+  && close(T.ROADCLASS_GAP['two-lane'], 0.9) && close(T.ROADCLASS_GAP.street, 0.6));
+
+// 13b. truckFraction table: all 6 roadClass entries
+ok('13b ROADCLASS_TRUCK table: all 6 entries',
+  close(T.ROADCLASS_TRUCK['dense-highway'], 0.30) && close(T.ROADCLASS_TRUCK['remote-highway'], 0.25)
+  && close(T.ROADCLASS_TRUCK['surface-2+2'], 0.15) && close(T.ROADCLASS_TRUCK['suburban-1+1'], 0.08)
+  && close(T.ROADCLASS_TRUCK['two-lane'], 0.10) && close(T.ROADCLASS_TRUCK.street, 0.02));
 
 // 14. different seeds → different axis sequences (the scheduler is seeded)
 const seqOf = (seed) => [0, 40, 80, 120, 160].map((k) => { const r = T.trafficAt(seed, k, {}); return r.settlement + '|' + r.onMode; }).join(',');
