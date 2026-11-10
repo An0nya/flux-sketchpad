@@ -145,5 +145,6 @@ run('cabin miata photo cabin (tests/cabin-miata.js)', ['tests/cabin-miata.js']);
 run('T2 drive-anim: IDM invariants, idmStep, traffic/curve/AFS/sim constants, seeded long runs, LOD, export surface (tests/t2-drive-anim.js)', ['tests/t2-drive-anim.js']); // T2
 run('T4 optics/solver invariants: beams, ideal-beam, sealed-beam, solve-cache, solver, geometry, state (tests/t4-optics.js)', ['tests/t4-optics.js']); // T4
 run('lamp cone: the signal draw does not clobber the shared street cone uniforms (tests/lampcone-signal-restore.js)', ['tests/lampcone-signal-restore.js']); // nicholl 11-10 (the junction-village dark frame: signalConesOn zeroed the object cone light)
+run('T3 UI in jsdom: HTML structure, panels, spec-ui, DOM events, store, CSS (tests/t3-ui-jsdom.js)', ['tests/t3-ui-jsdom.js']); // T3
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
