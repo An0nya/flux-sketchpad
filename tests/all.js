@@ -143,5 +143,6 @@ run('image tolerance self-test: FLIP, PNG, compare, known-bad control (tests/ima
 run('T1 GPU-module logic: MAT_KEYS, uniform bounds, hrep, variant state machine, haloTableSize, haloState (tests/t1-gpu-module.js)', ['tests/t1-gpu-module.js']); // T1
 run('cabin miata photo cabin (tests/cabin-miata.js)', ['tests/cabin-miata.js']);   // le-chonk 11-09 // B1
 run('T2 drive-anim: IDM invariants, idmStep, traffic/curve/AFS/sim constants, seeded long runs, LOD, export surface (tests/t2-drive-anim.js)', ['tests/t2-drive-anim.js']); // T2
+run('T4 optics/solver invariants: beams, ideal-beam, sealed-beam, solve-cache, solver, geometry, state (tests/t4-optics.js)', ['tests/t4-optics.js']); // T4
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
