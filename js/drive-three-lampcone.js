@@ -360,6 +360,7 @@ export function createLampCone(renderer) {
         nLamp: mat.uniforms.nLamp.value,
         cLamp: mat.uniforms.cLamp.value.map((q) => ({ x: q.x, y: q.y, z: q.z })),
         cSt: mat.uniforms.cSt.value.map((q) => ({ x: q.x, y: q.y })),
+        cTint: mat.uniforms.cTint.value.map((q) => ({ x: q.x, y: q.y, z: q.z })),
         cScale: Array.from(mat.uniforms.cScale.value),
         cFloor: Array.from(mat.uniforms.cFloor.value),
       };

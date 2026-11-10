@@ -5,6 +5,8 @@
 // own height = an empty ray slab) and silently contributes nothing — the object pixels lose their cone light.
 // This test fails before the fix: with the signal draw polluting the uniforms, cLamp[0] is the SIGNAL head at x≈104.5,
 // not the street lamp at x=25, and cFloor[0] is 5.59 (the head), not 0 (the road).
+// (The pre-fix failure is "the hook line + downstream nulls": the test passes only with the fix's _uniformsForTest() hook —
+// and asserts all six shared uniforms the fix restores: nLamp, cLamp, cSt, cScale, cFloor, plus the hook's presence.)
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { load } = require('./load.js');
@@ -51,6 +53,8 @@ const ok = (name, cond, extra) => { checks.push({ name, pass: !!cond, extra }); 
   ok('cLamp[0] is the street lamp, not the signal head', u && Math.abs(u.cLamp[0].x - street.x) < 1e-6 && Math.abs(u.cLamp[0].y - street.y) < 1e-6 && Math.abs(u.cLamp[0].z - street.z) < 1e-6, u && u.cLamp[0]);
   ok('cSt[0] is the street side of the street lamp, not the signal face normal', u && Math.abs(u.cSt[0].x - 0) < 1e-6 && Math.abs(u.cSt[0].y - 1) < 1e-6, u && u.cSt[0]);
   ok('cFloor[0] is the road (0), not the signal head height', u && u.cFloor[0] === 0, u && u.cFloor[0]);
+  ok('cScale[0] is the street-lamp cone half-height/emit (sodium, 9), not the signal tint', u && Math.abs(u.cScale[0] - 9) < 1e-6, u && u.cScale[0]);
+  ok('cTint[0] is the street-lamp colour (sodium 2000 K), not the signal emit', u && Math.abs(u.cTint[0].x - RF.CCT.cctToRGB(2000, 0)[0]) < 1e-6 && Math.abs(u.cTint[0].y - RF.CCT.cctToRGB(2000, 0)[1]) < 1e-6 && Math.abs(u.cTint[0].z - RF.CCT.cctToRGB(2000, 0)[2]) < 1e-6, u && u.cTint[0]);
   ok('state() reports the street lamp + one lit signal head', cone.state().count === 1 && cone.state().signals.length === 1, cone.state().signals.length);
   const fails = checks.filter((c) => !c.pass).length;
   console.log('\nlampcone-signal-restore: ' + (fails ? fails + ' FAILED' : 'all checks passed'));
