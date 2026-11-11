@@ -2655,7 +2655,7 @@ void main() {
     // into the endlessAxes option (JSON string; '' = all auto = the seeded walk, byte-identical OFF).
     const axWrap = E('span', { 'data-anim': 'endlessAxes', title: 'Endless road axis settings: per axis auto, a fixed rung, or an auto-within range (lo/hi), plus how strongly the walk favours curves. Empty = all auto.' });
     const AX = RF.EndlessAxes.AXES, axPairs = {};
-    const axCommit = () => { const pairs = {}; for (const a of AX) pairs[a] = axPairs[a]; setDV(ui, 'endlessAxes', RF.EndlessAxes.fromUi(pairs, curv.value)); };   // curv declared below (hoisted use inside the closure is fine: change fires after build)
+    const axCommit = () => { const pairs = {}; for (const a of AX) pairs[a] = { lo: axPairs[a].lo.value, hi: axPairs[a].hi.value }; setDV(ui, 'endlessAxes', RF.EndlessAxes.fromUi(pairs, curv.value)); };   // curv declared below (hoisted use inside the closure is fine: change fires after build)
     for (const axis of AX) {
       axPairs[axis] = { lo: null, hi: null };
       const mk = (end) => { const s = E('select', { 'data-anim': 'endlessAxes_' + axis + end, 'aria-label': 'endless ' + axis + ' ' + end, title: 'Endless road ' + axis + ' axis, ' + (end === 'lo' ? 'lower' : 'upper') + ' bound: auto, or a rung of ' + RF.EndlessAxes.LADDERS[axis].join('/') }, E('option', { value: 'auto' }, 'auto'), ...RF.EndlessAxes.LADDERS[axis].map((r) => E('option', { value: r }, r)));
@@ -2822,6 +2822,10 @@ void main() {
     for (const r of q('[data-anim="cabinZoom"]')) { r.value = +o.cabinZoom || 1; r.disabled = !o.cabinView || o.cabinStyle !== 'miata'; const out = r.parentElement && r.parentElement.querySelector('[data-anim="cabinZoom-value"]'); if (out) out.textContent = (+r.value).toFixed(2) + '×'; }   // cabinZoom: only the miata photo cabin zooms
     for (const s2 of q('[data-anim="cabinGaugeLight"]')) { s2.value = o.cabinGaugeLight || 'off'; s2.disabled = !o.cabinView || o.cabinStyle !== 'miata'; }   // cabinGaugeLight: only the miata photo cabin has backlit gauges
     for (const b of q('[data-anim="junctionGantries"]')) { b.setAttribute('aria-pressed', String(!!o.junctionGantries)); b.disabled = !o.tiles; }   // glm5.2 11-01: sync the gantry toggle (le-chonk's driveExtras toggles don't have sync lines, but this one needs one so the pressed state shows)
+    for (const b of q('[data-anim="tileTerrain"]')) b.setAttribute('aria-pressed', String(!!o.tileTerrain));   // barbicane 11-11: missing sync line (same class as junctionGantries)
+    for (const b of q('[data-anim="multilaneRoad"]')) b.setAttribute('aria-pressed', String(!!o.multilaneRoad));
+    for (const b of q('[data-anim="endlessTunnel"]')) b.setAttribute('aria-pressed', String(!!o.endlessTunnel));
+    for (const b of q('[data-anim="endlessCrossing"]')) b.setAttribute('aria-pressed', String(!!o.endlessCrossing));
     for (const b of q('[data-anim="elevatedView"]')) b.setAttribute('aria-pressed', String(!!o.elevatedView));
     if (!V.bar) return;
     V.ui.driveBar.querySelector('[data-anim=deer-behaviour]').setAttribute('aria-pressed', String(D.Models.deerEnabled(o)));
