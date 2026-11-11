@@ -42,6 +42,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const u = RF.UI;
       let w = 0; for (; w < 600 && (RF.SolverHost.loading() || u.solving); w++) await sl(100);
       console.log('[run] setup: solver idle after ' + w + ' waits');
+      RF.SpecUI.dvOpts(u);   // lazy-init (DV_DEF + localStorage merge, spec-ui.js:890): dvOpts does not exist until the drive builds it — f644 assigned onto undefined
       // Recipe BEFORE the first drive frame: the gate loads pinned defaults (tiles 1200) while the gpuq lane pre-applies
       // this recipe at load; on software GL the 1200-tile first frame is what stalled da16 inside this evaluate.
       Object.assign(u.dvOpts, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1', tiles: true, mountainPass: false });
