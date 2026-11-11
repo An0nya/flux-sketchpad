@@ -154,5 +154,6 @@ run('barbicane endless-road-v2 traffic density (tests/endless-traffic-v2.js)', [
 run('pencroff endless-road-v2 srcArgs starvation guard (tests/endless-srcargs-wiring.js)', ['tests/endless-srcargs-wiring.js']);
 run('spilett endless-road-v1/v2 details honesty guard (tests/endless-details-honesty.js)', ['tests/endless-details-honesty.js']);
 run('barbicane endless-road-v2 controls audit (tests/endless-controls-audit.js)', ['tests/endless-controls-audit.js']);
+run('registry controls audit: every registry control exists and works (tests/registry-controls-audit.js)', ['tests/registry-controls-audit.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
