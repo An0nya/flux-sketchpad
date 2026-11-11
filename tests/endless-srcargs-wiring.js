@@ -15,8 +15,23 @@ const ok = (name, cond, extra) => { if (cond) { pass++; console.log('[PASS] ' + 
 
 const src = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
 
-// The keys source() reads from the opts (4th) argument at the src.tiles build line.
-const TILES_KEYS = ['endlessAxes', 'endlessPreset', 'endlessPresetCustom', 'tileTerrain', 'multilaneRoad', 'endlessTunnel', 'endlessCrossing', 'junctionGantries', 'yawSmooth', 'driftMode', 'lampRule'];
+// The keys source() reads from the opts (4th) argument at the src.tiles build line, with the exact
+// shape srcArgs must use (matching :59's coercion for each). A shape mismatch (e.g. !o.X instead of
+// !!o.X) would invert or re-starve the field; this catches it at the text level.
+const TILES_SHAPES = {
+  endlessAxes: "o.endlessAxes || ''",
+  endlessPreset: "o.endlessPreset || 'off'",
+  endlessPresetCustom: "o.endlessPresetCustom || ''",
+  tileTerrain: '!!o.tileTerrain',
+  multilaneRoad: '!!o.multilaneRoad',
+  endlessTunnel: '!!o.endlessTunnel',
+  endlessCrossing: '!!o.endlessCrossing',
+  junctionGantries: '!!o.junctionGantries',
+  yawSmooth: '!!o.yawSmooth',
+  driftMode: '!!o.driftMode',
+  lampRule: 'o.lampRule'
+};
+const TILES_KEYS = Object.keys(TILES_SHAPES);
 
 // Find the srcArgs assignment: V.srcArgs = [o.scene, ..., { ...opts... }, { ...tiles+traffic... }]
 const m = src.match(/V\.srcArgs = \[o\.scene,.*?\]; const old = V\.src;/);
@@ -33,6 +48,11 @@ if (m) {
     const optsText = optsMatch[0];
     for (const key of TILES_KEYS) {
       ok('srcArgs opts carries ' + key, optsText.includes(key + ':'), 'key "' + key + '" is absent from the srcArgs opts object — source() will see it as undefined');
+      // neb's note: a key present with the WRONG option (e.g. endlessAxes: o.endlessPreset) or a
+      // WRONG shape (e.g. !o.X instead of !!o.X) passes the presence check above and the behavioural
+      // proof below (which builds its own opts). This ties each key to its own option AND shape.
+      const expected = TILES_SHAPES[key];
+      ok('srcArgs opts maps ' + key + ' as ' + expected, optsText.includes(key + ': ' + expected), 'key "' + key + '" is not wired as "' + expected + '" — a wrong-option or wrong-shape mapping would re-starve or invert the field silently');
     }
   }
 }
@@ -62,6 +82,15 @@ ok('starved opts: src.tiles.axes is empty (the bug)', srcStarved.tiles.axes === 
 ok('starved opts: src.tiles.multilane is false (the bug)', srcStarved.tiles.multilane === false, 'multilane = ' + srcStarved.tiles.multilane);
 ok('fed opts: src.tiles.axes reaches source()', srcFed.tiles.axes === axesF, 'axes mismatch');
 ok('fed opts: src.tiles.multilane reaches source()', srcFed.tiles.multilane === true, 'multilane = ' + srcFed.tiles.multilane);
+
+// OFF-identity (neb's note): the keys present at their DEFAULT values must produce the same src.tiles
+// as the starved (keyless) opts — this proves the fix changes nothing when the options are OFF (Anya's
+// standing rule), and that the keys are wired to the right option (a wrong mapping would diverge here).
+const optsOff = Object.assign({}, optsStarved, { endlessAxes: '', endlessPreset: 'off', endlessPresetCustom: '', tileTerrain: false, multilaneRoad: false, endlessTunnel: false, endlessCrossing: false, junctionGantries: false, yawSmooth: false, driftMode: false, lampRule: undefined });
+const srcOff = A.source('road', 3.5, false, {}, optsOff);
+ok('OFF identity: keys present at defaults → src.tiles.axes empty (same as starved)', srcOff.tiles.axes === '', 'axes = ' + JSON.stringify(srcOff.tiles.axes));
+ok('OFF identity: keys present at defaults → src.tiles.multilane false (same as starved)', srcOff.tiles.multilane === false, 'multilane = ' + srcOff.tiles.multilane);
+ok('OFF identity: src.tiles matches starved result (fix changes nothing when OFF)', JSON.stringify(srcOff.tiles) === JSON.stringify(srcStarved.tiles), 'tiles objects differ');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
