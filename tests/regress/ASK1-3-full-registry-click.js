@@ -51,13 +51,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       console.log('[run] setup: setMode done');
       u.setDisplay('drive');
       console.log('[run] setup: setDisplay done, renderer=' + RF.DriveAnim.stats().renderer);
-      // The drive's GPU renderer only initializes after Play (renderer starts 'cpu' — AGENTS.md; 662f trace: it never
-      // switched in the gate and the CPU render loop saturated the main thread — the 15s wall-capped wait took 481s
-      // because every sl(50) resolved ~30s late). The gpuq lane's harness presses play for the script; the gate must
-      // do it here. Renderer three + playing is the validated configuration (gpuq 8b20: 123/247/0, 105s).
-      const pb = document.querySelector('[data-anim="play"]');
-      if (pb) pb.click(); else console.log('[run] setup: NO play button found');
-      for (const tw = Date.now(); Date.now() - tw < 20000 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure;) await sl(100);
+      // The play button is built ASYNC: bars() runs inside DriveAnim.sync (a drawDrive hook) and appends V.bar to
+      // ui.driveExtras (drive-anim.js:3177) — a synchronous querySelector right after setDisplay never finds it
+      // (8a75: 'NO play button found'). The validated gpuq harness polls u.driveBar (gpuq-ask13.js:59); do the same,
+      // then press play (AGENTS.md: the renderer starts cpu and switches after Play; 662f proved the cpu loop
+      // saturates the main thread — every sl(100) resolved ~30s late, so wall caps are checked between starved awaits).
+      const qpb = () => document.querySelector('[data-anim="play"]') || (u.driveExtras && u.driveExtras.querySelector('[data-anim="play"]'));
+      let pb = qpb();
+      for (const tb = Date.now(); !pb && !(u.driveBar && (pb = qpb())) && Date.now() - tb < 60000;) await sl(100);
+      console.log('[run] setup: driveBar=' + !!u.driveBar + ' playBtn=' + !!pb);
+      if (!pb) throw new Error('play button never appeared (driveBar=' + !!u.driveBar + ') — sync/drawDrive never completed; refusing to sweep');
+      if (pb.getAttribute('aria-pressed') !== 'true') pb.click();   // aria-pressed mirrors run state (drive-anim.js:2850); don't click into a pause
+      for (const tw = Date.now(); Date.now() - tw < 30000 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure;) await sl(100);
       console.log('[run] setup: renderer=' + RF.DriveAnim.stats().renderer + ' gpuFailure=' + !!RF.DriveAnim.stats().gpuFailure);
       if (RF.DriveAnim.stats().renderer !== 'three') throw new Error('renderer stayed ' + RF.DriveAnim.stats().renderer + ' after play — refusing to sweep on the CPU renderer (main-thread starvation; validated config is renderer three, gpuq 8b20)');
     });
