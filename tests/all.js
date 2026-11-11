@@ -151,5 +151,7 @@ run('minigame restore-options call site (tests/restore-callsite.js)', ['tests/re
 run('nemo endless-road-v2 axes→tile-geometry wiring (tests/nemo-endless-axes-wiring.js)', ['tests/nemo-endless-axes-wiring.js']);
 run('barbicane endless-road-v2 cover-water (tests/endless-cover-water-v2.js)', ['tests/endless-cover-water-v2.js']);
 run('barbicane endless-road-v2 traffic density (tests/endless-traffic-v2.js)', ['tests/endless-traffic-v2.js']);
+run('pencroff endless-road-v2 srcArgs starvation guard (tests/endless-srcargs-wiring.js)', ['tests/endless-srcargs-wiring.js']);
+run('barbicane endless-road-v2 controls audit (tests/endless-controls-audit.js)', ['tests/endless-controls-audit.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
