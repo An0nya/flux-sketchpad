@@ -34,7 +34,7 @@
     ['scene', null, 'Prototype: endless road (needs testing; most need route tiles on)', [an('endlessRoad'), an('elevatedView'), an('endlessPreset'), an('endlessPresetCustom'), an('endlessAxes'), an('tileTerrain'), an('multilaneRoad'), an('endlessTunnel'), an('endlessCrossing'), an('junctionGantries'), an('yawSmooth')]],
     ['scene', null, 'Prototype: cabin and drift (needs testing)', [an('cabinView'), an('cabinStyle'), an('cabinLight'), an('cabinFovFrame'), an('cabinDigitalRedesign'), an('cabinWetnessSlider'), an('cabinMirror'), an('cabinGaugeLight'), '.cabin-zoom', '.cabin-offset', an('driftMode'), an('driftDynamics'), an('driftAfs'), an('driftCabin')]],
     ['lighting', 'glare', 'Prototype: extras (needs testing)', [dv('wetVeil'), dv('trafficMarkers')]],
-    ['details', null, '', [an('scene-details'), an('scene-details-panel')]],
+    ['details', null, '', [an('scene-details'), an('scene-details-panel'), an('endless-details'), an('endless-details-panel')]],
     ['timings', null, '', [an('debug-timings'), an('perf-readout')]],
   ];
   const TOP = [dv('scene'), an('play'), '[data-game=toggle]'];

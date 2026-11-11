@@ -87,7 +87,7 @@
           // stacked (10-29 bottom sheet): closed keeps the strip's first row, the speed slider; in a game the anim bar's controls (oncoming headlamps, high beam) hide, as V.bar did
           const stowed=m.mode==='stack'&&!open, gaming=state!=='drive', want=['scene','play','toggle',...(stowed?['speed']:['oncoming','preceding','speed','glare','ev',...(gaming?[]:['traffic-beams','high-beam'])])];
           ok('UX2 top bar and strip hold only the driving controls',m.primary.length===want.length&&want.every(k=>m.primary.includes(k)),{got:m.primary,want});
-          if(open&&state==='drive')ok('UX2 every control is placed in a tab and reachable',m.unplaced.length===0&&['wetness','wetSheen','onMode'].every(k=>DL.reveal(u,'[data-dv='+k+']')&&visible(u.driveBar.querySelector('[data-dv='+k+']')))&&['tiles','gpu-renderer','fps-counter','debug-timings'].every(k=>DL.reveal(u,'[data-anim='+k+']')&&visible(u.driveBar.querySelector('[data-anim='+k+']'))),m.unplaced);
+          if(open&&state==='drive')ok('UX2 every control is placed in a tab and reachable',m.unplaced.length===0&&['wetness','wetSheen','onMode'].every(k=>DL.reveal(u,'[data-dv='+k+']')&&visible(u.driveBar.querySelector('[data-dv='+k+']')))&&['tiles','gpu-renderer','fps-counter','debug-timings','endless-details'].every(k=>DL.reveal(u,'[data-anim='+k+']')&&visible(u.driveBar.querySelector('[data-anim='+k+']'))),m.unplaced);
         }
       }
       game.click();if(popout)D.closePop(u);

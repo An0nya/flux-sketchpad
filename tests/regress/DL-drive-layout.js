@@ -60,6 +60,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         ['anim', 'driftMode'], ['anim', 'driftDynamics'], ['anim', 'driftAfs'], ['anim', 'driftCabin'],
         ['dv', 'wetVeil'], ['dv', 'trafficMarkers'], ['dv', 'trafficLighting'],
         ['anim', 'imperial-units'],
+        ['anim', 'endless-details'],
       ];
       const where = (el) => {
         if (!el) return 'MISSING-FROM-DOM';
