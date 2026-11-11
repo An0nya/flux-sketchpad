@@ -148,5 +148,6 @@ run('T3 UI in jsdom: HTML structure, panels, spec-ui, DOM events, store, CSS (te
 run('minigame gameOptions restore invariant (tests/restore-options.js)', ['tests/restore-options.js']);
 run('endless road details panel (tests/endless-details.js)', ['tests/endless-details.js']);
 run('minigame restore-options call site (tests/restore-callsite.js)', ['tests/restore-callsite.js']);
+run('nemo endless-road-v2 axes→tile-geometry wiring (tests/nemo-endless-axes-wiring.js)', ['tests/nemo-endless-axes-wiring.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);

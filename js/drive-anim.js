@@ -493,10 +493,10 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
     }
     return ENDLESS_BIOMES[Math.floor(D.rng((Math.imul(seed | 0, 0x9E3779B1) ^ Math.imul(Math.floor(k / 16) + 1, 0x85EBCA6B)) >>> 0)() * ENDLESS_BIOMES.length) % ENDLESS_BIOMES.length]; }
   const SWITCHBACK_WEIGHTS = { straight: 0.25, '250R': 0.1, '250L': 0.1, '150R': 4, '150L': 4, intersection: 0, 't-junction': 0, urban: 0 };   // switchbacks preset: hairpin-heavy
-  function endlessTileRaw(seed, k, biome, custom = null, preset = 'off') { const t = roadTile(seed, k, (custom && custom.weights) || (preset === 'switchbacks' ? SWITCHBACK_WEIGHTS : ENDLESS_WEIGHTS[biome])); t.biome = biome; return t; }   // the per-biome pick before the chaining rules (custom weights override)
+  function endlessTileRaw(seed, k, biome, custom = null, preset = 'off', axes = '') { const w = (custom && custom.weights) || (preset === 'switchbacks' ? SWITCHBACK_WEIGHTS : (axes ? RF.EndlessSettlementRoad.settlementRoadAt(seed, k, axes).tileWeights : ENDLESS_WEIGHTS[biome])); const t = roadTile(seed, k, w); t.biome = biome; return t; }   // the per-biome pick before the chaining rules (custom weights override; endless-road-v2: active axes swap in the settlement road class's tileWeights)
   // tileA: the tile road's route A; under elevatedView (p.touge pipeline on, not the pass) it goes through
   // RF.Touge.elevate with height 0, so the 3D pipeline renders it flat. Legacy: the plain 2D tileRoute.
-  const tileA = (p, dist) => { const A2 = tileRoute(p.src.tiles.seed, dist, undefined, p.src.tiles.endless ? ((s2, k2) => endlessTile(s2, k2, p.src.tiles.preset, p.src.tiles.custom)) : null);
+  const tileA = (p, dist) => { const A2 = tileRoute(p.src.tiles.seed, dist, undefined, p.src.tiles.endless ? ((s2, k2) => endlessTile(s2, k2, p.src.tiles.preset, p.src.tiles.custom, p.src.tiles.axes)) : null);
     if (p.touge && !p.src.tiles.mountain) return p.src.tiles.endless ? RF.Touge.elevate(A2, dist, p.lane, true, endlessElev(p.src.tiles.seed, p.src.tiles.preset, !!p.src.tiles.terrain, p.src.tiles.custom, p.src.tiles.axes)) : RF.Touge.elevate(A2, dist, p.lane, false);
     return A2; };   // elevatedView: endless tiles ride the biome elevation (rolling hills / pass grades); plain tiles stay flat (height 0)
   // §2-endless elevation (rolling hills / forested pass): a seeded grade walk, one grade per 16-tile biome block
@@ -581,28 +581,28 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
     const h = lane / 2;
     return { h, right: -lane, med0: h, med1: h + median, medC: h + median / 2, onc0: lane + median, onc1: 2 * lane + median, oncMid: h + median + lane, outerR: -(h + lane), outerL: h + median + 2 * lane };
   }
-  // endlessTile memo: (seed, k, preset, custom) -> the finished tile. Callers only read tiles. FIFO-bounded.
+  // endlessTile memo: (seed, k, preset, custom, axes) -> the finished tile. Callers only read tiles. FIFO-bounded.
   const ENDLESS_MEMO_MAX = 4096, endlessMemo = new Map(), customKeys = new WeakMap();
   const customKeyOf = (c) => { if (!c) return ''; let s = customKeys.get(c); if (s === undefined) { s = JSON.stringify(c); customKeys.set(c, s); } return s; };
   // The chaining rules read the ADJUSTED k-1 / k-2 tiles. A chain resets (raw neighbours) at k <= 0 and every ENDLESS_CHAIN_RESET
   // tiles, so a tile depends on a bounded, query-order-independent window even when the weights allow no straights.
   const ENDLESS_CHAIN_RESET = 256;
-  function endlessTile(seed, k, preset = 'off', custom = null) {
-    const ck = customKeyOf(custom), key = (seed | 0) + '|' + k + '|' + preset + '|' + ck, hit = endlessMemo.get(key);
+  function endlessTile(seed, k, preset = 'off', custom = null, axes = '') {
+    const ck = customKeyOf(custom), key = (seed | 0) + '|' + k + '|' + preset + '|' + ck + '|' + axes, hit = endlessMemo.get(key);
     if (hit) return hit;
     const chained = k > 0 && k % ENDLESS_CHAIN_RESET !== 0;
     if (chained) {   // fill the chain bottom-up so the neighbour lookups below hit the memo (no deep recursion)
-      let j = k - 1; const has = (i) => endlessMemo.has((seed | 0) + '|' + i + '|' + preset + '|' + ck);
+      let j = k - 1; const has = (i) => endlessMemo.has((seed | 0) + '|' + i + '|' + preset + '|' + ck + '|' + axes);
       while (j > 0 && j % ENDLESS_CHAIN_RESET !== 0 && !has(j)) j--;
-      for (let i = Math.max(j - 1, k - 2 - ENDLESS_CHAIN_RESET); i < k; i++) if (!has(i)) endlessTile(seed, i, preset, custom);
+      for (let i = Math.max(j - 1, k - 2 - ENDLESS_CHAIN_RESET); i < k; i++) if (!has(i)) endlessTile(seed, i, preset, custom, axes);
     }
-    const t = endlessTileShaped(seed, k, preset, custom, chained);
+    const t = endlessTileShaped(seed, k, preset, custom, chained, axes);
     endlessMemo.set(key, t); if (endlessMemo.size > ENDLESS_MEMO_MAX) endlessMemo.delete(endlessMemo.keys().next().value);
     return t;
   }
-  function endlessTileShaped(seed, k, preset, custom, chained) {
-    const biome = endlessBiome(seed, k, preset, custom), t = endlessTileRaw(seed, k, biome, custom, preset);
-    const prev = (i) => chained ? endlessTile(seed, i, preset, custom) : endlessTileRaw(seed, i, endlessBiome(seed, i, preset, custom), custom, preset);
+  function endlessTileShaped(seed, k, preset, custom, chained, axes) {
+    const biome = endlessBiome(seed, k, preset, custom), t = endlessTileRaw(seed, k, biome, custom, preset, axes);
+    const prev = (i) => chained ? endlessTile(seed, i, preset, custom, axes) : endlessTileRaw(seed, i, endlessBiome(seed, i, preset, custom), custom, preset, axes);
     const p1 = prev(k - 1), p2 = k > 1 ? prev(k - 2) : null;   // no-loop window (adjusted tiles when chained)
     if (biome === 'mountain' && k > 0) {   // switchbacks: a curve answers the previous curve with the opposite sign
       if (p1.curvature !== 0 && t.kind !== 'straight') { t.kind = p1.curvature > 0 ? '150R' : '150L'; t.curvature = (t.kind.endsWith('L') ? 1 : -1) / 150; }
@@ -802,7 +802,7 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
   }
   function tileWorld(p, dist, t, tauOf) {
     if (p.src.tiles.mountain) return RF.Touge.world(p, dist, t, tauOf);
-    const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? ((s2, k2) => endlessTile(s2, k2, cfg.preset, cfg.custom)) : null), mlx = cfg.multilane ? mlLanes(ML_LANE, ML_MEDIAN) : null, edgeR = mlx ? mlx.outerR : -lane / 2, edgeL = mlx ? mlx.outerL : 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
+    const src = p.src, cfg = src.tiles, lane = p.lane, A0 = tileRoute(cfg.seed, dist, !!cfg.groundCache, cfg.endless ? ((s2, k2) => endlessTile(s2, k2, cfg.preset, cfg.custom, cfg.axes)) : null), mlx = cfg.multilane ? mlLanes(ML_LANE, ML_MEDIAN) : null, edgeR = mlx ? mlx.outerR : -lane / 2, edgeL = mlx ? mlx.outerL : 1.5 * lane, crossings = [], lights = [], extra = [], skip = [], marks = [];
     let A1 = (p.touge && !cfg.mountain) ? (cfg.endless ? RF.Touge.elevate(A0, dist, lane, true, endlessElev(cfg.seed, cfg.preset, !!cfg.terrain, cfg.custom, cfg.axes)) : RF.Touge.elevate(A0, dist, lane, false)) : A0;
     if (cfg.driftMode) {   // opposite-lock camera yaw on bends: rotate the render arc by the drift angle (traffic/solver keep the true arc via their own path)
       const tk = A1.tiles && A1.tiles.find((t2) => dist >= t2.s0 && dist < t2.s0 + 200);
@@ -1700,7 +1700,7 @@ void main() {
   const SURF_MAT = { fresh: 'asphalt-fresh', old: 'asphalt-old', concrete: 'concrete-road', 'tar-snake': 'tar-snake' };   // 'tar-snake' = frenchie's landed enum value (le-chonk 11-05) };
   function roadMatOf(o) {
     if (!o.roadSurfaces) return 'asphalt';
-    if (o.tiles && o.endlessRoad && V.src && V.src.tiles) { const t = endlessTile(V.src.tiles.seed, Math.floor((S(V.ui).dist || 0) / TILE_LEN), V.src.tiles.preset, V.src.tiles.custom); return SURF_MAT[t.surface] || 'asphalt'; }
+    if (o.tiles && o.endlessRoad && V.src && V.src.tiles) { const t = endlessTile(V.src.tiles.seed, Math.floor((S(V.ui).dist || 0) / TILE_LEN), V.src.tiles.preset, V.src.tiles.custom, V.src.tiles.axes); return SURF_MAT[t.surface] || 'asphalt'; }
     return SURF_MAT[o.roadSurface] || 'asphalt';
   }
   function prepare(sz) {
@@ -2759,7 +2759,7 @@ void main() {
   }
   // the sensor's road input: the current tile is an urban tile (junctions do not count). The mountain pass has no
   // urban tiles, and its seed would otherwise be read through the default road generator, so the pass is excluded.
-  function tileOf(src, k) { return src.tiles.endless ? endlessTile(src.tiles.seed, k, src.tiles.preset, src.tiles.custom) : roadTile(src.tiles.seed, k); }   // B5: the tile the renderer sees at k (endless preset/custom included) — signals, peds, density, speed limits must read the same tile or they act on phantom junctions
+  function tileOf(src, k) { return src.tiles.endless ? endlessTile(src.tiles.seed, k, src.tiles.preset, src.tiles.custom, src.tiles.axes) : roadTile(src.tiles.seed, k); }   // B5: the tile the renderer sees at k (endless preset/custom included) — signals, peds, density, speed limits must read the same tile or they act on phantom junctions
   function autoUrban(src, dist) { const t = (src && src.tiles) ? src : { tiles: { seed: src } };   // B5: src or bare seed (tests/ahb-fix calls it with a seed)
     return tileOf(t, Math.floor(dist / TILE_LEN)).kind === 'urban'; }
   function autoUrbanInput(src, dist) { return !!(src && src.tiles && !src.tiles.mountain && autoUrban(src, dist)); }
@@ -3245,7 +3245,7 @@ void main() {
     const k = Math.floor(dist / TILE_LEN), w = { dist, tileIndex: k, tileLen: TILE_LEN, seed: (+o.seed || 0) | 0 };   // one seed drives scenery, tiles and traffic
     if (o.mountainPass) { const pr = RF.Touge.profile(dist); Object.assign(w, { road: 'mountain pass', tileKind: RF.Touge.tile(0, k).kind, gradePct: 100 * pr.grade, bankPct: 100 * RF.Touge.bank(dist) }); }
     else if (o.tiles) { const ps = o.endlessPreset || 'off', cp = ps === 'custom' ? parseCustomPreset(o.endlessPresetCustom) : null;   // the readout must see the same preset/custom as the render (was 2-of-4 args)
-      const et = o.endlessRoad ? endlessTile(w.seed, k, ps, cp) : null; Object.assign(w, { road: 'tiles', tileKind: et ? et.kind + ' · ' + et.biome : roadTile(w.seed, k).kind });   // §2-endless: the readout names the biome too
+      const et = o.endlessRoad ? endlessTile(w.seed, k, ps, cp, o.endlessAxes || '') : null; Object.assign(w, { road: 'tiles', tileKind: et ? et.kind + ' · ' + et.biome : roadTile(w.seed, k).kind });   // §2-endless: the readout names the biome too
       if (o.endlessRoad && o.elevatedView) { const h = endlessElev(w.seed, ps, !!o.tileTerrain, cp, o.endlessAxes || ''); w.gradePct = +(100 * (h(dist + 50) - h(dist - 50)) / 100).toFixed(1); } }
     else Object.assign(w, { road: o.scene || 'road', lapLen: PERIOD, lap: Math.floor(dist / PERIOD), inLap: dist - PERIOD * Math.floor(dist / PERIOD) });
     return w;
