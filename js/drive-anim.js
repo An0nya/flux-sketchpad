@@ -577,7 +577,7 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
       const cover = RF.EndlessAxes.valueAt(tl.axes.cover, k), water = RF.EndlessAxes.valueAt(tl.axes.water, k);
       const cw = RF.EndlessCoverWater.coverWaterAt(seed, k, { cover, water });
       return { biome: cw.cover, ramp: 1, trees: cw.trees, rocks: cw.rocks, buildings: 0, fence: cw.fence, rail: false, creek: cw.creek, suburb: false,
-        bushes: cw.bushes, deer: cw.deer };   // v2 fields: bushes/deer replace the biome-props values (read below)
+        bushes: cw.bushes, deer: cw.deer, waterWidth: cw.waterWidth, waterFeature: cw.waterFeature, bridgeProb: cw.bridgeProb };   // v2 fields: bushes/deer replace the biome-props values (read below)
     }
     const biome = endlessBiome(seed, Math.floor(k / 16) * 16, preset, custom), R = D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(k + 1, 0xC2B2AE35)) >>> 0);
     const kk16 = ((k % 16) + 16) % 16, ramp = kk16 === 15 ? 0.4 : kk16 === 0 ? 0.6 : 1;   // ((k%16)+16)%16: JS % keeps the sign, so negative tiles need the wrap too
@@ -876,8 +876,9 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
         for (const sd of [-1, 1]) { const pq = A.at(xs, sd < 0 ? edgeR - 0.4 : edgeL + 0.4); extra.push({ k: 'box', x: pq.p[0], y: pq.p[1], z0: 0, z1: 0.9, hx: 5, hy: 0.25, yaw: xy, mat: 'concrete', cls: 'culvert' }); }
       }
       if (vg.creek && cfg.flags.wild !== false) {   // creekside: sunken water channel beside the road, bank stones, reeds
-        const wOff = vg.creek < 0 ? edgeR - 5.2 : edgeL + 5.2, q = A.at(tile.s0 + 100 - dist, wOff);
-        KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: -1.2, z1: -0.15, hx: 100, hy: 2.2, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'water', cls: 'creek' });
+        const wHalf = (vg.waterFeature && vg.waterWidth) ? vg.waterWidth / 2 : 2.2;   // endless-road-v2: river/lake use the axis-derived waterWidth instead of the hardcoded 4.4 m creek
+        const wOff = (vg.creek < 0 ? edgeR - 3 - wHalf : edgeL + 3 + wHalf), q = A.at(tile.s0 + 100 - dist, wOff);
+        KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: -1.2, z1: -0.15, hx: 100, hy: wHalf, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'water', cls: 'creek' });
         for (let i = 0; i < 3; i++) { const u = 20 + KR() * 160, r = 0.4 + KR() * 0.5, bq = A.at(tile.s0 + u - dist, wOff + (vg.creek < 0 ? 1.6 : -1.6)); KP.add({ k: 'ell', x: bq.p[0], y: bq.p[1], z: r * 0.35, rx: r, ry: r * 0.8, rz: r * 0.5, mat: 'gravel' }); }
         for (let i = 0; i < 4; i++) { const u = 10 + KR() * 180, r = 0.25 + KR() * 0.3, rq = A.at(tile.s0 + u - dist, wOff + (vg.creek < 0 ? -1.4 : 1.4) * (0.5 + KR())); KP.add({ k: 'ell', x: rq.p[0], y: rq.p[1], z: r, rx: r * 0.5, ry: r * 0.5, rz: r * 1.8, mat: 'foliage' }); }
       }

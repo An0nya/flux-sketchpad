@@ -150,7 +150,7 @@
       cover, water,
       trees, bushes, deer: cKnobs.deer, rocks,
       fence: cKnobs.fence,
-      creek: wKnobs.waterFeature ? 0 : creekSide(seed, ki, wKnobs),
+      creek: creekSide(seed, ki, wKnobs),
       waterFeature: wKnobs.waterFeature,
       waterWidth: wKnobs.waterWidth,
       bridgeProb: wKnobs.bridgeProb,
