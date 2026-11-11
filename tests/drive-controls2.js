@@ -5,6 +5,9 @@
 // POSITIVE CONTROL: DC_WRONG_RANGE=400 makes "230 m reproduces main" use a 400 m window. That check must then FAIL (exit 1).
 const fs = require('fs'), path = require('path');
 const { load } = require('./load.js'); const RF = load(); const A = RF.DriveAnim._, D = RF.Drive;
+// the registry module is required again further down, which replaces RF.Options with a fresh
+// object that has no cache-key API (cache-keys.js patched the old one): keep this reference
+const OPT = RF.Options;
 let fails = 0, n = 0;
 const ok = (name, cond, detail) => { n++; console.log((cond ? '[PASS] ' : '[FAIL] ') + name + (detail === undefined ? '' : '  — ' + JSON.stringify(detail))); if (!cond) fails++; };
 const ROOT = path.join(__dirname, '..');
@@ -71,7 +74,16 @@ ok('stored dolly:true: no code reads a dolly option (js/spec-ui.js, js/drive-ani
 // 7. wiring (text): the controls and cache keys carry the new options
 ok('view angle: sidebar row removed, drive-bar select data-dv=fov present', !/Drive view: field of view/.test(specUI) && specUI.includes("'data-dv': 'fov'") && specUI.includes("setDV(ui, 'fov', +fov.value)"));
 ok('view angle: render uses the shared eye (eyeFor)', specUI.includes('eye: RF.Drive.eyeFor(),') && !specUI.includes('eye: [-2.0, 0.37, 1.2]'));
-ok('traffic range: cache key (tkey) and worker options carry it', anim.includes('o.trafficDensity, o.trafficRange, o.safeGap') && anim.includes('trafficRange: o.trafficRange, safeGap'));
+// the three traffic ids moved from the app's hand-written tkey tail into the animScene
+// recipe (js/cache-keys.js, 202b): the recipe declares them and the key changes with each
+ok('traffic range: cache key (animScene recipe) and worker options carry it',
+  ['trafficDensity', 'trafficRange', 'safeGap'].every(id => OPT.cacheDefs.animScene.some(s => s.id === id)) &&
+  (() => { const o = Object.assign({}, OPT.defaults()); const k = OPT.cacheKey('animScene', o, [3.5, 42, false]);
+    for (const id of ['trafficDensity', 'trafficRange', 'safeGap']) { const cur = o[id];
+      o[id] = typeof cur === 'number' ? cur + 1 : !cur;
+      if (OPT.cacheKey('animScene', o, [3.5, 42, false]) === k) { o[id] = cur; return false; } o[id] = cur; }
+    return true; })() &&
+  anim.includes('trafficRange: o.trafficRange, safeGap'));
 ok('traffic range: worker cfg key carries the eye (the eye rides on the frame)', anim.includes('p.hfov, p.eye, p.lane'));
 ok('telephoto dolly: no dolly in the drive view, bar, sync list or option defaults', !/dolly/i.test(anim) && !/dolly/i.test(specUI) && !/dolly/i.test(read('js/drive.js')) && !anim.includes("'telephoto-dolly'"));
 ok('three path: eye comes from the frame, not a constant', read('js/drive-three.js').includes('fromArray(p.eye || [-2,.37,1.2])') && read('js/drive-three-objects.js').includes('eye=p.eye||[-2,.37,1.2]'));

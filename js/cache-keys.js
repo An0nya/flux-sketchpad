@@ -250,15 +250,18 @@
     { id: 'cabinMirror', type: 'f' },
     { drv: 'roadSurfaces', opts: 'roadSurfaces' },
     { drv: 'roadSurface', opts: 'roadSurface' },
-    // --- tkey traffic options (appended after skey in the real tkey; superset by design —
-    //     V.act.clear fires on more inputs than before, not fewer. Safe/conservative.) ---
+    // --- tkey traffic options: the hand-written tail that used to be appended to skey in
+    //     drive-anim.js now lives HERE (202b, Anya-approved) — one key, one source.
+    //     Superset by design: V.act.clear fires on more inputs than before, not fewer.
     { id: 'oncoming' },
     { id: 'preceding' },
     { id: 'onKcd' },
+    { id: 'onMode' },
     { id: 'trafficDensity' },
     { id: 'trafficRange' },
     { id: 'safeGap' },
     { id: 'trafficLogic', type: 'f' },
+    { id: 'trafficMarkers', type: 'f' },
     { id: 'tileCache', type: 'f' },
     { id: 'endlessRoad', type: 'f' },
     { spl: 'tilesPreset', opts: 'tiles,endlessPreset' },
