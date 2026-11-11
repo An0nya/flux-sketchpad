@@ -147,5 +147,6 @@ run('lamp cone: the signal draw does not clobber the shared street cone uniforms
 run('T3 UI in jsdom: HTML structure, panels, spec-ui, DOM events, store, CSS (tests/t3-ui-jsdom.js)', ['tests/t3-ui-jsdom.js']); // T3
 run('minigame gameOptions restore invariant (tests/restore-options.js)', ['tests/restore-options.js']);
 run('endless road details panel (tests/endless-details.js)', ['tests/endless-details.js']);
+run('minigame restore-options call site (tests/restore-callsite.js)', ['tests/restore-callsite.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
