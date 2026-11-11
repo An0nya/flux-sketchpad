@@ -1,6 +1,6 @@
-// BEHAVIOUR prototype of tests/restore-callsite.js (neb, 11-11) — handed to nicholl, who owns the file.
-// Same four claims as the text version, but each one is observed by CALLING the app's own toggleGame()
-// in Node instead of scanning js/drive-anim.js.
+// BEHAVIOUR version of tests/restore-callsite.js (adopted from neb's prototype 2026-11-11).
+// The four claims are observed by CALLING the app's own toggleGame() in Node; the one claim behaviour
+// cannot make ("restoreOptions is called exactly once") is one [KEEP: text] check below.
 //
 // How it reaches the app: RF.DriveAnim._.toggleGame is exported by js/drive-anim.js. The exit path needs
 // a few module-internal values, which the stubs below provide:
@@ -10,7 +10,7 @@
 //   ui        — a stub: dvOpts/dvAnim (S(ui) keeps its state on ui.dvAnim), redrawSpec(), driveExtras
 //
 // Node-only; no DOM, no GL, no browser.
-//   node notes/neb/app-edits/restore-callsite-behaviour/prototype.js
+//   node tests/restore-callsite.js
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const { load } = require(path.join(ROOT, 'tests', 'load.js'));
