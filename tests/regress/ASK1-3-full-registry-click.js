@@ -28,7 +28,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   const T0 = Date.now();
   const run = (m) => console.log('[run] ' + m + ' t=' + Math.round((Date.now() - T0) / 1000) + 's');
-  const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
+  const browser = await pw.chromium.launch(process.env.P1_REAL_GPU ? { channel: 'chromium', args: ['--use-angle=metal'] } : { args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });   // P1-drive-three pattern: the gate sets P1_REAL_GPU for GPU drive tests; software GL stalls on the first full-scene frame
   let fails = 0;
   try {
     const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
@@ -40,11 +40,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.evaluate(async () => {   // drive view + the gpuq tiles-lane recipe on top of the pinned defaults
       const sl = (ms) => new Promise((r) => setTimeout(r, ms));
       const u = RF.UI;
-      for (let i = 0; i < 600 && (RF.SolverHost.loading() || u.solving); i++) await sl(100);
-      u.setMode('D'); u.setDisplay('drive');
+      let w = 0; for (; w < 600 && (RF.SolverHost.loading() || u.solving); w++) await sl(100);
+      console.log('[run] setup: solver idle after ' + w + ' waits');
+      // Recipe BEFORE the first drive frame: the gate loads pinned defaults (tiles 1200) while the gpuq lane pre-applies
+      // this recipe at load; on software GL the 1200-tile first frame is what stalled da16 inside this evaluate.
       Object.assign(u.dvOpts, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1', tiles: true, mountainPass: false });
+      u.setMode('D');
+      console.log('[run] setup: setMode done');
+      u.setDisplay('drive');
+      console.log('[run] setup: setDisplay done');
       u.redrawSpec();
       for (let i = 0; i < 200 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure; i++) await sl(50);
+      console.log('[run] setup: renderer=' + RF.DriveAnim.stats().renderer + ' gpuFailure=' + !!RF.DriveAnim.stats().gpuFailure);
     });
     run('setup done, sweep starting');
     const r = await page.evaluate(async () => {

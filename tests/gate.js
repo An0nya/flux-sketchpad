@@ -113,7 +113,7 @@ function plan() {
 function freePort() { return new Promise((r) => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); }); }
 function runOne(name, port) {
   const node = name.startsWith('node:'), file = node ? path.join('tests', name.slice(5) + '.js') : path.join('tests/regress', name + '.js');
-  const env = Object.assign({}, process.env, { PLAYWRIGHT: PW, PATH: '/opt/homebrew/bin:' + process.env.PATH }); if (name === 'P1-drive-three') env.P1_REAL_GPU = '1';
+  const env = Object.assign({}, process.env, { PLAYWRIGHT: PW, PATH: '/opt/homebrew/bin:' + process.env.PATH }); if (name === 'P1-drive-three' || name === 'ASK1-3-full-registry-click') env.P1_REAL_GPU = '1';   // GPU drive tests: software GL stalls on the first full-scene frame (ASK1-3 gate run da16)
   const t0 = Date.now(); let out = '';
   return new Promise((resolve) => {
     const c = spawn(process.execPath, node ? [file] : [file, String(port)], { cwd: root, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
