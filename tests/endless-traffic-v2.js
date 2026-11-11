@@ -3,67 +3,58 @@
 // axes and trafficCars uses it instead of the biome density. OFF ('') is byte-identical.
 // Run: node tests/endless-traffic-v2.js — exits 1 on failure.
 
-const path = require('path'), ROOT = path.join(__dirname, '..');
+const path = require('path'), fs = require('fs'), ROOT = path.join(__dirname, '..');
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { if (c) { pass++; console.log('[PASS] ' + n); } else { fail++; console.log('[FAIL] ' + n + (x !== undefined ? ' — ' + JSON.stringify(x) : '')); } };
-const close = (a, b, eps) => Math.abs(a - b) < (eps || 1e-6);
 
-// Load data modules
-require(path.join(ROOT, 'js', 'endless-axis-config.js'));
-require(path.join(ROOT, 'js', 'endless-traffic.js'));
+// Load the full app through load.js + the v2 data modules (same order as index.html)
+const { load } = require('./load.js');
+const RF = load(['endless-axis-config', 'endless-relief', 'endless-settlement-road', 'endless-cover-water', 'endless-traffic']);
+const A = RF.DriveAnim, AX = RF.EndlessAxes;
 
-// --- 1. The density table exists and returns expected values ---
-const V2_DENSITY = { city: { 'street': 1.5, 'two-lane': 1.1, 'suburban-1+1': 0.9, 'surface-2+2': 1.2, 'remote-highway': 0.6, 'dense-highway': 1.3 },
-  suburb: { 'street': 1.2, 'two-lane': 0.9, 'suburban-1+1': 1.0, 'surface-2+2': 1.1, 'remote-highway': 0.5, 'dense-highway': 1.2 },
-  rural: { 'street': 0.7, 'two-lane': 0.8, 'suburban-1+1': 0.7, 'surface-2+2': 1.0, 'remote-highway': 0.9, 'dense-highway': 1.1 },
-  wild: { 'street': 0.3, 'two-lane': 0.5, 'suburban-1+1': 0.4, 'surface-2+2': 0.7, 'remote-highway': 0.8, 'dense-highway': 1.0 } };
+ok('modules: RF.EndlessAxes + RF.DriveAnim present', !!AX && !!A && typeof A.endlessTile === 'function' && typeof AX.parse === 'function');
 
-ok('1 density table: all 4 settlement rungs', Object.keys(V2_DENSITY).length === 4, Object.keys(V2_DENSITY));
-ok('2 density table: all 6 roadClass rungs per settlement', 
-  Object.values(V2_DENSITY).every(rc => Object.keys(rc).length === 6));
-ok('3 density: city+street = 1.5 (busiest)', V2_DENSITY.city.street === 1.5);
-ok('4 density: wild+street = 0.3 (emptiest)', V2_DENSITY.wild.street === 0.3);
-ok('5 density: wild+dense-highway = 1.0 (highway roads are busy even in the wild)', V2_DENSITY.wild['dense-highway'] === 1.0);
+// --- source-slice: extract the app's V2_DENSITY from js/drive-anim.js ---
+const drvSrc = fs.readFileSync(path.join(ROOT, 'js', 'drive-anim.js'), 'utf8');
+const dm = drvSrc.match(/const V2_DENSITY\s*=\s*(\{[\s\S]*?\}\s*\});/);
+ok('source-slice: V2_DENSITY table found in drive-anim.js', !!dm);
+if (!dm) { console.log(pass + ' passed, ' + fail + ' failed'); process.exit(1); }
+const VD = (0, eval)('(' + dm[1].replace(/[\s;]+$/, '') + ')');
+ok('source-sliced table: city+street = 1.5', VD.city && VD.city.street === 1.5, VD.city && VD.city.street);
+ok('source-sliced table: wild+street = 0.3', VD.wild && VD.wild.street === 0.3, VD.wild && VD.wild.street);
+ok('source-sliced table: wild+dense-highway = 1.0', VD.wild && VD.wild['dense-highway'] === 1.0, VD.wild && VD.wild['dense-highway']);
 
-// --- 2. The timeline returns settlement+roadClass that the table can resolve ---
-const axes = '{"settlement":"city","roadClass":"street"}';
-const cfg = RF.EndlessAxes.parse(axes);
-const tl = RF.EndlessAxes.timeline(7, cfg, Infinity);
-ok('6 timeline: fixed city+street config', cfg.settlement === 'city' && cfg.roadClass === 'street');
-const s = RF.EndlessAxes.valueAt(tl.axes.settlement, 10);
-const r = RF.EndlessAxes.valueAt(tl.axes.roadClass, 10);
-ok('7 valueAt: settlement=city', s === 'city', s);
-ok('8 valueAt: roadClass=street', r === 'street', r);
-ok('9 density lookup resolves: city+street → 1.5', V2_DENSITY[s] && V2_DENSITY[s][r] === 1.5);
+// --- ON: build a source with axes active, verify _v2densityAt exists and works ---
+const axesF = AX.fromUi({
+  settlement: { lo: 'city', hi: 'city' }, roadClass: { lo: 'street', hi: 'street' },
+  relief: { lo: 'auto', hi: 'auto' }, cover: { lo: 'auto', hi: 'auto' }, water: { lo: 'auto', hi: 'auto' }
+}, 1);
+ok('axes: fromUi produced non-empty string', axesF !== '');
 
-// --- 3. Different axes combos give different density ---
-const axesWild = '{"settlement":"wild","roadClass":"dense-highway"}';
-const tlW = RF.EndlessAxes.timeline(7, RF.EndlessAxes.parse(axesWild), Infinity);
-const sw = RF.EndlessAxes.valueAt(tlW.axes.settlement, 10);
-const rw = RF.EndlessAxes.valueAt(tlW.axes.roadClass, 10);
-ok('10 wild+dense-highway density = 1.0', V2_DENSITY[sw] && V2_DENSITY[sw][rw] === 1.0, { sw, rw });
+const baseOpts = { seed: 7, tiles: true, endlessRoad: true, trafficDensity: 1, oncoming: true, preceding: true, onKcd: 30, trafficMarkers: true };
+const srcON = A.source('road', 3.5, false, {}, Object.assign({ endlessAxes: axesF }, baseOpts));
+ok('ON: trafficSource created _v2densityAt on src.tiles', typeof srcON.tiles._v2densityAt === 'function', typeof srcON.tiles._v2densityAt);
+ok('ON: _v2densityAt at k=10 (city+street) = 1.5', srcON.tiles._v2densityAt(10) === 1.5, srcON.tiles._v2densityAt(10));
+ok('ON: _v2densityAt is cached (same tile same value)', srcON.tiles._v2densityAt(10) === srcON.tiles._v2densityAt(10));
+ok('ON: _v2densityAt at k=50 (city+street, same fixed axes) = 1.5', srcON.tiles._v2densityAt(50) === 1.5, srcON.tiles._v2densityAt(50));
 
-// --- 4. Unknown combo falls back to 1 ---
-ok('11 unknown combo → 1', (V2_DENSITY.nosuch && V2_DENSITY.nosuch.thing) || 1 === 1);
+// --- OFF: empty axes → no _v2densityAt ---
+const srcOFF = A.source('road', 3.5, false, {}, Object.assign({ endlessAxes: '' }, baseOpts));
+ok('OFF: empty axes → _v2densityAt is undefined', srcOFF.tiles._v2densityAt === undefined, typeof srcOFF.tiles._v2densityAt);
 
-// --- 5. All 4×6 = 24 combos resolve to a number ---
-let allOk = true; const bad = [];
-for (const [sett, roads] of Object.entries(V2_DENSITY)) {
-  for (const [rc, d] of Object.entries(roads)) {
-    if (typeof d !== 'number' || d < 0) { allOk = false; bad.push(sett + '/' + rc); }
-  }
-}
-ok('12 all 24 density table entries are non-negative numbers', allOk, bad);
+// --- END-TO-END: trafficCars ON vs OFF differ ---
+const carsON = A.trafficCars(srcON, 0, 0);
+const carsOFF = A.trafficCars(srcOFF, 0, 0);
+ok('trafficCars: ON (city+street density=1.5) produces cars near k=0', carsON.length > 0, carsON.length + ' cars');
+ok('trafficCars: ON vs OFF car sets differ (density override changes car spawns)', JSON.stringify(carsON) !== JSON.stringify(carsOFF),
+  'carsON=' + carsON.length + ' carsOFF=' + carsOFF.length);
 
-// --- 6. Density varies with settlement at same roadClass ---
-ok('13 city > wild at same roadClass (street)', V2_DENSITY.city.street > V2_DENSITY.wild.street);
-ok('14 city > wild at same roadClass (dense-highway)', V2_DENSITY.city['dense-highway'] > V2_DENSITY.wild['dense-highway']);
-
-// --- 7. OFF byte-identical ---
-// The _v2densityAt helper is only created when src.tiles.axes is non-empty.
-// When axes is '', trafficCars uses the legacy biome density path, unchanged.
-// Verified by the existing 16-check endless-traffic suite and 15-check endless-cover-water suite.
-ok('15 OFF: empty axes creates no _v2densityAt (the guard requires truthy axes)', '' ? true : true);
+// --- OFF identity: src with axes="" === src without endlessAxes option ---
+const srcNoAxes = A.source('road', 3.5, false, {}, baseOpts);
+const carsNoAxes = A.trafficCars(srcNoAxes, 0, 0);
+ok('OFF identity: cars with axes="" === cars without endlessAxes option',
+  JSON.stringify(carsOFF) === JSON.stringify(carsNoAxes),
+  'carsOFF=' + carsOFF.length + ' carsNoAxes=' + carsNoAxes.length);
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
