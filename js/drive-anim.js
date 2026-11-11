@@ -59,7 +59,21 @@
     if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, endless: !!o.endlessRoad, preset: o.endlessPreset || 'off', custom: o.endlessPreset === 'custom' ? parseCustomPreset(o.endlessPresetCustom) : null, terrain: !!o.tileTerrain, multilane: !!o.multilaneRoad || !!(LOOP_MULTILANE[o.endlessPreset || 'off']), tunnel: !!o.endlessTunnel, crossing: !!o.endlessCrossing, yawSmooth: !!o.yawSmooth, driftMode: !!o.driftMode, gantries: !!o.junctionGantries || o.endlessPreset === 'gantry-loop', density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null, axes: o.endlessAxes || '' };   // endless-road-v2 (pencroff): the axes JSON string ('' = OFF = the legacy biome walk)
     // endless-road-v2 (barbicane 11-11): per-tile traffic override — trafficAt() queries consumed by trafficCars when axes are non-empty.
     // Guarded: RF.EndlessAxes may not be loaded in node test contexts that require drive-anim.js directly.
-    if (src.tiles && src.tiles.axes && typeof RF !== 'undefined' && RF.EndlessAxes) src.tiles._v2tl = RF.EndlessAxes.timeline((+o.seed || 0) | 0, RF.EndlessAxes.parse(src.tiles.axes), Infinity);
+    if (src.tiles && src.tiles.axes && typeof RF !== 'undefined' && RF.EndlessAxes) {
+      src.tiles._v2tl = RF.EndlessAxes.timeline((+o.seed || 0) | 0, RF.EndlessAxes.parse(src.tiles.axes), Infinity);
+      // per-tile density helper — simple table mapping (settlement,roadClass)→density multiplier (biome baseline ≈ 1)
+      const V2_DENSITY = { city: { 'street': 1.5, 'two-lane': 1.1, 'suburban-1+1': 0.9, 'surface-2+2': 1.2, 'remote-highway': 0.6, 'dense-highway': 1.3 },
+        suburb: { 'street': 1.2, 'two-lane': 0.9, 'suburban-1+1': 1.0, 'surface-2+2': 1.1, 'remote-highway': 0.5, 'dense-highway': 1.2 },
+        rural: { 'street': 0.7, 'two-lane': 0.8, 'suburban-1+1': 0.7, 'surface-2+2': 1.0, 'remote-highway': 0.9, 'dense-highway': 1.1 },
+        wild: { 'street': 0.3, 'two-lane': 0.5, 'suburban-1+1': 0.4, 'surface-2+2': 0.7, 'remote-highway': 0.8, 'dense-highway': 1.0 } };
+      const _cache = new Map();
+      src.tiles._v2densityAt = (k) => {
+        let v = _cache.get(k); if (v !== undefined) return v;
+        const s = RF.EndlessAxes.valueAt(src.tiles._v2tl.axes.settlement, k);
+        const r = RF.EndlessAxes.valueAt(src.tiles._v2tl.axes.roadClass, k);
+        v = (V2_DENSITY[s] && V2_DENSITY[s][r]) || 1; _cache.set(k, v); return v;
+      };
+    }
     src._tileSig = o.tiles ? [o.endlessPreset || 'off', o.endlessPresetCustom || '', !!o.tileTerrain, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, o.endlessAxes || ''].join('|') : '';   // junction-bringing signature for the traffic-state copy predicate below (pencroff): a same-seed toggle of these changes junction kinds, so old car routes may not be copied
     for (const kind of ['oncoming', 'preceding']) {   // both models always (a few objects each): a car of a kind switched off this frame must not throw (models[kind] undefined -> 'not iterable' -> sticky CPU fallback)
       const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
@@ -76,7 +90,9 @@
       const shift = dist + (kind === 'oncoming' ? 1 : -1) * TRAFFIC_SPEED[kind] * t;
       for (let k = Math.floor((shift - 6) / gap); k <= Math.floor((shift + cull) / gap); k++) {
         const R = D.rng((Math.imul(tr.seed, 2654435761) ^ Math.imul(k, 0x9E3779B1) ^ (kind === 'oncoming' ? 0x51ED270B : 0x165667B1)) >>> 0);
-        if (src.tiles && src.tiles.endless) { const bt = tileOf(src, k); if (R() > (bt.props ? bt.props.density : 1)) continue; }   // §2-endless: biome density (B5: read the rendered tile, preset/custom included) (city busy, mountain sparse)
+        if (src.tiles && src.tiles.endless) { const bt = tileOf(src, k); let d = bt.props ? bt.props.density : 1;
+        if (src.tiles._v2densityAt) { const dd = src.tiles._v2densityAt(k); d = dd; }   // endless-road-v2: axes-driven density overrides biome density
+        if (R() > d) continue; }   // §2-endless: biome density (B5: read the rendered tile, preset/custom included) (city busy, mountain sparse)
         const rel = (k + 0.2 + 0.6 * R()) * gap - shift;
         const min = kind === 'preceding' && tr.safeGap ? Math.max(25, 2 * tr.speed / 3.6) : -6;
         if (rel >= min && rel <= cull) { const ml = src.tiles && src.tiles.multilane ? mlLanes(ML_LANE, ML_MEDIAN) : null; out.push({ id: kind + ':' + k, kind, rel, off: kind === 'oncoming' ? (ml ? ml.onc0 : src.lane) : (ml && (k & 1) ? ml.right : 0) }); }   // §2-multilane: oncoming in the first lane across the median, preceding alternating own/right lane
