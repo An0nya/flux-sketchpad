@@ -49,9 +49,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       u.setMode('D');
       console.log('[run] setup: setMode done');
       u.setDisplay('drive');
-      console.log('[run] setup: setDisplay done');
-      u.redrawSpec();
-      for (let i = 0; i < 200 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure; i++) await sl(50);
+      console.log('[run] setup: setDisplay done, renderer=' + RF.DriveAnim.stats().renderer);
+      // No redrawSpec here: vestige of the old ordering (recipe AFTER display) — the recipe is now in dvOpts before
+      // setDisplay, which builds from it. da02 stalled between 'setDisplay done' and the renderer log; redrawSpec (a
+      // synchronous CPU spec render) and the iteration-capped wait loop were the only calls between — loop is wall-capped now.
+      for (const tw = Date.now(); Date.now() - tw < 15000 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure;) await sl(50);
       console.log('[run] setup: renderer=' + RF.DriveAnim.stats().renderer + ' gpuFailure=' + !!RF.DriveAnim.stats().gpuFailure);
     });
     run('setup done, sweep starting');
