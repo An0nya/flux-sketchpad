@@ -41,35 +41,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.evaluate(async () => {   // drive view + the gpuq tiles-lane recipe on top of the pinned defaults
       const sl = (ms) => new Promise((r) => setTimeout(r, ms));
       const u = RF.UI;
+      // Fixup 9 — the recipe AT LOAD TIME, exactly the validated lane's order. 70bf's probes cleared every sync suspect:
+      // roadModel 1ms/0ms, full redrawSpec 1ms, cpuStillRenders 0, bar=true at t=8s — and the stall began at the FIRST
+      // event-loop yield: the async three-scene build (drive-anim's import .then -> gpuCreate). The gpuq lane applies
+      // this recipe at load, so every engine cache (scene, roadModel, tile geometry) is BUILT with these values, and it
+      // reached three+playing in ~105s on the same host. The gate assigned dvOpts AFTER the solve: caches built on the
+      // pinned defaults (seed 7, visibility null, beams off) were swapped underneath (seed 1, visibility 60, beams on),
+      // and the async build on that inconsistent state is what ran past the wall (70bf: 'after yield' never printed).
+      RF.SpecUI.dvOpts(u);   // lazy-init (DV_DEF + localStorage merge, spec-ui.js:890): dvOpts does not exist until the drive builds it — f644 assigned onto undefined
+      Object.assign(u.dvOpts, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1', tiles: true, mountainPass: false });
+      console.log('[run] setup: recipe applied at load (seed=' + u.dvOpts.seed + ' visibility=' + u.dvOpts.visibility + ')');
       let w = 0; for (; w < 600 && (RF.SolverHost.loading() || u.solving); w++) await sl(100);
       console.log('[run] setup: solver idle after ' + w + ' waits');
-      // Pre-warm the three module while the main thread is still free: drive-anim's gpuRenderer() (first sync) does
-      // import('./drive-three.js') = /js/drive-three.js; the module EVAL needs a main-thread task, and the gate's first
-      // drive frame saturates it (9713: 480s before sync/bars ran — drawDrive's 'lazy && !gpuShowing' branch paints a
-      // full cpuStill synchronously when three is not up yet, spec-ui.js:1232). A cached module resolves in a microtask
-      // between frames instead, so gpuShowing goes true before the late cpuStill can run.
+      // Pre-warm the three module cache (drive-anim's gpuRenderer does import('./drive-three.js') on the first sync);
+      // a cached module resolves in a microtask. 70bf falsified the old rationale (a saturating first frame): drawDrive
+      // measured 1ms — kept purely so the post-play import cannot race the network.
       try { const tImp = Date.now(); await import('/js/drive-three.js'); console.log('[run] setup: drive-three.js pre-imported in ' + (Date.now() - tImp) + 'ms'); } catch (e) { console.log('[run] setup: pre-import FAILED: ' + (e && e.message)); }
-      RF.SpecUI.dvOpts(u);   // lazy-init (DV_DEF + localStorage merge, spec-ui.js:890): dvOpts does not exist until the drive builds it — f644 assigned onto undefined
-      // Recipe BEFORE the first drive frame: the gate loads pinned defaults (tiles 1200) while the gpuq lane pre-applies
-      // this recipe at load; on software GL the 1200-tile first frame is what stalled da16 inside this evaluate.
-      Object.assign(u.dvOpts, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1', tiles: true, mountainPass: false });
       u.setMode('D');
       console.log('[run] setup: setMode done');
       u.setDisplay('drive');
-      console.log('[run] setup: setDisplay done, renderer=' + RF.DriveAnim.stats().renderer);
-      // Fixup-8 probes: name the 480s. Candidates: roadModel (spec-ui.js:1216, runs BEFORE sync) vs the late cpuStill
-      // (:1232, runs when lazy && !gpuShowing — and V.three cannot exist until drive-anim's own import .then microtask,
-      // so the FIRST drawDrive always takes that branch). Each probe logs starting+done; whichever never prints done
-      // is the culprit. Exports used: RF.SpecUI.roadModel/cpuStillRenders, RF.DriveAnim._.{V,Wk,mt}.
-      const TM = (label, fn) => { const t = Date.now(); console.log('[run] probe: ' + label + ' starting'); try { const r = fn(); console.log('[run] probe: ' + label + ' done ' + (Date.now() - t) + 'ms'); return r; } catch (e) { console.log('[run] probe: ' + label + ' THREW ' + (e && e.message) + ' after ' + (Date.now() - t) + 'ms'); throw e; } };
-      const VX = RF.DriveAnim._;
-      console.log('[run] probe: state mt=' + VX.mt() + ' workers=' + (VX.Wk && VX.Wk.list ? VX.Wk.list.length : -1) + ' cpuStillRenders=' + RF.SpecUI.cpuStillRenders());
-      TM('roadModel#1', () => RF.SpecUI.roadModel(u));
-      TM('roadModel#2', () => RF.SpecUI.roadModel(u));
-      TM('redrawSpec#1', () => u.redrawSpec());   // full drawDrive: roadModel cached, sync (bars + import start), then the late cpuStill if three is not up
-      console.log('[run] probe: after redraw1 cpuStillRenders=' + RF.SpecUI.cpuStillRenders() + ' renderer=' + RF.DriveAnim.stats().renderer + ' three=' + !!VX.V.three + ' bar=' + !!u.driveBar);
-      await sl(300);   // one yield: the import .then (module pre-cached) resolves -> threeModule -> redrawSpec -> gpuCreate -> V.three
-      console.log('[run] probe: after yield renderer=' + RF.DriveAnim.stats().renderer + ' three=' + !!VX.V.three + ' gpuFail=' + !!VX.V.gpuFailure + ' cpuStillRenders=' + RF.SpecUI.cpuStillRenders());
+      console.log('[run] setup: setDisplay done, renderer=' + RF.DriveAnim.stats().renderer + ' cpuStillRenders=' + RF.SpecUI.cpuStillRenders());
+      // (Fixup-8 probes removed in fixup 9: they called roadModel/redrawSpec, forcing an early sync + import-.then
+      // ordering the validated lane never takes. 70bf's answers are in Claims; only pure-read logs remain.)
       // The play button is built ASYNC: bars() runs inside DriveAnim.sync (a drawDrive hook) and appends V.bar to
       // ui.driveExtras (drive-anim.js:3177) — a synchronous querySelector right after setDisplay never finds it
       // (8a75: 'NO play button found'). The validated gpuq harness polls u.driveBar (gpuq-ask13.js:59); do the same,
@@ -84,7 +77,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       console.log('[run] setup: driveBar=' + !!u.driveBar + ' playBtn=' + !!pb);
       if (!pb) throw new Error('play button never appeared (driveBar=' + !!u.driveBar + ') — sync/drawDrive never completed; refusing to sweep');
       if (pb.getAttribute('aria-pressed') !== 'true') pb.click();   // aria-pressed mirrors run state (drive-anim.js:2850); don't click into a pause
-      for (const tw = Date.now(); Date.now() - tw < 30000 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure;) await sl(100);
+      let th = 0;   // three-wait: the lane needed only seconds, but gpuCreate builds the whole three scene — 120s cap, heartbeat every 5s (pure reads)
+      for (const tw = Date.now(); Date.now() - tw < 120000 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure;) {
+        await sl(100);
+        if (Date.now() - th > 5000) { th = Date.now(); const s = RF.DriveAnim.stats(); console.log('[run] three-wait: renderer=' + s.renderer + ' three=' + !!(RF.DriveAnim._ && RF.DriveAnim._.V && RF.DriveAnim._.V.three) + ' gpuFail=' + !!s.gpuFailure + ' (+' + Math.round((Date.now() - tw) / 1000) + 's)'); }
+      }
       console.log('[run] setup: renderer=' + RF.DriveAnim.stats().renderer + ' gpuFailure=' + !!RF.DriveAnim.stats().gpuFailure);
       if (RF.DriveAnim.stats().renderer !== 'three') throw new Error('renderer stayed ' + RF.DriveAnim.stats().renderer + ' after play — refusing to sweep on the CPU renderer (main-thread starvation; validated config is renderer three, gpuq 8b20)');
     });
