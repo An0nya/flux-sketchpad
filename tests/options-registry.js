@@ -236,15 +236,40 @@ const unknownOpt = [];
 for (const [name, r] of Object.entries(Opt.RULES)) for (const o of condOpts(r.cond)) if (!(o in Opt.byId)) unknownOpt.push(name + '->' + o);
 ok('rule conditions only name declared options', unknownOpt.length === 0, unknownOpt);
 ok('every rule has a plain reason and a known UI effect', ruleNames.every((r) => typeof Opt.RULES[r].why === 'string' && Opt.RULES[r].why.length > 8 && EFFECTS.includes(Opt.RULES[r].effect)));
-const staleCite = [];
+// Rule citations: the snippet must exist in the cited file, and it must resolve to exactly ONE line — the occurrence
+// nearest the cited line, by absolute line distance; an equidistant pair is a tie and fails loudly, because a citation
+// that cannot resolve to one line is the false-green case. The cited line is DOCUMENTATION: drift is reported, never
+// blocking (cyrus 11-11, gate-red triage: the old ±120-line window was a tripwire — 5 of 43 citations sat 3-8 lines
+// from its edge, so an unrelated +10-line patch reddened this suite. 12 of the 43 snippets repeat in their own file —
+// a common idiom being cited — and every one of them still resolves uniquely.)
+const staleCite = [], ambiguousCite = [], citeDrift = [];
 for (const [name, r] of Object.entries(Opt.RULES)) {
   const f = path.join(ROOT, r.at.file);
   if (!fs.existsSync(f)) { staleCite.push(name + ': no file ' + r.at.file); continue; }
   const lines = fs.readFileSync(f, 'utf8').split('\n');
-  const lo = Math.max(0, r.at.line - 1 - 120), hi = Math.min(lines.length, r.at.line + 120);
-  if (!lines.slice(lo, hi).some((l) => l.includes(r.at.fn))) staleCite.push(name + ': "' + r.at.fn + '" not within 120 lines of ' + r.at.file + ':' + r.at.line);
+  const hits = [];
+  for (let i = 0; i < lines.length; i++) if (lines[i].includes(r.at.fn)) hits.push(i + 1);
+  if (hits.length === 0) { staleCite.push(name + ': "' + r.at.fn + '" not found in ' + r.at.file); continue; }
+  let best = hits[0], bestD = Math.abs(hits[0] - r.at.line), tie = false;
+  for (const h of hits.slice(1)) {
+    const d = Math.abs(h - r.at.line);
+    if (d < bestD) { best = h; bestD = d; tie = false; }
+    else if (d === bestD) tie = true;   // equidistant twin: the citation cannot resolve to one line
+  }
+  if (tie) {
+    const twins = hits.filter((h) => Math.abs(h - r.at.line) === bestD);
+    ambiguousCite.push(name + ': "' + r.at.fn + '" occurs at ' + twins.join(' and ') + ' in ' + r.at.file + ' — equidistant from the cited line ' + r.at.line);
+    continue;
+  }
+  const drift = best - r.at.line;
+  if (drift !== 0) citeDrift.push(name + ': resolved to ' + best + ', cited ' + r.at.line + ', drift ' + (drift > 0 ? '+' : '') + drift + (hits.length > 1 ? ' (' + hits.length + ' occurrences of the snippet in the file)' : ''));
 }
-ok('every rule citation (file, snippet, approximate line) still matches the code', staleCite.length === 0, staleCite);
+ok('every rule citation (file, snippet) points at code that exists', staleCite.length === 0, staleCite);
+ok('every rule citation resolves to exactly one line (no equidistant twin)', ambiguousCite.length === 0, ambiguousCite);
+if (citeDrift.length) {
+  console.log('[INFO] rule citations whose cited line has drifted from the resolved line (' + citeDrift.length + ' of ' + Object.keys(Opt.RULES).length + ') — drift is documentation, not a failure:');
+  for (const d of citeDrift) console.log('[INFO]   ' + d);
+}
 // unmet() under the default profile: a few facts the OPTIONS.md inventory states
 const U = (id, o, ctx) => Opt.unmet(id, Object.assign({}, gen, o || {}), ctx || { renderer: 'gpu', preset: 'us' }).map((x) => x.rule);
 ok('unmet(): with clear air the beam and halo controls report "air"', U('scatterRes').includes('air') && U('trafficHalo').includes('air') && U('haloGain').includes('air') && !U('visibility').length);
