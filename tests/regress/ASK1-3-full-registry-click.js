@@ -41,49 +41,57 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.evaluate(async () => {   // drive view + the gpuq tiles-lane recipe on top of the pinned defaults
       const sl = (ms) => new Promise((r) => setTimeout(r, ms));
       const u = RF.UI;
-      // Fixup 9 — the recipe AT LOAD TIME, exactly the validated lane's order. 70bf's probes cleared every sync suspect:
-      // roadModel 1ms/0ms, full redrawSpec 1ms, cpuStillRenders 0, bar=true at t=8s — and the stall began at the FIRST
-      // event-loop yield: the async three-scene build (drive-anim's import .then -> gpuCreate). The gpuq lane applies
-      // this recipe at load, so every engine cache (scene, roadModel, tile geometry) is BUILT with these values, and it
-      // reached three+playing in ~105s on the same host. The gate assigned dvOpts AFTER the solve: caches built on the
-      // pinned defaults (seed 7, visibility null, beams off) were swapped underneath (seed 1, visibility 60, beams on),
-      // and the async build on that inconsistent state is what ran past the wall (70bf: 'after yield' never printed).
-      RF.SpecUI.dvOpts(u);   // lazy-init (DV_DEF + localStorage merge, spec-ui.js:890): dvOpts does not exist until the drive builds it — f644 assigned onto undefined
-      Object.assign(u.dvOpts, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1', tiles: true, mountainPass: false });
-      console.log('[run] setup: recipe applied at load (seed=' + u.dvOpts.seed + ' visibility=' + u.dvOpts.visibility + ')');
-      let w = 0; for (; w < 600 && (RF.SolverHost.loading() || u.solving); w++) await sl(100);
-      console.log('[run] setup: solver idle after ' + w + ' waits');
-      // Pre-warm the three module cache (drive-anim's gpuRenderer does import('./drive-three.js') on the first sync);
-      // a cached module resolves in a microtask. 70bf falsified the old rationale (a saturating first frame): drawDrive
-      // measured 1ms — kept purely so the post-play import cannot race the network.
-      try { const tImp = Date.now(); await import('/js/drive-three.js'); console.log('[run] setup: drive-three.js pre-imported in ' + (Date.now() - tImp) + 'ms'); } catch (e) { console.log('[run] setup: pre-import FAILED: ' + (e && e.message)); }
+      // Fixup 10 — adopt P1-drive-three's PROVEN gate-lane bring-up (tests/drive-three-page.js:5-15: this exact
+      // sequence passes in this lane on the real GPU): three comes up on the pinned LIGHT options, and the heavy
+      // sweep recipe is applied AFTER, on three. Mechanism named by ten blocked runs: the recipe (visibility 60
+      // dense fog + trafficBeams + trafficHalo) makes every CPU still/frame cost tens of seconds, and unlike the
+      // gpuq page lane — where the render loop is IDLE between gpuq calls (frames fire only on demand; gpuq.mjs
+      // help: "Never wait on your own requestAnimationFrame") — the gate's page FREE-RUNS the tick/rAF loop, so
+      // the first yield after setDisplay enters that storm and never leaves (662f: every sl(50) resolved ~30s
+      // late; 70bf/fecb: zero lines after setDisplay, whatever the recipe timing). The lane validation (8b20)
+      // never exercised a free-running bring-up. P1 reaches three with playing:false — redrawSpec + gpuRenderer
+      // suffice; no play click is needed for the switch.
       u.setMode('D');
-      console.log('[run] setup: setMode done');
+      let w = 0;   // P1's spec-ready condition (stricter than solver-idle: compiled run context must match the spec context)
+      for (; w < 1800 && !(u.spec && u.spec.ev && u.spec.full && !u.solving && !u.needCompile && u.run && u.run.ctx.done && u.spec.ctx === u.run.ctx); w++) await sl(100);
+      console.log('[run] setup: spec ready after ' + w + ' waits');
+      if (w >= 1800) throw new Error('spec never reached ready (P1 condition) — refusing to sweep');
+      // Pre-warm the three module cache so the bring-up import resolves in a microtask (P1 does not need this; it
+      // only removes a network race).
+      try { const tImp = Date.now(); await import('/js/drive-three.js'); console.log('[run] setup: drive-three.js pre-imported in ' + (Date.now() - tImp) + 'ms'); } catch (e) { console.log('[run] setup: pre-import FAILED: ' + (e && e.message)); }
+      await sl(500);
       u.setDisplay('drive');
-      console.log('[run] setup: setDisplay done, renderer=' + RF.DriveAnim.stats().renderer + ' cpuStillRenders=' + RF.SpecUI.cpuStillRenders());
-      // (Fixup-8 probes removed in fixup 9: they called roadModel/redrawSpec, forcing an early sync + import-.then
-      // ordering the validated lane never takes. 70bf's answers are in Claims; only pure-read logs remain.)
-      // The play button is built ASYNC: bars() runs inside DriveAnim.sync (a drawDrive hook) and appends V.bar to
-      // ui.driveExtras (drive-anim.js:3177) — a synchronous querySelector right after setDisplay never finds it
-      // (8a75: 'NO play button found'). The validated gpuq harness polls u.driveBar (gpuq-ask13.js:59); do the same,
-      // then press play (AGENTS.md: the renderer starts cpu and switches after Play; 662f proved the cpu loop
-      // saturates the main thread — every sl(100) resolved ~30s late, so wall caps are checked between starved awaits).
-      const qpb = () => document.querySelector('[data-anim="play"]') || (u.driveExtras && u.driveExtras.querySelector('[data-anim="play"]'));
-      let pb = qpb(), hb = 0;
-      for (const tb = Date.now(); !pb && !(u.driveBar && (pb = qpb())) && Date.now() - tb < 120000;) {
-        await sl(100);
-        if (Date.now() - hb > 5000) { hb = Date.now(); const s = RF.DriveAnim.stats(); console.log('[run] setup-wait: bar=' + !!u.driveBar + ' renderer=' + s.renderer + ' gpuFail=' + !!s.gpuFailure + ' playing=' + !!(u.dvAnim && u.dvAnim.playing) + ' three=' + !!(RF.DriveAnim._ && RF.DriveAnim._.V && RF.DriveAnim._.V.three)); }   // heartbeat: 5s slices make any remaining stall attributable (arrival gaps show main-thread saturation)
-      }
-      console.log('[run] setup: driveBar=' + !!u.driveBar + ' playBtn=' + !!pb);
-      if (!pb) throw new Error('play button never appeared (driveBar=' + !!u.driveBar + ') — sync/drawDrive never completed; refusing to sweep');
-      if (pb.getAttribute('aria-pressed') !== 'true') pb.click();   // aria-pressed mirrors run state (drive-anim.js:2850); don't click into a pause
-      let th = 0;   // three-wait: the lane needed only seconds, but gpuCreate builds the whole three scene — 120s cap, heartbeat every 5s (pure reads)
+      u.setPane('result', 'activate');
+      Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false });
+      RF.SpecUI.dvOpts(u);   // lazy-init (DV_DEF + localStorage merge, spec-ui.js:890) — f644: dvOpts can be undefined before the drive builds it
+      u.dvOpts.samples = 'auto';
+      u.redrawSpec();
+      console.log('[run] setup: bring-up redrawSpec done, renderer=' + RF.DriveAnim.stats().renderer + ' cpuStillRenders=' + RF.SpecUI.cpuStillRenders());
+      let th = 0;   // P1 polls three at 200x50ms on the real GPU; allow 120s here, with a 5s pure-read heartbeat
       for (const tw = Date.now(); Date.now() - tw < 120000 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure;) {
-        await sl(100);
-        if (Date.now() - th > 5000) { th = Date.now(); const s = RF.DriveAnim.stats(); console.log('[run] three-wait: renderer=' + s.renderer + ' three=' + !!(RF.DriveAnim._ && RF.DriveAnim._.V && RF.DriveAnim._.V.three) + ' gpuFail=' + !!s.gpuFailure + ' (+' + Math.round((Date.now() - tw) / 1000) + 's)'); }
+        await sl(50);
+        if (Date.now() - th > 5000) { th = Date.now(); const s = RF.DriveAnim.stats(); console.log('[run] three-wait: renderer=' + s.renderer + ' gpuFail=' + !!s.gpuFailure + ' (+' + Math.round((Date.now() - tw) / 1000) + 's)'); }
       }
       console.log('[run] setup: renderer=' + RF.DriveAnim.stats().renderer + ' gpuFailure=' + !!RF.DriveAnim.stats().gpuFailure);
-      if (RF.DriveAnim.stats().renderer !== 'three') throw new Error('renderer stayed ' + RF.DriveAnim.stats().renderer + ' after play — refusing to sweep on the CPU renderer (main-thread starvation; validated config is renderer three, gpuq 8b20)');
+      if (RF.DriveAnim.stats().renderer !== 'three') throw new Error('renderer stayed ' + RF.DriveAnim.stats().renderer + ' during P1-style bring-up on LIGHT options — engine-side, not recipe-side; refusing to sweep');
+      // Three is up and GPU frames are fast: apply the sweep recipe now (the validated 8b20 values) and redraw on
+      // the GPU, then play — the validated configuration is three+playing.
+      Object.assign(u.dvOpts, { trafficBeams: true, oncoming: true, preceding: false, seed: 1, visibility: 60, trafficHalo: 16, samples: '1', tiles: true, mountainPass: false });
+      u.redrawSpec();
+      await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);   // P1's two-rAF settle (the gate lane's loop free-runs, so these fire)
+      console.log('[run] setup: recipe applied on three (seed=' + u.dvOpts.seed + ' visibility=' + u.dvOpts.visibility + ') renderer=' + RF.DriveAnim.stats().renderer);
+      // Play button: built by bars() inside DriveAnim.sync, which the bring-up redrawSpec already ran (70bf: bar=true
+      // right after one redrawSpec). Short poll as a safety net; click unless already pressed (aria mirrors run state,
+      // drive-anim.js:2850).
+      const qpb = () => document.querySelector('[data-anim="play"]') || (u.driveExtras && u.driveExtras.querySelector('[data-anim="play"]'));
+      let pb = qpb();
+      for (const tb = Date.now(); !pb && Date.now() - tb < 30000;) { await sl(100); pb = qpb(); }
+      console.log('[run] setup: driveBar=' + !!u.driveBar + ' playBtn=' + !!pb);
+      if (!pb) throw new Error('play button never appeared (driveBar=' + !!u.driveBar + ') — refusing to sweep');
+      if (pb.getAttribute('aria-pressed') !== 'true') pb.click();
+      for (const tp = Date.now(); Date.now() - tp < 30000 && !(u.dvAnim && u.dvAnim.playing);) await sl(100);
+      console.log('[run] setup: playing=' + !!(u.dvAnim && u.dvAnim.playing) + ' renderer=' + RF.DriveAnim.stats().renderer + ' gpuFailure=' + !!RF.DriveAnim.stats().gpuFailure);
+      if (RF.DriveAnim.stats().renderer !== 'three') throw new Error('renderer fell back to ' + RF.DriveAnim.stats().renderer + ' after recipe+play — refusing to sweep on the CPU renderer (validated config is renderer three, gpuq 8b20)');
     });
     run('setup done, sweep starting');
     const r = await page.evaluate(async () => {
