@@ -33,6 +33,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try {
     const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
     page.on('console', (m) => { try { const t = m.text(); if (t.startsWith('[run]')) console.log(t + '  (node +' + Math.round((Date.now() - T0) / 1000) + 's)'); } catch (e) {} });   // progress bridge: page [run] lines -> node stdout -> gate log
+    await page.addInitScript(() => { try { localStorage.setItem('flux/photosafeNotice', 'dismissed'); localStorage.setItem('flux/guideSeen', '1'); } catch (e) {} });   // pre-dismiss first-run overlays (AGENTS.md recipe) so the play button is clickable
     await page.route('**/favicon.ico', (route) => route.fulfill({ status: 204, body: '' }));
     await page.goto('http://127.0.0.1:' + port + '/index.html');
     await page.waitForFunction(() => window.RF && RF.UI && RF.UI.loadScene, null, { timeout: 60000 });
@@ -50,11 +51,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       console.log('[run] setup: setMode done');
       u.setDisplay('drive');
       console.log('[run] setup: setDisplay done, renderer=' + RF.DriveAnim.stats().renderer);
-      // No redrawSpec here: vestige of the old ordering (recipe AFTER display) — the recipe is now in dvOpts before
-      // setDisplay, which builds from it. da02 stalled between 'setDisplay done' and the renderer log; redrawSpec (a
-      // synchronous CPU spec render) and the iteration-capped wait loop were the only calls between — loop is wall-capped now.
-      for (const tw = Date.now(); Date.now() - tw < 15000 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure;) await sl(50);
+      // The drive's GPU renderer only initializes after Play (renderer starts 'cpu' — AGENTS.md; 662f trace: it never
+      // switched in the gate and the CPU render loop saturated the main thread — the 15s wall-capped wait took 481s
+      // because every sl(50) resolved ~30s late). The gpuq lane's harness presses play for the script; the gate must
+      // do it here. Renderer three + playing is the validated configuration (gpuq 8b20: 123/247/0, 105s).
+      const pb = document.querySelector('[data-anim="play"]');
+      if (pb) pb.click(); else console.log('[run] setup: NO play button found');
+      for (const tw = Date.now(); Date.now() - tw < 20000 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure;) await sl(100);
       console.log('[run] setup: renderer=' + RF.DriveAnim.stats().renderer + ' gpuFailure=' + !!RF.DriveAnim.stats().gpuFailure);
+      if (RF.DriveAnim.stats().renderer !== 'three') throw new Error('renderer stayed ' + RF.DriveAnim.stats().renderer + ' after play — refusing to sweep on the CPU renderer (main-thread starvation; validated config is renderer three, gpuq 8b20)');
     });
     run('setup done, sweep starting');
     const r = await page.evaluate(async () => {
