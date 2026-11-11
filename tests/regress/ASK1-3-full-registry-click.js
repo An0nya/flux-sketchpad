@@ -43,6 +43,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const u = RF.UI;
       let w = 0; for (; w < 600 && (RF.SolverHost.loading() || u.solving); w++) await sl(100);
       console.log('[run] setup: solver idle after ' + w + ' waits');
+      // Pre-warm the three module while the main thread is still free: drive-anim's gpuRenderer() (first sync) does
+      // import('./drive-three.js') = /js/drive-three.js; the module EVAL needs a main-thread task, and the gate's first
+      // drive frame saturates it (9713: 480s before sync/bars ran — drawDrive's 'lazy && !gpuShowing' branch paints a
+      // full cpuStill synchronously when three is not up yet, spec-ui.js:1232). A cached module resolves in a microtask
+      // between frames instead, so gpuShowing goes true before the late cpuStill can run.
+      try { const tImp = Date.now(); await import('/js/drive-three.js'); console.log('[run] setup: drive-three.js pre-imported in ' + (Date.now() - tImp) + 'ms'); } catch (e) { console.log('[run] setup: pre-import FAILED: ' + (e && e.message)); }
       RF.SpecUI.dvOpts(u);   // lazy-init (DV_DEF + localStorage merge, spec-ui.js:890): dvOpts does not exist until the drive builds it — f644 assigned onto undefined
       // Recipe BEFORE the first drive frame: the gate loads pinned defaults (tiles 1200) while the gpuq lane pre-applies
       // this recipe at load; on software GL the 1200-tile first frame is what stalled da16 inside this evaluate.
@@ -57,8 +63,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       // then press play (AGENTS.md: the renderer starts cpu and switches after Play; 662f proved the cpu loop
       // saturates the main thread — every sl(100) resolved ~30s late, so wall caps are checked between starved awaits).
       const qpb = () => document.querySelector('[data-anim="play"]') || (u.driveExtras && u.driveExtras.querySelector('[data-anim="play"]'));
-      let pb = qpb();
-      for (const tb = Date.now(); !pb && !(u.driveBar && (pb = qpb())) && Date.now() - tb < 60000;) await sl(100);
+      let pb = qpb(), hb = 0;
+      for (const tb = Date.now(); !pb && !(u.driveBar && (pb = qpb())) && Date.now() - tb < 120000;) {
+        await sl(100);
+        if (Date.now() - hb > 5000) { hb = Date.now(); const s = RF.DriveAnim.stats(); console.log('[run] setup-wait: bar=' + !!u.driveBar + ' renderer=' + s.renderer + ' gpuFail=' + !!s.gpuFailure + ' playing=' + !!(u.dvAnim && u.dvAnim.playing) + ' three=' + !!(RF.DriveAnim._ && RF.DriveAnim._.V && RF.DriveAnim._.V.three)); }   // heartbeat: 5s slices make any remaining stall attributable (arrival gaps show main-thread saturation)
+      }
       console.log('[run] setup: driveBar=' + !!u.driveBar + ' playBtn=' + !!pb);
       if (!pb) throw new Error('play button never appeared (driveBar=' + !!u.driveBar + ') — sync/drawDrive never completed; refusing to sweep');
       if (pb.getAttribute('aria-pressed') !== 'true') pb.click();   // aria-pressed mirrors run state (drive-anim.js:2850); don't click into a pause
