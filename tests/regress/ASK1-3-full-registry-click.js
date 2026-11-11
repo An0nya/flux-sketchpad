@@ -19,18 +19,24 @@
 // Setup: serve.py's pinned defaults (tests/pinned-defaults.js) + the gpuq tiles-lane recipe: trafficBeams true,
 // oncoming true, preceding false, seed 1, visibility 60, trafficHalo 16, samples "1", tiles true, mountainPass false.
 // Run: python3 tests/serve.py <port> (background), then PLAYWRIGHT=... node tests/regress/ASK1-3-full-registry-click.js <port>
-// Exits 1 on any [FAIL], a fatal page error, or budget truncation. Internal page budget 360 s; typical run ~2 min.
+// Exits 1 on any [FAIL], a fatal page error, or budget truncation. Internal page budget 240 s (the gate runner's WALL_MS
+// is 600 s and SIGKILLs; a slow-but-alive run must return partial data first). Progress is logged as [run] lines — the
+// page console is bridged to node stdout, so even a wall-kill leaves the stalling op in the gate log (tests/gate-logs/).
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const port = +(process.argv[2] || 8994);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
+  const T0 = Date.now();
+  const run = (m) => console.log('[run] ' + m + ' t=' + Math.round((Date.now() - T0) / 1000) + 's');
   const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
   let fails = 0;
   try {
     const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+    page.on('console', (m) => { try { const t = m.text(); if (t.startsWith('[run]')) console.log(t + '  (node +' + Math.round((Date.now() - T0) / 1000) + 's)'); } catch (e) {} });   // progress bridge: page [run] lines -> node stdout -> gate log
     await page.route('**/favicon.ico', (route) => route.fulfill({ status: 204, body: '' }));
     await page.goto('http://127.0.0.1:' + port + '/index.html');
     await page.waitForFunction(() => window.RF && RF.UI && RF.UI.loadScene, null, { timeout: 60000 });
+    run('app ready');
     await page.evaluate(async () => {   // drive view + the gpuq tiles-lane recipe on top of the pinned defaults
       const sl = (ms) => new Promise((r) => setTimeout(r, ms));
       const u = RF.UI;
@@ -40,6 +46,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       u.redrawSpec();
       for (let i = 0; i < 200 && RF.DriveAnim.stats().renderer !== 'three' && !RF.DriveAnim.stats().gpuFailure; i++) await sl(50);
     });
+    run('setup done, sweep starting');
     const r = await page.evaluate(async () => {
       // ASK1-3 FULL validation v1.8 (cyrus) — TABS. v1.7 (4f2a) returned 92.8s, nFails 2, axes commit arm PASSED (setBoth
       // single-dispatch works), but gatedStill=69 with driveToolsMs=0: the stale-hidden-flag theory was WRONG — the 69 sit
@@ -94,7 +101,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       // 13. haloJitterAmount: preconditions (haloJitter='jittered', visibility=60) then normal sweep.
       // 14. budget + partial return kept; fails grouped by class.
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-      const t0 = Date.now(), BUDGET_MS = 360000;   // v1.8: four tab passes widen the sweep (~140 actuations); 600s lane limit leaves margin. v1.4 history: 7134 timed out past a 480s budget
+      const t0 = Date.now(), BUDGET_MS = 240000;   // v1.9: 240s — the gate runner's WALL_MS is 600s and SIGKILLs the process; a non-hang slow run must RETURN partial data (loud truncation FAIL) well before that. v1.4 history: 7134 timed out past a 480s budget
       const over = () => Date.now() - t0 > BUDGET_MS;
       const u = RF.UI, D = RF.DriveAnim, V = D._.V;
       for (let i = 0; i < 300 && (RF.SolverHost.loading() || u.solving); i++) await sleep(100);
@@ -103,7 +110,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const F = { exists: [], ui2store: [], baseline: [], descriptor: [], transport: [], envLimited: [], specRow: [], cpuStillChain: [], probes: {} };
       const gatedStill = [], gatedOpened = [], preconds = [], timings = [];
       let swept = 0, passed = 0, truncated = false, stillSuspects = 0;
-      const phases = []; const mark = (n) => phases.push([n, Math.round((Date.now() - t0) / 1000)]); let lastOp = 'init'; const canary = {};
+      const phases = []; const mark = (n) => { const s = Math.round((Date.now() - t0) / 1000); phases.push([n, s]); console.log('[run] phase ' + n + ' t=' + s + 's'); }; let lastOp = 'init'; const canary = {};
       const ok = (bucket, name, pass, detail) => { if (pass) passed++; else F[bucket].push({ name, detail: detail === undefined ? null : JSON.stringify(detail).slice(0, 220) }); };
       const all = (sel) => { try { return [...new Set([...u.driveBar.querySelectorAll(sel), ...u.driveExtras.querySelectorAll(sel), ...document.querySelectorAll(sel)])]; } catch (e) { return []; } };
       const lightSync = async () => {
@@ -148,6 +155,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       // ---- actuation core ----
       const actuate = async (opt, el, tag) => {
         lastOp = tag + ':' + opt.id;
+        console.log('[run] ' + lastOp + ' t=' + Math.round((Date.now() - t0) / 1000) + 's');   // v1.9: per-op progress — a wall-kill must leave the stalling op in the gate log
         const snap = JSON.parse(JSON.stringify(u.dvOpts));   // v1.7: FULL snapshot restore — preset controls (airLevel/haloQuality/trafficLighting) write MANY keys
         const bundle = opt.kind === 'derived' && Array.isArray(opt.bundle) ? opt.bundle : null;
         const orig = u.dvOpts[opt.id];
@@ -356,6 +364,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       }
 
     });
+    run('sweep returned');
     const J = (x) => typeof x === 'object' ? JSON.stringify(x) : String(x);
     if (!r || r.fatal) { fails++; console.log('[FAIL] fatal page error: ' + ((r && r.fatal) || 'no result') + ' (lastOp ' + ((r && r.lastOp) || '?') + ')'); }
     else {
