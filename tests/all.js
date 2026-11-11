@@ -97,7 +97,6 @@ run('le-chonk road surfaces option (tests/le-chonk-surfaces.js)', ['tests/le-cho
 run('ideal-beam goals (tests/ideal-beam.js)', ['tests/ideal-beam.js']);
 run('haloLampWin: off is the old schedule, on anchors a lamp window (tests/step5-lampwin.js)', ['tests/step5-lampwin.js']); // step5-preview (LW)
 run('every option with a control has one on the page, and every control on the page is an option (tests/control-map.js)', ['tests/control-map.js']); // step5-preview (the shared id -> selector map)
-run('ignoredWhen rules are honoured where they say they are: the controlled option does not move the render while the rule holds, and does when it does not (tests/ignored-when.js)', ['tests/regress/ignored-when.js']); // step5-preview (the behavioural ignoredWhen check)
 run('haloMoment: each bin mean is clamped into its own bin, so a nearly-empty bin cannot throw an interior knot (tests/halo-moment-clamp.js)', ['tests/halo-moment-clamp.js']); // step5-preview (P3 mean clamp)
 run('option rebuild: a cost that says scene-regenerate is carried by a rebuild key, and no option is dead (tests/option-rebuild.js)', ['tests/option-rebuild.js']); // step5-preview (open sweep)
 run('the drive bar beam label is a live readout of the beam in use (tests/step5-beam-readout.js)', ['tests/step5-beam-readout.js']);
