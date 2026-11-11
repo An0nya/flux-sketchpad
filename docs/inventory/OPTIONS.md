@@ -225,11 +225,11 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `wetBouncePlane` | profile | air | table-rebuild | false | needs `wetBounceOn` [disabled] | options-registry.js, drive.js, drive-anim.js, drive-touge.js, drive-three.js, drive-three-shaders.js, drive-three-halo.js, spec-ui.js | - | - | - | - | - | - | `tests/frenchie-crest-bounce.js` |
 | `wetBounce` | profile | air | table-rebuild | false | - | drive.js, drive-anim.js, drive-three.js, drive-three-shaders.js, spec-ui.js | - | - | - | - | - | - | `tests/frenchie-wet-bounce.js` |
 | `haloConeEqui` | profile | halo | table-rebuild | "off" | needs `air` [hidden], `haloOn` [none]; ignored when `crossingRefineOn` [none] | options-registry.js, spec-ui.js, drive-anim.js, drive-three-halo.js, drive-three.js, drive.js | - | - | - | - | - | - | `tests/frenchie-halo-cone-equi.js` |
+| `endlessDetails` | profile | diagnostics | free | false | - | drive-anim.js | - | - | - | - | - | - | `tests/endless-details.js` |
 | `cabinGaugeLight` | profile | view | free | "off" | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
 | `cabinZoom` | profile | view | free | 1 | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
 | `cabinOffsetX` | profile | view | free | 0 | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
 | `cabinOffsetY` | profile | view | free | 0 | needs `cabinView` [none], `cabinMiata` [disabled] | drive-anim.js, cabin-miata.js | - | - | - | - | - | - | `tests/cabin-miata.js` |
-| `endlessDetails` | profile | diagnostics | free | false | - | drive-anim.js | - | - | - | - | - | - | `tests/endless-details.js` |
 <!-- END GENERATED option-table -->
 
 DV_DEF keys with no row above (script check): none.
