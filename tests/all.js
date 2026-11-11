@@ -149,5 +149,7 @@ run('minigame gameOptions restore invariant (tests/restore-options.js)', ['tests
 run('endless road details panel (tests/endless-details.js)', ['tests/endless-details.js']);
 run('minigame restore-options call site (tests/restore-callsite.js)', ['tests/restore-callsite.js']);
 run('nemo endless-road-v2 axes→tile-geometry wiring (tests/nemo-endless-axes-wiring.js)', ['tests/nemo-endless-axes-wiring.js']);
+run('barbicane endless-road-v2 cover-water (tests/endless-cover-water-v2.js)', ['tests/endless-cover-water-v2.js']);
+run('barbicane endless-road-v2 traffic density (tests/endless-traffic-v2.js)', ['tests/endless-traffic-v2.js']);
 console.log(failed ? '\n' + failed + ' FAILED' : '\nall passed');
 process.exit(failed ? 1 : 0);
