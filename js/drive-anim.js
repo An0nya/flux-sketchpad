@@ -57,6 +57,8 @@
     // highway-loop preset implies the 2+2 render cross-section (the multilaneRoad option itself is untouched)
     // gantry-loop preset implies the gantries (the junctionGantries option itself is untouched)
     if (o.tiles) src.tiles = { pedMode: o.reflectiveClothing, mountain: !!o.mountainPass, endless: !!o.endlessRoad, preset: o.endlessPreset || 'off', custom: o.endlessPreset === 'custom' ? parseCustomPreset(o.endlessPresetCustom) : null, terrain: !!o.tileTerrain, multilane: !!o.multilaneRoad || !!(LOOP_MULTILANE[o.endlessPreset || 'off']), tunnel: !!o.endlessTunnel, crossing: !!o.endlessCrossing, yawSmooth: !!o.yawSmooth, driftMode: !!o.driftMode, gantries: !!o.junctionGantries || o.endlessPreset === 'gantry-loop', density: o.density, seed: (+o.seed || 0) | 0, flags: o.flags || {}, lamps: o.streetLamps || 'sodium', lampRule: o.lampRule, broken: !!(o.us && o.cline === 'broken'), grain: o.tex !== false, wet: D.wetnessOf(o) > 0, groundCache: o.tileCache ? {} : null, axes: o.endlessAxes || '' };   // endless-road-v2 (pencroff): the axes JSON string ('' = OFF = the legacy biome walk)
+    // endless-road-v2 (barbicane 11-11): per-tile traffic override — trafficAt() queries consumed by trafficCars when axes are non-empty
+    if (src.tiles && src.tiles.axes) src.tiles._v2tl = RF.EndlessAxes.timeline((+o.seed || 0) | 0, RF.EndlessAxes.parse(src.tiles.axes), Infinity);
     src._tileSig = o.tiles ? [o.endlessPreset || 'off', o.endlessPresetCustom || '', !!o.tileTerrain, !!o.multilaneRoad, !!o.endlessTunnel, !!o.endlessCrossing, !!o.junctionGantries, o.endlessAxes || ''].join('|') : '';   // junction-bringing signature for the traffic-state copy predicate below (pencroff): a same-seed toggle of these changes junction kinds, so old car routes may not be copied
     for (const kind of ['oncoming', 'preceding']) {   // both models always (a few objects each): a car of a kind switched off this frame must not throw (models[kind] undefined -> 'not iterable' -> sticky CPU fallback)
       const K = D.kit({ Lw: src.lane, A: null, rand: () => 0.5 });
@@ -551,7 +553,15 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
     endlessElevCache.set(ck, fn);
     return fn;
   }
-  function endlessVerge(seed, k, preset = 'off', custom = null) {   // §2-endless verge: per-tile scenery descriptor for the tile loop — biome-specific props with a ramp blending across biome-block boundaries
+  function endlessVerge(seed, k, preset = 'off', custom = null, axes = '') {   // §2-endless verge: per-tile scenery descriptor for the tile loop — biome-specific props with a ramp blending across biome-block boundaries. When axes is non-empty (endless-road-v2), the cover+water axis values drive the scenery (barbicane 11-11).
+    if (axes) {
+      // endless-road-v2: per-tile cover+water scenery from the axis scheduler
+      const cfg = RF.EndlessAxes.parse(axes), tl = RF.EndlessAxes.timeline(seed, cfg, Infinity);
+      const cover = RF.EndlessAxes.valueAt(tl.axes.cover, k), water = RF.EndlessAxes.valueAt(tl.axes.water, k);
+      const cw = RF.EndlessCoverWater.coverWaterAt(seed, k, { cover, water });
+      return { biome: cw.cover, ramp: 1, trees: cw.trees, rocks: cw.rocks, buildings: 0, fence: cw.fence, rail: false, creek: cw.creek, suburb: false,
+        bushes: cw.bushes, deer: cw.deer };   // v2 fields: bushes/deer replace the biome-props values (read below)
+    }
     const biome = endlessBiome(seed, Math.floor(k / 16) * 16, preset, custom), R = D.rng((Math.imul(seed | 0, 0x85EBCA6B) ^ Math.imul(k + 1, 0xC2B2AE35)) >>> 0);
     const kk16 = ((k % 16) + 16) % 16, ramp = kk16 === 15 ? 0.4 : kk16 === 0 ? 0.6 : 1;   // ((k%16)+16)%16: JS % keeps the sign, so negative tiles need the wrap too
     const v = { biome, ramp, trees: 0, rocks: 0, buildings: 0, fence: false, rail: false, creek: 0, suburb: false };
@@ -826,11 +836,11 @@ const LOOP_PROPS = { 'highway-loop': { speed: 110, density: 1.2, lampGap: 130 },
       for (let u = 0; u < 200; u += 8) for (const sd of [-1, 1]) { const off = sd < 0 ? edgeR - 0.7 : edgeL + 0.7, q = A.at(tile.s0 + u - dist, off); extra.push({ k: 'box', x: q.p[0], y: q.p[1], z0: .62, z1: .9, hx: 4.05, hy: .065, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'sign-back', cls: 'rail' }, { k: 'box', x: q.p[0], y: q.p[1], z0: .34, z1: .5, hx: 4.05, hy: .055, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'sign-back', cls: 'rail' }, { k: 'cyl', x: q.p[0], y: q.p[1], z0: 0, z1: .83, r: .06, mat: 'sign-back', cls: 'rail' }); }   // double-beam rail (catalogue #3 cheap: two stacked beams read as a W-profile at distance)
     }
     if (cfg.endless && cfg.flags.signs !== false && tile.s0 % 1000 === 0) { const q = A.at(tile.s0 - dist, edgeR - 1.6); KP.add({ k: 'cyl', x: q.p[0], y: q.p[1], z0: 0, z1: 1.1, r: 0.05, mat: 'pole' }); KP.add({ k: 'box', x: q.p[0], y: q.p[1], z0: 0.75, z1: 1.05, hx: 0.28, hy: 0.03, yaw: Math.atan2(q.t[1], q.t[0]), mat: 'white-paint' }); }   // kilometer post (catalogue), right edge, behind signs
-    const vg = endlessVerge(cfg.seed, tile.k, cfg.preset, cfg.custom);   // §2-endless verge: biome props + boundary ramp
+    const vg = endlessVerge(cfg.seed, tile.k, cfg.preset, cfg.custom, cfg.axes);   // §2-endless verge: biome props + boundary ramp (v2: axes drive cover+water scenery)
     if (cfg.flags.veg !== false && bp && (bp.deer > 0 || bp.bushes > 0 || vg.biome === 'open' || vg.biome === 'mountain' || vg.biome === 'forest' || vg.biome === 'city')) {   // §2-endless: biome props — consent toggles: bushes/trees need veg, deer animals, signs signs
-      const nBush = (bp ? bp.bushes : 0) + (cfg.preset === 'forested-pass' && (vg.biome === 'mountain' || vg.biome === 'forest') ? 3 : 0);   // forested-pass: denser verge
+      const nBush = (vg.bushes !== undefined ? vg.bushes : (bp ? bp.bushes : 0)) + (cfg.preset === 'forested-pass' && (vg.biome === 'mountain' || vg.biome === 'forest') ? 3 : 0);   // forested-pass: denser verge; v2: cover-water bush count
       for (let i = 0; i < nBush; i++) { const u = 20 + KR() * 160, sd = KR() < 0.5 ? -1 : 1; KP.bush(tile.s0 + u - dist, sd < 0 ? edgeR - 2.5 - 3 * KR() : edgeL + 2.5 + 3 * KR(), 0.6 + 0.6 * KR()); }   // hills fix: never in a lane — the edgeL branch used to subtract, landing on the road
-      if (bp.deer > 0 && cfg.flags.animals !== false && KR() < bp.deer) { const sd = KR() < 0.5 ? -1 : 1; KP.deer(tile.s0 + 40 + KR() * 120 - dist, sd < 0 ? edgeR - 3.5 : edgeL + 3.5); }
+      if ((vg.deer !== undefined ? vg.deer > 0 : (bp && bp.deer > 0)) && cfg.flags.animals !== false && KR() < (vg.deer !== undefined ? vg.deer : bp.deer)) { const sd = KR() < 0.5 ? -1 : 1; KP.deer(tile.s0 + 40 + KR() * 120 - dist, sd < 0 ? edgeR - 3.5 : edgeL + 3.5); }
       if (vg.biome === 'open' && cfg.flags.signs !== false && KR() < 0.5) { const gs = tile.s0 + 60 + KR() * 80 - dist, go = KR() < 0.5 ? edgeR - 2.2 : edgeL + 2.0; KP.sign(gs, go, 'green', { w: 1.8, h: 1.0 }); const gq = A.at(gs, go + (go > 0 ? -0.06 : 0.06)); KP.add({ k: 'box', x: gq.p[0], y: gq.p[1], z0: 0.62, z1: 0.86, hx: 0.62, hy: 0.05, yaw: Math.atan2(gq.t[1], gq.t[0]), mat: 'white-paint' }); }   // direction sign + white chevron glyph (catalogue #4)
       if (vg.trees > 0 && cfg.flags.veg !== false) for (let i = 0; i < vg.trees; i++) { const u = 10 + KR() * 180, sd = KR() < 0.5 ? -1 : 1; KP.tree(tile.s0 + u - dist, sd < 0 ? edgeR - 6 - 8 * KR() : edgeL + 6 + 8 * KR(), { birch: KR() < 0.5 }); }   // forest verge: trees
       if (vg.rocks > 0 && cfg.flags.wild !== false) for (let i = 0; i < vg.rocks; i++) { const u = 15 + KR() * 170, sd = KR() < 0.5 ? -1 : 1, q = A.at(tile.s0 + u - dist, sd < 0 ? edgeR - 2 - 4 * KR() : edgeL + 2 + 4 * KR()), r = 0.5 + KR(); KP.add({ k: 'ell', x: q.p[0], y: q.p[1], z: r * 0.4, rx: r, ry: r * 0.8, rz: r * 0.5, mat: 'gravel' }); }   // mountain verge: boulders
