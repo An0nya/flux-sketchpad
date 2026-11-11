@@ -57,6 +57,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       console.log('[run] setup: setMode done');
       u.setDisplay('drive');
       console.log('[run] setup: setDisplay done, renderer=' + RF.DriveAnim.stats().renderer);
+      // Fixup-8 probes: name the 480s. Candidates: roadModel (spec-ui.js:1216, runs BEFORE sync) vs the late cpuStill
+      // (:1232, runs when lazy && !gpuShowing — and V.three cannot exist until drive-anim's own import .then microtask,
+      // so the FIRST drawDrive always takes that branch). Each probe logs starting+done; whichever never prints done
+      // is the culprit. Exports used: RF.SpecUI.roadModel/cpuStillRenders, RF.DriveAnim._.{V,Wk,mt}.
+      const TM = (label, fn) => { const t = Date.now(); console.log('[run] probe: ' + label + ' starting'); try { const r = fn(); console.log('[run] probe: ' + label + ' done ' + (Date.now() - t) + 'ms'); return r; } catch (e) { console.log('[run] probe: ' + label + ' THREW ' + (e && e.message) + ' after ' + (Date.now() - t) + 'ms'); throw e; } };
+      const VX = RF.DriveAnim._;
+      console.log('[run] probe: state mt=' + VX.mt() + ' workers=' + (VX.Wk && VX.Wk.list ? VX.Wk.list.length : -1) + ' cpuStillRenders=' + RF.SpecUI.cpuStillRenders());
+      TM('roadModel#1', () => RF.SpecUI.roadModel(u));
+      TM('roadModel#2', () => RF.SpecUI.roadModel(u));
+      TM('redrawSpec#1', () => u.redrawSpec());   // full drawDrive: roadModel cached, sync (bars + import start), then the late cpuStill if three is not up
+      console.log('[run] probe: after redraw1 cpuStillRenders=' + RF.SpecUI.cpuStillRenders() + ' renderer=' + RF.DriveAnim.stats().renderer + ' three=' + !!VX.V.three + ' bar=' + !!u.driveBar);
+      await sl(300);   // one yield: the import .then (module pre-cached) resolves -> threeModule -> redrawSpec -> gpuCreate -> V.three
+      console.log('[run] probe: after yield renderer=' + RF.DriveAnim.stats().renderer + ' three=' + !!VX.V.three + ' gpuFail=' + !!VX.V.gpuFailure + ' cpuStillRenders=' + RF.SpecUI.cpuStillRenders());
       // The play button is built ASYNC: bars() runs inside DriveAnim.sync (a drawDrive hook) and appends V.bar to
       // ui.driveExtras (drive-anim.js:3177) — a synchronous querySelector right after setDisplay never finds it
       // (8a75: 'NO play button found'). The validated gpuq harness polls u.driveBar (gpuq-ask13.js:59); do the same,
