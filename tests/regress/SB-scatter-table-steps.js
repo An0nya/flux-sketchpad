@@ -40,6 +40,9 @@ const port = +(process.argv[2] || 8744), sleep = (ms) => new Promise((r) => setT
 let fails = 0; const ok = (n, c, d) => { console.log((c ? '[PASS] ' : '[FAIL] ') + n + (d ? ' — ' + d : '')); if (!c) fails++; };
 // house one-liner style, matching AC-air-cache-generations.js:22
 const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('--break'); // BOTH:
+// gpuq carries ARGV, not env, so both are accepted. The break lands on the SOURCE as
+// globalThis.SD_TABLE_STEPS_BREAK (drive-three.js:220), so arm (e) is a real break-at-source,
+// not a tautology: it drops `look.scatterTableSteps ||` and arm (a) must invert.
 // gpuq --args carries argv, not env, and my first negative submit passed --break as argv while the
 // file read only the env var — it would have reported green for the wrong reason. Accept either.
 
@@ -49,7 +52,11 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     const page = await (await browser.newContext({ viewport: { width: 1280, height: 950 } })).newPage();
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto('http://127.0.0.1:' + port + '/index.html');
-    await page.waitForFunction(() => window.RF?.UI && RF.UI.dvOpts && RF.DriveAnim?._?.V?.three);
+    // the house predicate is RF.UI.loadScene (AC-air-cache-generations.js:19, ASK1-3:39), 60 s. My
+    // first version waited for RF.DriveAnim._.V.three, and threw: `V.three` is created LAZILY on the
+    // first drive render (drive-anim.js:1689 disposes it; :1754 gates it on V.g), so it does not exist
+    // at page load and the wait timed out at 30 s. Wait for the app, then let the arms create it.
+    await page.waitForFunction(() => window.RF?.UI?.loadScene, null, { timeout: 60000 });
     // BRING-UP, before any arm: without it every arm reads a uniform the drive never rebuilt, and (a)
     // would fail for a stale-uniform reason rather than a chain reason. This is the proven ASK1-3
     // sequence (tests/regress/ASK1-3-full-registry-click.js:63-65, 86-92): setDisplay/setPane, then poll
@@ -69,7 +76,11 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     // js/spec-ui.js:920 `function setDV(ui, k, v)`, exported at :1313, caller form at drive-layout.js:180.
     const setDV = (k, v) => page.evaluate(([k, v]) => RF.SpecUI.setDV(RF.UI, k, v), [k, v]);
     // what the renderer actually consumes — NOT a read of the options object
-    const steps = () => page.evaluate(() => { const t = RF.DriveAnim._.V.three?.tableUniforms?.(); return t ? t.steps : null; });
+    // FAIL LOUD if the renderer never appears: a null steps() would make every arm FAIL with a
+    // number, which is unattributable. This THROWS with the reason instead (AFS's 'not a long pass').
+    const steps = async () => { const v = await page.evaluate(() => { const t = RF.DriveAnim._.V.three?.tableUniforms?.(); return t ? t.steps : null; });
+      if (v === null) throw new Error('SB: V.three.tableUniforms().steps is null — the drive renderer' +
+        ' never appeared (V.three is lazy, created on the first drive render); no arm may run without it'); return v; };
     // the live fall-back, so an arm can assert what the chain should have chosen
     const lookSteps = () => page.evaluate(() => RF.DriveAnim._.V.info.o.scatterTableSteps);
     const lookScatter = () => page.evaluate(() => RF.DriveAnim._.V.info.o.scatter);
@@ -147,9 +158,16 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     //     chain broken at the source the value MUST NOT arrive, so arm (a) must invert. Read-only
     //     re-declared so a broken tree fails loudly rather than silently green.
     if (BREAK) {
+      // the break is set on the SOURCE (drive-three.js:220), not on the test's own object,
+      // so this inverts the app's arithmetic rather than the assertion's operand.
+      await page.evaluate(() => { globalThis.SD_TABLE_STEPS_BREAK = 1; });
+      await settle();
       const e = await steps();
-      ok('SB (e) NEGATIVE CONTROL with the chain broken the value does NOT reach tableSteps', e !== 7,
-         'steps=' + e + ' (expected anything but 7)');
+      ok('SB (e) NEGATIVE CONTROL: with the chain broken at the source the value does NOT reach tableSteps',
+         e !== 7, 'steps=' + e + ' (must be anything but 7, else the check is vacuous)');
+      await page.evaluate(() => { delete globalThis.SD_TABLE_STEPS_BREAK; }); await settle();
+      ok('SB (e) NEGATIVE CONTROL: removing the break restores the value (so the break was the cause)',
+         (await steps()) === 7, 'steps=' + (await steps()));
     }
     ok('SB (e) negative control reserved: re-run with SCATTER_TABLE_STEPS_BREAK=1 and arm (e) must FAIL-able',
        true, 'broken-source arm is opt-in so a normal run stays green');

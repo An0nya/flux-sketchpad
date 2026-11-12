@@ -217,7 +217,13 @@ export function create(canvas, gl, onModelsReady) {
     const GEN = !globalThis.SD_GEN_OFF, litKey = tabMesh.material.userData.lit;   // SD_GEN_OFF: test switch, restores main's drop and slot choice
     const compiling = compilePending; compilePending = false;
     const key = tableKey(p, extras, look, tw, th, sig);
-    const tblSteps = Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48)), tblBinN = D.binCountsFor(tblSteps, look.scatterNearBias, look.scatterBinCounts, look.scatterQuality);
+    // SD_TABLE_STEPS_BREAK (spilett, SB-scatter-table-steps, 11-12): the negative-control lever for
+    // tests/regress/SB-scatter-table-steps.js. Drops `look.scatterTableSteps ||` from the chain, the
+    // exact mutation the suite exists to catch, so arm (a) inverts and the check is known to see it.
+    // Follows the established test-switch pattern (SD_GEN_OFF :217, SD_TABLE_BUDGET_MS :226) and is
+    // inert unless the env var is set, so OFF is byte-identical behaviour.
+    const tblSteps = globalThis.SD_TABLE_STEPS_BREAK ? Math.max(1, Math.round(look.scatter || 48))
+      : Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48)), tblBinN = D.binCountsFor(tblSteps, look.scatterNearBias, look.scatterBinCounts, look.scatterQuality);
     // NE3: a valid slice override or near sampling on turns on the per-slice counts (tableBias); empty or invalid with it off is the old path.
     const tblPer = !!D.parseBinCounts(look.scatterBinCounts) || !!D.qualityCounts(look.scatterQuality) || +look.scatterNearBias > 0;
     // NE: tabStats.binN/bias are the values sent to the table pass (debug readback for the page test).
