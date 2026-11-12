@@ -52,7 +52,7 @@ async function session(browser) {
   await page.evaluate(() => UX2Page.ready());
   await sleep(1500);
   // the UX2 start sets wet and wetSheen on; the dry start sets the road to dry with the sheen off (the baseline state)
-  await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, people: false }); RF.UI.redrawSpec(); });
+  await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, people: false, speed: 0 }); RF.UI.redrawSpec(); });
   const capture = async (label) => {
     await sleep(2500);
     const state = await page.evaluate(() => { const s = RF.DriveAnim.stats(); return { wetness: RF.UI.dvOpts.wetness, label: document.querySelector('[data-dv="wetness"]').textContent, renderer: s.renderer, gpuFailure: s.gpuFailure || '' }; });

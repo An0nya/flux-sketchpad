@@ -40,7 +40,7 @@ async function meanLuma(page, png) {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     await page.goto('http://127.0.0.1:' + port + '/index.html'); await page.waitForFunction(() => window.RF?.UI?.loadScene, null, { timeout: 60000 });
     await page.addScriptTag({ url: '/tests/regress/UX2-drive-ux.js' }); await page.evaluate(() => UX2Page.ready()); await sleep(1500);
-    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, visibility: null, scatter: 0, people: false, lampCone: 'off' }); RF.UI.redrawSpec(); });
+    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { wet: false, wetness: 0, wetSheen: false, fpsCounter: false, visibility: null, scatter: 0, people: false, lampCone: 'off', speed: 0 }); RF.UI.redrawSpec(); });
     const state = async () => page.evaluate(() => {
       const s = RF.DriveAnim.stats(), b = document.querySelector('[data-dv="scatter"]');
       return { renderer: s.renderer, gpuFailure: s.gpuFailure || '', btn: b ? (b.options ? b.options[b.selectedIndex].textContent.trim() : b.textContent.trim()) : '', hidden: b ? b.hidden : null };   // DD: air beam steps is a select
