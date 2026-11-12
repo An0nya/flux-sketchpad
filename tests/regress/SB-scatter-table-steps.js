@@ -165,9 +165,16 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
       const e = await steps();
       ok('SB (e) NEGATIVE CONTROL: with the chain broken at the source the value does NOT reach tableSteps',
          e !== 7, 'steps=' + e + ' (must be anything but 7, else the check is vacuous)');
+      // nicholl's fixup-1 catch: at arm (e) the state is scatterTableSteps DELETED and scatter = 0
+      // (arms b2/c/d established it), so the unbroken chain reads `del || 0 || 48` -> 48 and this
+      // check could never pass — a deterministic failure under the very flag that governs it.
+      // Fix (A), preferred over asserting the 48 constant: re-arm the value we expect, so the check
+      // verifies the restore/replay rather than a fixed number.
+      await page.evaluate(() => { RF.UI.dvOpts.scatterTableSteps = 7; RF.UI.dvOpts.scatter = 16; });
       await page.evaluate(() => { delete globalThis.SD_TABLE_STEPS_BREAK; }); await settle();
-      ok('SB (e) NEGATIVE CONTROL: removing the break restores the value (so the break was the cause)',
-         (await steps()) === 7, 'steps=' + (await steps()));
+      const restored = await steps();
+      ok('SB (e) NEGATIVE CONTROL: removing the break and re-arming the value restores it through setDV',
+         restored === 7, 'steps=' + restored + ' (expected 7, via scatterTableSteps, not the 48 fall-back)');
     }
     ok('SB (e) negative control reserved: re-run with SCATTER_TABLE_STEPS_BREAK=1 and arm (e) must FAIL-able',
        true, 'broken-source arm is opt-in so a normal run stays green');
