@@ -47,7 +47,11 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
 // file read only the env var — it would have reported green for the wrong reason. Accept either.
 
 (async () => {
-  const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] }), errors = [];
+  // nemo's catch on 3922: gate.js:116 GRANTS env.P1_REAL_GPU='1' for this suite, but this file never
+  // read it, so the grant was INERT and the suite launched hardcoded swiftshader — the da16 bring-up
+  // storm verbatim, which is what 397 s-blocked d778. A grant is two-ended: the gate sets it and the
+  // suite consumes it. Ternary matched to ASK1-3-full-registry-click.js:31 / P1-drive-three.js:3.
+  const browser = await pw.chromium.launch(process.env.P1_REAL_GPU ? { channel: 'chromium', args: ['--use-angle=metal'] } : { args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] }), errors = [];
   try {
     const page = await (await browser.newContext({ viewport: { width: 1280, height: 950 } })).newPage();
     page.on('pageerror', (e) => errors.push(String(e)));
