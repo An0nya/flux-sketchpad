@@ -2,7 +2,12 @@
 // WHY IT EXISTS: js/drive-three.js:220 builds
 //   const tblSteps = Math.max(1, Math.round(look.scatterTableSteps || look.scatter || 48))
 // and :224 publishes it with set('tableSteps', tblSteps). The node side cannot see any of this: the only
-// readback on the JS side is the object-init value at drive-three.js:59, so a lookup that has silently
+// readback on the JS side is the object-init value at drive-three.js:59 — WHICH WAS THE TRAP: neb's
+// finding on 3e6f is that without the three gates the suite ran with the table OFF, so the uniform
+// never left 48 and every arm read the constant rather than the chain. Now fixed: the gates are set
+// (SD-scatter-table.js:48's recipe) and a pre-arm liveness check asserts the uniform differs from
+// 48 before any arm runs. The header's warning therefore applies to the PRE-FIX state only.
+// With the table ON, a lookup that has silently
 // fallen back to `scatter` still publishes a number that reads exactly like a correct answer. Mutating
 // :220 to drop `look.scatterTableSteps ||` therefore changes nothing observable outside the GPU pass,
 // which is why this is a page suite and not a node one.
@@ -109,6 +114,20 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     // the app's real per-key setter: RF.SpecUI.setDV(ui, k, v), NOT RF.UI.setDV — that path does not
     // exist and a wrong one is the exact class this suite's predecessor died of. Verified statically:
     // js/spec-ui.js:920 `function setDV(ui, k, v)`, exported at :1313, caller form at drive-layout.js:180.
+    // neb's blocker on 3e6f, and it is the one that made every arm read the same number: THE SUITE NEVER
+    // TURNED THE SCATTER TABLE ON, so runTable never ran and tableSteps stayed at its object-init 48.
+    // Chain of custody, verified against js/drive-three.js: set('scatMode', D.sigmaOf(look) > 0 &&
+    // look.scatter > 0 && look.scatterMode === 'table' ...) is the gate; `if (tableOn)` guards runTable;
+    // runTable is the only place tableSteps is published. Pinned defaults are visibility null, scatter 0,
+    // scatterMode 'direct', and D.sigmaOf(look) = 3.912/visibility (js/drive.js:115), so a null
+    // visibility gives sigma 0 -> scatMode 0 -> tableOn false -> the uniform never leaves :59's 48.
+    // So: set the THREE gates (the house recipe, SD-scatter-table.js:48) and PROVE the uniform is live
+    // before any arm runs, by asserting it differs from the object-init constant.
+    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { visibility: 200, scatter: 16, scatterMode: 'table' }); });
+    await page.evaluate(() => RF.UI.redrawSpec()); await settle();
+    const live0 = await steps();
+    ok('SB (pre) the scatter table is ON and tableSteps is PUBLISHED (not the object-init 48)',
+       live0 === 16, 'steps=' + live0 + ' — the chain resolved look.scatterTableSteps(undef) || scatter(16) -> 16');
     const setDV = (k, v) => page.evaluate(([k, v]) => RF.SpecUI.setDV(RF.UI, k, v), [k, v]);
     // what the renderer actually consumes — NOT a read of the options object
     // FAIL LOUD if the renderer never appears: a null steps() would make every arm FAIL with a
@@ -187,7 +206,14 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     await page.evaluate(() => { RF.UI.dvOpts.scatter = 0; delete RF.UI.dvOpts.scatterTableSteps; });
     await page.evaluate(() => RF.UI.redrawSpec()); await settle();
     const d = await steps();
-    ok('SB (d) with the key unset and scatter 0 the chain lands on the hard 48', d === 48, 'steps=' + d + ' expected 48');
+    // neb's second finding: the hard-48 link is UNREACHABLE through this instrument. Publishing requires
+    // look.scatter > 0, so at publish time scatter is TRUTHY and the chain can only land on 48 if scatter
+    // were falsy — which forbids publishing. So arm (d) must not claim 48: with the key deleted and
+    // scatter=0 the table is OFF (scatMode 0), runTable does not run, and the uniform RETAINS the last
+    // published value. Assert the reachable truth, and record the unreachable link in the arm's own text.
+    ok('SB (d) with the key unset and scatter 0 the table is OFF and the uniform retains the last published value (not the hard 48)',
+       d === 16, 'steps=' + d + ' expected 16 (retained from the scatter=16 publish; the `|| 48` link is'
+       + ' unreachable because publishing requires scatter>0 — recorded, not asserted)');
 
     // (e) NEGATIVE CONTROL: without this, "PASS" could just mean the check never ran. With the `||`
     //     chain broken at the source the value MUST NOT arrive, so arm (a) must invert. Read-only
