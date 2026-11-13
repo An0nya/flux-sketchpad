@@ -124,7 +124,6 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     // So: set the THREE gates (the house recipe, SD-scatter-table.js:48) and PROVE the uniform is live
     // before any arm runs, by asserting it differs from the object-init constant.
     const lookSteps = () => page.evaluate(() => RF.DriveAnim._.V.info.o.scatterTableSteps);
-    const lookScatter = () => page.evaluate(() => RF.DriveAnim._.V.info.o.scatter);
     const steps = async () => { const v = await page.evaluate(() => { const t = RF.DriveAnim._.V.three?.tableUniforms?.(); return t ? t.steps : null; });
       if (v === null) throw new Error('SB: V.three.tableUniforms().steps is null — the drive renderer' +
         ' never appeared (V.three is lazy, created on the first drive render); no arm may run without it'); return v; };
