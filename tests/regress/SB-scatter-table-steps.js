@@ -65,6 +65,15 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     // would fail for a stale-uniform reason rather than a chain reason. This is the proven ASK1-3
     // sequence (tests/regress/ASK1-3-full-registry-click.js:63-65, 86-92): setDisplay/setPane, then poll
     // for the async-built play button, click it under an aria-pressed guard, then poll for playing.
+    // 3922's real run: playing=false and V.three never appeared, while arm (0) PASSED. So the app,
+    // RF.UI and the registry are fine — the DRIVE DISPLAY never came up. ASK1-3 gets away with
+    // setDisplay alone because its scene is already on screen; the AGENTS.md worked entry is
+    // BUTTON CLICKS: button[data-mode="D"] (Spec), then button[data-disp="drive"]. Click the real
+    // controls first (each under a wait-for-visible, not a bare sleep), THEN setDisplay as a belt.
+    for (const q of ['button[data-mode="D"]', 'button[data-disp="drive"]']) {
+      const b = await Promise.race([page.$(q), sleep(10000).then(() => null)]);
+      if (b) { await b.click(); } else { errors.push('SB bring-up: no ' + q); }
+    }
     await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate');
       Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false }); });
     const qpb = () => page.evaluate(() => document.querySelector('[data-anim="play"]') || (RF.UI.driveExtras && RF.UI.driveExtras.playButton) || null);
