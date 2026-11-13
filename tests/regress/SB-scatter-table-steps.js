@@ -124,14 +124,7 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     // So: set the THREE gates (the house recipe, SD-scatter-table.js:48) and PROVE the uniform is live
     // before any arm runs, by asserting it differs from the object-init constant.
     await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { visibility: 200, scatter: 16, scatterMode: 'table' }); });
-    await page.evaluate(() => RF.UI.redrawSpec()); await settle();
-    const live0 = await steps();
-    ok('SB (pre) the scatter table is ON and tableSteps is PUBLISHED (not the object-init 48)',
-       live0 === 16, 'steps=' + live0 + ' — the chain resolved look.scatterTableSteps(undef) || scatter(16) -> 16');
-    const setDV = (k, v) => page.evaluate(([k, v]) => RF.SpecUI.setDV(RF.UI, k, v), [k, v]);
-    // what the renderer actually consumes — NOT a read of the options object
-    // FAIL LOUD if the renderer never appears: a null steps() would make every arm FAIL with a
-    // number, which is unattributable. This THROWS with the reason instead (AFS's 'not a long pass').
+    await page.evaluate(() => RF.UI.redrawSpec()); await settle(16);
     const steps = async () => { const v = await page.evaluate(() => { const t = RF.DriveAnim._.V.three?.tableUniforms?.(); return t ? t.steps : null; });
       if (v === null) throw new Error('SB: V.three.tableUniforms().steps is null — the drive renderer' +
         ' never appeared (V.three is lazy, created on the first drive render); no arm may run without it'); return v; };
@@ -141,17 +134,32 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     // harbert's finding (iii): a bare sleep(60) is an unknown, not a settle. Poll for the uniform to
     // CHANGE from its previous value with a cap, so the arms assert on a rebuilt table rather than on
     // elapsed time. The cap (10 s) is a real budget on the host lane, not an infinite wait.
-    let prevSteps = null;
-    const settle = async () => {
+    // neb's finding (2): "poll until the value CHANGES" is wrong, because prevSteps starts null and
+    // `now !== null` is true on the first read, so it returns the STALE object-init 48 immediately —
+    // the pre-arm gate then reads 48 next line and false-alarms on a perfectly healthy app. The house
+    // pattern (SD-scatter-table.js:46) drives FRAMES and waits on the app's own pending counter, which
+    // is the honest wait: the air hold (drive-anim.js:3550 `airTick`, AIR_HOLD_FRAMES = 2 at :3546)
+    // defers the table for two frames, so the uniform needs ~3 frames after the gates change. So:
+    // settle(want) drives frames until the uniform EQUALS `want`, capped by both spin count and wall
+    // clock, and RETURNS the observed value so the caller can report what it actually saw.
+    const settle = async (want, budgetMs = 12000) => {
       const t0 = Date.now();
-      for (let spins = 0; spins < 100; spins++) {
+      for (let spins = 0; spins < 400 && Date.now() - t0 < budgetMs; spins++) {
+        await page.evaluate(() => { try { RF.DriveAnim._.frame(); } catch (e) { /* not ready yet */ } });
         const now = await steps();
-        if (now !== null && now !== prevSteps) { prevSteps = now; return now; }
-        if (Date.now() - t0 > 10000) return await steps();
-        await sleep(100);
+        if (now === want) return now;
+        await sleep(60);
       }
-      return await steps();
+      return await steps();   // the caller reports the observed value, not the expected one
     };
+
+    const live0 = await steps();
+    ok('SB (pre) the scatter table is ON and tableSteps is PUBLISHED (not the object-init 48)',
+       live0 === 16, 'steps=' + live0 + ' — the chain resolved look.scatterTableSteps(undef) || scatter(16) -> 16');
+    const setDV = (k, v) => page.evaluate(([k, v]) => RF.SpecUI.setDV(RF.UI, k, v), [k, v]);
+    // what the renderer actually consumes — NOT a read of the options object
+    // FAIL LOUD if the renderer never appears: a null steps() would make every arm FAIL with a
+    // number, which is unattributable. This THROWS with the reason instead (AFS's 'not a long pass').
 
     // (0) the arm's precondition: the option is control:'none', so it has no UI control to drive and a
     //     hide/reveal of it is a no-op. Asserted, not assumed — this is must-keep (2). The registry is a
@@ -165,7 +173,7 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     // (a) the value goes in through the live options object and reaches the renderer path. Must-keep (3).
     //     7 is distinctive: it is not the object-init 48, not `scatter`, and not a round band size.
     await setDV('scatterTableSteps', 7);
-    await page.evaluate(() => RF.UI.redrawSpec()); await settle();
+    await page.evaluate(() => RF.UI.redrawSpec()); await settle(7);
     const a = await steps();
     const aLook = await lookSteps();
     ok('SB (a) the set value reaches tableSteps', a === 7, 'steps=' + a + ' (expected 7)');
@@ -180,7 +188,7 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     //     The AC house note at :18 is about set-omission, NOT delete, so the delete arm goes below as (b2)
     //     with a redrawSpec, where the fall-back TAKING OVER is the visible difference.
     await page.evaluate(() => { RF.UI.dvOpts.scatterTableSteps = 11; RF.UI.dvOpts.scatter = 16; });
-    await page.evaluate(() => RF.UI.redrawSpec()); await settle();
+    await page.evaluate(() => RF.UI.redrawSpec()); await settle(11);
     const b1 = await steps();
     ok('SB (b) a later arm that does NOT set the key leaves the earlier value in place (per-key merge)',
        b1 === 11, 'steps=' + b1 + ' (expected 11, the earlier value, not the 48 fall-back)');
@@ -190,7 +198,7 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     //     on a play state the arm never established. The honest form: delete, redrawSpec, and assert the
     //     fall-back TOOK OVER. The difference between (b) and (b2) is the property worth pinning.
     await page.evaluate(() => { delete RF.UI.dvOpts.scatterTableSteps; RF.UI.dvOpts.scatter = 13; });
-    await page.evaluate(() => RF.UI.redrawSpec()); await settle();
+    await page.evaluate(() => RF.UI.redrawSpec()); await settle(13);
     const b2 = await steps();
     ok('SB (b2) deleting the key lets the chain fall back to `scatter` (13)', b2 === 13,
        'steps=' + b2 + ' (expected 13 = scatter, not the merged 11)');
@@ -198,13 +206,13 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     // (c) the fall-back chain fires when the key was never set and `scatter` is live: `scatter || 48`.
     //     Reached by the negative-control flag, which drops the option at the SOURCE, not in the test.
     await page.evaluate(() => { RF.UI.dvOpts.scatter = 16; delete RF.UI.dvOpts.scatterTableSteps; });
-    await page.evaluate(() => RF.UI.redrawSpec()); await settle();
+    await page.evaluate(() => RF.UI.redrawSpec()); await settle(16);
     const c = await steps(), lk = await lookSteps();
     ok('SB (c) with the key unset the chain falls back to `scatter` (16), not to the object-init 48',
        c === 16, 'steps=' + c + ' expected 16, look=' + lk);
     // (d) and with NEITHER, the last link in the chain: the hard 48.
     await page.evaluate(() => { RF.UI.dvOpts.scatter = 0; delete RF.UI.dvOpts.scatterTableSteps; });
-    await page.evaluate(() => RF.UI.redrawSpec()); await settle();
+    await page.evaluate(() => RF.UI.redrawSpec()); await settle(16);
     const d = await steps();
     // neb's second finding: the hard-48 link is UNREACHABLE through this instrument. Publishing requires
     // look.scatter > 0, so at publish time scatter is TRUTHY and the chain can only land on 48 if scatter
@@ -219,10 +227,20 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     //     chain broken at the source the value MUST NOT arrive, so arm (a) must invert. Read-only
     //     re-declared so a broken tree fails loudly rather than silently green.
     if (BREAK) {
-      // the break is set on the SOURCE (drive-three.js:220), not on the test's own object,
-      // so this inverts the app's arithmetic rather than the assertion's operand.
+      // neb's finding (3): arms (b2)/(c)/(d) leave scatter = 0, so at arm (e) the table is OFF
+      // (scatMode 0), runTable does not run, and the break flag is consulted ONLY INSIDE runTable
+      // (drive-three.js:220) so it is never read. The uniform then sits at the retained 16 whether
+      // the break works or is inert — the negative control passes either way, which is the one thing
+      // it must not do. FIX ORDER: FIRST re-arm a LIVE table (scatter > 0, scatterMode 'table',
+      // scatterTableSteps = 7) so runTable actually runs and CONSULTS the flag; and only THEN set the
+      // break, and only THEN assert. The break is set on the SOURCE (drive-three.js:220), so it
+      // inverts the app's arithmetic rather than the assertion's operand.
+      await page.evaluate(() => { RF.UI.dvOpts.scatter = 16; RF.UI.dvOpts.scatterMode = 'table'; RF.UI.dvOpts.scatterTableSteps = 7; });
+      await page.evaluate(() => RF.UI.redrawSpec()); await settle(7);
+      ok('SB (e) NEGATIVE CONTROL: the table is re-armed LIVE with scatterTableSteps=7 before the break',
+         (await steps()) === 7, 'steps=' + (await steps()) + ' (must be 7, else no negative control can run)');
       await page.evaluate(() => { globalThis.SD_TABLE_STEPS_BREAK = 1; });
-      await settle();
+      await page.evaluate(() => RF.UI.redrawSpec()); await settle(16);
       const e = await steps();
       ok('SB (e) NEGATIVE CONTROL: with the chain broken at the source the value does NOT reach tableSteps',
          e !== 7, 'steps=' + e + ' (must be anything but 7, else the check is vacuous)');
@@ -231,8 +249,8 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
       // check could never pass — a deterministic failure under the very flag that governs it.
       // Fix (A), preferred over asserting the 48 constant: re-arm the value we expect, so the check
       // verifies the restore/replay rather than a fixed number.
-      await page.evaluate(() => { RF.UI.dvOpts.scatterTableSteps = 7; RF.UI.dvOpts.scatter = 16; });
-      await page.evaluate(() => { delete globalThis.SD_TABLE_STEPS_BREAK; }); await settle();
+      await page.evaluate(() => { delete globalThis.SD_TABLE_STEPS_BREAK; });
+      await page.evaluate(() => RF.UI.redrawSpec()); await settle(7);
       const restored = await steps();
       ok('SB (e) NEGATIVE CONTROL: removing the break and re-arming the value restores it through setDV',
          restored === 7, 'steps=' + restored + ' (expected 7, via scatterTableSteps, not the 48 fall-back)');
