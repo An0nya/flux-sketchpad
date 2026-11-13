@@ -128,12 +128,17 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
       if (v === null) throw new Error('SB: V.three.tableUniforms().steps is null — the drive renderer' +
         ' never appeared (V.three is lazy, created on the first drive render); no arm may run without it'); return v; };
     // the live fall-back, so an arm can assert what the chain should have chosen
+    // neb's second catch on the equivalent class: "poll until EQUAL" is not enough, because an arm
+    // whose target IS the current value (arm (d), whose claim is "the table is OFF, so nothing
+    // republished") returns the STALE value on the first poll and asserts nothing. Proven: against a
+    // tree that publishes 48 after the air hold, arm (d) read 16 and PASSED — the arm must fail there.
+    // So require the uniform to CHANGE TO `want`, remembering what it was when the arm started.
     const settle = async (want, budgetMs = 12000) => {
-      const t0 = Date.now();
+      const t0 = Date.now(), seenBefore = await steps();
       for (let spins = 0; spins < 400 && Date.now() - t0 < budgetMs; spins++) {
         await page.evaluate(() => { try { RF.DriveAnim._.frame(); } catch (e) { /* not ready yet */ } });
         const now = await steps();
-        if (now === want) return now;
+        if (now === want && now !== seenBefore) return now;
         await sleep(60);
       }
       return await steps();   // the caller reports the observed value, not the expected one
