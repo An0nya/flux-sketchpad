@@ -70,10 +70,32 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     // setDisplay alone because its scene is already on screen; the AGENTS.md worked entry is
     // BUTTON CLICKS: button[data-mode="D"] (Spec), then button[data-disp="drive"]. Click the real
     // controls first (each under a wait-for-visible, not a bare sleep), THEN setDisplay as a belt.
-    for (const q of ['button[data-mode="D"]', 'button[data-disp="drive"]']) {
+    // data-mode="D" appears TWICE in index.html: once in the editor pane's own duplicated mode nav
+    // (line 51) and once in the real tab bar (nav.modes.seg, line 122). page.$() returns the FIRST, so an
+    // unscoped selector clicks the editor's copy and the display never changes. Scope it to the tablist,
+    // and confirm the click landed by reading back aria-selected rather than trusting the click.
+    const clickMode = async (q, want) => {
       const b = await Promise.race([page.$(q), sleep(10000).then(() => null)]);
-      if (b) { await b.click(); } else { errors.push('SB bring-up: no ' + q); }
-    }
+      if (b) { await b.click(); } else { errors.push('SB bring-up: no ' + q); return; }
+      const read = () => page.evaluate(() => document.querySelector('nav.modes.seg [role="tab"][aria-selected="true"]')?.getAttribute('data-mode') || null);
+      let got = null;
+      for (const t0 = Date.now(); Date.now() - t0 < 10000 && got !== want;) {
+        got = await read(); if (got !== want) await sleep(200);
+      }
+      if (got !== want) errors.push('SB bring-up: clicked ' + q + ' but the selected mode stayed ' + got + ' (expected ' + want + ')');
+    };
+    const clickDisp = async (q, want) => {
+      const b = await Promise.race([page.$(q), sleep(10000).then(() => null)]);
+      if (b) { await b.click(); } else { errors.push('SB bring-up: no ' + q); return; }
+      const read = () => page.evaluate(() => RF.UI.display || null);
+      let got = null;
+      for (const t0 = Date.now(); Date.now() - t0 < 10000 && got !== want;) {
+        got = await read(); if (got !== want) await sleep(200);
+      }
+      if (got !== want) errors.push('SB bring-up: clicked ' + q + ' but RF.UI.display stayed ' + got + ' (expected ' + want + ')');
+    };
+    await clickMode('nav.modes.seg button[data-mode="D"]', 'D');
+    await clickDisp('button[data-disp="drive"]', 'drive');
     await page.evaluate(() => { const u = RF.UI; u.setDisplay('drive'); u.setPane('result', 'activate');
       Object.assign(u.dvAnim || (u.dvAnim = {}), { view: 'anim', playing: false }); });
     const qpb = () => page.evaluate(() => document.querySelector('[data-anim="play"]') || (RF.UI.driveExtras && RF.UI.driveExtras.playButton) || null);
