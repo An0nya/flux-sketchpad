@@ -123,25 +123,12 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
     // visibility gives sigma 0 -> scatMode 0 -> tableOn false -> the uniform never leaves :59's 48.
     // So: set the THREE gates (the house recipe, SD-scatter-table.js:48) and PROVE the uniform is live
     // before any arm runs, by asserting it differs from the object-init constant.
-    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { visibility: 200, scatter: 16, scatterMode: 'table' }); });
-    await page.evaluate(() => RF.UI.redrawSpec()); await settle(16);
+    const lookSteps = () => page.evaluate(() => RF.DriveAnim._.V.info.o.scatterTableSteps);
+    const lookScatter = () => page.evaluate(() => RF.DriveAnim._.V.info.o.scatter);
     const steps = async () => { const v = await page.evaluate(() => { const t = RF.DriveAnim._.V.three?.tableUniforms?.(); return t ? t.steps : null; });
       if (v === null) throw new Error('SB: V.three.tableUniforms().steps is null — the drive renderer' +
         ' never appeared (V.three is lazy, created on the first drive render); no arm may run without it'); return v; };
     // the live fall-back, so an arm can assert what the chain should have chosen
-    const lookSteps = () => page.evaluate(() => RF.DriveAnim._.V.info.o.scatterTableSteps);
-    const lookScatter = () => page.evaluate(() => RF.DriveAnim._.V.info.o.scatter);
-    // harbert's finding (iii): a bare sleep(60) is an unknown, not a settle. Poll for the uniform to
-    // CHANGE from its previous value with a cap, so the arms assert on a rebuilt table rather than on
-    // elapsed time. The cap (10 s) is a real budget on the host lane, not an infinite wait.
-    // neb's finding (2): "poll until the value CHANGES" is wrong, because prevSteps starts null and
-    // `now !== null` is true on the first read, so it returns the STALE object-init 48 immediately —
-    // the pre-arm gate then reads 48 next line and false-alarms on a perfectly healthy app. The house
-    // pattern (SD-scatter-table.js:46) drives FRAMES and waits on the app's own pending counter, which
-    // is the honest wait: the air hold (drive-anim.js:3550 `airTick`, AIR_HOLD_FRAMES = 2 at :3546)
-    // defers the table for two frames, so the uniform needs ~3 frames after the gates change. So:
-    // settle(want) drives frames until the uniform EQUALS `want`, capped by both spin count and wall
-    // clock, and RETURNS the observed value so the caller can report what it actually saw.
     const settle = async (want, budgetMs = 12000) => {
       const t0 = Date.now();
       for (let spins = 0; spins < 400 && Date.now() - t0 < budgetMs; spins++) {
@@ -153,6 +140,8 @@ const BREAK = !!process.env.SCATTER_TABLE_STEPS_BREAK || process.argv.includes('
       return await steps();   // the caller reports the observed value, not the expected one
     };
 
+    await page.evaluate(() => { Object.assign(RF.UI.dvOpts, { visibility: 200, scatter: 16, scatterMode: 'table' }); });
+    await page.evaluate(() => RF.UI.redrawSpec()); await settle(16);
     const live0 = await steps();
     ok('SB (pre) the scatter table is ON and tableSteps is PUBLISHED (not the object-init 48)',
        live0 === 16, 'steps=' + live0 + ' — the chain resolved look.scatterTableSteps(undef) || scatter(16) -> 16');
