@@ -152,6 +152,13 @@
   "group": "legacy"
  },
  {
+  "file": "fable52-2026-11-15-mosaic.js",
+  "model": "Fable 5.2",
+  "run": "2026-11-15",
+  "workspace": "work-fable52-flux-solver-20261115-2031",
+  "group": "benchmark"
+ },
+ {
   "file": "haiku55-2026-10-07-spots.js",
   "model": "Haiku 5.5",
   "run": "2026-10-07",
