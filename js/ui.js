@@ -261,10 +261,30 @@
     const paintDefs = RF.Solvers.list().filter((d) => d.modes.includes('paint')), opt = (d, label) => el('option', { value: d.id }, label);
     // solvers/index.json sorts the bundled files: group 'default' | 'benchmark' | 'legacy' per file, and per-id overrides in "groups" (one file can register a static and an auto-tuned id)
     const grpOf = (d) => (d.bundled.groups && d.bundled.groups[d.id]) || d.bundled.group || (d.bundled.note === 'lab' ? 'default' : 'benchmark');
-    const groups = [['Default', paintDefs.filter((d) => d.bundled && grpOf(d) === 'default')], ['Benchmark runs', paintDefs.filter((d) => d.bundled && grpOf(d) === 'benchmark')], ['Legacy', paintDefs.filter((d) => (d.bundled && grpOf(d) === 'legacy') || !d.worker)], ['Loaded by you', paintDefs.filter((d) => d.loaded)]];
+    const groups = [['Default', paintDefs.filter((d) => d.bundled && grpOf(d) === 'default')], ['Legacy', paintDefs.filter((d) => (d.bundled && grpOf(d) === 'legacy') || !d.worker)], ['Loaded by you', paintDefs.filter((d) => d.loaded)]];
     const pick = el('select', { 'aria-label': 'Solver' }, ...groups.filter(([, ds]) => ds.length).map(([g, ds]) => el('optgroup', { label: g }, ...ds.map((d) => opt(d, d.name + ' v' + d.version + (d.bundled ? ' — ' + d.bundled.model.replace(/ \(.*\)$/, '') + ', ' + d.bundled.run.slice(5) : ''))))));
-    pick.value = cur;
-    pick.addEventListener('change', () => { stopWorkerSolve('solver changed'); sc.solve = { id: pick.value }; try { localStorage.setItem('flux/solverChoice', pick.value); } catch (e) { /* ignore */ } ui.store.invalidate(['A']); if (ui.store.autoA) ui.pendingA = performance.now() + 100; markStale(); schedule(); renderSolverBox(); });
+    // Benchmark solvers (solvers/bench-index.json, Anya 11-20): every scored bench seat's solver (static, and its tuner when it wrote one) plus the earlier benchmark runs.
+    // The seats' files load when picked (SolverHost.loadBench); the earlier runs are bundled and already registered.  `benchOf`: solver id -> { e: index entry, kind }.
+    const BI = (RF.SolverHost && RF.SolverHost.benchIndex && RF.SolverHost.benchIndex()) || { bench: [], earlier: [] }, benchOf = new Map(), earlierBy = new Map(BI.earlier.map((x) => [x.file, x]));
+    for (const e of BI.bench) { benchOf.set(e.staticId, { e, kind: 'static' }); if (e.autoId) benchOf.set(e.autoId, { e, kind: 'tuner' }); }
+    for (const d of paintDefs) if (d.bundled && earlierBy.has(d.bundled.file) && grpOf(d) === 'benchmark') benchOf.set(d.id, { e: earlierBy.get(d.bundled.file), kind: /-auto$/.test(d.id) ? 'tuner' : 'static', earlier: true });
+    const isBench = benchOf.has(cur);
+    if (isBench) pick.insertBefore(el('option', { value: '', disabled: '' }, '(a benchmark solver: see below)'), pick.firstChild);
+    pick.value = isBench ? '' : cur;
+    const choose = (id) => { stopWorkerSolve('solver changed'); sc.solve = { id }; try { localStorage.setItem('flux/solverChoice', id); } catch (e) { /* ignore */ } ui.store.invalidate(['A']); if (ui.store.autoA) ui.pendingA = performance.now() + 100; markStale(); schedule(); renderSolverBox(); };
+    pick.addEventListener('change', () => { if (pick.value) choose(pick.value); });
+    const bsel = el('select', { 'aria-label': 'Benchmark solver' }, el('option', { value: '' }, 'Choose a benchmark solver\u2026'));
+    { const sec = (e) => (e.earlier ? 'Earlier runs (before the bench harness)' : e.harness.startsWith('Claude Code') ? 'Claude Code seats' : e.tier === 'paid' ? 'Bench seats, paid API' : e.tier === 'free tier' ? 'Bench seats, free tier (Google AI Studio)' : 'Bench seats, free API'), by = new Map();
+      const add = (id, b) => { const g = sec(Object.assign({ earlier: b.earlier }, b.e)); if (!by.has(g)) by.set(g, []); const sc_ = b.earlier ? (b.kind === 'static' ? b.e.score : null) : (b.kind === 'tuner' ? b.e.autoScore : b.e.staticScore);
+        by.get(g).push(el('option', { value: id }, (b.earlier ? b.e.model + ' ' + b.e.run.slice(5) : b.e.seat) + ' \u00b7 ' + (b.kind === 'tuner' ? 'tuner' : 'static') + (sc_ != null ? ' \u00b7 ' + sc_.toFixed(3) : ''))); };
+      for (const [id, b] of benchOf) add(id, b);
+      for (const g of ['Bench seats, free API', 'Bench seats, free tier (Google AI Studio)', 'Bench seats, paid API', 'Claude Code seats', 'Earlier runs (before the bench harness)']) if (by.has(g)) bsel.append(el('optgroup', { label: g }, ...by.get(g))); }
+    bsel.value = isBench ? cur : '';
+    bsel.addEventListener('change', async () => {
+      const id = bsel.value, b = benchOf.get(id); if (!b) return;
+      if (!RF.Solvers.get(id)) { ui.store.notice('Loading ' + b.e.seat + '\u2026'); P.renderNotices(ui); try { await RF.SolverHost.loadBench(b.e); } catch (err) { ui.store.notice('Could not load ' + b.e.seat + ': ' + err.message); P.renderNotices(ui); renderSolverBox(); return; } }
+      choose(id);
+    });
     const file = el('input', { type: 'file', accept: '.js,text/javascript', hidden: '' });
     file.addEventListener('change', async () => {
       const f = file.files && file.files[0]; if (!f) return;
@@ -327,7 +347,18 @@
     const stog = el('input', { type: 'checkbox', id: 'preview-stats' }); stog.checked = ui.previewStats !== false;
     stog.addEventListener('change', () => ui.setPreviewStats(stog.checked));
     const stRow = el('label', { class: 'tog', title: 'While a solve runs, the footer and Details show the newest traced candidate\u2019s numbers (200k rays: coarse), marked PREVIEW. The real numbers return with the result.' }, stog, ' Live numbers from previews');
-    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), el('div', { class: 'note' }, who), el('div', { class: 'btnrow' }, watchRow, ptRow, stRow), ...fields);
+    const bcur = benchOf.get(cur), tierOf = (e) => (e.tier === 'subscription' ? 'subscription' : e.tier === 'free tier' ? 'free tier' : e.tier) + (e.flex ? ', flex' : '');
+    const card = !bcur ? null : (() => {
+      const e = Object.assign({ earlier: !!bcur.earlier }, bcur.e), line = (k, v) => v == null || v === '' ? null : el('div', {}, el('b', {}, k + ': '), v), f3 = (x) => (x == null ? 'not scored' : x.toFixed(3));
+      return el('div', { class: 'note bench-card' },
+        line('Kind', bcur.kind === 'tuner' ? 'tuner (auto). The same file\u2019s second solver: it traces candidates and searches settings, so it runs longer. Seats were invited to write one after their static solver was scored.' : 'static. The solver the seat wrote first (stage 1 of the benchmark).'),
+        line('Source', e.earlier ? e.model : e.model + ' \u00b7 ' + e.provider + ' \u00b7 ' + tierOf(e) + (e.effort ? ' \u00b7 effort ' + e.effort : '')),
+        line('Harness', e.harness + (e.tier && e.earlier ? ' \u00b7 ' + e.tier : '')),
+        line('Run', e.run + ' \u00b7 ' + e.workspace),
+        line('Benchmark', e.earlier ? (e.score != null ? f3(e.score) + ' (' + e.scoreNote + ')' : e.scoreNote) : 'static ' + f3(e.staticScore) + (e.autoId ? ' \u00b7 tuner ' + f3(e.autoScore) : ' \u00b7 no scored tuner')),
+        line('About', e.earlier ? e.note : e.blurb), el('div', {}, 'Not like-for-like across seats: harness, effort, free or paid API and who watched the run all differ. The contact sheet has the details.'));
+    })();
+    box.append(el('div', { class: 'row' }, el('label', {}, 'Solver'), pick), el('div', { class: 'row' }, el('label', {}, 'Benchmark solvers'), bsel), card || el('div', { class: 'note' }, who), el('div', { class: 'btnrow' }, watchRow, ptRow, stRow), ...fields);
     const files = document.getElementById('solver-files');
     if (files) { files.innerHTML = ''; files.append(el('div', { class: 'btnrow' }, loadBtn, forget),
       el('div', { class: 'note' }, 'Verified by the app, not the solver: ' + facts + '. Saved with the scene: ' + (sc.solve ? sc.solve.id + ' v' + (sc.solve.version || '?') : '—') + '.')); }
@@ -1933,8 +1964,9 @@
     for (const ev of ['pointerdown', 'keydown', 'wheel']) document.addEventListener(ev, () => { if (!ui.activeHandle) hint.classList.remove('show'); poke(); }, { passive: true });
     showHint(6000); poke();
     // loaded solvers persist per browser; once they're back, honour a saved choice
-    if (RF.SolverHost) RF.SolverHost.restore().then(() => {
+    if (RF.SolverHost) RF.SolverHost.restore().then(async () => {
       let want = null; try { want = localStorage.getItem('flux/solverChoice'); } catch (e) { /* ignore */ }
+      if (want && !RF.Solvers.get(want) && RF.SolverHost.benchIndex()) { const be = RF.SolverHost.benchIndex().bench.find((x) => x.staticId === want || x.autoId === want); if (be) { try { await RF.SolverHost.loadBench(be); } catch (e) { /* the saved choice is dropped */ } } }
       if (want && !ui.store.scene.solve && RF.Solvers.get(want)) ui.store.scene.solve = { id: want };
       if (ui.rebuildWaiting && !ui.safeMode) ui.generateA(true);
       renderSolverBox();

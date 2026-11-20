@@ -44,7 +44,7 @@
   }
   const limitMs = () => testMs || userMs || BUDGET.ms;
   const setLimit = (ms) => { userMs = Math.max(0, +ms || 0); try { localStorage.setItem('flux/solveLimitMs', String(userMs)); } catch (e) { /* ignore */ } };
-  let worker = null, sources = [], srcIds = [], bundled = [], ready = Promise.resolve(), live = null, testMs = 0, lastStats = null, loading = typeof Worker !== "undefined";   // true from page load until restore() has the bundled solvers in
+  let worker = null, sources = [], srcIds = [], bundled = [], lazy = [], benchIndex = null, ready = Promise.resolve(), live = null, testMs = 0, lastStats = null, loading = typeof Worker !== "undefined";   // true from page load until restore() has the bundled solvers in
   // sources[i] = a loaded file's text, srcIds[i] = the ids it registered;  bundled = [{ src, meta }] from solvers/
   // Requests: every message to the worker carries rid = ++seq and the worker echoes it on every reply, so replies find their request
   // however many are out.  reqs: rid → { onMsg, reject, timer }.  Stopping anything means killing the worker, which fails every request
@@ -151,6 +151,7 @@
         const g = gen;
         try {
           for (const b of bundled.slice()) { try { await loadInto(b.src, b.meta); } catch (e) { if (e && e.aborted) throw e; } if (g !== gen) throw again(); }
+          for (const b of lazy.slice()) { try { await loadInto(b.src, b.meta); } catch (e) { if (e && e.aborted) throw e; } if (g !== gen) throw again(); }   // benchmark solvers the user has picked this session
           await loadSources(g);
           reloading = null; return;                     // no await since the gen check: a kill from here on starts a new reload
         } catch (e) { if (e && !e.aborted) throw e; }  // killed mid-rebuild (or a crashing source dropped): go again
@@ -168,12 +169,20 @@
       if (ui && ui.store) ui.store.notice('The bundled solvers did not load: they need the page served over http (for example python3 tests/serve.py 8000, then open http://localhost:8000), not opened as a file. Until then solves use the built-in ' + (fb ? fb.name : 'fallback') + ' solver.');
       return;
     }
+    try { benchIndex = await (await fetch('solvers/bench-index.json')).json(); } catch (e) { benchIndex = null; }   // the Benchmark solvers dropdown: metadata only, the files load when picked
     for (const m of list) {
       try {
         const src = await (await fetch('solvers/' + m.file)).text(), meta = { model: m.model, run: m.run, file: m.file, note: m.note || '', group: m.group || null, groups: m.groups || null };      // group: default | benchmark | legacy (the dropdown's sections)
         await loadInto(src, meta); bundled.push({ src, meta });
       } catch (e) { /* a missing file is skipped */ }
     }
+  }
+  // A benchmark solver is fetched and loaded into the worker only when it is picked (there are ~80 files; loading them all would slow every start and every worker restart).
+  async function loadBench(e) {
+    if (RF.Solvers.get(e.staticId)) return;
+    const src = await (await fetch('solvers/' + e.file)).text(), meta = { model: e.model, run: e.run, file: e.file, note: '', group: 'bench', groups: null, bench: e.seat };
+    await whenReady();
+    await loadInto(src, meta); lazy.push({ src, meta });
   }
   async function restore() {
     let saved = []; try { saved = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { saved = null; }
@@ -196,5 +205,5 @@
   }
   // test hook: run the next solves with a shorter time budget (ms; 0 = back to BUDGET.ms).  BUDGET itself never changes.
   const testBudget = (ms) => { testMs = Math.max(0, +ms || 0); };
-  RF.SolverHost = { recovery, setRecovery, threads, threadsDefault: defThreads, threadsChosen: () => threadsPref !== null, setThreads, keepAwake: keepOn, setKeepAwake, askAwake, answerAwake, lastStats: () => lastStats, load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
+  RF.SolverHost = { benchIndex: () => benchIndex, loadBench, recovery, setRecovery, threads, threadsDefault: defThreads, threadsChosen: () => threadsPref !== null, setThreads, keepAwake: keepOn, setKeepAwake, askAwake, answerAwake, lastStats: () => lastStats, load, restore, forget, abort, busy, loading: () => loading, BUDGET, testBudget, limitMs, setLimit };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
