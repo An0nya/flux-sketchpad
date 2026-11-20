@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-20T08:15:37.805Z",
+ "generated": "2026-11-20T08:30:05.576Z",
  "grader": "2113b29b0fa821790a7d2593d2b81dd0e69f5ffb",
  "bench": [
   {
@@ -1747,6 +1747,17 @@
   }
  ],
  "earlier": [
+  {
+   "file": "fable52-2026-11-15-mosaic.js",
+   "model": "Fable 5.2",
+   "run": "2026-11-15",
+   "workspace": "work-fable52-flux-solver-20261115-2031",
+   "harness": "Claude Code, run in the open (proctored by Anya, no isolation harness)",
+   "tier": "subscription",
+   "note": null,
+   "score": 1.3993,
+   "scoreNote": "current grader"
+  },
   {
    "file": "haiku55-2026-10-07-spots.js",
    "model": "Haiku 5.5",
