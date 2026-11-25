@@ -60,6 +60,16 @@ for (const k of pick) {
   ok('occlusion totals match per-facet counts (' + P.G.n + ' facets)', shBad === 0 && blBad === 0,
     shBad + ' shadow / ' + blBad + ' blocked mismatches; shadowed ' + (100 * O.shadowed).toFixed(2) + '%, overlap ' + (100 * O.overlap).toFixed(2) + '%, blocked ' + (100 * st.blocked).toFixed(2) + '% (worst ' + st.blockedWorst.slice(0, 2).map((w) => w.id + ' ' + (100 * w.lost).toFixed(0) + '%').join(', ') + '); pass ' + ms + ' ms at ' + N + ' rays'); }
 
+// stats() reads the shadow pass from the first P.occCap rays only; a direct Engine.occlusion call stays exact, before or after
+{ const cap = Math.floor(N / 4), full = E.occlusion(P, c), Pq = prep(surfs); Pq.occCap = cap;
+  const cq = E.runSync(Pq, N), sq = E.stats(cq).occlusion, used = cq.occ.shadow.n, caughtQ = cq.occ.shadow.caughtK.reduce((s, x) => s + x, 0);
+  const cp = E.runSync(prep(surfs), cap), pre = E.occlusion(cp.P, cp);
+  const ex = E.occlusion(Pq, cq), same = ex.n === N && ex.shadowed === full.shadowed && ex.shadowK.every((x, k) => x === full.shadowK[k]);
+  const again = E.stats(cq).occlusion;
+  ok('stats shadow pass: first ' + cap + ' of ' + N + ' rays = a ' + cap + '-ray run; the direct call is exact and then reused',
+    used === cap && caughtQ > 0 && sq.shadowed === pre.shadowed && sq.overlap === pre.overlap && same && again.shadowed === full.shadowed,
+    'capped ' + (100 * sq.shadowed).toFixed(2) + '%, exact ' + (100 * full.shadowed).toFixed(2) + '%'); }
+
 // hit cap: past it, only the first rays' hits are kept; hitCoverage says how many rays, and those hits
 // are exactly the uncapped run's hits for those rays
 { const Pc = prep(surfs); Pc.hitCap = 10000; const cc = E.runSync(Pc, N), cov = E.hitCoverage(cc);

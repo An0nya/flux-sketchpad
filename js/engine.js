@@ -452,12 +452,15 @@
   // through a lens; that's a multi-hop path, not a shadow).  Cached on the context.
   //   shadowK[k] = rays surface k lost · shadowed = Σ lost ÷ Σ (caught + lost) · overlap = share of caught
   //   rays whose line crosses ≥ 1 more surface
-  function occlusion(P, ctx) {
-    if (ctx.occ.shadow && ctx.occ.shadow.n === ctx.next) return ctx.occ.shadow;
+  // maxRays (optional): use only the first maxRays rays, for the stats display.  Rays are independent draws, so a prefix is a fair
+  // sample; a share p read from n rays is off by about sqrt(p (1 − p) / n).  Omitted = every ray (solvers, tests: exact).
+  function occlusion(P, ctx, maxRays) {
+    const nUse = Math.min(ctx.next, maxRays > 0 ? maxRays : Infinity);
+    if (ctx.occ.shadow && ctx.occ.shadow.n >= nUse && ctx.occ.shadow.n <= ctx.next) return ctx.occ.shadow;   // at least as many rays as asked
     const G = P.G, D = G.D, bvh = G.bvh, n = Math.max(1, G.n), shadowK = new Float64Array(n), caughtK = new Float64Array(n);   // ray WEIGHTS (1 each unless a guided Refine drew them)
     const { bmin, bmax, left, right, start, count, items } = bvh, st = new Int32Array(128), o = new Float64Array(3), d = new Float64Array(3);
     let lost = 0, overl = 0, caught = 0;
-    for (let i = 0; i < ctx.next; i++) {
+    for (let i = 0; i < nUse; i++) {
       const fk = ctx.rayK[i] - 1; if (fk < 0) continue;
       const w = sampleRayI(P, i, o, d);
       caughtK[fk] += w; caught += w;
@@ -482,7 +485,7 @@
     const metas = G.metas, worst = [];
     for (let k = 0; k < G.n; k++) if (shadowK[k]) worst.push({ id: metas[k].id, lost: shadowK[k] / (shadowK[k] + caughtK[k]) });
     worst.sort((a, b) => b.lost - a.lost);
-    ctx.occ.shadow = { n: ctx.next, shadowK, caughtK, shadowed: caught + lost > 0 ? lost / (caught + lost) : 0, overlap: caught > 0 ? overl / caught : 0, worst: worst.slice(0, 5) };
+    ctx.occ.shadow = { n: nUse, shadowK, caughtK, shadowed: caught + lost > 0 ? lost / (caught + lost) : 0, overlap: caught > 0 ? overl / caught : 0, worst: worst.slice(0, 5) };
     return ctx.occ.shadow;
   }
 
@@ -595,11 +598,13 @@
       ...evaluate(ctx, opts && opts.paint, opts && opts.paintRes),
     };
   }
+  // The shadow pass redoes every ray on one CPU thread, so a finished 20 M-ray run froze the page for seconds: the display reads a 1 M-ray sample (±0.05 points).
+  const OCC_STATS_RAYS = 1e6;
   function occlusionStats(ctx) {
     const P = ctx.P, E = ctx.E, metas = P.G.metas, o = ctx.occ;
     const worstB = []; for (let k = 0; k < P.G.n; k++) if (o.blockedK[k] > 0) worstB.push({ id: metas[k].id, lost: o.blockedK[k] / o.out1K[k] });
     worstB.sort((a, b) => b.lost - a.lost);
-    const sh = ctx.done && ctx.rayK ? occlusion(P, ctx) : null;
+    const sh = ctx.done && ctx.rayK ? occlusion(P, ctx, P.occCap || OCC_STATS_RAYS) : null;   // P.occCap: tests only
     return {
       blocked: o.out1 > 0 ? o.blocked / o.out1 : 0, blockedWorst: worstB.slice(0, 5),
       shadowed: sh ? sh.shadowed : null, overlap: sh ? sh.overlap : null, shadowedWorst: sh ? sh.worst : [],
