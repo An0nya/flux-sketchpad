@@ -100,3 +100,22 @@ Her requests and ideas (not built yet):
 - The core should grow with intensity. Her theory is "with intensity, not distance". She isn't sure about
   distance; see the discussion in the session that followed.
 - Performance unknown; she will try an older phone.
+
+## Round 2 (2026-11-27, after the first phone session)
+
+Added: Moffat core (`(1 + (θ/α)²)^-β`, energy kept), headroom strip, "Re-request HDR" (also automatic on
+returning to the page), an animated oncoming car (approach, pass, respawn after a gap), a deer target,
+fps / GPU-time readout, the drive's beams (generic low and high, baked the way `drive.js` bakes them,
+plus the five tables in `samples/beams/sqm-samples.json`), oncoming intensity sampled from a beam table
+at the eye's angle (as the drive's `Headlamp.cd` does), and the "Anya 11-27" preset (knee 0.55).
+
+OBSERVED by Anya on the iPhone: toggling extended off and on raised the usable HDR peak above 2×; leaving
+the page and coming back dropped it to about 1.5×, where the peak slider acts like a switch. INFERRED:
+iOS grants headroom when the layer enters HDR and doesn't revisit it, so re-configuring asks again.
+
+OBSERVED on the Mac (headless Chromium, Metal, 960×540, Current preset with bloom, car animating):
+about 90 fps uncapped, GPU ≤ 3.6 ms per frame (submit to done, an upper bound). Not a phone number.
+
+Low beams and the deer: at 60 m the deer's body is above the cutoff of a low beam (about +0.3° from a
+0.65 m lamp), so with the generic low it gets about 370 cd, about 0.1 lx: it is genuinely nearly
+invisible, legs aside. That is the beam, not the veil. Use a high beam or a closer target to test veiling.

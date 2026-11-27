@@ -8,23 +8,42 @@ const GLARE_BANDS = [1, 2, 4, 8], GLARE_WEIGHT = 0.0075;   // drive.js / drive-a
 const glareSigma = (w, fov) => Math.max(0.35, 1.5 * w / 640 * Math.tan(Math.PI / 6) / Math.tan(fov * DEG / 2));
 const BINS = 4096;                                  // starburst angular table resolution
 const STORE = 'hdr-headlamp-v1';
+const STRIP = [1, 1.25, 1.5, 2, 2.5, 3, 4, 6, 8, 16];   // headroom strip patches, × paper white (display-linear)
+const BUNDLE = '../../samples/beams/sqm-samples.json';   // the drive's built-in beam library
+// Drive geometry (drive.js Headlamp.cd default eye [-2, 0.37, 1.2] relative to the car front). Our frame: eye at the origin,
+// x forward, y left, z up. Own lamps 2 m ahead of the eye, centred on the car (0.37 m right of the eye), 0.65 m high (TUNING).
+const EYE_Z = 1.2, OWN = { x: 2, y: -0.37, half: 0.7, z: 0.65 };
+const LIB_BEAMS = ['offset-box axial h7 SQM ideal', '7-inch-round-rearfiring sft40NW8A', '7-inch-round-rearfiring sft40WW-95CRI14A', '7-inch-round-rearfiring 519a-NW8A', '7-inch-round-rearfiring d2s-transverse'];
+const BEAMS = ['Drive generic low', 'Drive generic high', 'Spike simple (old)', ...LIB_BEAMS];
 
 // ---------------------------------------------------------------- settings: every knob is one entry here
 // type: r = range, s = select, c = checkbox. log: slider moves in log space.
 const SPEC = [
-  ['Scene', [
-    { id: 'dist', label: 'Oncoming distance', type: 'r', min: 5, max: 300, def: 32, log: true, unit: 'm', dp: 0 },
-    { id: 'cd', label: 'Lamp intensity to eye', type: 'r', min: 50, max: 50000, def: 1000, log: true, unit: 'cd', dp: 0 },
+  ['Oncoming car', [
+    { id: 'animate', label: 'Drive at me', type: 'c', def: false },
+    { id: 'speed', label: 'Closing speed', type: 'r', min: 10, max: 250, def: 100, step: 5, unit: 'km/h', dp: 0 },
+    { id: 'spawn', label: 'Spawn distance', type: 'r', min: 50, max: 400, def: 250, step: 10, unit: 'm', dp: 0 },
+    { id: 'gap', label: 'Gap before next', type: 'r', min: 0, max: 5, def: 1.5, step: 0.1, unit: 's', dp: 1 },
+    { id: 'dist', label: 'Distance (still)', type: 'r', min: 5, max: 300, def: 32, log: true, unit: 'm', dp: 0 },
+    { id: 'oncSrc', label: 'Intensity to eye', type: 's', opts: ['fixed cd', 'from beam table'], def: 'fixed cd' },
+    { id: 'cd', label: 'Fixed intensity', type: 'r', min: 50, max: 50000, def: 1000, log: true, unit: 'cd', dp: 0 },
+    { id: 'oncBeam', label: 'Their beam', type: 's', opts: BEAMS, def: 'Drive generic low' },
+    { id: 'oncScale', label: 'Their beam scale', type: 'r', min: 0.05, max: 4, def: 1, log: true, unit: '×', dp: 2 },
     { id: 'color', label: 'Lamp colour', type: 's', opts: ['LED 5700K', 'Halogen', 'HID 4300K'], def: 'LED 5700K' },
     { id: 'lat', label: 'Lateral offset', type: 'r', min: 0, max: 8, def: 3.5, step: 0.1, unit: 'm', dp: 1 },
     { id: 'spacing', label: 'Lamp spacing', type: 'r', min: 0.8, max: 1.8, def: 1.4, step: 0.05, unit: 'm', dp: 2 },
     { id: 'lens', label: 'Lens radius', type: 'r', min: 0.01, max: 0.12, def: 0.05, step: 0.005, unit: 'm', dp: 3 },
+  ], 'Drive at me: the car approaches at the closing speed, passes, and the next one appears at the spawn distance after the gap. "From beam table" samples their beam at the angle you sit in, so the glare falls off as they get close and you leave their beam, like the drive does.'],
+  ['Scene', [
+    { id: 'ownBeam', label: 'Our beam', type: 's', opts: BEAMS, def: 'Drive generic low' },
+    { id: 'own', label: 'Our beam gain', type: 'r', min: 0, max: 3, def: 1, step: 0.05, unit: '×', dp: 2 },
+    { id: 'target', label: 'Target', type: 's', opts: ['off', 'grey board', 'deer'], def: 'deer' },
+    { id: 'tdist', label: 'Target distance', type: 'r', min: 5, max: 200, def: 60, log: true, unit: 'm', dp: 0 },
+    { id: 'tlat', label: 'Target lateral', type: 'r', min: -3, max: 6, def: 0.8, step: 0.05, unit: 'm', dp: 2 },
+    { id: 'trho', label: 'Target reflectance', type: 'r', min: 0.02, max: 0.5, def: 0.12, step: 0.01, unit: '', dp: 2 },
     { id: 'hfov', label: 'Horizontal FOV', type: 'r', min: 30, max: 100, def: 60, step: 1, unit: '°', dp: 0 },
-    { id: 'own', label: 'Own beam gain', type: 'r', min: 0, max: 3, def: 1, step: 0.05, unit: '×', dp: 2 },
-    { id: 'target', label: 'Grey target', type: 'c', def: true },
-    { id: 'tdist', label: 'Target distance', type: 'r', min: 5, max: 150, def: 25, log: true, unit: 'm', dp: 0 },
     { id: 'sim', label: 'Render width', type: 's', opts: ['640', '960', '1280', '1600', 'native'], def: '960' },
-  ], 'Oncoming pair in the left lane. "Lamp intensity to eye" is what each lamp sends toward you; E = I / r². The grey target (reflectance 0.15) is for checking that the veil still eats contrast.'],
+  ], 'Our beam: the drive\'s generic low beam, the spike\'s old shape (your 11-27 tuning used it), or the five built-in tables from the drive\'s beam library (loaded on first use, about 11 MB). Deer reflectance 0.12 is a guess (TUNING); positive lateral is left.'],
   ['Exposure', [
     { id: 'expo', label: 'Mode', type: 's', opts: ['fixed', 'adapt'], def: 'fixed' },
     { id: 'ev', label: 'EV', type: 'r', min: -4, max: 6, def: 2, step: 0.25, unit: '', dp: 2 },
@@ -34,7 +53,8 @@ const SPEC = [
     { id: 'curve', label: 'Tone curve', type: 's', opts: ['ACES (SDR)', 'ACES + HDR shoulder'], def: 'ACES (SDR)' },
     { id: 'peak', label: 'HDR peak', type: 'r', min: 1, max: 16, def: 4, step: 0.25, unit: '× white', dp: 2 },
     { id: 'knee', label: 'Shoulder knee', type: 'r', min: 0.25, max: 4, def: 1, step: 0.05, unit: 'lin', dp: 2 },
-  ], 'Canvas "extended" lets values above 1.0 show above paper white. The HDR shoulder keeps ACES below the knee and rolls on toward the peak above it, slope-matched. Peak is a guess at the screen\'s headroom: no API reports it. In standard mode anything above 1.0 clips.'],
+    { id: 'strip', label: 'Headroom strip', type: 'c', def: false },
+  ], 'Canvas "extended" lets values above 1.0 show above paper white. The HDR shoulder keeps ACES below the knee and rolls on toward the peak above it, slope-matched. The headroom strip draws patches at fixed multiples of paper white: the last one that still looks brighter than its neighbour is your headroom right now. If HDR seems stuck low, press "Re-request HDR".'],
   ['Veil (Stiles–Holladay 10·E/θ²)', [
     { id: 'veilMode', label: 'Veil drawn as', type: 's', opts: ['off', 'physical', 'perceptual'], def: 'physical' },
     { id: 'veilStr', label: 'Strength', type: 'r', min: 0, max: 2, def: 1, step: 0.05, unit: '×', dp: 2 },
@@ -47,8 +67,11 @@ const SPEC = [
   ], 'Port of FS_BRIGHT + the 4-band Gaussian pyramid. Drive levels: dry-low 0.035, dry 0.1, rain 0.3.'],
   ['Core PSF', [
     { id: 'core', label: 'On', type: 'c', def: false },
-    { id: 'coreSigma', label: 'Sigma', type: 'r', min: 0.01, max: 0.6, def: 0.06, step: 0.01, unit: '°', dp: 2 },
-  ], 'A fixed-size Gaussian spread of the lamp itself (energy kept). Replaces what the 1° veil floor was covering.'],
+    { id: 'coreShape', label: 'Shape', type: 's', opts: ['gaussian', 'moffat'], def: 'gaussian' },
+    { id: 'coreSigma', label: 'Gaussian sigma', type: 'r', min: 0.01, max: 0.6, def: 0.06, step: 0.01, unit: '°', dp: 2 },
+    { id: 'coreAlpha', label: 'Moffat α (width)', type: 'r', min: 0.005, max: 0.5, def: 0.05, log: true, unit: '°', dp: 3 },
+    { id: 'coreBeta', label: 'Moffat β (tail)', type: 'r', min: 1.1, max: 6, def: 2, step: 0.05, unit: '', dp: 2 },
+  ], 'The spread of the lamp itself; energy is kept. Gaussian has a hard edge and barely grows with brightness. Moffat, (1 + (θ/α)²)^-β, is what astronomers use for star images: a core with a power-law skirt. Lower β = longer skirt, so the blob grows with brightness and fades into the veil.'],
   ['Starburst', [
     { id: 'spike', label: 'On', type: 'c', def: false },
     { id: 'spikeCount', label: 'Spokes', type: 'r', min: 4, max: 240, def: 60, step: 1, unit: '', dp: 0 },
@@ -61,19 +84,28 @@ const SPEC = [
     { id: 'spikeSeed', label: 'Pattern seed', type: 'r', min: 1, max: 500, def: 7, step: 1, unit: '', dp: 0 },
     { id: 'spikeRot', label: 'Rotation', type: 'r', min: 0, max: 360, def: 0, step: 1, unit: '°', dp: 0 },
   ], 'One fixed pattern for every lamp (it comes from your eye, not the lamp). Brightness ∝ E; the length is a hard limit, so spikes never get longer with intensity. No flicker.'],
+  ['Performance', [
+    { id: 'continuous', label: 'Render every frame', type: 'c', def: false },
+  ], 'On (or while the car drives) the page renders every frame and reports fps and GPU time. GPU time is submit-to-done, so it includes any queue wait: an upper bound.'],
 ];
 const ALL = SPEC.flatMap(([, items]) => items);
 const DEFAULTS = Object.fromEntries(ALL.map((c) => [c.id, c.def]));
 
+const ANYA_1127 = { dist: 24.48, cd: 601.1, color: 'LED 5700K', lat: 3.5, spacing: 1.4, lens: 0.06, hfov: 60, own: 0.3, ownBeam: 'Spike simple (old)', oncSrc: 'fixed cd',
+  target: 'grey board', tdist: 50, tlat: 1.15, trho: 0.15, sim: '960', expo: 'fixed', ev: 2, canvasMode: 'extended', curve: 'ACES + HDR shoulder', peak: 16, knee: 0.55,
+  veilMode: 'perceptual', veilStr: 0.25, veilCap: 1, veilFloor: 1.05, bloom: false, bloomStr: 0.07, core: true, coreShape: 'gaussian', coreSigma: 0.16,
+  spike: true, spikeCount: 49, spikeLen: 2.8, spikeLenJit: 0.6, spikeWidth: 3.12, spikeGain: 282.5, spikeTaper: 3.4, spikeBase: 0.18, spikeSeed: 7, spikeRot: 0 };
 const PRESETS = {
   'Current · SDR':    { veilMode: 'physical',   veilFloor: 1,   bloom: true,  core: false, spike: false, curve: 'ACES (SDR)',          canvasMode: 'standard' },
   'Current · HDR':    { veilMode: 'physical',   veilFloor: 1,   bloom: true,  core: false, spike: false, curve: 'ACES + HDR shoulder', canvasMode: 'extended' },
   'Perceptual · SDR': { veilMode: 'perceptual', veilFloor: 0.3, bloom: false, core: true,  spike: true,  curve: 'ACES (SDR)',          canvasMode: 'standard' },
   'Perceptual · HDR': { veilMode: 'perceptual', veilFloor: 0.3, bloom: false, core: true,  spike: true,  curve: 'ACES + HDR shoulder', canvasMode: 'extended' },
+  'Anya 11-27':       ANYA_1127,
 };
 
 let S = { ...DEFAULTS };
 try { const saved = JSON.parse(localStorage.getItem(STORE) || 'null'); if (saved) for (const k in saved) if (k in DEFAULTS) S[k] = saved[k]; } catch (e) { /* private mode: defaults */ }
+if (S.target === true) S.target = 'grey board'; else if (S.target === false) S.target = 'off';   // v1 stored a checkbox
 const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) { /* ignore */ } };
 
 // ---------------------------------------------------------------- UI built from SPEC
@@ -83,14 +115,14 @@ function fmt(c, v) { return c.type === 'r' ? Number(v).toFixed(c.dp ?? 2) + (c.u
 function toSlider(c, v) { return c.log ? Math.log(v / c.min) / Math.log(c.max / c.min) * 1000 : v; }
 function fromSlider(c, x) { return c.log ? c.min * Math.pow(c.max / c.min, x / 1000) : Number(x); }
 function buildUI() {
-  const root = $('controls');
+  const root = $('controls'), open = ['Oncoming car', 'Display', 'Core PSF'];
   for (const [title, items, help] of SPEC) {
-    const d = document.createElement('details'); d.open = ['Display', 'Veil (Stiles–Holladay 10·E/θ²)', 'Starburst'].includes(title) || title === 'Scene';
+    const d = document.createElement('details'); d.open = open.includes(title);
     d.innerHTML = `<summary>${title}</summary>`;
     for (const c of items) {
       const row = document.createElement('div'); row.className = 'row';
       const lab = document.createElement('label'); lab.textContent = c.label; lab.htmlFor = 'in-' + c.id;
-      let el, out = document.createElement('output');
+      let el; const out = document.createElement('output');
       if (c.type === 'r') {
         el = document.createElement('input'); el.type = 'range';
         if (c.log) { el.min = 0; el.max = 1000; el.step = 1; } else { el.min = c.min; el.max = c.max; el.step = c.step ?? 'any'; }
@@ -113,7 +145,9 @@ function buildUI() {
     const b = document.createElement('button'); b.textContent = name; b.dataset.preset = name;
     b.addEventListener('click', () => { Object.assign(S, PRESETS[name]); syncUI(); changed(); }); bar.append(b);
   }
+  const strip = $('strip'); for (const v of STRIP) { const s = document.createElement('span'); s.textContent = v + '×'; strip.append(s); }
   $('reset').addEventListener('click', () => { S = { ...DEFAULTS }; syncUI(); changed(); });
+  $('rehdr').addEventListener('click', () => rerequestHDR('button'));
   $('copy').addEventListener('click', async () => { const t = JSON.stringify(S, null, 1); $('json').value = t; try { await navigator.clipboard.writeText(t); $('copy').textContent = 'Copied'; } catch (e) { $('copy').textContent = 'Copy failed: select the box'; } setTimeout(() => { $('copy').textContent = 'Copy settings'; }, 1500); });
   $('measure').addEventListener('click', () => measure().catch((e) => { $('measured').textContent = 'Measure failed: ' + e.message; }));
 }
@@ -123,18 +157,83 @@ function syncUI() {
     if (c.type === 'r') { el.value = toSlider(c, v); out.textContent = fmt(c, v); } else if (c.type === 's') el.value = v; else el.checked = !!v;
   }
   for (const b of document.querySelectorAll('[data-preset]')) { const p = PRESETS[b.dataset.preset]; b.classList.toggle('on', Object.keys(p).every((k) => S[k] === p[k])); }
+  $('strip').style.display = S.strip ? 'flex' : 'none';
   $('json').value = JSON.stringify(S, null, 1);
+}
+
+// ---------------------------------------------------------------- beams: I(H, V) tables, convention A (H positive right, V up)
+// The table grid matches the drive's built-in samples: H -45..45, V -30..15, 0.1° cells; data[j*nh+i] is the cd at the cell centre.
+const GRID = { h0: -45, v0: -30, step: 0.1, nh: 900, nv: 450 };
+// Procedural beams are baked the way the drive bakes its generic low (lutFrom, win ±90°, step 0.25°), so no table edge shows on the road.
+const WIDE = { h0: -90, v0: -90, step: 0.25, nh: 720, nv: 720 };
+function bake(fn, G = WIDE) { const a = new Float32Array(G.nh * G.nv); for (let j = 0; j < G.nv; j++) for (let i = 0; i < G.nh; i++) a[j * G.nh + i] = fn(G.h0 + (i + 0.5) * G.step, G.v0 + (j + 0.5) * G.step); return { ...G, data: a }; }
+const genericLow = (h, v) => {   // drive.js Headlamp.generic(h, v, false), verbatim
+  const cut = -0.35 + Math.min(1.4, Math.max(0, h) * 0.15), below = 1 / (1 + Math.exp(Math.max(-60, Math.min(60, (v - cut) / 0.12))));
+  return 120 + 750 * Math.exp(-Math.max(0, v) / 0.3) + below * (1800 + 10000 * Math.exp(-0.5 * (((h - 3) / 7) ** 2 + ((v + 1) / 2.5) ** 2)));
+};
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const spikeSimple = (H, v) => {   // the first spike build's beam, in convention A (its h was positive left)
+  const h = -H, cut = -0.6 + 2.1 * smooth(-1, -4, h);
+  return 20000 * Math.exp(-((h / (h > 0 ? 12 : 16)) ** 2)) * (1 - smooth(cut - 0.3, cut + 0.3, v)) * (0.1 + 0.9 * Math.exp(-(((v + 1.2) / 2) ** 2))) + 150;
+};
+const beamCache = new Map(); let bundle = null;
+async function loadBundle() {
+  if (!bundle) bundle = (async () => {
+    const r = await fetch(BUNDLE); if (!r.ok) throw new Error('beam library ' + r.status);
+    const j = await r.json(), out = {};
+    for (const b of j.beams) {
+      const bin = atob(b.data), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      const dv = new DataView(u8.buffer), n = b.grid.nh * b.grid.nv, data = new Float32Array(n); for (let i = 0; i < n; i++) data[i] = dv.getFloat32(4 * i, true);
+      out[b.name] = { ...b.grid, data, conv: b.conv };
+    }
+    return out;
+  })();
+  return bundle;
+}
+async function getBeam(name) {
+  if (beamCache.has(name)) return beamCache.get(name);
+  let t;
+  if (name === 'Drive generic low') t = bake(genericLow);
+  else if (name === 'Drive generic high') t = bake((h, v) => 30000 * Math.exp(-0.5 * ((h / 9) ** 2 + (v / 4) ** 2)) + 300);   // drive.js Headlamp.generic(h, v, true)
+  else if (name === 'Spike simple (old)') t = bake(spikeSimple);
+  else { const lib = await loadBundle(); t = lib[name]; if (!t) throw new Error('beam not in library: ' + name); if (t.conv && t.conv !== 'A') throw new Error('beam convention ' + t.conv + ' not handled'); }
+  beamCache.set(name, t); return t;
+}
+function lutAt(L, h, v) {   // drive.js lutAt, verbatim
+  const fx = (h - L.h0) / L.step - 0.5, fy = (v - L.v0) / L.step - 0.5, i = Math.floor(fx), j = Math.floor(fy);
+  if (i < 0 || j < 0 || i + 1 >= L.nh || j + 1 >= L.nv) return 0;
+  const tx = fx - i, ty = fy - j, d = L.data, k = j * L.nh + i;
+  return (d[k] * (1 - tx) + d[k + 1] * tx) * (1 - ty) + (d[k + L.nh] * (1 - tx) + d[k + L.nh + 1] * tx) * ty;
 }
 
 // ---------------------------------------------------------------- scene numbers (CPU side)
 const COLORS = { 'LED 5700K': [1, 0.97, 1.0], 'Halogen': [1.0, 0.8, 0.55], 'HID 4300K': [1.0, 0.95, 0.85] };
 function lampRGB(name) { const c = COLORS[name] || [1, 1, 1], y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; return c.map((v) => v / y); }   // unit luminance
-const EYE = [0, 0, 1.2];
-function lamps() {
+const EYE = [0, 0, EYE_Z];
+let oncTable = null;   // the beam table for "from beam table", once loaded
+const anim = { x: null, wait: 0, lastT: null };
+function carDistance(now) {
+  if (!S.animate) { anim.x = null; anim.lastT = null; return S.dist; }
+  const dt = anim.lastT == null ? 0 : Math.min(0.25, (now - anim.lastT) / 1000);   // clamp so a stall or a hidden tab does not teleport the car anim.lastT = now;
+  if (anim.x == null) anim.x = S.spawn;
+  if (anim.wait > 0) { anim.wait -= dt; if (anim.wait <= 0) anim.x = S.spawn; return null; }
+  anim.x -= S.speed / 3.6 * dt;
+  if (anim.x < -3) { anim.wait = Math.max(1e-3, S.gap); return null; }
+  return anim.x;
+}
+function lamps(x) {
+  if (x == null) return [];
   const out = [];
   for (const s of [-0.5, 0.5]) {
-    const p = [S.dist, S.lat + s * S.spacing, 0.65], d = p.map((v, i) => v - EYE[i]), r = Math.hypot(...d);
-    out.push({ dir: d.map((v) => v / r), r, E: S.cd / (r * r), angR: S.lens / r });
+    const p = [x, S.lat + s * S.spacing, OWN.z], d = p.map((v, i) => v - EYE[i]), r = Math.hypot(...d);
+    if (d[0] < 0.3) continue;                                           // behind or beside us: out of view
+    let I = S.cd;
+    if (S.oncSrc === 'from beam table' && oncTable) {                  // their frame faces -x, their right is +y: lamp → eye
+      const e = d.map((v) => -v / r);                                   // lamp → eye, unit
+      const H = Math.atan2(e[1], -e[0]) / DEG, V = Math.asin(e[2]) / DEG; // their forward = -x (a = -e.x), their right = +y (b = e.y)
+      I = lutAt(oncTable, H, V) * S.oncScale;
+    }
+    out.push({ dir: d.map((v) => v / r), r, I, E: I / (r * r), angR: S.lens / r });
   }
   return out;
 }
@@ -145,7 +244,7 @@ function exposure(L) {
   const white = L_REF / Math.pow(2, S.ev) + vs * veil; return { k: 1 / white, white };
 }
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-// Starburst table: per polar-angle bin, (amplitude, length factor). Built once per pattern change.
+// Starburst table: per polar-angle bin, (running sum of amplitude, length factor). Built once per pattern change.
 function spikeTable() {
   const rnd = mulberry32(Math.round(S.spikeSeed) * 2654435761), n = Math.round(S.spikeCount), w = S.spikeWidth * DEG;
   const spokes = Array.from({ length: n }, () => ({ phi: rnd() * 2 * Math.PI, a: 0.3 + 0.7 * rnd() * rnd(), l: 1 - S.spikeLenJit * rnd() }));
@@ -166,10 +265,15 @@ struct Params {
   view: vec4f,    // W, H, tanH, tanV
   expo: vec4f,    // k, eyeZ, nLamps, ownGain
   veil: vec4f,    // mode (0 off, 1 physical, 2 perceptual), strength, cap, floorDeg
-  core: vec4f,    // core sigma rad (0 = off), pixel sigma rad, target on, target x
+  core: vec4f,    // core width rad (0 = off), pixel sigma rad, target (0 off, 1 board, 2 deer), target x
+  core2: vec4f,   // shape (0 gaussian, 1 moffat), beta, target lateral, target reflectance
   spike: vec4f,   // on, lenDeg, gain, taper
-  spike2: vec4f,  // rotation rad, bins, table total, -
+  spike2: vec4f,  // rotation rad, bins, table total, strip on
   tone: vec4f,    // curve (0 SDR, 1 HDR shoulder), peak, knee, bloom on
+  beam: vec4f,    // h0, v0, step, -
+  beamN: vec4f,   // nh, nv, -, -
+  own: vec4f,     // own lamp x, centre y, half spacing, z
+  strip: array<vec4f, 3>,    // headroom patches, × paper white
   lampDir: array<vec4f, 4>,  // unit direction xyz, E lux
   lampCol: array<vec4f, 4>,  // rgb (unit luminance), angular radius rad
 };
@@ -177,24 +281,40 @@ struct Params {
 fn rayDir(px: vec2f) -> vec3f { let uv = px / P.view.xy; return normalize(vec3f(1.0, -(2.0 * uv.x - 1.0) * P.view.z, (1.0 - 2.0 * uv.y) * P.view.w)); }
 fn angBetween(a: vec3f, b: vec3f) -> f32 { return 2.0 * asin(min(1.0, length(a - b) * 0.5)); }   // accurate at tiny angles, unlike acos(dot)
 `;
+const PARAM_VEC4S = 11 + 3 + 4 + 4;
 const VS = /* wgsl */`
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   let p = vec2f(f32((i << 1u) & 2u), f32(i & 2u)); return vec4f(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
-// Scene radiance (cd/m²): sky, road lit by our own low beams, a grey target, the oncoming lamps as small Gaussians.
+// Scene radiance (cd/m²): sky, road lit by our own beam table, a target, the oncoming lamps as small PSF-spread sources.
 const SCENE = COMMON + VS + /* wgsl */`
-fn ownE(pt: vec3f, n: vec3f) -> f32 {   // illuminance from our own two low beams (a rough shape, tuning only)
+@group(0) @binding(1) var beamT: texture_2d<f32>;
+fn bt(i: i32, j: i32) -> f32 { return textureLoad(beamT, vec2i(i, j), 0).r; }
+fn lut(h: f32, v: f32) -> f32 {   // drive.js lutAt: bilinear between cell centres, 0 outside the table
+  let fx = (h - P.beam.x) / P.beam.z - 0.5; let fy = (v - P.beam.y) / P.beam.z - 0.5;
+  let i = i32(floor(fx)); let j = i32(floor(fy));
+  if (i < 0 || j < 0 || i + 1 >= i32(P.beamN.x) || j + 1 >= i32(P.beamN.y)) { return 0.0; }
+  let tx = fx - f32(i); let ty = fy - f32(j);
+  return mix(mix(bt(i, j), bt(i + 1, j), tx), mix(bt(i, j + 1), bt(i + 1, j + 1), tx), ty);
+}
+fn ownE(pt: vec3f, n: vec3f) -> f32 {   // illuminance from our own two lamps (convention A: H = atan2(right, forward), V = asin(up))
   var E = 0.0;
   for (var s = -1.0; s <= 1.0; s += 2.0) {
-    let d = pt - vec3f(1.5, 0.7 * s, 0.65); let r2 = dot(d, d); let r = sqrt(r2);
-    let h = atan2(d.y, d.x) / DEG; let v = atan2(d.z, length(d.xy)) / DEG;
-    let cut = mix(-0.6, 1.5, smoothstep(-1.0, -4.0, h));           // right-side kick-up
-    var I = 20000.0 * P.expo.w * exp(-pow(h / select(16.0, 12.0, h > 0.0), 2.0)) * (1.0 - smoothstep(cut - 0.3, cut + 0.3, v))
-          * (0.1 + 0.9 * exp(-pow((v + 1.2) / 2.0, 2.0)));             // hot spot just under the cutoff, ~10% toward the foreground
-    I += 150.0 * P.expo.w;
-    E += I * max(0.0, dot(n, -d / r)) / r2;
+    let d = pt - vec3f(P.own.x, P.own.y + s * P.own.z, P.own.w);
+    let r2 = dot(d, d); let r = sqrt(r2); let u = d / r;
+    let I = lut(atan2(-u.y, u.x) / DEG, asin(clamp(u.z, -1.0, 1.0)) / DEG) * P.expo.w;
+    E += I * max(0.0, dot(n, -u)) / r2;
   }
   return E;
+}
+fn inRect(p: vec3f, y0: f32, y1: f32, z0: f32, z1: f32) -> bool { return p.y > y0 && p.y < y1 && p.z > z0 && p.z < z1; }
+fn deer(p: vec3f, c: f32) -> bool {   // side-on silhouette, head to the left: legs, body, neck, head (metres)
+  let y = p.y - c;
+  if (inRect(p, c - 0.7, c + 0.7, 0.75, 1.25)) { return true; }                       // body
+  if (p.z > 0.0 && p.z < 0.8 && (abs(y - 0.55) < 0.035 || abs(y - 0.42) < 0.035 || abs(y + 0.5) < 0.04 || abs(y + 0.62) < 0.04)) { return true; }   // legs
+  if (inRect(p, c + 0.5, c + 0.78, 1.15, 1.6)) { return true; }                      // neck
+  if (inRect(p, c + 0.6, c + 1.05, 1.5, 1.72)) { return true; }                      // head
+  return false;
 }
 @fragment fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f {
   let dir = rayDir(fc.xy); let eye = vec3f(0.0, 0.0, P.expo.y);
@@ -208,16 +328,24 @@ fn ownE(pt: vec3f, n: vec3f) -> f32 {   // illuminance from our own two low beam
     if (abs(y - 1.75) < 0.06 && fract(p.x / 9.0) < 0.33) { rho = 0.3; } // centre dashes
     L = vec3f(rho / 3.14159265 * ownE(p, vec3f(0.0, 0.0, 1.0)) + 0.002);
   }
-  if (P.core.z > 0.5 && dir.x > 0.0) {                                  // grey target, facing us
-    let t = P.core.w / dir.x; let p = eye + t * dir;
-    if (t < tHit && p.y > 0.9 && p.y < 1.4 && p.z > 0.0 && p.z < 1.7) { L = vec3f(0.15 / 3.14159265 * ownE(p, vec3f(-1.0, 0.0, 0.0)) + 0.002); }
+  if (P.core.z > 0.5 && dir.x > 0.0) {                                  // target, a flat cut-out facing us
+    let t = P.core.w / dir.x; let p = eye + t * dir; let c = P.core2.z;
+    var hit = false;
+    if (P.core.z < 1.5) { hit = inRect(p, c - 0.25, c + 0.25, 0.0, 1.7); } else { hit = deer(p, c); }
+    if (t < tHit && hit) { L = vec3f(P.core2.w / 3.14159265 * ownE(p, vec3f(-1.0, 0.0, 0.0)) + 0.002); }
   }
   for (var i = 0; i < 4; i++) {
     if (f32(i) >= P.expo.z) { break; }
     let ld = P.lampDir[i]; let lc = P.lampCol[i];
     let th = angBetween(dir, ld.xyz);
-    let s2 = pow(lc.w * 0.5, 2.0) + P.core.x * P.core.x + P.core.y * P.core.y;   // lens size ⊕ core PSF ⊕ pixel
-    L += ld.w / (6.2831853 * s2) * exp(-th * th / (2.0 * s2)) * lc.rgb;           // integrates to E over solid angle
+    let base = pow(lc.w * 0.5, 2.0) + P.core.y * P.core.y;            // lens size ⊕ pixel
+    if (P.core2.x > 0.5 && P.core.x > 0.0) {                            // Moffat: (β-1)/(π a²) · (1 + θ²/a²)^-β integrates to 1
+      let a2 = P.core.x * P.core.x + 2.0 * base; let b = P.core2.y;
+      L += ld.w * (b - 1.0) / (3.14159265 * a2) * pow(1.0 + th * th / a2, -b) * lc.rgb;
+    } else {
+      let s2 = base + P.core.x * P.core.x;
+      L += ld.w / (6.2831853 * s2) * exp(-th * th / (2.0 * s2)) * lc.rgb;   // integrates to E over solid angle
+    }
   }
   return vec4f(min(L, vec3f(65504.0)), 1.0);
 }`;
@@ -271,6 +399,12 @@ fn spikeCum(x: f32) -> f32 {   // running sum of amplitude up to bin position x 
   return w * P.spike2.z + c0 + (spikeBin(i).r - c0) * fr;
 }
 @fragment fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f {
+  if (P.spike2.w > 0.5 && fc.y > P.view.y * 0.87) {                     // headroom strip: fixed display values, no tone curve
+    let cell = fc.x / P.view.x * 10.0; let idx = min(i32(cell), 9);
+    if (fract(cell) < 0.04 || fc.y < P.view.y * 0.875) { return vec4f(0.0, 0.0, 0.0, 1.0); }
+    let v = P.strip[idx / 4][idx % 4]; let e = enc(v);
+    return vec4f(e, e, e, 1.0);
+  }
   let dir = rayDir(fc.xy); let k = P.expo.x;
   let hdr = textureLoad(hdrT, vec2i(fc.xy), 0).rgb;
   var veil = vec3f(0.0); var spikes = vec3f(0.0);
@@ -300,8 +434,9 @@ fn spikeCum(x: f32) -> f32 {   // running sum of amplitude up to bin position x 
 // ---------------------------------------------------------------- WebGPU
 const canvas = $('c');
 let spikeTotal = 0, device, ctx, pipes, sampler, paramBuf, spikeTex, spikeKey = '', T = {}, draws = null, confState = { requested: '', got: null };
-let W = 0, H = 0, frameQueued = false;
+let beamTex = null, beamName = '', beamGrid = GRID, beamLoading = '', W = 0, H = 0, frameQueued = false, lastCanvasMode = null, rehdrCount = 0;
 const FMT = 'rgba16float';
+const perf = { fps: 0, lastFrame: 0, gpuMs: 0, cpuMs: 0, pending: false };
 
 function showMsg(t) { const m = $('msg'); m.textContent = t; m.classList.add('show'); }
 
@@ -315,23 +450,52 @@ async function init() {
   device.addEventListener?.('uncapturederror', (e) => showMsg('GPU error: ' + e.error.message));
   ctx = canvas.getContext('webgpu');
   sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
-  paramBuf = device.createBuffer({ size: 15 * 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  paramBuf = device.createBuffer({ size: PARAM_VEC4S * 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   spikeTex = device.createTexture({ size: [BINS, 1], format: 'rg32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
   const mod = (code) => { const m = device.createShaderModule({ code }); m.getCompilationInfo?.().then((ci) => { const errs = ci.messages.filter((x) => x.type === 'error'); if (errs.length) showMsg('WGSL: ' + errs.map((x) => x.lineNum + ': ' + x.message).join(' | ')); }); return m; };
   const pipe = (code, format, blend) => { const m = mod(code); return device.createRenderPipeline({ layout: 'auto', vertex: { module: m, entryPoint: 'vs' }, fragment: { module: m, entryPoint: 'fs', targets: [{ format, blend }] }, primitive: { topology: 'triangle-list' } }); };
   const add = { color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' } };
   pipes = { scene: pipe(SCENE, FMT), bright: pipe(BRIGHT, FMT), reduce: pipe(REDUCE, FMT), blurH: pipe(BLUR, FMT), blurV: pipe(BLUR, FMT, add), final: pipe(FINAL, FMT) };
-  configure();
+  await ensureBeams();
+  configure(); lastCanvasMode = S.canvasMode;
   new ResizeObserver(() => request()).observe(canvas);
   matchMedia('(dynamic-range: high)').addEventListener?.('change', () => request());
+  // Coming back to the page: iOS seemed to drop the HDR headroom (Anya, 11-27), and toggling extended off and on brought it back.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') rerequestHDR('page visible'); });
+  window.addEventListener('pageshow', () => rerequestHDR('pageshow'));
   request();
 }
 
-function configure() {
-  const mode = S.canvasMode === 'extended' ? 'extended' : 'standard';
-  ctx.configure({ device, format: FMT, alphaMode: 'opaque', toneMapping: { mode }, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+// Our beam goes to the GPU as a texture; their beam stays on the CPU (two lamps, one lookup each per frame).
+async function ensureBeams() {
+  const wantOwn = S.ownBeam, wantOnc = S.oncSrc === 'from beam table' ? S.oncBeam : null;
+  try {
+    if (wantOwn !== beamName) {
+      beamLoading = wantOwn; renderReadout();
+      const t = await getBeam(wantOwn);
+      if (S.ownBeam !== wantOwn) return;   // changed again while loading
+      if (beamTex) beamTex.destroy();
+      beamTex = device.createTexture({ size: [t.nh, t.nv], format: 'r32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+      device.queue.writeTexture({ texture: beamTex }, t.data, { bytesPerRow: t.nh * 4 }, [t.nh, t.nv]);
+      beamGrid = t; beamName = wantOwn; draws = null;   // bind groups hold the texture: rebuild them
+    }
+    oncTable = wantOnc ? await getBeam(wantOnc) : null;
+    beamLoading = '';
+  } catch (e) { beamLoading = ''; showMsg('Beam load failed: ' + e.message); }
+  request();
+}
+
+function configure(mode) {
+  mode = mode || (S.canvasMode === 'extended' ? 'extended' : 'standard');
+  ctx.configure({ device, format: FMT, alphaMode: 'opaque', toneMapping: { mode }, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
   let got = null; try { got = ctx.getConfiguration ? ctx.getConfiguration() : undefined; } catch (e) { got = 'error: ' + e.message; }
   confState = { requested: mode, got };
+}
+// The workaround Anya found by hand: drop to standard for a frame, then ask for extended again.
+function rerequestHDR(why) {
+  if (!device || S.canvasMode !== 'extended') return;
+  configure('standard'); frame();
+  requestAnimationFrame(() => requestAnimationFrame(() => { configure(); rehdrCount++; confState.why = why; frame(); }));
 }
 
 function tex(name, w, h, usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING) {
@@ -342,15 +506,17 @@ function resize() {
   const want = S.sim === 'native' ? Math.round(css * dpr) : Math.min(Number(S.sim), Math.round(Math.max(css * dpr, 320)));
   const w = Math.max(64, want), h = Math.max(36, Math.round(w * 9 / 16));
   if (w === W && h === H && draws) return;
-  W = w; H = h; canvas.width = W; canvas.height = H;
-  const hw = Math.ceil(W / 2), hh = Math.ceil(H / 2);
-  tex('hdr', W, H); tex('acc', hw, hh);
-  tex('meas', W, H, GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC);
-  for (const f of GLARE_BANDS) { tex('s' + f, Math.max(1, Math.ceil(hw / f)), Math.max(1, Math.ceil(hh / f))); tex('p' + f, Math.max(1, Math.ceil(hw / f)), Math.max(1, Math.ceil(hh / f))); }
+  if (w !== W || h !== H) {
+    W = w; H = h; canvas.width = W; canvas.height = H;
+    const hw = Math.ceil(W / 2), hh = Math.ceil(H / 2);
+    tex('hdr', W, H); tex('acc', hw, hh);
+    tex('meas', W, H, GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC);
+    for (const f of GLARE_BANDS) { tex('s' + f, Math.max(1, Math.ceil(hw / f)), Math.max(1, Math.ceil(hh / f))); tex('p' + f, Math.max(1, Math.ceil(hw / f)), Math.max(1, Math.ceil(hh / f))); }
+  }
   const ubuf = () => device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const bg = (p, entries) => device.createBindGroup({ layout: p.getBindGroupLayout(0), entries: entries.map((resource, binding) => resource && { binding, resource }).filter(Boolean) });
   const view = (n) => T[n].createView();
-  draws = { scene: bg(pipes.scene, [{ buffer: paramBuf }]), final: bg(pipes.final, [{ buffer: paramBuf }, view('hdr'), view('acc'), sampler, spikeTex.createView()]) };
+  draws = { scene: bg(pipes.scene, [{ buffer: paramBuf }, beamTex.createView()]), final: bg(pipes.final, [{ buffer: paramBuf }, view('hdr'), view('acc'), sampler, spikeTex.createView()]) };
   draws.brightU = ubuf(); draws.bright = bg(pipes.bright, [{ buffer: draws.brightU }, view('hdr')]);
   draws.bands = GLARE_BANDS.map((f, i) => {
     const hU = ubuf(), vU = ubuf();
@@ -361,34 +527,44 @@ function resize() {
   });
 }
 
-function request() { if (frameQueued || !device) return; frameQueued = true; requestAnimationFrame(() => { frameQueued = false; frame(); }); }
-let lastCanvasMode = null;
-function changed() { save(); syncUI(); request(); }
+const looping = () => S.animate || S.continuous;
+function request() { if (frameQueued || !device) return; frameQueued = true; requestAnimationFrame((t) => { frameQueued = false; frame(t); if (looping()) request(); }); }
+function changed() {
+  save(); syncUI();
+  if (S.ownBeam !== beamName || (S.oncSrc === 'from beam table' && (!oncTable || beamCache.get(S.oncBeam) !== oncTable)) || (S.oncSrc !== 'from beam table' && oncTable)) ensureBeams();
+  request();
+}
 
 function writeParams(L, k) {
-  const tanH = Math.tan(S.hfov * DEG / 2), a = new Float32Array(15 * 4), col = lampRGB(S.color);
+  const tanH = Math.tan(S.hfov * DEG / 2), a = new Float32Array(PARAM_VEC4S * 4), col = lampRGB(S.color);
+  const coreW = !S.core ? 0 : (S.coreShape === 'moffat' ? S.coreAlpha : S.coreSigma) * DEG;
   a.set([W, H, tanH, tanH * H / W], 0);
-  a.set([k, EYE[2], L.length, S.own], 4);
+  a.set([k, EYE_Z, L.length, S.own], 4);
   a.set([{ off: 0, physical: 1, perceptual: 2 }[S.veilMode], S.veilStr, S.veilCap, S.veilFloor], 8);
-  a.set([S.core ? S.coreSigma * DEG : 0, 0.5 * 2 * tanH / W, S.target ? 1 : 0, S.tdist], 12);
-  a.set([S.spike ? 1 : 0, S.spikeLen, S.spikeGain, S.spikeTaper], 16);
-  a.set([S.spikeRot * DEG, BINS, spikeTotal, 0], 20);
-  a.set([S.curve.includes('HDR') ? 1 : 0, S.peak, S.knee, S.bloom && S.bloomStr > 0 ? 1 : 0], 24);
-  L.forEach((q, i) => { a.set([...q.dir, q.E], 28 + 4 * i); a.set([...col, q.angR], 44 + 4 * i); });
+  a.set([coreW, 0.5 * 2 * tanH / W, { off: 0, 'grey board': 1, deer: 2 }[S.target] || 0, S.tdist], 12);
+  a.set([S.core && S.coreShape === 'moffat' ? 1 : 0, S.coreBeta, S.tlat, S.trho], 16);
+  a.set([S.spike ? 1 : 0, S.spikeLen, S.spikeGain, S.spikeTaper], 20);
+  a.set([S.spikeRot * DEG, BINS, spikeTotal, S.strip ? 1 : 0], 24);
+  a.set([S.curve.includes('HDR') ? 1 : 0, S.peak, S.knee, S.bloom && S.bloomStr > 0 ? 1 : 0], 28);
+  a.set([beamGrid.h0, beamGrid.v0, beamGrid.step, 0], 32);
+  a.set([beamGrid.nh, beamGrid.nv, 0, 0], 36);
+  a.set([OWN.x, OWN.y, OWN.half, OWN.z], 40);
+  a.set(STRIP, 44);
+  L.forEach((q, i) => { a.set([...q.dir, q.E], 56 + 4 * i); a.set([...col, q.angR], 72 + 4 * i); });
   device.queue.writeBuffer(paramBuf, 0, a);
 }
 
-function encodeFrame(target) {
+function encodeFrame(target, now) {
   if (S.canvasMode !== lastCanvasMode) { configure(); lastCanvasMode = S.canvasMode; }
+  if (!beamTex) return null;
   resize();
   const key = [S.spikeSeed, S.spikeCount, S.spikeWidth, S.spikeLenJit, S.spikeBase].join();
   if (key !== spikeKey) { const t = spikeTable(); spikeTotal = t[2 * (BINS - 1)]; device.queue.writeTexture({ texture: spikeTex }, t, { bytesPerRow: BINS * 8 }, [BINS, 1]); spikeKey = key; }
-  const L = lamps(), ex = exposure(L); writeParams(L, ex.k);
+  const x = carDistance(now ?? performance.now()), L = lamps(x), ex = exposure(L); writeParams(L, ex.k);
   const enc = device.createCommandEncoder();
   const pass = (view, pipe, group, load = 'clear') => { const p = enc.beginRenderPass({ colorAttachments: [{ view, loadOp: load, storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } }] }); p.setPipeline(pipe); p.setBindGroup(0, group); p.draw(3); p.end(); };
   pass(T.hdr.createView(), pipes.scene, draws.scene);
-  const bloomOn = S.bloom && S.bloomStr > 0;
-  if (bloomOn) {   // the drive's pyramid: bright pass at half size, then per band reduce → H blur → V blur added into acc
+  if (S.bloom && S.bloomStr > 0) {   // the drive's pyramid: bright pass at half size, then per band reduce → H blur → V blur added into acc
     const sigma = glareSigma(W, S.hfov), rad = Math.ceil(3 * sigma), hw = T.acc.width, hh = T.acc.height;
     device.queue.writeBuffer(draws.brightU, 0, new Float32Array([ex.k, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
     pass(T.s1.createView(), pipes.bright, draws.bright);
@@ -402,36 +578,45 @@ function encodeFrame(target) {
     });
   }
   pass(target, pipes.final, draws.final);
-  return { enc, L, ex };
+  return { enc, L, ex, x };
 }
 
 let last = null;
-function frame() {
+function frame(now) {
+  if (!device) return;
   const t0 = performance.now();
-  // configure and resize before fetching the canvas texture; encodeFrame then finds nothing to change
   if (S.canvasMode !== lastCanvasMode) { configure(); lastCanvasMode = S.canvasMode; }
-  resize();
-  const r = encodeFrame(ctx.getCurrentTexture().createView());
-  device.queue.submit([r.enc.finish()]);
-  last = { L: r.L, ex: r.ex, ms: performance.now() - t0 };
-  $('readout').textContent = readoutText();
+  if (!beamTex) { renderReadout(); return; }
+  resize();   // before fetching the canvas texture, so it already has the new size
+  const r = encodeFrame(ctx.getCurrentTexture().createView(), now);
+  const tSubmit = performance.now(); device.queue.submit([r.enc.finish()]);
+  perf.cpuMs = tSubmit - t0;
+  if (!perf.pending) { perf.pending = true; device.queue.onSubmittedWorkDone().then(() => { const g = performance.now() - tSubmit; perf.gpuMs = perf.gpuMs ? perf.gpuMs * 0.8 + g * 0.2 : g; perf.pending = false; }); }
+  if (perf.lastFrame && now) { const f = 1000 / Math.max(1, now - perf.lastFrame); perf.fps = perf.fps ? perf.fps * 0.9 + f * 0.1 : f; }
+  perf.lastFrame = looping() ? now : 0;
+  last = { L: r.L, ex: r.ex, x: r.x };
+  renderReadout();
 }
 
+let readoutAt = 0;
+function renderReadout() { const t = performance.now(); if (looping() && t - readoutAt < 250) return; readoutAt = t; $('readout').textContent = readoutText(); }
 function readoutText() {
   const mq = (q) => { try { return matchMedia(q).matches; } catch (e) { return 'n/a'; } };
   const got = confState.got, tm = got && typeof got === 'object' ? (got.toneMapping ? got.toneMapping.mode : 'not reported (no toneMapping in config)') : (got === undefined ? 'getConfiguration() unavailable' : String(got));
   const lines = [
     'WebGPU            ' + (navigator.gpu ? 'yes' : 'NO'),
     'HDR screen (mq)   ' + mq('(dynamic-range: high)') + ' · video ' + mq('(video-dynamic-range: high)'),
-    'toneMapping asked ' + (confState.requested || '-'),
+    'toneMapping asked ' + (confState.requested || '-') + (rehdrCount ? ' · re-requested ×' + rehdrCount + (confState.why ? ' (' + confState.why + ')' : '') : ''),
     'toneMapping got   ' + (device ? tm : '-'),
     'format ' + (got && got.format ? got.format : FMT) + ' · dpr ' + (window.devicePixelRatio || 1) + ' · ' + W + '×' + H,
   ];
   if (confState.requested === 'extended' && tm !== 'extended') lines.push('⚠ extended was requested but not reported back: this browser is showing SDR.');
-  if (confState.requested === 'extended' && tm === 'extended') lines.push('extended is reported. Necessary, not sufficient: macOS Safari has reported it without showing HDR. Trust your eyes.');
+  if (beamLoading) lines.push('loading beam: ' + beamLoading + '…');
   if (last) {
-    lines.push('', 'lamps: ' + last.L.map((q) => `E ${q.E.toFixed(3)} lx @ ${q.r.toFixed(1)} m, θ from ahead ${(Math.acos(q.dir[0]) / DEG).toFixed(2)}°`).join(' · '));
-    lines.push('exposure k ' + last.ex.k.toExponential(3) + (last.ex.white ? ' · adapted white ' + last.ex.white.toFixed(2) + ' cd/m²' : ' · white ' + (1 / last.ex.k).toFixed(2) + ' cd/m²') + ' · CPU encode ' + last.ms.toFixed(1) + ' ms');
+    lines.push('', 'beam: ours ' + beamName + (S.oncSrc === 'from beam table' ? ' · theirs ' + S.oncBeam : ''));
+    lines.push(last.x == null ? 'oncoming: none (gap)' : 'oncoming at ' + last.x.toFixed(1) + ' m: ' + last.L.map((q) => `${q.I.toFixed(0)} cd → E ${q.E.toFixed(3)} lx`).join(' · '));
+    lines.push('exposure k ' + last.ex.k.toExponential(3) + (last.ex.white ? ' · adapted white ' + last.ex.white.toFixed(2) + ' cd/m²' : ' · white ' + (1 / last.ex.k).toFixed(2) + ' cd/m²'));
+    lines.push(looping() ? `fps ${perf.fps.toFixed(1)} · GPU ≤ ${perf.gpuMs.toFixed(1)} ms · CPU ${perf.cpuMs.toFixed(1)} ms` : `CPU encode ${perf.cpuMs.toFixed(1)} ms (render on change; tick "Render every frame" for fps)`);
   }
   return lines.join('\n');
 }
@@ -441,15 +626,16 @@ function half(h) { const s = h & 0x8000 ? -1 : 1, e = (h >> 10) & 31, m = h & 10
 const dec = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
 async function measure() {
   if (!device) return;
-  const r = encodeFrame(T.meas ? T.meas.createView() : null);
+  const r = encodeFrame(T.meas.createView());
+  if (!r || r.L.length < 1) { $('measured').textContent = 'No oncoming lamp in view right now.'; return; }
   const bpr = Math.ceil(W * 8 / 256) * 256, buf = device.createBuffer({ size: bpr * H, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   r.enc.copyTextureToBuffer({ texture: T.meas }, { buffer: buf, bytesPerRow: bpr }, [W, H]);
   device.queue.submit([r.enc.finish()]); await buf.mapAsync(GPUMapMode.READ);
   const u16 = new Uint16Array(buf.getMappedRange()), stride = bpr / 2;
   const lum = (x, y) => { const o = y * stride + 4 * x; return Math.max(dec(half(u16[o])), dec(half(u16[o + 1])), dec(half(u16[o + 2]))); };   // display-linear, 1 = paper white
   const tanH = Math.tan(S.hfov * DEG / 2), tanV = tanH * H / W, q = r.L[0];
-  const px = Math.round((1 - q.dir[1] / q.dir[0] / tanH) / 2 * W - 0.5), py = Math.round((1 - q.dir[2] / q.dir[0] / tanV) / 2 * H - 0.5);
-  const other = r.L[1], ox = Math.round((1 - other.dir[1] / other.dir[0] / tanH) / 2 * W - 0.5), oy = Math.round((1 - other.dir[2] / other.dir[0] / tanV) / 2 * H - 0.5);
+  const pix = (d) => [Math.round((1 - d[1] / d[0] / tanH) / 2 * W - 0.5), Math.round((1 - d[2] / d[0] / tanV) / 2 * H - 0.5)];
+  const [px, py] = pix(q.dir), [ox, oy] = r.L[1] ? pix(r.L[1].dir) : [-1, -1];
   const fill = (thr) => {   // 4-connected region at or above thr, grown from the lamp pixel
     if (px < 0 || py < 0 || px >= W || py >= H || !(lum(px, py) >= thr)) return null;
     const seen = new Uint8Array(W * H), st = [[px, py]]; let n = 0, merged = false, x0 = px, x1 = px, y0 = py, y1 = py; seen[py * W + px] = 1;
@@ -463,7 +649,7 @@ async function measure() {
   const f = (m) => (m ? `equiv. diameter ${m.eqDiam.toFixed(2)}° · box ${m.w.toFixed(2)}° × ${m.h.toFixed(2)}°${m.merged ? ' · MERGED with the other lamp' : ''}` : 'none');
   const peak = lum(Math.min(W - 1, Math.max(0, px)), Math.min(H - 1, Math.max(0, py)));
   $('measured').textContent = [
-    `left lamp E ${q.E.toFixed(3)} lx · peak shown ${peak.toFixed(2)}× paper white (linear)`,
+    `left lamp E ${q.E.toFixed(3)} lx at ${q.r.toFixed(1)} m · peak shown ${peak.toFixed(2)}× paper white (linear)`,
     `≥ 0.95 white (looks saturated):  ${f(fill(0.95))}`,
     `> 1.0 white (above paper white): ${f(fill(1.0001))}`,
     'Region includes any spike that stays above the threshold. Spike length itself is fixed by the Length slider.',

@@ -12,7 +12,10 @@
   .stage { position: sticky; top: 0; z-index: 2; background: #000; }
   html, body, .stage, canvas { dynamic-range-limit: no-limit; }   /* WebKit's UA sheet limits HDR on document roots */
   canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
-  @media (orientation: landscape) and (max-height: 600px) { canvas { width: auto; max-height: 62svh; margin: 0 auto; } }
+  .cwrap { position: relative; }
+  #strip { position: absolute; left: 0; right: 0; bottom: 0; height: 12.5%; display: none; pointer-events: none; }
+  #strip span { flex: 1; display: flex; align-items: center; justify-content: center; color: #000; font: 600 11px ui-monospace, Menlo, monospace; }
+  @media (orientation: landscape) and (max-height: 600px) { .cwrap { width: fit-content; margin: 0 auto; } canvas { width: auto; max-height: 62svh; } }
   .bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
   .bar button { flex: 1 1 auto; }
   button { background: #1d1d1d; color: var(--text); border: 1px solid #3a3a3a; border-radius: 6px; padding: 7px 10px; font: inherit; }
@@ -34,7 +37,7 @@
 </head>
 <body>
 <div class="stage">
-  <canvas id="c" width="960" height="540"></canvas>
+  <div class="cwrap"><canvas id="c" width="960" height="540"></canvas><div id="strip"></div></div>
   <div class="bar" id="presets"></div>
 </div>
 <div id="msg"></div>
@@ -42,6 +45,7 @@
   <pre id="readout">starting…</pre>
   <div class="actions">
     <button id="measure">Measure core</button>
+    <button id="rehdr">Re-request HDR</button>
     <button id="copy">Copy settings</button>
     <button id="reset">Reset all</button>
   </div>
