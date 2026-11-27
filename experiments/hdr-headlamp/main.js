@@ -214,7 +214,8 @@ let oncTable = null;   // the beam table for "from beam table", once loaded
 const anim = { x: null, wait: 0, lastT: null };
 function carDistance(now) {
   if (!S.animate) { anim.x = null; anim.lastT = null; return S.dist; }
-  const dt = anim.lastT == null ? 0 : Math.min(0.25, (now - anim.lastT) / 1000);   // clamp so a stall or a hidden tab does not teleport the car anim.lastT = now;
+  // clamp so a stall or a hidden tab does not teleport the car; never negative
+  const dt = anim.lastT == null ? 0 : Math.max(0, Math.min(0.25, (now - anim.lastT) / 1000)); anim.lastT = now;
   if (anim.x == null) anim.x = S.spawn;
   if (anim.wait > 0) { anim.wait -= dt; if (anim.wait <= 0) anim.x = S.spawn; return null; }
   anim.x -= S.speed / 3.6 * dt;
