@@ -189,3 +189,18 @@ OBSERVED (headless Chromium, Metal, 960 px, car frozen at 24.7 m, E 0.36 lx on t
 
 The CIE puts about 0.44× as much glare light on the deer as her Moffat tune, matching the hand estimate
 at 5.5° (0.25 vs 0.47 per lux). Background behind the deer at mid-body height is distant road, almost black.
+
+## Shader limits by API (2026-11-27)
+
+OBSERVED, from the readout:
+
+| | WebGL2 textures/shader | WebGL2 uniform vec4s | WebGPU textures/stage | WebGPU samplers | WebGPU storage buffers | WebGPU uniform buffer |
+|---|---|---|---|---|---|---|
+| Mac M4, Chromium (Metal) | 16 | 1024 (UBO 16 KB × 16) | 48 | 16 | 10 × 4 GiB | 64 KiB |
+| Anya's iPhone (60 Hz one), Safari | 16 | 1024 (UBO 16 KB × 16) | 44 | 22 | 44 × 1 GiB | 1 GiB |
+
+These are adapter maxima: a WebGPU device gets the spec defaults (16 textures, 16 samplers, 8 storage
+buffers, 64 KiB uniform buffer) unless it asks for more with requiredLimits.
+The drive's recorded walls (docs/inventory HAZARDS H3, H12; commit 5f9d514) are the WebGL2 numbers.
+
+Anya: the scatter beam is where the drive's fps drops sharply (observation, not profiled).
