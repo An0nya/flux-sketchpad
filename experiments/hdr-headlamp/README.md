@@ -144,3 +144,18 @@ lens's angular size and the anti-aliasing pixel term (a² = α² + 2·(lens²/4 
 24.5 m and 960 px. So this tuning depends on render width and distance. Against Stiles–Holladay (10·E/θ²)
 the β = 1.65 tail is about 4× stronger at 1° and about 5× weaker at 10°, crossing near 3–4°: stronger
 near the lamp, less wide-angle contrast loss.
+
+## Phone session 3: β sweep (2026-11-27)
+
+OBSERVED by Anya (24.5 m d2s-transverse car, deer at 50 m, Moffat, no Stiles–Holladay veil):
+α 0.1°, β 1.5 looks right. Deer veiling by β: 1.6 barely interferes, 1.4 veils it significantly,
+1.2 leaves only the legs barely visible. Works without HDR too; SDR may want a slightly stronger veil.
+
+INFERRED (Claude, by hand): the deer sits about 5–8° from the lamps. At 5.5° the Moffat tail
+(L/E, cd/m² per lux) is about 0.14 for β 1.65 / α 0.0102°, 0.47 for β 1.5 / α 0.1°, 0.77 for β 1.4,
+against Stiles–Holladay 10/θ² = 0.33. So the CIE amplitude at the deer's angle falls between β 1.65 and
+1.5, close to where Anya's eye landed. Values include the lens and pixel floor in a, so they move with
+render width until that is decoupled.
+
+Open question (Anya): about 200–290 cd toward the eye at 24.5 m from the d2s-transverse design, at
+roughly 6.5° left and 1.3° up in that lamp's beam. Possible stray light between regulation test points.
