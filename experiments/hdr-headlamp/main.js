@@ -362,9 +362,10 @@ fn deer(p: vec3f, c: f32) -> bool {   // side-on silhouette, head to the left: l
       // Moffat with its tail set by α alone: (β-1)/π · α^(2β-2) · (a² + θ²)^-β, a² = α² + lens/pixel floor.
       // That carries (α²/a²)^(β-1) of the energy; the rest goes into a Gaussian of the floor's width, so the total stays E
       // and the tail no longer depends on render width or lamp size (the old rule widened α by the floor).
+      // The SDR veil boost (veil2.w) scales the tail too: with the CIE veil off, the tail is the veil.
       let al2 = P.core.x * P.core.x; let a2 = al2 + 2.0 * base; let b = P.core2.y;
       let kept = pow(al2 / a2, b - 1.0);
-      L += ld.w * ((b - 1.0) / 3.14159265 * pow(al2, b - 1.0) * pow(a2 + th * th, -b) + (1.0 - kept) / (6.2831853 * base) * exp(-th * th / (2.0 * base))) * lc.rgb;
+      L += ld.w * (P.veil2.w * (b - 1.0) / 3.14159265 * pow(al2, b - 1.0) * pow(a2 + th * th, -b) + (1.0 - kept) / (6.2831853 * base) * exp(-th * th / (2.0 * base))) * lc.rgb;
     } else {
       let s2 = base + P.core.x * P.core.x;
       L += ld.w / (6.2831853 * s2) * exp(-th * th / (2.0 * s2)) * lc.rgb;   // integrates to E over solid angle
@@ -705,7 +706,6 @@ async function measure() {
     out.push('', `${S.target} at ${S.tdist.toFixed(0)} m, ${bx1 - bx0 + 1} px wide · Weber contrast, display-linear (1 = paper white):`,
       `  without glare: ${pc(off.C)}  (target ${off.t.toFixed(4)}, background ${off.b.toFixed(4)})`,
       `  with glare:    ${pc(Con)}  (glare light at the target ${G.toFixed(4)})`,
-      Number.isFinite(Con) && off.C ? `  glare leaves ${(100 * Con / off.C).toFixed(2)}% of the contrast` : '',
       bx1 - bx0 < 3 ? '  ⚠ target is under 3 px wide: numbers are mostly pixel noise' : '',
       '  Display values after the tone curve, so this is contrast as shown on screen, not at the eye.');
   }

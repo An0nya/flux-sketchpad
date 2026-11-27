@@ -173,8 +173,10 @@ roughly 6.5° left and 1.3° up in that lamp's beam. Possible stray light betwee
   a² = α² + lens/pixel floor; the energy the floor takes from the core goes into a Gaussian of the floor's
   width. OBSERVED: saturated size 6.01° at 960 px vs 6.00° at 640 px with the same settings.
   The old α 0.1 / β 1.5 tune corresponds to α ≈ 0.15° now (preset "Anya Moffat").
-- **SDR veil boost:** multiplies the veil only when the HDR shoulder or extended canvas is off.
-- **Measure** now also reports target contrast, glare on vs off, same frame and exposure. Glare light at
+- **SDR veil boost:** multiplies the veil and the Moffat tail only when the HDR shoulder or extended canvas
+  is off. A display compensation: energy is not kept in SDR on purpose.
+- **Measure** now also reports target contrast (no ratio: with a near-black background the glare-off contrast
+  is huge and any ratio looks like nothing is left), glare on vs off, same frame and exposure. Glare light at
   the target G = mean(on − off) over the body; C = (T − B)/(B + G) from the glare-off frame. Values are
   display values after the tone curve.
 
