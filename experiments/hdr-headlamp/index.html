@@ -10,7 +10,9 @@
   html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, system-ui, sans-serif; }
   /* No CSS transitions anywhere: a WebKit bug dropped HDR to SDR during transitions. */
   .stage { position: sticky; top: 0; z-index: 2; background: #000; }
-  canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; dynamic-range-limit: no-limit; }
+  html, body, .stage, canvas { dynamic-range-limit: no-limit; }   /* WebKit's UA sheet limits HDR on document roots */
+  canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
+  @media (orientation: landscape) and (max-height: 600px) { canvas { width: auto; max-height: 62svh; margin: 0 auto; } }
   .bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
   .bar button { flex: 1 1 auto; }
   button { background: #1d1d1d; color: var(--text); border: 1px solid #3a3a3a; border-radius: 6px; padding: 7px 10px; font: inherit; }
@@ -48,5 +50,6 @@
   <textarea id="json" readonly></textarea>
 </main>
 <script type="module" src="main.js"></script>
+<script>setTimeout(function () { var r = document.getElementById('readout'); if (r && r.textContent === 'starting…') { var m = document.getElementById('msg'); m.textContent = "main.js didn't load (githack notice page, cache, or wrong MIME type). Reload after passing the notice."; m.className = 'show'; } }, 4000);</script>
 </body>
 </html>

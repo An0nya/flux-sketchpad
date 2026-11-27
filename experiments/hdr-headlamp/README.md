@@ -47,8 +47,10 @@ oncoming pair at 32 m, EV +2, fixed exposure. Defaults: core σ 0.06°, spike ga
 | Current · SDR | 3.76° (pair merged) | 15.23° | ×4.1 |
 | Perceptual · SDR | 0.74° | 1.08° | ×1.46 |
 
-The second row meets the parking-lot handoff's checks (core ≤ 1° at ~1 lx, growth well under 2× for
-20× E). The first row reproduces its diagnosis (the blob grows with intensity).
+The defaults (σ 0.06°, gain 40) were tuned against these two checks, so the second row shows the model
+*can* meet them (core ≤ 1° at ~1 lx, growth well under 2× for 20× E), not that it reads right. That is 2 of
+the parking-lot handoff's 5 checks. Spike length was judged by eye only; target contrast, adapt-mode
+exposure and the second halo were not measured. The first row reproduces the handoff's diagnosis.
 
 ## Not verified
 
