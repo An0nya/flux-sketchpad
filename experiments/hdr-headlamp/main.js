@@ -57,10 +57,14 @@ const SPEC = [
   ], 'Canvas "extended" lets values above 1.0 show above paper white. The HDR shoulder keeps ACES below the knee and rolls on toward the peak above it, slope-matched. The headroom strip draws patches at fixed multiples of paper white: the last one that still looks brighter than its neighbour is your headroom right now. If HDR seems stuck low, press "Re-request HDR".'],
   ['Veil (Stiles–Holladay 10·E/θ²)', [
     { id: 'veilMode', label: 'Veil drawn as', type: 's', opts: ['off', 'physical', 'perceptual'], def: 'physical' },
+    { id: 'veilLaw', label: 'Veil formula', type: 's', opts: ['Stiles–Holladay 10/θ²', 'CIE 146 general'], def: 'Stiles–Holladay 10/θ²' },
+    { id: 'age', label: 'Observer age', type: 'r', min: 15, max: 85, def: 35, step: 1, unit: 'yr', dp: 0 },
+    { id: 'pig', label: 'Eye pigment p', type: 'r', min: 0, max: 1, def: 0.5, step: 0.5, unit: '', dp: 1 },
+    { id: 'sdrBoost', label: 'SDR veil boost', type: 'r', min: 1, max: 4, def: 1, step: 0.05, unit: '×', dp: 2 },
     { id: 'veilStr', label: 'Strength', type: 'r', min: 0, max: 2, def: 1, step: 0.05, unit: '×', dp: 2 },
     { id: 'veilCap', label: 'Perceptual cap', type: 'r', min: 0.05, max: 1, def: 0.4, step: 0.01, unit: '', dp: 2 },
     { id: 'veilFloor', label: 'Angle floor', type: 'r', min: 0.05, max: 2, def: 1, step: 0.05, unit: '°', dp: 2 },
-  ], 'physical = the drive today (added as luminance). perceptual = cap·v/(1+v), so it reads as haze and never reaches white. Adaptation always uses the full veil.'],
+  ], 'physical = the drive today (added as luminance). perceptual = cap·v/(1+v), so it reads as haze and never reaches white. CIE 146 general (θ in degrees, valid 0.1° to 100°): 10/θ³ + (5/θ² + 0.1p/θ)·[1 + (age/62.5)⁴] + 0.0025p; p = 0 dark, 0.5 brown, 1 blue-green eyes. Age and pigment only affect the CIE formula. SDR veil boost multiplies the veil only when the HDR shoulder or extended canvas is off. Adaptation uses the chosen formula with a 1° floor.'],
   ['Bloom (the drive\'s current recipe)', [
     { id: 'bloom', label: 'On', type: 'c', def: true },
     { id: 'bloomStr', label: 'Strength', type: 'r', min: 0, max: 0.6, def: 0.1, step: 0.005, unit: '', dp: 3 },
@@ -101,6 +105,12 @@ const PRESETS = {
   'Perceptual · SDR': { veilMode: 'perceptual', veilFloor: 0.3, bloom: false, core: true,  spike: true,  curve: 'ACES (SDR)',          canvasMode: 'standard' },
   'Perceptual · HDR': { veilMode: 'perceptual', veilFloor: 0.3, bloom: false, core: true,  spike: true,  curve: 'ACES + HDR shoulder', canvasMode: 'extended' },
   'Anya 11-27':       ANYA_1127,
+  // Her Moffat tune from phone session 3 (α 0.1°, β 1.5 under the old width rule), re-expressed for the decoupled rule:
+  // α 0.15° gives the same tail at 960 px and 24.5 m. TUNING.
+  'Anya Moffat':      { ...ANYA_1127, oncSrc: 'from beam table', oncBeam: '7-inch-round-rearfiring d2s-transverse', ownBeam: '7-inch-round-rearfiring d2s-transverse', own: 1,
+                       color: 'HID 4300K', target: 'deer', veilMode: 'off', coreShape: 'moffat', coreAlpha: 0.15, coreBeta: 1.5,
+                       spikeCount: 74, spikeLen: 4.25, spikeLenJit: 0.74, spikeWidth: 4.47, spikeGain: 106.4 },
+  'CIE 146 veil':     { veilMode: 'physical', veilLaw: 'CIE 146 general', veilStr: 1, veilFloor: 0.1, core: true, coreShape: 'moffat', coreAlpha: 0.05, coreBeta: 3, bloom: false, spike: true },
 };
 
 let S = { ...DEFAULTS };
@@ -150,6 +160,7 @@ function buildUI() {
   $('rehdr').addEventListener('click', () => rerequestHDR('button'));
   $('copy').addEventListener('click', async () => { const t = JSON.stringify(S, null, 1); $('json').value = t; try { await navigator.clipboard.writeText(t); $('copy').textContent = 'Copied'; } catch (e) { $('copy').textContent = 'Copy failed: select the box'; } setTimeout(() => { $('copy').textContent = 'Copy settings'; }, 1500); });
   $('measure').addEventListener('click', () => measure().catch((e) => { $('measured').textContent = 'Measure failed: ' + e.message; }));
+  $('measure').textContent = 'Measure';
 }
 function syncUI() {
   for (const id in inputs) {
@@ -238,10 +249,16 @@ function lamps(x) {
   }
   return out;
 }
+const ageF = () => 1 + Math.pow(S.age / 62.5, 4);
+function psi(th) {   // equivalent veiling luminance per lux at the eye, θ in degrees
+  if (S.veilLaw !== 'CIE 146 general') return 10 / (th * th);
+  return 10 / (th * th * th) + (5 / (th * th) + 0.1 * S.pig / th) * ageF() + 2.5e-3 * S.pig;   // CIE 146:2002 general equation
+}
+const hdrOn = () => S.canvasMode === 'extended' && S.curve.includes('HDR');
 function exposure(L) {
   if (S.expo !== 'adapt') return { k: Math.pow(2, S.ev) / L_REF };
   const vs = S.veilMode === 'off' ? 0 : S.veilStr;
-  let veil = 0; for (const q of L) { const th = Math.max(1, Math.acos(Math.min(1, q.dir[0])) / DEG); veil += 10 * q.E / (th * th); }
+  let veil = 0; for (const q of L) { const th = Math.max(1, Math.acos(Math.min(1, q.dir[0])) / DEG); veil += q.E * psi(th); }
   const white = L_REF / Math.pow(2, S.ev) + vs * veil; return { k: 1 / white, white };
 }
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -274,6 +291,7 @@ struct Params {
   beam: vec4f,    // h0, v0, step, -
   beamN: vec4f,   // nh, nv, -, -
   own: vec4f,     // own lamp x, centre y, half spacing, z
+  veil2: vec4f,   // law (0 Stiles–Holladay, 1 CIE 146 general), age factor, pigment p, display multiplier (SDR boost)
   strip: array<vec4f, 3>,    // headroom patches, × paper white
   lampDir: array<vec4f, 4>,  // unit direction xyz, E lux
   lampCol: array<vec4f, 4>,  // rgb (unit luminance), angular radius rad
@@ -282,7 +300,7 @@ struct Params {
 fn rayDir(px: vec2f) -> vec3f { let uv = px / P.view.xy; return normalize(vec3f(1.0, -(2.0 * uv.x - 1.0) * P.view.z, (1.0 - 2.0 * uv.y) * P.view.w)); }
 fn angBetween(a: vec3f, b: vec3f) -> f32 { return 2.0 * asin(min(1.0, length(a - b) * 0.5)); }   // accurate at tiny angles, unlike acos(dot)
 `;
-const PARAM_VEC4S = 11 + 3 + 4 + 4;
+const PARAM_VEC4S = 12 + 3 + 4 + 4;
 const VS = /* wgsl */`
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   let p = vec2f(f32((i << 1u) & 2u), f32(i & 2u)); return vec4f(p * 2.0 - 1.0, 0.0, 1.0);
@@ -340,9 +358,13 @@ fn deer(p: vec3f, c: f32) -> bool {   // side-on silhouette, head to the left: l
     let ld = P.lampDir[i]; let lc = P.lampCol[i];
     let th = angBetween(dir, ld.xyz);
     let base = pow(lc.w * 0.5, 2.0) + P.core.y * P.core.y;            // lens size ⊕ pixel
-    if (P.core2.x > 0.5 && P.core.x > 0.0) {                            // Moffat: (β-1)/(π a²) · (1 + θ²/a²)^-β integrates to 1
-      let a2 = P.core.x * P.core.x + 2.0 * base; let b = P.core2.y;
-      L += ld.w * (b - 1.0) / (3.14159265 * a2) * pow(1.0 + th * th / a2, -b) * lc.rgb;
+    if (P.core2.x > 0.5 && P.core.x > 0.0) {
+      // Moffat with its tail set by α alone: (β-1)/π · α^(2β-2) · (a² + θ²)^-β, a² = α² + lens/pixel floor.
+      // That carries (α²/a²)^(β-1) of the energy; the rest goes into a Gaussian of the floor's width, so the total stays E
+      // and the tail no longer depends on render width or lamp size (the old rule widened α by the floor).
+      let al2 = P.core.x * P.core.x; let a2 = al2 + 2.0 * base; let b = P.core2.y;
+      let kept = pow(al2 / a2, b - 1.0);
+      L += ld.w * ((b - 1.0) / 3.14159265 * pow(al2, b - 1.0) * pow(a2 + th * th, -b) + (1.0 - kept) / (6.2831853 * base) * exp(-th * th / (2.0 * base))) * lc.rgb;
     } else {
       let s2 = base + P.core.x * P.core.x;
       L += ld.w / (6.2831853 * s2) * exp(-th * th / (2.0 * s2)) * lc.rgb;   // integrates to E over solid angle
@@ -413,7 +435,11 @@ fn spikeCum(x: f32) -> f32 {   // running sum of amplitude up to bin position x 
     if (f32(i) >= P.expo.z) { break; }
     let ld = P.lampDir[i]; let E = ld.w; let rgb = P.lampCol[i].rgb;
     let thDeg = angBetween(dir, ld.xyz) / DEG;
-    if (P.veil.x > 0.5) { let t = max(P.veil.w, thDeg); veil += 10.0 * E / (t * t) * rgb; }
+    if (P.veil.x > 0.5) {
+      let t = max(P.veil.w, thDeg); var psi = 10.0 / (t * t);
+      if (P.veil2.x > 0.5) { psi = 10.0 / (t * t * t) + (5.0 / (t * t) + 0.1 * P.veil2.z / t) * P.veil2.y + 2.5e-3 * P.veil2.z; }   // CIE 146:2002 general
+      veil += psi * E * rgb;
+    }
     if (P.spike.x > 0.5 && thDeg < P.spike.y && thDeg > 1e-5) {
       let e1 = normalize(cross(ld.xyz, vec3f(0.0, 0.0, 1.0))); let e2 = cross(e1, ld.xyz);
       let phi = atan2(dot(dir, e2), dot(dir, e1)) + P.spike2.x;
@@ -426,8 +452,8 @@ fn spikeCum(x: f32) -> f32 {   // running sum of amplitude up to bin position x 
     }
   }
   var lin = (hdr + spikes) * k;
-  if (P.veil.x > 1.5) { let v = k * P.veil.y * veil; lin += P.veil.z * v / (1.0 + v); }   // perceptual: haze, never white
-  else if (P.veil.x > 0.5) { lin += k * P.veil.y * veil; }                                 // physical: the drive today
+  if (P.veil.x > 1.5) { let v = k * P.veil.y * P.veil2.w * veil; lin += P.veil.z * v / (1.0 + v); }   // perceptual: haze, never white
+  else if (P.veil.x > 0.5) { lin += k * P.veil.y * P.veil2.w * veil; }                                 // physical: the drive today
   if (P.tone.w > 0.5) { lin += textureSampleLevel(accT, samp, fc.xy / P.view.xy, 0.0).rgb; }
   return vec4f(enc(curve(lin.r)), enc(curve(lin.g)), enc(curve(lin.b)), 1.0);
 }`;
@@ -550,18 +576,21 @@ function writeParams(L, k) {
   a.set([beamGrid.h0, beamGrid.v0, beamGrid.step, 0], 32);
   a.set([beamGrid.nh, beamGrid.nv, 0, 0], 36);
   a.set([OWN.x, OWN.y, OWN.half, OWN.z], 40);
-  a.set(STRIP, 44);
-  L.forEach((q, i) => { a.set([...q.dir, q.E], 56 + 4 * i); a.set([...col, q.angR], 72 + 4 * i); });
+  a.set([S.veilLaw === 'CIE 146 general' ? 1 : 0, ageF(), S.pig, hdrOn() ? 1 : S.sdrBoost], 44);
+  a.set(STRIP, 48);
+  L.forEach((q, i) => { a.set([...q.dir, q.E], 60 + 4 * i); a.set([...col, q.angR], 76 + 4 * i); });
   device.queue.writeBuffer(paramBuf, 0, a);
 }
 
-function encodeFrame(target, now) {
+function encodeFrame(target, now, opt = {}) {
   if (S.canvasMode !== lastCanvasMode) { configure(); lastCanvasMode = S.canvasMode; }
   if (!beamTex) return null;
   resize();
   const key = [S.spikeSeed, S.spikeCount, S.spikeWidth, S.spikeLenJit, S.spikeBase].join();
   if (key !== spikeKey) { const t = spikeTable(); spikeTotal = t[2 * (BINS - 1)]; device.queue.writeTexture({ texture: spikeTex }, t, { bytesPerRow: BINS * 8 }, [BINS, 1]); spikeKey = key; }
-  const x = carDistance(now ?? performance.now()), L = lamps(x), ex = exposure(L); writeParams(L, ex.k);
+  const keep = S; if (opt.over) S = { ...S, ...opt.over };   // measure's glare-off pass: same frame, glare terms off
+  try {
+  const x = 'x' in opt ? opt.x : carDistance(now ?? performance.now()), L = lamps(x), ex = 'k' in opt ? { k: opt.k } : exposure(L); writeParams(L, ex.k);
   const enc = device.createCommandEncoder();
   const pass = (view, pipe, group, load = 'clear') => { const p = enc.beginRenderPass({ colorAttachments: [{ view, loadOp: load, storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } }] }); p.setPipeline(pipe); p.setBindGroup(0, group); p.draw(3); p.end(); };
   pass(T.hdr.createView(), pipes.scene, draws.scene);
@@ -580,6 +609,7 @@ function encodeFrame(target, now) {
   }
   pass(target, pipes.final, draws.final);
   return { enc, L, ex, x };
+  } finally { S = keep; }
 }
 
 let last = null;
@@ -625,37 +655,61 @@ function readoutText() {
 // ---------------------------------------------------------------- measure: saturated core size around the left lamp
 function half(h) { const s = h & 0x8000 ? -1 : 1, e = (h >> 10) & 31, m = h & 1023; return e === 0 ? s * Math.pow(2, -14) * m / 1024 : e === 31 ? (m ? NaN : s * Infinity) : s * Math.pow(2, e - 15) * (1 + m / 1024); }
 const dec = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-async function measure() {
-  if (!device) return;
-  const r = encodeFrame(T.meas.createView());
-  if (!r || r.L.length < 1) { $('measured').textContent = 'No oncoming lamp in view right now.'; return; }
+async function readMeas(r) {   // the frame in T.meas as display-linear luminance (max of rgb), 1 = paper white
   const bpr = Math.ceil(W * 8 / 256) * 256, buf = device.createBuffer({ size: bpr * H, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   r.enc.copyTextureToBuffer({ texture: T.meas }, { buffer: buf, bytesPerRow: bpr }, [W, H]);
   device.queue.submit([r.enc.finish()]); await buf.mapAsync(GPUMapMode.READ);
-  const u16 = new Uint16Array(buf.getMappedRange()), stride = bpr / 2;
-  const lum = (x, y) => { const o = y * stride + 4 * x; return Math.max(dec(half(u16[o])), dec(half(u16[o + 1])), dec(half(u16[o + 2]))); };   // display-linear, 1 = paper white
-  const tanH = Math.tan(S.hfov * DEG / 2), tanV = tanH * H / W, q = r.L[0];
+  const u16 = new Uint16Array(buf.getMappedRange().slice(0)), stride = bpr / 2; buf.unmap(); buf.destroy();
+  return (x, y) => { const o = y * stride + 4 * x; return Math.max(dec(half(u16[o])), dec(half(u16[o + 1])), dec(half(u16[o + 2]))); };
+}
+async function measure() {
+  if (!device || !beamTex) return;
+  const x = last ? last.x : S.dist;   // freeze the car where it is now
+  const r = encodeFrame(T.meas.createView(), null, { x });
+  const lum = await readMeas(r), k = r.ex.k;
+  const tanH = Math.tan(S.hfov * DEG / 2), tanV = tanH * H / W;
   const pix = (d) => [Math.round((1 - d[1] / d[0] / tanH) / 2 * W - 0.5), Math.round((1 - d[2] / d[0] / tanV) / 2 * H - 0.5)];
-  const [px, py] = pix(q.dir), [ox, oy] = r.L[1] ? pix(r.L[1].dir) : [-1, -1];
-  const fill = (thr) => {   // 4-connected region at or above thr, grown from the lamp pixel
-    if (px < 0 || py < 0 || px >= W || py >= H || !(lum(px, py) >= thr)) return null;
-    const seen = new Uint8Array(W * H), st = [[px, py]]; let n = 0, merged = false, x0 = px, x1 = px, y0 = py, y1 = py; seen[py * W + px] = 1;
-    while (st.length && n < 400000) {
-      const [x, y] = st.pop(); n++; if (x === ox && y === oy) merged = true; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const a = x + dx, b = y + dy; if (a < 0 || b < 0 || a >= W || b >= H || seen[b * W + a]) continue; seen[b * W + a] = 1; if (lum(a, b) >= thr) st.push([a, b]); }
-    }
-    const degPx = 2 * tanH / W / DEG;   // degrees per pixel near the image centre
-    return { eqDiam: 2 * Math.sqrt(n / Math.PI) * degPx, w: (x1 - x0 + 1) * degPx, h: (y1 - y0 + 1) * degPx, merged };
-  };
-  const f = (m) => (m ? `equiv. diameter ${m.eqDiam.toFixed(2)}° · box ${m.w.toFixed(2)}° × ${m.h.toFixed(2)}°${m.merged ? ' · MERGED with the other lamp' : ''}` : 'none');
-  const peak = lum(Math.min(W - 1, Math.max(0, px)), Math.min(H - 1, Math.max(0, py)));
-  $('measured').textContent = [
-    `left lamp E ${q.E.toFixed(3)} lx at ${q.r.toFixed(1)} m · peak shown ${peak.toFixed(2)}× paper white (linear)`,
-    `≥ 0.95 white (looks saturated):  ${f(fill(0.95))}`,
-    `> 1.0 white (above paper white): ${f(fill(1.0001))}`,
-    'Region includes any spike that stays above the threshold. Spike length itself is fixed by the Length slider.',
-  ].join('\n');
-  buf.unmap(); buf.destroy();
+  const out = [];
+  if (r.L.length) {
+    const q = r.L[0], [px, py] = pix(q.dir), [ox, oy] = r.L[1] ? pix(r.L[1].dir) : [-1, -1];
+    const fill = (thr) => {   // 4-connected region at or above thr, grown from the lamp pixel
+      if (px < 0 || py < 0 || px >= W || py >= H || !(lum(px, py) >= thr)) return null;
+      const seen = new Uint8Array(W * H), st = [[px, py]]; let n = 0, merged = false, x0 = px, x1 = px, y0 = py, y1 = py; seen[py * W + px] = 1;
+      while (st.length && n < 400000) {
+        const [a0, b0] = st.pop(); n++; if (a0 === ox && b0 === oy) merged = true; x0 = Math.min(x0, a0); x1 = Math.max(x1, a0); y0 = Math.min(y0, b0); y1 = Math.max(y1, b0);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const a = a0 + dx, b = b0 + dy; if (a < 0 || b < 0 || a >= W || b >= H || seen[b * W + a]) continue; seen[b * W + a] = 1; if (lum(a, b) >= thr) st.push([a, b]); }
+      }
+      const degPx = 2 * tanH / W / DEG;   // degrees per pixel near the image centre
+      return { eqDiam: 2 * Math.sqrt(n / Math.PI) * degPx, w: (x1 - x0 + 1) * degPx, h: (y1 - y0 + 1) * degPx, merged };
+    };
+    const f = (m) => (m ? `equiv. diameter ${m.eqDiam.toFixed(2)}° · box ${m.w.toFixed(2)}° × ${m.h.toFixed(2)}°${m.merged ? ' · MERGED with the other lamp' : ''}` : 'none');
+    out.push(`left lamp E ${q.E.toFixed(3)} lx at ${q.r.toFixed(1)} m · peak shown ${lum(Math.min(W - 1, Math.max(0, px)), Math.min(H - 1, Math.max(0, py))).toFixed(2)}× paper white`,
+      `≥ 0.95 white (looks saturated):  ${f(fill(0.95))}`, `> 1.0 white (above paper white): ${f(fill(1.0001))}`);
+  } else out.push('No oncoming lamp in view (gap): lamp size skipped.');
+  if (S.target !== 'off') {
+    // Target contrast, with glare and with every glare term off, same frame and same exposure. Weber C = (Lt - Lb) / Lb on
+    // display-linear values. Body and background boxes in metres at the target's distance, mid-body height.
+    const c = S.tlat, deer = S.target === 'deer';
+    const body = deer ? [c - 0.5, c + 0.5, 0.85, 1.15] : [c - 0.2, c + 0.2, 0.3, 1.4];
+    const bgs = deer ? [[c - 1.3, c - 0.9, 0.85, 1.15], [c + 1.2, c + 1.5, 0.85, 1.15]] : [[c - 0.7, c - 0.45, 0.3, 1.4], [c + 0.45, c + 0.7, 0.3, 1.4]];
+    const boxPix = ([y0, y1, z0, z1]) => { const A = pix([S.tdist, y0, z0 - EYE_Z]), B = pix([S.tdist, y1, z1 - EYE_Z]); return [Math.min(A[0], B[0]), Math.max(A[0], B[0]), Math.min(A[1], B[1]), Math.max(A[1], B[1])]; };
+    const mean = (L, bx) => { const [x0, x1, y0, y1] = boxPix(bx); let s = 0, n = 0; for (let y = Math.max(0, y0); y <= Math.min(H - 1, y1); y++) for (let xx = Math.max(0, x0); xx <= Math.min(W - 1, x1); xx++) { s += L(xx, y); n++; } return n ? s / n : NaN; };
+    const contrast = (L) => { const t = mean(L, body), b = (mean(L, bgs[0]) + mean(L, bgs[1])) / 2; return { t, b, C: (t - b) / b }; };
+    const lumOff = await readMeas(encodeFrame(T.meas.createView(), null, { x, k, over: { veilMode: 'off', spike: false, core: false, bloom: false } }));
+    // Veiling glare adds the same light over the target and its immediate background, so: glare at the target G = mean of
+    // (on - off) over the body, and C_glare = (T - B) / (B + G) from the glare-off values. Comparing raw on-frame boxes would
+    // misread the glare's own gradient as contrast.
+    const off = contrast(lumOff), [bx0, bx1] = boxPix(body), G = mean((xx, y) => lum(xx, y) - lumOff(xx, y), body);
+    const Con = (off.t - off.b) / (off.b + G);
+    const pc = (v) => (Number.isFinite(v) ? (v * 100).toFixed(1) + '%' : 'n/a');
+    out.push('', `${S.target} at ${S.tdist.toFixed(0)} m, ${bx1 - bx0 + 1} px wide · Weber contrast, display-linear (1 = paper white):`,
+      `  without glare: ${pc(off.C)}  (target ${off.t.toFixed(4)}, background ${off.b.toFixed(4)})`,
+      `  with glare:    ${pc(Con)}  (glare light at the target ${G.toFixed(4)})`,
+      Number.isFinite(Con) && off.C ? `  glare leaves ${(100 * Con / off.C).toFixed(2)}% of the contrast` : '',
+      bx1 - bx0 < 3 ? '  ⚠ target is under 3 px wide: numbers are mostly pixel noise' : '',
+      '  Display values after the tone curve, so this is contrast as shown on screen, not at the eye.');
+  }
+  $('measured').textContent = out.filter((l) => l !== '').join('\n');
 }
 
 window.addEventListener('resize', request);

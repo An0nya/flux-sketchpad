@@ -159,3 +159,31 @@ render width until that is decoupled.
 
 Open question (Anya): about 200–290 cd toward the eye at 24.5 m from the d2s-transverse design, at
 roughly 6.5° left and 1.3° up in that lamp's beam. Possible stray light between regulation test points.
+
+## Round 3 (2026-11-27)
+
+- **CIE 146 general glare equation** as a veil formula, with age and eye-pigment sliders:
+  Ψ(θ) = 10/θ³ + (5/θ² + 0.1p/θ)·[1 + (A/62.5)⁴] + 2.5·10⁻³·p, θ in degrees, valid 0.1° to 100°,
+  L_eq = Ψ·E (cd/m² per lux). Source: Bará & Bao-Varela (2023), Eq. 2, citing CIE 146:2002
+  (https://arxiv.org/abs/2212.09103). Not checked against the CIE report itself.
+  Correction: in chat Claude said from memory that the full CIE function is a sum of Moffat-shaped terms.
+  It is not; it is the power-law sum above. A Moffat tail with β = 1.5 does fall as θ⁻³, the same as the
+  first CIE term.
+- **Moffat decoupled:** the tail is now set by α alone, (β−1)/π · α^(2β−2) · (a² + θ²)^−β with
+  a² = α² + lens/pixel floor; the energy the floor takes from the core goes into a Gaussian of the floor's
+  width. OBSERVED: saturated size 6.01° at 960 px vs 6.00° at 640 px with the same settings.
+  The old α 0.1 / β 1.5 tune corresponds to α ≈ 0.15° now (preset "Anya Moffat").
+- **SDR veil boost:** multiplies the veil only when the HDR shoulder or extended canvas is off.
+- **Measure** now also reports target contrast, glare on vs off, same frame and exposure. Glare light at
+  the target G = mean(on − off) over the body; C = (T − B)/(B + G) from the glare-off frame. Values are
+  display values after the tone curve.
+
+OBSERVED (headless Chromium, Metal, 960 px, car frozen at 24.7 m, E 0.36 lx on the left lamp, deer at 50 m):
+
+| | glare light at deer | deer contrast with glare | without |
+|---|---|---|---|
+| Anya Moffat (α 0.15, β 1.5, no veil) | 0.124 | 4.3% | 2847% |
+| + CIE 146 veil preset (β 3 core, CIE veil, age 35, p 0.5) | 0.055 | 9.6% | 2847% |
+
+The CIE puts about 0.44× as much glare light on the deer as her Moffat tune, matching the hand estimate
+at 5.5° (0.25 vs 0.47 per lux). Background behind the deer at mid-body height is distant road, almost black.
