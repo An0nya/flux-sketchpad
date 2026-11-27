@@ -461,7 +461,7 @@ fn spikeCum(x: f32) -> f32 {   // running sum of amplitude up to bin position x 
 
 // ---------------------------------------------------------------- WebGPU
 const canvas = $('c');
-let spikeTotal = 0, device, ctx, pipes, sampler, paramBuf, spikeTex, spikeKey = '', T = {}, draws = null, confState = { requested: '', got: null };
+let limitsText = '', spikeTotal = 0, device, ctx, pipes, sampler, paramBuf, spikeTex, spikeKey = '', T = {}, draws = null, confState = { requested: '', got: null };
 let beamTex = null, beamName = '', beamGrid = GRID, beamLoading = '', W = 0, H = 0, frameQueued = false, lastCanvasMode = null, rehdrCount = 0;
 const FMT = 'rgba16float';
 const perf = { fps: 0, lastFrame: 0, gpuMs: 0, cpuMs: 0, pending: false };
@@ -474,6 +474,11 @@ async function init() {
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) { showMsg('WebGPU: no adapter.'); return; }
   device = await adapter.requestDevice();
+  try {   // shader resource limits, for the WebGL-vs-WebGPU question (Anya, 11-27): what this browser exposes, per API
+    const L = adapter.limits, gl = document.createElement('canvas').getContext('webgl2'), g = (k) => (gl ? gl.getParameter(gl[k]) : '?');
+    limitsText = [`WebGL2  textures/shader ${g('MAX_TEXTURE_IMAGE_UNITS')} · uniform vec4s ${g('MAX_FRAGMENT_UNIFORM_VECTORS')} · UBO ${g('MAX_UNIFORM_BLOCK_SIZE')} B × ${g('MAX_FRAGMENT_UNIFORM_BLOCKS')}`,
+      `WebGPU  textures/stage ${L.maxSampledTexturesPerShaderStage} · samplers ${L.maxSamplersPerShaderStage} · storage bufs ${L.maxStorageBuffersPerShaderStage} × ${(L.maxStorageBufferBindingSize / 2 ** 20).toFixed(0)} MiB · uniform buf ${L.maxUniformBufferBindingSize} B`].join('\n');
+  } catch (e) { limitsText = 'limits: ' + e.message; }
   device.lost.then((i) => showMsg('GPU device lost: ' + i.message + '. Reload the page.'));
   device.addEventListener?.('uncapturederror', (e) => showMsg('GPU error: ' + e.error.message));
   ctx = canvas.getContext('webgpu');
@@ -642,6 +647,7 @@ function readoutText() {
     'toneMapping got   ' + (device ? tm : '-'),
     'format ' + (got && got.format ? got.format : FMT) + ' · dpr ' + (window.devicePixelRatio || 1) + ' · ' + W + '×' + H,
   ];
+  if (limitsText) lines.push(limitsText);
   if (confState.requested === 'extended' && tm !== 'extended') lines.push('⚠ extended was requested but not reported back: this browser is showing SDR.');
   if (beamLoading) lines.push('loading beam: ' + beamLoading + '…');
   if (last) {
