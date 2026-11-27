@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HDR Headlamp Spike</title>
+<style>
+  :root { --bg: #000; --panel: #111; --line: #2a2a2a; --text: #ddd; --dim: #888; --accent: #6cb6ff; --warn: #ffcc4d; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, system-ui, sans-serif; }
+  /* No CSS transitions anywhere: a WebKit bug dropped HDR to SDR during transitions. */
+  .stage { position: sticky; top: 0; z-index: 2; background: #000; }
+  canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; dynamic-range-limit: no-limit; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .bar button { flex: 1 1 auto; }
+  button { background: #1d1d1d; color: var(--text); border: 1px solid #3a3a3a; border-radius: 6px; padding: 7px 10px; font: inherit; }
+  button.on { border-color: var(--accent); color: var(--accent); }
+  main { padding: 8px 16px 64px; max-width: 760px; margin: 0 auto; }
+  #msg { padding: 8px 16px; color: var(--warn); display: none; }
+  #msg.show { display: block; }
+  details { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; background: var(--panel); }
+  summary { padding: 9px 12px; cursor: pointer; font-weight: 600; }
+  .row { display: grid; grid-template-columns: 9.5em 1fr 4.8em; gap: 8px; align-items: center; padding: 4px 12px; }
+  .row label { color: var(--dim); font-size: 13px; }
+  .row output { font-variant-numeric: tabular-nums; font-size: 13px; text-align: right; }
+  .row input[type=range], .row select { width: 100%; }
+  .help { color: var(--dim); font-size: 12px; padding: 0 12px 8px; }
+  pre { white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, Menlo, monospace; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
+  textarea { width: 100%; min-height: 7em; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; font: 12px ui-monospace, Menlo, monospace; padding: 8px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <canvas id="c" width="960" height="540"></canvas>
+  <div class="bar" id="presets"></div>
+</div>
+<div id="msg"></div>
+<main>
+  <pre id="readout">starting…</pre>
+  <div class="actions">
+    <button id="measure">Measure core</button>
+    <button id="copy">Copy settings</button>
+    <button id="reset">Reset all</button>
+  </div>
+  <pre id="measured">Measure: saturated size of the left lamp's core, in degrees.</pre>
+  <div id="controls"></div>
+  <textarea id="json" readonly></textarea>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>
