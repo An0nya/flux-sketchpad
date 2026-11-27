@@ -76,3 +76,27 @@ exposure and the second halo were not measured. The first row reproduces the han
   WebGPU presenter canvas through the CPU, about a day, cost per frame unmeasured; (c) wait for HDR
   WebGL canvases in Safari. Anya chose (b) as acceptable for a prototype.
 - The CPU still path (`drive.js tonemap`) is a fallback; Phase 2 may skip it (Anya, 2026-11-27).
+
+## Anya's first on-phone session (2026-11-27)
+
+OBSERVED by Anya, iPhone, Safari:
+- HDR works and makes a visible difference.
+- The "HDR peak" slider brightens from 1× to 1.5× and then looks flat for the rest of its range. INFERRED:
+  the screen's headroom at that moment was about 1.5×, and iOS clips values above it rather than rolling
+  them off. Headroom changes with screen brightness and ambient light.
+- These settings matched her perceived glare well (oncoming low beam, about 1 lx at the eye):
+
+```json
+{"dist":24.48,"cd":601.1,"color":"LED 5700K","lat":3.5,"spacing":1.4,"lens":0.06,"hfov":60,"own":0.3,
+ "target":true,"tdist":50,"sim":"960","expo":"fixed","ev":2,"canvasMode":"extended",
+ "curve":"ACES + HDR shoulder","peak":16,"knee":1.2,"veilMode":"perceptual","veilStr":0.25,"veilCap":1,
+ "veilFloor":1.05,"bloom":false,"bloomStr":0.07,"core":true,"coreSigma":0.16,"spike":true,"spikeCount":49,
+ "spikeLen":2.8,"spikeLenJit":0.6,"spikeWidth":3.12,"spikeGain":282.5,"spikeTaper":3.4,"spikeBase":0.18,
+ "spikeSeed":7,"spikeRot":0}
+```
+
+Her requests and ideas (not built yet):
+- A softer skirt where the core meets the veil ("some blur would sell it").
+- The core should grow with intensity. Her theory is "with intensity, not distance". She isn't sure about
+  distance; see the discussion in the session that followed.
+- Performance unknown; she will try an older phone.
