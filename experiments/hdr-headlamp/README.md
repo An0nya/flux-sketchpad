@@ -197,10 +197,52 @@ OBSERVED, from the readout:
 | | WebGL2 textures/shader | WebGL2 uniform vec4s | WebGPU textures/stage | WebGPU samplers | WebGPU storage buffers | WebGPU uniform buffer |
 |---|---|---|---|---|---|---|
 | Mac M4, Chromium (Metal) | 16 | 1024 (UBO 16 KB × 16) | 48 | 16 | 10 × 4 GiB | 64 KiB |
-| Anya's iPhone (60 Hz one), Safari | 16 | 1024 (UBO 16 KB × 16) | 44 | 22 | 44 × 1 GiB | 1 GiB |
+| Anya's iPhones (both: the 60 Hz and the 120 Hz one), Safari | 16 | 1024 (UBO 16 KB × 16) | 44 | 22 | 44 × 1 GiB | 1 GiB |
 
 These are adapter maxima: a WebGPU device gets the spec defaults (16 textures, 16 samplers, 8 storage
 buffers, 64 KiB uniform buffer) unless it asks for more with requiredLimits.
 The drive's recorded walls (docs/inventory HAZARDS H3, H12; commit 5f9d514) are the WebGL2 numbers.
 
 Anya: the scatter beam is where the drive's fps drops sharply (observation, not profiled).
+
+## Handoff (2026-11-27, end of the spike session)
+
+**Where things are.** Branch `hdr-spike` on An0nya/flux-sketchpad (off `vm-agents-2026-10-30` @ `c3ff75a`),
+worktree `~/Projects/flux-hdr-spike`, page `experiments/hdr-headlamp/`. Open it from a githack link pinned to
+a commit (`rawcdn.githack.com/An0nya/flux-sketchpad/<sha>/experiments/hdr-headlamp/index.html`); the
+branch URL caches. Nothing touched `vm-agents-2026-10-30` or main.
+
+**What the spike settled** (details in the sections above):
+- HDR on iPhone Safari works through WebGPU `extended`. Headroom changes with the moment: about 1.5× in
+  daylight, more after re-requesting HDR; the page re-requests it whenever it becomes visible again.
+- The glare that reads right to Anya: Moffat core (β ≈ 1.5) plus a fixed-length starburst, no
+  bloom. Works in SDR too; HDR adds the "this is bright" cue. Presets "Anya Moffat" and "Anya 11-27".
+- At the deer's angle (~5.5°) her tune puts about 2× the glare light the CIE 146 general equation predicts.
+  Both curves can be compared in the page's "CIE 146 veil" preset and in the Measure readout.
+- Cost on the phones: 1.8–2.1 ms (new) and 6.6–7.4 ms (old) GPU per frame for the whole spike scene,
+  2 lamps. The drive loops up to 32 sources: not measured with traffic.
+- On her iPhones, WebGL2 caps a shader at 16 textures and 1024 uniform vec4s (the walls the drive hit);
+  WebGPU offers up to 44 textures, 22 samplers and 44 storage buffers.
+
+**Decided by Anya:** port into the drive on the existing WebGL path, with HDR as an optional display layer;
+skip the CPU still path for the new glare (it ignores the option with a notice); the parking-lot calibration
+waits for another night; WebGPU for the drive is investigated later, separately.
+
+**Next, in order (each needs her go):**
+1. Phase 2 walkthrough in pseudocode, before any edit. Shape so far: one `glareModel` object holding her
+   design paths as presets (simple halo, current recipe, perceptual, perceptual + HDR, CIE 146); the terms
+   go into `drive-anim.js` `FS_FINAL`'s existing source loop (up to 32 sources, direction / E / rgb
+   already there); opt-in, default off, byte-identical when off (STANDARDS §1.1); a registry entry and the
+   Glare sub-tab; gate tests and shader-budget counts; a new branch, not the swarm's lander branch.
+   Known wrinkle: the drive's lamp pixels are already in its HDR buffer, so a Moffat added in `FS_FINAL`
+   counts some core light twice (harmless, the core saturates).
+2. HDR presenter: move the drive's final frame into a WebGPU canvas. Options, none measured: synchronous
+   readPixels; async readback with a fence; copyExternalImageToTexture from an RGBM-packed 8-bit WebGL
+   canvas. Decide by ms per frame on the old phone with the drive running.
+3. Later, its own spike: port only the scatter-beam table build to a WebGPU compute shader with storage
+   buffers, check it matches WebGL, time both on both phones, then push the bank count past WebGL's limit.
+   Profile the drive on the phone first to confirm the scatter pass is where the time goes.
+
+**Open threads:** the d2s-transverse design sends 270–290 cd toward an oncoming driver at about 6.5° left,
+1.3° up, with a cliff to 0 cd about 3.6° away (possible stray light between regulation test points; check in
+spec mode). Spike numbers in this README are by hand or headless unless marked OBSERVED by Anya.
