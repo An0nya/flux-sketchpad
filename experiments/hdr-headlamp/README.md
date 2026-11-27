@@ -119,3 +119,28 @@ about 90 fps uncapped, GPU ≤ 3.6 ms per frame (submit to done, an upper bound)
 Low beams and the deer: at 60 m the deer's body is above the cutoff of a low beam (about +0.3° from a
 0.65 m lamp), so with the generic low it gets about 370 cd, about 0.1 lx: it is genuinely nearly
 invisible, legs aside. That is the beam, not the veil. Use a high beam or a closer target to test veiling.
+
+## Phone session 2 (2026-11-27)
+
+OBSERVED by Anya:
+- Moffat core plus starburst, with the Stiles–Holladay veil OFF, reads right. About 0.5 lx toward the eye
+  already veils hard, and a deer next to the starburst disappears completely.
+- Performance with her settings (no bloom, no veil, Moffat + starburst, 960×540, animating):
+  new iPhone 120.9 fps, GPU ≤ 1.9 ms; old iPhone 60.1 fps, GPU ≤ 6.6 ms (submit-to-done upper bounds).
+- "Drive at me" reported not working; symptom not yet pinned down.
+
+Her settings (d2s-transverse table for both cars, HID colour):
+```json
+{"speed":30,"spawn":240,"gap":4.2,"dist":24.48,"oncSrc":"from beam table","oncBeam":"7-inch-round-rearfiring d2s-transverse",
+ "oncScale":1,"color":"HID 4300K","lat":3.5,"spacing":1.4,"lens":0.06,"ownBeam":"7-inch-round-rearfiring d2s-transverse","own":1,
+ "target":"deer","tdist":50,"tlat":1.15,"trho":0.15,"hfov":60,"sim":"960","expo":"fixed","ev":2,"canvasMode":"extended",
+ "curve":"ACES + HDR shoulder","peak":16,"knee":0.55,"veilMode":"off","bloom":false,"core":true,"coreShape":"moffat",
+ "coreAlpha":0.0102,"coreBeta":1.65,"spike":true,"spikeCount":74,"spikeLen":4.25,"spikeLenJit":0.74,"spikeWidth":4.47,
+ "spikeGain":106.4,"spikeTaper":3.4,"spikeBase":0.18,"spikeSeed":7,"spikeRot":0}
+```
+
+INFERRED (Claude, by hand from the shader): with α = 0.0102° the Moffat width is set almost entirely by the
+lens's angular size and the anti-aliasing pixel term (a² = α² + 2·(lens²/4 + pixel²)), giving a ≈ 0.11° at
+24.5 m and 960 px. So this tuning depends on render width and distance. Against Stiles–Holladay (10·E/θ²)
+the β = 1.65 tail is about 4× stronger at 1° and about 5× weaker at 10°, crossing near 3–4°: stronger
+near the lamp, less wide-angle contrast loss.
