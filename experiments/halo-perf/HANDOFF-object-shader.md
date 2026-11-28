@@ -21,7 +21,9 @@ and the code path are spelled out below.
 - To compare phones or settings, load the same state file (Performance > Debug > Load state) on each and tap the button.
 - **`V.three.objectWork(p, ss)`** (`js/drive-three.js:491`, existing): renders the objects in mask mode 3 and returns
   `proxyPixels` (pixels whose proxy ran the shader), `hits` (pixels that hit an object) and trace `steps`.
-  **proxyPixels / hits = how much of the object shading is wasted on misses.** Not yet run on any scene; run it first.
+  **Caveat (found 11-28):** the `maskMode 3` work output exists only in the SDF-model branch (`kind==4`, l.38), so it counts
+  detailed models only and returns 0/0 for ellipsoids, boxes, cylinders, cards and trees. To measure the miss ratio for all
+  objects it needs a `maskMode==3` output added at each kind's hit/miss point (a small shader change, debug-only).
 - Tests to keep green: `tests/regress/GST-gpu-stages.js` (17 checks), `tests/regress/BJ2-halo-table-pin.js` (pins), plus the
   object/model page tests listed in `tests/gate.js` MAP for `js/drive-three-objects.js`.
 

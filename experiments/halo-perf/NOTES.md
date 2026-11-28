@@ -264,3 +264,44 @@ And the fps counter jumped to 125/333 fps after a timing run (Anya: "outrageousl
 
 - Where save (1)'s other ~5 ms goes (lookup vs polar). Needs GPU timer queries per pass on the Mac.
 - Phone numbers: none yet. Mac-to-phone scaling is unknown.
+
+## Stage sweep on the Mac, 856×482 (old-phone size), 2026-11-28 — `stage-sweep.js`, rows in `sweep-856.jsonl`
+
+Exploring-mode readings, M4 / ANGLE Metal, headless. Each row = GST2 "Time this frame" (64 kept synced renders of one pose), one
+option changed from the save. ms are synced stage means (inflated by the waits). "Real frames" is useless here: headless rAF caps it
+at 60 Hz and it swung 11–20 ms between identical baselines, so only the stage columns count. Run-to-run noise (baseline vs
+"baseline again"): ~±0.5 ms per stage, ~1.5 ms on the probe total.
+
+| save | variant | crest | halo | scene | objects | probe sum |
+|---|---|---|---|---|---|---|
+| full | baseline | 5.6 | 21.5 | 5.5 | 3.0 | 38.0 |
+| full | halo off | 1.3 | 0.2 | 5.5 | 4.3 | 13.8 |
+| full | traffic beams off | 0.8 | 0.2 | 3.8 | 4.1 | 11.3 |
+| full | crest+shadows off | 1.4 | 20.3 | 4.8 | 4.8 | 33.7 |
+| full | signs off | 5.2 | 21.5 | 5.3 | 1.9 | 36.2 |
+| full | SS2 | 5.5 | 21.2 | 5.3 | 4.3 | 38.6 |
+| low | baseline | 5.2 | 6.1 | 6.9 | 3.9 | 24.7 |
+| low | halo off | 1.1 | 0.2 | 5.2 | 4.4 | 13.4 |
+| low | crest+shadows off | 1.1 | 5.0 | 5.9 | 5.2 | 19.6 |
+| straight-0m | baseline | 2.7 | 7.3 | 4.7 | 1.1 | 17.1 |
+| straight-0m | halo off | 0.3 | 0.2 | 4.0 | 1.2 | 6.9 |
+| straight-0m | crest+shadows off | 0.3 | 6.3 | 5.1 | 1.6 | 14.8 |
+
+sheen off, lampPitch off, leafy off, models off: every stage within noise (≤0.5 ms) on all three saves.
+
+**OBSERVED:**
+- On the Mac the halo is the frame: halo + the crest map it drags in = 27 of 38 ms on the full save, 11 of 25 on low, 10 of 17 lean.
+- Crest occlusion + traffic shadows off removes the crest map (5.6 → 1.4, 5.2 → 1.1, 2.7 → 0.3; the ~1 ms left is in the same lap
+  whatever the halo does) and barely moves halo screen (−1 ms). Saves ~4–5 ms per frame on the Mac. Look change: not checked yet.
+- Traffic beams off cuts scene 5.5 → 3.8 and 6.9 → 3.9 on the Mac (the traffic-lamp loop in the road shader is ~30–45 % of scene
+  here). This contradicts the phone reading "scene stays the same with traffic beams off": so either the old GPU's scene cost is
+  something else, or that phone reading had another change in it. Needs a phone A/B with "Time this frame" on one loaded state.
+- Objects are small on the Mac (1–4 ms). Signs are the biggest single object item (−1.1 / −1.4 ms). SS2 adds 1.3–1.6 ms to objects
+  and nothing elsewhere. Halo off made objects *rise* 1.3 ms on the full save (reproduced in 3 of 3 halo/beams-off rows): INFERRED
+  the halo's GPU work was overlapping or hiding part of the objects lap; untested.
+- `objectWork()` returned 0/0 on every row. It is not broken: its trace-work output (`maskMode 3`) only exists in the SDF-model
+  branch (`kind==4`, `drive-three-objects.js:38`); every other kind goes down the mask path and counts nothing. So it measures
+  detailed models only, and none of those was in view. The object handoff overstated it; corrected there.
+
+**So for the phones:** the Mac ranks the halo first by far. The old phone's extra pain (scene 5–7×, objects 6× vs the new phone) is
+a GPU-specific disproportion the Mac can't show. The next phone A/B worth doing is traffic beams on/off with "Time this frame".
