@@ -25,6 +25,9 @@
   <canvas id="gl1" width="1024" height="64"></canvas><div class="lab"><span>0</span><span>1×</span><span>2×</span><span>4×</span><span>8×</span></div>
   <h2>C. WebGL2, plain 8-bit (control: should clip at 1×)</h2>
   <canvas id="gl0" width="1024" height="64"></canvas><div class="lab"><span>0</span><span>1×</span><span>2×</span><span>4×</span><span>8×</span></div>
+  <h2>D. Moving a WebGL frame to WebGPU (for the drive's HDR)</h2>
+  <p>Runs a few seconds after load. Byte round-trip: does a canvas copy keep exact values? Snapshot: is a copy taken at the moment it is called? Timings: per-frame cost of each way at the drive's size (880×494).</p>
+  <pre id="copy">waiting…</pre>
   <h2>What this browser has</h2>
   <pre id="out">probing…</pre>
 </main>
@@ -97,6 +100,81 @@ fn enc(x: f32) -> f32 { let a = abs(x); var e = 1.055 * pow(a, 1.0 / 2.4) - 0.05
   try { glRamp(document.getElementById('gl1'), true); } catch (e) { say('B threw: ' + e.message); }
   try { glRamp(document.getElementById('gl0'), false); } catch (e) { say('C threw: ' + e.message); }
   gpuRamp(document.getElementById('gpu')).catch((e) => say('A threw: ' + e.message));
+})();
+</script>
+<script>
+(async function () {
+  'use strict';
+  const lines = [], say = (t) => { lines.push(t); document.getElementById('copy').textContent = lines.join('\n'); };
+  await new Promise((r) => setTimeout(r, 1500));
+  if (!navigator.gpu) { say('no WebGPU'); return; }
+  const dev = await (await navigator.gpu.requestAdapter()).requestDevice();
+  const U = GPUTextureUsage;
+  const tex = (w, h) => dev.createTexture({ size: [w, h], format: 'rgba8unorm', usage: U.COPY_DST | U.COPY_SRC | U.TEXTURE_BINDING | U.RENDER_ATTACHMENT });
+  async function readTex(t, w, h) {   // texture bytes back to the CPU (bytesPerRow padded to 256)
+    const bpr = Math.ceil(w * 4 / 256) * 256, buf = dev.createBuffer({ size: bpr * h, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const e = dev.createCommandEncoder(); e.copyTextureToBuffer({ texture: t }, { buffer: buf, bytesPerRow: bpr }, [w, h]); dev.queue.submit([e.finish()]);
+    await buf.mapAsync(GPUMapMode.READ); const src = new Uint8Array(buf.getMappedRange()), out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) out.set(src.subarray(y * bpr, y * bpr + w * 4), y * w * 4); buf.unmap(); return out;
+  }
+  // a fixed pattern: 16 scissored clears with varied rgb and alpha below 1
+  const pattern = (gl, w, h, seed) => { gl.enable(gl.SCISSOR_TEST); for (let i = 0; i < 16; i++) { const f = (k) => ((i * 37 + k * 11 + seed * 53) % 251) / 255; gl.scissor(i * w / 16, 0, w / 16, h); gl.clearColor(f(1), f(2), f(3), 0.1 + 0.9 * f(4)); gl.clear(gl.COLOR_BUFFER_BIT); } gl.disable(gl.SCISSOR_TEST); };
+  const glOf = (w, h, attrs) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return { c, gl: c.getContext('webgl2', Object.assign({ antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false }, attrs)) }; };
+  const flipY = (a, w, h) => { const o = new Uint8Array(a.length); for (let y = 0; y < h; y++) o.set(a.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4); return o; };
+  // D1 byte round-trip, alpha canvas, not premultiplied
+  try {
+    const w = 64, h = 4, { c, gl } = glOf(w, h, { alpha: true, premultipliedAlpha: false });
+    pattern(gl, w, h, 1); const want = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, want);
+    const t = tex(w, h); dev.queue.copyExternalImageToTexture({ source: c }, { texture: t, premultipliedAlpha: false }, [w, h]);
+    const got = await readTex(t, w, h), ref = flipY(want, w, h); let bad = 0, maxd = 0;
+    for (let i = 0; i < got.length; i++) { const d = Math.abs(got[i] - ref[i]); if (d) bad++; maxd = Math.max(maxd, d); }
+    say('D1 byte round-trip (alpha canvas, not premultiplied): ' + (bad ? bad + ' of ' + got.length + ' bytes differ, max ' + maxd + ' (first: got ' + Array.from(got.slice(0, 4)) + ' want ' + Array.from(ref.slice(0, 4)) + ')' : 'exact'));
+  } catch (e) { say('D1 threw: ' + e.message); }
+  // D1b the same on an opaque canvas (the drive's canvas is alpha:false): rgb only
+  try {
+    const w = 64, h = 4, { c, gl } = glOf(w, h, { alpha: false });
+    pattern(gl, w, h, 2); const want = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, want);
+    const t = tex(w, h); dev.queue.copyExternalImageToTexture({ source: c }, { texture: t }, [w, h]);
+    const got = await readTex(t, w, h), ref = flipY(want, w, h); let bad = 0, maxd = 0;
+    for (let i = 0; i < got.length; i++) { if (i % 4 === 3) continue; const d = Math.abs(got[i] - ref[i]); if (d) bad++; maxd = Math.max(maxd, d); }
+    say('D1b rgb round-trip (opaque canvas): ' + (bad ? bad + ' bytes differ, max ' + maxd : 'exact'));
+  } catch (e) { say('D1b threw: ' + e.message); }
+  // D2 snapshot: draw A, copy, draw B, copy, all in one task; does the first copy still hold A?
+  try {
+    const w = 16, h = 16, { c, gl } = glOf(w, h, { alpha: false });
+    const t1 = tex(w, h), t2 = tex(w, h);
+    gl.clearColor(1, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); dev.queue.copyExternalImageToTexture({ source: c }, { texture: t1 }, [w, h]);
+    gl.clearColor(0, 0, 1, 1); gl.clear(gl.COLOR_BUFFER_BIT); dev.queue.copyExternalImageToTexture({ source: c }, { texture: t2 }, [w, h]);
+    const a = await readTex(t1, w, h), b = await readTex(t2, w, h);
+    say('D2 snapshot: first copy holds ' + (a[0] > 200 && a[2] < 50 ? 'A (red): copies are snapshots' : 'rgb ' + Array.from(a.slice(0, 3)) + ' (NOT A)') + '; second holds ' + (b[2] > 200 && b[0] < 50 ? 'B (blue)' : 'rgb ' + Array.from(b.slice(0, 3))));
+  } catch (e) { say('D2 threw: ' + e.message); }
+  // D3 timings at the drive's size: canvas copy vs readback (sync, and pixel-pack buffer + fence)
+  const W = 880, H = 494, N = 30, ms = (t) => t.toFixed(2) + ' ms';
+  try {
+    const { c, gl } = glOf(W, H, { alpha: false }), t = tex(W, H);
+    let cpu = 0; const t0 = performance.now();
+    for (let i = 0; i < N; i++) { pattern(gl, W, H, i); const a = performance.now(); dev.queue.copyExternalImageToTexture({ source: c }, { texture: t }, [W, H]); cpu += performance.now() - a; }
+    await dev.queue.onSubmittedWorkDone(); const all = performance.now() - t0;
+    say('D3 canvas copy: ' + ms(cpu / N) + ' CPU per copy; ' + ms(all / N) + ' per frame with the GPU done (draw + copy)');
+  } catch (e) { say('D3 copy threw: ' + e.message); }
+  try {
+    const { gl } = glOf(4, 4, { alpha: false });
+    const fb = gl.createFramebuffer(), rt = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, rt); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, W, H);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rt, 0); gl.viewport(0, 0, W, H);
+    const px = new Uint8Array(W * H * 4), t = tex(W, H);
+    let sync = 0, up = 0;
+    for (let i = 0; i < N; i++) { pattern(gl, W, H, i); const a = performance.now(); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px); const b = performance.now(); dev.queue.writeTexture({ texture: t }, px, { bytesPerRow: W * 4 }, [W, H]); up += performance.now() - b; sync += b - a; }
+    say('D3 readback, synchronous: readPixels ' + ms(sync / N) + ' + writeTexture ' + ms(up / N) + ' per frame (CPU)');
+    const pbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, W * H * 4, gl.STREAM_READ);
+    let issue = 0, fetch = 0, waited = 0;
+    for (let i = 0; i < N; i++) {
+      pattern(gl, W, H, i); const a = performance.now(); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, 0); const f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); gl.flush(); issue += performance.now() - a;
+      const w0 = performance.now(); while (gl.clientWaitSync(f, 0, 0) === gl.TIMEOUT_EXPIRED) await new Promise((r) => setTimeout(r, 0)); waited += performance.now() - w0; gl.deleteSync(f);
+      const b = performance.now(); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, px); dev.queue.writeTexture({ texture: t }, px, { bytesPerRow: W * 4 }, [W, H]); fetch += performance.now() - b;
+    }
+    say('D3 readback, pixel-pack buffer + fence: issue ' + ms(issue / N) + ' + fetch/upload ' + ms(fetch / N) + ' per frame (CPU); the fence took ' + ms(waited / N) + ' of wall time (not blocking)');
+  } catch (e) { say('D3 readback threw: ' + e.message); }
+  say('done');
 })();
 </script>
 </body>
