@@ -1,0 +1,14 @@
+{"name":"baseline","ch":{},"frameMs":91.5,"haloMs":74.7000002861023,"polarMs":74.30000019073486,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"halo off","ch":{"trafficHalo":0},"frameMs":16.59999990463257,"haloMs":null,"polarMs":null,"canvas":[856,482],"passes":0,"lamps":0,"tab":[512,345],"bins":32,"polars":0,"on":0}
+{"name":"moment off","ch":{"haloMoment":"off"},"frameMs":89.80000019073486,"haloMs":73.19999980926514,"polarMs":72.90000009536743,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"crossingRefine off","ch":{"haloCrossingRefine":0},"frameMs":90.19999980926514,"haloMs":73.2000002861023,"polarMs":72.80000019073486,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"refineNeighbour off","ch":{"haloRefineNeighbour":"off"},"frameMs":91.7999997138977,"haloMs":74.09999990463257,"polarMs":73.80000019073486,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"coneEqui off","ch":{"haloConeEqui":"off"},"frameMs":90,"haloMs":73.2000002861023,"polarMs":73,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"polar off","ch":{"haloPolar":"off"},"frameMs":93.59999990463257,"haloMs":77.5,"polarMs":0,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":0,"on":1}
+{"name":"conePass off","ch":{"haloConePass":"off"},"frameMs":89.80000019073486,"haloMs":73,"polarMs":72.7000002861023,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"jitter off","ch":{"haloJitter":"off"},"frameMs":90.19999980926514,"haloMs":73.39999961853027,"polarMs":73.09999990463257,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"blur off","ch":{"haloBlur":"off","haloDepthBlur":"off"},"frameMs":90,"haloMs":73.2000002861023,"polarMs":72.89999961853027,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"crestOcclusion off","ch":{"crestOcclusion":"off"},"frameMs":69,"haloMs":53.5,"polarMs":53.200000286102295,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"shadows off","ch":{"trafficShadows":"off"},"frameMs":90,"haloMs":73.09999990463257,"polarMs":72.80000019073486,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"cull off","ch":{"scatterCull":"off"},"frameMs":90.5,"haloMs":73.59999990463257,"polarMs":73.19999980926514,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"all 4 newer off","ch":{"haloMoment":"off","haloCrossingRefine":0,"haloRefineNeighbour":"off","haloConeEqui":"off"},"frameMs":94.40000009536743,"haloMs":77,"polarMs":76.59999990463257,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}

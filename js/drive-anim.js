@@ -105,6 +105,7 @@
   // rects and the glare veil. Zero world coupling: no K.car model, no trafficCars() kind, no IDM. Gated on traffic
   // (oncoming || preceding): no followers when traffic is off. The bearing is degrees off the rear centre (0 = directly
   // behind, + = to our left, - = our right); the candela is a plausible low-beam headlamp intensity scaled by distance.
+  const STAGE_EVERY = 8, STAGE_KEEP = 10;   // GST (option gpuStages): a probe frame every 8th frame; the readout is the mean of the last 10 probes
   const MIRROR_CULL = 100, MIRROR_KCD = 30;   // cull range (m) and headlamp candela (low beam, symmetric)
   function mirrorCars(src, dist, t) {
     const tr = src && src.traffic; if (!tr || !tr.density) return [];
@@ -1418,8 +1419,9 @@ void main() {
       },
       /* f: { cam: { tanH, hfov }, dist, A (arc|null), pat, k (exposure), glare (strength), flip } */
       draw(f) {
-        const timing = f.profile, t0 = timing ? performance.now() : 0;
+        const timing = f.profile, t0 = timing ? performance.now() : 0, pr = f.probe;   // GST: pr = the GPU stage probe on a probe frame (option gpuStages), else null
         const W = R.W, H = R.H, hw = T.acc.w, hh = T.acc.h, tanH = Math.tan(f.hfov * Math.PI / 360), tanV = tanH * H / W;
+        if (pr) pr.start();
         if (f.groundGPU) f.groundGPU(T.A.f, T.O.f);
         gl.bindVertexArray(vao); gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.disable(gl.SCISSOR_TEST); gl.colorMask(true, true, true, true);
         gl.disable(gl.BLEND);
@@ -1429,6 +1431,7 @@ void main() {
         gl.uniform1i(U.uNP, pats.length); const pa = new Float32Array(16), pd = new Float32Array(4); pats.forEach((q, k) => { pa.set([q.pat.s0, q.pat.s1, q.pat.period, q.pat.on], 4 * k); pd[k] = q.dist; }); gl.uniform4fv(U['uPat[0]'], pa); gl.uniform1fv(U['uPd[0]'], pd);
         bindTex(0, 'A', P.compose.u.uA); bindTex(2, 'O', P.compose.u.uO); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D_ARRAY, T.Bt); gl.uniform1i(P.compose.u.uB, 1);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (pr) pr.lap('compose');
         const tCompose = timing ? performance.now() : 0;
         if (f.glare > 0) {
           const sigma = D.glareSigma(W, f.hfov), rad = Math.ceil(3 * sigma);
@@ -1445,18 +1448,45 @@ void main() {
             use(P.blur, { uSize: [hw, hh], uSourceSize: [a.w, a.h], uDir: [0, 1], uSigma: sigma, uRad: rad, uScale: f.glare * D.GLARE_WEIGHT }); bindTex(0, tmp, P.blur.u.uT); gl.drawArrays(gl.TRIANGLES, 0, 3); prev = src;
           }
           gl.disable(gl.BLEND);
+          if (pr) pr.lap('glare');
         }
         const tGlare = timing ? performance.now() : 0;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, R.cw, R.ch);
         use(P.fin, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: f.glare > 0 ? 1 : 0, uVeil: f.veil || 0, uTanH: tanH, uTanV: tanV });
         const sources = f.sources || [], sa = new Float32Array(128); const sc = new Float32Array(96); sources.slice(0, 32).forEach((q, i) => { sa.set(q.slice(0, 4), i * 4); sc.set([q[4] === undefined ? 1 : q[4], q[5] === undefined ? 1 : q[5], q[6] === undefined ? 1 : q[6]], i * 3); }); gl.uniform1i(P.fin.u.uNS, Math.min(32, sources.length)); gl.uniform4fv(P.fin.u['uSources[0]'], sa); gl.uniform3fv(P.fin.u['uSrcRGB[0]'], sc);   // BRIEF-U: per-source rgb (veil = E * rgb)
         bindTex(0, 'hdr', P.fin.u.uHdr); bindTex(1, 'acc', P.fin.u.uGlare); gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (pr) pr.lap('final');
         if (timing) Object.assign(timing, { composeMs: tCompose - t0, glareMs: tGlare - tCompose, finalVeilMs: performance.now() - tGlare });
       },
       // the HDR sim image back on the CPU (tests): Float32Array 4·W·H, row 0 = top
       readHdr() { const a = new Float32Array(4 * R.W * R.H); gl.bindFramebuffer(gl.FRAMEBUFFER, T.hdr.f); gl.readPixels(0, 0, R.W, R.H, gl.RGBA, gl.FLOAT, a); return a; },
       readCanvas() { const a = new Uint8Array(4 * R.cw * R.ch); gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.readPixels(0, 0, R.cw, R.ch, gl.RGBA, gl.UNSIGNED_BYTE, a); return a; },
       sync() { gl.bindFramebuffer(gl.FRAMEBUFFER, null); const a = new Uint8Array(4); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, a); },     // waits for the GPU (benchmarks)
+      // GST (option gpuStages): a stage probe for one frame. lap(name) waits for the GPU and books the wall time since the previous
+      // lap to name. Safari has no GPU timer queries, so wall time to a forced finish is the measure. Probe frames run slower (no
+      // overlap between stages); only every Nth frame is a probe.
+      // The wait: gl.finish(), then a 1-pixel read of the framebuffer the stage just drew into, in that target's own read format.
+      // A read of an untouched private target does NOT wait (drivers track writes per target): the first version did that and timed
+      // only the CPU submit; tests/regress/GST-gpu-stages.js control 5 caught it. Read binding restored; a read the target refuses is skipped.
+      stageProbe() {
+        const bufs = {}, ms = {}, order = [];
+        const sync = () => {
+          gl.finish();
+          const r = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING), d = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
+          gl.bindFramebuffer(gl.READ_FRAMEBUFFER, d);
+          if (gl.checkFramebufferStatus(gl.READ_FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
+            const fmt = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_FORMAT), type = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_TYPE), k = fmt + ':' + type;
+            const px = bufs[k] || (bufs[k] = type === gl.FLOAT ? new Float32Array(4) : type === gl.HALF_FLOAT || type === gl.UNSIGNED_SHORT ? new Uint16Array(4) : type === gl.UNSIGNED_INT || type === gl.INT ? new Uint32Array(4) : new Uint8Array(4));
+            gl.readPixels(0, 0, 1, 1, fmt, type, px);
+          }
+          gl.bindFramebuffer(gl.READ_FRAMEBUFFER, r);
+        };
+        let t = 0, t0 = 0;
+        return { ms, order,
+          start() { sync(); t0 = t = performance.now(); },
+          lap(name) { sync(); const n = performance.now(); if (!(name in ms)) { ms[name] = 0; order.push(name); } ms[name] += n - t; t = n; },
+          total() { return t - t0; } };
+      },
     };
     return R;
   }
@@ -1973,7 +2003,10 @@ void main() {
     const draw = { profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: (V.p.touge ? RF.Touge.elevate(Object.assign({}, V.p.A), st.dist, V.p.lane, false) : V.p.A), objects: placed, ...(V.src.cross ? fixedIntersection(V.src, st.dist) : {}) }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }   // elevatedView: flat scenes enter the GPU world through elevate() (height 0)
     const tlB = TL.cur ? tlBefore() : null;
-    try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
+    // GST (option gpuStages, GPU renderer only): every STAGE_EVERY-th frame is a probe frame; off, no probe exists and nothing here touches GL.
+    if (o.gpuStages && o.debugTimings && V.three && V.three.setProbe) { V.stageN = (V.stageN || 0) + 1; draw.probe = V.stageN % STAGE_EVERY === 0 ? V.gl.stageProbe() : null; V.three.setProbe(draw.probe); }
+    try { V.gl.draw(draw); } catch (e) { if (V.three && V.three.setProbe) V.three.setProbe(null); if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
+    if (draw.probe) { V.three.setProbe(null); (V.stageRing || (V.stageRing = [])).push({ ms: draw.probe.ms, order: draw.probe.order, total: draw.probe.total() }); if (V.stageRing.length > STAGE_KEEP) V.stageRing.shift(); }
     if (tlB) tlAfter(tlB);
     tableStrip();   // after the draw: a version that completes on this frame clears the strip now, not on the next frame
     if (!contextReady()) return; if (st.game) V.gameRender = { placed, ss, draw };
@@ -2381,6 +2414,7 @@ void main() {
     btn('imperial-units', 'Imperial units (opt-in): speed readouts show mph instead of km/h. Display-only; stored speeds stay km/h. Rarely changed, so it lives here in Performance, not the top bar.', () => setDV(ui, 'imperialUnits', !info().o.imperialUnits), 'mph');
     btn('endless-details', 'Endless-road live numbers: settlement, road class, tile position, traffic params, beam, relief, cover, water, renderer. Refreshes about 4 times a second; off costs nothing.', () => setDV(ui, 'endlessDetails', !info().o.endlessDetails), 'Endless details');
     btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
+    btn('gpu-stages', 'GPU stage timings (with Debug timings on, GPU renderer): every 8th frame waits for the GPU after each render stage (air table, crest map, halo, scene, cones, objects, compose, glare, final) and the readout shows each stage\'s median ms. Probe frames run slower; off costs nothing.', () => setDV(ui, 'gpuStages', !info().o.gpuStages), 'GPU stages');
     btn('scene-details', 'Live numbers about the scene in a small panel: own car, oncoming traffic, glare, hazards, range and lamp. Refreshes about 4 times a second; off costs nothing.', () => setDV(ui, 'sceneDetails', !info().o.sceneDetails), 'Scene details');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
     // the resolution ceiling: the sim width every scene and mode may use (the canvas stays css x dpr). Dynamic resolution steps down from it.
@@ -2833,7 +2867,7 @@ void main() {
     const hb = V.ui.driveBar.querySelector('[data-anim="high-beam"]'), mode = V.highMode || 'off';
     hb.setAttribute('aria-pressed', String(!!V.high)); hb.dataset.state = mode;
     hb.textContent = mode === 'auto' ? 'high beam: auto (' + (V.autoSt ? V.autoSt.reason : 'clear') + ')' : 'high beam: ' + mode;
-    for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['scene-details', 'sceneDetails'], ['dynamic-resolution', 'dynamicResolution'], ['endless-details', 'endlessDetails']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
+    for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['gpu-stages', 'gpuStages'], ['scene-details', 'sceneDetails'], ['dynamic-resolution', 'dynamicResolution'], ['endless-details', 'endlessDetails']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
     V.ui.driveBar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.ui.driveBar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
     V.ui.driveBar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
@@ -3641,7 +3675,24 @@ void main() {
     if (tableOn()) V.perfLab.textContent += '\n' + globalThis.SD_SCATTER.badge + ' · gain ' + (Math.min(4, Math.max(0.25, +V.info.o.scatterGain || 1))).toFixed(2) + ' · beam table: ' + (globalThis.SD_SCATTER.cache ? 'cache on, ' + (globalThis.SD_SCATTER.cycle || 1) + ' version(s), ' + globalThis.SD_SCATTER.valid + ' valid' : 'cache off') + ' · recomputes ' + globalThis.SD_SCATTER.recomputes + ' · skips ' + globalThis.SD_SCATTER.skips;
     // NE3: the 12 slice counts the table pass got (SD_SCATTER.binN), with debug timings on.
     if (tableOn() && V.info.o.debugTimings && globalThis.SD_SCATTER.binN) { const bn = globalThis.SD_SCATTER.binN; V.perfLab.textContent += '\nslices ' + bn.join(',') + ' = ' + bn.reduce((a, b) => a + b, 0); }
+    if (V.info.o.gpuStages) V.perfLab.textContent += '\n' + stageText();   // GST
     const tl = tlText(); if (tl) V.perfLab.textContent += '\n' + tl;
+  }
+  // GST: one line per probe ring: each stage's MEAN ms over the kept probes, in frame order; halo sub-stages nest under "halo".
+  // Mean, not median: performance.now() is coarsened (0.1 ms in Chromium, likely 1 ms in Safari), and a mean of rounded laps averages
+  // the rounding out where a median stays on the grid. "sum" adds the stage means; "probe" is the mean probe-frame total. A big gap = untimed work.
+  function stageText() {
+    const ring = V.stageRing || [];
+    if (!V.three) return 'GPU stages: GPU renderer only';
+    if (!ring.length) return 'GPU stages: waiting for a probe frame (every ' + STAGE_EVERY + ')';
+    const med = (a) => a.reduce((x, y) => x + y, 0) / a.length;   // mean (see above); the name is kept short
+    const names = []; for (const r of ring) for (const n of r.order) if (!names.includes(n)) names.push(n);
+    const m = Object.fromEntries(names.map((n) => [n, med(ring.map((r) => r.ms[n] || 0))]));
+    const f = (v) => v.toFixed(1), sub = names.filter((n) => n.startsWith('halo ')), top = names.filter((n) => !n.startsWith('halo '));
+    const haloSum = sub.reduce((s, n) => s + m[n], 0), sum = names.reduce((s, n) => s + m[n], 0);
+    const parts = top.map((n) => n + ' ' + f(m[n]));
+    if (sub.length) { const at = top.indexOf('crest map') + 1 || top.indexOf('air table') + 1 || 1; parts.splice(at, 0, 'halo ' + f(haloSum) + ' (' + sub.map((n) => n.slice(5) + ' ' + f(m[n])).join(' · ') + ')'); }
+    return 'GPU stages (1/' + STAGE_EVERY + ' frames, synced, mean of ' + ring.length + '): ' + parts.join(' · ') + ' · sum ' + f(sum) + ' / probe ' + f(med(ring.map((r) => r.total))) + ' ms';
   }
   function resetStats() { V.profiles = []; V.completedAt = 0; V.cameraMs = 0; V.times = []; V.ring = []; V.cpu = { obj: 0, up: 0, gl: 0, n: 0 }; }
   // render n frames back to back (no vsync), waiting for the GPU at the end: ms per frame
@@ -3652,5 +3703,5 @@ void main() {
   }
   RF.DriveAnim = { parseCustomPreset, endlessBiome, timeline: () => TL.events, stateDump, readState, relaxDrift, loadState, STATE_KIND, frameMsSummary, simCeiling, simSize, hfovFor, fpsSettings, nearestMinFps, SIM_CEILINGS, MIN_FPS, laneDistance, laneAdvance, AFS_MAX, AFS_RATE, AFS_RETURN, steeringSignal, afsTarget, lightingStep, lightingSubsteps, curveSections, curveSpeed, curvatureAt, curveEnvelope, autoUrban, autoUrbanInput, autoSpeedKmh, renderedGlare: () => V.info && V.info.o ? D.glareLevel(D.capGlare(V.info.o.glare)) : null, actorPose, crossingPose, pedCrossing, pedCrossingPose, pedestrianStop, stopFor, PED, pitchStep,layoutControls, resolutionState, resolutionStep, shedState, shedStep, shedPatch, lodPatch, LOD_LEVELS, breakdown, TRAFFIC_BRAKE, TURN_SPEED, TURN_PROBABILITY, TURN_GAP, approachSpeed, approachAcceleration, signalStop, junctionPlan, turnPose, turnClear, cameraStep, IDM, idmAcceleration, idmStep, speedLimit, trafficSignal, advanceTraffic, TILE_LEN, TILE_KINDS, roadTile, tileRoute, endlessTile, endlessBiome, endlessElev, endlessSurface, endlessGrade, endlessVerge, whereAt, mlLanes, signalState, tileWorld, tileFrame, TRAFFIC_SPEED, trafficCars, mirrorCars, trafficObjects, eyeLux, flashState, countFlashes, placedObjects, PERIOD, EYE, ANIM_SCENES, CLASSES, source, place, dimFoliage, actorPose, ground, objects, composeCPU, makeGL, tracer, activate, sync, stats, resetStats, details: detailsStats, bench, benchMT, closePop, openPop,
     // test hooks
-    _: { V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
+    _: { perfLabel, stageText, V, S, poolOfBeams, trafficCars, trafficObjects, eyeOf, source, fixedIntersection, Wk, postJob, killWorkers, contextLost, contextRestored, toggleGame, gameFrame, gameBackground, gameObjects, advanceCamera, frame, frameMT, mt, size, prepare, exposure, frameSources, readHdr: () => V.gl.gl && V.gl.readHdr(), readCanvas: () => V.gl.readCanvas(), setDist: (d) => { S(V.ui).dist = d; frame(); } } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

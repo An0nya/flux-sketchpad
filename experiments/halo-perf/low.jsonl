@@ -1,0 +1,14 @@
+{"name":"baseline","ch":{},"frameMs":20.300000190734863,"haloMs":4.199999809265137,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"halo off","ch":{"trafficHalo":0},"frameMs":10.400000095367432,"haloMs":3.5999999046325684,"passes":0,"lamps":0,"tab":[160,90],"bins":12,"polars":0,"on":0}
+{"name":"moment off","ch":{"haloMoment":"off"},"frameMs":19.699999809265137,"haloMs":4,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"crossingRefine off","ch":{"haloCrossingRefine":0},"frameMs":18.5,"haloMs":2.8000001907348633,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"refineNeighbour off","ch":{"haloRefineNeighbour":"off"},"frameMs":17.800000190734863,"haloMs":2.4000000953674316,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"coneEqui off","ch":{"haloConeEqui":"off"},"frameMs":20,"haloMs":4.100000381469727,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"polar off","ch":{"haloPolar":"off"},"frameMs":20.199999809265137,"haloMs":4.199999809265137,"passes":4,"lamps":4,"tab":[160,90],"bins":12,"polars":0,"on":1}
+{"name":"conePass off","ch":{"haloConePass":"off"},"frameMs":19.700000286102295,"haloMs":3.700000286102295,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"jitter off","ch":{"haloJitter":"off"},"frameMs":20,"haloMs":4,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"blur off","ch":{"haloBlur":"off","haloDepthBlur":"off"},"frameMs":20.199999809265137,"haloMs":4.099999904632568,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"crestOcclusion off","ch":{"crestOcclusion":"off"},"frameMs":20.5,"haloMs":4,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"shadows off","ch":{"trafficShadows":"off"},"frameMs":17.300000190734863,"haloMs":4.400000095367432,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"cull off","ch":{"scatterCull":"off"},"frameMs":20.300000190734863,"haloMs":4,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}
+{"name":"all 4 newer off","ch":{"haloMoment":"off","haloCrossingRefine":0,"haloRefineNeighbour":"off","haloConeEqui":"off"},"frameMs":18.5,"haloMs":2.299999713897705,"passes":6,"lamps":4,"tab":[160,90],"bins":12,"polars":1,"on":1}

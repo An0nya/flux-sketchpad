@@ -66,6 +66,7 @@ export function create(canvas, gl, onModelsReady) {
   Object.assign(u, smUniforms());   // SM: shared by the halo table, the cone pass and the ribbon (programs that do not declare them ignore them)
   const pass = surface(u);
   const camera = new T.Camera(), objectView = objects(renderer, u, onModelsReady);
+  let probe = null;   // GST (option gpuStages): the stage probe on a probe frame (set by drive-anim per frame), else null; off it is never set
   const halo = haloPass(renderer, u);   // SL: the traffic scatter table (built only when look.trafficHalo is on)
   const lampCone = createLampCone(renderer);   // LAMP-CONE-MIST: lit cone of mist under each street lamp (option lampCone; off or clear air = no change)
   const beamCone = createBeamCone(renderer, u, { smTex: u.smTex, smE: u.smE, smF: u.smF, smL: u.smL, smU: u.smU, smP: u.smP, smRes: u.smRes });   // CP
@@ -426,6 +427,7 @@ export function create(canvas, gl, onModelsReady) {
     tableUniforms() { return { steps: u.tableSteps ? u.tableSteps.value : null, h: u.tableH ? u.tableH.value : null, bias: u.tableBias ? u.tableBias.value : null }; },   // step5-preview: an inert read-only test hook so tests/ignored-when.js can measure the scatter/scatterMode ignoredWhen rules (the pass air beam keeps the flat basis)
     // BA5 test hook: what the GPU got this frame: whether the atlas is on, the beam count, each lit source's atlas index, and the tints
     atlasState() { const n = u.nTraffic.value; return { on: atlasOn, beams: atlasPacked ? atlasPacked.count : 0, nTraffic: n, cars: litCars.slice(0, n), idx: Array.from({ length: n }, (_, i) => u.trafficBeamIdx.value[i >> 2].getComponent(i & 3)), tints: atlasPacked ? Array.from({ length: atlasPacked.count }, (_, i) => u.beamTint.value[i].toArray().slice(0, 3)) : [] }; },
+    setProbe(pr) { probe = pr || null; halo.gst = probe; },   // GST: halo.gst, not halo.probe (that name is the existing haloProbe test hook)
     render(p, world, dist, destination, objectDestination, ss = 1) {
       update(p, world, dist);
       const extras = !!(p.trafficBeams || p.lampPitch || p.pitch || p.afs || p.corneringLamps || p.yaw || p.cornerLeft || p.cornerRight); const tableOn = u.scatMode.value === 1; shading(mat, extras, false, tableOn); shading(pass.material, extras, true, tableOn, true, smOn(p) && (p.look || {}).trafficShadowRoad !== 'off'); shading(pass.skyMaterial, extras, true, tableOn);   // B10: the pass blends too (the banks are packed, see uniforms.mjs)
@@ -435,7 +437,9 @@ export function create(canvas, gl, onModelsReady) {
         // values written are the ones already in the uniforms, so flat output is unchanged.
         const kept = { eye: u.eye.value.clone(), lamp: u.lamp.value.map((q) => q.clone()) };
         u.eye.value.fromArray(p.eye || [-2, .37, 1.2]); u.lamp.value.forEach((q, i) => { if (i < p.lamps.length) q.fromArray(p.lamps[i]); });
+        if (probe) probe.lap('prep');
         try { runTable(p, extras, dist); } finally { u.eye.value.copy(kept.eye); u.lamp.value.forEach((q, i) => q.copy(kept.lamp[i])); }
+        if (probe) probe.lap('air table');
       }
       // E2 crest occlusion (option crestOcclusion 'on', pass frames with a halo): the ribbon is brought up to date and its height map rendered BEFORE the table is built (update() otherwise runs after it, a frame late).
       // Off: nothing here runs, the table pass is the old text and the frame is byte-identical.
@@ -444,14 +448,18 @@ export function create(canvas, gl, onModelsReady) {
       // SM: the maps need the ribbon up to date before the table is built (as E2). sm = null (off, flat frames): the table is the old one.
       let sm = null, objDone = false; if (smOn(p) && !p.airHold && D.haloN(p)) { pass.update(world.A, dist); const oc = objectDestination && p.look.trafficShadowObjects !== 'off'; if (oc) { objectView.update(p, world.objects, ss); objDone = true; }   // SM1b: this frame's instances, before the maps
         sm = { render: (list, res) => trafficMaps.render(pass.geometry, u.carFromWorld.value, pass.geomVer, list, res, oc ? objectView.casters : null) }; }
+      if (probe) probe.lap('crest map');   // GST: everything since the last lap (prep when the air table is off) up to the halo build
       if (!p.airHold) halo.build(p, world, occ, sm); else { u.haloOn.value = 0; halo.cone = null; halo.smCars = null; }
+      if (probe) probe.lap('halo uniforms');
       u.smSoft.value = { off: 0, '3x3': 2 }[(p.look || {}).trafficShadowSoft] ?? 1;   // SM3 PCF (option trafficShadowSoft, default 2x2)
       for (let i = 0; i < 64; i++) { const c = halo.smCars && i < u.nTraffic.value ? halo.smCars.get(litCars[i]) : undefined; u.smOf.value[i >> 2].setComponent(i & 3, c === undefined ? 0 : c + 1); }   // SM3: traffic lamp -> its car's map (by car id)   // TOUGE-ELEV B2: touge frames build the halo too (lamps in the car frame, B1)   // SN: a deferred (air-off) frame builds no halo table   // SL: the traffic scatter table, before the GROUND pass reads it (the pass view is skipped)
       renderer.resetState();
       if (!target || target.width !== p.w || target.height !== p.h) { if (target) target.dispose(); target = new T.WebGLRenderTarget(p.w, p.h, { type: T.HalfFloatType, depthTexture: new T.DepthTexture(p.w,p.h,T.FloatType), depthBuffer: true, minFilter: T.NearestFilter, magFilter: T.NearestFilter }); }
       renderer.setRenderTarget(target); if(p.touge){pass.update(world.A,dist);pass.shadows(renderer);renderer.setRenderTarget(target);renderer.render(pass.scene,pass.camera);}else renderer.render(scene, camera);
+      if (probe) probe.lap('scene');
       lampCone.draw(p, world, target, p.touge ? { eye: u.eye.value, carFromWorld: u.carFromWorld.value, worldFromCar: u.worldFromCar.value } : null);   // LAMP-CONE-MIST: additive in-scatter cone before the blit (no-op unless the lamp cone is on and visibility is set)
       beamCone.draw(halo.cone, target);   // CP: the side-on lamps the table handed over (no-op when none)
+      if (probe) probe.lap('cones');
       set('passDepth', target.depthTexture);
       if (failure) throw Error(failure);
       // CPU textures use row zero = top; three's target uses row zero = bottom.
@@ -467,6 +475,7 @@ export function create(canvas, gl, onModelsReady) {
         const src = gl.getParameter(gl.FRAMEBUFFER_BINDING); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, objectDestination);
         gl.blitFramebuffer(0, 0, p.w * ss, p.h * ss, 0, p.h, p.w, 0, gl.COLOR_BUFFER_BIT, ss > 1 ? gl.LINEAR : gl.NEAREST);
       }
+      if (probe) probe.lap('objects');
       renderer.setRenderTarget(null); renderer.resetState();
     },
     masks(p, ss, debug = false) {

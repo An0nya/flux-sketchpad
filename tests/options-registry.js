@@ -129,6 +129,7 @@ const FROZEN_OLD_DV_DEF = {
   fpsCounter: true,   // OHQ/UI (10-29): default changed on purpose (owner: oncoming scatter medium + UI pass), defaultHistory entry, DEFAULTS_VERSION 4 (was false).
   sceneDetails: false,
   debugTimings: false,
+  gpuStages: false,   // GST (2026-11-27): new opt-in diagnostics option, default off (not a default change)
   dynamicResolution: false,
   frameTargetMs: 33,
   streetLamps: 'sodium',

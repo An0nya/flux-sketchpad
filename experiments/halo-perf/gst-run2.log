@@ -1,0 +1,2 @@
+[FAIL] run completed "Error: page.evaluate: TypeError: Cannot read properties of null (reading 'haloTableBytes')\n    at eval (eval at evaluate (:311:30), <anonymous>:1:55)\n    at UtilityScript.evaluate (<anonymous>:313:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)"
+GST: 1 of 1 checks FAILED

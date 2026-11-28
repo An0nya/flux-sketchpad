@@ -657,6 +657,7 @@ export function haloPass(renderer, u) {
       const smK = p.touge && sm && look.trafficShadows && look.trafficShadows !== 'off' ? (look.trafficShadows === 'all' ? SM_MAX : Math.min(SM_MAX, Math.max(0, Math.round(+look.trafficShadows) || 0))) : 0;
       const smRes = SM_RES[look.shadowRes] || SM_RES['1024x512'], smCap = Math.max(1, Math.floor((renderer.capabilities.maxTextureSize || 4096) / smRes[1]));   // the maps stack vertically in one texture: never taller than the GPU allows (fewer maps, nearest kept)
       let smCars = null;
+      if (halo.gst) halo.gst.lap('halo prep');   // GST: lamp choice, culling plan, uniforms (CPU), since the last lap
       if (smK) {
         const cars = [];
         for (const q of used) { const id = q.L.car; if (id === undefined || cars.some((c) => c.id === id)) continue; if (cars.length >= Math.min(smK, smCap)) break; cars.push({ id, lamps: used.filter((o) => o.L.car === id) }); }
@@ -667,6 +668,7 @@ export function haloPass(renderer, u) {
           return { eye: at, f: b.f, l: b.l, u: b.u, tanH: Math.tan(hd * DG), tanV: Math.min(1.2, Math.tan(vd * DG) / Math.cos(hd * DG)) };   // tanV / cos H: an elevation at the edge azimuth sits higher on a flat map
         });
         if (list.length) { sm.render(list, smRes); smCars = new Map(cars.map((c, i) => [c.id, i])); }
+        if (halo.gst) halo.gst.lap('halo shadow maps');
       }
       halo.sm = smCars ? { cars: [...smCars.keys()], maps: smCars.size } : null; halo.smCars = smCars;
       const useSm = !!smCars, smOf = (q) => (smCars && q.L.car !== undefined && smCars.has(q.L.car) ? smCars.get(q.L.car) : -1);
@@ -855,6 +857,7 @@ export function haloPass(renderer, u) {
           prefix(rt2.texture, cumRt2, tab[0]);
           { const px = new Uint16Array(4 * 8); renderer.readRenderTargetPixels(cumRt2, 0, 0, 8, 1, px); halo.m2dbg = Array.from(px.slice(0, 16)).map((v) => +v.toFixed(1)); const px2 = new Uint16Array(4); renderer.readRenderTargetPixels(cumRt, 0, 0, 1, 1, px2); halo.m1dbg = Array.from(px2).map((v) => +v.toFixed(1)); }   // glm5.3flash review instrumentation: first cells of the M2 cumulative + M1 cumulative
         }
+        if (halo.gst) halo.gst.lap('halo screen');   // GST: the screen table (march, blur, prefix; second moment too)
         // HDX6/HDX7: each polar table is cleared, then every lamp in it is drawn (additive), sub-pass by sub-pass, then prefixed.
         plan.forEach((s, si) => {
           if (timing) { renderer.getContext().finish(); }
@@ -872,6 +875,7 @@ export function haloPass(renderer, u) {
           prefix(rp.bin.texture, rp.cum, pol.nT, rp.layer);
           if (timing) { renderer.setRenderTarget(rp.cum, rp.layer); renderer.readRenderTargetPixels(rp.cum, 0, 0, 1, 1, new Uint16Array(4)); halo.msPolar += performance.now() - tp; }
         });
+        if (halo.gst) halo.gst.lap('halo polar');
       } finally { renderer.autoClear = ac; renderer.setClearColor(cc, ca); renderer.setRenderTarget(null); if (tq) { const g = renderer.getContext(); g.endQuery(tqx.TIME_ELAPSED_EXT); halo.tqPending.push(tq); } }
       if (timing) { renderer.readRenderTargetPixels(cumRt, 0, 0, 1, 1, new Uint16Array(4)); halo.ms = performance.now() - t0; }
       u.haloTex.value = cumRt.texture; u.haloM2Tex.value = cumRt2 ? cumRt2.texture : null; u.haloTab.value.set(tab[0], tab[1]); u.haloOn.value = globalThis.HALO_TABLE_ONLY ? 0 : 1;   // P3-M2/glm5.2: bind the second-moment table when moment2 is on

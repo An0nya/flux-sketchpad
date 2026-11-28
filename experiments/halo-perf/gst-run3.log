@@ -1,0 +1,12 @@
+[PASS] 1. OFF: halo on at the pose, tables present {"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","on":1}
+[PASS] 1. OFF: no probe recorded {"probes":0}
+[PASS] 2. ON: frame and halo tables equal OFF {"off":{"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","on":1},"on":{"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","on":1}}
+[PASS] 2. ON: probes recorded (every 8th frame) {"probes":3}
+[PASS] 3. ON: stages booked in frame order include halo screen, scene, compose, final ["crest map","halo prep","halo screen","halo polar","halo uniforms","scene","cones","objects","compose","final"]
+[PASS] 3. ON: the readout line is shown ["GPU stages (1/8 frames, synced, median of 3): crest map 1.1 · halo 1.4 (prep 1.1 · screen 0.2 · polar 0.1 · uniforms 0.0) · scene 1.5 · cones 0.1 · objects 1.5 · compose 0.2 · final 0.1 · sum 5.9 / probe 6.0 ms"]
+[PASS] 4. control: halo off books no halo stage [["crest map","halo uniforms","scene","cones","objects","compose","final"],["crest map","halo uniforms","scene","cones","objects","compose","final"],["crest map","halo uniforms","scene","cones","objects","compose","final"]]
+[FAIL] 5. control: halo screen grows with the table (div 1.4 vs 4: >= 1.3x); final does not grow as much {"screen":[0.2999997138977051,0.3000001907348633],"final":[0.09999990463256836,0.20000028610229492]}
+[PASS] 6. OFF after ON: frame and tables equal the first OFF {"off1":{"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","on":1},"off2":{"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","on":1}}
+[PASS] 6. OFF after ON: no probe recorded {"probes":0}
+[PASS] no page errors []
+GST: 1 of 11 checks FAILED

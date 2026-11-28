@@ -1,0 +1,7 @@
+[PASS] pass_dip_1332: halo table (bin and cum) and frame match the pins (halo on, touge) {"got":{"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","touge":true,"on":1},"pins":
+[PASS] pass_valley_1028: halo table (bin and cum) and frame match the pins (halo on, touge) {"got":{"png":"5eb29b135e8456d5","bin":"7374948aa7eceeaa","cum":"ecbf172544844ff8","touge":true,"on":1},"pin
+[PASS] pass_equal_1084: halo table (bin and cum) and frame match the pins (halo on, touge) {"got":{"png":"f79a184be4c99bc8","bin":"897c6b545fd2b54a","cum":"250831d3b2ad2abd","touge":true,"on":1},"pins
+[PASS] pass_dip_1332 with the polar table: frame matches the pin (33b9dd7651760cd6) {"got":"33b9dd7651760cd6"}
+[PASS] flat road, traffic halo on: table and frame match the pins {"got":{"png":"95fb939bc359f7e6","bin":"48d585c9b5b15896","cum":"f13463e4fae167ab","touge":false,"on":1}}
+[PASS] no page errors []
+ALL PASS 6

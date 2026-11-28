@@ -1,0 +1,7 @@
+{"name":"freeze","ch":{},"frameMs":16,"haloMs":4.299999713897705,"polarMs":3.5999999046325684,"canvas":[856,482],"passes":6,"lamps":4,"tab":[214,121],"bins":12,"polars":1,"on":1}
+{"name":"freeze + conePass off","ch":{"haloConePass":"off"},"frameMs":16,"haloMs":4.299999713897705,"polarMs":3.5999999046325684,"canvas":[856,482],"passes":6,"lamps":4,"tab":[214,121],"bins":12,"polars":1,"on":1}
+{"name":"freeze + shadows off","ch":{"trafficShadows":"off"},"frameMs":14.5,"haloMs":4.299999713897705,"polarMs":3.5999999046325684,"canvas":[856,482],"passes":6,"lamps":4,"tab":[214,121],"bins":12,"polars":1,"on":1}
+{"name":"freeze + polar off","ch":{"haloPolar":"off"},"frameMs":16.300000190734863,"haloMs":4.299999713897705,"polarMs":3.5999999046325684,"canvas":[856,482],"passes":6,"lamps":4,"tab":[214,121],"bins":12,"polars":1,"on":1}
+{"name":"freeze + crest off","ch":{"crestOcclusion":"off"},"frameMs":16.800000190734863,"haloMs":4.299999713897705,"polarMs":3.5999999046325684,"canvas":[856,482],"passes":6,"lamps":4,"tab":[214,121],"bins":12,"polars":1,"on":1}
+{"name":"halo off","ch":{"trafficHalo":0},"frameMs":12.100000381469727,"haloMs":null,"polarMs":null,"canvas":[856,482],"passes":0,"lamps":0,"tab":[214,121],"bins":12,"polars":0,"on":0}
+{"name":"halo off + shadows off","ch":{"trafficHalo":0,"trafficShadows":"off"},"frameMs":11.5,"haloMs":null,"polarMs":null,"canvas":[856,482],"passes":0,"lamps":0,"tab":[214,121],"bins":12,"polars":0,"on":0}

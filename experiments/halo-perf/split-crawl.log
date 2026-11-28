@@ -1,0 +1,7 @@
+load: Loaded: mountain pass · 40R · 6181 m. Paused. Beam reference loading: low builtin:sqm-samples.json:4 (loading).
+env: {"renderer":"ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)","w":856,"h":482,"stats":"three"}
+{"name":"baseline","ch":{},"frameMs":88.59999990463257,"haloMs":72.69999980926514,"polarMs":72.40000009536743,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"freeze (read only)","ch":{},"frameMs":20.699999809265137,"haloMs":72.30000019073486,"polarMs":72.10000038146973,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
+{"name":"noread (build only)","ch":{},"frameMs":87.90000009536743,"haloMs":null,"polarMs":null,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":0}
+{"name":"halo off","ch":{"trafficHalo":0},"frameMs":16.300000190734863,"haloMs":null,"polarMs":null,"canvas":[856,482],"passes":0,"lamps":0,"tab":[512,345],"bins":32,"polars":0,"on":0}
+{"name":"baseline again","ch":{},"frameMs":88.69999980926514,"haloMs":72.59999990463257,"polarMs":72.30000019073486,"canvas":[856,482],"passes":16,"lamps":16,"tab":[512,345],"bins":32,"polars":2,"on":1}
