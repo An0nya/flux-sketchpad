@@ -2419,6 +2419,9 @@ void main() {
     btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
     btn('gpu-stages', 'GPU stage timings (with Debug timings on, GPU renderer): every 8th frame waits for the GPU after each render stage (air table, crest map, halo, scene, cones, objects, compose, glare, final) and the readout shows each stage\'s median ms. Probe frames run slower; off costs nothing.', () => setDV(ui, 'gpuStages', !info().o.gpuStages), 'GPU stages');
     btn('time-frame', 'Time this frame (with GPU stages on, GPU renderer): pauses, renders this exact frame 80 times with every stage timed (first 16 dropped as warm-up) and shows each stage as mean [min-max]; first it plays 80 real frames from this pose (traffic moving, no probes) for the real per-frame cost. Stage syncs slow the stages down, so read them as shares of the real frame. The pose and traffic are put back exactly. Load the same state on two devices to compare them.', () => { timeFrame(); }, 'Time this frame');
+    // BEN: the benchmark (js/drive-bench.js): three saved scenes, settings changes one at a time, real frames + stage breakdown, then a results file.
+    btn('benchmark', 'Benchmark (with GPU stages on, GPU renderer): about 1-2 minutes. Loads three saved scenes (forest, city, mountain) with one fixed medium profile, times real frames and the GPU stages, then one setting at a time (trees, leafy foliage, density, oncoming headlamps, models, haze, scatter beams, wet road with streaks and bounce), and repeats the first scene at the end to show heat throttling. Your settings and spot are put back afterwards. Then tap "save benchmark" to share or download the results file.', () => { if (RF.DriveBench) RF.DriveBench.run(); }, 'Benchmark');
+    btn('bench-save', 'Share or download the last benchmark results (JSON with the timings and three small screenshots). AirDrop it to the Mac and read it with tools/bench-read.js.', async () => { if (RF.DriveBench) { const m = await RF.DriveBench.save(); stateMsg.textContent = m; } }, 'save benchmark');
     btn('scene-details', 'Live numbers about the scene in a small panel: own car, oncoming traffic, glare, hazards, range and lamp. Refreshes about 4 times a second; off costs nothing.', () => setDV(ui, 'sceneDetails', !info().o.sceneDetails), 'Scene details');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
     // the resolution ceiling: the sim width every scene and mode may use (the canvas stays css x dpr). Dynamic resolution steps down from it.
@@ -2872,7 +2875,8 @@ void main() {
     hb.setAttribute('aria-pressed', String(!!V.high)); hb.dataset.state = mode;
     hb.textContent = mode === 'auto' ? 'high beam: auto (' + (V.autoSt ? V.autoSt.reason : 'clear') + ')' : 'high beam: ' + mode;
     for (const [name, key] of [['leafy-foliage', 'leafyFoliage'],['detailed-models', 'detailedModels'], ['traffic-beams', 'trafficBeams'], ['surface-sheen', 'surfaceSheen'], ['lamp-pitch', 'lampPitch'], ['afs', 'afs'], ['cornering-lamps', 'corneringLamps'], ['gpu-renderer', 'gpuRenderer'], ['fps-counter', 'fpsCounter'], ['debug-timings', 'debugTimings'], ['gpu-stages', 'gpuStages'], ['scene-details', 'sceneDetails'], ['dynamic-resolution', 'dynamicResolution'], ['endless-details', 'endlessDetails']]) V.ui.driveBar.querySelector('[data-anim="' + name + '"]').setAttribute('aria-pressed', String(!!o[key] && !(key === 'gpuRenderer' && V.gpuFailure)));      // ON but failed shows as off: the CPU is drawing
-    { const tf = V.ui.driveBar.querySelector('[data-anim="time-frame"]'); if (tf) tf.hidden = !(o.gpuStages && o.debugTimings && o.gpuRenderer); }   // GST2: only where it can run
+    for (const id of ['time-frame', 'benchmark']) { const tf = V.ui.driveBar.querySelector('[data-anim="' + id + '"]'); if (tf) tf.hidden = !(o.gpuStages && o.debugTimings && o.gpuRenderer); }   // GST2, BEN: only where it can run
+    { const bs = V.ui.driveBar.querySelector('[data-anim="bench-save"]'); if (bs) bs.hidden = !(RF.DriveBench && RF.DriveBench.last); }
     V.ui.driveBar.querySelector('[data-anim="gpu-renderer"]').toggleAttribute('data-failed', !!(o.gpuRenderer && V.gpuFailure));
     V.ui.driveBar.querySelector('[data-anim="resolution"]').value = o.simCeiling in SIM_CEILINGS ? o.simCeiling : 'high';
     V.ui.driveBar.querySelector('[data-anim="min-fps"]').value = String(fpsSettings(o).minFps);
@@ -3680,7 +3684,7 @@ void main() {
     if (tableOn()) V.perfLab.textContent += '\n' + globalThis.SD_SCATTER.badge + ' · gain ' + (Math.min(4, Math.max(0.25, +V.info.o.scatterGain || 1))).toFixed(2) + ' · beam table: ' + (globalThis.SD_SCATTER.cache ? 'cache on, ' + (globalThis.SD_SCATTER.cycle || 1) + ' version(s), ' + globalThis.SD_SCATTER.valid + ' valid' : 'cache off') + ' · recomputes ' + globalThis.SD_SCATTER.recomputes + ' · skips ' + globalThis.SD_SCATTER.skips;
     // NE3: the 12 slice counts the table pass got (SD_SCATTER.binN), with debug timings on.
     if (tableOn() && V.info.o.debugTimings && globalThis.SD_SCATTER.binN) { const bn = globalThis.SD_SCATTER.binN; V.perfLab.textContent += '\nslices ' + bn.join(',') + ' = ' + bn.reduce((a, b) => a + b, 0); }
-    if (V.info.o.gpuStages) { V.perfLab.textContent += '\n' + stageText(); const tt = timeText(); if (tt) V.perfLab.textContent += '\n' + tt; }   // GST, GST2
+    if (V.info.o.gpuStages) { V.perfLab.textContent += '\n' + stageText(); const tt = timeText(); if (tt) V.perfLab.textContent += '\n' + tt; const bt = RF.DriveBench ? RF.DriveBench.text() : ''; if (bt) V.perfLab.textContent += '\n' + bt; }   // GST, GST2, BEN
     const tl = tlText(); if (tl) V.perfLab.textContent += '\n' + tl;
   }
   // GST: one line per probe ring: each stage's MEAN ms over the kept probes, in frame order; halo sub-stages nest under "halo".
@@ -3720,7 +3724,9 @@ void main() {
   //     render a probe (synced per stage), the first `warm` dropped. Synced stages run slow, so they are read as proportions of part 1.
   // Afterwards the pose, clock, flash state and traffic are put back exactly, the drive is paused, and the fps / frame stats are cleared
   // so the timing renders don't show up as fps (they did: 125 and 333 fps, Anya 11-28).
-  async function timeFrame(n = TIME_N, warm = TIME_WARM) {
+  // opt (BEN benchmark): { real: kept real frames (default TIME_REAL), realWarm (TIME_REAL_WARM) }; n = 0 skips the stage breakdown.
+  async function timeFrame(n = TIME_N, warm = TIME_WARM, opt = {}) {
+    const nReal = opt.real || TIME_REAL, realWarm = opt.realWarm === undefined ? TIME_REAL_WARM : opt.realWarm;
     if (!V.three || !V.three.setProbe || (V.timeRun && V.timeRun.running)) return;
     const ui = V.ui, st = S(ui), play = (on) => { st.playing = on; V.setOwn('playing', on); };   // as the Drive button: the anim state, then the option
     if (st.playing) play(false);
@@ -3732,9 +3738,9 @@ void main() {
       V.noProbe = true; V.frameMs = []; V.lastDrawn = 0;
       try {
         play(true);
-        const need = TIME_REAL_WARM + TIME_REAL, t0 = performance.now();
+        const need = realWarm + nReal, t0 = performance.now();
         while ((V.frameMs || []).length < need && performance.now() - t0 < TIME_REAL_MAX_MS) await new Promise((r) => setTimeout(r, 50));
-        const ms = (V.frameMs || []).slice(TIME_REAL_WARM, need);
+        const ms = (V.frameMs || []).slice(realWarm, need);
         if (ms.length) { const sorted = ms.slice().sort((a, b) => a - b); V.timeRun.real = { n: ms.length, ms: ms.reduce((a, b) => a + b, 0) / ms.length, p95: sorted[Math.min(sorted.length - 1, Math.floor(0.95 * sorted.length))], min: sorted[0], max: sorted[sorted.length - 1] }; }
       } finally { play(false); stop(); V.noProbe = false; }
       V.timeRun.phase = 'stage breakdown'; perfLabel();

@@ -372,3 +372,24 @@ baseline vs "again" differ by 14 ms (44.8 vs 30.9). Something was still loading 
 `D.glareSources()` (`js/drive.js:899` on glare-model) drops a lamp from the glare list when one ray from the eye to the lamp centre is
 blocked (`occluded(...) continue`). The veil, scatter tail and starburst are all per source, so each one switches fully on or off in
 a single frame. There is no ramp and no partial visibility: a lamp behind a trunk is a binary strobe.
+
+## Benchmark mode (BEN), 2026-11-28
+
+Built: `js/drive-bench.js` (buttons **Benchmark** and **save benchmark** in Performance > Timings, shown with GPU stages + Debug
+timings + GPU renderer), scenes in `samples/bench/` (Anya's saves: forest = t-junction 11397 m, city = intersection 11092 m,
+mountain = 40R 12549 m), `tools/bench-run.js` (same run headless on the Mac, uncapped), `tools/bench-read.js` (table + screenshots,
+several files side by side), test `tests/regress/BEN-benchmark.js` (5/5), gate-mapped. `timeFrame()` takes `{ real, realWarm }`
+and n = 0 skips the stage breakdown (GST still 17/17). The bench PROFILE is Anya's medium look with SS off.
+
+First Mac run (856×482, `flux-bench-mac-856.json`, 36 s): frames are 6–12 ms there and the real-frame mean swings ±20 % between
+identical rows (forest baseline 6.7 vs again 8.5; quick run "trees off" −57 % vs −16 % here). At this size the Mac is too fast for
+the benchmark to resolve small changes: use the phones (50–80 ms frames) or run the Mac at CW=1600 CH=900.
+**OBSERVED:** forest and city have **no halo** in the bench: those saves have clear air (visibility null), so the oncoming scatter
+has nothing to light. Only mountain (visibility 3000 m) exercises the halo: haze off and scatter off each cut ~40 %.
+- Profile v2 (11-28, Anya): haze (visibility 3000) in every scene, so forest and city exercise the halo; a "wet road" step in city
+  and mountain (wetness 0.6, sheen with ggx streaks, bounce, bounce plane). Quick Mac check: all 13 steps record; city headlamps
+  off −47 %, wet road +38 %.
+- **Bug found by the benchmark (OBSERVED, not fixed):** wetness + wetSheen + wetVeil + wetBouncePlane on a tiles road crashes the GPU
+  renderer: `drive.js:888` (`glareSources` mirror) calls `opts.A.surface(...)`, and the tiles world's A has no `surface`. The drive
+  falls back to the CPU picture until a reload. Same line on origin/glare-model; from e15bad0 (11-05). The bench leaves wetVeil off
+  and now aborts with an error if `V.glFailed` is set mid-run.
