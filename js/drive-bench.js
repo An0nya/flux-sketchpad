@@ -90,6 +90,7 @@
         out.drift = first && first.real && again.real ? { first: first.real.ms, last: again.real.ms, ratio: r2(again.real.ms / first.real.ms) } : null;
       }
       out.env = RF.DriveAnim.stateDump(ui).env;
+      out.device = deviceInfo(V);
     } catch (e) { out.error = String(e && e.message || e); }
     finally {
       out.finished = new Date().toISOString(); out.seconds = r2((performance.now() - B.t0) / 1000);
@@ -100,7 +101,13 @@
     }
     return out;
   }
-  function fileName(o) { return 'flux-bench-' + String(o.started || '').replace(/[:.]/g, '-').slice(0, 19) + '.json'; }
+  // what the browser will say about the device: the name the user typed (Safari hides the model), screen, cores, GPU string
+  function deviceInfo(V) {
+    let name = null; try { name = (localStorage.getItem('flux/benchDevice') || '').trim() || null; } catch (e) { /* no storage */ }
+    let gpu = null; try { const gl = V.canvas.getContext('webgl2'), x = gl && gl.getExtension('WEBGL_debug_renderer_info'); gpu = x ? gl.getParameter(x.UNMASKED_RENDERER_WEBGL) : gl && gl.getParameter(gl.RENDERER); } catch (e) { /* not exposed */ }
+    return { name, screen: typeof screen === 'object' ? [screen.width, screen.height] : null, dpr: window.devicePixelRatio || null, cores: navigator.hardwareConcurrency || null, memoryGB: navigator.deviceMemory || null, gpu };
+  }
+  function fileName(o) { const n = o.device && o.device.name ? '-' + o.device.name.replace(/[^\w-]+/g, '_').slice(0, 24) : ''; return 'flux-bench' + n + '-' + String(o.started || '').replace(/[:.]/g, '-').slice(0, 19) + '.json'; }
   // share sheet where the browser can share files (iOS: AirDrop to the Mac), else a download. Needs a fresh tap.
   async function save(o = RF.DriveBench.last) {
     if (!o) return 'No benchmark yet.';
@@ -116,5 +123,5 @@
     const B = RF.DriveAnim && RF.DriveAnim._.V.benchRun; if (!B) return '';
     return 'Benchmark: ' + (B.running ? 'step ' + B.step + '/' + B.total + ' · ' + B.phase + ' (' + Math.round((performance.now() - B.t0) / 1000) + ' s)' : B.phase);
   }
-  RF.DriveBench = { BENCH_VERSION, PROFILE, SCENES, WET, FULL, run, save, text, fileName, last: null };
+  RF.DriveBench = { BENCH_VERSION, PROFILE, SCENES, WET, deviceInfo, FULL, run, save, text, fileName, last: null };
 })();

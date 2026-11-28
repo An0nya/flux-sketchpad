@@ -3,7 +3,8 @@
 // Checks:
 //  1. The Benchmark button shows only with GPU stages + Debug timings + GPU renderer; "save benchmark" is hidden before a run.
 //  2. Rows: baseline (real frames + stage means incl. scene/objects/final), one variant (real frames only), "baseline again", drift ratio.
-//  3. The forest screenshot is a JPEG data URL of real size; the file records the profile, env (sim size) and no error.
+//  3. The forest screenshot is a JPEG data URL of real size; the file records the profile, env (sim size), the device name typed in
+//     the bench-device box plus screen/dpr, and no error.
 //  4. Afterwards every option and the pose (dist, t) equal what they were before the run; "save benchmark" is visible.
 //  5. save() downloads a flux-bench-*.json that parses to the same rows.
 // Run: python3 tests/serve.py <port>, then PLAYWRIGHT=... node tests/regress/BEN-benchmark.js <port>
@@ -36,6 +37,7 @@ setTimeout(() => { console.log('[FAIL] watchdog: no result after 8 min (checks s
     await page.evaluate(() => { const st = RF.DriveAnim._.S(RF.UI); st.dist = 1332; st.t = 140; RF.UI.redrawSpec(); }); await sleep(1500);
     const before = await page.evaluate(() => { const d = RF.DriveAnim.stateDump(RF.UI); return { options: d.options, pose: { dist: d.pose.dist, t: d.pose.t } }; });
 
+    await page.evaluate(() => { const i = RF.UI.driveBar.querySelector('[data-anim="bench-device"]'); i.value = 'Test Phone 1'; i.dispatchEvent(new Event('change')); });
     const out = await page.evaluate(() => RF.DriveBench.run({
       scenes: [{ name: 'forest', file: 'forest.json', variants: [['trees off', { veg: false }]] }],
       real: 16, realWarm: 4, stages: 8, stageWarm: 2, settleLoad: 1500, settleToggle: 800,
@@ -46,8 +48,9 @@ setTimeout(() => { console.log('[FAIL] watchdog: no result after 8 min (checks s
       && vr.variant === 'trees off' && vr.real && vr.real.n === 16 && vr.stages === null && again.variant === 'baseline again' && out.drift && out.drift.ratio > 0,
       { rows: rows.map((r) => ({ v: r.variant, real: r.real, stages: r.stages && Object.keys(r.stages) })), drift: out.drift, error: out.error });
     const shot = (out.shots || {}).forest || '';
-    ok('3. screenshot is a JPEG of real size; profile, env and no error recorded', /^data:image\/jpeg;base64,/.test(shot) && shot.length > 3000 && out.profile && out.profile.samples === '1' && out.env && out.env.sim && !out.error && !out.restoreError,
-      { shotLen: shot.length, sim: out.env && out.env.sim, error: out.error, restoreError: out.restoreError, seconds: out.seconds });
+    ok('3. screenshot is a JPEG of real size; profile, env and no error recorded', /^data:image\/jpeg;base64,/.test(shot) && shot.length > 3000 && out.profile && out.profile.samples === '1' && out.env && out.env.sim && !out.error && !out.restoreError
+      && out.device && out.device.name === 'Test Phone 1' && Array.isArray(out.device.screen) && out.device.dpr > 0,
+      { shotLen: shot.length, device: out.device, sim: out.env && out.env.sim, error: out.error, restoreError: out.restoreError, seconds: out.seconds });
 
     await sleep(1500);
     const after = await page.evaluate(() => { const d = RF.DriveAnim.stateDump(RF.UI); return { options: d.options, pose: { dist: d.pose.dist, t: d.pose.t } }; });
@@ -57,7 +60,7 @@ setTimeout(() => { console.log('[FAIL] watchdog: no result after 8 min (checks s
 
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.evaluate(() => RF.DriveBench.save())]);
     const p = await dl.path(), saved = JSON.parse(fs.readFileSync(p, 'utf8'));
-    ok('5. save() downloads flux-bench-*.json with the same rows', /^flux-bench-.*\.json$/.test(dl.suggestedFilename()) && saved.kind === 'flux-bench' && saved.rows.length === rows.length, { name: dl.suggestedFilename() });
+    ok('5. save() downloads flux-bench-<device>-*.json with the same rows', /^flux-bench-Test_Phone_1-.*\.json$/.test(dl.suggestedFilename()) && saved.kind === 'flux-bench' && saved.rows.length === rows.length, { name: dl.suggestedFilename() });
   } catch (e) { ok('no exception', false, String(e && e.stack || e)); }
   finally {
     if (errors.length) ok('no page errors', false, errors.slice(0, 5));

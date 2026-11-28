@@ -393,3 +393,43 @@ has nothing to light. Only mountain (visibility 3000 m) exercises the halo: haze
   renderer: `drive.js:888` (`glareSources` mirror) calls `opts.A.surface(...)`, and the tiles world's A has no `surface`. The drive
   falls back to the CPU picture until a reload. Same line on origin/glare-model; from e15bad0 (11-05). The bench leaves wetVeil off
   and now aborts with an error if `V.glFailed` is set mid-run.
+
+## First phone benchmark: new phone (iPhone 18 Pro Max per Anya), 2026-11-28, 52f82f1, 51 s, sim 880×494, dpr 2
+
+Real frames, ms (Safari's timer is 1 ms coarse; drift first → last 14.8 → 15.5, ×1.05, so no throttling within the run):
+
+| scene | baseline | steps |
+|---|---|---|
+| forest | 14.8 (68 fps) | trees off 9.3 (−37 %) · leafy off 13.8 (−7 %) · density 1 13.9 (−6 %) |
+| city | 21.8 (46 fps) | headlamps off 12.2 (−44 %) · models off 20.6 (−5 %) · wet road 32.4 (+49 %) |
+| mountain | 14.7 (68 fps) | haze off 10.3 (−30 %) · scatter beams off 10.4 (−29 %) · wet road 17.1 (+16 %) |
+
+Stage shares of the synced baseline (probe ms in brackets): forest [18.6] objects 41 %, cones 17 %, halo screen 17 %, scene 10 %;
+city [24.3] halo screen 27 %, crest map 23 %, objects 20 %, cones 12 %; mountain [26.4] halo screen 35 %, scene 28 %, crest 23 %.
+**OBSERVED:** trees are the forest's biggest cost on the phone (objects stage; trees off −37 %), which confirms Anya's informal
+reading. Oncoming headlamps are ~44 % of the city frame. The "cones" stage (lamp cone pass) is 2.9–3.2 ms synced in forest and
+city and 0 on the mountain pass: not looked at before, worth a look. The "crest map" lap in city (5.6 ms, crest occlusion off) is
+the traffic shadow maps (trafficShadows all).
+
+## Old phone benchmark, 2026-11-28, 52f82f1, 136 s, sim 856×482, dpr 2 — `flux-bench-oldphone-2026-11-28.json`
+
+Real ms, old vs new phone (ratio): forest 64.9 vs 14.8 (4.4×) · city 90.8 vs 21.8 (4.2×) · mountain 59.8 vs 14.7 (4.1×). No throttling
+(drift 0.98). Old-phone steps: forest trees off 44.6 (−31 %, 22 fps), leafy off / density 1 within noise; city headlamps off 62.1 (−32 %),
+models off −3 %, wet road 127.8 (+41 %); mountain haze off 51.2 (−14 %), scatter off 52.3 (−13 %), wet road 74.0 (+24 %).
+Synced probe vs real on the old phone: 150/65, 164/91, 122/60 (1.9–2.3× inflation).
+
+Old-phone stage shares of the synced baseline:
+- forest [150]: objects 37 %, cones 19 %, scene 15 %, halo screen 15 %, crest 9 %
+- city [164]: halo screen 32 %, objects 25 %, scene 15 %, crest 12 %, cones 11 %
+- mountain [122]: halo screen 37 %, scene 35 %, crest 15 %, objects 6 %
+
+**OBSERVED:**
+- The old phone is ~4.2× slower overall, but not evenly: synced scene is 6–12× the new phone's, cones 6–9×, objects 7–8×, halo screen
+  5–8×, crest map 3–9×. Per-pixel lit shaders (scene, objects, cones) suffer most, as the earlier GST readings suggested.
+- Only the forest with trees off clears 20 fps (44.6 ms). Mountain gets to 51 ms with haze or scatter off. The city is far off (62 ms
+  even with headlamps off).
+- On the old phone the halo is a smaller share in the mountain (haze off −14 % vs −30 % on the new phone): there the scene stage
+  (road/terrain shader, 35 %) is as big as the halo.
+- **"cones" is a real cost:** 19 % of the forest frame and 11 % of the city on the old phone, 0 on the mountain pass. INFERRED: the
+  street-lamp light cones in air (lampCone 'auto', sodium street lamps exist in forest/city tiles, not on the pass). Untested: a
+  "lamp cones off" step would confirm it.

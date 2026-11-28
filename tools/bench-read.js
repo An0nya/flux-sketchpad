@@ -7,6 +7,7 @@ const f1 = (v) => (v === null || v === undefined ? '-' : (+v).toFixed(1));
 for (const { f, d } of docs) {
   const e = d.env || {};
   console.log('\n## ' + path.basename(f) + ' · ' + (d.started || '') + ' · ' + f1(d.seconds) + ' s · sim ' + (e.sim || []).join('x') + ' · dpr ' + e.dpr + (d.error ? ' · ERROR ' + d.error : ''));
+  const dv = d.device || {}; console.log('   device: ' + (dv.name || '(no name)') + (dv.screen ? ' · screen ' + dv.screen.join('x') + ' @' + dv.dpr : '') + (dv.cores ? ' · ' + dv.cores + ' cores' : '') + (dv.gpu ? ' · ' + dv.gpu : ''));
   console.log('   ' + (e.userAgent || '') + '\n   ' + (d.url || ''));
   const keys = []; for (const r of d.rows) for (const k of Object.keys(r.stages || {})) if (!keys.includes(k)) keys.push(k);
   const halo = (s) => Object.entries(s).filter(([k]) => k.startsWith('halo ')).reduce((a, [, v]) => a + v, 0), top = keys.filter((k) => !k.startsWith('halo '));
