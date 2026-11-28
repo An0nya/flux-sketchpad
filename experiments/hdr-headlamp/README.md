@@ -254,3 +254,8 @@ WebGPU `toneMapping: extended` configures. By eye (Anya, both phones): only bar 
 (`drawingBufferToneMapping` / `configureHighDynamicRange` absent), so a WebGL canvas cannot show HDR on iOS.
 The drive's HDR therefore needs a WebGPU presenter fed from the WebGL frame (built on branch glare-model as hdrOut: copy = low/high halves through an opaque canvas, or readback = RGBM through a pixel-pack buffer).
 Mac headless Chromium 151, for contrast: `drawingBufferStorage(RGBA16F)` applies only after `EXT_color_buffer_float` is enabled; no tone-mapping hook either.
+
+**Probe D on iPhone (Safari 27, OBSERVED, Anya):** opaque-canvas copy byte-exact; alpha-canvas copy off by up to 4/255 (no RGBM through a
+canvas); copies are snapshots. At 880×494: canvas copy 4.20 ms CPU each (blocking); sync readback 1.83 + 0.30 ms; pixel-pack buffer +
+fence 0.30 + 0.97 ms CPU (fence 6.6 ms wall, not blocking). Hence the drive defaults to readback (glare-model `0cd77ac`).
+Old phone, drive with HDR: readback about 20 ms mean vs copy about 58 ms (17 fps), different scenes, one reading each.
