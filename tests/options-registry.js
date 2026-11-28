@@ -284,6 +284,9 @@ ok('unmet(): seed and density follow the scenery rules in drive-anim labels()', 
 const animSrc = read('js/drive-anim.js'), specSrc = read('js/spec-ui.js');
 const ctlBad = [];
 for (const e of Opt.OPTIONS) {
+  // glare model knobs (hdr-spike port, 11-27): drive-anim builds their controls in one loop over RF.Options.GLARE_PARAMS (data-anim = the
+  // knob id), so no id is spelled in the source. Check the generator is there instead; registry-controls-audit checks each control in the live DOM.
+  if (Opt.GLARE_PARAMS.some((p) => p.id === e.id)) { if (!/for \(const pm of Opt\.GLARE_PARAMS\)/.test(animSrc) || !animSrc.includes("'data-anim': pm.id")) ctlBad.push(e.id + ' (GLARE_PARAMS generator missing)'); continue; }
   for (const m of String(e.control).matchAll(/\[data-(dv|anim)="([^"]+)"/g)) {
     const name = m[2], src = m[1] === 'dv' ? specSrc : animSrc;
     if (name.startsWith('c-')) { if (!new RegExp("\\['" + name.slice(2) + "',").test(animSrc)) ctlBad.push(e.id + ' ' + name); }

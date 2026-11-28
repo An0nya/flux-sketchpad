@@ -1365,6 +1365,44 @@ void main() {
   o = vec4(srgb(aces(lin)), 1.0);
 }`;
 
+  // Glare model final pass (hdr-spike port, 11-27; registry glareModel). Its own program, so FS_FINAL above stays byte for byte what it was
+  // and a frame without a model is unchanged. Per source, in the same loop shape: the veil (Stiles–Holladay or CIE 146 general; drawn as
+  // light or as haze cap·v/(1+v), or not at all), a Moffat scatter TAIL (energy-normalised, faded out inside one sim pixel so the rendered
+  // lamp pixels stay the core), and a fixed-size starburst read from the spoke table (running sums: an arc of at least one canvas pixel is
+  // averaged, so thin spokes do not alias). Uniforms: 5 vec4 + 3 floats more than FS_FINAL; 1 sampler more (3 in all).
+  const FS_FINAL_GM = `#version 300 es
+precision highp float; uniform sampler2D uHdr, uGlare, uSpk; uniform vec2 uSize; uniform float uK, uFlip, uGl, uTanH, uTanV, uPxSim, uPxCv; uniform int uNS; uniform vec4 uSources[32]; uniform vec3 uSrcRGB[32];
+uniform vec4 uGm0, uGm1, uGm2, uGm3, uGm4; out vec4 o;
+// uGm0: veil mode (0 off, 1 physical, 2 perceptual), veil strength x SDR boost, perceptual cap, angle floor (deg)
+// uGm1: law (0 S-H, 1 CIE 146), age factor, pigment p, tail on    uGm2: alpha (rad), beta, tail scale (SDR boost), starburst on
+// uGm3: spoke length (deg), spoke gain, taper, rotation (rad)     uGm4: bins, table total, -, -
+vec3 aces(vec3 x) { x = max(x, 0.0); return min((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 1.0); }
+vec3 srgb(vec3 c) { return mix(12.92 * c, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+vec2 spk(int i) { return texelFetch(uSpk, ivec2(i, 0), 0).rg; }
+float spkCum(float x) { float nb = uGm4.x, w = floor(x / nb), xr = x - w * nb; int i = min(int(floor(xr)), int(nb) - 1); float fr = xr - float(i); float c0 = i > 0 ? spk(i - 1).r : 0.0; return w * uGm4.y + c0 + (spk(i).r - c0) * fr; }
+void main() {
+  vec2 uv = gl_FragCoord.xy / uSize; uv.y = 1.0 - uv.y; if (uFlip > 0.5) uv.x = 1.0 - uv.x;
+  vec3 dir = normalize(vec3(1.0, -(2.0 * uv.x - 1.0) * uTanH, (1.0 - 2.0 * uv.y) * uTanV));
+  vec3 veil = vec3(0.0), sct = vec3(0.0);
+  for (int i = 0; i < 32; i++) {
+    if (i >= uNS) break;
+    vec3 s = uSources[i].xyz, rgb = uSrcRGB[i]; float E = uSources[i].w, th = acos(clamp(dot(dir, s), -1.0, 1.0)), thD = degrees(th);
+    if (uGm0.x > 0.5) { float t = max(uGm0.w, thD); float psi = uGm1.x > 0.5 ? 10.0 / (t * t * t) + (5.0 / (t * t) + 0.1 * uGm1.z / t) * uGm1.y + 2.5e-3 * uGm1.z : 10.0 / (t * t); veil += psi * E * rgb; }
+    if (uGm1.w > 0.5) { float a2 = uGm2.x * uGm2.x, b = uGm2.y; sct += E * (b - 1.0) / 3.14159265 * pow(a2, b - 1.0) * pow(a2 + th * th, -b) * smoothstep(0.5 * uPxSim, 1.5 * uPxSim, th) * uGm2.z * rgb; }
+    if (uGm2.w > 0.5 && thD < uGm3.x && thD > 1e-5) {
+      vec3 e1 = normalize(cross(s, vec3(0.0, 0.0, 1.0))), e2 = cross(e1, s);
+      float phi = atan(dot(dir, e2), dot(dir, e1)) + uGm3.w, nb = uGm4.x, f = fract(phi / 6.2831853) * nb;
+      float arcH = 0.5 * max(1.0, uPxCv * 2.0 / max(th, 1e-6) / 6.2831853 * nb);
+      float amp = (spkCum(f + arcH) - spkCum(f - arcH)) / (2.0 * arcH), lenF = spk(int(f) % int(nb)).g;
+      float t = clamp(thD / max(uGm3.x * lenF, 1e-4), 0.0, 1.0);
+      sct += uGm3.y * E * amp * pow(1.0 - t, uGm3.z) * rgb;
+    }
+  }
+  vec3 lin = (texture(uHdr, uv).rgb + sct) * uK + (uGl > 0.0 ? texture(uGlare, uv).rgb : vec3(0.0));
+  if (uGm0.x > 1.5) { vec3 v = uK * uGm0.y * veil; lin += uGm0.z * v / (1.0 + v); } else if (uGm0.x > 0.5) lin += uK * uGm0.y * veil;
+  o = vec4(srgb(aces(lin)), 1.0);
+}`;
+
   function makeGL(canvas) {
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
     if (!gl || !gl.getExtension('EXT_color_buffer_float')) return null;
@@ -1390,6 +1428,7 @@ void main() {
     const bindTex = (unit, name, loc) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, T[name].t); gl.uniform1i(loc, unit); };
     const R = {
       gl, W: 0, H: 0, cw: 0, ch: 0,
+      finGM: () => P.finGM || (P.finGM = prog(FS_FINAL_GM)),   // compiled on first use: a frame without a glare model never builds it
       // allocate for a sim size and a canvas size
       resize(W, H, cw, ch) {
         R.cw = cw; R.ch = ch; if (W === R.W && H === R.H) return false;
@@ -1430,7 +1469,8 @@ void main() {
         bindTex(0, 'A', P.compose.u.uA); bindTex(2, 'O', P.compose.u.uO); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D_ARRAY, T.Bt); gl.uniform1i(P.compose.u.uB, 1);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         const tCompose = timing ? performance.now() : 0;
-        if (f.glare > 0) {
+        const bloom = f.glare > 0 && (!f.gm || f.gm.bloom);   // glare model: bloom is its own switch (gmBloom)
+        if (bloom) {
           const sigma = D.glareSigma(W, f.hfov), rad = Math.ceil(3 * sigma);
           gl.viewport(0, 0, hw, hh);
           gl.bindFramebuffer(gl.FRAMEBUFFER, T.s1.f); use(P.bright, { uK: f.k, uSize: [hw, hh] }); bindTex(0, 'hdr', P.bright.u.uT); gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -1448,9 +1488,17 @@ void main() {
         }
         const tGlare = timing ? performance.now() : 0;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, R.cw, R.ch);
-        use(P.fin, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: f.glare > 0 ? 1 : 0, uVeil: f.veil || 0, uTanH: tanH, uTanV: tanV });
-        const sources = f.sources || [], sa = new Float32Array(128); const sc = new Float32Array(96); sources.slice(0, 32).forEach((q, i) => { sa.set(q.slice(0, 4), i * 4); sc.set([q[4] === undefined ? 1 : q[4], q[5] === undefined ? 1 : q[5], q[6] === undefined ? 1 : q[6]], i * 3); }); gl.uniform1i(P.fin.u.uNS, Math.min(32, sources.length)); gl.uniform4fv(P.fin.u['uSources[0]'], sa); gl.uniform3fv(P.fin.u['uSrcRGB[0]'], sc);   // BRIEF-U: per-source rgb (veil = E * rgb)
-        bindTex(0, 'hdr', P.fin.u.uHdr); bindTex(1, 'acc', P.fin.u.uGlare); gl.drawArrays(gl.TRIANGLES, 0, 3);
+        const gm = f.gm && f.glare > 0 ? f.gm : null, FP = gm ? R.finGM() : P.fin;   // the glare level stays the master switch
+        if (gm) {
+          if (R.spkKey !== gm.spokeKey) { R.spkKey = gm.spokeKey; const tb = D.spokeTable(gm.gp); R.spkTotal = tb[2 * (D.GM_BINS - 1)]; if (!T.spk) { T.spk = { t: gl.createTexture() }; gl.bindTexture(gl.TEXTURE_2D, T.spk.t); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG32F, D.GM_BINS, 1); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); } gl.bindTexture(gl.TEXTURE_2D, T.spk.t); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, D.GM_BINS, 1, gl.RG, gl.FLOAT, tb); }
+          const g = gm.gp, boost = f.hdr ? 1 : g.gmSdrBoost, D2R_ = Math.PI / 180;
+          use(FP, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: bloom ? 1 : 0, uTanH: tanH, uTanV: tanV, uPxSim: 2 * tanH / W, uPxCv: 2 * tanH / R.cw,
+            uGm0: [gm.veil, g.gmVeilStr * boost, g.gmVeilCap, g.gmVeilFloor], uGm1: [g.gmVeilLaw === 'cie146' ? 1 : 0, 1 + Math.pow(g.gmAge / 62.5, 4), g.gmPigment, gm.tail ? 1 : 0],
+            uGm2: [g.gmTailAlpha * D2R_, g.gmTailBeta, boost, gm.spike ? 1 : 0], uGm3: [g.gmSpikeLen, g.gmSpikeGain, g.gmSpikeTaper, g.gmSpikeRot * D2R_], uGm4: [D.GM_BINS, R.spkTotal, 0, 0] });
+          gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.spk.t); gl.uniform1i(FP.u.uSpk, 2);
+        } else use(P.fin, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: f.glare > 0 ? 1 : 0, uVeil: f.veil || 0, uTanH: tanH, uTanV: tanV });
+        const sources = f.sources || [], sa = new Float32Array(128); const sc = new Float32Array(96); sources.slice(0, 32).forEach((q, i) => { sa.set(q.slice(0, 4), i * 4); sc.set([q[4] === undefined ? 1 : q[4], q[5] === undefined ? 1 : q[5], q[6] === undefined ? 1 : q[6]], i * 3); }); gl.uniform1i(FP.u.uNS, Math.min(32, sources.length)); gl.uniform4fv(FP.u['uSources[0]'], sa); gl.uniform3fv(FP.u['uSrcRGB[0]'], sc);   // BRIEF-U: per-source rgb (veil = E * rgb)
+        bindTex(0, 'hdr', FP.u.uHdr); bindTex(1, 'acc', FP.u.uGlare); gl.drawArrays(gl.TRIANGLES, 0, 3);
         if (timing) Object.assign(timing, { composeMs: tCompose - t0, glareMs: tGlare - tCompose, finalVeilMs: performance.now() - tGlare });
       },
       // the HDR sim image back on the CPU (tests): Float32Array 4·W·H, row 0 = top
@@ -1771,7 +1819,11 @@ void main() {
     const I = info(), o = I.o;
     if (o.expMode === 'auto' && V.kAuto) return V.kAuto;
     const k = Math.pow(2, o.ev) / D.L_REF;
-    return o.expMode === 'adapt' ? 1 / (1 / k + D.veilStrength(D.capGlare(o.glare)) * D.veilAt([1, 0, 0], sources || frameSources(S(V.ui).dist, S(V.ui).t))) : k;
+    if (o.expMode !== 'adapt') return k;
+    const src = sources || frameSources(S(V.ui).dist, S(V.ui).t), gm = D.glareModelGPU(o);
+    // glare model on: the eye's veil at full strength whenever glare is on (the level does not scale the eye), under the model's formula
+    if (gm) return 1 / (1 / k + (D.glareStrength(D.capGlare(o.glare)) > 0 ? D.veilModelAt([1, 0, 0], src, gm.gp) : 0));
+    return 1 / (1 / k + D.veilStrength(D.capGlare(o.glare)) * D.veilAt([1, 0, 0], src));
   }
   // EA: the adapt-mode gain eases toward exposure()'s target, once per drawn frame (drive.js adaptStep). It snaps when the options
   // (EV, glare, mode, ground) change, on a seek, a scrub that moves dist without moving t, and during a minigame (its visibility
@@ -1779,9 +1831,9 @@ void main() {
   function displayK(target, t, dist) {
     const I = info(), o = I.o;
     if (o.expMode !== 'adapt' || S(V.ui).game) { V.adapt = null; return target; }
-    const key = [I.groundKey, o.ev, o.glare, o.expMode].join('|'), prev = V.adapt && V.adapt.key === key ? V.adapt : null;
+    const key = [I.groundKey, o.ev, o.glare, o.expMode].join('|') + (RF.Options.glareModelOf(o) === 'current' ? '' : '|' + RF.Options.glareModelOf(o)), prev = V.adapt && V.adapt.key === key ? V.adapt : null;
     const moved = !!prev && dist !== prev.dist && t === prev.t;
-    const next = D.adaptStep(moved ? null : prev, target, prev ? t - prev.t : NaN);
+    const gm = D.glareModelGPU(o), next = D.adaptStep(moved ? null : prev, target, prev ? t - prev.t : NaN, gm ? gm.taus : undefined);   // glare model: its own time constants
     V.adapt = { key, t, dist, k: next.k };
     return next.k;
   }
@@ -1970,7 +2022,7 @@ void main() {
     drawCabin(V, o.cabinView && (st.popout || ui.display === 'drive'), o.cabinStyle || 'modern', !!o.cabinLight, (st.game ? st.game.v : st.camera && typeof st.camera.v === 'number' ? st.camera.v : kmhOf() / 3.6) * 3.6, o.driftCabin ? (V.driftA || 0) : 0, o.cabinFovFrame ? o.fov : 0, _mc, _cabE);   // after the sources: the miata dash glow reads this frame's oncoming light
     V.frameGlare = sources; V.framePlaced = placed;      // scene details reads these (pointers only)
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
-    const draw = { profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
+    const draw = { profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, gm: D.glareModelGPU(o, D.reducedMotion()), flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: (V.p.touge ? RF.Touge.elevate(Object.assign({}, V.p.A), st.dist, V.p.lane, false) : V.p.A), objects: placed, ...(V.src.cross ? fixedIntersection(V.src, st.dist) : {}) }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }   // elevatedView: flat scenes enter the GPU world through elevate() (height 0)
     const tlB = TL.cur ? tlBefore() : null;
     try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
@@ -2070,7 +2122,7 @@ void main() {
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], y0) : y0, had ? Math.max(pb[1], y1) : y1); V.band = [y0, y1];
     const t2 = performance.now();
     const sources = frameSources(b.dist, b.t), sourceEnd = performance.now(), glProfile = profileOn() ? {} : null;
-    V.gl.draw({ profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), b.t, b.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
+    V.gl.draw({ profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), b.t, b.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, gm: D.glareModelGPU(o, D.reducedMotion()), flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
     if (!contextReady()) return;
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
@@ -2487,6 +2539,37 @@ void main() {
     const ca = labelled(E('input', { type: 'range', min: 0, max: 90, step: 1, 'data-anim': 'halo-cone-angle', 'aria-label': 'Cone pass angle (deg)', title: 'An oncoming lamp whose beam we see at more than this angle off its axis is drawn by the cone pass instead of the scatter table (faded in over 15 degrees). 0: the nearest lamps always use the cone pass.' }), 'cone pass angle', (v) => v + '°');
     ca.addEventListener('change', () => setDV(ui, 'haloConeAngle', +ca.value));
     (ui.haloAdvBody || bar).append(ca._box); V.coneAngEl = ca;
+    // GLARE MODEL (hdr-spike port, 11-27): one select (current / perceptual / cie146 / custom) and every knob of RF.Options.GLARE_PARAMS,
+    // built from that table, in one box (.drive-gm) that the layout puts in Lighting > Glare. A preset writes its bundle; moving a knob makes the model custom.
+    {
+      const Opt = RF.Options, box = E('div', { class: 'drive-gm' });
+      const gsel = E('select', { 'data-anim': 'glareModel', 'aria-label': 'Glare model', title: 'current: the drive\'s glare as before. perceptual: small core, fixed-size starburst, Moffat scatter tail, no glowing veil disc (Anya\'s spike tune). cie146: the CIE 146 general veil with age and eye pigment. custom: your knobs. Needs glare on. Drawn by the WebGL compositor (with either ground renderer); the no-WebGL2 fallback and the CPU still ignore it.' },
+        ...['current', 'perceptual', 'cie146', 'custom'].map((v) => E('option', { value: v }, v)));
+      gsel.addEventListener('change', () => { const v = gsel.value; setDV(ui, 'glareModel', v); for (const [k, x] of Object.entries(Opt.GLARE_MODELS[v] || {})) setDV(ui, k, x); });
+      V.gmNote = E('span', { class: 'anim-speed', 'data-anim': 'glareModel-note' });
+      box.append(E('span', { class: 'drive-slider' }, E('span', { class: 'anim-speed' }, 'glare model'), gsel), V.gmNote);
+      const knobs = E('div', { class: 'drive-gm-knobs' }), touched = () => { if (Opt.glareModelOf(ui.dvOpts || {}) !== 'custom') setDV(ui, 'glareModel', 'custom'); };
+      V.gmEls = [];
+      for (const pm of Opt.GLARE_PARAMS) {
+        let el;
+        if (pm.type === 'bool') {
+          el = E('button', { type: 'button', class: 'toggle', 'data-anim': pm.id, 'aria-pressed': 'false', title: pm.title }, pm.label);
+          el.addEventListener('click', () => { const cur = Opt.glareParamsOf(ui.dvOpts || {})[pm.id]; touched(); setDV(ui, pm.id, !cur); });
+          el._box = el;
+        } else if (pm.type === 'enum') {
+          el = E('select', { 'data-anim': pm.id, 'aria-label': pm.label, title: pm.title }, ...pm.values.map((v) => E('option', { value: v }, v)));
+          el.addEventListener('change', () => { touched(); setDV(ui, pm.id, el.value); });
+          el._box = E('span', { class: 'drive-slider' }, E('span', { class: 'anim-speed' }, pm.label), el);
+        } else {
+          const lg = !!pm.log, toReal = (v) => (lg ? Math.pow(10, v) : v), fmt = (v) => String(+(+v).toPrecision(3)) + (pm.unit || '');
+          el = labelled(E('input', { type: 'range', min: lg ? Math.log10(pm.min) : pm.min, max: lg ? Math.log10(pm.max) : pm.max, step: lg ? 0.01 : pm.step, 'data-anim': pm.id, 'aria-label': pm.label, title: pm.title }), pm.label, fmt, toReal);
+          el.addEventListener('change', () => { touched(); setDV(ui, pm.id, lg ? +toReal(+el.value).toPrecision(3) : +el.value); });
+          el._toSlider = (v) => String(lg ? Math.log10(v) : v);
+        }
+        el._pm = pm; V.gmEls.push(el); knobs.append(el._box);
+      }
+      box.append(knobs); V.gmKnobs = knobs; V.gmSel = gsel; bar.append(box);
+    }
     btn('reset-flashes', 'Start the count again (each driver counts once above 1 lx at their eye)', () => { V.flash = flashState(); V.flashLab.textContent = 'oncoming drivers above 1 lx: 0'; }, 'reset count');
     // BA2 own beams: the low beam (our design, or a saved low beam; a saved LOW beam also changes symmetric-mode traffic) and
     // the high beam (generic, or a saved high beam that replaces the generic one when the high switch is on).
@@ -2862,6 +2945,17 @@ void main() {
     if (!V.rangeEl._t0) V.rangeEl._t0 = V.rangeEl.title;   // B1+B8: say a binding cap in the tooltip (LOD off / overridden: title unchanged)
     V.rangeEl.title = V.rangeEl._t0 + (V.lodBase && !V.lodOver?.scatterRange && V.lodBase.scatterRange > +o.scatterRange ? ' — capped to ' + Math.round(+o.scatterRange) + ' m by distanceLod ' + o.distanceLod : '');
     V.jitAmtEl.value = String(o.haloJitterAmount === undefined ? 1 : +o.haloJitterAmount); V.jitAmtEl._show(); V.jitAmtEl.hidden = V.jitAmtEl._box.hidden = o.visibility == null || o.haloJitter !== 'jittered';
+    // glare model controls (registry rule glareModelOn): the knobs are disabled, and their box hidden, while the model is current
+    if (V.gmSel) {
+      const Opt = RF.Options, gmName = Opt.glareModelOf(o), gmOn = gmName !== 'current', gp = Opt.glareParamsOf(o);
+      V.gmSel.value = gmName; V.gmKnobs.hidden = !gmOn;
+      V.gmNote.textContent = !gmOn ? '' : !V.gl ? 'no WebGL2 compositor: the CPU fallback ignores the glare model' : D.glareStrength(D.capGlare(o.glare)) > 0 ? '' : 'glare is off: the model draws nothing';
+      for (const el of V.gmEls) {
+        const pm = el._pm, v = gp[pm.id];
+        if (pm.type === 'bool') el.setAttribute('aria-pressed', String(!!v)); else if (pm.type === 'enum') el.value = v; else { el.value = el._toSlider(v); el._show(v); }
+        el.disabled = !gmOn;
+      }
+    }
     V.coneAngEl.value = String(Math.min(90, Math.max(0, o.haloConeAngle === undefined ? 30 : +o.haloConeAngle))); V.coneAngEl._show(); V.coneAngEl.hidden = V.coneAngEl._box.hidden = o.visibility == null || !['1', '2'].includes(String(o.haloConePass));
     { const tr = V.ui.driveBar.querySelector('[data-anim="traffic-range"]'); tr.value = String(trafficCullOf(o.trafficRange)); if (!tr._t0) tr._t0 = tr.title; tr.title = tr._t0 + (V.lodBase && !V.lodOver?.trafficRange && V.lodBase.trafficRange > trafficCullOf(o.trafficRange) ? ' — capped to ' + trafficCullOf(o.trafficRange) + ' m by distanceLod ' + o.distanceLod : ''); }   // B1+B8
     V.ui.driveBar.querySelector('[data-anim="traffic-light-range"]').value = LIGHT_RANGES.includes(String(o.trafficLightRange)) ? String(o.trafficLightRange) : '150';

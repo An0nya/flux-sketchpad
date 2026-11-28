@@ -1324,11 +1324,48 @@ const surfTexCPU = (s, off, mat) => {
   // state = { k } from the last drawn frame, or null. dt = sim seconds since then. No state, dt < 0, or a seek (dt > ADAPT_SEEK_S)
   // snaps to target; dt = 0 (paused, or the same frame again) holds the state.
   const ADAPT_DOWN_S = 0.4, ADAPT_UP_S = 3, ADAPT_SEEK_S = 0.5;
-  function adaptStep(state, target, dt) {
+  function adaptStep(state, target, dt, taus) {   // taus: { down, up } seconds (the glare model's knobs); absent = ADAPT_DOWN_S / ADAPT_UP_S
     if (!state || !(state.k > 0) || !(target > 0) || !(dt >= 0) || dt > ADAPT_SEEK_S) return { k: target };
     if (dt === 0) return { k: state.k };
-    const tau = target < state.k ? ADAPT_DOWN_S : ADAPT_UP_S, a = 1 - Math.exp(-dt / tau), l0 = Math.log2(state.k);
+    const tau = target < state.k ? (taus ? taus.down : ADAPT_DOWN_S) : (taus ? taus.up : ADAPT_UP_S), a = 1 - Math.exp(-dt / tau), l0 = Math.log2(state.k);
     return { k: Math.pow(2, l0 + (Math.log2(target) - l0) * a) };
+  }
+  // ---- glare model (hdr-spike port, 11-27). The knobs and presets live in the registry (RF.Options.GLARE_PARAMS / GLARE_MODELS).
+  // glareModelGPU(o) is what the WebGL final pass reads: null = no model (the drive as before). tonemap below (the no-WebGL2 fallback and the CPU still) ignores the model.
+  // Veil psi(θ) per lux, θ in degrees: Stiles–Holladay 10/θ², or CIE 146:2002 general (Bará & Bao-Varela 2023, arXiv 2212.09103, eq. 2):
+  //   10/θ³ + (5/θ² + 0.1p/θ)·[1 + (A/62.5)⁴] + 2.5e-3·p, valid 0.1° to 100°.
+  const gmAgeF = (age) => 1 + Math.pow(age / 62.5, 4);
+  function veilPsi(thDeg, gp) {
+    const t = Math.max(gp.gmVeilFloor, thDeg);
+    if (gp.gmVeilLaw !== 'cie146') return 10 / (t * t);
+    return 10 / (t * t * t) + (5 / (t * t) + 0.1 * gp.gmPigment / t) * gmAgeF(gp.gmAge) + 2.5e-3 * gp.gmPigment;
+  }
+  // the scalar veil (E only) straight ahead under the model's formula: adapt exposure reads it with a model on (veilAt otherwise)
+  function veilModelAt(dir, sources, gp) {
+    let L = 0; for (const q of sources || []) { const th = Math.acos(Math.max(-1, Math.min(1, dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]))) / D2R; L += veilPsi(th, gp) * q[3]; } return L;
+  }
+  const GM_BINS = 4096;
+  const mulberry32 = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  // Starburst table (the spike's spikeTable): per polar-angle bin (running sum of amplitude, length factor), so the shader can average over any arc.
+  function spokeTable(gp) {
+    const rnd = mulberry32(Math.round(gp.gmSpikeSeed) * 2654435761), n = Math.round(gp.gmSpikeCount), w = gp.gmSpikeWidth * D2R;
+    const spokes = Array.from({ length: n }, () => ({ phi: rnd() * 2 * Math.PI, a: 0.3 + 0.7 * rnd() * rnd(), l: 1 - gp.gmSpikeLenJit * rnd() }));
+    const t = new Float32Array(2 * GM_BINS), baseLen = 0.35;
+    for (let b = 0; b < GM_BINS; b++) {
+      const phi = (b + 0.5) / GM_BINS * 2 * Math.PI; let amp = gp.gmSpikeBase, lw = gp.gmSpikeBase * baseLen;
+      for (const sp of spokes) { let d = phi - sp.phi; d -= 2 * Math.PI * Math.round(d / (2 * Math.PI)); const g = sp.a * Math.exp(-(d / w) * (d / w)); amp += g; lw += g * sp.l; }
+      t[2 * b] = amp; t[2 * b + 1] = amp > 0 ? lw / amp : 1;
+    }
+    for (let b = 1; b < GM_BINS; b++) t[2 * b] += t[2 * (b - 1)];
+    return t;
+  }
+  const spokeKey = (gp) => [gp.gmSpikeSeed, gp.gmSpikeCount, gp.gmSpikeWidth, gp.gmSpikeLenJit, gp.gmSpikeBase].join('|');
+  // The resolved model for one frame, or null. reduced: reduced motion is on (tail and starburst off: the safe choice, Anya 11-27).
+  function glareModelGPU(o, reduced) {
+    const Opt = RF.Options; if (!Opt || !Opt.glareModelOf || Opt.glareModelOf(o) === 'current') return null;
+    const gp = Opt.glareParamsOf(o);
+    return { gp, veil: { off: 0, physical: 1, perceptual: 2 }[gp.gmVeil] || 0, tail: gp.gmTail && !reduced, spike: gp.gmSpike && !reduced, bloom: !!gp.gmBloom,
+      taus: { down: gp.gmAdaptDown, up: gp.gmAdaptUp }, spokeKey: spokeKey(gp) };
   }
   const aces =(x) => { x = x < 0 ? 0 : x; const y = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14); return y > 1 ? 1 : y; };
   const srgb = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
@@ -1379,5 +1416,5 @@ const surfTexCPU = (s, off, mat) => {
     return { px, k: ex.k, white: ex.white, key: ex.key };
   }
 
-  RF.Drive = { SHEEN_IDS, OWN_STREAK_IDS, wetBounceW, surfSOf, surfKOf, dryStreakFloorOf, inScatter, scatterTableBins, scatRangeOf, haloRangeOf, SCAT_RANGE, glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, HALO_RANGE_KEYS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
+  RF.Drive = { veilPsi, veilModelAt, spokeTable, spokeKey, GM_BINS, glareModelGPU, reducedMotion, SHEEN_IDS, OWN_STREAK_IDS, wetBounceW, surfSOf, surfKOf, dryStreakFloorOf, inScatter, scatterTableBins, scatRangeOf, haloRangeOf, SCAT_RANGE, glareEmitter, sourceRGB, veilRGBAt, lampConeOn, lampEyeCd, lightVisible, haloLevelOf, haloLevelBundle, HALO_LEVELS_B, HALO_DEFAULTS, HALO_RANGE_KEYS, wetnessOf, sigmaOf, wetnessLevels, cornerAt,ownBeamAt, occluded, dipState, AUTO, eyeFor, autoHighSense, autoHighStep,TRAFFIC_CARS, TRAFFIC_RANGE, SURFACE_SOURCES, trafficBeam, trafficSources, trafficAt, trafficPickOf, trafficPickIndexOf, trafficAtlasPool, dipFraction, dipTables, weightedPick, trafficBeamFields, unitTint, beamAt, surfaceSources, Headlamp, GLARE, GLARE_BANDS, GLARE_WEIGHT, glareSigma, glareLevel, capGlare, glareStrength, brightCap, glareSources, veilAt, inScatter, trafficHalo, haloN, HALO, scatterPhase, scatterJitter, SCAT, scatterTableBins, tableBinSteps, parseBinCounts, binCountsFor, qualityCounts, airLevelBundle, airLevelOf, scatterTableAt, TABLE,veilStrength, reflectionSources, wetLobe, wetGGX, WET_GGX, MAT_DEF, MAT_KEYS, materials, lutFrom, lutAt, withHigh, hvFast, hv: () => [HV0, HV1], covLat, covLon, laneMarkings, boundOf, hitObj, hit: () => ({ n: [NX, NY, NZ], u: HU, face: HF, scale: HSCALE }), render, probe, lumaOf, exposureOf, adaptStep, ADAPT_DOWN_S, ADAPT_UP_S, ADAPT_SEEK_S, tonemap, L_REF };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

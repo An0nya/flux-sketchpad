@@ -145,6 +145,8 @@
       at: { file: SPEC, fn: 'b.disabled = !(RF.Drive.wetnessOf(o) > 0)', line: 1072 } },
     cabinMiata: { cond: { opt: 'cabinStyle', eq: 'miata' }, why: 'only the miata photo cabin has backlit gauges', effect: 'disabled',
       at: { file: ANIM, fn: "s2.disabled = !o.cabinView || o.cabinStyle !== 'miata'", line: 2715 } },
+    glareModelOn: { cond: { any: [{ opt: 'glareModel', eq: 'perceptual' }, { opt: 'glareModel', eq: 'cie146' }, { opt: 'glareModel', eq: 'custom' }] }, why: 'a glare model knob: only read with a glare model on (glare model is not "current")', effect: 'disabled',
+      at: { file: ANIM, fn: 'el.disabled = !gmOn', line: 2956 } },
   };
   // need('air', { effect: 'tooltip' }) returns a copy of a rule, optionally with the UI effect overridden.
   // Throws a named error if `name` is not in RULES: a typo'd need('tiles') once made every option using it a
@@ -167,6 +169,57 @@
     diagnostics: 'Panels and layout',
     internal: 'Internal (no control)',
   };
+
+  // ---- glare model (hdr-spike port, 11-27, Anya): a perceptual eye-glare model on top of the glare level. One table, one entry per knob.
+  // Every knob is an 'extra' option (absent from DV_DEF until written; the table's def is the value used until then), so a profile that
+  // never touched the model is unchanged. glareModel 'current' (or unset) = the drive as before, byte for byte. Selecting perceptual or
+  // cie146 writes that bundle into the knobs; moving a knob by hand makes the model 'custom'. Values marked TUNING are Anya's, by eye.
+  // Units: angles in degrees; gains as in the spike (experiments/hdr-headlamp on the hdr-spike branch): luminance cd/m² per lux at the eye.
+  const GLARE_PARAMS = [
+    { id: 'gmVeil', type: 'enum', values: ['off', 'physical', 'perceptual'], def: 'off', label: 'veil drawn as', title: 'How the veil is drawn. physical = added as light (the drive today, a glowing disc); perceptual = cap·v/(1+v), haze that never reaches white; off = not drawn. Exposure (adapt) uses the veil either way.' },
+    { id: 'gmVeilLaw', type: 'enum', values: ['stiles-holladay', 'cie146'], def: 'stiles-holladay', label: 'veil formula', title: 'Stiles–Holladay 10·E/θ², or the CIE 146:2002 general disability-glare equation (age and eye pigment, valid 0.1° to 100°). With a model on, adapt exposure uses the same formula.' },
+    { id: 'gmAge', type: 'number', min: 15, max: 85, step: 1, def: 35, unit: ' yr', label: 'observer age', title: 'CIE 146 only: the age factor 1 + (age/62.5)⁴ on the 5/θ² and p/θ terms.' },
+    { id: 'gmPigment', type: 'number', min: 0, max: 1, step: 0.5, def: 0.5, unit: '', label: 'eye pigment p', title: 'CIE 146 only: 0 very dark eyes, 0.5 brown, 1 light blue-green. Matters at wide angles.' },
+    { id: 'gmVeilStr', type: 'number', min: 0, max: 2, step: 0.05, def: 1, unit: '×', label: 'veil strength', title: 'Multiplies the drawn veil only (not exposure).' },
+    { id: 'gmVeilCap', type: 'number', min: 0.05, max: 1, step: 0.01, def: 0.4, unit: '', label: 'perceptual cap', title: 'perceptual veil: the display value it can approach and never reach.' },
+    { id: 'gmVeilFloor', type: 'number', min: 0.05, max: 2, step: 0.05, def: 0.3, unit: '°', label: 'veil angle floor', title: 'Angles below this count as this (keeps the 1/θ terms finite). The drive today uses 1°.' },
+    { id: 'gmTail', type: 'bool', def: false, label: 'scatter tail', title: 'Moffat scatter tail around each lamp: E·(1 + (θ/α)²)^-β, energy-normalised. Tail only: the rendered lamp pixels stay the core.' },
+    { id: 'gmTailAlpha', type: 'number', min: 0.005, max: 0.5, step: 0.005, log: true, def: 0.15, unit: '°', label: 'tail α (width)', title: 'Moffat width. TUNING (Anya, phone sessions: 0.1 to 0.15).' },
+    { id: 'gmTailBeta', type: 'number', min: 1.05, max: 4, step: 0.05, def: 1.5, unit: '', label: 'tail β', title: 'Moffat falloff: lower = longer tail, more veiling. TUNING (Anya: 1.6 barely interferes, 1.5 right, 1.4 strong).' },
+    { id: 'gmSdrBoost', type: 'number', min: 1, max: 4, step: 0.05, def: 1, unit: '×', label: 'SDR glare boost', title: 'Multiplies the tail and the drawn veil on a standard (non-HDR) display, where the lamp cannot look brighter than white.' },
+    { id: 'gmSpike', type: 'bool', def: false, label: 'starburst', title: 'Fixed-size spokes around each lamp (from the eye, not the lamp): brightness ∝ E, length never grows. No flicker.' },
+    { id: 'gmSpikeCount', type: 'number', min: 4, max: 240, step: 1, def: 74, unit: '', label: 'spokes', title: 'Number of spokes in the pattern.' },
+    { id: 'gmSpikeLen', type: 'number', min: 0.3, max: 8, step: 0.05, def: 4.25, unit: '°', label: 'spoke length', title: 'Hard limit on spoke length, in degrees. TUNING (Anya).' },
+    { id: 'gmSpikeLenJit', type: 'number', min: 0, max: 1, step: 0.01, def: 0.74, unit: '', label: 'length jitter', title: 'How much shorter a random spoke can be.' },
+    { id: 'gmSpikeWidth', type: 'number', min: 0.1, max: 10, step: 0.01, def: 4.47, unit: '°φ', label: 'spoke width', title: 'Angular width of a spoke around the lamp.' },
+    { id: 'gmSpikeGain', type: 'number', min: 0.05, max: 500, step: 0.05, log: true, def: 106.4, unit: '', label: 'spoke gain', title: 'Spoke luminance per lux at the eye (cd/m² per lx). TUNING (Anya).' },
+    { id: 'gmSpikeTaper', type: 'number', min: 0.5, max: 8, step: 0.1, def: 3.4, unit: '', label: 'spoke taper', title: 'Falloff along a spoke: (1 − θ/length)^taper.' },
+    { id: 'gmSpikeBase', type: 'number', min: 0, max: 1, step: 0.01, def: 0.18, unit: '', label: 'even corona', title: 'A spoke-free ring under the spokes, as a share of a spoke.' },
+    { id: 'gmSpikeSeed', type: 'number', min: 1, max: 500, step: 1, def: 7, unit: '', label: 'pattern seed', title: 'Which random spoke pattern.' },
+    { id: 'gmSpikeRot', type: 'number', min: 0, max: 360, step: 1, def: 0, unit: '°', label: 'pattern rotation', title: 'Rotates the spoke pattern.' },
+    { id: 'gmBloom', type: 'bool', def: false, label: 'bloom with the model', title: 'Keep the drive\'s bloom (the blurred bright-pixel halo) with a model on. Off by default: bloom double-counts the scatter the tail models. The glare level still sets its strength.' },
+    { id: 'gmAdaptDown', type: 'number', min: 0.05, max: 5, step: 0.05, def: 0.4, unit: ' s', label: 'adapt to glare', title: 'Adapt exposure: time constant when glare arrives (k falls). The drive today: 0.4 s.' },
+    { id: 'gmAdaptUp', type: 'number', min: 0.5, max: 60, step: 0.5, def: 3, unit: ' s', label: 'glare recovery', title: 'Adapt exposure: time constant when glare leaves (k rises). The drive today: 3 s.' },
+  ];
+  // Presets: the knobs each one writes. perceptual = Anya's "Anya Moffat" spike preset (phone sessions 1-3); cie146 = the spike's "CIE 146 veil".
+  const GLARE_MODELS = {
+    perceptual: { gmVeil: 'off', gmVeilLaw: 'stiles-holladay', gmTail: true, gmTailAlpha: 0.15, gmTailBeta: 1.5, gmSpike: true, gmSpikeCount: 74, gmSpikeLen: 4.25, gmSpikeLenJit: 0.74, gmSpikeWidth: 4.47, gmSpikeGain: 106.4, gmSpikeTaper: 3.4, gmSpikeBase: 0.18, gmBloom: false },
+    cie146: { gmVeil: 'physical', gmVeilLaw: 'cie146', gmVeilStr: 1, gmVeilFloor: 0.1, gmTail: true, gmTailAlpha: 0.05, gmTailBeta: 3, gmSpike: true, gmSpikeCount: 60, gmSpikeLen: 2, gmSpikeLenJit: 0.5, gmSpikeWidth: 0.8, gmSpikeGain: 40, gmSpikeTaper: 2.5, gmSpikeBase: 0.05, gmBloom: false },
+  };
+  // Bool knobs default to false (an unset bool reads as off everywhere: the controls audit, the sync and the model agree); the presets write them on.
+  // the knob values a model reads: the stored value, else the table default
+  const glareParamsOf = (o) => { const out = {}; for (const p of GLARE_PARAMS) out[p.id] = o && o[p.id] !== undefined ? o[p.id] : p.def; return out; };
+  const glareModelOf = (o) => { const m = o && o.glareModel; return m === 'perceptual' || m === 'cie146' || m === 'custom' ? m : 'current'; };
+  const glareEntry = (p) => ({
+    id: p.id, kind: 'extra', type: p.type, values: p.type === 'number' ? { min: p.min, max: p.max, step: p.step } : p.type === 'enum' ? p.values : null,
+    default: undefined, label: p.label,
+    control: '[data-anim="' + p.id + '"]', where: 'more', query: null,
+    group: 'exposure', cost: 'per-frame-gpu',
+    owner: ['js/drive-anim.js', 'js/drive.js'],
+    requires: [need('glareModelOn')],
+    tests: ['node:glare-model'],
+    note: 'glare model knob (table GLARE_PARAMS; default ' + JSON.stringify(p.def) + ' until written). ' + p.title,
+  });
 
   // ---- the options, in the order of the old DV_DEF literal (so a saved profile keeps the same key order)
   const OPTIONS = [
@@ -852,6 +905,16 @@
       tests: ['CD-controls-dedupe'],
       note: 'Old numeric or boolean values are normalised by RF.Drive.glareLevel at load. Reduced-motion caps it.',
     },
+    {
+      id: 'glareModel', kind: 'extra', type: 'enum', values: ['current', 'perceptual', 'cie146', 'custom'],
+      default: undefined, label: 'glare model',
+      control: '[data-anim="glareModel"]', where: 'more', query: null,
+      group: 'exposure', cost: 'per-frame-gpu',
+      owner: ['js/drive-anim.js', 'js/drive.js'],
+      tests: ['node:glare-model'],
+      note: 'hdr-spike port (11-27, Anya). current (or unset) = the drive as before, byte for byte. perceptual / cie146 write a bundle into the gm* knobs (GLARE_MODELS); moving a knob makes it custom. With a model on: the veil can be drawn as haze (or off), a Moffat scatter tail and a fixed-size starburst are added per source, bloom is its own switch, and adapt exposure uses the chosen veil formula and time constants. The glare level stays the master switch (off = no glare at all); the eye terms do not scale with it. Reduced motion turns the tail and the starburst off. Drawn by the WebGL compositor (FS_FINAL_GM), so it works with either ground renderer; the no-WebGL2 fallback (drive.js tonemap) and the spec-ui CPU still ignore it, and the Glare tab says so when the compositor is missing.',
+    },
+    ...GLARE_PARAMS.map(glareEntry),
     {
       id: 'onMode', kind: 'profile', type: 'enum', values: ['symmetric', 'generic', 'high', 'high-dip', 'manual'],
       default: 'symmetric', label: 'oncoming headlamps',
@@ -2067,6 +2130,6 @@
     for (const [name, w] of Object.entries(TRAFFIC_LIGHTING)) if (Object.entries(w).every(([k, v]) => o[k] === v)) return name;
     return 'off';
   };
-  RF.Options = { DEFAULTS_VERSION, TRAFFIC_LIGHTING, trafficLightingOf, RETIRED_KEYS, LEGACY_SIGNATURE, GROUPS, RULES, OPTIONS, byId, defaults, migrateProfile, serialize, holds, unmet };
+  RF.Options = { DEFAULTS_VERSION, TRAFFIC_LIGHTING, trafficLightingOf, GLARE_PARAMS, GLARE_MODELS, glareParamsOf, glareModelOf, RETIRED_KEYS, LEGACY_SIGNATURE, GROUPS, RULES, OPTIONS, byId, defaults, migrateProfile, serialize, holds, unmet };
   if (typeof module === 'object' && module && module.exports) module.exports = RF.Options;   // require() in Node tests
 })(typeof globalThis !== 'undefined' ? globalThis : this);

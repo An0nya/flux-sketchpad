@@ -28,6 +28,7 @@ Render terms used (first use): a **fragment shader** is the small program the GP
    2. Compose (raw WebGL2, `FS_COMPOSE` :814): A + O + pattern layer array B + asphalt grain -> HDR target.
    3. Glare (only if `glare` > 0): bright pass `FS_BRIGHT` (:842) -> per band `FS_REDUCE` (:849) + two `FS_BLUR` (:856) passes accumulating into `acc`.
    4. Final `FS_FINAL` (:863): exposure `uK`, flip, veil, glare sources (32), to the canvas.
+      With a glare model on (registry `glareModel` ≠ current, glare on), the final pass is `FS_FINAL_GM` instead (compiled on first use; `FS_FINAL` is untouched): the veil by the chosen formula, drawn as light or haze or not at all, a Moffat scatter tail, and a starburst from a 4096×1 RG32F spoke table (`T.spk`, rebuilt when `D.spokeKey` changes). Budget: 3 samplers (FS_FINAL 2), uniforms 32 vec4 + 32 vec3 + 5 vec4 + 8 scalars ≈ 77 rows. Bloom runs only with `gmBloom`. Nothing is cached from this pass, so no cache key; adapt exposure's key gains the model name.
 4. Game masks `V.three.masks(...)` (:315) and detector, only in game mode (drive-anim.js:1244).
 5. `recordFrame` (:1016): frame times, dynamic-resolution step.
 
