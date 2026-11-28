@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HDR Canvas Probe</title>
+<style>
+  :root { --bg: #000; --panel: #111; --line: #2a2a2a; --text: #ddd; --dim: #888; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, system-ui, sans-serif; }
+  html, body, main, canvas { dynamic-range-limit: no-limit; }   /* WebKit limits HDR on document roots without this */
+  main { padding: 12px 16px 48px; max-width: 760px; margin: 0 auto; }
+  h2 { font-size: 15px; margin: 18px 0 6px; }
+  canvas { display: block; width: 100%; height: 64px; background: #000; border: 1px solid var(--line); }
+  .lab { display: flex; justify-content: space-between; color: var(--dim); font: 11px ui-monospace, Menlo, monospace; margin: 2px 0 10px; }
+  pre { white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, Menlo, monospace; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  p { color: var(--dim); }
+</style>
+</head>
+<body>
+<main>
+  <p>Each bar ramps from 0 to 8× paper white, left to right (ticks at 1, 2, 4). On an HDR screen, a bar that keeps getting brighter past the 1× tick is showing HDR; a bar that goes flat at 1× is clipping to SDR. The WebGPU bar is the reference (the spike's path, known to work on iOS 26).</p>
+  <h2>A. WebGPU, rgba16float, toneMapping extended (reference)</h2>
+  <canvas id="gpu" width="1024" height="64"></canvas><div class="lab"><span>0</span><span>1×</span><span>2×</span><span>4×</span><span>8×</span></div>
+  <h2>B. WebGL2, float drawing buffer + any HDR hook found</h2>
+  <canvas id="gl1" width="1024" height="64"></canvas><div class="lab"><span>0</span><span>1×</span><span>2×</span><span>4×</span><span>8×</span></div>
+  <h2>C. WebGL2, plain 8-bit (control: should clip at 1×)</h2>
+  <canvas id="gl0" width="1024" height="64"></canvas><div class="lab"><span>0</span><span>1×</span><span>2×</span><span>4×</span><span>8×</span></div>
+  <h2>What this browser has</h2>
+  <pre id="out">probing…</pre>
+</main>
+<script>
+(function () {
+  'use strict';
+  const out = [], say = (s) => { out.push(s); document.getElementById('out').textContent = out.join('\n'); };
+  // the ramp in "extended sRGB": linear 0..8 (1.0 = paper white), sRGB-encoded with the curve mirrored past 1 (the spike's encoding)
+  const FS = `#version 300 es
+precision highp float; uniform vec2 uSize; out vec4 o;
+float enc(float x) { float a = abs(x); float e = a <= 0.0031308 ? 12.92 * a : 1.055 * pow(a, 1.0 / 2.4) - 0.055; return sign(x) * e; }
+void main() { float t = gl_FragCoord.x / uSize.x; float L = 8.0 * t * t;       // quadratic: more of the bar below 1x
+  float tick = 0.0; for (int i = 0; i < 3; i++) { float v = float(1 << i); float x = sqrt(v / 8.0) * uSize.x; if (abs(gl_FragCoord.x - x) < 1.0 && gl_FragCoord.y < 10.0) tick = 1.0; }
+  float e = enc(L); o = vec4(mix(vec3(e), vec3(0.3, 0.6, 1.0), tick), 1.0); }`;
+  const VS = `#version 300 es
+void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+  function glRamp(canvas, hdr) {
+    const gl = canvas.getContext('webgl2', { antialias: false, alpha: hdr });   // B asks for alpha: a float drawing buffer may need RGBA
+    if (!gl) { say((hdr ? 'B' : 'C') + ': no WebGL2'); return; }
+    const tag = hdr ? 'B' : 'C', notes = [];
+    if (hdr) {
+      notes.push('drawingBufferStorage: ' + (typeof gl.drawingBufferStorage));
+      if (typeof gl.drawingBufferStorage === 'function') {
+        try { gl.getExtension('EXT_color_buffer_float'); gl.getExtension('EXT_color_buffer_half_float'); gl.drawingBufferStorage(gl.RGBA16F, canvas.width, canvas.height); gl.getExtension('EXT_color_buffer_float'); gl.getExtension('EXT_color_buffer_half_float'); const f = gl.drawingBufferFormat; notes.push('drawingBufferStorage(RGBA16F) returned; format is 0x' + (f || 0).toString(16) + (f === gl.RGBA16F ? ' = RGBA16F (applied)' : ' (NOT RGBA16F: silently ignored)')); }
+        catch (e) { notes.push('drawingBufferStorage(RGBA16F) threw: ' + e.message); }
+      }
+      notes.push('drawingBufferColorSpace: ' + gl.drawingBufferColorSpace);
+      // every HDR-looking hook, tried with { mode: 'extended' } if it is a function
+      for (const [obj, name] of [[gl, 'drawingBufferToneMapping'], [canvas, 'configureHighDynamicRange'], [gl, 'configureHighDynamicRange']]) {
+        const v = obj[name]; if (v === undefined) { notes.push(name + ': absent'); continue; }
+        if (typeof v === 'function') { try { v.call(obj, { mode: 'extended' }); notes.push(name + '({mode:"extended"}) ok'); } catch (e) { notes.push(name + '() threw: ' + e.message); } }
+        else { try { obj[name] = { mode: 'extended' }; notes.push(name + ' set to {mode:"extended"}, reads back ' + JSON.stringify(obj[name])); } catch (e) { notes.push(name + ' set threw: ' + e.message); } }
+      }
+    }
+    const sh = (t, s) => { const x = gl.createShader(t); gl.shaderSource(x, s); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+    const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(p); gl.useProgram(p);
+    gl.bindVertexArray(gl.createVertexArray()); gl.viewport(0, 0, canvas.width, canvas.height); gl.uniform2f(gl.getUniformLocation(p, 'uSize'), canvas.width, canvas.height); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const px = new Float32Array(4); let readNote = '';
+    try { gl.readPixels(canvas.width - 2, 32, 1, 1, gl.RGBA, gl.FLOAT, px); readNote = 'value at the 8x end reads back ' + px[0].toFixed(3) + ' (above 1 = the buffer kept it)'; } catch (e) { readNote = 'float readback not allowed (' + e.message + ')'; }
+    if (gl.getError() && !readNote.startsWith('float')) readNote = 'float readback not allowed on this buffer';
+    say(tag + ': ' + notes.concat(readNote).join('\n   '));
+  }
+  async function gpuRamp(canvas) {
+    if (!navigator.gpu) { say('A: no WebGPU'); return; }
+    const ad = await navigator.gpu.requestAdapter(); if (!ad) { say('A: no adapter'); return; }
+    const dev = await ad.requestDevice(), ctx = canvas.getContext('webgpu');
+    ctx.configure({ device: dev, format: 'rgba16float', toneMapping: { mode: 'extended' }, alphaMode: 'opaque' });
+    const got = ctx.getConfiguration ? ctx.getConfiguration() : null;
+    const code = `@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f { let p = vec2f(f32((i << 1u) & 2u), f32(i & 2u)); return vec4f(p * 2.0 - 1.0, 0.0, 1.0); }
+fn enc(x: f32) -> f32 { let a = abs(x); var e = 1.055 * pow(a, 1.0 / 2.4) - 0.055; if (a <= 0.0031308) { e = 12.92 * a; } return sign(x) * e; }
+@fragment fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f { let w = ${canvas.width}.0; let t = fc.x / w; let L = 8.0 * t * t;
+  var tick = 0.0; for (var i = 0; i < 3; i++) { let v = f32(1 << u32(i)); let x = sqrt(v / 8.0) * w; if (abs(fc.x - x) < 1.0 && fc.y > 54.0) { tick = 1.0; } }
+  let e = enc(L); return vec4f(mix(vec3f(e), vec3f(0.3, 0.6, 1.0), tick), 1.0); }`;
+    const m = dev.createShaderModule({ code });
+    const pipe = dev.createRenderPipeline({ layout: 'auto', vertex: { module: m, entryPoint: 'vs' }, fragment: { module: m, entryPoint: 'fs', targets: [{ format: 'rgba16float' }] }, primitive: { topology: 'triangle-list' } });
+    const draw = () => { const enc = dev.createCommandEncoder(); const pass = enc.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] }); pass.setPipeline(pipe); pass.draw(3); pass.end(); dev.queue.submit([enc.finish()]); };
+    draw();
+    say('A: WebGPU configured, getConfiguration().toneMapping = ' + JSON.stringify(got && got.toneMapping));
+    // iOS quirk from the spike: headroom drops to about 1.5x after the page was left; re-configuring restores it
+    const re = () => { ctx.configure({ device: dev, format: 'rgba16float', toneMapping: { mode: 'standard' }, alphaMode: 'opaque' }); requestAnimationFrame(() => requestAnimationFrame(() => { ctx.configure({ device: dev, format: 'rgba16float', toneMapping: { mode: 'extended' }, alphaMode: 'opaque' }); draw(); })); };
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) re(); }); addEventListener('pageshow', re);
+  }
+  say('UA: ' + navigator.userAgent);
+  say('matchMedia (dynamic-range: high): ' + matchMedia('(dynamic-range: high)').matches + ' · (video-dynamic-range: high): ' + matchMedia('(video-dynamic-range: high)').matches);
+  say('CSS dynamic-range-limit supported: ' + (CSS.supports && CSS.supports('dynamic-range-limit', 'no-limit')));
+  // every property name that looks HDR- or buffer-related, on the WebGL2 context and the canvas (so nothing depends on guessing a name)
+  const scan = (proto) => { const names = new Set(); for (let p = proto; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) for (const n of Object.getOwnPropertyNames(p)) if (/tone|dynamic|hdr|highdynamic|drawingbuffer|colorspace/i.test(n)) names.add(n); return [...names].sort().join(', ') || '(none)'; };
+  say('WebGL2 names: ' + (window.WebGL2RenderingContext ? scan(WebGL2RenderingContext.prototype) : 'no WebGL2'));
+  say('canvas names: ' + scan(HTMLCanvasElement.prototype));
+  try { glRamp(document.getElementById('gl1'), true); } catch (e) { say('B threw: ' + e.message); }
+  try { glRamp(document.getElementById('gl0'), false); } catch (e) { say('C threw: ' + e.message); }
+  gpuRamp(document.getElementById('gpu')).catch((e) => say('A threw: ' + e.message));
+})();
+</script>
+</body>
+</html>
