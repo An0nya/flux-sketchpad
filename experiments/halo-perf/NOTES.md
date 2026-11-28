@@ -305,3 +305,35 @@ sheen off, lampPitch off, leafy off, models off: every stage within noise (≤0.
 
 **So for the phones:** the Mac ranks the halo first by far. The old phone's extra pain (scene 5–7×, objects 6× vs the new phone) is
 a GPU-specific disproportion the Mac can't show. The next phone A/B worth doing is traffic beams on/off with "Time this frame".
+
+## Foliage + real frames on the Mac, 2026-11-28 — `sweep-trees-856.jsonl`, `sweep-trees-1600.jsonl`
+
+`stage-sweep.js` with `UNCAP=1` (`--disable-gpu-vsync --disable-frame-rate-limit`): headless real frames are no longer capped at
+60 Hz, so the "real" column is now usable. (A first attempt wrote junk at a 16×9 canvas: zsh doesn't word-split `$sz`, so CH was
+empty. The script now refuses to run when the canvas doesn't match CW/CH.)
+
+| save, size | variant | halo+crest | scene | objects | real ms (p95) |
+|---|---|---|---|---|---|
+| straight, 856 | bare (trees off, d0.5) | 10.5 | 4.8 | 1.2 | 5.6 (6.0) |
+| straight, 856 | trees d3 + leafy | 10.3 | 4.7 | 1.6 | 5.5 (5.9) |
+| straight, 856 | + detailed models | 11.4 | 5.0 | 2.5 | 6.9 (7.4) |
+| straight, 856 | trees d3 leafy, oncoming headlamps off | 0.5 | 3.7 | 2.2 | 3.2 (3.6) |
+| full, 856 | save (d3) | 26.8 | 5.4 | 3.0 | 25.8 (27.0) |
+| full, 856 | trees off | 26.0 | 5.3 | 2.4 | 24.9 (26.3) |
+| straight, 1600 | bare | 18.3 | 7.7 | 2.2 | 11.2 (16.6) |
+| straight, 1600 | oncoming headlamps off (trees d3 leafy) | 0.5 | 5.4 | 3.8 | 3.7 (4.4) |
+| full, 1600 | save (d3) | 39.1 | 10.4 | 4.6 | 49.8 (58.4) |
+| full, 1600 | trees off | 38.6 | 10.4 | 3.5 | 48.5 (57.1) |
+
+**OBSERVED (Mac):**
+- Trees are cheap on the Mac: density 0.5 → 3, leafy on/off, or trees off all move the real frame ≤ 1.3 ms. Detailed models
+  cost ~1.4 ms real at 856. This disagrees with Anya's informal phone finding ("trees and foliage really ate frames"): either the
+  phone GPU is disproportionately bad at the object shader (it was 6× slower than the new phone there), or the phone test had
+  other changes in it. Needs a phone A/B on one loaded state.
+- On a flat road, oncoming headlamps (`trafficBeams`, the strip button) are 40–65 % of the real frame (5.6 → 3.2 ms at 856,
+  11.2 → 3.7 at 1600). Off removes halo + crest map entirely and cuts scene by 1–2 ms.
+- Synced stage sums overstate the real frame by 1.15× (full, 1600) to 3.2× (straight, 856): the sync costs about the same per
+  stage, so light frames inflate most. Shares, not milliseconds.
+- Anya's phone readout of 11-28 (new phone, straight, SS2) still shows the old "Real speed (64 renders back to back)" line, so the
+  githack link predates `94cb263` (real frames). Its "GPU stages" line with headlamps off still showed halo 5.0: the every-8th
+  ring keeps probes from before the toggle (INFERRED: not cleared on option change; minor fix).

@@ -18,7 +18,7 @@ const VARIANTS = process.env.VARS ? JSON.parse(process.env.VARS) : [
   ['baseline again', {}],
 ];
 (async () => {
-  const browser = await pw.chromium.launch({ headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
+  const browser = await pw.chromium.launch({ headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'].concat(process.env.UNCAP ? ['--disable-gpu-vsync', '--disable-frame-rate-limit'] : []) });
   const errs = [];
   try {
     const page = await (await browser.newContext({ viewport: { width: 1400, height: 950 } })).newPage();
@@ -36,6 +36,7 @@ const VARIANTS = process.env.VARS ? JSON.parse(process.env.VARS) : [
     await sleep(3000);
     const info = await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas, gl = c.getContext('webgl2'); const x = gl && gl.getExtension('WEBGL_debug_renderer_info'); return { renderer: x ? gl.getParameter(x.UNMASKED_RENDERER_WEBGL) : '?', w: c.width, h: c.height, stats: RF.DriveAnim.stats().renderer }; });
     console.log('env:', JSON.stringify(info));
+    if (process.env.CW && (info.w < 0.9 * +process.env.CW || !(+process.env.CH > 0))) throw Error('canvas is ' + info.w + 'x' + info.h + ', asked for CW=' + process.env.CW + ' CH=' + process.env.CH);
     const base = dump.options;
     for (const [name, ch] of VARIANTS) {
       const undo = Object.fromEntries(Object.keys(ch).map((k) => [k, base[k]]));
