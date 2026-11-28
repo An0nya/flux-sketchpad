@@ -250,7 +250,7 @@ spec mode). Spike numbers in this README are by hand or headless unless marked O
 ## HDR probe results (2026-11-27, `experiments/hdr-probe/`, OBSERVED)
 
 Both iPhones, Safari 27.0.1 (old) and 27.2 (new): `(dynamic-range: high)` true, CSS `dynamic-range-limit` supported,
-WebGPU `toneMapping: extended` configures. WebGL2 has no `drawingBufferStorage` and no tone-mapping hook
+WebGPU `toneMapping: extended` configures. By eye (Anya, both phones): only bar A (WebGPU) keeps brightening past 1x; B and C clip. WebGL2 has no `drawingBufferStorage` and no tone-mapping hook
 (`drawingBufferToneMapping` / `configureHighDynamicRange` absent), so a WebGL canvas cannot show HDR on iOS.
 The drive's HDR therefore needs a WebGPU presenter fed from the WebGL frame (copyExternalImageToTexture with RGBM, or readPixels).
 Mac headless Chromium 151, for contrast: `drawingBufferStorage(RGBA16F)` applies only after `EXT_color_buffer_float` is enabled; no tone-mapping hook either.
