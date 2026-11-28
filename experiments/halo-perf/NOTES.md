@@ -337,3 +337,38 @@ empty. The script now refuses to run when the canvas doesn't match CW/CH.)
 - Anya's phone readout of 11-28 (new phone, straight, SS2) still shows the old "Real speed (64 renders back to back)" line, so the
   githack link predates `94cb263` (real frames). Its "GPU stages" line with headlamps off still showed halo 5.0: the every-8th
   ring keeps probes from before the toggle (INFERRED: not cleared on option change; minor fix).
+
+## RETRACTION + forest scene, 2026-11-28 — `sweep-forest-*.jsonl`, `save-forest.json`
+
+**Retracted:** "trees are cheap on the Mac" (section above). `save-full.json` loads the *mountain pass* road (mountainPass on), and at
+its pose trees off removes 36 of 123 objects; screenshots with trees on/off look the same. That sweep measured a view with almost no
+trees. `save-forest.json` = save-full with mountainPass and endlessRoad off, i.e. the forest scene: 1143 objects with trees, 88 without.
+
+Forest, 1600×900, uncapped real frames (stable: baseline 63.5 ms vs "forest again" 63.8):
+
+| variant | crest | halo | scene | objects | real ms (p95) |
+|---|---|---|---|---|---|
+| forest d3 (save) | 7.0 | 35.4 | 9.6 | 17.6 | 63.5 (72.6) |
+| trees off | 4.3 | 35.3 | 9.9 | 3.8 | 50.5 (59.5) |
+| density 1.5 | 7.3 | 35.5 | 9.8 | 17.5 | 63.7 |
+| leafy off | 7.1 | 35.6 | 9.7 | 17.1 | 63.6 |
+| detailed models off | 5.3 | 35.2 | 9.6 | 10.7 | 55.8 |
+| oncoming headlamps off | 1.0 | 0.2 | 5.2 | 13.1 | 12.7 (14.2) |
+| headlamps off + trees off | 1.0 | 0.1 | 6.4 | 4.2 | 6.5 (7.6) |
+
+The 856×482 run of the same list is **not usable**: its first rows had compose/glare/final at 3–4 ms that fell to 0.6 later, and
+baseline vs "again" differ by 14 ms (44.8 vs 30.9). Something was still loading or warming. Rows kept in the file, flagged here.
+
+**OBSERVED (Mac, 1600):**
+- Trees cost ~13 ms of a 63.5 ms frame (−20 %), matching Anya's Mac reading (30 → 50–55 fps). Most of it is the objects stage
+  (17.6 → 3.8), plus ~2.7 ms of crest map: trees cast traffic shadows (the crest/shadow stage also drops).
+- Detailed models cost ~8 ms here (objects 17.6 → 10.7).
+- density 1.5 vs 3 and leafy off change nothing in this view. INFERRED: the forest scene's tree count isn't driven by `density`
+  near the road, or the visible trees are capped; not checked.
+- Oncoming headlamps are ~80 % of the forest frame (63.5 → 12.7). With them off, trees are still half of what's left (12.7 → 6.5).
+
+## Glare flicker through trees (read on origin/glare-model, not measured)
+
+`D.glareSources()` (`js/drive.js:899` on glare-model) drops a lamp from the glare list when one ray from the eye to the lamp centre is
+blocked (`occluded(...) continue`). The veil, scatter tail and starburst are all per source, so each one switches fully on or off in
+a single frame. There is no ramp and no partial visibility: a lamp behind a trunk is a binary strobe.
