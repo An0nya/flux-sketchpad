@@ -8,6 +8,7 @@
 //  5. Control: a 2.86x finer halo table (haloDiv 1.4 vs 4, with 32 bins and refine 256 so the pass is well above the timer grid)
 //     makes "halo screen" at least 1.3x slower; "final" moves by less than that.
 //  6. OFF after ON: frame and tables equal 1, and no probe is recorded any more.
+//  7. "Time this frame" (GST2): 64 timed renders kept of 80, readout line with [min-max] spreads, pose/clock/traffic put back, same picture.
 // Run: python3 tests/serve.py <port>, then PLAYWRIGHT=... node tests/regress/GST-gpu-stages.js <port>
 const pw = require(process.env.PLAYWRIGHT || '/Users/anya/Projects/agent-qa/node_modules/playwright');
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
@@ -72,6 +73,18 @@ setTimeout(() => { console.log('[FAIL] watchdog: no result after 10 min (checks 
     const sc = med(coarse, 'halo screen'), sf = med(fine, 'halo screen'), fc = med(coarse, 'final'), ff = med(fine, 'final');
     ok('5. control: halo screen grows with the table (div 1.4 vs 4: >= 1.3x); final does not grow as much', sf >= 1.3 * sc && ff / Math.max(fc, 0.05) < sf / Math.max(sc, 0.05), { screen: [sc, sf], final: [fc, ff] });
     await set(keep);
+
+    // 7. GST2 "Time this frame": 80 renders of the paused pose, 16 dropped; pose, clock, traffic and picture unchanged afterwards
+    const before = await capture(D);
+    const snap = () => page.evaluate(() => { const A = RF.DriveAnim._, st = A.S(RF.UI); return JSON.stringify({ dist: st.dist, t: st.t, playing: !!st.playing, traffic: A.V.src.traffic.state }); });
+    const s0 = await snap();
+    const tf = await page.evaluate(async () => { const r = await RF.DriveAnim._.timeFrame(); RF.DriveAnim._.perfLabel(); return { n: r ? r.length : -1, text: (RF.DriveAnim._.V.perfLab || {}).textContent || '' }; });
+    const s1 = await snap();
+    const after = await page.evaluate(async () => { await new Promise((r) => setTimeout(r, 300)); return 1; }).then(() => page.evaluate(() => 1)).then(async () => { const shot = await (await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas; Object.assign(c.style, { position: 'fixed', left: '0px', top: '0px', margin: '0px', zIndex: '99999' }); }), page.screenshot({ clip: { x: 0, y: 0, width: 912, height: 373 } })); return sha(shot); });
+    ok('7. time this frame: 64 timed renders kept (80 - 16 warm-up)', tf.n === 64, { n: tf.n });
+    ok('7. time this frame: the readout line is shown with spreads', /Frame timing \(64 renders of one pose/.test(tf.text) && /\[[0-9.]+-[0-9.]+\]/.test(tf.text), tf.text.split('\n').filter((l) => l.startsWith('Frame timing')));
+    ok('7. time this frame: pose, clock and traffic put back exactly; still paused', s0 === s1 && !JSON.parse(s1).playing, s0 === s1 ? undefined : { s0: s0.slice(0, 200), s1: s1.slice(0, 200) });
+    ok('7. time this frame: the picture afterwards equals the picture before', after === before.png, { before: before.png, after });
 
     await set({ gpuStages: false }); await page.evaluate(() => { RF.DriveAnim._.V.stageRing = []; });
     const ringOff = await frames(24);

@@ -126,6 +126,70 @@ Solving on − off = build + read + X, freeze = off + read + X, noread = off + b
   Temporal accumulation would vary the offsets per frame and average over frames instead of over neighbours.
   It can be prototyped in WebGL first (a history texture + a blend pass); it does not need the port.
 
+## First phone readings of the GPU stage readout (OBSERVED by Anya, 2026-11-27 11:13 pm, halo-perf 6ad4815, same paused pass pose)
+
+| stage (ms, mean of 10 probes) | new phone 880×494 | old phone 856×482 |
+|---|---|---|
+| crest map (all work since frame start, incl. CPU update/shading) | 5.5 | 9.7 |
+| halo total | 4.6 | 5.6 |
+| · shadow maps / screen / polar | 1.3 / 3.3 / 0.0 | 1.3 / 4.1 / 0.1 |
+| scene | 3.8 | 19.7 |
+| objects | 2.6 | 16.7 |
+| compose / final | 0.4 / 0.3 | 1.7 / 1.0 |
+| sum = probe | 17.2 | 54.5 |
+| app readout: fps, frame, main | 62.5 fps, 16.4, 9.2 | 17.2 fps, 59.2, 23.8 |
+
+INFERRED: on the old phone at this pose, the halo is ~10% of the frame. Scene + objects ≈ 36 ms are the cost.
+This retracts Claude's earlier "halo ≈ 26 ms on the old phone", which came from fps differences between runs with
+different settings. 20 fps = 50 ms, so ~4.5 ms has to go, and scene/objects is where it is.
+The "crest map" lap also holds the frame's CPU-side update and shading (there's no separate 'prep' lap unless the air table is on),
+so it needs splitting before it can be read as the crest pass.
+Settings of this run: not recorded yet (ask Anya).
+
+Second reading (11:17 pm). Save: `flux-state-straight-0m.json` = pass, straight tile at 0 m, objects off (people/animals/signs/
+posts/veg/powerlines), foliage density 0.5, traffic density 1, 4 halo cars, 12 bins, div 2.8, polar off, refine 32, moment on,
+cull fast, traffic shadows all 512², road + object shadows on, glare off. Nearest oncoming car at 16 m, 12° off.
+
+| stage (ms) | new phone 880×494 | old phone 856×482 | old/new |
+|---|---|---|---|
+| crest map (+ frame CPU) | 2.2 | 6.7 | 3.0× |
+| halo total | 5.3 | 15.4 | 2.9× |
+| · shadow maps / screen | 0.6 / 4.6 | 1.3 / 13.8 | |
+| scene | 3.3 | 18.5 | 5.6× |
+| objects | 0.5 | 3.2 | |
+| compose / final | 0.3 / 0.4 | 1.2 / 1.0 | |
+| sum = probe | 12.0 | 46.1 | |
+| app: fps, frame, main, p95 | 90.9, 11.2, 5.3, 21 | 20.4, 47.4, 17.7, **1902** | |
+
+- Anya: the halo climbs quickly with more cars. INFERRED: halo screen ∝ lamps × cells in their footprint. A car at 16 m covers a big part of the screen.
+- With objects off, the old phone's two big stages are scene (18.5) and halo screen (13.8). Scene is 5.6× slower than on the new phone while the halo is 2.9×.
+  INFERRED, untested: the ground shader loops over every traffic lamp with shadow-map lookups, and the old GPU suffers more there
+  (register pressure from the big uniform arrays is one theory). The scene pass is one draw, so splitting it means toggling options, not adding laps.
+- p95 1902 ms on the old phone: a ~2 s hitch somewhere in the window. Anya: probably her pausing and unpausing to match the scene.
+
+Toggle round (11:24–11:29 pm, same save, one toggle at a time; car positions differ run to run because the scene can't be frozen).
+Correction (Anya): all 5 runs had crossing refinement at 128, not the 32 in the save file, so the halo numbers are inflated by that.
+Anya: a loaded state starts paused and has to run a while for the readout to collect and settle, so it isn't a frozen scene for timing.
+
+| old phone (ms) | crest | halo (screen) | scene | objects | sum | fps |
+|---|---|---|---|---|---|---|
+| rerun, clean pause | 7.9 | 25.6 (24.3) | 19.3 | 3.1 | 58.3 | 16.9 |
+| surface sheen off | 7.6 | 21.3 (19.9) | 17.2 | 2.7 | 51.4 | 19.2 |
+| lamp pitch off | 7.5 | 25.1 (23.9) | 17.3 | 3.3 | 55.5 | 16.7 |
+| 11:28 pair, toggle unknown (ask) | 7.4 | 23.9 (22.5) | 16.5 | 3.3 | 53.3 | 17.9 |
+| traffic beams off (playing) | 0.4 | 0.1 | 22.0 | 5.2 | 30.9 | 29.4 |
+
+New phone across the same runs: crest 2.2–2.4, halo 5.5–5.9, scene 2.7–3.0, sum ~12. With traffic beams off: scene 4.8, sum 7.6, 125 fps.
+
+- Scene stays ~17–22 ms on the old phone even with traffic beams off. So it is NOT the traffic-lamp loop; that theory is dropped.
+  Sheen and pitch move it by ~2 ms at most, inside run-to-run noise.
+- "crest map" falls to 0.4 with traffic beams off. So ~7.5 ms on the old phone is the crest height map plus shadow setup that only
+  runs with a halo (crest occlusion on; shadows on also builds it), not frame CPU.
+- Halo screen on the old phone varies 14–24 ms run to run (car positions).
+- INFERRED: old-phone budget at this save ≈ crest 7.5 + halo 20–25 + scene 17–22 + objects 3 + compose/final 2.5.
+- Reproducibility fix: save a state once and load that file on both phones (Performance > Debug > Load state).
+  Loading re-seeds traffic deterministically at the saved spot, so both phones see the same cars.
+
 ## Open
 
 - Backlog (Anya, 2026-11-27): a "crysis" preset for fun: crossing refine 2048, shadow maps 2048×1024, polar 1024×256,
