@@ -106,7 +106,7 @@
   // (oncoming || preceding): no followers when traffic is off. The bearing is degrees off the rear centre (0 = directly
   // behind, + = to our left, - = our right); the candela is a plausible low-beam headlamp intensity scaled by distance.
   const STAGE_EVERY = 8, STAGE_KEEP = 10;   // GST (option gpuStages): a probe frame every 8th frame; the readout is the mean of the last 10 probes
-  const TIME_N = 80, TIME_WARM = 16;   // GST2 "Time this frame": 80 renders of the paused pose, every one a probe; the first 16 dropped as warm-up
+  const TIME_N = 80, TIME_WARM = 16, TIME_CHUNK = 16;   // GST2 "Time this frame": 80 renders of the paused pose, every one a probe; the first 16 dropped as warm-up; then real speed in chunks of 16
   const MIRROR_CULL = 100, MIRROR_KCD = 30;   // cull range (m) and headlamp candela (low beam, symmetric)
   function mirrorCars(src, dist, t) {
     const tr = src && src.traffic; if (!tr || !tr.density) return [];
@@ -2006,7 +2006,7 @@ void main() {
     const tlB = TL.cur ? tlBefore() : null;
     // GST (option gpuStages, GPU renderer only): every STAGE_EVERY-th frame is a probe frame; off, no probe exists and nothing here touches GL.
     if (V.forceProbe && V.three && V.three.setProbe) { draw.probe = V.gl.stageProbe(); V.three.setProbe(draw.probe); }   // GST2: every render of a timeFrame() run is a probe
-    else if (o.gpuStages && o.debugTimings && V.three && V.three.setProbe) { V.stageN = (V.stageN || 0) + 1; draw.probe = V.stageN % STAGE_EVERY === 0 ? V.gl.stageProbe() : null; V.three.setProbe(draw.probe); }
+    else if (!V.noProbe && o.gpuStages && o.debugTimings && V.three && V.three.setProbe) { V.stageN = (V.stageN || 0) + 1; draw.probe = V.stageN % STAGE_EVERY === 0 ? V.gl.stageProbe() : null; V.three.setProbe(draw.probe); }
     try { V.gl.draw(draw); } catch (e) { if (V.three && V.three.setProbe) V.three.setProbe(null); if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
     if (draw.probe) { V.three.setProbe(null); const rec = { ms: draw.probe.ms, order: draw.probe.order, total: draw.probe.total() };
       if (V.forceProbe) V.lastProbe = rec; else { (V.stageRing || (V.stageRing = [])).push(rec); if (V.stageRing.length > STAGE_KEEP) V.stageRing.shift(); } }
@@ -2418,7 +2418,7 @@ void main() {
     btn('endless-details', 'Endless-road live numbers: settlement, road class, tile position, traffic params, beam, relief, cover, water, renderer. Refreshes about 4 times a second; off costs nothing.', () => setDV(ui, 'endlessDetails', !info().o.endlessDetails), 'Endless details');
     btn('debug-timings', 'Full CPU timing breakdown with sampled trace profiling. GPU execution requires the tester bench.', () => setDV(ui, 'debugTimings', !info().o.debugTimings), 'Debug timings');
     btn('gpu-stages', 'GPU stage timings (with Debug timings on, GPU renderer): every 8th frame waits for the GPU after each render stage (air table, crest map, halo, scene, cones, objects, compose, glare, final) and the readout shows each stage\'s median ms. Probe frames run slower; off costs nothing.', () => setDV(ui, 'gpuStages', !info().o.gpuStages), 'GPU stages');
-    btn('time-frame', 'Time this frame (with GPU stages on, GPU renderer): pauses, renders this exact frame 80 times back to back with every render timed, drops the first 16 as warm-up, and shows each stage as mean [min-max]. The pose and traffic are put back exactly. Load the same state on two devices to compare them.', () => { timeFrame(); }, 'Time this frame');
+    btn('time-frame', 'Time this frame (with GPU stages on, GPU renderer): pauses, renders this exact frame 80 times with every stage timed (first 16 dropped as warm-up) and shows each stage as mean [min-max]; then 80 more renders back to back without stage syncs for the real per-frame cost. Stage syncs slow the stages down, so read them as proportions of the real cost. The pose and traffic are put back exactly. Load the same state on two devices to compare them.', () => { timeFrame(); }, 'Time this frame');
     btn('scene-details', 'Live numbers about the scene in a small panel: own car, oncoming traffic, glare, hazards, range and lamp. Refreshes about 4 times a second; off costs nothing.', () => setDV(ui, 'sceneDetails', !info().o.sceneDetails), 'Scene details');
     btn('dynamic-resolution', 'Reduce trace/render dimensions when frames exceed the target; restore slowly with headroom. Off restores full resolution. pinSS freezes scale.', () => setDV(ui, 'dynamicResolution', !info().o.dynamicResolution), 'dynamic resolution');
     // the resolution ceiling: the sim width every scene and mode may use (the canvas stays css x dpr). Dynamic resolution steps down from it.
@@ -3697,7 +3697,9 @@ void main() {
     const T = V.timeRun; if (!T) return '';
     if (T.running) return 'Frame timing: rendering ' + T.n + ' frames of this pose...';
     if (!T.ring.length) return 'Frame timing: no probe recorded (GPU renderer only)';
-    return 'Frame timing (' + T.ring.length + ' renders of one pose at ' + Math.round(T.dist) + ' m, ' + T.warm + ' warm-up dropped): ' + ringText(T.ring, true);
+    const synced = T.ring.reduce((s, r) => s + r.total, 0) / T.ring.length, f = (v) => v.toFixed(1);
+    return 'Frame timing (' + T.ring.length + ' renders of one pose at ' + Math.round(T.dist) + ' m, ' + T.warm + ' warm-up dropped, synced per stage): ' + ringText(T.ring, true)
+      + (T.real ? '\nReal speed (' + T.real.n + ' renders back to back, no stage syncs): ' + f(T.real.ms) + ' [' + f(T.real.min) + '-' + f(T.real.max) + '] ms per frame → stage timings run ' + (synced / T.real.ms).toFixed(1) + 'x slow; use them as proportions' : '');
   }
   function ringText(ring, spread) {
     const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
@@ -3719,14 +3721,27 @@ void main() {
     if (st.playing) V.setOwn('playing', false);
     stop();
     const d0 = st.dist, t0s = st.t, flashes = V.flash, traffic = V.src.traffic.state, ring = [];
-    V.timeRun = { running: true, n, warm, dist: d0, ring }; perfLabel();
+    V.timeRun = { running: true, n, warm, dist: d0, ring, real: null }; perfLabel();
+    const reset = () => { st.dist = d0; st.t = t0s; V.src.traffic.state = copyTraffic(traffic); V.flash = flashState(); };
     try {
       for (let i = 0; i < n; i++) {
-        st.dist = d0; st.t = t0s; V.src.traffic.state = copyTraffic(traffic); V.flash = flashState();
+        reset();
         V.forceProbe = true; try { frame(); } finally { V.forceProbe = false; }
         if (V.lastProbe && i >= warm) ring.push(V.lastProbe); V.lastProbe = null;
         await new Promise((r) => setTimeout(r, 0));   // let the page breathe between renders
       }
+      // Real speed: the same pose rendered back to back with no stage syncs, one GPU wait per chunk of TIME_CHUNK renders, so the
+      // CPU and GPU overlap as in a played frame. Per-frame ms = chunk time / chunk size; [min-max] over the chunks. Warm-up chunk dropped.
+      V.noProbe = true; const per = [];
+      try {
+        for (let c = 0; c < (n - warm) / TIME_CHUNK + 1; c++) {
+          V.gl.sync(); const t0 = performance.now();
+          for (let k = 0; k < TIME_CHUNK; k++) { reset(); frame(); }
+          V.gl.sync(); if (c > 0) per.push((performance.now() - t0) / TIME_CHUNK);
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      } finally { V.noProbe = false; }
+      if (per.length) V.timeRun.real = { n: per.length * TIME_CHUNK, ms: per.reduce((a, b) => a + b, 0) / per.length, min: Math.min(...per), max: Math.max(...per) };
     } finally { st.dist = d0; st.t = t0s; V.flash = flashes; V.src.traffic.state = traffic; flashText(); V.timeRun.running = false; }
     frame(); perfLabel();
     return ring;

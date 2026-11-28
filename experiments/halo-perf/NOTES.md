@@ -190,6 +190,29 @@ New phone across the same runs: crest 2.2–2.4, halo 5.5–5.9, scene 2.7–3.0
 - Reproducibility fix: save a state once and load that file on both phones (Performance > Debug > Load state).
   Loading re-seeds traffic deterministically at the saved spot, so both phones see the same cars.
 
+## "Time this frame" resolution sweep (OBSERVED by Anya, 2026-11-27 11:43–11:45 pm, halo-perf 011729d)
+
+Pose: the straight-0m save loaded, nearest oncoming car ~16 m. Anya: crossing refine 32, and the scatter table set to 1/1.8
+(haloDiv 1.8, ≈2.4× the cells of the save's 1/2.8). So the halo here is the fine-table case.
+Anya: "Time this frame" reads about 1.5–3× slower than a real run. INFERRED causes: the per-stage syncs stop CPU and GPU from
+overlapping and add a flush per lap, and an iPhone GPU probably drops its clocks while it idles between the synced bursts.
+Use the stage numbers as proportions, not as absolute frame cost.
+Each cell: mean over 64 renders of one pose. Old phone in **bold**.
+
+| ceiling (sim) | crest | halo screen | scene | objects | compose+final | sum |
+|---|---|---|---|---|---|---|
+| 1600 (old 856×482 / new 880×494) | **14.3** / 3.8 | **69.6** [57–77] / 9.0 | **28.9** / 3.9 | **3.8** / 0.5 | **3.1** / 0.7 | **120.8** / 18.1 |
+| 960 (same sims: ceiling above both) | **14.5** / 7.4 | **68.1** / 11.0 | **27.6** / 6.5 | **3.8** / 1.0 | **3.1** / 1.1 | **118.0** / 27.2 |
+| 640 (640×360) | **12.1** / 4.3 | **50.8** [41–56] / 8.7 | **22.2** / 4.4 | **2.8** / 0.6 | **2.4** / 0.9 | **91.2** / 19.1 |
+| 640 + SS2 | **13.1** / 5.0 | **51.7** / 9.0 | **23.1** / 4.9 | **6.0** / 1.1 | **2.8** / 0.9 | **97.4** / 21.1 |
+
+- Old phone is repeatable: 1600 vs 960 is identical work (same sim) and gives 120.8 vs 118.0.
+  New phone is NOT: 18.1 vs 27.2 for the same work. INFERRED: thermal/power state. Take new-phone numbers as best-of-several, or cool it first.
+- Pixels ×0.56 (856×482 → 640×360) gives old-phone halo screen ×0.73, scene ×0.77, crest ×0.85. So the old phone is only partly per-pixel
+  bound. Lowering resolution helps but won't reach 50 ms alone.
+- At this pose the old phone spends ~58% of the frame in halo screen (51–70 ms) vs 9 ms on the new phone (7.7× slower; scene 7.4×).
+- SS2 only doubles objects (the supersampled pass); everything else is unchanged.
+
 ## Open
 
 - Backlog (Anya, 2026-11-27): a "crysis" preset for fun: crossing refine 2048, shadow maps 2048×1024, polar 1024×256,
