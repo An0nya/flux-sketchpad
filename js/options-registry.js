@@ -201,6 +201,10 @@
     { id: 'gmBloom', type: 'bool', def: false, label: 'bloom with the model', title: 'Keep the drive\'s bloom (the blurred bright-pixel halo) with a model on. Off by default: bloom double-counts the scatter the tail models. The glare level still sets its strength.' },
     { id: 'gmAdaptDown', type: 'number', min: 0.05, max: 5, step: 0.05, def: 0.4, unit: ' s', label: 'adapt to glare', title: 'Adapt exposure: time constant when glare arrives (k falls). The drive today: 0.4 s.' },
     { id: 'gmAdaptUp', type: 'number', min: 0.5, max: 60, step: 0.5, def: 3, unit: ' s', label: 'glare recovery', title: 'Adapt exposure: time constant when glare leaves (k rises). The drive today: 3 s.' },
+    { id: 'hdrOut', type: 'bool', def: false, label: 'HDR output', title: 'Show the drive on an HDR screen: lamps can be brighter than paper white instead of growing a bigger blob. Needs WebGPU and an HDR display (iPhone Safari 26+); the WebGL frame is handed to a WebGPU canvas each frame. Only with a glare model on.' },
+    { id: 'hdrPeak', type: 'number', min: 1, max: 16, step: 0.25, def: 16, unit: '×', label: 'HDR peak', title: 'The brightest value sent to the screen, as a multiple of paper white. The screen clips at its own headroom (about 2-8x on a phone, less in bright surroundings). TUNING (Anya: 16).' },
+    { id: 'hdrKnee', type: 'number', min: 0.25, max: 4, step: 0.05, def: 0.55, unit: '', label: 'HDR shoulder knee', title: 'Below the knee the picture is exactly the SDR tone curve; above it the curve rolls on toward the peak, slope-matched. TUNING (Anya: 0.55).' },
+    { id: 'hdrTransport', type: 'enum', values: ['copy', 'readback'], def: 'copy', label: 'HDR hand-off', title: 'How the WebGL frame reaches the WebGPU canvas. copy: two GPU copies of the canvas (exact on Chrome; check the probe on Safari). readback: through the CPU, one frame late. For timing them against each other.' },
   ];
   // Presets: the knobs each one writes. perceptual = Anya's "Anya Moffat" spike preset (phone sessions 1-3); cie146 = the spike's "CIE 146 veil".
   const GLARE_MODELS = {

@@ -92,7 +92,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `traffic` | Traffic | 17 | 0 | 14 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 14 | 0 | 14 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
-| `exposure` | Exposure and eye | 30 | 1 | 29 | 0 | 0 | 0 | 0 |
+| `exposure` | Exposure and eye | 34 | 1 | 33 | 0 | 0 | 0 | 0 |
 | `performance` | Speed and quality | 9 | 0 | 8 | 0 | 0 | 0 | 1 |
 | `diagnostics` | Panels and layout | 8 | 0 | 8 | 0 | 0 | 0 | 0 |
 | `internal` | Internal (no control) | 6 | 0 | 0 | 0 | 0 | 0 | 6 |
@@ -321,6 +321,10 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `gmBloom` | bloom with the model | extra | More | (unset) | needs `glareModelOn` [disabled] |
 | `gmAdaptDown` | adapt to glare | extra | More | (unset) | needs `glareModelOn` [disabled] |
 | `gmAdaptUp` | glare recovery | extra | More | (unset) | needs `glareModelOn` [disabled] |
+| `hdrOut` | HDR output | extra | More | (unset) | needs `glareModelOn` [disabled] |
+| `hdrPeak` | HDR peak | extra | More | (unset) | needs `glareModelOn` [disabled] |
+| `hdrKnee` | HDR shoulder knee | extra | More | (unset) | needs `glareModelOn` [disabled] |
+| `hdrTransport` | HDR hand-off | extra | More | (unset) | needs `glareModelOn` [disabled] |
 | `ambient` | ambient light (lx) | profile | More | 0 | - |
 
 #### Speed and quality (`performance`)

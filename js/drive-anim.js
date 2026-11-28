@@ -1372,12 +1372,20 @@ void main() {
   // averaged, so thin spokes do not alias). Uniforms: 5 vec4 + 3 floats more than FS_FINAL; 1 sampler more (3 in all).
   const FS_FINAL_GM = `#version 300 es
 precision highp float; uniform sampler2D uHdr, uGlare, uSpk; uniform vec2 uSize; uniform float uK, uFlip, uGl, uTanH, uTanV, uPxSim, uPxCv; uniform int uNS; uniform vec4 uSources[32]; uniform vec3 uSrcRGB[32];
-uniform vec4 uGm0, uGm1, uGm2, uGm3, uGm4; out vec4 o;
+uniform vec4 uGm0, uGm1, uGm2, uGm3, uGm4; uniform float uHdrOut, uPeak, uKnee; out vec4 o;
 // uGm0: veil mode (0 off, 1 physical, 2 perceptual), veil strength x SDR boost, perceptual cap, angle floor (deg)
 // uGm1: law (0 S-H, 1 CIE 146), age factor, pigment p, tail on    uGm2: alpha (rad), beta, tail scale (gain x SDR boost), starburst on
 // uGm3: spoke length (deg), spoke gain, taper, rotation (rad)     uGm4: bins, table total, -, -
 vec3 aces(vec3 x) { x = max(x, 0.0); return min((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 1.0); }
 vec3 srgb(vec3 c) { return mix(12.92 * c, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+// HDR output (hdrOut): the spike's "ACES + HDR shoulder": ACES below the knee, then a slope-matched roll toward the peak. Linear display values (1 = paper white).
+float aces1(float x) { x = max(x, 0.0); return (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14); }
+float hcurve(float x) {
+  float sdr = min(aces1(x), 1.0); if (x <= uKnee) return sdr;
+  float y0 = min(aces1(uKnee), 1.0), room = uPeak - y0; if (room <= 0.0) return sdr;
+  float s0 = max((aces1(uKnee + 1e-3) - aces1(uKnee - 1e-3)) / 2e-3, 1e-3);
+  return y0 + room * (1.0 - exp(-(x - uKnee) * s0 / room));
+}
 vec2 spk(int i) { return texelFetch(uSpk, ivec2(i, 0), 0).rg; }
 float spkCum(float x) { float nb = uGm4.x, w = floor(x / nb), xr = x - w * nb; int i = min(int(floor(xr)), int(nb) - 1); float fr = xr - float(i); float c0 = i > 0 ? spk(i - 1).r : 0.0; return w * uGm4.y + c0 + (spk(i).r - c0) * fr; }
 void main() {
@@ -1400,8 +1408,76 @@ void main() {
   }
   vec3 lin = (texture(uHdr, uv).rgb + sct) * uK + (uGl > 0.0 ? texture(uGlare, uv).rgb : vec3(0.0));
   if (uGm0.x > 1.5) { vec3 v = uK * uGm0.y * veil; lin += uGm0.z * v / (1.0 + v); } else if (uGm0.x > 0.5) lin += uK * uGm0.y * veil;
-  o = vec4(srgb(aces(lin)), 1.0);
+  o = uHdrOut > 0.5 ? vec4(hcurve(lin.r), hcurve(lin.g), hcurve(lin.b), 1.0) : vec4(srgb(aces(lin)), 1.0);
 }`;
+
+  // HDR hand-off encoder (hdrOut): reads the linear display frame (RGBA16F, canvas size) and writes 8 bits the WebGPU presenter decodes.
+  // 1 low: sRGB(min(d, 1)), today's SDR precision; 2 high: sqrt(max(d - 1, 0) / (peak - 1)); 3 RGBM: sqrt(d / (M·peak)), M in alpha (readback only:
+  // an opaque canvas has no alpha, and an alpha canvas does not copy bytes exactly, measured on Chromium).
+  const FS_HDR_ENC = `#version 300 es
+precision highp float; uniform sampler2D uD; uniform float uMode, uPeak; out vec4 o;
+vec3 srgb(vec3 c) { return mix(12.92 * c, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+void main() {
+  vec3 d = max(texelFetch(uD, ivec2(gl_FragCoord.xy), 0).rgb, 0.0);
+  if (uMode < 1.5) o = vec4(srgb(min(d, 1.0)), 1.0);
+  else if (uMode < 2.5) o = vec4(sqrt(clamp((d - 1.0) / max(uPeak - 1.0, 1e-3), 0.0, 1.0)), 1.0);
+  else { float m = ceil(clamp(max(max(d.r, d.g), d.b) / uPeak, 1.0 / 255.0, 1.0) * 255.0) / 255.0; o = vec4(sqrt(clamp(d / (m * uPeak), 0.0, 1.0)), m); }
+}`;
+  // The WebGPU presenter: a canvas over the WebGL one, rgba16float with toneMapping 'extended' (values above 1 show above paper white).
+  // Decodes the hand-off (copy: low + high textures; readback: RGBM, rows bottom-up) and writes extended sRGB. Resolves to { fail } without WebGPU.
+  const WGSL_HDR = `struct U { mode: f32, peak: f32, h: f32, pad: f32 };
+@group(0) @binding(0) var<uniform> u: U;
+@group(0) @binding(1) var lo: texture_2d<f32>;
+@group(0) @binding(2) var hi: texture_2d<f32>;
+@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f { let p = vec2f(f32((i << 1u) & 2u), f32(i & 2u)); return vec4f(p * 2.0 - 1.0, 0.0, 1.0); }
+fn dec(c: f32) -> f32 { return select(pow((c + 0.055) / 1.055, 2.4), c / 12.92, c <= 0.04045); }
+fn enc(c: f32) -> f32 { return select(1.055 * pow(c, 1.0 / 2.4) - 0.055, 12.92 * c, c <= 0.0031308); }
+@fragment fn fs(@builtin(position) p: vec4f) -> @location(0) vec4f {
+  var q = vec2i(p.xy); var d: vec3f;
+  if (u.mode < 0.5) { let a = textureLoad(lo, q, 0).rgb; let b = textureLoad(hi, q, 0).rgb; d = vec3f(dec(a.r), dec(a.g), dec(a.b)) + b * b * (u.peak - 1.0); }
+  else { q.y = i32(u.h) - 1 - q.y; let t = textureLoad(lo, q, 0); d = t.rgb * t.rgb * t.a * u.peak; }
+  return vec4f(enc(d.r), enc(d.g), enc(d.b), 1.0);
+}`;
+  async function makeHDR() {
+    const nav = root.navigator;
+    if (!nav || !nav.gpu) return { fail: 'no WebGPU in this browser' };
+    let dev; try { const ad = await nav.gpu.requestAdapter(); if (!ad) return { fail: 'no WebGPU adapter' }; dev = await ad.requestDevice(); } catch (e) { console.warn('drive HDR: no WebGPU device', e); return { fail: 'WebGPU: ' + (e.message || e) }; }
+    dev.addEventListener('uncapturederror', (e) => console.error('drive HDR WebGPU: ' + e.error.message));
+    const c = document.createElement('canvas'); c.className = 'drive-hdr'; c.setAttribute('aria-hidden', 'true'); c.hidden = true;
+    const ctx = c.getContext('webgpu'), FMT = 'rgba16float', TU = root.GPUTextureUsage;
+    const conf = (mode) => ctx.configure({ device: dev, format: FMT, alphaMode: 'opaque', toneMapping: { mode }, usage: TU.RENDER_ATTACHMENT | TU.COPY_SRC });   // COPY_SRC: P.capture (tests)
+    try { conf('extended'); } catch (e) { console.warn('drive HDR: extended canvas refused', e); return { fail: 'extended canvas refused: ' + (e.message || e) }; }
+    const mod = dev.createShaderModule({ code: WGSL_HDR });
+    const pipe = dev.createRenderPipeline({ layout: 'auto', vertex: { module: mod, entryPoint: 'vs' }, fragment: { module: mod, entryPoint: 'fs', targets: [{ format: FMT }] }, primitive: { topology: 'triangle-list' } });
+    const ubuf = dev.createBuffer({ size: 16, usage: root.GPUBufferUsage.UNIFORM | root.GPUBufferUsage.COPY_DST });
+    let w = 0, h = 0, lo = null, hi = null, bg = null, last = null;
+    const tex = () => dev.createTexture({ size: [w, h], format: 'rgba8unorm', usage: TU.COPY_DST | TU.COPY_SRC | TU.TEXTURE_BINDING | TU.RENDER_ATTACHMENT });
+    const P = {
+      canvas: c, dev,
+      size(W, H) { if (W === w && H === h) return; w = W; h = H; c.width = W; c.height = H; if (lo) lo.destroy(); if (hi) hi.destroy(); lo = tex(); hi = tex();
+        bg = dev.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubuf } }, { binding: 1, resource: lo.createView() }, { binding: 2, resource: hi.createView() }] }); },
+      copy(slot, src) { dev.queue.copyExternalImageToTexture({ source: src }, { texture: slot ? hi : lo }, [w, h]); },
+      upload(px) { dev.queue.writeTexture({ texture: lo }, px, { bytesPerRow: w * 4 }, [w, h]); },
+      present(mode, peak) {
+        last = [mode, peak]; dev.queue.writeBuffer(ubuf, 0, new Float32Array([mode, peak, h, 0]));
+        const e = dev.createCommandEncoder(), pass = e.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
+        pass.setPipeline(pipe); pass.setBindGroup(0, bg); pass.draw(3); pass.end();
+        if (P.capture) {   // tests: the shown frame back as float16 bits (extended sRGB), rows top-down
+          const bpr = Math.ceil(w * 8 / 256) * 256, buf = dev.createBuffer({ size: bpr * h, usage: root.GPUBufferUsage.COPY_DST | root.GPUBufferUsage.MAP_READ });
+          e.copyTextureToBuffer({ texture: ctx.getCurrentTexture() }, { buffer: buf, bytesPerRow: bpr }, [w, h]); P.capture = false;
+          dev.queue.submit([e.finish()]);   // before mapAsync: a buffer cannot be in a submit while it is being mapped
+          P.captured = (async () => { await buf.mapAsync(root.GPUMapMode.READ); const src = new Uint16Array(buf.getMappedRange().slice(0)), out = new Uint16Array(w * h * 4); for (let y = 0; y < h; y++) out.set(src.subarray(y * bpr / 2, y * bpr / 2 + w * 4), y * w * 4); buf.unmap(); return { w, h, bits: out }; })();
+          return;
+        }
+        dev.queue.submit([e.finish()]);
+      },
+      // iOS (spike, observed): the headroom drops to about 1.5x after the page is left; configuring standard then extended restores it
+      rerequest() { try { conf('standard'); } catch (e) { console.warn('drive HDR: re-configure failed', e); return; } requestAnimationFrame(() => requestAnimationFrame(() => { try { conf('extended'); if (last && bg) P.present(last[0], last[1]); } catch (e) { console.warn('drive HDR: re-configure failed; the HDR canvas keeps its last state', e); } })); },
+    };
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !c.hidden) P.rerequest(); });
+    root.addEventListener('pageshow', () => { if (!c.hidden) P.rerequest(); });
+    return P;
+  }
 
   function makeGL(canvas) {
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
@@ -1428,7 +1504,12 @@ void main() {
     const bindTex = (unit, name, loc) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, T[name].t); gl.uniform1i(loc, unit); };
     const R = {
       gl, W: 0, H: 0, cw: 0, ch: 0,
-      finGM: () => P.finGM || (P.finGM = prog(FS_FINAL_GM)),   // compiled on first use: a frame without a glare model never builds it
+      finGM: () => P.finGM || (P.finGM = prog(FS_FINAL_GM)),
+      hdrEnc: () => P.hdrEnc || (P.hdrEnc = prog(FS_HDR_ENC)),
+      readDisp() { if (!T.disp) return null; const a = new Float32Array(4 * T.disp.w * T.disp.h); gl.bindFramebuffer(gl.FRAMEBUFFER, T.disp.f); gl.readPixels(0, 0, T.disp.w, T.disp.h, gl.RGBA, gl.FLOAT, a); return { w: T.disp.w, h: T.disp.h, a }; },   // tests: the linear display frame, rows bottom-up
+      // HDR readback (hdrTransport readback): one pixel-pack buffer and a fence; a frame is fetched when its fence has signalled, never waited on
+      pollHdr(sink) { const rb = R.rb; if (!rb || !rb.fence) return true; const st = gl.clientWaitSync(rb.fence, 0, 0); if (st !== gl.ALREADY_SIGNALED && st !== gl.CONDITION_SATISFIED) return false;
+        gl.deleteSync(rb.fence); rb.fence = null; gl.bindBuffer(gl.PIXEL_PACK_BUFFER, rb.pbo); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, rb.px); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null); sink.upload(rb.px); sink.present(1, rb.peak); return true; },   // compiled on first use: a frame without a glare model never builds it
       // allocate for a sim size and a canvas size
       resize(W, H, cw, ch) {
         R.cw = cw; R.ch = ch; if (W === R.W && H === R.H) return false;
@@ -1491,14 +1572,29 @@ void main() {
         const gm = f.gm && f.glare > 0 ? f.gm : null, FP = gm ? R.finGM() : P.fin;   // the glare level stays the master switch
         if (gm) {
           if (R.spkKey !== gm.spokeKey) { R.spkKey = gm.spokeKey; const tb = D.spokeTable(gm.gp); R.spkTotal = tb[2 * (D.GM_BINS - 1)]; if (!T.spk) { T.spk = { t: gl.createTexture() }; gl.bindTexture(gl.TEXTURE_2D, T.spk.t); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG32F, D.GM_BINS, 1); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); } gl.bindTexture(gl.TEXTURE_2D, T.spk.t); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, D.GM_BINS, 1, gl.RG, gl.FLOAT, tb); }
-          const g = gm.gp, boost = f.hdr ? 1 : g.gmSdrBoost, D2R_ = Math.PI / 180;
+          const hdr = f.hdr || null;
+          if (hdr) { if (!T.disp || T.disp.w !== R.cw || T.disp.h !== R.ch) { mk('disp', R.cw, R.ch, gl.RGBA16F, gl.NEAREST); mk('rgbm', R.cw, R.ch, gl.RGBA8, gl.NEAREST); } gl.bindFramebuffer(gl.FRAMEBUFFER, T.disp.f); }
+          const g = gm.gp, boost = hdr ? 1 : g.gmSdrBoost, D2R_ = Math.PI / 180;
           use(FP, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: bloom ? 1 : 0, uTanH: tanH, uTanV: tanV, uPxSim: 2 * tanH / W, uPxCv: 2 * tanH / R.cw,
             uGm0: [gm.veil, g.gmVeilStr * boost, g.gmVeilCap, g.gmVeilFloor], uGm1: [g.gmVeilLaw === 'cie146' ? 1 : 0, 1 + Math.pow(g.gmAge / 62.5, 4), g.gmPigment, gm.tail ? 1 : 0],
-            uGm2: [g.gmTailAlpha * D2R_, g.gmTailBeta, boost * g.gmTailGain, gm.spike ? 1 : 0], uGm3: [g.gmSpikeLen, g.gmSpikeGain, g.gmSpikeTaper, g.gmSpikeRot * D2R_], uGm4: [D.GM_BINS, R.spkTotal, 0, 0] });
+            uGm2: [g.gmTailAlpha * D2R_, g.gmTailBeta, boost * g.gmTailGain, gm.spike ? 1 : 0], uGm3: [g.gmSpikeLen, g.gmSpikeGain, g.gmSpikeTaper, g.gmSpikeRot * D2R_], uGm4: [D.GM_BINS, R.spkTotal, 0, 0], uHdrOut: hdr ? 1 : 0, uPeak: hdr ? hdr.peak : 1, uKnee: hdr ? hdr.knee : 1 });
           gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.spk.t); gl.uniform1i(FP.u.uSpk, 2);
         } else use(P.fin, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: f.glare > 0 ? 1 : 0, uVeil: f.veil || 0, uTanH: tanH, uTanV: tanV });
         const sources = f.sources || [], sa = new Float32Array(128); const sc = new Float32Array(96); sources.slice(0, 32).forEach((q, i) => { sa.set(q.slice(0, 4), i * 4); sc.set([q[4] === undefined ? 1 : q[4], q[5] === undefined ? 1 : q[5], q[6] === undefined ? 1 : q[6]], i * 3); }); gl.uniform1i(FP.u.uNS, Math.min(32, sources.length)); gl.uniform4fv(FP.u['uSources[0]'], sa); gl.uniform3fv(FP.u['uSrcRGB[0]'], sc);   // BRIEF-U: per-source rgb (veil = E * rgb)
         bindTex(0, 'hdr', FP.u.uHdr); bindTex(1, 'acc', FP.u.uGlare); gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (gm && f.hdr) {   // hand the linear display frame to the WebGPU presenter (same task as the draw: the canvas buffer is only valid now)
+          const hd = f.hdr, sink = hd.sink, E_ = R.hdrEnc(); sink.size(R.cw, R.ch);
+          const encode = (mode, fb) => { gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(0, 0, R.cw, R.ch); use(E_, { uMode: mode, uPeak: hd.peak }); bindTex(0, 'disp', E_.u.uD); gl.drawArrays(gl.TRIANGLES, 0, 3); };
+          if (hd.transport === 'readback') {
+            R.pollHdr(sink);
+            if (!R.rb || R.rb.w !== R.cw || R.rb.h !== R.ch) { if (R.rb) { if (R.rb.fence) gl.deleteSync(R.rb.fence); gl.deleteBuffer(R.rb.pbo); } const pbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, 4 * R.cw * R.ch, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null); R.rb = { pbo, fence: null, w: R.cw, h: R.ch, px: new Uint8Array(4 * R.cw * R.ch), peak: hd.peak }; }
+            if (!R.rb.fence) {   // a frame still in flight: this one is dropped, never waited on
+              encode(3, T.rgbm.f); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, R.rb.pbo); gl.readPixels(0, 0, R.cw, R.ch, gl.RGBA, gl.UNSIGNED_BYTE, 0); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+              R.rb.fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); R.rb.peak = hd.peak; gl.flush();
+              const poll = () => { if (!R.pollHdr(sink)) requestAnimationFrame(poll); }; requestAnimationFrame(poll);
+            }
+          } else { encode(1, null); sink.copy(0, gl.canvas); encode(2, null); sink.copy(1, gl.canvas); sink.present(0, hd.peak); }
+        }
         if (timing) Object.assign(timing, { composeMs: tCompose - t0, glareMs: tGlare - tCompose, finalVeilMs: performance.now() - tGlare });
       },
       // the HDR sim image back on the CPU (tests): Float32Array 4·W·H, row 0 = top
@@ -1815,6 +1911,27 @@ void main() {
   }
   // GLARE (Brief U): one path, every source. opts carry the street lamps (world.lights) and their class/kind; the lights' rgb is the lamp kind's tint. world = the frame's tile/pass world.
   function glareOpts(o, world) { return { lights: (world && world.lights) || [], lampClass: o.lampClass, lampKind: o.streetLamps, wetVeil: !!o.wetVeil, wetness: D.wetnessOf(o), wetSheen: !!o.wetSheen, A: world && world.A, wetBouncePlane: o.wetBouncePlane === true, dryStreaks: o.dryStreaks === true, roadSurfaces: o.roadSurfaces === true, roadSurface: o.roadSurface }; }   // roadSurfaces/roadSurface: the veil mirrors take the same dry floor (dryStreakFloorOf) as the road they reflect off   // wetVeil (4-N): glareSources mirrors the lamps in the road when on; frenchie (dryStreaks): dry floor for the veil
+  // HDR output (hdrOut): what draw() hands the frame to, or null. The presenter is made on first use (async: the first frames stay SDR).
+  // Only with a glare model on and glare on; anything else hides the HDR canvas and shows the WebGL one as before.
+  function hdrSink(o) {
+    const Opt = RF.Options, gp = Opt.glareParamsOf(o);
+    if (!gp.hdrOut || Opt.glareModelOf(o) === 'current' || !(D.glareStrength(D.capGlare(o.glare)) > 0) || !V.canvas) { hdrHide(); return null; }
+    if (V.hdr === undefined) { V.hdr = null; makeHDR().then((p) => { V.hdr = p; if (V.ui) { labels(V.ui); V.ui.redrawSpec(); } }); return null; }
+    if (!V.hdr || V.hdr.fail) return null;
+    const c = V.hdr.canvas, cs = V.canvas.style;
+    if (c.previousElementSibling !== V.canvas) V.canvas.after(c);
+    for (const k of ['left', 'top', 'width', 'height']) if (c.style[k] !== cs[k]) c.style[k] = cs[k];
+    if (c.hidden) { c.hidden = false; V.hdr.rerequest(); }
+    if (cs.visibility !== 'hidden') cs.visibility = 'hidden';
+    document.documentElement.classList.add('hdr-on');
+    return { sink: V.hdr, transport: gp.hdrTransport, peak: gp.hdrPeak, knee: gp.hdrKnee };
+  }
+  function hdrHide() {
+    if (!V.hdr || V.hdr.fail) return;   // nothing was ever shown (also: no DOM in the Node renderer tests)
+    if (V.hdr && V.hdr.canvas && !V.hdr.canvas.hidden) V.hdr.canvas.hidden = true;
+    if (V.canvas && V.canvas.style.visibility) V.canvas.style.visibility = '';
+    if (document.documentElement.classList.contains('hdr-on')) document.documentElement.classList.remove('hdr-on');
+  }
   function exposure(sources) {
     const I = info(), o = I.o;
     if (o.expMode === 'auto' && V.kAuto) return V.kAuto;
@@ -2022,7 +2139,7 @@ void main() {
     drawCabin(V, o.cabinView && (st.popout || ui.display === 'drive'), o.cabinStyle || 'modern', !!o.cabinLight, (st.game ? st.game.v : st.camera && typeof st.camera.v === 'number' ? st.camera.v : kmhOf() / 3.6) * 3.6, o.driftCabin ? (V.driftA || 0) : 0, o.cabinFovFrame ? o.fov : 0, _mc, _cabE);   // after the sources: the miata dash glow reads this frame's oncoming light
     V.frameGlare = sources; V.framePlaced = placed;      // scene details reads these (pointers only)
     const sourceEnd = performance.now(), glProfile = profiling ? {} : null;
-    const draw = { profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, gm: D.glareModelGPU(o, D.reducedMotion()), flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
+    const draw = { profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, st.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), st.t, st.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, gm: D.glareModelGPU(o, D.reducedMotion()), hdr: hdrSink(o), flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: st.dist % TEX_WRAP, lane: V.p.lane };
     if (V.three) { const world = V.src.tiles ? placed : { A: (V.p.touge ? RF.Touge.elevate(Object.assign({}, V.p.A), st.dist, V.p.lane, false) : V.p.A), objects: placed, ...(V.src.cross ? fixedIntersection(V.src, st.dist) : {}) }; draw.groundGPU = (target, objTarget) => V.three.render(V.p, world, st.dist, target, objTarget, ss); if (V.src.tiles || (o.wet && o.wetSheen)) draw.tex = 0; }   // elevatedView: flat scenes enter the GPU world through elevate() (height 0)
     const tlB = TL.cur ? tlBefore() : null;
     try { V.gl.draw(draw); } catch (e) { if (!V.three) throw e; gpuFallback(e.message || e); prepare(layout()); frame(); return; }
@@ -2122,7 +2239,7 @@ void main() {
     V.gl.setObjects(V.rgba, had ? Math.min(pb[0], y0) : y0, had ? Math.max(pb[1], y1) : y1); V.band = [y0, y1];
     const t2 = performance.now();
     const sources = frameSources(b.dist, b.t), sourceEnd = performance.now(), glProfile = profileOn() ? {} : null;
-    V.gl.draw({ profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), b.t, b.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, gm: D.glareModelGPU(o, D.reducedMotion()), flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
+    V.gl.draw({ profile: glProfile, hfov: V.p.hfov, eye: eyeOf(V.p), pats: patArgs(V.g, b.dist), A: I.A, k: exposureLabel(displayK(exposure(sources), b.t, b.dist)), glare: D.glareStrength(D.capGlare(o.glare)), veil: D.veilStrength(D.capGlare(o.glare)), sources, gm: D.glareModelGPU(o, D.reducedMotion()), hdr: hdrSink(o), flip: I.mirrored, tex: o.tex && !o.tiles ? TEX_AMP * (o.wet ? 0.5 : 1) : 0, texDist: b.dist % TEX_WRAP, lane: V.p.lane });
     if (!contextReady()) return;
     const t3 = performance.now(), c = V.cpu, rt = t1 - b.sent;
     c.obj += rt; c.up += t2 - t1; c.gl += t3 - t2; c.n++; V.frames++; (V.ring || (V.ring = [])).push(rt); if (V.ring.length > 600) V.ring.shift();
@@ -2548,22 +2665,22 @@ void main() {
       gsel.addEventListener('change', () => { const v = gsel.value; setDV(ui, 'glareModel', v); for (const [k, x] of Object.entries(Opt.GLARE_MODELS[v] || {})) setDV(ui, k, x); });
       V.gmNote = E('span', { class: 'anim-speed', 'data-anim': 'glareModel-note' });
       box.append(E('span', { class: 'drive-slider' }, E('span', { class: 'anim-speed' }, 'glare model'), gsel), V.gmNote);
-      const knobs = E('div', { class: 'drive-gm-knobs' }), touched = () => { if (Opt.glareModelOf(ui.dvOpts || {}) !== 'custom') setDV(ui, 'glareModel', 'custom'); };
+      const knobs = E('div', { class: 'drive-gm-knobs' }), touched = (id) => { if (!/^hdr/.test(id) && Opt.glareModelOf(ui.dvOpts || {}) !== 'custom') setDV(ui, 'glareModel', 'custom'); };   // the HDR knobs are display, not model: they keep the preset
       V.gmEls = [];
       for (const pm of Opt.GLARE_PARAMS) {
         let el;
         if (pm.type === 'bool') {
           el = E('button', { type: 'button', class: 'toggle', 'data-anim': pm.id, 'aria-pressed': 'false', title: pm.title }, pm.label);
-          el.addEventListener('click', () => { const cur = Opt.glareParamsOf(ui.dvOpts || {})[pm.id]; touched(); setDV(ui, pm.id, !cur); });
+          el.addEventListener('click', () => { const cur = Opt.glareParamsOf(ui.dvOpts || {})[pm.id]; touched(pm.id); setDV(ui, pm.id, !cur); });
           el._box = el;
         } else if (pm.type === 'enum') {
           el = E('select', { 'data-anim': pm.id, 'aria-label': pm.label, title: pm.title }, ...pm.values.map((v) => E('option', { value: v }, v)));
-          el.addEventListener('change', () => { touched(); setDV(ui, pm.id, el.value); });
+          el.addEventListener('change', () => { touched(pm.id); setDV(ui, pm.id, el.value); });
           el._box = E('span', { class: 'drive-slider' }, E('span', { class: 'anim-speed' }, pm.label), el);
         } else {
           const lg = !!pm.log, toReal = (v) => (lg ? Math.pow(10, v) : v), fmt = (v) => String(+(+v).toPrecision(3)) + (pm.unit || '');
           el = labelled(E('input', { type: 'range', min: lg ? Math.log10(pm.min) : pm.min, max: lg ? Math.log10(pm.max) : pm.max, step: lg ? 0.01 : pm.step, 'data-anim': pm.id, 'aria-label': pm.label, title: pm.title }), pm.label, fmt, toReal);
-          el.addEventListener('change', () => { touched(); setDV(ui, pm.id, lg ? +toReal(+el.value).toPrecision(3) : +el.value); });
+          el.addEventListener('change', () => { touched(pm.id); setDV(ui, pm.id, lg ? +toReal(+el.value).toPrecision(3) : +el.value); });
           el._toSlider = (v) => String(lg ? Math.log10(v) : v);
         }
         el._pm = pm; V.gmEls.push(el); knobs.append(el._box);
@@ -2949,7 +3066,8 @@ void main() {
     if (V.gmSel) {
       const Opt = RF.Options, gmName = Opt.glareModelOf(o), gmOn = gmName !== 'current', gp = Opt.glareParamsOf(o);
       V.gmSel.value = gmName; V.gmKnobs.hidden = !gmOn;
-      V.gmNote.textContent = !gmOn ? '' : !V.gl ? 'no WebGL2 compositor: the CPU fallback ignores the glare model' : D.glareStrength(D.capGlare(o.glare)) > 0 ? '' : 'glare is off: the model draws nothing';
+      const hdrMsg = !gmOn || !gp.hdrOut ? '' : V.hdr && V.hdr.fail ? 'HDR unavailable: ' + V.hdr.fail : root.matchMedia && !root.matchMedia('(dynamic-range: high)').matches ? 'HDR on, but this display reports no HDR' : '';
+      V.gmNote.textContent = [!gmOn ? '' : !V.gl ? 'no WebGL2 compositor: the CPU fallback ignores the glare model' : D.glareStrength(D.capGlare(o.glare)) > 0 ? '' : 'glare is off: the model draws nothing', hdrMsg].filter(Boolean).join(' · ');
       for (const el of V.gmEls) {
         const pm = el._pm, v = gp[pm.id];
         if (pm.type === 'bool') el.setAttribute('aria-pressed', String(!!v)); else if (pm.type === 'enum') el.value = v; else { el.value = el._toSlider(v); el._show(v); }
