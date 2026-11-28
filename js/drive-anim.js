@@ -1374,7 +1374,7 @@ void main() {
 precision highp float; uniform sampler2D uHdr, uGlare, uSpk; uniform vec2 uSize; uniform float uK, uFlip, uGl, uTanH, uTanV, uPxSim, uPxCv; uniform int uNS; uniform vec4 uSources[32]; uniform vec3 uSrcRGB[32];
 uniform vec4 uGm0, uGm1, uGm2, uGm3, uGm4; out vec4 o;
 // uGm0: veil mode (0 off, 1 physical, 2 perceptual), veil strength x SDR boost, perceptual cap, angle floor (deg)
-// uGm1: law (0 S-H, 1 CIE 146), age factor, pigment p, tail on    uGm2: alpha (rad), beta, tail scale (SDR boost), starburst on
+// uGm1: law (0 S-H, 1 CIE 146), age factor, pigment p, tail on    uGm2: alpha (rad), beta, tail scale (gain x SDR boost), starburst on
 // uGm3: spoke length (deg), spoke gain, taper, rotation (rad)     uGm4: bins, table total, -, -
 vec3 aces(vec3 x) { x = max(x, 0.0); return min((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 1.0); }
 vec3 srgb(vec3 c) { return mix(12.92 * c, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
@@ -1494,7 +1494,7 @@ void main() {
           const g = gm.gp, boost = f.hdr ? 1 : g.gmSdrBoost, D2R_ = Math.PI / 180;
           use(FP, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: bloom ? 1 : 0, uTanH: tanH, uTanV: tanV, uPxSim: 2 * tanH / W, uPxCv: 2 * tanH / R.cw,
             uGm0: [gm.veil, g.gmVeilStr * boost, g.gmVeilCap, g.gmVeilFloor], uGm1: [g.gmVeilLaw === 'cie146' ? 1 : 0, 1 + Math.pow(g.gmAge / 62.5, 4), g.gmPigment, gm.tail ? 1 : 0],
-            uGm2: [g.gmTailAlpha * D2R_, g.gmTailBeta, boost, gm.spike ? 1 : 0], uGm3: [g.gmSpikeLen, g.gmSpikeGain, g.gmSpikeTaper, g.gmSpikeRot * D2R_], uGm4: [D.GM_BINS, R.spkTotal, 0, 0] });
+            uGm2: [g.gmTailAlpha * D2R_, g.gmTailBeta, boost * g.gmTailGain, gm.spike ? 1 : 0], uGm3: [g.gmSpikeLen, g.gmSpikeGain, g.gmSpikeTaper, g.gmSpikeRot * D2R_], uGm4: [D.GM_BINS, R.spkTotal, 0, 0] });
           gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.spk.t); gl.uniform1i(FP.u.uSpk, 2);
         } else use(P.fin, { uSize: [R.cw, R.ch], uK: f.k, uFlip: f.flip ? 1 : 0, uGl: f.glare > 0 ? 1 : 0, uVeil: f.veil || 0, uTanH: tanH, uTanV: tanV });
         const sources = f.sources || [], sa = new Float32Array(128); const sc = new Float32Array(96); sources.slice(0, 32).forEach((q, i) => { sa.set(q.slice(0, 4), i * 4); sc.set([q[4] === undefined ? 1 : q[4], q[5] === undefined ? 1 : q[5], q[6] === undefined ? 1 : q[6]], i * 3); }); gl.uniform1i(FP.u.uNS, Math.min(32, sources.length)); gl.uniform4fv(FP.u['uSources[0]'], sa); gl.uniform3fv(FP.u['uSrcRGB[0]'], sc);   // BRIEF-U: per-source rgb (veil = E * rgb)

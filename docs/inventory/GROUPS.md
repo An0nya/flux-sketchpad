@@ -92,7 +92,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `traffic` | Traffic | 17 | 0 | 14 | 0 | 0 | 1 | 2 |
 | `scenery` | Scenery and objects | 14 | 0 | 14 | 0 | 0 | 0 | 0 |
 | `own-lamp` | Our lamp | 7 | 0 | 6 | 0 | 0 | 1 | 0 |
-| `exposure` | Exposure and eye | 29 | 1 | 28 | 0 | 0 | 0 | 0 |
+| `exposure` | Exposure and eye | 30 | 1 | 29 | 0 | 0 | 0 | 0 |
 | `performance` | Speed and quality | 9 | 0 | 8 | 0 | 0 | 0 | 1 |
 | `diagnostics` | Panels and layout | 8 | 0 | 8 | 0 | 0 | 0 | 0 |
 | `internal` | Internal (no control) | 6 | 0 | 0 | 0 | 0 | 0 | 6 |
@@ -306,6 +306,7 @@ Generated from the `group` and `where` fields of `js/options-registry.js`. `wher
 | `gmTail` | scatter tail | extra | More | (unset) | needs `glareModelOn` [disabled] |
 | `gmTailAlpha` | tail α (width) | extra | More | (unset) | needs `glareModelOn` [disabled] |
 | `gmTailBeta` | tail β | extra | More | (unset) | needs `glareModelOn` [disabled] |
+| `gmTailGain` | tail gain | extra | More | (unset) | needs `glareModelOn` [disabled] |
 | `gmSdrBoost` | SDR glare boost | extra | More | (unset) | needs `glareModelOn` [disabled] |
 | `gmSpike` | starburst | extra | More | (unset) | needs `glareModelOn` [disabled] |
 | `gmSpikeCount` | spokes | extra | More | (unset) | needs `glareModelOn` [disabled] |

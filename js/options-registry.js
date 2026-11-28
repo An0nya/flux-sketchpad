@@ -186,6 +186,7 @@
     { id: 'gmTail', type: 'bool', def: false, label: 'scatter tail', title: 'Moffat scatter tail around each lamp: E·(1 + (θ/α)²)^-β, energy-normalised. Tail only: the rendered lamp pixels stay the core.' },
     { id: 'gmTailAlpha', type: 'number', min: 0.005, max: 0.5, step: 0.005, log: true, def: 0.15, unit: '°', label: 'tail α (width)', title: 'Moffat width. TUNING (Anya, phone sessions: 0.1 to 0.15).' },
     { id: 'gmTailBeta', type: 'number', min: 1.05, max: 4, step: 0.05, def: 1.5, unit: '', label: 'tail β', title: 'Moffat falloff: lower = longer tail, more veiling. TUNING (Anya: 1.6 barely interferes, 1.5 right, 1.4 strong).' },
+    { id: 'gmTailGain', type: 'number', min: 0, max: 2, step: 0.01, def: 1, unit: '×', label: 'tail gain', title: 'Multiplies the scatter tail only (1 = energy-normalised: the tail holds the share of the lamp\'s light the Moffat puts outside one pixel). TUNING.' },
     { id: 'gmSdrBoost', type: 'number', min: 1, max: 4, step: 0.05, def: 1, unit: '×', label: 'SDR glare boost', title: 'Multiplies the tail and the drawn veil on a standard (non-HDR) display, where the lamp cannot look brighter than white.' },
     { id: 'gmSpike', type: 'bool', def: false, label: 'starburst', title: 'Fixed-size spokes around each lamp (from the eye, not the lamp): brightness ∝ E, length never grows. No flicker.' },
     { id: 'gmSpikeCount', type: 'number', min: 4, max: 240, step: 1, def: 74, unit: '', label: 'spokes', title: 'Number of spokes in the pattern.' },

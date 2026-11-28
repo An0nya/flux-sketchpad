@@ -128,6 +128,7 @@ Columns: **id .. owner** (generated) = from the registry; **default** is the DV_
 | `gmTail` | extra | exposure | per-frame-gpu | (unset) | needs `glareModelOn` [disabled] | drive-anim.js, drive.js | - | - | - | - | - | - | `tests/glare-model.js` |
 | `gmTailAlpha` | extra | exposure | per-frame-gpu | (unset) | needs `glareModelOn` [disabled] | drive-anim.js, drive.js | - | - | - | - | - | - | `tests/glare-model.js` |
 | `gmTailBeta` | extra | exposure | per-frame-gpu | (unset) | needs `glareModelOn` [disabled] | drive-anim.js, drive.js | - | - | - | - | - | - | `tests/glare-model.js` |
+| `gmTailGain` | extra | exposure | per-frame-gpu | (unset) | needs `glareModelOn` [disabled] | drive-anim.js, drive.js | - | - | - | - | - | - | `tests/glare-model.js` |
 | `gmSdrBoost` | extra | exposure | per-frame-gpu | (unset) | needs `glareModelOn` [disabled] | drive-anim.js, drive.js | - | - | - | - | - | - | `tests/glare-model.js` |
 | `gmSpike` | extra | exposure | per-frame-gpu | (unset) | needs `glareModelOn` [disabled] | drive-anim.js, drive.js | - | - | - | - | - | - | `tests/glare-model.js` |
 | `gmSpikeCount` | extra | exposure | per-frame-gpu | (unset) | needs `glareModelOn` [disabled] | drive-anim.js, drive.js | - | - | - | - | - | - | `tests/glare-model.js` |
@@ -309,7 +310,7 @@ Each rule is one condition on other options (or on the render context), with the
 | `roadSurfacesOn` | roadSurfaces = true | needs road surfaces on (the per-surface smoothness physics gate) | disabled | `spec-ui.js b.disabled = !o.roadSurfaces ~L1072` | roadSurface |
 | `wetBounceOn` | wetBounce = true | needs the wet-road bounce on (the mirror only exists then) | disabled | `spec-ui.js b.disabled = !(RF.Drive.wetnessOf(o) > 0) ~L1072` | wetBouncePlane |
 | `cabinMiata` | cabinStyle = "miata" | only the miata photo cabin has backlit gauges | disabled | `drive-anim.js s2.disabled = !o.cabinView \|\| o.cabinStyle !== 'miata' ~L2715` | cabinGaugeLight, cabinZoom, cabinOffsetX, cabinOffsetY |
-| `glareModelOn` | (glareModel = "perceptual" or glareModel = "cie146" or glareModel = "custom") | a glare model knob: only read with a glare model on (glare model is not "current") | disabled | `drive-anim.js el.disabled = !gmOn ~L2956` | gmVeil, gmVeilLaw, gmAge, gmPigment, gmVeilStr, gmVeilCap, gmVeilFloor, gmTail, gmTailAlpha, gmTailBeta, gmSdrBoost, gmSpike, gmSpikeCount, gmSpikeLen, gmSpikeLenJit, gmSpikeWidth, gmSpikeGain, gmSpikeTaper, gmSpikeBase, gmSpikeSeed, gmSpikeRot, gmBloom, gmAdaptDown, gmAdaptUp |
+| `glareModelOn` | (glareModel = "perceptual" or glareModel = "cie146" or glareModel = "custom") | a glare model knob: only read with a glare model on (glare model is not "current") | disabled | `drive-anim.js el.disabled = !gmOn ~L2956` | gmVeil, gmVeilLaw, gmAge, gmPigment, gmVeilStr, gmVeilCap, gmVeilFloor, gmTail, gmTailAlpha, gmTailBeta, gmTailGain, gmSdrBoost, gmSpike, gmSpikeCount, gmSpikeLen, gmSpikeLenJit, gmSpikeWidth, gmSpikeGain, gmSpikeTaper, gmSpikeBase, gmSpikeSeed, gmSpikeRot, gmBloom, gmAdaptDown, gmAdaptUp |
 <!-- END GENERATED rules -->
 
 ## Options locked behind other options (OBSERVED from the sync loops spec-ui.js:1012-1051 and drive-anim.js:1845-1892, unless marked)
