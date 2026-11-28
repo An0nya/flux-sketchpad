@@ -213,6 +213,38 @@ Each cell: mean over 64 renders of one pose. Old phone in **bold**.
 - At this pose the old phone spends ~58% of the frame in halo screen (51–70 ms) vs 9 ms on the new phone (7.7× slower; scene 7.4×).
 - SS2 only doubles objects (the supersampled pass); everything else is unchanged.
 
+## Table size and the real-speed line (OBSERVED by Anya, 2026-11-27 11:51–11:55 pm, 640×360, SS2, refine 32)
+
+**CORRECTION (Anya, same night): the 8 screenshots are 4 pairs: (1) real run, old app; (2) timed, old app; (3) real run, new app;
+(4) timed, new app. The "1/1.8 vs 1/2.8" reading below is RETRACTED.** The Frame-timing line in pair 1 was left over from the
+11:45 640+SS2 tap (old phone sum 97.4 is that run exactly), not a table-size comparison. Corrected reading:
+
+| | new phone | old phone |
+|---|---|---|
+| real run, app frame ms (old app / new app) | 11.4 / 11.5 | 48.0 / 55.9 |
+| timed, synced stage sum (old app / new app) | 27.3 / 26.4 | 72.2 / 69.9 |
+| synced ÷ real | 2.4× / 2.3× | 1.5× / 1.25× |
+| new app "real speed" line | 3.5 ms (3.3× too fast) | 21.4 ms (2.6× too fast) |
+
+- The real-speed line is broken on both phones: it reads 2.6–3.3× faster than the real frame. Candidate causes, not separated:
+  the frozen traffic keeps every cache warm (shadow maps 0.1–0.2 timed vs 1.1–1.6 playing), and/or the single canvas-pixel read
+  doesn't wait for the GPU on Safari. Replace it with real frames: time the app's own animation loop for a fixed window.
+
+
+(RETRACTED, see the correction above) Old phone, Frame timing (synced): table 1/1.8 → halo screen 51.7, scene 23.1, crest 13.0, sum 97.4. Table 1/2.8 → halo screen 25.5,
+scene 24.6, crest 11.3, sum 72.2. So halo screen ∝ cells, about 2.0× for 2.4× the cells.
+New commit, old phone: synced sum 69.9, real speed 21.4 [21.1–21.7] ms ("3.3x slow"). But the same pose PLAYING ran at frame 55.9 ms (18.9 fps).
+And the fps counter jumped to 125/333 fps after a timing run (Anya: "outrageously inflated").
+- INFERRED: timing renders feed the fps / frame stats; they should be reset after a run (bug, mine).
+- INFERRED: real speed < playing because a frozen pose hits every cache. In the synced run shadow maps read 0.1–0.2 vs 1.1–1.6 while
+  playing (BJ1 shadow cache), and the crest map, air table and tiles are cached too. Driving pays those misses every frame.
+  So "real speed" is the cached floor, not the driving cost. Fix idea: advance the pose slightly per render (as bench() does).
+- Objects (OBSERVED in code, js/drive-three-objects.js): objects are ray-traced in the fragment shader. Each draws a proxy box, every pixel
+  intersects the shape, writes gl_FragDepth and discards misses. Writing depth per pixel and discarding switch off early depth rejection
+  (and Apple's hidden-surface removal), so every covered pixel of every overlapping object runs the full lit shader.
+  Candidates: a depth-only prepass (the cheap trace already exists as maskMode) then shading only where depth matches;
+  tighter proxies; front-to-back order; objects not supersampled on weak devices (SS2 doubles objects: 2.8 → 6.0 ms, old phone).
+
 ## Open
 
 - Backlog (Anya, 2026-11-27): a "crysis" preset for fun: crossing refine 2048, shadow maps 2048×1024, polar 1024×256,

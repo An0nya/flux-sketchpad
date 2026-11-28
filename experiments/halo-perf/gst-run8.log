@@ -1,0 +1,18 @@
+[PASS] 1. OFF: halo on at the pose, tables present {"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","on":1}
+[PASS] 1. OFF: no probe recorded {"probes":0}
+[PASS] 2. ON: frame and halo tables equal OFF {"off":{"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","on":1},"on":{"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","on":1}}
+[PASS] 2. ON: probes recorded (every 8th frame) {"probes":3}
+[PASS] 3. ON: stages booked in frame order include halo screen, scene, compose, final ["crest map","halo prep","halo screen","halo polar","halo uniforms","scene","cones","objects","compose","final"]
+[PASS] 3. ON: the readout line is shown ["GPU stages (1/8 frames, synced, mean of 3): crest map 1.2 · halo 4.3 (prep 1.2 · screen 2.8 · polar 0.2 · uniforms 0.2) · scene 4.5 · cones 0.2 · objects 3.3 · compose 1.0 · final 0.5 · sum 15.0 / probe 15.0 ms"]
+[PASS] 4. control: halo off books no halo stage [["crest map","halo uniforms","scene","cones","objects","compose","final"],["crest map","halo uniforms","scene","cones","objects","compose","final"],["crest map","halo uniforms","scene","cones","objects","compose","final"]]
+[PASS] 5. control: halo screen grows with the table (div 1.4 vs 4: >= 1.3x); final does not grow as much {"screen":[4.533333381017049,16.483333190282185],"final":[0.5000000794728597,0.44999996821085614]}
+[PASS] 7. time this frame: 64 timed renders kept (80 - 16 warm-up) {"n":64}
+[PASS] 7. time this frame: the readout line is shown with spreads ["Frame timing (64 renders of one pose at 1332 m, 16 warm-up dropped, synced per stage): crest map 1.3 [1.1-1.7] · halo 4.4 (prep 1.2 [1.0-1.6] · screen 2.9 [2.5-3.9] · polar 0.2 [0.0-0.3] · uniforms 0.2 [0.0-0.3]) · scene 5.3 [4.8-6.2] · cones 0.2 [0.0-0.3] · objects 3.8 [3.2-5.1] · compose 0.6 [0.5-1.4] · final 0.5 [0.4-0.7] · sum 16.1 / probe 16.1 ms"]
+[FAIL] 7. time this frame: real-frames line shown (64 played frames, ms > 0) ["Real frames: none recorded (the drive did not play)"]
+[PASS] 7. time this frame: fps / frame stats cleared afterwards (timing renders not counted as fps) {"times":0,"frameMs":0}
+[PASS] 7. time this frame: pose, clock and traffic put back exactly; still paused
+[PASS] 7. time this frame: the picture afterwards equals the picture before {"before":"b93567722039b519","after":"b93567722039b519"}
+[PASS] 6. OFF after ON: frame and tables equal the first OFF {"off1":{"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","on":1},"off2":{"png":"b93567722039b519","bin":"f6361435f0dcf102","cum":"b4302018526c98c0","on":1}}
+[PASS] 6. OFF after ON: no probe recorded {"probes":0}
+[PASS] no page errors []
+GST: 1 of 17 checks FAILED

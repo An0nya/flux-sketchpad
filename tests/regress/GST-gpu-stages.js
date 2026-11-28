@@ -83,8 +83,10 @@ setTimeout(() => { console.log('[FAIL] watchdog: no result after 10 min (checks 
     const after = await page.evaluate(async () => { await new Promise((r) => setTimeout(r, 300)); return 1; }).then(() => page.evaluate(() => 1)).then(async () => { const shot = await (await page.evaluate(() => { const c = RF.DriveAnim._.V.canvas; Object.assign(c.style, { position: 'fixed', left: '0px', top: '0px', margin: '0px', zIndex: '99999' }); }), page.screenshot({ clip: { x: 0, y: 0, width: 912, height: 373 } })); return sha(shot); });
     ok('7. time this frame: 64 timed renders kept (80 - 16 warm-up)', tf.n === 64, { n: tf.n });
     ok('7. time this frame: the readout line is shown with spreads', /Frame timing \(64 renders of one pose/.test(tf.text) && /\[[0-9.]+-[0-9.]+\]/.test(tf.text), tf.text.split('\n').filter((l) => l.startsWith('Frame timing')));
-    const real = /Real speed \((\d+) renders back to back, no stage syncs\): ([0-9.]+) \[[0-9.]+-[0-9.]+\] ms per frame → stage timings run ([0-9.]+)x slow/.exec(tf.text);
-    ok('7. time this frame: real-speed line shown (64 renders, ms > 0, stage sums not faster than real speed by more than 20%)', !!real && +real[1] === 64 && +real[2] > 0 && +real[3] >= 0.8, real ? real.slice(1) : tf.text.split('\n').filter((l) => /Real speed/.test(l)));
+    const real = /Real frames \((\d+) played from this pose, no probes\): ([0-9.]+) ms mean, p95 [0-9.]+ \[[0-9.]+-[0-9.]+\] → stage timings run ([0-9.]+)x slow/.exec(tf.text);
+    ok('7. time this frame: real-frames line shown (64 played frames, ms > 0)', !!real && +real[1] === 64 && +real[2] > 0, real ? real.slice(1) : tf.text.split('\n').filter((l) => /Real frames/.test(l)));
+    const fpsAfter = await page.evaluate(() => ({ times: (RF.DriveAnim._.V.times || []).length, frameMs: (RF.DriveAnim._.V.frameMs || []).length }));
+    ok('7. time this frame: fps / frame stats cleared afterwards (timing renders not counted as fps)', fpsAfter.times <= 1 && fpsAfter.frameMs === 0, fpsAfter);
     ok('7. time this frame: pose, clock and traffic put back exactly; still paused', s0 === s1 && !JSON.parse(s1).playing, s0 === s1 ? undefined : { s0: s0.slice(0, 200), s1: s1.slice(0, 200) });
     ok('7. time this frame: the picture afterwards equals the picture before', after === before.png, { before: before.png, after });
 
