@@ -21,7 +21,7 @@ const checks = [], ok = (name, pass, detail) => { checks.push({ name, pass: !!pa
     await sleep(6000); await page.evaluate(() => RF.UI.redrawSpec()); await sleep(2000);
     const state = await page.evaluate(() => { const V = RF.DriveAnim._.V; return { hdr: V.hdr ? (V.hdr.fail || 'ready') : String(V.hdr), shown: V.hdr && V.hdr.canvas ? !V.hdr.canvas.hidden : null, glVis: V.canvas.style.visibility, note: document.querySelector('[data-anim="glareModel-note"]').textContent }; });
     ok('GM2 1 the presenter is ready, its canvas shows, the WebGL canvas is hidden', state.hdr === 'ready' && state.shown === true && state.glVis === 'hidden', JSON.stringify(state));
-    for (const mode of ['copy', 'readback']) {
+    for (const mode of ['readback', 'copy']) {
       const r = await page.evaluate(async (mode) => {
         const V = RF.DriveAnim._.V; RF.UI.dvOpts.hdrTransport = mode; RF.UI.redrawSpec(); await new Promise((r) => setTimeout(r, 1500));
         V.hdr.capture = true; V.hdr.captured = null; RF.UI.redrawSpec(); for (let i = 0; i < 100 && !V.hdr.captured; i++) await new Promise((r) => setTimeout(r, 50));
